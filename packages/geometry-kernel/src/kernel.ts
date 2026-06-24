@@ -504,6 +504,27 @@ export interface GeometryKernelBounds {
   readonly max: readonly [number, number, number];
 }
 
+export type GeometryKernelTopologySurfaceClass =
+  | "plane"
+  | "cylinder"
+  | "cone"
+  | "sphere"
+  | "torus"
+  | "bspline"
+  | "unknown";
+
+export type GeometryKernelTopologyCurveClass =
+  | "line"
+  | "circle"
+  | "ellipse"
+  | "bspline"
+  | "unknown";
+
+export interface GeometryKernelTopologyEntityAdjacencyEvidence {
+  readonly available: boolean;
+  readonly neighborSignatureHashes: readonly string[];
+}
+
 export interface GeometryKernelTopologyCounts {
   readonly solidCount: number;
   readonly faceCount: number;
@@ -562,6 +583,16 @@ export interface GeometryKernelTopologyEntityDescriptor {
   readonly source: "kernel-derived";
   readonly signature: string;
   readonly bounds?: GeometryKernelBounds;
+  readonly surfaceClass?: GeometryKernelTopologySurfaceClass;
+  readonly curveClass?: GeometryKernelTopologyCurveClass;
+  readonly point?: readonly [number, number, number];
+  readonly midpoint?: readonly [number, number, number];
+  readonly normal?: readonly [number, number, number];
+  readonly axis?: readonly [number, number, number];
+  readonly radius?: number;
+  readonly area?: number;
+  readonly length?: number;
+  readonly adjacency?: GeometryKernelTopologyEntityAdjacencyEvidence;
 }
 
 export interface GeometryKernelTopologyEntityCounts extends GeometryKernelTopologyCounts {
@@ -1918,7 +1949,22 @@ function isInvalidExactTopologySnapshot(
         entity.source !== "kernel-derived" ||
         typeof entity.signature !== "string" ||
         entity.signature.trim().length === 0 ||
-        (entity.bounds !== undefined && !isGeometryKernelBounds(entity.bounds))
+        (entity.bounds !== undefined &&
+          !isGeometryKernelBounds(entity.bounds)) ||
+        (entity.surfaceClass !== undefined &&
+          !isTopologySurfaceClass(entity.surfaceClass)) ||
+        (entity.curveClass !== undefined &&
+          !isTopologyCurveClass(entity.curveClass)) ||
+        (entity.point !== undefined && !isVec3(entity.point)) ||
+        (entity.midpoint !== undefined && !isVec3(entity.midpoint)) ||
+        (entity.normal !== undefined && !isVec3(entity.normal)) ||
+        (entity.axis !== undefined && !isVec3(entity.axis)) ||
+        (entity.radius !== undefined && !isNonNegativeFinite(entity.radius)) ||
+        (entity.area !== undefined && !isNonNegativeFinite(entity.area)) ||
+        (entity.length !== undefined && !isNonNegativeFinite(entity.length)) ||
+        (entity.adjacency !== undefined &&
+          !isTopologyAdjacencyEvidence(entity.adjacency)) ||
+        !isTopologyDescriptorEvidenceForKind(entity)
     ) ||
     snapshot.unsupportedEntityKinds.some(
       (kind) => !isTopologyEntityKind(kind)
@@ -2038,6 +2084,93 @@ function isTopologyEntityKind(
   );
 }
 
+function isTopologySurfaceClass(value: unknown): boolean {
+  return (
+    value === "plane" ||
+    value === "cylinder" ||
+    value === "cone" ||
+    value === "sphere" ||
+    value === "torus" ||
+    value === "bspline" ||
+    value === "unknown"
+  );
+}
+
+function isTopologyDescriptorEvidenceForKind(
+  entity: GeometryKernelTopologyEntityDescriptor
+): boolean {
+  switch (entity.kind) {
+    case "face":
+      return (
+        entity.curveClass === undefined &&
+        entity.point === undefined &&
+        entity.midpoint === undefined &&
+        entity.length === undefined
+      );
+    case "edge":
+      return (
+        entity.surfaceClass === undefined &&
+        entity.point === undefined &&
+        entity.normal === undefined &&
+        entity.area === undefined
+      );
+    case "vertex":
+      return (
+        entity.surfaceClass === undefined &&
+        entity.curveClass === undefined &&
+        entity.midpoint === undefined &&
+        entity.normal === undefined &&
+        entity.axis === undefined &&
+        entity.radius === undefined &&
+        entity.area === undefined &&
+        entity.length === undefined
+      );
+    case "axis":
+      return (
+        entity.surfaceClass === undefined &&
+        entity.curveClass === undefined &&
+        entity.midpoint === undefined &&
+        entity.normal === undefined &&
+        entity.radius === undefined &&
+        entity.area === undefined &&
+        entity.length === undefined
+      );
+    default:
+      return (
+        entity.surfaceClass === undefined &&
+        entity.curveClass === undefined &&
+        entity.point === undefined &&
+        entity.midpoint === undefined &&
+        entity.normal === undefined &&
+        entity.axis === undefined &&
+        entity.radius === undefined &&
+        entity.area === undefined &&
+        entity.length === undefined
+      );
+  }
+}
+
+function isTopologyCurveClass(value: unknown): boolean {
+  return (
+    value === "line" ||
+    value === "circle" ||
+    value === "ellipse" ||
+    value === "bspline" ||
+    value === "unknown"
+  );
+}
+
+function isTopologyAdjacencyEvidence(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.available === "boolean" &&
+    Array.isArray(value.neighborSignatureHashes) &&
+    value.neighborSignatureHashes.every(
+      (hash) => typeof hash === "string" && hash.trim().length > 0
+    )
+  );
+}
+
 function isTopologyDiagnosticCode(
   code: string
 ): code is GeometryKernelTopologyDiagnosticCode {
@@ -2118,6 +2251,10 @@ function vectorLength(vector: readonly [number, number, number]): number {
 
 function isFiniteNumber(value: number): boolean {
   return typeof value === "number" && Number.isFinite(value);
+}
+
+function isNonNegativeFinite(value: number): boolean {
+  return isFiniteNumber(value) && value >= 0;
 }
 
 function isNonNegativeInteger(value: number): boolean {

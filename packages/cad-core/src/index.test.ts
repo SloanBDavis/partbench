@@ -575,12 +575,17 @@ function createTopologyAnchorMatchResult(
 }
 
 function createTopologySnapshot(
-  entities: readonly {
+  entities: readonly ({
     readonly localId: string;
     readonly kind: string;
     readonly signature: string;
     readonly bounds?: CadBodyExactTopologySnapshot["entities"][number]["bounds"];
-  }[]
+  } & Partial<
+    Omit<
+      CadBodyExactTopologySnapshot["entities"][number],
+      "localId" | "kind" | "source" | "signature" | "bounds"
+    >
+  >)[]
 ): CadBodyExactTopologySnapshot {
   const counts = {
     bodyCount: entities.filter((entity) => entity.kind === "body").length,
@@ -604,7 +609,17 @@ function createTopologySnapshot(
       kind: entity.kind as CadBodyExactTopologySnapshot["entities"][number]["kind"],
       source: "kernel-derived" as const,
       signature: entity.signature,
-      ...(entity.bounds ? { bounds: entity.bounds } : {})
+      ...(entity.bounds ? { bounds: entity.bounds } : {}),
+      ...(entity.surfaceClass ? { surfaceClass: entity.surfaceClass } : {}),
+      ...(entity.curveClass ? { curveClass: entity.curveClass } : {}),
+      ...(entity.point ? { point: entity.point } : {}),
+      ...(entity.midpoint ? { midpoint: entity.midpoint } : {}),
+      ...(entity.normal ? { normal: entity.normal } : {}),
+      ...(entity.axis ? { axis: entity.axis } : {}),
+      ...(entity.radius !== undefined ? { radius: entity.radius } : {}),
+      ...(entity.area !== undefined ? { area: entity.area } : {}),
+      ...(entity.length !== undefined ? { length: entity.length } : {}),
+      ...(entity.adjacency ? { adjacency: entity.adjacency } : {})
     })),
     unsupportedEntityKinds: [],
     adjacencyAvailable: true,
@@ -624,12 +639,17 @@ function createTopologyMatchSnapshotInput({
   readonly checkpointId: string;
   readonly bodyId: string;
   readonly sourceFeatureId?: string;
-  readonly entities: readonly {
+  readonly entities: readonly ({
     readonly localId: string;
     readonly kind: string;
     readonly signature: string;
     readonly bounds?: CadBodyExactTopologySnapshot["entities"][number]["bounds"];
-  }[];
+  } & Partial<
+    Omit<
+      CadBodyExactTopologySnapshot["entities"][number],
+      "localId" | "kind" | "source" | "signature" | "bounds"
+    >
+  >)[];
   readonly sourceIdentitySha?: string;
 }) {
   return {
@@ -31222,6 +31242,128 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(exportCadProjectJson(engine)).toBe(beforeJson);
   });
 
+  it("uses rich topology descriptor evidence for replacement matching without mutating source", () => {
+    const engine = createRectangleExtrudeEngine();
+    const beforeJson = exportCadProjectJson(engine);
+    const previous = createTopologyMatchSnapshotInput({
+      checkpointId: "checkpoint_old",
+      bodyId: "body_rect_1",
+      entities: [
+        {
+          localId: "face_old_1",
+          kind: "face",
+          signature: "face:old",
+          bounds: { min: [0, 0, 1], max: [1, 1, 1] },
+          surfaceClass: "plane",
+          normal: [0, 0, 1],
+          adjacency: {
+            available: true,
+            neighborSignatureHashes: ["edge:b", "edge:a"]
+          }
+        },
+        {
+          localId: "edge_old_1",
+          kind: "edge",
+          signature: "edge:old",
+          bounds: { min: [0, 0, 1], max: [1, 0, 1] },
+          curveClass: "line",
+          midpoint: [0.5, 0, 1],
+          axis: [1, 0, 0],
+          length: 1
+        }
+      ]
+    });
+    const candidate = createTopologyMatchSnapshotInput({
+      checkpointId: "checkpoint_new",
+      bodyId: "body_rect_1",
+      entities: [
+        {
+          localId: "face_new_1",
+          kind: "face",
+          signature: "face:new",
+          bounds: { min: [0, 0, 1], max: [1, 1, 1] },
+          surfaceClass: "plane",
+          normal: [0, 0, 1],
+          adjacency: {
+            available: true,
+            neighborSignatureHashes: ["edge:a", "edge:b"]
+          }
+        },
+        {
+          localId: "edge_new_1",
+          kind: "edge",
+          signature: "edge:new",
+          bounds: { min: [0, 0, 1], max: [1, 0, 1] },
+          curveClass: "line",
+          midpoint: [0.5, 0, 1],
+          axis: [1, 0, 0],
+          length: 1
+        }
+      ]
+    });
+
+    const response = readTopologyMatchSnapshots(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "topology.matchSnapshots",
+          previous,
+          candidates: [candidate]
+        }
+      })
+    );
+
+    const byPreviousEntity = new Map(
+      response.matchResults.map((result) => [
+        result.previousCheckpointEntityId,
+        result
+      ])
+    );
+    expect(byPreviousEntity.get("face_old_1")).toMatchObject({
+      candidateCheckpointEntityId: "face_new_1",
+      state: "replaced",
+      evidence: expect.arrayContaining([
+        expect.objectContaining({ kind: "surfaceType" }),
+        expect.objectContaining({
+          kind: "normal",
+          previousValue: [0, 0, 1],
+          candidateValue: [0, 0, 1]
+        }),
+        expect.objectContaining({
+          kind: "adjacency",
+          previousValue: ["edge:a", "edge:b"],
+          candidateValue: ["edge:a", "edge:b"]
+        })
+      ])
+    });
+    expect(byPreviousEntity.get("edge_old_1")).toMatchObject({
+      candidateCheckpointEntityId: "edge_new_1",
+      state: "replaced",
+      evidence: expect.arrayContaining([
+        expect.objectContaining({ kind: "curveType" }),
+        expect.objectContaining({
+          kind: "midpoint",
+          previousValue: [0.5, 0, 1],
+          candidateValue: [0.5, 0, 1]
+        }),
+        expect.objectContaining({
+          kind: "axis",
+          previousValue: [1, 0, 0],
+          candidateValue: [1, 0, 0]
+        }),
+        expect.objectContaining({
+          kind: "length",
+          previousValue: 1,
+          candidateValue: 1
+        })
+      ])
+    });
+    expect(JSON.stringify(response)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
+    );
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+  });
+
   it("reports deleted, split, merged, ambiguous, low-confidence, and kind-mismatch topology matches", () => {
     const engine = new CadEngine();
     const previous = createTopologyMatchSnapshotInput({
@@ -35124,6 +35266,109 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
             }
           ]
         }),
+        candidates: []
+      }
+    } as unknown as CadQueryRequest);
+
+    expect(response).toMatchObject({
+      ok: false,
+      query: "topology.matchSnapshots",
+      error: {
+        code: "INVALID_QUERY"
+      }
+    });
+  });
+
+  it("rejects topology.matchSnapshots snapshots with invalid descriptor evidence", () => {
+    const engine = new CadEngine();
+    const previous = createTopologyMatchSnapshotInput({
+      checkpointId: "checkpoint_old",
+      bodyId: "body_1",
+      entities: [
+        {
+          localId: "face_old_1",
+          kind: "face",
+          signature: "face:bad-evidence",
+          bounds: {
+            min: [0, 0, 0],
+            max: [1, 1, 1]
+          }
+        }
+      ]
+    });
+    const invalidPrevious = {
+      ...previous,
+      topologySnapshot: {
+        ...previous.topologySnapshot,
+        entities: previous.topologySnapshot.entities.map((entity) => ({
+          ...entity,
+          surfaceClass: "renderer-plane",
+          length: -1,
+          adjacency: {
+            available: true,
+            neighborSignatureHashes: ["valid", ""]
+          }
+        }))
+      }
+    };
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.matchSnapshots",
+        previous: invalidPrevious,
+        candidates: []
+      }
+    } as unknown as CadQueryRequest);
+
+    expect(response).toMatchObject({
+      ok: false,
+      query: "topology.matchSnapshots",
+      error: {
+        code: "INVALID_QUERY"
+      }
+    });
+  });
+
+  it("rejects topology.matchSnapshots snapshots with wrong-kind descriptor evidence", () => {
+    const engine = new CadEngine();
+    const previous = createTopologyMatchSnapshotInput({
+      checkpointId: "checkpoint_old",
+      bodyId: "body_1",
+      entities: [
+        {
+          localId: "edge_old_1",
+          kind: "edge",
+          signature: "edge:wrong-kind-evidence",
+          bounds: {
+            min: [0, 0, 0],
+            max: [1, 0, 0]
+          },
+          curveClass: "line",
+          midpoint: [0.5, 0, 0],
+          axis: [1, 0, 0],
+          length: 1
+        }
+      ]
+    });
+    const invalidPrevious = {
+      ...previous,
+      topologySnapshot: {
+        ...previous.topologySnapshot,
+        entities: previous.topologySnapshot.entities.map((entity) => ({
+          ...entity,
+          surfaceClass: "plane",
+          normal: [0, 0, 1],
+          area: 1
+        }))
+      }
+    };
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.matchSnapshots",
+        previous: invalidPrevious,
         candidates: []
       }
     } as unknown as CadQueryRequest);

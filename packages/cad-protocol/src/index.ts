@@ -3170,6 +3170,8 @@ export type CadTopologyMatchEvidenceKind =
   | "geometrySignature"
   | "bounds"
   | "centroid"
+  | "point"
+  | "midpoint"
   | "normal"
   | "axis"
   | "radius"
@@ -3256,13 +3258,19 @@ export interface CadTopologyCheckpointMetadata {
   readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
 }
 
+export type CadTopologyMatchEvidenceValue =
+  | string
+  | number
+  | readonly number[]
+  | readonly string[];
+
 export interface CadTopologyMatchEvidence {
   readonly kind: CadTopologyMatchEvidenceKind;
   readonly confidence: CadTopologyMatchConfidence;
   readonly message: string;
   readonly weight?: number;
-  readonly previousValue?: string | number;
-  readonly candidateValue?: string | number;
+  readonly previousValue?: CadTopologyMatchEvidenceValue;
+  readonly candidateValue?: CadTopologyMatchEvidenceValue;
 }
 
 export interface CadTopologyMatchResult {
@@ -4687,12 +4695,43 @@ export interface CadTopologyEntityBounds {
   readonly max: Vec3;
 }
 
+export type CadTopologySurfaceClass =
+  | "plane"
+  | "cylinder"
+  | "cone"
+  | "sphere"
+  | "torus"
+  | "bspline"
+  | "unknown";
+
+export type CadTopologyCurveClass =
+  | "line"
+  | "circle"
+  | "ellipse"
+  | "bspline"
+  | "unknown";
+
+export interface CadTopologyEntityAdjacencyEvidence {
+  readonly available: boolean;
+  readonly neighborSignatureHashes: readonly string[];
+}
+
 export interface CadBodyExactTopologyEntityDescriptor {
   readonly localId: string;
   readonly kind: CadTopologyEntityKind | "solid";
   readonly source: "kernel-derived";
   readonly signature: string;
   readonly bounds?: CadTopologyEntityBounds;
+  readonly surfaceClass?: CadTopologySurfaceClass;
+  readonly curveClass?: CadTopologyCurveClass;
+  readonly point?: Vec3;
+  readonly midpoint?: Vec3;
+  readonly normal?: Vec3;
+  readonly axis?: Vec3;
+  readonly radius?: number;
+  readonly area?: number;
+  readonly length?: number;
+  readonly adjacency?: CadTopologyEntityAdjacencyEvidence;
 }
 
 export interface CadBodyExactTopologySnapshot {

@@ -19,6 +19,8 @@ import {
 } from "./edgeFinish";
 import type { OcctLoader } from "./tessellateBox";
 
+const TOPOLOGY_EVIDENCE_TOLERANCE = 1e-6;
+
 export type OcctExactBodyMetadataSource =
   | OcctExactExtrudeMetadataSource
   | OcctExactBooleanExtrudesMetadataSource
@@ -111,6 +113,26 @@ export interface OcctTopologyEntityDescriptor {
   readonly source: "kernel-derived";
   readonly signature: string;
   readonly bounds?: OcctExactBodyMetadata["bounds"];
+  readonly surfaceClass?:
+    | "plane"
+    | "cylinder"
+    | "cone"
+    | "sphere"
+    | "torus"
+    | "bspline"
+    | "unknown";
+  readonly curveClass?: "line" | "circle" | "ellipse" | "bspline" | "unknown";
+  readonly point?: readonly [number, number, number];
+  readonly midpoint?: readonly [number, number, number];
+  readonly normal?: readonly [number, number, number];
+  readonly axis?: readonly [number, number, number];
+  readonly radius?: number;
+  readonly area?: number;
+  readonly length?: number;
+  readonly adjacency?: {
+    readonly available: boolean;
+    readonly neighborSignatureHashes: readonly string[];
+  };
 }
 
 export interface OcctTopologyEntityCounts {
@@ -469,17 +491,68 @@ function createTopologyEntity(input: {
   readonly sourceKind: OcctExactBodyMetadataSource["kind"];
   readonly bounds: OcctExactBodyMetadata["bounds"];
 }): OcctTopologyEntityDescriptor {
+  const evidence = createTopologyEntityEvidence(input.kind, input.bounds);
+
   return {
     localId: `snapshot-local:${input.kind}:${input.index}`,
     kind: input.kind,
     source: "kernel-derived",
     bounds: input.bounds,
+    ...evidence,
     signature: createDerivedTopologySignature({
       sourceKind: input.sourceKind,
       entityKind: input.kind,
       bounds: normalizeBoundsForSignature(input.bounds)
     })
   };
+}
+
+function createTopologyEntityEvidence(
+  kind: Extract<
+    OcctTopologyEntityKind,
+    "body" | "solid" | "face" | "wire" | "edge" | "vertex"
+  >,
+  bounds: OcctExactBodyMetadata["bounds"]
+): Partial<OcctTopologyEntityDescriptor> {
+  const adjacency = {
+    available: false,
+    neighborSignatureHashes: []
+  } as const;
+
+  if (kind === "face") {
+    const plane = findAxisAlignedPlane(bounds);
+
+    return {
+      surfaceClass: plane ? "plane" : "unknown",
+      ...(plane ? { normal: plane.normal } : {}),
+      adjacency
+    };
+  }
+
+  if (kind === "edge") {
+    const line = findAxisAlignedLine(bounds);
+
+    return {
+      curveClass: line ? "line" : "unknown",
+      ...(line
+        ? {
+            midpoint: line.midpoint,
+            axis: line.axis,
+            length: line.length
+          }
+        : {}),
+      adjacency
+    };
+  }
+
+  if (kind === "vertex" && isPointBounds(bounds)) {
+    return {
+      point: bounds.min,
+      adjacency
+    };
+  }
+
+  return { adjacency };
 }
 
 function normalizeBoundsForSignature(
@@ -497,6 +570,74 @@ function normalizeBoundsForSignature(
       roundTopologySignatureNumber(bounds.max[2])
     ]
   };
+}
+
+function findAxisAlignedPlane(
+  bounds: OcctExactBodyMetadata["bounds"]
+): { readonly normal: readonly [number, number, number] } | undefined {
+  const degenerateAxes = getDegenerateAxes(bounds);
+
+  if (degenerateAxes.length !== 1) {
+    return undefined;
+  }
+
+  return { normal: axisUnitVector(degenerateAxes[0]!) };
+}
+
+function findAxisAlignedLine(bounds: OcctExactBodyMetadata["bounds"]):
+  | {
+      readonly midpoint: readonly [number, number, number];
+      readonly axis: readonly [number, number, number];
+      readonly length: number;
+    }
+  | undefined {
+  const degenerateAxes = getDegenerateAxes(bounds);
+
+  if (degenerateAxes.length !== 2) {
+    return undefined;
+  }
+
+  const axisIndex = [0, 1, 2].find((index) => !degenerateAxes.includes(index));
+
+  if (axisIndex === undefined) {
+    return undefined;
+  }
+
+  const length = Math.abs(bounds.max[axisIndex] - bounds.min[axisIndex]);
+
+  if (length <= TOPOLOGY_EVIDENCE_TOLERANCE) {
+    return undefined;
+  }
+
+  return {
+    midpoint: [
+      (bounds.min[0] + bounds.max[0]) / 2,
+      (bounds.min[1] + bounds.max[1]) / 2,
+      (bounds.min[2] + bounds.max[2]) / 2
+    ],
+    axis: axisUnitVector(axisIndex),
+    length
+  };
+}
+
+function isPointBounds(bounds: OcctExactBodyMetadata["bounds"]): boolean {
+  return getDegenerateAxes(bounds).length === 3;
+}
+
+function getDegenerateAxes(bounds: OcctExactBodyMetadata["bounds"]): number[] {
+  return [0, 1, 2].filter(
+    (index) =>
+      Math.abs(bounds.max[index] - bounds.min[index]) <=
+      TOPOLOGY_EVIDENCE_TOLERANCE
+  );
+}
+
+function axisUnitVector(axisIndex: number): readonly [number, number, number] {
+  return [
+    axisIndex === 0 ? 1 : 0,
+    axisIndex === 1 ? 1 : 0,
+    axisIndex === 2 ? 1 : 0
+  ];
 }
 
 function roundTopologySignatureNumber(value: number): number {

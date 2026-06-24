@@ -1333,6 +1333,42 @@ describe("geometry-worker", () => {
     expect(response.response.snapshot.entityCount).toBe(
       response.response.snapshot.entities.length
     );
+    expect(response.response.snapshot.entities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "face",
+          surfaceClass: "plane",
+          normal: expect.arrayContaining([
+            expect.any(Number),
+            expect.any(Number),
+            expect.any(Number)
+          ])
+        }),
+        expect.objectContaining({
+          kind: "edge",
+          curveClass: "line",
+          midpoint: expect.arrayContaining([
+            expect.any(Number),
+            expect.any(Number),
+            expect.any(Number)
+          ]),
+          axis: expect.arrayContaining([
+            expect.any(Number),
+            expect.any(Number),
+            expect.any(Number)
+          ]),
+          length: expect.any(Number)
+        }),
+        expect.objectContaining({
+          kind: "vertex",
+          point: expect.arrayContaining([
+            expect.any(Number),
+            expect.any(Number),
+            expect.any(Number)
+          ])
+        })
+      ])
+    );
     const bodyEntity = response.response.snapshot.entities.find(
       (entity) => entity.kind === "body"
     );

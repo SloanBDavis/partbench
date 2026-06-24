@@ -455,6 +455,52 @@ describe("occt-wasm", () => {
       expect(
         new Set(snapshot.entities.map((entity) => entity.signature)).size
       ).toBeGreaterThan(3);
+      expect(
+        snapshot.entities.every(
+          (entity) => entity.adjacency?.available === false
+        )
+      ).toBe(true);
+      expect(snapshot.entities).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: "face",
+            surfaceClass: "plane",
+            normal: expect.arrayContaining([
+              expect.any(Number),
+              expect.any(Number),
+              expect.any(Number)
+            ])
+          }),
+          expect.objectContaining({
+            kind: "edge",
+            curveClass: "line",
+            midpoint: expect.arrayContaining([
+              expect.any(Number),
+              expect.any(Number),
+              expect.any(Number)
+            ]),
+            axis: expect.arrayContaining([
+              expect.any(Number),
+              expect.any(Number),
+              expect.any(Number)
+            ]),
+            length: expect.any(Number)
+          }),
+          expect.objectContaining({
+            kind: "vertex",
+            point: expect.arrayContaining([
+              expect.any(Number),
+              expect.any(Number),
+              expect.any(Number)
+            ])
+          })
+        ])
+      );
+      expect(
+        snapshot.entities.some(
+          (entity) => entity.kind === "edge" && (entity.length ?? 0) > 0
+        )
+      ).toBe(true);
       expect(snapshot.entities).toEqual(
         expect.arrayContaining([
           expect.objectContaining({

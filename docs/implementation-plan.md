@@ -2352,10 +2352,13 @@ Use these decisions when drafting or implementing V13 tranches:
 2. **Implemented, partial: Exact Topology Snapshot Extraction** -
    geometry-kernel/worker support for derived exact topology snapshots from
    supported exact body sources. Current snapshots expose body/solid/face/wire/
-   edge/vertex counts, per-entity bounds evidence, and bounds-derived entity/
-   snapshot signatures; loop, coedge, axis, ordered adjacency, and richer
-   surface/curve/area/length descriptors remain structured unavailable/deferred
-   evidence. The output is derived evidence, not public identity.
+   edge/vertex counts, per-entity bounds evidence, bounds-derived entity/
+   snapshot signatures, and conservative bounds-derived descriptor evidence
+   for axis-aligned planar faces, line-like edges, and point-like vertices.
+   Loop, coedge, axis, ordered adjacency, true OCCT surface/curve
+   classification, circular radius extraction, and exact area/length
+   descriptors remain structured unavailable/deferred evidence. The output is
+   derived evidence, not public identity.
 3. **Implemented, contract-only: V18 Source Contract And `.wcad` V2 Package
    Contract** - typed `web-cad.project.v18` topology identity source settings,
    checkpoint metadata, topology anchors, repair records, `.wcad` v2 checkpoint
@@ -2381,13 +2384,16 @@ Use these decisions when drafting or implementing V13 tranches:
    slice.
 5. **Implemented: Topology Matching Engine** - `topology.matchSnapshots`
    performs non-mutating snapshot-to-snapshot matching with source lineage,
-   signature, checkpoint source identity, confidence, evidence, and structured
-   diagnostics for active/replaced/split/merged/deleted/ambiguous/
-   repair-needed/kind-mismatch states. It also reports structured,
-   non-commandable repair candidates with opaque candidate IDs and explicit
-   checkpoint-local evidence, but no proposed mutation ops. Agent and MCP
-   wrappers pass through the same cad-core query. Richer geometry/adjacency
-   scoring waits for richer checkpoint descriptors.
+   signature, checkpoint source identity, optional richer descriptor evidence,
+   confidence, evidence, and structured diagnostics for active/replaced/split/
+   merged/deleted/ambiguous/repair-needed/kind-mismatch states. It also reports
+   structured, non-commandable repair candidates with opaque candidate IDs and
+   explicit checkpoint-local evidence, but no proposed mutation ops. Agent and
+   MCP wrappers pass through the same cad-core query. The matcher now scores
+   descriptor fields such as surface/curve class, point, midpoint, normal,
+   axis, length, area, radius, and adjacency hashes when snapshots provide
+   them. Broader geometry/adjacency scoring still waits for true kernel
+   surface, curve, orientation, loop/coedge, and adjacency descriptors.
 6. **Implemented: Reference Health And Rebuild Integration, First Slice** -
    existing reference, dependency, rebuild, and editability query surfaces now
    consume V18 topology anchor records plus caller-supplied
@@ -2584,6 +2590,16 @@ Use these decisions when drafting or implementing V13 tranches:
     real native B-rep checkpoint payload bytes for supported exact body sources,
     and the browser smoke proves the app save workflow attaches generated
     payload bytes for existing V18 checkpoint source records.
+12. **Implemented: Rich Topology Descriptor And Signature Evidence** -
+    protocol, cad-core, geometry-kernel, geometry-worker, and OCCT snapshot
+    types accept optional descriptor evidence for surface class, curve class,
+    point, midpoint, normal, axis, radius, area, length, and adjacency hash
+    sets. OCCT extraction populates only conservative bounds-derived hints for
+    axis-aligned planar faces, line-like edges, point-like vertices, and
+    explicit unavailable adjacency. Cad-core validates those optional fields
+    and `topology.matchSnapshots` consumes them as additional evidence without
+    changing the `partbench-derived-topology-snapshot-v1` signature algorithm
+    or making arbitrary exact-only topology command-ready.
 
 ### V13 Scope Guardrails
 

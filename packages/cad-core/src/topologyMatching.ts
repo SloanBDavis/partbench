@@ -468,6 +468,148 @@ function createEvidence(
   }
 
   if (
+    previous.entity.kind === "face" &&
+    candidate.entity.kind === "face" &&
+    previous.entity.surfaceClass &&
+    previous.entity.surfaceClass !== "unknown" &&
+    previous.entity.surfaceClass === candidate.entity.surfaceClass
+  ) {
+    evidence.push({
+      kind: "surfaceType",
+      confidence: "high",
+      weight: exactSignature ? 0.03 : 0.1,
+      message: "Topology face surface class matches.",
+      previousValue: previous.entity.surfaceClass,
+      candidateValue: candidate.entity.surfaceClass
+    });
+  }
+
+  if (
+    previous.entity.kind === "edge" &&
+    candidate.entity.kind === "edge" &&
+    previous.entity.curveClass &&
+    previous.entity.curveClass !== "unknown" &&
+    previous.entity.curveClass === candidate.entity.curveClass
+  ) {
+    evidence.push({
+      kind: "curveType",
+      confidence: "high",
+      weight: exactSignature ? 0.03 : 0.1,
+      message: "Topology edge curve class matches.",
+      previousValue: previous.entity.curveClass,
+      candidateValue: candidate.entity.curveClass
+    });
+  }
+
+  addVectorEvidence(evidence, {
+    kind: "point",
+    entityKind: "vertex",
+    previousEntityKind: previous.entity.kind,
+    candidateEntityKind: candidate.entity.kind,
+    previous: previous.entity.point,
+    candidate: candidate.entity.point,
+    exactWeight: 0.02,
+    scoredWeight: 0.1,
+    message: "Topology vertex point matches.",
+    exactSignature
+  });
+  addVectorEvidence(evidence, {
+    kind: "midpoint",
+    entityKind: "edge",
+    previousEntityKind: previous.entity.kind,
+    candidateEntityKind: candidate.entity.kind,
+    previous: previous.entity.midpoint,
+    candidate: candidate.entity.midpoint,
+    exactWeight: 0.02,
+    scoredWeight: 0.1,
+    message: "Topology edge midpoint matches.",
+    exactSignature
+  });
+  addVectorEvidence(evidence, {
+    kind: "normal",
+    entityKind: "face",
+    previousEntityKind: previous.entity.kind,
+    candidateEntityKind: candidate.entity.kind,
+    previous: previous.entity.normal,
+    candidate: candidate.entity.normal,
+    exactWeight: 0.02,
+    scoredWeight: 0.08,
+    message: "Topology face normal evidence matches.",
+    exactSignature
+  });
+  addVectorEvidence(evidence, {
+    kind: "axis",
+    entityKinds: ["face", "edge", "axis"],
+    previousEntityKind: previous.entity.kind,
+    candidateEntityKind: candidate.entity.kind,
+    previous: previous.entity.axis,
+    candidate: candidate.entity.axis,
+    exactWeight: 0.02,
+    scoredWeight: 0.08,
+    message: "Topology axis evidence matches.",
+    exactSignature
+  });
+  addNumberEvidence(evidence, {
+    kind: "length",
+    entityKind: "edge",
+    previousEntityKind: previous.entity.kind,
+    candidateEntityKind: candidate.entity.kind,
+    previous: previous.entity.length,
+    candidate: candidate.entity.length,
+    exactWeight: 0.02,
+    scoredWeight: 0.08,
+    message: "Topology entity length evidence matches.",
+    exactSignature
+  });
+  addNumberEvidence(evidence, {
+    kind: "area",
+    entityKind: "face",
+    previousEntityKind: previous.entity.kind,
+    candidateEntityKind: candidate.entity.kind,
+    previous: previous.entity.area,
+    candidate: candidate.entity.area,
+    exactWeight: 0.02,
+    scoredWeight: 0.08,
+    message: "Topology entity area evidence matches.",
+    exactSignature
+  });
+  addNumberEvidence(evidence, {
+    kind: "radius",
+    entityKinds: ["face", "edge"],
+    previousEntityKind: previous.entity.kind,
+    candidateEntityKind: candidate.entity.kind,
+    previous: previous.entity.radius,
+    candidate: candidate.entity.radius,
+    exactWeight: 0.02,
+    scoredWeight: 0.08,
+    message: "Topology entity radius evidence matches.",
+    exactSignature
+  });
+
+  if (
+    previous.entity.adjacency?.available === true &&
+    candidate.entity.adjacency?.available === true
+  ) {
+    const previousNeighbors = sortedAdjacency(
+      previous.entity.adjacency.neighborSignatureHashes
+    );
+    const candidateNeighbors = sortedAdjacency(
+      candidate.entity.adjacency.neighborSignatureHashes
+    );
+
+    if (adjacencyKey(previousNeighbors) === adjacencyKey(candidateNeighbors)) {
+      evidence.push({
+        kind: "adjacency",
+        confidence: "high",
+        weight: exactSignature ? 0.03 : 0.12,
+        message: "Topology adjacency signature evidence matches.",
+        previousValue: previousNeighbors,
+        candidateValue: candidateNeighbors
+      });
+    }
+  }
+
+  if (
     previous.snapshot.sourceIdentity &&
     candidate.snapshot.sourceIdentity &&
     previous.snapshot.sourceIdentity.sha256 ===
@@ -510,6 +652,145 @@ function boundsKey(
     min: bounds.min.map(roundEvidenceNumber),
     max: bounds.max.map(roundEvidenceNumber)
   });
+}
+
+function addVectorEvidence(
+  evidence: CadTopologyMatchEvidence[],
+  input: {
+    readonly kind: Extract<
+      CadTopologyMatchEvidence["kind"],
+      "point" | "midpoint" | "normal" | "axis"
+    >;
+    readonly entityKind?: MatchableTopologyEntity["kind"];
+    readonly entityKinds?: readonly MatchableTopologyEntity["kind"][];
+    readonly previousEntityKind: MatchableTopologyEntity["kind"];
+    readonly candidateEntityKind: MatchableTopologyEntity["kind"];
+    readonly previous?: readonly [number, number, number];
+    readonly candidate?: readonly [number, number, number];
+    readonly exactWeight: number;
+    readonly scoredWeight: number;
+    readonly message: string;
+    readonly exactSignature: boolean;
+  }
+): void {
+  if (
+    !isAllowedEvidenceEntityKind({
+      entityKind: input.entityKind,
+      entityKinds: input.entityKinds,
+      previousEntityKind: input.previousEntityKind,
+      candidateEntityKind: input.candidateEntityKind
+    })
+  ) {
+    return;
+  }
+
+  if (!input.previous || !input.candidate) {
+    return;
+  }
+
+  const previousValue = roundVec3(input.previous);
+  const candidateValue = roundVec3(input.candidate);
+
+  if (vectorKey(previousValue) !== vectorKey(candidateValue)) {
+    return;
+  }
+
+  evidence.push({
+    kind: input.kind,
+    confidence: "high",
+    weight: input.exactSignature ? input.exactWeight : input.scoredWeight,
+    message: input.message,
+    previousValue,
+    candidateValue
+  });
+}
+
+function addNumberEvidence(
+  evidence: CadTopologyMatchEvidence[],
+  input: {
+    readonly kind: Extract<
+      CadTopologyMatchEvidence["kind"],
+      "length" | "area" | "radius"
+    >;
+    readonly entityKind?: MatchableTopologyEntity["kind"];
+    readonly entityKinds?: readonly MatchableTopologyEntity["kind"][];
+    readonly previousEntityKind: MatchableTopologyEntity["kind"];
+    readonly candidateEntityKind: MatchableTopologyEntity["kind"];
+    readonly previous?: number;
+    readonly candidate?: number;
+    readonly exactWeight: number;
+    readonly scoredWeight: number;
+    readonly message: string;
+    readonly exactSignature: boolean;
+  }
+): void {
+  if (
+    !isAllowedEvidenceEntityKind({
+      entityKind: input.entityKind,
+      entityKinds: input.entityKinds,
+      previousEntityKind: input.previousEntityKind,
+      candidateEntityKind: input.candidateEntityKind
+    })
+  ) {
+    return;
+  }
+
+  if (input.previous === undefined || input.candidate === undefined) {
+    return;
+  }
+
+  const previousValue = roundEvidenceNumber(input.previous);
+  const candidateValue = roundEvidenceNumber(input.candidate);
+
+  if (previousValue !== candidateValue) {
+    return;
+  }
+
+  evidence.push({
+    kind: input.kind,
+    confidence: "high",
+    weight: input.exactSignature ? input.exactWeight : input.scoredWeight,
+    message: input.message,
+    previousValue,
+    candidateValue
+  });
+}
+
+function isAllowedEvidenceEntityKind(input: {
+  readonly entityKind?: MatchableTopologyEntity["kind"];
+  readonly entityKinds?: readonly MatchableTopologyEntity["kind"][];
+  readonly previousEntityKind: MatchableTopologyEntity["kind"];
+  readonly candidateEntityKind: MatchableTopologyEntity["kind"];
+}): boolean {
+  const allowed =
+    input.entityKinds ?? (input.entityKind ? [input.entityKind] : []);
+
+  return (
+    allowed.includes(input.previousEntityKind) &&
+    allowed.includes(input.candidateEntityKind)
+  );
+}
+
+function vectorKey(vector: readonly number[]): string {
+  return JSON.stringify(vector);
+}
+
+function roundVec3(
+  vector: readonly [number, number, number]
+): readonly [number, number, number] {
+  return [
+    roundEvidenceNumber(vector[0]),
+    roundEvidenceNumber(vector[1]),
+    roundEvidenceNumber(vector[2])
+  ];
+}
+
+function sortedAdjacency(values: readonly string[]): readonly string[] {
+  return [...values].sort();
+}
+
+function adjacencyKey(values: readonly string[]): string {
+  return JSON.stringify(values);
 }
 
 function roundEvidenceNumber(value: number): number {

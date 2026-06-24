@@ -6422,7 +6422,108 @@ function isCadBodyExactTopologyEntityDescriptor(value: unknown): boolean {
     value.source === "kernel-derived" &&
     typeof value.signature === "string" &&
     value.signature.trim().length > 0 &&
-    (value.bounds === undefined || isCadTopologyEntityBounds(value.bounds))
+    (value.bounds === undefined || isCadTopologyEntityBounds(value.bounds)) &&
+    (value.surfaceClass === undefined ||
+      isCadTopologySurfaceClass(value.surfaceClass)) &&
+    (value.curveClass === undefined ||
+      isCadTopologyCurveClass(value.curveClass)) &&
+    (value.point === undefined || isVec3(value.point)) &&
+    (value.midpoint === undefined || isVec3(value.midpoint)) &&
+    (value.normal === undefined || isVec3(value.normal)) &&
+    (value.axis === undefined || isVec3(value.axis)) &&
+    (value.radius === undefined || isNonNegativeFinite(value.radius)) &&
+    (value.area === undefined || isNonNegativeFinite(value.area)) &&
+    (value.length === undefined || isNonNegativeFinite(value.length)) &&
+    (value.adjacency === undefined ||
+      isCadTopologyEntityAdjacencyEvidence(value.adjacency)) &&
+    isCadTopologyEntityDescriptorEvidenceForKind(value)
+  );
+}
+
+function isCadTopologyEntityDescriptorEvidenceForKind(
+  value: Record<string, unknown>
+): boolean {
+  switch (value.kind) {
+    case "face":
+      return (
+        value.curveClass === undefined &&
+        value.point === undefined &&
+        value.midpoint === undefined &&
+        value.length === undefined
+      );
+    case "edge":
+      return (
+        value.surfaceClass === undefined &&
+        value.point === undefined &&
+        value.normal === undefined &&
+        value.area === undefined
+      );
+    case "vertex":
+      return (
+        value.surfaceClass === undefined &&
+        value.curveClass === undefined &&
+        value.midpoint === undefined &&
+        value.normal === undefined &&
+        value.axis === undefined &&
+        value.radius === undefined &&
+        value.area === undefined &&
+        value.length === undefined
+      );
+    case "axis":
+      return (
+        value.surfaceClass === undefined &&
+        value.curveClass === undefined &&
+        value.midpoint === undefined &&
+        value.normal === undefined &&
+        value.radius === undefined &&
+        value.area === undefined &&
+        value.length === undefined
+      );
+    default:
+      return (
+        value.surfaceClass === undefined &&
+        value.curveClass === undefined &&
+        value.point === undefined &&
+        value.midpoint === undefined &&
+        value.normal === undefined &&
+        value.axis === undefined &&
+        value.radius === undefined &&
+        value.area === undefined &&
+        value.length === undefined
+      );
+  }
+}
+
+function isCadTopologySurfaceClass(value: unknown): boolean {
+  return (
+    value === "plane" ||
+    value === "cylinder" ||
+    value === "cone" ||
+    value === "sphere" ||
+    value === "torus" ||
+    value === "bspline" ||
+    value === "unknown"
+  );
+}
+
+function isCadTopologyCurveClass(value: unknown): boolean {
+  return (
+    value === "line" ||
+    value === "circle" ||
+    value === "ellipse" ||
+    value === "bspline" ||
+    value === "unknown"
+  );
+}
+
+function isCadTopologyEntityAdjacencyEvidence(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.available === "boolean" &&
+    Array.isArray(value.neighborSignatureHashes) &&
+    value.neighborSignatureHashes.every(
+      (hash) => typeof hash === "string" && hash.trim().length > 0
+    )
   );
 }
 
@@ -6457,6 +6558,10 @@ function isCadBodyExactTopologyEntityKind(value: unknown): boolean {
 
 function isNonNegativeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function isNonNegativeFinite(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
 function isCadBodyExactMetadataDiagnostic(

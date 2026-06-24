@@ -17,16 +17,47 @@ function createTopologyEntityFixture(
   kind: GeometryKernelTopologyEntityDescriptor["kind"],
   index: number
 ): GeometryKernelTopologyEntityDescriptor {
-  return {
+  const base = {
     localId: `snapshot-local:${kind}:${index}`,
     kind,
-    source: "kernel-derived",
+    source: "kernel-derived" as const,
     signature: `topology-${kind}-test-${index}`,
     bounds: {
-      min: [-1, -1.5, 0],
-      max: [1, 1.5, 4]
+      min: [-1, -1.5, 0] as const,
+      max: [1, 1.5, 4] as const
+    },
+    adjacency: {
+      available: false,
+      neighborSignatureHashes: [] as const
     }
   };
+
+  if (kind === "face") {
+    return {
+      ...base,
+      surfaceClass: "plane",
+      normal: [0, 0, 1]
+    };
+  }
+
+  if (kind === "edge") {
+    return {
+      ...base,
+      curveClass: "line",
+      midpoint: [0, 0, 2],
+      axis: [0, 0, 1],
+      length: 4
+    };
+  }
+
+  if (kind === "vertex") {
+    return {
+      ...base,
+      point: [-1, -1.5, 0]
+    };
+  }
+
+  return base;
 }
 
 function createCheckpointPayloadFixture(
@@ -2378,6 +2409,26 @@ describe("geometry-kernel facade", () => {
               min: [-1, -1.5, 0],
               max: [1, 1.5, 4]
             }
+          }),
+          expect.objectContaining({
+            kind: "face",
+            surfaceClass: "plane",
+            normal: [0, 0, 1],
+            adjacency: {
+              available: false,
+              neighborSignatureHashes: []
+            }
+          }),
+          expect.objectContaining({
+            kind: "edge",
+            curveClass: "line",
+            midpoint: [0, 0, 2],
+            axis: [0, 0, 1],
+            length: 4
+          }),
+          expect.objectContaining({
+            kind: "vertex",
+            point: [-1, -1.5, 0]
           })
         ]),
         adjacencyAvailable: false,
@@ -2389,6 +2440,82 @@ describe("geometry-kernel facade", () => {
     expect(JSON.stringify(response)).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
     );
+  });
+
+  it("rejects exact topology snapshots with wrong-kind descriptor evidence", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory,
+      createExactTopologySnapshot: async (input) => ({
+        sourceKind: input.source.kind,
+        status: "partial",
+        entityCounts: {
+          bodyCount: 0,
+          solidCount: 0,
+          faceCount: 0,
+          wireCount: 0,
+          edgeCount: 1,
+          vertexCount: 0,
+          loopCount: 0,
+          coedgeCount: 0,
+          axisCount: 0
+        },
+        entityCount: 1,
+        entities: [
+          {
+            ...createTopologyEntityFixture("edge", 1),
+            surfaceClass: "plane",
+            normal: [0, 0, 1],
+            area: 1
+          } as unknown as GeometryKernelTopologyEntityDescriptor
+        ],
+        unsupportedEntityKinds: ["loop", "coedge", "axis"],
+        adjacencyAvailable: false,
+        signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+        signature: "topology-snapshot-test",
+        source: "kernel-derived",
+        diagnostics: []
+      })
+    };
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_wrong_kind_exact_topology_descriptor_evidence",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactTopologySnapshot",
+        source: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 2,
+            height: 3
+          },
+          depth: 4
+        }
+      }
+    );
+
+    expect(response).toEqual({
+      ok: false,
+      id: "geometry_req_wrong_kind_exact_topology_descriptor_evidence",
+      op: "geometry.exactTopologySnapshot",
+      error: {
+        code: "INVALID_RESULT",
+        message:
+          "The geometry kernel returned an exact topology snapshot with invalid or inconsistent entity data."
+      },
+      warnings: []
+    });
   });
 
   it("returns exact topology checkpoint payloads from an injected factory", async () => {
