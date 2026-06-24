@@ -139,6 +139,7 @@ export interface OcctTopologyEntityDescriptor {
     | "internal"
     | "external"
     | "unknown";
+  readonly loopRole?: "outer" | "inner" | "unknown";
   readonly relationships?: {
     readonly parentFaceLocalId?: string;
     readonly parentWireLocalId?: string;
@@ -680,9 +681,11 @@ function createTopologyRelationshipEvidence(
   for (const faceEntry of input.faceIndex.entries) {
     let face: ReturnType<typeof oc.TopoDS.Face_1> | undefined;
     let wireExplorer: InstanceType<typeof oc.TopExp_Explorer_2> | undefined;
+    let outerWire: TopoDS_Shape | undefined;
 
     try {
       face = oc.TopoDS.Face_1(faceEntry.shape);
+      outerWire = readOuterWire(oc, face);
       const wireShapeType = oc.TopAbs_ShapeEnum
         .TopAbs_WIRE as unknown as ConstructorParameters<
         typeof oc.TopExp_Explorer_2
@@ -707,7 +710,8 @@ function createTopologyRelationshipEvidence(
             index: loopEntities.length + 1,
             faceEntry,
             wireEntry,
-            wireShape
+            wireShape,
+            loopRole: readLoopRole(wireShape, outerWire)
           });
           const coedgeEvidence = createCoedgeTopologyEntities(oc, {
             sourceKind: input.sourceKind,
@@ -773,6 +777,7 @@ function createTopologyRelationshipEvidence(
         }
       }
     } finally {
+      outerWire?.delete();
       wireExplorer?.delete();
       face?.delete();
     }
@@ -798,6 +803,7 @@ function createLoopTopologyEntity(
     readonly faceEntry: TopologyShapeEntry;
     readonly wireEntry: TopologyShapeEntry | undefined;
     readonly wireShape: TopoDS_Shape;
+    readonly loopRole?: OcctTopologyEntityDescriptor["loopRole"];
   }
 ): OcctTopologyEntityDescriptor {
   const bounds = readBounds(oc, input.wireShape);
@@ -814,6 +820,7 @@ function createLoopTopologyEntity(
       bounds
     }),
     orientation: readShapeOrientation(oc, input.wireShape),
+    ...(input.loopRole ? { loopRole: input.loopRole } : {}),
     adjacency: {
       available: true,
       neighborSignatureHashes: []
@@ -825,6 +832,42 @@ function createLoopTopologyEntity(
         : {})
     }
   };
+}
+
+function readOuterWire(
+  oc: OpenCascadeInstance,
+  face: ReturnType<typeof oc.TopoDS.Face_1>
+): TopoDS_Shape | undefined {
+  const outerWire = (
+    oc.BRepTools as unknown as {
+      readonly OuterWire?: (faceShape: unknown) => TopoDS_Shape;
+    }
+  ).OuterWire;
+
+  if (typeof outerWire !== "function") {
+    return undefined;
+  }
+
+  try {
+    return outerWire(face);
+  } catch {
+    return undefined;
+  }
+}
+
+function readLoopRole(
+  wireShape: TopoDS_Shape,
+  outerWire: TopoDS_Shape | undefined
+): OcctTopologyEntityDescriptor["loopRole"] | undefined {
+  if (!outerWire) {
+    return undefined;
+  }
+
+  try {
+    return wireShape.IsSame(outerWire) ? "outer" : "inner";
+  } catch {
+    return "unknown";
+  }
 }
 
 function createCoedgeTopologyEntities(

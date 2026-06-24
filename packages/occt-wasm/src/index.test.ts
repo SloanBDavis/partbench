@@ -495,6 +495,17 @@ describe("occt-wasm", () => {
           (entity) => entity.kind === "edge" && entity.adjacency?.available
         )
       ).toBe(true);
+      expect(
+        snapshot.entities
+          .filter((entity) => entity.kind === "loop")
+          .every(
+            (entity) =>
+              entity.loopRole === undefined ||
+              entity.loopRole === "outer" ||
+              entity.loopRole === "inner" ||
+              entity.loopRole === "unknown"
+          )
+      ).toBe(true);
       expect(snapshot.entities).toEqual(
         expect.arrayContaining([
           expect.objectContaining({

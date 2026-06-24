@@ -3168,6 +3168,8 @@ export type CadTopologyMatchEvidenceKind =
   | "surfaceType"
   | "curveType"
   | "orientation"
+  | "loopRole"
+  | "relationship"
   | "geometrySignature"
   | "bounds"
   | "centroid"
@@ -4724,6 +4726,8 @@ export type CadTopologyOrientation =
   | "external"
   | "unknown";
 
+export type CadTopologyLoopRole = "outer" | "inner" | "unknown";
+
 export interface CadTopologyEntityRelationshipEvidence {
   readonly parentFaceLocalId?: string;
   readonly parentWireLocalId?: string;
@@ -4756,6 +4760,7 @@ export interface CadBodyExactTopologyEntityDescriptor {
   readonly length?: number;
   readonly adjacency?: CadTopologyEntityAdjacencyEvidence;
   readonly orientation?: CadTopologyOrientation;
+  readonly loopRole?: CadTopologyLoopRole;
   readonly relationships?: CadTopologyEntityRelationshipEvidence;
 }
 

@@ -6438,6 +6438,7 @@ function isCadBodyExactTopologyEntityDescriptor(value: unknown): boolean {
       isCadTopologyEntityAdjacencyEvidence(value.adjacency)) &&
     (value.orientation === undefined ||
       isCadTopologyOrientation(value.orientation)) &&
+    (value.loopRole === undefined || isCadTopologyLoopRole(value.loopRole)) &&
     (value.relationships === undefined ||
       isCadTopologyEntityRelationshipEvidence(value.relationships)) &&
     isCadTopologyEntityDescriptorEvidenceForKind(value)
@@ -6448,19 +6449,33 @@ function isCadTopologyEntityDescriptorEvidenceForKind(
   value: Record<string, unknown>
 ): boolean {
   switch (value.kind) {
+    case "loop":
+      return (
+        value.surfaceClass === undefined &&
+        value.curveClass === undefined &&
+        value.point === undefined &&
+        value.midpoint === undefined &&
+        value.normal === undefined &&
+        value.axis === undefined &&
+        value.radius === undefined &&
+        value.area === undefined &&
+        value.length === undefined
+      );
     case "face":
       return (
         value.curveClass === undefined &&
         value.point === undefined &&
         value.midpoint === undefined &&
-        value.length === undefined
+        value.length === undefined &&
+        value.loopRole === undefined
       );
     case "edge":
       return (
         value.surfaceClass === undefined &&
         value.point === undefined &&
         value.normal === undefined &&
-        value.area === undefined
+        value.area === undefined &&
+        value.loopRole === undefined
       );
     case "vertex":
       return (
@@ -6471,7 +6486,8 @@ function isCadTopologyEntityDescriptorEvidenceForKind(
         value.axis === undefined &&
         value.radius === undefined &&
         value.area === undefined &&
-        value.length === undefined
+        value.length === undefined &&
+        value.loopRole === undefined
       );
     case "axis":
       return (
@@ -6481,7 +6497,8 @@ function isCadTopologyEntityDescriptorEvidenceForKind(
         value.normal === undefined &&
         value.radius === undefined &&
         value.area === undefined &&
-        value.length === undefined
+        value.length === undefined &&
+        value.loopRole === undefined
       );
     default:
       return (
@@ -6493,7 +6510,8 @@ function isCadTopologyEntityDescriptorEvidenceForKind(
         value.axis === undefined &&
         value.radius === undefined &&
         value.area === undefined &&
-        value.length === undefined
+        value.length === undefined &&
+        value.loopRole === undefined
       );
   }
 }
@@ -6528,6 +6546,10 @@ function isCadTopologyOrientation(value: unknown): boolean {
     value === "external" ||
     value === "unknown"
   );
+}
+
+function isCadTopologyLoopRole(value: unknown): boolean {
+  return value === "outer" || value === "inner" || value === "unknown";
 }
 
 function isCadTopologyEntityAdjacencyEvidence(value: unknown): boolean {

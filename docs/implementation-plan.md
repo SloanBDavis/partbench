@@ -2620,9 +2620,22 @@ Use these decisions when drafting or implementing V13 tranches:
     loop/coedge/edge lists, and adjacent faces. OCCT extraction populates
     face-edge and edge-face adjacency as neighboring signature hashes, and
     topology matching can use orientation as additional scoring evidence.
-    Snapshots remain partial because axis descriptors, outer/inner loop
-    classification, broader adjacency semantics, and arbitrary exact-only
-    command validators remain later V13 work.
+    Snapshots remain partial because axis descriptors, broader adjacency
+    semantics, and arbitrary exact-only command validators remain later V13
+    work.
+15. **Implemented: Relationship-Aware Topology Matching Evidence** - topology
+    snapshots now carry optional loop role evidence (`outer`, `inner`, or
+    `unknown`) where the OCCT runtime exposes enough exact metadata, while
+    keeping the binding optional so exact metadata extraction still succeeds
+    without it. Cad-core and geometry-kernel validators accept `loopRole` only
+    on loop descriptors. `topology.matchSnapshots` now compares relationship
+    evidence through referenced entity signatures rather than raw
+    checkpoint-local IDs, so exact-signature duplicate candidates can be
+    disambiguated by loop role, parent/child topology, underlying edge,
+    start/end vertex, and adjacency context. Ambiguous/split cases still remain
+    explicit repair flows: repair candidates are ranked with richer evidence,
+    stay `canAutoRetarget: false`, and do not expand command eligibility or
+    public stable CAD IDs.
 
 ### V13 Scope Guardrails
 

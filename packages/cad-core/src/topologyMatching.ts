@@ -39,6 +39,10 @@ interface ScoredCandidate {
   readonly evidence: readonly CadTopologyMatchEvidence[];
 }
 
+interface ContextualExactCandidate extends ScoredCandidate {
+  readonly contextScore: number;
+}
+
 type MatchResultWithCandidates = CadTopologyMatchResult & {
   readonly repairCandidates: readonly CadTopologyRepairCandidate[];
 };
@@ -47,6 +51,23 @@ const SOURCE_BOUNDARY_NOTE =
   "Topology matching uses caller-provided exact topology snapshots, checkpoint ids, source identity, body ids, and source feature ids only.";
 const DERIVED_BOUNDARY_NOTE =
   "Renderer, mesh, OCCT, GPU, selection-buffer, OPFS, file-handle, path, viewport, and export artifact identifiers are not public topology match references.";
+const EXACT_DISAMBIGUATION_EVIDENCE = new Set<CadTopologyMatchEvidence["kind"]>(
+  [
+    "surfaceType",
+    "curveType",
+    "orientation",
+    "loopRole",
+    "point",
+    "midpoint",
+    "normal",
+    "axis",
+    "length",
+    "area",
+    "radius",
+    "adjacency",
+    "relationship"
+  ]
+);
 
 export function createTopologyMatchSnapshotsResponse({
   cadOpsVersion,
@@ -183,8 +204,59 @@ function matchEntity({
   }
 
   if (exactCandidates.length > 1) {
+    const scoredExactCandidates = exactCandidates
+      .map((candidate) => scoreExactDuplicate(previous, candidate))
+      .sort((left, right) => {
+        if (right.contextScore !== left.contextScore) {
+          return right.contextScore - left.contextScore;
+        }
+
+        return left.candidate.entity.localId.localeCompare(
+          right.candidate.entity.localId
+        );
+      });
+    const best = scoredExactCandidates[0];
+    const runnerUp = scoredExactCandidates[1];
+
+    if (
+      best &&
+      best.contextScore > 0 &&
+      (!runnerUp || best.contextScore > runnerUp.contextScore)
+    ) {
+      const diagnostics = [
+        createDiagnostic(
+          "TOPOLOGY_MATCH_REPLACED",
+          "info",
+          "Multiple exact-signature candidates were disambiguated by topology relationship evidence.",
+          previous.entity.kind
+        )
+      ];
+
+      return createMatchResult({
+        previous,
+        candidate: best.candidate,
+        state: "replaced",
+        confidence: best.confidence,
+        confidenceScore: best.score,
+        evidence: best.evidence,
+        diagnostics,
+        repairCandidates: compactRepairCandidates([
+          createMatchRepairCandidate({
+            previous,
+            candidate: best.candidate,
+            state: "replaced",
+            confidence: best.confidence,
+            confidenceScore: best.score,
+            evidence: best.evidence,
+            diagnostics,
+            recommendedAction: "manual-repair-plan"
+          })
+        ])
+      });
+    }
+
     const state = previousSignatureCount === 1 ? "split" : "ambiguous";
-    const candidate = exactCandidates[0];
+    const candidate = best?.candidate ?? exactCandidates[0];
     const diagnostics = [
       createDiagnostic(
         state === "split" ? "TOPOLOGY_MATCH_SPLIT" : "TOPOLOGY_MATCH_AMBIGUOUS",
@@ -202,17 +274,20 @@ function matchEntity({
       state,
       confidence: "high",
       confidenceScore: 0.92,
-      evidence: createEvidence(previous, candidate, true),
+      evidence:
+        best && best.candidate.entity.localId === candidate.entity.localId
+          ? best.evidence
+          : createEvidence(previous, candidate, true),
       diagnostics,
       repairCandidates: compactRepairCandidates(
-        exactCandidates.map((candidate) =>
+        scoredExactCandidates.map((scoredCandidate) =>
           createMatchRepairCandidate({
             previous,
-            candidate,
+            candidate: scoredCandidate.candidate,
             state,
-            confidence: "high",
-            confidenceScore: 0.92,
-            evidence: createEvidence(previous, candidate, true),
+            confidence: scoredCandidate.confidence,
+            confidenceScore: scoredCandidate.score,
+            evidence: scoredCandidate.evidence,
             diagnostics,
             recommendedAction: "manual-repair-plan"
           })
@@ -423,6 +498,35 @@ function scoreCandidate(
   };
 }
 
+function scoreExactDuplicate(
+  previous: MatchEntity,
+  candidate: MatchEntity
+): ContextualExactCandidate {
+  const evidence = createEvidence(previous, candidate, true);
+  const contextScore = contextualEvidenceScore(evidence);
+  const score = Math.min(0.99, 0.92 + contextScore);
+
+  return {
+    candidate,
+    score,
+    contextScore,
+    confidence: "high",
+    evidence
+  };
+}
+
+function contextualEvidenceScore(
+  evidence: readonly CadTopologyMatchEvidence[]
+): number {
+  return evidence.reduce(
+    (score, item) =>
+      EXACT_DISAMBIGUATION_EVIDENCE.has(item.kind)
+        ? score + (item.weight ?? 0)
+        : score,
+    0
+  );
+}
+
 function createEvidence(
   previous: MatchEntity,
   candidate: MatchEntity,
@@ -515,6 +619,25 @@ function createEvidence(
       candidateValue: candidate.entity.orientation
     });
   }
+
+  if (
+    previous.entity.kind === "loop" &&
+    candidate.entity.kind === "loop" &&
+    previous.entity.loopRole &&
+    previous.entity.loopRole !== "unknown" &&
+    previous.entity.loopRole === candidate.entity.loopRole
+  ) {
+    evidence.push({
+      kind: "loopRole",
+      confidence: "medium",
+      weight: exactSignature ? 0.02 : 0.08,
+      message: "Topology loop role evidence matches.",
+      previousValue: previous.entity.loopRole,
+      candidateValue: candidate.entity.loopRole
+    });
+  }
+
+  addRelationshipEvidence(evidence, previous, candidate, exactSignature);
 
   addVectorEvidence(evidence, {
     kind: "point",
@@ -658,6 +781,112 @@ function createEvidence(
   }
 
   return evidence;
+}
+
+function addRelationshipEvidence(
+  evidence: CadTopologyMatchEvidence[],
+  previous: MatchEntity,
+  candidate: MatchEntity,
+  exactSignature: boolean
+): void {
+  const previousValue = relationshipEvidenceKey(previous);
+  const candidateValue = relationshipEvidenceKey(candidate);
+
+  if (!previousValue || !candidateValue) {
+    return;
+  }
+
+  if (JSON.stringify(previousValue) !== JSON.stringify(candidateValue)) {
+    return;
+  }
+
+  evidence.push({
+    kind: "relationship",
+    confidence: "high",
+    weight: exactSignature ? 0.04 : 0.14,
+    message:
+      "Topology relationship evidence matches by referenced entity signatures.",
+    previousValue,
+    candidateValue
+  });
+}
+
+function relationshipEvidenceKey(
+  match: MatchEntity
+): readonly string[] | undefined {
+  const relationships = match.entity.relationships;
+
+  if (!relationships) {
+    return undefined;
+  }
+
+  const entitiesByLocalId = new Map(
+    match.snapshot.topologySnapshot.entities.map((entity) => [
+      entity.localId,
+      entity
+    ])
+  );
+  const parts: string[] = [];
+  const addSingle = (label: string, localId: string | undefined) => {
+    const token = relationshipEntityToken(entitiesByLocalId, localId);
+
+    if (token) {
+      parts.push(`${label}:${token}`);
+    }
+  };
+  const addList = (
+    label: string,
+    localIds: readonly string[] | undefined,
+    order: "preserve" | "sort"
+  ) => {
+    const tokens = (localIds ?? [])
+      .map((localId) => relationshipEntityToken(entitiesByLocalId, localId))
+      .filter((token): token is string => Boolean(token));
+
+    if (tokens.length > 0) {
+      parts.push(
+        `${label}:${(order === "sort" ? [...tokens].sort() : tokens).join(">")}`
+      );
+    }
+  };
+
+  addSingle("parentFace", relationships.parentFaceLocalId);
+  addSingle("parentWire", relationships.parentWireLocalId);
+  addSingle("parentLoop", relationships.parentLoopLocalId);
+  addSingle("underlyingWire", relationships.underlyingWireLocalId);
+  addSingle("underlyingEdge", relationships.underlyingEdgeLocalId);
+  addSingle("startVertex", relationships.startVertexLocalId);
+  addSingle("endVertex", relationships.endVertexLocalId);
+  addList("childWire", relationships.childWireLocalIds, "preserve");
+  addList("childLoop", relationships.childLoopLocalIds, "preserve");
+  addList("childCoedge", relationships.childCoedgeLocalIds, "preserve");
+  addList("childEdge", relationships.childEdgeLocalIds, "preserve");
+  addList("adjacentFace", relationships.adjacentFaceLocalIds, "sort");
+
+  return parts.length > 0 ? parts : undefined;
+}
+
+function relationshipEntityToken(
+  entitiesByLocalId: ReadonlyMap<string, CadBodyExactTopologyEntityDescriptor>,
+  localId: string | undefined
+): string | undefined {
+  if (!localId) {
+    return undefined;
+  }
+
+  const entity = entitiesByLocalId.get(localId);
+
+  if (!entity) {
+    return undefined;
+  }
+
+  return [
+    entity.kind,
+    entity.signature,
+    entity.kind === "loop" && entity.loopRole ? entity.loopRole : undefined
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(":");
 }
 
 function boundsKey(

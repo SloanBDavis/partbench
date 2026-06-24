@@ -66,6 +66,13 @@ function createTopologyEntityFixture(
     };
   }
 
+  if (kind === "loop") {
+    return {
+      ...base,
+      loopRole: "outer"
+    };
+  }
+
   return base;
 }
 

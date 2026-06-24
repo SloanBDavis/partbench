@@ -621,6 +621,7 @@ function createTopologySnapshot(
       ...(entity.length !== undefined ? { length: entity.length } : {}),
       ...(entity.adjacency ? { adjacency: entity.adjacency } : {}),
       ...(entity.orientation ? { orientation: entity.orientation } : {}),
+      ...(entity.loopRole ? { loopRole: entity.loopRole } : {}),
       ...(entity.relationships ? { relationships: entity.relationships } : {})
     })),
     unsupportedEntityKinds: [],
@@ -31389,6 +31390,127 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(exportCadProjectJson(engine)).toBe(beforeJson);
   });
 
+  it("uses loop role and relationship evidence to disambiguate exact-signature topology candidates", () => {
+    const engine = createRectangleExtrudeEngine();
+    const beforeJson = exportCadProjectJson(engine);
+    const previous = createTopologyMatchSnapshotInput({
+      checkpointId: "checkpoint_old",
+      bodyId: "body_rect_1",
+      entities: [
+        {
+          localId: "face_old_1",
+          kind: "face",
+          signature: "face:duplicate",
+          relationships: {
+            childLoopLocalIds: ["loop_old_1"]
+          }
+        },
+        {
+          localId: "loop_old_1",
+          kind: "loop",
+          signature: "loop:inner-profile",
+          loopRole: "inner"
+        }
+      ]
+    });
+    const candidate = createTopologyMatchSnapshotInput({
+      checkpointId: "checkpoint_new",
+      bodyId: "body_rect_1",
+      entities: [
+        {
+          localId: "face_new_bad",
+          kind: "face",
+          signature: "face:duplicate",
+          relationships: {
+            childLoopLocalIds: ["loop_new_outer"]
+          }
+        },
+        {
+          localId: "loop_new_outer",
+          kind: "loop",
+          signature: "loop:outer-profile",
+          loopRole: "outer"
+        },
+        {
+          localId: "face_new_good",
+          kind: "face",
+          signature: "face:duplicate",
+          relationships: {
+            childLoopLocalIds: ["loop_new_inner"]
+          }
+        },
+        {
+          localId: "loop_new_inner",
+          kind: "loop",
+          signature: "loop:inner-profile",
+          loopRole: "inner"
+        }
+      ],
+      sourceIdentitySha:
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    });
+    const response = readTopologyMatchSnapshots(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "topology.matchSnapshots",
+          previous,
+          candidates: [candidate]
+        }
+      })
+    );
+    const faceResult = response.matchResults.find(
+      (result) => result.previousCheckpointEntityId === "face_old_1"
+    );
+    const loopResult = response.matchResults.find(
+      (result) => result.previousCheckpointEntityId === "loop_old_1"
+    );
+
+    expect(faceResult).toMatchObject({
+      candidateCheckpointEntityId: "face_new_good",
+      state: "replaced",
+      confidence: "high",
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({ code: "TOPOLOGY_MATCH_REPLACED" })
+      ]),
+      evidence: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "relationship",
+          previousValue: ["childLoop:loop:loop:inner-profile:inner"],
+          candidateValue: ["childLoop:loop:loop:inner-profile:inner"]
+        })
+      ])
+    });
+    expect(loopResult).toMatchObject({
+      candidateCheckpointEntityId: "loop_new_inner",
+      evidence: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "loopRole",
+          previousValue: "inner",
+          candidateValue: "inner"
+        })
+      ])
+    });
+    expect(response.repairCandidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          previousCheckpointEvidence: expect.objectContaining({
+            checkpointEntityId: "face_old_1"
+          }),
+          candidateCheckpointEvidence: expect.objectContaining({
+            checkpointEntityId: "face_new_good"
+          }),
+          canAutoRetarget: false,
+          recommendedAction: "manual-repair-plan"
+        })
+      ])
+    );
+    expect(JSON.stringify(response)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
+    );
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+  });
+
   it("reports deleted, split, merged, ambiguous, low-confidence, and kind-mismatch topology matches", () => {
     const engine = new CadEngine();
     const previous = createTopologyMatchSnapshotInput({
@@ -35334,6 +35456,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
             neighborSignatureHashes: ["valid", ""]
           },
           orientation: "sideways",
+          loopRole: "middle",
           relationships: {
             parentFaceLocalId: "",
             childCoedgeLocalIds: ["coedge_valid", ""]

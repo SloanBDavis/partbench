@@ -532,6 +532,8 @@ export type GeometryKernelTopologyOrientation =
   | "external"
   | "unknown";
 
+export type GeometryKernelTopologyLoopRole = "outer" | "inner" | "unknown";
+
 export interface GeometryKernelTopologyEntityRelationshipEvidence {
   readonly parentFaceLocalId?: string;
   readonly parentWireLocalId?: string;
@@ -618,6 +620,7 @@ export interface GeometryKernelTopologyEntityDescriptor {
   readonly length?: number;
   readonly adjacency?: GeometryKernelTopologyEntityAdjacencyEvidence;
   readonly orientation?: GeometryKernelTopologyOrientation;
+  readonly loopRole?: GeometryKernelTopologyLoopRole;
   readonly relationships?: GeometryKernelTopologyEntityRelationshipEvidence;
 }
 
@@ -1992,6 +1995,8 @@ function isInvalidExactTopologySnapshot(
           !isTopologyAdjacencyEvidence(entity.adjacency)) ||
         (entity.orientation !== undefined &&
           !isTopologyOrientation(entity.orientation)) ||
+        (entity.loopRole !== undefined &&
+          !isTopologyLoopRole(entity.loopRole)) ||
         (entity.relationships !== undefined &&
           !isTopologyRelationshipEvidence(entity.relationships)) ||
         !isTopologyDescriptorEvidenceForKind(entity)
@@ -2126,23 +2131,41 @@ function isTopologySurfaceClass(value: unknown): boolean {
   );
 }
 
+function isTopologyLoopRole(value: unknown): boolean {
+  return value === "outer" || value === "inner" || value === "unknown";
+}
+
 function isTopologyDescriptorEvidenceForKind(
   entity: GeometryKernelTopologyEntityDescriptor
 ): boolean {
   switch (entity.kind) {
+    case "loop":
+      return (
+        entity.surfaceClass === undefined &&
+        entity.curveClass === undefined &&
+        entity.point === undefined &&
+        entity.midpoint === undefined &&
+        entity.normal === undefined &&
+        entity.axis === undefined &&
+        entity.radius === undefined &&
+        entity.area === undefined &&
+        entity.length === undefined
+      );
     case "face":
       return (
         entity.curveClass === undefined &&
         entity.point === undefined &&
         entity.midpoint === undefined &&
-        entity.length === undefined
+        entity.length === undefined &&
+        entity.loopRole === undefined
       );
     case "edge":
       return (
         entity.surfaceClass === undefined &&
         entity.point === undefined &&
         entity.normal === undefined &&
-        entity.area === undefined
+        entity.area === undefined &&
+        entity.loopRole === undefined
       );
     case "vertex":
       return (
@@ -2153,7 +2176,8 @@ function isTopologyDescriptorEvidenceForKind(
         entity.axis === undefined &&
         entity.radius === undefined &&
         entity.area === undefined &&
-        entity.length === undefined
+        entity.length === undefined &&
+        entity.loopRole === undefined
       );
     case "axis":
       return (
@@ -2163,7 +2187,8 @@ function isTopologyDescriptorEvidenceForKind(
         entity.normal === undefined &&
         entity.radius === undefined &&
         entity.area === undefined &&
-        entity.length === undefined
+        entity.length === undefined &&
+        entity.loopRole === undefined
       );
     default:
       return (
@@ -2175,7 +2200,8 @@ function isTopologyDescriptorEvidenceForKind(
         entity.axis === undefined &&
         entity.radius === undefined &&
         entity.area === undefined &&
-        entity.length === undefined
+        entity.length === undefined &&
+        entity.loopRole === undefined
       );
   }
 }
