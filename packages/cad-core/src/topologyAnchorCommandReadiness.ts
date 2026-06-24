@@ -28,6 +28,15 @@ export function createTopologyAnchorCommandReadinessResponse(args: {
   readonly cadOpsVersion: CadOpsVersion;
   readonly query: TopologyAnchorCommandReadinessQuery;
   readonly topologyIdentity?: CadTopologyIdentitySourceSnapshot;
+  readonly resolveProofCommandOperations?: (
+    proof: CadTopologyAnchorCommandProof,
+    context: {
+      readonly anchorId: string;
+      readonly bodyId: BodyId;
+      readonly entityKind: CadTopologyAnchorEntityKind;
+      readonly checkpointId: string;
+    }
+  ) => readonly CadSelectionReferenceOperation[];
   readonly selectionResult?: {
     readonly status: CadSelectionReferenceStatus;
     readonly candidates: readonly CadSelectionReferenceCandidate[];
@@ -185,12 +194,24 @@ export function createTopologyAnchorCommandReadinessResponse(args: {
   const proof = createCommandProof(anchor.entityKind, entity);
   const selectionResult =
     args.selectionResult ?? createEmptySelectionResult("unsupported");
+  const proofOperations =
+    proof === undefined
+      ? []
+      : createCommandOperations([
+          ...createProofCommandOperations(proof),
+          ...(args.resolveProofCommandOperations?.(proof, {
+            anchorId: anchor.anchorId,
+            bodyId: anchor.bodyId,
+            entityKind: anchor.entityKind,
+            checkpointId: anchor.checkpointId
+          }) ?? [])
+        ]);
   const commandOperations =
     proof === undefined
       ? []
       : createCommandOperations([
           ...createCommandOperations(selectionResult.candidates),
-          ...createProofCommandOperations(proof)
+          ...proofOperations
         ]);
   const status = chooseStatus({
     proof,
@@ -249,7 +270,8 @@ export function createTopologyAnchorCommandReadinessResponse(args: {
     commandOperations,
     selectionStatus: status === "ready" ? "resolved" : selectionResult.status,
     candidates: proof === undefined ? [] : selectionResult.candidates,
-    issues: proof === undefined ? [] : selectionResult.issues,
+    issues:
+      proof === undefined || status === "ready" ? [] : selectionResult.issues,
     proof,
     diagnostics
   });

@@ -41,6 +41,7 @@ import type {
   CadFeatureSummary,
   CadFeatureReferenceChangeSummary,
   CadGeneratedExtrudeFaceRole,
+  CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
   CadGeneratedEntityKind,
   CadGeneratedReference,
@@ -1393,6 +1394,12 @@ export class CadEngine {
           cadOpsVersion: request.version,
           query: request.query,
           topologyIdentity: this.#document.topologyIdentity,
+          resolveProofCommandOperations: (proof, context) =>
+            createTopologyAnchorProofCommandOperations(
+              this.#document,
+              proof,
+              context.bodyId
+            ),
           selectionResult
         });
       }
@@ -4950,6 +4957,7 @@ function applyOperation(
           edgeStableId: op.edgeStableId,
           namedReference: op.namedReference,
           topologyAnchorId: op.topologyAnchorId,
+          topologyAnchorProof: op.topologyAnchorProof,
           scalar: op.distance
         },
         "feature.chamfer",
@@ -4973,6 +4981,7 @@ function applyOperation(
           edgeStableId: op.edgeStableId,
           namedReference: op.namedReference,
           topologyAnchorId: op.topologyAnchorId,
+          topologyAnchorProof: op.topologyAnchorProof,
           scalar: op.radius
         },
         "feature.fillet",
@@ -11072,6 +11081,7 @@ interface EdgeFinishReferenceSource {
   readonly edgeStableId?: string;
   readonly namedReference?: NamedReferenceName;
   readonly topologyAnchorId?: string;
+  readonly topologyAnchorProof?: CadTopologyAnchorCommandProof;
 }
 
 function createEdgeFinishFeature(
@@ -11238,12 +11248,20 @@ function validateEdgeFinishReference(
       });
     }
 
-    const target = resolveActiveTopologyAnchorStableTarget(
-      state,
-      source.topologyAnchorId,
-      "edge",
-      opIndex
-    );
+    const target =
+      source.topologyAnchorProof === undefined
+        ? resolveActiveTopologyAnchorStableTarget(
+            state,
+            source.topologyAnchorId,
+            "edge",
+            opIndex
+          )
+        : resolveActiveTopologyAnchorTarget(
+            state,
+            source.topologyAnchorId,
+            "edge",
+            opIndex
+          );
 
     if (target.bodyId !== targetBodyId) {
       throwValidationError({
@@ -11251,7 +11269,7 @@ function validateEdgeFinishReference(
         message: `Topology anchor ${target.topologyAnchorId} resolves to body ${target.bodyId}, not target body ${targetBodyId}.`,
         opIndex,
         bodyId: targetBodyId,
-        stableId: target.stableId,
+        ...(target.stableId ? { stableId: target.stableId } : {}),
         topologyAnchorId: target.topologyAnchorId,
         checkpointId: target.checkpointId,
         path: operationPath(opIndex, "topologyAnchorId"),
@@ -11260,11 +11278,38 @@ function validateEdgeFinishReference(
       });
     }
 
+    const edgeStableId =
+      source.topologyAnchorProof === undefined
+        ? target.stableId
+        : resolveTopologyAnchorEdgeProofStableId(
+            state,
+            operation,
+            targetBodyId,
+            target.topologyAnchorId,
+            target.checkpointId,
+            source.topologyAnchorProof,
+            opIndex
+          );
+
+    if (edgeStableId === undefined) {
+      throwValidationError({
+        code: "INVALID_TOPOLOGY_ANCHOR",
+        message: `${operation} topology anchor did not resolve to a generated edge.`,
+        opIndex,
+        bodyId: targetBodyId,
+        topologyAnchorId: target.topologyAnchorId,
+        checkpointId: target.checkpointId,
+        path: operationPath(opIndex, "topologyAnchorId"),
+        expected: "resolved generated edge",
+        received: "missing stable edge reference"
+      });
+    }
+
     validateEdgeGeneratedReference(
       state,
       operation,
       targetBodyId,
-      target.stableId,
+      edgeStableId,
       opIndex,
       "topologyAnchorId",
       undefined,
@@ -11273,9 +11318,21 @@ function validateEdgeFinishReference(
     );
 
     return {
-      edgeStableId: target.stableId,
+      edgeStableId,
       topologyAnchorId: target.topologyAnchorId
     };
+  }
+
+  if (source.topologyAnchorProof !== undefined) {
+    throwValidationError({
+      code: "INVALID_TOPOLOGY_ANCHOR",
+      message: `${operation} topologyAnchorProof requires topologyAnchorId.`,
+      opIndex,
+      bodyId: targetBodyId,
+      path: operationPath(opIndex, "topologyAnchorProof"),
+      expected: "topologyAnchorId with topologyAnchorProof",
+      received: "missing topologyAnchorId"
+    });
   }
 
   const hasStableId =
@@ -11396,6 +11453,210 @@ function validateEdgeGeneratedReference(
       checkpointId
     );
   }
+}
+
+function createTopologyAnchorProofCommandOperations(
+  state: CadDocument,
+  proof: CadTopologyAnchorCommandProof,
+  bodyId: BodyId
+): readonly CadSelectionReferenceOperation[] {
+  if (proof.kind !== "axisAlignedLinearEdge") {
+    return [];
+  }
+
+  const operations: CadSelectionReferenceOperation[] = [];
+
+  if (
+    findTopologyAnchorEdgeProofStableId(state, bodyId, proof, "feature.chamfer")
+  ) {
+    operations.push("feature.chamfer");
+  }
+
+  if (
+    findTopologyAnchorEdgeProofStableId(state, bodyId, proof, "feature.fillet")
+  ) {
+    operations.push("feature.fillet");
+  }
+
+  return operations;
+}
+
+function resolveTopologyAnchorEdgeProofStableId(
+  state: MutableDocumentState,
+  operation: EdgeFinishOperation,
+  targetBodyId: BodyId,
+  topologyAnchorId: string,
+  checkpointId: string,
+  proof: CadTopologyAnchorCommandProof,
+  opIndex?: number
+): string {
+  const receivedKind = (proof as { readonly kind?: unknown }).kind;
+  if (!isTopologyAnchorEdgeProofInput(proof)) {
+    throwValidationError({
+      code: "INVALID_TOPOLOGY_ANCHOR",
+      message: `${operation} topologyAnchorProof requires axis-aligned linear edge proof.`,
+      opIndex,
+      bodyId: targetBodyId,
+      topologyAnchorId,
+      checkpointId,
+      path: operationPath(opIndex, "topologyAnchorProof"),
+      expected: "axisAlignedLinearEdge proof for an edge topology anchor",
+      received: describeReceived(receivedKind)
+    });
+  }
+
+  const stableId = findTopologyAnchorEdgeProofStableId(
+    state,
+    targetBodyId,
+    proof,
+    operation
+  );
+
+  if (stableId) {
+    return stableId;
+  }
+
+  throwValidationError({
+    code: "INVALID_TOPOLOGY_ANCHOR",
+    message: `${operation} topologyAnchorProof does not match exactly one supported generated edge on target body ${targetBodyId}.`,
+    opIndex,
+    bodyId: targetBodyId,
+    topologyAnchorId,
+    checkpointId,
+    path: operationPath(opIndex, "topologyAnchorProof"),
+    expected:
+      "axis-aligned linear edge proof matching one operation-eligible generated edge",
+    received: JSON.stringify({
+      kind: proof.kind,
+      linearAxis: proof.linearAxis,
+      length: proof.length,
+      bounds: proof.bounds
+    })
+  });
+}
+
+function findTopologyAnchorEdgeProofStableId(
+  state: CadDocument,
+  bodyId: BodyId,
+  proof: CadTopologyAnchorCommandProof,
+  operation: EdgeFinishOperation
+): string | undefined {
+  if (!isTopologyAnchorEdgeProofInput(proof)) {
+    return undefined;
+  }
+
+  const references = createBodyGeneratedReferences(
+    state,
+    bodyId,
+    DEFAULT_PART_ID
+  );
+
+  if (!references) {
+    return undefined;
+  }
+
+  const matches = references.edges.filter((edge) =>
+    generatedEdgeMatchesTopologyAnchorProof(
+      state,
+      bodyId,
+      edge,
+      proof,
+      operation
+    )
+  );
+
+  return matches.length === 1 ? matches[0]!.stableId : undefined;
+}
+
+function generatedEdgeMatchesTopologyAnchorProof(
+  state: CadDocument,
+  bodyId: BodyId,
+  edge: CadGeneratedEdgeReference,
+  proof: CadTopologyAnchorCommandProof,
+  operation: EdgeFinishOperation
+): boolean {
+  if (!edge.eligibleOperations.includes(operation)) {
+    return false;
+  }
+
+  const measurements = createGeneratedReferenceMeasurements({
+    document: state,
+    bodyId,
+    stableId: edge.stableId,
+    units: state.units,
+    ownerPartId: DEFAULT_PART_ID,
+    bodyExists: (candidateBodyId) =>
+      cadDocumentBodyExists(state, candidateBodyId)
+  });
+
+  if (
+    !measurements.ok ||
+    measurements.kind !== "edge" ||
+    measurements.measurements.kind !== "edge" ||
+    !measurements.measurements.startPoint ||
+    !measurements.measurements.endPoint ||
+    !proof.bounds
+  ) {
+    return false;
+  }
+
+  const edgeBounds = createBoundsFromPoints([
+    measurements.measurements.startPoint,
+    measurements.measurements.endPoint
+  ]);
+
+  return (
+    boundsMinMaxEqual(edgeBounds, proof.bounds) &&
+    nearlyEqual(measurements.measurements.length, proof.length)
+  );
+}
+
+function createBoundsFromPoints(points: readonly Vec3[]): CadAxisAlignedBounds {
+  const min: Vec3 = [
+    Math.min(...points.map((point) => point[0])),
+    Math.min(...points.map((point) => point[1])),
+    Math.min(...points.map((point) => point[2]))
+  ];
+  const max: Vec3 = [
+    Math.max(...points.map((point) => point[0])),
+    Math.max(...points.map((point) => point[1])),
+    Math.max(...points.map((point) => point[2]))
+  ];
+  const size: Vec3 = [max[0] - min[0], max[1] - min[1], max[2] - min[2]];
+  const center: Vec3 = [
+    (min[0] + max[0]) / 2,
+    (min[1] + max[1]) / 2,
+    (min[2] + max[2]) / 2
+  ];
+
+  return { min, max, size, center };
+}
+
+function boundsMinMaxEqual(
+  left: Pick<CadAxisAlignedBounds, "min" | "max">,
+  right: Pick<CadAxisAlignedBounds, "min" | "max">
+): boolean {
+  return (
+    vec3NearlyEqual(left.min, right.min) && vec3NearlyEqual(left.max, right.max)
+  );
+}
+
+function vec3NearlyEqual(left: Vec3, right: Vec3): boolean {
+  return left.every((value, index) => nearlyEqual(value, right[index]!));
+}
+
+function nearlyEqual(left: number | undefined, right: number | undefined) {
+  return (
+    typeof left === "number" &&
+    typeof right === "number" &&
+    Math.abs(left - right) <= 1e-9
+  );
+}
+
+function cadDocumentBodyExists(document: CadDocument, bodyId: BodyId): boolean {
+  return createProjectStructure(document, []).bodies.some(
+    (body) => body.id === bodyId
+  );
 }
 
 function validateEdgeFinishScalar(
@@ -24440,6 +24701,12 @@ function isVec3(value: unknown): value is readonly [number, number, number] {
   );
 }
 
+function isTopologyEntityBounds(
+  value: unknown
+): value is Pick<CadAxisAlignedBounds, "min" | "max"> {
+  return isRecord(value) && isVec3(value.min) && isVec3(value.max);
+}
+
 function isVec2(value: unknown): value is Vec2 {
   return (
     Array.isArray(value) &&
@@ -24620,6 +24887,22 @@ function isTopologyAnchorFaceProofInput(
   );
 }
 
+function isTopologyAnchorEdgeProofInput(
+  value: unknown
+): value is CadTopologyAnchorCommandProof {
+  return (
+    isRecord(value) &&
+    value.kind === "axisAlignedLinearEdge" &&
+    value.entityKind === "edge" &&
+    value.evidenceSource === "checkpointSnapshot" &&
+    value.exposesCheckpointLocalIds === false &&
+    isPlanarAxis(value.linearAxis) &&
+    typeof value.length === "number" &&
+    Number.isFinite(value.length) &&
+    isTopologyEntityBounds(value.bounds)
+  );
+}
+
 function isExtrudeSide(value: unknown): value is FeatureExtrudeSide {
   return value === "positive" || value === "negative" || value === "symmetric";
 }
@@ -24650,15 +24933,19 @@ function hasExactlyOneEdgeReferenceInput(
   const hasStableId =
     typeof value.edgeStableId === "string" &&
     value.namedReference === undefined &&
-    value.topologyAnchorId === undefined;
+    value.topologyAnchorId === undefined &&
+    value.topologyAnchorProof === undefined;
   const hasNamedReference =
     typeof value.namedReference === "string" &&
     value.edgeStableId === undefined &&
-    value.topologyAnchorId === undefined;
+    value.topologyAnchorId === undefined &&
+    value.topologyAnchorProof === undefined;
   const hasTopologyAnchor =
     typeof value.topologyAnchorId === "string" &&
     value.edgeStableId === undefined &&
-    value.namedReference === undefined;
+    value.namedReference === undefined &&
+    (value.topologyAnchorProof === undefined ||
+      isTopologyAnchorEdgeProofInput(value.topologyAnchorProof));
 
   return (
     [hasStableId, hasNamedReference, hasTopologyAnchor].filter(Boolean)

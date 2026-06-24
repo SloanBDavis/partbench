@@ -635,6 +635,7 @@ export interface FeatureChamferOp {
   readonly edgeStableId?: string;
   readonly namedReference?: NamedReferenceName;
   readonly topologyAnchorId?: string;
+  readonly topologyAnchorProof?: CadTopologyAnchorCommandProof;
   readonly distance: number;
   readonly name?: string;
 }
@@ -647,6 +648,7 @@ export interface FeatureFilletOp {
   readonly edgeStableId?: string;
   readonly namedReference?: NamedReferenceName;
   readonly topologyAnchorId?: string;
+  readonly topologyAnchorProof?: CadTopologyAnchorCommandProof;
   readonly radius: number;
   readonly name?: string;
 }

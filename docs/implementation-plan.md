@@ -2518,8 +2518,9 @@ Use these decisions when drafting or implementing V13 tranches:
    display, source measurement frames, project health, downstream feature
    attachment validation, tree labels, and import/export validation consume
    that attachment as source state. Non-axis-aligned faces, curved faces,
-   exact-only edge command targets, and arbitrary result topology still report
-   partial/deferred readiness until explicit validators exist.
+   exact-only edge command targets without a matching generated edge, and
+   arbitrary result topology still report partial/deferred readiness until
+   explicit validators exist.
 10. **Product Integration And Topology Diagnostics** - compact Selection,
     Inspector, Modeling, viewport contextual action, and Project/File surfaces
     for topology health, matching evidence, repair candidates, checkpoint
@@ -2659,7 +2660,26 @@ Use these decisions when drafting or implementing V13 tranches:
     OCCT handles, renderer/mesh IDs, selection-buffer IDs, viewport state, OPFS
     paths, file handles, and export artifacts remain outside public source and
     command identities. Non-axis-aligned faces, curved faces, exact-only edge
-    validators, and broad arbitrary topology commandability remain deferred.
+    validators beyond the axis-aligned generated-edge matching slice, and broad
+    arbitrary topology commandability remain deferred.
+17. **Implemented: Exact Linear Edge Topology-Anchor Edge-Finish Routing** -
+    `feature.chamfer` and `feature.fillet` now accept sanitized
+    `topologyAnchorProof` when used with an active edge topology anchor.
+    Cad-core validates active anchor/checkpoint/body state, requires
+    `axisAlignedLinearEdge` proof, compares proof bounds and length against
+    source-analytic generated edge measurements for the target body, and
+    resolves the command only when exactly one operation-eligible generated
+    edge matches. The committed feature still stores the resolved
+    `edgeStableId` plus topology-anchor provenance, so the existing
+    geometry-worker edge-finish path remains the only mutation/runtime authority
+    for the actual chamfer/fillet. `topology.anchorCommandReadiness` now reports
+    proof-derived `feature.chamfer` and `feature.fillet` readiness only when the
+    same cad-core generated-edge match exists. Bad, ambiguous, missing, stale,
+    curved, or non-matching proof remains structured non-commandable/deferred
+    state, and failed commands do not mutate source. No checkpoint-local entity
+    IDs, raw OCCT handles, renderer/mesh IDs, selection-buffer IDs, viewport
+    state, OPFS paths, file handles, or export artifacts enter public command
+    identity.
 
 ### V13 Scope Guardrails
 

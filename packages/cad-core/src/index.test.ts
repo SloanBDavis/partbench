@@ -32267,7 +32267,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
               localId: "checkpoint-local-edge-1",
               kind: "edge",
               signature: "edge_signature_1",
-              bounds: { min: [0, 0, 0], max: [1, 0, 0] }
+              bounds: { min: [-2, -1, 0], max: [-2, 1, 0] }
             }
           ]
         })
@@ -32277,26 +32277,21 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(edgeReadiness).toMatchObject({
       ok: true,
       query: "topology.anchorCommandReadiness",
-      status: "partial",
+      status: "ready",
       anchorId: "anchor_edge_1",
       entityKind: "edge",
-      selectionStatus: "unsupported",
-      commandable: false,
-      commandOperations: [],
-      issueCount: 1,
-      issues: [
-        expect.objectContaining({
-          code: "UNSUPPORTED_SELECTION_TARGET",
-          status: "unsupported",
-          topologyAnchorId: "anchor_edge_1"
-        })
-      ],
+      selectionStatus: "resolved",
+      commandable: true,
+      candidateCount: 0,
+      commandOperations: ["feature.chamfer", "feature.fillet"],
+      issueCount: 0,
+      issues: [],
       proof: {
         kind: "axisAlignedLinearEdge",
         entityKind: "edge",
         exposesCheckpointLocalIds: false,
-        linearAxis: "x",
-        length: 1
+        linearAxis: "y",
+        length: 2
       },
       exposesCheckpointLocalIds: false
     });
@@ -33181,11 +33176,151 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       op: "feature.chamfer",
       topologyAnchorId: "anchor_edge_role_backed"
     });
+
+    const exactEdgeChamferEngine = createTopologyEdgeAnchorEngine({
+      anchorId: "anchor_exact_edge",
+      stableId: "",
+      sourceSemanticRole: "unmapped exact topology edge"
+    });
+    const exactEdgeReadiness = exactEdgeChamferEngine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.anchorCommandReadiness",
+        anchorId: "anchor_exact_edge",
+        requiredOperation: "feature.chamfer",
+        snapshot: createTopologyMatchSnapshotInput({
+          checkpointId: "checkpoint_1",
+          bodyId: "body_rect_1",
+          sourceFeatureId: "feat_rect_1",
+          entities: [
+            {
+              localId: "checkpoint-local-edge-1",
+              kind: "edge",
+              signature: "edge_signature_1",
+              bounds: { min: [-2, -1, 0], max: [-2, 1, 0] }
+            }
+          ]
+        })
+      }
+    });
+
+    expect(exactEdgeReadiness).toMatchObject({
+      ok: true,
+      status: "ready",
+      commandable: true,
+      commandOperations: ["feature.chamfer", "feature.fillet"],
+      proof: {
+        kind: "axisAlignedLinearEdge",
+        entityKind: "edge",
+        bounds: { min: [-2, -1, 0], max: [-2, 1, 0] },
+        exposesCheckpointLocalIds: false,
+        linearAxis: "y",
+        length: 2
+      }
+    });
+
+    const exactEdgeProof =
+      "proof" in exactEdgeReadiness ? exactEdgeReadiness.proof : undefined;
+
+    if (!exactEdgeProof) {
+      throw new Error("Expected exact edge readiness proof.");
+    }
+
+    const exactEdgeBeforeJson = exportCadProjectJson(exactEdgeChamferEngine);
+    const exactEdgeDryRun = exactEdgeChamferEngine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "feature.chamfer",
+          id: "feat_exact_anchor_chamfer",
+          bodyId: "body_exact_anchor_chamfer",
+          targetBodyId: "body_rect_1",
+          topologyAnchorId: "anchor_exact_edge",
+          topologyAnchorProof: exactEdgeProof,
+          distance: 0.2
+        }
+      ]
+    });
+
+    expect(exactEdgeDryRun).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      createdFeatureIds: ["feat_exact_anchor_chamfer"],
+      createdBodyIds: ["body_exact_anchor_chamfer"]
+    });
+    expect(exportCadProjectJson(exactEdgeChamferEngine)).toBe(
+      exactEdgeBeforeJson
+    );
+
+    const exactEdgeChamferResult = exactEdgeChamferEngine.apply({
+      op: "feature.chamfer",
+      id: "feat_exact_anchor_chamfer",
+      bodyId: "body_exact_anchor_chamfer",
+      targetBodyId: "body_rect_1",
+      topologyAnchorId: "anchor_exact_edge",
+      topologyAnchorProof: exactEdgeProof,
+      distance: 0.2
+    });
+
+    expect(
+      getChamferFeature(exactEdgeChamferEngine, "feat_exact_anchor_chamfer")
+    ).toMatchObject({
+      kind: "chamfer",
+      targetBodyId: "body_rect_1",
+      edgeStableId: "generated:edge:body_rect_1:start:uMin",
+      topologyAnchorId: "anchor_exact_edge",
+      distance: 0.2,
+      bodyId: "body_exact_anchor_chamfer"
+    });
+    expect(exactEdgeChamferResult.transaction.ops[0]).toMatchObject({
+      op: "feature.chamfer",
+      topologyAnchorId: "anchor_exact_edge",
+      topologyAnchorProof: expect.objectContaining({
+        kind: "axisAlignedLinearEdge",
+        exposesCheckpointLocalIds: false
+      })
+    });
+
+    const badProofResult = createTopologyEdgeAnchorEngine({
+      anchorId: "anchor_exact_edge",
+      stableId: "",
+      sourceSemanticRole: "unmapped exact topology edge"
+    }).executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "feature.fillet",
+          id: "feat_bad_exact_anchor_fillet",
+          bodyId: "body_bad_exact_anchor_fillet",
+          targetBodyId: "body_rect_1",
+          topologyAnchorId: "anchor_exact_edge",
+          topologyAnchorProof: {
+            ...exactEdgeProof,
+            bounds: { min: [5, 0, 0], max: [6, 0, 0] }
+          },
+          radius: 0.2
+        }
+      ]
+    });
+
+    expect(badProofResult).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_TOPOLOGY_ANCHOR",
+        topologyAnchorId: "anchor_exact_edge",
+        path: "$.ops[0].topologyAnchorProof",
+        expected:
+          "axis-aligned linear edge proof matching one operation-eligible generated edge"
+      }
+    });
     expect(
       JSON.stringify({
         chamferTransaction: chamferResult.transaction,
         filletTransaction: filletResult.transaction,
-        roleBackedChamferTransaction: roleBackedChamferResult.transaction
+        roleBackedChamferTransaction: roleBackedChamferResult.transaction,
+        exactEdgeChamferTransaction: exactEdgeChamferResult.transaction
       })
     ).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId/i
