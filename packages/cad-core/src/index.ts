@@ -6436,6 +6436,10 @@ function isCadBodyExactTopologyEntityDescriptor(value: unknown): boolean {
     (value.length === undefined || isNonNegativeFinite(value.length)) &&
     (value.adjacency === undefined ||
       isCadTopologyEntityAdjacencyEvidence(value.adjacency)) &&
+    (value.orientation === undefined ||
+      isCadTopologyOrientation(value.orientation)) &&
+    (value.relationships === undefined ||
+      isCadTopologyEntityRelationshipEvidence(value.relationships)) &&
     isCadTopologyEntityDescriptorEvidenceForKind(value)
   );
 }
@@ -6516,6 +6520,16 @@ function isCadTopologyCurveClass(value: unknown): boolean {
   );
 }
 
+function isCadTopologyOrientation(value: unknown): boolean {
+  return (
+    value === "forward" ||
+    value === "reversed" ||
+    value === "internal" ||
+    value === "external" ||
+    value === "unknown"
+  );
+}
+
 function isCadTopologyEntityAdjacencyEvidence(value: unknown): boolean {
   return (
     isRecord(value) &&
@@ -6524,6 +6538,39 @@ function isCadTopologyEntityAdjacencyEvidence(value: unknown): boolean {
     value.neighborSignatureHashes.every(
       (hash) => typeof hash === "string" && hash.trim().length > 0
     )
+  );
+}
+
+function isCadTopologyEntityRelationshipEvidence(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    isOptionalNonEmptyString(value.parentFaceLocalId) &&
+    isOptionalNonEmptyString(value.parentWireLocalId) &&
+    isOptionalNonEmptyString(value.parentLoopLocalId) &&
+    isOptionalNonEmptyString(value.underlyingWireLocalId) &&
+    isOptionalNonEmptyString(value.underlyingEdgeLocalId) &&
+    isOptionalNonEmptyString(value.startVertexLocalId) &&
+    isOptionalNonEmptyString(value.endVertexLocalId) &&
+    isOptionalNonEmptyStringArray(value.childWireLocalIds) &&
+    isOptionalNonEmptyStringArray(value.childLoopLocalIds) &&
+    isOptionalNonEmptyStringArray(value.childCoedgeLocalIds) &&
+    isOptionalNonEmptyStringArray(value.childEdgeLocalIds) &&
+    isOptionalNonEmptyStringArray(value.adjacentFaceLocalIds)
+  );
+}
+
+function isOptionalNonEmptyString(value: unknown): boolean {
+  return value === undefined || (typeof value === "string" && value.length > 0);
+}
+
+function isOptionalNonEmptyStringArray(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (Array.isArray(value) &&
+      value.every((item) => typeof item === "string" && item.length > 0))
   );
 }
 

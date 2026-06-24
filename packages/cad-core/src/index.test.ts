@@ -619,7 +619,9 @@ function createTopologySnapshot(
       ...(entity.radius !== undefined ? { radius: entity.radius } : {}),
       ...(entity.area !== undefined ? { area: entity.area } : {}),
       ...(entity.length !== undefined ? { length: entity.length } : {}),
-      ...(entity.adjacency ? { adjacency: entity.adjacency } : {})
+      ...(entity.adjacency ? { adjacency: entity.adjacency } : {}),
+      ...(entity.orientation ? { orientation: entity.orientation } : {}),
+      ...(entity.relationships ? { relationships: entity.relationships } : {})
     })),
     unsupportedEntityKinds: [],
     adjacencyAvailable: true,
@@ -31269,7 +31271,16 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           curveClass: "line",
           midpoint: [0.5, 0, 1],
           axis: [1, 0, 0],
-          length: 1
+          length: 1,
+          orientation: "forward",
+          relationships: {
+            parentFaceLocalId: "face_old_1",
+            parentLoopLocalId: "loop_old_1",
+            underlyingEdgeLocalId: "edge_old_1",
+            startVertexLocalId: "vertex_old_1",
+            endVertexLocalId: "vertex_old_2",
+            adjacentFaceLocalIds: ["face_old_1"]
+          }
         }
       ]
     });
@@ -31297,7 +31308,16 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           curveClass: "line",
           midpoint: [0.5, 0, 1],
           axis: [1, 0, 0],
-          length: 1
+          length: 1,
+          orientation: "forward",
+          relationships: {
+            parentFaceLocalId: "face_new_1",
+            parentLoopLocalId: "loop_new_1",
+            underlyingEdgeLocalId: "edge_new_1",
+            startVertexLocalId: "vertex_new_1",
+            endVertexLocalId: "vertex_new_2",
+            adjacentFaceLocalIds: ["face_new_1"]
+          }
         }
       ]
     });
@@ -31350,6 +31370,11 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           kind: "axis",
           previousValue: [1, 0, 0],
           candidateValue: [1, 0, 0]
+        }),
+        expect.objectContaining({
+          kind: "orientation",
+          previousValue: "forward",
+          candidateValue: "forward"
         }),
         expect.objectContaining({
           kind: "length",
@@ -35307,6 +35332,11 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           adjacency: {
             available: true,
             neighborSignatureHashes: ["valid", ""]
+          },
+          orientation: "sideways",
+          relationships: {
+            parentFaceLocalId: "",
+            childCoedgeLocalIds: ["coedge_valid", ""]
           }
         }))
       }

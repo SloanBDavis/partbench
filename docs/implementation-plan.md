@@ -2611,6 +2611,18 @@ Use these decisions when drafting or implementing V13 tranches:
     handles. Loop/coedge ordering, full orientation evidence, real adjacency
     extraction, and arbitrary exact-only command validators remain later V13
     hardening.
+14. **Implemented: Loop, Coedge, Orientation, And Adjacency Extraction** -
+    exact topology snapshots now include loop descriptors derived from
+    face-owned wire occurrences and ordered coedge descriptors derived from
+    `BRepTools_WireExplorer_3`. The snapshot protocol and validators now accept
+    normalized orientation labels plus checkpoint-local relationship evidence
+    for parent face/wire/loop, underlying edge, start/end vertices, child
+    loop/coedge/edge lists, and adjacent faces. OCCT extraction populates
+    face-edge and edge-face adjacency as neighboring signature hashes, and
+    topology matching can use orientation as additional scoring evidence.
+    Snapshots remain partial because axis descriptors, outer/inner loop
+    classification, broader adjacency semantics, and arbitrary exact-only
+    command validators remain later V13 work.
 
 ### V13 Scope Guardrails
 

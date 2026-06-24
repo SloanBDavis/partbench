@@ -501,6 +501,21 @@ function createEvidence(
     });
   }
 
+  if (
+    previous.entity.orientation &&
+    previous.entity.orientation !== "unknown" &&
+    previous.entity.orientation === candidate.entity.orientation
+  ) {
+    evidence.push({
+      kind: "orientation",
+      confidence: "medium",
+      weight: exactSignature ? 0.01 : 0.04,
+      message: "Topology entity orientation evidence matches.",
+      previousValue: previous.entity.orientation,
+      candidateValue: candidate.entity.orientation
+    });
+  }
+
   addVectorEvidence(evidence, {
     kind: "point",
     entityKind: "vertex",

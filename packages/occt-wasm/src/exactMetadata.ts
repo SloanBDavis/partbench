@@ -133,6 +133,26 @@ export interface OcctTopologyEntityDescriptor {
     readonly available: boolean;
     readonly neighborSignatureHashes: readonly string[];
   };
+  readonly orientation?:
+    | "forward"
+    | "reversed"
+    | "internal"
+    | "external"
+    | "unknown";
+  readonly relationships?: {
+    readonly parentFaceLocalId?: string;
+    readonly parentWireLocalId?: string;
+    readonly parentLoopLocalId?: string;
+    readonly underlyingWireLocalId?: string;
+    readonly underlyingEdgeLocalId?: string;
+    readonly startVertexLocalId?: string;
+    readonly endVertexLocalId?: string;
+    readonly childWireLocalIds?: readonly string[];
+    readonly childLoopLocalIds?: readonly string[];
+    readonly childCoedgeLocalIds?: readonly string[];
+    readonly childEdgeLocalIds?: readonly string[];
+    readonly adjacentFaceLocalIds?: readonly string[];
+  };
 }
 
 export interface OcctTopologyEntityCounts {
@@ -151,6 +171,7 @@ export interface OcctTopologyDiagnostic {
   readonly code:
     | "GEOMETRY_TOPOLOGY_SNAPSHOT_EXTRACTED"
     | "GEOMETRY_TOPOLOGY_DESCRIPTOR_EVIDENCE_EXTRACTED"
+    | "GEOMETRY_TOPOLOGY_ADJACENCY_EXTRACTED"
     | "GEOMETRY_TOPOLOGY_ENTITY_KIND_UNAVAILABLE"
     | "GEOMETRY_TOPOLOGY_ADJACENCY_UNAVAILABLE"
     | "GEOMETRY_TOPOLOGY_SIGNATURE_LIMITED";
@@ -204,6 +225,47 @@ type OcctSurfaceAdaptor = InstanceType<
 type OcctCurveAdaptor = InstanceType<
   OpenCascadeInstance["BRepAdaptor_Curve_2"]
 >;
+type OcctTopologyOrientation = NonNullable<
+  OcctTopologyEntityDescriptor["orientation"]
+>;
+type OcctTopologyRelationships = NonNullable<
+  OcctTopologyEntityDescriptor["relationships"]
+>;
+
+interface TopologyShapeEntry {
+  readonly kind: Extract<
+    OcctTopologyEntityKind,
+    "solid" | "face" | "wire" | "edge" | "vertex"
+  >;
+  readonly index: number;
+  readonly localId: string;
+  readonly shape: TopoDS_Shape;
+  readonly bounds: OcctExactBodyMetadata["bounds"];
+  readonly signature: string;
+}
+
+interface TopologyShapeIndex {
+  readonly entries: readonly TopologyShapeEntry[];
+  readonly map: InstanceType<
+    OpenCascadeInstance["TopTools_IndexedMapOfShape_1"]
+  >;
+  find(shape: TopoDS_Shape): TopologyShapeEntry | undefined;
+  delete(): void;
+}
+
+interface TopologyRelationshipEvidence {
+  readonly adjacencyAvailable: boolean;
+  readonly loopEntities: readonly OcctTopologyEntityDescriptor[];
+  readonly coedgeEntities: readonly OcctTopologyEntityDescriptor[];
+  readonly relationshipsByLocalId: ReadonlyMap<
+    string,
+    OcctTopologyRelationships
+  >;
+  readonly adjacencyByLocalId: ReadonlyMap<
+    string,
+    OcctTopologyEntityDescriptor["adjacency"]
+  >;
+}
 
 export async function createOcctExactBodyMetadataWithLoader(
   loadOcct: OcctLoader,
@@ -374,98 +436,156 @@ export function readExactTopologySnapshot(
   shape: TopoDS_Shape,
   sourceKind: OcctExactBodyMetadataSource["kind"]
 ): OcctExactTopologySnapshot {
-  const entityCounts: OcctTopologyEntityCounts = {
-    bodyCount: 1,
-    solidCount: countSubshapes(oc, shape, "TopAbs_SOLID"),
-    faceCount: countSubshapes(oc, shape, "TopAbs_FACE"),
-    wireCount: countSubshapes(oc, shape, "TopAbs_WIRE"),
-    edgeCount: countSubshapes(oc, shape, "TopAbs_EDGE"),
-    vertexCount: countSubshapes(oc, shape, "TopAbs_VERTEX"),
-    loopCount: 0,
-    coedgeCount: 0,
-    axisCount: 0
-  };
-  const entities = [
-    createTopologyEntity({
+  const solidIndex = createTopologyShapeIndex(
+    oc,
+    shape,
+    "solid",
+    "TopAbs_SOLID",
+    sourceKind
+  );
+  const faceIndex = createTopologyShapeIndex(
+    oc,
+    shape,
+    "face",
+    "TopAbs_FACE",
+    sourceKind
+  );
+  const wireIndex = createTopologyShapeIndex(
+    oc,
+    shape,
+    "wire",
+    "TopAbs_WIRE",
+    sourceKind
+  );
+  const edgeIndex = createTopologyShapeIndex(
+    oc,
+    shape,
+    "edge",
+    "TopAbs_EDGE",
+    sourceKind
+  );
+  const vertexIndex = createTopologyShapeIndex(
+    oc,
+    shape,
+    "vertex",
+    "TopAbs_VERTEX",
+    sourceKind
+  );
+
+  try {
+    const bodyEntity = createTopologyEntity({
       oc,
       kind: "body",
+      shape,
       index: 1,
       sourceKind,
       bounds: readBounds(oc, shape)
-    }),
-    ...createTopologyEntities(oc, shape, "solid", "TopAbs_SOLID", sourceKind),
-    ...createTopologyEntities(oc, shape, "face", "TopAbs_FACE", sourceKind),
-    ...createTopologyEntities(oc, shape, "wire", "TopAbs_WIRE", sourceKind),
-    ...createTopologyEntities(oc, shape, "edge", "TopAbs_EDGE", sourceKind),
-    ...createTopologyEntities(oc, shape, "vertex", "TopAbs_VERTEX", sourceKind)
-  ];
-  const unsupportedEntityKinds = [
-    "loop",
-    "coedge",
-    "axis"
-  ] satisfies readonly OcctTopologyEntityKind[];
-  const signature = createDerivedTopologySignature({
-    sourceKind,
-    entityCounts,
-    entities: entities
-      .map((entity) => ({
-        kind: entity.kind,
-        signature: entity.signature
-      }))
-      .sort((left, right) =>
-        `${left.kind}:${left.signature}`.localeCompare(
-          `${right.kind}:${right.signature}`
+    });
+    const relationshipEvidence = createTopologyRelationshipEvidence(oc, {
+      sourceKind,
+      faceIndex,
+      wireIndex,
+      edgeIndex,
+      vertexIndex
+    });
+    const baseEntities = [
+      ...createTopologyEntitiesFromIndex(oc, sourceKind, solidIndex),
+      ...createTopologyEntitiesFromIndex(oc, sourceKind, faceIndex),
+      ...createTopologyEntitiesFromIndex(oc, sourceKind, wireIndex),
+      ...createTopologyEntitiesFromIndex(oc, sourceKind, edgeIndex),
+      ...createTopologyEntitiesFromIndex(oc, sourceKind, vertexIndex)
+    ].map((entity) =>
+      applyTopologyRelationshipEvidence(entity, relationshipEvidence)
+    );
+    const entities = [
+      bodyEntity,
+      ...baseEntities,
+      ...relationshipEvidence.loopEntities,
+      ...relationshipEvidence.coedgeEntities
+    ];
+    const entityCounts: OcctTopologyEntityCounts = {
+      bodyCount: 1,
+      solidCount: solidIndex.entries.length,
+      faceCount: faceIndex.entries.length,
+      wireCount: wireIndex.entries.length,
+      edgeCount: edgeIndex.entries.length,
+      vertexCount: vertexIndex.entries.length,
+      loopCount: relationshipEvidence.loopEntities.length,
+      coedgeCount: relationshipEvidence.coedgeEntities.length,
+      axisCount: 0
+    };
+    const unsupportedEntityKinds = [
+      "axis"
+    ] satisfies readonly OcctTopologyEntityKind[];
+    const signature = createDerivedTopologySignature({
+      sourceKind,
+      entityCounts,
+      entities: entities
+        .map((entity) => ({
+          kind: entity.kind,
+          signature: entity.signature
+        }))
+        .sort((left, right) =>
+          `${left.kind}:${left.signature}`.localeCompare(
+            `${right.kind}:${right.signature}`
+          )
         )
-      )
-  });
+    });
 
-  return {
-    sourceKind,
-    status: "partial",
-    entityCounts,
-    entityCount: entities.length,
-    entities,
-    unsupportedEntityKinds,
-    adjacencyAvailable: false,
-    signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
-    signature,
-    source: "kernel-derived",
-    diagnostics: [
-      {
-        code: "GEOMETRY_TOPOLOGY_DESCRIPTOR_EVIDENCE_EXTRACTED",
-        severity: "info",
-        message:
-          "Open CASCADE adaptor and property bindings extracted exact surface, curve, point, area, length, axis, normal, and radius descriptor evidence where supported."
-      },
-      {
-        code: "GEOMETRY_TOPOLOGY_SNAPSHOT_EXTRACTED",
-        severity: "info",
-        message:
-          "Open CASCADE exact topology snapshot extracted body, solid, face, wire, edge, and vertex descriptors from derived B-rep evidence."
-      },
-      ...unsupportedEntityKinds.map((entityKind) => ({
-        code: "GEOMETRY_TOPOLOGY_ENTITY_KIND_UNAVAILABLE" as const,
-        severity: "warning" as const,
-        entityKind,
-        message: `${entityKind} topology descriptors are not exposed by the current Open CASCADE snapshot binding.`
-      })),
-      {
-        code: "GEOMETRY_TOPOLOGY_ADJACENCY_UNAVAILABLE",
-        severity: "warning",
-        message:
-          "Topology adjacency extraction is not exposed by the current Open CASCADE snapshot binding."
-      },
-      {
-        code: "GEOMETRY_TOPOLOGY_SIGNATURE_LIMITED",
-        severity: "warning",
-        message:
-          "Topology signatures include source kind, topology kind, and per-entity bounds; exact descriptor evidence is available for matching but remains outside the v1 signature payload."
-      }
-    ]
-  };
+    return {
+      sourceKind,
+      status: "partial",
+      entityCounts,
+      entityCount: entities.length,
+      entities,
+      unsupportedEntityKinds,
+      adjacencyAvailable: relationshipEvidence.adjacencyAvailable,
+      signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+      signature,
+      source: "kernel-derived",
+      diagnostics: [
+        {
+          code: "GEOMETRY_TOPOLOGY_DESCRIPTOR_EVIDENCE_EXTRACTED",
+          severity: "info",
+          message:
+            "Open CASCADE adaptor and property bindings extracted exact surface, curve, point, area, length, axis, normal, and radius descriptor evidence where supported."
+        },
+        {
+          code: "GEOMETRY_TOPOLOGY_ADJACENCY_EXTRACTED",
+          severity: "info",
+          message:
+            "Open CASCADE wire traversal and edge-face maps extracted loop, coedge, orientation, and adjacency evidence."
+        },
+        {
+          code: "GEOMETRY_TOPOLOGY_SNAPSHOT_EXTRACTED",
+          severity: "info",
+          message:
+            "Open CASCADE exact topology snapshot extracted body, solid, face, wire, loop, coedge, edge, and vertex descriptors from derived B-rep evidence."
+        },
+        ...unsupportedEntityKinds.map((entityKind) => ({
+          code: "GEOMETRY_TOPOLOGY_ENTITY_KIND_UNAVAILABLE" as const,
+          severity: "warning" as const,
+          entityKind,
+          message: `${entityKind} topology descriptors are not exposed by the current Open CASCADE snapshot binding.`
+        })),
+        {
+          code: "GEOMETRY_TOPOLOGY_SIGNATURE_LIMITED",
+          severity: "warning",
+          message:
+            "Topology signatures include source kind, topology kind, and per-entity bounds; exact descriptor and adjacency evidence are available for matching but remain outside the v1 signature payload."
+        }
+      ]
+    };
+  } finally {
+    solidIndex.delete();
+    faceIndex.delete();
+    wireIndex.delete();
+    edgeIndex.delete();
+    vertexIndex.delete();
+  }
 }
 
-function createTopologyEntities(
+function createTopologyShapeIndex(
   oc: OpenCascadeInstance,
   shape: TopoDS_Shape,
   kind: Extract<
@@ -479,39 +599,468 @@ function createTopologyEntities(
     | "TopAbs_EDGE"
     | "TopAbs_VERTEX",
   sourceKind: OcctExactBodyMetadataSource["kind"]
-): readonly OcctTopologyEntityDescriptor[] {
+): TopologyShapeIndex {
   const shapeType = oc.TopAbs_ShapeEnum[shapeTypeKey] as unknown as Parameters<
     typeof oc.TopExp.MapShapes_1
   >[1];
   const shapeMap = new oc.TopTools_IndexedMapOfShape_1();
-  const entities: OcctTopologyEntityDescriptor[] = [];
+  const entries: TopologyShapeEntry[] = [];
+
+  oc.TopExp.MapShapes_1(shape, shapeType, shapeMap);
+
+  for (let index = 1; index <= shapeMap.Size(); index += 1) {
+    const current = shapeMap.FindKey(index);
+    const bounds = readBounds(oc, current);
+
+    entries.push({
+      kind,
+      index,
+      localId: createTopologyEntityLocalId(kind, index),
+      shape: current,
+      bounds,
+      signature: createTopologyEntitySignature({
+        sourceKind,
+        entityKind: kind,
+        bounds
+      })
+    });
+  }
+
+  return {
+    entries,
+    map: shapeMap,
+    find: (target) => {
+      const index = shapeMap.FindIndex(target);
+
+      return index > 0 ? entries[index - 1] : undefined;
+    },
+    delete: () => {
+      for (const entry of entries) {
+        entry.shape.delete();
+      }
+
+      shapeMap.delete();
+    }
+  };
+}
+
+function createTopologyEntitiesFromIndex(
+  oc: OpenCascadeInstance,
+  sourceKind: OcctExactBodyMetadataSource["kind"],
+  index: TopologyShapeIndex
+): readonly OcctTopologyEntityDescriptor[] {
+  return index.entries.map((entry) =>
+    createTopologyEntity({
+      oc,
+      kind: entry.kind,
+      shape: entry.shape,
+      index: entry.index,
+      sourceKind,
+      bounds: entry.bounds
+    })
+  );
+}
+
+function createTopologyRelationshipEvidence(
+  oc: OpenCascadeInstance,
+  input: {
+    readonly sourceKind: OcctExactBodyMetadataSource["kind"];
+    readonly faceIndex: TopologyShapeIndex;
+    readonly wireIndex: TopologyShapeIndex;
+    readonly edgeIndex: TopologyShapeIndex;
+    readonly vertexIndex: TopologyShapeIndex;
+  }
+): TopologyRelationshipEvidence {
+  const loopEntities: OcctTopologyEntityDescriptor[] = [];
+  const coedgeEntities: OcctTopologyEntityDescriptor[] = [];
+  const relationshipsByLocalId = new Map<string, OcctTopologyRelationships>();
+  const faceNeighborSignatures = new Map<string, Set<string>>();
+  const edgeNeighborSignatures = new Map<string, Set<string>>();
+
+  for (const faceEntry of input.faceIndex.entries) {
+    let face: ReturnType<typeof oc.TopoDS.Face_1> | undefined;
+    let wireExplorer: InstanceType<typeof oc.TopExp_Explorer_2> | undefined;
+
+    try {
+      face = oc.TopoDS.Face_1(faceEntry.shape);
+      const wireShapeType = oc.TopAbs_ShapeEnum
+        .TopAbs_WIRE as unknown as ConstructorParameters<
+        typeof oc.TopExp_Explorer_2
+      >[1];
+      const avoidShapeType = oc.TopAbs_ShapeEnum
+        .TopAbs_SHAPE as unknown as ConstructorParameters<
+        typeof oc.TopExp_Explorer_2
+      >[2];
+      wireExplorer = new oc.TopExp_Explorer_2(
+        face,
+        wireShapeType,
+        avoidShapeType
+      );
+
+      for (; wireExplorer.More(); wireExplorer.Next()) {
+        const wireShape = wireExplorer.Current();
+
+        try {
+          const wireEntry = input.wireIndex.find(wireShape);
+          const loopEntity = createLoopTopologyEntity(oc, {
+            sourceKind: input.sourceKind,
+            index: loopEntities.length + 1,
+            faceEntry,
+            wireEntry,
+            wireShape
+          });
+          const coedgeEvidence = createCoedgeTopologyEntities(oc, {
+            sourceKind: input.sourceKind,
+            face,
+            faceEntry,
+            wireShape,
+            wireEntry,
+            loopEntity,
+            edgeIndex: input.edgeIndex,
+            vertexIndex: input.vertexIndex,
+            startingIndex: coedgeEntities.length + 1
+          });
+
+          loopEntities.push({
+            ...loopEntity,
+            relationships: mergeTopologyRelationships(
+              loopEntity.relationships,
+              {
+                childCoedgeLocalIds: coedgeEvidence.coedgeLocalIds,
+                childEdgeLocalIds: coedgeEvidence.edgeLocalIds
+              }
+            ),
+            adjacency: {
+              available: true,
+              neighborSignatureHashes: uniqueSorted(
+                coedgeEvidence.edgeSignatures
+              )
+            }
+          });
+          coedgeEntities.push(...coedgeEvidence.coedgeEntities);
+          mergeRelationship(relationshipsByLocalId, faceEntry.localId, {
+            childWireLocalIds: wireEntry ? [wireEntry.localId] : [],
+            childLoopLocalIds: [loopEntity.localId],
+            childCoedgeLocalIds: coedgeEvidence.coedgeLocalIds,
+            childEdgeLocalIds: coedgeEvidence.edgeLocalIds
+          });
+
+          if (wireEntry) {
+            mergeRelationship(relationshipsByLocalId, wireEntry.localId, {
+              parentFaceLocalId: faceEntry.localId,
+              childLoopLocalIds: [loopEntity.localId],
+              childCoedgeLocalIds: coedgeEvidence.coedgeLocalIds,
+              childEdgeLocalIds: coedgeEvidence.edgeLocalIds
+            });
+          }
+
+          addNeighborSignatures(
+            faceNeighborSignatures,
+            faceEntry.localId,
+            coedgeEvidence.edgeSignatures
+          );
+
+          for (const edge of coedgeEvidence.edgeEvidence) {
+            mergeRelationship(relationshipsByLocalId, edge.localId, {
+              adjacentFaceLocalIds: [faceEntry.localId]
+            });
+            addNeighborSignatures(edgeNeighborSignatures, edge.localId, [
+              faceEntry.signature
+            ]);
+          }
+        } finally {
+          wireShape.delete();
+        }
+      }
+    } finally {
+      wireExplorer?.delete();
+      face?.delete();
+    }
+  }
+
+  return {
+    adjacencyAvailable: true,
+    loopEntities,
+    coedgeEntities,
+    relationshipsByLocalId,
+    adjacencyByLocalId: createAdjacencyEvidenceByLocalId(
+      faceNeighborSignatures,
+      edgeNeighborSignatures
+    )
+  };
+}
+
+function createLoopTopologyEntity(
+  oc: OpenCascadeInstance,
+  input: {
+    readonly sourceKind: OcctExactBodyMetadataSource["kind"];
+    readonly index: number;
+    readonly faceEntry: TopologyShapeEntry;
+    readonly wireEntry: TopologyShapeEntry | undefined;
+    readonly wireShape: TopoDS_Shape;
+  }
+): OcctTopologyEntityDescriptor {
+  const bounds = readBounds(oc, input.wireShape);
+  const localId = createTopologyEntityLocalId("loop", input.index);
+
+  return {
+    localId,
+    kind: "loop",
+    source: "kernel-derived",
+    bounds,
+    signature: createTopologyEntitySignature({
+      sourceKind: input.sourceKind,
+      entityKind: "loop",
+      bounds
+    }),
+    orientation: readShapeOrientation(oc, input.wireShape),
+    adjacency: {
+      available: true,
+      neighborSignatureHashes: []
+    },
+    relationships: {
+      parentFaceLocalId: input.faceEntry.localId,
+      ...(input.wireEntry
+        ? { underlyingWireLocalId: input.wireEntry.localId }
+        : {})
+    }
+  };
+}
+
+function createCoedgeTopologyEntities(
+  oc: OpenCascadeInstance,
+  input: {
+    readonly sourceKind: OcctExactBodyMetadataSource["kind"];
+    readonly face: ReturnType<typeof oc.TopoDS.Face_1>;
+    readonly faceEntry: TopologyShapeEntry;
+    readonly wireShape: TopoDS_Shape;
+    readonly wireEntry: TopologyShapeEntry | undefined;
+    readonly loopEntity: OcctTopologyEntityDescriptor;
+    readonly edgeIndex: TopologyShapeIndex;
+    readonly vertexIndex: TopologyShapeIndex;
+    readonly startingIndex: number;
+  }
+): {
+  readonly coedgeEntities: readonly OcctTopologyEntityDescriptor[];
+  readonly coedgeLocalIds: readonly string[];
+  readonly edgeLocalIds: readonly string[];
+  readonly edgeSignatures: readonly string[];
+  readonly edgeEvidence: readonly {
+    readonly localId: string;
+    readonly signature: string;
+  }[];
+} {
+  let wire: ReturnType<typeof oc.TopoDS.Wire_1> | undefined;
+  let explorer: InstanceType<typeof oc.BRepTools_WireExplorer_3> | undefined;
+  const coedgeEntities: OcctTopologyEntityDescriptor[] = [];
+  const edgeLocalIds: string[] = [];
+  const edgeSignatures: string[] = [];
+  const edgeEvidence: {
+    readonly localId: string;
+    readonly signature: string;
+  }[] = [];
 
   try {
-    oc.TopExp.MapShapes_1(shape, shapeType, shapeMap);
+    wire = oc.TopoDS.Wire_1(input.wireShape);
+    explorer = new oc.BRepTools_WireExplorer_3(wire, input.face);
 
-    for (let index = 1; index <= shapeMap.Size(); index += 1) {
-      const current = shapeMap.FindKey(index);
+    for (; explorer.More(); explorer.Next()) {
+      const edgeShape = explorer.Current();
+      let edge: ReturnType<typeof oc.TopoDS.Edge_1> | undefined;
+      let firstVertex: ReturnType<typeof oc.TopExp.FirstVertex> | undefined;
+      let lastVertex: ReturnType<typeof oc.TopExp.LastVertex> | undefined;
 
       try {
-        entities.push(
-          createTopologyEntity({
-            oc,
-            kind,
-            shape: current,
-            index,
-            sourceKind,
-            bounds: readBounds(oc, current)
-          })
+        edge = oc.TopoDS.Edge_1(edgeShape);
+        firstVertex = oc.TopExp.FirstVertex(edge, true);
+        lastVertex = oc.TopExp.LastVertex(edge, true);
+
+        const edgeEntry = input.edgeIndex.find(edgeShape);
+        const startVertexEntry = input.vertexIndex.find(firstVertex);
+        const endVertexEntry = input.vertexIndex.find(lastVertex);
+        const bounds = edgeEntry?.bounds ?? readBounds(oc, edgeShape);
+        const localId = createTopologyEntityLocalId(
+          "coedge",
+          input.startingIndex + coedgeEntities.length
         );
+        const edgeLocalId = edgeEntry?.localId;
+        const edgeSignature =
+          edgeEntry?.signature ??
+          createTopologyEntitySignature({
+            sourceKind: input.sourceKind,
+            entityKind: "edge",
+            bounds
+          });
+
+        if (edgeLocalId) {
+          edgeLocalIds.push(edgeLocalId);
+          edgeSignatures.push(edgeSignature);
+          edgeEvidence.push({
+            localId: edgeLocalId,
+            signature: edgeSignature
+          });
+        }
+
+        coedgeEntities.push({
+          localId,
+          kind: "coedge",
+          source: "kernel-derived",
+          bounds,
+          signature: createTopologyEntitySignature({
+            sourceKind: input.sourceKind,
+            entityKind: "coedge",
+            bounds
+          }),
+          orientation: readTopAbsOrientation(oc, explorer.Orientation()),
+          adjacency: {
+            available: true,
+            neighborSignatureHashes: edgeEntry ? [edgeEntry.signature] : []
+          },
+          relationships: {
+            parentFaceLocalId: input.faceEntry.localId,
+            parentLoopLocalId: input.loopEntity.localId,
+            ...(input.wireEntry
+              ? { parentWireLocalId: input.wireEntry.localId }
+              : {}),
+            ...(edgeLocalId ? { underlyingEdgeLocalId: edgeLocalId } : {}),
+            ...(startVertexEntry
+              ? { startVertexLocalId: startVertexEntry.localId }
+              : {}),
+            ...(endVertexEntry
+              ? { endVertexLocalId: endVertexEntry.localId }
+              : {})
+          }
+        });
       } finally {
-        current.delete();
+        lastVertex?.delete();
+        firstVertex?.delete();
+        edge?.delete();
+        edgeShape.delete();
       }
     }
   } finally {
-    shapeMap.delete();
+    explorer?.delete();
+    wire?.delete();
   }
 
-  return entities;
+  return {
+    coedgeEntities,
+    coedgeLocalIds: coedgeEntities.map((entity) => entity.localId),
+    edgeLocalIds,
+    edgeSignatures,
+    edgeEvidence
+  };
+}
+
+function applyTopologyRelationshipEvidence(
+  entity: OcctTopologyEntityDescriptor,
+  evidence: TopologyRelationshipEvidence
+): OcctTopologyEntityDescriptor {
+  return {
+    ...entity,
+    ...(evidence.adjacencyByLocalId.has(entity.localId)
+      ? { adjacency: evidence.adjacencyByLocalId.get(entity.localId) }
+      : {}),
+    ...(evidence.relationshipsByLocalId.has(entity.localId)
+      ? { relationships: evidence.relationshipsByLocalId.get(entity.localId) }
+      : {})
+  };
+}
+
+function createAdjacencyEvidenceByLocalId(
+  faceNeighborSignatures: ReadonlyMap<string, ReadonlySet<string>>,
+  edgeNeighborSignatures: ReadonlyMap<string, ReadonlySet<string>>
+): ReadonlyMap<string, OcctTopologyEntityDescriptor["adjacency"]> {
+  const adjacencyByLocalId = new Map<
+    string,
+    OcctTopologyEntityDescriptor["adjacency"]
+  >();
+
+  for (const [localId, signatures] of faceNeighborSignatures) {
+    adjacencyByLocalId.set(localId, {
+      available: true,
+      neighborSignatureHashes: uniqueSorted([...signatures])
+    });
+  }
+
+  for (const [localId, signatures] of edgeNeighborSignatures) {
+    adjacencyByLocalId.set(localId, {
+      available: true,
+      neighborSignatureHashes: uniqueSorted([...signatures])
+    });
+  }
+
+  return adjacencyByLocalId;
+}
+
+function mergeRelationship(
+  relationshipsByLocalId: Map<string, OcctTopologyRelationships>,
+  localId: string,
+  next: OcctTopologyRelationships
+): void {
+  relationshipsByLocalId.set(
+    localId,
+    mergeTopologyRelationships(relationshipsByLocalId.get(localId), next)
+  );
+}
+
+function mergeTopologyRelationships(
+  current: OcctTopologyRelationships | undefined,
+  next: OcctTopologyRelationships
+): OcctTopologyRelationships {
+  return {
+    ...current,
+    ...next,
+    childWireLocalIds: appendUnique(
+      current?.childWireLocalIds,
+      next.childWireLocalIds
+    ),
+    childLoopLocalIds: appendUnique(
+      current?.childLoopLocalIds,
+      next.childLoopLocalIds
+    ),
+    childCoedgeLocalIds: appendUnique(
+      current?.childCoedgeLocalIds,
+      next.childCoedgeLocalIds
+    ),
+    childEdgeLocalIds: appendUnique(
+      current?.childEdgeLocalIds,
+      next.childEdgeLocalIds
+    ),
+    adjacentFaceLocalIds: appendUnique(
+      current?.adjacentFaceLocalIds,
+      next.adjacentFaceLocalIds
+    )
+  };
+}
+
+function addNeighborSignatures(
+  neighborsByLocalId: Map<string, Set<string>>,
+  localId: string,
+  signatures: readonly string[]
+): void {
+  const signaturesForLocalId = neighborsByLocalId.get(localId) ?? new Set();
+
+  for (const signature of signatures) {
+    signaturesForLocalId.add(signature);
+  }
+
+  neighborsByLocalId.set(localId, signaturesForLocalId);
+}
+
+function appendUnique(
+  current: readonly string[] | undefined,
+  next: readonly string[] | undefined
+): readonly string[] | undefined {
+  if (!current && !next) {
+    return undefined;
+  }
+
+  return [...new Set([...(current ?? []), ...(next ?? [])])];
+}
+
+function uniqueSorted(values: readonly string[]): readonly string[] {
+  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
 }
 
 function createTopologyEntity(input: {
@@ -533,17 +1082,69 @@ function createTopologyEntity(input: {
   );
 
   return {
-    localId: `snapshot-local:${input.kind}:${input.index}`,
+    localId: createTopologyEntityLocalId(input.kind, input.index),
     kind: input.kind,
     source: "kernel-derived",
     bounds: input.bounds,
     ...evidence,
-    signature: createDerivedTopologySignature({
+    ...(input.shape
+      ? { orientation: readShapeOrientation(input.oc, input.shape) }
+      : {}),
+    signature: createTopologyEntitySignature({
       sourceKind: input.sourceKind,
       entityKind: input.kind,
-      bounds: normalizeBoundsForSignature(input.bounds)
+      bounds: input.bounds
     })
   };
+}
+
+function createTopologyEntityLocalId(
+  kind: OcctTopologyEntityKind,
+  index: number
+): string {
+  return `snapshot-local:${kind}:${index}`;
+}
+
+function createTopologyEntitySignature(input: {
+  readonly sourceKind: OcctExactBodyMetadataSource["kind"];
+  readonly entityKind: OcctTopologyEntityKind;
+  readonly bounds: OcctExactBodyMetadata["bounds"];
+}): string {
+  return createDerivedTopologySignature({
+    sourceKind: input.sourceKind,
+    entityKind: input.entityKind,
+    bounds: normalizeBoundsForSignature(input.bounds)
+  });
+}
+
+function readShapeOrientation(
+  oc: OpenCascadeInstance,
+  shape: TopoDS_Shape
+): OcctTopologyOrientation {
+  return readTopAbsOrientation(oc, shape.Orientation_1());
+}
+
+function readTopAbsOrientation(
+  oc: OpenCascadeInstance,
+  orientation: ReturnType<TopoDS_Shape["Orientation_1"]>
+): OcctTopologyOrientation {
+  if (orientation === oc.TopAbs_Orientation.TopAbs_FORWARD) {
+    return "forward";
+  }
+
+  if (orientation === oc.TopAbs_Orientation.TopAbs_REVERSED) {
+    return "reversed";
+  }
+
+  if (orientation === oc.TopAbs_Orientation.TopAbs_INTERNAL) {
+    return "internal";
+  }
+
+  if (orientation === oc.TopAbs_Orientation.TopAbs_EXTERNAL) {
+    return "external";
+  }
+
+  return "unknown";
 }
 
 function createTopologyEntityEvidence(
@@ -1119,13 +1720,20 @@ function assertExactMetadataBindings(oc: OpenCascadeInstance): void {
     ["BRep_Tool.Pnt", oc.BRep_Tool?.Pnt],
     ["TopoDS.Face_1", oc.TopoDS?.Face_1],
     ["TopoDS.Edge_1", oc.TopoDS?.Edge_1],
+    ["TopoDS.Wire_1", oc.TopoDS?.Wire_1],
     ["TopoDS.Vertex_1", oc.TopoDS?.Vertex_1],
     ["TopExp.MapShapes_1", oc.TopExp?.MapShapes_1],
+    ["TopExp.FirstVertex", oc.TopExp?.FirstVertex],
+    ["TopExp.LastVertex", oc.TopExp?.LastVertex],
+    ["TopExp_Explorer_2", oc.TopExp_Explorer_2],
+    ["BRepTools_WireExplorer_3", oc.BRepTools_WireExplorer_3],
     ["TopTools_IndexedMapOfShape_1", oc.TopTools_IndexedMapOfShape_1],
     ["GeomAbs_SurfaceType", oc.GeomAbs_SurfaceType],
     ["GeomAbs_CurveType", oc.GeomAbs_CurveType],
+    ["TopAbs_Orientation", oc.TopAbs_Orientation],
     ["TopAbs_ShapeEnum", oc.TopAbs_ShapeEnum],
-    ["TopAbs_ShapeEnum.TopAbs_WIRE", oc.TopAbs_ShapeEnum?.TopAbs_WIRE]
+    ["TopAbs_ShapeEnum.TopAbs_WIRE", oc.TopAbs_ShapeEnum?.TopAbs_WIRE],
+    ["TopAbs_ShapeEnum.TopAbs_SHAPE", oc.TopAbs_ShapeEnum?.TopAbs_SHAPE]
   ];
   const missing = bindings
     .filter(([, value]) => value === undefined || value === null)

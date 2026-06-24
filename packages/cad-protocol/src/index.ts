@@ -3167,6 +3167,7 @@ export type CadTopologyMatchEvidenceKind =
   | "entityKind"
   | "surfaceType"
   | "curveType"
+  | "orientation"
   | "geometrySignature"
   | "bounds"
   | "centroid"
@@ -4716,6 +4717,28 @@ export interface CadTopologyEntityAdjacencyEvidence {
   readonly neighborSignatureHashes: readonly string[];
 }
 
+export type CadTopologyOrientation =
+  | "forward"
+  | "reversed"
+  | "internal"
+  | "external"
+  | "unknown";
+
+export interface CadTopologyEntityRelationshipEvidence {
+  readonly parentFaceLocalId?: string;
+  readonly parentWireLocalId?: string;
+  readonly parentLoopLocalId?: string;
+  readonly underlyingWireLocalId?: string;
+  readonly underlyingEdgeLocalId?: string;
+  readonly startVertexLocalId?: string;
+  readonly endVertexLocalId?: string;
+  readonly childWireLocalIds?: readonly string[];
+  readonly childLoopLocalIds?: readonly string[];
+  readonly childCoedgeLocalIds?: readonly string[];
+  readonly childEdgeLocalIds?: readonly string[];
+  readonly adjacentFaceLocalIds?: readonly string[];
+}
+
 export interface CadBodyExactTopologyEntityDescriptor {
   readonly localId: string;
   readonly kind: CadTopologyEntityKind | "solid";
@@ -4732,6 +4755,8 @@ export interface CadBodyExactTopologyEntityDescriptor {
   readonly area?: number;
   readonly length?: number;
   readonly adjacency?: CadTopologyEntityAdjacencyEvidence;
+  readonly orientation?: CadTopologyOrientation;
+  readonly relationships?: CadTopologyEntityRelationshipEvidence;
 }
 
 export interface CadBodyExactTopologySnapshot {

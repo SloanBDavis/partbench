@@ -1326,10 +1326,12 @@ describe("geometry-worker", () => {
       sourceKind: "extrude",
       source: "kernel-derived",
       status: "partial",
-      adjacencyAvailable: false,
+      adjacencyAvailable: true,
       signatureAlgorithm: "partbench-derived-topology-snapshot-v1"
     });
     expect(response.response.snapshot.entityCounts.faceCount).toBe(6);
+    expect(response.response.snapshot.entityCounts.loopCount).toBe(6);
+    expect(response.response.snapshot.entityCounts.coedgeCount).toBe(24);
     expect(response.response.snapshot.entityCount).toBe(
       response.response.snapshot.entities.length
     );
@@ -1366,6 +1368,34 @@ describe("geometry-worker", () => {
             expect.any(Number),
             expect.any(Number)
           ])
+        }),
+        expect.objectContaining({
+          kind: "loop",
+          orientation: expect.stringMatching(/forward|reversed/),
+          relationships: expect.objectContaining({
+            parentFaceLocalId: expect.stringMatching(/^snapshot-local:face:/),
+            underlyingWireLocalId: expect.stringMatching(
+              /^snapshot-local:wire:/
+            ),
+            childCoedgeLocalIds: expect.arrayContaining([
+              expect.stringMatching(/^snapshot-local:coedge:/)
+            ])
+          })
+        }),
+        expect.objectContaining({
+          kind: "coedge",
+          orientation: expect.stringMatching(/forward|reversed/),
+          relationships: expect.objectContaining({
+            parentFaceLocalId: expect.stringMatching(/^snapshot-local:face:/),
+            parentLoopLocalId: expect.stringMatching(/^snapshot-local:loop:/),
+            underlyingEdgeLocalId: expect.stringMatching(
+              /^snapshot-local:edge:/
+            ),
+            startVertexLocalId: expect.stringMatching(
+              /^snapshot-local:vertex:/
+            ),
+            endVertexLocalId: expect.stringMatching(/^snapshot-local:vertex:/)
+          })
         })
       ])
     );

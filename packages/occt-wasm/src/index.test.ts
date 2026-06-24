@@ -449,21 +449,21 @@ describe("occt-wasm", () => {
         sourceKind: "extrude",
         status: "partial",
         source: "kernel-derived",
-        adjacencyAvailable: false,
+        adjacencyAvailable: true,
         signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
-        unsupportedEntityKinds: ["loop", "coedge", "axis"]
+        unsupportedEntityKinds: ["axis"]
       });
       expect(snapshot.entityCounts).toMatchObject({
         bodyCount: 1,
         solidCount: 1,
         faceCount: 6,
+        wireCount: 6,
         edgeCount: 12,
         vertexCount: 8,
-        loopCount: 0,
-        coedgeCount: 0,
+        loopCount: 6,
+        coedgeCount: 24,
         axisCount: 0
       });
-      expect(snapshot.entityCounts.wireCount).toBeGreaterThan(0);
       expect(snapshot.entityCount).toBe(snapshot.entities.length);
       const bodyEntity = snapshot.entities.find(
         (entity) => entity.kind === "body"
@@ -486,8 +486,13 @@ describe("occt-wasm", () => {
         new Set(snapshot.entities.map((entity) => entity.signature)).size
       ).toBeGreaterThan(3);
       expect(
-        snapshot.entities.every(
-          (entity) => entity.adjacency?.available === false
+        snapshot.entities.some(
+          (entity) => entity.kind === "face" && entity.adjacency?.available
+        )
+      ).toBe(true);
+      expect(
+        snapshot.entities.some(
+          (entity) => entity.kind === "edge" && entity.adjacency?.available
         )
       ).toBe(true);
       expect(snapshot.entities).toEqual(
@@ -524,6 +529,46 @@ describe("occt-wasm", () => {
               expect.any(Number),
               expect.any(Number)
             ])
+          }),
+          expect.objectContaining({
+            kind: "loop",
+            orientation: expect.stringMatching(/forward|reversed/),
+            adjacency: expect.objectContaining({
+              available: true,
+              neighborSignatureHashes: expect.any(Array)
+            }),
+            relationships: expect.objectContaining({
+              parentFaceLocalId: expect.stringMatching(/^snapshot-local:face:/),
+              underlyingWireLocalId: expect.stringMatching(
+                /^snapshot-local:wire:/
+              ),
+              childCoedgeLocalIds: expect.arrayContaining([
+                expect.stringMatching(/^snapshot-local:coedge:/)
+              ]),
+              childEdgeLocalIds: expect.arrayContaining([
+                expect.stringMatching(/^snapshot-local:edge:/)
+              ])
+            })
+          }),
+          expect.objectContaining({
+            kind: "coedge",
+            orientation: expect.stringMatching(/forward|reversed/),
+            adjacency: expect.objectContaining({
+              available: true,
+              neighborSignatureHashes: expect.any(Array)
+            }),
+            relationships: expect.objectContaining({
+              parentFaceLocalId: expect.stringMatching(/^snapshot-local:face:/),
+              parentWireLocalId: expect.stringMatching(/^snapshot-local:wire:/),
+              parentLoopLocalId: expect.stringMatching(/^snapshot-local:loop:/),
+              underlyingEdgeLocalId: expect.stringMatching(
+                /^snapshot-local:edge:/
+              ),
+              startVertexLocalId: expect.stringMatching(
+                /^snapshot-local:vertex:/
+              ),
+              endVertexLocalId: expect.stringMatching(/^snapshot-local:vertex:/)
+            })
           })
         ])
       );
@@ -580,11 +625,18 @@ describe("occt-wasm", () => {
             message: expect.stringContaining("exact surface")
           }),
           expect.objectContaining({
-            code: "GEOMETRY_TOPOLOGY_ADJACENCY_UNAVAILABLE"
+            code: "GEOMETRY_TOPOLOGY_ADJACENCY_EXTRACTED"
           }),
           expect.objectContaining({
             code: "GEOMETRY_TOPOLOGY_SIGNATURE_LIMITED",
             message: expect.stringContaining("per-entity bounds")
+          })
+        ])
+      );
+      expect(snapshot.diagnostics).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: "GEOMETRY_TOPOLOGY_ADJACENCY_UNAVAILABLE"
           })
         ])
       );

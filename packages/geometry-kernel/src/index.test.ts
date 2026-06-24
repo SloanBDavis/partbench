@@ -26,6 +26,7 @@ function createTopologyEntityFixture(
       min: [-1, -1.5, 0] as const,
       max: [1, 1.5, 4] as const
     },
+    orientation: "forward" as const,
     adjacency: {
       available: false,
       neighborSignatureHashes: [] as const
@@ -36,7 +37,12 @@ function createTopologyEntityFixture(
     return {
       ...base,
       surfaceClass: "plane",
-      normal: [0, 0, 1]
+      normal: [0, 0, 1],
+      relationships: {
+        childLoopLocalIds: ["snapshot-local:loop:1"],
+        childCoedgeLocalIds: ["snapshot-local:coedge:1"],
+        childEdgeLocalIds: ["snapshot-local:edge:1"]
+      }
     };
   }
 
@@ -46,7 +52,10 @@ function createTopologyEntityFixture(
       curveClass: "line",
       midpoint: [0, 0, 2],
       axis: [0, 0, 1],
-      length: 4
+      length: 4,
+      relationships: {
+        adjacentFaceLocalIds: ["snapshot-local:face:1"]
+      }
     };
   }
 

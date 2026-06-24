@@ -525,6 +525,28 @@ export interface GeometryKernelTopologyEntityAdjacencyEvidence {
   readonly neighborSignatureHashes: readonly string[];
 }
 
+export type GeometryKernelTopologyOrientation =
+  | "forward"
+  | "reversed"
+  | "internal"
+  | "external"
+  | "unknown";
+
+export interface GeometryKernelTopologyEntityRelationshipEvidence {
+  readonly parentFaceLocalId?: string;
+  readonly parentWireLocalId?: string;
+  readonly parentLoopLocalId?: string;
+  readonly underlyingWireLocalId?: string;
+  readonly underlyingEdgeLocalId?: string;
+  readonly startVertexLocalId?: string;
+  readonly endVertexLocalId?: string;
+  readonly childWireLocalIds?: readonly string[];
+  readonly childLoopLocalIds?: readonly string[];
+  readonly childCoedgeLocalIds?: readonly string[];
+  readonly childEdgeLocalIds?: readonly string[];
+  readonly adjacentFaceLocalIds?: readonly string[];
+}
+
 export interface GeometryKernelTopologyCounts {
   readonly solidCount: number;
   readonly faceCount: number;
@@ -567,6 +589,7 @@ export type GeometryKernelTopologyEntityKind =
 export type GeometryKernelTopologyDiagnosticCode =
   | "GEOMETRY_TOPOLOGY_SNAPSHOT_EXTRACTED"
   | "GEOMETRY_TOPOLOGY_DESCRIPTOR_EVIDENCE_EXTRACTED"
+  | "GEOMETRY_TOPOLOGY_ADJACENCY_EXTRACTED"
   | "GEOMETRY_TOPOLOGY_ENTITY_KIND_UNAVAILABLE"
   | "GEOMETRY_TOPOLOGY_ADJACENCY_UNAVAILABLE"
   | "GEOMETRY_TOPOLOGY_SIGNATURE_LIMITED";
@@ -594,6 +617,8 @@ export interface GeometryKernelTopologyEntityDescriptor {
   readonly area?: number;
   readonly length?: number;
   readonly adjacency?: GeometryKernelTopologyEntityAdjacencyEvidence;
+  readonly orientation?: GeometryKernelTopologyOrientation;
+  readonly relationships?: GeometryKernelTopologyEntityRelationshipEvidence;
 }
 
 export interface GeometryKernelTopologyEntityCounts extends GeometryKernelTopologyCounts {
@@ -1965,6 +1990,10 @@ function isInvalidExactTopologySnapshot(
         (entity.length !== undefined && !isNonNegativeFinite(entity.length)) ||
         (entity.adjacency !== undefined &&
           !isTopologyAdjacencyEvidence(entity.adjacency)) ||
+        (entity.orientation !== undefined &&
+          !isTopologyOrientation(entity.orientation)) ||
+        (entity.relationships !== undefined &&
+          !isTopologyRelationshipEvidence(entity.relationships)) ||
         !isTopologyDescriptorEvidenceForKind(entity)
     ) ||
     snapshot.unsupportedEntityKinds.some(
@@ -2161,6 +2190,16 @@ function isTopologyCurveClass(value: unknown): boolean {
   );
 }
 
+function isTopologyOrientation(value: unknown): boolean {
+  return (
+    value === "forward" ||
+    value === "reversed" ||
+    value === "internal" ||
+    value === "external" ||
+    value === "unknown"
+  );
+}
+
 function isTopologyAdjacencyEvidence(value: unknown): boolean {
   return (
     isRecord(value) &&
@@ -2172,12 +2211,46 @@ function isTopologyAdjacencyEvidence(value: unknown): boolean {
   );
 }
 
+function isTopologyRelationshipEvidence(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    isOptionalNonEmptyString(value.parentFaceLocalId) &&
+    isOptionalNonEmptyString(value.parentWireLocalId) &&
+    isOptionalNonEmptyString(value.parentLoopLocalId) &&
+    isOptionalNonEmptyString(value.underlyingWireLocalId) &&
+    isOptionalNonEmptyString(value.underlyingEdgeLocalId) &&
+    isOptionalNonEmptyString(value.startVertexLocalId) &&
+    isOptionalNonEmptyString(value.endVertexLocalId) &&
+    isOptionalNonEmptyStringArray(value.childWireLocalIds) &&
+    isOptionalNonEmptyStringArray(value.childLoopLocalIds) &&
+    isOptionalNonEmptyStringArray(value.childCoedgeLocalIds) &&
+    isOptionalNonEmptyStringArray(value.childEdgeLocalIds) &&
+    isOptionalNonEmptyStringArray(value.adjacentFaceLocalIds)
+  );
+}
+
+function isOptionalNonEmptyString(value: unknown): boolean {
+  return value === undefined || (typeof value === "string" && value.length > 0);
+}
+
+function isOptionalNonEmptyStringArray(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (Array.isArray(value) &&
+      value.every((item) => typeof item === "string" && item.length > 0))
+  );
+}
+
 function isTopologyDiagnosticCode(
   code: string
 ): code is GeometryKernelTopologyDiagnosticCode {
   return (
     code === "GEOMETRY_TOPOLOGY_SNAPSHOT_EXTRACTED" ||
     code === "GEOMETRY_TOPOLOGY_DESCRIPTOR_EVIDENCE_EXTRACTED" ||
+    code === "GEOMETRY_TOPOLOGY_ADJACENCY_EXTRACTED" ||
     code === "GEOMETRY_TOPOLOGY_ENTITY_KIND_UNAVAILABLE" ||
     code === "GEOMETRY_TOPOLOGY_ADJACENCY_UNAVAILABLE" ||
     code === "GEOMETRY_TOPOLOGY_SIGNATURE_LIMITED"
