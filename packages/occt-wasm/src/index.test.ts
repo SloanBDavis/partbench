@@ -142,6 +142,36 @@ describe("occt-wasm", () => {
           signature: entity.signature
         }))
       });
+      expect(checkpointPayload.topologySnapshot.entities).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: "face",
+            surfaceClass: "plane",
+            area: expect.any(Number)
+          }),
+          expect.objectContaining({
+            kind: "edge",
+            curveClass: "line",
+            length: expect.any(Number)
+          })
+        ])
+      );
+      expect(checkpointPayload.signaturePayload.entities).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            surfaceClass: expect.any(String)
+          }),
+          expect.objectContaining({
+            curveClass: expect.any(String)
+          }),
+          expect.objectContaining({
+            area: expect.any(Number)
+          }),
+          expect.objectContaining({
+            length: expect.any(Number)
+          })
+        ])
+      );
       expect(JSON.stringify(checkpointPayload)).not.toMatch(
         /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
       );
@@ -465,6 +495,7 @@ describe("occt-wasm", () => {
           expect.objectContaining({
             kind: "face",
             surfaceClass: "plane",
+            area: expect.any(Number),
             normal: expect.arrayContaining([
               expect.any(Number),
               expect.any(Number),
@@ -501,6 +532,28 @@ describe("occt-wasm", () => {
           (entity) => entity.kind === "edge" && (entity.length ?? 0) > 0
         )
       ).toBe(true);
+      const faceAreas = snapshot.entities
+        .filter((entity) => entity.kind === "face")
+        .map((entity) => entity.area);
+      const edgeLengths = snapshot.entities
+        .filter((entity) => entity.kind === "edge")
+        .map((entity) => entity.length);
+
+      expect(faceAreas.every((area) => Number.isFinite(area))).toBe(true);
+      expect(edgeLengths.every((length) => Number.isFinite(length))).toBe(true);
+      expect(faceAreas.some((area) => area !== undefined && area > 0)).toBe(
+        true
+      );
+      expect(
+        faceAreas.some(
+          (area) => area !== undefined && Math.abs(area - 12) < 1e-6
+        )
+      ).toBe(true);
+      expect(
+        edgeLengths.some(
+          (length) => length !== undefined && Math.abs(length - 5) < 1e-6
+        )
+      ).toBe(true);
       expect(snapshot.entities).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -523,6 +576,10 @@ describe("occt-wasm", () => {
             code: "GEOMETRY_TOPOLOGY_SNAPSHOT_EXTRACTED"
           }),
           expect.objectContaining({
+            code: "GEOMETRY_TOPOLOGY_DESCRIPTOR_EVIDENCE_EXTRACTED",
+            message: expect.stringContaining("exact surface")
+          }),
+          expect.objectContaining({
             code: "GEOMETRY_TOPOLOGY_ADJACENCY_UNAVAILABLE"
           }),
           expect.objectContaining({
@@ -530,6 +587,64 @@ describe("occt-wasm", () => {
             message: expect.stringContaining("per-entity bounds")
           })
         ])
+      );
+      expect(JSON.stringify(snapshot)).not.toMatch(
+        /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
+      );
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "extracts exact cylindrical surface and circular edge descriptors through Open CASCADE WASM",
+    async () => {
+      const snapshot = await createOcctExactTopologySnapshot({
+        source: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 2
+          },
+          depth: 5
+        }
+      });
+      const cylindricalFace = snapshot.entities.find(
+        (entity) => entity.kind === "face" && entity.surfaceClass === "cylinder"
+      );
+      const circularEdge = snapshot.entities.find(
+        (entity) => entity.kind === "edge" && entity.curveClass === "circle"
+      );
+
+      expect(cylindricalFace).toMatchObject({
+        kind: "face",
+        surfaceClass: "cylinder",
+        axis: expect.arrayContaining([
+          expect.any(Number),
+          expect.any(Number),
+          expect.any(Number)
+        ]),
+        radius: expect.any(Number),
+        area: expect.any(Number)
+      });
+      expect(cylindricalFace?.radius).toBeCloseTo(2, 6);
+      expect(cylindricalFace?.area).toBeCloseTo(20 * Math.PI, 6);
+      expect(circularEdge).toMatchObject({
+        kind: "edge",
+        curveClass: "circle",
+        axis: expect.arrayContaining([
+          expect.any(Number),
+          expect.any(Number),
+          expect.any(Number)
+        ]),
+        radius: expect.any(Number),
+        length: expect.any(Number)
+      });
+      expect(circularEdge?.radius).toBeCloseTo(2, 6);
+      expect(circularEdge?.length).toBeCloseTo(4 * Math.PI, 6);
+      expect(snapshot.signatureAlgorithm).toBe(
+        "partbench-derived-topology-snapshot-v1"
       );
       expect(JSON.stringify(snapshot)).not.toMatch(
         /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i

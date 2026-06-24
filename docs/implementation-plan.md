@@ -2594,12 +2594,23 @@ Use these decisions when drafting or implementing V13 tranches:
     protocol, cad-core, geometry-kernel, geometry-worker, and OCCT snapshot
     types accept optional descriptor evidence for surface class, curve class,
     point, midpoint, normal, axis, radius, area, length, and adjacency hash
-    sets. OCCT extraction populates only conservative bounds-derived hints for
-    axis-aligned planar faces, line-like edges, point-like vertices, and
-    explicit unavailable adjacency. Cad-core validates those optional fields
-    and `topology.matchSnapshots` consumes them as additional evidence without
+    sets. Cad-core validates those optional fields and
+    `topology.matchSnapshots` consumes them as additional evidence without
     changing the `partbench-derived-topology-snapshot-v1` signature algorithm
     or making arbitrary exact-only topology command-ready.
+13. **Implemented: OCCT Descriptor Capability Proof And Exact Descriptor
+    Extraction** - the OCCT boundary now proves and uses
+    `BRepAdaptor_Surface_2`, `BRepAdaptor_Curve_2`,
+    `BRepGProp.SurfaceProperties_1`, `BRepGProp.LinearProperties`,
+    `BRep_Tool.Pnt`, and `TopoDS` casts to populate exact face/edge/vertex
+    descriptor evidence where supported. Snapshots can now include exact
+    surface/curve class, face area, edge length, plane normal, line/circle axis,
+    circle/cylinder radius, curve midpoint, and vertex point evidence. The
+    checkpoint signature payload remains unchanged and excludes descriptor
+    evidence, raw OCCT ids, renderer ids, mesh ids, and other private runtime
+    handles. Loop/coedge ordering, full orientation evidence, real adjacency
+    extraction, and arbitrary exact-only command validators remain later V13
+    hardening.
 
 ### V13 Scope Guardrails
 

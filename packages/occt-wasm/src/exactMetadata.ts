@@ -150,6 +150,7 @@ export interface OcctTopologyEntityCounts {
 export interface OcctTopologyDiagnostic {
   readonly code:
     | "GEOMETRY_TOPOLOGY_SNAPSHOT_EXTRACTED"
+    | "GEOMETRY_TOPOLOGY_DESCRIPTOR_EVIDENCE_EXTRACTED"
     | "GEOMETRY_TOPOLOGY_ENTITY_KIND_UNAVAILABLE"
     | "GEOMETRY_TOPOLOGY_ADJACENCY_UNAVAILABLE"
     | "GEOMETRY_TOPOLOGY_SIGNATURE_LIMITED";
@@ -181,6 +182,28 @@ interface EmptyResultError {
   readonly code: "EMPTY_RESULT";
   readonly message: string;
 }
+
+interface OcctPointLike {
+  X(): number;
+  Y(): number;
+  Z(): number;
+}
+
+interface OcctDeletablePointLike extends OcctPointLike {
+  delete(): void;
+}
+
+interface OcctAxisLike {
+  Direction(): OcctDeletablePointLike;
+  delete(): void;
+}
+
+type OcctSurfaceAdaptor = InstanceType<
+  OpenCascadeInstance["BRepAdaptor_Surface_2"]
+>;
+type OcctCurveAdaptor = InstanceType<
+  OpenCascadeInstance["BRepAdaptor_Curve_2"]
+>;
 
 export async function createOcctExactBodyMetadataWithLoader(
   loadOcct: OcctLoader,
@@ -364,6 +387,7 @@ export function readExactTopologySnapshot(
   };
   const entities = [
     createTopologyEntity({
+      oc,
       kind: "body",
       index: 1,
       sourceKind,
@@ -408,6 +432,12 @@ export function readExactTopologySnapshot(
     source: "kernel-derived",
     diagnostics: [
       {
+        code: "GEOMETRY_TOPOLOGY_DESCRIPTOR_EVIDENCE_EXTRACTED",
+        severity: "info",
+        message:
+          "Open CASCADE adaptor and property bindings extracted exact surface, curve, point, area, length, axis, normal, and radius descriptor evidence where supported."
+      },
+      {
         code: "GEOMETRY_TOPOLOGY_SNAPSHOT_EXTRACTED",
         severity: "info",
         message:
@@ -429,7 +459,7 @@ export function readExactTopologySnapshot(
         code: "GEOMETRY_TOPOLOGY_SIGNATURE_LIMITED",
         severity: "warning",
         message:
-          "Topology signatures include source kind, topology kind, and per-entity bounds; surface, curve, and adjacency descriptors are not exposed by the current Open CASCADE snapshot binding."
+          "Topology signatures include source kind, topology kind, and per-entity bounds; exact descriptor evidence is available for matching but remains outside the v1 signature payload."
       }
     ]
   };
@@ -465,7 +495,9 @@ function createTopologyEntities(
       try {
         entities.push(
           createTopologyEntity({
+            oc,
             kind,
+            shape: current,
             index,
             sourceKind,
             bounds: readBounds(oc, current)
@@ -483,15 +515,22 @@ function createTopologyEntities(
 }
 
 function createTopologyEntity(input: {
+  readonly oc: OpenCascadeInstance;
   readonly kind: Extract<
     OcctTopologyEntityKind,
     "body" | "solid" | "face" | "wire" | "edge" | "vertex"
   >;
+  readonly shape?: TopoDS_Shape;
   readonly index: number;
   readonly sourceKind: OcctExactBodyMetadataSource["kind"];
   readonly bounds: OcctExactBodyMetadata["bounds"];
 }): OcctTopologyEntityDescriptor {
-  const evidence = createTopologyEntityEvidence(input.kind, input.bounds);
+  const evidence = createTopologyEntityEvidence(
+    input.oc,
+    input.kind,
+    input.shape,
+    input.bounds
+  );
 
   return {
     localId: `snapshot-local:${input.kind}:${input.index}`,
@@ -508,16 +547,30 @@ function createTopologyEntity(input: {
 }
 
 function createTopologyEntityEvidence(
+  oc: OpenCascadeInstance,
   kind: Extract<
     OcctTopologyEntityKind,
     "body" | "solid" | "face" | "wire" | "edge" | "vertex"
   >,
+  shape: TopoDS_Shape | undefined,
   bounds: OcctExactBodyMetadata["bounds"]
 ): Partial<OcctTopologyEntityDescriptor> {
   const adjacency = {
     available: false,
     neighborSignatureHashes: []
   } as const;
+
+  if (shape && kind === "face") {
+    return readFaceTopologyEvidence(oc, shape, adjacency, bounds);
+  }
+
+  if (shape && kind === "edge") {
+    return readEdgeTopologyEvidence(oc, shape, adjacency, bounds);
+  }
+
+  if (shape && kind === "vertex") {
+    return readVertexTopologyEvidence(oc, shape, adjacency, bounds);
+  }
 
   if (kind === "face") {
     const plane = findAxisAlignedPlane(bounds);
@@ -553,6 +606,344 @@ function createTopologyEntityEvidence(
   }
 
   return { adjacency };
+}
+
+function readFaceTopologyEvidence(
+  oc: OpenCascadeInstance,
+  shape: TopoDS_Shape,
+  adjacency: OcctTopologyEntityDescriptor["adjacency"],
+  bounds: OcctExactBodyMetadata["bounds"]
+): Partial<OcctTopologyEntityDescriptor> {
+  let face: ReturnType<typeof oc.TopoDS.Face_1> | undefined;
+  let surface: InstanceType<typeof oc.BRepAdaptor_Surface_2> | undefined;
+
+  try {
+    face = oc.TopoDS.Face_1(shape);
+    surface = new oc.BRepAdaptor_Surface_2(face, true);
+
+    const surfaceClass = readSurfaceClass(oc, surface.GetType());
+    const area = readSurfaceArea(oc, face);
+    const surfaceEvidence = readSurfaceGeometryEvidence(surface, surfaceClass);
+
+    return {
+      surfaceClass,
+      ...(area !== undefined ? { area } : {}),
+      ...surfaceEvidence,
+      adjacency
+    };
+  } catch {
+    const fallback = createTopologyEntityEvidence(
+      oc,
+      "face",
+      undefined,
+      bounds
+    );
+
+    return {
+      ...fallback,
+      adjacency
+    };
+  } finally {
+    surface?.delete();
+    face?.delete();
+  }
+}
+
+function readEdgeTopologyEvidence(
+  oc: OpenCascadeInstance,
+  shape: TopoDS_Shape,
+  adjacency: OcctTopologyEntityDescriptor["adjacency"],
+  bounds: OcctExactBodyMetadata["bounds"]
+): Partial<OcctTopologyEntityDescriptor> {
+  let edge: ReturnType<typeof oc.TopoDS.Edge_1> | undefined;
+  let curve: InstanceType<typeof oc.BRepAdaptor_Curve_2> | undefined;
+
+  try {
+    edge = oc.TopoDS.Edge_1(shape);
+    curve = new oc.BRepAdaptor_Curve_2(edge);
+
+    const curveClass = readCurveClass(oc, curve.GetType());
+    const length = readEdgeLength(oc, edge);
+    const midpoint = readCurveMidpoint(curve);
+    const curveEvidence = readCurveGeometryEvidence(curve, curveClass);
+
+    return {
+      curveClass,
+      ...(length !== undefined ? { length } : {}),
+      ...(midpoint ? { midpoint } : {}),
+      ...curveEvidence,
+      adjacency
+    };
+  } catch {
+    const fallback = createTopologyEntityEvidence(
+      oc,
+      "edge",
+      undefined,
+      bounds
+    );
+
+    return {
+      ...fallback,
+      adjacency
+    };
+  } finally {
+    curve?.delete();
+    edge?.delete();
+  }
+}
+
+function readVertexTopologyEvidence(
+  oc: OpenCascadeInstance,
+  shape: TopoDS_Shape,
+  adjacency: OcctTopologyEntityDescriptor["adjacency"],
+  bounds: OcctExactBodyMetadata["bounds"]
+): Partial<OcctTopologyEntityDescriptor> {
+  let vertex: ReturnType<typeof oc.TopoDS.Vertex_1> | undefined;
+  let point: ReturnType<typeof oc.BRep_Tool.Pnt> | undefined;
+
+  try {
+    vertex = oc.TopoDS.Vertex_1(shape);
+    point = oc.BRep_Tool.Pnt(vertex);
+
+    return {
+      point: readPoint(point),
+      adjacency
+    };
+  } catch {
+    const fallback = createTopologyEntityEvidence(
+      oc,
+      "vertex",
+      undefined,
+      bounds
+    );
+
+    return {
+      ...fallback,
+      adjacency
+    };
+  } finally {
+    point?.delete();
+    vertex?.delete();
+  }
+}
+
+function readSurfaceClass(
+  oc: OpenCascadeInstance,
+  surfaceType: ReturnType<
+    InstanceType<typeof oc.BRepAdaptor_Surface_2>["GetType"]
+  >
+): NonNullable<OcctTopologyEntityDescriptor["surfaceClass"]> {
+  if (surfaceType === oc.GeomAbs_SurfaceType.GeomAbs_Plane) {
+    return "plane";
+  }
+
+  if (surfaceType === oc.GeomAbs_SurfaceType.GeomAbs_Cylinder) {
+    return "cylinder";
+  }
+
+  if (surfaceType === oc.GeomAbs_SurfaceType.GeomAbs_Cone) {
+    return "cone";
+  }
+
+  if (surfaceType === oc.GeomAbs_SurfaceType.GeomAbs_Sphere) {
+    return "sphere";
+  }
+
+  if (surfaceType === oc.GeomAbs_SurfaceType.GeomAbs_Torus) {
+    return "torus";
+  }
+
+  if (
+    surfaceType === oc.GeomAbs_SurfaceType.GeomAbs_BezierSurface ||
+    surfaceType === oc.GeomAbs_SurfaceType.GeomAbs_BSplineSurface
+  ) {
+    return "bspline";
+  }
+
+  return "unknown";
+}
+
+function readCurveClass(
+  oc: OpenCascadeInstance,
+  curveType: ReturnType<InstanceType<typeof oc.BRepAdaptor_Curve_2>["GetType"]>
+): NonNullable<OcctTopologyEntityDescriptor["curveClass"]> {
+  if (curveType === oc.GeomAbs_CurveType.GeomAbs_Line) {
+    return "line";
+  }
+
+  if (curveType === oc.GeomAbs_CurveType.GeomAbs_Circle) {
+    return "circle";
+  }
+
+  if (curveType === oc.GeomAbs_CurveType.GeomAbs_Ellipse) {
+    return "ellipse";
+  }
+
+  if (
+    curveType === oc.GeomAbs_CurveType.GeomAbs_BezierCurve ||
+    curveType === oc.GeomAbs_CurveType.GeomAbs_BSplineCurve
+  ) {
+    return "bspline";
+  }
+
+  return "unknown";
+}
+
+function readSurfaceGeometryEvidence(
+  surface: OcctSurfaceAdaptor,
+  surfaceClass: NonNullable<OcctTopologyEntityDescriptor["surfaceClass"]>
+): Partial<OcctTopologyEntityDescriptor> {
+  if (surfaceClass === "plane") {
+    const plane = surface.Plane();
+
+    try {
+      return { normal: readAxisDirection(plane.Axis()) };
+    } finally {
+      plane.delete();
+    }
+  }
+
+  if (surfaceClass === "cylinder") {
+    const cylinder = surface.Cylinder();
+
+    try {
+      return {
+        axis: readAxisDirection(cylinder.Axis()),
+        radius: Math.abs(cylinder.Radius())
+      };
+    } finally {
+      cylinder.delete();
+    }
+  }
+
+  if (surfaceClass === "sphere") {
+    const sphere = surface.Sphere();
+
+    try {
+      return { radius: Math.abs(sphere.Radius()) };
+    } finally {
+      sphere.delete();
+    }
+  }
+
+  return {};
+}
+
+function readCurveGeometryEvidence(
+  curve: OcctCurveAdaptor,
+  curveClass: NonNullable<OcctTopologyEntityDescriptor["curveClass"]>
+): Partial<OcctTopologyEntityDescriptor> {
+  if (curveClass === "line") {
+    const line = curve.Line();
+
+    try {
+      return { axis: readDirection(line.Direction()) };
+    } finally {
+      line.delete();
+    }
+  }
+
+  if (curveClass === "circle") {
+    const circle = curve.Circle();
+
+    try {
+      return {
+        axis: readAxisDirection(circle.Axis()),
+        radius: Math.abs(circle.Radius())
+      };
+    } finally {
+      circle.delete();
+    }
+  }
+
+  return {};
+}
+
+function readSurfaceArea(
+  oc: OpenCascadeInstance,
+  face: ReturnType<typeof oc.TopoDS.Face_1>
+): number | undefined {
+  const props = new oc.GProp_GProps_1();
+
+  try {
+    oc.BRepGProp.SurfaceProperties_1(face, props, false, false);
+    return positiveFiniteOrUndefined(Math.abs(props.Mass()));
+  } finally {
+    props.delete();
+  }
+}
+
+function readEdgeLength(
+  oc: OpenCascadeInstance,
+  edge: ReturnType<typeof oc.TopoDS.Edge_1>
+): number | undefined {
+  const props = new oc.GProp_GProps_1();
+
+  try {
+    oc.BRepGProp.LinearProperties(edge, props, false, false);
+    return positiveFiniteOrUndefined(Math.abs(props.Mass()));
+  } finally {
+    props.delete();
+  }
+}
+
+function readCurveMidpoint(
+  curve: OcctCurveAdaptor
+): readonly [number, number, number] | undefined {
+  const first = curve.FirstParameter();
+  const last = curve.LastParameter();
+
+  if (!Number.isFinite(first) || !Number.isFinite(last)) {
+    return undefined;
+  }
+
+  const point = curve.Value((first + last) / 2);
+
+  try {
+    return readPoint(point);
+  } finally {
+    point.delete();
+  }
+}
+
+function readAxisDirection(
+  axis: OcctAxisLike
+): readonly [number, number, number] {
+  try {
+    return readDirection(axis.Direction());
+  } finally {
+    axis.delete();
+  }
+}
+
+function readDirection(
+  direction: OcctDeletablePointLike
+): readonly [number, number, number] {
+  try {
+    return normalizeVector([direction.X(), direction.Y(), direction.Z()]);
+  } finally {
+    direction.delete();
+  }
+}
+
+function readPoint(point: OcctPointLike): readonly [number, number, number] {
+  return [point.X(), point.Y(), point.Z()];
+}
+
+function normalizeVector(
+  value: readonly [number, number, number]
+): readonly [number, number, number] {
+  const length = Math.hypot(value[0], value[1], value[2]);
+
+  if (length <= TOPOLOGY_EVIDENCE_TOLERANCE || !Number.isFinite(length)) {
+    return value;
+  }
+
+  return [value[0] / length, value[1] / length, value[2] / length];
+}
+
+function positiveFiniteOrUndefined(value: number): number | undefined {
+  return Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
 function normalizeBoundsForSignature(
@@ -720,10 +1111,19 @@ function assertExactMetadataBindings(oc: OpenCascadeInstance): void {
     ["BRepBndLib.AddOptimal", oc.BRepBndLib?.AddOptimal],
     ["BRepGProp.VolumeProperties_1", oc.BRepGProp?.VolumeProperties_1],
     ["BRepGProp.SurfaceProperties_1", oc.BRepGProp?.SurfaceProperties_1],
+    ["BRepGProp.LinearProperties", oc.BRepGProp?.LinearProperties],
     ["GProp_GProps_1", oc.GProp_GProps_1],
     ["Bnd_Box_1", oc.Bnd_Box_1],
+    ["BRepAdaptor_Surface_2", oc.BRepAdaptor_Surface_2],
+    ["BRepAdaptor_Curve_2", oc.BRepAdaptor_Curve_2],
+    ["BRep_Tool.Pnt", oc.BRep_Tool?.Pnt],
+    ["TopoDS.Face_1", oc.TopoDS?.Face_1],
+    ["TopoDS.Edge_1", oc.TopoDS?.Edge_1],
+    ["TopoDS.Vertex_1", oc.TopoDS?.Vertex_1],
     ["TopExp.MapShapes_1", oc.TopExp?.MapShapes_1],
     ["TopTools_IndexedMapOfShape_1", oc.TopTools_IndexedMapOfShape_1],
+    ["GeomAbs_SurfaceType", oc.GeomAbs_SurfaceType],
+    ["GeomAbs_CurveType", oc.GeomAbs_CurveType],
     ["TopAbs_ShapeEnum", oc.TopAbs_ShapeEnum],
     ["TopAbs_ShapeEnum.TopAbs_WIRE", oc.TopAbs_ShapeEnum?.TopAbs_WIRE]
   ];
