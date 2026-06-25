@@ -25,7 +25,12 @@ import type {
   SketchDimensionForm,
   SketchEntityForm
 } from "../cadCommands";
-import { buildEdgeFinishForm } from "../edgeFinishUi";
+import {
+  SELECTED_EDGE_FINISH_REFERENCE_VALUE,
+  buildEdgeFinishForm,
+  createEdgeFinishReferenceOptions,
+  selectEdgeFinishReferenceOption
+} from "../edgeFinishUi";
 import {
   buildSketchOnFaceForm,
   createSketchOnFaceDefaultName,
@@ -2447,7 +2452,9 @@ function GeneratedReferenceWorkbench({
           body={context.body}
           disabled={disabled}
           edge={context.reference}
+          namedReferences={namedReferences}
           onCreateEdgeFinish={onCreateEdgeFinish}
+          selectionReferenceCandidates={context.selectionReferenceCandidates}
           topologyAnchorId={context.topologyAnchorId}
         />
       )}
@@ -2526,25 +2533,52 @@ function EdgeReferenceWorkbench({
   body,
   disabled,
   edge,
+  namedReferences,
   onCreateEdgeFinish,
+  selectionReferenceCandidates,
   topologyAnchorId
 }: {
   readonly actions: readonly ModelingActionDescriptor[];
   readonly body?: CadBodySnapshot;
   readonly disabled: boolean;
   readonly edge: Extract<CadGeneratedReference, { readonly kind: "edge" }>;
+  readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
   readonly onCreateEdgeFinish?: (
     operation: "chamfer" | "fillet",
     form: FeatureEdgeFinishForm
   ) => void;
+  readonly selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse;
   readonly topologyAnchorId?: string;
 }) {
   const [operation, setOperation] = useState<"chamfer" | "fillet">("chamfer");
+  const [referenceValue, setReferenceValue] = useState(
+    SELECTED_EDGE_FINISH_REFERENCE_VALUE
+  );
   const [form, setForm] = useState(defaultEdgeFinishForm);
   const action = actions.find((candidate) =>
     operation === "chamfer"
       ? candidate.id === "feature.chamfer"
       : candidate.id === "feature.fillet"
+  );
+  const selectionState = {
+    status: "selected",
+    selection: {
+      bodyId: edge.bodyId,
+      stableId: edge.stableId,
+      kind: edge.kind,
+      ...(topologyAnchorId ? { topologyAnchorId } : {})
+    },
+    reference: edge,
+    measurementRows: []
+  } as const;
+  const referenceOptions = createEdgeFinishReferenceOptions(
+    selectionState,
+    namedReferences,
+    selectionReferenceCandidates
+  );
+  const referenceOption = selectEdgeFinishReferenceOption(
+    referenceOptions,
+    referenceValue
   );
   const edgeFinishForm = buildEdgeFinishForm({
     draft: {
@@ -2554,15 +2588,7 @@ function EdgeReferenceWorkbench({
       distance: form.distance
     },
     operation,
-    referenceOption: {
-      value: "selected",
-      kind: "generated",
-      label: edge.label,
-      edgeStableId: edge.stableId,
-      ...(topologyAnchorId ? { topologyAnchorId } : {}),
-      reference: edge,
-      status: "resolved"
-    },
+    referenceOption,
     targetBodyId: body?.id ?? edge.bodyId
   });
 
@@ -2590,6 +2616,26 @@ function EdgeReferenceWorkbench({
           Fillet
         </button>
       </div>
+      {referenceOptions.length > 1 && (
+        <label>
+          Reference
+          <select
+            disabled={disabled}
+            value={referenceOption?.value ?? referenceValue}
+            onChange={(event) => setReferenceValue(event.currentTarget.value)}
+          >
+            {referenceOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.kind === "generated"
+                  ? option.label
+                  : `${option.label}${
+                      option.status === "stale" ? " (stale)" : ""
+                    }`}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <div className="field-grid two">
         <NumberInput
           disabled={disabled}

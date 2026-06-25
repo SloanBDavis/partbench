@@ -951,6 +951,46 @@ describe("ModelingActionsPanel", () => {
     expect(markup).not.toContain("generated:edge:body_rect:start:uMin");
   });
 
+  it("offers matching named edge references for edge-finish commands", () => {
+    const reference = createEdge({
+      label: "Cut wall profile edge uMin/vMin",
+      stableId: "generated:edge:body_cut:longitudinal:uMin:vMin",
+      bodyId: "body_cut",
+      role: "longitudinal:uMin:vMin"
+    });
+    const namedReference: NamedGeneratedReferenceEntry = {
+      name: "Result cut edge",
+      bodyId: reference.bodyId,
+      stableId: reference.stableId,
+      kind: "edge",
+      status: "resolved",
+      reference
+    };
+    const selectionReferenceCandidates =
+      createSelectionReferenceCandidates(reference);
+    const context = {
+      selectionKind: "generatedReference",
+      reference,
+      namedReferences: [namedReference],
+      selectionReferenceCandidates
+    } as const;
+    const actions = deriveModelingActions({ context });
+    const markup = renderToStaticMarkup(
+      createElement(ModelingActionsPanel, {
+        actions,
+        context,
+        namedReferences: [namedReference]
+      })
+    );
+
+    expect(markup).toContain("Edge finish");
+    expect(markup).toContain("Reference");
+    expect(markup).toContain("Selected edge (Cut wall profile edge uMin/vMin)");
+    expect(markup).toContain("Result cut edge");
+    expect(markup).toContain("Create chamfer");
+    expect(markup).not.toContain(reference.stableId);
+  });
+
   it("keeps deferred V12 cut-wall edge finish controls out of the modeling surface", () => {
     const reference = createEdge({
       stableId: "generated:edge:body_cut:longitudinal:uMin:vMin",

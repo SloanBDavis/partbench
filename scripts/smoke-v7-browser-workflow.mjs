@@ -738,6 +738,7 @@ async function v7BrowserWorkflowSmoke({
     v14CylinderSideHoleSketchId: "v14_smoke_cylinder_side_hole_sketch",
     v14CylinderSideHoleSketchName: "V14 smoke cylinder side hole sketch",
     v14EdgeChamferName: "V14 smoke result cut-wall chamfer",
+    v14EdgeReferenceName: "V14 smoke result cut-wall edge",
     v14ProjectFileName: "v14-browser-fixture.json",
     v14HoleBodyId: "v14_smoke_result_hole_body",
     v14HoleBodyName: "V14 smoke result hole",
@@ -2073,7 +2074,7 @@ async function v7BrowserWorkflowSmoke({
     );
     pass(
       "v14-result-cut-wall-edge-finish-source-json-browser",
-      "V14 cut-wall result-edge chamfer JSON keeps public generated-edge source",
+      "V14 cut-wall result-edge chamfer JSON keeps public named-edge source",
       ids.v14EdgeChamferName
     );
   }
@@ -2327,8 +2328,46 @@ async function v7BrowserWorkflowSmoke({
     );
 
     const modeling = getSectionByAriaLabel("Modeling context");
-    setFieldByLabel(modeling, "Distance", "0.15");
-    setFieldByLabel(modeling, "Name", ids.v14EdgeChamferName);
+    setFieldByLabel(modeling, "Reference name", ids.v14EdgeReferenceName);
+    clickButton(modeling, "Save name");
+    await waitFor(() => {
+      const currentModeling = getSectionByAriaLabel("Modeling context");
+      const referenceSelect = getControlByLabel(currentModeling, "Reference");
+      const namedOption = [...referenceSelect.options].find(
+        (option) => option.value === `named:${ids.v14EdgeReferenceName}`
+      );
+
+      if (
+        !namedOption ||
+        !includesText(currentModeling, ids.v14EdgeReferenceName)
+      ) {
+        throw new Error(compactText(currentModeling.textContent, 720));
+      }
+
+      return true;
+    }, "V14 result cut-wall edge named reference became selectable");
+    setSelectByLabel(
+      getSectionByAriaLabel("Modeling context"),
+      "Reference",
+      `named:${ids.v14EdgeReferenceName}`
+    );
+    await waitFor(
+      () =>
+        getControlByLabel(
+          getSectionByAriaLabel("Modeling context"),
+          "Reference"
+        ).value === `named:${ids.v14EdgeReferenceName}`,
+      "V14 result cut-wall edge named reference selected"
+    );
+    pass(
+      "v14-result-cut-wall-named-edge-reference-browser",
+      "V14 rectangle cut-wall result edge can be named and selected for edge finish",
+      ids.v14EdgeReferenceName
+    );
+
+    const namedModeling = getSectionByAriaLabel("Modeling context");
+    setFieldByLabel(namedModeling, "Distance", "0.15");
+    setFieldByLabel(namedModeling, "Name", ids.v14EdgeChamferName);
     await waitFor(() => {
       const currentModeling = getSectionByAriaLabel("Modeling context");
       const createButton = getButtonByText(currentModeling, "Create chamfer");
@@ -2356,7 +2395,7 @@ async function v7BrowserWorkflowSmoke({
     );
     pass(
       "v14-result-cut-wall-edge-chamfer-browser",
-      "V14 rectangle cut-wall result edge creates a chamfer through the browser UI",
+      "V14 rectangle cut-wall result edge creates a chamfer through a named reference",
       ids.v14EdgeChamferName
     );
   }
@@ -2991,23 +3030,44 @@ async function v7BrowserWorkflowSmoke({
     const features = Array.isArray(parsed.document?.features)
       ? parsed.document.features
       : [];
+    const namedReferences = Array.isArray(parsed.document?.namedReferences)
+      ? parsed.document.namedReferences
+      : [];
     const chamferFeature = features.find(
       (candidate) =>
         candidate?.kind === "chamfer" &&
         candidate.name === ids.v14EdgeChamferName
     );
+    const namedReference = namedReferences.find(
+      (candidate) => candidate?.name === ids.v14EdgeReferenceName
+    );
+
+    if (
+      !namedReference ||
+      namedReference.bodyId !== ids.v14TargetBodyId ||
+      namedReference.stableId !== edgeStableId ||
+      namedReference.kind !== "edge"
+    ) {
+      throw new Error(
+        `V14 result cut-wall edge name lost its public generated-edge target: ${JSON.stringify(namedReference)}`
+      );
+    }
 
     if (
       !chamferFeature ||
       chamferFeature.targetBodyId !== ids.v14TargetBodyId ||
-      chamferFeature.edgeStableId !== edgeStableId
+      chamferFeature.namedReference !== ids.v14EdgeReferenceName ||
+      typeof chamferFeature.edgeStableId === "string"
     ) {
       throw new Error(
-        `V14 result cut-wall edge chamfer lost its public topology edge source: ${JSON.stringify(chamferFeature)}`
+        `V14 result cut-wall edge chamfer lost its public named-edge source: ${JSON.stringify(chamferFeature)}`
       );
     }
 
-    const sourceBoundaryText = JSON.stringify({ feature: chamferFeature });
+    const sourceBoundaryText = JSON.stringify({
+      feature: chamferFeature,
+      namedReference
+    });
     const privateIdPattern =
       /(renderer|meshId|occt|viewport|opfs|fileHandle|checkpointEntityId)/i;
 

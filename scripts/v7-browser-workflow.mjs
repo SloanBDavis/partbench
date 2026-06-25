@@ -122,6 +122,7 @@ export const V14_BROWSER_WORKFLOW_CHECK_IDS = Object.freeze([
   "v14-cylinder-side-plane-circle-entity-browser",
   "v14-cylinder-side-plane-hole-browser",
   "v14-cylinder-side-plane-hole-source-json-browser",
+  "v14-result-cut-wall-named-edge-reference-browser",
   "v14-result-cut-wall-edge-chamfer-browser",
   "v14-result-cut-wall-edge-finish-source-json-browser",
   "v14-result-edge-upstream-edit-blocked-browser",

@@ -15656,6 +15656,177 @@ describe("cad-core", () => {
     });
   });
 
+  it("creates edge-finish features from named rectangle cut-wall result edges", () => {
+    const edgeStableId = "generated:edge:body_cut_1:longitudinal:uMin:vMin";
+    const referenceName = "cut_wall_named_edge";
+    const createNamedCutEngine = (): CadEngine => {
+      const engine = createRectangleExtrudeEngine();
+
+      engine.applyBatch([
+        {
+          op: "sketch.addRectangle",
+          sketchId: "sketch_1",
+          id: "tool_rect_1",
+          center: [1, 0],
+          width: 2,
+          height: 1
+        },
+        {
+          op: "feature.extrude",
+          id: "feat_cut_1",
+          bodyId: "body_cut_1",
+          sketchId: "sketch_1",
+          entityId: "tool_rect_1",
+          depth: 3,
+          operationMode: "cut",
+          targetBodyId: "body_rect_1"
+        },
+        {
+          op: "reference.nameGenerated",
+          name: referenceName,
+          bodyId: "body_cut_1",
+          stableId: edgeStableId
+        }
+      ]);
+
+      return engine;
+    };
+
+    const chamferEngine = createNamedCutEngine();
+    const beforeJson = exportCadProjectJson(chamferEngine);
+
+    expect(
+      readReferenceHealth(chamferEngine, {
+        type: "namedReference",
+        name: referenceName
+      })
+    ).toMatchObject({
+      status: "active",
+      referenceHealth: [
+        expect.objectContaining({
+          source: "namedReference",
+          status: "active",
+          commandable: true,
+          stableId: edgeStableId,
+          commandOperations: expect.arrayContaining([
+            "feature.chamfer",
+            "feature.fillet"
+          ])
+        })
+      ]
+    });
+    expect(
+      chamferEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "feature.chamfer",
+            id: "feat_named_cut_chamfer",
+            bodyId: "body_named_cut_chamfer",
+            targetBodyId: "body_cut_1",
+            namedReference: referenceName,
+            distance: 0.1
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      createdFeatureIds: ["feat_named_cut_chamfer"],
+      createdBodyIds: ["body_named_cut_chamfer"]
+    });
+    expect(exportCadProjectJson(chamferEngine)).toBe(beforeJson);
+
+    const chamferResult = chamferEngine.apply({
+      op: "feature.chamfer",
+      id: "feat_named_cut_chamfer",
+      bodyId: "body_named_cut_chamfer",
+      targetBodyId: "body_cut_1",
+      namedReference: referenceName,
+      distance: 0.1,
+      name: "Named cut-wall chamfer"
+    });
+    const chamferFeature = getChamferFeature(
+      chamferEngine,
+      "feat_named_cut_chamfer"
+    );
+
+    expect(chamferFeature).toMatchObject({
+      kind: "chamfer",
+      targetBodyId: "body_cut_1",
+      namedReference: referenceName,
+      distance: 0.1,
+      bodyId: "body_named_cut_chamfer"
+    });
+    expect(chamferFeature.edgeStableId).toBeUndefined();
+    expect(chamferResult.transaction.ops[0]).toMatchObject({
+      op: "feature.chamfer",
+      targetBodyId: "body_cut_1",
+      namedReference: referenceName
+    });
+
+    const restoredChamferEngine = importCadProjectJson(
+      exportCadProjectJson(chamferEngine)
+    );
+    expect(
+      getChamferFeature(restoredChamferEngine, "feat_named_cut_chamfer")
+    ).toMatchObject({
+      targetBodyId: "body_cut_1",
+      namedReference: referenceName
+    });
+
+    const filletEngine = createNamedCutEngine();
+    const filletResult = filletEngine.apply({
+      op: "feature.fillet",
+      id: "feat_named_cut_fillet",
+      bodyId: "body_named_cut_fillet",
+      targetBodyId: "body_cut_1",
+      namedReference: referenceName,
+      radius: 0.1,
+      name: "Named cut-wall fillet"
+    });
+    const filletFeature = getFilletFeature(
+      filletEngine,
+      "feat_named_cut_fillet"
+    );
+
+    expect(filletFeature).toMatchObject({
+      kind: "fillet",
+      targetBodyId: "body_cut_1",
+      namedReference: referenceName,
+      radius: 0.1,
+      bodyId: "body_named_cut_fillet"
+    });
+    expect(filletFeature.edgeStableId).toBeUndefined();
+    expect(filletResult.transaction.ops[0]).toMatchObject({
+      op: "feature.fillet",
+      targetBodyId: "body_cut_1",
+      namedReference: referenceName
+    });
+    expect(
+      getFilletFeature(
+        importCadProjectJson(exportCadProjectJson(filletEngine)),
+        "feat_named_cut_fillet"
+      )
+    ).toMatchObject({
+      targetBodyId: "body_cut_1",
+      namedReference: referenceName
+    });
+
+    expect(
+      JSON.stringify({
+        namedReference: chamferEngine
+          .getDocument()
+          .namedReferences.get(referenceName),
+        chamferFeature,
+        filletFeature
+      })
+    ).not.toMatch(
+      /checkpoint-local|checkpointEntityId|rendererId|meshId|occtId|gpuId|selectionBufferId|pixelId|opfsPath|fileHandle/i
+    );
+  });
+
   it("blocks upstream edits through rectangle cut-wall chamfer chains without mutating source", async () => {
     const engine = createRectangleExtrudeEngine();
     const edgeStableId = "generated:edge:body_cut_1:longitudinal:uMin:vMin";
