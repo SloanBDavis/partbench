@@ -1500,7 +1500,7 @@ async function v7BrowserWorkflowSmoke({
   if (projectChecks.every(Boolean)) {
     pass(
       "project-file-panel",
-      "Project/File panel is primary and reports .wcad workflow, JSON debug/interchange, storage capability, and export readiness"
+      "Project/File panel is primary and reports .wcad workflow, JSON import/export, storage capability, and export readiness"
     );
   }
 
@@ -1516,13 +1516,13 @@ async function v7BrowserWorkflowSmoke({
   if (projectFileReachability.ok) {
     pass(
       "project-file-action-reachability",
-      "Project/File export/cache/debug actions are reachable inside the right rail",
+      "Project/File export and cache actions are reachable inside the right rail",
       projectFileReachability.detail
     );
   } else {
     fail(
       "project-file-action-reachability",
-      "Project/File export/cache/debug actions are reachable inside the right rail",
+      "Project/File export and cache actions are reachable inside the right rail",
       projectFileReachability.detail
     );
   }
@@ -1858,6 +1858,8 @@ async function v7BrowserWorkflowSmoke({
       return;
     }
 
+    verifyV14ProjectFileUserFacingCopy();
+
     await importV14TopologyBrowserFixture(
       projectJson,
       "V14 topology browser fixture for cylinder side-plane hole"
@@ -1930,6 +1932,31 @@ async function v7BrowserWorkflowSmoke({
       "v14-result-hole-topology-source-json-browser",
       "V14 result-body hole JSON keeps only public topology sketch and target proof",
       ids.v14HoleFeatureId
+    );
+  }
+
+  function verifyV14ProjectFileUserFacingCopy() {
+    const checkId = "v14-project-file-user-facing-json-copy-browser";
+    openDetailsBySummary(document.body, "Project/File");
+    const projectPanel = getSectionByAriaLabel("Project");
+    const text = compactText(projectPanel.textContent, 1200);
+
+    if (!assertIncludes(projectPanel, "JSON import/export", checkId)) {
+      return;
+    }
+
+    if (/\bdebug\b/i.test(text)) {
+      fail(
+        "v14-project-file-user-facing-json-copy-browser",
+        "V14 Project/File copy avoids debug labels in user-facing JSON workflow",
+        text
+      );
+      return;
+    }
+
+    pass(
+      "v14-project-file-user-facing-json-copy-browser",
+      "V14 Project/File copy avoids debug labels in user-facing JSON workflow"
     );
   }
 
@@ -6326,7 +6353,7 @@ async function v7BrowserWorkflowSmoke({
   function getProjectJsonEditorValue(projectPanel) {
     const editor = getDetailsBySummary(
       projectPanel,
-      "JSON debug/interchange"
+      "JSON import/export"
     ).querySelector("textarea");
 
     if (!(editor instanceof HTMLTextAreaElement)) {

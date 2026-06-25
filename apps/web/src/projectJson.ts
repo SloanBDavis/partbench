@@ -200,7 +200,7 @@ export function createProjectJsonWorkflowState({
       summary: currentSummary,
       sourceLabel: "cad-core document",
       sourceDetail:
-        "Debug JSON interchange contains source document data plus undo and redo history only."
+        "JSON import/export carries source document data plus undo and redo history only."
     },
     draft: {
       source: createProjectJsonDraftSourceState(draftSource),

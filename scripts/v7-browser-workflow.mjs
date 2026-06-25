@@ -111,6 +111,7 @@ export const V13_BROWSER_WORKFLOW_CHECK_IDS = Object.freeze([
   "v13-no-private-topology-ui-leak"
 ]);
 export const V14_BROWSER_WORKFLOW_CHECK_IDS = Object.freeze([
+  "v14-project-file-user-facing-json-copy-browser",
   "v14-result-face-add-rectangle-entity-browser",
   "v14-result-face-rectangle-add-browser",
   "v14-result-add-topology-source-json-browser",

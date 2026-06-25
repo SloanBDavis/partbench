@@ -235,7 +235,7 @@ export function ProjectJsonPanel({
           workflow.draft.source.kind === "edited"
         }
       >
-        <summary>JSON debug/interchange</summary>
+        <summary>JSON import/export</summary>
         <div className="button-row compact">
           <button type="button" onClick={onExport} disabled={disabled}>
             Export JSON

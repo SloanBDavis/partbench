@@ -372,7 +372,7 @@ describe("ProjectJsonPanel", () => {
     expect(markup).toContain("1 anchor");
     expect(markup).toContain("partbench.wcad.v1 -&gt; partbench.wcad.v2");
     expect(markup).toContain("Use .wcad");
-    expect(markup).toContain("JSON remains debug/interchange");
+    expect(markup).toContain("JSON import/export");
     expect(markup).not.toMatch(
       /checkpoint-local-face-1|checkpointEntityId|rendererId|meshId|occtId|gpuId|selectionBufferId|pixelId|opfsPath|fileHandle/i
     );
@@ -468,7 +468,7 @@ describe("ProjectJsonPanel", () => {
       /<button type="button" disabled="">Download visualization GLB<\/button>/
     );
     const jsonInterchangeStart = markup.indexOf(
-      "<summary>JSON debug/interchange</summary>"
+      "<summary>JSON import/export</summary>"
     );
     const jsonButtonRow = markup.slice(jsonInterchangeStart);
 

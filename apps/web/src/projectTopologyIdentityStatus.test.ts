@@ -17,7 +17,7 @@ describe("projectTopologyIdentityStatus", () => {
     });
   });
 
-  it("warns that JSON debug interchange can be lossy for checkpoint payloads", () => {
+  it("warns that JSON import/export can be lossy for checkpoint payloads", () => {
     const display = createProjectTopologyIdentityDisplay(
       createReadiness({ checkpointCount: 1, anchorCount: 2 })
     );
@@ -26,7 +26,7 @@ describe("projectTopologyIdentityStatus", () => {
     expect(display.anchorSummary).toBe("2 anchors");
     expect(display.detail).toContain("source-owned");
     expect(display.jsonWarning).toContain("Use .wcad");
-    expect(display.jsonWarning).toContain("JSON remains debug/interchange");
+    expect(display.jsonWarning).toContain("JSON import/export");
     expect(display.capabilityRows).toEqual([
       expect.objectContaining({
         label: "B-rep checkpoint persistence",

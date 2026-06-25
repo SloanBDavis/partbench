@@ -71,8 +71,8 @@ These constraints remain active:
     required topology reference in the same CADOps action, browser smoke now
     proves promoted result-face rectangle add/cut, result-face circle hole, and
     explicit XZ side-plane circle hole paths, and ready topology-backed
-    reference selections use action-oriented product copy instead of topology
-    debug text.
+    reference selections and Project/File JSON import/export use
+    action-oriented product copy instead of internal debug labels.
     Completed V8, V9, V10, V11, V12, and V13
     tranche records below remain historical release records and compatibility
     guardrails. Do not re-open those releases unless the user explicitly asks
@@ -2864,7 +2864,9 @@ The planned pillars are:
    surfaces consistent.
 6. **Product UI cleanup for commandability** - user-facing surfaces explain
    available actions and repair needs without mentioning internal tranche or
-   milestone names.
+   milestone names. The Project/File panel now labels JSON as import/export
+   for source interchange instead of debug copy while keeping `.wcad` as the
+   primary project workflow.
 7. **Long release smokes** - deterministic and browser workflows prove chained
    modeling, explicit side-plane circular holes where supported, result-edge
    finishing where supported, upstream edit/rebuild, `.wcad` persistence, no

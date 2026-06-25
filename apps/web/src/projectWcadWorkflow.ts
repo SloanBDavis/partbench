@@ -200,7 +200,7 @@ export function createJsonFallbackProjectFileState(
       operation: "jsonImport",
       status: "importedJson",
       message: "Imported project JSON.",
-      detail: "JSON remains an interchange/debug workflow."
+      detail: "JSON remains a source interchange workflow."
     }
   };
 }

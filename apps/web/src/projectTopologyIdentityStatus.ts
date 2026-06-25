@@ -43,7 +43,7 @@ export function createProjectTopologyIdentityDisplay(
       ? "Topology identity records are source-owned and tracked by cad-core."
       : "No topology checkpoints or anchors have been written for this project.",
     jsonWarning: hasTopologyRecords
-      ? "Use .wcad for topology checkpoint payload preservation. JSON remains debug/interchange and may not carry checkpoint payload bytes."
+      ? "Use .wcad for topology checkpoint payload preservation. JSON import/export may not carry checkpoint payload bytes."
       : undefined,
     capabilityRows: readiness.capabilities.map(formatCapability)
   };

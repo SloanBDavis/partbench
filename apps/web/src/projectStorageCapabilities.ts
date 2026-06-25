@@ -81,10 +81,10 @@ export function createProjectStorageCapabilityStatus(
     available: jsonFallbackAvailable,
     label: "JSON import/export",
     detail: jsonFallbackAvailable
-      ? "JSON download and file load are available for interchange/debug."
+      ? "JSON download and file load are available for source interchange."
       : "JSON import/export is missing download or upload primitives in this runtime.",
     limitation: jsonFallbackAvailable
-      ? "JSON remains an interchange/debug workflow, not the primary project-file workflow."
+      ? "JSON remains a source interchange workflow, not the primary project-file workflow."
       : "Download and load controls should remain disabled until browser file primitives are available.",
     nextStep: jsonFallbackAvailable
       ? "Use explicit Export JSON and Import JSON controls when text interchange is needed."
