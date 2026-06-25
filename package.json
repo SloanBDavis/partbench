@@ -18,6 +18,7 @@
     "smoke:v10-browser-workflow": "VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build && node scripts/smoke-v7-browser-workflow.mjs --require-v10-workflow --require-derived-mesh-cache",
     "smoke:v12-browser-workflow": "VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build && node scripts/smoke-v7-browser-workflow.mjs --require-v12-workflow",
     "smoke:v13-browser-workflow": "VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build && node scripts/smoke-v7-browser-workflow.mjs --require-v13-workflow",
+    "smoke:v14-browser-workflow": "VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build && node scripts/smoke-v7-browser-workflow.mjs --require-v14-workflow",
     "smoke:v13-release-samples": "node scripts/smoke-v13-release-samples.mjs",
     "smoke:v12-release-samples": "node scripts/smoke-v12-release-samples.mjs",
     "smoke:v11-release-samples": "node scripts/smoke-v11-release-samples.mjs",

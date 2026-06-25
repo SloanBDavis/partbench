@@ -2,6 +2,7 @@ import { CadEngine, exportCadProjectJson } from "@web-cad/cad-core";
 import type {
   BodyGeneratedReferencesQueryResponse,
   CadGeneratedReference,
+  CadTopologyIdentitySourceSnapshot,
   GeneratedReferenceMeasurement,
   SelectionReferenceCandidatesQueryResponse
 } from "@web-cad/cad-protocol";
@@ -9,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import {
   createSelectionReferenceCandidateSummaries,
   createSelectedGeneratedReference,
+  enrichSelectedGeneratedReferenceWithTopologyAnchor,
   formatSelectionReferenceOperationLabel,
   formatSelectionReferenceStatus,
   getPrimarySelectionReferenceCandidate,
@@ -73,6 +75,66 @@ describe("generated reference selection helpers", () => {
     expect(isSelectedGeneratedReference(selection, references.faces[0])).toBe(
       true
     );
+  });
+
+  it("enriches selected references from matching active topology anchors", () => {
+    const references = createReferences();
+    const selection = createSelectedGeneratedReference(references.faces[0]);
+
+    expect(
+      enrichSelectedGeneratedReferenceWithTopologyAnchor(
+        selection,
+        createTopologyIdentity([
+          {
+            anchorId: "anchor_face_1",
+            entityKind: "face",
+            bodyId: "body_1",
+            checkpointId: "checkpoint_1",
+            checkpointEntityId: "checkpoint-face-1",
+            sourceFeatureId: "feat_1",
+            stableId: references.faces[0].stableId,
+            sourceSemanticRole: "startCap",
+            state: "active",
+            diagnostics: []
+          }
+        ])
+      )
+    ).toEqual({
+      ...selection,
+      topologyAnchorId: "anchor_face_1"
+    });
+  });
+
+  it("does not enrich selected references from non-active topology anchors", () => {
+    const references = createReferences();
+    const selection = createSelectedGeneratedReference(references.faces[0]);
+
+    expect(
+      enrichSelectedGeneratedReferenceWithTopologyAnchor(
+        selection,
+        createTopologyIdentity([
+          {
+            anchorId: "anchor_face_stale",
+            entityKind: "face",
+            bodyId: "body_1",
+            checkpointId: "checkpoint_1",
+            checkpointEntityId: "checkpoint-face-1",
+            sourceFeatureId: "feat_1",
+            stableId: references.faces[0].stableId,
+            sourceSemanticRole: "startCap",
+            state: "repair-needed",
+            diagnostics: [
+              {
+                severity: "warning",
+                code: "TOPOLOGY_MATCH_LOW_CONFIDENCE",
+                status: "unavailable",
+                message: "Saved face reference needs repair."
+              }
+            ]
+          }
+        ])
+      )
+    ).toEqual(selection);
   });
 
   it("marks selections stale when references no longer contain the stable ID", () => {
@@ -505,5 +567,23 @@ function createReferences(): BodyGeneratedReferencesQueryResponse {
     vertices: [],
     axisCount: 0,
     axes: []
+  };
+}
+
+function createTopologyIdentity(
+  anchors: CadTopologyIdentitySourceSnapshot["anchors"]
+): CadTopologyIdentitySourceSnapshot {
+  return {
+    schemaVersion: "web-cad.project.v18",
+    settings: {
+      contractVersion: "partbench.topology-identity.v1",
+      matchingPolicy: "evidence-scored-explicit-repair",
+      checkpointPolicy: "required-for-topology-anchors",
+      minimumAutomaticConfidence: "high",
+      allowSilentRetargeting: false
+    },
+    checkpoints: [],
+    anchors,
+    repairs: []
   };
 }

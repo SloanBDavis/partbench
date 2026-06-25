@@ -9,6 +9,7 @@ import {
   V10_BROWSER_WORKFLOW_CHECK_IDS,
   V12_BROWSER_WORKFLOW_CHECK_IDS,
   V13_BROWSER_WORKFLOW_CHECK_IDS,
+  V14_BROWSER_WORKFLOW_CHECK_IDS,
   V8_WCAD_WORKFLOW_DERIVED_MESH_CACHE_CHECK_ID,
   V7_BROWSER_WORKFLOW_GLB_DOWNLOAD_CHECK_ID,
   V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS
@@ -228,6 +229,31 @@ describe("V7 browser workflow smoke summary", () => {
     }
   });
 
+  it("keeps V14 browser workflow checks optional unless required", () => {
+    expect(getV7BrowserWorkflowRequiredCheckIds()).not.toEqual(
+      expect.arrayContaining(V14_BROWSER_WORKFLOW_CHECK_IDS)
+    );
+    expect(
+      getV7BrowserWorkflowRequiredCheckIds({ requireV14Workflow: true })
+    ).toEqual(expect.arrayContaining(V14_BROWSER_WORKFLOW_CHECK_IDS));
+  });
+
+  it("emits every required V14 browser workflow check from the smoke runner", async () => {
+    const smokeSource = await readFile(
+      resolve(repoRoot, "scripts/smoke-v7-browser-workflow.mjs"),
+      "utf8"
+    );
+    const emittedCheckIds = new Set(
+      [...smokeSource.matchAll(/\b(?:pass|fail)\(\s*"([^"]+)"/g)].map(
+        (match) => match[1]
+      )
+    );
+
+    for (const id of V14_BROWSER_WORKFLOW_CHECK_IDS) {
+      expect(emittedCheckIds).toContain(id);
+    }
+  });
+
   it("fails clearly when required GLB download is skipped", () => {
     const result = createV7BrowserWorkflowSmokeResult({
       checks: [
@@ -292,6 +318,8 @@ describe("V7 browser workflow smoke summary", () => {
       "VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build && node scripts/smoke-v7-browser-workflow.mjs --require-v12-workflow";
     const v13BrowserRunner =
       "VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build && node scripts/smoke-v7-browser-workflow.mjs --require-v13-workflow";
+    const v14BrowserRunner =
+      "VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build && node scripts/smoke-v7-browser-workflow.mjs --require-v14-workflow";
 
     expect(packageJson.scripts["smoke:v8-wcad-workflow"]).toBe(
       compatibilityBrowserRunner
@@ -307,6 +335,9 @@ describe("V7 browser workflow smoke summary", () => {
     );
     expect(packageJson.scripts["smoke:v13-browser-workflow"]).toBe(
       v13BrowserRunner
+    );
+    expect(packageJson.scripts["smoke:v14-browser-workflow"]).toBe(
+      v14BrowserRunner
     );
   });
 });

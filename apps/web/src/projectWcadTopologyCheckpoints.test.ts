@@ -205,10 +205,10 @@ describe("projectWcadTopologyCheckpoints", () => {
         target
       });
 
-    expect(planned.ok).toBe(true);
     if (!planned.ok) {
       throw new Error(planned.message);
     }
+    expect(planned.ok).toBe(true);
     expect(engine.getDocument().topologyIdentity).toBeUndefined();
     expect(planned.plan).toMatchObject({
       status: "ready",
@@ -267,6 +267,79 @@ describe("projectWcadTopologyCheckpoints", () => {
     expect(JSON.stringify(planned)).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|fileHandle|opfsPath|localPath|checkpoint-local-face/i
     );
+  });
+
+  it("plans selected topology anchors for supported boolean result tool side faces", async () => {
+    const engine = createRectangleExtrudeEngine();
+    engine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "sketch_cut_tool_1",
+        name: "Cut tool sketch",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_cut_tool_1",
+        id: "rect_cut_tool_1",
+        center: [0, 0],
+        width: 0.5,
+        height: 0.5
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_cut_1",
+        bodyId: "body_cut_1",
+        sketchId: "sketch_cut_tool_1",
+        entityId: "rect_cut_tool_1",
+        depth: 1,
+        operationMode: "cut",
+        targetBodyId: "body_plain_1"
+      }
+    ]);
+    const runtime = createCheckpointRuntime({
+      booleanToolSideFaces: true
+    });
+    const target = {
+      bodyId: "body_cut_1",
+      stableId: "generated:face:body_cut_1:side:uMin",
+      kind: "face" as const
+    };
+
+    const planned =
+      await createProjectTopologyAnchorCreationPlanForGeneratedReference({
+        engine,
+        features: readProjectStructure(engine).features,
+        sketches: readSketches(engine),
+        runtime,
+        target
+      });
+
+    if (!planned.ok) {
+      throw new Error(planned.message);
+    }
+    expect(planned.ok).toBe(true);
+    expect(runtime.exactTopologyCheckpointPayload).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "body_cut_1",
+        bodyId: "body_cut_1",
+        source: expect.objectContaining({
+          kind: "booleanExtrudes"
+        })
+      })
+    );
+    expect(planned.plan).toMatchObject({
+      status: "ready",
+      createsCheckpoint: true,
+      createsAnchor: true,
+      mutatesSource: false,
+      candidate: expect.objectContaining({
+        stableId: target.stableId,
+        kind: "face",
+        status: "bound",
+        confidence: "exact"
+      })
+    });
   });
 
   it("returns structured diagnostics and does not mutate when selected reference evidence is ambiguous", async () => {
@@ -802,7 +875,10 @@ function readSketches(engine: CadEngine): readonly SketchSnapshot[] {
 }
 
 function createCheckpointRuntime(
-  options: { readonly duplicateEndCapFace?: boolean } = {}
+  options: {
+    readonly booleanToolSideFaces?: boolean;
+    readonly duplicateEndCapFace?: boolean;
+  } = {}
 ): Pick<DerivedGeometryRuntime, "exactTopologyCheckpointPayload"> {
   return {
     exactTopologyCheckpointPayload: vi.fn(async (input) => ({
@@ -810,6 +886,7 @@ function createCheckpointRuntime(
         input.checkpointId,
         input.bodyId,
         input.source.kind === "extrude" ? input.source.depth : 1,
+        input.source.kind,
         options
       ),
       metrics: {
@@ -825,7 +902,11 @@ function createCheckpointPayloadFixture(
   checkpointId: string,
   bodyId: string,
   depth: number,
-  options: { readonly duplicateEndCapFace?: boolean } = {}
+  sourceKind: GeometryKernelExactTopologyCheckpointPayload["sourceKind"] = "extrude",
+  options: {
+    readonly booleanToolSideFaces?: boolean;
+    readonly duplicateEndCapFace?: boolean;
+  } = {}
 ): GeometryKernelExactTopologyCheckpointPayload {
   const brepBytes = new TextEncoder().encode(
     `CASCADE Topology checkpoint fixture ${checkpointId}`
@@ -852,15 +933,49 @@ function createCheckpointPayloadFixture(
       }
     }
   ];
-  const topologyEntities = options.duplicateEndCapFace
+  const topologyEntities = options.booleanToolSideFaces
     ? [
-        ...entities,
+        entities[0],
         {
-          ...entities[1],
-          localId: "checkpoint-local-face-duplicate"
+          localId: "checkpoint-local-tool-u-min",
+          kind: "face" as const,
+          source: "kernel-derived" as const,
+          signature: `${bodyId}:face:tool-u-min`,
+          bounds: {
+            min: [-0.25, -0.25, 0] as const,
+            max: [-0.25, 0.25, depth] as const
+          }
+        },
+        {
+          localId: "checkpoint-local-tool-u-max",
+          kind: "face" as const,
+          source: "kernel-derived" as const,
+          signature: `${bodyId}:face:tool-u-max`,
+          bounds: {
+            min: [0.25, -0.25, 0] as const,
+            max: [0.25, 0.25, depth] as const
+          }
+        },
+        {
+          localId: "checkpoint-local-cap",
+          kind: "face" as const,
+          source: "kernel-derived" as const,
+          signature: `${bodyId}:face:cap`,
+          bounds: {
+            min: [-0.25, -0.25, depth] as const,
+            max: [0.25, 0.25, depth] as const
+          }
         }
       ]
-    : entities;
+    : options.duplicateEndCapFace
+      ? [
+          ...entities,
+          {
+            ...entities[1],
+            localId: "checkpoint-local-face-duplicate"
+          }
+        ]
+      : entities;
   const topologySnapshot = {
     sourceKind: "extrude" as const,
     source: "kernel-derived" as const,
@@ -868,7 +983,8 @@ function createCheckpointPayloadFixture(
     entityCounts: {
       bodyCount: 1,
       solidCount: 0,
-      faceCount: 1,
+      faceCount: topologyEntities.filter((entity) => entity.kind === "face")
+        .length,
       wireCount: 0,
       edgeCount: 0,
       vertexCount: 0,
@@ -894,7 +1010,7 @@ function createCheckpointPayloadFixture(
   return {
     checkpointId,
     bodyId,
-    sourceKind: "extrude",
+    sourceKind,
     brepFormat: "occt-brep",
     brepWriter: "BRepTools.Write_3",
     brepBytes,

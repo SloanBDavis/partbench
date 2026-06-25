@@ -6,6 +6,7 @@ import type {
   CadSelectionReferenceIssue,
   CadSelectionReferenceOperation,
   CadSelectionReferenceStatus,
+  CadTopologyIdentitySourceSnapshot,
   DocumentUnits,
   SelectionReferenceCandidatesQueryResponse
 } from "@web-cad/cad-protocol";
@@ -62,6 +63,27 @@ export function createSelectedGeneratedReference(
     stableId: reference.stableId,
     kind: reference.kind
   };
+}
+
+export function enrichSelectedGeneratedReferenceWithTopologyAnchor(
+  selection: SelectedGeneratedReference | undefined,
+  topologyIdentity: CadTopologyIdentitySourceSnapshot | undefined
+): SelectedGeneratedReference | undefined {
+  if (!selection || selection.topologyAnchorId) {
+    return selection;
+  }
+
+  const anchor = topologyIdentity?.anchors.find(
+    (candidate) =>
+      candidate.state === "active" &&
+      candidate.bodyId === selection.bodyId &&
+      candidate.entityKind === selection.kind &&
+      candidate.stableId === selection.stableId
+  );
+
+  return anchor
+    ? { ...selection, topologyAnchorId: anchor.anchorId }
+    : selection;
 }
 
 export function reconcileSelectedGeneratedReferenceBody(
@@ -215,6 +237,24 @@ export function getSelectionReferenceOperationStatus(
     available: false,
     message: `${formatSelectionReferenceOperationLabel(operation)} is not command-ready for this selection.`
   };
+}
+
+export function findSelectionReferenceTopologyAnchorIdForOperation(
+  reference: Pick<CadGeneratedReference, "bodyId" | "stableId" | "kind">,
+  operation: CadSelectionReferenceOperation,
+  response: SelectionReferenceCandidatesQueryResponse | undefined
+): string | undefined {
+  const candidate = response?.candidates.find(
+    (entry) =>
+      entry.commandable &&
+      entry.commandOperations.includes(operation) &&
+      entry.target.bodyId === reference.bodyId &&
+      entry.target.stableId === reference.stableId &&
+      entry.target.kind === reference.kind &&
+      entry.target.topologyAnchorId !== undefined
+  );
+
+  return candidate?.target.topologyAnchorId;
 }
 
 export function formatSelectionReferenceOperationLabel(

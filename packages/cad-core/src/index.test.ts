@@ -34224,6 +34224,117 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     );
   });
 
+  it("creates holes through result bodies with their own active topology body anchor", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "sketch_cut_result_anchor",
+        name: "Cut",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_cut_result_anchor",
+        id: "rect_cut_result_anchor",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_cut_result_anchor",
+        bodyId: "body_cut_result_anchor",
+        sketchId: "sketch_cut_result_anchor",
+        entityId: "rect_cut_result_anchor",
+        depth: 1,
+        operationMode: "cut",
+        targetBodyId: "body_rect_1"
+      },
+      {
+        op: "topology.checkpoint.create",
+        checkpointId: "checkpoint_cut_result_anchor",
+        bodyId: "body_cut_result_anchor",
+        sourceFeatureId: "feat_cut_result_anchor",
+        sourceIdentity: {
+          algorithm: "partbench-source-v1",
+          sha256:
+            "2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        status: "active"
+      },
+      {
+        op: "topology.anchor.create",
+        anchorId: "anchor_body_cut_result",
+        entityKind: "body",
+        bodyId: "body_cut_result_anchor",
+        checkpointId: "checkpoint_cut_result_anchor",
+        checkpointEntityId: "checkpoint-local-cut-result-body",
+        sourceFeatureId: "feat_cut_result_anchor",
+        stableId: "generated:body:body_cut_result_anchor",
+        sourceSemanticRole: "result body",
+        signatureHash: "body_cut_result_signature"
+      },
+      {
+        op: "sketch.create",
+        id: "sketch_cut_result_hole",
+        name: "Hole",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_cut_result_hole",
+        id: "circle_cut_result_hole",
+        center: [0.25, 0.25],
+        radius: 0.2
+      }
+    ]);
+
+    engine.applyBatch([
+      {
+        op: "feature.hole",
+        id: "feat_cut_result_hole",
+        bodyId: "body_cut_result_hole",
+        sketchId: "sketch_cut_result_hole",
+        circleEntityId: "circle_cut_result_hole",
+        depthMode: "throughAll",
+        direction: "positive",
+        targetTopologyAnchorId: "anchor_body_cut_result"
+      }
+    ]);
+
+    expect(getHoleFeature(engine, "feat_cut_result_hole")).toMatchObject({
+      kind: "hole",
+      targetBodyId: "body_cut_result_anchor",
+      targetTopologyAnchorId: "anchor_body_cut_result",
+      bodyId: "body_cut_result_hole"
+    });
+    expect(readProjectHealth(engine).authoredHoles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          featureId: "feat_cut_result_hole",
+          targetBodyId: "body_cut_result_anchor",
+          targetTopologyAnchorId: "anchor_body_cut_result",
+          status: "healthy"
+        })
+      ])
+    );
+
+    const reopened = importCadProjectJson(exportCadProjectJson(engine));
+
+    expect(readProjectHealth(reopened).authoredHoles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          featureId: "feat_cut_result_hole",
+          targetBodyId: "body_cut_result_anchor",
+          targetTopologyAnchorId: "anchor_body_cut_result",
+          status: "healthy"
+        })
+      ])
+    );
+  });
+
   it("creates holes through active topology-backed circle-origin result bodies", () => {
     const engine = createCircleExtrudeEngine();
 

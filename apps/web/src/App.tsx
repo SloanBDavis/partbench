@@ -23,6 +23,7 @@ import type {
   CadGeneratedReference,
   CadSelectionReferenceInput,
   CadParameterSnapshot,
+  CadTopologyIdentitySourceSnapshot,
   GeneratedReferenceMeasurement,
   NamedGeneratedReferenceEntry,
   CadOp,
@@ -177,6 +178,7 @@ import {
 } from "./generatedReferenceUi";
 import {
   createSelectedGeneratedReference,
+  enrichSelectedGeneratedReferenceWithTopologyAnchor,
   getGeneratedReferenceSelectionState,
   reconcileSelectedGeneratedReferenceBody,
   type GeneratedReferenceSelectionState,
@@ -722,6 +724,57 @@ function readParameters(): readonly CadParameterSnapshot[] {
   return response.ok && response.query === "parameter.list"
     ? response.parameters
     : [];
+}
+
+function enrichSketchOnFaceFormWithTopologyAnchor(
+  form: SketchCreateOnFaceForm,
+  topologyIdentity: CadTopologyIdentitySourceSnapshot | undefined
+): SketchCreateOnFaceForm {
+  const topologyAnchorId = form.topologyAnchorId?.trim();
+
+  if (topologyAnchorId) {
+    const suppliedAnchor = topologyIdentity?.anchors.find(
+      (candidate) => candidate.anchorId === topologyAnchorId
+    );
+
+    if (
+      suppliedAnchor &&
+      isActiveTopologyAnchorFaceForSketchOnFace(suppliedAnchor, form)
+    ) {
+      return form;
+    }
+
+    form = stripSketchOnFaceTopologyAnchor(form);
+  }
+
+  const anchor = topologyIdentity?.anchors.find((candidate) =>
+    isActiveTopologyAnchorFaceForSketchOnFace(candidate, form)
+  );
+
+  return anchor ? { ...form, topologyAnchorId: anchor.anchorId } : form;
+}
+
+function isActiveTopologyAnchorFaceForSketchOnFace(
+  anchor: CadTopologyIdentitySourceSnapshot["anchors"][number],
+  form: SketchCreateOnFaceForm
+): boolean {
+  return (
+    anchor.state === "active" &&
+    anchor.entityKind === "face" &&
+    anchor.bodyId === form.bodyId &&
+    anchor.stableId === form.faceStableId
+  );
+}
+
+function stripSketchOnFaceTopologyAnchor(
+  form: SketchCreateOnFaceForm
+): SketchCreateOnFaceForm {
+  return {
+    id: form.id,
+    name: form.name,
+    bodyId: form.bodyId,
+    faceStableId: form.faceStableId
+  };
 }
 
 function readSketchDimensionsBySketchId(
@@ -1345,27 +1398,45 @@ export function App() {
       createAddTargetBodyOptions(
         projectStructure.bodies,
         projectStructure.features,
-        selectedBody?.id
+        selectedBody?.id,
+        document.topologyIdentity?.anchors
       ),
-    [projectStructure.bodies, projectStructure.features, selectedBody?.id]
+    [
+      document.topologyIdentity?.anchors,
+      projectStructure.bodies,
+      projectStructure.features,
+      selectedBody?.id
+    ]
   );
   const cutTargetBodyOptions = useMemo(
     () =>
       createCutTargetBodyOptions(
         projectStructure.bodies,
         projectStructure.features,
-        selectedBody?.id
+        selectedBody?.id,
+        document.topologyIdentity?.anchors
       ),
-    [projectStructure.bodies, projectStructure.features, selectedBody?.id]
+    [
+      document.topologyIdentity?.anchors,
+      projectStructure.bodies,
+      projectStructure.features,
+      selectedBody?.id
+    ]
   );
   const holeTargetBodyOptions = useMemo(
     () =>
       createHoleTargetBodyOptions(
         projectStructure.bodies,
         projectStructure.features,
-        selectedBody?.id
+        selectedBody?.id,
+        document.topologyIdentity?.anchors
       ),
-    [projectStructure.bodies, projectStructure.features, selectedBody?.id]
+    [
+      document.topologyIdentity?.anchors,
+      projectStructure.bodies,
+      projectStructure.features,
+      selectedBody?.id
+    ]
   );
   const selectedFeature = selectedBody
     ? projectStructure.features.find(
@@ -1434,8 +1505,13 @@ export function App() {
   const sketchEvaluationsBySketchId = readSketchEvaluationsBySketchId(sketches);
   const sketchSolverStatusesBySketchId =
     readSketchSolverStatusesBySketchId(sketches);
+  const selectedTopologyAnchoredGeneratedReference =
+    enrichSelectedGeneratedReferenceWithTopologyAnchor(
+      selectedGeneratedReference,
+      document.topologyIdentity
+    );
   const selectedGeneratedReferenceState = getGeneratedReferenceSelectionState(
-    selectedGeneratedReference,
+    selectedTopologyAnchoredGeneratedReference,
     selectedBodyGeneratedReferences.references,
     selectedGeneratedReferenceMeasurements,
     document.units
@@ -2041,16 +2117,21 @@ export function App() {
     setCommandError(undefined);
     setCommandNotice(undefined);
 
-    let plan: Awaited<ReturnType<typeof createSketchOnFaceCommandPlan>>;
+    const commandForm = enrichSketchOnFaceFormWithTopologyAnchor(
+      form,
+      document.topologyIdentity
+    );
+    const currentStructure = readProjectStructure();
+    let ops: readonly CadOp[] = [];
 
     try {
-      plan = await createSketchOnFaceCommandPlan({
+      const plan = await createSketchOnFaceCommandPlan({
         engine,
-        features: projectStructure.features,
+        features: currentStructure.features,
         sketches,
         generatedFacesByKey,
         runtime: getDerivedGeometryRuntime(),
-        form
+        form: commandForm
       });
 
       if (!plan.ok) {
@@ -2058,8 +2139,10 @@ export function App() {
         return;
       }
 
+      ops = plan.ops;
+
       const dryRun = await commandExecutor.executeBatch(
-        buildBatch("dryRun", plan.ops, WEB_UI_ACTOR)
+        buildBatch("dryRun", ops, WEB_UI_ACTOR)
       );
 
       if (!dryRun.ok) {
@@ -2077,9 +2160,9 @@ export function App() {
       setCommandPending(false);
     }
 
-    const response = await commitOps(plan.ops, () => null);
+    const response = await commitOps(ops, () => null);
     const sketchId = response?.ok
-      ? (response.createdSketchIds?.[0] ?? form.id.trim())
+      ? (response.createdSketchIds?.[0] ?? commandForm.id.trim())
       : undefined;
 
     if (sketchId) {

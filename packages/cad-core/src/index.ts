@@ -11173,7 +11173,8 @@ function assertSupportedHoleTarget(
   const targetProfileKind = resolveSupportedBooleanTargetProfileKind(
     state.features,
     targetFeature,
-    targetTopologyAnchorId
+    targetTopologyAnchorId,
+    targetBodyId
   );
 
   if (targetProfileKind && isSupportedCutTargetProfileKind(targetProfileKind)) {
@@ -12193,7 +12194,8 @@ function assertSupportedExtrudeOperation(
 function resolveSupportedBooleanTargetProfileKind(
   features: ReadonlyMap<FeatureId, Feature>,
   targetFeature: Feature | undefined,
-  targetTopologyAnchorId?: string
+  targetTopologyAnchorId?: string,
+  activeResultBodyId?: BodyId
 ): FeatureExtrudeProfileKind | undefined {
   if (targetFeature?.kind !== "extrude") {
     return undefined;
@@ -12203,10 +12205,14 @@ function resolveSupportedBooleanTargetProfileKind(
     return targetFeature.profileKind;
   }
 
-  if (
-    targetTopologyAnchorId === undefined ||
-    !isConsumingExtrudeOperationMode(targetFeature.operationMode)
-  ) {
+  if (!isConsumingExtrudeOperationMode(targetFeature.operationMode)) {
+    return undefined;
+  }
+
+  const allowActiveResultBodyAnchor =
+    targetTopologyAnchorId !== undefined &&
+    activeResultBodyId === targetFeature.bodyId;
+  if (targetTopologyAnchorId === undefined && !allowActiveResultBodyAnchor) {
     return undefined;
   }
 
@@ -12220,9 +12226,15 @@ function resolveSupportedBooleanTargetProfileKind(
       return current.profileKind;
     }
 
+    if (current.targetBodyId === undefined) {
+      return undefined;
+    }
+
+    const isAllowedActiveResultBody =
+      allowActiveResultBodyAnchor && current.id === targetFeature.id;
     if (
-      current.targetTopologyAnchorId !== targetTopologyAnchorId ||
-      current.targetBodyId === undefined
+      !isAllowedActiveResultBody &&
+      current.targetTopologyAnchorId !== targetTopologyAnchorId
     ) {
       return undefined;
     }
@@ -21938,7 +21950,8 @@ function isSupportedImportHoleTargetCombination(
   const targetProfileKind = resolveImportBooleanTargetProfileKind(
     featuresByBodyId,
     target,
-    feature.targetTopologyAnchorId
+    feature.targetTopologyAnchorId,
+    feature.targetBodyId
   );
 
   return (
@@ -22015,13 +22028,17 @@ function resolveImportBooleanTargetProfileKind(
     FeatureSnapshot & { readonly path: string }
   >,
   target: ExtrudeFeatureSnapshot,
-  targetTopologyAnchorId?: string
+  targetTopologyAnchorId?: string,
+  activeResultBodyId?: BodyId
 ): FeatureExtrudeProfileKind | undefined {
   if ((target.operationMode ?? "newBody") === "newBody") {
     return target.profileKind;
   }
 
-  if (targetTopologyAnchorId === undefined) {
+  const allowActiveResultBodyAnchor =
+    targetTopologyAnchorId !== undefined &&
+    activeResultBodyId === target.bodyId;
+  if (targetTopologyAnchorId === undefined && !allowActiveResultBodyAnchor) {
     return undefined;
   }
 
@@ -22035,9 +22052,15 @@ function resolveImportBooleanTargetProfileKind(
       return current.profileKind;
     }
 
+    const isAllowedActiveResultBody =
+      allowActiveResultBodyAnchor && current.id === target.id;
+    if (current.targetBodyId === undefined) {
+      return undefined;
+    }
+
     if (
-      current.targetTopologyAnchorId !== targetTopologyAnchorId ||
-      current.targetBodyId === undefined
+      !isAllowedActiveResultBody &&
+      current.targetTopologyAnchorId !== targetTopologyAnchorId
     ) {
       return undefined;
     }

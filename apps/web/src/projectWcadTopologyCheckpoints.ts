@@ -18,6 +18,7 @@ import type {
   CadGeneratedFaceReference,
   CadGeneratedReference,
   CadTopologyGeneratedReferenceCandidate,
+  CadTopologyAnchorCommandProof,
   CadTopologyAnchorSourceRecord,
   CadTopologyEntityKind,
   CadTopologyIdentityDiagnostic,
@@ -31,7 +32,10 @@ import {
   createExactMetadataRuntimeInput,
   type DerivedExactMetadataSource
 } from "./derivedExactMetadata";
-import type { DerivedExtrudeGeometrySource } from "./derivedGeometry";
+import type {
+  DerivedBooleanExtrudeGeometrySource,
+  DerivedExtrudeGeometrySource
+} from "./derivedGeometry";
 import type { DerivedGeometryRuntime } from "./derivedGeometryRuntime";
 import {
   createEdgeFinishDerivedGeometrySources,
@@ -87,6 +91,7 @@ export type ProjectTopologyAnchorCreationPlanResult =
   | {
       readonly ok: true;
       readonly plan: TopologyAnchorCreationPlanQueryResponse;
+      readonly topologyAnchorProof?: CadTopologyAnchorCommandProof;
     }
   | {
       readonly ok: false;
@@ -341,7 +346,18 @@ export async function createProjectTopologyAnchorCreationPlanForGeneratedReferen
     return createTopologyPlanFailure(plan.status, plan.diagnostics, plan);
   }
 
-  return { ok: true, plan };
+  const topologyAnchorProof = createTopologyAnchorCommandProofForTarget(
+    target.kind,
+    normalized.topologySnapshot.entities.find(
+      (entity) => entity.localId === createSourceOwnedCheckpointEntityId(target)
+    )
+  );
+
+  return {
+    ok: true,
+    plan,
+    ...(topologyAnchorProof ? { topologyAnchorProof } : {})
+  };
 }
 
 export async function createProjectTopologyAnchorRepairPlanForGeneratedReference({
@@ -906,7 +922,7 @@ function findGeneratedReferenceSnapshotEntity(
   }
 
   if (target.kind === "face") {
-    const stableFace = findStableExtrudeFaceEntity(
+    const stableFace = findStableFaceEntity(
       target.stableId,
       candidates,
       source
@@ -973,7 +989,7 @@ function findCheckpointAnchorEntity(
     return candidates.length === 1 ? candidates[0] : undefined;
   }
 
-  const stableFaceEntity = findStableExtrudeFaceEntity(
+  const stableFaceEntity = findStableFaceEntity(
     anchor.stableId,
     candidates,
     source
@@ -984,16 +1000,36 @@ function findCheckpointAnchorEntity(
   );
 }
 
-function findStableExtrudeFaceEntity(
+function findStableFaceEntity(
   stableId: string,
   candidates: readonly CadBodyExactTopologyEntityDescriptor[],
   source: DerivedExactMetadataSource
 ): CadBodyExactTopologyEntityDescriptor | undefined {
-  if (
-    source.kind !== "extrude" ||
-    source.placementFrame ||
-    source.profile.kind !== "rectangle"
-  ) {
+  if (source.kind === "extrude") {
+    return findStableExtrudeFaceEntity(stableId, candidates, source);
+  }
+
+  if (source.kind === "extrudeBoolean") {
+    return findStableBooleanExtrudeFaceEntity(stableId, candidates, source);
+  }
+
+  return undefined;
+}
+
+function findStableBooleanExtrudeFaceEntity(
+  stableId: string,
+  candidates: readonly CadBodyExactTopologyEntityDescriptor[],
+  source: DerivedBooleanExtrudeGeometrySource
+): CadBodyExactTopologyEntityDescriptor | undefined {
+  return findStableExtrudeFaceEntity(stableId, candidates, source.tool);
+}
+
+function findStableExtrudeFaceEntity(
+  stableId: string,
+  candidates: readonly CadBodyExactTopologyEntityDescriptor[],
+  source: DerivedExtrudeGeometrySource
+): CadBodyExactTopologyEntityDescriptor | undefined {
+  if (source.placementFrame || source.profile.kind !== "rectangle") {
     return undefined;
   }
 
@@ -1126,6 +1162,92 @@ function createNormalizedCheckpointSignature(
     .map((entity) => `${entity.kind}:${entity.localId}:${entity.signature}`)
     .sort()
     .join("|")}`;
+}
+
+const TOPOLOGY_ANCHOR_PROOF_AXES = ["x", "y", "z"] as const;
+const TOPOLOGY_ANCHOR_PROOF_BOUNDS_TOLERANCE = 1e-9;
+const TOPOLOGY_ANCHOR_PROOF_NORMAL_TOLERANCE = 1e-6;
+
+function createTopologyAnchorCommandProofForTarget(
+  kind: CadGeneratedReference["kind"],
+  entity: CadBodyExactTopologyEntityDescriptor | undefined
+): CadTopologyAnchorCommandProof | undefined {
+  if (kind !== "face" || !entity?.bounds) {
+    return undefined;
+  }
+
+  const bounds = entity.bounds;
+  const plane = findAxisAlignedPlaneForTopologyAnchorProof(entity, bounds);
+
+  if (!plane) {
+    return undefined;
+  }
+
+  return {
+    kind: "axisAlignedPlanarFace",
+    entityKind: "face",
+    evidenceSource: "checkpointSnapshot",
+    exposesCheckpointLocalIds: false,
+    bounds,
+    planarAxis: plane.axis,
+    planarCoordinate: plane.coordinate
+  };
+}
+
+function findAxisAlignedPlaneForTopologyAnchorProof(
+  entity: CadBodyExactTopologyEntityDescriptor,
+  bounds: NonNullable<CadBodyExactTopologyEntityDescriptor["bounds"]>
+): { readonly axis: "x" | "y" | "z"; readonly coordinate: number } | undefined {
+  const degenerateAxes = [0, 1, 2].filter(
+    (index) =>
+      Math.abs(bounds.max[index] - bounds.min[index]) <=
+      TOPOLOGY_ANCHOR_PROOF_BOUNDS_TOLERANCE
+  );
+
+  if (degenerateAxes.length !== 1) {
+    return findAxisAlignedPlaneFromNormal(entity, bounds);
+  }
+
+  const axisIndex = degenerateAxes[0]!;
+
+  return {
+    axis: TOPOLOGY_ANCHOR_PROOF_AXES[axisIndex],
+    coordinate: bounds.min[axisIndex]
+  };
+}
+
+function findAxisAlignedPlaneFromNormal(
+  entity: CadBodyExactTopologyEntityDescriptor,
+  bounds: NonNullable<CadBodyExactTopologyEntityDescriptor["bounds"]>
+): { readonly axis: "x" | "y" | "z"; readonly coordinate: number } | undefined {
+  if (entity.surfaceClass && entity.surfaceClass !== "plane") {
+    return undefined;
+  }
+
+  const normal = entity.normal;
+
+  if (!normal) {
+    return undefined;
+  }
+
+  const axisIndex = [0, 1, 2].find((index) =>
+    normal.every((component, componentIndex) => {
+      const magnitude = Math.abs(component);
+
+      return componentIndex === index
+        ? Math.abs(magnitude - 1) <= TOPOLOGY_ANCHOR_PROOF_NORMAL_TOLERANCE
+        : magnitude <= TOPOLOGY_ANCHOR_PROOF_NORMAL_TOLERANCE;
+    })
+  );
+
+  if (axisIndex === undefined) {
+    return undefined;
+  }
+
+  return {
+    axis: TOPOLOGY_ANCHOR_PROOF_AXES[axisIndex],
+    coordinate: (bounds.min[axisIndex] + bounds.max[axisIndex]) / 2
+  };
 }
 
 function createPreviewCheckpointId(bodyId: string, stableId: string): string {

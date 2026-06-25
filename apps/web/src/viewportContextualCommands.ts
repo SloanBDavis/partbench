@@ -161,8 +161,7 @@ export function createViewportContextualCommandSurface({
 }
 
 export function createViewportContextualSketchOnFaceForm(
-  selectedGeneratedReferenceState: GeneratedReferenceSelectionState,
-  selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse
+  selectedGeneratedReferenceState: GeneratedReferenceSelectionState
 ): SketchCreateOnFaceForm | undefined {
   if (
     selectedGeneratedReferenceState.status !== "selected" ||
@@ -173,12 +172,7 @@ export function createViewportContextualSketchOnFaceForm(
 
   const face = selectedGeneratedReferenceState.reference;
   const topologyAnchorId =
-    selectedGeneratedReferenceState.selection.topologyAnchorId ??
-    findSelectedTopologyAnchorIdForOperation(
-      face,
-      "feature.attachSketchPlane",
-      selectionReferenceCandidates
-    );
+    selectedGeneratedReferenceState.selection.topologyAnchorId;
 
   return buildSketchOnFaceForm(
     face.bodyId,
@@ -258,8 +252,7 @@ export function runViewportContextualCommandAction({
 
   if (action.id === "sketch.createOnFace") {
     const form = createViewportContextualSketchOnFaceForm(
-      selectedGeneratedReferenceState,
-      selectionReferenceCandidates
+      selectedGeneratedReferenceState
     );
 
     if (!form) {
@@ -298,26 +291,6 @@ export function runViewportContextualCommandAction({
   }
 
   return false;
-}
-
-function findSelectedTopologyAnchorIdForOperation(
-  reference: CadGeneratedReference,
-  operation: CadSelectionReferenceOperation,
-  selectionReferenceCandidates:
-    | SelectionReferenceCandidatesQueryResponse
-    | undefined
-): string | undefined {
-  const candidate = selectionReferenceCandidates?.candidates.find(
-    (entry) =>
-      entry.commandable &&
-      entry.commandOperations.includes(operation) &&
-      entry.target.bodyId === reference.bodyId &&
-      entry.target.stableId === reference.stableId &&
-      entry.target.kind === reference.kind &&
-      entry.target.topologyAnchorId !== undefined
-  );
-
-  return candidate?.target.topologyAnchorId;
 }
 
 function createActionsFromModeling(

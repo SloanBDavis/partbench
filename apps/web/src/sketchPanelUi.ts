@@ -2,6 +2,7 @@ import type {
   CadBodySnapshot,
   CadFeatureSummary,
   CadParameterSnapshot,
+  CadTopologyIdentitySourceSnapshot,
   CurrentSketchConstraintKind,
   FeatureExtrudeOperationMode,
   FeatureExtrudeSide,
@@ -1238,39 +1239,45 @@ export function getParameterDimensionUsageCount(
 export function createAddTargetBodyOptions(
   bodies: readonly CadBodySnapshot[],
   features: readonly CadFeatureSummary[],
-  preferredBodyId?: string
+  preferredBodyId?: string,
+  topologyAnchors?: CadTopologyIdentitySourceSnapshot["anchors"]
 ): readonly BooleanTargetBodyOption[] {
   return createBooleanTargetBodyOptions(
     bodies,
     features,
     "add",
-    preferredBodyId
+    preferredBodyId,
+    topologyAnchors
   );
 }
 
 export function createCutTargetBodyOptions(
   bodies: readonly CadBodySnapshot[],
   features: readonly CadFeatureSummary[],
-  preferredBodyId?: string
+  preferredBodyId?: string,
+  topologyAnchors?: CadTopologyIdentitySourceSnapshot["anchors"]
 ): readonly BooleanTargetBodyOption[] {
   return createBooleanTargetBodyOptions(
     bodies,
     features,
     "cut",
-    preferredBodyId
+    preferredBodyId,
+    topologyAnchors
   );
 }
 
 export function createHoleTargetBodyOptions(
   bodies: readonly CadBodySnapshot[],
   features: readonly CadFeatureSummary[],
-  preferredBodyId?: string
+  preferredBodyId?: string,
+  topologyAnchors?: CadTopologyIdentitySourceSnapshot["anchors"]
 ): readonly BooleanTargetBodyOption[] {
   return createBooleanTargetBodyOptions(
     bodies,
     features,
     "hole",
-    preferredBodyId
+    preferredBodyId,
+    topologyAnchors
   );
 }
 
@@ -1278,7 +1285,8 @@ function createBooleanTargetBodyOptions(
   bodies: readonly CadBodySnapshot[],
   features: readonly CadFeatureSummary[],
   operationMode: "add" | "cut" | "hole",
-  preferredBodyId?: string
+  preferredBodyId?: string,
+  topologyAnchors: CadTopologyIdentitySourceSnapshot["anchors"] = []
 ): readonly BooleanTargetBodyOption[] {
   const options = bodies
     .filter(
@@ -1293,8 +1301,16 @@ function createBooleanTargetBodyOptions(
         ): candidate is Extract<CadFeatureSummary, { kind: "extrude" }> =>
           candidate.kind === "extrude" && candidate.id === body.featureId
       );
+      const activeBodyAnchorId = findActiveBodyTopologyAnchorId(
+        topologyAnchors,
+        body.id
+      );
       const targetProfileKind = feature
-        ? resolveBooleanTargetProfileKind(features, feature)
+        ? resolveBooleanTargetProfileKind(
+            features,
+            feature,
+            activeBodyAnchorId !== undefined
+          )
         : undefined;
 
       if (
@@ -1307,7 +1323,7 @@ function createBooleanTargetBodyOptions(
 
       const isTopologyResultTarget = feature.operationMode !== "newBody";
       const targetTopologyAnchorId = isTopologyResultTarget
-        ? feature.targetTopologyAnchorId
+        ? (activeBodyAnchorId ?? feature.targetTopologyAnchorId)
         : undefined;
 
       return [
@@ -1349,15 +1365,30 @@ function createBooleanTargetBodyOptions(
   });
 }
 
+function findActiveBodyTopologyAnchorId(
+  anchors: CadTopologyIdentitySourceSnapshot["anchors"],
+  bodyId: string
+): string | undefined {
+  return anchors.find(
+    (anchor) =>
+      anchor.state === "active" &&
+      anchor.entityKind === "body" &&
+      anchor.bodyId === bodyId &&
+      (anchor.stableId === undefined ||
+        anchor.stableId === `generated:body:${bodyId}`)
+  )?.anchorId;
+}
+
 function resolveBooleanTargetProfileKind(
   features: readonly CadFeatureSummary[],
-  feature: Extract<CadFeatureSummary, { kind: "extrude" }>
+  feature: Extract<CadFeatureSummary, { kind: "extrude" }>,
+  allowActiveResultBodyAnchor = false
 ): Extract<CadFeatureSummary, { kind: "extrude" }>["profileKind"] | undefined {
   if (feature.operationMode === "newBody") {
     return feature.profileKind;
   }
 
-  if (!feature.targetTopologyAnchorId) {
+  if (!feature.targetTopologyAnchorId && !allowActiveResultBodyAnchor) {
     return undefined;
   }
 
@@ -1372,9 +1403,13 @@ function resolveBooleanTargetProfileKind(
       return current.profileKind;
     }
 
+    if (!current.targetBodyId) {
+      return undefined;
+    }
+
     if (
-      current.targetTopologyAnchorId !== feature.targetTopologyAnchorId ||
-      !current.targetBodyId
+      feature.targetTopologyAnchorId &&
+      current.targetTopologyAnchorId !== feature.targetTopologyAnchorId
     ) {
       return undefined;
     }

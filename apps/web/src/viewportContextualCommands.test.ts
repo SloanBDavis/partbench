@@ -14,7 +14,10 @@ import {
   createViewportContextualCommandSurface,
   runViewportContextualCommandAction
 } from "./viewportContextualCommands";
-import type { GeneratedReferenceSelectionState } from "./generatedReferenceSelection";
+import type {
+  GeneratedReferenceSelectionState,
+  SelectedGeneratedReference
+} from "./generatedReferenceSelection";
 import {
   deriveModelingActions,
   type ModelingActionDescriptor
@@ -344,20 +347,23 @@ describe("viewport contextual commands", () => {
       topologyAnchorId: "anchor_face_1",
       checkpointId: "checkpoint_1"
     });
+    const selectedState = createSelectedReferenceState(face, {
+      topologyAnchorId: "anchor_face_1"
+    });
     const surface = createViewportContextualCommandSurface({
       modelingActions: createGeneratedReferenceActions(face, candidates),
       selectionDisplay: createSelectionDisplay({
         selectionKind: "generatedReference",
         commandOperations: candidates.candidates[0].commandOperations
       }),
-      selectedGeneratedReferenceState: createSelectedReferenceState(face),
+      selectedGeneratedReferenceState: selectedState,
       selectionReferenceCandidates: candidates
     });
     const onCreateSketchOnFace = vi.fn();
 
     const routed = runViewportContextualCommandAction({
       action: actionById(surface.actions, "sketch.createOnFace"),
-      selectedGeneratedReferenceState: createSelectedReferenceState(face),
+      selectedGeneratedReferenceState: selectedState,
       selectionReferenceCandidates: candidates,
       onCreateSketchOnFace
     });
@@ -605,14 +611,16 @@ function createSelectionDisplay(
 }
 
 function createSelectedReferenceState(
-  reference: CadGeneratedReference
+  reference: CadGeneratedReference,
+  overrides: Partial<SelectedGeneratedReference> = {}
 ): GeneratedReferenceSelectionState {
   return {
     status: "selected",
     selection: {
       bodyId: reference.bodyId,
       stableId: reference.stableId,
-      kind: reference.kind
+      kind: reference.kind,
+      ...overrides
     },
     reference,
     measurementRows: []

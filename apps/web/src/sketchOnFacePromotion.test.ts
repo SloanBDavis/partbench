@@ -49,7 +49,8 @@ describe("sketchOnFacePromotion", () => {
         anchorId: "anchor_cut_face_1",
         status: "ready",
         ops: anchorOps
-      })
+      }),
+      topologyAnchorProof: createFaceProof()
     }));
     const result = await createSketchOnFaceCommandPlan({
       ...createPlanInput("body_cut_1", [
@@ -82,7 +83,8 @@ describe("sketchOnFacePromotion", () => {
         op: "sketch.createOnFace",
         id: "sketch_face_1",
         name: "Face sketch",
-        topologyAnchorId: "anchor_cut_face_1"
+        topologyAnchorId: "anchor_cut_face_1",
+        topologyAnchorProof: createFaceProof()
       }
     ]);
     expect(JSON.stringify(result)).not.toMatch(
@@ -99,7 +101,8 @@ describe("sketchOnFacePromotion", () => {
         anchorId: "anchor_hole_face_1",
         status: "alreadyExists",
         ops: createAnchorOps("body_hole_1", "anchor_hole_face_1")
-      })
+      }),
+      topologyAnchorProof: createFaceProof()
     }));
     const result = await createSketchOnFaceCommandPlan({
       ...createPlanInput("body_hole_1", [createHoleFeature("body_hole_1")]),
@@ -116,7 +119,8 @@ describe("sketchOnFacePromotion", () => {
           op: "sketch.createOnFace",
           id: "sketch_face_1",
           name: "Face sketch",
-          topologyAnchorId: "anchor_hole_face_1"
+          topologyAnchorId: "anchor_hole_face_1",
+          topologyAnchorProof: createFaceProof()
         }
       ]
     });
@@ -154,7 +158,7 @@ describe("sketchOnFacePromotion", () => {
     expect("ops" in result).toBe(false);
   });
 
-  it("does not promote forms that already carry a topology anchor", () => {
+  it("promotes result-body forms that already carry a topology anchor", () => {
     expect(
       shouldPromoteSketchOnFaceTarget(
         {
@@ -163,7 +167,7 @@ describe("sketchOnFacePromotion", () => {
         },
         [createExtrudeFeature("body_cut_1", "cut")]
       )
-    ).toBe(false);
+    ).toBe(true);
   });
 });
 
@@ -269,6 +273,18 @@ function createAnchorOps(bodyId: string, anchorId: string): readonly CadOp[] {
       signatureHash: `${bodyId}:face`
     }
   ];
+}
+
+function createFaceProof() {
+  return {
+    kind: "axisAlignedPlanarFace" as const,
+    entityKind: "face" as const,
+    evidenceSource: "checkpointSnapshot" as const,
+    exposesCheckpointLocalIds: false as const,
+    bounds: { min: [0, 0, 1] as const, max: [1, 1, 1] as const },
+    planarAxis: "z" as const,
+    planarCoordinate: 1
+  };
 }
 
 function createCreationPlan({

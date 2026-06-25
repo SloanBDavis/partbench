@@ -105,12 +105,16 @@ function parseSmokeOptions(args, env) {
   const requireV13Workflow = isTruthy(
     env.PARTBENCH_V13_BROWSER_WORKFLOW_REQUIRED
   );
+  const requireV14Workflow = isTruthy(
+    env.PARTBENCH_V14_BROWSER_WORKFLOW_REQUIRED
+  );
 
   let nextRequireGlbDownload = requireGlbDownload;
   let nextRequireDerivedMeshCache = requireDerivedMeshCache;
   let nextRequireV10Workflow = requireV10Workflow;
   let nextRequireV12Workflow = requireV12Workflow;
   let nextRequireV13Workflow = requireV13Workflow;
+  let nextRequireV14Workflow = requireV14Workflow;
 
   for (const arg of args) {
     if (arg === "--require-glb" || arg === "--require-glb-download") {
@@ -163,6 +167,16 @@ function parseSmokeOptions(args, env) {
       continue;
     }
 
+    if (arg === "--require-v14-workflow") {
+      nextRequireV14Workflow = true;
+      continue;
+    }
+
+    if (arg === "--no-require-v14-workflow") {
+      nextRequireV14Workflow = false;
+      continue;
+    }
+
     throw new Error(`Unknown option ${arg}`);
   }
 
@@ -171,7 +185,8 @@ function parseSmokeOptions(args, env) {
     requireDerivedMeshCache: nextRequireDerivedMeshCache,
     requireV10Workflow: nextRequireV10Workflow,
     requireV12Workflow: nextRequireV12Workflow,
-    requireV13Workflow: nextRequireV13Workflow
+    requireV13Workflow: nextRequireV13Workflow,
+    requireV14Workflow: nextRequireV14Workflow
   };
 }
 
@@ -238,7 +253,8 @@ async function runV7BrowserWorkflowSmoke(
     requireDerivedMeshCache = false,
     requireV10Workflow = false,
     requireV12Workflow = false,
-    requireV13Workflow = false
+    requireV13Workflow = false,
+    requireV14Workflow = false
   } = {}
 ) {
   const target = await client.send("Target.createTarget", {
@@ -256,6 +272,9 @@ async function runV7BrowserWorkflowSmoke(
     : undefined;
   const v13ProjectJson = requireV13Workflow
     ? await createV13ReleaseSampleProjectJson()
+    : undefined;
+  const v14ProjectJson = requireV14Workflow
+    ? await createV14ResultFaceFixtureProjectJson()
     : undefined;
 
   client.on("Runtime.exceptionThrown", (params) => {
@@ -289,6 +308,22 @@ async function runV7BrowserWorkflowSmoke(
   await client.send("Log.enable", {}, sessionId);
   await client.send("Page.enable", {}, sessionId);
   await client.send(
+    "Page.addScriptToEvaluateOnNewDocument",
+    {
+      source: `
+        Object.defineProperty(window, "showOpenFilePicker", {
+          configurable: true,
+          value: undefined
+        });
+        Object.defineProperty(window, "showSaveFilePicker", {
+          configurable: true,
+          value: undefined
+        });
+      `
+    },
+    sessionId
+  );
+  await client.send(
     "Emulation.setDeviceMetricsOverride",
     {
       width: 1280,
@@ -311,8 +346,10 @@ async function runV7BrowserWorkflowSmoke(
         requireV10Workflow,
         requireV12Workflow,
         requireV13Workflow,
+        requireV14Workflow,
         v10C2ProjectJson,
         v13ProjectJson,
+        v14ProjectJson,
         timeoutMs
       })})`
     },
@@ -363,7 +400,8 @@ async function runV7BrowserWorkflowSmoke(
       requireGlbDownload,
       requireV10Workflow,
       requireV12Workflow,
-      requireV13Workflow
+      requireV13Workflow,
+      requireV14Workflow
     }),
     consoleErrors,
     exceptions
@@ -404,6 +442,68 @@ async function createV13ReleaseSampleProjectJson() {
   if (!response.ok) {
     throw new Error("Could not build V13 release sample project JSON.");
   }
+
+  return cadCore.exportCadProjectJson(engine);
+}
+
+async function createV14ResultFaceFixtureProjectJson() {
+  register(loaderPath, import.meta.url);
+  const cadCorePath = pathToFileURL(
+    resolve(repoRoot, "packages/cad-core/src/index.ts")
+  );
+  const cadCore = await import(cadCorePath.href);
+  const engine = new cadCore.CadEngine();
+
+  engine.applyBatch([
+    {
+      op: "sketch.create",
+      id: "v14_smoke_source_sketch",
+      name: "V14 smoke circle source",
+      plane: "XY"
+    },
+    {
+      op: "sketch.addCircle",
+      sketchId: "v14_smoke_source_sketch",
+      id: "v14_smoke_source_circle",
+      center: [0, 0],
+      radius: 1
+    },
+    {
+      op: "feature.extrude",
+      id: "v14_smoke_source_feature",
+      bodyId: "v14_smoke_source_body",
+      sketchId: "v14_smoke_source_sketch",
+      entityId: "v14_smoke_source_circle",
+      depth: 3,
+      operationMode: "newBody",
+      name: "V14 smoke source cylinder"
+    },
+    {
+      op: "sketch.create",
+      id: "v14_smoke_result_cut_sketch",
+      name: "V14 smoke result cut profile",
+      plane: "XY"
+    },
+    {
+      op: "sketch.addRectangle",
+      sketchId: "v14_smoke_result_cut_sketch",
+      id: "v14_smoke_result_cut_rect",
+      center: [0, 0],
+      width: 0.5,
+      height: 0.5
+    },
+    {
+      op: "feature.extrude",
+      id: "v14_smoke_result_cut_feature",
+      bodyId: "v14_smoke_result_target_body",
+      sketchId: "v14_smoke_result_cut_sketch",
+      entityId: "v14_smoke_result_cut_rect",
+      depth: 1,
+      operationMode: "cut",
+      targetBodyId: "v14_smoke_source_body",
+      name: "V14 smoke result target"
+    }
+  ]);
 
   return cadCore.exportCadProjectJson(engine);
 }
@@ -481,7 +581,9 @@ async function v7BrowserWorkflowSmoke({
   requireV12Workflow,
   v10C2ProjectJson,
   requireV13Workflow,
+  requireV14Workflow,
   v13ProjectJson,
+  v14ProjectJson,
   timeoutMs
 }) {
   const ids = {
@@ -566,6 +668,16 @@ async function v7BrowserWorkflowSmoke({
     v13TargetBodyAnchorId: "v13_anchor_target_body",
     v13TargetBodyId: "v13_target_body",
     v13TargetBodyName: "V13 anchored target body",
+    v14ProjectFileName: "v14-browser-fixture.json",
+    v14HoleBodyId: "v14_smoke_result_hole_body",
+    v14HoleBodyName: "V14 smoke result hole",
+    v14HoleCircleEntityId: "v14_smoke_hole_circle",
+    v14HoleFeatureId: "v14_smoke_result_hole_feature",
+    v14HoleSketchId: "v14_smoke_result_face_sketch",
+    v14HoleSketchName: "V14 smoke result face sketch",
+    v14TargetBodyId: "v14_smoke_result_target_body",
+    v14TargetBodyName: "V14 smoke result target",
+    v14WcadFileName: "v14-browser-workflow-roundtrip.wcad",
     wcadFileName: "v8-browser-workflow-roundtrip.wcad",
     sketchId: "v7_smoke_sketch"
   };
@@ -1660,7 +1772,466 @@ async function v7BrowserWorkflowSmoke({
     await runV13TopologyIdentityBrowserWorkflowSmoke(v13ProjectJson);
   }
 
+  if (requireV14Workflow) {
+    await runV14TopologyBackedBrowserWorkflowSmoke(v14ProjectJson);
+  }
+
   return { checks, ids, skipped };
+
+  async function runV14TopologyBackedBrowserWorkflowSmoke(projectJson) {
+    if (!projectJson) {
+      fail(
+        "v14-result-face-attached-sketch-browser",
+        "V14 topology fixture imports before result-face sketch creation",
+        "V13 topology release sample project JSON was not available."
+      );
+      return;
+    }
+
+    openDetailsBySummary(document.body, "Project/File");
+    let projectPanel = getSectionByAriaLabel("Project");
+    loadProjectJsonFileIntoInput(
+      projectPanel,
+      projectJson,
+      ids.v14ProjectFileName
+    );
+    await waitFor(
+      () =>
+        includesText(
+          getSectionByAriaLabel("Project"),
+          `Loaded ${ids.v14ProjectFileName}`
+        ) && includesText(getSectionByAriaLabel("Project"), "Ready to import"),
+      "loaded V14 topology browser fixture JSON"
+    );
+    projectPanel = getSectionByAriaLabel("Project");
+    clickButton(projectPanel, "Import JSON");
+    await waitFor(() => {
+      const structure = getElementByAriaLabel("Model structure");
+      const ready =
+        includesText(structure, ids.v14TargetBodyName) &&
+        includesText(structure, "V14 smoke source cylinder");
+
+      if (!ready) {
+        throw new Error(compactText(structure.textContent, 520));
+      }
+
+      return true;
+    }, "imported V14 topology browser fixture JSON");
+
+    await runV14TopologyBackedResultHoleWorkflowSmoke();
+    await verifyV14ResultHoleProjectJsonSource(
+      "V14 pre-round-trip topology source JSON"
+    );
+    await verifyV14ResultHoleWcadRoundTrip();
+
+    openDetailsBySummary(document.body, "Project/File");
+    projectPanel = getSectionByAriaLabel("Project");
+    clickButton(projectPanel, "Export JSON");
+    await waitFor(() => {
+      const projectJsonPreview = getProjectJsonEditorValue(projectPanel);
+      const ready =
+        includesText(projectPanel, "Import draft") &&
+        projectJsonPreview.includes("web-cad.project.v18") &&
+        projectJsonPreview.includes(ids.v14HoleFeatureId);
+
+      if (!ready) {
+        throw new Error(
+          [
+            `project=${compactText(projectPanel.textContent, 420)}`,
+            `json=${projectJsonPreview.trim().slice(0, 240)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, "V14 exported topology source JSON preview");
+    assertV14ResultHoleProjectJson(getProjectJsonEditorValue(projectPanel));
+    pass(
+      "v14-result-hole-topology-source-json-browser",
+      "V14 result-body hole JSON keeps only public topology sketch and target proof",
+      ids.v14HoleFeatureId
+    );
+  }
+
+  async function verifyV14ResultHoleProjectJsonSource(waitLabel) {
+    openDetailsBySummary(document.body, "Project/File");
+    const projectPanel = getSectionByAriaLabel("Project");
+    clickButton(projectPanel, "Export JSON");
+    await waitFor(() => {
+      const projectJsonPreview = getProjectJsonEditorValue(projectPanel);
+      const ready =
+        includesText(projectPanel, "Import draft") &&
+        projectJsonPreview.includes("web-cad.project.v18") &&
+        projectJsonPreview.includes(ids.v14HoleFeatureId);
+
+      if (!ready) {
+        throw new Error(
+          [
+            `project=${compactText(projectPanel.textContent, 420)}`,
+            `json=${projectJsonPreview.trim().slice(0, 240)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, waitLabel);
+    assertV14ResultHoleProjectJson(getProjectJsonEditorValue(projectPanel));
+  }
+
+  async function runV14TopologyBackedResultHoleWorkflowSmoke() {
+    const targetBodyId = ids.v14TargetBodyId;
+    const targetBodyName = ids.v14TargetBodyName;
+    const faceStableId = `generated:face:${targetBodyId}:side:uMin`;
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      targetBodyName
+    );
+    openSelectionPanel();
+    const bodyStableId = `generated:body:${targetBodyId}`;
+    await selectGeneratedReferenceByStableId(bodyStableId);
+    await saveSelectedTopologyReference(
+      "V14 result body saved topology target",
+      bodyStableId
+    );
+    await selectGeneratedReferenceByStableId(faceStableId);
+    await saveSelectedTopologyReference(
+      "V14 result face saved topology reference",
+      faceStableId
+    );
+    await waitFor(() => {
+      const modeling = getSectionByAriaLabel("Modeling context");
+      const createSketchButton = getButtonByText(
+        modeling,
+        "Create sketch on face"
+      );
+      const ready =
+        isSelectionPanelOpen() &&
+        includesText(modeling, "Command-ready reference") &&
+        includesText(modeling, "Attached sketch") &&
+        createSketchButton !== undefined &&
+        !createSketchButton.disabled;
+
+      if (!ready) {
+        throw new Error(compactText(modeling.textContent, 520));
+      }
+
+      return true;
+    }, "V14 result face command-ready modeling action");
+
+    const modeling = getSectionByAriaLabel("Modeling context");
+    setFieldByLabel(modeling, "Sketch name", ids.v14HoleSketchName);
+    clickButton(modeling, "Create sketch on face");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Model structure"),
+          ids.v14HoleSketchName
+        ),
+      "V14 result face attached sketch"
+    );
+    const sketchesAfterCreate = getSectionByAriaLabel("Sketches");
+    ids.v14HoleSketchId = getControlByLabel(
+      sketchesAfterCreate,
+      "Active sketch"
+    ).value;
+    pass(
+      "v14-result-face-attached-sketch-browser",
+      "V14 result-body planar face creates an attached sketch through the browser UI",
+      ids.v14HoleSketchId
+    );
+
+    clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Sketches");
+    const sketches = getSectionByAriaLabel("Sketches");
+    setSelectByLabel(sketches, "Active sketch", ids.v14HoleSketchId);
+    await waitFor(
+      () =>
+        getControlByLabel(getSectionByAriaLabel("Sketches"), "Active sketch")
+          .value === ids.v14HoleSketchId,
+      "V14 result-face sketch became active"
+    );
+    clickButton(getElementByAriaLabel("Add sketch entity"), "Circle");
+    const entityEditor = await waitForSectionByAriaLabel(
+      "Sketch entity editor",
+      "V14 result-face circle entity editor"
+    );
+    setSelectByLabel(entityEditor, "Entity", "circle");
+    setInputByDetailsSummary(
+      entityEditor,
+      "Optional ID",
+      ids.v14HoleCircleEntityId
+    );
+    setFieldByLabel(entityEditor, "Center X", "0");
+    setFieldByLabel(entityEditor, "Center Y", "0");
+    setFieldByLabel(entityEditor, "Radius", "0.2");
+    clickButton(entityEditor, "Add entity");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Select sketch entity"),
+          ids.v14HoleCircleEntityId
+        ),
+      "created V14 result-face hole circle"
+    );
+    pass(
+      "v14-result-face-circle-entity-browser",
+      "V14 result-face attached sketch accepts a circle hole profile",
+      ids.v14HoleCircleEntityId
+    );
+
+    const featureEditor = getSectionByAriaLabel("Create authored feature");
+    clickButton(featureEditor, "Hole");
+    await waitFor(
+      () =>
+        Boolean(
+          queryControlByLabel(
+            getSectionByAriaLabel("Create authored feature"),
+            "Target body"
+          )
+        ),
+      "V14 hole target body control"
+    );
+    setSelectByLabel(featureEditor, "Target body", targetBodyId);
+    setSelectByLabel(featureEditor, "Depth mode", "throughAll");
+    setSelectByLabel(featureEditor, "Direction", "positive");
+    openDetailsBySummary(featureEditor, "Advanced hole options");
+    setFieldByLabel(featureEditor, "Optional feature ID", ids.v14HoleFeatureId);
+    setFieldByLabel(featureEditor, "Optional body ID", ids.v14HoleBodyId);
+    setFieldByLabel(featureEditor, "Optional name", ids.v14HoleBodyName);
+    await waitFor(() => {
+      const nextFeatureEditor = getSectionByAriaLabel(
+        "Create authored feature"
+      );
+      const createHoleButton = getButtonByText(
+        nextFeatureEditor,
+        "Create hole"
+      );
+
+      if (!createHoleButton || createHoleButton.disabled) {
+        throw new Error(compactText(nextFeatureEditor.textContent, 520));
+      }
+
+      return true;
+    }, "V14 result-face hole command enabled");
+    clickButton(
+      getSectionByAriaLabel("Create authored feature"),
+      "Create hole"
+    );
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Model structure"),
+          ids.v14HoleBodyName
+        ),
+      "created V14 result-body hole"
+    );
+    pass(
+      "v14-result-face-circle-hole-browser",
+      "V14 result-face circle profile creates a hole in the topology-backed result body",
+      ids.v14HoleBodyId
+    );
+  }
+
+  async function saveSelectedTopologyReference(waitLabel, expectedStableId) {
+    await waitFor(() => {
+      const inspector = getElementByAriaLabel("Inspector");
+      const referenceSelect = getControlByLabel(inspector, "Inspect reference");
+      const ready =
+        (!expectedStableId || referenceSelect.value === expectedStableId) &&
+        includesText(inspector, "Saved reference") &&
+        (includesText(inspector, "Save reference") ||
+          includesText(inspector, "Saved reference active"));
+
+      if (!ready) {
+        throw new Error(compactText(inspector.textContent, 520));
+      }
+
+      return true;
+    }, `${waitLabel} action`);
+
+    const inspector = getElementByAriaLabel("Inspector");
+    const saveButton = getButtonByText(inspector, "Save reference");
+
+    if (saveButton && !saveButton.disabled) {
+      saveButton.click();
+    } else if (!includesText(inspector, "Saved reference active")) {
+      throw new Error(compactText(inspector.textContent, 520));
+    }
+
+    await waitFor(() => {
+      const nextInspector = getElementByAriaLabel("Inspector");
+      const referenceSelect = getControlByLabel(
+        nextInspector,
+        "Inspect reference"
+      );
+      const ready =
+        (!expectedStableId || referenceSelect.value === expectedStableId) &&
+        includesText(nextInspector, "Saved reference active");
+
+      if (!ready) {
+        throw new Error(compactText(nextInspector.textContent, 520));
+      }
+
+      return true;
+    }, waitLabel);
+  }
+
+  async function verifyV14ResultHoleWcadRoundTrip() {
+    openDetailsBySummary(document.body, "Project/File");
+    let projectPanel = await waitForSectionByAriaLabel(
+      "Project",
+      "V14 Project/File panel"
+    );
+    await waitFor(
+      () =>
+        includesText(projectPanel, "Project contents") &&
+        includesText(projectPanel, "Save As"),
+      "V14 Project/File save controls"
+    );
+    const v14DownloadCapture = createDownloadCapture();
+    v14DownloadCapture.install();
+    let wcadBytes;
+
+    try {
+      clickButton(projectPanel, "Save As");
+      await waitFor(
+        () => {
+          if (v14DownloadCapture.blobs.length === 0) {
+            throw new Error(
+              `No V14 .wcad blob download was captured. Project panel: ${compactText(projectPanel.textContent, 720)}`
+            );
+          }
+
+          if (!includesText(projectPanel, "Downloaded .wcad package")) {
+            throw new Error(compactText(projectPanel.textContent, 520));
+          }
+
+          return true;
+        },
+        "downloaded V14 result-hole .wcad package",
+        Math.max(timeoutMs, 60_000)
+      );
+      wcadBytes = await v14DownloadCapture.readFirstBytes();
+    } finally {
+      v14DownloadCapture.restore();
+    }
+
+    projectPanel = getSectionByAriaLabel("Project");
+    loadProjectWcadFileIntoInput(projectPanel, wcadBytes, ids.v14WcadFileName);
+    await waitFor(() => {
+      openDetailsBySummary(document.body, "Project/File");
+      const currentProjectPanel = getSectionByAriaLabel("Project");
+      const ready =
+        includesText(currentProjectPanel, ids.v14WcadFileName) &&
+        includesText(currentProjectPanel, "Uploaded .wcad");
+
+      if (!ready) {
+        throw new Error(compactText(currentProjectPanel.textContent, 520));
+      }
+
+      return true;
+    }, "opened V14 result-hole .wcad package");
+    await waitFor(() => {
+      const structure = getElementByAriaLabel("Model structure");
+      const ready =
+        includesText(structure, ids.v14HoleSketchName) &&
+        includesText(structure, ids.v14HoleBodyName);
+
+      if (!ready) {
+        throw new Error(compactText(structure.textContent, 520));
+      }
+
+      return true;
+    }, "V14 result hole survived .wcad round-trip");
+    pass(
+      "v14-result-hole-wcad-roundtrip-browser",
+      "V14 result-body attached sketch and hole survive .wcad save/open",
+      ids.v14HoleBodyId
+    );
+  }
+
+  function assertV14ResultHoleProjectJson(projectJson) {
+    const targetBodyId = ids.v14TargetBodyId;
+    const parsed = JSON.parse(projectJson);
+    const sketch = findObjectById(parsed, ids.v14HoleSketchId);
+    const holeFeature = findObjectById(parsed, ids.v14HoleFeatureId);
+
+    if (!sketch || sketch.attachment?.kind !== "topologyAnchorFace") {
+      const sketches = Array.isArray(parsed.document?.sketches)
+        ? parsed.document.sketches.map((candidate) => ({
+            id: candidate.id,
+            name: candidate.name,
+            attachmentKind: candidate.attachment?.kind,
+            topologyAnchorId: candidate.attachment?.topologyAnchorId,
+            bodyId: candidate.attachment?.bodyId,
+            faceStableId: candidate.attachment?.faceStableId
+          }))
+        : [];
+      const features = Array.isArray(parsed.document?.features)
+        ? parsed.document.features.map((candidate) => ({
+            id: candidate.id,
+            kind: candidate.kind,
+            bodyId: candidate.bodyId,
+            operationMode: candidate.operationMode,
+            targetBodyId: candidate.targetBodyId,
+            targetTopologyAnchorId: candidate.targetTopologyAnchorId
+          }))
+        : [];
+      throw new Error(
+        `V14 attached sketch lost topologyAnchorFace source for ${ids.v14HoleSketchId}: sketches=${JSON.stringify(sketches)} features=${JSON.stringify(features)}`
+      );
+    }
+
+    if (sketch.attachment.bodyId !== targetBodyId) {
+      throw new Error(
+        `V14 attached sketch target body mismatch: ${sketch.attachment.bodyId}`
+      );
+    }
+
+    if (
+      !holeFeature ||
+      holeFeature.kind !== "hole" ||
+      holeFeature.targetBodyId !== targetBodyId ||
+      typeof holeFeature.targetTopologyAnchorId !== "string" ||
+      holeFeature.targetTopologyAnchorId.length === 0
+    ) {
+      throw new Error("V14 hole feature lost its topology target source.");
+    }
+
+    const sourceBoundaryText = JSON.stringify({
+      attachment: sketch.attachment,
+      feature: holeFeature
+    });
+    const privateIdPattern =
+      /(renderer|meshId|occt|viewport|opfs|fileHandle|checkpointEntityId)/i;
+
+    if (privateIdPattern.test(sourceBoundaryText)) {
+      throw new Error(
+        `V14 topology source leaked a private ID: ${sourceBoundaryText}`
+      );
+    }
+  }
+
+  function findObjectById(value, id) {
+    if (!value || typeof value !== "object") {
+      return undefined;
+    }
+
+    if (!Array.isArray(value) && value.id === id) {
+      return value;
+    }
+
+    for (const child of Object.values(value)) {
+      const match = findObjectById(child, id);
+
+      if (match) {
+        return match;
+      }
+    }
+
+    return undefined;
+  }
 
   function pass(id, label, detail) {
     checks.push({
@@ -1851,14 +2422,10 @@ async function v7BrowserWorkflowSmoke({
       const inspector = getElementByAriaLabel("Inspector");
       const modeling = getSectionByAriaLabel("Modeling context");
       const ready =
-        includesText(
-          inspector,
-          "Topology anchor-backed target with checkpoint evidence."
-        ) &&
-        includesText(
-          modeling,
-          "Topology anchor-backed target with checkpoint evidence."
-        );
+        includesText(inspector, "Command-ready reference") &&
+        includesText(inspector, ids.v13RepairReferenceName) &&
+        includesText(modeling, "Command-ready reference") &&
+        includesText(modeling, "Create sketch on face");
 
       if (!ready) {
         throw new Error(
@@ -1873,7 +2440,7 @@ async function v7BrowserWorkflowSmoke({
     }, "V13 topology-anchor provenance is visible");
     pass(
       "v13-repaired-reference-topology-provenance",
-      "Selection and Modeling show compact checkpoint-backed topology provenance",
+      "Selection and Modeling show the repaired topology-backed face as command-ready without debug copy",
       getSelectionText()
     );
 
@@ -4776,6 +5343,19 @@ async function v7BrowserWorkflowSmoke({
       setSelectByLabel(inspector, "Inspect reference", stableId);
       return true;
     }, `generated reference option ${stableId}`);
+
+    await waitFor(() => {
+      const inspector = getElementByAriaLabel("Inspector");
+      const referenceSelect = getControlByLabel(inspector, "Inspect reference");
+
+      if (referenceSelect.value !== stableId) {
+        throw new Error(
+          `Selected ${referenceSelect.value || "none"}, expected ${stableId}.`
+        );
+      }
+
+      return true;
+    }, `selected generated reference ${stableId}`);
 
     return optionLabel;
   }

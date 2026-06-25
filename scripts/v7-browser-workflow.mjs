@@ -110,13 +110,21 @@ export const V13_BROWSER_WORKFLOW_CHECK_IDS = Object.freeze([
   "v13-downstream-anchor-cut-export",
   "v13-no-private-topology-ui-leak"
 ]);
+export const V14_BROWSER_WORKFLOW_CHECK_IDS = Object.freeze([
+  "v14-result-face-attached-sketch-browser",
+  "v14-result-face-circle-entity-browser",
+  "v14-result-face-circle-hole-browser",
+  "v14-result-hole-wcad-roundtrip-browser",
+  "v14-result-hole-topology-source-json-browser"
+]);
 
 export function getV7BrowserWorkflowRequiredCheckIds({
   requireGlbDownload = false,
   requireDerivedMeshCache = false,
   requireV10Workflow = false,
   requireV12Workflow = false,
-  requireV13Workflow = false
+  requireV13Workflow = false,
+  requireV14Workflow = false
 } = {}) {
   const requiredCheckIds = [...V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS];
 
@@ -152,6 +160,14 @@ export function getV7BrowserWorkflowRequiredCheckIds({
 
   if (requireV13Workflow) {
     for (const id of V13_BROWSER_WORKFLOW_CHECK_IDS) {
+      if (!requiredCheckIds.includes(id)) {
+        requiredCheckIds.push(id);
+      }
+    }
+  }
+
+  if (requireV14Workflow) {
+    for (const id of V14_BROWSER_WORKFLOW_CHECK_IDS) {
       if (!requiredCheckIds.includes(id)) {
         requiredCheckIds.push(id);
       }

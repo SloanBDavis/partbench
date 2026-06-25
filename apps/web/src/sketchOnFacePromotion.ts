@@ -93,9 +93,23 @@ export async function createSketchOnFaceCommandPlan({
     };
   }
 
+  const topologyAnchorProof =
+    form.topologyAnchorProof ?? plan.topologyAnchorProof;
+
+  if (!topologyAnchorProof) {
+    return {
+      ok: false,
+      status: "unsupported",
+      message: "Selected face is not ready for replayable sketch attachment.",
+      diagnostics: plan.plan.diagnostics,
+      plan: plan.plan
+    };
+  }
+
   const sketchOp = buildCreateSketchOnFaceOp({
     ...form,
-    topologyAnchorId
+    topologyAnchorId,
+    topologyAnchorProof
   });
 
   return {
@@ -111,10 +125,6 @@ export function shouldPromoteSketchOnFaceTarget(
   form: SketchCreateOnFaceForm,
   features: readonly CadFeatureSummary[]
 ): boolean {
-  if (form.topologyAnchorId?.trim()) {
-    return false;
-  }
-
   const feature = features.find(
     (candidate) => candidate.bodyId === form.bodyId
   );
