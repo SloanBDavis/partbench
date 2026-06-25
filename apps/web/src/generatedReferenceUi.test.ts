@@ -150,6 +150,16 @@ describe("generated reference UI helpers", () => {
         faceRole: "endCap"
       })
     ).toBe("endCap on body_1");
+    expect(
+      formatSketchAttachmentLabel({
+        kind: "topologyAnchorFace",
+        bodyId: "body_result",
+        topologyAnchorId: "anchor_face_1",
+        checkpointId: "checkpoint_1",
+        planarAxis: "z",
+        planarCoordinate: 3
+      })
+    ).toBe("attached face on body_result");
   });
 
   it("collects and labels generated reference items", () => {

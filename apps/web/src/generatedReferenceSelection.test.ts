@@ -337,10 +337,10 @@ describe("generated reference selection helpers", () => {
     expect(summaries[0]).toMatchObject({
       tone: "ready",
       title: "Face: Start cap",
-      topologyDetail: "Topology anchor-backed target with checkpoint evidence."
+      topologyDetail: undefined
     });
     expect(JSON.stringify(summaries)).not.toMatch(
-      /checkpointEntityId|checkpoint-local|rendererId|meshId|occtId|gpuId|selectionBufferId|pixelId|opfsPath|fileHandle/i
+      /Topology anchor-backed|checkpoint evidence|checkpointEntityId|checkpoint-local|rendererId|meshId|occtId|gpuId|selectionBufferId|pixelId|opfsPath|fileHandle/i
     );
   });
 

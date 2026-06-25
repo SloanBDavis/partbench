@@ -143,7 +143,7 @@ export async function createProjectTopologyAnchorCreationPlanForGeneratedReferen
     const diagnostic = createTopologyPlanDiagnostic(
       "TOPOLOGY_MATCH_LOW_CONFIDENCE",
       "warning",
-      `Body ${target.bodyId} does not have source topology identity for stable reference creation.`,
+      `Body ${target.bodyId} does not have source topology identity for saved reference creation.`,
       {
         bodyId: target.bodyId,
         expected: "source-backed body topology identity",
@@ -165,7 +165,7 @@ export async function createProjectTopologyAnchorCreationPlanForGeneratedReferen
     const diagnostic = createTopologyPlanDiagnostic(
       "TOPOLOGY_MATCH_UNSUPPORTED",
       "warning",
-      `Body ${target.bodyId} does not have a supported exact topology source for stable reference creation.`,
+      `Body ${target.bodyId} does not have a supported exact topology source for saved reference creation.`,
       {
         bodyId: target.bodyId,
         expected: "supported source-backed exact topology source",
@@ -182,7 +182,7 @@ export async function createProjectTopologyAnchorCreationPlanForGeneratedReferen
     const diagnostic = createTopologyPlanDiagnostic(
       "TOPOLOGY_MATCH_UNSUPPORTED",
       "warning",
-      `Body ${target.bodyId} cannot create a stable reference yet: ${placementError}`,
+      `Body ${target.bodyId} cannot create a saved reference yet: ${placementError}`,
       {
         bodyId: target.bodyId,
         expected: "resolved source placement",
@@ -356,7 +356,7 @@ export async function createProjectTopologyAnchorRepairPlanForGeneratedReference
     const diagnostic = createTopologyPlanDiagnostic(
       "TOPOLOGY_REPAIR_COMMANDS_DEFERRED",
       "warning",
-      "Stable topology reference repair requires a selected topology anchor.",
+      "Saved reference repair requires a selected stable reference.",
       {
         bodyId: target.bodyId,
         entityKind: target.kind,
@@ -401,7 +401,7 @@ export async function createProjectTopologyAnchorRepairPlanForGeneratedReference
     const diagnostic = createTopologyPlanDiagnostic(
       "TOPOLOGY_MATCH_UNSUPPORTED",
       "warning",
-      `Body ${target.bodyId} does not have supported exact topology source evidence for stable reference repair.`,
+      `Body ${target.bodyId} does not have supported exact topology source evidence for saved reference repair.`,
       {
         bodyId: target.bodyId,
         entityKind: target.kind,
@@ -419,7 +419,7 @@ export async function createProjectTopologyAnchorRepairPlanForGeneratedReference
     const diagnostic = createTopologyPlanDiagnostic(
       "TOPOLOGY_MATCH_UNSUPPORTED",
       "warning",
-      `Body ${target.bodyId} cannot repair a stable reference yet: ${placementError}`,
+      `Body ${target.bodyId} cannot repair a saved reference yet: ${placementError}`,
       {
         bodyId: target.bodyId,
         entityKind: target.kind,
@@ -795,7 +795,7 @@ function normalizeTopologySnapshotForGeneratedReference({
         createTopologyPlanDiagnostic(
           "TOPOLOGY_MATCH_UNSUPPORTED",
           "warning",
-          `Stable topology reference creation currently supports body, face, and edge references; ${target.kind} is not supported.`,
+          `Saved reference creation currently supports body, face, and edge references; ${target.kind} is not supported.`,
           {
             bodyId: target.bodyId,
             entityKind: target.kind,
@@ -944,7 +944,7 @@ function chooseOnlySnapshotEntity(
       createTopologyPlanDiagnostic(
         "TOPOLOGY_MATCH_AMBIGUOUS",
         "warning",
-        `Exact topology snapshot has ${candidates.length} ${target.kind} entities for ${target.stableId}; stable reference creation needs one source-backed match.`,
+        `Exact topology snapshot has ${candidates.length} ${target.kind} entities for ${target.stableId}; saved reference creation needs one source-backed match.`,
         {
           bodyId: target.bodyId,
           entityKind: target.kind,
@@ -1188,7 +1188,7 @@ function createTopologyPlanFailure(
     status,
     message:
       diagnostics[0]?.message ??
-      "Stable topology reference creation is unavailable for this selection.",
+      "Saved reference creation is unavailable for this selection.",
     diagnostics,
     ...(plan ? { plan } : {})
   };
@@ -1204,7 +1204,7 @@ function createTopologyRepairPlanFailure(
     status,
     message:
       diagnostics[0]?.message ??
-      "Stable topology reference repair is unavailable for this selection.",
+      "Saved reference repair is unavailable for this selection.",
     diagnostics,
     ...(plan ? { plan } : {})
   };

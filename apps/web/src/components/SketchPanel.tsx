@@ -1143,36 +1143,6 @@ export function SketchPanel({
                       </dd>
                     </div>
                   </dl>
-                  <details className="advanced-options compact">
-                    <summary>Attachment IDs</summary>
-                    <dl>
-                      {selectedSketch.attachment.kind === "generatedFace" ? (
-                        <>
-                          <div>
-                            <dt>Stable ID</dt>
-                            <dd>{selectedSketch.attachment.faceStableId}</dd>
-                          </div>
-                          <div>
-                            <dt>Source feature</dt>
-                            <dd>{selectedSketch.attachment.sourceFeatureId}</dd>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <div>
-                            <dt>Anchor</dt>
-                            <dd>
-                              {selectedSketch.attachment.topologyAnchorId}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt>Checkpoint</dt>
-                            <dd>{selectedSketch.attachment.checkpointId}</dd>
-                          </div>
-                        </>
-                      )}
-                    </dl>
-                  </details>
                   {selectedSketchDisplayStatus?.kind === "attached" && (
                     <p className="project-message">
                       {selectedSketchDisplayStatus.message}

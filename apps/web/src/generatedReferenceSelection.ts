@@ -288,15 +288,11 @@ export function createSelectionReferenceTopologyDetail(
     candidate.source === "topologyAnchorSelection" ||
     candidate.target.topologyAnchorId !== undefined;
 
-  if (!usesTopologyAnchor) {
+  if (!usesTopologyAnchor || candidate.commandable) {
     return undefined;
   }
 
-  if (candidate.target.checkpointId) {
-    return "Topology anchor-backed target with checkpoint evidence.";
-  }
-
-  return "Topology anchor-backed target.";
+  return "Saved reference is not ready for modeling commands.";
 }
 
 export function formatSelectionReferenceStatus(

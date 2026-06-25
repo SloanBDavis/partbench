@@ -44,6 +44,7 @@ import {
   createNamedReferenceRepairUiState,
   formatNamedReferenceRepairHealthStatus
 } from "../namedReferenceRepairUi";
+import { getExtrudeTargetFields } from "../modelingPanelExtrudeTargets";
 import type {
   ModelingActionDescriptor,
   ModelingSelectionContext
@@ -1597,6 +1598,11 @@ function ExtrudeFeatureForm({
     form: FeatureExtrudeForm
   ) => void;
 }) {
+  const initialTargetFields = getExtrudeTargetFields(
+    initialOperationMode,
+    addTargetBodies,
+    cutTargetBodies
+  );
   const [form, setForm] = useState<FeatureExtrudeForm>(() => ({
     ...defaultExtrudeForm,
     operationMode: initialOperationMode,
@@ -1605,27 +1611,25 @@ function ExtrudeFeatureForm({
       initialOperationMode,
       defaultExtrudeForm.side
     ),
-    targetBodyId:
-      initialOperationMode === "add"
-        ? addTargetBodies[0]?.bodyId
-        : initialOperationMode === "cut"
-          ? cutTargetBodies[0]?.bodyId
-          : undefined
+    ...initialTargetFields
   }));
   const addStatus = getAddOperationStatus(context.entity, addTargetBodies);
   const cutStatus = getCutOperationStatus(context.entity, cutTargetBodies);
   const targetBodies =
     form.operationMode === "add" ? addTargetBodies : cutTargetBodies;
-  const targetBodyId =
-    form.operationMode === "newBody"
-      ? undefined
-      : form.targetBodyId || targetBodies[0]?.bodyId;
+  const targetFields = getExtrudeTargetFields(
+    form.operationMode,
+    addTargetBodies,
+    cutTargetBodies,
+    form.targetBodyId
+  );
+  const targetBodyId = targetFields.targetBodyId;
   const selectedTargetBody = targetBodies.find(
     (body) => body.bodyId === targetBodyId
   );
   const effectiveForm: FeatureExtrudeForm = {
     ...form,
-    ...(targetBodyId ? { targetBodyId } : {})
+    ...targetFields
   };
   const operationStatus =
     form.operationMode === "add"
@@ -1676,20 +1680,25 @@ function ExtrudeFeatureForm({
           <select
             value={form.operationMode}
             disabled={disabled}
-            onChange={(event) =>
+            onChange={(event) => {
+              const operationMode = event.currentTarget
+                .value as FeatureExtrudeForm["operationMode"];
+
               setForm({
                 ...form,
-                operationMode: event.currentTarget
-                  .value as FeatureExtrudeForm["operationMode"],
+                operationMode,
                 side: getExtrudeSideForOperationMode(
                   context.sketch,
-                  event.currentTarget
-                    .value as FeatureExtrudeForm["operationMode"],
+                  operationMode,
                   form.side
                 ),
-                targetBodyId: undefined
-              })
-            }
+                ...getExtrudeTargetFields(
+                  operationMode,
+                  addTargetBodies,
+                  cutTargetBodies
+                )
+              });
+            }}
           >
             <option value="newBody">New body</option>
             <option value="add">Add to body ({addTargetBodies.length})</option>
@@ -1702,9 +1711,18 @@ function ExtrudeFeatureForm({
             <select
               value={targetBodyId ?? ""}
               disabled={disabled || targetBodies.length === 0}
-              onChange={(event) =>
-                setForm({ ...form, targetBodyId: event.currentTarget.value })
-              }
+              onChange={(event) => {
+                const targetBodyId = event.currentTarget.value;
+                setForm({
+                  ...form,
+                  ...getExtrudeTargetFields(
+                    form.operationMode,
+                    addTargetBodies,
+                    cutTargetBodies,
+                    targetBodyId
+                  )
+                });
+              }}
             >
               {targetBodies.map((body) => (
                 <option key={body.bodyId} value={body.bodyId}>

@@ -1969,20 +1969,20 @@ function SelectedGeneratedReferencePanel({
           {onCreateTopologyAnchor && (
             <div className="named-reference-repair">
               <div>
-                <strong>Stable topology reference</strong>
+                <strong>Saved reference</strong>
                 <small>
                   {topologyAnchorId
-                    ? "Stable reference active"
+                    ? "Saved reference active"
                     : canCreateTopologyAnchor
-                      ? "Creates a saved topology reference for this selected entity."
-                      : "Stable references are available for body, face, and edge selections."}
+                      ? "Saves this selected entity for downstream commands."
+                      : "Saved references are available for body, face, and edge selections."}
                 </small>
               </div>
               {topologyAnchorId ? (
                 <>
                   <div className="button-row compact">
                     <button type="button" disabled>
-                      Stable
+                      Saved
                     </button>
                     {onPreviewTopologyAnchorRepair && (
                       <button
@@ -1999,7 +1999,7 @@ function SelectedGeneratedReferencePanel({
                       >
                         {topologyRepairPreview?.pending
                           ? "Checking..."
-                          : "Check repair candidates"}
+                          : "Check repair options"}
                       </button>
                     )}
                     {onRepairTopologyAnchor && (
@@ -2015,7 +2015,7 @@ function SelectedGeneratedReferencePanel({
                           }
                         }}
                       >
-                        Repair stable reference
+                        Repair saved reference
                       </button>
                     )}
                   </div>
@@ -2049,7 +2049,7 @@ function SelectedGeneratedReferencePanel({
                     }
                   }}
                 >
-                  Create stable reference
+                  Save reference
                 </button>
               )}
             </div>

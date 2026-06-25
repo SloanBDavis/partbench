@@ -15,6 +15,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { deriveModelingActions } from "../modelingActions";
+import { getExtrudeTargetFields } from "../modelingPanelExtrudeTargets";
 import { getExtrudeSideForOperationMode } from "../sketchPanelUi";
 import { ModelingActionsPanel } from "./ModelingActionsPanel";
 
@@ -502,6 +503,63 @@ describe("ModelingActionsPanel", () => {
     expect(markup).toContain("Cut body");
   });
 
+  it("preserves topology-backed cut and add target anchors for extrude submit forms", () => {
+    const addTargets = [
+      {
+        bodyId: "body_add_result",
+        featureId: "feat_add_result",
+        targetTopologyAnchorId: "anchor_body_add",
+        profileKind: "rectangle" as const,
+        label: "Rectangle add result",
+        detail: "Rectangle topology result / add / body_add_result"
+      }
+    ];
+    const cutTargets = [
+      {
+        bodyId: "body_cut_result",
+        featureId: "feat_cut_result",
+        targetTopologyAnchorId: "anchor_body_cut",
+        profileKind: "rectangle" as const,
+        label: "Rectangle cut result",
+        detail: "Rectangle topology result / cut / body_cut_result"
+      }
+    ];
+
+    expect(getExtrudeTargetFields("cut", addTargets, cutTargets)).toEqual({
+      targetBodyId: "body_cut_result",
+      targetTopologyAnchorId: "anchor_body_cut"
+    });
+    expect(getExtrudeTargetFields("add", addTargets, cutTargets)).toEqual({
+      targetBodyId: "body_add_result",
+      targetTopologyAnchorId: "anchor_body_add"
+    });
+    expect(
+      getExtrudeTargetFields(
+        "cut",
+        addTargets,
+        [
+          {
+            bodyId: "body_cut_other",
+            featureId: "feat_cut_other",
+            targetTopologyAnchorId: "anchor_body_other",
+            profileKind: "rectangle",
+            label: "Other cut result",
+            detail: "Rectangle topology result / cut / body_cut_other"
+          },
+          ...cutTargets
+        ],
+        "body_cut_result"
+      )
+    ).toEqual({
+      targetBodyId: "body_cut_result",
+      targetTopologyAnchorId: "anchor_body_cut"
+    });
+    expect(getExtrudeTargetFields("newBody", addTargets, cutTargets)).toEqual({
+      targetBodyId: undefined,
+      targetTopologyAnchorId: undefined
+    });
+  });
+
   it("defaults circle profiles with eligible targets to hole creation", () => {
     const circle: SketchSnapshot["entities"][number] = {
       id: "circle_1",
@@ -593,7 +651,7 @@ describe("ModelingActionsPanel", () => {
     expect(markup).not.toContain("generated:face:body_rect:startCap");
   });
 
-  it("renders topology-anchor-backed reference status compactly", () => {
+  it("renders saved reference status without topology debug copy", () => {
     const reference = createFace({
       label: "Start cap"
     });
@@ -620,9 +678,9 @@ describe("ModelingActionsPanel", () => {
 
     expect(markup).toContain("Reference status");
     expect(markup).toContain("Command-ready reference");
-    expect(markup).toContain(
-      "Topology anchor-backed target with checkpoint evidence."
-    );
+    expect(markup).toContain("Create sketch on face");
+    expect(markup).not.toContain("Topology anchor-backed");
+    expect(markup).not.toContain("checkpoint evidence");
     expect(markup).not.toMatch(
       /checkpoint-local|checkpointEntityId|rendererId|meshId|occtId|gpuId|selectionBufferId|pixelId|opfsPath|fileHandle/i
     );

@@ -134,6 +134,32 @@ describe("sketch display frames", () => {
     ).toEqual([-4, -2, 5]);
   });
 
+  it("labels topology-attached sketch display without topology debug copy", () => {
+    const sketch: SketchSnapshot = {
+      id: "sketch_anchor_face",
+      name: "Attached sketch",
+      plane: "XY",
+      attachment: {
+        kind: "topologyAnchorFace",
+        bodyId: "body_result",
+        topologyAnchorId: "anchor_face_1",
+        checkpointId: "checkpoint_1",
+        planarAxis: "z",
+        planarCoordinate: 3
+      },
+      entities: []
+    };
+    const state = createSketchDisplayState([sketch], new Map());
+
+    expect(state.statuses.get(sketch.id)).toEqual({
+      kind: "attached",
+      message: "Displaying on attached face."
+    });
+    expect(JSON.stringify(state.statuses.get(sketch.id))).not.toMatch(
+      /topology|checkpoint|anchor/i
+    );
+  });
+
   it("falls back to the saved sketch plane when an attachment is stale", () => {
     const sketch = createAttachedSketch("sketch_missing", "endCap", "XY");
     const state = createSketchDisplayState([sketch], new Map());

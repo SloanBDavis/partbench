@@ -59,7 +59,7 @@ export function createSketchDisplayState(
       frames.set(sketch.id, createTopologyAnchorFaceDisplayFrame(attachment));
       statuses.set(sketch.id, {
         kind: "attached",
-        message: `Displaying on stable topology face.`
+        message: "Displaying on attached face."
       });
       continue;
     }

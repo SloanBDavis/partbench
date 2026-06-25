@@ -375,7 +375,7 @@ describe("viewport contextual commands", () => {
     );
   });
 
-  it("routes selected topology-anchor face sketches after stable reference creation", () => {
+  it("routes selected topology-anchor face sketches after saved reference creation", () => {
     const face = createFace();
     const state = createSelectedReferenceState(face) as Extract<
       GeneratedReferenceSelectionState,

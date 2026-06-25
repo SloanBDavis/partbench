@@ -506,7 +506,7 @@ function createBodyActions(
     },
     {
       id: "body.measureTopology",
-      label: "Measure/topology",
+      label: "Measure",
       kind: "query",
       category: "body",
       available: true,

@@ -338,7 +338,7 @@ describe("projectWcadTopologyCheckpoints", () => {
     expect(engine.getDocument().topologyIdentity).toBeUndefined();
   });
 
-  it("plans selected stable topology reference repairs through cad-core CADOps", async () => {
+  it("plans selected saved reference repairs through cad-core CADOps", async () => {
     const engine = createRectangleExtrudeEngine();
     const runtime = createCheckpointRuntime();
     const structure = readProjectStructure(engine);

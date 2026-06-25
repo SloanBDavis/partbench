@@ -2414,7 +2414,7 @@ export function App() {
             ? { topologyAnchorId: plan.plan.anchorId }
             : {})
         });
-        setCommandNotice("Stable topology reference already exists.");
+        setCommandNotice("Saved reference already exists.");
         return;
       }
 
@@ -2428,9 +2428,7 @@ export function App() {
       }
     } catch (error) {
       setCommandError(
-        error instanceof Error
-          ? error.message
-          : "Could not create stable topology reference."
+        error instanceof Error ? error.message : "Could not save reference."
       );
       return;
     } finally {
@@ -2444,7 +2442,7 @@ export function App() {
         ...target,
         ...(plan.plan.anchorId ? { topologyAnchorId: plan.plan.anchorId } : {})
       });
-      setCommandNotice("Created stable topology reference.");
+      setCommandNotice("Saved reference.");
     }
   }
 
@@ -2481,7 +2479,7 @@ export function App() {
       }
 
       if (plan.plan.status === "alreadyCurrent") {
-        setCommandNotice("Stable topology reference is already current.");
+        setCommandNotice("Saved reference is already current.");
         return;
       }
 
@@ -2497,7 +2495,7 @@ export function App() {
       setCommandError(
         error instanceof Error
           ? error.message
-          : "Could not repair stable topology reference."
+          : "Could not repair saved reference."
       );
       return;
     } finally {
@@ -2512,7 +2510,7 @@ export function App() {
         ...(plan.plan.anchorId ? { topologyAnchorId: plan.plan.anchorId } : {})
       });
       setTopologyRepairPreview(undefined);
-      setCommandNotice("Repaired stable topology reference.");
+      setCommandNotice("Repaired saved reference.");
     }
   }
 
@@ -2551,7 +2549,7 @@ export function App() {
         error:
           error instanceof Error
             ? error.message
-            : "Could not check stable topology repair candidates."
+            : "Could not check saved reference repair options."
       });
     }
   }

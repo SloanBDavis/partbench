@@ -63,7 +63,10 @@ These constraints remain active:
     and V14 Slice B is implemented as the topology-backed sketch attachment
     product path. V14 chained target support is partially implemented for
     topology-anchor `feature.extrude` add/cut targets and topology-anchor
-    `feature.hole` target bodies on supported active result bodies.
+    `feature.hole` target bodies on supported active result bodies. The app's
+    compact Modeling panel preserves topology-backed target anchors when
+    submitting supported add/cut extrudes, and ready topology-backed reference
+    selections use action-oriented product copy instead of topology debug text.
     Completed V8, V9, V10, V11, V12, and V13
     tranche records below remain historical release records and compatibility
     guardrails. Do not re-open those releases unless the user explicitly asks

@@ -130,7 +130,7 @@ describe("Inspector", () => {
     );
   });
 
-  it("renders a compact selected-reference stable topology action without private checkpoint ids", () => {
+  it("renders a compact selected-reference save action without private checkpoint ids", () => {
     const face = createFace();
     const faceCandidates = createSelectionReferenceCandidates(face);
     const markup = renderToStaticMarkup(
@@ -171,13 +171,13 @@ describe("Inspector", () => {
       })
     );
 
-    expect(markup).toContain("Stable topology reference");
-    expect(markup).toContain("Create stable reference");
+    expect(markup).toContain("Saved reference");
+    expect(markup).toContain("Save reference");
     expect(markup).toContain(
-      "Creates a saved topology reference for this selected entity."
+      "Saves this selected entity for downstream commands."
     );
     expect(markup).not.toMatch(
-      /checkpointEntityId|checkpoint-local|rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|fileHandle|opfsPath|localPath/i
+      /Stable topology reference|saved topology|checkpointEntityId|checkpoint-local|rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|fileHandle|opfsPath|localPath/i
     );
   });
 
@@ -226,12 +226,12 @@ describe("Inspector", () => {
       })
     );
 
-    expect(markup).toContain("Stable reference active");
-    expect(markup).toContain(">Stable</button>");
-    expect(markup).not.toContain("Create stable reference");
-    expect(markup).not.toContain("Repair stable reference");
+    expect(markup).toContain("Saved reference active");
+    expect(markup).toContain(">Saved</button>");
+    expect(markup).not.toContain("Save reference");
+    expect(markup).not.toContain("Repair saved reference");
     expect(markup).not.toMatch(
-      /checkpointEntityId|checkpoint-local|rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|fileHandle|opfsPath|localPath/i
+      /Stable topology reference|checkpointEntityId|checkpoint-local|rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|fileHandle|opfsPath|localPath/i
     );
   });
 
@@ -281,11 +281,11 @@ describe("Inspector", () => {
       })
     );
 
-    expect(markup).toContain("Stable reference active");
-    expect(markup).toContain("Repair stable reference");
-    expect(markup).not.toContain("Create stable reference");
+    expect(markup).toContain("Saved reference active");
+    expect(markup).toContain("Repair saved reference");
+    expect(markup).not.toContain("Save reference");
     expect(markup).not.toMatch(
-      /checkpointEntityId|checkpoint-local|rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|fileHandle|opfsPath|localPath/i
+      /Stable topology reference|checkpointEntityId|checkpoint-local|rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|fileHandle|opfsPath|localPath/i
     );
   });
 
@@ -363,7 +363,7 @@ describe("Inspector", () => {
       })
     );
 
-    expect(markup).toContain("Check repair candidates");
+    expect(markup).toContain("Check repair options");
     expect(markup).toContain(
       "2 candidates · Ambiguous · manual choice required"
     );
@@ -651,7 +651,7 @@ describe("Inspector", () => {
     expect(markup).not.toContain("Fillet");
   });
 
-  it("renders topology-anchor-backed selected references in the reference contract", () => {
+  it("renders saved selected references in the reference contract without topology debug copy", () => {
     const face = createFace();
     const edge = createEdge();
     const faceCandidates = createSelectionReferenceCandidates(face, {
@@ -697,10 +697,10 @@ describe("Inspector", () => {
     );
 
     expect(markup).toContain("Reference status");
-    expect(markup).toContain("Topology");
-    expect(markup).toContain(
-      "Topology anchor-backed target with checkpoint evidence."
-    );
+    expect(markup).toContain("Command-ready reference");
+    expect(markup).toContain("Create sketch on face");
+    expect(markup).not.toContain("Topology anchor-backed");
+    expect(markup).not.toContain("checkpoint evidence");
     expect(markup).not.toMatch(
       /checkpoint-local|checkpointEntityId|rendererId|meshId|occtId|gpuId|selectionBufferId|pixelId|opfsPath|fileHandle/i
     );
