@@ -529,15 +529,15 @@ describe("modeling action helpers", () => {
 
   it("explains unsupported generated edge finish targets", () => {
     const unsupportedEdge = createEdge({
-      stableId: "generated:edge:body_rect:start:circular",
-      label: "Start circular edge",
+      stableId: "generated:edge:body_rect:unsupported",
+      label: "Unsupported edge",
       role: "start:circular",
       geometricSignature: {
-        profileKind: "circle",
+        profileKind: "rectangle",
         sketchPlane: "XY",
         extrudeSide: "positive",
         depth: 2,
-        curveType: "circle"
+        curveType: "line"
       }
     });
     const actions = deriveModelingActions({
@@ -558,11 +558,11 @@ describe("modeling action helpers", () => {
 
     expect(actionById(actions, "feature.chamfer")).toMatchObject({
       available: false,
-      reason: "Selected edge is not a supported generated rectangle edge."
+      reason: "Selected edge is not a supported generated edge."
     });
     expect(actionById(actions, "feature.fillet")).toMatchObject({
       available: false,
-      reason: "Selected edge is not a supported generated rectangle edge."
+      reason: "Selected edge is not a supported generated edge."
     });
   });
 });

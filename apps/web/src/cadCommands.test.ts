@@ -1017,6 +1017,15 @@ describe("cad command builders", () => {
         name: "Anchor break",
         edgeStableId: "generated:edge:body_rect_1:start:uMin",
         topologyAnchorId: "anchor_edge_1",
+        topologyAnchorProof: {
+          kind: "axisAlignedLinearEdge",
+          entityKind: "edge",
+          evidenceSource: "checkpointSnapshot",
+          exposesCheckpointLocalIds: false,
+          bounds: { min: [0, 0, 0], max: [0, 1, 0] },
+          linearAxis: "y",
+          length: 1
+        },
         distance: 0.25,
         radius: 0.1
       })
@@ -1026,6 +1035,15 @@ describe("cad command builders", () => {
       bodyId: "body_anchor_chamfer",
       targetBodyId: "body_rect_1",
       topologyAnchorId: "anchor_edge_1",
+      topologyAnchorProof: {
+        kind: "axisAlignedLinearEdge",
+        entityKind: "edge",
+        evidenceSource: "checkpointSnapshot",
+        exposesCheckpointLocalIds: false,
+        bounds: { min: [0, 0, 0], max: [0, 1, 0] },
+        linearAxis: "y",
+        length: 1
+      },
       distance: 0.25,
       name: "Anchor break"
     });
@@ -1036,7 +1054,16 @@ describe("cad command builders", () => {
         bodyId: "body_fillet_1",
         targetBodyId: "body_rect_1",
         name: "Round",
-        namedReference: "Top edge",
+        topologyAnchorId: "anchor_edge_1",
+        topologyAnchorProof: {
+          kind: "axisAlignedLinearEdge",
+          entityKind: "edge",
+          evidenceSource: "checkpointSnapshot",
+          exposesCheckpointLocalIds: false,
+          bounds: { min: [0, 0, 0], max: [0, 1, 0] },
+          linearAxis: "y",
+          length: 1
+        },
         distance: 0.25,
         radius: 0.125
       })
@@ -1045,9 +1072,38 @@ describe("cad command builders", () => {
       id: "feat_fillet_1",
       bodyId: "body_fillet_1",
       targetBodyId: "body_rect_1",
-      namedReference: "Top edge",
+      topologyAnchorId: "anchor_edge_1",
+      topologyAnchorProof: {
+        kind: "axisAlignedLinearEdge",
+        entityKind: "edge",
+        evidenceSource: "checkpointSnapshot",
+        exposesCheckpointLocalIds: false,
+        bounds: { min: [0, 0, 0], max: [0, 1, 0] },
+        linearAxis: "y",
+        length: 1
+      },
       radius: 0.125,
       name: "Round"
+    });
+
+    expect(
+      buildFeatureFilletOp({
+        id: "feat_named_fillet",
+        bodyId: "body_named_fillet",
+        targetBodyId: "body_rect_1",
+        name: "Named round",
+        namedReference: "Top edge",
+        distance: 0.25,
+        radius: 0.125
+      })
+    ).toEqual({
+      op: "feature.fillet",
+      id: "feat_named_fillet",
+      bodyId: "body_named_fillet",
+      targetBodyId: "body_rect_1",
+      namedReference: "Top edge",
+      radius: 0.125,
+      name: "Named round"
     });
   });
 

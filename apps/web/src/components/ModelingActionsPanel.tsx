@@ -2443,6 +2443,7 @@ function GeneratedReferenceWorkbench({
           disabled={disabled}
           edge={context.reference}
           onCreateEdgeFinish={onCreateEdgeFinish}
+          topologyAnchorId={context.topologyAnchorId}
         />
       )}
     </div>
@@ -2520,7 +2521,8 @@ function EdgeReferenceWorkbench({
   body,
   disabled,
   edge,
-  onCreateEdgeFinish
+  onCreateEdgeFinish,
+  topologyAnchorId
 }: {
   readonly actions: readonly ModelingActionDescriptor[];
   readonly body?: CadBodySnapshot;
@@ -2530,6 +2532,7 @@ function EdgeReferenceWorkbench({
     operation: "chamfer" | "fillet",
     form: FeatureEdgeFinishForm
   ) => void;
+  readonly topologyAnchorId?: string;
 }) {
   const [operation, setOperation] = useState<"chamfer" | "fillet">("chamfer");
   const [form, setForm] = useState(defaultEdgeFinishForm);
@@ -2551,6 +2554,7 @@ function EdgeReferenceWorkbench({
       kind: "generated",
       label: edge.label,
       edgeStableId: edge.stableId,
+      ...(topologyAnchorId ? { topologyAnchorId } : {}),
       reference: edge,
       status: "resolved"
     },

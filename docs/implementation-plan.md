@@ -2711,6 +2711,17 @@ Use these decisions when drafting or implementing V13 tranches:
     IDs, raw OCCT handles, renderer/mesh IDs, selection-buffer IDs, viewport
     state, OPFS paths, file handles, or export artifacts enter public command
     identity.
+18. **Implemented: V14 Edge-Finish Product Path Plumbing** - The web app now
+    preserves selected active topology edge anchors through viewport contextual
+    commands, Modeling actions, Inspector edge-finish editors, and CADOps
+    command builders. Supported selected topology-anchor edges submit
+    `topologyAnchorId` and optional sanitized `topologyAnchorProof` through the
+    normal `feature.chamfer` / `feature.fillet` command layer rather than
+    relying on renderer, mesh, viewport, or generated-ID-only state. The UI
+    support matrix is aligned with cad-core's current active rectangle/circle
+    new-body extrude target validator; broader result-body edge finishing still
+    requires a cad-core commandability expansion before the app should expose
+    those edges as chamfer/fillet targets.
 
 ### V13 Scope Guardrails
 

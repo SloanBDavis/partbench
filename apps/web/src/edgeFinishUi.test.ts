@@ -3,6 +3,7 @@ import type {
   CadFeatureSummary,
   CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
+  CadTopologyAnchorCommandProof,
   NamedGeneratedReferenceEntry,
   SelectionReferenceCandidatesQueryResponse
 } from "@web-cad/cad-protocol";
@@ -143,6 +144,60 @@ describe("edge finish UI helpers", () => {
     });
   });
 
+  it("builds selected topology-anchor edge finish commands with public proof", () => {
+    const edge = createEdge();
+    const proof = createEdgeProof();
+    const option = selectEdgeFinishReferenceOption(
+      createEdgeFinishReferenceOptions(
+        selected(edge, { topologyAnchorId: "anchor_selected_edge" }),
+        [],
+        undefined,
+        proof
+      ),
+      SELECTED_EDGE_FINISH_REFERENCE_VALUE
+    );
+    const form = buildEdgeFinishForm({
+      draft: {
+        id: "feat_selected_anchor_chamfer",
+        bodyId: "body_selected_anchor_chamfer",
+        name: "Selected anchor break",
+        distance: 0.25,
+        radius: 0.1
+      },
+      operation: "chamfer",
+      referenceOption: option,
+      targetBodyId: "body_rect"
+    });
+
+    expect(option).toMatchObject({
+      topologyAnchorId: "anchor_selected_edge",
+      topologyAnchorProof: proof
+    });
+    expect(form).toEqual({
+      id: "feat_selected_anchor_chamfer",
+      bodyId: "body_selected_anchor_chamfer",
+      targetBodyId: "body_rect",
+      name: "Selected anchor break",
+      topologyAnchorId: "anchor_selected_edge",
+      topologyAnchorProof: proof,
+      distance: 0.25,
+      radius: 0.1
+    });
+    expect(buildFeatureChamferOp(form!)).toEqual({
+      op: "feature.chamfer",
+      id: "feat_selected_anchor_chamfer",
+      bodyId: "body_selected_anchor_chamfer",
+      targetBodyId: "body_rect",
+      topologyAnchorId: "anchor_selected_edge",
+      topologyAnchorProof: proof,
+      distance: 0.25,
+      name: "Selected anchor break"
+    });
+    expect(JSON.stringify(form)).not.toMatch(
+      /checkpoint-local|checkpointEntityId|rendererId|meshId|occtId|gpuId|selectionBufferId|pixelId|opfsPath|fileHandle/i
+    );
+  });
+
   it("builds named-edge fillet commands", () => {
     const edge = createEdge();
     const option = selectEdgeFinishReferenceOption(
@@ -226,7 +281,7 @@ describe("edge finish UI helpers", () => {
         scalar: 0.2,
         selectionState: selected(edge)
       }).message
-    ).toBe("Edge finish supports rectangle target bodies only.");
+    ).toBe("Chamfer will consume body_rect and create a derived result body.");
     expect(
       getEdgeFinishOperationStatus({
         body: createBody({ consumedByFeatureId: "feat_cut" }),
@@ -246,7 +301,7 @@ describe("edge finish UI helpers", () => {
         scalar: 0.2,
         selectionState: { status: "none" }
       }).message
-    ).toBe("Select an eligible generated rectangle edge to create a fillet.");
+    ).toBe("Select an eligible generated edge to create a fillet.");
     expect(
       getEdgeFinishOperationStatus({
         body: createBody(),
@@ -286,6 +341,10 @@ describe("edge finish UI helpers", () => {
 
   it("rejects non-edge and unsupported edge roles", () => {
     const face = createFace();
+    const unsupportedEdge = createEdge({
+      stableId: "generated:edge:body_rect:unsupported",
+      role: "start:circular"
+    });
     const circleEdge = createEdge({
       stableId: "generated:edge:body_rect:start:circular",
       role: "start:circular",
@@ -320,22 +379,54 @@ describe("edge finish UI helpers", () => {
         scalar: 0.2,
         selectionState: selected(circleEdge)
       }).message
-    ).toBe("Selected edge is not a supported generated rectangle edge.");
+    ).toBe("Chamfer will consume body_rect and create a derived result body.");
+    expect(
+      getEdgeFinishOperationStatus({
+        body: createBody(),
+        feature: createExtrudeFeature(),
+        operation: "chamfer",
+        referenceOption: selectEdgeFinishReferenceOption(
+          createEdgeFinishReferenceOptions(selected(unsupportedEdge), []),
+          SELECTED_EDGE_FINISH_REFERENCE_VALUE
+        ),
+        scalar: 0.2,
+        selectionState: selected(unsupportedEdge)
+      }).message
+    ).toBe("Selected edge is not a supported generated edge.");
   });
 });
 
 function selected(
-  reference: CadGeneratedEdgeReference | CadGeneratedFaceReference
+  reference: CadGeneratedEdgeReference | CadGeneratedFaceReference,
+  selectionOverrides: Partial<
+    Extract<
+      GeneratedReferenceSelectionState,
+      { status: "selected" }
+    >["selection"]
+  > = {}
 ): GeneratedReferenceSelectionState {
   return {
     status: "selected",
     selection: {
       bodyId: reference.bodyId,
       stableId: reference.stableId,
-      kind: reference.kind
+      kind: reference.kind,
+      ...selectionOverrides
     },
     reference,
     measurementRows: []
+  };
+}
+
+function createEdgeProof(): CadTopologyAnchorCommandProof {
+  return {
+    kind: "axisAlignedLinearEdge" as const,
+    entityKind: "edge" as const,
+    evidenceSource: "checkpointSnapshot" as const,
+    exposesCheckpointLocalIds: false as const,
+    bounds: { min: [0, 0, 0], max: [0, 1, 0] },
+    linearAxis: "y" as const,
+    length: 1
   };
 }
 

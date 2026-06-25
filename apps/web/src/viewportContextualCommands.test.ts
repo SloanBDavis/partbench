@@ -178,6 +178,60 @@ describe("viewport contextual commands", () => {
     );
   });
 
+  it("routes selected topology-anchor edge finish through normal CADOps form", () => {
+    const edge = createEdge();
+    const candidates = createSelectionReferenceCandidates(edge);
+    const actions = deriveModelingActions({
+      context: {
+        selectionKind: "generatedReference",
+        reference: edge,
+        topologyAnchorId: "anchor_selected_edge",
+        body: createBody(),
+        feature: createExtrudeFeature(),
+        namedReferences: [],
+        selectionReferenceCandidates: candidates
+      }
+    });
+    const selectedState = createSelectedReferenceState(edge, {
+      topologyAnchorId: "anchor_selected_edge"
+    });
+    const surface = createViewportContextualCommandSurface({
+      modelingActions: actions,
+      selectionDisplay: createSelectionDisplay({
+        selectionKind: "generatedReference",
+        commandOperations: candidates.candidates[0].commandOperations
+      }),
+      selectedGeneratedReferenceState: selectedState,
+      selectionReferenceCandidates: candidates
+    });
+    const onCreateEdgeFinish = vi.fn();
+
+    const routed = runViewportContextualCommandAction({
+      action: actionById(surface.actions, "feature.fillet"),
+      body: createBody(),
+      selectedGeneratedReferenceState: selectedState,
+      selectionReferenceCandidates: candidates,
+      onCreateEdgeFinish
+    });
+
+    expect(routed).toBe(true);
+    expect(onCreateEdgeFinish).toHaveBeenCalledWith(
+      "fillet",
+      expect.objectContaining({
+        bodyId: "",
+        targetBodyId: "body_rect",
+        topologyAnchorId: "anchor_selected_edge",
+        radius: 0.2
+      })
+    );
+    expect(onCreateEdgeFinish.mock.calls[0]?.[1]).not.toHaveProperty(
+      "edgeStableId"
+    );
+    expect(JSON.stringify(onCreateEdgeFinish.mock.calls)).not.toMatch(
+      /checkpoint-local|checkpointEntityId|rendererId|meshId|occtId|gpuId|selectionBufferId|pixelId|opfsPath|fileHandle/i
+    );
+  });
+
   it("does not surface deferred V12 cut-wall edge-finish commands", () => {
     const edge = createEdge({
       stableId: "generated:edge:body_cut:longitudinal:uMin:vMin",

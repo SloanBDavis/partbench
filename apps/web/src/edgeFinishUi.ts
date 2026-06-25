@@ -3,6 +3,7 @@ import type {
   CadFeatureSummary,
   CadGeneratedEdgeReference,
   CadGeneratedReference,
+  CadTopologyAnchorCommandProof,
   NamedGeneratedReferenceEntry,
   SelectionReferenceCandidatesQueryResponse
 } from "@web-cad/cad-protocol";
@@ -29,6 +30,7 @@ export interface EdgeFinishReferenceOption {
   readonly edgeStableId?: string;
   readonly namedReference?: string;
   readonly topologyAnchorId?: string;
+  readonly topologyAnchorProof?: CadTopologyAnchorCommandProof;
   readonly reference?: CadGeneratedEdgeReference;
   readonly status: "resolved" | "stale";
 }
@@ -45,23 +47,27 @@ export function createNamedEdgeFinishReferenceValue(name: string): string {
 export function createEdgeFinishReferenceOptions(
   state: GeneratedReferenceSelectionState,
   namedReferences: readonly NamedGeneratedReferenceEntry[],
-  selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse
+  selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse,
+  topologyAnchorProof?: CadTopologyAnchorCommandProof
 ): readonly EdgeFinishReferenceOption[] {
   if (state.status !== "selected" || state.reference.kind !== "edge") {
     return [];
   }
 
   const selectedReference = state.reference;
-  const topologyAnchorId = findSelectedTopologyAnchorId(
-    selectedReference,
-    selectionReferenceCandidates
-  );
+  const topologyAnchorId =
+    state.selection.topologyAnchorId ??
+    findSelectedTopologyAnchorId(
+      selectedReference,
+      selectionReferenceCandidates
+    );
   const selectedOption: EdgeFinishReferenceOption = {
     value: SELECTED_EDGE_FINISH_REFERENCE_VALUE,
     kind: "generated",
     label: `Selected edge (${selectedReference.label})`,
     edgeStableId: selectedReference.stableId,
     ...(topologyAnchorId ? { topologyAnchorId } : {}),
+    ...(topologyAnchorId && topologyAnchorProof ? { topologyAnchorProof } : {}),
     reference: selectedReference,
     status: "resolved"
   };
@@ -118,7 +124,7 @@ export function getEdgeFinishOperationStatus(input: {
   if (input.selectionState.status === "none") {
     return {
       available: false,
-      message: `Select an eligible generated rectangle edge to create a ${input.operation}.`
+      message: `Select an eligible generated edge to create a ${input.operation}.`
     };
   }
 
@@ -147,7 +153,7 @@ export function getEdgeFinishOperationStatus(input: {
   if (!input.referenceOption) {
     return {
       available: false,
-      message: "Selected reference is not an eligible rectangle edge."
+      message: "Selected reference is not an eligible edge."
     };
   }
 
@@ -231,7 +237,14 @@ export function buildEdgeFinishForm(input: {
     name: input.draft.name,
     ...(input.referenceOption.kind === "generated"
       ? input.referenceOption.topologyAnchorId
-        ? { topologyAnchorId: input.referenceOption.topologyAnchorId }
+        ? {
+            topologyAnchorId: input.referenceOption.topologyAnchorId,
+            ...(input.referenceOption.topologyAnchorProof
+              ? {
+                  topologyAnchorProof: input.referenceOption.topologyAnchorProof
+                }
+              : {})
+          }
         : { edgeStableId: input.referenceOption.edgeStableId }
       : { namedReference: input.referenceOption.namedReference }),
     distance: input.draft.distance,
@@ -275,6 +288,12 @@ export function isSupportedRectangleEdgeFinishReference(
 export function parseGeneratedRectangleEdgeStableId(
   stableId: string
 ): { readonly bodyId: string } | undefined {
+  return parseGeneratedEdgeFinishStableId(stableId);
+}
+
+export function parseGeneratedEdgeFinishStableId(
+  stableId: string
+): { readonly bodyId: string } | undefined {
   const capEdge = stableId.match(
     /^generated:edge:([^:]+):(start|end):(uMin|uMax|vMin|vMax)$/
   );
@@ -289,6 +308,14 @@ export function parseGeneratedRectangleEdgeStableId(
 
   if (longitudinalEdge) {
     return { bodyId: longitudinalEdge[1] };
+  }
+
+  const circularEdge = stableId.match(
+    /^generated:edge:([^:]+):(start|end):circular$/
+  );
+
+  if (circularEdge) {
+    return { bodyId: circularEdge[1] };
   }
 
   return undefined;
@@ -311,7 +338,7 @@ function getEdgeFinishTargetUnsupportedMessage(
   feature: CadFeatureSummary | undefined
 ): string | undefined {
   if (!body || !feature) {
-    return "Select an active rectangle new-body extrude target.";
+    return "Select an active rectangle or circle new-body extrude target.";
   }
 
   if (body.source.type !== "sketchExtrudeFeature") {
@@ -327,11 +354,11 @@ function getEdgeFinishTargetUnsupportedMessage(
   }
 
   if (feature.operationMode !== "newBody") {
-    return "Edge finish supports active rectangle new-body extrude targets only.";
+    return "Edge finish supports active rectangle or circle new-body extrude targets only.";
   }
 
-  if (feature.profileKind !== "rectangle") {
-    return "Edge finish supports rectangle target bodies only.";
+  if (feature.profileKind !== "rectangle" && feature.profileKind !== "circle") {
+    return "Edge finish supports rectangle or circle target bodies only.";
   }
 
   return undefined;
@@ -349,9 +376,9 @@ function getEdgeFinishReferenceUnsupportedMessage(
     return `Selected edge is not eligible for ${operation}.`;
   }
 
-  const parsed = parseGeneratedRectangleEdgeStableId(reference.stableId);
+  const parsed = parseGeneratedEdgeFinishStableId(reference.stableId);
   if (!parsed) {
-    return "Selected edge is not a supported generated rectangle edge.";
+    return "Selected edge is not a supported generated edge.";
   }
 
   if (!targetBodyId || reference.bodyId !== targetBodyId) {
@@ -360,14 +387,6 @@ function getEdgeFinishReferenceUnsupportedMessage(
 
   if (parsed.bodyId !== targetBodyId) {
     return "Selected edge does not belong to the target body.";
-  }
-
-  if (reference.geometricSignature.profileKind !== "rectangle") {
-    return "Edge finish supports rectangle target edges only.";
-  }
-
-  if (reference.geometricSignature.curveType === "circle") {
-    return "Circle edges are not supported for edge finishing yet.";
   }
 
   return undefined;

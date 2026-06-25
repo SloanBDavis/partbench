@@ -702,7 +702,10 @@ function createEdgeFinishAction(
   selection: ModelingActionSelectionMetadata,
   operation: EdgeFinishOperation
 ): ModelingActionDescriptor {
-  const state = createGeneratedReferenceSelectionState(context.reference);
+  const state = createGeneratedReferenceSelectionState(
+    context.reference,
+    context.topologyAnchorId
+  );
   const referenceOption = selectEdgeFinishReferenceOption(
     createEdgeFinishReferenceOptions(
       state,
@@ -744,14 +747,16 @@ function createEdgeFinishAction(
 }
 
 function createGeneratedReferenceSelectionState(
-  reference: CadGeneratedReference
+  reference: CadGeneratedReference,
+  topologyAnchorId?: string
 ): GeneratedReferenceSelectionState {
   return {
     status: "selected",
     selection: {
       bodyId: reference.bodyId,
       stableId: reference.stableId,
-      kind: reference.kind
+      kind: reference.kind,
+      ...(topologyAnchorId ? { topologyAnchorId } : {})
     },
     reference,
     measurementRows: []

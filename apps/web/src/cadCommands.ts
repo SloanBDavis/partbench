@@ -208,6 +208,7 @@ export interface FeatureEdgeFinishForm {
   readonly edgeStableId?: string;
   readonly namedReference?: string;
   readonly topologyAnchorId?: string;
+  readonly topologyAnchorProof?: CadTopologyAnchorCommandProof;
   readonly distance: number;
   readonly radius: number;
 }
@@ -867,7 +868,12 @@ export function buildFeatureChamferOp(
     bodyId: normalizeOptionalId(form.bodyId),
     targetBodyId: form.targetBodyId,
     ...(topologyAnchorId
-      ? { topologyAnchorId }
+      ? {
+          topologyAnchorId,
+          ...(form.topologyAnchorProof
+            ? { topologyAnchorProof: form.topologyAnchorProof }
+            : {})
+        }
       : edgeStableId
         ? { edgeStableId }
         : {}),
@@ -890,7 +896,12 @@ export function buildFeatureFilletOp(
     bodyId: normalizeOptionalId(form.bodyId),
     targetBodyId: form.targetBodyId,
     ...(topologyAnchorId
-      ? { topologyAnchorId }
+      ? {
+          topologyAnchorId,
+          ...(form.topologyAnchorProof
+            ? { topologyAnchorProof: form.topologyAnchorProof }
+            : {})
+        }
       : edgeStableId
         ? { edgeStableId }
         : {}),
