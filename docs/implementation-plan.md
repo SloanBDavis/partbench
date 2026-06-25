@@ -2855,10 +2855,10 @@ The planned pillars are:
    or unanchored result bodies remain blocked.
 4. **Topology-backed edge finishing** - eligible result-body edge anchors can
    drive chamfer and fillet where cad-core validators and geometry execution
-   prove the target. V14 must make at least one real result-edge class
-   command-ready, with axis-aligned linear edges on V14-supported result bodies
-   as the minimum expected class unless implementation evidence updates the
-   release doc.
+   prove the target. The V14 browser smoke now proves the first real
+   result-edge class: a command-ready rectangle cut-wall longitudinal generated
+   edge creates a chamfer through the Modeling panel while exported JSON
+   preserves only public target body and edge source data.
 5. **Rebuild and repair hardening** - upstream edits, undo/redo, save/open, and
    explicit repair flows keep topology-backed references honest and query
    surfaces consistent.

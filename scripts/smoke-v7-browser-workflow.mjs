@@ -737,6 +737,7 @@ async function v7BrowserWorkflowSmoke({
     v14CylinderSideHoleFeatureId: "v14_smoke_cylinder_side_hole_feature",
     v14CylinderSideHoleSketchId: "v14_smoke_cylinder_side_hole_sketch",
     v14CylinderSideHoleSketchName: "V14 smoke cylinder side hole sketch",
+    v14EdgeChamferName: "V14 smoke result cut-wall chamfer",
     v14ProjectFileName: "v14-browser-fixture.json",
     v14HoleBodyId: "v14_smoke_result_hole_body",
     v14HoleBodyName: "V14 smoke result hole",
@@ -1868,6 +1869,15 @@ async function v7BrowserWorkflowSmoke({
 
     await importV14TopologyBrowserFixture(
       projectJson,
+      "V14 topology browser fixture for result-edge chamfer"
+    );
+    await runV14ResultCutWallEdgeFinishWorkflowSmoke();
+    await verifyV14ResultCutWallEdgeFinishProjectJsonSource(
+      "V14 result cut-wall edge-finish source JSON"
+    );
+
+    await importV14TopologyBrowserFixture(
+      projectJson,
       "V14 topology browser fixture for result-face rectangle add"
     );
     await runV14TopologyBackedResultExtrudeAddWorkflowSmoke();
@@ -1994,6 +2004,46 @@ async function v7BrowserWorkflowSmoke({
       "v14-cylinder-side-plane-hole-source-json-browser",
       "V14 cylinder side-plane hole JSON keeps public sketch plane and topology target proof",
       ids.v14CylinderSideHoleFeatureId
+    );
+  }
+
+  async function verifyV14ResultCutWallEdgeFinishProjectJsonSource(waitLabel) {
+    openDetailsBySummary(document.body, "Project/File");
+    const projectPanel = getSectionByAriaLabel("Project");
+    await waitFor(() => {
+      const exportButton = getButtonByText(projectPanel, "Export JSON");
+
+      if (!exportButton || exportButton.disabled) {
+        throw new Error(compactText(projectPanel.textContent, 520));
+      }
+
+      return true;
+    }, "V14 result cut-wall edge-finish export ready");
+    clickButton(projectPanel, "Export JSON");
+    await waitFor(() => {
+      const projectJsonPreview = getProjectJsonEditorValue(projectPanel);
+      const ready =
+        includesText(projectPanel, "Import draft") &&
+        projectJsonPreview.includes(ids.v14EdgeChamferName);
+
+      if (!ready) {
+        throw new Error(
+          [
+            `project=${compactText(projectPanel.textContent, 420)}`,
+            `json=${projectJsonPreview.trim().slice(0, 240)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, waitLabel);
+    assertV14ResultCutWallEdgeFinishProjectJson(
+      getProjectJsonEditorValue(projectPanel)
+    );
+    pass(
+      "v14-result-cut-wall-edge-finish-source-json-browser",
+      "V14 cut-wall result-edge chamfer JSON keeps public generated-edge source",
+      ids.v14EdgeChamferName
     );
   }
 
@@ -2227,6 +2277,56 @@ async function v7BrowserWorkflowSmoke({
       "v14-cylinder-side-plane-hole-browser",
       "V14 XZ circle profile creates a side hole in a topology-backed circular result body",
       ids.v14CylinderSideHoleBodyId
+    );
+  }
+
+  async function runV14ResultCutWallEdgeFinishWorkflowSmoke() {
+    const edgeStableId = `generated:edge:${ids.v14TargetBodyId}:longitudinal:uMin:vMin`;
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v14TargetBodyName
+    );
+    openSelectionPanel();
+    await selectGeneratedReferenceByStableId(edgeStableId);
+    await waitForGeneratedEdgeReferenceCommandReady(
+      ids.v14TargetBodyId,
+      "V14 result cut-wall edge command-ready for edge finish"
+    );
+
+    const modeling = getSectionByAriaLabel("Modeling context");
+    setFieldByLabel(modeling, "Distance", "0.15");
+    setFieldByLabel(modeling, "Name", ids.v14EdgeChamferName);
+    await waitFor(() => {
+      const currentModeling = getSectionByAriaLabel("Modeling context");
+      const createButton = getButtonByText(currentModeling, "Create chamfer");
+      const ready =
+        createButton &&
+        !createButton.disabled &&
+        includesText(currentModeling, "Edge finish") &&
+        includesText(currentModeling, "Chamfer") &&
+        includesText(currentModeling, "Fillet");
+
+      if (!ready) {
+        throw new Error(compactText(currentModeling.textContent, 720));
+      }
+
+      return true;
+    }, "V14 result cut-wall edge chamfer command enabled");
+    clickButton(getSectionByAriaLabel("Modeling context"), "Create chamfer");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Model structure"),
+          ids.v14EdgeChamferName
+        ),
+      "created V14 result cut-wall chamfer"
+    );
+    pass(
+      "v14-result-cut-wall-edge-chamfer-browser",
+      "V14 rectangle cut-wall result edge creates a chamfer through the browser UI",
+      ids.v14EdgeChamferName
     );
   }
 
@@ -2808,6 +2908,39 @@ async function v7BrowserWorkflowSmoke({
     if (privateIdPattern.test(sourceBoundaryText)) {
       throw new Error(
         `V14 cylinder side-plane hole source leaked a private ID: ${sourceBoundaryText}`
+      );
+    }
+  }
+
+  function assertV14ResultCutWallEdgeFinishProjectJson(projectJson) {
+    const edgeStableId = `generated:edge:${ids.v14TargetBodyId}:longitudinal:uMin:vMin`;
+    const parsed = JSON.parse(projectJson);
+    const features = Array.isArray(parsed.document?.features)
+      ? parsed.document.features
+      : [];
+    const chamferFeature = features.find(
+      (candidate) =>
+        candidate?.kind === "chamfer" &&
+        candidate.name === ids.v14EdgeChamferName
+    );
+
+    if (
+      !chamferFeature ||
+      chamferFeature.targetBodyId !== ids.v14TargetBodyId ||
+      chamferFeature.edgeStableId !== edgeStableId
+    ) {
+      throw new Error(
+        `V14 result cut-wall edge chamfer lost its public topology edge source: ${JSON.stringify(chamferFeature)}`
+      );
+    }
+
+    const sourceBoundaryText = JSON.stringify({ feature: chamferFeature });
+    const privateIdPattern =
+      /(renderer|meshId|occt|viewport|opfs|fileHandle|checkpointEntityId)/i;
+
+    if (privateIdPattern.test(sourceBoundaryText)) {
+      throw new Error(
+        `V14 result cut-wall edge chamfer source leaked a private ID: ${sourceBoundaryText}`
       );
     }
   }
