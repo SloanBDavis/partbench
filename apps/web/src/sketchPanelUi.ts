@@ -122,6 +122,11 @@ export interface HoleOperationFormLike {
   readonly depth: number;
 }
 
+export interface HoleTargetFormLike {
+  readonly targetBodyId: string;
+  readonly targetTopologyAnchorId?: string;
+}
+
 export interface HoleSketchDisplayStatusLike {
   readonly kind: "unattached" | "attached" | "unresolved";
 }
@@ -1511,6 +1516,19 @@ export function getHoleOperationStatus(
       holeTargets.length === 1
         ? "1 eligible hole target body."
         : `${holeTargets.length} eligible hole target bodies.`
+  };
+}
+
+export function createEffectiveHoleTargetForm<T extends HoleTargetFormLike>(
+  form: T,
+  selectedTarget:
+    | Pick<BooleanTargetBodyOption, "bodyId" | "targetTopologyAnchorId">
+    | undefined
+): T {
+  return {
+    ...form,
+    targetBodyId: selectedTarget?.bodyId ?? form.targetBodyId,
+    targetTopologyAnchorId: selectedTarget?.targetTopologyAnchorId
   };
 }
 

@@ -20,6 +20,7 @@ import {
   createAvailableSketchConstraintKindOptions,
   createAddTargetBodyOptions,
   createCutTargetBodyOptions,
+  createEffectiveHoleTargetForm,
   createHoleTargetBodyOptions,
   createParameterBindingOptions,
   createRevolveAxisOptions,
@@ -1258,6 +1259,39 @@ describe("sketch panel UI helpers", () => {
         detail: "Circle topology result / cut / body_cut"
       }
     ]);
+  });
+
+  it("preserves topology anchors when building effective hole target forms", () => {
+    const form = {
+      id: "feature_hole_1",
+      bodyId: "body_hole_1",
+      targetBodyId: "stale_body",
+      targetTopologyAnchorId: "stale_anchor",
+      name: "Result body hole",
+      depthMode: "throughAll" as const,
+      depth: 1,
+      direction: "negative" as const
+    };
+
+    expect(
+      createEffectiveHoleTargetForm(form, {
+        bodyId: "body_cut",
+        targetTopologyAnchorId: "anchor_body_circle"
+      })
+    ).toEqual({
+      ...form,
+      targetBodyId: "body_cut",
+      targetTopologyAnchorId: "anchor_body_circle"
+    });
+    expect(
+      createEffectiveHoleTargetForm(form, {
+        bodyId: "body_source"
+      })
+    ).toEqual({
+      ...form,
+      targetBodyId: "body_source",
+      targetTopologyAnchorId: undefined
+    });
   });
 
   it("explains cut availability without requiring React state", () => {

@@ -65,10 +65,12 @@ These constraints remain active:
     topology-anchor `feature.extrude` add/cut targets and topology-anchor
     `feature.hole` target bodies on supported active result bodies. The app's
     compact Modeling panel preserves topology-backed target anchors when
-    submitting supported add/cut extrudes, selected ready result-body faces can
-    create attached sketches by saving the required topology reference in the
-    same CADOps action, and ready topology-backed reference selections use
-    action-oriented product copy instead of topology debug text.
+    submitting supported add/cut extrudes, the full Sketch panel preserves
+    topology-backed result target anchors when submitting supported holes,
+    selected ready result-body faces can create attached sketches by saving the
+    required topology reference in the same CADOps action, and ready
+    topology-backed reference selections use action-oriented product copy
+    instead of topology debug text.
     Completed V8, V9, V10, V11, V12, and V13
     tranche records below remain historical release records and compatibility
     guardrails. Do not re-open those releases unless the user explicitly asks

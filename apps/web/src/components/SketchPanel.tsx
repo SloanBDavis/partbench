@@ -41,6 +41,7 @@ import {
   createAvailableParallelLineTargetOptions,
   createAvailableSketchConstraintKindOptions,
   createAvailableSketchDimensionTargetOptions,
+  createEffectiveHoleTargetForm,
   createSketchEntityListItems,
   createSketchEntityIntentSummary,
   createRevolveAxisOptions,
@@ -784,10 +785,10 @@ export function SketchPanel({
   const selectedHoleTarget =
     holeTargetBodies.find((body) => body.bodyId === holeForm.targetBodyId) ??
     holeTargetBodies[0];
-  const effectiveHoleForm: FeatureHoleForm = {
-    ...holeForm,
-    targetBodyId: selectedHoleTarget?.bodyId ?? holeForm.targetBodyId
-  };
+  const effectiveHoleForm = createEffectiveHoleTargetForm(
+    holeForm,
+    selectedHoleTarget
+  );
   const holeStatus = getHoleOperationStatus(
     selectedEntity,
     holeTargetBodies,
@@ -1457,7 +1458,9 @@ export function SketchPanel({
                                 setHoleForm({
                                   ...holeForm,
                                   targetBodyId:
-                                    holeTargetBodies[0]?.bodyId ?? ""
+                                    holeTargetBodies[0]?.bodyId ?? "",
+                                  targetTopologyAnchorId:
+                                    holeTargetBodies[0]?.targetTopologyAnchorId
                                 });
                               }
                             }}
@@ -1475,12 +1478,20 @@ export function SketchPanel({
                                   disabled={
                                     disabled || holeTargetBodies.length === 0
                                   }
-                                  onChange={(event) =>
+                                  onChange={(event) => {
+                                    const target = holeTargetBodies.find(
+                                      (body) =>
+                                        body.bodyId ===
+                                        event.currentTarget.value
+                                    );
+
                                     setHoleForm({
                                       ...holeForm,
-                                      targetBodyId: event.currentTarget.value
-                                    })
-                                  }
+                                      targetBodyId: event.currentTarget.value,
+                                      targetTopologyAnchorId:
+                                        target?.targetTopologyAnchorId
+                                    });
+                                  }}
                                 >
                                   {holeTargetBodies.map((body) => (
                                     <option
