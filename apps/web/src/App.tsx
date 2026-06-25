@@ -1562,7 +1562,8 @@ export function App() {
     context: modelingSelectionContext,
     bodies: projectStructure.bodies,
     features: projectStructure.features,
-    preferredBodyId: selectedBody?.id
+    preferredBodyId: selectedBody?.id,
+    topologyAnchors: document.topologyIdentity?.anchors
   });
   const sketchViewportDragTarget =
     modelingSelectionContext.selectionKind === "sketchEntity"

@@ -6,6 +6,7 @@ import type {
   CadGeneratedFaceReference,
   CadGeneratedReference,
   CadSelectionReferenceOperation,
+  CadTopologyIdentitySourceSnapshot,
   NamedGeneratedReferenceEntry,
   SelectionReferenceCandidatesQueryResponse,
   SketchConstraintEntry,
@@ -178,6 +179,7 @@ export interface ModelingActionState {
   readonly bodies?: readonly CadBodySnapshot[];
   readonly features?: readonly CadFeatureSummary[];
   readonly preferredBodyId?: string;
+  readonly topologyAnchors?: CadTopologyIdentitySourceSnapshot["anchors"];
 }
 
 export function deriveModelingActions(
@@ -406,14 +408,18 @@ function createHoleAction(
     ModelingSelectionContext,
     { readonly selectionKind: "sketchEntity" }
   >,
-  state: Pick<ModelingActionState, "bodies" | "features" | "preferredBodyId">,
+  state: Pick<
+    ModelingActionState,
+    "bodies" | "features" | "preferredBodyId" | "topologyAnchors"
+  >,
   selection: ModelingActionSelectionMetadata
 ): ModelingActionDescriptor {
   const { entity, sketch } = context;
   const targets = createHoleTargetBodyOptions(
     state.bodies ?? [],
     state.features ?? [],
-    state.preferredBodyId
+    state.preferredBodyId,
+    state.topologyAnchors
   );
   const status = getHoleOperationStatus(entity, targets, DEFAULT_HOLE_FORM);
 

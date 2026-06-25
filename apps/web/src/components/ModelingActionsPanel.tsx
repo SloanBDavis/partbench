@@ -808,9 +808,9 @@ function SketchEntityWorkbench({
     (action) => action.id === "sketch.revolveAxis.use"
   );
   const effectiveHoleTargetBodies =
-    holeAction?.target?.holeTargets && holeAction.target.holeTargets.length > 0
-      ? holeAction.target.holeTargets
-      : holeTargetBodies;
+    holeTargetBodies.length > 0
+      ? holeTargetBodies
+      : (holeAction?.target?.holeTargets ?? []);
 
   return (
     <div className="workbench-surface">

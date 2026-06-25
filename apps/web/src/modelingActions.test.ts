@@ -437,6 +437,57 @@ describe("modeling action helpers", () => {
     });
   });
 
+  it("preserves topology-backed result body anchors in compact hole actions", () => {
+    const circle: SketchSnapshot["entities"][number] = {
+      id: "circle_1",
+      kind: "circle",
+      center: [0, 0],
+      radius: 1
+    };
+    const sketch = createSketch("sketch_1", { entities: [circle] });
+    const bodies = [
+      createBody("body_rect", "feat_rect", "feat_cut"),
+      createBody("body_cut", "feat_cut")
+    ];
+    const features = [
+      createExtrudeFeature("feat_rect", "body_rect", "rectangle", "newBody"),
+      {
+        ...createExtrudeFeature("feat_cut", "body_cut", "rectangle", "cut"),
+        targetBodyId: "body_rect"
+      }
+    ];
+    const actions = deriveModelingActions({
+      context: { selectionKind: "sketchEntity", sketch, entity: circle },
+      bodies,
+      features,
+      preferredBodyId: "body_cut",
+      topologyAnchors: [
+        {
+          anchorId: "anchor_body_cut",
+          entityKind: "body",
+          bodyId: "body_cut",
+          checkpointId: "checkpoint_body_cut",
+          checkpointEntityId: "checkpoint-local-body-cut",
+          stableId: "generated:body:body_cut",
+          state: "active",
+          diagnostics: []
+        }
+      ]
+    });
+
+    expect(actionById(actions, "feature.hole")).toMatchObject({
+      available: true,
+      target: {
+        holeTargets: [
+          expect.objectContaining({
+            bodyId: "body_cut",
+            targetTopologyAnchorId: "anchor_body_cut"
+          })
+        ]
+      }
+    });
+  });
+
   it("keeps deferred V12 cut-wall edge finish operations out of compact actions", () => {
     const edge = createEdge({
       stableId: "generated:edge:body_cut:longitudinal:uMin:vMin",

@@ -595,6 +595,96 @@ describe("ModelingActionsPanel", () => {
     expect(markup).not.toContain("Create extrude");
   });
 
+  it("prefers app-supplied topology hole targets over stale action targets", () => {
+    const circle: SketchSnapshot["entities"][number] = {
+      id: "circle_1",
+      kind: "circle",
+      center: [0, 0],
+      radius: 0.3
+    };
+    const sketch = createSketch("sketch_face_1", "Face sketch", [circle]);
+    const context = {
+      selectionKind: "sketchEntity" as const,
+      sketch,
+      entity: circle
+    };
+    const actions = deriveModelingActions({
+      context,
+      bodies: [
+        {
+          id: "body_stale",
+          kind: "solid",
+          partId: "part:default",
+          featureId: "feat_stale",
+          source: {
+            type: "sketchExtrudeFeature",
+            featureId: "feat_stale",
+            sketchId: "sketch_1",
+            entityId: "rect_1",
+            profileKind: "rectangle"
+          }
+        }
+      ],
+      features: [
+        {
+          id: "feat_stale",
+          kind: "extrude",
+          partId: "part:default",
+          bodyId: "body_stale",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          profileKind: "rectangle",
+          depth: 2,
+          side: "positive",
+          operationMode: "newBody",
+          source: {
+            type: "sketchEntity",
+            sketchId: "sketch_1",
+            entityId: "rect_1"
+          }
+        }
+      ],
+      preferredBodyId: "body_stale"
+    }).map((action) =>
+      action.id === "feature.hole"
+        ? {
+            ...action,
+            target: {
+              ...action.target,
+              holeTargets: [
+                {
+                  bodyId: "body_stale",
+                  featureId: "feat_stale",
+                  profileKind: "rectangle" as const,
+                  label: "Stale action target",
+                  detail: "Stale action target detail"
+                }
+              ]
+            }
+          }
+        : action
+    );
+    const markup = renderToStaticMarkup(
+      createElement(ModelingActionsPanel, {
+        actions,
+        context,
+        holeTargetBodies: [
+          {
+            bodyId: "body_fresh",
+            featureId: "feat_fresh",
+            targetTopologyAnchorId: "anchor_body_fresh",
+            profileKind: "rectangle",
+            label: "Fresh topology result",
+            detail: "Fresh topology result / cut / body_fresh"
+          }
+        ]
+      })
+    );
+
+    expect(markup).toContain("Fresh topology result");
+    expect(markup).not.toContain("Stale action target");
+  });
+
   it("explains selected sketch lines as revolve axis candidates", () => {
     const line: SketchSnapshot["entities"][number] = {
       id: "line_axis",

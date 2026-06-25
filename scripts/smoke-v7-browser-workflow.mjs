@@ -668,6 +668,12 @@ async function v7BrowserWorkflowSmoke({
     v13TargetBodyAnchorId: "v13_anchor_target_body",
     v13TargetBodyId: "v13_target_body",
     v13TargetBodyName: "V13 anchored target body",
+    v14CutBodyId: "v14_smoke_result_rect_cut_body",
+    v14CutBodyName: "V14 smoke result rectangle cut",
+    v14CutFeatureId: "v14_smoke_result_rect_cut_feature",
+    v14CutRectangleEntityId: "v14_smoke_result_rect_cut_profile",
+    v14CutSketchId: "v14_smoke_result_rect_cut_sketch",
+    v14CutSketchName: "V14 smoke result cut sketch",
     v14ProjectFileName: "v14-browser-fixture.json",
     v14HoleBodyId: "v14_smoke_result_hole_body",
     v14HoleBodyName: "V14 smoke result hole",
@@ -1788,6 +1794,55 @@ async function v7BrowserWorkflowSmoke({
       return;
     }
 
+    await importV14TopologyBrowserFixture(
+      projectJson,
+      "V14 topology browser fixture for result-face rectangle cut"
+    );
+    await runV14TopologyBackedResultExtrudeCutWorkflowSmoke();
+    await verifyV14ResultCutProjectJsonSource(
+      "V14 result-face rectangle cut topology source JSON"
+    );
+
+    await importV14TopologyBrowserFixture(
+      projectJson,
+      "V14 topology browser fixture for result-face hole"
+    );
+    await runV14TopologyBackedResultHoleWorkflowSmoke();
+    await verifyV14ResultHoleProjectJsonSource(
+      "V14 pre-round-trip topology source JSON"
+    );
+    await verifyV14ResultHoleWcadRoundTrip();
+
+    openDetailsBySummary(document.body, "Project/File");
+    const projectPanel = getSectionByAriaLabel("Project");
+    clickButton(projectPanel, "Export JSON");
+    await waitFor(() => {
+      const projectJsonPreview = getProjectJsonEditorValue(projectPanel);
+      const ready =
+        includesText(projectPanel, "Import draft") &&
+        projectJsonPreview.includes("web-cad.project.v18") &&
+        projectJsonPreview.includes(ids.v14HoleFeatureId);
+
+      if (!ready) {
+        throw new Error(
+          [
+            `project=${compactText(projectPanel.textContent, 420)}`,
+            `json=${projectJsonPreview.trim().slice(0, 240)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, "V14 exported topology source JSON preview");
+    assertV14ResultHoleProjectJson(getProjectJsonEditorValue(projectPanel));
+    pass(
+      "v14-result-hole-topology-source-json-browser",
+      "V14 result-body hole JSON keeps only public topology sketch and target proof",
+      ids.v14HoleFeatureId
+    );
+  }
+
+  async function importV14TopologyBrowserFixture(projectJson, waitLabel) {
     openDetailsBySummary(document.body, "Project/File");
     let projectPanel = getSectionByAriaLabel("Project");
     loadProjectJsonFileIntoInput(
@@ -1816,41 +1871,7 @@ async function v7BrowserWorkflowSmoke({
       }
 
       return true;
-    }, "imported V14 topology browser fixture JSON");
-
-    await runV14TopologyBackedResultHoleWorkflowSmoke();
-    await verifyV14ResultHoleProjectJsonSource(
-      "V14 pre-round-trip topology source JSON"
-    );
-    await verifyV14ResultHoleWcadRoundTrip();
-
-    openDetailsBySummary(document.body, "Project/File");
-    projectPanel = getSectionByAriaLabel("Project");
-    clickButton(projectPanel, "Export JSON");
-    await waitFor(() => {
-      const projectJsonPreview = getProjectJsonEditorValue(projectPanel);
-      const ready =
-        includesText(projectPanel, "Import draft") &&
-        projectJsonPreview.includes("web-cad.project.v18") &&
-        projectJsonPreview.includes(ids.v14HoleFeatureId);
-
-      if (!ready) {
-        throw new Error(
-          [
-            `project=${compactText(projectPanel.textContent, 420)}`,
-            `json=${projectJsonPreview.trim().slice(0, 240)}`
-          ].join("; ")
-        );
-      }
-
-      return true;
-    }, "V14 exported topology source JSON preview");
-    assertV14ResultHoleProjectJson(getProjectJsonEditorValue(projectPanel));
-    pass(
-      "v14-result-hole-topology-source-json-browser",
-      "V14 result-body hole JSON keeps only public topology sketch and target proof",
-      ids.v14HoleFeatureId
-    );
+    }, waitLabel);
   }
 
   async function verifyV14ResultHoleProjectJsonSource(waitLabel) {
@@ -1878,7 +1899,41 @@ async function v7BrowserWorkflowSmoke({
     assertV14ResultHoleProjectJson(getProjectJsonEditorValue(projectPanel));
   }
 
-  async function runV14TopologyBackedResultHoleWorkflowSmoke() {
+  async function verifyV14ResultCutProjectJsonSource(waitLabel) {
+    openDetailsBySummary(document.body, "Project/File");
+    const projectPanel = getSectionByAriaLabel("Project");
+    clickButton(projectPanel, "Export JSON");
+    await waitFor(() => {
+      const projectJsonPreview = getProjectJsonEditorValue(projectPanel);
+      const ready =
+        includesText(projectPanel, "Import draft") &&
+        projectJsonPreview.includes("web-cad.project.v18") &&
+        projectJsonPreview.includes(ids.v14CutFeatureId);
+
+      if (!ready) {
+        throw new Error(
+          [
+            `project=${compactText(projectPanel.textContent, 420)}`,
+            `json=${projectJsonPreview.trim().slice(0, 240)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, waitLabel);
+    assertV14ResultCutProjectJson(getProjectJsonEditorValue(projectPanel));
+    pass(
+      "v14-result-cut-topology-source-json-browser",
+      "V14 result-body rectangle cut JSON keeps topology sketch and target proof",
+      ids.v14CutFeatureId
+    );
+  }
+
+  async function createV14TopologyBackedResultFaceSketch({
+    sketchName,
+    passId,
+    passLabel
+  }) {
     const targetBodyId = ids.v14TargetBodyId;
     const targetBodyName = ids.v14TargetBodyName;
     const faceStableId = `generated:face:${targetBodyId}:side:uMin`;
@@ -1921,26 +1976,129 @@ async function v7BrowserWorkflowSmoke({
     }, "V14 result face command-ready modeling action");
 
     const modeling = getSectionByAriaLabel("Modeling context");
-    setFieldByLabel(modeling, "Sketch name", ids.v14HoleSketchName);
+    setFieldByLabel(modeling, "Sketch name", sketchName);
     clickButton(modeling, "Create sketch on face");
+    await waitFor(
+      () => includesText(getElementByAriaLabel("Model structure"), sketchName),
+      "V14 result face attached sketch"
+    );
+    const sketchesAfterCreate = getSectionByAriaLabel("Sketches");
+    const sketchId = getControlByLabel(
+      sketchesAfterCreate,
+      "Active sketch"
+    ).value;
+
+    if (passId && passLabel) {
+      pass(passId, passLabel, sketchId);
+    }
+
+    return sketchId;
+  }
+
+  async function runV14TopologyBackedResultExtrudeCutWorkflowSmoke() {
+    const targetBodyId = ids.v14TargetBodyId;
+    ids.v14CutSketchId = await createV14TopologyBackedResultFaceSketch({
+      sketchName: ids.v14CutSketchName
+    });
+
+    clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Sketches");
+    const sketches = getSectionByAriaLabel("Sketches");
+    setSelectByLabel(sketches, "Active sketch", ids.v14CutSketchId);
+    await waitFor(
+      () =>
+        getControlByLabel(getSectionByAriaLabel("Sketches"), "Active sketch")
+          .value === ids.v14CutSketchId,
+      "V14 result-face rectangle cut sketch became active"
+    );
+    clickButton(getElementByAriaLabel("Add sketch entity"), "Rectangle");
+    const entityEditor = await waitForSectionByAriaLabel(
+      "Sketch entity editor",
+      "V14 result-face rectangle entity editor"
+    );
+    setSelectByLabel(entityEditor, "Entity", "rectangle");
+    setInputByDetailsSummary(
+      entityEditor,
+      "Optional ID",
+      ids.v14CutRectangleEntityId
+    );
+    setFieldByLabel(entityEditor, "Center X", "0");
+    setFieldByLabel(entityEditor, "Center Y", "0");
+    setFieldByLabel(entityEditor, "Width", "0.25");
+    setFieldByLabel(entityEditor, "Height", "0.25");
+    clickButton(entityEditor, "Add entity");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Select sketch entity"),
+          ids.v14CutRectangleEntityId
+        ),
+      "created V14 result-face cut rectangle"
+    );
+    pass(
+      "v14-result-face-rectangle-entity-browser",
+      "V14 result-face attached sketch accepts a rectangle cut profile",
+      ids.v14CutRectangleEntityId
+    );
+
+    const featureEditor = getSectionByAriaLabel("Create authored feature");
+    setFieldByLabel(featureEditor, "Depth", "0.25");
+    setSelectByLabel(featureEditor, "Operation", "cut");
+    await waitFor(
+      () =>
+        Boolean(
+          queryControlByLabel(
+            getSectionByAriaLabel("Create authored feature"),
+            "Target body"
+          )
+        ),
+      "V14 result-face cut target body control"
+    );
+    setSelectByLabel(featureEditor, "Target body", targetBodyId);
+    setFieldByLabel(featureEditor, "Optional feature ID", ids.v14CutFeatureId);
+    setFieldByLabel(featureEditor, "Optional body ID", ids.v14CutBodyId);
+    setFieldByLabel(featureEditor, "Optional name", ids.v14CutBodyName);
+    await waitFor(() => {
+      const nextFeatureEditor = getSectionByAriaLabel(
+        "Create authored feature"
+      );
+      const createExtrudeButton = getButtonByText(
+        nextFeatureEditor,
+        "Create extrude"
+      );
+
+      if (!createExtrudeButton || createExtrudeButton.disabled) {
+        throw new Error(compactText(nextFeatureEditor.textContent, 520));
+      }
+
+      return true;
+    }, "V14 result-face rectangle cut command enabled");
+    clickButton(
+      getSectionByAriaLabel("Create authored feature"),
+      "Create extrude"
+    );
     await waitFor(
       () =>
         includesText(
           getElementByAriaLabel("Model structure"),
-          ids.v14HoleSketchName
+          ids.v14CutBodyName
         ),
-      "V14 result face attached sketch"
+      "created V14 result-body rectangle cut"
     );
-    const sketchesAfterCreate = getSectionByAriaLabel("Sketches");
-    ids.v14HoleSketchId = getControlByLabel(
-      sketchesAfterCreate,
-      "Active sketch"
-    ).value;
     pass(
-      "v14-result-face-attached-sketch-browser",
-      "V14 result-body planar face creates an attached sketch through the browser UI",
-      ids.v14HoleSketchId
+      "v14-result-face-rectangle-cut-browser",
+      "V14 result-face rectangle profile cuts the topology-backed result body",
+      ids.v14CutBodyId
     );
+  }
+
+  async function runV14TopologyBackedResultHoleWorkflowSmoke() {
+    const targetBodyId = ids.v14TargetBodyId;
+    ids.v14HoleSketchId = await createV14TopologyBackedResultFaceSketch({
+      sketchName: ids.v14HoleSketchName,
+      passId: "v14-result-face-attached-sketch-browser",
+      passLabel:
+        "V14 result-body planar face creates an attached sketch through the browser UI"
+    });
 
     clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Sketches");
     const sketches = getSectionByAriaLabel("Sketches");
@@ -2209,6 +2367,51 @@ async function v7BrowserWorkflowSmoke({
     if (privateIdPattern.test(sourceBoundaryText)) {
       throw new Error(
         `V14 topology source leaked a private ID: ${sourceBoundaryText}`
+      );
+    }
+  }
+
+  function assertV14ResultCutProjectJson(projectJson) {
+    const targetBodyId = ids.v14TargetBodyId;
+    const parsed = JSON.parse(projectJson);
+    const sketch = findObjectById(parsed, ids.v14CutSketchId);
+    const cutFeature = findObjectById(parsed, ids.v14CutFeatureId);
+
+    if (!sketch || sketch.attachment?.kind !== "topologyAnchorFace") {
+      throw new Error(
+        `V14 rectangle cut sketch lost topologyAnchorFace source for ${ids.v14CutSketchId}.`
+      );
+    }
+
+    if (sketch.attachment.bodyId !== targetBodyId) {
+      throw new Error(
+        `V14 rectangle cut sketch target body mismatch: ${sketch.attachment.bodyId}`
+      );
+    }
+
+    if (
+      !cutFeature ||
+      cutFeature.kind !== "extrude" ||
+      cutFeature.operationMode !== "cut" ||
+      cutFeature.targetBodyId !== targetBodyId ||
+      typeof cutFeature.targetTopologyAnchorId !== "string" ||
+      cutFeature.targetTopologyAnchorId.length === 0
+    ) {
+      throw new Error(
+        "V14 rectangle cut feature lost its topology target source."
+      );
+    }
+
+    const sourceBoundaryText = JSON.stringify({
+      attachment: sketch.attachment,
+      feature: cutFeature
+    });
+    const privateIdPattern =
+      /(renderer|meshId|occt|viewport|opfs|fileHandle|checkpointEntityId)/i;
+
+    if (privateIdPattern.test(sourceBoundaryText)) {
+      throw new Error(
+        `V14 rectangle cut source leaked a private ID: ${sourceBoundaryText}`
       );
     }
   }

@@ -33977,6 +33977,107 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     });
   });
 
+  it("creates cut extrudes through result bodies with their own active topology body anchor", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "sketch_result_cut",
+        name: "Initial cut",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_result_cut",
+        id: "rect_result_cut",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_result_cut",
+        bodyId: "body_result_cut",
+        sketchId: "sketch_result_cut",
+        entityId: "rect_result_cut",
+        depth: 1,
+        operationMode: "cut",
+        targetBodyId: "body_rect_1"
+      },
+      {
+        op: "topology.checkpoint.create",
+        checkpointId: "checkpoint_result_cut",
+        bodyId: "body_result_cut",
+        sourceFeatureId: "feat_result_cut",
+        sourceIdentity: {
+          algorithm: "partbench-source-v1",
+          sha256:
+            "2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        status: "active"
+      },
+      {
+        op: "topology.anchor.create",
+        anchorId: "anchor_body_result_cut",
+        entityKind: "body",
+        bodyId: "body_result_cut",
+        checkpointId: "checkpoint_result_cut",
+        checkpointEntityId: "checkpoint-local-result-cut-body",
+        sourceFeatureId: "feat_result_cut",
+        stableId: "generated:body:body_result_cut",
+        sourceSemanticRole: "result body",
+        signatureHash: "result_cut_body_signature"
+      },
+      {
+        op: "sketch.create",
+        id: "sketch_result_cut_next",
+        name: "Next cut",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_result_cut_next",
+        id: "rect_result_cut_next",
+        center: [0.25, 0.25],
+        width: 0.5,
+        height: 0.5
+      }
+    ]);
+
+    engine.applyBatch([
+      {
+        op: "feature.extrude",
+        id: "feat_result_cut_next",
+        bodyId: "body_result_cut_next",
+        sketchId: "sketch_result_cut_next",
+        entityId: "rect_result_cut_next",
+        depth: 0.25,
+        operationMode: "cut",
+        targetTopologyAnchorId: "anchor_body_result_cut"
+      }
+    ]);
+
+    expect(getExtrudeFeature(engine, "feat_result_cut_next")).toMatchObject({
+      kind: "extrude",
+      operationMode: "cut",
+      targetBodyId: "body_result_cut",
+      targetTopologyAnchorId: "anchor_body_result_cut",
+      bodyId: "body_result_cut_next"
+    });
+    expect(readProjectHealth(engine).authoredExtrudes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          featureId: "feat_result_cut_next",
+          operationMode: "cut",
+          targetBodyId: "body_result_cut",
+          targetTopologyAnchorId: "anchor_body_result_cut",
+          status: "healthy"
+        })
+      ])
+    );
+  });
+
   it("creates holes through active topology-backed result bodies", async () => {
     const engine = createRectangleExtrudeEngine();
 

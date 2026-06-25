@@ -1755,7 +1755,8 @@ function isSupportedBooleanTarget(
   const targetProfileKind = resolveBooleanTargetProfileKind(
     targetFeature,
     features,
-    feature.targetTopologyAnchorId
+    feature.targetTopologyAnchorId,
+    feature.targetBodyId
   );
 
   if (targetProfileKind === undefined) {

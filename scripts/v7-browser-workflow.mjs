@@ -112,6 +112,9 @@ export const V13_BROWSER_WORKFLOW_CHECK_IDS = Object.freeze([
 ]);
 export const V14_BROWSER_WORKFLOW_CHECK_IDS = Object.freeze([
   "v14-result-face-attached-sketch-browser",
+  "v14-result-face-rectangle-entity-browser",
+  "v14-result-face-rectangle-cut-browser",
+  "v14-result-cut-topology-source-json-browser",
   "v14-result-face-circle-entity-browser",
   "v14-result-face-circle-hole-browser",
   "v14-result-hole-wcad-roundtrip-browser",

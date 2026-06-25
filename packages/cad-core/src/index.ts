@@ -12128,7 +12128,8 @@ function assertSupportedExtrudeOperation(
   const targetProfileKind = resolveSupportedBooleanTargetProfileKind(
     state.features,
     targetFeature,
-    targetTopologyAnchorId
+    targetTopologyAnchorId,
+    targetBodyId
   );
 
   if (
