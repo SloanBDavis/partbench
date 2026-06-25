@@ -528,6 +528,46 @@ describe("Inspector", () => {
     expect(markup).not.toContain("Tranche");
   });
 
+  it("shows downstream blocker guidance for unsafe upstream source edits", () => {
+    const feature = createFeature();
+    const markup = renderToStaticMarkup(
+      createElement(Inspector, {
+        body: createBody(),
+        disabled: false,
+        feature,
+        featureEditability: createFeatureEditability(feature, [], {
+          status: "blocked",
+          diagnostic:
+            "Feature feat_rect_1 cannot be edited safely because downstream result body body_cut_1 is consumed by feature feat_cut_chamfer. Edit or repair that downstream feature before changing the original source."
+        }),
+        namedReferences: [],
+        units: "mm",
+        onApplyDimensions: () => undefined,
+        onApplyName: () => undefined,
+        onApplyTransform: () => undefined,
+        onCreateSketchOnFace: () => undefined,
+        onCreateEdgeFinish: () => undefined,
+        onDeleteNamedReference: () => undefined,
+        onNameGeneratedReference: () => undefined,
+        onRepairNamedReference: () => undefined,
+        onInspectNamedReference: () => undefined,
+        onSelectGeneratedReference: () => undefined,
+        onDelete: () => undefined,
+        onDeleteFeature: () => undefined,
+        onUpdateExtrude: () => undefined,
+        onUpdateRevolve: () => undefined,
+        onUpdateHole: () => undefined,
+        onUpdateChamfer: () => undefined,
+        onUpdateFillet: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Feature parameters unavailable");
+    expect(markup).toContain("downstream result body body_cut_1");
+    expect(markup).toContain("Edit or repair that downstream feature");
+    expect(markup).not.toMatch(/\b(tranche|milestone|debug|deferred)\b/i);
+  });
+
   it("plumbs selected generated edges into inspector edge-finish affordances", () => {
     const face = createFace();
     const edge = createEdge();

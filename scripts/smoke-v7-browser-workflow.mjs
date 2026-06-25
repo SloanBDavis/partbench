@@ -745,6 +745,9 @@ async function v7BrowserWorkflowSmoke({
     v14HoleFeatureId: "v14_smoke_result_hole_feature",
     v14HoleSketchId: "v14_smoke_result_face_sketch",
     v14HoleSketchName: "V14 smoke result face sketch",
+    v14SourceBodyId: "v14_smoke_source_body",
+    v14SourceBodyName: "V14 smoke source cylinder",
+    v14SourceFeatureId: "v14_smoke_source_feature",
     v14TargetBodyId: "v14_smoke_result_target_body",
     v14TargetBodyName: "V14 smoke result target",
     v14WcadFileName: "v14-browser-workflow-roundtrip.wcad",
@@ -1874,6 +1877,7 @@ async function v7BrowserWorkflowSmoke({
       "V14 topology browser fixture for result-edge chamfer"
     );
     await runV14ResultCutWallEdgeFinishWorkflowSmoke();
+    await verifyV14ResultEdgeUpstreamEditBlocked();
     await verifyV14ResultCutWallEdgeFinishProjectJsonSource(
       "V14 result cut-wall edge-finish source JSON"
     );
@@ -2354,6 +2358,48 @@ async function v7BrowserWorkflowSmoke({
       "v14-result-cut-wall-edge-chamfer-browser",
       "V14 rectangle cut-wall result edge creates a chamfer through the browser UI",
       ids.v14EdgeChamferName
+    );
+  }
+
+  async function verifyV14ResultEdgeUpstreamEditBlocked() {
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v14SourceBodyName
+    );
+    openSelectionPanel();
+
+    await waitFor(() => {
+      const inspector = getElementByAriaLabel("Inspector");
+      const depthControl = getControlByLabel(inspector, "Depth (mm)");
+      const applyButton = getButtonByText(inspector, "Apply extrude");
+      const text = compactText(inspector.textContent, 1200);
+      const ready =
+        depthControl instanceof HTMLInputElement &&
+        depthControl.disabled &&
+        applyButton?.disabled === true &&
+        includesText(inspector, "Feature parameters unavailable") &&
+        includesText(
+          inspector,
+          `downstream result body ${ids.v14TargetBodyId} is consumed by feature`
+        ) &&
+        includesText(
+          inspector,
+          "Edit or repair that downstream feature before changing the original source."
+        ) &&
+        !/\b(tranche|milestone|debug|deferred)\b/i.test(text);
+
+      if (!ready) {
+        throw new Error(text);
+      }
+
+      return true;
+    }, "V14 upstream source edit blocked by downstream chamfer");
+
+    pass(
+      "v14-result-edge-upstream-edit-blocked-browser",
+      "V14 upstream source edit is blocked with an action-oriented downstream chamfer diagnostic",
+      ids.v14SourceFeatureId
     );
   }
 
