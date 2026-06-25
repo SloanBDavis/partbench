@@ -725,6 +725,13 @@ async function v7BrowserWorkflowSmoke({
     v14AddSketchName: "V14 smoke result add sketch",
     v14AddTargetBodyId: "v14_smoke_rect_result_target_body",
     v14AddTargetBodyName: "V14 smoke rectangle result target",
+    v14RectangleCutBodyId: "v14_smoke_rect_result_second_cut_body",
+    v14RectangleCutBodyName: "V14 smoke rectangle result second cut",
+    v14RectangleCutFeatureId: "v14_smoke_rect_result_second_cut_feature",
+    v14RectangleCutRectangleEntityId:
+      "v14_smoke_rect_result_second_cut_profile",
+    v14RectangleCutSketchId: "v14_smoke_rect_result_second_cut_sketch",
+    v14RectangleCutSketchName: "V14 smoke rectangle result second cut sketch",
     v14CutBodyId: "v14_smoke_result_rect_cut_body",
     v14CutBodyName: "V14 smoke result rectangle cut",
     v14CutFeatureId: "v14_smoke_result_rect_cut_feature",
@@ -1894,6 +1901,15 @@ async function v7BrowserWorkflowSmoke({
 
     await importV14TopologyBrowserFixture(
       projectJson,
+      "V14 topology browser fixture for rectangle-result rectangle cut"
+    );
+    await runV14TopologyBackedRectangleResultExtrudeCutWorkflowSmoke();
+    await verifyV14RectangleResultCutProjectJsonSource(
+      "V14 rectangle-result rectangle cut topology source JSON"
+    );
+
+    await importV14TopologyBrowserFixture(
+      projectJson,
       "V14 topology browser fixture for result-face rectangle cut"
     );
     await runV14TopologyBackedResultExtrudeCutWorkflowSmoke();
@@ -2161,6 +2177,47 @@ async function v7BrowserWorkflowSmoke({
       "v14-result-add-topology-source-json-browser",
       "V14 result-body rectangle add JSON keeps topology sketch and target proof",
       ids.v14AddFeatureId
+    );
+  }
+
+  async function verifyV14RectangleResultCutProjectJsonSource(waitLabel) {
+    openDetailsBySummary(document.body, "Project/File");
+    const projectPanel = getSectionByAriaLabel("Project");
+    await waitFor(() => {
+      const exportButton = getButtonByText(projectPanel, "Export JSON");
+
+      if (!exportButton || exportButton.disabled) {
+        throw new Error(compactText(projectPanel.textContent, 520));
+      }
+
+      return true;
+    }, "V14 rectangle-result cut export ready");
+    clickButton(projectPanel, "Export JSON");
+    await waitFor(() => {
+      const projectJsonPreview = getProjectJsonEditorValue(projectPanel);
+      const ready =
+        includesText(projectPanel, "Import draft") &&
+        projectJsonPreview.includes("web-cad.project.v18") &&
+        projectJsonPreview.includes(ids.v14RectangleCutFeatureId);
+
+      if (!ready) {
+        throw new Error(
+          [
+            `project=${compactText(projectPanel.textContent, 420)}`,
+            `json=${projectJsonPreview.trim().slice(0, 240)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, waitLabel);
+    assertV14RectangleResultCutProjectJson(
+      getProjectJsonEditorValue(projectPanel)
+    );
+    pass(
+      "v14-rectangle-result-cut-topology-source-json-browser",
+      "V14 rectangle-family result-body cut JSON keeps topology sketch and target proof",
+      ids.v14RectangleCutFeatureId
     );
   }
 
@@ -2509,31 +2566,104 @@ async function v7BrowserWorkflowSmoke({
   }
 
   async function runV14TopologyBackedResultExtrudeCutWorkflowSmoke() {
-    const targetBodyId = ids.v14TargetBodyId;
-    ids.v14CutSketchId = await createV14TopologyBackedResultFaceSketch({
-      sketchName: ids.v14CutSketchName
+    await runV14TopologyBackedRectangleCutFromResultFace({
+      targetBodyId: ids.v14TargetBodyId,
+      targetBodyName: ids.v14TargetBodyName,
+      sketchIdKey: "v14CutSketchId",
+      sketchName: ids.v14CutSketchName,
+      rectangleEntityId: ids.v14CutRectangleEntityId,
+      featureId: ids.v14CutFeatureId,
+      bodyId: ids.v14CutBodyId,
+      bodyName: ids.v14CutBodyName,
+      passEntityCheck: passV14ResultFaceRectangleEntityBrowser,
+      passCutCheck: passV14ResultFaceRectangleCutBrowser,
+      waitLabelPrefix: "V14 result-face rectangle cut"
+    });
+  }
+
+  async function runV14TopologyBackedRectangleResultExtrudeCutWorkflowSmoke() {
+    await runV14TopologyBackedRectangleCutFromResultFace({
+      targetBodyId: ids.v14AddTargetBodyId,
+      targetBodyName: ids.v14AddTargetBodyName,
+      sketchIdKey: "v14RectangleCutSketchId",
+      sketchName: ids.v14RectangleCutSketchName,
+      rectangleEntityId: ids.v14RectangleCutRectangleEntityId,
+      featureId: ids.v14RectangleCutFeatureId,
+      bodyId: ids.v14RectangleCutBodyId,
+      bodyName: ids.v14RectangleCutBodyName,
+      passEntityCheck: passV14RectangleResultFaceRectangleEntityBrowser,
+      passCutCheck: passV14RectangleResultFaceRectangleCutBrowser,
+      waitLabelPrefix: "V14 rectangle-family result-face rectangle cut"
+    });
+  }
+
+  function passV14ResultFaceRectangleEntityBrowser(detail) {
+    pass(
+      "v14-result-face-rectangle-entity-browser",
+      "V14 result-face attached sketch accepts a rectangle cut profile",
+      detail
+    );
+  }
+
+  function passV14ResultFaceRectangleCutBrowser(detail) {
+    pass(
+      "v14-result-face-rectangle-cut-browser",
+      "V14 result-face rectangle profile cuts the topology-backed result body",
+      detail
+    );
+  }
+
+  function passV14RectangleResultFaceRectangleEntityBrowser(detail) {
+    pass(
+      "v14-rectangle-result-face-rectangle-entity-browser",
+      "V14 rectangle-family result-face sketch accepts a rectangle cut profile",
+      detail
+    );
+  }
+
+  function passV14RectangleResultFaceRectangleCutBrowser(detail) {
+    pass(
+      "v14-rectangle-result-face-rectangle-cut-browser",
+      "V14 rectangle-family result body accepts a second rectangle cut",
+      detail
+    );
+  }
+
+  async function runV14TopologyBackedRectangleCutFromResultFace({
+    targetBodyId,
+    targetBodyName,
+    sketchIdKey,
+    sketchName,
+    rectangleEntityId,
+    featureId,
+    bodyId,
+    bodyName,
+    passEntityCheck,
+    passCutCheck,
+    waitLabelPrefix
+  }) {
+    ids[sketchIdKey] = await createV14TopologyBackedResultFaceSketch({
+      sketchName,
+      targetBodyId,
+      targetBodyName
     });
 
     clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Sketches");
     const sketches = getSectionByAriaLabel("Sketches");
-    setSelectByLabel(sketches, "Active sketch", ids.v14CutSketchId);
+    setSelectByLabel(sketches, "Active sketch", ids[sketchIdKey]);
     await waitFor(
       () =>
         getControlByLabel(getSectionByAriaLabel("Sketches"), "Active sketch")
-          .value === ids.v14CutSketchId,
-      "V14 result-face rectangle cut sketch became active"
+          .value === ids[sketchIdKey],
+      `${waitLabelPrefix} sketch became active`
     );
     clickButton(getElementByAriaLabel("Add sketch entity"), "Rectangle");
     const entityEditor = await waitForSectionByAriaLabel(
       "Sketch entity editor",
-      "V14 result-face rectangle entity editor"
+      `${waitLabelPrefix} entity editor`
     );
     setSelectByLabel(entityEditor, "Entity", "rectangle");
-    setInputByDetailsSummary(
-      entityEditor,
-      "Optional ID",
-      ids.v14CutRectangleEntityId
-    );
+    setInputByDetailsSummary(entityEditor, "Optional ID", rectangleEntityId);
     setFieldByLabel(entityEditor, "Center X", "0");
     setFieldByLabel(entityEditor, "Center Y", "0");
     setFieldByLabel(entityEditor, "Width", "0.25");
@@ -2543,15 +2673,11 @@ async function v7BrowserWorkflowSmoke({
       () =>
         includesText(
           getElementByAriaLabel("Select sketch entity"),
-          ids.v14CutRectangleEntityId
+          rectangleEntityId
         ),
-      "created V14 result-face cut rectangle"
+      `created ${waitLabelPrefix} rectangle`
     );
-    pass(
-      "v14-result-face-rectangle-entity-browser",
-      "V14 result-face attached sketch accepts a rectangle cut profile",
-      ids.v14CutRectangleEntityId
-    );
+    passEntityCheck(rectangleEntityId);
 
     const featureEditor = getSectionByAriaLabel("Create authored feature");
     setFieldByLabel(featureEditor, "Depth", "0.25");
@@ -2564,12 +2690,12 @@ async function v7BrowserWorkflowSmoke({
             "Target body"
           )
         ),
-      "V14 result-face cut target body control"
+      `${waitLabelPrefix} target body control`
     );
     setSelectByLabel(featureEditor, "Target body", targetBodyId);
-    setFieldByLabel(featureEditor, "Optional feature ID", ids.v14CutFeatureId);
-    setFieldByLabel(featureEditor, "Optional body ID", ids.v14CutBodyId);
-    setFieldByLabel(featureEditor, "Optional name", ids.v14CutBodyName);
+    setFieldByLabel(featureEditor, "Optional feature ID", featureId);
+    setFieldByLabel(featureEditor, "Optional body ID", bodyId);
+    setFieldByLabel(featureEditor, "Optional name", bodyName);
     await waitFor(() => {
       const nextFeatureEditor = getSectionByAriaLabel(
         "Create authored feature"
@@ -2584,24 +2710,16 @@ async function v7BrowserWorkflowSmoke({
       }
 
       return true;
-    }, "V14 result-face rectangle cut command enabled");
+    }, `${waitLabelPrefix} command enabled`);
     clickButton(
       getSectionByAriaLabel("Create authored feature"),
       "Create extrude"
     );
     await waitFor(
-      () =>
-        includesText(
-          getElementByAriaLabel("Model structure"),
-          ids.v14CutBodyName
-        ),
-      "created V14 result-body rectangle cut"
+      () => includesText(getElementByAriaLabel("Model structure"), bodyName),
+      `created ${waitLabelPrefix}`
     );
-    pass(
-      "v14-result-face-rectangle-cut-browser",
-      "V14 result-face rectangle profile cuts the topology-backed result body",
-      ids.v14CutBodyId
-    );
+    passCutCheck(bodyId);
   }
 
   async function runV14TopologyBackedResultExtrudeAddWorkflowSmoke() {
@@ -3079,20 +3197,45 @@ async function v7BrowserWorkflowSmoke({
   }
 
   function assertV14ResultCutProjectJson(projectJson) {
-    const targetBodyId = ids.v14TargetBodyId;
+    assertV14TopologyBackedRectangleCutProjectJson({
+      projectJson,
+      targetBodyId: ids.v14TargetBodyId,
+      sketchId: ids.v14CutSketchId,
+      featureId: ids.v14CutFeatureId,
+      label: "V14 rectangle cut"
+    });
+  }
+
+  function assertV14RectangleResultCutProjectJson(projectJson) {
+    assertV14TopologyBackedRectangleCutProjectJson({
+      projectJson,
+      targetBodyId: ids.v14AddTargetBodyId,
+      sketchId: ids.v14RectangleCutSketchId,
+      featureId: ids.v14RectangleCutFeatureId,
+      label: "V14 rectangle-family result cut"
+    });
+  }
+
+  function assertV14TopologyBackedRectangleCutProjectJson({
+    projectJson,
+    targetBodyId,
+    sketchId,
+    featureId,
+    label
+  }) {
     const parsed = JSON.parse(projectJson);
-    const sketch = findObjectById(parsed, ids.v14CutSketchId);
-    const cutFeature = findObjectById(parsed, ids.v14CutFeatureId);
+    const sketch = findObjectById(parsed, sketchId);
+    const cutFeature = findObjectById(parsed, featureId);
 
     if (!sketch || sketch.attachment?.kind !== "topologyAnchorFace") {
       throw new Error(
-        `V14 rectangle cut sketch lost topologyAnchorFace source for ${ids.v14CutSketchId}.`
+        `${label} sketch lost topologyAnchorFace source for ${sketchId}.`
       );
     }
 
     if (sketch.attachment.bodyId !== targetBodyId) {
       throw new Error(
-        `V14 rectangle cut sketch target body mismatch: ${sketch.attachment.bodyId}`
+        `${label} sketch target body mismatch: ${sketch.attachment.bodyId}`
       );
     }
 
@@ -3104,9 +3247,7 @@ async function v7BrowserWorkflowSmoke({
       typeof cutFeature.targetTopologyAnchorId !== "string" ||
       cutFeature.targetTopologyAnchorId.length === 0
     ) {
-      throw new Error(
-        "V14 rectangle cut feature lost its topology target source."
-      );
+      throw new Error(`${label} feature lost its topology target source.`);
     }
 
     const sourceBoundaryText = JSON.stringify({
@@ -3118,7 +3259,7 @@ async function v7BrowserWorkflowSmoke({
 
     if (privateIdPattern.test(sourceBoundaryText)) {
       throw new Error(
-        `V14 rectangle cut source leaked a private ID: ${sourceBoundaryText}`
+        `${label} source leaked a private ID: ${sourceBoundaryText}`
       );
     }
   }

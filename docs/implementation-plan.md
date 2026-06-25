@@ -69,10 +69,11 @@ These constraints remain active:
     topology-backed result target anchors when submitting supported holes,
     selected ready result-body faces can create attached sketches by saving the
     required topology reference in the same CADOps action, browser smoke now
-    proves promoted result-face rectangle add/cut, result-face circle hole, and
-    explicit XZ side-plane circle hole paths, and ready topology-backed
-    reference selections and Project/File JSON import/export use
-    action-oriented product copy instead of internal debug labels.
+    proves promoted result-face rectangle add, rectangle-family result-body
+    second cut, circle-family result-body rectangle cut, result-face circle
+    hole, and explicit XZ side-plane circle hole paths, and ready
+    topology-backed reference selections and Project/File JSON import/export
+    use action-oriented product copy instead of internal debug labels.
     Completed V8, V9, V10, V11, V12, and V13
     tranche records below remain historical release records and compatibility
     guardrails. Do not re-open those releases unless the user explicitly asks
@@ -2850,9 +2851,10 @@ The planned pillars are:
    bodies that own the active public topology body anchor. The current partial
    implementation also lets `feature.hole` target supported active
    topology-backed result bodies through the same public body-anchor proof path,
-   and the browser smoke proves promoted result-face rectangle add/cut, result
-   face circle hole, and explicit XZ side-plane circle hole paths; unsupported
-   or unanchored result bodies remain blocked.
+   and the browser smoke proves promoted result-face rectangle add,
+   rectangle-family result-body second cut, circle-family result-body rectangle
+   cut, result-face circle hole, and explicit XZ side-plane circle hole paths;
+   unsupported or unanchored result bodies remain blocked.
 4. **Topology-backed edge finishing** - eligible result-body edge anchors can
    drive chamfer and fillet where cad-core validators and geometry execution
    prove the target. The V14 browser smoke now proves the first real
