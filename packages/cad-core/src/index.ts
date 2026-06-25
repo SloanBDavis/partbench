@@ -22005,7 +22005,8 @@ function isSupportedBooleanExtrudeCombination(
   const targetProfileKind = resolveImportBooleanTargetProfileKind(
     featuresByBodyId,
     target,
-    feature.targetTopologyAnchorId
+    feature.targetTopologyAnchorId,
+    feature.targetBodyId
   );
 
   if (targetProfileKind === undefined) {

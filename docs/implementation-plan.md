@@ -68,8 +68,9 @@ These constraints remain active:
     submitting supported add/cut extrudes, the full Sketch panel preserves
     topology-backed result target anchors when submitting supported holes,
     selected ready result-body faces can create attached sketches by saving the
-    required topology reference in the same CADOps action, and ready
-    topology-backed reference selections use action-oriented product copy
+    required topology reference in the same CADOps action, browser smoke now
+    proves promoted result-face rectangle add/cut plus circle hole paths, and
+    ready topology-backed reference selections use action-oriented product copy
     instead of topology debug text.
     Completed V8, V9, V10, V11, V12, and V13
     tranche records below remain historical release records and compatibility
@@ -2826,8 +2827,8 @@ The planned pillars are:
    bodies that own the active public topology body anchor. The current partial
    implementation also lets `feature.hole` target supported active
    topology-backed result bodies through the same public body-anchor proof path,
-   and the browser smoke proves promoted result-face rectangle cut plus circle
-   hole paths; unsupported or unanchored result bodies remain blocked.
+   and the browser smoke proves promoted result-face rectangle add/cut plus
+   circle hole paths; unsupported or unanchored result bodies remain blocked.
 4. **Topology-backed edge finishing** - eligible result-body edge anchors can
    drive chamfer and fillet where cad-core validators and geometry execution
    prove the target. V14 must make at least one real result-edge class

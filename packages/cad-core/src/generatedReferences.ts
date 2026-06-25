@@ -638,7 +638,8 @@ function isSupportedBooleanAddTarget(
   const targetProfileKind = resolveBooleanTargetProfileKind(
     document,
     targetFeature,
-    feature.targetTopologyAnchorId
+    feature.targetTopologyAnchorId,
+    feature.targetBodyId
   );
 
   return targetProfileKind === "rectangle";
@@ -654,7 +655,8 @@ function isSupportedBooleanCutTarget(
   const targetProfileKind = resolveBooleanTargetProfileKind(
     document,
     targetFeature,
-    feature.targetTopologyAnchorId
+    feature.targetTopologyAnchorId,
+    feature.targetBodyId
   );
 
   return targetProfileKind === "rectangle" || targetProfileKind === "circle";
@@ -663,7 +665,8 @@ function isSupportedBooleanCutTarget(
 function resolveBooleanTargetProfileKind(
   document: GeneratedReferencesDocument,
   targetFeature: GeneratedReferencesFeature | undefined,
-  targetTopologyAnchorId?: string
+  targetTopologyAnchorId?: string,
+  activeResultBodyId?: BodyId
 ): FeatureExtrudeProfileKind | undefined {
   if (targetFeature?.kind !== "extrude") {
     return undefined;
@@ -673,7 +676,10 @@ function resolveBooleanTargetProfileKind(
     return targetFeature.profileKind;
   }
 
-  if (targetTopologyAnchorId === undefined) {
+  const allowActiveResultBodyAnchor =
+    targetTopologyAnchorId !== undefined &&
+    activeResultBodyId === targetFeature.bodyId;
+  if (targetTopologyAnchorId === undefined && !allowActiveResultBodyAnchor) {
     return undefined;
   }
 
@@ -687,9 +693,15 @@ function resolveBooleanTargetProfileKind(
       return current.profileKind;
     }
 
+    const isAllowedActiveResultBody =
+      allowActiveResultBodyAnchor && current.id === targetFeature.id;
+    if (current.targetBodyId === undefined) {
+      return undefined;
+    }
+
     if (
-      current.targetTopologyAnchorId !== targetTopologyAnchorId ||
-      current.targetBodyId === undefined
+      !isAllowedActiveResultBody &&
+      current.targetTopologyAnchorId !== targetTopologyAnchorId
     ) {
       return undefined;
     }

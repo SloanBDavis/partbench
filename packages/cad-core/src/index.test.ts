@@ -34078,6 +34078,146 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     );
   });
 
+  it("creates add extrudes through result bodies with their own active topology body anchor", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "sketch_result_add_target",
+        name: "Initial cut",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_result_add_target",
+        id: "rect_result_add_target",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_result_add_target",
+        bodyId: "body_result_add_target",
+        sketchId: "sketch_result_add_target",
+        entityId: "rect_result_add_target",
+        depth: 1,
+        operationMode: "cut",
+        targetBodyId: "body_rect_1"
+      },
+      {
+        op: "topology.checkpoint.create",
+        checkpointId: "checkpoint_result_add_target",
+        bodyId: "body_result_add_target",
+        sourceFeatureId: "feat_result_add_target",
+        sourceIdentity: {
+          algorithm: "partbench-source-v1",
+          sha256:
+            "3333333333333333333333333333333333333333333333333333333333333333"
+        },
+        status: "active"
+      },
+      {
+        op: "topology.anchor.create",
+        anchorId: "anchor_body_result_add_target",
+        entityKind: "body",
+        bodyId: "body_result_add_target",
+        checkpointId: "checkpoint_result_add_target",
+        checkpointEntityId: "checkpoint-local-result-add-target-body",
+        sourceFeatureId: "feat_result_add_target",
+        stableId: "generated:body:body_result_add_target",
+        sourceSemanticRole: "result body",
+        signatureHash: "result_add_target_body_signature"
+      },
+      {
+        op: "sketch.create",
+        id: "sketch_result_add_next",
+        name: "Next add",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_result_add_next",
+        id: "rect_result_add_next",
+        center: [0.25, 0.25],
+        width: 0.5,
+        height: 0.5
+      }
+    ]);
+
+    engine.applyBatch([
+      {
+        op: "feature.extrude",
+        id: "feat_result_add_next",
+        bodyId: "body_result_add_next",
+        sketchId: "sketch_result_add_next",
+        entityId: "rect_result_add_next",
+        depth: 0.25,
+        operationMode: "add",
+        targetTopologyAnchorId: "anchor_body_result_add_target"
+      }
+    ]);
+    const references = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.generatedReferences",
+        bodyId: "body_result_add_next"
+      }
+    });
+    const reopened = importCadProjectJson(exportCadProjectJson(engine));
+
+    expect(getExtrudeFeature(engine, "feat_result_add_next")).toMatchObject({
+      kind: "extrude",
+      operationMode: "add",
+      targetBodyId: "body_result_add_target",
+      targetTopologyAnchorId: "anchor_body_result_add_target",
+      bodyId: "body_result_add_next"
+    });
+    expect(readProjectHealth(engine).authoredExtrudes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          featureId: "feat_result_add_next",
+          operationMode: "add",
+          targetBodyId: "body_result_add_target",
+          targetTopologyAnchorId: "anchor_body_result_add_target",
+          status: "healthy"
+        })
+      ])
+    );
+    expect(references).toMatchObject({
+      ok: true,
+      query: "body.generatedReferences",
+      body: expect.objectContaining({
+        stableId: "generated:body:body_result_add_next"
+      }),
+      faces: expect.arrayContaining([
+        expect.objectContaining({
+          stableId: "generated:face:body_result_add_next:side:uMin",
+          role: "side:uMin",
+          eligibleOperations: expect.arrayContaining([
+            "feature.attachSketchPlane",
+            "feature.measureReference",
+            "feature.selectReference"
+          ]),
+          geometricSignature: expect.objectContaining({
+            sourceKind: "extrude",
+            targetBodyId: "body_result_add_target",
+            targetTopologyAnchorId: "anchor_body_result_add_target",
+            extrudeOperationMode: "add"
+          })
+        })
+      ])
+    });
+    expect(getExtrudeFeature(reopened, "feat_result_add_next")).toMatchObject({
+      kind: "extrude",
+      operationMode: "add",
+      targetBodyId: "body_result_add_target",
+      targetTopologyAnchorId: "anchor_body_result_add_target",
+      bodyId: "body_result_add_next"
+    });
+  });
+
   it("creates holes through active topology-backed result bodies", async () => {
     const engine = createRectangleExtrudeEngine();
 

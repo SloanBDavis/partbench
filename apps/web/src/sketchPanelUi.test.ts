@@ -995,6 +995,41 @@ describe("sketch panel UI helpers", () => {
     ]);
   });
 
+  it("offers active topology-backed rectangle result bodies as add targets", () => {
+    const features: CadFeatureSummary[] = [
+      createExtrudeFeature("feat_rect", "body_rect", "rectangle", "newBody"),
+      createExtrudeFeature("feat_cut", "body_cut", "rectangle", "cut")
+    ];
+    const bodies: CadBodySnapshot[] = [
+      createBody("body_rect", "feat_rect", "feat_cut"),
+      createBody("body_cut", "feat_cut")
+    ];
+
+    expect(
+      createAddTargetBodyOptions(bodies, features, "body_cut", [
+        {
+          anchorId: "anchor_body_cut",
+          entityKind: "body",
+          bodyId: "body_cut",
+          checkpointId: "checkpoint_body_cut",
+          checkpointEntityId: "checkpoint_body_cut_body",
+          stableId: "generated:body:body_cut",
+          state: "active",
+          diagnostics: []
+        }
+      ])
+    ).toEqual([
+      {
+        bodyId: "body_cut",
+        featureId: "feat_cut",
+        targetTopologyAnchorId: "anchor_body_cut",
+        profileKind: "rectangle",
+        label: "Rectangle result 1 / 1 mm",
+        detail: "Rectangle topology result / cut / body_cut"
+      }
+    ]);
+  });
+
   it("offers active rectangle and circle newBody authored bodies as cut targets", () => {
     const features: CadFeatureSummary[] = [
       createExtrudeFeature("feat_rect", "body_rect", "rectangle", "newBody"),
