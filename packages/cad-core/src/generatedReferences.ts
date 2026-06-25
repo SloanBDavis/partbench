@@ -1399,7 +1399,7 @@ function createBooleanCutWallProfileEdgeReference(
     description: `Longitudinal cut-wall profile edge where ${adjacentFaceRoles.join(
       " and "
     )} meet.`,
-    eligibleOperations: MEASURE_AND_SELECT_OPERATIONS,
+    eligibleOperations: EDGE_FINISH_OPERATIONS,
     eligibilityNotes: createBooleanCutEdgeEligibilityNotes(),
     bodyId: feature.bodyId,
     ownerPartId,
@@ -2087,7 +2087,7 @@ function createBooleanAddEligibilityNotes(): readonly string[] {
 function createBooleanCutEdgeEligibilityNotes(): readonly string[] {
   return [
     ...createBooleanCutEligibilityNotes(),
-    "Boolean cut-wall profile edges are selectable and measurable; chamfer and fillet on boolean result bodies remain deferred until the geometry pipeline supports those targets."
+    "Boolean cut-wall profile edges are selectable, measurable, and eligible for chamfer/fillet when the active result body and edge proof remain command-ready."
   ];
 }
 

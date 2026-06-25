@@ -354,10 +354,19 @@ function getEdgeFinishTargetUnsupportedMessage(
   }
 
   if (feature.operationMode !== "newBody") {
-    return "Edge finish supports active rectangle or circle new-body extrude targets only.";
+    if (
+      feature.operationMode !== "cut" ||
+      feature.profileKind !== "rectangle"
+    ) {
+      return "Edge finish supports active rectangle/circle new-body targets and rectangle cut-result targets only.";
+    }
   }
 
-  if (feature.profileKind !== "rectangle" && feature.profileKind !== "circle") {
+  if (
+    feature.operationMode === "newBody" &&
+    feature.profileKind !== "rectangle" &&
+    feature.profileKind !== "circle"
+  ) {
     return "Edge finish supports rectangle or circle target bodies only.";
   }
 

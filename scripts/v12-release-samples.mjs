@@ -1087,7 +1087,7 @@ function verifySelectionAndNaming(engine, failures) {
   checkEqual(
     failures,
     "selection.chamfer.status",
-    "non-commandable",
+    "resolved",
     chamferSelection.status
   );
   checks += 3;
@@ -1128,24 +1128,24 @@ function verifySelectionAndNaming(engine, failures) {
 
   const chamfer = engine.executeBatch({
     version: "cadops.v1",
-    mode: "commit",
+    mode: "dryRun",
     ops: [
       {
         op: "feature.chamfer",
-        id: "v12_deferred_chamfer",
-        bodyId: "v12_deferred_chamfer_body",
+        id: "v12_cut_wall_chamfer",
+        bodyId: "v12_cut_wall_chamfer_body",
         targetBodyId: "v12_body_cut",
         edgeStableId,
         distance: 0.1
       }
     ]
   });
-  checkEqual(failures, "edgeFinish.deferred.ok", false, chamfer.ok);
+  checkEqual(failures, "edgeFinish.cutWallDryRun.ok", true, chamfer.ok);
   checkEqual(
     failures,
-    "edgeFinish.deferred.code",
-    "UNSUPPORTED_FEATURE_OPERATION",
-    chamfer.error?.code
+    "edgeFinish.cutWallDryRun.createdBody",
+    "v12_cut_wall_chamfer_body",
+    chamfer.createdBodyIds?.[0]
   );
   checks += 2;
 

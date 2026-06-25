@@ -282,6 +282,30 @@ describe("edge finish UI helpers", () => {
         selectionState: selected(edge)
       }).message
     ).toBe("Chamfer will consume body_rect and create a derived result body.");
+    const cutEdge = createEdge({
+      stableId: "generated:edge:body_cut:longitudinal:uMin:vMin",
+      bodyId: "body_cut",
+      sourceFeatureId: "feat_cut",
+      role: "longitudinal:uMin:vMin"
+    });
+    expect(
+      getEdgeFinishOperationStatus({
+        body: createBody({ id: "body_cut", featureId: "feat_cut" }),
+        feature: createExtrudeFeature("rectangle", {
+          id: "feat_cut",
+          bodyId: "body_cut",
+          operationMode: "cut",
+          targetBodyId: "body_rect"
+        }),
+        operation: "chamfer",
+        referenceOption: selectEdgeFinishReferenceOption(
+          createEdgeFinishReferenceOptions(selected(cutEdge), []),
+          SELECTED_EDGE_FINISH_REFERENCE_VALUE
+        ),
+        scalar: 0.2,
+        selectionState: selected(cutEdge)
+      }).message
+    ).toBe("Chamfer will consume body_cut and create a derived result body.");
     expect(
       getEdgeFinishOperationStatus({
         body: createBody({ consumedByFeatureId: "feat_cut" }),
@@ -448,7 +472,10 @@ function createBody(overrides: Partial<CadBodySnapshot> = {}): CadBodySnapshot {
 }
 
 function createExtrudeFeature(
-  profileKind: "rectangle" | "circle" = "rectangle"
+  profileKind: "rectangle" | "circle" = "rectangle",
+  overrides: Partial<
+    Extract<CadFeatureSummary, { readonly kind: "extrude" }>
+  > = {}
 ): Extract<CadFeatureSummary, { readonly kind: "extrude" }> {
   return {
     id: "feat_rect",
@@ -465,7 +492,8 @@ function createExtrudeFeature(
       type: "sketchEntity",
       sketchId: "sketch_1",
       entityId: profileKind === "rectangle" ? "rect_1" : "circle_1"
-    }
+    },
+    ...overrides
   };
 }
 

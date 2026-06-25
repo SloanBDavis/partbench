@@ -454,15 +454,7 @@ export function createExactMetadataRuntimeInput(
   }
 
   if (source.kind === "edgeFinish") {
-    const target = {
-      sketchPlane: source.target.sketchPlane,
-      profile: source.target.profile,
-      depth: source.target.depth,
-      side: source.target.side,
-      ...(source.target.placementFrame
-        ? { placementFrame: source.target.placementFrame }
-        : {})
-    };
+    const target = createExactMetadataBooleanRuntimeSource(source.target);
 
     return {
       id: source.id,
@@ -626,10 +618,6 @@ function getUnsupportedExactMetadataSourceMessage(
       return source.placementError;
     }
 
-    if (source.target.profile.kind !== "rectangle") {
-      return "Exact metadata for edge finishing currently supports rectangle target extrudes only.";
-    }
-
     const edgeReference = parseGeneratedRectangleEdgeStableId(
       source.edgeStableId
     );
@@ -640,6 +628,15 @@ function getUnsupportedExactMetadataSourceMessage(
 
     if (edgeReference.bodyId !== source.target.id) {
       return "Exact metadata for edge finishing requires the selected edge to belong to the target body.";
+    }
+
+    const finishTarget = getExactMetadataEdgeFinishProfileSource(
+      source.target,
+      edgeReference.role
+    );
+
+    if (!finishTarget) {
+      return "Exact metadata for edge finishing currently supports rectangle source edges and rectangle cut-wall result edges only.";
     }
 
     const scalar =
@@ -688,13 +685,13 @@ function getExactBooleanSourceProfileKind(
 
 function parseGeneratedRectangleEdgeStableId(
   stableId: string
-): { readonly bodyId: string } | undefined {
+): { readonly bodyId: string; readonly role: string } | undefined {
   const capEdge = stableId.match(
     /^generated:edge:([^:]+):(start|end):(uMin|uMax|vMin|vMax)$/
   );
 
   if (capEdge) {
-    return { bodyId: capEdge[1] };
+    return { bodyId: capEdge[1], role: `${capEdge[2]}:${capEdge[3]}` };
   }
 
   const longitudinalEdge = stableId.match(
@@ -702,7 +699,29 @@ function parseGeneratedRectangleEdgeStableId(
   );
 
   if (longitudinalEdge) {
-    return { bodyId: longitudinalEdge[1] };
+    return {
+      bodyId: longitudinalEdge[1],
+      role: `longitudinal:${longitudinalEdge[2]}:${longitudinalEdge[3]}`
+    };
+  }
+
+  return undefined;
+}
+
+function getExactMetadataEdgeFinishProfileSource(
+  target: DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource,
+  role: string
+): DerivedExtrudeGeometrySource | undefined {
+  if (target.kind === "extrude") {
+    return target.profile.kind === "rectangle" ? target : undefined;
+  }
+
+  if (
+    target.operation === "cut" &&
+    role.startsWith("longitudinal:") &&
+    target.tool.profile.kind === "rectangle"
+  ) {
+    return target.tool;
   }
 
   return undefined;

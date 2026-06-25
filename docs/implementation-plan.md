@@ -576,8 +576,9 @@ viewport checks are represented together. The V12-named
 and requires supported cut-result face/edge browser checks: command-ready
 cut-wall face selection, compact sketch/name/measure/inspect actions, attached
 sketch creation on the result face, command-ready cut-wall profile edge
-selection, compact name/measure/inspect actions, and no deferred chamfer,
-fillet, or Edge finish affordances for V12 edges. It also requires the first
+selection, compact name/measure/inspect actions, and current rectangle
+cut-wall longitudinal chamfer/fillet affordances where cad-core advertises
+them. It also requires the first
 add-result face/edge browser checks: deterministic add-result creation, added
 cap and wall face command-ready status, compact sketch/name/measure/inspect
 actions, attached sketch creation on the added cap, added-cap profile edge
@@ -2205,9 +2206,8 @@ Use these decisions when drafting or implementing V12 tranches:
    source-proven edge subset. Direct rectangle cut results expose four
    command-ready cut-wall profile edges using stable IDs such as
    `generated:edge:body_cut_1:longitudinal:uMin:vMin`; they can be selected,
-   named, and measured, but chamfer/fillet remains deferred until the command
-   validator and derived geometry pipeline can support boolean-result
-   edge-finish targets. Start/terminal/exit rim edges, add result edges, split
+   named, measured, and used by the current rectangle cut-wall longitudinal
+   chamfer/fillet path. Start/terminal/exit rim edges, add result edges, split
    edges, and intersection vertices remain ambiguous.
 5. **Rebuild, Edit, And Reference Health Integration** - E1 is implemented for
    scoped upstream source-extrude edits on direct rectangle cut chains. Semantic
@@ -2238,9 +2238,8 @@ Use these decisions when drafting or implementing V12 tranches:
    viewport contextual actions consume V12 references through
    `selection.referenceCandidates`; supported cut-wall faces expose
    sketch/name/measure/inspect actions, supported cut-wall profile edges expose
-   name/measure/inspect actions, and deferred chamfer/fillet/Edge finish
-   affordances remain hidden until the semantic reference contract advertises
-   them.
+   name/measure/inspect actions plus rectangle cut-wall longitudinal
+   chamfer/fillet actions when the semantic reference contract advertises them.
 7. **Release Samples, Smokes, And Documentation Hardening** - G1 is implemented
    as `pnpm smoke:v12-release-samples`, a deterministic source/query smoke for
    rectangle cut result topology, face/edge references, selection, naming,
@@ -2718,10 +2717,20 @@ Use these decisions when drafting or implementing V13 tranches:
     `topologyAnchorId` and optional sanitized `topologyAnchorProof` through the
     normal `feature.chamfer` / `feature.fillet` command layer rather than
     relying on renderer, mesh, viewport, or generated-ID-only state. The UI
-    support matrix is aligned with cad-core's current active rectangle/circle
-    new-body extrude target validator; broader result-body edge finishing still
-    requires a cad-core commandability expansion before the app should expose
-    those edges as chamfer/fillet targets.
+    support matrix is aligned with cad-core's current validators.
+19. **Implemented: Rectangle Cut-Wall Result Edge Finish Path** - Direct
+    rectangle cut-wall longitudinal generated edges such as
+    `generated:edge:body_cut_1:longitudinal:uMin:vMin` now advertise
+    `feature.chamfer` and `feature.fillet` through generated references,
+    selection candidates, reference health, and viewport/modeling actions.
+    Cad-core accepts those active cut-result edges through the normal
+    edge-finish commands, preserving public `targetBodyId` and `edgeStableId`
+    source data, dry-run/no-mutation behavior, and semantic diffs. Derived
+    geometry, exact metadata, geometry-kernel validation, and the OCCT adapter
+    consume the public boolean target source tree for this path. Curved,
+    circular rim/cap, seam, add-result, split, ambiguous, repaired, or
+    unsupported result edges remain blocked or deferred with structured
+    diagnostics.
 
 ### V13 Scope Guardrails
 

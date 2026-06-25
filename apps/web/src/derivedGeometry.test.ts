@@ -2958,6 +2958,103 @@ describe("derivedGeometry", () => {
     ]);
   });
 
+  it("derives chamfer result sources from rectangle cut-wall result edges", async () => {
+    const engine = createExtrudedRectangleEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "tool_rect_1",
+        center: [1, 0],
+        width: 2,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_cut_1",
+        bodyId: "body_cut_1",
+        sketchId: "sketch_1",
+        entityId: "tool_rect_1",
+        depth: 3,
+        operationMode: "cut",
+        targetBodyId: "body_rect_1"
+      },
+      {
+        op: "feature.chamfer",
+        id: "feat_cut_chamfer_1",
+        bodyId: "body_cut_chamfer_1",
+        targetBodyId: "body_cut_1",
+        edgeStableId: "generated:edge:body_cut_1:longitudinal:uMin:vMin",
+        distance: 0.1
+      }
+    ]);
+
+    const sources = getDerivedSources(engine);
+    const source = sources.find(
+      (candidate): candidate is DerivedEdgeFinishGeometrySource =>
+        candidate.kind === "edgeFinish"
+    );
+
+    expect(sources.map((candidate) => candidate.id)).toEqual([
+      "body_cut_chamfer_1"
+    ]);
+    expect(source).toMatchObject({
+      id: "body_cut_chamfer_1",
+      kind: "edgeFinish",
+      operation: "chamfer",
+      target: {
+        id: "body_cut_1",
+        kind: "extrudeBoolean",
+        operation: "cut",
+        target: { id: "body_rect_1", profile: { kind: "rectangle" } },
+        tool: { id: "body_cut_1", profile: { kind: "rectangle" } }
+      },
+      edgeStableId: "generated:edge:body_cut_1:longitudinal:uMin:vMin",
+      distance: 0.1
+    });
+
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile(sources);
+    await flushPromises();
+
+    expect(runtime.inputs).toEqual([
+      expect.objectContaining({
+        id: "body_cut_chamfer_1",
+        operation: "chamfer",
+        edgeStableId: "generated:edge:body_cut_1:longitudinal:uMin:vMin",
+        distance: 0.1,
+        target: {
+          kind: "booleanExtrudes",
+          operation: "cut",
+          target: expect.objectContaining({
+            depth: 3,
+            profile: expect.objectContaining({ kind: "rectangle" })
+          }),
+          tool: expect.objectContaining({
+            depth: 3,
+            profile: expect.objectContaining({ kind: "rectangle" })
+          })
+        }
+      })
+    ]);
+    expect(snapshots.at(-1)?.entries).toMatchObject([
+      {
+        objectId: "body_cut_chamfer_1",
+        objectKind: "edgeFinish",
+        status: "ready"
+      }
+    ]);
+  });
+
   it("resolves named edge references for edge-finish derived sources when the name is still available", () => {
     const engine = createExtrudedRectangleEngine();
 
@@ -3013,12 +3110,16 @@ describe("derivedGeometry", () => {
       edgeStableId: "generated:edge:body_rect_1:start:uMin",
       radius: 0.25
     };
+    const chamferTarget = chamferSource.target;
+    if (chamferTarget.kind !== "extrude") {
+      throw new Error("Expected chamfer source target to be an extrude");
+    }
 
     expect(createDerivedGeometryCacheKey(chamferSource)).not.toBe(
       createDerivedGeometryCacheKey({
         ...chamferSource,
         target: {
-          ...chamferSource.target,
+          ...chamferTarget,
           profile: {
             kind: "rectangle",
             center: [0, 0],
@@ -3148,14 +3249,14 @@ describe("derivedGeometry", () => {
         kind: "edgeFinish",
         operation: "chamfer",
         target: createCircleExtrudeSource("body_circle_1"),
-        edgeStableId: "generated:edge:body_circle_1:start:circular",
+        edgeStableId: "generated:edge:body_circle_1:start:uMin",
         distance: 0.2
       }
     ]);
 
     expect(runtime.inputs).toEqual([]);
     expect(getDerivedGeometryStatusLabel(snapshots.at(-1)?.entries[0])).toBe(
-      "Edge finish display currently supports rectangle target extrudes only."
+      "Edge finish display currently supports rectangle source edges and rectangle cut-wall result edges only."
     );
     expect(snapshots.at(-1)?.meshes).toEqual([]);
   });

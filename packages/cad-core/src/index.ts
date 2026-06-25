@@ -11326,34 +11326,43 @@ function validateEdgeFinishTargetBodyId(
     });
   }
 
+  const receivedTarget = {
+    targetBodyId,
+    targetFeatureKind: targetFeature.kind,
+    targetProfileKind:
+      targetFeature.kind === "extrude" ? targetFeature.profileKind : undefined,
+    targetOperationMode:
+      targetFeature.kind === "extrude" ? targetFeature.operationMode : undefined
+  };
+
   if (
     targetFeature.kind === "extrude" &&
-    targetFeature.operationMode === "newBody" &&
-    isSupportedCutTargetProfileKind(targetFeature.profileKind)
+    isSupportedEdgeFinishTargetFeature(targetFeature)
   ) {
     return targetFeature.bodyId;
   }
 
   throwValidationError({
     code: "UNSUPPORTED_FEATURE_OPERATION",
-    message: `${operation} currently supports one stable generated edge on an active rectangle or circle newBody extrude target body.`,
+    message: `${operation} currently supports one stable generated edge on an active rectangle/circle newBody extrude target body or a supported rectangle cut result body.`,
     opIndex,
     bodyId: targetBodyId,
     path: operationPath(opIndex, "targetBodyId"),
-    expected: "active rectangle/circle newBody extrude target body",
-    received: describeReceived({
-      targetBodyId,
-      targetFeatureKind: targetFeature.kind,
-      targetProfileKind:
-        targetFeature.kind === "extrude"
-          ? targetFeature.profileKind
-          : undefined,
-      targetOperationMode:
-        targetFeature.kind === "extrude"
-          ? targetFeature.operationMode
-          : undefined
-    })
+    expected:
+      "active rectangle/circle newBody extrude target body or supported rectangle cut result body",
+    received: describeReceived(receivedTarget)
   });
+}
+
+function isSupportedEdgeFinishTargetFeature(
+  feature: Feature
+): feature is Extract<Feature, { readonly kind: "extrude" }> {
+  return (
+    feature.kind === "extrude" &&
+    ((feature.operationMode === "newBody" &&
+      isSupportedCutTargetProfileKind(feature.profileKind)) ||
+      (feature.operationMode === "cut" && feature.profileKind === "rectangle"))
+  );
 }
 
 function validateEdgeFinishReference(
@@ -21927,17 +21936,28 @@ function validateFeatureTargetBodyReferences(
     if (
       (feature.kind === "chamfer" || feature.kind === "fillet") &&
       (!isExtrudeFeatureSnapshot(target) ||
-        target.operationMode !== "newBody" ||
-        !isSupportedCutTargetProfileKind(target.profileKind))
+        !isSupportedImportEdgeFinishTargetCombination(target))
     ) {
       addProjectIssue(
         issues,
         "INVALID_FEATURE",
         `${feature.path}.targetBodyId`,
-        `${formatTargetConsumingFeatureForIssue(feature)} currently supports one stable generated edge on an active rectangle or circle newBody extrude target body.`
+        `${formatTargetConsumingFeatureForIssue(feature)} currently supports one stable generated edge on an active rectangle/circle newBody extrude target body or a supported rectangle cut result body.`
       );
     }
   }
+}
+
+function isSupportedImportEdgeFinishTargetCombination(
+  target: ExtrudeFeatureSnapshot
+): boolean {
+  const operationMode = target.operationMode ?? "newBody";
+
+  return (
+    (operationMode === "newBody" &&
+      isSupportedCutTargetProfileKind(target.profileKind)) ||
+    (operationMode === "cut" && target.profileKind === "rectangle")
+  );
 }
 
 function isSupportedImportHoleTargetCombination(

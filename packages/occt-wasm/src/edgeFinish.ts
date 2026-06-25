@@ -6,6 +6,8 @@ import type {
 } from "opencascade.js";
 import {
   makeBooleanExtrudeShape,
+  type OcctBooleanExtrudeSource,
+  type OcctBooleanExtrudeResultSource,
   type OcctBooleanExtrudePrimitiveSource
 } from "./booleanExtrudes";
 import {
@@ -50,7 +52,7 @@ export interface OcctFilletEdgeFinishInput extends OcctEdgeFinishInputBase {
 }
 
 interface OcctEdgeFinishInputBase {
-  readonly target: OcctBooleanExtrudePrimitiveSource;
+  readonly target: OcctBooleanExtrudeSource;
   readonly edgeStableId: string;
   readonly linearDeflection?: number;
   readonly angularDeflection?: number;
@@ -205,14 +207,6 @@ function validateEdgeFinishInput(input: OcctEdgeFinishInput): void {
     } satisfies GeometryKernelLikeError;
   }
 
-  if (input.target.profile.kind !== "rectangle") {
-    throw {
-      code: "UNSUPPORTED_PROFILE",
-      message:
-        "Edge finish feasibility currently supports rectangle extrude targets only."
-    } satisfies GeometryKernelLikeError;
-  }
-
   const role = parseEdgeRole(input.edgeStableId);
 
   if (!role) {
@@ -227,11 +221,21 @@ function validateEdgeFinishInput(input: OcctEdgeFinishInput): void {
     throw {
       code: "UNSUPPORTED_EDGE",
       message:
-        "Edge finish feasibility currently supports generated rectangle extrude edges only."
+        "Edge finish feasibility currently supports rectangle source edges and rectangle cut-wall result edges only."
     } satisfies GeometryKernelLikeError;
   }
 
-  if (isEdgeFinishAmountTooLarge(input, role)) {
+  const edgeSource = getEdgeFinishReferenceSource(input.target, role);
+
+  if (!edgeSource) {
+    throw {
+      code: "UNSUPPORTED_EDGE",
+      message:
+        "Edge finish feasibility currently supports rectangle source edges and rectangle cut-wall result edges only."
+    } satisfies GeometryKernelLikeError;
+  }
+
+  if (isEdgeFinishAmountTooLarge(input, role, edgeSource)) {
     throw {
       code: "EDGE_FINISH_TOO_LARGE",
       message:
@@ -255,8 +259,18 @@ function findRectangleEdge(
     } satisfies GeometryKernelLikeError;
   }
 
-  const expected = createExpectedEdgeEndpoints(input.target, role);
-  const tolerance = getEdgeMatchTolerance(input.target);
+  const edgeSource = getEdgeFinishReferenceSource(input.target, role);
+
+  if (!edgeSource) {
+    throw {
+      code: "UNSUPPORTED_EDGE",
+      message:
+        "Edge finish feasibility currently supports rectangle source edges and rectangle cut-wall result edges only."
+    } satisfies GeometryKernelLikeError;
+  }
+
+  const expected = createExpectedEdgeEndpoints(edgeSource, role);
+  const tolerance = getEdgeMatchTolerance(edgeSource);
   const edgeShapeType = oc.TopAbs_ShapeEnum
     .TopAbs_EDGE as unknown as ConstructorParameters<
     typeof oc.TopExp_Explorer_2
@@ -420,11 +434,44 @@ function isRectangleEdgeRole(
   return (RECTANGLE_EDGE_ROLES as readonly string[]).includes(role);
 }
 
+function getEdgeFinishReferenceSource(
+  source: OcctBooleanExtrudeSource,
+  role: OcctEdgeFinishEdgeRole
+): OcctBooleanExtrudePrimitiveSource | undefined {
+  if (!isRectangleEdgeRole(role)) {
+    return undefined;
+  }
+
+  if (!isOcctBooleanExtrudeResultSource(source)) {
+    return source.profile.kind === "rectangle" ? source : undefined;
+  }
+
+  if (
+    source.operation === "cut" &&
+    role.startsWith("longitudinal:") &&
+    source.tool.profile.kind === "rectangle"
+  ) {
+    return source.tool;
+  }
+
+  return undefined;
+}
+
+function isOcctBooleanExtrudeResultSource(
+  source: OcctBooleanExtrudeSource
+): source is OcctBooleanExtrudeResultSource {
+  return (
+    "kind" in source &&
+    (source as { readonly kind?: unknown }).kind === "booleanExtrudes"
+  );
+}
+
 function isEdgeFinishAmountTooLarge(
   input: OcctEdgeFinishInput,
-  role: OcctRectangleEdgeRole
+  role: OcctRectangleEdgeRole,
+  target: OcctBooleanExtrudePrimitiveSource
 ): boolean {
-  const maxAmount = getRectangleEdgeFinishMaximumAmount(input.target, role);
+  const maxAmount = getRectangleEdgeFinishMaximumAmount(target, role);
   const amount = input.operation === "chamfer" ? input.distance : input.radius;
 
   return amount >= maxAmount;

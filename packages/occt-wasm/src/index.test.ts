@@ -989,6 +989,29 @@ describe("occt-wasm", () => {
           radius: 0.2
         }
       });
+      const cutWallChamfer = await createOcctExactBodyMetadata({
+        source: {
+          kind: "edgeFinish",
+          operation: "chamfer",
+          target: {
+            kind: "booleanExtrudes",
+            operation: "cut",
+            target,
+            tool: {
+              sketchPlane: "XY",
+              profile: {
+                kind: "rectangle",
+                center: [1, 0],
+                width: 2,
+                height: 1
+              },
+              depth: 4
+            }
+          },
+          edgeStableId: "generated:edge:body_cut:longitudinal:uMin:vMin",
+          distance: 0.1
+        }
+      });
 
       expect(chamfer.sourceKind).toBe("edgeFinish");
       expect(chamfer.bounds.min[0]).toBeCloseTo(-3, 6);
@@ -1011,6 +1034,12 @@ describe("occt-wasm", () => {
       expect(fillet.topologyCounts.solidCount).toBe(1);
       expect(fillet.measurementSource).toBe("kernel-derived");
       expect(fillet.measurementConfidence).toBe("kernel-derived");
+      expect(cutWallChamfer.sourceKind).toBe("edgeFinish");
+      expect(cutWallChamfer.volume).toBeGreaterThan(0);
+      expect(cutWallChamfer.volume).toBeLessThan(96);
+      expect(cutWallChamfer.topologyCounts.solidCount).toBe(1);
+      expect(cutWallChamfer.measurementSource).toBe("kernel-derived");
+      expect(cutWallChamfer.measurementConfidence).toBe("kernel-derived");
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );

@@ -6625,7 +6625,8 @@ describe("cad-core", () => {
         code: "UNSUPPORTED_FEATURE_OPERATION",
         op: "feature.chamfer",
         bodyId: "body_hole_1",
-        expected: "active rectangle/circle newBody extrude target body"
+        expected:
+          "active rectangle/circle newBody extrude target body or supported rectangle cut result body"
       }
     });
 
@@ -6744,7 +6745,8 @@ describe("cad-core", () => {
         code: "UNSUPPORTED_FEATURE_OPERATION",
         op: "feature.fillet",
         bodyId: "body_hole_1",
-        expected: "active rectangle/circle newBody extrude target body"
+        expected:
+          "active rectangle/circle newBody extrude target body or supported rectangle cut result body"
       }
     });
     const roundTripJson = exportCadProjectJson(engine);
@@ -7021,6 +7023,8 @@ describe("cad-core", () => {
           stableId: "generated:edge:body_cut_result:longitudinal:uMin:vMin",
           label: "Cut wall profile edge uMin/vMin",
           eligibleOperations: [
+            "feature.chamfer",
+            "feature.fillet",
             "feature.measureReference",
             "feature.selectReference"
           ]
@@ -15190,6 +15194,8 @@ describe("cad-core", () => {
           role: "longitudinal:uMin:vMin",
           adjacentFaceRoles: ["side:uMin", "side:vMin"],
           eligibleOperations: [
+            "feature.chamfer",
+            "feature.fillet",
             "feature.measureReference",
             "feature.selectReference"
           ],
@@ -15285,6 +15291,8 @@ describe("cad-core", () => {
           commandable: true,
           commandOperations: [
             "reference.nameGenerated",
+            "feature.chamfer",
+            "feature.fillet",
             "feature.measureReference",
             "feature.selectReference"
           ],
@@ -15315,12 +15323,24 @@ describe("cad-core", () => {
     ).toMatchObject({
       ok: true,
       query: "selection.referenceCandidates",
-      status: "non-commandable",
+      status: "resolved",
       candidateCount: 1,
-      issues: [
+      candidates: [
         expect.objectContaining({
-          code: "NON_COMMANDABLE_SELECTION_TARGET",
-          expected: "feature.chamfer"
+          commandable: true,
+          commandOperations: [
+            "reference.nameGenerated",
+            "feature.chamfer",
+            "feature.fillet",
+            "feature.measureReference",
+            "feature.selectReference"
+          ],
+          target: {
+            type: "generatedReference",
+            bodyId: "body_cut_1",
+            stableId: edgeStableId,
+            kind: "edge"
+          }
         })
       ]
     });
@@ -15403,7 +15423,7 @@ describe("cad-core", () => {
     expect(
       engine.executeBatch({
         version: "cadops.v1",
-        mode: "commit",
+        mode: "dryRun",
         ops: [
           {
             op: "feature.chamfer",
@@ -15416,13 +15436,10 @@ describe("cad-core", () => {
         ]
       })
     ).toMatchObject({
-      ok: false,
-      error: {
-        code: "UNSUPPORTED_FEATURE_OPERATION",
-        op: "feature.chamfer",
-        bodyId: "body_cut_1",
-        expected: "active rectangle/circle newBody extrude target body"
-      }
+      ok: true,
+      mode: "dryRun",
+      createdFeatureIds: ["feat_deferred_cut_chamfer"],
+      createdBodyIds: ["body_deferred_cut_chamfer"]
     });
 
     const targetEdit = engine.apply({
@@ -15504,6 +15521,8 @@ describe("cad-core", () => {
           stableId: edgeStableId,
           commandOperations: [
             "reference.nameGenerated",
+            "feature.chamfer",
+            "feature.fillet",
             "feature.measureReference",
             "feature.selectReference"
           ]
@@ -15543,6 +15562,97 @@ describe("cad-core", () => {
       faceRole: "side:uMin",
       sourceFeatureId: "feat_cut_1",
       sourceSketchEntityId: "tool_rect_1"
+    });
+  });
+
+  it("creates chamfer and fillet features from command-ready rectangle cut-wall result edges", () => {
+    const createCutEngine = (): CadEngine => {
+      const engine = createRectangleExtrudeEngine();
+
+      engine.applyBatch([
+        {
+          op: "sketch.addRectangle",
+          sketchId: "sketch_1",
+          id: "tool_rect_1",
+          center: [1, 0],
+          width: 2,
+          height: 1
+        },
+        {
+          op: "feature.extrude",
+          id: "feat_cut_1",
+          bodyId: "body_cut_1",
+          sketchId: "sketch_1",
+          entityId: "tool_rect_1",
+          depth: 3,
+          operationMode: "cut",
+          targetBodyId: "body_rect_1"
+        }
+      ]);
+
+      return engine;
+    };
+    const edgeStableId = "generated:edge:body_cut_1:longitudinal:uMin:vMin";
+    const chamferEngine = createCutEngine();
+    const beforeJson = exportCadProjectJson(chamferEngine);
+    const chamferOp = {
+      op: "feature.chamfer" as const,
+      id: "feat_cut_chamfer",
+      bodyId: "body_cut_chamfer",
+      targetBodyId: "body_cut_1",
+      edgeStableId,
+      distance: 0.1
+    };
+
+    expect(
+      chamferEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [chamferOp]
+      })
+    ).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      createdFeatureIds: ["feat_cut_chamfer"],
+      createdBodyIds: ["body_cut_chamfer"]
+    });
+    expect(exportCadProjectJson(chamferEngine)).toBe(beforeJson);
+
+    const chamferResult = chamferEngine.apply(chamferOp);
+    expect(getChamferFeature(chamferEngine, "feat_cut_chamfer")).toMatchObject({
+      kind: "chamfer",
+      targetBodyId: "body_cut_1",
+      edgeStableId,
+      distance: 0.1,
+      bodyId: "body_cut_chamfer"
+    });
+    expect(chamferResult.transaction.ops[0]).toMatchObject({
+      op: "feature.chamfer",
+      targetBodyId: "body_cut_1",
+      edgeStableId
+    });
+
+    const filletEngine = createCutEngine();
+    const filletResult = filletEngine.apply({
+      op: "feature.fillet",
+      id: "feat_cut_fillet",
+      bodyId: "body_cut_fillet",
+      targetBodyId: "body_cut_1",
+      edgeStableId,
+      radius: 0.1
+    });
+
+    expect(getFilletFeature(filletEngine, "feat_cut_fillet")).toMatchObject({
+      kind: "fillet",
+      targetBodyId: "body_cut_1",
+      edgeStableId,
+      radius: 0.1,
+      bodyId: "body_cut_fillet"
+    });
+    expect(filletResult.transaction.ops[0]).toMatchObject({
+      op: "feature.fillet",
+      targetBodyId: "body_cut_1",
+      edgeStableId
     });
   });
 
@@ -16018,11 +16128,12 @@ describe("cad-core", () => {
           commandable: true,
           referenceName: "cut_edge_u_min_v_min",
           stableId: cutEdgeStableId,
-          commandOperations: [
-            "reference.nameGenerated",
+          commandOperations: expect.arrayContaining([
             "feature.measureReference",
+            "feature.chamfer",
+            "feature.fillet",
             "feature.selectReference"
-          ]
+          ])
         })
       ])
     );

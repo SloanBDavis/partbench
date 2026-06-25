@@ -316,9 +316,10 @@ export function createEdgeFinishDerivedGeometrySources(
     .map((feature) => {
       const targetFeature = extrudeFeaturesByBodyId.get(feature.targetBodyId);
       const target =
-        targetFeature?.operationMode === "newBody"
-          ? createExtrudeSourceForFeature(
+        targetFeature !== undefined
+          ? createBooleanSourceForFeature(
               targetFeature,
+              extrudeFeaturesByBodyId,
               sketches,
               generatedFacesByKey
             )
@@ -609,7 +610,10 @@ function createHolePlacementError(
 
 function createEdgeFinishPlacementError(
   feature: Extract<CadFeatureSummary, { kind: "chamfer" | "fillet" }>,
-  target: DerivedExtrudeGeometrySource | undefined,
+  target:
+    | DerivedExtrudeGeometrySource
+    | DerivedBooleanExtrudeGeometrySource
+    | undefined,
   edgeReference: {
     readonly edgeStableId?: string;
     readonly placementError?: string;

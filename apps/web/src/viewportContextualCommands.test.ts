@@ -232,13 +232,15 @@ describe("viewport contextual commands", () => {
     );
   });
 
-  it("does not surface deferred V12 cut-wall edge-finish commands", () => {
+  it("routes command-ready cut-wall edge-finish commands", () => {
     const edge = createEdge({
       stableId: "generated:edge:body_cut:longitudinal:uMin:vMin",
       label: "Cut wall profile edge uMin/vMin",
       bodyId: "body_cut",
       sourceFeatureId: "feat_cut",
       eligibleOperations: [
+        "feature.chamfer",
+        "feature.fillet",
         "feature.measureReference",
         "feature.selectReference"
       ],
@@ -247,11 +249,23 @@ describe("viewport contextual commands", () => {
     const candidates = createSelectionReferenceCandidates(edge, {
       commandOperations: [
         "reference.nameGenerated",
+        "feature.chamfer",
+        "feature.fillet",
         "feature.measureReference",
         "feature.selectReference"
       ]
     });
-    const actions = createGeneratedReferenceActions(edge, candidates);
+    const cutBody = createBody({ id: "body_cut", featureId: "feat_cut" });
+    const cutFeature = createExtrudeFeature({
+      id: "feat_cut",
+      bodyId: "body_cut",
+      operationMode: "cut",
+      targetBodyId: "body_rect"
+    });
+    const actions = createGeneratedReferenceActions(edge, candidates, {
+      body: cutBody,
+      feature: cutFeature
+    });
     const surface = createViewportContextualCommandSurface({
       modelingActions: actions,
       selectionDisplay: createSelectionDisplay({
@@ -262,19 +276,38 @@ describe("viewport contextual commands", () => {
       selectedGeneratedReferenceState: createSelectedReferenceState(edge),
       selectionReferenceCandidates: candidates
     });
+    const onCreateEdgeFinish = vi.fn();
 
-    expect(actions.map((action) => action.id)).toEqual(["reference.name"]);
+    expect(actions.map((action) => action.id)).toEqual([
+      "reference.name",
+      "feature.chamfer",
+      "feature.fillet"
+    ]);
     expect(surface.actions.map((action) => action.id)).toEqual([
       "reference.name",
+      "feature.chamfer",
+      "feature.fillet",
       "feature.measureReference",
       "feature.selectReference"
     ]);
     expect(
-      surface.actions.some((action) => action.id === "feature.chamfer")
-    ).toBe(false);
-    expect(
-      surface.actions.some((action) => action.id === "feature.fillet")
-    ).toBe(false);
+      runViewportContextualCommandAction({
+        action: actionById(surface.actions, "feature.chamfer"),
+        body: cutBody,
+        selectedGeneratedReferenceState: createSelectedReferenceState(edge),
+        selectionReferenceCandidates: candidates,
+        onCreateEdgeFinish
+      })
+    ).toBe(true);
+    expect(onCreateEdgeFinish).toHaveBeenCalledWith(
+      "chamfer",
+      expect.objectContaining({
+        bodyId: "",
+        targetBodyId: "body_cut",
+        edgeStableId: "generated:edge:body_cut:longitudinal:uMin:vMin",
+        distance: 0.2
+      })
+    );
   });
 
   it("derives named-reference inspect and measure actions from reference candidates", () => {
@@ -621,14 +654,18 @@ describe("viewport contextual commands", () => {
 
 function createGeneratedReferenceActions(
   reference: CadGeneratedReference,
-  candidates: SelectionReferenceCandidatesQueryResponse
+  candidates: SelectionReferenceCandidatesQueryResponse,
+  overrides: {
+    readonly body?: CadBodySnapshot;
+    readonly feature?: CadFeatureSummary;
+  } = {}
 ): readonly ModelingActionDescriptor[] {
   return deriveModelingActions({
     context: {
       selectionKind: "generatedReference",
       reference,
-      body: createBody(),
-      feature: createExtrudeFeature(),
+      body: overrides.body ?? createBody(),
+      feature: overrides.feature ?? createExtrudeFeature(),
       namedReferences: [],
       selectionReferenceCandidates: candidates
     }

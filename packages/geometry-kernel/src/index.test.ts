@@ -1284,6 +1284,57 @@ describe("geometry-kernel facade", () => {
   );
 
   it(
+    "runs rectangle cut-wall result edge-finish feasibility requests",
+    async () => {
+      const response = await executeGeometryKernelRequest({
+        id: "geometry_req_edge_finish_cut_wall_chamfer",
+        version: "geometry-kernel.v1",
+        op: "geometry.edgeFinish",
+        operation: "chamfer",
+        target: {
+          kind: "booleanExtrudes",
+          operation: "cut",
+          target: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 6,
+              height: 4
+            },
+            depth: 4
+          },
+          tool: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [1, 0],
+              width: 2,
+              height: 1
+            },
+            depth: 4
+          }
+        },
+        edgeStableId: "generated:edge:body_cut:longitudinal:uMin:vMin",
+        distance: 0.1
+      });
+
+      expect(response.ok || response.error.code === "UNAVAILABLE_BINDING").toBe(
+        true
+      );
+
+      if (!response.ok) {
+        return;
+      }
+
+      expect(response.mesh.primitive).toBe("edgeFinish");
+      expect(response.mesh.vertexCount).toBeGreaterThan(0);
+      expect(response.mesh.triangleCount).toBeGreaterThan(0);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
     "runs a circle-origin boolean-result target hole feasibility request",
     async () => {
       const response = await executeGeometryKernelRequest({
@@ -1987,9 +2038,9 @@ describe("geometry-kernel facade", () => {
       id: "geometry_req_edge_finish_circle_target",
       op: "geometry.edgeFinish",
       error: {
-        code: "UNSUPPORTED_PROFILE",
+        code: "UNSUPPORTED_EDGE",
         message:
-          "Edge finish feasibility currently supports rectangle extrude targets only."
+          "Edge finish feasibility currently supports rectangle source edges and rectangle cut-wall result edges only."
       },
       warnings: []
     });
@@ -2000,7 +2051,7 @@ describe("geometry-kernel facade", () => {
       error: {
         code: "UNSUPPORTED_EDGE",
         message:
-          "Edge finish feasibility currently supports generated rectangle extrude edges only."
+          "Edge finish feasibility currently supports rectangle source edges and rectangle cut-wall result edges only."
       },
       warnings: []
     });
@@ -3150,6 +3201,58 @@ describe("geometry-kernel facade", () => {
       },
       warnings: []
     });
+
+    const cutWallResponse = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_injected_cut_wall_edge_finish_exact_metadata",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactBodyMetadata",
+        source: {
+          kind: "edgeFinish",
+          operation: "chamfer",
+          target: {
+            kind: "booleanExtrudes",
+            operation: "cut",
+            target: {
+              sketchPlane: "XY",
+              profile: {
+                kind: "rectangle",
+                center: [0, 0],
+                width: 6,
+                height: 4
+              },
+              depth: 4
+            },
+            tool: {
+              sketchPlane: "XY",
+              profile: {
+                kind: "rectangle",
+                center: [1, 0],
+                width: 2,
+                height: 1
+              },
+              depth: 4
+            }
+          },
+          edgeStableId: "generated:edge:body_cut:longitudinal:uMin:vMin",
+          distance: 0.1
+        }
+      }
+    );
+
+    expect(cutWallResponse).toMatchObject({
+      ok: true,
+      id: "geometry_req_injected_cut_wall_edge_finish_exact_metadata",
+      op: "geometry.exactBodyMetadata",
+      metadata: {
+        sourceKind: "edgeFinish",
+        volume: 95.8,
+        measurementSource: "kernel-derived",
+        measurementConfidence: "kernel-derived"
+      },
+      warnings: []
+    });
   });
 
   it("returns structured unavailable-binding errors when exact metadata factory is absent", async () => {
@@ -3332,7 +3435,7 @@ describe("geometry-kernel facade", () => {
       ok: false,
       id: "geometry_req_bad_exact_edge_finish_circle_target",
       op: "geometry.exactBodyMetadata",
-      error: { code: "UNSUPPORTED_PROFILE" },
+      error: { code: "UNSUPPORTED_EDGE" },
       warnings: []
     });
     expect(circularEdge).toMatchObject({

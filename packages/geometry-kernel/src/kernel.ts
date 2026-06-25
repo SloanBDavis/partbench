@@ -259,7 +259,7 @@ export interface ChamferEdgeFinishRequest {
   readonly version: GeometryKernelVersion;
   readonly op: "geometry.edgeFinish";
   readonly operation: "chamfer";
-  readonly target: BooleanExtrudePrimitiveSource;
+  readonly target: BooleanExtrudeSource;
   readonly edgeStableId: string;
   readonly distance: number;
   readonly radius?: never;
@@ -271,7 +271,7 @@ export interface FilletEdgeFinishRequest {
   readonly version: GeometryKernelVersion;
   readonly op: "geometry.edgeFinish";
   readonly operation: "fillet";
-  readonly target: BooleanExtrudePrimitiveSource;
+  readonly target: BooleanExtrudeSource;
   readonly edgeStableId: string;
   readonly radius: number;
   readonly distance?: never;
@@ -312,7 +312,7 @@ export type ExactEdgeFinishMetadataSource =
   | {
       readonly kind: "edgeFinish";
       readonly operation: "chamfer";
-      readonly target: BooleanExtrudePrimitiveSource;
+      readonly target: BooleanExtrudeSource;
       readonly edgeStableId: string;
       readonly distance: number;
       readonly radius?: never;
@@ -320,7 +320,7 @@ export type ExactEdgeFinishMetadataSource =
   | {
       readonly kind: "edgeFinish";
       readonly operation: "fillet";
-      readonly target: BooleanExtrudePrimitiveSource;
+      readonly target: BooleanExtrudeSource;
       readonly edgeStableId: string;
       readonly radius: number;
       readonly distance?: never;
@@ -1744,9 +1744,10 @@ function isRectangleEdgeFinishRole(
 
 function isEdgeFinishAmountTooLarge(
   request: EdgeFinishRequest,
-  role: GeometryKernelRectangleEdgeRole
+  role: GeometryKernelRectangleEdgeRole,
+  target: BooleanExtrudePrimitiveSource
 ): boolean {
-  const maxAmount = getRectangleEdgeFinishMaximumAmount(request.target, role);
+  const maxAmount = getRectangleEdgeFinishMaximumAmount(target, role);
   const amount =
     request.operation === "chamfer" ? request.distance : request.radius;
 
@@ -1784,7 +1785,7 @@ function validateEdgeFinishRequest(
   request: EdgeFinishRequest
 ): GeometryKernelError | undefined {
   if (
-    !isValidBooleanExtrudePrimitiveSource(request.target) ||
+    !isValidBooleanExtrudeSource(request.target) ||
     !isValidEdgeFinishOperation(request.operation) ||
     !isValidEdgeFinishAmount(request)
   ) {
@@ -1792,14 +1793,6 @@ function validateEdgeFinishRequest(
       code: "INVALID_DIMENSIONS",
       message:
         "Edge finish requests require a supported authored extrude target source, operation chamfer or fillet, one generated edge stable ID, and a positive finite distance or radius."
-    };
-  }
-
-  if (request.target.profile.kind !== "rectangle") {
-    return {
-      code: "UNSUPPORTED_PROFILE",
-      message:
-        "Edge finish feasibility currently supports rectangle extrude targets only."
     };
   }
 
@@ -1817,11 +1810,21 @@ function validateEdgeFinishRequest(
     return {
       code: "UNSUPPORTED_EDGE",
       message:
-        "Edge finish feasibility currently supports generated rectangle extrude edges only."
+        "Edge finish feasibility currently supports rectangle source edges and rectangle cut-wall result edges only."
     };
   }
 
-  if (isEdgeFinishAmountTooLarge(request, edgeRole)) {
+  const edgeSource = getEdgeFinishReferenceSource(request.target, edgeRole);
+
+  if (!edgeSource) {
+    return {
+      code: "UNSUPPORTED_EDGE",
+      message:
+        "Edge finish feasibility currently supports rectangle source edges and rectangle cut-wall result edges only."
+    };
+  }
+
+  if (isEdgeFinishAmountTooLarge(request, edgeRole, edgeSource)) {
     return {
       code: "EDGE_FINISH_TOO_LARGE",
       message:
@@ -2370,6 +2373,29 @@ function isBooleanExtrudeResultSource(
     "kind" in source &&
     (source as { readonly kind?: unknown }).kind === "booleanExtrudes"
   );
+}
+
+function getEdgeFinishReferenceSource(
+  source: BooleanExtrudeSource,
+  role: GeometryKernelEdgeFinishEdgeRole
+): BooleanExtrudePrimitiveSource | undefined {
+  if (!isRectangleEdgeFinishRole(role)) {
+    return undefined;
+  }
+
+  if (!isBooleanExtrudeResultSource(source)) {
+    return source.profile.kind === "rectangle" ? source : undefined;
+  }
+
+  if (
+    source.operation === "cut" &&
+    role.startsWith("longitudinal:") &&
+    source.tool.profile.kind === "rectangle"
+  ) {
+    return source.tool;
+  }
+
+  return undefined;
 }
 
 function isVec2(value: readonly [number, number]): boolean {

@@ -181,10 +181,14 @@ describe("derivedExactMetadata", () => {
     );
 
     const chamferSource = createChamferSource("body_chamfer_1");
+    const chamferTarget = chamferSource.target;
+    if (chamferTarget.kind !== "extrude") {
+      throw new Error("Expected chamfer source target to be an extrude");
+    }
     const editedChamferTarget: DerivedEdgeFinishGeometrySource = {
       ...chamferSource,
       target: {
-        ...chamferSource.target,
+        ...chamferTarget,
         depth: 5
       }
     };
@@ -935,6 +939,91 @@ describe("derivedExactMetadata", () => {
     ]);
   });
 
+  it("requests exact metadata for rectangle cut-wall edge finishes with boolean target source", async () => {
+    const runtime = createRuntime(async (input) =>
+      createMetadataResult(input.id, input.source.kind)
+    );
+    const service = new DerivedExactMetadataService({
+      runtime,
+      onChange: () => {}
+    });
+    const targetSource = createChamferSource("body_cut_chamfer_1").target;
+
+    service.reconcile([
+      {
+        id: "body_cut_chamfer_1",
+        kind: "edgeFinish",
+        operation: "chamfer",
+        target: {
+          id: "body_cut_1",
+          kind: "extrudeBoolean",
+          operation: "cut",
+          target: targetSource,
+          tool: {
+            id: "body_cut_1",
+            kind: "extrude",
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [1, 0],
+              width: 2,
+              height: 1
+            },
+            depth: 3,
+            side: "positive"
+          }
+        },
+        edgeStableId: "generated:edge:body_cut_1:longitudinal:uMin:vMin",
+        distance: 0.1
+      }
+    ]);
+    await flushPromises();
+
+    expect(runtime.exactInputs).toEqual([
+      {
+        id: "body_cut_chamfer_1",
+        source: {
+          kind: "edgeFinish",
+          operation: "chamfer",
+          target: {
+            kind: "booleanExtrudes",
+            operation: "cut",
+            target: {
+              sketchPlane: "XY",
+              profile: {
+                kind: "rectangle",
+                center: [0, 0],
+                width: 6,
+                height: 4
+              },
+              depth: 3,
+              side: "positive"
+            },
+            tool: {
+              sketchPlane: "XY",
+              profile: {
+                kind: "rectangle",
+                center: [1, 0],
+                width: 2,
+                height: 1
+              },
+              depth: 3,
+              side: "positive"
+            }
+          },
+          edgeStableId: "generated:edge:body_cut_1:longitudinal:uMin:vMin",
+          distance: 0.1
+        }
+      }
+    ]);
+    expect(service.getSnapshot().entries[0]).toMatchObject({
+      bodyId: "body_cut_chamfer_1",
+      sourceKind: "edgeFinish",
+      status: "ready",
+      metadata: { sourceKind: "edgeFinish", volume: 10 }
+    });
+  });
+
   it("marks unsupported sources without requesting exact metadata", () => {
     const snapshots: DerivedExactMetadataSnapshot[] = [];
     const runtime = createRuntime(async (input) =>
@@ -1024,7 +1113,7 @@ describe("derivedExactMetadata", () => {
         bodyId: "body_unsupported_circle_target",
         status: "unsupported",
         message:
-          "Exact metadata for edge finishing currently supports rectangle target extrudes only."
+          "Exact metadata for edge finishing currently supports rectangle source edges and rectangle cut-wall result edges only."
       },
       {
         bodyId: "body_cut_unsupported",
@@ -1268,10 +1357,14 @@ describe("derivedExactMetadata", () => {
 
   it("ignores stale edge-finish exact metadata after target, edge, and scalar edits", async () => {
     const initialSource = createChamferSource("body_chamfer_1");
+    const initialTarget = initialSource.target;
+    if (initialTarget.kind !== "extrude") {
+      throw new Error("Expected chamfer source target to be an extrude");
+    }
     const editedSource: DerivedEdgeFinishGeometrySource = {
       ...initialSource,
       target: {
-        ...initialSource.target,
+        ...initialTarget,
         profile: {
           kind: "rectangle",
           center: [0, 0],

@@ -137,14 +137,14 @@ export type DerivedGeometryEdgeFinishInput =
   | {
       readonly id: string;
       readonly operation: "chamfer";
-      readonly target: DerivedGeometryBooleanExtrudePrimitiveInputSource;
+      readonly target: DerivedGeometryBooleanExtrudeInputSource;
       readonly edgeStableId: string;
       readonly distance: number;
     }
   | {
       readonly id: string;
       readonly operation: "fillet";
-      readonly target: DerivedGeometryBooleanExtrudePrimitiveInputSource;
+      readonly target: DerivedGeometryBooleanExtrudeInputSource;
       readonly edgeStableId: string;
       readonly radius: number;
     };
@@ -186,7 +186,7 @@ export interface DerivedExactMetadataInput {
     | {
         readonly kind: "edgeFinish";
         readonly operation: "chamfer";
-        readonly target: DerivedGeometryBooleanExtrudePrimitiveInputSource;
+        readonly target: DerivedGeometryBooleanExtrudeInputSource;
         readonly edgeStableId: string;
         readonly distance: number;
         readonly radius?: never;
@@ -194,7 +194,7 @@ export interface DerivedExactMetadataInput {
     | {
         readonly kind: "edgeFinish";
         readonly operation: "fillet";
-        readonly target: DerivedGeometryBooleanExtrudePrimitiveInputSource;
+        readonly target: DerivedGeometryBooleanExtrudeInputSource;
         readonly edgeStableId: string;
         readonly radius: number;
         readonly distance?: never;

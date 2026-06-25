@@ -126,7 +126,9 @@ export interface DerivedChamferGeometrySource {
   readonly id: string;
   readonly kind: "edgeFinish";
   readonly operation: "chamfer";
-  readonly target: DerivedExtrudeGeometrySource;
+  readonly target:
+    | DerivedExtrudeGeometrySource
+    | DerivedBooleanExtrudeGeometrySource;
   readonly edgeStableId: string;
   readonly distance: number;
   readonly placementError?: string;
@@ -136,7 +138,9 @@ export interface DerivedFilletGeometrySource {
   readonly id: string;
   readonly kind: "edgeFinish";
   readonly operation: "fillet";
-  readonly target: DerivedExtrudeGeometrySource;
+  readonly target:
+    | DerivedExtrudeGeometrySource
+    | DerivedBooleanExtrudeGeometrySource;
   readonly edgeStableId: string;
   readonly radius: number;
   readonly placementError?: string;
@@ -662,26 +666,14 @@ function deriveSourceMesh(
         ? {
             id: source.id,
             operation: source.operation,
-            target: {
-              sketchPlane: source.target.sketchPlane,
-              profile: source.target.profile,
-              depth: source.target.depth,
-              side: source.target.side,
-              placementFrame: source.target.placementFrame
-            },
+            target: createBooleanRuntimeSource(source.target),
             edgeStableId: source.edgeStableId,
             distance: source.distance
           }
         : {
             id: source.id,
             operation: source.operation,
-            target: {
-              sketchPlane: source.target.sketchPlane,
-              profile: source.target.profile,
-              depth: source.target.depth,
-              side: source.target.side,
-              placementFrame: source.target.placementFrame
-            },
+            target: createBooleanRuntimeSource(source.target),
             edgeStableId: source.edgeStableId,
             radius: source.radius
           }
@@ -910,10 +902,6 @@ function isSupportedEdgeFinishSource(
 function getUnsupportedEdgeFinishSourceMessage(
   source: DerivedEdgeFinishGeometrySource
 ): string | undefined {
-  if (source.target.profile.kind !== "rectangle") {
-    return "Edge finish display currently supports rectangle target extrudes only.";
-  }
-
   const edgeReference = parseGeneratedRectangleEdgeStableId(
     source.edgeStableId
   );
@@ -924,6 +912,15 @@ function getUnsupportedEdgeFinishSourceMessage(
 
   if (edgeReference.bodyId !== source.target.id) {
     return "Edge finish display requires the selected edge to belong to the target body.";
+  }
+
+  const finishTarget = getEdgeFinishProfileSource(
+    source.target,
+    edgeReference.role
+  );
+
+  if (!finishTarget) {
+    return "Edge finish display currently supports rectangle source edges and rectangle cut-wall result edges only.";
   }
 
   const scalar =
@@ -939,13 +936,13 @@ function getUnsupportedEdgeFinishSourceMessage(
 
 function parseGeneratedRectangleEdgeStableId(
   stableId: string
-): { readonly bodyId: string } | undefined {
+): { readonly bodyId: string; readonly role: string } | undefined {
   const capEdge = stableId.match(
     /^generated:edge:([^:]+):(start|end):(uMin|uMax|vMin|vMax)$/
   );
 
   if (capEdge) {
-    return { bodyId: capEdge[1] };
+    return { bodyId: capEdge[1], role: `${capEdge[2]}:${capEdge[3]}` };
   }
 
   const longitudinalEdge = stableId.match(
@@ -953,7 +950,29 @@ function parseGeneratedRectangleEdgeStableId(
   );
 
   if (longitudinalEdge) {
-    return { bodyId: longitudinalEdge[1] };
+    return {
+      bodyId: longitudinalEdge[1],
+      role: `longitudinal:${longitudinalEdge[2]}:${longitudinalEdge[3]}`
+    };
+  }
+
+  return undefined;
+}
+
+function getEdgeFinishProfileSource(
+  target: DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource,
+  role: string
+): DerivedExtrudeGeometrySource | undefined {
+  if (target.kind === "extrude") {
+    return target.profile.kind === "rectangle" ? target : undefined;
+  }
+
+  if (
+    target.operation === "cut" &&
+    role.startsWith("longitudinal:") &&
+    target.tool.profile.kind === "rectangle"
+  ) {
+    return target.tool;
   }
 
   return undefined;
