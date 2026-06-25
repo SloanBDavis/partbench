@@ -1140,11 +1140,36 @@ describe("geometry-kernel facade", () => {
           direction: "positive"
         }
       });
+      const circleSideHole = await executeGeometryKernelRequest({
+        id: "geometry_req_hole_circle_side_plane_through",
+        version: "geometry-kernel.v1",
+        op: "geometry.hole",
+        target: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 3
+          },
+          depth: 4
+        },
+        tool: {
+          sketchPlane: "XZ",
+          circle: {
+            kind: "circle",
+            center: [0, 2],
+            radius: 0.75
+          },
+          depthMode: "throughAll",
+          direction: "positive"
+        }
+      });
 
       expect(rectangleHole.ok).toBe(true);
       expect(circleHole.ok).toBe(true);
+      expect(circleSideHole.ok).toBe(true);
 
-      if (!rectangleHole.ok || !circleHole.ok) {
+      if (!rectangleHole.ok || !circleHole.ok || !circleSideHole.ok) {
         throw new Error("Expected hole feasibility requests to succeed.");
       }
 
@@ -1158,6 +1183,9 @@ describe("geometry-kernel facade", () => {
       expect(circleHole.mesh.primitive).toBe("hole");
       expect(circleHole.mesh.vertexCount).toBeGreaterThan(0);
       expect(circleHole.mesh.triangleCount).toBeGreaterThan(0);
+      expect(circleSideHole.mesh.primitive).toBe("hole");
+      expect(circleSideHole.mesh.vertexCount).toBeGreaterThan(0);
+      expect(circleSideHole.mesh.triangleCount).toBeGreaterThan(0);
       expect(getGeometryResponseTransferables(rectangleHole)).toEqual([
         rectangleHole.mesh.positions.buffer,
         rectangleHole.mesh.indices.buffer

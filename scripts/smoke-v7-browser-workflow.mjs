@@ -731,6 +731,12 @@ async function v7BrowserWorkflowSmoke({
     v14CutRectangleEntityId: "v14_smoke_result_rect_cut_profile",
     v14CutSketchId: "v14_smoke_result_rect_cut_sketch",
     v14CutSketchName: "V14 smoke result cut sketch",
+    v14CylinderSideHoleBodyId: "v14_smoke_cylinder_side_hole_body",
+    v14CylinderSideHoleBodyName: "V14 smoke cylinder side hole",
+    v14CylinderSideHoleCircleEntityId: "v14_smoke_cylinder_side_hole_circle",
+    v14CylinderSideHoleFeatureId: "v14_smoke_cylinder_side_hole_feature",
+    v14CylinderSideHoleSketchId: "v14_smoke_cylinder_side_hole_sketch",
+    v14CylinderSideHoleSketchName: "V14 smoke cylinder side hole sketch",
     v14ProjectFileName: "v14-browser-fixture.json",
     v14HoleBodyId: "v14_smoke_result_hole_body",
     v14HoleBodyName: "V14 smoke result hole",
@@ -1853,6 +1859,15 @@ async function v7BrowserWorkflowSmoke({
 
     await importV14TopologyBrowserFixture(
       projectJson,
+      "V14 topology browser fixture for cylinder side-plane hole"
+    );
+    await runV14CylinderSidePlaneHoleWorkflowSmoke();
+    await verifyV14CylinderSidePlaneHoleProjectJsonSource(
+      "V14 cylinder side-plane hole source JSON"
+    );
+
+    await importV14TopologyBrowserFixture(
+      projectJson,
       "V14 topology browser fixture for result-face rectangle add"
     );
     await runV14TopologyBackedResultExtrudeAddWorkflowSmoke();
@@ -1941,6 +1956,47 @@ async function v7BrowserWorkflowSmoke({
     }, waitLabel);
   }
 
+  async function verifyV14CylinderSidePlaneHoleProjectJsonSource(waitLabel) {
+    openDetailsBySummary(document.body, "Project/File");
+    const projectPanel = getSectionByAriaLabel("Project");
+    await waitFor(() => {
+      const exportButton = getButtonByText(projectPanel, "Export JSON");
+
+      if (!exportButton || exportButton.disabled) {
+        throw new Error(compactText(projectPanel.textContent, 520));
+      }
+
+      return true;
+    }, "V14 cylinder side-plane hole export ready");
+    clickButton(projectPanel, "Export JSON");
+    await waitFor(() => {
+      const projectJsonPreview = getProjectJsonEditorValue(projectPanel);
+      const ready =
+        includesText(projectPanel, "Import draft") &&
+        projectJsonPreview.includes("web-cad.project.v18") &&
+        projectJsonPreview.includes(ids.v14CylinderSideHoleFeatureId);
+
+      if (!ready) {
+        throw new Error(
+          [
+            `project=${compactText(projectPanel.textContent, 420)}`,
+            `json=${projectJsonPreview.trim().slice(0, 240)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, waitLabel);
+    assertV14CylinderSidePlaneHoleProjectJson(
+      getProjectJsonEditorValue(projectPanel)
+    );
+    pass(
+      "v14-cylinder-side-plane-hole-source-json-browser",
+      "V14 cylinder side-plane hole JSON keeps public sketch plane and topology target proof",
+      ids.v14CylinderSideHoleFeatureId
+    );
+  }
+
   async function verifyV14ResultHoleProjectJsonSource(waitLabel) {
     openDetailsBySummary(document.body, "Project/File");
     const projectPanel = getSectionByAriaLabel("Project");
@@ -2023,6 +2079,154 @@ async function v7BrowserWorkflowSmoke({
       "v14-result-add-topology-source-json-browser",
       "V14 result-body rectangle add JSON keeps topology sketch and target proof",
       ids.v14AddFeatureId
+    );
+  }
+
+  async function runV14CylinderSidePlaneHoleWorkflowSmoke() {
+    const bodyStableId = `generated:body:${ids.v14TargetBodyId}`;
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v14TargetBodyName
+    );
+    openSelectionPanel();
+    await selectGeneratedReferenceByStableId(bodyStableId);
+    await saveSelectedTopologyReference(
+      "V14 cylinder side-plane hole body topology target",
+      bodyStableId
+    );
+
+    clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Sketches");
+    const sketches = getSectionByAriaLabel("Sketches");
+    setFieldByLabel(sketches, "Name", ids.v14CylinderSideHoleSketchName);
+    setSelectByLabel(sketches, "Plane", "XZ");
+    setInputByDetailsSummary(
+      sketches,
+      "Advanced sketch options",
+      ids.v14CylinderSideHoleSketchId
+    );
+    clickButton(sketches, "Create sketch");
+    await waitFor(
+      () =>
+        getControlByLabel(getSectionByAriaLabel("Sketches"), "Active sketch")
+          .value === ids.v14CylinderSideHoleSketchId,
+      "created V14 cylinder side-plane hole sketch"
+    );
+
+    clickButton(getElementByAriaLabel("Add sketch entity"), "Circle");
+    const entityEditor = await waitForSectionByAriaLabel(
+      "Sketch entity editor",
+      "V14 cylinder side-plane circle entity editor"
+    );
+    setSelectByLabel(entityEditor, "Entity", "circle");
+    setInputByDetailsSummary(
+      entityEditor,
+      "Optional ID",
+      ids.v14CylinderSideHoleCircleEntityId
+    );
+    setFieldByLabel(entityEditor, "Center X", "0");
+    setFieldByLabel(entityEditor, "Center Y", "1.5");
+    setFieldByLabel(entityEditor, "Radius", "0.2");
+    clickButton(entityEditor, "Add entity");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Select sketch entity"),
+          ids.v14CylinderSideHoleCircleEntityId
+        ),
+      "created V14 cylinder side-plane hole circle"
+    );
+    pass(
+      "v14-cylinder-side-plane-circle-entity-browser",
+      "V14 XZ sketch accepts a circle profile for a cylinder side hole",
+      ids.v14CylinderSideHoleCircleEntityId
+    );
+
+    const featureEditor = getSectionByAriaLabel("Create authored feature");
+    clickButton(featureEditor, "Hole");
+    await waitFor(
+      () =>
+        Boolean(
+          queryControlByLabel(
+            getSectionByAriaLabel("Create authored feature"),
+            "Target body"
+          )
+        ),
+      "V14 cylinder side-plane hole target body control"
+    );
+    setSelectByLabel(
+      getSectionByAriaLabel("Create authored feature"),
+      "Target body",
+      ids.v14TargetBodyId
+    );
+    setSelectByLabel(
+      getSectionByAriaLabel("Create authored feature"),
+      "Depth mode",
+      "throughAll"
+    );
+    setSelectByLabel(
+      getSectionByAriaLabel("Create authored feature"),
+      "Direction",
+      "positive"
+    );
+    openDetailsBySummary(
+      getSectionByAriaLabel("Create authored feature"),
+      "Advanced hole options"
+    );
+    setFieldByLabel(
+      getSectionByAriaLabel("Create authored feature"),
+      "Optional feature ID",
+      ids.v14CylinderSideHoleFeatureId
+    );
+    setFieldByLabel(
+      getSectionByAriaLabel("Create authored feature"),
+      "Optional body ID",
+      ids.v14CylinderSideHoleBodyId
+    );
+    setFieldByLabel(
+      getSectionByAriaLabel("Create authored feature"),
+      "Optional name",
+      ids.v14CylinderSideHoleBodyName
+    );
+    await waitFor(() => {
+      const nextFeatureEditor = getSectionByAriaLabel(
+        "Create authored feature"
+      );
+      const createHoleButton = getButtonByText(
+        nextFeatureEditor,
+        "Create hole"
+      );
+      const ready =
+        createHoleButton &&
+        !createHoleButton.disabled &&
+        includesText(
+          nextFeatureEditor,
+          "side hole through the circular target"
+        );
+
+      if (!ready) {
+        throw new Error(compactText(nextFeatureEditor.textContent, 720));
+      }
+
+      return true;
+    }, "V14 cylinder side-plane hole command enabled");
+    clickButton(
+      getSectionByAriaLabel("Create authored feature"),
+      "Create hole"
+    );
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Model structure"),
+          ids.v14CylinderSideHoleBodyName
+        ),
+      "created V14 cylinder side-plane hole"
+    );
+    pass(
+      "v14-cylinder-side-plane-hole-browser",
+      "V14 XZ circle profile creates a side hole in a topology-backed circular result body",
+      ids.v14CylinderSideHoleBodyId
     );
   }
 
@@ -2562,6 +2766,48 @@ async function v7BrowserWorkflowSmoke({
     if (privateIdPattern.test(sourceBoundaryText)) {
       throw new Error(
         `V14 topology source leaked a private ID: ${sourceBoundaryText}`
+      );
+    }
+  }
+
+  function assertV14CylinderSidePlaneHoleProjectJson(projectJson) {
+    const parsed = JSON.parse(projectJson);
+    const sketch = findObjectById(parsed, ids.v14CylinderSideHoleSketchId);
+    const holeFeature = findObjectById(
+      parsed,
+      ids.v14CylinderSideHoleFeatureId
+    );
+
+    if (!sketch || sketch.plane !== "XZ" || sketch.attachment) {
+      throw new Error(
+        `V14 cylinder side-plane hole sketch did not remain a public XZ sketch: ${JSON.stringify(sketch)}`
+      );
+    }
+
+    if (
+      !holeFeature ||
+      holeFeature.kind !== "hole" ||
+      holeFeature.targetBodyId !== ids.v14TargetBodyId ||
+      typeof holeFeature.targetTopologyAnchorId !== "string" ||
+      holeFeature.targetTopologyAnchorId.length === 0 ||
+      holeFeature.sketchId !== ids.v14CylinderSideHoleSketchId ||
+      holeFeature.circleEntityId !== ids.v14CylinderSideHoleCircleEntityId
+    ) {
+      throw new Error(
+        `V14 cylinder side-plane hole lost its public topology target source: ${JSON.stringify(holeFeature)}`
+      );
+    }
+
+    const sourceBoundaryText = JSON.stringify({
+      sketch,
+      feature: holeFeature
+    });
+    const privateIdPattern =
+      /(renderer|meshId|occt|viewport|opfs|fileHandle|checkpointEntityId)/i;
+
+    if (privateIdPattern.test(sourceBoundaryText)) {
+      throw new Error(
+        `V14 cylinder side-plane hole source leaked a private ID: ${sourceBoundaryText}`
       );
     }
   }

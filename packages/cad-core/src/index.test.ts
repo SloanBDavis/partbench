@@ -34687,7 +34687,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     );
   });
 
-  it("creates holes through active topology-backed circle-origin result bodies", () => {
+  it("creates side-plane holes through active topology-backed circle-origin result bodies", () => {
     const engine = createCircleExtrudeEngine();
 
     engine.applyBatch([
@@ -34743,13 +34743,13 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         op: "sketch.create",
         id: "sketch_circle_hole",
         name: "Hole",
-        plane: "XY"
+        plane: "XZ"
       },
       {
         op: "sketch.addCircle",
         sketchId: "sketch_circle_hole",
         id: "circle_circle_hole",
-        center: [0.5, 0.25],
+        center: [0, 1.5],
         radius: 0.35
       }
     ]);
@@ -34835,10 +34835,9 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         })
       ])
     );
-    expect(
-      readProjectStructure(importCadProjectJson(exportCadProjectJson(engine)))
-        .bodies
-    ).toEqual(
+    const reopened = importCadProjectJson(exportCadProjectJson(engine));
+
+    expect(readProjectStructure(reopened).bodies).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: "body_circle_hole",
@@ -34849,6 +34848,21 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         })
       ])
     );
+    const reopenedSketch = reopened
+      .getDocument()
+      .sketches.get("sketch_circle_hole");
+
+    expect(reopenedSketch).toMatchObject({
+      id: "sketch_circle_hole",
+      plane: "XZ"
+    });
+    expect(Array.from(reopenedSketch?.entities.values() ?? [])).toEqual([
+      expect.objectContaining({
+        id: "circle_circle_hole",
+        kind: "circle",
+        center: [0, 1.5]
+      })
+    ]);
   });
 
   it("chains cut extrudes through active topology-backed result bodies", () => {

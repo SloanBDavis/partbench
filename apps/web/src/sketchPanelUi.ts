@@ -1554,6 +1554,32 @@ export function getHoleOperationStatus(
   };
 }
 
+export function getHoleTargetGuidance(
+  selectedTarget: BooleanTargetBodyOption | undefined,
+  sketchPlane: SketchSnapshot["plane"] | undefined
+): string | undefined {
+  if (!selectedTarget) {
+    return undefined;
+  }
+
+  if (
+    selectedTarget.profileKind === "circle" &&
+    (sketchPlane === "XZ" || sketchPlane === "YZ")
+  ) {
+    return `Creates a side hole through the circular target from the ${sketchPlane} sketch plane.`;
+  }
+
+  if (selectedTarget.profileKind === "circle") {
+    return "Creates an axial hole through the circular target. Use an XZ or YZ sketch for a side hole.";
+  }
+
+  if (sketchPlane === "XZ" || sketchPlane === "YZ") {
+    return `Creates a hole from the ${sketchPlane} sketch plane through the selected target.`;
+  }
+
+  return "Creates a hole result body. The target stays in structure as consumed.";
+}
+
 export function createEffectiveHoleTargetForm<T extends HoleTargetFormLike>(
   form: T,
   selectedTarget:

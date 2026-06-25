@@ -71,6 +71,7 @@ import {
   formatSketchSolverStatus,
   getAddOperationStatus,
   getCutOperationStatus,
+  getHoleTargetGuidance,
   getHoleOperationStatus,
   getExtrudeSideForOperationMode,
   getRevolveOperationStatus,
@@ -1933,6 +1934,7 @@ function HoleFeatureForm({
     effectiveForm
   );
   const available = Boolean(action?.available) && status.available;
+  const guidance = getHoleTargetGuidance(selectedTarget, context.sketch.plane);
 
   return (
     <>
@@ -2006,6 +2008,9 @@ function HoleFeatureForm({
       </div>
       {!available && (
         <p className="error-text compact">{action?.reason ?? status.message}</p>
+      )}
+      {available && guidance && (
+        <p className="project-message compact">{guidance}</p>
       )}
       <button
         type="button"

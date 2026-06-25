@@ -2490,13 +2490,13 @@ describe("derivedGeometry", () => {
         op: "sketch.create",
         id: "sketch_hole_1",
         name: "Hole",
-        plane: "XY"
+        plane: "XZ"
       },
       {
         op: "sketch.addCircle",
         sketchId: "sketch_hole_1",
         id: "circle_hole_1",
-        center: [0.5, 0.25],
+        center: [0, 1.5],
         radius: 0.4
       }
     ]);
@@ -2568,7 +2568,8 @@ describe("derivedGeometry", () => {
         tool: { id: "body_cut_1", profile: { kind: "rectangle" } }
       },
       tool: {
-        circle: { kind: "circle", center: [0.5, 0.25], radius: 0.4 },
+        sketchPlane: "XZ",
+        circle: { kind: "circle", center: [0, 1.5], radius: 0.4 },
         depthMode: "throughAll",
         direction: "positive"
       }
@@ -2600,6 +2601,7 @@ describe("derivedGeometry", () => {
           })
         }),
         tool: expect.objectContaining({
+          sketchPlane: "XZ",
           circle: expect.objectContaining({ radius: 0.4 }),
           depthMode: "throughAll",
           direction: "positive"

@@ -69,9 +69,10 @@ These constraints remain active:
     topology-backed result target anchors when submitting supported holes,
     selected ready result-body faces can create attached sketches by saving the
     required topology reference in the same CADOps action, browser smoke now
-    proves promoted result-face rectangle add/cut plus circle hole paths, and
-    ready topology-backed reference selections use action-oriented product copy
-    instead of topology debug text.
+    proves promoted result-face rectangle add/cut, result-face circle hole, and
+    explicit XZ side-plane circle hole paths, and ready topology-backed
+    reference selections use action-oriented product copy instead of topology
+    debug text.
     Completed V8, V9, V10, V11, V12, and V13
     tranche records below remain historical release records and compatibility
     guardrails. Do not re-open those releases unless the user explicitly asks
@@ -2526,9 +2527,11 @@ Use these decisions when drafting or implementing V13 tranches:
    the resolved public `targetBodyId` plus anchor proof through command
    validation, project structure, health, dependency graph, generated-reference
    signatures, topology source identity, import/export, app command helpers,
-   derived geometry, and exact metadata. Unanchored result bodies, cylinder
-   side-wall drilling, arbitrary profile recognition, broader circle-target add
-   behavior, and edge finishing remain outside this implemented slice.
+   derived geometry, and exact metadata. Explicit XZ side-plane circle holes
+   are now proven against supported circle-origin result bodies. Unanchored
+   result bodies, curved side-wall face attachment, arbitrary profile
+   recognition, broader circle-target add behavior, and edge finishing remain
+   outside this implemented slice.
    Missing, stale, replaced, ambiguous, deleted, unsupported, consumed, and
    repair-needed anchors remain non-commandable with structured diagnostics.
    Direct face/edge topology-anchor command targets that cannot map to current
@@ -2847,8 +2850,9 @@ The planned pillars are:
    bodies that own the active public topology body anchor. The current partial
    implementation also lets `feature.hole` target supported active
    topology-backed result bodies through the same public body-anchor proof path,
-   and the browser smoke proves promoted result-face rectangle add/cut plus
-   circle hole paths; unsupported or unanchored result bodies remain blocked.
+   and the browser smoke proves promoted result-face rectangle add/cut, result
+   face circle hole, and explicit XZ side-plane circle hole paths; unsupported
+   or unanchored result bodies remain blocked.
 4. **Topology-backed edge finishing** - eligible result-body edge anchors can
    drive chamfer and fillet where cad-core validators and geometry execution
    prove the target. V14 must make at least one real result-edge class
@@ -2862,8 +2866,9 @@ The planned pillars are:
    available actions and repair needs without mentioning internal tranche or
    milestone names.
 7. **Long release smokes** - deterministic and browser workflows prove chained
-   modeling, result-edge finishing where supported, upstream edit/rebuild,
-   `.wcad` persistence, no private-ID leakage, and no console errors.
+   modeling, explicit side-plane circular holes where supported, result-edge
+   finishing where supported, upstream edit/rebuild, `.wcad` persistence, no
+   private-ID leakage, and no console errors.
 
 ### V14 Storage Position
 

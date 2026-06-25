@@ -905,6 +905,50 @@ describe("occt-wasm", () => {
   );
 
   it(
+    "returns exact side-plane circle-target hole metadata through Open CASCADE WASM",
+    async () => {
+      const metadata = await createOcctExactBodyMetadata({
+        source: {
+          kind: "hole",
+          target: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "circle",
+              center: [0, 0],
+              radius: 3
+            },
+            depth: 4,
+            side: "positive"
+          },
+          tool: {
+            sketchPlane: "XZ",
+            circle: {
+              kind: "circle",
+              center: [0, 2],
+              radius: 0.5
+            },
+            depthMode: "throughAll",
+            direction: "positive"
+          }
+        }
+      });
+
+      expect(metadata.sourceKind).toBe("hole");
+      expect(metadata.bounds.min[0]).toBeCloseTo(-3, 6);
+      expect(metadata.bounds.max[0]).toBeCloseTo(3, 6);
+      expect(metadata.bounds.min[2]).toBeCloseTo(0, 6);
+      expect(metadata.bounds.max[2]).toBeCloseTo(4, 6);
+      expect(metadata.volume).toBeGreaterThan(0);
+      expect(metadata.volume).toBeLessThan(36 * Math.PI);
+      expect(metadata.topologyCounts.solidCount).toBe(1);
+      expect(metadata.topologyCounts.faceCount).toBeGreaterThan(0);
+      expect(metadata.measurementSource).toBe("kernel-derived");
+      expect(metadata.diagnostics).toEqual([]);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
     "returns exact hole metadata for a boolean-result target through Open CASCADE WASM",
     async () => {
       const metadata = await createOcctExactBodyMetadata({

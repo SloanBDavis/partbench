@@ -46,6 +46,7 @@ import {
   getCutOperationStatus,
   getDefaultSketchEntityKind,
   getHoleOperationStatus,
+  getHoleTargetGuidance,
   getInitialSketchExtrudeOperationMode,
   getRevolveOperationStatus,
   getPreferredBooleanTargetBodyId,
@@ -1490,6 +1491,35 @@ describe("sketch panel UI helpers", () => {
       available: true,
       message: "1 eligible hole target body."
     });
+  });
+
+  it("describes circular side-plane hole targets without topology jargon", () => {
+    const circleTarget = {
+      bodyId: "body_circle_result",
+      featureId: "feat_circle_result",
+      targetTopologyAnchorId: "anchor_body_circle",
+      profileKind: "circle" as const,
+      label: "Circle result",
+      detail: "Circle topology result / cut / body_circle_result"
+    };
+    const rectangleTarget = {
+      bodyId: "body_rect",
+      featureId: "feat_rect",
+      profileKind: "rectangle" as const,
+      label: "Rectangle target",
+      detail: "Rectangle new body / 1 mm / positive / body_rect"
+    };
+
+    expect(getHoleTargetGuidance(circleTarget, "XZ")).toBe(
+      "Creates a side hole through the circular target from the XZ sketch plane."
+    );
+    expect(getHoleTargetGuidance(circleTarget, "XY")).toBe(
+      "Creates an axial hole through the circular target. Use an XZ or YZ sketch for a side hole."
+    );
+    expect(getHoleTargetGuidance(rectangleTarget, "YZ")).toBe(
+      "Creates a hole from the YZ sketch plane through the selected target."
+    );
+    expect(getHoleTargetGuidance(undefined, "XZ")).toBeUndefined();
   });
 
   it("explains add availability without requiring React state", () => {

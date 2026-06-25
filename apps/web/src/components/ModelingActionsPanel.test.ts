@@ -595,6 +595,83 @@ describe("ModelingActionsPanel", () => {
     expect(markup).not.toContain("Create extrude");
   });
 
+  it("guides XZ circle profiles toward circular side holes", () => {
+    const circle: SketchSnapshot["entities"][number] = {
+      id: "circle_1",
+      kind: "circle",
+      center: [0, 1.5],
+      radius: 0.2
+    };
+    const sketch = createSketch(
+      "sketch_side_hole",
+      "Side hole sketch",
+      [circle],
+      undefined,
+      "XZ"
+    );
+    const context = {
+      selectionKind: "sketchEntity" as const,
+      sketch,
+      entity: circle
+    };
+    const targetBody: CadBodySnapshot = {
+      id: "body_circle_result",
+      kind: "solid",
+      partId: "part_default",
+      featureId: "feat_circle_result",
+      source: {
+        type: "sketchExtrudeFeature",
+        featureId: "feat_circle_result",
+        sketchId: "sketch_target",
+        entityId: "circle_target",
+        profileKind: "circle"
+      }
+    };
+    const targetFeature: CadFeatureSummary = {
+      id: "feat_circle_result",
+      kind: "extrude",
+      partId: "part_default",
+      bodyId: "body_circle_result",
+      sketchId: "sketch_target",
+      entityId: "circle_target",
+      profileKind: "circle",
+      depth: 3,
+      side: "positive",
+      operationMode: "newBody",
+      source: {
+        type: "sketchEntity",
+        sketchId: "sketch_target",
+        entityId: "circle_target"
+      }
+    };
+    const actions = deriveModelingActions({
+      context,
+      bodies: [targetBody],
+      features: [targetFeature],
+      preferredBodyId: "body_circle_result"
+    });
+    const markup = renderToStaticMarkup(
+      createElement(ModelingActionsPanel, {
+        actions,
+        context,
+        holeTargetBodies: [
+          {
+            bodyId: "body_circle_result",
+            featureId: "feat_circle_result",
+            profileKind: "circle",
+            label: "Circle result target",
+            detail: "Circle target / body_circle_result"
+          }
+        ]
+      })
+    );
+
+    expect(markup).toContain(
+      "Creates a side hole through the circular target from the XZ sketch plane."
+    );
+    expect(markup).not.toContain("topology");
+  });
+
   it("prefers app-supplied topology hole targets over stale action targets", () => {
     const circle: SketchSnapshot["entities"][number] = {
       id: "circle_1",
@@ -944,12 +1021,13 @@ function createSketch(
   id: string,
   name: string,
   entities: SketchSnapshot["entities"] = [],
-  attachment?: SketchSnapshot["attachment"]
+  attachment?: SketchSnapshot["attachment"],
+  plane: SketchSnapshot["plane"] = "XY"
 ): SketchSnapshot {
   return {
     id,
     name,
-    plane: "XY",
+    plane,
     entities,
     ...(attachment ? { attachment } : {})
   };

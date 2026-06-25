@@ -50,6 +50,7 @@ import {
   getAddOperationStatus,
   getAttachedSketchBooleanTargetHint,
   getCutOperationStatus,
+  getHoleTargetGuidance,
   getHoleOperationStatus,
   getDefaultSketchEntityKind,
   getDefaultSketchPointTargetRole,
@@ -794,6 +795,10 @@ export function SketchPanel({
     holeTargetBodies,
     effectiveHoleForm,
     selectedSketchDisplayStatus
+  );
+  const holeGuidance = getHoleTargetGuidance(
+    selectedHoleTarget,
+    selectedSketch?.plane
   );
   const shouldShowEntityEditor =
     Boolean(editingEntityId) ||
@@ -1571,7 +1576,7 @@ export function SketchPanel({
                               }
                             >
                               {holeStatus.available && selectedHoleTarget
-                                ? "Creates a hole result body. The target stays in structure as consumed."
+                                ? holeGuidance
                                 : holeStatus.message}
                             </p>
                             <details className="advanced-options">
