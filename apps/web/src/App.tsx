@@ -56,7 +56,6 @@ import {
   buildAddSketchLineOp,
   buildAddSketchPointOp,
   buildAddSketchRectangleOp,
-  buildCreateSketchOnFaceOp,
   buildCreateSketchOp,
   buildCreateBoxOp,
   buildCreateConeOp,
@@ -252,6 +251,7 @@ import {
   exportProjectWcadWithTopologyCheckpoints,
   isProjectWcadTopologyCheckpointPayloadError
 } from "./projectWcadTopologyCheckpoints";
+import { createSketchOnFaceCommandPlan } from "./sketchOnFacePromotion";
 import {
   createTopologyRepairCandidatePreview,
   createTopologyRepairPreviewKey,
@@ -2037,10 +2037,47 @@ export function App() {
   }
 
   async function createSketchOnFace(form: SketchCreateOnFaceForm) {
-    const response = await commitOps(
-      [buildCreateSketchOnFaceOp(form)],
-      () => null
-    );
+    setCommandPending(true);
+    setCommandError(undefined);
+    setCommandNotice(undefined);
+
+    let plan: Awaited<ReturnType<typeof createSketchOnFaceCommandPlan>>;
+
+    try {
+      plan = await createSketchOnFaceCommandPlan({
+        engine,
+        features: projectStructure.features,
+        sketches,
+        generatedFacesByKey,
+        runtime: getDerivedGeometryRuntime(),
+        form
+      });
+
+      if (!plan.ok) {
+        setCommandError(plan.message);
+        return;
+      }
+
+      const dryRun = await commandExecutor.executeBatch(
+        buildBatch("dryRun", plan.ops, WEB_UI_ACTOR)
+      );
+
+      if (!dryRun.ok) {
+        setCommandError(dryRun.error.message);
+        return;
+      }
+    } catch (error) {
+      setCommandError(
+        error instanceof Error
+          ? error.message
+          : "Could not create attached sketch."
+      );
+      return;
+    } finally {
+      setCommandPending(false);
+    }
+
+    const response = await commitOps(plan.ops, () => null);
     const sketchId = response?.ok
       ? (response.createdSketchIds?.[0] ?? form.id.trim())
       : undefined;
