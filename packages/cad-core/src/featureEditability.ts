@@ -165,6 +165,9 @@ function createExtrudeEditabilityResponse(
     feature,
     body
   );
+  const scopedRebuildBlocker = scopedRebuildConsumer
+    ? undefined
+    : getScopedSourceExtrudeRebuildBlocker(options, feature, body);
   const blockingDiagnostics: CadFeatureEditDiagnostic[] = [];
   blockingDiagnostics.push(
     ...createProfileBlockingDiagnostics(options, feature.id)
@@ -175,11 +178,16 @@ function createExtrudeEditabilityResponse(
       createDiagnostic({
         code: "FEATURE_EDIT_CONSUMED_BODY",
         severity: "blocker",
-        message: `Feature ${feature.id} cannot be edited safely because body ${feature.bodyId} is consumed by feature ${body.consumedByFeatureId}.`,
+        message: scopedRebuildBlocker
+          ? `Feature ${feature.id} cannot be edited safely because downstream result body ${scopedRebuildBlocker.consumerBodyId} is consumed by feature ${scopedRebuildBlocker.nextConsumerId}. Edit or repair that downstream feature before changing the original source.`
+          : `Feature ${feature.id} cannot be edited safely because body ${feature.bodyId} is consumed by feature ${body.consumedByFeatureId}.`,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        expected: "active feature body",
-        received: body.consumedByFeatureId
+        expected: scopedRebuildBlocker
+          ? "one direct supported consuming feature"
+          : "active feature body",
+        received:
+          scopedRebuildBlocker?.nextConsumerId ?? body.consumedByFeatureId
       })
     );
   }
@@ -801,6 +809,39 @@ function getScopedSourceExtrudeRebuildConsumer(
   }
 
   return undefined;
+}
+
+function getScopedSourceExtrudeRebuildBlocker(
+  options: CreateFeatureEditabilityResponseOptions,
+  feature: Extract<CadFeatureSummary, { readonly kind: "extrude" }>,
+  body: CadBodySnapshot | undefined
+):
+  | { readonly consumerBodyId: BodyId; readonly nextConsumerId: FeatureId }
+  | undefined {
+  if (!body?.consumedByFeatureId || feature.operationMode !== "newBody") {
+    return undefined;
+  }
+
+  const consumer = options.features.find(
+    (
+      candidate
+    ): candidate is Exclude<
+      CadFeatureSummary,
+      { readonly kind: "primitive" }
+    > =>
+      candidate.kind !== "primitive" &&
+      candidate.id === body.consumedByFeatureId &&
+      "targetBodyId" in candidate &&
+      candidate.targetBodyId === feature.bodyId
+  );
+  const nextConsumerId = consumer
+    ? options.bodies.find((candidate) => candidate.id === consumer.bodyId)
+        ?.consumedByFeatureId
+    : undefined;
+
+  return consumer && nextConsumerId
+    ? { consumerBodyId: consumer.bodyId, nextConsumerId }
+    : undefined;
 }
 
 function isSourceExtrudeProfileSupportedForConsumingFeature(

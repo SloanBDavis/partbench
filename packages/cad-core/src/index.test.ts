@@ -15656,6 +15656,164 @@ describe("cad-core", () => {
     });
   });
 
+  it("blocks upstream edits through rectangle cut-wall chamfer chains without mutating source", async () => {
+    const engine = createRectangleExtrudeEngine();
+    const edgeStableId = "generated:edge:body_cut_1:longitudinal:uMin:vMin";
+
+    engine.applyBatch([
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "tool_rect_1",
+        center: [1, 0],
+        width: 2,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_cut_1",
+        bodyId: "body_cut_1",
+        sketchId: "sketch_1",
+        entityId: "tool_rect_1",
+        depth: 3,
+        operationMode: "cut",
+        targetBodyId: "body_rect_1"
+      },
+      {
+        op: "feature.chamfer",
+        id: "feat_cut_chamfer",
+        bodyId: "body_cut_chamfer",
+        targetBodyId: "body_cut_1",
+        edgeStableId,
+        distance: 0.1
+      }
+    ]);
+
+    const beforeJson = exportCadProjectJson(engine);
+    const beforeSourceIdentity = createCadProjectSourceIdentity(
+      exportCadProject(engine)
+    );
+    const beforeReferenceHealth = readReferenceHealth(engine, {
+      type: "body",
+      bodyId: "body_rect_1"
+    });
+    const beforeStructure = readProjectStructure(engine);
+    const beforeHealth = readProjectHealth(engine);
+    const beforeGraph = readProjectDependencyGraph(engine);
+    const beforeRebuildPlan = readProjectRebuildPlan(engine);
+    const beforeHistory = readTransactionHistory(engine);
+    const editability = readFeatureEditability(engine, "feat_rect_1", {
+      kind: "extrude",
+      depth: 6
+    });
+    const failed = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "feature.updateExtrude",
+          id: "feat_rect_1",
+          depth: 6
+        }
+      ]
+    });
+
+    expect(editability).toMatchObject({
+      status: "blocked",
+      rebuildReadiness: {
+        status: "blocked",
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({
+            code: "FEATURE_EDIT_CONSUMED_BODY",
+            featureId: "feat_rect_1",
+            bodyId: "body_rect_1",
+            expected: "one direct supported consuming feature",
+            received: "feat_cut_chamfer"
+          })
+        ])
+      },
+      dryRun: {
+        status: "blocked",
+        willMutateDocument: false,
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({
+            code: "FEATURE_EDIT_CONSUMED_BODY",
+            received: "feat_cut_chamfer"
+          })
+        ])
+      }
+    });
+    expect(
+      JSON.stringify({
+        diagnostics: editability.diagnostics,
+        rebuild: editability.rebuildReadiness.diagnostics,
+        dryRun: editability.dryRun.diagnostics
+      })
+    ).not.toMatch(/\b(tranche|V10|V13|debug|deferred)\b/i);
+
+    expect(failed).toMatchObject({
+      ok: false,
+      error: {
+        code: "FEATURE_NOT_EDITABLE",
+        featureId: "feat_rect_1",
+        bodyId: "body_rect_1",
+        expected: "one direct supported consuming feature",
+        received: "feat_cut_chamfer"
+      }
+    });
+    expect(
+      JSON.stringify((failed as Extract<typeof failed, { ok: false }>).error)
+    ).not.toMatch(/\b(tranche|V10|V13|debug|deferred)\b/i);
+    expect(getExtrudeFeature(engine, "feat_rect_1").depth).toBe(3);
+    expect(engine.getTransactions()).toHaveLength(
+      beforeHistory.transactionCount
+    );
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+    expect(createCadProjectSourceIdentity(exportCadProject(engine))).toEqual(
+      beforeSourceIdentity
+    );
+    expect(
+      readReferenceHealth(engine, {
+        type: "body",
+        bodyId: "body_rect_1"
+      })
+    ).toEqual(beforeReferenceHealth);
+    expect(readProjectStructure(engine)).toEqual(beforeStructure);
+    expect(readProjectHealth(engine)).toEqual(beforeHealth);
+    expect(readProjectDependencyGraph(engine)).toEqual(beforeGraph);
+    expect(readProjectRebuildPlan(engine)).toEqual(beforeRebuildPlan);
+    expect(readTransactionHistory(engine)).toEqual(beforeHistory);
+
+    const jsonRestored = importCadProjectJson(beforeJson);
+    const wcadExport = await exportCadProjectWcad(engine);
+    const wcadRestored = await importCadProjectWcad(wcadExport.bytes);
+
+    for (const restored of [jsonRestored, wcadRestored]) {
+      expect(getChamferFeature(restored, "feat_cut_chamfer")).toMatchObject({
+        targetBodyId: "body_cut_1",
+        edgeStableId,
+        distance: 0.1
+      });
+      expect(
+        readFeatureEditability(restored, "feat_rect_1", {
+          kind: "extrude",
+          depth: 6
+        })
+      ).toMatchObject({
+        status: "blocked",
+        rebuildReadiness: {
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({
+              code: "FEATURE_EDIT_CONSUMED_BODY",
+              received: "feat_cut_chamfer"
+            })
+          ])
+        }
+      });
+      expect(readProjectRebuildPlan(restored)).toEqual(beforeRebuildPlan);
+    }
+  });
+
   it("repairs stale named references to command-ready V12 boolean result references", () => {
     const cutEngine = createRectangleExtrudeEngine();
     const cutFaceStableId = "generated:face:body_cut_1:side:uMin";
