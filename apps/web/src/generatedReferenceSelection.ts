@@ -351,7 +351,7 @@ export function formatSelectionReferenceStatus(
     case "unsupported":
       return "Selection target unsupported";
     case "ambiguous":
-      return "Selection topology ambiguous";
+      return "Selection target ambiguous";
     case "consumed":
       return "Selection body consumed";
     case "non-commandable":

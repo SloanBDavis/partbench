@@ -174,11 +174,11 @@ export function formatBodyMeasurementConfidence(
 
 export function formatBodyTopologyError(error: CadQueryError): string {
   if (error.code === "BODY_NOT_FOUND") {
-    return `Body topology unavailable: ${error.bodyId ?? "selected body"} was not found.`;
+    return `Body model unavailable: ${error.bodyId ?? "selected body"} was not found.`;
   }
 
   if (error.code === "UNSUPPORTED_BODY_TOPOLOGY") {
-    return `Body topology unavailable for ${error.bodyId ?? "selected body"}.`;
+    return `Body model unavailable for ${error.bodyId ?? "selected body"}.`;
   }
 
   return error.message;

@@ -8,10 +8,10 @@ describe("projectTopologyIdentityStatus", () => {
 
     expect(display).toMatchObject({
       statusLabel: "Partial",
-      checkpointSummary: "0 checkpoints",
-      anchorSummary: "0 anchors",
+      checkpointSummary: "0 shape records",
+      anchorSummary: "0 saved references",
       packageSummary: "Ready for .wcad",
-      detail: "No saved topology evidence has been written for this project.",
+      detail: "No saved shape evidence has been written for this project.",
       jsonWarning: undefined
     });
   });
@@ -21,19 +21,22 @@ describe("projectTopologyIdentityStatus", () => {
       createReadiness({ checkpointCount: 1, anchorCount: 2 })
     );
 
-    expect(display.checkpointSummary).toBe("1 checkpoint");
-    expect(display.anchorSummary).toBe("2 anchors");
+    expect(display.checkpointSummary).toBe("1 shape record");
+    expect(display.anchorSummary).toBe("2 saved references");
     expect(display.packageSummary).toBe("Saved with .wcad");
     expect(display.detail).toBe(
-      "Saved topology identity is tracked in the project source."
+      "Saved reference identity is tracked in the project source."
+    );
+    expect(display.boundaryDetail).toBe(
+      "Only project source and saved shape evidence are used for CAD references."
     );
     expect(display.jsonWarning).toContain("Use .wcad");
     expect(display.jsonWarning).toContain("JSON import/export");
     expect(display.jsonWarning).toContain("exact shape evidence");
-    expect(display.jsonWarning).not.toMatch(/checkpoint payload|debug/i);
+    expect(display.jsonWarning).not.toMatch(/checkpoint|topology|debug/i);
     expect(display.capabilityRows).toEqual([
       expect.objectContaining({
-        label: "B-rep checkpoint persistence",
+        label: "Exact shape evidence persistence",
         value: "Supported"
       })
     ]);

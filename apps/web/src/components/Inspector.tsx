@@ -895,7 +895,7 @@ function BodyTopologyPanel({
   return (
     <section className="command-card nested">
       <div className="command-card-heading">
-        <h3>Topology</h3>
+        <h3>Body model</h3>
       </div>
       {error && <p className="error-text">{error}</p>}
       {topology && (
@@ -1138,7 +1138,7 @@ function SelectionReferenceContractPanel({
           </div>
           {primary.topologyDetail && (
             <div>
-              <dt>Topology</dt>
+              <dt>Reference proof</dt>
               <dd>{primary.topologyDetail}</dd>
             </div>
           )}

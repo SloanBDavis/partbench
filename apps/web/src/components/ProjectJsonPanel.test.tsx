@@ -344,7 +344,7 @@ describe("ProjectJsonPanel", () => {
     );
   });
 
-  it("renders compact topology identity status and JSON payload warning", () => {
+  it("renders compact saved reference status and JSON payload warning", () => {
     const engine = createTopologyIdentityEngine();
     const markup = renderToStaticMarkup(
       createElement(ProjectJsonPanel, {
@@ -368,16 +368,16 @@ describe("ProjectJsonPanel", () => {
       })
     );
 
-    expect(markup).toContain("Topology identity");
-    expect(markup).toContain("1 checkpoint");
-    expect(markup).toContain("1 anchor");
+    expect(markup).toContain("Saved references");
+    expect(markup).toContain("1 shape record");
+    expect(markup).toContain("1 saved reference");
     expect(markup).toContain("Saved with .wcad");
     expect(markup).toContain("Exact shape evidence is saved with the project");
     expect(markup).toContain(
       "Saved references can drive supported sketch, cut, add, and edge-finish actions."
     );
     expect(markup).toContain(
-      "Saved topology evidence stays with the .wcad project package."
+      "Saved shape evidence stays with the .wcad project package."
     );
     expect(markup).toContain("Use .wcad");
     expect(markup).toContain("JSON import/export");
@@ -385,7 +385,7 @@ describe("ProjectJsonPanel", () => {
       /checkpoint-local-face-1|checkpointEntityId|rendererId|meshId|occtId|gpuId|selectionBufferId|pixelId|opfsPath|fileHandle/i
     );
     const topologyStatusStart = markup.indexOf(
-      'aria-label="Topology identity status"'
+      'aria-label="Saved reference status"'
     );
     const topologyDiagnosticsStart = markup.indexOf(
       '<details class="advanced-options compact">',
@@ -396,7 +396,7 @@ describe("ProjectJsonPanel", () => {
       topologyDiagnosticsStart
     );
     expect(topologyStatusMarkup).not.toMatch(
-      /partbench\.wcad\.v[0-9]|V13|package contract|checkpoint payloads|renderer meshes|document-controlled command targets|cad-core|debug|deferred/i
+      /partbench\.wcad\.v[0-9]|V13|package contract|checkpoint|topology|renderer meshes|document-controlled command targets|cad-core|debug|deferred/i
     );
   });
 

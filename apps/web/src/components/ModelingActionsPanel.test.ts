@@ -511,7 +511,7 @@ describe("ModelingActionsPanel", () => {
         targetTopologyAnchorId: "anchor_body_add",
         profileKind: "rectangle" as const,
         label: "Rectangle add result",
-        detail: "Rectangle topology result / add / body_add_result"
+        detail: "Rectangle result body / add / body_add_result"
       }
     ];
     const cutTargets = [
@@ -521,7 +521,7 @@ describe("ModelingActionsPanel", () => {
         targetTopologyAnchorId: "anchor_body_cut",
         profileKind: "rectangle" as const,
         label: "Rectangle cut result",
-        detail: "Rectangle topology result / cut / body_cut_result"
+        detail: "Rectangle result body / cut / body_cut_result"
       }
     ];
 
@@ -544,7 +544,7 @@ describe("ModelingActionsPanel", () => {
             targetTopologyAnchorId: "anchor_body_other",
             profileKind: "rectangle",
             label: "Other cut result",
-            detail: "Rectangle topology result / cut / body_cut_other"
+            detail: "Rectangle result body / cut / body_cut_other"
           },
           ...cutTargets
         ],
@@ -751,14 +751,14 @@ describe("ModelingActionsPanel", () => {
             featureId: "feat_fresh",
             targetTopologyAnchorId: "anchor_body_fresh",
             profileKind: "rectangle",
-            label: "Fresh topology result",
-            detail: "Fresh topology result / cut / body_fresh"
+            label: "Fresh result body",
+            detail: "Fresh result body / cut / body_fresh"
           }
         ]
       })
     );
 
-    expect(markup).toContain("Fresh topology result");
+    expect(markup).toContain("Fresh result body");
     expect(markup).not.toContain("Stale action target");
   });
 

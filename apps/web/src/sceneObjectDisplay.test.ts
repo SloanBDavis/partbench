@@ -142,7 +142,7 @@ describe("scene object display helpers", () => {
         message: "Body not found.",
         bodyId: "missing_body"
       })
-    ).toBe("Body topology unavailable: missing_body was not found.");
+    ).toBe("Body model unavailable: missing_body was not found.");
 
     expect(
       formatBodyTopologyError({
@@ -150,7 +150,7 @@ describe("scene object display helpers", () => {
         message: "Topology is not supported.",
         bodyId: "body:box_1"
       })
-    ).toBe("Body topology unavailable for body:box_1.");
+    ).toBe("Body model unavailable for body:box_1.");
   });
 });
 

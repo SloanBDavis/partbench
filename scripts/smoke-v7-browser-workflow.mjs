@@ -1989,6 +1989,7 @@ async function v7BrowserWorkflowSmoke({
       "V14 result-body hole JSON keeps only public topology sketch and target proof",
       ids.v14HoleFeatureId
     );
+    verifyV14NormalSurfaceUserFacingCopy();
   }
 
   function verifyV14ProjectFileUserFacingCopy() {
@@ -2018,6 +2019,41 @@ async function v7BrowserWorkflowSmoke({
     pass(
       "v14-project-file-user-facing-json-copy-browser",
       "V14 Project/File copy avoids internal labels in user-facing workflow"
+    );
+  }
+
+  function verifyV14NormalSurfaceUserFacingCopy() {
+    const forbiddenPattern =
+      /\b(debug|tranche|milestone|deferred|command-ready|cad-core|checkpoint-local|checkpoint|checkpoints|topology|package contract|checkpoint payloads?|mesh error|topology error|OCCT-mesh)\b/i;
+    const surfaces = [
+      ["Model structure", getElementByAriaLabel("Model structure")],
+      ["Inspector", getElementByAriaLabel("Inspector")],
+      ["Modeling context", getSectionByAriaLabel("Modeling context")],
+      ["Sketches", getSectionByAriaLabel("Sketches")],
+      ["3D viewport", getElementByAriaLabel("3D viewport")],
+      ["Project/File", getSectionByAriaLabel("Project")]
+    ];
+    const leaks = surfaces
+      .map(([label, surface]) => {
+        const text = compactText(surface.textContent, 1200);
+        const match = text.match(forbiddenPattern);
+
+        return match ? `${label}: ${match[0]} in ${text}` : undefined;
+      })
+      .filter(Boolean);
+
+    if (leaks.length > 0) {
+      fail(
+        "v14-normal-surfaces-user-facing-copy-browser",
+        "V14 normal app surfaces avoid internal topology/debug labels",
+        leaks.join(" | ")
+      );
+      return;
+    }
+
+    pass(
+      "v14-normal-surfaces-user-facing-copy-browser",
+      "V14 normal app surfaces avoid internal topology/debug labels"
     );
   }
 

@@ -321,45 +321,45 @@ function ProjectTopologyIdentityStatus({
   return (
     <section
       className="project-workflow-section"
-      aria-label="Topology identity status"
+      aria-label="Saved reference status"
     >
       <div className="project-workflow-heading">
-        <h3>Topology identity</h3>
+        <h3>Saved references</h3>
         <span>{display.statusLabel}</span>
       </div>
       <p className="project-workflow-detail">{display.detail}</p>
       <dl className="project-workflow-grid">
         <ProjectWorkflowRow
-          label="Checkpoints"
+          label="Shape evidence"
           value={display.checkpointSummary}
           detail="Exact shape evidence is saved with the project, not with viewport meshes."
         />
         <ProjectWorkflowRow
-          label="Anchors"
+          label="Saved references"
           value={display.anchorSummary}
           detail="Saved references can drive supported sketch, cut, add, and edge-finish actions."
         />
         <ProjectWorkflowRow
-          label="Package"
+          label="Project package"
           value={display.packageSummary}
-          detail="Saved topology evidence stays with the .wcad project package."
+          detail="Saved shape evidence stays with the .wcad project package."
         />
       </dl>
       {display.jsonWarning && (
         <p className="project-import-status">{display.jsonWarning}</p>
       )}
       <details className="advanced-options compact">
-        <summary>Topology diagnostics</summary>
+        <summary>Project evidence details</summary>
         <dl className="project-workflow-grid">
           <ProjectWorkflowRow
             label="Schema"
             value={topologyIdentityReadiness.currentDocumentSchemaVersion}
-            detail={`Topology source target: ${topologyIdentityReadiness.plannedProjectSchemaVersion}.`}
+            detail={`Source format target: ${topologyIdentityReadiness.plannedProjectSchemaVersion}.`}
           />
           <ProjectWorkflowRow
             label="Boundary"
             value="Source-owned"
-            detail={topologyIdentityReadiness.derivedBoundaryNote}
+            detail={display.boundaryDetail}
           />
         </dl>
         <ul className="compact-list">

@@ -1028,7 +1028,7 @@ describe("sketch panel UI helpers", () => {
         targetTopologyAnchorId: "anchor_body_cut",
         profileKind: "rectangle",
         label: "Rectangle result 1 / 1 mm",
-        detail: "Rectangle topology result / cut / body_cut"
+        detail: "Rectangle result body / cut / body_cut"
       }
     ]);
   });
@@ -1097,7 +1097,7 @@ describe("sketch panel UI helpers", () => {
         targetTopologyAnchorId: "anchor_body_rect",
         profileKind: "rectangle",
         label: "Rectangle result 1 / 1 mm",
-        detail: "Rectangle topology result / cut / body_cut"
+        detail: "Rectangle result body / cut / body_cut"
       }
     ]);
   });
@@ -1184,7 +1184,7 @@ describe("sketch panel UI helpers", () => {
         targetTopologyAnchorId: "anchor_body_rect",
         profileKind: "rectangle" as const,
         label: "Result target",
-        detail: "Rectangle topology result / cut / body_boolean_result"
+        detail: "Rectangle result body / cut / body_boolean_result"
       }
     ];
 
@@ -1269,7 +1269,7 @@ describe("sketch panel UI helpers", () => {
         targetTopologyAnchorId: "anchor_body_rect",
         profileKind: "rectangle",
         label: "Rectangle result 1 / 1 mm",
-        detail: "Rectangle topology result / cut / body_cut"
+        detail: "Rectangle result body / cut / body_cut"
       }
     ]);
   });
@@ -1324,7 +1324,7 @@ describe("sketch panel UI helpers", () => {
         targetTopologyAnchorId: "anchor_body_rect",
         profileKind: "rectangle",
         label: "Rectangle result 1 / 1 mm",
-        detail: "Rectangle topology result / cut / body_cut"
+        detail: "Rectangle result body / cut / body_cut"
       }
     ]);
   });
@@ -1359,7 +1359,7 @@ describe("sketch panel UI helpers", () => {
         targetTopologyAnchorId: "anchor_body_cut",
         profileKind: "rectangle",
         label: "Rectangle result 1 / 1 mm",
-        detail: "Rectangle topology result / cut / body_cut"
+        detail: "Rectangle result body / cut / body_cut"
       }
     ]);
   });
@@ -1384,7 +1384,7 @@ describe("sketch panel UI helpers", () => {
         targetTopologyAnchorId: "anchor_body_circle",
         profileKind: "circle",
         label: "Circle result 1 / 1 mm",
-        detail: "Circle topology result / cut / body_cut"
+        detail: "Circle result body / cut / body_cut"
       }
     ]);
   });
@@ -1557,7 +1557,7 @@ describe("sketch panel UI helpers", () => {
       targetTopologyAnchorId: "anchor_body_circle",
       profileKind: "circle" as const,
       label: "Circle result",
-      detail: "Circle topology result / cut / body_circle_result"
+      detail: "Circle result body / cut / body_circle_result"
     };
     const rectangleTarget = {
       bodyId: "body_rect",

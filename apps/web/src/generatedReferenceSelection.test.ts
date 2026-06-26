@@ -340,12 +340,12 @@ describe("generated reference selection helpers", () => {
     };
 
     expect(formatSelectionReferenceStatus(response.status)).toBe(
-      "Selection topology ambiguous"
+      "Selection target ambiguous"
     );
     expect(createSelectionReferenceCandidateSummaries(response)).toEqual([
       {
         tone: "blocked",
-        title: "Selection topology ambiguous",
+        title: "Selection target ambiguous",
         detail:
           "Boolean result body body_cut is visible, but body-level modeling commands are not available. Select a ready result face or edge for sketching, naming, measuring, or inspecting.",
         topologyDetail: undefined,

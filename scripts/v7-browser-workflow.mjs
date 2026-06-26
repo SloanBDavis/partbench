@@ -139,7 +139,8 @@ export const V14_BROWSER_WORKFLOW_CHECK_IDS = Object.freeze([
   "v14-result-face-circle-hole-display-ready-browser",
   "v14-result-hole-wcad-roundtrip-browser",
   "v14-result-hole-upstream-edit-blocked-browser",
-  "v14-result-hole-topology-source-json-browser"
+  "v14-result-hole-topology-source-json-browser",
+  "v14-normal-surfaces-user-facing-copy-browser"
 ]);
 
 export function getV7BrowserWorkflowRequiredCheckIds({

@@ -1361,7 +1361,7 @@ function createBooleanTargetBodyOptions(
               isTopologyResultTarget ? "result" : "target"
             } ${index + 1} / ${feature.depth} mm`,
           detail: isTopologyResultTarget
-            ? `${formatProfileKind(targetProfileKind)} topology result / ${
+            ? `${formatProfileKind(targetProfileKind)} result body / ${
                 feature.operationMode
               } / ${body.id}`
             : `${formatProfileKind(targetProfileKind)} new body / ${
