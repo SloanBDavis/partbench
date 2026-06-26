@@ -55,7 +55,7 @@ export function createProjectExportReadinessDisplay(
     sourceDetail:
       "Candidate bodies come from the current project contents and units.",
     derivedDetail: visualizationExport
-      ? `Visualization GLB can use ${visualizationExport.exportableBodyCount} ready display mesh${visualizationExport.exportableBodyCount === 1 ? "" : "es"}.`
+      ? `Visualization GLB can use ${visualizationExport.exportableBodyCount} ${visualizationExport.exportableBodyCount === 1 ? "body with" : "bodies with"} ready display geometry.`
       : "Display output is not used for STEP export.",
     bodySummary: `${readiness.sourceSupportedBodyCount} ready for STEP, ${readiness.deferredBodyCount} not ready yet, ${readiness.unavailableBodyCount} unavailable${
       visualizationExport
@@ -86,14 +86,16 @@ function createFormatRow(
   format: CadExportFormatReadiness,
   visualizationExport: ProjectVisualizationExportDisplayStatus | undefined
 ): ProjectExportReadinessRow {
+  const label = formatExportFormatLabel(format);
+
   if (format.format === "glb" && visualizationExport) {
     return {
       id: format.format,
-      label: format.label,
+      label,
       status: visualizationExport.status,
       statusLabel: getExportReadinessStatusLabel(visualizationExport.status),
       detail: visualizationExport.available
-        ? `${format.label} export is available for ${formatVisualizationBodyCount(visualizationExport.exportableBodyCount)}.`
+        ? `${label} export is available for ${formatVisualizationBodyCount(visualizationExport.exportableBodyCount)}.`
         : visualizationExport.detail,
       limitation: visualizationExport.available
         ? `${visualizationExport.vertexCount} vertices and ${visualizationExport.triangleCount} triangles will be written as display output.${
@@ -117,17 +119,17 @@ function createFormatRow(
 
   return {
     id: format.format,
-    label: format.label,
+    label,
     status: format.status,
     statusLabel: getExportReadinessStatusLabel(format.status),
     detail: format.available
-      ? `${format.label} export is available for current source bodies.`
+      ? `${label} export is available for current source bodies.`
       : format.exportKind === "exact"
-        ? `${format.label} exact export needs at least one supported source body.`
-        : `${format.label} export files are not available yet.`,
+        ? `${label} exact export needs at least one supported source body.`
+        : `${label} export files are not available yet.`,
     limitation:
       emptyDiagnostic?.message ??
-      writerDiagnostic?.message ??
+      formatExportFormatMessage(writerDiagnostic?.message) ??
       "No format-specific blocker reported.",
     nextStep:
       format.status === "unavailable"
@@ -136,6 +138,16 @@ function createFormatRow(
           ? "Use the STEP download action from Project/File."
           : "Implement the file writer before enabling downloads."
   };
+}
+
+function formatExportFormatLabel(format: CadExportFormatReadiness): string {
+  return format.format === "glb" ? "Visualization GLB" : format.label;
+}
+
+function formatExportFormatMessage(
+  message: string | undefined
+): string | undefined {
+  return message?.replace(/\bMesh\/GLB visualization\b/g, "Visualization GLB");
 }
 
 function formatBodyCount(count: number): string {

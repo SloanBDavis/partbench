@@ -472,10 +472,10 @@ function ProjectOpfsCacheStatusView({
     <section
       id="project-opfs-cache-status"
       className="project-workflow-section"
-      aria-label="Local mesh cache status"
+      aria-label="Local display cache status"
     >
       <div className="project-workflow-heading">
-        <h3>Local mesh cache</h3>
+        <h3>Local display cache</h3>
         <span>{getProjectOpfsCacheStatusLabel(status)}</span>
       </div>
       <div className="button-row compact">

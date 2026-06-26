@@ -111,14 +111,14 @@ export function createProjectStorageCapabilityStatus(
     mode: "opfs",
     availability: opfsApiDetected ? "available" : "unavailable",
     available: opfsApiDetected,
-    label: "Local mesh cache",
+    label: "Local display cache",
     detail: opfsApiDetected
       ? "Browser-private rebuildable cache status and clear are available."
       : "This browser does not expose local cache storage.",
     limitation:
       "No project source, recovery store, thumbnail, export artifact, or package source is stored in OPFS.",
     nextStep:
-      "Use Project/File cache status and Clear cache; supported mesh artifacts are rebuildable."
+      "Use Project/File cache status and Clear cache; supported display artifacts are rebuildable."
   };
 
   const wcadPackage: ProjectStorageCapabilityEntry = {

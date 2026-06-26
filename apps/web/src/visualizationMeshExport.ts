@@ -205,7 +205,7 @@ export function createVisualizationMeshExportArtifact(
         error instanceof Error
           ? `GLB visualization writer failed: ${error.message}`
           : "GLB visualization writer failed.",
-      expected: "valid derived visualization meshes",
+      expected: "valid display geometry",
       received: "writer failure"
     });
 
@@ -307,7 +307,7 @@ export function createGlbFromRenderMeshes(
   const gltf = {
     asset: {
       version: "2.0",
-      generator: "Partbench visualization mesh export"
+      generator: "Partbench visualization GLB export"
     },
     scene: 0,
     scenes: [{ nodes: nodes.map((_, index) => index) }],
@@ -436,11 +436,11 @@ function createVisualizationMeshExportPlan(
         createExportDiagnostic({
           code: "VISUALIZATION_EXPORT_MESH_MISSING",
           status: "deferred",
-          message: `Body ${body.bodyId} does not have a derived visualization mesh yet.`,
+          message: `Body ${body.bodyId} does not have ready display geometry yet.`,
           bodyId: body.bodyId,
           bodyName: body.bodyName,
-          expected: "ready derived visualization mesh",
-          received: "missing mesh"
+          expected: "ready display geometry",
+          received: "missing display geometry"
         })
       );
       continue;
@@ -451,11 +451,11 @@ function createVisualizationMeshExportPlan(
         createExportDiagnostic({
           code: "VISUALIZATION_EXPORT_MESH_STALE",
           status: "deferred",
-          message: `Body ${body.bodyId} has an outdated derived visualization mesh.`,
+          message: `Body ${body.bodyId} has outdated display geometry.`,
           bodyId: body.bodyId,
           bodyName: body.bodyName,
-          expected: "current derived visualization mesh",
-          received: "stale mesh"
+          expected: "current display geometry",
+          received: "stale display geometry"
         })
       );
       continue;
@@ -475,11 +475,11 @@ function createVisualizationMeshExportPlan(
         createExportDiagnostic({
           code: "VISUALIZATION_EXPORT_MESH_INVALID",
           status: "unavailable",
-          message: `Body ${body.bodyId} has invalid visualization mesh data: ${invalidMessage}`,
+          message: `Body ${body.bodyId} has invalid display geometry: ${invalidMessage}`,
           bodyId: body.bodyId,
           bodyName: body.bodyName,
           expected: "finite vertices and triangle indices",
-          received: "invalid mesh"
+          received: "invalid display geometry"
         })
       );
       continue;
@@ -507,21 +507,21 @@ function createVisualizationMeshExportPlan(
   const available = exportableBodies.length > 0;
   const limitation =
     diagnostics[0]?.message ??
-    "Ready derived visualization meshes can be written as a transient GLB artifact.";
+    "Ready display geometry can be written as a transient GLB artifact.";
 
   return {
     bodies: exportableBodies,
     status: {
       format: "glb",
-      label: "Mesh/GLB visualization",
+      label: "Visualization GLB",
       status,
       available,
       fileName: GLB_FILE_NAME,
       mimeType: GLB_MIME_TYPE,
       units: input.exportReadiness.units,
       detail: available
-        ? "GLB visualization export is available for ready derived display meshes."
-        : "GLB visualization export needs at least one ready derived display mesh.",
+        ? "GLB visualization export is available for ready display geometry."
+        : "GLB visualization export needs at least one body with ready display geometry.",
       limitation,
       nextStep: available
         ? diagnostics.length > 0
@@ -549,41 +549,41 @@ function createEntryDiagnostic(
       return createExportDiagnostic({
         code: "VISUALIZATION_EXPORT_MESH_PENDING",
         status: "deferred",
-        message: `Body ${bodyId} is still building its derived visualization mesh.`,
+        message: `Body ${bodyId} is still building display geometry.`,
         bodyId,
         bodyName,
-        expected: "ready derived visualization mesh",
-        received: "pending mesh"
+        expected: "ready display geometry",
+        received: "pending display geometry"
       });
     case "error":
       return createExportDiagnostic({
         code: "VISUALIZATION_EXPORT_MESH_FAILED",
         status: "unavailable",
-        message: `Body ${bodyId} failed to build its derived visualization mesh.`,
+        message: `Body ${bodyId} failed to build display geometry.`,
         bodyId,
         bodyName,
-        expected: "ready derived visualization mesh",
-        received: "failed mesh"
+        expected: "ready display geometry",
+        received: "failed display geometry"
       });
     case "unsupported":
       return createExportDiagnostic({
         code: "VISUALIZATION_EXPORT_MESH_UNSUPPORTED",
         status: "unavailable",
-        message: `Body ${bodyId} is not supported by the current visualization mesh path.`,
+        message: `Body ${bodyId} is not supported by the current visualization export path.`,
         bodyId,
         bodyName,
-        expected: "supported derived visualization source",
-        received: "unsupported mesh source"
+        expected: "supported visualization source",
+        received: "unsupported visualization source"
       });
     case "ready":
       return createExportDiagnostic({
         code: "VISUALIZATION_EXPORT_MESH_INVALID",
         status: "unavailable",
-        message: `Body ${bodyId} has invalid visualization mesh data.`,
+        message: `Body ${bodyId} has invalid display geometry.`,
         bodyId,
         bodyName,
-        expected: "valid derived visualization mesh",
-        received: "invalid mesh"
+        expected: "valid display geometry",
+        received: "invalid display geometry"
       });
   }
 }
@@ -609,7 +609,7 @@ function getUnavailableNextStep(
       (diagnostic) => diagnostic.code === "VISUALIZATION_EXPORT_MESH_PENDING"
     )
   ) {
-    return "Wait for derived visualization meshes to finish building.";
+    return "Wait for display geometry to finish building.";
   }
 
   if (
@@ -619,10 +619,10 @@ function getUnavailableNextStep(
         diagnostic.code === "VISUALIZATION_EXPORT_MESH_STALE"
     )
   ) {
-    return "Refresh derived visualization meshes before exporting.";
+    return "Refresh display geometry before exporting.";
   }
 
-  return "Use an active rectangle or circle newBody extrude with a ready visualization mesh.";
+  return "Use an active rectangle or circle newBody extrude with ready display geometry.";
 }
 
 function createExportDiagnostic({

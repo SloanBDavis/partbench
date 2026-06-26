@@ -203,7 +203,7 @@ describe("ProjectJsonPanel", () => {
     expect(markup).toContain("Direct open/save");
     expect(markup).toContain("Available");
     expect(markup).toContain("browser session");
-    expect(markup).toContain("Local mesh cache");
+    expect(markup).toContain("Local display cache");
     expect(markup).toContain("Clear cache");
     expect(markup).toContain("partbench.opfs-cache.v1");
     expect(markup).toContain("Optional rebuildable cache");
@@ -212,6 +212,7 @@ describe("ProjectJsonPanel", () => {
     expect(markup).toContain("No project source");
     expect(markup).toContain("No .wcad package has been opened or saved yet");
     expect(markup).not.toContain("partbench-project.wcad");
+    expect(markup).not.toContain("Local mesh cache");
   });
 
   it("renders OPFS cache diagnostics without exposing implementation handles", () => {
@@ -262,12 +263,12 @@ describe("ProjectJsonPanel", () => {
       })
     );
 
-    expect(markup).toContain("Local mesh cache");
+    expect(markup).toContain("Local display cache");
     expect(markup).toContain("Invalid");
     expect(markup).toContain("OPFS_STALE_SOURCE_IDENTITY");
     expect(markup).toContain(".wcad unchanged");
     expect(markup).not.toMatch(
-      /fileHandle|opfsPath|rendererId|meshId|occtId|selectionBufferId/i
+      /fileHandle|opfsPath|rendererId|meshId|occtId|selectionBufferId|Local mesh cache/i
     );
   });
 
@@ -324,7 +325,7 @@ describe("ProjectJsonPanel", () => {
     expect(markup).toContain("Export readiness");
     expect(markup).toContain("Supported");
     expect(markup).toContain("STEP");
-    expect(markup).toContain("Mesh/GLB visualization");
+    expect(markup).toContain("Visualization GLB");
     expect(markup).toContain("STEP export is available");
     expect(markup).toContain("Body is ready for exact STEP export.");
     expect(markup).toContain("Display output is not used for STEP export");
@@ -339,7 +340,7 @@ describe("ProjectJsonPanel", () => {
     );
     expect(exportReadinessMarkup).toContain("Download STEP");
     expect(exportReadinessMarkup).not.toMatch(
-      /OCCT|renderer|cache|selection-buffer/i
+      /OCCT|renderer|cache|selection-buffer|Mesh\/GLB/i
     );
   });
 
@@ -436,9 +437,9 @@ describe("ProjectJsonPanel", () => {
           status: "supported",
           available: true,
           detail:
-            "GLB visualization export is available for ready derived display meshes.",
+            "GLB visualization export is available for ready display geometry.",
           limitation:
-            "Ready derived visualization meshes can be written as a transient GLB artifact.",
+            "Ready display geometry can be written as a transient GLB artifact.",
           nextStep:
             "Download the GLB visualization artifact from the Project panel.",
           exportableBodyCount: 1,
@@ -481,13 +482,14 @@ describe("ProjectJsonPanel", () => {
       "STEP and Visualization GLB export"
     );
     expect(exportReadinessMarkup).toContain(
-      "Mesh/GLB visualization export is available"
+      "Visualization GLB export is available"
     );
     expect(exportReadinessMarkup).toContain("Download STEP");
     expect(exportReadinessMarkup).toContain("Download visualization GLB");
     expect(exportReadinessMarkup).not.toMatch(
       /<button type="button" disabled="">Download visualization GLB<\/button>/
     );
+    expect(exportReadinessMarkup).not.toMatch(/\bMesh\/GLB\b/);
     const jsonInterchangeStart = markup.indexOf(
       "<summary>JSON import/export</summary>"
     );
@@ -537,9 +539,9 @@ describe("ProjectJsonPanel", () => {
     expect(exportReadinessMarkup).toContain("Primitive object source");
     expect(exportReadinessMarkup).toContain("not treated as an authored CAD");
     expect(exportReadinessMarkup).toContain("STEP");
-    expect(exportReadinessMarkup).toContain("Mesh/GLB visualization");
+    expect(exportReadinessMarkup).toContain("Visualization GLB");
     expect(exportReadinessMarkup).not.toMatch(
-      /OCCT|renderer|cache|selection-buffer/i
+      /OCCT|renderer|cache|selection-buffer|Mesh\/GLB/i
     );
   });
 

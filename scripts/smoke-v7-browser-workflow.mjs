@@ -1494,8 +1494,12 @@ async function v7BrowserWorkflowSmoke({
     assertIncludes(projectPanel, "Storage availability", "storage-status"),
     assertIncludes(projectPanel, "JSON import/export", "json-storage-mode"),
     assertIncludes(projectPanel, "Direct open/save", "direct-file-status"),
-    assertIncludes(projectPanel, "Local mesh cache", "opfs-capability-status"),
-    assertIncludes(projectPanel, "Local mesh cache", "opfs-cache-status"),
+    assertIncludes(
+      projectPanel,
+      "Local display cache",
+      "opfs-capability-status"
+    ),
+    assertIncludes(projectPanel, "Local display cache", "opfs-cache-status"),
     assertIncludes(projectPanel, "Clear cache", "opfs-cache-clear-action"),
     assertIncludes(
       projectPanel,
@@ -1505,7 +1509,7 @@ async function v7BrowserWorkflowSmoke({
     assertIncludes(projectPanel, ".wcad project file", "wcad-deferred-status"),
     assertIncludes(projectPanel, "STEP", "step-export-status"),
     assertIncludes(projectPanel, "Download STEP", "step-download-action"),
-    assertIncludes(projectPanel, "Mesh/GLB visualization", "mesh-glb-status")
+    assertIncludes(projectPanel, "Visualization GLB", "mesh-glb-status")
   ];
   if (projectChecks.every(Boolean)) {
     pass(
@@ -1665,7 +1669,7 @@ async function v7BrowserWorkflowSmoke({
   if (derivedMeshCacheObserved()) {
     pass(
       "project-opfs-derived-mesh-cache",
-      "Project/File panel reports a derived visualization mesh cache entry",
+      "Project/File panel reports a derived display cache entry",
       compactText(projectPanel.textContent, 260)
     );
   } else if (requireDerivedMeshCache) {
@@ -1679,13 +1683,13 @@ async function v7BrowserWorkflowSmoke({
       }, "derived mesh OPFS cache entry");
       pass(
         "project-opfs-derived-mesh-cache",
-        "Project/File panel reports a derived visualization mesh cache entry",
+        "Project/File panel reports a derived display cache entry",
         compactText(projectPanel.textContent, 260)
       );
     } catch (error) {
       fail(
         "project-opfs-derived-mesh-cache",
-        "Project/File panel reports a derived visualization mesh cache entry",
+        "Project/File panel reports a derived display cache entry",
         error instanceof Error ? error.message : String(error)
       );
     }
@@ -1696,7 +1700,7 @@ async function v7BrowserWorkflowSmoke({
         includesText(projectPanel, "StorageUnavailable") ||
         includesText(projectPanel, "OPFS is unavailable")
           ? "OPFS is unavailable in this browser runtime."
-          : "No derived mesh cache entry was observed during the optional smoke path."
+          : "No derived display cache entry was observed during the optional smoke path."
     });
   }
 
@@ -1842,10 +1846,7 @@ async function v7BrowserWorkflowSmoke({
         includesText(projectPanel, "Downloaded partbench-visualization.glb"),
       "visualization GLB download message"
     );
-    pass(
-      "glb-download",
-      "ready derived visualization mesh exported as transient GLB"
-    );
+    pass("glb-download", "ready display geometry exported as transient GLB");
   }
 
   if (requireV13Workflow) {
@@ -2000,10 +2001,15 @@ async function v7BrowserWorkflowSmoke({
       return;
     }
 
-    if (/\bdebug\b/i.test(text)) {
+    if (
+      /\b(debug|tranche|milestone|deferred|command-ready|cad-core|checkpoint-local|package contract|checkpoint payload|mesh error|topology error)\b/i.test(
+        text
+      ) ||
+      /\bMesh\/GLB\b/i.test(text)
+    ) {
       fail(
         "v14-project-file-user-facing-json-copy-browser",
-        "V14 Project/File copy avoids debug labels in user-facing JSON workflow",
+        "V14 Project/File copy avoids internal labels in user-facing workflow",
         text
       );
       return;
@@ -2011,7 +2017,7 @@ async function v7BrowserWorkflowSmoke({
 
     pass(
       "v14-project-file-user-facing-json-copy-browser",
-      "V14 Project/File copy avoids debug labels in user-facing JSON workflow"
+      "V14 Project/File copy avoids internal labels in user-facing workflow"
     );
   }
 

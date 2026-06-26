@@ -22,9 +22,9 @@ describe("projectExportReadiness", () => {
       },
       {
         id: "glb",
-        label: "Mesh/GLB visualization",
+        label: "Visualization GLB",
         status: "deferred",
-        detail: "Mesh/GLB visualization export files are not available yet."
+        detail: "Visualization GLB export files are not available yet."
       }
     ]);
     expect(display.bodyRows).toMatchObject([
@@ -41,16 +41,16 @@ describe("projectExportReadiness", () => {
     ]);
   });
 
-  it("overlays derived Mesh/GLB visualization availability without changing STEP", () => {
+  it("overlays Visualization GLB availability without changing STEP", () => {
     const display = createProjectExportReadinessDisplay(
       createExportReadinessResponse(),
       {
         status: "supported",
         available: true,
         detail:
-          "GLB visualization export is available for ready derived display meshes.",
+          "GLB visualization export is available for ready display geometry.",
         limitation:
-          "Ready derived visualization meshes can be written as a transient GLB artifact.",
+          "Ready display geometry can be written as a transient GLB artifact.",
         nextStep:
           "Download the GLB visualization artifact from the Project panel.",
         exportableBodyCount: 1,
@@ -71,14 +71,15 @@ describe("projectExportReadiness", () => {
       },
       {
         id: "glb",
-        label: "Mesh/GLB visualization",
+        label: "Visualization GLB",
         status: "supported",
         detail:
-          "Mesh/GLB visualization export is available for 1 ready visualization body.",
+          "Visualization GLB export is available for 1 ready visualization body.",
         limitation:
-          "24 vertices and 12 triangles will be written as display output. 1 body skipped: Ready derived visualization meshes can be written as a transient GLB artifact."
+          "24 vertices and 12 triangles will be written as display output. 1 body skipped: Ready display geometry can be written as a transient GLB artifact."
       }
     ]);
+    expect(JSON.stringify(display)).not.toMatch(/\bMesh\/GLB\b/);
   });
 
   it("pluralizes visualization body export counts", () => {
@@ -88,9 +89,9 @@ describe("projectExportReadiness", () => {
         status: "supported",
         available: true,
         detail:
-          "GLB visualization export is available for ready derived display meshes.",
+          "GLB visualization export is available for ready display geometry.",
         limitation:
-          "Ready derived visualization meshes can be written as a transient GLB artifact.",
+          "Ready display geometry can be written as a transient GLB artifact.",
         nextStep:
           "Download the GLB visualization artifact from the Project panel.",
         exportableBodyCount: 2,
@@ -103,10 +104,10 @@ describe("projectExportReadiness", () => {
     const glbRow = display.formatRows.find((row) => row.id === "glb");
 
     expect(glbRow?.detail).toBe(
-      "Mesh/GLB visualization export is available for 2 ready visualization bodies."
+      "Visualization GLB export is available for 2 ready visualization bodies."
     );
     expect(glbRow?.limitation).toBe(
-      "48 vertices and 24 triangles will be written as display output. 2 bodies skipped: Ready derived visualization meshes can be written as a transient GLB artifact."
+      "48 vertices and 24 triangles will be written as display output. 2 bodies skipped: Ready display geometry can be written as a transient GLB artifact."
     );
     expect(glbRow?.limitation).not.toContain("bodyies");
   });
@@ -119,7 +120,9 @@ describe("projectExportReadiness", () => {
 
     expect(display.sourceDetail).toContain("current project contents");
     expect(display.derivedDetail).toContain("not used for STEP export");
-    expect(publicText).not.toMatch(/OCCT|renderer|cache|selection-buffer/i);
+    expect(publicText).not.toMatch(
+      /OCCT|renderer|cache|selection-buffer|Mesh\/GLB/i
+    );
   });
 });
 

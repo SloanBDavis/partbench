@@ -73,7 +73,7 @@ These constraints remain active:
     second cut, circle-family result-body rectangle cut, result-face circle
     hole, and explicit XZ side-plane circle hole paths, and ready
     topology-backed reference selections and Project/File JSON import/export
-    use action-oriented product copy instead of internal debug labels.
+    use action-oriented product copy instead of internal implementation labels.
     Completed V8, V9, V10, V11, V12, and V13
     tranche records below remain historical release records and compatibility
     guardrails. Do not re-open those releases unless the user explicitly asks

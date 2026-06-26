@@ -287,7 +287,7 @@ export async function readDerivedMeshOpfsCache(input: {
       result: {
         mesh: artifact.mesh,
         metrics: artifact.metrics,
-        message: "Loaded derived visualization mesh from OPFS cache."
+        message: "Loaded display geometry from the local cache."
       }
     };
   } catch (error) {

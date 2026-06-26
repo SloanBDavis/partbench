@@ -35,7 +35,7 @@ describe("visualizationMeshExport", () => {
     });
     expect(parsed.json.asset).toEqual({
       version: "2.0",
-      generator: "Partbench visualization mesh export"
+      generator: "Partbench visualization GLB export"
     });
     expect(parsed.json.extras.partbench).toEqual({
       exportKind: "visualization",
