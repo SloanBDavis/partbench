@@ -1362,8 +1362,7 @@ function GeneratedReferencesPanel({
                   sketchAttachableFaces,
                   referenceCandidatesByStableId,
                   "feature.attachSketchPlane"
-                ) ??
-                  "No generated faces are command-ready for attached sketches."}
+                ) ?? "No generated faces are available for attached sketches."}
               </p>
             )}
           {commandReadySketchAttachableFaces.length > 0 && (

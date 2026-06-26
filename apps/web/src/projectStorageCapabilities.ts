@@ -169,7 +169,7 @@ export function getProjectStorageAvailabilityLabel(
     case "available":
       return "Available";
     case "deferred":
-      return "Deferred";
+      return "Not ready yet";
     case "unavailable":
       return "Unavailable";
   }

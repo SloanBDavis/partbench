@@ -58,7 +58,7 @@ export function resolveViewportHitCandidateSelection({
       createViewportInteractionDiagnostic(
         "VIEWPORT_UNSUPPORTED_DISPLAY_ENTITY",
         "unsupported",
-        "Viewport sketch display entities are not command-ready CAD references. Select a body, face, edge, vertex, or named reference instead.",
+        "Viewport sketch display entities are not available for CAD actions. Select a body, face, edge, vertex, or named reference instead.",
         {
           expected:
             "body, generated face, generated edge, generated vertex, or named reference",

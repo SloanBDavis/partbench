@@ -161,7 +161,7 @@ function createCompactStatus(
           detail:
             selectedGeneratedReferenceState.reference.kind === "body"
               ? selectionDisplay.detail
-              : "Owning body highlighted; exact subentity highlight deferred."
+              : "Owning body highlighted; use the Inspector for exact face or edge details."
         }
       : selectedGeneratedReferenceState.status === "stale"
         ? {

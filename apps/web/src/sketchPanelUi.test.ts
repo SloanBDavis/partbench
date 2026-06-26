@@ -1453,7 +1453,7 @@ describe("sketch panel UI helpers", () => {
     expect(getCutOperationStatus(rectangle, [])).toEqual({
       available: false,
       message:
-        "Create an active rectangle, circle, or topology-backed result body before using Cut body."
+        "Create an active rectangle, circle, or previous result body before using Cut body."
     });
     expect(getCutOperationStatus(rectangle, targets)).toEqual({
       available: true,
@@ -1611,7 +1611,7 @@ describe("sketch panel UI helpers", () => {
     expect(getAddOperationStatus(rectangle, [])).toEqual({
       available: false,
       message:
-        "Create an active rectangle source body or topology-backed result body before using Add to body."
+        "Create an active rectangle body or previous result body before using Add to body."
     });
     expect(getAddOperationStatus(rectangle, targets)).toEqual({
       available: true,

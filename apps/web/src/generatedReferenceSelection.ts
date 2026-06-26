@@ -198,7 +198,7 @@ export function getSelectionReferenceOperationStatus(
   if (!response) {
     return {
       available: false,
-      message: `${formatSelectionReferenceOperationLabel(operation)} requires a command-ready reference query.`
+      message: `${formatSelectionReferenceOperationLabel(operation)} needs reference readiness information.`
     };
   }
 
@@ -235,7 +235,7 @@ export function getSelectionReferenceOperationStatus(
 
   return {
     available: false,
-    message: `${formatSelectionReferenceOperationLabel(operation)} is not command-ready for this selection.`
+    message: `${formatSelectionReferenceOperationLabel(operation)} is not available for this selection.`
   };
 }
 
@@ -315,7 +315,7 @@ export function createSelectionReferenceCandidateSummary(
     title: `${formatGeneratedReferenceKind(candidate.reference.kind)}: ${candidate.label}`,
     detail:
       issueMessages[0] ??
-      `${candidate.commandOperations.length} command-ready operation${candidate.commandOperations.length === 1 ? "" : "s"}`,
+      `${candidate.commandOperations.length} available action${candidate.commandOperations.length === 1 ? "" : "s"}`,
     topologyDetail: createSelectionReferenceTopologyDetail(candidate),
     stableId: candidate.target.stableId,
     commandOperations: candidate.commandOperations,
@@ -342,7 +342,7 @@ export function formatSelectionReferenceStatus(
 ): string {
   switch (status) {
     case "resolved":
-      return "Command-ready reference";
+      return "Ready reference";
     case "missing":
       return "Selection target missing";
     case "stale":
@@ -354,7 +354,7 @@ export function formatSelectionReferenceStatus(
     case "consumed":
       return "Selection body consumed";
     case "non-commandable":
-      return "Selection is not commandable";
+      return "Selection is not available for modeling";
   }
 }
 

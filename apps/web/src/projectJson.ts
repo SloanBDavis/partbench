@@ -198,9 +198,9 @@ export function createProjectJsonWorkflowState({
   return {
     current: {
       summary: currentSummary,
-      sourceLabel: "cad-core document",
+      sourceLabel: "Current project",
       sourceDetail:
-        "JSON import/export carries source document data plus undo and redo history only."
+        "JSON import/export carries project data plus undo and redo history only."
     },
     draft: {
       source: createProjectJsonDraftSourceState(draftSource),
@@ -240,7 +240,7 @@ export function formatProjectJsonSummary(summary: ProjectJsonSummary): string {
       ? `, ${summary.namedReferenceCount} named reference(s)`
       : "";
 
-  return `${summary.schemaVersion}, ${summary.objectCount} object(s)${objectKinds}${sketches}${features}${namedReferences}, ${summary.transactionCount} transaction(s)${redo}`;
+  return `${summary.objectCount} object(s)${objectKinds}${sketches}${features}${namedReferences}, ${summary.transactionCount} transaction(s)${redo}`;
 }
 
 export function getProjectImportStatusText(
@@ -248,7 +248,7 @@ export function getProjectImportStatusText(
   impact?: ProjectJsonImportImpact
 ): string {
   if (preview.status === "empty") {
-    return "Generate, load, or paste project JSON to preview source-of-truth data before import.";
+    return "Generate, load, or paste project JSON to preview project data before import.";
   }
 
   if (preview.status === "invalid") {
@@ -277,7 +277,7 @@ function createProjectJsonDraftSourceState(
     return {
       kind: "generatedExport",
       label: "Generated export",
-      detail: "Draft was generated from the current Partbench source document."
+      detail: "Draft was generated from the current Partbench project."
     };
   }
 
@@ -313,7 +313,7 @@ function createProjectJsonSchemaWorkflowState(
   if (preview.status === "empty") {
     return {
       status: "empty",
-      label: "No schema",
+      label: "No format info",
       detail: "No draft JSON is available to inspect."
     };
   }
@@ -325,10 +325,10 @@ function createProjectJsonSchemaWorkflowState(
 
     return {
       status: "invalid",
-      label: "Schema blocked",
+      label: "Format not recognized",
       detail:
         schemaIssue?.message ??
-        "Schema status is unavailable until validation succeeds.",
+        "Format status is unavailable until validation succeeds.",
       ...(sourceSchemaVersion ? { sourceSchemaVersion } : {})
     };
   }
@@ -339,7 +339,7 @@ function createProjectJsonSchemaWorkflowState(
   if (rawSchemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION) {
     return {
       status: "current",
-      label: "Current schema",
+      label: "Current format",
       detail: `${CURRENT_CAD_PROJECT_FORMAT_VERSION} imports without migration.`,
       sourceSchemaVersion: rawSchemaVersion,
       normalizedSchemaVersion
@@ -348,8 +348,8 @@ function createProjectJsonSchemaWorkflowState(
 
   return {
     status: "legacyMigrated",
-    label: "Legacy schema accepted",
-    detail: `${rawSchemaVersion} will import through cad-core migration to ${normalizedSchemaVersion}.`,
+    label: "Older format accepted",
+    detail: `${rawSchemaVersion} will be updated to ${normalizedSchemaVersion} during import.`,
     sourceSchemaVersion: rawSchemaVersion,
     normalizedSchemaVersion
   };
@@ -378,7 +378,7 @@ function createProjectJsonImportImpact(
       redoTransactionCount: summary.redoTransactionCount,
       label: "No document source change detected",
       detail:
-        "Draft document source matches the current project; import is available and may still restore undo/redo history.",
+        "Draft project data matches the current project; import is available and may still restore undo/redo history.",
       historyDetail
     };
   }
@@ -390,7 +390,7 @@ function createProjectJsonImportImpact(
     undoTransactionCount: summary.transactionCount,
     redoTransactionCount: summary.redoTransactionCount,
     label: "Will replace current document",
-    detail: `Ready to import ${formatProjectJsonSummary(summary)}. Import replaces the current document with the draft source truth.`,
+    detail: `Ready to import ${formatProjectJsonSummary(summary)}. Import replaces the current project with the draft project data.`,
     historyDetail
   };
 }

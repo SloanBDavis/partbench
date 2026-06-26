@@ -832,7 +832,7 @@ function formatStatus(status: CadViewportInteractionStatus): string {
     case "consumed":
       return "consumed";
     case "non-commandable":
-      return "not commandable";
+      return "not available";
     case "renderer-only":
       return "renderer-only";
     case "assembly-unsupported":

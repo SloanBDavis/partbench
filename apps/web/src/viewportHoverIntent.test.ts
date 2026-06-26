@@ -31,7 +31,7 @@ describe("viewport hover intent", () => {
     expect(hover).toMatchObject({
       kind: "body",
       title: "Base (Body)",
-      detail: "4 command-ready operations",
+      detail: "4 available actions",
       tone: "ready",
       bodyId: "body_rect",
       renderTargetId: "body_rect",

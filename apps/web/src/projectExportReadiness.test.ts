@@ -11,7 +11,7 @@ describe("projectExportReadiness", () => {
     expect(display.statusLabel).toBe("Supported");
     expect(display.detail).toContain("STEP export is available");
     expect(display.bodySummary).toBe(
-      "1 source supported, 1 deferred, 0 unavailable"
+      "1 ready for STEP, 1 not ready yet, 0 unavailable"
     );
     expect(display.formatRows).toMatchObject([
       {
@@ -31,12 +31,12 @@ describe("projectExportReadiness", () => {
       {
         id: "body_rect",
         status: "supported",
-        detail: "Source body is supported for exact STEP export."
+        detail: "Body is ready for exact STEP export."
       },
       {
         id: "body_hole",
         status: "deferred",
-        detail: "Hole result-body export readiness is deferred."
+        detail: "Hole bodies are not ready for STEP export yet."
       }
     ]);
   });

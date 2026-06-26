@@ -132,7 +132,7 @@ describe("derivedGeometry", () => {
       "torus_1"
     ]);
     expect(getDerivedGeometryStatusLabel(snapshot.entries[0])).toBe(
-      "OCCT mesh ready"
+      "Display geometry ready"
     );
     expect(getDerivedGeometryStatusLabel(undefined)).toBe("Primitive fallback");
   });

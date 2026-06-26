@@ -170,7 +170,7 @@ describe("namedReferenceRepairUi", () => {
     ).toMatchObject({
       source: "selection.referenceCandidates",
       message:
-        "Repair targets must be proven command-ready by the shared reference query."
+        "Repair targets must be proven available by the shared reference query."
     });
   });
 
@@ -427,7 +427,8 @@ function createSelectionReferenceCandidates(
   } = {}
 ): SelectionReferenceCandidatesQueryResponse {
   const status = overrides.status ?? "resolved";
-  const message = overrides.message ?? "Selection is not commandable.";
+  const message =
+    overrides.message ?? "Selection is not available for modeling.";
   const issue =
     status === "resolved"
       ? undefined

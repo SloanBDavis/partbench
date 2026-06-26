@@ -831,7 +831,7 @@ function getUnsupportedSourceMessage(source: DerivedGeometrySource): string {
     );
   }
 
-  return "Derived OCCT mesh generation supports scene primitives, sketch extrudes, rectangle-tool boolean results, authored revolves, authored holes, and rectangle edge finishing.";
+  return "Display geometry generation supports scene primitives, sketch extrudes, rectangle-tool boolean results, authored revolves, authored holes, and rectangle edge finishing.";
 }
 
 function isSupportedBooleanExtrudeSource(
@@ -1065,9 +1065,9 @@ export function getDerivedGeometryStatusLabel(
 
   switch (entry.status) {
     case "ready":
-      return "OCCT mesh ready";
+      return "Display geometry ready";
     case "pending":
-      return "Building OCCT mesh";
+      return "Building display geometry";
     case "error":
       if (entry.sourceKind === "extrudeBoolean") {
         return "Boolean mesh error";

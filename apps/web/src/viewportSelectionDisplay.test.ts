@@ -22,11 +22,11 @@ describe("viewportSelectionDisplay", () => {
     expect(display).toMatchObject({
       selectionKind: "body",
       title: "Base (Body)",
-      detail: "Command-ready reference",
+      detail: "Ready reference",
       tone: "ready",
       renderTargetId: "body_rect",
       geometryStatus: "ready",
-      geometryDetail: "OCCT mesh ready",
+      geometryDetail: "Display geometry ready",
       referenceStatus: "resolved",
       referenceSummary: "Face: Start cap",
       commandOperationLabels: [
@@ -60,10 +60,10 @@ describe("viewportSelectionDisplay", () => {
 
     expect(display.selectionKind).toBe("generatedReference");
     expect(display.title).toBe("Face: Start cap");
-    expect(display.detail).toBe("Command-ready reference");
+    expect(display.detail).toBe("Ready reference");
     expect(display.renderTargetId).toBe("body_rect");
     expect(display.geometryStatus).toBe("pending");
-    expect(display.geometryDetail).toBe("Building OCCT mesh");
+    expect(display.geometryDetail).toBe("Building display geometry");
     expect(display.commandOperations).toContain("feature.attachSketchPlane");
   });
 
@@ -148,23 +148,21 @@ describe("viewportSelectionDisplay", () => {
           {
             code: "UNSUPPORTED_SELECTION_TARGET",
             status: "unsupported",
-            message: "Primitive body references are not command-ready.",
+            message: "Primitive body references are not available.",
             bodyId: "body_rect"
           }
         ]
       }
     });
 
-    expect(display.detail).toBe(
-      "Primitive body references are not command-ready."
-    );
+    expect(display.detail).toBe("Primitive body references are not available.");
     expect(display.tone).toBe("blocked");
     expect(display.geometryStatus).toBe("fallback");
     expect(display.diagnostics).toEqual([
       {
         code: "UNSUPPORTED_SELECTION_TARGET",
         status: "unsupported",
-        message: "Primitive body references are not command-ready."
+        message: "Primitive body references are not available."
       }
     ]);
   });
@@ -459,7 +457,7 @@ function createSelectionReferenceCandidates(
             SelectionReferenceCandidatesQueryResponse["status"],
             "resolved"
           >,
-          message: overrides.message ?? "Selection is not command-ready.",
+          message: overrides.message ?? "Selection is not available.",
           bodyId: reference.bodyId
         };
 

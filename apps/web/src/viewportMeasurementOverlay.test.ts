@@ -74,7 +74,7 @@ describe("viewport measurement overlay", () => {
       ],
       inspect: {
         title: "Inspect target",
-        detail: "Command-ready target",
+        detail: "Ready target",
         commandOperationLabels: [
           "Name reference",
           "Create sketch on face",
@@ -121,7 +121,7 @@ describe("viewport measurement overlay", () => {
       ],
       inspect: {
         title: "Inspect body",
-        detail: "Command-ready target",
+        detail: "Ready target",
         authorityLabel: "Authority: source-analytic exact"
       }
     });

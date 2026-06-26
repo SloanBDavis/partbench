@@ -180,7 +180,7 @@ export function resolveViewportHoverIntent({
         createViewportHoverIssue(
           "UNSUPPORTED_SELECTION_TARGET",
           "unsupported",
-          "Sketch display geometry is not hover-inspectable as a command-ready CAD body from the viewport.",
+          "Sketch display geometry is not available as a CAD body from the viewport.",
           {
             expected: "body or object-backed body",
             received: "sketch display geometry"

@@ -75,10 +75,10 @@ describe("projectJson helpers", () => {
       redoTransactionCount: 1
     });
     expect(formatProjectJsonSummary(preview.summary)).toBe(
-      `${CURRENT_CAD_PROJECT_FORMAT_VERSION}, 0 object(s), 0 transaction(s), 1 redo`
+      "0 object(s), 0 transaction(s), 1 redo"
     );
     expect(getProjectImportStatusText(preview)).toBe(
-      `Ready to import ${CURRENT_CAD_PROJECT_FORMAT_VERSION}, 0 object(s), 0 transaction(s), 1 redo. Import replaces the current document and restores available undo/redo history.`
+      "Ready to import 0 object(s), 0 transaction(s), 1 redo. Import replaces the current document and restores available undo/redo history."
     );
   });
 
@@ -111,11 +111,11 @@ describe("projectJson helpers", () => {
 
     expect(summary.objectKindSummary).toBe("box 1, cone 1, torus 1");
     expect(formatProjectJsonSummary(summary)).toBe(
-      `${CURRENT_CAD_PROJECT_FORMAT_VERSION}, 3 object(s) (box 1, cone 1, torus 1), 1 transaction(s)`
+      "3 object(s) (box 1, cone 1, torus 1), 1 transaction(s)"
     );
   });
 
-  it("summarizes sketch source-of-truth data", () => {
+  it("summarizes sketch project data", () => {
     const engine = new CadEngine();
 
     engine.applyBatch([
@@ -134,7 +134,7 @@ describe("projectJson helpers", () => {
     expect(summary.sketchCount).toBe(1);
     expect(summary.sketchEntityCount).toBe(1);
     expect(formatProjectJsonSummary(summary)).toBe(
-      `${CURRENT_CAD_PROJECT_FORMAT_VERSION}, 0 object(s), 1 sketch(es), 1 sketch entity(ies), 1 transaction(s)`
+      "0 object(s), 1 sketch(es), 1 sketch entity(ies), 1 transaction(s)"
     );
   });
 
@@ -180,7 +180,7 @@ describe("projectJson helpers", () => {
     expect(preview.summary.authoredFeatureCount).toBe(1);
     expect(preview.summary.namedReferenceCount).toBe(1);
     expect(formatProjectJsonSummary(preview.summary)).toBe(
-      `${CURRENT_CAD_PROJECT_FORMAT_VERSION}, 0 object(s), 1 sketch(es), 1 sketch entity(ies), 1 authored feature(s), 1 named reference(s), 1 transaction(s)`
+      "0 object(s), 1 sketch(es), 1 sketch entity(ies), 1 authored feature(s), 1 named reference(s), 1 transaction(s)"
     );
   });
 
@@ -189,7 +189,7 @@ describe("projectJson helpers", () => {
 
     expect(preview).toEqual({ status: "empty" });
     expect(getProjectImportStatusText(preview)).toBe(
-      "Generate, load, or paste project JSON to preview source-of-truth data before import."
+      "Generate, load, or paste project JSON to preview project data before import."
     );
   });
 
@@ -201,7 +201,7 @@ describe("projectJson helpers", () => {
       draftSource: { kind: "empty" }
     });
 
-    expect(workflow.current.sourceLabel).toBe("cad-core document");
+    expect(workflow.current.sourceLabel).toBe("Current project");
     expect(workflow.draft.source).toMatchObject({
       kind: "empty",
       label: "Empty draft"
@@ -209,7 +209,7 @@ describe("projectJson helpers", () => {
     expect(workflow.draft.preview.status).toBe("empty");
     expect(workflow.draft.schema).toMatchObject({
       status: "empty",
-      label: "No schema"
+      label: "No format info"
     });
     expect(workflow.draft.impact).toBeUndefined();
   });
@@ -353,11 +353,11 @@ describe("projectJson helpers", () => {
     expect(workflow.draft.preview.status).toBe("valid");
     expect(workflow.draft.schema).toMatchObject({
       status: "legacyMigrated",
-      label: "Legacy schema accepted",
+      label: "Older format accepted",
       sourceSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V1,
       normalizedSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION
     });
-    expect(workflow.draft.schema.detail).toContain("cad-core migration");
+    expect(workflow.draft.schema.detail).toContain("during import");
   });
 
   it("returns structured import issues for malformed JSON", () => {
@@ -399,7 +399,7 @@ describe("projectJson helpers", () => {
     ]);
     expect(workflow.draft.schema).toMatchObject({
       status: "invalid",
-      label: "Schema blocked"
+      label: "Format not recognized"
     });
   });
 

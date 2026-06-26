@@ -3436,7 +3436,7 @@ export function App() {
         <div className="toolbar-actions" aria-label="Command controls">
           {commandPending && (
             <span className="pending-status" role="status">
-              Worker running
+              Updating model
             </span>
           )}
           <div className="toolbar-group toolbar-units">

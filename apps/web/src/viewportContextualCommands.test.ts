@@ -687,11 +687,11 @@ function createSelectionDisplay(
   return {
     selectionKind: "body",
     title: "Base (Body)",
-    detail: "Command-ready reference",
+    detail: "Ready reference",
     tone: "ready",
     renderTargetId: "body_rect",
     geometryStatus: "ready",
-    geometryDetail: "OCCT mesh ready",
+    geometryDetail: "Display geometry ready",
     referenceStatus: "resolved",
     referenceSummary: "Body: Rectangle extrude body",
     commandOperations: [],

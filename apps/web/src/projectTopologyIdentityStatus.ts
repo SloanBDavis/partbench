@@ -25,10 +25,9 @@ export function createProjectTopologyIdentityDisplay(
 ): ProjectTopologyIdentityDisplay {
   const hasTopologyRecords =
     readiness.checkpointCount > 0 || readiness.anchorCount > 0;
-  const packageSummary =
-    readiness.currentPackageVersion === readiness.plannedPackageVersion
-      ? readiness.currentPackageVersion
-      : `${readiness.currentPackageVersion} -> ${readiness.plannedPackageVersion}`;
+  const packageSummary = hasTopologyRecords
+    ? "Saved with .wcad"
+    : "Ready for .wcad";
 
   return {
     statusLabel: getTopologyIdentityStatusLabel(readiness.status),
@@ -40,10 +39,10 @@ export function createProjectTopologyIdentityDisplay(
     anchorSummary: pluralize(readiness.anchorCount, "anchor", "anchors"),
     packageSummary,
     detail: hasTopologyRecords
-      ? "Topology identity records are source-owned and tracked by cad-core."
-      : "No topology checkpoints or anchors have been written for this project.",
+      ? "Saved topology identity is tracked in the project source."
+      : "No saved topology evidence has been written for this project.",
     jsonWarning: hasTopologyRecords
-      ? "Use .wcad for topology checkpoint payload preservation. JSON import/export may not carry checkpoint payload bytes."
+      ? "Use .wcad to keep saved topology evidence intact. JSON import/export is source interchange and may omit exact shape evidence."
       : undefined,
     capabilityRows: readiness.capabilities.map(formatCapability)
   };

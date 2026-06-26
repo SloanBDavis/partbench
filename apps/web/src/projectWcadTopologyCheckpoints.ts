@@ -212,7 +212,7 @@ export async function createProjectTopologyAnchorCreationPlanForGeneratedReferen
     const message =
       error instanceof Error
         ? error.message
-        : "Exact topology checkpoint payload generation failed.";
+        : "Exact topology evidence generation failed.";
     const diagnostic = createTopologyPlanDiagnostic(
       "TOPOLOGY_SNAPSHOT_EXTRACTION_DEFERRED",
       "warning",
@@ -463,7 +463,7 @@ export async function createProjectTopologyAnchorRepairPlanForGeneratedReference
       "warning",
       error instanceof Error
         ? error.message
-        : "Exact topology checkpoint payload generation failed.",
+        : "Exact topology evidence generation failed.",
       {
         bodyId: target.bodyId,
         entityKind: target.kind,
@@ -1486,14 +1486,12 @@ function formatCheckpointPayloadIssues(
   issues: readonly WcadPackageValidationIssue[]
 ): string {
   if (issues.length === 0) {
-    return "Could not create topology checkpoint payloads.";
+    return "Could not save exact topology evidence.";
   }
 
   if (issues.length === 1) {
-    return (
-      issues[0]?.message ?? "Could not create topology checkpoint payload."
-    );
+    return issues[0]?.message ?? "Could not save exact topology evidence.";
   }
 
-  return `Could not create ${issues.length} topology checkpoint payloads.`;
+  return `Could not save exact topology evidence because ${issues.length} issues were found.`;
 }

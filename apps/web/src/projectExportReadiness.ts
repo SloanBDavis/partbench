@@ -57,7 +57,7 @@ export function createProjectExportReadinessDisplay(
     derivedDetail: visualizationExport
       ? `Visualization GLB can use ${visualizationExport.exportableBodyCount} ready display mesh${visualizationExport.exportableBodyCount === 1 ? "" : "es"}.`
       : "Display output is not used for STEP export.",
-    bodySummary: `${readiness.sourceSupportedBodyCount} source supported, ${readiness.deferredBodyCount} deferred, ${readiness.unavailableBodyCount} unavailable${
+    bodySummary: `${readiness.sourceSupportedBodyCount} ready for STEP, ${readiness.deferredBodyCount} not ready yet, ${readiness.unavailableBodyCount} unavailable${
       visualizationExport
         ? `; ${visualizationExport.exportableBodyCount} visualization ready`
         : ""
@@ -76,7 +76,7 @@ export function getExportReadinessStatusLabel(
     case "supported":
       return "Supported";
     case "deferred":
-      return "Deferred";
+      return "Not ready yet";
     case "unavailable":
       return "Unavailable";
   }
@@ -174,7 +174,7 @@ function createBodyRow(
     statusLabel: getExportReadinessStatusLabel(body.status),
     detail:
       body.sourceStatus === "supported"
-        ? "Source body is supported for exact STEP export."
+        ? "Body is ready for exact STEP export."
         : getBodySourceDetail(body),
     limitation:
       primaryDiagnostic?.message ?? "No body-specific blocker reported.",
@@ -192,13 +192,13 @@ function getBodySourceDetail(body: CadExportBodyReadiness): string {
         ? "Authored extrude source is consumed by a later feature."
         : "Authored extrude source is waiting on export support.";
     case "authoredRevolve":
-      return "Revolve result-body export readiness is deferred.";
+      return "Revolve bodies are not ready for STEP export yet.";
     case "authoredHole":
-      return "Hole result-body export readiness is deferred.";
+      return "Hole bodies are not ready for STEP export yet.";
     case "authoredChamfer":
-      return "Chamfer result-body export readiness is deferred.";
+      return "Chamfer bodies are not ready for STEP export yet.";
     case "authoredFillet":
-      return "Fillet result-body export readiness is deferred.";
+      return "Fillet bodies are not ready for STEP export yet.";
     case "primitiveCompatibility":
       return "Primitive object source is not treated as an authored CAD export body.";
     case "unresolvedSource":

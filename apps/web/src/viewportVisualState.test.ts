@@ -20,7 +20,7 @@ describe("viewport visual state", () => {
     ]);
     expect(visualState.status).toEqual({
       label: "Body selected",
-      detail: "Command-ready reference",
+      detail: "Ready reference",
       tone: "ready"
     });
   });
@@ -42,7 +42,8 @@ describe("viewport visual state", () => {
     ]);
     expect(visualState.status).toEqual({
       label: "Face selected",
-      detail: "Owning body highlighted; exact subentity highlight deferred.",
+      detail:
+        "Owning body highlighted; use the Inspector for exact face or edge details.",
       tone: "ready"
     });
     expect(JSON.stringify(visualState.rendererVisualStates)).not.toContain(
@@ -124,7 +125,7 @@ describe("viewport visual state", () => {
       selectionDisplay: createSelectionDisplay({
         renderTargetId: "body_rect",
         geometryStatus: "pending",
-        geometryDetail: "Building OCCT mesh"
+        geometryDetail: "Building display geometry"
       }),
       selectedGeneratedReferenceState: { status: "none" }
     });
@@ -157,11 +158,11 @@ function createSelectionDisplay(
   return {
     selectionKind: "body",
     title: "Body selected",
-    detail: "Command-ready reference",
+    detail: "Ready reference",
     tone: "ready",
     renderTargetId: "body_rect",
     geometryStatus: "ready",
-    geometryDetail: "OCCT mesh ready",
+    geometryDetail: "Display geometry ready",
     referenceStatus: "resolved",
     referenceSummary: "Body: Rectangle extrude body",
     commandOperations: [],

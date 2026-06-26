@@ -1302,10 +1302,10 @@ function formatStructureReferenceCandidateLine(
   const commandCount = summary?.commandOperations.length ?? 0;
 
   if (commandCount === 0) {
-    return "Command-ready reference";
+    return "Ready reference";
   }
 
-  return `Command-ready reference / ${commandCount} command${
+  return `Ready reference / ${commandCount} available action${
     commandCount === 1 ? "" : "s"
   }`;
 }

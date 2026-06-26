@@ -58,14 +58,14 @@ describe("ProjectJsonPanel", () => {
     );
 
     expect(markup).toContain("Project contents");
-    expect(markup).toContain("cad-core document");
+    expect(markup).toContain("Current project");
     expect(markup).toContain("Loaded file");
     expect(markup).toContain("legacy-v1.json");
-    expect(markup).toContain("Legacy schema accepted");
+    expect(markup).toContain("Older format accepted");
     expect(markup).toContain(CURRENT_CAD_PROJECT_FORMAT_VERSION);
     expect(markup).toContain("Will replace current document");
     expect(markup).toContain("Draft contains no undo or redo history.");
-    expect(markup).toContain("Preview source");
+    expect(markup).toContain("Preview project");
   });
 
   it("renders generated-export same-document-source state without replacement impact", () => {
@@ -93,7 +93,7 @@ describe("ProjectJsonPanel", () => {
     );
 
     expect(markup).toContain("Generated export");
-    expect(markup).toContain("Current schema");
+    expect(markup).toContain("Current format");
     expect(markup).toContain("No document source change detected");
     expect(markup).toContain("may still restore undo/redo history");
   });
@@ -121,7 +121,7 @@ describe("ProjectJsonPanel", () => {
     );
 
     expect(markup).toContain("Pasted or edited JSON");
-    expect(markup).toContain("Schema blocked");
+    expect(markup).toContain("Format not recognized");
     expect(markup).toContain("Import blocked");
     expect(markup).toContain("Import validation");
     expect(markup).toContain("INVALID_JSON");
@@ -154,7 +154,7 @@ describe("ProjectJsonPanel", () => {
     );
 
     expect(markup).toContain("Empty draft");
-    expect(markup).toContain("No schema");
+    expect(markup).toContain("No format info");
     expect(markup).toContain("No import preview");
     expect(markup).toMatch(
       /<button type="button" disabled="">Import JSON<\/button>/
@@ -326,7 +326,7 @@ describe("ProjectJsonPanel", () => {
     expect(markup).toContain("STEP");
     expect(markup).toContain("Mesh/GLB visualization");
     expect(markup).toContain("STEP export is available");
-    expect(markup).toContain("Source body is supported");
+    expect(markup).toContain("Body is ready for exact STEP export.");
     expect(markup).toContain("Display output is not used for STEP export");
     const exportSectionStart = markup.indexOf('aria-label="Export readiness"');
     const exportSectionEnd = markup.indexOf(
@@ -370,11 +370,32 @@ describe("ProjectJsonPanel", () => {
     expect(markup).toContain("Topology identity");
     expect(markup).toContain("1 checkpoint");
     expect(markup).toContain("1 anchor");
-    expect(markup).toContain("partbench.wcad.v1 -&gt; partbench.wcad.v2");
+    expect(markup).toContain("Saved with .wcad");
+    expect(markup).toContain("Exact shape evidence is saved with the project");
+    expect(markup).toContain(
+      "Saved references can drive supported sketch, cut, add, and edge-finish actions."
+    );
+    expect(markup).toContain(
+      "Saved topology evidence stays with the .wcad project package."
+    );
     expect(markup).toContain("Use .wcad");
     expect(markup).toContain("JSON import/export");
     expect(markup).not.toMatch(
       /checkpoint-local-face-1|checkpointEntityId|rendererId|meshId|occtId|gpuId|selectionBufferId|pixelId|opfsPath|fileHandle/i
+    );
+    const topologyStatusStart = markup.indexOf(
+      'aria-label="Topology identity status"'
+    );
+    const topologyDiagnosticsStart = markup.indexOf(
+      '<details class="advanced-options compact">',
+      topologyStatusStart
+    );
+    const topologyStatusMarkup = markup.slice(
+      topologyStatusStart,
+      topologyDiagnosticsStart
+    );
+    expect(topologyStatusMarkup).not.toMatch(
+      /partbench\.wcad\.v[0-9]|V13|package contract|checkpoint payloads|renderer meshes|document-controlled command targets|cad-core|debug|deferred/i
     );
   });
 

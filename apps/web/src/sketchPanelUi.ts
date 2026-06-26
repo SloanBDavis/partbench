@@ -1173,7 +1173,7 @@ function formatSketchNumericalSolverStatus(
     case "unsupported":
       return "unsupported";
     case "deferred":
-      return "deferred";
+      return "not ready";
     case "not-run":
       return "not run";
   }
@@ -1507,7 +1507,7 @@ export function getAddOperationStatus(
     return {
       available: false,
       message:
-        "Create an active rectangle source body or topology-backed result body before using Add to body."
+        "Create an active rectangle body or previous result body before using Add to body."
     };
   }
 
@@ -1543,7 +1543,7 @@ export function getCutOperationStatus(
     return {
       available: false,
       message:
-        "Create an active rectangle, circle, or topology-backed result body before using Cut body."
+        "Create an active rectangle, circle, or previous result body before using Cut body."
     };
   }
 

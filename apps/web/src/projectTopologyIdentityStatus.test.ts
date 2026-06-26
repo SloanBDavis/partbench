@@ -10,23 +10,27 @@ describe("projectTopologyIdentityStatus", () => {
       statusLabel: "Partial",
       checkpointSummary: "0 checkpoints",
       anchorSummary: "0 anchors",
-      packageSummary: "partbench.wcad.v1 -> partbench.wcad.v2",
-      detail:
-        "No topology checkpoints or anchors have been written for this project.",
+      packageSummary: "Ready for .wcad",
+      detail: "No saved topology evidence has been written for this project.",
       jsonWarning: undefined
     });
   });
 
-  it("warns that JSON import/export can be lossy for checkpoint payloads", () => {
+  it("warns that JSON import/export can omit exact evidence without internal payload copy", () => {
     const display = createProjectTopologyIdentityDisplay(
       createReadiness({ checkpointCount: 1, anchorCount: 2 })
     );
 
     expect(display.checkpointSummary).toBe("1 checkpoint");
     expect(display.anchorSummary).toBe("2 anchors");
-    expect(display.detail).toContain("source-owned");
+    expect(display.packageSummary).toBe("Saved with .wcad");
+    expect(display.detail).toBe(
+      "Saved topology identity is tracked in the project source."
+    );
     expect(display.jsonWarning).toContain("Use .wcad");
     expect(display.jsonWarning).toContain("JSON import/export");
+    expect(display.jsonWarning).toContain("exact shape evidence");
+    expect(display.jsonWarning).not.toMatch(/checkpoint payload|debug/i);
     expect(display.capabilityRows).toEqual([
       expect.objectContaining({
         label: "B-rep checkpoint persistence",

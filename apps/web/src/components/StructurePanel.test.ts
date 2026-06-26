@@ -92,7 +92,7 @@ describe("StructurePanel", () => {
     expect(markup).toContain("Faces");
     expect(markup).toContain("Edges");
     expect(markup).toContain("Start cap");
-    expect(markup).toContain("Command-ready reference");
+    expect(markup).toContain("Ready reference");
     expect(markup).toContain("Start uMin edge");
     expect(markup).not.toContain("generated:face:body_base:startCap");
   });
@@ -233,7 +233,7 @@ describe("StructurePanel", () => {
 
     expect(markup).toContain("Named references");
     expect(markup).toContain("Top face");
-    expect(markup).toContain("Command-ready reference");
+    expect(markup).toContain("Ready reference");
   });
 
   it("keeps stale named references selectable for repair", () => {
@@ -622,7 +622,8 @@ function createSelectionReferenceCandidates(
   } = {}
 ): SelectionReferenceCandidatesQueryResponse {
   const status = overrides.status ?? "resolved";
-  const message = overrides.message ?? "Selection is not commandable.";
+  const message =
+    overrides.message ?? "Selection is not available for modeling.";
   const issue =
     status === "resolved"
       ? undefined

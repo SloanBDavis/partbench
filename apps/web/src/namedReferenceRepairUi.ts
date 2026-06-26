@@ -215,7 +215,7 @@ function getQueryProvenRepairTarget(
         {
           source: "selection.referenceCandidates",
           message:
-            "Repair targets must be proven command-ready by the shared reference query."
+            "Repair targets must be proven available by the shared reference query."
         }
       ]
     };
@@ -250,7 +250,7 @@ function getQueryProvenRepairTarget(
     issue?.message ??
     response.issues[0]?.message ??
     (response.status === "resolved"
-      ? "Selected reference is not command-ready for repair."
+      ? "Selected reference is not available for repair."
       : `Selected reference is ${response.status}.`);
 
   return {

@@ -250,7 +250,7 @@ describe("modeling action helpers", () => {
 
     expect(actionById(actions, "sketch.createOnFace")).toMatchObject({
       available: false,
-      reason: "Create sketch on face requires a command-ready reference query.",
+      reason: "Create sketch on face needs reference readiness information.",
       target: { eligibleFaceStableIds: [] }
     });
   });
@@ -437,7 +437,7 @@ describe("modeling action helpers", () => {
     });
   });
 
-  it("preserves topology-backed result body anchors in compact hole actions", () => {
+  it("preserves previous result body anchors in compact hole actions", () => {
     const circle: SketchSnapshot["entities"][number] = {
       id: "circle_1",
       kind: "circle",
@@ -747,7 +747,8 @@ function createSelectionReferenceCandidates(
   } = {}
 ): SelectionReferenceCandidatesQueryResponse {
   const status = overrides.status ?? "resolved";
-  const message = overrides.message ?? "Selection is not commandable.";
+  const message =
+    overrides.message ?? "Selection is not available for modeling.";
   const issue =
     status === "resolved"
       ? undefined

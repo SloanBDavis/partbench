@@ -2878,7 +2878,11 @@ The planned pillars are:
    available actions and repair needs without mentioning internal tranche or
    milestone names. The Project/File panel now labels JSON as import/export
    for source interchange instead of debug copy while keeping `.wcad` as the
-   primary project workflow.
+   primary project workflow. Primary app surfaces now describe saved
+   references, project data, format, ready actions, display geometry, and
+   not-ready-yet export/storage states without exposing cad-core/debug,
+   checkpoint-payload, package-contract, command-ready, deferred, or OCCT-mesh
+   wording.
 7. **Long release smokes** - deterministic and browser workflows prove chained
    modeling, explicit side-plane circular holes where supported, result-edge
    finishing where supported, upstream edit blocking, undo/redo recovery for

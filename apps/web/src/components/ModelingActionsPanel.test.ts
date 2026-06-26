@@ -812,7 +812,7 @@ describe("ModelingActionsPanel", () => {
     expect(markup).toContain("Start cap");
     expect(markup).toContain("Name reference");
     expect(markup).toContain("Reference status");
-    expect(markup).toContain("Command-ready reference");
+    expect(markup).toContain("Ready reference");
     expect(markup).toContain("Back to body");
     expect(markup).toContain("Create sketch on face");
     expect(markup).not.toContain("generated:face:body_rect:startCap");
@@ -844,7 +844,7 @@ describe("ModelingActionsPanel", () => {
     );
 
     expect(markup).toContain("Reference status");
-    expect(markup).toContain("Command-ready reference");
+    expect(markup).toContain("Ready reference");
     expect(markup).toContain("Create sketch on face");
     expect(markup).not.toContain("Topology anchor-backed");
     expect(markup).not.toContain("checkpoint evidence");
@@ -943,7 +943,7 @@ describe("ModelingActionsPanel", () => {
 
     expect(markup).toContain("Name reference");
     expect(markup).toContain("Reference status");
-    expect(markup).toContain("Command-ready reference");
+    expect(markup).toContain("Ready reference");
     expect(markup).toContain("Edge finish");
     expect(markup).toContain("Chamfer");
     expect(markup).toContain("Fillet");
@@ -1027,7 +1027,7 @@ describe("ModelingActionsPanel", () => {
     expect(actions.map((action) => action.id)).toEqual(["reference.name"]);
     expect(markup).toContain("Name reference");
     expect(markup).toContain("Reference status");
-    expect(markup).toContain("Command-ready reference");
+    expect(markup).toContain("Ready reference");
     expect(markup).not.toContain("Edge finish");
     expect(markup).not.toContain("Chamfer");
     expect(markup).not.toContain("Fillet");
@@ -1271,7 +1271,8 @@ function createSelectionReferenceCandidates(
   } = {}
 ): SelectionReferenceCandidatesQueryResponse {
   const status = overrides.status ?? "resolved";
-  const message = overrides.message ?? "Selection is not commandable.";
+  const message =
+    overrides.message ?? "Selection is not available for modeling.";
   const issue =
     status === "resolved"
       ? undefined

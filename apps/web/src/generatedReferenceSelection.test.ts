@@ -303,7 +303,7 @@ describe("generated reference selection helpers", () => {
       {
         tone: "ready",
         title: "Face: Start cap",
-        detail: "4 command-ready operations",
+        detail: "4 available actions",
         topologyDetail: undefined,
         stableId: "generated:face:body_1:startCap",
         commandOperations: [
@@ -486,7 +486,7 @@ describe("generated reference selection helpers", () => {
       )
     ).toEqual({
       available: false,
-      message: "Create sketch on face requires a command-ready reference query."
+      message: "Create sketch on face needs reference readiness information."
     });
     expect(
       getSelectionReferenceOperationStatus(
@@ -498,7 +498,7 @@ describe("generated reference selection helpers", () => {
       getSelectionReferenceOperationStatus(resolvedResponse, "feature.chamfer")
     ).toEqual({
       available: false,
-      message: "Chamfer is not command-ready for this selection."
+      message: "Chamfer is not available for this selection."
     });
     expect(
       getSelectionReferenceOperationStatus(

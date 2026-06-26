@@ -39,7 +39,7 @@ describe("viewport interaction surface", () => {
     expect(surface.selection).toMatchObject({
       selectionKind: "generatedReference",
       title: "Face: Start cap",
-      detail: "Command-ready reference",
+      detail: "Ready reference",
       measurement: {
         title: "Face measurement",
         detail: "Start cap",
@@ -55,7 +55,7 @@ describe("viewport interaction surface", () => {
       },
       inspect: {
         title: "Inspect target",
-        detail: "Command-ready target",
+        detail: "Ready target",
         authority: "sourceAnalytic",
         authorityLabel: "Authority: source-analytic exact",
         rows: [
@@ -78,7 +78,7 @@ describe("viewport interaction surface", () => {
       hoverState: createHoverState({
         renderTargetId: "body_rect",
         title: "Base (Body)",
-        detail: "4 command-ready operations"
+        detail: "4 available actions"
       })
     });
 
@@ -179,7 +179,7 @@ describe("viewport interaction surface", () => {
       diagnostic: {
         code: "NON_COMMANDABLE_SELECTION_TARGET",
         status: "non-commandable",
-        message: "Selection is not commandable for this operation."
+        message: "Selection is not available for modeling for this operation."
       }
     });
   });
@@ -253,11 +253,11 @@ function createSelectionDisplay(
   return {
     selectionKind: "body",
     title: "Base (Body)",
-    detail: "Command-ready reference",
+    detail: "Ready reference",
     tone: "ready",
     renderTargetId: "body_rect",
     geometryStatus: "ready",
-    geometryDetail: "OCCT mesh ready",
+    geometryDetail: "Display geometry ready",
     referenceStatus: "resolved",
     referenceSummary: "Face: Start cap",
     commandOperations: [],
@@ -275,7 +275,7 @@ function createHoverState(
   return {
     kind: "body",
     title: "Hovered body (Body)",
-    detail: "Command-ready reference",
+    detail: "Ready reference",
     tone: "ready",
     bodyId: "body_hovered",
     renderTargetId: "body_hovered",
@@ -329,7 +329,7 @@ function createInspectOverlay(
 ): ViewportMeasurementOverlay["inspect"] {
   return {
     title: "Inspect target",
-    detail: "Command-ready target",
+    detail: "Ready target",
     authority: "sourceAnalytic",
     authorityLabel: "Authority: source-analytic exact",
     rows: [
@@ -449,7 +449,7 @@ function formatKindLabel(kind: CadGeneratedReference["kind"]): string {
 
 function createIssue(
   code: CadSelectionReferenceIssue["code"],
-  message = "Selection is not commandable for this operation."
+  message = "Selection is not available for modeling for this operation."
 ): CadSelectionReferenceIssue {
   return {
     code,

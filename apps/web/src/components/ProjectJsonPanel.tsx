@@ -332,17 +332,17 @@ function ProjectTopologyIdentityStatus({
         <ProjectWorkflowRow
           label="Checkpoints"
           value={display.checkpointSummary}
-          detail="B-rep checkpoint payloads are source package data, not renderer meshes."
+          detail="Exact shape evidence is saved with the project, not with viewport meshes."
         />
         <ProjectWorkflowRow
           label="Anchors"
           value={display.anchorSummary}
-          detail="Topology anchors are document-controlled command targets."
+          detail="Saved references can drive supported sketch, cut, add, and edge-finish actions."
         />
         <ProjectWorkflowRow
           label="Package"
           value={display.packageSummary}
-          detail="Topology checkpoint payloads use the V13 .wcad package contract."
+          detail="Saved topology evidence stays with the .wcad project package."
         />
       </dl>
       {display.jsonWarning && (
@@ -713,7 +713,7 @@ function ProjectDraftWorkflow({
           detail={draft.source.detail}
         />
         <ProjectWorkflowRow
-          label="Schema"
+          label="Format"
           value={draft.schema.label}
           detail={draft.schema.detail}
         />
@@ -771,8 +771,8 @@ function ProjectSummary({
       <h3>{title}</h3>
       <dl className="project-summary-grid">
         <div>
-          <dt>Schema</dt>
-          <dd>{summary.schemaVersion}</dd>
+          <dt>Format</dt>
+          <dd>{formatProjectSummaryVersion(summary.schemaVersion)}</dd>
         </div>
         <div>
           <dt>Units</dt>
@@ -819,7 +819,7 @@ function ProjectPreview({
   }
 
   if (preview.status === "valid") {
-    return <ProjectSummary title="Preview source" summary={preview.summary} />;
+    return <ProjectSummary title="Preview project" summary={preview.summary} />;
   }
 
   return (
@@ -842,6 +842,12 @@ function ProjectPreview({
       )}
     </section>
   );
+}
+
+function formatProjectSummaryVersion(schemaVersion: string): string {
+  return schemaVersion.startsWith("web-cad.project.")
+    ? "Partbench project"
+    : "Imported project";
 }
 
 function getDraftStatusLabel(draft: ProjectJsonDraftWorkflowState): string {

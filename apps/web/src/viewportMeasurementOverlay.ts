@@ -413,7 +413,7 @@ function createInspectOverlay({
       diagnostics.length > 0
         ? diagnostics[0].message
         : commandOperationLabels.length > 0
-          ? "Command-ready target"
+          ? "Ready target"
           : "Single semantic target",
     authority,
     authorityLabel: formatViewportMeasurementAuthority(authority),

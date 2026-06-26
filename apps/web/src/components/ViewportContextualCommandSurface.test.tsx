@@ -80,7 +80,7 @@ function createSurface(
     visible: true,
     selectionKey: "generated:body_rect:face:generated:face:body_rect:startCap",
     title: "Face: Start cap",
-    detail: "Command-ready reference",
+    detail: "Ready reference",
     tone: "ready",
     actions: [
       {
@@ -122,7 +122,7 @@ function createInteractionSurface(): ViewportInteractionSurface {
     selection: {
       selectionKind: "generatedReference",
       title: "Face: Start cap",
-      detail: "Command-ready reference",
+      detail: "Ready reference",
       tone: "ready",
       geometryStatus: "ready",
       commandOperationLabels: [
@@ -144,7 +144,7 @@ function createInteractionSurface(): ViewportInteractionSurface {
       },
       inspect: {
         title: "Inspect target",
-        detail: "Command-ready target",
+        detail: "Ready target",
         authority: "sourceAnalytic",
         authorityLabel: "Authority: source-analytic exact",
         rows: [

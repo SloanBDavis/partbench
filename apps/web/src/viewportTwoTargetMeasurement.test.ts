@@ -348,7 +348,7 @@ function createBodyOverlay(): ViewportMeasurementOverlay {
     diagnostics: [],
     inspect: {
       title: "Inspect body",
-      detail: "Command-ready target",
+      detail: "Ready target",
       authority: "sourceAnalytic",
       authorityLabel: "Authority: source-analytic exact",
       rows: [],
@@ -399,7 +399,7 @@ function createGeneratedReferenceOverlay({
     diagnostics: [],
     inspect: {
       title: "Inspect target",
-      detail: "Command-ready target",
+      detail: "Ready target",
       authority: "sourceAnalytic",
       authorityLabel: "Authority: source-analytic exact",
       rows: [],

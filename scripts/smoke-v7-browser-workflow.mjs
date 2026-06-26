@@ -1238,11 +1238,7 @@ async function v7BrowserWorkflowSmoke({
 
   const modelingChecks = [
     assertIncludes(modeling, "Reference status", "modeling-reference-heading"),
-    assertIncludes(
-      modeling,
-      "Command-ready reference",
-      "modeling-reference-status"
-    )
+    assertIncludes(modeling, "Ready reference", "modeling-reference-status")
   ];
   if (modelingChecks.every(Boolean)) {
     pass(
@@ -1271,7 +1267,8 @@ async function v7BrowserWorkflowSmoke({
         includesText(
           getElementByAriaLabel("Inspector"),
           "Selected reference"
-        ) && includesText(getElementByAriaLabel("Inspector"), "Command-ready"),
+        ) &&
+        includesText(getElementByAriaLabel("Inspector"), "Ready reference"),
       "selected generated reference"
     );
     pass(
@@ -1489,7 +1486,7 @@ async function v7BrowserWorkflowSmoke({
     "project file panel"
   );
   const projectChecks = [
-    assertIncludes(projectPanel, "web-cad.project.v16", "current-json-schema"),
+    assertIncludes(projectPanel, "Partbench project", "current-project-format"),
     assertIncludes(projectPanel, "Untitled project", "untitled-project"),
     assertIncludes(projectPanel, "Not saved", "not-saved-state"),
     assertIncludes(projectPanel, "Open .wcad", "wcad-open-action"),
@@ -1776,7 +1773,7 @@ async function v7BrowserWorkflowSmoke({
   clickButton(projectPanel, "Import JSON");
   await waitFor(
     () =>
-      includesText(projectPanel, "Imported web-cad.project.v16") &&
+      includesText(projectPanel, "Imported ") &&
       includesText(getElementByAriaLabel("Model structure"), ids.bodyName),
     "imported project JSON"
   );
@@ -2675,7 +2672,7 @@ async function v7BrowserWorkflowSmoke({
       );
       const ready =
         isSelectionPanelOpen() &&
-        includesText(modeling, "Command-ready reference") &&
+        includesText(modeling, "Ready reference") &&
         includesText(modeling, "Attached sketch") &&
         createSketchButton !== undefined &&
         !createSketchButton.disabled;
@@ -3662,9 +3659,9 @@ async function v7BrowserWorkflowSmoke({
       const inspector = getElementByAriaLabel("Inspector");
       const modeling = getSectionByAriaLabel("Modeling context");
       const ready =
-        includesText(inspector, "Command-ready reference") &&
+        includesText(inspector, "Ready reference") &&
         includesText(inspector, ids.v13RepairReferenceName) &&
-        includesText(modeling, "Command-ready reference") &&
+        includesText(modeling, "Ready reference") &&
         includesText(modeling, "Create sketch on face");
 
       if (!ready) {
@@ -4085,7 +4082,7 @@ async function v7BrowserWorkflowSmoke({
       const ready =
         depthControl instanceof HTMLInputElement &&
         depthControl.value === "1.25" &&
-        includesText(currentInspector, "Command-ready reference") &&
+        includesText(currentInspector, "Ready reference") &&
         includesText(currentInspector, "1.25 mm");
 
       if (!ready) {
@@ -4553,9 +4550,9 @@ async function v7BrowserWorkflowSmoke({
       const ready =
         isSelectionPanelOpen() &&
         includesText(currentInspector, bodyId) &&
-        includesText(currentInspector, "Command-ready reference") &&
+        includesText(currentInspector, "Ready reference") &&
         includesText(currentModeling, "Reference status") &&
-        includesText(currentModeling, "Command-ready reference");
+        includesText(currentModeling, "Ready reference");
 
       if (!ready) {
         throw new Error(
@@ -4579,9 +4576,9 @@ async function v7BrowserWorkflowSmoke({
         isSelectionPanelOpen() &&
         includesText(currentInspector, bodyId) &&
         includesText(currentInspector, "Selected reference") &&
-        includesText(currentInspector, "Command-ready") &&
+        includesText(currentInspector, "Ready reference") &&
         includesText(currentModeling, "Reference status") &&
-        includesText(currentModeling, "Command-ready reference") &&
+        includesText(currentModeling, "Ready reference") &&
         includesText(currentModeling, "Create sketch on face");
 
       if (!ready) {
@@ -4606,9 +4603,9 @@ async function v7BrowserWorkflowSmoke({
         isSelectionPanelOpen() &&
         includesText(currentInspector, bodyId) &&
         includesText(currentInspector, "Selected reference") &&
-        includesText(currentInspector, "Command-ready") &&
+        includesText(currentInspector, "Ready reference") &&
         includesText(currentModeling, "Reference status") &&
-        includesText(currentModeling, "Command-ready reference") &&
+        includesText(currentModeling, "Ready reference") &&
         includesText(currentModeling, "Edge finish") &&
         includesText(currentModeling, "Chamfer") &&
         includesText(currentModeling, "Fillet");
@@ -5161,7 +5158,7 @@ async function v7BrowserWorkflowSmoke({
       const ready =
         includesText(inspector, ids.v12AddRepairStaleBodyId) &&
         includesText(inspector, staleEdgeStableId) &&
-        includesText(inspector, "Command-ready reference") &&
+        includesText(inspector, "Ready reference") &&
         includesText(inspector, "Name reference");
 
       if (!ready) {
@@ -5755,7 +5752,7 @@ async function v7BrowserWorkflowSmoke({
         includesText(inspector, ids.cutBodyId) &&
         includesText(inspector, "Cut wall face uMin") &&
         includesText(inspector, stableId) &&
-        includesText(inspector, "Command-ready reference") &&
+        includesText(inspector, "Ready reference") &&
         includesText(inspector, "Create sketch on face") &&
         includesText(modelingContext, "Reference status") &&
         includesText(modelingContext, "Create sketch on face");
@@ -5789,7 +5786,7 @@ async function v7BrowserWorkflowSmoke({
         stableId.includes(bodyId) &&
         referenceSelect.value === stableId &&
         modelingText.includes(label) &&
-        modelingText.includes("Command-ready reference");
+        modelingText.includes("Ready reference");
 
       if (!ready) {
         throw new Error(
@@ -5822,7 +5819,7 @@ async function v7BrowserWorkflowSmoke({
         stableId.includes(bodyId) &&
         referenceSelect.value === stableId &&
         modelingText.includes(label) &&
-        modelingText.includes("Command-ready reference");
+        modelingText.includes("Ready reference");
 
       if (!ready) {
         throw new Error(
@@ -5851,7 +5848,7 @@ async function v7BrowserWorkflowSmoke({
         stableId.includes(bodyId) &&
         referenceSelect.value === stableId &&
         modelingText.includes(label) &&
-        modelingText.includes("Command-ready reference");
+        modelingText.includes("Ready reference");
 
       if (!ready) {
         throw new Error(

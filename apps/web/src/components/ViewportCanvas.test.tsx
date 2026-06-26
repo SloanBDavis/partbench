@@ -29,7 +29,7 @@ describe("ViewportCanvas", () => {
     expect(markup).not.toContain("Viewport interaction summary");
     expect(markup).not.toContain("Viewport reference candidates");
     expect(markup).not.toContain("Viewport selection diagnostics");
-    expect(markup).not.toContain("Command-ready reference");
+    expect(markup).not.toContain("Ready reference");
     expect(markup).not.toContain("viewport-navigation-panel");
     expect(markup).not.toContain("viewport-camera-overlay");
     expect(markup).not.toContain("viewport-interaction-surface");
@@ -46,7 +46,7 @@ describe("ViewportCanvas", () => {
         status: {
           label: "Face selected",
           detail:
-            "Owning body highlighted; exact subentity highlight deferred.",
+            "Owning body highlighted; use the Inspector for exact face or edge details.",
           tone: "ready"
         },
         visualStates: [
@@ -239,7 +239,7 @@ describe("ViewportCanvas", () => {
         status: {
           label: "Face selected",
           detail:
-            "Owning body highlighted; exact subentity highlight deferred.",
+            "Owning body highlighted; use the Inspector for exact face or edge details.",
           tone: "ready"
         },
         visualStates: [

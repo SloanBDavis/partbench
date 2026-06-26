@@ -67,7 +67,7 @@ describe("Inspector", () => {
     expect(markup).toContain("Fillet");
     expect(markup).toContain("Name");
     expect(markup).toContain("Reference status");
-    expect(markup).toContain("Command-ready reference");
+    expect(markup).toContain("Ready reference");
     expect(markup).toContain("Stable ID and source");
     expect(markup).toContain("Selected reference");
     expect(markup).toContain(
@@ -612,7 +612,7 @@ describe("Inspector", () => {
     expect(markup).toContain("Selected reference");
     expect(markup).toContain("Start uMin edge");
     expect(markup).toContain("Reference status");
-    expect(markup).toContain("Command-ready reference");
+    expect(markup).toContain("Ready reference");
     expect(markup).toContain("Edge finish");
     expect(markup).toContain("Fillet");
     expect(markup).toContain("Create chamfer");
@@ -685,7 +685,7 @@ describe("Inspector", () => {
     expect(markup).toContain("Selected reference");
     expect(markup).toContain("Cut wall profile edge uMin/vMin");
     expect(markup).toContain("Reference status");
-    expect(markup).toContain("Command-ready reference");
+    expect(markup).toContain("Ready reference");
     expect(markup).not.toContain("Edge finish");
     expect(markup).not.toContain("Chamfer");
     expect(markup).not.toContain("Fillet");
@@ -737,7 +737,7 @@ describe("Inspector", () => {
     );
 
     expect(markup).toContain("Reference status");
-    expect(markup).toContain("Command-ready reference");
+    expect(markup).toContain("Ready reference");
     expect(markup).toContain("Create sketch on face");
     expect(markup).not.toContain("Topology anchor-backed");
     expect(markup).not.toContain("checkpoint evidence");
@@ -1393,7 +1393,8 @@ function createSelectionReferenceCandidates(
   } = {}
 ): SelectionReferenceCandidatesQueryResponse {
   const status = overrides.status ?? "resolved";
-  const message = overrides.message ?? "Selection is not commandable.";
+  const message =
+    overrides.message ?? "Selection is not available for modeling.";
   const issue =
     status === "resolved"
       ? undefined

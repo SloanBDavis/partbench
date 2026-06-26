@@ -68,11 +68,11 @@ describe("V7 viewport baseline fixture", () => {
         id: "body_rect_1",
         label: "body_rect_1",
         geometryStatus: "ready",
-        geometryDetail: "OCCT mesh ready"
+        geometryDetail: "Display geometry ready"
       },
       selection: {
         title: "body_rect_1 (Body)",
-        detail: "Command-ready reference",
+        detail: "Ready reference",
         tone: "ready"
       },
       hover: {
