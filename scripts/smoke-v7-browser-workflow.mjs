@@ -2416,7 +2416,7 @@ async function v7BrowserWorkflowSmoke({
     await verifyV14HoleDisplayGeometryReady(ids.v14CylinderSideHoleBodyName);
     pass(
       "v14-cylinder-side-plane-hole-display-ready-browser",
-      "V14 cylinder side-plane hole reaches display geometry ready without a hole mesh error",
+      "V14 cylinder side-plane hole reaches display geometry ready without a display geometry issue",
       ids.v14CylinderSideHoleBodyName
     );
   }
@@ -3104,15 +3104,20 @@ async function v7BrowserWorkflowSmoke({
     await verifyV14HoleDisplayGeometryReady(ids.v14HoleBodyName);
     pass(
       "v14-result-face-circle-hole-display-ready-browser",
-      "V14 result-face circle hole reaches display geometry ready without a hole mesh error",
+      "V14 result-face circle hole reaches display geometry ready without a display geometry issue",
       ids.v14HoleBodyName
     );
   }
 
   async function verifyV14HoleDisplayGeometryReady(bodyName) {
     await waitFor(() => {
-      if (includesText(document.body, "Hole mesh error")) {
-        throw new Error("Hole mesh error is visible after creating the hole.");
+      if (
+        includesText(document.body, "Hole mesh error") ||
+        includesText(document.body, "Hole display geometry issue")
+      ) {
+        throw new Error(
+          "Hole display geometry issue is visible after creating the hole."
+        );
       }
 
       const structure = getElementByAriaLabel("Model structure");

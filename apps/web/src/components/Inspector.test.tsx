@@ -528,6 +528,39 @@ describe("Inspector", () => {
     expect(markup).not.toContain("Tranche");
   });
 
+  it("uses product copy while feature edit status loads", () => {
+    const markup = renderToStaticMarkup(
+      createElement(Inspector, {
+        body: createBody(),
+        disabled: false,
+        feature: createFeature(),
+        namedReferences: [],
+        units: "mm",
+        onApplyDimensions: () => undefined,
+        onApplyName: () => undefined,
+        onApplyTransform: () => undefined,
+        onCreateSketchOnFace: () => undefined,
+        onCreateEdgeFinish: () => undefined,
+        onDeleteNamedReference: () => undefined,
+        onNameGeneratedReference: () => undefined,
+        onRepairNamedReference: () => undefined,
+        onInspectNamedReference: () => undefined,
+        onSelectGeneratedReference: () => undefined,
+        onDelete: () => undefined,
+        onDeleteFeature: () => undefined,
+        onUpdateExtrude: () => undefined,
+        onUpdateRevolve: () => undefined,
+        onUpdateHole: () => undefined,
+        onUpdateChamfer: () => undefined,
+        onUpdateFillet: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Feature edit status");
+    expect(markup).toContain("Feature edit status is still loading.");
+    expect(markup).not.toMatch(/\b(feature\.editability|query result)\b/i);
+  });
+
   it("shows downstream blocker guidance for unsafe upstream source edits", () => {
     const feature = createFeature();
     const markup = renderToStaticMarkup(

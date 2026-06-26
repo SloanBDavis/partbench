@@ -2859,7 +2859,8 @@ The planned pillars are:
    cut, result-face circle hole, and explicit XZ side-plane circle hole paths;
    the app preflights UI-created hole display geometry against a projected
    document before source mutation, and the browser smoke proves both supported
-   hole paths reach display-geometry-ready state without a hole mesh error.
+   hole paths reach display-geometry-ready state without a display geometry
+   issue.
    Unsupported or unanchored result bodies remain blocked.
 4. **Topology-backed edge finishing** - eligible result-body edge anchors can
    drive chamfer and fillet where cad-core validators and geometry execution

@@ -815,7 +815,7 @@ function formatFeatureEditCalloutDetail(
   feature: CadFeatureSummary
 ): string {
   if (!editability) {
-    return "Inspector needs a feature.editability query result before enabling edits.";
+    return "Feature edit status is still loading.";
   }
 
   if (editability.status !== "editable") {

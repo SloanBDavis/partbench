@@ -4332,46 +4332,62 @@ describe("derivedGeometry", () => {
     );
   });
 
-  it("labels boolean mesh errors without implying primitive fallback", async () => {
-    const snapshots: DerivedGeometrySnapshot[] = [];
-    const service = new DerivedGeometryService({
-      runtime: createRuntime(async () => {
-        throw new Error("boolean worker failed");
-      }),
-      onChange: (snapshot) => snapshots.push(snapshot)
-    });
-
-    service.reconcile([
+  it("labels display geometry failures with product language", async () => {
+    const cases: ReadonlyArray<{
+      readonly source: DerivedGeometrySource;
+      readonly expected: string;
+    }> = [
       {
-        id: "body_cut_1",
-        kind: "extrudeBoolean",
-        operation: "cut",
-        target: createCircleExtrudeSource("body_circle_1"),
-        tool: createExtrudeSource("body_cut_1")
+        source: {
+          id: "body_cut_1",
+          kind: "extrudeBoolean",
+          operation: "cut",
+          target: createCircleExtrudeSource("body_circle_1"),
+          tool: createExtrudeSource("body_cut_1")
+        },
+        expected: "Boolean display geometry issue"
+      },
+      {
+        source: createRevolveSource("body_revolve_1"),
+        expected: "Revolve display geometry issue"
+      },
+      {
+        source: {
+          id: "body_hole_1",
+          kind: "hole",
+          target: createExtrudeSource("body_rect_1"),
+          tool: {
+            sketchPlane: "XY",
+            circle: { kind: "circle", center: [0, 0], radius: 0.5 },
+            depthMode: "blind",
+            depth: 1,
+            direction: "positive"
+          }
+        },
+        expected: "Hole display geometry issue"
+      },
+      {
+        source: createEdgeFinishSource("body_chamfer_1", "chamfer"),
+        expected: "Edge finish display geometry issue"
       }
-    ]);
-    await flushPromises();
+    ];
 
-    expect(getDerivedGeometryStatusLabel(snapshots.at(-1)?.entries[0])).toBe(
-      "Boolean mesh error"
-    );
-  });
+    for (const { source, expected } of cases) {
+      const snapshots: DerivedGeometrySnapshot[] = [];
+      const service = new DerivedGeometryService({
+        runtime: createRuntime(async () => {
+          throw new Error("display worker failed");
+        }),
+        onChange: (snapshot) => snapshots.push(snapshot)
+      });
 
-  it("labels revolve mesh errors without implying primitive fallback", async () => {
-    const snapshots: DerivedGeometrySnapshot[] = [];
-    const service = new DerivedGeometryService({
-      runtime: createRuntime(async () => {
-        throw new Error("revolve worker failed");
-      }),
-      onChange: (snapshot) => snapshots.push(snapshot)
-    });
+      service.reconcile([source]);
+      await flushPromises();
 
-    service.reconcile([createRevolveSource("body_revolve_1")]);
-    await flushPromises();
-
-    expect(getDerivedGeometryStatusLabel(snapshots.at(-1)?.entries[0])).toBe(
-      "Revolve mesh error"
-    );
+      const label = getDerivedGeometryStatusLabel(snapshots.at(-1)?.entries[0]);
+      expect(label).toBe(expected);
+      expect(label).not.toMatch(/\b(mesh error|primitive fallback)\b/i);
+    }
   });
 
   it("labels unsupported revolve placement without implying primitive fallback", () => {

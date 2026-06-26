@@ -1081,19 +1081,19 @@ export function getDerivedGeometryStatusLabel(
       return "Building display geometry";
     case "error":
       if (entry.sourceKind === "extrudeBoolean") {
-        return "Boolean mesh error";
+        return "Boolean display geometry issue";
       }
 
       if (entry.sourceKind === "revolve") {
-        return "Revolve mesh error";
+        return "Revolve display geometry issue";
       }
 
       if (entry.sourceKind === "hole") {
-        return "Hole mesh error";
+        return "Hole display geometry issue";
       }
 
       if (entry.sourceKind === "edgeFinish") {
-        return "Edge finish mesh error";
+        return "Edge finish display geometry issue";
       }
 
       return "Primitive fallback";
