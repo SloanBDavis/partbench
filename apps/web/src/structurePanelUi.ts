@@ -8,6 +8,7 @@ import type {
   SketchSnapshot
 } from "@web-cad/cad-protocol";
 import type { DocumentUnits } from "@web-cad/cad-core";
+import { formatVisibleDiagnosticMessage } from "./viewportVisibleText";
 
 export interface StructureHealthDisplay {
   readonly label: string;
@@ -477,32 +478,32 @@ export function getHealthIssues(
     const featureIssues =
       health.authoredExtrudes
         .find((entry) => entry.featureId === target.id)
-        ?.issues.map((issue) => issue.message) ?? [];
+        ?.issues.map(formatVisibleHealthIssue) ?? [];
     const revolveIssues =
       health.authoredRevolves
         .find((entry) => entry.featureId === target.id)
-        ?.issues.map((issue) => issue.message) ?? [];
+        ?.issues.map(formatVisibleHealthIssue) ?? [];
     const holeIssues =
       health.authoredHoles
         .find((entry) => entry.featureId === target.id)
-        ?.issues.map((issue) => issue.message) ?? [];
+        ?.issues.map(formatVisibleHealthIssue) ?? [];
     const chamferIssues =
       health.authoredChamfers
         .find((entry) => entry.featureId === target.id)
-        ?.issues.map((issue) => issue.message) ?? [];
+        ?.issues.map(formatVisibleHealthIssue) ?? [];
     const filletIssues =
       health.authoredFillets
         .find((entry) => entry.featureId === target.id)
-        ?.issues.map((issue) => issue.message) ?? [];
+        ?.issues.map(formatVisibleHealthIssue) ?? [];
     const dimensionIssues = health.sketchDimensions
       .filter((entry) => entry.affectedFeatureIds.includes(target.id))
-      .flatMap((entry) => entry.issues.map((issue) => issue.message));
+      .flatMap((entry) => entry.issues.map(formatVisibleHealthIssue));
     const constraintIssues = health.sketchConstraints
       .filter((entry) => entry.affectedFeatureIds.includes(target.id))
-      .flatMap((entry) => entry.issues.map((issue) => issue.message));
+      .flatMap((entry) => entry.issues.map(formatVisibleHealthIssue));
     const evaluationIssues = health.sketchEvaluations
       .filter((entry) => entry.affectedFeatureIds.includes(target.id))
-      .flatMap((entry) => entry.issues.map((issue) => issue.message));
+      .flatMap((entry) => entry.issues.map(formatVisibleHealthIssue));
 
     return [
       ...featureIssues,
@@ -520,32 +521,32 @@ export function getHealthIssues(
     const bodyIssues =
       health.authoredExtrudes
         .find((entry) => entry.bodyId === target.id)
-        ?.issues.map((issue) => issue.message) ?? [];
+        ?.issues.map(formatVisibleHealthIssue) ?? [];
     const revolveIssues =
       health.authoredRevolves
         .find((entry) => entry.bodyId === target.id)
-        ?.issues.map((issue) => issue.message) ?? [];
+        ?.issues.map(formatVisibleHealthIssue) ?? [];
     const holeIssues =
       health.authoredHoles
         .find((entry) => entry.bodyId === target.id)
-        ?.issues.map((issue) => issue.message) ?? [];
+        ?.issues.map(formatVisibleHealthIssue) ?? [];
     const chamferIssues =
       health.authoredChamfers
         .find((entry) => entry.bodyId === target.id)
-        ?.issues.map((issue) => issue.message) ?? [];
+        ?.issues.map(formatVisibleHealthIssue) ?? [];
     const filletIssues =
       health.authoredFillets
         .find((entry) => entry.bodyId === target.id)
-        ?.issues.map((issue) => issue.message) ?? [];
+        ?.issues.map(formatVisibleHealthIssue) ?? [];
     const dimensionIssues = health.sketchDimensions
       .filter((entry) => entry.affectedBodyIds.includes(target.id))
-      .flatMap((entry) => entry.issues.map((issue) => issue.message));
+      .flatMap((entry) => entry.issues.map(formatVisibleHealthIssue));
     const constraintIssues = health.sketchConstraints
       .filter((entry) => entry.affectedBodyIds.includes(target.id))
-      .flatMap((entry) => entry.issues.map((issue) => issue.message));
+      .flatMap((entry) => entry.issues.map(formatVisibleHealthIssue));
     const evaluationIssues = health.sketchEvaluations
       .filter((entry) => entry.affectedBodyIds.includes(target.id))
-      .flatMap((entry) => entry.issues.map((issue) => issue.message));
+      .flatMap((entry) => entry.issues.map(formatVisibleHealthIssue));
 
     return [
       ...bodyIssues,
@@ -563,7 +564,7 @@ export function getHealthIssues(
     return (
       health.namedReferences
         .find((entry) => entry.name === target.name)
-        ?.issues.map((issue) => issue.message) ?? []
+        ?.issues.map(formatVisibleHealthIssue) ?? []
     );
   }
 
@@ -597,7 +598,11 @@ export function getHealthIssues(
     ...evaluationIssues,
     ...dimensionIssues,
     ...constraintIssues
-  ].map((issue) => issue.message);
+  ].map(formatVisibleHealthIssue);
+}
+
+function formatVisibleHealthIssue(issue: { readonly message: string }): string {
+  return formatVisibleDiagnosticMessage(issue.message);
 }
 
 export function formatFeatureLine(

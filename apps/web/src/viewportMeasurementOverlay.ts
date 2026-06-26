@@ -27,7 +27,7 @@ import {
   formatVolume,
   type MeasurementDisplayRow
 } from "./sceneObjectDisplay";
-import { redactInternalViewportIds } from "./viewportVisibleText";
+import { formatVisibleDiagnosticMessage } from "./viewportVisibleText";
 
 export type ViewportMeasurementOverlayKind = "body" | "generatedReference";
 export type ViewportMeasurementOverlayTone = "ready" | "blocked";
@@ -718,5 +718,5 @@ function formatNumber(value: number): string {
 }
 
 function cleanText(text: string): string {
-  return redactInternalViewportIds(text);
+  return formatVisibleDiagnosticMessage(text);
 }

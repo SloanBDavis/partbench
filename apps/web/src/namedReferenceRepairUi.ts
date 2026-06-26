@@ -9,6 +9,7 @@ import type {
 } from "@web-cad/cad-protocol";
 import { formatGeneratedReferenceKind } from "./generatedReferenceUi";
 import type { SelectedGeneratedReference } from "./generatedReferenceSelection";
+import { formatVisibleDiagnosticMessage } from "./viewportVisibleText";
 
 export type NamedReferenceRepairUiState =
   | { readonly status: "none" }
@@ -180,7 +181,9 @@ export function formatNamedReferenceRepairBatchError(
         }.`
       : "";
 
-  return `${error.code}: ${error.message}${details}`;
+  return formatVisibleDiagnosticMessage(
+    `${error.code}: ${error.message}${details}`
+  );
 }
 
 export function isRepairableNamedReferenceHealth(
@@ -247,11 +250,13 @@ function getQueryProvenRepairTarget(
 
   const issue = response.candidates.flatMap((entry) => entry.issues)[0];
   const message =
-    issue?.message ??
-    response.issues[0]?.message ??
-    (response.status === "resolved"
-      ? "Selected reference is not available for repair."
-      : `Selected reference is ${response.status}.`);
+    issue || response.issues[0]
+      ? formatVisibleDiagnosticMessage(
+          (issue ?? response.issues[0])?.message ?? ""
+        )
+      : response.status === "resolved"
+        ? "Selected reference is not available for repair."
+        : `Selected reference is ${response.status}.`;
 
   return {
     status: "blocked",
@@ -263,13 +268,13 @@ function getQueryProvenRepairTarget(
             {
               code: issue.code,
               source: "selection.referenceCandidates" as const,
-              message: issue.message
+              message: formatVisibleDiagnosticMessage(issue.message)
             }
           ]
         : response.issues.map((entry) => ({
             code: entry.code,
             source: "selection.referenceCandidates" as const,
-            message: entry.message
+            message: formatVisibleDiagnosticMessage(entry.message)
           })))
     ]
   };
@@ -281,7 +286,7 @@ function createHealthDiagnostics(
   return (entry?.diagnostics ?? []).map((diagnostic) => ({
     code: diagnostic.code,
     status: diagnostic.status,
-    message: diagnostic.message,
+    message: formatVisibleDiagnosticMessage(diagnostic.message),
     source: "reference.health" as const
   }));
 }

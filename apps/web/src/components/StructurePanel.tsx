@@ -19,6 +19,7 @@ import {
 } from "../generatedReferenceUi";
 import {
   createSelectionReferenceCandidateSummaries,
+  formatSelectionReferenceIssue,
   formatSelectionReferenceStatus
 } from "../generatedReferenceSelection";
 import {
@@ -42,6 +43,7 @@ import {
   type StructureLineagePartNode,
   type StructureLineageTargetNode
 } from "../structurePanelUi";
+import { formatVisibleDiagnosticMessage } from "../viewportVisibleText";
 
 export interface StructureGeometryStatus {
   readonly label: string;
@@ -257,7 +259,9 @@ export function StructurePanel({
                       )}
                       {contractResponse?.issues[0] && (
                         <small className="error-text inline">
-                          {contractResponse.issues[0].message}
+                          {formatSelectionReferenceIssue(
+                            contractResponse.issues[0]
+                          )}
                         </small>
                       )}
                       {reference.status === "stale" && (
@@ -864,10 +868,13 @@ function ModelStoryReferences({
                       {contractResponse &&
                         contractResponse.status !== "resolved" && (
                           <small className="error-text inline">
-                            {contractResponse.issues[0]?.message ??
-                              formatSelectionReferenceStatus(
-                                contractResponse.status
-                              )}
+                            {contractResponse.issues[0]
+                              ? formatSelectionReferenceIssue(
+                                  contractResponse.issues[0]
+                                )
+                              : formatSelectionReferenceStatus(
+                                  contractResponse.status
+                                )}
                           </small>
                         )}
                     </button>
@@ -1014,13 +1021,14 @@ function formatFeatureEditFieldList(
 function getFeatureEditDiagnostic(
   editability: FeatureEditabilityQueryResponse
 ): string {
-  return (
+  const message =
     editability.diagnostics.find(
       (diagnostic) => diagnostic.severity === "blocker"
     )?.message ??
     editability.diagnostics[0]?.message ??
-    "Feature edit is not available."
-  );
+    "Feature edit is not available.";
+
+  return formatVisibleDiagnosticMessage(message);
 }
 
 function formatSketchDetail(sketch: SketchSnapshot): string {

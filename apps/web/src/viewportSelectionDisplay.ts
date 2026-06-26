@@ -20,6 +20,7 @@ import {
 } from "./generatedReferenceSelection";
 import { formatObjectKind, getObjectDisplayName } from "./sceneObjectDisplay";
 import type { ViewportPickIntent } from "./viewportPickIntent";
+import { formatVisibleDiagnosticMessage } from "./viewportVisibleText";
 
 export type ViewportSelectionKind =
   | "none"
@@ -182,7 +183,9 @@ export function createViewportSelectionDisplay({
     return createDisplay({
       selectionKind: "none",
       title: "Viewport pick unsupported",
-      detail: viewportPickIntent.issues[0]?.message ?? fallbackDetail,
+      detail: viewportPickIntent.issues[0]?.message
+        ? formatVisibleDiagnosticMessage(viewportPickIntent.issues[0].message)
+        : fallbackDetail,
       tone: "blocked",
       geometry,
       diagnostics: viewportPickIntent.issues
@@ -193,8 +196,9 @@ export function createViewportSelectionDisplay({
     return createDisplay({
       selectionKind: "none",
       title: "Viewport pick unavailable",
-      detail:
-        viewportPickIntent.issues[0]?.message ?? "Selection target missing",
+      detail: viewportPickIntent.issues[0]?.message
+        ? formatVisibleDiagnosticMessage(viewportPickIntent.issues[0].message)
+        : "Selection target missing",
       tone: "blocked",
       geometry,
       diagnostics: viewportPickIntent.issues
@@ -366,7 +370,7 @@ function dedupeDiagnostics(
     const diagnostic = {
       code: issue.code,
       status: issue.status,
-      message: issue.message
+      message: formatVisibleDiagnosticMessage(issue.message)
     };
     const key = `${diagnostic.code}:${diagnostic.status}:${diagnostic.message}`;
 

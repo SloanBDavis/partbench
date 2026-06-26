@@ -196,14 +196,14 @@ describe("viewportSelectionDisplay", () => {
       selectionKind: "none",
       title: "Viewport pick unsupported",
       detail:
-        "Sketch display geometry is not selectable as a command-ready CAD body from the viewport.",
+        "Sketch display geometry is not selectable as a CAD body available for modeling from the viewport.",
       tone: "blocked",
       diagnostics: [
         {
           code: "UNSUPPORTED_SELECTION_TARGET",
           status: "unsupported",
           message:
-            "Sketch display geometry is not selectable as a command-ready CAD body from the viewport."
+            "Sketch display geometry is not selectable as a CAD body available for modeling from the viewport."
         }
       ]
     });

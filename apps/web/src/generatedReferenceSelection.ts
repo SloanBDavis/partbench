@@ -17,6 +17,7 @@ import {
   type GeneratedReferenceMeasurementDisplay,
   type GeneratedReferenceMeasurementRow
 } from "./generatedReferenceUi";
+import { formatVisibleDiagnosticMessage } from "./viewportVisibleText";
 
 export interface SelectedGeneratedReference {
   readonly bodyId: string;
@@ -363,18 +364,18 @@ export function formatSelectionReferenceIssue(
 ): string {
   switch (issue.code) {
     case "MISSING_SELECTION_TARGET":
-      return issue.message;
+      return formatVisibleDiagnosticMessage(issue.message);
     case "STALE_SELECTION_REFERENCE":
-      return issue.message;
+      return formatVisibleDiagnosticMessage(issue.message);
     case "UNSUPPORTED_SELECTION_TARGET":
-      return issue.message;
+      return formatVisibleDiagnosticMessage(issue.message);
     case "AMBIGUOUS_SELECTION_TOPOLOGY":
-      return issue.message;
+      return formatVisibleDiagnosticMessage(issue.message);
     case "CONSUMED_SELECTION_BODY":
-      return issue.message;
+      return formatVisibleDiagnosticMessage(issue.message);
     case "NON_COMMANDABLE_SELECTION_TARGET":
-      return issue.message;
+      return formatVisibleDiagnosticMessage(issue.message);
     case "SELECTION_KIND_MISMATCH":
-      return issue.message;
+      return formatVisibleDiagnosticMessage(issue.message);
   }
 }

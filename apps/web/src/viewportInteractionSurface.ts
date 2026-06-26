@@ -11,7 +11,7 @@ import type {
   ViewportSelectionKind,
   ViewportSelectionTone
 } from "./viewportSelectionDisplay";
-import { redactInternalViewportIds } from "./viewportVisibleText";
+import { formatVisibleDiagnosticMessage } from "./viewportVisibleText";
 
 const DEFAULT_MAX_REFERENCE_ACTIONS = 6;
 const DEFAULT_MAX_MEASUREMENT_ROWS = 5;
@@ -412,5 +412,5 @@ function cleanDiagnostic(
 }
 
 function clean(text: string): string {
-  return redactInternalViewportIds(text);
+  return formatVisibleDiagnosticMessage(text);
 }

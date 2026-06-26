@@ -42,6 +42,7 @@ import {
 import {
   createSelectedGeneratedReference,
   createSelectionReferenceCandidateSummaries,
+  formatSelectionReferenceIssue,
   formatSelectionReferenceOperationLabel,
   formatSelectionReferenceStatus
 } from "../generatedReferenceSelection";
@@ -515,7 +516,7 @@ function SelectionReferenceContractCard({
   const issues =
     primary && primary.issues.length > 0
       ? primary.issues
-      : response.issues.map((issue) => issue.message);
+      : response.issues.map(formatSelectionReferenceIssue);
 
   return (
     <section className="workbench-card compact reference-contract-card">

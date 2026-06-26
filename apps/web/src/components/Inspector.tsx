@@ -104,6 +104,7 @@ import {
 } from "../sceneObjectDisplay";
 import { formatExtrudeOperationMode } from "../structurePanelUi";
 import type { TopologyRepairCandidatePreviewState } from "../topologyRepairCandidatesUi";
+import { formatVisibleDiagnosticMessage } from "../viewportVisibleText";
 import { DimensionFields, TextField, TransformFields } from "./FormFields";
 
 export function Inspector({
@@ -924,7 +925,11 @@ function BodyTopologyPanel({
           {topology.issues.length > 0 && (
             <div>
               <dt>Issue</dt>
-              <dd>{topology.issues[0]?.message}</dd>
+              <dd>
+                {topology.issues[0]
+                  ? formatVisibleDiagnosticMessage(topology.issues[0].message)
+                  : undefined}
+              </dd>
             </div>
           )}
         </dl>
@@ -2499,7 +2504,7 @@ function NamedReferencesPanel({
           const health = healthByName?.get(reference.name);
           const contractResponse = candidatesByName?.get(reference.name);
           const contractIssues =
-            contractResponse?.issues.map((issue) => issue.message) ?? [];
+            contractResponse?.issues.map(formatSelectionReferenceIssue) ?? [];
           const isRepairable =
             reference.status === "stale" ||
             isRepairableNamedReferenceHealth(health?.status);
@@ -2532,7 +2537,10 @@ function NamedReferencesPanel({
               </small>
               {health?.diagnostics[0] && (
                 <small className="error-text inline">
-                  {health.diagnostics[0].code}: {health.diagnostics[0].message}
+                  {health.diagnostics[0].code}:{" "}
+                  {formatVisibleDiagnosticMessage(
+                    health.diagnostics[0].message
+                  )}
                 </small>
               )}
               {contractResponse && (

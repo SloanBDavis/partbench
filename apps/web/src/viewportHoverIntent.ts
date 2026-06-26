@@ -14,7 +14,7 @@ import {
   getPrimarySelectionReferenceCandidate
 } from "./generatedReferenceSelection";
 import { formatObjectKind, getObjectDisplayName } from "./sceneObjectDisplay";
-import { redactInternalViewportIds } from "./viewportVisibleText";
+import { formatVisibleDiagnosticMessage } from "./viewportVisibleText";
 
 export type ViewportHoverKind =
   | "empty"
@@ -298,7 +298,7 @@ function dedupeDiagnostics(
     const diagnostic = {
       code: issue.code,
       status: issue.status,
-      message: redactInternalViewportIds(issue.message)
+      message: formatVisibleDiagnosticMessage(issue.message)
     };
     const key = `${diagnostic.code}:${diagnostic.status}:${diagnostic.message}`;
 
