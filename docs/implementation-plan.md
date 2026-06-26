@@ -2832,8 +2832,9 @@ The planned pillars are:
    reference, or named reference can be used by which command, and why blocked
    targets are blocked. Tranche A is implemented as
    `topology.commandTargetReadiness`, with structured readiness states,
-   supported operation summaries, `feature.extrudeCutTarget` /
-   `feature.extrudeAddTarget` body-target operation vocabulary, optional
+   supported operation summaries, `feature.extrudeCutTarget`,
+   `feature.extrudeAddTarget`, and `feature.holeTarget` body-target operation
+   vocabulary, optional
    topology-anchor snapshot proof, needs-promotion / needs-checkpoint-evidence
    / needs-repair flags, and thin agent/MCP pass-through. It is query-only and
    does not mint anchors, repair references, mutate source, change
@@ -2851,7 +2852,9 @@ The planned pillars are:
    bodies that own the active public topology body anchor. The current partial
    implementation also lets `feature.hole` target supported active
    topology-backed result bodies through the same public body-anchor proof path,
-   and the browser smoke proves promoted result-face rectangle add,
+   with `feature.holeTarget` readiness exposed through the shared command-target
+   query and consumed by the app's target list. The browser smoke proves
+   promoted result-face rectangle add,
    rectangle-family result-body second cut, circle-family result-body rectangle
    cut, result-face circle hole, and explicit XZ side-plane circle hole paths;
    unsupported or unanchored result bodies remain blocked.

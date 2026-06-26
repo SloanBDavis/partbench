@@ -1724,7 +1724,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
         requiredOperation: {
           type: "string",
           description:
-            "Optional operation that must be command-ready, such as feature.attachSketchPlane, feature.extrudeCutTarget, feature.extrudeAddTarget, feature.chamfer, feature.fillet, feature.measureReference, or feature.selectReference."
+            "Optional operation that must be command-ready, such as feature.attachSketchPlane, feature.extrudeCutTarget, feature.extrudeAddTarget, feature.holeTarget, feature.chamfer, feature.fillet, feature.measureReference, or feature.selectReference."
         }
       }
     }
@@ -1786,7 +1786,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
         desiredOperation: {
           type: "string",
           description:
-            "Optional operation filter, such as feature.attachSketchPlane, feature.extrudeCutTarget, feature.extrudeAddTarget, feature.chamfer, feature.fillet, feature.measureReference, feature.selectReference, or reference.nameGenerated."
+            "Optional operation filter, such as feature.attachSketchPlane, feature.extrudeCutTarget, feature.extrudeAddTarget, feature.holeTarget, feature.chamfer, feature.fillet, feature.measureReference, feature.selectReference, or reference.nameGenerated."
         },
         snapshot: {
           type: "object",
@@ -3028,6 +3028,7 @@ function isCadSelectionReferenceOperation(
     value === "reference.nameGenerated" ||
     value === "feature.extrudeCutTarget" ||
     value === "feature.extrudeAddTarget" ||
+    value === "feature.holeTarget" ||
     value === "feature.attachSketchPlane" ||
     value === "feature.chamfer" ||
     value === "feature.fillet" ||

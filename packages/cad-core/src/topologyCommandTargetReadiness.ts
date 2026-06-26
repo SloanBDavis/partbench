@@ -161,7 +161,7 @@ function chooseReadinessStatus(input: {
 
   if (
     input.query.target.type === "body" &&
-    isExtrudeTargetOperation(input.query.desiredOperation) &&
+    isBooleanBodyTargetOperation(input.query.desiredOperation) &&
     input.selectionResult.status === "non-commandable"
   ) {
     return "needs-promotion";
@@ -210,12 +210,13 @@ function statusFromSelectionStatus(
   return status;
 }
 
-function isExtrudeTargetOperation(
+function isBooleanBodyTargetOperation(
   operation: CadSelectionReferenceOperation | undefined
 ): boolean {
   return (
     operation === "feature.extrudeCutTarget" ||
-    operation === "feature.extrudeAddTarget"
+    operation === "feature.extrudeAddTarget" ||
+    operation === "feature.holeTarget"
   );
 }
 

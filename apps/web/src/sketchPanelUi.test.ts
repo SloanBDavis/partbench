@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import type {
   CadBodySnapshot,
   CadFeatureSummary,
+  CadSelectionReferenceOperation,
   SketchConstraintEntry,
   SketchDimensionEntry,
   SketchEvaluationQueryResponse,
   SketchSolverStatusQueryResponse,
-  SketchSnapshot
+  SketchSnapshot,
+  TopologyCommandTargetReadinessQueryResponse
 } from "@web-cad/cad-protocol";
 import {
   chooseInitialSketchPanelSelection,
@@ -1272,6 +1274,61 @@ describe("sketch panel UI helpers", () => {
     ]);
   });
 
+  it("requires command-ready topology anchors for result-body hole targets when readiness is available", () => {
+    const features: CadFeatureSummary[] = [
+      createExtrudeFeature("feat_rect", "body_rect", "rectangle", "newBody"),
+      createExtrudeFeature("feat_cut", "body_cut", "rectangle", "cut", {
+        targetTopologyAnchorId: "anchor_body_rect"
+      })
+    ];
+    const bodies: CadBodySnapshot[] = [
+      createBody("body_rect", "feat_rect", "feat_cut"),
+      createBody("body_cut", "feat_cut")
+    ];
+    const blockedReadiness = new Map([
+      [
+        "anchor_body_rect",
+        createTopologyCommandTargetReadiness("anchor_body_rect", false, [])
+      ]
+    ]);
+    const readyReadiness = new Map([
+      [
+        "anchor_body_rect",
+        createTopologyCommandTargetReadiness("anchor_body_rect", true, [
+          "feature.holeTarget"
+        ])
+      ]
+    ]);
+
+    expect(
+      createHoleTargetBodyOptions(
+        bodies,
+        features,
+        "body_cut",
+        undefined,
+        blockedReadiness
+      )
+    ).toEqual([]);
+    expect(
+      createHoleTargetBodyOptions(
+        bodies,
+        features,
+        "body_cut",
+        undefined,
+        readyReadiness
+      )
+    ).toEqual([
+      {
+        bodyId: "body_cut",
+        featureId: "feat_cut",
+        targetTopologyAnchorId: "anchor_body_rect",
+        profileKind: "rectangle",
+        label: "Rectangle result 1 / 1 mm",
+        detail: "Rectangle topology result / cut / body_cut"
+      }
+    ]);
+  });
+
   it("prefers active result-body topology anchors for hole targets", () => {
     const features: CadFeatureSummary[] = [
       createExtrudeFeature("feat_rect", "body_rect", "rectangle", "newBody"),
@@ -1750,6 +1807,53 @@ function createSolverStatus({
     sourceBoundaryNote: "source",
     derivedBoundaryNote: "derived",
     requiresProjectSchemaMigration: false
+  };
+}
+
+function createTopologyCommandTargetReadiness(
+  anchorId: string,
+  commandable: boolean,
+  supportedOperations: readonly CadSelectionReferenceOperation[]
+): TopologyCommandTargetReadinessQueryResponse {
+  return {
+    ok: true,
+    query: "topology.commandTargetReadiness",
+    cadOpsVersion: "cadops.v1",
+    target: { type: "topologyAnchor", anchorId },
+    desiredOperation: "feature.holeTarget",
+    status: commandable ? "ready" : "blocked",
+    selectionStatus: commandable ? "resolved" : "non-commandable",
+    commandable,
+    promotionRequired: false,
+    checkpointEvidenceRequired: false,
+    repairRequired: false,
+    supportedOperationCount: supportedOperations.length,
+    supportedOperations,
+    operationSummaryCount: 1,
+    operationSummaries: [
+      {
+        operation: "feature.holeTarget",
+        status: commandable ? "ready" : "blocked",
+        commandable,
+        source: "selection.referenceCandidates",
+        requiresPromotion: false,
+        requiresCheckpointEvidence: false,
+        requiresRepair: false
+      }
+    ],
+    candidateCount: 0,
+    candidates: [],
+    issueCount: 0,
+    issues: [],
+    diagnosticCount: 0,
+    diagnostics: [],
+    sourceBoundaryNote: "source",
+    derivedBoundaryNote: "derived",
+    mutatesSource: false,
+    exposesCheckpointLocalIds: false,
+    exposesPrivateIds: false,
+    requiresProjectSchemaMigration: false,
+    requiresPackageVersionMigration: false
   };
 }
 

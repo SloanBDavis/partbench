@@ -3896,6 +3896,7 @@ export type CadSelectionReferenceOperation =
   | CadGeneratedReferenceEligibleOperation
   | "feature.extrudeCutTarget"
   | "feature.extrudeAddTarget"
+  | "feature.holeTarget"
   | "reference.nameGenerated";
 
 export type CadSelectionReferenceStatus =

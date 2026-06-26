@@ -3893,6 +3893,7 @@ function isCadSelectionReferenceOperation(
     value === "reference.nameGenerated" ||
     value === "feature.extrudeCutTarget" ||
     value === "feature.extrudeAddTarget" ||
+    value === "feature.holeTarget" ||
     value === "feature.attachSketchPlane" ||
     value === "feature.chamfer" ||
     value === "feature.fillet" ||

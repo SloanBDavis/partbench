@@ -267,6 +267,8 @@ export function formatSelectionReferenceOperationLabel(
       return "Use as cut target";
     case "feature.extrudeAddTarget":
       return "Use as add target";
+    case "feature.holeTarget":
+      return "Use as hole target";
     case "feature.attachSketchPlane":
       return "Create sketch on face";
     case "feature.chamfer":

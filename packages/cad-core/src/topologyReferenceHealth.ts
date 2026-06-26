@@ -188,7 +188,11 @@ function createTopologyAnchorCommandOperations(
   }
 
   if (anchor.entityKind === "body") {
-    return ["feature.extrudeCutTarget", "feature.extrudeAddTarget"];
+    return [
+      "feature.extrudeCutTarget",
+      "feature.extrudeAddTarget",
+      "feature.holeTarget"
+    ];
   }
 
   if (generatedReference) {

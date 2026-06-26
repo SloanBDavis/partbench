@@ -552,6 +552,7 @@ function actionIdFromOperation(
   switch (operation) {
     case "feature.extrudeCutTarget":
     case "feature.extrudeAddTarget":
+    case "feature.holeTarget":
       return "body.references.inspect";
     case "feature.attachSketchPlane":
       return "sketch.createOnFace";

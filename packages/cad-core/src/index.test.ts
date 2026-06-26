@@ -4992,6 +4992,7 @@ describe("cad-core", () => {
         "reference.nameGenerated": 27,
         "feature.extrudeCutTarget": 0,
         "feature.extrudeAddTarget": 0,
+        "feature.holeTarget": 0,
         "feature.attachSketchPlane": 6,
         "feature.chamfer": 12,
         "feature.fillet": 12,
@@ -33091,7 +33092,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       commandable: true,
       supportedOperations: expect.arrayContaining([
         "feature.extrudeCutTarget",
-        "feature.extrudeAddTarget"
+        "feature.extrudeAddTarget",
+        "feature.holeTarget"
       ]),
       operationSummaries: expect.arrayContaining([
         expect.objectContaining({
@@ -33101,6 +33103,11 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         }),
         expect.objectContaining({
           operation: "feature.extrudeAddTarget",
+          source: "selection.referenceCandidates",
+          commandable: true
+        }),
+        expect.objectContaining({
+          operation: "feature.holeTarget",
           source: "selection.referenceCandidates",
           commandable: true
         })
@@ -33192,6 +33199,14 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         desiredOperation: "feature.extrudeCutTarget"
       }
     });
+    const holeNeedsPromotion = cutEngine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.commandTargetReadiness",
+        target: { type: "body", bodyId: "body_anchor_cut" },
+        desiredOperation: "feature.holeTarget"
+      }
+    });
 
     expect(needsEvidence).toMatchObject({
       ok: true,
@@ -33244,10 +33259,35 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         })
       ]
     });
+    expect(holeNeedsPromotion).toMatchObject({
+      ok: true,
+      query: "topology.commandTargetReadiness",
+      status: "needs-promotion",
+      commandable: false,
+      promotionRequired: true,
+      operationSummaries: [
+        expect.objectContaining({
+          operation: "feature.holeTarget",
+          commandable: false,
+          requiresPromotion: true
+        })
+      ],
+      diagnostics: [
+        expect.objectContaining({
+          code: "TOPOLOGY_ANCHOR_PERSISTENCE_DEFERRED",
+          bodyId: "body_anchor_cut"
+        })
+      ]
+    });
     expect(exportCadProjectJson(exactAnchorEngine)).toBe(beforeExactJson);
     expect(exportCadProjectJson(cutEngine)).toBe(beforeCutJson);
     expect(
-      JSON.stringify({ needsEvidence, needsRepair, needsPromotion })
+      JSON.stringify({
+        needsEvidence,
+        needsRepair,
+        needsPromotion,
+        holeNeedsPromotion
+      })
     ).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId|checkpoint-local/i
     );
@@ -34270,6 +34310,15 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(exportCadProjectJson(cutEngine)).toBe(beforeJson);
 
     const cutResult = cutEngine.applyBatch(cutOps);
+    const resultHoleReadiness = cutEngine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.commandTargetReadiness",
+        target: { type: "topologyAnchor", anchorId: "anchor_body_1" },
+        desiredOperation: "feature.holeTarget"
+      }
+    });
+
     expect(getExtrudeFeature(cutEngine, "feat_anchor_cut")).toMatchObject({
       kind: "extrude",
       operationMode: "cut",
@@ -34313,6 +34362,25 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         })
       ])
     );
+    expect(resultHoleReadiness).toMatchObject({
+      ok: true,
+      query: "topology.commandTargetReadiness",
+      status: "ready",
+      commandable: true,
+      supportedOperations: expect.arrayContaining(["feature.holeTarget"]),
+      operationSummaries: expect.arrayContaining([
+        expect.objectContaining({
+          operation: "feature.holeTarget",
+          source: "selection.referenceCandidates",
+          commandable: true,
+          target: expect.objectContaining({
+            bodyId: "body_anchor_cut",
+            stableId: "generated:body:body_anchor_cut",
+            topologyAnchorId: "anchor_body_1"
+          })
+        })
+      ])
+    });
     expect(health.authoredExtrudes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

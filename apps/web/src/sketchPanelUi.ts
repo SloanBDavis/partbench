@@ -2,6 +2,7 @@ import type {
   CadBodySnapshot,
   CadFeatureSummary,
   CadParameterSnapshot,
+  CadSelectionReferenceOperation,
   CadTopologyIdentitySourceSnapshot,
   CurrentSketchConstraintKind,
   FeatureExtrudeOperationMode,
@@ -22,7 +23,8 @@ import type {
   SketchEntitySnapshot,
   SketchPointTarget,
   SketchPointTargetRole,
-  SketchSnapshot
+  SketchSnapshot,
+  TopologyCommandTargetReadinessQueryResponse
 } from "@web-cad/cad-protocol";
 
 export interface BooleanTargetBodyOption {
@@ -1270,14 +1272,19 @@ export function createHoleTargetBodyOptions(
   bodies: readonly CadBodySnapshot[],
   features: readonly CadFeatureSummary[],
   preferredBodyId?: string,
-  topologyAnchors?: CadTopologyIdentitySourceSnapshot["anchors"]
+  topologyAnchors?: CadTopologyIdentitySourceSnapshot["anchors"],
+  readinessByTopologyAnchorId?: ReadonlyMap<
+    string,
+    TopologyCommandTargetReadinessQueryResponse
+  >
 ): readonly BooleanTargetBodyOption[] {
   return createBooleanTargetBodyOptions(
     bodies,
     features,
     "hole",
     preferredBodyId,
-    topologyAnchors
+    topologyAnchors,
+    readinessByTopologyAnchorId
   );
 }
 
@@ -1286,7 +1293,11 @@ function createBooleanTargetBodyOptions(
   features: readonly CadFeatureSummary[],
   operationMode: "add" | "cut" | "hole",
   preferredBodyId?: string,
-  topologyAnchors: CadTopologyIdentitySourceSnapshot["anchors"] = []
+  topologyAnchors: CadTopologyIdentitySourceSnapshot["anchors"] = [],
+  readinessByTopologyAnchorId?: ReadonlyMap<
+    string,
+    TopologyCommandTargetReadinessQueryResponse
+  >
 ): readonly BooleanTargetBodyOption[] {
   const options = bodies
     .filter(
@@ -1326,6 +1337,18 @@ function createBooleanTargetBodyOptions(
         ? (activeBodyAnchorId ?? feature.targetTopologyAnchorId)
         : undefined;
 
+      if (
+        isTopologyResultTarget &&
+        readinessByTopologyAnchorId &&
+        !isCommandReadyTopologyAnchor(
+          readinessByTopologyAnchorId,
+          targetTopologyAnchorId,
+          operationModeToReferenceOperation(operationMode)
+        )
+      ) {
+        return [];
+      }
+
       return [
         {
           bodyId: body.id,
@@ -1363,6 +1386,39 @@ function createBooleanTargetBodyOptions(
 
     return 0;
   });
+}
+
+function operationModeToReferenceOperation(
+  operationMode: "add" | "cut" | "hole"
+): CadSelectionReferenceOperation {
+  switch (operationMode) {
+    case "add":
+      return "feature.extrudeAddTarget";
+    case "cut":
+      return "feature.extrudeCutTarget";
+    case "hole":
+      return "feature.holeTarget";
+  }
+}
+
+function isCommandReadyTopologyAnchor(
+  readinessByTopologyAnchorId: ReadonlyMap<
+    string,
+    TopologyCommandTargetReadinessQueryResponse
+  >,
+  topologyAnchorId: string | undefined,
+  operation: CadSelectionReferenceOperation
+): boolean {
+  if (!topologyAnchorId) {
+    return false;
+  }
+
+  const response = readinessByTopologyAnchorId.get(topologyAnchorId);
+
+  return (
+    response?.commandable === true &&
+    response.supportedOperations.includes(operation)
+  );
 }
 
 function findActiveBodyTopologyAnchorId(

@@ -476,6 +476,9 @@ describe("generated reference selection helpers", () => {
     expect(formatSelectionReferenceOperationLabel("feature.chamfer")).toBe(
       "Chamfer"
     );
+    expect(formatSelectionReferenceOperationLabel("feature.holeTarget")).toBe(
+      "Use as hole target"
+    );
     expect(
       getSelectionReferenceOperationStatus(
         undefined,

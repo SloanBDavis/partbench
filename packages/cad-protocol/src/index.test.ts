@@ -2691,6 +2691,7 @@ describe("cad-protocol", () => {
           "reference.nameGenerated": 1,
           "feature.extrudeCutTarget": 0,
           "feature.extrudeAddTarget": 0,
+          "feature.holeTarget": 0,
           "feature.attachSketchPlane": 0,
           "feature.chamfer": 0,
           "feature.fillet": 0,
@@ -4044,8 +4045,8 @@ describe("cad-protocol", () => {
       ok: true,
       query: "topology.commandTargetReadiness",
       cadOpsVersion: "cadops.v1",
-      target: { type: "topologyAnchor", anchorId: "anchor_face_1" },
-      desiredOperation: "feature.attachSketchPlane",
+      target: { type: "topologyAnchor", anchorId: "anchor_body_1" },
+      desiredOperation: "feature.holeTarget",
       status: "needs-checkpoint-evidence",
       selectionStatus: "unsupported",
       commandable: false,
@@ -4057,7 +4058,7 @@ describe("cad-protocol", () => {
       operationSummaryCount: 1,
       operationSummaries: [
         {
-          operation: "feature.attachSketchPlane",
+          operation: "feature.holeTarget",
           status: "needs-checkpoint-evidence",
           commandable: false,
           source: "selection.referenceCandidates",
@@ -4111,7 +4112,7 @@ describe("cad-protocol", () => {
       checkpointEvidenceRequired: true,
       operationSummaries: [
         expect.objectContaining({
-          operation: "feature.attachSketchPlane",
+          operation: "feature.holeTarget",
           commandable: false
         })
       ],

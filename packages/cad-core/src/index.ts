@@ -6287,6 +6287,7 @@ function isCadSelectionReferenceOperation(
     value === "reference.nameGenerated" ||
     value === "feature.extrudeCutTarget" ||
     value === "feature.extrudeAddTarget" ||
+    value === "feature.holeTarget" ||
     value === "feature.attachSketchPlane" ||
     value === "feature.chamfer" ||
     value === "feature.fillet" ||
@@ -13536,8 +13537,16 @@ function createTopologyAnchorSelectionReferenceCandidate(options: {
     return { status: selectionStatus, candidates: [], issues };
   }
 
+  const resolvedBodyId =
+    anchor.entityKind === "body"
+      ? resolveActiveTopologyAnchorSelectionBodyId(
+          options.structure.features,
+          anchor.bodyId,
+          anchor.anchorId
+        )
+      : anchor.bodyId;
   const body = options.structure.bodies.find(
-    (candidate) => candidate.id === anchor.bodyId
+    (candidate) => candidate.id === resolvedBodyId
   );
 
   if (!body) {
@@ -13545,9 +13554,9 @@ function createTopologyAnchorSelectionReferenceCandidate(options: {
       createSelectionIssue(
         "MISSING_SELECTION_TARGET",
         "missing",
-        `Topology anchor body does not exist: ${anchor.bodyId}`,
+        `Topology anchor body does not exist: ${resolvedBodyId}`,
         {
-          bodyId: anchor.bodyId,
+          bodyId: resolvedBodyId,
           stableId: anchor.stableId,
           topologyAnchorId: anchor.anchorId,
           checkpointId: anchor.checkpointId
@@ -13558,15 +13567,21 @@ function createTopologyAnchorSelectionReferenceCandidate(options: {
     return { status: "missing", candidates: [], issues };
   }
 
-  const stableResolution = anchor.stableId
-    ? { status: "resolved" as const, stableId: anchor.stableId }
-    : resolveTopologyAnchorGeneratedReferenceFromSourceRole({
-        document: options.document,
-        ownerPartId: body.partId,
-        bodyId: anchor.bodyId,
-        entityKind: anchor.entityKind,
-        sourceSemanticRole: anchor.sourceSemanticRole
-      });
+  const stableResolution =
+    anchor.entityKind === "body" && resolvedBodyId !== anchor.bodyId
+      ? {
+          status: "resolved" as const,
+          stableId: `generated:body:${resolvedBodyId}`
+        }
+      : anchor.stableId
+        ? { status: "resolved" as const, stableId: anchor.stableId }
+        : resolveTopologyAnchorGeneratedReferenceFromSourceRole({
+            document: options.document,
+            ownerPartId: body.partId,
+            bodyId: resolvedBodyId,
+            entityKind: anchor.entityKind,
+            sourceSemanticRole: anchor.sourceSemanticRole
+          });
 
   if (stableResolution.status !== "resolved") {
     const issues = [
@@ -13669,6 +13684,37 @@ function createTopologyAnchorSelectionReferenceCandidate(options: {
     topologyAnchorId: anchor.anchorId,
     checkpointId: anchor.checkpointId
   });
+}
+
+function resolveActiveTopologyAnchorSelectionBodyId(
+  features: readonly CadFeatureSummary[],
+  bodyId: BodyId,
+  topologyAnchorId: string
+): BodyId {
+  let activeBodyId = bodyId;
+  const visitedBodyIds = new Set<BodyId>();
+
+  while (!visitedBodyIds.has(activeBodyId)) {
+    visitedBodyIds.add(activeBodyId);
+
+    const consumingFeature = features.find(
+      (
+        candidate
+      ): candidate is Extract<CadFeatureSummary, { kind: "extrude" }> =>
+        candidate.kind === "extrude" &&
+        isConsumingExtrudeOperationMode(candidate.operationMode) &&
+        candidate.targetBodyId === activeBodyId &&
+        candidate.targetTopologyAnchorId === topologyAnchorId
+    );
+
+    if (!consumingFeature) {
+      return activeBodyId;
+    }
+
+    activeBodyId = consumingFeature.bodyId;
+  }
+
+  return activeBodyId;
 }
 
 function createTopologyAnchorGeneratedReferenceCommandOperations(
@@ -15686,6 +15732,7 @@ const SUMMARY_REFERENCE_OPERATIONS = [
   "reference.nameGenerated",
   "feature.extrudeCutTarget",
   "feature.extrudeAddTarget",
+  "feature.holeTarget",
   "feature.attachSketchPlane",
   "feature.chamfer",
   "feature.fillet",

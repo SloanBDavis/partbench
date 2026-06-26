@@ -21,6 +21,7 @@ import type {
   CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
   CadGeneratedReference,
+  CadSelectionReferenceOperation,
   CadSelectionReferenceInput,
   CadParameterSnapshot,
   CadTopologyIdentitySourceSnapshot,
@@ -38,6 +39,7 @@ import type {
   ProjectTopologyIdentityReadinessQueryResponse,
   ReferenceHealthQueryResponse,
   SelectionReferenceCandidatesQueryResponse,
+  TopologyCommandTargetReadinessQueryResponse,
   SketchDimensionEntry,
   SketchDimensionTarget,
   SketchConstraintEntry,
@@ -663,6 +665,59 @@ function readSelectionReferenceCandidates(
   return response.ok && response.query === "selection.referenceCandidates"
     ? response
     : undefined;
+}
+
+function readTopologyCommandTargetReadiness(
+  target: CadSelectionReferenceInput | undefined,
+  desiredOperation?: CadSelectionReferenceOperation
+): TopologyCommandTargetReadinessQueryResponse | undefined {
+  if (!target) {
+    return undefined;
+  }
+
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: {
+      query: "topology.commandTargetReadiness",
+      target,
+      ...(desiredOperation ? { desiredOperation } : {})
+    }
+  });
+
+  return response.ok && response.query === "topology.commandTargetReadiness"
+    ? response
+    : undefined;
+}
+
+function readTopologyAnchorCommandTargetReadinessByAnchorId(
+  anchors: CadTopologyIdentitySourceSnapshot["anchors"] | undefined,
+  desiredOperation: CadSelectionReferenceOperation
+): ReadonlyMap<string, TopologyCommandTargetReadinessQueryResponse> {
+  const readinessByAnchorId = new Map<
+    string,
+    TopologyCommandTargetReadinessQueryResponse
+  >();
+
+  if (!anchors) {
+    return readinessByAnchorId;
+  }
+
+  for (const anchor of anchors) {
+    if (anchor.entityKind !== "body") {
+      continue;
+    }
+
+    const response = readTopologyCommandTargetReadiness(
+      { type: "topologyAnchor", anchorId: anchor.anchorId },
+      desiredOperation
+    );
+
+    if (response) {
+      readinessByAnchorId.set(anchor.anchorId, response);
+    }
+  }
+
+  return readinessByAnchorId;
 }
 
 function readSelectionReferenceCandidatesByStableId(
@@ -1423,20 +1478,17 @@ export function App() {
       selectedBody?.id
     ]
   );
-  const holeTargetBodyOptions = useMemo(
-    () =>
-      createHoleTargetBodyOptions(
-        projectStructure.bodies,
-        projectStructure.features,
-        selectedBody?.id,
-        document.topologyIdentity?.anchors
-      ),
-    [
+  const holeTargetReadinessByTopologyAnchorId =
+    readTopologyAnchorCommandTargetReadinessByAnchorId(
       document.topologyIdentity?.anchors,
-      projectStructure.bodies,
-      projectStructure.features,
-      selectedBody?.id
-    ]
+      "feature.holeTarget"
+    );
+  const holeTargetBodyOptions = createHoleTargetBodyOptions(
+    projectStructure.bodies,
+    projectStructure.features,
+    selectedBody?.id,
+    document.topologyIdentity?.anchors,
+    holeTargetReadinessByTopologyAnchorId
   );
   const selectedFeature = selectedBody
     ? projectStructure.features.find(
