@@ -193,6 +193,120 @@ function createCircleExtrudeEngine(): CadEngine {
   return engine;
 }
 
+function createV14CircleSidePlaneHoleChainOps(): CadBatch["ops"] {
+  return [
+    {
+      op: "topology.checkpoint.create",
+      checkpointId: "checkpoint_circle_1",
+      bodyId: "body_circle_1",
+      sourceFeatureId: "feat_circle_1",
+      sourceIdentity: {
+        algorithm: "partbench-source-v1",
+        sha256:
+          "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      status: "active"
+    },
+    {
+      op: "topology.anchor.create",
+      anchorId: "anchor_body_circle",
+      entityKind: "body",
+      bodyId: "body_circle_1",
+      checkpointId: "checkpoint_circle_1",
+      checkpointEntityId: "checkpoint-local-circle-body",
+      sourceFeatureId: "feat_circle_1",
+      stableId: "generated:body:body_circle_1",
+      sourceSemanticRole: "source body",
+      signatureHash: "circle_body_signature"
+    },
+    {
+      op: "sketch.create",
+      id: "sketch_circle_cut",
+      name: "Cut",
+      plane: "XY"
+    },
+    {
+      op: "sketch.addRectangle",
+      sketchId: "sketch_circle_cut",
+      id: "rect_circle_cut",
+      center: [0, 0],
+      width: 1,
+      height: 1
+    },
+    {
+      op: "feature.extrude",
+      id: "feat_circle_cut",
+      bodyId: "body_circle_cut",
+      sketchId: "sketch_circle_cut",
+      entityId: "rect_circle_cut",
+      depth: 1,
+      operationMode: "cut",
+      targetTopologyAnchorId: "anchor_body_circle"
+    },
+    {
+      op: "sketch.create",
+      id: "sketch_circle_hole",
+      name: "Hole",
+      plane: "XZ"
+    },
+    {
+      op: "sketch.addCircle",
+      sketchId: "sketch_circle_hole",
+      id: "circle_circle_hole",
+      center: [0, 1.5],
+      radius: 0.35
+    },
+    {
+      op: "feature.hole",
+      id: "feat_circle_hole",
+      bodyId: "body_circle_hole",
+      sketchId: "sketch_circle_hole",
+      circleEntityId: "circle_circle_hole",
+      depthMode: "throughAll",
+      direction: "positive",
+      targetTopologyAnchorId: "anchor_body_circle"
+    }
+  ];
+}
+
+function createV14CircleSidePlaneHoleCheckpointPayload(): NonNullable<
+  NonNullable<
+    Parameters<typeof exportCadProjectToWcad>[1]
+  >["topologyCheckpoints"]
+>[number] {
+  const topologyPayload = createCheckpointTopologyPayload([
+    {
+      localId: "checkpoint-local-circle-body",
+      kind: "body",
+      source: "kernel-derived",
+      signature: "circle_body_signature",
+      bounds: {
+        min: [-2, -2, 0],
+        max: [2, 2, 4]
+      }
+    }
+  ]);
+
+  return {
+    checkpointId: "checkpoint_circle_1",
+    bodyId: "body_circle_1",
+    sourceFeatureId: "feat_circle_1",
+    kernel: {
+      boundary: "geometry-kernel",
+      snapshotAlgorithm: "partbench-derived-topology-snapshot-v1"
+    },
+    tolerance: {
+      linearTolerance: 0.001,
+      angularToleranceDegrees: 0.01
+    },
+    brepBytes: new TextEncoder().encode("circle side-plane hole brep bytes"),
+    topologyBytes: encodeCanonicalCbor(topologyPayload),
+    signatureBytes: encodeCanonicalCbor(
+      createCheckpointSignaturePayload("checkpoint_circle_1", topologyPayload)
+    )
+  };
+}
+
 type CheckpointTopologyEntityFixture =
   CadBodyExactTopologySnapshot["entities"][number];
 
@@ -35511,6 +35625,135 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         center: [0, 1.5]
       })
     ]);
+  });
+
+  it("blocks upstream source edits through V14 result-body hole chains without mutating source", async () => {
+    const engine = createCircleExtrudeEngine();
+
+    engine.applyBatch(createV14CircleSidePlaneHoleChainOps());
+
+    const beforeJson = exportCadProjectJson(engine);
+    const beforeReferenceHealth = readReferenceHealth(engine, {
+      type: "body",
+      bodyId: "body_circle_1"
+    });
+    const beforeStructure = readProjectStructure(engine);
+    const beforeHealth = readProjectHealth(engine);
+    const beforeGraph = readProjectDependencyGraph(engine);
+    const beforeRebuildPlan = readProjectRebuildPlan(engine);
+    const beforeHistory = readTransactionHistory(engine);
+    const editability = readFeatureEditability(engine, "feat_circle_1", {
+      kind: "extrude",
+      depth: 7
+    });
+    const failed = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "feature.updateExtrude",
+          id: "feat_circle_1",
+          depth: 7
+        }
+      ]
+    });
+
+    expect(editability).toMatchObject({
+      status: "blocked",
+      rebuildReadiness: {
+        status: "blocked",
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({
+            code: "FEATURE_EDIT_CONSUMED_BODY",
+            featureId: "feat_circle_1",
+            bodyId: "body_circle_1",
+            expected: "one direct supported consuming feature",
+            received: "feat_circle_hole"
+          })
+        ])
+      },
+      dryRun: {
+        status: "blocked",
+        willMutateDocument: false,
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({
+            code: "FEATURE_EDIT_CONSUMED_BODY",
+            received: "feat_circle_hole"
+          })
+        ])
+      }
+    });
+    expect(
+      JSON.stringify({
+        diagnostics: editability.diagnostics,
+        rebuild: editability.rebuildReadiness.diagnostics,
+        dryRun: editability.dryRun.diagnostics
+      })
+    ).not.toMatch(/\b(tranche|V10|V13|debug|deferred)\b/i);
+
+    expect(failed).toMatchObject({
+      ok: false,
+      error: {
+        code: "FEATURE_NOT_EDITABLE",
+        featureId: "feat_circle_1",
+        bodyId: "body_circle_1",
+        expected: "one direct supported consuming feature",
+        received: "feat_circle_hole"
+      }
+    });
+    expect(
+      JSON.stringify((failed as Extract<typeof failed, { ok: false }>).error)
+    ).not.toMatch(/\b(tranche|V10|V13|debug|deferred)\b/i);
+    expect(getExtrudeFeature(engine, "feat_circle_1").depth).toBe(4);
+    expect(engine.getTransactions()).toHaveLength(
+      beforeHistory.transactionCount
+    );
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+    expect(
+      readReferenceHealth(engine, {
+        type: "body",
+        bodyId: "body_circle_1"
+      })
+    ).toEqual(beforeReferenceHealth);
+    expect(readProjectStructure(engine)).toEqual(beforeStructure);
+    expect(readProjectHealth(engine)).toEqual(beforeHealth);
+    expect(readProjectDependencyGraph(engine)).toEqual(beforeGraph);
+    expect(readProjectRebuildPlan(engine)).toEqual(beforeRebuildPlan);
+    expect(readTransactionHistory(engine)).toEqual(beforeHistory);
+
+    const jsonRestored = importCadProjectJson(beforeJson);
+    const wcadRestored = await importCadProjectWcad(
+      (
+        await exportCadProjectWcad(engine, {
+          topologyCheckpoints: [createV14CircleSidePlaneHoleCheckpointPayload()]
+        })
+      ).bytes
+    );
+
+    for (const restored of [jsonRestored, wcadRestored]) {
+      expect(getHoleFeature(restored, "feat_circle_hole")).toMatchObject({
+        targetBodyId: "body_circle_cut",
+        targetTopologyAnchorId: "anchor_body_circle",
+        bodyId: "body_circle_hole"
+      });
+      expect(
+        readFeatureEditability(restored, "feat_circle_1", {
+          kind: "extrude",
+          depth: 7
+        })
+      ).toMatchObject({
+        status: "blocked",
+        rebuildReadiness: {
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({
+              code: "FEATURE_EDIT_CONSUMED_BODY",
+              received: "feat_circle_hole"
+            })
+          ])
+        }
+      });
+      expect(readProjectRebuildPlan(restored)).toEqual(beforeRebuildPlan);
+    }
   });
 
   it("chains cut extrudes through active topology-backed result bodies", () => {
