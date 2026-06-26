@@ -1892,6 +1892,7 @@ async function v7BrowserWorkflowSmoke({
       referenceName: ids.v14EdgeReferenceName
     });
     await verifyV14ResultEdgeUpstreamEditBlocked();
+    await verifyV14ResultEdgeUndoRedoEditability();
     await verifyV14ResultCutWallEdgeFinishProjectJsonSource(
       "V14 result cut-wall chamfer source JSON",
       {
@@ -2540,13 +2541,23 @@ async function v7BrowserWorkflowSmoke({
     }
   }
 
-  async function verifyV14ResultEdgeUpstreamEditBlocked() {
+  async function selectV14SourceBodyInInspector() {
     openTreePanel();
     clickButtonContaining(
       getElementByAriaLabel("Model structure"),
       ids.v14SourceBodyName
     );
     openSelectionPanel();
+  }
+
+  function clickHistoryControl(text) {
+    clickButton(getElementByAriaLabel("Command controls"), text);
+  }
+
+  async function verifyV14ResultEdgeUpstreamEditBlocked({
+    passCheck = true
+  } = {}) {
+    await selectV14SourceBodyInInspector();
 
     await waitFor(() => {
       const inspector = getElementByAriaLabel("Inspector");
@@ -2575,9 +2586,57 @@ async function v7BrowserWorkflowSmoke({
       return true;
     }, "V14 upstream source edit blocked by downstream chamfer");
 
+    if (passCheck) {
+      pass(
+        "v14-result-edge-upstream-edit-blocked-browser",
+        "V14 upstream source edit is blocked with an action-oriented downstream chamfer diagnostic",
+        ids.v14SourceFeatureId
+      );
+    }
+  }
+
+  async function verifyV14ResultEdgeUndoRedoEditability() {
+    clickHistoryControl("Undo");
+    await selectV14SourceBodyInInspector();
+
+    await waitFor(() => {
+      const inspector = getElementByAriaLabel("Inspector");
+      const depthControl = getControlByLabel(inspector, "Depth (mm)");
+      const sideControl = getControlByLabel(inspector, "Side");
+      const text = compactText(inspector.textContent, 1200);
+      const ready =
+        depthControl instanceof HTMLInputElement &&
+        sideControl instanceof HTMLSelectElement &&
+        !depthControl.disabled &&
+        !sideControl.disabled &&
+        includesText(inspector, "Feature edits ready") &&
+        includesText(inspector, "Edit Depth and Side below") &&
+        !includesText(inspector, "Feature parameters unavailable") &&
+        !includesText(
+          inspector,
+          "Edit or repair that downstream feature before changing the original source."
+        ) &&
+        !/\b(tranche|milestone|debug|deferred)\b/i.test(text);
+
+      if (!ready) {
+        throw new Error(text);
+      }
+
+      return true;
+    }, "V14 result-edge chamfer undo restores source editability");
+
     pass(
-      "v14-result-edge-upstream-edit-blocked-browser",
-      "V14 upstream source edit is blocked with an action-oriented downstream chamfer diagnostic",
+      "v14-result-edge-undo-editable-browser",
+      "V14 Undo removes the result-edge chamfer blocker and restores source edit controls",
+      ids.v14SourceFeatureId
+    );
+
+    clickHistoryControl("Redo");
+    await verifyV14ResultEdgeUpstreamEditBlocked({ passCheck: false });
+
+    pass(
+      "v14-result-edge-redo-blocked-browser",
+      "V14 Redo restores the result-edge chamfer blocker with action-oriented guidance",
       ids.v14SourceFeatureId
     );
   }

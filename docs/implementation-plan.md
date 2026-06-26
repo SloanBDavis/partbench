@@ -2881,8 +2881,9 @@ The planned pillars are:
    primary project workflow.
 7. **Long release smokes** - deterministic and browser workflows prove chained
    modeling, explicit side-plane circular holes where supported, result-edge
-   finishing where supported, upstream edit blocking, `.wcad` persistence, no
-   private-ID leakage, and no console errors.
+   finishing where supported, upstream edit blocking, undo/redo recovery for
+   the supported result-edge chamfer blocker, `.wcad` persistence, no private-ID
+   leakage, and no console errors.
 
 ### V14 Storage Position
 

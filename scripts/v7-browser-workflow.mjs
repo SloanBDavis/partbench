@@ -131,6 +131,8 @@ export const V14_BROWSER_WORKFLOW_CHECK_IDS = Object.freeze([
   "v14-result-cut-wall-edge-fillet-browser",
   "v14-result-cut-wall-edge-fillet-source-json-browser",
   "v14-result-edge-upstream-edit-blocked-browser",
+  "v14-result-edge-undo-editable-browser",
+  "v14-result-edge-redo-blocked-browser",
   "v14-result-face-circle-entity-browser",
   "v14-result-face-circle-hole-browser",
   "v14-result-hole-wcad-roundtrip-browser",
