@@ -2871,7 +2871,9 @@ The planned pillars are:
    surfaces consistent. The current V14 hardening proof blocks upstream source
    edits through supported result-edge chamfer chains with structured
    downstream-consumer diagnostics, no source mutation, JSON/`.wcad`
-   preservation, and browser-visible action guidance.
+   preservation, browser-visible action guidance, and cad-core query-surface
+   alignment across undo/redo and JSON/`.wcad` round trips for the supported
+   result-edge chamfer chain.
 6. **Product UI cleanup for commandability** - user-facing surfaces explain
    available actions and repair needs without mentioning internal tranche or
    milestone names. The Project/File panel now labels JSON as import/export
