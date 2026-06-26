@@ -1959,6 +1959,7 @@ async function v7BrowserWorkflowSmoke({
       "V14 pre-round-trip topology source JSON"
     );
     await verifyV14ResultHoleWcadRoundTrip();
+    await verifyV14ResultHoleUpstreamEditBlocked();
 
     openDetailsBySummary(document.body, "Project/File");
     const projectPanel = getSectionByAriaLabel("Project");
@@ -2596,6 +2597,43 @@ async function v7BrowserWorkflowSmoke({
         ids.v14SourceFeatureId
       );
     }
+  }
+
+  async function verifyV14ResultHoleUpstreamEditBlocked() {
+    await selectV14SourceBodyInInspector();
+
+    await waitFor(() => {
+      const inspector = getElementByAriaLabel("Inspector");
+      const depthControl = getControlByLabel(inspector, "Depth (mm)");
+      const applyButton = getButtonByText(inspector, "Apply extrude");
+      const text = compactText(inspector.textContent, 1200);
+      const ready =
+        depthControl instanceof HTMLInputElement &&
+        depthControl.disabled &&
+        applyButton?.disabled === true &&
+        includesText(inspector, "Feature parameters unavailable") &&
+        includesText(
+          inspector,
+          `downstream result body ${ids.v14TargetBodyId} is consumed by feature ${ids.v14HoleFeatureId}`
+        ) &&
+        includesText(
+          inspector,
+          "Edit or repair that downstream feature before changing the original source."
+        ) &&
+        !/\b(tranche|milestone|debug|deferred)\b/i.test(text);
+
+      if (!ready) {
+        throw new Error(text);
+      }
+
+      return true;
+    }, "V14 upstream source edit blocked by downstream result-body hole");
+
+    pass(
+      "v14-result-hole-upstream-edit-blocked-browser",
+      "V14 upstream source edit is blocked with an action-oriented downstream hole diagnostic",
+      ids.v14SourceFeatureId
+    );
   }
 
   async function verifyV14ResultEdgeUndoRedoEditability() {

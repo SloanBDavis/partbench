@@ -138,6 +138,7 @@ export const V14_BROWSER_WORKFLOW_CHECK_IDS = Object.freeze([
   "v14-result-face-circle-hole-browser",
   "v14-result-face-circle-hole-display-ready-browser",
   "v14-result-hole-wcad-roundtrip-browser",
+  "v14-result-hole-upstream-edit-blocked-browser",
   "v14-result-hole-topology-source-json-browser"
 ]);
 
