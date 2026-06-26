@@ -2861,10 +2861,11 @@ The planned pillars are:
 4. **Topology-backed edge finishing** - eligible result-body edge anchors can
    drive chamfer and fillet where cad-core validators and geometry execution
    prove the target. The V14 browser smoke now proves the first real
-   result-edge class: a command-ready rectangle cut-wall longitudinal generated
-   edge can be named, selected as the edge-finish reference in the Modeling
-   panel, and used to create a chamfer while exported JSON preserves only
-   public target body, named-reference, and edge target source data.
+   result-edge class: command-ready rectangle cut-wall longitudinal generated
+   edges can be named, selected as edge-finish references in the Modeling
+   panel, and used to create chamfer and fillet features while exported JSON
+   preserves only public target body, named-reference, and edge target source
+   data.
 5. **Rebuild and repair hardening** - upstream edits, undo/redo, save/open, and
    explicit repair flows keep topology-backed references honest and query
    surfaces consistent. The current V14 hardening proof blocks upstream source
