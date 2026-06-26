@@ -1743,12 +1743,18 @@ function isSupportedAddTargetProfileKind(
   return profileKind === "rectangle";
 }
 
+function isSupportedBooleanToolProfileKind(
+  profileKind: FeatureExtrudeProfileKind
+): boolean {
+  return profileKind === "rectangle" || profileKind === "circle";
+}
+
 function isSupportedBooleanTarget(
   feature: GeneratedReferencesExtrudeFeature,
   targetFeature: ProjectHealthFeature,
   features: ReadonlyMap<FeatureId, ProjectHealthFeature>
 ): boolean {
-  if (feature.profileKind !== "rectangle") {
+  if (!isSupportedBooleanToolProfileKind(feature.profileKind)) {
     return false;
   }
 
@@ -1876,10 +1882,10 @@ function getUnsupportedBooleanFeatureMessage(
   operationMode: FeatureExtrudeOperationMode
 ): string {
   if (operationMode === "add") {
-    return "Add features currently require a rectangle source and an active rectangle source or topology-backed result target body.";
+    return "Add features currently require a rectangle or circle profile and an active rectangle source or topology-backed result target body.";
   }
 
-  return "Cut features currently require a rectangle source and an active rectangle, circle, or topology-backed result target body.";
+  return "Cut features currently require a rectangle or circle profile and an active rectangle, circle, or topology-backed result target body.";
 }
 
 function statusFromIssues(

@@ -2066,6 +2066,87 @@ describe("derivedGeometry", () => {
     ]);
   });
 
+  it("runs circle-profile boolean sources for supported result-body targets", async () => {
+    const circleResultCut: DerivedBooleanExtrudeGeometrySource = {
+      id: "body_circle_result_cut",
+      kind: "extrudeBoolean",
+      operation: "cut",
+      target: {
+        id: "body_circle_rect_cut",
+        kind: "extrudeBoolean",
+        operation: "cut",
+        target: createCircleExtrudeSource("body_circle_1"),
+        tool: createExtrudeSource("body_rect_cut")
+      },
+      tool: createCircleExtrudeSource("body_circle_tool")
+    };
+    const rectangleResultAdd: DerivedBooleanExtrudeGeometrySource = {
+      id: "body_rectangle_result_add",
+      kind: "extrudeBoolean",
+      operation: "add",
+      target: {
+        id: "body_rectangle_rect_cut",
+        kind: "extrudeBoolean",
+        operation: "cut",
+        target: createExtrudeSource("body_rect_1"),
+        tool: createExtrudeSource("body_rect_cut")
+      },
+      tool: createCircleExtrudeSource("body_circle_tool")
+    };
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile([circleResultCut, rectangleResultAdd]);
+    await flushPromises();
+
+    expect(runtime.inputs).toEqual([
+      expect.objectContaining({
+        id: "body_circle_result_cut",
+        operation: "cut",
+        target: expect.objectContaining({
+          operation: "cut",
+          target: expect.objectContaining({
+            profile: expect.objectContaining({ kind: "circle" })
+          })
+        }),
+        tool: expect.objectContaining({
+          profile: expect.objectContaining({ kind: "circle" })
+        })
+      }),
+      expect.objectContaining({
+        id: "body_rectangle_result_add",
+        operation: "add",
+        target: expect.objectContaining({
+          operation: "cut",
+          target: expect.objectContaining({
+            profile: expect.objectContaining({ kind: "rectangle" })
+          })
+        }),
+        tool: expect.objectContaining({
+          profile: expect.objectContaining({ kind: "circle" })
+        })
+      })
+    ]);
+    expect(snapshots.at(-1)?.entries).toMatchObject([
+      {
+        objectId: "body_circle_result_cut",
+        objectKind: "extrudeBoolean",
+        status: "ready"
+      },
+      {
+        objectId: "body_rectangle_result_add",
+        objectKind: "extrudeBoolean",
+        status: "ready"
+      }
+    ]);
+  });
+
   it("keeps attached circle target cut tools placed from consumed target source references", async () => {
     const engine = new CadEngine();
 
@@ -4307,14 +4388,14 @@ describe("derivedGeometry", () => {
       {
         id: "body_cut_unsupported",
         kind: "extrudeBoolean",
-        operation: "cut",
-        target: createExtrudeSource("body_target"),
+        operation: "add",
+        target: createCircleExtrudeSource("body_target"),
         tool: createCircleExtrudeSource("body_circle_tool")
       }
     ]);
 
     expect(getDerivedGeometryStatusLabel(snapshots.at(-1)?.entries[0])).toBe(
-      "Boolean display currently supports rectangle tool extrudes only."
+      "Boolean add display currently supports rectangle target extrudes only."
     );
 
     service.reconcile([

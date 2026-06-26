@@ -1499,7 +1499,7 @@ export function getAddOperationStatus(
     return {
       available: false,
       message:
-        "Add currently supports rectangle or circle profiles and rectangle targets only. This profile can still create a new body."
+        "Add currently supports rectangle or circle profiles on rectangle-family targets only. This profile can still create a new body."
     };
   }
 

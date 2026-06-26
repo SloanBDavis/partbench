@@ -842,7 +842,7 @@ function getUnsupportedSourceMessage(source: DerivedGeometrySource): string {
     );
   }
 
-  return "Display geometry generation supports scene primitives, sketch extrudes, rectangle-tool boolean results, authored revolves, authored holes, and rectangle edge finishing.";
+  return "Display geometry generation supports scene primitives, sketch extrudes, supported rectangle/circle boolean results, authored revolves, authored holes, and rectangle edge finishing.";
 }
 
 function isSupportedBooleanExtrudeSource(
@@ -855,10 +855,6 @@ function getUnsupportedBooleanSourceMessage(
   source: DerivedBooleanExtrudeGeometrySource
 ): string | undefined {
   const targetProfileKind = getBooleanSourceProfileKind(source.target);
-
-  if (source.tool.profile.kind !== "rectangle") {
-    return "Boolean display currently supports rectangle tool extrudes only.";
-  }
 
   if (source.operation === "add" && targetProfileKind !== "rectangle") {
     return "Boolean add display currently supports rectangle target extrudes only.";

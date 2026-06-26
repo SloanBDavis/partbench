@@ -71,7 +71,9 @@ These constraints remain active:
     required topology reference in the same CADOps action, browser smoke now
     proves promoted result-face rectangle add, rectangle-family result-body
     second cut, circle-family result-body rectangle cut, result-face circle
-    hole, and explicit XZ side-plane circle hole paths, and ready
+    hole, and explicit XZ side-plane circle hole paths, focused core, app, and
+    geometry tests prove circle-profile result-body cut/add paths where the
+    verified matrix permits them, and ready
     topology-backed reference selections and Project/File JSON import/export
     use action-oriented product copy instead of internal implementation labels.
     Completed V8, V9, V10, V11, V12, and V13
@@ -2528,10 +2530,13 @@ Use these decisions when drafting or implementing V13 tranches:
    the resolved public `targetBodyId` plus anchor proof through command
    validation, project structure, health, dependency graph, generated-reference
    signatures, topology source identity, import/export, app command helpers,
-   derived geometry, and exact metadata. Explicit XZ side-plane circle holes
-   are now proven against supported circle-origin result bodies. Unanchored
-   result bodies, curved side-wall face attachment, arbitrary profile
-   recognition, broader circle-target add behavior, and edge finishing remain
+   derived geometry, and exact metadata. Circle-profile `feature.extrude`
+   tools now run through the same command and runtime proof where the verified
+   matrix permits them: cut on supported rectangle/circle result targets and
+   add on supported rectangle-family result targets. Explicit XZ side-plane
+   circle holes are now proven against supported circle-origin result bodies.
+   Unanchored result bodies, curved side-wall face attachment, arbitrary
+   profile recognition, circle-target add behavior, and edge finishing remain
    outside this implemented slice.
    Missing, stale, replaced, ambiguous, deleted, unsupported, consumed, and
    repair-needed anchors remain non-commandable with structured diagnostics.
@@ -2857,10 +2862,11 @@ The planned pillars are:
    promoted result-face rectangle add,
    rectangle-family result-body second cut, circle-family result-body rectangle
    cut, result-face circle hole, and explicit XZ side-plane circle hole paths;
-   the app preflights UI-created hole display geometry against a projected
-   document before source mutation, and the browser smoke proves both supported
-   hole paths reach display-geometry-ready state without a display geometry
-   issue.
+   focused core/app/geometry tests prove circle-profile result-body cut/add
+   paths where the verified matrix permits them; the app preflights UI-created
+   hole display geometry against a projected document before source mutation,
+   and the browser smoke proves both supported hole paths reach
+   display-geometry-ready state without a display geometry issue.
    Unsupported or unanchored result bodies remain blocked.
 4. **Topology-backed edge finishing** - eligible result-body edge anchors can
    drive chamfer and fillet where cad-core validators and geometry execution

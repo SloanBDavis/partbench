@@ -1060,7 +1060,7 @@ function validateRequest(
       return {
         code: "UNSUPPORTED_PROFILE",
         message:
-          "Boolean extrude feasibility currently supports rectangle add/cut and circle-target cut by rectangle tool."
+          "Boolean extrude feasibility currently supports rectangle/circle tools on rectangle targets, and cut-only tools on circle targets."
       };
     }
   } else if (request.op === "geometry.hole") {
@@ -2327,8 +2327,7 @@ function isSupportedBooleanExtrudeProfilePair(
 ): boolean {
   return isSupportedBooleanExtrudeProfileKinds(
     request.operation,
-    getBooleanExtrudeSourceProfileKind(request.target),
-    getBooleanExtrudeSourceProfileKind(request.tool)
+    getBooleanExtrudeSourceProfileKind(request.target)
   );
 }
 
@@ -2337,25 +2336,19 @@ function isSupportedBooleanExtrudeSourcePair(
 ): boolean {
   return isSupportedBooleanExtrudeProfileKinds(
     source.operation,
-    getBooleanExtrudeSourceProfileKind(source.target),
-    source.tool.profile.kind
+    getBooleanExtrudeSourceProfileKind(source.target)
   );
 }
 
 function isSupportedBooleanExtrudeProfileKinds(
   operation: GeometryKernelBooleanOperation,
-  targetProfile: GeometryKernelExtrudeProfileKind,
-  toolProfile: GeometryKernelExtrudeProfileKind
+  targetProfile: GeometryKernelExtrudeProfileKind
 ): boolean {
-  if (targetProfile === "rectangle" && toolProfile === "rectangle") {
+  if (targetProfile === "rectangle") {
     return true;
   }
 
-  return (
-    operation === "cut" &&
-    targetProfile === "circle" &&
-    toolProfile === "rectangle"
-  );
+  return operation === "cut" && targetProfile === "circle";
 }
 
 function getBooleanExtrudeSourceProfileKind(

@@ -654,10 +654,6 @@ function getUnsupportedExactMetadataSourceMessage(
     return source.placementError;
   }
 
-  if (source.tool.profile.kind !== "rectangle") {
-    return "Exact metadata currently supports rectangle tool boolean extrudes only.";
-  }
-
   const targetProfileKind = getExactBooleanSourceProfileKind(source.target);
 
   if (source.operation === "add" && targetProfileKind !== "rectangle") {

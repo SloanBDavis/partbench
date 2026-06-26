@@ -22145,10 +22145,10 @@ function getUnsupportedBooleanExtrudeMessage(
   operationMode: FeatureExtrudeOperationMode
 ): string {
   if (operationMode === "add") {
-    return "Add extrudes currently support rectangle tools fusing with one active rectangle source or topology-backed result target body.";
+    return "Add extrudes currently support rectangle or circle tools fusing with one active rectangle source or topology-backed result target body.";
   }
 
-  return "Cut extrudes currently support rectangle tools cutting one active rectangle, circle, or topology-backed result target body.";
+  return "Cut extrudes currently support rectangle or circle tools cutting one active rectangle, circle, or topology-backed result target body.";
 }
 
 function formatTargetConsumingFeatureForIssue(

@@ -696,14 +696,14 @@ describe("derivedExactMetadata", () => {
       kind: "extrudeBoolean",
       operation: "add",
       target: createExtrudeSource("body_target"),
-      tool: createExtrudeSource("body_tool")
+      tool: createCircleExtrudeSource("body_circle_tool")
     };
     const cutSource: DerivedBooleanExtrudeGeometrySource = {
       id: "body_cut_1",
       kind: "extrudeBoolean",
       operation: "cut",
       target: createCircleExtrudeSource("body_circle_target"),
-      tool: createExtrudeSource("body_tool")
+      tool: createCircleExtrudeSource("body_circle_tool")
     };
     const chainedCutSource: DerivedBooleanExtrudeGeometrySource = {
       id: "body_cut_2",
@@ -726,13 +726,13 @@ describe("derivedExactMetadata", () => {
         kind: "booleanExtrudes",
         operation: "add",
         target: { profile: { kind: "rectangle" } },
-        tool: { profile: { kind: "rectangle" } }
+        tool: { profile: { kind: "circle" } }
       },
       {
         kind: "booleanExtrudes",
         operation: "cut",
         target: { profile: { kind: "circle" } },
-        tool: { profile: { kind: "rectangle" } }
+        tool: { profile: { kind: "circle" } }
       },
       {
         kind: "booleanExtrudes",
@@ -1036,8 +1036,8 @@ describe("derivedExactMetadata", () => {
     const unsupportedBoolean: DerivedBooleanExtrudeGeometrySource = {
       id: "body_cut_unsupported",
       kind: "extrudeBoolean",
-      operation: "cut",
-      target: createExtrudeSource("body_target"),
+      operation: "add",
+      target: createCircleExtrudeSource("body_target"),
       tool: createCircleExtrudeSource("body_circle_tool")
     };
 
@@ -1119,7 +1119,7 @@ describe("derivedExactMetadata", () => {
         bodyId: "body_cut_unsupported",
         status: "unsupported",
         message:
-          "Exact metadata currently supports rectangle tool boolean extrudes only."
+          "Exact metadata for add currently supports rectangle target extrudes only."
       }
     ]);
   });

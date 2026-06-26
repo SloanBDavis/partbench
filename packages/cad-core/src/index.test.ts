@@ -35091,6 +35091,257 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     });
   });
 
+  it("creates circle-profile extrude booleans through supported topology-backed result bodies", () => {
+    const rectangleEngine = createRectangleExtrudeEngine();
+
+    rectangleEngine.applyBatch([
+      {
+        op: "topology.checkpoint.create",
+        checkpointId: "checkpoint_rect_circle_tool",
+        bodyId: "body_rect_1",
+        sourceFeatureId: "feat_rect_1",
+        sourceIdentity: {
+          algorithm: "partbench-source-v1",
+          sha256:
+            "4444444444444444444444444444444444444444444444444444444444444444"
+        },
+        status: "active"
+      },
+      {
+        op: "topology.anchor.create",
+        anchorId: "anchor_body_rect_circle_tool",
+        entityKind: "body",
+        bodyId: "body_rect_1",
+        checkpointId: "checkpoint_rect_circle_tool",
+        checkpointEntityId: "checkpoint-local-rect-circle-tool-body",
+        sourceFeatureId: "feat_rect_1",
+        stableId: "generated:body:body_rect_1",
+        sourceSemanticRole: "source body",
+        signatureHash: "rect_circle_tool_body_signature"
+      },
+      {
+        op: "sketch.create",
+        id: "sketch_rect_result_cut",
+        name: "Rectangle result target",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_rect_result_cut",
+        id: "rect_result_cut",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_rect_result_cut",
+        bodyId: "body_rect_result_cut",
+        sketchId: "sketch_rect_result_cut",
+        entityId: "rect_result_cut",
+        depth: 1,
+        operationMode: "cut",
+        targetTopologyAnchorId: "anchor_body_rect_circle_tool"
+      },
+      {
+        op: "sketch.create",
+        id: "sketch_rect_circle_add",
+        name: "Circle add",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_rect_circle_add",
+        id: "circle_rect_add",
+        center: [1.25, 0],
+        radius: 0.25
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_rect_circle_add",
+        bodyId: "body_rect_circle_add",
+        sketchId: "sketch_rect_circle_add",
+        entityId: "circle_rect_add",
+        depth: 0.5,
+        operationMode: "add",
+        targetTopologyAnchorId: "anchor_body_rect_circle_tool"
+      }
+    ]);
+
+    expect(
+      getExtrudeFeature(rectangleEngine, "feat_rect_circle_add")
+    ).toMatchObject({
+      kind: "extrude",
+      profileKind: "circle",
+      operationMode: "add",
+      targetBodyId: "body_rect_result_cut",
+      targetTopologyAnchorId: "anchor_body_rect_circle_tool",
+      bodyId: "body_rect_circle_add"
+    });
+    expect(readProjectHealth(rectangleEngine).authoredExtrudes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          featureId: "feat_rect_circle_add",
+          operationMode: "add",
+          targetBodyId: "body_rect_result_cut",
+          targetTopologyAnchorId: "anchor_body_rect_circle_tool",
+          status: "healthy"
+        })
+      ])
+    );
+
+    const circleEngine = createCircleExtrudeEngine();
+
+    circleEngine.applyBatch([
+      {
+        op: "topology.checkpoint.create",
+        checkpointId: "checkpoint_circle_circle_tool",
+        bodyId: "body_circle_1",
+        sourceFeatureId: "feat_circle_1",
+        sourceIdentity: {
+          algorithm: "partbench-source-v1",
+          sha256:
+            "5555555555555555555555555555555555555555555555555555555555555555"
+        },
+        status: "active"
+      },
+      {
+        op: "topology.anchor.create",
+        anchorId: "anchor_body_circle_circle_tool",
+        entityKind: "body",
+        bodyId: "body_circle_1",
+        checkpointId: "checkpoint_circle_circle_tool",
+        checkpointEntityId: "checkpoint-local-circle-circle-tool-body",
+        sourceFeatureId: "feat_circle_1",
+        stableId: "generated:body:body_circle_1",
+        sourceSemanticRole: "source body",
+        signatureHash: "circle_circle_tool_body_signature"
+      },
+      {
+        op: "sketch.create",
+        id: "sketch_circle_result_cut",
+        name: "Circle result target",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_circle_result_cut",
+        id: "rect_circle_result_cut",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_circle_result_cut",
+        bodyId: "body_circle_result_cut",
+        sketchId: "sketch_circle_result_cut",
+        entityId: "rect_circle_result_cut",
+        depth: 1,
+        operationMode: "cut",
+        targetTopologyAnchorId: "anchor_body_circle_circle_tool"
+      },
+      {
+        op: "sketch.create",
+        id: "sketch_circle_circle_cut",
+        name: "Circle cut",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_circle_circle_cut",
+        id: "circle_circle_cut",
+        center: [0.75, 0],
+        radius: 0.25
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_circle_circle_cut",
+        bodyId: "body_circle_circle_cut",
+        sketchId: "sketch_circle_circle_cut",
+        entityId: "circle_circle_cut",
+        depth: 0.5,
+        operationMode: "cut",
+        targetTopologyAnchorId: "anchor_body_circle_circle_tool"
+      }
+    ]);
+
+    expect(
+      getExtrudeFeature(circleEngine, "feat_circle_circle_cut")
+    ).toMatchObject({
+      kind: "extrude",
+      profileKind: "circle",
+      operationMode: "cut",
+      targetBodyId: "body_circle_result_cut",
+      targetTopologyAnchorId: "anchor_body_circle_circle_tool",
+      bodyId: "body_circle_circle_cut"
+    });
+
+    const blockedCircleAddEngine = createCircleExtrudeEngine();
+    blockedCircleAddEngine.applyBatch([
+      {
+        op: "topology.checkpoint.create",
+        checkpointId: "checkpoint_circle_add_blocked",
+        bodyId: "body_circle_1",
+        sourceFeatureId: "feat_circle_1",
+        sourceIdentity: {
+          algorithm: "partbench-source-v1",
+          sha256:
+            "6666666666666666666666666666666666666666666666666666666666666666"
+        },
+        status: "active"
+      },
+      {
+        op: "topology.anchor.create",
+        anchorId: "anchor_body_circle_add_blocked",
+        entityKind: "body",
+        bodyId: "body_circle_1",
+        checkpointId: "checkpoint_circle_add_blocked",
+        checkpointEntityId: "checkpoint-local-circle-add-blocked-body",
+        sourceFeatureId: "feat_circle_1",
+        stableId: "generated:body:body_circle_1",
+        sourceSemanticRole: "source body",
+        signatureHash: "circle_add_blocked_body_signature"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_1",
+        id: "circle_add_blocked",
+        center: [2.5, 0],
+        radius: 0.25
+      }
+    ]);
+    const beforeBlockedJson = exportCadProjectJson(blockedCircleAddEngine);
+
+    expect(
+      blockedCircleAddEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "feature.extrude",
+            id: "feat_circle_add_blocked",
+            bodyId: "body_circle_add_blocked",
+            sketchId: "sketch_1",
+            entityId: "circle_add_blocked",
+            depth: 0.5,
+            operationMode: "add",
+            targetTopologyAnchorId: "anchor_body_circle_add_blocked"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "UNSUPPORTED_FEATURE_OPERATION",
+        path: "$.ops[0].operationMode"
+      }
+    });
+    expect(exportCadProjectJson(blockedCircleAddEngine)).toBe(
+      beforeBlockedJson
+    );
+  });
+
   it("creates holes through active topology-backed result bodies", async () => {
     const engine = createRectangleExtrudeEngine();
 

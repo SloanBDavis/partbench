@@ -947,6 +947,79 @@ describe("geometry-kernel facade", () => {
     OCCT_WASM_TEST_TIMEOUT_MS
   );
 
+  it(
+    "runs circle-tool boolean feasibility requests on supported targets",
+    async () => {
+      const rectangleTarget = {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "rectangle" as const,
+          center: [0, 0] as const,
+          width: 4,
+          height: 4
+        },
+        depth: 4
+      };
+      const circleTarget = {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "circle" as const,
+          center: [0, 0] as const,
+          radius: 3
+        },
+        depth: 4
+      };
+      const circleTool = {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "circle" as const,
+          center: [1, 0] as const,
+          radius: 0.5
+        },
+        depth: 4
+      };
+      const rectangleAdd = await executeGeometryKernelRequest({
+        id: "geometry_req_boolean_circle_tool_add",
+        version: "geometry-kernel.v1",
+        op: "geometry.booleanExtrudes",
+        operation: "add",
+        target: rectangleTarget,
+        tool: circleTool
+      });
+      const rectangleCut = await executeGeometryKernelRequest({
+        id: "geometry_req_boolean_circle_tool_cut",
+        version: "geometry-kernel.v1",
+        op: "geometry.booleanExtrudes",
+        operation: "cut",
+        target: rectangleTarget,
+        tool: circleTool
+      });
+      const circleCut = await executeGeometryKernelRequest({
+        id: "geometry_req_boolean_circle_target_circle_cut",
+        version: "geometry-kernel.v1",
+        op: "geometry.booleanExtrudes",
+        operation: "cut",
+        target: circleTarget,
+        tool: circleTool
+      });
+
+      expect(rectangleAdd.ok).toBe(true);
+      expect(rectangleCut.ok).toBe(true);
+      expect(circleCut.ok).toBe(true);
+
+      if (!rectangleAdd.ok || !rectangleCut.ok || !circleCut.ok) {
+        throw new Error("Expected supported circle-tool booleans to succeed.");
+      }
+
+      for (const response of [rectangleAdd, rectangleCut, circleCut]) {
+        expect(response.mesh.primitive).toBe("boolean");
+        expect(response.mesh.vertexCount).toBeGreaterThan(0);
+        expect(response.mesh.triangleCount).toBeGreaterThan(0);
+      }
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
   it("passes nested boolean target sources to injected boolean factories", async () => {
     const unusedFactory = async () => {
       throw new Error("Unexpected mesh factory call.");
@@ -1765,12 +1838,20 @@ describe("geometry-kernel facade", () => {
       },
       tool: rectangleSource
     });
-    const unsupportedCircleTool = await executeGeometryKernelRequest({
-      id: "geometry_req_boolean_unsupported_circle_tool",
+    const unsupportedCircleTargetAdd = await executeGeometryKernelRequest({
+      id: "geometry_req_boolean_unsupported_circle_target_add",
       version: "geometry-kernel.v1",
       op: "geometry.booleanExtrudes",
-      operation: "cut",
-      target: rectangleSource,
+      operation: "add",
+      target: {
+        sketchPlane: "XY",
+        profile: {
+          kind: "circle",
+          center: [0, 0],
+          radius: 1
+        },
+        depth: 2
+      },
       tool: {
         sketchPlane: "XY",
         profile: {
@@ -1837,18 +1918,18 @@ describe("geometry-kernel facade", () => {
       error: {
         code: "UNSUPPORTED_PROFILE",
         message:
-          "Boolean extrude feasibility currently supports rectangle add/cut and circle-target cut by rectangle tool."
+          "Boolean extrude feasibility currently supports rectangle/circle tools on rectangle targets, and cut-only tools on circle targets."
       },
       warnings: []
     });
-    expect(unsupportedCircleTool).toEqual({
+    expect(unsupportedCircleTargetAdd).toEqual({
       ok: false,
-      id: "geometry_req_boolean_unsupported_circle_tool",
+      id: "geometry_req_boolean_unsupported_circle_target_add",
       op: "geometry.booleanExtrudes",
       error: {
         code: "UNSUPPORTED_PROFILE",
         message:
-          "Boolean extrude feasibility currently supports rectangle add/cut and circle-target cut by rectangle tool."
+          "Boolean extrude feasibility currently supports rectangle/circle tools on rectangle targets, and cut-only tools on circle targets."
       },
       warnings: []
     });
