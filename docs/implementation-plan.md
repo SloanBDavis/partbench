@@ -2857,7 +2857,10 @@ The planned pillars are:
    promoted result-face rectangle add,
    rectangle-family result-body second cut, circle-family result-body rectangle
    cut, result-face circle hole, and explicit XZ side-plane circle hole paths;
-   unsupported or unanchored result bodies remain blocked.
+   the app preflights UI-created hole display geometry against a projected
+   document before source mutation, and the browser smoke proves both supported
+   hole paths reach display-geometry-ready state without a hole mesh error.
+   Unsupported or unanchored result bodies remain blocked.
 4. **Topology-backed edge finishing** - eligible result-body edge anchors can
    drive chamfer and fillet where cad-core validators and geometry execution
    prove the target. The V14 browser smoke now proves the first real
@@ -2873,7 +2876,9 @@ The planned pillars are:
    downstream-consumer diagnostics, no source mutation, JSON/`.wcad`
    preservation, browser-visible action guidance, and cad-core query-surface
    alignment across undo/redo and JSON/`.wcad` round trips for the supported
-   result-edge chamfer chain.
+   result-edge chamfer chain. UI-created result-body holes now also use a
+   projected-document runtime preflight so geometry execution failures block
+   before source mutation.
 6. **Product UI cleanup for commandability** - user-facing surfaces explain
    available actions and repair needs without mentioning internal tranche or
    milestone names. The Project/File panel now labels JSON as import/export

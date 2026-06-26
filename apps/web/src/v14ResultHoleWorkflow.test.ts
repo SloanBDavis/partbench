@@ -3,6 +3,7 @@ import {
   exportCadProjectJson,
   importCadProjectJson
 } from "@web-cad/cad-core";
+import type { RenderTriangleMesh } from "@web-cad/renderer";
 import type {
   CadBatchResponse,
   CadOp,
@@ -19,6 +20,12 @@ import {
 } from "./cadCommands";
 import { createEffectiveHoleTargetForm } from "./sketchPanelUi";
 import { createSketchOnFaceCommandPlan } from "./sketchOnFacePromotion";
+import { preflightHoleGeometryCommand } from "./holeGeometryPreflight";
+import type {
+  DerivedGeometryHoleInput,
+  DerivedGeometryResult,
+  DerivedGeometryRuntime
+} from "./derivedGeometryRuntime";
 
 describe("V14 result hole workflow", () => {
   it("creates a circle hole from a promoted result-face sketch without dropping topology target anchors", async () => {
@@ -193,6 +200,86 @@ describe("V14 result hole workflow", () => {
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|fileHandle|opfsPath|localPath|checkpoint-local/i
     );
   });
+
+  it("preflights result-body hole geometry without mutating source", async () => {
+    const { engine, holeOp } = createAttachedResultHoleFixture();
+    const beforeJson = exportCadProjectJson(engine);
+    const runtime = createHolePreflightRuntime(async (input) =>
+      createGeometryResult(input.id)
+    );
+    const result = await preflightHoleGeometryCommand({
+      engine,
+      ops: [holeOp],
+      bodyId: "body_result_hole",
+      runtime
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      response: {
+        createdFeatureIds: ["feat_result_hole"],
+        createdBodyIds: ["body_result_hole"]
+      }
+    });
+    expect(runtime.holeInputs).toEqual([
+      expect.objectContaining({
+        id: "body_result_hole",
+        target: expect.objectContaining({
+          kind: "booleanExtrudes",
+          operation: "cut"
+        }),
+        tool: expect.objectContaining({
+          sketchPlane: "XY",
+          circle: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 0.25
+          },
+          depthMode: "throughAll",
+          direction: "positive",
+          placementFrame: expect.objectContaining({
+            origin: expect.any(Array),
+            uAxis: expect.any(Array),
+            vAxis: expect.any(Array)
+          })
+        })
+      })
+    ]);
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+    expect(readStructure(engine).features).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "feat_result_hole" })
+      ])
+    );
+  });
+
+  it("blocks result-body hole commits when geometry preflight fails", async () => {
+    const { engine, holeOp } = createAttachedResultHoleFixture();
+    const beforeJson = exportCadProjectJson(engine);
+    const runtime = createHolePreflightRuntime(async () => {
+      throw new Error("The selected hole does not cut the target body.");
+    });
+    const result = await preflightHoleGeometryCommand({
+      engine,
+      ops: [holeOp],
+      bodyId: "body_result_hole",
+      runtime
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      reason: "runtime",
+      message:
+        "Could not create this hole on the selected target. The selected hole does not cut the target body."
+    });
+    expect(runtime.holeInputs).toHaveLength(1);
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+    expect(readStructure(engine).features).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "feat_result_hole" })
+      ])
+    );
+  });
 });
 
 function createCircleResultBodyEngine(): CadEngine {
@@ -315,6 +402,76 @@ function createResultFacePlan(): TopologyAnchorCreationPlanQueryResponse {
   };
 }
 
+function createAttachedResultHoleFixture(): {
+  readonly engine: CadEngine;
+  readonly holeOp: Extract<CadOp, { readonly op: "feature.hole" }>;
+} {
+  const engine = createCircleResultBodyEngine();
+
+  execute(
+    engine,
+    [
+      ...createResultFacePlan().ops,
+      {
+        op: "sketch.createOnFace",
+        id: "sketch_result_hole",
+        name: "Result face hole sketch",
+        topologyAnchorId: "anchor_face_circle_cut_side",
+        topologyAnchorProof: createResultFaceProof()
+      },
+      buildAddSketchCircleOp("sketch_result_hole", {
+        id: "circle_result_hole",
+        x: 0,
+        y: 0,
+        x2: 0,
+        y2: 0,
+        width: 0,
+        height: 0,
+        radius: 0.25
+      })
+    ],
+    "commit"
+  );
+
+  const holeForm = createEffectiveHoleTargetForm(
+    {
+      id: "feat_result_hole",
+      bodyId: "body_result_hole",
+      targetBodyId: "",
+      name: "Result body hole",
+      depthMode: "throughAll" as const,
+      depth: 1,
+      direction: "positive" as const
+    },
+    {
+      bodyId: "body_circle_cut",
+      targetTopologyAnchorId: "anchor_body_circle"
+    }
+  );
+  const holeOp = buildFeatureHoleOp(
+    "sketch_result_hole",
+    "circle_result_hole",
+    holeForm
+  );
+
+  return { engine, holeOp };
+}
+
+function createResultFaceProof() {
+  return {
+    kind: "axisAlignedPlanarFace" as const,
+    entityKind: "face" as const,
+    evidenceSource: "checkpointSnapshot" as const,
+    exposesCheckpointLocalIds: false as const,
+    planarAxis: "z" as const,
+    planarCoordinate: 3,
+    bounds: {
+      min: [-1, -1, 3] as const,
+      max: [1, 1, 3] as const
+    }
+  };
+}
+
 function execute(
   engine: CadEngine,
   ops: readonly CadOp[],
@@ -353,5 +510,61 @@ function sourceIdentity(seed: string) {
   return {
     algorithm: "partbench-source-v1" as const,
     sha256: seed.repeat(64)
+  };
+}
+
+function createHolePreflightRuntime(
+  handler: (input: DerivedGeometryHoleInput) => Promise<DerivedGeometryResult>
+): DerivedGeometryRuntime & {
+  readonly holeInputs: readonly DerivedGeometryHoleInput[];
+} {
+  const holeInputs: DerivedGeometryHoleInput[] = [];
+  const unused = () => {
+    throw new Error("Only hole geometry is preflighted by this test runtime.");
+  };
+
+  return {
+    holeInputs,
+    tessellateBox: unused,
+    tessellateCylinder: unused,
+    tessellateSphere: unused,
+    tessellateCone: unused,
+    tessellateTorus: unused,
+    tessellateExtrude: unused,
+    revolveProfile: unused,
+    booleanExtrudes: unused,
+    edgeFinish: unused,
+    exactBodyMetadata: unused,
+    exactTopologyCheckpointPayload: unused,
+    hole(input) {
+      holeInputs.push(input);
+      return handler(input);
+    },
+    dispose() {}
+  };
+}
+
+function createGeometryResult(objectId: string): DerivedGeometryResult {
+  const mesh: RenderTriangleMesh = {
+    id: objectId,
+    kind: "mesh",
+    vertices: [],
+    indices: [],
+    transform: {
+      translation: [0, 0, 0],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1]
+    }
+  };
+
+  return {
+    mesh,
+    metrics: {
+      objectId,
+      roundTripMs: 1,
+      vertexCount: 0,
+      triangleCount: 0
+    },
+    message: `Displayed derived geometry for ${objectId}.`
   };
 }

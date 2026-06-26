@@ -554,6 +554,17 @@ function isSupportedDerivedGeometryObject(object: SceneObject): boolean {
   );
 }
 
+export function deriveGeometrySourceMesh(
+  runtime: DerivedGeometryRuntime,
+  source: DerivedGeometrySource
+): Promise<DerivedGeometryResult> {
+  if (!isSupportedDerivedGeometrySource(source)) {
+    return Promise.reject(new Error(getUnsupportedSourceMessage(source)));
+  }
+
+  return deriveSourceMesh(runtime, source as SupportedDerivedGeometrySource);
+}
+
 function deriveSourceMesh(
   runtime: DerivedGeometryRuntime,
   source: SupportedDerivedGeometrySource

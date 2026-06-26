@@ -2412,6 +2412,12 @@ async function v7BrowserWorkflowSmoke({
       "V14 XZ circle profile creates a side hole in a topology-backed circular result body",
       ids.v14CylinderSideHoleBodyId
     );
+    await verifyV14HoleDisplayGeometryReady(ids.v14CylinderSideHoleBodyName);
+    pass(
+      "v14-cylinder-side-plane-hole-display-ready-browser",
+      "V14 cylinder side-plane hole reaches display geometry ready without a hole mesh error",
+      ids.v14CylinderSideHoleBodyName
+    );
   }
 
   async function runV14ResultCutWallEdgeFinishWorkflowSmoke({
@@ -3057,6 +3063,33 @@ async function v7BrowserWorkflowSmoke({
       "V14 result-face circle profile creates a hole in the topology-backed result body",
       ids.v14HoleBodyId
     );
+    await verifyV14HoleDisplayGeometryReady(ids.v14HoleBodyName);
+    pass(
+      "v14-result-face-circle-hole-display-ready-browser",
+      "V14 result-face circle hole reaches display geometry ready without a hole mesh error",
+      ids.v14HoleBodyName
+    );
+  }
+
+  async function verifyV14HoleDisplayGeometryReady(bodyName) {
+    await waitFor(() => {
+      if (includesText(document.body, "Hole mesh error")) {
+        throw new Error("Hole mesh error is visible after creating the hole.");
+      }
+
+      const structure = getElementByAriaLabel("Model structure");
+      const ready = [...structure.querySelectorAll("button")].some(
+        (button) =>
+          includesText(button, bodyName) &&
+          includesText(button, "Display geometry ready")
+      );
+
+      if (!ready) {
+        throw new Error(compactText(structure.textContent, 1200));
+      }
+
+      return true;
+    }, `${bodyName} display geometry ready`);
   }
 
   async function saveSelectedTopologyReference(waitLabel, expectedStableId) {

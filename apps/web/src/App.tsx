@@ -163,6 +163,7 @@ import {
   createAuthoredFeatureDerivedGeometrySources,
   createDerivedGeometrySourcesFromDocument
 } from "./derivedGeometrySources";
+import { preflightHoleGeometryCommand } from "./holeGeometryPreflight";
 import {
   formatBodyMeasurementError,
   formatBodyTopologyError
@@ -2419,8 +2420,32 @@ export function App() {
     circleEntityId: string,
     form: FeatureHoleForm
   ) {
+    const op = buildFeatureHoleOp(sketchId, circleEntityId, form);
+
+    if (derivedGeometryEnabled) {
+      setCommandPending(true);
+      setCommandError(undefined);
+      setCommandNotice(undefined);
+
+      try {
+        const preflight = await preflightHoleGeometryCommand({
+          engine,
+          ops: [op],
+          bodyId: op.bodyId,
+          runtime: getDerivedGeometryRuntime()
+        });
+
+        if (!preflight.ok) {
+          setCommandError(preflight.message);
+          return;
+        }
+      } finally {
+        setCommandPending(false);
+      }
+    }
+
     await commitOps(
-      [buildFeatureHoleOp(sketchId, circleEntityId, form)],
+      [op],
       (response) => response.createdBodyIds?.[0] ?? selectedId
     );
   }

@@ -124,6 +124,7 @@ export const V14_BROWSER_WORKFLOW_CHECK_IDS = Object.freeze([
   "v14-result-cut-topology-source-json-browser",
   "v14-cylinder-side-plane-circle-entity-browser",
   "v14-cylinder-side-plane-hole-browser",
+  "v14-cylinder-side-plane-hole-display-ready-browser",
   "v14-cylinder-side-plane-hole-source-json-browser",
   "v14-result-cut-wall-named-edge-reference-browser",
   "v14-result-cut-wall-edge-chamfer-browser",
@@ -135,6 +136,7 @@ export const V14_BROWSER_WORKFLOW_CHECK_IDS = Object.freeze([
   "v14-result-edge-redo-blocked-browser",
   "v14-result-face-circle-entity-browser",
   "v14-result-face-circle-hole-browser",
+  "v14-result-face-circle-hole-display-ready-browser",
   "v14-result-hole-wcad-roundtrip-browser",
   "v14-result-hole-topology-source-json-browser"
 ]);
