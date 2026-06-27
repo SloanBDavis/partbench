@@ -731,11 +731,11 @@ describe("modeling action helpers", () => {
 
     expect(actionById(actions, "feature.chamfer")).toMatchObject({
       available: false,
-      reason: "Selected edge is not a supported generated edge."
+      reason: "This edge cannot be used for edge finish."
     });
     expect(actionById(actions, "feature.fillet")).toMatchObject({
       available: false,
-      reason: "Selected edge is not a supported generated edge."
+      reason: "This edge cannot be used for edge finish."
     });
   });
 });

@@ -76,7 +76,8 @@ These constraints remain active:
     verified matrix permits them, Modeling action metadata carries axial versus
     side-hole guidance for circular targets, selected circular side references
     can start a normal `XZ`/`YZ` side-hole sketch with the intended target body
-    preferred, and ready
+    preferred, result-edge finish readiness uses selected-edge/downstream-result
+    product copy without raw body or feature IDs, and ready
     topology-backed reference selections and Project/File JSON import/export
     plus result-body hole preflight failures use action-oriented product copy
     instead of internal implementation labels.

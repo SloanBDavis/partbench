@@ -124,14 +124,14 @@ export function getEdgeFinishOperationStatus(input: {
   if (input.selectionState.status === "none") {
     return {
       available: false,
-      message: `Select an eligible generated edge to create a ${input.operation}.`
+      message: `Select an edge that can be ${formatEdgeFinishPastTense(input.operation)}.`
     };
   }
 
   if (input.selectionState.status === "stale") {
     return {
       available: false,
-      message: `Selected generated reference is stale. ${input.selectionState.message}`
+      message: `Selected edge is stale. ${input.selectionState.message}`
     };
   }
 
@@ -146,7 +146,7 @@ export function getEdgeFinishOperationStatus(input: {
   if (input.selectionState.reference.kind !== "edge") {
     return {
       available: false,
-      message: "Select a generated edge reference."
+      message: "Select an edge that can be chamfered or filleted."
     };
   }
 
@@ -195,7 +195,7 @@ export function getEdgeFinishOperationStatus(input: {
 
   return {
     available: true,
-    message: `${operationLabel} will consume ${input.body?.id} and create a derived result body.`
+    message: `${operationLabel} will create a new result body from the selected edge.`
   };
 }
 
@@ -333,24 +333,28 @@ export function formatEdgeFinishScalarName(
   return operation === "chamfer" ? "distance" : "radius";
 }
 
+function formatEdgeFinishPastTense(operation: EdgeFinishOperation): string {
+  return operation === "chamfer" ? "chamfered" : "filleted";
+}
+
 function getEdgeFinishTargetUnsupportedMessage(
   body: CadBodySnapshot | undefined,
   feature: CadFeatureSummary | undefined
 ): string | undefined {
   if (!body || !feature) {
-    return "Select an active rectangle or circle new-body extrude target.";
+    return "Select an active edge on a supported extrude body.";
   }
 
   if (body.source.type !== "sketchExtrudeFeature") {
-    return "Edge finish supports authored sketch-extrude targets only.";
+    return "Edge finish is available for sketch-extrude bodies.";
   }
 
   if (body.consumedByFeatureId) {
-    return `Target body is consumed by feature ${body.consumedByFeatureId}.`;
+    return "This target already has a downstream result. Select the active result body or edit the downstream feature first.";
   }
 
   if (feature.kind !== "extrude") {
-    return "Edge finish supports authored extrude target bodies only.";
+    return "Edge finish is available for extrude result bodies.";
   }
 
   if (feature.operationMode !== "newBody") {
@@ -358,7 +362,7 @@ function getEdgeFinishTargetUnsupportedMessage(
       feature.operationMode !== "cut" ||
       feature.profileKind !== "rectangle"
     ) {
-      return "Edge finish supports active rectangle/circle new-body targets and rectangle cut-result targets only.";
+      return "Edge finish is available for active rectangle/circle extrudes and supported rectangle cut results.";
     }
   }
 
@@ -367,7 +371,7 @@ function getEdgeFinishTargetUnsupportedMessage(
     feature.profileKind !== "rectangle" &&
     feature.profileKind !== "circle"
   ) {
-    return "Edge finish supports rectangle or circle target bodies only.";
+    return "Edge finish is available for rectangle or circle target bodies.";
   }
 
   return undefined;
@@ -382,12 +386,12 @@ function getEdgeFinishReferenceUnsupportedMessage(
     operation === "chamfer" ? "feature.chamfer" : "feature.fillet";
 
   if (!reference.eligibleOperations.includes(requiredOperation)) {
-    return `Selected edge is not eligible for ${operation}.`;
+    return `${formatEdgeFinishOperationLabel(operation)} is not available for this edge.`;
   }
 
   const parsed = parseGeneratedEdgeFinishStableId(reference.stableId);
   if (!parsed) {
-    return "Selected edge is not a supported generated edge.";
+    return "This edge cannot be used for edge finish.";
   }
 
   if (!targetBodyId || reference.bodyId !== targetBodyId) {

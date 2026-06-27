@@ -53,8 +53,7 @@ describe("edge finish UI helpers", () => {
       })
     ).toEqual({
       available: true,
-      message:
-        "Chamfer will consume body_rect and create a derived result body."
+      message: "Chamfer will create a new result body from the selected edge."
     });
   });
 
@@ -281,7 +280,7 @@ describe("edge finish UI helpers", () => {
         scalar: 0.2,
         selectionState: selected(edge)
       }).message
-    ).toBe("Chamfer will consume body_rect and create a derived result body.");
+    ).toBe("Chamfer will create a new result body from the selected edge.");
     const cutEdge = createEdge({
       stableId: "generated:edge:body_cut:longitudinal:uMin:vMin",
       bodyId: "body_cut",
@@ -305,7 +304,7 @@ describe("edge finish UI helpers", () => {
         scalar: 0.2,
         selectionState: selected(cutEdge)
       }).message
-    ).toBe("Chamfer will consume body_cut and create a derived result body.");
+    ).toBe("Chamfer will create a new result body from the selected edge.");
     expect(
       getEdgeFinishOperationStatus({
         body: createBody({ consumedByFeatureId: "feat_cut" }),
@@ -315,7 +314,9 @@ describe("edge finish UI helpers", () => {
         scalar: 0.2,
         selectionState: selected(edge)
       }).message
-    ).toBe("Target body is consumed by feature feat_cut.");
+    ).toBe(
+      "This target already has a downstream result. Select the active result body or edit the downstream feature first."
+    );
     expect(
       getEdgeFinishOperationStatus({
         body: createBody(),
@@ -325,7 +326,7 @@ describe("edge finish UI helpers", () => {
         scalar: 0.2,
         selectionState: { status: "none" }
       }).message
-    ).toBe("Select an eligible generated edge to create a fillet.");
+    ).toBe("Select an edge that can be filleted.");
     expect(
       getEdgeFinishOperationStatus({
         body: createBody(),
@@ -344,7 +345,7 @@ describe("edge finish UI helpers", () => {
         }
       }).message
     ).toBe(
-      "Selected generated reference is stale. Selected edge reference is no longer available."
+      "Selected edge is stale. Selected edge reference is no longer available."
     );
     expect(
       getEdgeFinishOperationStatus({
@@ -390,7 +391,7 @@ describe("edge finish UI helpers", () => {
         scalar: 0.2,
         selectionState: selected(face)
       }).message
-    ).toBe("Select a generated edge reference.");
+    ).toBe("Select an edge that can be chamfered or filleted.");
     expect(
       getEdgeFinishOperationStatus({
         body: createBody(),
@@ -403,7 +404,7 @@ describe("edge finish UI helpers", () => {
         scalar: 0.2,
         selectionState: selected(circleEdge)
       }).message
-    ).toBe("Chamfer will consume body_rect and create a derived result body.");
+    ).toBe("Chamfer will create a new result body from the selected edge.");
     expect(
       getEdgeFinishOperationStatus({
         body: createBody(),
@@ -416,7 +417,47 @@ describe("edge finish UI helpers", () => {
         scalar: 0.2,
         selectionState: selected(unsupportedEdge)
       }).message
-    ).toBe("Selected edge is not a supported generated edge.");
+    ).toBe("This edge cannot be used for edge finish.");
+  });
+
+  it("keeps edge-finish status copy product-facing", () => {
+    const edge = createEdge({
+      stableId: "generated:edge:body_cut:longitudinal:uMin:vMin",
+      bodyId: "body_cut",
+      sourceFeatureId: "feat_cut",
+      role: "longitudinal:uMin:vMin"
+    });
+    const referenceOption = selectEdgeFinishReferenceOption(
+      createEdgeFinishReferenceOptions(selected(edge), []),
+      SELECTED_EDGE_FINISH_REFERENCE_VALUE
+    );
+    const messages = [
+      getEdgeFinishOperationStatus({
+        body: createBody({ id: "body_cut", featureId: "feat_cut" }),
+        feature: createExtrudeFeature("rectangle", {
+          id: "feat_cut",
+          bodyId: "body_cut",
+          operationMode: "cut",
+          targetBodyId: "body_rect"
+        }),
+        operation: "fillet",
+        referenceOption,
+        scalar: 0.2,
+        selectionState: selected(edge)
+      }).message,
+      getEdgeFinishOperationStatus({
+        body: createBody({ consumedByFeatureId: "feat_chamfer" }),
+        feature: createExtrudeFeature(),
+        operation: "chamfer",
+        referenceOption,
+        scalar: 0.2,
+        selectionState: selected(edge)
+      }).message
+    ];
+
+    expect(messages.join(" ")).not.toMatch(
+      /\b(generated edge|generated reference|topology|checkpoint|debug|tranche|milestone|command-ready|deferred|body_[a-z0-9_]+|feat_[a-z0-9_]+|derived result body)\b/i
+    );
   });
 });
 
