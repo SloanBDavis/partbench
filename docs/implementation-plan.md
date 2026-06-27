@@ -2884,11 +2884,13 @@ The planned pillars are:
    promoted result-face rectangle add, circle-origin result-body circle add,
    rectangle-family result-body second cut, circle-family result-body rectangle
    cut, result-face circle hole, and explicit XZ side-plane circle hole paths;
-   focused core/app/geometry tests prove circle-profile result-body cut/add
-   paths where the verified matrix permits them; the app preflights UI-created
-   hole display geometry against a projected document before source mutation,
-   and the browser smoke proves both supported hole paths reach
-   display-geometry-ready state without a display geometry issue.
+   the browser smoke also proves those supported add/cut result bodies reach
+   display-geometry-ready state without Boolean display diagnostics; focused
+   core/app/geometry tests prove circle-profile result-body cut/add paths where
+   the verified matrix permits them; the app preflights UI-created hole display
+   geometry against a projected document before source mutation, and the browser
+   smoke proves both supported hole paths reach display-geometry-ready state
+   without a display geometry issue.
    Unsupported or unanchored result bodies remain blocked. Cad-core
    command-target readiness, topology-anchor readiness, reference health, and
    project health share the same support matrix, including command-ready

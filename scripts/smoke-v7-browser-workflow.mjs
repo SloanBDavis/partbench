@@ -3103,6 +3103,8 @@ async function v7BrowserWorkflowSmoke({
       bodyName: ids.v14CutBodyName,
       passEntityCheck: passV14ResultFaceRectangleEntityBrowser,
       passCutCheck: passV14ResultFaceRectangleCutBrowser,
+      passCutDisplayReadyCheck:
+        passV14ResultFaceRectangleCutDisplayReadyBrowser,
       waitLabelPrefix: "V14 result-face rectangle cut"
     });
   }
@@ -3119,6 +3121,8 @@ async function v7BrowserWorkflowSmoke({
       bodyName: ids.v14RectangleCutBodyName,
       passEntityCheck: passV14RectangleResultFaceRectangleEntityBrowser,
       passCutCheck: passV14RectangleResultFaceRectangleCutBrowser,
+      passCutDisplayReadyCheck:
+        passV14RectangleResultFaceRectangleCutDisplayReadyBrowser,
       waitLabelPrefix: "V14 rectangle-family result-face rectangle cut"
     });
   }
@@ -3139,6 +3143,14 @@ async function v7BrowserWorkflowSmoke({
     );
   }
 
+  function passV14ResultFaceRectangleCutDisplayReadyBrowser(detail) {
+    pass(
+      "v14-result-face-rectangle-cut-display-ready-browser",
+      "V14 result-face rectangle cut reaches display geometry ready without a Boolean display issue",
+      detail
+    );
+  }
+
   function passV14RectangleResultFaceRectangleEntityBrowser(detail) {
     pass(
       "v14-rectangle-result-face-rectangle-entity-browser",
@@ -3155,6 +3167,14 @@ async function v7BrowserWorkflowSmoke({
     );
   }
 
+  function passV14RectangleResultFaceRectangleCutDisplayReadyBrowser(detail) {
+    pass(
+      "v14-rectangle-result-face-rectangle-cut-display-ready-browser",
+      "V14 rectangle-family result-body cut reaches display geometry ready without a Boolean display issue",
+      detail
+    );
+  }
+
   async function runV14TopologyBackedRectangleCutFromResultFace({
     targetBodyId,
     targetBodyName,
@@ -3166,6 +3186,7 @@ async function v7BrowserWorkflowSmoke({
     bodyName,
     passEntityCheck,
     passCutCheck,
+    passCutDisplayReadyCheck,
     waitLabelPrefix
   }) {
     ids[sketchIdKey] = await createV14TopologyBackedResultFaceSketch({
@@ -3246,6 +3267,11 @@ async function v7BrowserWorkflowSmoke({
       `created ${waitLabelPrefix}`
     );
     passCutCheck(bodyId);
+    await verifyV14DisplayGeometryReady({
+      bodyName,
+      issueLabels: ["Boolean display geometry issue"]
+    });
+    passCutDisplayReadyCheck(bodyName);
   }
 
   async function runV14TopologyBackedResultExtrudeAddWorkflowSmoke() {
@@ -3343,6 +3369,15 @@ async function v7BrowserWorkflowSmoke({
       "v14-result-face-rectangle-add-browser",
       "V14 result-face rectangle profile adds to the topology-backed result body",
       ids.v14AddBodyId
+    );
+    await verifyV14DisplayGeometryReady({
+      bodyName: ids.v14AddBodyName,
+      issueLabels: ["Boolean display geometry issue"]
+    });
+    pass(
+      "v14-result-face-rectangle-add-display-ready-browser",
+      "V14 result-face rectangle add reaches display geometry ready without a Boolean display issue",
+      ids.v14AddBodyName
     );
   }
 
@@ -3444,6 +3479,15 @@ async function v7BrowserWorkflowSmoke({
       "v14-circle-result-face-circle-add-browser",
       "V14 circle-origin result-face circle profile adds to the topology-backed result body",
       ids.v14CircleAddBodyId
+    );
+    await verifyV14DisplayGeometryReady({
+      bodyName: ids.v14CircleAddBodyName,
+      issueLabels: ["Boolean display geometry issue"]
+    });
+    pass(
+      "v14-circle-result-face-circle-add-display-ready-browser",
+      "V14 circle-origin result-face circle add reaches display geometry ready without a Boolean display issue",
+      ids.v14CircleAddBodyName
     );
   }
 
