@@ -39,6 +39,7 @@ import {
   createAvailableSketchDimensionTargetOptions,
   createHoleTargetBodyOptions,
   createRevolveAxisOptions,
+  getHoleTargetGuidance,
   getHoleOperationStatus,
   getRevolveOperationStatus,
   isExtrudableSketchEntity,
@@ -99,6 +100,7 @@ export interface ModelingActionTargetMetadata {
   readonly constraintKinds?: readonly SketchConstraintKindOption[];
   readonly revolveAxes?: readonly RevolveAxisOption[];
   readonly holeTargets?: readonly BooleanTargetBodyOption[];
+  readonly holeTargetGuidance?: string;
   readonly bodyId?: string;
   readonly featureId?: string;
   readonly generatedReferenceStableId?: string;
@@ -422,6 +424,7 @@ function createHoleAction(
     state.topologyAnchors
   );
   const status = getHoleOperationStatus(entity, targets, DEFAULT_HOLE_FORM);
+  const guidance = getHoleTargetGuidance(targets[0], sketch.plane);
 
   return {
     id: "feature.hole",
@@ -432,7 +435,8 @@ function createHoleAction(
     reason: status.available ? undefined : status.message,
     target: {
       ...createSketchEntityTarget(sketch, entity),
-      holeTargets: targets
+      holeTargets: targets,
+      ...(guidance ? { holeTargetGuidance: guidance } : {})
     },
     selection
   };

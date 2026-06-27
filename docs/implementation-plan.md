@@ -73,7 +73,8 @@ These constraints remain active:
     second cut, circle-family result-body rectangle cut, result-face circle
     hole, and explicit XZ side-plane circle hole paths, focused core, app, and
     geometry tests prove circle-profile result-body cut/add paths where the
-    verified matrix permits them, and ready
+    verified matrix permits them, Modeling action metadata carries axial versus
+    side-hole guidance for circular targets, and ready
     topology-backed reference selections and Project/File JSON import/export
     plus result-body hole preflight failures use action-oriented product copy
     instead of internal implementation labels.

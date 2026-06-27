@@ -142,6 +142,77 @@ describe("modeling action helpers", () => {
     });
   });
 
+  it("describes side-plane hole actions on circular targets without topology jargon", () => {
+    const circle: SketchSnapshot["entities"][number] = {
+      id: "circle_1",
+      kind: "circle",
+      center: [0, 0],
+      radius: 1
+    };
+    const sketch = createSketch("sketch_side_hole", {
+      plane: "XZ",
+      entities: [circle]
+    });
+    const bodies = [createBody("body_circle", "feat_circle")];
+    const features = [
+      createExtrudeFeature("feat_circle", "body_circle", "circle", "newBody")
+    ];
+    const actions = deriveModelingActions({
+      context: { selectionKind: "sketchEntity", sketch, entity: circle },
+      bodies,
+      features,
+      preferredBodyId: "body_circle"
+    });
+
+    expect(actionById(actions, "feature.hole")).toMatchObject({
+      available: true,
+      target: {
+        holeTargets: [
+          expect.objectContaining({
+            bodyId: "body_circle",
+            profileKind: "circle"
+          })
+        ],
+        holeTargetGuidance:
+          "Creates a side hole through the circular target from the XZ sketch plane."
+      }
+    });
+    expect(JSON.stringify(actionById(actions, "feature.hole"))).not.toMatch(
+      /\b(topology|checkpoint|debug|tranche|milestone|command-ready)\b/i
+    );
+  });
+
+  it("describes axial hole actions on circular targets from cap-plane sketches", () => {
+    const circle: SketchSnapshot["entities"][number] = {
+      id: "circle_1",
+      kind: "circle",
+      center: [0, 0],
+      radius: 1
+    };
+    const sketch = createSketch("sketch_axial_hole", {
+      plane: "XY",
+      entities: [circle]
+    });
+    const bodies = [createBody("body_circle", "feat_circle")];
+    const features = [
+      createExtrudeFeature("feat_circle", "body_circle", "circle", "newBody")
+    ];
+    const actions = deriveModelingActions({
+      context: { selectionKind: "sketchEntity", sketch, entity: circle },
+      bodies,
+      features,
+      preferredBodyId: "body_circle"
+    });
+
+    expect(actionById(actions, "feature.hole")).toMatchObject({
+      available: true,
+      target: {
+        holeTargetGuidance:
+          "Creates an axial hole through the circular target. Use an XZ or YZ sketch for a side hole."
+      }
+    });
+  });
+
   it("explains unavailable circle hole targets", () => {
     const circle: SketchSnapshot["entities"][number] = {
       id: "circle_1",
