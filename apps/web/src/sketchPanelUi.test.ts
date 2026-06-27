@@ -998,7 +998,7 @@ describe("sketch panel UI helpers", () => {
     ]);
   });
 
-  it("offers active topology-backed rectangle result bodies as add targets", () => {
+  it("requires command-ready topology anchors for result-body add targets", () => {
     const features: CadFeatureSummary[] = [
       createExtrudeFeature("feat_rect", "body_rect", "rectangle", "newBody"),
       createExtrudeFeature("feat_cut", "body_cut", "rectangle", "cut")
@@ -1007,20 +1007,61 @@ describe("sketch panel UI helpers", () => {
       createBody("body_rect", "feat_rect", "feat_cut"),
       createBody("body_cut", "feat_cut")
     ];
+    const anchors = [
+      {
+        anchorId: "anchor_body_cut",
+        entityKind: "body" as const,
+        bodyId: "body_cut",
+        checkpointId: "checkpoint_body_cut",
+        checkpointEntityId: "checkpoint_body_cut_body",
+        stableId: "generated:body:body_cut",
+        state: "active" as const,
+        diagnostics: []
+      }
+    ];
+    const blockedReadiness = new Map([
+      [
+        "anchor_body_cut",
+        createTopologyCommandTargetReadiness(
+          "anchor_body_cut",
+          "feature.extrudeAddTarget",
+          false,
+          []
+        )
+      ]
+    ]);
+    const readyReadiness = new Map([
+      [
+        "anchor_body_cut",
+        createTopologyCommandTargetReadiness(
+          "anchor_body_cut",
+          "feature.extrudeAddTarget",
+          true,
+          ["feature.extrudeAddTarget"]
+        )
+      ]
+    ]);
 
     expect(
-      createAddTargetBodyOptions(bodies, features, "body_cut", [
-        {
-          anchorId: "anchor_body_cut",
-          entityKind: "body",
-          bodyId: "body_cut",
-          checkpointId: "checkpoint_body_cut",
-          checkpointEntityId: "checkpoint_body_cut_body",
-          stableId: "generated:body:body_cut",
-          state: "active",
-          diagnostics: []
-        }
-      ])
+      createAddTargetBodyOptions(bodies, features, "body_cut", anchors)
+    ).toEqual([]);
+    expect(
+      createAddTargetBodyOptions(
+        bodies,
+        features,
+        "body_cut",
+        anchors,
+        blockedReadiness
+      )
+    ).toEqual([]);
+    expect(
+      createAddTargetBodyOptions(
+        bodies,
+        features,
+        "body_cut",
+        anchors,
+        readyReadiness
+      )
     ).toEqual([
       {
         bodyId: "body_cut",
@@ -1029,6 +1070,50 @@ describe("sketch panel UI helpers", () => {
         profileKind: "rectangle",
         label: "Rectangle result 1 / 1 mm",
         detail: "Rectangle result body / cut"
+      }
+    ]);
+  });
+
+  it("offers command-ready circle-origin result bodies as add targets", () => {
+    const features: CadFeatureSummary[] = [
+      createExtrudeFeature("feat_circle", "body_circle", "circle", "newBody"),
+      createExtrudeFeature("feat_cut", "body_cut", "rectangle", "cut", {
+        targetBodyId: "body_circle",
+        targetTopologyAnchorId: "anchor_body_circle"
+      })
+    ];
+    const bodies: CadBodySnapshot[] = [
+      createBody("body_circle", "feat_circle", "feat_cut"),
+      createBody("body_cut", "feat_cut")
+    ];
+    const readyReadiness = new Map([
+      [
+        "anchor_body_circle",
+        createTopologyCommandTargetReadiness(
+          "anchor_body_circle",
+          "feature.extrudeAddTarget",
+          true,
+          ["feature.extrudeAddTarget"]
+        )
+      ]
+    ]);
+
+    expect(
+      createAddTargetBodyOptions(
+        bodies,
+        features,
+        "body_cut",
+        [],
+        readyReadiness
+      )
+    ).toEqual([
+      {
+        bodyId: "body_cut",
+        featureId: "feat_cut",
+        targetTopologyAnchorId: "anchor_body_circle",
+        profileKind: "circle",
+        label: "Circle result 1 / 1 mm",
+        detail: "Circle result body / cut"
       }
     ]);
   });
@@ -1310,15 +1395,23 @@ describe("sketch panel UI helpers", () => {
     const blockedReadiness = new Map([
       [
         "anchor_body_rect",
-        createTopologyCommandTargetReadiness("anchor_body_rect", false, [])
+        createTopologyCommandTargetReadiness(
+          "anchor_body_rect",
+          "feature.holeTarget",
+          false,
+          []
+        )
       ]
     ]);
     const readyReadiness = new Map([
       [
         "anchor_body_rect",
-        createTopologyCommandTargetReadiness("anchor_body_rect", true, [
-          "feature.holeTarget"
-        ])
+        createTopologyCommandTargetReadiness(
+          "anchor_body_rect",
+          "feature.holeTarget",
+          true,
+          ["feature.holeTarget"]
+        )
       ]
     ]);
 
@@ -1633,7 +1726,7 @@ describe("sketch panel UI helpers", () => {
     expect(getAddOperationStatus(rectangle, [])).toEqual({
       available: false,
       message:
-        "Create an active rectangle body or previous result body before using Add to body."
+        "Create an active rectangle or circle body, or select a ready result body, before using Add to body."
     });
     expect(getAddOperationStatus(rectangle, targets)).toEqual({
       available: true,
@@ -1834,6 +1927,7 @@ function createSolverStatus({
 
 function createTopologyCommandTargetReadiness(
   anchorId: string,
+  desiredOperation: CadSelectionReferenceOperation,
   commandable: boolean,
   supportedOperations: readonly CadSelectionReferenceOperation[]
 ): TopologyCommandTargetReadinessQueryResponse {
@@ -1842,7 +1936,7 @@ function createTopologyCommandTargetReadiness(
     query: "topology.commandTargetReadiness",
     cadOpsVersion: "cadops.v1",
     target: { type: "topologyAnchor", anchorId },
-    desiredOperation: "feature.holeTarget",
+    desiredOperation,
     status: commandable ? "ready" : "blocked",
     selectionStatus: commandable ? "resolved" : "non-commandable",
     commandable,
@@ -1854,7 +1948,7 @@ function createTopologyCommandTargetReadiness(
     operationSummaryCount: 1,
     operationSummaries: [
       {
-        operation: "feature.holeTarget",
+        operation: desiredOperation,
         status: commandable ? "ready" : "blocked",
         commandable,
         source: "selection.referenceCandidates",

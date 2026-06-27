@@ -1060,7 +1060,7 @@ function validateRequest(
       return {
         code: "UNSUPPORTED_PROFILE",
         message:
-          "Boolean extrude feasibility currently supports rectangle/circle tools on rectangle targets, and cut-only tools on circle targets."
+          "Boolean extrude feasibility currently supports rectangle/circle tools on rectangle or circle targets."
       };
     }
   } else if (request.op === "geometry.hole") {
@@ -2344,11 +2344,10 @@ function isSupportedBooleanExtrudeProfileKinds(
   operation: GeometryKernelBooleanOperation,
   targetProfile: GeometryKernelExtrudeProfileKind
 ): boolean {
-  if (targetProfile === "rectangle") {
-    return true;
-  }
-
-  return operation === "cut" && targetProfile === "circle";
+  return (
+    (operation === "add" || operation === "cut") &&
+    (targetProfile === "rectangle" || targetProfile === "circle")
+  );
 }
 
 function getBooleanExtrudeSourceProfileKind(

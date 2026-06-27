@@ -698,6 +698,13 @@ describe("derivedExactMetadata", () => {
       target: createExtrudeSource("body_target"),
       tool: createCircleExtrudeSource("body_circle_tool")
     };
+    const circleTargetAddSource: DerivedBooleanExtrudeGeometrySource = {
+      id: "body_add_circle_target",
+      kind: "extrudeBoolean",
+      operation: "add",
+      target: createCircleExtrudeSource("body_circle_target"),
+      tool: createCircleExtrudeSource("body_circle_tool")
+    };
     const cutSource: DerivedBooleanExtrudeGeometrySource = {
       id: "body_cut_1",
       kind: "extrudeBoolean",
@@ -719,13 +726,24 @@ describe("derivedExactMetadata", () => {
       tool: createExtrudeSource("body_tool_2")
     };
 
-    service.reconcile([addSource, cutSource, chainedCutSource]);
+    service.reconcile([
+      addSource,
+      circleTargetAddSource,
+      cutSource,
+      chainedCutSource
+    ]);
 
     expect(runtime.exactInputs.map((input) => input.source)).toMatchObject([
       {
         kind: "booleanExtrudes",
         operation: "add",
         target: { profile: { kind: "rectangle" } },
+        tool: { profile: { kind: "circle" } }
+      },
+      {
+        kind: "booleanExtrudes",
+        operation: "add",
+        target: { profile: { kind: "circle" } },
         tool: { profile: { kind: "circle" } }
       },
       {
@@ -1033,14 +1051,6 @@ describe("derivedExactMetadata", () => {
       runtime,
       onChange: (snapshot) => snapshots.push(snapshot)
     });
-    const unsupportedBoolean: DerivedBooleanExtrudeGeometrySource = {
-      id: "body_cut_unsupported",
-      kind: "extrudeBoolean",
-      operation: "add",
-      target: createCircleExtrudeSource("body_target"),
-      tool: createCircleExtrudeSource("body_circle_tool")
-    };
-
     service.reconcile([
       createPrimitiveDerivedGeometrySource({
         id: "box_1",
@@ -1075,8 +1085,7 @@ describe("derivedExactMetadata", () => {
       {
         ...createChamferSource("body_unsupported_circle_target"),
         target: createCircleExtrudeSource("body_rect_1")
-      },
-      unsupportedBoolean
+      }
     ]);
 
     const snapshot =
@@ -1114,12 +1123,6 @@ describe("derivedExactMetadata", () => {
         status: "unsupported",
         message:
           "Exact metadata for edge finishing currently supports rectangle source edges and rectangle cut-wall result edges only."
-      },
-      {
-        bodyId: "body_cut_unsupported",
-        status: "unsupported",
-        message:
-          "Exact metadata for add currently supports rectangle target extrudes only."
       }
     ]);
   });

@@ -10620,9 +10620,13 @@ function isSupportedCutTargetProfileKind(
 }
 
 function isSupportedAddTargetProfileKind(
-  profileKind: FeatureExtrudeProfileKind
+  profileKind: FeatureExtrudeProfileKind,
+  hasTopologyAnchorTarget = false
 ): boolean {
-  return profileKind === "rectangle";
+  return (
+    profileKind === "rectangle" ||
+    (hasTopologyAnchorTarget && profileKind === "circle")
+  );
 }
 
 function isSupportedBooleanToolProfileKind(
@@ -12173,7 +12177,10 @@ function assertSupportedExtrudeOperation(
     targetBodyId &&
     isSupportedBooleanToolProfileKind(profileKind) &&
     targetProfileKind !== undefined &&
-    isSupportedAddTargetProfileKind(targetProfileKind) &&
+    isSupportedAddTargetProfileKind(
+      targetProfileKind,
+      targetTopologyAnchorId !== undefined
+    ) &&
     !hasBlockingConsumingFeature
   ) {
     return;
@@ -12181,11 +12188,11 @@ function assertSupportedExtrudeOperation(
 
   const expected =
     operationMode === "add"
-      ? "add with rectangle/circle source and active rectangle source or topology-backed result target"
+      ? "add with rectangle/circle source and active rectangle source or supported topology-backed result target"
       : "cut with rectangle/circle source and active rectangle/circle source or topology-backed result target";
   const message =
     operationMode === "add"
-      ? "Add extrudes currently support rectangle or circle tools fusing with one active rectangle source or topology-backed result target body."
+      ? "Add extrudes currently support rectangle or circle tools fusing with one active rectangle source or supported topology-backed result target body."
       : "Cut extrudes currently support rectangle or circle tools cutting one active rectangle, circle, or topology-backed result target body.";
 
   throwValidationError({
@@ -22127,7 +22134,10 @@ function isSupportedBooleanExtrudeCombination(
   }
 
   if (operationMode === "add") {
-    return isSupportedAddTargetProfileKind(targetProfileKind);
+    return isSupportedAddTargetProfileKind(
+      targetProfileKind,
+      feature.targetTopologyAnchorId !== undefined
+    );
   }
 
   if (operationMode === "cut") {
@@ -22191,7 +22201,7 @@ function getUnsupportedBooleanExtrudeMessage(
   operationMode: FeatureExtrudeOperationMode
 ): string {
   if (operationMode === "add") {
-    return "Add extrudes currently support rectangle or circle tools fusing with one active rectangle source or topology-backed result target body.";
+    return "Add extrudes currently support rectangle or circle tools fusing with one active rectangle source or supported topology-backed result target body.";
   }
 
   return "Cut extrudes currently support rectangle or circle tools cutting one active rectangle, circle, or topology-backed result target body.";

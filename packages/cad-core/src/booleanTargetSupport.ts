@@ -192,5 +192,5 @@ function isSupportedCutTargetProfileKind(
 function isSupportedAddTargetProfileKind(
   profileKind: FeatureExtrudeProfileKind
 ): boolean {
-  return profileKind === "rectangle";
+  return profileKind === "rectangle" || profileKind === "circle";
 }

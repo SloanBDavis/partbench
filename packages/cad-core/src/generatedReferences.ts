@@ -642,7 +642,11 @@ function isSupportedBooleanAddTarget(
     feature.targetBodyId
   );
 
-  return targetProfileKind === "rectangle";
+  return (
+    targetProfileKind === "rectangle" ||
+    (feature.targetTopologyAnchorId !== undefined &&
+      targetProfileKind === "circle")
+  );
 }
 
 function isSupportedBooleanCutTarget(

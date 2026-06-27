@@ -33508,7 +33508,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(exportCadProjectJson(engine)).toBe(beforeJson);
   });
 
-  it("keeps circle-origin body-anchor add readiness blocked across selection, health, and snapshot proof", () => {
+  it("reports circle-origin body-anchor add readiness across selection, health, and snapshot proof", () => {
     const engine = createCircleExtrudeEngine();
     engine.applyBatch(createV14CircleSidePlaneHoleChainOps().slice(0, 5));
     const beforeJson = exportCadProjectJson(engine);
@@ -33559,28 +33559,29 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(addAnchorReadiness).toMatchObject({
       ok: true,
       query: "topology.anchorCommandReadiness",
-      status: "non-commandable",
-      commandable: false,
-      commandOperations: ["feature.extrudeCutTarget", "feature.holeTarget"],
-      diagnostics: [
-        expect.objectContaining({
-          code: "TOPOLOGY_COMMAND_ELIGIBILITY_DEFERRED",
-          expected: "feature.extrudeAddTarget",
-          received: "feature.extrudeCutTarget, feature.holeTarget"
-        })
-      ]
+      status: "ready",
+      commandable: true,
+      commandOperations: expect.arrayContaining([
+        "feature.extrudeCutTarget",
+        "feature.extrudeAddTarget",
+        "feature.holeTarget"
+      ])
     });
     expect(addReadiness).toMatchObject({
       ok: true,
       query: "topology.commandTargetReadiness",
-      status: "non-commandable",
-      commandable: false,
-      supportedOperations: ["feature.extrudeCutTarget", "feature.holeTarget"],
+      status: "ready",
+      commandable: true,
+      supportedOperations: expect.arrayContaining([
+        "feature.extrudeCutTarget",
+        "feature.extrudeAddTarget",
+        "feature.holeTarget"
+      ]),
       operationSummaries: expect.arrayContaining([
         expect.objectContaining({
           operation: "feature.extrudeAddTarget",
-          status: "non-commandable",
-          commandable: false
+          status: "ready",
+          commandable: true
         })
       ]),
       candidates: [
@@ -33589,14 +33590,11 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
             bodyId: "body_circle_cut",
             topologyAnchorId: "anchor_body_circle"
           }),
-          commandOperations: ["feature.extrudeCutTarget", "feature.holeTarget"]
-        })
-      ],
-      diagnostics: [
-        expect.objectContaining({
-          code: "TOPOLOGY_COMMAND_ELIGIBILITY_DEFERRED",
-          expected: "feature.extrudeAddTarget",
-          received: "feature.extrudeCutTarget, feature.holeTarget"
+          commandOperations: expect.arrayContaining([
+            "feature.extrudeCutTarget",
+            "feature.extrudeAddTarget",
+            "feature.holeTarget"
+          ])
         })
       ]
     });
@@ -33607,12 +33605,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       commandable: true,
       supportedOperations: expect.arrayContaining([
         "feature.extrudeCutTarget",
+        "feature.extrudeAddTarget",
         "feature.holeTarget"
-      ])
-    });
-    expect(cutReadiness).toMatchObject({
-      supportedOperations: expect.not.arrayContaining([
-        "feature.extrudeAddTarget"
       ])
     });
     expect(health).toMatchObject({
@@ -33621,7 +33615,11 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         expect.objectContaining({
           source: "topologyAnchor",
           commandable: true,
-          commandOperations: ["feature.extrudeCutTarget", "feature.holeTarget"],
+          commandOperations: expect.arrayContaining([
+            "feature.extrudeCutTarget",
+            "feature.extrudeAddTarget",
+            "feature.holeTarget"
+          ]),
           topologyAnchorId: "anchor_body_circle"
         })
       ]
@@ -35411,6 +35409,29 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         depth: 0.5,
         operationMode: "cut",
         targetTopologyAnchorId: "anchor_body_circle_circle_tool"
+      },
+      {
+        op: "sketch.create",
+        id: "sketch_circle_circle_add",
+        name: "Circle add",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_circle_circle_add",
+        id: "circle_circle_add",
+        center: [1.25, 0],
+        radius: 0.25
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_circle_circle_add",
+        bodyId: "body_circle_circle_add",
+        sketchId: "sketch_circle_circle_add",
+        entityId: "circle_circle_add",
+        depth: 0.5,
+        operationMode: "add",
+        targetTopologyAnchorId: "anchor_body_circle_circle_tool"
       }
     ]);
 
@@ -35424,70 +35445,73 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       targetTopologyAnchorId: "anchor_body_circle_circle_tool",
       bodyId: "body_circle_circle_cut"
     });
-
-    const blockedCircleAddEngine = createCircleExtrudeEngine();
-    blockedCircleAddEngine.applyBatch([
-      {
-        op: "topology.checkpoint.create",
-        checkpointId: "checkpoint_circle_add_blocked",
-        bodyId: "body_circle_1",
-        sourceFeatureId: "feat_circle_1",
-        sourceIdentity: {
-          algorithm: "partbench-source-v1",
-          sha256:
-            "6666666666666666666666666666666666666666666666666666666666666666"
-        },
-        status: "active"
-      },
-      {
-        op: "topology.anchor.create",
-        anchorId: "anchor_body_circle_add_blocked",
-        entityKind: "body",
-        bodyId: "body_circle_1",
-        checkpointId: "checkpoint_circle_add_blocked",
-        checkpointEntityId: "checkpoint-local-circle-add-blocked-body",
-        sourceFeatureId: "feat_circle_1",
-        stableId: "generated:body:body_circle_1",
-        sourceSemanticRole: "source body",
-        signatureHash: "circle_add_blocked_body_signature"
-      },
-      {
-        op: "sketch.addCircle",
-        sketchId: "sketch_1",
-        id: "circle_add_blocked",
-        center: [2.5, 0],
-        radius: 0.25
-      }
-    ]);
-    const beforeBlockedJson = exportCadProjectJson(blockedCircleAddEngine);
-
     expect(
-      blockedCircleAddEngine.executeBatch({
-        version: "cadops.v1",
-        mode: "dryRun",
-        ops: [
-          {
-            op: "feature.extrude",
-            id: "feat_circle_add_blocked",
-            bodyId: "body_circle_add_blocked",
-            sketchId: "sketch_1",
-            entityId: "circle_add_blocked",
-            depth: 0.5,
-            operationMode: "add",
-            targetTopologyAnchorId: "anchor_body_circle_add_blocked"
-          }
-        ]
-      })
+      getExtrudeFeature(circleEngine, "feat_circle_circle_add")
     ).toMatchObject({
-      ok: false,
-      error: {
-        code: "UNSUPPORTED_FEATURE_OPERATION",
-        path: "$.ops[0].operationMode"
+      kind: "extrude",
+      profileKind: "circle",
+      operationMode: "add",
+      targetBodyId: "body_circle_circle_cut",
+      targetTopologyAnchorId: "anchor_body_circle_circle_tool",
+      bodyId: "body_circle_circle_add"
+    });
+    expect(readProjectHealth(circleEngine).authoredExtrudes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          featureId: "feat_circle_circle_add",
+          operationMode: "add",
+          targetBodyId: "body_circle_circle_cut",
+          targetTopologyAnchorId: "anchor_body_circle_circle_tool",
+          status: "healthy"
+        })
+      ])
+    );
+
+    const circleReferences = circleEngine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.generatedReferences",
+        bodyId: "body_circle_circle_add"
       }
     });
-    expect(exportCadProjectJson(blockedCircleAddEngine)).toBe(
-      beforeBlockedJson
+    const circleReopened = importCadProjectJson(
+      exportCadProjectJson(circleEngine)
     );
+
+    expect(circleReferences).toMatchObject({
+      ok: true,
+      query: "body.generatedReferences",
+      body: expect.objectContaining({
+        stableId: "generated:body:body_circle_circle_add"
+      }),
+      faces: expect.arrayContaining([
+        expect.objectContaining({
+          stableId: "generated:face:body_circle_circle_add:endCap",
+          role: "endCap",
+          geometricSignature: expect.objectContaining({
+            sourceKind: "extrude",
+            targetBodyId: "body_circle_circle_cut",
+            targetTopologyAnchorId: "anchor_body_circle_circle_tool",
+            extrudeOperationMode: "add"
+          })
+        })
+      ]),
+      edges: expect.arrayContaining([
+        expect.objectContaining({
+          stableId: "generated:edge:body_circle_circle_add:end:circular",
+          role: "end:circular"
+        })
+      ])
+    });
+    expect(
+      getExtrudeFeature(circleReopened, "feat_circle_circle_add")
+    ).toMatchObject({
+      kind: "extrude",
+      operationMode: "add",
+      targetBodyId: "body_circle_circle_cut",
+      targetTopologyAnchorId: "anchor_body_circle_circle_tool",
+      bodyId: "body_circle_circle_add"
+    });
   });
 
   it("creates holes through active topology-backed result bodies", async () => {

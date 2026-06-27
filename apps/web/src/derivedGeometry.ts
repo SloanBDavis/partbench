@@ -856,8 +856,12 @@ function getUnsupportedBooleanSourceMessage(
 ): string | undefined {
   const targetProfileKind = getBooleanSourceProfileKind(source.target);
 
-  if (source.operation === "add" && targetProfileKind !== "rectangle") {
-    return "Boolean add display currently supports rectangle target extrudes only.";
+  if (
+    source.operation === "add" &&
+    targetProfileKind !== "rectangle" &&
+    targetProfileKind !== "circle"
+  ) {
+    return "Boolean add display currently supports rectangle or circle target extrudes only.";
   }
 
   if (

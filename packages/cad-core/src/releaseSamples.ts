@@ -2285,6 +2285,7 @@ export function createV13ReleaseSampleCheckpointPayloads(
 export type V14ReleaseSampleId =
   | "v14-result-body-cut-add-hole"
   | "v14-circle-side-plane-hole"
+  | "v14-circle-result-body-add"
   | "v14-result-edge-finish"
   | "v14-result-edge-topology-anchor-finish";
 
@@ -2384,6 +2385,9 @@ const V14_RESULT_HOLE_BODY_CHECKPOINT = "v14_checkpoint_result_hole_body";
 const V14_CIRCLE_SOURCE_BODY = "v14_circle_source_body";
 const V14_CIRCLE_BODY_ANCHOR = "v14_anchor_circle_body";
 const V14_CIRCLE_BODY_CHECKPOINT = "v14_checkpoint_circle_body";
+const V14_CIRCLE_ADD_SOURCE_BODY = "v14_circle_add_source_body";
+const V14_CIRCLE_ADD_BODY_ANCHOR = "v14_anchor_circle_add_body";
+const V14_CIRCLE_ADD_BODY_CHECKPOINT = "v14_checkpoint_circle_add_body";
 
 const V14_EDGE_SOURCE_BODY = "v14_edge_source_body";
 const V14_EDGE_CUT_BODY = "v14_edge_cut_body";
@@ -2473,7 +2477,7 @@ export const V14_RELEASE_SAMPLE_FIXTURES = [
     ],
     readinessOpCount: 11,
     knownLimitations: [
-      "The fixture proves rectangle-family target chaining only; arbitrary profiles and circle-target add remain outside this matrix."
+      "The fixture proves rectangle-family target chaining only; circle-origin add is covered by v14-circle-result-body-add."
     ],
     ops: [
       {
@@ -2775,14 +2779,13 @@ export const V14_RELEASE_SAMPLE_FIXTURES = [
     id: "v14-circle-side-plane-hole",
     title: "V14 circle-origin side-plane hole sample",
     description:
-      "A circle-origin topology body anchor accepts a rectangle cut and explicit XZ side-plane hole while keeping circle-target add blocked.",
+      "A circle-origin topology body anchor advertises add readiness, accepts a rectangle cut, and supports an explicit XZ side-plane hole.",
     units: "mm",
     workflowTags: [
       "topology-body-anchor",
       "result-body-cut",
       "result-body-hole",
       "circle-side-plane-hole",
-      "blocked-support-matrix",
       "command-readiness",
       "source-boundary",
       "wcad-round-trip"
@@ -2811,7 +2814,7 @@ export const V14_RELEASE_SAMPLE_FIXTURES = [
     ],
     expectedReadiness: [
       {
-        label: "circle-origin add remains blocked",
+        label: "circle-origin add remains ready",
         target: {
           type: "topologyAnchor",
           anchorId: V14_CIRCLE_BODY_ANCHOR
@@ -2830,10 +2833,11 @@ export const V14_RELEASE_SAMPLE_FIXTURES = [
             }
           ]
         }),
-        expectedStatus: "non-commandable",
-        expectedCommandable: false,
+        expectedStatus: "ready",
+        expectedCommandable: true,
         expectedSupportedOperations: [
           "feature.extrudeCutTarget",
+          "feature.extrudeAddTarget",
           "feature.holeTarget"
         ]
       },
@@ -2861,30 +2865,12 @@ export const V14_RELEASE_SAMPLE_FIXTURES = [
         expectedCommandable: true,
         expectedSupportedOperations: [
           "feature.extrudeCutTarget",
+          "feature.extrudeAddTarget",
           "feature.holeTarget"
         ]
       }
     ],
     readinessOpCount: 8,
-    expectedBlockedBatches: [
-      {
-        label: "circle add dry-run stays blocked",
-        ops: [
-          {
-            op: "feature.extrude",
-            id: "v14_circle_add_blocked_feature",
-            bodyId: "v14_circle_add_blocked_body",
-            sketchId: "v14_circle_add_blocked_sketch",
-            entityId: "v14_circle_add_blocked_profile",
-            depth: 0.5,
-            operationMode: "add",
-            targetTopologyAnchorId: V14_CIRCLE_BODY_ANCHOR
-          }
-        ],
-        expectedCode: "UNSUPPORTED_FEATURE_OPERATION",
-        expectedPath: "$.ops[0].operationMode"
-      }
-    ],
     knownLimitations: [
       "The side hole uses an explicit public XZ sketch plane; curved side faces remain non-attachable."
     ],
@@ -2963,19 +2949,6 @@ export const V14_RELEASE_SAMPLE_FIXTURES = [
       },
       {
         op: "sketch.create",
-        id: "v14_circle_add_blocked_sketch",
-        name: "V14 blocked circle add",
-        plane: "XY"
-      },
-      {
-        op: "sketch.addCircle",
-        sketchId: "v14_circle_add_blocked_sketch",
-        id: "v14_circle_add_blocked_profile",
-        center: [1, 0],
-        radius: 0.25
-      },
-      {
-        op: "sketch.create",
         id: "v14_circle_hole_sketch",
         name: "V14 circle side hole",
         plane: "XZ"
@@ -2997,6 +2970,176 @@ export const V14_RELEASE_SAMPLE_FIXTURES = [
         depthMode: "throughAll",
         direction: "positive",
         targetTopologyAnchorId: V14_CIRCLE_BODY_ANCHOR
+      }
+    ]
+  },
+  {
+    id: "v14-circle-result-body-add",
+    title: "V14 circle-origin result-body add sample",
+    description:
+      "A circle-origin topology body anchor resolves through a supported result cut body and creates a replayable circle-profile add through CADOps.",
+    units: "mm",
+    workflowTags: [
+      "topology-body-anchor",
+      "result-body-cut",
+      "result-body-add",
+      "command-readiness",
+      "source-boundary",
+      "wcad-round-trip"
+    ],
+    expectedTopology: {
+      checkpointCount: 1,
+      anchorCount: 1,
+      anchorIds: [V14_CIRCLE_ADD_BODY_ANCHOR]
+    },
+    expectedFeatures: [
+      {
+        featureId: "v14_circle_add_seed_cut_feature",
+        kind: "extrude",
+        bodyId: "v14_circle_add_seed_cut_body",
+        targetBodyId: V14_CIRCLE_ADD_SOURCE_BODY,
+        targetTopologyAnchorId: V14_CIRCLE_ADD_BODY_ANCHOR,
+        operationMode: "cut"
+      },
+      {
+        featureId: "v14_circle_add_feature",
+        kind: "extrude",
+        bodyId: "v14_circle_add_body",
+        targetBodyId: "v14_circle_add_seed_cut_body",
+        targetTopologyAnchorId: V14_CIRCLE_ADD_BODY_ANCHOR,
+        operationMode: "add"
+      }
+    ],
+    expectedReadiness: [
+      {
+        label: "circle-origin result body anchor is add-ready",
+        target: {
+          type: "topologyAnchor",
+          anchorId: V14_CIRCLE_ADD_BODY_ANCHOR
+        },
+        operation: "feature.extrudeAddTarget",
+        snapshot: createV13TopologyMatchSnapshot({
+          checkpointId: V14_CIRCLE_ADD_BODY_CHECKPOINT,
+          bodyId: V14_CIRCLE_ADD_SOURCE_BODY,
+          sourceIdentitySha:
+            "2525252525252525252525252525252525252525252525252525252525252525",
+          entities: [
+            {
+              localId: "v14_circle_add_checkpoint_body",
+              kind: "body",
+              signature: "v14_circle_add_body_signature"
+            }
+          ]
+        }),
+        expectedStatus: "ready",
+        expectedCommandable: true,
+        expectedSupportedOperations: [
+          "feature.extrudeCutTarget",
+          "feature.extrudeAddTarget",
+          "feature.holeTarget"
+        ]
+      }
+    ],
+    readinessOpCount: 8,
+    knownLimitations: [
+      "This fixture proves circle-profile add on a supported circle-origin result target; arbitrary imported or repaired topology remains outside this matrix."
+    ],
+    ops: [
+      {
+        op: "sketch.create",
+        id: "v14_circle_add_source_sketch",
+        name: "V14 circle add source",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "v14_circle_add_source_sketch",
+        id: "v14_circle_add_source_profile",
+        center: [0, 0],
+        radius: 2
+      },
+      {
+        op: "feature.extrude",
+        id: "v14_circle_add_source_feature",
+        bodyId: V14_CIRCLE_ADD_SOURCE_BODY,
+        name: "V14 circle add source body",
+        sketchId: "v14_circle_add_source_sketch",
+        entityId: "v14_circle_add_source_profile",
+        depth: 4,
+        operationMode: "newBody"
+      },
+      {
+        op: "topology.checkpoint.create",
+        checkpointId: V14_CIRCLE_ADD_BODY_CHECKPOINT,
+        bodyId: V14_CIRCLE_ADD_SOURCE_BODY,
+        sourceFeatureId: "v14_circle_add_source_feature",
+        sourceIdentity: {
+          algorithm: "partbench-source-v1",
+          sha256:
+            "2525252525252525252525252525252525252525252525252525252525252525"
+        },
+        status: "active"
+      },
+      {
+        op: "topology.anchor.create",
+        anchorId: V14_CIRCLE_ADD_BODY_ANCHOR,
+        entityKind: "body",
+        bodyId: V14_CIRCLE_ADD_SOURCE_BODY,
+        checkpointId: V14_CIRCLE_ADD_BODY_CHECKPOINT,
+        checkpointEntityId: "v14_circle_add_checkpoint_body",
+        sourceFeatureId: "v14_circle_add_source_feature",
+        stableId: `generated:body:${V14_CIRCLE_ADD_SOURCE_BODY}`,
+        sourceSemanticRole: "source body",
+        signatureHash: "v14_circle_add_body_signature"
+      },
+      {
+        op: "sketch.create",
+        id: "v14_circle_add_seed_cut_sketch",
+        name: "V14 circle add seed cut",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v14_circle_add_seed_cut_sketch",
+        id: "v14_circle_add_seed_cut_rect",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "v14_circle_add_seed_cut_feature",
+        bodyId: "v14_circle_add_seed_cut_body",
+        name: "V14 circle add seed cut",
+        sketchId: "v14_circle_add_seed_cut_sketch",
+        entityId: "v14_circle_add_seed_cut_rect",
+        depth: 1,
+        operationMode: "cut",
+        targetTopologyAnchorId: V14_CIRCLE_ADD_BODY_ANCHOR
+      },
+      {
+        op: "sketch.create",
+        id: "v14_circle_add_sketch",
+        name: "V14 circle result add",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "v14_circle_add_sketch",
+        id: "v14_circle_add_profile",
+        center: [1.25, 0],
+        radius: 0.25
+      },
+      {
+        op: "feature.extrude",
+        id: "v14_circle_add_feature",
+        bodyId: "v14_circle_add_body",
+        name: "V14 circle result add",
+        sketchId: "v14_circle_add_sketch",
+        entityId: "v14_circle_add_profile",
+        depth: 0.5,
+        operationMode: "add",
+        targetTopologyAnchorId: V14_CIRCLE_ADD_BODY_ANCHOR
       }
     ]
   },

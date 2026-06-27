@@ -4383,34 +4383,47 @@ describe("derivedGeometry", () => {
     expect(getDerivedGeometryStatusLabel(snapshots.at(-1)?.entries[0])).toBe(
       "Primitive fallback"
     );
+  });
 
-    service.reconcile([
-      {
-        id: "body_cut_unsupported",
-        kind: "extrudeBoolean",
+  it("requests display geometry for supported circle-target add results", async () => {
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+    const source: DerivedBooleanExtrudeGeometrySource = {
+      id: "body_circle_add",
+      kind: "extrudeBoolean",
+      operation: "add",
+      target: createCircleExtrudeSource("body_circle_target"),
+      tool: createCircleExtrudeSource("body_circle_tool")
+    };
+
+    service.reconcile([source]);
+    await flushPromises();
+
+    expect(runtime.inputs).toEqual([
+      expect.objectContaining({
+        id: "body_circle_add",
         operation: "add",
-        target: createCircleExtrudeSource("body_target"),
-        tool: createCircleExtrudeSource("body_circle_tool")
+        target: expect.objectContaining({
+          profile: expect.objectContaining({ kind: "circle" })
+        }),
+        tool: expect.objectContaining({
+          profile: expect.objectContaining({ kind: "circle" })
+        })
+      })
+    ]);
+    expect(snapshots.at(-1)?.entries).toMatchObject([
+      {
+        objectId: "body_circle_add",
+        objectKind: "extrudeBoolean",
+        status: "ready"
       }
     ]);
-
-    expect(getDerivedGeometryStatusLabel(snapshots.at(-1)?.entries[0])).toBe(
-      "Boolean add display currently supports rectangle target extrudes only."
-    );
-
-    service.reconcile([
-      {
-        id: "body_add_unsupported",
-        kind: "extrudeBoolean",
-        operation: "add",
-        target: createCircleExtrudeSource("body_circle_target"),
-        tool: createExtrudeSource("body_add_tool")
-      }
-    ]);
-
-    expect(getDerivedGeometryStatusLabel(snapshots.at(-1)?.entries[0])).toBe(
-      "Boolean add display currently supports rectangle target extrudes only."
-    );
   });
 
   it("labels display geometry failures with product language", async () => {

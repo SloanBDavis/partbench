@@ -1002,16 +1002,35 @@ describe("geometry-kernel facade", () => {
         target: circleTarget,
         tool: circleTool
       });
+      const circleAdd = await executeGeometryKernelRequest({
+        id: "geometry_req_boolean_circle_target_circle_add",
+        version: "geometry-kernel.v1",
+        op: "geometry.booleanExtrudes",
+        operation: "add",
+        target: circleTarget,
+        tool: circleTool
+      });
 
       expect(rectangleAdd.ok).toBe(true);
       expect(rectangleCut.ok).toBe(true);
       expect(circleCut.ok).toBe(true);
+      expect(circleAdd.ok).toBe(true);
 
-      if (!rectangleAdd.ok || !rectangleCut.ok || !circleCut.ok) {
+      if (
+        !rectangleAdd.ok ||
+        !rectangleCut.ok ||
+        !circleCut.ok ||
+        !circleAdd.ok
+      ) {
         throw new Error("Expected supported circle-tool booleans to succeed.");
       }
 
-      for (const response of [rectangleAdd, rectangleCut, circleCut]) {
+      for (const response of [
+        rectangleAdd,
+        rectangleCut,
+        circleCut,
+        circleAdd
+      ]) {
         expect(response.mesh.primitive).toBe("boolean");
         expect(response.mesh.vertexCount).toBeGreaterThan(0);
         expect(response.mesh.triangleCount).toBeGreaterThan(0);
@@ -1822,46 +1841,6 @@ describe("geometry-kernel facade", () => {
       },
       depth: 2
     };
-    const unsupportedProfile = await executeGeometryKernelRequest({
-      id: "geometry_req_boolean_unsupported_profile",
-      version: "geometry-kernel.v1",
-      op: "geometry.booleanExtrudes",
-      operation: "add",
-      target: {
-        sketchPlane: "XY",
-        profile: {
-          kind: "circle",
-          center: [0, 0],
-          radius: 1
-        },
-        depth: 2
-      },
-      tool: rectangleSource
-    });
-    const unsupportedCircleTargetAdd = await executeGeometryKernelRequest({
-      id: "geometry_req_boolean_unsupported_circle_target_add",
-      version: "geometry-kernel.v1",
-      op: "geometry.booleanExtrudes",
-      operation: "add",
-      target: {
-        sketchPlane: "XY",
-        profile: {
-          kind: "circle",
-          center: [0, 0],
-          radius: 1
-        },
-        depth: 2
-      },
-      tool: {
-        sketchPlane: "XY",
-        profile: {
-          kind: "circle",
-          center: [0, 0],
-          radius: 1
-        },
-        depth: 2
-      }
-    });
     const emptyResult = await executeGeometryKernelRequest({
       id: "geometry_req_boolean_empty_result",
       version: "geometry-kernel.v1",
@@ -1911,28 +1890,6 @@ describe("geometry-kernel facade", () => {
       tool: rectangleSource
     });
 
-    expect(unsupportedProfile).toEqual({
-      ok: false,
-      id: "geometry_req_boolean_unsupported_profile",
-      op: "geometry.booleanExtrudes",
-      error: {
-        code: "UNSUPPORTED_PROFILE",
-        message:
-          "Boolean extrude feasibility currently supports rectangle/circle tools on rectangle targets, and cut-only tools on circle targets."
-      },
-      warnings: []
-    });
-    expect(unsupportedCircleTargetAdd).toEqual({
-      ok: false,
-      id: "geometry_req_boolean_unsupported_circle_target_add",
-      op: "geometry.booleanExtrudes",
-      error: {
-        code: "UNSUPPORTED_PROFILE",
-        message:
-          "Boolean extrude feasibility currently supports rectangle/circle tools on rectangle targets, and cut-only tools on circle targets."
-      },
-      warnings: []
-    });
     expect(emptyResult).toEqual({
       ok: false,
       id: "geometry_req_boolean_empty_result",
@@ -3443,9 +3400,9 @@ describe("geometry-kernel facade", () => {
     });
   });
 
-  it("returns structured validation errors for unsupported exact metadata sources", async () => {
+  it("supports circle-target add exact metadata and rejects unsupported edge-finish metadata", async () => {
     const response = await executeGeometryKernelRequest({
-      id: "geometry_req_bad_exact_metadata",
+      id: "geometry_req_circle_target_add_exact_metadata",
       version: "geometry-kernel.v1",
       op: "geometry.exactBodyMetadata",
       source: {
@@ -3473,14 +3430,14 @@ describe("geometry-kernel facade", () => {
       }
     });
 
-    expect(response).toEqual({
-      ok: false,
-      id: "geometry_req_bad_exact_metadata",
+    expect(response).toMatchObject({
+      ok: true,
+      id: "geometry_req_circle_target_add_exact_metadata",
       op: "geometry.exactBodyMetadata",
-      error: {
-        code: "INVALID_DIMENSIONS",
-        message:
-          "Exact body metadata requests require supported extrude, booleanExtrudes, revolve, hole, or edgeFinish source data with finite positive dimensions."
+      metadata: {
+        sourceKind: "booleanExtrudes",
+        measurementSource: "kernel-derived",
+        measurementConfidence: "kernel-derived"
       },
       warnings: []
     });

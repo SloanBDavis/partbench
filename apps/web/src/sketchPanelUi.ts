@@ -1242,14 +1242,19 @@ export function createAddTargetBodyOptions(
   bodies: readonly CadBodySnapshot[],
   features: readonly CadFeatureSummary[],
   preferredBodyId?: string,
-  topologyAnchors?: CadTopologyIdentitySourceSnapshot["anchors"]
+  topologyAnchors?: CadTopologyIdentitySourceSnapshot["anchors"],
+  readinessByTopologyAnchorId?: ReadonlyMap<
+    string,
+    TopologyCommandTargetReadinessQueryResponse
+  >
 ): readonly BooleanTargetBodyOption[] {
   return createBooleanTargetBodyOptions(
     bodies,
     features,
     "add",
     preferredBodyId,
-    topologyAnchors
+    topologyAnchors,
+    readinessByTopologyAnchorId
   );
 }
 
@@ -1323,19 +1328,31 @@ function createBooleanTargetBodyOptions(
             activeBodyAnchorId !== undefined
           )
         : undefined;
+      const isTopologyResultTarget = feature?.operationMode !== "newBody";
 
       if (
         !feature ||
         targetProfileKind === undefined ||
-        !isSupportedTargetProfileKind(operationMode, targetProfileKind)
+        !isSupportedTargetProfileKind(
+          operationMode,
+          targetProfileKind,
+          isTopologyResultTarget
+        )
       ) {
         return [];
       }
 
-      const isTopologyResultTarget = feature.operationMode !== "newBody";
       const targetTopologyAnchorId = isTopologyResultTarget
         ? (activeBodyAnchorId ?? feature.targetTopologyAnchorId)
         : undefined;
+
+      if (
+        isTopologyResultTarget &&
+        operationMode === "add" &&
+        !readinessByTopologyAnchorId
+      ) {
+        return [];
+      }
 
       if (
         isTopologyResultTarget &&
@@ -1499,7 +1516,7 @@ export function getAddOperationStatus(
     return {
       available: false,
       message:
-        "Add currently supports rectangle or circle profiles on rectangle-family targets only. This profile can still create a new body."
+        "Add currently supports rectangle or circle profiles on eligible rectangle or circle targets. This profile can still create a new body."
     };
   }
 
@@ -1507,7 +1524,7 @@ export function getAddOperationStatus(
     return {
       available: false,
       message:
-        "Create an active rectangle body or previous result body before using Add to body."
+        "Create an active rectangle or circle body, or select a ready result body, before using Add to body."
     };
   }
 
@@ -1656,17 +1673,22 @@ function isSupportedCutTargetProfileKind(
 }
 
 function isSupportedAddTargetProfileKind(
-  profileKind: Extract<CadFeatureSummary, { kind: "extrude" }>["profileKind"]
+  profileKind: Extract<CadFeatureSummary, { kind: "extrude" }>["profileKind"],
+  isTopologyResultTarget = false
 ): boolean {
-  return profileKind === "rectangle";
+  return (
+    profileKind === "rectangle" ||
+    (isTopologyResultTarget && profileKind === "circle")
+  );
 }
 
 function isSupportedTargetProfileKind(
   operationMode: "add" | "cut" | "hole",
-  profileKind: Extract<CadFeatureSummary, { kind: "extrude" }>["profileKind"]
+  profileKind: Extract<CadFeatureSummary, { kind: "extrude" }>["profileKind"],
+  isTopologyResultTarget = false
 ): boolean {
   if (operationMode === "add") {
-    return isSupportedAddTargetProfileKind(profileKind);
+    return isSupportedAddTargetProfileKind(profileKind, isTopologyResultTarget);
   }
 
   return isSupportedCutTargetProfileKind(profileKind);

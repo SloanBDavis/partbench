@@ -12,8 +12,8 @@ describe("V14 topology-backed modeling smoke runner", () => {
 
     expect(result).toMatchObject({
       ok: true,
-      sampleCount: 4,
-      passedCount: 4,
+      sampleCount: 5,
+      passedCount: 5,
       failedCount: 0
     });
     expect(result.operationCheckCount).toBeGreaterThan(0);
@@ -24,6 +24,7 @@ describe("V14 topology-backed modeling smoke runner", () => {
     expect(result.samples.map((sample) => sample.id)).toEqual([
       "v14-result-body-cut-add-hole",
       "v14-circle-side-plane-hole",
+      "v14-circle-result-body-add",
       "v14-result-edge-finish",
       "v14-result-edge-topology-anchor-finish"
     ]);

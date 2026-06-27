@@ -84,8 +84,9 @@ These constraints remain active:
     action-oriented product copy instead of internal implementation labels or
     raw source IDs. Cad-core command-target readiness, topology-anchor
     readiness, reference health, and project health now share the same V14
-    support matrix, so circle-origin topology body anchors stay cut/hole-ready
-    while add stays blocked until deliberately implemented.
+    support matrix, so circle-origin topology body anchors stay cut/add/hole-ready
+    where supported while unsupported targets stay blocked with structured
+    diagnostics.
     Completed V8, V9, V10, V11, V12, and V13
     tranche records below remain historical release records and compatibility
     guardrails. Do not re-open those releases unless the user explicitly asks
@@ -2551,12 +2552,13 @@ Use these decisions when drafting or implementing V13 tranches:
    state.
    Circle-profile `feature.extrude`
    tools now run through the same command and runtime proof where the verified
-   matrix permits them: cut on supported rectangle/circle result targets and
-   add on supported rectangle-family result targets. Explicit XZ side-plane
-   circle holes are now proven against supported circle-origin result bodies.
+   matrix permits them: cut on supported rectangle/circle result targets, add
+   on supported rectangle-family result targets, and add on supported
+   topology-backed circle-origin result targets. Explicit XZ side-plane circle
+   holes are now proven against supported circle-origin result bodies.
    Unanchored result bodies, curved side-wall face attachment, arbitrary
-   profile recognition, circle-target add behavior, and edge finishing remain
-   outside this implemented slice.
+   profile recognition, direct unanchored circle-target add, and broader edge
+   finishing remain outside this implemented slice.
    Missing, stale, replaced, ambiguous, deleted, unsupported, consumed, and
    repair-needed anchors remain non-commandable with structured diagnostics.
    Direct face/edge topology-anchor command targets that cannot map to current
@@ -2888,9 +2890,9 @@ The planned pillars are:
    display-geometry-ready state without a display geometry issue.
    Unsupported or unanchored result bodies remain blocked. Cad-core
    command-target readiness, topology-anchor readiness, reference health, and
-   project health share the same support matrix, including non-commandable
-   circle-origin add targets instead of optimistic add affordances that fail
-   during command validation.
+   project health share the same support matrix, including command-ready
+   topology-backed circle-origin add targets and blocked unanchored targets
+   instead of optimistic add affordances that fail during command validation.
 4. **Topology-backed edge finishing** - eligible result-body edge anchors can
    drive chamfer and fillet where cad-core validators and geometry execution
    prove the target. The V14 browser smoke now proves the first real

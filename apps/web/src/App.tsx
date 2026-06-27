@@ -1465,15 +1465,22 @@ export function App() {
       setPreferredHoleTargetBodyId(undefined);
     }
   }, [preferredHoleTargetBodyId, projectStructure.bodies]);
+  const addTargetReadinessByTopologyAnchorId =
+    readTopologyAnchorCommandTargetReadinessByAnchorId(
+      document.topologyIdentity?.anchors,
+      "feature.extrudeAddTarget"
+    );
   const addTargetBodyOptions = useMemo(
     () =>
       createAddTargetBodyOptions(
         projectStructure.bodies,
         projectStructure.features,
         selectedBody?.id,
-        document.topologyIdentity?.anchors
+        document.topologyIdentity?.anchors,
+        addTargetReadinessByTopologyAnchorId
       ),
     [
+      addTargetReadinessByTopologyAnchorId,
       document.topologyIdentity?.anchors,
       projectStructure.bodies,
       projectStructure.features,

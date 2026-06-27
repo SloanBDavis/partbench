@@ -520,6 +520,7 @@ describe("V14 release sample fixtures", () => {
     expect(fixtures.map((fixture) => fixture.id)).toEqual([
       "v14-result-body-cut-add-hole",
       "v14-circle-side-plane-hole",
+      "v14-circle-result-body-add",
       "v14-result-edge-finish",
       "v14-result-edge-topology-anchor-finish"
     ]);

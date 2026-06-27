@@ -1739,9 +1739,13 @@ function isSupportedCutTargetProfileKind(
 }
 
 function isSupportedAddTargetProfileKind(
-  profileKind: FeatureExtrudeProfileKind
+  profileKind: FeatureExtrudeProfileKind,
+  hasTopologyAnchorTarget = false
 ): boolean {
-  return profileKind === "rectangle";
+  return (
+    profileKind === "rectangle" ||
+    (hasTopologyAnchorTarget && profileKind === "circle")
+  );
 }
 
 function isSupportedBooleanToolProfileKind(
@@ -1771,7 +1775,10 @@ function isSupportedBooleanTarget(
   }
 
   if (feature.operationMode === "add") {
-    return isSupportedAddTargetProfileKind(targetProfileKind);
+    return isSupportedAddTargetProfileKind(
+      targetProfileKind,
+      feature.targetTopologyAnchorId !== undefined
+    );
   }
 
   return isSupportedCutTargetProfileKind(targetProfileKind);
