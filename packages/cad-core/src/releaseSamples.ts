@@ -19,6 +19,7 @@ import type {
   CadTopologyMatchConfidence,
   CadTopologyMatchSnapshotInput,
   DocumentUnits,
+  FeatureExtrudeOperationMode,
   NamedReferenceName,
   WcadTopologyCheckpointKernelMetadata,
   WcadTopologyCheckpointToleranceMetadata
@@ -2274,6 +2275,931 @@ export function createV13ReleaseSampleCheckpointPayloads(
       },
       brepBytes: new TextEncoder().encode(
         `partbench-v13-release-fixture-brep:${fixture.id}:${checkpoint.checkpointId}`
+      ),
+      topologyBytes: encodeCanonicalCbor(topologySnapshot),
+      signatureBytes: encodeCanonicalCbor(signaturePayload)
+    };
+  });
+}
+
+export type V14ReleaseSampleId =
+  | "v14-result-body-cut-add-hole"
+  | "v14-circle-side-plane-hole"
+  | "v14-result-edge-finish";
+
+export type V14ReleaseSampleWorkflowTag =
+  | "topology-body-anchor"
+  | "result-body-cut"
+  | "result-body-add"
+  | "result-body-hole"
+  | "circle-side-plane-hole"
+  | "blocked-support-matrix"
+  | "result-edge-finish"
+  | "named-reference"
+  | "command-readiness"
+  | "source-boundary"
+  | "wcad-round-trip";
+
+export interface V14ReleaseSampleTopologyExpectation {
+  readonly checkpointCount: number;
+  readonly anchorCount: number;
+  readonly anchorIds: readonly string[];
+}
+
+export interface V14ReleaseSampleFeatureExpectation {
+  readonly featureId: string;
+  readonly kind: "extrude" | "hole" | "chamfer" | "fillet";
+  readonly bodyId?: BodyId;
+  readonly targetBodyId?: BodyId;
+  readonly targetTopologyAnchorId?: string;
+  readonly operationMode?: FeatureExtrudeOperationMode;
+  readonly namedReference?: NamedReferenceName;
+}
+
+export interface V14ReleaseSampleReadinessExpectation {
+  readonly label: string;
+  readonly target: CadSelectionReferenceInput;
+  readonly operation: CadSelectionReferenceOperation;
+  readonly snapshot?: CadTopologyMatchSnapshotInput;
+  readonly expectedStatus: "ready" | "non-commandable";
+  readonly expectedCommandable: boolean;
+  readonly expectedSupportedOperations: readonly CadSelectionReferenceOperation[];
+}
+
+export interface V14ReleaseSampleBlockedBatchExpectation {
+  readonly label: string;
+  readonly ops: readonly CadOp[];
+  readonly expectedCode: string;
+  readonly expectedPath: string;
+}
+
+export interface V14ReleaseSampleEditabilityExpectation {
+  readonly featureId: string;
+  readonly expectedStatus: CadFeatureEditabilityStatus;
+}
+
+export interface V14ReleaseSampleFixture {
+  readonly id: V14ReleaseSampleId;
+  readonly title: string;
+  readonly description: string;
+  readonly units: DocumentUnits;
+  readonly workflowTags: readonly V14ReleaseSampleWorkflowTag[];
+  readonly expectedTopology: V14ReleaseSampleTopologyExpectation;
+  readonly expectedFeatures: readonly V14ReleaseSampleFeatureExpectation[];
+  readonly expectedReadiness: readonly V14ReleaseSampleReadinessExpectation[];
+  readonly readinessOpCount?: number;
+  readonly expectedBlockedBatches?: readonly V14ReleaseSampleBlockedBatchExpectation[];
+  readonly expectedEditability?: readonly V14ReleaseSampleEditabilityExpectation[];
+  readonly knownLimitations: readonly string[];
+  readonly ops: readonly CadOp[];
+}
+
+export interface V14ReleaseSampleCheckpointPayloadInput {
+  readonly checkpointId: string;
+  readonly bodyId: BodyId;
+  readonly sourceFeatureId?: string;
+  readonly units?: DocumentUnits;
+  readonly kernel: WcadTopologyCheckpointKernelMetadata;
+  readonly tolerance: WcadTopologyCheckpointToleranceMetadata;
+  readonly brepBytes: Uint8Array;
+  readonly topologyBytes: Uint8Array;
+  readonly signatureBytes: Uint8Array;
+}
+
+const V14_RESULT_SOURCE_BODY = "v14_result_source_body";
+const V14_RESULT_SEED_CUT_BODY = "v14_result_seed_cut_body";
+const V14_RESULT_BODY_ANCHOR = "v14_anchor_result_body";
+const V14_RESULT_BODY_CHECKPOINT = "v14_checkpoint_result_body";
+const V14_RESULT_ADD_SOURCE_BODY = "v14_result_add_source_body";
+const V14_RESULT_ADD_SEED_CUT_BODY = "v14_result_add_seed_cut_body";
+const V14_RESULT_ADD_BODY_ANCHOR = "v14_anchor_result_add_body";
+const V14_RESULT_ADD_BODY_CHECKPOINT = "v14_checkpoint_result_add_body";
+const V14_RESULT_HOLE_SOURCE_BODY = "v14_result_hole_source_body";
+const V14_RESULT_HOLE_BODY_ANCHOR = "v14_anchor_result_hole_body";
+const V14_RESULT_HOLE_BODY_CHECKPOINT = "v14_checkpoint_result_hole_body";
+
+const V14_CIRCLE_SOURCE_BODY = "v14_circle_source_body";
+const V14_CIRCLE_BODY_ANCHOR = "v14_anchor_circle_body";
+const V14_CIRCLE_BODY_CHECKPOINT = "v14_checkpoint_circle_body";
+
+const V14_EDGE_SOURCE_BODY = "v14_edge_source_body";
+const V14_EDGE_CUT_BODY = "v14_edge_cut_body";
+const V14_EDGE_REFERENCE = "V14 result cut edge";
+const V14_EDGE_STABLE_ID = `generated:edge:${V14_EDGE_CUT_BODY}:longitudinal:uMin:vMin`;
+
+export const V14_RELEASE_SAMPLE_FIXTURES = [
+  {
+    id: "v14-result-body-cut-add-hole",
+    title: "V14 topology body-anchor cut, add, and hole sample",
+    description:
+      "A rectangle-family result body is checkpointed as a public topology body anchor, then reused for a second cut, an add, and a hole through the same CADOps target path.",
+    units: "mm",
+    workflowTags: [
+      "topology-body-anchor",
+      "result-body-cut",
+      "result-body-add",
+      "result-body-hole",
+      "command-readiness",
+      "source-boundary",
+      "wcad-round-trip"
+    ],
+    expectedTopology: {
+      checkpointCount: 3,
+      anchorCount: 3,
+      anchorIds: [
+        V14_RESULT_BODY_ANCHOR,
+        V14_RESULT_ADD_BODY_ANCHOR,
+        V14_RESULT_HOLE_BODY_ANCHOR
+      ]
+    },
+    expectedFeatures: [
+      {
+        featureId: "v14_result_second_cut_feature",
+        kind: "extrude",
+        bodyId: "v14_result_second_cut_body",
+        targetBodyId: V14_RESULT_SEED_CUT_BODY,
+        targetTopologyAnchorId: V14_RESULT_BODY_ANCHOR,
+        operationMode: "cut"
+      },
+      {
+        featureId: "v14_result_add_feature",
+        kind: "extrude",
+        bodyId: "v14_result_add_body",
+        targetBodyId: V14_RESULT_ADD_SEED_CUT_BODY,
+        targetTopologyAnchorId: V14_RESULT_ADD_BODY_ANCHOR,
+        operationMode: "add"
+      },
+      {
+        featureId: "v14_result_hole_feature",
+        kind: "hole",
+        bodyId: "v14_result_hole_body",
+        targetBodyId: "v14_result_hole_cut_body",
+        targetTopologyAnchorId: V14_RESULT_HOLE_BODY_ANCHOR
+      }
+    ],
+    expectedReadiness: [
+      {
+        label: "result body anchor remains hole-ready",
+        target: {
+          type: "topologyAnchor",
+          anchorId: V14_RESULT_BODY_ANCHOR
+        },
+        operation: "feature.holeTarget",
+        snapshot: createV13TopologyMatchSnapshot({
+          checkpointId: V14_RESULT_BODY_CHECKPOINT,
+          bodyId: V14_RESULT_SEED_CUT_BODY,
+          sourceIdentitySha:
+            "1414141414141414141414141414141414141414141414141414141414141414",
+          entities: [
+            {
+              localId: "v14_result_checkpoint_body",
+              kind: "body",
+              signature: "v14_result_body_signature"
+            }
+          ]
+        }),
+        expectedStatus: "ready",
+        expectedCommandable: true,
+        expectedSupportedOperations: [
+          "feature.extrudeCutTarget",
+          "feature.holeTarget"
+        ]
+      }
+    ],
+    readinessOpCount: 11,
+    knownLimitations: [
+      "The fixture proves rectangle-family target chaining only; arbitrary profiles and circle-target add remain outside this matrix."
+    ],
+    ops: [
+      {
+        op: "sketch.create",
+        id: "v14_result_source_sketch",
+        name: "V14 result source",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v14_result_source_sketch",
+        id: "v14_result_source_rect",
+        center: [0, 0],
+        width: 4,
+        height: 2
+      },
+      {
+        op: "feature.extrude",
+        id: "v14_result_source_feature",
+        bodyId: V14_RESULT_SOURCE_BODY,
+        name: "V14 result source body",
+        sketchId: "v14_result_source_sketch",
+        entityId: "v14_result_source_rect",
+        depth: 3,
+        operationMode: "newBody"
+      },
+      {
+        op: "sketch.create",
+        id: "v14_result_seed_cut_sketch",
+        name: "V14 result seed cut",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v14_result_seed_cut_sketch",
+        id: "v14_result_seed_cut_rect",
+        center: [0, 0],
+        width: 1.5,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "v14_result_seed_cut_feature",
+        bodyId: V14_RESULT_SEED_CUT_BODY,
+        name: "V14 result seed cut body",
+        sketchId: "v14_result_seed_cut_sketch",
+        entityId: "v14_result_seed_cut_rect",
+        depth: 1,
+        operationMode: "cut",
+        targetBodyId: V14_RESULT_SOURCE_BODY
+      },
+      {
+        op: "topology.checkpoint.create",
+        checkpointId: V14_RESULT_BODY_CHECKPOINT,
+        bodyId: V14_RESULT_SEED_CUT_BODY,
+        sourceFeatureId: "v14_result_seed_cut_feature",
+        sourceIdentity: {
+          algorithm: "partbench-source-v1",
+          sha256:
+            "1414141414141414141414141414141414141414141414141414141414141414"
+        },
+        status: "active"
+      },
+      {
+        op: "topology.anchor.create",
+        anchorId: V14_RESULT_BODY_ANCHOR,
+        entityKind: "body",
+        bodyId: V14_RESULT_SEED_CUT_BODY,
+        checkpointId: V14_RESULT_BODY_CHECKPOINT,
+        checkpointEntityId: "v14_result_checkpoint_body",
+        sourceFeatureId: "v14_result_seed_cut_feature",
+        stableId: `generated:body:${V14_RESULT_SEED_CUT_BODY}`,
+        sourceSemanticRole: "result body",
+        signatureHash: "v14_result_body_signature"
+      },
+      {
+        op: "sketch.create",
+        id: "v14_result_second_cut_sketch",
+        name: "V14 result second cut",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v14_result_second_cut_sketch",
+        id: "v14_result_second_cut_rect",
+        center: [0.25, 0.25],
+        width: 0.6,
+        height: 0.5
+      },
+      {
+        op: "feature.extrude",
+        id: "v14_result_second_cut_feature",
+        bodyId: "v14_result_second_cut_body",
+        name: "V14 result second cut",
+        sketchId: "v14_result_second_cut_sketch",
+        entityId: "v14_result_second_cut_rect",
+        depth: 0.5,
+        operationMode: "cut",
+        targetTopologyAnchorId: V14_RESULT_BODY_ANCHOR
+      },
+      {
+        op: "sketch.create",
+        id: "v14_result_add_source_sketch",
+        name: "V14 result add source",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v14_result_add_source_sketch",
+        id: "v14_result_add_source_rect",
+        center: [5, 0],
+        width: 4,
+        height: 2
+      },
+      {
+        op: "feature.extrude",
+        id: "v14_result_add_source_feature",
+        bodyId: V14_RESULT_ADD_SOURCE_BODY,
+        name: "V14 result add source body",
+        sketchId: "v14_result_add_source_sketch",
+        entityId: "v14_result_add_source_rect",
+        depth: 3,
+        operationMode: "newBody"
+      },
+      {
+        op: "sketch.create",
+        id: "v14_result_add_seed_cut_sketch",
+        name: "V14 result add seed cut",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v14_result_add_seed_cut_sketch",
+        id: "v14_result_add_seed_cut_rect",
+        center: [5, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "v14_result_add_seed_cut_feature",
+        bodyId: V14_RESULT_ADD_SEED_CUT_BODY,
+        name: "V14 result add seed cut body",
+        sketchId: "v14_result_add_seed_cut_sketch",
+        entityId: "v14_result_add_seed_cut_rect",
+        depth: 1,
+        operationMode: "cut",
+        targetBodyId: V14_RESULT_ADD_SOURCE_BODY
+      },
+      {
+        op: "topology.checkpoint.create",
+        checkpointId: V14_RESULT_ADD_BODY_CHECKPOINT,
+        bodyId: V14_RESULT_ADD_SEED_CUT_BODY,
+        sourceFeatureId: "v14_result_add_seed_cut_feature",
+        sourceIdentity: {
+          algorithm: "partbench-source-v1",
+          sha256:
+            "1515151515151515151515151515151515151515151515151515151515151515"
+        },
+        status: "active"
+      },
+      {
+        op: "topology.anchor.create",
+        anchorId: V14_RESULT_ADD_BODY_ANCHOR,
+        entityKind: "body",
+        bodyId: V14_RESULT_ADD_SEED_CUT_BODY,
+        checkpointId: V14_RESULT_ADD_BODY_CHECKPOINT,
+        checkpointEntityId: "v14_result_add_checkpoint_body",
+        sourceFeatureId: "v14_result_add_seed_cut_feature",
+        stableId: `generated:body:${V14_RESULT_ADD_SEED_CUT_BODY}`,
+        sourceSemanticRole: "result body",
+        signatureHash: "v14_result_add_body_signature"
+      },
+      {
+        op: "sketch.create",
+        id: "v14_result_add_sketch",
+        name: "V14 result add",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v14_result_add_sketch",
+        id: "v14_result_add_rect",
+        center: [1.75, 0],
+        width: 0.5,
+        height: 0.5
+      },
+      {
+        op: "feature.extrude",
+        id: "v14_result_add_feature",
+        bodyId: "v14_result_add_body",
+        name: "V14 result add",
+        sketchId: "v14_result_add_sketch",
+        entityId: "v14_result_add_rect",
+        depth: 0.5,
+        operationMode: "add",
+        targetTopologyAnchorId: V14_RESULT_ADD_BODY_ANCHOR
+      },
+      {
+        op: "sketch.create",
+        id: "v14_result_hole_source_sketch",
+        name: "V14 result hole source",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v14_result_hole_source_sketch",
+        id: "v14_result_hole_source_rect",
+        center: [-5, 0],
+        width: 4,
+        height: 2
+      },
+      {
+        op: "feature.extrude",
+        id: "v14_result_hole_source_feature",
+        bodyId: V14_RESULT_HOLE_SOURCE_BODY,
+        name: "V14 result hole source body",
+        sketchId: "v14_result_hole_source_sketch",
+        entityId: "v14_result_hole_source_rect",
+        depth: 3,
+        operationMode: "newBody"
+      },
+      {
+        op: "topology.checkpoint.create",
+        checkpointId: V14_RESULT_HOLE_BODY_CHECKPOINT,
+        bodyId: V14_RESULT_HOLE_SOURCE_BODY,
+        sourceFeatureId: "v14_result_hole_source_feature",
+        sourceIdentity: {
+          algorithm: "partbench-source-v1",
+          sha256:
+            "1616161616161616161616161616161616161616161616161616161616161616"
+        },
+        status: "active"
+      },
+      {
+        op: "topology.anchor.create",
+        anchorId: V14_RESULT_HOLE_BODY_ANCHOR,
+        entityKind: "body",
+        bodyId: V14_RESULT_HOLE_SOURCE_BODY,
+        checkpointId: V14_RESULT_HOLE_BODY_CHECKPOINT,
+        checkpointEntityId: "v14_result_hole_checkpoint_body",
+        sourceFeatureId: "v14_result_hole_source_feature",
+        stableId: `generated:body:${V14_RESULT_HOLE_SOURCE_BODY}`,
+        sourceSemanticRole: "source body",
+        signatureHash: "v14_result_hole_body_signature"
+      },
+      {
+        op: "sketch.create",
+        id: "v14_result_hole_cut_sketch",
+        name: "V14 result hole target cut",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v14_result_hole_cut_sketch",
+        id: "v14_result_hole_cut_rect",
+        center: [-5, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "v14_result_hole_cut_feature",
+        bodyId: "v14_result_hole_cut_body",
+        name: "V14 result hole target cut",
+        sketchId: "v14_result_hole_cut_sketch",
+        entityId: "v14_result_hole_cut_rect",
+        depth: 1,
+        operationMode: "cut",
+        targetTopologyAnchorId: V14_RESULT_HOLE_BODY_ANCHOR
+      },
+      {
+        op: "sketch.create",
+        id: "v14_result_hole_sketch",
+        name: "V14 result hole",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "v14_result_hole_sketch",
+        id: "v14_result_hole_circle",
+        center: [0.5, 0.25],
+        radius: 0.25
+      },
+      {
+        op: "feature.hole",
+        id: "v14_result_hole_feature",
+        bodyId: "v14_result_hole_body",
+        name: "V14 result hole",
+        sketchId: "v14_result_hole_sketch",
+        circleEntityId: "v14_result_hole_circle",
+        depthMode: "throughAll",
+        direction: "positive",
+        targetTopologyAnchorId: V14_RESULT_HOLE_BODY_ANCHOR
+      }
+    ]
+  },
+  {
+    id: "v14-circle-side-plane-hole",
+    title: "V14 circle-origin side-plane hole sample",
+    description:
+      "A circle-origin topology body anchor accepts a rectangle cut and explicit XZ side-plane hole while keeping circle-target add blocked.",
+    units: "mm",
+    workflowTags: [
+      "topology-body-anchor",
+      "result-body-cut",
+      "result-body-hole",
+      "circle-side-plane-hole",
+      "blocked-support-matrix",
+      "command-readiness",
+      "source-boundary",
+      "wcad-round-trip"
+    ],
+    expectedTopology: {
+      checkpointCount: 1,
+      anchorCount: 1,
+      anchorIds: [V14_CIRCLE_BODY_ANCHOR]
+    },
+    expectedFeatures: [
+      {
+        featureId: "v14_circle_cut_feature",
+        kind: "extrude",
+        bodyId: "v14_circle_cut_body",
+        targetBodyId: V14_CIRCLE_SOURCE_BODY,
+        targetTopologyAnchorId: V14_CIRCLE_BODY_ANCHOR,
+        operationMode: "cut"
+      },
+      {
+        featureId: "v14_circle_hole_feature",
+        kind: "hole",
+        bodyId: "v14_circle_hole_body",
+        targetBodyId: "v14_circle_cut_body",
+        targetTopologyAnchorId: V14_CIRCLE_BODY_ANCHOR
+      }
+    ],
+    expectedReadiness: [
+      {
+        label: "circle-origin add remains blocked",
+        target: {
+          type: "topologyAnchor",
+          anchorId: V14_CIRCLE_BODY_ANCHOR
+        },
+        operation: "feature.extrudeAddTarget",
+        snapshot: createV13TopologyMatchSnapshot({
+          checkpointId: V14_CIRCLE_BODY_CHECKPOINT,
+          bodyId: V14_CIRCLE_SOURCE_BODY,
+          sourceIdentitySha:
+            "2424242424242424242424242424242424242424242424242424242424242424",
+          entities: [
+            {
+              localId: "v14_circle_checkpoint_body",
+              kind: "body",
+              signature: "v14_circle_body_signature"
+            }
+          ]
+        }),
+        expectedStatus: "non-commandable",
+        expectedCommandable: false,
+        expectedSupportedOperations: [
+          "feature.extrudeCutTarget",
+          "feature.holeTarget"
+        ]
+      },
+      {
+        label: "circle-origin hole remains ready",
+        target: {
+          type: "topologyAnchor",
+          anchorId: V14_CIRCLE_BODY_ANCHOR
+        },
+        operation: "feature.holeTarget",
+        snapshot: createV13TopologyMatchSnapshot({
+          checkpointId: V14_CIRCLE_BODY_CHECKPOINT,
+          bodyId: V14_CIRCLE_SOURCE_BODY,
+          sourceIdentitySha:
+            "2424242424242424242424242424242424242424242424242424242424242424",
+          entities: [
+            {
+              localId: "v14_circle_checkpoint_body",
+              kind: "body",
+              signature: "v14_circle_body_signature"
+            }
+          ]
+        }),
+        expectedStatus: "ready",
+        expectedCommandable: true,
+        expectedSupportedOperations: [
+          "feature.extrudeCutTarget",
+          "feature.holeTarget"
+        ]
+      }
+    ],
+    readinessOpCount: 8,
+    expectedBlockedBatches: [
+      {
+        label: "circle add dry-run stays blocked",
+        ops: [
+          {
+            op: "feature.extrude",
+            id: "v14_circle_add_blocked_feature",
+            bodyId: "v14_circle_add_blocked_body",
+            sketchId: "v14_circle_add_blocked_sketch",
+            entityId: "v14_circle_add_blocked_profile",
+            depth: 0.5,
+            operationMode: "add",
+            targetTopologyAnchorId: V14_CIRCLE_BODY_ANCHOR
+          }
+        ],
+        expectedCode: "UNSUPPORTED_FEATURE_OPERATION",
+        expectedPath: "$.ops[0].operationMode"
+      }
+    ],
+    knownLimitations: [
+      "The side hole uses an explicit public XZ sketch plane; curved side faces remain non-attachable."
+    ],
+    ops: [
+      {
+        op: "sketch.create",
+        id: "v14_circle_source_sketch",
+        name: "V14 circle source",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "v14_circle_source_sketch",
+        id: "v14_circle_source_profile",
+        center: [0, 0],
+        radius: 2
+      },
+      {
+        op: "feature.extrude",
+        id: "v14_circle_source_feature",
+        bodyId: V14_CIRCLE_SOURCE_BODY,
+        name: "V14 circle source body",
+        sketchId: "v14_circle_source_sketch",
+        entityId: "v14_circle_source_profile",
+        depth: 4,
+        operationMode: "newBody"
+      },
+      {
+        op: "topology.checkpoint.create",
+        checkpointId: V14_CIRCLE_BODY_CHECKPOINT,
+        bodyId: V14_CIRCLE_SOURCE_BODY,
+        sourceFeatureId: "v14_circle_source_feature",
+        sourceIdentity: {
+          algorithm: "partbench-source-v1",
+          sha256:
+            "2424242424242424242424242424242424242424242424242424242424242424"
+        },
+        status: "active"
+      },
+      {
+        op: "topology.anchor.create",
+        anchorId: V14_CIRCLE_BODY_ANCHOR,
+        entityKind: "body",
+        bodyId: V14_CIRCLE_SOURCE_BODY,
+        checkpointId: V14_CIRCLE_BODY_CHECKPOINT,
+        checkpointEntityId: "v14_circle_checkpoint_body",
+        sourceFeatureId: "v14_circle_source_feature",
+        stableId: `generated:body:${V14_CIRCLE_SOURCE_BODY}`,
+        sourceSemanticRole: "source body",
+        signatureHash: "v14_circle_body_signature"
+      },
+      {
+        op: "sketch.create",
+        id: "v14_circle_cut_sketch",
+        name: "V14 circle result cut",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v14_circle_cut_sketch",
+        id: "v14_circle_cut_rect",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "v14_circle_cut_feature",
+        bodyId: "v14_circle_cut_body",
+        name: "V14 circle result cut",
+        sketchId: "v14_circle_cut_sketch",
+        entityId: "v14_circle_cut_rect",
+        depth: 1,
+        operationMode: "cut",
+        targetTopologyAnchorId: V14_CIRCLE_BODY_ANCHOR
+      },
+      {
+        op: "sketch.create",
+        id: "v14_circle_add_blocked_sketch",
+        name: "V14 blocked circle add",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "v14_circle_add_blocked_sketch",
+        id: "v14_circle_add_blocked_profile",
+        center: [1, 0],
+        radius: 0.25
+      },
+      {
+        op: "sketch.create",
+        id: "v14_circle_hole_sketch",
+        name: "V14 circle side hole",
+        plane: "XZ"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "v14_circle_hole_sketch",
+        id: "v14_circle_hole_profile",
+        center: [0, 1.5],
+        radius: 0.35
+      },
+      {
+        op: "feature.hole",
+        id: "v14_circle_hole_feature",
+        bodyId: "v14_circle_hole_body",
+        name: "V14 circle side hole",
+        sketchId: "v14_circle_hole_sketch",
+        circleEntityId: "v14_circle_hole_profile",
+        depthMode: "throughAll",
+        direction: "positive",
+        targetTopologyAnchorId: V14_CIRCLE_BODY_ANCHOR
+      }
+    ]
+  },
+  {
+    id: "v14-result-edge-finish",
+    title: "V14 result-edge finish sample",
+    description:
+      "A rectangle cut-wall longitudinal result edge is named and consumed by a chamfer, proving source-backed edge-finish diagnostics and storage.",
+    units: "mm",
+    workflowTags: [
+      "result-body-cut",
+      "result-edge-finish",
+      "named-reference",
+      "command-readiness",
+      "source-boundary",
+      "wcad-round-trip"
+    ],
+    expectedTopology: {
+      checkpointCount: 0,
+      anchorCount: 0,
+      anchorIds: []
+    },
+    expectedFeatures: [
+      {
+        featureId: "v14_edge_cut_feature",
+        kind: "extrude",
+        bodyId: V14_EDGE_CUT_BODY,
+        targetBodyId: V14_EDGE_SOURCE_BODY,
+        operationMode: "cut"
+      },
+      {
+        featureId: "v14_edge_chamfer_feature",
+        kind: "chamfer",
+        bodyId: "v14_edge_chamfer_body",
+        targetBodyId: V14_EDGE_CUT_BODY,
+        namedReference: V14_EDGE_REFERENCE
+      }
+    ],
+    expectedReadiness: [
+      {
+        label: "result cut-wall edge stays finish-ready",
+        target: {
+          type: "generatedReference",
+          bodyId: V14_EDGE_CUT_BODY,
+          stableId: V14_EDGE_STABLE_ID,
+          expectedKind: "edge"
+        },
+        operation: "feature.chamfer",
+        expectedStatus: "ready",
+        expectedCommandable: true,
+        expectedSupportedOperations: ["feature.chamfer", "feature.fillet"]
+      }
+    ],
+    readinessOpCount: 6,
+    expectedEditability: [
+      {
+        featureId: "v14_edge_source_feature",
+        expectedStatus: "blocked"
+      }
+    ],
+    knownLimitations: [
+      "This fixture proves the rectangle cut-wall longitudinal edge subset, not arbitrary result-edge finishing."
+    ],
+    ops: [
+      {
+        op: "sketch.create",
+        id: "v14_edge_source_sketch",
+        name: "V14 edge source",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v14_edge_source_sketch",
+        id: "v14_edge_source_rect",
+        center: [0, 0],
+        width: 4,
+        height: 2
+      },
+      {
+        op: "feature.extrude",
+        id: "v14_edge_source_feature",
+        bodyId: V14_EDGE_SOURCE_BODY,
+        name: "V14 edge source body",
+        sketchId: "v14_edge_source_sketch",
+        entityId: "v14_edge_source_rect",
+        depth: 3,
+        operationMode: "newBody"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v14_edge_source_sketch",
+        id: "v14_edge_cut_rect",
+        center: [1, 0],
+        width: 2,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "v14_edge_cut_feature",
+        bodyId: V14_EDGE_CUT_BODY,
+        name: "V14 edge cut body",
+        sketchId: "v14_edge_source_sketch",
+        entityId: "v14_edge_cut_rect",
+        depth: 3,
+        operationMode: "cut",
+        targetBodyId: V14_EDGE_SOURCE_BODY
+      },
+      {
+        op: "reference.nameGenerated",
+        name: V14_EDGE_REFERENCE,
+        bodyId: V14_EDGE_CUT_BODY,
+        stableId: V14_EDGE_STABLE_ID
+      },
+      {
+        op: "feature.chamfer",
+        id: "v14_edge_chamfer_feature",
+        bodyId: "v14_edge_chamfer_body",
+        name: "V14 result-edge chamfer",
+        targetBodyId: V14_EDGE_CUT_BODY,
+        namedReference: V14_EDGE_REFERENCE,
+        distance: 0.1
+      }
+    ]
+  }
+] as const satisfies readonly V14ReleaseSampleFixture[];
+
+export function listV14ReleaseSampleFixtures(): readonly V14ReleaseSampleFixture[] {
+  return V14_RELEASE_SAMPLE_FIXTURES;
+}
+
+export function getV14ReleaseSampleFixture(
+  id: V14ReleaseSampleId
+): V14ReleaseSampleFixture {
+  const fixture = V14_RELEASE_SAMPLE_FIXTURES.find(
+    (candidate) => candidate.id === id
+  );
+
+  if (!fixture) {
+    throw new Error(`Unknown V14 release sample fixture: ${id}`);
+  }
+
+  return fixture;
+}
+
+export function createV14ReleaseSampleBatch(id: V14ReleaseSampleId): CadBatch {
+  return {
+    version: "cadops.v1",
+    mode: "commit",
+    ops: getV14ReleaseSampleFixture(id).ops.map((op) => ({ ...op }))
+  };
+}
+
+export function createV14ReleaseSampleCheckpointPayloads(
+  id: V14ReleaseSampleId
+): readonly V14ReleaseSampleCheckpointPayloadInput[] {
+  const fixture = getV14ReleaseSampleFixture(id);
+  const checkpointOps = fixture.ops.filter(
+    (op): op is Extract<CadOp, { readonly op: "topology.checkpoint.create" }> =>
+      op.op === "topology.checkpoint.create"
+  );
+  const anchorOps = fixture.ops.filter(
+    (op): op is Extract<CadOp, { readonly op: "topology.anchor.create" }> =>
+      op.op === "topology.anchor.create"
+  );
+
+  return checkpointOps.map((checkpoint) => {
+    const topologySnapshot = createV13ReleaseSampleCheckpointTopologySnapshot({
+      checkpointId: checkpoint.checkpointId,
+      bodyId: checkpoint.bodyId,
+      entities: anchorOps
+        .filter((anchor) => anchor.checkpointId === checkpoint.checkpointId)
+        .map((anchor) => ({
+          localId: anchor.checkpointEntityId,
+          kind: anchor.entityKind,
+          signature:
+            anchor.signatureHash ??
+            `partbench-v14-release-fixture-signature:${checkpoint.checkpointId}:${anchor.checkpointEntityId}`
+        }))
+    });
+    const signaturePayload = {
+      checkpointId: checkpoint.checkpointId,
+      signatureAlgorithm: topologySnapshot.signatureAlgorithm,
+      signature: topologySnapshot.signature,
+      entityCount: topologySnapshot.entityCount,
+      entities: topologySnapshot.entities.map((entity) => ({
+        localId: entity.localId,
+        kind: entity.kind,
+        signature: entity.signature
+      }))
+    };
+
+    return {
+      checkpointId: checkpoint.checkpointId,
+      bodyId: checkpoint.bodyId,
+      ...(checkpoint.sourceFeatureId
+        ? { sourceFeatureId: checkpoint.sourceFeatureId }
+        : {}),
+      units: fixture.units,
+      kernel: {
+        boundary: "geometry-kernel",
+        snapshotAlgorithm: "partbench-derived-topology-snapshot-v1"
+      },
+      tolerance: {
+        linearTolerance: 0.001,
+        angularToleranceDegrees: 0.01
+      },
+      brepBytes: new TextEncoder().encode(
+        `partbench-v14-release-fixture-brep:${fixture.id}:${checkpoint.checkpointId}`
       ),
       topologyBytes: encodeCanonicalCbor(topologySnapshot),
       signatureBytes: encodeCanonicalCbor(signaturePayload)

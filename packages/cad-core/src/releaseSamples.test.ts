@@ -14,22 +14,27 @@ import type {
   ReferenceHealthQueryResponse,
   ReferenceListNamedQueryResponse,
   SelectionReferenceCandidatesQueryResponse,
+  TopologyCommandTargetReadinessQueryResponse,
   TopologyMatchSnapshotsQueryResponse
 } from "@web-cad/cad-protocol";
 import {
   CAD_PROJECT_FORMAT_VERSION_V18,
+  CAD_PROJECT_FORMAT_VERSION_V16,
   CURRENT_CAD_PROJECT_FORMAT_VERSION,
   CadEngine,
   createV13ReleaseSampleBatch,
+  createV14ReleaseSampleBatch,
   createV7ReleaseSampleBatch,
   createV10ReleaseSampleBatch,
   exportCadProjectJson,
   importCadProjectJson,
   listV13ReleaseSampleFixtures,
+  listV14ReleaseSampleFixtures,
   listV7ReleaseSampleFixtures,
   listV10ReleaseSampleFixtures,
   parseCadProjectJson,
   type V13ReleaseSampleFixture,
+  type V14ReleaseSampleFixture,
   type V7ReleaseSampleFixture,
   type V10ReleaseSampleFixture
 } from "./index";
@@ -508,6 +513,162 @@ describe("V13 release sample fixtures", () => {
   }
 });
 
+describe("V14 release sample fixtures", () => {
+  it("defines deterministic topology-backed downstream modeling fixtures", () => {
+    const fixtures = listV14ReleaseSampleFixtures();
+
+    expect(fixtures.map((fixture) => fixture.id)).toEqual([
+      "v14-result-body-cut-add-hole",
+      "v14-circle-side-plane-hole",
+      "v14-result-edge-finish"
+    ]);
+
+    for (const fixture of fixtures) {
+      expect(fixture.units).toBe("mm");
+      expect(fixture.ops.length).toBeGreaterThan(0);
+      expect(fixture.workflowTags).toEqual(
+        expect.arrayContaining(["source-boundary", "wcad-round-trip"])
+      );
+      expect(fixture.expectedFeatures.length).toBeGreaterThan(0);
+      expect(createV14ReleaseSampleBatch(fixture.id)).toEqual({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: fixture.ops
+      });
+
+      assertNoRawDerivedIds(
+        JSON.stringify({
+          expectedTopology: fixture.expectedTopology,
+          expectedFeatures: fixture.expectedFeatures,
+          expectedReadiness: fixture.expectedReadiness,
+          expectedBlockedBatches: fixture.expectedBlockedBatches,
+          expectedEditability: fixture.expectedEditability
+        })
+      );
+    }
+  });
+
+  for (const fixture of listV14ReleaseSampleFixtures()) {
+    it(`round-trips and verifies ${fixture.id}`, () => {
+      const engine = buildV14SampleEngine(fixture);
+      const json = exportCadProjectJson(engine);
+      const project = parseCadProjectJson(json);
+      const restored = importCadProjectJson(json);
+      const expectedSchemaVersion =
+        fixture.expectedTopology.checkpointCount > 0
+          ? CAD_PROJECT_FORMAT_VERSION_V18
+          : CAD_PROJECT_FORMAT_VERSION_V16;
+
+      expect(project.schemaVersion).toBe(expectedSchemaVersion);
+      expect(json).toContain(expectedSchemaVersion);
+      expect(json).not.toContain("project.health");
+      expect(json).not.toContain("topology.commandTargetReadiness");
+      assertNoRawDerivedIds(json);
+
+      const dryRunEngine = new CadEngine();
+      const beforeDryRunJson = exportCadProjectJson(dryRunEngine);
+      const dryRun = dryRunEngine.executeBatch({
+        ...createV14ReleaseSampleBatch(fixture.id),
+        mode: "dryRun"
+      });
+      expect(dryRun.ok).toBe(true);
+      expect(exportCadProjectJson(dryRunEngine)).toBe(beforeDryRunJson);
+
+      const topology = readProjectTopologyIdentityReadiness(restored);
+      expect(topology).toMatchObject({
+        currentDocumentSchemaVersion: expectedSchemaVersion,
+        requiresProjectSchemaMigration: false,
+        checkpointCount: fixture.expectedTopology.checkpointCount,
+        anchorCount: fixture.expectedTopology.anchorCount
+      });
+      expect(topology.anchors.map((anchor) => anchor.anchorId)).toEqual(
+        expect.arrayContaining([...fixture.expectedTopology.anchorIds])
+      );
+      assertNoPublicTopologyIds(JSON.stringify(topology));
+
+      const structure = readProjectStructure(restored);
+      const health = readProjectHealth(restored);
+
+      for (const featureExpectation of fixture.expectedFeatures) {
+        expect(structure.features).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              id: featureExpectation.featureId,
+              kind: featureExpectation.kind,
+              ...(featureExpectation.bodyId
+                ? { bodyId: featureExpectation.bodyId }
+                : {}),
+              ...(featureExpectation.targetBodyId
+                ? { targetBodyId: featureExpectation.targetBodyId }
+                : {}),
+              ...(featureExpectation.targetTopologyAnchorId
+                ? {
+                    targetTopologyAnchorId:
+                      featureExpectation.targetTopologyAnchorId
+                  }
+                : {}),
+              ...(featureExpectation.operationMode
+                ? { operationMode: featureExpectation.operationMode }
+                : {}),
+              ...(featureExpectation.namedReference
+                ? { namedReference: featureExpectation.namedReference }
+                : {})
+            })
+          ])
+        );
+      }
+      assertNoRawDerivedIds(JSON.stringify({ structure, health }));
+
+      const readinessEngine = buildV14SampleEngine({
+        ...fixture,
+        ops: fixture.ops.slice(
+          0,
+          fixture.readinessOpCount ?? fixture.ops.length
+        )
+      });
+      for (const readinessExpectation of fixture.expectedReadiness) {
+        const readiness = readTopologyCommandTargetReadiness(
+          readinessEngine,
+          readinessExpectation
+        );
+
+        expect(readiness).toMatchObject({
+          status: readinessExpectation.expectedStatus,
+          commandable: readinessExpectation.expectedCommandable,
+          supportedOperations: expect.arrayContaining([
+            ...readinessExpectation.expectedSupportedOperations
+          ])
+        });
+        assertNoPublicTopologyIds(JSON.stringify(readiness));
+      }
+
+      for (const blocked of fixture.expectedBlockedBatches ?? []) {
+        const beforeBlockedJson = exportCadProjectJson(restored);
+        const blockedResult = restored.executeBatch({
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: blocked.ops
+        });
+
+        expect(blockedResult).toMatchObject({
+          ok: false,
+          error: {
+            code: blocked.expectedCode,
+            path: blocked.expectedPath
+          }
+        });
+        expect(exportCadProjectJson(restored)).toBe(beforeBlockedJson);
+      }
+
+      for (const editability of fixture.expectedEditability ?? []) {
+        expect(readFeatureEditability(restored, editability.featureId)).toEqual(
+          expect.objectContaining({ status: editability.expectedStatus })
+        );
+      }
+    });
+  }
+});
+
 function buildSampleEngine(fixture: V7ReleaseSampleFixture): CadEngine {
   const engine = new CadEngine();
   const response = engine.executeBatch(createV7ReleaseSampleBatch(fixture.id));
@@ -534,6 +695,19 @@ function buildV10SampleEngine(fixture: V10ReleaseSampleFixture): CadEngine {
 function buildV13SampleEngine(fixture: V13ReleaseSampleFixture): CadEngine {
   const engine = new CadEngine();
   const response = engine.executeBatch(createV13ReleaseSampleBatch(fixture.id));
+
+  expect(response.ok).toBe(true);
+
+  return engine;
+}
+
+function buildV14SampleEngine(fixture: V14ReleaseSampleFixture): CadEngine {
+  const engine = new CadEngine();
+  const response = engine.executeBatch({
+    version: "cadops.v1",
+    mode: "commit",
+    ops: fixture.ops
+  });
 
   expect(response.ok).toBe(true);
 
@@ -637,6 +811,27 @@ function readProjectTopologyIdentityReadiness(
 
   if (!response.ok || response.query !== "project.topologyIdentityReadiness") {
     throw new Error("Expected project.topologyIdentityReadiness response.");
+  }
+
+  return response;
+}
+
+function readTopologyCommandTargetReadiness(
+  engine: CadEngine,
+  expectation: V14ReleaseSampleFixture["expectedReadiness"][number]
+): TopologyCommandTargetReadinessQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: {
+      query: "topology.commandTargetReadiness",
+      target: expectation.target,
+      desiredOperation: expectation.operation,
+      ...(expectation.snapshot ? { snapshot: expectation.snapshot } : {})
+    }
+  });
+
+  if (!response.ok || response.query !== "topology.commandTargetReadiness") {
+    throw new Error("Expected topology.commandTargetReadiness response.");
   }
 
   return response;

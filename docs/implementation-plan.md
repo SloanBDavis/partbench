@@ -2543,7 +2543,11 @@ Use these decisions when drafting or implementing V13 tranches:
    derived geometry, and exact metadata. Agent-adapter and MCP batch tests now
    also prove the topology body-anchor add and hole commit path through the
    same CADOps layer, including project feature and health query visibility for
-   the resolved target body plus anchor proof. Circle-profile `feature.extrude`
+   the resolved target body plus anchor proof. `smoke:v14-release-samples`
+   now adds a deterministic command/source/storage proof for the supported
+   result-body cut/add/hole, circle side-plane hole, and result-edge chamfer
+   subsets without relying on browser or geometry-worker state.
+   Circle-profile `feature.extrude`
    tools now run through the same command and runtime proof where the verified
    matrix permits them: cut on supported rectangle/circle result targets and
    add on supported rectangle-family result targets. Explicit XZ side-plane
