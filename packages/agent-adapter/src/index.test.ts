@@ -4837,6 +4837,191 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("passes topology body anchors through extrude add and hole targets", () => {
+    const adapter = new CadOpsAgentAdapter();
+    const response = JSON.parse(
+      adapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_json_anchor_body_add_hole",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          permissions: { allowCommit: true },
+          batch: {
+            version: "cadops.v1",
+            mode: "commit",
+            ops: [
+              {
+                op: "sketch.create",
+                id: "anchor_body_add_source_sketch",
+                name: "Anchor body add source",
+                plane: "XY"
+              },
+              {
+                op: "sketch.addRectangle",
+                sketchId: "anchor_body_add_source_sketch",
+                id: "anchor_body_add_source_rect",
+                center: [0, 0],
+                width: 4,
+                height: 2
+              },
+              {
+                op: "feature.extrude",
+                id: "feat_anchor_body_add_source",
+                bodyId: "body_anchor_body_add_source",
+                sketchId: "anchor_body_add_source_sketch",
+                entityId: "anchor_body_add_source_rect",
+                depth: 3
+              },
+              {
+                op: "topology.checkpoint.create",
+                checkpointId: "checkpoint_anchor_body_add",
+                bodyId: "body_anchor_body_add_source",
+                sourceFeatureId: "feat_anchor_body_add_source",
+                sourceIdentity: {
+                  algorithm: "partbench-source-v1",
+                  sha256:
+                    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                },
+                status: "active"
+              },
+              {
+                op: "topology.anchor.create",
+                anchorId: "anchor_body_add_target",
+                entityKind: "body",
+                bodyId: "body_anchor_body_add_source",
+                checkpointId: "checkpoint_anchor_body_add",
+                checkpointEntityId: "checkpoint-local-add-body",
+                sourceFeatureId: "feat_anchor_body_add_source",
+                stableId: "generated:body:body_anchor_body_add_source"
+              },
+              {
+                op: "sketch.create",
+                id: "anchor_body_add_tool_sketch",
+                name: "Anchor body add tool",
+                plane: "XY"
+              },
+              {
+                op: "sketch.addRectangle",
+                sketchId: "anchor_body_add_tool_sketch",
+                id: "anchor_body_add_tool_rect",
+                center: [2, 0],
+                width: 1,
+                height: 1
+              },
+              {
+                op: "feature.extrude",
+                id: "feat_anchor_body_add",
+                bodyId: "body_anchor_body_add",
+                sketchId: "anchor_body_add_tool_sketch",
+                entityId: "anchor_body_add_tool_rect",
+                depth: 1,
+                operationMode: "add",
+                targetTopologyAnchorId: "anchor_body_add_target"
+              },
+              {
+                op: "sketch.create",
+                id: "anchor_body_hole_sketch",
+                name: "Anchor body hole",
+                plane: "XY"
+              },
+              {
+                op: "sketch.addCircle",
+                sketchId: "anchor_body_hole_sketch",
+                id: "anchor_body_hole_circle",
+                center: [0, 0],
+                radius: 0.35
+              },
+              {
+                op: "feature.hole",
+                id: "feat_anchor_body_hole",
+                bodyId: "body_anchor_body_hole",
+                sketchId: "anchor_body_hole_sketch",
+                circleEntityId: "anchor_body_hole_circle",
+                depthMode: "throughAll",
+                direction: "positive",
+                targetTopologyAnchorId: "anchor_body_add_target"
+              }
+            ]
+          }
+        })
+      )
+    ) as {
+      readonly ok: boolean;
+      readonly createdFeatureIds?: readonly string[];
+      readonly createdBodyIds?: readonly string[];
+      readonly review?: { readonly operations?: readonly unknown[] };
+    };
+    const features = adapter.getEngine().executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.features" }
+    });
+    const health = adapter.getEngine().executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.health" }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      createdFeatureIds: [
+        "feat_anchor_body_add_source",
+        "feat_anchor_body_add",
+        "feat_anchor_body_hole"
+      ],
+      createdBodyIds: [
+        "body_anchor_body_add_source",
+        "body_anchor_body_add",
+        "body_anchor_body_hole"
+      ],
+      review: {
+        operations: expect.arrayContaining([
+          expect.objectContaining({
+            op: "feature.extrude",
+            targetTopologyAnchorId: "anchor_body_add_target",
+            operationMode: "add"
+          }),
+          expect.objectContaining({
+            op: "feature.hole",
+            targetTopologyAnchorId: "anchor_body_add_target"
+          })
+        ])
+      }
+    });
+    expect(features).toMatchObject({
+      ok: true,
+      features: expect.arrayContaining([
+        expect.objectContaining({
+          id: "feat_anchor_body_add",
+          kind: "extrude",
+          targetBodyId: "body_anchor_body_add_source",
+          targetTopologyAnchorId: "anchor_body_add_target",
+          operationMode: "add"
+        }),
+        expect.objectContaining({
+          id: "feat_anchor_body_hole",
+          kind: "hole",
+          targetBodyId: "body_anchor_body_add",
+          targetTopologyAnchorId: "anchor_body_add_target"
+        })
+      ])
+    });
+    expect(health).toMatchObject({
+      ok: true,
+      authoredExtrudes: expect.arrayContaining([
+        expect.objectContaining({
+          featureId: "feat_anchor_body_add",
+          status: "healthy",
+          targetTopologyAnchorId: "anchor_body_add_target"
+        })
+      ]),
+      authoredHoles: expect.arrayContaining([
+        expect.objectContaining({
+          featureId: "feat_anchor_body_hole",
+          status: "healthy",
+          targetTopologyAnchorId: "anchor_body_add_target"
+        })
+      ])
+    });
+  });
+
   it("returns generated body references through adapter queries", () => {
     const adapter = new CadOpsAgentAdapter();
 

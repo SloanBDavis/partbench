@@ -2540,7 +2540,10 @@ Use these decisions when drafting or implementing V13 tranches:
    the resolved public `targetBodyId` plus anchor proof through command
    validation, project structure, health, dependency graph, generated-reference
    signatures, topology source identity, import/export, app command helpers,
-   derived geometry, and exact metadata. Circle-profile `feature.extrude`
+   derived geometry, and exact metadata. Agent-adapter and MCP batch tests now
+   also prove the topology body-anchor add and hole commit path through the
+   same CADOps layer, including project feature and health query visibility for
+   the resolved target body plus anchor proof. Circle-profile `feature.extrude`
    tools now run through the same command and runtime proof where the verified
    matrix permits them: cut on supported rectangle/circle result targets and
    add on supported rectangle-family result targets. Explicit XZ side-plane

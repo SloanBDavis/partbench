@@ -289,6 +289,7 @@ export interface CadOpsAgentOperationReview {
   readonly bodyId?: string;
   readonly targetBodyId?: string;
   readonly targetTopologyAnchorId?: string;
+  readonly operationMode?: FeatureExtrudeOperationMode;
   readonly referenceName?: string;
   readonly stableId?: string;
 }
@@ -1923,6 +1924,7 @@ function createOperationReview(
         ...(op.targetTopologyAnchorId
           ? { targetTopologyAnchorId: op.targetTopologyAnchorId }
           : {}),
+        operationMode,
         sketchId: op.sketchId,
         sketchEntityId: op.entityId
       };
@@ -1943,20 +1945,28 @@ function createOperationReview(
         sketchEntityId: op.entityId
       };
 
-    case "feature.hole":
+    case "feature.hole": {
+      const target = op.targetTopologyAnchorId
+        ? `topology anchor ${op.targetTopologyAnchorId}`
+        : (op.targetBodyId ?? "selected target");
+
       return {
         ...operationReviewBase(
           index,
           op,
           "create",
-          `Create hole feature ${op.id ?? "with generated ID"} from ${op.sketchId}/${op.circleEntityId} into ${op.targetBodyId}`
+          `Create hole feature ${op.id ?? "with generated ID"} from ${op.sketchId}/${op.circleEntityId} into ${target}`
         ),
         ...(op.id ? { featureId: op.id } : {}),
         ...(op.bodyId ? { bodyId: op.bodyId } : {}),
-        targetBodyId: op.targetBodyId,
+        ...(op.targetBodyId ? { targetBodyId: op.targetBodyId } : {}),
+        ...(op.targetTopologyAnchorId
+          ? { targetTopologyAnchorId: op.targetTopologyAnchorId }
+          : {}),
         sketchId: op.sketchId,
         sketchEntityId: op.circleEntityId
       };
+    }
 
     case "feature.chamfer": {
       const target = op.namedReference
@@ -4417,7 +4427,8 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.id) &&
       isOptionalString(value.bodyId) &&
       isOptionalString(value.name) &&
-      typeof value.targetBodyId === "string" &&
+      isOptionalString(value.targetBodyId) &&
+      isOptionalString(value.targetTopologyAnchorId) &&
       typeof value.sketchId === "string" &&
       typeof value.circleEntityId === "string" &&
       isHoleDepthMode(value.depthMode) &&
