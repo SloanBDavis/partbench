@@ -755,6 +755,7 @@ async function v7BrowserWorkflowSmoke({
     v14EdgeFilletReferenceName: "V14 smoke result cut-wall fillet edge",
     v14EdgeReferenceName: "V14 smoke result cut-wall edge",
     v14SelectedEdgeChamferName: "V14 smoke selected result-edge chamfer",
+    v14SelectedEdgeFilletName: "V14 smoke selected result-edge fillet",
     v14ProjectFileName: "v14-browser-fixture.json",
     v14HoleBodyId: "v14_smoke_result_hole_body",
     v14HoleBodyName: "V14 smoke result hole",
@@ -1891,9 +1892,40 @@ async function v7BrowserWorkflowSmoke({
       projectJson,
       "V14 topology browser fixture for selected result-edge chamfer"
     );
-    await runV14SelectedResultCutWallEdgeChamferWorkflowSmoke();
+    await runV14SelectedResultCutWallEdgeFinishWorkflowSmoke({
+      operation: "chamfer",
+      featureName: ids.v14SelectedEdgeChamferName,
+      passLabel:
+        "V14 selected rectangle cut-wall result edge creates a chamfer directly"
+    });
     await verifyV14SelectedResultCutWallEdgeFinishProjectJsonSource(
-      "V14 selected result cut-wall chamfer source JSON"
+      "V14 selected result cut-wall chamfer source JSON",
+      {
+        operation: "chamfer",
+        featureName: ids.v14SelectedEdgeChamferName,
+        passLabel:
+          "V14 selected result-edge chamfer JSON keeps public selected-edge source"
+      }
+    );
+
+    await importV14TopologyBrowserFixture(
+      projectJson,
+      "V14 topology browser fixture for selected result-edge fillet"
+    );
+    await runV14SelectedResultCutWallEdgeFinishWorkflowSmoke({
+      operation: "fillet",
+      featureName: ids.v14SelectedEdgeFilletName,
+      passLabel:
+        "V14 selected rectangle cut-wall result edge creates a fillet directly"
+    });
+    await verifyV14SelectedResultCutWallEdgeFinishProjectJsonSource(
+      "V14 selected result cut-wall fillet source JSON",
+      {
+        operation: "fillet",
+        featureName: ids.v14SelectedEdgeFilletName,
+        passLabel:
+          "V14 selected result-edge fillet JSON keeps public selected-edge source"
+      }
     );
 
     await importV14TopologyBrowserFixture(
@@ -2209,7 +2241,8 @@ async function v7BrowserWorkflowSmoke({
   }
 
   async function verifyV14SelectedResultCutWallEdgeFinishProjectJsonSource(
-    waitLabel
+    waitLabel,
+    { operation, featureName, passLabel }
   ) {
     openDetailsBySummary(document.body, "Project/File");
     const projectPanel = getSectionByAriaLabel("Project");
@@ -2227,7 +2260,7 @@ async function v7BrowserWorkflowSmoke({
       const projectJsonPreview = getProjectJsonEditorValue(projectPanel);
       const ready =
         includesText(projectPanel, "Import draft") &&
-        projectJsonPreview.includes(ids.v14SelectedEdgeChamferName);
+        projectJsonPreview.includes(featureName);
 
       if (!ready) {
         throw new Error(
@@ -2241,13 +2274,14 @@ async function v7BrowserWorkflowSmoke({
       return true;
     }, waitLabel);
     assertV14SelectedResultCutWallEdgeFinishProjectJson(
-      getProjectJsonEditorValue(projectPanel)
+      getProjectJsonEditorValue(projectPanel),
+      { operation, featureName }
     );
-    pass(
-      "v14-result-cut-wall-selected-edge-source-json-browser",
-      "V14 selected result-edge chamfer JSON keeps public selected-edge source",
-      ids.v14SelectedEdgeChamferName
-    );
+    passV14SelectedResultCutWallEdgeFinishSourceCheck({
+      featureName,
+      operation,
+      passLabel
+    });
   }
 
   async function verifyV14ResultHoleProjectJsonSource(waitLabel) {
@@ -2575,8 +2609,14 @@ async function v7BrowserWorkflowSmoke({
     );
   }
 
-  async function runV14SelectedResultCutWallEdgeChamferWorkflowSmoke() {
+  async function runV14SelectedResultCutWallEdgeFinishWorkflowSmoke({
+    operation,
+    featureName,
+    passLabel
+  }) {
     const edgeStableId = `generated:edge:${ids.v14TargetBodyId}:longitudinal:uMin:vMin`;
+    const operationLabel = operation === "chamfer" ? "chamfer" : "fillet";
+    const operationTitle = operation === "chamfer" ? "Chamfer" : "Fillet";
 
     openTreePanel();
     clickButtonContaining(
@@ -2587,21 +2627,45 @@ async function v7BrowserWorkflowSmoke({
     await selectGeneratedReferenceByStableId(edgeStableId);
     await waitForGeneratedEdgeReferenceCommandReady(
       ids.v14TargetBodyId,
-      "V14 selected result cut-wall edge command-ready for chamfer"
+      `V14 selected result cut-wall edge command-ready for ${operationLabel}`
     );
 
-    const modeling = getSectionByAriaLabel("Modeling context");
-    setFieldByLabel(modeling, "Distance", "0.15");
-    setFieldByLabel(modeling, "Name", ids.v14SelectedEdgeChamferName);
+    if (operation === "fillet") {
+      clickButton(getSectionByAriaLabel("Modeling context"), "Fillet");
+      await waitFor(() => {
+        const currentModeling = getSectionByAriaLabel("Modeling context");
+        const radiusInput = getControlByLabel(currentModeling, "Radius");
+        const createButton = getButtonByText(currentModeling, "Create fillet");
+
+        if (!(radiusInput instanceof HTMLInputElement) || !createButton) {
+          throw new Error(compactText(currentModeling.textContent, 720));
+        }
+
+        return true;
+      }, "V14 selected result cut-wall edge fillet form selected");
+    }
+    setFieldByLabel(
+      getSectionByAriaLabel("Modeling context"),
+      operation === "chamfer" ? "Distance" : "Radius",
+      operation === "chamfer" ? "0.15" : "0.12"
+    );
+    setFieldByLabel(
+      getSectionByAriaLabel("Modeling context"),
+      "Name",
+      featureName
+    );
     await waitFor(() => {
       const currentModeling = getSectionByAriaLabel("Modeling context");
-      const createButton = getButtonByText(currentModeling, "Create chamfer");
+      const createButton = getButtonByText(
+        currentModeling,
+        `Create ${operationLabel}`
+      );
       const referenceSelect = queryControlByLabel(currentModeling, "Reference");
       const ready =
         createButton &&
         !createButton.disabled &&
         includesText(currentModeling, "Edge finish") &&
-        includesText(currentModeling, "Chamfer") &&
+        includesText(currentModeling, operationTitle) &&
         (!referenceSelect ||
           referenceSelect.value === "__selected_generated_edge__");
 
@@ -2610,20 +2674,61 @@ async function v7BrowserWorkflowSmoke({
       }
 
       return true;
-    }, "V14 selected result cut-wall edge chamfer command enabled");
-    clickButton(getSectionByAriaLabel("Modeling context"), "Create chamfer");
-    await waitFor(
-      () =>
-        includesText(
-          getElementByAriaLabel("Model structure"),
-          ids.v14SelectedEdgeChamferName
-        ),
-      "created V14 selected result cut-wall chamfer"
+    }, `V14 selected result cut-wall edge ${operationLabel} command enabled`);
+    clickButton(
+      getSectionByAriaLabel("Modeling context"),
+      `Create ${operationLabel}`
     );
+    await waitFor(
+      () => includesText(getElementByAriaLabel("Model structure"), featureName),
+      `created V14 selected result cut-wall ${operationLabel}`
+    );
+    passV14SelectedResultCutWallEdgeFinishWorkflowCheck({
+      featureName,
+      operation,
+      passLabel
+    });
+  }
+
+  function passV14SelectedResultCutWallEdgeFinishWorkflowCheck({
+    featureName,
+    operation,
+    passLabel
+  }) {
+    if (operation === "chamfer") {
+      pass(
+        "v14-result-cut-wall-selected-edge-chamfer-browser",
+        passLabel,
+        featureName
+      );
+      return;
+    }
+
     pass(
-      "v14-result-cut-wall-selected-edge-chamfer-browser",
-      "V14 selected rectangle cut-wall result edge creates a chamfer directly",
-      ids.v14SelectedEdgeChamferName
+      "v14-result-cut-wall-selected-edge-fillet-browser",
+      passLabel,
+      featureName
+    );
+  }
+
+  function passV14SelectedResultCutWallEdgeFinishSourceCheck({
+    featureName,
+    operation,
+    passLabel
+  }) {
+    if (operation === "chamfer") {
+      pass(
+        "v14-result-cut-wall-selected-edge-source-json-browser",
+        passLabel,
+        featureName
+      );
+      return;
+    }
+
+    pass(
+      "v14-result-cut-wall-selected-edge-fillet-source-json-browser",
+      passLabel,
+      featureName
     );
   }
 
@@ -3718,7 +3823,10 @@ async function v7BrowserWorkflowSmoke({
     }
   }
 
-  function assertV14SelectedResultCutWallEdgeFinishProjectJson(projectJson) {
+  function assertV14SelectedResultCutWallEdgeFinishProjectJson(
+    projectJson,
+    { operation, featureName }
+  ) {
     const edgeStableId = `generated:edge:${ids.v14TargetBodyId}:longitudinal:uMin:vMin`;
     const parsed = JSON.parse(projectJson);
     const features = Array.isArray(parsed.document?.features)
@@ -3726,8 +3834,7 @@ async function v7BrowserWorkflowSmoke({
       : [];
     const edgeFinishFeature = features.find(
       (candidate) =>
-        candidate?.kind === "chamfer" &&
-        candidate.name === ids.v14SelectedEdgeChamferName
+        candidate?.kind === operation && candidate.name === featureName
     );
     const usesSelectedGeneratedEdge =
       edgeFinishFeature?.edgeStableId === edgeStableId;
@@ -3742,7 +3849,7 @@ async function v7BrowserWorkflowSmoke({
       typeof edgeFinishFeature.namedReference === "string"
     ) {
       throw new Error(
-        `V14 selected result cut-wall edge chamfer lost its public selected-edge source: ${JSON.stringify(edgeFinishFeature)}`
+        `V14 selected result cut-wall edge ${operation} lost its public selected-edge source: ${JSON.stringify(edgeFinishFeature)}`
       );
     }
 
@@ -3754,7 +3861,7 @@ async function v7BrowserWorkflowSmoke({
 
     if (privateIdPattern.test(sourceBoundaryText)) {
       throw new Error(
-        `V14 selected result cut-wall edge chamfer source leaked a private ID: ${sourceBoundaryText}`
+        `V14 selected result cut-wall edge ${operation} source leaked a private ID: ${sourceBoundaryText}`
       );
     }
   }
