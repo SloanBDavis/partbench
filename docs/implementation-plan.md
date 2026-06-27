@@ -2913,11 +2913,13 @@ The planned pillars are:
    downstream-consumer diagnostics, no source mutation, JSON/`.wcad`
    preservation, browser-visible action guidance, and cad-core query-surface
    alignment across undo/redo and JSON/`.wcad` round trips for the supported
-   result-edge finish chain. Supported result-body hole chains now have the
-   same no-mutation source-edit blocker proof in cad-core and browser-visible
-   downstream-hole guidance after `.wcad` round trip. UI-created result-body
-   holes also use a projected-document runtime preflight so geometry execution
-   failures block before source mutation.
+   result-edge finish chain. The deterministic release smoke covers
+   named-reference fillet and topology-anchor chamfer samples for the same
+   rectangle cut-wall edge subset. Supported result-body hole chains now have
+   the same no-mutation source-edit blocker proof in cad-core and
+   browser-visible downstream-hole guidance after `.wcad` round trip.
+   UI-created result-body holes also use a projected-document runtime preflight
+   so geometry execution failures block before source mutation.
 6. **Product UI cleanup for commandability** - user-facing surfaces explain
    available actions and repair needs without mentioning internal tranche or
    milestone names. The Project/File panel now labels JSON as import/export

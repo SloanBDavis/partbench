@@ -3147,7 +3147,7 @@ export const V14_RELEASE_SAMPLE_FIXTURES = [
     id: "v14-result-edge-finish",
     title: "V14 result-edge finish sample",
     description:
-      "A rectangle cut-wall longitudinal result edge is named and consumed by a chamfer, proving source-backed edge-finish diagnostics and storage.",
+      "A rectangle cut-wall longitudinal result edge is named and consumed by a fillet, proving source-backed edge-finish diagnostics and storage.",
     units: "mm",
     workflowTags: [
       "result-body-cut",
@@ -3171,9 +3171,9 @@ export const V14_RELEASE_SAMPLE_FIXTURES = [
         operationMode: "cut"
       },
       {
-        featureId: "v14_edge_chamfer_feature",
-        kind: "chamfer",
-        bodyId: "v14_edge_chamfer_body",
+        featureId: "v14_edge_fillet_feature",
+        kind: "fillet",
+        bodyId: "v14_edge_fillet_body",
         targetBodyId: V14_EDGE_CUT_BODY,
         namedReference: V14_EDGE_REFERENCE
       }
@@ -3187,7 +3187,7 @@ export const V14_RELEASE_SAMPLE_FIXTURES = [
           stableId: V14_EDGE_STABLE_ID,
           expectedKind: "edge"
         },
-        operation: "feature.chamfer",
+        operation: "feature.fillet",
         expectedStatus: "ready",
         expectedCommandable: true,
         expectedSupportedOperations: ["feature.chamfer", "feature.fillet"]
@@ -3254,13 +3254,13 @@ export const V14_RELEASE_SAMPLE_FIXTURES = [
         stableId: V14_EDGE_STABLE_ID
       },
       {
-        op: "feature.chamfer",
-        id: "v14_edge_chamfer_feature",
-        bodyId: "v14_edge_chamfer_body",
-        name: "V14 result-edge chamfer",
+        op: "feature.fillet",
+        id: "v14_edge_fillet_feature",
+        bodyId: "v14_edge_fillet_body",
+        name: "V14 result-edge fillet",
         targetBodyId: V14_EDGE_CUT_BODY,
         namedReference: V14_EDGE_REFERENCE,
-        distance: 0.1
+        radius: 0.1
       }
     ]
   },
