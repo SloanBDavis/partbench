@@ -1246,6 +1246,9 @@ export function App() {
   const [selectedSketchContext, setSelectedSketchContext] = useState<
     SketchPanelSelectionContext | undefined
   >();
+  const [preferredHoleTargetBodyId, setPreferredHoleTargetBodyId] = useState<
+    string | undefined
+  >();
   const [unitUpdateMode, setUnitUpdateMode] =
     useState<DocumentUnitUpdateMode>("metadataOnly");
   const [projectJson, setProjectJson] = useState("");
@@ -1449,6 +1452,19 @@ export function App() {
   const selectedBody = selectedId
     ? projectStructure.bodies.find((body) => body.id === selectedId)
     : undefined;
+  const preferredHoleBodyId = selectedBody?.id ?? preferredHoleTargetBodyId;
+  useEffect(() => {
+    if (
+      preferredHoleTargetBodyId &&
+      !projectStructure.bodies.some(
+        (body) =>
+          body.id === preferredHoleTargetBodyId &&
+          body.consumedByFeatureId === undefined
+      )
+    ) {
+      setPreferredHoleTargetBodyId(undefined);
+    }
+  }, [preferredHoleTargetBodyId, projectStructure.bodies]);
   const addTargetBodyOptions = useMemo(
     () =>
       createAddTargetBodyOptions(
@@ -1487,7 +1503,7 @@ export function App() {
   const holeTargetBodyOptions = createHoleTargetBodyOptions(
     projectStructure.bodies,
     projectStructure.features,
-    selectedBody?.id,
+    preferredHoleBodyId,
     document.topologyIdentity?.anchors,
     holeTargetReadinessByTopologyAnchorId
   );
@@ -1615,8 +1631,9 @@ export function App() {
     context: modelingSelectionContext,
     bodies: projectStructure.bodies,
     features: projectStructure.features,
-    preferredBodyId: selectedBody?.id,
-    topologyAnchors: document.topologyIdentity?.anchors
+    preferredBodyId: preferredHoleBodyId,
+    topologyAnchors: document.topologyIdentity?.anchors,
+    holeTargetReadinessByTopologyAnchorId
   });
   const sketchViewportDragTarget =
     modelingSelectionContext.selectionKind === "sketchEntity"
@@ -2132,16 +2149,41 @@ export function App() {
     await commitOps([buildDeleteObjectOp(selectedObject.id)], () => undefined);
   }
 
-  async function createSketch(form: SketchCreateForm) {
+  async function createSketch(
+    form: SketchCreateForm,
+    options: { readonly preferredHoleTargetBodyId?: string } = {}
+  ) {
+    if (options.preferredHoleTargetBodyId === undefined) {
+      setPreferredHoleTargetBodyId(undefined);
+    }
+
     const response = await commitOps([buildCreateSketchOp(form)], () => null);
     const sketchId = response?.ok
       ? (response.createdSketchIds?.[0] ?? form.id.trim())
       : undefined;
 
     if (sketchId) {
+      setPreferredHoleTargetBodyId(options.preferredHoleTargetBodyId);
       setSelectedGeneratedReference(undefined);
       setFocusedSketchId(sketchId);
       setSelectedSketchContext({ sketchId });
+    }
+
+    return sketchId;
+  }
+
+  async function createSideHoleSketch(
+    form: SketchCreateForm,
+    targetBodyId: string
+  ) {
+    const sketchId = await createSketch(form, {
+      preferredHoleTargetBodyId: targetBodyId
+    });
+
+    if (sketchId) {
+      setCommandNotice(
+        "Draw a circle, then create a hole through this target."
+      );
     }
   }
 
@@ -2444,10 +2486,16 @@ export function App() {
       }
     }
 
-    await commitOps(
+    const response = await commitOps(
       [op],
       (response) => response.createdBodyIds?.[0] ?? selectedId
     );
+
+    if (response?.ok) {
+      setPreferredHoleTargetBodyId((current) =>
+        current === form.targetBodyId ? undefined : current
+      );
+    }
   }
 
   async function deleteAuthoredFeature(featureId: string) {
@@ -2858,6 +2906,8 @@ export function App() {
       },
       onCreateEdgeFinish: (operation, form) =>
         void createEdgeFinish(operation, form),
+      onCreateSideHoleSketch: (form, targetBodyId) =>
+        void createSideHoleSketch(form, targetBodyId),
       onCreateSketchOnFace: (form) => void createSketchOnFace(form),
       onRepairNamedReference: (name, target) =>
         void repairNamedReference(name, target)
@@ -3795,6 +3845,9 @@ export function App() {
             }
             onCreateEdgeFinish={(operation, form) =>
               void createEdgeFinish(operation, form)
+            }
+            onCreateSideHoleSketch={(form, targetBodyId) =>
+              void createSideHoleSketch(form, targetBodyId)
             }
             onCreateSketch={(form) => void createSketch(form)}
             onCreateSketchOnFace={(form) => void createSketchOnFace(form)}

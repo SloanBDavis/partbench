@@ -395,6 +395,108 @@ describe("modeling action helpers", () => {
     });
   });
 
+  it("offers a side-hole sketch starter for circular side faces without enabling curved face attachment", () => {
+    const circularSideFace = createFace({
+      stableId: "generated:face:body_circle:side:circular",
+      label: "Circular side face",
+      bodyId: "body_circle",
+      sourceFeatureId: "feat_circle",
+      sourceSketchEntityId: "circle_1",
+      role: "side:circular",
+      eligibleOperations: [
+        "feature.measureReference",
+        "feature.selectReference"
+      ],
+      eligibilityNotes: [
+        "Curved side faces cannot host attached sketches. Use a planar cap or an existing XZ/YZ sketch for supported hole workflows."
+      ],
+      geometricSignature: {
+        profileKind: "circle",
+        sketchPlane: "XY",
+        extrudeSide: "positive",
+        depth: 2,
+        surfaceType: "cylinder"
+      }
+    });
+    const actions = deriveModelingActions({
+      context: {
+        selectionKind: "generatedReference",
+        reference: circularSideFace
+      },
+      bodies: [createBody("body_circle", "feat_circle")],
+      features: [
+        createExtrudeFeature("feat_circle", "body_circle", "circle", "newBody")
+      ]
+    });
+
+    expect(actions.map((action) => action.id)).toEqual([
+      "sketch.createSideHole",
+      "reference.name",
+      "sketch.createOnFace"
+    ]);
+    expect(actionById(actions, "sketch.createSideHole")).toMatchObject({
+      available: true,
+      target: {
+        preferredHoleTargetBodyId: "body_circle",
+        sideHoleSketchPlanes: ["XZ", "YZ"],
+        holeTargetGuidance:
+          "Creates a side hole through the circular target from the XZ sketch plane.",
+        holeTargets: [
+          expect.objectContaining({
+            bodyId: "body_circle",
+            profileKind: "circle"
+          })
+        ]
+      }
+    });
+    expect(actionById(actions, "sketch.createOnFace")).toMatchObject({
+      available: false,
+      reason:
+        "Curved side faces cannot host attached sketches. Use a planar cap or an existing XZ/YZ sketch for supported hole workflows."
+    });
+  });
+
+  it("blocks side-hole sketch starters for consumed circular targets", () => {
+    const circularSideFace = createFace({
+      stableId: "generated:face:body_circle:side:circular",
+      label: "Circular side face",
+      bodyId: "body_circle",
+      sourceFeatureId: "feat_circle",
+      sourceSketchEntityId: "circle_1",
+      role: "side:circular",
+      eligibleOperations: [
+        "feature.measureReference",
+        "feature.selectReference"
+      ],
+      geometricSignature: {
+        profileKind: "circle",
+        sketchPlane: "XY",
+        extrudeSide: "positive",
+        depth: 2,
+        surfaceType: "cylinder"
+      }
+    });
+    const actions = deriveModelingActions({
+      context: {
+        selectionKind: "generatedReference",
+        reference: circularSideFace
+      },
+      bodies: [createBody("body_circle", "feat_circle", "feat_cut")],
+      features: [
+        createExtrudeFeature("feat_circle", "body_circle", "circle", "newBody")
+      ]
+    });
+
+    expect(actionById(actions, "sketch.createSideHole")).toMatchObject({
+      available: false,
+      reason: "This circular target is not ready for a side-hole sketch.",
+      target: {
+        holeTargets: [],
+        sideHoleSketchPlanes: ["XZ", "YZ"]
+      }
+    });
+  });
+
   it("derives generated edge finish actions through edge-finish rules", () => {
     const edge = createEdge();
     const actions = deriveModelingActions({

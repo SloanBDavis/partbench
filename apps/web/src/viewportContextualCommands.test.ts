@@ -92,7 +92,7 @@ describe("viewport contextual commands", () => {
     });
   });
 
-  it("hides unsupported generated-face sketch actions from viewport commands", () => {
+  it("offers side-hole setup while hiding curved face sketch attachment from viewport commands", () => {
     const face = createFace({
       stableId: "generated:face:body_add:side:circular",
       label: "Added circular wall face",
@@ -110,6 +110,23 @@ describe("viewport contextual commands", () => {
         surfaceType: "cylinder"
       }
     });
+    const body = createBody({
+      id: "body_add",
+      featureId: "feat_add",
+      source: {
+        type: "sketchExtrudeFeature",
+        featureId: "feat_add",
+        sketchId: "sketch_1",
+        entityId: "circle_1",
+        profileKind: "circle"
+      }
+    });
+    const feature = createExtrudeFeature({
+      id: "feat_add",
+      bodyId: "body_add",
+      entityId: "circle_1",
+      profileKind: "circle"
+    });
     const candidates = createSelectionReferenceCandidates(face, {
       commandOperations: [
         "reference.nameGenerated",
@@ -117,7 +134,10 @@ describe("viewport contextual commands", () => {
         "feature.selectReference"
       ]
     });
-    const actions = createGeneratedReferenceActions(face, candidates);
+    const actions = createGeneratedReferenceActions(face, candidates, {
+      body,
+      feature
+    });
     const surface = createViewportContextualCommandSurface({
       modelingActions: actions,
       selectionDisplay: createSelectionDisplay({
@@ -129,10 +149,18 @@ describe("viewport contextual commands", () => {
     });
 
     expect(surface.actions.map((action) => action.id)).toEqual([
+      "sketch.createSideHole",
       "reference.name",
       "feature.measureReference",
       "feature.selectReference"
     ]);
+    expect(surface.actions[0]).toMatchObject({
+      label: "Side hole",
+      route: "command",
+      disabled: false,
+      sideHoleSketchPlane: "XZ",
+      sideHoleTargetBodyId: "body_add"
+    });
   });
 
   it("derives selected generated edge commands and routes safe edge-finish defaults", () => {
@@ -427,6 +455,77 @@ describe("viewport contextual commands", () => {
     });
   });
 
+  it("routes side-hole setup through normal sketch creation", () => {
+    const face = createFace({
+      stableId: "generated:face:body_circle:side:circular",
+      label: "Circular side face",
+      bodyId: "body_circle",
+      sourceFeatureId: "feat_circle",
+      sourceSketchEntityId: "circle_1",
+      role: "side:circular",
+      eligibleOperations: [
+        "feature.measureReference",
+        "feature.selectReference"
+      ],
+      geometricSignature: {
+        profileKind: "circle",
+        sketchPlane: "XY",
+        extrudeSide: "positive",
+        depth: 2,
+        surfaceType: "cylinder"
+      }
+    });
+    const candidates = createSelectionReferenceCandidates(face);
+    const actions = createGeneratedReferenceActions(face, candidates, {
+      body: createBody({
+        id: "body_circle",
+        featureId: "feat_circle",
+        source: {
+          type: "sketchExtrudeFeature",
+          featureId: "feat_circle",
+          sketchId: "sketch_1",
+          entityId: "circle_1",
+          profileKind: "circle"
+        }
+      }),
+      feature: createExtrudeFeature({
+        id: "feat_circle",
+        bodyId: "body_circle",
+        entityId: "circle_1",
+        profileKind: "circle"
+      })
+    });
+    const surface = createViewportContextualCommandSurface({
+      modelingActions: actions,
+      selectionDisplay: createSelectionDisplay({
+        selectionKind: "generatedReference",
+        commandOperations: candidates.candidates[0].commandOperations
+      }),
+      selectedGeneratedReferenceState: createSelectedReferenceState(face),
+      selectionReferenceCandidates: candidates
+    });
+    const onCreateSideHoleSketch = vi.fn();
+
+    const routed = runViewportContextualCommandAction({
+      action: actionById(surface.actions, "sketch.createSideHole"),
+      selectedGeneratedReferenceState: createSelectedReferenceState(face),
+      onCreateSideHoleSketch
+    });
+
+    expect(routed).toBe(true);
+    expect(onCreateSideHoleSketch).toHaveBeenCalledWith(
+      {
+        id: "",
+        name: "Side-hole sketch",
+        plane: "XZ"
+      },
+      "body_circle"
+    );
+    expect(JSON.stringify(onCreateSideHoleSketch.mock.calls)).not.toMatch(
+      /topology|checkpoint|rendererId|meshId|occtId|gpuId|selectionBufferId|pixelId|opfsPath|fileHandle/i
+    );
+  });
+
   it("routes topology-anchor-backed face sketches through the shared reference contract", () => {
     const face = createFace();
     const candidates = createSelectionReferenceCandidates(face, {
@@ -660,15 +759,20 @@ function createGeneratedReferenceActions(
     readonly feature?: CadFeatureSummary;
   } = {}
 ): readonly ModelingActionDescriptor[] {
+  const body = overrides.body ?? createBody();
+  const feature = overrides.feature ?? createExtrudeFeature();
+
   return deriveModelingActions({
     context: {
       selectionKind: "generatedReference",
       reference,
-      body: overrides.body ?? createBody(),
-      feature: overrides.feature ?? createExtrudeFeature(),
+      body,
+      feature,
       namedReferences: [],
       selectionReferenceCandidates: candidates
-    }
+    },
+    bodies: [body],
+    features: [feature]
   });
 }
 

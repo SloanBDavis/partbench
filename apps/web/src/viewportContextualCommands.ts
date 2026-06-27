@@ -4,10 +4,12 @@ import type {
   CadSelectionReferenceOperation,
   CadReferenceHealthEntry,
   NamedGeneratedReferenceEntry,
-  SelectionReferenceCandidatesQueryResponse
+  SelectionReferenceCandidatesQueryResponse,
+  SketchPlane
 } from "@web-cad/cad-protocol";
 import type {
   FeatureEdgeFinishForm,
+  SketchCreateForm,
   SketchCreateOnFaceForm
 } from "./cadCommands";
 import {
@@ -50,6 +52,7 @@ export type ViewportContextualCommandActionId =
   | "feature.selectReference"
   | "reference.repairName"
   | "reference.name"
+  | "sketch.createSideHole"
   | "sketch.createOnFace";
 
 export type ViewportContextualCommandActionRoute =
@@ -70,6 +73,8 @@ export interface ViewportContextualCommandAction {
   readonly operation?: CadSelectionReferenceOperation;
   readonly modelingActionId?: ModelingActionId;
   readonly referenceName?: string;
+  readonly sideHoleSketchPlane?: SketchPlane;
+  readonly sideHoleTargetBodyId?: string;
   readonly target?: SelectedGeneratedReference;
 }
 
@@ -109,6 +114,10 @@ export interface RunViewportContextualCommandActionInput {
   readonly onCreateEdgeFinish?: (
     operation: EdgeFinishOperation,
     form: FeatureEdgeFinishForm
+  ) => void;
+  readonly onCreateSideHoleSketch?: (
+    form: SketchCreateForm,
+    targetBodyId: string
   ) => void;
   readonly onCreateSketchOnFace?: (form: SketchCreateOnFaceForm) => void;
   readonly onRepairNamedReference?: (
@@ -236,6 +245,7 @@ export function runViewportContextualCommandAction({
   namedReferences,
   onContinueInModeling,
   onCreateEdgeFinish,
+  onCreateSideHoleSketch,
   onCreateSketchOnFace,
   onRepairNamedReference,
   selectionReferenceCandidates,
@@ -261,6 +271,28 @@ export function runViewportContextualCommandAction({
 
     onCreateSketchOnFace?.(form);
     return Boolean(onCreateSketchOnFace);
+  }
+
+  if (action.id === "sketch.createSideHole") {
+    const targetBodyId =
+      action.sideHoleTargetBodyId ??
+      (selectedGeneratedReferenceState.status === "selected"
+        ? selectedGeneratedReferenceState.reference.bodyId
+        : undefined);
+
+    if (!targetBodyId) {
+      return false;
+    }
+
+    onCreateSideHoleSketch?.(
+      {
+        id: "",
+        name: "Side-hole sketch",
+        plane: action.sideHoleSketchPlane ?? "XZ"
+      },
+      targetBodyId
+    );
+    return Boolean(onCreateSideHoleSketch);
   }
 
   if (action.id === "feature.chamfer" || action.id === "feature.fillet") {
@@ -353,6 +385,13 @@ function createActionsFromModeling(
               selectionDisplay.selectionKind === "body" ? "modeling" : "command"
           })
         ];
+      case "sketch.createSideHole":
+        return [
+          createActionFromModeling(action, {
+            label: "Side hole",
+            route: "command"
+          })
+        ];
       default:
         return [];
     }
@@ -387,7 +426,14 @@ function createActionFromModeling(
         }
       : {}),
     modelingActionId: action.id,
-    ...(target ? { target } : {})
+    ...(target ? { target } : {}),
+    ...(action.id === "sketch.createSideHole"
+      ? {
+          sideHoleSketchPlane: action.target?.sideHoleSketchPlanes?.[0],
+          sideHoleTargetBodyId:
+            action.target?.preferredHoleTargetBodyId ?? target?.bodyId
+        }
+      : {})
   };
 }
 
@@ -655,6 +701,8 @@ function dedupeActions(
 function getActionRank(id: ViewportContextualCommandActionId): number {
   switch (id) {
     case "sketch.createOnFace":
+      return 0;
+    case "sketch.createSideHole":
       return 0;
     case "reference.name":
       return 1;

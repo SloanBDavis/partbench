@@ -74,7 +74,9 @@ These constraints remain active:
     hole, and explicit XZ side-plane circle hole paths, focused core, app, and
     geometry tests prove circle-profile result-body cut/add paths where the
     verified matrix permits them, Modeling action metadata carries axial versus
-    side-hole guidance for circular targets, and ready
+    side-hole guidance for circular targets, selected circular side references
+    can start a normal `XZ`/`YZ` side-hole sketch with the intended target body
+    preferred, and ready
     topology-backed reference selections and Project/File JSON import/export
     plus result-body hole preflight failures use action-oriented product copy
     instead of internal implementation labels.

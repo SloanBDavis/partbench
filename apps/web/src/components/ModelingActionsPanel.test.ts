@@ -818,6 +818,64 @@ describe("ModelingActionsPanel", () => {
     expect(markup).not.toContain("generated:face:body_rect:startCap");
   });
 
+  it("renders a side-hole sketch starter for circular side references", () => {
+    const reference = createFace({
+      stableId: "generated:face:body_circle:side:circular",
+      label: "Circular side face",
+      bodyId: "body_circle",
+      sourceFeatureId: "feat_circle",
+      sourceSketchEntityId: "circle_1",
+      role: "side:circular",
+      eligibleOperations: [
+        "feature.measureReference",
+        "feature.selectReference"
+      ],
+      eligibilityNotes: [
+        "Curved side faces cannot host attached sketches. Use a planar cap or an existing XZ/YZ sketch for supported hole workflows."
+      ],
+      geometricSignature: {
+        profileKind: "circle",
+        sketchPlane: "XY",
+        extrudeSide: "positive",
+        depth: 2,
+        surfaceType: "cylinder"
+      }
+    });
+    const context = {
+      selectionKind: "generatedReference",
+      reference
+    } as const;
+    const actions = deriveModelingActions({
+      context,
+      bodies: [createModelingBody("body_circle", "feat_circle", "circle")],
+      features: [
+        createModelingExtrudeFeature("feat_circle", "body_circle", "circle")
+      ]
+    });
+    const markup = renderToStaticMarkup(
+      createElement(ModelingActionsPanel, {
+        actions,
+        context,
+        onCreateSideHoleSketch: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Side-hole sketch");
+    expect(markup).toContain("World plane");
+    expect(markup).toContain("XZ");
+    expect(markup).toContain("YZ");
+    expect(markup).toContain("Create XZ sketch");
+    expect(markup).toContain(
+      "Creates a side hole through the circular target from the XZ sketch plane."
+    );
+    expect(markup).toContain(
+      "Curved side faces cannot host attached sketches."
+    );
+    expect(markup).not.toMatch(
+      /topology|checkpoint|debug|tranche|milestone|command-ready|rendererId|meshId|occtId|opfsPath|fileHandle/i
+    );
+  });
+
   it("renders saved reference status without topology debug copy", () => {
     const reference = createFace({
       label: "Start cap"
@@ -1181,6 +1239,50 @@ function createFace(
       surfaceType: "plane"
     },
     ...overrides
+  };
+}
+
+function createModelingBody(
+  id: string,
+  featureId: string,
+  profileKind: "rectangle" | "circle" = "rectangle"
+): CadBodySnapshot {
+  return {
+    id,
+    kind: "solid",
+    partId: "part:default",
+    featureId,
+    source: {
+      type: "sketchExtrudeFeature",
+      featureId,
+      sketchId: "sketch_1",
+      entityId: profileKind === "circle" ? "circle_1" : "rect_1",
+      profileKind
+    }
+  };
+}
+
+function createModelingExtrudeFeature(
+  id: string,
+  bodyId: string,
+  profileKind: "rectangle" | "circle" = "rectangle"
+): Extract<CadFeatureSummary, { readonly kind: "extrude" }> {
+  return {
+    id,
+    kind: "extrude",
+    partId: "part:default",
+    bodyId,
+    sketchId: "sketch_1",
+    entityId: profileKind === "circle" ? "circle_1" : "rect_1",
+    profileKind,
+    depth: 2,
+    side: "positive",
+    operationMode: "newBody",
+    source: {
+      type: "sketchEntity",
+      sketchId: "sketch_1",
+      entityId: profileKind === "circle" ? "circle_1" : "rect_1"
+    }
   };
 }
 

@@ -2028,6 +2028,12 @@ canvas:active {
   min-width: 0;
 }
 
+.side-hole-starter {
+  display: grid;
+  gap: 8px;
+  padding-top: 4px;
+}
+
 .workbench-command-grid button,
 .workbench-card > button,
 .workbench-card .field-grid + button {

@@ -121,6 +121,10 @@ export interface ModelingActionsPanelProps {
     operation: "chamfer" | "fillet",
     form: FeatureEdgeFinishForm
   ) => void;
+  readonly onCreateSideHoleSketch?: (
+    form: SketchCreateForm,
+    targetBodyId: string
+  ) => void;
   readonly onCreateSketch?: (form: SketchCreateForm) => void;
   readonly onCreateSketchOnFace?: (form: SketchCreateOnFaceForm) => void;
   readonly onExtrudeEntity?: (
@@ -240,6 +244,7 @@ export function ModelingActionsPanel({
   onCreateConstraint,
   onCreateDimension,
   onCreateEdgeFinish,
+  onCreateSideHoleSketch,
   onCreateSketch,
   onCreateSketchOnFace,
   onExtrudeEntity,
@@ -391,6 +396,7 @@ export function ModelingActionsPanel({
           namedReferenceHealthByName={namedReferenceHealthByName}
           selectedNamedReferenceName={selectedNamedReferenceName}
           onCreateEdgeFinish={onCreateEdgeFinish}
+          onCreateSideHoleSketch={onCreateSideHoleSketch}
           onCreateSketchOnFace={onCreateSketchOnFace}
           onNameGeneratedReference={onNameGeneratedReference}
           onRepairNamedReference={onRepairNamedReference}
@@ -2293,6 +2299,7 @@ function GeneratedReferenceWorkbench({
   namedReferenceHealthByName,
   selectedNamedReferenceName,
   onCreateEdgeFinish,
+  onCreateSideHoleSketch,
   onCreateSketchOnFace,
   onNameGeneratedReference,
   onRepairNamedReference,
@@ -2314,6 +2321,10 @@ function GeneratedReferenceWorkbench({
   readonly onCreateEdgeFinish?: (
     operation: "chamfer" | "fillet",
     form: FeatureEdgeFinishForm
+  ) => void;
+  readonly onCreateSideHoleSketch?: (
+    form: SketchCreateForm,
+    targetBodyId: string
   ) => void;
   readonly onCreateSketchOnFace?: (form: SketchCreateOnFaceForm) => void;
   readonly onNameGeneratedReference?: (
@@ -2442,6 +2453,7 @@ function GeneratedReferenceWorkbench({
           actions={actions}
           disabled={disabled}
           face={context.reference}
+          onCreateSideHoleSketch={onCreateSideHoleSketch}
           onCreateSketchOnFace={onCreateSketchOnFace}
           onSelectSketch={onSelectSketch}
           topologyAnchorId={context.topologyAnchorId}
@@ -2468,6 +2480,7 @@ function FaceReferenceWorkbench({
   disabled,
   face,
   onCreateSketchOnFace,
+  onCreateSideHoleSketch,
   onSelectSketch,
   topologyAnchorId
 }: {
@@ -2475,11 +2488,22 @@ function FaceReferenceWorkbench({
   readonly disabled: boolean;
   readonly face: CadGeneratedFaceReference;
   readonly onCreateSketchOnFace?: (form: SketchCreateOnFaceForm) => void;
+  readonly onCreateSideHoleSketch?: (
+    form: SketchCreateForm,
+    targetBodyId: string
+  ) => void;
   readonly onSelectSketch?: (sketchId: string, entityId?: string) => void;
   readonly topologyAnchorId?: string;
 }) {
   const action = actions.find(
     (candidate) => candidate.id === "sketch.createOnFace"
+  );
+  const sideHoleAction = actions.find(
+    (candidate) => candidate.id === "sketch.createSideHole"
+  );
+  const sideHolePlanes = sideHoleAction?.target?.sideHoleSketchPlanes ?? [];
+  const [sideHolePlane, setSideHolePlane] = useState<SketchCreateForm["plane"]>(
+    () => sideHolePlanes[0] ?? "XZ"
   );
   const [form, setForm] = useState(() => ({
     id: "",
@@ -2525,8 +2549,77 @@ function FaceReferenceWorkbench({
       >
         Create sketch on face
       </button>
+      {sideHoleAction && (
+        <div className="side-hole-starter">
+          <div className="workbench-subheading">
+            <strong>Side-hole sketch</strong>
+            <small>World plane</small>
+          </div>
+          <div className="segmented-control compact">
+            {sideHolePlanes.map((plane) => (
+              <button
+                key={plane}
+                type="button"
+                className={sideHolePlane === plane ? "selected" : undefined}
+                disabled={disabled || !sideHoleAction.available}
+                onClick={() => setSideHolePlane(plane)}
+              >
+                {plane}
+              </button>
+            ))}
+          </div>
+          {!sideHoleAction.available && (
+            <p className="error-text compact">
+              {sideHoleAction.reason ??
+                "This circular target is not ready for a side-hole sketch."}
+            </p>
+          )}
+          {sideHoleAction.available &&
+            sideHoleAction.target?.holeTargetGuidance && (
+              <p className="project-message compact">
+                {sideHoleAction.target.holeTargetGuidance}
+              </p>
+            )}
+          <button
+            type="button"
+            disabled={
+              disabled ||
+              !sideHoleAction.available ||
+              !sideHoleAction.target?.preferredHoleTargetBodyId ||
+              sideHolePlanes.length === 0
+            }
+            onClick={() => {
+              const targetBodyId =
+                sideHoleAction.target?.preferredHoleTargetBodyId;
+
+              if (!targetBodyId) {
+                return;
+              }
+
+              onCreateSideHoleSketch?.(
+                {
+                  id: "",
+                  name: createSideHoleSketchDefaultName(face),
+                  plane: sideHolePlane
+                },
+                targetBodyId
+              );
+            }}
+          >
+            Create {sideHolePlane} sketch
+          </button>
+        </div>
+      )}
     </section>
   );
+}
+
+function createSideHoleSketchDefaultName(
+  face: CadGeneratedFaceReference
+): string {
+  const label = formatGeneratedFaceShortLabel(face);
+
+  return label ? `${label} side-hole sketch` : "Side-hole sketch";
 }
 
 function EdgeReferenceWorkbench({

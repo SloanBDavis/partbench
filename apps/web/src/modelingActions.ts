@@ -15,8 +15,10 @@ import type {
   SketchEntityKind,
   SketchEntitySnapshot,
   SketchId,
+  SketchPlane,
   SketchSolverStatusQueryResponse,
-  SketchSnapshot
+  SketchSnapshot,
+  TopologyCommandTargetReadinessQueryResponse
 } from "@web-cad/cad-protocol";
 import {
   SELECTED_EDGE_FINISH_REFERENCE_VALUE,
@@ -55,6 +57,10 @@ const DEFAULT_HOLE_FORM = {
 };
 const DEFAULT_REVOLVE_ANGLE_DEGREES = 360;
 const DEFAULT_EDGE_FINISH_SCALAR = 0.2;
+const SIDE_HOLE_SKETCH_PLANES = [
+  "XZ",
+  "YZ"
+] as const satisfies readonly SketchPlane[];
 const SKETCH_ENTITY_ADD_ACTION_IDS = {
   point: "sketch.entity.add.point",
   line: "sketch.entity.add.line",
@@ -78,6 +84,7 @@ export type ModelingActionId =
   | "body.references.inspect"
   | "body.measureTopology"
   | "sketch.createOnFace"
+  | "sketch.createSideHole"
   | "reference.name"
   | "feature.chamfer"
   | "feature.fillet";
@@ -101,6 +108,8 @@ export interface ModelingActionTargetMetadata {
   readonly revolveAxes?: readonly RevolveAxisOption[];
   readonly holeTargets?: readonly BooleanTargetBodyOption[];
   readonly holeTargetGuidance?: string;
+  readonly preferredHoleTargetBodyId?: string;
+  readonly sideHoleSketchPlanes?: readonly SketchPlane[];
   readonly bodyId?: string;
   readonly featureId?: string;
   readonly generatedReferenceStableId?: string;
@@ -182,6 +191,10 @@ export interface ModelingActionState {
   readonly features?: readonly CadFeatureSummary[];
   readonly preferredBodyId?: string;
   readonly topologyAnchors?: CadTopologyIdentitySourceSnapshot["anchors"];
+  readonly holeTargetReadinessByTopologyAnchorId?: ReadonlyMap<
+    string,
+    TopologyCommandTargetReadinessQueryResponse
+  >;
 }
 
 export function deriveModelingActions(
@@ -197,7 +210,7 @@ export function deriveModelingActions(
     case "body":
       return createBodyActions(state.context);
     case "generatedReference":
-      return createGeneratedReferenceActions(state.context);
+      return createGeneratedReferenceActions(state.context, state);
   }
 }
 
@@ -252,7 +265,14 @@ function createSketchEntityActions(
     ModelingSelectionContext,
     { readonly selectionKind: "sketchEntity" }
   >,
-  state: Pick<ModelingActionState, "bodies" | "features" | "preferredBodyId">
+  state: Pick<
+    ModelingActionState,
+    | "bodies"
+    | "features"
+    | "preferredBodyId"
+    | "topologyAnchors"
+    | "holeTargetReadinessByTopologyAnchorId"
+  >
 ): readonly ModelingActionDescriptor[] {
   const { constraints = [], dimensions = [], entity, sketch } = context;
   const selection: ModelingActionSelectionMetadata = {
@@ -412,7 +432,11 @@ function createHoleAction(
   >,
   state: Pick<
     ModelingActionState,
-    "bodies" | "features" | "preferredBodyId" | "topologyAnchors"
+    | "bodies"
+    | "features"
+    | "preferredBodyId"
+    | "topologyAnchors"
+    | "holeTargetReadinessByTopologyAnchorId"
   >,
   selection: ModelingActionSelectionMetadata
 ): ModelingActionDescriptor {
@@ -421,7 +445,8 @@ function createHoleAction(
     state.bodies ?? [],
     state.features ?? [],
     state.preferredBodyId,
-    state.topologyAnchors
+    state.topologyAnchors,
+    state.holeTargetReadinessByTopologyAnchorId
   );
   const status = getHoleOperationStatus(entity, targets, DEFAULT_HOLE_FORM);
   const guidance = getHoleTargetGuidance(targets[0], sketch.plane);
@@ -581,6 +606,13 @@ function createGeneratedReferenceActions(
   context: Extract<
     ModelingSelectionContext,
     { readonly selectionKind: "generatedReference" }
+  >,
+  state: Pick<
+    ModelingActionState,
+    | "bodies"
+    | "features"
+    | "topologyAnchors"
+    | "holeTargetReadinessByTopologyAnchorId"
   >
 ): readonly ModelingActionDescriptor[] {
   const selection: ModelingActionSelectionMetadata = {
@@ -605,7 +637,14 @@ function createGeneratedReferenceActions(
   };
 
   if (context.reference.kind === "face") {
+    const sideHoleAction = createGeneratedFaceSideHoleAction(
+      context.reference,
+      state,
+      selection
+    );
+
     return [
+      ...(sideHoleAction ? [sideHoleAction] : []),
       nameAction,
       createGeneratedFaceSketchAction(
         context.reference,
@@ -620,6 +659,64 @@ function createGeneratedReferenceActions(
   }
 
   return [nameAction];
+}
+
+function createGeneratedFaceSideHoleAction(
+  face: CadGeneratedFaceReference,
+  state: Pick<
+    ModelingActionState,
+    | "bodies"
+    | "features"
+    | "topologyAnchors"
+    | "holeTargetReadinessByTopologyAnchorId"
+  >,
+  selection: ModelingActionSelectionMetadata
+): ModelingActionDescriptor | undefined {
+  if (!isCircularSideFace(face)) {
+    return undefined;
+  }
+
+  const targets = createHoleTargetBodyOptions(
+    state.bodies ?? [],
+    state.features ?? [],
+    face.bodyId,
+    state.topologyAnchors,
+    state.holeTargetReadinessByTopologyAnchorId
+  );
+  const selectedTarget = targets.find(
+    (target) => target.bodyId === face.bodyId
+  );
+  const guidance = getHoleTargetGuidance(selectedTarget, "XZ");
+
+  return {
+    id: "sketch.createSideHole",
+    label: "Create side-hole sketch",
+    kind: "command",
+    category: "sketch",
+    available: selectedTarget !== undefined,
+    reason:
+      selectedTarget !== undefined
+        ? undefined
+        : "This circular target is not ready for a side-hole sketch.",
+    target: {
+      ...createGeneratedReferenceTarget(face),
+      holeTargets: targets,
+      ...(selectedTarget
+        ? { preferredHoleTargetBodyId: selectedTarget.bodyId }
+        : {}),
+      ...(guidance ? { holeTargetGuidance: guidance } : {}),
+      sideHoleSketchPlanes: SIDE_HOLE_SKETCH_PLANES
+    },
+    selection
+  };
+}
+
+function isCircularSideFace(face: CadGeneratedFaceReference): boolean {
+  return (
+    face.role === "side:circular" ||
+    (face.geometricSignature.profileKind === "circle" &&
+      face.geometricSignature.surfaceType === "cylinder")
+  );
 }
 
 function createEdgeFinishActions(
