@@ -16120,257 +16120,304 @@ describe("cad-core", () => {
     }
   });
 
-  it("keeps V14 result-edge chamfer query surfaces aligned across undo redo and round trips", async () => {
-    const engine = createRectangleExtrudeEngine();
-    const edgeStableId = "generated:edge:body_cut_1:longitudinal:uMin:vMin";
-
-    engine.applyBatch([
+  it("keeps V14 result-edge finish query surfaces aligned across undo redo and round trips", async () => {
+    const scenarios = [
       {
-        op: "sketch.addRectangle",
-        sketchId: "sketch_1",
-        id: "tool_rect_1",
-        center: [1, 0],
-        width: 2,
-        height: 1
-      },
-      {
-        op: "feature.extrude",
-        id: "feat_cut_1",
-        bodyId: "body_cut_1",
-        sketchId: "sketch_1",
-        entityId: "tool_rect_1",
-        depth: 3,
-        operationMode: "cut",
-        targetBodyId: "body_rect_1"
-      },
-      {
-        op: "reference.nameGenerated",
-        name: "cut_corner_u_min_v_min",
-        bodyId: "body_cut_1",
-        stableId: edgeStableId
-      }
-    ]);
-
-    const readEdgeSelectionCandidates = (targetEngine: CadEngine = engine) =>
-      targetEngine.executeQuery({
-        version: "cadops.v1",
-        query: {
-          query: "selection.referenceCandidates",
-          selection: {
-            type: "generatedReference",
-            bodyId: "body_cut_1",
-            stableId: edgeStableId,
-            expectedKind: "edge"
-          },
-          requiredOperation: "feature.chamfer"
-        }
-      });
-    const readEdgeCommandTargetReadiness = (targetEngine: CadEngine = engine) =>
-      targetEngine.executeQuery({
-        version: "cadops.v1",
-        query: {
-          query: "topology.commandTargetReadiness",
-          target: {
-            type: "generatedReference",
-            bodyId: "body_cut_1",
-            stableId: edgeStableId,
-            expectedKind: "edge"
-          },
-          desiredOperation: "feature.chamfer"
-        }
-      });
-    const readSourceEditability = (targetEngine: CadEngine = engine) =>
-      readFeatureEditability(targetEngine, "feat_rect_1", {
-        kind: "extrude",
-        depth: 6
-      });
-    const readSurfaceSnapshot = (targetEngine: CadEngine = engine) => ({
-      structure: readProjectStructure(targetEngine),
-      health: readProjectHealth(targetEngine),
-      graph: readProjectDependencyGraph(targetEngine),
-      rebuildPlan: readProjectRebuildPlan(targetEngine),
-      referenceHealth: readReferenceHealth(targetEngine, {
-        type: "namedReference",
-        name: "cut_corner_u_min_v_min"
-      }),
-      selectionCandidates: readEdgeSelectionCandidates(targetEngine),
-      commandTargetReadiness: readEdgeCommandTargetReadiness(targetEngine),
-      editability: readSourceEditability(targetEngine)
-    });
-    const expectRoundTripSurfaces = async (
-      expectedSurface: ReturnType<typeof readSurfaceSnapshot>,
-      expectedHistory: ReturnType<typeof readTransactionHistory>
-    ) => {
-      const jsonRestored = importCadProjectJson(exportCadProjectJson(engine));
-      const wcadRestored = await importCadProjectWcad(
-        (await exportCadProjectWcad(engine)).bytes
-      );
-
-      for (const restored of [jsonRestored, wcadRestored]) {
-        expect(readSurfaceSnapshot(restored)).toEqual(expectedSurface);
-        expect(readTransactionHistory(restored)).toEqual(expectedHistory);
-      }
-    };
-
-    const beforeChamfer = readSurfaceSnapshot();
-    const beforeHistory = readTransactionHistory(engine);
-
-    expect(beforeChamfer.selectionCandidates).toMatchObject({
-      ok: true,
-      query: "selection.referenceCandidates",
-      status: "resolved",
-      candidates: [
-        expect.objectContaining({
-          commandable: true,
-          commandOperations: expect.arrayContaining([
-            "feature.chamfer",
-            "feature.fillet"
-          ])
-        })
-      ]
-    });
-    expect(beforeChamfer.commandTargetReadiness).toMatchObject({
-      ok: true,
-      query: "topology.commandTargetReadiness",
-      status: "ready",
-      commandable: true,
-      supportedOperations: expect.arrayContaining([
-        "feature.chamfer",
-        "feature.fillet"
-      ])
-    });
-    expect(beforeChamfer.editability).toMatchObject({
-      status: "editable",
-      dryRun: { status: "valid", willMutateDocument: false }
-    });
-
-    const result = engine.apply({
-      op: "feature.chamfer",
-      id: "feat_cut_chamfer",
-      bodyId: "body_cut_chamfer",
-      targetBodyId: "body_cut_1",
-      namedReference: "cut_corner_u_min_v_min",
-      distance: 0.1
-    });
-    const afterChamfer = readSurfaceSnapshot();
-    const afterChamferHistory = readTransactionHistory(engine);
-
-    expect(result.transaction.diff.features).toMatchObject({
-      created: [expect.objectContaining({ id: "feat_cut_chamfer" })],
-      bodiesCreated: [expect.objectContaining({ id: "body_cut_chamfer" })]
-    });
-    expect(afterChamfer.structure).toMatchObject({
-      features: expect.arrayContaining([
-        expect.objectContaining({
+        commandOperation: "feature.chamfer" as const,
+        featureId: "feat_cut_chamfer",
+        bodyId: "body_cut_chamfer",
+        kind: "chamfer" as const,
+        healthKey: "authoredChamfers" as const,
+        sourceType: "edgeChamferFeature",
+        op: {
+          op: "feature.chamfer" as const,
           id: "feat_cut_chamfer",
-          kind: "chamfer",
-          namedReference: "cut_corner_u_min_v_min",
-          source: expect.objectContaining({
-            namedReference: "cut_corner_u_min_v_min"
-          })
-        })
-      ]),
-      bodies: expect.arrayContaining([
-        expect.objectContaining({
-          id: "body_cut_1",
-          consumedByFeatureId: "feat_cut_chamfer"
-        }),
-        expect.objectContaining({
-          id: "body_cut_chamfer",
-          source: expect.objectContaining({
-            type: "edgeChamferFeature",
-            namedReference: "cut_corner_u_min_v_min"
-          })
-        })
-      ])
-    });
-    expect(afterChamfer.health.authoredChamfers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          featureId: "feat_cut_chamfer",
+          bodyId: "body_cut_chamfer",
           targetBodyId: "body_cut_1",
           namedReference: "cut_corner_u_min_v_min",
-          status: "healthy",
-          issues: []
-        })
-      ])
-    );
-    expect(afterChamfer.graph.edges).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: "targets",
-          sourceFeatureId: "feat_cut_chamfer",
-          bodyId: "body_cut_1"
-        }),
-        expect.objectContaining({
-          kind: "names",
-          referenceName: "cut_corner_u_min_v_min",
+          distance: 0.1
+        }
+      },
+      {
+        commandOperation: "feature.fillet" as const,
+        featureId: "feat_cut_fillet",
+        bodyId: "body_cut_fillet",
+        kind: "fillet" as const,
+        healthKey: "authoredFillets" as const,
+        sourceType: "edgeFilletFeature",
+        op: {
+          op: "feature.fillet" as const,
+          id: "feat_cut_fillet",
+          bodyId: "body_cut_fillet",
+          targetBodyId: "body_cut_1",
+          namedReference: "cut_corner_u_min_v_min",
+          radius: 0.1
+        }
+      }
+    ];
+
+    for (const scenario of scenarios) {
+      const engine = createRectangleExtrudeEngine();
+      const edgeStableId = "generated:edge:body_cut_1:longitudinal:uMin:vMin";
+
+      engine.applyBatch([
+        {
+          op: "sketch.addRectangle",
+          sketchId: "sketch_1",
+          id: "tool_rect_1",
+          center: [1, 0],
+          width: 2,
+          height: 1
+        },
+        {
+          op: "feature.extrude",
+          id: "feat_cut_1",
+          bodyId: "body_cut_1",
+          sketchId: "sketch_1",
+          entityId: "tool_rect_1",
+          depth: 3,
+          operationMode: "cut",
+          targetBodyId: "body_rect_1"
+        },
+        {
+          op: "reference.nameGenerated",
+          name: "cut_corner_u_min_v_min",
+          bodyId: "body_cut_1",
           stableId: edgeStableId
-        })
-      ])
-    );
-    expect(afterChamfer.editability).toMatchObject({
-      status: "blocked",
-      rebuildReadiness: {
-        diagnostics: expect.arrayContaining([
+        }
+      ]);
+
+      const readEdgeSelectionCandidates = (targetEngine: CadEngine = engine) =>
+        targetEngine.executeQuery({
+          version: "cadops.v1",
+          query: {
+            query: "selection.referenceCandidates",
+            selection: {
+              type: "generatedReference",
+              bodyId: "body_cut_1",
+              stableId: edgeStableId,
+              expectedKind: "edge"
+            },
+            requiredOperation: scenario.commandOperation
+          }
+        });
+      const readEdgeCommandTargetReadiness = (
+        targetEngine: CadEngine = engine
+      ) =>
+        targetEngine.executeQuery({
+          version: "cadops.v1",
+          query: {
+            query: "topology.commandTargetReadiness",
+            target: {
+              type: "generatedReference",
+              bodyId: "body_cut_1",
+              stableId: edgeStableId,
+              expectedKind: "edge"
+            },
+            desiredOperation: scenario.commandOperation
+          }
+        });
+      const readSourceEditability = (targetEngine: CadEngine = engine) =>
+        readFeatureEditability(targetEngine, "feat_rect_1", {
+          kind: "extrude",
+          depth: 6
+        });
+      const readSurfaceSnapshot = (targetEngine: CadEngine = engine) => ({
+        structure: readProjectStructure(targetEngine),
+        health: readProjectHealth(targetEngine),
+        graph: readProjectDependencyGraph(targetEngine),
+        rebuildPlan: readProjectRebuildPlan(targetEngine),
+        referenceHealth: readReferenceHealth(targetEngine, {
+          type: "namedReference",
+          name: "cut_corner_u_min_v_min"
+        }),
+        selectionCandidates: readEdgeSelectionCandidates(targetEngine),
+        commandTargetReadiness: readEdgeCommandTargetReadiness(targetEngine),
+        editability: readSourceEditability(targetEngine)
+      });
+      const expectRoundTripSurfaces = async (
+        expectedSurface: ReturnType<typeof readSurfaceSnapshot>,
+        expectedHistory: ReturnType<typeof readTransactionHistory>
+      ) => {
+        const jsonRestored = importCadProjectJson(exportCadProjectJson(engine));
+        const wcadRestored = await importCadProjectWcad(
+          (await exportCadProjectWcad(engine)).bytes
+        );
+
+        for (const restored of [jsonRestored, wcadRestored]) {
+          expect(readSurfaceSnapshot(restored)).toEqual(expectedSurface);
+          expect(readTransactionHistory(restored)).toEqual(expectedHistory);
+        }
+      };
+
+      const beforeFinish = readSurfaceSnapshot();
+      const beforeHistory = readTransactionHistory(engine);
+
+      expect(beforeFinish.selectionCandidates).toMatchObject({
+        ok: true,
+        query: "selection.referenceCandidates",
+        status: "resolved",
+        candidates: [
           expect.objectContaining({
-            code: "FEATURE_EDIT_CONSUMED_BODY",
-            featureId: "feat_rect_1",
-            received: "feat_cut_chamfer"
+            commandable: true,
+            commandOperations: expect.arrayContaining([
+              "feature.chamfer",
+              "feature.fillet"
+            ])
+          })
+        ]
+      });
+      expect(beforeFinish.commandTargetReadiness).toMatchObject({
+        ok: true,
+        query: "topology.commandTargetReadiness",
+        status: "ready",
+        commandable: true,
+        supportedOperations: expect.arrayContaining([
+          "feature.chamfer",
+          "feature.fillet"
+        ])
+      });
+      expect(beforeFinish.editability).toMatchObject({
+        status: "editable",
+        dryRun: { status: "valid", willMutateDocument: false }
+      });
+
+      const result = engine.apply(scenario.op);
+      const afterFinish = readSurfaceSnapshot();
+      const afterFinishHistory = readTransactionHistory(engine);
+
+      if (scenario.kind === "chamfer") {
+        expect(getChamferFeature(engine, scenario.featureId)).toMatchObject({
+          bodyId: scenario.bodyId,
+          targetBodyId: "body_cut_1",
+          namedReference: "cut_corner_u_min_v_min",
+          distance: 0.1
+        });
+      } else {
+        expect(getFilletFeature(engine, scenario.featureId)).toMatchObject({
+          bodyId: scenario.bodyId,
+          targetBodyId: "body_cut_1",
+          namedReference: "cut_corner_u_min_v_min",
+          radius: 0.1
+        });
+      }
+      expect(result.transaction.diff.features).toMatchObject({
+        created: [expect.objectContaining({ id: scenario.featureId })],
+        bodiesCreated: [expect.objectContaining({ id: scenario.bodyId })]
+      });
+      expect(afterFinish.structure).toMatchObject({
+        features: expect.arrayContaining([
+          expect.objectContaining({
+            id: scenario.featureId,
+            kind: scenario.kind,
+            namedReference: "cut_corner_u_min_v_min",
+            source: expect.objectContaining({
+              namedReference: "cut_corner_u_min_v_min"
+            })
+          })
+        ]),
+        bodies: expect.arrayContaining([
+          expect.objectContaining({
+            id: "body_cut_1",
+            consumedByFeatureId: scenario.featureId
+          }),
+          expect.objectContaining({
+            id: scenario.bodyId,
+            source: expect.objectContaining({
+              type: scenario.sourceType,
+              namedReference: "cut_corner_u_min_v_min"
+            })
           })
         ])
-      }
-    });
-    expect(afterChamferHistory.transactionCount).toBe(
-      beforeHistory.transactionCount + 1
-    );
-    expect(afterChamferHistory.transactions).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          status: "committed",
-          ops: expect.arrayContaining([
+      });
+      expect(afterFinish.health[scenario.healthKey]).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            featureId: scenario.featureId,
+            targetBodyId: "body_cut_1",
+            namedReference: "cut_corner_u_min_v_min",
+            status: "healthy",
+            issues: []
+          })
+        ])
+      );
+      expect(afterFinish.graph.edges).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: "targets",
+            sourceFeatureId: scenario.featureId,
+            bodyId: "body_cut_1"
+          }),
+          expect.objectContaining({
+            kind: "names",
+            referenceName: "cut_corner_u_min_v_min",
+            stableId: edgeStableId
+          })
+        ])
+      );
+      expect(afterFinish.editability).toMatchObject({
+        status: "blocked",
+        rebuildReadiness: {
+          diagnostics: expect.arrayContaining([
             expect.objectContaining({
-              op: "feature.chamfer",
-              featureId: "feat_cut_chamfer"
+              code: "FEATURE_EDIT_CONSUMED_BODY",
+              featureId: "feat_rect_1",
+              received: scenario.featureId
             })
           ])
+        }
+      });
+      expect(afterFinishHistory.transactionCount).toBe(
+        beforeHistory.transactionCount + 1
+      );
+      expect(afterFinishHistory.transactions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            status: "committed",
+            ops: expect.arrayContaining([
+              expect.objectContaining({
+                op: scenario.commandOperation,
+                featureId: scenario.featureId
+              })
+            ])
+          })
+        ])
+      );
+
+      expect(engine.undo()).toBeDefined();
+      const afterUndoHistory = readTransactionHistory(engine);
+
+      expect(readSurfaceSnapshot()).toEqual(beforeFinish);
+      expect(afterUndoHistory.transactions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            status: "undone",
+            ops: expect.arrayContaining([
+              expect.objectContaining({
+                op: scenario.commandOperation,
+                featureId: scenario.featureId
+              })
+            ])
+          })
+        ])
+      );
+      await expectRoundTripSurfaces(beforeFinish, afterUndoHistory);
+
+      expect(engine.redo()).toBeDefined();
+      expect(readSurfaceSnapshot()).toEqual(afterFinish);
+      expect(readTransactionHistory(engine)).toEqual(afterFinishHistory);
+      await expectRoundTripSurfaces(afterFinish, afterFinishHistory);
+      expect(
+        JSON.stringify({
+          beforeFinish,
+          afterFinish,
+          afterFinishHistory,
+          transaction: result.transaction
         })
-      ])
-    );
-
-    expect(engine.undo()).toBeDefined();
-    const afterUndoHistory = readTransactionHistory(engine);
-
-    expect(readSurfaceSnapshot()).toEqual(beforeChamfer);
-    expect(afterUndoHistory.transactions).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          status: "undone",
-          ops: expect.arrayContaining([
-            expect.objectContaining({
-              op: "feature.chamfer",
-              featureId: "feat_cut_chamfer"
-            })
-          ])
-        })
-      ])
-    );
-    await expectRoundTripSurfaces(beforeChamfer, afterUndoHistory);
-
-    expect(engine.redo()).toBeDefined();
-    expect(readSurfaceSnapshot()).toEqual(afterChamfer);
-    expect(readTransactionHistory(engine)).toEqual(afterChamferHistory);
-    await expectRoundTripSurfaces(afterChamfer, afterChamferHistory);
-    expect(
-      JSON.stringify({
-        beforeChamfer,
-        afterChamfer,
-        afterChamferHistory,
-        transaction: result.transaction
-      })
-    ).not.toMatch(
-      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|vertexIndex|checkpointEntityId|checkpoint-local/i
-    );
+      ).not.toMatch(
+        /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|vertexIndex|checkpointEntityId|checkpoint-local/i
+      );
+    }
   });
 
   it("repairs stale named references to command-ready V12 boolean result references", () => {

@@ -2909,11 +2909,11 @@ The planned pillars are:
 5. **Rebuild and repair hardening** - upstream edits, undo/redo, save/open, and
    explicit repair flows keep topology-backed references honest and query
    surfaces consistent. The current V14 hardening proof blocks upstream source
-   edits through supported result-edge chamfer chains with structured
+   edits through supported result-edge chamfer/fillet chains with structured
    downstream-consumer diagnostics, no source mutation, JSON/`.wcad`
    preservation, browser-visible action guidance, and cad-core query-surface
    alignment across undo/redo and JSON/`.wcad` round trips for the supported
-   result-edge chamfer chain. Supported result-body hole chains now have the
+   result-edge finish chain. Supported result-body hole chains now have the
    same no-mutation source-edit blocker proof in cad-core and browser-visible
    downstream-hole guidance after `.wcad` round trip. UI-created result-body
    holes also use a projected-document runtime preflight so geometry execution

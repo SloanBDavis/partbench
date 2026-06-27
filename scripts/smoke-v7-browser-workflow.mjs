@@ -1960,6 +1960,8 @@ async function v7BrowserWorkflowSmoke({
       featureName: ids.v14EdgeFilletName,
       referenceName: ids.v14EdgeFilletReferenceName
     });
+    await verifyV14ResultEdgeUpstreamEditBlocked({ operation: "fillet" });
+    await verifyV14ResultEdgeUndoRedoEditability({ operation: "fillet" });
     await verifyV14ResultCutWallEdgeFinishProjectJsonSource(
       "V14 result cut-wall fillet source JSON",
       {
@@ -2892,11 +2894,63 @@ async function v7BrowserWorkflowSmoke({
 
   async function selectV14SourceBodyInInspector() {
     openTreePanel();
-    clickButtonContaining(
-      getElementByAriaLabel("Model structure"),
-      ids.v14SourceBodyName
+    clickV14SourceBodyRow();
+    await waitFor(() => {
+      const inspector = getElementByAriaLabel("Inspector");
+      const ready = isV14SourceBodySelectedInInspector(inspector);
+
+      if (!ready) {
+        throw new Error(compactText(inspector.textContent, 900));
+      }
+
+      return true;
+    }, "V14 source body selected in Inspector");
+  }
+
+  function isV14SourceBodySelectedInInspector(inspector) {
+    return (
+      includesText(inspector, ids.v14SourceFeatureId) &&
+      includesText(inspector, ids.v14SourceBodyId)
     );
-    openSelectionPanel();
+  }
+
+  function clickV14SourceBodyRow() {
+    clickModelStructureBodyRow({
+      bodyName: ids.v14SourceBodyName,
+      bodyStatus: "Used by later feature"
+    });
+  }
+
+  function clickModelStructureBodyRow({ bodyName, bodyStatus }) {
+    const structure = getElementByAriaLabel("Model structure");
+    const bodyButton = [
+      ...structure.querySelectorAll("button.model-story-row.body")
+    ]
+      .filter((button) => {
+        const text = normalize(button.textContent);
+
+        return (
+          text.includes("Body") &&
+          text.includes(bodyName) &&
+          text.includes(bodyStatus)
+        );
+      })
+      .sort(
+        (left, right) =>
+          normalize(left.textContent).length -
+          normalize(right.textContent).length
+      )[0];
+
+    if (!bodyButton) {
+      throw new Error(
+        `Could not find body row ${bodyName}: ${compactText(
+          structure.textContent,
+          900
+        )}`
+      );
+    }
+
+    clickEnabledButton(bodyButton, bodyName);
   }
 
   function clickHistoryControl(text) {
@@ -2904,13 +2958,21 @@ async function v7BrowserWorkflowSmoke({
   }
 
   async function verifyV14ResultEdgeUpstreamEditBlocked({
+    operation = "chamfer",
     passCheck = true
   } = {}) {
     await selectV14SourceBodyInInspector();
+    const operationLabel = operation === "fillet" ? "fillet" : "chamfer";
 
     await waitFor(() => {
       const inspector = getElementByAriaLabel("Inspector");
-      const depthControl = getControlByLabel(inspector, "Depth (mm)");
+      if (!isV14SourceBodySelectedInInspector(inspector)) {
+        openTreePanel();
+        clickV14SourceBodyRow();
+        throw new Error(compactText(inspector.textContent, 900));
+      }
+
+      const depthControl = queryControlByLabel(inspector, "Depth (mm)");
       const applyButton = getButtonByText(inspector, "Apply extrude");
       const text = compactText(inspector.textContent, 1200);
       const downstreamEditGuidance =
@@ -2932,15 +2994,62 @@ async function v7BrowserWorkflowSmoke({
       }
 
       return true;
-    }, "V14 upstream source edit blocked by downstream chamfer");
+    }, `V14 upstream source edit blocked by downstream ${operationLabel}`);
 
     if (passCheck) {
+      passV14ResultEdgeUpstreamEditBlocked({ operation });
+    }
+  }
+
+  function passV14ResultEdgeUpstreamEditBlocked({ operation }) {
+    if (operation === "fillet") {
       pass(
-        "v14-result-edge-upstream-edit-blocked-browser",
-        "V14 upstream source edit is blocked with an action-oriented downstream chamfer diagnostic",
+        "v14-result-edge-fillet-upstream-edit-blocked-browser",
+        "V14 upstream source edit is blocked with an action-oriented downstream fillet diagnostic",
         ids.v14SourceFeatureId
       );
+      return;
     }
+
+    pass(
+      "v14-result-edge-upstream-edit-blocked-browser",
+      "V14 upstream source edit is blocked with an action-oriented downstream chamfer diagnostic",
+      ids.v14SourceFeatureId
+    );
+  }
+
+  function passV14ResultEdgeUndoEditable({ operation }) {
+    if (operation === "fillet") {
+      pass(
+        "v14-result-edge-fillet-undo-editable-browser",
+        "V14 Undo removes the result-edge fillet blocker and restores source edit controls",
+        ids.v14SourceFeatureId
+      );
+      return;
+    }
+
+    pass(
+      "v14-result-edge-undo-editable-browser",
+      "V14 Undo removes the result-edge chamfer blocker and restores source edit controls",
+      ids.v14SourceFeatureId
+    );
+  }
+
+  function passV14ResultEdgeRedoBlocked({ operation }) {
+    if (operation === "fillet") {
+      pass(
+        "v14-result-edge-fillet-redo-blocked-browser",
+        "V14 Redo restores the result-edge fillet blocker with action-oriented guidance",
+        ids.v14SourceFeatureId
+      );
+      return;
+    }
+
+    pass(
+      "v14-result-edge-redo-blocked-browser",
+      "V14 Redo restores the result-edge chamfer blocker with action-oriented guidance",
+      ids.v14SourceFeatureId
+    );
   }
 
   async function verifyV14ResultHoleUpstreamEditBlocked() {
@@ -2948,7 +3057,7 @@ async function v7BrowserWorkflowSmoke({
 
     await waitFor(() => {
       const inspector = getElementByAriaLabel("Inspector");
-      const depthControl = getControlByLabel(inspector, "Depth (mm)");
+      const depthControl = queryControlByLabel(inspector, "Depth (mm)");
       const applyButton = getButtonByText(inspector, "Apply extrude");
       const text = compactText(inspector.textContent, 1200);
       const downstreamEditGuidance =
@@ -2979,14 +3088,18 @@ async function v7BrowserWorkflowSmoke({
     );
   }
 
-  async function verifyV14ResultEdgeUndoRedoEditability() {
+  async function verifyV14ResultEdgeUndoRedoEditability({
+    operation = "chamfer"
+  } = {}) {
+    const operationLabel = operation === "fillet" ? "fillet" : "chamfer";
+
     clickHistoryControl("Undo");
     await selectV14SourceBodyInInspector();
 
     await waitFor(() => {
       const inspector = getElementByAriaLabel("Inspector");
-      const depthControl = getControlByLabel(inspector, "Depth (mm)");
-      const sideControl = getControlByLabel(inspector, "Side");
+      const depthControl = queryControlByLabel(inspector, "Depth (mm)");
+      const sideControl = queryControlByLabel(inspector, "Side");
       const text = compactText(inspector.textContent, 1200);
       const ready =
         depthControl instanceof HTMLInputElement &&
@@ -3007,22 +3120,17 @@ async function v7BrowserWorkflowSmoke({
       }
 
       return true;
-    }, "V14 result-edge chamfer undo restores source editability");
+    }, `V14 result-edge ${operationLabel} undo restores source editability`);
 
-    pass(
-      "v14-result-edge-undo-editable-browser",
-      "V14 Undo removes the result-edge chamfer blocker and restores source edit controls",
-      ids.v14SourceFeatureId
-    );
+    passV14ResultEdgeUndoEditable({ operation });
 
     clickHistoryControl("Redo");
-    await verifyV14ResultEdgeUpstreamEditBlocked({ passCheck: false });
+    await verifyV14ResultEdgeUpstreamEditBlocked({
+      operation,
+      passCheck: false
+    });
 
-    pass(
-      "v14-result-edge-redo-blocked-browser",
-      "V14 Redo restores the result-edge chamfer blocker with action-oriented guidance",
-      ids.v14SourceFeatureId
-    );
+    passV14ResultEdgeRedoBlocked({ operation });
   }
 
   async function createV14TopologyBackedResultFaceSketch({
