@@ -400,7 +400,9 @@ function createActionsFromModeling(
 
 function isBlockingCommandReadinessReason(reason: string | undefined): boolean {
   const normalized = reason?.toLowerCase() ?? "";
-  return normalized.includes("consumed");
+  return (
+    normalized.includes("consumed") || normalized.includes("downstream result")
+  );
 }
 
 function createActionFromModeling(

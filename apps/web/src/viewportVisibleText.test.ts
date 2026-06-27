@@ -36,4 +36,15 @@ describe("viewport visible text", () => {
     );
     expect(message).not.toMatch(/\b(feat_[a-z0-9_]+|body_[a-z0-9_]+)\b/i);
   });
+
+  it("formats consumed body diagnostics without raw source ids", () => {
+    expect(
+      formatVisibleDiagnosticMessage(
+        "Selected body body_rect is consumed by feature feat_cut."
+      )
+    ).toBe("Selected body already has a downstream result.");
+    expect(
+      formatVisibleDiagnosticMessage("Body body_rect was consumed by feat_cut.")
+    ).toBe("Selected body already has a downstream result.");
+  });
 });

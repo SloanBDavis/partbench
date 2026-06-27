@@ -566,15 +566,15 @@ describe("modeling action helpers", () => {
 
     expect(actionById(actions, "reference.name")).toMatchObject({
       available: false,
-      reason: "Body body_rect was consumed by feat_cut."
+      reason: "Selected body already has a downstream result."
     });
     expect(actionById(actions, "sketch.createOnFace")).toMatchObject({
       available: false,
-      reason: "Body body_rect was consumed by feat_cut."
+      reason: "Selected body already has a downstream result."
     });
     expect(actionById(bodyActions, "sketch.createOnFace")).toMatchObject({
       available: false,
-      reason: "Body body_rect was consumed by feat_cut.",
+      reason: "Selected body already has a downstream result.",
       target: { eligibleFaceStableIds: [] }
     });
   });

@@ -2610,15 +2610,14 @@ async function v7BrowserWorkflowSmoke({
       const depthControl = getControlByLabel(inspector, "Depth (mm)");
       const applyButton = getButtonByText(inspector, "Apply extrude");
       const text = compactText(inspector.textContent, 1200);
+      const downstreamEditGuidance =
+        "This source feature cannot be edited because a downstream result depends on it.";
       const ready =
         depthControl instanceof HTMLInputElement &&
         depthControl.disabled &&
         applyButton?.disabled === true &&
         includesText(inspector, "Feature parameters unavailable") &&
-        includesText(
-          inspector,
-          `downstream result body ${ids.v14TargetBodyId} is consumed by feature`
-        ) &&
+        includesText(inspector, downstreamEditGuidance) &&
         includesText(
           inspector,
           "Edit or repair that downstream feature before changing the original source."
@@ -2649,15 +2648,14 @@ async function v7BrowserWorkflowSmoke({
       const depthControl = getControlByLabel(inspector, "Depth (mm)");
       const applyButton = getButtonByText(inspector, "Apply extrude");
       const text = compactText(inspector.textContent, 1200);
+      const downstreamEditGuidance =
+        "This source feature cannot be edited because a downstream result depends on it.";
       const ready =
         depthControl instanceof HTMLInputElement &&
         depthControl.disabled &&
         applyButton?.disabled === true &&
         includesText(inspector, "Feature parameters unavailable") &&
-        includesText(
-          inspector,
-          `downstream result body ${ids.v14TargetBodyId} is consumed by feature ${ids.v14HoleFeatureId}`
-        ) &&
+        includesText(inspector, downstreamEditGuidance) &&
         includesText(
           inspector,
           "Edit or repair that downstream feature before changing the original source."
@@ -4746,11 +4744,13 @@ async function v7BrowserWorkflowSmoke({
     await waitFor(() => {
       const inspector = getElementByAriaLabel("Inspector");
       const modelingContext = getSectionByAriaLabel("Modeling context");
+      const consumedGuidance = "Selected body already has a downstream result.";
       const ready =
         isSelectionPanelOpen() &&
         includesText(inspector, "Selection body consumed") &&
-        includesText(inspector, ids.cutFeatureId) &&
-        includesText(modelingContext, "Selection body consumed");
+        includesText(inspector, consumedGuidance) &&
+        includesText(modelingContext, "Selection body consumed") &&
+        includesText(modelingContext, consumedGuidance);
 
       if (!ready) {
         throw new Error(

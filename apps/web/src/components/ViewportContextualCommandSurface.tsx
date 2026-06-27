@@ -11,6 +11,7 @@ import type {
   ViewportTwoTargetMeasurementView
 } from "../viewportTwoTargetMeasurement";
 import { shouldCancelViewportTransientState } from "../viewportKeyboard";
+import { formatVisibleDiagnosticMessage } from "../viewportVisibleText";
 
 type ExpandedContextualSection = "inspect" | "measure" | "name" | "references";
 
@@ -112,7 +113,11 @@ export function ViewportContextualCommandSurface({
               key={action.id}
               type="button"
               disabled={disabled || action.disabled}
-              title={action.reason ?? action.label}
+              title={
+                action.reason
+                  ? formatVisibleDiagnosticMessage(action.reason)
+                  : action.label
+              }
               aria-disabled={disabled || action.disabled}
               onClick={() => handleAction(action)}
             >
@@ -123,7 +128,7 @@ export function ViewportContextualCommandSurface({
       ) : null}
       {surface.diagnostic ? (
         <small className="viewport-contextual-diagnostic">
-          {surface.diagnostic}
+          {formatVisibleDiagnosticMessage(surface.diagnostic)}
         </small>
       ) : null}
       {twoTargetMeasurement?.firstTarget && expanded !== "measure" ? (
@@ -402,7 +407,7 @@ function TwoTargetMeasurementSection({
         : null}
       {view.diagnostics[0] && firstTarget ? (
         <small className="viewport-contextual-diagnostic">
-          {view.diagnostics[0].message}
+          {formatVisibleDiagnosticMessage(view.diagnostics[0].message)}
         </small>
       ) : null}
       <div className="viewport-contextual-mini-actions">
@@ -471,7 +476,7 @@ function InspectSection({
         </dl>
         {inspect.diagnostics[0] ? (
           <small className="viewport-contextual-diagnostic">
-            {inspect.diagnostics[0].message}
+            {formatVisibleDiagnosticMessage(inspect.diagnostics[0].message)}
           </small>
         ) : null}
       </div>
@@ -486,7 +491,7 @@ function InspectSection({
       </div>
       {surface.diagnostic ? (
         <small className="viewport-contextual-diagnostic">
-          {surface.diagnostic}
+          {formatVisibleDiagnosticMessage(surface.diagnostic)}
         </small>
       ) : (
         <small>
@@ -533,9 +538,9 @@ function ReferenceSection({
               type="button"
               disabled={disabled || !action.commandable}
               title={
-                action.diagnostic?.message ??
-                action.commandOperationLabels.join(", ") ??
-                action.label
+                action.diagnostic?.message
+                  ? formatVisibleDiagnosticMessage(action.diagnostic.message)
+                  : (action.commandOperationLabels.join(", ") ?? action.label)
               }
               onClick={() => onSelectReference?.(action.reference)}
             >

@@ -235,14 +235,14 @@ describe("namedReferenceRepairUi", () => {
 
     expect(state.status).toBe("blocked");
     expect(state.status === "blocked" ? state.message : "").toBe(
-      "Body body_rect was consumed by feat_cut."
+      "Selected body already has a downstream result."
     );
     expect(
       state.status === "blocked" ? state.diagnostics[1] : undefined
     ).toMatchObject({
       code: "CONSUMED_SELECTION_BODY",
       source: "selection.referenceCandidates",
-      message: "Body body_rect was consumed by feat_cut."
+      message: "Selected body already has a downstream result."
     });
   });
 

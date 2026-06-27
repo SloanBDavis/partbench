@@ -426,8 +426,8 @@ describe("viewport contextual commands", () => {
     ]);
     expect(surface.actions.every((action) => action.disabled)).toBe(true);
     expect(surface.actions.map((action) => action.reason)).toEqual([
-      "Selected body body_rect is consumed by feature feat_cut.",
-      "Selected body body_rect is consumed by feature feat_cut."
+      "Selected body already has a downstream result.",
+      "Selected body already has a downstream result."
     ]);
   });
 

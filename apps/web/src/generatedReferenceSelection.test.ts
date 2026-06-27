@@ -507,7 +507,7 @@ describe("generated reference selection helpers", () => {
       )
     ).toEqual({
       available: false,
-      message: "Body body_1 was consumed by feat_cut."
+      message: "Selected body already has a downstream result."
     });
   });
 });

@@ -976,7 +976,8 @@ describe("ModelingActionsPanel", () => {
     );
 
     expect(markup).toContain("Selection body consumed");
-    expect(markup).toContain("Body body_rect was consumed by feat_cut.");
+    expect(markup).toContain("Selected body already has a downstream result.");
+    expect(markup).not.toContain("feat_cut");
     expect(markup).toContain("Name reference");
   });
 

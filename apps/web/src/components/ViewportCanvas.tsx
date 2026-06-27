@@ -25,6 +25,7 @@ import {
   type ViewportStandardViewId
 } from "../viewportCamera";
 import { shouldCancelViewportTransientState } from "../viewportKeyboard";
+import { formatVisibleDiagnosticMessage } from "../viewportVisibleText";
 
 export interface ViewportCanvasPick {
   readonly camera: RenderCamera;
@@ -283,7 +284,7 @@ export function ViewportCanvas({
             aria-label="Viewport status"
           >
             <strong>{status.label}</strong>
-            <span>{status.detail}</span>
+            <span>{formatVisibleDiagnosticMessage(status.detail)}</span>
           </div>
         ) : null}
         {sketchOverlay?.({ camera, size })}

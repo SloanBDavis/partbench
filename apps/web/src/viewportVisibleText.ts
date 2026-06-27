@@ -27,6 +27,18 @@ const INTERNAL_DIAGNOSTIC_COPY_REPLACEMENTS: readonly [RegExp, string][] = [
     "This feature cannot be edited because its result already has a downstream result."
   ],
   [
+    /\bSelected body\s+\S+\s+is consumed by feature\s+\S+\./gi,
+    "Selected body already has a downstream result."
+  ],
+  [
+    /\bSelected body is consumed by feature\s+\S+\./gi,
+    "Selected body already has a downstream result."
+  ],
+  [
+    /\bBody\s+\S+\s+was consumed by\s+\S+\./gi,
+    "Selected body already has a downstream result."
+  ],
+  [
     /\bdoes not expose command-ready semantic generated references\b/gi,
     "does not expose saved faces or edges for modeling actions"
   ],

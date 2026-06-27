@@ -86,7 +86,7 @@ describe("viewportSelectionDisplay", () => {
     });
 
     expect(display.detail).toBe(
-      "Selected body body_rect is consumed by feature feat_cut."
+      "Selected body already has a downstream result."
     );
     expect(display.tone).toBe("warning");
     expect(display.commandOperations).toEqual([]);
@@ -94,7 +94,7 @@ describe("viewportSelectionDisplay", () => {
       {
         code: "CONSUMED_SELECTION_BODY",
         status: "consumed",
-        message: "Selected body body_rect is consumed by feature feat_cut."
+        message: "Selected body already has a downstream result."
       }
     ]);
   });

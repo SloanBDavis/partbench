@@ -50,7 +50,8 @@ describe("ViewportContextualCommandSurface", () => {
 
     expect(markup).toContain("Chamfer");
     expect(markup).toContain('disabled=""');
-    expect(markup).toContain("Selected body is consumed by feature feat_cut.");
+    expect(markup).toContain("Selected body already has a downstream result.");
+    expect(markup).not.toContain("feature feat_cut");
     expect(markup).not.toContain("viewport-reference-action");
   });
 

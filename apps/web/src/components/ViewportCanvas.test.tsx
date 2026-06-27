@@ -140,7 +140,8 @@ describe("ViewportCanvas", () => {
     expect(markup).toContain(
       'class="viewport-frame viewport-frame-with-contextual viewport-frame-with-status"'
     );
-    expect(markup).toContain("Selected body body_rect is consumed");
+    expect(markup).toContain("Selected body already has a downstream result.");
+    expect(markup).not.toContain("feature feat_cut");
     expect(markup).toContain('aria-label="Viewport contextual commands"');
   });
 
