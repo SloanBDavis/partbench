@@ -21,6 +21,7 @@ import type {
   PartId
 } from "@web-cad/cad-protocol";
 
+import { filterSupportedBooleanBodyTargetOperations } from "./booleanTargetSupport";
 import type { GeneratedReferencesDocument } from "./generatedReferences";
 import { resolveTopologyAnchorGeneratedReferenceFromSourceRole } from "./topologyAnchorGeneratedReferenceResolution";
 
@@ -51,6 +52,7 @@ export function createTopologyAnchorReferenceHealthEntries({
 
   return topologyIdentity.anchors.map((anchor) =>
     createTopologyAnchorReferenceHealth({
+      document,
       anchor,
       checkpoint: checkpointsById.get(anchor.checkpointId),
       match: matchesByAnchorId.get(anchor.anchorId),
@@ -118,11 +120,13 @@ export function createTopologyAnchorReferenceChangesForBody({
 }
 
 function createTopologyAnchorReferenceHealth({
+  document,
   anchor,
   checkpoint,
   match,
   generatedReference
 }: {
+  readonly document?: GeneratedReferencesDocument;
   readonly anchor: CadTopologyAnchorSourceRecord;
   readonly checkpoint?: CadTopologyCheckpointSourceRecord;
   readonly match?: CadTopologyMatchResult;
@@ -144,7 +148,8 @@ function createTopologyAnchorReferenceHealth({
   const commandOperations = createTopologyAnchorCommandOperations(
     anchor,
     status,
-    resolvedReference
+    resolvedReference,
+    document
   );
 
   return {
@@ -179,6 +184,66 @@ function createTopologyAnchorReferenceHealth({
 }
 
 function createTopologyAnchorCommandOperations(
+  anchor: CadTopologyAnchorSourceRecord,
+  status: CadReferenceHealthStatus,
+  generatedReference?: CadGeneratedReference,
+  document?: GeneratedReferencesDocument
+): readonly CadSelectionReferenceOperation[] {
+  if (status !== "active") {
+    return [];
+  }
+
+  if (anchor.entityKind === "body") {
+    return filterTopologyAnchorBodyTargetCommandOperations({
+      document,
+      anchor,
+      operations: [
+        "feature.extrudeCutTarget",
+        "feature.extrudeAddTarget",
+        "feature.holeTarget"
+      ]
+    });
+  }
+
+  if (generatedReference) {
+    return generatedReference.eligibleOperations.filter(
+      (operation) =>
+        operation === "feature.measureReference" ||
+        operation === "feature.selectReference"
+    ) as readonly CadSelectionReferenceOperation[];
+  }
+
+  if (!anchor.stableId) {
+    return [];
+  }
+
+  return canMeasureTopologyAnchor(anchor)
+    ? ["feature.measureReference", "feature.selectReference"]
+    : ["feature.selectReference"];
+}
+
+function filterTopologyAnchorBodyTargetCommandOperations({
+  document,
+  anchor,
+  operations
+}: {
+  readonly document?: GeneratedReferencesDocument;
+  readonly anchor: CadTopologyAnchorSourceRecord;
+  readonly operations: readonly CadSelectionReferenceOperation[];
+}): readonly CadSelectionReferenceOperation[] {
+  if (!document) {
+    return operations;
+  }
+
+  return filterSupportedBooleanBodyTargetOperations(
+    document.features,
+    anchor.bodyId,
+    anchor.anchorId,
+    operations
+  );
+}
+
+function createGenericTopologyAnchorCommandOperations(
   anchor: CadTopologyAnchorSourceRecord,
   status: CadReferenceHealthStatus,
   generatedReference?: CadGeneratedReference
@@ -256,7 +321,7 @@ export function createTopologyAnchorCommandOperationsForSelection(
   anchor: CadTopologyAnchorSourceRecord,
   status: CadReferenceHealthStatus
 ): readonly CadSelectionReferenceOperation[] {
-  return createTopologyAnchorCommandOperations(anchor, status);
+  return createGenericTopologyAnchorCommandOperations(anchor, status);
 }
 
 function createTopologyAnchorDiagnostics(

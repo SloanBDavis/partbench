@@ -152,6 +152,13 @@ function chooseReadinessStatus(input: {
 
   if (
     input.query.target.type === "topologyAnchor" &&
+    input.selectionResult.status === "non-commandable"
+  ) {
+    return "non-commandable";
+  }
+
+  if (
+    input.query.target.type === "topologyAnchor" &&
     input.query.snapshot === undefined &&
     input.selectionResult.status !== "missing" &&
     input.selectionResult.status !== "stale"

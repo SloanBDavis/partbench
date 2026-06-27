@@ -845,10 +845,11 @@ function createEdgeFinishHealth(
   } else if (!isSupportedEdgeFinishTargetFeature(targetFeature)) {
     issues.push({
       code: "UNSUPPORTED_BODY_REFERENCES",
-      message: `${formatEdgeFinishFeatureLabel(feature)} features currently support one stable generated edge on an active rectangle or circle newBody extrude target body.`,
+      message: `${formatEdgeFinishFeatureLabel(feature)} features currently support one stable generated edge on an active rectangle/circle newBody extrude target body or a supported rectangle cut result body.`,
       featureId: feature.id,
       bodyId: feature.targetBodyId,
-      expected: "active rectangle/circle newBody extrude target body",
+      expected:
+        "active rectangle/circle newBody extrude target body or supported rectangle cut result body",
       received: describeFeatureForHealth(targetFeature)
     });
   } else {
@@ -1853,8 +1854,9 @@ function isSupportedEdgeFinishTargetFeature(
 ): boolean {
   return (
     feature.kind === "extrude" &&
-    feature.operationMode === "newBody" &&
-    isSupportedCutTargetProfileKind(feature.profileKind)
+    ((feature.operationMode === "newBody" &&
+      isSupportedCutTargetProfileKind(feature.profileKind)) ||
+      (feature.operationMode === "cut" && feature.profileKind === "rectangle"))
   );
 }
 

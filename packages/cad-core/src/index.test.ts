@@ -15746,6 +15746,16 @@ describe("cad-core", () => {
       targetBodyId: "body_cut_1",
       edgeStableId
     });
+    expect(readProjectHealth(chamferEngine).authoredChamfers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          featureId: "feat_cut_chamfer",
+          targetBodyId: "body_cut_1",
+          status: "healthy",
+          issues: []
+        })
+      ])
+    );
 
     const filletEngine = createCutEngine();
     const filletResult = filletEngine.apply({
@@ -15769,6 +15779,16 @@ describe("cad-core", () => {
       targetBodyId: "body_cut_1",
       edgeStableId
     });
+    expect(readProjectHealth(filletEngine).authoredFillets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          featureId: "feat_cut_fillet",
+          targetBodyId: "body_cut_1",
+          status: "healthy",
+          issues: []
+        })
+      ])
+    );
   });
 
   it("creates edge-finish features from named rectangle cut-wall result edges", () => {
@@ -16269,7 +16289,9 @@ describe("cad-core", () => {
         expect.objectContaining({
           featureId: "feat_cut_chamfer",
           targetBodyId: "body_cut_1",
-          namedReference: "cut_corner_u_min_v_min"
+          namedReference: "cut_corner_u_min_v_min",
+          status: "healthy",
+          issues: []
         })
       ])
     );
@@ -33484,6 +33506,132 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId|checkpoint-local/i
     );
     expect(exportCadProjectJson(engine)).toBe(beforeJson);
+  });
+
+  it("keeps circle-origin body-anchor add readiness blocked across selection, health, and snapshot proof", () => {
+    const engine = createCircleExtrudeEngine();
+    engine.applyBatch(createV14CircleSidePlaneHoleChainOps().slice(0, 5));
+    const beforeJson = exportCadProjectJson(engine);
+    const circleBodySnapshot = createTopologyMatchSnapshotInput({
+      checkpointId: "checkpoint_circle_1",
+      bodyId: "body_circle_1",
+      sourceFeatureId: "feat_circle_1",
+      entities: [
+        {
+          localId: "checkpoint-local-circle-body",
+          kind: "body",
+          signature: "circle_body_signature",
+          bounds: { min: [-2, -2, 0], max: [2, 2, 4] }
+        }
+      ]
+    });
+    const addAnchorReadiness = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.anchorCommandReadiness",
+        anchorId: "anchor_body_circle",
+        requiredOperation: "feature.extrudeAddTarget",
+        snapshot: circleBodySnapshot
+      }
+    });
+    const addReadiness = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.commandTargetReadiness",
+        target: { type: "topologyAnchor", anchorId: "anchor_body_circle" },
+        desiredOperation: "feature.extrudeAddTarget",
+        snapshot: circleBodySnapshot
+      }
+    });
+    const cutReadiness = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.commandTargetReadiness",
+        target: { type: "topologyAnchor", anchorId: "anchor_body_circle" },
+        desiredOperation: "feature.extrudeCutTarget"
+      }
+    });
+    const health = readReferenceHealth(engine, {
+      type: "topologyAnchor",
+      anchorId: "anchor_body_circle"
+    });
+
+    expect(addAnchorReadiness).toMatchObject({
+      ok: true,
+      query: "topology.anchorCommandReadiness",
+      status: "non-commandable",
+      commandable: false,
+      commandOperations: ["feature.extrudeCutTarget", "feature.holeTarget"],
+      diagnostics: [
+        expect.objectContaining({
+          code: "TOPOLOGY_COMMAND_ELIGIBILITY_DEFERRED",
+          expected: "feature.extrudeAddTarget",
+          received: "feature.extrudeCutTarget, feature.holeTarget"
+        })
+      ]
+    });
+    expect(addReadiness).toMatchObject({
+      ok: true,
+      query: "topology.commandTargetReadiness",
+      status: "non-commandable",
+      commandable: false,
+      supportedOperations: ["feature.extrudeCutTarget", "feature.holeTarget"],
+      operationSummaries: expect.arrayContaining([
+        expect.objectContaining({
+          operation: "feature.extrudeAddTarget",
+          status: "non-commandable",
+          commandable: false
+        })
+      ]),
+      candidates: [
+        expect.objectContaining({
+          target: expect.objectContaining({
+            bodyId: "body_circle_cut",
+            topologyAnchorId: "anchor_body_circle"
+          }),
+          commandOperations: ["feature.extrudeCutTarget", "feature.holeTarget"]
+        })
+      ],
+      diagnostics: [
+        expect.objectContaining({
+          code: "TOPOLOGY_COMMAND_ELIGIBILITY_DEFERRED",
+          expected: "feature.extrudeAddTarget",
+          received: "feature.extrudeCutTarget, feature.holeTarget"
+        })
+      ]
+    });
+    expect(cutReadiness).toMatchObject({
+      ok: true,
+      query: "topology.commandTargetReadiness",
+      status: "ready",
+      commandable: true,
+      supportedOperations: expect.arrayContaining([
+        "feature.extrudeCutTarget",
+        "feature.holeTarget"
+      ])
+    });
+    expect(cutReadiness).toMatchObject({
+      supportedOperations: expect.not.arrayContaining([
+        "feature.extrudeAddTarget"
+      ])
+    });
+    expect(health).toMatchObject({
+      status: "active",
+      referenceHealth: [
+        expect.objectContaining({
+          source: "topologyAnchor",
+          commandable: true,
+          commandOperations: ["feature.extrudeCutTarget", "feature.holeTarget"],
+          topologyAnchorId: "anchor_body_circle"
+        })
+      ]
+    });
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+    expect(
+      JSON.stringify({ addAnchorReadiness, addReadiness, cutReadiness, health })
+    ).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId|checkpoint-local/i
+    );
   });
 
   it("reports V14 promotion, checkpoint evidence, and repair requirements without mutating source", () => {

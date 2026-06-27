@@ -82,7 +82,10 @@ These constraints remain active:
     plus result-body hole preflight failures, downstream edit blockers,
     consumed-target commandability messages, and boolean target details use
     action-oriented product copy instead of internal implementation labels or
-    raw source IDs.
+    raw source IDs. Cad-core command-target readiness, topology-anchor
+    readiness, reference health, and project health now share the same V14
+    support matrix, so circle-origin topology body anchors stay cut/hole-ready
+    while add stays blocked until deliberately implemented.
     Completed V8, V9, V10, V11, V12, and V13
     tranche records below remain historical release records and compatibility
     guardrails. Do not re-open those releases unless the user explicitly asks
@@ -2874,7 +2877,11 @@ The planned pillars are:
    hole display geometry against a projected document before source mutation,
    and the browser smoke proves both supported hole paths reach
    display-geometry-ready state without a display geometry issue.
-   Unsupported or unanchored result bodies remain blocked.
+   Unsupported or unanchored result bodies remain blocked. Cad-core
+   command-target readiness, topology-anchor readiness, reference health, and
+   project health share the same support matrix, including non-commandable
+   circle-origin add targets instead of optimistic add affordances that fail
+   during command validation.
 4. **Topology-backed edge finishing** - eligible result-body edge anchors can
    drive chamfer and fillet where cad-core validators and geometry execution
    prove the target. The V14 browser smoke now proves the first real

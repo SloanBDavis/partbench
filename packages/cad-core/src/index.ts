@@ -157,6 +157,10 @@ import {
   sortTransactions
 } from "./transactionHistory";
 import {
+  createSupportedBooleanBodyTargetOperations,
+  filterSupportedBooleanBodyTargetOperations
+} from "./booleanTargetSupport";
+import {
   createBodyGeneratedReferences,
   type GeneratedReferenceValidationError,
   resolveGeneratedReference,
@@ -1401,7 +1405,8 @@ export class CadEngine {
             createTopologyAnchorProofCommandOperations(
               this.#document,
               proof,
-              context.bodyId
+              context.bodyId,
+              context.anchorId
             ),
           selectionResult
         });
@@ -1438,7 +1443,8 @@ export class CadEngine {
                   createTopologyAnchorProofCommandOperations(
                     this.#document,
                     proof,
-                    context.bodyId
+                    context.bodyId,
+                    context.anchorId
                   ),
                 selectionResult
               })
@@ -11600,8 +11606,17 @@ function validateEdgeGeneratedReference(
 function createTopologyAnchorProofCommandOperations(
   state: CadDocument,
   proof: CadTopologyAnchorCommandProof,
-  bodyId: BodyId
+  bodyId: BodyId,
+  topologyAnchorId: string
 ): readonly CadSelectionReferenceOperation[] {
+  if (proof.entityKind === "body") {
+    return createSupportedBooleanBodyTargetOperations(
+      state.features,
+      bodyId,
+      topologyAnchorId
+    );
+  }
+
   if (proof.kind !== "axisAlignedLinearEdge") {
     return [];
   }
@@ -13668,10 +13683,16 @@ function createTopologyAnchorSelectionReferenceCandidate(options: {
           )
         ];
   const supportedCommandOperations =
-    createTopologyAnchorGeneratedReferenceCommandOperations(
-      commandOperations,
-      resolution.reference
-    );
+    filterTopologyAnchorBodyTargetCommandOperations({
+      document: options.document,
+      topologyAnchorId: anchor.anchorId,
+      anchorEntityKind: anchor.entityKind,
+      bodyId: body.id,
+      operations: createTopologyAnchorGeneratedReferenceCommandOperations(
+        commandOperations,
+        resolution.reference
+      )
+    });
 
   return createSingleSelectionReferenceCandidate({
     source: "topologyAnchorSelection",
@@ -13734,6 +13755,31 @@ function createTopologyAnchorGeneratedReferenceCommandOperations(
   ];
 
   return [...new Set(operations)];
+}
+
+function filterTopologyAnchorBodyTargetCommandOperations({
+  document,
+  topologyAnchorId,
+  anchorEntityKind,
+  bodyId,
+  operations
+}: {
+  readonly document: CadDocument;
+  readonly topologyAnchorId: string;
+  readonly anchorEntityKind: CadTopologyAnchorEntityKind;
+  readonly bodyId: BodyId;
+  readonly operations: readonly CadSelectionReferenceOperation[];
+}): readonly CadSelectionReferenceOperation[] {
+  if (anchorEntityKind !== "body") {
+    return operations;
+  }
+
+  return filterSupportedBooleanBodyTargetOperations(
+    document.features,
+    bodyId,
+    topologyAnchorId,
+    operations
+  );
 }
 
 function createSingleSelectionReferenceCandidate(options: {
