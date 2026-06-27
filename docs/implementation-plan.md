@@ -2898,10 +2898,10 @@ The planned pillars are:
    drive chamfer and fillet where cad-core validators and geometry execution
    prove the target. The V14 browser smoke now proves the first real
    result-edge class: command-ready rectangle cut-wall longitudinal generated
-   edges can be named, selected as edge-finish references in the Modeling
-   panel, and used to create chamfer and fillet features while exported JSON
-   preserves only public target body, named-reference, and edge target source
-   data.
+   edges can be used directly from selection, named, selected as edge-finish
+   references in the Modeling panel, and used to create chamfer and fillet
+   features while exported JSON preserves only public target body,
+   selected-edge, named-reference, and edge target source data.
 5. **Rebuild and repair hardening** - upstream edits, undo/redo, save/open, and
    explicit repair flows keep topology-backed references honest and query
    surfaces consistent. The current V14 hardening proof blocks upstream source
