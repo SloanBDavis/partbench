@@ -69,9 +69,10 @@ These constraints remain active:
     topology-backed result target anchors when submitting supported holes,
     selected ready result-body faces can create attached sketches by saving the
     required topology reference in the same CADOps action, browser smoke now
-    proves promoted result-face rectangle add, rectangle-family result-body
-    second cut, circle-family result-body rectangle cut, result-face circle
-    hole, and explicit XZ side-plane circle hole paths, focused core, app, and
+    proves promoted result-face rectangle add, circle-origin result-body circle
+    add, rectangle-family result-body second cut, circle-family result-body
+    rectangle cut, result-face circle hole, and explicit XZ side-plane circle
+    hole paths, focused core, app, and
     geometry tests prove circle-profile result-body cut/add paths where the
     verified matrix permits them, Modeling action metadata carries axial versus
     side-hole guidance for circular targets, selected circular side references
@@ -2880,7 +2881,7 @@ The planned pillars are:
    topology-backed result bodies through the same public body-anchor proof path,
    with `feature.holeTarget` readiness exposed through the shared command-target
    query and consumed by the app's target list. The browser smoke proves
-   promoted result-face rectangle add,
+   promoted result-face rectangle add, circle-origin result-body circle add,
    rectangle-family result-body second cut, circle-family result-body rectangle
    cut, result-face circle hole, and explicit XZ side-plane circle hole paths;
    focused core/app/geometry tests prove circle-profile result-body cut/add

@@ -725,6 +725,12 @@ async function v7BrowserWorkflowSmoke({
     v14AddSketchName: "V14 smoke result add sketch",
     v14AddTargetBodyId: "v14_smoke_rect_result_target_body",
     v14AddTargetBodyName: "V14 smoke rectangle result target",
+    v14CircleAddBodyId: "v14_smoke_circle_result_add_body",
+    v14CircleAddBodyName: "V14 smoke circle result add",
+    v14CircleAddCircleEntityId: "v14_smoke_circle_result_add_profile",
+    v14CircleAddFeatureId: "v14_smoke_circle_result_add_feature",
+    v14CircleAddSketchId: "v14_smoke_circle_result_add_sketch",
+    v14CircleAddSketchName: "V14 smoke circle result add sketch",
     v14RectangleCutBodyId: "v14_smoke_rect_result_second_cut_body",
     v14RectangleCutBodyName: "V14 smoke rectangle result second cut",
     v14RectangleCutFeatureId: "v14_smoke_rect_result_second_cut_feature",
@@ -1935,6 +1941,15 @@ async function v7BrowserWorkflowSmoke({
 
     await importV14TopologyBrowserFixture(
       projectJson,
+      "V14 topology browser fixture for circle-result circle add"
+    );
+    await runV14TopologyBackedCircleResultExtrudeAddWorkflowSmoke();
+    await verifyV14CircleResultAddProjectJsonSource(
+      "V14 circle-result circle add topology source JSON"
+    );
+
+    await importV14TopologyBrowserFixture(
+      projectJson,
       "V14 topology browser fixture for rectangle-result rectangle cut"
     );
     await runV14TopologyBackedRectangleResultExtrudeCutWorkflowSmoke();
@@ -2265,6 +2280,51 @@ async function v7BrowserWorkflowSmoke({
       "v14-result-add-topology-source-json-browser",
       "V14 result-body rectangle add JSON keeps topology sketch and target proof",
       ids.v14AddFeatureId
+    );
+  }
+
+  async function verifyV14CircleResultAddProjectJsonSource(waitLabel) {
+    openDetailsBySummary(document.body, "Project/File");
+    const projectPanel = getSectionByAriaLabel("Project");
+    await waitFor(() => {
+      const exportButton = getButtonByText(projectPanel, "Export JSON");
+
+      if (!exportButton || exportButton.disabled) {
+        throw new Error(compactText(projectPanel.textContent, 520));
+      }
+
+      return true;
+    }, "V14 circle-result add export ready");
+    clickButton(projectPanel, "Export JSON");
+    await waitFor(() => {
+      const projectJsonPreview = getProjectJsonEditorValue(projectPanel);
+      const ready =
+        includesText(projectPanel, "Import draft") &&
+        projectJsonPreview.includes("web-cad.project.v18") &&
+        projectJsonPreview.includes(ids.v14CircleAddFeatureId);
+
+      if (!ready) {
+        throw new Error(
+          [
+            `project=${compactText(projectPanel.textContent, 420)}`,
+            `json=${projectJsonPreview.trim().slice(0, 240)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, waitLabel);
+    assertV14TopologyBackedAddProjectJson({
+      projectJson: getProjectJsonEditorValue(projectPanel),
+      targetBodyId: ids.v14TargetBodyId,
+      sketchId: ids.v14CircleAddSketchId,
+      featureId: ids.v14CircleAddFeatureId,
+      label: "V14 circle-origin result add"
+    });
+    pass(
+      "v14-circle-result-add-topology-source-json-browser",
+      "V14 circle-origin result-body add JSON keeps topology sketch and target proof",
+      ids.v14CircleAddFeatureId
     );
   }
 
@@ -3043,6 +3103,107 @@ async function v7BrowserWorkflowSmoke({
     );
   }
 
+  async function runV14TopologyBackedCircleResultExtrudeAddWorkflowSmoke() {
+    const targetBodyId = ids.v14TargetBodyId;
+    ids.v14CircleAddSketchId = await createV14TopologyBackedResultFaceSketch({
+      sketchName: ids.v14CircleAddSketchName,
+      targetBodyId,
+      targetBodyName: ids.v14TargetBodyName
+    });
+
+    clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Sketches");
+    const sketches = getSectionByAriaLabel("Sketches");
+    setSelectByLabel(sketches, "Active sketch", ids.v14CircleAddSketchId);
+    await waitFor(
+      () =>
+        getControlByLabel(getSectionByAriaLabel("Sketches"), "Active sketch")
+          .value === ids.v14CircleAddSketchId,
+      "V14 circle-result add sketch became active"
+    );
+    clickButton(getElementByAriaLabel("Add sketch entity"), "Circle");
+    const entityEditor = await waitForSectionByAriaLabel(
+      "Sketch entity editor",
+      "V14 circle-result add circle entity editor"
+    );
+    setSelectByLabel(entityEditor, "Entity", "circle");
+    setInputByDetailsSummary(
+      entityEditor,
+      "Optional ID",
+      ids.v14CircleAddCircleEntityId
+    );
+    setFieldByLabel(entityEditor, "Center X", "0");
+    setFieldByLabel(entityEditor, "Center Y", "0");
+    setFieldByLabel(entityEditor, "Radius", "0.15");
+    clickButton(entityEditor, "Add entity");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Select sketch entity"),
+          ids.v14CircleAddCircleEntityId
+        ),
+      "created V14 circle-result add circle"
+    );
+    pass(
+      "v14-circle-result-face-add-circle-entity-browser",
+      "V14 circle-origin result-face attached sketch accepts a circle add profile",
+      ids.v14CircleAddCircleEntityId
+    );
+
+    const featureEditor = getSectionByAriaLabel("Create authored feature");
+    setFieldByLabel(featureEditor, "Depth", "0.25");
+    setSelectByLabel(featureEditor, "Operation", "add");
+    await waitFor(
+      () =>
+        Boolean(
+          queryControlByLabel(
+            getSectionByAriaLabel("Create authored feature"),
+            "Target body"
+          )
+        ),
+      "V14 circle-result add target body control"
+    );
+    setSelectByLabel(featureEditor, "Target body", targetBodyId);
+    setFieldByLabel(
+      featureEditor,
+      "Optional feature ID",
+      ids.v14CircleAddFeatureId
+    );
+    setFieldByLabel(featureEditor, "Optional body ID", ids.v14CircleAddBodyId);
+    setFieldByLabel(featureEditor, "Optional name", ids.v14CircleAddBodyName);
+    await waitFor(() => {
+      const nextFeatureEditor = getSectionByAriaLabel(
+        "Create authored feature"
+      );
+      const createExtrudeButton = getButtonByText(
+        nextFeatureEditor,
+        "Create extrude"
+      );
+
+      if (!createExtrudeButton || createExtrudeButton.disabled) {
+        throw new Error(compactText(nextFeatureEditor.textContent, 520));
+      }
+
+      return true;
+    }, "V14 circle-result add command enabled");
+    clickButton(
+      getSectionByAriaLabel("Create authored feature"),
+      "Create extrude"
+    );
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Model structure"),
+          ids.v14CircleAddBodyName
+        ),
+      "created V14 circle-result add"
+    );
+    pass(
+      "v14-circle-result-face-circle-add-browser",
+      "V14 circle-origin result-face circle profile adds to the topology-backed result body",
+      ids.v14CircleAddBodyId
+    );
+  }
+
   async function runV14TopologyBackedResultHoleWorkflowSmoke() {
     const targetBodyId = ids.v14TargetBodyId;
     ids.v14HoleSketchId = await createV14TopologyBackedResultFaceSketch({
@@ -3522,20 +3683,35 @@ async function v7BrowserWorkflowSmoke({
   }
 
   function assertV14ResultAddProjectJson(projectJson) {
-    const targetBodyId = ids.v14AddTargetBodyId;
+    assertV14TopologyBackedAddProjectJson({
+      projectJson,
+      targetBodyId: ids.v14AddTargetBodyId,
+      sketchId: ids.v14AddSketchId,
+      featureId: ids.v14AddFeatureId,
+      label: "V14 rectangle add"
+    });
+  }
+
+  function assertV14TopologyBackedAddProjectJson({
+    projectJson,
+    targetBodyId,
+    sketchId,
+    featureId,
+    label
+  }) {
     const parsed = JSON.parse(projectJson);
-    const sketch = findObjectById(parsed, ids.v14AddSketchId);
-    const addFeature = findObjectById(parsed, ids.v14AddFeatureId);
+    const sketch = findObjectById(parsed, sketchId);
+    const addFeature = findObjectById(parsed, featureId);
 
     if (!sketch || sketch.attachment?.kind !== "topologyAnchorFace") {
       throw new Error(
-        `V14 rectangle add sketch lost topologyAnchorFace source for ${ids.v14AddSketchId}.`
+        `${label} sketch lost topologyAnchorFace source for ${sketchId}.`
       );
     }
 
     if (sketch.attachment.bodyId !== targetBodyId) {
       throw new Error(
-        `V14 rectangle add sketch target body mismatch: ${sketch.attachment.bodyId}`
+        `${label} sketch target body mismatch: ${sketch.attachment.bodyId}`
       );
     }
 
@@ -3547,9 +3723,7 @@ async function v7BrowserWorkflowSmoke({
       typeof addFeature.targetTopologyAnchorId !== "string" ||
       addFeature.targetTopologyAnchorId.length === 0
     ) {
-      throw new Error(
-        "V14 rectangle add feature lost its topology target source."
-      );
+      throw new Error(`${label} feature lost its topology target source.`);
     }
 
     const sourceBoundaryText = JSON.stringify({
@@ -3561,7 +3735,7 @@ async function v7BrowserWorkflowSmoke({
 
     if (privateIdPattern.test(sourceBoundaryText)) {
       throw new Error(
-        `V14 rectangle add source leaked a private ID: ${sourceBoundaryText}`
+        `${label} source leaked a private ID: ${sourceBoundaryText}`
       );
     }
   }
