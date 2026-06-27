@@ -4044,6 +4044,96 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("passes feature.fillet with a topology edge anchor through cad.batch", () => {
+    const server = new CadMcpServer();
+    const commit = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_anchor_edge_fillet",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "anchor_fillet_sketch",
+              name: "Anchor fillet profile",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "anchor_fillet_sketch",
+              id: "anchor_fillet_rect",
+              center: [0, 0],
+              width: 4,
+              height: 2
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_anchor_fillet_source",
+              bodyId: "body_anchor_fillet_source",
+              sketchId: "anchor_fillet_sketch",
+              entityId: "anchor_fillet_rect",
+              depth: 3
+            },
+            {
+              op: "topology.checkpoint.create",
+              checkpointId: "checkpoint_anchor_fillet",
+              bodyId: "body_anchor_fillet_source",
+              sourceFeatureId: "feat_anchor_fillet_source",
+              sourceIdentity: {
+                algorithm: "partbench-source-v1",
+                sha256:
+                  "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              },
+              status: "active"
+            },
+            {
+              op: "topology.anchor.create",
+              anchorId: "anchor_fillet_edge",
+              entityKind: "edge",
+              bodyId: "body_anchor_fillet_source",
+              checkpointId: "checkpoint_anchor_fillet",
+              checkpointEntityId: "checkpoint-local-fillet-edge",
+              sourceFeatureId: "feat_anchor_fillet_source",
+              stableId: "generated:edge:body_anchor_fillet_source:start:uMin"
+            },
+            {
+              op: "feature.fillet",
+              id: "feat_anchor_fillet",
+              bodyId: "body_anchor_fillet",
+              targetBodyId: "body_anchor_fillet_source",
+              topologyAnchorId: "anchor_fillet_edge",
+              radius: 0.2
+            }
+          ]
+        }
+      }
+    });
+    const features = server.callTool({
+      name: "cad.project_features",
+      requestId: "mcp_req_anchor_edge_fillet_features"
+    });
+
+    expect(commit.structuredContent).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_anchor_fillet_source", "feat_anchor_fillet"],
+      createdBodyIds: ["body_anchor_fillet_source", "body_anchor_fillet"]
+    });
+    expect(features.structuredContent).toMatchObject({
+      ok: true,
+      features: expect.arrayContaining([
+        expect.objectContaining({
+          id: "feat_anchor_fillet",
+          kind: "fillet",
+          edgeStableId: "generated:edge:body_anchor_fillet_source:start:uMin",
+          topologyAnchorId: "anchor_fillet_edge"
+        })
+      ])
+    });
+  });
+
   it("passes topology body anchors through cad.batch extrude cut targets", () => {
     const server = new CadMcpServer();
     const commit = server.callTool({

@@ -55,18 +55,18 @@ These constraints remain active:
     V12 is complete as the stable boolean topology and result references
     release. V13 is complete as the general topology identity, B-rep checkpoint,
     topology anchor, matching, repair, and checkpoint-backed commandability
-    foundation. V14 is active as the topology-backed downstream modeling
-    release: it turns supported V13 topology anchors into real downstream
-    command targets for chained single-part modeling without weakening
-    source/derived boundaries. V14 Tranche A is implemented as the
-    non-mutating topology-backed command-target readiness contract/query slice,
-    and V14 Slice B is implemented as the topology-backed sketch attachment
-    product path. V14 chained target support is partially implemented for
-    topology-anchor `feature.extrude` add/cut targets and topology-anchor
-    `feature.hole` target bodies on supported active result bodies. The app's
-    compact Modeling panel preserves topology-backed target anchors when
-    submitting supported add/cut extrudes, the full Sketch panel preserves
-    topology-backed result target anchors when submitting supported holes,
+    foundation. V14 is implemented for the documented topology-backed
+    downstream modeling support matrix: it turns supported V13 topology anchors
+    into real downstream command targets for chained single-part modeling
+    without weakening source/derived boundaries. V14 Tranche A is implemented
+    as the non-mutating topology-backed command-target readiness contract/query
+    slice, and V14 Slice B is implemented as the topology-backed sketch
+    attachment product path. V14 chained target support is implemented for the
+    documented topology-anchor `feature.extrude` add/cut targets and
+    topology-anchor `feature.hole` target bodies on supported active result
+    bodies. The app's compact Modeling panel preserves topology-backed target
+    anchors when submitting supported add/cut extrudes, the full Sketch panel
+    preserves topology-backed result target anchors when submitting supported holes,
     selected ready result-body faces can create attached sketches by saving the
     required topology reference in the same CADOps action, browser smoke now
     proves promoted result-face rectangle add, circle-origin result-body circle
@@ -2559,7 +2559,7 @@ Use these decisions when drafting or implementing V13 tranches:
    holes are now proven against supported circle-origin result bodies.
    Unanchored result bodies, curved side-wall face attachment, arbitrary
    profile recognition, direct unanchored circle-target add, and broader edge
-   finishing remain outside this implemented slice.
+   finishing remain outside the V14 support matrix unless explicitly rescoped.
    Missing, stale, replaced, ambiguous, deleted, unsupported, consumed, and
    repair-needed anchors remain non-commandable with structured diagnostics.
    Direct face/edge topology-anchor command targets that cannot map to current
