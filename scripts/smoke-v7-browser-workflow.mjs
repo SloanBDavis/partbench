@@ -2601,7 +2601,10 @@ async function v7BrowserWorkflowSmoke({
       "V14 XZ circle profile creates a side hole in a topology-backed circular result body",
       ids.v14CylinderSideHoleBodyId
     );
-    await verifyV14HoleDisplayGeometryReady(ids.v14CylinderSideHoleBodyName);
+    await verifyV14DisplayGeometryReady({
+      bodyName: ids.v14CylinderSideHoleBodyName,
+      issueLabels: ["Hole mesh error", "Hole display geometry issue"]
+    });
     pass(
       "v14-cylinder-side-plane-hole-display-ready-browser",
       "V14 cylinder side-plane hole reaches display geometry ready without a display geometry issue",
@@ -2688,6 +2691,17 @@ async function v7BrowserWorkflowSmoke({
       operation,
       passLabel
     });
+    await verifyV14DisplayGeometryReady({
+      bodyName: featureName,
+      issueLabels: [
+        "Edge finish mesh error",
+        "Edge finish display geometry issue"
+      ]
+    });
+    passV14SelectedResultCutWallEdgeFinishDisplayReadyCheck({
+      featureName,
+      operation
+    });
   }
 
   function passV14SelectedResultCutWallEdgeFinishWorkflowCheck({
@@ -2707,6 +2721,26 @@ async function v7BrowserWorkflowSmoke({
     pass(
       "v14-result-cut-wall-selected-edge-fillet-browser",
       passLabel,
+      featureName
+    );
+  }
+
+  function passV14SelectedResultCutWallEdgeFinishDisplayReadyCheck({
+    featureName,
+    operation
+  }) {
+    if (operation === "chamfer") {
+      pass(
+        "v14-result-cut-wall-selected-edge-chamfer-display-ready-browser",
+        "V14 selected result-edge chamfer reaches display geometry ready without an edge-finish display issue",
+        featureName
+      );
+      return;
+    }
+
+    pass(
+      "v14-result-cut-wall-selected-edge-fillet-display-ready-browser",
+      "V14 selected result-edge fillet reaches display geometry ready without an edge-finish display issue",
       featureName
     );
   }
@@ -3511,7 +3545,10 @@ async function v7BrowserWorkflowSmoke({
       "V14 result-face circle profile creates a hole in the topology-backed result body",
       ids.v14HoleBodyId
     );
-    await verifyV14HoleDisplayGeometryReady(ids.v14HoleBodyName);
+    await verifyV14DisplayGeometryReady({
+      bodyName: ids.v14HoleBodyName,
+      issueLabels: ["Hole mesh error", "Hole display geometry issue"]
+    });
     pass(
       "v14-result-face-circle-hole-display-ready-browser",
       "V14 result-face circle hole reaches display geometry ready without a display geometry issue",
@@ -3519,14 +3556,15 @@ async function v7BrowserWorkflowSmoke({
     );
   }
 
-  async function verifyV14HoleDisplayGeometryReady(bodyName) {
+  async function verifyV14DisplayGeometryReady({ bodyName, issueLabels }) {
     await waitFor(() => {
       if (
-        includesText(document.body, "Hole mesh error") ||
-        includesText(document.body, "Hole display geometry issue")
+        issueLabels.some((issueLabel) =>
+          includesText(document.body, issueLabel)
+        )
       ) {
         throw new Error(
-          "Hole display geometry issue is visible after creating the hole."
+          `${issueLabels.join(" or ")} is visible after creating ${bodyName}.`
         );
       }
 

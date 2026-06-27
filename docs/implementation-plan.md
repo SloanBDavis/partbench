@@ -2901,7 +2901,9 @@ The planned pillars are:
    edges can be used directly from selection, named, selected as edge-finish
    references in the Modeling panel, and used to create chamfer and fillet
    features while exported JSON preserves only public target body,
-   selected-edge, named-reference, and edge target source data.
+   selected-edge, named-reference, and edge target source data. The selected
+   result-edge chamfer and fillet paths also reach display-geometry-ready state
+   without edge-finish display diagnostics.
 5. **Rebuild and repair hardening** - upstream edits, undo/redo, save/open, and
    explicit repair flows keep topology-backed references honest and query
    surfaces consistent. The current V14 hardening proof blocks upstream source
