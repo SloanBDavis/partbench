@@ -520,7 +520,8 @@ describe("V14 release sample fixtures", () => {
     expect(fixtures.map((fixture) => fixture.id)).toEqual([
       "v14-result-body-cut-add-hole",
       "v14-circle-side-plane-hole",
-      "v14-result-edge-finish"
+      "v14-result-edge-finish",
+      "v14-result-edge-topology-anchor-finish"
     ]);
 
     for (const fixture of fixtures) {
@@ -606,6 +607,9 @@ describe("V14 release sample fixtures", () => {
                     targetTopologyAnchorId:
                       featureExpectation.targetTopologyAnchorId
                   }
+                : {}),
+              ...(featureExpectation.topologyAnchorId
+                ? { topologyAnchorId: featureExpectation.topologyAnchorId }
                 : {}),
               ...(featureExpectation.operationMode
                 ? { operationMode: featureExpectation.operationMode }

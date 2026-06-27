@@ -254,6 +254,7 @@ function verifyLifecycleSurfaces(engine, fixture, failures) {
         targetBodyId: feature?.targetBodyId,
         targetTopologyAnchorId: feature?.targetTopologyAnchorId,
         operationMode: feature?.operationMode,
+        topologyAnchorId: feature?.topologyAnchorId,
         namedReference: feature?.namedReference
       });
       checks += 1 + countExpectedProperties(expectation);
@@ -619,6 +620,7 @@ function checkExpectedProperties(failures, label, expected, actual) {
     "bodyId",
     "targetBodyId",
     "targetTopologyAnchorId",
+    "topologyAnchorId",
     "operationMode",
     "namedReference"
   ]) {
@@ -633,6 +635,7 @@ function countExpectedProperties(expectation) {
     "bodyId",
     "targetBodyId",
     "targetTopologyAnchorId",
+    "topologyAnchorId",
     "operationMode",
     "namedReference"
   ].filter((key) => expectation[key] !== undefined).length;

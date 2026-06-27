@@ -2285,7 +2285,8 @@ export function createV13ReleaseSampleCheckpointPayloads(
 export type V14ReleaseSampleId =
   | "v14-result-body-cut-add-hole"
   | "v14-circle-side-plane-hole"
-  | "v14-result-edge-finish";
+  | "v14-result-edge-finish"
+  | "v14-result-edge-topology-anchor-finish";
 
 export type V14ReleaseSampleWorkflowTag =
   | "topology-body-anchor"
@@ -2296,6 +2297,7 @@ export type V14ReleaseSampleWorkflowTag =
   | "blocked-support-matrix"
   | "result-edge-finish"
   | "named-reference"
+  | "topology-edge-anchor"
   | "command-readiness"
   | "source-boundary"
   | "wcad-round-trip";
@@ -2312,6 +2314,7 @@ export interface V14ReleaseSampleFeatureExpectation {
   readonly bodyId?: BodyId;
   readonly targetBodyId?: BodyId;
   readonly targetTopologyAnchorId?: string;
+  readonly topologyAnchorId?: string;
   readonly operationMode?: FeatureExtrudeOperationMode;
   readonly namedReference?: NamedReferenceName;
 }
@@ -2385,6 +2388,8 @@ const V14_CIRCLE_BODY_CHECKPOINT = "v14_checkpoint_circle_body";
 const V14_EDGE_SOURCE_BODY = "v14_edge_source_body";
 const V14_EDGE_CUT_BODY = "v14_edge_cut_body";
 const V14_EDGE_REFERENCE = "V14 result cut edge";
+const V14_EDGE_ANCHOR = "v14_anchor_result_edge";
+const V14_EDGE_CHECKPOINT = "v14_checkpoint_result_edge";
 const V14_EDGE_STABLE_ID = `generated:edge:${V14_EDGE_CUT_BODY}:longitudinal:uMin:vMin`;
 
 export const V14_RELEASE_SAMPLE_FIXTURES = [
@@ -2392,7 +2397,7 @@ export const V14_RELEASE_SAMPLE_FIXTURES = [
     id: "v14-result-body-cut-add-hole",
     title: "V14 topology body-anchor cut, add, and hole sample",
     description:
-      "A rectangle-family result body is checkpointed as a public topology body anchor, then reused for a second cut, an add, and a hole through the same CADOps target path.",
+      "Supported rectangle-family body anchors prove the result-body cut, add, and hole CADOps target paths without reusing an unsupported consumed target.",
     units: "mm",
     workflowTags: [
       "topology-body-anchor",
@@ -3112,6 +3117,143 @@ export const V14_RELEASE_SAMPLE_FIXTURES = [
         name: "V14 result-edge chamfer",
         targetBodyId: V14_EDGE_CUT_BODY,
         namedReference: V14_EDGE_REFERENCE,
+        distance: 0.1
+      }
+    ]
+  },
+  {
+    id: "v14-result-edge-topology-anchor-finish",
+    title: "V14 result-edge topology-anchor finish sample",
+    description:
+      "A rectangle cut-wall longitudinal result edge is checkpointed as a public topology edge anchor and consumed by a chamfer through CADOps.",
+    units: "mm",
+    workflowTags: [
+      "result-body-cut",
+      "result-edge-finish",
+      "topology-edge-anchor",
+      "command-readiness",
+      "source-boundary",
+      "wcad-round-trip"
+    ],
+    expectedTopology: {
+      checkpointCount: 1,
+      anchorCount: 1,
+      anchorIds: [V14_EDGE_ANCHOR]
+    },
+    expectedFeatures: [
+      {
+        featureId: "v14_edge_cut_feature",
+        kind: "extrude",
+        bodyId: V14_EDGE_CUT_BODY,
+        targetBodyId: V14_EDGE_SOURCE_BODY,
+        operationMode: "cut"
+      },
+      {
+        featureId: "v14_edge_anchor_chamfer_feature",
+        kind: "chamfer",
+        bodyId: "v14_edge_anchor_chamfer_body",
+        targetBodyId: V14_EDGE_CUT_BODY,
+        topologyAnchorId: V14_EDGE_ANCHOR
+      }
+    ],
+    expectedReadiness: [
+      {
+        label: "result cut-wall topology edge anchor stays finish-ready",
+        target: {
+          type: "topologyAnchor",
+          anchorId: V14_EDGE_ANCHOR
+        },
+        operation: "feature.chamfer",
+        expectedStatus: "ready",
+        expectedCommandable: true,
+        expectedSupportedOperations: ["feature.chamfer", "feature.fillet"]
+      }
+    ],
+    readinessOpCount: 7,
+    expectedEditability: [
+      {
+        featureId: "v14_edge_source_feature",
+        expectedStatus: "blocked"
+      }
+    ],
+    knownLimitations: [
+      "This fixture proves direct topology-anchor finishing for the rectangle cut-wall longitudinal edge subset only."
+    ],
+    ops: [
+      {
+        op: "sketch.create",
+        id: "v14_edge_source_sketch",
+        name: "V14 edge source",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v14_edge_source_sketch",
+        id: "v14_edge_source_rect",
+        center: [0, 0],
+        width: 4,
+        height: 2
+      },
+      {
+        op: "feature.extrude",
+        id: "v14_edge_source_feature",
+        bodyId: V14_EDGE_SOURCE_BODY,
+        name: "V14 edge source body",
+        sketchId: "v14_edge_source_sketch",
+        entityId: "v14_edge_source_rect",
+        depth: 3,
+        operationMode: "newBody"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v14_edge_source_sketch",
+        id: "v14_edge_cut_rect",
+        center: [1, 0],
+        width: 2,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "v14_edge_cut_feature",
+        bodyId: V14_EDGE_CUT_BODY,
+        name: "V14 edge cut body",
+        sketchId: "v14_edge_source_sketch",
+        entityId: "v14_edge_cut_rect",
+        depth: 3,
+        operationMode: "cut",
+        targetBodyId: V14_EDGE_SOURCE_BODY
+      },
+      {
+        op: "topology.checkpoint.create",
+        checkpointId: V14_EDGE_CHECKPOINT,
+        bodyId: V14_EDGE_CUT_BODY,
+        sourceFeatureId: "v14_edge_cut_feature",
+        sourceIdentity: {
+          algorithm: "partbench-source-v1",
+          sha256:
+            "1717171717171717171717171717171717171717171717171717171717171717"
+        },
+        status: "active"
+      },
+      {
+        op: "topology.anchor.create",
+        anchorId: V14_EDGE_ANCHOR,
+        entityKind: "edge",
+        bodyId: V14_EDGE_CUT_BODY,
+        checkpointId: V14_EDGE_CHECKPOINT,
+        checkpointEntityId: "v14_edge_checkpoint_longitudinal_edge",
+        sourceFeatureId: "v14_edge_cut_feature",
+        stableId: V14_EDGE_STABLE_ID,
+        sourceSemanticRole: "result cut-wall edge",
+        signatureHash: "v14_result_edge_signature"
+      },
+      {
+        op: "feature.chamfer",
+        id: "v14_edge_anchor_chamfer_feature",
+        bodyId: "v14_edge_anchor_chamfer_body",
+        name: "V14 result-edge anchor chamfer",
+        targetBodyId: V14_EDGE_CUT_BODY,
+        topologyAnchorId: V14_EDGE_ANCHOR,
         distance: 0.1
       }
     ]
