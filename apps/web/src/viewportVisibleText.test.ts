@@ -4,7 +4,7 @@ import { formatVisibleDiagnosticMessage } from "./viewportVisibleText";
 describe("viewport visible text", () => {
   it("formats internal readiness diagnostic copy for product surfaces", () => {
     const message = formatVisibleDiagnosticMessage(
-      "cad-core command-ready checkpoint-payload package-contract OCCT-mesh deferred tranche milestone debug renderer-hit:abc"
+      "cad-core command-ready checkpoint-payload package-contract OCCT-mesh deferred tranche milestone debug renderer-hit:abc Geometry worker OCCT/WASM checkpoint-local:face-1 checkpointEntityId:face-2"
     );
 
     expect(message).toContain("modeling engine");
@@ -16,8 +16,13 @@ describe("viewport visible text", () => {
     expect(message).toContain("release step");
     expect(message).toContain("diagnostic");
     expect(message).toContain("internal render target");
+    expect(message).not.toContain(
+      "internal render target internal render target"
+    );
+    expect(message).toContain("Display geometry engine");
+    expect(message).toContain("exact geometry runtime");
     expect(message).not.toMatch(
-      /\b(command-ready|cad-core|checkpoint-payload|package-contract|OCCT-mesh|deferred|tranche|milestone|debug|renderer-hit)\b/i
+      /\b(command-ready|cad-core|checkpoint-payload|package-contract|OCCT-mesh|deferred|tranche|milestone|debug|renderer-hit|Geometry worker|OCCT\/WASM|checkpoint-local|checkpointEntityId)\b/i
     );
   });
 });

@@ -1,5 +1,5 @@
 const INTERNAL_RENDER_ID_PATTERN =
-  /\b(?:selection-buffer|mesh-triangle|occt-shape|gpu-buffer|pixel-hit|renderer-hit|file-handle|fileHandle|opfs|opfs-cache):[^\s,.;)]+/gi;
+  /\b(?:selection-buffer|mesh-triangle|occt-shape|gpu-buffer|pixel-hit|renderer-hit|file-handle|fileHandle|opfs|opfs-cache|checkpoint-local|checkpointEntityId):[^\s,.;)]+/gi;
 
 export function redactInternalViewportIds(text: string): string {
   return text.replace(INTERNAL_RENDER_ID_PATTERN, "internal render target");
@@ -25,9 +25,20 @@ const INTERNAL_DIAGNOSTIC_COPY_REPLACEMENTS: readonly [RegExp, string][] = [
   [/\bcommand-ready reference\b/gi, "ready reference"],
   [/\bcommand-ready\b/gi, "ready"],
   [/\bcad-core\b/gi, "modeling engine"],
+  [
+    /\bGeometry worker response does not contain an exact topology checkpoint payload\b/gi,
+    "Display geometry evidence is incomplete"
+  ],
+  [/\bGeometry worker\b/gi, "Display geometry engine"],
+  [/\bexact topology checkpoint payloads?\b/gi, "saved exact-shape data"],
   [/\bcheckpoint[- ]payloads?\b/gi, "saved topology data"],
+  [/\bcheckpoint-local\b/gi, "internal topology"],
+  [/\bcheckpointEntityId\b/gi, "internal topology id"],
   [/\bpackage[- ]contract\b/gi, "project file format"],
+  [/\bOCCT[- /]WASM\b/gi, "exact geometry runtime"],
   [/\bOCCT[- ]mesh\b/gi, "display geometry"],
+  [/\bOCCT\b/gi, "exact geometry"],
+  [/\bWASM\b/gi, "geometry runtime"],
   [/\bdeferred\b/gi, "not ready yet"],
   [/\btranche\b/gi, "release step"],
   [/\bmilestone\b/gi, "release step"],
@@ -35,9 +46,21 @@ const INTERNAL_DIAGNOSTIC_COPY_REPLACEMENTS: readonly [RegExp, string][] = [
 ];
 
 export function formatVisibleDiagnosticMessage(message: string): string {
-  return INTERNAL_DIAGNOSTIC_COPY_REPLACEMENTS.reduce(
-    (formatted, [pattern, replacement]) =>
-      formatted.replace(pattern, replacement),
-    redactInternalViewportIds(message)
+  return collapseRepeatedInternalRenderTargetLabels(
+    INTERNAL_DIAGNOSTIC_COPY_REPLACEMENTS.reduce(
+      (formatted, [pattern, replacement]) =>
+        formatted.replace(pattern, replacement),
+      redactInternalViewportIds(message)
+    )
+  );
+}
+
+function collapseRepeatedInternalRenderTargetLabels(text: string): string {
+  return text.replace(
+    /\binternal render target(?:\s+internal render target)+\b/gi,
+    (match) =>
+      match.includes("Internal") || match.includes("INTERNAL")
+        ? "Internal render target"
+        : "internal render target"
   );
 }

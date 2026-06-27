@@ -280,6 +280,41 @@ describe("V14 result hole workflow", () => {
       ])
     );
   });
+
+  it("formats result-body hole preflight runtime failures for product surfaces", async () => {
+    const { engine, holeOp } = createAttachedResultHoleFixture();
+    const beforeJson = exportCadProjectJson(engine);
+    const runtime = createHolePreflightRuntime(async () => {
+      throw new Error(
+        "Geometry worker response does not contain an exact topology checkpoint payload for OCCT-mesh renderer-hit:face-1 checkpoint-local:face-1."
+      );
+    });
+    const result = await preflightHoleGeometryCommand({
+      engine,
+      ops: [holeOp],
+      bodyId: "body_result_hole",
+      runtime
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: "runtime",
+      message:
+        "Could not create this hole on the selected target. Display geometry evidence is incomplete for display geometry internal render target."
+    });
+    if (result.ok) {
+      throw new Error("Expected hole preflight to fail.");
+    }
+    expect(result.message).not.toMatch(
+      /Geometry worker|checkpoint payload|OCCT|renderer-hit|checkpoint-local|mesh/i
+    );
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+    expect(readStructure(engine).features).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "feat_result_hole" })
+      ])
+    );
+  });
 });
 
 function createCircleResultBodyEngine(): CadEngine {

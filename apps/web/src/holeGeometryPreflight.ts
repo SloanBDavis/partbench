@@ -17,6 +17,7 @@ import {
 import type { DerivedGeometryRuntime } from "./derivedGeometryRuntime";
 import { createDerivedGeometrySourcesFromDocument } from "./derivedGeometrySources";
 import { createGeneratedFaceReferenceKey } from "./sketchDisplayFrames";
+import { formatVisibleDiagnosticMessage } from "./viewportVisibleText";
 
 export type HoleGeometryPreflightResult =
   | {
@@ -165,5 +166,7 @@ function readGeneratedFaceReferencesByKey(
 function formatHoleGeometryPreflightError(error: unknown): string {
   const message = error instanceof Error ? error.message : "Unknown error.";
 
-  return `Could not create this hole on the selected target. ${message}`;
+  return formatVisibleDiagnosticMessage(
+    `Could not create this hole on the selected target. ${message}`
+  );
 }

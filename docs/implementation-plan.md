@@ -75,7 +75,8 @@ These constraints remain active:
     geometry tests prove circle-profile result-body cut/add paths where the
     verified matrix permits them, and ready
     topology-backed reference selections and Project/File JSON import/export
-    use action-oriented product copy instead of internal implementation labels.
+    plus result-body hole preflight failures use action-oriented product copy
+    instead of internal implementation labels.
     Completed V8, V9, V10, V11, V12, and V13
     tranche records below remain historical release records and compatibility
     guardrails. Do not re-open those releases unless the user explicitly asks

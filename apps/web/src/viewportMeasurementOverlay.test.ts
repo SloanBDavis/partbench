@@ -255,8 +255,11 @@ describe("viewport measurement overlay", () => {
     expect(overlay).toMatchObject({
       tone: "blocked",
       error:
-        "Reference measurements unavailable: internal render target internal render target internal render target internal render target internal render target internal render target internal render target is missing or stale."
+        "Reference measurements unavailable: internal render target is missing or stale."
     });
+    expect(overlay?.error).not.toContain(
+      "internal render target internal render target"
+    );
     expect(JSON.stringify(overlay)).not.toContain("selection-buffer");
     expect(JSON.stringify(overlay)).not.toContain("mesh-triangle");
     expect(JSON.stringify(overlay)).not.toContain("occt-shape");
