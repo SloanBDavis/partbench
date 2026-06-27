@@ -993,7 +993,7 @@ describe("sketch panel UI helpers", () => {
         featureId: "feat_rect",
         profileKind: "rectangle",
         label: "Rectangle target 1 / 1 mm",
-        detail: "Rectangle new body / 1 mm / positive / body_rect"
+        detail: "Rectangle new body / 1 mm / positive"
       }
     ]);
   });
@@ -1028,7 +1028,7 @@ describe("sketch panel UI helpers", () => {
         targetTopologyAnchorId: "anchor_body_cut",
         profileKind: "rectangle",
         label: "Rectangle result 1 / 1 mm",
-        detail: "Rectangle result body / cut / body_cut"
+        detail: "Rectangle result body / cut"
       }
     ]);
   });
@@ -1059,14 +1059,14 @@ describe("sketch panel UI helpers", () => {
         featureId: "feat_rect",
         profileKind: "rectangle",
         label: "Rectangle target 1 / 1 mm",
-        detail: "Rectangle new body / 1 mm / positive / body_rect"
+        detail: "Rectangle new body / 1 mm / positive"
       },
       {
         bodyId: "body_circle",
         featureId: "feat_circle",
         profileKind: "circle",
         label: "Circle target 2 / 1 mm",
-        detail: "Circle new body / 1 mm / positive / body_circle"
+        detail: "Circle new body / 1 mm / positive"
       }
     ]);
   });
@@ -1097,7 +1097,7 @@ describe("sketch panel UI helpers", () => {
         targetTopologyAnchorId: "anchor_body_rect",
         profileKind: "rectangle",
         label: "Rectangle result 1 / 1 mm",
-        detail: "Rectangle result body / cut / body_cut"
+        detail: "Rectangle result body / cut"
       }
     ]);
   });
@@ -1184,7 +1184,7 @@ describe("sketch panel UI helpers", () => {
         targetTopologyAnchorId: "anchor_body_rect",
         profileKind: "rectangle" as const,
         label: "Result target",
-        detail: "Rectangle result body / cut / body_boolean_result"
+        detail: "Rectangle result body / cut"
       }
     ];
 
@@ -1231,14 +1231,14 @@ describe("sketch panel UI helpers", () => {
         featureId: "feat_circle",
         profileKind: "circle",
         label: "Circle target 2 / 1 mm",
-        detail: "Circle new body / 1 mm / positive / body_circle"
+        detail: "Circle new body / 1 mm / positive"
       },
       {
         bodyId: "body_rect",
         featureId: "feat_rect",
         profileKind: "rectangle",
         label: "Rectangle target 1 / 1 mm",
-        detail: "Rectangle new body / 1 mm / positive / body_rect"
+        detail: "Rectangle new body / 1 mm / positive"
       }
     ]);
   });
@@ -1269,9 +1269,31 @@ describe("sketch panel UI helpers", () => {
         targetTopologyAnchorId: "anchor_body_rect",
         profileKind: "rectangle",
         label: "Rectangle result 1 / 1 mm",
-        detail: "Rectangle result body / cut / body_cut"
+        detail: "Rectangle result body / cut"
       }
     ]);
+  });
+
+  it("keeps boolean target details product-facing", () => {
+    const features: CadFeatureSummary[] = [
+      createExtrudeFeature("feat_rect", "body_rect", "rectangle", "newBody"),
+      createExtrudeFeature("feat_cut", "body_cut", "rectangle", "cut", {
+        targetTopologyAnchorId: "anchor_body_rect"
+      })
+    ];
+    const bodies: CadBodySnapshot[] = [
+      createBody("body_rect", "feat_rect", "feat_cut"),
+      createBody("body_cut", "feat_cut")
+    ];
+    const details = [
+      ...createCutTargetBodyOptions(bodies, features),
+      ...createHoleTargetBodyOptions(bodies, features)
+    ].map((target) => target.detail);
+
+    expect(details).toContain("Rectangle result body / cut");
+    expect(details.join(" ")).not.toMatch(
+      /\b(body_[a-z0-9_]+|feat_[a-z0-9_]+|topology|checkpoint|debug|tranche|milestone|command-ready)\b/i
+    );
   });
 
   it("requires command-ready topology anchors for result-body hole targets when readiness is available", () => {
@@ -1324,7 +1346,7 @@ describe("sketch panel UI helpers", () => {
         targetTopologyAnchorId: "anchor_body_rect",
         profileKind: "rectangle",
         label: "Rectangle result 1 / 1 mm",
-        detail: "Rectangle result body / cut / body_cut"
+        detail: "Rectangle result body / cut"
       }
     ]);
   });
@@ -1359,7 +1381,7 @@ describe("sketch panel UI helpers", () => {
         targetTopologyAnchorId: "anchor_body_cut",
         profileKind: "rectangle",
         label: "Rectangle result 1 / 1 mm",
-        detail: "Rectangle result body / cut / body_cut"
+        detail: "Rectangle result body / cut"
       }
     ]);
   });
@@ -1384,7 +1406,7 @@ describe("sketch panel UI helpers", () => {
         targetTopologyAnchorId: "anchor_body_circle",
         profileKind: "circle",
         label: "Circle result 1 / 1 mm",
-        detail: "Circle result body / cut / body_cut"
+        detail: "Circle result body / cut"
       }
     ]);
   });
@@ -1557,14 +1579,14 @@ describe("sketch panel UI helpers", () => {
       targetTopologyAnchorId: "anchor_body_circle",
       profileKind: "circle" as const,
       label: "Circle result",
-      detail: "Circle result body / cut / body_circle_result"
+      detail: "Circle result body / cut"
     };
     const rectangleTarget = {
       bodyId: "body_rect",
       featureId: "feat_rect",
       profileKind: "rectangle" as const,
       label: "Rectangle target",
-      detail: "Rectangle new body / 1 mm / positive / body_rect"
+      detail: "Rectangle new body / 1 mm / positive"
     };
 
     expect(getHoleTargetGuidance(circleTarget, "XZ")).toBe(

@@ -511,7 +511,7 @@ describe("ModelingActionsPanel", () => {
         targetTopologyAnchorId: "anchor_body_add",
         profileKind: "rectangle" as const,
         label: "Rectangle add result",
-        detail: "Rectangle result body / add / body_add_result"
+        detail: "Rectangle result body / add"
       }
     ];
     const cutTargets = [
@@ -521,7 +521,7 @@ describe("ModelingActionsPanel", () => {
         targetTopologyAnchorId: "anchor_body_cut",
         profileKind: "rectangle" as const,
         label: "Rectangle cut result",
-        detail: "Rectangle result body / cut / body_cut_result"
+        detail: "Rectangle result body / cut"
       }
     ];
 
@@ -544,7 +544,7 @@ describe("ModelingActionsPanel", () => {
             targetTopologyAnchorId: "anchor_body_other",
             profileKind: "rectangle",
             label: "Other cut result",
-            detail: "Rectangle result body / cut / body_cut_other"
+            detail: "Rectangle result body / cut"
           },
           ...cutTargets
         ],
@@ -660,7 +660,7 @@ describe("ModelingActionsPanel", () => {
             featureId: "feat_circle_result",
             profileKind: "circle",
             label: "Circle result target",
-            detail: "Circle target / body_circle_result"
+            detail: "Circle target"
           }
         ]
       })
@@ -752,7 +752,7 @@ describe("ModelingActionsPanel", () => {
             targetTopologyAnchorId: "anchor_body_fresh",
             profileKind: "rectangle",
             label: "Fresh result body",
-            detail: "Fresh result body / cut / body_fresh"
+            detail: "Fresh result body / cut"
           }
         ]
       })

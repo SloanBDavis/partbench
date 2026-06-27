@@ -7,6 +7,26 @@ export function redactInternalViewportIds(text: string): string {
 
 const INTERNAL_DIAGNOSTIC_COPY_REPLACEMENTS: readonly [RegExp, string][] = [
   [
+    /\bFeature\s+\S+\s+cannot be edited safely because downstream result body\s+\S+\s+is consumed by feature\s+\S+\.\s+Edit or repair that downstream feature before changing the original source\./gi,
+    "This source feature cannot be edited because a downstream result depends on it. Edit or repair that downstream feature before changing the original source."
+  ],
+  [
+    /\bFeature\s+\S+\s+cannot be edited safely because body\s+\S+\s+is consumed by feature\s+\S+\./gi,
+    "This feature cannot be edited because its result already has a downstream result."
+  ],
+  [
+    /\bFeature\s+\S+\s+cannot be edited safely through\s+\S+\s+because result body\s+\S+\s+is consumed by feature\s+\S+\./gi,
+    "This feature cannot be edited because its result already has a downstream result."
+  ],
+  [
+    /\bFeature\s+\S+\s+cannot be edited through\s+\S+\s+because downstream result body\s+\S+\s+is consumed by feature\s+\S+\./gi,
+    "This feature cannot be edited because a downstream result depends on it."
+  ],
+  [
+    /\bFeature\s+\S+\s+cannot be edited through\s+\S+\s+because its result body\s+\S+\s+is consumed by feature\s+\S+\./gi,
+    "This feature cannot be edited because its result already has a downstream result."
+  ],
+  [
     /\bdoes not expose command-ready semantic generated references\b/gi,
     "does not expose saved faces or edges for modeling actions"
   ],

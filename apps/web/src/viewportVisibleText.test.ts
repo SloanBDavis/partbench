@@ -25,4 +25,15 @@ describe("viewport visible text", () => {
       /\b(command-ready|cad-core|checkpoint-payload|package-contract|OCCT-mesh|deferred|tranche|milestone|debug|renderer-hit|Geometry worker|OCCT\/WASM|checkpoint-local|checkpointEntityId)\b/i
     );
   });
+
+  it("formats downstream edit blockers without raw source ids", () => {
+    const message = formatVisibleDiagnosticMessage(
+      "Feature feat_circle_1 cannot be edited safely because downstream result body body_circle_cut is consumed by feature feat_circle_hole. Edit or repair that downstream feature before changing the original source."
+    );
+
+    expect(message).toBe(
+      "This source feature cannot be edited because a downstream result depends on it. Edit or repair that downstream feature before changing the original source."
+    );
+    expect(message).not.toMatch(/\b(feat_[a-z0-9_]+|body_[a-z0-9_]+)\b/i);
+  });
 });

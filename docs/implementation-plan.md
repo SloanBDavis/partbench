@@ -79,8 +79,9 @@ These constraints remain active:
     preferred, result-edge finish readiness uses selected-edge/downstream-result
     product copy without raw body or feature IDs, and ready
     topology-backed reference selections and Project/File JSON import/export
-    plus result-body hole preflight failures use action-oriented product copy
-    instead of internal implementation labels.
+    plus result-body hole preflight failures, downstream edit blockers, and
+    boolean target details use action-oriented product copy instead of internal
+    implementation labels or raw source IDs.
     Completed V8, V9, V10, V11, V12, and V13
     tranche records below remain historical release records and compatibility
     guardrails. Do not re-open those releases unless the user explicitly asks

@@ -1363,10 +1363,10 @@ function createBooleanTargetBodyOptions(
           detail: isTopologyResultTarget
             ? `${formatProfileKind(targetProfileKind)} result body / ${
                 feature.operationMode
-              } / ${body.id}`
+              }`
             : `${formatProfileKind(targetProfileKind)} new body / ${
                 feature.depth
-              } mm / ${feature.side} / ${body.id}`
+              } mm / ${feature.side}`
         }
       ];
     });

@@ -596,8 +596,12 @@ describe("Inspector", () => {
     );
 
     expect(markup).toContain("Feature parameters unavailable");
-    expect(markup).toContain("downstream result body body_cut_1");
+    expect(markup).toContain(
+      "This source feature cannot be edited because a downstream result depends on it."
+    );
     expect(markup).toContain("Edit or repair that downstream feature");
+    expect(markup).not.toContain("downstream result body body_cut_1");
+    expect(markup).not.toContain("feature feat_cut_chamfer");
     expect(markup).not.toMatch(/\b(tranche|milestone|debug|deferred)\b/i);
   });
 
@@ -636,9 +640,12 @@ describe("Inspector", () => {
     );
 
     expect(markup).toContain("Feature parameters unavailable");
-    expect(markup).toContain("downstream result body body_circle_cut");
-    expect(markup).toContain("feature feat_circle_hole");
+    expect(markup).toContain(
+      "This source feature cannot be edited because a downstream result depends on it."
+    );
     expect(markup).toContain("Edit or repair that downstream feature");
+    expect(markup).not.toContain("downstream result body body_circle_cut");
+    expect(markup).not.toContain("feature feat_circle_hole");
     expect(markup).not.toMatch(/\b(tranche|milestone|debug|deferred)\b/i);
   });
 

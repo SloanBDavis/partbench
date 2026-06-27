@@ -820,7 +820,9 @@ function formatFeatureEditCalloutDetail(
   }
 
   if (editability.status !== "editable") {
-    return getFeatureEditDiagnostic(editability);
+    return formatVisibleDiagnosticMessage(
+      getFeatureEditDiagnostic(editability)
+    );
   }
 
   const editableFields = editability.fields.filter((field) => field.editable);
@@ -2719,7 +2721,11 @@ function ExtrudeDepthEditor({
         </button>
       </div>
       {!canEdit && (
-        <p className="error-text">{getFeatureEditDiagnostic(editability)}</p>
+        <p className="error-text">
+          {formatVisibleDiagnosticMessage(
+            getFeatureEditDiagnostic(editability)
+          )}
+        </p>
       )}
       {canEdit && !isValid && (
         <p className="error-text">Depth must be positive.</p>
@@ -2786,7 +2792,11 @@ function RevolveFeatureEditor({
         </button>
       </div>
       {!canEdit && (
-        <p className="error-text">{getFeatureEditDiagnostic(editability)}</p>
+        <p className="error-text">
+          {formatVisibleDiagnosticMessage(
+            getFeatureEditDiagnostic(editability)
+          )}
+        </p>
       )}
       {canEdit && !isValid && (
         <p className="error-text">Angle must be between 0 and 360 degrees.</p>
@@ -2904,7 +2914,11 @@ function HoleFeatureEditor({
         </button>
       </div>
       {!canEdit && (
-        <p className="error-text">{getFeatureEditDiagnostic(editability)}</p>
+        <p className="error-text">
+          {formatVisibleDiagnosticMessage(
+            getFeatureEditDiagnostic(editability)
+          )}
+        </p>
       )}
       {canEdit && !isValid && (
         <p className="error-text">Blind hole depth must be positive.</p>
@@ -2980,7 +2994,11 @@ function EdgeFinishFeatureEditor({
         </button>
       </div>
       {!canEdit && (
-        <p className="error-text">{getFeatureEditDiagnostic(editability)}</p>
+        <p className="error-text">
+          {formatVisibleDiagnosticMessage(
+            getFeatureEditDiagnostic(editability)
+          )}
+        </p>
       )}
       {canEdit && !isValid && (
         <p className="error-text">{label} must be positive.</p>
