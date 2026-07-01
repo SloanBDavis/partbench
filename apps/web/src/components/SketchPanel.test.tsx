@@ -83,7 +83,8 @@ describe("SketchPanel", () => {
 
     expect(markup).toContain("Evaluation");
     expect(markup).toContain("Solver");
-    expect(markup).toContain("Under-defined");
+    expect(markup).toContain("Feature-ready");
+    expect(markup).toContain("Numerical under-defined");
     expect(markup).toContain("1/1 feature-ready profile");
     expect(markup).toContain("1 dim · 1 constraint");
     expect(markup).toContain("Driving dimensions");

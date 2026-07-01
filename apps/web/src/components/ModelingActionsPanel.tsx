@@ -39,6 +39,7 @@ import {
   formatSketchOnFaceAvailability,
   getSketchAttachableFaces
 } from "../generatedReferenceUi";
+import { createDefaultFeatureHoleForm } from "../featureFormDefaults";
 import {
   createSelectedGeneratedReference,
   createSelectionReferenceCandidateSummaries,
@@ -211,16 +212,6 @@ const defaultRevolveForm: FeatureRevolveForm = {
   angleDegrees: 360
 };
 
-const defaultHoleForm: FeatureHoleForm = {
-  id: "",
-  bodyId: "",
-  targetBodyId: "",
-  name: "",
-  depthMode: "throughAll",
-  depth: 1,
-  direction: "positive"
-};
-
 const defaultEdgeFinishForm = {
   id: "",
   bodyId: "",
@@ -363,6 +354,8 @@ export function ModelingActionsPanel({
           cutTargetBodies={cutTargetBodies}
           disabled={disabled}
           holeTargetBodies={holeTargetBodies}
+          sketches={sketches}
+          onAddEntity={onAddEntity}
           onCreateConstraint={onCreateConstraint}
           onCreateDimension={onCreateDimension}
           onDeleteEntity={onDeleteEntity}
@@ -755,6 +748,8 @@ function SketchEntityWorkbench({
   cutTargetBodies,
   disabled,
   holeTargetBodies,
+  sketches,
+  onAddEntity,
   onCreateConstraint,
   onCreateDimension,
   onDeleteEntity,
@@ -772,6 +767,12 @@ function SketchEntityWorkbench({
   readonly cutTargetBodies: readonly BooleanTargetBodyOption[];
   readonly disabled: boolean;
   readonly holeTargetBodies: readonly BooleanTargetBodyOption[];
+  readonly sketches: readonly SketchSnapshot[];
+  readonly onAddEntity?: (
+    sketchId: string,
+    kind: SketchEntityKind,
+    form: SketchEntityForm
+  ) => void;
   readonly onCreateConstraint?: (
     sketchId: string,
     entityId: string,
@@ -843,6 +844,12 @@ function SketchEntityWorkbench({
         onHoleEntity={onHoleEntity}
         onRevolveEntity={onRevolveEntity}
       />
+      <RevolveSetupCard
+        context={context}
+        disabled={disabled}
+        sketches={sketches}
+        onAddEntity={onAddEntity}
+      />
       <SelectedEntityActions
         context={context}
         disabled={disabled}
@@ -866,6 +873,65 @@ function SketchEntityWorkbench({
         onCreateConstraint={onCreateConstraint}
       />
     </div>
+  );
+}
+
+function RevolveSetupCard({
+  context,
+  disabled,
+  sketches,
+  onAddEntity
+}: {
+  readonly context: Extract<
+    ModelingSelectionContext,
+    { readonly selectionKind: "sketchEntity" }
+  >;
+  readonly disabled: boolean;
+  readonly sketches: readonly SketchSnapshot[];
+  readonly onAddEntity?: (
+    sketchId: string,
+    kind: SketchEntityKind,
+    form: SketchEntityForm
+  ) => void;
+}) {
+  if (context.entity.kind !== "rectangle" && context.entity.kind !== "circle") {
+    return null;
+  }
+
+  if (createRevolveAxisOptions(context.sketch).length > 0) {
+    return null;
+  }
+
+  return (
+    <section className="workbench-card compact">
+      <div className="workbench-card-heading">
+        <h3>Revolve setup</h3>
+        <small>Needs an axis line</small>
+      </div>
+      <small>
+        Add a non-zero line in this sketch, then select the profile and create a
+        revolve.
+      </small>
+      {onAddEntity && (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() =>
+            onAddEntity(
+              context.sketch.id,
+              "line",
+              getDefaultSketchEntityFormForSketch(
+                context.sketch,
+                "line",
+                sketches
+              )
+            )
+          }
+        >
+          Add axis line
+        </button>
+      )}
+    </section>
   );
 }
 
@@ -1928,7 +1994,7 @@ function HoleFeatureForm({
   ) => void;
 }) {
   const [form, setForm] = useState<FeatureHoleForm>(() => ({
-    ...defaultHoleForm,
+    ...createDefaultFeatureHoleForm(),
     targetBodyId: holeTargetBodies[0]?.bodyId ?? "",
     targetTopologyAnchorId: holeTargetBodies[0]?.targetTopologyAnchorId
   }));

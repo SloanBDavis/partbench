@@ -2,7 +2,8 @@ import {
   CAD_PROJECT_FORMAT_VERSION_V18,
   CadEngine,
   createEmptyTopologyIdentitySourceSnapshot,
-  createWcadV2CheckpointEntryPaths
+  createWcadV2CheckpointEntryPaths,
+  importCadProjectJson
 } from "@web-cad/cad-core";
 import type {
   CadBodyDerivedExactMetadataSnapshot,
@@ -215,6 +216,11 @@ describe("agent-adapter", () => {
       adapterVersion: "web-cad.agent-adapter.v1",
       cadOpsVersion: "cadops.v1",
       mode: "dryRun",
+      semanticDiff: {
+        created: [{ id: "preview_box", kind: "box" }],
+        modified: [],
+        deleted: []
+      },
       createdIds: ["preview_box"],
       modifiedIds: [],
       deletedIds: [],
@@ -446,6 +452,11 @@ describe("agent-adapter", () => {
       adapterVersion: "web-cad.agent-adapter.v1",
       cadOpsVersion: "cadops.v1",
       mode: "commit",
+      semanticDiff: {
+        created: [{ id: "committed_cylinder", kind: "cylinder" }],
+        modified: [],
+        deleted: []
+      },
       createdIds: ["committed_cylinder"],
       modifiedIds: [],
       deletedIds: [],
@@ -619,6 +630,107 @@ describe("agent-adapter", () => {
       }
     });
     expect(adapter.getEngine().getDocument().objects.size).toBe(0);
+  });
+
+  it("returns importable Partbench project JSON when agent batch handoff is requested", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    const response = adapter.execute({
+      requestId: "agent_req_project_handoff",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
+      projectHandoff: { includeProjectJson: true },
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "scene.createBox",
+            id: "handoff_box",
+            dimensions: { width: 1, height: 2, depth: 3 }
+          }
+        ]
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      projectHandoff: {
+        kind: "partbenchProjectJson",
+        importTarget: "Partbench JSON import",
+        sourceBoundaryNote:
+          "Project JSON contains Partbench project source only; it does not include renderer IDs, mesh IDs, OCCT handles, viewport state, OPFS paths, or file handles."
+      }
+    });
+    expect(response.ok && response.projectHandoff?.schemaVersion).toBe(
+      response.ok && response.projectHandoff?.project.schemaVersion
+    );
+    expect(
+      response.ok && response.projectHandoff?.project.document.objects
+    ).toContainEqual(
+      expect.objectContaining({ id: "handoff_box", kind: "box" })
+    );
+    expect(
+      JSON.parse((response.ok && response.projectHandoff?.projectJson) || "{}")
+    ).toMatchObject({
+      schemaVersion: response.ok && response.projectHandoff?.schemaVersion,
+      document: {
+        objects: [expect.objectContaining({ id: "handoff_box", kind: "box" })]
+      }
+    });
+
+    const importedEngine = importCadProjectJson(
+      (response.ok && response.projectHandoff?.projectJson) || "{}"
+    );
+
+    expect(
+      importedEngine.getDocument().objects.get("handoff_box")
+    ).toMatchObject({
+      id: "handoff_box",
+      kind: "box"
+    });
+    expect(JSON.stringify(response)).not.toMatch(
+      /rendererId|meshId|occtId|opfsPath|fileHandle/i
+    );
+  });
+
+  it("returns dry-run project handoff from an isolated preview without mutating the adapter engine", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    const response = adapter.execute({
+      requestId: "agent_req_dry_project_handoff",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      projectHandoff: { includeProjectJson: true },
+      batch: {
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "scene.createCylinder",
+            id: "preview_cylinder",
+            dimensions: { radius: 1, height: 2 }
+          }
+        ]
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      projectHandoff: {
+        kind: "partbenchProjectJson",
+        importTarget: "Partbench JSON import",
+        sourceBoundaryNote:
+          "Preview project JSON was generated from an isolated dry-run engine. It contains Partbench project source only; it does not include renderer IDs, mesh IDs, OCCT handles, viewport state, OPFS paths, or file handles."
+      }
+    });
+    expect(
+      response.ok && response.projectHandoff?.project.document.objects
+    ).toContainEqual(
+      expect.objectContaining({ id: "preview_cylinder", kind: "cylinder" })
+    );
+    expect(adapter.getEngine().getDocument().objects.size).toBe(0);
+    expect(adapter.getEngine().getTransactions()).toHaveLength(0);
   });
 
   it("returns a reviewable dry-run preview for a representative V7 workflow", () => {

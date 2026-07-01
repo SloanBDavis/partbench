@@ -29,6 +29,7 @@ import {
   formatSketchEntityUsageLabel,
   getSketchEntityExtrudeUsages
 } from "../sketchEntityUsage";
+import { createDefaultFeatureHoleForm } from "../featureFormDefaults";
 import { formatSketchAttachmentLabel } from "../generatedReferenceUi";
 import type { SketchDisplayStatus } from "../sketchDisplayFrames";
 import {
@@ -119,6 +120,7 @@ export interface SketchPanelProps {
   readonly cutTargetBodies?: readonly BooleanTargetBodyOption[];
   readonly holeTargetBodies?: readonly BooleanTargetBodyOption[];
   readonly focusedSketchId?: string;
+  readonly focusedEntityId?: string;
   readonly features: readonly CadFeatureSummary[];
   readonly onCreateSketch: (form: SketchCreateForm) => void;
   readonly onCreateParameter: (form: ParameterCreateForm) => void;
@@ -271,16 +273,6 @@ const defaultRevolveForm: FeatureRevolveForm = {
   angleDegrees: 360
 };
 
-const defaultHoleForm: FeatureHoleForm = {
-  id: "",
-  bodyId: "",
-  targetBodyId: "",
-  name: "",
-  depthMode: "blind",
-  depth: 1,
-  direction: "positive"
-};
-
 export function SketchPanel({
   disabled,
   sketches,
@@ -293,6 +285,7 @@ export function SketchPanel({
   holeTargetBodies = [],
   displayStatuses,
   focusedSketchId,
+  focusedEntityId,
   features,
   onCreateSketch,
   onCreateParameter,
@@ -381,7 +374,8 @@ export function SketchPanel({
   }, [selectedSketch, selectedSketchEvaluation, sketchDimensionsBySketchId]);
   const effectiveSelectedEntityId = chooseSketchEntitySelection(
     selectedSketch?.entities ?? [],
-    selectedEntityId
+    selectedEntityId,
+    selectedSketch?.id === focusedSketchId ? focusedEntityId : undefined
   );
   const selectedEntity = selectedSketch?.entities.find(
     (entity) => entity.id === effectiveSelectedEntityId
@@ -695,7 +689,9 @@ export function SketchPanel({
       : (selectedSketch?.name ?? "");
   const [revolveForm, setRevolveForm] =
     useState<FeatureRevolveForm>(defaultRevolveForm);
-  const [holeForm, setHoleForm] = useState<FeatureHoleForm>(defaultHoleForm);
+  const [holeForm, setHoleForm] = useState<FeatureHoleForm>(
+    createDefaultFeatureHoleForm
+  );
   const [featureCreateMode, setFeatureCreateMode] = useState<
     "extrude" | "revolve" | "hole"
   >("extrude");

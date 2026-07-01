@@ -7,6 +7,7 @@ import {
   pickPrimitive,
   pickRenderScene,
   projectPoint,
+  renderCanvasScene,
   rendererPackage,
   zoomCamera
 } from "./index";
@@ -197,6 +198,42 @@ describe("renderer", () => {
     expect(selectedId).toBe("mesh_1");
   });
 
+  it("renders selected meshes without semantic edges as one projected outline", () => {
+    const recorder = createRecordingCanvasContext();
+
+    renderCanvasScene(recorder.context, {
+      camera: createDefaultCamera(),
+      size: { width: 800, height: 600 },
+      primitives: [],
+      meshes: [
+        {
+          id: "mesh_without_edges",
+          kind: "mesh",
+          vertices: [
+            [-2, -2, 0],
+            [2, -2, 0],
+            [2, 2, 0],
+            [-2, 2, 0]
+          ],
+          indices: [0, 1, 2, 0, 2, 3],
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          }
+        }
+      ],
+      selectedId: "mesh_without_edges"
+    });
+
+    const selectedMeshStrokes = recorder.strokes.filter(
+      (stroke) => stroke.lineWidth === 3
+    );
+    expect(selectedMeshStrokes).toHaveLength(1);
+    expect(selectedMeshStrokes[0].closed).toBe(true);
+    expect(selectedMeshStrokes[0].points).toHaveLength(4);
+  });
+
   it("normalizes semantic display visual states without storing generated refs", () => {
     const states = createRenderVisualStateMap({
       selectedId: "body_rect",
@@ -234,3 +271,58 @@ describe("renderer", () => {
     expect(JSON.stringify([...states])).not.toContain("selection-buffer");
   });
 });
+
+interface StrokeRecord {
+  readonly closed: boolean;
+  readonly lineWidth: number;
+  readonly points: readonly { readonly x: number; readonly y: number }[];
+}
+
+function createRecordingCanvasContext(): {
+  readonly context: CanvasRenderingContext2D;
+  readonly strokes: StrokeRecord[];
+} {
+  const strokes: StrokeRecord[] = [];
+  let closed = false;
+  let lineWidth = 1;
+  let points: { x: number; y: number }[] = [];
+
+  const context = {
+    clearRect: () => {},
+    save: () => {},
+    restore: () => {},
+    beginPath: () => {
+      closed = false;
+      points = [];
+    },
+    moveTo: (x: number, y: number) => {
+      points.push({ x, y });
+    },
+    lineTo: (x: number, y: number) => {
+      points.push({ x, y });
+    },
+    closePath: () => {
+      closed = true;
+    },
+    fill: () => {},
+    stroke: () => {
+      strokes.push({
+        closed,
+        lineWidth,
+        points: [...points]
+      });
+    },
+    set fillStyle(_value: string) {},
+    set lineCap(_value: CanvasLineCap) {},
+    set lineJoin(_value: CanvasLineJoin) {},
+    set lineWidth(value: number) {
+      lineWidth = value;
+    },
+    get lineWidth() {
+      return lineWidth;
+    },
+    set strokeStyle(_value: string) {}
+  } as unknown as CanvasRenderingContext2D;
+
+  return { context, strokes };
+}

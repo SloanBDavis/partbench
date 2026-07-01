@@ -60,9 +60,7 @@ import {
   buildAddSketchPointOp,
   buildAddSketchRectangleOp,
   buildCreateSketchOp,
-  buildCreateBoxOp,
   buildCreateConeOp,
-  buildCreateCylinderOp,
   buildCreateParameterOp,
   buildCreateSketchConstraintOp,
   buildCreateSphereOp,
@@ -127,6 +125,7 @@ import { ProjectJsonPanel } from "./components/ProjectJsonPanel";
 import { SketchPanel } from "./components/SketchPanel";
 import { SketchViewportDragOverlay } from "./components/SketchViewportDragOverlay";
 import { StructurePanel } from "./components/StructurePanel";
+import type { StructureSelectionOptions } from "./components/StructurePanel";
 import { ViewportContextualCommandSurface } from "./components/ViewportContextualCommandSurface";
 import {
   ViewportCanvas,
@@ -168,6 +167,7 @@ import {
   formatBodyMeasurementError,
   formatBodyTopologyError
 } from "./sceneObjectDisplay";
+import { createQuickStartSourceBodyPlan } from "./quickStartBodies";
 import { createRenderSceneInputs } from "./renderScene";
 import {
   createGeneratedFaceReferenceKey,
@@ -1920,11 +1920,17 @@ export function App() {
     );
   }
 
-  function selectObject(objectId: string | undefined) {
+  function selectObject(
+    objectId: string | undefined,
+    options?: StructureSelectionOptions
+  ) {
     setSelectedId(objectId);
     setSelectedGeneratedReference(undefined);
     setViewportPickIntent(undefined);
     setViewportHoverPick(undefined);
+    if (options?.panel) {
+      setActiveModelBrowserPanel(options.panel);
+    }
   }
 
   function selectViewportPick(pick: ViewportCanvasPick) {
@@ -2035,29 +2041,31 @@ export function App() {
   }
 
   async function createBox() {
-    const offset = document.objects.size * 2.8;
-    await commitOps(
-      [
-        buildCreateBoxOp({
-          ...quickBoxForm,
-          translationX: offset
-        })
-      ],
-      (response) => response.createdIds[0]
-    );
+    const offset = projectStructure.bodies.length * 2.8;
+    const plan = createQuickStartSourceBodyPlan({
+      document,
+      form: {
+        ...quickBoxForm,
+        translationX: offset
+      },
+      kind: "box"
+    });
+
+    await commitOps(plan.ops, () => plan.bodyId);
   }
 
   async function createCylinder() {
-    const offset = document.objects.size * 2.8;
-    await commitOps(
-      [
-        buildCreateCylinderOp({
-          ...quickCylinderForm,
-          translationX: offset
-        })
-      ],
-      (response) => response.createdIds[0]
-    );
+    const offset = projectStructure.bodies.length * 2.8;
+    const plan = createQuickStartSourceBodyPlan({
+      document,
+      form: {
+        ...quickCylinderForm,
+        translationX: offset
+      },
+      kind: "cylinder"
+    });
+
+    await commitOps(plan.ops, () => plan.bodyId);
   }
 
   async function createSphere() {
@@ -2294,6 +2302,7 @@ export function App() {
     setSelectedId(undefined);
     setSelectedGeneratedReference(undefined);
     setFocusedSketchId(sketchId);
+    setActiveUtilityPanel("sketches");
     setSelectedSketchContext({
       sketchId,
       ...(entityId ? { entityId } : {})
@@ -3993,6 +4002,7 @@ export function App() {
                     holeTargetBodies={holeTargetBodyOptions}
                     displayStatuses={sketchDisplayState.statuses}
                     focusedSketchId={focusedSketchId}
+                    focusedEntityId={selectedSketchContext?.entityId}
                     features={projectStructure.features}
                     onCreateSketch={(form) => void createSketch(form)}
                     onCreateParameter={(form) => void createParameter(form)}

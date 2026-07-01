@@ -35,6 +35,7 @@ describe("ModelingActionsPanel", () => {
       entity: rectangle,
       solverStatus: createSolverStatus({
         status: "under-defined",
+        numericalSolverStatus: "under-defined",
         dimensionCount: 1,
         constraintCount: 2,
         validProfileCount: 1,
@@ -51,7 +52,8 @@ describe("ModelingActionsPanel", () => {
 
     expect(markup).toContain("Rectangle in Sketch 1");
     expect(markup).toContain("Sketch status");
-    expect(markup).toContain("Under-defined");
+    expect(markup).toContain("Feature-ready");
+    expect(markup).toContain("Numerical under-defined");
     expect(markup).toContain("1/1 feature-ready profile");
     expect(markup).toContain("Edit Rectangle");
     expect(markup).toContain("Driving dimension");
@@ -787,6 +789,39 @@ describe("ModelingActionsPanel", () => {
     expect(markup).toContain("Axis candidate");
     expect(markup).toContain("Use this line as a revolve axis");
     expect(markup).toContain("Delete axis");
+  });
+
+  it("keeps an axis-line action visible when a selected profile cannot revolve yet", () => {
+    const rectangle: SketchSnapshot["entities"][number] = {
+      id: "rect_1",
+      kind: "rectangle",
+      center: [0, 0],
+      width: 4,
+      height: 2
+    };
+    const sketch = createSketch("sketch_1", "Sketch 1", [rectangle]);
+    const context = {
+      selectionKind: "sketchEntity" as const,
+      sketch,
+      entity: rectangle
+    };
+    const actions = deriveModelingActions({ context });
+    const markup = renderToStaticMarkup(
+      createElement(ModelingActionsPanel, {
+        actions,
+        context,
+        sketches: [sketch],
+        onAddEntity: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Revolve setup");
+    expect(markup).toContain("Needs an axis line");
+    expect(markup).toContain("Add axis line");
+    expect(markup).toContain("Create feature");
+    expect(markup).not.toMatch(
+      /topology|checkpoint|rendererId|meshId|occtId|opfsPath|fileHandle/i
+    );
   });
 
   it("renders generated reference summaries without using raw IDs as labels", () => {

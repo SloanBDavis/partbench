@@ -230,8 +230,16 @@ export function getDefaultSketchEntityKind(
 
 export function chooseSketchEntitySelection(
   entities: readonly SketchEntitySnapshot[],
-  currentEntityId: SketchEntityId | undefined
+  currentEntityId: SketchEntityId | undefined,
+  focusedEntityId?: SketchEntityId
 ): SketchEntityId | undefined {
+  if (
+    focusedEntityId &&
+    entities.some((entity) => entity.id === focusedEntityId)
+  ) {
+    return focusedEntityId;
+  }
+
   if (
     currentEntityId &&
     entities.some((entity) => entity.id === currentEntityId)
@@ -1061,11 +1069,29 @@ export function formatSketchSolverStatus(
 export function getSketchSolverStatusDisplay(
   status: SketchSolverStatusQueryResponse | undefined
 ): DimensionStatusDisplay {
+  if (isFeatureReadyUnderDefinedSketch(status)) {
+    return {
+      label: "Feature-ready",
+      detail: formatSketchSolverStatus(status),
+      tone: "healthy"
+    };
+  }
+
   return {
     label: status ? getSketchSolverStatusLabel(status.status) : "Unavailable",
     detail: formatSketchSolverStatus(status),
     tone: status ? getSketchSolverStatusTone(status.status) : "warning"
   };
+}
+
+function isFeatureReadyUnderDefinedSketch(
+  status: SketchSolverStatusQueryResponse | undefined
+): boolean {
+  return (
+    status?.status === "under-defined" &&
+    status.profileValidity.status === "valid" &&
+    status.profileValidity.validProfileCount > 0
+  );
 }
 
 export function formatSketchProfileValidity(

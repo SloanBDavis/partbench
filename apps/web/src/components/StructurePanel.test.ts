@@ -308,6 +308,37 @@ describe("StructurePanel", () => {
     expect(markup).toContain("Second sketch");
     expect(markup).toContain("Open");
   });
+
+  it("opens the sketch lineage for a selected result body", () => {
+    const markup = renderToStaticMarkup(
+      createElement(StructurePanel, {
+        bodies: [
+          createExtrudeBody("body_base", "feature_base", {
+            consumedByFeatureId: "feature_cut"
+          }),
+          createExtrudeBody("body_cut", "feature_cut")
+        ],
+        features: [createBaseFeature(), createCutFeature()],
+        health: createHealth(),
+        namedReferences: [],
+        objects: [],
+        parts: [createPart()],
+        selectedId: "body_cut",
+        sketches: [createSketch()],
+        units: "mm",
+        onFocusSketch: () => undefined,
+        onInspectNamedReference: () => undefined,
+        onSelect: () => undefined
+      })
+    );
+
+    expect(markup).toContain(
+      '<details class="model-story-sketch-block" open="">'
+    );
+    expect(markup.indexOf("Cut result")).toBeGreaterThan(
+      markup.indexOf('<details class="model-story-sketch-block" open="">')
+    );
+  });
 });
 
 function createHealth(): ProjectHealthQueryResponse {

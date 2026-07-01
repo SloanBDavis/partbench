@@ -1,4 +1,4 @@
-import { CadEngine } from "@web-cad/cad-core";
+import { CadEngine, type CadProject } from "@web-cad/cad-core";
 import { WCAD_SOURCE_IDENTITY_ALGORITHM } from "@web-cad/cad-protocol";
 import type {
   CadActorMetadata,
@@ -102,6 +102,7 @@ import type {
   ObjectMeasurementsSnapshot,
   ObjectId,
   ProjectExtentsWarning,
+  SemanticDiff,
   Transform,
   Vec3,
   WcadSourceIdentity
@@ -118,6 +119,7 @@ export interface CadOpsAgentRequest {
   readonly actor?: CadActorMetadata;
   readonly permissions?: CadOpsAgentPermissionPolicy;
   readonly source?: CadOpsAgentRequestSource;
+  readonly projectHandoff?: CadOpsAgentProjectHandoffRequest;
 }
 
 export interface CadOpsAgentPermissionPolicy {
@@ -127,6 +129,10 @@ export interface CadOpsAgentPermissionPolicy {
 export interface CadOpsAgentRequestSource {
   readonly source: string;
   readonly toolName?: string;
+}
+
+export interface CadOpsAgentProjectHandoffRequest {
+  readonly includeProjectJson?: boolean;
 }
 
 export interface CadOpsAgentQueryRequest {
@@ -157,6 +163,7 @@ export interface CadOpsAgentSuccessResponse {
   readonly adapterVersion: AgentAdapterVersion;
   readonly cadOpsVersion: CadOpsVersion;
   readonly mode: CadBatchMode;
+  readonly semanticDiff: SemanticDiff;
   readonly createdIds: readonly ObjectId[];
   readonly modifiedIds: readonly ObjectId[];
   readonly deletedIds: readonly ObjectId[];
@@ -185,7 +192,17 @@ export interface CadOpsAgentSuccessResponse {
   readonly transactionId?: string;
   readonly actor?: CadActorMetadata;
   readonly audit?: CadTransactionAuditMetadata;
+  readonly projectHandoff?: CadOpsAgentProjectHandoff;
   readonly review: CadOpsAgentWorkflowReview;
+}
+
+export interface CadOpsAgentProjectHandoff {
+  readonly kind: "partbenchProjectJson";
+  readonly schemaVersion: string;
+  readonly project: CadProject;
+  readonly projectJson?: string;
+  readonly importTarget: "Partbench JSON import";
+  readonly sourceBoundaryNote: string;
 }
 
 export interface CadOpsAgentErrorResponse {
@@ -1061,7 +1078,8 @@ export class CadOpsAgentAdapter {
 
     return toAgentResponse(
       effectiveRequest,
-      this.engine.executeBatch(effectiveRequest.batch)
+      this.engine.executeBatch(effectiveRequest.batch),
+      this.engine
     );
   }
 
@@ -1182,7 +1200,8 @@ export function parseCadOpsAgentV8ProjectSurfaceRequest(
 
 function toAgentResponse(
   request: CadOpsAgentRequest,
-  response: CadBatchResponse
+  response: CadBatchResponse,
+  engine: CadEngine
 ): CadOpsAgentResponse {
   const review = createAgentWorkflowReview(request, { response });
 
@@ -1211,6 +1230,7 @@ function toAgentResponse(
     adapterVersion: request.adapterVersion,
     cadOpsVersion: request.batch.version,
     mode: response.mode,
+    semanticDiff: response.semanticDiff,
     createdIds: response.createdIds,
     modifiedIds: response.modifiedIds,
     deletedIds: response.deletedIds,
@@ -1219,8 +1239,47 @@ function toAgentResponse(
     transactionId: response.transactionId,
     ...(response.actor ? { actor: response.actor } : {}),
     ...(response.audit ? { audit: response.audit } : {}),
+    ...(request.projectHandoff?.includeProjectJson
+      ? { projectHandoff: createAgentProjectHandoff(request, engine) }
+      : {}),
     review
   };
+}
+
+function createAgentProjectHandoff(
+  request: CadOpsAgentRequest,
+  engine: CadEngine
+): CadOpsAgentProjectHandoff {
+  const handoffEngine =
+    request.batch.mode === "dryRun"
+      ? createDryRunProjectHandoffEngine(engine, request)
+      : engine;
+  const project = handoffEngine.exportProject();
+
+  return {
+    kind: "partbenchProjectJson",
+    schemaVersion: project.schemaVersion,
+    project,
+    projectJson: JSON.stringify(project, null, 2),
+    importTarget: "Partbench JSON import",
+    sourceBoundaryNote:
+      request.batch.mode === "dryRun"
+        ? "Preview project JSON was generated from an isolated dry-run engine. It contains Partbench project source only; it does not include renderer IDs, mesh IDs, OCCT handles, viewport state, OPFS paths, or file handles."
+        : "Project JSON contains Partbench project source only; it does not include renderer IDs, mesh IDs, OCCT handles, viewport state, OPFS paths, or file handles."
+  };
+}
+
+function createDryRunProjectHandoffEngine(
+  engine: CadEngine,
+  request: CadOpsAgentRequest
+): CadEngine {
+  const previewEngine = new CadEngine(engine.getDocument());
+
+  previewEngine.applyBatch(request.batch.ops, {
+    ...(request.batch.actor ? { actor: request.batch.actor } : {})
+  });
+
+  return previewEngine;
 }
 
 function toAgentDiffIds(response: CadBatchResponse): {
@@ -3223,7 +3282,9 @@ function isCadOpsAgentRequest(value: unknown): value is CadOpsAgentRequest {
     (value.actor === undefined || isCadActorMetadataShape(value.actor)) &&
     (value.permissions === undefined ||
       isCadOpsAgentPermissionPolicy(value.permissions)) &&
-    (value.source === undefined || isCadOpsAgentRequestSource(value.source))
+    (value.source === undefined || isCadOpsAgentRequestSource(value.source)) &&
+    (value.projectHandoff === undefined ||
+      isCadOpsAgentProjectHandoffRequest(value.projectHandoff))
   );
 }
 
@@ -3288,6 +3349,17 @@ function isCadOpsAgentPermissionPolicy(
   return (
     isRecord(value) &&
     (value.allowCommit === undefined || typeof value.allowCommit === "boolean")
+  );
+}
+
+function isCadOpsAgentProjectHandoffRequest(
+  value: unknown
+): value is CadOpsAgentProjectHandoffRequest {
+  return (
+    isRecord(value) &&
+    Object.keys(value).every((key) => key === "includeProjectJson") &&
+    (value.includeProjectJson === undefined ||
+      typeof value.includeProjectJson === "boolean")
   );
 }
 

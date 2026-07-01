@@ -154,6 +154,11 @@ describe("mcp-adapter", () => {
         )?.inputSchema
       )
     ).toContain('"desiredOperation"');
+    expect(
+      JSON.stringify(
+        tools.find((tool) => tool.name === "cad.batch")?.inputSchema
+      )
+    ).toContain('"projectHandoff"');
   });
 
   it("runs cad.batch dry-run without mutating the document", () => {
@@ -424,6 +429,52 @@ describe("mcp-adapter", () => {
         canExportFiles: false,
         bodyCount: 1,
         unavailableBodyCount: 1
+      }
+    });
+  });
+
+  it("passes project handoff requests through cad.batch", () => {
+    const server = new CadMcpServer();
+
+    const response = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_project_handoff",
+      arguments: {
+        allowCommit: true,
+        projectHandoff: { includeProjectJson: true },
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "scene.createBox",
+              id: "mcp_handoff_box",
+              dimensions: { width: 1, height: 2, depth: 3 }
+            }
+          ]
+        }
+      }
+    });
+
+    expect(response).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        projectHandoff: {
+          kind: "partbenchProjectJson",
+          importTarget: "Partbench JSON import"
+        }
+      }
+    });
+    const handoff =
+      "projectHandoff" in response.structuredContent
+        ? response.structuredContent.projectHandoff
+        : undefined;
+
+    expect(JSON.parse(handoff?.projectJson ?? "{}")).toMatchObject({
+      document: {
+        objects: [expect.objectContaining({ id: "mcp_handoff_box" })]
       }
     });
   });

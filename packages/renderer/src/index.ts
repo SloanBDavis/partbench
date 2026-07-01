@@ -622,8 +622,8 @@ function drawTriangleMesh(
   const vertices = mesh.vertices.map((vertex) =>
     transformPoint(vertex, mesh.transform)
   );
-  const edges = getMeshEdges(mesh.indices);
   const displayEdges = mesh.edgeSegments ?? [];
+  const outline = createProjectedMeshOutline(vertices, camera, size);
 
   context.save();
   context.lineJoin = "round";
@@ -631,16 +631,6 @@ function drawTriangleMesh(
 
   context.fillStyle = getVisualFillColor(style, "rgba(47, 111, 151, 0.08)");
   drawMeshFaces(context, mesh.indices, vertices, camera, size);
-
-  context.strokeStyle = getVisualSoftStrokeColor(
-    style,
-    "rgba(53, 75, 91, 0.22)"
-  );
-  context.lineWidth = isVisualActive(style) ? 1.25 : 0.75;
-
-  for (const [start, end] of edges) {
-    strokeProjectedLine(context, camera, size, vertices[start], vertices[end]);
-  }
 
   if (style.selected && displayEdges.length > 0) {
     context.strokeStyle = getVisualSoftStrokeColor(
@@ -655,19 +645,24 @@ function drawTriangleMesh(
     context.strokeStyle = getVisualStrokeColor(style, "#235f86");
     context.lineWidth = getVisualLineWidth(style, 2);
     strokeMeshEdgeSegments(context, mesh, displayEdges, camera, size);
-  } else if (isVisualActive(style)) {
-    context.strokeStyle = getVisualStrokeColor(style, "#235f86");
-    context.lineWidth = 3;
+  } else if (style.selected && outline.length > 1) {
+    context.strokeStyle = getVisualSoftStrokeColor(
+      style,
+      "rgba(242, 165, 65, 0.42)"
+    );
+    context.lineWidth = 7;
+    strokeProjectedOutline(context, outline);
 
-    for (const [start, end] of edges) {
-      strokeProjectedLine(
-        context,
-        camera,
-        size,
-        vertices[start],
-        vertices[end]
-      );
-    }
+    context.strokeStyle = getVisualStrokeColor(style, "#235f86");
+    context.lineWidth = getVisualLineWidth(style, 2);
+    strokeProjectedOutline(context, outline);
+  } else if (outline.length > 1) {
+    context.strokeStyle = getVisualSoftStrokeColor(
+      style,
+      "rgba(53, 75, 91, 0.22)"
+    );
+    context.lineWidth = 1.25;
+    strokeProjectedOutline(context, outline);
   }
 
   context.restore();
@@ -818,6 +813,94 @@ function strokeMeshEdgeSegments(
       transformPoint(edge.end, mesh.transform)
     );
   }
+}
+
+function createProjectedMeshOutline(
+  vertices: readonly Vec3[],
+  camera: RenderCamera,
+  size: ViewportSize
+): readonly ProjectedPoint[] {
+  const projectedByLocation = new Map<string, ProjectedPoint>();
+
+  for (const vertex of vertices) {
+    const projected = projectPoint(vertex, camera, size);
+
+    if (projected) {
+      projectedByLocation.set(
+        `${projected.x.toFixed(6)}:${projected.y.toFixed(6)}`,
+        projected
+      );
+    }
+  }
+
+  const projected = [...projectedByLocation.values()].sort(
+    (left, right) => left.x - right.x || left.y - right.y
+  );
+
+  if (projected.length <= 2) {
+    return projected;
+  }
+
+  const lower: ProjectedPoint[] = [];
+  for (const point of projected) {
+    while (
+      lower.length >= 2 &&
+      getProjectedTurn(
+        lower[lower.length - 2],
+        lower[lower.length - 1],
+        point
+      ) <= 0
+    ) {
+      lower.pop();
+    }
+    lower.push(point);
+  }
+
+  const upper: ProjectedPoint[] = [];
+  for (const point of [...projected].reverse()) {
+    while (
+      upper.length >= 2 &&
+      getProjectedTurn(
+        upper[upper.length - 2],
+        upper[upper.length - 1],
+        point
+      ) <= 0
+    ) {
+      upper.pop();
+    }
+    upper.push(point);
+  }
+
+  return [...lower.slice(0, -1), ...upper.slice(0, -1)];
+}
+
+function getProjectedTurn(
+  origin: ProjectedPoint,
+  first: ProjectedPoint,
+  second: ProjectedPoint
+): number {
+  return (
+    (first.x - origin.x) * (second.y - origin.y) -
+    (first.y - origin.y) * (second.x - origin.x)
+  );
+}
+
+function strokeProjectedOutline(
+  context: CanvasRenderingContext2D,
+  outline: readonly ProjectedPoint[]
+): void {
+  context.beginPath();
+  context.moveTo(outline[0].x, outline[0].y);
+
+  for (const point of outline.slice(1)) {
+    context.lineTo(point.x, point.y);
+  }
+
+  if (outline.length > 2) {
+    context.closePath();
+  }
+
+  context.stroke();
 }
 
 function strokeProjectedLine(
@@ -1207,34 +1290,6 @@ function getTorusSegments(primitive: RenderTorusPrimitive): {
   }
 
   return { center, outer, inner, crossSections };
-}
-
-function getMeshEdges(
-  indices: readonly number[]
-): readonly (readonly [number, number])[] {
-  const edges = new Map<string, readonly [number, number]>();
-
-  for (let index = 0; index + 2 < indices.length; index += 3) {
-    addMeshEdge(edges, indices[index], indices[index + 1]);
-    addMeshEdge(edges, indices[index + 1], indices[index + 2]);
-    addMeshEdge(edges, indices[index + 2], indices[index]);
-  }
-
-  return [...edges.values()];
-}
-
-function addMeshEdge(
-  edges: Map<string, readonly [number, number]>,
-  start: number,
-  end: number
-): void {
-  const min = Math.min(start, end);
-  const max = Math.max(start, end);
-  const key = `${min}:${max}`;
-
-  if (!edges.has(key)) {
-    edges.set(key, [min, max]);
-  }
 }
 
 function transformPoint(

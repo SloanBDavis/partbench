@@ -1,4 +1,5 @@
 import {
+  CAD_PROJECT_FORMAT_VERSION_V18,
   CAD_PROJECT_FORMAT_VERSION_V1,
   CadEngine,
   CURRENT_CAD_PROJECT_FORMAT_VERSION,
@@ -180,7 +181,7 @@ describe("projectJson helpers", () => {
     expect(preview.summary.authoredFeatureCount).toBe(1);
     expect(preview.summary.namedReferenceCount).toBe(1);
     expect(formatProjectJsonSummary(preview.summary)).toBe(
-      "0 object(s), 1 sketch(es), 1 sketch entity(ies), 1 authored feature(s), 1 named reference(s), 1 transaction(s)"
+      "1 object(s) (body 1), 1 sketch(es), 1 sketch entity(ies), 1 authored feature(s), 1 named reference(s), 1 transaction(s)"
     );
   });
 
@@ -358,6 +359,73 @@ describe("projectJson helpers", () => {
       normalizedSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION
     });
     expect(workflow.draft.schema.detail).toContain("during import");
+  });
+
+  it("reports supported topology schemas without legacy migration copy", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "rect_1",
+        center: [0, 0],
+        width: 2,
+        height: 3
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_1",
+        bodyId: "body_1",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        depth: 4,
+        side: "positive",
+        operationMode: "newBody"
+      },
+      {
+        op: "topology.checkpoint.create",
+        checkpointId: "checkpoint_1",
+        bodyId: "body_1",
+        sourceFeatureId: "feat_1",
+        sourceIdentity: {
+          algorithm: "partbench-source-v1",
+          sha256:
+            "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        status: "active"
+      },
+      {
+        op: "topology.anchor.create",
+        anchorId: "anchor_body_1",
+        entityKind: "body",
+        bodyId: "body_1",
+        checkpointId: "checkpoint_1",
+        checkpointEntityId: "checkpoint-body-1",
+        sourceFeatureId: "feat_1",
+        stableId: "generated:body:body_1",
+        sourceSemanticRole: "source body",
+        signatureHash: "body_signature_1"
+      }
+    ]);
+
+    const projectJson = exportCadProjectJson(engine);
+    const workflow = createProjectJsonWorkflowState({
+      currentProject: exportCadProject(new CadEngine()),
+      draftJson: projectJson,
+      draftSource: createProjectJsonDraftSourceForEditorValue(projectJson)
+    });
+
+    expect(workflow.draft.schema).toMatchObject({
+      status: "current",
+      label: "Supported format",
+      sourceSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
+      normalizedSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V18
+    });
+    expect(workflow.draft.schema.detail).toBe(
+      `${CAD_PROJECT_FORMAT_VERSION_V18} imports without migration.`
+    );
   });
 
   it("returns structured import issues for malformed JSON", () => {

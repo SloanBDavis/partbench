@@ -1145,6 +1145,7 @@ export class CadEngine {
       return {
         ok: true,
         mode: batch.mode,
+        semanticDiff: run.diff,
         ...diffIds,
         warnings: validation.warnings,
         ...(audit ? { audit } : {})
@@ -1153,11 +1154,13 @@ export class CadEngine {
 
     const actor = normalizeActorMetadata(batch.actor);
     const result = this.applyBatch(batch.ops, { actor, audit });
+    const commitDiffIds = toDiffIds(result.transaction.diff);
 
     return {
       ok: true,
       mode: batch.mode,
-      ...diffIds,
+      semanticDiff: result.transaction.diff,
+      ...commitDiffIds,
       warnings: validation.warnings,
       transactionId: result.transaction.id,
       ...(result.transaction.actor ? { actor: result.transaction.actor } : {}),

@@ -125,11 +125,13 @@ export interface ProjectJsonWorkflowState {
 }
 
 export function summarizeCadProject(project: CadProject): ProjectJsonSummary {
+  const authoredBodyCount = project.document.features.length;
+
   return {
     schemaVersion: project.schemaVersion,
     units: project.document.units,
-    objectCount: project.document.objects.length,
-    objectKindSummary: summarizeObjectKinds(project),
+    objectCount: project.document.objects.length + authoredBodyCount,
+    objectKindSummary: summarizeObjectKinds(project, authoredBodyCount),
     sketchCount: project.document.sketches.length,
     sketchEntityCount: project.document.sketches.reduce(
       (total, sketch) => total + sketch.entities.length,
@@ -336,11 +338,14 @@ function createProjectJsonSchemaWorkflowState(
   const normalizedSchemaVersion = preview.project.schemaVersion;
   const rawSchemaVersion = sourceSchemaVersion ?? normalizedSchemaVersion;
 
-  if (rawSchemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION) {
+  if (rawSchemaVersion === normalizedSchemaVersion) {
     return {
       status: "current",
-      label: "Current format",
-      detail: `${CURRENT_CAD_PROJECT_FORMAT_VERSION} imports without migration.`,
+      label:
+        rawSchemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION
+          ? "Current format"
+          : "Supported format",
+      detail: `${rawSchemaVersion} imports without migration.`,
       sourceSchemaVersion: rawSchemaVersion,
       normalizedSchemaVersion
     };
@@ -395,8 +400,15 @@ function createProjectJsonImportImpact(
   };
 }
 
-function summarizeObjectKinds(project: CadProject): string {
+function summarizeObjectKinds(
+  project: CadProject,
+  authoredBodyCount = 0
+): string {
   const counts = new Map<string, number>();
+
+  if (authoredBodyCount > 0) {
+    counts.set("body", authoredBodyCount);
+  }
 
   for (const object of project.document.objects) {
     counts.set(object.kind, (counts.get(object.kind) ?? 0) + 1);
@@ -406,7 +418,7 @@ function summarizeObjectKinds(project: CadProject): string {
     return "none";
   }
 
-  const orderedKinds = ["box", "cylinder", "sphere", "cone", "torus"];
+  const orderedKinds = ["body", "box", "cylinder", "sphere", "cone", "torus"];
 
   return orderedKinds
     .filter((kind) => counts.has(kind))

@@ -101,6 +101,11 @@ describe("BrowserCadCommandWorker", () => {
       response: {
         ok: true,
         mode: request.batch.mode,
+        semanticDiff: {
+          created: [{ id: "box_1", kind: "box" }],
+          modified: [],
+          deleted: []
+        },
         createdIds: ["box_1"],
         modifiedIds: [],
         deletedIds: [],
@@ -184,6 +189,11 @@ describe("BrowserCadCommandWorker", () => {
     expect(response).toEqual({
       ok: true,
       mode: "commit",
+      semanticDiff: {
+        created: [{ id: "obj_1", kind: "box" }],
+        modified: [],
+        deleted: []
+      },
       createdIds: ["obj_1"],
       modifiedIds: [],
       deletedIds: [],
@@ -191,5 +201,64 @@ describe("BrowserCadCommandWorker", () => {
       transactionId: "txn_1"
     });
     expect(engine.getDocument().objects.get("obj_1")?.kind).toBe("box");
+  });
+
+  it("returns committed sketch ids through the browser worker before follow-up sketch edits", async () => {
+    const engine = new CadEngine();
+    const mockWorker = new MockCadCommandWorker();
+    const transport = new FakeWorkerTransport((request) =>
+      mockWorker.execute(request)
+    );
+    const executor = new AsyncCadCommandExecutor(
+      engine,
+      new BrowserCadCommandWorker(transport)
+    );
+
+    const createResponse = await executor.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [{ op: "sketch.create", plane: "XY", name: "Panel sketch" }]
+    });
+
+    expect(createResponse).toMatchObject({
+      ok: true,
+      mode: "commit",
+      createdSketchIds: ["sketch_1"],
+      semanticDiff: {
+        sketches: {
+          created: [{ id: "sketch_1" }]
+        }
+      }
+    });
+
+    const sketchId =
+      createResponse.ok && createResponse.createdSketchIds
+        ? createResponse.createdSketchIds[0]
+        : undefined;
+
+    expect(sketchId).toBe("sketch_1");
+
+    const rectangleResponse = await executor.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "sketch.addRectangle",
+          sketchId: sketchId ?? "missing_sketch",
+          center: [0, 0],
+          width: 6,
+          height: 4
+        }
+      ]
+    });
+
+    expect(rectangleResponse).toMatchObject({
+      ok: true,
+      mode: "commit",
+      createdSketchEntityIds: ["skent_1"]
+    });
+    expect(engine.getDocument().sketches.get("sketch_1")?.entities.size).toBe(
+      1
+    );
   });
 });

@@ -571,7 +571,6 @@ code {
 }
 
 .model-story-flow,
-.model-story-sketch-block,
 .model-story-entity-block,
 .model-story-feature,
 .model-story-body-block,
@@ -584,6 +583,20 @@ code {
 .model-story-flow {
   position: relative;
   padding-left: 6px;
+}
+
+.model-story-sketch-block {
+  display: block;
+  min-width: 0;
+}
+
+.model-story-sketch-block > .model-story-entities,
+.model-story-sketch-block > .model-story-empty {
+  margin-top: 6px;
+}
+
+.model-story-sketch-block:not([open]) > :not(summary) {
+  display: none;
 }
 
 .model-story-flow::before {
@@ -2170,6 +2183,11 @@ canvas:active {
 .project-file-drawer[open] {
   height: min(82dvh, 620px);
   max-height: min(82dvh, 620px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
 }
 
 .advanced-tools-drawer[open] {
@@ -2205,18 +2223,14 @@ canvas:active {
 }
 
 .project-file-drawer .project-panel {
-  height: 100%;
+  height: auto;
   min-height: 0;
   margin: 0;
   padding: 14px;
   border: 0;
   border-radius: 0;
   background: transparent;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  -webkit-overflow-scrolling: touch;
+  overflow: visible;
 }
 
 .advanced-tools-drawer .utility-dock {
@@ -2714,7 +2728,21 @@ button.dimension-status-row {
 }
 
 .project-json-editor textarea {
+  display: block;
   min-height: 210px;
+}
+
+.project-json-editor[open] {
+  display: block;
+}
+
+.project-json-actions {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  padding: 8px 0;
+  background: var(--panel-soft);
+  box-shadow: 0 1px 0 var(--line);
 }
 
 .button-row {

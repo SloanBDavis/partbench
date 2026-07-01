@@ -163,6 +163,12 @@ describe("sketch panel UI helpers", () => {
     ];
 
     expect(chooseSketchEntitySelection(entities, "circle_1")).toBe("circle_1");
+    expect(chooseSketchEntitySelection(entities, "rect_1", "circle_1")).toBe(
+      "circle_1"
+    );
+    expect(chooseSketchEntitySelection(entities, "rect_1", "missing")).toBe(
+      "rect_1"
+    );
     expect(chooseSketchEntitySelection(entities, "missing")).toBe("rect_1");
     expect(chooseSketchEntitySelection([], "missing")).toBeUndefined();
     expect(getSketchEntityOptionLabel(entities[0])).toBe(
@@ -949,9 +955,9 @@ describe("sketch panel UI helpers", () => {
       "Numerical under-defined · 1/1 feature-ready profile"
     );
     expect(getSketchSolverStatusDisplay(solverStatus)).toEqual({
-      label: "Under-defined",
+      label: "Feature-ready",
       detail: "Numerical under-defined · 1/1 feature-ready profile",
-      tone: "warning"
+      tone: "healthy"
     });
     expect(formatSketchSolverStatus(failedStatus)).toBe(
       "Conflicting · 1 diagnostic · 0/0 unsupported profiles"

@@ -50,6 +50,10 @@ export interface StructureGeometryStatus {
   readonly status: string;
 }
 
+export interface StructureSelectionOptions {
+  readonly panel?: "tree" | "selection";
+}
+
 export interface StructurePanelProps {
   readonly bodies: readonly CadBodySnapshot[];
   readonly features: readonly CadFeatureSummary[];
@@ -78,7 +82,10 @@ export interface StructurePanelProps {
   readonly units: DocumentUnits;
   readonly onFocusSketch: (sketchId: string, entityId?: string) => void;
   readonly onInspectNamedReference: (name: string) => void;
-  readonly onSelect: (id: string | undefined) => void;
+  readonly onSelect: (
+    id: string | undefined,
+    options?: StructureSelectionOptions
+  ) => void;
   readonly onSelectGeneratedReference?: (
     reference: CadGeneratedReference
   ) => void;
@@ -313,7 +320,10 @@ function ModelStoryPart({
   readonly selectedId?: string;
   readonly units: DocumentUnits;
   readonly onFocusSketch: (sketchId: string, entityId?: string) => void;
-  readonly onSelect: (id: string | undefined) => void;
+  readonly onSelect: (
+    id: string | undefined,
+    options?: StructureSelectionOptions
+  ) => void;
   readonly onSelectGeneratedReference?: (
     reference: CadGeneratedReference
   ) => void;
@@ -576,7 +586,10 @@ function ModelStoryFeature({
   readonly selectedId?: string;
   readonly step: number;
   readonly units: DocumentUnits;
-  readonly onSelect: (id: string | undefined) => void;
+  readonly onSelect: (
+    id: string | undefined,
+    options?: StructureSelectionOptions
+  ) => void;
   readonly onSelectGeneratedReference?: (
     reference: CadGeneratedReference
   ) => void;
@@ -596,7 +609,7 @@ function ModelStoryFeature({
         className={`model-story-row feature${
           feature.bodyId === selectedId ? " selected" : ""
         }`}
-        onClick={() => onSelect(feature.bodyId)}
+        onClick={() => onSelect(feature.bodyId, { panel: "selection" })}
       >
         <StoryIndex value={step} />
         <span className="model-story-kind">Feature</span>
@@ -648,7 +661,10 @@ function ModelStoryTarget({
   readonly health: ProjectHealthQueryResponse;
   readonly selectedId?: string;
   readonly target: StructureLineageTargetNode;
-  readonly onSelect: (id: string | undefined) => void;
+  readonly onSelect: (
+    id: string | undefined,
+    options?: StructureSelectionOptions
+  ) => void;
 }) {
   const body = target.body;
   const status = body ? getBodyHealthStatus(health, body.id) : undefined;
@@ -709,7 +725,10 @@ function ModelStoryResultBody({
     readonly stableId: string;
   };
   readonly selectedId?: string;
-  readonly onSelect: (id: string | undefined) => void;
+  readonly onSelect: (
+    id: string | undefined,
+    options?: StructureSelectionOptions
+  ) => void;
   readonly onSelectGeneratedReference?: (
     reference: CadGeneratedReference
   ) => void;

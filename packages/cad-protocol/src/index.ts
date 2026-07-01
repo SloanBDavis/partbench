@@ -1091,6 +1091,7 @@ export type CadBatchResponse = CadBatchSuccessResponse | CadBatchErrorResponse;
 export interface CadBatchSuccessResponse {
   readonly ok: true;
   readonly mode: CadBatchMode;
+  readonly semanticDiff: SemanticDiff;
   readonly createdIds: readonly ObjectId[];
   readonly modifiedIds: readonly ObjectId[];
   readonly deletedIds: readonly ObjectId[];

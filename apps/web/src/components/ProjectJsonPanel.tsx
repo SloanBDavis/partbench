@@ -236,7 +236,7 @@ export function ProjectJsonPanel({
         }
       >
         <summary>JSON import/export</summary>
-        <div className="button-row compact">
+        <div className="button-row compact project-json-actions">
           <button type="button" onClick={onExport} disabled={disabled}>
             Export JSON
           </button>

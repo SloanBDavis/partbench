@@ -4271,6 +4271,11 @@ describe("cad-core", () => {
     expect(response).toEqual({
       ok: true,
       mode: "dryRun",
+      semanticDiff: {
+        created: [{ id: "box_1", kind: "box" }],
+        modified: [],
+        deleted: []
+      },
       createdIds: ["box_1"],
       modifiedIds: [],
       deletedIds: [],
@@ -4298,6 +4303,11 @@ describe("cad-core", () => {
     expect(response).toEqual({
       ok: true,
       mode: "commit",
+      semanticDiff: {
+        created: [{ id: "cylinder_1", kind: "cylinder" }],
+        modified: [],
+        deleted: []
+      },
       createdIds: ["cylinder_1"],
       modifiedIds: [],
       deletedIds: [],
@@ -4500,6 +4510,11 @@ describe("cad-core", () => {
     expect(response).toEqual({
       ok: true,
       mode: "commit",
+      semanticDiff: {
+        created: [{ id: "script_cylinder", kind: "cylinder" }],
+        modified: [],
+        deleted: []
+      },
       createdIds: ["script_cylinder"],
       modifiedIds: [],
       deletedIds: [],
@@ -4665,6 +4680,14 @@ describe("cad-core", () => {
     expect(response).toEqual({
       ok: true,
       mode: "commit",
+      semanticDiff: {
+        created: [
+          { id: "box_1", kind: "box" },
+          { id: "cylinder_1", kind: "cylinder" }
+        ],
+        modified: [{ id: "box_1", kind: "box" }],
+        deleted: [{ id: "cylinder_1", kind: "cylinder" }]
+      },
       createdIds: ["box_1", "cylinder_1"],
       modifiedIds: ["box_1"],
       deletedIds: ["cylinder_1"],
@@ -4701,6 +4724,11 @@ describe("cad-core", () => {
     expect(engine.executeBatch(batch)).toEqual({
       ok: true,
       mode: "dryRun",
+      semanticDiff: {
+        created: [],
+        modified: [{ id: "box_1", kind: "box" }],
+        deleted: []
+      },
       createdIds: [],
       modifiedIds: ["box_1"],
       deletedIds: [],
@@ -4715,6 +4743,11 @@ describe("cad-core", () => {
     expect(engine.executeBatch({ ...batch, mode: "commit" })).toEqual({
       ok: true,
       mode: "commit",
+      semanticDiff: {
+        created: [],
+        modified: [{ id: "box_1", kind: "box" }],
+        deleted: []
+      },
       createdIds: [],
       modifiedIds: ["box_1"],
       deletedIds: [],
@@ -4758,6 +4791,19 @@ describe("cad-core", () => {
     ).toEqual({
       ok: true,
       mode: "dryRun",
+      semanticDiff: {
+        created: [],
+        modified: [{ id: "box_1", kind: "box" }],
+        deleted: [],
+        document: {
+          units: {
+            before: "mm",
+            after: "in",
+            mode: "metadataOnly",
+            scaleFactor: 1
+          }
+        }
+      },
       createdIds: [],
       modifiedIds: ["box_1"],
       deletedIds: [],
@@ -4775,6 +4821,19 @@ describe("cad-core", () => {
     ).toEqual({
       ok: true,
       mode: "commit",
+      semanticDiff: {
+        created: [],
+        modified: [{ id: "box_1", kind: "box" }],
+        deleted: [],
+        document: {
+          units: {
+            before: "mm",
+            after: "in",
+            mode: "metadataOnly",
+            scaleFactor: 1
+          }
+        }
+      },
       createdIds: [],
       modifiedIds: ["box_1"],
       deletedIds: [],
@@ -4810,6 +4869,19 @@ describe("cad-core", () => {
     expect(engine.executeBatch(batch)).toEqual({
       ok: true,
       mode: "dryRun",
+      semanticDiff: {
+        created: [],
+        modified: [{ id: "box_1", kind: "box" }],
+        deleted: [],
+        document: {
+          units: {
+            before: "mm",
+            after: "cm",
+            mode: "preservePhysicalSize",
+            scaleFactor: 0.1
+          }
+        }
+      },
       createdIds: [],
       modifiedIds: ["box_1"],
       deletedIds: [],
@@ -4824,6 +4896,19 @@ describe("cad-core", () => {
     expect(engine.executeBatch({ ...batch, mode: "commit" })).toEqual({
       ok: true,
       mode: "commit",
+      semanticDiff: {
+        created: [],
+        modified: [{ id: "box_1", kind: "box" }],
+        deleted: [],
+        document: {
+          units: {
+            before: "mm",
+            after: "cm",
+            mode: "preservePhysicalSize",
+            scaleFactor: 0.1
+          }
+        }
+      },
       createdIds: [],
       modifiedIds: ["box_1"],
       deletedIds: [],
@@ -20305,6 +20390,11 @@ describe("cad-core", () => {
       response: {
         ok: true,
         mode: "dryRun",
+        semanticDiff: {
+          created: [],
+          modified: [{ id: "box_1", kind: "box" }],
+          deleted: []
+        },
         createdIds: [],
         modifiedIds: ["box_1"],
         deletedIds: [],
@@ -20337,6 +20427,11 @@ describe("cad-core", () => {
     expect(response).toEqual({
       ok: true,
       mode: "dryRun",
+      semanticDiff: {
+        created: [{ id: "obj_1", kind: "cylinder" }],
+        modified: [],
+        deleted: []
+      },
       createdIds: ["obj_1"],
       modifiedIds: [],
       deletedIds: [],
@@ -20419,6 +20514,11 @@ describe("cad-core", () => {
     expect(response).toEqual({
       ok: true,
       mode: "commit",
+      semanticDiff: {
+        created: [{ id: "obj_1", kind: "box" }],
+        modified: [],
+        deleted: []
+      },
       createdIds: ["obj_1"],
       modifiedIds: [],
       deletedIds: [],

@@ -5,6 +5,7 @@ import {
   parseCadOpsAgentRequest,
   parseCadOpsAgentV8ProjectSurfaceRequest,
   type AgentAdapterVersion,
+  type CadOpsAgentProjectHandoffRequest,
   type CadOpsAgentQueryResponse,
   type CadOpsAgentResponse,
   type CadOpsAgentV8ProjectSurfaceResponse
@@ -1474,6 +1475,9 @@ export class CadMcpServer {
           permissions: {
             allowCommit: request.arguments.allowCommit === true
           },
+          ...(request.arguments.projectHandoff
+            ? { projectHandoff: request.arguments.projectHandoff }
+            : {}),
           source: {
             source: "mcp",
             toolName: request.name
@@ -2455,7 +2459,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.batch",
     description:
-      "Runs a structured CADOps batch in dry-run or commit mode and returns the CADOps response with agent review/audit summary.",
+      "Runs a structured CADOps batch in dry-run or commit mode and returns the CADOps response with semantic diff, agent review, and audit summary.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -2473,6 +2477,19 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
           type: "boolean",
           description:
             "Must be true to allow a CadBatch with mode=commit. Dry-runs do not require this flag."
+        },
+        projectHandoff: {
+          type: "object",
+          additionalProperties: false,
+          description:
+            "Optional Partbench JSON handoff artifact for opening the resulting project through JSON import.",
+          properties: {
+            includeProjectJson: {
+              type: "boolean",
+              description:
+                "When true, successful responses include projectHandoff.projectJson."
+            }
+          }
         }
       }
     }
@@ -2514,8 +2531,25 @@ function isBatchToolArguments(value: unknown): value is {
   readonly batch: CadBatch;
   readonly actor?: CadActorMetadata;
   readonly allowCommit?: boolean;
+  readonly projectHandoff?: CadOpsAgentProjectHandoffRequest;
 } {
-  return isRecord(value) && value.batch !== undefined;
+  return (
+    isRecord(value) &&
+    value.batch !== undefined &&
+    (value.projectHandoff === undefined ||
+      isProjectHandoffToolArguments(value.projectHandoff))
+  );
+}
+
+function isProjectHandoffToolArguments(
+  value: unknown
+): value is CadOpsAgentProjectHandoffRequest {
+  return (
+    isRecord(value) &&
+    Object.keys(value).every((key) => key === "includeProjectJson") &&
+    (value.includeProjectJson === undefined ||
+      typeof value.includeProjectJson === "boolean")
+  );
 }
 
 function isObjectMeasurementsToolArguments(
