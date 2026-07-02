@@ -34,11 +34,13 @@ exact STEP export for supported bodies. V11 Tranche C introduces
 tangent, concentric, equal length, equal radius, angle, and symmetry. V13
 introduced `web-cad.project.v18` and `partbench.wcad.v2` for topology
 identity source records, B-rep checkpoint metadata, explicit repair records,
-and authoritative checkpoint payload entries. V14 planning should reuse that
-storage foundation where possible and introduce another schema only for new
-source-of-truth data that V18 cannot represent. This document continues to
-define the project-format and source/derived rules that storage, solver, and
-topology-backed downstream modeling work must preserve.
+and authoritative checkpoint payload entries. V14 reused the V13 storage foundation. V15 introduces `web-cad.project.v19`
+for new source records that cannot be represented by V18: `ImportedBodyFeature`,
+`LinearPatternFeature`, `CircularPatternFeature`, `MirrorFeature`,
+`ShellFeature`, and `CadParameter.expression`. See `docs/v15.md` for the V15
+storage contract. This document continues to define the project-format and
+source/derived rules that storage, solver, and topology-backed downstream
+modeling work must preserve.
 
 ## Current Format
 
@@ -63,6 +65,8 @@ schemaVersion: web-cad.project.v15
 schemaVersion: web-cad.project.v16
 schemaVersion: web-cad.project.v17
 schemaVersion: web-cad.project.v18
+schemaVersion: web-cad.project.v19  (planned; V15 imported bodies, patterns,
+                                      mirror, shell, parameter expressions)
 ```
 
 It is produced by:
@@ -155,10 +159,11 @@ stable result topology is not persisted and does not require
 The current exported JSON shape is:
 
 ```ts
-ProjectV16OrV17OrV18 {
+ProjectV16OrV17OrV18OrV19 {
   schemaVersion: "web-cad.project.v16"
                | "web-cad.project.v17"
                | "web-cad.project.v18"
+               | "web-cad.project.v19"  // (planned)
   document: {
     units: "mm" | "cm" | "m" | "in"
     objects: SceneObject[]
@@ -888,6 +893,8 @@ web-cad.project.v15
 web-cad.project.v16
 web-cad.project.v17
 web-cad.project.v18
+web-cad.project.v19  (planned; V15 imported bodies, patterns, mirror, shell,
+                       parameter expressions)
 ```
 
 Schema V1 projects migrate into the current in-memory model with unchanged units,
@@ -1315,8 +1322,11 @@ schemaVersion: web-cad.project.v19
 
 `web-cad.project.v17` is already used for V11 advanced sketch constraint source
 records. `web-cad.project.v18` is already used for V13 topology identity source
-records. Any future schema after V18 should include a migration from older
-accepted versions, not silent shape guessing.
+records. `web-cad.project.v19` is reserved for V15 new source records:
+`ImportedBodyFeature`, `LinearPatternFeature`, `CircularPatternFeature`,
+`MirrorFeature`, `ShellFeature`, and `CadParameter.expression`. See
+`docs/v15.md` for the full V19 contract. Any future schema after V19 should
+include a migration from older accepted versions, not silent shape guessing.
 
 V3 Phase A introduced `web-cad.project.v7` when parameters and sketch dimensions
 became persisted source-of-truth data. V3 Phase B introduced
@@ -1476,6 +1486,8 @@ web-cad.project.v14
 web-cad.project.v15
 web-cad.project.v16
 web-cad.project.v17
+web-cad.project.v18
+web-cad.project.v19  (planned for V15)
 ```
 
 Schema V1 is migrated to the current document model on parse/load by adding
@@ -1514,7 +1526,15 @@ and rejecting V11 advanced sketch solver constraints because they are a V17
 source shape. Schema V17 is loaded with V11 advanced sketch solver constraints
 intact. Schema V18 is loaded with V13 topology identity source records intact,
 including topology identity settings, checkpoint metadata, topology anchors,
-and repair records, subject to explicit validation. Current imports reject
+and repair records, subject to explicit validation. Schema V19 is loaded with
+V15 source records intact: imported body features, linear pattern features,
+circular pattern features, mirror features, shell features, and parameter
+expression strings. V19 migration from V18 adds empty imported body, pattern,
+mirror, and shell feature lists and sets `expression: null` on all existing
+parameters. V15 source records (`ImportedBodyFeature`, `LinearPatternFeature`,
+`CircularPatternFeature`, `MirrorFeature`, `ShellFeature`, and
+`CadParameter.expression`) are a V19 source shape and are rejected in V18 and
+earlier documents. Current imports reject
 inconsistent or unsupported extrude operation-mode contracts, such as `newBody`
 with `targetBodyId`, `add`/`cut` without `targetBodyId`, boolean features
 targeting missing, primitive-derived, or consumed bodies, unsupported
@@ -1643,6 +1663,51 @@ identifier already means authored revolve feature source records from an older
 release. If V14 requires new source truth beyond V18, the next schema must be a
 new explicit identifier after `web-cad.project.v18`, with validation and
 migration documented at implementation time.
+
+## V15 STEP Import, Expanded Feature Families, and Parameter Expressions Storage Decision
+
+V15 introduces `web-cad.project.v19` for new source-of-truth records that
+cannot be represented by `web-cad.project.v18`:
+
+- `ImportedBodyFeature`: records an imported STEP body with its source filename,
+  format, authored body ID, and V13 checkpoint ID. The STEP bytes themselves are
+  transient import input and are never stored in source.
+- `LinearPatternFeature`: records a linear pattern with seed body ID, axis,
+  spacing, instance count, and result body ID.
+- `CircularPatternFeature`: records a circular pattern with seed body ID,
+  rotation axis, total angle, instance count, and result body ID.
+- `MirrorFeature`: records a mirror with seed body ID, mirror plane,
+  includeOriginal flag, and result body ID.
+- `ShellFeature`: records a shell with target body ID, wall thickness, open face
+  references, and result body ID.
+- `CadParameter.expression`: optional arithmetic expression string on a
+  parameter record.
+
+Projects export V19 only when at least one of the above records is present.
+Projects without V15 source records continue to export as their minimum
+required version (V16, V17, or V18).
+
+V15 reuses the V13/V14 storage foundation for imported body topology:
+
+- Imported body checkpoint metadata is stored in `web-cad.project.v18`
+  topology identity source records (same `TopologyCheckpointRecord` shape as
+  V13-authored checkpoints).
+- Imported body checkpoint payload bytes are stored in `.wcad` package v2
+  checkpoint entries (same `checkpoints/` structure as V13).
+- Topology anchors minted on imported body entities use the same
+  `TopologyAnchorRecord` shape in V18 topology identity.
+
+V15 JSON export for V19 projects must clearly report that checkpoint payloads
+require `.wcad`; the same lossy-export warning as V13. Imported body topology
+anchor health should be marked as `IMPORTED_BODY_CHECKPOINT_MISSING` in
+JSON-only loaded projects.
+
+V15 `.wcad` package version remains `partbench.wcad.v2`.
+
+Do not confuse the V15 release with `web-cad.project.v15`; that schema
+identifier already means authored hole feature source records from an older
+release. The new schema identifier for V15 release source records is
+`web-cad.project.v19`. See `docs/v15.md` for the full V15 storage contract.
 
 ## V8 Native Package Direction
 
