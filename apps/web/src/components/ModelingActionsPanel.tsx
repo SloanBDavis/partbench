@@ -5,6 +5,7 @@ import type {
   CadGeneratedReference,
   CadReferenceHealthEntry,
   CurrentSketchConstraintKind,
+  FeatureMirrorPlane,
   NamedGeneratedReferenceEntry,
   SelectionReferenceCandidatesQueryResponse,
   SketchDimensionTarget,
@@ -18,6 +19,8 @@ import type {
   FeatureEdgeFinishForm,
   FeatureExtrudeForm,
   FeatureHoleForm,
+  FeatureMirrorEdit,
+  FeatureMirrorForm,
   FeatureRevolveForm,
   SketchConstraintForm,
   SketchCreateForm,
@@ -25,6 +28,12 @@ import type {
   SketchDimensionForm,
   SketchEntityForm
 } from "../cadCommands";
+import {
+  MIRROR_PLANE_OPTIONS,
+  createMirrorDefaultName,
+  formatMirrorPlaneLabel,
+  getMirrorPanelState
+} from "../mirrorPanelUi";
 import {
   SELECTED_EDGE_FINISH_REFERENCE_VALUE,
   buildEdgeFinishForm,
@@ -147,6 +156,11 @@ export interface ModelingActionsPanelProps {
     target: ReturnType<typeof createSelectedGeneratedReference>
   ) => void;
   readonly onSelectBody?: (bodyId: string) => void;
+  readonly onCreateMirror?: (form: FeatureMirrorForm) => void;
+  readonly onUpdateMirror?: (
+    featureId: string,
+    edit: FeatureMirrorEdit
+  ) => void;
   readonly onDeleteFeature?: (featureId: string) => void;
   readonly onDeleteEntity?: (sketchId: string, entityId: string) => void;
   readonly onRevolveEntity?: (
@@ -235,6 +249,7 @@ export function ModelingActionsPanel({
   onCreateConstraint,
   onCreateDimension,
   onCreateEdgeFinish,
+  onCreateMirror,
   onCreateSideHoleSketch,
   onCreateSketch,
   onCreateSketchOnFace,
@@ -243,6 +258,7 @@ export function ModelingActionsPanel({
   onNameGeneratedReference,
   onRepairNamedReference,
   onSelectBody,
+  onUpdateMirror,
   onDeleteFeature,
   onDeleteEntity,
   onDeleteSketch,
@@ -373,9 +389,11 @@ export function ModelingActionsPanel({
           disabled={disabled}
           context={context}
           sketches={sketches}
+          onCreateMirror={onCreateMirror}
           onCreateSketchOnFace={onCreateSketchOnFace}
           onDeleteFeature={onDeleteFeature}
           onSelectSketch={onSelectSketch}
+          onUpdateMirror={onUpdateMirror}
         />
       )}
 
@@ -2108,9 +2126,11 @@ function BodyWorkbench({
   context,
   disabled,
   sketches,
+  onCreateMirror,
   onCreateSketchOnFace,
   onDeleteFeature,
-  onSelectSketch
+  onSelectSketch,
+  onUpdateMirror
 }: {
   readonly actions: readonly ModelingActionDescriptor[];
   readonly context: Extract<
@@ -2119,9 +2139,14 @@ function BodyWorkbench({
   >;
   readonly disabled: boolean;
   readonly sketches: readonly SketchSnapshot[];
+  readonly onCreateMirror?: (form: FeatureMirrorForm) => void;
   readonly onCreateSketchOnFace?: (form: SketchCreateOnFaceForm) => void;
   readonly onDeleteFeature?: (featureId: string) => void;
   readonly onSelectSketch?: (sketchId: string, entityId?: string) => void;
+  readonly onUpdateMirror?: (
+    featureId: string,
+    edit: FeatureMirrorEdit
+  ) => void;
 }) {
   const sketchAction = actions.find(
     (action) => action.id === "sketch.createOnFace"
@@ -2328,7 +2353,131 @@ function BodyWorkbench({
           </p>
         )}
       </section>
+      <MirrorWorkbenchCard
+        body={context.body}
+        disabled={disabled}
+        feature={context.feature}
+        onCreateMirror={onCreateMirror}
+        onUpdateMirror={onUpdateMirror}
+      />
     </div>
+  );
+}
+
+function MirrorWorkbenchCard({
+  body,
+  disabled,
+  feature,
+  onCreateMirror,
+  onUpdateMirror
+}: {
+  readonly body: CadBodySnapshot;
+  readonly disabled: boolean;
+  readonly feature?: CadFeatureSummary;
+  readonly onCreateMirror?: (form: FeatureMirrorForm) => void;
+  readonly onUpdateMirror?: (
+    featureId: string,
+    edit: FeatureMirrorEdit
+  ) => void;
+}) {
+  const state = getMirrorPanelState(body, feature);
+  const [mirrorPlane, setMirrorPlane] = useState<FeatureMirrorPlane>(
+    state.mode === "edit" ? state.mirrorPlane : "XY"
+  );
+  const [includeOriginal, setIncludeOriginal] = useState(
+    state.mode === "edit" ? state.includeOriginal : false
+  );
+
+  if (state.mode === "unavailable") {
+    return (
+      <section className="workbench-card">
+        <div className="workbench-card-heading">
+          <h3>Mirror</h3>
+        </div>
+        <p className="empty-state compact">{state.reason}</p>
+      </section>
+    );
+  }
+
+  const isEdit = state.mode === "edit";
+  const hasChanges = isEdit
+    ? mirrorPlane !== state.mirrorPlane ||
+      includeOriginal !== state.includeOriginal
+    : true;
+
+  return (
+    <section className="workbench-card">
+      <div className="workbench-card-heading">
+        <h3>{isEdit ? "Edit mirror" : "Mirror body"}</h3>
+        <small>
+          {isEdit ? `Feature ${state.featureId}` : `Seed ${state.seedLabel}`}
+        </small>
+      </div>
+      <div className="field-grid two">
+        <label>
+          Mirror plane
+          <select
+            value={mirrorPlane}
+            disabled={disabled}
+            onChange={(event) =>
+              setMirrorPlane(event.currentTarget.value as FeatureMirrorPlane)
+            }
+          >
+            {MIRROR_PLANE_OPTIONS.map((plane) => (
+              <option key={plane} value={plane}>
+                {formatMirrorPlaneLabel(plane)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="checkbox-field">
+          <input
+            type="checkbox"
+            checked={includeOriginal}
+            disabled={disabled}
+            onChange={(event) =>
+              setIncludeOriginal(event.currentTarget.checked)
+            }
+          />
+          Include original
+        </label>
+      </div>
+      <p className="hint-text">
+        {includeOriginal
+          ? "The result is the union of the seed and its reflection; the seed body is merged into the result."
+          : "The result is the reflected copy only; the seed body stays active."}
+      </p>
+      <button
+        type="button"
+        disabled={
+          disabled ||
+          !hasChanges ||
+          (isEdit ? !onUpdateMirror : !onCreateMirror)
+        }
+        onClick={() => {
+          if (isEdit) {
+            onUpdateMirror?.(state.featureId, {
+              ...(mirrorPlane !== state.mirrorPlane ? { mirrorPlane } : {}),
+              ...(includeOriginal !== state.includeOriginal
+                ? { includeOriginal }
+                : {})
+            });
+            return;
+          }
+
+          onCreateMirror?.({
+            id: "",
+            bodyId: "",
+            seedBodyId: state.seedBodyId,
+            name: createMirrorDefaultName(state.seedLabel, mirrorPlane),
+            mirrorPlane,
+            includeOriginal
+          });
+        }}
+      >
+        {isEdit ? "Apply mirror edits" : "Create mirror"}
+      </button>
+    </section>
   );
 }
 

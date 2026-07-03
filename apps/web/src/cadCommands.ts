@@ -18,11 +18,14 @@ import type {
   FeatureHoleDepthMode,
   FeatureHoleDirection,
   FeatureHoleOp,
+  FeatureMirrorOp,
+  FeatureMirrorPlane,
   FeatureRevolveOp,
   FeatureUpdateExtrudeOp,
   FeatureUpdateChamferOp,
   FeatureUpdateFilletOp,
   FeatureUpdateHoleOp,
+  FeatureUpdateMirrorOp,
   FeatureUpdateRevolveOp,
   ParameterCreateOp,
   ParameterDeleteOp,
@@ -211,6 +214,20 @@ export interface FeatureEdgeFinishForm {
   readonly topologyAnchorProof?: CadTopologyAnchorCommandProof;
   readonly distance: number;
   readonly radius: number;
+}
+
+export interface FeatureMirrorForm {
+  readonly id: string;
+  readonly bodyId: string;
+  readonly seedBodyId: string;
+  readonly name: string;
+  readonly mirrorPlane: FeatureMirrorPlane;
+  readonly includeOriginal: boolean;
+}
+
+export interface FeatureMirrorEdit {
+  readonly mirrorPlane?: FeatureMirrorPlane;
+  readonly includeOriginal?: boolean;
 }
 
 export function buildCreateBoxOp(form: PrimitiveCommandForm): SceneCreateBoxOp {
@@ -954,6 +971,34 @@ export function buildFeatureUpdateHoleOp(
     ...(depthMode ? { depthMode } : {}),
     ...(depth !== undefined ? { depth } : {}),
     ...(direction ? { direction } : {})
+  };
+}
+
+export function buildFeatureMirrorOp(form: FeatureMirrorForm): FeatureMirrorOp {
+  return {
+    op: "feature.mirror",
+    id: normalizeOptionalId(form.id),
+    bodyId: normalizeOptionalId(form.bodyId),
+    seedBodyId: form.seedBodyId,
+    mirrorPlane: form.mirrorPlane,
+    includeOriginal: form.includeOriginal,
+    name: form.name.trim() || undefined
+  };
+}
+
+export function buildFeatureUpdateMirrorOp(
+  id: string,
+  edit: FeatureMirrorEdit
+): FeatureUpdateMirrorOp {
+  return {
+    op: "feature.updateMirror",
+    id,
+    ...(edit.mirrorPlane !== undefined
+      ? { mirrorPlane: edit.mirrorPlane }
+      : {}),
+    ...(edit.includeOriginal !== undefined
+      ? { includeOriginal: edit.includeOriginal }
+      : {})
   };
 }
 

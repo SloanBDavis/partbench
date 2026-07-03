@@ -13,6 +13,7 @@ import {
   type DerivedGeometryEdgeFinishInput,
   type DerivedGeometryLinearPatternInput,
   type DerivedGeometryCircularPatternInput,
+  type DerivedGeometryMirrorInput,
   type DerivedGeometryExtrudeInput,
   type DerivedGeometryHoleInput,
   type DerivedGeometryRevolveInput,
@@ -64,7 +65,8 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
       | DerivedGeometryEdgeFinishInput
       | DerivedGeometryBooleanExtrudeInput
       | DerivedGeometryLinearPatternInput
-      | DerivedGeometryCircularPatternInput,
+      | DerivedGeometryCircularPatternInput
+      | DerivedGeometryMirrorInput,
     request: GeometryWorkerRequest
   ): Promise<DerivedGeometryResult> {
     const { createRenderMeshFromGeometryWorkerResponse } =
@@ -87,7 +89,8 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
         request.payload.op === "geometry.hole" ||
         request.payload.op === "geometry.edgeFinish" ||
         request.payload.op === "geometry.linearPattern" ||
-        request.payload.op === "geometry.circularPattern"
+        request.payload.op === "geometry.circularPattern" ||
+        request.payload.op === "geometry.mirror"
           ? "source"
           : "boundsCenter",
       transform:
@@ -418,6 +421,24 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           rotationAxis: input.rotationAxis,
           totalAngleDegrees: input.totalAngleDegrees,
           instanceCount: input.instanceCount,
+          linearDeflection: 0.25,
+          angularDeflection: 0.5
+        })
+      );
+    },
+    async mirror(input: DerivedGeometryMirrorInput) {
+      const { createMirrorWorkerRequest } =
+        await import("@web-cad/geometry-worker/browser");
+      const requestId = createRequestId(input.id);
+
+      return executeTessellationRequest(
+        input,
+        createMirrorWorkerRequest({
+          id: requestId,
+          payloadId: `${requestId}:kernel`,
+          seed: input.seed,
+          mirrorPlane: input.mirrorPlane,
+          includeOriginal: input.includeOriginal,
           linearDeflection: 0.25,
           angularDeflection: 0.5
         })

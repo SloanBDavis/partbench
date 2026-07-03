@@ -32,6 +32,7 @@ import type {
   DerivedGeometryConeInput,
   DerivedGeometryCylinderInput,
   DerivedGeometryEdgeFinishInput,
+  DerivedGeometryMirrorInput,
   DerivedExactMetadataResult,
   DerivedGeometryExtrudeInput,
   DerivedGeometryHoleInput,
@@ -57,7 +58,8 @@ type RuntimeInput =
   | DerivedGeometryEdgeFinishInput
   | DerivedGeometryBooleanExtrudeInput
   | DerivedGeometryLinearPatternInput
-  | DerivedGeometryCircularPatternInput;
+  | DerivedGeometryCircularPatternInput
+  | DerivedGeometryMirrorInput;
 
 describe("derivedGeometry", () => {
   it("creates cache keys that change when object geometry inputs change", () => {
@@ -4917,6 +4919,10 @@ function createRuntime(
       return handler(input);
     },
     circularPattern(input) {
+      inputs.push(input);
+      return handler(input);
+    },
+    mirror(input) {
       inputs.push(input);
       return handler(input);
     },

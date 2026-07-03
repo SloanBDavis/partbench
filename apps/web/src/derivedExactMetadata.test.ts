@@ -1848,6 +1848,9 @@ function createRuntime(
     circularPattern() {
       throw new Error("Mesh requests are not used by exact metadata tests.");
     },
+    mirror() {
+      throw new Error("Mesh requests are not used by exact metadata tests.");
+    },
     exactBodyMetadata(input) {
       exactInputs.push(input);
       return handler(input);

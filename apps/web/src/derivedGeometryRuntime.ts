@@ -155,6 +155,13 @@ export interface DerivedGeometryCircularPatternInput {
   readonly instanceCount: number;
 }
 
+export interface DerivedGeometryMirrorInput {
+  readonly id: string;
+  readonly seed: DerivedGeometryPatternSeedSource;
+  readonly mirrorPlane: "XY" | "XZ" | "YZ";
+  readonly includeOriginal: boolean;
+}
+
 export type DerivedGeometryEdgeFinishInput =
   | {
       readonly id: string;
@@ -326,6 +333,7 @@ export interface DerivedGeometryRuntime {
   circularPattern(
     input: DerivedGeometryCircularPatternInput
   ): Promise<DerivedGeometryResult>;
+  mirror(input: DerivedGeometryMirrorInput): Promise<DerivedGeometryResult>;
   exactBodyMetadata(
     input: DerivedExactMetadataInput
   ): Promise<DerivedExactMetadataResult>;

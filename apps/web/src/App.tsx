@@ -81,11 +81,13 @@ import {
   buildFeatureExtrudeOp,
   buildFeatureFilletOp,
   buildFeatureHoleOp,
+  buildFeatureMirrorOp,
   buildFeatureRevolveOp,
   buildFeatureUpdateChamferOp,
   buildFeatureUpdateExtrudeOp,
   buildFeatureUpdateFilletOp,
   buildFeatureUpdateHoleOp,
+  buildFeatureUpdateMirrorOp,
   buildFeatureUpdateRevolveOp,
   buildNameGeneratedReferenceOp,
   buildParameterEditOps,
@@ -108,6 +110,8 @@ import {
   type FeatureEdgeFinishForm,
   type FeatureExtrudeForm,
   type FeatureHoleForm,
+  type FeatureMirrorEdit,
+  type FeatureMirrorForm,
   type FeatureRevolveForm,
   type ParameterCreateForm,
   type ParameterEditForm,
@@ -2363,6 +2367,31 @@ export function App() {
     );
   }
 
+  async function createMirror(form: FeatureMirrorForm) {
+    await commitOps(
+      [buildFeatureMirrorOp(form)],
+      (response) => response.createdBodyIds?.[0] ?? (form.bodyId || selectedId)
+    );
+  }
+
+  async function updateAuthoredMirror(
+    featureId: string,
+    edit: FeatureMirrorEdit
+  ) {
+    const feature = projectStructure.features.find(
+      (candidate) => candidate.id === featureId
+    );
+
+    if (feature?.kind !== "mirror") {
+      return;
+    }
+
+    await commitOps(
+      [buildFeatureUpdateMirrorOp(feature.id, edit)],
+      () => feature.bodyId
+    );
+  }
+
   function focusSketch(sketchId: string, entityId?: string) {
     setSelectedId(undefined);
     setSelectedGeneratedReference(undefined);
@@ -3945,6 +3974,7 @@ export function App() {
             onCreateSideHoleSketch={(form, targetBodyId) =>
               void createSideHoleSketch(form, targetBodyId)
             }
+            onCreateMirror={(form) => void createMirror(form)}
             onCreateSketch={(form) => void createSketch(form)}
             onCreateSketchOnFace={(form) => void createSketchOnFace(form)}
             onExtrudeEntity={(sketchId, entityId, form) =>
@@ -3960,6 +3990,9 @@ export function App() {
               void repairNamedReference(name, target)
             }
             onSelectBody={selectObject}
+            onUpdateMirror={(featureId, edit) =>
+              void updateAuthoredMirror(featureId, edit)
+            }
             onDeleteFeature={(featureId) =>
               void deleteAuthoredFeature(featureId)
             }
