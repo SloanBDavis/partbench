@@ -78,7 +78,8 @@ export type GeometryKernelOp =
   | "geometry.importStep"
   | "geometry.exportStep"
   | "geometry.linearPattern"
-  | "geometry.circularPattern";
+  | "geometry.circularPattern"
+  | "geometry.mirror";
 export type GeometryKernelPrimitive =
   | "box"
   | "cylinder"
@@ -349,6 +350,20 @@ export interface CircularPatternRequest {
   readonly tessellation?: TessellationOptions;
 }
 
+export type GeometryKernelMirrorPlane = "XY" | "XZ" | "YZ";
+
+export type MirrorSeedSource = PatternSeedSource;
+
+export interface MirrorRequest {
+  readonly id: string;
+  readonly version: GeometryKernelVersion;
+  readonly op: "geometry.mirror";
+  readonly seed: MirrorSeedSource;
+  readonly mirrorPlane: GeometryKernelMirrorPlane;
+  readonly includeOriginal: boolean;
+  readonly tessellation?: TessellationOptions;
+}
+
 export type ExactBodyMetadataSource =
   | ExactExtrudeMetadataSource
   | ExactBooleanExtrudesMetadataSource
@@ -460,6 +475,7 @@ export type GeometryKernelRequest =
   | EdgeFinishRequest
   | LinearPatternRequest
   | CircularPatternRequest
+  | MirrorRequest
   | ExactBodyMetadataRequest
   | ExactTopologySnapshotRequest
   | ExactTopologyCheckpointPayloadRequest
@@ -896,6 +912,10 @@ export type GeometryKernelCircularPatternMeshFactory = (
   input: Omit<CircularPatternRequest, "id" | "version" | "op"> & TessellationOptions
 ) => Promise<GeometryKernelMeshResult>;
 
+export type GeometryKernelMirrorMeshFactory = (
+  input: Omit<MirrorRequest, "id" | "version" | "op"> & TessellationOptions
+) => Promise<GeometryKernelMeshResult>;
+
 export interface GeometryKernelMeshFactories {
   readonly createBoxMesh: GeometryKernelBoxMeshFactory;
   readonly createCylinderMesh: GeometryKernelCylinderMeshFactory;
@@ -913,6 +933,7 @@ export interface GeometryKernelMeshFactories {
   readonly createExactStepExport?: GeometryKernelExactStepExportFactory;
   readonly createLinearPatternMesh?: GeometryKernelLinearPatternMeshFactory;
   readonly createCircularPatternMesh?: GeometryKernelCircularPatternMeshFactory;
+  readonly createMirrorMesh?: GeometryKernelMirrorMeshFactory;
 }
 
 export type GeometryKernelResponseForRequest<T extends GeometryKernelRequest> =
@@ -1418,9 +1439,10 @@ function validateRequest(
     }
   } else if (
     request.op === "geometry.linearPattern" ||
-    request.op === "geometry.circularPattern"
+    request.op === "geometry.circularPattern" ||
+    request.op === "geometry.mirror"
   ) {
-    // pattern requests have no dimension fields to validate here
+    // pattern/mirror requests have no dimension fields to validate here
   } else if (
     !isPositiveFiniteNumber(request.dimensions.majorRadius) ||
     !isPositiveFiniteNumber(request.dimensions.minorRadius) ||
@@ -1502,6 +1524,8 @@ function createMesh(
       return createLinearPatternMesh(factories, request);
     case "geometry.circularPattern":
       return createCircularPatternMesh(factories, request);
+    case "geometry.mirror":
+      return createMirrorMesh(factories, request);
   }
 }
 
@@ -1542,6 +1566,26 @@ function createCircularPatternMesh(
     rotationAxis: request.rotationAxis,
     totalAngleDegrees: request.totalAngleDegrees,
     instanceCount: request.instanceCount,
+    linearDeflection: request.tessellation?.linearDeflection,
+    angularDeflection: request.tessellation?.angularDeflection
+  });
+}
+
+function createMirrorMesh(
+  factories: GeometryKernelMeshFactories,
+  request: MirrorRequest
+): Promise<GeometryKernelMeshResult> {
+  if (!factories.createMirrorMesh) {
+    return Promise.reject({
+      code: "UNAVAILABLE_BINDING",
+      message: "Mirror tessellation requires an OCCT mirror mesh factory."
+    } satisfies GeometryKernelError);
+  }
+
+  return factories.createMirrorMesh({
+    seed: request.seed,
+    mirrorPlane: request.mirrorPlane,
+    includeOriginal: request.includeOriginal,
     linearDeflection: request.tessellation?.linearDeflection,
     angularDeflection: request.tessellation?.angularDeflection
   });
@@ -1863,6 +1907,8 @@ function formatPrimitiveLabel(op: GeometryKernelOp): string {
       return "Linear pattern";
     case "geometry.circularPattern":
       return "Circular pattern";
+    case "geometry.mirror":
+      return "Mirror feature";
     case "geometry.exactBodyMetadata":
       return "Exact body metadata";
     case "geometry.exactTopologySnapshot":

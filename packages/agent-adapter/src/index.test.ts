@@ -1200,6 +1200,76 @@ describe("agent-adapter", () => {
     expect(adapter.getEngine().getDocument().units).toBe("in");
   });
 
+  it("accepts and reviews mirror feature batches from external JSON callers (Slice F pass-through)", () => {
+    const adapter = new CadOpsAgentAdapter();
+    // parseCadOpsAgentRequestJson validates every op via isCadOp; a mirror or
+    // updateMirror op that isCadOp rejected would make the whole batch invalid.
+    const request = parseCadOpsAgentRequestJson(
+      JSON.stringify({
+        requestId: "agent_req_mirror",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_m",
+              name: "Profile",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_m",
+              id: "rect_m",
+              center: [1, 1],
+              width: 4,
+              height: 2
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_seed",
+              bodyId: "body_seed",
+              sketchId: "sketch_m",
+              entityId: "rect_m",
+              depth: 3
+            },
+            {
+              op: "feature.mirror",
+              id: "feat_mirror",
+              bodyId: "body_mirror",
+              seedBodyId: "body_seed",
+              mirrorPlane: "YZ",
+              includeOriginal: true
+            },
+            { op: "feature.updateMirror", id: "feat_mirror", mirrorPlane: "XZ" }
+          ]
+        }
+      })
+    );
+
+    const response = adapter.execute(request);
+
+    expect(response.ok).toBe(true);
+    expect(response.ok && response.review.operations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op: "feature.mirror",
+          intent: "create",
+          featureId: "feat_mirror",
+          bodyId: "body_mirror",
+          targetBodyId: "body_seed",
+          label: expect.stringContaining("union with original")
+        }),
+        expect.objectContaining({
+          op: "feature.updateMirror",
+          intent: "modify",
+          featureId: "feat_mirror"
+        })
+      ])
+    );
+  });
+
   it("supports JSON feature extrude batches for external callers", () => {
     const adapter = new CadOpsAgentAdapter();
     const request = {

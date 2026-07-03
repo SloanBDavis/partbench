@@ -958,6 +958,8 @@ function formatFeatureKindLabel(feature: CadFeatureSummary): string {
       return "Linear pattern";
     case "circularPattern":
       return "Circular pattern";
+    case "mirror":
+      return "Mirror";
     case "primitive":
       return formatObjectKind(feature.primitive);
   }
@@ -1148,6 +1150,25 @@ function renderFeatureDetailRows(
         <div>
           <dt>Count</dt>
           <dd>{feature.instanceCount}</dd>
+        </div>
+      </>
+    );
+  }
+
+  if (feature.kind === "mirror") {
+    return (
+      <>
+        <div>
+          <dt>Seed body</dt>
+          <dd>{feature.seedBodyId}</dd>
+        </div>
+        <div>
+          <dt>Mirror plane</dt>
+          <dd>{feature.mirrorPlane}</dd>
+        </div>
+        <div>
+          <dt>Include original</dt>
+          <dd>{feature.includeOriginal ? "Yes" : "No"}</dd>
         </div>
       </>
     );

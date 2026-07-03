@@ -116,7 +116,8 @@ function createOperationSummaries(
       op.op === "feature.chamfer" ||
       op.op === "feature.fillet" ||
       op.op === "feature.linearPattern" ||
-      op.op === "feature.circularPattern"
+      op.op === "feature.circularPattern" ||
+      op.op === "feature.mirror"
         ? transaction.diff.features?.created?.[createdFeatureIndex++]
         : undefined;
     const deletedFeatureRef =
@@ -664,6 +665,18 @@ function createOperationSummaries(
         });
       }
 
+      case "feature.mirror": {
+        const featureId = op.id ?? createdFeatureRef?.id;
+        const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Create mirror feature ${featureId ?? "with generated ID"} from body ${op.seedBodyId} across ${op.mirrorPlane}${op.includeOriginal ? " (union with original)" : ""}${bodyId ? ` -> body ${bodyId}` : ""}`,
+          featureId,
+          bodyId
+        });
+      }
+
       case "feature.delete": {
         const bodyLabel = deletedFeatureRef?.bodyId
           ? ` and body ${deletedFeatureRef.bodyId}`
@@ -804,6 +817,19 @@ function createOperationSummaries(
         });
       }
 
+      case "feature.updateMirror": {
+        const modifiedFeatureRef = transaction.diff.features?.modified?.find(
+          (feature) => feature.id === op.id
+        );
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Update mirror feature ${op.id}`,
+          featureId: op.id,
+          bodyId: modifiedFeatureRef?.bodyId
+        });
+      }
+
       case "reference.nameGenerated": {
         const kindLabel = createdNamedReferenceRef?.kind
           ? `${createdNamedReferenceRef.kind} `
@@ -910,7 +936,8 @@ function getFeatureRefSketchEntityId(
     feature.kind === "fillet" ||
     feature.kind === "importedBody" ||
     feature.kind === "linearPattern" ||
-    feature.kind === "circularPattern"
+    feature.kind === "circularPattern" ||
+    feature.kind === "mirror"
   ) {
     return undefined;
   }
@@ -924,7 +951,8 @@ function getFeatureRefSketchId(feature: CadFeatureRef): SketchId | undefined {
     feature.kind === "fillet" ||
     feature.kind === "importedBody" ||
     feature.kind === "linearPattern" ||
-    feature.kind === "circularPattern"
+    feature.kind === "circularPattern" ||
+    feature.kind === "mirror"
   ) {
     return undefined;
   }

@@ -13,6 +13,7 @@ import {
   createExtrudeBooleanWorkerRequest,
   createExtrudeTessellationWorkerRequest,
   createHoleWorkerRequest,
+  createMirrorWorkerRequest,
   createRevolveProfileWorkerRequest,
   createSphereTessellationWorkerRequest,
   createTorusTessellationWorkerRequest,
@@ -185,6 +186,43 @@ describe("geometry-worker", () => {
       }
     });
     expect(request.payload.bytes).toBe(bytes);
+  });
+
+  it("creates a typed mirror feature worker request", () => {
+    const seed = {
+      kind: "extrude" as const,
+      sketchPlane: "XY" as const,
+      profile: {
+        kind: "rectangle" as const,
+        center: [1, 1] as const,
+        width: 4,
+        height: 2
+      },
+      depth: 3
+    };
+
+    const request = createMirrorWorkerRequest({
+      id: "worker_req_mirror",
+      seed,
+      mirrorPlane: "YZ",
+      includeOriginal: true,
+      linearDeflection: 0.25
+    });
+
+    expect(request).toMatchObject({
+      id: "worker_req_mirror",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.mirrorFeature",
+      payload: {
+        id: "worker_req_mirror:payload",
+        version: "geometry-kernel.v1",
+        op: "geometry.mirror",
+        seed,
+        mirrorPlane: "YZ",
+        includeOriginal: true,
+        tessellation: { linearDeflection: 0.25 }
+      }
+    });
   });
 
   it("creates a typed box tessellation worker request", () => {

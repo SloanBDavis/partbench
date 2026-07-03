@@ -98,6 +98,8 @@ import type {
   FeatureExtrudeSide,
   FeatureHoleDepthMode,
   FeatureHoleDirection,
+  FeatureMirrorPlane,
+  FeaturePatternAxis,
   FeatureRevolveAxis,
   FeatureRevolveOperationMode,
   ObjectExtentSnapshot,
@@ -2183,6 +2185,78 @@ function createOperationReview(
           op,
           "modify",
           `Update fillet feature ${op.id} (radius ${op.radius})`
+        ),
+        featureId: op.id
+      };
+
+    case "feature.linearPattern":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create linear pattern feature ${op.id ?? "with generated ID"} of ${op.seedBodyId} (${op.instanceCount} along ${op.axis})`
+        ),
+        ...(op.id ? { featureId: op.id } : {}),
+        ...(op.bodyId ? { bodyId: op.bodyId } : {}),
+        targetBodyId: op.seedBodyId
+      };
+
+    case "feature.circularPattern":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create circular pattern feature ${op.id ?? "with generated ID"} of ${op.seedBodyId} (${op.instanceCount} across ${op.totalAngleDegrees}° around ${op.rotationAxis})`
+        ),
+        ...(op.id ? { featureId: op.id } : {}),
+        ...(op.bodyId ? { bodyId: op.bodyId } : {}),
+        targetBodyId: op.seedBodyId
+      };
+
+    case "feature.mirror":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create mirror feature ${op.id ?? "with generated ID"} of ${op.seedBodyId} across ${op.mirrorPlane}${op.includeOriginal ? " (union with original)" : ""}`
+        ),
+        ...(op.id ? { featureId: op.id } : {}),
+        ...(op.bodyId ? { bodyId: op.bodyId } : {}),
+        targetBodyId: op.seedBodyId
+      };
+
+    case "feature.updateLinearPattern":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "modify",
+          `Update linear pattern feature ${op.id}`
+        ),
+        featureId: op.id
+      };
+
+    case "feature.updateCircularPattern":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "modify",
+          `Update circular pattern feature ${op.id}`
+        ),
+        featureId: op.id
+      };
+
+    case "feature.updateMirror":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "modify",
+          `Update mirror feature ${op.id}`
         ),
         featureId: op.id
       };
@@ -4622,6 +4696,80 @@ function isCadOp(value: unknown): value is CadOp {
     return typeof value.id === "string" && typeof value.radius === "number";
   }
 
+  if (value.op === "feature.linearPattern") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      typeof value.seedBodyId === "string" &&
+      isFeaturePatternAxis(value.axis) &&
+      typeof value.spacing === "number" &&
+      typeof value.instanceCount === "number"
+    );
+  }
+
+  if (value.op === "feature.circularPattern") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      typeof value.seedBodyId === "string" &&
+      isFeaturePatternAxis(value.rotationAxis) &&
+      typeof value.totalAngleDegrees === "number" &&
+      typeof value.instanceCount === "number"
+    );
+  }
+
+  if (value.op === "feature.mirror") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      typeof value.seedBodyId === "string" &&
+      isFeatureMirrorPlane(value.mirrorPlane) &&
+      typeof value.includeOriginal === "boolean"
+    );
+  }
+
+  if (value.op === "feature.updateLinearPattern") {
+    return (
+      typeof value.id === "string" &&
+      (value.axis === undefined || isFeaturePatternAxis(value.axis)) &&
+      (value.spacing === undefined || typeof value.spacing === "number") &&
+      (value.instanceCount === undefined ||
+        typeof value.instanceCount === "number") &&
+      (value.axis !== undefined ||
+        value.spacing !== undefined ||
+        value.instanceCount !== undefined)
+    );
+  }
+
+  if (value.op === "feature.updateCircularPattern") {
+    return (
+      typeof value.id === "string" &&
+      (value.rotationAxis === undefined ||
+        isFeaturePatternAxis(value.rotationAxis)) &&
+      (value.totalAngleDegrees === undefined ||
+        typeof value.totalAngleDegrees === "number") &&
+      (value.instanceCount === undefined ||
+        typeof value.instanceCount === "number") &&
+      (value.rotationAxis !== undefined ||
+        value.totalAngleDegrees !== undefined ||
+        value.instanceCount !== undefined)
+    );
+  }
+
+  if (value.op === "feature.updateMirror") {
+    return (
+      typeof value.id === "string" &&
+      (value.mirrorPlane === undefined ||
+        isFeatureMirrorPlane(value.mirrorPlane)) &&
+      (value.includeOriginal === undefined ||
+        typeof value.includeOriginal === "boolean") &&
+      (value.mirrorPlane !== undefined || value.includeOriginal !== undefined)
+    );
+  }
+
   if (value.op === "feature.delete") {
     return typeof value.id === "string";
   }
@@ -4858,6 +5006,14 @@ function isSketchPointTarget(value: unknown): value is SketchPointTarget {
 
 function isExtrudeSide(value: unknown): value is FeatureExtrudeSide {
   return value === "positive" || value === "negative" || value === "symmetric";
+}
+
+function isFeaturePatternAxis(value: unknown): value is FeaturePatternAxis {
+  return value === "x" || value === "y" || value === "z";
+}
+
+function isFeatureMirrorPlane(value: unknown): value is FeatureMirrorPlane {
+  return value === "XY" || value === "XZ" || value === "YZ";
 }
 
 function isExtrudeOperationMode(

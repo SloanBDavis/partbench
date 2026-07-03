@@ -55,7 +55,11 @@ import {
   type GeneratedReferencesExtrudeFeature,
   type GeneratedReferencesSketch
 } from "./generatedReferences";
-import type { LinearPatternFeature, CircularPatternFeature } from "./index";
+import type {
+  LinearPatternFeature,
+  CircularPatternFeature,
+  MirrorFeature
+} from "./index";
 import {
   evaluateSketch,
   evaluateSketchConstraint,
@@ -106,7 +110,8 @@ export type ProjectHealthFeature =
   | ProjectHealthFilletFeature
   | ProjectHealthImportedBodyFeature
   | LinearPatternFeature
-  | CircularPatternFeature;
+  | CircularPatternFeature
+  | MirrorFeature;
 
 export interface ProjectHealthRevolveFeature {
   readonly id: FeatureId;
@@ -1449,6 +1454,7 @@ function getProjectHealthFeaturePrimaryEntityId(
     | ProjectHealthImportedBodyFeature
     | LinearPatternFeature
     | CircularPatternFeature
+    | MirrorFeature
   >
 ): SketchEntityId {
   return feature.kind === "hole" ? feature.circleEntityId : feature.entityId;
@@ -1463,12 +1469,14 @@ function hasSketchEntitySource(
   | ProjectHealthImportedBodyFeature
   | LinearPatternFeature
   | CircularPatternFeature
+  | MirrorFeature
 > {
   return (
     feature.kind !== "chamfer" &&
     feature.kind !== "fillet" &&
     feature.kind !== "importedBody" &&
     feature.kind !== "linearPattern" &&
+    feature.kind !== "mirror" &&
     feature.kind !== "circularPattern"
   );
 }
@@ -1919,6 +1927,10 @@ function describeFeatureForHealth(feature: ProjectHealthFeature): string {
 
   if (feature.kind === "circularPattern") {
     return "circular pattern result";
+  }
+
+  if (feature.kind === "mirror") {
+    return "mirror result";
   }
 
   return `${feature.profileKind} ${feature.operationMode}`;

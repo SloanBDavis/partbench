@@ -282,6 +282,7 @@ export type CadOp =
   | FeatureFilletOp
   | FeatureLinearPatternOp
   | FeatureCircularPatternOp
+  | FeatureMirrorOp
   | FeatureUpdateExtrudeOp
   | FeatureUpdateRevolveOp
   | FeatureUpdateHoleOp
@@ -289,6 +290,7 @@ export type CadOp =
   | FeatureUpdateFilletOp
   | FeatureUpdateLinearPatternOp
   | FeatureUpdateCircularPatternOp
+  | FeatureUpdateMirrorOp
   | FeatureDeleteOp
   | ReferenceNameGeneratedOp
   | ReferenceRepairNameOp
@@ -694,6 +696,7 @@ export interface FeatureFilletOp {
 }
 
 export type FeaturePatternAxis = "x" | "y" | "z";
+export type FeatureMirrorPlane = "XY" | "XZ" | "YZ";
 
 export interface FeatureLinearPatternOp {
   readonly op: "feature.linearPattern";
@@ -769,6 +772,23 @@ export interface FeatureUpdateCircularPatternOp {
   readonly rotationAxis?: FeaturePatternAxis;
   readonly totalAngleDegrees?: number;
   readonly instanceCount?: number;
+}
+
+export interface FeatureMirrorOp {
+  readonly op: "feature.mirror";
+  readonly id?: FeatureId;
+  readonly bodyId?: BodyId;
+  readonly seedBodyId: BodyId;
+  readonly mirrorPlane: FeatureMirrorPlane;
+  readonly includeOriginal: boolean;
+  readonly name?: string;
+}
+
+export interface FeatureUpdateMirrorOp {
+  readonly op: "feature.updateMirror";
+  readonly id: FeatureId;
+  readonly mirrorPlane?: FeatureMirrorPlane;
+  readonly includeOriginal?: boolean;
 }
 
 export interface ReferenceNameGeneratedOp {
@@ -851,6 +871,7 @@ export type CadFeatureRef =
   | CadFilletFeatureRef
   | CadLinearPatternFeatureRef
   | CadCircularPatternFeatureRef
+  | CadMirrorFeatureRef
   | CadImportedBodyFeatureRef;
 
 export interface CadExtrudeFeatureRef {
@@ -933,6 +954,15 @@ export interface CadCircularPatternFeatureRef {
   readonly rotationAxis: FeaturePatternAxis;
   readonly totalAngleDegrees: number;
   readonly instanceCount: number;
+}
+
+export interface CadMirrorFeatureRef {
+  readonly id: FeatureId;
+  readonly kind: "mirror";
+  readonly bodyId: BodyId;
+  readonly seedBodyId: BodyId;
+  readonly mirrorPlane: FeatureMirrorPlane;
+  readonly includeOriginal: boolean;
 }
 
 export interface CadImportedBodyFeatureRef {
@@ -1175,6 +1205,9 @@ export type CadBatchValidationErrorCode =
   | "PATTERN_INSTANCE_COUNT_INVALID"
   | "PATTERN_SPACING_INVALID"
   | "PATTERN_GEOMETRY_FAILED"
+  | "MIRROR_SEED_BODY_UNSUPPORTED"
+  | "MIRROR_SEED_BODY_CONSUMED"
+  | "MIRROR_GEOMETRY_FAILED"
   | "INVALID_FEATURE"
   | "UNSUPPORTED_FEATURE_OPERATION"
   | "UNSUPPORTED_SKETCH_PROFILE"
@@ -2028,6 +2061,16 @@ export interface CircularPatternFeatureSnapshot {
   readonly bodyId: BodyId;
 }
 
+export interface MirrorFeatureSnapshot {
+  readonly id: FeatureId;
+  readonly kind: "mirror";
+  readonly name?: string;
+  readonly seedBodyId: BodyId;
+  readonly mirrorPlane: FeatureMirrorPlane;
+  readonly includeOriginal: boolean;
+  readonly bodyId: BodyId;
+}
+
 export type FeatureSnapshot =
   | ExtrudeFeatureSnapshot
   | RevolveFeatureSnapshot
@@ -2036,7 +2079,8 @@ export type FeatureSnapshot =
   | FilletFeatureSnapshot
   | ImportedBodyFeatureSnapshot
   | LinearPatternFeatureSnapshot
-  | CircularPatternFeatureSnapshot;
+  | CircularPatternFeatureSnapshot
+  | MirrorFeatureSnapshot;
 
 export interface CadAxisAlignedBounds {
   readonly min: Vec3;
@@ -2454,6 +2498,24 @@ export interface CadCircularPatternFeatureSummary {
   readonly source: CadCircularPatternFeatureSource;
 }
 
+export interface CadMirrorFeatureSource {
+  readonly type: "mirrorFeature";
+  readonly seedBodyId: BodyId;
+  readonly mirrorPlane: FeatureMirrorPlane;
+}
+
+export interface CadMirrorFeatureSummary {
+  readonly id: FeatureId;
+  readonly kind: "mirror";
+  readonly partId: PartId;
+  readonly bodyId: BodyId;
+  readonly seedBodyId: BodyId;
+  readonly mirrorPlane: FeatureMirrorPlane;
+  readonly includeOriginal: boolean;
+  readonly name?: string;
+  readonly source: CadMirrorFeatureSource;
+}
+
 export type CadFeatureSummary =
   | CadPrimitiveFeatureSummary
   | CadExtrudeFeatureSummary
@@ -2463,7 +2525,8 @@ export type CadFeatureSummary =
   | CadFilletFeatureSummary
   | CadImportedBodyFeatureSummary
   | CadLinearPatternFeatureSummary
-  | CadCircularPatternFeatureSummary;
+  | CadCircularPatternFeatureSummary
+  | CadMirrorFeatureSummary;
 
 export type CadFeatureEditabilityStatus =
   | "editable"
@@ -3399,6 +3462,14 @@ export interface CadCircularPatternBodySource {
   readonly instanceCount: number;
 }
 
+export interface CadMirrorBodySource {
+  readonly type: "mirrorFeature";
+  readonly featureId: FeatureId;
+  readonly seedBodyId: BodyId;
+  readonly mirrorPlane: FeatureMirrorPlane;
+  readonly includeOriginal: boolean;
+}
+
 export type CadBodySource =
   | CadPrimitiveBodySource
   | CadSketchExtrudeBodySource
@@ -3408,6 +3479,7 @@ export type CadBodySource =
   | CadFilletBodySource
   | CadLinearPatternBodySource
   | CadCircularPatternBodySource
+  | CadMirrorBodySource
   | CadImportedBodySource;
 
 export interface CadImportedBodySource {

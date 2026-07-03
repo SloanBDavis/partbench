@@ -29,6 +29,7 @@ export {
   createRevolveProfileWorkerRequest,
   createSphereTessellationWorkerRequest,
   createTorusTessellationWorkerRequest,
+  createMirrorWorkerRequest,
   getGeometryWorkerExactExportCapabilities,
   getGeometryWorkerStepImportCapabilities,
   createWorkerErrorDiagnostics,

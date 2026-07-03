@@ -552,6 +552,7 @@ export type Feature =
   | FilletFeature
   | LinearPatternFeature
   | CircularPatternFeature
+  | MirrorFeature
   | ImportedBodyFeature;
 
 export interface ExtrudeFeature {
@@ -651,6 +652,16 @@ export interface CircularPatternFeature {
   readonly rotationAxis: "x" | "y" | "z";
   readonly totalAngleDegrees: number;
   readonly instanceCount: number;
+  readonly bodyId: BodyId;
+}
+
+export interface MirrorFeature {
+  readonly id: FeatureId;
+  readonly kind: "mirror";
+  readonly name?: string;
+  readonly seedBodyId: BodyId;
+  readonly mirrorPlane: "XY" | "XZ" | "YZ";
+  readonly includeOriginal: boolean;
   readonly bodyId: BodyId;
 }
 
@@ -877,7 +888,8 @@ function documentHasV19SourceRecords(
     (feature) =>
       feature.kind === "importedBody" ||
       feature.kind === "linearPattern" ||
-      feature.kind === "circularPattern"
+      feature.kind === "circularPattern" ||
+      feature.kind === "mirror"
   );
 }
 
@@ -5352,10 +5364,7 @@ function applyOperation(
         seedBodyId,
         axis: validatePatternAxis(op.axis, "feature.linearPattern", opIndex),
         spacing: validatePatternSpacing(op.spacing, opIndex),
-        instanceCount: validatePatternInstanceCount(
-          op.instanceCount,
-          opIndex
-        ),
+        instanceCount: validatePatternInstanceCount(op.instanceCount, opIndex),
         bodyId: op.bodyId ?? createBodyId()
       };
 
@@ -5384,8 +5393,28 @@ function applyOperation(
           op.totalAngleDegrees,
           opIndex
         ),
-        instanceCount: validatePatternInstanceCount(
-          op.instanceCount,
+        instanceCount: validatePatternInstanceCount(op.instanceCount, opIndex),
+        bodyId: op.bodyId ?? createBodyId()
+      };
+
+      addFeature(state, feature, diff, opIndex);
+      return;
+    }
+
+    case "feature.mirror": {
+      const seedBodyId = validateMirrorSeedBodyId(
+        state,
+        op.seedBodyId,
+        opIndex
+      );
+      const feature: MirrorFeature = {
+        id: op.id ?? createFeatureId(),
+        kind: "mirror",
+        name: normalizeOptionalFeatureName(op.name, opIndex, op.id),
+        seedBodyId,
+        mirrorPlane: validateMirrorPlane(op.mirrorPlane, opIndex),
+        includeOriginal: validateMirrorIncludeOriginal(
+          op.includeOriginal,
           opIndex
         ),
         bodyId: op.bodyId ?? createBodyId()
@@ -5432,6 +5461,11 @@ function applyOperation(
 
     case "feature.updateCircularPattern": {
       updateCircularPatternFeature(state, op, diff, opIndex);
+      return;
+    }
+
+    case "feature.updateMirror": {
+      updateMirrorFeature(state, op, diff, opIndex);
       return;
     }
 
@@ -5971,6 +6005,7 @@ function isCadOperationKind(value: string): boolean {
     case "feature.fillet":
     case "feature.linearPattern":
     case "feature.circularPattern":
+    case "feature.mirror":
     case "feature.delete":
     case "feature.updateExtrude":
     case "feature.updateRevolve":
@@ -5979,6 +6014,7 @@ function isCadOperationKind(value: string): boolean {
     case "feature.updateFillet":
     case "feature.updateLinearPattern":
     case "feature.updateCircularPattern":
+    case "feature.updateMirror":
     case "reference.nameGenerated":
     case "reference.repairName":
     case "reference.deleteName":
@@ -9691,7 +9727,10 @@ function updateSketchEntityAndDependents(
       );
     }
 
-    if (feature.kind === "linearPattern" || feature.kind === "circularPattern") {
+    if (
+      feature.kind === "linearPattern" ||
+      feature.kind === "circularPattern"
+    ) {
       assertPatternFeatureSeedEditable(
         { ...state, features: nextFeatures },
         feature,
@@ -9749,7 +9788,10 @@ function pushSketchSourceRebuildEffectsForDependentFeatures(
         continue;
       }
 
-      if (getTargetConsumingFeatureBodyId(downstreamFeature) !== sourceFeature.bodyId) {
+      if (
+        getTargetConsumingFeatureBodyId(downstreamFeature) !==
+        sourceFeature.bodyId
+      ) {
         continue;
       }
 
@@ -10258,7 +10300,8 @@ type TargetConsumingFeature =
   | ChamferFeature
   | FilletFeature
   | LinearPatternFeature
-  | CircularPatternFeature;
+  | CircularPatternFeature
+  | MirrorFeature;
 
 interface ScopedSourceExtrudeRebuildChain {
   readonly consumingFeature: TargetConsumingFeature;
@@ -10375,6 +10418,14 @@ function validateDirectConsumingFeatureForSourceExtrudeRebuild(
         : "feature.circularPattern",
       opIndex
     );
+    return;
+  }
+
+  if (feature.kind === "mirror") {
+    // A mirror reaches this consuming path only when includeOriginal is true;
+    // re-mirroring the rebuilt seed body imposes no additional source
+    // constraints beyond the seed remaining consumed by this feature, which the
+    // consuming-feature lookup that produced this call already guarantees.
     return;
   }
 
@@ -10737,6 +10788,89 @@ function updateCircularPatternFeature(
   );
 }
 
+function updateMirrorFeature(
+  state: MutableDocumentState,
+  op: Extract<CadOp, { readonly op: "feature.updateMirror" }>,
+  diff: MutableSemanticDiff,
+  opIndex?: number
+): void {
+  const feature = getEditableFeatureForUpdate(
+    state,
+    op.id,
+    "mirror",
+    "feature.updateMirror",
+    opIndex
+  );
+  const updated: MirrorFeature = {
+    ...feature,
+    mirrorPlane:
+      op.mirrorPlane === undefined
+        ? feature.mirrorPlane
+        : validateMirrorPlane(op.mirrorPlane, opIndex),
+    includeOriginal:
+      op.includeOriginal === undefined
+        ? feature.includeOriginal
+        : validateMirrorIncludeOriginal(op.includeOriginal, opIndex)
+  };
+
+  assertMirrorFeatureEditable(state, updated, "feature.updateMirror", opIndex);
+  state.features.set(feature.id, updated);
+  pushFeatureModified(diff, featureRef(updated));
+  pushBodyModified(diff, bodyRef(updated));
+  pushFeatureReferenceEffects(
+    diff,
+    createAmbiguousResultFeatureEditReferenceEffects(
+      updated,
+      "Mirror result topology remains repair-needed after supported source parameter edit."
+    )
+  );
+  pushFeatureLifecycleEffects(
+    diff,
+    updated.includeOriginal
+      ? createConsumingFeatureEditLifecycleEffects(
+          updated,
+          "Mirror result body requires derived rebuild and topology repair after supported source parameter edit."
+        )
+      : createAmbiguousResultFeatureEditLifecycleEffects(
+          updated,
+          "Mirror result body requires derived rebuild and topology repair after supported source parameter edit."
+        )
+  );
+}
+
+function assertMirrorFeatureEditable(
+  state: MutableDocumentState,
+  feature: MirrorFeature,
+  operation: "feature.updateMirror",
+  opIndex?: number
+): void {
+  assertFeatureResultBodyActiveForEdit(state, feature, operation, opIndex);
+
+  if (!feature.includeOriginal) {
+    return;
+  }
+
+  const consumingFeature = findConsumingFeatureByTargetBodyId(
+    state.features,
+    feature.seedBodyId
+  );
+
+  if (!consumingFeature || consumingFeature.id === feature.id) {
+    return;
+  }
+
+  throwValidationError({
+    code: "FEATURE_NOT_EDITABLE",
+    message: `Feature ${feature.id} cannot enable includeOriginal through ${operation} because seed body ${feature.seedBodyId} is already consumed by feature ${consumingFeature.id}.`,
+    opIndex,
+    featureId: feature.id,
+    bodyId: feature.seedBodyId,
+    path: operationPath(opIndex, "id"),
+    expected: "seed body consumable by the edited mirror feature",
+    received: consumingFeature.id
+  });
+}
+
 function getEditableFeatureForUpdate<K extends Feature["kind"]>(
   state: MutableDocumentState,
   featureIdInput: FeatureId,
@@ -10969,7 +11103,9 @@ function assertSupportedEdgeFinishTarget(
   });
 }
 
-type PatternCreateOperation = "feature.linearPattern" | "feature.circularPattern";
+type PatternCreateOperation =
+  | "feature.linearPattern"
+  | "feature.circularPattern";
 
 function validatePatternSeedBodyId(
   state: MutableDocumentState,
@@ -11097,17 +11233,15 @@ function validatePatternSpacing(value: number, opIndex?: number): number {
   });
 }
 
-function validatePatternInstanceCount(
-  value: number,
-  opIndex?: number
-): number {
+function validatePatternInstanceCount(value: number, opIndex?: number): number {
   if (Number.isInteger(value) && value >= 2) {
     return value;
   }
 
   throwValidationError({
     code: "PATTERN_INSTANCE_COUNT_INVALID",
-    message: "Pattern instanceCount must be an integer greater than or equal to 2.",
+    message:
+      "Pattern instanceCount must be an integer greater than or equal to 2.",
     opIndex,
     path: operationPath(opIndex, "instanceCount"),
     expected: "integer >= 2",
@@ -11116,17 +11250,126 @@ function validatePatternInstanceCount(
 }
 
 function validateCircularPatternAngle(value: number, opIndex?: number): number {
-  if (typeof value === "number" && isPositiveFiniteNumber(value) && value <= 360) {
+  if (
+    typeof value === "number" &&
+    isPositiveFiniteNumber(value) &&
+    value <= 360
+  ) {
     return value;
   }
 
   throwValidationError({
     code: "INVALID_FEATURE",
-    message: "Circular pattern totalAngleDegrees must be positive and no greater than 360.",
+    message:
+      "Circular pattern totalAngleDegrees must be positive and no greater than 360.",
     opIndex,
     path: operationPath(opIndex, "totalAngleDegrees"),
     expected: "positive finite angle <= 360",
     received: describeReceived(value)
+  });
+}
+
+function isMirrorPlane(value: unknown): value is "XY" | "XZ" | "YZ" {
+  return value === "XY" || value === "XZ" || value === "YZ";
+}
+
+function validateMirrorPlane(
+  value: unknown,
+  opIndex?: number
+): "XY" | "XZ" | "YZ" {
+  if (isMirrorPlane(value)) {
+    return value;
+  }
+
+  throwValidationError({
+    code: "INVALID_FEATURE",
+    message: "feature.mirror mirrorPlane must be XY, XZ, or YZ.",
+    opIndex,
+    path: operationPath(opIndex, "mirrorPlane"),
+    expected: "XY, XZ, or YZ",
+    received: describeReceived(value)
+  });
+}
+
+function validateMirrorIncludeOriginal(
+  value: unknown,
+  opIndex?: number
+): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  throwValidationError({
+    code: "INVALID_FEATURE",
+    message: "feature.mirror includeOriginal must be a boolean.",
+    opIndex,
+    path: operationPath(opIndex, "includeOriginal"),
+    expected: "boolean",
+    received: describeReceived(value)
+  });
+}
+
+function validateMirrorSeedBodyId(
+  state: MutableDocumentState,
+  seedBodyId: BodyId,
+  opIndex?: number
+): BodyId {
+  if (typeof seedBodyId !== "string" || seedBodyId.trim().length === 0) {
+    throwValidationError({
+      code: "MIRROR_SEED_BODY_UNSUPPORTED",
+      message: "feature.mirror requires seedBodyId.",
+      opIndex,
+      bodyId: seedBodyId,
+      path: operationPath(opIndex, "seedBodyId"),
+      expected: "existing active authored seed body id",
+      received: describeReceived(seedBodyId)
+    });
+  }
+
+  const feature = findFeatureByBodyId(state.features, seedBodyId);
+
+  if (feature) {
+    const consumingFeature = findConsumingFeatureByTargetBodyId(
+      state.features,
+      feature.bodyId
+    );
+
+    if (consumingFeature) {
+      throwValidationError({
+        code: "MIRROR_SEED_BODY_CONSUMED",
+        message: `feature.mirror seed body is already consumed by feature ${consumingFeature.id}: ${feature.bodyId}`,
+        opIndex,
+        featureId: consumingFeature.id,
+        bodyId: feature.bodyId,
+        path: operationPath(opIndex, "seedBodyId"),
+        expected: "active authored seed body",
+        received: feature.bodyId
+      });
+    }
+
+    return feature.bodyId;
+  }
+
+  if (isPrimitiveBodyId(state, seedBodyId)) {
+    throwValidationError({
+      code: "MIRROR_SEED_BODY_UNSUPPORTED",
+      message: `Primitive-derived body cannot be used by feature.mirror: ${seedBodyId}`,
+      opIndex,
+      bodyId: seedBodyId,
+      path: operationPath(opIndex, "seedBodyId"),
+      expected: "authored feature body",
+      received: seedBodyId
+    });
+  }
+
+  throwValidationError({
+    code: "BODY_NOT_FOUND",
+    message: `Seed body does not exist: ${seedBodyId}`,
+    opIndex,
+    bodyId: seedBodyId,
+    path: operationPath(opIndex, "seedBodyId"),
+    expected: "existing active authored seed body id",
+    received: seedBodyId
   });
 }
 
@@ -11368,7 +11611,8 @@ function createConsumingFeatureEditLifecycleEffects(
     | ChamferFeature
     | FilletFeature
     | LinearPatternFeature
-    | CircularPatternFeature,
+    | CircularPatternFeature
+    | MirrorFeature,
   resultMessage: string
 ): readonly CadBodyLifecycleEffectSummary[] {
   const consumedBodyId = getTargetConsumingFeatureBodyId(feature);
@@ -11663,14 +11907,19 @@ function isTargetConsumingFeature(
     feature.kind === "chamfer" ||
     feature.kind === "fillet" ||
     feature.kind === "linearPattern" ||
-    feature.kind === "circularPattern"
+    feature.kind === "circularPattern" ||
+    (feature.kind === "mirror" && feature.includeOriginal)
   );
 }
 
 function getTargetConsumingFeatureBodyId(
   feature: TargetConsumingFeature
 ): BodyId {
-  if (feature.kind === "linearPattern" || feature.kind === "circularPattern") {
+  if (
+    feature.kind === "linearPattern" ||
+    feature.kind === "circularPattern" ||
+    feature.kind === "mirror"
+  ) {
     return feature.seedBodyId;
   }
 
@@ -11759,7 +12008,8 @@ function featureUsesSketch(feature: Feature, sketchId: SketchId): boolean {
     feature.kind === "fillet" ||
     feature.kind === "importedBody" ||
     feature.kind === "linearPattern" ||
-    feature.kind === "circularPattern"
+    feature.kind === "circularPattern" ||
+    feature.kind === "mirror"
   ) {
     return false;
   }
@@ -15705,6 +15955,17 @@ function featureRef(feature: Feature): CadFeatureRef {
     };
   }
 
+  if (feature.kind === "mirror") {
+    return {
+      id: feature.id,
+      kind: "mirror",
+      bodyId: feature.bodyId,
+      seedBodyId: feature.seedBodyId,
+      mirrorPlane: feature.mirrorPlane,
+      includeOriginal: feature.includeOriginal
+    };
+  }
+
   if (feature.kind === "chamfer") {
     return {
       id: feature.id,
@@ -16844,6 +17105,18 @@ function createFeatureSnapshot(feature: Feature): FeatureSnapshot {
     };
   }
 
+  if (feature.kind === "mirror") {
+    return {
+      id: feature.id,
+      kind: "mirror",
+      name: feature.name,
+      seedBodyId: feature.seedBodyId,
+      mirrorPlane: feature.mirrorPlane,
+      includeOriginal: feature.includeOriginal,
+      bodyId: feature.bodyId
+    };
+  }
+
   if (feature.kind === "chamfer") {
     return {
       id: feature.id,
@@ -16968,6 +17241,18 @@ function createFeatureFromSnapshot(snapshot: FeatureSnapshot): Feature {
       rotationAxis: snapshot.rotationAxis,
       totalAngleDegrees: snapshot.totalAngleDegrees,
       instanceCount: snapshot.instanceCount,
+      bodyId: snapshot.bodyId
+    };
+  }
+
+  if (snapshot.kind === "mirror") {
+    return {
+      id: snapshot.id,
+      kind: "mirror",
+      name: snapshot.name,
+      seedBodyId: snapshot.seedBodyId,
+      mirrorPlane: snapshot.mirrorPlane,
+      includeOriginal: snapshot.includeOriginal,
       bodyId: snapshot.bodyId
     };
   }
@@ -17714,6 +17999,24 @@ function createFeatureSummary(feature: Feature): CadFeatureSummary {
     };
   }
 
+  if (feature.kind === "mirror") {
+    return {
+      id: feature.id,
+      kind: "mirror",
+      partId: DEFAULT_PART_ID,
+      bodyId: feature.bodyId,
+      seedBodyId: feature.seedBodyId,
+      mirrorPlane: feature.mirrorPlane,
+      includeOriginal: feature.includeOriginal,
+      name: feature.name,
+      source: {
+        type: "mirrorFeature",
+        seedBodyId: feature.seedBodyId,
+        mirrorPlane: feature.mirrorPlane
+      }
+    };
+  }
+
   if (feature.kind === "chamfer") {
     return {
       id: feature.id,
@@ -17907,6 +18210,24 @@ function createFeatureBodySnapshot(
         rotationAxis: feature.rotationAxis,
         totalAngleDegrees: feature.totalAngleDegrees,
         instanceCount: feature.instanceCount
+      }
+    };
+  }
+
+  if (feature.kind === "mirror") {
+    return {
+      id: feature.bodyId,
+      kind: "solid",
+      partId: DEFAULT_PART_ID,
+      featureId: feature.id,
+      ...(consumedByFeatureId ? { consumedByFeatureId } : {}),
+      name: feature.name,
+      source: {
+        type: "mirrorFeature",
+        featureId: feature.id,
+        seedBodyId: feature.seedBodyId,
+        mirrorPlane: feature.mirrorPlane,
+        includeOriginal: feature.includeOriginal
       }
     };
   }
@@ -20378,7 +20699,8 @@ function normalizeFeatureSnapshot(feature: FeatureSnapshot): FeatureSnapshot {
     feature.kind === "fillet" ||
     feature.kind === "importedBody" ||
     feature.kind === "linearPattern" ||
-    feature.kind === "circularPattern"
+    feature.kind === "circularPattern" ||
+    feature.kind === "mirror"
   ) {
     return { ...feature };
   }
@@ -20472,7 +20794,8 @@ function normalizeFeatureRefSnapshot(ref: CadFeatureRef): CadFeatureRef {
     ref.kind === "fillet" ||
     ref.kind === "importedBody" ||
     ref.kind === "linearPattern" ||
-    ref.kind === "circularPattern"
+    ref.kind === "circularPattern" ||
+    ref.kind === "mirror"
   ) {
     return { ...ref };
   }
@@ -23616,6 +23939,28 @@ function collectValidAuthoredFeatureByBodyId(
       path
     });
   }
+
+  if (
+    isRecord(value) &&
+    value.kind === "mirror" &&
+    typeof value.id === "string" &&
+    (value.name === undefined || typeof value.name === "string") &&
+    typeof value.seedBodyId === "string" &&
+    isMirrorPlane(value.mirrorPlane) &&
+    typeof value.includeOriginal === "boolean" &&
+    typeof value.bodyId === "string"
+  ) {
+    featuresByBodyId.set(value.bodyId, {
+      id: value.id,
+      kind: "mirror",
+      name: typeof value.name === "string" ? value.name : undefined,
+      seedBodyId: value.seedBodyId,
+      mirrorPlane: value.mirrorPlane,
+      includeOriginal: value.includeOriginal,
+      bodyId: value.bodyId,
+      path
+    });
+  }
 }
 
 function validateFeatureTargetBodyReferences(
@@ -24336,7 +24681,9 @@ function validateFeatureSnapshot(
     (value.kind !== "hole" || !allowsHoleFeatures) &&
     ((value.kind !== "chamfer" && value.kind !== "fillet") ||
       !allowsEdgeFinishFeatures) &&
-    ((value.kind !== "linearPattern" && value.kind !== "circularPattern") ||
+    ((value.kind !== "linearPattern" &&
+      value.kind !== "circularPattern" &&
+      value.kind !== "mirror") ||
       !allowsPatternFeatures) &&
     (value.kind !== "importedBody" || !allowsImportedBodyFeatures)
   ) {
@@ -24345,9 +24692,9 @@ function validateFeatureSnapshot(
       "INVALID_FEATURE",
       `${path}.kind`,
       allowsImportedBodyFeatures
-        ? "Feature kind must be extrude, revolve, hole, chamfer, fillet, importedBody, linearPattern, or circularPattern."
+        ? "Feature kind must be extrude, revolve, hole, chamfer, fillet, importedBody, linearPattern, circularPattern, or mirror."
         : allowsPatternFeatures
-          ? "Feature kind must be extrude, revolve, hole, chamfer, fillet, linearPattern, or circularPattern."
+          ? "Feature kind must be extrude, revolve, hole, chamfer, fillet, linearPattern, circularPattern, or mirror."
           : allowsEdgeFinishFeatures
             ? "Feature kind must be extrude, revolve, hole, chamfer, or fillet."
             : allowsHoleFeatures
@@ -24461,6 +24808,25 @@ function validateFeatureSnapshot(
     }
 
     validatePatternFeatureSnapshotFields(value, path, issues, seenBodyIds);
+
+    if (typeof value.bodyId === "string") {
+      maxGeneratedBodyNumber = parseBodyNumber(value.bodyId);
+    }
+
+    return { maxGeneratedFeatureNumber, maxGeneratedBodyNumber };
+  }
+
+  if (value.kind === "mirror") {
+    if (!allowsPatternFeatures) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.kind`,
+        "Mirror features require web-cad.project.v19."
+      );
+    }
+
+    validateMirrorFeatureSnapshotFields(value, path, issues, seenBodyIds);
 
     if (typeof value.bodyId === "string") {
       maxGeneratedBodyNumber = parseBodyNumber(value.bodyId);
@@ -25618,6 +25984,58 @@ function validatePatternFeatureSnapshotFields(
   }
 }
 
+function validateMirrorFeatureSnapshotFields(
+  value: Record<string, unknown>,
+  path: string,
+  issues: CadProjectImportIssue[],
+  seenBodyIds: Set<string>
+): void {
+  if (typeof value.seedBodyId !== "string" || value.seedBodyId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.seedBodyId`,
+      "Mirror feature seedBodyId must be a non-empty string."
+    );
+  }
+
+  if (!isMirrorPlane(value.mirrorPlane)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.mirrorPlane`,
+      "Mirror feature mirrorPlane must be XY, XZ, or YZ."
+    );
+  }
+
+  if (typeof value.includeOriginal !== "boolean") {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.includeOriginal`,
+      "Mirror feature includeOriginal must be a boolean."
+    );
+  }
+
+  if (typeof value.bodyId !== "string" || value.bodyId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.bodyId`,
+      "Mirror feature bodyId must be a non-empty string."
+    );
+  } else if (seenBodyIds.has(value.bodyId)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.bodyId`,
+      `Duplicate body id: ${value.bodyId}.`
+    );
+  } else {
+    seenBodyIds.add(value.bodyId);
+  }
+}
+
 function validatePositiveFiniteField(
   value: unknown,
   path: string,
@@ -26565,8 +26983,7 @@ function isCadOp(value: unknown): value is CadOp {
   if (value.op === "feature.updateCircularPattern") {
     return (
       typeof value.id === "string" &&
-      (value.rotationAxis === undefined ||
-        isPatternAxis(value.rotationAxis)) &&
+      (value.rotationAxis === undefined || isPatternAxis(value.rotationAxis)) &&
       (value.totalAngleDegrees === undefined ||
         (typeof value.totalAngleDegrees === "number" &&
           isPositiveFiniteNumber(value.totalAngleDegrees) &&

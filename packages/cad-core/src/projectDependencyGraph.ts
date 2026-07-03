@@ -448,7 +448,8 @@ function addFeatureSourceEdges(
   if (
     feature.kind === "importedBody" ||
     feature.kind === "linearPattern" ||
-    feature.kind === "circularPattern"
+    feature.kind === "circularPattern" ||
+    feature.kind === "mirror"
   ) {
     return;
   }

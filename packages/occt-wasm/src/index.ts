@@ -100,6 +100,13 @@ import {
   type OcctPatternAxis,
   type OcctPatternSeedSource
 } from "./pattern";
+import {
+  createOcctMirrorMeshWithInstance,
+  createOcctMirrorMeshWithLoader,
+  type OcctMirrorInput,
+  type OcctMirrorPlane,
+  type OcctMirrorSeedSource
+} from "./mirror";
 
 export type {
   OcctBooleanExtrudeInput,
@@ -135,7 +142,10 @@ export type {
   OcctLinearPatternInput,
   OcctCircularPatternInput,
   OcctPatternAxis,
-  OcctPatternSeedSource
+  OcctPatternSeedSource,
+  OcctMirrorInput,
+  OcctMirrorPlane,
+  OcctMirrorSeedSource
 };
 export {
   createOcctBoxMeshWithInstance,
@@ -175,7 +185,9 @@ export {
   createOcctLinearPatternMeshWithInstance,
   createOcctLinearPatternMeshWithLoader,
   createOcctCircularPatternMeshWithInstance,
-  createOcctCircularPatternMeshWithLoader
+  createOcctCircularPatternMeshWithLoader,
+  createOcctMirrorMeshWithInstance,
+  createOcctMirrorMeshWithLoader
 };
 
 let occtPromise: Promise<OpenCascadeInstance> | undefined;
@@ -291,4 +303,10 @@ export async function createOcctCircularPatternMesh(
   input: OcctCircularPatternInput
 ): Promise<OcctMeshData> {
   return createOcctCircularPatternMeshWithLoader(loadOcct, input);
+}
+
+export async function createOcctMirrorMesh(
+  input: OcctMirrorInput
+): Promise<OcctMeshData> {
+  return createOcctMirrorMeshWithLoader(loadOcct, input);
 }

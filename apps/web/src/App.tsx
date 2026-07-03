@@ -3094,6 +3094,8 @@ export function App() {
         return "linear pattern";
       case "circularPattern":
         return "circular pattern";
+      case "mirror":
+        return "mirror";
       case "primitive":
         return feature.primitive;
     }

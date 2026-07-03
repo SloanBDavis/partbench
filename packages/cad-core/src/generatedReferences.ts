@@ -85,7 +85,8 @@ export type GeneratedReferencesFeature =
   | GeneratedReferencesFilletFeature
   | GeneratedReferencesImportedBodyFeature
   | GeneratedReferencesLinearPatternFeature
-  | GeneratedReferencesCircularPatternFeature;
+  | GeneratedReferencesCircularPatternFeature
+  | GeneratedReferencesMirrorFeature;
 
 export interface GeneratedReferencesExtrudeFeature {
   readonly id: FeatureId;
@@ -165,6 +166,12 @@ export interface GeneratedReferencesLinearPatternFeature {
 export interface GeneratedReferencesCircularPatternFeature {
   readonly id: FeatureId;
   readonly kind: "circularPattern";
+  readonly bodyId: BodyId;
+}
+
+export interface GeneratedReferencesMirrorFeature {
+  readonly id: FeatureId;
+  readonly kind: "mirror";
   readonly bodyId: BodyId;
 }
 

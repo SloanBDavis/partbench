@@ -673,6 +673,102 @@ describe("geometry-kernel facade", () => {
   );
 
   it(
+    "mirrors a seed body across a plane without the original through the isolated OCCT WASM adapter",
+    async () => {
+      const response = await executeGeometryKernelRequest({
+        id: "geometry_req_mirror_copy",
+        version: "geometry-kernel.v1",
+        op: "geometry.mirror",
+        seed: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [2, 0],
+            width: 2,
+            height: 1
+          },
+          depth: 3
+        },
+        mirrorPlane: "YZ",
+        includeOriginal: false
+      });
+
+      expect(response.ok).toBe(true);
+
+      if (!response.ok) {
+        throw new Error(response.error.message);
+      }
+
+      // includeOriginal=false yields the mirrored copy alone: still one prism.
+      expect(response.mesh.faceCount).toBe(6);
+      expect(response.mesh.positions).toBeInstanceOf(Float32Array);
+      expect(response.mesh.indices).toBeInstanceOf(Uint32Array);
+      expect(response.mesh.positions).toHaveLength(
+        response.mesh.vertexCount * 3
+      );
+      expect(response.mesh.indices).toHaveLength(
+        response.mesh.triangleCount * 3
+      );
+
+      // The seed spans x in [1, 3]; reflecting across YZ (x -> -x) moves the
+      // whole copy to negative X, proving the reflection actually happened.
+      const xs: number[] = [];
+      for (let i = 0; i < response.mesh.positions.length; i += 3) {
+        xs.push(response.mesh.positions[i]);
+      }
+      expect(Math.max(...xs)).toBeLessThanOrEqual(1e-6);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "mirrors and unions a seed body with its reflection through the isolated OCCT WASM adapter",
+    async () => {
+      const response = await executeGeometryKernelRequest({
+        id: "geometry_req_mirror_union",
+        version: "geometry-kernel.v1",
+        op: "geometry.mirror",
+        seed: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [2, 0],
+            width: 2,
+            height: 1
+          },
+          depth: 3
+        },
+        mirrorPlane: "YZ",
+        includeOriginal: true
+      });
+
+      expect(response.ok).toBe(true);
+
+      if (!response.ok) {
+        throw new Error(response.error.message);
+      }
+
+      expect(response.mesh.positions).toBeInstanceOf(Float32Array);
+      expect(response.mesh.indices).toBeInstanceOf(Uint32Array);
+      expect(response.mesh.positions).toHaveLength(
+        response.mesh.vertexCount * 3
+      );
+
+      // The union keeps the seed (x in [1, 3]) and its reflection (x in
+      // [-3, -1]), so the result straddles the YZ plane.
+      const xs: number[] = [];
+      for (let i = 0; i < response.mesh.positions.length; i += 3) {
+        xs.push(response.mesh.positions[i]);
+      }
+      expect(Math.max(...xs)).toBeGreaterThan(0.5);
+      expect(Math.min(...xs)).toBeLessThan(-0.5);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
     "tessellates a cylinder through the isolated OCCT WASM adapter",
     async () => {
       const response = await executeGeometryKernelRequest({
