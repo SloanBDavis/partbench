@@ -375,6 +375,8 @@ export function formatSelectionReferenceIssue(
       return formatVisibleDiagnosticMessage(issue.message);
     case "NON_COMMANDABLE_SELECTION_TARGET":
       return formatVisibleDiagnosticMessage(issue.message);
+    case "IMPORTED_BODY_ANCHOR_NEEDED":
+      return formatVisibleDiagnosticMessage(issue.message);
     case "SELECTION_KIND_MISMATCH":
       return formatVisibleDiagnosticMessage(issue.message);
   }

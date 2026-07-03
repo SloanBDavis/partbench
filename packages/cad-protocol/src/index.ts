@@ -29,11 +29,13 @@ export type WcadPackageV1DocumentSchemaVersion =
   | "web-cad.project.v17";
 export type WcadDocumentSchemaVersion =
   | WcadPackageV1DocumentSchemaVersion
-  | "web-cad.project.v18";
+  | "web-cad.project.v18"
+  | "web-cad.project.v19";
 export type CadTopologyIdentityContractVersion =
   "partbench.topology-identity.v1";
 export type CadTopologyIdentityProjectSchemaVersion = "web-cad.project.v18";
 export type CadTopologyIdentityPackageVersion = "partbench.wcad.v2";
+export type CadV15ProjectSchemaVersion = "web-cad.project.v19";
 export type WcadPackageEntryRole =
   | "manifest"
   | "document"
@@ -73,6 +75,8 @@ export const CAD_TOPOLOGY_IDENTITY_PROJECT_SCHEMA_VERSION: CadTopologyIdentityPr
   "web-cad.project.v18";
 export const CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION: CadTopologyIdentityPackageVersion =
   "partbench.wcad.v2";
+export const CAD_V15_PROJECT_SCHEMA_VERSION: CadV15ProjectSchemaVersion =
+  "web-cad.project.v19";
 
 export type Vec2 = readonly [number, number];
 export type Vec3 = readonly [number, number, number];
@@ -235,6 +239,7 @@ export interface SketchDimensionParameterValueSource {
 }
 
 export type CadOp =
+  | ProjectImportStepOp
   | ParameterCreateOp
   | ParameterUpdateOp
   | ParameterRenameOp
@@ -275,11 +280,15 @@ export type CadOp =
   | FeatureHoleOp
   | FeatureChamferOp
   | FeatureFilletOp
+  | FeatureLinearPatternOp
+  | FeatureCircularPatternOp
   | FeatureUpdateExtrudeOp
   | FeatureUpdateRevolveOp
   | FeatureUpdateHoleOp
   | FeatureUpdateChamferOp
   | FeatureUpdateFilletOp
+  | FeatureUpdateLinearPatternOp
+  | FeatureUpdateCircularPatternOp
   | FeatureDeleteOp
   | ReferenceNameGeneratedOp
   | ReferenceRepairNameOp
@@ -292,6 +301,36 @@ export interface DocumentUpdateUnitsOp {
   readonly op: "document.updateUnits";
   readonly units: DocumentUnits;
   readonly mode?: DocumentUnitUpdateMode;
+}
+
+export interface ProjectImportStepOp {
+  readonly op: "project.importStep";
+  readonly sourceFileName: string;
+  readonly sourceFormat: "step";
+  readonly payloadRef: CadStepImportTransientPayloadRef;
+  readonly maxBodyCount?: number;
+  readonly resolvedBodies?: readonly ProjectImportStepResolvedBody[];
+}
+
+export interface CadStepImportTransientPayloadRef {
+  readonly kind: "transient";
+  readonly payloadId: string;
+  readonly byteLength: number;
+  readonly sha256?: string;
+}
+
+export interface ProjectImportStepResolvedBody {
+  readonly featureId: FeatureId;
+  readonly bodyId: BodyId;
+  readonly checkpointId: string;
+  readonly name?: string;
+  readonly sourceIdentity: WcadSourceIdentity;
+  readonly checkpointStatus?: Extract<
+    CadTopologyIdentityState,
+    "active" | "stale" | "missing" | "failed" | "unsupported"
+  >;
+  readonly healingApplied: boolean;
+  readonly diagnostics?: readonly CadStepImportDiagnostic[];
 }
 
 export interface ParameterCreateOp {
@@ -654,6 +693,30 @@ export interface FeatureFilletOp {
   readonly name?: string;
 }
 
+export type FeaturePatternAxis = "x" | "y" | "z";
+
+export interface FeatureLinearPatternOp {
+  readonly op: "feature.linearPattern";
+  readonly id?: FeatureId;
+  readonly bodyId?: BodyId;
+  readonly seedBodyId: BodyId;
+  readonly axis: FeaturePatternAxis;
+  readonly spacing: number;
+  readonly instanceCount: number;
+  readonly name?: string;
+}
+
+export interface FeatureCircularPatternOp {
+  readonly op: "feature.circularPattern";
+  readonly id?: FeatureId;
+  readonly bodyId?: BodyId;
+  readonly seedBodyId: BodyId;
+  readonly rotationAxis: FeaturePatternAxis;
+  readonly totalAngleDegrees: number;
+  readonly instanceCount: number;
+  readonly name?: string;
+}
+
 export interface FeatureDeleteOp {
   readonly op: "feature.delete";
   readonly id: FeatureId;
@@ -690,6 +753,22 @@ export interface FeatureUpdateFilletOp {
   readonly op: "feature.updateFillet";
   readonly id: FeatureId;
   readonly radius: number;
+}
+
+export interface FeatureUpdateLinearPatternOp {
+  readonly op: "feature.updateLinearPattern";
+  readonly id: FeatureId;
+  readonly axis?: FeaturePatternAxis;
+  readonly spacing?: number;
+  readonly instanceCount?: number;
+}
+
+export interface FeatureUpdateCircularPatternOp {
+  readonly op: "feature.updateCircularPattern";
+  readonly id: FeatureId;
+  readonly rotationAxis?: FeaturePatternAxis;
+  readonly totalAngleDegrees?: number;
+  readonly instanceCount?: number;
 }
 
 export interface ReferenceNameGeneratedOp {
@@ -769,7 +848,10 @@ export type CadFeatureRef =
   | CadRevolveFeatureRef
   | CadHoleFeatureRef
   | CadChamferFeatureRef
-  | CadFilletFeatureRef;
+  | CadFilletFeatureRef
+  | CadLinearPatternFeatureRef
+  | CadCircularPatternFeatureRef
+  | CadImportedBodyFeatureRef;
 
 export interface CadExtrudeFeatureRef {
   readonly id: FeatureId;
@@ -831,6 +913,36 @@ export interface CadFilletFeatureRef {
   readonly namedReference?: NamedReferenceName;
   readonly topologyAnchorId?: string;
   readonly radius: number;
+}
+
+export interface CadLinearPatternFeatureRef {
+  readonly id: FeatureId;
+  readonly kind: "linearPattern";
+  readonly bodyId: BodyId;
+  readonly seedBodyId: BodyId;
+  readonly axis: FeaturePatternAxis;
+  readonly spacing: number;
+  readonly instanceCount: number;
+}
+
+export interface CadCircularPatternFeatureRef {
+  readonly id: FeatureId;
+  readonly kind: "circularPattern";
+  readonly bodyId: BodyId;
+  readonly seedBodyId: BodyId;
+  readonly rotationAxis: FeaturePatternAxis;
+  readonly totalAngleDegrees: number;
+  readonly instanceCount: number;
+}
+
+export interface CadImportedBodyFeatureRef {
+  readonly id: FeatureId;
+  readonly kind: "importedBody";
+  readonly bodyId: BodyId;
+  readonly sourceFileName: string;
+  readonly sourceFormat: "step";
+  readonly checkpointId: string;
+  readonly healingApplied: boolean;
 }
 
 export interface CadBodyRef {
@@ -999,6 +1111,12 @@ export type CadBatchValidationErrorCode =
   | "INVALID_BATCH_MODE"
   | "INVALID_OPERATION"
   | "EMPTY_BATCH"
+  | "STEP_FILE_CORRUPT"
+  | "STEP_READER_UNAVAILABLE"
+  | "STEP_NO_SOLID_FOUND"
+  | "STEP_HEALING_FAILED"
+  | "STEP_CHECKPOINT_UNAVAILABLE"
+  | "STEP_BODY_LIMIT_EXCEEDED"
   | "OBJECT_ALREADY_EXISTS"
   | "OBJECT_NOT_FOUND"
   | "OBJECT_KIND_MISMATCH"
@@ -1052,6 +1170,11 @@ export type CadBatchValidationErrorCode =
   | "BODY_ALREADY_EXISTS"
   | "TARGET_BODY_REQUIRED"
   | "TARGET_BODY_NOT_SUPPORTED"
+  | "PATTERN_SEED_BODY_UNSUPPORTED"
+  | "PATTERN_SEED_BODY_CONSUMED"
+  | "PATTERN_INSTANCE_COUNT_INVALID"
+  | "PATTERN_SPACING_INVALID"
+  | "PATTERN_GEOMETRY_FAILED"
   | "INVALID_FEATURE"
   | "UNSUPPORTED_FEATURE_OPERATION"
   | "UNSUPPORTED_SKETCH_PROFILE"
@@ -1075,6 +1198,8 @@ export interface CadBatchValidationError {
   readonly referenceName?: NamedReferenceName;
   readonly topologyAnchorId?: string;
   readonly checkpointId?: string;
+  readonly sourceFileName?: string;
+  readonly payloadId?: string;
   readonly path?: string;
   readonly expected?: string;
   readonly received?: string;
@@ -1165,6 +1290,7 @@ export type CadQueryKind =
   | "project.dependencyGraph"
   | "project.rebuildPlan"
   | "project.topologyIdentityReadiness"
+  | "project.importReadiness"
   | "topology.matchSnapshots"
   | "topology.anchorRepairCandidates"
   | "topology.anchorCommandReadiness"
@@ -1186,6 +1312,7 @@ export type CadQueryKind =
   | "sketch.dimension.get"
   | "body.generatedReferences"
   | "body.resolveGeneratedReference"
+  | "body.importedBodyStatus"
   | "body.topology"
   | "body.topologyIdentity"
   | "body.measurements"
@@ -1207,6 +1334,7 @@ export type CadQuery =
   | ProjectDependencyGraphQuery
   | ProjectRebuildPlanQuery
   | ProjectTopologyIdentityReadinessQuery
+  | ProjectImportReadinessQuery
   | TopologyMatchSnapshotsQuery
   | TopologyAnchorRepairCandidatesQuery
   | TopologyAnchorCommandReadinessQuery
@@ -1228,6 +1356,7 @@ export type CadQuery =
   | SketchDimensionGetQuery
   | BodyGeneratedReferencesQuery
   | BodyResolveGeneratedReferenceQuery
+  | BodyImportedBodyStatusQuery
   | BodyTopologyQuery
   | BodyTopologyIdentityQuery
   | BodyMeasurementsQuery
@@ -1283,6 +1412,10 @@ export interface ProjectRebuildPlanQuery {
 
 export interface ProjectTopologyIdentityReadinessQuery {
   readonly query: "project.topologyIdentityReadiness";
+}
+
+export interface ProjectImportReadinessQuery {
+  readonly query: "project.importReadiness";
 }
 
 export interface CadTopologyMatchSnapshotInput {
@@ -1416,6 +1549,11 @@ export interface BodyResolveGeneratedReferenceQuery {
   readonly query: "body.resolveGeneratedReference";
   readonly bodyId: BodyId;
   readonly stableId: string;
+}
+
+export interface BodyImportedBodyStatusQuery {
+  readonly query: "body.importedBodyStatus";
+  readonly bodyId: BodyId;
 }
 
 export interface BodyTopologyQuery {
@@ -1857,18 +1995,113 @@ export interface FilletFeatureSnapshot {
   readonly bodyId: BodyId;
 }
 
+export interface ImportedBodyFeatureSnapshot {
+  readonly id: FeatureId;
+  readonly kind: "importedBody";
+  readonly name?: string;
+  readonly sourceFileName: string;
+  readonly sourceFormat: "step";
+  readonly bodyId: BodyId;
+  readonly checkpointId: string;
+  readonly healingApplied: boolean;
+}
+
+export interface LinearPatternFeatureSnapshot {
+  readonly id: FeatureId;
+  readonly kind: "linearPattern";
+  readonly name?: string;
+  readonly seedBodyId: BodyId;
+  readonly axis: FeaturePatternAxis;
+  readonly spacing: number;
+  readonly instanceCount: number;
+  readonly bodyId: BodyId;
+}
+
+export interface CircularPatternFeatureSnapshot {
+  readonly id: FeatureId;
+  readonly kind: "circularPattern";
+  readonly name?: string;
+  readonly seedBodyId: BodyId;
+  readonly rotationAxis: FeaturePatternAxis;
+  readonly totalAngleDegrees: number;
+  readonly instanceCount: number;
+  readonly bodyId: BodyId;
+}
+
 export type FeatureSnapshot =
   | ExtrudeFeatureSnapshot
   | RevolveFeatureSnapshot
   | HoleFeatureSnapshot
   | ChamferFeatureSnapshot
-  | FilletFeatureSnapshot;
+  | FilletFeatureSnapshot
+  | ImportedBodyFeatureSnapshot
+  | LinearPatternFeatureSnapshot
+  | CircularPatternFeatureSnapshot;
 
 export interface CadAxisAlignedBounds {
   readonly min: Vec3;
   readonly max: Vec3;
   readonly size: Vec3;
   readonly center: Vec3;
+}
+
+export type CadStepImportDiagnosticCode =
+  | "STEP_READER_AVAILABLE"
+  | "STEP_TRANSFER_COMPLETE"
+  | "STEP_HEALING_APPLIED"
+  | "STEP_HEALING_NOT_REQUIRED"
+  | "STEP_TOPOLOGY_EXTRACTED"
+  | "STEP_CHECKPOINT_PAYLOAD_CREATED"
+  | "STEP_FILE_CORRUPT"
+  | "STEP_READER_UNAVAILABLE"
+  | "STEP_NO_SOLID_FOUND"
+  | "STEP_HEALING_FAILED"
+  | "STEP_CHECKPOINT_UNAVAILABLE"
+  | "STEP_BODY_LIMIT_EXCEEDED"
+  | "IMPORTED_BODY_CHECKPOINT_MISSING"
+  | "IMPORTED_BODY_TOPOLOGY_UNAVAILABLE"
+  | "IMPORTED_BODY_ANCHOR_NEEDED";
+
+export type CadStepImportDiagnosticSeverity = "info" | "warning" | "blocking";
+
+export type CadStepImportReadinessStatus =
+  | "supported"
+  | "deferred"
+  | "unavailable";
+
+export interface CadStepImportDiagnostic {
+  readonly code: CadStepImportDiagnosticCode;
+  readonly severity: CadStepImportDiagnosticSeverity;
+  readonly message: string;
+  readonly bodyId?: BodyId;
+  readonly featureId?: FeatureId;
+  readonly checkpointId?: string;
+  readonly expected?: string;
+  readonly received?: string;
+}
+
+export type CadImportedBodyShapeType = "solid" | "compound" | "assemblyLeaf";
+
+export interface ImportedBodyPayload {
+  readonly sourceFormat: "step";
+  readonly bodyName?: string;
+  readonly shapeType: CadImportedBodyShapeType;
+  readonly bounds: CadAxisAlignedBounds;
+  readonly solidCount: number;
+  readonly faceCount: number;
+  readonly edgeCount: number;
+  readonly vertexCount: number;
+  readonly topologySnapshot: CadBodyExactTopologySnapshot;
+  readonly checkpointPayload: ImportedBodyCheckpointPayload;
+  readonly healingApplied: boolean;
+  readonly diagnostics: readonly CadStepImportDiagnostic[];
+}
+
+export interface ImportedBodyCheckpointPayload {
+  readonly brepFormat: "occt-brep";
+  readonly brepWriter: "BRepTools.Write_3";
+  readonly brepByteLength: number;
+  readonly brepSha256: string;
 }
 
 export interface ObjectMeasurementsSnapshot {
@@ -2164,13 +2397,73 @@ export interface CadFilletFeatureSummary {
   readonly source: CadFilletFeatureSource;
 }
 
+export interface CadImportedBodyFeatureSource {
+  readonly type: "importedStepBody";
+  readonly sourceFileName: string;
+  readonly checkpointId: string;
+}
+
+export interface CadImportedBodyFeatureSummary {
+  readonly id: FeatureId;
+  readonly kind: "importedBody";
+  readonly partId: PartId;
+  readonly bodyId: BodyId;
+  readonly name?: string;
+  readonly sourceFileName: string;
+  readonly sourceFormat: "step";
+  readonly checkpointId: string;
+  readonly healingApplied: boolean;
+  readonly source: CadImportedBodyFeatureSource;
+}
+
+export interface CadLinearPatternFeatureSource {
+  readonly type: "linearPatternFeature";
+  readonly seedBodyId: BodyId;
+  readonly axis: FeaturePatternAxis;
+}
+
+export interface CadLinearPatternFeatureSummary {
+  readonly id: FeatureId;
+  readonly kind: "linearPattern";
+  readonly partId: PartId;
+  readonly bodyId: BodyId;
+  readonly seedBodyId: BodyId;
+  readonly axis: FeaturePatternAxis;
+  readonly spacing: number;
+  readonly instanceCount: number;
+  readonly name?: string;
+  readonly source: CadLinearPatternFeatureSource;
+}
+
+export interface CadCircularPatternFeatureSource {
+  readonly type: "circularPatternFeature";
+  readonly seedBodyId: BodyId;
+  readonly rotationAxis: FeaturePatternAxis;
+}
+
+export interface CadCircularPatternFeatureSummary {
+  readonly id: FeatureId;
+  readonly kind: "circularPattern";
+  readonly partId: PartId;
+  readonly bodyId: BodyId;
+  readonly seedBodyId: BodyId;
+  readonly rotationAxis: FeaturePatternAxis;
+  readonly totalAngleDegrees: number;
+  readonly instanceCount: number;
+  readonly name?: string;
+  readonly source: CadCircularPatternFeatureSource;
+}
+
 export type CadFeatureSummary =
   | CadPrimitiveFeatureSummary
   | CadExtrudeFeatureSummary
   | CadRevolveFeatureSummary
   | CadHoleFeatureSummary
   | CadChamferFeatureSummary
-  | CadFilletFeatureSummary;
+  | CadFilletFeatureSummary
+  | CadImportedBodyFeatureSummary
+  | CadLinearPatternFeatureSummary
+  | CadCircularPatternFeatureSummary;
 
 export type CadFeatureEditabilityStatus =
   | "editable"
@@ -3088,13 +3381,41 @@ export interface CadFilletBodySource {
   readonly topologyAnchorId?: string;
 }
 
+export interface CadLinearPatternBodySource {
+  readonly type: "linearPatternFeature";
+  readonly featureId: FeatureId;
+  readonly seedBodyId: BodyId;
+  readonly axis: FeaturePatternAxis;
+  readonly spacing: number;
+  readonly instanceCount: number;
+}
+
+export interface CadCircularPatternBodySource {
+  readonly type: "circularPatternFeature";
+  readonly featureId: FeatureId;
+  readonly seedBodyId: BodyId;
+  readonly rotationAxis: FeaturePatternAxis;
+  readonly totalAngleDegrees: number;
+  readonly instanceCount: number;
+}
+
 export type CadBodySource =
   | CadPrimitiveBodySource
   | CadSketchExtrudeBodySource
   | CadSketchRevolveBodySource
   | CadSketchHoleBodySource
   | CadChamferBodySource
-  | CadFilletBodySource;
+  | CadFilletBodySource
+  | CadLinearPatternBodySource
+  | CadCircularPatternBodySource
+  | CadImportedBodySource;
+
+export interface CadImportedBodySource {
+  readonly type: "importedStepBody";
+  readonly featureId: FeatureId;
+  readonly sourceFileName: string;
+  readonly checkpointId: string;
+}
 
 export interface CadBodySnapshot {
   readonly id: BodyId;
@@ -4003,6 +4324,7 @@ export type CadSelectionReferenceIssueCode =
   | "AMBIGUOUS_SELECTION_TOPOLOGY"
   | "CONSUMED_SELECTION_BODY"
   | "NON_COMMANDABLE_SELECTION_TARGET"
+  | "IMPORTED_BODY_ANCHOR_NEEDED"
   | "SELECTION_KIND_MISMATCH";
 
 export interface CadSelectionReferenceIssue {
@@ -4433,7 +4755,7 @@ export interface WcadManifestV2 extends Omit<
 > {
   readonly packageVersion: CadTopologyIdentityPackageVersion;
   readonly document: WcadPackageEntryMetadata & {
-    readonly schemaVersion: CadTopologyIdentityProjectSchemaVersion;
+    readonly schemaVersion: WcadDocumentSchemaVersion;
   };
   readonly topologyIdentity: WcadTopologyIdentityManifestMetadata;
   readonly cache?: WcadPackageCacheManifestMetadata;
@@ -4558,6 +4880,8 @@ export type CadQueryErrorCode =
   | "EMPTY_EXACT_GEOMETRY_RESULT"
   | "INVALID_EXACT_GEOMETRY_RESULT"
   | "EXACT_GEOMETRY_KERNEL_FAILED"
+  | "IMPORTED_BODY_CHECKPOINT_MISSING"
+  | "IMPORTED_BODY_TOPOLOGY_UNAVAILABLE"
   | "GENERATED_REFERENCE_NOT_FOUND"
   | "NAMED_REFERENCE_NOT_FOUND"
   | "UNSUPPORTED_GENERATED_REFERENCE_MEASUREMENTS";
@@ -4573,6 +4897,7 @@ export interface CadQueryError {
   readonly featureId?: FeatureId;
   readonly stableId?: string;
   readonly referenceName?: NamedReferenceName;
+  readonly checkpointId?: string;
 }
 
 export type CadBodyTopologyStatus =
@@ -4589,6 +4914,7 @@ export type CadBodyTopologySourceKind =
   | "authoredHole"
   | "authoredChamfer"
   | "authoredFillet"
+  | "importedBody"
   | "primitiveCompatibility";
 
 export type CadBodyTopologyModel = "none" | "semantic-source";
@@ -4928,6 +5254,7 @@ export type CadExportBodySourceKind =
   | "authoredHole"
   | "authoredChamfer"
   | "authoredFillet"
+  | "importedBody"
   | "primitiveCompatibility"
   | "unresolvedSource";
 
@@ -5058,6 +5385,7 @@ export type CadQueryResponse =
   | ProjectDependencyGraphQueryResponse
   | ProjectRebuildPlanQueryResponse
   | ProjectTopologyIdentityReadinessQueryResponse
+  | ProjectImportReadinessQueryResponse
   | TopologyMatchSnapshotsQueryResponse
   | TopologyAnchorRepairCandidatesQueryResponse
   | TopologyAnchorCommandReadinessQueryResponse
@@ -5079,6 +5407,7 @@ export type CadQueryResponse =
   | SketchDimensionGetQueryResponse
   | BodyGeneratedReferencesQueryResponse
   | BodyResolveGeneratedReferenceQueryResponse
+  | BodyImportedBodyStatusQueryResponse
   | BodyTopologyQueryResponse
   | BodyTopologyIdentityQueryResponse
   | BodyMeasurementsQueryResponse
@@ -5255,6 +5584,24 @@ export interface ProjectTopologyIdentityReadinessQueryResponse {
   readonly capabilities: readonly CadTopologyIdentityCapabilityReadiness[];
   readonly diagnosticCount: number;
   readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
+}
+
+export interface ProjectImportReadinessQueryResponse {
+  readonly ok: true;
+  readonly query: "project.importReadiness";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly sourceFormat: "step";
+  readonly status: CadStepImportReadinessStatus;
+  readonly geometryWorkerAvailable: boolean;
+  readonly stepReaderAvailable: boolean;
+  readonly healingAvailable: boolean;
+  readonly importedBodyCount: number;
+  readonly maxBodyCount: number;
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadStepImportDiagnostic[];
+  readonly sourceBoundaryNote: string;
+  readonly derivedBoundaryNote: string;
+  readonly mutatesSource: false;
 }
 
 export interface TopologyMatchSnapshotsQueryResponse {
@@ -5736,6 +6083,31 @@ export interface BodyResolveGeneratedReferenceQueryResponse {
   readonly stableId: string;
   readonly kind: CadGeneratedEntityKind;
   readonly reference: CadGeneratedReference;
+}
+
+export type ImportedBodyStatus =
+  | "not-imported"
+  | "healthy"
+  | "checkpoint-missing"
+  | "topology-unavailable";
+
+export interface BodyImportedBodyStatusQueryResponse {
+  readonly ok: true;
+  readonly query: "body.importedBodyStatus";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly bodyId: BodyId;
+  readonly imported: boolean;
+  readonly status: ImportedBodyStatus;
+  readonly checkpointStatus: "not-imported" | "available" | "missing";
+  readonly healingApplied: boolean;
+  readonly sourceFileName?: string;
+  readonly sourceFormat?: "step";
+  readonly checkpointId?: string;
+  readonly availableDownstreamOperations: readonly CadSelectionReferenceOperation[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadStepImportDiagnostic[];
+  readonly sourceBoundaryNote: string;
+  readonly derivedBoundaryNote: string;
 }
 
 export interface BodyTopologyQueryResponse {

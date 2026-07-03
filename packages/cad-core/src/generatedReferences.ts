@@ -82,7 +82,10 @@ export type GeneratedReferencesFeature =
   | GeneratedReferencesRevolveFeature
   | GeneratedReferencesHoleFeature
   | GeneratedReferencesChamferFeature
-  | GeneratedReferencesFilletFeature;
+  | GeneratedReferencesFilletFeature
+  | GeneratedReferencesImportedBodyFeature
+  | GeneratedReferencesLinearPatternFeature
+  | GeneratedReferencesCircularPatternFeature;
 
 export interface GeneratedReferencesExtrudeFeature {
   readonly id: FeatureId;
@@ -143,6 +146,25 @@ export interface GeneratedReferencesHoleFeature {
   readonly depthMode: FeatureHoleDepthMode;
   readonly depth?: number;
   readonly direction: FeatureHoleDirection;
+  readonly bodyId: BodyId;
+}
+
+export interface GeneratedReferencesImportedBodyFeature {
+  readonly id: FeatureId;
+  readonly kind: "importedBody";
+  readonly bodyId: BodyId;
+  readonly checkpointId: string;
+}
+
+export interface GeneratedReferencesLinearPatternFeature {
+  readonly id: FeatureId;
+  readonly kind: "linearPattern";
+  readonly bodyId: BodyId;
+}
+
+export interface GeneratedReferencesCircularPatternFeature {
+  readonly id: FeatureId;
+  readonly kind: "circularPattern";
   readonly bodyId: BodyId;
 }
 

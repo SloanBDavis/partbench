@@ -445,6 +445,14 @@ function addFeatureSourceEdges(
     return;
   }
 
+  if (
+    feature.kind === "importedBody" ||
+    feature.kind === "linearPattern" ||
+    feature.kind === "circularPattern"
+  ) {
+    return;
+  }
+
   addEdge(edges, {
     kind: "sources",
     from: sketchNodeId(feature.sketchId),

@@ -952,6 +952,12 @@ function formatFeatureKindLabel(feature: CadFeatureSummary): string {
       return "Chamfer";
     case "fillet":
       return "Fillet";
+    case "importedBody":
+      return "Imported STEP body";
+    case "linearPattern":
+      return "Linear pattern";
+    case "circularPattern":
+      return "Circular pattern";
     case "primitive":
       return formatObjectKind(feature.primitive);
   }
@@ -1075,6 +1081,73 @@ function renderFeatureDetailRows(
         <div>
           <dt>Direction</dt>
           <dd>{feature.direction}</dd>
+        </div>
+      </>
+    );
+  }
+
+  if (feature.kind === "importedBody") {
+    return (
+      <>
+        <div>
+          <dt>Source file</dt>
+          <dd>{feature.sourceFileName}</dd>
+        </div>
+        <div>
+          <dt>Checkpoint</dt>
+          <dd>{feature.checkpointId}</dd>
+        </div>
+        <div>
+          <dt>Healing</dt>
+          <dd>{feature.healingApplied ? "Applied" : "Not applied"}</dd>
+        </div>
+      </>
+    );
+  }
+
+  if (feature.kind === "linearPattern") {
+    return (
+      <>
+        <div>
+          <dt>Seed body</dt>
+          <dd>{feature.seedBodyId}</dd>
+        </div>
+        <div>
+          <dt>Axis</dt>
+          <dd>{feature.axis}</dd>
+        </div>
+        <div>
+          <dt>Spacing</dt>
+          <dd>
+            {feature.spacing} {units}
+          </dd>
+        </div>
+        <div>
+          <dt>Count</dt>
+          <dd>{feature.instanceCount}</dd>
+        </div>
+      </>
+    );
+  }
+
+  if (feature.kind === "circularPattern") {
+    return (
+      <>
+        <div>
+          <dt>Seed body</dt>
+          <dd>{feature.seedBodyId}</dd>
+        </div>
+        <div>
+          <dt>Rotation axis</dt>
+          <dd>{feature.rotationAxis}</dd>
+        </div>
+        <div>
+          <dt>Total angle</dt>
+          <dd>{feature.totalAngleDegrees}°</dd>
+        </div>
+        <div>
+          <dt>Count</dt>
+          <dd>{feature.instanceCount}</dd>
         </div>
       </>
     );

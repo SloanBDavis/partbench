@@ -49,6 +49,7 @@ export interface ProjectWcadTopologyCheckpointPayloadInput {
   readonly features: readonly CadFeatureSummary[];
   readonly sketches: readonly SketchSnapshot[];
   readonly generatedFacesByKey?: ReadonlyMap<string, CadGeneratedFaceReference>;
+  readonly importedCheckpointPayloads?: readonly WcadTopologyCheckpointPayloadInput[];
   readonly runtime: Pick<
     DerivedGeometryRuntime,
     "exactTopologyCheckpointPayload"
@@ -587,6 +588,7 @@ export async function createProjectWcadTopologyCheckpointPayloadInputs({
   features,
   sketches,
   generatedFacesByKey = new Map(),
+  importedCheckpointPayloads = [],
   runtime
 }: ProjectWcadTopologyCheckpointPayloadInput): Promise<
   readonly WcadTopologyCheckpointPayloadInput[]
@@ -603,6 +605,9 @@ export async function createProjectWcadTopologyCheckpointPayloadInputs({
     generatedFacesByKey,
     document.namedReferences
   );
+  const importedPayloadsByCheckpointId = new Map(
+    importedCheckpointPayloads.map((payload) => [payload.checkpointId, payload])
+  );
   const issues: WcadPackageValidationIssue[] = [];
   const payloads: WcadTopologyCheckpointPayloadInput[] = [];
 
@@ -610,6 +615,20 @@ export async function createProjectWcadTopologyCheckpointPayloadInputs({
     const source = sourcesByBodyId.get(checkpoint.bodyId);
 
     if (!source) {
+      const importedPayload = importedPayloadsByCheckpointId.get(
+        checkpoint.checkpointId
+      );
+
+      if (importedPayload && importedPayload.bodyId === checkpoint.bodyId) {
+        payloads.push({
+          ...importedPayload,
+          ...(checkpoint.sourceFeatureId
+            ? { sourceFeatureId: checkpoint.sourceFeatureId }
+            : {})
+        });
+        continue;
+      }
+
       issues.push(
         createCheckpointIssue(
           checkpoint.checkpointId,
@@ -1371,6 +1390,7 @@ export async function exportProjectWcadWithTopologyCheckpoints({
   features,
   sketches,
   generatedFacesByKey,
+  importedCheckpointPayloads,
   runtime,
   createdAt,
   modifiedAt,
@@ -1382,6 +1402,7 @@ export async function exportProjectWcadWithTopologyCheckpoints({
       features,
       sketches,
       generatedFacesByKey,
+      importedCheckpointPayloads,
       runtime
     });
   const options: ExportCadProjectWcadOptions = {

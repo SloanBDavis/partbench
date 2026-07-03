@@ -8,8 +8,11 @@ import {
   WCAD_SOURCE_IDENTITY_ALGORITHM,
   type WcadManifestV1,
   type WcadManifestV2,
+  type BodyImportedBodyStatusQueryResponse,
   type CadBodyExactTopologyEntityDescriptor,
   type CadBodyExactTopologySnapshot,
+  type ProjectImportReadinessQueryResponse,
+  type ProjectImportStepResolvedBody,
   type WcadTopologyCheckpointKernelMetadata,
   type WcadTopologyCheckpointManifestEntry,
   type WcadTopologyCheckpointPayloadEntry,
@@ -28,6 +31,7 @@ import type {
   CadBatchValidationError,
   CadBatchValidationResult,
   CadAxisAlignedBounds,
+  CadStepImportDiagnostic,
   BodyExtentSnapshot,
   CadBodyDerivedExactMetadataSnapshot,
   CadBodyExactMetadataSnapshot,
@@ -114,6 +118,7 @@ import type {
   ExtrudeFeatureSnapshot,
   FeatureSnapshot,
   HoleFeatureSnapshot,
+  ImportedBodyFeatureSnapshot,
   FeatureExtrudeOperationMode,
   FeatureHoleDepthMode,
   FeatureHoleDirection,
@@ -369,8 +374,10 @@ export type {
   CadProjectSummaryWorkflowHint,
   CadProjectSummaryWorkflowHintCode,
   CadProjectSummaryWorkflowHintLevel,
+  BodyImportedBodyStatusQueryResponse,
   ProjectDependencyGraphQueryResponse,
   ProjectExactExportQueryResponse,
+  ProjectImportReadinessQueryResponse,
   ProjectPackageReadinessQueryResponse,
   ProjectRebuildPlanQueryResponse,
   ReferenceHealthQueryResponse,
@@ -542,7 +549,10 @@ export type Feature =
   | RevolveFeature
   | HoleFeature
   | ChamferFeature
-  | FilletFeature;
+  | FilletFeature
+  | LinearPatternFeature
+  | CircularPatternFeature
+  | ImportedBodyFeature;
 
 export interface ExtrudeFeature {
   readonly id: FeatureId;
@@ -608,6 +618,39 @@ export interface FilletFeature {
   readonly namedReference?: NamedReferenceName;
   readonly topologyAnchorId?: string;
   readonly radius: number;
+  readonly bodyId: BodyId;
+}
+
+export interface ImportedBodyFeature {
+  readonly id: FeatureId;
+  readonly kind: "importedBody";
+  readonly name?: string;
+  readonly sourceFileName: string;
+  readonly sourceFormat: "step";
+  readonly bodyId: BodyId;
+  readonly checkpointId: string;
+  readonly healingApplied: boolean;
+}
+
+export interface LinearPatternFeature {
+  readonly id: FeatureId;
+  readonly kind: "linearPattern";
+  readonly name?: string;
+  readonly seedBodyId: BodyId;
+  readonly axis: "x" | "y" | "z";
+  readonly spacing: number;
+  readonly instanceCount: number;
+  readonly bodyId: BodyId;
+}
+
+export interface CircularPatternFeature {
+  readonly id: FeatureId;
+  readonly kind: "circularPattern";
+  readonly name?: string;
+  readonly seedBodyId: BodyId;
+  readonly rotationAxis: "x" | "y" | "z";
+  readonly totalAngleDegrees: number;
+  readonly instanceCount: number;
   readonly bodyId: BodyId;
 }
 
@@ -691,6 +734,36 @@ export interface CadCommandWorker {
   execute(request: CadWorkerRequest): Promise<CadWorkerResponse>;
 }
 
+export interface CadProjectImportStepResolverInput {
+  readonly op: Extract<CadOp, { readonly op: "project.importStep" }>;
+  readonly opIndex: number;
+  readonly document: CadDocumentSnapshot;
+  readonly featureId: FeatureId;
+  readonly bodyId: BodyId;
+  readonly checkpointId: string;
+}
+
+export interface CadProjectImportStepResolverResult {
+  readonly resolvedBodies: readonly ProjectImportStepResolvedBody[];
+  readonly checkpointPayloads?: readonly WcadTopologyCheckpointPayloadInput[];
+  readonly diagnostics?: readonly CadStepImportDiagnostic[];
+}
+
+export interface CadProjectImportStepResolver {
+  resolveProjectImportStep(
+    input: CadProjectImportStepResolverInput
+  ): Promise<CadProjectImportStepResolverResult>;
+}
+
+export interface AsyncCadCommandExecutorOptions {
+  readonly stepImportResolver?: CadProjectImportStepResolver;
+}
+
+export type CadAsyncBatchResponse = CadBatchResponse & {
+  readonly importedStepCheckpointPayloads?: readonly WcadTopologyCheckpointPayloadInput[];
+  readonly importedStepDiagnostics?: readonly CadStepImportDiagnostic[];
+};
+
 export interface SnapshotCadCommandWorkerOptions {
   readonly delayMs?: number;
 }
@@ -715,6 +788,7 @@ export const CAD_PROJECT_FORMAT_VERSION_V15 = "web-cad.project.v15";
 export const CAD_PROJECT_FORMAT_VERSION_V16 = "web-cad.project.v16";
 export const CAD_PROJECT_FORMAT_VERSION_V17 = "web-cad.project.v17";
 export const CAD_PROJECT_FORMAT_VERSION_V18 = "web-cad.project.v18";
+export const CAD_PROJECT_FORMAT_VERSION_V19 = "web-cad.project.v19";
 export const CURRENT_CAD_PROJECT_FORMAT_VERSION =
   CAD_PROJECT_FORMAT_VERSION_V16;
 
@@ -737,6 +811,7 @@ export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V16
   | typeof CAD_PROJECT_FORMAT_VERSION_V17
   | typeof CAD_PROJECT_FORMAT_VERSION_V18
+  | typeof CAD_PROJECT_FORMAT_VERSION_V19
   | typeof CURRENT_CAD_PROJECT_FORMAT_VERSION;
 
 const SUPPORTED_CAD_PROJECT_FORMAT_VERSIONS = new Set<string>([
@@ -757,7 +832,8 @@ const SUPPORTED_CAD_PROJECT_FORMAT_VERSIONS = new Set<string>([
   CAD_PROJECT_FORMAT_VERSION_V15,
   CAD_PROJECT_FORMAT_VERSION_V16,
   CAD_PROJECT_FORMAT_VERSION_V17,
-  CAD_PROJECT_FORMAT_VERSION_V18
+  CAD_PROJECT_FORMAT_VERSION_V18,
+  CAD_PROJECT_FORMAT_VERSION_V19
 ]);
 
 function getCadProjectFormatVersionForDocument(
@@ -765,7 +841,12 @@ function getCadProjectFormatVersionForDocument(
 ):
   | typeof CAD_PROJECT_FORMAT_VERSION_V16
   | typeof CAD_PROJECT_FORMAT_VERSION_V17
-  | typeof CAD_PROJECT_FORMAT_VERSION_V18 {
+  | typeof CAD_PROJECT_FORMAT_VERSION_V18
+  | typeof CAD_PROJECT_FORMAT_VERSION_V19 {
+  if (documentHasV19SourceRecords(document)) {
+    return CAD_PROJECT_FORMAT_VERSION_V19;
+  }
+
   if (document.topologyIdentity !== undefined) {
     return CAD_PROJECT_FORMAT_VERSION_V18;
   }
@@ -783,7 +864,39 @@ function getCadProjectFormatVersionForDocument(
     : CAD_PROJECT_FORMAT_VERSION_V16;
 }
 
+function documentHasV19SourceRecords(
+  document: CadDocument | CadDocumentSnapshot
+): boolean {
+  const features: readonly (Feature | FeatureSnapshot)[] = Array.isArray(
+    document.features
+  )
+    ? document.features
+    : [...document.features.values()];
+
+  return features.some(
+    (feature) =>
+      feature.kind === "importedBody" ||
+      feature.kind === "linearPattern" ||
+      feature.kind === "circularPattern"
+  );
+}
+
 function isSupportedWcadDocumentSchema(
+  schemaVersion: unknown
+): schemaVersion is
+  | typeof CAD_PROJECT_FORMAT_VERSION_V16
+  | typeof CAD_PROJECT_FORMAT_VERSION_V17
+  | typeof CAD_PROJECT_FORMAT_VERSION_V18
+  | typeof CAD_PROJECT_FORMAT_VERSION_V19 {
+  return (
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V16 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V17 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19
+  );
+}
+
+function isSupportedWcadV1DocumentSchema(
   schemaVersion: unknown
 ): schemaVersion is
   | typeof CAD_PROJECT_FORMAT_VERSION_V16
@@ -1370,6 +1483,10 @@ export class CadEngine {
           namedReferences: [...this.#document.namedReferences.values()],
           topologyIdentity: this.#document.topologyIdentity
         });
+      }
+
+      case "project.importReadiness": {
+        return createProjectImportReadiness(this.#document, request.version);
       }
 
       case "topology.matchSnapshots": {
@@ -2088,6 +2205,33 @@ export class CadEngine {
         };
       }
 
+      case "body.importedBodyStatus": {
+        const { bodyId } = request.query;
+        const bodyExists = createProjectStructure(
+          this.#document,
+          this.#history.map((entry) => entry.transaction)
+        ).bodies.some((body) => body.id === bodyId);
+
+        if (!bodyExists) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: {
+              code: "BODY_NOT_FOUND",
+              message: `Body does not exist: ${bodyId}`,
+              bodyId
+            }
+          };
+        }
+
+        return createBodyImportedBodyStatus(
+          this.#document,
+          bodyId,
+          request.version
+        );
+      }
+
       case "reference.listNamed": {
         const references = [...this.#document.namedReferences.values()].map(
           (reference) =>
@@ -2363,10 +2507,11 @@ export class AsyncCadCommandExecutor {
 
   constructor(
     private readonly engine: CadEngine,
-    private readonly worker: CadCommandWorker
+    private readonly worker: CadCommandWorker,
+    private readonly options: AsyncCadCommandExecutorOptions = {}
   ) {}
 
-  async executeBatch(batch: CadBatch): Promise<CadBatchResponse> {
+  async executeBatch(batch: CadBatch): Promise<CadAsyncBatchResponse> {
     const response = this.#queue.then(() => this.#executeBatchNow(batch));
     this.#queue = response.then(
       () => undefined,
@@ -2375,18 +2520,26 @@ export class AsyncCadCommandExecutor {
     return response;
   }
 
-  async #executeBatchNow(batch: CadBatch): Promise<CadBatchResponse> {
+  async #executeBatchNow(batch: CadBatch): Promise<CadAsyncBatchResponse> {
+    const resolvedImport = await this.#resolveProjectImportStepOps(batch);
+    const effectiveBatch = resolvedImport.batch;
     const workerResponse = await this.worker.execute({
       id: this.#createRequestId(),
-      batch,
+      batch: effectiveBatch,
       document: this.engine.createSnapshot()
     });
 
-    if (!workerResponse.response.ok || batch.mode === "dryRun") {
-      return workerResponse.response;
+    if (!workerResponse.response.ok || effectiveBatch.mode === "dryRun") {
+      return attachImportedStepExecutionMetadata(
+        workerResponse.response,
+        resolvedImport
+      );
     }
 
-    return this.engine.executeBatch(batch);
+    return attachImportedStepExecutionMetadata(
+      this.engine.executeBatch(effectiveBatch),
+      resolvedImport
+    );
   }
 
   #createRequestId(): string {
@@ -2394,6 +2547,88 @@ export class AsyncCadCommandExecutor {
     this.#nextRequestNumber += 1;
     return id;
   }
+
+  async #resolveProjectImportStepOps(batch: CadBatch): Promise<{
+    readonly batch: CadBatch;
+    readonly checkpointPayloads: readonly WcadTopologyCheckpointPayloadInput[];
+    readonly diagnostics: readonly CadStepImportDiagnostic[];
+  }> {
+    const resolver = this.options.stepImportResolver;
+    const unresolvedImportOps = batch.ops.filter(
+      (op) => op.op === "project.importStep" && !op.resolvedBodies
+    );
+
+    if (!resolver || unresolvedImportOps.length === 0) {
+      return { batch, checkpointPayloads: [], diagnostics: [] };
+    }
+
+    const document = this.engine.createSnapshot();
+    let nextFeatureNumber = document.nextFeatureNumber;
+    let nextBodyNumber = document.nextBodyNumber;
+    const checkpointPayloads: WcadTopologyCheckpointPayloadInput[] = [];
+    const diagnostics: CadStepImportDiagnostic[] = [];
+    const ops: CadOp[] = [];
+
+    for (const [opIndex, op] of batch.ops.entries()) {
+      if (op.op !== "project.importStep" || op.resolvedBodies) {
+        ops.push(op);
+        continue;
+      }
+
+      const featureId = `feat_${nextFeatureNumber}` as FeatureId;
+      const bodyId = `body_${nextBodyNumber}` as BodyId;
+      const checkpointId = `checkpoint_${bodyId}`;
+      nextFeatureNumber += 1;
+      nextBodyNumber += 1;
+
+      const resolution = await resolver.resolveProjectImportStep({
+        op,
+        opIndex,
+        document,
+        featureId,
+        bodyId,
+        checkpointId
+      });
+
+      checkpointPayloads.push(...(resolution.checkpointPayloads ?? []));
+      diagnostics.push(...(resolution.diagnostics ?? []));
+      ops.push({
+        ...op,
+        resolvedBodies: resolution.resolvedBodies
+      });
+    }
+
+    return {
+      batch: { ...batch, ops },
+      checkpointPayloads,
+      diagnostics
+    };
+  }
+}
+
+function attachImportedStepExecutionMetadata(
+  response: CadBatchResponse,
+  metadata: {
+    readonly checkpointPayloads: readonly WcadTopologyCheckpointPayloadInput[];
+    readonly diagnostics: readonly CadStepImportDiagnostic[];
+  }
+): CadAsyncBatchResponse {
+  if (
+    metadata.checkpointPayloads.length === 0 &&
+    metadata.diagnostics.length === 0
+  ) {
+    return response;
+  }
+
+  return {
+    ...response,
+    ...(metadata.checkpointPayloads.length > 0
+      ? { importedStepCheckpointPayloads: metadata.checkpointPayloads }
+      : {}),
+    ...(metadata.diagnostics.length > 0
+      ? { importedStepDiagnostics: metadata.diagnostics }
+      : {})
+  };
 }
 
 export function exportCadProject(engine: CadEngine): CadProject {
@@ -2414,9 +2649,9 @@ export function createCadProjectSourceIdentity(
       createWcadPackageIssue(
         "WCAD_UNSUPPORTED_DOCUMENT_SCHEMA",
         "error",
-        "WCAD source identity only supports V16 or V17 project schemas.",
+        "WCAD source identity only supports V16, V17, V18, or V19 project schemas.",
         "$.schemaVersion",
-        `${CAD_PROJECT_FORMAT_VERSION_V16} or ${CAD_PROJECT_FORMAT_VERSION_V17}`,
+        `${CAD_PROJECT_FORMAT_VERSION_V16}, ${CAD_PROJECT_FORMAT_VERSION_V17}, ${CAD_PROJECT_FORMAT_VERSION_V18}, or ${CAD_PROJECT_FORMAT_VERSION_V19}`,
         project.schemaVersion
       )
     ]);
@@ -2476,6 +2711,7 @@ export async function exportCadProjectToWcad(
 ): Promise<WcadPackageExportResult> {
   if (
     project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18 ||
+    project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19 ||
     (options.topologyCheckpoints?.length ?? 0) > 0
   ) {
     return exportCadProjectToWcadV2(project, options);
@@ -2488,7 +2724,7 @@ async function exportCadProjectToWcadV1(
   project: CadProject,
   options: ExportCadProjectWcadOptions
 ): Promise<WcadPackageExportResult> {
-  if (!isSupportedWcadDocumentSchema(project.schemaVersion)) {
+  if (!isSupportedWcadV1DocumentSchema(project.schemaVersion)) {
     throw new WcadPackageImportError([
       createWcadPackageIssue(
         "WCAD_UNSUPPORTED_DOCUMENT_SCHEMA",
@@ -2561,14 +2797,17 @@ async function exportCadProjectToWcadV2(
 ): Promise<WcadPackageExportResult> {
   const checkpointInputs = options.topologyCheckpoints ?? [];
 
-  if (project.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V18) {
+  if (
+    project.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V18 &&
+    project.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V19
+  ) {
     throw new WcadPackageImportError([
       createWcadPackageIssue(
         "WCAD_UNSUPPORTED_DOCUMENT_SCHEMA",
         "error",
-        "WCAD v2 checkpoint writer requires web-cad.project.v18 source.",
+        "WCAD v2 checkpoint writer requires web-cad.project.v18 or web-cad.project.v19 source.",
         "$.schemaVersion",
-        CAD_PROJECT_FORMAT_VERSION_V18,
+        `${CAD_PROJECT_FORMAT_VERSION_V18} or ${CAD_PROJECT_FORMAT_VERSION_V19}`,
         project.schemaVersion
       )
     ]);
@@ -2632,7 +2871,7 @@ async function exportCadProjectToWcadV2(
     }),
     createWcadSourceIdentity({
       packageVersion: CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION,
-      documentSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
+      documentSchemaVersion: project.schemaVersion,
       units: project.document.units,
       documentBytes,
       commandsBytes,
@@ -2688,7 +2927,7 @@ async function exportCadProjectToWcadV2(
     units: project.document.units,
     document: {
       ...documentEntry,
-      schemaVersion: CAD_PROJECT_FORMAT_VERSION_V18
+      schemaVersion: project.schemaVersion
     },
     commands: commandsEntry,
     sourceIdentity,
@@ -2774,7 +3013,7 @@ export async function readCadProjectWcad(
     return { ok: false, issues };
   }
 
-  if (!isSupportedWcadDocumentSchema(manifestValue.document.schemaVersion)) {
+  if (!isSupportedWcadV1DocumentSchema(manifestValue.document.schemaVersion)) {
     issues.push(
       createWcadPackageIssue(
         "WCAD_UNSUPPORTED_DOCUMENT_SCHEMA",
@@ -4111,6 +4350,17 @@ function isWcadManifestV2Package(value: unknown): boolean {
   );
 }
 
+function isSupportedWcadV2DocumentSchema(
+  schemaVersion: unknown
+): schemaVersion is
+  | typeof CAD_PROJECT_FORMAT_VERSION_V18
+  | typeof CAD_PROJECT_FORMAT_VERSION_V19 {
+  return (
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19
+  );
+}
+
 function isWcadManifestV2(value: unknown): value is WcadManifestV2 {
   return (
     isRecord(value) &&
@@ -4118,7 +4368,7 @@ function isWcadManifestV2(value: unknown): value is WcadManifestV2 {
     value.product === "Partbench" &&
     isRecord(value.document) &&
     value.document.path === WCAD_DOCUMENT_ENTRY_PATH &&
-    value.document.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18 &&
+    isSupportedWcadV2DocumentSchema(value.document.schemaVersion) &&
     isRecord(value.commands) &&
     value.commands.path === WCAD_COMMANDS_ENTRY_PATH &&
     isRecord(value.sourceIdentity) &&
@@ -4271,6 +4521,35 @@ function applyOperation(
   opIndex: number
 ): void {
   switch (op.op) {
+    case "project.importStep": {
+      validateProjectImportStepOp(op, opIndex);
+      const resolvedBodies = op.resolvedBodies ?? [];
+
+      if (resolvedBodies.length > 0) {
+        applyResolvedProjectImportStep(
+          op,
+          resolvedBodies,
+          state,
+          diff,
+          opIndex
+        );
+        return;
+      }
+
+      throwValidationError({
+        code: "STEP_READER_UNAVAILABLE",
+        message:
+          "STEP import is unavailable until the geometry worker exposes a STEP reader.",
+        opIndex,
+        op: op.op,
+        sourceFileName: op.sourceFileName,
+        payloadId: op.payloadRef.payloadId,
+        path: operationPath(opIndex, "payloadRef"),
+        expected: "available STEP reader",
+        received: "unavailable"
+      });
+    }
+
     case "parameter.create": {
       const parameter: CadParameter = {
         id: op.id ?? createParameterId(),
@@ -5059,6 +5338,63 @@ function applyOperation(
       return;
     }
 
+    case "feature.linearPattern": {
+      const seedBodyId = validatePatternSeedBodyId(
+        state,
+        "feature.linearPattern",
+        op.seedBodyId,
+        opIndex
+      );
+      const feature: LinearPatternFeature = {
+        id: op.id ?? createFeatureId(),
+        kind: "linearPattern",
+        name: normalizeOptionalFeatureName(op.name, opIndex, op.id),
+        seedBodyId,
+        axis: validatePatternAxis(op.axis, "feature.linearPattern", opIndex),
+        spacing: validatePatternSpacing(op.spacing, opIndex),
+        instanceCount: validatePatternInstanceCount(
+          op.instanceCount,
+          opIndex
+        ),
+        bodyId: op.bodyId ?? createBodyId()
+      };
+
+      addFeature(state, feature, diff, opIndex);
+      return;
+    }
+
+    case "feature.circularPattern": {
+      const seedBodyId = validatePatternSeedBodyId(
+        state,
+        "feature.circularPattern",
+        op.seedBodyId,
+        opIndex
+      );
+      const feature: CircularPatternFeature = {
+        id: op.id ?? createFeatureId(),
+        kind: "circularPattern",
+        name: normalizeOptionalFeatureName(op.name, opIndex, op.id),
+        seedBodyId,
+        rotationAxis: validatePatternAxis(
+          op.rotationAxis,
+          "feature.circularPattern",
+          opIndex
+        ),
+        totalAngleDegrees: validateCircularPatternAngle(
+          op.totalAngleDegrees,
+          opIndex
+        ),
+        instanceCount: validatePatternInstanceCount(
+          op.instanceCount,
+          opIndex
+        ),
+        bodyId: op.bodyId ?? createBodyId()
+      };
+
+      addFeature(state, feature, diff, opIndex);
+      return;
+    }
+
     case "feature.delete": {
       deleteFeature(state, op.id, diff, opIndex);
       return;
@@ -5086,6 +5422,16 @@ function applyOperation(
 
     case "feature.updateFillet": {
       updateFilletFeature(state, op, diff, opIndex);
+      return;
+    }
+
+    case "feature.updateLinearPattern": {
+      updateLinearPatternFeature(state, op, diff, opIndex);
+      return;
+    }
+
+    case "feature.updateCircularPattern": {
+      updateCircularPatternFeature(state, op, diff, opIndex);
       return;
     }
 
@@ -5582,6 +5928,7 @@ function getBatchResponseMode(batch: CadBatch): CadBatch["mode"] {
 
 function isCadOperationKind(value: string): boolean {
   switch (value) {
+    case "project.importStep":
     case "parameter.create":
     case "parameter.update":
     case "parameter.rename":
@@ -5622,12 +5969,16 @@ function isCadOperationKind(value: string): boolean {
     case "feature.hole":
     case "feature.chamfer":
     case "feature.fillet":
+    case "feature.linearPattern":
+    case "feature.circularPattern":
     case "feature.delete":
     case "feature.updateExtrude":
     case "feature.updateRevolve":
     case "feature.updateHole":
     case "feature.updateChamfer":
     case "feature.updateFillet":
+    case "feature.updateLinearPattern":
+    case "feature.updateCircularPattern":
     case "reference.nameGenerated":
     case "reference.repairName":
     case "reference.deleteName":
@@ -5638,6 +5989,363 @@ function isCadOperationKind(value: string): boolean {
   }
 
   return false;
+}
+
+function validateProjectImportStepOp(
+  op: Extract<CadOp, { readonly op: "project.importStep" }>,
+  opIndex: number
+): void {
+  if (op.sourceFormat !== "step") {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: "STEP import sourceFormat must be step.",
+      opIndex,
+      op: op.op,
+      path: operationPath(opIndex, "sourceFormat"),
+      expected: "step",
+      received: describeReceived(op.sourceFormat)
+    });
+  }
+
+  if (
+    typeof op.sourceFileName !== "string" ||
+    op.sourceFileName.trim() === ""
+  ) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: "STEP import requires a non-empty sourceFileName.",
+      opIndex,
+      op: op.op,
+      path: operationPath(opIndex, "sourceFileName"),
+      expected: "non-empty file name",
+      received: describeReceived(op.sourceFileName)
+    });
+  }
+
+  if (
+    !isRecord(op.payloadRef) ||
+    op.payloadRef.kind !== "transient" ||
+    typeof op.payloadRef.payloadId !== "string" ||
+    op.payloadRef.payloadId.trim() === ""
+  ) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message:
+        "STEP import requires a transient payload reference with a non-empty payloadId.",
+      opIndex,
+      op: op.op,
+      path: operationPath(opIndex, "payloadRef"),
+      expected: "transient payload reference",
+      received: describeReceived(op.payloadRef)
+    });
+  }
+
+  if (
+    typeof op.payloadRef.byteLength !== "number" ||
+    !Number.isInteger(op.payloadRef.byteLength) ||
+    op.payloadRef.byteLength <= 0
+  ) {
+    throwValidationError({
+      code: "STEP_FILE_CORRUPT",
+      message:
+        "STEP import payload metadata must include a positive byteLength.",
+      opIndex,
+      op: op.op,
+      sourceFileName: op.sourceFileName,
+      payloadId: op.payloadRef.payloadId,
+      path: operationPath(opIndex, "payloadRef.byteLength"),
+      expected: "positive integer byte length",
+      received: describeReceived(op.payloadRef.byteLength)
+    });
+  }
+
+  if (
+    op.payloadRef.sha256 !== undefined &&
+    !SHA256_HEX_PATTERN.test(op.payloadRef.sha256)
+  ) {
+    throwValidationError({
+      code: "STEP_FILE_CORRUPT",
+      message:
+        "STEP import payload metadata sha256 must be a lowercase hex SHA-256 digest.",
+      opIndex,
+      op: op.op,
+      sourceFileName: op.sourceFileName,
+      payloadId: op.payloadRef.payloadId,
+      path: operationPath(opIndex, "payloadRef.sha256"),
+      expected: "64 lowercase hex characters",
+      received: describeReceived(op.payloadRef.sha256)
+    });
+  }
+
+  if (
+    op.maxBodyCount !== undefined &&
+    (!Number.isInteger(op.maxBodyCount) || op.maxBodyCount <= 0)
+  ) {
+    throwValidationError({
+      code: "STEP_BODY_LIMIT_EXCEEDED",
+      message: "STEP import maxBodyCount must be a positive integer when set.",
+      opIndex,
+      op: op.op,
+      sourceFileName: op.sourceFileName,
+      payloadId: op.payloadRef.payloadId,
+      path: operationPath(opIndex, "maxBodyCount"),
+      expected: "positive integer body limit",
+      received: describeReceived(op.maxBodyCount)
+    });
+  }
+}
+
+function applyResolvedProjectImportStep(
+  op: Extract<CadOp, { readonly op: "project.importStep" }>,
+  resolvedBodies: readonly ProjectImportStepResolvedBody[],
+  state: MutableDocumentState,
+  diff: MutableSemanticDiff,
+  opIndex: number
+): void {
+  if (
+    op.maxBodyCount !== undefined &&
+    resolvedBodies.length > op.maxBodyCount
+  ) {
+    throwValidationError({
+      code: "STEP_BODY_LIMIT_EXCEEDED",
+      message: `STEP import produced ${resolvedBodies.length} bodies, exceeding the maxBodyCount of ${op.maxBodyCount}.`,
+      opIndex,
+      op: op.op,
+      sourceFileName: op.sourceFileName,
+      payloadId: op.payloadRef.payloadId,
+      path: operationPath(opIndex, "maxBodyCount"),
+      expected: `at most ${op.maxBodyCount} imported bodies`,
+      received: String(resolvedBodies.length)
+    });
+  }
+
+  const seenFeatureIds = new Set<FeatureId>();
+  const seenBodyIds = new Set<BodyId>();
+  const seenCheckpointIds = new Set<string>();
+  const topologyIdentity = ensureTopologyIdentitySource(state);
+
+  resolvedBodies.forEach((body, bodyIndex) => {
+    validateResolvedProjectImportStepBody(body, opIndex, bodyIndex);
+
+    if (seenFeatureIds.has(body.featureId)) {
+      throwValidationError({
+        code: "FEATURE_ALREADY_EXISTS",
+        message: `Imported body feature id is duplicated in this import: ${body.featureId}`,
+        opIndex,
+        op: op.op,
+        featureId: body.featureId,
+        path: operationPath(opIndex, `resolvedBodies[${bodyIndex}].featureId`),
+        expected: "unique imported body feature id",
+        received: body.featureId
+      });
+    }
+    seenFeatureIds.add(body.featureId);
+
+    if (seenBodyIds.has(body.bodyId)) {
+      throwValidationError({
+        code: "BODY_ALREADY_EXISTS",
+        message: `Imported body id is duplicated in this import: ${body.bodyId}`,
+        opIndex,
+        op: op.op,
+        featureId: body.featureId,
+        bodyId: body.bodyId,
+        path: operationPath(opIndex, `resolvedBodies[${bodyIndex}].bodyId`),
+        expected: "unique imported body id",
+        received: body.bodyId
+      });
+    }
+    seenBodyIds.add(body.bodyId);
+
+    if (seenCheckpointIds.has(body.checkpointId)) {
+      throwValidationError({
+        code: "TOPOLOGY_CHECKPOINT_ALREADY_EXISTS",
+        message: `Imported checkpoint id is duplicated in this import: ${body.checkpointId}`,
+        opIndex,
+        op: op.op,
+        featureId: body.featureId,
+        bodyId: body.bodyId,
+        checkpointId: body.checkpointId,
+        path: operationPath(
+          opIndex,
+          `resolvedBodies[${bodyIndex}].checkpointId`
+        ),
+        expected: "unique imported checkpoint id",
+        received: body.checkpointId
+      });
+    }
+    seenCheckpointIds.add(body.checkpointId);
+
+    if (
+      topologyIdentity.checkpoints.some(
+        (checkpoint) => checkpoint.checkpointId === body.checkpointId
+      )
+    ) {
+      throwValidationError({
+        code: "TOPOLOGY_CHECKPOINT_ALREADY_EXISTS",
+        message: `Topology checkpoint already exists: ${body.checkpointId}`,
+        opIndex,
+        op: op.op,
+        featureId: body.featureId,
+        bodyId: body.bodyId,
+        checkpointId: body.checkpointId,
+        path: operationPath(
+          opIndex,
+          `resolvedBodies[${bodyIndex}].checkpointId`
+        ),
+        expected: "unique topology checkpoint id",
+        received: body.checkpointId
+      });
+    }
+
+    let checkpointPaths: ReturnType<typeof createWcadV2CheckpointEntryPaths>;
+    try {
+      checkpointPaths = createWcadV2CheckpointEntryPaths(body.checkpointId);
+    } catch {
+      throwValidationError({
+        code: "INVALID_TOPOLOGY_CHECKPOINT",
+        message: `Imported checkpoint id is not package-safe: ${body.checkpointId}`,
+        opIndex,
+        op: op.op,
+        featureId: body.featureId,
+        bodyId: body.bodyId,
+        checkpointId: body.checkpointId,
+        path: operationPath(
+          opIndex,
+          `resolvedBodies[${bodyIndex}].checkpointId`
+        ),
+        expected: "package-safe topology checkpoint id",
+        received: body.checkpointId
+      });
+    }
+
+    const feature: ImportedBodyFeature = {
+      id: body.featureId,
+      kind: "importedBody",
+      name: normalizeOptionalFeatureName(body.name, opIndex, body.featureId),
+      sourceFileName: op.sourceFileName,
+      sourceFormat: op.sourceFormat,
+      bodyId: body.bodyId,
+      checkpointId: body.checkpointId,
+      healingApplied: body.healingApplied
+    };
+
+    addFeature(state, feature, diff, opIndex);
+
+    const checkpoint: CadTopologyCheckpointSourceRecord = {
+      checkpointId: body.checkpointId,
+      bodyId: body.bodyId,
+      sourceFeatureId: body.featureId,
+      sourceIdentity: body.sourceIdentity,
+      packageVersion: CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION,
+      projectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
+      brepEntryPath: checkpointPaths.brep,
+      topologyEntryPath: checkpointPaths.topology,
+      signatureEntryPath: checkpointPaths.signature,
+      status: body.checkpointStatus ?? "active",
+      diagnostics: []
+    };
+
+    state.topologyIdentity = {
+      ...ensureTopologyIdentitySource(state),
+      checkpoints: [
+        ...ensureTopologyIdentitySource(state).checkpoints,
+        checkpoint
+      ]
+    };
+    pushTopologyCheckpointCreated(diff, checkpoint);
+  });
+}
+
+function validateResolvedProjectImportStepBody(
+  body: ProjectImportStepResolvedBody,
+  opIndex: number,
+  bodyIndex: number
+): void {
+  const path = (field: string): string =>
+    operationPath(opIndex, `resolvedBodies[${bodyIndex}].${field}`) ??
+    `$.ops[${opIndex}].resolvedBodies[${bodyIndex}].${field}`;
+
+  if (!isNonEmptyString(body.featureId)) {
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: "Imported body featureId must be a non-empty string.",
+      opIndex,
+      path: path("featureId"),
+      expected: "non-empty feature id",
+      received: describeReceived(body.featureId)
+    });
+  }
+
+  if (!isNonEmptyString(body.bodyId)) {
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: "Imported body bodyId must be a non-empty string.",
+      opIndex,
+      featureId: body.featureId,
+      path: path("bodyId"),
+      expected: "non-empty body id",
+      received: describeReceived(body.bodyId)
+    });
+  }
+
+  if (!isNonEmptyString(body.checkpointId)) {
+    throwValidationError({
+      code: "STEP_CHECKPOINT_UNAVAILABLE",
+      message: "Imported body checkpointId must be a non-empty string.",
+      opIndex,
+      featureId: body.featureId,
+      bodyId: body.bodyId,
+      path: path("checkpointId"),
+      expected: "non-empty checkpoint id",
+      received: describeReceived(body.checkpointId)
+    });
+  }
+
+  if (!isWcadSourceIdentityInput(body.sourceIdentity)) {
+    throwValidationError({
+      code: "STEP_CHECKPOINT_UNAVAILABLE",
+      message:
+        "Imported body checkpoint metadata must include a valid source identity.",
+      opIndex,
+      featureId: body.featureId,
+      bodyId: body.bodyId,
+      checkpointId: body.checkpointId,
+      path: path("sourceIdentity"),
+      expected: "partbench source identity",
+      received: describeReceived(body.sourceIdentity)
+    });
+  }
+
+  if (
+    body.checkpointStatus !== undefined &&
+    !isTopologyCheckpointStatus(body.checkpointStatus)
+  ) {
+    throwValidationError({
+      code: "STEP_CHECKPOINT_UNAVAILABLE",
+      message: "Imported body checkpointStatus is not supported.",
+      opIndex,
+      featureId: body.featureId,
+      bodyId: body.bodyId,
+      checkpointId: body.checkpointId,
+      path: path("checkpointStatus"),
+      expected: "active, stale, missing, failed, or unsupported",
+      received: describeReceived(body.checkpointStatus)
+    });
+  }
+
+  if (typeof body.healingApplied !== "boolean") {
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: "Imported body healingApplied must be a boolean.",
+      opIndex,
+      featureId: body.featureId,
+      bodyId: body.bodyId,
+      checkpointId: body.checkpointId,
+      path: path("healingApplied"),
+      expected: "boolean",
+      received: describeReceived(body.healingApplied)
+    });
+  }
 }
 
 function validateQueryRequestEnvelope(
@@ -5726,6 +6434,7 @@ function isCadQueryKind(value: string): value is CadQueryKind {
     case "project.dependencyGraph":
     case "project.rebuildPlan":
     case "project.topologyIdentityReadiness":
+    case "project.importReadiness":
     case "topology.matchSnapshots":
     case "topology.anchorRepairCandidates":
     case "topology.anchorCommandReadiness":
@@ -5747,6 +6456,7 @@ function isCadQueryKind(value: string): value is CadQueryKind {
     case "sketch.dimension.get":
     case "body.generatedReferences":
     case "body.resolveGeneratedReference":
+    case "body.importedBodyStatus":
     case "body.topology":
     case "body.topologyIdentity":
     case "body.measurements":
@@ -5773,6 +6483,7 @@ function isCadQuery(value: unknown): boolean {
     case "project.features":
     case "project.structure":
     case "project.topologyIdentityReadiness":
+    case "project.importReadiness":
     case "project.exportReadiness":
     case "project.packageReadiness":
     case "project.sketches":
@@ -5882,6 +6593,7 @@ function isCadQuery(value: unknown): boolean {
     case "sketch.dimensions":
       return typeof value.sketchId === "string";
     case "body.generatedReferences":
+    case "body.importedBodyStatus":
     case "body.measurements":
       return typeof value.bodyId === "string";
     case "body.topology":
@@ -8940,7 +9652,7 @@ function updateSketchEntityAndDependents(
 
   for (const feature of nextFeatures.values()) {
     const targetBodyId = isTargetConsumingFeature(feature)
-      ? feature.targetBodyId
+      ? getTargetConsumingFeatureBodyId(feature)
       : undefined;
 
     if (
@@ -8975,6 +9687,17 @@ function updateSketchEntityAndDependents(
         feature.kind === "chamfer" ? "feature.chamfer" : "feature.fillet",
         feature.targetBodyId,
         feature,
+        opIndex
+      );
+    }
+
+    if (feature.kind === "linearPattern" || feature.kind === "circularPattern") {
+      assertPatternFeatureSeedEditable(
+        { ...state, features: nextFeatures },
+        feature,
+        feature.kind === "linearPattern"
+          ? "feature.linearPattern"
+          : "feature.circularPattern",
         opIndex
       );
     }
@@ -9026,7 +9749,7 @@ function pushSketchSourceRebuildEffectsForDependentFeatures(
         continue;
       }
 
-      if (downstreamFeature.targetBodyId !== sourceFeature.bodyId) {
+      if (getTargetConsumingFeatureBodyId(downstreamFeature) !== sourceFeature.bodyId) {
         continue;
       }
 
@@ -9533,7 +10256,9 @@ type TargetConsumingFeature =
     })
   | HoleFeature
   | ChamferFeature
-  | FilletFeature;
+  | FilletFeature
+  | LinearPatternFeature
+  | CircularPatternFeature;
 
 interface ScopedSourceExtrudeRebuildChain {
   readonly consumingFeature: TargetConsumingFeature;
@@ -9636,6 +10361,18 @@ function validateDirectConsumingFeatureForSourceExtrudeRebuild(
       state,
       feature.targetBodyId,
       feature.targetTopologyAnchorId,
+      opIndex
+    );
+    return;
+  }
+
+  if (feature.kind === "linearPattern" || feature.kind === "circularPattern") {
+    assertPatternFeatureSeedEditable(
+      state,
+      feature,
+      feature.kind === "linearPattern"
+        ? "feature.linearPattern"
+        : "feature.circularPattern",
       opIndex
     );
     return;
@@ -9888,6 +10625,118 @@ function updateFilletFeature(
   );
 }
 
+function updateLinearPatternFeature(
+  state: MutableDocumentState,
+  op: Extract<CadOp, { readonly op: "feature.updateLinearPattern" }>,
+  diff: MutableSemanticDiff,
+  opIndex?: number
+): void {
+  const feature = getEditableFeatureForUpdate(
+    state,
+    op.id,
+    "linearPattern",
+    "feature.updateLinearPattern",
+    opIndex
+  );
+  const updated: LinearPatternFeature = {
+    ...feature,
+    axis:
+      op.axis === undefined
+        ? feature.axis
+        : validatePatternAxis(op.axis, "feature.updateLinearPattern", opIndex),
+    spacing:
+      op.spacing === undefined
+        ? feature.spacing
+        : validatePatternSpacing(op.spacing, opIndex),
+    instanceCount:
+      op.instanceCount === undefined
+        ? feature.instanceCount
+        : validatePatternInstanceCount(op.instanceCount, opIndex)
+  };
+
+  assertPatternFeatureEditable(
+    state,
+    updated,
+    "feature.updateLinearPattern",
+    opIndex
+  );
+  state.features.set(feature.id, updated);
+  pushFeatureModified(diff, featureRef(updated));
+  pushBodyModified(diff, bodyRef(updated));
+  pushFeatureReferenceEffects(
+    diff,
+    createAmbiguousResultFeatureEditReferenceEffects(
+      updated,
+      "Linear pattern result topology remains repair-needed after supported source parameter edit."
+    )
+  );
+  pushFeatureLifecycleEffects(
+    diff,
+    createConsumingFeatureEditLifecycleEffects(
+      updated,
+      "Linear pattern result body requires derived rebuild and topology repair after supported source parameter edit."
+    )
+  );
+}
+
+function updateCircularPatternFeature(
+  state: MutableDocumentState,
+  op: Extract<CadOp, { readonly op: "feature.updateCircularPattern" }>,
+  diff: MutableSemanticDiff,
+  opIndex?: number
+): void {
+  const feature = getEditableFeatureForUpdate(
+    state,
+    op.id,
+    "circularPattern",
+    "feature.updateCircularPattern",
+    opIndex
+  );
+  const updated: CircularPatternFeature = {
+    ...feature,
+    rotationAxis:
+      op.rotationAxis === undefined
+        ? feature.rotationAxis
+        : validatePatternAxis(
+            op.rotationAxis,
+            "feature.updateCircularPattern",
+            opIndex
+          ),
+    totalAngleDegrees:
+      op.totalAngleDegrees === undefined
+        ? feature.totalAngleDegrees
+        : validateCircularPatternAngle(op.totalAngleDegrees, opIndex),
+    instanceCount:
+      op.instanceCount === undefined
+        ? feature.instanceCount
+        : validatePatternInstanceCount(op.instanceCount, opIndex)
+  };
+
+  assertPatternFeatureEditable(
+    state,
+    updated,
+    "feature.updateCircularPattern",
+    opIndex
+  );
+  state.features.set(feature.id, updated);
+  pushFeatureModified(diff, featureRef(updated));
+  pushBodyModified(diff, bodyRef(updated));
+  pushFeatureReferenceEffects(
+    diff,
+    createAmbiguousResultFeatureEditReferenceEffects(
+      updated,
+      "Circular pattern result topology remains repair-needed after supported source parameter edit."
+    )
+  );
+  pushFeatureLifecycleEffects(
+    diff,
+    createConsumingFeatureEditLifecycleEffects(
+      updated,
+      "Circular pattern result body requires derived rebuild and topology repair after supported source parameter edit."
+    )
+  );
+}
+
 function getEditableFeatureForUpdate<K extends Feature["kind"]>(
   state: MutableDocumentState,
   featureIdInput: FeatureId,
@@ -10019,6 +10868,48 @@ function assertEdgeFinishFeatureEditable(
   );
 }
 
+function assertPatternFeatureEditable(
+  state: MutableDocumentState,
+  feature: LinearPatternFeature | CircularPatternFeature,
+  operation: "feature.updateLinearPattern" | "feature.updateCircularPattern",
+  opIndex?: number
+): void {
+  assertFeatureResultBodyActiveForEdit(state, feature, operation, opIndex);
+  assertPatternFeatureSeedEditable(state, feature, operation, opIndex);
+}
+
+function assertPatternFeatureSeedEditable(
+  state: MutableDocumentState,
+  feature: LinearPatternFeature | CircularPatternFeature,
+  operation:
+    | "feature.linearPattern"
+    | "feature.circularPattern"
+    | "feature.updateLinearPattern"
+    | "feature.updateCircularPattern",
+  opIndex?: number
+): void {
+  validatePatternSeedBodyFeature(state, operation, feature.seedBodyId, opIndex);
+  const consumingFeature = findConsumingFeatureByTargetBodyId(
+    state.features,
+    feature.seedBodyId
+  );
+
+  if (consumingFeature?.id === feature.id) {
+    return;
+  }
+
+  throwValidationError({
+    code: "FEATURE_NOT_EDITABLE",
+    message: `Feature ${feature.id} cannot be edited through ${operation} because seed body ${feature.seedBodyId} is not consumed by that feature.`,
+    opIndex,
+    featureId: feature.id,
+    bodyId: feature.seedBodyId,
+    path: operationPath(opIndex, "id"),
+    expected: "seed body consumed only by the edited pattern feature",
+    received: consumingFeature?.id ?? "active seed body"
+  });
+}
+
 function assertSupportedEdgeFinishTarget(
   state: MutableDocumentState,
   operation: EdgeFinishOperation,
@@ -10051,21 +10942,18 @@ function assertSupportedEdgeFinishTarget(
     });
   }
 
-  if (
-    targetFeature.kind === "extrude" &&
-    targetFeature.operationMode === "newBody" &&
-    isSupportedCutTargetProfileKind(targetFeature.profileKind)
-  ) {
+  if (isSupportedEdgeFinishTargetFeature(targetFeature)) {
     return;
   }
 
   throwValidationError({
     code: "UNSUPPORTED_FEATURE_OPERATION",
-    message: `${operation} edits require the original target to remain a stable generated edge on a rectangle or circle newBody extrude target body.`,
+    message: `${operation} edits require the original target to remain a supported generated edge body or imported-body topology anchor target.`,
     opIndex,
     bodyId: targetBodyId,
     path: operationPath(opIndex, "targetBodyId"),
-    expected: "rectangle/circle newBody extrude target body",
+    expected:
+      "rectangle/circle newBody extrude, supported rectangle cut result, or imported body target",
     received: describeReceived({
       targetBodyId,
       targetFeatureKind: targetFeature.kind,
@@ -10078,6 +10966,167 @@ function assertSupportedEdgeFinishTarget(
           ? targetFeature.operationMode
           : undefined
     })
+  });
+}
+
+type PatternCreateOperation = "feature.linearPattern" | "feature.circularPattern";
+
+function validatePatternSeedBodyId(
+  state: MutableDocumentState,
+  operation: PatternCreateOperation,
+  seedBodyId: BodyId,
+  opIndex?: number
+): BodyId {
+  const feature = validatePatternSeedBodyFeature(
+    state,
+    operation,
+    seedBodyId,
+    opIndex
+  );
+  const consumingFeature = findConsumingFeatureByTargetBodyId(
+    state.features,
+    feature.bodyId
+  );
+
+  if (consumingFeature) {
+    throwValidationError({
+      code: "PATTERN_SEED_BODY_CONSUMED",
+      message: `${operation} seed body is already consumed by feature ${consumingFeature.id}: ${feature.bodyId}`,
+      opIndex,
+      featureId: consumingFeature.id,
+      bodyId: feature.bodyId,
+      path: operationPath(opIndex, "seedBodyId"),
+      expected: "active authored seed body",
+      received: feature.bodyId
+    });
+  }
+
+  return feature.bodyId;
+}
+
+function validatePatternSeedBodyFeature(
+  state: MutableDocumentState,
+  operation:
+    | PatternCreateOperation
+    | "feature.updateLinearPattern"
+    | "feature.updateCircularPattern",
+  seedBodyId: BodyId,
+  opIndex?: number
+): Feature {
+  if (typeof seedBodyId !== "string" || seedBodyId.trim().length === 0) {
+    throwValidationError({
+      code: "PATTERN_SEED_BODY_UNSUPPORTED",
+      message: `${operation} requires seedBodyId.`,
+      opIndex,
+      bodyId: seedBodyId,
+      path: operationPath(opIndex, "seedBodyId"),
+      expected: "existing active authored seed body id",
+      received: describeReceived(seedBodyId)
+    });
+  }
+
+  const feature = findFeatureByBodyId(state.features, seedBodyId);
+
+  if (feature) {
+    return feature;
+  }
+
+  if (isPrimitiveBodyId(state, seedBodyId)) {
+    throwValidationError({
+      code: "PATTERN_SEED_BODY_UNSUPPORTED",
+      message: `Primitive-derived body cannot be used by ${operation}: ${seedBodyId}`,
+      opIndex,
+      bodyId: seedBodyId,
+      path: operationPath(opIndex, "seedBodyId"),
+      expected: "authored feature body",
+      received: seedBodyId
+    });
+  }
+
+  throwValidationError({
+    code: "BODY_NOT_FOUND",
+    message: `Seed body does not exist: ${seedBodyId}`,
+    opIndex,
+    bodyId: seedBodyId,
+    path: operationPath(opIndex, "seedBodyId"),
+    expected: "existing active authored seed body id",
+    received: seedBodyId
+  });
+}
+
+function validatePatternAxis(
+  axis: unknown,
+  operation:
+    | PatternCreateOperation
+    | "feature.updateLinearPattern"
+    | "feature.updateCircularPattern",
+  opIndex?: number
+): "x" | "y" | "z" {
+  if (isPatternAxis(axis)) {
+    return axis;
+  }
+
+  throwValidationError({
+    code: "INVALID_FEATURE",
+    message: `${operation} axis must be x, y, or z.`,
+    opIndex,
+    path: operationPath(
+      opIndex,
+      operation === "feature.circularPattern" ||
+        operation === "feature.updateCircularPattern"
+        ? "rotationAxis"
+        : "axis"
+    ),
+    expected: "x, y, or z",
+    received: describeReceived(axis)
+  });
+}
+
+function validatePatternSpacing(value: number, opIndex?: number): number {
+  if (typeof value === "number" && isPositiveFiniteNumber(value)) {
+    return value;
+  }
+
+  throwValidationError({
+    code: "PATTERN_SPACING_INVALID",
+    message: "Linear pattern spacing must be a positive finite number.",
+    opIndex,
+    path: operationPath(opIndex, "spacing"),
+    expected: "positive finite spacing",
+    received: describeReceived(value)
+  });
+}
+
+function validatePatternInstanceCount(
+  value: number,
+  opIndex?: number
+): number {
+  if (Number.isInteger(value) && value >= 2) {
+    return value;
+  }
+
+  throwValidationError({
+    code: "PATTERN_INSTANCE_COUNT_INVALID",
+    message: "Pattern instanceCount must be an integer greater than or equal to 2.",
+    opIndex,
+    path: operationPath(opIndex, "instanceCount"),
+    expected: "integer >= 2",
+    received: describeReceived(value)
+  });
+}
+
+function validateCircularPatternAngle(value: number, opIndex?: number): number {
+  if (typeof value === "number" && isPositiveFiniteNumber(value) && value <= 360) {
+    return value;
+  }
+
+  throwValidationError({
+    code: "INVALID_FEATURE",
+    message: "Circular pattern totalAngleDegrees must be positive and no greater than 360.",
+    opIndex,
+    path: operationPath(opIndex, "totalAngleDegrees"),
+    expected: "positive finite angle <= 360",
+    received: describeReceived(value)
   });
 }
 
@@ -10314,9 +11363,15 @@ function createAmbiguousResultFeatureEditLifecycleEffects(
 }
 
 function createConsumingFeatureEditLifecycleEffects(
-  feature: HoleFeature | ChamferFeature | FilletFeature,
+  feature:
+    | HoleFeature
+    | ChamferFeature
+    | FilletFeature
+    | LinearPatternFeature
+    | CircularPatternFeature,
   resultMessage: string
 ): readonly CadBodyLifecycleEffectSummary[] {
+  const consumedBodyId = getTargetConsumingFeatureBodyId(feature);
   const resultEffects =
     feature.kind === "hole"
       ? [
@@ -10341,12 +11396,12 @@ function createConsumingFeatureEditLifecycleEffects(
 
   return [
     {
-      bodyId: feature.targetBodyId,
+      bodyId: consumedBodyId,
       featureId: feature.id,
       primaryState: "consumed",
       states: ["consumed"],
       diagnosticCode: "REBUILD_TARGET_CONSUMED",
-      message: `Target body ${feature.targetBodyId} remains consumed by edited ${feature.kind} feature ${feature.id}.`
+      message: `Target body ${consumedBodyId} remains consumed by edited ${feature.kind} feature ${feature.id}.`
     },
     ...resultEffects
   ];
@@ -10588,7 +11643,7 @@ function findConsumingFeaturesByTargetBodyId(
   for (const feature of features.values()) {
     if (
       isTargetConsumingFeature(feature) &&
-      feature.targetBodyId === targetBodyId
+      getTargetConsumingFeatureBodyId(feature) === targetBodyId
     ) {
       consumingFeatures.push(feature);
     }
@@ -10606,8 +11661,20 @@ function isTargetConsumingFeature(
       feature.targetBodyId !== undefined) ||
     feature.kind === "hole" ||
     feature.kind === "chamfer" ||
-    feature.kind === "fillet"
+    feature.kind === "fillet" ||
+    feature.kind === "linearPattern" ||
+    feature.kind === "circularPattern"
   );
+}
+
+function getTargetConsumingFeatureBodyId(
+  feature: TargetConsumingFeature
+): BodyId {
+  if (feature.kind === "linearPattern" || feature.kind === "circularPattern") {
+    return feature.seedBodyId;
+  }
+
+  return feature.targetBodyId;
 }
 
 function isConsumingExtrudeOperationMode(
@@ -10616,20 +11683,33 @@ function isConsumingExtrudeOperationMode(
   return operationMode === "add" || operationMode === "cut";
 }
 
+type SupportedBooleanTargetKind = FeatureExtrudeProfileKind | "importedBody";
+
 function isSupportedCutTargetProfileKind(
-  profileKind: FeatureExtrudeProfileKind
+  profileKind: SupportedBooleanTargetKind
 ): boolean {
-  return profileKind === "rectangle" || profileKind === "circle";
+  return (
+    profileKind === "rectangle" ||
+    profileKind === "circle" ||
+    profileKind === "importedBody"
+  );
 }
 
 function isSupportedAddTargetProfileKind(
-  profileKind: FeatureExtrudeProfileKind,
+  profileKind: SupportedBooleanTargetKind,
   hasTopologyAnchorTarget = false
 ): boolean {
   return (
     profileKind === "rectangle" ||
-    (hasTopologyAnchorTarget && profileKind === "circle")
+    (hasTopologyAnchorTarget && profileKind === "circle") ||
+    profileKind === "importedBody"
   );
+}
+
+function isSupportedHoleTargetProfileKind(
+  profileKind: SupportedBooleanTargetKind
+): boolean {
+  return profileKind === "rectangle" || profileKind === "circle";
 }
 
 function isSupportedBooleanToolProfileKind(
@@ -10674,7 +11754,13 @@ function assertSketchNotInUse(
 }
 
 function featureUsesSketch(feature: Feature, sketchId: SketchId): boolean {
-  if (feature.kind === "chamfer" || feature.kind === "fillet") {
+  if (
+    feature.kind === "chamfer" ||
+    feature.kind === "fillet" ||
+    feature.kind === "importedBody" ||
+    feature.kind === "linearPattern" ||
+    feature.kind === "circularPattern"
+  ) {
     return false;
   }
 
@@ -11191,7 +12277,10 @@ function assertSupportedHoleTarget(
     targetBodyId
   );
 
-  if (targetProfileKind && isSupportedCutTargetProfileKind(targetProfileKind)) {
+  if (
+    targetProfileKind &&
+    isSupportedHoleTargetProfileKind(targetProfileKind)
+  ) {
     return;
   }
 
@@ -11255,7 +12344,8 @@ function createEdgeFinishFeature(
     operation,
     targetBodyId,
     input,
-    opIndex
+    opIndex,
+    { requireImportedBodyTopologyProof: true }
   );
   const scalar = validateEdgeFinishScalar(input.scalar, operation, opIndex);
   const common = {
@@ -11349,28 +12439,27 @@ function validateEdgeFinishTargetBodyId(
       targetFeature.kind === "extrude" ? targetFeature.operationMode : undefined
   };
 
-  if (
-    targetFeature.kind === "extrude" &&
-    isSupportedEdgeFinishTargetFeature(targetFeature)
-  ) {
+  if (isSupportedEdgeFinishTargetFeature(targetFeature)) {
     return targetFeature.bodyId;
   }
 
   throwValidationError({
     code: "UNSUPPORTED_FEATURE_OPERATION",
-    message: `${operation} currently supports one stable generated edge on an active rectangle/circle newBody extrude target body or a supported rectangle cut result body.`,
+    message: `${operation} currently supports one stable generated edge on an active rectangle/circle newBody extrude target body, a supported rectangle cut result body, or an imported body edge topology anchor with checkpoint proof.`,
     opIndex,
     bodyId: targetBodyId,
     path: operationPath(opIndex, "targetBodyId"),
     expected:
-      "active rectangle/circle newBody extrude target body or supported rectangle cut result body",
+      "active rectangle/circle newBody extrude target body, supported rectangle cut result body, or imported body edge topology anchor target",
     received: describeReceived(receivedTarget)
   });
 }
 
-function isSupportedEdgeFinishTargetFeature(
-  feature: Feature
-): feature is Extract<Feature, { readonly kind: "extrude" }> {
+function isSupportedEdgeFinishTargetFeature(feature: Feature): boolean {
+  if (feature.kind === "importedBody") {
+    return true;
+  }
+
   return (
     feature.kind === "extrude" &&
     ((feature.operationMode === "newBody" &&
@@ -11384,7 +12473,10 @@ function validateEdgeFinishReference(
   operation: EdgeFinishOperation,
   targetBodyId: BodyId,
   source: EdgeFinishReferenceSource,
-  opIndex?: number
+  opIndex?: number,
+  options: {
+    readonly requireImportedBodyTopologyProof?: boolean;
+  } = {}
 ): EdgeFinishReferenceSource {
   if (source.topologyAnchorId !== undefined) {
     const mixedInputs =
@@ -11403,8 +12495,10 @@ function validateEdgeFinishReference(
       });
     }
 
+    const targetFeature = findFeatureByBodyId(state.features, targetBodyId);
+    const usesImportedBodyTarget = targetFeature?.kind === "importedBody";
     const target =
-      source.topologyAnchorProof === undefined
+      source.topologyAnchorProof === undefined && !usesImportedBodyTarget
         ? resolveActiveTopologyAnchorStableTarget(
             state,
             source.topologyAnchorId,
@@ -11431,6 +12525,23 @@ function validateEdgeFinishReference(
         expected: "topology edge anchor resolving to targetBodyId",
         received: target.bodyId
       });
+    }
+
+    if (usesImportedBodyTarget) {
+      validateImportedBodyEdgeFinishTopologyAnchor(
+        operation,
+        targetBodyId,
+        targetFeature,
+        target.topologyAnchorId,
+        target.checkpointId,
+        source.topologyAnchorProof,
+        options.requireImportedBodyTopologyProof === true,
+        opIndex
+      );
+
+      return {
+        topologyAnchorId: target.topologyAnchorId
+      };
     }
 
     const edgeStableId =
@@ -11577,6 +12688,65 @@ function validateEdgeFinishReference(
   return { edgeStableId };
 }
 
+function validateImportedBodyEdgeFinishTopologyAnchor(
+  operation: EdgeFinishOperation,
+  targetBodyId: BodyId,
+  targetFeature: ImportedBodyFeature,
+  topologyAnchorId: string,
+  checkpointId: string,
+  proof: CadTopologyAnchorCommandProof | undefined,
+  requireProof: boolean,
+  opIndex?: number
+): void {
+  if (checkpointId !== targetFeature.checkpointId) {
+    throwValidationError({
+      code: "INVALID_TOPOLOGY_ANCHOR",
+      message: `${operation} imported-body edge topology anchor must use the imported body's active checkpoint.`,
+      opIndex,
+      bodyId: targetBodyId,
+      topologyAnchorId,
+      checkpointId,
+      path: operationPath(opIndex, "topologyAnchorId"),
+      expected: targetFeature.checkpointId,
+      received: checkpointId
+    });
+  }
+
+  if (proof === undefined) {
+    if (!requireProof) {
+      return;
+    }
+
+    throwValidationError({
+      code: "INVALID_TOPOLOGY_ANCHOR",
+      message: `${operation} on an imported body requires topologyAnchorProof from checkpoint edge evidence.`,
+      opIndex,
+      bodyId: targetBodyId,
+      topologyAnchorId,
+      checkpointId,
+      path: operationPath(opIndex, "topologyAnchorProof"),
+      expected: "axisAlignedLinearEdge proof for imported-body edge anchor",
+      received: "missing topologyAnchorProof"
+    });
+  }
+
+  if (isTopologyAnchorEdgeProofInput(proof)) {
+    return;
+  }
+
+  throwValidationError({
+    code: "INVALID_TOPOLOGY_ANCHOR",
+    message: `${operation} imported-body topologyAnchorProof requires axis-aligned linear edge proof.`,
+    opIndex,
+    bodyId: targetBodyId,
+    topologyAnchorId,
+    checkpointId,
+    path: operationPath(opIndex, "topologyAnchorProof"),
+    expected: "axisAlignedLinearEdge proof for imported-body edge anchor",
+    received: describeReceived((proof as { readonly kind?: unknown }).kind)
+  });
+}
+
 function validateEdgeGeneratedReference(
   state: MutableDocumentState,
   operation: EdgeFinishOperation,
@@ -11630,6 +12800,11 @@ function createTopologyAnchorProofCommandOperations(
 
   const operations: CadSelectionReferenceOperation[] = [];
 
+  if (isImportedBodyEdgeFinishTarget(state, bodyId)) {
+    operations.push("feature.chamfer", "feature.fillet");
+    return operations;
+  }
+
   if (
     findTopologyAnchorEdgeProofStableId(state, bodyId, proof, "feature.chamfer")
   ) {
@@ -11643,6 +12818,15 @@ function createTopologyAnchorProofCommandOperations(
   }
 
   return operations;
+}
+
+function isImportedBodyEdgeFinishTarget(
+  state: CadDocument,
+  bodyId: BodyId
+): boolean {
+  return [...state.features.values()].some(
+    (feature) => feature.kind === "importedBody" && feature.bodyId === bodyId
+  );
 }
 
 function resolveTopologyAnchorEdgeProofStableId(
@@ -12232,7 +13416,11 @@ function resolveSupportedBooleanTargetProfileKind(
   targetFeature: Feature | undefined,
   targetTopologyAnchorId?: string,
   activeResultBodyId?: BodyId
-): FeatureExtrudeProfileKind | undefined {
+): SupportedBooleanTargetKind | undefined {
+  if (targetFeature?.kind === "importedBody") {
+    return targetTopologyAnchorId !== undefined ? "importedBody" : undefined;
+  }
+
   if (targetFeature?.kind !== "extrude") {
     return undefined;
   }
@@ -14034,6 +15222,22 @@ function createBodyReferenceUnavailableIssue(
     );
   }
 
+  if (body.source.type === "importedStepBody") {
+    return createSelectionIssue(
+      "IMPORTED_BODY_ANCHOR_NEEDED",
+      "non-commandable",
+      `Imported body ${body.id} needs a topology anchor before it can be used as a downstream command target.`,
+      {
+        bodyId: body.id,
+        stableId,
+        featureId: body.featureId,
+        checkpointId: body.source.checkpointId,
+        expected: "topology anchor created from imported-body checkpoint",
+        received: "imported body selection"
+      }
+    );
+  }
+
   return createSelectionIssue(
     "AMBIGUOUS_SELECTION_TOPOLOGY",
     "ambiguous",
@@ -14465,6 +15669,42 @@ function sketchEntityRef(
 }
 
 function featureRef(feature: Feature): CadFeatureRef {
+  if (feature.kind === "importedBody") {
+    return {
+      id: feature.id,
+      kind: "importedBody",
+      bodyId: feature.bodyId,
+      sourceFileName: feature.sourceFileName,
+      sourceFormat: feature.sourceFormat,
+      checkpointId: feature.checkpointId,
+      healingApplied: feature.healingApplied
+    };
+  }
+
+  if (feature.kind === "linearPattern") {
+    return {
+      id: feature.id,
+      kind: "linearPattern",
+      bodyId: feature.bodyId,
+      seedBodyId: feature.seedBodyId,
+      axis: feature.axis,
+      spacing: feature.spacing,
+      instanceCount: feature.instanceCount
+    };
+  }
+
+  if (feature.kind === "circularPattern") {
+    return {
+      id: feature.id,
+      kind: "circularPattern",
+      bodyId: feature.bodyId,
+      seedBodyId: feature.seedBodyId,
+      rotationAxis: feature.rotationAxis,
+      totalAngleDegrees: feature.totalAngleDegrees,
+      instanceCount: feature.instanceCount
+    };
+  }
+
   if (feature.kind === "chamfer") {
     return {
       id: feature.id,
@@ -15565,6 +16805,45 @@ function cloneSketchAttachment(
 }
 
 function createFeatureSnapshot(feature: Feature): FeatureSnapshot {
+  if (feature.kind === "importedBody") {
+    return {
+      id: feature.id,
+      kind: "importedBody",
+      name: feature.name,
+      sourceFileName: feature.sourceFileName,
+      sourceFormat: feature.sourceFormat,
+      bodyId: feature.bodyId,
+      checkpointId: feature.checkpointId,
+      healingApplied: feature.healingApplied
+    };
+  }
+
+  if (feature.kind === "linearPattern") {
+    return {
+      id: feature.id,
+      kind: "linearPattern",
+      name: feature.name,
+      seedBodyId: feature.seedBodyId,
+      axis: feature.axis,
+      spacing: feature.spacing,
+      instanceCount: feature.instanceCount,
+      bodyId: feature.bodyId
+    };
+  }
+
+  if (feature.kind === "circularPattern") {
+    return {
+      id: feature.id,
+      kind: "circularPattern",
+      name: feature.name,
+      seedBodyId: feature.seedBodyId,
+      rotationAxis: feature.rotationAxis,
+      totalAngleDegrees: feature.totalAngleDegrees,
+      instanceCount: feature.instanceCount,
+      bodyId: feature.bodyId
+    };
+  }
+
   if (feature.kind === "chamfer") {
     return {
       id: feature.id,
@@ -15654,6 +16933,45 @@ function createFeatureSnapshot(feature: Feature): FeatureSnapshot {
 }
 
 function createFeatureFromSnapshot(snapshot: FeatureSnapshot): Feature {
+  if (snapshot.kind === "importedBody") {
+    return {
+      id: snapshot.id,
+      kind: "importedBody",
+      name: snapshot.name,
+      sourceFileName: snapshot.sourceFileName,
+      sourceFormat: snapshot.sourceFormat,
+      bodyId: snapshot.bodyId,
+      checkpointId: snapshot.checkpointId,
+      healingApplied: snapshot.healingApplied
+    };
+  }
+
+  if (snapshot.kind === "linearPattern") {
+    return {
+      id: snapshot.id,
+      kind: "linearPattern",
+      name: snapshot.name,
+      seedBodyId: snapshot.seedBodyId,
+      axis: snapshot.axis,
+      spacing: snapshot.spacing,
+      instanceCount: snapshot.instanceCount,
+      bodyId: snapshot.bodyId
+    };
+  }
+
+  if (snapshot.kind === "circularPattern") {
+    return {
+      id: snapshot.id,
+      kind: "circularPattern",
+      name: snapshot.name,
+      seedBodyId: snapshot.seedBodyId,
+      rotationAxis: snapshot.rotationAxis,
+      totalAngleDegrees: snapshot.totalAngleDegrees,
+      instanceCount: snapshot.instanceCount,
+      bodyId: snapshot.bodyId
+    };
+  }
+
   if (snapshot.kind === "chamfer") {
     return {
       id: snapshot.id,
@@ -15904,6 +17222,128 @@ function createProjectSummary(
       exportSummary
     )
   };
+}
+
+function createProjectImportReadiness(
+  document: CadDocument,
+  cadOpsVersion: ProjectImportReadinessQueryResponse["cadOpsVersion"]
+): ProjectImportReadinessQueryResponse {
+  const diagnostics: ProjectImportReadinessQueryResponse["diagnostics"] = [
+    {
+      code: "STEP_READER_UNAVAILABLE",
+      severity: "blocking",
+      message:
+        "STEP import is typed but unavailable until the geometry worker exposes a STEP reader."
+    }
+  ];
+
+  return {
+    ok: true,
+    query: "project.importReadiness",
+    cadOpsVersion,
+    sourceFormat: "step",
+    status: "unavailable",
+    geometryWorkerAvailable: false,
+    stepReaderAvailable: false,
+    healingAvailable: false,
+    importedBodyCount: countImportedBodyFeatures(document),
+    maxBodyCount: 0,
+    diagnosticCount: diagnostics.length,
+    diagnostics,
+    sourceBoundaryNote:
+      "STEP import will create authoritative imported-body source records only after a geometry-worker payload is validated by cad-core.",
+    derivedBoundaryNote:
+      "STEP bytes, OCCT handles, renderer IDs, mesh IDs, file handles, paths, and viewport state are not source authority.",
+    mutatesSource: false
+  };
+}
+
+function createBodyImportedBodyStatus(
+  document: CadDocument,
+  bodyId: BodyId,
+  cadOpsVersion: BodyImportedBodyStatusQueryResponse["cadOpsVersion"]
+): BodyImportedBodyStatusQueryResponse {
+  const feature = [...document.features.values()].find(
+    (candidate): candidate is ImportedBodyFeature =>
+      candidate.kind === "importedBody" && candidate.bodyId === bodyId
+  );
+
+  if (feature) {
+    const checkpoint = document.topologyIdentity?.checkpoints.find(
+      (candidate) =>
+        candidate.checkpointId === feature.checkpointId &&
+        candidate.bodyId === feature.bodyId
+    );
+    const checkpointStatus = checkpoint ? "available" : "missing";
+    const diagnostics: BodyImportedBodyStatusQueryResponse["diagnostics"] =
+      checkpoint
+        ? [
+            {
+              code: "IMPORTED_BODY_ANCHOR_NEEDED",
+              severity: "warning",
+              message:
+                "Imported body checkpoint is available; create a topology anchor before using it as a downstream command target.",
+              bodyId: feature.bodyId,
+              featureId: feature.id,
+              checkpointId: feature.checkpointId,
+              expected: "topology anchor command target",
+              received: "imported body selection"
+            }
+          ]
+        : [
+            {
+              code: "IMPORTED_BODY_CHECKPOINT_MISSING",
+              severity: "blocking",
+              message:
+                "Imported body source exists, but its topology checkpoint source record is missing."
+            }
+          ];
+
+    return {
+      ok: true,
+      query: "body.importedBodyStatus",
+      cadOpsVersion,
+      bodyId,
+      imported: true,
+      status: checkpoint ? "healthy" : "checkpoint-missing",
+      checkpointStatus,
+      healingApplied: feature.healingApplied,
+      sourceFileName: feature.sourceFileName,
+      sourceFormat: feature.sourceFormat,
+      checkpointId: feature.checkpointId,
+      availableDownstreamOperations: [],
+      diagnosticCount: diagnostics.length,
+      diagnostics,
+      sourceBoundaryNote:
+        "This body is an authoritative imported STEP body source record with topology identity stored through checkpoint metadata.",
+      derivedBoundaryNote:
+        "Imported-body commandability must come from cad-core topology checkpoint and anchor proof, not renderer or mesh state."
+    };
+  }
+
+  return {
+    ok: true,
+    query: "body.importedBodyStatus",
+    cadOpsVersion,
+    bodyId,
+    imported: false,
+    status: "not-imported",
+    checkpointStatus: "not-imported",
+    healingApplied: false,
+    availableDownstreamOperations: [],
+    diagnosticCount: 0,
+    diagnostics: [],
+    sourceBoundaryNote:
+      "This body is not an imported STEP body in the current authoritative document.",
+    derivedBoundaryNote:
+      "Imported-body commandability must come from cad-core topology checkpoint and anchor proof, not renderer or mesh state."
+  };
+}
+
+function countImportedBodyFeatures(document: CadDocument): number {
+  return [...document.features.values()].filter(
+    (feature) => (feature as { readonly kind: string }).kind === "importedBody"
+  ).length;
 }
 
 function createProjectSummaryReferenceSummary(
@@ -16217,6 +17657,63 @@ function createPrimitiveBodySnapshot(object: SceneObject): CadBodySnapshot {
 }
 
 function createFeatureSummary(feature: Feature): CadFeatureSummary {
+  if (feature.kind === "importedBody") {
+    return {
+      id: feature.id,
+      kind: "importedBody",
+      partId: DEFAULT_PART_ID,
+      bodyId: feature.bodyId,
+      name: feature.name,
+      sourceFileName: feature.sourceFileName,
+      sourceFormat: feature.sourceFormat,
+      checkpointId: feature.checkpointId,
+      healingApplied: feature.healingApplied,
+      source: {
+        type: "importedStepBody",
+        sourceFileName: feature.sourceFileName,
+        checkpointId: feature.checkpointId
+      }
+    };
+  }
+
+  if (feature.kind === "linearPattern") {
+    return {
+      id: feature.id,
+      kind: "linearPattern",
+      partId: DEFAULT_PART_ID,
+      bodyId: feature.bodyId,
+      seedBodyId: feature.seedBodyId,
+      axis: feature.axis,
+      spacing: feature.spacing,
+      instanceCount: feature.instanceCount,
+      name: feature.name,
+      source: {
+        type: "linearPatternFeature",
+        seedBodyId: feature.seedBodyId,
+        axis: feature.axis
+      }
+    };
+  }
+
+  if (feature.kind === "circularPattern") {
+    return {
+      id: feature.id,
+      kind: "circularPattern",
+      partId: DEFAULT_PART_ID,
+      bodyId: feature.bodyId,
+      seedBodyId: feature.seedBodyId,
+      rotationAxis: feature.rotationAxis,
+      totalAngleDegrees: feature.totalAngleDegrees,
+      instanceCount: feature.instanceCount,
+      name: feature.name,
+      source: {
+        type: "circularPatternFeature",
+        seedBodyId: feature.seedBodyId,
+        rotationAxis: feature.rotationAxis
+      }
+    };
+  }
+
   if (feature.kind === "chamfer") {
     return {
       id: feature.id,
@@ -16359,6 +17856,61 @@ function createFeatureBodySnapshot(
   feature: Feature,
   consumedByFeatureId?: FeatureId
 ): CadBodySnapshot {
+  if (feature.kind === "importedBody") {
+    return {
+      id: feature.bodyId,
+      kind: "solid",
+      partId: DEFAULT_PART_ID,
+      featureId: feature.id,
+      ...(consumedByFeatureId ? { consumedByFeatureId } : {}),
+      name: feature.name,
+      source: {
+        type: "importedStepBody",
+        featureId: feature.id,
+        sourceFileName: feature.sourceFileName,
+        checkpointId: feature.checkpointId
+      }
+    };
+  }
+
+  if (feature.kind === "linearPattern") {
+    return {
+      id: feature.bodyId,
+      kind: "solid",
+      partId: DEFAULT_PART_ID,
+      featureId: feature.id,
+      ...(consumedByFeatureId ? { consumedByFeatureId } : {}),
+      name: feature.name,
+      source: {
+        type: "linearPatternFeature",
+        featureId: feature.id,
+        seedBodyId: feature.seedBodyId,
+        axis: feature.axis,
+        spacing: feature.spacing,
+        instanceCount: feature.instanceCount
+      }
+    };
+  }
+
+  if (feature.kind === "circularPattern") {
+    return {
+      id: feature.bodyId,
+      kind: "solid",
+      partId: DEFAULT_PART_ID,
+      featureId: feature.id,
+      ...(consumedByFeatureId ? { consumedByFeatureId } : {}),
+      name: feature.name,
+      source: {
+        type: "circularPatternFeature",
+        featureId: feature.id,
+        seedBodyId: feature.seedBodyId,
+        rotationAxis: feature.rotationAxis,
+        totalAngleDegrees: feature.totalAngleDegrees,
+        instanceCount: feature.instanceCount
+      }
+    };
+  }
+
   if (feature.kind === "chamfer") {
     return {
       id: feature.bodyId,
@@ -16469,7 +18021,7 @@ function createConsumedBodyMap(
 
   for (const feature of features.values()) {
     if (isTargetConsumingFeature(feature)) {
-      consumed.set(feature.targetBodyId, feature.id);
+      consumed.set(getTargetConsumingFeatureBodyId(feature), feature.id);
     }
   }
 
@@ -18052,7 +19604,8 @@ function transactionHasTopologyIdentityMutation(
     (op) =>
       op.op === "topology.checkpoint.create" ||
       op.op === "topology.anchor.create" ||
-      op.op === "topology.anchor.repair"
+      op.op === "topology.anchor.repair" ||
+      (op.op === "project.importStep" && (op.resolvedBodies?.length ?? 0) > 0)
   );
 }
 
@@ -18453,6 +20006,18 @@ function featuresEqual(left: Feature, right: Feature): boolean {
     );
   }
 
+  if (left.kind === "importedBody" && right.kind === "importedBody") {
+    return (
+      left.id === right.id &&
+      left.name === right.name &&
+      left.sourceFileName === right.sourceFileName &&
+      left.sourceFormat === right.sourceFormat &&
+      left.bodyId === right.bodyId &&
+      left.checkpointId === right.checkpointId &&
+      left.healingApplied === right.healingApplied
+    );
+  }
+
   if (left.kind === "extrude" && right.kind === "extrude") {
     return (
       left.id === right.id &&
@@ -18486,10 +20051,13 @@ function assertValidCadProject(value: unknown): asserts value is CadProject {
 }
 
 function normalizeCadProject(value: CadProject): CadProject {
-  if (value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18) {
+  if (
+    value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18 ||
+    value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19
+  ) {
     return {
       ...value,
-      schemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
+      schemaVersion: value.schemaVersion,
       document: {
         ...value.document,
         parameters: value.document.parameters.map(cloneParameterSnapshot),
@@ -18805,7 +20373,13 @@ function normalizeFeatureSnapshot(feature: FeatureSnapshot): FeatureSnapshot {
     };
   }
 
-  if (feature.kind === "chamfer" || feature.kind === "fillet") {
+  if (
+    feature.kind === "chamfer" ||
+    feature.kind === "fillet" ||
+    feature.kind === "importedBody" ||
+    feature.kind === "linearPattern" ||
+    feature.kind === "circularPattern"
+  ) {
     return { ...feature };
   }
 
@@ -18893,7 +20467,13 @@ function normalizeFeatureRefSnapshot(ref: CadFeatureRef): CadFeatureRef {
     };
   }
 
-  if (ref.kind === "chamfer" || ref.kind === "fillet") {
+  if (
+    ref.kind === "chamfer" ||
+    ref.kind === "fillet" ||
+    ref.kind === "importedBody" ||
+    ref.kind === "linearPattern" ||
+    ref.kind === "circularPattern"
+  ) {
     return { ...ref };
   }
 
@@ -19072,6 +20652,7 @@ function validateCadDocumentSnapshot(
 
   const isV17Schema = schemaVersion === CAD_PROJECT_FORMAT_VERSION_V17;
   const isV18Schema = schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18;
+  const isV19Schema = schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19;
   const requiresSketches =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V2 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
@@ -19089,7 +20670,8 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
     isV17Schema ||
-    isV18Schema;
+    isV18Schema ||
+    isV19Schema;
   const requiresFeatures =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
@@ -19106,7 +20688,8 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
     isV17Schema ||
-    isV18Schema;
+    isV18Schema ||
+    isV19Schema;
   const allowsSketchAttachments =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
@@ -19122,7 +20705,8 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
     isV17Schema ||
-    isV18Schema;
+    isV18Schema ||
+    isV19Schema;
   const requiresNamedReferences =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V6 ||
@@ -19137,7 +20721,8 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
     isV17Schema ||
-    isV18Schema;
+    isV18Schema ||
+    isV19Schema;
   const requiresParameters =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
@@ -19150,7 +20735,8 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
     isV17Schema ||
-    isV18Schema;
+    isV18Schema ||
+    isV19Schema;
   const requiresSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
@@ -19162,7 +20748,8 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
     isV17Schema ||
-    isV18Schema;
+    isV18Schema ||
+    isV19Schema;
   const allowsFixedSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
@@ -19173,7 +20760,8 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
     isV17Schema ||
-    isV18Schema;
+    isV18Schema ||
+    isV19Schema;
   const allowsCoincidentSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
@@ -19183,7 +20771,8 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
     isV17Schema ||
-    isV18Schema;
+    isV18Schema ||
+    isV19Schema;
   const allowsMidpointSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
@@ -19192,7 +20781,8 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
     isV17Schema ||
-    isV18Schema;
+    isV18Schema ||
+    isV19Schema;
   const allowsParallelSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
@@ -19200,30 +20790,38 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
     isV17Schema ||
-    isV18Schema;
+    isV18Schema ||
+    isV19Schema;
   const allowsPerpendicularSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
     isV17Schema ||
-    isV18Schema;
+    isV18Schema ||
+    isV19Schema;
   const allowsRevolveFeatures =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
     isV17Schema ||
-    isV18Schema;
+    isV18Schema ||
+    isV19Schema;
   const allowsHoleFeatures =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
     isV17Schema ||
-    isV18Schema;
+    isV18Schema ||
+    isV19Schema;
   const allowsEdgeFinishFeatures =
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
     isV17Schema ||
-    isV18Schema;
-  const allowsAdvancedSketchConstraints = isV17Schema || isV18Schema;
+    isV18Schema ||
+    isV19Schema;
+  const allowsAdvancedSketchConstraints =
+    isV17Schema || isV18Schema || isV19Schema;
+  const allowsPatternFeatures = isV19Schema;
+  const allowsImportedBodyFeatures = isV19Schema;
   const isKnownProjectVersion =
     typeof schemaVersion === "string" &&
     SUPPORTED_CAD_PROJECT_FORMAT_VERSIONS.has(schemaVersion);
@@ -19316,7 +20914,7 @@ function validateCadDocumentSnapshot(
     }
   }
 
-  if (isV18Schema) {
+  if (isV18Schema || isV19Schema) {
     const topologyIdentityIssues = validateTopologyIdentitySourceSnapshot(
       value.topologyIdentity
     );
@@ -19334,7 +20932,7 @@ function validateCadDocumentSnapshot(
       issues,
       "INVALID_DOCUMENT",
       `${path}.topologyIdentity`,
-      "Topology identity source records require web-cad.project.v18."
+      "Topology identity source records require web-cad.project.v18 or web-cad.project.v19."
     );
   }
 
@@ -19546,7 +21144,9 @@ function validateCadDocumentSnapshot(
           sketchEntityRefs,
           allowsRevolveFeatures,
           allowsHoleFeatures,
-          allowsEdgeFinishFeatures
+          allowsEdgeFinishFeatures,
+          allowsPatternFeatures,
+          allowsImportedBodyFeatures
         );
         maxGeneratedFeatureNumber = Math.max(
           maxGeneratedFeatureNumber,
@@ -21882,12 +23482,7 @@ function collectValidAuthoredFeatureByBodyId(
     value.kind === "chamfer" &&
     typeof value.id === "string" &&
     typeof value.targetBodyId === "string" &&
-    ((typeof value.edgeStableId === "string" &&
-      value.namedReference === undefined) ||
-      (typeof value.namedReference === "string" &&
-        value.edgeStableId === undefined)) &&
-    (value.topologyAnchorId === undefined ||
-      typeof value.topologyAnchorId === "string") &&
+    hasValidEdgeFinishFeatureReference(value) &&
     typeof value.distance === "number" &&
     isPositiveFiniteNumber(value.distance) &&
     typeof value.bodyId === "string"
@@ -21918,12 +23513,7 @@ function collectValidAuthoredFeatureByBodyId(
     value.kind === "fillet" &&
     typeof value.id === "string" &&
     typeof value.targetBodyId === "string" &&
-    ((typeof value.edgeStableId === "string" &&
-      value.namedReference === undefined) ||
-      (typeof value.namedReference === "string" &&
-        value.edgeStableId === undefined)) &&
-    (value.topologyAnchorId === undefined ||
-      typeof value.topologyAnchorId === "string") &&
+    hasValidEdgeFinishFeatureReference(value) &&
     typeof value.radius === "number" &&
     isPositiveFiniteNumber(value.radius) &&
     typeof value.bodyId === "string"
@@ -21943,6 +23533,85 @@ function collectValidAuthoredFeatureByBodyId(
         ? { topologyAnchorId: value.topologyAnchorId }
         : {}),
       radius: value.radius,
+      bodyId: value.bodyId,
+      path
+    });
+  }
+
+  if (
+    isRecord(value) &&
+    value.kind === "importedBody" &&
+    typeof value.id === "string" &&
+    (value.name === undefined || typeof value.name === "string") &&
+    typeof value.sourceFileName === "string" &&
+    value.sourceFormat === "step" &&
+    typeof value.bodyId === "string" &&
+    typeof value.checkpointId === "string" &&
+    typeof value.healingApplied === "boolean"
+  ) {
+    featuresByBodyId.set(value.bodyId, {
+      id: value.id,
+      kind: "importedBody",
+      name: value.name,
+      sourceFileName: value.sourceFileName,
+      sourceFormat: "step",
+      bodyId: value.bodyId,
+      checkpointId: value.checkpointId,
+      healingApplied: value.healingApplied,
+      path
+    });
+  }
+
+  if (
+    isRecord(value) &&
+    value.kind === "linearPattern" &&
+    typeof value.id === "string" &&
+    (value.name === undefined || typeof value.name === "string") &&
+    typeof value.seedBodyId === "string" &&
+    isPatternAxis(value.axis) &&
+    typeof value.spacing === "number" &&
+    isPositiveFiniteNumber(value.spacing) &&
+    typeof value.instanceCount === "number" &&
+    Number.isInteger(value.instanceCount) &&
+    value.instanceCount >= 2 &&
+    typeof value.bodyId === "string"
+  ) {
+    featuresByBodyId.set(value.bodyId, {
+      id: value.id,
+      kind: "linearPattern",
+      name: typeof value.name === "string" ? value.name : undefined,
+      seedBodyId: value.seedBodyId,
+      axis: value.axis,
+      spacing: value.spacing,
+      instanceCount: value.instanceCount,
+      bodyId: value.bodyId,
+      path
+    });
+  }
+
+  if (
+    isRecord(value) &&
+    value.kind === "circularPattern" &&
+    typeof value.id === "string" &&
+    (value.name === undefined || typeof value.name === "string") &&
+    typeof value.seedBodyId === "string" &&
+    isPatternAxis(value.rotationAxis) &&
+    typeof value.totalAngleDegrees === "number" &&
+    isPositiveFiniteNumber(value.totalAngleDegrees) &&
+    value.totalAngleDegrees <= 360 &&
+    typeof value.instanceCount === "number" &&
+    Number.isInteger(value.instanceCount) &&
+    value.instanceCount >= 2 &&
+    typeof value.bodyId === "string"
+  ) {
+    featuresByBodyId.set(value.bodyId, {
+      id: value.id,
+      kind: "circularPattern",
+      name: typeof value.name === "string" ? value.name : undefined,
+      seedBodyId: value.seedBodyId,
+      rotationAxis: value.rotationAxis,
+      totalAngleDegrees: value.totalAngleDegrees,
+      instanceCount: value.instanceCount,
       bodyId: value.bodyId,
       path
     });
@@ -22004,12 +23673,7 @@ function validateFeatureTargetBodyReferences(
 
     if (
       feature.kind === "extrude" &&
-      (!isExtrudeFeatureSnapshot(target) ||
-        !isSupportedBooleanExtrudeCombination(
-          featuresByBodyId,
-          feature,
-          target
-        ))
+      !isSupportedBooleanExtrudeCombination(featuresByBodyId, feature, target)
     ) {
       addProjectIssue(
         issues,
@@ -22038,22 +23702,34 @@ function validateFeatureTargetBodyReferences(
 
     if (
       (feature.kind === "chamfer" || feature.kind === "fillet") &&
-      (!isExtrudeFeatureSnapshot(target) ||
-        !isSupportedImportEdgeFinishTargetCombination(target))
+      !isSupportedImportEdgeFinishTargetCombination(feature, target)
     ) {
       addProjectIssue(
         issues,
         "INVALID_FEATURE",
         `${feature.path}.targetBodyId`,
-        `${formatTargetConsumingFeatureForIssue(feature)} currently supports one stable generated edge on an active rectangle/circle newBody extrude target body or a supported rectangle cut result body.`
+        `${formatTargetConsumingFeatureForIssue(feature)} currently supports one stable generated edge on an active rectangle/circle newBody extrude target body, a supported rectangle cut result body, or an imported body topology edge anchor.`
       );
     }
   }
 }
 
 function isSupportedImportEdgeFinishTargetCombination(
-  target: ExtrudeFeatureSnapshot
+  feature: Extract<FeatureSnapshot, { readonly kind: "chamfer" | "fillet" }>,
+  target: FeatureSnapshot
 ): boolean {
+  if (target.kind === "importedBody") {
+    return (
+      feature.topologyAnchorId !== undefined &&
+      feature.edgeStableId === undefined &&
+      feature.namedReference === undefined
+    );
+  }
+
+  if (!isExtrudeFeatureSnapshot(target)) {
+    return false;
+  }
+
   const operationMode = target.operationMode ?? "newBody";
 
   return (
@@ -22099,11 +23775,17 @@ function isImportTargetConsumingFeature(feature: FeatureSnapshot): boolean {
 function getImportFeatureTargetBodyId(
   feature: FeatureSnapshot
 ): BodyId | undefined {
-  return isImportTargetConsumingFeature(feature)
-    ? feature.kind === "hole"
-      ? feature.targetBodyId
-      : feature.targetBodyId
-    : undefined;
+  if (
+    feature.kind === "chamfer" ||
+    feature.kind === "fillet" ||
+    feature.kind === "hole" ||
+    (feature.kind === "extrude" &&
+      isConsumingExtrudeOperationMode(feature.operationMode ?? "newBody"))
+  ) {
+    return feature.targetBodyId;
+  }
+
+  return undefined;
 }
 
 function isExtrudeFeatureSnapshot(
@@ -22118,13 +23800,25 @@ function isSupportedBooleanExtrudeCombination(
     FeatureSnapshot & { readonly path: string }
   >,
   feature: ExtrudeFeatureSnapshot,
-  target: ExtrudeFeatureSnapshot
+  target: FeatureSnapshot & { readonly path: string }
 ): boolean {
   if (!isSupportedBooleanToolProfileKind(feature.profileKind)) {
     return false;
   }
 
   const operationMode = feature.operationMode ?? "newBody";
+
+  if (target.kind === "importedBody") {
+    return (
+      feature.targetTopologyAnchorId !== undefined &&
+      (operationMode === "add" || operationMode === "cut")
+    );
+  }
+
+  if (!isExtrudeFeatureSnapshot(target)) {
+    return false;
+  }
+
   const targetProfileKind = resolveImportBooleanTargetProfileKind(
     featuresByBodyId,
     target,
@@ -22597,7 +24291,9 @@ function validateFeatureSnapshot(
   sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>,
   allowsRevolveFeatures: boolean,
   allowsHoleFeatures: boolean,
-  allowsEdgeFinishFeatures: boolean
+  allowsEdgeFinishFeatures: boolean,
+  allowsPatternFeatures: boolean,
+  allowsImportedBodyFeatures: boolean
 ): {
   readonly maxGeneratedFeatureNumber: number;
   readonly maxGeneratedBodyNumber: number;
@@ -22639,19 +24335,26 @@ function validateFeatureSnapshot(
     (value.kind !== "revolve" || !allowsRevolveFeatures) &&
     (value.kind !== "hole" || !allowsHoleFeatures) &&
     ((value.kind !== "chamfer" && value.kind !== "fillet") ||
-      !allowsEdgeFinishFeatures)
+      !allowsEdgeFinishFeatures) &&
+    ((value.kind !== "linearPattern" && value.kind !== "circularPattern") ||
+      !allowsPatternFeatures) &&
+    (value.kind !== "importedBody" || !allowsImportedBodyFeatures)
   ) {
     addProjectIssue(
       issues,
       "INVALID_FEATURE",
       `${path}.kind`,
-      allowsEdgeFinishFeatures
-        ? "Feature kind must be extrude, revolve, hole, chamfer, or fillet."
-        : allowsHoleFeatures
-          ? "Feature kind must be extrude, revolve, or hole."
-          : allowsRevolveFeatures
-            ? "Feature kind must be extrude or revolve."
-            : "Feature kind must be extrude."
+      allowsImportedBodyFeatures
+        ? "Feature kind must be extrude, revolve, hole, chamfer, fillet, importedBody, linearPattern, or circularPattern."
+        : allowsPatternFeatures
+          ? "Feature kind must be extrude, revolve, hole, chamfer, fillet, linearPattern, or circularPattern."
+          : allowsEdgeFinishFeatures
+            ? "Feature kind must be extrude, revolve, hole, chamfer, or fillet."
+            : allowsHoleFeatures
+              ? "Feature kind must be extrude, revolve, or hole."
+              : allowsRevolveFeatures
+                ? "Feature kind must be extrude or revolve."
+                : "Feature kind must be extrude."
     );
   }
 
@@ -22720,6 +24423,44 @@ function validateFeatureSnapshot(
     }
 
     validateEdgeFinishFeatureSnapshotFields(value, path, issues, seenBodyIds);
+
+    if (typeof value.bodyId === "string") {
+      maxGeneratedBodyNumber = parseBodyNumber(value.bodyId);
+    }
+
+    return { maxGeneratedFeatureNumber, maxGeneratedBodyNumber };
+  }
+
+  if (value.kind === "importedBody") {
+    if (!allowsImportedBodyFeatures) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.kind`,
+        "Imported body features require web-cad.project.v19."
+      );
+    }
+
+    validateImportedBodyFeatureSnapshotFields(value, path, issues, seenBodyIds);
+
+    if (typeof value.bodyId === "string") {
+      maxGeneratedBodyNumber = parseBodyNumber(value.bodyId);
+    }
+
+    return { maxGeneratedFeatureNumber, maxGeneratedBodyNumber };
+  }
+
+  if (value.kind === "linearPattern" || value.kind === "circularPattern") {
+    if (!allowsPatternFeatures) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.kind`,
+        "Pattern features require web-cad.project.v19."
+      );
+    }
+
+    validatePatternFeatureSnapshotFields(value, path, issues, seenBodyIds);
 
     if (typeof value.bodyId === "string") {
       maxGeneratedBodyNumber = parseBodyNumber(value.bodyId);
@@ -23247,12 +24988,12 @@ function validateEdgeFinishFeatureSnapshotFields(
   const hasEdgeStableId = edgeStableId !== undefined;
   const hasNamedReference = namedReference !== undefined;
 
-  if (hasEdgeStableId === hasNamedReference) {
+  if (!hasValidEdgeFinishFeatureReference(value)) {
     addProjectIssue(
       issues,
       "INVALID_FEATURE",
       `${path}.edgeStableId`,
-      `${label} feature requires exactly one edgeStableId or namedReference.`
+      `${label} feature requires edgeStableId, namedReference, or topologyAnchorId.`
     );
   }
 
@@ -23709,6 +25450,171 @@ function validateNextGeneratedNumber(
       path,
       `${label} must be greater than existing ${generatedIdLabel}.`
     );
+  }
+}
+
+function validateImportedBodyFeatureSnapshotFields(
+  value: Record<string, unknown>,
+  path: string,
+  issues: CadProjectImportIssue[],
+  seenBodyIds: Set<string>
+): void {
+  if (
+    typeof value.sourceFileName !== "string" ||
+    value.sourceFileName.trim().length === 0
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.sourceFileName`,
+      "Imported body feature sourceFileName must be a non-empty display filename."
+    );
+  }
+
+  if (value.sourceFormat !== "step") {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.sourceFormat`,
+      "Imported body feature sourceFormat must be step."
+    );
+  }
+
+  if (typeof value.bodyId !== "string" || value.bodyId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.bodyId`,
+      "Imported body feature bodyId must be a non-empty string."
+    );
+  } else if (seenBodyIds.has(value.bodyId)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.bodyId`,
+      `Duplicate body id: ${value.bodyId}.`
+    );
+  } else {
+    seenBodyIds.add(value.bodyId);
+  }
+
+  if (
+    typeof value.checkpointId !== "string" ||
+    value.checkpointId.length === 0
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.checkpointId`,
+      "Imported body feature checkpointId must be a non-empty string."
+    );
+  }
+
+  if (typeof value.healingApplied !== "boolean") {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.healingApplied`,
+      "Imported body feature healingApplied must be a boolean."
+    );
+  }
+}
+
+function validatePatternFeatureSnapshotFields(
+  value: Record<string, unknown>,
+  path: string,
+  issues: CadProjectImportIssue[],
+  seenBodyIds: Set<string>
+): void {
+  const label =
+    value.kind === "linearPattern" ? "Linear pattern" : "Circular pattern";
+
+  if (typeof value.seedBodyId !== "string" || value.seedBodyId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.seedBodyId`,
+      `${label} feature seedBodyId must be a non-empty string.`
+    );
+  }
+
+  if (value.kind === "linearPattern") {
+    if (!isPatternAxis(value.axis)) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.axis`,
+        "Linear pattern feature axis must be x, y, or z."
+      );
+    }
+
+    validatePositiveFiniteField(
+      value.spacing,
+      `${path}.spacing`,
+      "Linear pattern spacing",
+      issues
+    );
+  }
+
+  if (value.kind === "circularPattern") {
+    if (!isPatternAxis(value.rotationAxis)) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.rotationAxis`,
+        "Circular pattern feature rotationAxis must be x, y, or z."
+      );
+    }
+
+    validatePositiveFiniteField(
+      value.totalAngleDegrees,
+      `${path}.totalAngleDegrees`,
+      "Circular pattern total angle",
+      issues
+    );
+
+    if (
+      typeof value.totalAngleDegrees === "number" &&
+      value.totalAngleDegrees > 360
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.totalAngleDegrees`,
+        "Circular pattern totalAngleDegrees must be no greater than 360."
+      );
+    }
+  }
+
+  if (
+    typeof value.instanceCount !== "number" ||
+    !Number.isInteger(value.instanceCount) ||
+    value.instanceCount < 2
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.instanceCount`,
+      `${label} feature instanceCount must be an integer greater than or equal to 2.`
+    );
+  }
+
+  if (typeof value.bodyId !== "string" || value.bodyId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.bodyId`,
+      `${label} feature bodyId must be a non-empty string.`
+    );
+  } else if (seenBodyIds.has(value.bodyId)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.bodyId`,
+      `Duplicate body id: ${value.bodyId}.`
+    );
+  } else {
+    seenBodyIds.add(value.bodyId);
   }
 }
 
@@ -24177,6 +26083,24 @@ function isCadOp(value: unknown): value is CadOp {
     return false;
   }
 
+  if (value.op === "project.importStep") {
+    return (
+      typeof value.sourceFileName === "string" &&
+      value.sourceFormat === "step" &&
+      isRecord(value.payloadRef) &&
+      value.payloadRef.kind === "transient" &&
+      typeof value.payloadRef.payloadId === "string" &&
+      typeof value.payloadRef.byteLength === "number" &&
+      (value.payloadRef.sha256 === undefined ||
+        typeof value.payloadRef.sha256 === "string") &&
+      (value.maxBodyCount === undefined ||
+        typeof value.maxBodyCount === "number") &&
+      (value.resolvedBodies === undefined ||
+        (Array.isArray(value.resolvedBodies) &&
+          value.resolvedBodies.every(isProjectImportStepResolvedBodyShape)))
+    );
+  }
+
   if (value.op === "parameter.create") {
     return (
       isOptionalString(value.id) &&
@@ -24536,6 +26460,37 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "feature.linearPattern") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      typeof value.seedBodyId === "string" &&
+      isPatternAxis(value.axis) &&
+      typeof value.spacing === "number" &&
+      isPositiveFiniteNumber(value.spacing) &&
+      typeof value.instanceCount === "number" &&
+      Number.isInteger(value.instanceCount) &&
+      value.instanceCount >= 2
+    );
+  }
+
+  if (value.op === "feature.circularPattern") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      typeof value.seedBodyId === "string" &&
+      isPatternAxis(value.rotationAxis) &&
+      typeof value.totalAngleDegrees === "number" &&
+      isPositiveFiniteNumber(value.totalAngleDegrees) &&
+      value.totalAngleDegrees <= 360 &&
+      typeof value.instanceCount === "number" &&
+      Number.isInteger(value.instanceCount) &&
+      value.instanceCount >= 2
+    );
+  }
+
   if (value.op === "feature.delete") {
     return typeof value.id === "string";
   }
@@ -24587,6 +26542,42 @@ function isCadOp(value: unknown): value is CadOp {
       typeof value.id === "string" &&
       typeof value.radius === "number" &&
       isPositiveFiniteNumber(value.radius)
+    );
+  }
+
+  if (value.op === "feature.updateLinearPattern") {
+    return (
+      typeof value.id === "string" &&
+      (value.axis === undefined || isPatternAxis(value.axis)) &&
+      (value.spacing === undefined ||
+        (typeof value.spacing === "number" &&
+          isPositiveFiniteNumber(value.spacing))) &&
+      (value.instanceCount === undefined ||
+        (typeof value.instanceCount === "number" &&
+          Number.isInteger(value.instanceCount) &&
+          value.instanceCount >= 2)) &&
+      (value.axis !== undefined ||
+        value.spacing !== undefined ||
+        value.instanceCount !== undefined)
+    );
+  }
+
+  if (value.op === "feature.updateCircularPattern") {
+    return (
+      typeof value.id === "string" &&
+      (value.rotationAxis === undefined ||
+        isPatternAxis(value.rotationAxis)) &&
+      (value.totalAngleDegrees === undefined ||
+        (typeof value.totalAngleDegrees === "number" &&
+          isPositiveFiniteNumber(value.totalAngleDegrees) &&
+          value.totalAngleDegrees <= 360)) &&
+      (value.instanceCount === undefined ||
+        (typeof value.instanceCount === "number" &&
+          Number.isInteger(value.instanceCount) &&
+          value.instanceCount >= 2)) &&
+      (value.rotationAxis !== undefined ||
+        value.totalAngleDegrees !== undefined ||
+        value.instanceCount !== undefined)
     );
   }
 
@@ -24657,6 +26648,38 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   return false;
+}
+
+function isProjectImportStepResolvedBodyShape(
+  value: unknown
+): value is ProjectImportStepResolvedBody {
+  return (
+    isRecord(value) &&
+    isNonEmptyString(value.featureId) &&
+    isNonEmptyString(value.bodyId) &&
+    isNonEmptyString(value.checkpointId) &&
+    (value.name === undefined || typeof value.name === "string") &&
+    isWcadSourceIdentityInput(value.sourceIdentity) &&
+    (value.checkpointStatus === undefined ||
+      isTopologyCheckpointStatus(value.checkpointStatus)) &&
+    typeof value.healingApplied === "boolean" &&
+    (value.diagnostics === undefined ||
+      (Array.isArray(value.diagnostics) &&
+        value.diagnostics.every(isCadStepImportDiagnosticShape)))
+  );
+}
+
+function isCadStepImportDiagnosticShape(
+  value: unknown
+): value is CadStepImportDiagnostic {
+  return (
+    isRecord(value) &&
+    typeof value.code === "string" &&
+    (value.severity === "info" ||
+      value.severity === "warning" ||
+      value.severity === "blocking") &&
+    typeof value.message === "string"
+  );
 }
 
 function isSemanticDiff(value: unknown): value is SemanticDiff {
@@ -24999,6 +27022,42 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
       hasValidEdgeFinishFeatureReference(value) &&
       typeof value.radius === "number" &&
       isPositiveFiniteNumber(value.radius)
+    );
+  }
+
+  if (value.kind === "importedBody") {
+    return (
+      typeof value.sourceFileName === "string" &&
+      value.sourceFileName.trim() !== "" &&
+      value.sourceFormat === "step" &&
+      typeof value.checkpointId === "string" &&
+      value.checkpointId.trim() !== "" &&
+      typeof value.healingApplied === "boolean"
+    );
+  }
+
+  if (value.kind === "linearPattern") {
+    return (
+      typeof value.seedBodyId === "string" &&
+      isPatternAxis(value.axis) &&
+      typeof value.spacing === "number" &&
+      isPositiveFiniteNumber(value.spacing) &&
+      typeof value.instanceCount === "number" &&
+      Number.isInteger(value.instanceCount) &&
+      value.instanceCount >= 2
+    );
+  }
+
+  if (value.kind === "circularPattern") {
+    return (
+      typeof value.seedBodyId === "string" &&
+      isPatternAxis(value.rotationAxis) &&
+      typeof value.totalAngleDegrees === "number" &&
+      isPositiveFiniteNumber(value.totalAngleDegrees) &&
+      value.totalAngleDegrees <= 360 &&
+      typeof value.instanceCount === "number" &&
+      Number.isInteger(value.instanceCount) &&
+      value.instanceCount >= 2
     );
   }
 
@@ -25437,6 +27496,10 @@ function isHoleDepthMode(value: unknown): value is FeatureHoleDepthMode {
 
 function isHoleDirection(value: unknown): value is FeatureHoleDirection {
   return value === "positive" || value === "negative";
+}
+
+function isPatternAxis(value: unknown): value is "x" | "y" | "z" {
+  return value === "x" || value === "y" || value === "z";
 }
 
 function hasExactlyOneEdgeReferenceInput(

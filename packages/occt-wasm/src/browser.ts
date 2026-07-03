@@ -82,6 +82,17 @@ import {
   type OcctExactTopologyCheckpointPayloadInput,
   type OcctTopologyCheckpointSignaturePayload
 } from "./exactCheckpointPayload";
+import {
+  createOcctStepImportWithInstance,
+  createOcctStepImportWithLoader,
+  getOcctStepReaderCapabilityWithInstance,
+  getOcctStepReaderCapabilityWithLoader,
+  type OcctImportedBodyPayload,
+  type OcctStepImportDiagnostic,
+  type OcctStepImportInput,
+  type OcctStepImportResult,
+  type OcctStepReaderCapability
+} from "./stepImport";
 
 export type {
   OcctBooleanExtrudeInput,
@@ -108,6 +119,11 @@ export type {
   OcctExactTopologyCheckpointPayload,
   OcctExactTopologyCheckpointPayloadInput,
   OcctTopologyCheckpointSignaturePayload,
+  OcctImportedBodyPayload,
+  OcctStepImportDiagnostic,
+  OcctStepImportInput,
+  OcctStepImportResult,
+  OcctStepReaderCapability,
   OcctMeshData
 };
 export {
@@ -140,7 +156,11 @@ export {
   createOcctExactTopologyCheckpointPayloadWithInstance,
   createOcctExactTopologyCheckpointPayloadWithLoader,
   getOcctBrepCheckpointWriterCapabilityWithInstance,
-  getOcctBrepCheckpointWriterCapabilityWithLoader
+  getOcctBrepCheckpointWriterCapabilityWithLoader,
+  createOcctStepImportWithInstance,
+  createOcctStepImportWithLoader,
+  getOcctStepReaderCapabilityWithInstance,
+  getOcctStepReaderCapabilityWithLoader
 };
 
 type OpenCascadeModuleObject = Record<string, unknown>;
@@ -303,4 +323,14 @@ export async function createOcctExactTopologyCheckpointPayload(
 
 export async function getOcctBrepCheckpointWriterCapability(): Promise<OcctBrepCheckpointWriterCapability> {
   return getOcctBrepCheckpointWriterCapabilityWithLoader(loadBrowserOcct);
+}
+
+export async function createOcctStepImport(
+  input: OcctStepImportInput
+): Promise<OcctStepImportResult> {
+  return createOcctStepImportWithLoader(loadBrowserOcct, input);
+}
+
+export async function getOcctStepReaderCapability(): Promise<OcctStepReaderCapability> {
+  return getOcctStepReaderCapabilityWithLoader(loadBrowserOcct);
 }

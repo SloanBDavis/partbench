@@ -31,6 +31,7 @@ import type {
   CadViewportTwoTargetMeasurementResult,
   CadViewportTwoTargetMeasurementState,
   CadViewportTwoTargetMeasurementTarget,
+  BodyImportedBodyStatusQueryResponse,
   CadTopologyAnchorDescriptor,
   CadTopologyCheckpointMetadata,
   CadTopologyIdentityState,
@@ -39,7 +40,9 @@ import type {
   CadTopologyRepairCandidate,
   FeatureEditabilityQueryResponse,
   HoleFeatureSnapshot,
+  ImportedBodyFeatureSnapshot,
   ProjectPackageReadinessQueryResponse,
+  ProjectImportReadinessQueryResponse,
   ProjectRebuildPlanQueryResponse,
   ProjectTopologyIdentityReadinessQueryResponse,
   ReferenceHealthQueryResponse,
@@ -66,6 +69,7 @@ import {
   WCAD_PACKAGE_EXTENSION,
   WCAD_PACKAGE_VERSION,
   WCAD_SOURCE_IDENTITY_ALGORITHM,
+  CAD_V15_PROJECT_SCHEMA_VERSION,
   CAD_TOPOLOGY_IDENTITY_CONTRACT_VERSION,
   CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION,
   CAD_TOPOLOGY_IDENTITY_PROJECT_SCHEMA_VERSION,
@@ -78,6 +82,111 @@ describe("cad-protocol", () => {
       name: "@web-cad/cad-protocol",
       status: "ready"
     });
+  });
+
+  it("types the STEP import readiness and transient payload contract", () => {
+    const importOp: CadOp = {
+      op: "project.importStep",
+      sourceFileName: "bracket.step",
+      sourceFormat: "step",
+      payloadRef: {
+        kind: "transient",
+        payloadId: "step_payload_1",
+        byteLength: 128,
+        sha256:
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      maxBodyCount: 4
+    };
+    const readinessRequest: CadQueryRequest = {
+      version: "cadops.v1",
+      query: { query: "project.importReadiness" }
+    };
+    const readinessResponse: ProjectImportReadinessQueryResponse = {
+      ok: true,
+      query: "project.importReadiness",
+      cadOpsVersion: "cadops.v1",
+      sourceFormat: "step",
+      status: "unavailable",
+      geometryWorkerAvailable: false,
+      stepReaderAvailable: false,
+      healingAvailable: false,
+      importedBodyCount: 0,
+      maxBodyCount: 0,
+      diagnosticCount: 1,
+      diagnostics: [
+        {
+          code: "STEP_READER_UNAVAILABLE",
+          severity: "blocking",
+          message:
+            "STEP import is typed but unavailable until the geometry worker exposes a STEP reader."
+        }
+      ],
+      sourceBoundaryNote:
+        "STEP bytes are transient and are not stored in CADOps.",
+      derivedBoundaryNote:
+        "Imported topology/checkpoints are derived from the STEP reader.",
+      mutatesSource: false
+    };
+    const statusRequest: CadQueryRequest = {
+      version: "cadops.v1",
+      query: {
+        query: "body.importedBodyStatus",
+        bodyId: "body_imported_1"
+      }
+    };
+    const statusResponse: BodyImportedBodyStatusQueryResponse = {
+      ok: true,
+      query: "body.importedBodyStatus",
+      cadOpsVersion: "cadops.v1",
+      bodyId: "body_imported_1",
+      imported: true,
+      status: "healthy",
+      checkpointStatus: "available",
+      healingApplied: false,
+      sourceFileName: "bracket.step",
+      sourceFormat: "step",
+      checkpointId: "checkpoint_imported_1",
+      availableDownstreamOperations: ["feature.extrudeCutTarget"],
+      diagnosticCount: 0,
+      diagnostics: [],
+      sourceBoundaryNote:
+        "Imported body source records do not include STEP bytes.",
+      derivedBoundaryNote:
+        "Topology is exposed through cad-core query responses."
+    };
+    const importedFeature: ImportedBodyFeatureSnapshot = {
+      id: "feat_imported_1",
+      kind: "importedBody",
+      name: "Imported bracket",
+      sourceFileName: "bracket.step",
+      sourceFormat: "step",
+      bodyId: "body_imported_1",
+      checkpointId: "checkpoint_imported_1",
+      healingApplied: false
+    };
+    const queryResponse: CadQueryResponse = readinessResponse;
+    const serialized = JSON.stringify({
+      importOp,
+      readinessRequest,
+      readinessResponse: queryResponse,
+      statusRequest,
+      statusResponse,
+      importedFeature
+    });
+
+    expect(importOp.payloadRef.kind).toBe("transient");
+    expect(readinessResponse.mutatesSource).toBe(false);
+    expect(statusResponse.availableDownstreamOperations).toEqual([
+      "feature.extrudeCutTarget"
+    ]);
+    expect(CAD_V15_PROJECT_SCHEMA_VERSION).toBe("web-cad.project.v19");
+    expect(serialized).not.toContain("bytesBase64");
+    expect(serialized).not.toContain("fileHandle");
+    expect(serialized).not.toContain("localPath");
+    expect(serialized).not.toContain("renderer");
+    expect(serialized).not.toContain("mesh");
+    expect(serialized).not.toContain("occt");
   });
 
   it("types the project export readiness query contract", () => {

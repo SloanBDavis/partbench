@@ -7,6 +7,7 @@ import type {
   CadBatchResponse,
   CadBatchValidationError,
   CadAxisAlignedBounds,
+  BodyImportedBodyStatusQueryResponse,
   BodyMeasurementsSnapshot,
   BodyExtentSnapshot,
   CadAttachedSketchHealth,
@@ -47,6 +48,7 @@ import type {
   ProjectExactExportQueryResponse,
   ProjectExportReadinessQueryResponse,
   ProjectDependencyGraphQueryResponse,
+  ProjectImportReadinessQueryResponse,
   ProjectPackageReadinessQueryResponse,
   ProjectRebuildPlanQueryResponse,
   ProjectTopologyIdentityReadinessQueryResponse,
@@ -373,12 +375,14 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentProjectExportReadinessQueryResponse
   | CadOpsAgentProjectExactExportQueryResponse
   | CadOpsAgentProjectPackageReadinessQueryResponse
+  | CadOpsAgentProjectImportReadinessQueryResponse
   | CadOpsAgentProjectSketchesQueryResponse
   | CadOpsAgentObjectGetQueryResponse
   | CadOpsAgentObjectMeasurementsQueryResponse
   | CadOpsAgentBodyTopologyQueryResponse
   | CadOpsAgentBodyTopologyIdentityQueryResponse
   | CadOpsAgentBodyMeasurementsQueryResponse
+  | CadOpsAgentBodyImportedBodyStatusQueryResponse
   | CadOpsAgentProjectExtentsQueryResponse
   | CadOpsAgentSketchGetQueryResponse
   | CadOpsAgentSketchEditReadinessQueryResponse
@@ -617,6 +621,15 @@ export interface CadOpsAgentProjectPackageReadinessQueryResponse extends Omit<
   readonly adapterVersion: AgentAdapterVersion;
 }
 
+export interface CadOpsAgentProjectImportReadinessQueryResponse extends Omit<
+  ProjectImportReadinessQueryResponse,
+  "ok"
+> {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+}
+
 export interface CadOpsAgentProjectSketchesQueryResponse {
   readonly ok: true;
   readonly requestId: string;
@@ -652,6 +665,15 @@ export interface CadOpsAgentBodyMeasurementsQueryResponse {
   readonly cadOpsVersion: CadOpsVersion;
   readonly query: "body.measurements";
   readonly measurements: BodyMeasurementsSnapshot;
+}
+
+export interface CadOpsAgentBodyImportedBodyStatusQueryResponse extends Omit<
+  BodyImportedBodyStatusQueryResponse,
+  "ok"
+> {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
 }
 
 export interface CadOpsAgentBodyTopologyQueryResponse {
@@ -877,12 +899,14 @@ export interface CadOpsAgentQueryErrorResponse {
     | "project.exportReadiness"
     | "project.exportExact"
     | "project.packageReadiness"
+    | "project.importReadiness"
     | "project.sketches"
     | "object.get"
     | "object.measurements"
     | "body.topology"
     | "body.topologyIdentity"
     | "body.measurements"
+    | "body.importedBodyStatus"
     | "project.extents"
     | "sketch.get"
     | "sketch.editReadiness"
@@ -1693,6 +1717,14 @@ function createOperationReview(
   op: CadOp
 ): CadOpsAgentOperationReview {
   switch (op.op) {
+    case "project.importStep":
+      return operationReviewBase(
+        index,
+        op,
+        "create",
+        `Import STEP ${op.sourceFileName}`
+      );
+
     case "document.updateUnits":
       return operationReviewBase(
         index,
@@ -2684,6 +2716,14 @@ function toAgentQueryResponse(
     };
   }
 
+  if (response.query === "project.importReadiness") {
+    return {
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      ...response
+    };
+  }
+
   if (response.query === "project.sketches") {
     return {
       ok: true,
@@ -2734,6 +2774,14 @@ function toAgentQueryResponse(
       cadOpsVersion: response.cadOpsVersion,
       query: response.query,
       measurements: response.measurements
+    };
+  }
+
+  if (response.query === "body.importedBodyStatus") {
+    return {
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      ...response
     };
   }
 
@@ -3428,6 +3476,8 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
         isOptionalTopologyMatchResults(value.query.topologyMatchResults)) ||
       (value.query.query === "project.topologyIdentityReadiness" &&
         Object.keys(value.query).length === 1) ||
+      (value.query.query === "project.importReadiness" &&
+        Object.keys(value.query).length === 1) ||
       (value.query.query === "topology.matchSnapshots" &&
         isTopologyMatchSnapshotsQueryShape(value.query)) ||
       (value.query.query === "topology.anchorRepairCandidates" &&
@@ -3495,6 +3545,8 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
       (value.query.query === "sketch.dimension.get" &&
         typeof value.query.id === "string") ||
       (value.query.query === "body.generatedReferences" &&
+        typeof value.query.bodyId === "string") ||
+      (value.query.query === "body.importedBodyStatus" &&
         typeof value.query.bodyId === "string") ||
       (value.query.query === "body.resolveGeneratedReference" &&
         typeof value.query.bodyId === "string" &&
@@ -4186,6 +4238,10 @@ function isCadOp(value: unknown): value is CadOp {
     return false;
   }
 
+  if (value.op === "project.importStep") {
+    return isProjectImportStepOp(value);
+  }
+
   if (value.op === "parameter.create") {
     return (
       isOptionalString(value.id) &&
@@ -4631,6 +4687,27 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   return false;
+}
+
+function isProjectImportStepOp(value: Record<string, unknown>): boolean {
+  return (
+    typeof value.sourceFileName === "string" &&
+    value.sourceFileName.trim() !== "" &&
+    value.sourceFormat === "step" &&
+    isRecord(value.payloadRef) &&
+    value.payloadRef.kind === "transient" &&
+    typeof value.payloadRef.payloadId === "string" &&
+    value.payloadRef.payloadId.trim() !== "" &&
+    typeof value.payloadRef.byteLength === "number" &&
+    Number.isInteger(value.payloadRef.byteLength) &&
+    value.payloadRef.byteLength > 0 &&
+    (value.payloadRef.sha256 === undefined ||
+      typeof value.payloadRef.sha256 === "string") &&
+    (value.maxBodyCount === undefined ||
+      (typeof value.maxBodyCount === "number" &&
+        Number.isInteger(value.maxBodyCount) &&
+        value.maxBodyCount > 0))
+  );
 }
 
 function isBoxDimensions(value: unknown): boolean {

@@ -1166,6 +1166,14 @@ function createDeferredFields(
     ];
   }
 
+  if (
+    feature.kind === "importedBody" ||
+    feature.kind === "linearPattern" ||
+    feature.kind === "circularPattern"
+  ) {
+    return [];
+  }
+
   return [
     {
       path: "radius",

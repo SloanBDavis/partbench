@@ -62,7 +62,9 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
       | DerivedGeometryRevolveInput
       | DerivedGeometryHoleInput
       | DerivedGeometryEdgeFinishInput
-      | DerivedGeometryBooleanExtrudeInput,
+      | DerivedGeometryBooleanExtrudeInput
+      | DerivedGeometryLinearPatternInput
+      | DerivedGeometryCircularPatternInput,
     request: GeometryWorkerRequest
   ): Promise<DerivedGeometryResult> {
     const { createRenderMeshFromGeometryWorkerResponse } =

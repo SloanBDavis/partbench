@@ -96,10 +96,12 @@ describe("mcp-adapter", () => {
       "cad.project_export_readiness",
       "cad.project_export_exact",
       "cad.project_package_readiness",
+      "cad.project_import_readiness",
       "cad.v8_project_surface",
       "cad.project_sketches",
       "cad.object_measurements",
       "cad.body_measurements",
+      "cad.body_imported_body_status",
       "cad.body_topology",
       "cad.body_topology_identity",
       "cad.project_extents",
@@ -1473,6 +1475,139 @@ describe("mcp-adapter", () => {
     expect(JSON.stringify(result.structuredContent)).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|opfsPath|fileHandle|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
     );
+  });
+
+  it("returns V15 STEP import readiness and imported-body status through MCP", () => {
+    const server = new CadMcpServer();
+
+    server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_import_readiness_seed",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_import_ready",
+              name: "Import ready sketch",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_import_ready",
+              id: "rect_import_ready",
+              center: [0, 0],
+              width: 2,
+              height: 1
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_import_ready",
+              bodyId: "body_import_ready",
+              sketchId: "sketch_import_ready",
+              entityId: "rect_import_ready",
+              depth: 1.5
+            }
+          ]
+        }
+      }
+    });
+
+    const readiness = server.callTool({
+      name: "cad.project_import_readiness",
+      requestId: "mcp_req_import_readiness"
+    });
+    const ordinaryBodyStatus = server.callTool({
+      name: "cad.body_imported_body_status",
+      requestId: "mcp_req_imported_body_status",
+      arguments: { bodyId: "body_import_ready" }
+    });
+    const importAttempt = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_import_step",
+      arguments: {
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: [
+            {
+              op: "project.importStep",
+              sourceFileName: "bracket.step",
+              sourceFormat: "step",
+              payloadRef: {
+                kind: "transient",
+                payloadId: "step_payload_mcp_1",
+                byteLength: 128,
+                sha256:
+                  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              maxBodyCount: 1
+            }
+          ]
+        }
+      }
+    });
+
+    expect(readiness).toMatchObject({
+      toolName: "cad.project_import_readiness",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_import_readiness",
+        query: "project.importReadiness",
+        sourceFormat: "step",
+        status: "unavailable",
+        importedBodyCount: 0,
+        mutatesSource: false,
+        diagnostics: [
+          expect.objectContaining({
+            code: "STEP_READER_UNAVAILABLE",
+            severity: "blocking"
+          })
+        ]
+      }
+    });
+    expect(ordinaryBodyStatus).toMatchObject({
+      toolName: "cad.body_imported_body_status",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_imported_body_status",
+        query: "body.importedBodyStatus",
+        bodyId: "body_import_ready",
+        imported: false,
+        status: "not-imported",
+        availableDownstreamOperations: []
+      }
+    });
+    expect(importAttempt).toMatchObject({
+      toolName: "cad.batch",
+      isError: true,
+      structuredContent: {
+        ok: false,
+        requestId: "mcp_req_import_step",
+        mode: "dryRun",
+        error: {
+          code: "STEP_READER_UNAVAILABLE",
+          op: "project.importStep",
+          sourceFileName: "bracket.step",
+          payloadId: "step_payload_mcp_1"
+        },
+        review: {
+          operations: [
+            {
+              index: 0,
+              op: "project.importStep",
+              intent: "create",
+              label: "Import STEP bracket.step"
+            }
+          ]
+        }
+      }
+    });
   });
 
   it("returns V13 topology identity readiness through cad.project_topology_identity_readiness", () => {
@@ -5830,10 +5965,12 @@ describe("mcp-adapter", () => {
           { name: "cad.project_export_readiness" },
           { name: "cad.project_export_exact" },
           { name: "cad.project_package_readiness" },
+          { name: "cad.project_import_readiness" },
           { name: "cad.v8_project_surface" },
           { name: "cad.project_sketches" },
           { name: "cad.object_measurements" },
           { name: "cad.body_measurements" },
+          { name: "cad.body_imported_body_status" },
           { name: "cad.body_topology" },
           { name: "cad.body_topology_identity" },
           { name: "cad.project_extents" },
@@ -5926,6 +6063,19 @@ describe("mcp-adapter", () => {
     });
     expect(
       server.callTool({
+        name: "cad.body_imported_body_status",
+        arguments: {}
+      })
+    ).toMatchObject({
+      toolName: "cad.body_imported_body_status",
+      isError: true,
+      structuredContent: {
+        ok: false,
+        error: { code: "INVALID_ARGUMENTS" }
+      }
+    });
+    expect(
+      server.callTool({
         name: "cad.selection_reference_candidates",
         arguments: {
           selection: {
@@ -5949,6 +6099,19 @@ describe("mcp-adapter", () => {
       })
     ).toMatchObject({
       toolName: "cad.project_topology_identity_readiness",
+      isError: true,
+      structuredContent: {
+        ok: false,
+        error: { code: "INVALID_ARGUMENTS" }
+      }
+    });
+    expect(
+      server.callTool({
+        name: "cad.project_import_readiness",
+        arguments: { fileHandle: "not-source" }
+      })
+    ).toMatchObject({
+      toolName: "cad.project_import_readiness",
       isError: true,
       structuredContent: {
         ok: false,

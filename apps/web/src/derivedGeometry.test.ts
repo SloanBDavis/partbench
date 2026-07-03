@@ -28,12 +28,14 @@ import type {
   DerivedGeometryBoxInput,
   DerivedGeometryBooleanExtrudeInput,
   DerivedGeometryBooleanExtrudePrimitiveInputSource,
+  DerivedGeometryCircularPatternInput,
   DerivedGeometryConeInput,
   DerivedGeometryCylinderInput,
   DerivedGeometryEdgeFinishInput,
   DerivedExactMetadataResult,
   DerivedGeometryExtrudeInput,
   DerivedGeometryHoleInput,
+  DerivedGeometryLinearPatternInput,
   DerivedGeometryRevolveInput,
   DerivedGeometryResult,
   DerivedGeometryRuntime,
@@ -53,7 +55,9 @@ type RuntimeInput =
   | DerivedGeometryRevolveInput
   | DerivedGeometryHoleInput
   | DerivedGeometryEdgeFinishInput
-  | DerivedGeometryBooleanExtrudeInput;
+  | DerivedGeometryBooleanExtrudeInput
+  | DerivedGeometryLinearPatternInput
+  | DerivedGeometryCircularPatternInput;
 
 describe("derivedGeometry", () => {
   it("creates cache keys that change when object geometry inputs change", () => {
@@ -4024,7 +4028,11 @@ describe("derivedGeometry", () => {
     const second = createDeferred<DerivedGeometryResult>();
     const snapshots: DerivedGeometrySnapshot[] = [];
     const runtime = createRuntime((input) =>
-      "axis" in input && input.axis.end[1] === 2
+      "axis" in input &&
+      typeof input.axis === "object" &&
+      input.axis !== null &&
+      "end" in input.axis &&
+      input.axis.end[1] === 2
         ? first.promise
         : second.promise
     );
@@ -4042,7 +4050,14 @@ describe("derivedGeometry", () => {
     service.reconcile([editedSource]);
 
     expect(
-      runtime.inputs.map((input) => ("axis" in input ? input.axis.end : null))
+      runtime.inputs.map((input) =>
+        "axis" in input &&
+        typeof input.axis === "object" &&
+        input.axis !== null &&
+        "end" in input.axis
+          ? input.axis.end
+          : null
+      )
     ).toEqual([
       [0, 2],
       [0, 3]
@@ -4897,6 +4912,14 @@ function createRuntime(
       inputs.push(input);
       return handler(input);
     },
+    linearPattern(input) {
+      inputs.push(input);
+      return handler(input);
+    },
+    circularPattern(input) {
+      inputs.push(input);
+      return handler(input);
+    },
     exactBodyMetadata(): Promise<DerivedExactMetadataResult> {
       throw new Error("Exact metadata is not used by derived geometry tests.");
     },
@@ -4904,6 +4927,9 @@ function createRuntime(
       throw new Error(
         "Checkpoint payload requests are not used by derived geometry tests."
       );
+    },
+    importStep() {
+      throw new Error("STEP import is not used by derived geometry tests.");
     },
     dispose() {
       disposeCount += 1;

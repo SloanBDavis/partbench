@@ -1842,6 +1842,12 @@ function createRuntime(
     edgeFinish() {
       throw new Error("Mesh requests are not used by exact metadata tests.");
     },
+    linearPattern() {
+      throw new Error("Mesh requests are not used by exact metadata tests.");
+    },
+    circularPattern() {
+      throw new Error("Mesh requests are not used by exact metadata tests.");
+    },
     exactBodyMetadata(input) {
       exactInputs.push(input);
       return handler(input);
@@ -1850,6 +1856,9 @@ function createRuntime(
       throw new Error(
         "Checkpoint payload requests are not used by exact metadata tests."
       );
+    },
+    importStep() {
+      throw new Error("STEP import is not used by exact metadata tests.");
     },
     dispose() {}
   };

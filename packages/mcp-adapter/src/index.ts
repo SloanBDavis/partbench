@@ -48,12 +48,14 @@ export type CadMcpToolName =
   | "cad.project_export_readiness"
   | "cad.project_export_exact"
   | "cad.project_package_readiness"
+  | "cad.project_import_readiness"
   | "cad.v8_project_surface"
   | "cad.project_sketches"
   | "cad.object_measurements"
   | "cad.body_topology"
   | "cad.body_topology_identity"
   | "cad.body_measurements"
+  | "cad.body_imported_body_status"
   | "cad.project_extents"
   | "cad.sketch_get"
   | "cad.sketch_edit_readiness"
@@ -238,6 +240,10 @@ export class CadMcpServer {
       return this.#callProjectPackageReadiness(request);
     }
 
+    if (request.name === "cad.project_import_readiness") {
+      return this.#callProjectImportReadiness(request);
+    }
+
     if (request.name === "cad.v8_project_surface") {
       return this.#callV8ProjectSurface(request);
     }
@@ -260,6 +266,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.body_measurements") {
       return this.#callBodyMeasurements(request);
+    }
+
+    if (request.name === "cad.body_imported_body_status") {
+      return this.#callBodyImportedBodyStatus(request);
     }
 
     if (request.name === "cad.project_extents") {
@@ -898,6 +908,30 @@ export class CadMcpServer {
     return createToolResult(request.name, response, !response.ok);
   }
 
+  #callProjectImportReadiness(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isEmptyObjectOrUndefined(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.project_import_readiness does not accept arguments."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: { query: "project.importReadiness" }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
   #callV8ProjectSurface(request: CadMcpToolCallRequest): CadMcpToolCallResult {
     const args = request.arguments;
 
@@ -984,6 +1018,33 @@ export class CadMcpServer {
           version: "cadops.v1",
           query: {
             query: "body.measurements",
+            bodyId: request.arguments.bodyId
+          }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callBodyImportedBodyStatus(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isBodyMeasurementsToolArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.body_imported_body_status expects arguments shaped as { bodyId: string }."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "body.importedBodyStatus",
             bodyId: request.arguments.bodyId
           }
         }
@@ -1931,6 +1992,16 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
     }
   },
   {
+    name: "cad.project_import_readiness",
+    description:
+      "Returns read-only V15 STEP import readiness, imported-body counts, diagnostic status, and source/derived boundary notes.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {}
+    }
+  },
+  {
     name: "cad.v8_project_surface",
     description:
       "Returns a compact V8 Agent/MCP surface summary for .wcad package readiness, OPFS cache contract status, exact STEP readiness/export availability, unsupported body diagnostics, and file-writing boundaries.",
@@ -2003,6 +2074,22 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
         bodyId: {
           type: "string",
           description: "Authored sketch-extrude body ID to measure."
+        }
+      }
+    }
+  },
+  {
+    name: "cad.body_imported_body_status",
+    description:
+      "Returns read-only V15 imported-body checkpoint/topology status for one body ID.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["bodyId"],
+      properties: {
+        bodyId: {
+          type: "string",
+          description: "Body ID to inspect for imported STEP body status."
         }
       }
     }

@@ -114,7 +114,9 @@ function createOperationSummaries(
       op.op === "feature.revolve" ||
       op.op === "feature.hole" ||
       op.op === "feature.chamfer" ||
-      op.op === "feature.fillet"
+      op.op === "feature.fillet" ||
+      op.op === "feature.linearPattern" ||
+      op.op === "feature.circularPattern"
         ? transaction.diff.features?.created?.[createdFeatureIndex++]
         : undefined;
     const deletedFeatureRef =
@@ -191,6 +193,12 @@ function createOperationSummaries(
         : undefined;
 
     switch (op.op) {
+      case "project.importStep":
+        return {
+          op: op.op,
+          label: `Import STEP ${op.sourceFileName}`
+        };
+
       case "parameter.create": {
         const parameterId = op.id ?? createdParameterRef?.id;
 
@@ -632,6 +640,30 @@ function createOperationSummaries(
         });
       }
 
+      case "feature.linearPattern": {
+        const featureId = op.id ?? createdFeatureRef?.id;
+        const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Create linear pattern feature ${featureId ?? "with generated ID"} from body ${op.seedBodyId}${bodyId ? ` -> body ${bodyId}` : ""}`,
+          featureId,
+          bodyId
+        });
+      }
+
+      case "feature.circularPattern": {
+        const featureId = op.id ?? createdFeatureRef?.id;
+        const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Create circular pattern feature ${featureId ?? "with generated ID"} from body ${op.seedBodyId}${bodyId ? ` -> body ${bodyId}` : ""}`,
+          featureId,
+          bodyId
+        });
+      }
+
       case "feature.delete": {
         const bodyLabel = deletedFeatureRef?.bodyId
           ? ` and body ${deletedFeatureRef.bodyId}`
@@ -746,6 +778,32 @@ function createOperationSummaries(
         });
       }
 
+      case "feature.updateLinearPattern": {
+        const modifiedFeatureRef = transaction.diff.features?.modified?.find(
+          (feature) => feature.id === op.id
+        );
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Update linear pattern feature ${op.id}`,
+          featureId: op.id,
+          bodyId: modifiedFeatureRef?.bodyId
+        });
+      }
+
+      case "feature.updateCircularPattern": {
+        const modifiedFeatureRef = transaction.diff.features?.modified?.find(
+          (feature) => feature.id === op.id
+        );
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Update circular pattern feature ${op.id}`,
+          featureId: op.id,
+          bodyId: modifiedFeatureRef?.bodyId
+        });
+      }
+
       case "reference.nameGenerated": {
         const kindLabel = createdNamedReferenceRef?.kind
           ? `${createdNamedReferenceRef.kind} `
@@ -847,7 +905,13 @@ function getFeatureRefSketchEntityId(
     return feature.circleEntityId;
   }
 
-  if (feature.kind === "chamfer" || feature.kind === "fillet") {
+  if (
+    feature.kind === "chamfer" ||
+    feature.kind === "fillet" ||
+    feature.kind === "importedBody" ||
+    feature.kind === "linearPattern" ||
+    feature.kind === "circularPattern"
+  ) {
     return undefined;
   }
 
@@ -855,7 +919,13 @@ function getFeatureRefSketchEntityId(
 }
 
 function getFeatureRefSketchId(feature: CadFeatureRef): SketchId | undefined {
-  if (feature.kind === "chamfer" || feature.kind === "fillet") {
+  if (
+    feature.kind === "chamfer" ||
+    feature.kind === "fillet" ||
+    feature.kind === "importedBody" ||
+    feature.kind === "linearPattern" ||
+    feature.kind === "circularPattern"
+  ) {
     return undefined;
   }
 

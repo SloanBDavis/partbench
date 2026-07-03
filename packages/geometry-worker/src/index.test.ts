@@ -9,6 +9,7 @@ import {
   createExactTopologyCheckpointPayloadWorkerRequest,
   createExactTopologySnapshotWorkerRequest,
   createExactStepExportWorkerRequest,
+  createStepImportWorkerRequest,
   createExtrudeBooleanWorkerRequest,
   createExtrudeTessellationWorkerRequest,
   createHoleWorkerRequest,
@@ -16,6 +17,7 @@ import {
   createSphereTessellationWorkerRequest,
   createTorusTessellationWorkerRequest,
   getGeometryWorkerExactExportCapabilities,
+  getGeometryWorkerStepImportCapabilities,
   createWorkerErrorDiagnostics,
   createWorkerSuccessDiagnostics,
   createGeometryKernelWorker
@@ -67,6 +69,57 @@ describe("geometry-worker", () => {
     ]);
   });
 
+  it("reports STEP import reader and healing capability through the worker boundary", () => {
+    expect(getGeometryWorkerStepImportCapabilities()).toEqual([
+      expect.objectContaining({
+        format: "step",
+        label: "STEP",
+        status: "available",
+        readerAvailable: true,
+        healingAvailable: true,
+        checkpointWriterAvailable: true,
+        boundary: "geometry-worker",
+        kernelBoundary: "geometry-kernel",
+        readerBoundary: "occt-wasm",
+        missingBindings: []
+      })
+    ]);
+  });
+
+  it("reports unavailable STEP import capability through the worker boundary", () => {
+    expect(
+      getGeometryWorkerStepImportCapabilities([
+        {
+          format: "step",
+          label: "STEP",
+          status: "unavailable",
+          readerAvailable: false,
+          healingAvailable: false,
+          checkpointWriterAvailable: false,
+          boundary: "geometry-kernel",
+          readerBoundary: "occt-wasm",
+          packageName: "opencascade.js",
+          packageVersion: "2.0.0-test",
+          checkedBindings: ["STEPControl_Reader_1"],
+          availableBindings: [],
+          missingBindings: ["STEPControl_Reader_1"],
+          reason: "Missing test binding."
+        }
+      ])
+    ).toEqual([
+      expect.objectContaining({
+        format: "step",
+        status: "unavailable",
+        readerAvailable: false,
+        healingAvailable: false,
+        checkpointWriterAvailable: false,
+        boundary: "geometry-worker",
+        kernelBoundary: "geometry-kernel",
+        missingBindings: ["STEPControl_Reader_1"]
+      })
+    ]);
+  });
+
   it("creates a typed exact STEP export worker request", () => {
     const request = createExactStepExportWorkerRequest({
       id: "worker_req_step_export",
@@ -104,6 +157,34 @@ describe("geometry-worker", () => {
         ]
       }
     });
+  });
+
+  it("creates a typed STEP import worker request", () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    const request = createStepImportWorkerRequest({
+      id: "worker_req_step_import",
+      sourceFileName: "fixture-import.step",
+      bytes,
+      maxBodyCount: 1,
+      bodyId: "body_imported_worker",
+      checkpointId: "checkpoint_imported_worker"
+    });
+
+    expect(request).toMatchObject({
+      id: "worker_req_step_import",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.importStep",
+      payload: {
+        id: "worker_req_step_import:payload",
+        version: "geometry-kernel.v1",
+        op: "geometry.importStep",
+        sourceFileName: "fixture-import.step",
+        maxBodyCount: 1,
+        bodyId: "body_imported_worker",
+        checkpointId: "checkpoint_imported_worker"
+      }
+    });
+    expect(request.payload.bytes).toBe(bytes);
   });
 
   it("creates a typed box tessellation worker request", () => {
@@ -1531,6 +1612,93 @@ describe("geometry-worker", () => {
     expect(response.transferables).toEqual([
       response.response.artifact.bytes.buffer
     ]);
+  }, 120_000);
+
+  it("imports STEP bytes through the geometry kernel facade", async () => {
+    const worker = createGeometryKernelWorker({ delayMs: 1 });
+    const exportResponse = await worker.execute(
+      createExactStepExportWorkerRequest({
+        id: "worker_req_step_import_source_export",
+        payloadId: "geometry_req_step_import_source_export",
+        units: "mm",
+        bodies: [
+          {
+            bodyId: "body_step_import_source",
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 2,
+              height: 1
+            },
+            depth: 3,
+            side: "positive"
+          }
+        ]
+      })
+    );
+
+    if (!exportResponse.response.ok) {
+      throw new Error(exportResponse.response.error.message);
+    }
+
+    const importResponse = await worker.execute(
+      createStepImportWorkerRequest({
+        id: "worker_req_step_import_execute",
+        payloadId: "geometry_req_step_import_execute",
+        sourceFileName: "worker-roundtrip.step",
+        bytes: exportResponse.response.artifact.bytes,
+        maxBodyCount: 1,
+        bodyId: "body_imported_worker_roundtrip",
+        checkpointId: "checkpoint_imported_worker_roundtrip"
+      })
+    );
+
+    expect(importResponse).toMatchObject({
+      id: "worker_req_step_import_execute",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.importStep",
+      payloadId: "geometry_req_step_import_execute",
+      response: {
+        ok: true,
+        id: "geometry_req_step_import_execute",
+        op: "geometry.importStep",
+        sourceFormat: "step",
+        sourceFileName: "worker-roundtrip.step",
+        bodyCount: 1,
+        warnings: []
+      }
+    });
+
+    if (!importResponse.response.ok) {
+      throw new Error(importResponse.response.error.message);
+    }
+
+    const body = importResponse.response.bodies[0];
+
+    expect(body).toMatchObject({
+      sourceFormat: "step",
+      sourceFileName: "worker-roundtrip.step",
+      shapeType: "solid",
+      solidCount: 1,
+      checkpointPayload: {
+        checkpointId: "checkpoint_imported_worker_roundtrip",
+        bodyId: "body_imported_worker_roundtrip",
+        sourceKind: "importedBody",
+        brepFormat: "occt-brep",
+        brepWriter: "BRepTools.Write_3"
+      }
+    });
+    expect(body.faceCount).toBeGreaterThanOrEqual(6);
+    expect(body.checkpointPayload.signaturePayload.signature).toBe(
+      body.topologySnapshot.signature
+    );
+    expect(importResponse.transferables).toEqual([
+      body.checkpointPayload.brepBytes.buffer
+    ]);
+    expect(JSON.stringify(importResponse)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
+    );
   }, 120_000);
 
   it("returns revolve exact body metadata through the geometry kernel facade", async () => {

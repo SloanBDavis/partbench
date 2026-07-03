@@ -569,8 +569,11 @@ function createHolePreflightRuntime(
     revolveProfile: unused,
     booleanExtrudes: unused,
     edgeFinish: unused,
+    linearPattern: unused,
+    circularPattern: unused,
     exactBodyMetadata: unused,
     exactTopologyCheckpointPayload: unused,
+    importStep: unused,
     hole(input) {
       holeInputs.push(input);
       return handler(input);

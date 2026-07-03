@@ -16,6 +16,8 @@ export interface BooleanTargetSupportFeature {
   readonly targetTopologyAnchorId?: string;
 }
 
+type SupportedBooleanTargetKind = FeatureExtrudeProfileKind | "importedBody";
+
 export function createSupportedBooleanBodyTargetOperations<
   TFeature extends BooleanTargetSupportFeature
 >(
@@ -48,7 +50,7 @@ export function createSupportedBooleanBodyTargetOperations<
 
   if (
     targetProfileKind !== undefined &&
-    isSupportedCutTargetProfileKind(targetProfileKind)
+    isSupportedHoleTargetProfileKind(targetProfileKind)
   ) {
     operations.push("feature.holeTarget");
   }
@@ -103,7 +105,11 @@ function resolveSupportedBooleanTargetProfileKind<
   targetFeature: TFeature | undefined,
   targetTopologyAnchorId?: string,
   activeResultBodyId?: BodyId
-): FeatureExtrudeProfileKind | undefined {
+): SupportedBooleanTargetKind | undefined {
+  if (targetFeature?.kind === "importedBody") {
+    return targetTopologyAnchorId !== undefined ? "importedBody" : undefined;
+  }
+
   if (
     targetFeature?.kind !== "extrude" ||
     !isFeatureExtrudeProfileKind(targetFeature.profileKind) ||
@@ -184,13 +190,27 @@ function isFeatureExtrudeProfileKind(
 }
 
 function isSupportedCutTargetProfileKind(
-  profileKind: FeatureExtrudeProfileKind
+  profileKind: SupportedBooleanTargetKind
 ): boolean {
-  return profileKind === "rectangle" || profileKind === "circle";
+  return (
+    profileKind === "rectangle" ||
+    profileKind === "circle" ||
+    profileKind === "importedBody"
+  );
 }
 
 function isSupportedAddTargetProfileKind(
-  profileKind: FeatureExtrudeProfileKind
+  profileKind: SupportedBooleanTargetKind
+): boolean {
+  return (
+    profileKind === "rectangle" ||
+    profileKind === "circle" ||
+    profileKind === "importedBody"
+  );
+}
+
+function isSupportedHoleTargetProfileKind(
+  profileKind: SupportedBooleanTargetKind
 ): boolean {
   return profileKind === "rectangle" || profileKind === "circle";
 }

@@ -55,6 +55,7 @@ import {
   type GeneratedReferencesExtrudeFeature,
   type GeneratedReferencesSketch
 } from "./generatedReferences";
+import type { LinearPatternFeature, CircularPatternFeature } from "./index";
 import {
   evaluateSketch,
   evaluateSketchConstraint,
@@ -102,7 +103,10 @@ export type ProjectHealthFeature =
   | ProjectHealthRevolveFeature
   | ProjectHealthHoleFeature
   | ProjectHealthChamferFeature
-  | ProjectHealthFilletFeature;
+  | ProjectHealthFilletFeature
+  | ProjectHealthImportedBodyFeature
+  | LinearPatternFeature
+  | CircularPatternFeature;
 
 export interface ProjectHealthRevolveFeature {
   readonly id: FeatureId;
@@ -150,6 +154,13 @@ export interface ProjectHealthFilletFeature {
   readonly namedReference?: NamedReferenceName;
   readonly topologyAnchorId?: string;
   readonly radius: number;
+}
+
+export interface ProjectHealthImportedBodyFeature {
+  readonly id: FeatureId;
+  readonly kind: "importedBody";
+  readonly bodyId: BodyId;
+  readonly checkpointId: string;
 }
 
 export function createProjectHealth(
@@ -1433,7 +1444,11 @@ function collectSketchEntityAffectedFeatures(
 function getProjectHealthFeaturePrimaryEntityId(
   feature: Exclude<
     ProjectHealthFeature,
-    ProjectHealthChamferFeature | ProjectHealthFilletFeature
+    | ProjectHealthChamferFeature
+    | ProjectHealthFilletFeature
+    | ProjectHealthImportedBodyFeature
+    | LinearPatternFeature
+    | CircularPatternFeature
   >
 ): SketchEntityId {
   return feature.kind === "hole" ? feature.circleEntityId : feature.entityId;
@@ -1443,9 +1458,19 @@ function hasSketchEntitySource(
   feature: ProjectHealthFeature
 ): feature is Exclude<
   ProjectHealthFeature,
-  ProjectHealthChamferFeature | ProjectHealthFilletFeature
+  | ProjectHealthChamferFeature
+  | ProjectHealthFilletFeature
+  | ProjectHealthImportedBodyFeature
+  | LinearPatternFeature
+  | CircularPatternFeature
 > {
-  return feature.kind !== "chamfer" && feature.kind !== "fillet";
+  return (
+    feature.kind !== "chamfer" &&
+    feature.kind !== "fillet" &&
+    feature.kind !== "importedBody" &&
+    feature.kind !== "linearPattern" &&
+    feature.kind !== "circularPattern"
+  );
 }
 
 function isTargetConsumingProjectHealthFeature(
@@ -1882,6 +1907,18 @@ function describeFeatureForHealth(feature: ProjectHealthFeature): string {
 
   if (feature.kind === "revolve") {
     return `${feature.profileKind} revolve`;
+  }
+
+  if (feature.kind === "importedBody") {
+    return "imported STEP body";
+  }
+
+  if (feature.kind === "linearPattern") {
+    return "linear pattern result";
+  }
+
+  if (feature.kind === "circularPattern") {
+    return "circular pattern result";
   }
 
   return `${feature.profileKind} ${feature.operationMode}`;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type {
+  BodyImportedBodyStatusQueryResponse,
   CadBodyDerivedExactMetadataSnapshot,
   CadBodyExactTopologySnapshot,
   CadBatch,
@@ -12,6 +13,7 @@ import type {
   ProjectDependencyGraphQueryResponse,
   ProjectExportReadinessQueryResponse,
   ProjectHealthQueryResponse,
+  ProjectImportReadinessQueryResponse,
   ProjectPackageReadinessQueryResponse,
   ProjectRebuildPlanQueryResponse,
   ProjectStructureQueryResponse,
@@ -38,11 +40,13 @@ import {
   CAD_PROJECT_FORMAT_VERSION_V14,
   CAD_PROJECT_FORMAT_VERSION_V17,
   CAD_PROJECT_FORMAT_VERSION_V18,
+  CAD_PROJECT_FORMAT_VERSION_V19,
   CAD_PROJECT_FORMAT_VERSION_V8,
   CAD_PROJECT_FORMAT_VERSION_V9,
   CURRENT_CAD_PROJECT_FORMAT_VERSION,
   CadEngine,
   type CadProject,
+  type CadProjectImportStepResolver,
   type ChamferFeature,
   type ExtrudeFeature,
   type FilletFeature,
@@ -450,6 +454,155 @@ function createV18CheckpointFixture(): {
   };
 
   return { project, checkpointPayload };
+}
+
+function createV19ImportedBodyFixture(
+  options: {
+    readonly includeCheckpoint?: boolean;
+  } = {}
+): {
+  readonly project: CadProject;
+  readonly checkpointPayload: NonNullable<
+    NonNullable<
+      Parameters<typeof exportCadProjectToWcad>[1]
+    >["topologyCheckpoints"]
+  >[number];
+} {
+  const includeCheckpoint = options.includeCheckpoint ?? true;
+  const topologyIdentity = createEmptyTopologyIdentitySourceSnapshot();
+  const checkpointId = "checkpoint_imported_1";
+  const bodyId = "body_imported_1";
+  const featureId = "feature_imported_1";
+  const paths = createWcadV2CheckpointEntryPaths(checkpointId);
+  const topologyPayload = createCheckpointTopologyPayload([
+    {
+      localId: "checkpoint-local-imported-body",
+      kind: "body",
+      source: "kernel-derived",
+      signature: "imported_body_signature",
+      bounds: {
+        min: [0, 0, 0],
+        max: [4, 2, 3]
+      }
+    }
+  ]);
+  const placeholderSourceIdentity = {
+    algorithm: "partbench-source-v1" as const,
+    sha256: "2222222222222222222222222222222222222222222222222222222222222222"
+  };
+  const checkpointRecord: CadTopologyCheckpointSourceRecord = {
+    checkpointId,
+    bodyId,
+    sourceFeatureId: featureId,
+    sourceIdentity: placeholderSourceIdentity,
+    packageVersion: "partbench.wcad.v2",
+    projectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
+    brepEntryPath: paths.brep,
+    topologyEntryPath: paths.topology,
+    signatureEntryPath: paths.signature,
+    status: "active",
+    diagnostics: []
+  };
+  const importedFeature = {
+    id: featureId,
+    kind: "importedBody",
+    name: "Imported block",
+    sourceFileName: "block.step",
+    sourceFormat: "step",
+    bodyId,
+    checkpointId,
+    healingApplied: true
+  } as const;
+  const document = createCadDocument(
+    [],
+    "mm",
+    [],
+    [],
+    [],
+    [],
+    [[importedFeature.id, importedFeature]],
+    [],
+    {
+      ...topologyIdentity,
+      checkpoints: includeCheckpoint ? [checkpointRecord] : []
+    }
+  );
+  const project = exportCadProject(new CadEngine(document));
+  const checkpointPayload = {
+    checkpointId,
+    bodyId,
+    sourceFeatureId: featureId,
+    kernel: {
+      boundary: "geometry-kernel" as const,
+      snapshotAlgorithm: "partbench-derived-topology-snapshot-v1" as const
+    },
+    tolerance: {
+      linearTolerance: 0.001,
+      angularToleranceDegrees: 0.01
+    },
+    brepBytes: new TextEncoder().encode("imported checkpoint brep bytes"),
+    topologyBytes: encodeCanonicalCbor(topologyPayload),
+    signatureBytes: encodeCanonicalCbor(
+      createCheckpointSignaturePayload(checkpointId, topologyPayload)
+    )
+  };
+
+  return { project, checkpointPayload };
+}
+
+function createResolvedStepImportResolver(): CadProjectImportStepResolver {
+  return {
+    async resolveProjectImportStep(input) {
+      const topologyPayload = createCheckpointTopologyPayload([
+        {
+          localId: "checkpoint-local-imported-body",
+          kind: "body",
+          source: "kernel-derived",
+          signature: "imported_body_signature",
+          bounds: {
+            min: [0, 0, 0],
+            max: [4, 2, 3]
+          }
+        }
+      ]);
+      const checkpointPayload = {
+        checkpointId: input.checkpointId,
+        bodyId: input.bodyId,
+        sourceFeatureId: input.featureId,
+        kernel: {
+          boundary: "geometry-kernel" as const,
+          snapshotAlgorithm: "partbench-derived-topology-snapshot-v1" as const
+        },
+        tolerance: {
+          linearTolerance: 0.001,
+          angularToleranceDegrees: 0.01
+        },
+        brepBytes: new TextEncoder().encode("imported checkpoint brep bytes"),
+        topologyBytes: encodeCanonicalCbor(topologyPayload),
+        signatureBytes: encodeCanonicalCbor(
+          createCheckpointSignaturePayload(input.checkpointId, topologyPayload)
+        )
+      };
+
+      return {
+        resolvedBodies: [
+          {
+            featureId: input.featureId,
+            bodyId: input.bodyId,
+            checkpointId: input.checkpointId,
+            name: "Imported bracket",
+            sourceIdentity: {
+              algorithm: "partbench-source-v1",
+              sha256:
+                "3333333333333333333333333333333333333333333333333333333333333333"
+            },
+            healingApplied: true
+          }
+        ],
+        checkpointPayloads: [checkpointPayload]
+      };
+    }
+  };
 }
 
 function createTopologyAnchorEngine(): CadEngine {
@@ -1696,6 +1849,37 @@ function readProjectPackageReadiness(
 
   if (!response.ok || response.query !== "project.packageReadiness") {
     throw new Error("Expected project.packageReadiness response.");
+  }
+
+  return response;
+}
+
+function readProjectImportReadiness(
+  engine: CadEngine
+): ProjectImportReadinessQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.importReadiness" }
+  });
+
+  if (!response.ok || response.query !== "project.importReadiness") {
+    throw new Error("Expected project.importReadiness response.");
+  }
+
+  return response;
+}
+
+function readBodyImportedBodyStatus(
+  engine: CadEngine,
+  bodyId: string
+): BodyImportedBodyStatusQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "body.importedBodyStatus", bodyId }
+  });
+
+  if (!response.ok || response.query !== "body.importedBodyStatus") {
+    throw new Error("Expected body.importedBodyStatus response.");
   }
 
   return response;
@@ -6826,7 +7010,7 @@ describe("cad-core", () => {
         op: "feature.chamfer",
         bodyId: "body_hole_1",
         expected:
-          "active rectangle/circle newBody extrude target body or supported rectangle cut result body"
+          "active rectangle/circle newBody extrude target body, supported rectangle cut result body, or imported body edge topology anchor target"
       }
     });
 
@@ -6946,7 +7130,7 @@ describe("cad-core", () => {
         op: "feature.fillet",
         bodyId: "body_hole_1",
         expected:
-          "active rectangle/circle newBody extrude target body or supported rectangle cut result body"
+          "active rectangle/circle newBody extrude target body, supported rectangle cut result body, or imported body edge topology anchor target"
       }
     });
     const roundTripJson = exportCadProjectJson(engine);
@@ -31413,6 +31597,260 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(exportCadProjectJson(engine)).not.toContain("web-cad.project.v17");
   });
 
+  it("reports V15 STEP import readiness without creating source records", () => {
+    const engine = createRectangleExtrudeEngine();
+    const beforeJson = exportCadProjectJson(engine);
+    const readiness = readProjectImportReadiness(engine);
+    const ordinaryBodyStatus = readBodyImportedBodyStatus(
+      engine,
+      "body_rect_1"
+    );
+    const missingBodyStatus = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.importedBodyStatus", bodyId: "body_missing" }
+    });
+    const importResult = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "project.importStep",
+          sourceFileName: "bracket.step",
+          sourceFormat: "step",
+          payloadRef: {
+            kind: "transient",
+            payloadId: "step_payload_1",
+            byteLength: 128,
+            sha256:
+              "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          maxBodyCount: 1
+        }
+      ]
+    });
+    const malformedImportResult = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "project.importStep",
+          sourceFileName: "empty.step",
+          sourceFormat: "step",
+          payloadRef: {
+            kind: "transient",
+            payloadId: "empty_step_payload",
+            byteLength: 0
+          }
+        }
+      ]
+    });
+
+    expect(readiness).toMatchObject({
+      ok: true,
+      query: "project.importReadiness",
+      sourceFormat: "step",
+      status: "unavailable",
+      geometryWorkerAvailable: false,
+      stepReaderAvailable: false,
+      healingAvailable: false,
+      importedBodyCount: 0,
+      mutatesSource: false,
+      diagnostics: [
+        expect.objectContaining({
+          code: "STEP_READER_UNAVAILABLE",
+          severity: "blocking"
+        })
+      ]
+    });
+    expect(ordinaryBodyStatus).toMatchObject({
+      ok: true,
+      query: "body.importedBodyStatus",
+      bodyId: "body_rect_1",
+      imported: false,
+      status: "not-imported",
+      checkpointStatus: "not-imported",
+      availableDownstreamOperations: []
+    });
+    expect(missingBodyStatus).toMatchObject({
+      ok: false,
+      query: "body.importedBodyStatus",
+      error: {
+        code: "BODY_NOT_FOUND",
+        bodyId: "body_missing"
+      }
+    });
+    expect(importResult).toMatchObject({
+      ok: false,
+      mode: "commit",
+      error: {
+        code: "STEP_READER_UNAVAILABLE",
+        op: "project.importStep",
+        sourceFileName: "bracket.step",
+        payloadId: "step_payload_1",
+        path: "$.ops[0].payloadRef"
+      }
+    });
+    expect(malformedImportResult).toMatchObject({
+      ok: false,
+      mode: "dryRun",
+      error: {
+        code: "STEP_FILE_CORRUPT",
+        op: "project.importStep",
+        sourceFileName: "empty.step",
+        payloadId: "empty_step_payload",
+        path: "$.ops[0].payloadRef.byteLength"
+      }
+    });
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+    expect(exportCadProjectJson(engine)).not.toContain("project.importStep");
+    expect(exportCadProjectJson(engine)).not.toContain("bracket.step");
+  });
+
+  it("resolves and commits V15 STEP imports through the async command executor without storing transient bytes", async () => {
+    const engine = new CadEngine();
+    const executor = new AsyncCadCommandExecutor(
+      engine,
+      new MockCadCommandWorker(),
+      { stepImportResolver: createResolvedStepImportResolver() }
+    );
+    const batch = {
+      version: "cadops.v1" as const,
+      mode: "dryRun" as const,
+      ops: [
+        {
+          op: "project.importStep" as const,
+          sourceFileName: "bracket.step",
+          sourceFormat: "step" as const,
+          payloadRef: {
+            kind: "transient" as const,
+            payloadId: "step_payload_1",
+            byteLength: 256,
+            sha256:
+              "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          maxBodyCount: 1
+        }
+      ]
+    };
+
+    const dryRun = await executor.executeBatch(batch);
+
+    expect(dryRun).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      createdFeatureIds: ["feat_1"],
+      createdBodyIds: ["body_1"],
+      semanticDiff: {
+        features: {
+          created: [
+            expect.objectContaining({
+              id: "feat_1",
+              kind: "importedBody",
+              bodyId: "body_1",
+              sourceFileName: "bracket.step",
+              checkpointId: "checkpoint_body_1",
+              healingApplied: true
+            })
+          ],
+          bodiesCreated: [
+            expect.objectContaining({
+              id: "body_1",
+              featureId: "feat_1"
+            })
+          ]
+        },
+        references: {
+          topologyCheckpointsCreated: [
+            expect.objectContaining({
+              checkpointId: "checkpoint_body_1",
+              bodyId: "body_1",
+              sourceFeatureId: "feat_1",
+              status: "active"
+            })
+          ]
+        }
+      }
+    });
+    expect(dryRun.importedStepCheckpointPayloads).toHaveLength(1);
+    expect(engine.getDocument().features.size).toBe(0);
+    expect(engine.getTransactions()).toEqual([]);
+
+    const commit = await executor.executeBatch({
+      ...batch,
+      mode: "commit"
+    });
+
+    expect(commit).toMatchObject({
+      ok: true,
+      mode: "commit",
+      transactionId: "txn_1",
+      createdFeatureIds: ["feat_1"],
+      createdBodyIds: ["body_1"]
+    });
+    expect(commit.importedStepCheckpointPayloads).toHaveLength(1);
+    if (!commit.ok || !commit.importedStepCheckpointPayloads) {
+      throw new Error("Expected committed import checkpoint payloads.");
+    }
+
+    const project = exportCadProject(engine);
+    const json = exportCadProjectJson(engine);
+    const restored = importCadProject(project);
+    const wcadExport = await exportCadProjectToWcad(project, {
+      topologyCheckpoints: commit.importedStepCheckpointPayloads
+    });
+    const wcadRead = await readCadProjectWcad(wcadExport.bytes);
+
+    expect(project.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V19);
+    expect(project.document.features).toEqual([
+      expect.objectContaining({
+        id: "feat_1",
+        kind: "importedBody",
+        bodyId: "body_1",
+        checkpointId: "checkpoint_body_1",
+        sourceFileName: "bracket.step",
+        healingApplied: true
+      })
+    ]);
+    expect(project.history).toHaveLength(1);
+    expect(project.history[0]?.ops).toEqual([
+      expect.objectContaining({
+        op: "project.importStep",
+        sourceFileName: "bracket.step",
+        resolvedBodies: [
+          expect.objectContaining({
+            featureId: "feat_1",
+            bodyId: "body_1",
+            checkpointId: "checkpoint_body_1",
+            healingApplied: true
+          })
+        ]
+      })
+    ]);
+    expect(readBodyImportedBodyStatus(engine, "body_1")).toMatchObject({
+      imported: true,
+      status: "healthy",
+      checkpointStatus: "available"
+    });
+    expect(readBodyImportedBodyStatus(restored, "body_1")).toMatchObject({
+      imported: true,
+      status: "healthy",
+      checkpointStatus: "available"
+    });
+    expect(json).toContain("project.importStep");
+    expect(json).toContain("bracket.step");
+    expect(json).not.toContain("imported checkpoint brep bytes");
+    expect(json).not.toMatch(
+      /occtShape|meshId|rendererId|selectionBufferId|fileHandle|localPath|opfsPath/i
+    );
+    expect(wcadExport.manifest.packageVersion).toBe("partbench.wcad.v2");
+    expect(wcadRead.ok).toBe(true);
+    if (!wcadRead.ok) {
+      throw new Error("Expected imported body WCAD round-trip to succeed.");
+    }
+    expect(wcadRead.project.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V19);
+    expect(wcadRead.checkpointPayloads).toHaveLength(1);
+  });
+
   it("preserves explicit V18 topology identity source contracts without migrating ordinary projects", () => {
     const engine = createRectangleExtrudeEngine();
     const ordinaryProject = exportCadProject(engine);
@@ -31460,6 +31898,654 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       code: "INVALID_DOCUMENT",
       path: "$.document.topologyIdentity",
       message: "require web-cad.project.v18"
+    });
+  });
+
+  it("round-trips V19 imported body source records through JSON, structure, and status queries", () => {
+    const { project } = createV19ImportedBodyFixture();
+    const engine = importCadProject(project);
+    const exported = exportCadProject(engine);
+    const structure = readProjectStructure(engine);
+    const status = readBodyImportedBodyStatus(engine, "body_imported_1");
+    const readiness = readProjectImportReadiness(engine);
+    const jsonRoundTrip = importCadProject(
+      parseCadProjectJson(exportCadProjectJson(engine))
+    );
+
+    expect(project.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V19);
+    expect(exported.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V19);
+    expect(structure.features).toEqual([
+      expect.objectContaining({
+        id: "feature_imported_1",
+        kind: "importedBody",
+        bodyId: "body_imported_1",
+        sourceFileName: "block.step",
+        sourceFormat: "step",
+        checkpointId: "checkpoint_imported_1",
+        healingApplied: true,
+        source: {
+          type: "importedStepBody",
+          sourceFileName: "block.step",
+          checkpointId: "checkpoint_imported_1"
+        }
+      })
+    ]);
+    expect(structure.bodies).toEqual([
+      expect.objectContaining({
+        id: "body_imported_1",
+        kind: "solid",
+        featureId: "feature_imported_1",
+        source: {
+          type: "importedStepBody",
+          featureId: "feature_imported_1",
+          sourceFileName: "block.step",
+          checkpointId: "checkpoint_imported_1"
+        }
+      })
+    ]);
+    expect(status).toMatchObject({
+      ok: true,
+      query: "body.importedBodyStatus",
+      bodyId: "body_imported_1",
+      imported: true,
+      status: "healthy",
+      checkpointStatus: "available",
+      healingApplied: true,
+      sourceFileName: "block.step",
+      sourceFormat: "step",
+      checkpointId: "checkpoint_imported_1",
+      availableDownstreamOperations: [],
+      diagnosticCount: 1,
+      diagnostics: [
+        expect.objectContaining({
+          code: "IMPORTED_BODY_ANCHOR_NEEDED",
+          severity: "warning"
+        })
+      ]
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "selection.referenceCandidates",
+          selection: { type: "body", bodyId: "body_imported_1" },
+          requiredOperation: "feature.extrudeCutTarget"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "selection.referenceCandidates",
+      status: "non-commandable",
+      candidateCount: 0,
+      issueCount: 1,
+      issues: [
+        expect.objectContaining({
+          code: "IMPORTED_BODY_ANCHOR_NEEDED",
+          status: "non-commandable",
+          bodyId: "body_imported_1",
+          featureId: "feature_imported_1",
+          checkpointId: "checkpoint_imported_1"
+        })
+      ]
+    });
+    expect(readiness).toMatchObject({
+      ok: true,
+      query: "project.importReadiness",
+      importedBodyCount: 1,
+      mutatesSource: false
+    });
+    expect(exportCadProject(jsonRoundTrip).schemaVersion).toBe(
+      CAD_PROJECT_FORMAT_VERSION_V19
+    );
+    expect(
+      readBodyImportedBodyStatus(jsonRoundTrip, "body_imported_1")
+    ).toMatchObject({
+      imported: true,
+      status: "healthy",
+      checkpointStatus: "available"
+    });
+    expectNoDerivedInfraIdentifiers(exported.document.features);
+    expectNoDerivedInfraIdentifiers(exported.document.topologyIdentity);
+  });
+
+  it("rejects imported body source records before V19", () => {
+    const { project } = createV19ImportedBodyFixture();
+    const invalidProject: CadProject = {
+      ...project,
+      schemaVersion: CAD_PROJECT_FORMAT_VERSION_V18
+    };
+
+    expectProjectImportError(() => importCadProject(invalidProject), {
+      code: "INVALID_FEATURE",
+      path: "$.document.features[0].kind",
+      message: "web-cad.project.v19"
+    });
+  });
+
+  it("reports missing checkpoints for V19 imported body source records", () => {
+    const { project } = createV19ImportedBodyFixture({
+      includeCheckpoint: false
+    });
+    const engine = importCadProject(project);
+    const structure = readProjectStructure(engine);
+    const status = readBodyImportedBodyStatus(engine, "body_imported_1");
+
+    expect(exportCadProject(engine).schemaVersion).toBe(
+      CAD_PROJECT_FORMAT_VERSION_V19
+    );
+    expect(structure.bodies).toEqual([
+      expect.objectContaining({
+        id: "body_imported_1",
+        source: expect.objectContaining({
+          type: "importedStepBody",
+          checkpointId: "checkpoint_imported_1"
+        })
+      })
+    ]);
+    expect(status).toMatchObject({
+      ok: true,
+      query: "body.importedBodyStatus",
+      bodyId: "body_imported_1",
+      imported: true,
+      status: "checkpoint-missing",
+      checkpointStatus: "missing",
+      availableDownstreamOperations: [],
+      diagnosticCount: 1,
+      diagnostics: [
+        expect.objectContaining({
+          code: "IMPORTED_BODY_CHECKPOINT_MISSING",
+          severity: "blocking"
+        })
+      ]
+    });
+  });
+
+  it("reports imported body topology anchor cut and add readiness from checkpoint proof", () => {
+    const { project } = createV19ImportedBodyFixture();
+    const engine = importCadProject(project);
+
+    engine.apply({
+      op: "topology.anchor.create",
+      anchorId: "anchor_imported_body_1",
+      entityKind: "body",
+      bodyId: "body_imported_1",
+      checkpointId: "checkpoint_imported_1",
+      checkpointEntityId: "checkpoint-local-imported-body",
+      stableId: "generated:body:body_imported_1",
+      sourceFeatureId: "feature_imported_1",
+      sourceSemanticRole: "imported body",
+      signatureHash: "imported_body_signature"
+    });
+    engine.apply({
+      op: "topology.anchor.create",
+      anchorId: "anchor_imported_face_1",
+      entityKind: "face",
+      bodyId: "body_imported_1",
+      checkpointId: "checkpoint_imported_1",
+      checkpointEntityId: "checkpoint-local-imported-face",
+      sourceFeatureId: "feature_imported_1",
+      sourceSemanticRole: "imported planar face",
+      signatureHash: "imported_face_signature"
+    });
+
+    const snapshot = createTopologyMatchSnapshotInput({
+      checkpointId: "checkpoint_imported_1",
+      bodyId: "body_imported_1",
+      sourceFeatureId: "feature_imported_1",
+      entities: [
+        {
+          localId: "checkpoint-local-imported-body",
+          kind: "body",
+          signature: "imported_body_signature",
+          bounds: {
+            min: [0, 0, 0],
+            max: [4, 2, 3]
+          }
+        }
+      ]
+    });
+    const anchorReadiness = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.anchorCommandReadiness",
+        anchorId: "anchor_imported_body_1",
+        requiredOperation: "feature.extrudeCutTarget",
+        snapshot
+      }
+    });
+    const targetReadiness = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.commandTargetReadiness",
+        target: {
+          type: "topologyAnchor",
+          anchorId: "anchor_imported_body_1"
+        },
+        desiredOperation: "feature.extrudeAddTarget",
+        snapshot
+      }
+    });
+    const faceSketch = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "sketch.createOnFace",
+          id: "sketch_imported_face_1",
+          name: "Imported face sketch",
+          topologyAnchorId: "anchor_imported_face_1",
+          topologyAnchorProof: {
+            kind: "axisAlignedPlanarFace",
+            entityKind: "face",
+            evidenceSource: "checkpointSnapshot",
+            exposesCheckpointLocalIds: false,
+            planarAxis: "z",
+            planarCoordinate: 3,
+            bounds: {
+              min: [0, 0, 3],
+              max: [4, 2, 3]
+            }
+          }
+        }
+      ]
+    });
+    const cut = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "sketch.addRectangle",
+          sketchId: "sketch_imported_face_1",
+          id: "rect_imported_cut_1",
+          center: [1, 1],
+          width: 0.5,
+          height: 0.5
+        },
+        {
+          op: "feature.extrude",
+          id: "feat_imported_cut_1",
+          bodyId: "body_imported_cut_1",
+          sketchId: "sketch_imported_face_1",
+          entityId: "rect_imported_cut_1",
+          depth: 0.5,
+          operationMode: "cut",
+          targetTopologyAnchorId: "anchor_imported_body_1"
+        }
+      ]
+    });
+
+    expect(anchorReadiness).toMatchObject({
+      ok: true,
+      query: "topology.anchorCommandReadiness",
+      status: "ready",
+      commandable: true,
+      bodyId: "body_imported_1",
+      entityKind: "body",
+      checkpointId: "checkpoint_imported_1",
+      commandOperations: [
+        "feature.extrudeCutTarget",
+        "feature.extrudeAddTarget"
+      ],
+      proof: expect.objectContaining({
+        kind: "checkpointEntityPresent",
+        entityKind: "body",
+        exposesCheckpointLocalIds: false
+      })
+    });
+    expect(anchorReadiness).not.toMatchObject({
+      commandOperations: expect.arrayContaining(["feature.holeTarget"])
+    });
+    expect(targetReadiness).toMatchObject({
+      ok: true,
+      query: "topology.commandTargetReadiness",
+      status: "ready",
+      commandable: true,
+      supportedOperations: [
+        "feature.extrudeCutTarget",
+        "feature.extrudeAddTarget"
+      ],
+      operationSummaries: expect.arrayContaining([
+        expect.objectContaining({
+          operation: "feature.extrudeAddTarget",
+          status: "ready",
+          commandable: true,
+          source: "topology.anchorCommandReadiness"
+        })
+      ]),
+      proof: expect.objectContaining({
+        kind: "checkpointEntityPresent",
+        exposesCheckpointLocalIds: false
+      })
+    });
+    expect(faceSketch).toMatchObject({
+      ok: true,
+      createdSketchIds: ["sketch_imported_face_1"]
+    });
+    expect(
+      engine.getDocument().sketches.get("sketch_imported_face_1")?.attachment
+    ).toEqual({
+      kind: "topologyAnchorFace",
+      bodyId: "body_imported_1",
+      topologyAnchorId: "anchor_imported_face_1",
+      checkpointId: "checkpoint_imported_1",
+      planarAxis: "z",
+      planarCoordinate: 3
+    });
+    expect(cut).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_imported_cut_1"],
+      createdBodyIds: ["body_imported_cut_1"]
+    });
+    expect(readProjectStructure(engine).bodies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "body_imported_1",
+          consumedByFeatureId: "feat_imported_cut_1"
+        }),
+        expect.objectContaining({
+          id: "body_imported_cut_1"
+        })
+      ])
+    );
+    expect(readProjectStructure(engine).features).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "feat_imported_cut_1",
+          kind: "extrude",
+          targetBodyId: "body_imported_1",
+          targetTopologyAnchorId: "anchor_imported_body_1"
+        })
+      ])
+    );
+    expect(JSON.stringify({ anchorReadiness, targetReadiness })).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|checkpointEntityId|checkpoint-local/i
+    );
+  });
+
+  it("creates imported body chamfer and fillet features from exact topology edge anchors", () => {
+    const createImportedEdgeAnchorEngine = (): CadEngine => {
+      const { project } = createV19ImportedBodyFixture();
+      const engine = importCadProject(project);
+
+      engine.apply({
+        op: "topology.anchor.create",
+        anchorId: "anchor_imported_edge_1",
+        entityKind: "edge",
+        bodyId: "body_imported_1",
+        checkpointId: "checkpoint_imported_1",
+        checkpointEntityId: "checkpoint-local-imported-edge",
+        sourceFeatureId: "feature_imported_1",
+        sourceSemanticRole: "imported linear edge",
+        signatureHash: "imported_edge_signature"
+      });
+
+      return engine;
+    };
+    const importedEdgeSnapshot = createTopologyMatchSnapshotInput({
+      checkpointId: "checkpoint_imported_1",
+      bodyId: "body_imported_1",
+      sourceFeatureId: "feature_imported_1",
+      entities: [
+        {
+          localId: "checkpoint-local-imported-edge",
+          kind: "edge",
+          signature: "imported_edge_signature",
+          bounds: {
+            min: [0, 0, 0],
+            max: [4, 0, 0]
+          }
+        }
+      ]
+    });
+    const chamferEngine = createImportedEdgeAnchorEngine();
+    const readiness = chamferEngine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.anchorCommandReadiness",
+        anchorId: "anchor_imported_edge_1",
+        requiredOperation: "feature.chamfer",
+        snapshot: importedEdgeSnapshot
+      }
+    });
+
+    expect(readiness).toMatchObject({
+      ok: true,
+      query: "topology.anchorCommandReadiness",
+      status: "ready",
+      commandable: true,
+      bodyId: "body_imported_1",
+      entityKind: "edge",
+      checkpointId: "checkpoint_imported_1",
+      commandOperations: ["feature.chamfer", "feature.fillet"],
+      proof: {
+        kind: "axisAlignedLinearEdge",
+        entityKind: "edge",
+        evidenceSource: "checkpointSnapshot",
+        exposesCheckpointLocalIds: false,
+        linearAxis: "x",
+        length: 4
+      }
+    });
+
+    const proof =
+      "proof" in readiness && readiness.proof ? readiness.proof : undefined;
+
+    if (!proof) {
+      throw new Error("Expected imported edge readiness proof.");
+    }
+
+    const beforeJson = exportCadProjectJson(chamferEngine);
+    const missingProof = chamferEngine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "feature.chamfer",
+          id: "feat_imported_edge_chamfer_missing_proof",
+          bodyId: "body_imported_edge_chamfer_missing_proof",
+          targetBodyId: "body_imported_1",
+          topologyAnchorId: "anchor_imported_edge_1",
+          distance: 0.25
+        }
+      ]
+    });
+    const dryRun = chamferEngine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "feature.chamfer",
+          id: "feat_imported_edge_chamfer",
+          bodyId: "body_imported_edge_chamfer",
+          targetBodyId: "body_imported_1",
+          topologyAnchorId: "anchor_imported_edge_1",
+          topologyAnchorProof: proof,
+          distance: 0.25
+        }
+      ]
+    });
+
+    expect(missingProof).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_TOPOLOGY_ANCHOR",
+        bodyId: "body_imported_1",
+        topologyAnchorId: "anchor_imported_edge_1",
+        path: "$.ops[0].topologyAnchorProof",
+        expected: "axisAlignedLinearEdge proof for imported-body edge anchor",
+        received: "missing topologyAnchorProof"
+      }
+    });
+    expect(dryRun).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      createdFeatureIds: ["feat_imported_edge_chamfer"],
+      createdBodyIds: ["body_imported_edge_chamfer"]
+    });
+    expect(exportCadProjectJson(chamferEngine)).toBe(beforeJson);
+
+    const chamferResult = chamferEngine.apply({
+      op: "feature.chamfer",
+      id: "feat_imported_edge_chamfer",
+      bodyId: "body_imported_edge_chamfer",
+      targetBodyId: "body_imported_1",
+      topologyAnchorId: "anchor_imported_edge_1",
+      topologyAnchorProof: proof,
+      distance: 0.25
+    });
+    const chamferFeature = getChamferFeature(
+      chamferEngine,
+      "feat_imported_edge_chamfer"
+    );
+    const chamferStructure = readProjectStructure(chamferEngine);
+    const chamferBody = chamferStructure.bodies.find(
+      (body) => body.id === "body_imported_edge_chamfer"
+    );
+    const snapshotOnlyJson = exportCadProjectJson(
+      new CadEngine(chamferEngine.getDocument())
+    );
+    const exportedProject = parseCadProjectJson(snapshotOnlyJson);
+    const restored = importCadProjectJson(snapshotOnlyJson);
+    const restoredEdit = restored.apply({
+      op: "feature.updateChamfer",
+      id: "feat_imported_edge_chamfer",
+      distance: 0.35
+    });
+
+    expect(chamferFeature).toMatchObject({
+      kind: "chamfer",
+      targetBodyId: "body_imported_1",
+      topologyAnchorId: "anchor_imported_edge_1",
+      distance: 0.25,
+      bodyId: "body_imported_edge_chamfer"
+    });
+    expect(chamferFeature.edgeStableId).toBeUndefined();
+    expect(chamferFeature.namedReference).toBeUndefined();
+    expect(chamferResult.transaction.ops[0]).toMatchObject({
+      op: "feature.chamfer",
+      topologyAnchorId: "anchor_imported_edge_1",
+      topologyAnchorProof: expect.objectContaining({
+        kind: "axisAlignedLinearEdge",
+        exposesCheckpointLocalIds: false
+      })
+    });
+    expect(chamferStructure.bodies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "body_imported_1",
+          consumedByFeatureId: "feat_imported_edge_chamfer"
+        })
+      ])
+    );
+    expect(chamferBody?.source).toMatchObject({
+      type: "edgeChamferFeature",
+      featureId: "feat_imported_edge_chamfer",
+      targetBodyId: "body_imported_1",
+      topologyAnchorId: "anchor_imported_edge_1"
+    });
+    expect("edgeStableId" in (chamferBody?.source ?? {})).toBe(false);
+    expect(exportedProject.document.features).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "feat_imported_edge_chamfer",
+          kind: "chamfer",
+          targetBodyId: "body_imported_1",
+          topologyAnchorId: "anchor_imported_edge_1",
+          distance: 0.25
+        })
+      ])
+    );
+    expect(
+      getChamferFeature(restored, "feat_imported_edge_chamfer")
+    ).toMatchObject({
+      topologyAnchorId: "anchor_imported_edge_1",
+      distance: 0.35
+    });
+    expect(restoredEdit.transaction.diff.features?.modified).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "feat_imported_edge_chamfer",
+          kind: "chamfer"
+        })
+      ])
+    );
+
+    const filletEngine = createImportedEdgeAnchorEngine();
+    const filletResult = filletEngine.apply({
+      op: "feature.fillet",
+      id: "feat_imported_edge_fillet",
+      bodyId: "body_imported_edge_fillet",
+      targetBodyId: "body_imported_1",
+      topologyAnchorId: "anchor_imported_edge_1",
+      topologyAnchorProof: proof,
+      radius: 0.3
+    });
+    const filletFeature = getFilletFeature(
+      filletEngine,
+      "feat_imported_edge_fillet"
+    );
+
+    expect(filletFeature).toMatchObject({
+      kind: "fillet",
+      targetBodyId: "body_imported_1",
+      topologyAnchorId: "anchor_imported_edge_1",
+      radius: 0.3,
+      bodyId: "body_imported_edge_fillet"
+    });
+    expect(filletFeature.edgeStableId).toBeUndefined();
+    expect(filletResult.transaction.ops[0]).toMatchObject({
+      op: "feature.fillet",
+      topologyAnchorId: "anchor_imported_edge_1"
+    });
+    expect(
+      JSON.stringify({
+        readiness,
+        chamferTransaction: chamferResult.transaction,
+        filletTransaction: filletResult.transaction
+      })
+    ).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|checkpointEntityId|checkpoint-local/i
+    );
+  });
+
+  it("routes V19 imported body projects through WCAD v2 while keeping topology identity on the V18 contract", async () => {
+    const { project, checkpointPayload } = createV19ImportedBodyFixture();
+    const exported = await exportCadProjectToWcad(project, {
+      createdAt: "2026-06-21T00:00:00.000Z",
+      topologyCheckpoints: [checkpointPayload]
+    });
+    const read = await readCadProjectWcad(exported.bytes);
+
+    expect(exported.manifest.packageVersion).toBe("partbench.wcad.v2");
+    if (exported.manifest.packageVersion !== "partbench.wcad.v2") {
+      throw new Error("Expected WCAD v2 manifest.");
+    }
+
+    expect(exported.manifest.document.schemaVersion).toBe(
+      CAD_PROJECT_FORMAT_VERSION_V19
+    );
+    expect(exported.manifest.topologyIdentity.projectSchemaVersion).toBe(
+      CAD_PROJECT_FORMAT_VERSION_V18
+    );
+    expect(exported.manifest.topologyIdentity.checkpointCount).toBe(1);
+    expect(read.ok).toBe(true);
+    if (!read.ok) {
+      throw new Error("Expected V19 WCAD v2 package read to succeed.");
+    }
+    expect(read.project.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V19);
+    expect(read.manifest.packageVersion).toBe("partbench.wcad.v2");
+    expect(read.manifest.document.schemaVersion).toBe(
+      CAD_PROJECT_FORMAT_VERSION_V19
+    );
+    expect(
+      readBodyImportedBodyStatus(
+        importCadProject(read.project),
+        "body_imported_1"
+      )
+    ).toMatchObject({
+      imported: true,
+      status: "healthy",
+      checkpointStatus: "available"
     });
   });
 
@@ -38529,6 +39615,43 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(response).toMatchObject({
       ok: false,
       query: "project.topologyIdentityReadiness",
+      error: {
+        code: "INVALID_QUERY"
+      }
+    });
+  });
+
+  it("rejects malformed project.importReadiness query payloads", () => {
+    const engine = new CadEngine();
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "project.importReadiness",
+        fileHandle: "not-source"
+      }
+    } as unknown as CadQueryRequest);
+
+    expect(response).toMatchObject({
+      ok: false,
+      query: "project.importReadiness",
+      error: {
+        code: "INVALID_QUERY"
+      }
+    });
+  });
+
+  it("rejects malformed body.importedBodyStatus query payloads", () => {
+    const engine = new CadEngine();
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.importedBodyStatus"
+      }
+    } as unknown as CadQueryRequest);
+
+    expect(response).toMatchObject({
+      ok: false,
+      query: "body.importedBodyStatus",
       error: {
         code: "INVALID_QUERY"
       }

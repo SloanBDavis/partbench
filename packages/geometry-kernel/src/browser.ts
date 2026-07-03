@@ -12,10 +12,12 @@ import {
   createOcctExactBodyMetadataWithInstance,
   createOcctExactTopologySnapshotWithInstance,
   createOcctExactTopologyCheckpointPayloadWithInstance,
+  createOcctStepImportWithInstance,
   createOcctStepExportWithInstance
 } from "@web-cad/occt-wasm/browser";
 import {
   executeGeometryKernelRequestWithMeshFactory,
+  getGeometryKernelStepImportCapabilities,
   getGeometryResponseTransferables,
   type BooleanExtrudePrimitiveSource,
   type BooleanExtrudeResultSource,
@@ -52,6 +54,9 @@ import {
   type GeometryKernelExactStepExportArtifact,
   type GeometryKernelExactStepExportFactory,
   type GeometryKernelExactStepExportSuccessResponse,
+  type GeometryKernelImportedBodyCheckpointPayload,
+  type GeometryKernelImportedBodyPayload,
+  type GeometryKernelImportedBodyShapeType,
   type GeometryKernelExactMetadataDiagnostic,
   type GeometryKernelHoleDepthMode,
   type GeometryKernelHoleDirection,
@@ -61,6 +66,15 @@ import {
   type GeometryKernelResponseForRequest,
   type GeometryKernelRequest,
   type GeometryKernelResponse,
+  type GeometryKernelStepImportCapability,
+  type GeometryKernelStepImportCapabilityInput,
+  type GeometryKernelStepImportCapabilityStatus,
+  type GeometryKernelStepImportDiagnostic,
+  type GeometryKernelStepImportDiagnosticCode,
+  type GeometryKernelStepImportDiagnosticSeverity,
+  type GeometryKernelStepImportFactory,
+  type GeometryKernelStepImportResult,
+  type GeometryKernelStepImportSuccessResponse,
   type GeometryKernelSuccessResponse,
   type GeometryKernelVersion,
   type GeometryKernelErrorResponse,
@@ -84,6 +98,7 @@ import {
   type FilletEdgeFinishRequest,
   type SerializableMeshData,
   type SphereGeometryDimensions,
+  type StepImportRequest,
   type TessellateExtrudeRequest,
   type TessellateBoxRequest,
   type TessellateConeRequest,
@@ -134,6 +149,9 @@ export type {
   GeometryKernelExactStepExportArtifact,
   GeometryKernelExactStepExportFactory,
   GeometryKernelExactStepExportSuccessResponse,
+  GeometryKernelImportedBodyCheckpointPayload,
+  GeometryKernelImportedBodyPayload,
+  GeometryKernelImportedBodyShapeType,
   GeometryKernelExactMetadataDiagnostic,
   GeometryKernelExtrudeProfileKind,
   GeometryKernelHoleDepthMode,
@@ -149,6 +167,15 @@ export type {
   GeometryKernelResponseForRequest,
   GeometryKernelRequest,
   GeometryKernelResponse,
+  GeometryKernelStepImportCapability,
+  GeometryKernelStepImportCapabilityInput,
+  GeometryKernelStepImportCapabilityStatus,
+  GeometryKernelStepImportDiagnostic,
+  GeometryKernelStepImportDiagnosticCode,
+  GeometryKernelStepImportDiagnosticSeverity,
+  GeometryKernelStepImportFactory,
+  GeometryKernelStepImportResult,
+  GeometryKernelStepImportSuccessResponse,
   GeometryKernelSuccessResponse,
   GeometryKernelTopologyCounts,
   GeometryKernelTopologyDiagnostic,
@@ -166,6 +193,7 @@ export type {
   GeometryKernelErrorResponse,
   SerializableMeshData,
   SphereGeometryDimensions,
+  StepImportRequest,
   TessellateBoxRequest,
   TessellateConeRequest,
   TessellateCylinderRequest,
@@ -175,7 +203,10 @@ export type {
   TorusGeometryDimensions,
   TessellationOptions
 };
-export { getGeometryResponseTransferables };
+export {
+  getGeometryKernelStepImportCapabilities,
+  getGeometryResponseTransferables
+};
 
 export interface BrowserGeometryKernelTimings {
   readonly occtLoadMs: number;
@@ -225,6 +256,7 @@ export async function executeTimedBrowserGeometryKernelRequest<
       createExactTopologySnapshot: createExactTopologySnapshotWithBrowserOcct,
       createExactTopologyCheckpointPayload:
         createExactTopologyCheckpointPayloadWithBrowserOcct,
+      createStepImport: createStepImportWithBrowserOcct,
       createExactStepExport: createExactStepExportWithBrowserOcct
     },
     request
@@ -489,6 +521,34 @@ export async function executeTimedBrowserGeometryKernelRequest<
 
     try {
       return createOcctStepExportWithInstance(oc, input);
+    } catch (error) {
+      failureStage = "tessellation";
+      throw error;
+    } finally {
+      tessellationMs = performance.now() - tessellationStart;
+    }
+  }
+
+  async function createStepImportWithBrowserOcct(
+    input: Omit<StepImportRequest, "id" | "version" | "op">
+  ) {
+    const occtLoadStart = performance.now();
+    let oc: Awaited<ReturnType<typeof loadBrowserOcct>>;
+
+    try {
+      oc = await loadBrowserOcct();
+    } catch (error) {
+      occtLoadMs = performance.now() - occtLoadStart;
+      failureStage = "wasmLoad";
+      throw error;
+    }
+
+    occtLoadMs = performance.now() - occtLoadStart;
+
+    const tessellationStart = performance.now();
+
+    try {
+      return createOcctStepImportWithInstance(oc, input);
     } catch (error) {
       failureStage = "tessellation";
       throw error;

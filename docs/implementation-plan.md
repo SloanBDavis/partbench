@@ -4,14 +4,16 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the repo state and the
 active implementation roadmap.
 
-Last updated: 2026-06-24.
+Last updated: 2026-07-01.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/v12.md` for the completed
 stable boolean topology and result references release record, `docs/v13.md` for
 the completed general topology identity and B-rep checkpoint foundation release
-record, `docs/v14.md` for the active topology-backed downstream modeling
-release contract, `docs/native-format.md` for project-format direction, and
+record, `docs/v14.md` for the completed topology-backed downstream modeling
+release record, `docs/v15.md` for the planned V15 STEP import, expanded
+feature families, and parameter expressions release contract,
+`docs/native-format.md` for project-format direction, and
 `docs/occt-wasm-size.md` for OCCT/WASM load-size findings. V7, V8, V9, V10,
 and V11 are completed historical releases whose details are now condensed in
 this plan instead of maintained as separate release documents.
@@ -88,10 +90,15 @@ These constraints remain active:
     support matrix, so circle-origin topology body anchors stay cut/add/hole-ready
     where supported while unsupported targets stay blocked with structured
     diagnostics.
-    Completed V8, V9, V10, V11, V12, and V13
+    Completed V8, V9, V10, V11, V12, V13, and V14
     tranche records below remain historical release records and compatibility
     guardrails. Do not re-open those releases unless the user explicitly asks
-    for a maintenance or regression-fix tranche.
+    for a maintenance or regression-fix tranche. V15 is planned in
+    `docs/v15.md` as the STEP import, expanded feature families (linear
+    pattern, circular pattern, mirror, shell), and parameter expression
+    language release. It introduces `web-cad.project.v19` for new V15 source
+    records and reuses the existing V13 topology checkpoint/anchor system for
+    imported body integration.
 14. V8 Tranche A is implemented as a protocol and pure-helper slice only:
     `partbench.wcad.v1` manifest/source-identity types, structured package
     validation diagnostics, `project.packageReadiness`, and thin agent/MCP

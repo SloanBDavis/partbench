@@ -211,6 +211,8 @@ function getBodySourceDetail(body: CadExportBodyReadiness): string {
       return "Chamfer bodies are not ready for STEP export yet.";
     case "authoredFillet":
       return "Fillet bodies are not ready for STEP export yet.";
+    case "importedBody":
+      return "Imported STEP bodies need checkpoint-backed export support.";
     case "primitiveCompatibility":
       return "Primitive object source is not treated as an authored CAD export body.";
     case "unresolvedSource":

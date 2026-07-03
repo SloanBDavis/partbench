@@ -7,10 +7,13 @@ import {
   WcadPackageImportError,
   type CadBodySnapshot,
   type CadBodyTopologySnapshot,
+  type CadAsyncBatchResponse,
   type CadDocument,
   type CadFeatureSummary,
   type CadPartSnapshot,
   type CadTransactionHistoryEntry,
+  type WcadTopologyCheckpointPayload,
+  type WcadTopologyCheckpointPayloadInput,
   type WcadPackageExportResult,
   type BodyMeasurementsSnapshot,
   type ObjectMeasurementsSnapshot
@@ -256,6 +259,10 @@ import {
   exportProjectWcadWithTopologyCheckpoints,
   isProjectWcadTopologyCheckpointPayloadError
 } from "./projectWcadTopologyCheckpoints";
+import {
+  createProjectStepImportPayloadStore,
+  createProjectStepImportResolver
+} from "./projectStepImportResolver";
 import { createSketchOnFaceCommandPlan } from "./sketchOnFacePromotion";
 import {
   createTopologyRepairCandidatePreview,
@@ -284,10 +291,6 @@ import {
 import "./styles.css";
 
 const engine = new CadEngine();
-const commandExecutor = new AsyncCadCommandExecutor(
-  engine,
-  new BrowserCadCommandWorker()
-);
 const derivedGeometryEnabled = __PARTBENCH_DERIVED_GEOMETRY_ENABLED__;
 const supportedOpfsCacheArtifactVersions = [
   DERIVED_MESH_CACHE_ARTIFACT_VERSION
@@ -361,6 +364,45 @@ const quickTorusForm: PrimitiveCommandForm = {
 type UtilityPanelId = "sketches" | "history";
 
 type ModelBrowserPanelId = "tree" | "selection";
+
+function createWcadTopologyCheckpointPayloadInputCache(
+  payloads: readonly WcadTopologyCheckpointPayload[] | undefined
+): readonly WcadTopologyCheckpointPayloadInput[] {
+  return (
+    payloads?.map((payload) => ({
+      checkpointId: payload.checkpointId,
+      bodyId: payload.bodyId,
+      ...(payload.sourceFeatureId
+        ? { sourceFeatureId: payload.sourceFeatureId }
+        : {}),
+      units: payload.manifestEntry.units,
+      kernel: payload.manifestEntry.kernel,
+      tolerance: payload.manifestEntry.tolerance,
+      brepBytes: payload.brepBytes,
+      topologyBytes: payload.topologyBytes,
+      signatureBytes: payload.signatureBytes
+    })) ?? []
+  );
+}
+
+function mergeWcadTopologyCheckpointPayloadInputCache(
+  current: readonly WcadTopologyCheckpointPayloadInput[],
+  incoming: readonly WcadTopologyCheckpointPayloadInput[] | undefined
+): readonly WcadTopologyCheckpointPayloadInput[] {
+  if (!incoming || incoming.length === 0) {
+    return current;
+  }
+
+  const payloadsByCheckpointId = new Map(
+    current.map((payload) => [payload.checkpointId, payload])
+  );
+
+  for (const payload of incoming) {
+    payloadsByCheckpointId.set(payload.checkpointId, payload);
+  }
+
+  return [...payloadsByCheckpointId.values()];
+}
 
 function readTransactionHistory(): readonly CadTransactionHistoryEntry[] {
   const response = engine.executeQuery({
@@ -1212,6 +1254,9 @@ export function App() {
   const derivedExactMetadataServiceRef = useRef<
     DerivedExactMetadataService | undefined
   >(undefined);
+  const stepImportPayloadStoreRef = useRef(
+    createProjectStepImportPayloadStore()
+  );
   const [document, setDocument] = useState<CadDocument>(() =>
     engine.getDocument()
   );
@@ -1257,6 +1302,10 @@ export function App() {
   const [projectFile, setProjectFile] = useState<ProjectFileWorkflowState>(() =>
     createInitialProjectFileWorkflowState()
   );
+  const [
+    wcadTopologyCheckpointPayloadCache,
+    setWcadTopologyCheckpointPayloadCache
+  ] = useState<readonly WcadTopologyCheckpointPayloadInput[]>([]);
   const [projectFileHandle, setProjectFileHandle] = useState<
     WcadFileHandleLike | undefined
   >();
@@ -1352,6 +1401,16 @@ export function App() {
 
     return derivedGeometryRuntimeRef.current;
   }, []);
+  const commandExecutor = useMemo(
+    () =>
+      new AsyncCadCommandExecutor(engine, new BrowserCadCommandWorker(), {
+        stepImportResolver: createProjectStepImportResolver({
+          getRuntime: getDerivedGeometryRuntime,
+          payloadStore: stepImportPayloadStoreRef.current
+        })
+      }),
+    [getDerivedGeometryRuntime]
+  );
   const getDerivedGeometryService = useCallback((): DerivedGeometryService => {
     if (!derivedGeometryServiceRef.current) {
       derivedGeometryServiceRef.current = new DerivedGeometryService({
@@ -2017,7 +2076,7 @@ export function App() {
   async function commitOps(
     ops: readonly CadOp[],
     getNextSelectedId: (response: CadBatchResponse) => string | null | undefined
-  ): Promise<CadBatchResponse | undefined> {
+  ): Promise<CadAsyncBatchResponse | undefined> {
     setCommandPending(true);
     setCommandError(undefined);
     setCommandNotice(undefined);
@@ -2033,6 +2092,12 @@ export function App() {
       }
 
       syncDocument(getNextSelectedId(response));
+      setWcadTopologyCheckpointPayloadCache((current) =>
+        mergeWcadTopologyCheckpointPayloadInputCache(
+          current,
+          response.importedStepCheckpointPayloads
+        )
+      );
       setProjectFile((current) => markProjectFileDirty(current));
       return response;
     } finally {
@@ -3023,6 +3088,12 @@ export function App() {
         return "chamfer";
       case "fillet":
         return "fillet";
+      case "importedBody":
+        return "imported body";
+      case "linearPattern":
+        return "linear pattern";
+      case "circularPattern":
+        return "circular pattern";
       case "primitive":
         return feature.primitive;
     }
@@ -3272,6 +3343,10 @@ export function App() {
     }
 
     engine.loadProject(result.project);
+    stepImportPayloadStoreRef.current.clear();
+    setWcadTopologyCheckpointPayloadCache(
+      createWcadTopologyCheckpointPayloadInputCache(result.checkpointPayloads)
+    );
     setProjectFileHandle(handle);
     setCommandError(undefined);
     setSelectedGeneratedReference(undefined);
@@ -3299,6 +3374,7 @@ export function App() {
       features: projectStructure.features,
       sketches,
       generatedFacesByKey,
+      importedCheckpointPayloads: wcadTopologyCheckpointPayloadCache,
       runtime: getDerivedGeometryRuntime(),
       createdAt: timestamp,
       modifiedAt: timestamp
@@ -3500,6 +3576,8 @@ export function App() {
     }
 
     engine.loadProject(preview.project);
+    stepImportPayloadStoreRef.current.clear();
+    setWcadTopologyCheckpointPayloadCache([]);
     setProjectFileHandle(undefined);
     setProjectFile(
       createJsonFallbackProjectFileState(

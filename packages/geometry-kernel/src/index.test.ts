@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   executeGeometryKernelRequest,
   getGeometryKernelExactExportCapabilities,
+  getGeometryKernelStepImportCapabilities,
   getGeometryResponseTransferables
 } from "./index";
 import {
   executeGeometryKernelRequestWithMeshFactory,
   type GeometryKernelExactTopologyCheckpointPayload,
+  type GeometryKernelImportedBodyCheckpointPayload,
+  type GeometryKernelImportedBodyPayload,
   type GeometryKernelMeshFactories,
   type GeometryKernelTopologyEntityDescriptor
 } from "./kernel";
@@ -82,10 +85,12 @@ function createCheckpointPayloadFixture(
     readonly bodyId?: string;
     readonly brepBytes?: Uint8Array;
     readonly signature?: string;
+    readonly sourceKind?: "extrude" | "importedBody";
   } = {}
 ): GeometryKernelExactTopologyCheckpointPayload {
   const checkpointId = input.checkpointId ?? "checkpoint_injected";
   const bodyId = input.bodyId ?? "body_injected";
+  const sourceKind = input.sourceKind ?? "extrude";
   const entities = [
     createTopologyEntityFixture("body", 1),
     createTopologyEntityFixture("solid", 1),
@@ -93,7 +98,7 @@ function createCheckpointPayloadFixture(
   ];
   const topologySignature = "topology-checkpoint-test";
   const topologySnapshot = {
-    sourceKind: "extrude" as const,
+    sourceKind,
     status: "partial" as const,
     entityCounts: {
       bodyCount: 1,
@@ -125,7 +130,7 @@ function createCheckpointPayloadFixture(
   return {
     checkpointId,
     bodyId,
-    sourceKind: "extrude",
+    sourceKind,
     brepFormat: "occt-brep",
     brepWriter: "BRepTools.Write_3",
     brepBytes: input.brepBytes ?? new Uint8Array([1, 2, 3, 4]),
@@ -142,6 +147,62 @@ function createCheckpointPayloadFixture(
         signature: entity.signature
       }))
     }
+  };
+}
+
+function createImportedBodyPayloadFixture(
+  input: {
+    readonly sourceFileName?: string;
+    readonly checkpointId?: string;
+    readonly bodyId?: string;
+    readonly brepBytes?: Uint8Array;
+    readonly signature?: string;
+  } = {}
+): GeometryKernelImportedBodyPayload {
+  const sourceFileName = input.sourceFileName ?? "fixture-import.step";
+  const checkpointPayloadBase = createCheckpointPayloadFixture({
+    checkpointId: input.checkpointId ?? "checkpoint_imported_fixture",
+    bodyId: input.bodyId ?? "body_imported_fixture",
+    brepBytes: input.brepBytes,
+    signature: input.signature,
+    sourceKind: "importedBody"
+  });
+  const topologySnapshot = {
+    ...checkpointPayloadBase.topologySnapshot,
+    sourceKind: "importedBody" as const
+  };
+  const checkpointPayload: GeometryKernelImportedBodyCheckpointPayload = {
+    checkpointId: checkpointPayloadBase.checkpointId,
+    bodyId: checkpointPayloadBase.bodyId,
+    sourceKind: "importedBody",
+    brepFormat: checkpointPayloadBase.brepFormat,
+    brepWriter: checkpointPayloadBase.brepWriter,
+    brepBytes: checkpointPayloadBase.brepBytes,
+    brepByteLength: checkpointPayloadBase.brepByteLength,
+    topologySnapshot,
+    signaturePayload: checkpointPayloadBase.signaturePayload
+  };
+
+  return {
+    sourceFormat: "step",
+    sourceFileName,
+    bodyName: sourceFileName.replace(/\.(step|stp)$/i, ""),
+    shapeType: "solid",
+    bounds: checkpointPayload.topologySnapshot.entities[0].bounds!,
+    solidCount: checkpointPayload.topologySnapshot.entityCounts.solidCount,
+    faceCount: checkpointPayload.topologySnapshot.entityCounts.faceCount,
+    edgeCount: checkpointPayload.topologySnapshot.entityCounts.edgeCount,
+    vertexCount: checkpointPayload.topologySnapshot.entityCounts.vertexCount,
+    topologySnapshot: checkpointPayload.topologySnapshot,
+    checkpointPayload,
+    healingApplied: false,
+    diagnostics: [
+      {
+        code: "STEP_HEALING_NOT_REQUIRED",
+        severity: "info",
+        message: "Test STEP import healing diagnostic."
+      }
+    ]
   };
 }
 
@@ -176,6 +237,46 @@ describe("geometry-kernel facade", () => {
         status: "unavailable",
         writerAvailable: false,
         missingBindings: ["STEPControl_Writer_1"]
+      })
+    ]);
+  });
+
+  it("reports STEP import reader and healing capability as available", () => {
+    expect(getGeometryKernelStepImportCapabilities()).toEqual([
+      expect.objectContaining({
+        format: "step",
+        label: "STEP",
+        status: "available",
+        readerAvailable: true,
+        healingAvailable: true,
+        checkpointWriterAvailable: true,
+        boundary: "geometry-kernel",
+        readerBoundary: "occt-wasm",
+        missingBindings: []
+      })
+    ]);
+  });
+
+  it("reports STEP import capability as unavailable when reader bindings are absent", () => {
+    expect(
+      getGeometryKernelStepImportCapabilities({
+        status: "unavailable",
+        readerAvailable: false,
+        healingAvailable: false,
+        checkpointWriterAvailable: false,
+        packageVersion: "2.0.0-test",
+        checkedBindings: ["STEPControl_Reader_1"],
+        availableBindings: [],
+        missingBindings: ["STEPControl_Reader_1"]
+      })
+    ).toEqual([
+      expect.objectContaining({
+        format: "step",
+        status: "unavailable",
+        readerAvailable: false,
+        healingAvailable: false,
+        checkpointWriterAvailable: false,
+        missingBindings: ["STEPControl_Reader_1"]
       })
     ]);
   });
@@ -218,6 +319,258 @@ describe("geometry-kernel facade", () => {
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );
+
+  it(
+    "imports STEP bytes into transient imported body payloads through the isolated OCCT WASM adapter",
+    async () => {
+      const exportResponse = await executeGeometryKernelRequest({
+        id: "geometry_req_step_import_source_export",
+        version: "geometry-kernel.v1",
+        op: "geometry.exportStep",
+        units: "mm",
+        bodies: [
+          {
+            bodyId: "body_step_import_source",
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 2,
+              height: 1
+            },
+            depth: 3,
+            side: "positive"
+          }
+        ]
+      });
+
+      expect(exportResponse.ok).toBe(true);
+
+      if (!exportResponse.ok) {
+        throw new Error(exportResponse.error.message);
+      }
+
+      const response = await executeGeometryKernelRequest({
+        id: "geometry_req_step_import",
+        version: "geometry-kernel.v1",
+        op: "geometry.importStep",
+        sourceFileName: "kernel-roundtrip.step",
+        bytes: exportResponse.artifact.bytes,
+        maxBodyCount: 1,
+        bodyId: "body_imported_kernel_roundtrip",
+        checkpointId: "checkpoint_imported_kernel_roundtrip"
+      });
+
+      expect(response.ok).toBe(true);
+
+      if (!response.ok) {
+        throw new Error(response.error.message);
+      }
+
+      const body = response.bodies[0];
+      const brepText = new TextDecoder().decode(
+        body.checkpointPayload.brepBytes
+      );
+
+      expect(response).toMatchObject({
+        ok: true,
+        id: "geometry_req_step_import",
+        op: "geometry.importStep",
+        sourceFormat: "step",
+        sourceFileName: "kernel-roundtrip.step",
+        bodyCount: 1,
+        warnings: []
+      });
+      expect(body).toMatchObject({
+        sourceFormat: "step",
+        sourceFileName: "kernel-roundtrip.step",
+        shapeType: "solid",
+        solidCount: 1,
+        checkpointPayload: {
+          checkpointId: "checkpoint_imported_kernel_roundtrip",
+          bodyId: "body_imported_kernel_roundtrip",
+          sourceKind: "importedBody",
+          brepFormat: "occt-brep",
+          brepWriter: "BRepTools.Write_3"
+        }
+      });
+      expect(body.faceCount).toBeGreaterThanOrEqual(6);
+      expect(body.topologySnapshot.sourceKind).toBe("importedBody");
+      expect(body.checkpointPayload.signaturePayload.signature).toBe(
+        body.topologySnapshot.signature
+      );
+      expect(body.checkpointPayload.brepByteLength).toBeGreaterThan(1000);
+      expect(brepText).toContain("CASCADE Topology");
+      expect(getGeometryResponseTransferables(response)).toEqual([
+        body.checkpointPayload.brepBytes.buffer
+      ]);
+      expect(JSON.stringify(response)).not.toMatch(
+        /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
+      );
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it("rejects empty STEP import byte payloads before calling the geometry factory", async () => {
+    const response = await executeGeometryKernelRequest({
+      id: "geometry_req_empty_step_import",
+      version: "geometry-kernel.v1",
+      op: "geometry.importStep",
+      sourceFileName: "empty.step",
+      bytes: new Uint8Array()
+    });
+
+    expect(response).toEqual({
+      ok: false,
+      id: "geometry_req_empty_step_import",
+      op: "geometry.importStep",
+      error: {
+        code: "INVALID_DIMENSIONS",
+        message:
+          "STEP import requests require a non-empty source filename, non-empty byte payload, optional positive max body count, and optional non-empty body/checkpoint ids."
+      },
+      warnings: []
+    });
+    expect(getGeometryResponseTransferables(response)).toEqual([]);
+  });
+
+  it("returns imported body payloads from an injected STEP import factory", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory,
+      createStepImport: async (input) => {
+        const body = createImportedBodyPayloadFixture({
+          sourceFileName: input.sourceFileName,
+          checkpointId: input.checkpointId,
+          bodyId: input.bodyId
+        });
+
+        return {
+          sourceFormat: "step",
+          sourceFileName: input.sourceFileName,
+          bodyCount: 1,
+          bodies: [body],
+          diagnostics: [
+            {
+              code: "STEP_READER_AVAILABLE",
+              severity: "info",
+              message: "Test STEP reader available diagnostic."
+            }
+          ]
+        };
+      }
+    };
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_injected_step_import",
+        version: "geometry-kernel.v1",
+        op: "geometry.importStep",
+        sourceFileName: "fixture-import.step",
+        bytes: new Uint8Array([1, 2, 3]),
+        bodyId: "body_imported_injected",
+        checkpointId: "checkpoint_imported_injected"
+      }
+    );
+
+    expect(response).toEqual({
+      ok: true,
+      id: "geometry_req_injected_step_import",
+      op: "geometry.importStep",
+      sourceFormat: "step",
+      sourceFileName: "fixture-import.step",
+      bodyCount: 1,
+      bodies: [
+        expect.objectContaining({
+          sourceFormat: "step",
+          sourceFileName: "fixture-import.step",
+          shapeType: "solid",
+          checkpointPayload: expect.objectContaining({
+            checkpointId: "checkpoint_imported_injected",
+            bodyId: "body_imported_injected",
+            sourceKind: "importedBody",
+            brepByteLength: 4
+          })
+        })
+      ],
+      diagnostics: [
+        {
+          code: "STEP_READER_AVAILABLE",
+          severity: "info",
+          message: "Test STEP reader available diagnostic."
+        }
+      ],
+      warnings: []
+    });
+    expect(getGeometryResponseTransferables(response)).toHaveLength(1);
+    expect(JSON.stringify(response)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
+    );
+  });
+
+  it("rejects inconsistent imported body payloads from injected STEP import factories", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory,
+      createStepImport: async () => {
+        const body = createImportedBodyPayloadFixture({
+          signature: "signature-mismatch"
+        });
+
+        return {
+          sourceFormat: "step",
+          sourceFileName: body.sourceFileName,
+          bodyCount: 1,
+          bodies: [body],
+          diagnostics: [
+            {
+              code: "STEP_READER_AVAILABLE",
+              severity: "info",
+              message: "Test STEP reader available diagnostic."
+            }
+          ]
+        };
+      }
+    };
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_invalid_injected_step_import",
+        version: "geometry-kernel.v1",
+        op: "geometry.importStep",
+        sourceFileName: "fixture-import.step",
+        bytes: new Uint8Array([1, 2, 3])
+      }
+    );
+
+    expect(response).toEqual({
+      ok: false,
+      id: "geometry_req_invalid_injected_step_import",
+      op: "geometry.importStep",
+      error: {
+        code: "INVALID_RESULT",
+        message:
+          "The geometry kernel returned STEP import payloads with invalid or inconsistent body, topology, or checkpoint data."
+      },
+      warnings: []
+    });
+  });
 
   it(
     "creates exact topology checkpoint payload bytes through the isolated OCCT WASM adapter",

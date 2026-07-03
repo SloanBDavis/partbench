@@ -94,6 +94,9 @@ export interface OcctExactBodyMetadata {
 }
 
 export type OcctTopologySnapshotStatus = "ready" | "partial";
+export type OcctExactTopologySourceKind =
+  | OcctExactBodyMetadataSource["kind"]
+  | "importedBody";
 export type OcctTopologyEntityKind =
   | "body"
   | "solid"
@@ -180,7 +183,7 @@ export interface OcctTopologyDiagnostic {
 }
 
 export interface OcctExactTopologySnapshot {
-  readonly sourceKind: OcctExactBodyMetadataSource["kind"];
+  readonly sourceKind: OcctExactTopologySourceKind;
   readonly status: OcctTopologySnapshotStatus;
   readonly entityCounts: OcctTopologyEntityCounts;
   readonly entityCount: number;
@@ -433,7 +436,7 @@ function readExactBodyMetadata(
 export function readExactTopologySnapshot(
   oc: OpenCascadeInstance,
   shape: TopoDS_Shape,
-  sourceKind: OcctExactBodyMetadataSource["kind"]
+  sourceKind: OcctExactTopologySourceKind
 ): OcctExactTopologySnapshot {
   const solidIndex = createTopologyShapeIndex(
     oc,
@@ -597,7 +600,7 @@ function createTopologyShapeIndex(
     | "TopAbs_WIRE"
     | "TopAbs_EDGE"
     | "TopAbs_VERTEX",
-  sourceKind: OcctExactBodyMetadataSource["kind"]
+  sourceKind: OcctExactTopologySourceKind
 ): TopologyShapeIndex {
   const shapeType = oc.TopAbs_ShapeEnum[shapeTypeKey] as unknown as Parameters<
     typeof oc.TopExp.MapShapes_1
@@ -645,7 +648,7 @@ function createTopologyShapeIndex(
 
 function createTopologyEntitiesFromIndex(
   oc: OpenCascadeInstance,
-  sourceKind: OcctExactBodyMetadataSource["kind"],
+  sourceKind: OcctExactTopologySourceKind,
   index: TopologyShapeIndex
 ): readonly OcctTopologyEntityDescriptor[] {
   return index.entries.map((entry) =>
@@ -663,7 +666,7 @@ function createTopologyEntitiesFromIndex(
 function createTopologyRelationshipEvidence(
   oc: OpenCascadeInstance,
   input: {
-    readonly sourceKind: OcctExactBodyMetadataSource["kind"];
+    readonly sourceKind: OcctExactTopologySourceKind;
     readonly faceIndex: TopologyShapeIndex;
     readonly wireIndex: TopologyShapeIndex;
     readonly edgeIndex: TopologyShapeIndex;
@@ -796,7 +799,7 @@ function createTopologyRelationshipEvidence(
 function createLoopTopologyEntity(
   oc: OpenCascadeInstance,
   input: {
-    readonly sourceKind: OcctExactBodyMetadataSource["kind"];
+    readonly sourceKind: OcctExactTopologySourceKind;
     readonly index: number;
     readonly faceEntry: TopologyShapeEntry;
     readonly wireEntry: TopologyShapeEntry | undefined;
@@ -871,7 +874,7 @@ function readLoopRole(
 function createCoedgeTopologyEntities(
   oc: OpenCascadeInstance,
   input: {
-    readonly sourceKind: OcctExactBodyMetadataSource["kind"];
+    readonly sourceKind: OcctExactTopologySourceKind;
     readonly face: ReturnType<typeof oc.TopoDS.Face_1>;
     readonly faceEntry: TopologyShapeEntry;
     readonly wireShape: TopoDS_Shape;
@@ -1112,7 +1115,7 @@ function createTopologyEntity(input: {
   >;
   readonly shape?: TopoDS_Shape;
   readonly index: number;
-  readonly sourceKind: OcctExactBodyMetadataSource["kind"];
+  readonly sourceKind: OcctExactTopologySourceKind;
   readonly bounds: OcctExactBodyMetadata["bounds"];
 }): OcctTopologyEntityDescriptor {
   const evidence = createTopologyEntityEvidence(
@@ -1147,7 +1150,7 @@ function createTopologyEntityLocalId(
 }
 
 function createTopologyEntitySignature(input: {
-  readonly sourceKind: OcctExactBodyMetadataSource["kind"];
+  readonly sourceKind: OcctExactTopologySourceKind;
   readonly entityKind: OcctTopologyEntityKind;
   readonly bounds: OcctExactBodyMetadata["bounds"];
 }): string {

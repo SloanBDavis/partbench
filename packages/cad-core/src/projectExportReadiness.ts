@@ -622,6 +622,11 @@ function getBodyExportSourceKind(
       return "authoredChamfer";
     case "edgeFilletFeature":
       return "authoredFillet";
+    case "importedStepBody":
+      return "importedBody";
+    case "linearPatternFeature":
+    case "circularPatternFeature":
+      return "unresolvedSource";
   }
 }
 

@@ -10,8 +10,10 @@ import {
   createOcctExactTopologySnapshot,
   createOcctRevolveProfileMesh,
   createOcctSphereMesh,
+  createOcctStepImport,
   createOcctStepExport,
   getOcctBrepCheckpointWriterCapability,
+  getOcctStepReaderCapability,
   getOcctStepWriterCapability,
   createOcctTorusMesh
 } from "./index";
@@ -58,6 +60,28 @@ describe("occt-wasm", () => {
   );
 
   it(
+    "reports STEP reader and healing bindings as available through the isolated boundary",
+    async () => {
+      const capability = await getOcctStepReaderCapability();
+
+      expect(capability).toMatchObject({
+        format: "step",
+        status: "available",
+        readerAvailable: true,
+        healingAvailable: true,
+        checkpointWriterAvailable: true,
+        boundary: "occt-wasm",
+        packageName: "opencascade.js"
+      });
+      expect(capability.missingBindings).toEqual([]);
+      expect(capability.availableBindings).toContain("STEPControl_Reader_1");
+      expect(capability.availableBindings).toContain("ShapeFix_Shape_1");
+      expect(capability.availableBindings).toContain("BRepTools.Write_3");
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
     "exports a rectangle extrude as real STEP bytes through Open CASCADE WASM",
     async () => {
       const artifact = await createOcctStepExport({
@@ -89,6 +113,110 @@ describe("occt-wasm", () => {
       expect(text).toContain("ISO-10303-21");
       expect(text).toContain("SI_UNIT(.MILLI.,.METRE.)");
       expect(text).not.toContain("mesh");
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "imports real STEP bytes into transient imported body and checkpoint payloads through Open CASCADE WASM",
+    async () => {
+      const artifact = await createOcctStepExport({
+        units: "mm",
+        bodies: [
+          {
+            bodyId: "body_step_import_source",
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 2,
+              height: 1
+            },
+            depth: 3,
+            side: "positive"
+          }
+        ]
+      });
+      const importResult = await createOcctStepImport({
+        sourceFileName: "roundtrip-import.step",
+        bytes: artifact.bytes,
+        maxBodyCount: 1,
+        bodyId: "body_imported_roundtrip",
+        checkpointId: "checkpoint_imported_roundtrip"
+      });
+      const body = importResult.bodies[0];
+      const brepText = new TextDecoder().decode(
+        body.checkpointPayload.brepBytes
+      );
+
+      expect(importResult).toMatchObject({
+        sourceFormat: "step",
+        sourceFileName: "roundtrip-import.step",
+        bodyCount: 1
+      });
+      expect(body).toMatchObject({
+        sourceFormat: "step",
+        sourceFileName: "roundtrip-import.step",
+        bodyName: "roundtrip-import",
+        shapeType: "solid",
+        solidCount: 1,
+        checkpointPayload: {
+          checkpointId: "checkpoint_imported_roundtrip",
+          bodyId: "body_imported_roundtrip",
+          sourceKind: "importedBody",
+          brepFormat: "occt-brep",
+          brepWriter: "BRepTools.Write_3"
+        }
+      });
+      expect(body.faceCount).toBeGreaterThanOrEqual(6);
+      expect(body.edgeCount).toBeGreaterThan(0);
+      expect(body.vertexCount).toBeGreaterThan(0);
+      expect(body.topologySnapshot).toMatchObject({
+        sourceKind: "importedBody",
+        source: "kernel-derived",
+        signatureAlgorithm: "partbench-derived-topology-snapshot-v1"
+      });
+      expect(body.checkpointPayload.brepByteLength).toBe(
+        body.checkpointPayload.brepBytes.byteLength
+      );
+      expect(body.checkpointPayload.brepByteLength).toBeGreaterThan(1000);
+      expect(brepText).toContain("CASCADE Topology");
+      expect(body.checkpointPayload.signaturePayload).toMatchObject({
+        checkpointId: "checkpoint_imported_roundtrip",
+        signature: body.topologySnapshot.signature,
+        entityCount: body.topologySnapshot.entityCount
+      });
+      expect(
+        importResult.diagnostics.map((diagnostic) => diagnostic.code)
+      ).toEqual(
+        expect.arrayContaining([
+          "STEP_READER_AVAILABLE",
+          "STEP_TRANSFER_COMPLETE",
+          "STEP_TOPOLOGY_EXTRACTED",
+          "STEP_CHECKPOINT_PAYLOAD_CREATED"
+        ])
+      );
+      expect(body.diagnostics.map((diagnostic) => diagnostic.code)).toContain(
+        body.healingApplied
+          ? "STEP_HEALING_APPLIED"
+          : "STEP_HEALING_NOT_REQUIRED"
+      );
+      expect(JSON.stringify(importResult)).not.toMatch(
+        /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
+      );
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "rejects corrupt STEP bytes before creating imported body payloads",
+    async () => {
+      await expect(
+        createOcctStepImport({
+          sourceFileName: "corrupt.step",
+          bytes: new TextEncoder().encode("not a STEP file")
+        })
+      ).rejects.toThrow(/STEP|Open CASCADE/i);
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );

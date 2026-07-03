@@ -1,11 +1,13 @@
 import {
   CadEngine,
   createV13ReleaseSampleBatch,
+  encodeWcadCanonicalCbor,
   exportCadProjectWcad,
   importCadProjectWcad,
   readCadProjectWcad,
   type CadFeatureSummary,
-  type SketchSnapshot
+  type SketchSnapshot,
+  type WcadTopologyCheckpointPayloadInput
 } from "@web-cad/cad-core";
 import type { GeometryKernelExactTopologyCheckpointPayload } from "@web-cad/geometry-worker";
 import { describe, expect, it, vi } from "vitest";
@@ -103,6 +105,60 @@ describe("projectWcadTopologyCheckpoints", () => {
     expect(read.checkpointPayloads).toHaveLength(1);
     expect(JSON.stringify(exported.manifest)).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|fileHandle|opfsPath|localPath/i
+    );
+  });
+
+  it("preserves imported-body checkpoint payloads from the WCAD package cache", async () => {
+    const { engine, checkpointPayload } = createImportedBodyCheckpointEngine();
+    const runtime = createCheckpointRuntime();
+    const input = {
+      engine,
+      features: readProjectStructure(engine).features,
+      sketches: readSketches(engine),
+      runtime
+    };
+
+    await expect(
+      exportProjectWcadWithTopologyCheckpoints(input)
+    ).rejects.toSatisfy((error: unknown) => {
+      expect(isProjectWcadTopologyCheckpointPayloadError(error)).toBe(true);
+      if (!isProjectWcadTopologyCheckpointPayloadError(error)) {
+        return false;
+      }
+      expect(error.issues).toEqual([
+        expect.objectContaining({
+          code: "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
+          message: expect.stringContaining(
+            "does not have a supported exact source"
+          )
+        })
+      ]);
+      return true;
+    });
+
+    const exported = await exportProjectWcadWithTopologyCheckpoints({
+      ...input,
+      importedCheckpointPayloads: [checkpointPayload]
+    });
+    const read = await readCadProjectWcad(exported.bytes);
+
+    expect(runtime.exactTopologyCheckpointPayload).not.toHaveBeenCalled();
+    expect(exported.manifest.packageVersion).toBe("partbench.wcad.v2");
+    expect(exported.checkpointPayloads).toHaveLength(1);
+    expect(read.ok).toBe(true);
+    if (!read.ok) {
+      throw new Error(read.issues[0]?.message);
+    }
+    expect(read.checkpointPayloads).toHaveLength(1);
+    expect(read.project.document.features).toEqual([
+      expect.objectContaining({
+        kind: "importedBody",
+        bodyId: "body_imported_1",
+        checkpointId: "checkpoint_imported_1"
+      })
+    ]);
+    expect(JSON.stringify(read.project)).not.toMatch(
+      /imported checkpoint brep bytes|occtShape|meshId|rendererId|fileHandle|opfsPath|localPath/i
     );
   });
 
@@ -849,6 +905,84 @@ function createRectangleCheckpointEngine(): CadEngine {
   return engine;
 }
 
+function createImportedBodyCheckpointEngine(): {
+  readonly engine: CadEngine;
+  readonly checkpointPayload: WcadTopologyCheckpointPayloadInput;
+} {
+  const engine = new CadEngine();
+  const checkpointId = "checkpoint_imported_1";
+  const bodyId = "body_imported_1";
+  const featureId = "feat_imported_1";
+  const checkpointPayloadFixture = createCheckpointPayloadFixture(
+    checkpointId,
+    bodyId,
+    1,
+    "importedBody"
+  );
+  const response = engine.executeBatch({
+    version: "cadops.v1",
+    mode: "commit",
+    ops: [
+      {
+        op: "project.importStep",
+        sourceFileName: "imported-block.step",
+        sourceFormat: "step",
+        payloadRef: {
+          kind: "transient",
+          payloadId: "step_payload_1",
+          byteLength: 256,
+          sha256:
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        resolvedBodies: [
+          {
+            featureId,
+            bodyId,
+            checkpointId,
+            name: "Imported block",
+            sourceIdentity: {
+              algorithm: "partbench-source-v1",
+              sha256:
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            },
+            checkpointStatus: "active",
+            healingApplied: true
+          }
+        ]
+      }
+    ]
+  });
+
+  if (!response.ok) {
+    throw new Error(response.error.message);
+  }
+
+  return {
+    engine,
+    checkpointPayload: {
+      checkpointId,
+      bodyId,
+      sourceFeatureId: featureId,
+      units: "mm",
+      kernel: {
+        boundary: "geometry-kernel",
+        snapshotAlgorithm: "partbench-derived-topology-snapshot-v1"
+      },
+      tolerance: {
+        linearTolerance: 0.001,
+        angularToleranceDegrees: 0.01
+      },
+      brepBytes: checkpointPayloadFixture.brepBytes,
+      topologyBytes: encodeWcadCanonicalCbor(
+        checkpointPayloadFixture.topologySnapshot
+      ),
+      signatureBytes: encodeWcadCanonicalCbor(
+        checkpointPayloadFixture.signaturePayload
+      )
+    }
+  };
+}
+
 function readProjectStructure(engine: CadEngine): {
   readonly features: readonly CadFeatureSummary[];
 } {
@@ -977,7 +1111,7 @@ function createCheckpointPayloadFixture(
         ]
       : entities;
   const topologySnapshot = {
-    sourceKind: "extrude" as const,
+    sourceKind,
     source: "kernel-derived" as const,
     status: "partial" as const,
     entityCounts: {

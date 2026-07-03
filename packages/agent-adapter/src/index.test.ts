@@ -3073,6 +3073,106 @@ describe("agent-adapter", () => {
     );
   });
 
+  it("returns V15 STEP import readiness through adapter queries and batch reviews", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_import_readiness",
+      entityId: "rect_import_readiness",
+      featureId: "feat_import_readiness",
+      bodyId: "body_import_readiness"
+    });
+
+    const readiness = adapter.query({
+      requestId: "agent_import_readiness",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: { query: "project.importReadiness" }
+      }
+    });
+    const ordinaryBody = adapter.query({
+      requestId: "agent_imported_body_status",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: {
+          query: "body.importedBodyStatus",
+          bodyId: "body_import_readiness"
+        }
+      }
+    });
+    const importAttempt = adapter.execute({
+      requestId: "agent_import_step",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      batch: {
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "project.importStep",
+            sourceFileName: "bracket.step",
+            sourceFormat: "step",
+            payloadRef: {
+              kind: "transient",
+              payloadId: "step_payload_agent_1",
+              byteLength: 128,
+              sha256:
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            maxBodyCount: 1
+          }
+        ]
+      }
+    });
+
+    expect(readiness).toMatchObject({
+      ok: true,
+      requestId: "agent_import_readiness",
+      query: "project.importReadiness",
+      sourceFormat: "step",
+      status: "unavailable",
+      importedBodyCount: 0,
+      mutatesSource: false,
+      diagnostics: [
+        expect.objectContaining({
+          code: "STEP_READER_UNAVAILABLE",
+          severity: "blocking"
+        })
+      ]
+    });
+    expect(ordinaryBody).toMatchObject({
+      ok: true,
+      requestId: "agent_imported_body_status",
+      query: "body.importedBodyStatus",
+      bodyId: "body_import_readiness",
+      imported: false,
+      status: "not-imported",
+      availableDownstreamOperations: []
+    });
+    expect(importAttempt).toMatchObject({
+      ok: false,
+      requestId: "agent_import_step",
+      mode: "dryRun",
+      error: {
+        code: "STEP_READER_UNAVAILABLE",
+        op: "project.importStep",
+        sourceFileName: "bracket.step",
+        payloadId: "step_payload_agent_1"
+      },
+      review: {
+        operations: [
+          {
+            index: 0,
+            op: "project.importStep",
+            intent: "create",
+            label: "Import STEP bracket.step"
+          }
+        ]
+      }
+    });
+  });
+
   it("returns V13 topology identity readiness through adapter queries", () => {
     const adapter = new CadOpsAgentAdapter();
 
@@ -6111,6 +6211,41 @@ describe("agent-adapter", () => {
             query: {
               query: "project.topologyIdentityReadiness",
               fileHandle: "not-source"
+            }
+          }
+        })
+      )
+    ).toThrow("Invalid CADOps agent adapter query request.");
+  });
+
+  it("rejects import readiness query payloads with extra fields", () => {
+    expect(() =>
+      parseCadOpsAgentQueryRequestJson(
+        JSON.stringify({
+          requestId: "bad_import_readiness_query",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          query: {
+            version: "cadops.v1",
+            query: {
+              query: "project.importReadiness",
+              fileHandle: "not-source"
+            }
+          }
+        })
+      )
+    ).toThrow("Invalid CADOps agent adapter query request.");
+  });
+
+  it("rejects imported body status queries without a body ID", () => {
+    expect(() =>
+      parseCadOpsAgentQueryRequestJson(
+        JSON.stringify({
+          requestId: "bad_imported_body_status_query",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          query: {
+            version: "cadops.v1",
+            query: {
+              query: "body.importedBodyStatus"
             }
           }
         })
