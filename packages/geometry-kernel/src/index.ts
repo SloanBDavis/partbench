@@ -11,11 +11,15 @@ import {
   createOcctExactBodyMetadata,
   createOcctExactTopologySnapshot,
   createOcctExactTopologyCheckpointPayload,
-  createOcctStepExport
+  createOcctStepImport,
+  createOcctStepExport,
+  createOcctLinearPatternMesh,
+  createOcctCircularPatternMesh
 } from "@web-cad/occt-wasm";
 import {
   executeGeometryKernelRequestWithMeshFactory,
   getGeometryKernelExactExportCapabilities,
+  getGeometryKernelStepImportCapabilities,
   getGeometryResponseTransferables,
   type BooleanExtrudePrimitiveSource,
   type BooleanExtrudeResultSource,
@@ -59,6 +63,9 @@ import {
   type GeometryKernelExactStepExportArtifact,
   type GeometryKernelExactStepExportFactory,
   type GeometryKernelExactStepExportSuccessResponse,
+  type GeometryKernelImportedBodyCheckpointPayload,
+  type GeometryKernelImportedBodyPayload,
+  type GeometryKernelImportedBodyShapeType,
   type GeometryKernelExactMetadataDiagnostic,
   type GeometryKernelExtrudeSide,
   type GeometryKernelExtrudeProfileKind,
@@ -76,6 +83,15 @@ import {
   type GeometryKernelSketchPlane,
   type GeometryKernelRequest,
   type GeometryKernelResponse,
+  type GeometryKernelStepImportCapability,
+  type GeometryKernelStepImportCapabilityInput,
+  type GeometryKernelStepImportCapabilityStatus,
+  type GeometryKernelStepImportDiagnostic,
+  type GeometryKernelStepImportDiagnosticCode,
+  type GeometryKernelStepImportDiagnosticSeverity,
+  type GeometryKernelStepImportFactory,
+  type GeometryKernelStepImportResult,
+  type GeometryKernelStepImportSuccessResponse,
   type GeometryKernelSuccessResponse,
   type GeometryKernelTopologyCounts,
   type GeometryKernelTopologyDiagnostic,
@@ -98,6 +114,7 @@ import {
   type CircleExtrudeProfile,
   type SerializableMeshData,
   type SphereGeometryDimensions,
+  type StepImportRequest,
   type TessellateBoxRequest,
   type TessellateConeRequest,
   type TessellateCylinderRequest,
@@ -105,7 +122,11 @@ import {
   type TessellateSphereRequest,
   type TessellateTorusRequest,
   type TorusGeometryDimensions,
-  type TessellationOptions
+  type TessellationOptions,
+  type LinearPatternRequest,
+  type CircularPatternRequest,
+  type PatternSeedSource,
+  type GeometryKernelPatternAxis
 } from "./kernel";
 
 export type {
@@ -151,6 +172,9 @@ export type {
   GeometryKernelExactStepExportArtifact,
   GeometryKernelExactStepExportFactory,
   GeometryKernelExactStepExportSuccessResponse,
+  GeometryKernelImportedBodyCheckpointPayload,
+  GeometryKernelImportedBodyPayload,
+  GeometryKernelImportedBodyShapeType,
   GeometryKernelExactMetadataDiagnostic,
   GeometryKernelExtrudeSide,
   GeometryKernelExtrudeProfileKind,
@@ -168,6 +192,15 @@ export type {
   GeometryKernelSketchPlane,
   GeometryKernelRequest,
   GeometryKernelResponse,
+  GeometryKernelStepImportCapability,
+  GeometryKernelStepImportCapabilityInput,
+  GeometryKernelStepImportCapabilityStatus,
+  GeometryKernelStepImportDiagnostic,
+  GeometryKernelStepImportDiagnosticCode,
+  GeometryKernelStepImportDiagnosticSeverity,
+  GeometryKernelStepImportFactory,
+  GeometryKernelStepImportResult,
+  GeometryKernelStepImportSuccessResponse,
   GeometryKernelSuccessResponse,
   GeometryKernelTopologyCounts,
   GeometryKernelTopologyDiagnostic,
@@ -190,6 +223,7 @@ export type {
   CircleExtrudeProfile,
   SerializableMeshData,
   SphereGeometryDimensions,
+  StepImportRequest,
   TessellateBoxRequest,
   TessellateConeRequest,
   TessellateCylinderRequest,
@@ -197,10 +231,15 @@ export type {
   TessellateSphereRequest,
   TessellateTorusRequest,
   TorusGeometryDimensions,
-  TessellationOptions
+  TessellationOptions,
+  LinearPatternRequest,
+  CircularPatternRequest,
+  PatternSeedSource,
+  GeometryKernelPatternAxis
 };
 export {
   getGeometryKernelExactExportCapabilities,
+  getGeometryKernelStepImportCapabilities,
   getGeometryResponseTransferables
 };
 
@@ -222,7 +261,10 @@ export async function executeGeometryKernelRequest<
       createExactTopologySnapshot: createOcctExactTopologySnapshot,
       createExactTopologyCheckpointPayload:
         createOcctExactTopologyCheckpointPayload,
-      createExactStepExport: createOcctStepExport
+      createStepImport: createOcctStepImport,
+      createExactStepExport: createOcctStepExport,
+      createLinearPatternMesh: createOcctLinearPatternMesh,
+      createCircularPatternMesh: createOcctCircularPatternMesh
     },
     request
   );

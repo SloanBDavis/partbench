@@ -11,6 +11,8 @@ import {
   type DerivedGeometryConeInput,
   type DerivedGeometryCylinderInput,
   type DerivedGeometryEdgeFinishInput,
+  type DerivedGeometryLinearPatternInput,
+  type DerivedGeometryCircularPatternInput,
   type DerivedGeometryExtrudeInput,
   type DerivedGeometryHoleInput,
   type DerivedGeometryRevolveInput,
@@ -21,7 +23,9 @@ import {
   type DerivedExactMetadataInput,
   type DerivedExactMetadataResult,
   type DerivedExactTopologyCheckpointPayloadInput,
-  type DerivedExactTopologyCheckpointPayloadResult
+  type DerivedExactTopologyCheckpointPayloadResult,
+  type DerivedStepImportInput,
+  type DerivedStepImportResult
 } from "./derivedGeometryRuntime";
 
 type DisposableGeometryWorker = GeometryWorker & {
@@ -79,7 +83,9 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
         request.payload.op === "geometry.revolveProfile" ||
         request.payload.op === "geometry.booleanExtrudes" ||
         request.payload.op === "geometry.hole" ||
-        request.payload.op === "geometry.edgeFinish"
+        request.payload.op === "geometry.edgeFinish" ||
+        request.payload.op === "geometry.linearPattern" ||
+        request.payload.op === "geometry.circularPattern"
           ? "source"
           : "boundsCenter",
       transform:
@@ -162,6 +168,38 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
         roundTripMs
       }),
       message: `Derived exact topology checkpoint payload for ${input.bodyId}.`
+    };
+  }
+
+  async function executeStepImportRequest(
+    input: DerivedStepImportInput,
+    request: GeometryWorkerRequest
+  ): Promise<DerivedStepImportResult> {
+    const worker = await getGeometryWorker();
+    const roundTripStart = performance.now();
+    const response = await worker.execute(request);
+    const roundTripMs = performance.now() - roundTripStart;
+
+    if (!response.response.ok) {
+      throw createDerivedGeometryErrorFromWorkerResponse(response);
+    }
+
+    if (!("bodies" in response.response)) {
+      throw new Error("Geometry worker response does not contain STEP bodies.");
+    }
+
+    return {
+      sourceFormat: response.response.sourceFormat,
+      sourceFileName: response.response.sourceFileName,
+      bodyCount: response.response.bodyCount,
+      bodies: response.response.bodies,
+      diagnostics: response.response.diagnostics,
+      metrics: createDerivedExactMetadataMetrics({
+        objectId: input.id,
+        response,
+        roundTripMs
+      }),
+      message: `Imported STEP geometry for ${input.sourceFileName}.`
     };
   }
 
@@ -345,6 +383,44 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
         })
       );
     },
+    async linearPattern(input: DerivedGeometryLinearPatternInput) {
+      const { createLinearPatternWorkerRequest } =
+        await import("@web-cad/geometry-worker/browser");
+      const requestId = createRequestId(input.id);
+
+      return executeTessellationRequest(
+        input,
+        createLinearPatternWorkerRequest({
+          id: requestId,
+          payloadId: `${requestId}:kernel`,
+          seed: input.seed,
+          axis: input.axis,
+          spacing: input.spacing,
+          instanceCount: input.instanceCount,
+          linearDeflection: 0.25,
+          angularDeflection: 0.5
+        })
+      );
+    },
+    async circularPattern(input: DerivedGeometryCircularPatternInput) {
+      const { createCircularPatternWorkerRequest } =
+        await import("@web-cad/geometry-worker/browser");
+      const requestId = createRequestId(input.id);
+
+      return executeTessellationRequest(
+        input,
+        createCircularPatternWorkerRequest({
+          id: requestId,
+          payloadId: `${requestId}:kernel`,
+          seed: input.seed,
+          rotationAxis: input.rotationAxis,
+          totalAngleDegrees: input.totalAngleDegrees,
+          instanceCount: input.instanceCount,
+          linearDeflection: 0.25,
+          angularDeflection: 0.5
+        })
+      );
+    },
     async exactBodyMetadata(input: DerivedExactMetadataInput) {
       const { createExactBodyMetadataWorkerRequest } =
         await import("@web-cad/geometry-worker/browser");
@@ -374,6 +450,24 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           checkpointId: input.checkpointId,
           bodyId: input.bodyId,
           source: input.source
+        })
+      );
+    },
+    async importStep(input: DerivedStepImportInput) {
+      const { createStepImportWorkerRequest } =
+        await import("@web-cad/geometry-worker/browser");
+      const requestId = createRequestId(input.id);
+
+      return executeStepImportRequest(
+        input,
+        createStepImportWorkerRequest({
+          id: requestId,
+          payloadId: `${requestId}:kernel`,
+          sourceFileName: input.sourceFileName,
+          bytes: input.bytes,
+          maxBodyCount: input.maxBodyCount,
+          bodyId: input.bodyId,
+          checkpointId: input.checkpointId
         })
       );
     },

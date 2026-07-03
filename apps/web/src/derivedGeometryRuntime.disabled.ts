@@ -32,10 +32,19 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
     async edgeFinish() {
       throw new Error("Derived geometry runtime is disabled.");
     },
+    async linearPattern() {
+      throw new Error("Derived geometry runtime is disabled.");
+    },
+    async circularPattern() {
+      throw new Error("Derived geometry runtime is disabled.");
+    },
     async exactBodyMetadata() {
       throw new Error("Derived geometry runtime is disabled.");
     },
     async exactTopologyCheckpointPayload() {
+      throw new Error("Derived geometry runtime is disabled.");
+    },
+    async importStep() {
       throw new Error("Derived geometry runtime is disabled.");
     },
     dispose() {}

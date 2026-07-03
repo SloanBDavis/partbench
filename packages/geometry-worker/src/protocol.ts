@@ -17,16 +17,22 @@ import type {
   GeometryKernelExtrudeSide,
   GeometryKernelExactExportCapability,
   GeometryKernelExactExportFormat,
+  GeometryKernelStepImportCapability,
   HoleRequest,
   HoleToolSource,
   GeometryKernelSketchPlane,
   RevolveProfileRequest,
+  StepImportRequest,
   TessellateBoxRequest,
   TessellateConeRequest,
   TessellateCylinderRequest,
   TessellateExtrudeRequest,
   TessellateSphereRequest,
-  TessellateTorusRequest
+  TessellateTorusRequest,
+  LinearPatternRequest,
+  CircularPatternRequest,
+  PatternSeedSource,
+  GeometryKernelPatternAxis
 } from "@web-cad/geometry-kernel";
 
 export type {
@@ -35,7 +41,13 @@ export type {
   GeometryKernelExactTopologyCheckpointPayload,
   GeometryKernelTopologyCheckpointSignaturePayload,
   GeometryKernelExactExportFormat,
-  GeometryKernelExactStepExportArtifact
+  GeometryKernelExactStepExportArtifact,
+  GeometryKernelImportedBodyCheckpointPayload,
+  GeometryKernelImportedBodyPayload,
+  GeometryKernelImportedBodyShapeType,
+  GeometryKernelStepImportDiagnostic,
+  GeometryKernelStepImportResult,
+  StepImportRequest
 } from "@web-cad/geometry-kernel";
 
 export type GeometryWorkerVersion = "geometry-worker.v1";
@@ -44,9 +56,12 @@ export type GeometryWorkerRequestKind =
   | "geometry-worker.tessellateFeature"
   | "geometry-worker.booleanFeature"
   | "geometry-worker.edgeFinishFeature"
+  | "geometry-worker.linearPatternFeature"
+  | "geometry-worker.circularPatternFeature"
   | "geometry-worker.exactMetadata"
   | "geometry-worker.exactTopologySnapshot"
   | "geometry-worker.exactTopologyCheckpointPayload"
+  | "geometry-worker.importStep"
   | "geometry-worker.exactExport";
 
 export interface GeometryWorkerRequest<
@@ -135,6 +150,24 @@ export interface GeometryWorkerExactExportCapability {
   readonly reason: string;
 }
 
+export interface GeometryWorkerStepImportCapability {
+  readonly format: "step";
+  readonly label: "STEP";
+  readonly status: "available" | "unavailable";
+  readonly readerAvailable: boolean;
+  readonly healingAvailable: boolean;
+  readonly checkpointWriterAvailable: boolean;
+  readonly boundary: "geometry-worker";
+  readonly kernelBoundary: "geometry-kernel";
+  readonly readerBoundary: "occt-wasm";
+  readonly packageName: "opencascade.js";
+  readonly packageVersion: string;
+  readonly checkedBindings: readonly string[];
+  readonly availableBindings: readonly string[];
+  readonly missingBindings: readonly string[];
+  readonly reason: string;
+}
+
 const GEOMETRY_WORKER_STEP_WRITER_CHECKED_BINDINGS = [
   "STEPControl_Writer_1",
   "STEPControl_StepModelType.STEPControl_AsIs",
@@ -145,6 +178,24 @@ const GEOMETRY_WORKER_STEP_WRITER_CHECKED_BINDINGS = [
   "FS.unlink",
   "BRepPrimAPI_MakeBox_5",
   "BRepPrimAPI_MakeCylinder_3"
+] as const;
+
+const GEOMETRY_WORKER_STEP_READER_CHECKED_BINDINGS = [
+  "STEPControl_Reader_1",
+  "STEPControl_Reader.ReadFile",
+  "STEPControl_Reader.TransferRoots",
+  "STEPControl_Reader.OneShape",
+  "IFSelect_ReturnStatus.IFSelect_RetDone",
+  "Message_ProgressRange_1",
+  "ShapeFix_Shape_1",
+  "ShapeFix_Shape.Init",
+  "ShapeFix_Shape.Perform",
+  "ShapeFix_Shape.Shape",
+  "BRepTools.Write_3",
+  "FS.writeFile",
+  "FS.readFile",
+  "FS.unlink",
+  "TopExp.MapShapes_1"
 ] as const;
 
 const DEFAULT_GEOMETRY_WORKER_KERNEL_CAPABILITIES: readonly GeometryKernelExactExportCapability[] =
@@ -163,6 +214,27 @@ const DEFAULT_GEOMETRY_WORKER_KERNEL_CAPABILITIES: readonly GeometryKernelExactE
       missingBindings: [],
       reason:
         "The geometry kernel can route minimal exact STEP export requests to the isolated OpenCascade.js writer boundary."
+    }
+  ];
+
+const DEFAULT_GEOMETRY_WORKER_STEP_IMPORT_KERNEL_CAPABILITIES: readonly GeometryKernelStepImportCapability[] =
+  [
+    {
+      format: "step",
+      label: "STEP",
+      status: "available",
+      readerAvailable: true,
+      healingAvailable: true,
+      checkpointWriterAvailable: true,
+      boundary: "geometry-kernel",
+      readerBoundary: "occt-wasm",
+      packageName: "opencascade.js",
+      packageVersion: "2.0.0-beta.b5ff984",
+      checkedBindings: GEOMETRY_WORKER_STEP_READER_CHECKED_BINDINGS,
+      availableBindings: GEOMETRY_WORKER_STEP_READER_CHECKED_BINDINGS,
+      missingBindings: [],
+      reason:
+        "The geometry kernel can route STEP import requests to the isolated OpenCascade.js reader, healing, and BRep checkpoint boundary."
     }
   ];
 
@@ -185,6 +257,33 @@ export function getGeometryWorkerExactExportCapabilities(
     reason: capability.writerAvailable
       ? "The geometry worker can execute minimal exact STEP export through the geometry kernel and isolated OpenCascade.js writer boundary."
       : "The geometry worker cannot execute exact STEP export until the geometry kernel reports every required writer binding."
+  }));
+}
+
+export function getGeometryWorkerStepImportCapabilities(
+  kernelCapabilities: readonly GeometryKernelStepImportCapability[] = DEFAULT_GEOMETRY_WORKER_STEP_IMPORT_KERNEL_CAPABILITIES
+): readonly GeometryWorkerStepImportCapability[] {
+  return kernelCapabilities.map((capability) => ({
+    format: capability.format,
+    label: capability.label,
+    status: capability.status,
+    readerAvailable: capability.readerAvailable,
+    healingAvailable: capability.healingAvailable,
+    checkpointWriterAvailable: capability.checkpointWriterAvailable,
+    boundary: "geometry-worker",
+    kernelBoundary: capability.boundary,
+    readerBoundary: capability.readerBoundary,
+    packageName: capability.packageName,
+    packageVersion: capability.packageVersion,
+    checkedBindings: capability.checkedBindings,
+    availableBindings: capability.availableBindings,
+    missingBindings: capability.missingBindings,
+    reason:
+      capability.readerAvailable &&
+      capability.healingAvailable &&
+      capability.checkpointWriterAvailable
+        ? "The geometry worker can execute STEP import through the geometry kernel and isolated OpenCascade.js reader, healing, and BRep checkpoint boundary."
+        : "The geometry worker cannot execute STEP import until the geometry kernel reports every required reader, healing, and checkpoint binding."
   }));
 }
 
@@ -627,6 +726,32 @@ export function createExactStepExportWorkerRequest(input: {
   };
 }
 
+export function createStepImportWorkerRequest(input: {
+  readonly id: string;
+  readonly payloadId?: string;
+  readonly sourceFileName: string;
+  readonly bytes: Uint8Array;
+  readonly maxBodyCount?: number;
+  readonly bodyId?: string;
+  readonly checkpointId?: string;
+}): GeometryWorkerRequest<StepImportRequest> {
+  return {
+    id: input.id,
+    version: "geometry-worker.v1",
+    kind: "geometry-worker.importStep",
+    payload: {
+      id: input.payloadId ?? `${input.id}:payload`,
+      version: "geometry-kernel.v1",
+      op: "geometry.importStep",
+      sourceFileName: input.sourceFileName,
+      bytes: input.bytes,
+      maxBodyCount: input.maxBodyCount,
+      bodyId: input.bodyId,
+      checkpointId: input.checkpointId
+    }
+  };
+}
+
 export function createKernelFailureResponse(
   request: GeometryWorkerRequest,
   error: unknown
@@ -675,5 +800,65 @@ function createTessellationOptions(input: {
     ...(input.angularDeflection !== undefined
       ? { angularDeflection: input.angularDeflection }
       : {})
+  };
+}
+
+export type { PatternSeedSource, GeometryKernelPatternAxis };
+
+export function createLinearPatternWorkerRequest(input: {
+  readonly id: string;
+  readonly payloadId?: string;
+  readonly seed: PatternSeedSource;
+  readonly axis: GeometryKernelPatternAxis;
+  readonly spacing: number;
+  readonly instanceCount: number;
+  readonly linearDeflection?: number;
+  readonly angularDeflection?: number;
+}): GeometryWorkerRequest<LinearPatternRequest> {
+  const tessellation = createTessellationOptions(input);
+
+  return {
+    id: input.id,
+    version: "geometry-worker.v1",
+    kind: "geometry-worker.linearPatternFeature",
+    payload: {
+      id: input.payloadId ?? `${input.id}:payload`,
+      version: "geometry-kernel.v1",
+      op: "geometry.linearPattern",
+      seed: input.seed,
+      axis: input.axis,
+      spacing: input.spacing,
+      instanceCount: input.instanceCount,
+      ...(tessellation ? { tessellation } : {})
+    }
+  };
+}
+
+export function createCircularPatternWorkerRequest(input: {
+  readonly id: string;
+  readonly payloadId?: string;
+  readonly seed: PatternSeedSource;
+  readonly rotationAxis: GeometryKernelPatternAxis;
+  readonly totalAngleDegrees: number;
+  readonly instanceCount: number;
+  readonly linearDeflection?: number;
+  readonly angularDeflection?: number;
+}): GeometryWorkerRequest<CircularPatternRequest> {
+  const tessellation = createTessellationOptions(input);
+
+  return {
+    id: input.id,
+    version: "geometry-worker.v1",
+    kind: "geometry-worker.circularPatternFeature",
+    payload: {
+      id: input.payloadId ?? `${input.id}:payload`,
+      version: "geometry-kernel.v1",
+      op: "geometry.circularPattern",
+      seed: input.seed,
+      rotationAxis: input.rotationAxis,
+      totalAngleDegrees: input.totalAngleDegrees,
+      instanceCount: input.instanceCount,
+      ...(tessellation ? { tessellation } : {})
+    }
   };
 }

@@ -22,16 +22,20 @@ export {
   createConeTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest,
   createEdgeFinishWorkerRequest,
+  createLinearPatternWorkerRequest,
+  createCircularPatternWorkerRequest,
   createExactBodyMetadataWorkerRequest,
   createExactTopologyCheckpointPayloadWorkerRequest,
   createExactTopologySnapshotWorkerRequest,
   createExactStepExportWorkerRequest,
+  createStepImportWorkerRequest,
   createExtrudeBooleanWorkerRequest,
   createExtrudeTessellationWorkerRequest,
   createHoleWorkerRequest,
   createRevolveProfileWorkerRequest,
   createSphereTessellationWorkerRequest,
   createTorusTessellationWorkerRequest,
+  getGeometryWorkerStepImportCapabilities,
   createWorkerErrorDiagnostics,
   createWorkerSuccessDiagnostics,
   type GeometryWorker,
@@ -39,6 +43,11 @@ export {
   type GeometryWorkerErrorCode,
   type GeometryWorkerErrorDetails,
   type GeometryKernelExactTopologyCheckpointPayload,
+  type GeometryKernelImportedBodyCheckpointPayload,
+  type GeometryKernelImportedBodyPayload,
+  type GeometryKernelImportedBodyShapeType,
+  type GeometryKernelStepImportDiagnostic,
+  type GeometryKernelStepImportResult,
   type GeometryWorkerOptions,
   type GeometryWorkerRequest,
   type GeometryWorkerRequestKind,
@@ -46,6 +55,7 @@ export {
   type GeometryWorkerStage,
   type GeometryWorkerTimings,
   type GeometryWorkerVersion,
+  type GeometryWorkerStepImportCapability,
   type GeometryWorkerWasmLoadStatus
 } from "./protocol";
 
@@ -162,9 +172,12 @@ function getUnsupportedPrimitiveMessage(
     kind !== "geometry-worker.tessellateFeature" &&
     kind !== "geometry-worker.booleanFeature" &&
     kind !== "geometry-worker.edgeFinishFeature" &&
+    kind !== "geometry-worker.linearPatternFeature" &&
+    kind !== "geometry-worker.circularPatternFeature" &&
     kind !== "geometry-worker.exactMetadata" &&
     kind !== "geometry-worker.exactTopologySnapshot" &&
     kind !== "geometry-worker.exactTopologyCheckpointPayload" &&
+    kind !== "geometry-worker.importStep" &&
     kind !== "geometry-worker.exactExport"
   ) {
     return `Unsupported geometry worker request kind: ${kind}.`;
@@ -181,9 +194,12 @@ function getUnsupportedPrimitiveMessage(
     op !== "geometry.booleanExtrudes" &&
     op !== "geometry.hole" &&
     op !== "geometry.edgeFinish" &&
+    op !== "geometry.linearPattern" &&
+    op !== "geometry.circularPattern" &&
     op !== "geometry.exactBodyMetadata" &&
     op !== "geometry.exactTopologySnapshot" &&
     op !== "geometry.exactTopologyCheckpointPayload" &&
+    op !== "geometry.importStep" &&
     op !== "geometry.exportStep"
   ) {
     return `Unsupported geometry kernel operation: ${op}.`;

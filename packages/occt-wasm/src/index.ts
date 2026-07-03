@@ -79,6 +79,27 @@ import {
   type OcctExactTopologyCheckpointPayloadInput,
   type OcctTopologyCheckpointSignaturePayload
 } from "./exactCheckpointPayload";
+import {
+  createOcctStepImportWithInstance,
+  createOcctStepImportWithLoader,
+  getOcctStepReaderCapabilityWithInstance,
+  getOcctStepReaderCapabilityWithLoader,
+  type OcctImportedBodyPayload,
+  type OcctStepImportDiagnostic,
+  type OcctStepImportInput,
+  type OcctStepImportResult,
+  type OcctStepReaderCapability
+} from "./stepImport";
+import {
+  createOcctLinearPatternMeshWithInstance,
+  createOcctLinearPatternMeshWithLoader,
+  createOcctCircularPatternMeshWithInstance,
+  createOcctCircularPatternMeshWithLoader,
+  type OcctLinearPatternInput,
+  type OcctCircularPatternInput,
+  type OcctPatternAxis,
+  type OcctPatternSeedSource
+} from "./pattern";
 
 export type {
   OcctBooleanExtrudeInput,
@@ -105,7 +126,16 @@ export type {
   OcctExactTopologyCheckpointPayload,
   OcctExactTopologyCheckpointPayloadInput,
   OcctTopologyCheckpointSignaturePayload,
-  OcctMeshData
+  OcctImportedBodyPayload,
+  OcctStepImportDiagnostic,
+  OcctStepImportInput,
+  OcctStepImportResult,
+  OcctStepReaderCapability,
+  OcctMeshData,
+  OcctLinearPatternInput,
+  OcctCircularPatternInput,
+  OcctPatternAxis,
+  OcctPatternSeedSource
 };
 export {
   createOcctBoxMeshWithInstance,
@@ -137,7 +167,15 @@ export {
   createOcctExactTopologyCheckpointPayloadWithInstance,
   createOcctExactTopologyCheckpointPayloadWithLoader,
   getOcctBrepCheckpointWriterCapabilityWithInstance,
-  getOcctBrepCheckpointWriterCapabilityWithLoader
+  getOcctBrepCheckpointWriterCapabilityWithLoader,
+  createOcctStepImportWithInstance,
+  createOcctStepImportWithLoader,
+  getOcctStepReaderCapabilityWithInstance,
+  getOcctStepReaderCapabilityWithLoader,
+  createOcctLinearPatternMeshWithInstance,
+  createOcctLinearPatternMeshWithLoader,
+  createOcctCircularPatternMeshWithInstance,
+  createOcctCircularPatternMeshWithLoader
 };
 
 let occtPromise: Promise<OpenCascadeInstance> | undefined;
@@ -231,4 +269,26 @@ export async function createOcctExactTopologyCheckpointPayload(
 
 export async function getOcctBrepCheckpointWriterCapability(): Promise<OcctBrepCheckpointWriterCapability> {
   return getOcctBrepCheckpointWriterCapabilityWithLoader(loadOcct);
+}
+
+export async function createOcctStepImport(
+  input: OcctStepImportInput
+): Promise<OcctStepImportResult> {
+  return createOcctStepImportWithLoader(loadOcct, input);
+}
+
+export async function getOcctStepReaderCapability(): Promise<OcctStepReaderCapability> {
+  return getOcctStepReaderCapabilityWithLoader(loadOcct);
+}
+
+export async function createOcctLinearPatternMesh(
+  input: OcctLinearPatternInput
+): Promise<OcctMeshData> {
+  return createOcctLinearPatternMeshWithLoader(loadOcct, input);
+}
+
+export async function createOcctCircularPatternMesh(
+  input: OcctCircularPatternInput
+): Promise<OcctMeshData> {
+  return createOcctCircularPatternMeshWithLoader(loadOcct, input);
 }

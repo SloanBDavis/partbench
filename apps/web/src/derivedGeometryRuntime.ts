@@ -1,6 +1,8 @@
 import type {
   GeometryKernelExactTopologyCheckpointPayload,
   GeometryKernelExactBodyMetadata,
+  GeometryKernelImportedBodyPayload,
+  GeometryKernelStepImportDiagnostic,
   GeometryWorkerDiagnostics,
   GeometryWorkerResponse
 } from "@web-cad/geometry-worker";
@@ -133,6 +135,26 @@ export interface DerivedGeometryHoleInput {
   };
 }
 
+export type DerivedGeometryPatternSeedSource =
+  | ({ kind: "extrude" } & DerivedGeometryBooleanExtrudePrimitiveInputSource)
+  | DerivedGeometryBooleanExtrudeResultInputSource;
+
+export interface DerivedGeometryLinearPatternInput {
+  readonly id: string;
+  readonly seed: DerivedGeometryPatternSeedSource;
+  readonly axis: "x" | "y" | "z";
+  readonly spacing: number;
+  readonly instanceCount: number;
+}
+
+export interface DerivedGeometryCircularPatternInput {
+  readonly id: string;
+  readonly seed: DerivedGeometryPatternSeedSource;
+  readonly rotationAxis: "x" | "y" | "z";
+  readonly totalAngleDegrees: number;
+  readonly instanceCount: number;
+}
+
 export type DerivedGeometryEdgeFinishInput =
   | {
       readonly id: string;
@@ -244,6 +266,25 @@ export interface DerivedExactTopologyCheckpointPayloadResult {
   readonly message: string;
 }
 
+export interface DerivedStepImportInput {
+  readonly id: string;
+  readonly sourceFileName: string;
+  readonly bytes: Uint8Array;
+  readonly maxBodyCount?: number;
+  readonly bodyId?: string;
+  readonly checkpointId?: string;
+}
+
+export interface DerivedStepImportResult {
+  readonly sourceFormat: "step";
+  readonly sourceFileName: string;
+  readonly bodyCount: number;
+  readonly bodies: readonly GeometryKernelImportedBodyPayload[];
+  readonly diagnostics: readonly GeometryKernelStepImportDiagnostic[];
+  readonly metrics: DerivedExactMetadataMetrics;
+  readonly message: string;
+}
+
 export interface DerivedGeometryErrorDetails {
   readonly code: string;
   readonly stage: string;
@@ -279,12 +320,19 @@ export interface DerivedGeometryRuntime {
   edgeFinish(
     input: DerivedGeometryEdgeFinishInput
   ): Promise<DerivedGeometryResult>;
+  linearPattern(
+    input: DerivedGeometryLinearPatternInput
+  ): Promise<DerivedGeometryResult>;
+  circularPattern(
+    input: DerivedGeometryCircularPatternInput
+  ): Promise<DerivedGeometryResult>;
   exactBodyMetadata(
     input: DerivedExactMetadataInput
   ): Promise<DerivedExactMetadataResult>;
   exactTopologyCheckpointPayload(
     input: DerivedExactTopologyCheckpointPayloadInput
   ): Promise<DerivedExactTopologyCheckpointPayloadResult>;
+  importStep(input: DerivedStepImportInput): Promise<DerivedStepImportResult>;
   dispose(): void;
 }
 

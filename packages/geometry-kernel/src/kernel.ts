@@ -3,6 +3,9 @@ export type GeometryKernelExactExportFormat = "step";
 export type GeometryKernelExactExportCapabilityStatus =
   | "available"
   | "unavailable";
+export type GeometryKernelStepImportCapabilityStatus =
+  | "available"
+  | "unavailable";
 
 export interface GeometryKernelExactExportCapability {
   readonly format: GeometryKernelExactExportFormat;
@@ -18,6 +21,35 @@ export interface GeometryKernelExactExportCapability {
   readonly missingBindings: readonly string[];
   readonly reason: string;
 }
+
+export interface GeometryKernelStepImportCapability {
+  readonly format: "step";
+  readonly label: "STEP";
+  readonly status: GeometryKernelStepImportCapabilityStatus;
+  readonly readerAvailable: boolean;
+  readonly healingAvailable: boolean;
+  readonly checkpointWriterAvailable: boolean;
+  readonly boundary: "geometry-kernel";
+  readonly readerBoundary: "occt-wasm";
+  readonly packageName: "opencascade.js";
+  readonly packageVersion: string;
+  readonly checkedBindings: readonly string[];
+  readonly availableBindings: readonly string[];
+  readonly missingBindings: readonly string[];
+  readonly reason: string;
+}
+
+export type GeometryKernelStepImportCapabilityInput = Pick<
+  GeometryKernelStepImportCapability,
+  | "status"
+  | "readerAvailable"
+  | "healingAvailable"
+  | "checkpointWriterAvailable"
+  | "packageVersion"
+  | "checkedBindings"
+  | "availableBindings"
+  | "missingBindings"
+>;
 
 export type GeometryKernelExactExportCapabilityInput = Pick<
   GeometryKernelExactExportCapability,
@@ -43,7 +75,10 @@ export type GeometryKernelOp =
   | "geometry.exactBodyMetadata"
   | "geometry.exactTopologySnapshot"
   | "geometry.exactTopologyCheckpointPayload"
-  | "geometry.exportStep";
+  | "geometry.importStep"
+  | "geometry.exportStep"
+  | "geometry.linearPattern"
+  | "geometry.circularPattern";
 export type GeometryKernelPrimitive =
   | "box"
   | "cylinder"
@@ -278,12 +313,51 @@ export interface FilletEdgeFinishRequest {
   readonly tessellation?: TessellationOptions;
 }
 
+export type GeometryKernelPatternAxis = "x" | "y" | "z";
+
+export type PatternSeedSource =
+  | PatternSeedExtrudeSource
+  | PatternSeedBooleanExtrudesSource;
+
+export interface PatternSeedExtrudeSource extends BooleanExtrudePrimitiveSource {
+  readonly kind: "extrude";
+}
+
+export interface PatternSeedBooleanExtrudesSource extends BooleanExtrudeResultSource {
+  readonly kind: "booleanExtrudes";
+}
+
+export interface LinearPatternRequest {
+  readonly id: string;
+  readonly version: GeometryKernelVersion;
+  readonly op: "geometry.linearPattern";
+  readonly seed: PatternSeedSource;
+  readonly axis: GeometryKernelPatternAxis;
+  readonly spacing: number;
+  readonly instanceCount: number;
+  readonly tessellation?: TessellationOptions;
+}
+
+export interface CircularPatternRequest {
+  readonly id: string;
+  readonly version: GeometryKernelVersion;
+  readonly op: "geometry.circularPattern";
+  readonly seed: PatternSeedSource;
+  readonly rotationAxis: GeometryKernelPatternAxis;
+  readonly totalAngleDegrees: number;
+  readonly instanceCount: number;
+  readonly tessellation?: TessellationOptions;
+}
+
 export type ExactBodyMetadataSource =
   | ExactExtrudeMetadataSource
   | ExactBooleanExtrudesMetadataSource
   | ExactRevolveMetadataSource
   | ExactHoleMetadataSource
   | ExactEdgeFinishMetadataSource;
+export type ExactTopologySourceKind =
+  | ExactBodyMetadataSource["kind"]
+  | "importedBody";
 
 export interface ExactExtrudeMetadataSource extends BooleanExtrudePrimitiveSource {
   readonly kind: "extrude";
@@ -362,6 +436,17 @@ export interface ExactStepExportRequest {
   readonly bodies: readonly ExactStepExportBodySource[];
 }
 
+export interface StepImportRequest {
+  readonly id: string;
+  readonly version: GeometryKernelVersion;
+  readonly op: "geometry.importStep";
+  readonly sourceFileName: string;
+  readonly bytes: Uint8Array;
+  readonly maxBodyCount?: number;
+  readonly bodyId?: string;
+  readonly checkpointId?: string;
+}
+
 export type GeometryKernelRequest =
   | TessellateBoxRequest
   | TessellateCylinderRequest
@@ -373,9 +458,12 @@ export type GeometryKernelRequest =
   | BooleanExtrudesRequest
   | HoleRequest
   | EdgeFinishRequest
+  | LinearPatternRequest
+  | CircularPatternRequest
   | ExactBodyMetadataRequest
   | ExactTopologySnapshotRequest
   | ExactTopologyCheckpointPayloadRequest
+  | StepImportRequest
   | ExactStepExportRequest;
 
 export type GeometryKernelMeshRequest = Exclude<
@@ -383,6 +471,7 @@ export type GeometryKernelMeshRequest = Exclude<
   | ExactBodyMetadataRequest
   | ExactTopologySnapshotRequest
   | ExactTopologyCheckpointPayloadRequest
+  | StepImportRequest
   | ExactStepExportRequest
 >;
 
@@ -404,6 +493,7 @@ export type GeometryKernelSuccessResponse =
   | GeometryKernelExactBodyMetadataSuccessResponse
   | GeometryKernelExactTopologySnapshotSuccessResponse
   | GeometryKernelExactTopologyCheckpointPayloadSuccessResponse
+  | GeometryKernelStepImportSuccessResponse
   | GeometryKernelExactStepExportSuccessResponse;
 
 export interface GeometryKernelMeshSuccessResponse {
@@ -447,7 +537,7 @@ export interface GeometryKernelTopologyCheckpointSignaturePayload {
 export interface GeometryKernelExactTopologyCheckpointPayload {
   readonly checkpointId: string;
   readonly bodyId: string;
-  readonly sourceKind: ExactBodyMetadataSource["kind"];
+  readonly sourceKind: ExactTopologySourceKind;
   readonly brepFormat: "occt-brep";
   readonly brepWriter: "BRepTools.Write_3";
   readonly brepBytes: Uint8Array;
@@ -478,6 +568,77 @@ export interface GeometryKernelExactStepExportSuccessResponse {
   readonly id: string;
   readonly op: "geometry.exportStep";
   readonly artifact: GeometryKernelExactStepExportArtifact;
+  readonly warnings: readonly string[];
+}
+
+export type GeometryKernelStepImportDiagnosticSeverity =
+  | "info"
+  | "warning"
+  | "blocking";
+export type GeometryKernelStepImportDiagnosticCode =
+  | "STEP_READER_AVAILABLE"
+  | "STEP_TRANSFER_COMPLETE"
+  | "STEP_HEALING_APPLIED"
+  | "STEP_HEALING_NOT_REQUIRED"
+  | "STEP_TOPOLOGY_EXTRACTED"
+  | "STEP_CHECKPOINT_PAYLOAD_CREATED";
+
+export interface GeometryKernelStepImportDiagnostic {
+  readonly code: GeometryKernelStepImportDiagnosticCode;
+  readonly severity: GeometryKernelStepImportDiagnosticSeverity;
+  readonly message: string;
+}
+
+export type GeometryKernelImportedBodyShapeType =
+  | "solid"
+  | "compound"
+  | "assemblyLeaf";
+
+export interface GeometryKernelImportedBodyCheckpointPayload {
+  readonly checkpointId: string;
+  readonly bodyId: string;
+  readonly sourceKind: "importedBody";
+  readonly brepFormat: "occt-brep";
+  readonly brepWriter: "BRepTools.Write_3";
+  readonly brepBytes: Uint8Array;
+  readonly brepByteLength: number;
+  readonly topologySnapshot: GeometryKernelExactTopologySnapshot;
+  readonly signaturePayload: GeometryKernelTopologyCheckpointSignaturePayload;
+}
+
+export interface GeometryKernelImportedBodyPayload {
+  readonly sourceFormat: "step";
+  readonly sourceFileName: string;
+  readonly bodyName?: string;
+  readonly shapeType: GeometryKernelImportedBodyShapeType;
+  readonly bounds: GeometryKernelBounds;
+  readonly solidCount: number;
+  readonly faceCount: number;
+  readonly edgeCount: number;
+  readonly vertexCount: number;
+  readonly topologySnapshot: GeometryKernelExactTopologySnapshot;
+  readonly checkpointPayload: GeometryKernelImportedBodyCheckpointPayload;
+  readonly healingApplied: boolean;
+  readonly diagnostics: readonly GeometryKernelStepImportDiagnostic[];
+}
+
+export interface GeometryKernelStepImportResult {
+  readonly sourceFormat: "step";
+  readonly sourceFileName: string;
+  readonly bodyCount: number;
+  readonly bodies: readonly GeometryKernelImportedBodyPayload[];
+  readonly diagnostics: readonly GeometryKernelStepImportDiagnostic[];
+}
+
+export interface GeometryKernelStepImportSuccessResponse {
+  readonly ok: true;
+  readonly id: string;
+  readonly op: "geometry.importStep";
+  readonly sourceFormat: "step";
+  readonly sourceFileName: string;
+  readonly bodyCount: number;
+  readonly bodies: readonly GeometryKernelImportedBodyPayload[];
+  readonly diagnostics: readonly GeometryKernelStepImportDiagnostic[];
   readonly warnings: readonly string[];
 }
 
@@ -641,7 +802,7 @@ export interface GeometryKernelTopologyEntityCounts extends GeometryKernelTopolo
 }
 
 export interface GeometryKernelExactTopologySnapshot {
-  readonly sourceKind: ExactBodyMetadataSource["kind"];
+  readonly sourceKind: ExactTopologySourceKind;
   readonly status: GeometryKernelTopologySnapshotStatus;
   readonly entityCounts: GeometryKernelTopologyEntityCounts;
   readonly entityCount: number;
@@ -723,6 +884,18 @@ export type GeometryKernelExactStepExportFactory = (
   input: Omit<ExactStepExportRequest, "id" | "version" | "op">
 ) => Promise<GeometryKernelExactStepExportArtifact>;
 
+export type GeometryKernelStepImportFactory = (
+  input: Omit<StepImportRequest, "id" | "version" | "op">
+) => Promise<GeometryKernelStepImportResult>;
+
+export type GeometryKernelLinearPatternMeshFactory = (
+  input: Omit<LinearPatternRequest, "id" | "version" | "op"> & TessellationOptions
+) => Promise<GeometryKernelMeshResult>;
+
+export type GeometryKernelCircularPatternMeshFactory = (
+  input: Omit<CircularPatternRequest, "id" | "version" | "op"> & TessellationOptions
+) => Promise<GeometryKernelMeshResult>;
+
 export interface GeometryKernelMeshFactories {
   readonly createBoxMesh: GeometryKernelBoxMeshFactory;
   readonly createCylinderMesh: GeometryKernelCylinderMeshFactory;
@@ -736,7 +909,10 @@ export interface GeometryKernelMeshFactories {
   readonly createExactBodyMetadata?: GeometryKernelExactBodyMetadataFactory;
   readonly createExactTopologySnapshot?: GeometryKernelExactTopologySnapshotFactory;
   readonly createExactTopologyCheckpointPayload?: GeometryKernelExactTopologyCheckpointPayloadFactory;
+  readonly createStepImport?: GeometryKernelStepImportFactory;
   readonly createExactStepExport?: GeometryKernelExactStepExportFactory;
+  readonly createLinearPatternMesh?: GeometryKernelLinearPatternMeshFactory;
+  readonly createCircularPatternMesh?: GeometryKernelCircularPatternMeshFactory;
 }
 
 export type GeometryKernelResponseForRequest<T extends GeometryKernelRequest> =
@@ -752,11 +928,15 @@ export type GeometryKernelResponseForRequest<T extends GeometryKernelRequest> =
         ?
             | GeometryKernelExactTopologyCheckpointPayloadSuccessResponse
             | GeometryKernelErrorResponse
-        : T extends ExactStepExportRequest
+        : T extends StepImportRequest
           ?
-              | GeometryKernelExactStepExportSuccessResponse
+              | GeometryKernelStepImportSuccessResponse
               | GeometryKernelErrorResponse
-          : GeometryKernelMeshSuccessResponse | GeometryKernelErrorResponse;
+          : T extends ExactStepExportRequest
+            ?
+                | GeometryKernelExactStepExportSuccessResponse
+                | GeometryKernelErrorResponse
+            : GeometryKernelMeshSuccessResponse | GeometryKernelErrorResponse;
 
 const STEP_WRITER_CHECKED_BINDINGS = [
   "STEPControl_Writer_1",
@@ -770,6 +950,24 @@ const STEP_WRITER_CHECKED_BINDINGS = [
   "BRepPrimAPI_MakeCylinder_3"
 ] as const;
 
+const STEP_READER_CHECKED_BINDINGS = [
+  "STEPControl_Reader_1",
+  "STEPControl_Reader.ReadFile",
+  "STEPControl_Reader.TransferRoots",
+  "STEPControl_Reader.OneShape",
+  "IFSelect_ReturnStatus.IFSelect_RetDone",
+  "Message_ProgressRange_1",
+  "ShapeFix_Shape_1",
+  "ShapeFix_Shape.Init",
+  "ShapeFix_Shape.Perform",
+  "ShapeFix_Shape.Shape",
+  "BRepTools.Write_3",
+  "FS.writeFile",
+  "FS.readFile",
+  "FS.unlink",
+  "TopExp.MapShapes_1"
+] as const;
+
 const DEFAULT_STEP_WRITER_CAPABILITY: GeometryKernelExactExportCapabilityInput =
   {
     status: "available",
@@ -777,6 +975,18 @@ const DEFAULT_STEP_WRITER_CAPABILITY: GeometryKernelExactExportCapabilityInput =
     packageVersion: "2.0.0-beta.b5ff984",
     checkedBindings: STEP_WRITER_CHECKED_BINDINGS,
     availableBindings: STEP_WRITER_CHECKED_BINDINGS,
+    missingBindings: []
+  };
+
+const DEFAULT_STEP_READER_CAPABILITY: GeometryKernelStepImportCapabilityInput =
+  {
+    status: "available",
+    readerAvailable: true,
+    healingAvailable: true,
+    checkpointWriterAvailable: true,
+    packageVersion: "2.0.0-beta.b5ff984",
+    checkedBindings: STEP_READER_CHECKED_BINDINGS,
+    availableBindings: STEP_READER_CHECKED_BINDINGS,
     missingBindings: []
   };
 
@@ -803,6 +1013,34 @@ export function getGeometryKernelExactExportCapabilities(
   ];
 }
 
+export function getGeometryKernelStepImportCapabilities(
+  stepReaderCapability: GeometryKernelStepImportCapabilityInput = DEFAULT_STEP_READER_CAPABILITY
+): readonly GeometryKernelStepImportCapability[] {
+  return [
+    {
+      format: "step",
+      label: "STEP",
+      status: stepReaderCapability.status,
+      readerAvailable: stepReaderCapability.readerAvailable,
+      healingAvailable: stepReaderCapability.healingAvailable,
+      checkpointWriterAvailable: stepReaderCapability.checkpointWriterAvailable,
+      boundary: "geometry-kernel",
+      readerBoundary: "occt-wasm",
+      packageName: "opencascade.js",
+      packageVersion: stepReaderCapability.packageVersion,
+      checkedBindings: stepReaderCapability.checkedBindings,
+      availableBindings: stepReaderCapability.availableBindings,
+      missingBindings: stepReaderCapability.missingBindings,
+      reason:
+        stepReaderCapability.readerAvailable &&
+        stepReaderCapability.healingAvailable &&
+        stepReaderCapability.checkpointWriterAvailable
+          ? "The geometry kernel can route STEP import requests to the isolated OpenCascade.js reader, healing, and BRep checkpoint boundary."
+          : "The geometry kernel cannot route STEP import until the isolated OpenCascade.js boundary exposes every required reader, healing, and checkpoint binding."
+    }
+  ];
+}
+
 export async function executeGeometryKernelRequestWithMeshFactory<
   T extends GeometryKernelRequest
 >(
@@ -819,6 +1057,30 @@ export async function executeGeometryKernelRequestWithMeshFactory<
   }
 
   try {
+    if (request.op === "geometry.importStep") {
+      const importResult = await createStepImport(factories, request);
+
+      if (isInvalidStepImportResult(importResult)) {
+        return errorResponse(request, {
+          code: "INVALID_RESULT",
+          message:
+            "The geometry kernel returned STEP import payloads with invalid or inconsistent body, topology, or checkpoint data."
+        }) as GeometryKernelResponseForRequest<T>;
+      }
+
+      return {
+        ok: true,
+        id: request.id,
+        op: request.op,
+        sourceFormat: importResult.sourceFormat,
+        sourceFileName: importResult.sourceFileName,
+        bodyCount: importResult.bodyCount,
+        bodies: importResult.bodies,
+        diagnostics: importResult.diagnostics,
+        warnings: []
+      } as unknown as GeometryKernelResponseForRequest<T>;
+    }
+
     if (request.op === "geometry.exportStep") {
       const artifact = await createExactStepExport(factories, request);
 
@@ -969,6 +1231,12 @@ export function getGeometryResponseTransferables(
     return [response.artifact.bytes.buffer as ArrayBuffer];
   }
 
+  if ("bodies" in response) {
+    return response.bodies.map(
+      (body) => body.checkpointPayload.brepBytes.buffer as ArrayBuffer
+    );
+  }
+
   if ("checkpointPayload" in response) {
     return [response.checkpointPayload.brepBytes.buffer as ArrayBuffer];
   }
@@ -1113,6 +1381,24 @@ function validateRequest(
           "Exact topology checkpoint payload requests require non-empty checkpoint and body ids."
       };
     }
+  } else if (request.op === "geometry.importStep") {
+    if (
+      typeof request.sourceFileName !== "string" ||
+      request.sourceFileName.trim().length === 0 ||
+      !(request.bytes instanceof Uint8Array) ||
+      request.bytes.byteLength <= 0 ||
+      (request.maxBodyCount !== undefined &&
+        !isPositiveInteger(request.maxBodyCount)) ||
+      (request.bodyId !== undefined && request.bodyId.trim().length === 0) ||
+      (request.checkpointId !== undefined &&
+        request.checkpointId.trim().length === 0)
+    ) {
+      return {
+        code: "INVALID_DIMENSIONS",
+        message:
+          "STEP import requests require a non-empty source filename, non-empty byte payload, optional positive max body count, and optional non-empty body/checkpoint ids."
+      };
+    }
   } else if (request.op === "geometry.exportStep") {
     if (request.bodies.length === 0) {
       return {
@@ -1130,6 +1416,11 @@ function validateRequest(
         };
       }
     }
+  } else if (
+    request.op === "geometry.linearPattern" ||
+    request.op === "geometry.circularPattern"
+  ) {
+    // pattern requests have no dimension fields to validate here
   } else if (
     !isPositiveFiniteNumber(request.dimensions.majorRadius) ||
     !isPositiveFiniteNumber(request.dimensions.minorRadius) ||
@@ -1207,7 +1498,53 @@ function createMesh(
       return createHoleMesh(factories, request);
     case "geometry.edgeFinish":
       return createEdgeFinishMesh(factories, request);
+    case "geometry.linearPattern":
+      return createLinearPatternMesh(factories, request);
+    case "geometry.circularPattern":
+      return createCircularPatternMesh(factories, request);
   }
+}
+
+function createLinearPatternMesh(
+  factories: GeometryKernelMeshFactories,
+  request: LinearPatternRequest
+): Promise<GeometryKernelMeshResult> {
+  if (!factories.createLinearPatternMesh) {
+    return Promise.reject({
+      code: "UNAVAILABLE_BINDING",
+      message: "Linear pattern tessellation requires an OCCT linear pattern mesh factory."
+    } satisfies GeometryKernelError);
+  }
+
+  return factories.createLinearPatternMesh({
+    seed: request.seed,
+    axis: request.axis,
+    spacing: request.spacing,
+    instanceCount: request.instanceCount,
+    linearDeflection: request.tessellation?.linearDeflection,
+    angularDeflection: request.tessellation?.angularDeflection
+  });
+}
+
+function createCircularPatternMesh(
+  factories: GeometryKernelMeshFactories,
+  request: CircularPatternRequest
+): Promise<GeometryKernelMeshResult> {
+  if (!factories.createCircularPatternMesh) {
+    return Promise.reject({
+      code: "UNAVAILABLE_BINDING",
+      message: "Circular pattern tessellation requires an OCCT circular pattern mesh factory."
+    } satisfies GeometryKernelError);
+  }
+
+  return factories.createCircularPatternMesh({
+    seed: request.seed,
+    rotationAxis: request.rotationAxis,
+    totalAngleDegrees: request.totalAngleDegrees,
+    instanceCount: request.instanceCount,
+    linearDeflection: request.tessellation?.linearDeflection,
+    angularDeflection: request.tessellation?.angularDeflection
+  });
 }
 
 function createEdgeFinishMesh(
@@ -1334,6 +1671,27 @@ function createExactTopologyCheckpointPayload(
     checkpointId: request.checkpointId,
     bodyId: request.bodyId,
     source: request.source
+  });
+}
+
+function createStepImport(
+  factories: GeometryKernelMeshFactories,
+  request: StepImportRequest
+): Promise<GeometryKernelStepImportResult> {
+  if (!factories.createStepImport) {
+    return Promise.reject({
+      code: "UNAVAILABLE_BINDING",
+      message:
+        "STEP import requires an OCCT STEP reader, healing, and BRep checkpoint factory through the geometry boundary."
+    } satisfies GeometryKernelError);
+  }
+
+  return factories.createStepImport({
+    sourceFileName: request.sourceFileName,
+    bytes: request.bytes,
+    maxBodyCount: request.maxBodyCount,
+    bodyId: request.bodyId,
+    checkpointId: request.checkpointId
   });
 }
 
@@ -1501,12 +1859,18 @@ function formatPrimitiveLabel(op: GeometryKernelOp): string {
       return "Hole";
     case "geometry.edgeFinish":
       return "Edge finish";
+    case "geometry.linearPattern":
+      return "Linear pattern";
+    case "geometry.circularPattern":
+      return "Circular pattern";
     case "geometry.exactBodyMetadata":
       return "Exact body metadata";
     case "geometry.exactTopologySnapshot":
       return "Exact topology snapshot";
     case "geometry.exactTopologyCheckpointPayload":
       return "Exact topology checkpoint payload";
+    case "geometry.importStep":
+      return "STEP import";
     case "geometry.exportStep":
       return "STEP export";
   }
@@ -1974,11 +2338,7 @@ function isInvalidExactTopologySnapshot(
     snapshot.entityCounts.axisCount;
 
   return (
-    (snapshot.sourceKind !== "extrude" &&
-      snapshot.sourceKind !== "booleanExtrudes" &&
-      snapshot.sourceKind !== "revolve" &&
-      snapshot.sourceKind !== "hole" &&
-      snapshot.sourceKind !== "edgeFinish") ||
+    !isExactTopologySourceKind(snapshot.sourceKind) ||
     (snapshot.status !== "ready" && snapshot.status !== "partial") ||
     snapshot.source !== "kernel-derived" ||
     snapshot.signatureAlgorithm !== "partbench-derived-topology-snapshot-v1" ||
@@ -2052,11 +2412,7 @@ function isInvalidExactTopologyCheckpointPayload(
     checkpointPayload.checkpointId.trim().length === 0 ||
     typeof checkpointPayload.bodyId !== "string" ||
     checkpointPayload.bodyId.trim().length === 0 ||
-    (checkpointPayload.sourceKind !== "extrude" &&
-      checkpointPayload.sourceKind !== "booleanExtrudes" &&
-      checkpointPayload.sourceKind !== "revolve" &&
-      checkpointPayload.sourceKind !== "hole" &&
-      checkpointPayload.sourceKind !== "edgeFinish") ||
+    !isExactTopologySourceKind(checkpointPayload.sourceKind) ||
     checkpointPayload.brepFormat !== "occt-brep" ||
     checkpointPayload.brepWriter !== "BRepTools.Write_3" ||
     !(checkpointPayload.brepBytes instanceof Uint8Array) ||
@@ -2069,6 +2425,87 @@ function isInvalidExactTopologyCheckpointPayload(
       checkpointPayload.checkpointId,
       checkpointPayload.topologySnapshot
     )
+  );
+}
+
+function isInvalidStepImportResult(
+  importResult: GeometryKernelStepImportResult
+): boolean {
+  return (
+    importResult.sourceFormat !== "step" ||
+    typeof importResult.sourceFileName !== "string" ||
+    importResult.sourceFileName.trim().length === 0 ||
+    !isPositiveInteger(importResult.bodyCount) ||
+    !Array.isArray(importResult.bodies) ||
+    importResult.bodyCount !== importResult.bodies.length ||
+    !Array.isArray(importResult.diagnostics) ||
+    importResult.diagnostics.some(isInvalidStepImportDiagnostic) ||
+    importResult.bodies.some((body) => {
+      return (
+        body.sourceFormat !== "step" ||
+        body.sourceFileName !== importResult.sourceFileName ||
+        (body.bodyName !== undefined && body.bodyName.trim().length === 0) ||
+        !isImportedBodyShapeType(body.shapeType) ||
+        !isGeometryKernelBounds(body.bounds) ||
+        !isPositiveInteger(body.solidCount) ||
+        !isNonNegativeInteger(body.faceCount) ||
+        !isNonNegativeInteger(body.edgeCount) ||
+        !isNonNegativeInteger(body.vertexCount) ||
+        isInvalidExactTopologySnapshot(body.topologySnapshot) ||
+        isInvalidExactTopologyCheckpointPayload(body.checkpointPayload) ||
+        body.checkpointPayload.sourceKind !== "importedBody" ||
+        body.checkpointPayload.topologySnapshot.signature !==
+          body.topologySnapshot.signature ||
+        typeof body.healingApplied !== "boolean" ||
+        !Array.isArray(body.diagnostics) ||
+        body.diagnostics.some(isInvalidStepImportDiagnostic)
+      );
+    })
+  );
+}
+
+function isExactTopologySourceKind(
+  value: unknown
+): value is ExactTopologySourceKind {
+  return (
+    value === "extrude" ||
+    value === "booleanExtrudes" ||
+    value === "revolve" ||
+    value === "hole" ||
+    value === "edgeFinish" ||
+    value === "importedBody"
+  );
+}
+
+function isImportedBodyShapeType(
+  value: unknown
+): value is GeometryKernelImportedBodyShapeType {
+  return value === "solid" || value === "compound" || value === "assemblyLeaf";
+}
+
+function isInvalidStepImportDiagnostic(
+  diagnostic: GeometryKernelStepImportDiagnostic
+): boolean {
+  return (
+    !isStepImportDiagnosticCode(diagnostic.code) ||
+    (diagnostic.severity !== "info" &&
+      diagnostic.severity !== "warning" &&
+      diagnostic.severity !== "blocking") ||
+    typeof diagnostic.message !== "string" ||
+    diagnostic.message.trim().length === 0
+  );
+}
+
+function isStepImportDiagnosticCode(
+  code: string
+): code is GeometryKernelStepImportDiagnosticCode {
+  return (
+    code === "STEP_READER_AVAILABLE" ||
+    code === "STEP_TRANSFER_COMPLETE" ||
+    code === "STEP_HEALING_APPLIED" ||
+    code === "STEP_HEALING_NOT_REQUIRED" ||
+    code === "STEP_TOPOLOGY_EXTRACTED" ||
+    code === "STEP_CHECKPOINT_PAYLOAD_CREATED"
   );
 }
 
@@ -2437,6 +2874,10 @@ function isNonNegativeFinite(value: number): boolean {
 
 function isNonNegativeInteger(value: number): boolean {
   return Number.isInteger(value) && value >= 0;
+}
+
+function isPositiveInteger(value: number): boolean {
+  return Number.isInteger(value) && value > 0;
 }
 
 function crossVec3(
