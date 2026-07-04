@@ -2430,7 +2430,8 @@ function MirrorWorkbenchCard({
             ))}
           </select>
         </label>
-        <label className="checkbox-field">
+        <label>
+          Include original
           <input
             type="checkbox"
             checked={includeOriginal}
@@ -2439,14 +2440,13 @@ function MirrorWorkbenchCard({
               setIncludeOriginal(event.currentTarget.checked)
             }
           />
-          Include original
         </label>
       </div>
-      <p className="hint-text">
+      <small className="form-hint">
         {includeOriginal
           ? "The result is the union of the seed and its reflection; the seed body is merged into the result."
           : "The result is the reflected copy only; the seed body stays active."}
-      </p>
+      </small>
       <button
         type="button"
         disabled={
