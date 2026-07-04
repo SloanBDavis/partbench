@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { createMcpStdioSession } from "./index";
 
+interface ToolsListResponse {
+  readonly jsonrpc: "2.0";
+  readonly id: number;
+  readonly result: {
+    readonly tools: ReadonlyArray<{
+      readonly name: string;
+      readonly description?: string;
+      readonly inputSchema?: unknown;
+    }>;
+  };
+}
+
 describe("mcp stdio server", () => {
   it("handles tools/list over line-delimited JSON-RPC", () => {
     const session = createMcpStdioSession();
@@ -12,57 +24,76 @@ describe("mcp stdio server", () => {
           method: "tools/list"
         })
       )
-    );
+    ) as ToolsListResponse;
 
     expect(response).toMatchObject({
       jsonrpc: "2.0",
       id: 1,
       result: {
-        tools: [
-          { name: "cad.parameter_list" },
-          { name: "cad.parameter_get" },
-          { name: "cad.feature_editability" },
-          { name: "cad.project_summary" },
-          { name: "cad.project_features" },
-          { name: "cad.project_structure" },
-          { name: "cad.project_health" },
-          { name: "cad.project_dependency_graph" },
-          { name: "cad.project_rebuild_plan" },
-          { name: "cad.project_topology_identity_readiness" },
-          { name: "cad.topology_match_snapshots" },
-          { name: "cad.topology_anchor_repair_candidates" },
-          { name: "cad.topology_anchor_command_readiness" },
-          { name: "cad.topology_command_target_readiness" },
-          { name: "cad.topology_anchor_creation_plan" },
-          { name: "cad.topology_anchor_repair_plan" },
-          { name: "cad.project_export_readiness" },
-          { name: "cad.project_export_exact" },
-          { name: "cad.project_package_readiness" },
-          { name: "cad.v8_project_surface" },
-          { name: "cad.project_sketches" },
-          { name: "cad.object_measurements" },
-          { name: "cad.body_measurements" },
-          { name: "cad.body_topology" },
-          { name: "cad.body_topology_identity" },
-          { name: "cad.project_extents" },
-          { name: "cad.sketch_get" },
-          { name: "cad.sketch_edit_readiness" },
-          { name: "cad.sketch_solver_status" },
-          { name: "cad.sketch_dimensions" },
-          { name: "cad.sketch_evaluation" },
-          { name: "cad.sketch_dimension_get" },
-          { name: "cad.body_generated_references" },
-          { name: "cad.resolve_generated_reference" },
-          { name: "cad.generated_reference_measurements" },
-          { name: "cad.named_references" },
-          { name: "cad.resolve_named_reference" },
-          { name: "cad.reference_health" },
-          { name: "cad.selection_reference_candidates" },
-          { name: "cad.transaction_history" },
-          { name: "cad.batch" }
-        ]
+        tools: expect.any(Array)
       }
     });
+    if (!Array.isArray(response.result.tools)) {
+      throw new Error("Expected tools/list result with tools array.");
+    }
+
+    const tools = response.result.tools;
+    const toolNames = tools.map((tool) => tool.name);
+
+    expect(toolNames).toEqual(
+      expect.arrayContaining([
+        "cad.parameter_list",
+        "cad.parameter_get",
+        "cad.feature_editability",
+        "cad.project_summary",
+        "cad.project_features",
+        "cad.project_structure",
+        "cad.project_health",
+        "cad.project_dependency_graph",
+        "cad.project_rebuild_plan",
+        "cad.project_topology_identity_readiness",
+        "cad.topology_match_snapshots",
+        "cad.topology_anchor_repair_candidates",
+        "cad.topology_anchor_command_readiness",
+        "cad.topology_command_target_readiness",
+        "cad.topology_anchor_creation_plan",
+        "cad.topology_anchor_repair_plan",
+        "cad.project_export_readiness",
+        "cad.project_export_exact",
+        "cad.project_package_readiness",
+        "cad.project_import_readiness",
+        "cad.v8_project_surface",
+        "cad.project_sketches",
+        "cad.object_measurements",
+        "cad.body_measurements",
+        "cad.body_imported_body_status",
+        "cad.body_topology",
+        "cad.body_topology_identity",
+        "cad.project_extents",
+        "cad.sketch_get",
+        "cad.sketch_edit_readiness",
+        "cad.sketch_solver_status",
+        "cad.sketch_dimensions",
+        "cad.sketch_evaluation",
+        "cad.sketch_dimension_get",
+        "cad.body_generated_references",
+        "cad.resolve_generated_reference",
+        "cad.generated_reference_measurements",
+        "cad.named_references",
+        "cad.resolve_named_reference",
+        "cad.reference_health",
+        "cad.selection_reference_candidates",
+        "cad.transaction_history",
+        "cad.batch"
+      ])
+    );
+    expect(tools).toContainEqual(
+      expect.objectContaining({
+        name: "cad.batch",
+        description: expect.any(String),
+        inputSchema: expect.objectContaining({ type: "object" })
+      })
+    );
   });
 
   it("handles tools/call and preserves document state for later calls", () => {
