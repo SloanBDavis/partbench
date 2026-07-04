@@ -960,6 +960,8 @@ function formatFeatureKindLabel(feature: CadFeatureSummary): string {
       return "Circular pattern";
     case "mirror":
       return "Mirror";
+    case "shell":
+      return "Shell";
     case "primitive":
       return formatObjectKind(feature.primitive);
   }
@@ -1169,6 +1171,27 @@ function renderFeatureDetailRows(
         <div>
           <dt>Include original</dt>
           <dd>{feature.includeOriginal ? "Yes" : "No"}</dd>
+        </div>
+      </>
+    );
+  }
+
+  if (feature.kind === "shell") {
+    return (
+      <>
+        <div>
+          <dt>Target body</dt>
+          <dd>{feature.targetBodyId}</dd>
+        </div>
+        <div>
+          <dt>Wall thickness</dt>
+          <dd>
+            {feature.wallThickness} {units}
+          </dd>
+        </div>
+        <div>
+          <dt>Open faces</dt>
+          <dd>{feature.openFaceRefs.length}</dd>
         </div>
       </>
     );

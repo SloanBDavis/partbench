@@ -83,12 +83,14 @@ import {
   buildFeatureHoleOp,
   buildFeatureMirrorOp,
   buildFeatureRevolveOp,
+  buildFeatureShellOp,
   buildFeatureUpdateChamferOp,
   buildFeatureUpdateExtrudeOp,
   buildFeatureUpdateFilletOp,
   buildFeatureUpdateHoleOp,
   buildFeatureUpdateMirrorOp,
   buildFeatureUpdateRevolveOp,
+  buildFeatureUpdateShellOp,
   buildNameGeneratedReferenceOp,
   buildParameterEditOps,
   buildRepairNamedReferenceOp,
@@ -113,6 +115,8 @@ import {
   type FeatureMirrorEdit,
   type FeatureMirrorForm,
   type FeatureRevolveForm,
+  type FeatureShellEdit,
+  type FeatureShellForm,
   type ParameterCreateForm,
   type ParameterEditForm,
   type SketchConstraintForm,
@@ -464,6 +468,7 @@ function readProjectHealth(
         authoredHoleCount: 0,
         authoredChamferCount: 0,
         authoredFilletCount: 0,
+        authoredShellCount: 0,
         attachedSketchCount: 0,
         sketchEvaluationCount: 0,
         sketchDimensionCount: 0,
@@ -474,6 +479,7 @@ function readProjectHealth(
         authoredHoles: [],
         authoredChamfers: [],
         authoredFillets: [],
+        authoredShells: [],
         attachedSketches: [],
         sketchEvaluations: [],
         sketchDimensions: [],
@@ -1588,6 +1594,10 @@ export function App() {
   const selectedBodyGeneratedReferences = readBodyGeneratedReferences(
     selectedBody?.id
   );
+  const selectedShellTargetGeneratedReferences =
+    selectedFeature?.kind === "shell"
+      ? readBodyGeneratedReferences(selectedFeature.targetBodyId).references
+      : undefined;
   const selectedGeneratedReferenceMeasurements =
     readGeneratedReferenceMeasurements(
       selectedBodyGeneratedReferences.references
@@ -2374,6 +2384,13 @@ export function App() {
     );
   }
 
+  async function createShell(form: FeatureShellForm) {
+    await commitOps(
+      [buildFeatureShellOp(form)],
+      (response) => response.createdBodyIds?.[0] ?? (form.bodyId || selectedId)
+    );
+  }
+
   async function updateAuthoredMirror(
     featureId: string,
     edit: FeatureMirrorEdit
@@ -2390,6 +2407,18 @@ export function App() {
       [buildFeatureUpdateMirrorOp(feature.id, edit)],
       () => feature.bodyId
     );
+  }
+
+  async function updateAuthoredShell(featureId: string, edit: FeatureShellEdit) {
+    const feature = projectStructure.features.find(
+      (candidate) => candidate.id === featureId
+    );
+
+    if (feature?.kind !== "shell") {
+      return;
+    }
+
+    await commitOps([buildFeatureUpdateShellOp(feature.id, edit)], () => feature.bodyId);
   }
 
   function focusSketch(sketchId: string, entityId?: string) {
@@ -3016,6 +3045,7 @@ export function App() {
       },
       onCreateEdgeFinish: (operation, form) =>
         void createEdgeFinish(operation, form),
+      onCreateShell: (form) => void createShell(form),
       onCreateSideHoleSketch: (form, targetBodyId) =>
         void createSideHoleSketch(form, targetBodyId),
       onCreateSketchOnFace: (form) => void createSketchOnFace(form),
@@ -3125,6 +3155,8 @@ export function App() {
         return "circular pattern";
       case "mirror":
         return "mirror";
+      case "shell":
+        return "shell";
       case "primitive":
         return feature.primitive;
     }
@@ -3958,6 +3990,7 @@ export function App() {
             namedReferences={namedReferences}
             namedReferenceHealthByName={namedReferenceHealthByName}
             selectedNamedReferenceName={selectedNamedReferenceName}
+            shellTargetGeneratedReferences={selectedShellTargetGeneratedReferences}
             sketches={sketches}
             onAddEntity={(sketchId, kind, form) =>
               void addSketchEntity(sketchId, kind, form)
@@ -3975,6 +4008,7 @@ export function App() {
               void createSideHoleSketch(form, targetBodyId)
             }
             onCreateMirror={(form) => void createMirror(form)}
+            onCreateShell={(form) => void createShell(form)}
             onCreateSketch={(form) => void createSketch(form)}
             onCreateSketchOnFace={(form) => void createSketchOnFace(form)}
             onExtrudeEntity={(sketchId, entityId, form) =>
@@ -3992,6 +4026,9 @@ export function App() {
             onSelectBody={selectObject}
             onUpdateMirror={(featureId, edit) =>
               void updateAuthoredMirror(featureId, edit)
+            }
+            onUpdateShell={(featureId, edit) =>
+              void updateAuthoredShell(featureId, edit)
             }
             onDeleteFeature={(featureId) =>
               void deleteAuthoredFeature(featureId)

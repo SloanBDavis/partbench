@@ -162,6 +162,16 @@ export interface DerivedGeometryMirrorInput {
   readonly includeOriginal: boolean;
 }
 
+export type DerivedGeometryShellTargetSource =
+  DerivedGeometryPatternSeedSource;
+
+export interface DerivedGeometryShellInput {
+  readonly id: string;
+  readonly target: DerivedGeometryShellTargetSource;
+  readonly wallThickness: number;
+  readonly openFaceStableIds: readonly string[];
+}
+
 export type DerivedGeometryEdgeFinishInput =
   | {
       readonly id: string;
@@ -334,6 +344,7 @@ export interface DerivedGeometryRuntime {
     input: DerivedGeometryCircularPatternInput
   ): Promise<DerivedGeometryResult>;
   mirror(input: DerivedGeometryMirrorInput): Promise<DerivedGeometryResult>;
+  shell(input: DerivedGeometryShellInput): Promise<DerivedGeometryResult>;
   exactBodyMetadata(
     input: DerivedExactMetadataInput
   ): Promise<DerivedExactMetadataResult>;

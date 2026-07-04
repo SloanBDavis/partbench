@@ -2446,6 +2446,7 @@ describe("cad-protocol", () => {
       authoredHoleCount: 0,
       authoredChamferCount: 0,
       authoredFilletCount: 0,
+      authoredShellCount: 0,
       attachedSketchCount: 0,
       sketchEvaluationCount: 1,
       sketchDimensionCount: 0,
@@ -2479,6 +2480,7 @@ describe("cad-protocol", () => {
       authoredHoles: [],
       authoredChamfers: [],
       authoredFillets: [],
+      authoredShells: [],
       attachedSketches: [],
       sketchEvaluations: [
         {
@@ -2804,6 +2806,7 @@ describe("cad-protocol", () => {
           "feature.attachSketchPlane": 0,
           "feature.chamfer": 0,
           "feature.fillet": 0,
+          "feature.shell": 0,
           "feature.measureReference": 1,
           "feature.selectReference": 1
         }

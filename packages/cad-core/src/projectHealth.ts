@@ -6,6 +6,7 @@ import type {
   CadAuthoredFilletHealth,
   CadAuthoredHoleHealth,
   CadAuthoredRevolveHealth,
+  CadAuthoredShellHealth,
   CadBodyDerivedExactMetadataSnapshot,
   CadBodyTopologySnapshot,
   CadDependencyHealthIssue,
@@ -55,10 +56,12 @@ import {
   type GeneratedReferencesExtrudeFeature,
   type GeneratedReferencesSketch
 } from "./generatedReferences";
+import { resolveTopologyAnchorGeneratedReferenceFromSourceRole } from "./topologyAnchorGeneratedReferenceResolution";
 import type {
   LinearPatternFeature,
   CircularPatternFeature,
-  MirrorFeature
+  MirrorFeature,
+  ShellFeature
 } from "./index";
 import {
   evaluateSketch,
@@ -111,7 +114,8 @@ export type ProjectHealthFeature =
   | ProjectHealthImportedBodyFeature
   | LinearPatternFeature
   | CircularPatternFeature
-  | MirrorFeature;
+  | MirrorFeature
+  | ShellFeature;
 
 export interface ProjectHealthRevolveFeature {
   readonly id: FeatureId;
@@ -211,6 +215,11 @@ export function createProjectHealth(
     .map((feature) =>
       createAuthoredFilletHealth(options.document, feature, options)
     );
+  const authoredShells = authoredFeatures
+    .filter((feature): feature is ShellFeature => feature.kind === "shell")
+    .map((feature) =>
+      createAuthoredShellHealth(options.document, feature, options)
+    );
   const attachedSketches = [...options.document.sketches.values()]
     .filter((sketch) => sketch.attachment !== undefined)
     .map((sketch) =>
@@ -241,6 +250,7 @@ export function createProjectHealth(
     ...authoredHoles,
     ...authoredChamfers,
     ...authoredFillets,
+    ...authoredShells,
     ...attachedSketches,
     ...sketchEvaluations,
     ...sketchDimensions,
@@ -258,6 +268,7 @@ export function createProjectHealth(
       ...authoredHoles.map((entry) => entry.status),
       ...authoredChamfers.map((entry) => entry.status),
       ...authoredFillets.map((entry) => entry.status),
+      ...authoredShells.map((entry) => entry.status),
       ...attachedSketches.map((entry) => entry.status),
       ...sketchEvaluations.map((entry) => entry.status),
       ...sketchDimensions.map((entry) => entry.status),
@@ -270,6 +281,7 @@ export function createProjectHealth(
     authoredHoleCount: authoredHoles.length,
     authoredChamferCount: authoredChamfers.length,
     authoredFilletCount: authoredFillets.length,
+    authoredShellCount: authoredShells.length,
     attachedSketchCount: attachedSketches.length,
     sketchEvaluationCount: sketchEvaluations.length,
     sketchDimensionCount: sketchDimensions.length,
@@ -280,6 +292,7 @@ export function createProjectHealth(
     authoredHoles,
     authoredChamfers,
     authoredFillets,
+    authoredShells,
     attachedSketches,
     sketchEvaluations,
     sketchDimensions,
@@ -943,6 +956,255 @@ function createEdgeFinishHealth(
   };
 }
 
+function createAuthoredShellHealth(
+  document: ProjectHealthDocument,
+  feature: ShellFeature,
+  options: ProjectHealthOptions
+): CadAuthoredShellHealth {
+  const issues: CadDependencyHealthIssue[] = [];
+  const targetFeature = [...document.features.values()].find(
+    (candidate) => candidate.bodyId === feature.targetBodyId
+  );
+
+  if (!targetFeature) {
+    issues.push({
+      code: "BODY_NOT_FOUND",
+      message: `Shell feature ${feature.id} targets a missing body: ${feature.targetBodyId}`,
+      featureId: feature.id,
+      bodyId: feature.targetBodyId
+    });
+  } else if (targetFeature.id === feature.id) {
+    issues.push({
+      code: "UNSUPPORTED_BODY_REFERENCES",
+      message: `Shell feature ${feature.id} cannot target its own result body.`,
+      featureId: feature.id,
+      bodyId: feature.targetBodyId
+    });
+  } else {
+    const consumedBy = [...document.features.values()].find(
+      (candidate) =>
+        candidate.id !== feature.id &&
+        isTargetConsumingProjectHealthFeature(candidate) &&
+        candidate.targetBodyId === feature.targetBodyId
+    );
+
+    if (consumedBy) {
+      issues.push({
+        code: "UNSUPPORTED_BODY_REFERENCES",
+        message: `Shell feature ${feature.id} targets body ${feature.targetBodyId}, but that body is already consumed by feature ${consumedBy.id}.`,
+        featureId: feature.id,
+        bodyId: feature.targetBodyId,
+        expected: "active authored target body",
+        received: consumedBy.id
+      });
+    }
+  }
+
+  if (!Number.isFinite(feature.wallThickness) || feature.wallThickness <= 0) {
+    issues.push({
+      code: "UNSUPPORTED_BODY_REFERENCES",
+      message: `Shell feature ${feature.id} requires a positive finite wall thickness.`,
+      featureId: feature.id,
+      bodyId: feature.bodyId,
+      expected: "positive finite number",
+      received: String(feature.wallThickness)
+    });
+  }
+
+  for (const ref of feature.openFaceRefs) {
+    const stableId = resolveShellOpenFaceStableId(
+      document,
+      feature,
+      ref,
+      issues,
+      options.ownerPartId
+    );
+
+    if (!stableId) {
+      continue;
+    }
+
+    const validation = validateGeneratedReference({
+      document,
+      ownerPartId: options.ownerPartId,
+      bodyId: feature.targetBodyId,
+      stableId,
+      bodyExists: options.bodyExists,
+      expectedKind: "face",
+      requiredOperation: "feature.shell"
+    });
+
+    if (!validation.ok) {
+      issues.push(
+        createIssueFromGeneratedReferenceError(validation.error, {
+          bodyId: feature.targetBodyId,
+          stableId,
+          referenceName:
+            ref.kind === "namedReference" ? ref.name : undefined
+        })
+      );
+    }
+  }
+
+  const topology = createBodyTopology({
+    document,
+    bodyId: feature.bodyId,
+    units: options.units,
+    ownerPartId: options.ownerPartId,
+    derivedExactMetadata: getDerivedExactMetadataForBody(
+      options,
+      feature.bodyId
+    ),
+    bodyExists: options.bodyExists
+  });
+  const topologySnapshot = topology.ok ? topology.topology : undefined;
+
+  return {
+    featureId: feature.id,
+    bodyId: feature.bodyId,
+    targetBodyId: feature.targetBodyId,
+    wallThickness: feature.wallThickness,
+    openFaceRefs: [...feature.openFaceRefs],
+    ...(topologySnapshot
+      ? {
+          topologyStatus: topologySnapshot.status,
+          topologyModel: topologySnapshot.topologyModel,
+          topologyAvailable: topologySnapshot.topologyAvailable,
+          exactMeasurementsAvailable:
+            topologySnapshot.exactMeasurementsAvailable,
+          measurementConfidence: topologySnapshot.measurementConfidence,
+          topologyIssueCount: topologySnapshot.issues.length
+        }
+      : {}),
+    status: statusFromIssues(issues),
+    issues
+  };
+}
+
+function resolveShellOpenFaceStableId(
+  document: ProjectHealthDocument,
+  feature: ShellFeature,
+  ref: ShellFeature["openFaceRefs"][number],
+  issues: CadDependencyHealthIssue[],
+  ownerPartId: PartId
+): string | undefined {
+  if (ref.kind === "generatedFace") {
+    if (ref.bodyId !== feature.targetBodyId) {
+      issues.push({
+        code: "GENERATED_REFERENCE_NOT_FOUND",
+        message: `Shell feature ${feature.id} open face resolves to body ${ref.bodyId}, not target body ${feature.targetBodyId}.`,
+        featureId: feature.id,
+        bodyId: feature.targetBodyId,
+        stableId: ref.stableId,
+        expected: feature.targetBodyId,
+        received: ref.bodyId
+      });
+      return undefined;
+    }
+
+    return ref.stableId;
+  }
+
+  if (ref.kind === "namedReference") {
+    const reference = document.namedReferences.get(ref.name);
+
+    if (!reference) {
+      issues.push({
+        code: "NAMED_REFERENCE_NOT_FOUND",
+        message: `Named reference does not exist: ${ref.name}`,
+        featureId: feature.id,
+        bodyId: feature.targetBodyId,
+        referenceName: ref.name
+      });
+      return undefined;
+    }
+
+    if (reference.bodyId !== feature.targetBodyId) {
+      issues.push({
+        code: "GENERATED_REFERENCE_NOT_FOUND",
+        message: `Named reference ${ref.name} resolves to body ${reference.bodyId}, not target body ${feature.targetBodyId}.`,
+        featureId: feature.id,
+        bodyId: feature.targetBodyId,
+        stableId: reference.stableId,
+        referenceName: ref.name,
+        expected: feature.targetBodyId,
+        received: reference.bodyId
+      });
+      return undefined;
+    }
+
+    return reference.stableId;
+  }
+
+  const anchor = document.topologyIdentity?.anchors.find(
+    (candidate) => candidate.anchorId === ref.anchorId
+  );
+  const checkpoint = anchor
+    ? document.topologyIdentity?.checkpoints.find(
+        (candidate) => candidate.checkpointId === anchor.checkpointId
+      )
+    : undefined;
+
+  if (
+    !anchor ||
+    !checkpoint ||
+    anchor.state !== "active" ||
+    checkpoint.status !== "active" ||
+    anchor.entityKind !== "face"
+  ) {
+    issues.push({
+      code: "GENERATED_REFERENCE_NOT_FOUND",
+      message: `Shell feature ${feature.id} topology open face ${ref.anchorId} does not resolve to an active face anchor.`,
+      featureId: feature.id,
+      bodyId: feature.targetBodyId,
+      expected: "active face topology anchor",
+      received: [
+        ref.anchorId,
+        anchor?.state ?? "missing-anchor",
+        checkpoint?.status ?? "missing-checkpoint",
+        anchor?.entityKind ?? "missing-kind"
+      ].join(":")
+    });
+    return undefined;
+  }
+
+  if (anchor.bodyId !== feature.targetBodyId) {
+    issues.push({
+      code: "GENERATED_REFERENCE_NOT_FOUND",
+      message: `Topology anchor ${ref.anchorId} resolves to body ${anchor.bodyId}, not target body ${feature.targetBodyId}.`,
+      featureId: feature.id,
+      bodyId: feature.targetBodyId,
+      expected: feature.targetBodyId,
+      received: anchor.bodyId
+    });
+    return undefined;
+  }
+
+  const stableResolution = anchor.stableId
+    ? { status: "resolved" as const, stableId: anchor.stableId }
+    : resolveTopologyAnchorGeneratedReferenceFromSourceRole({
+        document,
+        ownerPartId,
+        bodyId: anchor.bodyId,
+        entityKind: "face",
+        sourceSemanticRole: anchor.sourceSemanticRole
+      });
+
+  if (stableResolution.status !== "resolved") {
+    issues.push({
+      code: "GENERATED_REFERENCE_NOT_FOUND",
+      message: `Topology anchor ${ref.anchorId} does not have a stable generated face backing.`,
+      featureId: feature.id,
+      bodyId: feature.targetBodyId,
+      expected: "stable generated face backing",
+      received: anchor.sourceSemanticRole ?? "missing stableId"
+    });
+    return undefined;
+  }
+
+  return stableResolution.stableId;
+}
+
 function getDerivedExactMetadataForBody(
   options: ProjectHealthOptions,
   bodyId: BodyId
@@ -1455,6 +1717,7 @@ function getProjectHealthFeaturePrimaryEntityId(
     | LinearPatternFeature
     | CircularPatternFeature
     | MirrorFeature
+    | ShellFeature
   >
 ): SketchEntityId {
   return feature.kind === "hole" ? feature.circleEntityId : feature.entityId;
@@ -1470,6 +1733,7 @@ function hasSketchEntitySource(
   | LinearPatternFeature
   | CircularPatternFeature
   | MirrorFeature
+  | ShellFeature
 > {
   return (
     feature.kind !== "chamfer" &&
@@ -1477,6 +1741,7 @@ function hasSketchEntitySource(
     feature.kind !== "importedBody" &&
     feature.kind !== "linearPattern" &&
     feature.kind !== "mirror" &&
+    feature.kind !== "shell" &&
     feature.kind !== "circularPattern"
   );
 }
@@ -1490,7 +1755,8 @@ function isTargetConsumingProjectHealthFeature(
       feature.targetBodyId !== undefined) ||
     feature.kind === "hole" ||
     feature.kind === "chamfer" ||
-    feature.kind === "fillet"
+    feature.kind === "fillet" ||
+    feature.kind === "shell"
   );
 }
 
@@ -1931,6 +2197,10 @@ function describeFeatureForHealth(feature: ProjectHealthFeature): string {
 
   if (feature.kind === "mirror") {
     return "mirror result";
+  }
+
+  if (feature.kind === "shell") {
+    return "shell result";
   }
 
   return `${feature.profileKind} ${feature.operationMode}`;

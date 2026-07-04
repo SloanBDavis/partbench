@@ -106,6 +106,12 @@ import {
   createOcctMirrorMeshWithLoader,
   type OcctMirrorInput
 } from "./mirror";
+import {
+  createOcctShellMeshWithInstance,
+  createOcctShellMeshWithLoader,
+  type OcctShellInput,
+  type OcctShellTargetSource
+} from "./shell";
 
 export type {
   OcctBooleanExtrudeInput,
@@ -140,6 +146,8 @@ export type {
   OcctLinearPatternInput,
   OcctCircularPatternInput,
   OcctMirrorInput,
+  OcctShellInput,
+  OcctShellTargetSource,
   OcctMeshData
 };
 export {
@@ -182,7 +190,9 @@ export {
   createOcctCircularPatternMeshWithInstance,
   createOcctCircularPatternMeshWithLoader,
   createOcctMirrorMeshWithInstance,
-  createOcctMirrorMeshWithLoader
+  createOcctMirrorMeshWithLoader,
+  createOcctShellMeshWithInstance,
+  createOcctShellMeshWithLoader
 };
 
 type OpenCascadeModuleObject = Record<string, unknown>;

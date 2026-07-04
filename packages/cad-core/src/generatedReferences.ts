@@ -51,6 +51,12 @@ const EDGE_FINISH_OPERATIONS = [
 ] satisfies readonly CadGeneratedReferenceEligibleOperation[];
 const PLANAR_FACE_OPERATIONS = [
   "feature.attachSketchPlane",
+  "feature.shell",
+  "feature.measureReference",
+  "feature.selectReference"
+] satisfies readonly CadGeneratedReferenceEligibleOperation[];
+const SHELL_MEASURE_AND_SELECT_OPERATIONS = [
+  "feature.shell",
   "feature.measureReference",
   "feature.selectReference"
 ] satisfies readonly CadGeneratedReferenceEligibleOperation[];
@@ -86,7 +92,8 @@ export type GeneratedReferencesFeature =
   | GeneratedReferencesImportedBodyFeature
   | GeneratedReferencesLinearPatternFeature
   | GeneratedReferencesCircularPatternFeature
-  | GeneratedReferencesMirrorFeature;
+  | GeneratedReferencesMirrorFeature
+  | GeneratedReferencesShellFeature;
 
 export interface GeneratedReferencesExtrudeFeature {
   readonly id: FeatureId;
@@ -172,6 +179,12 @@ export interface GeneratedReferencesCircularPatternFeature {
 export interface GeneratedReferencesMirrorFeature {
   readonly id: FeatureId;
   readonly kind: "mirror";
+  readonly bodyId: BodyId;
+}
+
+export interface GeneratedReferencesShellFeature {
+  readonly id: FeatureId;
+  readonly kind: "shell";
   readonly bodyId: BodyId;
 }
 
@@ -1067,7 +1080,7 @@ function createBooleanAddFaceReference(
             ""
           )} tool profile edge.`,
     eligibleOperations: isCircularWall
-      ? MEASURE_AND_SELECT_OPERATIONS
+      ? SHELL_MEASURE_AND_SELECT_OPERATIONS
       : PLANAR_FACE_OPERATIONS,
     eligibilityNotes: createBooleanAddEligibilityNotes(),
     bodyId: feature.bodyId,
@@ -1288,7 +1301,7 @@ function createBooleanCutWallFaceReference(
           ""
         )} tool profile edge.`,
     eligibleOperations: isCircularWall
-      ? MEASURE_AND_SELECT_OPERATIONS
+      ? SHELL_MEASURE_AND_SELECT_OPERATIONS
       : PLANAR_FACE_OPERATIONS,
     eligibilityNotes: createBooleanCutEligibilityNotes(),
     bodyId: feature.bodyId,
@@ -1755,7 +1768,7 @@ function createHoleFaceReference(
     label: "Hole wall face",
     description:
       "Cylindrical wall face generated from the authored hole circle.",
-    eligibleOperations: createHoleReferenceEligibleOperations(),
+    eligibleOperations: createHoleFaceEligibleOperations(),
     eligibilityNotes: createHoleEligibilityNotes(),
     bodyId: feature.bodyId,
     ownerPartId,
@@ -1807,7 +1820,7 @@ function createHoleEdgeReference(
     stableId: `generated:edge:${feature.bodyId}:${role}`,
     label: createHoleEdgeReferenceLabel(),
     description: createHoleEdgeReferenceDescription(),
-    eligibleOperations: createHoleReferenceEligibleOperations(),
+    eligibleOperations: createSourceSemanticSelectionOperations(),
     eligibilityNotes: createHoleEligibilityNotes(),
     bodyId: feature.bodyId,
     ownerPartId,
@@ -2077,8 +2090,8 @@ function createHoleBodyEligibleOperations(): readonly CadGeneratedReferenceEligi
   return createSourceSemanticSelectionOperations();
 }
 
-function createHoleReferenceEligibleOperations(): readonly CadGeneratedReferenceEligibleOperation[] {
-  return createSourceSemanticSelectionOperations();
+function createHoleFaceEligibleOperations(): readonly CadGeneratedReferenceEligibleOperation[] {
+  return ["feature.shell", "feature.selectReference"];
 }
 
 function createSourceSemanticSelectionOperations(): readonly CadGeneratedReferenceEligibleOperation[] {
@@ -2179,7 +2192,7 @@ function createFaceEligibleOperations(
   role: CadGeneratedExtrudeFaceRole
 ): readonly CadGeneratedReferenceEligibleOperation[] {
   return role === "side:circular"
-    ? MEASURE_AND_SELECT_OPERATIONS
+    ? SHELL_MEASURE_AND_SELECT_OPERATIONS
     : PLANAR_FACE_OPERATIONS;
 }
 

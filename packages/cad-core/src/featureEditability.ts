@@ -150,6 +150,10 @@ export function createFeatureEditabilityResponse(
     return createEdgeFinishEditabilityResponse(options, feature);
   }
 
+  if (feature.kind === "shell") {
+    return createShellEditabilityResponse(options, feature);
+  }
+
   return createDeferredSourceFeatureResponse(options, feature);
 }
 
@@ -614,6 +618,72 @@ function createEdgeFinishEditabilityResponse(
           options.proposedEdit,
           blockingDiagnostics
         ),
+    affectedSketchIds: [],
+    affectedBodyIds: [feature.bodyId, feature.targetBodyId],
+    referenceChanges: createRepairNeededResultReferenceChanges(feature)
+  });
+}
+
+function createShellEditabilityResponse(
+  options: CreateFeatureEditabilityResponseOptions,
+  feature: Extract<CadFeatureSummary, { readonly kind: "shell" }>
+): FeatureEditabilityQueryResponse {
+  const body = options.bodies.find(
+    (candidate) => candidate.id === feature.bodyId
+  );
+  const targetBody = options.bodies.find(
+    (candidate) => candidate.id === feature.targetBodyId
+  );
+  const blockingDiagnostics = createResultBodyBlockingDiagnostics(
+    feature.id,
+    feature.bodyId,
+    body?.consumedByFeatureId,
+    "feature.updateShell"
+  );
+
+  if (targetBody?.consumedByFeatureId !== feature.id) {
+    blockingDiagnostics.push(
+      createDiagnostic({
+        code: "CONSUMED_REFERENCE_NOT_COMMAND_READY",
+        severity: "blocker",
+        message:
+          "Shell edits require the target body to be consumed by the shell feature being edited.",
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        targetBodyId: feature.targetBodyId,
+        expected: feature.id,
+        received: targetBody?.consumedByFeatureId ?? "active target body"
+      })
+    );
+  }
+
+  return createSourceParameterEditabilityResponse({
+    options,
+    feature,
+    fields: [
+      {
+        path: "wallThickness",
+        label: "Wall thickness",
+        valueType: "number",
+        currentValue: feature.wallThickness,
+        unit: options.units
+      },
+      {
+        path: "openFaceRefs",
+        label: "Open faces",
+        valueType: "reference",
+        currentValue: `${feature.openFaceRefs.length} open face${feature.openFaceRefs.length === 1 ? "" : "s"}`
+      }
+    ],
+    blockingDiagnostics,
+    commitOperation: "feature.updateShell",
+    supportMessage:
+      "Shell wall thickness and open faces can be edited through feature.updateShell; this query does not mutate document state.",
+    dryRunDiagnostics: createShellDryRunDiagnostics(
+      feature,
+      options.proposedEdit,
+      blockingDiagnostics
+    ),
     affectedSketchIds: [],
     affectedBodyIds: [feature.bodyId, feature.targetBodyId],
     referenceChanges: createRepairNeededResultReferenceChanges(feature)
@@ -1170,7 +1240,8 @@ function createDeferredFields(
     feature.kind === "importedBody" ||
     feature.kind === "linearPattern" ||
     feature.kind === "circularPattern" ||
-    feature.kind === "mirror"
+    feature.kind === "mirror" ||
+    feature.kind === "shell"
   ) {
     return [];
   }
@@ -1456,6 +1527,62 @@ function createFilletDryRunDiagnostics(
     "fillet",
     "radius"
   );
+}
+
+function createShellDryRunDiagnostics(
+  feature: Extract<CadFeatureSummary, { readonly kind: "shell" }>,
+  proposedEdit: CadFeatureEditProposal | undefined,
+  blockingDiagnostics: readonly CadFeatureEditDiagnostic[]
+): readonly CadFeatureEditDiagnostic[] {
+  if (proposedEdit === undefined) {
+    return [];
+  }
+
+  if (blockingDiagnostics.length > 0) {
+    return blockingDiagnostics;
+  }
+
+  const diagnostics = createKindAndFieldDiagnostics(
+    feature,
+    proposedEdit,
+    "shell",
+    ["wallThickness", "openFaceRefs"]
+  );
+
+  if (proposedEdit.kind !== "shell") {
+    return diagnostics;
+  }
+
+  if (
+    proposedEdit.wallThickness !== undefined &&
+    (!Number.isFinite(proposedEdit.wallThickness) ||
+      proposedEdit.wallThickness <= 0)
+  ) {
+    diagnostics.push(
+      createInvalidProposalDiagnostic(
+        feature,
+        "wallThickness",
+        "finite positive number",
+        String(proposedEdit.wallThickness)
+      )
+    );
+  }
+
+  if (
+    proposedEdit.openFaceRefs !== undefined &&
+    !proposedEdit.openFaceRefs.every(isShellOpenFaceRefShape)
+  ) {
+    diagnostics.push(
+      createInvalidProposalDiagnostic(
+        feature,
+        "openFaceRefs",
+        "generatedFace, namedReference, or topologyAnchor refs",
+        "invalid openFaceRefs"
+      )
+    );
+  }
+
+  return diagnostics;
 }
 
 function createScalarDryRunDiagnostics(
@@ -1844,6 +1971,28 @@ function listGeneratedReferences(
 
 function isFeatureExtrudeSide(value: unknown): value is FeatureExtrudeSide {
   return value === "positive" || value === "negative" || value === "symmetric";
+}
+
+function isShellOpenFaceRefShape(value: unknown): boolean {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const ref = value as Record<string, unknown>;
+
+  if (ref.kind === "generatedFace") {
+    return typeof ref.bodyId === "string" && typeof ref.stableId === "string";
+  }
+
+  if (ref.kind === "namedReference") {
+    return typeof ref.name === "string";
+  }
+
+  if (ref.kind === "topologyAnchor") {
+    return typeof ref.bodyId === "string" && typeof ref.anchorId === "string";
+  }
+
+  return false;
 }
 
 function unique<T extends string>(values: readonly T[]): readonly T[] {

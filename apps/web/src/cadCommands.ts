@@ -21,12 +21,15 @@ import type {
   FeatureMirrorOp,
   FeatureMirrorPlane,
   FeatureRevolveOp,
+  FeatureShellOp,
+  FeatureShellOpenFaceRef,
   FeatureUpdateExtrudeOp,
   FeatureUpdateChamferOp,
   FeatureUpdateFilletOp,
   FeatureUpdateHoleOp,
   FeatureUpdateMirrorOp,
   FeatureUpdateRevolveOp,
+  FeatureUpdateShellOp,
   ParameterCreateOp,
   ParameterDeleteOp,
   ParameterId,
@@ -228,6 +231,20 @@ export interface FeatureMirrorForm {
 export interface FeatureMirrorEdit {
   readonly mirrorPlane?: FeatureMirrorPlane;
   readonly includeOriginal?: boolean;
+}
+
+export interface FeatureShellForm {
+  readonly id: string;
+  readonly bodyId: string;
+  readonly targetBodyId: string;
+  readonly name: string;
+  readonly wallThickness: number;
+  readonly openFaceRefs: readonly FeatureShellOpenFaceRef[];
+}
+
+export interface FeatureShellEdit {
+  readonly wallThickness?: number;
+  readonly openFaceRefs?: readonly FeatureShellOpenFaceRef[];
 }
 
 export function buildCreateBoxOp(form: PrimitiveCommandForm): SceneCreateBoxOp {
@@ -998,6 +1015,34 @@ export function buildFeatureUpdateMirrorOp(
       : {}),
     ...(edit.includeOriginal !== undefined
       ? { includeOriginal: edit.includeOriginal }
+      : {})
+  };
+}
+
+export function buildFeatureShellOp(form: FeatureShellForm): FeatureShellOp {
+  return {
+    op: "feature.shell",
+    id: normalizeOptionalId(form.id),
+    bodyId: normalizeOptionalId(form.bodyId),
+    targetBodyId: form.targetBodyId,
+    wallThickness: form.wallThickness,
+    openFaceRefs: form.openFaceRefs,
+    name: form.name.trim() || undefined
+  };
+}
+
+export function buildFeatureUpdateShellOp(
+  id: string,
+  edit: FeatureShellEdit
+): FeatureUpdateShellOp {
+  return {
+    op: "feature.updateShell",
+    id,
+    ...(edit.wallThickness !== undefined
+      ? { wallThickness: edit.wallThickness }
+      : {}),
+    ...(edit.openFaceRefs !== undefined
+      ? { openFaceRefs: edit.openFaceRefs }
       : {})
   };
 }

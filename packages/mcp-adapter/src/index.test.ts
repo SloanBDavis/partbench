@@ -2066,7 +2066,8 @@ describe("mcp-adapter", () => {
         commandOperations: [
           "feature.attachSketchPlane",
           "feature.measureReference",
-          "feature.selectReference"
+          "feature.selectReference",
+          "feature.shell"
         ],
         candidateCount: 1,
         proof: {
@@ -2137,7 +2138,8 @@ describe("mcp-adapter", () => {
         supportedOperations: [
           "feature.attachSketchPlane",
           "feature.measureReference",
-          "feature.selectReference"
+          "feature.selectReference",
+          "feature.shell"
         ],
         anchorReadiness: expect.objectContaining({
           query: "topology.anchorCommandReadiness",
@@ -4638,6 +4640,7 @@ describe("mcp-adapter", () => {
             role: "side:circular",
             label: "Circular side face",
             eligibleOperations: [
+              "feature.shell",
               "feature.measureReference",
               "feature.selectReference"
             ],

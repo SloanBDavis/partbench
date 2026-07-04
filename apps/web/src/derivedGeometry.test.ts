@@ -20,6 +20,7 @@ import {
   type DerivedEdgeFinishGeometrySource,
   type DerivedExtrudeGeometrySource,
   type DerivedHoleGeometrySource,
+  type DerivedShellGeometrySource,
   type DerivedRevolveGeometrySource,
   type DerivedGeometrySource,
   type DerivedGeometrySnapshot
@@ -33,6 +34,7 @@ import type {
   DerivedGeometryCylinderInput,
   DerivedGeometryEdgeFinishInput,
   DerivedGeometryMirrorInput,
+  DerivedGeometryShellInput,
   DerivedExactMetadataResult,
   DerivedGeometryExtrudeInput,
   DerivedGeometryHoleInput,
@@ -59,7 +61,8 @@ type RuntimeInput =
   | DerivedGeometryBooleanExtrudeInput
   | DerivedGeometryLinearPatternInput
   | DerivedGeometryCircularPatternInput
-  | DerivedGeometryMirrorInput;
+  | DerivedGeometryMirrorInput
+  | DerivedGeometryShellInput;
 
 describe("derivedGeometry", () => {
   it("creates cache keys that change when object geometry inputs change", () => {
@@ -998,6 +1001,80 @@ describe("derivedGeometry", () => {
       mirrorPlane: "XZ",
       includeOriginal: true
     });
+  });
+
+  it("derives shell sources from consumed targets and dispatches open-face runtime requests", async () => {
+    const engine = createExtrudedRectangleEngine();
+
+    engine.apply({
+      op: "feature.shell",
+      id: "feat_shell_1",
+      bodyId: "body_shell_1",
+      targetBodyId: "body_rect_1",
+      wallThickness: 0.2,
+      openFaceRefs: [
+        {
+          kind: "generatedFace",
+          bodyId: "body_rect_1",
+          stableId: "generated:face:body_rect_1:endCap"
+        }
+      ]
+    });
+
+    const sources = createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      getProjectStructureFeatures(engine),
+      getGeneratedFacesByKey(engine, ["body_rect_1"])
+    );
+    const shellSource = sources.find(
+      (source): source is DerivedShellGeometrySource =>
+        source.kind === "shell"
+    );
+
+    expect(sources.map((source) => source.id)).toEqual(["body_shell_1"]);
+    expect(shellSource).toMatchObject({
+      id: "body_shell_1",
+      kind: "shell",
+      wallThickness: 0.2,
+      openFaceStableIds: ["generated:face:body_rect_1:endCap"],
+      target: {
+        id: "body_rect_1",
+        kind: "extrude",
+        profile: { kind: "rectangle" },
+        depth: 3
+      }
+    });
+    expect(createDerivedGeometryCacheKey(shellSource!)).toContain(
+      "generated:face:body_rect_1:endCap"
+    );
+
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile(sources);
+    await flushPromises();
+
+    expect(runtime.inputs).toEqual([
+      expect.objectContaining({
+        id: "body_shell_1",
+        wallThickness: 0.2,
+        openFaceStableIds: ["generated:face:body_rect_1:endCap"],
+        target: expect.objectContaining({ kind: "extrude", depth: 3 })
+      })
+    ]);
+    expect(snapshots.at(-1)?.entries).toMatchObject([
+      {
+        objectId: "body_shell_1",
+        objectKind: "shell",
+        status: "ready"
+      }
+    ]);
   });
 
   it("reports a placement error for mirror seeds outside the extrude family", async () => {
@@ -5055,6 +5132,10 @@ function createRuntime(
       return handler(input);
     },
     mirror(input) {
+      inputs.push(input);
+      return handler(input);
+    },
+    shell(input) {
       inputs.push(input);
       return handler(input);
     },

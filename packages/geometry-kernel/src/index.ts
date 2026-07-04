@@ -15,7 +15,8 @@ import {
   createOcctStepExport,
   createOcctLinearPatternMesh,
   createOcctCircularPatternMesh,
-  createOcctMirrorMesh
+  createOcctMirrorMesh,
+  createOcctShellMesh
 } from "@web-cad/occt-wasm";
 import {
   executeGeometryKernelRequestWithMeshFactory,
@@ -131,7 +132,10 @@ import {
   type MirrorRequest,
   type MirrorSeedSource,
   type GeometryKernelMirrorPlane,
-  type GeometryKernelMirrorMeshFactory
+  type GeometryKernelMirrorMeshFactory,
+  type ShellRequest,
+  type ShellTargetSource,
+  type GeometryKernelShellMeshFactory
 } from "./kernel";
 
 export type {
@@ -244,7 +248,10 @@ export type {
   MirrorRequest,
   MirrorSeedSource,
   GeometryKernelMirrorPlane,
-  GeometryKernelMirrorMeshFactory
+  GeometryKernelMirrorMeshFactory,
+  ShellRequest,
+  ShellTargetSource,
+  GeometryKernelShellMeshFactory
 };
 export {
   getGeometryKernelExactExportCapabilities,
@@ -274,7 +281,8 @@ export async function executeGeometryKernelRequest<
       createExactStepExport: createOcctStepExport,
       createLinearPatternMesh: createOcctLinearPatternMesh,
       createCircularPatternMesh: createOcctCircularPatternMesh,
-      createMirrorMesh: createOcctMirrorMesh
+      createMirrorMesh: createOcctMirrorMesh,
+      createShellMesh: createOcctShellMesh
     },
     request
   );

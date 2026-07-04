@@ -75,6 +75,32 @@ function createMirrorFeature(
   };
 }
 
+function createShellFeature(
+  id: string,
+  bodyId: string,
+  targetBodyId: string
+): Extract<CadFeatureSummary, { kind: "shell" }> {
+  return {
+    id,
+    kind: "shell",
+    partId: "part:default",
+    bodyId,
+    targetBodyId,
+    wallThickness: 0.2,
+    openFaceRefs: [
+      {
+        kind: "generatedFace",
+        bodyId: targetBodyId,
+        stableId: `generated:face:${targetBodyId}:endCap`
+      }
+    ],
+    source: {
+      type: "shellFeature",
+      targetBodyId
+    }
+  };
+}
+
 function renderBodyWorkbench(
   body: CadBodySnapshot,
   feature: CadFeatureSummary | undefined
@@ -140,5 +166,59 @@ describe("ModelingActionsPanel mirror workbench", () => {
 
     expect(markup).toContain("Primitive-derived bodies cannot seed a mirror");
     expect(markup).not.toContain("Create mirror");
+  });
+});
+
+describe("ModelingActionsPanel shell workbench", () => {
+  it("offers the shell creation form for an active authored body", () => {
+    const markup = renderBodyWorkbench(
+      createBody("body_seed", "feat_seed", { name: "Seed body" }),
+      createExtrudeFeature("feat_seed", "body_seed")
+    );
+
+    expect(markup).toContain("Shell body");
+    expect(markup).toContain("Target Seed body");
+    expect(markup).toContain("Wall thickness");
+    expect(markup).toContain("Feature name");
+    expect(markup).toContain("Open faces");
+    expect(markup).toContain("Closed shell");
+    expect(markup).toContain("Create shell");
+  });
+
+  it("offers the shell edit form when a shell result body is selected", () => {
+    const markup = renderBodyWorkbench(
+      createBody("body_shell", "feat_shell"),
+      createShellFeature("feat_shell", "body_shell", "body_seed")
+    );
+
+    expect(markup).toContain("Edit shell");
+    expect(markup).toContain("Feature feat_shell");
+    expect(markup).toContain("Wall thickness");
+    expect(markup).toContain("Open faces");
+    expect(markup).toContain("Apply shell edits");
+    expect(markup).toContain(
+      "Target face references are unavailable; thickness edits preserve existing open-face refs."
+    );
+  });
+
+  it("explains why a consumed body cannot be shelled", () => {
+    const markup = renderBodyWorkbench(
+      createBody("body_seed", "feat_seed", { consumedByFeatureId: "feat_cut" }),
+      createExtrudeFeature("feat_seed", "body_seed")
+    );
+
+    expect(markup).toContain("Shell");
+    expect(markup).toContain("consumed by feature feat_cut");
+    expect(markup).not.toContain("Create shell");
+  });
+
+  it("explains why a primitive-derived body cannot be shelled", () => {
+    const markup = renderBodyWorkbench(
+      createBody("body_box", "feat_box"),
+      undefined
+    );
+
+    expect(markup).toContain("Primitive-derived bodies cannot be shell targets");
+    expect(markup).not.toContain("Create shell");
   });
 });

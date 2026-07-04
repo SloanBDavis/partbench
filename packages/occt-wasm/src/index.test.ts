@@ -9,6 +9,7 @@ import {
   createOcctExactTopologyCheckpointPayload,
   createOcctExactTopologySnapshot,
   createOcctRevolveProfileMesh,
+  createOcctShellMesh,
   createOcctSphereMesh,
   createOcctStepImport,
   createOcctStepExport,
@@ -474,6 +475,48 @@ describe("occt-wasm", () => {
       expect(mesh.triangleCount).toBeGreaterThan(0);
       expect(mesh.positions).toHaveLength(mesh.vertexCount * 3);
       expect(mesh.indices).toHaveLength(mesh.triangleCount * 3);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "creates closed and open rectangle shell meshes through Open CASCADE WASM",
+    async () => {
+      const target = {
+        kind: "extrude" as const,
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "rectangle" as const,
+          center: [0, 0] as const,
+          width: 1,
+          height: 1
+        },
+        depth: 1,
+        side: "positive" as const
+      };
+      const closed = await createOcctShellMesh({
+        target,
+        wallThickness: 0.2,
+        openFaceStableIds: []
+      });
+      const open = await createOcctShellMesh({
+        target,
+        wallThickness: 0.2,
+        openFaceStableIds: ["generated:face:body_1:endCap"]
+      });
+
+      expect(closed.primitive).toBe("boolean");
+      expect(closed.faceCount).toBeGreaterThan(0);
+      expect(closed.vertexCount).toBeGreaterThan(0);
+      expect(closed.triangleCount).toBeGreaterThan(0);
+      expect(closed.positions).toHaveLength(closed.vertexCount * 3);
+      expect(closed.indices).toHaveLength(closed.triangleCount * 3);
+      expect(open.primitive).toBe("boolean");
+      expect(open.faceCount).toBeGreaterThan(0);
+      expect(open.vertexCount).toBeGreaterThan(0);
+      expect(open.triangleCount).toBeGreaterThan(0);
+      expect(open.positions).toHaveLength(open.vertexCount * 3);
+      expect(open.indices).toHaveLength(open.triangleCount * 3);
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );

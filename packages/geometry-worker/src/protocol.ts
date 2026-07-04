@@ -35,7 +35,9 @@ import type {
   GeometryKernelPatternAxis,
   MirrorRequest,
   MirrorSeedSource,
-  GeometryKernelMirrorPlane
+  GeometryKernelMirrorPlane,
+  ShellRequest,
+  ShellTargetSource
 } from "@web-cad/geometry-kernel";
 
 export type {
@@ -62,6 +64,7 @@ export type GeometryWorkerRequestKind =
   | "geometry-worker.linearPatternFeature"
   | "geometry-worker.circularPatternFeature"
   | "geometry-worker.mirrorFeature"
+  | "geometry-worker.shellFeature"
   | "geometry-worker.exactMetadata"
   | "geometry-worker.exactTopologySnapshot"
   | "geometry-worker.exactTopologyCheckpointPayload"
@@ -807,7 +810,13 @@ function createTessellationOptions(input: {
   };
 }
 
-export type { PatternSeedSource, GeometryKernelPatternAxis, MirrorSeedSource, GeometryKernelMirrorPlane };
+export type {
+  PatternSeedSource,
+  GeometryKernelPatternAxis,
+  MirrorSeedSource,
+  GeometryKernelMirrorPlane,
+  ShellTargetSource
+};
 
 export function createLinearPatternWorkerRequest(input: {
   readonly id: string;
@@ -889,6 +898,33 @@ export function createMirrorWorkerRequest(input: {
       seed: input.seed,
       mirrorPlane: input.mirrorPlane,
       includeOriginal: input.includeOriginal,
+      ...(tessellation ? { tessellation } : {})
+    }
+  };
+}
+
+export function createShellWorkerRequest(input: {
+  readonly id: string;
+  readonly payloadId?: string;
+  readonly target: ShellTargetSource;
+  readonly wallThickness: number;
+  readonly openFaceStableIds: readonly string[];
+  readonly linearDeflection?: number;
+  readonly angularDeflection?: number;
+}): GeometryWorkerRequest<ShellRequest> {
+  const tessellation = createTessellationOptions(input);
+
+  return {
+    id: input.id,
+    version: "geometry-worker.v1",
+    kind: "geometry-worker.shellFeature",
+    payload: {
+      id: input.payloadId ?? `${input.id}:payload`,
+      version: "geometry-kernel.v1",
+      op: "geometry.shell",
+      target: input.target,
+      wallThickness: input.wallThickness,
+      openFaceStableIds: input.openFaceStableIds,
       ...(tessellation ? { tessellation } : {})
     }
   };

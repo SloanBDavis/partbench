@@ -87,7 +87,8 @@ export type ModelingActionId =
   | "sketch.createSideHole"
   | "reference.name"
   | "feature.chamfer"
-  | "feature.fillet";
+  | "feature.fillet"
+  | "feature.shell";
 
 export type ModelingActionKind = "command" | "editor" | "query" | "selection";
 
@@ -646,6 +647,11 @@ function createGeneratedReferenceActions(
     return [
       ...(sideHoleAction ? [sideHoleAction] : []),
       nameAction,
+      createGeneratedFaceShellAction(
+        context.reference,
+        selection,
+        context.selectionReferenceCandidates
+      ),
       createGeneratedFaceSketchAction(
         context.reference,
         selection,
@@ -760,6 +766,30 @@ function isSelectionReferenceOperationAdvertised(
   return response.candidates.some((candidate) =>
     candidate.commandOperations.includes(operation)
   );
+}
+
+function createGeneratedFaceShellAction(
+  face: CadGeneratedFaceReference,
+  selection: ModelingActionSelectionMetadata,
+  selectionReferenceCandidates:
+    | SelectionReferenceCandidatesQueryResponse
+    | undefined
+): ModelingActionDescriptor {
+  const contractStatus = getSelectionReferenceOperationStatus(
+    selectionReferenceCandidates,
+    "feature.shell"
+  );
+
+  return {
+    id: "feature.shell",
+    label: "Shell",
+    kind: "command",
+    category: "feature",
+    available: contractStatus.available,
+    reason: contractStatus.available ? undefined : contractStatus.message,
+    target: createGeneratedReferenceTarget(face),
+    selection
+  };
 }
 
 function createGeneratedFaceSketchAction(

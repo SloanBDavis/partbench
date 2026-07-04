@@ -3,7 +3,10 @@ import type {
   CadFeatureSummary,
   SketchSnapshot
 } from "@web-cad/cad-core";
-import type { CadGeneratedFaceReference } from "@web-cad/cad-protocol";
+import type {
+  CadGeneratedFaceReference,
+  FeatureShellOpenFaceRef
+} from "@web-cad/cad-protocol";
 import {
   createPrimitiveDerivedGeometrySource,
   type DerivedBooleanExtrudeGeometrySource,
@@ -12,7 +15,8 @@ import {
   type DerivedGeometrySource,
   type DerivedHoleGeometrySource,
   type DerivedMirrorGeometrySource,
-  type DerivedRevolveGeometrySource
+  type DerivedRevolveGeometrySource,
+  type DerivedShellGeometrySource
 } from "./derivedGeometry";
 import {
   createAttachedSketchGeometryFrame,
@@ -43,7 +47,8 @@ export function createDerivedGeometrySourcesFromDocument(
       features,
       sketches,
       generatedFacesByKey,
-      document.namedReferences
+      document.namedReferences,
+      document.topologyIdentity
     )
   ];
 }
@@ -55,7 +60,8 @@ export function createAuthoredFeatureDerivedGeometrySources(
     string,
     CadGeneratedFaceReference
   > = new Map(),
-  namedReferences: CadDocument["namedReferences"] = new Map()
+  namedReferences: CadDocument["namedReferences"] = new Map(),
+  topologyIdentity: CadDocument["topologyIdentity"] = undefined
 ): readonly (
   | DerivedExtrudeGeometrySource
   | DerivedBooleanExtrudeGeometrySource
@@ -63,6 +69,7 @@ export function createAuthoredFeatureDerivedGeometrySources(
   | DerivedHoleGeometrySource
   | DerivedEdgeFinishGeometrySource
   | DerivedMirrorGeometrySource
+  | DerivedShellGeometrySource
 )[] {
   const consumedBodyIds = createConsumedBodyIds(features);
 
@@ -97,8 +104,73 @@ export function createAuthoredFeatureDerivedGeometrySources(
       sketches,
       generatedFacesByKey,
       consumedBodyIds
+    ),
+    ...createShellDerivedGeometrySources(
+      features,
+      sketches,
+      generatedFacesByKey,
+      namedReferences,
+      topologyIdentity,
+      consumedBodyIds
     )
   ];
+}
+
+export function createShellDerivedGeometrySources(
+  features: readonly CadFeatureSummary[],
+  sketches: readonly SketchSnapshot[],
+  generatedFacesByKey: ReadonlyMap<
+    string,
+    CadGeneratedFaceReference
+  > = new Map(),
+  namedReferences: CadDocument["namedReferences"] = new Map(),
+  topologyIdentity: CadDocument["topologyIdentity"] = undefined,
+  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features)
+): readonly DerivedShellGeometrySource[] {
+  const extrudeFeaturesByBodyId = new Map(
+    features
+      .filter(
+        (feature): feature is Extract<CadFeatureSummary, { kind: "extrude" }> =>
+          feature.kind === "extrude"
+      )
+      .map((feature) => [feature.bodyId, feature])
+  );
+
+  return features
+    .filter(
+      (feature): feature is Extract<CadFeatureSummary, { kind: "shell" }> =>
+        feature.kind === "shell"
+    )
+    .filter((feature) => !consumedBodyIds.has(feature.bodyId))
+    .map((feature) => {
+      const targetFeature = extrudeFeaturesByBodyId.get(feature.targetBodyId);
+      const target = targetFeature
+        ? createBooleanSourceForFeature(
+            targetFeature,
+            extrudeFeaturesByBodyId,
+            sketches,
+            generatedFacesByKey
+          )
+        : undefined;
+      const openFaceResolution = resolveShellOpenFaceStableIds(
+        feature,
+        generatedFacesByKey,
+        namedReferences,
+        topologyIdentity
+      );
+
+      return {
+        id: feature.bodyId,
+        kind: "shell",
+        target: target ?? createUnavailableExtrudeSource(feature.targetBodyId),
+        wallThickness: feature.wallThickness,
+        openFaceStableIds: openFaceResolution.stableIds,
+        placementError:
+          target === undefined
+            ? `Shell feature ${feature.id} cannot be displayed because target body ${feature.targetBodyId} is not an authored extrude-family body.`
+            : openFaceResolution.error
+      };
+    });
 }
 
 export function createMirrorDerivedGeometrySources(
@@ -609,10 +681,166 @@ function createConsumedBodyIds(
           return [feature.seedBodyId];
         }
 
+        if (feature.kind === "shell") {
+          return [feature.targetBodyId];
+        }
+
         return [];
       })
       .filter((bodyId): bodyId is string => Boolean(bodyId))
   );
+}
+
+function resolveShellOpenFaceStableIds(
+  feature: Extract<CadFeatureSummary, { kind: "shell" }>,
+  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
+  namedReferences: CadDocument["namedReferences"],
+  topologyIdentity: CadDocument["topologyIdentity"]
+): {
+  readonly stableIds: readonly string[];
+  readonly error?: string;
+} {
+  if (feature.openFaceRefs.length === 0) {
+    return { stableIds: [] };
+  }
+
+  const failures: string[] = [];
+  const stableIds: string[] = [];
+
+  for (const ref of feature.openFaceRefs) {
+    const resolved = resolveShellOpenFaceStableId(
+      feature,
+      ref,
+      generatedFacesByKey,
+      namedReferences,
+      topologyIdentity
+    );
+
+    if (resolved.stableId) {
+      stableIds.push(resolved.stableId);
+    } else {
+      failures.push(resolved.error);
+    }
+  }
+
+  if (stableIds.length > 0) {
+    return { stableIds };
+  }
+
+  return {
+    stableIds: [],
+    error: `Shell feature ${feature.id} cannot open faces because no references resolved. ${failures.join(" ")}`
+  };
+}
+
+function resolveShellOpenFaceStableId(
+  feature: Extract<CadFeatureSummary, { kind: "shell" }>,
+  ref: FeatureShellOpenFaceRef,
+  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
+  namedReferences: CadDocument["namedReferences"],
+  topologyIdentity: CadDocument["topologyIdentity"]
+): {
+  readonly stableId?: string;
+  readonly error: string;
+} {
+  if (ref.kind === "generatedFace") {
+    if (ref.bodyId !== feature.targetBodyId) {
+      return {
+        error: `Generated face ${ref.stableId} belongs to body ${ref.bodyId}, not target ${feature.targetBodyId}.`
+      };
+    }
+
+    const face = generatedFacesByKey.get(
+      createGeneratedFaceReferenceKey(ref.bodyId, ref.stableId)
+    );
+
+    if (!face) {
+      return {
+        error: `Generated face ${ref.stableId} is unavailable on ${ref.bodyId}.`
+      };
+    }
+
+    return { stableId: face.stableId, error: "" };
+  }
+
+  if (ref.kind === "namedReference") {
+    const named = namedReferences.get(ref.name);
+
+    if (!named) {
+      return {
+        error: `Named reference ${ref.name} is unavailable.`
+      };
+    }
+
+    if (named.kind !== "face") {
+      return {
+        error: `Named reference ${ref.name} is a ${named.kind}, not a face.`
+      };
+    }
+
+    if (named.bodyId !== feature.targetBodyId) {
+      return {
+        error: `Named reference ${ref.name} resolves to body ${named.bodyId}, not target ${feature.targetBodyId}.`
+      };
+    }
+
+    return { stableId: named.stableId, error: "" };
+  }
+
+  const anchor = topologyIdentity?.anchors.find(
+    (candidate) => candidate.anchorId === ref.anchorId
+  );
+
+  if (!anchor) {
+    return {
+      error: `Topology anchor ${ref.anchorId} is unavailable.`
+    };
+  }
+
+  if (anchor.entityKind !== "face") {
+    return {
+      error: `Topology anchor ${ref.anchorId} targets a ${anchor.entityKind}, not a face.`
+    };
+  }
+
+  if (anchor.bodyId !== feature.targetBodyId || ref.bodyId !== feature.targetBodyId) {
+    return {
+      error: `Topology anchor ${ref.anchorId} does not target body ${feature.targetBodyId}.`
+    };
+  }
+
+  if (anchor.state !== "active") {
+    return {
+      error: `Topology anchor ${ref.anchorId} is ${anchor.state}.`
+    };
+  }
+
+  if (anchor.stableId) {
+    return { stableId: anchor.stableId, error: "" };
+  }
+
+  if (anchor.sourceSemanticRole) {
+    const matches = [...generatedFacesByKey.values()].filter(
+      (face) =>
+        face.bodyId === feature.targetBodyId &&
+        face.role === anchor.sourceSemanticRole
+    );
+
+    if (matches.length === 1) {
+      return { stableId: matches[0].stableId, error: "" };
+    }
+
+    return {
+      error:
+        matches.length === 0
+          ? `Topology anchor ${ref.anchorId} has no generated face for role ${anchor.sourceSemanticRole}.`
+          : `Topology anchor ${ref.anchorId} role ${anchor.sourceSemanticRole} is ambiguous.`
+    };
+  }
+
+  return {
+    error: `Topology anchor ${ref.anchorId} has no stable generated face.`
+  };
 }
 
 function createBooleanPlacementError(

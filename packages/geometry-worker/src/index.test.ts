@@ -15,6 +15,7 @@ import {
   createHoleWorkerRequest,
   createMirrorWorkerRequest,
   createRevolveProfileWorkerRequest,
+  createShellWorkerRequest,
   createSphereTessellationWorkerRequest,
   createTorusTessellationWorkerRequest,
   getGeometryWorkerExactExportCapabilities,
@@ -23,6 +24,7 @@ import {
   createWorkerSuccessDiagnostics,
   createGeometryKernelWorker
 } from "./index";
+import { GeometryKernelBrowserWorker } from "./browser";
 
 describe("geometry-worker", () => {
   it("reports STEP exact export writer capability through the worker boundary", () => {
@@ -223,6 +225,84 @@ describe("geometry-worker", () => {
         tessellation: { linearDeflection: 0.25 }
       }
     });
+  });
+
+  it("creates a typed shell feature worker request", () => {
+    const target = {
+      kind: "extrude" as const,
+      sketchPlane: "XY" as const,
+      profile: {
+        kind: "rectangle" as const,
+        center: [0, 0] as const,
+        width: 4,
+        height: 2
+      },
+      depth: 3
+    };
+
+    const request = createShellWorkerRequest({
+      id: "worker_req_shell",
+      target,
+      wallThickness: 0.2,
+      openFaceStableIds: ["generated:face:body_seed:endCap"],
+      linearDeflection: 0.25
+    });
+
+    expect(request).toMatchObject({
+      id: "worker_req_shell",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.shellFeature",
+      payload: {
+        id: "worker_req_shell:payload",
+        version: "geometry-kernel.v1",
+        op: "geometry.shell",
+        target,
+        wallThickness: 0.2,
+        openFaceStableIds: ["generated:face:body_seed:endCap"],
+        tessellation: { linearDeflection: 0.25 }
+      }
+    });
+  });
+
+  it("lets browser shell feature requests pass request validation", async () => {
+    const target = {
+      kind: "extrude" as const,
+      sketchPlane: "XY" as const,
+      profile: {
+        kind: "rectangle" as const,
+        center: [0, 0] as const,
+        width: 1,
+        height: 1
+      },
+      depth: 1,
+      side: "positive" as const
+    };
+    const worker = new GeometryKernelBrowserWorker();
+    const response = await worker.execute(
+      createShellWorkerRequest({
+        id: "worker_req_browser_shell",
+        target,
+        wallThickness: 0.2,
+        openFaceStableIds: []
+      })
+    );
+
+    expect(response.response).toMatchObject({
+      id: "worker_req_browser_shell:payload",
+      op: "geometry.shell"
+    });
+    expect(JSON.stringify(response)).not.toContain(
+      "Unsupported geometry kernel operation: geometry.shell."
+    );
+
+    if (response.response.ok) {
+      expect(response.response.mesh.vertexCount).toBeGreaterThan(0);
+    } else {
+      expect(response.diagnostics?.stage).not.toBe("requestValidation");
+      expect(response.diagnostics?.error?.code).not.toBe(
+        "UNSUPPORTED_PRIMITIVE"
+      );
+    }
   });
 
   it("creates a typed box tessellation worker request", () => {

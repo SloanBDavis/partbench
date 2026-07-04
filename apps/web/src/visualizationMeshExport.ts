@@ -394,27 +394,13 @@ function createVisualizationMeshExportPlan(
   }
 
   for (const body of input.exportReadiness.bodies) {
-    if (body.sourceStatus !== "supported") {
-      diagnostics.push(
-        createExportDiagnostic({
-          code: "VISUALIZATION_EXPORT_SOURCE_UNSUPPORTED",
-          status: "unavailable",
-          message:
-            body.diagnostics.find(
-              (diagnostic) => diagnostic.status !== "supported"
-            )?.message ??
-            `Body ${body.bodyId} is not supported for visualization export.`,
-          bodyId: body.bodyId,
-          bodyName: body.bodyName,
-          expected: "active rectangle or circle newBody extrude source",
-          received: body.sourceKind
-        })
-      );
-      continue;
-    }
-
     const source = sourceById.get(body.bodyId);
     const entry = entryBySourceId.get(body.bodyId);
+
+    if (body.sourceStatus === "unavailable") {
+      diagnostics.push(createSourceUnsupportedDiagnostic(body));
+      continue;
+    }
 
     if (!source) {
       diagnostics.push(
@@ -428,6 +414,11 @@ function createVisualizationMeshExportPlan(
           received: "missing source"
         })
       );
+      continue;
+    }
+
+    if (!isSupportedVisualizationSource(source)) {
+      diagnostics.push(createSourceUnsupportedDiagnostic(body, source.kind));
       continue;
     }
 
@@ -622,7 +613,39 @@ function getUnavailableNextStep(
     return "Refresh display geometry before exporting.";
   }
 
-  return "Use an active rectangle or circle newBody extrude with ready display geometry.";
+  return "Use an active supported body with ready display geometry.";
+}
+
+function isSupportedVisualizationSource(
+  source: DerivedGeometrySource
+): boolean {
+  return (
+    source.kind === "extrude" ||
+    source.kind === "extrudeBoolean" ||
+    source.kind === "revolve" ||
+    source.kind === "hole" ||
+    source.kind === "edgeFinish" ||
+    source.kind === "mirror" ||
+    source.kind === "shell"
+  );
+}
+
+function createSourceUnsupportedDiagnostic(
+  body: ProjectExportReadinessQueryResponse["bodies"][number],
+  received: string = body.sourceKind
+): VisualizationMeshExportDiagnostic {
+  return createExportDiagnostic({
+    code: "VISUALIZATION_EXPORT_SOURCE_UNSUPPORTED",
+    status: "unavailable",
+    message:
+      body.diagnostics.find((diagnostic) => diagnostic.status !== "supported")
+        ?.message ??
+      `Body ${body.bodyId} is not supported for visualization export.`,
+    bodyId: body.bodyId,
+    bodyName: body.bodyName,
+    expected: "active body with supported derived visualization source",
+    received
+  });
 }
 
 function createExportDiagnostic({

@@ -1270,6 +1270,88 @@ describe("agent-adapter", () => {
     );
   });
 
+  it("accepts and reviews shell feature batches from external JSON callers (Slice G pass-through)", () => {
+    const adapter = new CadOpsAgentAdapter();
+    // parseCadOpsAgentRequestJson validates every op via isCadOp; a shell or
+    // updateShell op that isCadOp rejected would make the whole batch invalid.
+    const request = parseCadOpsAgentRequestJson(
+      JSON.stringify({
+        requestId: "agent_req_shell",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_s",
+              name: "Profile",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_s",
+              id: "rect_s",
+              center: [0, 0],
+              width: 4,
+              height: 2
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_seed",
+              bodyId: "body_seed",
+              sketchId: "sketch_s",
+              entityId: "rect_s",
+              depth: 3
+            },
+            {
+              op: "feature.shell",
+              id: "feat_shell",
+              bodyId: "body_shell",
+              targetBodyId: "body_seed",
+              wallThickness: 0.2,
+              openFaceRefs: [
+                {
+                  kind: "generatedFace",
+                  bodyId: "body_seed",
+                  stableId: "generated:face:body_seed:endCap"
+                }
+              ]
+            },
+            {
+              op: "feature.updateShell",
+              id: "feat_shell",
+              wallThickness: 0.3,
+              openFaceRefs: []
+            }
+          ]
+        }
+      })
+    );
+
+    const response = adapter.execute(request);
+
+    expect(response.ok).toBe(true);
+    expect(response.ok && response.review.operations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op: "feature.shell",
+          intent: "create",
+          featureId: "feat_shell",
+          bodyId: "body_shell",
+          targetBodyId: "body_seed",
+          label: expect.stringContaining("thickness 0.2")
+        }),
+        expect.objectContaining({
+          op: "feature.updateShell",
+          intent: "modify",
+          featureId: "feat_shell",
+          label: expect.stringContaining("Update shell feature feat_shell")
+        })
+      ])
+    );
+  });
+
   it("supports JSON feature extrude batches for external callers", () => {
     const adapter = new CadOpsAgentAdapter();
     const request = {
@@ -3553,7 +3635,8 @@ describe("agent-adapter", () => {
       commandOperations: [
         "feature.attachSketchPlane",
         "feature.measureReference",
-        "feature.selectReference"
+        "feature.selectReference",
+        "feature.shell"
       ],
       candidateCount: 1,
       proof: {
@@ -3626,7 +3709,8 @@ describe("agent-adapter", () => {
       supportedOperations: [
         "feature.attachSketchPlane",
         "feature.measureReference",
-        "feature.selectReference"
+        "feature.selectReference",
+        "feature.shell"
       ],
       anchorReadiness: expect.objectContaining({
         query: "topology.anchorCommandReadiness",
@@ -5349,6 +5433,7 @@ describe("agent-adapter", () => {
           label: "Start cap",
           eligibleOperations: [
             "feature.attachSketchPlane",
+            "feature.shell",
             "feature.measureReference",
             "feature.selectReference"
           ]

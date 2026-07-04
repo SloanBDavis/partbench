@@ -34,7 +34,8 @@ export type DerivedGeometrySourceKind =
   | "revolve"
   | "hole"
   | "edgeFinish"
-  | "mirror";
+  | "mirror"
+  | "shell";
 
 export type DerivedGeometrySource =
   | DerivedPrimitiveGeometrySource
@@ -43,7 +44,8 @@ export type DerivedGeometrySource =
   | DerivedRevolveGeometrySource
   | DerivedHoleGeometrySource
   | DerivedEdgeFinishGeometrySource
-  | DerivedMirrorGeometrySource;
+  | DerivedMirrorGeometrySource
+  | DerivedShellGeometrySource;
 export type DerivedGeometryInput = DerivedGeometrySource | SceneObject;
 
 export interface DerivedPrimitiveGeometrySource {
@@ -160,6 +162,17 @@ export interface DerivedMirrorGeometrySource {
   readonly placementError?: string;
 }
 
+export interface DerivedShellGeometrySource {
+  readonly id: string;
+  readonly kind: "shell";
+  readonly target:
+    | DerivedExtrudeGeometrySource
+    | DerivedBooleanExtrudeGeometrySource;
+  readonly wallThickness: number;
+  readonly openFaceStableIds: readonly string[];
+  readonly placementError?: string;
+}
+
 export type DerivedGeometryEntry =
   | DerivedGeometryUnsupportedEntry
   | DerivedGeometryPendingEntry
@@ -241,7 +254,8 @@ type SupportedDerivedGeometrySource =
   | DerivedRevolveGeometrySource
   | DerivedHoleGeometrySource
   | DerivedEdgeFinishGeometrySource
-  | DerivedMirrorGeometrySource;
+  | DerivedMirrorGeometrySource
+  | DerivedShellGeometrySource;
 
 interface ActiveDerivedGeometryRequest {
   readonly sourceId: string;
@@ -526,7 +540,8 @@ function toDerivedGeometrySource(
     input.kind === "revolve" ||
     input.kind === "hole" ||
     input.kind === "edgeFinish" ||
-    input.kind === "mirror"
+    input.kind === "mirror" ||
+    input.kind === "shell"
   ) {
     return input;
   }
@@ -558,6 +573,10 @@ function isSupportedDerivedGeometrySource(
   }
 
   if (source.kind === "mirror") {
+    return !source.placementError;
+  }
+
+  if (source.kind === "shell") {
     return !source.placementError;
   }
 
@@ -721,6 +740,19 @@ function deriveSourceMesh(
       seed: createMirrorSeedRuntimeSource(source.seed),
       mirrorPlane: source.mirrorPlane,
       includeOriginal: source.includeOriginal
+    });
+  }
+
+  if (source.kind === "shell") {
+    if (source.placementError) {
+      throw new Error(source.placementError);
+    }
+
+    return runtime.shell({
+      id: source.id,
+      target: createMirrorSeedRuntimeSource(source.target),
+      wallThickness: source.wallThickness,
+      openFaceStableIds: source.openFaceStableIds
     });
   }
 
@@ -897,7 +929,14 @@ function getUnsupportedSourceMessage(source: DerivedGeometrySource): string {
     );
   }
 
-  return "Display geometry generation supports scene primitives, sketch extrudes, supported rectangle/circle boolean results, authored revolves, authored holes, and rectangle edge finishing.";
+  if (source.kind === "shell") {
+    return (
+      source.placementError ??
+      "Shell display currently supports authored extrude-family target bodies only."
+    );
+  }
+
+  return "Display geometry generation supports scene primitives, sketch extrudes, supported rectangle/circle boolean results, authored revolves, authored holes, rectangle edge finishing, mirror, and shell features.";
 }
 
 function isSupportedBooleanExtrudeSource(
@@ -1121,11 +1160,19 @@ export function createDerivedGeometryCacheKey(
                     includeOriginal: source.includeOriginal,
                     placementError: source.placementError
                   }
-                : {
-                    kind: source.kind,
-                    dimensions: source.object.dimensions,
-                    transform: source.object.transform
-                  };
+                : source.kind === "shell"
+                  ? {
+                      kind: source.kind,
+                      target: createDerivedGeometryCacheKey(source.target),
+                      wallThickness: source.wallThickness,
+                      openFaceStableIds: source.openFaceStableIds,
+                      placementError: source.placementError
+                    }
+                  : {
+                      kind: source.kind,
+                      dimensions: source.object.dimensions,
+                      transform: source.object.transform
+                    };
 
   return JSON.stringify(base);
 }
@@ -1163,6 +1210,10 @@ export function getDerivedGeometryStatusLabel(
         return "Mirror display geometry issue";
       }
 
+      if (entry.sourceKind === "shell") {
+        return "Shell display geometry issue";
+      }
+
       return "Primitive fallback";
     case "unsupported":
       if (
@@ -1171,7 +1222,8 @@ export function getDerivedGeometryStatusLabel(
         entry.sourceKind === "revolve" ||
         entry.sourceKind === "hole" ||
         entry.sourceKind === "edgeFinish" ||
-        entry.sourceKind === "mirror"
+        entry.sourceKind === "mirror" ||
+        entry.sourceKind === "shell"
       ) {
         return entry.message;
       }

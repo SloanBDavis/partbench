@@ -362,6 +362,7 @@ describe("modeling action helpers", () => {
 
     expect(eligibleActions.map((action) => action.id)).toEqual([
       "reference.name",
+      "feature.shell",
       "sketch.createOnFace"
     ]);
     expect(actionById(eligibleActions, "sketch.createOnFace")).toMatchObject({
@@ -432,6 +433,7 @@ describe("modeling action helpers", () => {
     expect(actions.map((action) => action.id)).toEqual([
       "sketch.createSideHole",
       "reference.name",
+      "feature.shell",
       "sketch.createOnFace"
     ]);
     expect(actionById(actions, "sketch.createSideHole")).toMatchObject({

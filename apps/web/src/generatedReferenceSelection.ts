@@ -276,6 +276,8 @@ export function formatSelectionReferenceOperationLabel(
       return "Chamfer";
     case "feature.fillet":
       return "Fillet";
+    case "feature.shell":
+      return "Shell";
     case "feature.measureReference":
       return "Measure reference";
     case "feature.selectReference":

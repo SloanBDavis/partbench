@@ -107,6 +107,12 @@ import {
   type OcctMirrorPlane,
   type OcctMirrorSeedSource
 } from "./mirror";
+import {
+  createOcctShellMeshWithInstance,
+  createOcctShellMeshWithLoader,
+  type OcctShellInput,
+  type OcctShellTargetSource
+} from "./shell";
 
 export type {
   OcctBooleanExtrudeInput,
@@ -145,7 +151,9 @@ export type {
   OcctPatternSeedSource,
   OcctMirrorInput,
   OcctMirrorPlane,
-  OcctMirrorSeedSource
+  OcctMirrorSeedSource,
+  OcctShellInput,
+  OcctShellTargetSource
 };
 export {
   createOcctBoxMeshWithInstance,
@@ -187,7 +195,9 @@ export {
   createOcctCircularPatternMeshWithInstance,
   createOcctCircularPatternMeshWithLoader,
   createOcctMirrorMeshWithInstance,
-  createOcctMirrorMeshWithLoader
+  createOcctMirrorMeshWithLoader,
+  createOcctShellMeshWithInstance,
+  createOcctShellMeshWithLoader
 };
 
 let occtPromise: Promise<OpenCascadeInstance> | undefined;
@@ -309,4 +319,10 @@ export async function createOcctMirrorMesh(
   input: OcctMirrorInput
 ): Promise<OcctMeshData> {
   return createOcctMirrorMeshWithLoader(loadOcct, input);
+}
+
+export async function createOcctShellMesh(
+  input: OcctShellInput
+): Promise<OcctMeshData> {
+  return createOcctShellMeshWithLoader(loadOcct, input);
 }

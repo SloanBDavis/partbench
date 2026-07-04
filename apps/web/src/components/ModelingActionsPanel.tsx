@@ -1,4 +1,5 @@
 import type {
+  BodyGeneratedReferencesQueryResponse,
   CadBodySnapshot,
   CadFeatureSummary,
   CadGeneratedFaceReference,
@@ -21,6 +22,8 @@ import type {
   FeatureHoleForm,
   FeatureMirrorEdit,
   FeatureMirrorForm,
+  FeatureShellEdit,
+  FeatureShellForm,
   FeatureRevolveForm,
   SketchConstraintForm,
   SketchCreateForm,
@@ -34,6 +37,12 @@ import {
   formatMirrorPlaneLabel,
   getMirrorPanelState
 } from "../mirrorPanelUi";
+import {
+  buildShellGeneratedOpenFaceRefs,
+  createShellDefaultName,
+  getShellOpenFaceOptions,
+  getShellPanelState
+} from "../shellPanelUi";
 import {
   SELECTED_EDGE_FINISH_REFERENCE_VALUE,
   buildEdgeFinishForm,
@@ -110,6 +119,7 @@ export interface ModelingActionsPanelProps {
     CadReferenceHealthEntry
   >;
   readonly selectedNamedReferenceName?: string;
+  readonly shellTargetGeneratedReferences?: BodyGeneratedReferencesQueryResponse;
   readonly sketches?: readonly SketchSnapshot[];
   readonly onAddEntity?: (
     sketchId: string,
@@ -157,9 +167,14 @@ export interface ModelingActionsPanelProps {
   ) => void;
   readonly onSelectBody?: (bodyId: string) => void;
   readonly onCreateMirror?: (form: FeatureMirrorForm) => void;
+  readonly onCreateShell?: (form: FeatureShellForm) => void;
   readonly onUpdateMirror?: (
     featureId: string,
     edit: FeatureMirrorEdit
+  ) => void;
+  readonly onUpdateShell?: (
+    featureId: string,
+    edit: FeatureShellEdit
   ) => void;
   readonly onDeleteFeature?: (featureId: string) => void;
   readonly onDeleteEntity?: (sketchId: string, entityId: string) => void;
@@ -244,12 +259,14 @@ export function ModelingActionsPanel({
   namedReferences = [],
   namedReferenceHealthByName,
   selectedNamedReferenceName,
+  shellTargetGeneratedReferences,
   sketches = [],
   onAddEntity,
   onCreateConstraint,
   onCreateDimension,
   onCreateEdgeFinish,
   onCreateMirror,
+  onCreateShell,
   onCreateSideHoleSketch,
   onCreateSketch,
   onCreateSketchOnFace,
@@ -259,6 +276,7 @@ export function ModelingActionsPanel({
   onRepairNamedReference,
   onSelectBody,
   onUpdateMirror,
+  onUpdateShell,
   onDeleteFeature,
   onDeleteEntity,
   onDeleteSketch,
@@ -389,11 +407,14 @@ export function ModelingActionsPanel({
           disabled={disabled}
           context={context}
           sketches={sketches}
+          shellTargetGeneratedReferences={shellTargetGeneratedReferences}
           onCreateMirror={onCreateMirror}
+          onCreateShell={onCreateShell}
           onCreateSketchOnFace={onCreateSketchOnFace}
           onDeleteFeature={onDeleteFeature}
           onSelectSketch={onSelectSketch}
           onUpdateMirror={onUpdateMirror}
+          onUpdateShell={onUpdateShell}
         />
       )}
 
@@ -407,6 +428,7 @@ export function ModelingActionsPanel({
           namedReferenceHealthByName={namedReferenceHealthByName}
           selectedNamedReferenceName={selectedNamedReferenceName}
           onCreateEdgeFinish={onCreateEdgeFinish}
+          onCreateShell={onCreateShell}
           onCreateSideHoleSketch={onCreateSideHoleSketch}
           onCreateSketchOnFace={onCreateSketchOnFace}
           onNameGeneratedReference={onNameGeneratedReference}
@@ -2126,11 +2148,14 @@ function BodyWorkbench({
   context,
   disabled,
   sketches,
+  shellTargetGeneratedReferences,
   onCreateMirror,
+  onCreateShell,
   onCreateSketchOnFace,
   onDeleteFeature,
   onSelectSketch,
-  onUpdateMirror
+  onUpdateMirror,
+  onUpdateShell
 }: {
   readonly actions: readonly ModelingActionDescriptor[];
   readonly context: Extract<
@@ -2139,13 +2164,19 @@ function BodyWorkbench({
   >;
   readonly disabled: boolean;
   readonly sketches: readonly SketchSnapshot[];
+  readonly shellTargetGeneratedReferences?: BodyGeneratedReferencesQueryResponse;
   readonly onCreateMirror?: (form: FeatureMirrorForm) => void;
+  readonly onCreateShell?: (form: FeatureShellForm) => void;
   readonly onCreateSketchOnFace?: (form: SketchCreateOnFaceForm) => void;
   readonly onDeleteFeature?: (featureId: string) => void;
   readonly onSelectSketch?: (sketchId: string, entityId?: string) => void;
   readonly onUpdateMirror?: (
     featureId: string,
     edit: FeatureMirrorEdit
+  ) => void;
+  readonly onUpdateShell?: (
+    featureId: string,
+    edit: FeatureShellEdit
   ) => void;
 }) {
   const sketchAction = actions.find(
@@ -2360,6 +2391,18 @@ function BodyWorkbench({
         onCreateMirror={onCreateMirror}
         onUpdateMirror={onUpdateMirror}
       />
+      <ShellWorkbenchCard
+        body={context.body}
+        disabled={disabled}
+        feature={context.feature}
+        generatedReferences={
+          context.feature?.kind === "shell"
+            ? shellTargetGeneratedReferences
+            : context.generatedReferences
+        }
+        onCreateShell={onCreateShell}
+        onUpdateShell={onUpdateShell}
+      />
     </div>
   );
 }
@@ -2506,6 +2549,199 @@ function formatGeneratedFaceShortLabel(
   }
 }
 
+function ShellWorkbenchCard({
+  body,
+  disabled,
+  feature,
+  generatedReferences,
+  onCreateShell,
+  onUpdateShell
+}: {
+  readonly body: CadBodySnapshot;
+  readonly disabled: boolean;
+  readonly feature?: CadFeatureSummary;
+  readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
+  readonly onCreateShell?: (form: FeatureShellForm) => void;
+  readonly onUpdateShell?: (
+    featureId: string,
+    edit: FeatureShellEdit
+  ) => void;
+}) {
+  const state = getShellPanelState(body, feature);
+  const [wallThickness, setWallThickness] = useState(
+    state.mode === "edit" ? state.wallThickness : 0.2
+  );
+  const initialOpenFaceStableIds =
+    state.mode === "edit"
+      ? getGeneratedShellOpenFaceStableIds(state.openFaceRefs)
+      : [];
+  const [openFaceStableIds, setOpenFaceStableIds] = useState(
+    initialOpenFaceStableIds
+  );
+  const [name, setName] = useState(
+    state.mode === "create"
+      ? createShellDefaultName(state.targetLabel, wallThickness)
+      : ""
+  );
+
+  if (state.mode === "unavailable") {
+    return (
+      <section className="workbench-card">
+        <div className="workbench-card-heading">
+          <h3>Shell</h3>
+        </div>
+        <p className="empty-state compact">{state.reason}</p>
+      </section>
+    );
+  }
+
+  const isEdit = state.mode === "edit";
+  const openFaceOptions = getShellOpenFaceOptions(
+    generatedReferences?.faces ?? []
+  );
+  const refsChanged = !isSameStringList(
+    openFaceStableIds,
+    initialOpenFaceStableIds
+  );
+  const hasThicknessChange =
+    state.mode === "edit" ? wallThickness !== state.wallThickness : true;
+  const hasValidThickness = Number.isFinite(wallThickness) && wallThickness > 0;
+  const openFaceRefs = buildShellGeneratedOpenFaceRefs(
+    state.targetBodyId,
+    openFaceStableIds
+  );
+  const canSubmit =
+    hasValidThickness &&
+    (state.mode === "create" ||
+      hasThicknessChange ||
+      refsChanged);
+
+  return (
+    <section className="workbench-card">
+      <div className="workbench-card-heading">
+        <h3>{isEdit ? "Edit shell" : "Shell body"}</h3>
+        <small>
+          {isEdit
+            ? `Feature ${state.featureId}`
+            : `Target ${state.targetLabel}`}
+        </small>
+      </div>
+      <div className="field-grid two">
+        <NumberInput
+          disabled={disabled}
+          label="Wall thickness"
+          value={wallThickness}
+          onChange={setWallThickness}
+        />
+        {!isEdit && (
+          <TextInput
+            disabled={disabled}
+            label="Feature name"
+            value={name}
+            onChange={setName}
+          />
+        )}
+      </div>
+      <div className="workbench-subheading">
+        <strong>Open faces</strong>
+        <small>
+          {openFaceStableIds.length === 0
+            ? "Closed shell"
+            : `${openFaceStableIds.length} selected`}
+        </small>
+      </div>
+      {openFaceOptions.length > 0 ? (
+        <div className="workbench-checkbox-list">
+          {openFaceOptions.map((option) => (
+            <label key={option.stableId}>
+              <input
+                type="checkbox"
+                checked={openFaceStableIds.includes(option.stableId)}
+                disabled={disabled || option.disabled}
+                onChange={(event) =>
+                  setOpenFaceStableIds(
+                    event.currentTarget.checked
+                      ? [...openFaceStableIds, option.stableId]
+                      : openFaceStableIds.filter(
+                          (stableId) => stableId !== option.stableId
+                        )
+                  )
+                }
+              />
+              <span>{option.label}</span>
+              {option.disabled && option.reason && (
+                <small>{option.reason}</small>
+              )}
+            </label>
+          ))}
+        </div>
+      ) : (
+        <p className="empty-state compact">
+          {isEdit
+            ? "Target face references are unavailable; thickness edits preserve existing open-face refs."
+            : "No generated faces are available for this shell target."}
+        </p>
+      )}
+      {!hasValidThickness && (
+        <p className="error-text compact">
+          Wall thickness must be greater than zero.
+        </p>
+      )}
+      <button
+        type="button"
+        disabled={
+          disabled ||
+          !canSubmit ||
+          (isEdit ? !onUpdateShell : !onCreateShell)
+        }
+        onClick={() => {
+          if (isEdit) {
+            onUpdateShell?.(state.featureId, {
+              ...(hasThicknessChange ? { wallThickness } : {}),
+              ...(refsChanged ? { openFaceRefs } : {})
+            });
+            return;
+          }
+
+          onCreateShell?.({
+            id: "",
+            bodyId: "",
+            targetBodyId: state.targetBodyId,
+            name,
+            wallThickness,
+            openFaceRefs
+          });
+        }}
+      >
+        {isEdit ? "Apply shell edits" : "Create shell"}
+      </button>
+    </section>
+  );
+}
+
+function getGeneratedShellOpenFaceStableIds(
+  refs: FeatureShellForm["openFaceRefs"]
+): readonly string[] {
+  return refs
+    .filter(
+      (ref): ref is Extract<
+        FeatureShellForm["openFaceRefs"][number],
+        { readonly kind: "generatedFace" }
+      > => ref.kind === "generatedFace"
+    )
+    .map((ref) => ref.stableId);
+}
+
+function isSameStringList(
+  left: readonly string[],
+  right: readonly string[]
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  );
+}
+
 function GeneratedReferenceWorkbench({
   actions,
   context,
@@ -2514,6 +2750,7 @@ function GeneratedReferenceWorkbench({
   namedReferenceHealthByName,
   selectedNamedReferenceName,
   onCreateEdgeFinish,
+  onCreateShell,
   onCreateSideHoleSketch,
   onCreateSketchOnFace,
   onNameGeneratedReference,
@@ -2537,6 +2774,7 @@ function GeneratedReferenceWorkbench({
     operation: "chamfer" | "fillet",
     form: FeatureEdgeFinishForm
   ) => void;
+  readonly onCreateShell?: (form: FeatureShellForm) => void;
   readonly onCreateSideHoleSketch?: (
     form: SketchCreateForm,
     targetBodyId: string
@@ -2668,6 +2906,7 @@ function GeneratedReferenceWorkbench({
           actions={actions}
           disabled={disabled}
           face={context.reference}
+          onCreateShell={onCreateShell}
           onCreateSideHoleSketch={onCreateSideHoleSketch}
           onCreateSketchOnFace={onCreateSketchOnFace}
           onSelectSketch={onSelectSketch}
@@ -2694,6 +2933,7 @@ function FaceReferenceWorkbench({
   actions,
   disabled,
   face,
+  onCreateShell,
   onCreateSketchOnFace,
   onCreateSideHoleSketch,
   onSelectSketch,
@@ -2702,6 +2942,7 @@ function FaceReferenceWorkbench({
   readonly actions: readonly ModelingActionDescriptor[];
   readonly disabled: boolean;
   readonly face: CadGeneratedFaceReference;
+  readonly onCreateShell?: (form: FeatureShellForm) => void;
   readonly onCreateSketchOnFace?: (form: SketchCreateOnFaceForm) => void;
   readonly onCreateSideHoleSketch?: (
     form: SketchCreateForm,
@@ -2713,6 +2954,7 @@ function FaceReferenceWorkbench({
   const action = actions.find(
     (candidate) => candidate.id === "sketch.createOnFace"
   );
+  const shellAction = actions.find((candidate) => candidate.id === "feature.shell");
   const sideHoleAction = actions.find(
     (candidate) => candidate.id === "sketch.createSideHole"
   );
@@ -2730,6 +2972,7 @@ function FaceReferenceWorkbench({
     form,
     topologyAnchorId
   );
+  const [shellThickness, setShellThickness] = useState(0.2);
 
   return (
     <section className="workbench-card">
@@ -2764,6 +3007,51 @@ function FaceReferenceWorkbench({
       >
         Create sketch on face
       </button>
+      <div className="side-hole-starter">
+        <div className="workbench-subheading">
+          <strong>Shell from face</strong>
+          <small>{face.label}</small>
+        </div>
+        <NumberInput
+          disabled={disabled}
+          label="Wall thickness"
+          value={shellThickness}
+          onChange={setShellThickness}
+        />
+        {!shellAction?.available && (
+          <p className="error-text compact">
+            {shellAction?.reason ?? "This face cannot open a shell."}
+          </p>
+        )}
+        <button
+          type="button"
+          disabled={
+            disabled ||
+            !shellAction?.available ||
+            !onCreateShell ||
+            !Number.isFinite(shellThickness) ||
+            shellThickness <= 0
+          }
+          onClick={() =>
+            onCreateShell?.({
+              id: "",
+              bodyId: "",
+              targetBodyId: face.bodyId,
+              name: createShellDefaultName(face.label || face.bodyId, shellThickness),
+              wallThickness: shellThickness,
+              openFaceRefs: [
+                {
+                  kind: "generatedFace",
+                  bodyId: face.bodyId,
+                  stableId: face.stableId
+                }
+              ]
+            })
+          }
+        >
+          Create shell
+        </button>
+      </div>
       {sideHoleAction && (
         <div className="side-hole-starter">
           <div className="workbench-subheading">

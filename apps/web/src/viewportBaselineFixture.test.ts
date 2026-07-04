@@ -114,6 +114,7 @@ describe("V7 viewport baseline fixture", () => {
         commandOperationLabels: [
           "Name reference",
           "Create sketch on face",
+          "Shell",
           "Measure reference",
           "Inspect reference"
         ]
@@ -127,6 +128,7 @@ describe("V7 viewport baseline fixture", () => {
         commandOperationLabels: [
           "Name reference",
           "Create sketch on face",
+          "Shell",
           "Measure reference",
           "Inspect reference"
         ]

@@ -11,6 +11,7 @@ import {
   createOcctHoleMeshWithInstance,
   createOcctLinearPatternMeshWithInstance,
   createOcctMirrorMeshWithInstance,
+  createOcctShellMeshWithInstance,
   createOcctRevolveProfileMeshWithInstance,
   createOcctExactBodyMetadataWithInstance,
   createOcctExactTopologySnapshotWithInstance,
@@ -263,7 +264,8 @@ export async function executeTimedBrowserGeometryKernelRequest<
       createExactStepExport: createExactStepExportWithBrowserOcct,
       createLinearPatternMesh: createLinearPatternMeshWithBrowserOcct,
       createCircularPatternMesh: createCircularPatternMeshWithBrowserOcct,
-      createMirrorMesh: createMirrorMeshWithBrowserOcct
+      createMirrorMesh: createMirrorMeshWithBrowserOcct,
+      createShellMesh: createShellMeshWithBrowserOcct
     },
     request
   );
@@ -499,6 +501,34 @@ export async function executeTimedBrowserGeometryKernelRequest<
 
     try {
       return createOcctMirrorMeshWithInstance(oc, input);
+    } catch (error) {
+      failureStage = "tessellation";
+      throw error;
+    } finally {
+      tessellationMs = performance.now() - tessellationStart;
+    }
+  }
+
+  async function createShellMeshWithBrowserOcct(
+    input: Parameters<typeof createOcctShellMeshWithInstance>[1]
+  ) {
+    const occtLoadStart = performance.now();
+    let oc: Awaited<ReturnType<typeof loadBrowserOcct>>;
+
+    try {
+      oc = await loadBrowserOcct();
+    } catch (error) {
+      occtLoadMs = performance.now() - occtLoadStart;
+      failureStage = "wasmLoad";
+      throw error;
+    }
+
+    occtLoadMs = performance.now() - occtLoadStart;
+
+    const tessellationStart = performance.now();
+
+    try {
+      return createOcctShellMeshWithInstance(oc, input);
     } catch (error) {
       failureStage = "tessellation";
       throw error;

@@ -445,6 +445,33 @@ function addFeatureSourceEdges(
     return;
   }
 
+  if (feature.kind === "shell") {
+    feature.openFaceRefs.forEach((ref) => {
+      if (ref.kind === "namedReference") {
+        addEdge(edges, {
+          kind: "sources",
+          from: namedReferenceNodeId(ref.name),
+          to: featureNodeId(feature.id),
+          label: "open face named reference",
+          sourceFeatureId: feature.id,
+          referenceName: ref.name
+        });
+      }
+
+      if (ref.kind === "topologyAnchor") {
+        addEdge(edges, {
+          kind: "sources",
+          from: topologyAnchorNodeId(ref.anchorId),
+          to: featureNodeId(feature.id),
+          label: "open face topology anchor",
+          sourceFeatureId: feature.id,
+          topologyAnchorId: ref.anchorId
+        });
+      }
+    });
+    return;
+  }
+
   if (
     feature.kind === "importedBody" ||
     feature.kind === "linearPattern" ||

@@ -2047,6 +2047,22 @@ canvas:active {
   padding-top: 4px;
 }
 
+.workbench-checkbox-list {
+  display: grid;
+  gap: 6px;
+}
+
+.workbench-checkbox-list label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+
+.workbench-checkbox-list small {
+  grid-column: 2;
+}
+
 .workbench-command-grid button,
 .workbench-card > button,
 .workbench-card .field-grid + button {

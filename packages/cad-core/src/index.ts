@@ -128,6 +128,7 @@ import type {
   FeatureRevolveAxis,
   FeatureRevolveOperationMode,
   FeatureRevolveProfileKind,
+  FeatureShellOpenFaceRef,
   FeatureSemanticDiff,
   NamedGeneratedReferenceEntry,
   NamedGeneratedReferenceSnapshot,
@@ -553,6 +554,7 @@ export type Feature =
   | LinearPatternFeature
   | CircularPatternFeature
   | MirrorFeature
+  | ShellFeature
   | ImportedBodyFeature;
 
 export interface ExtrudeFeature {
@@ -662,6 +664,16 @@ export interface MirrorFeature {
   readonly seedBodyId: BodyId;
   readonly mirrorPlane: "XY" | "XZ" | "YZ";
   readonly includeOriginal: boolean;
+  readonly bodyId: BodyId;
+}
+
+export interface ShellFeature {
+  readonly id: FeatureId;
+  readonly kind: "shell";
+  readonly name?: string;
+  readonly targetBodyId: BodyId;
+  readonly wallThickness: number;
+  readonly openFaceRefs: readonly FeatureShellOpenFaceRef[];
   readonly bodyId: BodyId;
 }
 
@@ -889,7 +901,8 @@ function documentHasV19SourceRecords(
       feature.kind === "importedBody" ||
       feature.kind === "linearPattern" ||
       feature.kind === "circularPattern" ||
-      feature.kind === "mirror"
+      feature.kind === "mirror" ||
+      feature.kind === "shell"
   );
 }
 
@@ -5424,6 +5437,32 @@ function applyOperation(
       return;
     }
 
+    case "feature.shell": {
+      const targetBodyId = validateShellTargetBodyId(
+        state,
+        op.targetBodyId,
+        opIndex
+      );
+      const openFaceRefs = validateShellOpenFaceRefs(
+        state,
+        targetBodyId,
+        op.openFaceRefs ?? [],
+        opIndex
+      );
+      const feature: ShellFeature = {
+        id: op.id ?? createFeatureId(),
+        kind: "shell",
+        name: normalizeOptionalFeatureName(op.name, opIndex, op.id),
+        targetBodyId,
+        wallThickness: validateShellWallThickness(op.wallThickness, opIndex),
+        openFaceRefs,
+        bodyId: op.bodyId ?? createBodyId()
+      };
+
+      addFeature(state, feature, diff, opIndex);
+      return;
+    }
+
     case "feature.delete": {
       deleteFeature(state, op.id, diff, opIndex);
       return;
@@ -5466,6 +5505,11 @@ function applyOperation(
 
     case "feature.updateMirror": {
       updateMirrorFeature(state, op, diff, opIndex);
+      return;
+    }
+
+    case "feature.updateShell": {
+      updateShellFeature(state, op, diff, opIndex);
       return;
     }
 
@@ -6006,6 +6050,7 @@ function isCadOperationKind(value: string): boolean {
     case "feature.linearPattern":
     case "feature.circularPattern":
     case "feature.mirror":
+    case "feature.shell":
     case "feature.delete":
     case "feature.updateExtrude":
     case "feature.updateRevolve":
@@ -6015,6 +6060,7 @@ function isCadOperationKind(value: string): boolean {
     case "feature.updateLinearPattern":
     case "feature.updateCircularPattern":
     case "feature.updateMirror":
+    case "feature.updateShell":
     case "reference.nameGenerated":
     case "reference.repairName":
     case "reference.deleteName":
@@ -6856,6 +6902,19 @@ function isCadFeatureEditProposal(value: unknown): boolean {
     return (
       Object.keys(value).every((key) => ["kind", "radius"].includes(key)) &&
       (value.radius === undefined || typeof value.radius === "number")
+    );
+  }
+
+  if (value.kind === "shell") {
+    return (
+      Object.keys(value).every((key) =>
+        ["kind", "wallThickness", "openFaceRefs"].includes(key)
+      ) &&
+      (value.wallThickness === undefined ||
+        typeof value.wallThickness === "number") &&
+      (value.openFaceRefs === undefined ||
+        (Array.isArray(value.openFaceRefs) &&
+          value.openFaceRefs.every(isFeatureShellOpenFaceRefShape)))
     );
   }
 
@@ -10301,7 +10360,8 @@ type TargetConsumingFeature =
   | FilletFeature
   | LinearPatternFeature
   | CircularPatternFeature
-  | MirrorFeature;
+  | MirrorFeature
+  | ShellFeature;
 
 interface ScopedSourceExtrudeRebuildChain {
   readonly consumingFeature: TargetConsumingFeature;
@@ -10426,6 +10486,16 @@ function validateDirectConsumingFeatureForSourceExtrudeRebuild(
     // re-mirroring the rebuilt seed body imposes no additional source
     // constraints beyond the seed remaining consumed by this feature, which the
     // consuming-feature lookup that produced this call already guarantees.
+    return;
+  }
+
+  if (feature.kind === "shell") {
+    validateShellTargetBodyFeature(
+      state,
+      "feature.updateShell",
+      feature.targetBodyId,
+      opIndex
+    );
     return;
   }
 
@@ -10835,6 +10905,77 @@ function updateMirrorFeature(
           updated,
           "Mirror result body requires derived rebuild and topology repair after supported source parameter edit."
         )
+    );
+}
+
+function updateShellFeature(
+  state: MutableDocumentState,
+  op: Extract<CadOp, { readonly op: "feature.updateShell" }>,
+  diff: MutableSemanticDiff,
+  opIndex?: number
+): void {
+  const feature = getEditableFeatureForUpdate(
+    state,
+    op.id,
+    "shell",
+    "feature.updateShell",
+    opIndex
+  );
+  const updated: ShellFeature = {
+    ...feature,
+    wallThickness:
+      op.wallThickness === undefined
+        ? feature.wallThickness
+        : validateShellWallThickness(op.wallThickness, opIndex),
+    openFaceRefs:
+      op.openFaceRefs === undefined
+        ? feature.openFaceRefs
+        : validateShellOpenFaceRefs(
+            state,
+            feature.targetBodyId,
+            op.openFaceRefs,
+            opIndex
+          )
+  };
+
+  assertShellFeatureEditable(state, updated, "feature.updateShell", opIndex);
+  state.features.set(feature.id, updated);
+  pushFeatureModified(diff, featureRef(updated));
+  pushBodyModified(diff, bodyRef(updated));
+  pushFeatureReferenceEffects(
+    diff,
+    createAmbiguousResultFeatureEditReferenceEffects(
+      updated,
+      "Shell result topology remains repair-needed after supported source parameter edit."
+    )
+  );
+  pushFeatureLifecycleEffects(
+    diff,
+    createConsumingFeatureEditLifecycleEffects(
+      updated,
+      "Shell result body requires derived rebuild and topology repair after supported source parameter edit."
+    )
+  );
+}
+
+function assertShellFeatureEditable(
+  state: MutableDocumentState,
+  feature: ShellFeature,
+  operation: "feature.updateShell",
+  opIndex?: number
+): void {
+  assertFeatureResultBodyActiveForEdit(state, feature, operation, opIndex);
+  assertConsumingFeatureTargetOwnedByEditedFeature(
+    state,
+    feature,
+    operation,
+    opIndex
+  );
+  validateShellTargetBodyFeature(
+    state,
+    operation,
+    feature.targetBodyId,
+    opIndex
   );
 }
 
@@ -11106,6 +11247,384 @@ function assertSupportedEdgeFinishTarget(
 type PatternCreateOperation =
   | "feature.linearPattern"
   | "feature.circularPattern";
+
+type ShellOperation = "feature.shell" | "feature.updateShell";
+
+function validateShellTargetBodyId(
+  state: MutableDocumentState,
+  targetBodyId: BodyId,
+  opIndex?: number
+): BodyId {
+  const feature = validateShellTargetBodyFeature(
+    state,
+    "feature.shell",
+    targetBodyId,
+    opIndex
+  );
+  const consumingFeature = findConsumingFeatureByTargetBodyId(
+    state.features,
+    feature.bodyId
+  );
+
+  if (consumingFeature) {
+    throwValidationError({
+      code: "SHELL_TARGET_BODY_CONSUMED",
+      message: `feature.shell target body is already consumed by feature ${consumingFeature.id}: ${feature.bodyId}`,
+      opIndex,
+      featureId: consumingFeature.id,
+      bodyId: feature.bodyId,
+      path: operationPath(opIndex, "targetBodyId"),
+      expected: "active authored target body",
+      received: feature.bodyId
+    });
+  }
+
+  return feature.bodyId;
+}
+
+function validateShellTargetBodyFeature(
+  state: MutableDocumentState,
+  operation: ShellOperation,
+  targetBodyId: BodyId,
+  opIndex?: number
+): Feature {
+  if (typeof targetBodyId !== "string" || targetBodyId.trim().length === 0) {
+    throwValidationError({
+      code: "SHELL_TARGET_BODY_UNSUPPORTED",
+      message: `${operation} requires targetBodyId.`,
+      opIndex,
+      bodyId: targetBodyId,
+      path: operationPath(opIndex, "targetBodyId"),
+      expected: "existing active authored target body id",
+      received: describeReceived(targetBodyId)
+    });
+  }
+
+  const feature = findFeatureByBodyId(state.features, targetBodyId);
+
+  if (feature) {
+    return feature;
+  }
+
+  if (isPrimitiveBodyId(state, targetBodyId)) {
+    throwValidationError({
+      code: "SHELL_TARGET_BODY_UNSUPPORTED",
+      message: `Primitive-derived body cannot be used by ${operation}: ${targetBodyId}`,
+      opIndex,
+      bodyId: targetBodyId,
+      path: operationPath(opIndex, "targetBodyId"),
+      expected: "authored feature body",
+      received: targetBodyId
+    });
+  }
+
+  throwValidationError({
+    code: "BODY_NOT_FOUND",
+    message: `Target body does not exist: ${targetBodyId}`,
+    opIndex,
+    bodyId: targetBodyId,
+    path: operationPath(opIndex, "targetBodyId"),
+    expected: "existing active authored target body id",
+    received: targetBodyId
+  });
+}
+
+function validateShellWallThickness(value: unknown, opIndex?: number): number {
+  if (typeof value === "number" && isPositiveFiniteNumber(value)) {
+    return value;
+  }
+
+  throwValidationError({
+    code: "SHELL_WALL_THICKNESS_INVALID",
+    message: "feature.shell wallThickness must be a positive finite number.",
+    opIndex,
+    path: operationPath(opIndex, "wallThickness"),
+    expected: "positive finite wall thickness",
+    received: describeReceived(value)
+  });
+}
+
+function validateShellOpenFaceRefs(
+  state: MutableDocumentState,
+  targetBodyId: BodyId,
+  value: unknown,
+  opIndex?: number
+): readonly FeatureShellOpenFaceRef[] {
+  if (!Array.isArray(value)) {
+    throwValidationError({
+      code: "SHELL_OPEN_FACE_REF_INVALID",
+      message: "feature.shell openFaceRefs must be an array.",
+      opIndex,
+      bodyId: targetBodyId,
+      path: operationPath(opIndex, "openFaceRefs"),
+      expected: "array of generatedFace, namedReference, or topologyAnchor refs",
+      received: describeReceived(value)
+    });
+  }
+
+  if (value.length === 0) {
+    return [];
+  }
+
+  const refs: FeatureShellOpenFaceRef[] = [];
+  const failures: CadBatchValidationError[] = [];
+
+  value.forEach((candidate, index) => {
+    try {
+      refs.push(
+        validateShellOpenFaceRef(state, targetBodyId, candidate, opIndex, index)
+      );
+    } catch (error) {
+      if (error instanceof BatchValidationFailure) {
+        failures.push(error.validationError);
+        return;
+      }
+
+      throw error;
+    }
+  });
+
+  if (refs.length > 0) {
+    return refs;
+  }
+
+  throwValidationError({
+    code: "SHELL_OPEN_FACE_REF_INVALID",
+    message: `feature.shell openFaceRefs did not contain any reference resolving to an active face on ${targetBodyId}.`,
+    opIndex,
+    bodyId: targetBodyId,
+    path: operationPath(opIndex, "openFaceRefs"),
+    expected: "at least one active generated, named, or topology face reference",
+    received: describeReceived(
+      failures.map((failure, index) => ({
+        index,
+        code: failure.code,
+        path: failure.path,
+        received: failure.received
+      }))
+    )
+  });
+}
+
+function validateShellOpenFaceRef(
+  state: MutableDocumentState,
+  targetBodyId: BodyId,
+  value: unknown,
+  opIndex: number | undefined,
+  refIndex: number
+): FeatureShellOpenFaceRef {
+  const path = `openFaceRefs.${refIndex}`;
+
+  if (!isRecord(value)) {
+    throwValidationError({
+      code: "SHELL_OPEN_FACE_REF_INVALID",
+      message: "feature.shell openFaceRefs entries must be objects.",
+      opIndex,
+      bodyId: targetBodyId,
+      path: operationPath(opIndex, path),
+      expected: "generatedFace, namedReference, or topologyAnchor ref",
+      received: describeReceived(value)
+    });
+  }
+
+  if (value.kind === "generatedFace") {
+    if (
+      typeof value.bodyId !== "string" ||
+      typeof value.stableId !== "string"
+    ) {
+      throwValidationError({
+        code: "SHELL_OPEN_FACE_REF_INVALID",
+        message:
+          "feature.shell generatedFace openFaceRef requires bodyId and stableId.",
+        opIndex,
+        bodyId: targetBodyId,
+        path: operationPath(opIndex, path),
+        expected: "generatedFace ref with bodyId and stableId",
+        received: describeReceived(value)
+      });
+    }
+
+    validateShellFaceGeneratedReference(
+      state,
+      targetBodyId,
+      value.stableId,
+      opIndex,
+      `${path}.stableId`
+    );
+
+    return {
+      kind: "generatedFace",
+      bodyId: targetBodyId,
+      stableId: value.stableId
+    };
+  }
+
+  if (value.kind === "namedReference") {
+    if (typeof value.name !== "string") {
+      throwValidationError({
+        code: "SHELL_OPEN_FACE_REF_INVALID",
+        message: "feature.shell namedReference openFaceRef requires name.",
+        opIndex,
+        bodyId: targetBodyId,
+        path: operationPath(opIndex, path),
+        expected: "namedReference ref with name",
+        received: describeReceived(value)
+      });
+    }
+
+    const name = normalizeNamedReferenceName(value.name, opIndex, "name");
+    const reference = state.namedReferences.get(name);
+
+    if (!reference) {
+      throwValidationError({
+        code: "NAMED_REFERENCE_NOT_FOUND",
+        message: `Named reference does not exist: ${name}`,
+        opIndex,
+        bodyId: targetBodyId,
+        referenceName: name,
+        path: operationPath(opIndex, `${path}.name`),
+        expected: "existing named generated face reference",
+        received: name
+      });
+    }
+
+    if (reference.bodyId !== targetBodyId) {
+      throwValidationError({
+        code: "SHELL_OPEN_FACE_REF_INVALID",
+        message: `Named reference ${name} resolves to body ${reference.bodyId}, not target body ${targetBodyId}.`,
+        opIndex,
+        bodyId: targetBodyId,
+        stableId: reference.stableId,
+        referenceName: name,
+        path: operationPath(opIndex, `${path}.name`),
+        expected: "named face reference resolving to targetBodyId",
+        received: reference.bodyId
+      });
+    }
+
+    validateShellFaceGeneratedReference(
+      state,
+      targetBodyId,
+      reference.stableId,
+      opIndex,
+      `${path}.name`,
+      name
+    );
+
+    return { kind: "namedReference", name };
+  }
+
+  if (value.kind === "topologyAnchor") {
+    if (
+      typeof value.bodyId !== "string" ||
+      typeof value.anchorId !== "string"
+    ) {
+      throwValidationError({
+        code: "SHELL_OPEN_FACE_REF_INVALID",
+        message:
+          "feature.shell topologyAnchor openFaceRef requires bodyId and anchorId.",
+        opIndex,
+        bodyId: targetBodyId,
+        path: operationPath(opIndex, path),
+        expected: "topologyAnchor ref with bodyId and anchorId",
+        received: describeReceived(value)
+      });
+    }
+
+    const target = resolveActiveTopologyAnchorStableTarget(
+      state,
+      value.anchorId,
+      "face",
+      opIndex,
+      `${path}.anchorId`
+    );
+
+    if (target.bodyId !== targetBodyId) {
+      throwValidationError({
+        code: "SHELL_OPEN_FACE_REF_INVALID",
+        message: `Topology anchor ${target.topologyAnchorId} resolves to body ${target.bodyId}, not target body ${targetBodyId}.`,
+        opIndex,
+        bodyId: targetBodyId,
+        stableId: target.stableId,
+        topologyAnchorId: target.topologyAnchorId,
+        checkpointId: target.checkpointId,
+        path: operationPath(opIndex, `${path}.anchorId`),
+        expected: "topology face anchor resolving to targetBodyId",
+        received: target.bodyId
+      });
+    }
+
+    validateShellFaceGeneratedReference(
+      state,
+      targetBodyId,
+      target.stableId,
+      opIndex,
+      `${path}.anchorId`,
+      undefined,
+      target.topologyAnchorId,
+      target.checkpointId
+    );
+
+    return {
+      kind: "topologyAnchor",
+      bodyId: targetBodyId,
+      anchorId: target.topologyAnchorId
+    };
+  }
+
+  throwValidationError({
+    code: "SHELL_OPEN_FACE_REF_INVALID",
+    message:
+      "feature.shell openFaceRef kind must be generatedFace, namedReference, or topologyAnchor.",
+    opIndex,
+    bodyId: targetBodyId,
+    path: operationPath(opIndex, `${path}.kind`),
+    expected: "generatedFace, namedReference, or topologyAnchor",
+    received: describeReceived(value.kind)
+  });
+}
+
+function validateShellFaceGeneratedReference(
+  state: MutableDocumentState,
+  targetBodyId: BodyId,
+  stableId: string,
+  opIndex: number | undefined,
+  stableIdPath: string,
+  referenceName?: NamedReferenceName,
+  topologyAnchorId?: string,
+  checkpointId?: string
+): void {
+  const result = validateGeneratedReference({
+    document: state,
+    ownerPartId: DEFAULT_PART_ID,
+    bodyId: targetBodyId,
+    stableId,
+    bodyExists: (bodyId) => documentBodyExists(state, bodyId),
+    expectedKind: "face",
+    requiredOperation: "feature.shell"
+  });
+
+  if (!result.ok) {
+    throwValidationError({
+      code:
+        result.error.code === "GENERATED_REFERENCE_NOT_FOUND" ||
+        result.error.code === "GENERATED_REFERENCE_KIND_MISMATCH" ||
+        result.error.code === "GENERATED_REFERENCE_OPERATION_NOT_ELIGIBLE"
+          ? "SHELL_OPEN_FACE_REF_INVALID"
+          : result.error.code,
+      message: result.error.message,
+      opIndex,
+      bodyId: result.error.bodyId,
+      stableId: result.error.stableId,
+      ...(referenceName ? { referenceName } : {}),
+      ...(topologyAnchorId ? { topologyAnchorId } : {}),
+      ...(checkpointId ? { checkpointId } : {}),
+      path: operationPath(opIndex, stableIdPath),
+      expected: describeGeneratedReferenceValidationExpected(result.error),
+      received: describeGeneratedReferenceValidationReceived(result.error)
+    });
+  }
+}
 
 function validatePatternSeedBodyId(
   state: MutableDocumentState,
@@ -11612,7 +12131,8 @@ function createConsumingFeatureEditLifecycleEffects(
     | FilletFeature
     | LinearPatternFeature
     | CircularPatternFeature
-    | MirrorFeature,
+    | MirrorFeature
+    | ShellFeature,
   resultMessage: string
 ): readonly CadBodyLifecycleEffectSummary[] {
   const consumedBodyId = getTargetConsumingFeatureBodyId(feature);
@@ -11908,6 +12428,7 @@ function isTargetConsumingFeature(
     feature.kind === "fillet" ||
     feature.kind === "linearPattern" ||
     feature.kind === "circularPattern" ||
+    feature.kind === "shell" ||
     (feature.kind === "mirror" && feature.includeOriginal)
   );
 }
@@ -12009,7 +12530,8 @@ function featureUsesSketch(feature: Feature, sketchId: SketchId): boolean {
     feature.kind === "importedBody" ||
     feature.kind === "linearPattern" ||
     feature.kind === "circularPattern" ||
-    feature.kind === "mirror"
+    feature.kind === "mirror" ||
+    feature.kind === "shell"
   ) {
     return false;
   }
@@ -13042,6 +13564,10 @@ function createTopologyAnchorProofCommandOperations(
       bodyId,
       topologyAnchorId
     );
+  }
+
+  if (proof.kind === "axisAlignedPlanarFace") {
+    return ["feature.shell"];
   }
 
   if (proof.kind !== "axisAlignedLinearEdge") {
@@ -15966,6 +16492,17 @@ function featureRef(feature: Feature): CadFeatureRef {
     };
   }
 
+  if (feature.kind === "shell") {
+    return {
+      id: feature.id,
+      kind: "shell",
+      bodyId: feature.bodyId,
+      targetBodyId: feature.targetBodyId,
+      wallThickness: feature.wallThickness,
+      openFaceRefs: [...feature.openFaceRefs]
+    };
+  }
+
   if (feature.kind === "chamfer") {
     return {
       id: feature.id,
@@ -17117,6 +17654,18 @@ function createFeatureSnapshot(feature: Feature): FeatureSnapshot {
     };
   }
 
+  if (feature.kind === "shell") {
+    return {
+      id: feature.id,
+      kind: "shell",
+      name: feature.name,
+      targetBodyId: feature.targetBodyId,
+      wallThickness: feature.wallThickness,
+      openFaceRefs: [...feature.openFaceRefs],
+      bodyId: feature.bodyId
+    };
+  }
+
   if (feature.kind === "chamfer") {
     return {
       id: feature.id,
@@ -17253,6 +17802,18 @@ function createFeatureFromSnapshot(snapshot: FeatureSnapshot): Feature {
       seedBodyId: snapshot.seedBodyId,
       mirrorPlane: snapshot.mirrorPlane,
       includeOriginal: snapshot.includeOriginal,
+      bodyId: snapshot.bodyId
+    };
+  }
+
+  if (snapshot.kind === "shell") {
+    return {
+      id: snapshot.id,
+      kind: "shell",
+      name: snapshot.name,
+      targetBodyId: snapshot.targetBodyId,
+      wallThickness: snapshot.wallThickness,
+      openFaceRefs: [...snapshot.openFaceRefs],
       bodyId: snapshot.bodyId
     };
   }
@@ -17395,6 +17956,7 @@ const SUMMARY_REFERENCE_OPERATIONS = [
   "feature.attachSketchPlane",
   "feature.chamfer",
   "feature.fillet",
+  "feature.shell",
   "feature.measureReference",
   "feature.selectReference"
 ] satisfies readonly CadSelectionReferenceOperation[];
@@ -18017,6 +18579,23 @@ function createFeatureSummary(feature: Feature): CadFeatureSummary {
     };
   }
 
+  if (feature.kind === "shell") {
+    return {
+      id: feature.id,
+      kind: "shell",
+      partId: DEFAULT_PART_ID,
+      bodyId: feature.bodyId,
+      targetBodyId: feature.targetBodyId,
+      wallThickness: feature.wallThickness,
+      openFaceRefs: [...feature.openFaceRefs],
+      name: feature.name,
+      source: {
+        type: "shellFeature",
+        targetBodyId: feature.targetBodyId
+      }
+    };
+  }
+
   if (feature.kind === "chamfer") {
     return {
       id: feature.id,
@@ -18228,6 +18807,24 @@ function createFeatureBodySnapshot(
         seedBodyId: feature.seedBodyId,
         mirrorPlane: feature.mirrorPlane,
         includeOriginal: feature.includeOriginal
+      }
+    };
+  }
+
+  if (feature.kind === "shell") {
+    return {
+      id: feature.bodyId,
+      kind: "solid",
+      partId: DEFAULT_PART_ID,
+      featureId: feature.id,
+      ...(consumedByFeatureId ? { consumedByFeatureId } : {}),
+      name: feature.name,
+      source: {
+        type: "shellFeature",
+        featureId: feature.id,
+        targetBodyId: feature.targetBodyId,
+        wallThickness: feature.wallThickness,
+        openFaceRefs: [...feature.openFaceRefs]
       }
     };
   }
@@ -20327,6 +20924,17 @@ function featuresEqual(left: Feature, right: Feature): boolean {
     );
   }
 
+  if (left.kind === "shell" && right.kind === "shell") {
+    return (
+      left.id === right.id &&
+      left.name === right.name &&
+      left.targetBodyId === right.targetBodyId &&
+      left.wallThickness === right.wallThickness &&
+      stableJsonEqual(left.openFaceRefs, right.openFaceRefs) &&
+      left.bodyId === right.bodyId
+    );
+  }
+
   if (left.kind === "importedBody" && right.kind === "importedBody") {
     return (
       left.id === right.id &&
@@ -20700,7 +21308,8 @@ function normalizeFeatureSnapshot(feature: FeatureSnapshot): FeatureSnapshot {
     feature.kind === "importedBody" ||
     feature.kind === "linearPattern" ||
     feature.kind === "circularPattern" ||
-    feature.kind === "mirror"
+    feature.kind === "mirror" ||
+    feature.kind === "shell"
   ) {
     return { ...feature };
   }
@@ -20795,7 +21404,8 @@ function normalizeFeatureRefSnapshot(ref: CadFeatureRef): CadFeatureRef {
     ref.kind === "importedBody" ||
     ref.kind === "linearPattern" ||
     ref.kind === "circularPattern" ||
-    ref.kind === "mirror"
+    ref.kind === "mirror" ||
+    ref.kind === "shell"
   ) {
     return { ...ref };
   }
@@ -21237,7 +21847,7 @@ function validateCadDocumentSnapshot(
     }
   }
 
-  if (isV18Schema || isV19Schema) {
+  if ((isV18Schema || isV19Schema) && value.topologyIdentity !== undefined) {
     const topologyIdentityIssues = validateTopologyIdentitySourceSnapshot(
       value.topologyIdentity
     );
@@ -23961,6 +24571,30 @@ function collectValidAuthoredFeatureByBodyId(
       path
     });
   }
+
+  if (
+    isRecord(value) &&
+    value.kind === "shell" &&
+    typeof value.id === "string" &&
+    (value.name === undefined || typeof value.name === "string") &&
+    typeof value.targetBodyId === "string" &&
+    typeof value.wallThickness === "number" &&
+    isPositiveFiniteNumber(value.wallThickness) &&
+    Array.isArray(value.openFaceRefs) &&
+    value.openFaceRefs.every(isFeatureShellOpenFaceRefShape) &&
+    typeof value.bodyId === "string"
+  ) {
+    featuresByBodyId.set(value.bodyId, {
+      id: value.id,
+      kind: "shell",
+      name: typeof value.name === "string" ? value.name : undefined,
+      targetBodyId: value.targetBodyId,
+      wallThickness: value.wallThickness,
+      openFaceRefs: [...value.openFaceRefs],
+      bodyId: value.bodyId,
+      path
+    });
+  }
 }
 
 function validateFeatureTargetBodyReferences(
@@ -24113,7 +24747,8 @@ function isImportTargetConsumingFeature(feature: FeatureSnapshot): boolean {
       feature.targetBodyId.length > 0) ||
     feature.kind === "hole" ||
     feature.kind === "chamfer" ||
-    feature.kind === "fillet"
+    feature.kind === "fillet" ||
+    feature.kind === "shell"
   );
 }
 
@@ -24123,6 +24758,7 @@ function getImportFeatureTargetBodyId(
   if (
     feature.kind === "chamfer" ||
     feature.kind === "fillet" ||
+    feature.kind === "shell" ||
     feature.kind === "hole" ||
     (feature.kind === "extrude" &&
       isConsumingExtrudeOperationMode(feature.operationMode ?? "newBody"))
@@ -24262,6 +24898,10 @@ function formatTargetConsumingFeatureForIssue(
 
   if (feature.kind === "fillet") {
     return "Fillet feature";
+  }
+
+  if (feature.kind === "shell") {
+    return "Shell feature";
   }
 
   if (
@@ -24685,6 +25325,7 @@ function validateFeatureSnapshot(
       value.kind !== "circularPattern" &&
       value.kind !== "mirror") ||
       !allowsPatternFeatures) &&
+    (value.kind !== "shell" || !allowsPatternFeatures) &&
     (value.kind !== "importedBody" || !allowsImportedBodyFeatures)
   ) {
     addProjectIssue(
@@ -24692,9 +25333,9 @@ function validateFeatureSnapshot(
       "INVALID_FEATURE",
       `${path}.kind`,
       allowsImportedBodyFeatures
-        ? "Feature kind must be extrude, revolve, hole, chamfer, fillet, importedBody, linearPattern, circularPattern, or mirror."
+        ? "Feature kind must be extrude, revolve, hole, chamfer, fillet, importedBody, linearPattern, circularPattern, mirror, or shell."
         : allowsPatternFeatures
-          ? "Feature kind must be extrude, revolve, hole, chamfer, fillet, linearPattern, circularPattern, or mirror."
+          ? "Feature kind must be extrude, revolve, hole, chamfer, fillet, linearPattern, circularPattern, mirror, or shell."
           : allowsEdgeFinishFeatures
             ? "Feature kind must be extrude, revolve, hole, chamfer, or fillet."
             : allowsHoleFeatures
@@ -24827,6 +25468,25 @@ function validateFeatureSnapshot(
     }
 
     validateMirrorFeatureSnapshotFields(value, path, issues, seenBodyIds);
+
+    if (typeof value.bodyId === "string") {
+      maxGeneratedBodyNumber = parseBodyNumber(value.bodyId);
+    }
+
+    return { maxGeneratedFeatureNumber, maxGeneratedBodyNumber };
+  }
+
+  if (value.kind === "shell") {
+    if (!allowsPatternFeatures) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.kind`,
+        "Shell features require web-cad.project.v19."
+      );
+    }
+
+    validateShellFeatureSnapshotFields(value, path, issues, seenBodyIds);
 
     if (typeof value.bodyId === "string") {
       maxGeneratedBodyNumber = parseBodyNumber(value.bodyId);
@@ -26036,6 +26696,70 @@ function validateMirrorFeatureSnapshotFields(
   }
 }
 
+function validateShellFeatureSnapshotFields(
+  value: Record<string, unknown>,
+  path: string,
+  issues: CadProjectImportIssue[],
+  seenBodyIds: Set<string>
+): void {
+  if (
+    typeof value.targetBodyId !== "string" ||
+    value.targetBodyId.length === 0
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.targetBodyId`,
+      "Shell feature targetBodyId must be a non-empty string."
+    );
+  }
+
+  validatePositiveFiniteField(
+    value.wallThickness,
+    `${path}.wallThickness`,
+    "Shell wall thickness",
+    issues
+  );
+
+  if (!Array.isArray(value.openFaceRefs)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.openFaceRefs`,
+      "Shell feature openFaceRefs must be an array."
+    );
+  } else {
+    value.openFaceRefs.forEach((ref, index) => {
+      if (!isFeatureShellOpenFaceRefShape(ref)) {
+        addProjectIssue(
+          issues,
+          "INVALID_FEATURE",
+          `${path}.openFaceRefs.${index}`,
+          "Shell openFaceRef must be generatedFace, namedReference, or topologyAnchor."
+        );
+      }
+    });
+  }
+
+  if (typeof value.bodyId !== "string" || value.bodyId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.bodyId`,
+      "Shell feature bodyId must be a non-empty string."
+    );
+  } else if (seenBodyIds.has(value.bodyId)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.bodyId`,
+      `Duplicate body id: ${value.bodyId}.`
+    );
+  } else {
+    seenBodyIds.add(value.bodyId);
+  }
+}
+
 function validatePositiveFiniteField(
   value: unknown,
   path: string,
@@ -26441,7 +27165,8 @@ function materializeGeneratedObjectIds(
       op.op === "feature.revolve" ||
       op.op === "feature.hole" ||
       op.op === "feature.chamfer" ||
-      op.op === "feature.fillet"
+      op.op === "feature.fillet" ||
+      op.op === "feature.shell"
     ) {
       const createdRef =
         transaction.diff.features?.created?.[createdFeatureIndex];
@@ -26909,6 +27634,31 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "feature.mirror") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      typeof value.seedBodyId === "string" &&
+      isMirrorPlane(value.mirrorPlane) &&
+      typeof value.includeOriginal === "boolean"
+    );
+  }
+
+  if (value.op === "feature.shell") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      typeof value.targetBodyId === "string" &&
+      typeof value.wallThickness === "number" &&
+      isPositiveFiniteNumber(value.wallThickness) &&
+      (value.openFaceRefs === undefined ||
+        (Array.isArray(value.openFaceRefs) &&
+          value.openFaceRefs.every(isFeatureShellOpenFaceRefShape)))
+    );
+  }
+
   if (value.op === "feature.delete") {
     return typeof value.id === "string";
   }
@@ -26995,6 +27745,29 @@ function isCadOp(value: unknown): value is CadOp {
       (value.rotationAxis !== undefined ||
         value.totalAngleDegrees !== undefined ||
         value.instanceCount !== undefined)
+    );
+  }
+
+  if (value.op === "feature.updateMirror") {
+    return (
+      typeof value.id === "string" &&
+      (value.mirrorPlane === undefined || isMirrorPlane(value.mirrorPlane)) &&
+      (value.includeOriginal === undefined ||
+        typeof value.includeOriginal === "boolean") &&
+      (value.mirrorPlane !== undefined || value.includeOriginal !== undefined)
+    );
+  }
+
+  if (value.op === "feature.updateShell") {
+    return (
+      typeof value.id === "string" &&
+      (value.wallThickness === undefined ||
+        (typeof value.wallThickness === "number" &&
+          isPositiveFiniteNumber(value.wallThickness))) &&
+      (value.openFaceRefs === undefined ||
+        (Array.isArray(value.openFaceRefs) &&
+          value.openFaceRefs.every(isFeatureShellOpenFaceRefShape))) &&
+      (value.wallThickness !== undefined || value.openFaceRefs !== undefined)
     );
   }
 
@@ -27478,6 +28251,16 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
     );
   }
 
+  if (value.kind === "shell") {
+    return (
+      typeof value.targetBodyId === "string" &&
+      typeof value.wallThickness === "number" &&
+      isPositiveFiniteNumber(value.wallThickness) &&
+      Array.isArray(value.openFaceRefs) &&
+      value.openFaceRefs.every(isFeatureShellOpenFaceRefShape)
+    );
+  }
+
   if (
     typeof value.sketchId !== "string" ||
     typeof value.entityId !== "string" ||
@@ -27943,6 +28726,30 @@ function hasExactlyOneEdgeReferenceInput(
     [hasStableId, hasNamedReference, hasTopologyAnchor].filter(Boolean)
       .length === 1
   );
+}
+
+function isFeatureShellOpenFaceRefShape(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (value.kind === "generatedFace") {
+    return (
+      typeof value.bodyId === "string" && typeof value.stableId === "string"
+    );
+  }
+
+  if (value.kind === "namedReference") {
+    return typeof value.name === "string";
+  }
+
+  if (value.kind === "topologyAnchor") {
+    return (
+      typeof value.bodyId === "string" && typeof value.anchorId === "string"
+    );
+  }
+
+  return false;
 }
 
 function hasValidReferenceRepairTargetInput(

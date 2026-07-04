@@ -283,6 +283,7 @@ export type CadOp =
   | FeatureLinearPatternOp
   | FeatureCircularPatternOp
   | FeatureMirrorOp
+  | FeatureShellOp
   | FeatureUpdateExtrudeOp
   | FeatureUpdateRevolveOp
   | FeatureUpdateHoleOp
@@ -291,6 +292,7 @@ export type CadOp =
   | FeatureUpdateLinearPatternOp
   | FeatureUpdateCircularPatternOp
   | FeatureUpdateMirrorOp
+  | FeatureUpdateShellOp
   | FeatureDeleteOp
   | ReferenceNameGeneratedOp
   | ReferenceRepairNameOp
@@ -698,6 +700,28 @@ export interface FeatureFilletOp {
 export type FeaturePatternAxis = "x" | "y" | "z";
 export type FeatureMirrorPlane = "XY" | "XZ" | "YZ";
 
+export type FeatureShellOpenFaceRef =
+  | FeatureShellGeneratedFaceRef
+  | FeatureShellNamedReferenceRef
+  | FeatureShellTopologyAnchorRef;
+
+export interface FeatureShellGeneratedFaceRef {
+  readonly kind: "generatedFace";
+  readonly bodyId: BodyId;
+  readonly stableId: string;
+}
+
+export interface FeatureShellNamedReferenceRef {
+  readonly kind: "namedReference";
+  readonly name: NamedReferenceName;
+}
+
+export interface FeatureShellTopologyAnchorRef {
+  readonly kind: "topologyAnchor";
+  readonly bodyId: BodyId;
+  readonly anchorId: string;
+}
+
 export interface FeatureLinearPatternOp {
   readonly op: "feature.linearPattern";
   readonly id?: FeatureId;
@@ -791,6 +815,23 @@ export interface FeatureUpdateMirrorOp {
   readonly includeOriginal?: boolean;
 }
 
+export interface FeatureShellOp {
+  readonly op: "feature.shell";
+  readonly id?: FeatureId;
+  readonly bodyId?: BodyId;
+  readonly targetBodyId: BodyId;
+  readonly wallThickness: number;
+  readonly openFaceRefs?: readonly FeatureShellOpenFaceRef[];
+  readonly name?: string;
+}
+
+export interface FeatureUpdateShellOp {
+  readonly op: "feature.updateShell";
+  readonly id: FeatureId;
+  readonly wallThickness?: number;
+  readonly openFaceRefs?: readonly FeatureShellOpenFaceRef[];
+}
+
 export interface ReferenceNameGeneratedOp {
   readonly op: "reference.nameGenerated";
   readonly name: NamedReferenceName;
@@ -872,6 +913,7 @@ export type CadFeatureRef =
   | CadLinearPatternFeatureRef
   | CadCircularPatternFeatureRef
   | CadMirrorFeatureRef
+  | CadShellFeatureRef
   | CadImportedBodyFeatureRef;
 
 export interface CadExtrudeFeatureRef {
@@ -963,6 +1005,15 @@ export interface CadMirrorFeatureRef {
   readonly seedBodyId: BodyId;
   readonly mirrorPlane: FeatureMirrorPlane;
   readonly includeOriginal: boolean;
+}
+
+export interface CadShellFeatureRef {
+  readonly id: FeatureId;
+  readonly kind: "shell";
+  readonly bodyId: BodyId;
+  readonly targetBodyId: BodyId;
+  readonly wallThickness: number;
+  readonly openFaceRefs: readonly FeatureShellOpenFaceRef[];
 }
 
 export interface CadImportedBodyFeatureRef {
@@ -1208,6 +1259,11 @@ export type CadBatchValidationErrorCode =
   | "MIRROR_SEED_BODY_UNSUPPORTED"
   | "MIRROR_SEED_BODY_CONSUMED"
   | "MIRROR_GEOMETRY_FAILED"
+  | "SHELL_TARGET_BODY_UNSUPPORTED"
+  | "SHELL_TARGET_BODY_CONSUMED"
+  | "SHELL_WALL_THICKNESS_INVALID"
+  | "SHELL_OPEN_FACE_REF_INVALID"
+  | "SHELL_GEOMETRY_FAILED"
   | "INVALID_FEATURE"
   | "UNSUPPORTED_FEATURE_OPERATION"
   | "UNSUPPORTED_SKETCH_PROFILE"
@@ -2071,6 +2127,16 @@ export interface MirrorFeatureSnapshot {
   readonly bodyId: BodyId;
 }
 
+export interface ShellFeatureSnapshot {
+  readonly id: FeatureId;
+  readonly kind: "shell";
+  readonly name?: string;
+  readonly targetBodyId: BodyId;
+  readonly wallThickness: number;
+  readonly openFaceRefs: readonly FeatureShellOpenFaceRef[];
+  readonly bodyId: BodyId;
+}
+
 export type FeatureSnapshot =
   | ExtrudeFeatureSnapshot
   | RevolveFeatureSnapshot
@@ -2080,7 +2146,8 @@ export type FeatureSnapshot =
   | ImportedBodyFeatureSnapshot
   | LinearPatternFeatureSnapshot
   | CircularPatternFeatureSnapshot
-  | MirrorFeatureSnapshot;
+  | MirrorFeatureSnapshot
+  | ShellFeatureSnapshot;
 
 export interface CadAxisAlignedBounds {
   readonly min: Vec3;
@@ -2516,6 +2583,23 @@ export interface CadMirrorFeatureSummary {
   readonly source: CadMirrorFeatureSource;
 }
 
+export interface CadShellFeatureSource {
+  readonly type: "shellFeature";
+  readonly targetBodyId: BodyId;
+}
+
+export interface CadShellFeatureSummary {
+  readonly id: FeatureId;
+  readonly kind: "shell";
+  readonly partId: PartId;
+  readonly bodyId: BodyId;
+  readonly targetBodyId: BodyId;
+  readonly wallThickness: number;
+  readonly openFaceRefs: readonly FeatureShellOpenFaceRef[];
+  readonly name?: string;
+  readonly source: CadShellFeatureSource;
+}
+
 export type CadFeatureSummary =
   | CadPrimitiveFeatureSummary
   | CadExtrudeFeatureSummary
@@ -2526,7 +2610,8 @@ export type CadFeatureSummary =
   | CadImportedBodyFeatureSummary
   | CadLinearPatternFeatureSummary
   | CadCircularPatternFeatureSummary
-  | CadMirrorFeatureSummary;
+  | CadMirrorFeatureSummary
+  | CadShellFeatureSummary;
 
 export type CadFeatureEditabilityStatus =
   | "editable"
@@ -2602,12 +2687,19 @@ export interface CadFeatureFilletEditProposal {
   readonly radius?: number;
 }
 
+export interface CadFeatureShellEditProposal {
+  readonly kind: "shell";
+  readonly wallThickness?: number;
+  readonly openFaceRefs?: readonly FeatureShellOpenFaceRef[];
+}
+
 export type CadFeatureEditProposal =
   | CadFeatureExtrudeEditProposal
   | CadFeatureRevolveEditProposal
   | CadFeatureHoleEditProposal
   | CadFeatureChamferEditProposal
-  | CadFeatureFilletEditProposal;
+  | CadFeatureFilletEditProposal
+  | CadFeatureShellEditProposal;
 
 export interface CadFeatureEditDiagnostic {
   readonly code: CadFeatureEditDiagnosticCode;
@@ -3470,6 +3562,14 @@ export interface CadMirrorBodySource {
   readonly includeOriginal: boolean;
 }
 
+export interface CadShellBodySource {
+  readonly type: "shellFeature";
+  readonly featureId: FeatureId;
+  readonly targetBodyId: BodyId;
+  readonly wallThickness: number;
+  readonly openFaceRefs: readonly FeatureShellOpenFaceRef[];
+}
+
 export type CadBodySource =
   | CadPrimitiveBodySource
   | CadSketchExtrudeBodySource
@@ -3480,6 +3580,7 @@ export type CadBodySource =
   | CadLinearPatternBodySource
   | CadCircularPatternBodySource
   | CadMirrorBodySource
+  | CadShellBodySource
   | CadImportedBodySource;
 
 export interface CadImportedBodySource {
@@ -3902,6 +4003,7 @@ export type CadGeneratedReferenceEligibleOperation =
   | "feature.attachSketchPlane"
   | "feature.chamfer"
   | "feature.fillet"
+  | "feature.shell"
   | "feature.measureReference"
   | "feature.selectReference";
 
@@ -4584,6 +4686,22 @@ export interface CadAuthoredFilletHealth {
   readonly issues: readonly CadDependencyHealthIssue[];
 }
 
+export interface CadAuthoredShellHealth {
+  readonly featureId: FeatureId;
+  readonly bodyId: BodyId;
+  readonly targetBodyId: BodyId;
+  readonly wallThickness: number;
+  readonly openFaceRefs: readonly FeatureShellOpenFaceRef[];
+  readonly topologyStatus?: CadBodyTopologyStatus;
+  readonly topologyModel?: CadBodyTopologyModel;
+  readonly topologyAvailable?: boolean;
+  readonly exactMeasurementsAvailable?: boolean;
+  readonly measurementConfidence?: CadBodyTopologyMeasurementConfidence;
+  readonly topologyIssueCount?: number;
+  readonly status: CadDependencyHealthStatus;
+  readonly issues: readonly CadDependencyHealthIssue[];
+}
+
 export interface CadAttachedSketchHealth {
   readonly sketchId: SketchId;
   readonly sketchName: string;
@@ -4986,6 +5104,7 @@ export type CadBodyTopologySourceKind =
   | "authoredHole"
   | "authoredChamfer"
   | "authoredFillet"
+  | "authoredShell"
   | "importedBody"
   | "primitiveCompatibility";
 
@@ -5326,6 +5445,7 @@ export type CadExportBodySourceKind =
   | "authoredHole"
   | "authoredChamfer"
   | "authoredFillet"
+  | "authoredShell"
   | "importedBody"
   | "primitiveCompatibility"
   | "unresolvedSource";
@@ -5573,6 +5693,7 @@ export interface ProjectHealthQueryResponse {
   readonly authoredHoleCount: number;
   readonly authoredChamferCount: number;
   readonly authoredFilletCount: number;
+  readonly authoredShellCount: number;
   readonly attachedSketchCount: number;
   readonly sketchEvaluationCount: number;
   readonly sketchDimensionCount: number;
@@ -5583,6 +5704,7 @@ export interface ProjectHealthQueryResponse {
   readonly authoredHoles: readonly CadAuthoredHoleHealth[];
   readonly authoredChamfers: readonly CadAuthoredChamferHealth[];
   readonly authoredFillets: readonly CadAuthoredFilletHealth[];
+  readonly authoredShells: readonly CadAuthoredShellHealth[];
   readonly attachedSketches: readonly CadAttachedSketchHealth[];
   readonly sketchEvaluations: readonly CadSketchEvaluationHealth[];
   readonly sketchDimensions: readonly CadSketchDimensionHealth[];

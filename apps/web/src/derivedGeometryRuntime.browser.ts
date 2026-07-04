@@ -14,6 +14,7 @@ import {
   type DerivedGeometryLinearPatternInput,
   type DerivedGeometryCircularPatternInput,
   type DerivedGeometryMirrorInput,
+  type DerivedGeometryShellInput,
   type DerivedGeometryExtrudeInput,
   type DerivedGeometryHoleInput,
   type DerivedGeometryRevolveInput,
@@ -66,7 +67,8 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
       | DerivedGeometryBooleanExtrudeInput
       | DerivedGeometryLinearPatternInput
       | DerivedGeometryCircularPatternInput
-      | DerivedGeometryMirrorInput,
+      | DerivedGeometryMirrorInput
+      | DerivedGeometryShellInput,
     request: GeometryWorkerRequest
   ): Promise<DerivedGeometryResult> {
     const { createRenderMeshFromGeometryWorkerResponse } =
@@ -90,7 +92,8 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
         request.payload.op === "geometry.edgeFinish" ||
         request.payload.op === "geometry.linearPattern" ||
         request.payload.op === "geometry.circularPattern" ||
-        request.payload.op === "geometry.mirror"
+        request.payload.op === "geometry.mirror" ||
+        request.payload.op === "geometry.shell"
           ? "source"
           : "boundsCenter",
       transform:
@@ -439,6 +442,24 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           seed: input.seed,
           mirrorPlane: input.mirrorPlane,
           includeOriginal: input.includeOriginal,
+          linearDeflection: 0.25,
+          angularDeflection: 0.5
+        })
+      );
+    },
+    async shell(input: DerivedGeometryShellInput) {
+      const { createShellWorkerRequest } =
+        await import("@web-cad/geometry-worker/browser");
+      const requestId = createRequestId(input.id);
+
+      return executeTessellationRequest(
+        input,
+        createShellWorkerRequest({
+          id: requestId,
+          payloadId: `${requestId}:kernel`,
+          target: input.target,
+          wallThickness: input.wallThickness,
+          openFaceStableIds: input.openFaceStableIds,
           linearDeflection: 0.25,
           angularDeflection: 0.5
         })

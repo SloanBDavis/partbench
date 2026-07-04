@@ -86,6 +86,61 @@ describe("visualizationMeshExport", () => {
     }
   });
 
+  it("exports authored shell visualization meshes from ready derived geometry while STEP remains deferred", () => {
+    const engine = createShellProject();
+    const readiness = readExportReadiness(engine);
+    const sources = readDerivedSources(engine);
+    const derivedGeometry = createReadyDerivedGeometrySnapshot(sources);
+    const status = createVisualizationMeshExportStatus({
+      exportReadiness: readiness,
+      derivedGeometry,
+      derivedGeometrySources: sources
+    });
+    const result = createVisualizationMeshExportArtifact({
+      exportReadiness: readiness,
+      derivedGeometry,
+      derivedGeometrySources: sources
+    });
+
+    expect(readiness.bodies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_shell",
+          sourceKind: "authoredShell",
+          sourceStatus: "deferred"
+        })
+      ])
+    );
+    expect(sources).toHaveLength(1);
+    expect(sources[0]).toMatchObject({ id: "body_shell", kind: "shell" });
+    expect(status.available).toBe(true);
+    expect(status.status).toBe("supported");
+    expect(status.exportableBodyCount).toBe(1);
+    expect(status.skippedBodyCount).toBe(1);
+    expect(status.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "VISUALIZATION_EXPORT_SOURCE_UNSUPPORTED",
+          bodyId: "body_shell_target",
+          received: "authoredExtrude"
+        })
+      ])
+    );
+    expect(result.ok).toBe(true);
+
+    if (result.ok) {
+      expect(result.artifact.metadata).toMatchObject({
+        format: "glb",
+        exportKind: "visualization",
+        authoritative: false,
+        bodyCount: 1
+      });
+      expect(result.artifact.metadata.bodySummaries).toEqual([
+        expect.objectContaining({ bodyId: "body_shell" })
+      ]);
+    }
+  });
+
   it("returns structured diagnostics for missing, failed, consumed, and unsupported bodies", () => {
     const missingEngine = createSingleRectangleExtrudeProject("body_missing");
     const missingReadiness = readExportReadiness(missingEngine);
@@ -316,6 +371,21 @@ function createConsumedExtrudeProject(): CadEngine {
       targetBodyId: "body_base"
     }
   ]);
+
+  return engine;
+}
+
+function createShellProject(): CadEngine {
+  const engine = createSingleRectangleExtrudeProject("body_shell_target");
+
+  engine.apply({
+    op: "feature.shell",
+    id: "feat_shell",
+    bodyId: "body_shell",
+    targetBodyId: "body_shell_target",
+    wallThickness: 0.1,
+    openFaceRefs: []
+  });
 
   return engine;
 }

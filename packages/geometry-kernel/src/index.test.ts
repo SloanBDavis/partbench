@@ -1578,6 +1578,69 @@ describe("geometry-kernel facade", () => {
     });
   });
 
+  it("passes shell targets and open faces to injected shell factories", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    let captured:
+      | Parameters<NonNullable<GeometryKernelMeshFactories["createShellMesh"]>>[0]
+      | undefined;
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory,
+      createShellMesh: async (input) => {
+        captured = input;
+
+        return {
+          primitive: "boolean",
+          positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+          indices: new Uint32Array([0, 1, 2]),
+          vertexCount: 3,
+          triangleCount: 1,
+          faceCount: 1
+        };
+      }
+    };
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_shell",
+        version: "geometry-kernel.v1",
+        op: "geometry.shell",
+        target: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 4,
+            height: 4
+          },
+          depth: 4
+        },
+        wallThickness: 0.2,
+        openFaceStableIds: ["generated:face:body_seed:endCap"],
+        tessellation: { linearDeflection: 0.25 }
+      }
+    );
+
+    expect(response.ok).toBe(true);
+    expect(captured).toMatchObject({
+      target: {
+        kind: "extrude",
+        profile: { kind: "rectangle", width: 4 }
+      },
+      wallThickness: 0.2,
+      openFaceStableIds: ["generated:face:body_seed:endCap"],
+      linearDeflection: 0.25
+    });
+  });
+
   it(
     "runs a circle-target cut by rectangle tool feasibility request",
     async () => {

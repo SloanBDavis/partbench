@@ -39,6 +39,7 @@ export interface NamedReferenceStatusDisplay {
 export type GeneratedReferenceActionId =
   | "reference.name"
   | "sketch.createOnFace"
+  | "feature.shell"
   | "feature.chamfer"
   | "feature.fillet";
 
@@ -248,6 +249,10 @@ export function createGeneratedReferenceActionStatuses(
         ? "Planar face"
         : formatGeneratedFaceEligibility(reference)
     });
+
+    if (reference.eligibleOperations.includes("feature.shell")) {
+      actions.push(createOperationActionStatus(reference, "feature.shell"));
+    }
   }
 
   if (reference.kind === "edge") {
@@ -441,7 +446,7 @@ function createOperationActionStatus(
   reference: CadGeneratedReference,
   operation: Extract<
     CadGeneratedReferenceEligibleOperation,
-    "feature.chamfer" | "feature.fillet"
+    "feature.chamfer" | "feature.fillet" | "feature.shell"
   >
 ): GeneratedReferenceActionStatus {
   const available = reference.eligibleOperations.includes(operation);
@@ -451,7 +456,7 @@ function createOperationActionStatus(
     label: formatOperationLabel(operation),
     available,
     status: available
-      ? "Eligible edge"
+      ? `Eligible ${reference.kind}`
       : (reference.eligibilityNotes?.[0] ??
         `Reference is not eligible for ${formatOperationLabel(operation).toLowerCase()}.`)
   };
@@ -493,6 +498,8 @@ function formatOperationLabel(operation: string): string {
       return "Chamfer";
     case "feature.fillet":
       return "Fillet";
+    case "feature.shell":
+      return "Shell";
     case "feature.measureReference":
       return "Measure";
     case "feature.selectReference":

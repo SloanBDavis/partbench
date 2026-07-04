@@ -535,7 +535,8 @@ function classifyBodySource(
     body.source.type === "sketchRevolveFeature" ||
     body.source.type === "sketchHoleFeature" ||
     body.source.type === "edgeChamferFeature" ||
-    body.source.type === "edgeFilletFeature"
+    body.source.type === "edgeFilletFeature" ||
+    body.source.type === "shellFeature"
   ) {
     return {
       sourceKind,
@@ -622,6 +623,8 @@ function getBodyExportSourceKind(
       return "authoredChamfer";
     case "edgeFilletFeature":
       return "authoredFillet";
+    case "shellFeature":
+      return "authoredShell";
     case "importedStepBody":
       return "importedBody";
     case "linearPatternFeature":

@@ -30,6 +30,7 @@ export {
   createSphereTessellationWorkerRequest,
   createTorusTessellationWorkerRequest,
   createMirrorWorkerRequest,
+  createShellWorkerRequest,
   getGeometryWorkerExactExportCapabilities,
   getGeometryWorkerStepImportCapabilities,
   createWorkerErrorDiagnostics,

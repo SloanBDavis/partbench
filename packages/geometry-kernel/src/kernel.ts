@@ -79,7 +79,8 @@ export type GeometryKernelOp =
   | "geometry.exportStep"
   | "geometry.linearPattern"
   | "geometry.circularPattern"
-  | "geometry.mirror";
+  | "geometry.mirror"
+  | "geometry.shell";
 export type GeometryKernelPrimitive =
   | "box"
   | "cylinder"
@@ -364,6 +365,18 @@ export interface MirrorRequest {
   readonly tessellation?: TessellationOptions;
 }
 
+export type ShellTargetSource = PatternSeedSource;
+
+export interface ShellRequest {
+  readonly id: string;
+  readonly version: GeometryKernelVersion;
+  readonly op: "geometry.shell";
+  readonly target: ShellTargetSource;
+  readonly wallThickness: number;
+  readonly openFaceStableIds: readonly string[];
+  readonly tessellation?: TessellationOptions;
+}
+
 export type ExactBodyMetadataSource =
   | ExactExtrudeMetadataSource
   | ExactBooleanExtrudesMetadataSource
@@ -476,6 +489,7 @@ export type GeometryKernelRequest =
   | LinearPatternRequest
   | CircularPatternRequest
   | MirrorRequest
+  | ShellRequest
   | ExactBodyMetadataRequest
   | ExactTopologySnapshotRequest
   | ExactTopologyCheckpointPayloadRequest
@@ -916,6 +930,10 @@ export type GeometryKernelMirrorMeshFactory = (
   input: Omit<MirrorRequest, "id" | "version" | "op"> & TessellationOptions
 ) => Promise<GeometryKernelMeshResult>;
 
+export type GeometryKernelShellMeshFactory = (
+  input: Omit<ShellRequest, "id" | "version" | "op"> & TessellationOptions
+) => Promise<GeometryKernelMeshResult>;
+
 export interface GeometryKernelMeshFactories {
   readonly createBoxMesh: GeometryKernelBoxMeshFactory;
   readonly createCylinderMesh: GeometryKernelCylinderMeshFactory;
@@ -934,6 +952,7 @@ export interface GeometryKernelMeshFactories {
   readonly createLinearPatternMesh?: GeometryKernelLinearPatternMeshFactory;
   readonly createCircularPatternMesh?: GeometryKernelCircularPatternMeshFactory;
   readonly createMirrorMesh?: GeometryKernelMirrorMeshFactory;
+  readonly createShellMesh?: GeometryKernelShellMeshFactory;
 }
 
 export type GeometryKernelResponseForRequest<T extends GeometryKernelRequest> =
@@ -1443,6 +1462,13 @@ function validateRequest(
     request.op === "geometry.mirror"
   ) {
     // pattern/mirror requests have no dimension fields to validate here
+  } else if (request.op === "geometry.shell") {
+    if (!isPositiveFiniteNumber(request.wallThickness)) {
+      return {
+        code: "INVALID_DIMENSIONS",
+        message: "Shell requests require a finite positive wallThickness."
+      };
+    }
   } else if (
     !isPositiveFiniteNumber(request.dimensions.majorRadius) ||
     !isPositiveFiniteNumber(request.dimensions.minorRadius) ||
@@ -1526,6 +1552,8 @@ function createMesh(
       return createCircularPatternMesh(factories, request);
     case "geometry.mirror":
       return createMirrorMesh(factories, request);
+    case "geometry.shell":
+      return createShellMesh(factories, request);
   }
 }
 
@@ -1586,6 +1614,26 @@ function createMirrorMesh(
     seed: request.seed,
     mirrorPlane: request.mirrorPlane,
     includeOriginal: request.includeOriginal,
+    linearDeflection: request.tessellation?.linearDeflection,
+    angularDeflection: request.tessellation?.angularDeflection
+  });
+}
+
+function createShellMesh(
+  factories: GeometryKernelMeshFactories,
+  request: ShellRequest
+): Promise<GeometryKernelMeshResult> {
+  if (!factories.createShellMesh) {
+    return Promise.reject({
+      code: "UNAVAILABLE_BINDING",
+      message: "Shell tessellation requires an OCCT shell mesh factory."
+    } satisfies GeometryKernelError);
+  }
+
+  return factories.createShellMesh({
+    target: request.target,
+    wallThickness: request.wallThickness,
+    openFaceStableIds: request.openFaceStableIds,
     linearDeflection: request.tessellation?.linearDeflection,
     angularDeflection: request.tessellation?.angularDeflection
   });
@@ -1909,6 +1957,8 @@ function formatPrimitiveLabel(op: GeometryKernelOp): string {
       return "Circular pattern";
     case "geometry.mirror":
       return "Mirror feature";
+    case "geometry.shell":
+      return "Shell feature";
     case "geometry.exactBodyMetadata":
       return "Exact body metadata";
     case "geometry.exactTopologySnapshot":

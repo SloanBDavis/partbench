@@ -117,7 +117,8 @@ function createOperationSummaries(
       op.op === "feature.fillet" ||
       op.op === "feature.linearPattern" ||
       op.op === "feature.circularPattern" ||
-      op.op === "feature.mirror"
+      op.op === "feature.mirror" ||
+      op.op === "feature.shell"
         ? transaction.diff.features?.created?.[createdFeatureIndex++]
         : undefined;
     const deletedFeatureRef =
@@ -677,6 +678,20 @@ function createOperationSummaries(
         });
       }
 
+      case "feature.shell": {
+        const featureId = op.id ?? createdFeatureRef?.id;
+        const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
+        const openFaceCount = op.openFaceRefs?.length ?? 0;
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Create shell feature ${featureId ?? "with generated ID"} from body ${op.targetBodyId} thickness ${op.wallThickness}${openFaceCount > 0 ? ` with ${openFaceCount} open face${openFaceCount === 1 ? "" : "s"}` : " as closed shell"}${bodyId ? ` -> body ${bodyId}` : ""}`,
+          featureId,
+          bodyId,
+          targetBodyId: op.targetBodyId
+        });
+      }
+
       case "feature.delete": {
         const bodyLabel = deletedFeatureRef?.bodyId
           ? ` and body ${deletedFeatureRef.bodyId}`
@@ -830,6 +845,23 @@ function createOperationSummaries(
         });
       }
 
+      case "feature.updateShell": {
+        const modifiedFeatureRef = transaction.diff.features?.modified?.find(
+          (feature) => feature.id === op.id
+        );
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Update shell feature ${op.id}`,
+          featureId: op.id,
+          bodyId: modifiedFeatureRef?.bodyId,
+          targetBodyId:
+            modifiedFeatureRef?.kind === "shell"
+              ? modifiedFeatureRef.targetBodyId
+              : undefined
+        });
+      }
+
       case "reference.nameGenerated": {
         const kindLabel = createdNamedReferenceRef?.kind
           ? `${createdNamedReferenceRef.kind} `
@@ -937,7 +969,8 @@ function getFeatureRefSketchEntityId(
     feature.kind === "importedBody" ||
     feature.kind === "linearPattern" ||
     feature.kind === "circularPattern" ||
-    feature.kind === "mirror"
+    feature.kind === "mirror" ||
+    feature.kind === "shell"
   ) {
     return undefined;
   }
@@ -952,7 +985,8 @@ function getFeatureRefSketchId(feature: CadFeatureRef): SketchId | undefined {
     feature.kind === "importedBody" ||
     feature.kind === "linearPattern" ||
     feature.kind === "circularPattern" ||
-    feature.kind === "mirror"
+    feature.kind === "mirror" ||
+    feature.kind === "shell"
   ) {
     return undefined;
   }

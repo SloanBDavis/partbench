@@ -52,6 +52,7 @@ import {
   type FilletFeature,
   type HoleFeature,
   type RevolveFeature,
+  type ShellFeature,
   CadProjectImportError,
   DEFAULT_PART_ID,
   createCadProjectSourceIdentity,
@@ -141,6 +142,16 @@ function getFilletFeature(engine: CadEngine, featureId: string): FilletFeature {
 
   if (!feature || feature.kind !== "fillet") {
     throw new Error(`Expected fillet feature: ${featureId}`);
+  }
+
+  return feature;
+}
+
+function getShellFeature(engine: CadEngine, featureId: string): ShellFeature {
+  const feature = engine.getDocument().features.get(featureId);
+
+  if (!feature || feature.kind !== "shell") {
+    throw new Error(`Expected shell feature: ${featureId}`);
   }
 
   return feature;
@@ -5379,6 +5390,7 @@ describe("cad-core", () => {
         "feature.attachSketchPlane": 6,
         "feature.chamfer": 12,
         "feature.fillet": 12,
+        "feature.shell": 6,
         "feature.measureReference": 27,
         "feature.selectReference": 27
       }
@@ -5889,6 +5901,7 @@ describe("cad-core", () => {
       description: "Cap face at the start of the extrude.",
       eligibleOperations: [
         "feature.attachSketchPlane",
+        "feature.shell",
         "feature.measureReference",
         "feature.selectReference"
       ],
@@ -5904,6 +5917,7 @@ describe("cad-core", () => {
       description: "Side face generated from the rectangle uMin profile edge.",
       eligibleOperations: [
         "feature.attachSketchPlane",
+        "feature.shell",
         "feature.measureReference",
         "feature.selectReference"
       ],
@@ -6053,6 +6067,7 @@ describe("cad-core", () => {
         label: "uMin side face",
         eligibleOperations: [
           "feature.attachSketchPlane",
+          "feature.shell",
           "feature.measureReference",
           "feature.selectReference"
         ],
@@ -6385,6 +6400,7 @@ describe("cad-core", () => {
         role: "side:uMin",
         eligibleOperations: [
           "feature.attachSketchPlane",
+          "feature.shell",
           "feature.measureReference",
           "feature.selectReference"
         ]
@@ -6532,6 +6548,7 @@ describe("cad-core", () => {
           description:
             "Cylindrical side face generated from the circle profile.",
           eligibleOperations: [
+            "feature.shell",
             "feature.measureReference",
             "feature.selectReference"
           ],
@@ -6630,7 +6647,7 @@ describe("cad-core", () => {
           stableId: "generated:face:body_hole_1:holeWall",
           role: "holeWall",
           label: "Hole wall face",
-          eligibleOperations: ["feature.selectReference"],
+          eligibleOperations: ["feature.shell", "feature.selectReference"],
           geometricSignature: {
             sourceKind: "hole",
             surfaceType: "cylinder",
@@ -6837,7 +6854,7 @@ describe("cad-core", () => {
       reference: {
         kind: "face",
         role: "holeWall",
-        eligibleOperations: ["feature.selectReference"]
+        eligibleOperations: ["feature.shell", "feature.selectReference"]
       }
     });
 
@@ -7741,6 +7758,7 @@ describe("cad-core", () => {
         ?.eligibleOperations
     ).toEqual([
       "feature.attachSketchPlane",
+      "feature.shell",
       "feature.measureReference",
       "feature.selectReference"
     ]);
@@ -22156,6 +22174,7 @@ describe("cad-core", () => {
           stableId: "generated:face:body_circle_cut:side:circular",
           label: "Cut circular wall face",
           eligibleOperations: [
+            "feature.shell",
             "feature.measureReference",
             "feature.selectReference"
           ],
@@ -22329,6 +22348,7 @@ describe("cad-core", () => {
           stableId: "generated:face:body_circle_add:side:circular",
           label: "Added circular wall face",
           eligibleOperations: [
+            "feature.shell",
             "feature.measureReference",
             "feature.selectReference"
           ],
@@ -31851,6 +31871,345 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(wcadRead.checkpointPayloads).toHaveLength(1);
   });
 
+  it("creates closed and generated-open shell features with target consumption and health", () => {
+    const closedEngine = createRectangleExtrudeEngine();
+    const closedResult = closedEngine.apply({
+      op: "feature.shell",
+      id: "feat_shell_closed",
+      bodyId: "body_shell_closed",
+      targetBodyId: "body_rect_1",
+      wallThickness: 0.25,
+      openFaceRefs: []
+    });
+
+    expect(getShellFeature(closedEngine, "feat_shell_closed")).toMatchObject({
+      id: "feat_shell_closed",
+      kind: "shell",
+      bodyId: "body_shell_closed",
+      targetBodyId: "body_rect_1",
+      wallThickness: 0.25,
+      openFaceRefs: []
+    });
+    expect(closedResult.transaction.diff.features).toMatchObject({
+      created: [expect.objectContaining({ kind: "shell" })],
+      bodiesCreated: [
+        expect.objectContaining({
+          id: "body_shell_closed",
+          kind: "solid"
+        })
+      ]
+    });
+    expect(readProjectStructure(closedEngine)).toMatchObject({
+      bodies: expect.arrayContaining([
+        expect.objectContaining({
+          id: "body_rect_1",
+          consumedByFeatureId: "feat_shell_closed"
+        }),
+        expect.objectContaining({ id: "body_shell_closed" })
+      ])
+    });
+    expect(readProjectHealth(closedEngine)).toMatchObject({
+      authoredShellCount: 1,
+      authoredShells: [
+        expect.objectContaining({
+          featureId: "feat_shell_closed",
+          bodyId: "body_shell_closed",
+          targetBodyId: "body_rect_1",
+          status: "healthy"
+        })
+      ]
+    });
+    expect(
+      closedEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "feature.shell",
+            targetBodyId: "body_rect_1",
+            wallThickness: 0.1
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "SHELL_TARGET_BODY_CONSUMED"
+      }
+    });
+
+    const openEngine = createRectangleExtrudeEngine();
+    openEngine.apply({
+      op: "feature.shell",
+      id: "feat_shell_open",
+      bodyId: "body_shell_open",
+      targetBodyId: "body_rect_1",
+      wallThickness: 0.2,
+      openFaceRefs: [
+        {
+          kind: "generatedFace",
+          bodyId: "body_rect_1",
+          stableId: "generated:face:body_rect_1:missing"
+        },
+        {
+          kind: "generatedFace",
+          bodyId: "body_rect_1",
+          stableId: "generated:face:body_rect_1:endCap"
+        }
+      ]
+    });
+
+    expect(getShellFeature(openEngine, "feat_shell_open").openFaceRefs).toEqual([
+      {
+        kind: "generatedFace",
+        bodyId: "body_rect_1",
+        stableId: "generated:face:body_rect_1:endCap"
+      }
+    ]);
+    expect(readProjectExportReadiness(openEngine)).toMatchObject({
+      bodies: expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_shell_open",
+          sourceKind: "authoredShell"
+        })
+      ])
+    });
+  });
+
+  it("creates shell open faces from named references and topology anchors", () => {
+    const namedEngine = createRectangleExtrudeEngine();
+    namedEngine.apply({
+      op: "reference.nameGenerated",
+      name: "Top face",
+      bodyId: "body_rect_1",
+      stableId: "generated:face:body_rect_1:endCap"
+    });
+    namedEngine.apply({
+      op: "feature.shell",
+      id: "feat_shell_named",
+      bodyId: "body_shell_named",
+      targetBodyId: "body_rect_1",
+      wallThickness: 0.25,
+      openFaceRefs: [{ kind: "namedReference", name: "Top face" }]
+    });
+
+    expect(getShellFeature(namedEngine, "feat_shell_named")).toMatchObject({
+      openFaceRefs: [{ kind: "namedReference", name: "Top face" }]
+    });
+    expect(readProjectHealth(namedEngine)).toMatchObject({
+      authoredShells: [
+        expect.objectContaining({
+          featureId: "feat_shell_named",
+          status: "healthy",
+          issues: []
+        })
+      ]
+    });
+    expect(readProjectDependencyGraph(namedEngine)).toMatchObject({
+      edges: expect.arrayContaining([
+        expect.objectContaining({
+          from: "named-reference:Top face",
+          to: "feature:feat_shell_named"
+        })
+      ])
+    });
+
+    const anchorEngine = createTopologyAnchorEngine();
+    anchorEngine.apply({
+      op: "feature.shell",
+      id: "feat_shell_anchor",
+      bodyId: "body_shell_anchor",
+      targetBodyId: "body_rect_1",
+      wallThickness: 0.25,
+      openFaceRefs: [
+        {
+          kind: "topologyAnchor",
+          bodyId: "body_rect_1",
+          anchorId: "anchor_face_1"
+        }
+      ]
+    });
+
+    expect(getShellFeature(anchorEngine, "feat_shell_anchor")).toMatchObject({
+      openFaceRefs: [
+        {
+          kind: "topologyAnchor",
+          bodyId: "body_rect_1",
+          anchorId: "anchor_face_1"
+        }
+      ]
+    });
+    expect(readProjectHealth(anchorEngine)).toMatchObject({
+      authoredShells: [
+        expect.objectContaining({
+          featureId: "feat_shell_anchor",
+          status: "healthy",
+          openFaceRefs: [
+            expect.objectContaining({ anchorId: "anchor_face_1" })
+          ]
+        })
+      ]
+    });
+  });
+
+  it("updates shell wall thickness and open faces without changing the target", () => {
+    const engine = createRectangleExtrudeEngine();
+    engine.apply({
+      op: "feature.shell",
+      id: "feat_shell_edit",
+      bodyId: "body_shell_edit",
+      targetBodyId: "body_rect_1",
+      wallThickness: 0.2
+    });
+
+    const openFaceRefs = [
+      {
+        kind: "generatedFace" as const,
+        bodyId: "body_rect_1",
+        stableId: "generated:face:body_rect_1:endCap"
+      }
+    ];
+    const dryRun = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "feature.updateShell",
+          id: "feat_shell_edit",
+          wallThickness: 0.35,
+          openFaceRefs
+        }
+      ]
+    });
+    const editability = readFeatureEditability(engine, "feat_shell_edit", {
+      kind: "shell",
+      wallThickness: 0.35,
+      openFaceRefs
+    });
+
+    expect(dryRun).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      modifiedFeatureIds: ["feat_shell_edit"],
+      modifiedBodyIds: ["body_shell_edit"]
+    });
+    expect(getShellFeature(engine, "feat_shell_edit").wallThickness).toBe(0.2);
+    expect(editability).toMatchObject({
+      status: "editable",
+      dryRun: {
+        status: "valid",
+        commitOperation: "feature.updateShell"
+      },
+      fields: expect.arrayContaining([
+        expect.objectContaining({
+          path: "wallThickness",
+          editable: true,
+          commitOperation: "feature.updateShell"
+        })
+      ])
+    });
+
+    const commit = engine.apply({
+      op: "feature.updateShell",
+      id: "feat_shell_edit",
+      wallThickness: 0.35,
+      openFaceRefs
+    });
+
+    expect(getShellFeature(engine, "feat_shell_edit")).toMatchObject({
+      targetBodyId: "body_rect_1",
+      wallThickness: 0.35,
+      openFaceRefs
+    });
+    expect(commit.transaction.diff.features).toMatchObject({
+      modified: [expect.objectContaining({ id: "feat_shell_edit" })],
+      bodiesModified: [expect.objectContaining({ id: "body_shell_edit" })]
+    });
+  });
+
+  it("validates shell failures and round-trips shell records through V19 JSON", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "feature.shell",
+            targetBodyId: "body_rect_1",
+            wallThickness: 0,
+            openFaceRefs: []
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "SHELL_WALL_THICKNESS_INVALID",
+        path: "$.ops[0].wallThickness"
+      }
+    });
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "feature.shell",
+            targetBodyId: "body_rect_1",
+            wallThickness: 0.2,
+            openFaceRefs: [
+              {
+                kind: "generatedFace",
+                bodyId: "body_rect_1",
+                stableId: "generated:face:body_rect_1:missing"
+              }
+            ]
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "SHELL_OPEN_FACE_REF_INVALID",
+        path: "$.ops[0].openFaceRefs"
+      }
+    });
+
+    engine.apply({
+      op: "feature.shell",
+      id: "feat_shell_roundtrip",
+      bodyId: "body_shell_roundtrip",
+      targetBodyId: "body_rect_1",
+      wallThickness: 0.25,
+      openFaceRefs: [
+        {
+          kind: "generatedFace",
+          bodyId: "body_rect_1",
+          stableId: "generated:face:body_rect_1:endCap"
+        }
+      ]
+    });
+
+    const exportedJson = exportCadProjectJson(engine);
+    const restored = importCadProjectJson(exportedJson);
+
+    expect(exportedJson).toContain(CAD_PROJECT_FORMAT_VERSION_V19);
+    expect(getShellFeature(restored, "feat_shell_roundtrip")).toMatchObject({
+      bodyId: "body_shell_roundtrip",
+      targetBodyId: "body_rect_1",
+      wallThickness: 0.25,
+      openFaceRefs: [
+        {
+          kind: "generatedFace",
+          bodyId: "body_rect_1",
+          stableId: "generated:face:body_rect_1:endCap"
+        }
+      ]
+    });
+  });
+
   it("preserves explicit V18 topology identity source contracts without migrating ordinary projects", () => {
     const engine = createRectangleExtrudeEngine();
     const ordinaryProject = exportCadProject(engine);
@@ -34319,7 +34678,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       commandOperations: [
         "feature.attachSketchPlane",
         "feature.measureReference",
-        "feature.selectReference"
+        "feature.selectReference",
+        "feature.shell"
       ],
       proof: {
         kind: "axisAlignedPlanarFace",
@@ -34390,7 +34750,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       selectionStatus: "resolved",
       commandable: true,
       candidateCount: 0,
-      commandOperations: ["feature.attachSketchPlane"],
+      commandOperations: ["feature.attachSketchPlane", "feature.shell"],
       proof: {
         kind: "axisAlignedPlanarFace",
         entityKind: "face",
@@ -34648,7 +35008,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       supportedOperations: [
         "feature.attachSketchPlane",
         "feature.measureReference",
-        "feature.selectReference"
+        "feature.selectReference",
+        "feature.shell"
       ],
       operationSummaries: [
         expect.objectContaining({
@@ -34664,6 +35025,11 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         }),
         expect.objectContaining({
           operation: "feature.selectReference",
+          status: "ready",
+          commandable: true
+        }),
+        expect.objectContaining({
+          operation: "feature.shell",
           status: "ready",
           commandable: true
         })

@@ -9,6 +9,7 @@ import type {
 } from "@web-cad/cad-protocol";
 import type {
   FeatureEdgeFinishForm,
+  FeatureShellForm,
   SketchCreateForm,
   SketchCreateOnFaceForm
 } from "./cadCommands";
@@ -36,18 +37,21 @@ import type {
   ModelingActionId
 } from "./modelingActions";
 import { createNamedReferenceRepairUiState } from "./namedReferenceRepairUi";
+import { createShellDefaultName } from "./shellPanelUi";
 import type {
   ViewportSelectionDisplay,
   ViewportSelectionTone
 } from "./viewportSelectionDisplay";
 
 const DEFAULT_EDGE_FINISH_SCALAR = 0.2;
+const DEFAULT_SHELL_WALL_THICKNESS = 0.2;
 
 export type ViewportContextualCommandActionId =
   | "body.measureTopology"
   | "body.references.inspect"
   | "feature.chamfer"
   | "feature.fillet"
+  | "feature.shell"
   | "feature.measureReference"
   | "feature.selectReference"
   | "reference.repairName"
@@ -119,6 +123,7 @@ export interface RunViewportContextualCommandActionInput {
     form: SketchCreateForm,
     targetBodyId: string
   ) => void;
+  readonly onCreateShell?: (form: FeatureShellForm) => void;
   readonly onCreateSketchOnFace?: (form: SketchCreateOnFaceForm) => void;
   readonly onRepairNamedReference?: (
     name: string,
@@ -246,6 +251,7 @@ export function runViewportContextualCommandAction({
   onContinueInModeling,
   onCreateEdgeFinish,
   onCreateSideHoleSketch,
+  onCreateShell,
   onCreateSketchOnFace,
   onRepairNamedReference,
   selectionReferenceCandidates,
@@ -313,6 +319,19 @@ export function runViewportContextualCommandAction({
     return Boolean(onCreateEdgeFinish);
   }
 
+  if (action.id === "feature.shell") {
+    const form = createViewportContextualShellForm(
+      selectedGeneratedReferenceState
+    );
+
+    if (!form) {
+      return false;
+    }
+
+    onCreateShell?.(form);
+    return Boolean(onCreateShell);
+  }
+
   if (action.id === "reference.repairName") {
     if (!action.referenceName || !action.target) {
       return false;
@@ -323,6 +342,37 @@ export function runViewportContextualCommandAction({
   }
 
   return false;
+}
+
+export function createViewportContextualShellForm(
+  selectedGeneratedReferenceState: GeneratedReferenceSelectionState
+): FeatureShellForm | undefined {
+  if (
+    selectedGeneratedReferenceState.status !== "selected" ||
+    selectedGeneratedReferenceState.reference.kind !== "face"
+  ) {
+    return undefined;
+  }
+
+  const face = selectedGeneratedReferenceState.reference;
+
+  return {
+    id: "",
+    bodyId: "",
+    targetBodyId: face.bodyId,
+    name: createShellDefaultName(
+      face.label || face.bodyId,
+      DEFAULT_SHELL_WALL_THICKNESS
+    ),
+    wallThickness: DEFAULT_SHELL_WALL_THICKNESS,
+    openFaceRefs: [
+      {
+        kind: "generatedFace",
+        bodyId: face.bodyId,
+        stableId: face.stableId
+      }
+    ]
+  };
 }
 
 function createActionsFromModeling(
@@ -608,6 +658,8 @@ function actionIdFromOperation(
       return "feature.chamfer";
     case "feature.fillet":
       return "feature.fillet";
+    case "feature.shell":
+      return "feature.shell";
     case "feature.measureReference":
       return "feature.measureReference";
     case "feature.selectReference":
@@ -714,12 +766,14 @@ function getActionRank(id: ViewportContextualCommandActionId): number {
       return 3;
     case "feature.fillet":
       return 4;
+    case "feature.shell":
+      return 5;
     case "feature.measureReference":
     case "body.measureTopology":
-      return 5;
+      return 6;
     case "feature.selectReference":
     case "body.references.inspect":
-      return 6;
+      return 7;
   }
 }
 

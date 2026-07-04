@@ -2228,6 +2228,19 @@ function createOperationReview(
         targetBodyId: op.seedBodyId
       };
 
+    case "feature.shell":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create shell feature ${op.id ?? "with generated ID"} from ${op.targetBodyId} thickness ${op.wallThickness}`
+        ),
+        ...(op.id ? { featureId: op.id } : {}),
+        ...(op.bodyId ? { bodyId: op.bodyId } : {}),
+        targetBodyId: op.targetBodyId
+      };
+
     case "feature.updateLinearPattern":
       return {
         ...operationReviewBase(
@@ -2257,6 +2270,17 @@ function createOperationReview(
           op,
           "modify",
           `Update mirror feature ${op.id}`
+        ),
+        featureId: op.id
+      };
+
+    case "feature.updateShell":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "modify",
+          `Update shell feature ${op.id}`
         ),
         featureId: op.id
       };
@@ -4731,6 +4755,19 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "feature.shell") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      typeof value.targetBodyId === "string" &&
+      typeof value.wallThickness === "number" &&
+      (value.openFaceRefs === undefined ||
+        (Array.isArray(value.openFaceRefs) &&
+          value.openFaceRefs.every(isFeatureShellOpenFaceRefShape)))
+    );
+  }
+
   if (value.op === "feature.updateLinearPattern") {
     return (
       typeof value.id === "string" &&
@@ -4767,6 +4804,18 @@ function isCadOp(value: unknown): value is CadOp {
       (value.includeOriginal === undefined ||
         typeof value.includeOriginal === "boolean") &&
       (value.mirrorPlane !== undefined || value.includeOriginal !== undefined)
+    );
+  }
+
+  if (value.op === "feature.updateShell") {
+    return (
+      typeof value.id === "string" &&
+      (value.wallThickness === undefined ||
+        typeof value.wallThickness === "number") &&
+      (value.openFaceRefs === undefined ||
+        (Array.isArray(value.openFaceRefs) &&
+          value.openFaceRefs.every(isFeatureShellOpenFaceRefShape))) &&
+      (value.wallThickness !== undefined || value.openFaceRefs !== undefined)
     );
   }
 
@@ -5056,6 +5105,30 @@ function hasExactlyOneEdgeReferenceInput(
     [hasStableId, hasNamedReference, hasTopologyAnchor].filter(Boolean)
       .length === 1
   );
+}
+
+function isFeatureShellOpenFaceRefShape(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (value.kind === "generatedFace") {
+    return (
+      typeof value.bodyId === "string" && typeof value.stableId === "string"
+    );
+  }
+
+  if (value.kind === "namedReference") {
+    return typeof value.name === "string";
+  }
+
+  if (value.kind === "topologyAnchor") {
+    return (
+      typeof value.bodyId === "string" && typeof value.anchorId === "string"
+    );
+  }
+
+  return false;
 }
 
 function hasValidReferenceRepairTargetInput(
