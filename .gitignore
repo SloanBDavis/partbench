@@ -7,6 +7,7 @@ dist-geometry-worker-smoke/
 coverage/
 .metrics/
 .playwright-mcp/
+.claude/
 
 .DS_Store
 *.log
