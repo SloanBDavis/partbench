@@ -50,6 +50,7 @@ import type {
   ProjectDependencyGraphQueryResponse,
   ProjectImportReadinessQueryResponse,
   ProjectPackageReadinessQueryResponse,
+  ProjectParameterEvaluationQueryResponse,
   ProjectRebuildPlanQueryResponse,
   ProjectTopologyIdentityReadinessQueryResponse,
   TopologyAnchorCommandReadinessQueryResponse,
@@ -360,6 +361,7 @@ export interface CadOpsAgentReviewNotice {
 export type CadOpsAgentQueryResponse =
   | CadOpsAgentParameterListQueryResponse
   | CadOpsAgentParameterGetQueryResponse
+  | CadOpsAgentProjectParameterEvaluationQueryResponse
   | CadOpsAgentFeatureEditabilityQueryResponse
   | CadOpsAgentProjectSummaryQueryResponse
   | CadOpsAgentProjectFeaturesQueryResponse
@@ -419,6 +421,13 @@ export interface CadOpsAgentParameterGetQueryResponse {
   readonly cadOpsVersion: CadOpsVersion;
   readonly query: "parameter.get";
   readonly parameter: CadParameterSnapshot;
+}
+
+export interface CadOpsAgentProjectParameterEvaluationQueryResponse
+  extends Omit<ProjectParameterEvaluationQueryResponse, "ok"> {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
 }
 
 export interface CadOpsAgentFeatureEditabilityQueryResponse extends Omit<
@@ -884,6 +893,7 @@ export interface CadOpsAgentQueryErrorResponse {
   readonly query:
     | "parameter.list"
     | "parameter.get"
+    | "project.parameterEvaluation"
     | "feature.editability"
     | "project.summary"
     | "project.features"
@@ -1757,6 +1767,19 @@ function createOperationReview(
         parameterId: op.id
       };
 
+    case "parameter.setExpression":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "modify",
+          op.expression === undefined || op.expression === null || op.expression.trim() === ""
+            ? `Clear expression on parameter ${op.id}`
+            : `Set expression on parameter ${op.id}`
+        ),
+        parameterId: op.id
+      };
+
     case "parameter.rename":
       return {
         ...operationReviewBase(
@@ -2506,6 +2529,15 @@ function toAgentQueryResponse(
       cadOpsVersion: response.cadOpsVersion,
       query: response.query,
       parameter: response.parameter
+    };
+  }
+
+  if (response.query === "project.parameterEvaluation") {
+    return {
+      ...response,
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion
     };
   }
 
@@ -3551,6 +3583,8 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
       Object.keys(value.query).length === 1) ||
       (value.query.query === "parameter.get" &&
         typeof value.query.id === "string") ||
+      (value.query.query === "project.parameterEvaluation" &&
+        Object.keys(value.query).length === 1) ||
       (value.query.query === "feature.editability" &&
         typeof value.query.featureId === "string" &&
         (value.query.proposedEdit === undefined ||
@@ -4358,6 +4392,15 @@ function isCadOp(value: unknown): value is CadOp {
       (value.description === undefined ||
         typeof value.description === "string") &&
       (value.value !== undefined || value.description !== undefined)
+    );
+  }
+
+  if (value.op === "parameter.setExpression") {
+    return (
+      typeof value.id === "string" &&
+      (value.expression === undefined ||
+        value.expression === null ||
+        typeof value.expression === "string")
     );
   }
 

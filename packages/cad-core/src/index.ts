@@ -56,6 +56,7 @@ import type {
   CadObjectRef,
   CadOp,
   CadObjectModelSource,
+  CadParameterExpressionDiagnostic,
   CadParameterRef,
   CadParameterSnapshot,
   CadPartSnapshot,
@@ -236,6 +237,11 @@ import {
 } from "./topologyIdentitySourceContract";
 import { SHA256_HEX_PATTERN } from "./sha256";
 import { readZipStore, writeZipStore } from "./wcadZip";
+import {
+  evaluateParameterExpressions,
+  normalizeStoredExpression,
+  parseParameterExpression
+} from "./parameterExpressions";
 
 export {
   createProjectPackageReadiness,
@@ -248,6 +254,10 @@ export {
   validateWcadPackageEntryBytes
 } from "./projectPackageReadiness";
 export { encodeCanonicalCbor as encodeWcadCanonicalCbor } from "./canonicalCbor";
+export {
+  evaluateParameterExpressions,
+  parseParameterExpression
+} from "./parameterExpressions";
 export {
   WCAD_CHECKPOINT_BREP_EXTENSION,
   WCAD_CHECKPOINT_ENTRY_PREFIX,
@@ -895,14 +905,22 @@ function documentHasV19SourceRecords(
   )
     ? document.features
     : [...document.features.values()];
+  const parameters: readonly CadParameterSnapshot[] = Array.isArray(
+    document.parameters
+  )
+    ? document.parameters
+    : [...document.parameters.values()];
 
-  return features.some(
-    (feature) =>
-      feature.kind === "importedBody" ||
-      feature.kind === "linearPattern" ||
-      feature.kind === "circularPattern" ||
-      feature.kind === "mirror" ||
-      feature.kind === "shell"
+  return (
+    features.some(
+      (feature) =>
+        feature.kind === "importedBody" ||
+        feature.kind === "linearPattern" ||
+        feature.kind === "circularPattern" ||
+        feature.kind === "mirror" ||
+        feature.kind === "shell"
+    ) ||
+    parameters.some((parameter) => normalizeStoredExpression(parameter.expression))
   );
 }
 
@@ -1123,6 +1141,8 @@ export class CadEngine {
   #nextFeatureNumber = 1;
   #nextBodyNumber = 1;
   #nextTransactionNumber = 1;
+  #parameterExpressionImportDiagnostics: readonly CadParameterExpressionDiagnostic[] =
+    [];
 
   constructor(
     document: CadDocument = createCadDocument(),
@@ -1172,6 +1192,8 @@ export class CadEngine {
     this.#document = state.document;
     this.#history = state.history;
     this.#redoStack = state.redoStack;
+    this.#parameterExpressionImportDiagnostics =
+      state.parameterExpressionDiagnostics;
     this.#nextObjectNumber = normalizedProject.document.nextObjectNumber;
     this.#nextSketchNumber = normalizedProject.document.nextSketchNumber;
     this.#nextSketchEntityNumber =
@@ -1238,6 +1260,7 @@ export class CadEngine {
     };
 
     this.#document = run.document;
+    this.#parameterExpressionImportDiagnostics = [];
     this.#nextObjectNumber = run.nextObjectNumber;
     this.#nextSketchNumber = run.nextSketchNumber;
     this.#nextSketchEntityNumber = run.nextSketchEntityNumber;
@@ -1349,6 +1372,35 @@ export class CadEngine {
           query: request.query.query,
           cadOpsVersion: request.version,
           parameter: cloneParameterSnapshot(parameter)
+        };
+      }
+
+      case "project.parameterEvaluation": {
+        const evaluation = evaluateParameterExpressions(
+          [...this.#document.parameters.values()].map(cloneParameterSnapshot),
+          this.#parameterExpressionImportDiagnostics
+        );
+
+        return {
+          ok: true,
+          query: request.query.query,
+          cadOpsVersion: request.version,
+          status: evaluation.status,
+          parameterCount: this.#document.parameters.size,
+          expressionCount: [...this.#document.parameters.values()].filter(
+            (parameter) => normalizeStoredExpression(parameter.expression)
+          ).length,
+          nodes: evaluation.nodes,
+          evaluationOrder: evaluation.evaluationOrder,
+          cycleCount: evaluation.cycles.length,
+          cycles: evaluation.cycles,
+          diagnosticCount: evaluation.diagnostics.length,
+          diagnostics: evaluation.diagnostics,
+          sourceBoundaryNote:
+            "Parameter expressions are source CadParameter fields owned by cad-core.",
+          derivedBoundaryNote:
+            "The dependency graph and diagnostics are derived query data and do not mutate source.",
+          mutatesSource: false
         };
       }
 
@@ -2838,22 +2890,9 @@ async function exportCadProjectToWcadV2(
     ]);
   }
 
-  if (!project.document.topologyIdentity) {
-    throw new WcadPackageImportError([
-      createWcadPackageIssue(
-        "WCAD_UNSUPPORTED_DOCUMENT_SCHEMA",
-        "error",
-        "WCAD v2 checkpoint writer requires a topologyIdentity source block.",
-        "$.document.topologyIdentity",
-        "topology identity source block",
-        "missing"
-      )
-    ]);
-  }
-
-  const topologyIdentityIssues = validateTopologyIdentitySourceSnapshot(
-    project.document.topologyIdentity
-  );
+  const topologyIdentityIssues = project.document.topologyIdentity
+    ? validateTopologyIdentitySourceSnapshot(project.document.topologyIdentity)
+    : [];
 
   if (topologyIdentityIssues.some((issue) => issue.severity === "error")) {
     throw new WcadPackageImportError(
@@ -4589,12 +4628,33 @@ function applyOperation(
 
       addParameter(state.parameters, parameter, diff, opIndex);
       reevaluateParameterDimensions(state, parameter.id, diff, opIndex);
+      applyParameterExpressionEvaluation(
+        state,
+        diff,
+        opIndex,
+        new Set([parameter.id])
+      );
       return;
     }
 
     case "parameter.update": {
       assertParameterUpdateHasChanges(op, opIndex);
       const existing = getParameterOrThrow(state.parameters, op.id, opIndex);
+      if (op.value !== undefined && normalizeStoredExpression(existing.expression)) {
+        throwValidationError({
+          code: "PARAMETER_HAS_EXPRESSION",
+          message:
+            "Parameter value is derived from an expression. Clear the expression before setting a literal value.",
+          opIndex,
+          op: op.op,
+          parameterId: op.id,
+          expression: existing.expression,
+          path: operationPath(opIndex, "value"),
+          expected: "parameter without expression",
+          received: existing.expression
+        });
+      }
+
       const nextDescription =
         op.description !== undefined
           ? normalizeParameterUpdateDescription(op.description, opIndex)
@@ -4605,6 +4665,9 @@ function applyOperation(
         ...(op.value !== undefined
           ? { value: validateFiniteParameterValue(op.value, opIndex, "value") }
           : { value: existing.value }),
+        ...(normalizeStoredExpression(existing.expression)
+          ? { expression: normalizeStoredExpression(existing.expression) }
+          : {}),
         ...(nextDescription !== undefined
           ? { description: nextDescription }
           : {})
@@ -4613,6 +4676,41 @@ function applyOperation(
       state.parameters.set(op.id, updated);
       pushParameterModified(diff, parameterRef(updated));
       reevaluateParameterDimensions(state, op.id, diff, opIndex);
+      if (op.value !== undefined) {
+        applyParameterExpressionEvaluation(
+          state,
+          diff,
+          opIndex,
+          new Set([op.id])
+        );
+      }
+      return;
+    }
+
+    case "parameter.setExpression": {
+      const existing = getParameterOrThrow(state.parameters, op.id, opIndex);
+      const expression = normalizeParameterExpressionUpdate(
+        op.expression,
+        opIndex
+      );
+      const updated: CadParameter = {
+        id: existing.id,
+        name: existing.name,
+        value: existing.value,
+        ...(expression ? { expression } : {}),
+        ...(existing.description !== undefined
+          ? { description: existing.description }
+          : {})
+      };
+
+      state.parameters.set(op.id, updated);
+      pushParameterModified(diff, parameterRef(updated));
+      applyParameterExpressionEvaluation(
+        state,
+        diff,
+        opIndex,
+        new Set([op.id])
+      );
       return;
     }
 
@@ -4625,6 +4723,12 @@ function applyOperation(
 
       state.parameters.set(op.id, updated);
       pushParameterModified(diff, parameterRef(updated));
+      applyParameterExpressionEvaluation(
+        state,
+        diff,
+        opIndex,
+        new Set([op.id])
+      );
       return;
     }
 
@@ -4633,6 +4737,7 @@ function applyOperation(
       assertParameterNotInUse(state.sketchDimensions, op.id, opIndex);
       state.parameters.delete(op.id);
       pushParameterDeleted(diff, parameterRef(existing));
+      applyParameterExpressionEvaluation(state, diff, opIndex);
       return;
     }
 
@@ -6009,6 +6114,7 @@ function isCadOperationKind(value: string): boolean {
     case "project.importStep":
     case "parameter.create":
     case "parameter.update":
+    case "parameter.setExpression":
     case "parameter.rename":
     case "parameter.delete":
     case "document.updateUnits":
@@ -6508,6 +6614,7 @@ function isCadQueryKind(value: string): value is CadQueryKind {
   switch (value) {
     case "parameter.list":
     case "parameter.get":
+    case "project.parameterEvaluation":
     case "feature.editability":
     case "project.summary":
     case "project.features":
@@ -6561,6 +6668,7 @@ function isCadQuery(value: unknown): boolean {
 
   switch (value.query) {
     case "parameter.list":
+    case "project.parameterEvaluation":
     case "project.summary":
     case "project.features":
     case "project.structure":
@@ -7647,6 +7755,29 @@ function normalizeParameterUpdateDescription(
   return normalized.length > 0 ? normalized : undefined;
 }
 
+function normalizeParameterExpressionUpdate(
+  value: string | null | undefined,
+  opIndex: number
+): string | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  if (typeof value !== "string") {
+    throwValidationError({
+      code: "INVALID_PARAMETER",
+      message: "Parameter expression must be a string, null, or omitted.",
+      opIndex,
+      path: operationPath(opIndex, "expression"),
+      expected: "expression string, null, or omitted",
+      received: describeReceived(value)
+    });
+  }
+
+  const expression = value.trim();
+  return expression.length > 0 ? expression : undefined;
+}
+
 function validateFiniteParameterValue(
   value: number,
   opIndex: number,
@@ -7664,6 +7795,74 @@ function validateFiniteParameterValue(
   }
 
   return cleanMeasurementNumber(value);
+}
+
+function applyParameterExpressionEvaluation(
+  state: MutableDocumentState,
+  diff: MutableSemanticDiff,
+  opIndex: number,
+  alreadyModified = new Set<ParameterId>()
+): void {
+  if (
+    [...state.parameters.values()].every(
+      (parameter) => !normalizeStoredExpression(parameter.expression)
+    )
+  ) {
+    return;
+  }
+
+  const evaluation = evaluateParameterExpressions(
+    [...state.parameters.values()].map(cloneParameterSnapshot)
+  );
+  const blockingDiagnostic = evaluation.diagnostics.find(
+    (diagnostic) => diagnostic.code !== "EXPRESSION_VALUE_INCONSISTENCY"
+  );
+
+  if (blockingDiagnostic) {
+    throwParameterExpressionValidationError(blockingDiagnostic, opIndex);
+  }
+
+  for (const change of evaluation.valueChanges) {
+    const existing = getParameterOrThrow(
+      state.parameters,
+      change.parameterId,
+      opIndex
+    );
+    const updated: CadParameter = {
+      ...existing,
+      value: change.after
+    };
+    state.parameters.set(change.parameterId, updated);
+
+    if (!alreadyModified.has(change.parameterId)) {
+      pushParameterModified(diff, parameterRef(updated));
+      alreadyModified.add(change.parameterId);
+    }
+
+    reevaluateParameterDimensions(state, change.parameterId, diff, opIndex);
+  }
+}
+
+function throwParameterExpressionValidationError(
+  diagnostic: CadParameterExpressionDiagnostic,
+  opIndex: number
+): never {
+  throwValidationError({
+    code: diagnostic.code,
+    message: diagnostic.message,
+    opIndex,
+    parameterId: diagnostic.parameterId,
+    expression: diagnostic.expression,
+    parameterName: diagnostic.parameterName,
+    referencedName: diagnostic.referencedName,
+    cycle: diagnostic.cycle,
+    path:
+      diagnostic.position !== undefined
+        ? `${operationPath(opIndex, "expression")}[${diagnostic.position}]`
+        : operationPath(opIndex, "expression"),
+    expected: diagnostic.expected,
+    received: diagnostic.received
+  });
 }
 
 function assertParameterUpdateHasChanges(
@@ -17429,10 +17628,12 @@ function createSketchFromSnapshot(snapshot: SketchSnapshot): Sketch {
 }
 
 function cloneParameterSnapshot(parameter: CadParameterSnapshot): CadParameter {
+  const expression = normalizeStoredExpression(parameter.expression);
   return {
     id: parameter.id,
     name: parameter.name,
     value: parameter.value,
+    ...(expression ? { expression } : {}),
     ...(parameter.description !== undefined
       ? { description: parameter.description }
       : {})
@@ -20438,9 +20639,17 @@ function createProjectState(project: CadProject): {
   readonly document: CadDocument;
   readonly history: TransactionEntry[];
   readonly redoStack: TransactionEntry[];
+  readonly parameterExpressionDiagnostics: readonly CadParameterExpressionDiagnostic[];
 } {
   assertValidCadProject(project);
   const normalizedProject = normalizeCadProject(project);
+  const parameterExpressionImport = normalizeImportedParameterExpressions(
+    normalizedProject.document
+  );
+  const projectForReplay: CadProject = {
+    ...normalizedProject,
+    document: parameterExpressionImport.document
+  };
 
   let historyState: {
     readonly document: CadDocument;
@@ -20453,44 +20662,101 @@ function createProjectState(project: CadProject): {
 
   try {
     historyState = createTransactionEntries(
-      normalizedProject.history,
-      createHistoryReplayInitialDocument(normalizedProject)
+      projectForReplay.history,
+      createHistoryReplayInitialDocument(projectForReplay)
     );
   } catch (error) {
     throwProjectTransactionHistoryError("$.history", error);
   }
 
   if (
-    normalizedProject.history.length > 0 ||
-    normalizedProject.redoStack.length > 0
+    projectForReplay.history.length > 0 ||
+    projectForReplay.redoStack.length > 0
   ) {
     assertProjectDocumentMatchesReplay(
-      normalizedProject,
+      projectForReplay,
       historyState.document
     );
   }
 
   try {
     redoEntriesInApplyOrder = createTransactionEntries(
-      [...normalizedProject.redoStack].reverse(),
+      [...projectForReplay.redoStack].reverse(),
       historyState.document,
-      normalizedProject.document.nextObjectNumber,
-      normalizedProject.document.nextSketchNumber,
-      normalizedProject.document.nextSketchEntityNumber,
-      normalizedProject.document.nextParameterNumber,
-      normalizedProject.document.nextSketchDimensionNumber,
-      normalizedProject.document.nextSketchConstraintNumber,
-      normalizedProject.document.nextFeatureNumber,
-      normalizedProject.document.nextBodyNumber
+      projectForReplay.document.nextObjectNumber,
+      projectForReplay.document.nextSketchNumber,
+      projectForReplay.document.nextSketchEntityNumber,
+      projectForReplay.document.nextParameterNumber,
+      projectForReplay.document.nextSketchDimensionNumber,
+      projectForReplay.document.nextSketchConstraintNumber,
+      projectForReplay.document.nextFeatureNumber,
+      projectForReplay.document.nextBodyNumber
     );
   } catch (error) {
     throwProjectTransactionHistoryError("$.redoStack", error);
   }
 
   return {
-    document: createCadDocumentFromSnapshot(normalizedProject.document),
+    document: createCadDocumentFromSnapshot(projectForReplay.document),
     history: historyState.entries,
-    redoStack: [...redoEntriesInApplyOrder.entries].reverse()
+    redoStack: [...redoEntriesInApplyOrder.entries].reverse(),
+    parameterExpressionDiagnostics: parameterExpressionImport.diagnostics
+  };
+}
+
+function normalizeImportedParameterExpressions(
+  document: CadDocumentSnapshot
+): {
+  readonly document: CadDocumentSnapshot;
+  readonly diagnostics: readonly CadParameterExpressionDiagnostic[];
+} {
+  if (
+    document.parameters.every(
+      (parameter) => !normalizeStoredExpression(parameter.expression)
+    )
+  ) {
+    return { document, diagnostics: [] };
+  }
+
+  const evaluation = evaluateParameterExpressions(document.parameters);
+  const diagnostics: CadParameterExpressionDiagnostic[] = [];
+
+  for (const change of evaluation.valueChanges) {
+    const parameter = document.parameters.find(
+      (candidate) => candidate.id === change.parameterId
+    );
+    if (!parameter) {
+      continue;
+    }
+
+    diagnostics.push({
+      code: "EXPRESSION_VALUE_INCONSISTENCY",
+      message: `Stored value for expression parameter ${parameter.name} was ${change.before}; evaluated value is ${change.after}.`,
+      parameterId: parameter.id,
+      parameterName: parameter.name,
+      expression: normalizeStoredExpression(parameter.expression),
+      expected: String(change.after),
+      received: String(change.before)
+    });
+  }
+
+  if (evaluation.valueChanges.length === 0) {
+    return { document, diagnostics };
+  }
+
+  const valueByParameterId = new Map(
+    evaluation.valueChanges.map((change) => [change.parameterId, change.after])
+  );
+
+  return {
+    document: {
+      ...document,
+      parameters: document.parameters.map((parameter) => ({
+        ...parameter,
+        value: valueByParameterId.get(parameter.id) ?? parameter.value
+      }))
+    },
+    diagnostics
   };
 }
 
@@ -20839,6 +21105,7 @@ function parametersEqual(left: CadParameter, right: CadParameter): boolean {
     left.id === right.id &&
     left.name === right.name &&
     left.value === right.value &&
+    left.expression === right.expression &&
     left.description === right.description
   );
 }
@@ -21939,7 +22206,8 @@ function validateCadDocumentSnapshot(
             parameter,
             `${path}.parameters[${index}]`,
             issues,
-            seenParameterIds
+            seenParameterIds,
+            isV19Schema
           )
         );
 
@@ -22439,7 +22707,8 @@ function validateParameterSnapshot(
   value: unknown,
   path: string,
   issues: CadProjectImportIssue[],
-  seenParameterIds: Set<string>
+  seenParameterIds: Set<string>,
+  allowsExpression: boolean
 ): number {
   let maxGeneratedParameterNumber = 0;
 
@@ -22500,6 +22769,27 @@ function validateParameterSnapshot(
       `${path}.description`,
       "Parameter description must be a non-empty string when present."
     );
+  }
+
+  if (value.expression !== undefined) {
+    if (!allowsExpression) {
+      addProjectIssue(
+        issues,
+        "INVALID_PARAMETER",
+        `${path}.expression`,
+        "Parameter expressions require web-cad.project.v19."
+      );
+    } else if (
+      value.expression !== null &&
+      (typeof value.expression !== "string" || value.expression.trim() === "")
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_PARAMETER",
+        `${path}.expression`,
+        "Parameter expression must be a non-empty string or null when present."
+      );
+    }
   }
 
   return maxGeneratedParameterNumber;
@@ -27262,6 +27552,15 @@ function isCadOp(value: unknown): value is CadOp {
       (value.description === undefined ||
         typeof value.description === "string") &&
       (value.value !== undefined || value.description !== undefined)
+    );
+  }
+
+  if (value.op === "parameter.setExpression") {
+    return (
+      typeof value.id === "string" &&
+      (value.expression === undefined ||
+        value.expression === null ||
+        typeof value.expression === "string")
     );
   }
 

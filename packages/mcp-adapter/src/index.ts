@@ -31,6 +31,7 @@ const SHA256_HEX_PATTERN = "^[a-f0-9]{64}$";
 export type CadMcpToolName =
   | "cad.parameter_list"
   | "cad.parameter_get"
+  | "cad.project_parameter_evaluation"
   | "cad.feature_editability"
   | "cad.project_summary"
   | "cad.project_features"
@@ -170,6 +171,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.parameter_get") {
       return this.#callParameterGet(request);
+    }
+
+    if (request.name === "cad.project_parameter_evaluation") {
+      return this.#callProjectParameterEvaluation(request);
     }
 
     if (request.name === "cad.feature_editability") {
@@ -427,6 +432,30 @@ export class CadMcpServer {
             query: "parameter.get",
             id: request.arguments.id
           }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callProjectParameterEvaluation(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isEmptyObjectOrUndefined(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.project_parameter_evaluation does not accept arguments."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: { query: "project.parameterEvaluation" }
         }
       })
     );
@@ -1598,6 +1627,16 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
           description: "Parameter ID to fetch."
         }
       }
+    }
+  },
+  {
+    name: "cad.project_parameter_evaluation",
+    description:
+      "Returns the parameter expression dependency graph, evaluation order, cycles, and diagnostics.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {}
     }
   },
   {

@@ -93,6 +93,90 @@ describe("SketchPanel", () => {
     expect(markup).not.toContain("derivedBoundaryNote");
   });
 
+  it("renders parameter expression editor status", () => {
+    const markup = renderToStaticMarkup(
+      createElement(SketchPanel, {
+        disabled: false,
+        sketches: [],
+        parameters: [
+          {
+            id: "p_half",
+            name: "Half",
+            value: 5,
+            expression: "Width / 2"
+          },
+          { id: "p_width", name: "Width", value: 10 }
+        ],
+        parameterEvaluation: {
+          ok: true,
+          query: "project.parameterEvaluation",
+          cadOpsVersion: "cadops.v1",
+          status: "valid",
+          parameterCount: 2,
+          expressionCount: 1,
+          nodes: [
+            {
+              parameterId: "p_width",
+              name: "Width",
+              value: 10,
+              referenceNames: [],
+              references: [],
+              dependents: ["p_half"],
+              diagnostics: []
+            },
+            {
+              parameterId: "p_half",
+              name: "Half",
+              value: 5,
+              expression: "Width / 2",
+              referenceNames: ["Width"],
+              references: ["p_width"],
+              dependents: [],
+              diagnostics: []
+            }
+          ],
+          evaluationOrder: ["p_width", "p_half"],
+          cycleCount: 0,
+          cycles: [],
+          diagnosticCount: 0,
+          diagnostics: [],
+          sourceBoundaryNote: "source",
+          derivedBoundaryNote: "derived",
+          mutatesSource: false
+        },
+        features: [],
+        sketchDimensionsBySketchId: new Map(),
+        sketchEvaluationsBySketchId: new Map(),
+        sketchSolverStatusesBySketchId: new Map(),
+        onCreateSketch: () => undefined,
+        onCreateParameter: () => undefined,
+        onApplyParameterEdit: () => undefined,
+        onDeleteParameter: () => undefined,
+        onRenameSketch: () => undefined,
+        onDeleteSketch: () => undefined,
+        onAddEntity: () => undefined,
+        onUpdateEntity: () => undefined,
+        onDeleteEntity: () => undefined,
+        onCreateDimension: () => undefined,
+        onApplyDimensionEdit: () => undefined,
+        onDeleteDimension: () => undefined,
+        onCreateConstraint: () => undefined,
+        onApplyConstraintEdit: () => undefined,
+        onDeleteConstraint: () => undefined,
+        onExtrudeEntity: () => undefined,
+        onRevolveEntity: () => undefined,
+        onHoleEntity: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Expression");
+    expect(markup).toContain("Expression status");
+    expect(markup).toContain("Valid");
+    expect(markup).toContain("Width / 2");
+    expect(markup).toContain("Depends on Width.");
+    expect(markup).toContain("Clear expression");
+  });
+
   it("renders session-only constraint inference for selected line entities", () => {
     const line: SketchSnapshot["entities"][number] = {
       id: "line_1",

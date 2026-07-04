@@ -1352,6 +1352,70 @@ describe("agent-adapter", () => {
     );
   });
 
+  it("accepts parameter expression batches and evaluation queries from external JSON callers (Slice H pass-through)", () => {
+    const adapter = new CadOpsAgentAdapter();
+    const request = parseCadOpsAgentRequestJson(
+      JSON.stringify({
+        requestId: "agent_req_parameter_expression",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        permissions: { allowCommit: true },
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            { op: "parameter.create", id: "p_width", name: "Width", value: 10 },
+            { op: "parameter.create", id: "p_half", name: "Half", value: 1 },
+            {
+              op: "parameter.setExpression",
+              id: "p_half",
+              expression: "Width / 2"
+            }
+          ]
+        }
+      })
+    );
+
+    const response = adapter.execute(request);
+
+    expect(response.ok).toBe(true);
+    expect(response.ok && response.review.operations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op: "parameter.setExpression",
+          intent: "modify",
+          parameterId: "p_half"
+        })
+      ])
+    );
+
+    const query = adapter.query(
+      parseCadOpsAgentQueryRequestJson(
+        JSON.stringify({
+          requestId: "agent_req_parameter_evaluation",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          query: {
+            version: "cadops.v1",
+            query: { query: "project.parameterEvaluation" }
+          }
+        })
+      )
+    );
+
+    expect(query).toMatchObject({
+      ok: true,
+      query: "project.parameterEvaluation",
+      status: "valid",
+      expressionCount: 1,
+      nodes: expect.arrayContaining([
+        expect.objectContaining({
+          parameterId: "p_half",
+          expression: "Width / 2",
+          references: ["p_width"]
+        })
+      ])
+    });
+  });
+
   it("supports JSON feature extrude batches for external callers", () => {
     const adapter = new CadOpsAgentAdapter();
     const request = {

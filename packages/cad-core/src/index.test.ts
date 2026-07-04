@@ -15,6 +15,7 @@ import type {
   ProjectHealthQueryResponse,
   ProjectImportReadinessQueryResponse,
   ProjectPackageReadinessQueryResponse,
+  ProjectParameterEvaluationQueryResponse,
   ProjectRebuildPlanQueryResponse,
   ProjectStructureQueryResponse,
   ProjectSummaryQueryResponse,
@@ -155,6 +156,21 @@ function getShellFeature(engine: CadEngine, featureId: string): ShellFeature {
   }
 
   return feature;
+}
+
+function readParameterEvaluation(
+  engine: CadEngine
+): ProjectParameterEvaluationQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.parameterEvaluation" }
+  });
+
+  if (!response.ok || response.query !== "project.parameterEvaluation") {
+    throw new Error("Expected project.parameterEvaluation response.");
+  }
+
+  return response;
 }
 
 function createRectangleExtrudeEngine(): CadEngine {
@@ -2337,6 +2353,246 @@ describe("cad-core", () => {
       query: "unknown",
       error: { code: "UNKNOWN_QUERY" }
     });
+  });
+
+  it("evaluates parameter expressions, updates dependent dimensions, and blocks literal overwrites", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_expr", name: "Expr", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_expr",
+        id: "rect_expr",
+        center: [0, 0],
+        width: 1,
+        height: 2
+      },
+      { op: "parameter.create", id: "p_width", name: "Base Width", value: 10 },
+      { op: "parameter.create", id: "p_half", name: "Half", value: 1 },
+      {
+        op: "sketch.dimension.create",
+        id: "dim_width",
+        name: "Driven width",
+        sketchId: "sketch_expr",
+        entityId: "rect_expr",
+        target: { entityKind: "rectangle", role: "width" },
+        parameterId: "p_half"
+      }
+    ]);
+
+    const expressionResult = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "parameter.setExpression",
+          id: "p_half",
+          expression: "[Base Width] / 2"
+        }
+      ]
+    });
+
+    expect(expressionResult).toMatchObject({
+      ok: true,
+      mode: "commit",
+      modifiedParameterIds: ["p_half"],
+      modifiedSketchEntityIds: ["rect_expr"]
+    });
+
+    const document = engine.getDocument();
+    expect(document.parameters.get("p_half")).toMatchObject({
+      value: 5,
+      expression: "[Base Width] / 2"
+    });
+    expect(
+      document.sketches.get("sketch_expr")?.entities.get("rect_expr")
+    ).toMatchObject({
+      width: 5
+    });
+
+    const evaluation = readParameterEvaluation(engine);
+    expect(evaluation).toMatchObject({
+      status: "valid",
+      expressionCount: 1,
+      diagnosticCount: 0
+    });
+    expect(evaluation.evaluationOrder.indexOf("p_width")).toBeLessThan(
+      evaluation.evaluationOrder.indexOf("p_half")
+    );
+    expect(
+      evaluation.nodes.find((node) => node.parameterId === "p_half")
+    ).toMatchObject({
+      expression: "[Base Width] / 2",
+      referenceNames: ["Base Width"],
+      references: ["p_width"]
+    });
+
+    engine.apply({ op: "parameter.update", id: "p_width", value: 12 });
+    expect(engine.getDocument().parameters.get("p_half")?.value).toBe(6);
+    expect(
+      engine
+        .getDocument()
+        .sketches.get("sketch_expr")
+        ?.entities.get("rect_expr")
+    ).toMatchObject({ width: 6 });
+
+    const blockedLiteralUpdate = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [{ op: "parameter.update", id: "p_half", value: 7 }]
+    });
+
+    expect(blockedLiteralUpdate).toMatchObject({
+      ok: false,
+      error: {
+        code: "PARAMETER_HAS_EXPRESSION",
+        parameterId: "p_half"
+      }
+    });
+    expect(engine.getDocument().parameters.get("p_half")?.value).toBe(6);
+  });
+
+  it("rejects circular and ambiguous parameter expressions without mutating source", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "parameter.create", id: "p_a", name: "A", value: 1 },
+      { op: "parameter.create", id: "p_b", name: "B", value: 2 }
+    ]);
+    engine.apply({
+      op: "parameter.setExpression",
+      id: "p_a",
+      expression: "B + 1"
+    });
+
+    const circular = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [{ op: "parameter.setExpression", id: "p_b", expression: "A + 1" }]
+    });
+
+    expect(circular).toMatchObject({
+      ok: false,
+      error: {
+        code: "PARAMETER_CIRCULAR_REFERENCE",
+        parameterId: "p_a"
+      }
+    });
+    expect(
+      engine.getDocument().parameters.get("p_b")?.expression
+    ).toBeUndefined();
+
+    const duplicateNameEngine = new CadEngine();
+    duplicateNameEngine.applyBatch([
+      { op: "parameter.create", id: "p_left", name: "Pitch", value: 8 },
+      { op: "parameter.create", id: "p_right", name: "Pitch", value: 10 },
+      { op: "parameter.create", id: "p_spacing", name: "Spacing", value: 1 }
+    ]);
+
+    const ambiguous = duplicateNameEngine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "parameter.setExpression",
+          id: "p_spacing",
+          expression: "Pitch / 2"
+        }
+      ]
+    });
+
+    expect(ambiguous).toMatchObject({
+      ok: false,
+      error: {
+        code: "PARAMETER_REF_AMBIGUOUS",
+        parameterId: "p_spacing",
+        referencedName: "Pitch"
+      }
+    });
+    expect(
+      duplicateNameEngine.getDocument().parameters.get("p_spacing")?.expression
+    ).toBeUndefined();
+  });
+
+  it("round-trips parameter expressions through V19 JSON and WCAD and reports import value inconsistencies", async () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "parameter.create", id: "p_width", name: "Width", value: 10 },
+      { op: "parameter.create", id: "p_half", name: "Half", value: 1 },
+      { op: "parameter.setExpression", id: "p_half", expression: "Width / 2" }
+    ]);
+
+    const exported = parseCadProjectJson(exportCadProjectJson(engine));
+    expect(exported.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V19);
+    expect(
+      exported.document.parameters.find((parameter) => parameter.id === "p_half")
+    ).toMatchObject({
+      value: 5,
+      expression: "Width / 2"
+    });
+
+    const reopened = importCadProjectJson(exportCadProjectJson(engine));
+    expect(reopened.getDocument().parameters.get("p_half")).toMatchObject({
+      value: 5,
+      expression: "Width / 2"
+    });
+
+    const packageReadiness = readProjectPackageReadiness(engine);
+    expect(packageReadiness).toMatchObject({
+      documentSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V19,
+      packageVersion: "partbench.wcad.v2",
+      canRepresentCurrentSource: true,
+      requiresProjectSchemaMigration: false
+    });
+
+    const wcadExport = await exportCadProjectToWcad(exported, {
+      createdAt: "2026-07-04T00:00:00.000Z"
+    });
+    const wcadRead = await readCadProjectWcad(wcadExport.bytes);
+
+    expect(wcadExport.manifest.packageVersion).toBe("partbench.wcad.v2");
+    if (wcadExport.manifest.packageVersion !== "partbench.wcad.v2") {
+      throw new Error("Expected expression-only V19 project to use WCAD v2.");
+    }
+    expect(wcadExport.manifest.topologyIdentity.checkpointCount).toBe(0);
+    expect(wcadExport.checkpointPayloads).toEqual([]);
+    expect(wcadRead.ok).toBe(true);
+    if (!wcadRead.ok) {
+      throw new Error("Expected expression-only V19 WCAD read to succeed.");
+    }
+    expect(wcadRead.project.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V19);
+    expect(
+      wcadRead.project.document.parameters.find(
+        (parameter) => parameter.id === "p_half"
+      )
+    ).toMatchObject({
+      value: 5,
+      expression: "Width / 2"
+    });
+
+    const inconsistent = {
+      ...exported,
+      document: {
+        ...exported.document,
+        parameters: exported.document.parameters.map((parameter) =>
+          parameter.id === "p_half" ? { ...parameter, value: 999 } : parameter
+        )
+      }
+    };
+    const repaired = importCadProject(inconsistent);
+    const repairedEvaluation = readParameterEvaluation(repaired);
+
+    expect(repaired.getDocument().parameters.get("p_half")?.value).toBe(5);
+    expect(repairedEvaluation.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "EXPRESSION_VALUE_INCONSISTENCY",
+          parameterId: "p_half",
+          expected: "5",
+          received: "999"
+        })
+      ])
+    );
   });
 
   it("creates a box", () => {

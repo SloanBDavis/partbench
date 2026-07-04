@@ -44,6 +44,7 @@ describe("mcp stdio server", () => {
       expect.arrayContaining([
         "cad.parameter_list",
         "cad.parameter_get",
+        "cad.project_parameter_evaluation",
         "cad.feature_editability",
         "cad.project_summary",
         "cad.project_features",

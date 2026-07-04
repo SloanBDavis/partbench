@@ -242,6 +242,7 @@ export type CadOp =
   | ProjectImportStepOp
   | ParameterCreateOp
   | ParameterUpdateOp
+  | ParameterSetExpressionOp
   | ParameterRenameOp
   | ParameterDeleteOp
   | DocumentUpdateUnitsOp
@@ -350,6 +351,12 @@ export interface ParameterUpdateOp {
   readonly id: ParameterId;
   readonly value?: number;
   readonly description?: string;
+}
+
+export interface ParameterSetExpressionOp {
+  readonly op: "parameter.setExpression";
+  readonly id: ParameterId;
+  readonly expression?: string | null;
 }
 
 export interface ParameterRenameOp {
@@ -1209,6 +1216,16 @@ export type CadBatchValidationErrorCode =
   | "PARAMETER_IN_USE"
   | "INVALID_PARAMETER"
   | "INVALID_PARAMETER_NAME"
+  | "PARAMETER_HAS_EXPRESSION"
+  | "PARAMETER_CIRCULAR_REFERENCE"
+  | "PARAMETER_REF_NOT_FOUND"
+  | "PARAMETER_REF_AMBIGUOUS"
+  | "EXPRESSION_PARSE_ERROR"
+  | "EXPRESSION_UNKNOWN_IDENTIFIER"
+  | "EXPRESSION_DIVISION_BY_ZERO"
+  | "EXPRESSION_INVALID_FUNCTION"
+  | "EXPRESSION_INVALID_VALUE"
+  | "EXPRESSION_VALUE_INCONSISTENCY"
   | "INVALID_OBJECT_NAME"
   | "SKETCH_ALREADY_EXISTS"
   | "SKETCH_NOT_FOUND"
@@ -1289,6 +1306,10 @@ export interface CadBatchValidationError {
   readonly checkpointId?: string;
   readonly sourceFileName?: string;
   readonly payloadId?: string;
+  readonly expression?: string;
+  readonly parameterName?: string;
+  readonly referencedName?: string;
+  readonly cycle?: readonly ParameterId[];
   readonly path?: string;
   readonly expected?: string;
   readonly received?: string;
@@ -1371,6 +1392,7 @@ export interface CadBatchErrorResponse {
 export type CadQueryKind =
   | "parameter.list"
   | "parameter.get"
+  | "project.parameterEvaluation"
   | "feature.editability"
   | "project.summary"
   | "project.features"
@@ -1415,6 +1437,7 @@ export type CadQueryKind =
 export type CadQuery =
   | ParameterListQuery
   | ParameterGetQuery
+  | ProjectParameterEvaluationQuery
   | FeatureEditabilityQuery
   | ProjectSummaryQuery
   | ProjectFeaturesQuery
@@ -1463,6 +1486,10 @@ export interface ParameterListQuery {
 export interface ParameterGetQuery {
   readonly query: "parameter.get";
   readonly id: ParameterId;
+}
+
+export interface ProjectParameterEvaluationQuery {
+  readonly query: "project.parameterEvaluation";
 }
 
 export interface FeatureEditabilityQuery {
@@ -1785,6 +1812,7 @@ export interface CadParameterSnapshot {
   readonly id: ParameterId;
   readonly name: string;
   readonly value: number;
+  readonly expression?: string;
   readonly description?: string;
 }
 
@@ -5569,6 +5597,7 @@ export interface CadExportBodyReadiness {
 export type CadQueryResponse =
   | ParameterListQueryResponse
   | ParameterGetQueryResponse
+  | ProjectParameterEvaluationQueryResponse
   | FeatureEditabilityQueryResponse
   | ProjectSummaryQueryResponse
   | ProjectFeaturesQueryResponse
@@ -5624,6 +5653,66 @@ export interface ParameterGetQueryResponse {
   readonly query: "parameter.get";
   readonly cadOpsVersion: CadOpsVersion;
   readonly parameter: CadParameterSnapshot;
+}
+
+export type CadParameterEvaluationStatus = "valid" | "invalid" | "circular";
+
+export type CadParameterExpressionDiagnosticCode =
+  | "PARAMETER_CIRCULAR_REFERENCE"
+  | "PARAMETER_REF_NOT_FOUND"
+  | "PARAMETER_REF_AMBIGUOUS"
+  | "EXPRESSION_PARSE_ERROR"
+  | "EXPRESSION_UNKNOWN_IDENTIFIER"
+  | "EXPRESSION_DIVISION_BY_ZERO"
+  | "EXPRESSION_INVALID_FUNCTION"
+  | "EXPRESSION_INVALID_VALUE"
+  | "EXPRESSION_VALUE_INCONSISTENCY";
+
+export interface CadParameterExpressionDiagnostic {
+  readonly code: CadParameterExpressionDiagnosticCode;
+  readonly message: string;
+  readonly parameterId?: ParameterId;
+  readonly parameterName?: string;
+  readonly expression?: string;
+  readonly referencedName?: string;
+  readonly cycle?: readonly ParameterId[];
+  readonly position?: number;
+  readonly expected?: string;
+  readonly received?: string;
+}
+
+export interface CadParameterEvaluationNode {
+  readonly parameterId: ParameterId;
+  readonly name: string;
+  readonly value: number;
+  readonly expression?: string;
+  readonly referenceNames: readonly string[];
+  readonly references: readonly ParameterId[];
+  readonly dependents: readonly ParameterId[];
+  readonly diagnostics: readonly CadParameterExpressionDiagnostic[];
+}
+
+export interface CadParameterEvaluationCycle {
+  readonly parameterIds: readonly ParameterId[];
+  readonly parameterNames: readonly string[];
+}
+
+export interface ProjectParameterEvaluationQueryResponse {
+  readonly ok: true;
+  readonly query: "project.parameterEvaluation";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly status: CadParameterEvaluationStatus;
+  readonly parameterCount: number;
+  readonly expressionCount: number;
+  readonly nodes: readonly CadParameterEvaluationNode[];
+  readonly evaluationOrder: readonly ParameterId[];
+  readonly cycleCount: number;
+  readonly cycles: readonly CadParameterEvaluationCycle[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadParameterExpressionDiagnostic[];
+  readonly sourceBoundaryNote: string;
+  readonly derivedBoundaryNote: string;
+  readonly mutatesSource: false;
 }
 
 export interface FeatureEditabilityQueryResponse {

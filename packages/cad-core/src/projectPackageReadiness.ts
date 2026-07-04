@@ -1,4 +1,5 @@
 import {
+  CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION,
   WCAD_COMMANDS_ENTRY_PATH,
   WCAD_DOCUMENT_ENTRY_PATH,
   WCAD_MANIFEST_ENTRY_PATH,
@@ -12,7 +13,6 @@ import {
   type WcadDocumentSchemaVersion,
   type WcadManifestV1,
   type WcadManifestV2,
-  type WcadPackageV1DocumentSchemaVersion,
   type WcadPackageVersion,
   type WcadPackageCacheArtifactKind,
   type WcadPackageEntryMetadata,
@@ -53,14 +53,21 @@ interface WcadPackageEntryMetadataInput {
 }
 
 const SOURCE_BOUNDARY_NOTE =
-  "Classified from the current authoritative project schema, units, and V8 package source entries.";
+  "Classified from the current authoritative project schema, units, and WCAD package source entries.";
 const DERIVED_BOUNDARY_NOTE =
   "No renderer, mesh, OCCT, OPFS, File System Access handle, thumbnail, export artifact, viewport, hover, or selection state is part of package source.";
 
 const SUPPORTED_DOCUMENT_SCHEMAS = [
   "web-cad.project.v16",
-  "web-cad.project.v17"
-] satisfies readonly WcadPackageV1DocumentSchemaVersion[];
+  "web-cad.project.v17",
+  "web-cad.project.v18",
+  "web-cad.project.v19"
+] satisfies readonly WcadDocumentSchemaVersion[];
+
+const SUPPORTED_WCAD_V2_DOCUMENT_SCHEMAS = [
+  "web-cad.project.v18",
+  "web-cad.project.v19"
+] satisfies readonly WcadDocumentSchemaVersion[];
 
 const SUPPORTED_CACHE_ARTIFACT_KINDS = [
   "derivedMesh",
@@ -78,8 +85,18 @@ export function createProjectPackageReadiness({
   const schemaSupported = SUPPORTED_DOCUMENT_SCHEMAS.some(
     (schema) => schema === documentSchemaVersion
   );
+  const usesWcadV2Package = SUPPORTED_WCAD_V2_DOCUMENT_SCHEMAS.some(
+    (schema) => schema === documentSchemaVersion
+  );
+  const packageVersion = usesWcadV2Package
+    ? CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION
+    : WCAD_PACKAGE_VERSION;
   const canRepresentCurrentSource = schemaSupported;
   const requiresProjectSchemaMigration = !canRepresentCurrentSource;
+  const schemaSourceMessage = describeSupportedDocumentSchema(
+    documentSchemaVersion,
+    canRepresentCurrentSource
+  );
   const requiredEntries: ProjectPackageReadinessQueryResponse["requiredEntries"] =
     [
       { role: "manifest", path: WCAD_MANIFEST_ENTRY_PATH, source: true },
@@ -117,8 +134,8 @@ export function createProjectPackageReadiness({
           code: "WCAD_CURRENT_PROJECT_SCHEMA_SUPPORTED",
           status: schemaSupported ? "supported" : "unavailable",
           message: schemaSupported
-            ? `${documentSchemaVersion} can be represented by the V8 package contract.`
-            : `${documentSchemaVersion} is not supported by the V8 package contract.`,
+            ? `${documentSchemaVersion} can be represented by the WCAD package contract.`
+            : `${documentSchemaVersion} is not supported by the WCAD package contract.`,
           expected: SUPPORTED_DOCUMENT_SCHEMAS.join(" or "),
           received: documentSchemaVersion
         },
@@ -130,13 +147,8 @@ export function createProjectPackageReadiness({
               : canRepresentCurrentSource
                 ? "supported"
                 : "deferred",
-          message:
-            documentSchemaVersion === "web-cad.project.v17"
-              ? "The current project source uses web-cad.project.v17 because V11 solver source records are present."
-              : canRepresentCurrentSource
-                ? "The current project source can be represented without web-cad.project.v17."
-                : "A future source schema may be required before this source shape can be represented.",
-          expected: "web-cad.project.v16 or web-cad.project.v17",
+          message: schemaSourceMessage,
+          expected: SUPPORTED_DOCUMENT_SCHEMAS.join(" or "),
           received: documentSchemaVersion
         }
       ]
@@ -177,7 +189,7 @@ export function createProjectPackageReadiness({
     status: chooseReadinessStatus(
       capabilities.map((capability) => capability.status)
     ),
-    packageVersion: WCAD_PACKAGE_VERSION,
+    packageVersion,
     fileExtension: WCAD_PACKAGE_EXTENSION,
     sourceIdentityAlgorithm: WCAD_SOURCE_IDENTITY_ALGORITHM,
     documentSchemaVersion,
@@ -223,6 +235,24 @@ function createSupportedCapability(
       }
     ]
   };
+}
+
+function describeSupportedDocumentSchema(
+  documentSchemaVersion: WcadDocumentSchemaVersion,
+  canRepresentCurrentSource: boolean
+): string {
+  switch (documentSchemaVersion) {
+    case "web-cad.project.v17":
+      return "The current project source uses web-cad.project.v17 because V11 solver source records are present.";
+    case "web-cad.project.v18":
+      return "The current project source uses web-cad.project.v18 because topology identity source records are present.";
+    case "web-cad.project.v19":
+      return "The current project source uses web-cad.project.v19 because V15 source records are present.";
+    default:
+      return canRepresentCurrentSource
+        ? "The current project source can be represented without web-cad.project.v17."
+        : "A future source schema may be required before this source shape can be represented.";
+  }
 }
 
 function chooseReadinessStatus(
@@ -765,7 +795,7 @@ function isValidWcadPackagePath(path: string): boolean {
 
 function isSupportedDocumentSchema(
   value: unknown
-): value is WcadPackageV1DocumentSchemaVersion {
+): value is WcadDocumentSchemaVersion {
   return (
     typeof value === "string" &&
     SUPPORTED_DOCUMENT_SCHEMAS.some((schema) => schema === value)

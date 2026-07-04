@@ -79,6 +79,7 @@ describe("mcp-adapter", () => {
     expect(tools.map((tool) => tool.name)).toEqual([
       "cad.parameter_list",
       "cad.parameter_get",
+      "cad.project_parameter_evaluation",
       "cad.feature_editability",
       "cad.project_summary",
       "cad.project_features",
@@ -260,6 +261,59 @@ describe("mcp-adapter", () => {
         expect.objectContaining({ code: "PROJECT_EMPTY" }),
         expect.objectContaining({ code: "EXPORT_UNAVAILABLE" })
       ]
+    });
+  });
+
+  it("exposes parameter expression evaluation through MCP", () => {
+    const server = new CadMcpServer();
+
+    const batch = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_expression_batch",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            { op: "parameter.create", id: "p_width", name: "Width", value: 10 },
+            { op: "parameter.create", id: "p_half", name: "Half", value: 1 },
+            {
+              op: "parameter.setExpression",
+              id: "p_half",
+              expression: "Width / 2"
+            }
+          ]
+        }
+      }
+    });
+
+    expect(batch.structuredContent).toMatchObject({
+      ok: true,
+      modifiedParameterIds: ["p_half"]
+    });
+
+    const evaluation = server.callTool({
+      name: "cad.project_parameter_evaluation",
+      requestId: "mcp_req_expression_query"
+    });
+
+    expect(evaluation).toMatchObject({
+      toolName: "cad.project_parameter_evaluation",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        query: "project.parameterEvaluation",
+        status: "valid",
+        expressionCount: 1,
+        nodes: expect.arrayContaining([
+          expect.objectContaining({
+            parameterId: "p_half",
+            expression: "Width / 2",
+            references: ["p_width"]
+          })
+        ])
+      }
     });
   });
 
@@ -5951,6 +6005,7 @@ describe("mcp-adapter", () => {
         tools: [
           { name: "cad.parameter_list" },
           { name: "cad.parameter_get" },
+          { name: "cad.project_parameter_evaluation" },
           { name: "cad.feature_editability" },
           { name: "cad.project_summary" },
           { name: "cad.project_features" },

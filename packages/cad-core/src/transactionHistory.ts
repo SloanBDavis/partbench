@@ -218,6 +218,18 @@ function createOperationSummaries(
           parameterId: op.id
         });
 
+      case "parameter.setExpression":
+        return createParameterOperationSummary({
+          op: op.op,
+          label:
+            op.expression === undefined ||
+            op.expression === null ||
+            op.expression.trim() === ""
+              ? `Clear expression on parameter ${op.id}`
+              : `Set expression on parameter ${op.id}`,
+          parameterId: op.id
+        });
+
       case "parameter.rename":
         return createParameterOperationSummary({
           op: op.op,

@@ -34,6 +34,7 @@ import type {
   ParameterDeleteOp,
   ParameterId,
   ParameterRenameOp,
+  ParameterSetExpressionOp,
   ParameterUpdateOp,
   ReferenceDeleteNameOp,
   ReferenceNameGeneratedOp,
@@ -142,6 +143,7 @@ export interface ParameterCreateForm {
 export interface ParameterEditForm {
   readonly name: string;
   readonly value: number;
+  readonly expression: string;
   readonly description: string;
 }
 
@@ -486,7 +488,8 @@ export function buildCreateParameterOp(
 
 export function buildUpdateParameterOp(
   id: ParameterId,
-  form: ParameterEditForm
+  form: Pick<ParameterEditForm, "value" | "description"> &
+    Partial<Pick<ParameterEditForm, "name" | "expression">>
 ): ParameterUpdateOp {
   const description = normalizeOptionalText(form.description);
 
@@ -495,6 +498,22 @@ export function buildUpdateParameterOp(
     id,
     value: form.value,
     ...(description ? { description } : {})
+  };
+}
+
+export function buildSetParameterExpressionOp(
+  id: ParameterId,
+  expression: string | null | undefined
+): ParameterSetExpressionOp {
+  const normalized =
+    typeof expression === "string" && expression.trim().length > 0
+      ? expression.trim()
+      : null;
+
+  return {
+    op: "parameter.setExpression",
+    id,
+    expression: normalized
   };
 }
 
@@ -519,25 +538,41 @@ export function buildDeleteParameterOp(id: ParameterId): ParameterDeleteOp {
 export function buildParameterEditOps(
   parameter: CadParameterSnapshot,
   form: ParameterEditForm
-): readonly (ParameterRenameOp | ParameterUpdateOp)[] {
-  const ops: (ParameterRenameOp | ParameterUpdateOp)[] = [];
+): readonly (ParameterRenameOp | ParameterUpdateOp | ParameterSetExpressionOp)[] {
+  const ops: (ParameterRenameOp | ParameterUpdateOp | ParameterSetExpressionOp)[] =
+    [];
   const nextName = form.name.trim();
   const nextDescription = normalizeOptionalText(form.description);
+  const currentExpression = parameter.expression ?? "";
+  const nextExpression = form.expression.trim();
+  const expressionChanged = nextExpression !== currentExpression;
+  const expressionWillBeLiteral = nextExpression.length === 0;
 
   if (nextName !== parameter.name) {
     ops.push(buildRenameParameterOp(parameter.id, nextName));
   }
 
+  if (expressionChanged && expressionWillBeLiteral) {
+    ops.push(buildSetParameterExpressionOp(parameter.id, null));
+  }
+
   if (
-    form.value !== parameter.value ||
+    (expressionWillBeLiteral && form.value !== parameter.value) ||
     nextDescription !== parameter.description
   ) {
-    const update = buildUpdateParameterOp(parameter.id, form);
+    const update = buildUpdateParameterOp(parameter.id, {
+      value: form.value,
+      description: form.description
+    });
     ops.push(
       nextDescription === undefined && parameter.description !== undefined
         ? { ...update, description: "" }
         : update
     );
+  }
+
+  if (expressionChanged && !expressionWillBeLiteral) {
+    ops.push(buildSetParameterExpressionOp(parameter.id, nextExpression));
   }
 
   return ops;

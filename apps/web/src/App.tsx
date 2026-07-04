@@ -39,6 +39,7 @@ import type {
   ProjectExactExportQueryResponse,
   ProjectExportReadinessQueryResponse,
   ProjectHealthQueryResponse,
+  ProjectParameterEvaluationQueryResponse,
   ProjectTopologyIdentityReadinessQueryResponse,
   ReferenceHealthQueryResponse,
   SelectionReferenceCandidatesQueryResponse,
@@ -832,6 +833,19 @@ function readParameters(): readonly CadParameterSnapshot[] {
   return response.ok && response.query === "parameter.list"
     ? response.parameters
     : [];
+}
+
+function readParameterEvaluation():
+  | ProjectParameterEvaluationQueryResponse
+  | undefined {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.parameterEvaluation" }
+  });
+
+  return response.ok && response.query === "project.parameterEvaluation"
+    ? response
+    : undefined;
 }
 
 function enrichSketchOnFaceFormWithTopologyAnchor(
@@ -1650,6 +1664,7 @@ export function App() {
     : undefined;
   const transactionHistory = readTransactionHistory();
   const parameters = readParameters();
+  const parameterEvaluation = readParameterEvaluation();
   const sketchDimensionsBySketchId = readSketchDimensionsBySketchId(sketches);
   const sketchEvaluationsBySketchId = readSketchEvaluationsBySketchId(sketches);
   const sketchSolverStatusesBySketchId =
@@ -4142,6 +4157,7 @@ export function App() {
                     disabled={commandPending}
                     sketches={sketches}
                     parameters={parameters}
+                    parameterEvaluation={parameterEvaluation}
                     sketchDimensionsBySketchId={sketchDimensionsBySketchId}
                     sketchEvaluationsBySketchId={sketchEvaluationsBySketchId}
                     sketchSolverStatusesBySketchId={

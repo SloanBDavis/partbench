@@ -43,6 +43,7 @@ import {
   buildRenameSketchConstraintOp,
   buildRenameSketchOp,
   buildRenameSketchDimensionOp,
+  buildSetParameterExpressionOp,
   buildSketchConstraintEditOps,
   buildSketchDimensionEditOps,
   buildUpdateBoxDimensionsOp,
@@ -435,10 +436,20 @@ describe("cad command builders", () => {
       op: "parameter.delete",
       id: "p_width"
     });
+    expect(buildSetParameterExpressionOp("p_width", " Plate / 2 ")).toEqual({
+      op: "parameter.setExpression",
+      id: "p_width",
+      expression: "Plate / 2"
+    });
+    expect(buildSetParameterExpressionOp("p_width", "   ")).toEqual({
+      op: "parameter.setExpression",
+      id: "p_width",
+      expression: null
+    });
     expect(
       buildParameterEditOps(
         { id: "p_width", name: "Width", value: 12 },
-        { name: "Plate width", value: 14, description: "" }
+        { name: "Plate width", value: 14, expression: "", description: "" }
       )
     ).toEqual([
       {
@@ -458,11 +469,17 @@ describe("cad command builders", () => {
           id: "p_width",
           name: "Width",
           value: 12,
+          expression: "Plate / 2",
           description: "Stored description"
         },
-        { name: "Width", value: 12, description: "   " }
+        { name: "Width", value: 12, expression: "", description: "   " }
       )
     ).toEqual([
+      {
+        op: "parameter.setExpression",
+        id: "p_width",
+        expression: null
+      },
       {
         op: "parameter.update",
         id: "p_width",

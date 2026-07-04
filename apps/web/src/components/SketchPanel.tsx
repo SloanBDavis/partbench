@@ -6,6 +6,7 @@ import type {
   SketchDimensionEntry,
   SketchDimensionTarget,
   SketchEvaluationQueryResponse,
+  ProjectParameterEvaluationQueryResponse,
   SketchSolverStatusQueryResponse,
   SketchEntityId,
   SketchEntityKind,
@@ -103,6 +104,7 @@ export interface SketchPanelProps {
   readonly disabled: boolean;
   readonly sketches: readonly SketchSnapshot[];
   readonly parameters: readonly CadParameterSnapshot[];
+  readonly parameterEvaluation?: ProjectParameterEvaluationQueryResponse;
   readonly sketchDimensionsBySketchId: ReadonlyMap<
     string,
     readonly SketchDimensionEntry[]
@@ -277,6 +279,7 @@ export function SketchPanel({
   disabled,
   sketches,
   parameters,
+  parameterEvaluation,
   sketchDimensionsBySketchId,
   sketchEvaluationsBySketchId,
   sketchSolverStatusesBySketchId,
@@ -1038,6 +1041,7 @@ export function SketchPanel({
       <ParameterControls
         disabled={disabled}
         parameters={parameters}
+        parameterEvaluation={parameterEvaluation}
         selectedParameter={selectedParameter}
         selectedParameterId={selectedParameter?.id}
         createForm={parameterCreateForm}
@@ -2084,6 +2088,7 @@ function SketchEvaluationSummary({
 function ParameterControls({
   disabled,
   parameters,
+  parameterEvaluation,
   selectedParameter,
   selectedParameterId,
   createForm,
@@ -2098,6 +2103,7 @@ function ParameterControls({
 }: {
   readonly disabled: boolean;
   readonly parameters: readonly CadParameterSnapshot[];
+  readonly parameterEvaluation?: ProjectParameterEvaluationQueryResponse;
   readonly selectedParameter: CadParameterSnapshot | undefined;
   readonly selectedParameterId: string | undefined;
   readonly createForm: ParameterCreateForm;
@@ -2113,6 +2119,23 @@ function ParameterControls({
   const selectedUsageCount = selectedParameter
     ? (usageCounts.get(selectedParameter.id) ?? 0)
     : 0;
+  const selectedEvaluationNode =
+    selectedParameter && parameterEvaluation
+      ? parameterEvaluation.nodes.find(
+          (node) => node.parameterId === selectedParameter.id
+        )
+      : undefined;
+  const selectedExpressionStatus =
+    selectedEvaluationNode && selectedEvaluationNode.expression
+      ? selectedEvaluationNode.diagnostics.length > 0
+        ? selectedEvaluationNode.diagnostics.some(
+            (diagnostic) => diagnostic.code === "PARAMETER_CIRCULAR_REFERENCE"
+          )
+          ? "Circular"
+          : "Invalid"
+        : "Valid"
+      : "Literal";
+  const valueIsExpressionDerived = editForm.expression.trim().length > 0;
 
   return (
     <details className="workflow-section">
@@ -2214,12 +2237,55 @@ function ParameterControls({
                   />
                 </label>
                 <NumberField
-                  disabled={disabled}
+                  disabled={disabled || valueIsExpressionDerived}
                   label="Value"
                   value={editForm.value}
                   onChange={(value) => onEditFormChange({ ...editForm, value })}
                 />
               </div>
+              <div className="field-grid two">
+                <label>
+                  Expression
+                  <input
+                    type="text"
+                    value={editForm.expression}
+                    disabled={disabled}
+                    placeholder="width / 2"
+                    onChange={(event) =>
+                      onEditFormChange({
+                        ...editForm,
+                        expression: event.currentTarget.value
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  Expression status
+                  <input type="text" value={selectedExpressionStatus} readOnly />
+                </label>
+              </div>
+              {selectedEvaluationNode?.diagnostics.length ? (
+                <p className="project-message compact warning">
+                  {selectedEvaluationNode.diagnostics[0].message}
+                </p>
+              ) : selectedEvaluationNode?.referenceNames.length ? (
+                <p className="project-message compact">
+                  Depends on {selectedEvaluationNode.referenceNames.join(", ")}.
+                </p>
+              ) : null}
+              {valueIsExpressionDerived && (
+                <div className="button-row compact">
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    onClick={() =>
+                      onEditFormChange({ ...editForm, expression: "" })
+                    }
+                  >
+                    Clear expression
+                  </button>
+                </div>
+              )}
               <details className="advanced-options compact">
                 <summary>Description</summary>
                 <input
@@ -3415,6 +3481,7 @@ function parameterToEditForm(
   return {
     name: parameter?.name ?? "",
     value: parameter?.value ?? 1,
+    expression: parameter?.expression ?? "",
     description: parameter?.description ?? ""
   };
 }
