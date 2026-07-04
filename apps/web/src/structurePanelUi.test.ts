@@ -626,8 +626,12 @@ describe("structure panel UI helpers", () => {
     );
     expect(formatFeatureKindLabel(createExtrudeFeature())).toBe("Extrude");
     expect(formatFeatureKindLabel(createRevolveFeature())).toBe("Revolve");
+    expect(formatFeatureKindLabel(createMirrorFeature())).toBe("Mirror");
     expect(formatFeatureLine(createExtrudeFeature(), "mm")).toBe(
       "new body / rectangle / 4 mm / positive"
+    );
+    expect(formatFeatureLine(createMirrorFeature(), "mm")).toBe(
+      "mirror / YZ / copy only / seed body_1"
     );
     expect(formatExtrudeOperationMode("cut")).toBe("cut body");
     expect(formatFeatureLine(createCutFeature(), "mm")).toBe(
@@ -831,6 +835,23 @@ function createAddFeature(): Extract<CadFeatureSummary, { kind: "extrude" }> {
     depth: 2,
     operationMode: "add",
     targetBodyId: "body_target"
+  };
+}
+
+function createMirrorFeature(): Extract<CadFeatureSummary, { kind: "mirror" }> {
+  return {
+    id: "feature_mirror",
+    kind: "mirror",
+    partId: "part:default",
+    bodyId: "body_mirror",
+    seedBodyId: "body_1",
+    mirrorPlane: "YZ",
+    includeOriginal: false,
+    source: {
+      type: "mirrorFeature",
+      seedBodyId: "body_1",
+      mirrorPlane: "YZ"
+    }
   };
 }
 

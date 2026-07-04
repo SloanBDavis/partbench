@@ -16,6 +16,7 @@ import type {
   DerivedExtrudeGeometrySource,
   DerivedGeometryEntry,
   DerivedHoleGeometrySource,
+  DerivedMirrorGeometrySource,
   DerivedRevolveGeometrySource
 } from "./derivedGeometry";
 import {
@@ -39,6 +40,7 @@ export function createRenderSceneInputs(
     | DerivedRevolveGeometrySource
     | DerivedHoleGeometrySource
     | DerivedEdgeFinishGeometrySource
+    | DerivedMirrorGeometrySource
   )[] = [],
   sketches: readonly SketchSnapshot[] = [],
   sketchDisplayFrames: ReadonlyMap<string, SketchDisplayFrame> = new Map()
@@ -77,7 +79,8 @@ export function createRenderSceneInputs(
       source.kind === "extrudeBoolean" ||
       source.kind === "revolve" ||
       source.kind === "hole" ||
-      source.kind === "edgeFinish"
+      source.kind === "edgeFinish" ||
+      source.kind === "mirror"
     ) {
       continue;
     }

@@ -11,6 +11,7 @@ import {
   type DerivedExtrudeGeometrySource,
   type DerivedGeometrySource,
   type DerivedHoleGeometrySource,
+  type DerivedMirrorGeometrySource,
   type DerivedRevolveGeometrySource
 } from "./derivedGeometry";
 import {
@@ -61,6 +62,7 @@ export function createAuthoredFeatureDerivedGeometrySources(
   | DerivedRevolveGeometrySource
   | DerivedHoleGeometrySource
   | DerivedEdgeFinishGeometrySource
+  | DerivedMirrorGeometrySource
 )[] {
   const consumedBodyIds = createConsumedBodyIds(features);
 
@@ -89,8 +91,64 @@ export function createAuthoredFeatureDerivedGeometrySources(
       generatedFacesByKey,
       namedReferences,
       consumedBodyIds
+    ),
+    ...createMirrorDerivedGeometrySources(
+      features,
+      sketches,
+      generatedFacesByKey,
+      consumedBodyIds
     )
   ];
+}
+
+export function createMirrorDerivedGeometrySources(
+  features: readonly CadFeatureSummary[],
+  sketches: readonly SketchSnapshot[],
+  generatedFacesByKey: ReadonlyMap<
+    string,
+    CadGeneratedFaceReference
+  > = new Map(),
+  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features)
+): readonly DerivedMirrorGeometrySource[] {
+  const extrudeFeaturesByBodyId = new Map(
+    features
+      .filter(
+        (feature): feature is Extract<CadFeatureSummary, { kind: "extrude" }> =>
+          feature.kind === "extrude"
+      )
+      .map((feature) => [feature.bodyId, feature])
+  );
+
+  return features
+    .filter(
+      (feature): feature is Extract<CadFeatureSummary, { kind: "mirror" }> =>
+        feature.kind === "mirror"
+    )
+    .filter((feature) => !consumedBodyIds.has(feature.bodyId))
+    .map((feature) => {
+      const seedFeature = extrudeFeaturesByBodyId.get(feature.seedBodyId);
+      const seed = seedFeature
+        ? createBooleanSourceForFeature(
+            seedFeature,
+            extrudeFeaturesByBodyId,
+            sketches,
+            generatedFacesByKey
+          )
+        : undefined;
+
+      return {
+        id: feature.bodyId,
+        kind: "mirror" as const,
+        seed: seed ?? createUnavailableExtrudeSource(feature.bodyId),
+        mirrorPlane: feature.mirrorPlane,
+        includeOriginal: feature.includeOriginal,
+        ...(seed
+          ? {}
+          : {
+              placementError: `Mirror feature ${feature.id} cannot be displayed because seed body ${feature.seedBodyId} is not a displayable extrude result.`
+            })
+      };
+    });
 }
 
 export function createExtrudeDerivedGeometrySources(
@@ -545,6 +603,10 @@ function createConsumedBodyIds(
 
         if (feature.kind === "chamfer" || feature.kind === "fillet") {
           return [feature.targetBodyId];
+        }
+
+        if (feature.kind === "mirror" && feature.includeOriginal) {
+          return [feature.seedBodyId];
         }
 
         return [];

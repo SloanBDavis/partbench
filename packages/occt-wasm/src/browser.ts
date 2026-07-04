@@ -93,6 +93,19 @@ import {
   type OcctStepImportResult,
   type OcctStepReaderCapability
 } from "./stepImport";
+import {
+  createOcctCircularPatternMeshWithInstance,
+  createOcctCircularPatternMeshWithLoader,
+  createOcctLinearPatternMeshWithInstance,
+  createOcctLinearPatternMeshWithLoader,
+  type OcctCircularPatternInput,
+  type OcctLinearPatternInput
+} from "./pattern";
+import {
+  createOcctMirrorMeshWithInstance,
+  createOcctMirrorMeshWithLoader,
+  type OcctMirrorInput
+} from "./mirror";
 
 export type {
   OcctBooleanExtrudeInput,
@@ -124,6 +137,9 @@ export type {
   OcctStepImportInput,
   OcctStepImportResult,
   OcctStepReaderCapability,
+  OcctLinearPatternInput,
+  OcctCircularPatternInput,
+  OcctMirrorInput,
   OcctMeshData
 };
 export {
@@ -160,7 +176,13 @@ export {
   createOcctStepImportWithInstance,
   createOcctStepImportWithLoader,
   getOcctStepReaderCapabilityWithInstance,
-  getOcctStepReaderCapabilityWithLoader
+  getOcctStepReaderCapabilityWithLoader,
+  createOcctLinearPatternMeshWithInstance,
+  createOcctLinearPatternMeshWithLoader,
+  createOcctCircularPatternMeshWithInstance,
+  createOcctCircularPatternMeshWithLoader,
+  createOcctMirrorMeshWithInstance,
+  createOcctMirrorMeshWithLoader
 };
 
 type OpenCascadeModuleObject = Record<string, unknown>;

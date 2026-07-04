@@ -1149,6 +1149,10 @@ function formatFeatureStoryTitle(
     return "Chamfer";
   }
 
+  if (feature.kind === "mirror") {
+    return "Mirror";
+  }
+
   return "Fillet";
 }
 
@@ -1179,6 +1183,12 @@ function formatFeatureStoryDetail(
         : "through all";
 
     return `circle · ${depth} · ${feature.direction}`;
+  }
+
+  if (feature.kind === "mirror") {
+    return `${feature.mirrorPlane} plane · ${
+      feature.includeOriginal ? "union with original" : "copy only"
+    }`;
   }
 
   return `${formatOperationLabel(feature.operationMode)} · ${

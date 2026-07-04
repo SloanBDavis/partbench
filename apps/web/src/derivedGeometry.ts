@@ -13,6 +13,7 @@ import {
   type DerivedGeometryBooleanExtrudePrimitiveInputSource,
   type DerivedGeometryErrorDetails,
   type DerivedGeometryMetrics,
+  type DerivedGeometryPatternSeedSource,
   type DerivedGeometryResult,
   type DerivedGeometryRuntime
 } from "./derivedGeometryRuntime";
@@ -32,7 +33,8 @@ export type DerivedGeometrySourceKind =
   | "extrudeBoolean"
   | "revolve"
   | "hole"
-  | "edgeFinish";
+  | "edgeFinish"
+  | "mirror";
 
 export type DerivedGeometrySource =
   | DerivedPrimitiveGeometrySource
@@ -40,7 +42,8 @@ export type DerivedGeometrySource =
   | DerivedBooleanExtrudeGeometrySource
   | DerivedRevolveGeometrySource
   | DerivedHoleGeometrySource
-  | DerivedEdgeFinishGeometrySource;
+  | DerivedEdgeFinishGeometrySource
+  | DerivedMirrorGeometrySource;
 export type DerivedGeometryInput = DerivedGeometrySource | SceneObject;
 
 export interface DerivedPrimitiveGeometrySource {
@@ -146,6 +149,17 @@ export interface DerivedFilletGeometrySource {
   readonly placementError?: string;
 }
 
+export interface DerivedMirrorGeometrySource {
+  readonly id: string;
+  readonly kind: "mirror";
+  readonly seed:
+    | DerivedExtrudeGeometrySource
+    | DerivedBooleanExtrudeGeometrySource;
+  readonly mirrorPlane: "XY" | "XZ" | "YZ";
+  readonly includeOriginal: boolean;
+  readonly placementError?: string;
+}
+
 export type DerivedGeometryEntry =
   | DerivedGeometryUnsupportedEntry
   | DerivedGeometryPendingEntry
@@ -226,7 +240,8 @@ type SupportedDerivedGeometrySource =
   | DerivedBooleanExtrudeGeometrySource
   | DerivedRevolveGeometrySource
   | DerivedHoleGeometrySource
-  | DerivedEdgeFinishGeometrySource;
+  | DerivedEdgeFinishGeometrySource
+  | DerivedMirrorGeometrySource;
 
 interface ActiveDerivedGeometryRequest {
   readonly sourceId: string;
@@ -510,7 +525,8 @@ function toDerivedGeometrySource(
     input.kind === "extrudeBoolean" ||
     input.kind === "revolve" ||
     input.kind === "hole" ||
-    input.kind === "edgeFinish"
+    input.kind === "edgeFinish" ||
+    input.kind === "mirror"
   ) {
     return input;
   }
@@ -539,6 +555,10 @@ function isSupportedDerivedGeometrySource(
 
   if (source.kind === "edgeFinish") {
     return !source.placementError && isSupportedEdgeFinishSource(source);
+  }
+
+  if (source.kind === "mirror") {
+    return !source.placementError;
   }
 
   return isSupportedDerivedGeometryObject(source.object);
@@ -691,6 +711,19 @@ function deriveSourceMesh(
     );
   }
 
+  if (source.kind === "mirror") {
+    if (source.placementError) {
+      throw new Error(source.placementError);
+    }
+
+    return runtime.mirror({
+      id: source.id,
+      seed: createMirrorSeedRuntimeSource(source.seed),
+      mirrorPlane: source.mirrorPlane,
+      includeOriginal: source.includeOriginal
+    });
+  }
+
   const object = source.object as SupportedDerivedGeometryObject;
 
   switch (object.kind) {
@@ -784,6 +817,21 @@ function createPrimitiveBooleanRuntimeSource(
   };
 }
 
+function createMirrorSeedRuntimeSource(
+  seed: DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource
+): DerivedGeometryPatternSeedSource {
+  if (seed.kind === "extrudeBoolean") {
+    return {
+      kind: "booleanExtrudes",
+      operation: seed.operation,
+      target: createBooleanRuntimeSource(seed.target),
+      tool: createPrimitiveBooleanRuntimeSource(seed.tool)
+    };
+  }
+
+  return { kind: "extrude", ...createPrimitiveBooleanRuntimeSource(seed) };
+}
+
 export function transformExtrudeMeshToPlacement(
   mesh: RenderTriangleMesh,
   sketchPlane: DerivedExtrudeGeometrySource["sketchPlane"],
@@ -839,6 +887,13 @@ function getUnsupportedSourceMessage(source: DerivedGeometrySource): string {
       source.placementError ??
       getUnsupportedEdgeFinishSourceMessage(source) ??
       "Edge finish display currently supports one generated rectangle edge on a rectangle authored extrude target only."
+    );
+  }
+
+  if (source.kind === "mirror") {
+    return (
+      source.placementError ??
+      "Mirror display currently supports authored extrude-family seed bodies only."
     );
   }
 
@@ -1058,11 +1113,19 @@ export function createDerivedGeometryCacheKey(
                     radius: source.radius,
                     placementError: source.placementError
                   }
-              : {
-                  kind: source.kind,
-                  dimensions: source.object.dimensions,
-                  transform: source.object.transform
-                };
+              : source.kind === "mirror"
+                ? {
+                    kind: source.kind,
+                    seed: createDerivedGeometryCacheKey(source.seed),
+                    mirrorPlane: source.mirrorPlane,
+                    includeOriginal: source.includeOriginal,
+                    placementError: source.placementError
+                  }
+                : {
+                    kind: source.kind,
+                    dimensions: source.object.dimensions,
+                    transform: source.object.transform
+                  };
 
   return JSON.stringify(base);
 }
@@ -1096,6 +1159,10 @@ export function getDerivedGeometryStatusLabel(
         return "Edge finish display geometry issue";
       }
 
+      if (entry.sourceKind === "mirror") {
+        return "Mirror display geometry issue";
+      }
+
       return "Primitive fallback";
     case "unsupported":
       if (
@@ -1103,7 +1170,8 @@ export function getDerivedGeometryStatusLabel(
         entry.sourceKind === "extrudeBoolean" ||
         entry.sourceKind === "revolve" ||
         entry.sourceKind === "hole" ||
-        entry.sourceKind === "edgeFinish"
+        entry.sourceKind === "edgeFinish" ||
+        entry.sourceKind === "mirror"
       ) {
         return entry.message;
       }

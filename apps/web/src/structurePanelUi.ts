@@ -27,7 +27,15 @@ export interface StructureTreeSummary {
 
 export type AuthoredStructureFeature = Extract<
   CadFeatureSummary,
-  { readonly kind: "extrude" | "revolve" | "hole" | "chamfer" | "fillet" }
+  {
+    readonly kind:
+      | "extrude"
+      | "revolve"
+      | "hole"
+      | "chamfer"
+      | "fillet"
+      | "mirror";
+  }
 >;
 
 export interface StructureLineage {
@@ -75,7 +83,8 @@ export function isAuthoredStructureFeature(
     feature.kind === "revolve" ||
     feature.kind === "hole" ||
     feature.kind === "chamfer" ||
-    feature.kind === "fillet"
+    feature.kind === "fillet" ||
+    feature.kind === "mirror"
   );
 }
 
@@ -85,7 +94,8 @@ export function isAuthoredStructureBody(body: CadBodySnapshot): boolean {
     body.source.type === "sketchRevolveFeature" ||
     body.source.type === "sketchHoleFeature" ||
     body.source.type === "edgeChamferFeature" ||
-    body.source.type === "edgeFilletFeature"
+    body.source.type === "edgeFilletFeature" ||
+    body.source.type === "mirrorFeature"
   );
 }
 
@@ -322,6 +332,10 @@ function getFeatureTargetBodyId(
     feature.kind === "fillet"
   ) {
     return feature.targetBodyId;
+  }
+
+  if (feature.kind === "mirror") {
+    return feature.seedBodyId;
   }
 
   if (
@@ -639,6 +653,12 @@ export function formatFeatureLine(
     return `hole / circle / ${depth} / ${feature.direction} / target ${feature.targetBodyId}`;
   }
 
+  if (feature.kind === "mirror") {
+    return `mirror / ${feature.mirrorPlane} / ${
+      feature.includeOriginal ? "union with original" : "copy only"
+    } / seed ${feature.seedBodyId}`;
+  }
+
   const target =
     (feature.operationMode === "add" || feature.operationMode === "cut") &&
     feature.targetBodyId
@@ -655,6 +675,10 @@ export function formatFeatureSourceLine(
     return `Target ${feature.targetBodyId} / ${formatEdgeFeatureReference(
       feature
     )}`;
+  }
+
+  if (feature.kind === "mirror") {
+    return `Seed ${feature.seedBodyId} / ${feature.mirrorPlane} plane`;
   }
 
   const entityId =
@@ -750,6 +774,10 @@ export function formatFeatureKindLabel(
 
   if (feature.kind === "chamfer") {
     return "Chamfer";
+  }
+
+  if (feature.kind === "mirror") {
+    return "Mirror";
   }
 
   return "Fillet";

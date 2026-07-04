@@ -919,6 +919,138 @@ describe("derivedGeometry", () => {
     ]);
   });
 
+  it("derives mirror sources alongside the surviving seed and dispatches mirror runtime requests", async () => {
+    const engine = createExtrudedRectangleEngine();
+
+    engine.apply({
+      op: "feature.mirror",
+      id: "feat_mirror_1",
+      bodyId: "body_mirror_1",
+      seedBodyId: "body_rect_1",
+      mirrorPlane: "YZ",
+      includeOriginal: false
+    });
+
+    const sources = createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      getProjectStructureFeatures(engine)
+    );
+
+    // includeOriginal=false: the seed body keeps its own display source and
+    // the mirror result renders as an independent reflected copy.
+    expect(sources.map((source) => source.id)).toEqual([
+      "body_rect_1",
+      "body_mirror_1"
+    ]);
+    expect(sources[1]).toMatchObject({
+      id: "body_mirror_1",
+      kind: "mirror",
+      mirrorPlane: "YZ",
+      includeOriginal: false,
+      seed: { id: "body_rect_1", profile: { kind: "rectangle" }, depth: 3 }
+    });
+
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: () => undefined
+    });
+
+    service.reconcile(sources);
+    await flushPromises();
+
+    expect(runtime.inputs).toEqual([
+      expect.objectContaining({ id: "body_rect_1" }),
+      expect.objectContaining({
+        id: "body_mirror_1",
+        mirrorPlane: "YZ",
+        includeOriginal: false,
+        seed: expect.objectContaining({ kind: "extrude", depth: 3 })
+      })
+    ]);
+  });
+
+  it("hides the consumed seed display when a mirror includes the original", async () => {
+    const engine = createExtrudedRectangleEngine();
+
+    engine.apply({
+      op: "feature.mirror",
+      id: "feat_mirror_1",
+      bodyId: "body_mirror_1",
+      seedBodyId: "body_rect_1",
+      mirrorPlane: "XZ",
+      includeOriginal: true
+    });
+
+    const sources = createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      getProjectStructureFeatures(engine)
+    );
+
+    // includeOriginal=true: the union result subsumes the seed, so only the
+    // mirror source renders — no overlapping seed mesh.
+    expect(sources.map((source) => source.id)).toEqual(["body_mirror_1"]);
+    expect(sources[0]).toMatchObject({
+      id: "body_mirror_1",
+      kind: "mirror",
+      mirrorPlane: "XZ",
+      includeOriginal: true
+    });
+  });
+
+  it("reports a placement error for mirror seeds outside the extrude family", async () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XZ" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "rect_1",
+        center: [1.5, 1],
+        width: 1,
+        height: 2
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "axis_1",
+        start: [0, 0],
+        end: [0, 1]
+      },
+      {
+        op: "feature.revolve",
+        id: "feat_revolve_1",
+        bodyId: "body_revolve_1",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        axis: { type: "sketchLine", sketchId: "sketch_1", entityId: "axis_1" },
+        angleDegrees: 360
+      },
+      {
+        op: "feature.mirror",
+        id: "feat_mirror_1",
+        bodyId: "body_mirror_1",
+        seedBodyId: "body_revolve_1",
+        mirrorPlane: "XY",
+        includeOriginal: false
+      }
+    ]);
+
+    const sources = createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      getProjectStructureFeatures(engine)
+    );
+    const mirrorSource = sources.find((source) => source.kind === "mirror");
+
+    expect(mirrorSource).toMatchObject({
+      id: "body_mirror_1",
+      placementError: expect.stringContaining("body_revolve_1")
+    });
+  });
+
   it("derives chained cut sources from active boolean result targets", async () => {
     const engine = createExtrudedRectangleEngine();
 
