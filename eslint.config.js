@@ -6,6 +6,9 @@ import tseslint from "typescript-eslint";
 export default tseslint.config(
   {
     ignores: [
+      "**/.claude/**",
+      "**/.metrics/**",
+      "**/.playwright-mcp/**",
       "**/dist/**",
       "**/dist-geometry-worker-smoke/**",
       "**/node_modules/**",
@@ -17,6 +20,7 @@ export default tseslint.config(
     languageOptions: {
       globals: {
         Buffer: "readonly",
+        TextEncoder: "readonly",
         URL: "readonly",
         WebSocket: "readonly",
         console: "readonly",

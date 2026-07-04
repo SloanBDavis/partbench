@@ -7,6 +7,7 @@ import type {
   CadReferenceHealthEntry,
   CurrentSketchConstraintKind,
   FeatureMirrorPlane,
+  FeaturePatternAxis,
   NamedGeneratedReferenceEntry,
   SelectionReferenceCandidatesQueryResponse,
   SketchDimensionTarget,
@@ -18,8 +19,12 @@ import type {
 import { useState } from "react";
 import type {
   FeatureEdgeFinishForm,
+  FeatureCircularPatternEdit,
+  FeatureCircularPatternForm,
   FeatureExtrudeForm,
   FeatureHoleForm,
+  FeatureLinearPatternEdit,
+  FeatureLinearPatternForm,
   FeatureMirrorEdit,
   FeatureMirrorForm,
   FeatureShellEdit,
@@ -37,6 +42,13 @@ import {
   formatMirrorPlaneLabel,
   getMirrorPanelState
 } from "../mirrorPanelUi";
+import {
+  PATTERN_AXIS_OPTIONS,
+  createCircularPatternDefaultName,
+  createLinearPatternDefaultName,
+  formatPatternAxisLabel,
+  getPatternPanelState
+} from "../patternPanelUi";
 import {
   buildShellGeneratedOpenFaceRefs,
   createShellDefaultName,
@@ -166,16 +178,23 @@ export interface ModelingActionsPanelProps {
     target: ReturnType<typeof createSelectedGeneratedReference>
   ) => void;
   readonly onSelectBody?: (bodyId: string) => void;
+  readonly onCreateLinearPattern?: (form: FeatureLinearPatternForm) => void;
+  readonly onCreateCircularPattern?: (form: FeatureCircularPatternForm) => void;
   readonly onCreateMirror?: (form: FeatureMirrorForm) => void;
   readonly onCreateShell?: (form: FeatureShellForm) => void;
+  readonly onUpdateLinearPattern?: (
+    featureId: string,
+    edit: FeatureLinearPatternEdit
+  ) => void;
+  readonly onUpdateCircularPattern?: (
+    featureId: string,
+    edit: FeatureCircularPatternEdit
+  ) => void;
   readonly onUpdateMirror?: (
     featureId: string,
     edit: FeatureMirrorEdit
   ) => void;
-  readonly onUpdateShell?: (
-    featureId: string,
-    edit: FeatureShellEdit
-  ) => void;
+  readonly onUpdateShell?: (featureId: string, edit: FeatureShellEdit) => void;
   readonly onDeleteFeature?: (featureId: string) => void;
   readonly onDeleteEntity?: (sketchId: string, entityId: string) => void;
   readonly onRevolveEntity?: (
@@ -265,6 +284,8 @@ export function ModelingActionsPanel({
   onCreateConstraint,
   onCreateDimension,
   onCreateEdgeFinish,
+  onCreateLinearPattern,
+  onCreateCircularPattern,
   onCreateMirror,
   onCreateShell,
   onCreateSideHoleSketch,
@@ -275,6 +296,8 @@ export function ModelingActionsPanel({
   onNameGeneratedReference,
   onRepairNamedReference,
   onSelectBody,
+  onUpdateLinearPattern,
+  onUpdateCircularPattern,
   onUpdateMirror,
   onUpdateShell,
   onDeleteFeature,
@@ -408,11 +431,15 @@ export function ModelingActionsPanel({
           context={context}
           sketches={sketches}
           shellTargetGeneratedReferences={shellTargetGeneratedReferences}
+          onCreateLinearPattern={onCreateLinearPattern}
+          onCreateCircularPattern={onCreateCircularPattern}
           onCreateMirror={onCreateMirror}
           onCreateShell={onCreateShell}
           onCreateSketchOnFace={onCreateSketchOnFace}
           onDeleteFeature={onDeleteFeature}
           onSelectSketch={onSelectSketch}
+          onUpdateLinearPattern={onUpdateLinearPattern}
+          onUpdateCircularPattern={onUpdateCircularPattern}
           onUpdateMirror={onUpdateMirror}
           onUpdateShell={onUpdateShell}
         />
@@ -2149,11 +2176,15 @@ function BodyWorkbench({
   disabled,
   sketches,
   shellTargetGeneratedReferences,
+  onCreateLinearPattern,
+  onCreateCircularPattern,
   onCreateMirror,
   onCreateShell,
   onCreateSketchOnFace,
   onDeleteFeature,
   onSelectSketch,
+  onUpdateLinearPattern,
+  onUpdateCircularPattern,
   onUpdateMirror,
   onUpdateShell
 }: {
@@ -2165,6 +2196,8 @@ function BodyWorkbench({
   readonly disabled: boolean;
   readonly sketches: readonly SketchSnapshot[];
   readonly shellTargetGeneratedReferences?: BodyGeneratedReferencesQueryResponse;
+  readonly onCreateLinearPattern?: (form: FeatureLinearPatternForm) => void;
+  readonly onCreateCircularPattern?: (form: FeatureCircularPatternForm) => void;
   readonly onCreateMirror?: (form: FeatureMirrorForm) => void;
   readonly onCreateShell?: (form: FeatureShellForm) => void;
   readonly onCreateSketchOnFace?: (form: SketchCreateOnFaceForm) => void;
@@ -2174,10 +2207,15 @@ function BodyWorkbench({
     featureId: string,
     edit: FeatureMirrorEdit
   ) => void;
-  readonly onUpdateShell?: (
+  readonly onUpdateLinearPattern?: (
     featureId: string,
-    edit: FeatureShellEdit
+    edit: FeatureLinearPatternEdit
   ) => void;
+  readonly onUpdateCircularPattern?: (
+    featureId: string,
+    edit: FeatureCircularPatternEdit
+  ) => void;
+  readonly onUpdateShell?: (featureId: string, edit: FeatureShellEdit) => void;
 }) {
   const sketchAction = actions.find(
     (action) => action.id === "sketch.createOnFace"
@@ -2384,6 +2422,15 @@ function BodyWorkbench({
           </p>
         )}
       </section>
+      <PatternWorkbenchCard
+        body={context.body}
+        disabled={disabled}
+        feature={context.feature}
+        onCreateLinearPattern={onCreateLinearPattern}
+        onCreateCircularPattern={onCreateCircularPattern}
+        onUpdateLinearPattern={onUpdateLinearPattern}
+        onUpdateCircularPattern={onUpdateCircularPattern}
+      />
       <MirrorWorkbenchCard
         body={context.body}
         disabled={disabled}
@@ -2404,6 +2451,287 @@ function BodyWorkbench({
         onUpdateShell={onUpdateShell}
       />
     </div>
+  );
+}
+
+function PatternWorkbenchCard({
+  body,
+  disabled,
+  feature,
+  onCreateLinearPattern,
+  onCreateCircularPattern,
+  onUpdateLinearPattern,
+  onUpdateCircularPattern
+}: {
+  readonly body: CadBodySnapshot;
+  readonly disabled: boolean;
+  readonly feature?: CadFeatureSummary;
+  readonly onCreateLinearPattern?: (form: FeatureLinearPatternForm) => void;
+  readonly onCreateCircularPattern?: (form: FeatureCircularPatternForm) => void;
+  readonly onUpdateLinearPattern?: (
+    featureId: string,
+    edit: FeatureLinearPatternEdit
+  ) => void;
+  readonly onUpdateCircularPattern?: (
+    featureId: string,
+    edit: FeatureCircularPatternEdit
+  ) => void;
+}) {
+  const state = getPatternPanelState(body, feature);
+  const [createMode, setCreateMode] = useState<"linear" | "circular">(
+    state.mode === "editCircular" ? "circular" : "linear"
+  );
+  const [axis, setAxis] = useState<FeaturePatternAxis>(
+    state.mode === "editLinear" ? state.axis : "x"
+  );
+  const [spacing, setSpacing] = useState(
+    state.mode === "editLinear" ? state.spacing : 10
+  );
+  const [linearInstanceCount, setLinearInstanceCount] = useState(
+    state.mode === "editLinear" ? state.instanceCount : 3
+  );
+  const [rotationAxis, setRotationAxis] = useState<FeaturePatternAxis>(
+    state.mode === "editCircular" ? state.rotationAxis : "z"
+  );
+  const [totalAngleDegrees, setTotalAngleDegrees] = useState(
+    state.mode === "editCircular" ? state.totalAngleDegrees : 360
+  );
+  const [circularInstanceCount, setCircularInstanceCount] = useState(
+    state.mode === "editCircular" ? state.instanceCount : 6
+  );
+
+  if (state.mode === "unavailable") {
+    return (
+      <section className="workbench-card">
+        <div className="workbench-card-heading">
+          <h3>Pattern</h3>
+        </div>
+        <p className="empty-state compact">{state.reason}</p>
+      </section>
+    );
+  }
+
+  const isLinearEdit = state.mode === "editLinear";
+  const isCircularEdit = state.mode === "editCircular";
+  const isEdit = isLinearEdit || isCircularEdit;
+  const linearValid =
+    Number.isFinite(spacing) &&
+    spacing > 0 &&
+    Number.isInteger(linearInstanceCount) &&
+    linearInstanceCount >= 2;
+  const circularValid =
+    Number.isFinite(totalAngleDegrees) &&
+    totalAngleDegrees > 0 &&
+    totalAngleDegrees <= 360 &&
+    Number.isInteger(circularInstanceCount) &&
+    circularInstanceCount >= 2;
+  const linearHasChanges =
+    isLinearEdit &&
+    (axis !== state.axis ||
+      spacing !== state.spacing ||
+      linearInstanceCount !== state.instanceCount);
+  const circularHasChanges =
+    isCircularEdit &&
+    (rotationAxis !== state.rotationAxis ||
+      totalAngleDegrees !== state.totalAngleDegrees ||
+      circularInstanceCount !== state.instanceCount);
+
+  return (
+    <section className="workbench-card">
+      <div className="workbench-card-heading">
+        <h3>
+          {isLinearEdit
+            ? "Edit linear pattern"
+            : isCircularEdit
+              ? "Edit circular pattern"
+              : "Pattern body"}
+        </h3>
+        <small>
+          {isEdit ? `Feature ${state.featureId}` : `Seed ${state.seedLabel}`}
+        </small>
+      </div>
+      {!isEdit && (
+        <div className="segmented-control" aria-label="Pattern type">
+          <button
+            type="button"
+            className={createMode === "linear" ? "selected" : undefined}
+            disabled={disabled}
+            onClick={() => setCreateMode("linear")}
+          >
+            Linear
+          </button>
+          <button
+            type="button"
+            className={createMode === "circular" ? "selected" : undefined}
+            disabled={disabled}
+            onClick={() => setCreateMode("circular")}
+          >
+            Circular
+          </button>
+        </div>
+      )}
+      {(createMode === "linear" || isLinearEdit) && !isCircularEdit && (
+        <>
+          <div className="field-grid three">
+            <label>
+              Axis
+              <select
+                value={axis}
+                disabled={disabled}
+                onChange={(event) =>
+                  setAxis(event.currentTarget.value as FeaturePatternAxis)
+                }
+              >
+                {PATTERN_AXIS_OPTIONS.map((item) => (
+                  <option key={item} value={item}>
+                    {formatPatternAxisLabel(item)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <NumberInput
+              disabled={disabled}
+              label="Spacing"
+              value={spacing}
+              onChange={setSpacing}
+            />
+            <NumberInput
+              disabled={disabled}
+              label="Instances"
+              value={linearInstanceCount}
+              onChange={setLinearInstanceCount}
+            />
+          </div>
+          {!linearValid && (
+            <p className="empty-state compact">
+              Spacing must be positive and instances must be a whole number of
+              at least 2.
+            </p>
+          )}
+          <button
+            type="button"
+            disabled={
+              disabled ||
+              !linearValid ||
+              (isLinearEdit
+                ? !linearHasChanges || !onUpdateLinearPattern
+                : !onCreateLinearPattern)
+            }
+            onClick={() => {
+              if (isLinearEdit) {
+                onUpdateLinearPattern?.(state.featureId, {
+                  ...(axis !== state.axis ? { axis } : {}),
+                  ...(spacing !== state.spacing ? { spacing } : {}),
+                  ...(linearInstanceCount !== state.instanceCount
+                    ? { instanceCount: linearInstanceCount }
+                    : {})
+                });
+                return;
+              }
+
+              onCreateLinearPattern?.({
+                id: "",
+                bodyId: "",
+                seedBodyId: state.seedBodyId,
+                name: createLinearPatternDefaultName(state.seedLabel, axis),
+                axis,
+                spacing,
+                instanceCount: linearInstanceCount
+              });
+            }}
+          >
+            {isLinearEdit
+              ? "Apply linear pattern edits"
+              : "Create linear pattern"}
+          </button>
+        </>
+      )}
+      {(createMode === "circular" || isCircularEdit) && !isLinearEdit && (
+        <>
+          <div className="field-grid three">
+            <label>
+              Axis
+              <select
+                value={rotationAxis}
+                disabled={disabled}
+                onChange={(event) =>
+                  setRotationAxis(
+                    event.currentTarget.value as FeaturePatternAxis
+                  )
+                }
+              >
+                {PATTERN_AXIS_OPTIONS.map((item) => (
+                  <option key={item} value={item}>
+                    {formatPatternAxisLabel(item)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <NumberInput
+              disabled={disabled}
+              label="Angle"
+              value={totalAngleDegrees}
+              onChange={setTotalAngleDegrees}
+            />
+            <NumberInput
+              disabled={disabled}
+              label="Instances"
+              value={circularInstanceCount}
+              onChange={setCircularInstanceCount}
+            />
+          </div>
+          {!circularValid && (
+            <p className="empty-state compact">
+              Angle must be greater than 0 and at most 360; instances must be a
+              whole number of at least 2.
+            </p>
+          )}
+          <button
+            type="button"
+            disabled={
+              disabled ||
+              !circularValid ||
+              (isCircularEdit
+                ? !circularHasChanges || !onUpdateCircularPattern
+                : !onCreateCircularPattern)
+            }
+            onClick={() => {
+              if (isCircularEdit) {
+                onUpdateCircularPattern?.(state.featureId, {
+                  ...(rotationAxis !== state.rotationAxis
+                    ? { rotationAxis }
+                    : {}),
+                  ...(totalAngleDegrees !== state.totalAngleDegrees
+                    ? { totalAngleDegrees }
+                    : {}),
+                  ...(circularInstanceCount !== state.instanceCount
+                    ? { instanceCount: circularInstanceCount }
+                    : {})
+                });
+                return;
+              }
+
+              onCreateCircularPattern?.({
+                id: "",
+                bodyId: "",
+                seedBodyId: state.seedBodyId,
+                name: createCircularPatternDefaultName(
+                  state.seedLabel,
+                  rotationAxis
+                ),
+                rotationAxis,
+                totalAngleDegrees,
+                instanceCount: circularInstanceCount
+              });
+            }}
+          >
+            {isCircularEdit
+              ? "Apply circular pattern edits"
+              : "Create circular pattern"}
+          </button>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -2562,10 +2890,7 @@ function ShellWorkbenchCard({
   readonly feature?: CadFeatureSummary;
   readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
   readonly onCreateShell?: (form: FeatureShellForm) => void;
-  readonly onUpdateShell?: (
-    featureId: string,
-    edit: FeatureShellEdit
-  ) => void;
+  readonly onUpdateShell?: (featureId: string, edit: FeatureShellEdit) => void;
 }) {
   const state = getShellPanelState(body, feature);
   const [wallThickness, setWallThickness] = useState(
@@ -2612,9 +2937,7 @@ function ShellWorkbenchCard({
   );
   const canSubmit =
     hasValidThickness &&
-    (state.mode === "create" ||
-      hasThicknessChange ||
-      refsChanged);
+    (state.mode === "create" || hasThicknessChange || refsChanged);
 
   return (
     <section className="workbench-card">
@@ -2690,9 +3013,7 @@ function ShellWorkbenchCard({
       <button
         type="button"
         disabled={
-          disabled ||
-          !canSubmit ||
-          (isEdit ? !onUpdateShell : !onCreateShell)
+          disabled || !canSubmit || (isEdit ? !onUpdateShell : !onCreateShell)
         }
         onClick={() => {
           if (isEdit) {
@@ -2724,7 +3045,9 @@ function getGeneratedShellOpenFaceStableIds(
 ): readonly string[] {
   return refs
     .filter(
-      (ref): ref is Extract<
+      (
+        ref
+      ): ref is Extract<
         FeatureShellForm["openFaceRefs"][number],
         { readonly kind: "generatedFace" }
       > => ref.kind === "generatedFace"
@@ -2954,7 +3277,9 @@ function FaceReferenceWorkbench({
   const action = actions.find(
     (candidate) => candidate.id === "sketch.createOnFace"
   );
-  const shellAction = actions.find((candidate) => candidate.id === "feature.shell");
+  const shellAction = actions.find(
+    (candidate) => candidate.id === "feature.shell"
+  );
   const sideHoleAction = actions.find(
     (candidate) => candidate.id === "sketch.createSideHole"
   );
@@ -3037,7 +3362,10 @@ function FaceReferenceWorkbench({
               id: "",
               bodyId: "",
               targetBodyId: face.bodyId,
-              name: createShellDefaultName(face.label || face.bodyId, shellThickness),
+              name: createShellDefaultName(
+                face.label || face.bodyId,
+                shellThickness
+              ),
               wallThickness: shellThickness,
               openFaceRefs: [
                 {

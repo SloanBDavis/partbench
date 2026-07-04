@@ -3492,6 +3492,523 @@ export function createV14ReleaseSampleCheckpointPayloads(
   });
 }
 
+export type V15ReleaseSampleId =
+  | "v15-linear-pattern"
+  | "v15-circular-pattern"
+  | "v15-mirror"
+  | "v15-shell"
+  | "v15-expression-chain";
+
+export type V15ReleaseSampleWorkflowTag =
+  | "linear-pattern"
+  | "circular-pattern"
+  | "mirror"
+  | "shell"
+  | "parameter-expression"
+  | "feature-edit"
+  | "project-health"
+  | "source-boundary"
+  | "wcad-round-trip";
+
+export interface V15ReleaseSampleFeatureExpectation {
+  readonly featureId: string;
+  readonly kind:
+    | "extrude"
+    | "linearPattern"
+    | "circularPattern"
+    | "mirror"
+    | "shell";
+  readonly bodyId?: BodyId;
+  readonly seedBodyId?: BodyId;
+  readonly targetBodyId?: BodyId;
+  readonly spacing?: number;
+  readonly instanceCount?: number;
+  readonly totalAngleDegrees?: number;
+  readonly mirrorPlane?: "XY" | "XZ" | "YZ";
+  readonly includeOriginal?: boolean;
+  readonly wallThickness?: number;
+}
+
+export interface V15ReleaseSampleParameterExpectation {
+  readonly parameterId: string;
+  readonly name: string;
+  readonly value: number;
+  readonly expression?: string;
+  readonly references?: readonly string[];
+  readonly dependents?: readonly string[];
+}
+
+export interface V15ReleaseSampleBlockedBatchExpectation {
+  readonly label: string;
+  readonly ops: readonly CadOp[];
+  readonly expectedCode: string;
+}
+
+export interface V15ReleaseSampleFixture {
+  readonly id: V15ReleaseSampleId;
+  readonly title: string;
+  readonly description: string;
+  readonly units: DocumentUnits;
+  readonly workflowTags: readonly V15ReleaseSampleWorkflowTag[];
+  readonly expectedFeatures: readonly V15ReleaseSampleFeatureExpectation[];
+  readonly expectedParameters?: readonly V15ReleaseSampleParameterExpectation[];
+  readonly expectedBlockedBatches?: readonly V15ReleaseSampleBlockedBatchExpectation[];
+  readonly knownLimitations: readonly string[];
+  readonly ops: readonly CadOp[];
+}
+
+const V15_LINEAR_SEED_BODY = "v15_linear_seed_body";
+const V15_LINEAR_RESULT_BODY = "v15_linear_result_body";
+const V15_CIRCULAR_SEED_BODY = "v15_circular_seed_body";
+const V15_CIRCULAR_RESULT_BODY = "v15_circular_result_body";
+const V15_MIRROR_SEED_BODY = "v15_mirror_seed_body";
+const V15_MIRROR_RESULT_BODY = "v15_mirror_result_body";
+const V15_SHELL_TARGET_BODY = "v15_shell_target_body";
+const V15_SHELL_RESULT_BODY = "v15_shell_result_body";
+const V15_SHELL_OPEN_FACE = `generated:face:${V15_SHELL_TARGET_BODY}:endCap`;
+const V15_EXPR_BODY = "v15_expression_body";
+
+export const V15_RELEASE_SAMPLE_FIXTURES = [
+  {
+    id: "v15-linear-pattern",
+    title: "V15 linear pattern sample",
+    description:
+      "Creates an authored rectangle body, applies a linear pattern, and edits spacing through the command layer.",
+    units: "mm",
+    workflowTags: [
+      "linear-pattern",
+      "feature-edit",
+      "project-health",
+      "source-boundary",
+      "wcad-round-trip"
+    ],
+    expectedFeatures: [
+      {
+        featureId: "v15_linear_seed_feature",
+        kind: "extrude",
+        bodyId: V15_LINEAR_SEED_BODY
+      },
+      {
+        featureId: "v15_linear_pattern_feature",
+        kind: "linearPattern",
+        bodyId: V15_LINEAR_RESULT_BODY,
+        seedBodyId: V15_LINEAR_SEED_BODY,
+        spacing: 40,
+        instanceCount: 4
+      }
+    ],
+    knownLimitations: [
+      "This sample verifies source, command, and lifecycle behavior; exact fused B-rep shape quality remains covered by geometry-boundary tests."
+    ],
+    ops: [
+      {
+        op: "sketch.create",
+        id: "v15_linear_seed_sketch",
+        name: "V15 linear seed",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v15_linear_seed_sketch",
+        id: "v15_linear_seed_rect",
+        center: [0, 0],
+        width: 20,
+        height: 20
+      },
+      {
+        op: "feature.extrude",
+        id: "v15_linear_seed_feature",
+        bodyId: V15_LINEAR_SEED_BODY,
+        name: "V15 linear seed body",
+        sketchId: "v15_linear_seed_sketch",
+        entityId: "v15_linear_seed_rect",
+        depth: 10,
+        operationMode: "newBody"
+      },
+      {
+        op: "feature.linearPattern",
+        id: "v15_linear_pattern_feature",
+        bodyId: V15_LINEAR_RESULT_BODY,
+        name: "V15 linear pattern",
+        seedBodyId: V15_LINEAR_SEED_BODY,
+        axis: "x",
+        spacing: 30,
+        instanceCount: 4
+      },
+      {
+        op: "feature.updateLinearPattern",
+        id: "v15_linear_pattern_feature",
+        spacing: 40
+      }
+    ]
+  },
+  {
+    id: "v15-circular-pattern",
+    title: "V15 circular pattern sample",
+    description:
+      "Creates an authored cylinder, applies a circular pattern, and edits the instance count through the command layer.",
+    units: "mm",
+    workflowTags: [
+      "circular-pattern",
+      "feature-edit",
+      "project-health",
+      "source-boundary",
+      "wcad-round-trip"
+    ],
+    expectedFeatures: [
+      {
+        featureId: "v15_circular_seed_feature",
+        kind: "extrude",
+        bodyId: V15_CIRCULAR_SEED_BODY
+      },
+      {
+        featureId: "v15_circular_pattern_feature",
+        kind: "circularPattern",
+        bodyId: V15_CIRCULAR_RESULT_BODY,
+        seedBodyId: V15_CIRCULAR_SEED_BODY,
+        totalAngleDegrees: 360,
+        instanceCount: 8
+      }
+    ],
+    knownLimitations: [
+      "This sample verifies the supported global-axis circular pattern contract and edit path."
+    ],
+    ops: [
+      {
+        op: "sketch.create",
+        id: "v15_circular_seed_sketch",
+        name: "V15 circular seed",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "v15_circular_seed_sketch",
+        id: "v15_circular_seed_circle",
+        center: [12, 0],
+        radius: 5
+      },
+      {
+        op: "feature.extrude",
+        id: "v15_circular_seed_feature",
+        bodyId: V15_CIRCULAR_SEED_BODY,
+        name: "V15 circular seed body",
+        sketchId: "v15_circular_seed_sketch",
+        entityId: "v15_circular_seed_circle",
+        depth: 10,
+        operationMode: "newBody"
+      },
+      {
+        op: "feature.circularPattern",
+        id: "v15_circular_pattern_feature",
+        bodyId: V15_CIRCULAR_RESULT_BODY,
+        name: "V15 circular pattern",
+        seedBodyId: V15_CIRCULAR_SEED_BODY,
+        rotationAxis: "z",
+        totalAngleDegrees: 360,
+        instanceCount: 6
+      },
+      {
+        op: "feature.updateCircularPattern",
+        id: "v15_circular_pattern_feature",
+        instanceCount: 8
+      }
+    ]
+  },
+  {
+    id: "v15-mirror",
+    title: "V15 mirror sample",
+    description:
+      "Creates an authored rectangle body, mirrors it across a standard plane, and edits includeOriginal without consuming the seed body.",
+    units: "mm",
+    workflowTags: [
+      "mirror",
+      "feature-edit",
+      "project-health",
+      "source-boundary",
+      "wcad-round-trip"
+    ],
+    expectedFeatures: [
+      {
+        featureId: "v15_mirror_seed_feature",
+        kind: "extrude",
+        bodyId: V15_MIRROR_SEED_BODY
+      },
+      {
+        featureId: "v15_mirror_feature",
+        kind: "mirror",
+        bodyId: V15_MIRROR_RESULT_BODY,
+        seedBodyId: V15_MIRROR_SEED_BODY,
+        mirrorPlane: "YZ",
+        includeOriginal: false
+      }
+    ],
+    knownLimitations: [
+      "This sample covers standard-plane body mirror, not offset or named-plane mirror."
+    ],
+    ops: [
+      {
+        op: "sketch.create",
+        id: "v15_mirror_seed_sketch",
+        name: "V15 mirror seed",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v15_mirror_seed_sketch",
+        id: "v15_mirror_seed_rect",
+        center: [8, 0],
+        width: 12,
+        height: 8
+      },
+      {
+        op: "feature.extrude",
+        id: "v15_mirror_seed_feature",
+        bodyId: V15_MIRROR_SEED_BODY,
+        name: "V15 mirror seed body",
+        sketchId: "v15_mirror_seed_sketch",
+        entityId: "v15_mirror_seed_rect",
+        depth: 6,
+        operationMode: "newBody"
+      },
+      {
+        op: "feature.mirror",
+        id: "v15_mirror_feature",
+        bodyId: V15_MIRROR_RESULT_BODY,
+        name: "V15 mirror result",
+        seedBodyId: V15_MIRROR_SEED_BODY,
+        mirrorPlane: "YZ",
+        includeOriginal: true
+      },
+      {
+        op: "feature.updateMirror",
+        id: "v15_mirror_feature",
+        includeOriginal: false
+      }
+    ]
+  },
+  {
+    id: "v15-shell",
+    title: "V15 shell sample",
+    description:
+      "Creates an authored box body, names the top generated face, shells the body open at that face, and edits wall thickness.",
+    units: "mm",
+    workflowTags: [
+      "shell",
+      "feature-edit",
+      "project-health",
+      "source-boundary",
+      "wcad-round-trip"
+    ],
+    expectedFeatures: [
+      {
+        featureId: "v15_shell_target_feature",
+        kind: "extrude",
+        bodyId: V15_SHELL_TARGET_BODY
+      },
+      {
+        featureId: "v15_shell_feature",
+        kind: "shell",
+        bodyId: V15_SHELL_RESULT_BODY,
+        targetBodyId: V15_SHELL_TARGET_BODY,
+        wallThickness: 5
+      }
+    ],
+    knownLimitations: [
+      "This sample uses a generated face reference; imported topology-anchor open faces are covered by imported-body commandability tests."
+    ],
+    ops: [
+      {
+        op: "sketch.create",
+        id: "v15_shell_target_sketch",
+        name: "V15 shell target",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v15_shell_target_sketch",
+        id: "v15_shell_target_rect",
+        center: [0, 0],
+        width: 100,
+        height: 80
+      },
+      {
+        op: "feature.extrude",
+        id: "v15_shell_target_feature",
+        bodyId: V15_SHELL_TARGET_BODY,
+        name: "V15 shell target body",
+        sketchId: "v15_shell_target_sketch",
+        entityId: "v15_shell_target_rect",
+        depth: 50,
+        operationMode: "newBody"
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "v15_shell_top_face",
+        bodyId: V15_SHELL_TARGET_BODY,
+        stableId: V15_SHELL_OPEN_FACE
+      },
+      {
+        op: "feature.shell",
+        id: "v15_shell_feature",
+        bodyId: V15_SHELL_RESULT_BODY,
+        name: "V15 open shell",
+        targetBodyId: V15_SHELL_TARGET_BODY,
+        wallThickness: 3,
+        openFaceRefs: [{ kind: "namedReference", name: "v15_shell_top_face" }]
+      },
+      {
+        op: "feature.updateShell",
+        id: "v15_shell_feature",
+        wallThickness: 5
+      }
+    ]
+  },
+  {
+    id: "v15-expression-chain",
+    title: "V15 parameter expression sample",
+    description:
+      "Creates a parameter expression chain, binds sketch dimensions to it, rebuilds through a source parameter edit, and keeps cycle rejection test data with the fixture.",
+    units: "mm",
+    workflowTags: [
+      "parameter-expression",
+      "feature-edit",
+      "project-health",
+      "source-boundary",
+      "wcad-round-trip"
+    ],
+    expectedFeatures: [
+      {
+        featureId: "v15_expression_feature",
+        kind: "extrude",
+        bodyId: V15_EXPR_BODY
+      }
+    ],
+    expectedParameters: [
+      {
+        parameterId: "v15_plate_width",
+        name: "plate_width",
+        value: 150,
+        dependents: ["v15_plate_height"]
+      },
+      {
+        parameterId: "v15_plate_height",
+        name: "plate_height",
+        value: 90,
+        expression: "plate_width * 0.6",
+        references: ["v15_plate_width"]
+      }
+    ],
+    expectedBlockedBatches: [
+      {
+        label: "expression cycle is rejected",
+        expectedCode: "PARAMETER_CIRCULAR_REFERENCE",
+        ops: [
+          {
+            op: "parameter.setExpression",
+            id: "v15_plate_width",
+            expression: "plate_height + 10"
+          }
+        ]
+      }
+    ],
+    knownLimitations: [
+      "This sample covers arithmetic expression dependencies and circular rejection, not V16 scripting or trigonometric extensions."
+    ],
+    ops: [
+      {
+        op: "parameter.create",
+        id: "v15_plate_width",
+        name: "plate_width",
+        value: 100
+      },
+      {
+        op: "parameter.create",
+        id: "v15_plate_height",
+        name: "plate_height",
+        value: 1
+      },
+      {
+        op: "parameter.setExpression",
+        id: "v15_plate_height",
+        expression: "plate_width * 0.6"
+      },
+      {
+        op: "sketch.create",
+        id: "v15_expression_sketch",
+        name: "V15 expression plate",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v15_expression_sketch",
+        id: "v15_expression_rect",
+        center: [0, 0],
+        width: 100,
+        height: 60
+      },
+      {
+        op: "sketch.dimension.create",
+        id: "v15_expression_width_dim",
+        name: "width",
+        sketchId: "v15_expression_sketch",
+        entityId: "v15_expression_rect",
+        target: { entityKind: "rectangle", role: "width" },
+        parameterId: "v15_plate_width"
+      },
+      {
+        op: "sketch.dimension.create",
+        id: "v15_expression_height_dim",
+        name: "height",
+        sketchId: "v15_expression_sketch",
+        entityId: "v15_expression_rect",
+        target: { entityKind: "rectangle", role: "height" },
+        parameterId: "v15_plate_height"
+      },
+      {
+        op: "feature.extrude",
+        id: "v15_expression_feature",
+        bodyId: V15_EXPR_BODY,
+        name: "V15 expression plate body",
+        sketchId: "v15_expression_sketch",
+        entityId: "v15_expression_rect",
+        depth: 5,
+        operationMode: "newBody"
+      },
+      {
+        op: "parameter.update",
+        id: "v15_plate_width",
+        value: 150
+      }
+    ]
+  }
+] as const satisfies readonly V15ReleaseSampleFixture[];
+
+export function listV15ReleaseSampleFixtures(): readonly V15ReleaseSampleFixture[] {
+  return V15_RELEASE_SAMPLE_FIXTURES;
+}
+
+export function getV15ReleaseSampleFixture(
+  id: V15ReleaseSampleId
+): V15ReleaseSampleFixture {
+  const fixture = V15_RELEASE_SAMPLE_FIXTURES.find(
+    (candidate) => candidate.id === id
+  );
+
+  if (!fixture) {
+    throw new Error(`Unknown V15 release sample fixture: ${id}`);
+  }
+
+  return fixture;
+}
+
+export function createV15ReleaseSampleBatch(id: V15ReleaseSampleId): CadBatch {
+  return {
+    version: "cadops.v1",
+    mode: "commit",
+    ops: getV15ReleaseSampleFixture(id).ops.map((op) => ({ ...op }))
+  };
+}
+
 function createV13TopologyMatchSnapshot({
   checkpointId,
   bodyId,

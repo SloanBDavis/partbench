@@ -17,14 +17,18 @@ import {
   buildAddSketchRectangleOp,
   buildFeatureDeleteOp,
   buildFeatureChamferOp,
+  buildFeatureCircularPatternOp,
   buildFeatureExtrudeOp,
   buildFeatureFilletOp,
   buildFeatureHoleOp,
+  buildFeatureLinearPatternOp,
   buildFeatureRevolveOp,
+  buildFeatureUpdateCircularPatternOp,
   buildFeatureUpdateChamferOp,
   buildFeatureUpdateExtrudeOp,
   buildFeatureUpdateFilletOp,
   buildFeatureUpdateHoleOp,
+  buildFeatureUpdateLinearPatternOp,
   buildFeatureUpdateRevolveOp,
   buildDeleteNamedReferenceOp,
   buildDeleteParameterOp,
@@ -382,6 +386,77 @@ describe("cad command builders", () => {
       op: "sketch.deleteEntity",
       sketchId: "sketch_1",
       entityId: "entity_1"
+    });
+  });
+
+  it("builds V15 pattern feature commands", () => {
+    expect(
+      buildFeatureLinearPatternOp({
+        id: " feat_linear ",
+        bodyId: " body_linear ",
+        seedBodyId: "body_seed",
+        name: " Linear copies ",
+        axis: "x",
+        spacing: 30,
+        instanceCount: 4
+      })
+    ).toEqual({
+      op: "feature.linearPattern",
+      id: "feat_linear",
+      bodyId: "body_linear",
+      seedBodyId: "body_seed",
+      name: "Linear copies",
+      axis: "x",
+      spacing: 30,
+      instanceCount: 4
+    });
+
+    expect(
+      buildFeatureUpdateLinearPatternOp("feat_linear", {
+        axis: "y",
+        spacing: 40,
+        instanceCount: 5
+      })
+    ).toEqual({
+      op: "feature.updateLinearPattern",
+      id: "feat_linear",
+      axis: "y",
+      spacing: 40,
+      instanceCount: 5
+    });
+
+    expect(
+      buildFeatureCircularPatternOp({
+        id: "   ",
+        bodyId: "",
+        seedBodyId: "body_seed",
+        name: "   ",
+        rotationAxis: "z",
+        totalAngleDegrees: 360,
+        instanceCount: 6
+      })
+    ).toEqual({
+      op: "feature.circularPattern",
+      id: undefined,
+      bodyId: undefined,
+      seedBodyId: "body_seed",
+      rotationAxis: "z",
+      totalAngleDegrees: 360,
+      instanceCount: 6
+    });
+
+    expect(
+      buildFeatureUpdateCircularPatternOp("feat_circular", {
+        rotationAxis: "x",
+        totalAngleDegrees: 180,
+        instanceCount: 3
+      })
+    ).toEqual({
+      op: "feature.updateCircularPattern",
+      id: "feat_circular",
+      rotationAxis: "x",
+      totalAngleDegrees: 180,
+      instanceCount: 3
     });
   });
 

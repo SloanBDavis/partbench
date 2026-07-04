@@ -1583,7 +1583,9 @@ describe("geometry-kernel facade", () => {
       throw new Error("Unexpected mesh factory call.");
     };
     let captured:
-      | Parameters<NonNullable<GeometryKernelMeshFactories["createShellMesh"]>>[0]
+      | Parameters<
+          NonNullable<GeometryKernelMeshFactories["createShellMesh"]>
+        >[0]
       | undefined;
     const factories: GeometryKernelMeshFactories = {
       createBoxMesh: unusedFactory,

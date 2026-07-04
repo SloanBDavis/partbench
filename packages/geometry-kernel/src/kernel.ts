@@ -919,11 +919,13 @@ export type GeometryKernelStepImportFactory = (
 ) => Promise<GeometryKernelStepImportResult>;
 
 export type GeometryKernelLinearPatternMeshFactory = (
-  input: Omit<LinearPatternRequest, "id" | "version" | "op"> & TessellationOptions
+  input: Omit<LinearPatternRequest, "id" | "version" | "op"> &
+    TessellationOptions
 ) => Promise<GeometryKernelMeshResult>;
 
 export type GeometryKernelCircularPatternMeshFactory = (
-  input: Omit<CircularPatternRequest, "id" | "version" | "op"> & TessellationOptions
+  input: Omit<CircularPatternRequest, "id" | "version" | "op"> &
+    TessellationOptions
 ) => Promise<GeometryKernelMeshResult>;
 
 export type GeometryKernelMirrorMeshFactory = (
@@ -1564,7 +1566,8 @@ function createLinearPatternMesh(
   if (!factories.createLinearPatternMesh) {
     return Promise.reject({
       code: "UNAVAILABLE_BINDING",
-      message: "Linear pattern tessellation requires an OCCT linear pattern mesh factory."
+      message:
+        "Linear pattern tessellation requires an OCCT linear pattern mesh factory."
     } satisfies GeometryKernelError);
   }
 
@@ -1585,7 +1588,8 @@ function createCircularPatternMesh(
   if (!factories.createCircularPatternMesh) {
     return Promise.reject({
       code: "UNAVAILABLE_BINDING",
-      message: "Circular pattern tessellation requires an OCCT circular pattern mesh factory."
+      message:
+        "Circular pattern tessellation requires an OCCT circular pattern mesh factory."
     } satisfies GeometryKernelError);
   }
 

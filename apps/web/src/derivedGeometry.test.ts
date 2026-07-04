@@ -1027,8 +1027,7 @@ describe("derivedGeometry", () => {
       getGeneratedFacesByKey(engine, ["body_rect_1"])
     );
     const shellSource = sources.find(
-      (source): source is DerivedShellGeometrySource =>
-        source.kind === "shell"
+      (source): source is DerivedShellGeometrySource => source.kind === "shell"
     );
 
     expect(sources.map((source) => source.id)).toEqual(["body_shell_1"]);

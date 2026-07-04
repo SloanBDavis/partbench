@@ -7,6 +7,7 @@ import {
 } from "@web-cad/cad-core";
 import type {
   ProjectExportReadinessQueryResponse,
+  ProjectImportReadinessQueryResponse,
   ProjectTopologyIdentityReadinessQueryResponse
 } from "@web-cad/cad-protocol";
 import { createElement } from "react";
@@ -344,6 +345,51 @@ describe("ProjectJsonPanel", () => {
     );
   });
 
+  it("renders STEP import readiness outside JSON controls", () => {
+    const engine = new CadEngine();
+    const markup = renderToStaticMarkup(
+      createElement(ProjectJsonPanel, {
+        disabled: false,
+        importReadiness: readImportReadiness(engine),
+        projectJson: "",
+        storageCapabilities: createProjectStorageCapabilityStatus(
+          createJsonFallbackTarget()
+        ),
+        workflow: createProjectJsonWorkflowState({
+          currentProject: exportCadProject(engine),
+          draftJson: "",
+          draftSource: { kind: "empty" }
+        }),
+        onProjectJsonChange: () => undefined,
+        onProjectFileLoaded: () => undefined,
+        onProjectFileError: () => undefined,
+        onExport: () => undefined,
+        onDownload: () => undefined,
+        onImport: () => undefined
+      })
+    );
+    const importSectionStart = markup.indexOf('aria-label="STEP import"');
+    const importSectionEnd = markup.indexOf(
+      'id="project-opfs-cache-status"',
+      importSectionStart
+    );
+    const importMarkup = markup.slice(importSectionStart, importSectionEnd);
+    const jsonInterchangeStart = markup.indexOf(
+      "<summary>JSON import/export</summary>"
+    );
+    const jsonButtonRow = markup.slice(jsonInterchangeStart);
+
+    expect(importMarkup).toContain("STEP import");
+    expect(importMarkup).toContain("Import STEP");
+    expect(importMarkup).toContain("Imported bodies");
+    expect(importMarkup).toContain("Reader");
+    expect(importMarkup).toContain("Select a STEP file");
+    expect(jsonButtonRow).not.toContain("Import STEP");
+    expect(importMarkup).not.toMatch(
+      /rendererId|meshId|selectionBufferId|opfsPath|fileHandle|V15|Slice/i
+    );
+  });
+
   it("renders compact saved reference status and JSON payload warning", () => {
     const engine = createTopologyIdentityEngine();
     const markup = renderToStaticMarkup(
@@ -596,6 +642,21 @@ function readExportReadiness(
 
   if (!response.ok || response.query !== "project.exportReadiness") {
     throw new Error("Expected project export readiness.");
+  }
+
+  return response;
+}
+
+function readImportReadiness(
+  engine: CadEngine
+): ProjectImportReadinessQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.importReadiness" }
+  });
+
+  if (!response.ok || response.query !== "project.importReadiness") {
+    throw new Error("Expected project import readiness.");
   }
 
   return response;

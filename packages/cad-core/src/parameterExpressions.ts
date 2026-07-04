@@ -10,7 +10,11 @@ import type {
 type ExpressionAst =
   | { readonly kind: "literal"; readonly value: number }
   | { readonly kind: "parameter"; readonly name: string }
-  | { readonly kind: "unary"; readonly operator: "-"; readonly operand: ExpressionAst }
+  | {
+      readonly kind: "unary";
+      readonly operator: "-";
+      readonly operand: ExpressionAst;
+    }
   | {
       readonly kind: "binary";
       readonly operator: "+" | "-" | "*" | "/";
@@ -30,7 +34,11 @@ type Token =
       readonly raw: string;
       readonly position: number;
     }
-  | { readonly kind: "identifier"; readonly value: string; readonly position: number }
+  | {
+      readonly kind: "identifier";
+      readonly value: string;
+      readonly position: number;
+    }
   | {
       readonly kind: "parameterName";
       readonly value: string;
@@ -61,16 +69,6 @@ export interface ParameterExpressionEvaluationResult {
   readonly valueChanges: readonly ParameterExpressionValueChange[];
 }
 
-interface ParameterExpressionNodeState {
-  readonly parameter: CadParameterSnapshot;
-  readonly expression?: string;
-  readonly ast?: ExpressionAst;
-  readonly referenceNames: readonly string[];
-  readonly references: readonly ParameterId[];
-  readonly dependents: readonly ParameterId[];
-  readonly diagnostics: readonly CadParameterExpressionDiagnostic[];
-}
-
 const BUILTIN_ARITIES = new Map<string, readonly number[]>([
   ["max", [2]],
   ["min", [2]],
@@ -81,11 +79,12 @@ const BUILTIN_ARITIES = new Map<string, readonly number[]>([
   ["ceil", [1]]
 ]);
 
-export function parseParameterExpression(
-  expression: string
-):
+export function parseParameterExpression(expression: string):
   | { readonly ok: true; readonly parsed: ParsedExpression }
-  | { readonly ok: false; readonly diagnostic: CadParameterExpressionDiagnostic } {
+  | {
+      readonly ok: false;
+      readonly diagnostic: CadParameterExpressionDiagnostic;
+    } {
   const tokens = tokenizeExpression(expression);
 
   if (!tokens.ok) {
@@ -100,13 +99,18 @@ export function evaluateParameterExpressions(
   parameters: readonly CadParameterSnapshot[],
   extraDiagnostics: readonly CadParameterExpressionDiagnostic[] = []
 ): ParameterExpressionEvaluationResult {
-  const parameterById = new Map(parameters.map((parameter) => [parameter.id, parameter]));
+  const parameterById = new Map(
+    parameters.map((parameter) => [parameter.id, parameter])
+  );
   const parameterIds = parameters.map((parameter) => parameter.id);
   const parameterNamesById = new Map(
     parameters.map((parameter) => [parameter.id, parameter.name] as const)
   );
   const parametersByName = createParameterNameIndex(parameters);
-  const nodeDiagnostics = new Map<ParameterId, CadParameterExpressionDiagnostic[]>();
+  const nodeDiagnostics = new Map<
+    ParameterId,
+    CadParameterExpressionDiagnostic[]
+  >();
   const astById = new Map<ParameterId, ExpressionAst>();
   const referenceNamesById = new Map<ParameterId, readonly string[]>();
   const referencesById = new Map<ParameterId, readonly ParameterId[]>();
@@ -193,7 +197,9 @@ export function evaluateParameterExpressions(
     referencesById,
     parameterNamesById
   );
-  const cycleParameterIds = new Set(cycles.flatMap((cycle) => cycle.parameterIds));
+  const cycleParameterIds = new Set(
+    cycles.flatMap((cycle) => cycle.parameterIds)
+  );
 
   for (const cycle of cycles) {
     for (const parameterId of cycle.parameterIds) {
@@ -218,8 +224,13 @@ export function evaluateParameterExpressions(
     }
   }
 
-  const evaluationOrder = topologicallySortParameters(parameterIds, referencesById);
-  const values = new Map(parameters.map((parameter) => [parameter.id, parameter.value]));
+  const evaluationOrder = topologicallySortParameters(
+    parameterIds,
+    referencesById
+  );
+  const values = new Map(
+    parameters.map((parameter) => [parameter.id, parameter.value])
+  );
   const valueChanges: ParameterExpressionValueChange[] = [];
 
   for (const parameterId of evaluationOrder) {
@@ -280,7 +291,12 @@ export function evaluateParameterExpressions(
   );
 
   return {
-    status: cycles.length > 0 ? "circular" : hasBlockingDiagnostics ? "invalid" : "valid",
+    status:
+      cycles.length > 0
+        ? "circular"
+        : hasBlockingDiagnostics
+          ? "invalid"
+          : "valid",
     nodes,
     evaluationOrder,
     cycles,
@@ -289,11 +305,12 @@ export function evaluateParameterExpressions(
   };
 }
 
-function tokenizeExpression(
-  expression: string
-):
+function tokenizeExpression(expression: string):
   | { readonly ok: true; readonly tokens: readonly Token[] }
-  | { readonly ok: false; readonly diagnostic: CadParameterExpressionDiagnostic } {
+  | {
+      readonly ok: false;
+      readonly diagnostic: CadParameterExpressionDiagnostic;
+    } {
   const tokens: Token[] = [];
   let position = 0;
 
@@ -308,7 +325,10 @@ function tokenizeExpression(
     if (/[0-9]/.test(char)) {
       const start = position;
       position += 1;
-      while (position < expression.length && /[0-9]/.test(expression[position])) {
+      while (
+        position < expression.length &&
+        /[0-9]/.test(expression[position])
+      ) {
         position += 1;
       }
       if (expression[position] === ".") {
@@ -370,7 +390,8 @@ function tokenizeExpression(
           ok: false,
           diagnostic: {
             code: "EXPRESSION_PARSE_ERROR",
-            message: "Bracketed parameter reference is missing a closing bracket.",
+            message:
+              "Bracketed parameter reference is missing a closing bracket.",
             expression,
             position: start,
             expected: "]",
@@ -447,11 +468,17 @@ class ExpressionParser {
 
   parse():
     | { readonly ok: true; readonly parsed: ParsedExpression }
-    | { readonly ok: false; readonly diagnostic: CadParameterExpressionDiagnostic } {
+    | {
+        readonly ok: false;
+        readonly diagnostic: CadParameterExpressionDiagnostic;
+      } {
     if (this.#peek().kind === "eof") {
       return {
         ok: false,
-        diagnostic: this.#parseError("Expression must not be empty.", "expression")
+        diagnostic: this.#parseError(
+          "Expression must not be empty.",
+          "expression"
+        )
       };
     }
 
@@ -481,13 +508,19 @@ class ExpressionParser {
 
   #parseExpression():
     | { readonly ok: true; readonly ast: ExpressionAst }
-    | { readonly ok: false; readonly diagnostic: CadParameterExpressionDiagnostic } {
+    | {
+        readonly ok: false;
+        readonly diagnostic: CadParameterExpressionDiagnostic;
+      } {
     return this.#parseAdditive();
   }
 
   #parseAdditive():
     | { readonly ok: true; readonly ast: ExpressionAst }
-    | { readonly ok: false; readonly diagnostic: CadParameterExpressionDiagnostic } {
+    | {
+        readonly ok: false;
+        readonly diagnostic: CadParameterExpressionDiagnostic;
+      } {
     let left = this.#parseMultiplicative();
     if (!left.ok) {
       return left;
@@ -510,7 +543,10 @@ class ExpressionParser {
 
   #parseMultiplicative():
     | { readonly ok: true; readonly ast: ExpressionAst }
-    | { readonly ok: false; readonly diagnostic: CadParameterExpressionDiagnostic } {
+    | {
+        readonly ok: false;
+        readonly diagnostic: CadParameterExpressionDiagnostic;
+      } {
     let left = this.#parseUnary();
     if (!left.ok) {
       return left;
@@ -533,14 +569,20 @@ class ExpressionParser {
 
   #parseUnary():
     | { readonly ok: true; readonly ast: ExpressionAst }
-    | { readonly ok: false; readonly diagnostic: CadParameterExpressionDiagnostic } {
+    | {
+        readonly ok: false;
+        readonly diagnostic: CadParameterExpressionDiagnostic;
+      } {
     if (this.#peek().kind === "-") {
       this.#consume();
       const operand = this.#parseUnary();
       if (!operand.ok) {
         return operand;
       }
-      return { ok: true, ast: { kind: "unary", operator: "-", operand: operand.ast } };
+      return {
+        ok: true,
+        ast: { kind: "unary", operator: "-", operand: operand.ast }
+      };
     }
 
     return this.#parsePrimary();
@@ -548,7 +590,10 @@ class ExpressionParser {
 
   #parsePrimary():
     | { readonly ok: true; readonly ast: ExpressionAst }
-    | { readonly ok: false; readonly diagnostic: CadParameterExpressionDiagnostic } {
+    | {
+        readonly ok: false;
+        readonly diagnostic: CadParameterExpressionDiagnostic;
+      } {
     const token = this.#peek();
 
     if (token.kind === "number") {
@@ -583,7 +628,10 @@ class ExpressionParser {
       if (this.#peek().kind !== ")") {
         return {
           ok: false,
-          diagnostic: this.#parseError("Function call is missing a closing parenthesis.", ")")
+          diagnostic: this.#parseError(
+            "Function call is missing a closing parenthesis.",
+            ")"
+          )
         };
       }
 
@@ -606,7 +654,10 @@ class ExpressionParser {
       if (this.#peek().kind !== ")") {
         return {
           ok: false,
-          diagnostic: this.#parseError("Grouped expression is missing a closing parenthesis.", ")")
+          diagnostic: this.#parseError(
+            "Grouped expression is missing a closing parenthesis.",
+            ")"
+          )
         };
       }
 
@@ -624,7 +675,12 @@ class ExpressionParser {
   }
 
   #peek(): Token {
-    return this.tokens[this.#index] ?? { kind: "eof", position: this.expression.length };
+    return (
+      this.tokens[this.#index] ?? {
+        kind: "eof",
+        position: this.expression.length
+      }
+    );
   }
 
   #consume(): Token {
@@ -684,11 +740,17 @@ function evaluateAst(
     readonly parameter: CadParameterSnapshot;
     readonly expression?: string;
     readonly values: ReadonlyMap<ParameterId, number>;
-    readonly parametersByName: ReadonlyMap<string, readonly CadParameterSnapshot[]>;
+    readonly parametersByName: ReadonlyMap<
+      string,
+      readonly CadParameterSnapshot[]
+    >;
   }
 ):
   | { readonly ok: true; readonly value: number }
-  | { readonly ok: false; readonly diagnostic: CadParameterExpressionDiagnostic } {
+  | {
+      readonly ok: false;
+      readonly diagnostic: CadParameterExpressionDiagnostic;
+    } {
   switch (ast.kind) {
     case "literal":
       return { ok: true, value: ast.value };
@@ -836,7 +898,10 @@ function validateEvaluatedNumber(
   }
 ):
   | { readonly ok: true; readonly value: number }
-  | { readonly ok: false; readonly diagnostic: CadParameterExpressionDiagnostic } {
+  | {
+      readonly ok: false;
+      readonly diagnostic: CadParameterExpressionDiagnostic;
+    } {
   if (Number.isFinite(value)) {
     return { ok: true, value };
   }
@@ -938,12 +1003,18 @@ function findParameterCycles(
         strongConnect(reference);
         lowLinkById.set(
           parameterId,
-          Math.min(lowLinkById.get(parameterId) ?? 0, lowLinkById.get(reference) ?? 0)
+          Math.min(
+            lowLinkById.get(parameterId) ?? 0,
+            lowLinkById.get(reference) ?? 0
+          )
         );
       } else if (onStack.has(reference)) {
         lowLinkById.set(
           parameterId,
-          Math.min(lowLinkById.get(parameterId) ?? 0, indexById.get(reference) ?? 0)
+          Math.min(
+            lowLinkById.get(parameterId) ?? 0,
+            indexById.get(reference) ?? 0
+          )
         );
       }
     }
@@ -965,7 +1036,9 @@ function findParameterCycles(
       }
     }
 
-    const selfReferences = (referencesById.get(parameterId) ?? []).includes(parameterId);
+    const selfReferences = (referencesById.get(parameterId) ?? []).includes(
+      parameterId
+    );
     if (component.length > 1 || selfReferences) {
       const ordered = parameterIds.filter((id) => component.includes(id));
       cycles.push({

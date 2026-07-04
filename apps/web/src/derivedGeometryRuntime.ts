@@ -162,8 +162,7 @@ export interface DerivedGeometryMirrorInput {
   readonly includeOriginal: boolean;
 }
 
-export type DerivedGeometryShellTargetSource =
-  DerivedGeometryPatternSeedSource;
+export type DerivedGeometryShellTargetSource = DerivedGeometryPatternSeedSource;
 
 export interface DerivedGeometryShellInput {
   readonly id: string;

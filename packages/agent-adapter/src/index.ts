@@ -423,8 +423,10 @@ export interface CadOpsAgentParameterGetQueryResponse {
   readonly parameter: CadParameterSnapshot;
 }
 
-export interface CadOpsAgentProjectParameterEvaluationQueryResponse
-  extends Omit<ProjectParameterEvaluationQueryResponse, "ok"> {
+export interface CadOpsAgentProjectParameterEvaluationQueryResponse extends Omit<
+  ProjectParameterEvaluationQueryResponse,
+  "ok"
+> {
   readonly ok: true;
   readonly requestId: string;
   readonly adapterVersion: AgentAdapterVersion;
@@ -1773,7 +1775,9 @@ function createOperationReview(
           index,
           op,
           "modify",
-          op.expression === undefined || op.expression === null || op.expression.trim() === ""
+          op.expression === undefined ||
+            op.expression === null ||
+            op.expression.trim() === ""
             ? `Clear expression on parameter ${op.id}`
             : `Set expression on parameter ${op.id}`
         ),

@@ -39,6 +39,7 @@ import type {
   ProjectExactExportQueryResponse,
   ProjectExportReadinessQueryResponse,
   ProjectHealthQueryResponse,
+  ProjectImportReadinessQueryResponse,
   ProjectParameterEvaluationQueryResponse,
   ProjectTopologyIdentityReadinessQueryResponse,
   ReferenceHealthQueryResponse,
@@ -79,16 +80,20 @@ import {
   buildDeleteSketchOp,
   buildFeatureDeleteOp,
   buildFeatureChamferOp,
+  buildFeatureCircularPatternOp,
   buildFeatureExtrudeOp,
   buildFeatureFilletOp,
   buildFeatureHoleOp,
+  buildFeatureLinearPatternOp,
   buildFeatureMirrorOp,
   buildFeatureRevolveOp,
   buildFeatureShellOp,
   buildFeatureUpdateChamferOp,
+  buildFeatureUpdateCircularPatternOp,
   buildFeatureUpdateExtrudeOp,
   buildFeatureUpdateFilletOp,
   buildFeatureUpdateHoleOp,
+  buildFeatureUpdateLinearPatternOp,
   buildFeatureUpdateMirrorOp,
   buildFeatureUpdateRevolveOp,
   buildFeatureUpdateShellOp,
@@ -111,8 +116,12 @@ import {
   WEB_UI_ACTOR,
   type DimensionCommandForm,
   type FeatureEdgeFinishForm,
+  type FeatureCircularPatternEdit,
+  type FeatureCircularPatternForm,
   type FeatureExtrudeForm,
   type FeatureHoleForm,
+  type FeatureLinearPatternEdit,
+  type FeatureLinearPatternForm,
   type FeatureMirrorEdit,
   type FeatureMirrorForm,
   type FeatureRevolveForm,
@@ -502,6 +511,19 @@ function readProjectExportReadiness():
     : undefined;
 }
 
+function readProjectImportReadiness():
+  | ProjectImportReadinessQueryResponse
+  | undefined {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.importReadiness" }
+  });
+
+  return response.ok && response.query === "project.importReadiness"
+    ? response
+    : undefined;
+}
+
 function readProjectTopologyIdentityReadiness():
   | ProjectTopologyIdentityReadinessQueryResponse
   | undefined {
@@ -604,6 +626,35 @@ function copyBytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   copy.set(bytes);
 
   return copy.buffer;
+}
+
+function formatStepImportDryRunPreview(
+  fileName: string,
+  response: CadAsyncBatchResponse
+): string {
+  const bodyCount = response.ok ? (response.createdBodyIds?.length ?? 0) : 0;
+  const checkpointCount = response.importedStepCheckpointPayloads?.length ?? 0;
+  const diagnostics = response.importedStepDiagnostics ?? [];
+  const lines = [
+    `Import ${fileName}?`,
+    "",
+    `Bodies: ${bodyCount}`,
+    `Shape evidence records: ${checkpointCount}`
+  ];
+
+  if (diagnostics.length > 0) {
+    lines.push("", "Diagnostics:");
+    for (const diagnostic of diagnostics.slice(0, 6)) {
+      lines.push(`- ${diagnostic.message}`);
+    }
+    if (diagnostics.length > 6) {
+      lines.push(`- ${diagnostics.length - 6} more diagnostic(s)`);
+    }
+  } else {
+    lines.push("", "Diagnostics: none reported");
+  }
+
+  return lines.join("\n");
 }
 
 function readBodyGeneratedReferences(bodyId: string | undefined): {
@@ -1484,6 +1535,7 @@ export function App() {
   const projectStructure = readProjectStructure();
   const projectHealth = readProjectHealth(derivedExactMetadata);
   const projectExportReadiness = readProjectExportReadiness();
+  const projectImportReadiness = readProjectImportReadiness();
   const projectTopologyIdentityReadiness =
     readProjectTopologyIdentityReadiness();
   const sketchExtrudeBodies = useMemo(
@@ -2392,6 +2444,20 @@ export function App() {
     );
   }
 
+  async function createLinearPattern(form: FeatureLinearPatternForm) {
+    await commitOps(
+      [buildFeatureLinearPatternOp(form)],
+      (response) => response.createdBodyIds?.[0] ?? (form.bodyId || selectedId)
+    );
+  }
+
+  async function createCircularPattern(form: FeatureCircularPatternForm) {
+    await commitOps(
+      [buildFeatureCircularPatternOp(form)],
+      (response) => response.createdBodyIds?.[0] ?? (form.bodyId || selectedId)
+    );
+  }
+
   async function createMirror(form: FeatureMirrorForm) {
     await commitOps(
       [buildFeatureMirrorOp(form)],
@@ -2403,6 +2469,42 @@ export function App() {
     await commitOps(
       [buildFeatureShellOp(form)],
       (response) => response.createdBodyIds?.[0] ?? (form.bodyId || selectedId)
+    );
+  }
+
+  async function updateAuthoredLinearPattern(
+    featureId: string,
+    edit: FeatureLinearPatternEdit
+  ) {
+    const feature = projectStructure.features.find(
+      (candidate) => candidate.id === featureId
+    );
+
+    if (feature?.kind !== "linearPattern") {
+      return;
+    }
+
+    await commitOps(
+      [buildFeatureUpdateLinearPatternOp(feature.id, edit)],
+      () => feature.bodyId
+    );
+  }
+
+  async function updateAuthoredCircularPattern(
+    featureId: string,
+    edit: FeatureCircularPatternEdit
+  ) {
+    const feature = projectStructure.features.find(
+      (candidate) => candidate.id === featureId
+    );
+
+    if (feature?.kind !== "circularPattern") {
+      return;
+    }
+
+    await commitOps(
+      [buildFeatureUpdateCircularPatternOp(feature.id, edit)],
+      () => feature.bodyId
     );
   }
 
@@ -2424,7 +2526,10 @@ export function App() {
     );
   }
 
-  async function updateAuthoredShell(featureId: string, edit: FeatureShellEdit) {
+  async function updateAuthoredShell(
+    featureId: string,
+    edit: FeatureShellEdit
+  ) {
     const feature = projectStructure.features.find(
       (candidate) => candidate.id === featureId
     );
@@ -2433,7 +2538,10 @@ export function App() {
       return;
     }
 
-    await commitOps([buildFeatureUpdateShellOp(feature.id, edit)], () => feature.bodyId);
+    await commitOps(
+      [buildFeatureUpdateShellOp(feature.id, edit)],
+      () => feature.bodyId
+    );
   }
 
   function focusSketch(sketchId: string, entityId?: string) {
@@ -3346,6 +3454,152 @@ export function App() {
     setProjectMessageTone("info");
   }
 
+  async function openProjectStepImport(): Promise<boolean> {
+    try {
+      const target = window as unknown as WcadFilePickerTargetLike;
+
+      if (typeof target.showOpenFilePicker !== "function") {
+        throw new Error("File System Access open picker is unavailable.");
+      }
+
+      const handles = await target.showOpenFilePicker({
+        multiple: false,
+        types: [
+          {
+            description: "STEP CAD file",
+            accept: {
+              "application/octet-stream": [".step", ".stp"]
+            }
+          }
+        ],
+        excludeAcceptAllOption: false
+      });
+      const handle = handles[0];
+
+      if (!handle) {
+        throw new Error("No STEP file was selected.");
+      }
+
+      const file = await handle.getFile();
+      await importProjectStepBytes(
+        await readBytesFromWcadFile(file),
+        file.name ?? handle.name ?? "import.step"
+      );
+
+      return true;
+    } catch (error) {
+      if (isFilePickerAbort(error)) {
+        setProjectMessage("STEP import was cancelled.");
+        setProjectMessageTone("info");
+        return true;
+      }
+
+      if (projectStorageCapabilities.jsonUploadAvailable) {
+        setProjectMessage(
+          "Direct STEP open failed; choose a STEP file to upload."
+        );
+        setProjectMessageTone("error");
+        return false;
+      }
+
+      setProjectMessage(
+        error instanceof Error ? error.message : "Could not open STEP file."
+      );
+      setProjectMessageTone("error");
+      return true;
+    }
+  }
+
+  async function importProjectStepBytes(bytes: Uint8Array, fileName: string) {
+    const payloadId = `step_import_${Date.now().toString(36)}_${Math.random()
+      .toString(36)
+      .slice(2)}`;
+    const op: CadOp = {
+      op: "project.importStep",
+      sourceFileName: fileName,
+      sourceFormat: "step",
+      payloadRef: {
+        kind: "transient",
+        payloadId,
+        byteLength: bytes.byteLength
+      },
+      maxBodyCount: 1
+    };
+
+    stepImportPayloadStoreRef.current.putPayload(payloadId, bytes);
+    setCommandPending(true);
+    setCommandError(undefined);
+    setCommandNotice(undefined);
+    setProjectMessage(`Previewing ${fileName}...`);
+    setProjectMessageTone("info");
+
+    try {
+      const dryRun = await commandExecutor.executeBatch(
+        buildBatch("dryRun", [op], WEB_UI_ACTOR)
+      );
+
+      if (!dryRun.ok) {
+        setCommandError(dryRun.error.message);
+        setProjectMessage(dryRun.error.message);
+        setProjectMessageTone("error");
+        return;
+      }
+
+      const confirmed = window.confirm(
+        formatStepImportDryRunPreview(fileName, dryRun)
+      );
+
+      if (!confirmed) {
+        setProjectMessage("STEP import preview was cancelled.");
+        setProjectMessageTone("info");
+        return;
+      }
+
+      const response = await commandExecutor.executeBatch(
+        buildBatch("commit", [op], WEB_UI_ACTOR)
+      );
+
+      if (!response.ok) {
+        setCommandError(response.error.message);
+        setProjectMessage(response.error.message);
+        setProjectMessageTone("error");
+        return;
+      }
+
+      const createdBodyIds = response.createdBodyIds ?? [];
+      if (createdBodyIds.length === 0) {
+        setCommandError("STEP import succeeded without returning a body.");
+        setProjectMessage("STEP import succeeded without returning a body.");
+        setProjectMessageTone("error");
+        return;
+      }
+
+      syncDocument(createdBodyIds[0]);
+      setWcadTopologyCheckpointPayloadCache((current) =>
+        mergeWcadTopologyCheckpointPayloadInputCache(
+          current,
+          response.importedStepCheckpointPayloads
+        )
+      );
+      setProjectFile((current) => markProjectFileDirty(current));
+      setProjectMessage(
+        `Imported ${fileName}: ${createdBodyIds.length} bod${
+          createdBodyIds.length === 1 ? "y" : "ies"
+        }.`
+      );
+      setProjectMessageTone("info");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Could not import STEP file.";
+      setCommandError(message);
+      setProjectMessage(message);
+      setProjectMessageTone("error");
+    } finally {
+      stepImportPayloadStoreRef.current.deletePayload(payloadId);
+      setCommandPending(false);
+    }
+  }
+
   async function openProjectWcad(): Promise<boolean> {
     try {
       const handle = await pickWcadOpenFile(
@@ -4005,7 +4259,9 @@ export function App() {
             namedReferences={namedReferences}
             namedReferenceHealthByName={namedReferenceHealthByName}
             selectedNamedReferenceName={selectedNamedReferenceName}
-            shellTargetGeneratedReferences={selectedShellTargetGeneratedReferences}
+            shellTargetGeneratedReferences={
+              selectedShellTargetGeneratedReferences
+            }
             sketches={sketches}
             onAddEntity={(sketchId, kind, form) =>
               void addSketchEntity(sketchId, kind, form)
@@ -4022,6 +4278,8 @@ export function App() {
             onCreateSideHoleSketch={(form, targetBodyId) =>
               void createSideHoleSketch(form, targetBodyId)
             }
+            onCreateLinearPattern={(form) => void createLinearPattern(form)}
+            onCreateCircularPattern={(form) => void createCircularPattern(form)}
             onCreateMirror={(form) => void createMirror(form)}
             onCreateShell={(form) => void createShell(form)}
             onCreateSketch={(form) => void createSketch(form)}
@@ -4039,6 +4297,12 @@ export function App() {
               void repairNamedReference(name, target)
             }
             onSelectBody={selectObject}
+            onUpdateLinearPattern={(featureId, edit) =>
+              void updateAuthoredLinearPattern(featureId, edit)
+            }
+            onUpdateCircularPattern={(featureId, edit) =>
+              void updateAuthoredCircularPattern(featureId, edit)
+            }
             onUpdateMirror={(featureId, edit) =>
               void updateAuthoredMirror(featureId, edit)
             }
@@ -4076,6 +4340,7 @@ export function App() {
             <ProjectJsonPanel
               disabled={commandPending}
               exportReadiness={projectExportReadiness}
+              importReadiness={projectImportReadiness}
               topologyIdentityReadiness={projectTopologyIdentityReadiness}
               visualizationDownloadAvailable={
                 projectStorageCapabilities.jsonDownloadAvailable
@@ -4089,8 +4354,12 @@ export function App() {
               message={projectMessage}
               messageTone={projectMessageTone}
               onOpenWcad={openProjectWcad}
+              onOpenStep={openProjectStepImport}
               onOpenWcadFileLoaded={(bytes, fileName) =>
                 void importProjectWcadBytes(bytes, fileName, "uploadedFallback")
+              }
+              onStepFileLoaded={(bytes, fileName) =>
+                void importProjectStepBytes(bytes, fileName)
               }
               onProjectJsonChange={(value) => {
                 setProjectJson(value);

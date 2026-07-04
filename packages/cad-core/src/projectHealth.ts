@@ -1039,8 +1039,7 @@ function createAuthoredShellHealth(
         createIssueFromGeneratedReferenceError(validation.error, {
           bodyId: feature.targetBodyId,
           stableId,
-          referenceName:
-            ref.kind === "namedReference" ? ref.name : undefined
+          referenceName: ref.kind === "namedReference" ? ref.name : undefined
         })
       );
     }

@@ -2261,7 +2261,11 @@ function ParameterControls({
                 </label>
                 <label>
                   Expression status
-                  <input type="text" value={selectedExpressionStatus} readOnly />
+                  <input
+                    type="text"
+                    value={selectedExpressionStatus}
+                    readOnly
+                  />
                 </label>
               </div>
               {selectedEvaluationNode?.diagnostics.length ? (

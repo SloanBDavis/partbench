@@ -19,12 +19,15 @@ V13 added source-of-truth perpendicular line constraints. Schema V14 added the
 first authored non-extrude feature source records for `feature.revolve`.
 Schema V15 added source-of-truth circular hole feature records for
 `feature.hole`. Schema V16 added command-first source-of-truth edge-finishing
-feature records for `feature.chamfer` and `feature.fillet`. Current exports use
-the lowest schema required by source truth: `web-cad.project.v16` for ordinary
+feature records for `feature.chamfer` and `feature.fillet`. Schema V19 added
+V15 source records for imported STEP bodies, linear patterns, circular
+patterns, mirror, shell, and parameter expressions. Current exports use the
+lowest schema required by source truth: `web-cad.project.v16` for ordinary
 current feature source, `web-cad.project.v17` when V11 advanced sketch solver
-source records are present, and `web-cad.project.v18` when V13 topology
-identity source records are present. The loader still accepts V1 through V18
-projects through explicit validation/migration. The
+source records are present, `web-cad.project.v18` when V13 topology identity
+source records are present, and `web-cad.project.v19` when V15 source records
+are present. The loader still accepts V1 through V19 projects through explicit
+validation/migration. The
 `web-cad.project.*` names are retained as compatibility schema identifiers
 after the Partbench product rename; changing them would require a deliberate
 project-format migration. V8 completed the first native package release:
@@ -34,7 +37,8 @@ exact STEP export for supported bodies. V11 Tranche C introduces
 tangent, concentric, equal length, equal radius, angle, and symmetry. V13
 introduced `web-cad.project.v18` and `partbench.wcad.v2` for topology
 identity source records, B-rep checkpoint metadata, explicit repair records,
-and authoritative checkpoint payload entries. V14 reused the V13 storage foundation. V15 introduces `web-cad.project.v19`
+and authoritative checkpoint payload entries. V14 reused the V13 storage
+foundation. V15 introduced `web-cad.project.v19`
 for new source records that cannot be represented by V18: `ImportedBodyFeature`,
 `LinearPatternFeature`, `CircularPatternFeature`, `MirrorFeature`,
 `ShellFeature`, and `CadParameter.expression`. See `docs/v15.md` for the V15
@@ -65,8 +69,8 @@ schemaVersion: web-cad.project.v15
 schemaVersion: web-cad.project.v16
 schemaVersion: web-cad.project.v17
 schemaVersion: web-cad.project.v18
-schemaVersion: web-cad.project.v19  (planned; V15 imported bodies, patterns,
-                                      mirror, shell, parameter expressions)
+schemaVersion: web-cad.project.v19  (V15 imported bodies, patterns, mirror,
+                                      shell, parameter expressions)
 ```
 
 It is produced by:
@@ -163,7 +167,7 @@ ProjectV16OrV17OrV18OrV19 {
   schemaVersion: "web-cad.project.v16"
                | "web-cad.project.v17"
                | "web-cad.project.v18"
-               | "web-cad.project.v19"  // (planned)
+               | "web-cad.project.v19"
   document: {
     units: "mm" | "cm" | "m" | "in"
     objects: SceneObject[]
@@ -893,8 +897,8 @@ web-cad.project.v15
 web-cad.project.v16
 web-cad.project.v17
 web-cad.project.v18
-web-cad.project.v19  (planned; V15 imported bodies, patterns, mirror, shell,
-                       parameter expressions)
+web-cad.project.v19  (V15 imported bodies, patterns, mirror, shell,
+                      parameter expressions)
 ```
 
 Schema V1 projects migrate into the current in-memory model with unchanged units,
@@ -1312,9 +1316,9 @@ Likely triggers:
 - a command-log representation that cannot be preserved with current transaction
   history.
 
-When source records beyond the current V18 topology identity model become real
-source data, the next format must be explicit rather than silently changing an
-existing schema:
+When source records beyond the current V18 topology identity model became real
+source data in V15, the next format was explicit rather than silently changing
+an existing schema:
 
 ```text
 schemaVersion: web-cad.project.v19
@@ -1322,7 +1326,7 @@ schemaVersion: web-cad.project.v19
 
 `web-cad.project.v17` is already used for V11 advanced sketch constraint source
 records. `web-cad.project.v18` is already used for V13 topology identity source
-records. `web-cad.project.v19` is reserved for V15 new source records:
+records. `web-cad.project.v19` is used for V15 new source records:
 `ImportedBodyFeature`, `LinearPatternFeature`, `CircularPatternFeature`,
 `MirrorFeature`, `ShellFeature`, and `CadParameter.expression`. See
 `docs/v15.md` for the full V19 contract. Any future schema after V19 should
@@ -1487,7 +1491,7 @@ web-cad.project.v15
 web-cad.project.v16
 web-cad.project.v17
 web-cad.project.v18
-web-cad.project.v19  (planned for V15)
+web-cad.project.v19
 ```
 
 Schema V1 is migrated to the current document model on parse/load by adding
@@ -1666,7 +1670,7 @@ migration documented at implementation time.
 
 ## V15 STEP Import, Expanded Feature Families, and Parameter Expressions Storage Decision
 
-V15 introduces `web-cad.project.v19` for new source-of-truth records that
+V15 introduced `web-cad.project.v19` for new source-of-truth records that
 cannot be represented by `web-cad.project.v18`:
 
 - `ImportedBodyFeature`: records an imported STEP body with its source filename,

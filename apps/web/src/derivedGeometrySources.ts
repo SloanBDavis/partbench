@@ -803,7 +803,10 @@ function resolveShellOpenFaceStableId(
     };
   }
 
-  if (anchor.bodyId !== feature.targetBodyId || ref.bodyId !== feature.targetBodyId) {
+  if (
+    anchor.bodyId !== feature.targetBodyId ||
+    ref.bodyId !== feature.targetBodyId
+  ) {
     return {
       error: `Topology anchor ${ref.anchorId} does not target body ${feature.targetBodyId}.`
     };

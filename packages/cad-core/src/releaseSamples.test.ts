@@ -7,6 +7,7 @@ import type {
   FeatureEditabilityQueryResponse,
   ProjectExportReadinessQueryResponse,
   ProjectHealthQueryResponse,
+  ProjectParameterEvaluationQueryResponse,
   ProjectRebuildPlanQueryResponse,
   ProjectStructureQueryResponse,
   ProjectSummaryQueryResponse,
@@ -21,20 +22,24 @@ import {
   CAD_PROJECT_FORMAT_VERSION_V18,
   CAD_PROJECT_FORMAT_VERSION_V16,
   CURRENT_CAD_PROJECT_FORMAT_VERSION,
+  CAD_PROJECT_FORMAT_VERSION_V19,
   CadEngine,
   createV13ReleaseSampleBatch,
   createV14ReleaseSampleBatch,
+  createV15ReleaseSampleBatch,
   createV7ReleaseSampleBatch,
   createV10ReleaseSampleBatch,
   exportCadProjectJson,
   importCadProjectJson,
   listV13ReleaseSampleFixtures,
   listV14ReleaseSampleFixtures,
+  listV15ReleaseSampleFixtures,
   listV7ReleaseSampleFixtures,
   listV10ReleaseSampleFixtures,
   parseCadProjectJson,
   type V13ReleaseSampleFixture,
   type V14ReleaseSampleFixture,
+  type V15ReleaseSampleFixture,
   type V7ReleaseSampleFixture,
   type V10ReleaseSampleFixture
 } from "./index";
@@ -674,6 +679,152 @@ describe("V14 release sample fixtures", () => {
   }
 });
 
+describe("V15 release sample fixtures", () => {
+  it("defines deterministic V15 source fixtures without raw derived IDs", () => {
+    const fixtures = listV15ReleaseSampleFixtures();
+
+    expect(fixtures.map((fixture) => fixture.id)).toEqual([
+      "v15-linear-pattern",
+      "v15-circular-pattern",
+      "v15-mirror",
+      "v15-shell",
+      "v15-expression-chain"
+    ]);
+
+    for (const fixture of fixtures) {
+      expect(fixture.units).toBe("mm");
+      expect(fixture.ops.length).toBeGreaterThan(0);
+      expect(fixture.workflowTags).toEqual(
+        expect.arrayContaining(["source-boundary", "wcad-round-trip"])
+      );
+      expect(fixture.expectedFeatures.length).toBeGreaterThan(0);
+      expect(createV15ReleaseSampleBatch(fixture.id)).toEqual({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: fixture.ops
+      });
+      assertNoRawDerivedIds(JSON.stringify(fixture));
+    }
+  });
+
+  for (const fixture of listV15ReleaseSampleFixtures()) {
+    it(`round-trips and verifies ${fixture.id}`, () => {
+      const dryRunEngine = new CadEngine();
+      const beforeDryRunJson = exportCadProjectJson(dryRunEngine);
+      const dryRun = dryRunEngine.executeBatch({
+        ...createV15ReleaseSampleBatch(fixture.id),
+        mode: "dryRun"
+      });
+
+      expect(dryRun.ok).toBe(true);
+      expect(exportCadProjectJson(dryRunEngine)).toBe(beforeDryRunJson);
+
+      const engine = buildV15SampleEngine(fixture);
+      const json = exportCadProjectJson(engine);
+      const project = parseCadProjectJson(json);
+      const restored = importCadProjectJson(json);
+
+      expect(project.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V19);
+      expect(json).toContain(CAD_PROJECT_FORMAT_VERSION_V19);
+      expect(json).not.toContain("project.health");
+      expect(json).not.toContain("project.parameterEvaluation");
+      assertNoRawDerivedIds(json);
+
+      const structure = readProjectStructure(restored);
+      const health = readProjectHealth(restored);
+
+      for (const featureExpectation of fixture.expectedFeatures) {
+        expect(structure.features).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              id: featureExpectation.featureId,
+              kind: featureExpectation.kind,
+              ...(featureExpectation.bodyId
+                ? { bodyId: featureExpectation.bodyId }
+                : {}),
+              ...(featureExpectation.seedBodyId
+                ? { seedBodyId: featureExpectation.seedBodyId }
+                : {}),
+              ...(featureExpectation.targetBodyId
+                ? { targetBodyId: featureExpectation.targetBodyId }
+                : {}),
+              ...(featureExpectation.spacing
+                ? { spacing: featureExpectation.spacing }
+                : {}),
+              ...(featureExpectation.instanceCount
+                ? { instanceCount: featureExpectation.instanceCount }
+                : {}),
+              ...(featureExpectation.totalAngleDegrees
+                ? { totalAngleDegrees: featureExpectation.totalAngleDegrees }
+                : {}),
+              ...(featureExpectation.mirrorPlane
+                ? { mirrorPlane: featureExpectation.mirrorPlane }
+                : {}),
+              ...(featureExpectation.includeOriginal !== undefined
+                ? { includeOriginal: featureExpectation.includeOriginal }
+                : {}),
+              ...(featureExpectation.wallThickness
+                ? { wallThickness: featureExpectation.wallThickness }
+                : {})
+            })
+          ])
+        );
+      }
+
+      expect(["healthy", "under-defined"]).toContain(health.status);
+      assertNoRawDerivedIds(JSON.stringify({ structure, health }));
+
+      if (fixture.expectedParameters) {
+        const evaluation = readProjectParameterEvaluation(restored);
+
+        expect(evaluation).toMatchObject({
+          status: "valid",
+          expressionCount: 1,
+          cycleCount: 0,
+          mutatesSource: false
+        });
+
+        for (const expectedParameter of fixture.expectedParameters) {
+          const node = evaluation.nodes.find(
+            (candidate) =>
+              candidate.parameterId === expectedParameter.parameterId
+          );
+
+          expect(node).toMatchObject({
+            parameterId: expectedParameter.parameterId,
+            name: expectedParameter.name,
+            ...(expectedParameter.expression
+              ? { expression: expectedParameter.expression }
+              : {}),
+            ...(expectedParameter.references
+              ? { references: expectedParameter.references }
+              : {}),
+            ...(expectedParameter.dependents
+              ? { dependents: expectedParameter.dependents }
+              : {})
+          });
+          expect(node?.value).toBeCloseTo(expectedParameter.value, 8);
+        }
+      }
+
+      for (const blocked of fixture.expectedBlockedBatches ?? []) {
+        const beforeBlockedJson = exportCadProjectJson(restored);
+        const blockedResult = restored.executeBatch({
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: blocked.ops
+        });
+
+        expect(blockedResult).toMatchObject({
+          ok: false,
+          error: { code: blocked.expectedCode }
+        });
+        expect(exportCadProjectJson(restored)).toBe(beforeBlockedJson);
+      }
+    });
+  }
+});
+
 function buildSampleEngine(fixture: V7ReleaseSampleFixture): CadEngine {
   const engine = new CadEngine();
   const response = engine.executeBatch(createV7ReleaseSampleBatch(fixture.id));
@@ -719,6 +870,20 @@ function buildV14SampleEngine(fixture: V14ReleaseSampleFixture): CadEngine {
   return engine;
 }
 
+function buildV15SampleEngine(fixture: V15ReleaseSampleFixture): CadEngine {
+  const engine = new CadEngine();
+  const response = engine.executeBatch(createV15ReleaseSampleBatch(fixture.id));
+
+  expect(response).toMatchObject({
+    ok: true,
+    mode: "commit",
+    warnings: []
+  });
+  expect(engine.getTransactions()).toHaveLength(1);
+
+  return engine;
+}
+
 function readProjectHealth(engine: CadEngine): ProjectHealthQueryResponse {
   const response = engine.executeQuery({
     version: "cadops.v1",
@@ -727,6 +892,21 @@ function readProjectHealth(engine: CadEngine): ProjectHealthQueryResponse {
 
   if (!response.ok || response.query !== "project.health") {
     throw new Error("Expected project.health response.");
+  }
+
+  return response;
+}
+
+function readProjectParameterEvaluation(
+  engine: CadEngine
+): ProjectParameterEvaluationQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.parameterEvaluation" }
+  });
+
+  if (!response.ok || response.query !== "project.parameterEvaluation") {
+    throw new Error("Expected project.parameterEvaluation response.");
   }
 
   return response;

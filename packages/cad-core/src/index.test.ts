@@ -2525,7 +2525,9 @@ describe("cad-core", () => {
     const exported = parseCadProjectJson(exportCadProjectJson(engine));
     expect(exported.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V19);
     expect(
-      exported.document.parameters.find((parameter) => parameter.id === "p_half")
+      exported.document.parameters.find(
+        (parameter) => parameter.id === "p_half"
+      )
     ).toMatchObject({
       value: 5,
       expression: "Width / 2"
@@ -32215,13 +32217,15 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       ]
     });
 
-    expect(getShellFeature(openEngine, "feat_shell_open").openFaceRefs).toEqual([
-      {
-        kind: "generatedFace",
-        bodyId: "body_rect_1",
-        stableId: "generated:face:body_rect_1:endCap"
-      }
-    ]);
+    expect(getShellFeature(openEngine, "feat_shell_open").openFaceRefs).toEqual(
+      [
+        {
+          kind: "generatedFace",
+          bodyId: "body_rect_1",
+          stableId: "generated:face:body_rect_1:endCap"
+        }
+      ]
+    );
     expect(readProjectExportReadiness(openEngine)).toMatchObject({
       bodies: expect.arrayContaining([
         expect.objectContaining({
@@ -32300,9 +32304,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         expect.objectContaining({
           featureId: "feat_shell_anchor",
           status: "healthy",
-          openFaceRefs: [
-            expect.objectContaining({ anchorId: "anchor_face_1" })
-          ]
+          openFaceRefs: [expect.objectContaining({ anchorId: "anchor_face_1" })]
         })
       ]
     });

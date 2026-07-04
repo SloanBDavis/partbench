@@ -18,15 +18,20 @@ import type {
   FeatureHoleDepthMode,
   FeatureHoleDirection,
   FeatureHoleOp,
+  FeatureCircularPatternOp,
+  FeatureLinearPatternOp,
   FeatureMirrorOp,
   FeatureMirrorPlane,
+  FeaturePatternAxis,
   FeatureRevolveOp,
   FeatureShellOp,
   FeatureShellOpenFaceRef,
+  FeatureUpdateCircularPatternOp,
   FeatureUpdateExtrudeOp,
   FeatureUpdateChamferOp,
   FeatureUpdateFilletOp,
   FeatureUpdateHoleOp,
+  FeatureUpdateLinearPatternOp,
   FeatureUpdateMirrorOp,
   FeatureUpdateRevolveOp,
   FeatureUpdateShellOp,
@@ -219,6 +224,38 @@ export interface FeatureEdgeFinishForm {
   readonly topologyAnchorProof?: CadTopologyAnchorCommandProof;
   readonly distance: number;
   readonly radius: number;
+}
+
+export interface FeatureLinearPatternForm {
+  readonly id: string;
+  readonly bodyId: string;
+  readonly seedBodyId: string;
+  readonly name: string;
+  readonly axis: FeaturePatternAxis;
+  readonly spacing: number;
+  readonly instanceCount: number;
+}
+
+export interface FeatureLinearPatternEdit {
+  readonly axis?: FeaturePatternAxis;
+  readonly spacing?: number;
+  readonly instanceCount?: number;
+}
+
+export interface FeatureCircularPatternForm {
+  readonly id: string;
+  readonly bodyId: string;
+  readonly seedBodyId: string;
+  readonly name: string;
+  readonly rotationAxis: FeaturePatternAxis;
+  readonly totalAngleDegrees: number;
+  readonly instanceCount: number;
+}
+
+export interface FeatureCircularPatternEdit {
+  readonly rotationAxis?: FeaturePatternAxis;
+  readonly totalAngleDegrees?: number;
+  readonly instanceCount?: number;
 }
 
 export interface FeatureMirrorForm {
@@ -538,9 +575,16 @@ export function buildDeleteParameterOp(id: ParameterId): ParameterDeleteOp {
 export function buildParameterEditOps(
   parameter: CadParameterSnapshot,
   form: ParameterEditForm
-): readonly (ParameterRenameOp | ParameterUpdateOp | ParameterSetExpressionOp)[] {
-  const ops: (ParameterRenameOp | ParameterUpdateOp | ParameterSetExpressionOp)[] =
-    [];
+): readonly (
+  | ParameterRenameOp
+  | ParameterUpdateOp
+  | ParameterSetExpressionOp
+)[] {
+  const ops: (
+    | ParameterRenameOp
+    | ParameterUpdateOp
+    | ParameterSetExpressionOp
+  )[] = [];
   const nextName = form.name.trim();
   const nextDescription = normalizeOptionalText(form.description);
   const currentExpression = parameter.expression ?? "";
@@ -1023,6 +1067,70 @@ export function buildFeatureUpdateHoleOp(
     ...(depthMode ? { depthMode } : {}),
     ...(depth !== undefined ? { depth } : {}),
     ...(direction ? { direction } : {})
+  };
+}
+
+export function buildFeatureLinearPatternOp(
+  form: FeatureLinearPatternForm
+): FeatureLinearPatternOp {
+  return {
+    op: "feature.linearPattern",
+    id: normalizeOptionalId(form.id),
+    bodyId: normalizeOptionalId(form.bodyId),
+    seedBodyId: form.seedBodyId,
+    axis: form.axis,
+    spacing: form.spacing,
+    instanceCount: form.instanceCount,
+    name: form.name.trim() || undefined
+  };
+}
+
+export function buildFeatureUpdateLinearPatternOp(
+  id: string,
+  edit: FeatureLinearPatternEdit
+): FeatureUpdateLinearPatternOp {
+  return {
+    op: "feature.updateLinearPattern",
+    id,
+    ...(edit.axis !== undefined ? { axis: edit.axis } : {}),
+    ...(edit.spacing !== undefined ? { spacing: edit.spacing } : {}),
+    ...(edit.instanceCount !== undefined
+      ? { instanceCount: edit.instanceCount }
+      : {})
+  };
+}
+
+export function buildFeatureCircularPatternOp(
+  form: FeatureCircularPatternForm
+): FeatureCircularPatternOp {
+  return {
+    op: "feature.circularPattern",
+    id: normalizeOptionalId(form.id),
+    bodyId: normalizeOptionalId(form.bodyId),
+    seedBodyId: form.seedBodyId,
+    rotationAxis: form.rotationAxis,
+    totalAngleDegrees: form.totalAngleDegrees,
+    instanceCount: form.instanceCount,
+    name: form.name.trim() || undefined
+  };
+}
+
+export function buildFeatureUpdateCircularPatternOp(
+  id: string,
+  edit: FeatureCircularPatternEdit
+): FeatureUpdateCircularPatternOp {
+  return {
+    op: "feature.updateCircularPattern",
+    id,
+    ...(edit.rotationAxis !== undefined
+      ? { rotationAxis: edit.rotationAxis }
+      : {}),
+    ...(edit.totalAngleDegrees !== undefined
+      ? { totalAngleDegrees: edit.totalAngleDegrees }
+      : {}),
+    ...(edit.instanceCount !== undefined
+      ? { instanceCount: edit.instanceCount }
+      : {})
   };
 }
 

@@ -5,9 +5,7 @@ import type {
   TopoDS_Face,
   TopoDS_Shape
 } from "opencascade.js";
-import {
-  type OcctBooleanExtrudePrimitiveSource
-} from "./booleanExtrudes";
+import { type OcctBooleanExtrudePrimitiveSource } from "./booleanExtrudes";
 import {
   withOcctPatternSeedShape,
   type OcctPatternSeedSource
@@ -229,7 +227,9 @@ function findPrimitiveExtrudeFace(
   const faces = collectFaces(oc, shape);
 
   try {
-    let best: { readonly face: TopoDS_Face; readonly distance: number } | undefined;
+    let best:
+      | { readonly face: TopoDS_Face; readonly distance: number }
+      | undefined;
 
     for (const candidate of faces) {
       const projected = {

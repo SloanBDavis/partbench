@@ -119,7 +119,6 @@ import type {
   ExtrudeFeatureSnapshot,
   FeatureSnapshot,
   HoleFeatureSnapshot,
-  ImportedBodyFeatureSnapshot,
   FeatureExtrudeOperationMode,
   FeatureHoleDepthMode,
   FeatureHoleDirection,
@@ -239,8 +238,7 @@ import { SHA256_HEX_PATTERN } from "./sha256";
 import { readZipStore, writeZipStore } from "./wcadZip";
 import {
   evaluateParameterExpressions,
-  normalizeStoredExpression,
-  parseParameterExpression
+  normalizeStoredExpression
 } from "./parameterExpressions";
 
 export {
@@ -920,7 +918,9 @@ function documentHasV19SourceRecords(
         feature.kind === "mirror" ||
         feature.kind === "shell"
     ) ||
-    parameters.some((parameter) => normalizeStoredExpression(parameter.expression))
+    parameters.some((parameter) =>
+      normalizeStoredExpression(parameter.expression)
+    )
   );
 }
 
@@ -4612,6 +4612,7 @@ function applyOperation(
         expected: "available STEP reader",
         received: "unavailable"
       });
+      return;
     }
 
     case "parameter.create": {
@@ -4640,7 +4641,10 @@ function applyOperation(
     case "parameter.update": {
       assertParameterUpdateHasChanges(op, opIndex);
       const existing = getParameterOrThrow(state.parameters, op.id, opIndex);
-      if (op.value !== undefined && normalizeStoredExpression(existing.expression)) {
+      if (
+        op.value !== undefined &&
+        normalizeStoredExpression(existing.expression)
+      ) {
         throwValidationError({
           code: "PARAMETER_HAS_EXPRESSION",
           message:
@@ -11104,7 +11108,7 @@ function updateMirrorFeature(
           updated,
           "Mirror result body requires derived rebuild and topology repair after supported source parameter edit."
         )
-    );
+  );
 }
 
 function updateShellFeature(
@@ -11556,7 +11560,8 @@ function validateShellOpenFaceRefs(
       opIndex,
       bodyId: targetBodyId,
       path: operationPath(opIndex, "openFaceRefs"),
-      expected: "array of generatedFace, namedReference, or topologyAnchor refs",
+      expected:
+        "array of generatedFace, namedReference, or topologyAnchor refs",
       received: describeReceived(value)
     });
   }
@@ -11593,7 +11598,8 @@ function validateShellOpenFaceRefs(
     opIndex,
     bodyId: targetBodyId,
     path: operationPath(opIndex, "openFaceRefs"),
-    expected: "at least one active generated, named, or topology face reference",
+    expected:
+      "at least one active generated, named, or topology face reference",
     received: describeReceived(
       failures.map((failure, index) => ({
         index,
@@ -20673,10 +20679,7 @@ function createProjectState(project: CadProject): {
     projectForReplay.history.length > 0 ||
     projectForReplay.redoStack.length > 0
   ) {
-    assertProjectDocumentMatchesReplay(
-      projectForReplay,
-      historyState.document
-    );
+    assertProjectDocumentMatchesReplay(projectForReplay, historyState.document);
   }
 
   try {
@@ -20704,9 +20707,7 @@ function createProjectState(project: CadProject): {
   };
 }
 
-function normalizeImportedParameterExpressions(
-  document: CadDocumentSnapshot
-): {
+function normalizeImportedParameterExpressions(document: CadDocumentSnapshot): {
   readonly document: CadDocumentSnapshot;
   readonly diagnostics: readonly CadParameterExpressionDiagnostic[];
 } {
@@ -21187,6 +21188,41 @@ function featuresEqual(left: Feature, right: Feature): boolean {
       left.namedReference === right.namedReference &&
       left.topologyAnchorId === right.topologyAnchorId &&
       left.radius === right.radius &&
+      left.bodyId === right.bodyId
+    );
+  }
+
+  if (left.kind === "linearPattern" && right.kind === "linearPattern") {
+    return (
+      left.id === right.id &&
+      left.name === right.name &&
+      left.seedBodyId === right.seedBodyId &&
+      left.axis === right.axis &&
+      left.spacing === right.spacing &&
+      left.instanceCount === right.instanceCount &&
+      left.bodyId === right.bodyId
+    );
+  }
+
+  if (left.kind === "circularPattern" && right.kind === "circularPattern") {
+    return (
+      left.id === right.id &&
+      left.name === right.name &&
+      left.seedBodyId === right.seedBodyId &&
+      left.rotationAxis === right.rotationAxis &&
+      left.totalAngleDegrees === right.totalAngleDegrees &&
+      left.instanceCount === right.instanceCount &&
+      left.bodyId === right.bodyId
+    );
+  }
+
+  if (left.kind === "mirror" && right.kind === "mirror") {
+    return (
+      left.id === right.id &&
+      left.name === right.name &&
+      left.seedBodyId === right.seedBodyId &&
+      left.mirrorPlane === right.mirrorPlane &&
+      left.includeOriginal === right.includeOriginal &&
       left.bodyId === right.bodyId
     );
   }
@@ -28547,6 +28583,14 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
       typeof value.instanceCount === "number" &&
       Number.isInteger(value.instanceCount) &&
       value.instanceCount >= 2
+    );
+  }
+
+  if (value.kind === "mirror") {
+    return (
+      typeof value.seedBodyId === "string" &&
+      isMirrorPlane(value.mirrorPlane) &&
+      typeof value.includeOriginal === "boolean"
     );
   }
 

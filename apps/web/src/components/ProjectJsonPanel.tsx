@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import type {
   ProjectExportReadinessQueryResponse,
+  ProjectImportReadinessQueryResponse,
   ProjectTopologyIdentityReadinessQueryResponse
 } from "@web-cad/cad-protocol";
 import {
@@ -43,6 +44,7 @@ import {
 export interface ProjectJsonPanelProps {
   readonly disabled: boolean;
   readonly exportReadiness?: ProjectExportReadinessQueryResponse;
+  readonly importReadiness?: ProjectImportReadinessQueryResponse;
   readonly topologyIdentityReadiness?: ProjectTopologyIdentityReadinessQueryResponse;
   readonly visualizationExport?: ProjectVisualizationExportDisplayStatus;
   readonly visualizationDownloadAvailable?: boolean;
@@ -54,7 +56,9 @@ export interface ProjectJsonPanelProps {
   readonly message?: string;
   readonly messageTone?: "info" | "error";
   readonly onOpenWcad?: () => Promise<boolean>;
+  readonly onOpenStep?: () => Promise<boolean>;
   readonly onOpenWcadFileLoaded?: (bytes: Uint8Array, fileName: string) => void;
+  readonly onStepFileLoaded?: (bytes: Uint8Array, fileName: string) => void;
   readonly onProjectJsonChange: (projectJson: string) => void;
   readonly onProjectFileLoaded: (projectJson: string, fileName: string) => void;
   readonly onProjectFileError: (message: string) => void;
@@ -72,6 +76,7 @@ export interface ProjectJsonPanelProps {
 export function ProjectJsonPanel({
   disabled,
   exportReadiness,
+  importReadiness,
   topologyIdentityReadiness,
   visualizationExport,
   visualizationDownloadAvailable = true,
@@ -83,7 +88,9 @@ export function ProjectJsonPanel({
   storageCapabilities,
   workflow,
   onOpenWcad = async () => true,
+  onOpenStep = async () => false,
   onOpenWcadFileLoaded = () => undefined,
+  onStepFileLoaded = () => undefined,
   onProjectJsonChange,
   onProjectFileLoaded,
   onProjectFileError,
@@ -99,6 +106,7 @@ export function ProjectJsonPanel({
 }: ProjectJsonPanelProps) {
   const jsonFileInputRef = useRef<HTMLInputElement | null>(null);
   const wcadFileInputRef = useRef<HTMLInputElement | null>(null);
+  const stepFileInputRef = useRef<HTMLInputElement | null>(null);
   const resolvedOpfsCacheStatus =
     opfsCacheStatus ??
     createInitialProjectOpfsCacheStatus(storageCapabilities.opfsApiDetected);
@@ -127,6 +135,18 @@ export function ProjectJsonPanel({
     }
   }
 
+  async function loadStepFile(file: File | undefined): Promise<void> {
+    if (!file) {
+      return;
+    }
+
+    try {
+      onStepFileLoaded(new Uint8Array(await file.arrayBuffer()), file.name);
+    } catch {
+      onProjectFileError(`Could not read ${file.name}.`);
+    }
+  }
+
   async function openWcad() {
     if (storageCapabilities.fileSystemAccessAvailable) {
       const handled = await onOpenWcad();
@@ -137,6 +157,18 @@ export function ProjectJsonPanel({
     }
 
     wcadFileInputRef.current?.click();
+  }
+
+  async function openStep() {
+    if (storageCapabilities.fileSystemAccessAvailable) {
+      const handled = await onOpenStep();
+
+      if (handled) {
+        return;
+      }
+    }
+
+    stepFileInputRef.current?.click();
   }
 
   return (
@@ -201,6 +233,28 @@ export function ProjectJsonPanel({
           event.currentTarget.value = "";
         }}
       />
+      <input
+        ref={stepFileInputRef}
+        className="hidden-file-input"
+        type="file"
+        accept=".step,.stp,model/step,application/step"
+        disabled={disabled || !storageCapabilities.jsonUploadAvailable}
+        onChange={(event) => {
+          void loadStepFile(event.currentTarget.files?.[0]);
+          event.currentTarget.value = "";
+        }}
+      />
+      {importReadiness && (
+        <ProjectStepImportStatus
+          disabled={disabled}
+          importReadiness={importReadiness}
+          uploadAvailable={
+            storageCapabilities.fileSystemAccessAvailable ||
+            storageCapabilities.jsonUploadAvailable
+          }
+          onOpenStep={() => void openStep()}
+        />
+      )}
       {exportReadiness && (
         <ProjectExportReadinessStatus
           disabled={disabled}
@@ -450,6 +504,76 @@ function ProjectFileStatus({
   );
 }
 
+function ProjectStepImportStatus({
+  disabled,
+  importReadiness,
+  uploadAvailable,
+  onOpenStep
+}: {
+  readonly disabled: boolean;
+  readonly importReadiness: ProjectImportReadinessQueryResponse;
+  readonly uploadAvailable: boolean;
+  readonly onOpenStep: () => void;
+}) {
+  const blockingDiagnostic = importReadiness.diagnostics.find(
+    (diagnostic) => diagnostic.severity === "blocking"
+  );
+  const detail =
+    importReadiness.status === "supported"
+      ? "STEP import can preview and commit transient file bytes through the geometry worker."
+      : `${
+          blockingDiagnostic?.message ??
+          "Import availability is checked by the browser runtime."
+        } Select a STEP file to preview import diagnostics before commit.`;
+
+  return (
+    <section className="project-workflow-section" aria-label="STEP import">
+      <div className="project-workflow-heading">
+        <h3>STEP import</h3>
+        <span>{formatStepImportStatus(importReadiness.status)}</span>
+      </div>
+      <div className="button-row compact">
+        <button
+          type="button"
+          onClick={onOpenStep}
+          disabled={disabled || !uploadAvailable}
+        >
+          Import STEP
+        </button>
+      </div>
+      <p className="project-workflow-detail">{detail}</p>
+      <dl className="project-workflow-grid">
+        <ProjectWorkflowRow
+          label="Imported bodies"
+          value={`${importReadiness.importedBodyCount}`}
+          detail={`Current project limit: ${importReadiness.maxBodyCount}.`}
+        />
+        <ProjectWorkflowRow
+          label="Reader"
+          value={
+            importReadiness.stepReaderAvailable ? "Available" : "Check file"
+          }
+          detail={
+            importReadiness.healingAvailable
+              ? "Healing diagnostics will be shown before commit."
+              : "Import diagnostics will report reader and healing availability."
+          }
+        />
+      </dl>
+      {importReadiness.diagnostics.length > 0 && (
+        <details className="advanced-options compact">
+          <summary>Import diagnostics</summary>
+          <ul className="compact-list">
+            {importReadiness.diagnostics.map((diagnostic, index) => (
+              <li key={`${diagnostic.code}-${index}`}>{diagnostic.message}</li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </section>
+  );
+}
+
 function ProjectOpfsCacheStatusView({
   disabled,
   status,
@@ -539,6 +663,19 @@ function ProjectOpfsCacheStatusView({
       </details>
     </section>
   );
+}
+
+function formatStepImportStatus(
+  status: ProjectImportReadinessQueryResponse["status"]
+): string {
+  switch (status) {
+    case "supported":
+      return "Ready";
+    case "deferred":
+      return "Needs file";
+    case "unavailable":
+      return "Runtime check";
+  }
 }
 
 function ProjectExportReadinessStatus({

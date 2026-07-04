@@ -101,6 +101,50 @@ function createShellFeature(
   };
 }
 
+function createLinearPatternFeature(
+  id: string,
+  bodyId: string,
+  seedBodyId: string
+): Extract<CadFeatureSummary, { kind: "linearPattern" }> {
+  return {
+    id,
+    kind: "linearPattern",
+    partId: "part:default",
+    bodyId,
+    seedBodyId,
+    axis: "x",
+    spacing: 10,
+    instanceCount: 3,
+    source: {
+      type: "linearPatternFeature",
+      seedBodyId,
+      axis: "x"
+    }
+  };
+}
+
+function createCircularPatternFeature(
+  id: string,
+  bodyId: string,
+  seedBodyId: string
+): Extract<CadFeatureSummary, { kind: "circularPattern" }> {
+  return {
+    id,
+    kind: "circularPattern",
+    partId: "part:default",
+    bodyId,
+    seedBodyId,
+    rotationAxis: "z",
+    totalAngleDegrees: 360,
+    instanceCount: 6,
+    source: {
+      type: "circularPatternFeature",
+      seedBodyId,
+      rotationAxis: "z"
+    }
+  };
+}
+
 function renderBodyWorkbench(
   body: CadBodySnapshot,
   feature: CadFeatureSummary | undefined
@@ -116,6 +160,66 @@ function renderBodyWorkbench(
     })
   );
 }
+
+describe("ModelingActionsPanel pattern workbench", () => {
+  it("offers the pattern creation form for an active authored body", () => {
+    const markup = renderBodyWorkbench(
+      createBody("body_seed", "feat_seed", { name: "Seed body" }),
+      createExtrudeFeature("feat_seed", "body_seed")
+    );
+
+    expect(markup).toContain("Pattern body");
+    expect(markup).toContain("Seed Seed body");
+    expect(markup).toContain("Linear");
+    expect(markup).toContain("Circular");
+    expect(markup).toContain("Spacing");
+    expect(markup).toContain("Instances");
+    expect(markup).toContain("Create linear pattern");
+  });
+
+  it("offers the linear pattern edit form when a linear pattern result body is selected", () => {
+    const markup = renderBodyWorkbench(
+      createBody("body_linear", "feat_linear"),
+      createLinearPatternFeature("feat_linear", "body_linear", "body_seed")
+    );
+
+    expect(markup).toContain("Edit linear pattern");
+    expect(markup).toContain("Feature feat_linear");
+    expect(markup).toContain("Axis");
+    expect(markup).toContain("Spacing");
+    expect(markup).toContain("Instances");
+    expect(markup).toContain("Apply linear pattern edits");
+  });
+
+  it("offers the circular pattern edit form when a circular pattern result body is selected", () => {
+    const markup = renderBodyWorkbench(
+      createBody("body_circular", "feat_circular"),
+      createCircularPatternFeature(
+        "feat_circular",
+        "body_circular",
+        "body_seed"
+      )
+    );
+
+    expect(markup).toContain("Edit circular pattern");
+    expect(markup).toContain("Feature feat_circular");
+    expect(markup).toContain("Axis");
+    expect(markup).toContain("Angle");
+    expect(markup).toContain("Instances");
+    expect(markup).toContain("Apply circular pattern edits");
+  });
+
+  it("explains why a consumed body cannot seed a pattern", () => {
+    const markup = renderBodyWorkbench(
+      createBody("body_seed", "feat_seed", { consumedByFeatureId: "feat_cut" }),
+      createExtrudeFeature("feat_seed", "body_seed")
+    );
+
+    expect(markup).toContain("Pattern");
+    expect(markup).toContain("consumed by feature feat_cut");
+    expect(markup).not.toContain("Create linear pattern");
+  });
+});
 
 describe("ModelingActionsPanel mirror workbench", () => {
   it("offers the mirror creation form for an active authored body", () => {
@@ -218,7 +322,9 @@ describe("ModelingActionsPanel shell workbench", () => {
       undefined
     );
 
-    expect(markup).toContain("Primitive-derived bodies cannot be shell targets");
+    expect(markup).toContain(
+      "Primitive-derived bodies cannot be shell targets"
+    );
     expect(markup).not.toContain("Create shell");
   });
 });

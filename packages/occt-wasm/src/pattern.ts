@@ -59,10 +59,16 @@ export interface OcctPatternSeedHoleSource {
 export type OcctPatternSeedEdgeFinishSource =
   | ({
       readonly kind: "edgeFinish";
-    } & Omit<OcctChamferEdgeFinishInput, "linearDeflection" | "angularDeflection">)
+    } & Omit<
+      OcctChamferEdgeFinishInput,
+      "linearDeflection" | "angularDeflection"
+    >)
   | ({
       readonly kind: "edgeFinish";
-    } & Omit<OcctFilletEdgeFinishInput, "linearDeflection" | "angularDeflection">);
+    } & Omit<
+      OcctFilletEdgeFinishInput,
+      "linearDeflection" | "angularDeflection"
+    >);
 
 export interface OcctLinearPatternInput {
   readonly seed: OcctPatternSeedSource;
@@ -189,7 +195,10 @@ export function withOcctPatternSeedShape<T>(
   readShape: (shape: TopoDS_Shape) => T
 ): T {
   if (seed.kind === "extrude" || seed.kind === "booleanExtrudes") {
-    const shapeBuilder = makeBooleanExtrudeShape(oc, seed as OcctBooleanExtrudeSource);
+    const shapeBuilder = makeBooleanExtrudeShape(
+      oc,
+      seed as OcctBooleanExtrudeSource
+    );
 
     try {
       return readShape(shapeBuilder.Shape());
