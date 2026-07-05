@@ -626,6 +626,20 @@ function createResolvedStepImportResolver(): CadProjectImportStepResolver {
             healingApplied: true
           }
         ],
+        previewBodies: [
+          {
+            featureId: input.featureId,
+            bodyId: input.bodyId,
+            checkpointId: input.checkpointId,
+            name: "Imported bracket",
+            bounds: {
+              min: [0, 0, 0],
+              max: [4, 2, 3],
+              size: [4, 2, 3],
+              center: [2, 1, 1.5]
+            }
+          }
+        ],
         checkpointPayloads: [checkpointPayload]
       };
     }
@@ -32050,6 +32064,20 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       }
     });
     expect(dryRun.importedStepCheckpointPayloads).toHaveLength(1);
+    expect(dryRun.importedStepPreviewBodies).toEqual([
+      {
+        featureId: "feat_1",
+        bodyId: "body_1",
+        checkpointId: "checkpoint_body_1",
+        name: "Imported bracket",
+        bounds: {
+          min: [0, 0, 0],
+          max: [4, 2, 3],
+          size: [4, 2, 3],
+          center: [2, 1, 1.5]
+        }
+      }
+    ]);
     expect(engine.getDocument().features.size).toBe(0);
     expect(engine.getTransactions()).toEqual([]);
 
@@ -32066,6 +32094,9 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       createdBodyIds: ["body_1"]
     });
     expect(commit.importedStepCheckpointPayloads).toHaveLength(1);
+    expect(commit.importedStepPreviewBodies).toEqual(
+      dryRun.importedStepPreviewBodies
+    );
     if (!commit.ok || !commit.importedStepCheckpointPayloads) {
       throw new Error("Expected committed import checkpoint payloads.");
     }
@@ -32104,6 +32135,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         ]
       })
     ]);
+    expect(JSON.stringify(project.history[0]?.ops)).not.toContain("bounds");
     expect(readBodyImportedBodyStatus(engine, "body_1")).toMatchObject({
       imported: true,
       status: "healthy",

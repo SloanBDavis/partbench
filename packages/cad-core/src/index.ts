@@ -776,7 +776,17 @@ export interface CadProjectImportStepResolverInput {
 
 export interface CadProjectImportStepResolverResult {
   readonly resolvedBodies: readonly ProjectImportStepResolvedBody[];
+  readonly previewBodies?: readonly CadProjectImportStepPreviewBody[];
   readonly checkpointPayloads?: readonly WcadTopologyCheckpointPayloadInput[];
+  readonly diagnostics?: readonly CadStepImportDiagnostic[];
+}
+
+export interface CadProjectImportStepPreviewBody {
+  readonly featureId: FeatureId;
+  readonly bodyId: BodyId;
+  readonly checkpointId: string;
+  readonly name?: string;
+  readonly bounds: CadAxisAlignedBounds;
   readonly diagnostics?: readonly CadStepImportDiagnostic[];
 }
 
@@ -791,6 +801,7 @@ export interface AsyncCadCommandExecutorOptions {
 }
 
 export type CadAsyncBatchResponse = CadBatchResponse & {
+  readonly importedStepPreviewBodies?: readonly CadProjectImportStepPreviewBody[];
   readonly importedStepCheckpointPayloads?: readonly WcadTopologyCheckpointPayloadInput[];
   readonly importedStepDiagnostics?: readonly CadStepImportDiagnostic[];
 };
@@ -2627,6 +2638,7 @@ export class AsyncCadCommandExecutor {
 
   async #resolveProjectImportStepOps(batch: CadBatch): Promise<{
     readonly batch: CadBatch;
+    readonly previewBodies: readonly CadProjectImportStepPreviewBody[];
     readonly checkpointPayloads: readonly WcadTopologyCheckpointPayloadInput[];
     readonly diagnostics: readonly CadStepImportDiagnostic[];
   }> {
@@ -2636,12 +2648,18 @@ export class AsyncCadCommandExecutor {
     );
 
     if (!resolver || unresolvedImportOps.length === 0) {
-      return { batch, checkpointPayloads: [], diagnostics: [] };
+      return {
+        batch,
+        previewBodies: [],
+        checkpointPayloads: [],
+        diagnostics: []
+      };
     }
 
     const document = this.engine.createSnapshot();
     let nextFeatureNumber = document.nextFeatureNumber;
     let nextBodyNumber = document.nextBodyNumber;
+    const previewBodies: CadProjectImportStepPreviewBody[] = [];
     const checkpointPayloads: WcadTopologyCheckpointPayloadInput[] = [];
     const diagnostics: CadStepImportDiagnostic[] = [];
     const ops: CadOp[] = [];
@@ -2667,6 +2685,7 @@ export class AsyncCadCommandExecutor {
         checkpointId
       });
 
+      previewBodies.push(...(resolution.previewBodies ?? []));
       checkpointPayloads.push(...(resolution.checkpointPayloads ?? []));
       diagnostics.push(...(resolution.diagnostics ?? []));
       ops.push({
@@ -2677,6 +2696,7 @@ export class AsyncCadCommandExecutor {
 
     return {
       batch: { ...batch, ops },
+      previewBodies,
       checkpointPayloads,
       diagnostics
     };
@@ -2686,11 +2706,13 @@ export class AsyncCadCommandExecutor {
 function attachImportedStepExecutionMetadata(
   response: CadBatchResponse,
   metadata: {
+    readonly previewBodies: readonly CadProjectImportStepPreviewBody[];
     readonly checkpointPayloads: readonly WcadTopologyCheckpointPayloadInput[];
     readonly diagnostics: readonly CadStepImportDiagnostic[];
   }
 ): CadAsyncBatchResponse {
   if (
+    metadata.previewBodies.length === 0 &&
     metadata.checkpointPayloads.length === 0 &&
     metadata.diagnostics.length === 0
   ) {
@@ -2699,6 +2721,9 @@ function attachImportedStepExecutionMetadata(
 
   return {
     ...response,
+    ...(metadata.previewBodies.length > 0
+      ? { importedStepPreviewBodies: metadata.previewBodies }
+      : {}),
     ...(metadata.checkpointPayloads.length > 0
       ? { importedStepCheckpointPayloads: metadata.checkpointPayloads }
       : {}),

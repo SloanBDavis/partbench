@@ -1,12 +1,15 @@
 import {
   encodeWcadCanonicalCbor,
+  type CadProjectImportStepPreviewBody,
   type CadProjectImportStepResolver,
   type CadProjectImportStepResolverInput,
   type CadProjectImportStepResolverResult
 } from "@web-cad/cad-core";
 import type {
+  CadAxisAlignedBounds,
   CadStepImportDiagnostic,
   CadStepImportTransientPayloadRef,
+  Vec3,
   ProjectImportStepResolvedBody,
   WcadSourceIdentity
 } from "@web-cad/cad-protocol";
@@ -122,6 +125,16 @@ async function resolveProjectImportStep({
 
   return {
     resolvedBodies: [resolvedBody],
+    previewBodies: [
+      {
+        featureId: input.featureId,
+        bodyId: input.bodyId,
+        checkpointId: input.checkpointId,
+        ...(body.bodyName ? { name: body.bodyName } : {}),
+        bounds: createStepImportPreviewBounds(body.bounds),
+        ...(diagnostics.length > 0 ? { diagnostics } : {})
+      } satisfies CadProjectImportStepPreviewBody
+    ],
     checkpointPayloads: [
       {
         checkpointId: input.checkpointId,
@@ -145,6 +158,33 @@ async function resolveProjectImportStep({
     ],
     diagnostics
   };
+}
+
+function createStepImportPreviewBounds(input: {
+  readonly min: readonly [number, number, number];
+  readonly max: readonly [number, number, number];
+}): CadAxisAlignedBounds {
+  const min = copyFiniteVec3(input.min, "minimum");
+  const max = copyFiniteVec3(input.max, "maximum");
+  const size: Vec3 = [max[0] - min[0], max[1] - min[1], max[2] - min[2]];
+  const center: Vec3 = [
+    (min[0] + max[0]) / 2,
+    (min[1] + max[1]) / 2,
+    (min[2] + max[2]) / 2
+  ];
+
+  return { min, max, size, center };
+}
+
+function copyFiniteVec3(
+  value: readonly [number, number, number],
+  label: string
+): Vec3 {
+  if (!value.every(Number.isFinite)) {
+    throw new Error(`STEP import body ${label} bounds are not finite.`);
+  }
+
+  return [value[0], value[1], value[2]];
 }
 
 function validatePayloadRef(

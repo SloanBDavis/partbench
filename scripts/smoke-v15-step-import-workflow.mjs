@@ -82,7 +82,24 @@ async function runV15StepImportWorkflowSmoke(cadCore) {
     1,
     dryRun.importedStepCheckpointPayloads?.length
   );
-  operationCheckCount += 4;
+  checkEqual(
+    failures,
+    "dryRun.previewBodyCount",
+    1,
+    dryRun.importedStepPreviewBodies?.length
+  );
+  checkEqual(
+    failures,
+    "dryRun.previewBounds",
+    JSON.stringify({
+      min: [0, 0, 0],
+      max: [4, 2, 3],
+      size: [4, 2, 3],
+      center: [2, 1, 1.5]
+    }),
+    JSON.stringify(dryRun.importedStepPreviewBodies?.[0]?.bounds)
+  );
+  operationCheckCount += 6;
 
   const commit = await executor.executeBatch({
     version: "cadops.v1",
@@ -102,7 +119,19 @@ async function runV15StepImportWorkflowSmoke(cadCore) {
     1,
     commit.importedStepCheckpointPayloads?.length
   );
-  operationCheckCount += 3;
+  checkEqual(
+    failures,
+    "commit.previewBodyCount",
+    1,
+    commit.importedStepPreviewBodies?.length
+  );
+  checkEqual(
+    failures,
+    "commit.previewBounds",
+    JSON.stringify(dryRun.importedStepPreviewBodies?.[0]?.bounds),
+    JSON.stringify(commit.importedStepPreviewBodies?.[0]?.bounds)
+  );
+  operationCheckCount += 5;
 
   if (!commit.ok) {
     return finalizeResult({
@@ -324,7 +353,11 @@ function createDeterministicStepImportResolver(cadCore) {
             localId: "v15_step_imported_body_entity",
             kind: "body",
             source: "kernel-derived",
-            signature: "v15_step_imported_body_signature"
+            signature: "v15_step_imported_body_signature",
+            bounds: {
+              min: [0, 0, 0],
+              max: [4, 2, 3]
+            }
           },
           {
             localId: "v15_step_imported_planar_face_entity",
@@ -376,6 +409,20 @@ function createDeterministicStepImportResolver(cadCore) {
                 message: "No healing changes were required for the smoke body."
               }
             ]
+          }
+        ],
+        previewBodies: [
+          {
+            featureId: input.featureId,
+            bodyId: input.bodyId,
+            checkpointId: input.checkpointId,
+            name: "Imported smoke body",
+            bounds: {
+              min: [0, 0, 0],
+              max: [4, 2, 3],
+              size: [4, 2, 3],
+              center: [2, 1, 1.5]
+            }
           }
         ],
         checkpointPayloads: [

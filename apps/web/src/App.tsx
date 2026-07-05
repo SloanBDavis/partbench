@@ -630,9 +630,11 @@ function copyBytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 
 function formatStepImportDryRunPreview(
   fileName: string,
-  response: CadAsyncBatchResponse
+  response: CadAsyncBatchResponse,
+  units: CadDocument["units"]
 ): string {
   const bodyCount = response.ok ? (response.createdBodyIds?.length ?? 0) : 0;
+  const previewBodies = response.importedStepPreviewBodies ?? [];
   const checkpointCount = response.importedStepCheckpointPayloads?.length ?? 0;
   const diagnostics = response.importedStepDiagnostics ?? [];
   const lines = [
@@ -641,6 +643,21 @@ function formatStepImportDryRunPreview(
     `Bodies: ${bodyCount}`,
     `Shape evidence records: ${checkpointCount}`
   ];
+
+  if (previewBodies.length > 0) {
+    lines.push("", "Bounding boxes:");
+    for (const body of previewBodies) {
+      const label = body.name ?? body.bodyId;
+      lines.push(
+        `- ${label}: min ${formatStepImportVec3(body.bounds.min, units)}; max ${formatStepImportVec3(
+          body.bounds.max,
+          units
+        )}; size ${formatStepImportVec3(body.bounds.size, units)}`
+      );
+    }
+  } else {
+    lines.push("", "Bounding boxes: unavailable");
+  }
 
   if (diagnostics.length > 0) {
     lines.push("", "Diagnostics:");
@@ -655,6 +672,23 @@ function formatStepImportDryRunPreview(
   }
 
   return lines.join("\n");
+}
+
+function formatStepImportVec3(
+  values: readonly [number, number, number],
+  units: CadDocument["units"]
+): string {
+  return `${values.map(formatStepImportNumber).join(", ")} ${units}`;
+}
+
+function formatStepImportNumber(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "unknown";
+  }
+
+  return Number.isInteger(value)
+    ? value.toString()
+    : value.toFixed(3).replace(/\.?0+$/, "");
 }
 
 function readBodyGeneratedReferences(bodyId: string | undefined): {
@@ -3546,7 +3580,7 @@ export function App() {
       }
 
       const confirmed = window.confirm(
-        formatStepImportDryRunPreview(fileName, dryRun)
+        formatStepImportDryRunPreview(fileName, dryRun, document.units)
       );
 
       if (!confirmed) {

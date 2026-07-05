@@ -75,6 +75,28 @@ describe("projectStepImportResolver", () => {
           sourceFeatureId: "feat_1"
         })
       ],
+      importedStepPreviewBodies: [
+        {
+          featureId: "feat_1",
+          bodyId: "body_1",
+          checkpointId: "checkpoint_body_1",
+          name: "Imported bracket",
+          bounds: {
+            min: [0, 0, 0],
+            max: [4, 2, 1],
+            size: [4, 2, 1],
+            center: [2, 1, 0.5]
+          },
+          diagnostics: [
+            expect.objectContaining({
+              code: "STEP_READER_AVAILABLE",
+              featureId: "feat_1",
+              bodyId: "body_1",
+              checkpointId: "checkpoint_body_1"
+            })
+          ]
+        }
+      ],
       importedStepDiagnostics: [
         expect.objectContaining({
           code: "STEP_READER_AVAILABLE",
