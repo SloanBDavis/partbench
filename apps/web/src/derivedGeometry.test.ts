@@ -1415,6 +1415,7 @@ describe("derivedGeometry", () => {
       id: "body_mirror_1",
       placementError: expect.stringContaining("body_revolve_1")
     });
+    expect(mirrorSource?.placementError).toContain("extrude-family");
   });
 
   it("derives chained cut sources from active boolean result targets", async () => {

@@ -199,8 +199,10 @@ export function createLinearPatternDerivedGeometrySources(
     )
     .filter((feature) => !consumedBodyIds.has(feature.bodyId))
     .map((feature) => {
-      const seed = resolveExtrudeFamilySeedSource(
+      const resolved = resolveSeededResultSeed(
+        feature.id,
         feature.seedBodyId,
+        "Linear pattern",
         extrudeFeaturesByBodyId,
         sketches,
         generatedFacesByKey
@@ -209,15 +211,13 @@ export function createLinearPatternDerivedGeometrySources(
       return {
         id: feature.bodyId,
         kind: "linearPattern" as const,
-        seed: seed ?? createUnavailableExtrudeSource(feature.seedBodyId),
+        seed: resolved.seed,
         axis: feature.axis,
         spacing: feature.spacing,
         instanceCount: feature.instanceCount,
-        ...(seed
-          ? {}
-          : {
-              placementError: `Linear pattern feature ${feature.id} cannot be displayed because seed body ${feature.seedBodyId} is not a displayable extrude-family body.`
-            })
+        ...(resolved.placementError
+          ? { placementError: resolved.placementError }
+          : {})
       };
     });
 }
@@ -242,8 +242,10 @@ export function createCircularPatternDerivedGeometrySources(
     )
     .filter((feature) => !consumedBodyIds.has(feature.bodyId))
     .map((feature) => {
-      const seed = resolveExtrudeFamilySeedSource(
+      const resolved = resolveSeededResultSeed(
+        feature.id,
         feature.seedBodyId,
+        "Circular pattern",
         extrudeFeaturesByBodyId,
         sketches,
         generatedFacesByKey
@@ -252,15 +254,13 @@ export function createCircularPatternDerivedGeometrySources(
       return {
         id: feature.bodyId,
         kind: "circularPattern" as const,
-        seed: seed ?? createUnavailableExtrudeSource(feature.seedBodyId),
+        seed: resolved.seed,
         rotationAxis: feature.rotationAxis,
         totalAngleDegrees: feature.totalAngleDegrees,
         instanceCount: feature.instanceCount,
-        ...(seed
-          ? {}
-          : {
-              placementError: `Circular pattern feature ${feature.id} cannot be displayed because seed body ${feature.seedBodyId} is not a displayable extrude-family body.`
-            })
+        ...(resolved.placementError
+          ? { placementError: resolved.placementError }
+          : {})
       };
     });
 }
@@ -283,8 +283,10 @@ export function createMirrorDerivedGeometrySources(
     )
     .filter((feature) => !consumedBodyIds.has(feature.bodyId))
     .map((feature) => {
-      const seed = resolveExtrudeFamilySeedSource(
+      const resolved = resolveSeededResultSeed(
+        feature.id,
         feature.seedBodyId,
+        "Mirror",
         extrudeFeaturesByBodyId,
         sketches,
         generatedFacesByKey
@@ -293,14 +295,12 @@ export function createMirrorDerivedGeometrySources(
       return {
         id: feature.bodyId,
         kind: "mirror" as const,
-        seed: seed ?? createUnavailableExtrudeSource(feature.seedBodyId),
+        seed: resolved.seed,
         mirrorPlane: feature.mirrorPlane,
         includeOriginal: feature.includeOriginal,
-        ...(seed
-          ? {}
-          : {
-              placementError: `Mirror feature ${feature.id} cannot be displayed because seed body ${feature.seedBodyId} is not a displayable extrude result.`
-            })
+        ...(resolved.placementError
+          ? { placementError: resolved.placementError }
+          : {})
       };
     });
 }
@@ -816,6 +816,37 @@ function resolveExtrudeFamilySeedSource(
     sketches,
     generatedFacesByKey
   );
+}
+
+function resolveSeededResultSeed(
+  featureId: string,
+  seedBodyId: string,
+  label: string,
+  extrudeFeaturesByBodyId: ReadonlyMap<
+    string,
+    Extract<CadFeatureSummary, { kind: "extrude" }>
+  >,
+  sketches: readonly SketchSnapshot[],
+  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>
+): {
+  readonly seed: DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource;
+  readonly placementError?: string;
+} {
+  const seed = resolveExtrudeFamilySeedSource(
+    seedBodyId,
+    extrudeFeaturesByBodyId,
+    sketches,
+    generatedFacesByKey
+  );
+
+  if (seed) {
+    return { seed };
+  }
+
+  return {
+    seed: createUnavailableExtrudeSource(seedBodyId),
+    placementError: `${label} feature ${featureId} cannot be displayed because seed body ${seedBodyId} is not a displayable extrude-family body.`
+  };
 }
 
 function resolveShellOpenFaceStableIds(

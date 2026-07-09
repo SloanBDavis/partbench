@@ -81,16 +81,9 @@ export function createRenderSceneInputs(
       continue;
     }
 
-    if (
-      source.kind === "extrudeBoolean" ||
-      source.kind === "revolve" ||
-      source.kind === "hole" ||
-      source.kind === "edgeFinish" ||
-      source.kind === "linearPattern" ||
-      source.kind === "circularPattern" ||
-      source.kind === "mirror" ||
-      source.kind === "shell"
-    ) {
+    // Only plain extrudes have a local primitive fallback while tessellation
+    // is pending. Pattern/mirror/shell/boolean/etc. wait for derived meshes.
+    if (source.kind !== "extrude") {
       continue;
     }
 

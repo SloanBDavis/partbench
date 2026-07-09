@@ -111,11 +111,15 @@ These constraints remain active:
     at the occt-wasm, geometry-kernel, and geometry-worker boundaries. The
     optional V15 sweep stretch goal was not taken and remains deferred to the
     approved V16 contract in `docs/v16.md`.
-13b. V16 is **planned and approved**, not yet implemented. The release contract
-    is `docs/v16.md` (Option G2 = full advanced single-part modeling + mass
-    properties). Product V16 introduces source schema **`web-cad.project.v20`**
-    (do not confuse with document schema `web-cad.project.v16`, already used
-    for chamfer/fillet). Package version remains `partbench.wcad.v2`.
+13b. V16 is **planned and approved**. The release contract is `docs/v16.md`
+    (Option G2 = full advanced single-part modeling + mass properties).
+    **Slice A1 is complete** on main: linear/circular pattern result bodies
+    with extrude-family seeds produce derived-geometry sources and render
+    through the existing app path (seed consumed; parity with mirror/shell).
+    Later V16 slices (A2 protocol/v20, B–H) are not started. Product V16
+    introduces source schema **`web-cad.project.v20`** (do not confuse with
+    document schema `web-cad.project.v16`, already used for chamfer/fillet).
+    Package version remains `partbench.wcad.v2`.
     V16 Must pillars:
     - Pattern display gap fix (extrude-family seeds) and resolved frame types
     - Pattern instance identity (`Mat4` rigid transforms; one fused `bodyId`)
@@ -3074,7 +3078,7 @@ Work lands as sequential commits on `main`, not a PR stack. Full detail in
 
 | Order | Slice | Focus |
 | --- | --- | --- |
-| 1 | A1 | Pattern derived geometry (extrude-family seeds) — V15 follow-through |
+| 1 | A1 | **Done** — Pattern derived geometry (extrude-family seeds) |
 | 2 | A2 | Stabilized V20 protocol types (Mat4 instances, dual-read fields, migration) |
 | 3 | B | Instance identity + multi-solid detection + `body.patternInstances` |
 | 4 | C | Named directions/axes; mirror offset/planes |

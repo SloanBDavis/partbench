@@ -604,15 +604,12 @@ function isSupportedDerivedGeometrySource(
     return !source.placementError && isSupportedEdgeFinishSource(source);
   }
 
-  if (source.kind === "linearPattern" || source.kind === "circularPattern") {
-    return !source.placementError;
-  }
-
-  if (source.kind === "mirror") {
-    return !source.placementError;
-  }
-
-  if (source.kind === "shell") {
+  if (
+    source.kind === "linearPattern" ||
+    source.kind === "circularPattern" ||
+    source.kind === "mirror" ||
+    source.kind === "shell"
+  ) {
     return !source.placementError;
   }
 
@@ -986,35 +983,47 @@ function getUnsupportedSourceMessage(source: DerivedGeometrySource): string {
     );
   }
 
-  if (source.kind === "linearPattern") {
-    return (
-      source.placementError ??
-      "Linear pattern display currently supports authored extrude-family seed bodies only."
-    );
-  }
-
-  if (source.kind === "circularPattern") {
-    return (
-      source.placementError ??
-      "Circular pattern display currently supports authored extrude-family seed bodies only."
-    );
-  }
-
-  if (source.kind === "mirror") {
-    return (
-      source.placementError ??
-      "Mirror display currently supports authored extrude-family seed bodies only."
-    );
-  }
-
-  if (source.kind === "shell") {
-    return (
-      source.placementError ??
-      "Shell display currently supports authored extrude-family target bodies only."
-    );
+  if (
+    source.kind === "linearPattern" ||
+    source.kind === "circularPattern" ||
+    source.kind === "mirror" ||
+    source.kind === "shell"
+  ) {
+    return source.placementError ?? getSeededFeatureUnsupportedMessage(source.kind);
   }
 
   return "Display geometry generation supports scene primitives, sketch extrudes, supported rectangle/circle boolean results, authored revolves, authored holes, rectangle edge finishing, linear/circular patterns, mirror, and shell features.";
+}
+
+function getSeededFeatureUnsupportedMessage(
+  kind: "linearPattern" | "circularPattern" | "mirror" | "shell"
+): string {
+  switch (kind) {
+    case "linearPattern":
+      return "Linear pattern display currently supports authored extrude-family seed bodies only.";
+    case "circularPattern":
+      return "Circular pattern display currently supports authored extrude-family seed bodies only.";
+    case "mirror":
+      return "Mirror display currently supports authored extrude-family seed bodies only.";
+    case "shell":
+      return "Shell display currently supports authored extrude-family target bodies only.";
+  }
+}
+
+function isAuthoredFeatureSourceKind(
+  kind: DerivedGeometrySourceKind | undefined
+): boolean {
+  return (
+    kind === "extrude" ||
+    kind === "extrudeBoolean" ||
+    kind === "revolve" ||
+    kind === "hole" ||
+    kind === "edgeFinish" ||
+    kind === "linearPattern" ||
+    kind === "circularPattern" ||
+    kind === "mirror" ||
+    kind === "shell"
+  );
 }
 
 function isSupportedBooleanExtrudeSource(
@@ -1320,17 +1329,7 @@ export function getDerivedGeometryStatusLabel(
 
       return "Primitive fallback";
     case "unsupported":
-      if (
-        entry.sourceKind === "extrude" ||
-        entry.sourceKind === "extrudeBoolean" ||
-        entry.sourceKind === "revolve" ||
-        entry.sourceKind === "hole" ||
-        entry.sourceKind === "edgeFinish" ||
-        entry.sourceKind === "linearPattern" ||
-        entry.sourceKind === "circularPattern" ||
-        entry.sourceKind === "mirror" ||
-        entry.sourceKind === "shell"
-      ) {
+      if (isAuthoredFeatureSourceKind(entry.sourceKind)) {
         return entry.message;
       }
 
