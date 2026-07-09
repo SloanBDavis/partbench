@@ -12,10 +12,12 @@ import type {
 } from "@web-cad/renderer";
 import type {
   DerivedBooleanExtrudeGeometrySource,
+  DerivedCircularPatternGeometrySource,
   DerivedEdgeFinishGeometrySource,
   DerivedExtrudeGeometrySource,
   DerivedGeometryEntry,
   DerivedHoleGeometrySource,
+  DerivedLinearPatternGeometrySource,
   DerivedMirrorGeometrySource,
   DerivedRevolveGeometrySource,
   DerivedShellGeometrySource
@@ -41,6 +43,8 @@ export function createRenderSceneInputs(
     | DerivedRevolveGeometrySource
     | DerivedHoleGeometrySource
     | DerivedEdgeFinishGeometrySource
+    | DerivedLinearPatternGeometrySource
+    | DerivedCircularPatternGeometrySource
     | DerivedMirrorGeometrySource
     | DerivedShellGeometrySource
   )[] = [],
@@ -82,6 +86,8 @@ export function createRenderSceneInputs(
       source.kind === "revolve" ||
       source.kind === "hole" ||
       source.kind === "edgeFinish" ||
+      source.kind === "linearPattern" ||
+      source.kind === "circularPattern" ||
       source.kind === "mirror" ||
       source.kind === "shell"
     ) {

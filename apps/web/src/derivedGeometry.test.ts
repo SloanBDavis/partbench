@@ -21,6 +21,8 @@ import {
   type DerivedExtrudeGeometrySource,
   type DerivedHoleGeometrySource,
   type DerivedShellGeometrySource,
+  type DerivedLinearPatternGeometrySource,
+  type DerivedCircularPatternGeometrySource,
   type DerivedRevolveGeometrySource,
   type DerivedGeometrySource,
   type DerivedGeometrySnapshot
@@ -920,6 +922,294 @@ describe("derivedGeometry", () => {
         status: "ready"
       }
     ]);
+  });
+
+  it("derives linear pattern sources from consumed extrude seeds and dispatches pattern runtime requests", async () => {
+    const engine = createExtrudedRectangleEngine();
+
+    engine.apply({
+      op: "feature.linearPattern",
+      id: "feat_linear_pattern_1",
+      bodyId: "body_linear_pattern_1",
+      seedBodyId: "body_rect_1",
+      axis: "x",
+      spacing: 5,
+      instanceCount: 3
+    });
+
+    const sources = createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      getProjectStructureFeatures(engine)
+    );
+    const patternSource = sources.find(
+      (source): source is DerivedLinearPatternGeometrySource =>
+        source.kind === "linearPattern"
+    );
+
+    // Patterns consume the seed: only the fused pattern result is displayable.
+    expect(sources.map((source) => source.id)).toEqual([
+      "body_linear_pattern_1"
+    ]);
+    expect(patternSource).toMatchObject({
+      id: "body_linear_pattern_1",
+      kind: "linearPattern",
+      axis: "x",
+      spacing: 5,
+      instanceCount: 3,
+      seed: { id: "body_rect_1", profile: { kind: "rectangle" }, depth: 3 }
+    });
+    expect(createDerivedGeometryCacheKey(patternSource!)).toContain(
+      '"axis":"x"'
+    );
+    expect(createDerivedGeometryCacheKey(patternSource!)).toContain(
+      '"instanceCount":3'
+    );
+
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile(sources);
+    await flushPromises();
+
+    expect(runtime.inputs).toEqual([
+      expect.objectContaining({
+        id: "body_linear_pattern_1",
+        axis: "x",
+        spacing: 5,
+        instanceCount: 3,
+        seed: expect.objectContaining({ kind: "extrude", depth: 3 })
+      })
+    ]);
+    expect(snapshots.at(-1)?.entries).toMatchObject([
+      {
+        objectId: "body_linear_pattern_1",
+        objectKind: "linearPattern",
+        status: "ready"
+      }
+    ]);
+  });
+
+  it("derives circular pattern sources from consumed extrude seeds and dispatches pattern runtime requests", async () => {
+    const engine = createExtrudedRectangleEngine();
+
+    engine.apply({
+      op: "feature.circularPattern",
+      id: "feat_circular_pattern_1",
+      bodyId: "body_circular_pattern_1",
+      seedBodyId: "body_rect_1",
+      rotationAxis: "z",
+      totalAngleDegrees: 360,
+      instanceCount: 4
+    });
+
+    const sources = createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      getProjectStructureFeatures(engine)
+    );
+    const patternSource = sources.find(
+      (source): source is DerivedCircularPatternGeometrySource =>
+        source.kind === "circularPattern"
+    );
+
+    expect(sources.map((source) => source.id)).toEqual([
+      "body_circular_pattern_1"
+    ]);
+    expect(patternSource).toMatchObject({
+      id: "body_circular_pattern_1",
+      kind: "circularPattern",
+      rotationAxis: "z",
+      totalAngleDegrees: 360,
+      instanceCount: 4,
+      seed: { id: "body_rect_1", profile: { kind: "rectangle" }, depth: 3 }
+    });
+    expect(createDerivedGeometryCacheKey(patternSource!)).toContain(
+      '"rotationAxis":"z"'
+    );
+
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile(sources);
+    await flushPromises();
+
+    expect(runtime.inputs).toEqual([
+      expect.objectContaining({
+        id: "body_circular_pattern_1",
+        rotationAxis: "z",
+        totalAngleDegrees: 360,
+        instanceCount: 4,
+        seed: expect.objectContaining({ kind: "extrude", depth: 3 })
+      })
+    ]);
+    expect(snapshots.at(-1)?.entries).toMatchObject([
+      {
+        objectId: "body_circular_pattern_1",
+        objectKind: "circularPattern",
+        status: "ready"
+      }
+    ]);
+  });
+
+  it("derives linear pattern sources for boolean extrude-family seeds", async () => {
+    const engine = createExtrudedRectangleEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "sketch_cut_1",
+        name: "Cut",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_cut_1",
+        id: "rect_cut_1",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_cut_1",
+        bodyId: "body_cut_1",
+        sketchId: "sketch_cut_1",
+        entityId: "rect_cut_1",
+        depth: 1,
+        side: "positive",
+        operationMode: "cut",
+        targetBodyId: "body_rect_1"
+      },
+      {
+        op: "feature.linearPattern",
+        id: "feat_linear_pattern_1",
+        bodyId: "body_linear_pattern_1",
+        seedBodyId: "body_cut_1",
+        axis: "y",
+        spacing: 4,
+        instanceCount: 2
+      }
+    ]);
+
+    const sources = createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      getProjectStructureFeatures(engine)
+    );
+    const patternSource = sources.find(
+      (source): source is DerivedLinearPatternGeometrySource =>
+        source.kind === "linearPattern"
+    );
+
+    expect(sources.map((source) => source.id)).toEqual([
+      "body_linear_pattern_1"
+    ]);
+    expect(patternSource).toMatchObject({
+      id: "body_linear_pattern_1",
+      kind: "linearPattern",
+      axis: "y",
+      spacing: 4,
+      instanceCount: 2,
+      seed: {
+        kind: "extrudeBoolean",
+        operation: "cut",
+        id: "body_cut_1"
+      }
+    });
+
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: () => undefined
+    });
+
+    service.reconcile(sources);
+    await flushPromises();
+
+    expect(runtime.inputs).toEqual([
+      expect.objectContaining({
+        id: "body_linear_pattern_1",
+        axis: "y",
+        seed: expect.objectContaining({ kind: "booleanExtrudes" })
+      })
+    ]);
+  });
+
+  it("reports a placement error for pattern seeds outside the extrude family", async () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XZ" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "rect_1",
+        center: [1.5, 1],
+        width: 1,
+        height: 2
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "axis_1",
+        start: [0, 0],
+        end: [0, 1]
+      },
+      {
+        op: "feature.revolve",
+        id: "feat_revolve_1",
+        bodyId: "body_revolve_1",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        axis: { type: "sketchLine", sketchId: "sketch_1", entityId: "axis_1" },
+        angleDegrees: 360
+      },
+      {
+        op: "feature.linearPattern",
+        id: "feat_linear_pattern_1",
+        bodyId: "body_linear_pattern_1",
+        seedBodyId: "body_revolve_1",
+        axis: "x",
+        spacing: 5,
+        instanceCount: 2
+      }
+    ]);
+
+    const sources = createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      getProjectStructureFeatures(engine)
+    );
+    const patternSource = sources.find(
+      (source) => source.kind === "linearPattern"
+    );
+
+    expect(patternSource).toMatchObject({
+      id: "body_linear_pattern_1",
+      placementError: expect.stringContaining("body_revolve_1")
+    });
+    expect(
+      getDerivedGeometryStatusLabel({
+        objectId: "body_linear_pattern_1",
+        objectKind: "linearPattern",
+        sourceId: "body_linear_pattern_1",
+        sourceKind: "linearPattern",
+        cacheKey: "pattern",
+        status: "unsupported",
+        message: patternSource!.placementError!
+      })
+    ).toContain("body_revolve_1");
   });
 
   it("derives mirror sources alongside the surviving seed and dispatches mirror runtime requests", async () => {

@@ -10,10 +10,12 @@ import type {
 import {
   createPrimitiveDerivedGeometrySource,
   type DerivedBooleanExtrudeGeometrySource,
+  type DerivedCircularPatternGeometrySource,
   type DerivedEdgeFinishGeometrySource,
   type DerivedExtrudeGeometrySource,
   type DerivedGeometrySource,
   type DerivedHoleGeometrySource,
+  type DerivedLinearPatternGeometrySource,
   type DerivedMirrorGeometrySource,
   type DerivedRevolveGeometrySource,
   type DerivedShellGeometrySource
@@ -68,6 +70,8 @@ export function createAuthoredFeatureDerivedGeometrySources(
   | DerivedRevolveGeometrySource
   | DerivedHoleGeometrySource
   | DerivedEdgeFinishGeometrySource
+  | DerivedLinearPatternGeometrySource
+  | DerivedCircularPatternGeometrySource
   | DerivedMirrorGeometrySource
   | DerivedShellGeometrySource
 )[] {
@@ -99,6 +103,18 @@ export function createAuthoredFeatureDerivedGeometrySources(
       namedReferences,
       consumedBodyIds
     ),
+    ...createLinearPatternDerivedGeometrySources(
+      features,
+      sketches,
+      generatedFacesByKey,
+      consumedBodyIds
+    ),
+    ...createCircularPatternDerivedGeometrySources(
+      features,
+      sketches,
+      generatedFacesByKey,
+      consumedBodyIds
+    ),
     ...createMirrorDerivedGeometrySources(
       features,
       sketches,
@@ -127,14 +143,7 @@ export function createShellDerivedGeometrySources(
   topologyIdentity: CadDocument["topologyIdentity"] = undefined,
   consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features)
 ): readonly DerivedShellGeometrySource[] {
-  const extrudeFeaturesByBodyId = new Map(
-    features
-      .filter(
-        (feature): feature is Extract<CadFeatureSummary, { kind: "extrude" }> =>
-          feature.kind === "extrude"
-      )
-      .map((feature) => [feature.bodyId, feature])
-  );
+  const extrudeFeaturesByBodyId = createExtrudeFeaturesByBodyId(features);
 
   return features
     .filter(
@@ -143,15 +152,12 @@ export function createShellDerivedGeometrySources(
     )
     .filter((feature) => !consumedBodyIds.has(feature.bodyId))
     .map((feature) => {
-      const targetFeature = extrudeFeaturesByBodyId.get(feature.targetBodyId);
-      const target = targetFeature
-        ? createBooleanSourceForFeature(
-            targetFeature,
-            extrudeFeaturesByBodyId,
-            sketches,
-            generatedFacesByKey
-          )
-        : undefined;
+      const target = resolveExtrudeFamilySeedSource(
+        feature.targetBodyId,
+        extrudeFeaturesByBodyId,
+        sketches,
+        generatedFacesByKey
+      );
       const openFaceResolution = resolveShellOpenFaceStableIds(
         feature,
         generatedFacesByKey,
@@ -173,6 +179,92 @@ export function createShellDerivedGeometrySources(
     });
 }
 
+export function createLinearPatternDerivedGeometrySources(
+  features: readonly CadFeatureSummary[],
+  sketches: readonly SketchSnapshot[],
+  generatedFacesByKey: ReadonlyMap<
+    string,
+    CadGeneratedFaceReference
+  > = new Map(),
+  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features)
+): readonly DerivedLinearPatternGeometrySource[] {
+  const extrudeFeaturesByBodyId = createExtrudeFeaturesByBodyId(features);
+
+  return features
+    .filter(
+      (
+        feature
+      ): feature is Extract<CadFeatureSummary, { kind: "linearPattern" }> =>
+        feature.kind === "linearPattern"
+    )
+    .filter((feature) => !consumedBodyIds.has(feature.bodyId))
+    .map((feature) => {
+      const seed = resolveExtrudeFamilySeedSource(
+        feature.seedBodyId,
+        extrudeFeaturesByBodyId,
+        sketches,
+        generatedFacesByKey
+      );
+
+      return {
+        id: feature.bodyId,
+        kind: "linearPattern" as const,
+        seed: seed ?? createUnavailableExtrudeSource(feature.seedBodyId),
+        axis: feature.axis,
+        spacing: feature.spacing,
+        instanceCount: feature.instanceCount,
+        ...(seed
+          ? {}
+          : {
+              placementError: `Linear pattern feature ${feature.id} cannot be displayed because seed body ${feature.seedBodyId} is not a displayable extrude-family body.`
+            })
+      };
+    });
+}
+
+export function createCircularPatternDerivedGeometrySources(
+  features: readonly CadFeatureSummary[],
+  sketches: readonly SketchSnapshot[],
+  generatedFacesByKey: ReadonlyMap<
+    string,
+    CadGeneratedFaceReference
+  > = new Map(),
+  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features)
+): readonly DerivedCircularPatternGeometrySource[] {
+  const extrudeFeaturesByBodyId = createExtrudeFeaturesByBodyId(features);
+
+  return features
+    .filter(
+      (
+        feature
+      ): feature is Extract<CadFeatureSummary, { kind: "circularPattern" }> =>
+        feature.kind === "circularPattern"
+    )
+    .filter((feature) => !consumedBodyIds.has(feature.bodyId))
+    .map((feature) => {
+      const seed = resolveExtrudeFamilySeedSource(
+        feature.seedBodyId,
+        extrudeFeaturesByBodyId,
+        sketches,
+        generatedFacesByKey
+      );
+
+      return {
+        id: feature.bodyId,
+        kind: "circularPattern" as const,
+        seed: seed ?? createUnavailableExtrudeSource(feature.seedBodyId),
+        rotationAxis: feature.rotationAxis,
+        totalAngleDegrees: feature.totalAngleDegrees,
+        instanceCount: feature.instanceCount,
+        ...(seed
+          ? {}
+          : {
+              placementError: `Circular pattern feature ${feature.id} cannot be displayed because seed body ${feature.seedBodyId} is not a displayable extrude-family body.`
+            })
+      };
+    });
+}
+
 export function createMirrorDerivedGeometrySources(
   features: readonly CadFeatureSummary[],
   sketches: readonly SketchSnapshot[],
@@ -182,14 +274,7 @@ export function createMirrorDerivedGeometrySources(
   > = new Map(),
   consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features)
 ): readonly DerivedMirrorGeometrySource[] {
-  const extrudeFeaturesByBodyId = new Map(
-    features
-      .filter(
-        (feature): feature is Extract<CadFeatureSummary, { kind: "extrude" }> =>
-          feature.kind === "extrude"
-      )
-      .map((feature) => [feature.bodyId, feature])
-  );
+  const extrudeFeaturesByBodyId = createExtrudeFeaturesByBodyId(features);
 
   return features
     .filter(
@@ -198,20 +283,17 @@ export function createMirrorDerivedGeometrySources(
     )
     .filter((feature) => !consumedBodyIds.has(feature.bodyId))
     .map((feature) => {
-      const seedFeature = extrudeFeaturesByBodyId.get(feature.seedBodyId);
-      const seed = seedFeature
-        ? createBooleanSourceForFeature(
-            seedFeature,
-            extrudeFeaturesByBodyId,
-            sketches,
-            generatedFacesByKey
-          )
-        : undefined;
+      const seed = resolveExtrudeFamilySeedSource(
+        feature.seedBodyId,
+        extrudeFeaturesByBodyId,
+        sketches,
+        generatedFacesByKey
+      );
 
       return {
         id: feature.bodyId,
         kind: "mirror" as const,
-        seed: seed ?? createUnavailableExtrudeSource(feature.bodyId),
+        seed: seed ?? createUnavailableExtrudeSource(feature.seedBodyId),
         mirrorPlane: feature.mirrorPlane,
         includeOriginal: feature.includeOriginal,
         ...(seed
@@ -677,6 +759,13 @@ function createConsumedBodyIds(
           return [feature.targetBodyId];
         }
 
+        if (
+          feature.kind === "linearPattern" ||
+          feature.kind === "circularPattern"
+        ) {
+          return [feature.seedBodyId];
+        }
+
         if (feature.kind === "mirror" && feature.includeOriginal) {
           return [feature.seedBodyId];
         }
@@ -688,6 +777,44 @@ function createConsumedBodyIds(
         return [];
       })
       .filter((bodyId): bodyId is string => Boolean(bodyId))
+  );
+}
+
+function createExtrudeFeaturesByBodyId(
+  features: readonly CadFeatureSummary[]
+): Map<string, Extract<CadFeatureSummary, { kind: "extrude" }>> {
+  return new Map(
+    features
+      .filter(
+        (feature): feature is Extract<CadFeatureSummary, { kind: "extrude" }> =>
+          feature.kind === "extrude"
+      )
+      .map((feature) => [feature.bodyId, feature])
+  );
+}
+
+function resolveExtrudeFamilySeedSource(
+  seedBodyId: string,
+  extrudeFeaturesByBodyId: ReadonlyMap<
+    string,
+    Extract<CadFeatureSummary, { kind: "extrude" }>
+  >,
+  sketches: readonly SketchSnapshot[],
+  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>
+):
+  | DerivedExtrudeGeometrySource
+  | DerivedBooleanExtrudeGeometrySource
+  | undefined {
+  const seedFeature = extrudeFeaturesByBodyId.get(seedBodyId);
+  if (!seedFeature) {
+    return undefined;
+  }
+
+  return createBooleanSourceForFeature(
+    seedFeature,
+    extrudeFeaturesByBodyId,
+    sketches,
+    generatedFacesByKey
   );
 }
 
