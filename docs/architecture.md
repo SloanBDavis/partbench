@@ -926,10 +926,11 @@ The local MCP server should bind to `127.0.0.1`, require a per-session token, en
 
 This section is historical initial-build guidance. The implementation has now
 progressed through the completed V10 editable feature history, V11 sketch
-solver, V12 stable boolean topology, V13 general topology identity, and V14
-topology-backed downstream modeling releases, with V15 STEP import, expanded
-feature families, and parameter expressions planned in `docs/v15.md`; follow
+solver, V12 stable boolean topology, V13 general topology identity, V14
+topology-backed downstream modeling, and V15 STEP import, expanded feature
+families, and parameter expressions releases. Follow
 `docs/implementation-plan.md` for the current implementation source of truth.
+No V16 release contract exists yet.
 
 The first implementation should not start with a full CAD UI. It should start with the command engine, WASM kernel bridge, and renderer skeleton.
 

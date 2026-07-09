@@ -14,9 +14,10 @@ The current implementation source of truth is:
 - `docs/implementation-plan.md`
 - `docs/v12.md` — completed V12 stable boolean topology and result references release record
 - `docs/v13.md` — completed V13 general topology identity and B-rep checkpoint foundation release record
-- `docs/v14.md` — planned V14 topology-backed downstream modeling release contract
+- `docs/v14.md` — completed V14 topology-backed downstream modeling release record
+- `docs/v15.md` — completed V15 STEP import, expanded feature families, and parameter expressions release record
 
-Do not attempt to build the entire architecture at once. Implement only the milestone requested by the user.
+Do not attempt to build the entire architecture at once. Implement only the milestone requested by the user. No V16 release contract exists yet; do not start V16 work until a scoped plan is approved.
 
 ## Core Architectural Rules
 
@@ -44,6 +45,7 @@ unless the user instructs otherwise:
 - `packages/geometry-kernel` — typed geometry facade
 - `packages/geometry-worker` — async geometry worker boundary
 - `packages/occt-wasm` — isolated OCCT/WASM integration
+- `packages/sketch-solver` — pure TypeScript 2D sketch solver
 - `packages/agent-adapter` — structured CADOps adapter for external callers
 - `packages/mcp-adapter` — MCP tool wrapper over the agent adapter
 - `packages/mcp-stdio-server` — local stdio JSON-RPC MCP transport

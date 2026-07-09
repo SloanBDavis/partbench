@@ -2,21 +2,24 @@
 
 Partbench is an open-source, browser-native, AI-native CAD application. The
 current app has a typed CADOps command layer, in-memory document model,
-viewport, project JSON serialization, structured agent/MCP adapters, and an
-isolated OCCT/WASM derived geometry path.
+viewport, project JSON / `.wcad` serialization, structured agent/MCP adapters,
+and an isolated OCCT/WASM exact-geometry and derived-mesh path.
 
-The completed foundation supports primitive scene objects, source-of-truth
-sketches, rectangle/circle extrudes, generated and named references, attached
-sketches, measurements, dependency health, narrow rectangle-tool add/cut
-boolean workflows, document parameters, driving sketch dimensions, and the first
-line orientation constraints through the shared command layer. The current V6
-baseline also supports scoped revolve, hole, chamfer, and fillet workflows with
-derived OCCT meshes and exact-metadata health where available.
-The V8/V9 release-candidate surface adds native `.wcad` project workflow, OPFS
-derived mesh cache status, exact STEP export for supported active bodies, and
-viewport-native body/face/edge semantic selection with contextual
-Measure/Inspect.
-OCCT-derived meshes are display data only; the source of truth remains the typed
+Completed releases through **V15** cover:
+
+- source-of-truth sketches, parameters with arithmetic expressions, and the
+  supported V11 sketch solver
+- extrude, revolve, hole, chamfer/fillet, and supported cut/add boolean chains
+- topology identity (checkpoints, anchors, match/repair) and topology-backed
+  downstream modeling for the verified single-part support matrix
+- native `.wcad` project workflow, OPFS derived mesh cache, and exact STEP
+  export for supported authored bodies
+- STEP import with imported-body topology integration
+- linear/circular pattern, mirror, and shell features
+- viewport-native body/face/edge semantic selection with contextual
+  Measure/Inspect
+
+OCCT-derived meshes are display data only. The source of truth remains the typed
 document and transaction history in `cad-core`.
 
 ## Requirements
@@ -116,34 +119,47 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
   roadmap, including condensed historical release records.
 - `docs/v12.md` - completed V12 stable boolean topology and result references
   release record.
-- `docs/v13.md` - planned V13 general topology identity and B-rep checkpoint
+- `docs/v13.md` - completed V13 general topology identity and B-rep checkpoint
   foundation release record.
+- `docs/v14.md` - completed V14 topology-backed downstream modeling release
+  record.
+- `docs/v15.md` - completed V15 STEP import, expanded feature families, and
+  parameter expressions release record.
 - `docs/native-format.md` - current JSON format and native project package
   direction.
 - `docs/occt-wasm-size.md` - OCCT/WASM size findings and recommendations.
+
+No V16 release contract exists yet.
 
 ## Workspace Layout
 
 - `apps/web` - Vite browser app and explicit worker entrypoints
 - `packages/cad-protocol` - typed CADOps command and query protocol
-- `packages/cad-core` - document model, transactions, undo/redo, project JSON
+- `packages/cad-core` - document model, transactions, undo/redo, project JSON /
+  `.wcad`
 - `packages/renderer` - simple renderer abstraction and canvas viewport support
-- `packages/occt-wasm` - isolated OCCT/WASM loading boundary
-- `packages/geometry-kernel` - typed primitive, feature, exact-metadata, and
-  edge-finish geometry facade
+- `packages/occt-wasm` - isolated OCCT/WASM loading and exact-geometry boundary
+- `packages/geometry-kernel` - typed primitive, feature, STEP, pattern/mirror/
+  shell, exact-metadata, and edge-finish geometry facade
 - `packages/geometry-worker` - async worker boundary for derived geometry and
   exact metadata
 - `packages/renderer-mesh-bridge` - mesh data adapter for the current renderer
+- `packages/sketch-solver` - pure TypeScript 2D sketch solver
 - `packages/agent-adapter` - CADOps adapter for external structured callers
 - `packages/mcp-adapter` - MCP tool wrapper over the structured adapter
 - `packages/mcp-stdio-server` - local stdio JSON-RPC MCP transport
 
 ## Project Format
 
-Current project JSON exports use `web-cad.project.v16`. V1 through V15 project
-JSON remain importable through explicit migrations; derived meshes, solver
-status, exact metadata, topology snapshots, and geometry status are never saved
-as source-of-truth data.
+Current project JSON/`.wcad` exports use the lowest schema required by source
+truth: `web-cad.project.v16` for ordinary current features, `v17` when advanced
+sketch constraints are present, `v18` when topology identity records are
+present, and `v19` when V15 imported-body / pattern / mirror / shell /
+expression records are present. V1 through V19 remain importable through
+explicit migrations. Derived meshes, solver status, exact metadata, topology
+snapshots, and geometry status are never saved as source-of-truth data;
+checkpoint payload bytes for topology identity are preserved in `.wcad` v2, not
+in JSON.
 
 `web-cad.project.*`, `web-cad.agent-adapter.v1`, and the `@web-cad/*`
 workspace package scope are retained as compatibility identifiers. They are not
@@ -155,30 +171,19 @@ protocol/package migration.
 - The renderer still uses simple primitive drawing as fallback while
   OCCT-derived meshes are loading, disabled, unavailable, or failed.
 - OCCT/WASM is intentionally isolated behind geometry-worker/kernel boundaries
-  and currently backs primitive tessellation, rectangle/circle extrudes, narrow
-  rectangle-tool add/cut derived meshes, supported V6 result meshes, and derived
-  exact metadata where available.
-- Sketches, rectangle/circle extrude features, sketches attached to supported
-  generated planar face references, parameters, driving sketch dimensions,
-  supported constraints, editable source-feature history, reference health, and
-  stable supported boolean-result references are source-of-truth/model-authority
-  data. Arbitrary topology naming, broad result-body topology identity, and
-  persistent exact B-rep checkpoints remain deferred.
-- V8 completed the local CAD foundation: native `.wcad` package workflow, File
-  System Access open/save, OPFS-derived mesh cache, and exact STEP export for
-  supported bodies.
-- V9 completed the release-candidate viewport-native interaction surface:
-  renderer-agnostic hit candidates, semantic selection resolution,
-  command-ready viewport selections, contextual tools, and inspect/measure
-  workflows for the supported current semantic subset.
-- V10 completed editable feature history and stable modeling references:
-  feature editability, dependency/rebuild diagnostics, consumed/replacement body
-  lifecycle, reference health/repair semantics, and source-semantic topology
-  expansion where defensible.
-- V11 completed the supported sketch solver and parametric sketch UX release.
-- V12 completed stable boolean topology and result references for the supported
-  rectangle/circle cut/add subset, with unsupported topology kept as structured
-  diagnostics.
-- No arbitrary stable topology, STEP import, production WebGPU renderer,
-  assemblies, hosted collaboration, production MCP auth, or natural-language
-  command parsing is implemented unless scoped into a later release.
+  and backs primitive tessellation, authored feature meshes, supported
+  boolean/pattern/mirror/shell results, STEP import/export, and derived exact
+  metadata where available.
+- Topology-backed commandability is limited to the verified support matrices in
+  the V12–V15 release records. Unsupported or low-confidence topology remains
+  structured diagnostic output rather than silent retargeting.
+- Parameter expressions are pure arithmetic only; scripting, conditionals, and
+  trig are deferred. Sweep, loft, assemblies, production WebGPU, hosted
+  collaboration, production MCP auth, natural-language command parsing, IGES,
+  and proprietary CAD import are not implemented unless scoped into a later
+  release.
+- V15 workflow smokes exercise cad-core command/query and async STEP import
+  resolver paths; they are not launched-browser UI automation scripts.
+
+See `docs/implementation-plan.md` for the full current capabilities and
+limitations list.
