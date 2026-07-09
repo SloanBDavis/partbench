@@ -1329,8 +1329,11 @@ records. `web-cad.project.v18` is already used for V13 topology identity source
 records. `web-cad.project.v19` is used for V15 new source records:
 `ImportedBodyFeature`, `LinearPatternFeature`, `CircularPatternFeature`,
 `MirrorFeature`, `ShellFeature`, and `CadParameter.expression`. See
-`docs/v15.md` for the full V19 contract. Any future schema after V19 should
-include a migration from older accepted versions, not silent shape guessing.
+`docs/v15.md` for the full V19 contract. Product release V16 introduces
+`web-cad.project.v20` for sweep/loft features, pattern instance Mat4 records,
+and pattern/mirror direction/plane ref unions — see `docs/v16.md`. Any schema
+after V19 must include a migration from older accepted versions, not silent
+shape guessing.
 
 V3 Phase A introduced `web-cad.project.v7` when parameters and sketch dimensions
 became persisted source-of-truth data. V3 Phase B introduced

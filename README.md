@@ -125,11 +125,11 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
   record.
 - `docs/v15.md` - completed V15 STEP import, expanded feature families, and
   parameter expressions release record.
+- `docs/v16.md` - approved V16 release contract (sweep, loft, pattern depth,
+  expression extensions, mass properties); product work not started.
 - `docs/native-format.md` - current JSON format and native project package
   direction.
 - `docs/occt-wasm-size.md` - OCCT/WASM size findings and recommendations.
-
-No V16 release contract exists yet.
 
 ## Workspace Layout
 

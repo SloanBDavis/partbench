@@ -12,12 +12,15 @@ stable boolean topology and result references release record, `docs/v13.md` for
 the completed general topology identity and B-rep checkpoint foundation release
 record, `docs/v14.md` for the completed topology-backed downstream modeling
 release record, `docs/v15.md` for the completed V15 STEP import, expanded
-feature families, and parameter expressions release record,
+feature families, and parameter expressions release record, `docs/v16.md` for
+the approved V16 release contract (sweep, loft, pattern depth, expression
+extensions, and mass properties; product work not started),
 `docs/native-format.md` for project-format direction, and
 `docs/occt-wasm-size.md` for OCCT/WASM load-size findings. V7, V8, V9, V10,
 and V11 are completed historical releases whose details are now condensed in
-this plan instead of maintained as separate release documents. No V16 release
-contract exists yet; do not start V16 work until a scoped plan is approved.
+this plan instead of maintained as separate release documents. V16 is planned
+and approved; implement only the V16 slice or PR the user requests, following
+`docs/v16.md`.
 
 ## Active Rules
 
@@ -106,7 +109,27 @@ These constraints remain active:
     and async STEP import resolver paths rather than the older launched-browser
     CDP workflow harness. Real OCCT STEP read/heal/checkpoint paths are covered
     at the occt-wasm, geometry-kernel, and geometry-worker boundaries. The
-    optional V15 sweep stretch goal was not taken and remains deferred.
+    optional V15 sweep stretch goal was not taken and remains deferred to the
+    approved V16 contract in `docs/v16.md`.
+13b. V16 is **planned and approved**, not yet implemented. The release contract
+    is `docs/v16.md` (Option G2 = full advanced single-part modeling + mass
+    properties). Product V16 introduces source schema **`web-cad.project.v20`**
+    (do not confuse with document schema `web-cad.project.v16`, already used
+    for chamfer/fillet). Package version remains `partbench.wcad.v2`.
+    V16 Must pillars:
+    - Pattern display gap fix (extrude-family seeds) and resolved frame types
+    - Pattern instance identity (`Mat4` rigid transforms; one fused `bodyId`)
+    - Named/generated/axis-aligned direction & rotation-axis refs; mirror
+      offset and named/topology planes
+    - Expression language v2 (trig in degrees, ternary/comparisons; no `&&`/`||`)
+    - Sweep (single-line path Must) and loft (parallel face-attached Must)
+    - Mass properties via per-query `derivedExactMetadata` projection
+      (`body.massProperties`), with exact-metadata source expansion (G0→G1→G2)
+    Hard non-goals for V16: assemblies, production WebGPU, sketch-arc entities,
+    free construction/offset sketch planes, multi-body pattern instances as
+    public bodies, hosted collaboration, IGES/proprietary import, full
+    scripting. Implement only the slice the user requests; start with Slice A1
+    (pattern display) per the contract implementation order on main.
 14. V8 Tranche A is implemented as a protocol and pure-helper slice only:
     `partbench.wcad.v1` manifest/source-identity types, structured package
     validation diagnostics, `project.packageReadiness`, and thin agent/MCP
@@ -3026,6 +3049,49 @@ The mandatory downstream boolean support matrix is maintained in
 `docs/v14.md`. Implementation prompts should keep it current as cad-core
 evidence proves which rectangle/circle target, tool-profile, and operation-mode
 combinations are command-ready.
+
+## V16 Planned Scope (Approved Contract)
+
+V16 is **approved for implementation** but **not started**. The full release
+contract is `docs/v16.md`. Product release V16 is not document schema
+`web-cad.project.v16` (already used for chamfer/fillet). New V16 source records
+use **`web-cad.project.v20`**. Package layout remains `partbench.wcad.v2`.
+
+### V16 Center
+
+```text
+pattern display + instance Mat4 identity
+-> named axes / offset & named mirror planes
+-> expression language v2 (trig + ternary)
+-> sweep (single-line path) + loft (face-attached parallel sections)
+-> body.massProperties (derived exact metadata projection)
+```
+
+### V16 slice order on main (from contract)
+
+Work lands as sequential commits on `main`, not a PR stack. Full detail in
+`docs/v16.md`.
+
+| Order | Slice | Focus |
+| --- | --- | --- |
+| 1 | A1 | Pattern derived geometry (extrude-family seeds) — V15 follow-through |
+| 2 | A2 | Stabilized V20 protocol types (Mat4 instances, dual-read fields, migration) |
+| 3 | B | Instance identity + multi-solid detection + `body.patternInstances` |
+| 4 | C | Named directions/axes; mirror offset/planes |
+| 5 | D | Expression language v2 |
+| 6 | E | Sweep |
+| 7 | F | Loft |
+| 8–10 | G0–G2 | Mass props exact-metadata recipes → query/UI → sweep/loft coverage |
+| 11 | H | Smokes, samples, docs, hardening |
+
+### V16 guardrails
+
+Do not mix V16 work with assemblies, production WebGPU, sketch-arc entities,
+free construction planes, multi-body public pattern instances, hosted
+collaboration, IGES, or proprietary CAD import. Prefer Must matrix over Stretch
+items in `docs/v16.md` when capacity is tight. When implementation evidence
+contradicts the Must matrix (e.g. MakePipe/ThruSections limits), update
+`docs/v16.md` before expanding scope.
 
 ## Definition of Done
 

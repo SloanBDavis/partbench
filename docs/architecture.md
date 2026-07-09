@@ -12,6 +12,7 @@ The current implementation source of truth is:
 - `docs/v13.md`
 - `docs/v14.md`
 - `docs/v15.md`
+- `docs/v16.md` — approved V16 plan (not yet implemented)
 - `AGENTS.md`
 
 When architecture and implementation-plan conflict, follow the implementation plan for the current milestone.
@@ -930,7 +931,8 @@ solver, V12 stable boolean topology, V13 general topology identity, V14
 topology-backed downstream modeling, and V15 STEP import, expanded feature
 families, and parameter expressions releases. Follow
 `docs/implementation-plan.md` for the current implementation source of truth.
-No V16 release contract exists yet.
+The next planned release is V16 (sweep, loft, pattern depth, expression
+extensions, mass properties); the approved contract is `docs/v16.md`.
 
 The first implementation should not start with a full CAD UI. It should start with the command engine, WASM kernel bridge, and renderer skeleton.
 
