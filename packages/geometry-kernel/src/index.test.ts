@@ -673,6 +673,39 @@ describe("geometry-kernel facade", () => {
   );
 
   it(
+    "warns when a non-overlapping linear pattern produces multiple solids",
+    async () => {
+      const response = await executeGeometryKernelRequest({
+        id: "geometry_req_linear_pattern_multi_solid",
+        version: "geometry-kernel.v1",
+        op: "geometry.linearPattern",
+        seed: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 2,
+            height: 2
+          },
+          depth: 2
+        },
+        direction: [1, 0, 0],
+        spacing: 5,
+        instanceCount: 3
+      });
+
+      expect(response.ok).toBe(true);
+      if (!response.ok) {
+        throw new Error(response.error.message);
+      }
+      expect(response.warnings).toContain("PATTERN_MULTI_SOLID_RESULT");
+      expect(response.mesh.faceCount).toBe(18);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
     "mirrors a seed body across a plane without the original through the isolated OCCT WASM adapter",
     async () => {
       const response = await executeGeometryKernelRequest({
@@ -690,7 +723,10 @@ describe("geometry-kernel facade", () => {
           },
           depth: 3
         },
-        mirrorPlane: "YZ",
+        plane: {
+          point: [0, 0, 0],
+          normal: [1, 0, 0]
+        },
         includeOriginal: false
       });
 
@@ -740,7 +776,10 @@ describe("geometry-kernel facade", () => {
           },
           depth: 3
         },
-        mirrorPlane: "YZ",
+        plane: {
+          point: [0, 0, 0],
+          normal: [1, 0, 0]
+        },
         includeOriginal: true
       });
 
@@ -1639,6 +1678,65 @@ describe("geometry-kernel facade", () => {
       },
       wallThickness: 0.2,
       openFaceStableIds: ["generated:face:body_seed:endCap"],
+      linearDeflection: 0.25
+    });
+  });
+
+  it("passes sweep profiles and line paths to injected sweep factories", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    let captured:
+      | Parameters<
+          NonNullable<GeometryKernelMeshFactories["createSweepMesh"]>
+        >[0]
+      | undefined;
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory,
+      createSweepMesh: async (input) => {
+        captured = input;
+        return {
+          primitive: "sweep",
+          positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+          indices: new Uint32Array([0, 1, 2]),
+          vertexCount: 3,
+          triangleCount: 1,
+          faceCount: 1
+        };
+      }
+    };
+    const profile = {
+      sketchPlane: "XY" as const,
+      profile: {
+        kind: "rectangle" as const,
+        center: [0, 0] as const,
+        width: 2,
+        height: 1
+      }
+    };
+    const pathSegments = [{ start: [0, 0, 0], end: [0, 0, 5] }] as const;
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_sweep",
+        version: "geometry-kernel.v1",
+        op: "geometry.sweep",
+        profile,
+        pathSegments,
+        tessellation: { linearDeflection: 0.25 }
+      }
+    );
+
+    expect(response.ok).toBe(true);
+    expect(captured).toEqual({
+      profile,
+      pathSegments,
       linearDeflection: 0.25
     });
   });

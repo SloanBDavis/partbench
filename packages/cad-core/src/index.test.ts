@@ -5661,6 +5661,9 @@ describe("cad-core", () => {
         "feature.holeTarget": 0,
         "feature.attachSketchPlane": 6,
         "feature.chamfer": 12,
+        "feature.linearPatternDirection": 12,
+        "feature.circularPatternAxis": 12,
+        "feature.mirrorPlane": 6,
         "feature.fillet": 12,
         "feature.shell": 6,
         "feature.measureReference": 27,
@@ -6174,6 +6177,7 @@ describe("cad-core", () => {
       eligibleOperations: [
         "feature.attachSketchPlane",
         "feature.shell",
+        "feature.mirrorPlane",
         "feature.measureReference",
         "feature.selectReference"
       ],
@@ -6190,6 +6194,7 @@ describe("cad-core", () => {
       eligibleOperations: [
         "feature.attachSketchPlane",
         "feature.shell",
+        "feature.mirrorPlane",
         "feature.measureReference",
         "feature.selectReference"
       ],
@@ -6220,6 +6225,8 @@ describe("cad-core", () => {
       eligibleOperations: [
         "feature.chamfer",
         "feature.fillet",
+        "feature.linearPatternDirection",
+        "feature.circularPatternAxis",
         "feature.measureReference",
         "feature.selectReference"
       ],
@@ -6237,6 +6244,8 @@ describe("cad-core", () => {
       eligibleOperations: [
         "feature.chamfer",
         "feature.fillet",
+        "feature.linearPatternDirection",
+        "feature.circularPatternAxis",
         "feature.measureReference",
         "feature.selectReference"
       ],
@@ -6340,6 +6349,7 @@ describe("cad-core", () => {
         eligibleOperations: [
           "feature.attachSketchPlane",
           "feature.shell",
+          "feature.mirrorPlane",
           "feature.measureReference",
           "feature.selectReference"
         ],
@@ -6367,6 +6377,8 @@ describe("cad-core", () => {
         eligibleOperations: [
           "feature.chamfer",
           "feature.fillet",
+          "feature.linearPatternDirection",
+          "feature.circularPatternAxis",
           "feature.measureReference",
           "feature.selectReference"
         ],
@@ -6673,6 +6685,7 @@ describe("cad-core", () => {
         eligibleOperations: [
           "feature.attachSketchPlane",
           "feature.shell",
+          "feature.mirrorPlane",
           "feature.measureReference",
           "feature.selectReference"
         ]
@@ -7698,6 +7711,8 @@ describe("cad-core", () => {
           eligibleOperations: [
             "feature.chamfer",
             "feature.fillet",
+            "feature.linearPatternDirection",
+            "feature.circularPatternAxis",
             "feature.measureReference",
             "feature.selectReference"
           ]
@@ -8031,6 +8046,7 @@ describe("cad-core", () => {
     ).toEqual([
       "feature.attachSketchPlane",
       "feature.shell",
+      "feature.mirrorPlane",
       "feature.measureReference",
       "feature.selectReference"
     ]);
@@ -8184,6 +8200,8 @@ describe("cad-core", () => {
         eligibleOperations: [
           "feature.chamfer",
           "feature.fillet",
+          "feature.linearPatternDirection",
+          "feature.circularPatternAxis",
           "feature.measureReference",
           "feature.selectReference"
         ]
@@ -8230,6 +8248,8 @@ describe("cad-core", () => {
         eligibleOperations: [
           "feature.chamfer",
           "feature.fillet",
+          "feature.linearPatternDirection",
+          "feature.circularPatternAxis",
           "feature.measureReference",
           "feature.selectReference"
         ]
@@ -15870,6 +15890,8 @@ describe("cad-core", () => {
           eligibleOperations: [
             "feature.chamfer",
             "feature.fillet",
+            "feature.linearPatternDirection",
+            "feature.circularPatternAxis",
             "feature.measureReference",
             "feature.selectReference"
           ],
@@ -15967,6 +15989,8 @@ describe("cad-core", () => {
             "reference.nameGenerated",
             "feature.chamfer",
             "feature.fillet",
+            "feature.linearPatternDirection",
+            "feature.circularPatternAxis",
             "feature.measureReference",
             "feature.selectReference"
           ],
@@ -16006,6 +16030,8 @@ describe("cad-core", () => {
             "reference.nameGenerated",
             "feature.chamfer",
             "feature.fillet",
+            "feature.linearPatternDirection",
+            "feature.circularPatternAxis",
             "feature.measureReference",
             "feature.selectReference"
           ],
@@ -16197,6 +16223,8 @@ describe("cad-core", () => {
             "reference.nameGenerated",
             "feature.chamfer",
             "feature.fillet",
+            "feature.linearPatternDirection",
+            "feature.circularPatternAxis",
             "feature.measureReference",
             "feature.selectReference"
           ]

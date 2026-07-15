@@ -154,7 +154,137 @@ export function createFeatureEditabilityResponse(
     return createShellEditabilityResponse(options, feature);
   }
 
+  if (feature.kind === "sweep") {
+    return createSweepEditabilityResponse(options, feature);
+  }
+
   return createDeferredSourceFeatureResponse(options, feature);
+}
+
+function createSweepEditabilityResponse(
+  options: CreateFeatureEditabilityResponseOptions,
+  feature: Extract<CadFeatureSummary, { readonly kind: "sweep" }>
+): FeatureEditabilityQueryResponse {
+  const proposal =
+    options.proposedEdit?.kind === "sweep" ? options.proposedEdit : undefined;
+  const profileSketchId = proposal?.profileSketchId ?? feature.profileSketchId;
+  const profileEntityId = proposal?.profileEntityId ?? feature.profileEntityId;
+  const pathSketchId = proposal?.pathSketchId ?? feature.pathSketchId;
+  const pathEntityIds = proposal?.pathEntityIds ?? feature.pathEntityIds;
+  const profileEntity = options.document.sketches
+    .get(profileSketchId)
+    ?.entities.get(profileEntityId);
+  const pathSketch = options.document.sketches.get(pathSketchId);
+  const blockingDiagnostics = createResultBodyBlockingDiagnostics(
+    feature.id,
+    feature.bodyId,
+    options.bodies.find((body) => body.id === feature.bodyId)
+      ?.consumedByFeatureId,
+    "feature.updateSweep"
+  );
+
+  if (
+    !profileEntity ||
+    (profileEntity.kind !== "rectangle" && profileEntity.kind !== "circle")
+  ) {
+    blockingDiagnostics.push(
+      createDiagnostic({
+        code: "FEATURE_EDIT_INVALID_PROPOSAL",
+        severity: "blocker",
+        message: "Sweep profile must resolve to a rectangle or circle entity.",
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        sketchId: profileSketchId,
+        sketchEntityId: profileEntityId
+      })
+    );
+  }
+
+  if (
+    !pathSketch ||
+    pathEntityIds.length !== 1 ||
+    pathEntityIds.some(
+      (entityId) => pathSketch.entities.get(entityId)?.kind !== "line"
+    )
+  ) {
+    blockingDiagnostics.push(
+      createDiagnostic({
+        code: "FEATURE_EDIT_INVALID_PROPOSAL",
+        severity: "blocker",
+        message: "Sweep path must resolve to exactly one line entity.",
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        sketchId: pathSketchId
+      })
+    );
+  }
+
+  if (options.proposedEdit && !proposal) {
+    blockingDiagnostics.push(
+      createDiagnostic({
+        code: "FEATURE_EDIT_INVALID_PROPOSAL",
+        severity: "blocker",
+        message: "Sweep editability requires a sweep proposal.",
+        featureId: feature.id,
+        bodyId: feature.bodyId
+      })
+    );
+  }
+
+  const editable = blockingDiagnostics.length === 0;
+  const supportDiagnostics: CadFeatureEditDiagnostic[] = editable
+    ? [
+        createDiagnostic({
+          code: "FEATURE_EDIT_SUPPORTED",
+          severity: "info",
+          message:
+            "Sweep profile and path references can be retargeted through feature.updateSweep; this query does not mutate document state.",
+          featureId: feature.id,
+          bodyId: feature.bodyId
+        })
+      ]
+    : [];
+  const diagnostics = [...supportDiagnostics, ...blockingDiagnostics];
+  const fields = [
+    ["profileSketchId", "Profile sketch", feature.profileSketchId],
+    ["profileEntityId", "Profile entity", feature.profileEntityId],
+    ["pathSketchId", "Path sketch", feature.pathSketchId],
+    ["pathEntityIds", "Path entities", feature.pathEntityIds.join(", ")]
+  ].map(([path, label, currentValue]) => ({
+    path: path!,
+    label: label!,
+    valueType: "reference" as const,
+    currentValue,
+    editable,
+    ...(editable ? { commitOperation: "feature.updateSweep" as const } : {}),
+    diagnostics: blockingDiagnostics
+  }));
+
+  return createResponse({
+    options,
+    feature,
+    status: editable ? "editable" : "blocked",
+    fields,
+    diagnostics,
+    rebuildStatus: editable ? "ready" : "blocked",
+    rebuildDiagnostics: blockingDiagnostics,
+    dryRunStatus:
+      options.proposedEdit === undefined
+        ? "not-requested"
+        : editable
+          ? "valid"
+          : "blocked",
+    dryRunDiagnostics: blockingDiagnostics,
+    commitOperation: "feature.updateSweep",
+    affected: createAffectedSummary(
+      [profileSketchId, pathSketchId],
+      [feature.id],
+      [feature.bodyId],
+      countGeneratedReferences(options, feature.bodyId),
+      countNamedReferences(options, feature.bodyId)
+    ),
+    referenceChanges: createRepairNeededResultReferenceChanges(feature)
+  });
 }
 
 function createExtrudeEditabilityResponse(
@@ -1241,7 +1371,8 @@ function createDeferredFields(
     feature.kind === "linearPattern" ||
     feature.kind === "circularPattern" ||
     feature.kind === "mirror" ||
-    feature.kind === "shell"
+    feature.kind === "shell" ||
+    feature.kind === "sweep"
   ) {
     return [];
   }

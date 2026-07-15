@@ -16,6 +16,7 @@ import {
   createMirrorWorkerRequest,
   createRevolveProfileWorkerRequest,
   createShellWorkerRequest,
+  createSweepWorkerRequest,
   createSphereTessellationWorkerRequest,
   createTorusTessellationWorkerRequest,
   getGeometryWorkerExactExportCapabilities,
@@ -206,7 +207,10 @@ describe("geometry-worker", () => {
     const request = createMirrorWorkerRequest({
       id: "worker_req_mirror",
       seed,
-      mirrorPlane: "YZ",
+      plane: {
+        point: [0, 0, 0],
+        normal: [1, 0, 0]
+      },
       includeOriginal: true,
       linearDeflection: 0.25
     });
@@ -220,7 +224,10 @@ describe("geometry-worker", () => {
         version: "geometry-kernel.v1",
         op: "geometry.mirror",
         seed,
-        mirrorPlane: "YZ",
+        plane: {
+          point: [0, 0, 0],
+          normal: [1, 0, 0]
+        },
         includeOriginal: true,
         tessellation: { linearDeflection: 0.25 }
       }
@@ -259,6 +266,39 @@ describe("geometry-worker", () => {
         target,
         wallThickness: 0.2,
         openFaceStableIds: ["generated:face:body_seed:endCap"],
+        tessellation: { linearDeflection: 0.25 }
+      }
+    });
+  });
+
+  it("creates a typed sweep feature worker request", () => {
+    const profile = {
+      sketchPlane: "XY" as const,
+      profile: {
+        kind: "circle" as const,
+        center: [0, 0] as const,
+        radius: 1
+      }
+    };
+    const pathSegments = [{ start: [0, 0, 0], end: [0, 0, 5] }] as const;
+
+    expect(
+      createSweepWorkerRequest({
+        id: "worker_req_sweep",
+        profile,
+        pathSegments,
+        linearDeflection: 0.25
+      })
+    ).toEqual({
+      id: "worker_req_sweep",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.sweepFeature",
+      payload: {
+        id: "worker_req_sweep:payload",
+        version: "geometry-kernel.v1",
+        op: "geometry.sweep",
+        profile,
+        pathSegments,
         tessellation: { linearDeflection: 0.25 }
       }
     });

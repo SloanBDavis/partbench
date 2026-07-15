@@ -115,6 +115,7 @@ describe("V7 viewport baseline fixture", () => {
           "Name reference",
           "Create sketch on face",
           "Shell",
+          "Use as mirror plane",
           "Measure reference",
           "Inspect reference"
         ]
@@ -129,6 +130,7 @@ describe("V7 viewport baseline fixture", () => {
           "Name reference",
           "Create sketch on face",
           "Shell",
+          "Use as mirror plane",
           "Measure reference",
           "Inspect reference"
         ]

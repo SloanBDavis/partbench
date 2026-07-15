@@ -2268,6 +2268,11 @@ function ParameterControls({
                   />
                 </label>
               </div>
+              <small className="form-hint">
+                Supports arithmetic, comparisons, condition ? true : false,
+                if(), and degree-based sin/cos/tan. Use deg() and rad() for
+                explicit angle conversion.
+              </small>
               {selectedEvaluationNode?.diagnostics.length ? (
                 <p className="project-message compact warning">
                   {selectedEvaluationNode.diagnostics[0].message}

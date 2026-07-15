@@ -16,7 +16,8 @@ import {
   createOcctLinearPatternMesh,
   createOcctCircularPatternMesh,
   createOcctMirrorMesh,
-  createOcctShellMesh
+  createOcctShellMesh,
+  createOcctSweepMesh
 } from "@web-cad/occt-wasm";
 import {
   executeGeometryKernelRequestWithMeshFactory,
@@ -128,14 +129,20 @@ import {
   type LinearPatternRequest,
   type CircularPatternRequest,
   type PatternSeedSource,
-  type GeometryKernelPatternAxis,
+  type GeometryKernelDirection,
+  type GeometryKernelAxisFrame,
   type MirrorRequest,
   type MirrorSeedSource,
-  type GeometryKernelMirrorPlane,
+  type GeometryKernelPlaneFrame,
   type GeometryKernelMirrorMeshFactory,
   type ShellRequest,
   type ShellTargetSource,
-  type GeometryKernelShellMeshFactory
+  type GeometryKernelShellMeshFactory,
+  type SweepRequest,
+  type SweepProfileSource,
+  type SweepPathSegment,
+  type ExactSweepMetadataSource,
+  type GeometryKernelSweepMeshFactory
 } from "./kernel";
 
 export type {
@@ -244,14 +251,20 @@ export type {
   LinearPatternRequest,
   CircularPatternRequest,
   PatternSeedSource,
-  GeometryKernelPatternAxis,
+  GeometryKernelDirection,
+  GeometryKernelAxisFrame,
   MirrorRequest,
   MirrorSeedSource,
-  GeometryKernelMirrorPlane,
+  GeometryKernelPlaneFrame,
   GeometryKernelMirrorMeshFactory,
   ShellRequest,
   ShellTargetSource,
-  GeometryKernelShellMeshFactory
+  GeometryKernelShellMeshFactory,
+  SweepRequest,
+  SweepProfileSource,
+  SweepPathSegment,
+  ExactSweepMetadataSource,
+  GeometryKernelSweepMeshFactory
 };
 export {
   getGeometryKernelExactExportCapabilities,
@@ -282,7 +295,8 @@ export async function executeGeometryKernelRequest<
       createLinearPatternMesh: createOcctLinearPatternMesh,
       createCircularPatternMesh: createOcctCircularPatternMesh,
       createMirrorMesh: createOcctMirrorMesh,
-      createShellMesh: createOcctShellMesh
+      createShellMesh: createOcctShellMesh,
+      createSweepMesh: createOcctSweepMesh
     },
     request
   );

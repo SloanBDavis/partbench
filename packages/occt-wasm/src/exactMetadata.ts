@@ -14,6 +14,11 @@ import {
 } from "./revolveProfile";
 import { withOcctHoleResultShape, type OcctHoleToolSource } from "./hole";
 import {
+  makeSweepShape,
+  type OcctSweepPathSegment,
+  type OcctSweepProfileSource
+} from "./sweep";
+import {
   withOcctEdgeFinishResultShape,
   type OcctChamferEdgeFinishInput,
   type OcctFilletEdgeFinishInput
@@ -26,6 +31,7 @@ export type OcctExactBodyMetadataSource =
   | OcctExactExtrudeMetadataSource
   | OcctExactBooleanExtrudesMetadataSource
   | OcctExactRevolveMetadataSource
+  | OcctExactSweepMetadataSource
   | OcctExactHoleMetadataSource
   | OcctExactEdgeFinishMetadataSource;
 
@@ -44,6 +50,12 @@ export interface OcctExactRevolveMetadataSource {
   readonly axis: OcctRevolveAxis;
   readonly angleDegrees: number;
   readonly placementFrame?: OcctRevolvePlacementFrame;
+}
+
+export interface OcctExactSweepMetadataSource {
+  readonly kind: "sweep";
+  readonly profile: OcctSweepProfileSource;
+  readonly pathSegments: readonly OcctSweepPathSegment[];
 }
 
 export interface OcctExactHoleMetadataSource {
@@ -327,6 +339,16 @@ export function withOcctExactBodyShape<T>(
 
   if (source.kind === "revolve") {
     const shapeHandle = makeRevolveProfileShape(oc, source);
+
+    try {
+      return readShape(shapeHandle.shape, source.kind);
+    } finally {
+      shapeHandle.delete();
+    }
+  }
+
+  if (source.kind === "sweep") {
+    const shapeHandle = makeSweepShape(oc, source);
 
     try {
       return readShape(shapeHandle.shape, source.kind);

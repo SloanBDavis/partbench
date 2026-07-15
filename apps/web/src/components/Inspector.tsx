@@ -962,6 +962,8 @@ function formatFeatureKindLabel(feature: CadFeatureSummary): string {
       return "Mirror";
     case "shell":
       return "Shell";
+    case "sweep":
+      return "Sweep";
     case "primitive":
       return formatObjectKind(feature.primitive);
   }
@@ -1118,7 +1120,7 @@ function renderFeatureDetailRows(
         </div>
         <div>
           <dt>Axis</dt>
-          <dd>{feature.axis}</dd>
+          <dd>{formatDirectionReference(feature.direction)}</dd>
         </div>
         <div>
           <dt>Spacing</dt>
@@ -1143,7 +1145,7 @@ function renderFeatureDetailRows(
         </div>
         <div>
           <dt>Rotation axis</dt>
-          <dd>{feature.rotationAxis}</dd>
+          <dd>{formatDirectionReference(feature.rotationAxis)}</dd>
         </div>
         <div>
           <dt>Total angle</dt>
@@ -1166,7 +1168,7 @@ function renderFeatureDetailRows(
         </div>
         <div>
           <dt>Mirror plane</dt>
-          <dd>{feature.mirrorPlane}</dd>
+          <dd>{formatMirrorPlaneReference(feature.plane)}</dd>
         </div>
         <div>
           <dt>Include original</dt>
@@ -1197,6 +1199,25 @@ function renderFeatureDetailRows(
     );
   }
 
+  if (feature.kind === "sweep") {
+    return (
+      <>
+        <div>
+          <dt>Profile</dt>
+          <dd>
+            {feature.profileSketchId} / {feature.profileEntityId}
+          </dd>
+        </div>
+        <div>
+          <dt>Path</dt>
+          <dd>
+            {feature.pathSketchId} / {feature.pathEntityIds.join(", ")}
+          </dd>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <div>
@@ -1218,6 +1239,29 @@ function renderFeatureDetailRows(
       </div>
     </>
   );
+}
+
+function formatDirectionReference(
+  ref: Extract<
+    CadFeatureSummary,
+    { readonly kind: "linearPattern" }
+  >["direction"]
+): string {
+  if (ref.kind === "globalAxis") return ref.axis.toUpperCase();
+  if (ref.kind === "namedReference") return ref.name;
+  if (ref.kind === "generatedEdge") return ref.stableId;
+  return ref.anchorId;
+}
+
+function formatMirrorPlaneReference(
+  ref: Extract<CadFeatureSummary, { readonly kind: "mirror" }>["plane"]
+): string {
+  const offset = ref.offset ?? 0;
+  const suffix = offset === 0 ? "" : ` (${offset >= 0 ? "+" : ""}${offset})`;
+  if (ref.kind === "standardPlane") return `${ref.plane}${suffix}`;
+  if (ref.kind === "namedReference") return `${ref.name}${suffix}`;
+  if (ref.kind === "generatedFace") return `${ref.stableId}${suffix}`;
+  return `${ref.anchorId}${suffix}`;
 }
 
 function SelectionReferenceContractPanel({

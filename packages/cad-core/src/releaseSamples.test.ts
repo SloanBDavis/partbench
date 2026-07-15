@@ -23,6 +23,7 @@ import {
   CAD_PROJECT_FORMAT_VERSION_V16,
   CURRENT_CAD_PROJECT_FORMAT_VERSION,
   CAD_PROJECT_FORMAT_VERSION_V19,
+  CAD_PROJECT_FORMAT_VERSION_V20,
   CadEngine,
   createV13ReleaseSampleBatch,
   createV14ReleaseSampleBatch,
@@ -723,9 +724,18 @@ describe("V15 release sample fixtures", () => {
       const json = exportCadProjectJson(engine);
       const project = parseCadProjectJson(json);
       const restored = importCadProjectJson(json);
+      const usesV20Feature = fixture.expectedFeatures.some(
+        (feature) =>
+          feature.kind === "linearPattern" ||
+          feature.kind === "circularPattern" ||
+          feature.kind === "mirror"
+      );
+      const expectedSchemaVersion = usesV20Feature
+        ? CAD_PROJECT_FORMAT_VERSION_V20
+        : CAD_PROJECT_FORMAT_VERSION_V19;
 
-      expect(project.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V19);
-      expect(json).toContain(CAD_PROJECT_FORMAT_VERSION_V19);
+      expect(project.schemaVersion).toBe(expectedSchemaVersion);
+      expect(json).toContain(expectedSchemaVersion);
       expect(json).not.toContain("project.health");
       expect(json).not.toContain("project.parameterEvaluation");
       assertNoRawDerivedIds(json);
@@ -758,7 +768,13 @@ describe("V15 release sample fixtures", () => {
                 ? { totalAngleDegrees: featureExpectation.totalAngleDegrees }
                 : {}),
               ...(featureExpectation.mirrorPlane
-                ? { mirrorPlane: featureExpectation.mirrorPlane }
+                ? {
+                    plane: {
+                      kind: "standardPlane",
+                      plane: featureExpectation.mirrorPlane,
+                      offset: 0
+                    }
+                  }
                 : {}),
               ...(featureExpectation.includeOriginal !== undefined
                 ? { includeOriginal: featureExpectation.includeOriginal }

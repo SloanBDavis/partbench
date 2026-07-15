@@ -9,6 +9,8 @@ import type {
   CadAxisAlignedBounds,
   BodyImportedBodyStatusQueryResponse,
   BodyMeasurementsSnapshot,
+  BodyPatternInstancesQueryResponse,
+  BodyMassPropertiesQueryResponse,
   BodyExtentSnapshot,
   CadAttachedSketchHealth,
   CadAuthoredChamferHealth,
@@ -386,6 +388,8 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentBodyTopologyQueryResponse
   | CadOpsAgentBodyTopologyIdentityQueryResponse
   | CadOpsAgentBodyMeasurementsQueryResponse
+  | CadOpsAgentBodyPatternInstancesQueryResponse
+  | CadOpsAgentBodyMassPropertiesQueryResponse
   | CadOpsAgentBodyImportedBodyStatusQueryResponse
   | CadOpsAgentProjectExtentsQueryResponse
   | CadOpsAgentSketchGetQueryResponse
@@ -680,6 +684,24 @@ export interface CadOpsAgentBodyMeasurementsQueryResponse {
   readonly measurements: BodyMeasurementsSnapshot;
 }
 
+export interface CadOpsAgentBodyPatternInstancesQueryResponse extends Omit<
+  BodyPatternInstancesQueryResponse,
+  "ok"
+> {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+}
+
+export interface CadOpsAgentBodyMassPropertiesQueryResponse extends Omit<
+  BodyMassPropertiesQueryResponse,
+  "ok"
+> {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+}
+
 export interface CadOpsAgentBodyImportedBodyStatusQueryResponse extends Omit<
   BodyImportedBodyStatusQueryResponse,
   "ok"
@@ -920,6 +942,8 @@ export interface CadOpsAgentQueryErrorResponse {
     | "body.topology"
     | "body.topologyIdentity"
     | "body.measurements"
+    | "body.patternInstances"
+    | "body.massProperties"
     | "body.importedBodyStatus"
     | "project.extents"
     | "sketch.get"
@@ -2138,6 +2162,32 @@ function createOperationReview(
       };
     }
 
+    case "feature.sweep":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create sweep feature ${op.id ?? "with generated ID"} from ${op.profileSketchId}/${op.profileEntityId}`
+        ),
+        ...(op.id ? { featureId: op.id } : {}),
+        ...(op.bodyId ? { bodyId: op.bodyId } : {}),
+        sketchId: op.profileSketchId,
+        sketchEntityId: op.profileEntityId
+      };
+
+    case "feature.loft":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create loft feature ${op.id ?? "with generated ID"} through ${op.sections.length} sections`
+        ),
+        ...(op.id ? { featureId: op.id } : {}),
+        ...(op.bodyId ? { bodyId: op.bodyId } : {})
+      };
+
     case "feature.delete":
       return {
         ...operationReviewBase(index, op, "delete", `Delete feature ${op.id}`),
@@ -2216,13 +2266,35 @@ function createOperationReview(
         featureId: op.id
       };
 
+    case "feature.updateSweep":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "modify",
+          `Update sweep feature ${op.id}`
+        ),
+        featureId: op.id
+      };
+
+    case "feature.updateLoft":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "modify",
+          `Update loft feature ${op.id}`
+        ),
+        featureId: op.id
+      };
+
     case "feature.linearPattern":
       return {
         ...operationReviewBase(
           index,
           op,
           "create",
-          `Create linear pattern feature ${op.id ?? "with generated ID"} of ${op.seedBodyId} (${op.instanceCount} along ${op.axis})`
+          `Create linear pattern feature ${op.id ?? "with generated ID"} of ${op.seedBodyId} (${op.instanceCount} along ${formatPatternDirection(op.direction ?? op.axis)})`
         ),
         ...(op.id ? { featureId: op.id } : {}),
         ...(op.bodyId ? { bodyId: op.bodyId } : {}),
@@ -2235,7 +2307,7 @@ function createOperationReview(
           index,
           op,
           "create",
-          `Create circular pattern feature ${op.id ?? "with generated ID"} of ${op.seedBodyId} (${op.instanceCount} across ${op.totalAngleDegrees}° around ${op.rotationAxis})`
+          `Create circular pattern feature ${op.id ?? "with generated ID"} of ${op.seedBodyId} (${op.instanceCount} across ${op.totalAngleDegrees}° around ${formatPatternDirection(op.rotationAxis)})`
         ),
         ...(op.id ? { featureId: op.id } : {}),
         ...(op.bodyId ? { bodyId: op.bodyId } : {}),
@@ -2248,7 +2320,7 @@ function createOperationReview(
           index,
           op,
           "create",
-          `Create mirror feature ${op.id ?? "with generated ID"} of ${op.seedBodyId} across ${op.mirrorPlane}${op.includeOriginal ? " (union with original)" : ""}`
+          `Create mirror feature ${op.id ?? "with generated ID"} of ${op.seedBodyId} across ${formatMirrorPlane(op.plane ?? op.mirrorPlane)}${op.includeOriginal ? " (union with original)" : ""}`
         ),
         ...(op.id ? { featureId: op.id } : {}),
         ...(op.bodyId ? { bodyId: op.bodyId } : {}),
@@ -2908,6 +2980,17 @@ function toAgentQueryResponse(
       cadOpsVersion: response.cadOpsVersion,
       query: response.query,
       measurements: response.measurements
+    };
+  }
+
+  if (
+    response.query === "body.patternInstances" ||
+    response.query === "body.massProperties"
+  ) {
+    return {
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      ...response
     };
   }
 
@@ -3661,6 +3744,22 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
           ))) ||
       (value.query.query === "body.measurements" &&
         typeof value.query.bodyId === "string") ||
+      (value.query.query === "body.patternInstances" &&
+        typeof value.query.bodyId === "string" &&
+        (value.query.derivedExactMetadata === undefined ||
+          isCadBodyDerivedExactMetadataSnapshot(
+            value.query.derivedExactMetadata
+          ))) ||
+      (value.query.query === "body.massProperties" &&
+        typeof value.query.bodyId === "string" &&
+        (value.query.density === undefined ||
+          (typeof value.query.density === "number" &&
+            Number.isFinite(value.query.density) &&
+            value.query.density > 0)) &&
+        (value.query.derivedExactMetadata === undefined ||
+          isCadBodyDerivedExactMetadataSnapshot(
+            value.query.derivedExactMetadata
+          ))) ||
       (value.query.query === "project.extents" &&
         (Object.keys(value.query).length === 1 ||
           (Object.keys(value.query).length === 2 &&
@@ -4773,7 +4872,10 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.bodyId) &&
       isOptionalString(value.name) &&
       typeof value.seedBodyId === "string" &&
-      isFeaturePatternAxis(value.axis) &&
+      (value.axis === undefined || isFeaturePatternAxis(value.axis)) &&
+      (value.direction === undefined ||
+        isPatternDirectionRefShape(value.direction)) &&
+      (value.axis !== undefined || value.direction !== undefined) &&
       typeof value.spacing === "number" &&
       typeof value.instanceCount === "number"
     );
@@ -4785,7 +4887,8 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.bodyId) &&
       isOptionalString(value.name) &&
       typeof value.seedBodyId === "string" &&
-      isFeaturePatternAxis(value.rotationAxis) &&
+      (isFeaturePatternAxis(value.rotationAxis) ||
+        isPatternDirectionRefShape(value.rotationAxis)) &&
       typeof value.totalAngleDegrees === "number" &&
       typeof value.instanceCount === "number"
     );
@@ -4797,7 +4900,10 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.bodyId) &&
       isOptionalString(value.name) &&
       typeof value.seedBodyId === "string" &&
-      isFeatureMirrorPlane(value.mirrorPlane) &&
+      (value.mirrorPlane === undefined ||
+        isFeatureMirrorPlane(value.mirrorPlane)) &&
+      (value.plane === undefined || isMirrorPlaneRefShape(value.plane)) &&
+      (value.mirrorPlane !== undefined || value.plane !== undefined) &&
       typeof value.includeOriginal === "boolean"
     );
   }
@@ -4819,10 +4925,13 @@ function isCadOp(value: unknown): value is CadOp {
     return (
       typeof value.id === "string" &&
       (value.axis === undefined || isFeaturePatternAxis(value.axis)) &&
+      (value.direction === undefined ||
+        isPatternDirectionRefShape(value.direction)) &&
       (value.spacing === undefined || typeof value.spacing === "number") &&
       (value.instanceCount === undefined ||
         typeof value.instanceCount === "number") &&
       (value.axis !== undefined ||
+        value.direction !== undefined ||
         value.spacing !== undefined ||
         value.instanceCount !== undefined)
     );
@@ -4832,7 +4941,8 @@ function isCadOp(value: unknown): value is CadOp {
     return (
       typeof value.id === "string" &&
       (value.rotationAxis === undefined ||
-        isFeaturePatternAxis(value.rotationAxis)) &&
+        isFeaturePatternAxis(value.rotationAxis) ||
+        isPatternDirectionRefShape(value.rotationAxis)) &&
       (value.totalAngleDegrees === undefined ||
         typeof value.totalAngleDegrees === "number") &&
       (value.instanceCount === undefined ||
@@ -4848,9 +4958,12 @@ function isCadOp(value: unknown): value is CadOp {
       typeof value.id === "string" &&
       (value.mirrorPlane === undefined ||
         isFeatureMirrorPlane(value.mirrorPlane)) &&
+      (value.plane === undefined || isMirrorPlaneRefShape(value.plane)) &&
       (value.includeOriginal === undefined ||
         typeof value.includeOriginal === "boolean") &&
-      (value.mirrorPlane !== undefined || value.includeOriginal !== undefined)
+      (value.mirrorPlane !== undefined ||
+        value.plane !== undefined ||
+        value.includeOriginal !== undefined)
     );
   }
 
@@ -5110,6 +5223,62 @@ function isFeaturePatternAxis(value: unknown): value is FeaturePatternAxis {
 
 function isFeatureMirrorPlane(value: unknown): value is FeatureMirrorPlane {
   return value === "XY" || value === "XZ" || value === "YZ";
+}
+
+function formatPatternDirection(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (!isRecord(value)) return "unspecified direction";
+  if (value.kind === "globalAxis") return String(value.axis);
+  if (value.kind === "namedReference") return `named reference ${value.name}`;
+  if (value.kind === "generatedEdge") return `edge ${value.stableId}`;
+  return `topology anchor ${String(value.anchorId)}`;
+}
+
+function formatMirrorPlane(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (!isRecord(value)) return "unspecified plane";
+  if (value.kind === "standardPlane") return String(value.plane);
+  if (value.kind === "namedReference") return `named reference ${value.name}`;
+  if (value.kind === "generatedFace") return `face ${value.stableId}`;
+  return `topology anchor ${String(value.anchorId)}`;
+}
+
+function isPatternDirectionRefShape(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (value.kind === "globalAxis") return isFeaturePatternAxis(value.axis);
+  if (value.kind === "generatedEdge") {
+    return (
+      typeof value.bodyId === "string" && typeof value.stableId === "string"
+    );
+  }
+  if (value.kind === "namedReference") return typeof value.name === "string";
+  return (
+    value.kind === "topologyAnchor" &&
+    typeof value.bodyId === "string" &&
+    typeof value.anchorId === "string"
+  );
+}
+
+function isMirrorPlaneRefShape(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (
+    value.offset !== undefined &&
+    (typeof value.offset !== "number" || !Number.isFinite(value.offset))
+  ) {
+    return false;
+  }
+  if (value.kind === "standardPlane") return isFeatureMirrorPlane(value.plane);
+  if (value.kind === "generatedFace") {
+    return (
+      typeof value.bodyId === "string" && typeof value.stableId === "string"
+    );
+  }
+  if (value.kind === "namedReference") return typeof value.name === "string";
+  return (
+    value.kind === "topologyAnchor" &&
+    typeof value.bodyId === "string" &&
+    typeof value.anchorId === "string"
+  );
 }
 
 function isExtrudeOperationMode(

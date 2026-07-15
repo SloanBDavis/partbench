@@ -17,9 +17,25 @@ type ExpressionAst =
     }
   | {
       readonly kind: "binary";
-      readonly operator: "+" | "-" | "*" | "/";
+      readonly operator:
+        | "+"
+        | "-"
+        | "*"
+        | "/"
+        | "<"
+        | ">"
+        | "<="
+        | ">="
+        | "=="
+        | "!=";
       readonly left: ExpressionAst;
       readonly right: ExpressionAst;
+    }
+  | {
+      readonly kind: "conditional";
+      readonly condition: ExpressionAst;
+      readonly whenTrue: ExpressionAst;
+      readonly whenFalse: ExpressionAst;
     }
   | {
       readonly kind: "call";
@@ -45,7 +61,23 @@ type Token =
       readonly position: number;
     }
   | {
-      readonly kind: "+" | "-" | "*" | "/" | "(" | ")" | "," | "eof";
+      readonly kind:
+        | "+"
+        | "-"
+        | "*"
+        | "/"
+        | "<"
+        | ">"
+        | "<="
+        | ">="
+        | "=="
+        | "!="
+        | "?"
+        | ":"
+        | "("
+        | ")"
+        | ","
+        | "eof";
       readonly position: number;
     };
 
@@ -76,7 +108,17 @@ const BUILTIN_ARITIES = new Map<string, readonly number[]>([
   ["sqrt", [1]],
   ["round", [1]],
   ["floor", [1]],
-  ["ceil", [1]]
+  ["ceil", [1]],
+  ["sin", [1]],
+  ["cos", [1]],
+  ["tan", [1]],
+  ["asin", [1]],
+  ["acos", [1]],
+  ["atan", [1]],
+  ["atan2", [2]],
+  ["deg", [1]],
+  ["rad", [1]],
+  ["if", [3]]
 ]);
 
 export function parseParameterExpression(expression: string):
@@ -117,6 +159,7 @@ export function evaluateParameterExpressions(
   const dependentsById = new Map<ParameterId, ParameterId[]>(
     parameterIds.map((id) => [id, []])
   );
+  let usesV2Features = false;
 
   for (const parameter of parameters) {
     const expression = normalizeStoredExpression(parameter.expression);
@@ -141,6 +184,7 @@ export function evaluateParameterExpressions(
     }
 
     astById.set(parameter.id, parsed.parsed.ast);
+    usesV2Features ||= usesV2ExpressionAst(parsed.parsed.ast);
     referenceNamesById.set(parameter.id, parsed.parsed.referenceNames);
 
     const references: ParameterId[] = [];
@@ -284,10 +328,21 @@ export function evaluateParameterExpressions(
 
   const diagnostics = [
     ...nodes.flatMap((node) => node.diagnostics),
-    ...extraDiagnostics
+    ...extraDiagnostics,
+    ...(usesV2Features
+      ? [
+          {
+            code: "EXPRESSION_LANGUAGE_V2_FEATURES_PRESENT" as const,
+            message:
+              "Parameter expressions use V16 language features and require a V16-capable evaluator."
+          }
+        ]
+      : [])
   ];
   const hasBlockingDiagnostics = diagnostics.some(
-    (diagnostic) => diagnostic.code !== "EXPRESSION_VALUE_INCONSISTENCY"
+    (diagnostic) =>
+      diagnostic.code !== "EXPRESSION_VALUE_INCONSISTENCY" &&
+      diagnostic.code !== "EXPRESSION_LANGUAGE_V2_FEATURES_PRESENT"
   );
 
   return {
@@ -303,6 +358,39 @@ export function evaluateParameterExpressions(
     diagnostics,
     valueChanges
   };
+}
+
+function usesV2ExpressionAst(ast: ExpressionAst): boolean {
+  switch (ast.kind) {
+    case "literal":
+    case "parameter":
+      return false;
+    case "unary":
+      return usesV2ExpressionAst(ast.operand);
+    case "conditional":
+      return true;
+    case "binary":
+      return (
+        isComparisonToken(ast.operator) ||
+        usesV2ExpressionAst(ast.left) ||
+        usesV2ExpressionAst(ast.right)
+      );
+    case "call":
+      return (
+        [
+          "sin",
+          "cos",
+          "tan",
+          "asin",
+          "acos",
+          "atan",
+          "atan2",
+          "deg",
+          "rad",
+          "if"
+        ].includes(ast.name) || ast.args.some(usesV2ExpressionAst)
+      );
+  }
 }
 
 function tokenizeExpression(expression: string):
@@ -420,6 +508,28 @@ function tokenizeExpression(expression: string):
       continue;
     }
 
+    const pair = expression.slice(position, position + 2);
+    if (isComparisonPairTokenKind(pair)) {
+      tokens.push({ kind: pair, position });
+      position += 2;
+      continue;
+    }
+
+    if (pair === "&&" || pair === "||" || char === "!") {
+      return {
+        ok: false,
+        diagnostic: {
+          code: "EXPRESSION_LANGUAGE_UNSUPPORTED_TOKEN",
+          message: `Unsupported token ${pair === "&&" || pair === "||" ? pair : char} in parameter expression.`,
+          expression,
+          position,
+          expected:
+            "comparison, ternary, or if(condition, trueValue, falseValue)",
+          received: pair === "&&" || pair === "||" ? pair : char
+        }
+      };
+    }
+
     if (isOperatorTokenKind(char)) {
       tokens.push({ kind: char, position });
       position += 1;
@@ -446,16 +556,26 @@ function tokenizeExpression(expression: string):
 
 function isOperatorTokenKind(
   value: string
-): value is "+" | "-" | "*" | "/" | "(" | ")" | "," {
+): value is "+" | "-" | "*" | "/" | "<" | ">" | "?" | ":" | "(" | ")" | "," {
   return (
     value === "+" ||
     value === "-" ||
     value === "*" ||
     value === "/" ||
+    value === "<" ||
+    value === ">" ||
+    value === "?" ||
+    value === ":" ||
     value === "(" ||
     value === ")" ||
     value === ","
   );
+}
+
+function isComparisonPairTokenKind(
+  value: string
+): value is "<=" | ">=" | "==" | "!=" {
+  return value === "<=" || value === ">=" || value === "==" || value === "!=";
 }
 
 class ExpressionParser {
@@ -512,7 +632,70 @@ class ExpressionParser {
         readonly ok: false;
         readonly diagnostic: CadParameterExpressionDiagnostic;
       } {
-    return this.#parseAdditive();
+    return this.#parseTernary();
+  }
+
+  #parseTernary():
+    | { readonly ok: true; readonly ast: ExpressionAst }
+    | {
+        readonly ok: false;
+        readonly diagnostic: CadParameterExpressionDiagnostic;
+      } {
+    const condition = this.#parseComparison();
+    if (!condition.ok || this.#peek().kind !== "?") {
+      return condition;
+    }
+
+    this.#consume();
+    const whenTrue = this.#parseExpression();
+    if (!whenTrue.ok) {
+      return whenTrue;
+    }
+    if (this.#peek().kind !== ":") {
+      return {
+        ok: false,
+        diagnostic: this.#parseError(
+          "Conditional expression is missing a colon before its false branch.",
+          ":",
+          "EXPRESSION_TERNARY_INVALID"
+        )
+      };
+    }
+    this.#consume();
+    const whenFalse = this.#parseExpression();
+    if (!whenFalse.ok) {
+      return whenFalse;
+    }
+
+    return {
+      ok: true,
+      ast: {
+        kind: "conditional",
+        condition: condition.ast,
+        whenTrue: whenTrue.ast,
+        whenFalse: whenFalse.ast
+      }
+    };
+  }
+
+  #parseComparison():
+    | { readonly ok: true; readonly ast: ExpressionAst }
+    | {
+        readonly ok: false;
+        readonly diagnostic: CadParameterExpressionDiagnostic;
+      } {
+    const left = this.#parseAdditive();
+    if (!left.ok || !isComparisonToken(this.#peek().kind)) {
+      return left;
+    }
+    const operator = this.#consume().kind as ComparisonOperator;
+    const right = this.#parseAdditive();
+    return right.ok
+      ? {
+          ok: true,
+          ast: { kind: "binary", operator, left: left.ast, right: right.ast }
+        }
+      : right;
   }
 
   #parseAdditive():
@@ -691,11 +874,12 @@ class ExpressionParser {
 
   #parseError(
     message: string,
-    expected: string
+    expected: string,
+    code: CadParameterExpressionDiagnostic["code"] = "EXPRESSION_PARSE_ERROR"
   ): CadParameterExpressionDiagnostic {
     const token = this.#peek();
     return {
-      code: "EXPRESSION_PARSE_ERROR",
+      code,
       message,
       expression: this.expression,
       position: token.position,
@@ -703,6 +887,19 @@ class ExpressionParser {
       received: token.kind === "eof" ? "end of expression" : token.kind
     };
   }
+}
+
+type ComparisonOperator = "<" | ">" | "<=" | ">=" | "==" | "!=";
+
+function isComparisonToken(value: Token["kind"]): value is ComparisonOperator {
+  return (
+    value === "<" ||
+    value === ">" ||
+    value === "<=" ||
+    value === ">=" ||
+    value === "==" ||
+    value === "!="
+  );
 }
 
 function collectReferenceNames(ast: ExpressionAst): readonly string[] {
@@ -721,6 +918,11 @@ function collectReferenceNames(ast: ExpressionAst): readonly string[] {
       case "binary":
         visit(node.left);
         visit(node.right);
+        return;
+      case "conditional":
+        visit(node.condition);
+        visit(node.whenTrue);
+        visit(node.whenFalse);
         return;
       case "call":
         for (const arg of node.args) {
@@ -804,15 +1006,22 @@ function evaluateAst(
         };
       }
 
-      const value =
-        ast.operator === "+"
-          ? left.value + right.value
-          : ast.operator === "-"
-            ? left.value - right.value
-            : ast.operator === "*"
-              ? left.value * right.value
-              : left.value / right.value;
+      const value = evaluateBinaryOperator(
+        ast.operator,
+        left.value,
+        right.value
+      );
       return validateEvaluatedNumber(value, context);
+    }
+    case "conditional": {
+      const condition = evaluateAst(ast.condition, context);
+      if (!condition.ok) {
+        return condition;
+      }
+      return evaluateAst(
+        condition.value === 0 ? ast.whenFalse : ast.whenTrue,
+        context
+      );
     }
     case "call": {
       const arities = BUILTIN_ARITIES.get(ast.name);
@@ -826,7 +1035,8 @@ function evaluateAst(
             parameter: context.parameter,
             expression: context.expression,
             referencedName: ast.name,
-            expected: "max, min, abs, sqrt, round, floor, or ceil",
+            expected:
+              "max, min, abs, sqrt, round, floor, ceil, trigonometry, deg, rad, or if",
             received: ast.name
           })
         };
@@ -845,6 +1055,17 @@ function evaluateAst(
             received: String(ast.args.length)
           })
         };
+      }
+
+      if (ast.name === "if") {
+        const condition = evaluateAst(ast.args[0], context);
+        if (!condition.ok) {
+          return condition;
+        }
+        return evaluateAst(
+          condition.value === 0 ? ast.args[2] : ast.args[1],
+          context
+        );
       }
 
       const args: number[] = [];
@@ -871,6 +1092,30 @@ function evaluateAst(
         };
       }
 
+      if (
+        (ast.name === "asin" || ast.name === "acos") &&
+        (args[0] < -1 || args[0] > 1)
+      ) {
+        return expressionDomainError(
+          context,
+          ast.name,
+          "value in [-1, 1]",
+          args[0]
+        );
+      }
+
+      if (
+        ast.name === "tan" &&
+        Math.abs(Math.cos(degreesToRadians(args[0]))) <= 1e-12
+      ) {
+        return expressionDomainError(
+          context,
+          ast.name,
+          "angle whose cosine is non-zero",
+          args[0]
+        );
+      }
+
       const value =
         ast.name === "max"
           ? Math.max(args[0], args[1])
@@ -884,10 +1129,93 @@ function evaluateAst(
                   ? Math.round(args[0])
                   : ast.name === "floor"
                     ? Math.floor(args[0])
-                    : Math.ceil(args[0]);
+                    : ast.name === "ceil"
+                      ? Math.ceil(args[0])
+                      : ast.name === "sin"
+                        ? Math.sin(degreesToRadians(args[0]))
+                        : ast.name === "cos"
+                          ? Math.cos(degreesToRadians(args[0]))
+                          : ast.name === "tan"
+                            ? Math.tan(degreesToRadians(args[0]))
+                            : ast.name === "asin"
+                              ? radiansToDegrees(Math.asin(args[0]))
+                              : ast.name === "acos"
+                                ? radiansToDegrees(Math.acos(args[0]))
+                                : ast.name === "atan"
+                                  ? radiansToDegrees(Math.atan(args[0]))
+                                  : ast.name === "atan2"
+                                    ? radiansToDegrees(
+                                        Math.atan2(args[0], args[1])
+                                      )
+                                    : ast.name === "deg"
+                                      ? radiansToDegrees(args[0])
+                                      : degreesToRadians(args[0]);
       return validateEvaluatedNumber(value, context);
     }
   }
+}
+
+function evaluateBinaryOperator(
+  operator: Extract<ExpressionAst, { readonly kind: "binary" }>["operator"],
+  left: number,
+  right: number
+): number {
+  switch (operator) {
+    case "+":
+      return left + right;
+    case "-":
+      return left - right;
+    case "*":
+      return left * right;
+    case "/":
+      return left / right;
+    case "<":
+      return left < right ? 1 : 0;
+    case ">":
+      return left > right ? 1 : 0;
+    case "<=":
+      return left <= right ? 1 : 0;
+    case ">=":
+      return left >= right ? 1 : 0;
+    case "==":
+      return left === right ? 1 : 0;
+    case "!=":
+      return left !== right ? 1 : 0;
+  }
+}
+
+function degreesToRadians(value: number): number {
+  return (value * Math.PI) / 180;
+}
+
+function radiansToDegrees(value: number): number {
+  return (value * 180) / Math.PI;
+}
+
+function expressionDomainError(
+  context: {
+    readonly parameter: CadParameterSnapshot;
+    readonly expression?: string;
+  },
+  functionName: string,
+  expected: string,
+  received: number
+): {
+  readonly ok: false;
+  readonly diagnostic: CadParameterExpressionDiagnostic;
+} {
+  return {
+    ok: false,
+    diagnostic: createDiagnostic({
+      code: "EXPRESSION_DOMAIN_ERROR",
+      message: `${functionName}() argument is outside its supported domain.`,
+      parameter: context.parameter,
+      expression: context.expression,
+      referencedName: functionName,
+      expected,
+      received: String(received)
+    })
+  };
 }
 
 function validateEvaluatedNumber(

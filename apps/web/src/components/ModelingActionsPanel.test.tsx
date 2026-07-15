@@ -65,12 +65,12 @@ function createMirrorFeature(
     partId: "part:default",
     bodyId,
     seedBodyId,
-    mirrorPlane: "YZ",
+    plane: { kind: "standardPlane", plane: "YZ", offset: 0 },
     includeOriginal: true,
     source: {
       type: "mirrorFeature",
       seedBodyId,
-      mirrorPlane: "YZ"
+      plane: { kind: "standardPlane", plane: "YZ", offset: 0 }
     }
   };
 }
@@ -112,13 +112,14 @@ function createLinearPatternFeature(
     partId: "part:default",
     bodyId,
     seedBodyId,
-    axis: "x",
+    direction: { kind: "globalAxis", axis: "x" },
     spacing: 10,
     instanceCount: 3,
+    instances: [],
     source: {
       type: "linearPatternFeature",
       seedBodyId,
-      axis: "x"
+      direction: { kind: "globalAxis", axis: "x" }
     }
   };
 }
@@ -134,13 +135,14 @@ function createCircularPatternFeature(
     partId: "part:default",
     bodyId,
     seedBodyId,
-    rotationAxis: "z",
+    rotationAxis: { kind: "globalAxis", axis: "z" },
     totalAngleDegrees: 360,
     instanceCount: 6,
+    instances: [],
     source: {
       type: "circularPatternFeature",
       seedBodyId,
-      rotationAxis: "z"
+      rotationAxis: { kind: "globalAxis", axis: "z" }
     }
   };
 }

@@ -50,7 +50,8 @@ import {
   type OcctExactBodyMetadataInput,
   type OcctExactTopologySnapshot,
   type OcctExactEdgeFinishMetadataSource,
-  type OcctExactHoleMetadataSource
+  type OcctExactHoleMetadataSource,
+  type OcctExactSweepMetadataSource
 } from "./exactMetadata";
 import {
   createOcctRevolveProfileMeshWithInstance,
@@ -97,14 +98,15 @@ import {
   createOcctCircularPatternMeshWithLoader,
   type OcctLinearPatternInput,
   type OcctCircularPatternInput,
-  type OcctPatternAxis,
+  type OcctDirection,
+  type OcctAxisFrame,
   type OcctPatternSeedSource
 } from "./pattern";
 import {
   createOcctMirrorMeshWithInstance,
   createOcctMirrorMeshWithLoader,
   type OcctMirrorInput,
-  type OcctMirrorPlane,
+  type OcctMirrorPlaneFrame,
   type OcctMirrorSeedSource
 } from "./mirror";
 import {
@@ -113,6 +115,13 @@ import {
   type OcctShellInput,
   type OcctShellTargetSource
 } from "./shell";
+import {
+  createOcctSweepMeshWithInstance,
+  createOcctSweepMeshWithLoader,
+  type OcctSweepInput,
+  type OcctSweepPathSegment,
+  type OcctSweepProfileSource
+} from "./sweep";
 
 export type {
   OcctBooleanExtrudeInput,
@@ -128,6 +137,7 @@ export type {
   OcctExactTopologySnapshot,
   OcctExactEdgeFinishMetadataSource,
   OcctExactHoleMetadataSource,
+  OcctExactSweepMetadataSource,
   OcctRevolveProfileInput,
   OcctStepExportArtifact,
   OcctStepExportBodySource,
@@ -147,13 +157,17 @@ export type {
   OcctMeshData,
   OcctLinearPatternInput,
   OcctCircularPatternInput,
-  OcctPatternAxis,
+  OcctDirection,
+  OcctAxisFrame,
   OcctPatternSeedSource,
   OcctMirrorInput,
-  OcctMirrorPlane,
+  OcctMirrorPlaneFrame,
   OcctMirrorSeedSource,
   OcctShellInput,
-  OcctShellTargetSource
+  OcctShellTargetSource,
+  OcctSweepInput,
+  OcctSweepPathSegment,
+  OcctSweepProfileSource
 };
 export {
   createOcctBoxMeshWithInstance,
@@ -197,7 +211,9 @@ export {
   createOcctMirrorMeshWithInstance,
   createOcctMirrorMeshWithLoader,
   createOcctShellMeshWithInstance,
-  createOcctShellMeshWithLoader
+  createOcctShellMeshWithLoader,
+  createOcctSweepMeshWithInstance,
+  createOcctSweepMeshWithLoader
 };
 
 let occtPromise: Promise<OpenCascadeInstance> | undefined;
@@ -325,4 +341,10 @@ export async function createOcctShellMesh(
   input: OcctShellInput
 ): Promise<OcctMeshData> {
   return createOcctShellMeshWithLoader(loadOcct, input);
+}
+
+export async function createOcctSweepMesh(
+  input: OcctSweepInput
+): Promise<OcctMeshData> {
+  return createOcctSweepMeshWithLoader(loadOcct, input);
 }

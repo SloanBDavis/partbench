@@ -12,6 +12,7 @@ import {
   createOcctLinearPatternMeshWithInstance,
   createOcctMirrorMeshWithInstance,
   createOcctShellMeshWithInstance,
+  createOcctSweepMeshWithInstance,
   createOcctRevolveProfileMeshWithInstance,
   createOcctExactBodyMetadataWithInstance,
   createOcctExactTopologySnapshotWithInstance,
@@ -115,7 +116,7 @@ import {
 
 type BrowserOcctPrimitive = Exclude<
   GeometryKernelPrimitive,
-  "extrude" | "revolve" | "boolean" | "hole" | "edgeFinish"
+  "extrude" | "revolve" | "boolean" | "hole" | "edgeFinish" | "sweep"
 >;
 
 export type {
@@ -265,7 +266,8 @@ export async function executeTimedBrowserGeometryKernelRequest<
       createLinearPatternMesh: createLinearPatternMeshWithBrowserOcct,
       createCircularPatternMesh: createCircularPatternMeshWithBrowserOcct,
       createMirrorMesh: createMirrorMeshWithBrowserOcct,
-      createShellMesh: createShellMeshWithBrowserOcct
+      createShellMesh: createShellMeshWithBrowserOcct,
+      createSweepMesh: createSweepMeshWithBrowserOcct
     },
     request
   );
@@ -529,6 +531,33 @@ export async function executeTimedBrowserGeometryKernelRequest<
 
     try {
       return createOcctShellMeshWithInstance(oc, input);
+    } catch (error) {
+      failureStage = "tessellation";
+      throw error;
+    } finally {
+      tessellationMs = performance.now() - tessellationStart;
+    }
+  }
+
+  async function createSweepMeshWithBrowserOcct(
+    input: Parameters<typeof createOcctSweepMeshWithInstance>[1]
+  ) {
+    const occtLoadStart = performance.now();
+    let oc: Awaited<ReturnType<typeof loadBrowserOcct>>;
+
+    try {
+      oc = await loadBrowserOcct();
+    } catch (error) {
+      occtLoadMs = performance.now() - occtLoadStart;
+      failureStage = "wasmLoad";
+      throw error;
+    }
+
+    occtLoadMs = performance.now() - occtLoadStart;
+    const tessellationStart = performance.now();
+
+    try {
+      return createOcctSweepMeshWithInstance(oc, input);
     } catch (error) {
       failureStage = "tessellation";
       throw error;

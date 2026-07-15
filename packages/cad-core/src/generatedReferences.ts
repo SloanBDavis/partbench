@@ -49,9 +49,18 @@ const EDGE_FINISH_OPERATIONS = [
   "feature.measureReference",
   "feature.selectReference"
 ] satisfies readonly CadGeneratedReferenceEligibleOperation[];
+const LINE_EDGE_OPERATIONS = [
+  "feature.chamfer",
+  "feature.fillet",
+  "feature.linearPatternDirection",
+  "feature.circularPatternAxis",
+  "feature.measureReference",
+  "feature.selectReference"
+] satisfies readonly CadGeneratedReferenceEligibleOperation[];
 const PLANAR_FACE_OPERATIONS = [
   "feature.attachSketchPlane",
   "feature.shell",
+  "feature.mirrorPlane",
   "feature.measureReference",
   "feature.selectReference"
 ] satisfies readonly CadGeneratedReferenceEligibleOperation[];
@@ -93,7 +102,8 @@ export type GeneratedReferencesFeature =
   | GeneratedReferencesLinearPatternFeature
   | GeneratedReferencesCircularPatternFeature
   | GeneratedReferencesMirrorFeature
-  | GeneratedReferencesShellFeature;
+  | GeneratedReferencesShellFeature
+  | GeneratedReferencesSweepFeature;
 
 export interface GeneratedReferencesExtrudeFeature {
   readonly id: FeatureId;
@@ -185,6 +195,12 @@ export interface GeneratedReferencesMirrorFeature {
 export interface GeneratedReferencesShellFeature {
   readonly id: FeatureId;
   readonly kind: "shell";
+  readonly bodyId: BodyId;
+}
+
+export interface GeneratedReferencesSweepFeature {
+  readonly id: FeatureId;
+  readonly kind: "sweep";
   readonly bodyId: BodyId;
 }
 
@@ -1445,7 +1461,7 @@ function createBooleanCutWallProfileEdgeReference(
     description: `Longitudinal cut-wall profile edge where ${adjacentFaceRoles.join(
       " and "
     )} meet.`,
-    eligibleOperations: EDGE_FINISH_OPERATIONS,
+    eligibleOperations: LINE_EDGE_OPERATIONS,
     eligibilityNotes: createBooleanCutEdgeEligibilityNotes(),
     bodyId: feature.bodyId,
     ownerPartId,
@@ -1656,7 +1672,7 @@ function createGeneratedEdgeReference(
     stableId: `generated:edge:${feature.bodyId}:${role}`,
     label: createEdgeReferenceLabel(role),
     description: createEdgeReferenceDescription(role),
-    eligibleOperations: createEdgeEligibleOperations(),
+    eligibleOperations: createEdgeEligibleOperations(signature.curveType),
     eligibilityNotes: createEdgeEligibilityNotes(),
     bodyId: feature.bodyId,
     ownerPartId,
@@ -2252,8 +2268,10 @@ function createEdgeReferenceDescription(
   )} cap edge generated from the rectangle ${profileRole} profile edge.`;
 }
 
-function createEdgeEligibleOperations(): readonly CadGeneratedReferenceEligibleOperation[] {
-  return EDGE_FINISH_OPERATIONS;
+function createEdgeEligibleOperations(
+  curveType: CadGeneratedReferenceSignature["curveType"]
+): readonly CadGeneratedReferenceEligibleOperation[] {
+  return curveType === "line" ? LINE_EDGE_OPERATIONS : EDGE_FINISH_OPERATIONS;
 }
 
 function createEdgeEligibilityNotes(): readonly string[] {

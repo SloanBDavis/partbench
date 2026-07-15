@@ -654,7 +654,7 @@ export function formatFeatureLine(
   }
 
   if (feature.kind === "mirror") {
-    return `mirror / ${feature.mirrorPlane} / ${
+    return `mirror / ${formatMirrorPlaneSource(feature)} / ${
       feature.includeOriginal ? "union with original" : "copy only"
     } / seed ${feature.seedBodyId}`;
   }
@@ -678,13 +678,23 @@ export function formatFeatureSourceLine(
   }
 
   if (feature.kind === "mirror") {
-    return `Seed ${feature.seedBodyId} / ${feature.mirrorPlane} plane`;
+    return `Seed ${feature.seedBodyId} / ${formatMirrorPlaneSource(feature)} plane`;
   }
 
   const entityId =
     feature.kind === "hole" ? feature.circleEntityId : feature.entityId;
 
   return `Sketch ${feature.sketchId} / entity ${entityId}`;
+}
+
+function formatMirrorPlaneSource(
+  feature: Extract<CadFeatureSummary, { readonly kind: "mirror" }>
+): string {
+  const ref = feature.plane;
+  if (ref.kind === "standardPlane") return ref.plane;
+  if (ref.kind === "namedReference") return ref.name;
+  if (ref.kind === "generatedFace") return ref.stableId;
+  return ref.anchorId;
 }
 
 export function formatBodyRole(

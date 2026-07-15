@@ -847,12 +847,12 @@ function createMirrorFeature(): Extract<CadFeatureSummary, { kind: "mirror" }> {
     partId: "part:default",
     bodyId: "body_mirror",
     seedBodyId: "body_1",
-    mirrorPlane: "YZ",
+    plane: { kind: "standardPlane", plane: "YZ", offset: 0 },
     includeOriginal: false,
     source: {
       type: "mirrorFeature",
       seedBodyId: "body_1",
-      mirrorPlane: "YZ"
+      plane: { kind: "standardPlane", plane: "YZ", offset: 0 }
     }
   };
 }

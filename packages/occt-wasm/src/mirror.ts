@@ -9,13 +9,16 @@ import {
 } from "./readTriangulatedShape";
 import type { OcctLoader } from "./tessellateBox";
 
-export type OcctMirrorPlane = "XY" | "XZ" | "YZ";
+export interface OcctMirrorPlaneFrame {
+  readonly point: readonly [number, number, number];
+  readonly normal: readonly [number, number, number];
+}
 
 export type OcctMirrorSeedSource = OcctPatternSeedSource;
 
 export interface OcctMirrorInput {
   readonly seed: OcctMirrorSeedSource;
-  readonly mirrorPlane: OcctMirrorPlane;
+  readonly plane: OcctMirrorPlaneFrame;
   readonly includeOriginal: boolean;
   readonly linearDeflection?: number;
   readonly angularDeflection?: number;
@@ -78,11 +81,11 @@ export function createOcctMirrorMeshWithInstance(
 function makeMirrorShape(
   oc: OpenCascadeInstance,
   seedShape: TopoDS_Shape,
-  input: Pick<OcctMirrorInput, "mirrorPlane" | "includeOriginal">
+  input: Pick<OcctMirrorInput, "plane" | "includeOriginal">
 ): TopoDS_Shape {
-  const { mirrorPlane, includeOriginal } = input;
+  const { plane, includeOriginal } = input;
 
-  const mirroredShape = applyMirror(oc, seedShape, mirrorPlane);
+  const mirroredShape = applyMirror(oc, seedShape, plane);
 
   if (!includeOriginal) {
     return mirroredShape;
@@ -119,10 +122,14 @@ function makeMirrorShape(
 function applyMirror(
   oc: OpenCascadeInstance,
   shape: TopoDS_Shape,
-  mirrorPlane: OcctMirrorPlane
+  plane: OcctMirrorPlaneFrame
 ): TopoDS_Shape {
-  const origin = new oc.gp_Pnt_3(0, 0, 0);
-  const normalDirection = getMirrorPlaneNormal(mirrorPlane);
+  const origin = new oc.gp_Pnt_3(
+    plane.point[0],
+    plane.point[1],
+    plane.point[2]
+  );
+  const normalDirection = plane.normal;
   const dir = new oc.gp_Dir_4(
     normalDirection[0],
     normalDirection[1],
@@ -162,18 +169,5 @@ function copyShape(oc: OpenCascadeInstance, shape: TopoDS_Shape): TopoDS_Shape {
     return copy.Shape();
   } finally {
     copy.delete();
-  }
-}
-
-function getMirrorPlaneNormal(
-  plane: OcctMirrorPlane
-): readonly [number, number, number] {
-  switch (plane) {
-    case "XY":
-      return [0, 0, 1]; // Z is normal to XY plane
-    case "XZ":
-      return [0, 1, 0]; // Y is normal to XZ plane
-    case "YZ":
-      return [1, 0, 0]; // X is normal to YZ plane
   }
 }

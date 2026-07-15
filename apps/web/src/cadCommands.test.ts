@@ -23,6 +23,7 @@ import {
   buildFeatureHoleOp,
   buildFeatureLinearPatternOp,
   buildFeatureRevolveOp,
+  buildFeatureSweepOp,
   buildFeatureUpdateCircularPatternOp,
   buildFeatureUpdateChamferOp,
   buildFeatureUpdateExtrudeOp,
@@ -78,6 +79,27 @@ import {
 } from "./cadCommands";
 
 describe("cad command builders", () => {
+  it("builds a normalized sweep feature operation", () => {
+    expect(
+      buildFeatureSweepOp("profile_sketch", "profile", {
+        id: " sweep_1 ",
+        bodyId: " body_sweep ",
+        name: " Rail ",
+        pathSketchId: "path_sketch",
+        pathEntityIds: ["path"]
+      })
+    ).toEqual({
+      op: "feature.sweep",
+      id: "sweep_1",
+      bodyId: "body_sweep",
+      name: "Rail",
+      profileSketchId: "profile_sketch",
+      profileEntityId: "profile",
+      pathSketchId: "path_sketch",
+      pathEntityIds: ["path"]
+    });
+  });
+
   it("builds create commands from form values", () => {
     expect(
       buildCreateBoxOp({
@@ -396,7 +418,7 @@ describe("cad command builders", () => {
         bodyId: " body_linear ",
         seedBodyId: "body_seed",
         name: " Linear copies ",
-        axis: "x",
+        direction: { kind: "globalAxis", axis: "x" },
         spacing: 30,
         instanceCount: 4
       })
@@ -406,21 +428,21 @@ describe("cad command builders", () => {
       bodyId: "body_linear",
       seedBodyId: "body_seed",
       name: "Linear copies",
-      axis: "x",
+      direction: { kind: "globalAxis", axis: "x" },
       spacing: 30,
       instanceCount: 4
     });
 
     expect(
       buildFeatureUpdateLinearPatternOp("feat_linear", {
-        axis: "y",
+        direction: { kind: "globalAxis", axis: "y" },
         spacing: 40,
         instanceCount: 5
       })
     ).toEqual({
       op: "feature.updateLinearPattern",
       id: "feat_linear",
-      axis: "y",
+      direction: { kind: "globalAxis", axis: "y" },
       spacing: 40,
       instanceCount: 5
     });
@@ -431,7 +453,7 @@ describe("cad command builders", () => {
         bodyId: "",
         seedBodyId: "body_seed",
         name: "   ",
-        rotationAxis: "z",
+        rotationAxis: { kind: "globalAxis", axis: "z" },
         totalAngleDegrees: 360,
         instanceCount: 6
       })
@@ -440,21 +462,21 @@ describe("cad command builders", () => {
       id: undefined,
       bodyId: undefined,
       seedBodyId: "body_seed",
-      rotationAxis: "z",
+      rotationAxis: { kind: "globalAxis", axis: "z" },
       totalAngleDegrees: 360,
       instanceCount: 6
     });
 
     expect(
       buildFeatureUpdateCircularPatternOp("feat_circular", {
-        rotationAxis: "x",
+        rotationAxis: { kind: "globalAxis", axis: "x" },
         totalAngleDegrees: 180,
         instanceCount: 3
       })
     ).toEqual({
       op: "feature.updateCircularPattern",
       id: "feat_circular",
-      rotationAxis: "x",
+      rotationAxis: { kind: "globalAxis", axis: "x" },
       totalAngleDegrees: 180,
       instanceCount: 3
     });

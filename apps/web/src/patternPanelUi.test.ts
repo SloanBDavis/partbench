@@ -104,13 +104,14 @@ function createLinearPatternFeature(): Extract<
     partId: "part:default",
     bodyId: "body_linear",
     seedBodyId: "body_seed",
-    axis: "y",
+    direction: { kind: "globalAxis", axis: "y" },
     spacing: 12,
     instanceCount: 5,
+    instances: [],
     source: {
       type: "linearPatternFeature",
       seedBodyId: "body_seed",
-      axis: "y"
+      direction: { kind: "globalAxis", axis: "y" }
     }
   };
 }
@@ -125,13 +126,14 @@ function createCircularPatternFeature(): Extract<
     partId: "part:default",
     bodyId: "body_circular",
     seedBodyId: "body_seed",
-    rotationAxis: "z",
+    rotationAxis: { kind: "globalAxis", axis: "z" },
     totalAngleDegrees: 270,
     instanceCount: 8,
+    instances: [],
     source: {
       type: "circularPatternFeature",
       seedBodyId: "body_seed",
-      rotationAxis: "z"
+      rotationAxis: { kind: "globalAxis", axis: "z" }
     }
   };
 }
@@ -163,7 +165,7 @@ describe("pattern panel UI state", () => {
       featureId: "feat_linear",
       seedBodyId: "body_seed",
       seedLabel: "body_seed",
-      axis: "y",
+      direction: { kind: "globalAxis", axis: "y" },
       spacing: 12,
       instanceCount: 5
     });
@@ -178,7 +180,7 @@ describe("pattern panel UI state", () => {
       featureId: "feat_circular",
       seedBodyId: "body_seed",
       seedLabel: "body_seed",
-      rotationAxis: "z",
+      rotationAxis: { kind: "globalAxis", axis: "z" },
       totalAngleDegrees: 270,
       instanceCount: 8
     });

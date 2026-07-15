@@ -11,7 +11,8 @@ import type {
   DerivedExtrudeGeometrySource,
   DerivedGeometrySource,
   DerivedHoleGeometrySource,
-  DerivedRevolveGeometrySource
+  DerivedRevolveGeometrySource,
+  DerivedSweepGeometrySource
 } from "./derivedGeometry";
 import { createDerivedGeometryCacheKey } from "./derivedGeometry";
 import {
@@ -35,7 +36,8 @@ export type DerivedExactMetadataSource =
   | DerivedBooleanExtrudeGeometrySource
   | DerivedRevolveGeometrySource
   | DerivedHoleGeometrySource
-  | DerivedEdgeFinishGeometrySource;
+  | DerivedEdgeFinishGeometrySource
+  | DerivedSweepGeometrySource;
 
 export type DerivedExactMetadataEntry =
   | DerivedExactMetadataUnsupportedEntry
@@ -433,6 +435,17 @@ export function createExactMetadataRuntimeInput(
     };
   }
 
+  if (source.kind === "sweep") {
+    return {
+      id: source.id,
+      source: {
+        kind: "sweep",
+        profile: source.profile,
+        pathSegments: source.pathSegments
+      }
+    };
+  }
+
   if (source.kind === "hole") {
     return {
       id: source.id,
@@ -580,7 +593,8 @@ function isExactMetadataSource(
     source.kind === "extrudeBoolean" ||
     source.kind === "revolve" ||
     source.kind === "hole" ||
-    source.kind === "edgeFinish"
+    source.kind === "edgeFinish" ||
+    source.kind === "sweep"
   );
 }
 
@@ -592,6 +606,10 @@ function getUnsupportedExactMetadataSourceMessage(
   }
 
   if (source.kind === "revolve") {
+    return source.placementError;
+  }
+
+  if (source.kind === "sweep") {
     return source.placementError;
   }
 

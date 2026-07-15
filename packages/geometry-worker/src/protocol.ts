@@ -32,12 +32,16 @@ import type {
   LinearPatternRequest,
   CircularPatternRequest,
   PatternSeedSource,
-  GeometryKernelPatternAxis,
+  GeometryKernelDirection,
+  GeometryKernelAxisFrame,
   MirrorRequest,
   MirrorSeedSource,
-  GeometryKernelMirrorPlane,
+  GeometryKernelPlaneFrame,
   ShellRequest,
-  ShellTargetSource
+  ShellTargetSource,
+  SweepRequest,
+  SweepProfileSource,
+  SweepPathSegment
 } from "@web-cad/geometry-kernel";
 
 export type {
@@ -65,6 +69,7 @@ export type GeometryWorkerRequestKind =
   | "geometry-worker.circularPatternFeature"
   | "geometry-worker.mirrorFeature"
   | "geometry-worker.shellFeature"
+  | "geometry-worker.sweepFeature"
   | "geometry-worker.exactMetadata"
   | "geometry-worker.exactTopologySnapshot"
   | "geometry-worker.exactTopologyCheckpointPayload"
@@ -812,17 +817,43 @@ function createTessellationOptions(input: {
 
 export type {
   PatternSeedSource,
-  GeometryKernelPatternAxis,
+  GeometryKernelDirection,
+  GeometryKernelAxisFrame,
   MirrorSeedSource,
-  GeometryKernelMirrorPlane,
+  GeometryKernelPlaneFrame,
   ShellTargetSource
 };
+
+export function createSweepWorkerRequest(input: {
+  readonly id: string;
+  readonly payloadId?: string;
+  readonly profile: SweepProfileSource;
+  readonly pathSegments: readonly SweepPathSegment[];
+  readonly linearDeflection?: number;
+  readonly angularDeflection?: number;
+}): GeometryWorkerRequest<SweepRequest> {
+  const tessellation = createTessellationOptions(input);
+
+  return {
+    id: input.id,
+    version: "geometry-worker.v1",
+    kind: "geometry-worker.sweepFeature",
+    payload: {
+      id: input.payloadId ?? `${input.id}:payload`,
+      version: "geometry-kernel.v1",
+      op: "geometry.sweep",
+      profile: input.profile,
+      pathSegments: input.pathSegments,
+      ...(tessellation ? { tessellation } : {})
+    }
+  };
+}
 
 export function createLinearPatternWorkerRequest(input: {
   readonly id: string;
   readonly payloadId?: string;
   readonly seed: PatternSeedSource;
-  readonly axis: GeometryKernelPatternAxis;
+  readonly direction: GeometryKernelDirection;
   readonly spacing: number;
   readonly instanceCount: number;
   readonly linearDeflection?: number;
@@ -839,7 +870,7 @@ export function createLinearPatternWorkerRequest(input: {
       version: "geometry-kernel.v1",
       op: "geometry.linearPattern",
       seed: input.seed,
-      axis: input.axis,
+      direction: input.direction,
       spacing: input.spacing,
       instanceCount: input.instanceCount,
       ...(tessellation ? { tessellation } : {})
@@ -851,7 +882,7 @@ export function createCircularPatternWorkerRequest(input: {
   readonly id: string;
   readonly payloadId?: string;
   readonly seed: PatternSeedSource;
-  readonly rotationAxis: GeometryKernelPatternAxis;
+  readonly axis: GeometryKernelAxisFrame;
   readonly totalAngleDegrees: number;
   readonly instanceCount: number;
   readonly linearDeflection?: number;
@@ -868,7 +899,7 @@ export function createCircularPatternWorkerRequest(input: {
       version: "geometry-kernel.v1",
       op: "geometry.circularPattern",
       seed: input.seed,
-      rotationAxis: input.rotationAxis,
+      axis: input.axis,
       totalAngleDegrees: input.totalAngleDegrees,
       instanceCount: input.instanceCount,
       ...(tessellation ? { tessellation } : {})
@@ -880,7 +911,7 @@ export function createMirrorWorkerRequest(input: {
   readonly id: string;
   readonly payloadId?: string;
   readonly seed: MirrorSeedSource;
-  readonly mirrorPlane: GeometryKernelMirrorPlane;
+  readonly plane: GeometryKernelPlaneFrame;
   readonly includeOriginal: boolean;
   readonly linearDeflection?: number;
   readonly angularDeflection?: number;
@@ -896,7 +927,7 @@ export function createMirrorWorkerRequest(input: {
       version: "geometry-kernel.v1",
       op: "geometry.mirror",
       seed: input.seed,
-      mirrorPlane: input.mirrorPlane,
+      plane: input.plane,
       includeOriginal: input.includeOriginal,
       ...(tessellation ? { tessellation } : {})
     }

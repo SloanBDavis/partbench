@@ -15,6 +15,7 @@ import {
   type DerivedGeometryCircularPatternInput,
   type DerivedGeometryMirrorInput,
   type DerivedGeometryShellInput,
+  type DerivedGeometrySweepInput,
   type DerivedGeometryExtrudeInput,
   type DerivedGeometryHoleInput,
   type DerivedGeometryRevolveInput,
@@ -68,7 +69,8 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
       | DerivedGeometryLinearPatternInput
       | DerivedGeometryCircularPatternInput
       | DerivedGeometryMirrorInput
-      | DerivedGeometryShellInput,
+      | DerivedGeometryShellInput
+      | DerivedGeometrySweepInput,
     request: GeometryWorkerRequest
   ): Promise<DerivedGeometryResult> {
     const { createRenderMeshFromGeometryWorkerResponse } =
@@ -87,6 +89,7 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
       alignment:
         request.payload.op === "geometry.tessellateExtrude" ||
         request.payload.op === "geometry.revolveProfile" ||
+        request.payload.op === "geometry.sweep" ||
         request.payload.op === "geometry.booleanExtrudes" ||
         request.payload.op === "geometry.hole" ||
         request.payload.op === "geometry.edgeFinish" ||
@@ -115,7 +118,10 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
         bridgeResult,
         roundTripMs
       }),
-      message: `Displayed derived OCCT mesh for ${input.id}.`
+      message: `Displayed derived OCCT mesh for ${input.id}.`,
+      ...(response.response.warnings.length
+        ? { warnings: [...response.response.warnings] }
+        : {})
     };
   }
 
@@ -402,7 +408,7 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           id: requestId,
           payloadId: `${requestId}:kernel`,
           seed: input.seed,
-          axis: input.axis,
+          direction: input.direction,
           spacing: input.spacing,
           instanceCount: input.instanceCount,
           linearDeflection: 0.25,
@@ -421,7 +427,7 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           id: requestId,
           payloadId: `${requestId}:kernel`,
           seed: input.seed,
-          rotationAxis: input.rotationAxis,
+          axis: input.axis,
           totalAngleDegrees: input.totalAngleDegrees,
           instanceCount: input.instanceCount,
           linearDeflection: 0.25,
@@ -440,7 +446,7 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           id: requestId,
           payloadId: `${requestId}:kernel`,
           seed: input.seed,
-          mirrorPlane: input.mirrorPlane,
+          plane: input.plane,
           includeOriginal: input.includeOriginal,
           linearDeflection: 0.25,
           angularDeflection: 0.5
@@ -460,6 +466,23 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           target: input.target,
           wallThickness: input.wallThickness,
           openFaceStableIds: input.openFaceStableIds,
+          linearDeflection: 0.25,
+          angularDeflection: 0.5
+        })
+      );
+    },
+    async sweep(input: DerivedGeometrySweepInput) {
+      const { createSweepWorkerRequest } =
+        await import("@web-cad/geometry-worker/browser");
+      const requestId = createRequestId(input.id);
+
+      return executeTessellationRequest(
+        input,
+        createSweepWorkerRequest({
+          id: requestId,
+          payloadId: `${requestId}:kernel`,
+          profile: input.profile,
+          pathSegments: input.pathSegments,
           linearDeflection: 0.25,
           angularDeflection: 0.5
         })

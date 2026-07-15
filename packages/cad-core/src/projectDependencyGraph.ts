@@ -481,6 +481,34 @@ function addFeatureSourceEdges(
     return;
   }
 
+  if (feature.kind === "sweep") {
+    for (const [sketchId, entityIds, label] of [
+      [feature.profileSketchId, [feature.profileEntityId], "profile source"],
+      [feature.pathSketchId, feature.pathEntityIds, "path source"]
+    ] as const) {
+      addEdge(edges, {
+        kind: "sources",
+        from: sketchNodeId(sketchId),
+        to: featureNodeId(feature.id),
+        label,
+        sourceFeatureId: feature.id,
+        sketchId
+      });
+      for (const entityId of entityIds) {
+        addEdge(edges, {
+          kind: "sources",
+          from: sketchEntityNodeId(sketchId, entityId),
+          to: featureNodeId(feature.id),
+          label,
+          sourceFeatureId: feature.id,
+          sketchId,
+          sketchEntityId: entityId
+        });
+      }
+    }
+    return;
+  }
+
   addEdge(edges, {
     kind: "sources",
     from: sketchNodeId(feature.sketchId),

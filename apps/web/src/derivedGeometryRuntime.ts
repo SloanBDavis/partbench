@@ -142,7 +142,7 @@ export type DerivedGeometryPatternSeedSource =
 export interface DerivedGeometryLinearPatternInput {
   readonly id: string;
   readonly seed: DerivedGeometryPatternSeedSource;
-  readonly axis: "x" | "y" | "z";
+  readonly direction: readonly [number, number, number];
   readonly spacing: number;
   readonly instanceCount: number;
 }
@@ -150,7 +150,10 @@ export interface DerivedGeometryLinearPatternInput {
 export interface DerivedGeometryCircularPatternInput {
   readonly id: string;
   readonly seed: DerivedGeometryPatternSeedSource;
-  readonly rotationAxis: "x" | "y" | "z";
+  readonly axis: {
+    readonly origin: readonly [number, number, number];
+    readonly direction: readonly [number, number, number];
+  };
   readonly totalAngleDegrees: number;
   readonly instanceCount: number;
 }
@@ -158,7 +161,10 @@ export interface DerivedGeometryCircularPatternInput {
 export interface DerivedGeometryMirrorInput {
   readonly id: string;
   readonly seed: DerivedGeometryPatternSeedSource;
-  readonly mirrorPlane: "XY" | "XZ" | "YZ";
+  readonly plane: {
+    readonly point: readonly [number, number, number];
+    readonly normal: readonly [number, number, number];
+  };
   readonly includeOriginal: boolean;
 }
 
@@ -169,6 +175,19 @@ export interface DerivedGeometryShellInput {
   readonly target: DerivedGeometryShellTargetSource;
   readonly wallThickness: number;
   readonly openFaceStableIds: readonly string[];
+}
+
+export interface DerivedGeometrySweepInput {
+  readonly id: string;
+  readonly profile: {
+    readonly sketchPlane: "XY" | "XZ" | "YZ";
+    readonly profile: DerivedGeometryExtrudeInput["profile"];
+    readonly placementFrame?: DerivedGeometryExtrudePlacementFrame;
+  };
+  readonly pathSegments: readonly {
+    readonly start: readonly [number, number, number];
+    readonly end: readonly [number, number, number];
+  }[];
 }
 
 export type DerivedGeometryEdgeFinishInput =
@@ -216,6 +235,7 @@ export interface DerivedExactMetadataInput {
         readonly angleDegrees: number;
         readonly placementFrame?: DerivedGeometryExtrudePlacementFrame;
       }
+    | ({ readonly kind: "sweep" } & Omit<DerivedGeometrySweepInput, "id">)
     | {
         readonly kind: "hole";
         readonly target: DerivedGeometryBooleanExtrudeInputSource;
@@ -263,6 +283,7 @@ export interface DerivedGeometryResult {
   readonly mesh: RenderTriangleMesh;
   readonly metrics: DerivedGeometryMetrics;
   readonly message: string;
+  readonly warnings?: readonly string[];
 }
 
 export interface DerivedExactMetadataResult {
@@ -344,6 +365,7 @@ export interface DerivedGeometryRuntime {
   ): Promise<DerivedGeometryResult>;
   mirror(input: DerivedGeometryMirrorInput): Promise<DerivedGeometryResult>;
   shell(input: DerivedGeometryShellInput): Promise<DerivedGeometryResult>;
+  sweep(input: DerivedGeometrySweepInput): Promise<DerivedGeometryResult>;
   exactBodyMetadata(
     input: DerivedExactMetadataInput
   ): Promise<DerivedExactMetadataResult>;

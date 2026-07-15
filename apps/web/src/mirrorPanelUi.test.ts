@@ -70,12 +70,12 @@ function createMirrorFeature(
     partId: "part:default",
     bodyId,
     seedBodyId,
-    mirrorPlane,
+    plane: { kind: "standardPlane", plane: mirrorPlane, offset: 0 },
     includeOriginal,
     source: {
       type: "mirrorFeature",
       seedBodyId,
-      mirrorPlane
+      plane: { kind: "standardPlane", plane: mirrorPlane, offset: 0 }
     }
   };
 }
@@ -115,7 +115,7 @@ describe("mirrorPanelUi", () => {
     expect(getMirrorPanelState(body, feature)).toEqual({
       mode: "edit",
       featureId: "feat_mirror",
-      mirrorPlane: "YZ",
+      plane: { kind: "standardPlane", plane: "YZ", offset: 0 },
       includeOriginal: true
     });
   });

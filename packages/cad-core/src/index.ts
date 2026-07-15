@@ -148,6 +148,11 @@ import type {
   SketchDimensionValueSource,
   SketchDimensionSemanticDiff,
   Transform,
+  Mat4,
+  PatternDirectionRef,
+  PatternRotationAxisRef,
+  MirrorPlaneRef,
+  PatternInstanceRecord,
   Vec2,
   Vec3
 } from "@web-cad/cad-protocol";
@@ -177,6 +182,19 @@ import { createBodyMeasurements } from "./bodyMeasurements";
 import { createBodyTopology } from "./bodyTopology";
 import { createBodyTopologyIdentity } from "./bodyTopologyIdentity";
 import { createGeneratedReferenceMeasurements } from "./generatedReferenceMeasurements";
+import {
+  resolveMirrorPlaneFrame,
+  resolvePatternDirectionFrame,
+  resolvePatternRotationAxisFrame
+} from "./featureReferenceFrames";
+export {
+  resolveMirrorPlaneFrame,
+  resolvePatternDirectionFrame,
+  resolvePatternRotationAxisFrame,
+  type FeatureReferenceFrameResolution,
+  type ResolvedMirrorPlaneFrame,
+  type ResolvedPatternAxisFrame
+} from "./featureReferenceFrames";
 import { createTopologyAnchorCreationPlan } from "./topologyAnchorCreationPlan";
 import { createTopologyAnchorRepairCandidatesResponse } from "./topologyAnchorRepairCandidates";
 import { createTopologyAnchorRepairPlan } from "./topologyAnchorRepairPlan";
@@ -464,6 +482,7 @@ export type {
   SemanticDiff,
   HoleFeatureSnapshot,
   RevolveFeatureSnapshot,
+  SweepFeatureSnapshot,
   SketchEntityId,
   SketchEntityKind,
   SketchEntitySnapshot,
@@ -563,6 +582,7 @@ export type Feature =
   | CircularPatternFeature
   | MirrorFeature
   | ShellFeature
+  | SweepFeature
   | ImportedBodyFeature;
 
 export interface ExtrudeFeature {
@@ -648,10 +668,11 @@ export interface LinearPatternFeature {
   readonly kind: "linearPattern";
   readonly name?: string;
   readonly seedBodyId: BodyId;
-  readonly axis: "x" | "y" | "z";
+  readonly direction: PatternDirectionRef;
   readonly spacing: number;
   readonly instanceCount: number;
   readonly bodyId: BodyId;
+  readonly instances: readonly PatternInstanceRecord[];
 }
 
 export interface CircularPatternFeature {
@@ -659,10 +680,11 @@ export interface CircularPatternFeature {
   readonly kind: "circularPattern";
   readonly name?: string;
   readonly seedBodyId: BodyId;
-  readonly rotationAxis: "x" | "y" | "z";
+  readonly rotationAxis: PatternRotationAxisRef;
   readonly totalAngleDegrees: number;
   readonly instanceCount: number;
   readonly bodyId: BodyId;
+  readonly instances: readonly PatternInstanceRecord[];
 }
 
 export interface MirrorFeature {
@@ -670,7 +692,7 @@ export interface MirrorFeature {
   readonly kind: "mirror";
   readonly name?: string;
   readonly seedBodyId: BodyId;
-  readonly mirrorPlane: "XY" | "XZ" | "YZ";
+  readonly plane: MirrorPlaneRef;
   readonly includeOriginal: boolean;
   readonly bodyId: BodyId;
 }
@@ -682,6 +704,17 @@ export interface ShellFeature {
   readonly targetBodyId: BodyId;
   readonly wallThickness: number;
   readonly openFaceRefs: readonly FeatureShellOpenFaceRef[];
+  readonly bodyId: BodyId;
+}
+
+export interface SweepFeature {
+  readonly id: FeatureId;
+  readonly kind: "sweep";
+  readonly name?: string;
+  readonly profileSketchId: SketchId;
+  readonly profileEntityId: SketchEntityId;
+  readonly pathSketchId: SketchId;
+  readonly pathEntityIds: readonly SketchEntityId[];
   readonly bodyId: BodyId;
 }
 
@@ -831,6 +864,7 @@ export const CAD_PROJECT_FORMAT_VERSION_V16 = "web-cad.project.v16";
 export const CAD_PROJECT_FORMAT_VERSION_V17 = "web-cad.project.v17";
 export const CAD_PROJECT_FORMAT_VERSION_V18 = "web-cad.project.v18";
 export const CAD_PROJECT_FORMAT_VERSION_V19 = "web-cad.project.v19";
+export const CAD_PROJECT_FORMAT_VERSION_V20 = "web-cad.project.v20";
 export const CURRENT_CAD_PROJECT_FORMAT_VERSION =
   CAD_PROJECT_FORMAT_VERSION_V16;
 
@@ -854,6 +888,7 @@ export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V17
   | typeof CAD_PROJECT_FORMAT_VERSION_V18
   | typeof CAD_PROJECT_FORMAT_VERSION_V19
+  | typeof CAD_PROJECT_FORMAT_VERSION_V20
   | typeof CURRENT_CAD_PROJECT_FORMAT_VERSION;
 
 const SUPPORTED_CAD_PROJECT_FORMAT_VERSIONS = new Set<string>([
@@ -875,7 +910,8 @@ const SUPPORTED_CAD_PROJECT_FORMAT_VERSIONS = new Set<string>([
   CAD_PROJECT_FORMAT_VERSION_V16,
   CAD_PROJECT_FORMAT_VERSION_V17,
   CAD_PROJECT_FORMAT_VERSION_V18,
-  CAD_PROJECT_FORMAT_VERSION_V19
+  CAD_PROJECT_FORMAT_VERSION_V19,
+  CAD_PROJECT_FORMAT_VERSION_V20
 ]);
 
 function getCadProjectFormatVersionForDocument(
@@ -884,7 +920,11 @@ function getCadProjectFormatVersionForDocument(
   | typeof CAD_PROJECT_FORMAT_VERSION_V16
   | typeof CAD_PROJECT_FORMAT_VERSION_V17
   | typeof CAD_PROJECT_FORMAT_VERSION_V18
-  | typeof CAD_PROJECT_FORMAT_VERSION_V19 {
+  | typeof CAD_PROJECT_FORMAT_VERSION_V19
+  | typeof CAD_PROJECT_FORMAT_VERSION_V20 {
+  if (documentHasV20SourceRecords(document)) {
+    return CAD_PROJECT_FORMAT_VERSION_V20;
+  }
   if (documentHasV19SourceRecords(document)) {
     return CAD_PROJECT_FORMAT_VERSION_V19;
   }
@@ -906,6 +946,24 @@ function getCadProjectFormatVersionForDocument(
     : CAD_PROJECT_FORMAT_VERSION_V16;
 }
 
+function documentHasV20SourceRecords(
+  document: CadDocument | CadDocumentSnapshot
+): boolean {
+  const features: readonly (Feature | FeatureSnapshot)[] = Array.isArray(
+    document.features
+  )
+    ? document.features
+    : [...document.features.values()];
+  return features.some(
+    (feature) =>
+      feature.kind === "linearPattern" ||
+      feature.kind === "circularPattern" ||
+      feature.kind === "mirror" ||
+      feature.kind === "sweep" ||
+      feature.kind === "loft"
+  );
+}
+
 function documentHasV19SourceRecords(
   document: CadDocument | CadDocumentSnapshot
 ): boolean {
@@ -922,12 +980,7 @@ function documentHasV19SourceRecords(
 
   return (
     features.some(
-      (feature) =>
-        feature.kind === "importedBody" ||
-        feature.kind === "linearPattern" ||
-        feature.kind === "circularPattern" ||
-        feature.kind === "mirror" ||
-        feature.kind === "shell"
+      (feature) => feature.kind === "importedBody" || feature.kind === "shell"
     ) ||
     parameters.some((parameter) =>
       normalizeStoredExpression(parameter.expression)
@@ -941,12 +994,14 @@ function isSupportedWcadDocumentSchema(
   | typeof CAD_PROJECT_FORMAT_VERSION_V16
   | typeof CAD_PROJECT_FORMAT_VERSION_V17
   | typeof CAD_PROJECT_FORMAT_VERSION_V18
-  | typeof CAD_PROJECT_FORMAT_VERSION_V19 {
+  | typeof CAD_PROJECT_FORMAT_VERSION_V19
+  | typeof CAD_PROJECT_FORMAT_VERSION_V20 {
   return (
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V16 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V17 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V20
   );
 }
 
@@ -1042,6 +1097,14 @@ export interface WcadPackageExportResult {
   readonly documentBytes: Uint8Array;
   readonly commandsBytes: Uint8Array;
   readonly checkpointPayloads?: readonly WcadTopologyCheckpointPayload[];
+  readonly diagnostics?: readonly CadSchemaMigrationDiagnostic[];
+}
+
+export interface CadSchemaMigrationDiagnostic {
+  readonly code: "SCHEMA_UPGRADED_TO_V20";
+  readonly severity: "info";
+  readonly message: string;
+  readonly schemaVersion: typeof CAD_PROJECT_FORMAT_VERSION_V20;
 }
 
 export type WcadPackageReadResult =
@@ -2148,6 +2211,97 @@ export class CadEngine {
         };
       }
 
+      case "body.patternInstances": {
+        const { bodyId, derivedExactMetadata } = request.query;
+        const feature = findFeatureByBodyId(this.#document.features, bodyId);
+
+        if (!feature) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: {
+              code: "BODY_NOT_FOUND",
+              message: `Body does not exist: ${bodyId}`,
+              bodyId
+            }
+          };
+        }
+
+        if (
+          feature.kind !== "linearPattern" &&
+          feature.kind !== "circularPattern"
+        ) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: {
+              code: "UNSUPPORTED_BODY_PATTERN_INSTANCES",
+              message: `Body is not produced by a linear or circular pattern: ${bodyId}`,
+              bodyId
+            }
+          };
+        }
+
+        const solidCount =
+          derivedExactMetadata?.bodyId === bodyId &&
+          derivedExactMetadata.status === "ready"
+            ? derivedExactMetadata.metadata?.topologyCounts?.solidCount
+            : undefined;
+        const multiSolid = solidCount !== undefined && solidCount > 1;
+        const diagnostics = multiSolid
+          ? [
+              {
+                code: "PATTERN_MULTI_SOLID_RESULT",
+                message: `Pattern result ${bodyId} contains ${solidCount} solids; STEP export remains supported, while shell and edge-finish operations require a single solid.`
+              }
+            ]
+          : solidCount === undefined
+            ? [
+                {
+                  code: "PATTERN_SOLID_COUNT_UNAVAILABLE",
+                  message: `Exact topology metadata is unavailable for pattern result ${bodyId}; multi-solid status is unknown.`
+                }
+              ]
+            : [];
+
+        return {
+          ok: true,
+          query: request.query.query,
+          cadOpsVersion: request.version,
+          bodyId,
+          featureId: feature.id,
+          patternKind: feature.kind,
+          instanceCount: feature.instanceCount,
+          instances: feature.instances.map((instance) => ({
+            index: instance.instanceIndex,
+            transform: [...instance.transform] as Mat4
+          })),
+          multiSolid,
+          multiSolidStatus:
+            solidCount === undefined
+              ? "unknown"
+              : multiSolid
+                ? "multi"
+                : "single",
+          ...(solidCount !== undefined ? { solidCount } : {}),
+          diagnostics
+        };
+      }
+
+      case "body.massProperties":
+        return {
+          ok: false,
+          query: request.query.query,
+          cadOpsVersion: request.version,
+          error: {
+            code: "MASS_PROPERTIES_UNAVAILABLE",
+            message: "Mass-properties projection lands in V16 Slice G1.",
+            bodyId: request.query.bodyId
+          }
+        };
+
       case "body.generatedReferenceMeasurements": {
         const { bodyId, stableId } = request.query;
         const measurements = createGeneratedReferenceMeasurements({
@@ -2751,9 +2905,9 @@ export function createCadProjectSourceIdentity(
       createWcadPackageIssue(
         "WCAD_UNSUPPORTED_DOCUMENT_SCHEMA",
         "error",
-        "WCAD source identity only supports V16, V17, V18, or V19 project schemas.",
+        "WCAD source identity only supports V16 through V20 project schemas.",
         "$.schemaVersion",
-        `${CAD_PROJECT_FORMAT_VERSION_V16}, ${CAD_PROJECT_FORMAT_VERSION_V17}, ${CAD_PROJECT_FORMAT_VERSION_V18}, or ${CAD_PROJECT_FORMAT_VERSION_V19}`,
+        `${CAD_PROJECT_FORMAT_VERSION_V16}, ${CAD_PROJECT_FORMAT_VERSION_V17}, ${CAD_PROJECT_FORMAT_VERSION_V18}, ${CAD_PROJECT_FORMAT_VERSION_V19}, or ${CAD_PROJECT_FORMAT_VERSION_V20}`,
         project.schemaVersion
       )
     ]);
@@ -2814,6 +2968,7 @@ export async function exportCadProjectToWcad(
   if (
     project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18 ||
     project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19 ||
+    project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V20 ||
     (options.topologyCheckpoints?.length ?? 0) > 0
   ) {
     return exportCadProjectToWcadV2(project, options);
@@ -2901,15 +3056,16 @@ async function exportCadProjectToWcadV2(
 
   if (
     project.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V18 &&
-    project.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V19
+    project.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V19 &&
+    project.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V20
   ) {
     throw new WcadPackageImportError([
       createWcadPackageIssue(
         "WCAD_UNSUPPORTED_DOCUMENT_SCHEMA",
         "error",
-        "WCAD v2 checkpoint writer requires web-cad.project.v18 or web-cad.project.v19 source.",
+        "WCAD v2 writer requires web-cad.project.v18, v19, or v20 source.",
         "$.schemaVersion",
-        `${CAD_PROJECT_FORMAT_VERSION_V18} or ${CAD_PROJECT_FORMAT_VERSION_V19}`,
+        `${CAD_PROJECT_FORMAT_VERSION_V18}, ${CAD_PROJECT_FORMAT_VERSION_V19}, or ${CAD_PROJECT_FORMAT_VERSION_V20}`,
         project.schemaVersion
       )
     ]);
@@ -3059,7 +3215,20 @@ async function exportCadProjectToWcadV2(
     sourceIdentity,
     documentBytes,
     commandsBytes,
-    checkpointPayloads
+    checkpointPayloads,
+    ...(project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V20
+      ? {
+          diagnostics: [
+            {
+              code: "SCHEMA_UPGRADED_TO_V20" as const,
+              severity: "info" as const,
+              message:
+                "Pattern and mirror source records were saved in the durable V20 union-and-instance shape.",
+              schemaVersion: CAD_PROJECT_FORMAT_VERSION_V20
+            }
+          ]
+        }
+      : {})
   };
 }
 
@@ -4443,10 +4612,12 @@ function isSupportedWcadV2DocumentSchema(
   schemaVersion: unknown
 ): schemaVersion is
   | typeof CAD_PROJECT_FORMAT_VERSION_V18
-  | typeof CAD_PROJECT_FORMAT_VERSION_V19 {
+  | typeof CAD_PROJECT_FORMAT_VERSION_V19
+  | typeof CAD_PROJECT_FORMAT_VERSION_V20 {
   return (
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V20
   );
 }
 
@@ -5504,15 +5675,33 @@ function applyOperation(
         op.seedBodyId,
         opIndex
       );
+      const direction = validatePatternDirectionFields(
+        state,
+        op.axis,
+        op.direction,
+        "feature.linearPattern",
+        opIndex
+      );
+      const spacing = validatePatternSpacing(op.spacing, opIndex);
+      const instanceCount = validatePatternInstanceCount(
+        op.instanceCount,
+        opIndex
+      );
       const feature: LinearPatternFeature = {
         id: op.id ?? createFeatureId(),
         kind: "linearPattern",
         name: normalizeOptionalFeatureName(op.name, opIndex, op.id),
         seedBodyId,
-        axis: validatePatternAxis(op.axis, "feature.linearPattern", opIndex),
-        spacing: validatePatternSpacing(op.spacing, opIndex),
-        instanceCount: validatePatternInstanceCount(op.instanceCount, opIndex),
-        bodyId: op.bodyId ?? createBodyId()
+        direction,
+        spacing,
+        instanceCount,
+        bodyId: op.bodyId ?? createBodyId(),
+        instances: createLinearPatternInstances(
+          direction,
+          spacing,
+          instanceCount,
+          getResolvedPatternDirection(state, direction)
+        )
       };
 
       addFeature(state, feature, diff, opIndex);
@@ -5526,22 +5715,35 @@ function applyOperation(
         op.seedBodyId,
         opIndex
       );
+      const rotationAxis = validatePatternRotationAxisField(
+        state,
+        op.rotationAxis,
+        "feature.circularPattern",
+        opIndex
+      );
+      const totalAngleDegrees = validateCircularPatternAngle(
+        op.totalAngleDegrees,
+        opIndex
+      );
+      const instanceCount = validatePatternInstanceCount(
+        op.instanceCount,
+        opIndex
+      );
       const feature: CircularPatternFeature = {
         id: op.id ?? createFeatureId(),
         kind: "circularPattern",
         name: normalizeOptionalFeatureName(op.name, opIndex, op.id),
         seedBodyId,
-        rotationAxis: validatePatternAxis(
-          op.rotationAxis,
-          "feature.circularPattern",
-          opIndex
-        ),
-        totalAngleDegrees: validateCircularPatternAngle(
-          op.totalAngleDegrees,
-          opIndex
-        ),
-        instanceCount: validatePatternInstanceCount(op.instanceCount, opIndex),
-        bodyId: op.bodyId ?? createBodyId()
+        rotationAxis,
+        totalAngleDegrees,
+        instanceCount,
+        bodyId: op.bodyId ?? createBodyId(),
+        instances: createCircularPatternInstances(
+          rotationAxis,
+          totalAngleDegrees,
+          instanceCount,
+          getResolvedPatternAxis(state, rotationAxis)
+        )
       };
 
       addFeature(state, feature, diff, opIndex);
@@ -5559,7 +5761,12 @@ function applyOperation(
         kind: "mirror",
         name: normalizeOptionalFeatureName(op.name, opIndex, op.id),
         seedBodyId,
-        mirrorPlane: validateMirrorPlane(op.mirrorPlane, opIndex),
+        plane: validateMirrorPlaneFields(
+          state,
+          op.mirrorPlane,
+          op.plane,
+          opIndex
+        ),
         includeOriginal: validateMirrorIncludeOriginal(
           op.includeOriginal,
           opIndex
@@ -5567,6 +5774,26 @@ function applyOperation(
         bodyId: op.bodyId ?? createBodyId()
       };
 
+      addFeature(state, feature, diff, opIndex);
+      return;
+    }
+
+    case "feature.sweep": {
+      const inputs = validateSweepInputs(
+        state,
+        op.profileSketchId,
+        op.profileEntityId,
+        op.pathSketchId,
+        op.pathEntityIds,
+        opIndex
+      );
+      const feature: SweepFeature = {
+        id: op.id ?? createFeatureId(),
+        kind: "sweep",
+        name: normalizeOptionalFeatureName(op.name, opIndex, op.id),
+        ...inputs,
+        bodyId: op.bodyId ?? createBodyId()
+      };
       addFeature(state, feature, diff, opIndex);
       return;
     }
@@ -5644,6 +5871,11 @@ function applyOperation(
 
     case "feature.updateShell": {
       updateShellFeature(state, op, diff, opIndex);
+      return;
+    }
+
+    case "feature.updateSweep": {
+      updateSweepFeature(state, op, diff, opIndex);
       return;
     }
 
@@ -6186,6 +6418,7 @@ function isCadOperationKind(value: string): boolean {
     case "feature.circularPattern":
     case "feature.mirror":
     case "feature.shell":
+    case "feature.sweep":
     case "feature.delete":
     case "feature.updateExtrude":
     case "feature.updateRevolve":
@@ -6196,6 +6429,7 @@ function isCadOperationKind(value: string): boolean {
     case "feature.updateCircularPattern":
     case "feature.updateMirror":
     case "feature.updateShell":
+    case "feature.updateSweep":
     case "reference.nameGenerated":
     case "reference.repairName":
     case "reference.deleteName":
@@ -6678,6 +6912,8 @@ function isCadQueryKind(value: string): value is CadQueryKind {
     case "body.topology":
     case "body.topologyIdentity":
     case "body.measurements":
+    case "body.patternInstances":
+    case "body.massProperties":
     case "body.generatedReferenceMeasurements":
     case "reference.listNamed":
     case "reference.resolveNamed":
@@ -6814,7 +7050,22 @@ function isCadQuery(value: unknown): boolean {
     case "body.generatedReferences":
     case "body.importedBodyStatus":
     case "body.measurements":
-      return typeof value.bodyId === "string";
+    case "body.patternInstances":
+      return (
+        typeof value.bodyId === "string" &&
+        (value.derivedExactMetadata === undefined ||
+          isCadBodyDerivedExactMetadataSnapshot(value.derivedExactMetadata))
+      );
+    case "body.massProperties":
+      return (
+        typeof value.bodyId === "string" &&
+        (value.density === undefined ||
+          (typeof value.density === "number" &&
+            Number.isFinite(value.density) &&
+            value.density > 0)) &&
+        (value.derivedExactMetadata === undefined ||
+          isCadBodyDerivedExactMetadataSnapshot(value.derivedExactMetadata))
+      );
     case "body.topology":
       return (
         typeof value.bodyId === "string" &&
@@ -7055,6 +7306,29 @@ function isCadFeatureEditProposal(value: unknown): boolean {
     );
   }
 
+  if (value.kind === "sweep") {
+    return (
+      Object.keys(value).every((key) =>
+        [
+          "kind",
+          "profileSketchId",
+          "profileEntityId",
+          "pathSketchId",
+          "pathEntityIds"
+        ].includes(key)
+      ) &&
+      (value.profileSketchId === undefined ||
+        typeof value.profileSketchId === "string") &&
+      (value.profileEntityId === undefined ||
+        typeof value.profileEntityId === "string") &&
+      (value.pathSketchId === undefined ||
+        typeof value.pathSketchId === "string") &&
+      (value.pathEntityIds === undefined ||
+        (Array.isArray(value.pathEntityIds) &&
+          value.pathEntityIds.every((entityId) => typeof entityId === "string")))
+    );
+  }
+
   return false;
 }
 
@@ -7244,6 +7518,10 @@ function isCadSelectionReferenceOperation(
     value === "feature.attachSketchPlane" ||
     value === "feature.chamfer" ||
     value === "feature.fillet" ||
+    value === "feature.shell" ||
+    value === "feature.linearPatternDirection" ||
+    value === "feature.circularPatternAxis" ||
+    value === "feature.mirrorPlane" ||
     value === "feature.measureReference" ||
     value === "feature.selectReference"
   );
@@ -7844,7 +8122,9 @@ function applyParameterExpressionEvaluation(
     [...state.parameters.values()].map(cloneParameterSnapshot)
   );
   const blockingDiagnostic = evaluation.diagnostics.find(
-    (diagnostic) => diagnostic.code !== "EXPRESSION_VALUE_INCONSISTENCY"
+    (diagnostic) =>
+      diagnostic.code !== "EXPRESSION_VALUE_INCONSISTENCY" &&
+      diagnostic.code !== "EXPRESSION_LANGUAGE_V2_FEATURES_PRESENT"
   );
 
   if (blockingDiagnostic) {
@@ -10987,20 +11267,35 @@ function updateLinearPatternFeature(
     "feature.updateLinearPattern",
     opIndex
   );
+  const direction =
+    op.axis === undefined && op.direction === undefined
+      ? feature.direction
+      : validatePatternDirectionFields(
+          state,
+          op.axis,
+          op.direction,
+          "feature.updateLinearPattern",
+          opIndex
+        );
+  const spacing =
+    op.spacing === undefined
+      ? feature.spacing
+      : validatePatternSpacing(op.spacing, opIndex);
+  const instanceCount =
+    op.instanceCount === undefined
+      ? feature.instanceCount
+      : validatePatternInstanceCount(op.instanceCount, opIndex);
   const updated: LinearPatternFeature = {
     ...feature,
-    axis:
-      op.axis === undefined
-        ? feature.axis
-        : validatePatternAxis(op.axis, "feature.updateLinearPattern", opIndex),
-    spacing:
-      op.spacing === undefined
-        ? feature.spacing
-        : validatePatternSpacing(op.spacing, opIndex),
-    instanceCount:
-      op.instanceCount === undefined
-        ? feature.instanceCount
-        : validatePatternInstanceCount(op.instanceCount, opIndex)
+    direction,
+    spacing,
+    instanceCount,
+    instances: createLinearPatternInstances(
+      direction,
+      spacing,
+      instanceCount,
+      getResolvedPatternDirection(state, direction)
+    )
   };
 
   assertPatternFeatureEditable(
@@ -11041,24 +11336,34 @@ function updateCircularPatternFeature(
     "feature.updateCircularPattern",
     opIndex
   );
+  const rotationAxis =
+    op.rotationAxis === undefined
+      ? feature.rotationAxis
+      : validatePatternRotationAxisField(
+          state,
+          op.rotationAxis,
+          "feature.updateCircularPattern",
+          opIndex
+        );
+  const totalAngleDegrees =
+    op.totalAngleDegrees === undefined
+      ? feature.totalAngleDegrees
+      : validateCircularPatternAngle(op.totalAngleDegrees, opIndex);
+  const instanceCount =
+    op.instanceCount === undefined
+      ? feature.instanceCount
+      : validatePatternInstanceCount(op.instanceCount, opIndex);
   const updated: CircularPatternFeature = {
     ...feature,
-    rotationAxis:
-      op.rotationAxis === undefined
-        ? feature.rotationAxis
-        : validatePatternAxis(
-            op.rotationAxis,
-            "feature.updateCircularPattern",
-            opIndex
-          ),
-    totalAngleDegrees:
-      op.totalAngleDegrees === undefined
-        ? feature.totalAngleDegrees
-        : validateCircularPatternAngle(op.totalAngleDegrees, opIndex),
-    instanceCount:
-      op.instanceCount === undefined
-        ? feature.instanceCount
-        : validatePatternInstanceCount(op.instanceCount, opIndex)
+    rotationAxis,
+    totalAngleDegrees,
+    instanceCount,
+    instances: createCircularPatternInstances(
+      rotationAxis,
+      totalAngleDegrees,
+      instanceCount,
+      getResolvedPatternAxis(state, rotationAxis)
+    )
   };
 
   assertPatternFeatureEditable(
@@ -11101,10 +11406,10 @@ function updateMirrorFeature(
   );
   const updated: MirrorFeature = {
     ...feature,
-    mirrorPlane:
-      op.mirrorPlane === undefined
-        ? feature.mirrorPlane
-        : validateMirrorPlane(op.mirrorPlane, opIndex),
+    plane:
+      op.mirrorPlane === undefined && op.plane === undefined
+        ? feature.plane
+        : validateMirrorPlaneFields(state, op.mirrorPlane, op.plane, opIndex),
     includeOriginal:
       op.includeOriginal === undefined
         ? feature.includeOriginal
@@ -11184,6 +11489,209 @@ function updateShellFeature(
       "Shell result body requires derived rebuild and topology repair after supported source parameter edit."
     )
   );
+}
+
+function updateSweepFeature(
+  state: MutableDocumentState,
+  op: Extract<CadOp, { readonly op: "feature.updateSweep" }>,
+  diff: MutableSemanticDiff,
+  opIndex?: number
+): void {
+  const feature = getEditableFeatureForUpdate(
+    state,
+    op.id,
+    "sweep",
+    "feature.updateSweep",
+    opIndex
+  );
+  const inputs = validateSweepInputs(
+    state,
+    op.profileSketchId ?? feature.profileSketchId,
+    op.profileEntityId ?? feature.profileEntityId,
+    op.pathSketchId ?? feature.pathSketchId,
+    op.pathEntityIds ?? feature.pathEntityIds,
+    opIndex
+  );
+  const updated: SweepFeature = { ...feature, ...inputs };
+  assertFeatureResultBodyActiveForEdit(
+    state,
+    updated,
+    "feature.updateSweep",
+    opIndex
+  );
+  state.features.set(feature.id, updated);
+  pushFeatureModified(diff, featureRef(updated));
+  pushBodyModified(diff, bodyRef(updated));
+  pushFeatureReferenceEffects(
+    diff,
+    createAmbiguousResultFeatureEditReferenceEffects(
+      updated,
+      "Sweep result topology requires repair after a source reference edit."
+    )
+  );
+  pushFeatureLifecycleEffects(
+    diff,
+    createAmbiguousResultFeatureEditLifecycleEffects(
+      updated,
+      "Sweep result body requires a derived rebuild after a source reference edit."
+    )
+  );
+}
+
+function validateSweepInputs(
+  state: MutableDocumentState,
+  profileSketchId: unknown,
+  profileEntityId: unknown,
+  pathSketchId: unknown,
+  pathEntityIds: unknown,
+  opIndex?: number
+): Pick<
+  SweepFeature,
+  "profileSketchId" | "profileEntityId" | "pathSketchId" | "pathEntityIds"
+> {
+  if (typeof profileSketchId !== "string" || !profileSketchId) {
+    throwSweepValidationError(
+      "SWEEP_ENTITY_UNRESOLVED",
+      "Sweep profile sketch id must be a non-empty string.",
+      "profileSketchId",
+      "existing sketch id",
+      profileSketchId,
+      opIndex
+    );
+  }
+  if (typeof profileEntityId !== "string" || !profileEntityId) {
+    throwSweepValidationError(
+      "SWEEP_ENTITY_UNRESOLVED",
+      "Sweep profile entity id must be a non-empty string.",
+      "profileEntityId",
+      "existing rectangle or circle entity id",
+      profileEntityId,
+      opIndex
+    );
+  }
+  if (typeof pathSketchId !== "string" || !pathSketchId) {
+    throwSweepValidationError(
+      "SWEEP_ENTITY_UNRESOLVED",
+      "Sweep path sketch id must be a non-empty string.",
+      "pathSketchId",
+      "existing sketch id",
+      pathSketchId,
+      opIndex
+    );
+  }
+  if (!Array.isArray(pathEntityIds) || pathEntityIds.length === 0) {
+    throwSweepValidationError(
+      "SWEEP_PATH_UNSUPPORTED",
+      "Sweep requires one line path entity.",
+      "pathEntityIds",
+      "array containing exactly one line entity id",
+      pathEntityIds,
+      opIndex
+    );
+  }
+  if (pathEntityIds.length !== 1) {
+    throwSweepValidationError(
+      "SWEEP_PATH_UNSUPPORTED",
+      "V16 sweep currently supports exactly one line path entity.",
+      "pathEntityIds",
+      "one line entity id",
+      pathEntityIds,
+      opIndex
+    );
+  }
+  const pathEntityId = pathEntityIds[0];
+  if (typeof pathEntityId !== "string" || !pathEntityId) {
+    throwSweepValidationError(
+      "SWEEP_ENTITY_UNRESOLVED",
+      "Sweep path entity id must be a non-empty string.",
+      "pathEntityIds",
+      "existing line entity id",
+      pathEntityId,
+      opIndex
+    );
+  }
+
+  const profileSketch = state.sketches.get(profileSketchId);
+  const pathSketch = state.sketches.get(pathSketchId);
+  const profile = profileSketch?.entities.get(profileEntityId);
+  const path = pathSketch?.entities.get(pathEntityId);
+  if (!profileSketch || !profile) {
+    throwSweepValidationError(
+      "SWEEP_ENTITY_UNRESOLVED",
+      "Sweep profile sketch or entity no longer resolves.",
+      "profileEntityId",
+      "existing rectangle or circle profile",
+      profileEntityId,
+      opIndex
+    );
+  }
+  if (profile.kind !== "rectangle" && profile.kind !== "circle") {
+    throwSweepValidationError(
+      "SWEEP_PROFILE_UNSUPPORTED",
+      "Sweep profile must be a rectangle or circle entity.",
+      "profileEntityId",
+      "rectangle or circle entity",
+      profile.kind,
+      opIndex
+    );
+  }
+  if (!pathSketch || !path) {
+    throwSweepValidationError(
+      "SWEEP_ENTITY_UNRESOLVED",
+      "Sweep path sketch or entity no longer resolves.",
+      "pathEntityIds",
+      "existing line path",
+      pathEntityId,
+      opIndex
+    );
+  }
+  if (path.kind !== "line") {
+    throwSweepValidationError(
+      "SWEEP_PATH_UNSUPPORTED",
+      "Sweep path must be a line entity.",
+      "pathEntityIds",
+      "line entity",
+      path.kind,
+      opIndex
+    );
+  }
+  if (
+    Math.hypot(path.end[0] - path.start[0], path.end[1] - path.start[1]) <= 1e-9
+  ) {
+    throwSweepValidationError(
+      "SWEEP_PATH_UNSUPPORTED",
+      "Sweep path line must have non-zero length.",
+      "pathEntityIds",
+      "non-degenerate line entity",
+      pathEntityId,
+      opIndex
+    );
+  }
+
+  return {
+    profileSketchId,
+    profileEntityId,
+    pathSketchId,
+    pathEntityIds: [pathEntityId]
+  };
+}
+
+function throwSweepValidationError(
+  code: CadBatchValidationError["code"],
+  message: string,
+  field: string,
+  expected: string,
+  received: unknown,
+  opIndex?: number
+): never {
+  throwValidationError({
+    code,
+    message,
+    opIndex,
+    path: operationPath(opIndex, field),
+    expected,
+    received: describeReceived(received)
+  });
 }
 
 function assertShellFeatureEditable(
@@ -11967,6 +12475,326 @@ function validatePatternAxis(
   });
 }
 
+function globalAxisRef(axis: "x" | "y" | "z"): PatternDirectionRef {
+  return { kind: "globalAxis", axis };
+}
+
+function validatePatternDirectionFields(
+  state: MutableDocumentState,
+  axis: unknown,
+  direction: unknown,
+  operation: "feature.linearPattern" | "feature.updateLinearPattern",
+  opIndex?: number
+): PatternDirectionRef {
+  const legacy =
+    axis === undefined
+      ? undefined
+      : globalAxisRef(validatePatternAxis(axis, operation, opIndex));
+  const normalized =
+    direction === undefined
+      ? undefined
+      : validatePatternDirectionRef(state, direction, operation, opIndex);
+
+  if (!legacy && !normalized) {
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: `${operation} requires axis or direction.`,
+      opIndex,
+      path: operationPath(opIndex, "direction"),
+      expected: "V15 axis or V20 direction reference",
+      received: "missing"
+    });
+  }
+  if (legacy && normalized && !stableJsonEqual(legacy, normalized)) {
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: `${operation} axis and direction fields disagree.`,
+      opIndex,
+      path: operationPath(opIndex, "direction"),
+      expected: JSON.stringify(legacy),
+      received: JSON.stringify(normalized)
+    });
+  }
+  return normalized ?? legacy!;
+}
+
+function validatePatternDirectionRef(
+  state: MutableDocumentState,
+  value: unknown,
+  operation: "feature.linearPattern" | "feature.updateLinearPattern",
+  opIndex?: number
+): PatternDirectionRef {
+  const reference = parsePatternDirectionRef(value);
+  if (!reference) {
+    throwValidationError({
+      code: "PATTERN_DIRECTION_UNSUPPORTED",
+      message: `${operation} direction reference is invalid.`,
+      opIndex,
+      path: operationPath(opIndex, "direction"),
+      expected: "globalAxis, generatedEdge, namedReference, or topologyAnchor",
+      received: describeReceived(value)
+    });
+  }
+  const resolution = resolvePatternDirectionFrame(state, reference);
+  if (!resolution.ok) {
+    throwValidationError({
+      code: resolution.code,
+      message: resolution.message,
+      opIndex,
+      path: operationPath(opIndex, "direction"),
+      expected: "resolvable proven linear edge or global axis",
+      received: describeReceived(value)
+    });
+  }
+  return reference;
+}
+
+function validatePatternRotationAxisField(
+  state: MutableDocumentState,
+  value: unknown,
+  operation: "feature.circularPattern" | "feature.updateCircularPattern",
+  opIndex?: number
+): PatternRotationAxisRef {
+  const reference = isPatternAxis(value)
+    ? globalAxisRef(value)
+    : parsePatternDirectionRef(value);
+  if (!reference) {
+    throwValidationError({
+      code: "PATTERN_AXIS_UNSUPPORTED",
+      message: `${operation} rotation-axis reference is invalid.`,
+      opIndex,
+      path: operationPath(opIndex, "rotationAxis"),
+      expected:
+        "x, y, z, globalAxis, generatedEdge, namedReference, or topologyAnchor",
+      received: describeReceived(value)
+    });
+  }
+  const resolution = resolvePatternRotationAxisFrame(state, reference);
+  if (!resolution.ok) {
+    throwValidationError({
+      code: resolution.code,
+      message: resolution.message,
+      opIndex,
+      path: operationPath(opIndex, "rotationAxis"),
+      expected: "resolvable proven linear edge or global axis",
+      received: describeReceived(value)
+    });
+  }
+  return reference;
+}
+
+function getResolvedPatternDirection(
+  state: CadDocument,
+  reference: PatternDirectionRef
+): Vec3 {
+  const resolution = resolvePatternDirectionFrame(state, reference);
+  if (!resolution.ok) {
+    throw new Error(resolution.message);
+  }
+  return resolution.frame;
+}
+
+function getResolvedPatternAxis(
+  state: CadDocument,
+  reference: PatternRotationAxisRef
+): { readonly origin: Vec3; readonly direction: Vec3 } {
+  const resolution = resolvePatternRotationAxisFrame(state, reference);
+  if (!resolution.ok) {
+    throw new Error(resolution.message);
+  }
+  return resolution.frame;
+}
+
+function parsePatternDirectionRef(
+  value: unknown
+): PatternDirectionRef | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  if (value.kind === "globalAxis" && isPatternAxis(value.axis)) {
+    return { kind: "globalAxis", axis: value.axis };
+  }
+  if (
+    value.kind === "generatedEdge" &&
+    isNonEmptyString(value.bodyId) &&
+    isNonEmptyString(value.stableId)
+  ) {
+    return {
+      kind: "generatedEdge",
+      bodyId: value.bodyId,
+      stableId: value.stableId
+    };
+  }
+  if (value.kind === "namedReference" && isNonEmptyString(value.name)) {
+    return { kind: "namedReference", name: value.name };
+  }
+  if (
+    value.kind === "topologyAnchor" &&
+    isNonEmptyString(value.bodyId) &&
+    isNonEmptyString(value.anchorId)
+  ) {
+    return {
+      kind: "topologyAnchor",
+      bodyId: value.bodyId,
+      anchorId: value.anchorId
+    };
+  }
+  return undefined;
+}
+
+const IDENTITY_MAT4: Mat4 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+
+function createLinearPatternInstances(
+  direction: PatternDirectionRef,
+  spacing: number,
+  instanceCount: number,
+  resolvedDirection?: Vec3
+): readonly PatternInstanceRecord[] {
+  const unit =
+    resolvedDirection ??
+    (direction.kind === "globalAxis"
+      ? getGlobalAxisVector(direction.axis)
+      : undefined);
+  if (!unit) {
+    throw new Error(
+      "Pattern direction must be resolved before creating instances."
+    );
+  }
+  return Array.from({ length: instanceCount }, (_, instanceIndex) => ({
+    instanceIndex,
+    transform:
+      instanceIndex === 0
+        ? IDENTITY_MAT4
+        : translationMat4(
+            unit[0] * spacing * instanceIndex,
+            unit[1] * spacing * instanceIndex,
+            unit[2] * spacing * instanceIndex
+          )
+  }));
+}
+
+function createCircularPatternInstances(
+  rotationAxis: PatternRotationAxisRef,
+  totalAngleDegrees: number,
+  instanceCount: number,
+  resolvedAxis?: { readonly origin: Vec3; readonly direction: Vec3 }
+): readonly PatternInstanceRecord[] {
+  const axis =
+    resolvedAxis ??
+    (rotationAxis.kind === "globalAxis"
+      ? {
+          origin: [0, 0, 0] as Vec3,
+          direction: getGlobalAxisVector(rotationAxis.axis)
+        }
+      : undefined);
+  if (!axis) {
+    throw new Error(
+      "Pattern rotation axis must be resolved before creating instances."
+    );
+  }
+  const step =
+    totalAngleDegrees === 360
+      ? totalAngleDegrees / instanceCount
+      : totalAngleDegrees / (instanceCount - 1);
+  return Array.from({ length: instanceCount }, (_, instanceIndex) => ({
+    instanceIndex,
+    transform:
+      instanceIndex === 0
+        ? IDENTITY_MAT4
+        : rotationAboutAxisMat4(
+            axis.origin,
+            axis.direction,
+            step * instanceIndex
+          )
+  }));
+}
+
+function getGlobalAxisVector(axis: "x" | "y" | "z"): Vec3 {
+  return axis === "x" ? [1, 0, 0] : axis === "y" ? [0, 1, 0] : [0, 0, 1];
+}
+
+function translationMat4(x: number, y: number, z: number): Mat4 {
+  return [
+    1,
+    0,
+    0,
+    cleanMeasurementNumber(x),
+    0,
+    1,
+    0,
+    cleanMeasurementNumber(y),
+    0,
+    0,
+    1,
+    cleanMeasurementNumber(z),
+    0,
+    0,
+    0,
+    1
+  ];
+}
+
+function rotationMat4(axis: Vec3, angleDegrees: number): Mat4 {
+  const angle = (angleDegrees * Math.PI) / 180;
+  const c = cleanMatrixNumber(Math.cos(angle));
+  const s = cleanMatrixNumber(Math.sin(angle));
+  const t = 1 - c;
+  const [x, y, z] = axis;
+  return [
+    cleanMatrixNumber(t * x * x + c),
+    cleanMatrixNumber(t * x * y - s * z),
+    cleanMatrixNumber(t * x * z + s * y),
+    0,
+    cleanMatrixNumber(t * x * y + s * z),
+    cleanMatrixNumber(t * y * y + c),
+    cleanMatrixNumber(t * y * z - s * x),
+    0,
+    cleanMatrixNumber(t * x * z - s * y),
+    cleanMatrixNumber(t * y * z + s * x),
+    cleanMatrixNumber(t * z * z + c),
+    0,
+    0,
+    0,
+    0,
+    1
+  ];
+}
+
+function rotationAboutAxisMat4(
+  origin: Vec3,
+  axis: Vec3,
+  angleDegrees: number
+): Mat4 {
+  const rotation = rotationMat4(axis, angleDegrees);
+  const rotatedOrigin: Vec3 = [
+    rotation[0] * origin[0] + rotation[1] * origin[1] + rotation[2] * origin[2],
+    rotation[4] * origin[0] + rotation[5] * origin[1] + rotation[6] * origin[2],
+    rotation[8] * origin[0] + rotation[9] * origin[1] + rotation[10] * origin[2]
+  ];
+  return [
+    rotation[0],
+    rotation[1],
+    rotation[2],
+    cleanMatrixNumber(origin[0] - rotatedOrigin[0]),
+    rotation[4],
+    rotation[5],
+    rotation[6],
+    cleanMatrixNumber(origin[1] - rotatedOrigin[1]),
+    rotation[8],
+    rotation[9],
+    rotation[10],
+    cleanMatrixNumber(origin[2] - rotatedOrigin[2]),
+    0,
+    0,
+    0,
+    1
+  ];
+}
+
+function cleanMatrixNumber(value: number): number {
+  return Math.abs(value) < 1e-12 ? 0 : cleanMeasurementNumber(value);
+}
+
 function validatePatternSpacing(value: number, opIndex?: number): number {
   if (typeof value === "number" && isPositiveFiniteNumber(value)) {
     return value;
@@ -12038,6 +12866,123 @@ function validateMirrorPlane(
     expected: "XY, XZ, or YZ",
     received: describeReceived(value)
   });
+}
+
+function validateMirrorPlaneFields(
+  state: MutableDocumentState,
+  mirrorPlane: unknown,
+  plane: unknown,
+  opIndex?: number
+): MirrorPlaneRef {
+  const legacy =
+    mirrorPlane === undefined
+      ? undefined
+      : ({
+          kind: "standardPlane",
+          plane: validateMirrorPlane(mirrorPlane, opIndex),
+          offset: 0
+        } as const);
+  if (
+    isRecord(plane) &&
+    plane.offset !== undefined &&
+    (typeof plane.offset !== "number" || !Number.isFinite(plane.offset))
+  ) {
+    throwValidationError({
+      code: "MIRROR_OFFSET_INVALID",
+      message: "feature.mirror plane offset must be finite.",
+      opIndex,
+      path: operationPath(opIndex, "plane.offset"),
+      expected: "finite number",
+      received: describeReceived(plane.offset)
+    });
+  }
+  const normalized =
+    plane === undefined ? undefined : parseMirrorPlaneRef(plane);
+  if (plane !== undefined && !normalized) {
+    throwValidationError({
+      code: "MIRROR_PLANE_UNSUPPORTED",
+      message: "feature.mirror plane reference is invalid.",
+      opIndex,
+      path: operationPath(opIndex, "plane"),
+      expected:
+        "standardPlane, generatedFace, namedReference, or topologyAnchor",
+      received: describeReceived(plane)
+    });
+  }
+  if (!legacy && !normalized) {
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: "feature.mirror requires mirrorPlane or plane.",
+      opIndex,
+      path: operationPath(opIndex, "plane"),
+      expected: "V15 mirrorPlane or V20 plane reference",
+      received: "missing"
+    });
+  }
+  if (legacy && normalized && !stableJsonEqual(legacy, normalized)) {
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: "feature.mirror mirrorPlane and plane fields disagree.",
+      opIndex,
+      path: operationPath(opIndex, "plane"),
+      expected: JSON.stringify(legacy),
+      received: JSON.stringify(normalized)
+    });
+  }
+  const result = normalized ?? legacy!;
+  const resolution = resolveMirrorPlaneFrame(state, result);
+  if (!resolution.ok) {
+    throwValidationError({
+      code: resolution.code,
+      message: resolution.message,
+      opIndex,
+      path: operationPath(opIndex, "plane"),
+      expected: "resolvable planar face or standard plane",
+      received: describeReceived(result)
+    });
+  }
+  return result;
+}
+
+function parseMirrorPlaneRef(value: unknown): MirrorPlaneRef | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const offset = value.offset === undefined ? 0 : value.offset;
+  if (typeof offset !== "number" || !Number.isFinite(offset)) {
+    return undefined;
+  }
+  if (value.kind === "standardPlane" && isMirrorPlane(value.plane)) {
+    return { kind: "standardPlane", plane: value.plane, offset };
+  }
+  if (
+    value.kind === "generatedFace" &&
+    isNonEmptyString(value.bodyId) &&
+    isNonEmptyString(value.stableId)
+  ) {
+    return {
+      kind: "generatedFace",
+      bodyId: value.bodyId,
+      stableId: value.stableId,
+      offset
+    };
+  }
+  if (value.kind === "namedReference" && isNonEmptyString(value.name)) {
+    return { kind: "namedReference", name: value.name, offset };
+  }
+  if (
+    value.kind === "topologyAnchor" &&
+    isNonEmptyString(value.bodyId) &&
+    isNonEmptyString(value.anchorId)
+  ) {
+    return {
+      kind: "topologyAnchor",
+      bodyId: value.bodyId,
+      anchorId: value.anchorId,
+      offset
+    };
+  }
+  return undefined;
 }
 
 function validateMirrorIncludeOriginal(
@@ -12754,6 +13699,11 @@ function assertSketchNotInUse(
 }
 
 function featureUsesSketch(feature: Feature, sketchId: SketchId): boolean {
+  if (feature.kind === "sweep") {
+    return (
+      feature.profileSketchId === sketchId || feature.pathSketchId === sketchId
+    );
+  }
   if (
     feature.kind === "chamfer" ||
     feature.kind === "fillet" ||
@@ -12800,6 +13750,15 @@ function findFeaturesBySketchEntity(
   entityId: SketchEntityId
 ): readonly Feature[] {
   return [...features.values()].filter((feature) => {
+    if (
+      feature.kind === "sweep" &&
+      ((feature.profileSketchId === sketchId &&
+        feature.profileEntityId === entityId) ||
+        (feature.pathSketchId === sketchId &&
+          feature.pathEntityIds.includes(entityId)))
+    ) {
+      return true;
+    }
     if (
       feature.kind === "hole" &&
       feature.sketchId === sketchId &&
@@ -16650,6 +17609,15 @@ function cloneTransform(transform: Transform): Transform {
   };
 }
 
+function clonePatternInstance(
+  instance: PatternInstanceRecord
+): PatternInstanceRecord {
+  return {
+    instanceIndex: instance.instanceIndex,
+    transform: [...instance.transform] as unknown as Mat4
+  };
+}
+
 function objectRef(object: SceneObject): CadObjectRef {
   return {
     id: object.id,
@@ -16675,6 +17643,17 @@ function sketchEntityRef(
 }
 
 function featureRef(feature: Feature): CadFeatureRef {
+  if (feature.kind === "sweep") {
+    return {
+      id: feature.id,
+      kind: "sweep",
+      bodyId: feature.bodyId,
+      profileSketchId: feature.profileSketchId,
+      profileEntityId: feature.profileEntityId,
+      pathSketchId: feature.pathSketchId,
+      pathEntityIds: [...feature.pathEntityIds]
+    };
+  }
   if (feature.kind === "importedBody") {
     return {
       id: feature.id,
@@ -16693,9 +17672,10 @@ function featureRef(feature: Feature): CadFeatureRef {
       kind: "linearPattern",
       bodyId: feature.bodyId,
       seedBodyId: feature.seedBodyId,
-      axis: feature.axis,
+      direction: feature.direction,
       spacing: feature.spacing,
-      instanceCount: feature.instanceCount
+      instanceCount: feature.instanceCount,
+      instances: feature.instances
     };
   }
 
@@ -16707,7 +17687,8 @@ function featureRef(feature: Feature): CadFeatureRef {
       seedBodyId: feature.seedBodyId,
       rotationAxis: feature.rotationAxis,
       totalAngleDegrees: feature.totalAngleDegrees,
-      instanceCount: feature.instanceCount
+      instanceCount: feature.instanceCount,
+      instances: feature.instances
     };
   }
 
@@ -16717,7 +17698,7 @@ function featureRef(feature: Feature): CadFeatureRef {
       kind: "mirror",
       bodyId: feature.bodyId,
       seedBodyId: feature.seedBodyId,
-      mirrorPlane: feature.mirrorPlane,
+      plane: feature.plane,
       includeOriginal: feature.includeOriginal
     };
   }
@@ -17835,6 +18816,18 @@ function cloneSketchAttachment(
 }
 
 function createFeatureSnapshot(feature: Feature): FeatureSnapshot {
+  if (feature.kind === "sweep") {
+    return {
+      id: feature.id,
+      kind: "sweep",
+      name: feature.name,
+      profileSketchId: feature.profileSketchId,
+      profileEntityId: feature.profileEntityId,
+      pathSketchId: feature.pathSketchId,
+      pathEntityIds: [...feature.pathEntityIds],
+      bodyId: feature.bodyId
+    };
+  }
   if (feature.kind === "importedBody") {
     return {
       id: feature.id,
@@ -17854,10 +18847,11 @@ function createFeatureSnapshot(feature: Feature): FeatureSnapshot {
       kind: "linearPattern",
       name: feature.name,
       seedBodyId: feature.seedBodyId,
-      axis: feature.axis,
+      direction: { ...feature.direction },
       spacing: feature.spacing,
       instanceCount: feature.instanceCount,
-      bodyId: feature.bodyId
+      bodyId: feature.bodyId,
+      instances: feature.instances.map(clonePatternInstance)
     };
   }
 
@@ -17867,10 +18861,11 @@ function createFeatureSnapshot(feature: Feature): FeatureSnapshot {
       kind: "circularPattern",
       name: feature.name,
       seedBodyId: feature.seedBodyId,
-      rotationAxis: feature.rotationAxis,
+      rotationAxis: { ...feature.rotationAxis },
       totalAngleDegrees: feature.totalAngleDegrees,
       instanceCount: feature.instanceCount,
-      bodyId: feature.bodyId
+      bodyId: feature.bodyId,
+      instances: feature.instances.map(clonePatternInstance)
     };
   }
 
@@ -17880,7 +18875,7 @@ function createFeatureSnapshot(feature: Feature): FeatureSnapshot {
       kind: "mirror",
       name: feature.name,
       seedBodyId: feature.seedBodyId,
-      mirrorPlane: feature.mirrorPlane,
+      plane: { ...feature.plane },
       includeOriginal: feature.includeOriginal,
       bodyId: feature.bodyId
     };
@@ -17987,6 +18982,23 @@ function createFeatureSnapshot(feature: Feature): FeatureSnapshot {
 }
 
 function createFeatureFromSnapshot(snapshot: FeatureSnapshot): Feature {
+  if (snapshot.kind === "loft") {
+    throw new Error(
+      `${snapshot.kind} snapshots require their V16 implementation slice.`
+    );
+  }
+  if (snapshot.kind === "sweep") {
+    return {
+      id: snapshot.id,
+      kind: "sweep",
+      name: snapshot.name,
+      profileSketchId: snapshot.profileSketchId,
+      profileEntityId: snapshot.profileEntityId,
+      pathSketchId: snapshot.pathSketchId,
+      pathEntityIds: [...snapshot.pathEntityIds],
+      bodyId: snapshot.bodyId
+    };
+  }
   if (snapshot.kind === "importedBody") {
     return {
       id: snapshot.id,
@@ -18001,38 +19013,86 @@ function createFeatureFromSnapshot(snapshot: FeatureSnapshot): Feature {
   }
 
   if (snapshot.kind === "linearPattern") {
+    const direction =
+      snapshot.direction ??
+      (snapshot.axis ? globalAxisRef(snapshot.axis) : undefined);
+    if (
+      !direction ||
+      (direction.kind !== "globalAxis" && !snapshot.instances)
+    ) {
+      throw new Error(
+        "Linear pattern snapshot direction is not normalized or supported."
+      );
+    }
     return {
       id: snapshot.id,
       kind: "linearPattern",
       name: snapshot.name,
       seedBodyId: snapshot.seedBodyId,
-      axis: snapshot.axis,
+      direction,
       spacing: snapshot.spacing,
       instanceCount: snapshot.instanceCount,
-      bodyId: snapshot.bodyId
+      bodyId: snapshot.bodyId,
+      instances:
+        snapshot.instances?.map(clonePatternInstance) ??
+        createLinearPatternInstances(
+          direction,
+          snapshot.spacing,
+          snapshot.instanceCount
+        )
     };
   }
 
   if (snapshot.kind === "circularPattern") {
+    const rotationAxis = isPatternAxis(snapshot.rotationAxis)
+      ? globalAxisRef(snapshot.rotationAxis)
+      : snapshot.rotationAxis;
+    if (
+      !rotationAxis ||
+      (rotationAxis.kind !== "globalAxis" && !snapshot.instances)
+    ) {
+      throw new Error(
+        "Circular pattern snapshot rotation axis is not normalized or supported."
+      );
+    }
     return {
       id: snapshot.id,
       kind: "circularPattern",
       name: snapshot.name,
       seedBodyId: snapshot.seedBodyId,
-      rotationAxis: snapshot.rotationAxis,
+      rotationAxis,
       totalAngleDegrees: snapshot.totalAngleDegrees,
       instanceCount: snapshot.instanceCount,
-      bodyId: snapshot.bodyId
+      bodyId: snapshot.bodyId,
+      instances:
+        snapshot.instances?.map(clonePatternInstance) ??
+        createCircularPatternInstances(
+          rotationAxis,
+          snapshot.totalAngleDegrees,
+          snapshot.instanceCount
+        )
     };
   }
 
   if (snapshot.kind === "mirror") {
+    const plane =
+      snapshot.plane ??
+      (snapshot.mirrorPlane
+        ? {
+            kind: "standardPlane" as const,
+            plane: snapshot.mirrorPlane,
+            offset: 0
+          }
+        : undefined);
+    if (!plane) {
+      throw new Error("Mirror snapshot plane is not normalized.");
+    }
     return {
       id: snapshot.id,
       kind: "mirror",
       name: snapshot.name,
       seedBodyId: snapshot.seedBodyId,
-      mirrorPlane: snapshot.mirrorPlane,
+      plane,
       includeOriginal: snapshot.includeOriginal,
       bodyId: snapshot.bodyId
     };
@@ -18189,6 +19249,9 @@ const SUMMARY_REFERENCE_OPERATIONS = [
   "feature.chamfer",
   "feature.fillet",
   "feature.shell",
+  "feature.linearPatternDirection",
+  "feature.circularPatternAxis",
+  "feature.mirrorPlane",
   "feature.measureReference",
   "feature.selectReference"
 ] satisfies readonly CadSelectionReferenceOperation[];
@@ -18736,6 +19799,26 @@ function createPrimitiveBodySnapshot(object: SceneObject): CadBodySnapshot {
 }
 
 function createFeatureSummary(feature: Feature): CadFeatureSummary {
+  if (feature.kind === "sweep") {
+    return {
+      id: feature.id,
+      kind: "sweep",
+      partId: DEFAULT_PART_ID,
+      bodyId: feature.bodyId,
+      name: feature.name,
+      profileSketchId: feature.profileSketchId,
+      profileEntityId: feature.profileEntityId,
+      pathSketchId: feature.pathSketchId,
+      pathEntityIds: [...feature.pathEntityIds],
+      source: {
+        type: "sweepFeature",
+        profileSketchId: feature.profileSketchId,
+        profileEntityId: feature.profileEntityId,
+        pathSketchId: feature.pathSketchId,
+        pathEntityIds: [...feature.pathEntityIds]
+      }
+    };
+  }
   if (feature.kind === "importedBody") {
     return {
       id: feature.id,
@@ -18762,14 +19845,15 @@ function createFeatureSummary(feature: Feature): CadFeatureSummary {
       partId: DEFAULT_PART_ID,
       bodyId: feature.bodyId,
       seedBodyId: feature.seedBodyId,
-      axis: feature.axis,
+      direction: feature.direction,
       spacing: feature.spacing,
       instanceCount: feature.instanceCount,
+      instances: feature.instances,
       name: feature.name,
       source: {
         type: "linearPatternFeature",
         seedBodyId: feature.seedBodyId,
-        axis: feature.axis
+        direction: feature.direction
       }
     };
   }
@@ -18784,6 +19868,7 @@ function createFeatureSummary(feature: Feature): CadFeatureSummary {
       rotationAxis: feature.rotationAxis,
       totalAngleDegrees: feature.totalAngleDegrees,
       instanceCount: feature.instanceCount,
+      instances: feature.instances,
       name: feature.name,
       source: {
         type: "circularPatternFeature",
@@ -18800,13 +19885,13 @@ function createFeatureSummary(feature: Feature): CadFeatureSummary {
       partId: DEFAULT_PART_ID,
       bodyId: feature.bodyId,
       seedBodyId: feature.seedBodyId,
-      mirrorPlane: feature.mirrorPlane,
+      plane: feature.plane,
       includeOriginal: feature.includeOriginal,
       name: feature.name,
       source: {
         type: "mirrorFeature",
         seedBodyId: feature.seedBodyId,
-        mirrorPlane: feature.mirrorPlane
+        plane: feature.plane
       }
     };
   }
@@ -18970,6 +20055,24 @@ function createFeatureBodySnapshot(
   feature: Feature,
   consumedByFeatureId?: FeatureId
 ): CadBodySnapshot {
+  if (feature.kind === "sweep") {
+    return {
+      id: feature.bodyId,
+      kind: "solid",
+      partId: DEFAULT_PART_ID,
+      featureId: feature.id,
+      ...(consumedByFeatureId ? { consumedByFeatureId } : {}),
+      name: feature.name,
+      source: {
+        type: "sweepFeature",
+        featureId: feature.id,
+        profileSketchId: feature.profileSketchId,
+        profileEntityId: feature.profileEntityId,
+        pathSketchId: feature.pathSketchId,
+        pathEntityIds: [...feature.pathEntityIds]
+      }
+    };
+  }
   if (feature.kind === "importedBody") {
     return {
       id: feature.bodyId,
@@ -18999,9 +20102,10 @@ function createFeatureBodySnapshot(
         type: "linearPatternFeature",
         featureId: feature.id,
         seedBodyId: feature.seedBodyId,
-        axis: feature.axis,
+        direction: feature.direction,
         spacing: feature.spacing,
-        instanceCount: feature.instanceCount
+        instanceCount: feature.instanceCount,
+        instances: feature.instances
       }
     };
   }
@@ -19020,7 +20124,8 @@ function createFeatureBodySnapshot(
         seedBodyId: feature.seedBodyId,
         rotationAxis: feature.rotationAxis,
         totalAngleDegrees: feature.totalAngleDegrees,
-        instanceCount: feature.instanceCount
+        instanceCount: feature.instanceCount,
+        instances: feature.instances
       }
     };
   }
@@ -19037,7 +20142,7 @@ function createFeatureBodySnapshot(
         type: "mirrorFeature",
         featureId: feature.id,
         seedBodyId: feature.seedBodyId,
-        mirrorPlane: feature.mirrorPlane,
+        plane: feature.plane,
         includeOriginal: feature.includeOriginal
       }
     };
@@ -21222,10 +22327,11 @@ function featuresEqual(left: Feature, right: Feature): boolean {
       left.id === right.id &&
       left.name === right.name &&
       left.seedBodyId === right.seedBodyId &&
-      left.axis === right.axis &&
+      stableJsonEqual(left.direction, right.direction) &&
       left.spacing === right.spacing &&
       left.instanceCount === right.instanceCount &&
-      left.bodyId === right.bodyId
+      left.bodyId === right.bodyId &&
+      stableJsonEqual(left.instances, right.instances)
     );
   }
 
@@ -21234,10 +22340,11 @@ function featuresEqual(left: Feature, right: Feature): boolean {
       left.id === right.id &&
       left.name === right.name &&
       left.seedBodyId === right.seedBodyId &&
-      left.rotationAxis === right.rotationAxis &&
+      stableJsonEqual(left.rotationAxis, right.rotationAxis) &&
       left.totalAngleDegrees === right.totalAngleDegrees &&
       left.instanceCount === right.instanceCount &&
-      left.bodyId === right.bodyId
+      left.bodyId === right.bodyId &&
+      stableJsonEqual(left.instances, right.instances)
     );
   }
 
@@ -21246,7 +22353,7 @@ function featuresEqual(left: Feature, right: Feature): boolean {
       left.id === right.id &&
       left.name === right.name &&
       left.seedBodyId === right.seedBodyId &&
-      left.mirrorPlane === right.mirrorPlane &&
+      stableJsonEqual(left.plane, right.plane) &&
       left.includeOriginal === right.includeOriginal &&
       left.bodyId === right.bodyId
     );
@@ -21259,6 +22366,18 @@ function featuresEqual(left: Feature, right: Feature): boolean {
       left.targetBodyId === right.targetBodyId &&
       left.wallThickness === right.wallThickness &&
       stableJsonEqual(left.openFaceRefs, right.openFaceRefs) &&
+      left.bodyId === right.bodyId
+    );
+  }
+
+  if (left.kind === "sweep" && right.kind === "sweep") {
+    return (
+      left.id === right.id &&
+      left.name === right.name &&
+      left.profileSketchId === right.profileSketchId &&
+      left.profileEntityId === right.profileEntityId &&
+      left.pathSketchId === right.pathSketchId &&
+      stableJsonEqual(left.pathEntityIds, right.pathEntityIds) &&
       left.bodyId === right.bodyId
     );
   }
@@ -21310,7 +22429,8 @@ function assertValidCadProject(value: unknown): asserts value is CadProject {
 function normalizeCadProject(value: CadProject): CadProject {
   if (
     value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18 ||
-    value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19
+    value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19 ||
+    value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V20
   ) {
     return {
       ...value,
@@ -21616,6 +22736,9 @@ function normalizeCadProject(value: CadProject): CadProject {
 }
 
 function normalizeFeatureSnapshot(feature: FeatureSnapshot): FeatureSnapshot {
+  if (feature.kind === "sweep" || feature.kind === "loft") {
+    return { ...feature };
+  }
   if (feature.kind === "revolve") {
     return {
       ...feature,
@@ -21630,13 +22753,70 @@ function normalizeFeatureSnapshot(feature: FeatureSnapshot): FeatureSnapshot {
     };
   }
 
+  if (feature.kind === "linearPattern") {
+    const direction =
+      feature.direction ??
+      (feature.axis ? globalAxisRef(feature.axis) : undefined);
+    return direction
+      ? {
+          id: feature.id,
+          kind: feature.kind,
+          name: feature.name,
+          seedBodyId: feature.seedBodyId,
+          direction,
+          spacing: feature.spacing,
+          instanceCount: feature.instanceCount,
+          bodyId: feature.bodyId,
+          instances:
+            feature.instances?.map(clonePatternInstance) ??
+            createLinearPatternInstances(
+              direction,
+              feature.spacing,
+              feature.instanceCount
+            )
+        }
+      : { ...feature };
+  }
+
+  if (feature.kind === "circularPattern") {
+    const rotationAxis = isPatternAxis(feature.rotationAxis)
+      ? globalAxisRef(feature.rotationAxis)
+      : feature.rotationAxis;
+    return rotationAxis
+      ? {
+          ...feature,
+          rotationAxis,
+          instances:
+            feature.instances?.map(clonePatternInstance) ??
+            createCircularPatternInstances(
+              rotationAxis,
+              feature.totalAngleDegrees,
+              feature.instanceCount
+            )
+        }
+      : { ...feature };
+  }
+
+  if (feature.kind === "mirror") {
+    return {
+      id: feature.id,
+      kind: feature.kind,
+      name: feature.name,
+      seedBodyId: feature.seedBodyId,
+      plane: feature.plane ?? {
+        kind: "standardPlane",
+        plane: feature.mirrorPlane!,
+        offset: 0
+      },
+      includeOriginal: feature.includeOriginal,
+      bodyId: feature.bodyId
+    };
+  }
+
   if (
     feature.kind === "chamfer" ||
     feature.kind === "fillet" ||
     feature.kind === "importedBody" ||
-    feature.kind === "linearPattern" ||
-    feature.kind === "circularPattern" ||
-    feature.kind === "mirror" ||
     feature.kind === "shell"
   ) {
     return { ...feature };
@@ -21712,6 +22892,50 @@ function normalizeSemanticDiffSnapshot(diff: SemanticDiff): SemanticDiff {
 }
 
 function normalizeFeatureRefSnapshot(ref: CadFeatureRef): CadFeatureRef {
+  const legacy = ref as unknown as Record<string, unknown>;
+  if (ref.kind === "linearPattern" && isPatternAxis(legacy.axis)) {
+    const withoutAxis = { ...legacy };
+    delete withoutAxis.axis;
+    const direction = globalAxisRef(legacy.axis);
+    return {
+      ...(withoutAxis as unknown as Omit<
+        typeof ref,
+        "direction" | "instances"
+      >),
+      direction,
+      instances: createLinearPatternInstances(
+        direction,
+        ref.spacing,
+        ref.instanceCount
+      )
+    };
+  }
+
+  if (ref.kind === "circularPattern" && isPatternAxis(legacy.rotationAxis)) {
+    const rotationAxis = globalAxisRef(legacy.rotationAxis);
+    return {
+      ...ref,
+      rotationAxis,
+      instances: createCircularPatternInstances(
+        rotationAxis,
+        ref.totalAngleDegrees,
+        ref.instanceCount
+      )
+    };
+  }
+
+  if (ref.kind === "mirror" && isMirrorPlane(legacy.mirrorPlane)) {
+    const withoutMirrorPlane = { ...legacy };
+    delete withoutMirrorPlane.mirrorPlane;
+    return {
+      ...(withoutMirrorPlane as unknown as Omit<typeof ref, "plane">),
+      plane: {
+        kind: "standardPlane",
+        plane: legacy.mirrorPlane,
+        offset: 0
+      }
+    };
+  }
   if (ref.kind === "revolve") {
     return {
       ...ref,
@@ -21733,7 +22957,9 @@ function normalizeFeatureRefSnapshot(ref: CadFeatureRef): CadFeatureRef {
     ref.kind === "linearPattern" ||
     ref.kind === "circularPattern" ||
     ref.kind === "mirror" ||
-    ref.kind === "shell"
+    ref.kind === "shell" ||
+    ref.kind === "sweep" ||
+    ref.kind === "loft"
   ) {
     return { ...ref };
   }
@@ -21913,7 +23139,10 @@ function validateCadDocumentSnapshot(
 
   const isV17Schema = schemaVersion === CAD_PROJECT_FORMAT_VERSION_V17;
   const isV18Schema = schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18;
-  const isV19Schema = schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19;
+  // V20 is a strict source-shape extension of V19 and inherits all V19 gates.
+  const isV20Schema = schemaVersion === CAD_PROJECT_FORMAT_VERSION_V20;
+  const isV19Schema =
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19 || isV20Schema;
   const requiresSketches =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V2 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
@@ -22193,7 +23422,7 @@ function validateCadDocumentSnapshot(
       issues,
       "INVALID_DOCUMENT",
       `${path}.topologyIdentity`,
-      "Topology identity source records require web-cad.project.v18 or web-cad.project.v19."
+      "Topology identity source records require web-cad.project.v18 or later."
     );
   }
 
@@ -22408,7 +23637,8 @@ function validateCadDocumentSnapshot(
           allowsHoleFeatures,
           allowsEdgeFinishFeatures,
           allowsPatternFeatures,
-          allowsImportedBodyFeatures
+          allowsImportedBodyFeatures,
+          isV20Schema
         );
         maxGeneratedFeatureNumber = Math.max(
           maxGeneratedFeatureNumber,
@@ -24852,7 +26082,7 @@ function collectValidAuthoredFeatureByBodyId(
     typeof value.id === "string" &&
     (value.name === undefined || typeof value.name === "string") &&
     typeof value.seedBodyId === "string" &&
-    isPatternAxis(value.axis) &&
+    (isPatternAxis(value.axis) || isPatternDirectionRef(value.direction)) &&
     typeof value.spacing === "number" &&
     isPositiveFiniteNumber(value.spacing) &&
     typeof value.instanceCount === "number" &&
@@ -24865,10 +26095,21 @@ function collectValidAuthoredFeatureByBodyId(
       kind: "linearPattern",
       name: typeof value.name === "string" ? value.name : undefined,
       seedBodyId: value.seedBodyId,
-      axis: value.axis,
+      direction: isPatternDirectionRef(value.direction)
+        ? value.direction
+        : globalAxisRef(value.axis as "x" | "y" | "z"),
       spacing: value.spacing,
       instanceCount: value.instanceCount,
       bodyId: value.bodyId,
+      instances: isPatternInstancesShape(value.instances, value.instanceCount)
+        ? value.instances
+        : createLinearPatternInstances(
+            isPatternDirectionRef(value.direction)
+              ? value.direction
+              : globalAxisRef(value.axis as "x" | "y" | "z"),
+            value.spacing,
+            value.instanceCount
+          ),
       path
     });
   }
@@ -24879,7 +26120,8 @@ function collectValidAuthoredFeatureByBodyId(
     typeof value.id === "string" &&
     (value.name === undefined || typeof value.name === "string") &&
     typeof value.seedBodyId === "string" &&
-    isPatternAxis(value.rotationAxis) &&
+    (isPatternAxis(value.rotationAxis) ||
+      isPatternDirectionRef(value.rotationAxis)) &&
     typeof value.totalAngleDegrees === "number" &&
     isPositiveFiniteNumber(value.totalAngleDegrees) &&
     value.totalAngleDegrees <= 360 &&
@@ -24893,10 +26135,21 @@ function collectValidAuthoredFeatureByBodyId(
       kind: "circularPattern",
       name: typeof value.name === "string" ? value.name : undefined,
       seedBodyId: value.seedBodyId,
-      rotationAxis: value.rotationAxis,
+      rotationAxis: isPatternDirectionRef(value.rotationAxis)
+        ? value.rotationAxis
+        : globalAxisRef(value.rotationAxis as "x" | "y" | "z"),
       totalAngleDegrees: value.totalAngleDegrees,
       instanceCount: value.instanceCount,
       bodyId: value.bodyId,
+      instances: isPatternInstancesShape(value.instances, value.instanceCount)
+        ? value.instances
+        : createCircularPatternInstances(
+            isPatternDirectionRef(value.rotationAxis)
+              ? value.rotationAxis
+              : globalAxisRef(value.rotationAxis as "x" | "y" | "z"),
+            value.totalAngleDegrees,
+            value.instanceCount
+          ),
       path
     });
   }
@@ -24907,7 +26160,7 @@ function collectValidAuthoredFeatureByBodyId(
     typeof value.id === "string" &&
     (value.name === undefined || typeof value.name === "string") &&
     typeof value.seedBodyId === "string" &&
-    isMirrorPlane(value.mirrorPlane) &&
+    (isMirrorPlane(value.mirrorPlane) || isMirrorPlaneRef(value.plane)) &&
     typeof value.includeOriginal === "boolean" &&
     typeof value.bodyId === "string"
   ) {
@@ -24916,7 +26169,13 @@ function collectValidAuthoredFeatureByBodyId(
       kind: "mirror",
       name: typeof value.name === "string" ? value.name : undefined,
       seedBodyId: value.seedBodyId,
-      mirrorPlane: value.mirrorPlane,
+      plane: isMirrorPlaneRef(value.plane)
+        ? value.plane
+        : {
+            kind: "standardPlane",
+            plane: value.mirrorPlane as "XY" | "XZ" | "YZ",
+            offset: 0
+          },
       includeOriginal: value.includeOriginal,
       bodyId: value.bodyId,
       path
@@ -25629,7 +26888,8 @@ function validateFeatureSnapshot(
   allowsHoleFeatures: boolean,
   allowsEdgeFinishFeatures: boolean,
   allowsPatternFeatures: boolean,
-  allowsImportedBodyFeatures: boolean
+  allowsImportedBodyFeatures: boolean,
+  isV20Schema: boolean
 ): {
   readonly maxGeneratedFeatureNumber: number;
   readonly maxGeneratedBodyNumber: number;
@@ -25677,6 +26937,7 @@ function validateFeatureSnapshot(
       value.kind !== "mirror") ||
       !allowsPatternFeatures) &&
     (value.kind !== "shell" || !allowsPatternFeatures) &&
+    (value.kind !== "sweep" || !isV20Schema) &&
     (value.kind !== "importedBody" || !allowsImportedBodyFeatures)
   ) {
     addProjectIssue(
@@ -25799,7 +27060,13 @@ function validateFeatureSnapshot(
       );
     }
 
-    validatePatternFeatureSnapshotFields(value, path, issues, seenBodyIds);
+    validatePatternFeatureSnapshotFields(
+      value,
+      path,
+      issues,
+      seenBodyIds,
+      isV20Schema
+    );
 
     if (typeof value.bodyId === "string") {
       maxGeneratedBodyNumber = parseBodyNumber(value.bodyId);
@@ -25818,7 +27085,13 @@ function validateFeatureSnapshot(
       );
     }
 
-    validateMirrorFeatureSnapshotFields(value, path, issues, seenBodyIds);
+    validateMirrorFeatureSnapshotFields(
+      value,
+      path,
+      issues,
+      seenBodyIds,
+      isV20Schema
+    );
 
     if (typeof value.bodyId === "string") {
       maxGeneratedBodyNumber = parseBodyNumber(value.bodyId);
@@ -25843,6 +27116,21 @@ function validateFeatureSnapshot(
       maxGeneratedBodyNumber = parseBodyNumber(value.bodyId);
     }
 
+    return { maxGeneratedFeatureNumber, maxGeneratedBodyNumber };
+  }
+
+  if (value.kind === "sweep") {
+    validateSweepFeatureSnapshotFields(
+      value,
+      path,
+      issues,
+      seenBodyIds,
+      seenSketchIds,
+      sketchEntityRefs
+    );
+    if (typeof value.bodyId === "string") {
+      maxGeneratedBodyNumber = parseBodyNumber(value.bodyId);
+    }
     return { maxGeneratedFeatureNumber, maxGeneratedBodyNumber };
   }
 
@@ -26901,7 +28189,8 @@ function validatePatternFeatureSnapshotFields(
   value: Record<string, unknown>,
   path: string,
   issues: CadProjectImportIssue[],
-  seenBodyIds: Set<string>
+  seenBodyIds: Set<string>,
+  isV20Schema: boolean
 ): void {
   const label =
     value.kind === "linearPattern" ? "Linear pattern" : "Circular pattern";
@@ -26916,12 +28205,18 @@ function validatePatternFeatureSnapshotFields(
   }
 
   if (value.kind === "linearPattern") {
-    if (!isPatternAxis(value.axis)) {
+    if (
+      isV20Schema
+        ? !isPatternDirectionRef(value.direction)
+        : !isPatternAxis(value.axis)
+    ) {
       addProjectIssue(
         issues,
         "INVALID_FEATURE",
-        `${path}.axis`,
-        "Linear pattern feature axis must be x, y, or z."
+        `${path}.${isV20Schema ? "direction" : "axis"}`,
+        isV20Schema
+          ? "V20 linear pattern direction must be a valid reference union."
+          : "Linear pattern feature axis must be x, y, or z."
       );
     }
 
@@ -26934,12 +28229,18 @@ function validatePatternFeatureSnapshotFields(
   }
 
   if (value.kind === "circularPattern") {
-    if (!isPatternAxis(value.rotationAxis)) {
+    if (
+      isV20Schema
+        ? !isPatternDirectionRef(value.rotationAxis)
+        : !isPatternAxis(value.rotationAxis)
+    ) {
       addProjectIssue(
         issues,
         "INVALID_FEATURE",
         `${path}.rotationAxis`,
-        "Circular pattern feature rotationAxis must be x, y, or z."
+        isV20Schema
+          ? "V20 circular pattern rotationAxis must be a valid reference union."
+          : "Circular pattern feature rotationAxis must be x, y, or z."
       );
     }
 
@@ -26976,6 +28277,23 @@ function validatePatternFeatureSnapshotFields(
     );
   }
 
+  if (isV20Schema) {
+    validatePatternInstancesSnapshot(
+      value.instances,
+      value.instanceCount,
+      `${path}.instances`,
+      issues
+    );
+    if (value.axis !== undefined) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.axis`,
+        "V20 linear pattern snapshots emit direction and instances only; axis sugar is not stored."
+      );
+    }
+  }
+
   if (typeof value.bodyId !== "string" || value.bodyId.length === 0) {
     addProjectIssue(
       issues,
@@ -26999,7 +28317,8 @@ function validateMirrorFeatureSnapshotFields(
   value: Record<string, unknown>,
   path: string,
   issues: CadProjectImportIssue[],
-  seenBodyIds: Set<string>
+  seenBodyIds: Set<string>,
+  isV20Schema: boolean
 ): void {
   if (typeof value.seedBodyId !== "string" || value.seedBodyId.length === 0) {
     addProjectIssue(
@@ -27010,12 +28329,26 @@ function validateMirrorFeatureSnapshotFields(
     );
   }
 
-  if (!isMirrorPlane(value.mirrorPlane)) {
+  if (
+    isV20Schema
+      ? !isMirrorPlaneRef(value.plane)
+      : !isMirrorPlane(value.mirrorPlane)
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.${isV20Schema ? "plane" : "mirrorPlane"}`,
+      isV20Schema
+        ? "V20 mirror feature plane must be a valid reference union."
+        : "Mirror feature mirrorPlane must be XY, XZ, or YZ."
+    );
+  }
+  if (isV20Schema && value.mirrorPlane !== undefined) {
     addProjectIssue(
       issues,
       "INVALID_FEATURE",
       `${path}.mirrorPlane`,
-      "Mirror feature mirrorPlane must be XY, XZ, or YZ."
+      "V20 mirror snapshots emit plane only; mirrorPlane sugar is not stored."
     );
   }
 
@@ -27108,6 +28441,107 @@ function validateShellFeatureSnapshotFields(
     );
   } else {
     seenBodyIds.add(value.bodyId);
+  }
+}
+
+function validateSweepFeatureSnapshotFields(
+  value: Record<string, unknown>,
+  path: string,
+  issues: CadProjectImportIssue[],
+  seenBodyIds: Set<string>,
+  seenSketchIds: ReadonlySet<string>,
+  sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>
+): void {
+  validateSweepSnapshotEntityRef(
+    value.profileSketchId,
+    value.profileEntityId,
+    `${path}.profileEntityId`,
+    ["rectangle", "circle"],
+    "Sweep profile",
+    issues,
+    seenSketchIds,
+    sketchEntityRefs
+  );
+
+  if (!Array.isArray(value.pathEntityIds) || value.pathEntityIds.length !== 1) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.pathEntityIds`,
+      "Sweep feature pathEntityIds must contain exactly one line entity id."
+    );
+  } else {
+    validateSweepSnapshotEntityRef(
+      value.pathSketchId,
+      value.pathEntityIds[0],
+      `${path}.pathEntityIds.0`,
+      ["line"],
+      "Sweep path",
+      issues,
+      seenSketchIds,
+      sketchEntityRefs
+    );
+  }
+
+  if (typeof value.bodyId !== "string" || value.bodyId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.bodyId`,
+      "Sweep feature bodyId must be a non-empty string."
+    );
+  } else if (seenBodyIds.has(value.bodyId)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.bodyId`,
+      `Duplicate body id: ${value.bodyId}.`
+    );
+  } else {
+    seenBodyIds.add(value.bodyId);
+  }
+}
+
+function validateSweepSnapshotEntityRef(
+  sketchId: unknown,
+  entityId: unknown,
+  path: string,
+  supportedKinds: readonly SketchEntityKind[],
+  label: string,
+  issues: CadProjectImportIssue[],
+  seenSketchIds: ReadonlySet<string>,
+  sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>
+): void {
+  if (typeof sketchId !== "string" || !seenSketchIds.has(sketchId)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      path.replace(/\.(?:profileEntityId|pathEntityIds\.0)$/, "SketchId"),
+      `${label} sketch must reference an existing sketch.`
+    );
+    return;
+  }
+  if (typeof entityId !== "string") {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      path,
+      `${label} entity id must be a non-empty string.`
+    );
+    return;
+  }
+  const entity = sketchEntityRefs.get(entityId);
+  if (
+    !entity ||
+    entity.sketchId !== sketchId ||
+    !supportedKinds.includes(entity.kind)
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      path,
+      `${label} must reference a ${supportedKinds.join(" or ")} entity on its sketch.`
+    );
   }
 }
 
@@ -27517,7 +28951,8 @@ function materializeGeneratedObjectIds(
       op.op === "feature.hole" ||
       op.op === "feature.chamfer" ||
       op.op === "feature.fillet" ||
-      op.op === "feature.shell"
+      op.op === "feature.shell" ||
+      op.op === "feature.sweep"
     ) {
       const createdRef =
         transaction.diff.features?.created?.[createdFeatureIndex];
@@ -27969,7 +29404,10 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.bodyId) &&
       isOptionalString(value.name) &&
       typeof value.seedBodyId === "string" &&
-      isPatternAxis(value.axis) &&
+      (value.axis === undefined || isPatternAxis(value.axis)) &&
+      (value.direction === undefined ||
+        isPatternDirectionRef(value.direction)) &&
+      (value.axis !== undefined || value.direction !== undefined) &&
       typeof value.spacing === "number" &&
       isPositiveFiniteNumber(value.spacing) &&
       typeof value.instanceCount === "number" &&
@@ -27984,7 +29422,8 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.bodyId) &&
       isOptionalString(value.name) &&
       typeof value.seedBodyId === "string" &&
-      isPatternAxis(value.rotationAxis) &&
+      (isPatternAxis(value.rotationAxis) ||
+        isPatternDirectionRef(value.rotationAxis)) &&
       typeof value.totalAngleDegrees === "number" &&
       isPositiveFiniteNumber(value.totalAngleDegrees) &&
       value.totalAngleDegrees <= 360 &&
@@ -28000,7 +29439,9 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.bodyId) &&
       isOptionalString(value.name) &&
       typeof value.seedBodyId === "string" &&
-      isMirrorPlane(value.mirrorPlane) &&
+      (value.mirrorPlane === undefined || isMirrorPlane(value.mirrorPlane)) &&
+      (value.plane === undefined || isMirrorPlaneRef(value.plane)) &&
+      (value.mirrorPlane !== undefined || value.plane !== undefined) &&
       typeof value.includeOriginal === "boolean"
     );
   }
@@ -28016,6 +29457,19 @@ function isCadOp(value: unknown): value is CadOp {
       (value.openFaceRefs === undefined ||
         (Array.isArray(value.openFaceRefs) &&
           value.openFaceRefs.every(isFeatureShellOpenFaceRefShape)))
+    );
+  }
+
+  if (value.op === "feature.sweep") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      typeof value.profileSketchId === "string" &&
+      typeof value.profileEntityId === "string" &&
+      typeof value.pathSketchId === "string" &&
+      Array.isArray(value.pathEntityIds) &&
+      value.pathEntityIds.every((id) => typeof id === "string")
     );
   }
 
@@ -28077,6 +29531,8 @@ function isCadOp(value: unknown): value is CadOp {
     return (
       typeof value.id === "string" &&
       (value.axis === undefined || isPatternAxis(value.axis)) &&
+      (value.direction === undefined ||
+        isPatternDirectionRef(value.direction)) &&
       (value.spacing === undefined ||
         (typeof value.spacing === "number" &&
           isPositiveFiniteNumber(value.spacing))) &&
@@ -28085,6 +29541,7 @@ function isCadOp(value: unknown): value is CadOp {
           Number.isInteger(value.instanceCount) &&
           value.instanceCount >= 2)) &&
       (value.axis !== undefined ||
+        value.direction !== undefined ||
         value.spacing !== undefined ||
         value.instanceCount !== undefined)
     );
@@ -28093,7 +29550,9 @@ function isCadOp(value: unknown): value is CadOp {
   if (value.op === "feature.updateCircularPattern") {
     return (
       typeof value.id === "string" &&
-      (value.rotationAxis === undefined || isPatternAxis(value.rotationAxis)) &&
+      (value.rotationAxis === undefined ||
+        isPatternAxis(value.rotationAxis) ||
+        isPatternDirectionRef(value.rotationAxis)) &&
       (value.totalAngleDegrees === undefined ||
         (typeof value.totalAngleDegrees === "number" &&
           isPositiveFiniteNumber(value.totalAngleDegrees) &&
@@ -28112,9 +29571,12 @@ function isCadOp(value: unknown): value is CadOp {
     return (
       typeof value.id === "string" &&
       (value.mirrorPlane === undefined || isMirrorPlane(value.mirrorPlane)) &&
+      (value.plane === undefined || isMirrorPlaneRef(value.plane)) &&
       (value.includeOriginal === undefined ||
         typeof value.includeOriginal === "boolean") &&
-      (value.mirrorPlane !== undefined || value.includeOriginal !== undefined)
+      (value.mirrorPlane !== undefined ||
+        value.plane !== undefined ||
+        value.includeOriginal !== undefined)
     );
   }
 
@@ -28128,6 +29590,25 @@ function isCadOp(value: unknown): value is CadOp {
         (Array.isArray(value.openFaceRefs) &&
           value.openFaceRefs.every(isFeatureShellOpenFaceRefShape))) &&
       (value.wallThickness !== undefined || value.openFaceRefs !== undefined)
+    );
+  }
+
+  if (value.op === "feature.updateSweep") {
+    return (
+      typeof value.id === "string" &&
+      (value.profileSketchId === undefined ||
+        typeof value.profileSketchId === "string") &&
+      (value.profileEntityId === undefined ||
+        typeof value.profileEntityId === "string") &&
+      (value.pathSketchId === undefined ||
+        typeof value.pathSketchId === "string") &&
+      (value.pathEntityIds === undefined ||
+        (Array.isArray(value.pathEntityIds) &&
+          value.pathEntityIds.every((id) => typeof id === "string"))) &&
+      (value.profileSketchId !== undefined ||
+        value.profileEntityId !== undefined ||
+        value.pathSketchId !== undefined ||
+        value.pathEntityIds !== undefined)
     );
   }
 
@@ -28589,7 +30070,12 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
   if (value.kind === "linearPattern") {
     return (
       typeof value.seedBodyId === "string" &&
-      isPatternAxis(value.axis) &&
+      (isPatternAxis(value.axis) ||
+        (isPatternDirectionRef(value.direction) &&
+          isPatternInstancesShape(
+            value.instances,
+            value.instanceCount as number
+          ))) &&
       typeof value.spacing === "number" &&
       isPositiveFiniteNumber(value.spacing) &&
       typeof value.instanceCount === "number" &&
@@ -28601,7 +30087,12 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
   if (value.kind === "circularPattern") {
     return (
       typeof value.seedBodyId === "string" &&
-      isPatternAxis(value.rotationAxis) &&
+      (isPatternAxis(value.rotationAxis) ||
+        (isPatternDirectionRef(value.rotationAxis) &&
+          isPatternInstancesShape(
+            value.instances,
+            value.instanceCount as number
+          ))) &&
       typeof value.totalAngleDegrees === "number" &&
       isPositiveFiniteNumber(value.totalAngleDegrees) &&
       value.totalAngleDegrees <= 360 &&
@@ -28614,7 +30105,7 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
   if (value.kind === "mirror") {
     return (
       typeof value.seedBodyId === "string" &&
-      isMirrorPlane(value.mirrorPlane) &&
+      (isMirrorPlane(value.mirrorPlane) || isMirrorPlaneRef(value.plane)) &&
       typeof value.includeOriginal === "boolean"
     );
   }
@@ -28626,6 +30117,17 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
       isPositiveFiniteNumber(value.wallThickness) &&
       Array.isArray(value.openFaceRefs) &&
       value.openFaceRefs.every(isFeatureShellOpenFaceRefShape)
+    );
+  }
+
+  if (value.kind === "sweep") {
+    return (
+      typeof value.profileSketchId === "string" &&
+      typeof value.profileEntityId === "string" &&
+      typeof value.pathSketchId === "string" &&
+      Array.isArray(value.pathEntityIds) &&
+      value.pathEntityIds.length === 1 &&
+      value.pathEntityIds.every((id) => typeof id === "string")
     );
   }
 
@@ -28892,10 +30394,6 @@ function isOptionalString(value: unknown): value is string | undefined {
   return value === undefined || typeof value === "string";
 }
 
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0;
-}
-
 function isDocumentUnits(value: unknown): value is DocumentUnits {
   return value === "mm" || value === "cm" || value === "m" || value === "in";
 }
@@ -29068,6 +30566,150 @@ function isHoleDirection(value: unknown): value is FeatureHoleDirection {
 
 function isPatternAxis(value: unknown): value is "x" | "y" | "z" {
   return value === "x" || value === "y" || value === "z";
+}
+
+function isPatternDirectionRef(value: unknown): value is PatternDirectionRef {
+  if (!isRecord(value)) {
+    return false;
+  }
+  if (value.kind === "globalAxis") {
+    return isPatternAxis(value.axis);
+  }
+  if (value.kind === "generatedEdge") {
+    return isNonEmptyString(value.bodyId) && isNonEmptyString(value.stableId);
+  }
+  if (value.kind === "namedReference") {
+    return isNonEmptyString(value.name);
+  }
+  return (
+    value.kind === "topologyAnchor" &&
+    isNonEmptyString(value.bodyId) &&
+    isNonEmptyString(value.anchorId)
+  );
+}
+
+function isMirrorPlaneRef(value: unknown): value is MirrorPlaneRef {
+  if (!isRecord(value)) {
+    return false;
+  }
+  const offsetValid =
+    value.offset === undefined ||
+    (typeof value.offset === "number" && Number.isFinite(value.offset));
+  if (!offsetValid) {
+    return false;
+  }
+  if (value.kind === "standardPlane") {
+    return isMirrorPlane(value.plane);
+  }
+  if (value.kind === "generatedFace") {
+    return isNonEmptyString(value.bodyId) && isNonEmptyString(value.stableId);
+  }
+  if (value.kind === "namedReference") {
+    return isNonEmptyString(value.name);
+  }
+  return (
+    value.kind === "topologyAnchor" &&
+    isNonEmptyString(value.bodyId) &&
+    isNonEmptyString(value.anchorId)
+  );
+}
+
+function validatePatternInstancesSnapshot(
+  value: unknown,
+  instanceCount: unknown,
+  path: string,
+  issues: CadProjectImportIssue[]
+): void {
+  if (!Array.isArray(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      path,
+      "V20 pattern instances must be an array."
+    );
+    return;
+  }
+  if (typeof instanceCount === "number" && value.length !== instanceCount) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      path,
+      "V20 pattern instances length must equal instanceCount."
+    );
+  }
+  for (const [index, instance] of value.entries()) {
+    if (
+      !isRecord(instance) ||
+      instance.instanceIndex !== index ||
+      !isRigidMat4(instance.transform)
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}[${index}]`,
+        "Pattern instances must have sequential indexes and finite rigid row-major Mat4 transforms."
+      );
+    }
+  }
+}
+
+function isPatternInstancesShape(
+  value: unknown,
+  instanceCount: number
+): value is readonly PatternInstanceRecord[] {
+  return (
+    Array.isArray(value) &&
+    value.length === instanceCount &&
+    value.every(
+      (instance, index) =>
+        isRecord(instance) &&
+        instance.instanceIndex === index &&
+        isRigidMat4(instance.transform)
+    )
+  );
+}
+
+function isRigidMat4(value: unknown): value is Mat4 {
+  if (
+    !Array.isArray(value) ||
+    value.length !== 16 ||
+    !value.every(
+      (component) => typeof component === "number" && Number.isFinite(component)
+    )
+  ) {
+    return false;
+  }
+  const epsilon = 1e-9;
+  if (
+    Math.abs(value[12]) > epsilon ||
+    Math.abs(value[13]) > epsilon ||
+    Math.abs(value[14]) > epsilon ||
+    Math.abs(value[15] - 1) > epsilon
+  ) {
+    return false;
+  }
+  const rows = [
+    [value[0], value[1], value[2]],
+    [value[4], value[5], value[6]],
+    [value[8], value[9], value[10]]
+  ];
+  for (let i = 0; i < 3; i += 1) {
+    for (let j = 0; j < 3; j += 1) {
+      const dot = rows[i]!.reduce(
+        (sum, component, componentIndex) =>
+          sum + component * rows[j]![componentIndex]!,
+        0
+      );
+      if (Math.abs(dot - (i === j ? 1 : 0)) > epsilon) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 function hasExactlyOneEdgeReferenceInput(

@@ -53,7 +53,8 @@ import {
   type OcctExactBodyMetadataInput,
   type OcctExactTopologySnapshot,
   type OcctExactEdgeFinishMetadataSource,
-  type OcctExactHoleMetadataSource
+  type OcctExactHoleMetadataSource,
+  type OcctExactSweepMetadataSource
 } from "./exactMetadata";
 import {
   createOcctRevolveProfileMeshWithInstance,
@@ -112,6 +113,13 @@ import {
   type OcctShellInput,
   type OcctShellTargetSource
 } from "./shell";
+import {
+  createOcctSweepMeshWithInstance,
+  createOcctSweepMeshWithLoader,
+  type OcctSweepInput,
+  type OcctSweepPathSegment,
+  type OcctSweepProfileSource
+} from "./sweep";
 
 export type {
   OcctBooleanExtrudeInput,
@@ -127,6 +135,7 @@ export type {
   OcctExactTopologySnapshot,
   OcctExactEdgeFinishMetadataSource,
   OcctExactHoleMetadataSource,
+  OcctExactSweepMetadataSource,
   OcctRevolveProfileInput,
   OcctStepExportArtifact,
   OcctStepExportBodySource,
@@ -148,6 +157,9 @@ export type {
   OcctMirrorInput,
   OcctShellInput,
   OcctShellTargetSource,
+  OcctSweepInput,
+  OcctSweepPathSegment,
+  OcctSweepProfileSource,
   OcctMeshData
 };
 export {
@@ -192,7 +204,9 @@ export {
   createOcctMirrorMeshWithInstance,
   createOcctMirrorMeshWithLoader,
   createOcctShellMeshWithInstance,
-  createOcctShellMeshWithLoader
+  createOcctShellMeshWithLoader,
+  createOcctSweepMeshWithInstance,
+  createOcctSweepMeshWithLoader
 };
 
 type OpenCascadeModuleObject = Record<string, unknown>;

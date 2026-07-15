@@ -137,11 +137,17 @@ async function evaluateV15Fixture(cadCore, fixture) {
     const json = cadCore.exportCadProjectJson(engine);
     const project = cadCore.parseCadProjectJson(json);
     restoredEngine = cadCore.importCadProjectJson(json);
+    const usesV20Feature = fixture.expectedFeatures.some((feature) =>
+      ["linearPattern", "circularPattern", "mirror"].includes(feature.kind)
+    );
+    const expectedSchemaVersion = usesV20Feature
+      ? cadCore.CAD_PROJECT_FORMAT_VERSION_V20
+      : cadCore.CAD_PROJECT_FORMAT_VERSION_V19;
 
     checkEqual(
       failures,
       "project.schemaVersion",
-      cadCore.CAD_PROJECT_FORMAT_VERSION_V19,
+      expectedSchemaVersion,
       project.schemaVersion
     );
     checkNoSourceBoundaryLeaks(failures, "project JSON", json);
@@ -155,7 +161,7 @@ async function evaluateV15Fixture(cadCore, fixture) {
       checkEqual(
         failures,
         "wcad.schemaVersion",
-        cadCore.CAD_PROJECT_FORMAT_VERSION_V19,
+        expectedSchemaVersion,
         read.project.schemaVersion
       );
     }
@@ -196,7 +202,11 @@ async function evaluateV15Fixture(cadCore, fixture) {
           failures,
           `${expectation.featureId}.${field}`,
           expectedValue,
-          feature?.[field]
+          field === "mirrorPlane"
+            ? feature?.plane?.kind === "standardPlane"
+              ? feature.plane.plane
+              : undefined
+            : feature?.[field]
         );
         structureCheckCount += 1;
       }

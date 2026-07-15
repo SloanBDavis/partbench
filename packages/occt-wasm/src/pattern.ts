@@ -24,7 +24,11 @@ import {
 } from "./readTriangulatedShape";
 import type { OcctLoader } from "./tessellateBox";
 
-export type OcctPatternAxis = "x" | "y" | "z";
+export type OcctDirection = readonly [number, number, number];
+export interface OcctAxisFrame {
+  readonly origin: OcctDirection;
+  readonly direction: OcctDirection;
+}
 
 export type OcctPatternSeedSource =
   | OcctPatternSeedExtrudeSource
@@ -72,7 +76,7 @@ export type OcctPatternSeedEdgeFinishSource =
 
 export interface OcctLinearPatternInput {
   readonly seed: OcctPatternSeedSource;
-  readonly axis: OcctPatternAxis;
+  readonly direction: OcctDirection;
   readonly spacing: number;
   readonly instanceCount: number;
   readonly linearDeflection?: number;
@@ -81,7 +85,7 @@ export interface OcctLinearPatternInput {
 
 export interface OcctCircularPatternInput {
   readonly seed: OcctPatternSeedSource;
-  readonly rotationAxis: OcctPatternAxis;
+  readonly axis: OcctAxisFrame;
   readonly totalAngleDegrees: number;
   readonly instanceCount: number;
   readonly linearDeflection?: number;
@@ -133,7 +137,7 @@ export function createOcctLinearPatternMeshWithInstance(
           } satisfies GeometryKernelLikeError;
         }
 
-        return readTriangulatedShape(oc, resultShape, "boolean");
+        return readPatternMesh(oc, resultShape);
       } finally {
         mesh.delete();
       }
@@ -179,7 +183,7 @@ export function createOcctCircularPatternMeshWithInstance(
           } satisfies GeometryKernelLikeError;
         }
 
-        return readTriangulatedShape(oc, resultShape, "boolean");
+        return readPatternMesh(oc, resultShape);
       } finally {
         mesh.delete();
       }
@@ -187,6 +191,46 @@ export function createOcctCircularPatternMeshWithInstance(
       resultShape.delete();
     }
   });
+}
+
+function readPatternMesh(
+  oc: OpenCascadeInstance,
+  resultShape: TopoDS_Shape
+): OcctMeshData {
+  const mesh = readTriangulatedShape(oc, resultShape, "boolean");
+  const solidCount = countSolids(oc, resultShape);
+
+  return {
+    ...mesh,
+    ...(solidCount > 1 ? { warnings: ["PATTERN_MULTI_SOLID_RESULT"] } : {})
+  };
+}
+
+function countSolids(oc: OpenCascadeInstance, shape: TopoDS_Shape): number {
+  const solidShapeType = oc.TopAbs_ShapeEnum
+    .TopAbs_SOLID as unknown as ConstructorParameters<
+    typeof oc.TopExp_Explorer_2
+  >[1];
+  const avoidShapeType = oc.TopAbs_ShapeEnum
+    .TopAbs_SHAPE as unknown as ConstructorParameters<
+    typeof oc.TopExp_Explorer_2
+  >[2];
+  const explorer = new oc.TopExp_Explorer_2(
+    shape,
+    solidShapeType,
+    avoidShapeType
+  );
+  let solidCount = 0;
+
+  try {
+    for (; explorer.More(); explorer.Next()) {
+      solidCount += 1;
+    }
+  } finally {
+    explorer.delete();
+  }
+
+  return solidCount;
 }
 
 export function withOcctPatternSeedShape<T>(
@@ -228,19 +272,18 @@ export function withOcctPatternSeedShape<T>(
 function makeLinearPatternShape(
   oc: OpenCascadeInstance,
   seedShape: TopoDS_Shape,
-  input: Pick<OcctLinearPatternInput, "axis" | "spacing" | "instanceCount">
+  input: Pick<OcctLinearPatternInput, "direction" | "spacing" | "instanceCount">
 ): TopoDS_Shape {
-  const { axis, spacing, instanceCount } = input;
-  const axisVector = getAxisVector(axis);
+  const { direction, spacing, instanceCount } = input;
 
   let previousShape: TopoDS_Shape | undefined;
 
   try {
     for (let i = 0; i < instanceCount; i++) {
       const translation = [
-        axisVector[0] * spacing * i,
-        axisVector[1] * spacing * i,
-        axisVector[2] * spacing * i
+        direction[0] * spacing * i,
+        direction[1] * spacing * i,
+        direction[2] * spacing * i
       ] as const;
       const translatedShape = applyTranslation(oc, seedShape, translation);
 
@@ -301,11 +344,10 @@ function makeCircularPatternShape(
   seedShape: TopoDS_Shape,
   input: Pick<
     OcctCircularPatternInput,
-    "rotationAxis" | "totalAngleDegrees" | "instanceCount"
+    "axis" | "totalAngleDegrees" | "instanceCount"
   >
 ): TopoDS_Shape {
-  const { rotationAxis, totalAngleDegrees, instanceCount } = input;
-  const axisVector = getAxisVector(rotationAxis);
+  const { axis, totalAngleDegrees, instanceCount } = input;
   const isFullCircle = totalAngleDegrees === 360;
 
   let previousShape: TopoDS_Shape | undefined;
@@ -315,7 +357,13 @@ function makeCircularPatternShape(
       const angleDeg = isFullCircle
         ? (totalAngleDegrees / instanceCount) * i
         : (totalAngleDegrees / (instanceCount - 1)) * i;
-      const rotatedShape = applyRotation(oc, seedShape, axisVector, angleDeg);
+      const rotatedShape = applyRotation(
+        oc,
+        seedShape,
+        axis.origin,
+        axis.direction,
+        angleDeg
+      );
 
       if (i === 0) {
         previousShape = rotatedShape;
@@ -402,6 +450,7 @@ function applyTranslation(
 function applyRotation(
   oc: OpenCascadeInstance,
   shape: TopoDS_Shape,
+  axisOrigin: readonly [number, number, number],
   axisDirection: readonly [number, number, number],
   angleDeg: number
 ): TopoDS_Shape {
@@ -409,7 +458,7 @@ function applyRotation(
     return copyShape(oc, shape);
   }
 
-  const origin = new oc.gp_Pnt_3(0, 0, 0);
+  const origin = new oc.gp_Pnt_3(axisOrigin[0], axisOrigin[1], axisOrigin[2]);
   const dir = new oc.gp_Dir_4(
     axisDirection[0],
     axisDirection[1],
@@ -449,18 +498,5 @@ function copyShape(oc: OpenCascadeInstance, shape: TopoDS_Shape): TopoDS_Shape {
     return copy.Shape();
   } finally {
     copy.delete();
-  }
-}
-
-function getAxisVector(
-  axis: OcctPatternAxis
-): readonly [number, number, number] {
-  switch (axis) {
-    case "x":
-      return [1, 0, 0];
-    case "y":
-      return [0, 1, 0];
-    case "z":
-      return [0, 0, 1];
   }
 }

@@ -8,7 +8,10 @@ import type {
   CurrentSketchConstraintKind,
   FeatureMirrorPlane,
   FeaturePatternAxis,
+  MirrorPlaneRef,
   NamedGeneratedReferenceEntry,
+  PatternDirectionRef,
+  PatternRotationAxisRef,
   SelectionReferenceCandidatesQueryResponse,
   SketchDimensionTarget,
   SketchEntityKind,
@@ -29,6 +32,7 @@ import type {
   FeatureMirrorForm,
   FeatureShellEdit,
   FeatureShellForm,
+  FeatureSweepForm,
   FeatureRevolveForm,
   SketchConstraintForm,
   SketchCreateForm,
@@ -182,6 +186,11 @@ export interface ModelingActionsPanelProps {
   readonly onCreateCircularPattern?: (form: FeatureCircularPatternForm) => void;
   readonly onCreateMirror?: (form: FeatureMirrorForm) => void;
   readonly onCreateShell?: (form: FeatureShellForm) => void;
+  readonly onCreateSweep?: (
+    profileSketchId: string,
+    profileEntityId: string,
+    form: FeatureSweepForm
+  ) => void;
   readonly onUpdateLinearPattern?: (
     featureId: string,
     edit: FeatureLinearPatternEdit
@@ -288,6 +297,7 @@ export function ModelingActionsPanel({
   onCreateCircularPattern,
   onCreateMirror,
   onCreateShell,
+  onCreateSweep,
   onCreateSideHoleSketch,
   onCreateSketch,
   onCreateSketchOnFace,
@@ -418,6 +428,7 @@ export function ModelingActionsPanel({
           onDeleteEntity={onDeleteEntity}
           onExtrudeEntity={onExtrudeEntity}
           onHoleEntity={onHoleEntity}
+          onCreateSweep={onCreateSweep}
           onRevolveEntity={onRevolveEntity}
           onUpdateEntity={onUpdateEntity}
         />
@@ -431,6 +442,7 @@ export function ModelingActionsPanel({
           context={context}
           sketches={sketches}
           shellTargetGeneratedReferences={shellTargetGeneratedReferences}
+          namedReferences={namedReferences}
           onCreateLinearPattern={onCreateLinearPattern}
           onCreateCircularPattern={onCreateCircularPattern}
           onCreateMirror={onCreateMirror}
@@ -823,6 +835,7 @@ function SketchEntityWorkbench({
   onExtrudeEntity,
   onHoleEntity,
   onRevolveEntity,
+  onCreateSweep,
   onUpdateEntity
 }: {
   readonly actions: readonly ModelingActionDescriptor[];
@@ -866,6 +879,11 @@ function SketchEntityWorkbench({
     sketchId: string,
     entityId: string,
     form: FeatureRevolveForm
+  ) => void;
+  readonly onCreateSweep?: (
+    profileSketchId: string,
+    profileEntityId: string,
+    form: FeatureSweepForm
   ) => void;
   readonly onUpdateEntity?: (
     sketchId: string,
@@ -917,6 +935,12 @@ function SketchEntityWorkbench({
         sketches={sketches}
         onAddEntity={onAddEntity}
       />
+      <SweepCreateCard
+        context={context}
+        disabled={disabled}
+        sketches={sketches}
+        onCreateSweep={onCreateSweep}
+      />
       <SelectedEntityActions
         context={context}
         disabled={disabled}
@@ -940,6 +964,89 @@ function SketchEntityWorkbench({
         onCreateConstraint={onCreateConstraint}
       />
     </div>
+  );
+}
+
+function SweepCreateCard({
+  context,
+  disabled,
+  sketches,
+  onCreateSweep
+}: {
+  readonly context: Extract<
+    ModelingSelectionContext,
+    { readonly selectionKind: "sketchEntity" }
+  >;
+  readonly disabled: boolean;
+  readonly sketches: readonly SketchSnapshot[];
+  readonly onCreateSweep?: (
+    profileSketchId: string,
+    profileEntityId: string,
+    form: FeatureSweepForm
+  ) => void;
+}) {
+  const pathOptions = sketches.flatMap((sketch) =>
+    sketch.entities
+      .filter((entity) => entity.kind === "line")
+      .map((entity) => ({
+        value: `${sketch.id}\n${entity.id}`,
+        label: `${sketch.name} / ${entity.id}`,
+        sketchId: sketch.id,
+        entityId: entity.id
+      }))
+  );
+  const [pathValue, setPathValue] = useState(pathOptions[0]?.value ?? "");
+  const selectedPath =
+    pathOptions.find((option) => option.value === pathValue) ?? pathOptions[0];
+
+  if (context.entity.kind !== "rectangle" && context.entity.kind !== "circle") {
+    return null;
+  }
+
+  return (
+    <section className="workbench-card compact" aria-label="Sweep feature">
+      <div className="workbench-card-heading">
+        <h3>Sweep</h3>
+        <small>New body along one line</small>
+      </div>
+      {selectedPath ? (
+        <>
+          <label>
+            Path line
+            <select
+              value={selectedPath.value}
+              disabled={disabled}
+              onChange={(event) => setPathValue(event.currentTarget.value)}
+            >
+              {pathOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            disabled={disabled || !onCreateSweep}
+            onClick={() =>
+              onCreateSweep?.(context.sketch.id, context.entity.id, {
+                id: "",
+                bodyId: "",
+                name: `Sweep ${context.sketch.name}`,
+                pathSketchId: selectedPath.sketchId,
+                pathEntityIds: [selectedPath.entityId]
+              })
+            }
+          >
+            Create sweep
+          </button>
+        </>
+      ) : (
+        <p className="empty-state compact">
+          Add a non-zero line to any sketch to use as the sweep path.
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -2176,6 +2283,7 @@ function BodyWorkbench({
   disabled,
   sketches,
   shellTargetGeneratedReferences,
+  namedReferences,
   onCreateLinearPattern,
   onCreateCircularPattern,
   onCreateMirror,
@@ -2196,6 +2304,7 @@ function BodyWorkbench({
   readonly disabled: boolean;
   readonly sketches: readonly SketchSnapshot[];
   readonly shellTargetGeneratedReferences?: BodyGeneratedReferencesQueryResponse;
+  readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
   readonly onCreateLinearPattern?: (form: FeatureLinearPatternForm) => void;
   readonly onCreateCircularPattern?: (form: FeatureCircularPatternForm) => void;
   readonly onCreateMirror?: (form: FeatureMirrorForm) => void;
@@ -2426,6 +2535,8 @@ function BodyWorkbench({
         body={context.body}
         disabled={disabled}
         feature={context.feature}
+        generatedReferences={context.generatedReferences}
+        namedReferences={namedReferences}
         onCreateLinearPattern={onCreateLinearPattern}
         onCreateCircularPattern={onCreateCircularPattern}
         onUpdateLinearPattern={onUpdateLinearPattern}
@@ -2435,6 +2546,8 @@ function BodyWorkbench({
         body={context.body}
         disabled={disabled}
         feature={context.feature}
+        generatedReferences={context.generatedReferences}
+        namedReferences={namedReferences}
         onCreateMirror={onCreateMirror}
         onUpdateMirror={onUpdateMirror}
       />
@@ -2454,10 +2567,176 @@ function BodyWorkbench({
   );
 }
 
+interface PatternReferenceOption {
+  readonly key: string;
+  readonly label: string;
+  readonly reference: PatternDirectionRef;
+}
+
+interface MirrorReferenceOption {
+  readonly key: string;
+  readonly label: string;
+  readonly reference: MirrorPlaneRef;
+}
+
+function createMirrorReferenceOptions(
+  generatedReferences: BodyGeneratedReferencesQueryResponse | undefined,
+  namedReferences: readonly NamedGeneratedReferenceEntry[],
+  current: MirrorPlaneRef
+): readonly MirrorReferenceOption[] {
+  const options: MirrorReferenceOption[] = MIRROR_PLANE_OPTIONS.map((plane) => {
+    const reference = { kind: "standardPlane", plane, offset: 0 } as const;
+    return {
+      key: mirrorReferenceTargetKey(reference),
+      label: formatMirrorPlaneLabel(plane),
+      reference
+    };
+  });
+
+  for (const face of generatedReferences?.faces ?? []) {
+    if (!face.eligibleOperations.includes("feature.mirrorPlane")) continue;
+    const reference = {
+      kind: "generatedFace",
+      bodyId: face.bodyId,
+      stableId: face.stableId,
+      offset: 0
+    } as const;
+    options.push({
+      key: mirrorReferenceTargetKey(reference),
+      label: face.label,
+      reference
+    });
+  }
+
+  for (const named of namedReferences) {
+    if (
+      named.status !== "resolved" ||
+      named.reference?.kind !== "face" ||
+      !named.reference.eligibleOperations.includes("feature.mirrorPlane")
+    ) {
+      continue;
+    }
+    const reference = {
+      kind: "namedReference",
+      name: named.name,
+      offset: 0
+    } as const;
+    options.push({
+      key: mirrorReferenceTargetKey(reference),
+      label: `Named: ${named.name}`,
+      reference
+    });
+  }
+
+  if (
+    !options.some((option) => option.key === mirrorReferenceTargetKey(current))
+  ) {
+    options.push({
+      key: mirrorReferenceTargetKey(current),
+      label: "Current reference (unresolved)",
+      reference: current
+    });
+  }
+  return options;
+}
+
+function mirrorReferenceTargetKey(reference: MirrorPlaneRef): string {
+  const { offset: _offset, ...target } = reference;
+  return JSON.stringify(target);
+}
+
+function withMirrorPlaneOffset(
+  reference: MirrorPlaneRef,
+  offset: number
+): MirrorPlaneRef {
+  return { ...reference, offset };
+}
+
+function mirrorReferenceLabel(
+  reference: MirrorPlaneRef,
+  options: readonly MirrorReferenceOption[]
+): string {
+  return (
+    options.find((option) => option.key === mirrorReferenceTargetKey(reference))
+      ?.label ?? "reference"
+  );
+}
+
+function createPatternReferenceOptions(
+  generatedReferences: BodyGeneratedReferencesQueryResponse | undefined,
+  namedReferences: readonly NamedGeneratedReferenceEntry[],
+  operation: "feature.linearPatternDirection" | "feature.circularPatternAxis",
+  current: PatternDirectionRef
+): readonly PatternReferenceOption[] {
+  const options: PatternReferenceOption[] = PATTERN_AXIS_OPTIONS.map((axis) => {
+    const reference = { kind: "globalAxis", axis } as const;
+    return {
+      key: referenceKey(reference),
+      label: `Global ${formatPatternAxisLabel(axis)}`,
+      reference
+    };
+  });
+
+  for (const edge of generatedReferences?.edges ?? []) {
+    if (!edge.eligibleOperations.includes(operation)) continue;
+    const reference = {
+      kind: "generatedEdge",
+      bodyId: edge.bodyId,
+      stableId: edge.stableId
+    } as const;
+    options.push({
+      key: referenceKey(reference),
+      label: edge.label,
+      reference
+    });
+  }
+
+  for (const named of namedReferences) {
+    if (
+      named.status !== "resolved" ||
+      named.reference?.kind !== "edge" ||
+      !named.reference.eligibleOperations.includes(operation)
+    ) {
+      continue;
+    }
+    const reference = { kind: "namedReference", name: named.name } as const;
+    options.push({
+      key: referenceKey(reference),
+      label: `Named: ${named.name}`,
+      reference
+    });
+  }
+
+  if (!options.some((option) => option.key === referenceKey(current))) {
+    options.push({
+      key: referenceKey(current),
+      label: "Current reference (unresolved)",
+      reference: current
+    });
+  }
+  return options;
+}
+
+function referenceKey(reference: PatternDirectionRef | MirrorPlaneRef): string {
+  return JSON.stringify(reference);
+}
+
+function referenceLabel(
+  reference: PatternDirectionRef,
+  options: readonly PatternReferenceOption[]
+): string {
+  return (
+    options.find((option) => option.key === referenceKey(reference))?.label ??
+    "reference"
+  );
+}
+
 function PatternWorkbenchCard({
   body,
   disabled,
   feature,
+  generatedReferences,
+  namedReferences,
   onCreateLinearPattern,
   onCreateCircularPattern,
   onUpdateLinearPattern,
@@ -2466,6 +2745,8 @@ function PatternWorkbenchCard({
   readonly body: CadBodySnapshot;
   readonly disabled: boolean;
   readonly feature?: CadFeatureSummary;
+  readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
+  readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
   readonly onCreateLinearPattern?: (form: FeatureLinearPatternForm) => void;
   readonly onCreateCircularPattern?: (form: FeatureCircularPatternForm) => void;
   readonly onUpdateLinearPattern?: (
@@ -2481,8 +2762,10 @@ function PatternWorkbenchCard({
   const [createMode, setCreateMode] = useState<"linear" | "circular">(
     state.mode === "editCircular" ? "circular" : "linear"
   );
-  const [axis, setAxis] = useState<FeaturePatternAxis>(
-    state.mode === "editLinear" ? state.axis : "x"
+  const [direction, setDirection] = useState<PatternDirectionRef>(
+    state.mode === "editLinear"
+      ? state.direction
+      : { kind: "globalAxis", axis: "x" }
   );
   const [spacing, setSpacing] = useState(
     state.mode === "editLinear" ? state.spacing : 10
@@ -2490,8 +2773,10 @@ function PatternWorkbenchCard({
   const [linearInstanceCount, setLinearInstanceCount] = useState(
     state.mode === "editLinear" ? state.instanceCount : 3
   );
-  const [rotationAxis, setRotationAxis] = useState<FeaturePatternAxis>(
-    state.mode === "editCircular" ? state.rotationAxis : "z"
+  const [rotationAxis, setRotationAxis] = useState<PatternRotationAxisRef>(
+    state.mode === "editCircular"
+      ? state.rotationAxis
+      : { kind: "globalAxis", axis: "z" }
   );
   const [totalAngleDegrees, setTotalAngleDegrees] = useState(
     state.mode === "editCircular" ? state.totalAngleDegrees : 360
@@ -2511,6 +2796,20 @@ function PatternWorkbenchCard({
     );
   }
 
+  const directionOptions = createPatternReferenceOptions(
+    generatedReferences,
+    namedReferences,
+    "feature.linearPatternDirection",
+    direction
+  );
+  const rotationAxisOptions = createPatternReferenceOptions(
+    generatedReferences,
+    namedReferences,
+    "feature.circularPatternAxis",
+    rotationAxis
+  );
+  const directionKey = referenceKey(direction);
+  const rotationAxisKey = referenceKey(rotationAxis);
   const isLinearEdit = state.mode === "editLinear";
   const isCircularEdit = state.mode === "editCircular";
   const isEdit = isLinearEdit || isCircularEdit;
@@ -2527,12 +2826,12 @@ function PatternWorkbenchCard({
     circularInstanceCount >= 2;
   const linearHasChanges =
     isLinearEdit &&
-    (axis !== state.axis ||
+    (directionKey !== referenceKey(state.direction) ||
       spacing !== state.spacing ||
       linearInstanceCount !== state.instanceCount);
   const circularHasChanges =
     isCircularEdit &&
-    (rotationAxis !== state.rotationAxis ||
+    (rotationAxisKey !== referenceKey(state.rotationAxis) ||
       totalAngleDegrees !== state.totalAngleDegrees ||
       circularInstanceCount !== state.instanceCount);
 
@@ -2574,17 +2873,20 @@ function PatternWorkbenchCard({
         <>
           <div className="field-grid three">
             <label>
-              Axis
+              Direction reference
               <select
-                value={axis}
+                value={directionKey}
                 disabled={disabled}
-                onChange={(event) =>
-                  setAxis(event.currentTarget.value as FeaturePatternAxis)
-                }
+                onChange={(event) => {
+                  const option = directionOptions.find(
+                    (candidate) => candidate.key === event.currentTarget.value
+                  );
+                  if (option) setDirection(option.reference);
+                }}
               >
-                {PATTERN_AXIS_OPTIONS.map((item) => (
-                  <option key={item} value={item}>
-                    {formatPatternAxisLabel(item)}
+                {directionOptions.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
                   </option>
                 ))}
               </select>
@@ -2620,7 +2922,9 @@ function PatternWorkbenchCard({
             onClick={() => {
               if (isLinearEdit) {
                 onUpdateLinearPattern?.(state.featureId, {
-                  ...(axis !== state.axis ? { axis } : {}),
+                  ...(directionKey !== referenceKey(state.direction)
+                    ? { direction }
+                    : {}),
                   ...(spacing !== state.spacing ? { spacing } : {}),
                   ...(linearInstanceCount !== state.instanceCount
                     ? { instanceCount: linearInstanceCount }
@@ -2633,8 +2937,11 @@ function PatternWorkbenchCard({
                 id: "",
                 bodyId: "",
                 seedBodyId: state.seedBodyId,
-                name: createLinearPatternDefaultName(state.seedLabel, axis),
-                axis,
+                name: createLinearPatternDefaultName(
+                  state.seedLabel,
+                  referenceLabel(direction, directionOptions)
+                ),
+                direction,
                 spacing,
                 instanceCount: linearInstanceCount
               });
@@ -2650,19 +2957,20 @@ function PatternWorkbenchCard({
         <>
           <div className="field-grid three">
             <label>
-              Axis
+              Rotation-axis reference
               <select
-                value={rotationAxis}
+                value={rotationAxisKey}
                 disabled={disabled}
-                onChange={(event) =>
-                  setRotationAxis(
-                    event.currentTarget.value as FeaturePatternAxis
-                  )
-                }
+                onChange={(event) => {
+                  const option = rotationAxisOptions.find(
+                    (candidate) => candidate.key === event.currentTarget.value
+                  );
+                  if (option) setRotationAxis(option.reference);
+                }}
               >
-                {PATTERN_AXIS_OPTIONS.map((item) => (
-                  <option key={item} value={item}>
-                    {formatPatternAxisLabel(item)}
+                {rotationAxisOptions.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
                   </option>
                 ))}
               </select>
@@ -2698,7 +3006,7 @@ function PatternWorkbenchCard({
             onClick={() => {
               if (isCircularEdit) {
                 onUpdateCircularPattern?.(state.featureId, {
-                  ...(rotationAxis !== state.rotationAxis
+                  ...(rotationAxisKey !== referenceKey(state.rotationAxis)
                     ? { rotationAxis }
                     : {}),
                   ...(totalAngleDegrees !== state.totalAngleDegrees
@@ -2717,7 +3025,7 @@ function PatternWorkbenchCard({
                 seedBodyId: state.seedBodyId,
                 name: createCircularPatternDefaultName(
                   state.seedLabel,
-                  rotationAxis
+                  referenceLabel(rotationAxis, rotationAxisOptions)
                 ),
                 rotationAxis,
                 totalAngleDegrees,
@@ -2739,12 +3047,16 @@ function MirrorWorkbenchCard({
   body,
   disabled,
   feature,
+  generatedReferences,
+  namedReferences,
   onCreateMirror,
   onUpdateMirror
 }: {
   readonly body: CadBodySnapshot;
   readonly disabled: boolean;
   readonly feature?: CadFeatureSummary;
+  readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
+  readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
   readonly onCreateMirror?: (form: FeatureMirrorForm) => void;
   readonly onUpdateMirror?: (
     featureId: string,
@@ -2752,8 +3064,13 @@ function MirrorWorkbenchCard({
   ) => void;
 }) {
   const state = getMirrorPanelState(body, feature);
-  const [mirrorPlane, setMirrorPlane] = useState<FeatureMirrorPlane>(
-    state.mode === "edit" ? state.mirrorPlane : "XY"
+  const [plane, setPlane] = useState<MirrorPlaneRef>(
+    state.mode === "edit"
+      ? state.plane
+      : { kind: "standardPlane", plane: "XY", offset: 0 }
+  );
+  const [planeOffset, setPlaneOffset] = useState(
+    state.mode === "edit" ? (state.plane.offset ?? 0) : 0
   );
   const [includeOriginal, setIncludeOriginal] = useState(
     state.mode === "edit" ? state.includeOriginal : false
@@ -2771,9 +3088,17 @@ function MirrorWorkbenchCard({
   }
 
   const isEdit = state.mode === "edit";
+  const planeOptions = createMirrorReferenceOptions(
+    generatedReferences,
+    namedReferences,
+    plane
+  );
+  const effectivePlane = withMirrorPlaneOffset(plane, planeOffset);
   const hasChanges = isEdit
-    ? mirrorPlane !== state.mirrorPlane ||
-      includeOriginal !== state.includeOriginal
+    ? referenceKey(effectivePlane) !==
+        referenceKey(
+          withMirrorPlaneOffset(state.plane, state.plane.offset ?? 0)
+        ) || includeOriginal !== state.includeOriginal
     : true;
 
   return (
@@ -2784,23 +3109,33 @@ function MirrorWorkbenchCard({
           {isEdit ? `Feature ${state.featureId}` : `Seed ${state.seedLabel}`}
         </small>
       </div>
-      <div className="field-grid two">
+      <div className="field-grid three">
         <label>
           Mirror plane
           <select
-            value={mirrorPlane}
+            value={mirrorReferenceTargetKey(plane)}
             disabled={disabled}
-            onChange={(event) =>
-              setMirrorPlane(event.currentTarget.value as FeatureMirrorPlane)
-            }
+            onChange={(event) => {
+              const option = planeOptions.find(
+                (candidate) => candidate.key === event.currentTarget.value
+              );
+              if (option)
+                setPlane(withMirrorPlaneOffset(option.reference, planeOffset));
+            }}
           >
-            {MIRROR_PLANE_OPTIONS.map((plane) => (
-              <option key={plane} value={plane}>
-                {formatMirrorPlaneLabel(plane)}
+            {planeOptions.map((option) => (
+              <option key={option.key} value={option.key}>
+                {option.label}
               </option>
             ))}
           </select>
         </label>
+        <NumberInput
+          disabled={disabled}
+          label="Signed offset"
+          value={planeOffset}
+          onChange={setPlaneOffset}
+        />
         <label>
           Include original
           <input
@@ -2828,7 +3163,12 @@ function MirrorWorkbenchCard({
         onClick={() => {
           if (isEdit) {
             onUpdateMirror?.(state.featureId, {
-              ...(mirrorPlane !== state.mirrorPlane ? { mirrorPlane } : {}),
+              ...(referenceKey(effectivePlane) !==
+              referenceKey(
+                withMirrorPlaneOffset(state.plane, state.plane.offset ?? 0)
+              )
+                ? { plane: effectivePlane }
+                : {}),
               ...(includeOriginal !== state.includeOriginal
                 ? { includeOriginal }
                 : {})
@@ -2840,8 +3180,11 @@ function MirrorWorkbenchCard({
             id: "",
             bodyId: "",
             seedBodyId: state.seedBodyId,
-            name: createMirrorDefaultName(state.seedLabel, mirrorPlane),
-            mirrorPlane,
+            name: createMirrorDefaultName(
+              state.seedLabel,
+              mirrorReferenceLabel(plane, planeOptions)
+            ),
+            plane: effectivePlane,
             includeOriginal
           });
         }}

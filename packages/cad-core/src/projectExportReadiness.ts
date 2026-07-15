@@ -630,6 +630,7 @@ function getBodyExportSourceKind(
     case "linearPatternFeature":
     case "circularPatternFeature":
     case "mirrorFeature":
+    case "sweepFeature":
       return "unresolvedSource";
   }
 }

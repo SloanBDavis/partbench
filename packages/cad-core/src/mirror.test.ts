@@ -7,7 +7,7 @@ import type {
 } from "@web-cad/cad-protocol";
 import {
   CadEngine,
-  CAD_PROJECT_FORMAT_VERSION_V19,
+  CAD_PROJECT_FORMAT_VERSION_V20,
   createEmptyTopologyIdentitySourceSnapshot,
   exportCadProject,
   importCadProject,
@@ -113,7 +113,7 @@ describe("feature.mirror", () => {
     expect(feature).toMatchObject({
       kind: "mirror",
       seedBodyId: "body_seed",
-      mirrorPlane: "YZ",
+      plane: { kind: "standardPlane", plane: "YZ", offset: 0 },
       includeOriginal: false,
       bodyId: "body_mirror"
     });
@@ -131,7 +131,7 @@ describe("feature.mirror", () => {
         type: "mirrorFeature",
         featureId: "feat_mirror",
         seedBodyId: "body_seed",
-        mirrorPlane: "YZ",
+        plane: { kind: "standardPlane", plane: "YZ", offset: 0 },
         includeOriginal: false
       })
     });
@@ -189,7 +189,7 @@ describe("feature.mirror", () => {
 
     expect(engine.getDocument().features.get("feat_mirror")).toMatchObject({
       kind: "mirror",
-      mirrorPlane: "XZ",
+      plane: { kind: "standardPlane", plane: "XZ", offset: 0 },
       includeOriginal: false
     });
   });
@@ -437,8 +437,7 @@ describe("feature.mirror", () => {
     ]);
 
     const project = exportCadProject(engine);
-    // A mirror feature is a V19 source record.
-    expect(project.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V19);
+    expect(project.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V20);
 
     // V19 documents carry a topology identity source contract; the mirror
     // itself creates no checkpoints, so supply an empty identity for re-import.
@@ -456,7 +455,7 @@ describe("feature.mirror", () => {
     expect(reimported.getDocument().features.get("feat_mirror")).toMatchObject({
       kind: "mirror",
       seedBodyId: "body_seed",
-      mirrorPlane: "XZ",
+      plane: { kind: "standardPlane", plane: "XZ", offset: 0 },
       includeOriginal: true,
       bodyId: "body_mirror"
     });

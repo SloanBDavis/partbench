@@ -15,7 +15,8 @@ export type OcctPrimitiveKind =
   | "revolve"
   | "boolean"
   | "hole"
-  | "edgeFinish";
+  | "edgeFinish"
+  | "sweep";
 
 export interface OcctMeshData {
   readonly primitive: OcctPrimitiveKind;
@@ -24,6 +25,7 @@ export interface OcctMeshData {
   readonly faceCount: number;
   readonly vertexCount: number;
   readonly triangleCount: number;
+  readonly warnings?: readonly string[];
 }
 
 export function readTriangulatedShape(

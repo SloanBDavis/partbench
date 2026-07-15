@@ -1,7 +1,8 @@
 import type {
   CadBodySnapshot,
   CadFeatureSummary,
-  FeatureMirrorPlane
+  FeatureMirrorPlane,
+  MirrorPlaneRef
 } from "@web-cad/cad-protocol";
 
 export const MIRROR_PLANE_OPTIONS: readonly FeatureMirrorPlane[] = [
@@ -19,7 +20,7 @@ export type MirrorPanelState =
   | {
       readonly mode: "edit";
       readonly featureId: string;
-      readonly mirrorPlane: FeatureMirrorPlane;
+      readonly plane: MirrorPlaneRef;
       readonly includeOriginal: boolean;
     }
   | {
@@ -44,7 +45,7 @@ export function getMirrorPanelState(
     return {
       mode: "edit",
       featureId: feature.id,
-      mirrorPlane: feature.mirrorPlane,
+      plane: feature.plane,
       includeOriginal: feature.includeOriginal
     };
   }
@@ -72,9 +73,9 @@ export function getMirrorPanelState(
 
 export function createMirrorDefaultName(
   seedLabel: string,
-  mirrorPlane: FeatureMirrorPlane
+  planeLabel: string
 ): string {
-  return `Mirror ${seedLabel} across ${mirrorPlane}`;
+  return `Mirror ${seedLabel} across ${planeLabel}`;
 }
 
 export function formatMirrorPlaneLabel(plane: FeatureMirrorPlane): string {

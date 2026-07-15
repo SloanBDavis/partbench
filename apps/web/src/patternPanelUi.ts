@@ -1,7 +1,9 @@
 import type {
   CadBodySnapshot,
   CadFeatureSummary,
-  FeaturePatternAxis
+  FeaturePatternAxis,
+  PatternDirectionRef,
+  PatternRotationAxisRef
 } from "@web-cad/cad-protocol";
 
 export const PATTERN_AXIS_OPTIONS: readonly FeaturePatternAxis[] = [
@@ -21,7 +23,7 @@ export type PatternPanelState =
       readonly featureId: string;
       readonly seedBodyId: string;
       readonly seedLabel: string;
-      readonly axis: FeaturePatternAxis;
+      readonly direction: PatternDirectionRef;
       readonly spacing: number;
       readonly instanceCount: number;
     }
@@ -30,7 +32,7 @@ export type PatternPanelState =
       readonly featureId: string;
       readonly seedBodyId: string;
       readonly seedLabel: string;
-      readonly rotationAxis: FeaturePatternAxis;
+      readonly rotationAxis: PatternRotationAxisRef;
       readonly totalAngleDegrees: number;
       readonly instanceCount: number;
     }
@@ -49,7 +51,7 @@ export function getPatternPanelState(
       featureId: feature.id,
       seedBodyId: feature.seedBodyId,
       seedLabel: feature.seedBodyId,
-      axis: feature.axis,
+      direction: feature.direction,
       spacing: feature.spacing,
       instanceCount: feature.instanceCount
     };
@@ -94,14 +96,20 @@ export function formatPatternAxisLabel(axis: FeaturePatternAxis): string {
 
 export function createLinearPatternDefaultName(
   seedLabel: string,
-  axis: FeaturePatternAxis
+  directionLabel: string
 ): string {
-  return `Linear pattern ${seedLabel} along ${formatPatternAxisLabel(axis)}`;
+  return `Linear pattern ${seedLabel} along ${normalizeAxisLabel(directionLabel)}`;
 }
 
 export function createCircularPatternDefaultName(
   seedLabel: string,
-  axis: FeaturePatternAxis
+  axisLabel: string
 ): string {
-  return `Circular pattern ${seedLabel} around ${formatPatternAxisLabel(axis)}`;
+  return `Circular pattern ${seedLabel} around ${normalizeAxisLabel(axisLabel)}`;
+}
+
+function normalizeAxisLabel(label: string): string {
+  return label === "x" || label === "y" || label === "z"
+    ? formatPatternAxisLabel(label)
+    : label;
 }

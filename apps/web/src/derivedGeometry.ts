@@ -37,7 +37,8 @@ export type DerivedGeometrySourceKind =
   | "linearPattern"
   | "circularPattern"
   | "mirror"
-  | "shell";
+  | "shell"
+  | "sweep";
 
 export type DerivedGeometrySource =
   | DerivedPrimitiveGeometrySource
@@ -49,7 +50,8 @@ export type DerivedGeometrySource =
   | DerivedLinearPatternGeometrySource
   | DerivedCircularPatternGeometrySource
   | DerivedMirrorGeometrySource
-  | DerivedShellGeometrySource;
+  | DerivedShellGeometrySource
+  | DerivedSweepGeometrySource;
 export type DerivedGeometryInput = DerivedGeometrySource | SceneObject;
 
 export interface DerivedPrimitiveGeometrySource {
@@ -102,6 +104,21 @@ export interface DerivedRevolveGeometrySource {
   };
   readonly angleDegrees: number;
   readonly placementFrame?: SketchDisplayFrame;
+  readonly placementError?: string;
+}
+
+export interface DerivedSweepGeometrySource {
+  readonly id: string;
+  readonly kind: "sweep";
+  readonly profile: {
+    readonly sketchPlane: "XY" | "XZ" | "YZ";
+    readonly profile: DerivedExtrudeGeometrySource["profile"];
+    readonly placementFrame?: SketchDisplayFrame;
+  };
+  readonly pathSegments: readonly {
+    readonly start: readonly [number, number, number];
+    readonly end: readonly [number, number, number];
+  }[];
   readonly placementError?: string;
 }
 
@@ -161,7 +178,7 @@ export interface DerivedLinearPatternGeometrySource {
   readonly seed:
     | DerivedExtrudeGeometrySource
     | DerivedBooleanExtrudeGeometrySource;
-  readonly axis: "x" | "y" | "z";
+  readonly direction: readonly [number, number, number];
   readonly spacing: number;
   readonly instanceCount: number;
   readonly placementError?: string;
@@ -173,7 +190,10 @@ export interface DerivedCircularPatternGeometrySource {
   readonly seed:
     | DerivedExtrudeGeometrySource
     | DerivedBooleanExtrudeGeometrySource;
-  readonly rotationAxis: "x" | "y" | "z";
+  readonly axis: {
+    readonly origin: readonly [number, number, number];
+    readonly direction: readonly [number, number, number];
+  };
   readonly totalAngleDegrees: number;
   readonly instanceCount: number;
   readonly placementError?: string;
@@ -185,7 +205,10 @@ export interface DerivedMirrorGeometrySource {
   readonly seed:
     | DerivedExtrudeGeometrySource
     | DerivedBooleanExtrudeGeometrySource;
-  readonly mirrorPlane: "XY" | "XZ" | "YZ";
+  readonly plane: {
+    readonly point: readonly [number, number, number];
+    readonly normal: readonly [number, number, number];
+  };
   readonly includeOriginal: boolean;
   readonly placementError?: string;
 }
@@ -229,6 +252,7 @@ export interface DerivedGeometryReadyEntry extends DerivedGeometryBaseEntry {
   readonly status: "ready";
   readonly mesh: RenderTriangleMesh;
   readonly metrics: DerivedGeometryMetrics;
+  readonly warnings?: readonly string[];
 }
 
 export interface DerivedGeometryErrorEntry extends DerivedGeometryBaseEntry {
@@ -285,7 +309,8 @@ type SupportedDerivedGeometrySource =
   | DerivedLinearPatternGeometrySource
   | DerivedCircularPatternGeometrySource
   | DerivedMirrorGeometrySource
-  | DerivedShellGeometrySource;
+  | DerivedShellGeometrySource
+  | DerivedSweepGeometrySource;
 
 interface ActiveDerivedGeometryRequest {
   readonly sourceId: string;
@@ -489,7 +514,8 @@ export class DerivedGeometryService {
       cacheKey: request.cacheKey,
       status: "ready",
       mesh: result.mesh,
-      metrics: result.metrics
+      metrics: result.metrics,
+      ...(result.warnings?.length ? { warnings: [...result.warnings] } : {})
     });
     this.#requestVersions.delete(source.id);
     this.#emitChange();
@@ -573,7 +599,8 @@ function toDerivedGeometrySource(
     input.kind === "linearPattern" ||
     input.kind === "circularPattern" ||
     input.kind === "mirror" ||
-    input.kind === "shell"
+    input.kind === "shell" ||
+    input.kind === "sweep"
   ) {
     return input;
   }
@@ -608,7 +635,8 @@ function isSupportedDerivedGeometrySource(
     source.kind === "linearPattern" ||
     source.kind === "circularPattern" ||
     source.kind === "mirror" ||
-    source.kind === "shell"
+    source.kind === "shell" ||
+    source.kind === "sweep"
   ) {
     return !source.placementError;
   }
@@ -771,7 +799,7 @@ function deriveSourceMesh(
     return runtime.linearPattern({
       id: source.id,
       seed: createPatternSeedRuntimeSource(source.seed),
-      axis: source.axis,
+      direction: source.direction,
       spacing: source.spacing,
       instanceCount: source.instanceCount
     });
@@ -785,7 +813,7 @@ function deriveSourceMesh(
     return runtime.circularPattern({
       id: source.id,
       seed: createPatternSeedRuntimeSource(source.seed),
-      rotationAxis: source.rotationAxis,
+      axis: source.axis,
       totalAngleDegrees: source.totalAngleDegrees,
       instanceCount: source.instanceCount
     });
@@ -799,7 +827,7 @@ function deriveSourceMesh(
     return runtime.mirror({
       id: source.id,
       seed: createPatternSeedRuntimeSource(source.seed),
-      mirrorPlane: source.mirrorPlane,
+      plane: source.plane,
       includeOriginal: source.includeOriginal
     });
   }
@@ -814,6 +842,18 @@ function deriveSourceMesh(
       target: createPatternSeedRuntimeSource(source.target),
       wallThickness: source.wallThickness,
       openFaceStableIds: source.openFaceStableIds
+    });
+  }
+
+  if (source.kind === "sweep") {
+    if (source.placementError) {
+      throw new Error(source.placementError);
+    }
+
+    return runtime.sweep({
+      id: source.id,
+      profile: source.profile,
+      pathSegments: source.pathSegments
     });
   }
 
@@ -967,6 +1007,10 @@ function getUnsupportedSourceMessage(source: DerivedGeometrySource): string {
     return source.placementError;
   }
 
+  if (source.kind === "sweep") {
+    return source.placementError ?? "Sweep display source is unavailable.";
+  }
+
   if (source.kind === "hole") {
     return (
       source.placementError ??
@@ -989,7 +1033,9 @@ function getUnsupportedSourceMessage(source: DerivedGeometrySource): string {
     source.kind === "mirror" ||
     source.kind === "shell"
   ) {
-    return source.placementError ?? getSeededFeatureUnsupportedMessage(source.kind);
+    return (
+      source.placementError ?? getSeededFeatureUnsupportedMessage(source.kind)
+    );
   }
 
   return "Display geometry generation supports scene primitives, sketch extrudes, supported rectangle/circle boolean results, authored revolves, authored holes, rectangle edge finishing, linear/circular patterns, mirror, and shell features.";
@@ -1243,7 +1289,7 @@ export function createDerivedGeometryCacheKey(
                 ? {
                     kind: source.kind,
                     seed: createDerivedGeometryCacheKey(source.seed),
-                    axis: source.axis,
+                    direction: source.direction,
                     spacing: source.spacing,
                     instanceCount: source.instanceCount,
                     placementError: source.placementError
@@ -1252,7 +1298,7 @@ export function createDerivedGeometryCacheKey(
                   ? {
                       kind: source.kind,
                       seed: createDerivedGeometryCacheKey(source.seed),
-                      rotationAxis: source.rotationAxis,
+                      axis: source.axis,
                       totalAngleDegrees: source.totalAngleDegrees,
                       instanceCount: source.instanceCount,
                       placementError: source.placementError
@@ -1261,7 +1307,7 @@ export function createDerivedGeometryCacheKey(
                     ? {
                         kind: source.kind,
                         seed: createDerivedGeometryCacheKey(source.seed),
-                        mirrorPlane: source.mirrorPlane,
+                        plane: source.plane,
                         includeOriginal: source.includeOriginal,
                         placementError: source.placementError
                       }
@@ -1273,11 +1319,18 @@ export function createDerivedGeometryCacheKey(
                           openFaceStableIds: source.openFaceStableIds,
                           placementError: source.placementError
                         }
-                      : {
-                          kind: source.kind,
-                          dimensions: source.object.dimensions,
-                          transform: source.object.transform
-                        };
+                      : source.kind === "sweep"
+                        ? {
+                            kind: source.kind,
+                            profile: source.profile,
+                            pathSegments: source.pathSegments,
+                            placementError: source.placementError
+                          }
+                        : {
+                            kind: source.kind,
+                            dimensions: source.object.dimensions,
+                            transform: source.object.transform
+                          };
 
   return JSON.stringify(base);
 }

@@ -88,6 +88,7 @@ import {
   buildFeatureMirrorOp,
   buildFeatureRevolveOp,
   buildFeatureShellOp,
+  buildFeatureSweepOp,
   buildFeatureUpdateChamferOp,
   buildFeatureUpdateCircularPatternOp,
   buildFeatureUpdateExtrudeOp,
@@ -127,6 +128,7 @@ import {
   type FeatureRevolveForm,
   type FeatureShellEdit,
   type FeatureShellForm,
+  type FeatureSweepForm,
   type ParameterCreateForm,
   type ParameterEditForm,
   type SketchConstraintForm,
@@ -2506,6 +2508,17 @@ export function App() {
     );
   }
 
+  async function createSweep(
+    profileSketchId: string,
+    profileEntityId: string,
+    form: FeatureSweepForm
+  ) {
+    await commitOps(
+      [buildFeatureSweepOp(profileSketchId, profileEntityId, form)],
+      (response) => response.createdBodyIds?.[0] ?? (form.bodyId || selectedId)
+    );
+  }
+
   async function updateAuthoredLinearPattern(
     featureId: string,
     edit: FeatureLinearPatternEdit
@@ -3272,9 +3285,12 @@ export function App() {
     if (
       feature.kind === "extrude" ||
       feature.kind === "revolve" ||
-      feature.kind === "hole"
+      feature.kind === "hole" ||
+      feature.kind === "sweep"
     ) {
-      return feature.sketchId;
+      return feature.kind === "sweep"
+        ? feature.profileSketchId
+        : feature.sketchId;
     }
 
     return undefined;
@@ -3314,6 +3330,8 @@ export function App() {
         return "mirror";
       case "shell":
         return "shell";
+      case "sweep":
+        return "sweep";
       case "primitive":
         return feature.primitive;
     }
@@ -4316,6 +4334,9 @@ export function App() {
             onCreateCircularPattern={(form) => void createCircularPattern(form)}
             onCreateMirror={(form) => void createMirror(form)}
             onCreateShell={(form) => void createShell(form)}
+            onCreateSweep={(profileSketchId, profileEntityId, form) =>
+              void createSweep(profileSketchId, profileEntityId, form)
+            }
             onCreateSketch={(form) => void createSketch(form)}
             onCreateSketchOnFace={(form) => void createSketchOnFace(form)}
             onExtrudeEntity={(sketchId, entityId, form) =>

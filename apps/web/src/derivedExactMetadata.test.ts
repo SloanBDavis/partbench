@@ -28,7 +28,8 @@ import {
   type DerivedFilletGeometrySource,
   type DerivedGeometrySource,
   type DerivedHoleGeometrySource,
-  type DerivedRevolveGeometrySource
+  type DerivedRevolveGeometrySource,
+  type DerivedSweepGeometrySource
 } from "./derivedGeometry";
 import { createDerivedGeometrySourcesFromDocument } from "./derivedGeometrySources";
 import type {
@@ -40,6 +41,27 @@ import type {
 import { createGeneratedFaceReferenceKey } from "./sketchDisplayFrames";
 
 describe("derivedExactMetadata", () => {
+  it("builds exact metadata inputs for sweep sources", () => {
+    const source: DerivedSweepGeometrySource = {
+      id: "body_sweep",
+      kind: "sweep",
+      profile: {
+        sketchPlane: "XY",
+        profile: { kind: "circle", center: [0, 0], radius: 1 }
+      },
+      pathSegments: [{ start: [0, 0, 0], end: [0, 0, 5] }]
+    };
+
+    expect(createExactMetadataRuntimeInput(source)).toEqual({
+      id: "body_sweep",
+      source: {
+        kind: "sweep",
+        profile: source.profile,
+        pathSegments: source.pathSegments
+      }
+    });
+  });
+
   it("creates cache keys from the same authored source inputs as mesh sources", () => {
     const source = createExtrudeSource("body_rect_1");
     const deeperSource: DerivedExtrudeGeometrySource = {
@@ -1718,7 +1740,13 @@ function createFilletSource(id: string): DerivedFilletGeometrySource {
 
 function createMetadataResult(
   objectId: string,
-  sourceKind: "extrude" | "booleanExtrudes" | "revolve" | "hole" | "edgeFinish",
+  sourceKind:
+    | "extrude"
+    | "booleanExtrudes"
+    | "revolve"
+    | "hole"
+    | "edgeFinish"
+    | "sweep",
   volume = 10
 ): DerivedExactMetadataResult {
   return {
@@ -1852,6 +1880,9 @@ function createRuntime(
       throw new Error("Mesh requests are not used by exact metadata tests.");
     },
     shell() {
+      throw new Error("Mesh requests are not used by exact metadata tests.");
+    },
+    sweep() {
       throw new Error("Mesh requests are not used by exact metadata tests.");
     },
     exactBodyMetadata(input) {

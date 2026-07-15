@@ -175,6 +175,7 @@ describe("SketchPanel", () => {
     expect(markup).toContain("Width / 2");
     expect(markup).toContain("Depends on Width.");
     expect(markup).toContain("Clear expression");
+    expect(markup).toContain("degree-based sin/cos/tan");
   });
 
   it("renders session-only constraint inference for selected line entities", () => {

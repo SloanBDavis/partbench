@@ -30,12 +30,14 @@ export type WcadPackageV1DocumentSchemaVersion =
 export type WcadDocumentSchemaVersion =
   | WcadPackageV1DocumentSchemaVersion
   | "web-cad.project.v18"
-  | "web-cad.project.v19";
+  | "web-cad.project.v19"
+  | "web-cad.project.v20";
 export type CadTopologyIdentityContractVersion =
   "partbench.topology-identity.v1";
 export type CadTopologyIdentityProjectSchemaVersion = "web-cad.project.v18";
 export type CadTopologyIdentityPackageVersion = "partbench.wcad.v2";
 export type CadV15ProjectSchemaVersion = "web-cad.project.v19";
+export type CadV16ProjectSchemaVersion = "web-cad.project.v20";
 export type WcadPackageEntryRole =
   | "manifest"
   | "document"
@@ -77,9 +79,30 @@ export const CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION: CadTopologyIdentityPackageVe
   "partbench.wcad.v2";
 export const CAD_V15_PROJECT_SCHEMA_VERSION: CadV15ProjectSchemaVersion =
   "web-cad.project.v19";
+export const CAD_V16_PROJECT_SCHEMA_VERSION: CadV16ProjectSchemaVersion =
+  "web-cad.project.v20";
 
 export type Vec2 = readonly [number, number];
 export type Vec3 = readonly [number, number, number];
+/** Row-major document-space rigid transform. Pattern instances never scale. */
+export type Mat4 = readonly [
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number
+];
 export type SketchPlane = "XY" | "XZ" | "YZ";
 export type FeatureProfileKind = "rectangle" | "circle";
 export type FeatureExtrudeProfileKind = FeatureProfileKind;
@@ -285,6 +308,8 @@ export type CadOp =
   | FeatureCircularPatternOp
   | FeatureMirrorOp
   | FeatureShellOp
+  | FeatureSweepOp
+  | FeatureLoftOp
   | FeatureUpdateExtrudeOp
   | FeatureUpdateRevolveOp
   | FeatureUpdateHoleOp
@@ -294,6 +319,8 @@ export type CadOp =
   | FeatureUpdateCircularPatternOp
   | FeatureUpdateMirrorOp
   | FeatureUpdateShellOp
+  | FeatureUpdateSweepOp
+  | FeatureUpdateLoftOp
   | FeatureDeleteOp
   | ReferenceNameGeneratedOp
   | ReferenceRepairNameOp
@@ -707,6 +734,51 @@ export interface FeatureFilletOp {
 export type FeaturePatternAxis = "x" | "y" | "z";
 export type FeatureMirrorPlane = "XY" | "XZ" | "YZ";
 
+export type PatternDirectionRef =
+  | { readonly kind: "globalAxis"; readonly axis: FeaturePatternAxis }
+  | {
+      readonly kind: "generatedEdge";
+      readonly bodyId: BodyId;
+      readonly stableId: string;
+    }
+  | { readonly kind: "namedReference"; readonly name: NamedReferenceName }
+  | {
+      readonly kind: "topologyAnchor";
+      readonly bodyId: BodyId;
+      readonly anchorId: string;
+    };
+
+export type PatternRotationAxisRef = PatternDirectionRef;
+
+export type MirrorPlaneRef =
+  | {
+      readonly kind: "standardPlane";
+      readonly plane: FeatureMirrorPlane;
+      readonly offset?: number;
+    }
+  | {
+      readonly kind: "generatedFace";
+      readonly bodyId: BodyId;
+      readonly stableId: string;
+      readonly offset?: number;
+    }
+  | {
+      readonly kind: "namedReference";
+      readonly name: NamedReferenceName;
+      readonly offset?: number;
+    }
+  | {
+      readonly kind: "topologyAnchor";
+      readonly bodyId: BodyId;
+      readonly anchorId: string;
+      readonly offset?: number;
+    };
+
+export interface PatternInstanceRecord {
+  readonly instanceIndex: number;
+  readonly transform: Mat4;
+}
+
 export type FeatureShellOpenFaceRef =
   | FeatureShellGeneratedFaceRef
   | FeatureShellNamedReferenceRef
@@ -734,7 +806,9 @@ export interface FeatureLinearPatternOp {
   readonly id?: FeatureId;
   readonly bodyId?: BodyId;
   readonly seedBodyId: BodyId;
-  readonly axis: FeaturePatternAxis;
+  /** V15 compatibility sugar. At least one of axis or direction is required. */
+  readonly axis?: FeaturePatternAxis;
+  readonly direction?: PatternDirectionRef;
   readonly spacing: number;
   readonly instanceCount: number;
   readonly name?: string;
@@ -745,10 +819,30 @@ export interface FeatureCircularPatternOp {
   readonly id?: FeatureId;
   readonly bodyId?: BodyId;
   readonly seedBodyId: BodyId;
-  readonly rotationAxis: FeaturePatternAxis;
+  /** V15 compatibility sugar; V20 callers should pass the reference union. */
+  readonly rotationAxis?: FeaturePatternAxis | PatternRotationAxisRef;
   readonly totalAngleDegrees: number;
   readonly instanceCount: number;
   readonly name?: string;
+}
+
+export interface FeatureSweepOp {
+  readonly op: "feature.sweep";
+  readonly id?: FeatureId;
+  readonly bodyId?: BodyId;
+  readonly name?: string;
+  readonly profileSketchId: SketchId;
+  readonly profileEntityId: SketchEntityId;
+  readonly pathSketchId: SketchId;
+  readonly pathEntityIds: readonly SketchEntityId[];
+}
+
+export interface FeatureLoftOp {
+  readonly op: "feature.loft";
+  readonly id?: FeatureId;
+  readonly bodyId?: BodyId;
+  readonly name?: string;
+  readonly sections: readonly LoftSection[];
 }
 
 export interface FeatureDeleteOp {
@@ -793,6 +887,7 @@ export interface FeatureUpdateLinearPatternOp {
   readonly op: "feature.updateLinearPattern";
   readonly id: FeatureId;
   readonly axis?: FeaturePatternAxis;
+  readonly direction?: PatternDirectionRef;
   readonly spacing?: number;
   readonly instanceCount?: number;
 }
@@ -800,7 +895,7 @@ export interface FeatureUpdateLinearPatternOp {
 export interface FeatureUpdateCircularPatternOp {
   readonly op: "feature.updateCircularPattern";
   readonly id: FeatureId;
-  readonly rotationAxis?: FeaturePatternAxis;
+  readonly rotationAxis?: FeaturePatternAxis | PatternRotationAxisRef;
   readonly totalAngleDegrees?: number;
   readonly instanceCount?: number;
 }
@@ -810,7 +905,9 @@ export interface FeatureMirrorOp {
   readonly id?: FeatureId;
   readonly bodyId?: BodyId;
   readonly seedBodyId: BodyId;
-  readonly mirrorPlane: FeatureMirrorPlane;
+  /** V15 compatibility sugar. At least one of mirrorPlane or plane is required. */
+  readonly mirrorPlane?: FeatureMirrorPlane;
+  readonly plane?: MirrorPlaneRef;
   readonly includeOriginal: boolean;
   readonly name?: string;
 }
@@ -819,7 +916,23 @@ export interface FeatureUpdateMirrorOp {
   readonly op: "feature.updateMirror";
   readonly id: FeatureId;
   readonly mirrorPlane?: FeatureMirrorPlane;
+  readonly plane?: MirrorPlaneRef;
   readonly includeOriginal?: boolean;
+}
+
+export interface FeatureUpdateSweepOp {
+  readonly op: "feature.updateSweep";
+  readonly id: FeatureId;
+  readonly profileSketchId?: SketchId;
+  readonly profileEntityId?: SketchEntityId;
+  readonly pathSketchId?: SketchId;
+  readonly pathEntityIds?: readonly SketchEntityId[];
+}
+
+export interface FeatureUpdateLoftOp {
+  readonly op: "feature.updateLoft";
+  readonly id: FeatureId;
+  readonly sections: readonly LoftSection[];
 }
 
 export interface FeatureShellOp {
@@ -921,7 +1034,9 @@ export type CadFeatureRef =
   | CadCircularPatternFeatureRef
   | CadMirrorFeatureRef
   | CadShellFeatureRef
-  | CadImportedBodyFeatureRef;
+  | CadImportedBodyFeatureRef
+  | CadSweepFeatureRef
+  | CadLoftFeatureRef;
 
 export interface CadExtrudeFeatureRef {
   readonly id: FeatureId;
@@ -990,9 +1105,10 @@ export interface CadLinearPatternFeatureRef {
   readonly kind: "linearPattern";
   readonly bodyId: BodyId;
   readonly seedBodyId: BodyId;
-  readonly axis: FeaturePatternAxis;
+  readonly direction: PatternDirectionRef;
   readonly spacing: number;
   readonly instanceCount: number;
+  readonly instances: readonly PatternInstanceRecord[];
 }
 
 export interface CadCircularPatternFeatureRef {
@@ -1000,9 +1116,10 @@ export interface CadCircularPatternFeatureRef {
   readonly kind: "circularPattern";
   readonly bodyId: BodyId;
   readonly seedBodyId: BodyId;
-  readonly rotationAxis: FeaturePatternAxis;
+  readonly rotationAxis: PatternRotationAxisRef;
   readonly totalAngleDegrees: number;
   readonly instanceCount: number;
+  readonly instances: readonly PatternInstanceRecord[];
 }
 
 export interface CadMirrorFeatureRef {
@@ -1010,9 +1127,12 @@ export interface CadMirrorFeatureRef {
   readonly kind: "mirror";
   readonly bodyId: BodyId;
   readonly seedBodyId: BodyId;
-  readonly mirrorPlane: FeatureMirrorPlane;
+  readonly plane: MirrorPlaneRef;
   readonly includeOriginal: boolean;
 }
+
+export interface CadSweepFeatureRef extends SweepFeatureSnapshot {}
+export interface CadLoftFeatureRef extends LoftFeatureSnapshot {}
 
 export interface CadShellFeatureRef {
   readonly id: FeatureId;
@@ -1225,6 +1345,10 @@ export type CadBatchValidationErrorCode =
   | "EXPRESSION_DIVISION_BY_ZERO"
   | "EXPRESSION_INVALID_FUNCTION"
   | "EXPRESSION_INVALID_VALUE"
+  | "EXPRESSION_DOMAIN_ERROR"
+  | "EXPRESSION_TERNARY_INVALID"
+  | "EXPRESSION_LANGUAGE_UNSUPPORTED_TOKEN"
+  | "EXPRESSION_LANGUAGE_V2_FEATURES_PRESENT"
   | "EXPRESSION_VALUE_INCONSISTENCY"
   | "INVALID_OBJECT_NAME"
   | "SKETCH_ALREADY_EXISTS"
@@ -1272,9 +1396,26 @@ export type CadBatchValidationErrorCode =
   | "PATTERN_SEED_BODY_CONSUMED"
   | "PATTERN_INSTANCE_COUNT_INVALID"
   | "PATTERN_SPACING_INVALID"
+  | "PATTERN_DIRECTION_UNSUPPORTED"
+  | "PATTERN_DIRECTION_UNRESOLVED"
+  | "PATTERN_AXIS_UNSUPPORTED"
+  | "PATTERN_AXIS_UNRESOLVED"
+  | "PATTERN_INSTANCE_IDENTITY_INVALID"
+  | "PATTERN_FUSE_DEGRADED_TO_COMPOUND"
+  | "PATTERN_MULTI_SOLID_RESULT"
+  | "PATTERN_MULTI_SOLID_DOWNSTREAM_UNSUPPORTED"
   | "PATTERN_GEOMETRY_FAILED"
   | "MIRROR_SEED_BODY_UNSUPPORTED"
   | "MIRROR_SEED_BODY_CONSUMED"
+  | "MIRROR_PLANE_UNSUPPORTED"
+  | "MIRROR_PLANE_UNRESOLVED"
+  | "MIRROR_OFFSET_INVALID"
+  | "SWEEP_PROFILE_UNSUPPORTED"
+  | "SWEEP_PATH_UNSUPPORTED"
+  | "SWEEP_PATH_DISCONNECTED"
+  | "SWEEP_PROFILE_PATH_FRAME_INVALID"
+  | "SWEEP_GEOMETRY_FAILED"
+  | "SWEEP_ENTITY_UNRESOLVED"
   | "MIRROR_GEOMETRY_FAILED"
   | "SHELL_TARGET_BODY_UNSUPPORTED"
   | "SHELL_TARGET_BODY_CONSUMED"
@@ -1427,6 +1568,8 @@ export type CadQueryKind =
   | "body.topology"
   | "body.topologyIdentity"
   | "body.measurements"
+  | "body.patternInstances"
+  | "body.massProperties"
   | "body.generatedReferenceMeasurements"
   | "reference.listNamed"
   | "reference.resolveNamed"
@@ -1472,6 +1615,8 @@ export type CadQuery =
   | BodyTopologyQuery
   | BodyTopologyIdentityQuery
   | BodyMeasurementsQuery
+  | BodyPatternInstancesQuery
+  | BodyMassPropertiesQuery
   | BodyGeneratedReferenceMeasurementsQuery
   | ReferenceListNamedQuery
   | ReferenceResolveNamedQuery
@@ -1688,6 +1833,19 @@ export interface BodyTopologyIdentityQuery {
 export interface BodyMeasurementsQuery {
   readonly query: "body.measurements";
   readonly bodyId: BodyId;
+}
+
+export interface BodyPatternInstancesQuery {
+  readonly query: "body.patternInstances";
+  readonly bodyId: BodyId;
+  readonly derivedExactMetadata?: CadBodyDerivedExactMetadataSnapshot;
+}
+
+export interface BodyMassPropertiesQuery {
+  readonly query: "body.massProperties";
+  readonly bodyId: BodyId;
+  readonly density?: number;
+  readonly derivedExactMetadata?: CadBodyDerivedExactMetadataSnapshot;
 }
 
 export interface BodyGeneratedReferenceMeasurementsQuery {
@@ -2128,10 +2286,15 @@ export interface LinearPatternFeatureSnapshot {
   readonly kind: "linearPattern";
   readonly name?: string;
   readonly seedBodyId: BodyId;
-  readonly axis: FeaturePatternAxis;
+  /** Present only in legacy V19 snapshots. */
+  readonly axis?: FeaturePatternAxis;
+  /** Required in normalized memory and V20 snapshots. */
+  readonly direction?: PatternDirectionRef;
   readonly spacing: number;
   readonly instanceCount: number;
   readonly bodyId: BodyId;
+  /** Required in normalized memory and V20 snapshots. */
+  readonly instances?: readonly PatternInstanceRecord[];
 }
 
 export interface CircularPatternFeatureSnapshot {
@@ -2139,10 +2302,11 @@ export interface CircularPatternFeatureSnapshot {
   readonly kind: "circularPattern";
   readonly name?: string;
   readonly seedBodyId: BodyId;
-  readonly rotationAxis: FeaturePatternAxis;
+  readonly rotationAxis?: FeaturePatternAxis | PatternRotationAxisRef;
   readonly totalAngleDegrees: number;
   readonly instanceCount: number;
   readonly bodyId: BodyId;
+  readonly instances?: readonly PatternInstanceRecord[];
 }
 
 export interface MirrorFeatureSnapshot {
@@ -2150,8 +2314,35 @@ export interface MirrorFeatureSnapshot {
   readonly kind: "mirror";
   readonly name?: string;
   readonly seedBodyId: BodyId;
-  readonly mirrorPlane: FeatureMirrorPlane;
+  /** Present only in legacy V19 snapshots. */
+  readonly mirrorPlane?: FeatureMirrorPlane;
+  /** Required in normalized memory and V20 snapshots. */
+  readonly plane?: MirrorPlaneRef;
   readonly includeOriginal: boolean;
+  readonly bodyId: BodyId;
+}
+
+export interface SweepFeatureSnapshot {
+  readonly id: FeatureId;
+  readonly kind: "sweep";
+  readonly name?: string;
+  readonly profileSketchId: SketchId;
+  readonly profileEntityId: SketchEntityId;
+  readonly pathSketchId: SketchId;
+  readonly pathEntityIds: readonly SketchEntityId[];
+  readonly bodyId: BodyId;
+}
+
+export interface LoftSection {
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+}
+
+export interface LoftFeatureSnapshot {
+  readonly id: FeatureId;
+  readonly kind: "loft";
+  readonly name?: string;
+  readonly sections: readonly LoftSection[];
   readonly bodyId: BodyId;
 }
 
@@ -2175,7 +2366,9 @@ export type FeatureSnapshot =
   | LinearPatternFeatureSnapshot
   | CircularPatternFeatureSnapshot
   | MirrorFeatureSnapshot
-  | ShellFeatureSnapshot;
+  | ShellFeatureSnapshot
+  | SweepFeatureSnapshot
+  | LoftFeatureSnapshot;
 
 export interface CadAxisAlignedBounds {
   readonly min: Vec3;
@@ -2558,7 +2751,7 @@ export interface CadImportedBodyFeatureSummary {
 export interface CadLinearPatternFeatureSource {
   readonly type: "linearPatternFeature";
   readonly seedBodyId: BodyId;
-  readonly axis: FeaturePatternAxis;
+  readonly direction: PatternDirectionRef;
 }
 
 export interface CadLinearPatternFeatureSummary {
@@ -2567,9 +2760,10 @@ export interface CadLinearPatternFeatureSummary {
   readonly partId: PartId;
   readonly bodyId: BodyId;
   readonly seedBodyId: BodyId;
-  readonly axis: FeaturePatternAxis;
+  readonly direction: PatternDirectionRef;
   readonly spacing: number;
   readonly instanceCount: number;
+  readonly instances: readonly PatternInstanceRecord[];
   readonly name?: string;
   readonly source: CadLinearPatternFeatureSource;
 }
@@ -2577,7 +2771,7 @@ export interface CadLinearPatternFeatureSummary {
 export interface CadCircularPatternFeatureSource {
   readonly type: "circularPatternFeature";
   readonly seedBodyId: BodyId;
-  readonly rotationAxis: FeaturePatternAxis;
+  readonly rotationAxis: PatternRotationAxisRef;
 }
 
 export interface CadCircularPatternFeatureSummary {
@@ -2586,9 +2780,10 @@ export interface CadCircularPatternFeatureSummary {
   readonly partId: PartId;
   readonly bodyId: BodyId;
   readonly seedBodyId: BodyId;
-  readonly rotationAxis: FeaturePatternAxis;
+  readonly rotationAxis: PatternRotationAxisRef;
   readonly totalAngleDegrees: number;
   readonly instanceCount: number;
+  readonly instances: readonly PatternInstanceRecord[];
   readonly name?: string;
   readonly source: CadCircularPatternFeatureSource;
 }
@@ -2596,7 +2791,7 @@ export interface CadCircularPatternFeatureSummary {
 export interface CadMirrorFeatureSource {
   readonly type: "mirrorFeature";
   readonly seedBodyId: BodyId;
-  readonly mirrorPlane: FeatureMirrorPlane;
+  readonly plane: MirrorPlaneRef;
 }
 
 export interface CadMirrorFeatureSummary {
@@ -2605,7 +2800,7 @@ export interface CadMirrorFeatureSummary {
   readonly partId: PartId;
   readonly bodyId: BodyId;
   readonly seedBodyId: BodyId;
-  readonly mirrorPlane: FeatureMirrorPlane;
+  readonly plane: MirrorPlaneRef;
   readonly includeOriginal: boolean;
   readonly name?: string;
   readonly source: CadMirrorFeatureSource;
@@ -2628,6 +2823,19 @@ export interface CadShellFeatureSummary {
   readonly source: CadShellFeatureSource;
 }
 
+export interface CadSweepFeatureSource {
+  readonly type: "sweepFeature";
+  readonly profileSketchId: SketchId;
+  readonly profileEntityId: SketchEntityId;
+  readonly pathSketchId: SketchId;
+  readonly pathEntityIds: readonly SketchEntityId[];
+}
+
+export interface CadSweepFeatureSummary extends SweepFeatureSnapshot {
+  readonly partId: PartId;
+  readonly source: CadSweepFeatureSource;
+}
+
 export type CadFeatureSummary =
   | CadPrimitiveFeatureSummary
   | CadExtrudeFeatureSummary
@@ -2639,7 +2847,8 @@ export type CadFeatureSummary =
   | CadLinearPatternFeatureSummary
   | CadCircularPatternFeatureSummary
   | CadMirrorFeatureSummary
-  | CadShellFeatureSummary;
+  | CadShellFeatureSummary
+  | CadSweepFeatureSummary;
 
 export type CadFeatureEditabilityStatus =
   | "editable"
@@ -2721,13 +2930,22 @@ export interface CadFeatureShellEditProposal {
   readonly openFaceRefs?: readonly FeatureShellOpenFaceRef[];
 }
 
+export interface CadFeatureSweepEditProposal {
+  readonly kind: "sweep";
+  readonly profileSketchId?: SketchId;
+  readonly profileEntityId?: SketchEntityId;
+  readonly pathSketchId?: SketchId;
+  readonly pathEntityIds?: readonly SketchEntityId[];
+}
+
 export type CadFeatureEditProposal =
   | CadFeatureExtrudeEditProposal
   | CadFeatureRevolveEditProposal
   | CadFeatureHoleEditProposal
   | CadFeatureChamferEditProposal
   | CadFeatureFilletEditProposal
-  | CadFeatureShellEditProposal;
+  | CadFeatureShellEditProposal
+  | CadFeatureSweepEditProposal;
 
 export interface CadFeatureEditDiagnostic {
   readonly code: CadFeatureEditDiagnosticCode;
@@ -3568,25 +3786,27 @@ export interface CadLinearPatternBodySource {
   readonly type: "linearPatternFeature";
   readonly featureId: FeatureId;
   readonly seedBodyId: BodyId;
-  readonly axis: FeaturePatternAxis;
+  readonly direction: PatternDirectionRef;
   readonly spacing: number;
   readonly instanceCount: number;
+  readonly instances: readonly PatternInstanceRecord[];
 }
 
 export interface CadCircularPatternBodySource {
   readonly type: "circularPatternFeature";
   readonly featureId: FeatureId;
   readonly seedBodyId: BodyId;
-  readonly rotationAxis: FeaturePatternAxis;
+  readonly rotationAxis: PatternRotationAxisRef;
   readonly totalAngleDegrees: number;
   readonly instanceCount: number;
+  readonly instances: readonly PatternInstanceRecord[];
 }
 
 export interface CadMirrorBodySource {
   readonly type: "mirrorFeature";
   readonly featureId: FeatureId;
   readonly seedBodyId: BodyId;
-  readonly mirrorPlane: FeatureMirrorPlane;
+  readonly plane: MirrorPlaneRef;
   readonly includeOriginal: boolean;
 }
 
@@ -3596,6 +3816,15 @@ export interface CadShellBodySource {
   readonly targetBodyId: BodyId;
   readonly wallThickness: number;
   readonly openFaceRefs: readonly FeatureShellOpenFaceRef[];
+}
+
+export interface CadSweepBodySource {
+  readonly type: "sweepFeature";
+  readonly featureId: FeatureId;
+  readonly profileSketchId: SketchId;
+  readonly profileEntityId: SketchEntityId;
+  readonly pathSketchId: SketchId;
+  readonly pathEntityIds: readonly SketchEntityId[];
 }
 
 export type CadBodySource =
@@ -3609,6 +3838,7 @@ export type CadBodySource =
   | CadCircularPatternBodySource
   | CadMirrorBodySource
   | CadShellBodySource
+  | CadSweepBodySource
   | CadImportedBodySource;
 
 export interface CadImportedBodySource {
@@ -4032,6 +4262,9 @@ export type CadGeneratedReferenceEligibleOperation =
   | "feature.chamfer"
   | "feature.fillet"
   | "feature.shell"
+  | "feature.linearPatternDirection"
+  | "feature.circularPatternAxis"
+  | "feature.mirrorPlane"
   | "feature.measureReference"
   | "feature.selectReference";
 
@@ -5092,6 +5325,10 @@ export type CadQueryErrorCode =
   | "BODY_NOT_FOUND"
   | "UNSUPPORTED_BODY_REFERENCES"
   | "UNSUPPORTED_BODY_MEASUREMENTS"
+  | "UNSUPPORTED_BODY_PATTERN_INSTANCES"
+  | "MASS_PROPERTIES_UNAVAILABLE"
+  | "MASS_PROPERTIES_STALE"
+  | "MASS_PROPERTIES_INVALID_DENSITY"
   | "UNSUPPORTED_BODY_TOPOLOGY"
   | "STALE_BODY_TOPOLOGY"
   | "AMBIGUOUS_BODY_TOPOLOGY"
@@ -5632,6 +5869,8 @@ export type CadQueryResponse =
   | BodyTopologyQueryResponse
   | BodyTopologyIdentityQueryResponse
   | BodyMeasurementsQueryResponse
+  | BodyPatternInstancesQueryResponse
+  | BodyMassPropertiesQueryResponse
   | BodyGeneratedReferenceMeasurementsQueryResponse
   | ReferenceListNamedQueryResponse
   | ReferenceResolveNamedQueryResponse
@@ -5666,6 +5905,10 @@ export type CadParameterExpressionDiagnosticCode =
   | "EXPRESSION_DIVISION_BY_ZERO"
   | "EXPRESSION_INVALID_FUNCTION"
   | "EXPRESSION_INVALID_VALUE"
+  | "EXPRESSION_DOMAIN_ERROR"
+  | "EXPRESSION_TERNARY_INVALID"
+  | "EXPRESSION_LANGUAGE_UNSUPPORTED_TOKEN"
+  | "EXPRESSION_LANGUAGE_V2_FEATURES_PRESENT"
   | "EXPRESSION_VALUE_INCONSISTENCY";
 
 export interface CadParameterExpressionDiagnostic {
@@ -6425,6 +6668,44 @@ export interface BodyMeasurementsQueryResponse {
   readonly query: "body.measurements";
   readonly cadOpsVersion: CadOpsVersion;
   readonly measurements: BodyMeasurementsSnapshot;
+}
+
+export interface CadPatternInstanceQueryRecord {
+  readonly index: number;
+  readonly transform: Mat4;
+  readonly bounds?: CadAxisAlignedBounds;
+}
+
+export interface BodyPatternInstancesQueryResponse {
+  readonly ok: true;
+  readonly query: "body.patternInstances";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly bodyId: BodyId;
+  readonly featureId: FeatureId;
+  readonly patternKind: "linearPattern" | "circularPattern";
+  readonly instanceCount: number;
+  readonly instances: readonly CadPatternInstanceQueryRecord[];
+  readonly multiSolid: boolean;
+  readonly multiSolidStatus: "single" | "multi" | "unknown";
+  readonly solidCount?: number;
+  readonly diagnostics: readonly CadBodyExactMetadataDiagnostic[];
+}
+
+export interface CadMassPropertiesSnapshot {
+  readonly bodyId: BodyId;
+  readonly density: number;
+  readonly volume: number;
+  readonly surfaceArea: number;
+  readonly centerOfMass: Vec3;
+  readonly mass: number;
+  readonly momentsOfInertia?: Vec3;
+}
+
+export interface BodyMassPropertiesQueryResponse {
+  readonly ok: true;
+  readonly query: "body.massProperties";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly massProperties: CadMassPropertiesSnapshot;
 }
 
 export interface BodyGeneratedReferenceMeasurementsQueryResponse {

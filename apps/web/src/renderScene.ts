@@ -20,7 +20,8 @@ import type {
   DerivedLinearPatternGeometrySource,
   DerivedMirrorGeometrySource,
   DerivedRevolveGeometrySource,
-  DerivedShellGeometrySource
+  DerivedShellGeometrySource,
+  DerivedSweepGeometrySource
 } from "./derivedGeometry";
 import {
   createDefaultSketchDisplayFrame,
@@ -47,6 +48,7 @@ export function createRenderSceneInputs(
     | DerivedCircularPatternGeometrySource
     | DerivedMirrorGeometrySource
     | DerivedShellGeometrySource
+    | DerivedSweepGeometrySource
   )[] = [],
   sketches: readonly SketchSnapshot[] = [],
   sketchDisplayFrames: ReadonlyMap<string, SketchDisplayFrame> = new Map()

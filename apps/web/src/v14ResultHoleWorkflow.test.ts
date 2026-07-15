@@ -573,6 +573,7 @@ function createHolePreflightRuntime(
     circularPattern: unused,
     mirror: unused,
     shell: unused,
+    sweep: unused,
     exactBodyMetadata: unused,
     exactTopologyCheckpointPayload: unused,
     importStep: unused,

@@ -10,6 +10,7 @@ import {
   createOcctExactTopologySnapshot,
   createOcctRevolveProfileMesh,
   createOcctShellMesh,
+  createOcctSweepMesh,
   createOcctSphereMesh,
   createOcctStepImport,
   createOcctStepExport,
@@ -22,6 +23,65 @@ import {
 const OCCT_WASM_TEST_TIMEOUT_MS = 120_000;
 
 describe("occt-wasm", () => {
+  it(
+    "sweeps rectangle and circle profiles along a line as real OCCT solids",
+    async () => {
+      const pathSegments = [{ start: [0, 0, 0], end: [0, 0, 5] }] as const;
+      const rectangleProfile = {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "rectangle" as const,
+          center: [0, 0] as const,
+          width: 2,
+          height: 3
+        }
+      };
+      const circleProfile = {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "circle" as const,
+          center: [0, 0] as const,
+          radius: 1
+        }
+      };
+
+      const [rectangleMesh, circleMesh, rectangleMetadata, circleMetadata] =
+        await Promise.all([
+          createOcctSweepMesh({
+            profile: rectangleProfile,
+            pathSegments
+          }),
+          createOcctSweepMesh({ profile: circleProfile, pathSegments }),
+          createOcctExactBodyMetadata({
+            source: {
+              kind: "sweep",
+              profile: rectangleProfile,
+              pathSegments
+            }
+          }),
+          createOcctExactBodyMetadata({
+            source: {
+              kind: "sweep",
+              profile: circleProfile,
+              pathSegments
+            }
+          })
+        ]);
+
+      expect(rectangleMesh).toMatchObject({ primitive: "sweep" });
+      expect(rectangleMesh.triangleCount).toBeGreaterThan(0);
+      expect(circleMesh).toMatchObject({ primitive: "sweep" });
+      expect(circleMesh.triangleCount).toBeGreaterThan(0);
+      expect(rectangleMetadata.sourceKind).toBe("sweep");
+      expect(rectangleMetadata.volume).toBeCloseTo(30, 5);
+      expect(rectangleMetadata.topologyCounts.solidCount).toBe(1);
+      expect(circleMetadata.sourceKind).toBe("sweep");
+      expect(circleMetadata.volume).toBeCloseTo(5 * Math.PI, 5);
+      expect(circleMetadata.topologyCounts.solidCount).toBe(1);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
   it(
     "reports STEP writer bindings as available through the isolated boundary",
     async () => {

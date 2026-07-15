@@ -115,6 +115,8 @@ function createOperationSummaries(
       op.op === "feature.hole" ||
       op.op === "feature.chamfer" ||
       op.op === "feature.fillet" ||
+      op.op === "feature.sweep" ||
+      op.op === "feature.loft" ||
       op.op === "feature.linearPattern" ||
       op.op === "feature.circularPattern" ||
       op.op === "feature.mirror" ||
@@ -608,6 +610,32 @@ function createOperationSummaries(
         });
       }
 
+      case "feature.sweep": {
+        const featureId = op.id ?? createdFeatureRef?.id;
+        const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Create sweep feature ${featureId ?? "with generated ID"} from profile ${op.profileSketchId}/${op.profileEntityId} along ${op.pathEntityIds.length} path segment${op.pathEntityIds.length === 1 ? "" : "s"}${bodyId ? ` -> body ${bodyId}` : ""}`,
+          sketchId: op.profileSketchId,
+          sketchEntityId: op.profileEntityId,
+          featureId,
+          bodyId
+        });
+      }
+
+      case "feature.loft": {
+        const featureId = op.id ?? createdFeatureRef?.id;
+        const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Create loft feature ${featureId ?? "with generated ID"} through ${op.sections.length} sections${bodyId ? ` -> body ${bodyId}` : ""}`,
+          featureId,
+          bodyId
+        });
+      }
+
       case "feature.chamfer": {
         const featureId = op.id ?? createdFeatureRef?.id;
         const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
@@ -781,6 +809,32 @@ function createOperationSummaries(
           sketchEntityId: modifiedFeatureRef
             ? getFeatureRefSketchEntityId(modifiedFeatureRef)
             : undefined
+        });
+      }
+
+      case "feature.updateSweep": {
+        const modifiedFeatureRef = transaction.diff.features?.modified?.find(
+          (feature) => feature.id === op.id
+        );
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Update sweep feature ${op.id}`,
+          featureId: op.id,
+          bodyId: modifiedFeatureRef?.bodyId
+        });
+      }
+
+      case "feature.updateLoft": {
+        const modifiedFeatureRef = transaction.diff.features?.modified?.find(
+          (feature) => feature.id === op.id
+        );
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Update loft feature ${op.id}`,
+          featureId: op.id,
+          bodyId: modifiedFeatureRef?.bodyId
         });
       }
 
@@ -982,7 +1036,9 @@ function getFeatureRefSketchEntityId(
     feature.kind === "linearPattern" ||
     feature.kind === "circularPattern" ||
     feature.kind === "mirror" ||
-    feature.kind === "shell"
+    feature.kind === "shell" ||
+    feature.kind === "sweep" ||
+    feature.kind === "loft"
   ) {
     return undefined;
   }
@@ -998,7 +1054,9 @@ function getFeatureRefSketchId(feature: CadFeatureRef): SketchId | undefined {
     feature.kind === "linearPattern" ||
     feature.kind === "circularPattern" ||
     feature.kind === "mirror" ||
-    feature.kind === "shell"
+    feature.kind === "shell" ||
+    feature.kind === "sweep" ||
+    feature.kind === "loft"
   ) {
     return undefined;
   }

@@ -651,6 +651,9 @@ function actionIdFromOperation(
     case "feature.extrudeCutTarget":
     case "feature.extrudeAddTarget":
     case "feature.holeTarget":
+    case "feature.linearPatternDirection":
+    case "feature.circularPatternAxis":
+    case "feature.mirrorPlane":
       return "body.references.inspect";
     case "feature.attachSketchPlane":
       return "sketch.createOnFace";

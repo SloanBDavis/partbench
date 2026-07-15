@@ -46,6 +46,14 @@ storage contract. This document continues to define the project-format and
 source/derived rules that storage, solver, and topology-backed downstream
 modeling work must preserve.
 
+V16 expression-language features (degree-first trigonometry, comparisons,
+ternary expressions, and `if`) remain text in the existing
+`CadParameter.expression` field. They are an evaluator capability, not a new
+source shape, so expressions alone do not require `web-cad.project.v20`.
+Evaluation health reports `EXPRESSION_LANGUAGE_V2_FEATURES_PRESENT` when this
+syntax is used. Floating-point `==` and `!=` use exact IEEE equality; tolerance
+checks must be written explicitly with arithmetic and `abs`.
+
 ## Current Format
 
 The current saved format is deliberate JSON:

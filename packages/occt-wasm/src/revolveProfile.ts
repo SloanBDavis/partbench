@@ -49,14 +49,14 @@ export interface OcctRevolveProfileInput {
   readonly angularDeflection?: number;
 }
 
-interface SketchFrame {
+export interface SketchFrame {
   readonly origin: readonly [number, number, number];
   readonly uAxis: readonly [number, number, number];
   readonly vAxis: readonly [number, number, number];
   readonly normalAxis: readonly [number, number, number];
 }
 
-interface ProfileFaceHandle {
+export interface ProfileFaceHandle {
   readonly face: TopoDS_Face;
   readonly delete: () => void;
 }
@@ -192,7 +192,7 @@ function assertRevolveProfileBindings(oc: OpenCascadeInstance): void {
   }
 }
 
-function makeProfileFace(
+export function makeProfileFace(
   oc: OpenCascadeInstance,
   frame: SketchFrame,
   profile: OcctRevolveProfile
@@ -337,7 +337,7 @@ function createOcctAxes(
   };
 }
 
-function getSketchFrame(
+export function getSketchFrame(
   sketchPlane: OcctRevolveSketchPlane,
   placementFrame?: OcctRevolvePlacementFrame
 ): SketchFrame {

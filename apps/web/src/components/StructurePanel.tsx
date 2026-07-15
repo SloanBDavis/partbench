@@ -1186,7 +1186,15 @@ function formatFeatureStoryDetail(
   }
 
   if (feature.kind === "mirror") {
-    return `${feature.mirrorPlane} plane · ${
+    const plane =
+      feature.plane.kind === "standardPlane"
+        ? feature.plane.plane
+        : feature.plane.kind === "namedReference"
+          ? feature.plane.name
+          : feature.plane.kind === "generatedFace"
+            ? feature.plane.stableId
+            : feature.plane.anchorId;
+    return `${plane} plane · ${
       feature.includeOriginal ? "union with original" : "copy only"
     }`;
   }

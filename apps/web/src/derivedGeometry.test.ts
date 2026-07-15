@@ -12,6 +12,7 @@ import type { RenderTriangleMesh } from "@web-cad/renderer";
 import { describe, expect, it } from "vitest";
 import {
   createDerivedGeometryCacheKey,
+  deriveGeometrySourceMesh,
   createEmptyDerivedGeometrySnapshot,
   DerivedGeometryService,
   getDerivedGeometryStatusLabel,
@@ -37,6 +38,7 @@ import type {
   DerivedGeometryEdgeFinishInput,
   DerivedGeometryMirrorInput,
   DerivedGeometryShellInput,
+  DerivedGeometrySweepInput,
   DerivedExactMetadataResult,
   DerivedGeometryExtrudeInput,
   DerivedGeometryHoleInput,
@@ -64,7 +66,8 @@ type RuntimeInput =
   | DerivedGeometryLinearPatternInput
   | DerivedGeometryCircularPatternInput
   | DerivedGeometryMirrorInput
-  | DerivedGeometryShellInput;
+  | DerivedGeometryShellInput
+  | DerivedGeometrySweepInput;
 
 describe("derivedGeometry", () => {
   it("creates cache keys that change when object geometry inputs change", () => {
@@ -863,6 +866,69 @@ describe("derivedGeometry", () => {
     expect(attachedSource?.placementFrame?.origin).toEqual([0, 0, 3]);
   });
 
+  it("derives and executes a sweep source from profile and path sketches", async () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "profile_sketch",
+        name: "Profile",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "profile_sketch",
+        id: "profile",
+        center: [0, 0],
+        radius: 1
+      },
+      { op: "sketch.create", id: "path_sketch", name: "Path", plane: "XZ" },
+      {
+        op: "sketch.addLine",
+        sketchId: "path_sketch",
+        id: "path",
+        start: [0, 0],
+        end: [0, 5]
+      }
+    ]);
+    engine.apply({
+      op: "feature.sweep",
+      id: "feat_sweep",
+      bodyId: "body_sweep",
+      profileSketchId: "profile_sketch",
+      profileEntityId: "profile",
+      pathSketchId: "path_sketch",
+      pathEntityIds: ["path"]
+    });
+    const sources = createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      getProjectStructureFeatures(engine)
+    );
+    const sweep = sources.find((source) => source.kind === "sweep");
+
+    expect(sweep).toMatchObject({
+      id: "body_sweep",
+      kind: "sweep",
+      profile: {
+        sketchPlane: "XY",
+        profile: { kind: "circle", radius: 1 }
+      },
+      pathSegments: [{ start: [0, 0, 0], end: [0, 0, 5] }]
+    });
+
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    await deriveGeometrySourceMesh(runtime, sweep!);
+    expect(runtime.inputs).toContainEqual(
+      expect.objectContaining({
+        id: "body_sweep",
+        profile: expect.objectContaining({ sketchPlane: "XY" }),
+        pathSegments: [{ start: [0, 0, 0], end: [0, 0, 5] }]
+      })
+    );
+  });
+
   it("derives cut result sources from active rectangle target and tool extrudes", async () => {
     const engine = createExtrudedRectangleEngine();
 
@@ -953,13 +1019,13 @@ describe("derivedGeometry", () => {
     expect(patternSource).toMatchObject({
       id: "body_linear_pattern_1",
       kind: "linearPattern",
-      axis: "x",
+      direction: [1, 0, 0],
       spacing: 5,
       instanceCount: 3,
       seed: { id: "body_rect_1", profile: { kind: "rectangle" }, depth: 3 }
     });
     expect(createDerivedGeometryCacheKey(patternSource!)).toContain(
-      '"axis":"x"'
+      '"direction":[1,0,0]'
     );
     expect(createDerivedGeometryCacheKey(patternSource!)).toContain(
       '"instanceCount":3'
@@ -980,7 +1046,7 @@ describe("derivedGeometry", () => {
     expect(runtime.inputs).toEqual([
       expect.objectContaining({
         id: "body_linear_pattern_1",
-        axis: "x",
+        direction: [1, 0, 0],
         spacing: 5,
         instanceCount: 3,
         seed: expect.objectContaining({ kind: "extrude", depth: 3 })
@@ -1023,13 +1089,13 @@ describe("derivedGeometry", () => {
     expect(patternSource).toMatchObject({
       id: "body_circular_pattern_1",
       kind: "circularPattern",
-      rotationAxis: "z",
+      axis: { origin: [0, 0, 0], direction: [0, 0, 1] },
       totalAngleDegrees: 360,
       instanceCount: 4,
       seed: { id: "body_rect_1", profile: { kind: "rectangle" }, depth: 3 }
     });
     expect(createDerivedGeometryCacheKey(patternSource!)).toContain(
-      '"rotationAxis":"z"'
+      '"axis":{"origin":[0,0,0],"direction":[0,0,1]}'
     );
 
     const snapshots: DerivedGeometrySnapshot[] = [];
@@ -1047,7 +1113,7 @@ describe("derivedGeometry", () => {
     expect(runtime.inputs).toEqual([
       expect.objectContaining({
         id: "body_circular_pattern_1",
-        rotationAxis: "z",
+        axis: { origin: [0, 0, 0], direction: [0, 0, 1] },
         totalAngleDegrees: 360,
         instanceCount: 4,
         seed: expect.objectContaining({ kind: "extrude", depth: 3 })
@@ -1060,6 +1126,57 @@ describe("derivedGeometry", () => {
         status: "ready"
       }
     ]);
+  });
+
+  it("resolves named edge axes and offset named face planes into numeric runtime frames", () => {
+    const circular = createExtrudedRectangleEngine();
+    circular.apply({
+      op: "reference.nameGenerated",
+      name: "Corner axis",
+      bodyId: "body_rect_1",
+      stableId: "generated:edge:body_rect_1:longitudinal:uMin:vMin"
+    });
+    circular.apply({
+      op: "feature.circularPattern",
+      id: "feat_circular_pattern_1",
+      bodyId: "body_circular_pattern_1",
+      seedBodyId: "body_rect_1",
+      rotationAxis: { kind: "namedReference", name: "Corner axis" },
+      totalAngleDegrees: 360,
+      instanceCount: 4
+    });
+    expect(
+      createDerivedGeometrySourcesFromDocument(
+        circular.getDocument(),
+        getProjectStructureFeatures(circular)
+      ).find((source) => source.kind === "circularPattern")
+    ).toMatchObject({
+      axis: { origin: [-2, -1, 1.5], direction: [0, 0, 1] }
+    });
+
+    const mirror = createExtrudedRectangleEngine();
+    mirror.apply({
+      op: "reference.nameGenerated",
+      name: "Top plane",
+      bodyId: "body_rect_1",
+      stableId: "generated:face:body_rect_1:endCap"
+    });
+    mirror.apply({
+      op: "feature.mirror",
+      id: "feat_mirror_1",
+      bodyId: "body_mirror_1",
+      seedBodyId: "body_rect_1",
+      plane: { kind: "namedReference", name: "Top plane", offset: 2 },
+      includeOriginal: false
+    });
+    expect(
+      createDerivedGeometrySourcesFromDocument(
+        mirror.getDocument(),
+        getProjectStructureFeatures(mirror)
+      ).find((source) => source.kind === "mirror")
+    ).toMatchObject({
+      plane: { point: [0, 0, 5], normal: [0, 0, 1] }
+    });
   });
 
   it("derives linear pattern sources for boolean extrude-family seeds", async () => {
@@ -1117,7 +1234,7 @@ describe("derivedGeometry", () => {
     expect(patternSource).toMatchObject({
       id: "body_linear_pattern_1",
       kind: "linearPattern",
-      axis: "y",
+      direction: [0, 1, 0],
       spacing: 4,
       instanceCount: 2,
       seed: {
@@ -1141,7 +1258,7 @@ describe("derivedGeometry", () => {
     expect(runtime.inputs).toEqual([
       expect.objectContaining({
         id: "body_linear_pattern_1",
-        axis: "y",
+        direction: [0, 1, 0],
         seed: expect.objectContaining({ kind: "booleanExtrudes" })
       })
     ]);
@@ -1238,7 +1355,7 @@ describe("derivedGeometry", () => {
     expect(sources[1]).toMatchObject({
       id: "body_mirror_1",
       kind: "mirror",
-      mirrorPlane: "YZ",
+      plane: { point: [0, 0, 0], normal: [1, 0, 0] },
       includeOriginal: false,
       seed: { id: "body_rect_1", profile: { kind: "rectangle" }, depth: 3 }
     });
@@ -1258,7 +1375,7 @@ describe("derivedGeometry", () => {
       expect.objectContaining({ id: "body_rect_1" }),
       expect.objectContaining({
         id: "body_mirror_1",
-        mirrorPlane: "YZ",
+        plane: { point: [0, 0, 0], normal: [1, 0, 0] },
         includeOriginal: false,
         seed: expect.objectContaining({ kind: "extrude", depth: 3 })
       })
@@ -1288,7 +1405,7 @@ describe("derivedGeometry", () => {
     expect(sources[0]).toMatchObject({
       id: "body_mirror_1",
       kind: "mirror",
-      mirrorPlane: "XZ",
+      plane: { point: [0, 0, 0], normal: [0, 1, 0] },
       includeOriginal: true
     });
   });
@@ -4470,6 +4587,7 @@ describe("derivedGeometry", () => {
     const snapshots: DerivedGeometrySnapshot[] = [];
     const runtime = createRuntime((input) =>
       "profile" in input &&
+      "kind" in input.profile &&
       input.profile.kind === "rectangle" &&
       input.profile.width === 4
         ? first.promise
@@ -4495,7 +4613,9 @@ describe("derivedGeometry", () => {
 
     expect(
       runtime.inputs.map((input) =>
-        "profile" in input && input.profile.kind === "rectangle"
+        "profile" in input &&
+        "kind" in input.profile &&
+        input.profile.kind === "rectangle"
           ? input.profile.width
           : null
       )
@@ -5426,6 +5546,10 @@ function createRuntime(
       return handler(input);
     },
     shell(input) {
+      inputs.push(input);
+      return handler(input);
+    },
+    sweep(input) {
       inputs.push(input);
       return handler(input);
     },

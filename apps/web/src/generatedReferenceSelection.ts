@@ -278,6 +278,12 @@ export function formatSelectionReferenceOperationLabel(
       return "Fillet";
     case "feature.shell":
       return "Shell";
+    case "feature.linearPatternDirection":
+      return "Use as pattern direction";
+    case "feature.circularPatternAxis":
+      return "Use as pattern axis";
+    case "feature.mirrorPlane":
+      return "Use as mirror plane";
     case "feature.measureReference":
       return "Measure reference";
     case "feature.selectReference":

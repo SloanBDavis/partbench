@@ -31,6 +31,7 @@ export {
   createTorusTessellationWorkerRequest,
   createMirrorWorkerRequest,
   createShellWorkerRequest,
+  createSweepWorkerRequest,
   getGeometryWorkerExactExportCapabilities,
   getGeometryWorkerStepImportCapabilities,
   createWorkerErrorDiagnostics,

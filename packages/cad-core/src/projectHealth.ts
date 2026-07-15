@@ -61,7 +61,8 @@ import type {
   LinearPatternFeature,
   CircularPatternFeature,
   MirrorFeature,
-  ShellFeature
+  ShellFeature,
+  SweepFeature
 } from "./index";
 import {
   evaluateSketch,
@@ -115,7 +116,8 @@ export type ProjectHealthFeature =
   | LinearPatternFeature
   | CircularPatternFeature
   | MirrorFeature
-  | ShellFeature;
+  | ShellFeature
+  | SweepFeature;
 
 export interface ProjectHealthRevolveFeature {
   readonly id: FeatureId;
@@ -1669,6 +1671,20 @@ function collectSketchEntityAffectedFeatures(
 
   for (const feature of document.features.values()) {
     if (
+      feature.kind === "sweep" &&
+      targets.some(
+        (target) =>
+          (feature.profileSketchId === target.sketchId &&
+            feature.profileEntityId === target.entityId) ||
+          (feature.pathSketchId === target.sketchId &&
+            feature.pathEntityIds.includes(target.entityId))
+      )
+    ) {
+      featureIds.add(feature.id);
+      bodyIds.add(feature.bodyId);
+      continue;
+    }
+    if (
       hasSketchEntitySource(feature) &&
       targets.some(
         (target) =>
@@ -1717,6 +1733,7 @@ function getProjectHealthFeaturePrimaryEntityId(
     | CircularPatternFeature
     | MirrorFeature
     | ShellFeature
+    | SweepFeature
   >
 ): SketchEntityId {
   return feature.kind === "hole" ? feature.circleEntityId : feature.entityId;
@@ -1733,6 +1750,7 @@ function hasSketchEntitySource(
   | CircularPatternFeature
   | MirrorFeature
   | ShellFeature
+  | SweepFeature
 > {
   return (
     feature.kind !== "chamfer" &&
@@ -1741,6 +1759,7 @@ function hasSketchEntitySource(
     feature.kind !== "linearPattern" &&
     feature.kind !== "mirror" &&
     feature.kind !== "shell" &&
+    feature.kind !== "sweep" &&
     feature.kind !== "circularPattern"
   );
 }
@@ -2200,6 +2219,10 @@ function describeFeatureForHealth(feature: ProjectHealthFeature): string {
 
   if (feature.kind === "shell") {
     return "shell result";
+  }
+
+  if (feature.kind === "sweep") {
+    return "sweep result";
   }
 
   return `${feature.profileKind} ${feature.operationMode}`;

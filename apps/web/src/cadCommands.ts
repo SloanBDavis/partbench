@@ -21,10 +21,12 @@ import type {
   FeatureCircularPatternOp,
   FeatureLinearPatternOp,
   FeatureMirrorOp,
-  FeatureMirrorPlane,
-  FeaturePatternAxis,
+  MirrorPlaneRef,
+  PatternDirectionRef,
+  PatternRotationAxisRef,
   FeatureRevolveOp,
   FeatureShellOp,
+  FeatureSweepOp,
   FeatureShellOpenFaceRef,
   FeatureUpdateCircularPatternOp,
   FeatureUpdateExtrudeOp,
@@ -231,13 +233,13 @@ export interface FeatureLinearPatternForm {
   readonly bodyId: string;
   readonly seedBodyId: string;
   readonly name: string;
-  readonly axis: FeaturePatternAxis;
+  readonly direction: PatternDirectionRef;
   readonly spacing: number;
   readonly instanceCount: number;
 }
 
 export interface FeatureLinearPatternEdit {
-  readonly axis?: FeaturePatternAxis;
+  readonly direction?: PatternDirectionRef;
   readonly spacing?: number;
   readonly instanceCount?: number;
 }
@@ -247,13 +249,13 @@ export interface FeatureCircularPatternForm {
   readonly bodyId: string;
   readonly seedBodyId: string;
   readonly name: string;
-  readonly rotationAxis: FeaturePatternAxis;
+  readonly rotationAxis: PatternRotationAxisRef;
   readonly totalAngleDegrees: number;
   readonly instanceCount: number;
 }
 
 export interface FeatureCircularPatternEdit {
-  readonly rotationAxis?: FeaturePatternAxis;
+  readonly rotationAxis?: PatternRotationAxisRef;
   readonly totalAngleDegrees?: number;
   readonly instanceCount?: number;
 }
@@ -263,12 +265,12 @@ export interface FeatureMirrorForm {
   readonly bodyId: string;
   readonly seedBodyId: string;
   readonly name: string;
-  readonly mirrorPlane: FeatureMirrorPlane;
+  readonly plane: MirrorPlaneRef;
   readonly includeOriginal: boolean;
 }
 
 export interface FeatureMirrorEdit {
-  readonly mirrorPlane?: FeatureMirrorPlane;
+  readonly plane?: MirrorPlaneRef;
   readonly includeOriginal?: boolean;
 }
 
@@ -284,6 +286,14 @@ export interface FeatureShellForm {
 export interface FeatureShellEdit {
   readonly wallThickness?: number;
   readonly openFaceRefs?: readonly FeatureShellOpenFaceRef[];
+}
+
+export interface FeatureSweepForm {
+  readonly id: string;
+  readonly bodyId: string;
+  readonly name: string;
+  readonly pathSketchId: string;
+  readonly pathEntityIds: readonly string[];
 }
 
 export function buildCreateBoxOp(form: PrimitiveCommandForm): SceneCreateBoxOp {
@@ -940,6 +950,23 @@ export function buildFeatureRevolveOp(
   };
 }
 
+export function buildFeatureSweepOp(
+  profileSketchId: SketchId,
+  profileEntityId: string,
+  form: FeatureSweepForm
+): FeatureSweepOp {
+  return {
+    op: "feature.sweep",
+    id: normalizeOptionalId(form.id),
+    bodyId: normalizeOptionalId(form.bodyId),
+    name: form.name.trim() || undefined,
+    profileSketchId,
+    profileEntityId,
+    pathSketchId: form.pathSketchId,
+    pathEntityIds: form.pathEntityIds
+  };
+}
+
 export function buildFeatureHoleOp(
   sketchId: SketchId,
   circleEntityId: string,
@@ -1078,7 +1105,7 @@ export function buildFeatureLinearPatternOp(
     id: normalizeOptionalId(form.id),
     bodyId: normalizeOptionalId(form.bodyId),
     seedBodyId: form.seedBodyId,
-    axis: form.axis,
+    direction: form.direction,
     spacing: form.spacing,
     instanceCount: form.instanceCount,
     name: form.name.trim() || undefined
@@ -1092,7 +1119,7 @@ export function buildFeatureUpdateLinearPatternOp(
   return {
     op: "feature.updateLinearPattern",
     id,
-    ...(edit.axis !== undefined ? { axis: edit.axis } : {}),
+    ...(edit.direction !== undefined ? { direction: edit.direction } : {}),
     ...(edit.spacing !== undefined ? { spacing: edit.spacing } : {}),
     ...(edit.instanceCount !== undefined
       ? { instanceCount: edit.instanceCount }
@@ -1140,7 +1167,7 @@ export function buildFeatureMirrorOp(form: FeatureMirrorForm): FeatureMirrorOp {
     id: normalizeOptionalId(form.id),
     bodyId: normalizeOptionalId(form.bodyId),
     seedBodyId: form.seedBodyId,
-    mirrorPlane: form.mirrorPlane,
+    plane: form.plane,
     includeOriginal: form.includeOriginal,
     name: form.name.trim() || undefined
   };
@@ -1153,9 +1180,7 @@ export function buildFeatureUpdateMirrorOp(
   return {
     op: "feature.updateMirror",
     id,
-    ...(edit.mirrorPlane !== undefined
-      ? { mirrorPlane: edit.mirrorPlane }
-      : {}),
+    ...(edit.plane !== undefined ? { plane: edit.plane } : {}),
     ...(edit.includeOriginal !== undefined
       ? { includeOriginal: edit.includeOriginal }
       : {})

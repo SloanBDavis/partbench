@@ -26,6 +26,7 @@ export {
   createCircularPatternWorkerRequest,
   createMirrorWorkerRequest,
   createShellWorkerRequest,
+  createSweepWorkerRequest,
   createExactBodyMetadataWorkerRequest,
   createExactTopologyCheckpointPayloadWorkerRequest,
   createExactTopologySnapshotWorkerRequest,
@@ -178,6 +179,7 @@ function getUnsupportedPrimitiveMessage(
     kind !== "geometry-worker.circularPatternFeature" &&
     kind !== "geometry-worker.mirrorFeature" &&
     kind !== "geometry-worker.shellFeature" &&
+    kind !== "geometry-worker.sweepFeature" &&
     kind !== "geometry-worker.exactMetadata" &&
     kind !== "geometry-worker.exactTopologySnapshot" &&
     kind !== "geometry-worker.exactTopologyCheckpointPayload" &&
@@ -202,6 +204,7 @@ function getUnsupportedPrimitiveMessage(
     op !== "geometry.circularPattern" &&
     op !== "geometry.mirror" &&
     op !== "geometry.shell" &&
+    op !== "geometry.sweep" &&
     op !== "geometry.exactBodyMetadata" &&
     op !== "geometry.exactTopologySnapshot" &&
     op !== "geometry.exactTopologyCheckpointPayload" &&

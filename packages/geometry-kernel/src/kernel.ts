@@ -80,7 +80,8 @@ export type GeometryKernelOp =
   | "geometry.linearPattern"
   | "geometry.circularPattern"
   | "geometry.mirror"
-  | "geometry.shell";
+  | "geometry.shell"
+  | "geometry.sweep";
 export type GeometryKernelPrimitive =
   | "box"
   | "cylinder"
@@ -91,7 +92,8 @@ export type GeometryKernelPrimitive =
   | "revolve"
   | "boolean"
   | "hole"
-  | "edgeFinish";
+  | "edgeFinish"
+  | "sweep";
 export type GeometryKernelSketchPlane = "XY" | "XZ" | "YZ";
 export type GeometryKernelExtrudeProfileKind = "rectangle" | "circle";
 export type GeometryKernelExtrudeSide = "positive" | "negative" | "symmetric";
@@ -315,7 +317,15 @@ export interface FilletEdgeFinishRequest {
   readonly tessellation?: TessellationOptions;
 }
 
-export type GeometryKernelPatternAxis = "x" | "y" | "z";
+export type GeometryKernelDirection = readonly [number, number, number];
+export interface GeometryKernelAxisFrame {
+  readonly origin: GeometryKernelDirection;
+  readonly direction: GeometryKernelDirection;
+}
+export interface GeometryKernelPlaneFrame {
+  readonly point: GeometryKernelDirection;
+  readonly normal: GeometryKernelDirection;
+}
 
 export type PatternSeedSource =
   | PatternSeedExtrudeSource
@@ -334,7 +344,7 @@ export interface LinearPatternRequest {
   readonly version: GeometryKernelVersion;
   readonly op: "geometry.linearPattern";
   readonly seed: PatternSeedSource;
-  readonly axis: GeometryKernelPatternAxis;
+  readonly direction: GeometryKernelDirection;
   readonly spacing: number;
   readonly instanceCount: number;
   readonly tessellation?: TessellationOptions;
@@ -345,13 +355,11 @@ export interface CircularPatternRequest {
   readonly version: GeometryKernelVersion;
   readonly op: "geometry.circularPattern";
   readonly seed: PatternSeedSource;
-  readonly rotationAxis: GeometryKernelPatternAxis;
+  readonly axis: GeometryKernelAxisFrame;
   readonly totalAngleDegrees: number;
   readonly instanceCount: number;
   readonly tessellation?: TessellationOptions;
 }
-
-export type GeometryKernelMirrorPlane = "XY" | "XZ" | "YZ";
 
 export type MirrorSeedSource = PatternSeedSource;
 
@@ -360,7 +368,7 @@ export interface MirrorRequest {
   readonly version: GeometryKernelVersion;
   readonly op: "geometry.mirror";
   readonly seed: MirrorSeedSource;
-  readonly mirrorPlane: GeometryKernelMirrorPlane;
+  readonly plane: GeometryKernelPlaneFrame;
   readonly includeOriginal: boolean;
   readonly tessellation?: TessellationOptions;
 }
@@ -377,12 +385,33 @@ export interface ShellRequest {
   readonly tessellation?: TessellationOptions;
 }
 
+export interface SweepProfileSource {
+  readonly sketchPlane: GeometryKernelSketchPlane;
+  readonly profile: ExtrudeGeometryProfile;
+  readonly placementFrame?: BooleanExtrudePlacementFrame;
+}
+
+export interface SweepPathSegment {
+  readonly start: GeometryKernelDirection;
+  readonly end: GeometryKernelDirection;
+}
+
+export interface SweepRequest {
+  readonly id: string;
+  readonly version: GeometryKernelVersion;
+  readonly op: "geometry.sweep";
+  readonly profile: SweepProfileSource;
+  readonly pathSegments: readonly SweepPathSegment[];
+  readonly tessellation?: TessellationOptions;
+}
+
 export type ExactBodyMetadataSource =
   | ExactExtrudeMetadataSource
   | ExactBooleanExtrudesMetadataSource
   | ExactRevolveMetadataSource
   | ExactHoleMetadataSource
-  | ExactEdgeFinishMetadataSource;
+  | ExactEdgeFinishMetadataSource
+  | ExactSweepMetadataSource;
 export type ExactTopologySourceKind =
   | ExactBodyMetadataSource["kind"]
   | "importedBody";
@@ -427,6 +456,12 @@ export type ExactEdgeFinishMetadataSource =
       readonly radius: number;
       readonly distance?: never;
     };
+
+export interface ExactSweepMetadataSource {
+  readonly kind: "sweep";
+  readonly profile: SweepProfileSource;
+  readonly pathSegments: readonly SweepPathSegment[];
+}
 
 export interface ExactBodyMetadataRequest {
   readonly id: string;
@@ -490,6 +525,7 @@ export type GeometryKernelRequest =
   | CircularPatternRequest
   | MirrorRequest
   | ShellRequest
+  | SweepRequest
   | ExactBodyMetadataRequest
   | ExactTopologySnapshotRequest
   | ExactTopologyCheckpointPayloadRequest
@@ -852,6 +888,7 @@ export interface GeometryKernelMeshResult {
   readonly vertexCount: number;
   readonly triangleCount: number;
   readonly faceCount: number;
+  readonly warnings?: readonly string[];
 }
 
 export type GeometryKernelBoxMeshFactory = (
@@ -936,6 +973,10 @@ export type GeometryKernelShellMeshFactory = (
   input: Omit<ShellRequest, "id" | "version" | "op"> & TessellationOptions
 ) => Promise<GeometryKernelMeshResult>;
 
+export type GeometryKernelSweepMeshFactory = (
+  input: Omit<SweepRequest, "id" | "version" | "op"> & TessellationOptions
+) => Promise<GeometryKernelMeshResult>;
+
 export interface GeometryKernelMeshFactories {
   readonly createBoxMesh: GeometryKernelBoxMeshFactory;
   readonly createCylinderMesh: GeometryKernelCylinderMeshFactory;
@@ -955,6 +996,7 @@ export interface GeometryKernelMeshFactories {
   readonly createCircularPatternMesh?: GeometryKernelCircularPatternMeshFactory;
   readonly createMirrorMesh?: GeometryKernelMirrorMeshFactory;
   readonly createShellMesh?: GeometryKernelShellMeshFactory;
+  readonly createSweepMesh?: GeometryKernelSweepMeshFactory;
 }
 
 export type GeometryKernelResponseForRequest<T extends GeometryKernelRequest> =
@@ -1245,7 +1287,7 @@ export async function executeGeometryKernelRequestWithMeshFactory<
         triangleCount: mesh.triangleCount,
         faceCount: mesh.faceCount
       },
-      warnings: []
+      warnings: mesh.warnings ?? []
     } as unknown as GeometryKernelResponseForRequest<T>;
   } catch (error) {
     return errorResponse(
@@ -1458,17 +1500,44 @@ function validateRequest(
         };
       }
     }
-  } else if (
-    request.op === "geometry.linearPattern" ||
-    request.op === "geometry.circularPattern" ||
-    request.op === "geometry.mirror"
-  ) {
-    // pattern/mirror requests have no dimension fields to validate here
+  } else if (request.op === "geometry.linearPattern") {
+    if (!isUnitVec3(request.direction)) {
+      return {
+        code: "INVALID_DIMENSIONS",
+        message: "Linear pattern direction must be a finite unit Vec3."
+      };
+    }
+  } else if (request.op === "geometry.circularPattern") {
+    if (!isVec3(request.axis.origin) || !isUnitVec3(request.axis.direction)) {
+      return {
+        code: "INVALID_DIMENSIONS",
+        message:
+          "Circular pattern axis must contain a finite origin and unit direction."
+      };
+    }
+  } else if (request.op === "geometry.mirror") {
+    if (!isVec3(request.plane.point) || !isUnitVec3(request.plane.normal)) {
+      return {
+        code: "INVALID_DIMENSIONS",
+        message: "Mirror plane must contain a finite point and unit normal."
+      };
+    }
   } else if (request.op === "geometry.shell") {
     if (!isPositiveFiniteNumber(request.wallThickness)) {
       return {
         code: "INVALID_DIMENSIONS",
         message: "Shell requests require a finite positive wallThickness."
+      };
+    }
+  } else if (request.op === "geometry.sweep") {
+    if (
+      !isValidSweepProfileSource(request.profile) ||
+      !isValidSweepPathSegments(request.pathSegments)
+    ) {
+      return {
+        code: "INVALID_DIMENSIONS",
+        message:
+          "Sweep requests require a rectangle or circle profile and exactly one finite non-degenerate line path segment."
       };
     }
   } else if (
@@ -1556,7 +1625,27 @@ function createMesh(
       return createMirrorMesh(factories, request);
     case "geometry.shell":
       return createShellMesh(factories, request);
+    case "geometry.sweep":
+      return createSweepMesh(factories, request);
   }
+}
+
+function createSweepMesh(
+  factories: GeometryKernelMeshFactories,
+  request: SweepRequest
+): Promise<GeometryKernelMeshResult> {
+  if (!factories.createSweepMesh) {
+    return Promise.reject({
+      code: "UNAVAILABLE_BINDING",
+      message: "Sweep tessellation requires an OCCT sweep mesh factory."
+    } satisfies GeometryKernelError);
+  }
+  return factories.createSweepMesh({
+    profile: request.profile,
+    pathSegments: request.pathSegments,
+    linearDeflection: request.tessellation?.linearDeflection,
+    angularDeflection: request.tessellation?.angularDeflection
+  });
 }
 
 function createLinearPatternMesh(
@@ -1573,7 +1662,7 @@ function createLinearPatternMesh(
 
   return factories.createLinearPatternMesh({
     seed: request.seed,
-    axis: request.axis,
+    direction: request.direction,
     spacing: request.spacing,
     instanceCount: request.instanceCount,
     linearDeflection: request.tessellation?.linearDeflection,
@@ -1595,7 +1684,7 @@ function createCircularPatternMesh(
 
   return factories.createCircularPatternMesh({
     seed: request.seed,
-    rotationAxis: request.rotationAxis,
+    axis: request.axis,
     totalAngleDegrees: request.totalAngleDegrees,
     instanceCount: request.instanceCount,
     linearDeflection: request.tessellation?.linearDeflection,
@@ -1616,7 +1705,7 @@ function createMirrorMesh(
 
   return factories.createMirrorMesh({
     seed: request.seed,
-    mirrorPlane: request.mirrorPlane,
+    plane: request.plane,
     includeOriginal: request.includeOriginal,
     linearDeflection: request.tessellation?.linearDeflection,
     angularDeflection: request.tessellation?.angularDeflection
@@ -1963,6 +2052,8 @@ function formatPrimitiveLabel(op: GeometryKernelOp): string {
       return "Mirror feature";
     case "geometry.shell":
       return "Shell feature";
+    case "geometry.sweep":
+      return "Sweep feature";
     case "geometry.exactBodyMetadata":
       return "Exact body metadata";
     case "geometry.exactTopologySnapshot":
@@ -2112,6 +2203,31 @@ function isValidBooleanExtrudePrimitiveSource(
     isValidExtrudeProfile(source.profile) &&
     (source.placementFrame === undefined ||
       isValidBooleanExtrudePlacementFrame(source.placementFrame))
+  );
+}
+
+function isValidSweepProfileSource(source: SweepProfileSource): boolean {
+  return (
+    isSketchPlane(source.sketchPlane) &&
+    isValidExtrudeProfile(source.profile) &&
+    (source.placementFrame === undefined ||
+      isValidBooleanExtrudePlacementFrame(source.placementFrame))
+  );
+}
+
+function isValidSweepPathSegments(
+  segments: readonly SweepPathSegment[]
+): boolean {
+  if (!Array.isArray(segments) || segments.length !== 1) return false;
+  const segment = segments[0];
+  return (
+    isVec3(segment?.start) &&
+    isVec3(segment?.end) &&
+    Math.hypot(
+      segment.end[0] - segment.start[0],
+      segment.end[1] - segment.start[1],
+      segment.end[2] - segment.start[2]
+    ) > 1e-12
   );
 }
 
@@ -2370,6 +2486,13 @@ function validateExactBodyMetadataSource(
     return validateEdgeFinishRequest(request);
   }
 
+  if (source.kind === "sweep") {
+    return isValidSweepProfileSource(source.profile) &&
+      isValidSweepPathSegments(source.pathSegments)
+      ? undefined
+      : createInvalidExactBodyMetadataSourceError();
+  }
+
   return createInvalidExactBodyMetadataSourceError();
 }
 
@@ -2377,7 +2500,7 @@ function createInvalidExactBodyMetadataSourceError(): GeometryKernelError {
   return {
     code: "INVALID_DIMENSIONS",
     message:
-      "Exact body metadata requests require supported extrude, booleanExtrudes, revolve, hole, or edgeFinish source data with finite positive dimensions."
+      "Exact body metadata requests require supported extrude, booleanExtrudes, revolve, hole, edgeFinish, or sweep source data with finite dimensions."
   };
 }
 
@@ -2962,6 +3085,12 @@ function isVec3(value: unknown): value is readonly [number, number, number] {
 
 function vectorLength(vector: readonly [number, number, number]): number {
   return Math.hypot(vector[0], vector[1], vector[2]);
+}
+
+function isUnitVec3(
+  value: unknown
+): value is readonly [number, number, number] {
+  return isVec3(value) && Math.abs(vectorLength(value) - 1) <= 1e-9;
 }
 
 function isFiniteNumber(value: number): boolean {
