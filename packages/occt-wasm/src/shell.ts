@@ -110,7 +110,7 @@ export function createOcctShellMeshWithInstance(
   });
 }
 
-function makeShellShape(
+export function makeShellShape(
   oc: OpenCascadeInstance,
   targetShape: TopoDS_Shape,
   input: Pick<OcctShellInput, "target" | "wallThickness" | "openFaceStableIds">

@@ -26,6 +26,19 @@ describe("Inspector", () => {
         body: createBody(),
         disabled: false,
         feature: createFeature(),
+        bodyMassProperties: {
+          bodyId: "body_rect",
+          units: "mm",
+          density: 1,
+          volume: 24,
+          surfaceArea: 52,
+          centerOfMass: [0, 0, 1.5],
+          mass: 24,
+          principalMoments: [10, 20, 30],
+          measurementSource: "kernel-derived",
+          measurementConfidence: "kernel-derived",
+          diagnostics: []
+        },
         generatedReferences: createGeneratedReferences(face, edge),
         namedReferences: [],
         referenceCandidatesByStableId: new Map([
@@ -60,6 +73,9 @@ describe("Inspector", () => {
     );
 
     expect(markup).toContain("Generated references");
+    expect(markup).toContain("Mass properties");
+    expect(markup).toContain("24 mm^3");
+    expect(markup).toContain("Principal moments");
     expect(markup).toContain("Faces");
     expect(markup).toContain("Edges");
     expect(markup).toContain("Sketch");

@@ -1330,6 +1330,7 @@ an existing schema:
 
 ```text
 schemaVersion: web-cad.project.v19
+schemaVersion: web-cad.project.v20
 ```
 
 `web-cad.project.v17` is already used for V11 advanced sketch constraint source

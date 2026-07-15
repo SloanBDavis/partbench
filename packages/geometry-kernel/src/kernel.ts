@@ -424,7 +424,12 @@ export type ExactBodyMetadataSource =
   | ExactHoleMetadataSource
   | ExactEdgeFinishMetadataSource
   | ExactSweepMetadataSource
-  | ExactLoftMetadataSource;
+  | ExactLoftMetadataSource
+  | ExactLinearPatternMetadataSource
+  | ExactCircularPatternMetadataSource
+  | ExactMirrorMetadataSource
+  | ExactShellMetadataSource
+  | ExactImportedBodyMetadataSource;
 export type ExactTopologySourceKind =
   | ExactBodyMetadataSource["kind"]
   | "importedBody";
@@ -479,6 +484,41 @@ export interface ExactSweepMetadataSource {
 export interface ExactLoftMetadataSource {
   readonly kind: "loft";
   readonly sections: readonly LoftSectionSource[];
+}
+
+export interface ExactLinearPatternMetadataSource {
+  readonly kind: "linearPattern";
+  readonly seed: PatternSeedSource;
+  readonly direction: GeometryKernelDirection;
+  readonly spacing: number;
+  readonly instanceCount: number;
+}
+
+export interface ExactCircularPatternMetadataSource {
+  readonly kind: "circularPattern";
+  readonly seed: PatternSeedSource;
+  readonly axis: GeometryKernelAxisFrame;
+  readonly totalAngleDegrees: number;
+  readonly instanceCount: number;
+}
+
+export interface ExactMirrorMetadataSource {
+  readonly kind: "mirror";
+  readonly seed: MirrorSeedSource;
+  readonly plane: GeometryKernelPlaneFrame;
+  readonly includeOriginal: boolean;
+}
+
+export interface ExactShellMetadataSource {
+  readonly kind: "shell";
+  readonly target: ShellTargetSource;
+  readonly wallThickness: number;
+  readonly openFaceStableIds: readonly string[];
+}
+
+export interface ExactImportedBodyMetadataSource {
+  readonly kind: "importedBody";
+  readonly brepBytes: Uint8Array;
 }
 
 export interface ExactBodyMetadataRequest {
@@ -824,10 +864,21 @@ export interface GeometryKernelExactBodyMetadata {
   readonly volume: number;
   readonly surfaceArea: number;
   readonly centroid: readonly [number, number, number];
+  readonly momentsOfInertia?: GeometryKernelInertiaTensor;
+  readonly principalMoments?: readonly [number, number, number];
   readonly topologyCounts: GeometryKernelTopologyCounts;
   readonly measurementSource: GeometryKernelMeasurementSource;
   readonly measurementConfidence: GeometryKernelMeasurementConfidence;
   readonly diagnostics: readonly GeometryKernelExactMetadataDiagnostic[];
+}
+
+export interface GeometryKernelInertiaTensor {
+  readonly xx: number;
+  readonly yy: number;
+  readonly zz: number;
+  readonly xy: number;
+  readonly xz: number;
+  readonly yz: number;
 }
 
 export type GeometryKernelTopologySnapshotStatus = "ready" | "partial";
@@ -2558,6 +2609,59 @@ function validateExactBodyMetadataSource(
       : createInvalidExactBodyMetadataSourceError();
   }
 
+  if (source.kind === "linearPattern") {
+    return validateRequest({
+      id: "exact-metadata-validation",
+      version: "geometry-kernel.v1",
+      op: "geometry.linearPattern",
+      seed: source.seed,
+      direction: source.direction,
+      spacing: source.spacing,
+      instanceCount: source.instanceCount
+    });
+  }
+
+  if (source.kind === "circularPattern") {
+    return validateRequest({
+      id: "exact-metadata-validation",
+      version: "geometry-kernel.v1",
+      op: "geometry.circularPattern",
+      seed: source.seed,
+      axis: source.axis,
+      totalAngleDegrees: source.totalAngleDegrees,
+      instanceCount: source.instanceCount
+    });
+  }
+
+  if (source.kind === "mirror") {
+    return validateRequest({
+      id: "exact-metadata-validation",
+      version: "geometry-kernel.v1",
+      op: "geometry.mirror",
+      seed: source.seed,
+      plane: source.plane,
+      includeOriginal: source.includeOriginal
+    });
+  }
+
+  if (source.kind === "shell") {
+    return validateRequest({
+      id: "exact-metadata-validation",
+      version: "geometry-kernel.v1",
+      op: "geometry.shell",
+      target: source.target,
+      wallThickness: source.wallThickness,
+      openFaceStableIds: source.openFaceStableIds
+    });
+  }
+
+  if (source.kind === "importedBody") {
+    return source.brepBytes instanceof Uint8Array &&
+      source.brepBytes.byteLength > 0
+      ? undefined
+      : createInvalidExactBodyMetadataSourceError();
+  }
+
   return createInvalidExactBodyMetadataSourceError();
 }
 
@@ -2565,7 +2669,7 @@ function createInvalidExactBodyMetadataSourceError(): GeometryKernelError {
   return {
     code: "INVALID_DIMENSIONS",
     message:
-      "Exact body metadata requests require supported extrude, booleanExtrudes, revolve, hole, edgeFinish, sweep, or loft source data with finite dimensions."
+      "Exact body metadata requests require supported authored, pattern, mirror, shell, or imported body source data with finite dimensions."
   };
 }
 
@@ -2588,10 +2692,19 @@ function isInvalidExactBodyMetadata(
       metadata.sourceKind !== "hole" &&
       metadata.sourceKind !== "edgeFinish" &&
       metadata.sourceKind !== "sweep" &&
-      metadata.sourceKind !== "loft") ||
+      metadata.sourceKind !== "loft" &&
+      metadata.sourceKind !== "linearPattern" &&
+      metadata.sourceKind !== "circularPattern" &&
+      metadata.sourceKind !== "mirror" &&
+      metadata.sourceKind !== "shell" &&
+      metadata.sourceKind !== "importedBody") ||
     !isVec3(metadata.bounds.min) ||
     !isVec3(metadata.bounds.max) ||
     !isVec3(metadata.centroid) ||
+    (metadata.momentsOfInertia !== undefined &&
+      !isValidInertiaTensor(metadata.momentsOfInertia)) ||
+    (metadata.principalMoments !== undefined &&
+      !isVec3(metadata.principalMoments)) ||
     !isFiniteNumber(metadata.volume) ||
     !isFiniteNumber(metadata.surfaceArea) ||
     metadata.volume < 0 ||
@@ -2610,6 +2723,17 @@ function isInvalidExactBodyMetadata(
         typeof diagnostic.message !== "string" ||
         diagnostic.message.trim().length === 0
     )
+  );
+}
+
+function isValidInertiaTensor(value: GeometryKernelInertiaTensor): boolean {
+  return (
+    isFiniteNumber(value.xx) &&
+    isFiniteNumber(value.yy) &&
+    isFiniteNumber(value.zz) &&
+    isFiniteNumber(value.xy) &&
+    isFiniteNumber(value.xz) &&
+    isFiniteNumber(value.yz)
   );
 }
 
@@ -2765,6 +2889,10 @@ function isExactTopologySourceKind(
     value === "edgeFinish" ||
     value === "sweep" ||
     value === "loft" ||
+    value === "linearPattern" ||
+    value === "circularPattern" ||
+    value === "mirror" ||
+    value === "shell" ||
     value === "importedBody"
   );
 }

@@ -255,6 +255,12 @@ describe("occt-wasm", () => {
       const brepText = new TextDecoder().decode(
         body.checkpointPayload.brepBytes
       );
+      const importedMetadata = await createOcctExactBodyMetadata({
+        source: {
+          kind: "importedBody",
+          brepBytes: body.checkpointPayload.brepBytes
+        }
+      });
 
       expect(importResult).toMatchObject({
         sourceFormat: "step",
@@ -288,6 +294,9 @@ describe("occt-wasm", () => {
       );
       expect(body.checkpointPayload.brepByteLength).toBeGreaterThan(1000);
       expect(brepText).toContain("CASCADE Topology");
+      expect(importedMetadata.sourceKind).toBe("importedBody");
+      expect(importedMetadata.volume).toBeCloseTo(6, 6);
+      expect(importedMetadata.momentsOfInertia.xx).toBeGreaterThan(0);
       expect(body.checkpointPayload.signaturePayload).toMatchObject({
         checkpointId: "checkpoint_imported_roundtrip",
         signature: body.topologySnapshot.signature,
@@ -1085,6 +1094,67 @@ describe("occt-wasm", () => {
       expect(metadata.measurementSource).toBe("kernel-derived");
       expect(metadata.measurementConfidence).toBe("kernel-derived");
       expect(metadata.diagnostics).toEqual([]);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "returns exact pattern, mirror, and shell metadata with inertia",
+    async () => {
+      const seed = {
+        kind: "extrude" as const,
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "rectangle" as const,
+          center: [1, 0] as const,
+          width: 1,
+          height: 1
+        },
+        depth: 1,
+        side: "positive" as const
+      };
+      const [pattern, mirror, shell] = await Promise.all([
+        createOcctExactBodyMetadata({
+          source: {
+            kind: "linearPattern",
+            seed,
+            direction: [1, 0, 0],
+            spacing: 3,
+            instanceCount: 3
+          }
+        }),
+        createOcctExactBodyMetadata({
+          source: {
+            kind: "mirror",
+            seed,
+            plane: { point: [0, 0, 0], normal: [1, 0, 0] },
+            includeOriginal: true
+          }
+        }),
+        createOcctExactBodyMetadata({
+          source: {
+            kind: "shell",
+            target: seed,
+            wallThickness: 0.2,
+            openFaceStableIds: ["generated:face:body_1:endCap"]
+          }
+        })
+      ]);
+
+      expect(pattern).toMatchObject({
+        sourceKind: "linearPattern",
+        topologyCounts: { solidCount: 3 }
+      });
+      expect(pattern.volume).toBeCloseTo(3, 6);
+      expect(mirror.sourceKind).toBe("mirror");
+      expect(mirror.volume).toBeCloseTo(2, 6);
+      expect(shell.sourceKind).toBe("shell");
+      expect(shell.volume).toBeGreaterThan(0);
+      for (const metadata of [pattern, mirror, shell]) {
+        expect(metadata.momentsOfInertia.xx).toBeGreaterThan(0);
+        expect(metadata.principalMoments).toHaveLength(3);
+        expect(metadata.principalMoments.every(Number.isFinite)).toBe(true);
+      }
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );

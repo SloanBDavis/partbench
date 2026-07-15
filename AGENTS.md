@@ -16,9 +16,9 @@ The current implementation source of truth is:
 - `docs/v13.md` — completed V13 general topology identity and B-rep checkpoint foundation release record
 - `docs/v14.md` — completed V14 topology-backed downstream modeling release record
 - `docs/v15.md` — completed V15 STEP import, expanded feature families, and parameter expressions release record
-- `docs/v16.md` — approved V16 release contract: sweep, loft, pattern depth, expression extensions, and mass properties (product work not started)
+- `docs/v16.md` — completed V16 sweep, loft, pattern depth, expression extensions, and mass properties release record
 
-Do not attempt to build the entire architecture at once. Implement only the milestone requested by the user. V16 is planned and approved in `docs/v16.md`; implement only the V16 slice or PR the user requests, following that contract.
+Do not attempt to build the entire architecture at once. Implement only the milestone requested by the user. V16 is complete; follow `docs/v16.md` for its compatibility and support contract.
 
 ## Core Architectural Rules
 

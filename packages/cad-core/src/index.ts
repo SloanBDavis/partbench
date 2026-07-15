@@ -2302,17 +2302,162 @@ export class CadEngine {
         };
       }
 
-      case "body.massProperties":
+      case "body.massProperties": {
+        const { bodyId, derivedExactMetadata } = request.query;
+        const density = request.query.density ?? 1;
+        if (!Number.isFinite(density) || density <= 0) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: {
+              code: "MASS_PROPERTIES_INVALID_DENSITY",
+              message:
+                "Mass-properties density must be a finite number greater than zero.",
+              bodyId
+            }
+          };
+        }
+
+        const structure = createProjectStructure(
+          this.#document,
+          this.#history.map((entry) => entry.transaction)
+        );
+        const body = structure.bodies.find(
+          (candidate) => candidate.id === bodyId
+        );
+        if (!body) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: {
+              code: "BODY_NOT_FOUND",
+              message: `Body does not exist: ${bodyId}`,
+              bodyId
+            }
+          };
+        }
+
+        if (body.consumedByFeatureId) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: {
+              code: "MASS_PROPERTIES_BODY_CONSUMED",
+              message: `Body ${bodyId} is consumed by feature ${body.consumedByFeatureId}; query the active result body instead.`,
+              bodyId,
+              featureId: body.consumedByFeatureId
+            }
+          };
+        }
+
+        const topology = createBodyTopology({
+          document: this.#document,
+          bodyId,
+          units: this.#document.units,
+          ownerPartId: DEFAULT_PART_ID,
+          bodyExists: (candidateBodyId) =>
+            structure.bodies.some(
+              (candidate) => candidate.id === candidateBodyId
+            )
+        });
+        if (!topology.ok || !derivedExactMetadata) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: {
+              code: "MASS_PROPERTIES_UNAVAILABLE",
+              message: `Kernel-derived exact metadata is unavailable for body ${bodyId}.`,
+              bodyId
+            }
+          };
+        }
+
+        if (
+          derivedExactMetadata.bodyId !== bodyId ||
+          derivedExactMetadata.sourceIdentitySignature !==
+            topology.topology.sourceIdentity.signature ||
+          derivedExactMetadata.status === "stale"
+        ) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: {
+              code: "MASS_PROPERTIES_STALE",
+              message: `Kernel-derived exact metadata is stale for body ${bodyId}.`,
+              bodyId
+            }
+          };
+        }
+
+        const metadata = derivedExactMetadata.metadata;
+        const volume = metadata?.volume;
+        const surfaceArea = metadata?.surfaceArea;
+        if (
+          derivedExactMetadata.status !== "ready" ||
+          !metadata ||
+          typeof volume !== "number" ||
+          !Number.isFinite(volume) ||
+          typeof surfaceArea !== "number" ||
+          !Number.isFinite(surfaceArea) ||
+          !metadata.centroid ||
+          volume < 0 ||
+          surfaceArea < 0
+        ) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: {
+              code: "MASS_PROPERTIES_UNAVAILABLE",
+              message: `Ready volume, surface-area, and centroid metadata is unavailable for body ${bodyId}.`,
+              bodyId
+            }
+          };
+        }
+
+        const scaleTensor = (value: number) => value * density;
         return {
-          ok: false,
+          ok: true,
           query: request.query.query,
           cadOpsVersion: request.version,
-          error: {
-            code: "MASS_PROPERTIES_UNAVAILABLE",
-            message: "Mass-properties projection lands in V16 Slice G1.",
-            bodyId: request.query.bodyId
+          massProperties: {
+            bodyId,
+            density,
+            volume,
+            surfaceArea,
+            centerOfMass: metadata.centroid,
+            mass: density * volume,
+            units: this.#document.units,
+            ...(metadata.momentsOfInertia
+              ? {
+                  momentsOfInertia: {
+                    xx: scaleTensor(metadata.momentsOfInertia.xx),
+                    yy: scaleTensor(metadata.momentsOfInertia.yy),
+                    zz: scaleTensor(metadata.momentsOfInertia.zz),
+                    xy: scaleTensor(metadata.momentsOfInertia.xy),
+                    xz: scaleTensor(metadata.momentsOfInertia.xz),
+                    yz: scaleTensor(metadata.momentsOfInertia.yz)
+                  }
+                }
+              : {}),
+            ...(metadata.principalMoments
+              ? {
+                  principalMoments: metadata.principalMoments.map(
+                    scaleTensor
+                  ) as [number, number, number]
+                }
+              : {}),
+            measurementSource: "kernel-derived",
+            measurementConfidence: "kernel-derived",
+            diagnostics: metadata.diagnostics
           }
         };
+      }
 
       case "body.generatedReferenceMeasurements": {
         const { bodyId, stableId } = request.query;
@@ -7090,10 +7235,7 @@ function isCadQuery(value: unknown): boolean {
     case "body.massProperties":
       return (
         typeof value.bodyId === "string" &&
-        (value.density === undefined ||
-          (typeof value.density === "number" &&
-            Number.isFinite(value.density) &&
-            value.density > 0)) &&
+        (value.density === undefined || typeof value.density === "number") &&
         (value.derivedExactMetadata === undefined ||
           isCadBodyDerivedExactMetadataSnapshot(value.derivedExactMetadata))
       );
@@ -7614,6 +7756,21 @@ function isCadBodyExactMetadataSnapshotWithoutStatus(
       (typeof value.surfaceArea === "number" &&
         Number.isFinite(value.surfaceArea))) &&
     (value.centroid === undefined || isVec3(value.centroid)) &&
+    (value.momentsOfInertia === undefined ||
+      (isRecord(value.momentsOfInertia) &&
+        typeof value.momentsOfInertia.xx === "number" &&
+        Number.isFinite(value.momentsOfInertia.xx) &&
+        typeof value.momentsOfInertia.yy === "number" &&
+        Number.isFinite(value.momentsOfInertia.yy) &&
+        typeof value.momentsOfInertia.zz === "number" &&
+        Number.isFinite(value.momentsOfInertia.zz) &&
+        typeof value.momentsOfInertia.xy === "number" &&
+        Number.isFinite(value.momentsOfInertia.xy) &&
+        typeof value.momentsOfInertia.xz === "number" &&
+        Number.isFinite(value.momentsOfInertia.xz) &&
+        typeof value.momentsOfInertia.yz === "number" &&
+        Number.isFinite(value.momentsOfInertia.yz))) &&
+    (value.principalMoments === undefined || isVec3(value.principalMoments)) &&
     (value.topologyCounts === undefined ||
       isCadBodyExactMetadataTopologyCounts(value.topologyCounts)) &&
     (value.topologySnapshot === undefined ||

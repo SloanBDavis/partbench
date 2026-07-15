@@ -30,7 +30,8 @@ import {
   type DerivedHoleGeometrySource,
   type DerivedRevolveGeometrySource,
   type DerivedSweepGeometrySource,
-  type DerivedLoftGeometrySource
+  type DerivedLoftGeometrySource,
+  type DerivedLinearPatternGeometrySource
 } from "./derivedGeometry";
 import { createDerivedGeometrySourcesFromDocument } from "./derivedGeometrySources";
 import type {
@@ -42,6 +43,43 @@ import type {
 import { createGeneratedFaceReferenceKey } from "./sketchDisplayFrames";
 
 describe("derivedExactMetadata", () => {
+  it("builds exact metadata inputs for pattern sources", () => {
+    const seed = createExtrudeSource("body_seed");
+    const source: DerivedLinearPatternGeometrySource = {
+      id: "body_pattern",
+      kind: "linearPattern",
+      seed,
+      direction: [1, 0, 0],
+      spacing: 3,
+      instanceCount: 3
+    };
+    expect(createExactMetadataRuntimeInput(source)).toEqual({
+      id: "body_pattern",
+      source: {
+        kind: "linearPattern",
+        seed: expect.objectContaining({ kind: "extrude", depth: seed.depth }),
+        direction: [1, 0, 0],
+        spacing: 3,
+        instanceCount: 3
+      }
+    });
+  });
+
+  it("builds exact metadata inputs for imported BRep checkpoints", () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    expect(
+      createExactMetadataRuntimeInput({
+        id: "body_imported",
+        kind: "importedBody",
+        checkpointId: "checkpoint_imported",
+        brepBytes: bytes
+      })
+    ).toEqual({
+      id: "body_imported",
+      source: { kind: "importedBody", brepBytes: bytes }
+    });
+  });
+
   it("builds exact metadata inputs for loft sources", () => {
     const source: DerivedLoftGeometrySource = {
       id: "body_loft",
@@ -1775,7 +1813,12 @@ function createMetadataResult(
     | "hole"
     | "edgeFinish"
     | "sweep"
-    | "loft",
+    | "loft"
+    | "linearPattern"
+    | "circularPattern"
+    | "mirror"
+    | "shell"
+    | "importedBody",
   volume = 10
 ): DerivedExactMetadataResult {
   return {

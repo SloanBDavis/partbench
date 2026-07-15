@@ -269,7 +269,7 @@ export function withOcctPatternSeedShape<T>(
   return withOcctEdgeFinishResultShape(oc, seed, (shape) => readShape(shape));
 }
 
-function makeLinearPatternShape(
+export function makeLinearPatternShape(
   oc: OpenCascadeInstance,
   seedShape: TopoDS_Shape,
   input: Pick<OcctLinearPatternInput, "direction" | "spacing" | "instanceCount">
@@ -339,7 +339,7 @@ function makeLinearPatternShape(
   }
 }
 
-function makeCircularPatternShape(
+export function makeCircularPatternShape(
   oc: OpenCascadeInstance,
   seedShape: TopoDS_Shape,
   input: Pick<

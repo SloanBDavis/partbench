@@ -16,6 +16,7 @@ import type {
   FeatureHoleDepthMode,
   FeatureHoleDirection,
   CadReferenceHealthEntry,
+  CadMassPropertiesSnapshot,
   CadSelectionReferenceOperation,
   NamedGeneratedReferenceEntry,
   SelectionReferenceCandidatesQueryResponse
@@ -100,7 +101,8 @@ import {
   getObjectDisplayName,
   formatObjectKind,
   formatVector,
-  formatVolume
+  formatVolume,
+  formatArea
 } from "../sceneObjectDisplay";
 import { formatExtrudeOperationMode } from "../structurePanelUi";
 import type { TopologyRepairCandidatePreviewState } from "../topologyRepairCandidatesUi";
@@ -115,6 +117,8 @@ export function Inspector({
   bodyTopology,
   bodyTopologyError,
   bodyTopologyExactMetadataStatus,
+  bodyMassProperties,
+  bodyMassPropertiesError,
   feature,
   featureEditability,
   generatedReferences,
@@ -160,6 +164,8 @@ export function Inspector({
   readonly bodyTopology?: CadBodyTopologySnapshot;
   readonly bodyTopologyError?: string;
   readonly bodyTopologyExactMetadataStatus?: string;
+  readonly bodyMassProperties?: CadMassPropertiesSnapshot;
+  readonly bodyMassPropertiesError?: string;
   readonly feature?: CadFeatureSummary;
   readonly featureEditability?: FeatureEditabilityQueryResponse;
   readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
@@ -249,6 +255,8 @@ export function Inspector({
         bodyTopology,
         bodyTopologyError,
         bodyTopologyExactMetadataStatus,
+        bodyMassProperties,
+        bodyMassPropertiesError,
         disabled,
         feature,
         featureEditability,
@@ -309,6 +317,8 @@ function renderInspectorSelection(input: {
   readonly bodyTopology?: CadBodyTopologySnapshot;
   readonly bodyTopologyError?: string;
   readonly bodyTopologyExactMetadataStatus?: string;
+  readonly bodyMassProperties?: CadMassPropertiesSnapshot;
+  readonly bodyMassPropertiesError?: string;
   readonly disabled: boolean;
   readonly feature?: CadFeatureSummary;
   readonly featureEditability?: FeatureEditabilityQueryResponse;
@@ -398,6 +408,8 @@ function renderInspectorSelection(input: {
         topologyExactMetadataStatus={input.bodyTopologyExactMetadataStatus}
         topology={input.bodyTopology}
         topologyError={input.bodyTopologyError}
+        massProperties={input.bodyMassProperties}
+        massPropertiesError={input.bodyMassPropertiesError}
         disabled={input.disabled}
         feature={input.feature}
         featureEditability={input.featureEditability}
@@ -505,6 +517,8 @@ function BodyInspector({
   generatedReferenceMeasurements,
   measurements,
   measurementsError,
+  massProperties,
+  massPropertiesError,
   namedReferences,
   namedReferenceHealthByName,
   onCreateSketchOnFace,
@@ -545,6 +559,8 @@ function BodyInspector({
   >;
   readonly measurements?: BodyMeasurementsSnapshot;
   readonly measurementsError?: string;
+  readonly massProperties?: CadMassPropertiesSnapshot;
+  readonly massPropertiesError?: string;
   readonly topology?: CadBodyTopologySnapshot;
   readonly topologyExactMetadataStatus?: string;
   readonly topologyError?: string;
@@ -654,6 +670,10 @@ function BodyInspector({
         error={measurementsError}
         measurements={measurements}
         units={units}
+      />
+      <BodyMassPropertiesPanel
+        error={massPropertiesError}
+        massProperties={massProperties}
       />
       <BodyTopologyPanel
         error={topologyError}
@@ -875,6 +895,53 @@ function BodyMeasurementPanel({
               <dd>{row.value}</dd>
             </div>
           ))}
+        </dl>
+      )}
+    </section>
+  );
+}
+
+function BodyMassPropertiesPanel({
+  error,
+  massProperties
+}: {
+  readonly error?: string;
+  readonly massProperties?: CadMassPropertiesSnapshot;
+}) {
+  if (!massProperties && !error) return null;
+
+  return (
+    <section className="command-card nested">
+      <div className="command-card-heading">
+        <h3>Mass properties</h3>
+      </div>
+      {error && <p className="empty-state compact">{error}</p>}
+      {massProperties && (
+        <dl>
+          <div>
+            <dt>Volume</dt>
+            <dd>{formatVolume(massProperties.volume, massProperties.units)}</dd>
+          </div>
+          <div>
+            <dt>Surface area</dt>
+            <dd>
+              {formatArea(massProperties.surfaceArea, massProperties.units)}
+            </dd>
+          </div>
+          <div>
+            <dt>Center of mass</dt>
+            <dd>{formatVector(massProperties.centerOfMass)}</dd>
+          </div>
+          <div>
+            <dt>Mass</dt>
+            <dd>{formatVolume(massProperties.mass)}</dd>
+          </div>
+          {massProperties.principalMoments && (
+            <div>
+              <dt>Principal moments</dt>
+              <dd>{formatVector(massProperties.principalMoments)}</dd>
+            </div>
+          )}
         </dl>
       )}
     </section>

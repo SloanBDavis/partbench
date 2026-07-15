@@ -770,16 +770,7 @@ function createUnsupportedAuthoredFeatureTopology(
   units: DocumentUnits,
   feature: GeneratedReferencesFeature
 ): CadBodyTopologySnapshot {
-  const sourceKind =
-    feature.kind === "revolve"
-      ? "authoredRevolve"
-      : feature.kind === "hole"
-        ? "authoredHole"
-        : feature.kind === "chamfer"
-          ? "authoredChamfer"
-          : feature.kind === "fillet"
-            ? "authoredFillet"
-            : "authoredExtrude";
+  const sourceKind = createAuthoredFeatureTopologySourceKind(feature);
   const sourceIdentityInput: Omit<CadBodyTopologySourceIdentity, "signature"> =
     feature.kind === "revolve"
       ? createRevolveSourceIdentityInput(document, bodyId, units, feature)
@@ -793,7 +784,10 @@ function createUnsupportedAuthoredFeatureTopology(
                 bodyId,
                 sourceKind,
                 units,
-                featureId: feature.id
+                featureId: feature.id,
+                featureSourceSignature: sha256Hex(
+                  new TextEncoder().encode(JSON.stringify(feature))
+                )
               };
   const sourceIdentity: CadBodyTopologySourceIdentity = {
     ...sourceIdentityInput,
@@ -818,6 +812,37 @@ function createUnsupportedAuthoredFeatureTopology(
       }
     ]
   });
+}
+
+function createAuthoredFeatureTopologySourceKind(
+  feature: GeneratedReferencesFeature
+): CadBodyTopologySourceIdentity["sourceKind"] {
+  switch (feature.kind) {
+    case "extrude":
+      return "authoredExtrude";
+    case "revolve":
+      return "authoredRevolve";
+    case "hole":
+      return "authoredHole";
+    case "chamfer":
+      return "authoredChamfer";
+    case "fillet":
+      return "authoredFillet";
+    case "importedBody":
+      return "importedBody";
+    case "linearPattern":
+      return "authoredLinearPattern";
+    case "circularPattern":
+      return "authoredCircularPattern";
+    case "mirror":
+      return "authoredMirror";
+    case "shell":
+      return "authoredShell";
+    case "sweep":
+      return "authoredSweep";
+    case "loft":
+      return "authoredLoft";
+  }
 }
 
 function createChamferSourceIdentityInput(

@@ -4201,6 +4201,37 @@ describe("agent-adapter", () => {
     expect(JSON.stringify(withExactMetadata)).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
     );
+
+    const massProperties = adapter.query({
+      requestId: "agent_mass_properties",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: {
+          query: "body.massProperties",
+          bodyId: "body_topology",
+          density: 2,
+          derivedExactMetadata: {
+            bodyId: "body_topology",
+            sourceIdentitySignature: response.topology.sourceIdentity.signature,
+            status: "ready",
+            metadata: {
+              source: "kernel-derived",
+              confidence: "kernel-derived",
+              volume: 24,
+              surfaceArea: 52,
+              centroid: [2, 1, 1.5],
+              diagnostics: []
+            }
+          }
+        }
+      }
+    });
+    expect(massProperties).toMatchObject({
+      ok: true,
+      query: "body.massProperties",
+      massProperties: { bodyId: "body_topology", density: 2, mass: 48 }
+    });
   });
 
   it("passes body topology identity candidate queries through the adapter", () => {
@@ -5498,6 +5529,7 @@ describe("agent-adapter", () => {
           eligibleOperations: [
             "feature.attachSketchPlane",
             "feature.shell",
+            "feature.mirrorPlane",
             "feature.measureReference",
             "feature.selectReference"
           ]
@@ -5523,6 +5555,8 @@ describe("agent-adapter", () => {
           eligibleOperations: [
             "feature.chamfer",
             "feature.fillet",
+            "feature.linearPatternDirection",
+            "feature.circularPatternAxis",
             "feature.measureReference",
             "feature.selectReference"
           ],

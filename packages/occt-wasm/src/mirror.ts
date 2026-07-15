@@ -78,7 +78,7 @@ export function createOcctMirrorMeshWithInstance(
   });
 }
 
-function makeMirrorShape(
+export function makeMirrorShape(
   oc: OpenCascadeInstance,
   seedShape: TopoDS_Shape,
   input: Pick<OcctMirrorInput, "plane" | "includeOriginal">

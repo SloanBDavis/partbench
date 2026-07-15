@@ -13,13 +13,18 @@ import type {
   DerivedHoleGeometrySource,
   DerivedRevolveGeometrySource,
   DerivedSweepGeometrySource,
-  DerivedLoftGeometrySource
+  DerivedLoftGeometrySource,
+  DerivedLinearPatternGeometrySource,
+  DerivedCircularPatternGeometrySource,
+  DerivedMirrorGeometrySource,
+  DerivedShellGeometrySource
 } from "./derivedGeometry";
 import { createDerivedGeometryCacheKey } from "./derivedGeometry";
 import {
   createDerivedGeometryErrorDetails,
   type DerivedGeometryBooleanExtrudeInputSource,
   type DerivedGeometryBooleanExtrudePrimitiveInputSource,
+  type DerivedGeometryPatternSeedSource,
   type DerivedExactBodyMetadata,
   type DerivedExactMetadataMetrics,
   type DerivedExactMetadataResult,
@@ -39,7 +44,23 @@ export type DerivedExactMetadataSource =
   | DerivedHoleGeometrySource
   | DerivedEdgeFinishGeometrySource
   | DerivedSweepGeometrySource
-  | DerivedLoftGeometrySource;
+  | DerivedLoftGeometrySource
+  | DerivedLinearPatternGeometrySource
+  | DerivedCircularPatternGeometrySource
+  | DerivedMirrorGeometrySource
+  | DerivedShellGeometrySource
+  | DerivedImportedBodyExactMetadataSource;
+
+export interface DerivedImportedBodyExactMetadataSource {
+  readonly id: string;
+  readonly kind: "importedBody";
+  readonly checkpointId: string;
+  readonly brepBytes: Uint8Array;
+}
+
+type DerivedExactMetadataCandidate =
+  | DerivedGeometrySource
+  | DerivedImportedBodyExactMetadataSource;
 
 export type DerivedExactMetadataEntry =
   | DerivedExactMetadataUnsupportedEntry
@@ -111,7 +132,7 @@ export class DerivedExactMetadataService {
     return createDerivedExactMetadataSnapshot(this.#entries, this.#sourceOrder);
   }
 
-  reconcile(sources: readonly DerivedGeometrySource[]): void {
+  reconcile(sources: readonly DerivedExactMetadataCandidate[]): void {
     if (this.#disposed) {
       return;
     }
@@ -288,6 +309,15 @@ export function createEmptyDerivedExactMetadataSnapshot(): DerivedExactMetadataS
 export function createDerivedExactMetadataCacheKey(
   source: DerivedExactMetadataSource
 ): string {
+  if (source.kind === "importedBody") {
+    return JSON.stringify({
+      kind: "exactMetadata",
+      sourceKind: source.kind,
+      bodyId: source.id,
+      checkpointId: source.checkpointId,
+      byteLength: source.brepBytes.byteLength
+    });
+  }
   return JSON.stringify({
     kind: "exactMetadata",
     source: createDerivedGeometryCacheKey(source)
@@ -405,6 +435,12 @@ export function formatDerivedExactMetadataEntryStatus(
 export function createExactMetadataRuntimeInput(
   source: DerivedExactMetadataSource
 ): Parameters<DerivedGeometryRuntime["exactBodyMetadata"]>[0] {
+  if (source.kind === "importedBody") {
+    return {
+      id: source.id,
+      source: { kind: "importedBody", brepBytes: source.brepBytes }
+    };
+  }
   if (source.kind === "extrude") {
     return {
       id: source.id,
@@ -452,6 +488,56 @@ export function createExactMetadataRuntimeInput(
     return {
       id: source.id,
       source: { kind: "loft", sections: source.sections }
+    };
+  }
+
+  if (source.kind === "linearPattern") {
+    return {
+      id: source.id,
+      source: {
+        kind: "linearPattern",
+        seed: createExactPatternSeedRuntimeSource(source.seed),
+        direction: source.direction,
+        spacing: source.spacing,
+        instanceCount: source.instanceCount
+      }
+    };
+  }
+
+  if (source.kind === "circularPattern") {
+    return {
+      id: source.id,
+      source: {
+        kind: "circularPattern",
+        seed: createExactPatternSeedRuntimeSource(source.seed),
+        axis: source.axis,
+        totalAngleDegrees: source.totalAngleDegrees,
+        instanceCount: source.instanceCount
+      }
+    };
+  }
+
+  if (source.kind === "mirror") {
+    return {
+      id: source.id,
+      source: {
+        kind: "mirror",
+        seed: createExactPatternSeedRuntimeSource(source.seed),
+        plane: source.plane,
+        includeOriginal: source.includeOriginal
+      }
+    };
+  }
+
+  if (source.kind === "shell") {
+    return {
+      id: source.id,
+      source: {
+        kind: "shell",
+        target: createExactPatternSeedRuntimeSource(source.target),
+        wallThickness: source.wallThickness,
+        openFaceStableIds: source.openFaceStableIds
+      }
     };
   }
 
@@ -525,6 +611,15 @@ function createExactMetadataBooleanRuntimeSource(
   return createExactMetadataPrimitiveBooleanRuntimeSource(source);
 }
 
+function createExactPatternSeedRuntimeSource(
+  source: DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource
+): DerivedGeometryPatternSeedSource {
+  const runtimeSource = createExactMetadataBooleanRuntimeSource(source);
+  return "profile" in runtimeSource
+    ? { kind: "extrude", ...runtimeSource }
+    : runtimeSource;
+}
+
 function createExactMetadataPrimitiveBooleanRuntimeSource(
   source: DerivedExtrudeGeometrySource
 ): DerivedGeometryBooleanExtrudePrimitiveInputSource {
@@ -547,6 +642,12 @@ function createCadExactMetadata(
     volume: metadata.volume,
     surfaceArea: metadata.surfaceArea,
     centroid: metadata.centroid,
+    ...(metadata.momentsOfInertia
+      ? { momentsOfInertia: metadata.momentsOfInertia }
+      : {}),
+    ...(metadata.principalMoments
+      ? { principalMoments: metadata.principalMoments }
+      : {}),
     topologyCounts: metadata.topologyCounts,
     diagnostics: metadata.diagnostics.map(createCadExactMetadataDiagnostic)
   };
@@ -595,7 +696,7 @@ function createPendingEntry(
 }
 
 function isExactMetadataSource(
-  source: DerivedGeometrySource
+  source: DerivedExactMetadataCandidate
 ): source is DerivedExactMetadataSource {
   return (
     source.kind === "extrude" ||
@@ -604,13 +705,19 @@ function isExactMetadataSource(
     source.kind === "hole" ||
     source.kind === "edgeFinish" ||
     source.kind === "sweep" ||
-    source.kind === "loft"
+    source.kind === "loft" ||
+    source.kind === "linearPattern" ||
+    source.kind === "circularPattern" ||
+    source.kind === "mirror" ||
+    source.kind === "shell" ||
+    source.kind === "importedBody"
   );
 }
 
 function getUnsupportedExactMetadataSourceMessage(
   source: DerivedExactMetadataSource
 ): string | undefined {
+  if (source.kind === "importedBody") return undefined;
   if (source.kind === "extrude") {
     return source.placementError;
   }
@@ -624,6 +731,15 @@ function getUnsupportedExactMetadataSourceMessage(
   }
 
   if (source.kind === "loft") {
+    return source.placementError;
+  }
+
+  if (
+    source.kind === "linearPattern" ||
+    source.kind === "circularPattern" ||
+    source.kind === "mirror" ||
+    source.kind === "shell"
+  ) {
     return source.placementError;
   }
 

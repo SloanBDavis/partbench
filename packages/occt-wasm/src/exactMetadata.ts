@@ -25,6 +25,16 @@ import {
 } from "./edgeFinish";
 import type { OcctLoader } from "./tessellateBox";
 import { makeLoftShape, type OcctLoftSection } from "./loft";
+import {
+  makeCircularPatternShape,
+  makeLinearPatternShape,
+  withOcctPatternSeedShape,
+  type OcctAxisFrame,
+  type OcctDirection,
+  type OcctPatternSeedSource
+} from "./pattern";
+import { makeMirrorShape, type OcctMirrorPlaneFrame } from "./mirror";
+import { makeShellShape } from "./shell";
 
 const TOPOLOGY_EVIDENCE_TOLERANCE = 1e-6;
 
@@ -34,6 +44,11 @@ export type OcctExactBodyMetadataSource =
   | OcctExactRevolveMetadataSource
   | OcctExactSweepMetadataSource
   | OcctExactLoftMetadataSource
+  | OcctExactLinearPatternMetadataSource
+  | OcctExactCircularPatternMetadataSource
+  | OcctExactMirrorMetadataSource
+  | OcctExactShellMetadataSource
+  | OcctExactImportedBodyMetadataSource
   | OcctExactHoleMetadataSource
   | OcctExactEdgeFinishMetadataSource;
 
@@ -63,6 +78,41 @@ export interface OcctExactSweepMetadataSource {
 export interface OcctExactLoftMetadataSource {
   readonly kind: "loft";
   readonly sections: readonly OcctLoftSection[];
+}
+
+export interface OcctExactLinearPatternMetadataSource {
+  readonly kind: "linearPattern";
+  readonly seed: OcctPatternSeedSource;
+  readonly direction: OcctDirection;
+  readonly spacing: number;
+  readonly instanceCount: number;
+}
+
+export interface OcctExactCircularPatternMetadataSource {
+  readonly kind: "circularPattern";
+  readonly seed: OcctPatternSeedSource;
+  readonly axis: OcctAxisFrame;
+  readonly totalAngleDegrees: number;
+  readonly instanceCount: number;
+}
+
+export interface OcctExactMirrorMetadataSource {
+  readonly kind: "mirror";
+  readonly seed: OcctPatternSeedSource;
+  readonly plane: OcctMirrorPlaneFrame;
+  readonly includeOriginal: boolean;
+}
+
+export interface OcctExactShellMetadataSource {
+  readonly kind: "shell";
+  readonly target: OcctPatternSeedSource;
+  readonly wallThickness: number;
+  readonly openFaceStableIds: readonly string[];
+}
+
+export interface OcctExactImportedBodyMetadataSource {
+  readonly kind: "importedBody";
+  readonly brepBytes: Uint8Array;
 }
 
 export interface OcctExactHoleMetadataSource {
@@ -98,6 +148,15 @@ export interface OcctExactBodyMetadata {
   readonly volume: number;
   readonly surfaceArea: number;
   readonly centroid: readonly [number, number, number];
+  readonly momentsOfInertia: {
+    readonly xx: number;
+    readonly yy: number;
+    readonly zz: number;
+    readonly xy: number;
+    readonly xz: number;
+    readonly yz: number;
+  };
+  readonly principalMoments: readonly [number, number, number];
   readonly topologyCounts: {
     readonly solidCount: number;
     readonly faceCount: number;
@@ -374,6 +433,56 @@ export function withOcctExactBodyShape<T>(
     }
   }
 
+  if (source.kind === "linearPattern") {
+    return withOcctPatternSeedShape(oc, source.seed, (seedShape) => {
+      const shape = makeLinearPatternShape(oc, seedShape, source);
+      try {
+        return readShape(shape, source.kind);
+      } finally {
+        shape.delete();
+      }
+    });
+  }
+
+  if (source.kind === "circularPattern") {
+    return withOcctPatternSeedShape(oc, source.seed, (seedShape) => {
+      const shape = makeCircularPatternShape(oc, seedShape, source);
+      try {
+        return readShape(shape, source.kind);
+      } finally {
+        shape.delete();
+      }
+    });
+  }
+
+  if (source.kind === "mirror") {
+    return withOcctPatternSeedShape(oc, source.seed, (seedShape) => {
+      const shape = makeMirrorShape(oc, seedShape, source);
+      try {
+        return readShape(shape, source.kind);
+      } finally {
+        shape.delete();
+      }
+    });
+  }
+
+  if (source.kind === "shell") {
+    return withOcctPatternSeedShape(oc, source.target, (targetShape) => {
+      const shape = makeShellShape(oc, targetShape, source);
+      try {
+        return readShape(shape, source.kind);
+      } finally {
+        shape.delete();
+      }
+    });
+  }
+
+  if (source.kind === "importedBody") {
+    return withImportedBrepShape(oc, source.brepBytes, (shape) =>
+      readShape(shape, source.kind)
+    );
+  }
+
   if (source.kind === "hole") {
     return withOcctHoleResultShape(oc, source, (shape) =>
       readShape(shape, source.kind)
@@ -389,6 +498,36 @@ export function withOcctExactBodyShape<T>(
   return withOcctBooleanExactBodyShape(oc, source, (shape) =>
     readShape(shape, source.kind)
   );
+}
+
+let nextImportedBrepReadId = 1;
+
+function withImportedBrepShape<T>(
+  oc: OpenCascadeInstance,
+  bytes: Uint8Array,
+  readShape: (shape: TopoDS_Shape) => T
+): T {
+  const fileName = `/partbench-exact-metadata-${nextImportedBrepReadId++}.brep`;
+  const shape = new oc.TopoDS_Shape();
+  const builder = new oc.BRep_Builder();
+  const range = new oc.Message_ProgressRange_1();
+  oc.FS.writeFile(fileName, bytes);
+  try {
+    if (
+      !oc.BRepTools.Read_2(shape, fileName, builder, range) ||
+      shape.IsNull()
+    ) {
+      throw new Error(
+        "Open CASCADE could not read the imported BRep checkpoint."
+      );
+    }
+    return readShape(shape);
+  } finally {
+    range.delete();
+    builder.delete();
+    shape.delete();
+    oc.FS.unlink(fileName);
+  }
 }
 
 function withOcctBooleanExactBodyShape<T>(
@@ -445,14 +584,25 @@ function readExactBodyMetadata(
     oc.BRepGProp.SurfaceProperties_1(shape, surfaceProps, false, false);
 
     const centroidPoint = volumeProps.CentreOfMass();
+    const inertia = volumeProps.MatrixOfInertia();
 
     try {
+      const momentsOfInertia = {
+        xx: inertia.Value(1, 1),
+        yy: inertia.Value(2, 2),
+        zz: inertia.Value(3, 3),
+        xy: inertia.Value(1, 2),
+        xz: inertia.Value(1, 3),
+        yz: inertia.Value(2, 3)
+      };
       return {
         sourceKind,
         bounds,
         volume: Math.abs(volumeProps.Mass()),
         surfaceArea: Math.abs(surfaceProps.Mass()),
         centroid: [centroidPoint.X(), centroidPoint.Y(), centroidPoint.Z()],
+        momentsOfInertia,
+        principalMoments: eigenvaluesOfSymmetricTensor(momentsOfInertia),
         topologyCounts: {
           solidCount: countSubshapes(oc, shape, "TopAbs_SOLID"),
           faceCount: countSubshapes(oc, shape, "TopAbs_FACE"),
@@ -464,12 +614,58 @@ function readExactBodyMetadata(
         diagnostics: []
       };
     } finally {
+      inertia.delete();
       centroidPoint.delete();
     }
   } finally {
     volumeProps.delete();
     surfaceProps.delete();
   }
+}
+
+function eigenvaluesOfSymmetricTensor(input: {
+  readonly xx: number;
+  readonly yy: number;
+  readonly zz: number;
+  readonly xy: number;
+  readonly xz: number;
+  readonly yz: number;
+}): readonly [number, number, number] {
+  const { xx, yy, zz, xy, xz, yz } = input;
+  const offDiagonalEnergy = xy * xy + xz * xz + yz * yz;
+  if (offDiagonalEnergy === 0) {
+    return [xx, yy, zz].sort((a, b) => a - b) as [number, number, number];
+  }
+
+  const mean = (xx + yy + zz) / 3;
+  const p = Math.sqrt(
+    ((xx - mean) ** 2 +
+      (yy - mean) ** 2 +
+      (zz - mean) ** 2 +
+      2 * offDiagonalEnergy) /
+      6
+  );
+  const b11 = (xx - mean) / p;
+  const b22 = (yy - mean) / p;
+  const b33 = (zz - mean) / p;
+  const b12 = xy / p;
+  const b13 = xz / p;
+  const b23 = yz / p;
+  const determinant =
+    b11 * b22 * b33 +
+    2 * b12 * b13 * b23 -
+    b11 * b23 * b23 -
+    b22 * b13 * b13 -
+    b33 * b12 * b12;
+  const angle = Math.acos(Math.max(-1, Math.min(1, determinant / 2))) / 3;
+  const largest = mean + 2 * p * Math.cos(angle);
+  const smallest = mean + 2 * p * Math.cos(angle + (2 * Math.PI) / 3);
+  const middle = 3 * mean - largest - smallest;
+  return [smallest, middle, largest].sort((a, b) => a - b) as [
+    number,
+    number,
+    number
+  ];
 }
 
 export function readExactTopologySnapshot(

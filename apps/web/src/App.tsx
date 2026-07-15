@@ -28,6 +28,7 @@ import type {
   CadSelectionReferenceInput,
   CadParameterSnapshot,
   CadTopologyIdentitySourceSnapshot,
+  CadMassPropertiesSnapshot,
   GeneratedReferenceMeasurement,
   NamedGeneratedReferenceEntry,
   CadOp,
@@ -1133,6 +1134,37 @@ function readBodyTopology(
     : {};
 }
 
+function readBodyMassProperties(
+  bodyId: string,
+  topology: CadBodyTopologySnapshot | undefined,
+  exactMetadata: DerivedExactMetadataSnapshot
+): {
+  readonly massProperties?: CadMassPropertiesSnapshot;
+  readonly error?: string;
+} {
+  const entry = getDerivedExactMetadataEntryForBody(exactMetadata, bodyId);
+  const derivedExactMetadata = topology
+    ? createBodyTopologyDerivedExactMetadataSnapshot(
+        entry,
+        topology.sourceIdentity.signature
+      )
+    : undefined;
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: {
+      query: "body.massProperties",
+      bodyId,
+      ...(derivedExactMetadata ? { derivedExactMetadata } : {})
+    }
+  });
+
+  return response.ok && response.query === "body.massProperties"
+    ? { massProperties: response.massProperties }
+    : response.ok
+      ? { error: "Mass properties are unavailable." }
+      : { error: response.error.message };
+}
+
 function readGeneratedFaceReferencesByKey(
   bodies: readonly CadBodySnapshot[]
 ): ReadonlyMap<string, CadGeneratedFaceReference> {
@@ -1713,6 +1745,13 @@ export function App() {
     selectedBody !== undefined
       ? readBodyTopology(selectedBody.id, derivedExactMetadata)
       : {};
+  const selectedBodyMassProperties = selectedBody
+    ? readBodyMassProperties(
+        selectedBody.id,
+        selectedBodyTopology.topology,
+        derivedExactMetadata
+      )
+    : {};
   const namedReferences = readNamedReferences();
   const referenceHealth = readReferenceHealth();
   const namedReferenceHealthByName =
@@ -2067,12 +2106,30 @@ export function App() {
       geometryService.reconcile(derivedGeometrySources);
     }
 
-    getDerivedExactMetadataService().reconcile(derivedGeometrySources);
+    const importedBodyIds = new Set(
+      [...document.features.values()]
+        .filter((feature) => feature.kind === "importedBody")
+        .map((feature) => feature.bodyId)
+    );
+    const importedExactMetadataSources = wcadTopologyCheckpointPayloadCache
+      .filter((payload) => importedBodyIds.has(payload.bodyId))
+      .map((payload) => ({
+        id: payload.bodyId,
+        kind: "importedBody" as const,
+        checkpointId: payload.checkpointId,
+        brepBytes: payload.brepBytes
+      }));
+    getDerivedExactMetadataService().reconcile([
+      ...derivedGeometrySources,
+      ...importedExactMetadataSources
+    ]);
   }, [
     derivedGeometrySources,
     derivedMeshCacheContextKey,
     getDerivedExactMetadataService,
-    getDerivedGeometryService
+    getDerivedGeometryService,
+    document,
+    wcadTopologyCheckpointPayloadCache
   ]);
 
   function syncDocument(
@@ -4191,6 +4248,8 @@ export function App() {
               bodyTopologyExactMetadataStatus={
                 selectedBodyTopology.exactMetadataStatus
               }
+              bodyMassProperties={selectedBodyMassProperties.massProperties}
+              bodyMassPropertiesError={selectedBodyMassProperties.error}
               body={selectedBody}
               featureEditability={selectedFeatureEditability}
               feature={selectedFeature}

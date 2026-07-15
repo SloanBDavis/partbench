@@ -5,7 +5,7 @@ current app has a typed CADOps command layer, in-memory document model,
 viewport, project JSON / `.wcad` serialization, structured agent/MCP adapters,
 and an isolated OCCT/WASM exact-geometry and derived-mesh path.
 
-Completed releases through **V15** cover:
+Completed releases through **V16** cover:
 
 - source-of-truth sketches, parameters with arithmetic expressions, and the
   supported V11 sketch solver
@@ -16,6 +16,8 @@ Completed releases through **V15** cover:
   export for supported authored bodies
 - STEP import with imported-body topology integration
 - linear/circular pattern, mirror, and shell features
+- single-line sweep, parallel face-attached loft, expression language v2, and
+  exact body mass-properties queries
 - viewport-native body/face/edge semantic selection with contextual
   Measure/Inspect
 
@@ -125,8 +127,8 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
   record.
 - `docs/v15.md` - completed V15 STEP import, expanded feature families, and
   parameter expressions release record.
-- `docs/v16.md` - approved V16 release contract (sweep, loft, pattern depth,
-  expression extensions, mass properties); product work not started.
+- `docs/v16.md` - completed V16 sweep, loft, pattern depth, expression
+  extensions, and mass properties release record.
 - `docs/native-format.md` - current JSON format and native project package
   direction.
 - `docs/occt-wasm-size.md` - OCCT/WASM size findings and recommendations.
@@ -155,7 +157,8 @@ Current project JSON/`.wcad` exports use the lowest schema required by source
 truth: `web-cad.project.v16` for ordinary current features, `v17` when advanced
 sketch constraints are present, `v18` when topology identity records are
 present, and `v19` when V15 imported-body / pattern / mirror / shell /
-expression records are present. V1 through V19 remain importable through
+expression records are present, and `v20` for V16 sweep/loft and expanded
+pattern/reference source records. V1 through V20 remain importable through
 explicit migrations. Derived meshes, solver status, exact metadata, topology
 snapshots, and geometry status are never saved as source-of-truth data;
 checkpoint payload bytes for topology identity are preserved in `.wcad` v2, not
@@ -175,15 +178,16 @@ protocol/package migration.
   boolean/pattern/mirror/shell results, STEP import/export, and derived exact
   metadata where available.
 - Topology-backed commandability is limited to the verified support matrices in
-  the V12–V15 release records. Unsupported or low-confidence topology remains
+  the V12–V16 release records. Unsupported or low-confidence topology remains
   structured diagnostic output rather than silent retargeting.
-- Parameter expressions are pure arithmetic only; scripting, conditionals, and
-  trig are deferred. Sweep, loft, assemblies, production WebGPU, hosted
+- Parameter expressions support pure degree-first trigonometry, comparisons,
+  ternaries, and `if`; scripting and general boolean operators are deferred.
+  Multi-line curved sweeps, free non-parallel lofts, assemblies, production WebGPU, hosted
   collaboration, production MCP auth, natural-language command parsing, IGES,
   and proprietary CAD import are not implemented unless scoped into a later
   release.
-- V15 workflow smokes exercise cad-core command/query and async STEP import
-  resolver paths; they are not launched-browser UI automation scripts.
+- V15/V16 workflow smokes exercise cad-core command/query and async geometry
+  paths; they are not launched-browser UI automation scripts.
 
 See `docs/implementation-plan.md` for the full current capabilities and
 limitations list.

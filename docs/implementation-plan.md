@@ -4,7 +4,7 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the repo state and the
 active implementation roadmap.
 
-Last updated: 2026-07-08.
+Last updated: 2026-07-15.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/v12.md` for the completed
@@ -13,14 +13,13 @@ the completed general topology identity and B-rep checkpoint foundation release
 record, `docs/v14.md` for the completed topology-backed downstream modeling
 release record, `docs/v15.md` for the completed V15 STEP import, expanded
 feature families, and parameter expressions release record, `docs/v16.md` for
-the approved V16 release contract (sweep, loft, pattern depth, expression
-extensions, and mass properties; product work not started),
+the completed V16 sweep, loft, pattern depth, expression extensions, and mass
+properties release record,
 `docs/native-format.md` for project-format direction, and
 `docs/occt-wasm-size.md` for OCCT/WASM load-size findings. V7, V8, V9, V10,
 and V11 are completed historical releases whose details are now condensed in
-this plan instead of maintained as separate release documents. V16 is planned
-and approved; implement only the V16 slice or PR the user requests, following
-`docs/v16.md`.
+this plan instead of maintained as separate release documents. V16 is complete;
+follow `docs/v16.md` for its compatibility and support contract.
 
 ## Active Rules
 
@@ -111,12 +110,12 @@ These constraints remain active:
     at the occt-wasm, geometry-kernel, and geometry-worker boundaries. The
     optional V15 sweep stretch goal was not taken and remains deferred to the
     approved V16 contract in `docs/v16.md`.
-13b. V16 is **planned and approved**. The release contract is `docs/v16.md`
+13b. V16 is **complete**. The release record is `docs/v16.md`
     (Option G2 = full advanced single-part modeling + mass properties).
-    **Slice A1 is complete** on main: linear/circular pattern result bodies
-    with extrude-family seeds produce derived-geometry sources and render
-    through the existing app path (seed consumed; parity with mirror/shell).
-    Later V16 slices (A2 protocol/v20, B–H) are not started. Product V16
+    Slices A1–H are implemented: pattern results render, V20 source and
+    migrations are durable, reference frames resolve, expression language v2
+    evaluates, sweep/loft author real solids, and exact metadata feeds the
+    `body.massProperties` projection. Product V16
     introduces source schema **`web-cad.project.v20`** (do not confuse with
     document schema `web-cad.project.v16`, already used for chamfer/fillet).
     Package version remains `partbench.wcad.v2`.
@@ -132,8 +131,7 @@ These constraints remain active:
     Hard non-goals for V16: assemblies, production WebGPU, sketch-arc entities,
     free construction/offset sketch planes, multi-body pattern instances as
     public bodies, hosted collaboration, IGES/proprietary import, full
-    scripting. Implement only the slice the user requests; start with Slice A1
-    (pattern display) per the contract implementation order on main.
+    scripting.
 14. V8 Tranche A is implemented as a protocol and pure-helper slice only:
     `partbench.wcad.v1` manifest/source-identity types, structured package
     validation diagnostics, `project.packageReadiness`, and thin agent/MCP
@@ -538,6 +536,11 @@ pnpm smoke:v15-release-samples
 pnpm smoke:v15-step-import-workflow
 pnpm smoke:v15-feature-families-workflow
 pnpm smoke:v15-expressions-workflow
+pnpm smoke:v16-release-samples
+pnpm smoke:v16-sweep-loft-workflow
+pnpm smoke:v16-pattern-depth-workflow
+pnpm smoke:v16-expressions-v2-workflow
+pnpm smoke:v16-mass-properties-workflow
 pnpm smoke:v7-browser-workflow
 pnpm smoke:v7-browser-workflow:derived
 pnpm smoke:v8-wcad-workflow
@@ -3054,10 +3057,10 @@ The mandatory downstream boolean support matrix is maintained in
 evidence proves which rectangle/circle target, tool-profile, and operation-mode
 combinations are command-ready.
 
-## V16 Planned Scope (Approved Contract)
+## V16 Completed Scope
 
-V16 is **approved for implementation** but **not started**. The full release
-contract is `docs/v16.md`. Product release V16 is not document schema
+V16 is **complete**. The full release record is `docs/v16.md`. Product release
+V16 is not document schema
 `web-cad.project.v16` (already used for chamfer/fillet). New V16 source records
 use **`web-cad.project.v20`**. Package layout remains `partbench.wcad.v2`.
 
@@ -3079,14 +3082,14 @@ Work lands as sequential commits on `main`, not a PR stack. Full detail in
 | Order | Slice | Focus |
 | --- | --- | --- |
 | 1 | A1 | **Done** — Pattern derived geometry (extrude-family seeds) |
-| 2 | A2 | Stabilized V20 protocol types (Mat4 instances, dual-read fields, migration) |
-| 3 | B | Instance identity + multi-solid detection + `body.patternInstances` |
-| 4 | C | Named directions/axes; mirror offset/planes |
-| 5 | D | Expression language v2 |
-| 6 | E | Sweep |
-| 7 | F | Loft |
-| 8–10 | G0–G2 | Mass props exact-metadata recipes → query/UI → sweep/loft coverage |
-| 11 | H | Smokes, samples, docs, hardening |
+| 2 | A2 | **Done** — V20 types, dual-read fields, migration |
+| 3 | B | **Done** — Instance identity, multi-solid detection, query |
+| 4 | C | **Done** — Named directions/axes and mirror planes |
+| 5 | D | **Done** — Expression language v2 |
+| 6 | E | **Done** — Sweep |
+| 7 | F | **Done** — Loft |
+| 8–10 | G0–G2 | **Done** — Exact metadata and mass properties |
+| 11 | H | **Done** — Smokes, samples, docs, hardening |
 
 ### V16 guardrails
 

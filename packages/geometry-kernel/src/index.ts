@@ -147,6 +147,11 @@ import {
   type LoftRequest,
   type LoftSectionSource,
   type ExactLoftMetadataSource,
+  type ExactLinearPatternMetadataSource,
+  type ExactCircularPatternMetadataSource,
+  type ExactMirrorMetadataSource,
+  type ExactShellMetadataSource,
+  type ExactImportedBodyMetadataSource,
   type GeometryKernelLoftMeshFactory
 } from "./kernel";
 
@@ -160,6 +165,11 @@ export type {
   LoftRequest,
   LoftSectionSource,
   ExactLoftMetadataSource,
+  ExactLinearPatternMetadataSource,
+  ExactCircularPatternMetadataSource,
+  ExactMirrorMetadataSource,
+  ExactShellMetadataSource,
+  ExactImportedBodyMetadataSource,
   GeometryKernelLoftMeshFactory,
   ConeGeometryDimensions,
   CylinderGeometryDimensions,

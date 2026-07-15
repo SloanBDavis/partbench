@@ -5358,6 +5358,7 @@ export type CadQueryErrorCode =
   | "UNSUPPORTED_BODY_PATTERN_INSTANCES"
   | "MASS_PROPERTIES_UNAVAILABLE"
   | "MASS_PROPERTIES_STALE"
+  | "MASS_PROPERTIES_BODY_CONSUMED"
   | "MASS_PROPERTIES_INVALID_DENSITY"
   | "UNSUPPORTED_BODY_TOPOLOGY"
   | "STALE_BODY_TOPOLOGY"
@@ -5400,6 +5401,11 @@ export type CadBodyTopologySourceKind =
   | "authoredChamfer"
   | "authoredFillet"
   | "authoredShell"
+  | "authoredLinearPattern"
+  | "authoredCircularPattern"
+  | "authoredMirror"
+  | "authoredSweep"
+  | "authoredLoft"
   | "importedBody"
   | "primitiveCompatibility";
 
@@ -5639,6 +5645,8 @@ export interface CadBodyExactMetadataSnapshot {
   readonly volume?: number;
   readonly surfaceArea?: number;
   readonly centroid?: Vec3;
+  readonly momentsOfInertia?: CadInertiaTensor;
+  readonly principalMoments?: Vec3;
   readonly topologyCounts?: CadBodyExactMetadataTopologyCounts;
   readonly topologySnapshot?: CadBodyExactTopologySnapshot;
   readonly diagnostics: readonly CadBodyExactMetadataDiagnostic[];
@@ -5689,6 +5697,7 @@ export interface CadBodyTopologySourceIdentity {
   readonly profileSignature?: CadGeneratedReferenceProfileSignature;
   readonly side?: FeatureExtrudeSide;
   readonly depth?: number;
+  readonly featureSourceSignature?: string;
 }
 
 export interface CadBodyTopologyIssue {
@@ -6728,7 +6737,21 @@ export interface CadMassPropertiesSnapshot {
   readonly surfaceArea: number;
   readonly centerOfMass: Vec3;
   readonly mass: number;
-  readonly momentsOfInertia?: Vec3;
+  readonly units: DocumentUnits;
+  readonly momentsOfInertia?: CadInertiaTensor;
+  readonly principalMoments?: Vec3;
+  readonly measurementSource: "kernel-derived";
+  readonly measurementConfidence: "kernel-derived";
+  readonly diagnostics: readonly CadBodyExactMetadataDiagnostic[];
+}
+
+export interface CadInertiaTensor {
+  readonly xx: number;
+  readonly yy: number;
+  readonly zz: number;
+  readonly xy: number;
+  readonly xz: number;
+  readonly yz: number;
 }
 
 export interface BodyMassPropertiesQueryResponse {
