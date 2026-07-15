@@ -54,7 +54,8 @@ import {
   type OcctExactTopologySnapshot,
   type OcctExactEdgeFinishMetadataSource,
   type OcctExactHoleMetadataSource,
-  type OcctExactSweepMetadataSource
+  type OcctExactSweepMetadataSource,
+  type OcctExactLoftMetadataSource
 } from "./exactMetadata";
 import {
   createOcctRevolveProfileMeshWithInstance,
@@ -120,6 +121,12 @@ import {
   type OcctSweepPathSegment,
   type OcctSweepProfileSource
 } from "./sweep";
+import {
+  createOcctLoftMeshWithInstance,
+  createOcctLoftMeshWithLoader,
+  type OcctLoftInput,
+  type OcctLoftSection
+} from "./loft";
 
 export type {
   OcctBooleanExtrudeInput,
@@ -136,6 +143,7 @@ export type {
   OcctExactEdgeFinishMetadataSource,
   OcctExactHoleMetadataSource,
   OcctExactSweepMetadataSource,
+  OcctExactLoftMetadataSource,
   OcctRevolveProfileInput,
   OcctStepExportArtifact,
   OcctStepExportBodySource,
@@ -160,6 +168,8 @@ export type {
   OcctSweepInput,
   OcctSweepPathSegment,
   OcctSweepProfileSource,
+  OcctLoftInput,
+  OcctLoftSection,
   OcctMeshData
 };
 export {
@@ -206,7 +216,9 @@ export {
   createOcctShellMeshWithInstance,
   createOcctShellMeshWithLoader,
   createOcctSweepMeshWithInstance,
-  createOcctSweepMeshWithLoader
+  createOcctSweepMeshWithLoader,
+  createOcctLoftMeshWithInstance,
+  createOcctLoftMeshWithLoader
 };
 
 type OpenCascadeModuleObject = Record<string, unknown>;

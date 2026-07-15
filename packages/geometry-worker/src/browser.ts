@@ -27,6 +27,7 @@ export {
   createMirrorWorkerRequest,
   createShellWorkerRequest,
   createSweepWorkerRequest,
+  createLoftWorkerRequest,
   createExactBodyMetadataWorkerRequest,
   createExactTopologyCheckpointPayloadWorkerRequest,
   createExactTopologySnapshotWorkerRequest,
@@ -180,6 +181,7 @@ function getUnsupportedPrimitiveMessage(
     kind !== "geometry-worker.mirrorFeature" &&
     kind !== "geometry-worker.shellFeature" &&
     kind !== "geometry-worker.sweepFeature" &&
+    kind !== "geometry-worker.loftFeature" &&
     kind !== "geometry-worker.exactMetadata" &&
     kind !== "geometry-worker.exactTopologySnapshot" &&
     kind !== "geometry-worker.exactTopologyCheckpointPayload" &&
@@ -205,6 +207,7 @@ function getUnsupportedPrimitiveMessage(
     op !== "geometry.mirror" &&
     op !== "geometry.shell" &&
     op !== "geometry.sweep" &&
+    op !== "geometry.loft" &&
     op !== "geometry.exactBodyMetadata" &&
     op !== "geometry.exactTopologySnapshot" &&
     op !== "geometry.exactTopologyCheckpointPayload" &&

@@ -47,6 +47,9 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
     async sweep() {
       throw new Error("Derived geometry runtime is disabled.");
     },
+    async loft() {
+      throw new Error("Derived geometry runtime is disabled.");
+    },
     async exactBodyMetadata() {
       throw new Error("Derived geometry runtime is disabled.");
     },

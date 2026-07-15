@@ -24,6 +24,7 @@ import {
   buildFeatureLinearPatternOp,
   buildFeatureRevolveOp,
   buildFeatureSweepOp,
+  buildFeatureLoftOp,
   buildFeatureUpdateCircularPatternOp,
   buildFeatureUpdateChamferOp,
   buildFeatureUpdateExtrudeOp,
@@ -79,6 +80,27 @@ import {
 } from "./cadCommands";
 
 describe("cad command builders", () => {
+  it("builds a normalized loft feature operation", () => {
+    const sections = [
+      { sketchId: "base", entityId: "rectangle" },
+      { sketchId: "top", entityId: "circle" }
+    ];
+    expect(
+      buildFeatureLoftOp({
+        id: " loft_1 ",
+        bodyId: " body_loft ",
+        name: " Transition ",
+        sections
+      })
+    ).toEqual({
+      op: "feature.loft",
+      id: "loft_1",
+      bodyId: "body_loft",
+      name: "Transition",
+      sections
+    });
+  });
+
   it("builds a normalized sweep feature operation", () => {
     expect(
       buildFeatureSweepOp("profile_sketch", "profile", {

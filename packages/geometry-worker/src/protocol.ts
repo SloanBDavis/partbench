@@ -41,7 +41,9 @@ import type {
   ShellTargetSource,
   SweepRequest,
   SweepProfileSource,
-  SweepPathSegment
+  SweepPathSegment,
+  LoftRequest,
+  LoftSectionSource
 } from "@web-cad/geometry-kernel";
 
 export type {
@@ -70,6 +72,7 @@ export type GeometryWorkerRequestKind =
   | "geometry-worker.mirrorFeature"
   | "geometry-worker.shellFeature"
   | "geometry-worker.sweepFeature"
+  | "geometry-worker.loftFeature"
   | "geometry-worker.exactMetadata"
   | "geometry-worker.exactTopologySnapshot"
   | "geometry-worker.exactTopologyCheckpointPayload"
@@ -844,6 +847,29 @@ export function createSweepWorkerRequest(input: {
       op: "geometry.sweep",
       profile: input.profile,
       pathSegments: input.pathSegments,
+      ...(tessellation ? { tessellation } : {})
+    }
+  };
+}
+
+export function createLoftWorkerRequest(input: {
+  readonly id: string;
+  readonly payloadId?: string;
+  readonly sections: readonly LoftSectionSource[];
+  readonly linearDeflection?: number;
+  readonly angularDeflection?: number;
+}): GeometryWorkerRequest<LoftRequest> {
+  const tessellation = createTessellationOptions(input);
+
+  return {
+    id: input.id,
+    version: "geometry-worker.v1",
+    kind: "geometry-worker.loftFeature",
+    payload: {
+      id: input.payloadId ?? `${input.id}:payload`,
+      version: "geometry-kernel.v1",
+      op: "geometry.loft",
+      sections: input.sections,
       ...(tessellation ? { tessellation } : {})
     }
   };

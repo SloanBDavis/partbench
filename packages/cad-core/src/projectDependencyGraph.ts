@@ -509,6 +509,29 @@ function addFeatureSourceEdges(
     return;
   }
 
+  if (feature.kind === "loft") {
+    for (const section of feature.sections) {
+      addEdge(edges, {
+        kind: "sources",
+        from: sketchNodeId(section.sketchId),
+        to: featureNodeId(feature.id),
+        label: "loft section source",
+        sourceFeatureId: feature.id,
+        sketchId: section.sketchId
+      });
+      addEdge(edges, {
+        kind: "sources",
+        from: sketchEntityNodeId(section.sketchId, section.entityId),
+        to: featureNodeId(feature.id),
+        label: "loft section source",
+        sourceFeatureId: feature.id,
+        sketchId: section.sketchId,
+        sketchEntityId: section.entityId
+      });
+    }
+    return;
+  }
+
   addEdge(edges, {
     kind: "sources",
     from: sketchNodeId(feature.sketchId),

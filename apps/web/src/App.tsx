@@ -89,6 +89,7 @@ import {
   buildFeatureRevolveOp,
   buildFeatureShellOp,
   buildFeatureSweepOp,
+  buildFeatureLoftOp,
   buildFeatureUpdateChamferOp,
   buildFeatureUpdateCircularPatternOp,
   buildFeatureUpdateExtrudeOp,
@@ -129,6 +130,7 @@ import {
   type FeatureShellEdit,
   type FeatureShellForm,
   type FeatureSweepForm,
+  type FeatureLoftForm,
   type ParameterCreateForm,
   type ParameterEditForm,
   type SketchConstraintForm,
@@ -2519,6 +2521,13 @@ export function App() {
     );
   }
 
+  async function createLoft(form: FeatureLoftForm) {
+    await commitOps(
+      [buildFeatureLoftOp(form)],
+      (response) => response.createdBodyIds?.[0] ?? (form.bodyId || selectedId)
+    );
+  }
+
   async function updateAuthoredLinearPattern(
     featureId: string,
     edit: FeatureLinearPatternEdit
@@ -3286,11 +3295,12 @@ export function App() {
       feature.kind === "extrude" ||
       feature.kind === "revolve" ||
       feature.kind === "hole" ||
-      feature.kind === "sweep"
+      feature.kind === "sweep" ||
+      feature.kind === "loft"
     ) {
-      return feature.kind === "sweep"
-        ? feature.profileSketchId
-        : feature.sketchId;
+      if (feature.kind === "sweep") return feature.profileSketchId;
+      if (feature.kind === "loft") return feature.sections[0]?.sketchId;
+      return feature.sketchId;
     }
 
     return undefined;
@@ -3332,6 +3342,8 @@ export function App() {
         return "shell";
       case "sweep":
         return "sweep";
+      case "loft":
+        return "loft";
       case "primitive":
         return feature.primitive;
     }
@@ -4337,6 +4349,7 @@ export function App() {
             onCreateSweep={(profileSketchId, profileEntityId, form) =>
               void createSweep(profileSketchId, profileEntityId, form)
             }
+            onCreateLoft={(form) => void createLoft(form)}
             onCreateSketch={(form) => void createSketch(form)}
             onCreateSketchOnFace={(form) => void createSketchOnFace(form)}
             onExtrudeEntity={(sketchId, entityId, form) =>

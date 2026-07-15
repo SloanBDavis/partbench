@@ -480,11 +480,9 @@ describe("V16 protocol and V20 persistence", () => {
       if (feature.kind !== "linearPattern") {
         return feature;
       }
-      const {
-        direction: _direction,
-        instances: _instances,
-        ...legacy
-      } = feature;
+      const { direction, instances, ...legacy } = feature;
+      void direction;
+      void instances;
       return { ...legacy, axis: "y" as const };
     });
     const legacy = {

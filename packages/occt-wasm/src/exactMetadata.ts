@@ -24,6 +24,7 @@ import {
   type OcctFilletEdgeFinishInput
 } from "./edgeFinish";
 import type { OcctLoader } from "./tessellateBox";
+import { makeLoftShape, type OcctLoftSection } from "./loft";
 
 const TOPOLOGY_EVIDENCE_TOLERANCE = 1e-6;
 
@@ -32,6 +33,7 @@ export type OcctExactBodyMetadataSource =
   | OcctExactBooleanExtrudesMetadataSource
   | OcctExactRevolveMetadataSource
   | OcctExactSweepMetadataSource
+  | OcctExactLoftMetadataSource
   | OcctExactHoleMetadataSource
   | OcctExactEdgeFinishMetadataSource;
 
@@ -56,6 +58,11 @@ export interface OcctExactSweepMetadataSource {
   readonly kind: "sweep";
   readonly profile: OcctSweepProfileSource;
   readonly pathSegments: readonly OcctSweepPathSegment[];
+}
+
+export interface OcctExactLoftMetadataSource {
+  readonly kind: "loft";
+  readonly sections: readonly OcctLoftSection[];
 }
 
 export interface OcctExactHoleMetadataSource {
@@ -349,6 +356,16 @@ export function withOcctExactBodyShape<T>(
 
   if (source.kind === "sweep") {
     const shapeHandle = makeSweepShape(oc, source);
+
+    try {
+      return readShape(shapeHandle.shape, source.kind);
+    } finally {
+      shapeHandle.delete();
+    }
+  }
+
+  if (source.kind === "loft") {
+    const shapeHandle = makeLoftShape(oc, source);
 
     try {
       return readShape(shapeHandle.shape, source.kind);

@@ -32,6 +32,7 @@ export {
   createMirrorWorkerRequest,
   createShellWorkerRequest,
   createSweepWorkerRequest,
+  createLoftWorkerRequest,
   getGeometryWorkerExactExportCapabilities,
   getGeometryWorkerStepImportCapabilities,
   createWorkerErrorDiagnostics,

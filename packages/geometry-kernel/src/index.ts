@@ -17,7 +17,8 @@ import {
   createOcctCircularPatternMesh,
   createOcctMirrorMesh,
   createOcctShellMesh,
-  createOcctSweepMesh
+  createOcctSweepMesh,
+  createOcctLoftMesh
 } from "@web-cad/occt-wasm";
 import {
   executeGeometryKernelRequestWithMeshFactory,
@@ -142,7 +143,11 @@ import {
   type SweepProfileSource,
   type SweepPathSegment,
   type ExactSweepMetadataSource,
-  type GeometryKernelSweepMeshFactory
+  type GeometryKernelSweepMeshFactory,
+  type LoftRequest,
+  type LoftSectionSource,
+  type ExactLoftMetadataSource,
+  type GeometryKernelLoftMeshFactory
 } from "./kernel";
 
 export type {
@@ -152,6 +157,10 @@ export type {
   BooleanExtrudesRequest,
   BoxGeometryDimensions,
   ChamferEdgeFinishRequest,
+  LoftRequest,
+  LoftSectionSource,
+  ExactLoftMetadataSource,
+  GeometryKernelLoftMeshFactory,
   ConeGeometryDimensions,
   CylinderGeometryDimensions,
   ExactBodyMetadataRequest,
@@ -296,7 +305,8 @@ export async function executeGeometryKernelRequest<
       createCircularPatternMesh: createOcctCircularPatternMesh,
       createMirrorMesh: createOcctMirrorMesh,
       createShellMesh: createOcctShellMesh,
-      createSweepMesh: createOcctSweepMesh
+      createSweepMesh: createOcctSweepMesh,
+      createLoftMesh: createOcctLoftMesh
     },
     request
   );

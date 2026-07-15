@@ -190,6 +190,11 @@ export interface DerivedGeometrySweepInput {
   }[];
 }
 
+export interface DerivedGeometryLoftInput {
+  readonly id: string;
+  readonly sections: readonly DerivedGeometrySweepInput["profile"][];
+}
+
 export type DerivedGeometryEdgeFinishInput =
   | {
       readonly id: string;
@@ -236,6 +241,7 @@ export interface DerivedExactMetadataInput {
         readonly placementFrame?: DerivedGeometryExtrudePlacementFrame;
       }
     | ({ readonly kind: "sweep" } & Omit<DerivedGeometrySweepInput, "id">)
+    | ({ readonly kind: "loft" } & Omit<DerivedGeometryLoftInput, "id">)
     | {
         readonly kind: "hole";
         readonly target: DerivedGeometryBooleanExtrudeInputSource;
@@ -366,6 +372,7 @@ export interface DerivedGeometryRuntime {
   mirror(input: DerivedGeometryMirrorInput): Promise<DerivedGeometryResult>;
   shell(input: DerivedGeometryShellInput): Promise<DerivedGeometryResult>;
   sweep(input: DerivedGeometrySweepInput): Promise<DerivedGeometryResult>;
+  loft(input: DerivedGeometryLoftInput): Promise<DerivedGeometryResult>;
   exactBodyMetadata(
     input: DerivedExactMetadataInput
   ): Promise<DerivedExactMetadataResult>;

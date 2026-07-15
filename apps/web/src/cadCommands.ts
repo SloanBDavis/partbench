@@ -27,6 +27,8 @@ import type {
   FeatureRevolveOp,
   FeatureShellOp,
   FeatureSweepOp,
+  FeatureLoftOp,
+  LoftSection,
   FeatureShellOpenFaceRef,
   FeatureUpdateCircularPatternOp,
   FeatureUpdateExtrudeOp,
@@ -294,6 +296,13 @@ export interface FeatureSweepForm {
   readonly name: string;
   readonly pathSketchId: string;
   readonly pathEntityIds: readonly string[];
+}
+
+export interface FeatureLoftForm {
+  readonly id: string;
+  readonly bodyId: string;
+  readonly name: string;
+  readonly sections: readonly LoftSection[];
 }
 
 export function buildCreateBoxOp(form: PrimitiveCommandForm): SceneCreateBoxOp {
@@ -964,6 +973,16 @@ export function buildFeatureSweepOp(
     profileEntityId,
     pathSketchId: form.pathSketchId,
     pathEntityIds: form.pathEntityIds
+  };
+}
+
+export function buildFeatureLoftOp(form: FeatureLoftForm): FeatureLoftOp {
+  return {
+    op: "feature.loft",
+    id: normalizeOptionalId(form.id),
+    bodyId: normalizeOptionalId(form.bodyId),
+    name: form.name.trim() || undefined,
+    sections: form.sections
   };
 }
 

@@ -1,7 +1,8 @@
 import type {
   OpenCascadeInstance,
   TopoDS_Face,
-  TopoDS_Shape
+  TopoDS_Shape,
+  TopoDS_Wire
 } from "opencascade.js";
 import {
   readTriangulatedShape,
@@ -58,6 +59,7 @@ export interface SketchFrame {
 
 export interface ProfileFaceHandle {
   readonly face: TopoDS_Face;
+  readonly wire: TopoDS_Wire;
   readonly delete: () => void;
 }
 
@@ -237,6 +239,7 @@ function makeRectangleProfileFace(
 
   return {
     face,
+    wire,
     delete: () => {
       face.delete();
       faceMaker.delete();
@@ -271,6 +274,7 @@ function makeCircleProfileFace(
 
   return {
     face,
+    wire,
     delete: () => {
       face.delete();
       faceMaker.delete();

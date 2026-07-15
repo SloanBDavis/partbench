@@ -11,6 +11,7 @@ import {
   createOcctRevolveProfileMesh,
   createOcctShellMesh,
   createOcctSweepMesh,
+  createOcctLoftMesh,
   createOcctSphereMesh,
   createOcctStepImport,
   createOcctStepExport,
@@ -78,6 +79,51 @@ describe("occt-wasm", () => {
       expect(circleMetadata.sourceKind).toBe("sweep");
       expect(circleMetadata.volume).toBeCloseTo(5 * Math.PI, 5);
       expect(circleMetadata.topologyCounts.solidCount).toBe(1);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "lofts separated rectangle and circle sections as a real OCCT solid",
+    async () => {
+      const sections = [
+        {
+          sketchPlane: "XY" as const,
+          profile: {
+            kind: "rectangle" as const,
+            center: [0, 0] as const,
+            width: 4,
+            height: 3
+          }
+        },
+        {
+          sketchPlane: "XY" as const,
+          profile: {
+            kind: "circle" as const,
+            center: [0, 0] as const,
+            radius: 1
+          },
+          placementFrame: {
+            origin: [0, 0, 5] as const,
+            uAxis: [1, 0, 0] as const,
+            vAxis: [0, 1, 0] as const
+          }
+        }
+      ];
+      const [mesh, metadata] = await Promise.all([
+        createOcctLoftMesh({ sections }),
+        createOcctExactBodyMetadata({
+          source: { kind: "loft", sections }
+        })
+      ]);
+
+      expect(mesh).toMatchObject({ primitive: "loft" });
+      expect(mesh.triangleCount).toBeGreaterThan(0);
+      expect(metadata.sourceKind).toBe("loft");
+      expect(metadata.bounds.min[2]).toBeCloseTo(0, 6);
+      expect(metadata.bounds.max[2]).toBeCloseTo(5, 6);
+      expect(metadata.volume).toBeGreaterThan(0);
+      expect(metadata.topologyCounts.solidCount).toBe(1);
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );

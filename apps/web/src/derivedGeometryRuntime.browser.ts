@@ -16,6 +16,7 @@ import {
   type DerivedGeometryMirrorInput,
   type DerivedGeometryShellInput,
   type DerivedGeometrySweepInput,
+  type DerivedGeometryLoftInput,
   type DerivedGeometryExtrudeInput,
   type DerivedGeometryHoleInput,
   type DerivedGeometryRevolveInput,
@@ -70,7 +71,8 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
       | DerivedGeometryCircularPatternInput
       | DerivedGeometryMirrorInput
       | DerivedGeometryShellInput
-      | DerivedGeometrySweepInput,
+      | DerivedGeometrySweepInput
+      | DerivedGeometryLoftInput,
     request: GeometryWorkerRequest
   ): Promise<DerivedGeometryResult> {
     const { createRenderMeshFromGeometryWorkerResponse } =
@@ -90,6 +92,7 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
         request.payload.op === "geometry.tessellateExtrude" ||
         request.payload.op === "geometry.revolveProfile" ||
         request.payload.op === "geometry.sweep" ||
+        request.payload.op === "geometry.loft" ||
         request.payload.op === "geometry.booleanExtrudes" ||
         request.payload.op === "geometry.hole" ||
         request.payload.op === "geometry.edgeFinish" ||
@@ -483,6 +486,22 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           payloadId: `${requestId}:kernel`,
           profile: input.profile,
           pathSegments: input.pathSegments,
+          linearDeflection: 0.25,
+          angularDeflection: 0.5
+        })
+      );
+    },
+    async loft(input: DerivedGeometryLoftInput) {
+      const { createLoftWorkerRequest } =
+        await import("@web-cad/geometry-worker/browser");
+      const requestId = createRequestId(input.id);
+
+      return executeTessellationRequest(
+        input,
+        createLoftWorkerRequest({
+          id: requestId,
+          payloadId: `${requestId}:kernel`,
+          sections: input.sections,
           linearDeflection: 0.25,
           angularDeflection: 0.5
         })

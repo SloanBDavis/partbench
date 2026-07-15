@@ -17,6 +17,7 @@ import {
   createRevolveProfileWorkerRequest,
   createShellWorkerRequest,
   createSweepWorkerRequest,
+  createLoftWorkerRequest,
   createSphereTessellationWorkerRequest,
   createTorusTessellationWorkerRequest,
   getGeometryWorkerExactExportCapabilities,
@@ -300,6 +301,47 @@ describe("geometry-worker", () => {
         profile,
         pathSegments,
         tessellation: { linearDeflection: 0.25 }
+      }
+    });
+  });
+
+  it("creates a typed loft feature worker request", () => {
+    const sections = [
+      {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "rectangle" as const,
+          center: [0, 0] as const,
+          width: 4,
+          height: 3
+        }
+      },
+      {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "circle" as const,
+          center: [0, 0] as const,
+          radius: 1
+        },
+        placementFrame: {
+          origin: [0, 0, 5] as const,
+          uAxis: [1, 0, 0] as const,
+          vAxis: [0, 1, 0] as const
+        }
+      }
+    ];
+
+    expect(
+      createLoftWorkerRequest({ id: "worker_req_loft", sections })
+    ).toEqual({
+      id: "worker_req_loft",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.loftFeature",
+      payload: {
+        id: "worker_req_loft:payload",
+        version: "geometry-kernel.v1",
+        op: "geometry.loft",
+        sections
       }
     });
   });

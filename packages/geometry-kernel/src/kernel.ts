@@ -81,7 +81,8 @@ export type GeometryKernelOp =
   | "geometry.circularPattern"
   | "geometry.mirror"
   | "geometry.shell"
-  | "geometry.sweep";
+  | "geometry.sweep"
+  | "geometry.loft";
 export type GeometryKernelPrimitive =
   | "box"
   | "cylinder"
@@ -93,7 +94,8 @@ export type GeometryKernelPrimitive =
   | "boolean"
   | "hole"
   | "edgeFinish"
-  | "sweep";
+  | "sweep"
+  | "loft";
 export type GeometryKernelSketchPlane = "XY" | "XZ" | "YZ";
 export type GeometryKernelExtrudeProfileKind = "rectangle" | "circle";
 export type GeometryKernelExtrudeSide = "positive" | "negative" | "symmetric";
@@ -405,13 +407,24 @@ export interface SweepRequest {
   readonly tessellation?: TessellationOptions;
 }
 
+export type LoftSectionSource = SweepProfileSource;
+
+export interface LoftRequest {
+  readonly id: string;
+  readonly version: GeometryKernelVersion;
+  readonly op: "geometry.loft";
+  readonly sections: readonly LoftSectionSource[];
+  readonly tessellation?: TessellationOptions;
+}
+
 export type ExactBodyMetadataSource =
   | ExactExtrudeMetadataSource
   | ExactBooleanExtrudesMetadataSource
   | ExactRevolveMetadataSource
   | ExactHoleMetadataSource
   | ExactEdgeFinishMetadataSource
-  | ExactSweepMetadataSource;
+  | ExactSweepMetadataSource
+  | ExactLoftMetadataSource;
 export type ExactTopologySourceKind =
   | ExactBodyMetadataSource["kind"]
   | "importedBody";
@@ -461,6 +474,11 @@ export interface ExactSweepMetadataSource {
   readonly kind: "sweep";
   readonly profile: SweepProfileSource;
   readonly pathSegments: readonly SweepPathSegment[];
+}
+
+export interface ExactLoftMetadataSource {
+  readonly kind: "loft";
+  readonly sections: readonly LoftSectionSource[];
 }
 
 export interface ExactBodyMetadataRequest {
@@ -526,6 +544,7 @@ export type GeometryKernelRequest =
   | MirrorRequest
   | ShellRequest
   | SweepRequest
+  | LoftRequest
   | ExactBodyMetadataRequest
   | ExactTopologySnapshotRequest
   | ExactTopologyCheckpointPayloadRequest
@@ -977,6 +996,10 @@ export type GeometryKernelSweepMeshFactory = (
   input: Omit<SweepRequest, "id" | "version" | "op"> & TessellationOptions
 ) => Promise<GeometryKernelMeshResult>;
 
+export type GeometryKernelLoftMeshFactory = (
+  input: Omit<LoftRequest, "id" | "version" | "op"> & TessellationOptions
+) => Promise<GeometryKernelMeshResult>;
+
 export interface GeometryKernelMeshFactories {
   readonly createBoxMesh: GeometryKernelBoxMeshFactory;
   readonly createCylinderMesh: GeometryKernelCylinderMeshFactory;
@@ -997,6 +1020,7 @@ export interface GeometryKernelMeshFactories {
   readonly createMirrorMesh?: GeometryKernelMirrorMeshFactory;
   readonly createShellMesh?: GeometryKernelShellMeshFactory;
   readonly createSweepMesh?: GeometryKernelSweepMeshFactory;
+  readonly createLoftMesh?: GeometryKernelLoftMeshFactory;
 }
 
 export type GeometryKernelResponseForRequest<T extends GeometryKernelRequest> =
@@ -1540,6 +1564,18 @@ function validateRequest(
           "Sweep requests require a rectangle or circle profile and exactly one finite non-degenerate line path segment."
       };
     }
+  } else if (request.op === "geometry.loft") {
+    if (
+      !Array.isArray(request.sections) ||
+      request.sections.length < 2 ||
+      request.sections.some((section) => !isValidSweepProfileSource(section))
+    ) {
+      return {
+        code: "INVALID_DIMENSIONS",
+        message:
+          "Loft requests require at least two valid rectangle or circle profile sections."
+      };
+    }
   } else if (
     !isPositiveFiniteNumber(request.dimensions.majorRadius) ||
     !isPositiveFiniteNumber(request.dimensions.minorRadius) ||
@@ -1627,7 +1663,26 @@ function createMesh(
       return createShellMesh(factories, request);
     case "geometry.sweep":
       return createSweepMesh(factories, request);
+    case "geometry.loft":
+      return createLoftMesh(factories, request);
   }
+}
+
+function createLoftMesh(
+  factories: GeometryKernelMeshFactories,
+  request: LoftRequest
+): Promise<GeometryKernelMeshResult> {
+  if (!factories.createLoftMesh) {
+    return Promise.reject({
+      code: "UNAVAILABLE_BINDING",
+      message: "Loft tessellation requires an OCCT loft mesh factory."
+    } satisfies GeometryKernelError);
+  }
+  return factories.createLoftMesh({
+    sections: request.sections,
+    linearDeflection: request.tessellation?.linearDeflection,
+    angularDeflection: request.tessellation?.angularDeflection
+  });
 }
 
 function createSweepMesh(
@@ -2054,6 +2109,8 @@ function formatPrimitiveLabel(op: GeometryKernelOp): string {
       return "Shell feature";
     case "geometry.sweep":
       return "Sweep feature";
+    case "geometry.loft":
+      return "Loft feature";
     case "geometry.exactBodyMetadata":
       return "Exact body metadata";
     case "geometry.exactTopologySnapshot":
@@ -2493,6 +2550,14 @@ function validateExactBodyMetadataSource(
       : createInvalidExactBodyMetadataSourceError();
   }
 
+  if (source.kind === "loft") {
+    return Array.isArray(source.sections) &&
+      source.sections.length >= 2 &&
+      source.sections.every(isValidSweepProfileSource)
+      ? undefined
+      : createInvalidExactBodyMetadataSourceError();
+  }
+
   return createInvalidExactBodyMetadataSourceError();
 }
 
@@ -2500,7 +2565,7 @@ function createInvalidExactBodyMetadataSourceError(): GeometryKernelError {
   return {
     code: "INVALID_DIMENSIONS",
     message:
-      "Exact body metadata requests require supported extrude, booleanExtrudes, revolve, hole, edgeFinish, or sweep source data with finite dimensions."
+      "Exact body metadata requests require supported extrude, booleanExtrudes, revolve, hole, edgeFinish, sweep, or loft source data with finite dimensions."
   };
 }
 
@@ -2521,7 +2586,9 @@ function isInvalidExactBodyMetadata(
       metadata.sourceKind !== "booleanExtrudes" &&
       metadata.sourceKind !== "revolve" &&
       metadata.sourceKind !== "hole" &&
-      metadata.sourceKind !== "edgeFinish") ||
+      metadata.sourceKind !== "edgeFinish" &&
+      metadata.sourceKind !== "sweep" &&
+      metadata.sourceKind !== "loft") ||
     !isVec3(metadata.bounds.min) ||
     !isVec3(metadata.bounds.max) ||
     !isVec3(metadata.centroid) ||
@@ -2696,6 +2763,8 @@ function isExactTopologySourceKind(
     value === "revolve" ||
     value === "hole" ||
     value === "edgeFinish" ||
+    value === "sweep" ||
+    value === "loft" ||
     value === "importedBody"
   );
 }

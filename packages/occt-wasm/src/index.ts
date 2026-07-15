@@ -51,7 +51,8 @@ import {
   type OcctExactTopologySnapshot,
   type OcctExactEdgeFinishMetadataSource,
   type OcctExactHoleMetadataSource,
-  type OcctExactSweepMetadataSource
+  type OcctExactSweepMetadataSource,
+  type OcctExactLoftMetadataSource
 } from "./exactMetadata";
 import {
   createOcctRevolveProfileMeshWithInstance,
@@ -122,6 +123,12 @@ import {
   type OcctSweepPathSegment,
   type OcctSweepProfileSource
 } from "./sweep";
+import {
+  createOcctLoftMeshWithInstance,
+  createOcctLoftMeshWithLoader,
+  type OcctLoftInput,
+  type OcctLoftSection
+} from "./loft";
 
 export type {
   OcctBooleanExtrudeInput,
@@ -138,6 +145,7 @@ export type {
   OcctExactEdgeFinishMetadataSource,
   OcctExactHoleMetadataSource,
   OcctExactSweepMetadataSource,
+  OcctExactLoftMetadataSource,
   OcctRevolveProfileInput,
   OcctStepExportArtifact,
   OcctStepExportBodySource,
@@ -167,7 +175,9 @@ export type {
   OcctShellTargetSource,
   OcctSweepInput,
   OcctSweepPathSegment,
-  OcctSweepProfileSource
+  OcctSweepProfileSource,
+  OcctLoftInput,
+  OcctLoftSection
 };
 export {
   createOcctBoxMeshWithInstance,
@@ -213,7 +223,9 @@ export {
   createOcctShellMeshWithInstance,
   createOcctShellMeshWithLoader,
   createOcctSweepMeshWithInstance,
-  createOcctSweepMeshWithLoader
+  createOcctSweepMeshWithLoader,
+  createOcctLoftMeshWithInstance,
+  createOcctLoftMeshWithLoader
 };
 
 let occtPromise: Promise<OpenCascadeInstance> | undefined;
@@ -347,4 +359,10 @@ export async function createOcctSweepMesh(
   input: OcctSweepInput
 ): Promise<OcctMeshData> {
   return createOcctSweepMeshWithLoader(loadOcct, input);
+}
+
+export async function createOcctLoftMesh(
+  input: OcctLoftInput
+): Promise<OcctMeshData> {
+  return createOcctLoftMeshWithLoader(loadOcct, input);
 }

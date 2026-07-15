@@ -158,7 +158,134 @@ export function createFeatureEditabilityResponse(
     return createSweepEditabilityResponse(options, feature);
   }
 
+  if (feature.kind === "loft") {
+    return createLoftEditabilityResponse(options, feature);
+  }
+
   return createDeferredSourceFeatureResponse(options, feature);
+}
+
+function createLoftEditabilityResponse(
+  options: CreateFeatureEditabilityResponseOptions,
+  feature: Extract<CadFeatureSummary, { readonly kind: "loft" }>
+): FeatureEditabilityQueryResponse {
+  const proposal =
+    options.proposedEdit?.kind === "loft" ? options.proposedEdit : undefined;
+  const sections = proposal?.sections ?? feature.sections;
+  const blockingDiagnostics = createResultBodyBlockingDiagnostics(
+    feature.id,
+    feature.bodyId,
+    options.bodies.find((body) => body.id === feature.bodyId)
+      ?.consumedByFeatureId,
+    "feature.updateLoft"
+  );
+  const keys = new Set<string>();
+
+  if (sections.length < 2) {
+    blockingDiagnostics.push(
+      createDiagnostic({
+        code: "FEATURE_EDIT_INVALID_PROPOSAL",
+        severity: "blocker",
+        message: "Loft requires at least two profile sections.",
+        featureId: feature.id,
+        bodyId: feature.bodyId
+      })
+    );
+  }
+
+  for (const section of sections) {
+    const key = `${section.sketchId}:${section.entityId}`;
+    const entity = options.document.sketches
+      .get(section.sketchId)
+      ?.entities.get(section.entityId);
+    if (
+      keys.has(key) ||
+      !entity ||
+      (entity.kind !== "rectangle" && entity.kind !== "circle")
+    ) {
+      blockingDiagnostics.push(
+        createDiagnostic({
+          code: "FEATURE_EDIT_INVALID_PROPOSAL",
+          severity: "blocker",
+          message: keys.has(key)
+            ? "Loft sections must be unique."
+            : "Each loft section must resolve to a rectangle or circle entity.",
+          featureId: feature.id,
+          bodyId: feature.bodyId,
+          sketchId: section.sketchId,
+          sketchEntityId: section.entityId
+        })
+      );
+    }
+    keys.add(key);
+  }
+
+  if (options.proposedEdit && !proposal) {
+    blockingDiagnostics.push(
+      createDiagnostic({
+        code: "FEATURE_EDIT_INVALID_PROPOSAL",
+        severity: "blocker",
+        message: "Loft editability requires a loft proposal.",
+        featureId: feature.id,
+        bodyId: feature.bodyId
+      })
+    );
+  }
+
+  const editable = blockingDiagnostics.length === 0;
+  const diagnostics: CadFeatureEditDiagnostic[] = [
+    ...(editable
+      ? [
+          createDiagnostic({
+            code: "FEATURE_EDIT_SUPPORTED",
+            severity: "info",
+            message:
+              "Loft section references can be retargeted through feature.updateLoft; this query does not mutate document state.",
+            featureId: feature.id,
+            bodyId: feature.bodyId
+          })
+        ]
+      : []),
+    ...blockingDiagnostics
+  ];
+
+  return createResponse({
+    options,
+    feature,
+    status: editable ? "editable" : "blocked",
+    fields: [
+      {
+        path: "sections",
+        label: "Profile sections",
+        valueType: "reference",
+        currentValue: feature.sections
+          .map((section) => `${section.sketchId}/${section.entityId}`)
+          .join(", "),
+        editable,
+        ...(editable ? { commitOperation: "feature.updateLoft" as const } : {}),
+        diagnostics: blockingDiagnostics
+      }
+    ],
+    diagnostics,
+    rebuildStatus: editable ? "ready" : "blocked",
+    rebuildDiagnostics: blockingDiagnostics,
+    dryRunStatus:
+      options.proposedEdit === undefined
+        ? "not-requested"
+        : editable
+          ? "valid"
+          : "blocked",
+    dryRunDiagnostics: blockingDiagnostics,
+    commitOperation: "feature.updateLoft",
+    affected: createAffectedSummary(
+      [...new Set(sections.map((section) => section.sketchId))],
+      [feature.id],
+      [feature.bodyId],
+      countGeneratedReferences(options, feature.bodyId),
+      countNamedReferences(options, feature.bodyId)
+    ),
+    referenceChanges: createRepairNeededResultReferenceChanges(feature)
+  });
 }
 
 function createSweepEditabilityResponse(
@@ -1372,7 +1499,8 @@ function createDeferredFields(
     feature.kind === "circularPattern" ||
     feature.kind === "mirror" ||
     feature.kind === "shell" ||
-    feature.kind === "sweep"
+    feature.kind === "sweep" ||
+    feature.kind === "loft"
   ) {
     return [];
   }

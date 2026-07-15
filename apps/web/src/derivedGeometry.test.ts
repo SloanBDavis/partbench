@@ -39,6 +39,7 @@ import type {
   DerivedGeometryMirrorInput,
   DerivedGeometryShellInput,
   DerivedGeometrySweepInput,
+  DerivedGeometryLoftInput,
   DerivedExactMetadataResult,
   DerivedGeometryExtrudeInput,
   DerivedGeometryHoleInput,
@@ -67,7 +68,8 @@ type RuntimeInput =
   | DerivedGeometryCircularPatternInput
   | DerivedGeometryMirrorInput
   | DerivedGeometryShellInput
-  | DerivedGeometrySweepInput;
+  | DerivedGeometrySweepInput
+  | DerivedGeometryLoftInput;
 
 describe("derivedGeometry", () => {
   it("creates cache keys that change when object geometry inputs change", () => {
@@ -926,6 +928,82 @@ describe("derivedGeometry", () => {
         profile: expect.objectContaining({ sketchPlane: "XY" }),
         pathSegments: [{ start: [0, 0, 0], end: [0, 0, 5] }]
       })
+    );
+  });
+
+  it("derives and executes a loft source from separated profile sketches", async () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "loft_base", name: "Base", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "loft_base",
+        id: "base_profile",
+        center: [0, 0],
+        width: 4,
+        height: 3
+      }
+    ]);
+    engine.apply({
+      op: "feature.extrude",
+      id: "loft_pedestal_feature",
+      bodyId: "loft_pedestal",
+      sketchId: "loft_base",
+      entityId: "base_profile",
+      depth: 5
+    });
+    engine.apply({
+      op: "sketch.createOnFace",
+      id: "loft_top",
+      name: "Top",
+      bodyId: "loft_pedestal",
+      faceStableId: "generated:face:loft_pedestal:endCap"
+    });
+    engine.apply({
+      op: "sketch.addCircle",
+      sketchId: "loft_top",
+      id: "top_profile",
+      center: [0, 0],
+      radius: 1
+    });
+    engine.apply({
+      op: "feature.loft",
+      id: "loft_feature",
+      bodyId: "body_loft",
+      sections: [
+        { sketchId: "loft_base", entityId: "base_profile" },
+        { sketchId: "loft_top", entityId: "top_profile" }
+      ]
+    });
+
+    const sources = createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      getProjectStructureFeatures(engine),
+      getGeneratedFacesByKey(engine, ["loft_pedestal"])
+    );
+    const loft = sources.find((source) => source.kind === "loft");
+    expect(loft).toMatchObject({
+      id: "body_loft",
+      kind: "loft",
+      sections: [
+        {
+          sketchPlane: "XY",
+          profile: { kind: "rectangle", width: 4, height: 3 }
+        },
+        {
+          sketchPlane: "XY",
+          profile: { kind: "circle", radius: 1 },
+          placementFrame: { origin: [0, 0, 5] }
+        }
+      ]
+    });
+
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    await deriveGeometrySourceMesh(runtime, loft!);
+    expect(runtime.inputs).toContainEqual(
+      expect.objectContaining({ id: "body_loft", sections: loft?.sections })
     );
   });
 
@@ -5550,6 +5628,10 @@ function createRuntime(
       return handler(input);
     },
     sweep(input) {
+      inputs.push(input);
+      return handler(input);
+    },
+    loft(input) {
       inputs.push(input);
       return handler(input);
     },

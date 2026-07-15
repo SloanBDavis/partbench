@@ -24,7 +24,8 @@ import {
   type DerivedMirrorGeometrySource,
   type DerivedRevolveGeometrySource,
   type DerivedShellGeometrySource,
-  type DerivedSweepGeometrySource
+  type DerivedSweepGeometrySource,
+  type DerivedLoftGeometrySource
 } from "./derivedGeometry";
 import {
   createAttachedSketchGeometryFrame,
@@ -85,6 +86,7 @@ export function createAuthoredFeatureDerivedGeometrySources(
   | DerivedMirrorGeometrySource
   | DerivedShellGeometrySource
   | DerivedSweepGeometrySource
+  | DerivedLoftGeometrySource
 )[] {
   const consumedBodyIds = createConsumedBodyIds(features);
 
@@ -102,6 +104,12 @@ export function createAuthoredFeatureDerivedGeometrySources(
       consumedBodyIds
     ),
     ...createSweepDerivedGeometrySources(
+      features,
+      sketches,
+      generatedFacesByKey,
+      consumedBodyIds
+    ),
+    ...createLoftDerivedGeometrySources(
       features,
       sketches,
       generatedFacesByKey,
@@ -150,6 +158,79 @@ export function createAuthoredFeatureDerivedGeometrySources(
       consumedBodyIds
     )
   ];
+}
+
+export function createLoftDerivedGeometrySources(
+  features: readonly CadFeatureSummary[],
+  sketches: readonly SketchSnapshot[],
+  generatedFacesByKey: ReadonlyMap<
+    string,
+    CadGeneratedFaceReference
+  > = new Map(),
+  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features)
+): readonly DerivedLoftGeometrySource[] {
+  return features
+    .filter(
+      (feature): feature is Extract<CadFeatureSummary, { kind: "loft" }> =>
+        feature.kind === "loft"
+    )
+    .filter((feature) => !consumedBodyIds.has(feature.bodyId))
+    .map((feature): DerivedLoftGeometrySource | undefined => {
+      const placementErrors: string[] = [];
+      const sections = feature.sections.map((section) => {
+        const sketch = sketches.find(
+          (candidate) => candidate.id === section.sketchId
+        );
+        const entity = sketch?.entities.find(
+          (candidate) => candidate.id === section.entityId
+        );
+        if (
+          !sketch ||
+          !entity ||
+          (entity.kind !== "rectangle" && entity.kind !== "circle")
+        ) {
+          return undefined;
+        }
+        const placement = createAttachedSketchFeaturePlacement(
+          sketch,
+          generatedFacesByKey,
+          "loft"
+        );
+        if (placement.placementError)
+          placementErrors.push(placement.placementError);
+        const profile =
+          entity.kind === "rectangle"
+            ? {
+                kind: entity.kind,
+                center: entity.center,
+                width: entity.width,
+                height: entity.height
+              }
+            : {
+                kind: entity.kind,
+                center: entity.center,
+                radius: entity.radius
+              };
+        return {
+          sketchPlane: sketch.plane,
+          profile,
+          ...(placement.placementFrame
+            ? { placementFrame: placement.placementFrame }
+            : {})
+        };
+      });
+
+      if (sections.some((section) => section === undefined)) return undefined;
+      return {
+        id: feature.bodyId,
+        kind: "loft",
+        sections: sections as DerivedLoftGeometrySource["sections"],
+        ...(placementErrors[0] ? { placementError: placementErrors[0] } : {})
+      };
+    })
+    .filter(
+      (source): source is DerivedLoftGeometrySource => source !== undefined
+    );
 }
 
 export function createSweepDerivedGeometrySources(
@@ -1388,7 +1469,7 @@ function createUnavailableHoleToolSource(): DerivedHoleGeometrySource["tool"] {
 function createAttachedSketchFeaturePlacement(
   sketch: SketchSnapshot,
   generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
-  featureKind: "extrude" | "revolve" | "hole" | "sweep"
+  featureKind: "extrude" | "revolve" | "hole" | "sweep" | "loft"
 ): {
   readonly placementFrame?: SketchDisplayFrame;
   readonly placementError?: string;

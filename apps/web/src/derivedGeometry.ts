@@ -38,7 +38,8 @@ export type DerivedGeometrySourceKind =
   | "circularPattern"
   | "mirror"
   | "shell"
-  | "sweep";
+  | "sweep"
+  | "loft";
 
 export type DerivedGeometrySource =
   | DerivedPrimitiveGeometrySource
@@ -51,7 +52,8 @@ export type DerivedGeometrySource =
   | DerivedCircularPatternGeometrySource
   | DerivedMirrorGeometrySource
   | DerivedShellGeometrySource
-  | DerivedSweepGeometrySource;
+  | DerivedSweepGeometrySource
+  | DerivedLoftGeometrySource;
 export type DerivedGeometryInput = DerivedGeometrySource | SceneObject;
 
 export interface DerivedPrimitiveGeometrySource {
@@ -119,6 +121,13 @@ export interface DerivedSweepGeometrySource {
     readonly start: readonly [number, number, number];
     readonly end: readonly [number, number, number];
   }[];
+  readonly placementError?: string;
+}
+
+export interface DerivedLoftGeometrySource {
+  readonly id: string;
+  readonly kind: "loft";
+  readonly sections: readonly DerivedSweepGeometrySource["profile"][];
   readonly placementError?: string;
 }
 
@@ -310,7 +319,8 @@ type SupportedDerivedGeometrySource =
   | DerivedCircularPatternGeometrySource
   | DerivedMirrorGeometrySource
   | DerivedShellGeometrySource
-  | DerivedSweepGeometrySource;
+  | DerivedSweepGeometrySource
+  | DerivedLoftGeometrySource;
 
 interface ActiveDerivedGeometryRequest {
   readonly sourceId: string;
@@ -600,7 +610,8 @@ function toDerivedGeometrySource(
     input.kind === "circularPattern" ||
     input.kind === "mirror" ||
     input.kind === "shell" ||
-    input.kind === "sweep"
+    input.kind === "sweep" ||
+    input.kind === "loft"
   ) {
     return input;
   }
@@ -636,7 +647,8 @@ function isSupportedDerivedGeometrySource(
     source.kind === "circularPattern" ||
     source.kind === "mirror" ||
     source.kind === "shell" ||
-    source.kind === "sweep"
+    source.kind === "sweep" ||
+    source.kind === "loft"
   ) {
     return !source.placementError;
   }
@@ -857,6 +869,14 @@ function deriveSourceMesh(
     });
   }
 
+  if (source.kind === "loft") {
+    if (source.placementError) {
+      throw new Error(source.placementError);
+    }
+
+    return runtime.loft({ id: source.id, sections: source.sections });
+  }
+
   const object = source.object as SupportedDerivedGeometryObject;
 
   switch (object.kind) {
@@ -1009,6 +1029,10 @@ function getUnsupportedSourceMessage(source: DerivedGeometrySource): string {
 
   if (source.kind === "sweep") {
     return source.placementError ?? "Sweep display source is unavailable.";
+  }
+
+  if (source.kind === "loft") {
+    return source.placementError ?? "Loft display source is unavailable.";
   }
 
   if (source.kind === "hole") {
@@ -1326,11 +1350,17 @@ export function createDerivedGeometryCacheKey(
                             pathSegments: source.pathSegments,
                             placementError: source.placementError
                           }
-                        : {
-                            kind: source.kind,
-                            dimensions: source.object.dimensions,
-                            transform: source.object.transform
-                          };
+                        : source.kind === "loft"
+                          ? {
+                              kind: source.kind,
+                              sections: source.sections,
+                              placementError: source.placementError
+                            }
+                          : {
+                              kind: source.kind,
+                              dimensions: source.object.dimensions,
+                              transform: source.object.transform
+                            };
 
   return JSON.stringify(base);
 }

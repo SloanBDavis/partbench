@@ -6,8 +6,6 @@ import type {
   CadGeneratedReference,
   CadReferenceHealthEntry,
   CurrentSketchConstraintKind,
-  FeatureMirrorPlane,
-  FeaturePatternAxis,
   MirrorPlaneRef,
   NamedGeneratedReferenceEntry,
   PatternDirectionRef,
@@ -33,6 +31,7 @@ import type {
   FeatureShellEdit,
   FeatureShellForm,
   FeatureSweepForm,
+  FeatureLoftForm,
   FeatureRevolveForm,
   SketchConstraintForm,
   SketchCreateForm,
@@ -191,6 +190,7 @@ export interface ModelingActionsPanelProps {
     profileEntityId: string,
     form: FeatureSweepForm
   ) => void;
+  readonly onCreateLoft?: (form: FeatureLoftForm) => void;
   readonly onUpdateLinearPattern?: (
     featureId: string,
     edit: FeatureLinearPatternEdit
@@ -298,6 +298,7 @@ export function ModelingActionsPanel({
   onCreateMirror,
   onCreateShell,
   onCreateSweep,
+  onCreateLoft,
   onCreateSideHoleSketch,
   onCreateSketch,
   onCreateSketchOnFace,
@@ -429,6 +430,7 @@ export function ModelingActionsPanel({
           onExtrudeEntity={onExtrudeEntity}
           onHoleEntity={onHoleEntity}
           onCreateSweep={onCreateSweep}
+          onCreateLoft={onCreateLoft}
           onRevolveEntity={onRevolveEntity}
           onUpdateEntity={onUpdateEntity}
         />
@@ -836,6 +838,7 @@ function SketchEntityWorkbench({
   onHoleEntity,
   onRevolveEntity,
   onCreateSweep,
+  onCreateLoft,
   onUpdateEntity
 }: {
   readonly actions: readonly ModelingActionDescriptor[];
@@ -885,6 +888,7 @@ function SketchEntityWorkbench({
     profileEntityId: string,
     form: FeatureSweepForm
   ) => void;
+  readonly onCreateLoft?: (form: FeatureLoftForm) => void;
   readonly onUpdateEntity?: (
     sketchId: string,
     entity: SketchEntitySnapshot
@@ -941,6 +945,12 @@ function SketchEntityWorkbench({
         sketches={sketches}
         onCreateSweep={onCreateSweep}
       />
+      <LoftCreateCard
+        context={context}
+        disabled={disabled}
+        sketches={sketches}
+        onCreateLoft={onCreateLoft}
+      />
       <SelectedEntityActions
         context={context}
         disabled={disabled}
@@ -964,6 +974,97 @@ function SketchEntityWorkbench({
         onCreateConstraint={onCreateConstraint}
       />
     </div>
+  );
+}
+
+function LoftCreateCard({
+  context,
+  disabled,
+  sketches,
+  onCreateLoft
+}: {
+  readonly context: Extract<
+    ModelingSelectionContext,
+    { readonly selectionKind: "sketchEntity" }
+  >;
+  readonly disabled: boolean;
+  readonly sketches: readonly SketchSnapshot[];
+  readonly onCreateLoft?: (form: FeatureLoftForm) => void;
+}) {
+  const sectionOptions = sketches
+    .filter((sketch) => sketch.id !== context.sketch.id)
+    .flatMap((sketch) =>
+      sketch.entities
+        .filter(
+          (entity) => entity.kind === "rectangle" || entity.kind === "circle"
+        )
+        .map((entity) => ({
+          value: `${sketch.id}\n${entity.id}`,
+          label: `${sketch.name} / ${entity.id}`,
+          sketchId: sketch.id,
+          entityId: entity.id
+        }))
+    );
+  const [sectionValue, setSectionValue] = useState(
+    sectionOptions[0]?.value ?? ""
+  );
+  const selectedSection =
+    sectionOptions.find((option) => option.value === sectionValue) ??
+    sectionOptions[0];
+
+  if (context.entity.kind !== "rectangle" && context.entity.kind !== "circle") {
+    return null;
+  }
+
+  return (
+    <section className="workbench-card compact" aria-label="Loft feature">
+      <div className="workbench-card-heading">
+        <h3>Loft</h3>
+        <small>New body through two profiles</small>
+      </div>
+      {selectedSection ? (
+        <>
+          <label>
+            Second section
+            <select
+              value={selectedSection.value}
+              disabled={disabled}
+              onChange={(event) => setSectionValue(event.currentTarget.value)}
+            >
+              {sectionOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            disabled={disabled || !onCreateLoft}
+            onClick={() =>
+              onCreateLoft?.({
+                id: "",
+                bodyId: "",
+                name: `Loft ${context.sketch.name}`,
+                sections: [
+                  { sketchId: context.sketch.id, entityId: context.entity.id },
+                  {
+                    sketchId: selectedSection.sketchId,
+                    entityId: selectedSection.entityId
+                  }
+                ]
+              })
+            }
+          >
+            Create loft
+          </button>
+        </>
+      ) : (
+        <p className="empty-state compact">
+          Add a rectangle or circle on another sketch for the second section.
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -2641,8 +2742,9 @@ function createMirrorReferenceOptions(
 }
 
 function mirrorReferenceTargetKey(reference: MirrorPlaneRef): string {
-  const { offset: _offset, ...target } = reference;
-  return JSON.stringify(target);
+  return JSON.stringify(reference, (key, value) =>
+    key === "offset" ? undefined : value
+  );
 }
 
 function withMirrorPlaneOffset(

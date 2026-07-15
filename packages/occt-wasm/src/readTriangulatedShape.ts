@@ -16,7 +16,8 @@ export type OcctPrimitiveKind =
   | "boolean"
   | "hole"
   | "edgeFinish"
-  | "sweep";
+  | "sweep"
+  | "loft";
 
 export interface OcctMeshData {
   readonly primitive: OcctPrimitiveKind;

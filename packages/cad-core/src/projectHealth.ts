@@ -62,7 +62,8 @@ import type {
   CircularPatternFeature,
   MirrorFeature,
   ShellFeature,
-  SweepFeature
+  SweepFeature,
+  LoftFeature
 } from "./index";
 import {
   evaluateSketch,
@@ -117,7 +118,8 @@ export type ProjectHealthFeature =
   | CircularPatternFeature
   | MirrorFeature
   | ShellFeature
-  | SweepFeature;
+  | SweepFeature
+  | LoftFeature;
 
 export interface ProjectHealthRevolveFeature {
   readonly id: FeatureId;
@@ -1671,6 +1673,20 @@ function collectSketchEntityAffectedFeatures(
 
   for (const feature of document.features.values()) {
     if (
+      feature.kind === "loft" &&
+      targets.some((target) =>
+        feature.sections.some(
+          (section) =>
+            section.sketchId === target.sketchId &&
+            section.entityId === target.entityId
+        )
+      )
+    ) {
+      featureIds.add(feature.id);
+      bodyIds.add(feature.bodyId);
+      continue;
+    }
+    if (
       feature.kind === "sweep" &&
       targets.some(
         (target) =>
@@ -1734,6 +1750,7 @@ function getProjectHealthFeaturePrimaryEntityId(
     | MirrorFeature
     | ShellFeature
     | SweepFeature
+    | LoftFeature
   >
 ): SketchEntityId {
   return feature.kind === "hole" ? feature.circleEntityId : feature.entityId;
@@ -1751,6 +1768,7 @@ function hasSketchEntitySource(
   | MirrorFeature
   | ShellFeature
   | SweepFeature
+  | LoftFeature
 > {
   return (
     feature.kind !== "chamfer" &&
@@ -1760,6 +1778,7 @@ function hasSketchEntitySource(
     feature.kind !== "mirror" &&
     feature.kind !== "shell" &&
     feature.kind !== "sweep" &&
+    feature.kind !== "loft" &&
     feature.kind !== "circularPattern"
   );
 }
@@ -2223,6 +2242,10 @@ function describeFeatureForHealth(feature: ProjectHealthFeature): string {
 
   if (feature.kind === "sweep") {
     return "sweep result";
+  }
+
+  if (feature.kind === "loft") {
+    return "loft result";
   }
 
   return `${feature.profileKind} ${feature.operationMode}`;

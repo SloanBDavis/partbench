@@ -43,6 +43,7 @@ import type {
   CadFeatureEditDiagnosticCode,
   CadFeatureRef,
   CadFeatureSummary,
+  LoftSection,
   CadFeatureReferenceChangeSummary,
   CadGeneratedExtrudeFaceRole,
   CadGeneratedEdgeReference,
@@ -482,6 +483,7 @@ export type {
   SemanticDiff,
   HoleFeatureSnapshot,
   RevolveFeatureSnapshot,
+  LoftFeatureSnapshot,
   SweepFeatureSnapshot,
   SketchEntityId,
   SketchEntityKind,
@@ -501,6 +503,7 @@ export type {
   Vec2,
   Vec3
 } from "@web-cad/cad-protocol";
+import { createSourceMeasurementFrame } from "./sourceMeasurementGeometry";
 
 export type { BodyMeasurementsSnapshot } from "@web-cad/cad-protocol";
 
@@ -583,6 +586,7 @@ export type Feature =
   | MirrorFeature
   | ShellFeature
   | SweepFeature
+  | LoftFeature
   | ImportedBodyFeature;
 
 export interface ExtrudeFeature {
@@ -715,6 +719,14 @@ export interface SweepFeature {
   readonly profileEntityId: SketchEntityId;
   readonly pathSketchId: SketchId;
   readonly pathEntityIds: readonly SketchEntityId[];
+  readonly bodyId: BodyId;
+}
+
+export interface LoftFeature {
+  readonly id: FeatureId;
+  readonly kind: "loft";
+  readonly name?: string;
+  readonly sections: readonly LoftSection[];
   readonly bodyId: BodyId;
 }
 
@@ -5798,6 +5810,18 @@ function applyOperation(
       return;
     }
 
+    case "feature.loft": {
+      const feature: LoftFeature = {
+        id: op.id ?? createFeatureId(),
+        kind: "loft",
+        name: normalizeOptionalFeatureName(op.name, opIndex, op.id),
+        sections: validateLoftSections(state, op.sections, opIndex),
+        bodyId: op.bodyId ?? createBodyId()
+      };
+      addFeature(state, feature, diff, opIndex);
+      return;
+    }
+
     case "feature.shell": {
       const targetBodyId = validateShellTargetBodyId(
         state,
@@ -5876,6 +5900,11 @@ function applyOperation(
 
     case "feature.updateSweep": {
       updateSweepFeature(state, op, diff, opIndex);
+      return;
+    }
+
+    case "feature.updateLoft": {
+      updateLoftFeature(state, op, diff, opIndex);
       return;
     }
 
@@ -6419,6 +6448,7 @@ function isCadOperationKind(value: string): boolean {
     case "feature.mirror":
     case "feature.shell":
     case "feature.sweep":
+    case "feature.loft":
     case "feature.delete":
     case "feature.updateExtrude":
     case "feature.updateRevolve":
@@ -6430,6 +6460,7 @@ function isCadOperationKind(value: string): boolean {
     case "feature.updateMirror":
     case "feature.updateShell":
     case "feature.updateSweep":
+    case "feature.updateLoft":
     case "reference.nameGenerated":
     case "reference.repairName":
     case "reference.deleteName":
@@ -7325,7 +7356,18 @@ function isCadFeatureEditProposal(value: unknown): boolean {
         typeof value.pathSketchId === "string") &&
       (value.pathEntityIds === undefined ||
         (Array.isArray(value.pathEntityIds) &&
-          value.pathEntityIds.every((entityId) => typeof entityId === "string")))
+          value.pathEntityIds.every(
+            (entityId) => typeof entityId === "string"
+          )))
+    );
+  }
+
+  if (value.kind === "loft") {
+    return (
+      Object.keys(value).every((key) => ["kind", "sections"].includes(key)) &&
+      (value.sections === undefined ||
+        (Array.isArray(value.sections) &&
+          value.sections.every(isLoftSectionShape)))
     );
   }
 
@@ -11694,6 +11736,206 @@ function throwSweepValidationError(
   });
 }
 
+function updateLoftFeature(
+  state: MutableDocumentState,
+  op: Extract<CadOp, { readonly op: "feature.updateLoft" }>,
+  diff: MutableSemanticDiff,
+  opIndex?: number
+): void {
+  const feature = getEditableFeatureForUpdate(
+    state,
+    op.id,
+    "loft",
+    "feature.updateLoft",
+    opIndex
+  );
+  const updated: LoftFeature = {
+    ...feature,
+    sections: validateLoftSections(state, op.sections, opIndex)
+  };
+  assertFeatureResultBodyActiveForEdit(
+    state,
+    updated,
+    "feature.updateLoft",
+    opIndex
+  );
+  state.features.set(feature.id, updated);
+  pushFeatureModified(diff, featureRef(updated));
+  pushBodyModified(diff, bodyRef(updated));
+  pushFeatureReferenceEffects(
+    diff,
+    createAmbiguousResultFeatureEditReferenceEffects(
+      updated,
+      "Loft result topology requires repair after a section reference edit."
+    )
+  );
+  pushFeatureLifecycleEffects(
+    diff,
+    createAmbiguousResultFeatureEditLifecycleEffects(
+      updated,
+      "Loft result body requires a derived rebuild after a section reference edit."
+    )
+  );
+}
+
+function validateLoftSections(
+  state: MutableDocumentState,
+  sections: unknown,
+  opIndex?: number
+): readonly LoftSection[] {
+  if (!Array.isArray(sections) || sections.length < 2) {
+    throwLoftValidationError(
+      "LOFT_SECTION_UNSUPPORTED",
+      "Loft requires at least two ordered profile sections.",
+      "sections",
+      "array containing at least two profile sections",
+      sections,
+      opIndex
+    );
+  }
+
+  const validated = sections.map((section, index): LoftSection => {
+    if (
+      !isRecord(section) ||
+      typeof section.sketchId !== "string" ||
+      typeof section.entityId !== "string"
+    ) {
+      throwLoftValidationError(
+        "LOFT_SECTION_UNRESOLVED",
+        "Each loft section must identify an existing sketch profile.",
+        `sections.${index}`,
+        "{ sketchId, entityId }",
+        section,
+        opIndex
+      );
+    }
+    const sketch = state.sketches.get(section.sketchId);
+    const entity = sketch?.entities.get(section.entityId);
+    if (!sketch || !entity) {
+      throwLoftValidationError(
+        "LOFT_SECTION_UNRESOLVED",
+        "Loft section sketch or entity no longer resolves.",
+        `sections.${index}`,
+        "existing rectangle or circle sketch entity",
+        section,
+        opIndex
+      );
+    }
+    if (entity.kind !== "rectangle" && entity.kind !== "circle") {
+      throwLoftValidationError(
+        "LOFT_SECTION_UNSUPPORTED",
+        "Loft sections must be rectangle or circle entities.",
+        `sections.${index}.entityId`,
+        "rectangle or circle entity",
+        entity.kind,
+        opIndex
+      );
+    }
+    return { sketchId: section.sketchId, entityId: section.entityId };
+  });
+
+  const keys = validated.map(
+    (section) => `${section.sketchId}\n${section.entityId}`
+  );
+  if (new Set(keys).size !== keys.length) {
+    throwLoftValidationError(
+      "LOFT_SECTION_DUPLICATE",
+      "Loft sections must not contain duplicate sketch profiles.",
+      "sections",
+      "unique sketch and entity references",
+      sections,
+      opIndex
+    );
+  }
+
+  const frames = validated.map((section, index) => {
+    const sketch = state.sketches.get(section.sketchId)!;
+    const frame = createSourceMeasurementFrame(state, sketch, DEFAULT_PART_ID);
+    if (!frame) {
+      throwLoftValidationError(
+        "LOFT_SECTION_FRAME_INVALID",
+        "Loft section sketch plane frame could not be resolved.",
+        `sections.${index}.sketchId`,
+        "resolved planar sketch frame",
+        section.sketchId,
+        opIndex
+      );
+    }
+    return frame;
+  });
+  const first = frames[0]!;
+  const firstNormal = loftFrameNormal(first);
+  const parallelTolerance = Math.cos((5 * Math.PI) / 180);
+
+  for (let index = 1; index < frames.length; index += 1) {
+    const frame = frames[index]!;
+    const normal = loftFrameNormal(frame);
+    const alignment = Math.abs(loftDot(firstNormal, normal));
+    if (alignment < parallelTolerance) {
+      throwLoftValidationError(
+        "LOFT_SECTION_FRAME_INVALID",
+        "Loft section frames must be roughly parallel.",
+        `sections.${index}.sketchId`,
+        "planar frame parallel to the first section",
+        validated[index]!.sketchId,
+        opIndex
+      );
+    }
+    const delta: Vec3 = [
+      frame.origin[0] - first.origin[0],
+      frame.origin[1] - first.origin[1],
+      frame.origin[2] - first.origin[2]
+    ];
+    if (Math.abs(loftDot(delta, firstNormal)) <= 1e-6) {
+      throwLoftValidationError(
+        "LOFT_SECTIONS_COPLANAR",
+        "Loft section frames must have non-zero separation.",
+        `sections.${index}.sketchId`,
+        "non-coplanar planar frame",
+        validated[index]!.sketchId,
+        opIndex
+      );
+    }
+  }
+
+  return validated;
+}
+
+function loftFrameNormal(frame: {
+  readonly uAxis: Vec3;
+  readonly vAxis: Vec3;
+}): Vec3 {
+  const normal: Vec3 = [
+    frame.uAxis[1] * frame.vAxis[2] - frame.uAxis[2] * frame.vAxis[1],
+    frame.uAxis[2] * frame.vAxis[0] - frame.uAxis[0] * frame.vAxis[2],
+    frame.uAxis[0] * frame.vAxis[1] - frame.uAxis[1] * frame.vAxis[0]
+  ];
+  const length = Math.hypot(...normal);
+  return [normal[0] / length, normal[1] / length, normal[2] / length];
+}
+
+function loftDot(left: Vec3, right: Vec3): number {
+  return left[0] * right[0] + left[1] * right[1] + left[2] * right[2];
+}
+
+function throwLoftValidationError(
+  code: CadBatchValidationError["code"],
+  message: string,
+  field: string,
+  expected: string,
+  received: unknown,
+  opIndex?: number
+): never {
+  throwValidationError({
+    code,
+    message,
+    opIndex,
+    path: operationPath(opIndex, field),
+    expected,
+    received: describeReceived(received)
+  });
+}
+
 function assertShellFeatureEditable(
   state: MutableDocumentState,
   feature: ShellFeature,
@@ -13699,6 +13941,9 @@ function assertSketchNotInUse(
 }
 
 function featureUsesSketch(feature: Feature, sketchId: SketchId): boolean {
+  if (feature.kind === "loft") {
+    return feature.sections.some((section) => section.sketchId === sketchId);
+  }
   if (feature.kind === "sweep") {
     return (
       feature.profileSketchId === sketchId || feature.pathSketchId === sketchId
@@ -13750,6 +13995,15 @@ function findFeaturesBySketchEntity(
   entityId: SketchEntityId
 ): readonly Feature[] {
   return [...features.values()].filter((feature) => {
+    if (
+      feature.kind === "loft" &&
+      feature.sections.some(
+        (section) =>
+          section.sketchId === sketchId && section.entityId === entityId
+      )
+    ) {
+      return true;
+    }
     if (
       feature.kind === "sweep" &&
       ((feature.profileSketchId === sketchId &&
@@ -17780,6 +18034,16 @@ function featureRef(feature: Feature): CadFeatureRef {
     };
   }
 
+  if (feature.kind === "loft") {
+    return {
+      id: feature.id,
+      kind: "loft",
+      name: feature.name,
+      sections: feature.sections.map((section) => ({ ...section })),
+      bodyId: feature.bodyId
+    };
+  }
+
   return {
     id: feature.id,
     kind: "extrude",
@@ -18963,6 +19227,16 @@ function createFeatureSnapshot(feature: Feature): FeatureSnapshot {
     };
   }
 
+  if (feature.kind === "loft") {
+    return {
+      id: feature.id,
+      kind: "loft",
+      name: feature.name,
+      sections: feature.sections.map((section) => ({ ...section })),
+      bodyId: feature.bodyId
+    };
+  }
+
   return {
     id: feature.id,
     kind: "extrude",
@@ -18983,9 +19257,13 @@ function createFeatureSnapshot(feature: Feature): FeatureSnapshot {
 
 function createFeatureFromSnapshot(snapshot: FeatureSnapshot): Feature {
   if (snapshot.kind === "loft") {
-    throw new Error(
-      `${snapshot.kind} snapshots require their V16 implementation slice.`
-    );
+    return {
+      id: snapshot.id,
+      kind: "loft",
+      name: snapshot.name,
+      sections: snapshot.sections.map((section) => ({ ...section })),
+      bodyId: snapshot.bodyId
+    };
   }
   if (snapshot.kind === "sweep") {
     return {
@@ -19799,6 +20077,20 @@ function createPrimitiveBodySnapshot(object: SceneObject): CadBodySnapshot {
 }
 
 function createFeatureSummary(feature: Feature): CadFeatureSummary {
+  if (feature.kind === "loft") {
+    return {
+      id: feature.id,
+      kind: "loft",
+      partId: DEFAULT_PART_ID,
+      bodyId: feature.bodyId,
+      name: feature.name,
+      sections: feature.sections.map((section) => ({ ...section })),
+      source: {
+        type: "loftFeature",
+        sections: feature.sections.map((section) => ({ ...section }))
+      }
+    };
+  }
   if (feature.kind === "sweep") {
     return {
       id: feature.id,
@@ -20055,6 +20347,21 @@ function createFeatureBodySnapshot(
   feature: Feature,
   consumedByFeatureId?: FeatureId
 ): CadBodySnapshot {
+  if (feature.kind === "loft") {
+    return {
+      id: feature.bodyId,
+      kind: "solid",
+      partId: DEFAULT_PART_ID,
+      featureId: feature.id,
+      ...(consumedByFeatureId ? { consumedByFeatureId } : {}),
+      name: feature.name,
+      source: {
+        type: "loftFeature",
+        featureId: feature.id,
+        sections: feature.sections.map((section) => ({ ...section }))
+      }
+    };
+  }
   if (feature.kind === "sweep") {
     return {
       id: feature.bodyId,
@@ -22378,6 +22685,15 @@ function featuresEqual(left: Feature, right: Feature): boolean {
       left.profileEntityId === right.profileEntityId &&
       left.pathSketchId === right.pathSketchId &&
       stableJsonEqual(left.pathEntityIds, right.pathEntityIds) &&
+      left.bodyId === right.bodyId
+    );
+  }
+
+  if (left.kind === "loft" && right.kind === "loft") {
+    return (
+      left.id === right.id &&
+      left.name === right.name &&
+      stableJsonEqual(left.sections, right.sections) &&
       left.bodyId === right.bodyId
     );
   }
@@ -26907,6 +27223,21 @@ function validateFeatureSnapshot(
     return { maxGeneratedFeatureNumber, maxGeneratedBodyNumber };
   }
 
+  if (value.kind === "loft") {
+    validateLoftFeatureSnapshotFields(
+      value,
+      path,
+      issues,
+      seenBodyIds,
+      seenSketchIds,
+      sketchEntityRefs
+    );
+    if (typeof value.bodyId === "string") {
+      maxGeneratedBodyNumber = parseBodyNumber(value.bodyId);
+    }
+    return { maxGeneratedFeatureNumber, maxGeneratedBodyNumber };
+  }
+
   if (typeof value.id !== "string" || value.id.length === 0) {
     addProjectIssue(
       issues,
@@ -28545,6 +28876,64 @@ function validateSweepSnapshotEntityRef(
   }
 }
 
+function validateLoftFeatureSnapshotFields(
+  value: Record<string, unknown>,
+  path: string,
+  issues: CadProjectImportIssue[],
+  seenBodyIds: Set<string>,
+  seenSketchIds: ReadonlySet<string>,
+  sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>
+): void {
+  if (!Array.isArray(value.sections) || value.sections.length < 2) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.sections`,
+      "Loft feature sections must contain at least two profiles."
+    );
+  } else {
+    value.sections.forEach((section, index) => {
+      if (!isRecord(section)) {
+        addProjectIssue(
+          issues,
+          "INVALID_FEATURE",
+          `${path}.sections.${index}`,
+          "Loft section must contain sketchId and entityId."
+        );
+        return;
+      }
+      validateSweepSnapshotEntityRef(
+        section.sketchId,
+        section.entityId,
+        `${path}.sections.${index}.entityId`,
+        ["rectangle", "circle"],
+        "Loft section",
+        issues,
+        seenSketchIds,
+        sketchEntityRefs
+      );
+    });
+  }
+
+  if (typeof value.bodyId !== "string" || value.bodyId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.bodyId`,
+      "Loft feature bodyId must be a non-empty string."
+    );
+  } else if (seenBodyIds.has(value.bodyId)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.bodyId`,
+      `Duplicate body id: ${value.bodyId}.`
+    );
+  } else {
+    seenBodyIds.add(value.bodyId);
+  }
+}
+
 function validatePositiveFiniteField(
   value: unknown,
   path: string,
@@ -28952,7 +29341,8 @@ function materializeGeneratedObjectIds(
       op.op === "feature.chamfer" ||
       op.op === "feature.fillet" ||
       op.op === "feature.shell" ||
-      op.op === "feature.sweep"
+      op.op === "feature.sweep" ||
+      op.op === "feature.loft"
     ) {
       const createdRef =
         transaction.diff.features?.created?.[createdFeatureIndex];
@@ -29473,6 +29863,16 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "feature.loft") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      Array.isArray(value.sections) &&
+      value.sections.every(isLoftSectionShape)
+    );
+  }
+
   if (value.op === "feature.delete") {
     return typeof value.id === "string";
   }
@@ -29609,6 +30009,14 @@ function isCadOp(value: unknown): value is CadOp {
         value.profileEntityId !== undefined ||
         value.pathSketchId !== undefined ||
         value.pathEntityIds !== undefined)
+    );
+  }
+
+  if (value.op === "feature.updateLoft") {
+    return (
+      typeof value.id === "string" &&
+      Array.isArray(value.sections) &&
+      value.sections.every(isLoftSectionShape)
     );
   }
 
@@ -30131,6 +30539,14 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
     );
   }
 
+  if (value.kind === "loft") {
+    return (
+      Array.isArray(value.sections) &&
+      value.sections.length >= 2 &&
+      value.sections.every(isLoftSectionShape)
+    );
+  }
+
   if (
     typeof value.sketchId !== "string" ||
     typeof value.entityId !== "string" ||
@@ -30392,6 +30808,14 @@ function isSketchEntity(value: unknown): value is SketchEntitySnapshot {
 
 function isOptionalString(value: unknown): value is string | undefined {
   return value === undefined || typeof value === "string";
+}
+
+function isLoftSectionShape(value: unknown): value is LoftSection {
+  return (
+    isRecord(value) &&
+    typeof value.sketchId === "string" &&
+    typeof value.entityId === "string"
+  );
 }
 
 function isDocumentUnits(value: unknown): value is DocumentUnits {

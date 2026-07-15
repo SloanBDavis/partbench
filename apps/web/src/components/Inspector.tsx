@@ -964,6 +964,8 @@ function formatFeatureKindLabel(feature: CadFeatureSummary): string {
       return "Shell";
     case "sweep":
       return "Sweep";
+    case "loft":
+      return "Loft";
     case "primitive":
       return formatObjectKind(feature.primitive);
   }
@@ -1215,6 +1217,19 @@ function renderFeatureDetailRows(
           </dd>
         </div>
       </>
+    );
+  }
+
+  if (feature.kind === "loft") {
+    return (
+      <div>
+        <dt>Sections</dt>
+        <dd>
+          {feature.sections
+            .map((section) => `${section.sketchId} / ${section.entityId}`)
+            .join(", ")}
+        </dd>
+      </div>
     );
   }
 

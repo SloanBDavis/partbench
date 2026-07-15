@@ -103,7 +103,8 @@ export type GeneratedReferencesFeature =
   | GeneratedReferencesCircularPatternFeature
   | GeneratedReferencesMirrorFeature
   | GeneratedReferencesShellFeature
-  | GeneratedReferencesSweepFeature;
+  | GeneratedReferencesSweepFeature
+  | GeneratedReferencesLoftFeature;
 
 export interface GeneratedReferencesExtrudeFeature {
   readonly id: FeatureId;
@@ -201,6 +202,12 @@ export interface GeneratedReferencesShellFeature {
 export interface GeneratedReferencesSweepFeature {
   readonly id: FeatureId;
   readonly kind: "sweep";
+  readonly bodyId: BodyId;
+}
+
+export interface GeneratedReferencesLoftFeature {
+  readonly id: FeatureId;
+  readonly kind: "loft";
   readonly bodyId: BodyId;
 }
 

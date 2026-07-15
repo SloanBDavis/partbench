@@ -29,7 +29,8 @@ import {
   type DerivedGeometrySource,
   type DerivedHoleGeometrySource,
   type DerivedRevolveGeometrySource,
-  type DerivedSweepGeometrySource
+  type DerivedSweepGeometrySource,
+  type DerivedLoftGeometrySource
 } from "./derivedGeometry";
 import { createDerivedGeometrySourcesFromDocument } from "./derivedGeometrySources";
 import type {
@@ -41,6 +42,33 @@ import type {
 import { createGeneratedFaceReferenceKey } from "./sketchDisplayFrames";
 
 describe("derivedExactMetadata", () => {
+  it("builds exact metadata inputs for loft sources", () => {
+    const source: DerivedLoftGeometrySource = {
+      id: "body_loft",
+      kind: "loft",
+      sections: [
+        {
+          sketchPlane: "XY",
+          profile: { kind: "rectangle", center: [0, 0], width: 4, height: 3 }
+        },
+        {
+          sketchPlane: "XY",
+          profile: { kind: "circle", center: [0, 0], radius: 1 },
+          placementFrame: {
+            origin: [0, 0, 5],
+            uAxis: [1, 0, 0],
+            vAxis: [0, 1, 0]
+          }
+        }
+      ]
+    };
+
+    expect(createExactMetadataRuntimeInput(source)).toEqual({
+      id: "body_loft",
+      source: { kind: "loft", sections: source.sections }
+    });
+  });
+
   it("builds exact metadata inputs for sweep sources", () => {
     const source: DerivedSweepGeometrySource = {
       id: "body_sweep",
@@ -1746,7 +1774,8 @@ function createMetadataResult(
     | "revolve"
     | "hole"
     | "edgeFinish"
-    | "sweep",
+    | "sweep"
+    | "loft",
   volume = 10
 ): DerivedExactMetadataResult {
   return {
@@ -1779,7 +1808,14 @@ function createMetadataResult(
 
 function createReadyExactMetadataEntry(
   bodyId: string,
-  sourceKind: "extrude" | "booleanExtrudes" | "revolve" | "hole" | "edgeFinish",
+  sourceKind:
+    | "extrude"
+    | "booleanExtrudes"
+    | "revolve"
+    | "hole"
+    | "edgeFinish"
+    | "sweep"
+    | "loft",
   volume = 10
 ): DerivedExactMetadataEntry {
   return {
@@ -1883,6 +1919,9 @@ function createRuntime(
       throw new Error("Mesh requests are not used by exact metadata tests.");
     },
     sweep() {
+      throw new Error("Mesh requests are not used by exact metadata tests.");
+    },
+    loft() {
       throw new Error("Mesh requests are not used by exact metadata tests.");
     },
     exactBodyMetadata(input) {

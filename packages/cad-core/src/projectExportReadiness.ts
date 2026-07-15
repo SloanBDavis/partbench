@@ -631,6 +631,7 @@ function getBodyExportSourceKind(
     case "circularPatternFeature":
     case "mirrorFeature":
     case "sweepFeature":
+    case "loftFeature":
       return "unresolvedSource";
   }
 }

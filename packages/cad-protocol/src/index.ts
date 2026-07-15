@@ -1131,8 +1131,8 @@ export interface CadMirrorFeatureRef {
   readonly includeOriginal: boolean;
 }
 
-export interface CadSweepFeatureRef extends SweepFeatureSnapshot {}
-export interface CadLoftFeatureRef extends LoftFeatureSnapshot {}
+export type CadSweepFeatureRef = SweepFeatureSnapshot;
+export type CadLoftFeatureRef = LoftFeatureSnapshot;
 
 export interface CadShellFeatureRef {
   readonly id: FeatureId;
@@ -1416,6 +1416,12 @@ export type CadBatchValidationErrorCode =
   | "SWEEP_PROFILE_PATH_FRAME_INVALID"
   | "SWEEP_GEOMETRY_FAILED"
   | "SWEEP_ENTITY_UNRESOLVED"
+  | "LOFT_SECTION_UNSUPPORTED"
+  | "LOFT_SECTION_UNRESOLVED"
+  | "LOFT_SECTION_DUPLICATE"
+  | "LOFT_SECTIONS_COPLANAR"
+  | "LOFT_SECTION_FRAME_INVALID"
+  | "LOFT_GEOMETRY_FAILED"
   | "MIRROR_GEOMETRY_FAILED"
   | "SHELL_TARGET_BODY_UNSUPPORTED"
   | "SHELL_TARGET_BODY_CONSUMED"
@@ -2836,6 +2842,16 @@ export interface CadSweepFeatureSummary extends SweepFeatureSnapshot {
   readonly source: CadSweepFeatureSource;
 }
 
+export interface CadLoftFeatureSource {
+  readonly type: "loftFeature";
+  readonly sections: readonly LoftSection[];
+}
+
+export interface CadLoftFeatureSummary extends LoftFeatureSnapshot {
+  readonly partId: PartId;
+  readonly source: CadLoftFeatureSource;
+}
+
 export type CadFeatureSummary =
   | CadPrimitiveFeatureSummary
   | CadExtrudeFeatureSummary
@@ -2848,7 +2864,8 @@ export type CadFeatureSummary =
   | CadCircularPatternFeatureSummary
   | CadMirrorFeatureSummary
   | CadShellFeatureSummary
-  | CadSweepFeatureSummary;
+  | CadSweepFeatureSummary
+  | CadLoftFeatureSummary;
 
 export type CadFeatureEditabilityStatus =
   | "editable"
@@ -2938,6 +2955,11 @@ export interface CadFeatureSweepEditProposal {
   readonly pathEntityIds?: readonly SketchEntityId[];
 }
 
+export interface CadFeatureLoftEditProposal {
+  readonly kind: "loft";
+  readonly sections?: readonly LoftSection[];
+}
+
 export type CadFeatureEditProposal =
   | CadFeatureExtrudeEditProposal
   | CadFeatureRevolveEditProposal
@@ -2945,7 +2967,8 @@ export type CadFeatureEditProposal =
   | CadFeatureChamferEditProposal
   | CadFeatureFilletEditProposal
   | CadFeatureShellEditProposal
-  | CadFeatureSweepEditProposal;
+  | CadFeatureSweepEditProposal
+  | CadFeatureLoftEditProposal;
 
 export interface CadFeatureEditDiagnostic {
   readonly code: CadFeatureEditDiagnosticCode;
@@ -3827,6 +3850,12 @@ export interface CadSweepBodySource {
   readonly pathEntityIds: readonly SketchEntityId[];
 }
 
+export interface CadLoftBodySource {
+  readonly type: "loftFeature";
+  readonly featureId: FeatureId;
+  readonly sections: readonly LoftSection[];
+}
+
 export type CadBodySource =
   | CadPrimitiveBodySource
   | CadSketchExtrudeBodySource
@@ -3839,6 +3868,7 @@ export type CadBodySource =
   | CadMirrorBodySource
   | CadShellBodySource
   | CadSweepBodySource
+  | CadLoftBodySource
   | CadImportedBodySource;
 
 export interface CadImportedBodySource {
