@@ -4,7 +4,7 @@ import type {
   SketchSnapshot
 } from "@web-cad/cad-core";
 import {
-  SKETCH_GEOMETRY_POLICY,
+  createResolvedWireExtrudeRecipe,
   resolveMirrorPlaneFrame,
   resolvePatternDirectionFrame,
   resolvePatternRotationAxisFrame
@@ -28,7 +28,6 @@ import {
   type DerivedSweepGeometrySource,
   type DerivedLoftGeometrySource
 } from "./derivedGeometry";
-import type { DerivedGeometryWireExtrudeProfile } from "./derivedGeometryRuntime";
 import {
   createAttachedSketchGeometryFrame,
   createDefaultSketchDisplayFrame,
@@ -44,10 +43,6 @@ export function createDerivedGeometrySourcesFromDocument(
   generatedFacesByKey: ReadonlyMap<
     string,
     CadGeneratedFaceReference
-  > = new Map(),
-  resolvedAttachmentFramesByKey: ReadonlyMap<
-    string,
-    SketchDisplayFrame
   > = new Map()
 ): readonly DerivedGeometrySource[] {
   const sketches = [...document.sketches.values()].map((sketch) => ({
@@ -66,8 +61,7 @@ export function createDerivedGeometrySourcesFromDocument(
       generatedFacesByKey,
       document.namedReferences,
       document.topologyIdentity,
-      document,
-      resolvedAttachmentFramesByKey
+      document
     )
   ];
 }
@@ -81,11 +75,7 @@ export function createAuthoredFeatureDerivedGeometrySources(
   > = new Map(),
   namedReferences: CadDocument["namedReferences"] = new Map(),
   topologyIdentity: CadDocument["topologyIdentity"] = undefined,
-  referenceDocument?: CadDocument,
-  resolvedAttachmentFramesByKey: ReadonlyMap<
-    string,
-    SketchDisplayFrame
-  > = new Map()
+  referenceDocument?: CadDocument
 ): readonly (
   | DerivedExtrudeGeometrySource
   | DerivedBooleanExtrudeGeometrySource
@@ -106,8 +96,7 @@ export function createAuthoredFeatureDerivedGeometrySources(
       features,
       sketches,
       generatedFacesByKey,
-      consumedBodyIds,
-      resolvedAttachmentFramesByKey
+      consumedBodyIds
     ),
     ...createRevolveDerivedGeometrySources(
       features,
@@ -625,11 +614,7 @@ export function createExtrudeDerivedGeometrySources(
     string,
     CadGeneratedFaceReference
   > = new Map(),
-  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features),
-  resolvedAttachmentFramesByKey: ReadonlyMap<
-    string,
-    SketchDisplayFrame
-  > = new Map()
+  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features)
 ): readonly (
   | DerivedExtrudeGeometrySource
   | DerivedBooleanExtrudeGeometrySource
@@ -657,8 +642,7 @@ export function createExtrudeDerivedGeometrySources(
           feature,
           featuresByBodyId,
           sketches,
-          generatedFacesByKey,
-          resolvedAttachmentFramesByKey
+          generatedFacesByKey
         )
       );
       continue;
@@ -667,8 +651,7 @@ export function createExtrudeDerivedGeometrySources(
     const source = createExtrudeSourceForFeature(
       feature,
       sketches,
-      generatedFacesByKey,
-      resolvedAttachmentFramesByKey
+      generatedFacesByKey
     );
 
     sources.push(
@@ -691,20 +674,12 @@ function createBooleanSourceForFeature(
   >,
   sketches: readonly SketchSnapshot[],
   generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
-  resolvedAttachmentFramesByKey: ReadonlyMap<
-    string,
-    SketchDisplayFrame
-  > = new Map(),
   visitedFeatureIds: ReadonlySet<string> = new Set()
 ): DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource {
   if (feature.operationMode !== "add" && feature.operationMode !== "cut") {
     return (
-      createExtrudeSourceForFeature(
-        feature,
-        sketches,
-        generatedFacesByKey,
-        resolvedAttachmentFramesByKey
-      ) ?? createUnavailableExtrudeSource(feature.bodyId)
+      createExtrudeSourceForFeature(feature, sketches, generatedFacesByKey) ??
+      createUnavailableExtrudeSource(feature.bodyId)
     );
   }
 
@@ -730,15 +705,13 @@ function createBooleanSourceForFeature(
         featuresByBodyId,
         sketches,
         generatedFacesByKey,
-        resolvedAttachmentFramesByKey,
         nextVisitedFeatureIds
       )
     : undefined;
   const tool = createExtrudeSourceForFeature(
     feature,
     sketches,
-    generatedFacesByKey,
-    resolvedAttachmentFramesByKey
+    generatedFacesByKey
   );
 
   return {
@@ -903,11 +876,7 @@ export function createEdgeFinishDerivedGeometrySources(
 function createExtrudeSourceForFeature(
   feature: Extract<CadFeatureSummary, { kind: "extrude" }>,
   sketches: readonly SketchSnapshot[],
-  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
-  resolvedAttachmentFramesByKey: ReadonlyMap<
-    string,
-    SketchDisplayFrame
-  > = new Map()
+  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>
 ): DerivedExtrudeGeometrySource | undefined {
   const sketch = sketches.find(
     (candidate) => candidate.id === feature.sketchId
@@ -922,8 +891,7 @@ function createExtrudeSourceForFeature(
       feature,
       feature.profile,
       sketch,
-      generatedFacesByKey,
-      resolvedAttachmentFramesByKey
+      generatedFacesByKey
     );
   }
 
@@ -938,8 +906,7 @@ function createExtrudeSourceForFeature(
   const placement = createAttachedSketchFeaturePlacement(
     sketch,
     generatedFacesByKey,
-    "extrude",
-    resolvedAttachmentFramesByKey
+    "extrude"
   );
 
   if (entity.kind === "rectangle") {
@@ -984,88 +951,45 @@ function createWireExtrudeSource(
     Extract<CadFeatureSummary, { kind: "extrude" }>["profile"]
   >,
   sketch: SketchSnapshot,
-  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
-  resolvedAttachmentFramesByKey: ReadonlyMap<string, SketchDisplayFrame>
+  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>
 ): DerivedExtrudeGeometrySource {
   const placement = createAttachedSketchFeaturePlacement(
     sketch,
     generatedFacesByKey,
-    "extrude",
-    resolvedAttachmentFramesByKey
+    "extrude"
   );
   const frame =
     placement.placementFrame ?? createDefaultSketchDisplayFrame(sketch.plane);
-  const segments: Array<DerivedGeometryWireExtrudeProfile["segments"][number]> =
-    [];
-
-  for (const reference of profile.segments) {
-    const entity = sketch.entities.find(
-      (candidate) => candidate.id === reference.entityId
+  const entities = new Map(
+    sketch.entities.map((entity) => [entity.id, entity])
+  );
+  const resolvedProfile = createResolvedWireExtrudeRecipe(
+    profile,
+    entities,
+    frame
+  );
+  if (!resolvedProfile) {
+    const unavailableEntityId = profile.segments.find((reference) => {
+      const entity = entities.get(reference.entityId);
+      return !entity || (entity.kind !== "line" && entity.kind !== "arc");
+    })?.entityId;
+    return createUnavailableExtrudeSource(
+      feature.bodyId,
+      `Composite extrude feature ${feature.id} cannot be displayed because profile entity ${unavailableEntityId ?? "unknown"} is unavailable.`
     );
-
-    if (!entity || (entity.kind !== "line" && entity.kind !== "arc")) {
-      return createUnavailableExtrudeSource(
-        feature.bodyId,
-        `Composite extrude feature ${feature.id} cannot be displayed because profile entity ${reference.entityId} is unavailable.`
-      );
-    }
-
-    if (entity.kind === "line") {
-      segments.push({
-        kind: "line",
-        sourceEntityId: entity.id,
-        start: reference.orientation === "forward" ? entity.start : entity.end,
-        end: reference.orientation === "forward" ? entity.end : entity.start
-      });
-      continue;
-    }
-
-    const forward = reference.orientation === "forward";
-    segments.push({
-      kind: "arc",
-      sourceEntityId: entity.id,
-      center: entity.center,
-      radius: entity.radius,
-      startAngleDegrees: normalizeDegrees(
-        forward
-          ? entity.startAngleDegrees
-          : entity.startAngleDegrees + entity.sweepAngleDegrees
-      ),
-      sweepAngleDegrees: forward
-        ? entity.sweepAngleDegrees
-        : -entity.sweepAngleDegrees
-    });
   }
 
-  const identityRecipe = {
-    sketchId: sketch.id,
-    frame,
-    segments,
-    geometryPolicy: SKETCH_GEOMETRY_POLICY
-  };
   return {
     id: feature.bodyId,
     kind: "extrude",
     sketchPlane: sketch.plane,
-    profile: {
-      kind: "wire",
-      frame,
-      closed: true,
-      segments,
-      sourceIdentity: `partbench-wire-extrude-v1:${JSON.stringify(identityRecipe)}`,
-      geometryPolicy: SKETCH_GEOMETRY_POLICY
-    },
+    profile: resolvedProfile,
     depth: feature.depth,
     side: feature.side,
     ...(placement.placementError
       ? { placementError: placement.placementError }
       : {})
   };
-}
-
-function normalizeDegrees(value: number): number {
-  const normalized = ((value % 360) + 360) % 360;
-  return Object.is(normalized, -0) ? 0 : normalized;
 }
 
 function createHoleToolSourceForFeature(
@@ -1612,11 +1536,7 @@ function createUnavailableHoleToolSource(): DerivedHoleGeometrySource["tool"] {
 function createAttachedSketchFeaturePlacement(
   sketch: SketchSnapshot,
   generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
-  featureKind: "extrude" | "revolve" | "hole" | "sweep" | "loft",
-  resolvedAttachmentFramesByKey: ReadonlyMap<
-    string,
-    SketchDisplayFrame
-  > = new Map()
+  featureKind: "extrude" | "revolve" | "hole" | "sweep" | "loft"
 ): {
   readonly placementFrame?: SketchDisplayFrame;
   readonly placementError?: string;
@@ -1633,13 +1553,6 @@ function createAttachedSketchFeaturePlacement(
     };
   }
 
-  const resolvedFrame = resolvedAttachmentFramesByKey.get(
-    createGeneratedFaceReferenceKey(attachment.bodyId, attachment.faceStableId)
-  );
-  if (resolvedFrame) {
-    return { placementFrame: resolvedFrame };
-  }
-
   const face = generatedFacesByKey.get(
     createGeneratedFaceReferenceKey(attachment.bodyId, attachment.faceStableId)
   );
@@ -1647,6 +1560,12 @@ function createAttachedSketchFeaturePlacement(
   if (!face) {
     return {
       placementError: `Attachment unresolved for ${sketch.name}; derived ${featureKind} mesh is unavailable.`
+    };
+  }
+
+  if (!face.eligibleOperations.includes("feature.attachSketchPlane")) {
+    return {
+      placementError: `Attachment face is not eligible to place ${sketch.name}; derived ${featureKind} mesh is unavailable.`
     };
   }
 

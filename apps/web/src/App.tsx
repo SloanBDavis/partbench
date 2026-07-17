@@ -167,7 +167,6 @@ import {
   type DerivedGeometrySnapshot
 } from "./derivedGeometry";
 import { createBodyGeneratedReferenceEvidence } from "./derivedGeneratedReferences";
-import { createCompositeGeneratedFaceFrames } from "./compositeGeneratedFaceFrames";
 import {
   createDerivedMeshOpfsCache,
   DERIVED_MESH_CACHE_ARTIFACT_VERSION,
@@ -1577,7 +1576,7 @@ export function App() {
     () => readGeneratedFaceReferencesByKey(sketchExtrudeBodies),
     [sketchExtrudeBodies]
   );
-  const firstPassFeatureGeometrySources = useMemo(
+  const featureGeometrySources = useMemo(
     () =>
       createAuthoredFeatureDerivedGeometrySources(
         projectStructure.features,
@@ -1596,9 +1595,9 @@ export function App() {
     () =>
       createDerivedGeneratedReferenceEvidenceByBodyId(
         derivedGeometry,
-        firstPassFeatureGeometrySources
+        featureGeometrySources
       ),
-    [derivedGeometry, firstPassFeatureGeometrySources]
+    [derivedGeometry, featureGeometrySources]
   );
   const generatedFacesByKey = useMemo(
     () =>
@@ -1616,33 +1615,6 @@ export function App() {
       ),
     [derivedGeneratedReferenceEvidenceByBodyId, sketchExtrudeBodies]
   );
-  const compositeGeneratedFaceFramesByKey = useMemo(
-    () =>
-      createCompositeGeneratedFaceFrames(
-        firstPassFeatureGeometrySources,
-        derivedGeneratedReferenceEvidenceByBodyId
-      ),
-    [derivedGeneratedReferenceEvidenceByBodyId, firstPassFeatureGeometrySources]
-  );
-  const featureGeometrySources = useMemo(
-    () =>
-      createAuthoredFeatureDerivedGeometrySources(
-        projectStructure.features,
-        sketches,
-        generatedFacesByKey,
-        document.namedReferences,
-        undefined,
-        undefined,
-        compositeGeneratedFaceFramesByKey
-      ),
-    [
-      compositeGeneratedFaceFramesByKey,
-      document,
-      generatedFacesByKey,
-      projectStructure.features,
-      sketches
-    ]
-  );
   const sketchDisplayState = useMemo(
     () => createSketchDisplayState(sketches, generatedFacesByKey),
     [generatedFacesByKey, sketches]
@@ -1652,15 +1624,9 @@ export function App() {
       createDerivedGeometrySourcesFromDocument(
         document,
         projectStructure.features,
-        generatedFacesByKey,
-        compositeGeneratedFaceFramesByKey
+        sourcePlacementFacesByKey
       ),
-    [
-      compositeGeneratedFaceFramesByKey,
-      document,
-      generatedFacesByKey,
-      projectStructure.features
-    ]
+    [document, projectStructure.features, sourcePlacementFacesByKey]
   );
   const selectedObject = selectedId
     ? document.objects.get(selectedId)

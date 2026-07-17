@@ -3,6 +3,7 @@ import {
   type CadFeatureSummary,
   type SketchSnapshot
 } from "@web-cad/cad-core";
+import type { CadGeneratedFaceReference } from "@web-cad/cad-protocol";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -23,6 +24,7 @@ import type {
   DerivedGeometryRuntime
 } from "./derivedGeometryRuntime";
 import { createExtrudeDerivedGeometrySources } from "./derivedGeometrySources";
+import { createGeneratedFaceReferenceKey } from "./sketchDisplayFrames";
 
 describe("V17 composite extrude web integration", () => {
   it("resolves an ordered line wire and reverses endpoints exactly", () => {
@@ -168,6 +170,47 @@ describe("V17 composite extrude web integration", () => {
     );
   });
 
+  it("shares the exact STEP recipe for base and attached reversed-arc display", () => {
+    for (const engine of [
+      createWireEngine(),
+      createWireEngine({ attached: true, reversedArc: true })
+    ]) {
+      const displaySource = resolveEngineWireSource(engine);
+      expect(displaySource).not.toHaveProperty("placementError");
+      const exact = engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.exportExact", format: "step" }
+      });
+      expect(exact).toMatchObject({
+        ok: true,
+        status: "supported"
+      });
+      if (!exact.ok || exact.query !== "project.exportExact") continue;
+      const exactSource = exact.exportSources.find(
+        (candidate) => candidate.bodyId === "body_wire"
+      );
+      expect(exactSource?.profile.kind).toBe("wire");
+      if (exactSource?.profile.kind !== "wire") continue;
+
+      expect(displaySource.profile).toEqual(exactSource.profile);
+    }
+  });
+
+  it("does not bypass select-only correspondence for a direct face attachment", () => {
+    const source = resolveEngineWireSource(
+      createWireEngine({ attached: true }),
+      (face) => ({
+        ...face,
+        eligibleOperations: ["feature.selectReference"]
+      })
+    );
+
+    expect(source).toMatchObject({
+      placementError:
+        "Attachment face is not eligible to place Wire sketch; derived extrude mesh is unavailable."
+    });
+  });
+
   it("invalidates and restores the resolved cache recipe across edit, undo, and redo", () => {
     const engine = createWireEngine();
     const initial = resolveEngineWireSource(engine);
@@ -305,7 +348,10 @@ function resolveWireSource(
 }
 
 function resolveEngineWireSource(
-  engine: CadEngine
+  engine: CadEngine,
+  mapFace: (face: CadGeneratedFaceReference) => CadGeneratedFaceReference = (
+    face
+  ) => face
 ): DerivedExtrudeGeometrySource {
   const response = engine.executeQuery({
     version: "cadops.v1",
@@ -323,25 +369,80 @@ function resolveEngineWireSource(
       entities: [...sketch.entities.values()]
     })
   );
-  const [source] = createExtrudeDerivedGeometrySources(
+  const generatedFacesByKey = new Map();
+  const parentReferences = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "body.generatedReferences", bodyId: "body_parent" }
+  });
+  if (
+    parentReferences.ok &&
+    parentReferences.query === "body.generatedReferences"
+  ) {
+    for (const face of parentReferences.faces) {
+      const mappedFace = mapFace(face);
+      generatedFacesByKey.set(
+        createGeneratedFaceReferenceKey(mappedFace.bodyId, mappedFace.stableId),
+        mappedFace
+      );
+    }
+  }
+  const source = createExtrudeDerivedGeometrySources(
     response.features,
-    sketches
-  );
+    sketches,
+    generatedFacesByKey
+  ).find((candidate) => candidate.id === "body_wire");
   if (!source || source.kind !== "extrude" || source.profile.kind !== "wire") {
     throw new Error("Expected resolved engine wire source.");
   }
   return source;
 }
 
-function createWireEngine(): CadEngine {
+function createWireEngine(
+  options: { readonly attached?: boolean; readonly reversedArc?: boolean } = {}
+): CadEngine {
   const engine = new CadEngine();
-  engine.applyBatch([
-    {
+  if (options.attached) {
+    engine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "sketch_parent",
+        name: "Parent sketch",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_parent",
+        id: "rect_parent",
+        center: [0, 0],
+        width: 4,
+        height: 4
+      },
+      {
+        op: "feature.extrude",
+        id: "feature_parent",
+        bodyId: "body_parent",
+        sketchId: "sketch_parent",
+        entityId: "rect_parent",
+        depth: 5,
+        operationMode: "newBody"
+      }
+    ]);
+    engine.apply({
+      op: "sketch.createOnFace",
+      id: "sketch_wire",
+      name: "Wire sketch",
+      bodyId: "body_parent",
+      faceStableId: "generated:face:body_parent:endCap"
+    });
+  } else {
+    engine.apply({
       op: "sketch.create",
       id: "sketch_wire",
       name: "Wire sketch",
       plane: "XY"
-    },
+    });
+  }
+  engine.applyBatch([
     {
       op: "sketch.addLine",
       sketchId: "sketch_wire",
@@ -357,8 +458,8 @@ function createWireEngine(): CadEngine {
         kind: "centerAngles",
         center: [0, 0],
         radius: 1,
-        startAngleDegrees: 90,
-        sweepAngleDegrees: 180
+        startAngleDegrees: options.reversedArc ? 270 : 90,
+        sweepAngleDegrees: options.reversedArc ? -180 : 180
       }
     },
     {
@@ -368,7 +469,10 @@ function createWireEngine(): CadEngine {
       profile: {
         kind: "wire",
         sketchId: "sketch_wire",
-        segments: [segment("diameter"), segment("round")]
+        segments: [
+          segment("diameter"),
+          segment("round", options.reversedArc ? "reverse" : "forward")
+        ]
       },
       depth: 4,
       operationMode: "newBody"

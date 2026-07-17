@@ -7,8 +7,13 @@ import type {
 import { createExactStepExportWorkerRequest } from "@web-cad/geometry-worker/browser";
 import type {
   GeometryWorker,
-  GeometryKernelExactStepExportArtifact
+  GeometryKernelExactStepExportArtifact,
+  ResolvedPlanarWireProfile
 } from "@web-cad/geometry-worker";
+
+type ExactStepExportWorkerBody = Parameters<
+  typeof createExactStepExportWorkerRequest
+>[0]["bodies"][number];
 
 export interface ProjectExactStepExportExecutionInput {
   readonly exactExport: ProjectExactExportQueryResponse;
@@ -62,7 +67,21 @@ export async function executeProjectExactStepExport({
   };
 }
 
-function mapExactExportSourceToWorkerBody(source: CadExactExportBodySource) {
+function mapExactExportSourceToWorkerBody(
+  source: CadExactExportBodySource
+): ExactStepExportWorkerBody {
+  if (source.profile.kind === "wire") {
+    const profile: ResolvedPlanarWireProfile = source.profile;
+    return {
+      bodyId: source.bodyId,
+      ...(source.bodyName ? { bodyName: source.bodyName } : {}),
+      sketchPlane: source.sketchPlane,
+      profile,
+      depth: source.depth,
+      side: source.side
+    };
+  }
+
   return {
     bodyId: source.bodyId,
     ...(source.bodyName ? { bodyName: source.bodyName } : {}),

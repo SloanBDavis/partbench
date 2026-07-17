@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { ProjectExactExportQueryResponse } from "@web-cad/cad-protocol";
-import type { GeometryWorker } from "@web-cad/geometry-worker";
+import type {
+  CadExactExportBodySource,
+  ProjectExactExportQueryResponse
+} from "@web-cad/cad-protocol";
+import type {
+  GeometryWorker,
+  GeometryWorkerRequest
+} from "@web-cad/geometry-worker";
 import { executeProjectExactStepExport } from "./projectExactStepExport";
 
 describe("projectExactStepExport", () => {
@@ -66,9 +72,108 @@ describe("projectExactStepExport", () => {
     });
     expect(result.artifact).toBeUndefined();
   });
+
+  it("passes the canonical wire recipe to STEP without a second placement", async () => {
+    const wireSource: CadExactExportBodySource = {
+      bodyId: "body_step_wire",
+      bodyName: "Wire body",
+      sourceKind: "authoredExtrude",
+      featureId: "feat_step_wire",
+      sourceSketchId: "sketch_step_wire",
+      sourceSketchEntityIds: ["line_1", "arc_1"],
+      sketchPlane: "XY",
+      profile: {
+        kind: "wire",
+        frame: {
+          origin: [10, 20, 30],
+          uAxis: [1, 0, 0],
+          vAxis: [0, 1, 0]
+        },
+        closed: true,
+        segments: [
+          {
+            kind: "line",
+            sourceEntityId: "line_1",
+            start: [0, 0],
+            end: [2, 0]
+          },
+          {
+            kind: "arc",
+            sourceEntityId: "arc_1",
+            center: [1, 0],
+            radius: 1,
+            startAngleDegrees: 0,
+            sweepAngleDegrees: 180
+          }
+        ],
+        sourceIdentity: "partbench-wire-extrude-v1:exact-recipe",
+        geometryPolicy: {
+          linearTolerance: 1e-7,
+          angularToleranceDegrees: 0.1,
+          minimumProfileArea: 1e-12
+        }
+      },
+      depth: 3,
+      side: "positive"
+    };
+    let request: GeometryWorkerRequest | undefined;
+    const bytes = new TextEncoder().encode("ISO-10303-21;");
+
+    await executeProjectExactStepExport({
+      exactExport: createExactExportResponse(wireSource),
+      worker: createWorker(
+        {
+          ok: true,
+          id: "project-export-step:payload",
+          op: "geometry.exportStep",
+          artifact: {
+            format: "step",
+            schema: "AP242DIS",
+            units: "mm",
+            bodyCount: 1,
+            byteLength: bytes.byteLength,
+            bytes
+          },
+          warnings: []
+        },
+        (candidate) => {
+          request = candidate;
+        }
+      )
+    });
+
+    expect(request).toBeDefined();
+    if (!request || request.payload.op !== "geometry.exportStep") return;
+    expect(request.payload.bodies[0]).toMatchObject({
+      bodyId: "body_step_wire",
+      bodyName: "Wire body",
+      sketchPlane: "XY",
+      profile: wireSource.profile,
+      depth: 3,
+      side: "positive"
+    });
+    expect(request.payload.bodies[0]).not.toHaveProperty("placementFrame");
+  });
 });
 
-function createExactExportResponse(): ProjectExactExportQueryResponse {
+function createExactExportResponse(
+  source: CadExactExportBodySource = {
+    bodyId: "body_step_rect",
+    sourceKind: "authoredExtrude",
+    featureId: "feat_step_rect",
+    sourceSketchId: "sketch_step_rect",
+    sourceSketchEntityId: "rect_step",
+    sketchPlane: "XY",
+    profile: {
+      kind: "rectangle",
+      center: [0, 0],
+      width: 2,
+      height: 1
+    },
+    depth: 3,
+    side: "positive"
+  }
+): ProjectExactExportQueryResponse {
   return {
     ok: true,
     query: "project.exportExact",
@@ -85,39 +190,26 @@ function createExactExportResponse(): ProjectExactExportQueryResponse {
     documentSchemaVersion: "web-cad.project.v16",
     sourceIdentityAlgorithm: "partbench-source-v1",
     sourceIdentityStatus: "notProvided",
-    requestedBodyIds: ["body_step_rect"],
+    requestedBodyIds: [source.bodyId],
     bodyCount: 1,
     sourceSupportedBodyCount: 1,
     deferredBodyCount: 0,
     unavailableBodyCount: 0,
     exportableBodyCount: 1,
-    exportSources: [
-      {
-        bodyId: "body_step_rect",
-        sourceKind: "authoredExtrude",
-        featureId: "feat_step_rect",
-        sourceSketchId: "sketch_step_rect",
-        sourceSketchEntityId: "rect_step",
-        sketchPlane: "XY",
-        profile: {
-          kind: "rectangle",
-          center: [0, 0],
-          width: 2,
-          height: 1
-        },
-        depth: 3,
-        side: "positive"
-      }
-    ],
+    exportSources: [source],
     bodies: [],
     diagnosticCount: 0,
     diagnostics: []
   };
 }
 
-function createWorker(response: unknown): GeometryWorker {
+function createWorker(
+  response: unknown,
+  onRequest?: (request: GeometryWorkerRequest) => void
+): GeometryWorker {
   return {
     async execute(request) {
+      onRequest?.(request);
       return {
         id: request.id,
         version: request.version,
