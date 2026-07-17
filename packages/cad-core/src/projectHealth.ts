@@ -348,6 +348,17 @@ function createAuthoredExtrudeHealth(
         expected: "rectangle or circle",
         received: entity.kind
       });
+    } else if (entity.construction) {
+      issues.push({
+        code: "PROFILE_KIND_MISMATCH",
+        message: `Source sketch entity ${profile.entityId} is construction geometry and cannot remain a solid profile for feature ${feature.id}.`,
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        sketchId: profile.sketchId,
+        sketchEntityId: profile.entityId,
+        expected: "non-construction rectangle or circle",
+        received: "construction geometry"
+      });
     }
   }
 
@@ -482,6 +493,17 @@ function createAuthoredRevolveHealth(
         expected: "rectangle or circle",
         received: entity.kind
       });
+    } else if (entity.construction) {
+      issues.push({
+        code: "PROFILE_KIND_MISMATCH",
+        message: `Source sketch entity ${profile.entityId} is construction geometry and cannot remain a solid profile for revolve feature ${feature.id}.`,
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        sketchId: profile.sketchId,
+        sketchEntityId: profile.entityId,
+        expected: "non-construction rectangle or circle",
+        received: "construction geometry"
+      });
     }
 
     const axisEntity = sketch.entities.get(feature.axis.entityId);
@@ -609,6 +631,17 @@ function createAuthoredHoleHealth(
         sketchEntityId: feature.circleEntityId,
         expected: "positive radius",
         received: String(entity.radius)
+      });
+    } else if (entity.construction) {
+      issues.push({
+        code: "PROFILE_KIND_MISMATCH",
+        message: `Hole source circle ${feature.circleEntityId} is construction geometry and cannot remain a solid hole profile.`,
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        sketchId: feature.sketchId,
+        sketchEntityId: feature.circleEntityId,
+        expected: "non-construction circle",
+        received: "construction geometry"
       });
     }
 

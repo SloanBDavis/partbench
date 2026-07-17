@@ -132,7 +132,20 @@ export function evaluateSketch(
     );
   const issues = [
     ...dimensions.flatMap((dimension) => dimension.issues),
-    ...constraints.flatMap((constraint) => constraint.issues)
+    ...constraints.flatMap((constraint) => constraint.issues),
+    ...[...sketch.entities.values()]
+      .filter((entity) => entity.kind === "arc")
+      .map(
+        (entity): SketchConstraintIssue => ({
+          code: "UNSUPPORTED_TARGET",
+          message:
+            "Arc entities are preserved as source, but the current sketch evaluator does not solve arc degrees of freedom.",
+          sketchId: sketch.id,
+          sketchEntityId: entity.id,
+          expected: "point, line, rectangle, or circle evaluator target",
+          received: "arc"
+        })
+      )
   ];
   const completenessIssues =
     issues.length === 0

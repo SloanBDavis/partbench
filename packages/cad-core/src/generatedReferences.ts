@@ -423,7 +423,11 @@ function resolveGeneratedEntityProfile(
   const entity = sketch?.entities.get(profileRef?.entityId ?? "");
   const profileKind = getSupportedEntityProfileKind(entity);
 
-  return profileRef && sketch && entity && profileKind
+  return profileRef &&
+    sketch &&
+    entity &&
+    entity.construction === false &&
+    profileKind
     ? { profileRef, sketch, entity, profileKind }
     : undefined;
 }

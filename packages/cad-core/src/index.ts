@@ -100,7 +100,10 @@ import type {
   SemanticDiff,
   SketchEntityId,
   SketchEntityKind,
+  SketchEntityKindV21,
+  SketchEntitySemanticDiff,
   SketchEntitySnapshot,
+  SketchEntityUpdateInput,
   ExtrudeFeatureV21,
   RevolveFeatureV21,
   SweepFeatureV21,
@@ -172,6 +175,11 @@ import {
   encodeCanonicalCbor
 } from "./canonicalCbor";
 import { SKETCH_GEOMETRY_POLICY } from "./sketchGeometryPolicy";
+import {
+  canonicalizeSketchArcDefinition,
+  createCanonicalSketchArcEntity,
+  type SketchArcValidationIssue
+} from "./sketchArcMath";
 import {
   normalizeFeatureInputs,
   type NormalizedFeature
@@ -5164,6 +5172,7 @@ type MutableSketchSemanticDiff = {
   entitiesCreated: CadSketchEntityRef[];
   entitiesModified: CadSketchEntityRef[];
   entitiesDeleted: CadSketchEntityRef[];
+  entityChanges: SketchEntitySemanticDiff[];
 };
 
 type MutableFeatureSemanticDiff = {
@@ -5203,8 +5212,6 @@ type MutableSketchConstraintSemanticDiff = {
   modified: CadSketchConstraintRef[];
   deleted: CadSketchConstraintRef[];
 };
-
-type SketchEntityKindV21 = SketchEntityKind | "arc";
 
 type SketchEntityImportRef = {
   readonly sketchId: SketchId;
@@ -5666,6 +5673,10 @@ function applyOperation(
 
       for (const entity of existing.entities.values()) {
         pushSketchEntityDeleted(diff, sketchEntityRef(existing.id, entity));
+        pushSketchEntityChange(
+          diff,
+          createSketchEntityDeletedDiff(existing.id, entity)
+        );
       }
 
       for (const dimension of state.sketchDimensions.values()) {
@@ -5691,10 +5702,17 @@ function applyOperation(
 
     case "sketch.addPoint": {
       const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+      const point = validateVec2(op.point, opIndex, "point");
+      const construction = validateSketchEntityConstruction(
+        op.construction === undefined ? false : op.construction,
+        opIndex,
+        "construction"
+      );
       const entity: SketchEntity = {
-        id: op.id ?? createSketchEntityId(),
+        id: normalizeSketchEntityId(op.id, opIndex) ?? createSketchEntityId(),
         kind: "point",
-        point: validateVec2(op.point, opIndex, "point")
+        point,
+        construction
       };
 
       addSketchEntity(state.sketches, sketch, entity, diff, opIndex);
@@ -5703,11 +5721,19 @@ function applyOperation(
 
     case "sketch.addLine": {
       const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+      const start = validateVec2(op.start, opIndex, "start");
+      const end = validateVec2(op.end, opIndex, "end");
+      const construction = validateSketchEntityConstruction(
+        op.construction === undefined ? false : op.construction,
+        opIndex,
+        "construction"
+      );
       const entity: SketchEntity = {
-        id: op.id ?? createSketchEntityId(),
+        id: normalizeSketchEntityId(op.id, opIndex) ?? createSketchEntityId(),
         kind: "line",
-        start: validateVec2(op.start, opIndex, "start"),
-        end: validateVec2(op.end, opIndex, "end")
+        start,
+        end,
+        construction
       };
 
       addSketchEntity(state.sketches, sketch, entity, diff, opIndex);
@@ -5716,12 +5742,29 @@ function applyOperation(
 
     case "sketch.addRectangle": {
       const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+      const center = validateVec2(op.center, opIndex, "center");
+      const width = validatePositiveSketchMeasurement(
+        op.width,
+        opIndex,
+        "width"
+      );
+      const height = validatePositiveSketchMeasurement(
+        op.height,
+        opIndex,
+        "height"
+      );
+      const construction = validateSketchEntityConstruction(
+        op.construction === undefined ? false : op.construction,
+        opIndex,
+        "construction"
+      );
       const entity: SketchEntity = {
-        id: op.id ?? createSketchEntityId(),
+        id: normalizeSketchEntityId(op.id, opIndex) ?? createSketchEntityId(),
         kind: "rectangle",
-        center: validateVec2(op.center, opIndex, "center"),
-        width: validatePositiveSketchMeasurement(op.width, opIndex, "width"),
-        height: validatePositiveSketchMeasurement(op.height, opIndex, "height")
+        center,
+        width,
+        height,
+        construction
       };
 
       addSketchEntity(state.sketches, sketch, entity, diff, opIndex);
@@ -5730,11 +5773,52 @@ function applyOperation(
 
     case "sketch.addCircle": {
       const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+      const center = validateVec2(op.center, opIndex, "center");
+      const radius = validatePositiveSketchMeasurement(
+        op.radius,
+        opIndex,
+        "radius"
+      );
+      const construction = validateSketchEntityConstruction(
+        op.construction === undefined ? false : op.construction,
+        opIndex,
+        "construction"
+      );
       const entity: SketchEntity = {
-        id: op.id ?? createSketchEntityId(),
+        id: normalizeSketchEntityId(op.id, opIndex) ?? createSketchEntityId(),
         kind: "circle",
-        center: validateVec2(op.center, opIndex, "center"),
-        radius: validatePositiveSketchMeasurement(op.radius, opIndex, "radius")
+        center,
+        radius,
+        construction
+      };
+
+      addSketchEntity(state.sketches, sketch, entity, diff, opIndex);
+      return;
+    }
+
+    case "sketch.addArc": {
+      const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+      const construction = validateSketchEntityConstruction(
+        op.construction === undefined ? false : op.construction,
+        opIndex,
+        "construction"
+      );
+      const geometry = canonicalizeSketchArcDefinition(
+        op.definition,
+        SKETCH_GEOMETRY_POLICY
+      );
+
+      if (!geometry.ok) {
+        throwSketchArcValidationIssue(geometry.issues[0]!, opIndex);
+      }
+
+      const id =
+        normalizeSketchEntityId(op.id, opIndex) ?? createSketchEntityId();
+      const entity: SketchEntity = {
+        id,
+        kind: "arc",
+        ...geometry.value,
+        construction
       };
 
       addSketchEntity(state.sketches, sketch, entity, diff, opIndex);
@@ -5749,7 +5833,23 @@ function applyOperation(
         throwSketchEntityNotFound(op.sketchId, op.entity.id, opIndex);
       }
 
-      const entity = normalizeSketchEntity(op.entity, opIndex);
+      const entity = normalizeSketchEntity(
+        op.entity,
+        opIndex,
+        existing.construction
+      );
+      if (entity.kind !== existing.kind) {
+        throwValidationError({
+          code: "INVALID_SKETCH_ENTITY",
+          message: "sketch.updateEntity cannot change an entity kind.",
+          opIndex,
+          sketchId: op.sketchId,
+          sketchEntityId: entity.id,
+          path: operationPath(opIndex, "entity.kind"),
+          expected: existing.kind,
+          received: entity.kind
+        });
+      }
       assertSketchDimensionTargetsStillValid(
         state.sketchDimensions,
         op.sketchId,
@@ -5787,6 +5887,29 @@ function applyOperation(
       return;
     }
 
+    case "sketch.setEntityConstruction": {
+      const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+      const existing = sketch.entities.get(op.entityId);
+
+      if (!existing) {
+        throwSketchEntityNotFound(op.sketchId, op.entityId, opIndex);
+      }
+
+      const construction = validateSketchEntityConstruction(
+        op.construction,
+        opIndex,
+        "construction"
+      );
+      updateSketchEntityAndDependents(
+        state,
+        sketch,
+        { ...existing, construction },
+        diff,
+        opIndex
+      );
+      return;
+    }
+
     case "sketch.deleteEntity": {
       const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
       const existing = sketch.entities.get(op.entityId);
@@ -5805,6 +5928,10 @@ function applyOperation(
       entities.delete(op.entityId);
       state.sketches.set(sketch.id, { ...sketch, entities });
       pushSketchEntityDeleted(diff, sketchEntityRef(sketch.id, existing));
+      pushSketchEntityChange(
+        diff,
+        createSketchEntityDeletedDiff(sketch.id, existing)
+      );
 
       for (const dimension of state.sketchDimensions.values()) {
         if (
@@ -6890,8 +7017,10 @@ function isCadOperationKind(value: string): boolean {
     case "sketch.addLine":
     case "sketch.addRectangle":
     case "sketch.addCircle":
+    case "sketch.addArc":
     case "sketch.updateEntity":
     case "sketch.deleteEntity":
+    case "sketch.setEntityConstruction":
     case "sketch.dimension.create":
     case "sketch.dimension.update":
     case "sketch.dimension.rename":
@@ -7835,6 +7964,18 @@ function isCadFeatureEditProposal(value: unknown): boolean {
 function isCadSketchEditProposal(value: unknown): boolean {
   if (!isRecord(value) || typeof value.editKind !== "string") {
     return false;
+  }
+
+  if (value.editKind === "sketch.updateEntity") {
+    return typeof value.sketchId === "string" && isSketchEntity(value.entity);
+  }
+
+  if (value.editKind === "sketch.setEntityConstruction") {
+    return (
+      typeof value.sketchId === "string" &&
+      typeof value.entityId === "string" &&
+      typeof value.construction === "boolean"
+    );
   }
 
   if (value.editKind === "entity.dimension.update") {
@@ -10734,6 +10875,10 @@ function updateSketchEntityAndDependents(
   opIndex: number,
   propagation: SketchConstraintPropagationContext = createSketchConstraintPropagationContext()
 ): void {
+  const existingEntity = sketch.entities.get(entity.id);
+  if (!existingEntity) {
+    throwSketchEntityNotFound(sketch.id, entity.id, opIndex);
+  }
   const dependentFeatures = findFeaturesBySketchEntity(
     state.features,
     sketch.id,
@@ -10763,7 +10908,7 @@ function updateSketchEntityAndDependents(
     assertSupportedExtrudeOperation(
       { ...state, features: nextFeatures },
       feature.operationMode,
-      getFeatureProfileKindOrThrow(state, feature, opIndex),
+      getFeatureProfileKindOrThrow(state, feature, opIndex, true),
       feature.targetBodyId,
       feature.targetTopologyAnchorId,
       opIndex,
@@ -10790,7 +10935,7 @@ function updateSketchEntityAndDependents(
       assertSupportedExtrudeOperation(
         { ...state, features: nextFeatures },
         feature.operationMode,
-        getFeatureProfileKindOrThrow(state, feature, opIndex),
+        getFeatureProfileKindOrThrow(state, feature, opIndex, true),
         feature.targetBodyId,
         feature.targetTopologyAnchorId,
         opIndex,
@@ -10832,6 +10977,10 @@ function updateSketchEntityAndDependents(
   }
 
   pushSketchEntityModified(diff, sketchEntityRef(sketch.id, entity));
+  pushSketchEntityChange(
+    diff,
+    createSketchEntityUpdatedDiff(sketch.id, existingEntity, entity)
+  );
 
   for (const updated of [...updatedFeatures, ...downstreamFeatures]) {
     state.features.set(updated.id, updated);
@@ -10915,17 +11064,17 @@ function updateDependentFeatureForSketchEntity(
   }
 
   if (feature.kind === "hole") {
-    assertHoleCircleEntity(entity, opIndex, sketchId, entity.id);
+    assertHoleCircleEntity(entity, opIndex, sketchId, entity.id, true);
     return feature;
   }
 
   if (feature.kind === "revolve") {
-    assertRevolvableProfile(entity, opIndex, sketchId, entity.id);
+    assertRevolvableProfile(entity, opIndex, sketchId, entity.id, true);
     return feature;
   }
 
   if (feature.kind === "extrude") {
-    assertExtrudableProfile(entity, opIndex, sketchId, entity.id);
+    assertExtrudableProfile(entity, opIndex, sketchId, entity.id, true);
     return feature;
   }
 
@@ -11140,14 +11289,14 @@ function addSketchEntity(
   }
 
   const entities = new Map(sketch.entities);
-  const normalizedEntity = {
-    ...entity,
-    construction:
-      (entity as unknown as Record<string, unknown>).construction === true
-  } as unknown as SketchEntity;
+  const normalizedEntity = cloneSketchEntity(entity);
   entities.set(entity.id, normalizedEntity);
   sketches.set(sketch.id, { ...sketch, entities });
   pushSketchEntityCreated(diff, sketchEntityRef(sketch.id, normalizedEntity));
+  pushSketchEntityChange(
+    diff,
+    createSketchEntityAddedDiff(sketch.id, normalizedEntity)
+  );
 }
 
 function throwSketchEntityNotFound(
@@ -11222,7 +11371,8 @@ function getFeaturePrimaryProfileEntityRef(
 function getFeatureProfileKindOrThrow(
   state: { readonly sketches: ReadonlyMap<SketchId, Sketch> },
   feature: ExtrudeFeature | RevolveFeature | SweepFeature,
-  opIndex?: number
+  opIndex?: number,
+  allowConstruction = false
 ): FeatureExtrudeProfileKind {
   const profile = getFeatureEntityProfile(feature);
   const entity = profile
@@ -11243,7 +11393,8 @@ function getFeatureProfileKindOrThrow(
     entity,
     opIndex,
     profile.sketchId,
-    profile.entityId
+    profile.entityId,
+    allowConstruction
   );
 }
 
@@ -14589,14 +14740,16 @@ function assertExtrudableProfile(
   entity: SketchEntity,
   opIndex: number | undefined,
   sketchId: SketchId,
-  entityId: SketchEntityId
+  entityId: SketchEntityId,
+  allowConstruction = false
 ): FeatureExtrudeProfileKind {
   return assertSupportedFeatureProfile(
     entity,
     opIndex,
     sketchId,
     entityId,
-    "feature.extrude"
+    "feature.extrude",
+    allowConstruction
   );
 }
 
@@ -14604,14 +14757,16 @@ function assertRevolvableProfile(
   entity: SketchEntity,
   opIndex: number | undefined,
   sketchId: SketchId,
-  entityId: SketchEntityId
+  entityId: SketchEntityId,
+  allowConstruction = false
 ): FeatureRevolveProfileKind {
   return assertSupportedFeatureProfile(
     entity,
     opIndex,
     sketchId,
     entityId,
-    "feature.revolve"
+    "feature.revolve",
+    allowConstruction
   );
 }
 
@@ -14620,9 +14775,22 @@ function assertSupportedFeatureProfile(
   opIndex: number | undefined,
   sketchId: SketchId,
   entityId: SketchEntityId,
-  commandName: "feature.extrude" | "feature.revolve"
+  commandName: "feature.extrude" | "feature.revolve",
+  allowConstruction = false
 ): FeatureExtrudeProfileKind {
   if (entity.kind === "rectangle" || entity.kind === "circle") {
+    if (entity.construction && !allowConstruction) {
+      throwValidationError({
+        code: "SKETCH_PROFILE_CONSTRUCTION_ENTITY",
+        message: `${commandName} cannot use construction geometry as a solid profile.`,
+        opIndex,
+        sketchId,
+        sketchEntityId: entityId,
+        path: operationPath(opIndex, "entityId"),
+        expected: "non-construction profile entity",
+        received: entityId
+      });
+    }
     return entity.kind;
   }
 
@@ -14809,7 +14977,8 @@ function assertHoleCircleEntity(
   entity: SketchEntity,
   opIndex: number | undefined,
   sketchId: SketchId,
-  entityId: SketchEntityId
+  entityId: SketchEntityId,
+  allowConstruction = false
 ): asserts entity is Extract<SketchEntity, { readonly kind: "circle" }> {
   if (entity.kind !== "circle") {
     throwValidationError({
@@ -14834,6 +15003,20 @@ function assertHoleCircleEntity(
       path: operationPath(opIndex, "circleEntityId"),
       expected: "circle entity with positive finite radius",
       received: describeReceived(entity.radius)
+    });
+  }
+
+  if (entity.construction && !allowConstruction) {
+    throwValidationError({
+      code: "SKETCH_PROFILE_CONSTRUCTION_ENTITY",
+      message:
+        "feature.hole cannot use construction geometry as a hole profile.",
+      opIndex,
+      sketchId,
+      sketchEntityId: entityId,
+      path: operationPath(opIndex, "circleEntityId"),
+      expected: "non-construction circle entity",
+      received: entityId
     });
   }
 }
@@ -18335,9 +18518,69 @@ function validatePositiveSketchMeasurement(
   });
 }
 
-function normalizeSketchEntity(
-  entity: SketchEntitySnapshot,
+function normalizeSketchEntityId(
+  id: SketchEntityId | undefined,
   opIndex?: number
+): SketchEntityId | undefined {
+  if (id === undefined) {
+    return undefined;
+  }
+
+  if (typeof id === "string" && id.length > 0) {
+    return id;
+  }
+
+  throwValidationError({
+    code: "INVALID_SKETCH_ENTITY",
+    message: "Sketch entity id must be a non-empty string.",
+    opIndex,
+    path: operationPath(opIndex, "id"),
+    expected: "non-empty string",
+    received: describeReceived(id)
+  });
+}
+
+function validateSketchEntityConstruction(
+  construction: unknown,
+  opIndex: number | undefined,
+  field: string
+): boolean {
+  if (typeof construction === "boolean") {
+    return construction;
+  }
+
+  throwValidationError({
+    code: "SKETCH_ENTITY_CONSTRUCTION_INVALID",
+    message: "Sketch entity construction state must be boolean.",
+    opIndex,
+    path: operationPath(opIndex, field),
+    expected: "boolean",
+    received: describeReceived(construction)
+  });
+}
+
+function throwSketchArcValidationIssue(
+  issue: SketchArcValidationIssue,
+  opIndex: number | undefined,
+  pathPrefix?: "entity"
+): never {
+  const path = pathPrefix
+    ? issue.path.replace(/^definition/, pathPrefix)
+    : issue.path;
+  throwValidationError({
+    code: issue.code,
+    message: issue.message,
+    opIndex,
+    path: operationPath(opIndex, path),
+    ...(issue.expected !== undefined ? { expected: issue.expected } : {}),
+    ...(issue.received !== undefined ? { received: issue.received } : {})
+  });
+}
+
+function normalizeSketchEntity(
+  entity: SketchEntityUpdateInput,
+  opIndex?: number,
+  legacyConstructionFallback = false
 ): SketchEntity {
   if (typeof entity.id !== "string" || entity.id.length === 0) {
     throwValidationError({
@@ -18350,19 +18593,39 @@ function normalizeSketchEntity(
     });
   }
 
+  const storedConstruction = (entity as unknown as Record<string, unknown>)
+    .construction;
+  if (entity.kind === "arc" && storedConstruction === undefined) {
+    throwValidationError({
+      code: "SKETCH_ENTITY_CONSTRUCTION_INVALID",
+      message: "Arc updates require an explicit construction state.",
+      opIndex,
+      path: operationPath(opIndex, "entity.construction"),
+      expected: "boolean",
+      received: "undefined"
+    });
+  }
+  const construction = validateSketchEntityConstruction(
+    storedConstruction ?? legacyConstructionFallback,
+    opIndex,
+    "entity.construction"
+  );
+
   switch (entity.kind) {
     case "point":
       return {
         id: entity.id,
         kind: entity.kind,
-        point: validateVec2(entity.point, opIndex, "entity.point")
+        point: validateVec2(entity.point, opIndex, "entity.point"),
+        construction
       };
     case "line":
       return {
         id: entity.id,
         kind: entity.kind,
         start: validateVec2(entity.start, opIndex, "entity.start"),
-        end: validateVec2(entity.end, opIndex, "entity.end")
+        end: validateVec2(entity.end, opIndex, "entity.end"),
+        construction
       };
     case "rectangle":
       return {
@@ -18378,7 +18641,8 @@ function normalizeSketchEntity(
           entity.height,
           opIndex,
           "entity.height"
-        )
+        ),
+        construction
       };
     case "circle":
       return {
@@ -18389,8 +18653,27 @@ function normalizeSketchEntity(
           entity.radius,
           opIndex,
           "entity.radius"
-        )
+        ),
+        construction
       };
+    case "arc": {
+      const result = createCanonicalSketchArcEntity(
+        entity.id,
+        {
+          kind: "centerAngles",
+          center: entity.center,
+          radius: entity.radius,
+          startAngleDegrees: entity.startAngleDegrees,
+          sweepAngleDegrees: entity.sweepAngleDegrees
+        },
+        construction,
+        SKETCH_GEOMETRY_POLICY
+      );
+      if (!result.ok) {
+        throwSketchArcValidationIssue(result.issues[0]!, opIndex, "entity");
+      }
+      return result.value;
+    }
   }
 }
 
@@ -18589,7 +18872,12 @@ function featureRef(
         feature.profile.kind === "entity"
           ? feature.profile.entityId
           : feature.profile.segments[0]!.entityId,
-      profileKind: getFeatureProfileKindOrThrow(state, feature),
+      profileKind: getFeatureProfileKindOrThrow(
+        state,
+        feature,
+        undefined,
+        true
+      ),
       axis: feature.axis,
       angleDegrees: feature.angleDegrees,
       operationMode: feature.operationMode
@@ -18618,7 +18906,7 @@ function featureRef(
       feature.profile.kind === "entity"
         ? feature.profile.entityId
         : feature.profile.segments[0]!.entityId,
-    profileKind: getFeatureProfileKindOrThrow(state, feature),
+    profileKind: getFeatureProfileKindOrThrow(state, feature, undefined, true),
     depth: feature.depth,
     side: feature.side,
     operationMode: feature.operationMode,
@@ -18808,6 +19096,96 @@ function pushSketchEntityDeleted(
   ensureSketchDiff(diff).entitiesDeleted.push(ref);
 }
 
+function pushSketchEntityChange(
+  diff: MutableSemanticDiff,
+  change: SketchEntitySemanticDiff
+): void {
+  ensureSketchDiff(diff).entityChanges.push(change);
+}
+
+function getSketchEntityGeometryFields(
+  entity: SketchEntity
+): readonly string[] {
+  switch (entity.kind) {
+    case "point":
+      return ["point"];
+    case "line":
+      return ["start", "end"];
+    case "rectangle":
+      return ["center", "width", "height"];
+    case "circle":
+      return ["center", "radius"];
+    case "arc":
+      return ["center", "radius", "startAngleDegrees", "sweepAngleDegrees"];
+  }
+}
+
+function createSketchEntityAddedDiff(
+  sketchId: SketchId,
+  entity: SketchEntity
+): SketchEntitySemanticDiff {
+  return {
+    sketchId,
+    entityId: entity.id,
+    action: "added",
+    entityKind: entity.kind,
+    changedFields: [...getSketchEntityGeometryFields(entity), "construction"],
+    constructionAfter: entity.construction
+  };
+}
+
+function createSketchEntityDeletedDiff(
+  sketchId: SketchId,
+  entity: SketchEntity
+): SketchEntitySemanticDiff {
+  return {
+    sketchId,
+    entityId: entity.id,
+    action: "deleted",
+    entityKind: entity.kind,
+    changedFields: [...getSketchEntityGeometryFields(entity), "construction"],
+    constructionBefore: entity.construction
+  };
+}
+
+function createSketchEntityUpdatedDiff(
+  sketchId: SketchId,
+  before: SketchEntity,
+  after: SketchEntity
+): SketchEntitySemanticDiff {
+  const changedFields = getSketchEntityGeometryFields(after).filter((field) =>
+    sketchEntityFieldChanged(before, after, field)
+  );
+  const constructionChanged = before.construction !== after.construction;
+  return {
+    sketchId,
+    entityId: after.id,
+    action: "updated",
+    entityKind: after.kind,
+    changedFields: constructionChanged
+      ? [...changedFields, "construction"]
+      : changedFields,
+    ...(constructionChanged
+      ? {
+          constructionBefore: before.construction,
+          constructionAfter: after.construction
+        }
+      : {})
+  };
+}
+
+function sketchEntityFieldChanged(
+  before: SketchEntity,
+  after: SketchEntity,
+  field: string
+): boolean {
+  const beforeValue = (before as unknown as Record<string, unknown>)[field];
+  const afterValue = (after as unknown as Record<string, unknown>)[field];
+  return Array.isArray(beforeValue) && Array.isArray(afterValue)
+    ? !stableJsonEqual(beforeValue, afterValue)
+    : beforeValue !== afterValue;
+}
+
 function ensureSketchDiff(
   diff: MutableSemanticDiff
 ): MutableSketchSemanticDiff {
@@ -18817,7 +19195,8 @@ function ensureSketchDiff(
     deleted: [],
     entitiesCreated: [],
     entitiesModified: [],
-    entitiesDeleted: []
+    entitiesDeleted: [],
+    entityChanges: []
   };
 
   return diff.sketches;
@@ -19136,6 +19515,13 @@ function scaleDocumentLengthValues(
 
     for (const entity of scaled.entities.values()) {
       pushSketchEntityModified(diff, sketchEntityRef(scaled.id, entity));
+      const before = sketch.entities.get(entity.id);
+      if (before) {
+        pushSketchEntityChange(
+          diff,
+          createSketchEntityUpdatedDiff(scaled.id, before, entity)
+        );
+      }
     }
   }
 
@@ -19290,6 +19676,12 @@ function scaleSketchEntityLengthValues(
         height: scaleLength(entity.height, scaleFactor)
       };
     case "circle":
+      return {
+        ...entity,
+        center: scaleVec2(entity.center, scaleFactor),
+        radius: scaleLength(entity.radius, scaleFactor)
+      };
+    case "arc":
       return {
         ...entity,
         center: scaleVec2(entity.center, scaleFactor),
@@ -19884,6 +20276,8 @@ function cloneSketchEntity(entity: SketchEntitySnapshot): SketchEntity {
         ...construction
       };
   }
+
+  throw new Error(`Unsupported sketch entity kind: ${entity.kind}`);
 }
 
 interface CadProjectStructureSnapshot {
@@ -20697,7 +21091,12 @@ function createFeatureSummary(
       name: feature.name,
       sketchId: profile.sketchId,
       entityId: profile.entityId,
-      profileKind: getFeatureProfileKindOrThrow(document, feature),
+      profileKind: getFeatureProfileKindOrThrow(
+        document,
+        feature,
+        undefined,
+        true
+      ),
       axis: feature.axis,
       angleDegrees: feature.angleDegrees,
       operationMode: feature.operationMode,
@@ -20719,7 +21118,12 @@ function createFeatureSummary(
     name: feature.name,
     sketchId: profile.sketchId,
     entityId: profile.entityId,
-    profileKind: getFeatureProfileKindOrThrow(document, feature),
+    profileKind: getFeatureProfileKindOrThrow(
+      document,
+      feature,
+      undefined,
+      true
+    ),
     depth: feature.depth,
     side: feature.side,
     operationMode: feature.operationMode,
@@ -20956,7 +21360,12 @@ function createFeatureBodySnapshot(
         featureId: feature.id,
         sketchId: profile.sketchId,
         entityId: profile.entityId,
-        profileKind: getFeatureProfileKindOrThrow(document, feature),
+        profileKind: getFeatureProfileKindOrThrow(
+          document,
+          feature,
+          undefined,
+          true
+        ),
         axis: feature.axis
       }
     };
@@ -20975,7 +21384,12 @@ function createFeatureBodySnapshot(
       featureId: feature.id,
       sketchId: profile.sketchId,
       entityId: profile.entityId,
-      profileKind: getFeatureProfileKindOrThrow(document, feature)
+      profileKind: getFeatureProfileKindOrThrow(
+        document,
+        feature,
+        undefined,
+        true
+      )
     }
   };
 }
@@ -26494,7 +26908,8 @@ function validateSketchConstraintSnapshot(
         id: entityId,
         kind: "line",
         start: entityRef.entity.start,
-        end: entityRef.entity.end
+        end: entityRef.entity.end,
+        construction: false
       }) <= 0
     ) {
       addProjectIssue(
@@ -26514,7 +26929,8 @@ function validateSketchConstraintSnapshot(
         id: entityId,
         kind: "line",
         start: entityRef.entity.start,
-        end: entityRef.entity.end
+        end: entityRef.entity.end,
+        construction: false
       };
 
       if (
@@ -26770,7 +27186,8 @@ function validateSketchConstraintSnapshot(
               : secondaryLineEntityId,
           kind: "line",
           start: ref.entity.start,
-          end: ref.entity.end
+          end: ref.entity.end,
+          construction: false
         }) <= 0
       ) {
         addProjectIssue(
@@ -29691,7 +30108,8 @@ function validateRevolveAxisSnapshot(
       id: value.entityId,
       kind: "line",
       start: axisRef.entity.start,
-      end: axisRef.entity.end
+      end: axisRef.entity.end,
+      construction: false
     }) <= 0
   ) {
     addProjectIssue(
@@ -31149,7 +31567,8 @@ function isCadOp(value: unknown): value is CadOp {
     return (
       typeof value.sketchId === "string" &&
       isOptionalString(value.id) &&
-      isVec2(value.point)
+      isVec2(value.point) &&
+      isOptionalBoolean(value.construction)
     );
   }
 
@@ -31158,7 +31577,8 @@ function isCadOp(value: unknown): value is CadOp {
       typeof value.sketchId === "string" &&
       isOptionalString(value.id) &&
       isVec2(value.start) &&
-      isVec2(value.end)
+      isVec2(value.end) &&
+      isOptionalBoolean(value.construction)
     );
   }
 
@@ -31170,7 +31590,8 @@ function isCadOp(value: unknown): value is CadOp {
       typeof value.width === "number" &&
       isPositiveFiniteNumber(value.width) &&
       typeof value.height === "number" &&
-      isPositiveFiniteNumber(value.height)
+      isPositiveFiniteNumber(value.height) &&
+      isOptionalBoolean(value.construction)
     );
   }
 
@@ -31180,7 +31601,17 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.id) &&
       isVec2(value.center) &&
       typeof value.radius === "number" &&
-      isPositiveFiniteNumber(value.radius)
+      isPositiveFiniteNumber(value.radius) &&
+      isOptionalBoolean(value.construction)
+    );
+  }
+
+  if (value.op === "sketch.addArc") {
+    return (
+      typeof value.sketchId === "string" &&
+      isOptionalString(value.id) &&
+      isOptionalBoolean(value.construction) &&
+      isSketchArcDefinition(value.definition)
     );
   }
 
@@ -31191,6 +31622,14 @@ function isCadOp(value: unknown): value is CadOp {
   if (value.op === "sketch.deleteEntity") {
     return (
       typeof value.sketchId === "string" && typeof value.entityId === "string"
+    );
+  }
+
+  if (value.op === "sketch.setEntityConstruction") {
+    return (
+      typeof value.sketchId === "string" &&
+      typeof value.entityId === "string" &&
+      typeof value.construction === "boolean"
     );
   }
 
@@ -31731,7 +32170,28 @@ function isSketchSemanticDiff(value: unknown): value is SketchSemanticDiff {
         value.entitiesModified.every(isCadSketchEntityRef))) &&
     (value.entitiesDeleted === undefined ||
       (Array.isArray(value.entitiesDeleted) &&
-        value.entitiesDeleted.every(isCadSketchEntityRef)))
+        value.entitiesDeleted.every(isCadSketchEntityRef))) &&
+    (value.entityChanges === undefined ||
+      (Array.isArray(value.entityChanges) &&
+        value.entityChanges.every(isSketchEntitySemanticDiff)))
+  );
+}
+
+function isSketchEntitySemanticDiff(
+  value: unknown
+): value is SketchEntitySemanticDiff {
+  return (
+    isRecord(value) &&
+    typeof value.sketchId === "string" &&
+    typeof value.entityId === "string" &&
+    (value.action === "added" ||
+      value.action === "updated" ||
+      value.action === "deleted") &&
+    isSketchEntityKind(value.entityKind) &&
+    Array.isArray(value.changedFields) &&
+    value.changedFields.every((field) => typeof field === "string") &&
+    isOptionalBoolean(value.constructionBefore) &&
+    isOptionalBoolean(value.constructionAfter)
   );
 }
 
@@ -32326,7 +32786,11 @@ function isVec2(value: unknown): value is Vec2 {
 }
 
 function isSketchEntity(value: unknown): value is SketchEntitySnapshot {
-  if (!isRecord(value) || typeof value.id !== "string") {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    !isOptionalBoolean(value.construction)
+  ) {
     return false;
   }
 
@@ -32356,7 +32820,49 @@ function isSketchEntity(value: unknown): value is SketchEntitySnapshot {
     );
   }
 
+  if (value.kind === "arc") {
+    return (
+      typeof value.construction === "boolean" &&
+      isVec2(value.center) &&
+      typeof value.radius === "number" &&
+      Number.isFinite(value.radius) &&
+      typeof value.startAngleDegrees === "number" &&
+      Number.isFinite(value.startAngleDegrees) &&
+      typeof value.sweepAngleDegrees === "number" &&
+      Number.isFinite(value.sweepAngleDegrees)
+    );
+  }
+
   return false;
+}
+
+function isSketchArcDefinition(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (value.kind === "centerAngles") {
+    return (
+      isVec2(value.center) &&
+      typeof value.radius === "number" &&
+      Number.isFinite(value.radius) &&
+      typeof value.startAngleDegrees === "number" &&
+      Number.isFinite(value.startAngleDegrees) &&
+      typeof value.sweepAngleDegrees === "number" &&
+      Number.isFinite(value.sweepAngleDegrees)
+    );
+  }
+
+  return (
+    value.kind === "threePoint" &&
+    isVec2(value.start) &&
+    isVec2(value.pointOnArc) &&
+    isVec2(value.end)
+  );
+}
+
+function isOptionalBoolean(value: unknown): value is boolean | undefined {
+  return value === undefined || typeof value === "boolean";
 }
 
 function isOptionalString(value: unknown): value is string | undefined {

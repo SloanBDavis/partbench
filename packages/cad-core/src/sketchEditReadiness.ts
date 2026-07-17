@@ -101,6 +101,7 @@ type SimulationResult = {
 
 type CadSketchEditDryRunSummaryCommitOperation =
   | "sketch.updateEntity"
+  | "sketch.setEntityConstruction"
   | "sketch.dimension.create"
   | "sketch.dimension.update"
   | "sketch.dimension.delete"
@@ -220,6 +221,116 @@ function simulateSketchEdit(
   const diagnostics: CadSketchEditDiagnostic[] = [];
 
   switch (edit.editKind) {
+    case "sketch.updateEntity": {
+      const sketch = simulated.sketches.get(edit.sketchId);
+      const existing = sketch?.entities.get(edit.entity.id);
+
+      if (!sketch) {
+        diagnostics.push(
+          createDiagnostic({
+            code: "SKETCH_EDIT_MISSING_SKETCH",
+            severity: "blocker",
+            message: `Sketch does not exist: ${edit.sketchId}`,
+            sketchId: edit.sketchId,
+            expected: "existing sketch",
+            received: edit.sketchId
+          })
+        );
+      } else if (!existing) {
+        diagnostics.push(
+          createDiagnostic({
+            code: "SKETCH_EDIT_MISSING_ENTITY",
+            severity: "blocker",
+            message: `Sketch entity does not exist: ${edit.entity.id}`,
+            sketchId: edit.sketchId,
+            sketchEntityId: edit.entity.id,
+            expected: "existing sketch entity",
+            received: edit.entity.id
+          })
+        );
+      } else if (existing.kind !== edit.entity.kind) {
+        diagnostics.push(
+          createDiagnostic({
+            code: "SKETCH_EDIT_INVALID_PROPOSAL",
+            severity: "blocker",
+            message: "A sketch entity update cannot change entity kind.",
+            sketchId: edit.sketchId,
+            sketchEntityId: edit.entity.id,
+            fieldPath: "entity.kind",
+            expected: existing.kind,
+            received: edit.entity.kind
+          })
+        );
+      } else {
+        const entities = new Map(sketch.entities);
+        entities.set(edit.entity.id, {
+          ...edit.entity,
+          construction:
+            edit.entity.construction === undefined
+              ? existing.construction
+              : edit.entity.construction
+        } as SketchEntitySnapshot);
+        simulated.sketches.set(sketch.id, { ...sketch, entities });
+      }
+
+      return {
+        document: simulated,
+        sketchId: edit.sketchId,
+        editedEntityIds: [edit.entity.id],
+        editedDimensionIds: [],
+        editedConstraintIds: [],
+        commitOperation: "sketch.updateEntity",
+        diagnostics: addSupportedDiagnostic(diagnostics, edit.sketchId)
+      };
+    }
+
+    case "sketch.setEntityConstruction": {
+      const sketch = simulated.sketches.get(edit.sketchId);
+      const existing = sketch?.entities.get(edit.entityId);
+
+      if (!sketch) {
+        diagnostics.push(
+          createDiagnostic({
+            code: "SKETCH_EDIT_MISSING_SKETCH",
+            severity: "blocker",
+            message: `Sketch does not exist: ${edit.sketchId}`,
+            sketchId: edit.sketchId,
+            expected: "existing sketch",
+            received: edit.sketchId
+          })
+        );
+      } else if (!existing) {
+        diagnostics.push(
+          createDiagnostic({
+            code: "SKETCH_EDIT_MISSING_ENTITY",
+            severity: "blocker",
+            message: `Sketch entity does not exist: ${edit.entityId}`,
+            sketchId: edit.sketchId,
+            sketchEntityId: edit.entityId,
+            expected: "existing sketch entity",
+            received: edit.entityId
+          })
+        );
+      } else {
+        const entities = new Map(sketch.entities);
+        entities.set(edit.entityId, {
+          ...existing,
+          construction: edit.construction
+        });
+        simulated.sketches.set(sketch.id, { ...sketch, entities });
+      }
+
+      return {
+        document: simulated,
+        sketchId: edit.sketchId,
+        editedEntityIds: [edit.entityId],
+        editedDimensionIds: [],
+        editedConstraintIds: [],
+        commitOperation: "sketch.setEntityConstruction",
+        diagnostics: addSupportedDiagnostic(diagnostics, edit.sketchId)
+      };
+    }
+
     case "entity.dimension.update": {
       const sketch = simulated.sketches.get(edit.sketchId);
       const entity = sketch?.entities.get(edit.entityId);
@@ -864,6 +975,36 @@ function collectEvaluationDiagnostics(
 
   const diagnostics: CadSketchEditDiagnostic[] = [];
 
+  if (
+    evaluation.status === "unsupported" &&
+    evaluation.issues.some(
+      (issue) =>
+        issue.code === "UNSUPPORTED_TARGET" &&
+        issue.sketchEntityId !== undefined
+    )
+  ) {
+    const issue = evaluation.issues.find(
+      (candidate) =>
+        candidate.code === "UNSUPPORTED_TARGET" &&
+        "sketchEntityId" in candidate &&
+        candidate.sketchEntityId !== undefined
+    )!;
+    const entityIssue = issue as typeof issue & {
+      readonly sketchEntityId: SketchEntityId;
+    };
+    diagnostics.push(
+      createDiagnostic({
+        code: "SKETCH_EDIT_UNSUPPORTED",
+        severity: "blocker",
+        message: entityIssue.message,
+        sketchId: entityIssue.sketchId,
+        sketchEntityId: entityIssue.sketchEntityId,
+        expected: entityIssue.expected,
+        received: entityIssue.received
+      })
+    );
+  }
+
   if (evaluation.status === "under-defined") {
     diagnostics.push(
       createDiagnostic({
@@ -1423,6 +1564,8 @@ function getProposalSketchId(
   edit: CadSketchEditProposal
 ): SketchId | undefined {
   if (
+    edit.editKind === "sketch.updateEntity" ||
+    edit.editKind === "sketch.setEntityConstruction" ||
     edit.editKind === "entity.dimension.update" ||
     edit.editKind === "sketch.dimension.create" ||
     edit.editKind === "sketch.constraint.create"
