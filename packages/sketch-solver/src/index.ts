@@ -594,7 +594,13 @@ export function solveSketch(model: SketchSolveModel): SketchSolveResult {
     });
   }
 
-  const solve = runDampedSolve(initialState, residualBlocks, settings);
+  const solve = runDampedSolve(
+    initialState,
+    residualBlocks,
+    settings,
+    (candidate) =>
+      arcStateStaysWithinAuthoredBranch(model, stateAccess, candidate, settings)
+  );
   const solvedStateDiagnostics = validateSolvedState(
     model,
     settings,
@@ -2172,7 +2178,8 @@ function createDimensionResidual(
 function runDampedSolve(
   initialState: readonly number[],
   residualBlocks: readonly ResidualBlock[],
-  settings: SketchSolveSettings
+  settings: SketchSolveSettings,
+  isStateAllowed: (state: readonly number[]) => boolean = () => true
 ): {
   readonly state: readonly number[];
   readonly iterations: number;
@@ -2217,7 +2224,24 @@ function runDampedSolve(
       };
     }
 
-    state = state.map((value, index) => value + delta[index]);
+    let stepScale = 1;
+    let candidate = state.map(
+      (value, index) => value + stepScale * delta[index]
+    );
+    while (!isStateAllowed(candidate) && stepScale > 1e-9) {
+      stepScale /= 2;
+      candidate = state.map((value, index) => value + stepScale * delta[index]);
+    }
+    if (!isStateAllowed(candidate)) {
+      return {
+        state,
+        iterations: iteration - 1,
+        converged: false,
+        residuals,
+        maxResidual
+      };
+    }
+    state = candidate;
     residuals = getResiduals(residualBlocks, state);
     maxResidual = getMaxResidual(residuals);
 
@@ -2239,6 +2263,28 @@ function runDampedSolve(
     residuals,
     maxResidual
   };
+}
+
+function arcStateStaysWithinAuthoredBranch(
+  model: SketchSolveModel,
+  stateAccess: SolverStateAccess,
+  state: readonly number[],
+  settings: SketchSolveSettings
+): boolean {
+  return (model.arcs ?? []).every((arcVariable) => {
+    const arc = readArc(state, stateAccess, arcVariable.id);
+    const magnitude = Math.abs(arc.sweepAngleDegrees);
+    return (
+      Number.isFinite(arc.radius) &&
+      arc.radius > settings.tolerance &&
+      Number.isFinite(arc.startAngleDegrees) &&
+      Number.isFinite(arc.sweepAngleDegrees) &&
+      Math.sign(arc.sweepAngleDegrees) ===
+        Math.sign(arcVariable.initial.sweepAngleDegrees) &&
+      magnitude >= settings.angularToleranceDegrees &&
+      magnitude <= 360 - settings.angularToleranceDegrees
+    );
+  });
 }
 
 function finiteDifferenceJacobian(
