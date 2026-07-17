@@ -21,6 +21,7 @@ import type {
   HoleRequest,
   HoleToolSource,
   GeometryKernelSketchPlane,
+  RevolveGeometryProfile,
   RevolveProfileRequest,
   StepImportRequest,
   TessellateBoxRequest,
@@ -529,18 +530,7 @@ export function createRevolveProfileWorkerRequest(input: {
   readonly id: string;
   readonly payloadId?: string;
   readonly sketchPlane: GeometryKernelSketchPlane;
-  readonly profile:
-    | {
-        readonly kind: "rectangle";
-        readonly center: readonly [number, number];
-        readonly width: number;
-        readonly height: number;
-      }
-    | {
-        readonly kind: "circle";
-        readonly center: readonly [number, number];
-        readonly radius: number;
-      };
+  readonly profile: RevolveGeometryProfile;
   readonly axis: {
     readonly start: readonly [number, number];
     readonly end: readonly [number, number];

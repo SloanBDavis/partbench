@@ -3,7 +3,7 @@ import {
   getSketchFrame,
   makeProfileFace,
   type OcctRevolvePlacementFrame,
-  type OcctRevolveProfile,
+  type OcctPrimitiveRevolveProfile,
   type OcctRevolveSketchPlane,
   type ProfileFaceHandle
 } from "./revolveProfile";
@@ -15,7 +15,7 @@ import type { OcctLoader } from "./tessellateBox";
 
 export interface OcctLoftSection {
   readonly sketchPlane: OcctRevolveSketchPlane;
-  readonly profile: OcctRevolveProfile;
+  readonly profile: OcctPrimitiveRevolveProfile;
   readonly placementFrame?: OcctRevolvePlacementFrame;
 }
 

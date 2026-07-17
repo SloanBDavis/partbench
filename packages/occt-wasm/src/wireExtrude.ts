@@ -1,6 +1,7 @@
 import type {
   OpenCascadeInstance,
   TopoDS_Edge,
+  TopoDS_Face,
   TopoDS_Shape,
   TopoDS_Vertex
 } from "opencascade.js";
@@ -95,6 +96,15 @@ export interface OcctWireExtrudeShapeBuild {
   delete(): void;
 }
 
+export interface OcctResolvedPlanarWireFaceBuild {
+  readonly face: TopoDS_Face;
+  readonly sourceEdges: readonly TopoDS_Edge[];
+  readonly sourceVertices: readonly TopoDS_Vertex[];
+  readonly sourceEdgeOrderProven: boolean;
+  readonly sourceJoinOrderProven: boolean;
+  delete(): void;
+}
+
 export function withOcctWireExtrudeBuildShape<T>(
   build: OcctWireExtrudeShapeBuild,
   read: (shape: TopoDS_Shape, references: OcctGeneratedReferences) => T
@@ -186,6 +196,89 @@ function makeWireExtrudeBuild(
       : source.side === "negative"
         ? 0
         : source.depth;
+  let faceBuild: OcctResolvedPlanarWireFaceBuild | undefined;
+  let prism:
+    | InstanceType<OpenCascadeInstance["BRepPrimAPI_MakePrism_1"]>
+    | undefined;
+  let vector: InstanceType<OpenCascadeInstance["gp_Vec_4"]> | undefined;
+
+  try {
+    faceBuild = makeResolvedPlanarWireFace(oc, profile, normalStart);
+
+    vector = new oc.gp_Vec_4(
+      normal[0] * (normalEnd - normalStart),
+      normal[1] * (normalEnd - normalStart),
+      normal[2] * (normalEnd - normalStart)
+    );
+    prism = new oc.BRepPrimAPI_MakePrism_1(
+      faceBuild.face,
+      vector,
+      false,
+      false
+    );
+    if (!prism.IsDone()) {
+      throw new Error("Open CASCADE composite prism builder did not complete.");
+    }
+    const shape = prism.Shape();
+    try {
+      if (shape.IsNull()) {
+        throw new Error("Open CASCADE composite prism returned a null shape.");
+      }
+      const analyzer = new oc.BRepCheck_Analyzer(shape, true, false);
+      try {
+        if (!analyzer.IsValid_2()) {
+          throw new Error(
+            "Open CASCADE composite prism returned an invalid shape."
+          );
+        }
+      } finally {
+        analyzer.delete();
+      }
+      assertWireExtrudeSolidCount(
+        countSubshapes(oc, shape, oc.TopAbs_ShapeEnum.TopAbs_SOLID)
+      );
+    } finally {
+      shape.delete();
+    }
+
+    const references = buildGeneratedReferences(
+      oc,
+      profile,
+      prism,
+      faceBuild.sourceEdges,
+      faceBuild.sourceVertices,
+      faceBuild.sourceEdgeOrderProven,
+      faceBuild.sourceJoinOrderProven
+    );
+    let disposed = false;
+    return {
+      builder: prism,
+      generatedReferences: references,
+      delete: () => {
+        if (disposed) return;
+        disposed = true;
+        prism?.delete();
+        vector?.delete();
+        faceBuild?.delete();
+        prism = undefined;
+        vector = undefined;
+        faceBuild = undefined;
+      }
+    };
+  } catch (error) {
+    prism?.delete();
+    vector?.delete();
+    faceBuild?.delete();
+    throw error;
+  }
+}
+
+export function makeResolvedPlanarWireFace(
+  oc: OpenCascadeInstance,
+  profile: OcctResolvedPlanarWireProfile,
+  normalOffset = 0
+): OcctResolvedPlanarWireFaceBuild {
+  const normal = normalize(cross(profile.frame.uAxis, profile.frame.vAxis));
   const edgeBuilders: Array<
     InstanceType<OpenCascadeInstance["BRepBuilderAPI_MakeEdge"]>
   > = [];
@@ -203,12 +296,8 @@ function makeWireExtrudeBuild(
   let faceBuilder:
     | InstanceType<OpenCascadeInstance["BRepBuilderAPI_MakeFace"]>
     | undefined;
-  let prism:
-    | InstanceType<OpenCascadeInstance["BRepPrimAPI_MakePrism_1"]>
-    | undefined;
-  let vector: InstanceType<OpenCascadeInstance["gp_Vec_4"]> | undefined;
   let wireShape: InstanceType<OpenCascadeInstance["TopoDS_Wire"]> | undefined;
-  let faceShape: InstanceType<OpenCascadeInstance["TopoDS_Face"]> | undefined;
+  let faceShape: TopoDS_Face | undefined;
 
   try {
     for (const segment of profile.segments) {
@@ -216,7 +305,7 @@ function makeWireExtrudeBuild(
         profile.frame,
         normal,
         segmentStart(segment),
-        normalStart
+        normalOffset
       );
       const point = new oc.gp_Pnt_3(...start);
       try {
@@ -259,7 +348,7 @@ function makeWireExtrudeBuild(
               oc,
               profile.frame,
               normal,
-              normalStart,
+              normalOffset,
               segment,
               startVertex,
               endVertex
@@ -268,7 +357,7 @@ function makeWireExtrudeBuild(
               oc,
               profile.frame,
               normal,
-              normalStart,
+              normalOffset,
               segment,
               startVertex,
               endVertex
@@ -338,7 +427,7 @@ function makeWireExtrudeBuild(
                 profile.frame,
                 normal,
                 segmentEnd(profile.segments[index]),
-                normalStart
+                normalOffset
               ),
               profile.geometryPolicy.linearTolerance
             )
@@ -374,59 +463,18 @@ function makeWireExtrudeBuild(
       faceAnalyzer.delete();
     }
 
-    vector = new oc.gp_Vec_4(
-      normal[0] * (normalEnd - normalStart),
-      normal[1] * (normalEnd - normalStart),
-      normal[2] * (normalEnd - normalStart)
-    );
-    prism = new oc.BRepPrimAPI_MakePrism_1(faceShape, vector, false, false);
-    faceShape.delete();
-    faceShape = undefined;
-    if (!prism.IsDone()) {
-      throw new Error("Open CASCADE composite prism builder did not complete.");
-    }
-    const shape = prism.Shape();
-    try {
-      if (shape.IsNull()) {
-        throw new Error("Open CASCADE composite prism returned a null shape.");
-      }
-      const analyzer = new oc.BRepCheck_Analyzer(shape, true, false);
-      try {
-        if (!analyzer.IsValid_2()) {
-          throw new Error(
-            "Open CASCADE composite prism returned an invalid shape."
-          );
-        }
-      } finally {
-        analyzer.delete();
-      }
-      assertWireExtrudeSolidCount(
-        countSubshapes(oc, shape, oc.TopAbs_ShapeEnum.TopAbs_SOLID)
-      );
-    } finally {
-      shape.delete();
-    }
-
-    const references = buildGeneratedReferences(
-      oc,
-      profile,
-      prism,
-      generatedEdges,
-      generatedVertices,
-      sourceEdgeOrderProven,
-      sourceJoinOrderProven
-    );
     let disposed = false;
     return {
-      builder: prism,
-      generatedReferences: references,
+      face: faceShape,
+      sourceEdges: generatedEdges,
+      sourceVertices: generatedVertices,
+      sourceEdgeOrderProven,
+      sourceJoinOrderProven,
       delete: () => {
         if (disposed) return;
         disposed = true;
-        prism?.delete();
-        vector?.delete();
-        faceBuilder?.delete();
         faceShape?.delete();
+        faceBuilder?.delete();
         wireShape?.delete();
         wireBuilder.delete();
         exploredEdges.forEach((edge) => edge.delete());
@@ -437,16 +485,13 @@ function makeWireExtrudeBuild(
         edgeEndVertices.forEach((vertex) => vertex.delete());
         sharedVertices.forEach((vertex) => vertex.delete());
         vertexBuilders.forEach((builder) => builder.delete());
-        prism = undefined;
-        vector = undefined;
+        faceShape = undefined;
         faceBuilder = undefined;
       }
     };
   } catch (error) {
-    prism?.delete();
-    vector?.delete();
-    faceBuilder?.delete();
     faceShape?.delete();
+    faceBuilder?.delete();
     wireShape?.delete();
     wireBuilder.delete();
     exploredEdges.forEach((edge) => edge.delete());

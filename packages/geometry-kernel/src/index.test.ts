@@ -5006,7 +5006,7 @@ describe("geometry-kernel facade", () => {
       error: {
         code: "INVALID_DIMENSIONS",
         message:
-          "Revolve profile requests require a supported sketch plane, rectangle or circle profile, non-zero finite axis, and positive finite angle no greater than 360 degrees."
+          "Revolve profile requests require a supported sketch plane, valid rectangle, circle, or resolved wire profile, non-zero finite axis that does not cross or overlap a wire edge, and positive finite angle no greater than 360 degrees."
       },
       warnings: []
     });
@@ -5017,10 +5017,203 @@ describe("geometry-kernel facade", () => {
       error: {
         code: "INVALID_DIMENSIONS",
         message:
-          "Revolve profile requests require a supported sketch plane, rectangle or circle profile, non-zero finite axis, and positive finite angle no greater than 360 degrees."
+          "Revolve profile requests require a supported sketch plane, valid rectangle, circle, or resolved wire profile, non-zero finite axis that does not cross or overlap a wire edge, and positive finite angle no greater than 360 degrees."
       },
       warnings: []
     });
+  });
+
+  it("uses one tolerance-aware infinite-axis classifier for wire mesh, exact, and STEP recipes", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    let revolveCalls = 0;
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory,
+      createRevolveProfileMesh: async () => {
+        revolveCalls += 1;
+        return {
+          primitive: "revolve",
+          positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+          indices: new Uint32Array([0, 1, 2]),
+          vertexCount: 3,
+          triangleCount: 1,
+          faceCount: 1
+        };
+      },
+      createExactBodyMetadata: async () => {
+        throw new Error("Invalid exact recipe reached the factory.");
+      },
+      createExactStepExport: async () => {
+        throw new Error("Invalid STEP recipe reached the factory.");
+      }
+    };
+    const circleWire = {
+      kind: "wire" as const,
+      frame: mixedWireProfile.frame,
+      closed: true as const,
+      segments: [
+        {
+          kind: "arc" as const,
+          sourceEntityId: "arc-positive",
+          center: [0, 0] as const,
+          radius: 2,
+          startAngleDegrees: 0,
+          sweepAngleDegrees: 180
+        },
+        {
+          kind: "arc" as const,
+          sourceEntityId: "arc-negative",
+          center: [0, 0] as const,
+          radius: 2,
+          startAngleDegrees: 180,
+          sweepAngleDegrees: 180
+        }
+      ],
+      sourceIdentity: "circle-wire",
+      geometryPolicy: mixedWireProfile.geometryPolicy
+    };
+    const reversedCircleWire = {
+      ...circleWire,
+      sourceIdentity: "reversed-circle-wire",
+      segments: [
+        { ...circleWire.segments[0], sweepAngleDegrees: -180 },
+        { ...circleWire.segments[1], sweepAngleDegrees: -180 }
+      ]
+    };
+    const scaledCircleWire = {
+      ...circleWire,
+      sourceIdentity: "scaled-circle-wire",
+      segments: circleWire.segments.map((segment) => ({
+        ...segment,
+        radius: 1_000_000
+      }))
+    };
+    const endpointTouchTriangle = {
+      kind: "wire" as const,
+      frame: {
+        origin: [10, 20, 30] as const,
+        uAxis: [0, 1, 0] as const,
+        vAxis: [0, 0, 1] as const
+      },
+      closed: true as const,
+      segments: [
+        {
+          kind: "line" as const,
+          sourceEntityId: "touch",
+          start: [0, 0] as const,
+          end: [2, -1] as const
+        },
+        {
+          kind: "line" as const,
+          sourceEntityId: "outer",
+          start: [2, -1] as const,
+          end: [2, 1] as const
+        },
+        {
+          kind: "line" as const,
+          sourceEntityId: "return",
+          start: [2, 1] as const,
+          end: [0, 0] as const
+        }
+      ],
+      sourceIdentity: "endpoint-touch-triangle",
+      geometryPolicy: mixedWireProfile.geometryPolicy
+    };
+    const cases = [
+      {
+        label: "crosses beyond the finite axis endpoints",
+        profile: circleWire,
+        axis: { start: [0, 100] as const, end: [0, 101] as const }
+      },
+      {
+        label: "touches an arc interior tangentially",
+        profile: circleWire,
+        axis: { start: [-1, 2] as const, end: [1, 2] as const }
+      },
+      {
+        label: "touches a reversed arc interior tangentially",
+        profile: reversedCircleWire,
+        axis: { start: [-1, 2] as const, end: [1, 2] as const }
+      },
+      {
+        label:
+          "rejects a scale-independent near tangent within linear tolerance",
+        profile: scaledCircleWire,
+        axis: {
+          start: [-1, 1_000_000 + 0.5e-7] as const,
+          end: [1, 1_000_000 + 0.5e-7] as const
+        }
+      },
+      {
+        label: "overlaps a line edge",
+        profile: endpointTouchTriangle,
+        axis: { start: [2, -10] as const, end: [2, 10] as const }
+      }
+    ];
+
+    for (const [index, testCase] of cases.entries()) {
+      const source = {
+        kind: "revolve" as const,
+        sketchPlane: "XY" as const,
+        profile: testCase.profile,
+        axis: testCase.axis,
+        angleDegrees: 180
+      };
+      const [mesh, exact, step] = await Promise.all([
+        executeGeometryKernelRequestWithMeshFactory(factories, {
+          ...source,
+          id: `wire-axis-${index}-mesh`,
+          version: "geometry-kernel.v1" as const,
+          op: "geometry.revolveProfile" as const
+        }),
+        executeGeometryKernelRequestWithMeshFactory(factories, {
+          id: `wire-axis-${index}-exact`,
+          version: "geometry-kernel.v1",
+          op: "geometry.exactBodyMetadata",
+          source
+        }),
+        executeGeometryKernelRequestWithMeshFactory(factories, {
+          id: `wire-axis-${index}-step`,
+          version: "geometry-kernel.v1",
+          op: "geometry.exportStep",
+          units: "mm",
+          bodies: [{ ...source, bodyId: `body-${index}` }]
+        })
+      ]);
+      expect([mesh.ok, exact.ok, step.ok], testCase.label).toEqual([
+        false,
+        false,
+        false
+      ]);
+    }
+
+    const snapshot = JSON.stringify(endpointTouchTriangle);
+    for (const axis of [
+      { start: [0, -1] as const, end: [0, 1] as const },
+      { start: [0, 1] as const, end: [0, -1] as const }
+    ]) {
+      const response = await executeGeometryKernelRequestWithMeshFactory(
+        factories,
+        {
+          id: `wire-endpoint-touch-${revolveCalls}`,
+          version: "geometry-kernel.v1",
+          op: "geometry.revolveProfile",
+          sketchPlane: "YZ",
+          profile: endpointTouchTriangle,
+          axis,
+          angleDegrees: revolveCalls === 0 ? 90 : 360
+        }
+      );
+      expect(response.ok).toBe(true);
+    }
+    expect(revolveCalls).toBe(2);
+    expect(JSON.stringify(endpointTouchTriangle)).toBe(snapshot);
   });
 });
 

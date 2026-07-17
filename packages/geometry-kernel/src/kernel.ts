@@ -206,7 +206,7 @@ export type ExtrudeGeometryProfile =
   | PrimitiveExtrudeGeometryProfile
   | ResolvedPlanarWireProfile;
 
-export type RevolveGeometryProfile = PrimitiveExtrudeGeometryProfile;
+export type RevolveGeometryProfile = ExtrudeGeometryProfile;
 
 export interface RevolveGeometryAxis {
   readonly start: readonly [number, number];
@@ -623,6 +623,7 @@ export type ExactStepExportBodySource = (
   | BooleanExtrudePrimitiveSource
   | BooleanExtrudeWireSource
   | BooleanExtrudeResultSource
+  | ExactRevolveMetadataSource
 ) & {
   readonly bodyId: string;
   readonly bodyName?: string;
@@ -1693,17 +1694,11 @@ function validateRequest(
       };
     }
   } else if (request.op === "geometry.revolveProfile") {
-    if (
-      !isSketchPlane(request.sketchPlane) ||
-      !isValidExtrudeProfile(request.profile) ||
-      !isValidRevolveAxis(request.axis) ||
-      !isPositiveFiniteNumber(request.angleDegrees) ||
-      request.angleDegrees > 360
-    ) {
+    if (!isValidRevolveRecipe(request)) {
       return {
         code: "INVALID_DIMENSIONS",
         message:
-          "Revolve profile requests require a supported sketch plane, rectangle or circle profile, non-zero finite axis, and positive finite angle no greater than 360 degrees."
+          "Revolve profile requests require a supported sketch plane, valid rectangle, circle, or resolved wire profile, non-zero finite axis that does not cross or overlap a wire edge, and positive finite angle no greater than 360 degrees."
       };
     }
   } else if (request.op === "geometry.booleanExtrudes") {
@@ -2701,6 +2696,168 @@ function isValidRevolveAxis(axis: RevolveGeometryAxis): boolean {
   );
 }
 
+function isValidRevolveRecipe(source: {
+  readonly sketchPlane: GeometryKernelSketchPlane;
+  readonly profile: RevolveGeometryProfile;
+  readonly axis: RevolveGeometryAxis;
+  readonly angleDegrees: number;
+  readonly placementFrame?: BooleanExtrudePlacementFrame;
+}): boolean {
+  if (
+    !isRecord(source.profile) ||
+    !isRecord(source.axis) ||
+    !isSketchPlane(source.sketchPlane) ||
+    !isValidRevolveAxis(source.axis) ||
+    !isPositiveFiniteNumber(source.angleDegrees) ||
+    source.angleDegrees > 360
+  ) {
+    return false;
+  }
+  if (source.profile.kind !== "wire") {
+    return (
+      isValidPrimitiveExtrudeProfile(source.profile) &&
+      (source.placementFrame === undefined ||
+        isValidBooleanExtrudePlacementFrame(source.placementFrame))
+    );
+  }
+  return (
+    source.placementFrame === undefined &&
+    isValidResolvedPlanarWireProfile(source.profile) &&
+    !resolvedWireTouchesAxisAwayFromVertices(source.profile, source.axis)
+  );
+}
+
+function resolvedWireTouchesAxisAwayFromVertices(
+  profile: ResolvedPlanarWireProfile,
+  axis: RevolveGeometryAxis
+): boolean {
+  const tolerance = profile.geometryPolicy.linearTolerance;
+  const angularTolerance =
+    (profile.geometryPolicy.angularToleranceDegrees * Math.PI) / 180;
+  const axisDx = axis.end[0] - axis.start[0];
+  const axisDy = axis.end[1] - axis.start[1];
+  const axisLength = Math.hypot(axisDx, axisDy);
+  const axisDirection: readonly [number, number] = [
+    axisDx / axisLength,
+    axisDy / axisLength
+  ];
+  const signedDistance = (point: readonly [number, number]): number =>
+    axisDirection[0] * (point[1] - axis.start[1]) -
+    axisDirection[1] * (point[0] - axis.start[0]);
+
+  const hasForbiddenBoundaryContact = profile.segments.some((segment) => {
+    const endpoints =
+      segment.kind === "line"
+        ? { start: segment.start, end: segment.end }
+        : getArcEndpoints(segment);
+    if (segment.kind === "line") {
+      const startDistance = signedDistance(endpoints.start);
+      const endDistance = signedDistance(endpoints.end);
+      if (
+        Math.abs(startDistance) <= tolerance &&
+        Math.abs(endDistance) <= tolerance
+      ) {
+        return true;
+      }
+      return (
+        (startDistance < -tolerance && endDistance > tolerance) ||
+        (startDistance > tolerance && endDistance < -tolerance)
+      );
+    }
+
+    const centerOffset: readonly [number, number] = [
+      segment.center[0] - axis.start[0],
+      segment.center[1] - axis.start[1]
+    ];
+    const centerProjection =
+      centerOffset[0] * axisDirection[0] + centerOffset[1] * axisDirection[1];
+    const centerDistance = signedDistance(segment.center);
+    if (Math.abs(centerDistance) > segment.radius + tolerance) return false;
+
+    const root = Math.sqrt(
+      Math.max(0, segment.radius ** 2 - centerDistance ** 2)
+    );
+    const projections =
+      root <= tolerance
+        ? [centerProjection]
+        : [centerProjection - root, centerProjection + root];
+    return projections.some((projection) => {
+      const point: readonly [number, number] = [
+        axis.start[0] + axisDirection[0] * projection,
+        axis.start[1] + axisDirection[1] * projection
+      ];
+      if (
+        !pointIsOnDirectedArc(
+          point,
+          segment,
+          Math.max(angularTolerance, tolerance / segment.radius)
+        )
+      ) {
+        return false;
+      }
+      return (
+        !pointsCoincide(point, endpoints.start, tolerance) &&
+        !pointsCoincide(point, endpoints.end, tolerance)
+      );
+    });
+  });
+  if (hasForbiddenBoundaryContact) return true;
+
+  let hasPositiveSide = false;
+  let hasNegativeSide = false;
+  for (const segment of profile.segments) {
+    const endpoints =
+      segment.kind === "line"
+        ? { start: segment.start, end: segment.end }
+        : getArcEndpoints(segment);
+    const samples: readonly (readonly [number, number])[] =
+      segment.kind === "line"
+        ? [endpoints.start, endpoints.end]
+        : [endpoints.start, endpoints.end, pointOnArcAtFraction(segment, 0.5)];
+    for (const sample of samples) {
+      const side = signedDistance(sample);
+      if (side > tolerance) hasPositiveSide = true;
+      if (side < -tolerance) hasNegativeSide = true;
+    }
+  }
+  return hasPositiveSide && hasNegativeSide;
+}
+
+function pointOnArcAtFraction(
+  arc: ResolvedArcSegment2d,
+  fraction: number
+): readonly [number, number] {
+  const angle =
+    ((arc.startAngleDegrees + arc.sweepAngleDegrees * fraction) * Math.PI) /
+    180;
+  return [
+    arc.center[0] + arc.radius * Math.cos(angle),
+    arc.center[1] + arc.radius * Math.sin(angle)
+  ];
+}
+
+function pointIsOnDirectedArc(
+  point: readonly [number, number],
+  arc: ResolvedArcSegment2d,
+  angularTolerance: number
+): boolean {
+  const angle = normalizeRadians(
+    Math.atan2(point[1] - arc.center[1], point[0] - arc.center[0])
+  );
+  const start = normalizeRadians((arc.startAngleDegrees * Math.PI) / 180);
+  const sweep = (arc.sweepAngleDegrees * Math.PI) / 180;
+  const directedOffset =
+    sweep >= 0
+      ? normalizeRadians(angle - start)
+      : normalizeRadians(start - angle);
+  return directedOffset <= Math.abs(sweep) + angularTolerance;
+}
+
+function normalizeRadians(value: number): number {
+  const turn = 2 * Math.PI;
+  return ((value % turn) + turn) % turn;
+}
+
 function isValidBooleanExtrudePrimitiveSource(
   source: BooleanExtrudePrimitiveSource
 ): boolean {
@@ -3005,13 +3162,7 @@ function validateExactBodyMetadataSource(
   }
 
   if (source.kind === "revolve") {
-    return isSketchPlane(source.sketchPlane) &&
-      isValidExtrudeProfile(source.profile) &&
-      isValidRevolveAxis(source.axis) &&
-      isPositiveFiniteNumber(source.angleDegrees) &&
-      source.angleDegrees <= 360 &&
-      (source.placementFrame === undefined ||
-        isValidBooleanExtrudePlacementFrame(source.placementFrame))
+    return isValidRevolveRecipe(source)
       ? undefined
       : createInvalidExactBodyMetadataSourceError();
   }
@@ -3140,6 +3291,9 @@ function isValidExactExtrudeSource(source: {
 
 function isValidExactStepExportBodySource(source: unknown): boolean {
   if (typeof source !== "object" || source === null) return false;
+  if ((source as { readonly kind?: unknown }).kind === "revolve") {
+    return isValidRevolveRecipe(source as ExactRevolveMetadataSource);
+  }
   if ((source as { readonly kind?: unknown }).kind === "booleanExtrudes") {
     return (
       validateExactBodyMetadataSource(source as BooleanExtrudeResultSource) ===

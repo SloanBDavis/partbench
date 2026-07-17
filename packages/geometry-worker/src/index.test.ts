@@ -634,6 +634,44 @@ describe("geometry-worker", () => {
     });
   });
 
+  it("serializes a world-framed composite wire revolve without mutation", () => {
+    const profile = {
+      ...workerWireProfile,
+      frame: {
+        origin: [10, 20, 30] as const,
+        uAxis: [0, 1, 0] as const,
+        vAxis: [0, 0, 1] as const
+      }
+    };
+    const before = JSON.stringify(profile);
+    const request = createRevolveProfileWorkerRequest({
+      id: "worker_req_wire_revolve",
+      payloadId: "geometry_req_wire_revolve",
+      sketchPlane: "YZ",
+      profile,
+      axis: { start: [3, -10], end: [3, 10] },
+      angleDegrees: 270,
+      linearDeflection: 0.1
+    });
+
+    expect(request).toEqual({
+      id: "worker_req_wire_revolve",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.tessellateFeature",
+      payload: {
+        id: "geometry_req_wire_revolve",
+        version: "geometry-kernel.v1",
+        op: "geometry.revolveProfile",
+        sketchPlane: "YZ",
+        profile,
+        axis: { start: [3, -10], end: [3, 10] },
+        angleDegrees: 270,
+        tessellation: { linearDeflection: 0.1 }
+      }
+    });
+    expect(JSON.stringify(profile)).toBe(before);
+  });
+
   it("creates typed extrude boolean worker requests for cut and add", () => {
     expect(
       createExtrudeBooleanWorkerRequest({
@@ -1516,6 +1554,59 @@ describe("geometry-worker", () => {
       response.response.mesh.positions.buffer,
       response.response.mesh.indices.buffer
     ]);
+  });
+
+  it("passes an attached composite wire revolve and its transferables through the runtime", async () => {
+    const profile = {
+      ...workerWireProfile,
+      frame: {
+        origin: [10, 20, 30] as const,
+        uAxis: [0, 1, 0] as const,
+        vAxis: [0, 0, 1] as const
+      }
+    };
+    const request = createRevolveProfileWorkerRequest({
+      id: "worker_req_wire_revolve_execute",
+      payloadId: "geometry_req_wire_revolve_execute",
+      sketchPlane: "YZ",
+      profile,
+      axis: { start: [3, -10], end: [3, 10] },
+      angleDegrees: 180
+    });
+    const response = await new GeometryKernelWorker().execute(request);
+
+    expect(response).toMatchObject({
+      id: "worker_req_wire_revolve_execute",
+      payloadId: "geometry_req_wire_revolve_execute",
+      response: {
+        ok: true,
+        op: "geometry.revolveProfile",
+        mesh: { primitive: "revolve" }
+      }
+    });
+    if (!response.response.ok) throw new Error(response.response.error.message);
+    expect(response.transferables).toEqual([
+      response.response.mesh.positions.buffer,
+      response.response.mesh.indices.buffer
+    ]);
+  }, 120_000);
+
+  it("rejects a crossing composite wire revolve without transferables", async () => {
+    const response = await new GeometryKernelWorker().execute(
+      createRevolveProfileWorkerRequest({
+        id: "worker_req_wire_revolve_crossing",
+        sketchPlane: "XY",
+        profile: workerWireProfile,
+        axis: { start: [0, 100], end: [0, 101] },
+        angleDegrees: 180
+      })
+    );
+
+    expect(response.response).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_DIMENSIONS" }
+    });
+    expect(response.transferables).toEqual([]);
   });
 
   it("runs a rectangle boolean feasibility request through the geometry kernel facade", async () => {

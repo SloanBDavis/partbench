@@ -9,6 +9,22 @@ import {
   makeWireExtrudeShape,
   type OcctWireExtrudeSource
 } from "./wireExtrude";
+import {
+  makeRevolveProfileShape,
+  type OcctRevolveAxis,
+  type OcctRevolvePlacementFrame,
+  type OcctRevolveProfile,
+  type OcctRevolveSketchPlane
+} from "./revolveProfile";
+
+export interface OcctStepExportRevolveSource {
+  readonly kind: "revolve";
+  readonly sketchPlane: OcctRevolveSketchPlane;
+  readonly profile: OcctRevolveProfile;
+  readonly axis: OcctRevolveAxis;
+  readonly angleDegrees: number;
+  readonly placementFrame?: OcctRevolvePlacementFrame;
+}
 
 export type OcctStepExportUnit = "mm" | "cm" | "m" | "in";
 export type OcctStepExportSchema = "AP242DIS";
@@ -17,6 +33,7 @@ export type OcctStepExportBodySource = (
   | OcctBooleanExtrudePrimitiveSource
   | OcctBooleanExtrudeResultSource
   | OcctWireExtrudeSource
+  | OcctStepExportRevolveSource
 ) & {
   readonly bodyId: string;
   readonly bodyName?: string;
@@ -182,6 +199,9 @@ function createOcctStepExportShape(
   oc: OpenCascadeInstance,
   body: OcctStepExportBodySource
 ): ReturnType<OcctStepExportShapeFactory> {
+  if ((body as { readonly kind?: unknown }).kind === "revolve") {
+    return makeRevolveProfileShape(oc, body as OcctStepExportRevolveSource);
+  }
   if ((body as { readonly kind?: unknown }).kind === "booleanExtrudes") {
     return makeBooleanExtrudeShape(oc, body as OcctBooleanExtrudeResultSource);
   }

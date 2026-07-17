@@ -9,6 +9,10 @@ import {
   type OcctMeshData
 } from "./readTriangulatedShape";
 import type { OcctLoader } from "./tessellateBox";
+import {
+  makeResolvedPlanarWireFace,
+  type OcctResolvedPlanarWireProfile
+} from "./wireExtrude";
 
 export type OcctRevolveSketchPlane = "XY" | "XZ" | "YZ";
 
@@ -25,9 +29,13 @@ export interface OcctCircleRevolveProfile {
   readonly radius: number;
 }
 
-export type OcctRevolveProfile =
+export type OcctPrimitiveRevolveProfile =
   | OcctRectangleRevolveProfile
   | OcctCircleRevolveProfile;
+
+export type OcctRevolveProfile =
+  | OcctPrimitiveRevolveProfile
+  | OcctResolvedPlanarWireProfile;
 
 export interface OcctRevolveAxis {
   readonly start: readonly [number, number];
@@ -65,6 +73,7 @@ export interface ProfileFaceHandle {
 
 export interface RevolveShapeHandle {
   readonly shape: TopoDS_Shape;
+  Shape(): TopoDS_Shape;
   readonly delete: () => void;
 }
 
@@ -116,19 +125,30 @@ export function makeRevolveProfileShape(
 ): RevolveShapeHandle {
   assertRevolveProfileBindings(oc);
 
-  const frame = getSketchFrame(input.sketchPlane, input.placementFrame);
-  const profileFace = makeProfileFace(oc, frame, input.profile);
-  const revolveAxis = createRevolveAxis(oc, frame, input.axis);
-  const range = new oc.Message_ProgressRange_1();
+  const frame =
+    input.profile.kind === "wire"
+      ? getResolvedWireFrame(input.profile)
+      : getSketchFrame(input.sketchPlane, input.placementFrame);
   const angleRadians = (input.angleDegrees * Math.PI) / 180;
+  let profileFace:
+    | { readonly face: TopoDS_Face; readonly delete: () => void }
+    | undefined;
+  let revolveAxis: ReturnType<typeof createRevolveAxis> | undefined;
+  let range: InstanceType<typeof oc.Message_ProgressRange_1> | undefined;
   let revolve:
     | InstanceType<typeof oc.BRepPrimAPI_MakeRevol_1>
     | InstanceType<typeof oc.BRepPrimAPI_MakeRevol_2>
     | undefined;
 
   try {
+    profileFace =
+      input.profile.kind === "wire"
+        ? makeResolvedPlanarWireFace(oc, input.profile)
+        : makeProfileFace(oc, frame, input.profile);
+    revolveAxis = createRevolveAxis(oc, frame, input.axis);
+    range = new oc.Message_ProgressRange_1();
     revolve =
-      input.angleDegrees >= 360
+      input.angleDegrees >= 360 && input.profile.kind !== "wire"
         ? new oc.BRepPrimAPI_MakeRevol_2(
             profileFace.face,
             revolveAxis.axis,
@@ -147,22 +167,58 @@ export function makeRevolveProfileShape(
     }
 
     const shape = revolve.Shape();
+    try {
+      if (shape.IsNull()) {
+        throw new Error("Open CASCADE revolve returned a null shape.");
+      }
+      const analyzer = new oc.BRepCheck_Analyzer(shape, true, false);
+      try {
+        if (!analyzer.IsValid_2()) {
+          throw new Error("Open CASCADE revolve returned an invalid shape.");
+        }
+      } finally {
+        analyzer.delete();
+      }
+      assertRevolveSolidResult(
+        shape.ShapeType(),
+        oc.TopAbs_ShapeEnum.TopAbs_SOLID,
+        countSubshapes(oc, shape, oc.TopAbs_ShapeEnum.TopAbs_SOLID)
+      );
+    } catch (error) {
+      shape.delete();
+      throw error;
+    }
 
     return {
       shape,
-      delete: () => {
-        shape.delete();
-        revolve?.delete();
-        range.delete();
-        revolveAxis.delete();
-        profileFace.delete();
-      }
+      Shape: () => {
+        if (!revolve) {
+          throw new Error("Open CASCADE revolve shape handle is disposed.");
+        }
+        return revolve.Shape();
+      },
+      delete: (() => {
+        let disposed = false;
+        return () => {
+          if (disposed) return;
+          disposed = true;
+          shape.delete();
+          revolve?.delete();
+          range?.delete();
+          revolveAxis?.delete();
+          profileFace?.delete();
+          revolve = undefined;
+          range = undefined;
+          revolveAxis = undefined;
+          profileFace = undefined;
+        };
+      })()
     };
   } catch (error) {
     revolve?.delete();
-    range.delete();
-    revolveAxis.delete();
-    profileFace.delete();
+    range?.delete();
+    revolveAxis?.delete();
+    profileFace?.delete();
     throw error;
   }
 }
@@ -175,6 +231,8 @@ function assertRevolveProfileBindings(oc: OpenCascadeInstance): void {
     ["BRepBuilderAPI_MakeFace_15", oc.BRepBuilderAPI_MakeFace_15],
     ["BRepPrimAPI_MakeRevol_1", oc.BRepPrimAPI_MakeRevol_1],
     ["BRepPrimAPI_MakeRevol_2", oc.BRepPrimAPI_MakeRevol_2],
+    ["BRepCheck_Analyzer", oc.BRepCheck_Analyzer],
+    ["TopExp_Explorer_2", oc.TopExp_Explorer_2],
     ["Message_ProgressRange_1", oc.Message_ProgressRange_1],
     ["gp_Pnt_3", oc.gp_Pnt_3],
     ["gp_Dir_4", oc.gp_Dir_4],
@@ -194,10 +252,20 @@ function assertRevolveProfileBindings(oc: OpenCascadeInstance): void {
   }
 }
 
+export function assertRevolveSolidResult(
+  shapeType: unknown,
+  solidShapeType: unknown,
+  solidCount: number
+): void {
+  if (shapeType !== solidShapeType || solidCount !== 1) {
+    throw new Error("Open CASCADE revolve must return exactly one solid.");
+  }
+}
+
 export function makeProfileFace(
   oc: OpenCascadeInstance,
   frame: SketchFrame,
-  profile: OcctRevolveProfile
+  profile: OcctPrimitiveRevolveProfile
 ): ProfileFaceHandle {
   switch (profile.kind) {
     case "rectangle":
@@ -304,18 +372,34 @@ function createRevolveAxis(
     end[1] - start[1],
     end[2] - start[2]
   ]);
-  const point = createPoint(oc, start);
-  const dir = new oc.gp_Dir_4(direction[0], direction[1], direction[2]);
-  const ax1 = new oc.gp_Ax1_2(point, dir);
-
-  return {
-    axis: ax1,
-    delete: () => {
-      ax1.delete();
-      dir.delete();
-      point.delete();
-    }
-  };
+  let point: InstanceType<typeof oc.gp_Pnt_3> | undefined;
+  let dir: InstanceType<typeof oc.gp_Dir_4> | undefined;
+  let ax1: InstanceType<typeof oc.gp_Ax1_2> | undefined;
+  try {
+    point = createPoint(oc, start);
+    dir = new oc.gp_Dir_4(direction[0], direction[1], direction[2]);
+    ax1 = new oc.gp_Ax1_2(point, dir);
+    const result = ax1;
+    let disposed = false;
+    return {
+      axis: result,
+      delete: () => {
+        if (disposed) return;
+        disposed = true;
+        ax1?.delete();
+        dir?.delete();
+        point?.delete();
+        ax1 = undefined;
+        dir = undefined;
+        point = undefined;
+      }
+    };
+  } catch (error) {
+    ax1?.delete();
+    dir?.delete();
+    point?.delete();
+    throw error;
+  }
 }
 
 function createOcctAxes(
@@ -327,18 +411,34 @@ function createOcctAxes(
   readonly axis: InstanceType<typeof oc.gp_Ax2_2>;
   readonly delete: () => void;
 } {
-  const normal = new oc.gp_Dir_4(normalAxis[0], normalAxis[1], normalAxis[2]);
-  const xDirection = new oc.gp_Dir_4(uAxis[0], uAxis[1], uAxis[2]);
-  const axis = new oc.gp_Ax2_2(origin, normal, xDirection);
-
-  return {
-    axis,
-    delete: () => {
-      axis.delete();
-      xDirection.delete();
-      normal.delete();
-    }
-  };
+  let normal: InstanceType<typeof oc.gp_Dir_4> | undefined;
+  let xDirection: InstanceType<typeof oc.gp_Dir_4> | undefined;
+  let axis: InstanceType<typeof oc.gp_Ax2_2> | undefined;
+  try {
+    normal = new oc.gp_Dir_4(normalAxis[0], normalAxis[1], normalAxis[2]);
+    xDirection = new oc.gp_Dir_4(uAxis[0], uAxis[1], uAxis[2]);
+    axis = new oc.gp_Ax2_2(origin, normal, xDirection);
+    const result = axis;
+    let disposed = false;
+    return {
+      axis: result,
+      delete: () => {
+        if (disposed) return;
+        disposed = true;
+        axis?.delete();
+        xDirection?.delete();
+        normal?.delete();
+        axis = undefined;
+        xDirection = undefined;
+        normal = undefined;
+      }
+    };
+  } catch (error) {
+    axis?.delete();
+    xDirection?.delete();
+    normal?.delete();
+    throw error;
+  }
 }
 
 export function getSketchFrame(
@@ -379,6 +479,40 @@ export function getSketchFrame(
         vAxis: [0, 0, 1],
         normalAxis: [1, 0, 0]
       };
+  }
+}
+
+function getResolvedWireFrame(
+  profile: OcctResolvedPlanarWireProfile
+): SketchFrame {
+  const uAxis = normalizeVec3(profile.frame.uAxis);
+  const vAxis = normalizeVec3(profile.frame.vAxis);
+  return {
+    origin: profile.frame.origin,
+    uAxis,
+    vAxis,
+    normalAxis: normalizeVec3(crossVec3(uAxis, vAxis))
+  };
+}
+
+function countSubshapes(
+  oc: OpenCascadeInstance,
+  shape: TopoDS_Shape,
+  kind: unknown
+): number {
+  const explorer = new oc.TopExp_Explorer_2(
+    shape,
+    kind as ConstructorParameters<typeof oc.TopExp_Explorer_2>[1],
+    oc.TopAbs_ShapeEnum.TopAbs_SHAPE as ConstructorParameters<
+      typeof oc.TopExp_Explorer_2
+    >[2]
+  );
+  let count = 0;
+  try {
+    for (; explorer.More(); explorer.Next()) count += 1;
+    return count;
+  } finally {
+    explorer.delete();
   }
 }
 

@@ -43,6 +43,7 @@ import {
   createOcctStepExportWithShapeFactory,
   type OcctStepExportShapeFactory
 } from "./exactStepExport";
+import { assertRevolveSolidResult } from "./revolveProfile";
 
 const OCCT_WASM_TEST_TIMEOUT_MS = 120_000;
 
@@ -1054,6 +1055,23 @@ describe("occt-wasm", () => {
       "must return exactly one solid"
     );
     expect(() => assertWireExtrudeSolidCount(1)).not.toThrow();
+  });
+
+  it("rejects composite revolves unless the result itself is exactly one solid", () => {
+    const solid = "solid";
+    expect(() => assertRevolveSolidResult(solid, solid, 1)).not.toThrow();
+    for (const [shapeType, solidCount] of [
+      ["null", 0],
+      ["face", 0],
+      ["shell", 0],
+      ["wire", 0],
+      [solid, 0],
+      [solid, 2]
+    ] as const) {
+      expect(() =>
+        assertRevolveSolidResult(shapeType, solid, solidCount)
+      ).toThrow("must return exactly one solid");
+    }
   });
 
   it(
@@ -2309,6 +2327,159 @@ describe("occt-wasm", () => {
       expect(circle.triangleCount).toBeGreaterThan(0);
       expect(circle.positions).toHaveLength(circle.vertexCount * 3);
       expect(circle.indices).toHaveLength(circle.triangleCount * 3);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "rebuilds an attached composite revolve display and exact artifacts from one B-rep recipe",
+    async () => {
+      const attachedProfile = {
+        ...slotWireProfile,
+        frame: {
+          origin: [10, 20, 30] as const,
+          uAxis: [1, 0, 0] as const,
+          vAxis: [0, 1, 0] as const
+        }
+      };
+      const source = {
+        kind: "revolve" as const,
+        sketchPlane: "YZ" as const,
+        profile: attachedProfile,
+        axis: { start: [-4, -10] as const, end: [-4, 10] as const },
+        angleDegrees: 360
+      };
+      const before = JSON.stringify(source);
+      const mesh = await createOcctRevolveProfileMesh(source);
+      const metadata = await createOcctExactBodyMetadata({ source });
+      const topology = await createOcctExactTopologySnapshot({ source });
+      const checkpoint = await createOcctExactTopologyCheckpointPayload({
+        checkpointId: "checkpoint_wire_revolve",
+        bodyId: "body_wire_revolve",
+        source
+      });
+      const step = await createOcctStepExport({
+        units: "mm",
+        bodies: [{ ...source, bodyId: "body_wire_revolve" }]
+      });
+
+      expect(mesh).toMatchObject({ primitive: "revolve" });
+      expect(mesh.vertexCount).toBeGreaterThan(0);
+      expect(metadata.sourceKind).toBe("revolve");
+      expect(metadata.topologyCounts.solidCount).toBe(1);
+      expect(metadata.volume).toBeCloseTo(8 * Math.PI * (8 + Math.PI), 5);
+      expect(metadata.bounds.min).toEqual(
+        expect.arrayContaining([
+          expect.closeTo(-1, 5),
+          expect.closeTo(19, 5),
+          expect.closeTo(23, 5)
+        ])
+      );
+      expect(metadata.bounds.max).toEqual(
+        expect.arrayContaining([
+          expect.closeTo(13, 5),
+          expect.closeTo(21, 5),
+          expect.closeTo(37, 5)
+        ])
+      );
+      expect(topology.sourceKind).toBe("revolve");
+      expect(topology.entityCounts.solidCount).toBe(1);
+      expect(checkpoint.sourceKind).toBe("revolve");
+      expect(checkpoint.brepByteLength).toBeGreaterThan(1000);
+      expect(step.bodyCount).toBe(1);
+      expect(step.byteLength).toBeGreaterThan(1000);
+      expect(JSON.stringify(source)).toBe(before);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "supports partial composite revolves for positive and negative axis directions and reversed segments",
+    async () => {
+      const reversedProfile = {
+        ...slotWireProfile,
+        sourceIdentity: "slot-reversed",
+        segments: [...slotWireProfile.segments].reverse().map((segment) =>
+          segment.kind === "line"
+            ? { ...segment, start: segment.end, end: segment.start }
+            : {
+                ...segment,
+                startAngleDegrees:
+                  (segment.startAngleDegrees +
+                    segment.sweepAngleDegrees +
+                    360) %
+                  360,
+                sweepAngleDegrees: -segment.sweepAngleDegrees
+              }
+        )
+      };
+      const [positive, negative] = await Promise.all([
+        createOcctRevolveProfileMesh({
+          sketchPlane: "XY",
+          profile: reversedProfile,
+          axis: { start: [-4, -10], end: [-4, 10] },
+          angleDegrees: 120
+        }),
+        createOcctRevolveProfileMesh({
+          sketchPlane: "XY",
+          profile: reversedProfile,
+          axis: { start: [-4, 10], end: [-4, -10] },
+          angleDegrees: 120
+        })
+      ]);
+
+      for (const mesh of [positive, negative]) {
+        expect(mesh.primitive).toBe("revolve");
+        expect(mesh.vertexCount).toBeGreaterThan(0);
+        expect(mesh.triangleCount).toBeGreaterThan(0);
+      }
+      expect(Array.from(positive.positions)).not.toEqual(
+        Array.from(negative.positions)
+      );
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "allows a composite profile vertex to touch the axis only when OCCT returns one solid",
+    async () => {
+      const touchingTriangle = {
+        kind: "wire" as const,
+        frame: slotWireProfile.frame,
+        closed: true as const,
+        segments: [
+          {
+            kind: "line" as const,
+            sourceEntityId: "touch-out",
+            start: [0, 0] as const,
+            end: [2, -1] as const
+          },
+          {
+            kind: "line" as const,
+            sourceEntityId: "outer",
+            start: [2, -1] as const,
+            end: [2, 1] as const
+          },
+          {
+            kind: "line" as const,
+            sourceEntityId: "touch-return",
+            start: [2, 1] as const,
+            end: [0, 0] as const
+          }
+        ],
+        sourceIdentity: "touching-triangle",
+        geometryPolicy: slotWireProfile.geometryPolicy
+      };
+      const mesh = await createOcctRevolveProfileMesh({
+        sketchPlane: "XY",
+        profile: touchingTriangle,
+        axis: { start: [0, -10], end: [0, 10] },
+        angleDegrees: 360
+      });
+
+      expect(mesh.primitive).toBe("revolve");
+      expect(mesh.vertexCount).toBeGreaterThan(0);
+      expect(mesh.triangleCount).toBeGreaterThan(0);
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );
