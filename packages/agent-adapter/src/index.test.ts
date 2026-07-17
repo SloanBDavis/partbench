@@ -1731,7 +1731,7 @@ describe("agent-adapter", () => {
     ).toThrow("Invalid CADOps agent adapter request.");
   });
 
-  it("round-trips composite wire add dry-run and commit while wire cut stays gated", () => {
+  it("round-trips composite wire cut dry-run and commit through an anchored add result", () => {
     const adapter = new CadOpsAgentAdapter();
     const profile = {
       kind: "wire",
@@ -1840,6 +1840,38 @@ describe("agent-adapter", () => {
                   startAngleDegrees: 90,
                   sweepAngleDegrees: 180
                 }
+              },
+              {
+                op: "feature.extrude",
+                id: "agent_add_wire_feature",
+                bodyId: "agent_add_wire_body",
+                profile,
+                depth: 2,
+                side: "symmetric",
+                operationMode: "add",
+                targetTopologyAnchorId: "agent_add_target_anchor"
+              },
+              {
+                op: "topology.checkpoint.create",
+                checkpointId: "agent_add_result_checkpoint",
+                bodyId: "agent_add_wire_body",
+                sourceFeatureId: "agent_add_wire_feature",
+                sourceIdentity: {
+                  algorithm: "partbench-source-v1",
+                  sha256:
+                    "abababababababababababababababababababababababababababababababab"
+                },
+                status: "active"
+              },
+              {
+                op: "topology.anchor.create",
+                anchorId: "agent_add_result_anchor",
+                entityKind: "body",
+                bodyId: "agent_add_wire_body",
+                checkpointId: "agent_add_result_checkpoint",
+                checkpointEntityId: "agent-add-result-body",
+                sourceFeatureId: "agent_add_wire_feature",
+                stableId: "generated:body:agent_add_wire_body"
               }
             ]
           }
@@ -1848,23 +1880,29 @@ describe("agent-adapter", () => {
     );
     const operation = {
       op: "feature.extrude",
-      id: "agent_add_wire_feature",
-      bodyId: "agent_add_wire_body",
+      id: "agent_cut_wire_feature",
+      bodyId: "agent_cut_wire_body",
       profile,
-      depth: 2,
-      side: "symmetric",
-      operationMode: "add",
-      targetTopologyAnchorId: "agent_add_target_anchor"
+      depth: 1,
+      operationMode: "cut",
+      targetTopologyAnchorId: "agent_add_result_anchor"
     };
-    const cut = JSON.parse(
+    const directTarget = JSON.parse(
       adapter.executeJson(
         JSON.stringify({
-          requestId: "agent_req_v17_wire_cut_gated",
+          requestId: "agent_req_v17_wire_cut_direct_target",
           adapterVersion: "web-cad.agent-adapter.v1",
           batch: {
             version: "cadops.v1",
             mode: "dryRun",
-            ops: [{ ...operation, operationMode: "cut" }]
+            ops: [
+              {
+                ...operation,
+                side: "negative",
+                targetBodyId: "agent_add_wire_body",
+                targetTopologyAnchorId: undefined
+              }
+            ]
           }
         })
       )
@@ -1872,12 +1910,12 @@ describe("agent-adapter", () => {
     const dryRun = JSON.parse(
       adapter.executeJson(
         JSON.stringify({
-          requestId: "agent_req_v17_wire_add_dry_run",
+          requestId: "agent_req_v17_wire_cut_dry_run",
           adapterVersion: "web-cad.agent-adapter.v1",
           batch: {
             version: "cadops.v1",
             mode: "dryRun",
-            ops: [operation]
+            ops: [{ ...operation, side: "symmetric" }]
           }
         })
       )
@@ -1889,50 +1927,59 @@ describe("agent-adapter", () => {
     const commit = JSON.parse(
       adapter.executeJson(
         JSON.stringify({
-          requestId: "agent_req_v17_wire_add_commit",
+          requestId: "agent_req_v17_wire_cut_commit",
           adapterVersion: "web-cad.agent-adapter.v1",
           permissions: { allowCommit: true },
           batch: {
             version: "cadops.v1",
             mode: "commit",
-            ops: [operation]
+            ops: [{ ...operation, side: "negative" }]
           }
         })
       )
     );
-    const structure = adapter.getEngine().executeQuery({
-      version: "cadops.v1",
-      query: { query: "project.structure" }
+    const structure = executeCadOpsAgentQueryRequest(adapter.getEngine(), {
+      requestId: "agent_req_v17_wire_cut_structure",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: { query: "project.structure" }
+      }
     });
 
     expect(seed).toMatchObject({ ok: true });
-    expect(cut).toMatchObject({
+    expect(directTarget).toMatchObject({
       ok: false,
       error: {
-        code: "UNSUPPORTED_FEATURE_OPERATION",
+        code: "UNSUPPORTED_BODY_REFERENCES",
         path: "$.ops[0].profile"
       }
     });
     expect(beforeCommit).not.toMatchObject({
       features: expect.arrayContaining([
-        expect.objectContaining({ id: "agent_add_wire_feature" })
+        expect.objectContaining({ id: "agent_cut_wire_feature" })
       ])
     });
     for (const response of [dryRun, commit]) {
       expect(response).toMatchObject({
         ok: true,
-        createdFeatureIds: ["agent_add_wire_feature"],
-        createdBodyIds: ["agent_add_wire_body"],
+        createdFeatureIds: ["agent_cut_wire_feature"],
+        createdBodyIds: ["agent_cut_wire_body"],
         semanticDiff: {
           features: {
             created: [
               expect.objectContaining({
-                id: "agent_add_wire_feature",
+                id: "agent_cut_wire_feature",
                 profile,
-                side: "symmetric",
-                operationMode: "add",
-                targetBodyId: "agent_add_target_body",
-                targetTopologyAnchorId: "agent_add_target_anchor"
+                operationMode: "cut",
+                targetBodyId: "agent_add_wire_body",
+                targetTopologyAnchorId: "agent_add_result_anchor"
+              })
+            ],
+            inputReferences: [
+              expect.objectContaining({
+                featureId: "agent_cut_wire_feature",
+                after: profile
               })
             ]
           }
@@ -1942,38 +1989,54 @@ describe("agent-adapter", () => {
             expect.objectContaining({
               op: "feature.extrude",
               sketchId: "agent_add_wire_sketch",
-              operationMode: "add",
-              targetTopologyAnchorId: "agent_add_target_anchor",
+              operationMode: "cut",
+              targetTopologyAnchorId: "agent_add_result_anchor",
               label:
-                "Create add extrude feature agent_add_wire_feature from agent_add_wire_sketch composite wire"
+                "Create cut extrude feature agent_cut_wire_feature from agent_add_wire_sketch composite wire"
             })
           ]
         }
       });
     }
-    expect(dryRun).toMatchObject({ mode: "dryRun" });
-    expect(commit).toMatchObject({ mode: "commit" });
+    expect(dryRun).toMatchObject({
+      mode: "dryRun",
+      semanticDiff: {
+        features: {
+          created: [expect.objectContaining({ side: "symmetric" })]
+        }
+      }
+    });
+    expect(commit).toMatchObject({
+      mode: "commit",
+      semanticDiff: {
+        features: {
+          created: [expect.objectContaining({ side: "negative" })]
+        }
+      }
+    });
     expect(structure).toMatchObject({
       ok: true,
+      requestId: "agent_req_v17_wire_cut_structure",
+      query: "project.structure",
       features: expect.arrayContaining([
         expect.objectContaining({
-          id: "agent_add_wire_feature",
+          id: "agent_cut_wire_feature",
           profile,
-          depth: 2,
-          side: "symmetric",
-          operationMode: "add",
-          targetBodyId: "agent_add_target_body",
-          targetTopologyAnchorId: "agent_add_target_anchor"
+          depth: 1,
+          side: "negative",
+          operationMode: "cut",
+          targetBodyId: "agent_add_wire_body",
+          targetTopologyAnchorId: "agent_add_result_anchor"
         })
       ]),
       bodies: expect.arrayContaining([
         expect.objectContaining({
-          id: "agent_add_target_body",
-          consumedByFeatureId: "agent_add_wire_feature"
+          id: "agent_add_wire_body",
+          consumedByFeatureId: "agent_cut_wire_feature"
         }),
         expect.objectContaining({
-          id: "agent_add_wire_body",
-          featureId: "agent_add_wire_feature",
+          id: "agent_cut_wire_body",
+          featureId: "agent_cut_wire_feature",
           source: expect.objectContaining({ profile })
         })
       ])

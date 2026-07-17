@@ -496,7 +496,7 @@ describe("mcp stdio server", () => {
     });
   });
 
-  it("round-trips composite wire add and keeps wire cut gated over line-delimited JSON-RPC", () => {
+  it("round-trips composite wire cut through an anchored add result over line-delimited JSON-RPC", () => {
     const session = createMcpStdioSession();
     const callBatch = (id: string, argumentsValue: unknown) =>
       parseLineResponse(
@@ -612,47 +612,85 @@ describe("mcp stdio server", () => {
               startAngleDegrees: 90,
               sweepAngleDegrees: 180
             }
+          },
+          {
+            op: "feature.extrude",
+            id: "stdio_add_wire_feature",
+            bodyId: "stdio_add_wire_body",
+            profile,
+            depth: 2,
+            side: "symmetric",
+            operationMode: "add",
+            targetTopologyAnchorId: "stdio_add_target_anchor"
+          },
+          {
+            op: "topology.checkpoint.create",
+            checkpointId: "stdio_add_result_checkpoint",
+            bodyId: "stdio_add_wire_body",
+            sourceFeatureId: "stdio_add_wire_feature",
+            sourceIdentity: {
+              algorithm: "partbench-source-v1",
+              sha256:
+                "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+            },
+            status: "active"
+          },
+          {
+            op: "topology.anchor.create",
+            anchorId: "stdio_add_result_anchor",
+            entityKind: "body",
+            bodyId: "stdio_add_wire_body",
+            checkpointId: "stdio_add_result_checkpoint",
+            checkpointEntityId: "stdio-add-result-body",
+            sourceFeatureId: "stdio_add_wire_feature",
+            stableId: "generated:body:stdio_add_wire_body"
           }
         ]
       }
     });
     const operation = {
       op: "feature.extrude",
-      id: "stdio_add_wire_feature",
-      bodyId: "stdio_add_wire_body",
+      id: "stdio_cut_wire_feature",
+      bodyId: "stdio_cut_wire_body",
       profile,
-      depth: 2,
-      side: "symmetric",
-      operationMode: "add",
-      targetTopologyAnchorId: "stdio_add_target_anchor"
+      depth: 1,
+      operationMode: "cut",
+      targetTopologyAnchorId: "stdio_add_result_anchor"
     };
-    const cut = callBatch("stdio-wire-cut-gated", {
+    const directTarget = callBatch("stdio-wire-cut-direct-target", {
       batch: {
         version: "cadops.v1",
         mode: "dryRun",
-        ops: [{ ...operation, operationMode: "cut" }]
+        ops: [
+          {
+            ...operation,
+            side: "negative",
+            targetBodyId: "stdio_add_wire_body",
+            targetTopologyAnchorId: undefined
+          }
+        ]
       }
     });
-    const dryRun = callBatch("stdio-wire-add-dry-run", {
+    const dryRun = callBatch("stdio-wire-cut-dry-run", {
       batch: {
         version: "cadops.v1",
         mode: "dryRun",
-        ops: [operation]
+        ops: [{ ...operation, side: "symmetric" }]
       }
     });
-    const commit = callBatch("stdio-wire-add-commit", {
+    const commit = callBatch("stdio-wire-cut-commit", {
       allowCommit: true,
       batch: {
         version: "cadops.v1",
         mode: "commit",
-        ops: [operation]
+        ops: [{ ...operation, side: "negative" }]
       }
     });
     const structure = parseLineResponse(
       session.handleLine(
         JSON.stringify({
           jsonrpc: "2.0",
-          id: "stdio-wire-add-structure",
+          id: "stdio-wire-cut-structure",
           method: "tools/call",
           params: {
             name: "cad.project_structure",
@@ -667,16 +705,16 @@ describe("mcp stdio server", () => {
       id: "stdio-wire-add-seed",
       result: { toolName: "cad.batch", isError: false }
     });
-    expect(cut).toMatchObject({
+    expect(directTarget).toMatchObject({
       jsonrpc: "2.0",
-      id: "stdio-wire-cut-gated",
+      id: "stdio-wire-cut-direct-target",
       result: {
         toolName: "cad.batch",
         isError: true,
         structuredContent: {
           ok: false,
           error: {
-            code: "UNSUPPORTED_FEATURE_OPERATION",
+            code: "UNSUPPORTED_BODY_REFERENCES",
             path: "$.ops[0].profile"
           }
         }
@@ -690,18 +728,23 @@ describe("mcp stdio server", () => {
           isError: false,
           structuredContent: {
             ok: true,
-            createdFeatureIds: ["stdio_add_wire_feature"],
-            createdBodyIds: ["stdio_add_wire_body"],
+            createdFeatureIds: ["stdio_cut_wire_feature"],
+            createdBodyIds: ["stdio_cut_wire_body"],
             semanticDiff: {
               features: {
                 created: [
                   expect.objectContaining({
-                    id: "stdio_add_wire_feature",
+                    id: "stdio_cut_wire_feature",
                     profile,
-                    side: "symmetric",
-                    operationMode: "add",
-                    targetBodyId: "stdio_add_target_body",
-                    targetTopologyAnchorId: "stdio_add_target_anchor"
+                    operationMode: "cut",
+                    targetBodyId: "stdio_add_wire_body",
+                    targetTopologyAnchorId: "stdio_add_result_anchor"
+                  })
+                ],
+                inputReferences: [
+                  expect.objectContaining({
+                    featureId: "stdio_cut_wire_feature",
+                    after: profile
                   })
                 ]
               }
@@ -711,8 +754,8 @@ describe("mcp stdio server", () => {
                 expect.objectContaining({
                   op: "feature.extrude",
                   sketchId: "stdio_add_wire_sketch",
-                  operationMode: "add",
-                  targetTopologyAnchorId: "stdio_add_target_anchor"
+                  operationMode: "cut",
+                  targetTopologyAnchorId: "stdio_add_result_anchor"
                 })
               ]
             }
@@ -721,16 +764,34 @@ describe("mcp stdio server", () => {
       });
     }
     expect(dryRun).toMatchObject({
-      id: "stdio-wire-add-dry-run",
-      result: { structuredContent: { mode: "dryRun" } }
+      id: "stdio-wire-cut-dry-run",
+      result: {
+        structuredContent: {
+          mode: "dryRun",
+          semanticDiff: {
+            features: {
+              created: [expect.objectContaining({ side: "symmetric" })]
+            }
+          }
+        }
+      }
     });
     expect(commit).toMatchObject({
-      id: "stdio-wire-add-commit",
-      result: { structuredContent: { mode: "commit" } }
+      id: "stdio-wire-cut-commit",
+      result: {
+        structuredContent: {
+          mode: "commit",
+          semanticDiff: {
+            features: {
+              created: [expect.objectContaining({ side: "negative" })]
+            }
+          }
+        }
+      }
     });
     expect(structure).toMatchObject({
       jsonrpc: "2.0",
-      id: "stdio-wire-add-structure",
+      id: "stdio-wire-cut-structure",
       result: {
         toolName: "cad.project_structure",
         isError: false,
@@ -738,23 +799,23 @@ describe("mcp stdio server", () => {
           ok: true,
           features: expect.arrayContaining([
             expect.objectContaining({
-              id: "stdio_add_wire_feature",
+              id: "stdio_cut_wire_feature",
               profile,
-              depth: 2,
-              side: "symmetric",
-              operationMode: "add",
-              targetBodyId: "stdio_add_target_body",
-              targetTopologyAnchorId: "stdio_add_target_anchor"
+              depth: 1,
+              side: "negative",
+              operationMode: "cut",
+              targetBodyId: "stdio_add_wire_body",
+              targetTopologyAnchorId: "stdio_add_result_anchor"
             })
           ]),
           bodies: expect.arrayContaining([
             expect.objectContaining({
-              id: "stdio_add_target_body",
-              consumedByFeatureId: "stdio_add_wire_feature"
+              id: "stdio_add_wire_body",
+              consumedByFeatureId: "stdio_cut_wire_feature"
             }),
             expect.objectContaining({
-              id: "stdio_add_wire_body",
-              featureId: "stdio_add_wire_feature",
+              id: "stdio_cut_wire_body",
+              featureId: "stdio_cut_wire_feature",
               source: expect.objectContaining({ profile })
             })
           ])

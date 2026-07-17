@@ -2748,7 +2748,7 @@ describe("mcp-adapter", () => {
     });
   });
 
-  it("passes composite wire add dry-run and commit while wire cut stays gated", () => {
+  it("passes composite wire cut dry-run and commit through an anchored add result", () => {
     const server = new CadMcpServer();
     const profile = {
       kind: "wire",
@@ -2856,6 +2856,38 @@ describe("mcp-adapter", () => {
                 startAngleDegrees: 90,
                 sweepAngleDegrees: 180
               }
+            },
+            {
+              op: "feature.extrude",
+              id: "mcp_add_wire_feature",
+              bodyId: "mcp_add_wire_body",
+              profile,
+              depth: 2,
+              side: "symmetric",
+              operationMode: "add",
+              targetTopologyAnchorId: "mcp_add_target_anchor"
+            },
+            {
+              op: "topology.checkpoint.create",
+              checkpointId: "mcp_add_result_checkpoint",
+              bodyId: "mcp_add_wire_body",
+              sourceFeatureId: "mcp_add_wire_feature",
+              sourceIdentity: {
+                algorithm: "partbench-source-v1",
+                sha256:
+                  "bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc"
+              },
+              status: "active"
+            },
+            {
+              op: "topology.anchor.create",
+              anchorId: "mcp_add_result_anchor",
+              entityKind: "body",
+              bodyId: "mcp_add_wire_body",
+              checkpointId: "mcp_add_result_checkpoint",
+              checkpointEntityId: "mcp-add-result-body",
+              sourceFeatureId: "mcp_add_wire_feature",
+              stableId: "generated:body:mcp_add_wire_body"
             }
           ]
         }
@@ -2863,61 +2895,67 @@ describe("mcp-adapter", () => {
     });
     const operation = {
       op: "feature.extrude",
-      id: "mcp_add_wire_feature",
-      bodyId: "mcp_add_wire_body",
+      id: "mcp_cut_wire_feature",
+      bodyId: "mcp_cut_wire_body",
       profile,
-      depth: 2,
-      side: "symmetric",
-      operationMode: "add",
-      targetTopologyAnchorId: "mcp_add_target_anchor"
+      depth: 1,
+      operationMode: "cut",
+      targetTopologyAnchorId: "mcp_add_result_anchor"
     };
-    const cut = server.callTool({
+    const directTarget = server.callTool({
       name: "cad.batch",
-      requestId: "mcp_req_v17_wire_cut_gated",
+      requestId: "mcp_req_v17_wire_cut_direct_target",
       arguments: {
         batch: {
           version: "cadops.v1",
           mode: "dryRun",
-          ops: [{ ...operation, operationMode: "cut" }]
+          ops: [
+            {
+              ...operation,
+              side: "negative",
+              targetBodyId: "mcp_add_wire_body",
+              targetTopologyAnchorId: undefined
+            }
+          ]
         }
       }
     });
     const dryRun = server.callTool({
       name: "cad.batch",
-      requestId: "mcp_req_v17_wire_add_dry_run",
+      requestId: "mcp_req_v17_wire_cut_dry_run",
       arguments: {
         batch: {
           version: "cadops.v1",
           mode: "dryRun",
-          ops: [operation]
+          ops: [{ ...operation, side: "symmetric" }]
         }
       }
     });
     const commit = server.callTool({
       name: "cad.batch",
-      requestId: "mcp_req_v17_wire_add_commit",
+      requestId: "mcp_req_v17_wire_cut_commit",
       arguments: {
         allowCommit: true,
         batch: {
           version: "cadops.v1",
           mode: "commit",
-          ops: [operation]
+          ops: [{ ...operation, side: "negative" }]
         }
       }
     });
     const structure = server.callTool({
       name: "cad.project_structure",
-      requestId: "mcp_req_v17_wire_add_structure"
+      requestId: "mcp_req_v17_wire_cut_structure"
     });
 
     expect(seed).toMatchObject({ isError: false });
-    expect(cut).toMatchObject({
+    expect(directTarget).toMatchObject({
       toolName: "cad.batch",
       isError: true,
       structuredContent: {
         ok: false,
         error: {
-          code: "UNSUPPORTED_FEATURE_OPERATION",
+          code: "UNSUPPORTED_BODY_REFERENCES",
           path: "$.ops[0].profile"
         }
       }
@@ -2928,18 +2966,23 @@ describe("mcp-adapter", () => {
         isError: false,
         structuredContent: {
           ok: true,
-          createdFeatureIds: ["mcp_add_wire_feature"],
-          createdBodyIds: ["mcp_add_wire_body"],
+          createdFeatureIds: ["mcp_cut_wire_feature"],
+          createdBodyIds: ["mcp_cut_wire_body"],
           semanticDiff: {
             features: {
               created: [
                 expect.objectContaining({
-                  id: "mcp_add_wire_feature",
+                  id: "mcp_cut_wire_feature",
                   profile,
-                  side: "symmetric",
-                  operationMode: "add",
-                  targetBodyId: "mcp_add_target_body",
-                  targetTopologyAnchorId: "mcp_add_target_anchor"
+                  operationMode: "cut",
+                  targetBodyId: "mcp_add_wire_body",
+                  targetTopologyAnchorId: "mcp_add_result_anchor"
+                })
+              ],
+              inputReferences: [
+                expect.objectContaining({
+                  featureId: "mcp_cut_wire_feature",
+                  after: profile
                 })
               ]
             }
@@ -2949,16 +2992,30 @@ describe("mcp-adapter", () => {
               expect.objectContaining({
                 op: "feature.extrude",
                 sketchId: "mcp_add_wire_sketch",
-                operationMode: "add",
-                targetTopologyAnchorId: "mcp_add_target_anchor"
+                operationMode: "cut",
+                targetTopologyAnchorId: "mcp_add_result_anchor"
               })
             ]
           }
         }
       });
     }
-    expect(dryRun.structuredContent).toMatchObject({ mode: "dryRun" });
-    expect(commit.structuredContent).toMatchObject({ mode: "commit" });
+    expect(dryRun.structuredContent).toMatchObject({
+      mode: "dryRun",
+      semanticDiff: {
+        features: {
+          created: [expect.objectContaining({ side: "symmetric" })]
+        }
+      }
+    });
+    expect(commit.structuredContent).toMatchObject({
+      mode: "commit",
+      semanticDiff: {
+        features: {
+          created: [expect.objectContaining({ side: "negative" })]
+        }
+      }
+    });
     expect(structure).toMatchObject({
       toolName: "cad.project_structure",
       isError: false,
@@ -2966,23 +3023,23 @@ describe("mcp-adapter", () => {
         ok: true,
         features: expect.arrayContaining([
           expect.objectContaining({
-            id: "mcp_add_wire_feature",
+            id: "mcp_cut_wire_feature",
             profile,
-            depth: 2,
-            side: "symmetric",
-            operationMode: "add",
-            targetBodyId: "mcp_add_target_body",
-            targetTopologyAnchorId: "mcp_add_target_anchor"
+            depth: 1,
+            side: "negative",
+            operationMode: "cut",
+            targetBodyId: "mcp_add_wire_body",
+            targetTopologyAnchorId: "mcp_add_result_anchor"
           })
         ]),
         bodies: expect.arrayContaining([
           expect.objectContaining({
-            id: "mcp_add_target_body",
-            consumedByFeatureId: "mcp_add_wire_feature"
+            id: "mcp_add_wire_body",
+            consumedByFeatureId: "mcp_cut_wire_feature"
           }),
           expect.objectContaining({
-            id: "mcp_add_wire_body",
-            featureId: "mcp_add_wire_feature",
+            id: "mcp_cut_wire_body",
+            featureId: "mcp_cut_wire_feature",
             source: expect.objectContaining({ profile })
           })
         ])
