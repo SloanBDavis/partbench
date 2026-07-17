@@ -198,6 +198,78 @@ describe("renderer", () => {
     expect(selectedId).toBe("mesh_1");
   });
 
+  it("can pick only derived edge segments instead of a mesh bounding box", () => {
+    const camera = createDefaultCamera();
+    const size = { width: 800, height: 600 };
+    const mesh = {
+      id: "sketch:sketch_1:entity:arc_1",
+      kind: "mesh" as const,
+      vertices: [
+        [0, 0, 0],
+        [2, 0, 0]
+      ] as const,
+      indices: [],
+      transform: {
+        translation: [0, 0, 0] as const,
+        rotation: [0, 0, 0] as const,
+        scale: [1, 1, 1] as const
+      },
+      edgeSegments: [{ start: [0, 0, 0] as const, end: [2, 0, 0] as const }],
+      pickMode: "edgeSegments" as const
+    };
+    const onEdge = projectPoint([1, 0, 0], camera, size);
+    const insideBoundsAwayFromEdge = projectPoint([1, 1, 0], camera, size);
+
+    expect(onEdge).toBeDefined();
+    expect(insideBoundsAwayFromEdge).toBeDefined();
+    expect(
+      pickRenderScene([], [mesh], camera, size, {
+        x: onEdge?.x ?? 0,
+        y: onEdge?.y ?? 0
+      })
+    ).toBe(mesh.id);
+    expect(
+      pickRenderScene([], [mesh], camera, size, {
+        x: insideBoundsAwayFromEdge?.x ?? 0,
+        y: insideBoundsAwayFromEdge?.y ?? 0
+      })
+    ).toBeUndefined();
+  });
+
+  it("renders construction edges with the restrained dashed vocabulary", () => {
+    const recorder = createRecordingCanvasContext();
+
+    renderCanvasScene(recorder.context, {
+      camera: createDefaultCamera(),
+      size: { width: 800, height: 600 },
+      primitives: [],
+      meshes: [
+        {
+          id: "sketch:sketch_1:entity:arc_1",
+          kind: "mesh",
+          vertices: [
+            [0, 0, 0],
+            [1, 0, 0]
+          ],
+          indices: [],
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          },
+          edgeSegments: [{ start: [0, 0, 0], end: [1, 0, 0] }],
+          lineStyle: "construction"
+        }
+      ]
+    });
+
+    expect(recorder.strokes.at(-1)).toMatchObject({
+      lineDash: [5, 4],
+      lineWidth: 2,
+      strokeStyle: "#6f7c86"
+    });
+  });
+
   it("renders selected meshes without semantic edges as one projected outline", () => {
     const recorder = createRecordingCanvasContext();
 
@@ -274,8 +346,10 @@ describe("renderer", () => {
 
 interface StrokeRecord {
   readonly closed: boolean;
+  readonly lineDash: readonly number[];
   readonly lineWidth: number;
   readonly points: readonly { readonly x: number; readonly y: number }[];
+  readonly strokeStyle: string;
 }
 
 function createRecordingCanvasContext(): {
@@ -284,8 +358,10 @@ function createRecordingCanvasContext(): {
 } {
   const strokes: StrokeRecord[] = [];
   let closed = false;
+  let lineDash: number[] = [];
   let lineWidth = 1;
   let points: { x: number; y: number }[] = [];
+  let strokeStyle = "";
 
   const context = {
     clearRect: () => {},
@@ -304,12 +380,17 @@ function createRecordingCanvasContext(): {
     closePath: () => {
       closed = true;
     },
+    setLineDash: (value: number[]) => {
+      lineDash = [...value];
+    },
     fill: () => {},
     stroke: () => {
       strokes.push({
         closed,
+        lineDash: [...lineDash],
         lineWidth,
-        points: [...points]
+        points: [...points],
+        strokeStyle
       });
     },
     set fillStyle(_value: string) {},
@@ -321,7 +402,9 @@ function createRecordingCanvasContext(): {
     get lineWidth() {
       return lineWidth;
     },
-    set strokeStyle(_value: string) {}
+    set strokeStyle(value: string) {
+      strokeStyle = value;
+    }
   } as unknown as CanvasRenderingContext2D;
 
   return { context, strokes };

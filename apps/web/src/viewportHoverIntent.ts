@@ -5,6 +5,7 @@ import type {
   CadSelectionReferenceIssue,
   CadSelectionReferenceOperation,
   CadSelectionReferenceStatus,
+  SketchSnapshot,
   SelectionReferenceCandidatesQueryResponse
 } from "@web-cad/cad-protocol";
 import {
@@ -15,11 +16,13 @@ import {
 } from "./generatedReferenceSelection";
 import { formatObjectKind, getObjectDisplayName } from "./sceneObjectDisplay";
 import { formatVisibleDiagnosticMessage } from "./viewportVisibleText";
+import { createSketchEntitySelectionId } from "./sketchPanelUi";
 
 export type ViewportHoverKind =
   | "empty"
   | "body"
   | "object"
+  | "sketchEntity"
   | "unsupported"
   | "missing";
 
@@ -72,6 +75,20 @@ export type ViewportHoverState =
       readonly diagnostics: readonly ViewportHoverDiagnostic[];
     }
   | {
+      readonly kind: "sketchEntity";
+      readonly title: string;
+      readonly detail: string;
+      readonly tone: "idle";
+      readonly sketchId: string;
+      readonly entityId: string;
+      readonly renderTargetId: string;
+      readonly semanticSelection?: undefined;
+      readonly referenceStatus?: undefined;
+      readonly commandOperations: readonly [];
+      readonly commandOperationLabels: readonly [];
+      readonly diagnostics: readonly [];
+    }
+  | {
       readonly kind: "unsupported" | "missing";
       readonly title: string;
       readonly detail: string;
@@ -88,6 +105,7 @@ export interface ResolveViewportHoverIntentInput {
   readonly hoveredRenderId: string | undefined;
   readonly bodies: readonly CadBodySnapshot[];
   readonly objects: readonly SceneObject[];
+  readonly sketches?: readonly SketchSnapshot[];
   readonly readReferenceCandidates?: (
     selection: CadSelectionReferenceInput
   ) => SelectionReferenceCandidatesQueryResponse | undefined;
@@ -106,6 +124,7 @@ export function resolveViewportHoverIntent({
   hoveredRenderId,
   bodies,
   objects,
+  sketches = [],
   readReferenceCandidates
 }: ResolveViewportHoverIntentInput): ViewportHoverState {
   if (!hoveredRenderId) {
@@ -171,6 +190,33 @@ export function resolveViewportHoverIntent({
     };
   }
 
+  for (const sketch of sketches) {
+    const entity = sketch.entities.find(
+      (candidate) =>
+        createSketchEntitySelectionId(sketch.id, candidate.id) ===
+        hoveredRenderId
+    );
+
+    if (entity) {
+      const kindLabel = formatSketchEntityKindLabel(entity.kind);
+
+      return {
+        kind: "sketchEntity",
+        title: `${entity.id} (${kindLabel})`,
+        detail: entity.construction
+          ? `Construction ${kindLabel.toLowerCase()} in ${sketch.name}`
+          : `${kindLabel} in ${sketch.name}`,
+        tone: "idle",
+        sketchId: sketch.id,
+        entityId: entity.id,
+        renderTargetId: hoveredRenderId,
+        commandOperations: [],
+        commandOperationLabels: [],
+        diagnostics: []
+      };
+    }
+  }
+
   if (hoveredRenderId.startsWith("sketch:")) {
     return createBlockedHoverState(
       "unsupported",
@@ -205,6 +251,12 @@ export function resolveViewportHoverIntent({
       )
     ]
   );
+}
+
+function formatSketchEntityKindLabel(
+  kind: SketchSnapshot["entities"][number]["kind"]
+): string {
+  return `${kind.slice(0, 1).toUpperCase()}${kind.slice(1)}`;
 }
 
 function createEmptyHoverState(): ViewportHoverState {

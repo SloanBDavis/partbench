@@ -136,6 +136,8 @@ function getHoverVisualTargetKind(
   switch (hoverState.kind) {
     case "object":
       return "object";
+    case "sketchEntity":
+      return "sketchEntity";
     case "body":
     case "missing":
     case "unsupported":

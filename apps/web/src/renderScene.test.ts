@@ -6,7 +6,13 @@ import type {
   SphereObject,
   TorusObject
 } from "@web-cad/cad-core";
-import type { RenderEdgeSegment, RenderTriangleMesh } from "@web-cad/renderer";
+import {
+  pickRenderScene,
+  projectPoint,
+  type RenderCamera,
+  type RenderEdgeSegment,
+  type RenderTriangleMesh
+} from "@web-cad/renderer";
 import { describe, expect, it } from "vitest";
 import type {
   DerivedBooleanExtrudeGeometrySource,
@@ -19,8 +25,11 @@ import type {
 import {
   createMeshDisplayEdges,
   createRenderSceneInputs,
-  createSketchDisplayEdges
+  createSketchArcDisplayEdges,
+  createSketchDisplayEdges,
+  createSketchDisplayMeshes
 } from "./renderScene";
+import { createDefaultSketchDisplayFrame } from "./sketchDisplayFrames";
 
 describe("renderScene", () => {
   it("prefers a ready derived mesh over the primitive fallback", () => {
@@ -629,7 +638,8 @@ describe("renderScene", () => {
           kind: "rectangle",
           center: [1, 2],
           width: 4,
-          height: 6
+          height: 6,
+          construction: false
         }
       ]
     };
@@ -637,12 +647,13 @@ describe("renderScene", () => {
 
     expect(scene.meshes).toHaveLength(1);
     expect(scene.meshes[0]).toMatchObject({
-      id: "sketch:sketch_1",
+      id: "sketch:sketch_1:entity:rect_1",
       kind: "mesh",
-      vertices: [],
       indices: [],
+      pickMode: "edgeSegments",
+      lineStyle: "solid",
       source: "sketch",
-      label: "Base sketch"
+      label: "Base sketch: rect_1"
     });
     expect(scene.meshes[0].edgeSegments).toEqual([
       {
@@ -662,6 +673,140 @@ describe("renderScene", () => {
         end: [-1, -1, 0]
       }
     ]);
+  });
+
+  it("derives signed and wraparound arc display from canonical source", () => {
+    const frame = createDefaultSketchDisplayFrame("XY");
+    const counterclockwise = createSketchArcDisplayEdges(
+      frame,
+      [0, 0],
+      2,
+      350,
+      30
+    );
+    const clockwise = createSketchArcDisplayEdges(frame, [0, 0], 2, 10, -30);
+    const ccwEnd = counterclockwise.at(-1)?.end;
+    const cwEnd = clockwise.at(-1)?.end;
+
+    expect(counterclockwise[0]?.end[1]).toBeGreaterThan(
+      counterclockwise[0]?.start[1] ?? Number.POSITIVE_INFINITY
+    );
+    expect(clockwise[0]?.end[1]).toBeLessThan(
+      clockwise[0]?.start[1] ?? Number.NEGATIVE_INFINITY
+    );
+    expect(ccwEnd?.[0]).toBeCloseTo(2 * Math.cos((20 * Math.PI) / 180));
+    expect(ccwEnd?.[1]).toBeCloseTo(2 * Math.sin((20 * Math.PI) / 180));
+    expect(cwEnd?.[0]).toBeCloseTo(2 * Math.cos((340 * Math.PI) / 180));
+    expect(cwEnd?.[1]).toBeCloseTo(2 * Math.sin((340 * Math.PI) / 180));
+    expect(
+      counterclockwise.flatMap((edge) => [edge.start[0], edge.end[0]])
+    ).toContain(2);
+  });
+
+  it("keeps arc render identity stable across derived sampling changes", () => {
+    const createArcSketch = (sweepAngleDegrees: number): SketchSnapshot => ({
+      id: "sketch_1",
+      name: "Arc sketch",
+      plane: "XY",
+      entities: [
+        {
+          id: "arc_1",
+          kind: "arc",
+          center: [0, 0],
+          radius: 2,
+          startAngleDegrees: 0,
+          sweepAngleDegrees,
+          construction: false
+        }
+      ]
+    });
+    const before = createSketchDisplayMeshes([createArcSketch(45)]);
+    const after = createSketchDisplayMeshes([createArcSketch(200)]);
+
+    expect(before[0]?.id).toBe("sketch:sketch_1:entity:arc_1");
+    expect(after[0]?.id).toBe(before[0]?.id);
+    expect(after[0]?.edgeSegments?.length).toBeGreaterThan(
+      before[0]?.edgeSegments?.length ?? Number.POSITIVE_INFINITY
+    );
+  });
+
+  it("marks construction arcs as visible selectable construction display", () => {
+    const meshes = createSketchDisplayMeshes([
+      {
+        id: "sketch_1",
+        name: "Construction sketch",
+        plane: "XY",
+        entities: [
+          {
+            id: "arc_construction",
+            kind: "arc",
+            center: [0, 0],
+            radius: 2,
+            startAngleDegrees: 0,
+            sweepAngleDegrees: 90,
+            construction: true
+          }
+        ]
+      }
+    ]);
+
+    expect(meshes[0]).toMatchObject({
+      id: "sketch:sketch_1:entity:arc_construction",
+      lineStyle: "construction",
+      pickMode: "edgeSegments",
+      source: "sketch"
+    });
+    expect(meshes[0]?.edgeSegments?.length).toBeGreaterThan(0);
+  });
+
+  it("picks the finite arc but not the absent side of its support circle", () => {
+    const mesh = createSketchDisplayMeshes([
+      {
+        id: "sketch_1",
+        name: "Quarter arc",
+        plane: "XY",
+        entities: [
+          {
+            id: "arc_1",
+            kind: "arc",
+            center: [0, 0],
+            radius: 4,
+            startAngleDegrees: 0,
+            sweepAngleDegrees: 90,
+            construction: false
+          }
+        ]
+      }
+    ])[0];
+    const camera: RenderCamera = {
+      target: [0, 0, 0],
+      yaw: Math.PI / 4,
+      pitch: -Math.PI / 3,
+      distance: 18
+    };
+    const size = { width: 800, height: 600 };
+    const onArc = projectPoint(
+      [4 * Math.SQRT1_2, 4 * Math.SQRT1_2, 0],
+      camera,
+      size
+    );
+    const absentSupportCircle = projectPoint([-4, 0, 0], camera, size);
+
+    expect(mesh).toBeDefined();
+    expect(onArc).toBeDefined();
+    expect(absentSupportCircle).toBeDefined();
+    expect(
+      pickRenderScene([], mesh ? [mesh] : [], camera, size, {
+        x: onArc?.x ?? 0,
+        y: onArc?.y ?? 0
+      })
+    ).toBe("sketch:sketch_1:entity:arc_1");
+    expect(
+      pickRenderScene([], mesh ? [mesh] : [], camera, size, {
+        x: absentSupportCircle?.x ?? 0,
+        y: absentSupportCircle?.y ?? 0
+      })
+    ).toBeUndefined();
   });
 
   it("adds a small plane marker for empty sketches", () => {

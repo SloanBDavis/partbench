@@ -8,18 +8,21 @@ import type {
   CadViewportInteractionDiagnostic,
   CadViewportInteractionDiagnosticCode,
   CadViewportInteractionStatus,
+  SketchSnapshot,
   SelectionReferenceCandidatesQueryResponse
 } from "@web-cad/cad-protocol";
 import {
   createViewportInteractionDiagnosticsFromCandidates,
   resolveViewportHitCandidateSelection
 } from "./viewportInteractionContract";
+import { createSketchEntitySelectionId } from "./sketchPanelUi";
 
 export type ViewportPickIntentKind =
   | "empty"
   | "body"
   | "generatedReference"
   | "object"
+  | "sketchEntity"
   | "unsupported"
   | "missing"
   | "renderer-only"
@@ -68,6 +71,17 @@ export type ViewportPickIntent =
       readonly interactionDiagnostics: readonly CadViewportInteractionDiagnostic[];
     }
   | {
+      readonly kind: "sketchEntity";
+      readonly selectedId: string;
+      readonly sketchId: string;
+      readonly entityId: string;
+      readonly renderTargetId: string;
+      readonly semanticSelection?: undefined;
+      readonly referenceCandidates?: undefined;
+      readonly issues: readonly [];
+      readonly interactionDiagnostics: readonly [];
+    }
+  | {
       readonly kind: "unsupported" | "missing" | "renderer-only" | "ambiguous";
       readonly selectedId?: undefined;
       readonly semanticSelection?: undefined;
@@ -81,6 +95,7 @@ export interface ResolveViewportPickIntentInput {
   readonly hitCandidate?: CadViewportHitCandidate;
   readonly bodies: readonly CadBodySnapshot[];
   readonly objects: readonly SceneObject[];
+  readonly sketches?: readonly SketchSnapshot[];
   readonly readReferenceCandidates?: (
     selection: CadSelectionReferenceInput
   ) => SelectionReferenceCandidatesQueryResponse | undefined;
@@ -279,8 +294,31 @@ export function resolveViewportPickIntent({
   pickedRenderId,
   bodies,
   objects,
+  sketches = [],
   readReferenceCandidates
 }: ResolveViewportPickIntentInput): ViewportPickIntent {
+  if (!hitCandidate && pickedRenderId) {
+    for (const sketch of sketches) {
+      const entity = sketch.entities.find(
+        (candidate) =>
+          createSketchEntitySelectionId(sketch.id, candidate.id) ===
+          pickedRenderId
+      );
+
+      if (entity) {
+        return {
+          kind: "sketchEntity",
+          selectedId: pickedRenderId,
+          sketchId: sketch.id,
+          entityId: entity.id,
+          renderTargetId: pickedRenderId,
+          issues: [],
+          interactionDiagnostics: []
+        };
+      }
+    }
+  }
+
   const hitTarget =
     hitCandidate !== undefined
       ? createViewportBodyHitTargetFromCandidate(hitCandidate)

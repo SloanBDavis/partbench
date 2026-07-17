@@ -30,6 +30,10 @@ import {
   mapSketchPointToDisplayFrame,
   type SketchDisplayFrame
 } from "./sketchDisplayFrames";
+import {
+  createSketchEntitySelectionId,
+  createSketchSelectionId
+} from "./sketchPanelUi";
 
 export interface RenderSceneInputs {
   readonly primitives: readonly RenderPrimitive[];
@@ -108,19 +112,51 @@ export function createSketchDisplayMeshes(
   sketches: readonly SketchSnapshot[],
   sketchDisplayFrames: ReadonlyMap<string, SketchDisplayFrame> = new Map()
 ): readonly RenderTriangleMesh[] {
-  return sketches.map((sketch) => ({
-    id: `sketch:${sketch.id}`,
+  return sketches.flatMap((sketch) => {
+    const displayFrame =
+      sketchDisplayFrames.get(sketch.id) ??
+      createDefaultSketchDisplayFrame(sketch.plane);
+
+    if (sketch.entities.length === 0) {
+      return [
+        createSketchDisplayMesh(
+          createSketchSelectionId(sketch.id),
+          sketch.name,
+          createEmptySketchPlaneMarker(displayFrame),
+          false
+        )
+      ];
+    }
+
+    return sketch.entities.map((entity) =>
+      createSketchDisplayMesh(
+        createSketchEntitySelectionId(sketch.id, entity.id),
+        `${sketch.name}: ${entity.id}`,
+        createSketchEntityDisplayEdges(displayFrame, entity),
+        entity.construction
+      )
+    );
+  });
+}
+
+function createSketchDisplayMesh(
+  id: string,
+  label: string,
+  edgeSegments: readonly RenderEdgeSegment[],
+  construction: boolean
+): RenderTriangleMesh {
+  return {
+    id,
     kind: "mesh",
-    vertices: [],
+    vertices: edgeSegments.flatMap((edge) => [edge.start, edge.end]),
     indices: [],
     transform: createIdentityTransform(),
-    edgeSegments: createSketchDisplayEdges(
-      sketch,
-      sketchDisplayFrames.get(sketch.id)
-    ),
+    edgeSegments,
+    pickMode: "edgeSegments",
+    lineStyle: construction ? "construction" : "solid",
     source: "sketch",
-    label: sketch.name
-  }));
+    label
+  };
 }
 
 export function createSketchDisplayEdges(
@@ -418,6 +454,14 @@ function createSketchEntityDisplayEdges(
       );
     case "circle":
       return createSketchCircleEdges(frame, entity.center, entity.radius);
+    case "arc":
+      return createSketchArcDisplayEdges(
+        frame,
+        entity.center,
+        entity.radius,
+        entity.startAngleDegrees,
+        entity.sweepAngleDegrees
+      );
   }
 }
 
@@ -506,6 +550,68 @@ function createSketchCircleEdges(
       points[(index + 1) % points.length]
     )
   }));
+}
+
+export function createSketchArcDisplayEdges(
+  frame: SketchDisplayFrame,
+  center: readonly [number, number],
+  radius: number,
+  startAngleDegrees: number,
+  sweepAngleDegrees: number
+): readonly RenderEdgeSegment[] {
+  if (sweepAngleDegrees === 0) {
+    return [];
+  }
+
+  const maximumSegmentAngleDegrees = 7.5;
+  const segmentCount = Math.max(
+    1,
+    Math.ceil(Math.abs(sweepAngleDegrees) / maximumSegmentAngleDegrees)
+  );
+  const fractions = Array.from(
+    { length: segmentCount + 1 },
+    (_, index) => index / segmentCount
+  );
+
+  // Include support-circle extrema only when they lie on the finite authored
+  // interval. This keeps derived bounds exact without turning the support
+  // circle into the source or pick target.
+  for (const cardinalAngle of [0, 90, 180, 270]) {
+    const directedAngle =
+      sweepAngleDegrees > 0
+        ? positiveModulo(cardinalAngle - startAngleDegrees, 360)
+        : positiveModulo(startAngleDegrees - cardinalAngle, 360);
+
+    if (directedAngle <= Math.abs(sweepAngleDegrees) + 1e-10) {
+      fractions.push(directedAngle / Math.abs(sweepAngleDegrees));
+    }
+  }
+
+  const orderedFractions = fractions
+    .sort((left, right) => left - right)
+    .filter(
+      (fraction, index, sorted) =>
+        index === 0 || Math.abs(fraction - sorted[index - 1]) > 1e-12
+    );
+  const points = orderedFractions.map((fraction) => {
+    const angleRadians =
+      ((startAngleDegrees + sweepAngleDegrees * fraction) * Math.PI) / 180;
+
+    return [
+      cleanRenderNumber(center[0] + Math.cos(angleRadians) * radius),
+      cleanRenderNumber(center[1] + Math.sin(angleRadians) * radius)
+    ] as const;
+  });
+
+  return points.slice(0, -1).map((point, index) => ({
+    start: mapSketchPointToDisplayFrame(frame, point),
+    end: mapSketchPointToDisplayFrame(frame, points[index + 1])
+  }));
+}
+
+function positiveModulo(value: number, modulus: number): number {
+  const remainder = value % modulus;
+  return remainder < 0 ? remainder + modulus : remainder;
 }
 
 function createIdentityTransform(): RenderTransform {

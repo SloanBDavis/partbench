@@ -81,6 +81,10 @@ export interface RenderTriangleMesh {
   readonly indices: readonly number[];
   readonly transform: RenderTransform;
   readonly edgeSegments?: readonly RenderEdgeSegment[];
+  /** Use derived display edges as the pick target instead of the mesh bounds. */
+  readonly pickMode?: "bounds" | "edgeSegments";
+  /** Renderer-only line vocabulary; never source geometry or CAD intent. */
+  readonly lineStyle?: "solid" | "construction";
   readonly source?: string;
   readonly label?: string;
 }
@@ -246,11 +250,13 @@ export function pickRenderScene(
     )
   );
   const meshCandidates = meshes.map((mesh) =>
-    createPickCandidate(
-      mesh.id,
-      getProjectedMeshBounds(mesh, camera, size),
-      point
-    )
+    mesh.pickMode === "edgeSegments"
+      ? createEdgeSegmentPickCandidate(mesh, camera, size, point)
+      : createPickCandidate(
+          mesh.id,
+          getProjectedMeshBounds(mesh, camera, size),
+          point
+        )
   );
 
   const candidates = [...primitiveCandidates, ...meshCandidates]
@@ -629,6 +635,10 @@ function drawTriangleMesh(
   context.lineJoin = "round";
   context.lineCap = "round";
 
+  if (mesh.lineStyle === "construction") {
+    context.setLineDash([5, 4]);
+  }
+
   context.fillStyle = getVisualFillColor(style, "rgba(47, 111, 151, 0.08)");
   drawMeshFaces(context, mesh.indices, vertices, camera, size);
 
@@ -642,7 +652,10 @@ function drawTriangleMesh(
   }
 
   if (displayEdges.length > 0) {
-    context.strokeStyle = getVisualStrokeColor(style, "#235f86");
+    context.strokeStyle = getVisualStrokeColor(
+      style,
+      mesh.lineStyle === "construction" ? "#6f7c86" : "#235f86"
+    );
     context.lineWidth = getVisualLineWidth(style, 2);
     strokeMeshEdgeSegments(context, mesh, displayEdges, camera, size);
   } else if (style.selected && outline.length > 1) {
@@ -969,6 +982,66 @@ function createPickCandidate(
     id,
     depth: bounds.depth
   };
+}
+
+function createEdgeSegmentPickCandidate(
+  mesh: RenderTriangleMesh,
+  camera: RenderCamera,
+  size: ViewportSize,
+  point: ViewportPoint
+): { id: string; depth: number } | undefined {
+  let nearestDepth: number | undefined;
+
+  for (const edge of mesh.edgeSegments ?? []) {
+    const start = projectPoint(
+      transformPoint(edge.start, mesh.transform),
+      camera,
+      size
+    );
+    const end = projectPoint(
+      transformPoint(edge.end, mesh.transform),
+      camera,
+      size
+    );
+
+    if (!start || !end || distanceToProjectedSegment(point, start, end) > 6) {
+      continue;
+    }
+
+    const depth = Math.min(start.depth, end.depth);
+    nearestDepth =
+      nearestDepth === undefined ? depth : Math.min(nearestDepth, depth);
+  }
+
+  return nearestDepth === undefined
+    ? undefined
+    : { id: mesh.id, depth: nearestDepth };
+}
+
+function distanceToProjectedSegment(
+  point: ViewportPoint,
+  start: ProjectedPoint,
+  end: ProjectedPoint
+): number {
+  const deltaX = end.x - start.x;
+  const deltaY = end.y - start.y;
+  const lengthSquared = deltaX * deltaX + deltaY * deltaY;
+
+  if (lengthSquared === 0) {
+    return Math.hypot(point.x - start.x, point.y - start.y);
+  }
+
+  const fraction = clamp(
+    ((point.x - start.x) * deltaX + (point.y - start.y) * deltaY) /
+      lengthSquared,
+    0,
+    1
+  );
+
+  return Math.hypot(
+    point.x - (start.x + fraction * deltaX),
+    point.y - (start.y + fraction * deltaY)
+  );
 }
 
 function getProjectedPrimitiveBounds(

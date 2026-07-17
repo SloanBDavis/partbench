@@ -4,6 +4,7 @@ import type {
   CadBodySnapshot,
   CadGeneratedFaceReference,
   CadSelectionReferenceIssue,
+  SketchSnapshot,
   SelectionReferenceCandidatesQueryResponse
 } from "@web-cad/cad-protocol";
 import { describe, expect, it } from "vitest";
@@ -160,6 +161,44 @@ describe("viewport hover intent", () => {
     expect(sketchHover).not.toHaveProperty("selectedId");
     expect(unknownHover).not.toHaveProperty("selectedId");
     expect(JSON.stringify(unknownHover)).not.toContain("selection-buffer");
+  });
+
+  it("hovers a construction arc as one current sketch entity", () => {
+    const sketch: SketchSnapshot = {
+      id: "sketch_1",
+      name: "Guide sketch",
+      plane: "XY",
+      entities: [
+        {
+          id: "arc_1",
+          kind: "arc",
+          center: [0, 0],
+          radius: 2,
+          startAngleDegrees: 0,
+          sweepAngleDegrees: -90,
+          construction: true
+        }
+      ]
+    };
+    const hover = resolveViewportHoverIntent({
+      hoveredRenderId: "sketch:sketch_1:entity:arc_1",
+      bodies: [],
+      objects: [],
+      sketches: [sketch]
+    });
+
+    expect(hover).toEqual({
+      kind: "sketchEntity",
+      title: "arc_1 (Arc)",
+      detail: "Construction arc in Guide sketch",
+      tone: "idle",
+      sketchId: "sketch_1",
+      entityId: "arc_1",
+      renderTargetId: "sketch:sketch_1:entity:arc_1",
+      commandOperations: [],
+      commandOperationLabels: [],
+      diagnostics: []
+    });
   });
 
   it("keeps hover and candidate query state out of project JSON", () => {

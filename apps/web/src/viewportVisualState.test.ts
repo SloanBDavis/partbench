@@ -150,6 +150,39 @@ describe("viewport visual state", () => {
     });
     expect(failed.status?.tone).toBe("failed");
   });
+
+  it("preselects a hovered sketch entity by its semantic render ID", () => {
+    const targetId = "sketch:sketch_1:entity:arc_1";
+    const visualState = createViewportVisualStateModel({
+      hoverState: {
+        kind: "sketchEntity",
+        title: "arc_1 (Arc)",
+        detail: "Arc in Base sketch",
+        tone: "idle",
+        sketchId: "sketch_1",
+        entityId: "arc_1",
+        renderTargetId: targetId,
+        commandOperations: [],
+        commandOperationLabels: [],
+        diagnostics: []
+      },
+      selectionDisplay: createSelectionDisplay({
+        selectionKind: "none",
+        renderTargetId: undefined,
+        tone: "idle",
+        geometryStatus: "none"
+      }),
+      selectedGeneratedReferenceState: { status: "none" }
+    });
+
+    expect(visualState.rendererVisualStates).toEqual([
+      {
+        targetId,
+        targetKind: "sketchEntity",
+        state: "preselection"
+      }
+    ]);
+  });
 });
 
 function createSelectionDisplay(

@@ -6,6 +6,7 @@ import type {
   CadGeneratedReference,
   CadSelectionReferenceInput,
   CadSelectionReferenceIssue,
+  SketchSnapshot,
   SelectionReferenceCandidatesQueryResponse
 } from "@web-cad/cad-protocol";
 import { describe, expect, it } from "vitest";
@@ -399,6 +400,41 @@ describe("viewport pick intent", () => {
     expect(JSON.stringify(unknownIntent.interactionDiagnostics)).not.toContain(
       "selection-buffer"
     );
+  });
+
+  it("selects a current sketch arc by its stable semantic render ID", () => {
+    const sketch: SketchSnapshot = {
+      id: "sketch_1",
+      name: "Arc sketch",
+      plane: "XY",
+      entities: [
+        {
+          id: "arc_1",
+          kind: "arc",
+          center: [0, 0],
+          radius: 2,
+          startAngleDegrees: 350,
+          sweepAngleDegrees: 30,
+          construction: false
+        }
+      ]
+    };
+    const intent = resolveViewportPickIntent({
+      pickedRenderId: "sketch:sketch_1:entity:arc_1",
+      bodies: [],
+      objects: [],
+      sketches: [sketch]
+    });
+
+    expect(intent).toEqual({
+      kind: "sketchEntity",
+      selectedId: "sketch:sketch_1:entity:arc_1",
+      sketchId: "sketch_1",
+      entityId: "arc_1",
+      renderTargetId: "sketch:sketch_1:entity:arc_1",
+      issues: [],
+      interactionDiagnostics: []
+    });
   });
 
   it("returns an ambiguous diagnostic when an object maps to multiple bodies", () => {

@@ -1914,6 +1914,7 @@ export function App() {
         hoveredRenderId: viewportHoverPick.pickedRenderId,
         bodies: projectStructure.bodies,
         objects: sceneObjects,
+        sketches,
         readReferenceCandidates: readSelectionReferenceCandidates
       })
     : undefined;
@@ -2205,6 +2206,7 @@ export function App() {
       pickedRenderId: pick.pickedRenderId,
       bodies: projectStructure.bodies,
       objects: sceneObjects,
+      sketches,
       readReferenceCandidates: readSelectionReferenceCandidates
     });
 
