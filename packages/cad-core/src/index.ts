@@ -1,6 +1,7 @@
 import {
   CAD_TOPOLOGY_IDENTITY_CONTRACT_VERSION,
   CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION,
+  validateSketchProfilePathQueryRequest,
   WCAD_COMMANDS_ENTRY_PATH,
   WCAD_DOCUMENT_ENTRY_PATH,
   WCAD_MANIFEST_ENTRY_PATH,
@@ -291,6 +292,12 @@ import {
   type SketchSolverDocument
 } from "./sketchSolver";
 import { createSketchEditReadinessResponse } from "./sketchEditReadiness";
+import {
+  createSketchPathCandidatesResponse,
+  createSketchPathReadinessResponse,
+  createSketchProfileCandidatesResponse,
+  createSketchProfileReadinessResponse
+} from "./sketchProfilePathQueries";
 import { createSketchSolverStatusResponse } from "./sketchSolverStatus";
 import {
   applySketchSolveResultToCadEntities,
@@ -2048,6 +2055,84 @@ export class CadEngine {
           cadOpsVersion: request.version,
           sketch: createSketchSnapshot(sketch)
         };
+      }
+
+      case "sketch.profileCandidates": {
+        const sketch = this.#document.sketches.get(request.query.sketchId);
+        if (!sketch) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: {
+              code: "SKETCH_NOT_FOUND",
+              message: `Sketch does not exist: ${request.query.sketchId}`,
+              sketchId: request.query.sketchId
+            }
+          };
+        }
+        return createSketchProfileCandidatesResponse(sketch, request.version);
+      }
+
+      case "sketch.profileReadiness": {
+        const sketch = this.#document.sketches.get(
+          request.query.profile.sketchId
+        );
+        if (!sketch) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: {
+              code: "SKETCH_NOT_FOUND",
+              message: `Sketch does not exist: ${request.query.profile.sketchId}`,
+              sketchId: request.query.profile.sketchId
+            }
+          };
+        }
+        return createSketchProfileReadinessResponse(
+          this.#document,
+          request.query,
+          request.version
+        );
+      }
+
+      case "sketch.pathCandidates": {
+        const sketch = this.#document.sketches.get(request.query.sketchId);
+        if (!sketch) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: {
+              code: "SKETCH_NOT_FOUND",
+              message: `Sketch does not exist: ${request.query.sketchId}`,
+              sketchId: request.query.sketchId
+            }
+          };
+        }
+        return createSketchPathCandidatesResponse(sketch, request.version);
+      }
+
+      case "sketch.pathReadiness": {
+        const sketch = this.#document.sketches.get(request.query.path.sketchId);
+        if (!sketch) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: {
+              code: "SKETCH_NOT_FOUND",
+              message: `Sketch does not exist: ${request.query.path.sketchId}`,
+              sketchId: request.query.path.sketchId
+            }
+          };
+        }
+        return createSketchPathReadinessResponse(
+          this.#document,
+          request.query,
+          request.version
+        );
       }
 
       case "sketch.editReadiness": {
@@ -7521,6 +7606,10 @@ function isCadQueryKind(value: string): value is CadQueryKind {
     case "object.measurements":
     case "project.extents":
     case "sketch.get":
+    case "sketch.profileCandidates":
+    case "sketch.profileReadiness":
+    case "sketch.pathCandidates":
+    case "sketch.pathReadiness":
     case "sketch.editReadiness":
     case "sketch.solverStatus":
     case "sketch.evaluation":
@@ -7661,6 +7750,14 @@ function isCadQuery(value: unknown): boolean {
     case "sketch.get":
     case "sketch.dimension.get":
       return typeof value.id === "string";
+    case "sketch.profileCandidates":
+    case "sketch.profileReadiness":
+    case "sketch.pathCandidates":
+    case "sketch.pathReadiness":
+      return validateSketchProfilePathQueryRequest({
+        version: "cadops.v1",
+        query: value
+      }).ok;
     case "sketch.editReadiness":
       return isCadSketchEditProposal(value.edit);
     case "sketch.solverStatus":

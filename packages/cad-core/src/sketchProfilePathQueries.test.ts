@@ -1,0 +1,820 @@
+import { describe, expect, it } from "vitest";
+import {
+  validateSketchProfilePathQueryResponse,
+  type SketchProfilePathQueryResponse
+} from "@web-cad/cad-protocol";
+
+import {
+  CadEngine,
+  createCadProjectSourceIdentity,
+  exportCadProject
+} from "./index";
+
+function addSketch(
+  engine: CadEngine,
+  id: string,
+  plane: "XY" | "XZ" | "YZ" = "XY"
+): void {
+  engine.apply({ op: "sketch.create", id, name: id, plane });
+}
+
+function addSquare(
+  engine: CadEngine,
+  sketchId: string,
+  prefix: string,
+  min: number,
+  max: number,
+  order = [2, 0, 3, 1]
+): void {
+  const lines = [
+    { id: `${prefix}a`, start: [min, min] as const, end: [max, min] as const },
+    { id: `${prefix}b`, start: [max, min] as const, end: [max, max] as const },
+    { id: `${prefix}c`, start: [max, max] as const, end: [min, max] as const },
+    { id: `${prefix}d`, start: [min, max] as const, end: [min, min] as const }
+  ];
+  engine.applyBatch(
+    order.map((index) => ({
+      op: "sketch.addLine" as const,
+      sketchId,
+      ...lines[index]!
+    }))
+  );
+}
+
+function query<T extends SketchProfilePathQueryResponse>(
+  engine: CadEngine,
+  request: Parameters<CadEngine["executeQuery"]>[0]
+): T {
+  const response = engine.executeQuery(request);
+  if (!response.ok) throw new Error(response.error.message);
+  const validation = validateSketchProfilePathQueryResponse(response);
+  expect(validation).toEqual({ ok: true, value: response });
+  return response as T;
+}
+
+function sourceState(engine: CadEngine) {
+  const project = exportCadProject(engine);
+  return {
+    project,
+    snapshot: engine.createSnapshot(),
+    identity: createCadProjectSourceIdentity(project)
+  };
+}
+
+describe("V17 profile and path queries", () => {
+  it("discovers entity and counterclockwise wire profiles deterministically without mutation", () => {
+    const first = new CadEngine();
+    const second = new CadEngine();
+    for (const engine of [first, second]) {
+      addSketch(engine, "sketch");
+      engine.apply({
+        op: "sketch.addRectangle",
+        sketchId: "sketch",
+        id: "rectangle",
+        center: [4, 4],
+        width: 2,
+        height: 3
+      });
+      engine.apply({
+        op: "sketch.addCircle",
+        sketchId: "sketch",
+        id: "guide",
+        center: [8, 8],
+        radius: 1,
+        construction: true
+      });
+    }
+    addSquare(first, "sketch", "", 0, 1, [2, 0, 3, 1]);
+    addSquare(second, "sketch", "", 0, 1, [1, 3, 0, 2]);
+
+    const before = sourceState(first);
+    const firstResponse = query<
+      Extract<
+        SketchProfilePathQueryResponse,
+        { query: "sketch.profileCandidates" }
+      >
+    >(first, {
+      version: "cadops.v1",
+      query: { query: "sketch.profileCandidates", sketchId: "sketch" }
+    });
+    const secondResponse = query<
+      Extract<
+        SketchProfilePathQueryResponse,
+        { query: "sketch.profileCandidates" }
+      >
+    >(second, {
+      version: "cadops.v1",
+      query: { query: "sketch.profileCandidates", sketchId: "sketch" }
+    });
+
+    expect(sourceState(first)).toEqual(before);
+    expect(firstResponse.candidates).toEqual(secondResponse.candidates);
+    expect(
+      firstResponse.candidates.map((candidate) => candidate.profile.kind)
+    ).toEqual(["wire", "entity"]);
+    expect(firstResponse.candidates[0]).toMatchObject({
+      area: 1,
+      signedArea: 1,
+      orientation: "counterclockwise",
+      intersectionStatus: "clear",
+      dependencies: {
+        sketchIds: ["sketch"],
+        orderedEntityIds: ["a", "b", "c", "d"]
+      }
+    });
+    expect(firstResponse.constructionExclusions).toMatchObject([
+      { entityId: "guide", entityKind: "circle" }
+    ]);
+  });
+
+  it("normalizes an explicit clockwise profile and reports exact tolerance joins", () => {
+    const engine = new CadEngine();
+    addSketch(engine, "sketch");
+    engine.applyBatch([
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch",
+        id: "a",
+        start: [0, 0],
+        end: [1, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch",
+        id: "b",
+        start: [1, 0],
+        end: [1, 1]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch",
+        id: "c",
+        start: [1, 1],
+        end: [0, 1]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch",
+        id: "d",
+        start: [0, 1],
+        end: [0, 0.00000005]
+      }
+    ]);
+    const response = query<
+      Extract<
+        SketchProfilePathQueryResponse,
+        { query: "sketch.profileReadiness" }
+      >
+    >(engine, {
+      version: "cadops.v1",
+      query: {
+        query: "sketch.profileReadiness",
+        profile: {
+          kind: "wire",
+          sketchId: "sketch",
+          segments: [
+            { entityId: "a", orientation: "reverse" },
+            { entityId: "d", orientation: "reverse" },
+            { entityId: "c", orientation: "reverse" },
+            { entityId: "b", orientation: "reverse" }
+          ]
+        },
+        consumer: { featureKind: "extrude", operationMode: "newBody" }
+      }
+    });
+    expect(response).toMatchObject({
+      status: "ready",
+      orientation: "counterclockwise",
+      orientationNormalized: true,
+      intersectionStatus: "clear"
+    });
+    expect(response.area).toBeCloseTo(0.999999975, 12);
+    expect(response.signedArea).toBeCloseTo(0.999999975, 12);
+    expect(response.joins.some((join) => join.coincidentWithinTolerance)).toBe(
+      true
+    );
+    expect(response.normalizedProfile?.kind).toBe("wire");
+  });
+
+  it("rejects branches, gaps, overlaps, self-intersections, and nested loops explicitly", () => {
+    const branch = new CadEngine();
+    addSketch(branch, "branch");
+    branch.applyBatch([
+      {
+        op: "sketch.addLine",
+        sketchId: "branch",
+        id: "a",
+        start: [0, 0],
+        end: [1, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "branch",
+        id: "b",
+        start: [1, 0],
+        end: [2, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "branch",
+        id: "c",
+        start: [1, 0],
+        end: [1, 1]
+      }
+    ]);
+    const branchResponse = query<
+      Extract<
+        SketchProfilePathQueryResponse,
+        { query: "sketch.profileCandidates" }
+      >
+    >(branch, {
+      version: "cadops.v1",
+      query: { query: "sketch.profileCandidates", sketchId: "branch" }
+    });
+    expect(
+      branchResponse.rejectedComponents[0]?.diagnostics.map(
+        (value) => value.code
+      )
+    ).toContain("SKETCH_PROFILE_BRANCHING");
+
+    const invalid = new CadEngine();
+    addSketch(invalid, "invalid");
+    invalid.applyBatch([
+      {
+        op: "sketch.addLine",
+        sketchId: "invalid",
+        id: "a",
+        start: [0, 0],
+        end: [2, 2]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "invalid",
+        id: "b",
+        start: [2, 2],
+        end: [0, 2]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "invalid",
+        id: "c",
+        start: [0, 2],
+        end: [2, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "invalid",
+        id: "d",
+        start: [2, 0],
+        end: [0, 0]
+      }
+    ]);
+    const crossing = query<
+      Extract<
+        SketchProfilePathQueryResponse,
+        { query: "sketch.profileReadiness" }
+      >
+    >(invalid, {
+      version: "cadops.v1",
+      query: {
+        query: "sketch.profileReadiness",
+        profile: {
+          kind: "wire",
+          sketchId: "invalid",
+          segments: ["a", "b", "c", "d"].map((entityId) => ({
+            entityId,
+            orientation: "forward"
+          }))
+        },
+        consumer: { featureKind: "revolve", operationMode: "newBody" }
+      }
+    });
+    expect(crossing.status).toBe("blocked");
+    expect(crossing.diagnostics.map((value) => value.code)).toContain(
+      "SKETCH_PROFILE_SELF_INTERSECTING"
+    );
+
+    const overlap = new CadEngine();
+    addSketch(overlap, "overlap");
+    overlap.applyBatch([
+      {
+        op: "sketch.addLine",
+        sketchId: "overlap",
+        id: "out",
+        start: [0, 0],
+        end: [1, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "overlap",
+        id: "back",
+        start: [1, 0],
+        end: [0, 0]
+      }
+    ]);
+    const opposing = query<
+      Extract<
+        SketchProfilePathQueryResponse,
+        { query: "sketch.profileReadiness" }
+      >
+    >(overlap, {
+      version: "cadops.v1",
+      query: {
+        query: "sketch.profileReadiness",
+        profile: {
+          kind: "wire",
+          sketchId: "overlap",
+          segments: [
+            { entityId: "out", orientation: "forward" },
+            { entityId: "back", orientation: "forward" }
+          ]
+        },
+        consumer: { featureKind: "extrude", operationMode: "newBody" }
+      }
+    });
+    expect(opposing.status).toBe("blocked");
+    expect(opposing.diagnostics.map((value) => value.code)).toEqual(
+      expect.arrayContaining([
+        "SKETCH_PROFILE_OVERLAPPING",
+        "SKETCH_PROFILE_AREA_TOO_SMALL"
+      ])
+    );
+
+    const gap = new CadEngine();
+    addSketch(gap, "gap");
+    gap.applyBatch([
+      {
+        op: "sketch.addLine",
+        sketchId: "gap",
+        id: "a",
+        start: [0, 0],
+        end: [1, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "gap",
+        id: "b",
+        start: [1, 0],
+        end: [0, 1]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "gap",
+        id: "c",
+        start: [0, 1],
+        end: [0, 0.000000101]
+      }
+    ]);
+    const open = query<
+      Extract<
+        SketchProfilePathQueryResponse,
+        { query: "sketch.profileReadiness" }
+      >
+    >(gap, {
+      version: "cadops.v1",
+      query: {
+        query: "sketch.profileReadiness",
+        profile: {
+          kind: "wire",
+          sketchId: "gap",
+          segments: ["a", "b", "c"].map((entityId) => ({
+            entityId,
+            orientation: "forward"
+          }))
+        },
+        consumer: { featureKind: "extrude", operationMode: "newBody" }
+      }
+    });
+    expect(open.status).toBe("blocked");
+    expect(open.diagnostics.map((value) => value.code)).toContain(
+      "SKETCH_PROFILE_OPEN"
+    );
+
+    const nested = new CadEngine();
+    addSketch(nested, "nested");
+    addSquare(nested, "nested", "outer-", 0, 10);
+    addSquare(nested, "nested", "inner-", 2, 3);
+    const nestedResponse = query<
+      Extract<
+        SketchProfilePathQueryResponse,
+        { query: "sketch.profileCandidates" }
+      >
+    >(nested, {
+      version: "cadops.v1",
+      query: { query: "sketch.profileCandidates", sketchId: "nested" }
+    });
+    expect(nestedResponse.candidateCount).toBe(0);
+    expect(nestedResponse.rejectedComponents).toHaveLength(2);
+    expect(nestedResponse.diagnostics.map((value) => value.code)).toContain(
+      "SKETCH_PROFILE_INNER_LOOP_UNSUPPORTED"
+    );
+    const nestedReadiness = query<
+      Extract<
+        SketchProfilePathQueryResponse,
+        { query: "sketch.profileReadiness" }
+      >
+    >(nested, {
+      version: "cadops.v1",
+      query: {
+        query: "sketch.profileReadiness",
+        profile: {
+          kind: "wire",
+          sketchId: "nested",
+          segments: ["a", "b", "c", "d"].map((suffix) => ({
+            entityId: `outer-${suffix}`,
+            orientation: "forward"
+          }))
+        },
+        consumer: { featureKind: "extrude", operationMode: "newBody" }
+      }
+    });
+    expect(nestedReadiness.status).toBe("blocked");
+    expect(nestedReadiness.diagnostics.map((value) => value.code)).toContain(
+      "SKETCH_PROFILE_INNER_LOOP_UNSUPPORTED"
+    );
+  });
+
+  it("discovers both orientations of construction-capable G1 paths and rejects G0 chains", () => {
+    const engine = new CadEngine();
+    addSketch(engine, "paths");
+    engine.applyBatch([
+      {
+        op: "sketch.addLine",
+        sketchId: "paths",
+        id: "line",
+        start: [0, 0],
+        end: [1, 0],
+        construction: true
+      },
+      {
+        op: "sketch.addArc",
+        sketchId: "paths",
+        id: "arc",
+        construction: true,
+        definition: {
+          kind: "centerAngles",
+          center: [1, 1],
+          radius: 1,
+          startAngleDegrees: 270,
+          sweepAngleDegrees: 90
+        }
+      }
+    ]);
+    const candidates = query<
+      Extract<
+        SketchProfilePathQueryResponse,
+        { query: "sketch.pathCandidates" }
+      >
+    >(engine, {
+      version: "cadops.v1",
+      query: { query: "sketch.pathCandidates", sketchId: "paths" }
+    });
+    expect(candidates.candidateCount).toBe(6);
+    expect(
+      candidates.candidates.filter(
+        (candidate) => candidate.path.kind === "chain"
+      )
+    ).toHaveLength(2);
+    expect(candidates.rejectedComponentCount).toBe(0);
+
+    const g0 = new CadEngine();
+    addSketch(g0, "g0");
+    g0.applyBatch([
+      {
+        op: "sketch.addLine",
+        sketchId: "g0",
+        id: "a",
+        start: [0, 0],
+        end: [1, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "g0",
+        id: "b",
+        start: [1, 0],
+        end: [1, 1]
+      }
+    ]);
+    const rejected = query<
+      Extract<
+        SketchProfilePathQueryResponse,
+        { query: "sketch.pathCandidates" }
+      >
+    >(g0, {
+      version: "cadops.v1",
+      query: { query: "sketch.pathCandidates", sketchId: "g0" }
+    });
+    expect(
+      rejected.candidates.filter((candidate) => candidate.path.kind === "chain")
+    ).toHaveLength(0);
+    expect(
+      rejected.rejectedComponents[0]?.diagnostics.map((value) => value.code)
+    ).toContain("SKETCH_PATH_JOIN_NOT_TANGENT");
+  });
+
+  it("reports consumer and target compatibility without enabling later feature commands", () => {
+    const engine = new CadEngine();
+    addSketch(engine, "profiles");
+    engine.applyBatch([
+      {
+        op: "sketch.addRectangle",
+        sketchId: "profiles",
+        id: "target-profile",
+        center: [0, 0],
+        width: 4,
+        height: 4
+      },
+      {
+        op: "feature.extrude",
+        id: "target-feature",
+        bodyId: "target-body",
+        sketchId: "profiles",
+        entityId: "target-profile",
+        depth: 2
+      }
+    ]);
+    addSquare(engine, "profiles", "tool-", 5, 6);
+    const profile = {
+      kind: "wire" as const,
+      sketchId: "profiles",
+      segments: ["a", "b", "c", "d"].map((suffix) => ({
+        entityId: `tool-${suffix}`,
+        orientation: "forward" as const
+      }))
+    };
+
+    const addReady = query<
+      Extract<
+        SketchProfilePathQueryResponse,
+        { query: "sketch.profileReadiness" }
+      >
+    >(engine, {
+      version: "cadops.v1",
+      query: {
+        query: "sketch.profileReadiness",
+        profile,
+        consumer: {
+          featureKind: "extrude",
+          operationMode: "add",
+          targetBodyId: "target-body"
+        }
+      }
+    });
+    expect(addReady).toMatchObject({
+      status: "ready",
+      consumerCompatibility: { status: "ready" },
+      targetCompatibility: { status: "ready", targetBodyId: "target-body" }
+    });
+
+    const missingTarget = query<
+      Extract<
+        SketchProfilePathQueryResponse,
+        { query: "sketch.profileReadiness" }
+      >
+    >(engine, {
+      version: "cadops.v1",
+      query: {
+        query: "sketch.profileReadiness",
+        profile,
+        consumer: { featureKind: "extrude", operationMode: "cut" }
+      }
+    });
+    expect(missingTarget).toMatchObject({
+      status: "blocked",
+      targetCompatibility: { status: "missing" }
+    });
+
+    const sweepUnsupported = query<
+      Extract<
+        SketchProfilePathQueryResponse,
+        { query: "sketch.profileReadiness" }
+      >
+    >(engine, {
+      version: "cadops.v1",
+      query: {
+        query: "sketch.profileReadiness",
+        profile,
+        consumer: { featureKind: "sweep", operationMode: "newBody" }
+      }
+    });
+    expect(sweepUnsupported).toMatchObject({
+      status: "blocked",
+      consumerCompatibility: { status: "blocked" }
+    });
+    expect(sweepUnsupported.diagnostics.map((value) => value.code)).toContain(
+      "SKETCH_PROFILE_CONSUMER_UNSUPPORTED"
+    );
+  });
+
+  it("reports repeated, closed, unsupported, and frame-invalid path rows without source mutation", () => {
+    const engine = new CadEngine();
+    addSketch(engine, "profile", "XY");
+    addSketch(engine, "path", "XZ");
+    engine.applyBatch([
+      {
+        op: "sketch.addRectangle",
+        sketchId: "profile",
+        id: "profile-rect",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "path",
+        id: "normal",
+        start: [0, 0],
+        end: [0, 2]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "path",
+        id: "bad-frame",
+        start: [0, 0],
+        end: [2, 0]
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "path",
+        id: "circle",
+        center: [0, 0],
+        radius: 1
+      }
+    ]);
+    const before = sourceState(engine);
+    const ready = query<
+      Extract<SketchProfilePathQueryResponse, { query: "sketch.pathReadiness" }>
+    >(engine, {
+      version: "cadops.v1",
+      query: {
+        query: "sketch.pathReadiness",
+        path: {
+          kind: "entity",
+          sketchId: "path",
+          entityId: "normal",
+          orientation: "forward"
+        },
+        sweepProfile: {
+          kind: "entity",
+          sketchId: "profile",
+          entityId: "profile-rect"
+        }
+      }
+    });
+    expect(ready).toMatchObject({ status: "ready", frameStatus: "ready" });
+    expect(sourceState(engine)).toEqual(before);
+
+    const badFrame = query<
+      Extract<SketchProfilePathQueryResponse, { query: "sketch.pathReadiness" }>
+    >(engine, {
+      version: "cadops.v1",
+      query: {
+        query: "sketch.pathReadiness",
+        path: {
+          kind: "entity",
+          sketchId: "path",
+          entityId: "bad-frame",
+          orientation: "forward"
+        },
+        sweepProfile: {
+          kind: "entity",
+          sketchId: "profile",
+          entityId: "profile-rect"
+        }
+      }
+    });
+    expect(badFrame).toMatchObject({
+      status: "blocked",
+      frameStatus: "invalid"
+    });
+    expect(badFrame.diagnostics.map((value) => value.code)).toContain(
+      "SKETCH_PATH_FRAME_INVALID"
+    );
+
+    const unsupported = query<
+      Extract<SketchProfilePathQueryResponse, { query: "sketch.pathReadiness" }>
+    >(engine, {
+      version: "cadops.v1",
+      query: {
+        query: "sketch.pathReadiness",
+        path: {
+          kind: "entity",
+          sketchId: "path",
+          entityId: "circle",
+          orientation: "forward"
+        }
+      }
+    });
+    expect(unsupported.status).toBe("blocked");
+    expect(unsupported.diagnostics.map((value) => value.code)).toContain(
+      "SKETCH_PATH_ENTITY_UNSUPPORTED"
+    );
+
+    const repeated = query<
+      Extract<SketchProfilePathQueryResponse, { query: "sketch.pathReadiness" }>
+    >(engine, {
+      version: "cadops.v1",
+      query: {
+        query: "sketch.pathReadiness",
+        path: {
+          kind: "chain",
+          sketchId: "path",
+          segments: [
+            { entityId: "normal", orientation: "forward" },
+            { entityId: "normal", orientation: "reverse" }
+          ]
+        }
+      }
+    });
+    expect(repeated.status).toBe("blocked");
+    expect(repeated.diagnostics.map((value) => value.code)).toContain(
+      "SKETCH_PATH_ENTITY_REPEATED"
+    );
+
+    const crossSketch = query<
+      Extract<SketchProfilePathQueryResponse, { query: "sketch.pathReadiness" }>
+    >(engine, {
+      version: "cadops.v1",
+      query: {
+        query: "sketch.pathReadiness",
+        path: {
+          kind: "entity",
+          sketchId: "path",
+          entityId: "profile-rect",
+          orientation: "forward"
+        }
+      }
+    });
+    expect(crossSketch.status).toBe("blocked");
+    expect(crossSketch.diagnostics.map((value) => value.code)).toContain(
+      "SKETCH_PATH_ENTITY_MISSING"
+    );
+
+    addSketch(engine, "closed", "XZ");
+    engine.applyBatch([
+      {
+        op: "sketch.addLine",
+        sketchId: "closed",
+        id: "a",
+        start: [0, 0],
+        end: [1, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "closed",
+        id: "b",
+        start: [1, 0],
+        end: [0, 1]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "closed",
+        id: "c",
+        start: [0, 1],
+        end: [0, 0]
+      }
+    ]);
+    const closed = query<
+      Extract<SketchProfilePathQueryResponse, { query: "sketch.pathReadiness" }>
+    >(engine, {
+      version: "cadops.v1",
+      query: {
+        query: "sketch.pathReadiness",
+        path: {
+          kind: "chain",
+          sketchId: "closed",
+          segments: ["a", "b", "c"].map((entityId) => ({
+            entityId,
+            orientation: "forward"
+          }))
+        }
+      }
+    });
+    expect(closed.status).toBe("blocked");
+    expect(closed.diagnostics.map((value) => value.code)).toContain(
+      "SKETCH_PATH_CLOSED_UNSUPPORTED"
+    );
+  });
+
+  it("keeps malformed envelopes and missing sketches out of successful geometry responses", () => {
+    const engine = new CadEngine();
+    const malformed = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "sketch.profileCandidates", sketchId: "" }
+    });
+    expect(malformed).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_QUERY" }
+    });
+
+    const missing = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "sketch.pathCandidates", sketchId: "missing" }
+    });
+    expect(missing).toMatchObject({
+      ok: false,
+      query: "sketch.pathCandidates",
+      error: { code: "SKETCH_NOT_FOUND", sketchId: "missing" }
+    });
+  });
+});
