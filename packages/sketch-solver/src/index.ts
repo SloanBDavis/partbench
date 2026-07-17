@@ -40,7 +40,8 @@ export type SketchSolveDiagnosticCode =
   | "SKETCH_SOLVER_REDUNDANT"
   | "SKETCH_SOLVER_NOT_RUN"
   | "SKETCH_TANGENCY_OUTSIDE_ARC"
-  | "SKETCH_ARC_SOLVE_BRANCH_INVALID";
+  | "SKETCH_ARC_SOLVE_BRANCH_INVALID"
+  | "SKETCH_ARC_DIMENSION_INVALID";
 
 export type SketchSolveConstraintKind =
   | "fixedPoint"
@@ -439,6 +440,8 @@ type SketchSolveLineTargetConstraint =
 interface ResidualBlock {
   readonly sourceType: "constraint" | "dimension";
   readonly sourceId: string;
+  readonly constraintKind?: SketchSolveConstraintKind;
+  readonly dimensionKind?: SketchSolveDimensionKind;
   readonly evaluator: ResidualEvaluator;
 }
 
@@ -601,13 +604,30 @@ export function solveSketch(model: SketchSolveModel): SketchSolveResult {
     (candidate) =>
       arcStateStaysWithinAuthoredBranch(model, stateAccess, candidate, settings)
   );
-  const solvedStateDiagnostics = validateSolvedState(
-    model,
-    settings,
-    stateAccess,
-    solve.state
-  );
+  const solvedStateDiagnostics = [
+    ...validateSolvedState(model, settings, stateAccess, solve.state),
+    ...(!solve.converged && solve.stateGuardConstrained
+      ? [
+          {
+            code: "SKETCH_ARC_SOLVE_BRANCH_INVALID" as const,
+            severity: "blocker" as const,
+            message:
+              "Arc solve cannot satisfy the residual system without leaving the authored radius/sweep branch.",
+            sourceType: "model" as const,
+            expected: "positive radius and authored bounded sweep sign",
+            received: "iteration step crossed an authored arc bound"
+          }
+        ]
+      : [])
+  ];
   if (solvedStateDiagnostics.length > 0) {
+    const revertedResiduals = getResiduals(residualBlocks, initialState);
+    const revertedAnalysis = analyzeResidualSystem(
+      initialState,
+      residualBlocks,
+      revertedResiduals,
+      settings
+    );
     return createResult({
       model,
       settings,
@@ -616,15 +636,22 @@ export function solveSketch(model: SketchSolveModel): SketchSolveResult {
       status: "failed",
       iterations: solve.iterations,
       diagnostics: [...diagnostics, ...solvedStateDiagnostics],
-      residuals: solve.residuals
+      residuals: revertedResiduals,
+      independentResidualCount: revertedAnalysis.jacobianRank
     });
   }
+  const analysis = analyzeResidualSystem(
+    solve.state,
+    residualBlocks,
+    solve.residuals,
+    settings
+  );
   const status = classifySolveStatus({
     converged: solve.converged,
     variableCount: stateAccess.variables.length,
     residualCount,
-    maxResidual: solve.maxResidual,
-    tolerance: settings.tolerance
+    jacobianRank: analysis.jacobianRank,
+    augmentedRank: analysis.augmentedRank
   });
   const finalDiagnostics = [...diagnostics];
 
@@ -633,10 +660,10 @@ export function solveSketch(model: SketchSolveModel): SketchSolveResult {
       code: "SKETCH_SOLVER_UNDER_DEFINED",
       severity: "warning",
       message:
-        "Solve converged, but residual count is lower than variable count.",
+        "Solve converged, but the independent residual rank is lower than the variable count.",
       sourceType: "model",
       expected: `${stateAccess.variables.length} independent residual(s)`,
-      received: `${residualCount} residual(s)`
+      received: `${analysis.jacobianRank} independent residual(s) from ${residualCount} residual value(s)`
     });
   }
 
@@ -645,23 +672,30 @@ export function solveSketch(model: SketchSolveModel): SketchSolveResult {
       code: "SKETCH_SOLVER_OVER_DEFINED",
       severity: "warning",
       message:
-        "Solve converged with more residuals than variables; redundant constraints or dimensions may exist.",
+        "Solve converged with redundant residuals beyond the independent Jacobian rank.",
       sourceType: "model",
-      expected: `at most ${stateAccess.variables.length} independent residual(s)`,
-      received: `${residualCount} residual(s)`
+      expected: `at most ${analysis.jacobianRank} residual value(s) for ${analysis.jacobianRank} independent equation(s)`,
+      received: `${residualCount} residual value(s)`
     });
   }
 
   if (status === "conflicting") {
-    finalDiagnostics.push({
-      code: "SKETCH_SOLVER_CONFLICTING",
-      severity: "blocker",
-      message:
-        "Solve did not converge and the model has more residuals than variables; constraints may conflict.",
-      sourceType: "model",
-      expected: `max residual <= ${settings.tolerance}`,
-      received: String(cleanNumber(solve.maxResidual))
-    });
+    finalDiagnostics.push(
+      {
+        code: "SKETCH_SOLVER_CONFLICTING",
+        severity: "blocker",
+        message:
+          "Solve residuals are inconsistent with the independent Jacobian equations.",
+        sourceType: "model",
+        expected: `augmented rank ${analysis.jacobianRank}`,
+        received: `augmented rank ${analysis.augmentedRank}; max residual ${cleanNumber(solve.maxResidual)}`
+      },
+      ...createConflictEvidenceDiagnostics(
+        residualBlocks,
+        solve.state,
+        settings.tolerance
+      )
+    );
   }
 
   if (status === "failed") {
@@ -683,7 +717,32 @@ export function solveSketch(model: SketchSolveModel): SketchSolveResult {
     status,
     iterations: solve.iterations,
     diagnostics: finalDiagnostics,
-    residuals: solve.residuals
+    residuals: solve.residuals,
+    independentResidualCount: analysis.jacobianRank
+  });
+}
+
+function createConflictEvidenceDiagnostics(
+  residualBlocks: readonly ResidualBlock[],
+  state: readonly number[],
+  tolerance: number
+): readonly SketchSolveDiagnostic[] {
+  return residualBlocks.flatMap((block) => {
+    const maxResidual = getMaxResidual(block.evaluator(state));
+    if (maxResidual <= tolerance) return [];
+    return [
+      {
+        code: "SKETCH_SOLVER_CONFLICTING" as const,
+        severity: "blocker" as const,
+        message: "Residual source remains inconsistent at the solve minimum.",
+        sourceType: block.sourceType,
+        sourceId: block.sourceId,
+        constraintKind: block.constraintKind,
+        dimensionKind: block.dimensionKind,
+        expected: `block max residual <= ${tolerance}`,
+        received: String(cleanNumber(maxResidual))
+      }
+    ];
   });
 }
 
@@ -785,7 +844,7 @@ function validateModel(
   validateVariables(model, settings, diagnostics);
 
   for (const constraint of model.constraints ?? []) {
-    validateConstraint(constraint, stateAccess, diagnostics);
+    validateConstraint(constraint, settings, stateAccess, diagnostics);
   }
 
   for (const dimension of model.dimensions ?? []) {
@@ -961,6 +1020,7 @@ function invalidArcDiagnostic(
 
 function validateConstraint(
   constraint: SketchSolveConstraint,
+  settings: SketchSolveSettings,
   stateAccess: SolverStateAccess,
   diagnostics: SketchSolveDiagnostic[]
 ): void {
@@ -1171,7 +1231,12 @@ function validateConstraint(
 
   if (constraint.kind === "tangent") {
     if ("primaryTarget" in constraint) {
-      validateTangentTargetConstraint(constraint, stateAccess, diagnostics);
+      validateTangentTargetConstraint(
+        constraint,
+        settings,
+        stateAccess,
+        diagnostics
+      );
       return;
     }
     const hasLineStart = validatePointTargetField(
@@ -1432,6 +1497,7 @@ function validateRadiusCurveTarget(
 
 function validateTangentTargetConstraint(
   constraint: SketchSolveTangentTargetConstraint,
+  settings: SketchSolveSettings,
   stateAccess: SolverStateAccess,
   diagnostics: SketchSolveDiagnostic[]
 ): void {
@@ -1461,6 +1527,28 @@ function validateTangentTargetConstraint(
       expected: "line-circle, line-arc, arc-circle, or arc-arc",
       received: kinds
     });
+    return;
+  }
+
+  if (
+    constraint.primaryTarget.kind !== "line" &&
+    constraint.secondaryTarget.kind !== "line"
+  ) {
+    const initialState = stateAccess.variables.map(
+      (variable) => variable.initial
+    );
+    const centerDistance = distance(
+      readCurveCenter(initialState, stateAccess, constraint.primaryTarget),
+      readCurveCenter(initialState, stateAccess, constraint.secondaryTarget)
+    );
+    if (centerDistance <= settings.tolerance) {
+      diagnostics.push(
+        branchDiagnostic(
+          constraint.id,
+          "round-curve centers are coincident, so tangency contact is indeterminate"
+        )
+      );
+    }
   }
 }
 
@@ -1546,6 +1634,38 @@ function validateDimension(
   stateAccess: SolverStateAccess,
   diagnostics: SketchSolveDiagnostic[]
 ): void {
+  if (dimension.kind === "arcRadius" || dimension.kind === "arcSweep") {
+    if (!stateAccess.arcIndex.has(dimension.arcId)) {
+      diagnostics.push(missingTargetDiagnostic(dimension, dimension.arcId));
+      return;
+    }
+    const valid =
+      Number.isFinite(dimension.value) &&
+      (dimension.kind === "arcRadius"
+        ? dimension.value > settings.tolerance
+        : dimension.value >= settings.angularToleranceDegrees &&
+          dimension.value <= 360 - settings.angularToleranceDegrees);
+    if (!valid) {
+      diagnostics.push({
+        code: "SKETCH_ARC_DIMENSION_INVALID",
+        severity: "blocker",
+        message:
+          dimension.kind === "arcRadius"
+            ? "Arc radius dimension must exceed the linear tolerance."
+            : "Arc sweep dimension magnitude is outside the V17 bounds.",
+        sourceType: "dimension",
+        sourceId: dimension.id,
+        dimensionKind: dimension.kind,
+        expected:
+          dimension.kind === "arcRadius"
+            ? `radius > ${settings.tolerance}`
+            : `${settings.angularToleranceDegrees} <= sweep <= ${360 - settings.angularToleranceDegrees}`,
+        received: describeReceived(dimension.value)
+      });
+    }
+    return;
+  }
+
   if (!Number.isFinite(dimension.value) || dimension.value <= 0) {
     diagnostics.push({
       code: "SKETCH_SOLVER_INVALID_VALUE",
@@ -1566,45 +1686,6 @@ function validateDimension(
       stateAccess,
       diagnostics
     );
-    return;
-  }
-
-  if (dimension.kind === "arcRadius" || dimension.kind === "arcSweep") {
-    if (!stateAccess.arcIndex.has(dimension.arcId)) {
-      diagnostics.push(missingTargetDiagnostic(dimension, dimension.arcId));
-      return;
-    }
-    if (
-      dimension.kind === "arcRadius" &&
-      dimension.value <= settings.tolerance
-    ) {
-      diagnostics.push({
-        code: "SKETCH_SOLVER_INVALID_VALUE",
-        severity: "blocker",
-        message: "Arc radius dimension must exceed the linear tolerance.",
-        sourceType: "dimension",
-        sourceId: dimension.id,
-        dimensionKind: dimension.kind,
-        expected: `radius > ${settings.tolerance}`,
-        received: describeReceived(dimension.value)
-      });
-    }
-    if (
-      dimension.kind === "arcSweep" &&
-      (dimension.value < settings.angularToleranceDegrees ||
-        dimension.value > 360 - settings.angularToleranceDegrees)
-    ) {
-      diagnostics.push({
-        code: "SKETCH_SOLVER_INVALID_VALUE",
-        severity: "blocker",
-        message: "Arc sweep dimension magnitude is outside the V17 bounds.",
-        sourceType: "dimension",
-        sourceId: dimension.id,
-        dimensionKind: dimension.kind,
-        expected: `${settings.angularToleranceDegrees} <= sweep <= ${360 - settings.angularToleranceDegrees}`,
-        received: describeReceived(dimension.value)
-      });
-    }
     return;
   }
 
@@ -1781,6 +1862,7 @@ function createResidualBlocks(
     blocks.push({
       sourceType: "constraint",
       sourceId: constraint.id,
+      constraintKind: constraint.kind,
       evaluator: createConstraintResidual(constraint, stateAccess)
     });
   }
@@ -1789,6 +1871,7 @@ function createResidualBlocks(
     blocks.push({
       sourceType: "dimension",
       sourceId: dimension.id,
+      dimensionKind: dimension.kind,
       evaluator: createDimensionResidual(dimension, stateAccess)
     });
   }
@@ -2184,24 +2267,28 @@ function runDampedSolve(
   readonly state: readonly number[];
   readonly iterations: number;
   readonly converged: boolean;
+  readonly stateGuardConstrained: boolean;
   readonly residuals: readonly number[];
   readonly maxResidual: number;
 } {
   let state = [...initialState];
   let residuals = getResiduals(residualBlocks, state);
   let maxResidual = getMaxResidual(residuals);
+  let stateGuardConstrained = false;
 
   if (maxResidual <= settings.tolerance) {
     return {
       state,
       iterations: 0,
       converged: true,
+      stateGuardConstrained,
       residuals,
       maxResidual
     };
   }
 
   for (let iteration = 1; iteration <= settings.maxIterations; iteration += 1) {
+    stateGuardConstrained = false;
     const jacobian = finiteDifferenceJacobian(
       state,
       residualBlocks,
@@ -2219,6 +2306,7 @@ function runDampedSolve(
         state,
         iterations: iteration - 1,
         converged: false,
+        stateGuardConstrained,
         residuals,
         maxResidual
       };
@@ -2228,6 +2316,9 @@ function runDampedSolve(
     let candidate = state.map(
       (value, index) => value + stepScale * delta[index]
     );
+    if (!isStateAllowed(candidate)) {
+      stateGuardConstrained = true;
+    }
     while (!isStateAllowed(candidate) && stepScale > 1e-9) {
       stepScale /= 2;
       candidate = state.map((value, index) => value + stepScale * delta[index]);
@@ -2237,6 +2328,7 @@ function runDampedSolve(
         state,
         iterations: iteration - 1,
         converged: false,
+        stateGuardConstrained,
         residuals,
         maxResidual
       };
@@ -2250,6 +2342,7 @@ function runDampedSolve(
         state,
         iterations: iteration,
         converged: true,
+        stateGuardConstrained,
         residuals,
         maxResidual
       };
@@ -2260,6 +2353,7 @@ function runDampedSolve(
     state,
     iterations: settings.maxIterations,
     converged: false,
+    stateGuardConstrained,
     residuals,
     maxResidual
   };
@@ -2395,27 +2489,98 @@ function solveLinearSystem(
 function classifySolveStatus({
   converged,
   variableCount,
-  residualCount
+  residualCount,
+  jacobianRank,
+  augmentedRank
 }: {
   readonly converged: boolean;
   readonly variableCount: number;
   readonly residualCount: number;
-  readonly maxResidual: number;
-  readonly tolerance: number;
+  readonly jacobianRank: number;
+  readonly augmentedRank: number;
 }): SketchSolveStatus {
   if (!converged) {
-    return residualCount > variableCount ? "conflicting" : "failed";
+    return augmentedRank > jacobianRank ? "conflicting" : "failed";
   }
 
-  if (residualCount < variableCount) {
+  if (jacobianRank < variableCount) {
     return "under-defined";
   }
 
-  if (residualCount > variableCount) {
+  if (residualCount > jacobianRank) {
     return "over-defined";
   }
 
   return "converged";
+}
+
+function analyzeResidualSystem(
+  state: readonly number[],
+  residualBlocks: readonly ResidualBlock[],
+  residuals: readonly number[],
+  settings: SketchSolveSettings
+): {
+  readonly jacobianRank: number;
+  readonly augmentedRank: number;
+} {
+  const jacobian = finiteDifferenceJacobian(
+    state,
+    residualBlocks,
+    residuals,
+    settings.finiteDifferenceStep
+  );
+  return {
+    jacobianRank: matrixRank(jacobian),
+    augmentedRank: matrixRank(
+      jacobian.map((row, index) => [...row, residuals[index]])
+    )
+  };
+}
+
+function matrixRank(matrix: readonly (readonly number[])[]): number {
+  if (matrix.length === 0 || (matrix[0]?.length ?? 0) === 0) return 0;
+  const reduced = matrix.map((row) => [...row]);
+  const rowCount = reduced.length;
+  const columnCount = reduced[0].length;
+  const scale = reduced.reduce(
+    (maximum, row) =>
+      row.reduce(
+        (rowMaximum, value) => Math.max(rowMaximum, Math.abs(value)),
+        maximum
+      ),
+    0
+  );
+  const threshold = Math.max(1e-10, scale * 1e-8);
+  let rank = 0;
+
+  for (let column = 0; column < columnCount && rank < rowCount; column += 1) {
+    let pivotRow = rank;
+    let pivotMagnitude = Math.abs(reduced[pivotRow][column]);
+    for (let row = rank + 1; row < rowCount; row += 1) {
+      const magnitude = Math.abs(reduced[row][column]);
+      if (magnitude > pivotMagnitude) {
+        pivotMagnitude = magnitude;
+        pivotRow = row;
+      }
+    }
+    if (pivotMagnitude <= threshold) continue;
+
+    [reduced[rank], reduced[pivotRow]] = [reduced[pivotRow], reduced[rank]];
+    const pivot = reduced[rank][column];
+    for (let nextColumn = column; nextColumn < columnCount; nextColumn += 1) {
+      reduced[rank][nextColumn] /= pivot;
+    }
+    for (let row = rank + 1; row < rowCount; row += 1) {
+      const factor = reduced[row][column];
+      if (Math.abs(factor) <= threshold) continue;
+      for (let nextColumn = column; nextColumn < columnCount; nextColumn += 1) {
+        reduced[row][nextColumn] -= factor * reduced[rank][nextColumn];
+      }
+    }
+    rank += 1;
+  }
+
+  return rank;
 }
 
 function validateSolvedState(
@@ -2589,7 +2754,15 @@ function validateTangencyContact(
     );
   }
   const centerDistance = distance(centerA, centerB);
-  if (centerDistance <= settings.tolerance) return diagnostics;
+  if (centerDistance <= settings.tolerance) {
+    diagnostics.push(
+      branchDiagnostic(
+        constraint.id,
+        "round-curve centers coincide, so tangency contact is indeterminate"
+      )
+    );
+    return diagnostics;
+  }
   const direction: SketchSolverVec2 = [
     (centerB[0] - centerA[0]) / centerDistance,
     (centerB[1] - centerA[1]) / centerDistance
@@ -2682,7 +2855,8 @@ function createResult({
   status,
   iterations,
   diagnostics,
-  residuals
+  residuals,
+  independentResidualCount
 }: {
   readonly model: SketchSolveModel;
   readonly settings: SketchSolveSettings;
@@ -2692,6 +2866,7 @@ function createResult({
   readonly iterations: number;
   readonly diagnostics: readonly SketchSolveDiagnostic[];
   readonly residuals: readonly number[];
+  readonly independentResidualCount?: number;
 }): SketchSolveResult {
   const points = model.points.map((point) => {
     const index = stateAccess.pointIndex.get(point.id);
@@ -2748,7 +2923,9 @@ function createResult({
     residualCount: residuals.length,
     degreesOfFreedomEstimate: Math.max(
       0,
-      stateAccess.variables.length - residuals.length
+      stateAccess.variables.length -
+        (independentResidualCount ??
+          Math.min(stateAccess.variables.length, residuals.length))
     ),
     maxResidual: cleanNumber(maxResidual),
     rmsResidual: cleanNumber(getRmsResidual(residuals)),
