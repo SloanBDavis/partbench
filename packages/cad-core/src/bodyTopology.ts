@@ -187,10 +187,19 @@ function createAuthoredFeatureTopology(
     ownerPartId
   );
   const profileSignature = references?.body.geometricSignature.profile;
-  const sourceIdentity: CadBodyTopologySourceIdentity = {
-    bodyId,
-    sourceKind: "authoredExtrude",
-    signature: createTopologySourceSignature({
+  const targetLineage =
+    feature.operationMode === "newBody"
+      ? undefined
+      : createCompositeTargetLineage(
+          document,
+          feature.targetBodyId,
+          feature.targetTopologyAnchorId,
+          units,
+          ownerPartId,
+          nextVisitedBodyIds
+        );
+  const sourceIdentityInput: Omit<CadBodyTopologySourceIdentity, "signature"> =
+    {
       bodyId,
       sourceKind: "authoredExtrude",
       units,
@@ -203,19 +212,18 @@ function createAuthoredFeatureTopology(
       profileKind,
       profileSignature,
       side: feature.side,
-      depth: feature.depth
-    }),
-    units,
-    featureId: feature.id,
-    operationMode: feature.operationMode,
-    targetBodyId: feature.targetBodyId,
-    targetTopologyAnchorId: feature.targetTopologyAnchorId,
-    sourceSketchId: profileRef.sketchId,
-    sourceSketchEntityId: profileRef.entityId,
-    profileKind,
-    profileSignature,
-    side: feature.side,
-    depth: feature.depth
+      depth: feature.depth,
+      ...(targetLineage
+        ? {
+            featureSourceSignature: sha256Hex(
+              new TextEncoder().encode(JSON.stringify({ targetLineage }))
+            )
+          }
+        : {})
+    };
+  const sourceIdentity: CadBodyTopologySourceIdentity = {
+    ...sourceIdentityInput,
+    signature: createTopologySourceSignature(sourceIdentityInput)
   };
 
   if (feature.operationMode === "newBody" && references && measurements) {

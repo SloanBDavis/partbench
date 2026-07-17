@@ -135,6 +135,84 @@ function addWireThroughTargetAnchor(engine: CadEngine): void {
   });
 }
 
+function addEntityThenWireChain(
+  engine: CadEngine,
+  operationMode: "add" | "cut" = "add"
+): void {
+  engine.applyBatch([
+    { op: "sketch.create", id: "sketch_mid", name: "Mid tool", plane: "XY" },
+    {
+      op: "sketch.addRectangle",
+      sketchId: "sketch_mid",
+      id: "rectangle_mid",
+      center: [0, 0],
+      width: 3,
+      height: 2
+    },
+    {
+      op: "topology.checkpoint.create",
+      checkpointId: "checkpoint_root",
+      bodyId: "body_target",
+      sourceFeatureId: "feature_target",
+      sourceIdentity: {
+        algorithm: "partbench-source-v1",
+        sha256: "b".repeat(64)
+      },
+      status: "active"
+    },
+    {
+      op: "topology.anchor.create",
+      anchorId: "anchor_root",
+      entityKind: "body",
+      bodyId: "body_target",
+      checkpointId: "checkpoint_root",
+      checkpointEntityId: "body:0",
+      sourceFeatureId: "feature_target",
+      signatureHash: "root-body-signature"
+    },
+    {
+      op: "feature.extrude",
+      id: "feature_mid",
+      bodyId: "body_mid",
+      sketchId: "sketch_mid",
+      entityId: "rectangle_mid",
+      depth: 1,
+      operationMode,
+      targetTopologyAnchorId: "anchor_root"
+    },
+    {
+      op: "topology.checkpoint.create",
+      checkpointId: "checkpoint_mid",
+      bodyId: "body_mid",
+      sourceFeatureId: "feature_mid",
+      sourceIdentity: {
+        algorithm: "partbench-source-v1",
+        sha256: "c".repeat(64)
+      },
+      status: "active"
+    },
+    {
+      op: "topology.anchor.create",
+      anchorId: "anchor_mid",
+      entityKind: "body",
+      bodyId: "body_mid",
+      checkpointId: "checkpoint_mid",
+      checkpointEntityId: "body:0",
+      sourceFeatureId: "feature_mid",
+      signatureHash: "mid-body-signature"
+    },
+    {
+      op: "feature.extrude",
+      id: "feature_add",
+      bodyId: "body_add",
+      profile,
+      depth: 3,
+      operationMode: "add",
+      targetTopologyAnchorId: "anchor_mid"
+    }
+  ]);
+}
+
 function topologySignature(engine: CadEngine): string {
   const result = engine.executeQuery({
     version: "cadops.v1",
@@ -742,6 +820,133 @@ describe("V17 composite wire extrude add", () => {
       depth: 4
     });
     expect(topologySignature(first)).not.toBe(before);
+  });
+
+  it("propagates primitive geometry and intermediate topology lineage through entity boolean targets", () => {
+    const engine = createEngine();
+    addEntityThenWireChain(engine);
+    const initialSignature = topologySignature(engine);
+    const initialEvidence = exactMetadata(engine);
+
+    engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_target",
+      entity: {
+        id: "rectangle_target",
+        kind: "rectangle",
+        center: [0, 0],
+        width: 10,
+        height: 6,
+        construction: false
+      }
+    });
+    const updatedSignature = topologySignature(engine);
+    expect(updatedSignature).not.toBe(initialSignature);
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.topology",
+          bodyId: "body_add",
+          derivedExactMetadata: initialEvidence
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      topology: {
+        exactGeometryAvailable: false,
+        booleanTopology: { derivedExactValidationStatus: "stale" }
+      }
+    });
+
+    const topologyIdentity = engine.getDocument().topologyIdentity;
+    if (!topologyIdentity)
+      throw new Error("Expected topology identity source.");
+    const bodies = structure(engine).bodies;
+    const currentEvidence = exactMetadata(engine);
+    const variants = [
+      {
+        label: "intermediate anchor state",
+        topologyIdentity: {
+          ...topologyIdentity,
+          anchors: topologyIdentity.anchors.map((anchor) =>
+            anchor.anchorId === "anchor_root"
+              ? { ...anchor, state: "stale" as const }
+              : anchor
+          )
+        }
+      },
+      {
+        label: "intermediate checkpoint state",
+        topologyIdentity: {
+          ...topologyIdentity,
+          checkpoints: topologyIdentity.checkpoints.map((checkpoint) =>
+            checkpoint.checkpointId === "checkpoint_root"
+              ? { ...checkpoint, status: "stale" as const }
+              : checkpoint
+          )
+        }
+      }
+    ];
+
+    for (const variant of variants) {
+      const topology = createBodyTopology({
+        document: {
+          ...engine.getDocument(),
+          topologyIdentity: variant.topologyIdentity
+        },
+        bodyId: "body_add",
+        units: engine.getDocument().units,
+        ownerPartId: "part:default",
+        bodyExists: (bodyId) => bodies.some((body) => body.id === bodyId),
+        derivedExactMetadata: currentEvidence
+      });
+      if (!topology.ok) throw new Error(`Expected topology: ${variant.label}`);
+      expect(
+        topology.topology.sourceIdentity.signature,
+        variant.label
+      ).not.toBe(updatedSignature);
+      expect(topology.topology, variant.label).toMatchObject({
+        exactGeometryAvailable: false,
+        booleanTopology: { derivedExactValidationStatus: "stale" }
+      });
+    }
+  });
+
+  it("propagates primitive geometry through an entity cut result target", () => {
+    const engine = createEngine();
+    addEntityThenWireChain(engine, "cut");
+    const initialSignature = topologySignature(engine);
+    const initialEvidence = exactMetadata(engine);
+    engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_target",
+      entity: {
+        id: "rectangle_target",
+        kind: "rectangle",
+        center: [0, 0],
+        width: 9,
+        height: 6,
+        construction: false
+      }
+    });
+    expect(topologySignature(engine)).not.toBe(initialSignature);
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.topology",
+          bodyId: "body_add",
+          derivedExactMetadata: initialEvidence
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      topology: {
+        exactGeometryAvailable: false,
+        booleanTopology: { derivedExactValidationStatus: "stale" }
+      }
+    });
   });
 
   it("uses an active body checkpoint anchor to trace a composite add target to its supported root", () => {
