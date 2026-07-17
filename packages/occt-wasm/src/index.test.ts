@@ -18,12 +18,322 @@ import {
   getOcctBrepCheckpointWriterCapability,
   getOcctStepReaderCapability,
   getOcctStepWriterCapability,
-  createOcctTorusMesh
+  createOcctTorusMesh,
+  createOcctWireExtrudeMesh,
+  createOcctWireExtrudeMeshWithInstance
 } from "./index";
+import type { OpenCascadeInstance } from "opencascade.js";
+import { assertWireExtrudeSolidCount } from "./wireExtrude";
 
 const OCCT_WASM_TEST_TIMEOUT_MS = 120_000;
 
+const slotWireProfile = {
+  kind: "wire" as const,
+  frame: {
+    origin: [0, 0, 0] as const,
+    uAxis: [1, 0, 0] as const,
+    vAxis: [0, 1, 0] as const
+  },
+  closed: true as const,
+  segments: [
+    {
+      kind: "line" as const,
+      sourceEntityId: "bottom",
+      start: [-2, -1] as const,
+      end: [2, -1] as const
+    },
+    {
+      kind: "arc" as const,
+      sourceEntityId: "right",
+      center: [2, 0] as const,
+      radius: 1,
+      startAngleDegrees: 270,
+      sweepAngleDegrees: 180
+    },
+    {
+      kind: "line" as const,
+      sourceEntityId: "top",
+      start: [2, 1] as const,
+      end: [-2, 1] as const
+    },
+    {
+      kind: "arc" as const,
+      sourceEntityId: "left",
+      center: [-2, 0] as const,
+      radius: 1,
+      startAngleDegrees: 90,
+      sweepAngleDegrees: 180
+    }
+  ],
+  sourceIdentity: "slot:bottom,right,top,left",
+  geometryPolicy: {
+    linearTolerance: 1e-7 as const,
+    angularToleranceDegrees: 0.1 as const,
+    minimumProfileArea: 1e-12 as const
+  }
+};
+
 describe("occt-wasm", () => {
+  it.each(["positive", "negative", "symmetric"] as const)(
+    "builds an exact mixed line/arc composite %s extrude with proven roles",
+    async (side) => {
+      const mesh = await createOcctWireExtrudeMesh({
+        sketchPlane: "XY",
+        profile: slotWireProfile,
+        depth: 4,
+        side
+      });
+
+      expect(mesh.primitive).toBe("extrude");
+      expect(mesh.vertexCount).toBeGreaterThan(0);
+      expect(mesh.triangleCount).toBeGreaterThan(0);
+      expect(mesh.generatedReferences.status).toBe("ready");
+      expect(mesh.generatedReferences.faces).toHaveLength(6);
+      expect(mesh.generatedReferences.edges).toHaveLength(12);
+      expect(mesh.generatedReferences.faces).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: "side",
+            sourceEntityId: "bottom",
+            surfaceClass: "plane"
+          }),
+          expect.objectContaining({
+            role: "side",
+            sourceEntityId: "right",
+            surfaceClass: "cylinder"
+          })
+        ])
+      );
+      expect(
+        mesh.generatedReferences.edges
+          .filter((edge) => edge.role === "longitudinal")
+          .map((edge) => edge.adjacentSourceEntityIds)
+      ).toEqual([
+        ["bottom", "right"],
+        ["right", "top"],
+        ["top", "left"],
+        ["left", "bottom"]
+      ]);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "builds two complementary exact arcs as one solid without tessellated authority",
+    async () => {
+      const profile = {
+        ...slotWireProfile,
+        sourceIdentity: "two-arcs:upper,lower",
+        segments: [
+          {
+            kind: "arc" as const,
+            sourceEntityId: "upper",
+            center: [0, 0] as const,
+            radius: 2,
+            startAngleDegrees: 0,
+            sweepAngleDegrees: 180
+          },
+          {
+            kind: "arc" as const,
+            sourceEntityId: "lower",
+            center: [0, 0] as const,
+            radius: 2,
+            startAngleDegrees: 180,
+            sweepAngleDegrees: 180
+          }
+        ]
+      };
+      const mesh = await createOcctWireExtrudeMesh({
+        sketchPlane: "XY",
+        profile,
+        depth: 3
+      });
+      expect(
+        mesh.generatedReferences.status,
+        JSON.stringify(mesh.generatedReferences)
+      ).toBe("ready");
+      expect(mesh.generatedReferences.faces).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            sourceEntityId: "upper",
+            surfaceClass: "cylinder"
+          }),
+          expect.objectContaining({
+            sourceEntityId: "lower",
+            surfaceClass: "cylinder"
+          })
+        ])
+      );
+      expect(
+        mesh.generatedReferences.edges
+          .filter((edge) => edge.role === "longitudinal")
+          .map((edge) => edge.adjacentSourceEntityIds)
+      ).toEqual([
+        ["upper", "lower"],
+        ["lower", "upper"]
+      ]);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "rebuilds composite extrude exact metadata, topology, checkpoint, and STEP from one recipe",
+    async () => {
+      const source = {
+        kind: "extrude" as const,
+        sketchPlane: "XY" as const,
+        profile: slotWireProfile,
+        depth: 4,
+        side: "symmetric" as const
+      };
+      const [metadata, topology, checkpoint] = await Promise.all([
+        createOcctExactBodyMetadata({ source }),
+        createOcctExactTopologySnapshot({ source }),
+        createOcctExactTopologyCheckpointPayload({
+          checkpointId: "checkpoint_wire",
+          bodyId: "body_wire",
+          source
+        })
+      ]);
+      const step = await createOcctStepExport({
+        units: "mm",
+        bodies: [{ ...source, bodyId: "body_wire" }]
+      });
+
+      const expectedMin = [-3, -1, -2] as const;
+      const expectedMax = [3, 1, 2] as const;
+      for (let index = 0; index < 3; index += 1) {
+        expect(
+          Math.abs(metadata.bounds.min[index]! - expectedMin[index]!)
+        ).toBeLessThanOrEqual(
+          slotWireProfile.geometryPolicy.linearTolerance * 1.01
+        );
+        expect(
+          Math.abs(metadata.bounds.max[index]! - expectedMax[index]!)
+        ).toBeLessThanOrEqual(
+          slotWireProfile.geometryPolicy.linearTolerance * 1.01
+        );
+      }
+      expect(metadata.volume).toBeCloseTo((8 + Math.PI) * 4, 6);
+      expect(metadata.topologyCounts).toMatchObject({
+        solidCount: 1,
+        faceCount: 6
+      });
+      expect(metadata.generatedReferences?.status).toBe("ready");
+      expect(metadata.centroid).toEqual([
+        expect.closeTo(0, 7),
+        expect.closeTo(0, 7),
+        expect.closeTo(0, 7)
+      ]);
+      expect(topology.entityCounts.solidCount).toBe(1);
+      expect(topology.entityCounts.faceCount).toBe(6);
+      expect(topology.generatedReferences?.status).toBe("ready");
+      expect(checkpoint.brepByteLength).toBeGreaterThan(0);
+      expect(checkpoint.topologySnapshot.signature).toBe(topology.signature);
+      expect(checkpoint.topologySnapshot.generatedReferences?.status).toBe(
+        "ready"
+      );
+      expect(step.bodyCount).toBe(1);
+      expect(step.byteLength).toBeGreaterThan(0);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it("disposes every allocated wrapper when an exact edge builder fails", () => {
+    const deleted: string[] = [];
+    class Point {
+      delete() {
+        deleted.push("point");
+      }
+    }
+    class VertexShape {
+      delete() {
+        deleted.push("vertex-shape");
+      }
+    }
+    class VertexBuilder {
+      Vertex() {
+        return new VertexShape();
+      }
+      delete() {
+        deleted.push("vertex-builder");
+      }
+    }
+    class WireBuilder {
+      delete() {
+        deleted.push("wire-builder");
+      }
+    }
+    class TopologyBuilder {
+      UpdateVertex_6() {}
+      delete() {
+        deleted.push("topology-builder");
+      }
+    }
+    class FailedEdgeBuilder {
+      IsDone() {
+        return false;
+      }
+      delete() {
+        deleted.push("edge-builder");
+      }
+    }
+    const oc = {
+      gp_Pnt_3: Point,
+      BRepBuilderAPI_MakeVertex: VertexBuilder,
+      BRepBuilderAPI_MakeWire_1: WireBuilder,
+      BRep_Builder: TopologyBuilder,
+      BRepBuilderAPI_MakeEdge_2: FailedEdgeBuilder
+    } as unknown as OpenCascadeInstance;
+    const lineProfile = {
+      ...slotWireProfile,
+      sourceIdentity: "failure-lines:a,b",
+      segments: [
+        {
+          kind: "line" as const,
+          sourceEntityId: "a",
+          start: [0, 0] as const,
+          end: [1, 0] as const
+        },
+        {
+          kind: "line" as const,
+          sourceEntityId: "b",
+          start: [1, 0] as const,
+          end: [0, 0] as const
+        }
+      ]
+    };
+
+    expect(() =>
+      createOcctWireExtrudeMeshWithInstance(oc, {
+        sketchPlane: "XY",
+        profile: lineProfile,
+        depth: 1
+      })
+    ).toThrow("failed to build exact line edge for a");
+    expect(deleted).toEqual([
+      "point",
+      "point",
+      "topology-builder",
+      "wire-builder",
+      "edge-builder",
+      "vertex-shape",
+      "vertex-shape",
+      "vertex-builder",
+      "vertex-builder"
+    ]);
+  });
+
+  it("rejects composite extrudes unless OCCT returns exactly one solid", () => {
+    expect(() => assertWireExtrudeSolidCount(0)).toThrow(
+      "must return exactly one solid"
+    );
+    expect(() => assertWireExtrudeSolidCount(2)).toThrow(
+      "must return exactly one solid"
+    );
+    expect(() => assertWireExtrudeSolidCount(1)).not.toThrow();
+  });
+
   it(
     "sweeps rectangle and circle profiles along a line as real OCCT solids",
     async () => {

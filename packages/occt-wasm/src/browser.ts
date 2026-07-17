@@ -131,10 +131,12 @@ import {
   createOcctWireExtrudeMeshWithInstance,
   createOcctWireExtrudeMeshWithLoader,
   makeWireExtrudeShape,
+  makeWireExtrudeShapeWithReferences,
   type OcctGeneratedReferences,
   type OcctResolvedPlanarWireProfile,
   type OcctWireExtrudeInput,
-  type OcctWireExtrudeSource
+  type OcctWireExtrudeSource,
+  type OcctWireExtrudeShapeBuild
 } from "./wireExtrude";
 
 export type {
@@ -183,7 +185,8 @@ export type {
   OcctGeneratedReferences,
   OcctResolvedPlanarWireProfile,
   OcctWireExtrudeInput,
-  OcctWireExtrudeSource
+  OcctWireExtrudeSource,
+  OcctWireExtrudeShapeBuild
 };
 export {
   createOcctBoxMeshWithInstance,
@@ -201,6 +204,7 @@ export {
   createOcctWireExtrudeMeshWithInstance,
   createOcctWireExtrudeMeshWithLoader,
   makeWireExtrudeShape,
+  makeWireExtrudeShapeWithReferences,
   createOcctEdgeFinishMeshWithInstance,
   createOcctEdgeFinishMeshWithLoader,
   createOcctHoleMeshWithInstance,

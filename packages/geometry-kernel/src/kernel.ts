@@ -948,6 +948,7 @@ export interface GeometryKernelExactBodyMetadata {
   readonly measurementSource: GeometryKernelMeasurementSource;
   readonly measurementConfidence: GeometryKernelMeasurementConfidence;
   readonly diagnostics: readonly GeometryKernelExactMetadataDiagnostic[];
+  readonly generatedReferences?: GeometryKernelGeneratedReferences;
 }
 
 export interface GeometryKernelInertiaTensor {
@@ -1027,6 +1028,7 @@ export interface GeometryKernelExactTopologySnapshot {
   readonly signature: string;
   readonly source: "kernel-derived";
   readonly diagnostics: readonly GeometryKernelTopologyDiagnostic[];
+  readonly generatedReferences?: GeometryKernelGeneratedReferences;
 }
 
 export interface GeometryKernelMeshResult {
@@ -1366,6 +1368,20 @@ export async function executeGeometryKernelRequestWithMeshFactory<
             "The geometry kernel returned exact metadata with invalid or non-finite values."
         }) as GeometryKernelResponseForRequest<T>;
       }
+      if (
+        request.source.kind === "extrude" &&
+        request.source.profile.kind === "wire" &&
+        isInvalidWireGeneratedReferences(
+          metadata.generatedReferences,
+          request.source.profile
+        )
+      ) {
+        return errorResponse(request, {
+          code: "INVALID_RESULT",
+          message:
+            "The geometry kernel returned missing or inconsistent exact generated-reference evidence for the composite wire extrude."
+        }) as GeometryKernelResponseForRequest<T>;
+      }
 
       return {
         ok: true,
@@ -1384,6 +1400,20 @@ export async function executeGeometryKernelRequestWithMeshFactory<
           code: "INVALID_RESULT",
           message:
             "The geometry kernel returned an exact topology snapshot with invalid or inconsistent entity data."
+        }) as GeometryKernelResponseForRequest<T>;
+      }
+      if (
+        request.source.kind === "extrude" &&
+        request.source.profile.kind === "wire" &&
+        isInvalidWireGeneratedReferences(
+          snapshot.generatedReferences,
+          request.source.profile
+        )
+      ) {
+        return errorResponse(request, {
+          code: "INVALID_RESULT",
+          message:
+            "The geometry kernel returned missing or inconsistent topology generated-reference evidence for the composite wire extrude."
         }) as GeometryKernelResponseForRequest<T>;
       }
 
@@ -1407,6 +1437,20 @@ export async function executeGeometryKernelRequestWithMeshFactory<
           code: "INVALID_RESULT",
           message:
             "The geometry kernel returned an exact topology checkpoint payload with invalid or inconsistent BRep, topology, or signature data."
+        }) as GeometryKernelResponseForRequest<T>;
+      }
+      if (
+        request.source.kind === "extrude" &&
+        request.source.profile.kind === "wire" &&
+        isInvalidWireGeneratedReferences(
+          checkpointPayload.topologySnapshot.generatedReferences,
+          request.source.profile
+        )
+      ) {
+        return errorResponse(request, {
+          code: "INVALID_RESULT",
+          message:
+            "The geometry kernel returned missing or inconsistent checkpoint generated-reference evidence for the composite wire extrude."
         }) as GeometryKernelResponseForRequest<T>;
       }
 
@@ -1436,6 +1480,21 @@ export async function executeGeometryKernelRequestWithMeshFactory<
       }) as GeometryKernelResponseForRequest<T>;
     }
 
+    if (
+      request.op === "geometry.tessellateExtrude" &&
+      request.profile.kind === "wire" &&
+      isInvalidWireGeneratedReferences(
+        mesh.generatedReferences,
+        request.profile
+      )
+    ) {
+      return errorResponse(request, {
+        code: "INVALID_RESULT",
+        message:
+          "The geometry kernel returned missing or inconsistent generated-reference evidence for the composite wire extrude."
+      }) as GeometryKernelResponseForRequest<T>;
+    }
+
     return {
       ok: true,
       id: request.id,
@@ -1459,6 +1518,70 @@ export async function executeGeometryKernelRequestWithMeshFactory<
       toGeometryKernelError(error)
     ) as GeometryKernelResponseForRequest<T>;
   }
+}
+
+function isInvalidWireGeneratedReferences(
+  references: GeometryKernelGeneratedReferences | undefined,
+  profile: ResolvedPlanarWireProfile
+): boolean {
+  if (
+    !references ||
+    references.sourceIdentity !== profile.sourceIdentity ||
+    !["ready", "unavailable", "ambiguous"].includes(references.status)
+  ) {
+    return true;
+  }
+  if (references.status !== "ready") {
+    return (
+      references.faces.length !== 0 ||
+      references.edges.length !== 0 ||
+      typeof references.diagnostic !== "string" ||
+      references.diagnostic.length === 0
+    );
+  }
+
+  const faceRoles = references.faces;
+  if (
+    faceRoles.filter((face) => face.role === "startCap").length !== 1 ||
+    faceRoles.filter((face) => face.role === "endCap").length !== 1 ||
+    faceRoles.length !== profile.segments.length + 2
+  ) {
+    return true;
+  }
+  for (const segment of profile.segments) {
+    const side = faceRoles.filter(
+      (face) =>
+        face.role === "side" && face.sourceEntityId === segment.sourceEntityId
+    );
+    if (
+      side.length !== 1 ||
+      side[0].surfaceClass !== (segment.kind === "line" ? "plane" : "cylinder")
+    ) {
+      return true;
+    }
+    for (const role of ["startCapBoundary", "endCapBoundary"] as const) {
+      if (
+        references.edges.filter(
+          (edge) =>
+            edge.role === role && edge.sourceEntityId === segment.sourceEntityId
+        ).length !== 1
+      ) {
+        return true;
+      }
+    }
+  }
+  if (references.edges.length !== profile.segments.length * 3) return true;
+  return profile.segments.some((segment, index) => {
+    const next = profile.segments[(index + 1) % profile.segments.length];
+    return (
+      references.edges.filter(
+        (edge) =>
+          edge.role === "longitudinal" &&
+          edge.adjacentSourceEntityIds?.[0] === segment.sourceEntityId &&
+          edge.adjacentSourceEntityIds?.[1] === next.sourceEntityId
+      ).length !== 1
+    );
+  });
 }
 
 export function getGeometryResponseTransferables(

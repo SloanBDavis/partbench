@@ -37,6 +37,8 @@ import { makeMirrorShape, type OcctMirrorPlaneFrame } from "./mirror";
 import { makeShellShape } from "./shell";
 import {
   makeWireExtrudeShape,
+  makeWireExtrudeShapeWithReferences,
+  type OcctGeneratedReferences,
   type OcctWireExtrudeSource
 } from "./wireExtrude";
 
@@ -174,6 +176,7 @@ export interface OcctExactBodyMetadata {
     readonly code: string;
     readonly message: string;
   }[];
+  readonly generatedReferences?: OcctGeneratedReferences;
 }
 
 export type OcctTopologySnapshotStatus = "ready" | "partial";
@@ -277,6 +280,7 @@ export interface OcctExactTopologySnapshot {
   readonly signature: string;
   readonly source: "kernel-derived";
   readonly diagnostics: readonly OcctTopologyDiagnostic[];
+  readonly generatedReferences?: OcctGeneratedReferences;
 }
 
 interface UnavailableBindingError {
@@ -365,6 +369,12 @@ export function createOcctExactBodyMetadataWithInstance(
   oc: OpenCascadeInstance,
   input: OcctExactBodyMetadataInput
 ): OcctExactBodyMetadata {
+  if (isWireExtrudeMetadataSource(input.source)) {
+    return withWireExtrudeExactShape(oc, input.source, (shape, references) => ({
+      ...readExactBodyMetadata(oc, shape, input.source.kind),
+      generatedReferences: references
+    }));
+  }
   return withOcctExactBodyShape(oc, input.source, (shape, sourceKind) =>
     readExactBodyMetadata(oc, shape, sourceKind)
   );
@@ -383,9 +393,36 @@ export function createOcctExactTopologySnapshotWithInstance(
   oc: OpenCascadeInstance,
   input: OcctExactBodyMetadataInput
 ): OcctExactTopologySnapshot {
+  if (isWireExtrudeMetadataSource(input.source)) {
+    return withWireExtrudeExactShape(oc, input.source, (shape, references) => ({
+      ...readExactTopologySnapshot(oc, shape, input.source.kind),
+      generatedReferences: references
+    }));
+  }
   return withOcctExactBodyShape(oc, input.source, (shape, sourceKind) =>
     readExactTopologySnapshot(oc, shape, sourceKind)
   );
+}
+
+function isWireExtrudeMetadataSource(
+  source: OcctExactBodyMetadataSource
+): source is OcctExactExtrudeMetadataSource & OcctWireExtrudeSource {
+  return source.kind === "extrude" && source.profile.kind === "wire";
+}
+
+function withWireExtrudeExactShape<T>(
+  oc: OpenCascadeInstance,
+  source: OcctWireExtrudeSource,
+  read: (shape: TopoDS_Shape, references: OcctGeneratedReferences) => T
+): T {
+  const build = makeWireExtrudeShapeWithReferences(oc, source);
+  const shape = build.builder.Shape();
+  try {
+    return read(shape, build.generatedReferences);
+  } finally {
+    shape.delete();
+    build.delete();
+  }
 }
 
 export function withOcctExactBodyShape<T>(
@@ -406,10 +443,12 @@ export function withOcctExactBodyShape<T>(
             oc,
             source as OcctBooleanExtrudePrimitiveSource
           );
+    const shape = shapeBuilder.Shape();
 
     try {
-      return readShape(shapeBuilder.Shape(), source.kind);
+      return readShape(shape, source.kind);
     } finally {
+      shape.delete();
       shapeBuilder.delete();
     }
   }

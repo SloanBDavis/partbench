@@ -1090,6 +1090,43 @@ describe("geometry-kernel facade", () => {
     });
   });
 
+  it("rejects composite wire mesh results that omit generated-reference evidence", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected factory call.");
+    };
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory,
+      createWireExtrudeMesh: async () => ({
+        primitive: "extrude",
+        positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 1]),
+        indices: new Uint32Array([0, 1, 2]),
+        vertexCount: 3,
+        triangleCount: 1,
+        faceCount: 1
+      })
+    };
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_wire_missing_reference_evidence",
+        version: "geometry-kernel.v1",
+        op: "geometry.tessellateExtrude",
+        sketchPlane: "XY",
+        profile: mixedWireProfile,
+        depth: 3
+      }
+    );
+    expect(response).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_RESULT" }
+    });
+  });
+
   it.each([
     [
       "gap",

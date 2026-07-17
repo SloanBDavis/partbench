@@ -87,7 +87,7 @@ export interface OcctShapeBuilder {
   delete(): void;
 }
 
-interface WireExtrudeBuild {
+export interface OcctWireExtrudeShapeBuild {
   readonly builder: InstanceType<
     OpenCascadeInstance["BRepPrimAPI_MakePrism_1"]
   >;
@@ -148,10 +148,17 @@ export function makeWireExtrudeShape(
   };
 }
 
+export function makeWireExtrudeShapeWithReferences(
+  oc: OpenCascadeInstance,
+  source: OcctWireExtrudeSource
+): OcctWireExtrudeShapeBuild {
+  return makeWireExtrudeBuild(oc, source);
+}
+
 function makeWireExtrudeBuild(
   oc: OpenCascadeInstance,
   source: OcctWireExtrudeSource
-): WireExtrudeBuild {
+): OcctWireExtrudeShapeBuild {
   const { profile } = source;
   const normal = normalize(cross(profile.frame.uAxis, profile.frame.vAxis));
   const normalStart =
@@ -166,14 +173,19 @@ function makeWireExtrudeBuild(
       : source.side === "negative"
         ? 0
         : source.depth;
-  const vertices: TopoDS_Vertex[] = [];
-  const vertexBuilders: Array<
-    InstanceType<OpenCascadeInstance["BRepBuilderAPI_MakeVertex"]>
-  > = [];
   const edgeBuilders: Array<
     InstanceType<OpenCascadeInstance["BRepBuilderAPI_MakeEdge"]>
   > = [];
+  const vertexBuilders: Array<
+    InstanceType<OpenCascadeInstance["BRepBuilderAPI_MakeVertex"]>
+  > = [];
+  const sharedVertices: TopoDS_Vertex[] = [];
   const edges: TopoDS_Edge[] = [];
+  const edgeStartVertices: TopoDS_Vertex[] = [];
+  const edgeEndVertices: TopoDS_Vertex[] = [];
+  const exploredEdges: TopoDS_Edge[] = [];
+  const generatedEdges: TopoDS_Edge[] = [];
+  const generatedVertices: TopoDS_Vertex[] = [];
   const wireBuilder = new oc.BRepBuilderAPI_MakeWire_1();
   let faceBuilder:
     | InstanceType<OpenCascadeInstance["BRepBuilderAPI_MakeFace"]>
@@ -182,34 +194,38 @@ function makeWireExtrudeBuild(
     | InstanceType<OpenCascadeInstance["BRepPrimAPI_MakePrism_1"]>
     | undefined;
   let vector: InstanceType<OpenCascadeInstance["gp_Vec_4"]> | undefined;
+  let wireShape: InstanceType<OpenCascadeInstance["TopoDS_Wire"]> | undefined;
+  let faceShape: InstanceType<OpenCascadeInstance["TopoDS_Face"]> | undefined;
 
   try {
     for (const segment of profile.segments) {
-      const start = segmentStart(segment);
-      const point = mapPoint(profile.frame, normal, start, normalStart);
-      const ocPoint = new oc.gp_Pnt_3(point[0], point[1], point[2]);
+      const start = mapPoint(
+        profile.frame,
+        normal,
+        segmentStart(segment),
+        normalStart
+      );
+      const point = new oc.gp_Pnt_3(...start);
       try {
-        const builder = new oc.BRepBuilderAPI_MakeVertex(ocPoint);
+        const builder = new oc.BRepBuilderAPI_MakeVertex(point);
         vertexBuilders.push(builder);
-        vertices.push(builder.Vertex());
+        sharedVertices.push(builder.Vertex());
       } finally {
-        ocPoint.delete();
+        point.delete();
       }
     }
 
     const topologyBuilder = new oc.BRep_Builder();
     try {
-      for (let index = 0; index < vertices.length; index += 1) {
+      for (let index = 0; index < profile.segments.length; index += 1) {
         const previous =
-          profile.segments[
-            (index + profile.segments.length - 1) % profile.segments.length
-          ];
+          (index + profile.segments.length - 1) % profile.segments.length;
         const discrepancy = distance(
-          segmentEnd(previous),
+          segmentEnd(profile.segments[previous]),
           segmentStart(profile.segments[index])
         );
         topologyBuilder.UpdateVertex_6(
-          vertices[index],
+          sharedVertices[index],
           Math.min(
             profile.geometryPolicy.linearTolerance,
             Math.max(discrepancy, 1e-12)
@@ -222,8 +238,8 @@ function makeWireExtrudeBuild(
 
     for (let index = 0; index < profile.segments.length; index += 1) {
       const segment = profile.segments[index];
-      const startVertex = vertices[index];
-      const endVertex = vertices[(index + 1) % vertices.length];
+      const startVertex = sharedVertices[index];
+      const endVertex = sharedVertices[(index + 1) % sharedVertices.length];
       const edgeBuilder =
         segment.kind === "line"
           ? new oc.BRepBuilderAPI_MakeEdge_2(startVertex, endVertex)
@@ -231,6 +247,7 @@ function makeWireExtrudeBuild(
               oc,
               profile.frame,
               normal,
+              normalStart,
               segment,
               startVertex,
               endVertex
@@ -241,18 +258,75 @@ function makeWireExtrudeBuild(
           `Open CASCADE failed to build exact ${segment.kind} edge for ${segment.sourceEntityId}.`
         );
       }
-      const edge = edgeBuilder.Edge();
-      edges.push(edge);
-      wireBuilder.Add_1(edge);
+      edges.push(edgeBuilder.Edge());
+      edgeStartVertices.push(edgeBuilder.Vertex1());
+      edgeEndVertices.push(edgeBuilder.Vertex2());
+    }
+
+    for (let index = 0; index < edges.length; index += 1) {
+      wireBuilder.Add_1(edges[index]);
       if (!wireBuilder.IsDone()) {
         throw new Error(
-          `Open CASCADE failed to append ${segment.sourceEntityId} to the ordered wire.`
+          `Open CASCADE failed to append ${profile.segments[index].sourceEntityId} to the ordered wire.`
         );
       }
     }
 
-    const wire = wireBuilder.Wire();
-    const wireAnalyzer = new oc.BRepCheck_Analyzer(wire, true, false);
+    wireShape = wireBuilder.Wire();
+    const wireExplorer = new oc.BRepTools_WireExplorer_2(wireShape);
+    try {
+      for (; wireExplorer.More(); wireExplorer.Next()) {
+        exploredEdges.push(wireExplorer.Current());
+      }
+    } finally {
+      wireExplorer.delete();
+    }
+    if (exploredEdges.length !== profile.segments.length) {
+      throw new Error(
+        "Open CASCADE ordered wire traversal did not preserve every source segment and join."
+      );
+    }
+    const sourceEdgeOrderProven = edges.every((sourceEdge) => {
+      const matches = exploredEdges.filter((edge) => edge.IsSame(sourceEdge));
+      if (
+        matches.length !== 1 ||
+        matches[0].Orientation_1() !== sourceEdge.Orientation_1()
+      ) {
+        return false;
+      }
+      generatedEdges.push(matches[0]);
+      return true;
+    });
+    if (sourceEdgeOrderProven) {
+      for (const edge of generatedEdges) {
+        generatedVertices.push(oc.TopExp.LastVertex(edge, true));
+      }
+    }
+    const sourceJoinOrderProven =
+      sourceEdgeOrderProven &&
+      generatedVertices.every((vertex, index) => {
+        const next = (index + 1) % generatedEdges.length;
+        const nextFirst = oc.TopExp.FirstVertex(generatedEdges[next], true);
+        try {
+          return (
+            vertex.IsSame(nextFirst) &&
+            vertexMatchesPoint(
+              oc,
+              vertex,
+              mapPoint(
+                profile.frame,
+                normal,
+                segmentEnd(profile.segments[index]),
+                normalStart
+              ),
+              profile.geometryPolicy.linearTolerance
+            )
+          );
+        } finally {
+          nextFirst.delete();
+        }
+      });
+    const wireAnalyzer = new oc.BRepCheck_Analyzer(wireShape, true, false);
     try {
       if (!wireAnalyzer.IsValid_2()) {
         throw new Error("Open CASCADE rejected the composite profile wire.");
@@ -261,15 +335,16 @@ function makeWireExtrudeBuild(
       wireAnalyzer.delete();
     }
 
-    faceBuilder = new oc.BRepBuilderAPI_MakeFace_15(wire, true);
-    wire.delete();
+    faceBuilder = new oc.BRepBuilderAPI_MakeFace_15(wireShape, true);
+    wireShape.delete();
+    wireShape = undefined;
     if (!faceBuilder.IsDone()) {
       throw new Error(
         "Open CASCADE failed to build a planar face from the composite wire."
       );
     }
-    const face = faceBuilder.Face();
-    const faceAnalyzer = new oc.BRepCheck_Analyzer(face, true, false);
+    faceShape = faceBuilder.Face();
+    const faceAnalyzer = new oc.BRepCheck_Analyzer(faceShape, true, false);
     try {
       if (!faceAnalyzer.IsValid_2()) {
         throw new Error("Open CASCADE rejected the composite profile face.");
@@ -283,8 +358,12 @@ function makeWireExtrudeBuild(
       normal[1] * (normalEnd - normalStart),
       normal[2] * (normalEnd - normalStart)
     );
-    prism = new oc.BRepPrimAPI_MakePrism_1(face, vector, false, true);
-    face.delete();
+    prism = new oc.BRepPrimAPI_MakePrism_1(faceShape, vector, false, false);
+    faceShape.delete();
+    faceShape = undefined;
+    if (!prism.IsDone()) {
+      throw new Error("Open CASCADE composite prism builder did not complete.");
+    }
     const shape = prism.Shape();
     try {
       if (shape.IsNull()) {
@@ -300,32 +379,42 @@ function makeWireExtrudeBuild(
       } finally {
         analyzer.delete();
       }
-      if (countSubshapes(oc, shape, oc.TopAbs_ShapeEnum.TopAbs_SOLID) !== 1) {
-        throw new Error(
-          "Open CASCADE composite prism must return exactly one solid."
-        );
-      }
+      assertWireExtrudeSolidCount(
+        countSubshapes(oc, shape, oc.TopAbs_ShapeEnum.TopAbs_SOLID)
+      );
     } finally {
       shape.delete();
     }
 
     const references = buildGeneratedReferences(
+      oc,
       profile,
       prism,
-      edges,
-      vertices
+      generatedEdges,
+      generatedVertices,
+      sourceEdgeOrderProven,
+      sourceJoinOrderProven
     );
+    let disposed = false;
     return {
       builder: prism,
       generatedReferences: references,
       delete: () => {
+        if (disposed) return;
+        disposed = true;
         prism?.delete();
         vector?.delete();
         faceBuilder?.delete();
+        faceShape?.delete();
+        wireShape?.delete();
         wireBuilder.delete();
+        exploredEdges.forEach((edge) => edge.delete());
+        generatedVertices.forEach((vertex) => vertex.delete());
         edges.forEach((edge) => edge.delete());
         edgeBuilders.forEach((builder) => builder.delete());
-        vertices.forEach((vertex) => vertex.delete());
+        edgeStartVertices.forEach((vertex) => vertex.delete());
+        edgeEndVertices.forEach((vertex) => vertex.delete());
+        sharedVertices.forEach((vertex) => vertex.delete());
         vertexBuilders.forEach((builder) => builder.delete());
         prism = undefined;
         vector = undefined;
@@ -336,10 +425,16 @@ function makeWireExtrudeBuild(
     prism?.delete();
     vector?.delete();
     faceBuilder?.delete();
+    faceShape?.delete();
+    wireShape?.delete();
     wireBuilder.delete();
+    exploredEdges.forEach((edge) => edge.delete());
+    generatedVertices.forEach((vertex) => vertex.delete());
     edges.forEach((edge) => edge.delete());
     edgeBuilders.forEach((builder) => builder.delete());
-    vertices.forEach((vertex) => vertex.delete());
+    edgeStartVertices.forEach((vertex) => vertex.delete());
+    edgeEndVertices.forEach((vertex) => vertex.delete());
+    sharedVertices.forEach((vertex) => vertex.delete());
     vertexBuilders.forEach((builder) => builder.delete());
     throw error;
   }
@@ -349,11 +444,12 @@ function makeArcEdge(
   oc: OpenCascadeInstance,
   frame: OcctResolvedPlaneFrame,
   normal: readonly [number, number, number],
+  normalStart: number,
   segment: OcctResolvedArcSegment2d,
   startVertex: TopoDS_Vertex,
   endVertex: TopoDS_Vertex
-): InstanceType<OpenCascadeInstance["BRepBuilderAPI_MakeEdge_29"]> {
-  const center = mapPoint(frame, normal, segment.center, 0);
+): InstanceType<OpenCascadeInstance["BRepBuilderAPI_MakeEdge_11"]> {
+  const center = mapPoint(frame, normal, segment.center, normalStart);
   const point = new oc.gp_Pnt_3(center[0], center[1], center[2]);
   const sense = Math.sign(segment.sweepAngleDegrees);
   const circleNormal = new oc.gp_Dir_4(
@@ -363,20 +459,10 @@ function makeArcEdge(
   );
   const xDirection = new oc.gp_Dir_4(...frame.uAxis);
   const axes = new oc.gp_Ax2_2(point, circleNormal, xDirection);
-  const circle = new oc.Geom_Circle_2(axes, segment.radius);
-  const curve = new oc.Handle_Geom_Curve_2(circle);
-  const start = degreesToRadians(segment.startAngleDegrees * sense);
-  const end = start + degreesToRadians(Math.abs(segment.sweepAngleDegrees));
+  const circle = new oc.gp_Circ_2(axes, segment.radius);
   try {
-    return new oc.BRepBuilderAPI_MakeEdge_29(
-      curve,
-      startVertex,
-      endVertex,
-      start,
-      end
-    );
+    return new oc.BRepBuilderAPI_MakeEdge_11(circle, startVertex, endVertex);
   } finally {
-    curve.delete();
     circle.delete();
     axes.delete();
     xDirection.delete();
@@ -386,35 +472,97 @@ function makeArcEdge(
 }
 
 function buildGeneratedReferences(
+  oc: OpenCascadeInstance,
   profile: OcctResolvedPlanarWireProfile,
   prism: InstanceType<OpenCascadeInstance["BRepPrimAPI_MakePrism_1"]>,
   edges: readonly TopoDS_Edge[],
-  vertices: readonly TopoDS_Vertex[]
+  vertices: readonly TopoDS_Vertex[],
+  sourceEdgeOrderProven: boolean,
+  sourceJoinOrderProven: boolean
 ): OcctGeneratedReferences {
-  const sidesProven = edges.every((edge) => {
-    const generated = prism.Generated(edge);
-    try {
-      return generated.Size() === 1;
-    } finally {
-      generated.delete();
-    }
-  });
-  const joinsProven = vertices.every((vertex) => {
-    const generated = prism.Generated(vertex);
-    try {
-      return generated.Size() === 1;
-    } finally {
-      generated.delete();
-    }
-  });
-  if (!sidesProven || !joinsProven) {
+  if (!sourceEdgeOrderProven || !sourceJoinOrderProven) {
     return {
       status: "unavailable",
       sourceIdentity: profile.sourceIdentity,
       faces: [],
       edges: [],
+      diagnostic: `The analyzed wire traversal could not prove ${!sourceEdgeOrderProven ? "source segment order" : "oriented join correspondence"}.`
+    };
+  }
+  const capShapes = [prism.FirstShape_1(), prism.LastShape_1()];
+  let capsProven: boolean;
+  try {
+    capsProven =
+      capShapes.every((shape) =>
+        isShapeKind(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE)
+      ) && !capShapes[0].IsSame(capShapes[1]);
+  } finally {
+    capShapes.forEach((shape) => shape.delete());
+  }
+  const sidesProven = edges.every((edge, index) => {
+    const generated = prism.Generated(edge);
+    try {
+      return listContainsOneExpectedFace(
+        oc,
+        generated,
+        profile.segments[index].kind === "line" ? "plane" : "cylinder"
+      );
+    } finally {
+      generated.delete();
+    }
+  });
+  const boundariesProven = edges.every((edge) => {
+    const first = prism.FirstShape_2(edge);
+    const last = prism.LastShape_2(edge);
+    try {
+      return (
+        isShapeKind(first, oc.TopAbs_ShapeEnum.TopAbs_EDGE) &&
+        isShapeKind(last, oc.TopAbs_ShapeEnum.TopAbs_EDGE)
+      );
+    } finally {
+      first.delete();
+      last.delete();
+    }
+  });
+  const joinsProven = vertices.every((vertex) => {
+    const generated = prism.Generated(vertex);
+    try {
+      return listContainsOneShapeKind(
+        generated,
+        oc.TopAbs_ShapeEnum.TopAbs_EDGE
+      );
+    } finally {
+      generated.delete();
+    }
+  });
+  const correspondenceIsDistinct =
+    generatedShapesAreDistinct(prism, edges) &&
+    generatedShapesAreDistinct(prism, vertices) &&
+    boundaryShapesAreDistinct(prism, edges, "first") &&
+    boundaryShapesAreDistinct(prism, edges, "last");
+  if (!capsProven || !sidesProven || !boundariesProven || !joinsProven) {
+    const unavailableEvidence = [
+      !capsProven ? "caps" : undefined,
+      !sidesProven ? "side faces" : undefined,
+      !boundariesProven ? "cap boundaries" : undefined,
+      !joinsProven ? "longitudinal edges" : undefined
+    ].filter((value): value is string => value !== undefined);
+    return {
+      status: "unavailable",
+      sourceIdentity: profile.sourceIdentity,
+      faces: [],
+      edges: [],
+      diagnostic: `The prism builder did not provide exact one-to-one correspondence for: ${unavailableEvidence.join(", ")}.`
+    };
+  }
+  if (!correspondenceIsDistinct) {
+    return {
+      status: "ambiguous",
+      sourceIdentity: profile.sourceIdentity,
+      faces: [],
+      edges: [],
       diagnostic:
-        "The prism builder did not provide one-to-one generated correspondence for every source segment and join."
+        "The prism builder merged or aliased generated topology for distinct source segments or joins."
     };
   }
 
@@ -448,15 +596,131 @@ function buildGeneratedReferences(
       ...profile.segments.map((segment, index) => ({
         role: "longitudinal" as const,
         adjacentSourceEntityIds: [
-          profile.segments[
-            (index + profile.segments.length - 1) % profile.segments.length
-          ].sourceEntityId,
-          segment.sourceEntityId
+          segment.sourceEntityId,
+          profile.segments[(index + 1) % profile.segments.length].sourceEntityId
         ] as const,
         evidence: "kernel-builder" as const
       }))
     ]
   };
+}
+
+function generatedShapesAreDistinct(
+  prism: InstanceType<OpenCascadeInstance["BRepPrimAPI_MakePrism_1"]>,
+  sources: readonly (TopoDS_Edge | TopoDS_Vertex)[]
+): boolean {
+  const shapes: TopoDS_Shape[] = [];
+  try {
+    for (const source of sources) {
+      const generated = prism.Generated(source);
+      try {
+        if (generated.Size() !== 1) return false;
+        shapes.push(generated.First_1());
+      } finally {
+        generated.delete();
+      }
+    }
+    return shapes.every((shape, index) =>
+      shapes.slice(index + 1).every((other) => !shape.IsSame(other))
+    );
+  } finally {
+    shapes.forEach((shape) => shape.delete());
+  }
+}
+
+function boundaryShapesAreDistinct(
+  prism: InstanceType<OpenCascadeInstance["BRepPrimAPI_MakePrism_1"]>,
+  edges: readonly TopoDS_Edge[],
+  boundary: "first" | "last"
+): boolean {
+  const shapes = edges.map((edge) =>
+    boundary === "first" ? prism.FirstShape_2(edge) : prism.LastShape_2(edge)
+  );
+  try {
+    return shapes.every(
+      (shape, index) =>
+        !shape.IsNull() &&
+        shapes.slice(index + 1).every((other) => !shape.IsSame(other))
+    );
+  } finally {
+    shapes.forEach((shape) => shape.delete());
+  }
+}
+
+function listContainsOneExpectedFace(
+  oc: OpenCascadeInstance,
+  shapes: InstanceType<OpenCascadeInstance["TopTools_ListOfShape"]>,
+  expected: "plane" | "cylinder"
+): boolean {
+  if (shapes.Size() !== 1) return false;
+  const shape = shapes.First_1();
+  try {
+    if (!isShapeKind(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE)) return false;
+    const face = oc.TopoDS.Face_1(shape);
+    const surface = new oc.BRepAdaptor_Surface_2(face, true);
+    try {
+      const surfaceType = surface.GetType();
+      if (expected === "plane") {
+        if (surfaceType === oc.GeomAbs_SurfaceType.GeomAbs_Plane) return true;
+      } else if (surfaceType === oc.GeomAbs_SurfaceType.GeomAbs_Cylinder) {
+        return true;
+      }
+      // Canonicalization is deliberately disabled so complementary circular
+      // edges retain distinct side faces. Builder correspondence has already
+      // mapped this extrusion surface to the exact line/circle source support.
+      return surfaceType === oc.GeomAbs_SurfaceType.GeomAbs_SurfaceOfExtrusion;
+    } finally {
+      surface.delete();
+      face.delete();
+    }
+  } finally {
+    shape.delete();
+  }
+}
+
+function listContainsOneShapeKind(
+  shapes: InstanceType<OpenCascadeInstance["TopTools_ListOfShape"]>,
+  expected: unknown
+): boolean {
+  if (shapes.Size() !== 1) return false;
+  const shape = shapes.First_1();
+  try {
+    return isShapeKind(shape, expected);
+  } finally {
+    shape.delete();
+  }
+}
+
+function isShapeKind(shape: TopoDS_Shape, expected: unknown): boolean {
+  return !shape.IsNull() && shape.ShapeType() === expected;
+}
+
+function vertexMatchesPoint(
+  oc: OpenCascadeInstance,
+  vertex: TopoDS_Vertex,
+  expected: readonly [number, number, number],
+  tolerance: number
+): boolean {
+  const point = oc.BRep_Tool.Pnt(vertex);
+  try {
+    return (
+      Math.hypot(
+        point.X() - expected[0],
+        point.Y() - expected[1],
+        point.Z() - expected[2]
+      ) <= tolerance
+    );
+  } finally {
+    point.delete();
+  }
+}
+
+export function assertWireExtrudeSolidCount(solidCount: number): void {
+  if (solidCount !== 1) {
+    throw new Error(
+      "Open CASCADE composite prism must return exactly one solid."
+    );
+  }
 }
 
 function countSubshapes(

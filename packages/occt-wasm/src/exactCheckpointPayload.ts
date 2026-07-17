@@ -7,6 +7,11 @@ import {
   type OcctExactBodyMetadataSource,
   type OcctExactTopologySnapshot
 } from "./exactMetadata";
+import {
+  makeWireExtrudeShapeWithReferences,
+  type OcctGeneratedReferences,
+  type OcctWireExtrudeSource
+} from "./wireExtrude";
 
 export interface OcctTopologyCheckpointSignatureEntity {
   readonly localId: string;
@@ -81,26 +86,59 @@ export function createOcctExactTopologyCheckpointPayloadWithInstance(
 ): OcctExactTopologyCheckpointPayload {
   assertBrepCheckpointWriterBindings(oc);
 
-  return withOcctExactBodyShape(oc, input.source, (shape, sourceKind) => {
-    const brepBytes = writeBrepCheckpointBytes(oc, shape);
-    const topologySnapshot = readExactTopologySnapshot(oc, shape, sourceKind);
-    const signaturePayload = createCheckpointSignaturePayload(
-      input.checkpointId,
-      topologySnapshot
+  if (input.source.kind === "extrude" && input.source.profile.kind === "wire") {
+    const build = makeWireExtrudeShapeWithReferences(
+      oc,
+      input.source as OcctWireExtrudeSource
     );
+    const shape = build.builder.Shape();
+    try {
+      return createCheckpointPayload(
+        oc,
+        input,
+        shape,
+        input.source.kind,
+        build.generatedReferences
+      );
+    } finally {
+      shape.delete();
+      build.delete();
+    }
+  }
 
-    return {
-      checkpointId: input.checkpointId,
-      bodyId: input.bodyId,
-      sourceKind,
-      brepFormat: "occt-brep",
-      brepWriter: "BRepTools.Write_3",
-      brepBytes,
-      brepByteLength: brepBytes.byteLength,
-      topologySnapshot,
-      signaturePayload
-    };
-  });
+  return withOcctExactBodyShape(oc, input.source, (shape, sourceKind) =>
+    createCheckpointPayload(oc, input, shape, sourceKind)
+  );
+}
+
+function createCheckpointPayload(
+  oc: OpenCascadeInstance,
+  input: OcctExactTopologyCheckpointPayloadInput,
+  shape: TopoDS_Shape,
+  sourceKind: OcctExactTopologyCheckpointPayload["sourceKind"],
+  generatedReferences?: OcctGeneratedReferences
+): OcctExactTopologyCheckpointPayload {
+  const brepBytes = writeBrepCheckpointBytes(oc, shape);
+  const topologySnapshot = {
+    ...readExactTopologySnapshot(oc, shape, sourceKind),
+    ...(generatedReferences ? { generatedReferences } : {})
+  };
+  const signaturePayload = createCheckpointSignaturePayload(
+    input.checkpointId,
+    topologySnapshot
+  );
+
+  return {
+    checkpointId: input.checkpointId,
+    bodyId: input.bodyId,
+    sourceKind,
+    brepFormat: "occt-brep",
+    brepWriter: "BRepTools.Write_3",
+    brepBytes,
+    brepByteLength: brepBytes.byteLength,
+    topologySnapshot,
+    signaturePayload
+  };
 }
 
 export function getOcctBrepCheckpointWriterCapabilityWithInstance(

@@ -91,10 +91,7 @@ export function createOcctStepExportWithInstance(
   const shapes = input.bodies.map((body) =>
     body.profile.kind === "wire"
       ? makeWireExtrudeShape(oc, body as OcctWireExtrudeSource)
-      : makeBooleanExtrudeShape(
-          oc,
-          body as OcctBooleanExtrudePrimitiveSource
-        )
+      : makeBooleanExtrudeShape(oc, body as OcctBooleanExtrudePrimitiveSource)
   );
   const asIsStepModelType = oc.STEPControl_StepModelType
     .STEPControl_AsIs as unknown as Parameters<typeof writer.Transfer>[1];
@@ -107,12 +104,13 @@ export function createOcctStepExportWithInstance(
     setStepWriterStatic(oc, "write.step.unit", mapStepUnit(input.units));
 
     for (const shape of shapes) {
-      const status = writer.Transfer(
-        shape.Shape(),
-        asIsStepModelType,
-        true,
-        progress
-      );
+      const exactShape = shape.Shape();
+      let status: ReturnType<typeof writer.Transfer>;
+      try {
+        status = writer.Transfer(exactShape, asIsStepModelType, true, progress);
+      } finally {
+        exactShape.delete();
+      }
 
       if (status !== oc.IFSelect_ReturnStatus.IFSelect_RetDone) {
         throw new Error("Open CASCADE STEP transfer did not complete.");
