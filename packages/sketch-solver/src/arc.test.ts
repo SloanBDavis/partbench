@@ -477,6 +477,196 @@ describe("V17 numerical arc solver", () => {
     );
   });
 
+  it.each([0, 5e-8, -5e-8])(
+    "rejects indeterminate line-arc tangency side at center offset %s",
+    (centerOffset) => {
+      const initialArc = {
+        center: [0, centerOffset] as const,
+        radius: 2,
+        startAngleDegrees: 180,
+        sweepAngleDegrees: 180
+      };
+      const result = solveSketch({
+        version: SKETCH_SOLVER_MODEL_VERSION,
+        points: [
+          { id: "line_start", initial: [-4, 0] },
+          { id: "line_end", initial: [4, 0] }
+        ],
+        arcs: [{ id: "arc", initial: initialArc }],
+        constraints: [
+          {
+            id: "fix_line_start",
+            kind: "fixedPoint",
+            pointId: "line_start",
+            value: [-4, 0]
+          },
+          {
+            id: "fix_line_end",
+            kind: "fixedPoint",
+            pointId: "line_end",
+            value: [4, 0]
+          },
+          {
+            id: "tangent",
+            kind: "tangent",
+            primaryTarget: {
+              kind: "line",
+              startPointId: "line_start",
+              endPointId: "line_end"
+            },
+            secondaryTarget: { kind: "arc", arcId: "arc" }
+          }
+        ]
+      });
+
+      expect(result.status).toBe("failed");
+      expect(arc(result, "arc")).toMatchObject(initialArc);
+      expect(result.diagnostics).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: "SKETCH_ARC_SOLVE_BRANCH_INVALID",
+            sourceId: "tangent"
+          })
+        ])
+      );
+    }
+  );
+
+  it.each([
+    ["arc-circle exact", "circle", 0],
+    ["arc-circle within tolerance", "circle", 2.5e-8],
+    ["arc-arc exact", "arc", 0],
+    ["arc-arc within tolerance", "arc", 2.5e-8]
+  ] as const)(
+    "rejects an indeterminate internal/external branch for %s",
+    (_label, secondKind, centerOffset) => {
+      const centerX = 5 + centerOffset;
+      const initialPrimary = {
+        center: [0, 0] as const,
+        radius: 5,
+        startAngleDegrees: 270,
+        sweepAngleDegrees: 180
+      };
+      const initialSecondary = {
+        center: [centerX, 0] as const,
+        radius: 2,
+        startAngleDegrees: 90,
+        sweepAngleDegrees: 180
+      };
+      const result = solveSketch({
+        version: SKETCH_SOLVER_MODEL_VERSION,
+        points:
+          secondKind === "circle"
+            ? [{ id: "circle_center", initial: initialSecondary.center }]
+            : [],
+        scalars:
+          secondKind === "circle"
+            ? [{ id: "circle_radius", initial: initialSecondary.radius }]
+            : [],
+        arcs: [
+          { id: "primary", initial: initialPrimary },
+          ...(secondKind === "arc"
+            ? [{ id: "secondary", initial: initialSecondary }]
+            : [])
+        ],
+        constraints: [
+          {
+            id: "tangent",
+            kind: "tangent",
+            primaryTarget: { kind: "arc", arcId: "primary" },
+            secondaryTarget:
+              secondKind === "arc"
+                ? { kind: "arc", arcId: "secondary" }
+                : {
+                    kind: "circle",
+                    centerPointId: "circle_center",
+                    radiusId: "circle_radius"
+                  }
+          }
+        ]
+      });
+
+      expect(result.status).toBe("failed");
+      expect(arc(result, "primary")).toMatchObject(initialPrimary);
+      if (secondKind === "arc") {
+        expect(arc(result, "secondary")).toMatchObject(initialSecondary);
+      } else {
+        expect(result.points[0]?.value).toEqual(initialSecondary.center);
+        expect(result.scalars[0]?.value).toBe(initialSecondary.radius);
+      }
+      expect(result.diagnostics).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: "SKETCH_ARC_SOLVE_BRANCH_INVALID",
+            sourceId: "tangent"
+          })
+        ])
+      );
+    }
+  );
+
+  it.each(["circle", "arc"] as const)(
+    "retains the externally seeded branch just beyond ambiguity tolerance for arc-%s",
+    (secondKind) => {
+      const centerX = 5 + 1e-6;
+      const result = solveSketch({
+        version: SKETCH_SOLVER_MODEL_VERSION,
+        points:
+          secondKind === "circle"
+            ? [{ id: "circle_center", initial: [centerX, 0] }]
+            : [],
+        scalars:
+          secondKind === "circle" ? [{ id: "circle_radius", initial: 2 }] : [],
+        arcs: [
+          {
+            id: "primary",
+            initial: {
+              center: [0, 0],
+              radius: 5,
+              startAngleDegrees: 270,
+              sweepAngleDegrees: 180
+            }
+          },
+          ...(secondKind === "arc"
+            ? [
+                {
+                  id: "secondary",
+                  initial: {
+                    center: [centerX, 0] as const,
+                    radius: 2,
+                    startAngleDegrees: 90,
+                    sweepAngleDegrees: 180
+                  }
+                }
+              ]
+            : [])
+        ],
+        constraints: [
+          {
+            id: "tangent",
+            kind: "tangent",
+            primaryTarget: { kind: "arc", arcId: "primary" },
+            secondaryTarget:
+              secondKind === "arc"
+                ? { kind: "arc", arcId: "secondary" }
+                : {
+                    kind: "circle",
+                    centerPointId: "circle_center",
+                    radiusId: "circle_radius"
+                  }
+          }
+        ]
+      });
+
+      expect(result.converged).toBe(true);
+      expect(result.diagnostics).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: "SKETCH_ARC_SOLVE_BRANCH_INVALID" })
+        ])
+      );
+    }
+  );
+
   it("enforces exact and epsilon radius/sweep policy boundaries for both authored signs", () => {
     const linearTolerance = 1e-7;
     const angularTolerance = 0.1;

@@ -545,7 +545,7 @@ export function solveSketch(model: SketchSolveModel): SketchSolveResult {
     });
   }
 
-  const residualBlocks = createResidualBlocks(model, stateAccess);
+  const residualBlocks = createResidualBlocks(model, stateAccess, settings);
   const residualCount = getResiduals(residualBlocks, initialState).length;
 
   if (stateAccess.variables.length === 0) {
@@ -1530,25 +1530,9 @@ function validateTangentTargetConstraint(
     return;
   }
 
-  if (
-    constraint.primaryTarget.kind !== "line" &&
-    constraint.secondaryTarget.kind !== "line"
-  ) {
-    const initialState = stateAccess.variables.map(
-      (variable) => variable.initial
-    );
-    const centerDistance = distance(
-      readCurveCenter(initialState, stateAccess, constraint.primaryTarget),
-      readCurveCenter(initialState, stateAccess, constraint.secondaryTarget)
-    );
-    if (centerDistance <= settings.tolerance) {
-      diagnostics.push(
-        branchDiagnostic(
-          constraint.id,
-          "round-curve centers are coincident, so tangency contact is indeterminate"
-        )
-      );
-    }
+  const seed = createTangencyBranchSeed(constraint, stateAccess, settings);
+  if (seed.ambiguity) {
+    diagnostics.push(branchDiagnostic(constraint.id, seed.ambiguity));
   }
 }
 
@@ -1851,7 +1835,8 @@ function validatePositiveScalarTarget({
 
 function createResidualBlocks(
   model: SketchSolveModel,
-  stateAccess: SolverStateAccess
+  stateAccess: SolverStateAccess,
+  settings: SketchSolveSettings
 ): readonly ResidualBlock[] {
   const blocks: ResidualBlock[] = [];
 
@@ -1863,7 +1848,7 @@ function createResidualBlocks(
       sourceType: "constraint",
       sourceId: constraint.id,
       constraintKind: constraint.kind,
-      evaluator: createConstraintResidual(constraint, stateAccess)
+      evaluator: createConstraintResidual(constraint, stateAccess, settings)
     });
   }
 
@@ -1881,7 +1866,8 @@ function createResidualBlocks(
 
 function createConstraintResidual(
   constraint: Exclude<SketchSolveConstraint, SketchSolveDeferredConstraint>,
-  stateAccess: SolverStateAccess
+  stateAccess: SolverStateAccess,
+  settings: SketchSolveSettings
 ): ResidualEvaluator {
   if (constraint.kind === "fixedPoint") {
     return (state) => {
@@ -1962,7 +1948,7 @@ function createConstraintResidual(
 
   if (constraint.kind === "tangent") {
     if ("primaryTarget" in constraint) {
-      return createCurveTangencyResidual(constraint, stateAccess);
+      return createCurveTangencyResidual(constraint, stateAccess, settings);
     }
     return (state) => {
       const lineDirection = readLineDirection(
@@ -2130,8 +2116,77 @@ function createLinePairResidual(
 
 function createCurveTangencyResidual(
   constraint: SketchSolveTangentTargetConstraint,
-  stateAccess: SolverStateAccess
+  stateAccess: SolverStateAccess,
+  settings: SketchSolveSettings
 ): ResidualEvaluator {
+  const { seed } = createTangencyBranchSeed(constraint, stateAccess, settings);
+  if (!seed) return () => [1];
+
+  if (seed.kind === "line-round") {
+    return (state) => {
+      const currentDirection = readLineDirection(
+        state,
+        stateAccess,
+        seed.lineTarget.startPointId,
+        seed.lineTarget.endPointId
+      );
+      if (!currentDirection) return [1];
+      const currentStart = readPoint(
+        state,
+        stateAccess,
+        seed.lineTarget.startPointId
+      );
+      const currentCenter = readCurveCenter(
+        state,
+        stateAccess,
+        seed.roundTarget
+      );
+      const signedDistance = cross(currentDirection, [
+        currentCenter[0] - currentStart[0],
+        currentCenter[1] - currentStart[1]
+      ]);
+      return [
+        signedDistance -
+          seed.side * readCurveRadius(state, stateAccess, seed.roundTarget)
+      ];
+    };
+  }
+
+  return (state) => {
+    const currentDistance = distance(
+      readCurveCenter(state, stateAccess, seed.primaryTarget),
+      readCurveCenter(state, stateAccess, seed.secondaryTarget)
+    );
+    const radiusA = readCurveRadius(state, stateAccess, seed.primaryTarget);
+    const radiusB = readCurveRadius(state, stateAccess, seed.secondaryTarget);
+    return [
+      currentDistance -
+        (seed.branch === "external"
+          ? radiusA + radiusB
+          : Math.abs(radiusA - radiusB))
+    ];
+  };
+}
+
+type TangencyBranchSeed =
+  | {
+      readonly kind: "line-round";
+      readonly lineTarget: SketchSolveLineCurveTarget;
+      readonly roundTarget: SketchSolveRadiusCurveTarget;
+      readonly side: -1 | 1;
+    }
+  | {
+      readonly kind: "round-round";
+      readonly primaryTarget: SketchSolveRadiusCurveTarget;
+      readonly secondaryTarget: SketchSolveRadiusCurveTarget;
+      readonly branch: "external" | "internal";
+    };
+
+function createTangencyBranchSeed(
+  constraint: SketchSolveTangentTargetConstraint,
+  stateAccess: SolverStateAccess,
+  settings: SketchSolveSettings
+): { readonly seed?: TangencyBranchSeed; readonly ambiguity?: string } {
   const initialState = stateAccess.variables.map(
     (variable) => variable.initial
   );
@@ -2149,73 +2204,94 @@ function createCurveTangencyResidual(
         : undefined;
 
   if (lineTarget && roundTarget) {
-    const lineStart = readPoint(
-      initialState,
-      stateAccess,
-      lineTarget.startPointId
-    );
     const direction = readLineDirection(
       initialState,
       stateAccess,
       lineTarget.startPointId,
       lineTarget.endPointId
     );
+    const start = readPoint(initialState, stateAccess, lineTarget.startPointId);
     const center = readCurveCenter(initialState, stateAccess, roundTarget);
-    const initialSignedDistance = direction
-      ? cross(direction, [center[0] - lineStart[0], center[1] - lineStart[1]])
-      : 1;
-    const side = initialSignedDistance < 0 ? -1 : 1;
-    return (state) => {
-      const currentDirection = readLineDirection(
-        state,
-        stateAccess,
-        lineTarget.startPointId,
-        lineTarget.endPointId
-      );
-      if (!currentDirection) return [1];
-      const currentStart = readPoint(
-        state,
-        stateAccess,
-        lineTarget.startPointId
-      );
-      const currentCenter = readCurveCenter(state, stateAccess, roundTarget);
-      const signedDistance = cross(currentDirection, [
-        currentCenter[0] - currentStart[0],
-        currentCenter[1] - currentStart[1]
-      ]);
-      return [
-        signedDistance - side * readCurveRadius(state, stateAccess, roundTarget)
-      ];
-    };
+    const side = direction
+      ? selectLineTangencySide(
+          cross(direction, [center[0] - start[0], center[1] - start[1]]),
+          settings.tolerance
+        )
+      : undefined;
+    return side === undefined
+      ? {
+          ambiguity:
+            "round-curve center lies on the tangent line, so the tangency side is indeterminate"
+        }
+      : { seed: { kind: "line-round", lineTarget, roundTarget, side } };
   }
 
-  const primary = constraint.primaryTarget as SketchSolveRadiusCurveTarget;
-  const secondary = constraint.secondaryTarget as SketchSolveRadiusCurveTarget;
-  const initialDistance = distance(
-    readCurveCenter(initialState, stateAccess, primary),
-    readCurveCenter(initialState, stateAccess, secondary)
+  if (
+    constraint.primaryTarget.kind === "line" ||
+    constraint.secondaryTarget.kind === "line"
+  ) {
+    return {};
+  }
+  const primaryTarget = constraint.primaryTarget;
+  const secondaryTarget = constraint.secondaryTarget;
+  const centerDistance = distance(
+    readCurveCenter(initialState, stateAccess, primaryTarget),
+    readCurveCenter(initialState, stateAccess, secondaryTarget)
   );
-  const primaryRadius = readCurveRadius(initialState, stateAccess, primary);
-  const secondaryRadius = readCurveRadius(initialState, stateAccess, secondary);
-  const externalError = Math.abs(
-    initialDistance - primaryRadius - secondaryRadius
+  if (centerDistance <= settings.tolerance) {
+    return {
+      ambiguity:
+        "round-curve centers are coincident, so tangency contact is indeterminate"
+    };
+  }
+  const radiusA = readCurveRadius(initialState, stateAccess, primaryTarget);
+  const radiusB = readCurveRadius(initialState, stateAccess, secondaryTarget);
+  const branch = selectRoundTangencyBranch(
+    Math.abs(centerDistance - radiusA - radiusB),
+    Math.abs(centerDistance - Math.abs(radiusA - radiusB)),
+    settings.tolerance
   );
-  const internalError = Math.abs(
-    initialDistance - Math.abs(primaryRadius - secondaryRadius)
-  );
-  const external = externalError <= internalError;
-  return (state) => {
-    const currentDistance = distance(
-      readCurveCenter(state, stateAccess, primary),
-      readCurveCenter(state, stateAccess, secondary)
-    );
-    const radiusA = readCurveRadius(state, stateAccess, primary);
-    const radiusB = readCurveRadius(state, stateAccess, secondary);
-    return [
-      currentDistance -
-        (external ? radiusA + radiusB : Math.abs(radiusA - radiusB))
-    ];
-  };
+  return branch === undefined
+    ? {
+        ambiguity:
+          "internal and external tangency branches are equally supported by the authored geometry"
+      }
+    : {
+        seed: {
+          kind: "round-round",
+          primaryTarget,
+          secondaryTarget,
+          branch
+        }
+      };
+}
+
+function selectLineTangencySide(
+  signedDistance: number,
+  tolerance: number
+): -1 | 1 | undefined {
+  if (
+    !Number.isFinite(signedDistance) ||
+    Math.abs(signedDistance) <= tolerance
+  ) {
+    return undefined;
+  }
+  return signedDistance < 0 ? -1 : 1;
+}
+
+function selectRoundTangencyBranch(
+  externalError: number,
+  internalError: number,
+  tolerance: number
+): "external" | "internal" | undefined {
+  if (
+    !Number.isFinite(externalError) ||
+    !Number.isFinite(internalError) ||
+    Math.abs(externalError - internalError) <= tolerance
+  ) {
+    return undefined;
+  }
+  return externalError < internalError ? "external" : "internal";
 }
 
 function createDimensionResidual(
@@ -2649,62 +2725,42 @@ function validateTangencyContact(
   const initialState = stateAccess.variables.map(
     (variable) => variable.initial
   );
-  const lineTarget =
-    constraint.primaryTarget.kind === "line"
-      ? constraint.primaryTarget
-      : constraint.secondaryTarget.kind === "line"
-        ? constraint.secondaryTarget
-        : undefined;
-  const roundTarget =
-    constraint.primaryTarget.kind !== "line"
-      ? constraint.primaryTarget
-      : constraint.secondaryTarget.kind !== "line"
-        ? constraint.secondaryTarget
-        : undefined;
+  const branchSeed = createTangencyBranchSeed(
+    constraint,
+    stateAccess,
+    settings
+  );
+  if (branchSeed.ambiguity) {
+    diagnostics.push(branchDiagnostic(constraint.id, branchSeed.ambiguity));
+    return diagnostics;
+  }
+  const seed = branchSeed.seed;
+  if (!seed) return diagnostics;
 
-  if (lineTarget && roundTarget) {
-    const initialDirection = readLineDirection(
-      initialState,
-      stateAccess,
-      lineTarget.startPointId,
-      lineTarget.endPointId
-    );
+  if (seed.kind === "line-round") {
     const solvedDirection = readLineDirection(
       state,
       stateAccess,
-      lineTarget.startPointId,
-      lineTarget.endPointId
+      seed.lineTarget.startPointId,
+      seed.lineTarget.endPointId
     );
-    if (!initialDirection || !solvedDirection) return diagnostics;
-    const initialStart = readPoint(
-      initialState,
+    if (!solvedDirection) return diagnostics;
+    const solvedStart = readPoint(
+      state,
       stateAccess,
-      lineTarget.startPointId
+      seed.lineTarget.startPointId
     );
-    const solvedStart = readPoint(state, stateAccess, lineTarget.startPointId);
-    const initialCenter = readCurveCenter(
-      initialState,
-      stateAccess,
-      roundTarget
-    );
-    const solvedCenter = readCurveCenter(state, stateAccess, roundTarget);
-    const initialSide =
-      Math.sign(
-        cross(initialDirection, [
-          initialCenter[0] - initialStart[0],
-          initialCenter[1] - initialStart[1]
-        ])
-      ) || 1;
+    const solvedCenter = readCurveCenter(state, stateAccess, seed.roundTarget);
     const solvedSignedDistance = cross(solvedDirection, [
       solvedCenter[0] - solvedStart[0],
       solvedCenter[1] - solvedStart[1]
     ]);
-    if ((Math.sign(solvedSignedDistance) || 1) !== initialSide) {
+    if (selectLineTangencySide(solvedSignedDistance, 0) !== seed.side) {
       diagnostics.push(
         branchDiagnostic(constraint.id, "line tangency side changed")
       );
     }
-    if (roundTarget.kind === "arc") {
+    if (seed.roundTarget.kind === "arc") {
       const normal: SketchSolverVec2 = [
         -solvedDirection[1],
         solvedDirection[0]
@@ -2717,29 +2773,24 @@ function validateTangencyContact(
         !pointLiesOnArc(
           state,
           stateAccess,
-          roundTarget.arcId,
+          seed.roundTarget.arcId,
           contact,
           settings
         )
       ) {
         diagnostics.push(
-          outsideArcDiagnostic(constraint.id, roundTarget.arcId)
+          outsideArcDiagnostic(constraint.id, seed.roundTarget.arcId)
         );
       }
     }
     return diagnostics;
   }
 
-  const primary = constraint.primaryTarget as SketchSolveRadiusCurveTarget;
-  const secondary = constraint.secondaryTarget as SketchSolveRadiusCurveTarget;
-  const initialCenterA = readCurveCenter(initialState, stateAccess, primary);
-  const initialCenterB = readCurveCenter(initialState, stateAccess, secondary);
+  const primary = seed.primaryTarget;
+  const secondary = seed.secondaryTarget;
   const initialRadiusA = readCurveRadius(initialState, stateAccess, primary);
   const initialRadiusB = readCurveRadius(initialState, stateAccess, secondary);
-  const initialDistance = distance(initialCenterA, initialCenterB);
-  const external =
-    Math.abs(initialDistance - initialRadiusA - initialRadiusB) <=
-    Math.abs(initialDistance - Math.abs(initialRadiusA - initialRadiusB));
+  const external = seed.branch === "external";
   const initialOwner = Math.sign(initialRadiusA - initialRadiusB);
   const centerA = readCurveCenter(state, stateAccess, primary);
   const centerB = readCurveCenter(state, stateAccess, secondary);
