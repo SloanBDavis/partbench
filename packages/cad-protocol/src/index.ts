@@ -2645,8 +2645,10 @@ export interface SketchCoincidentConstraintV21 extends Omit<
 export type SketchTangentConstraintV21 = Omit<
   SketchTangentConstraintSnapshot,
   "primaryTarget" | "secondaryTarget"
-> &
-  SketchTangentConstraintTargetPair;
+> & {
+  readonly primaryTarget: SketchCurveConstraintTarget;
+  readonly secondaryTarget: SketchCurveConstraintTarget;
+};
 
 export interface SketchSymmetryConstraintV21 extends Omit<
   SketchSymmetryConstraintSnapshot,

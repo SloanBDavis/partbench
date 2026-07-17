@@ -682,6 +682,15 @@ describe("V17 protocol declarations", () => {
       primaryCircleEntityId: "circle_1",
       secondaryCircleEntityId: "circle_2"
     };
+    const diagnosticOnlyTangent: SketchConstraintSnapshot = {
+      id: "constraint_invalid_tangent",
+      name: "Stored unsupported tangent",
+      sketchId: "sketch_1",
+      entityId: "circle_1",
+      kind: "tangent",
+      primaryTarget: { entityId: "circle_1", entityKind: "circle" },
+      secondaryTarget: { entityId: "circle_2", entityKind: "circle" }
+    };
 
     // @ts-expect-error Live V21 storage cannot use legacy circle-ID fields.
     const invalidLiveLegacy: SketchConstraintSnapshot = history;
@@ -695,6 +704,7 @@ describe("V17 protocol declarations", () => {
 
     expect(stored.kind).toBe("concentric");
     expect(history.kind).toBe("equalRadius");
+    expect(diagnosticOnlyTangent.kind).toBe("tangent");
     expect([invalidLiveLegacy, invalidStoredMixed]).toHaveLength(2);
   });
 
