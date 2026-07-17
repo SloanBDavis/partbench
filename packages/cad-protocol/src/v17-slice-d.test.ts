@@ -1386,6 +1386,207 @@ describe("V17 Slice D query contracts", () => {
     }
   });
 
+  it("uses the existing direct-body or topology-anchor extrude target XOR", () => {
+    const anchorRequest: CadQueryRequest = {
+      version: "cadops.v1",
+      query: {
+        query: "sketch.profileReadiness",
+        profile: entityProfile,
+        consumer: {
+          featureKind: "extrude",
+          operationMode: "cut",
+          targetTopologyAnchorId: "anchor_1"
+        }
+      }
+    };
+    expect(validateSketchProfilePathQueryRequest(anchorRequest).ok).toBe(true);
+
+    const mixedRequest: CadQueryRequest = {
+      version: "cadops.v1",
+      query: {
+        query: "sketch.profileReadiness",
+        profile: entityProfile,
+        // @ts-expect-error Direct body and topology-anchor target forms are mutually exclusive.
+        consumer: {
+          featureKind: "extrude",
+          operationMode: "add",
+          targetBodyId: "body_1",
+          targetTopologyAnchorId: "anchor_1"
+        }
+      }
+    };
+    expect(validateSketchProfilePathQueryRequest(mixedRequest).ok).toBe(false);
+    expect(
+      validateSketchProfilePathQueryRequest({
+        version: "cadops.v1",
+        query: {
+          query: "sketch.profileReadiness",
+          profile: entityProfile,
+          consumer: {
+            featureKind: "extrude",
+            operationMode: "newBody",
+            targetTopologyAnchorId: "anchor_1"
+          }
+        }
+      }).ok
+    ).toBe(false);
+  });
+
+  it("reports resolved, missing, stale, and unsupported anchor targets honestly", () => {
+    const cases = [
+      {
+        name: "resolved anchor ready",
+        readiness: "ready",
+        target: {
+          status: "ready",
+          targetBodyId: "body_result",
+          targetTopologyAnchorId: "anchor_1",
+          diagnosticCount: 0,
+          diagnostics: []
+        },
+        expected: true
+      },
+      {
+        name: "resolved anchor unsupported",
+        readiness: "blocked",
+        target: {
+          status: "unsupported",
+          targetBodyId: "body_result",
+          targetTopologyAnchorId: "anchor_1",
+          diagnosticCount: 1,
+          diagnostics: [
+            {
+              code: "TARGET_BODY_NOT_SUPPORTED",
+              severity: "blocker",
+              message: "The resolved target is outside the existing matrix."
+            }
+          ]
+        },
+        expected: true
+      },
+      {
+        name: "anchor stale",
+        readiness: "blocked",
+        target: {
+          status: "stale",
+          targetTopologyAnchorId: "anchor_1",
+          diagnosticCount: 1,
+          diagnostics: [
+            {
+              code: "INVALID_TOPOLOGY_ANCHOR",
+              severity: "blocker",
+              message: "The topology anchor is stale."
+            }
+          ]
+        },
+        expected: true
+      },
+      {
+        name: "anchor missing",
+        readiness: "blocked",
+        target: {
+          status: "missing",
+          targetTopologyAnchorId: "anchor_1",
+          diagnosticCount: 1,
+          diagnostics: [
+            {
+              code: "TOPOLOGY_ANCHOR_NOT_FOUND",
+              severity: "blocker",
+              message: "The topology anchor is missing."
+            }
+          ]
+        },
+        expected: true
+      },
+      {
+        name: "ready anchor must resolve a body",
+        readiness: "blocked",
+        target: {
+          status: "ready",
+          targetTopologyAnchorId: "anchor_1",
+          diagnosticCount: 0,
+          diagnostics: []
+        },
+        expected: false
+      },
+      {
+        name: "anchor identity must echo",
+        readiness: "blocked",
+        target: {
+          status: "stale",
+          targetTopologyAnchorId: "anchor_other",
+          diagnosticCount: 1,
+          diagnostics: [
+            {
+              code: "INVALID_TOPOLOGY_ANCHOR",
+              severity: "blocker",
+              message: "The topology anchor is stale."
+            }
+          ]
+        },
+        expected: false
+      },
+      {
+        name: "missing anchor cannot claim resolved body",
+        readiness: "blocked",
+        target: {
+          status: "missing",
+          targetBodyId: "body_result",
+          targetTopologyAnchorId: "anchor_1",
+          diagnosticCount: 1,
+          diagnostics: [
+            {
+              code: "TOPOLOGY_ANCHOR_NOT_FOUND",
+              severity: "blocker",
+              message: "The topology anchor is missing."
+            }
+          ]
+        },
+        expected: false
+      },
+      {
+        name: "ready profile cannot use unsupported anchor",
+        readiness: "ready",
+        target: {
+          status: "unsupported",
+          targetBodyId: "body_result",
+          targetTopologyAnchorId: "anchor_1",
+          diagnosticCount: 1,
+          diagnostics: [
+            {
+              code: "TARGET_BODY_NOT_SUPPORTED",
+              severity: "blocker",
+              message: "The resolved target is unsupported."
+            }
+          ]
+        },
+        expected: false
+      }
+    ] as const;
+
+    for (const testCase of cases) {
+      const response = mutableRecord(makeProfileReadinessResponse());
+      response.status = testCase.readiness;
+      response.consumer = {
+        featureKind: "extrude",
+        operationMode: "cut",
+        targetTopologyAnchorId: "anchor_1"
+      };
+      response.consumerCompatibility = {
+        status: "ready",
+        featureKind: "extrude",
+        operationMode: "cut",
+        diagnosticCount: 0,
+        diagnostics: []
+      };
+      response.targetCompatibility = testCase.target;
+      expect(
+        validateSketchProfilePathQueryResponse(response).ok,
+        testCase.name
+      ).toBe(testCase.expected);
+    }
+  });
+
   it("enforces sweep-profile frame readiness cross-products", () => {
     const cases = [
       {

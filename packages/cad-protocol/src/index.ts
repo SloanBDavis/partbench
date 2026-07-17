@@ -2256,21 +2256,36 @@ export interface SketchProfileCandidatesQuery {
   readonly sketchId: SketchId;
 }
 
+export type SketchProfileExtrudeTargetIntent =
+  | {
+      readonly targetBodyId?: never;
+      readonly targetTopologyAnchorId?: never;
+    }
+  | {
+      readonly targetBodyId: BodyId;
+      readonly targetTopologyAnchorId?: never;
+    }
+  | {
+      readonly targetBodyId?: never;
+      readonly targetTopologyAnchorId: string;
+    };
+
 export type SketchProfileConsumerIntent =
   | {
       readonly featureKind: "extrude";
       readonly operationMode: "newBody";
       readonly targetBodyId?: never;
+      readonly targetTopologyAnchorId?: never;
     }
-  | {
+  | ({
       readonly featureKind: "extrude";
       readonly operationMode: "add" | "cut";
-      readonly targetBodyId?: BodyId;
-    }
+    } & SketchProfileExtrudeTargetIntent)
   | {
       readonly featureKind: "revolve" | "sweep" | "loft";
       readonly operationMode: "newBody";
       readonly targetBodyId?: never;
+      readonly targetTopologyAnchorId?: never;
     };
 
 export interface SketchProfileReadinessQuery {
@@ -6626,7 +6641,11 @@ export type SketchProfileDiagnosticCode =
   | "SKETCH_PROFILE_ORIENTATION_NORMALIZED"
   | "SKETCH_PROFILE_CONSUMER_UNSUPPORTED"
   | "BODY_NOT_FOUND"
-  | "UNSUPPORTED_BODY_REFERENCES";
+  | "UNSUPPORTED_BODY_REFERENCES"
+  | "TOPOLOGY_ANCHOR_NOT_FOUND"
+  | "INVALID_TOPOLOGY_ANCHOR"
+  | "TARGET_BODY_REQUIRED"
+  | "TARGET_BODY_NOT_SUPPORTED";
 
 export type SketchPathDiagnosticCode =
   | "SKETCH_PATH_EMPTY"
@@ -6790,18 +6809,42 @@ export type SketchProfileTargetCompatibility =
   | {
       readonly status: "not-applicable";
       readonly targetBodyId?: never;
+      readonly targetTopologyAnchorId?: never;
       readonly diagnosticCount: 0;
       readonly diagnostics: readonly [];
     }
   | {
       readonly status: "missing";
       readonly targetBodyId?: never;
+      readonly targetTopologyAnchorId?: never;
       readonly diagnosticCount: number;
       readonly diagnostics: readonly SketchProfileDiagnostic[];
     }
   | {
       readonly status: "ready" | "unsupported";
       readonly targetBodyId: BodyId;
+      readonly targetTopologyAnchorId?: never;
+      readonly diagnosticCount: number;
+      readonly diagnostics: readonly SketchProfileDiagnostic[];
+    }
+  | {
+      readonly status: "ready" | "unsupported";
+      readonly targetBodyId: BodyId;
+      readonly targetTopologyAnchorId: string;
+      readonly diagnosticCount: number;
+      readonly diagnostics: readonly SketchProfileDiagnostic[];
+    }
+  | {
+      readonly status: "missing";
+      readonly targetBodyId?: never;
+      readonly targetTopologyAnchorId: string;
+      readonly diagnosticCount: number;
+      readonly diagnostics: readonly SketchProfileDiagnostic[];
+    }
+  | {
+      readonly status: "stale";
+      readonly targetBodyId?: BodyId;
+      readonly targetTopologyAnchorId: string;
       readonly diagnosticCount: number;
       readonly diagnostics: readonly SketchProfileDiagnostic[];
     };
@@ -8232,7 +8275,7 @@ function validateProfileConsumer(
     value,
     path,
     ["featureKind", "operationMode"],
-    isBooleanExtrude ? ["targetBodyId"] : [],
+    isBooleanExtrude ? ["targetBodyId", "targetTopologyAnchorId"] : [],
     issues
   );
   if (!["extrude", "revolve", "sweep", "loft"].includes(String(featureKind))) {
@@ -8255,6 +8298,24 @@ function validateProfileConsumer(
   }
   if ("targetBodyId" in value) {
     validateNonEmptyString(value.targetBodyId, `${path}.targetBodyId`, issues);
+  }
+  if ("targetTopologyAnchorId" in value) {
+    validateNonEmptyString(
+      value.targetTopologyAnchorId,
+      `${path}.targetTopologyAnchorId`,
+      issues
+    );
+  }
+  if (
+    value.targetBodyId !== undefined &&
+    value.targetTopologyAnchorId !== undefined
+  ) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path: `${path}.targetTopologyAnchorId`,
+      message:
+        "Extrude add/cut must use targetBodyId or targetTopologyAnchorId, never both."
+    });
   }
 }
 
@@ -8637,7 +8698,11 @@ const PROFILE_DIAGNOSTIC_CODES: ReadonlySet<string> = new Set([
   "SKETCH_PROFILE_ORIENTATION_NORMALIZED",
   "SKETCH_PROFILE_CONSUMER_UNSUPPORTED",
   "BODY_NOT_FOUND",
-  "UNSUPPORTED_BODY_REFERENCES"
+  "UNSUPPORTED_BODY_REFERENCES",
+  "TOPOLOGY_ANCHOR_NOT_FOUND",
+  "INVALID_TOPOLOGY_ANCHOR",
+  "TARGET_BODY_REQUIRED",
+  "TARGET_BODY_NOT_SUPPORTED"
 ]);
 const PATH_DIAGNOSTIC_CODES: ReadonlySet<string> = new Set([
   "SKETCH_PATH_EMPTY",
@@ -8805,22 +8870,18 @@ function validateTargetCompatibility(
     });
     return;
   }
-  const requiresTarget =
-    value.status === "ready" || value.status === "unsupported";
   if (
     !validateExactRecord(
       value,
       path,
-      requiresTarget
-        ? ["status", "targetBodyId", "diagnosticCount", "diagnostics"]
-        : ["status", "diagnosticCount", "diagnostics"],
-      [],
+      ["status", "diagnosticCount", "diagnostics"],
+      ["targetBodyId", "targetTopologyAnchorId"],
       issues
     )
   )
     return;
   if (
-    !["not-applicable", "missing", "ready", "unsupported"].includes(
+    !["not-applicable", "missing", "ready", "stale", "unsupported"].includes(
       String(value.status)
     )
   ) {
@@ -8830,8 +8891,16 @@ function validateTargetCompatibility(
       message: "Invalid target status."
     });
   }
-  if (requiresTarget)
+  if ("targetBodyId" in value) {
     validateNonEmptyString(value.targetBodyId, `${path}.targetBodyId`, issues);
+  }
+  if ("targetTopologyAnchorId" in value) {
+    validateNonEmptyString(
+      value.targetTopologyAnchorId,
+      `${path}.targetTopologyAnchorId`,
+      issues
+    );
+  }
   validateCountedArray(value, "diagnosticCount", "diagnostics", path, issues);
   validateDiagnosticArray(
     value.diagnostics,
@@ -8850,6 +8919,16 @@ function validateTargetCompatibility(
         message: "A not-applicable target cannot carry target diagnostics."
       });
     }
+    if (
+      value.targetBodyId !== undefined ||
+      value.targetTopologyAnchorId !== undefined
+    ) {
+      issues.push({
+        code: "INVALID_VALUE",
+        path,
+        message: "A not-applicable target cannot identify a body or anchor."
+      });
+    }
   }
   if (isUnknownRecord(consumer)) {
     const targetApplies =
@@ -8863,8 +8942,13 @@ function validateTargetCompatibility(
       });
     }
     if (targetApplies) {
-      const requestedTarget = consumer.targetBodyId;
-      if (requestedTarget === undefined && value.status !== "missing") {
+      const requestedBodyId = consumer.targetBodyId;
+      const requestedAnchorId = consumer.targetTopologyAnchorId;
+      if (
+        requestedBodyId === undefined &&
+        requestedAnchorId === undefined &&
+        value.status !== "missing"
+      ) {
         issues.push({
           code: "INVALID_VALUE",
           path: `${path}.status`,
@@ -8872,7 +8956,19 @@ function validateTargetCompatibility(
         });
       }
       if (
-        typeof requestedTarget === "string" &&
+        requestedBodyId === undefined &&
+        requestedAnchorId === undefined &&
+        (value.targetBodyId !== undefined ||
+          value.targetTopologyAnchorId !== undefined)
+      ) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path,
+          message: "An omitted target cannot report a body or anchor identity."
+        });
+      }
+      if (
+        typeof requestedBodyId === "string" &&
         value.status !== "ready" &&
         value.status !== "unsupported"
       ) {
@@ -8884,9 +8980,9 @@ function validateTargetCompatibility(
         });
       }
       if (
-        typeof requestedTarget === "string" &&
+        typeof requestedBodyId === "string" &&
         (value.status === "ready" || value.status === "unsupported") &&
-        value.targetBodyId !== requestedTarget
+        value.targetBodyId !== requestedBodyId
       ) {
         issues.push({
           code: "INVALID_VALUE",
@@ -8895,11 +8991,61 @@ function validateTargetCompatibility(
             "Target compatibility must describe the requested target body."
         });
       }
-      if (typeof requestedTarget === "string" && value.status === "missing") {
+      if (
+        typeof requestedBodyId === "string" &&
+        value.targetTopologyAnchorId !== undefined
+      ) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: `${path}.targetTopologyAnchorId`,
+          message: "A direct body target cannot report a topology anchor."
+        });
+      }
+      if (
+        typeof requestedAnchorId === "string" &&
+        !["ready", "unsupported", "missing", "stale"].includes(
+          String(value.status)
+        )
+      ) {
         issues.push({
           code: "INVALID_VALUE",
           path: `${path}.status`,
-          message: "A supplied target body cannot report status 'missing'."
+          message:
+            "An anchor target must report ready, unsupported, missing, or stale."
+        });
+      }
+      if (
+        typeof requestedAnchorId === "string" &&
+        value.targetTopologyAnchorId !== requestedAnchorId
+      ) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: `${path}.targetTopologyAnchorId`,
+          message:
+            "Target compatibility must echo the requested topology anchor."
+        });
+      }
+      if (
+        typeof requestedAnchorId === "string" &&
+        (value.status === "ready" || value.status === "unsupported") &&
+        typeof value.targetBodyId !== "string"
+      ) {
+        issues.push({
+          code: "MISSING_FIELD",
+          path: `${path}.targetBodyId`,
+          message:
+            "A resolved anchor target must report its public targetBodyId."
+        });
+      }
+      if (
+        typeof requestedAnchorId === "string" &&
+        value.status === "missing" &&
+        value.targetBodyId !== undefined
+      ) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: `${path}.targetBodyId`,
+          message: "A missing anchor cannot report a resolved target body."
         });
       }
     }
@@ -8965,7 +9111,8 @@ function sameConsumerIntent(left: unknown, right: unknown): boolean {
     isUnknownRecord(right) &&
     left.featureKind === right.featureKind &&
     left.operationMode === right.operationMode &&
-    left.targetBodyId === right.targetBodyId
+    left.targetBodyId === right.targetBodyId &&
+    left.targetTopologyAnchorId === right.targetTopologyAnchorId
   );
 }
 
