@@ -519,12 +519,21 @@ function resolvePath(sketch: Sketch, path: SketchPathRef): ResolvedPath {
       rightIndex < segments.length;
       rightIndex += 1
     ) {
-      if (rightIndex === leftIndex + 1) continue;
+      const adjacent = rightIndex === leftIndex + 1;
       const intersection = intersectSketchSegments(
         segments[leftIndex]!,
         segments[rightIndex]!
       );
-      if (intersection.overlap || intersection.points.length > 0) {
+      const onlySharedEndpoint =
+        adjacent &&
+        intersection.points.every(
+          (point) =>
+            point.leftLocation === "end" && point.rightLocation === "start"
+        );
+      if (
+        intersection.overlap ||
+        (intersection.points.length > 0 && (!adjacent || !onlySharedEndpoint))
+      ) {
         selfIntersectionStatus = "self-intersecting";
         diagnostics.push(
           pathDiagnostic(
@@ -1243,11 +1252,6 @@ export function createSketchProfileReadinessResponse(
         )
       );
     }
-    const allDiagnostics = [
-      ...diagnostics,
-      ...consumerCompatibility.diagnostics,
-      ...targetDiagnostics
-    ];
     const readyEntity =
       entity?.kind === "rectangle" || entity?.kind === "circle"
         ? entity
@@ -1277,6 +1281,11 @@ export function createSketchProfileReadinessResponse(
         )
       );
     }
+    const allDiagnostics = [
+      ...diagnostics,
+      ...consumerCompatibility.diagnostics,
+      ...targetDiagnostics
+    ];
     const ready =
       allDiagnostics.every((diagnostic) => diagnostic.severity !== "blocker") &&
       readyEntity;

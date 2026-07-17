@@ -243,6 +243,49 @@ describe("V17 profile and path queries", () => {
     expect(response.candidates[0]!.area).toBeCloseTo(Math.PI, 12);
   });
 
+  it("blocks entity profiles below minimum area with current diagnostics", () => {
+    const engine = new CadEngine();
+    addSketch(engine, "tiny");
+    engine.applyBatch([
+      {
+        op: "sketch.addRectangle",
+        sketchId: "tiny",
+        id: "tiny-rectangle",
+        center: [0, 0],
+        width: 0.0000005,
+        height: 0.0000001
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "tiny",
+        id: "tiny-circle",
+        center: [1, 0],
+        radius: 0.0000002
+      }
+    ]);
+
+    for (const entityId of ["tiny-rectangle", "tiny-circle"]) {
+      const response = query<
+        Extract<
+          SketchProfilePathQueryResponse,
+          { query: "sketch.profileReadiness" }
+        >
+      >(engine, {
+        version: "cadops.v1",
+        query: {
+          query: "sketch.profileReadiness",
+          profile: { kind: "entity", sketchId: "tiny", entityId },
+          consumer: { featureKind: "extrude", operationMode: "newBody" }
+        }
+      });
+      expect(response.status).toBe("blocked");
+      expect(response.diagnosticCount).toBe(response.diagnostics.length);
+      expect(response.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(
+        ["SKETCH_PROFILE_AREA_TOO_SMALL"]
+      );
+    }
+  });
+
   it("rejects branches, gaps, overlaps, self-intersections, and nested loops explicitly", () => {
     const branch = new CadEngine();
     addSketch(branch, "branch");
@@ -646,6 +689,194 @@ describe("V17 profile and path queries", () => {
     expect(
       crossingResponse.diagnostics.map((diagnostic) => diagnostic.code)
     ).toContain("SKETCH_PATH_SELF_INTERSECTING");
+
+    const overlap = new CadEngine();
+    addSketch(overlap, "overlapping-arcs");
+    overlap.applyBatch([
+      {
+        op: "sketch.addArc",
+        sketchId: "overlapping-arcs",
+        id: "a",
+        definition: {
+          kind: "centerAngles",
+          center: [0, 0],
+          radius: 1,
+          startAngleDegrees: 0,
+          sweepAngleDegrees: 270
+        }
+      },
+      {
+        op: "sketch.addArc",
+        sketchId: "overlapping-arcs",
+        id: "b",
+        definition: {
+          kind: "centerAngles",
+          center: [0, 0],
+          radius: 1,
+          startAngleDegrees: 270,
+          sweepAngleDegrees: 180
+        }
+      }
+    ]);
+    const overlapResponse = query<
+      Extract<SketchProfilePathQueryResponse, { query: "sketch.pathReadiness" }>
+    >(overlap, {
+      version: "cadops.v1",
+      query: {
+        query: "sketch.pathReadiness",
+        path: {
+          kind: "chain",
+          sketchId: "overlapping-arcs",
+          segments: ["a", "b"].map((entityId) => ({
+            entityId,
+            orientation: "forward"
+          }))
+        }
+      }
+    });
+    expect(overlapResponse).toMatchObject({
+      status: "blocked",
+      connectionStatus: "connected",
+      tangentStatus: "tangent",
+      selfIntersectionStatus: "self-intersecting"
+    });
+    expect(
+      overlapResponse.diagnostics.map((diagnostic) => diagnostic.code)
+    ).toContain("SKETCH_PATH_SELF_INTERSECTING");
+
+    const extraCrossing = new CadEngine();
+    addSketch(extraCrossing, "adjacent-crossing");
+    extraCrossing.applyBatch([
+      {
+        op: "sketch.addLine",
+        sketchId: "adjacent-crossing",
+        id: "line",
+        start: [-2, 0],
+        end: [1, 0]
+      },
+      {
+        op: "sketch.addArc",
+        sketchId: "adjacent-crossing",
+        id: "arc",
+        definition: {
+          kind: "centerAngles",
+          center: [0, 0],
+          radius: 1,
+          startAngleDegrees: 0,
+          sweepAngleDegrees: 180
+        }
+      }
+    ]);
+    const extraCrossingResponse = query<
+      Extract<SketchProfilePathQueryResponse, { query: "sketch.pathReadiness" }>
+    >(extraCrossing, {
+      version: "cadops.v1",
+      query: {
+        query: "sketch.pathReadiness",
+        path: {
+          kind: "chain",
+          sketchId: "adjacent-crossing",
+          segments: [
+            { entityId: "line", orientation: "forward" },
+            { entityId: "arc", orientation: "forward" }
+          ]
+        }
+      }
+    });
+    expect(extraCrossingResponse.selfIntersectionStatus).toBe(
+      "self-intersecting"
+    );
+
+    const valid = new CadEngine();
+    addSketch(valid, "valid-lines");
+    addSketch(valid, "valid-line-arc");
+    addSketch(valid, "valid-arcs");
+    valid.applyBatch([
+      {
+        op: "sketch.addLine",
+        sketchId: "valid-lines",
+        id: "a",
+        start: [0, 0],
+        end: [1, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "valid-lines",
+        id: "b",
+        start: [1, 0],
+        end: [2, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "valid-line-arc",
+        id: "a",
+        start: [0, 0],
+        end: [1, 0]
+      },
+      {
+        op: "sketch.addArc",
+        sketchId: "valid-line-arc",
+        id: "b",
+        definition: {
+          kind: "centerAngles",
+          center: [1, 1],
+          radius: 1,
+          startAngleDegrees: 270,
+          sweepAngleDegrees: 90
+        }
+      },
+      {
+        op: "sketch.addArc",
+        sketchId: "valid-arcs",
+        id: "a",
+        definition: {
+          kind: "centerAngles",
+          center: [0, 0],
+          radius: 1,
+          startAngleDegrees: 0,
+          sweepAngleDegrees: 90
+        }
+      },
+      {
+        op: "sketch.addArc",
+        sketchId: "valid-arcs",
+        id: "b",
+        definition: {
+          kind: "centerAngles",
+          center: [0, 0],
+          radius: 1,
+          startAngleDegrees: 90,
+          sweepAngleDegrees: 90
+        }
+      }
+    ]);
+    for (const sketchId of ["valid-lines", "valid-line-arc", "valid-arcs"]) {
+      const validResponse = query<
+        Extract<
+          SketchProfilePathQueryResponse,
+          { query: "sketch.pathReadiness" }
+        >
+      >(valid, {
+        version: "cadops.v1",
+        query: {
+          query: "sketch.pathReadiness",
+          path: {
+            kind: "chain",
+            sketchId,
+            segments: ["a", "b"].map((entityId) => ({
+              entityId,
+              orientation: "forward"
+            }))
+          }
+        }
+      });
+      expect(validResponse).toMatchObject({
+        status: "ready",
+        connectionStatus: "connected",
+        tangentStatus: "tangent",
+        selfIntersectionStatus: "clear"
+      });
+    }
   });
 
   it("reports consumer and target compatibility without enabling later feature commands", () => {
