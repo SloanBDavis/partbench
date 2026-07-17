@@ -178,6 +178,7 @@ import { executeProjectExactStepExport } from "./projectExactStepExport";
 import {
   createBodyTopologyDerivedExactMetadataSnapshot,
   createEmptyDerivedExactMetadataSnapshot,
+  createImportedBodyExactMetadataSources,
   DerivedExactMetadataService,
   formatDerivedExactMetadataEntryStatus,
   getCurrentDerivedExactMetadataEntryForBody,
@@ -1625,20 +1626,11 @@ export function App() {
     ]
   );
   const importedExactMetadataSources = useMemo(() => {
-    const importedBodyIds = new Set(
-      [...document.features.values()]
-        .filter((feature) => feature.kind === "importedBody")
-        .map((feature) => feature.bodyId)
+    return createImportedBodyExactMetadataSources(
+      projectStructure.features,
+      wcadTopologyCheckpointPayloadCache
     );
-    return wcadTopologyCheckpointPayloadCache
-      .filter((payload) => importedBodyIds.has(payload.bodyId))
-      .map((payload) => ({
-        id: payload.bodyId,
-        kind: "importedBody" as const,
-        checkpointId: payload.checkpointId,
-        brepBytes: payload.brepBytes
-      }));
-  }, [document.features, wcadTopologyCheckpointPayloadCache]);
+  }, [projectStructure.features, wcadTopologyCheckpointPayloadCache]);
   const currentExactMetadataSources = useMemo<
     readonly DerivedExactMetadataSource[]
   >(

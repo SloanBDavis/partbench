@@ -1,7 +1,8 @@
 import {
   CadEngine,
   exportCadProjectJson,
-  type CadFeatureSummary
+  type CadFeatureSummary,
+  type WcadTopologyCheckpointPayloadInput
 } from "@web-cad/cad-core";
 import type { CadGeneratedFaceReference } from "@web-cad/cad-protocol";
 import { describe, expect, it } from "vitest";
@@ -10,6 +11,7 @@ import {
   createBodyTopologyDerivedExactMetadataSnapshot,
   createEmptyDerivedExactMetadataSnapshot,
   createExactMetadataRuntimeInput,
+  createImportedBodyExactMetadataSources,
   createProjectExtentsDerivedExactMetadataSnapshots,
   createProjectQueryDerivedExactMetadataSnapshots,
   DerivedExactMetadataService,
@@ -120,6 +122,127 @@ describe("derivedExactMetadata", () => {
     expect(
       runtime.exactInputs.filter((input) => input.id === imported.id)
     ).toHaveLength(1);
+  });
+
+  it("selects only the active imported checkpoint across same-body re-import", async () => {
+    const engine = new CadEngine();
+    const bodyId = "body_imported";
+    const oldCheckpointId = "checkpoint_imported_old";
+    const newCheckpointId = "checkpoint_imported_new";
+    importResolvedBody(engine, "feature_imported_old", bodyId, oldCheckpointId);
+    const oldPayload = createImportedCheckpointPayload(
+      bodyId,
+      oldCheckpointId,
+      1
+    );
+    const oldSource = createImportedBodyExactMetadataSources(
+      readFeatures(engine),
+      [oldPayload]
+    )[0];
+    if (!oldSource) throw new Error("Expected the original imported source.");
+
+    const runtime = createRuntime(async (input) =>
+      createMetadataResult(input.id, input.source.kind)
+    );
+    const service = new DerivedExactMetadataService({
+      runtime,
+      onChange: () => {}
+    });
+    service.reconcile([oldSource]);
+    await flushPromises();
+    const oldReady = service.getSnapshot();
+    expect(
+      getCurrentDerivedExactMetadataEntryForBody(oldReady, bodyId, oldSource)
+    ).toMatchObject({ status: "ready" });
+
+    engine.apply({ op: "feature.delete", id: "feature_imported_old" });
+    importResolvedBody(engine, "feature_imported_new", bodyId, newCheckpointId);
+    const newPayload = createImportedCheckpointPayload(
+      bodyId,
+      newCheckpointId,
+      2
+    );
+    const currentSources = createImportedBodyExactMetadataSources(
+      readFeatures(engine),
+      [oldPayload, newPayload]
+    );
+    expect(currentSources).toEqual([
+      {
+        id: bodyId,
+        kind: "importedBody",
+        checkpointId: newCheckpointId,
+        brepBytes: newPayload.brepBytes
+      }
+    ]);
+    const currentSource = currentSources[0]!;
+
+    const preReconcileEntry = getCurrentDerivedExactMetadataEntryForBody(
+      oldReady,
+      bodyId,
+      currentSource
+    );
+    expect(preReconcileEntry).toBeUndefined();
+    const topology = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.topology", bodyId }
+    });
+    if (!topology.ok || topology.query !== "body.topology") {
+      throw new Error("Expected current imported topology.");
+    }
+    expect(
+      createBodyTopologyDerivedExactMetadataSnapshot(
+        preReconcileEntry,
+        topology.topology.sourceIdentity.signature
+      )
+    ).toBeUndefined();
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.massProperties", bodyId }
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "MASS_PROPERTIES_UNAVAILABLE" }
+    });
+
+    service.reconcile(currentSources);
+    await flushPromises();
+    const currentEntry = getCurrentDerivedExactMetadataEntryForBody(
+      service.getSnapshot(),
+      bodyId,
+      currentSource
+    );
+    expect(currentEntry).toMatchObject({
+      status: "ready",
+      cacheKey: createDerivedExactMetadataCacheKey(currentSource)
+    });
+    const currentEvidence = createBodyTopologyDerivedExactMetadataSnapshot(
+      currentEntry,
+      topology.topology.sourceIdentity.signature
+    );
+    expect(currentEvidence).toMatchObject({
+      bodyId,
+      status: "ready",
+      metadata: { volume: 10 }
+    });
+    if (!currentEvidence) throw new Error("Expected current exact evidence.");
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.massProperties",
+          bodyId,
+          derivedExactMetadata: currentEvidence
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      massProperties: { bodyId, volume: 10 }
+    });
+    expect(runtime.exactInputs.map((input) => input.source.kind)).toEqual([
+      "importedBody",
+      "importedBody"
+    ]);
   });
 
   it("builds exact metadata inputs for loft sources", () => {
@@ -1843,6 +1966,81 @@ function createFilletSource(id: string): DerivedFilletGeometrySource {
     target: chamfer.target,
     edgeStableId: "generated:edge:body_rect_1:longitudinal:uMax:vMax",
     radius: 0.2
+  };
+}
+
+function importResolvedBody(
+  engine: CadEngine,
+  featureId: string,
+  bodyId: string,
+  checkpointId: string
+): void {
+  const response = engine.executeBatch({
+    version: "cadops.v1",
+    mode: "commit",
+    ops: [
+      {
+        op: "project.importStep",
+        sourceFileName: `${checkpointId}.step`,
+        sourceFormat: "step",
+        payloadRef: {
+          kind: "transient",
+          payloadId: `payload_${checkpointId}`,
+          byteLength: 256,
+          sha256:
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        resolvedBodies: [
+          {
+            featureId,
+            bodyId,
+            checkpointId,
+            name: "Imported body",
+            sourceIdentity: {
+              algorithm: "partbench-source-v1",
+              sha256:
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            },
+            checkpointStatus: "active",
+            healingApplied: false
+          }
+        ]
+      }
+    ]
+  });
+  if (!response.ok) throw new Error(response.error.message);
+}
+
+function readFeatures(engine: CadEngine): readonly CadFeatureSummary[] {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.structure" }
+  });
+  if (!response.ok || response.query !== "project.structure") {
+    throw new Error("Expected project structure.");
+  }
+  return response.features;
+}
+
+function createImportedCheckpointPayload(
+  bodyId: string,
+  checkpointId: string,
+  marker: number
+): WcadTopologyCheckpointPayloadInput {
+  return {
+    bodyId,
+    checkpointId,
+    kernel: {
+      boundary: "geometry-kernel",
+      snapshotAlgorithm: "partbench-derived-topology-snapshot-v1"
+    },
+    tolerance: {
+      linearTolerance: 0.001,
+      angularToleranceDegrees: 0.01
+    },
+    brepBytes: new Uint8Array([marker, marker, marker]),
+    topologyBytes: new Uint8Array([marker]),
+    signatureBytes: new Uint8Array([marker])
   };
 }
 

@@ -1,4 +1,8 @@
 import type {
+  CadFeatureSummary,
+  WcadTopologyCheckpointPayloadInput
+} from "@web-cad/cad-core";
+import type {
   CadAxisAlignedBounds,
   CadBodyDerivedExactMetadataSnapshot,
   CadBodyExactMetadataDiagnostic,
@@ -59,6 +63,43 @@ export interface DerivedImportedBodyExactMetadataSource {
   readonly kind: "importedBody";
   readonly checkpointId: string;
   readonly brepBytes: Uint8Array;
+}
+
+export function createImportedBodyExactMetadataSources(
+  features: readonly CadFeatureSummary[],
+  checkpointPayloads: readonly WcadTopologyCheckpointPayloadInput[]
+): readonly DerivedImportedBodyExactMetadataSource[] {
+  const payloadsByBodyId = new Map<
+    string,
+    Map<string, WcadTopologyCheckpointPayloadInput>
+  >();
+  for (const payload of checkpointPayloads) {
+    const payloadsByCheckpointId =
+      payloadsByBodyId.get(payload.bodyId) ?? new Map();
+    payloadsByCheckpointId.set(payload.checkpointId, payload);
+    payloadsByBodyId.set(payload.bodyId, payloadsByCheckpointId);
+  }
+
+  const sources: DerivedImportedBodyExactMetadataSource[] = [];
+  const seenBodyIds = new Set<string>();
+  for (const feature of features) {
+    if (feature.kind !== "importedBody" || seenBodyIds.has(feature.bodyId)) {
+      continue;
+    }
+    seenBodyIds.add(feature.bodyId);
+    const payload = payloadsByBodyId
+      .get(feature.bodyId)
+      ?.get(feature.checkpointId);
+    if (payload) {
+      sources.push({
+        id: feature.bodyId,
+        kind: "importedBody",
+        checkpointId: feature.checkpointId,
+        brepBytes: payload.brepBytes
+      });
+    }
+  }
+  return sources;
 }
 
 type DerivedExactMetadataCandidate =
