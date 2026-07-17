@@ -6,7 +6,6 @@ import {
   WCAD_MANIFEST_ENTRY_PATH,
   WCAD_PACKAGE_VERSION,
   WCAD_SOURCE_IDENTITY_ALGORITHM,
-  SKETCH_GEOMETRY_POLICY,
   type WcadManifestV1,
   type WcadManifestV2,
   type BodyImportedBodyStatusQueryResponse,
@@ -107,6 +106,9 @@ import type {
   SketchAttachmentSnapshot,
   SketchPlane,
   SketchPointTarget,
+  SketchPointTargetV21,
+  SketchCurveConstraintTargetV21,
+  SketchDimensionTargetV21,
   SketchSemanticDiff,
   SketchSnapshot,
   SphereDimensions,
@@ -165,6 +167,28 @@ import {
   decodeCanonicalCbor,
   encodeCanonicalCbor
 } from "./canonicalCbor";
+import { SKETCH_GEOMETRY_POLICY } from "./sketchGeometryPolicy";
+export {
+  SKETCH_GEOMETRY_POLICY,
+  type SketchGeometryPolicy
+} from "./sketchGeometryPolicy";
+export {
+  canonicalizeSketchArcDefinition,
+  createCanonicalSketchArcEntity,
+  normalizeSketchArcStartAngleDegrees,
+  type CanonicalSketchArcGeometry,
+  type SketchArcValidationIssue,
+  type SketchArcValidationIssueCode,
+  type SketchArcValidationResult
+} from "./sketchArcMath";
+export {
+  validateProfileInputSource,
+  validateSketchPathRefSource,
+  validateSketchProfileRefSource,
+  type V21SourceValidationIssue,
+  type V21SourceValidationIssueCode,
+  type V21SourceValidationResult
+} from "./v21SourceValidation";
 import {
   createTransactionHistoryEntries,
   parseTransactionNumber,
@@ -977,8 +1001,8 @@ function documentHasV21SourceRecords(
     sketches.some((sketch) =>
       [...sketch.entities.values()].some(
         (entity) =>
-          (isRecord(entity) &&
-            (entity.kind === "arc" || entity.construction === true))
+          isRecord(entity) &&
+          (entity.kind === "arc" || entity.construction === true)
       )
     )
   ) {
@@ -1043,7 +1067,7 @@ function findSketchEntityKind(
   sketches: readonly (Sketch | SketchSnapshot)[],
   sketchId: unknown,
   entityId: string
-): SketchEntityKind | undefined {
+): SketchEntityKindV21 | undefined {
   if (typeof sketchId !== "string") {
     return undefined;
   }
@@ -1054,7 +1078,9 @@ function findSketchEntityKind(
   const entities = Array.isArray(sketch.entities)
     ? sketch.entities
     : [...sketch.entities.values()];
-  return entities.find((entity) => entity.id === entityId)?.kind;
+  return entities.find((entity) => entity.id === entityId)?.kind as
+    | SketchEntityKindV21
+    | undefined;
 }
 
 function documentHasV20SourceRecords(
@@ -3322,7 +3348,9 @@ function serializeFeatureForLegacySchema(
     }
     const profile = stored.profile;
     if (profile.kind !== "entity" || typeof profile.entityId !== "string") {
-      throw new Error("V21 wire profiles cannot be exported to a lower schema.");
+      throw new Error(
+        "V21 wire profiles cannot be exported to a lower schema."
+      );
     }
     const { profile: _profile, ...base } = stored;
     void _profile;
@@ -3706,18 +3734,18 @@ async function exportCadProjectToWcadV2(
           ]
         }
       : project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V20
-      ? {
-          diagnostics: [
-            {
-              code: "SCHEMA_UPGRADED_TO_V20" as const,
-              severity: "info" as const,
-              message:
-                "Pattern and mirror source records were saved in the durable V20 union-and-instance shape.",
-              schemaVersion: CAD_PROJECT_FORMAT_VERSION_V20
-            }
-          ]
-        }
-      : {})
+        ? {
+            diagnostics: [
+              {
+                code: "SCHEMA_UPGRADED_TO_V20" as const,
+                severity: "info" as const,
+                message:
+                  "Pattern and mirror source records were saved in the durable V20 union-and-instance shape.",
+                schemaVersion: CAD_PROJECT_FORMAT_VERSION_V20
+              }
+            ]
+          }
+        : {})
   };
 }
 
@@ -5239,9 +5267,11 @@ type MutableSketchConstraintSemanticDiff = {
   deleted: CadSketchConstraintRef[];
 };
 
+type SketchEntityKindV21 = SketchEntityKind | "arc";
+
 type SketchEntityImportRef = {
   readonly sketchId: SketchId;
-  readonly kind: SketchEntityKind;
+  readonly kind: SketchEntityKindV21;
   readonly entity: unknown;
 };
 
@@ -8817,9 +8847,11 @@ function assertSketchDimensionTargetAvailable(
   });
 }
 
-function getSketchDimensionTargetKey(
-  dimension: Pick<SketchDimension, "sketchId" | "entityId" | "target">
-): string {
+function getSketchDimensionTargetKey(dimension: {
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly target: SketchDimensionTargetV21;
+}): string {
   return [
     dimension.sketchId,
     dimension.entityId,
@@ -11160,9 +11192,14 @@ function addSketchEntity(
   }
 
   const entities = new Map(sketch.entities);
-  entities.set(entity.id, entity);
+  const normalizedEntity = {
+    ...entity,
+    construction:
+      (entity as unknown as Record<string, unknown>).construction === true
+  } as unknown as SketchEntity;
+  entities.set(entity.id, normalizedEntity);
   sketches.set(sketch.id, { ...sketch, entities });
-  pushSketchEntityCreated(diff, sketchEntityRef(sketch.id, entity));
+  pushSketchEntityCreated(diff, sketchEntityRef(sketch.id, normalizedEntity));
 }
 
 function throwSketchEntityNotFound(
@@ -20015,10 +20052,7 @@ function cloneNamedReferenceSnapshot(
 
 function cloneSketchEntity(entity: SketchEntitySnapshot): SketchEntity {
   const stored = entity as unknown as Record<string, unknown>;
-  const construction =
-    typeof stored.construction === "boolean"
-      ? { construction: stored.construction }
-      : {};
+  const construction = { construction: stored.construction === true };
   if (stored.kind === "arc") {
     return {
       ...stored,
@@ -23073,7 +23107,8 @@ function sketchEntitiesEqual(left: SketchEntity, right: SketchEntity): boolean {
   const leftStored = left as unknown as Record<string, unknown>;
   const rightStored = right as unknown as Record<string, unknown>;
   if (
-    (leftStored.construction === true) !== (rightStored.construction === true)
+    (leftStored.construction === true) !==
+    (rightStored.construction === true)
   ) {
     return false;
   }
@@ -23154,9 +23189,7 @@ function featuresEqual(left: Feature, right: Feature): boolean {
     left.kind === "loft"
   ) {
     return stableJsonEqual(
-      serializeFeatureForV21(
-        left as unknown as FeatureSnapshot
-      ),
+      serializeFeatureForV21(left as unknown as FeatureSnapshot),
       serializeFeatureForV21(right as unknown as FeatureSnapshot)
     );
   }
@@ -23612,10 +23645,7 @@ function normalizeSketchConstraintV21Source(
   constraint: SketchConstraintSnapshot
 ): SketchConstraintSnapshot {
   const stored = constraint as unknown as Record<string, unknown>;
-  if (
-    constraint.kind !== "concentric" &&
-    constraint.kind !== "equalRadius"
-  ) {
+  if (constraint.kind !== "concentric" && constraint.kind !== "equalRadius") {
     return cloneSketchConstraintSnapshot(constraint);
   }
   if (isRecord(stored.primaryTarget) && isRecord(stored.secondaryTarget)) {
@@ -24445,7 +24475,8 @@ function validateCadDocumentSnapshot(
             seenSketchIds,
             sketchEntityRefs,
             seenParameterIds,
-            parameterValues
+            parameterValues,
+            isV21Schema
           )
         );
       }
@@ -25010,7 +25041,8 @@ function validateSketchDimensionSnapshot(
   seenSketchIds: ReadonlySet<string>,
   sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>,
   seenParameterIds: ReadonlySet<string>,
-  parameterValues: ReadonlyMap<ParameterId, number>
+  parameterValues: ReadonlyMap<ParameterId, number>,
+  isV21Schema: boolean
 ): number {
   let maxGeneratedSketchDimensionNumber = 0;
   let entityRef: SketchEntityImportRef | undefined;
@@ -25101,7 +25133,8 @@ function validateSketchDimensionSnapshot(
         value.target,
         `${path}.target`,
         entityRef.kind,
-        issues
+        issues,
+        isV21Schema
       );
     }
   }
@@ -25165,8 +25198,9 @@ function validateSketchDimensionSnapshot(
 function validateSketchDimensionTargetShape(
   value: unknown,
   path: string,
-  entityKind: SketchEntityKind,
-  issues: CadProjectImportIssue[]
+  entityKind: SketchEntityKindV21,
+  issues: CadProjectImportIssue[],
+  isV21Schema: boolean
 ): boolean {
   if (!isRecord(value)) {
     addProjectIssue(
@@ -25185,6 +25219,10 @@ function validateSketchDimensionTargetShape(
     (entityKind === "circle" &&
       value.entityKind === "circle" &&
       value.role === "radius") ||
+    (isV21Schema &&
+      entityKind === "arc" &&
+      value.entityKind === "arc" &&
+      value.role === "radius") ||
     (entityKind === "line" &&
       value.entityKind === "line" &&
       value.role === "length");
@@ -25194,7 +25232,7 @@ function validateSketchDimensionTargetShape(
       issues,
       "INVALID_SKETCH_DIMENSION",
       path,
-      "Sketch dimension target must match a supported rectangle width/height, circle radius, or line length role."
+      "Sketch dimension target must match a supported rectangle width/height, circle/arc radius, or line length role."
     );
   }
 
@@ -25204,8 +25242,9 @@ function validateSketchDimensionTargetShape(
 function validateSketchPointTargetSnapshot(
   value: unknown,
   path: string,
-  issues: CadProjectImportIssue[]
-): SketchPointTarget | undefined {
+  issues: CadProjectImportIssue[],
+  isV21Schema: boolean
+): SketchPointTargetV21 | undefined {
   if (!isRecord(value)) {
     addProjectIssue(
       issues,
@@ -25234,11 +25273,41 @@ function validateSketchPointTargetSnapshot(
     );
   }
 
+  if (
+    isV21Schema &&
+    value.entityKind !== undefined &&
+    value.entityKind !== "arc"
+  ) {
+    addProjectIssue(
+      issues,
+      "SCHEMA_V21_SOURCE_INVALID",
+      `${path}.entityKind`,
+      "Only arc point targets store entityKind in V21."
+    );
+  }
+  if (value.entityKind === "arc" && value.role === "position") {
+    addProjectIssue(
+      issues,
+      "SCHEMA_V21_SOURCE_INVALID",
+      `${path}.role`,
+      "V21 arc point target role must be center, start, or end."
+    );
+  }
+  if (!isV21Schema && value.entityKind !== undefined) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_CONSTRAINT",
+      `${path}.entityKind`,
+      "Arc point targets require web-cad.project.v21."
+    );
+  }
+
   return typeof value.entityId === "string" &&
     isSketchPointTargetRole(value.role)
     ? {
         entityId: value.entityId,
-        role: value.role
+        role: value.role,
+        ...(value.entityKind === "arc" ? { entityKind: "arc" as const } : {})
       }
     : undefined;
 }
@@ -25247,8 +25316,9 @@ function validateSketchCurveConstraintTargetSnapshot(
   value: unknown,
   path: string,
   issues: CadProjectImportIssue[],
-  label: string
-): SketchCurveConstraintTarget | undefined {
+  label: string,
+  isV21Schema: boolean
+): SketchCurveConstraintTargetV21 | undefined {
   if (!isRecord(value)) {
     addProjectIssue(
       issues,
@@ -25268,17 +25338,23 @@ function validateSketchCurveConstraintTargetSnapshot(
     );
   }
 
-  if (value.entityKind !== "line" && value.entityKind !== "circle") {
+  if (
+    value.entityKind !== "line" &&
+    value.entityKind !== "circle" &&
+    !(isV21Schema && value.entityKind === "arc")
+  ) {
     addProjectIssue(
       issues,
       "INVALID_SKETCH_CONSTRAINT",
       `${path}.entityKind`,
-      `${label} sketch constraint target entityKind must be line or circle.`
+      `${label} sketch constraint target entityKind must be line, circle, or V21 arc.`
     );
   }
 
   return typeof value.entityId === "string" &&
-    (value.entityKind === "line" || value.entityKind === "circle")
+    (value.entityKind === "line" ||
+      value.entityKind === "circle" ||
+      (isV21Schema && value.entityKind === "arc"))
     ? {
         entityId: value.entityId,
         entityKind: value.entityKind
@@ -25377,7 +25453,7 @@ function validateSketchEntityReferenceForImport(args: {
   readonly path: string;
   readonly label: string;
   readonly sketchId: unknown;
-  readonly expectedKind: SketchEntityKind;
+  readonly expectedKind: SketchEntityKindV21;
   readonly sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>;
   readonly issues: CadProjectImportIssue[];
 }): void {
@@ -25427,7 +25503,7 @@ function validateSketchEntityReferenceForImport(args: {
 }
 
 function validateSketchCurveTargetEntityForImport(args: {
-  readonly target: SketchCurveConstraintTarget | undefined;
+  readonly target: SketchCurveConstraintTargetV21 | undefined;
   readonly path: string;
   readonly label: string;
   readonly sketchId: unknown;
@@ -25452,21 +25528,27 @@ function validateSketchCurveTargetEntityForImport(args: {
 }
 
 function isSketchPointTargetSupportedForImport(
-  entityKind: SketchEntityKind,
-  target: SketchPointTarget
+  entityKind: SketchEntityKindV21,
+  target: SketchPointTargetV21
 ): boolean {
   return (
     (entityKind === "point" && target.role === "position") ||
     (entityKind === "line" &&
       (target.role === "start" || target.role === "end")) ||
     ((entityKind === "rectangle" || entityKind === "circle") &&
-      target.role === "center")
+      target.role === "center") ||
+    (entityKind === "arc" &&
+      (target.role === "center" ||
+        target.role === "start" ||
+        target.role === "end") &&
+      "entityKind" in target &&
+      target.entityKind === "arc")
   );
 }
 
 function isMidpointSketchPointTargetSupportedForImport(
-  entityKind: SketchEntityKind,
-  target: SketchPointTarget
+  entityKind: SketchEntityKindV21,
+  target: SketchPointTargetV21
 ): boolean {
   return (
     (entityKind === "point" && target.role === "position") ||
@@ -25477,7 +25559,7 @@ function isMidpointSketchPointTargetSupportedForImport(
 
 function getImportSketchPointTargetCoordinate(
   entity: Record<string, unknown>,
-  target: SketchPointTarget
+  target: SketchPointTargetV21
 ): Vec2 | undefined {
   if (target.role === "position" && isVec2(entity.point)) {
     return entity.point;
@@ -25524,17 +25606,17 @@ function validateSketchConstraintSnapshot(
   let maxGeneratedSketchConstraintNumber = 0;
   let entityRef: SketchEntityImportRef | undefined;
   let entityId: string | undefined;
-  let target: SketchPointTarget | undefined;
-  let primaryTarget: SketchPointTarget | undefined;
-  let secondaryTarget: SketchPointTarget | undefined;
+  let target: SketchPointTargetV21 | undefined;
+  let primaryTarget: SketchPointTargetV21 | undefined;
+  let secondaryTarget: SketchPointTargetV21 | undefined;
   let lineEntityRef: SketchEntityImportRef | undefined;
   let lineEntityId: string | undefined;
   let primaryLineEntityId: string | undefined;
   let secondaryLineEntityId: string | undefined;
   let primaryLineEntityRef: SketchEntityImportRef | undefined;
   let secondaryLineEntityRef: SketchEntityImportRef | undefined;
-  let primaryCurveTarget: SketchCurveConstraintTarget | undefined;
-  let secondaryCurveTarget: SketchCurveConstraintTarget | undefined;
+  let primaryCurveTarget: SketchCurveConstraintTargetV21 | undefined;
+  let secondaryCurveTarget: SketchCurveConstraintTargetV21 | undefined;
   let primaryCircleEntityId: string | undefined;
   let secondaryCircleEntityId: string | undefined;
   let symmetryLineEntityId: string | undefined;
@@ -25615,7 +25697,8 @@ function validateSketchConstraintSnapshot(
     target = validateSketchPointTargetSnapshot(
       value.target,
       `${path}.target`,
-      issues
+      issues,
+      isV21Schema
     );
     entityId = target?.entityId;
 
@@ -25653,12 +25736,14 @@ function validateSketchConstraintSnapshot(
     primaryTarget = validateSketchPointTargetSnapshot(
       value.primaryTarget,
       `${path}.primaryTarget`,
-      issues
+      issues,
+      isV21Schema
     );
     secondaryTarget = validateSketchPointTargetSnapshot(
       value.secondaryTarget,
       `${path}.secondaryTarget`,
-      issues
+      issues,
+      isV21Schema
     );
     entityId = primaryTarget?.entityId;
 
@@ -25714,7 +25799,8 @@ function validateSketchConstraintSnapshot(
     target = validateSketchPointTargetSnapshot(
       value.target,
       `${path}.target`,
-      issues
+      issues,
+      isV21Schema
     );
     entityId = lineEntityId;
 
@@ -25819,13 +25905,15 @@ function validateSketchConstraintSnapshot(
         value.primaryTarget,
         `${path}.primaryTarget`,
         issues,
-        label
+        label,
+        isV21Schema
       );
       secondaryCurveTarget = validateSketchCurveConstraintTargetSnapshot(
         value.secondaryTarget,
         `${path}.secondaryTarget`,
         issues,
-        label
+        label,
+        isV21Schema
       );
       entityId = secondaryCurveTarget?.entityId;
 
@@ -25924,7 +26012,7 @@ function validateSketchConstraintSnapshot(
           issues,
           "INVALID_SKETCH_CONSTRAINT",
           `${path}.entityId`,
-        `${label} sketch constraint entityId must match its secondary target.`
+          `${label} sketch constraint entityId must match its secondary target.`
         );
       }
 
@@ -26001,12 +26089,14 @@ function validateSketchConstraintSnapshot(
       primaryTarget = validateSketchPointTargetSnapshot(
         value.primaryTarget,
         `${path}.primaryTarget`,
-        issues
+        issues,
+        isV21Schema
       );
       secondaryTarget = validateSketchPointTargetSnapshot(
         value.secondaryTarget,
         `${path}.secondaryTarget`,
-        issues
+        issues,
+        isV21Schema
       );
       symmetryLineEntityId = validateStringIdField(
         value.symmetryLineEntityId,
@@ -26316,8 +26406,7 @@ function validateSketchConstraintSnapshot(
 
   if (value.kind === "concentric" || value.kind === "equalRadius") {
     if (!isV21Schema) {
-      const label =
-        value.kind === "concentric" ? "Concentric" : "Equal radius";
+      const label = value.kind === "concentric" ? "Concentric" : "Equal radius";
       validateSketchEntityReferenceForImport({
         entityId: primaryCircleEntityId,
         path: `${path}.primaryCircleEntityId`,
@@ -26858,7 +26947,7 @@ function validateSketchDimensionValueSourceSnapshot(
 
 function getImportedSketchDimensionTargetValue(
   entity: unknown,
-  target: SketchDimensionTarget
+  target: SketchDimensionTargetV21
 ): number | undefined {
   if (!isRecord(entity)) {
     return undefined;
@@ -26869,7 +26958,7 @@ function getImportedSketchDimensionTargetValue(
     return typeof value === "number" ? value : undefined;
   }
 
-  if (target.entityKind === "circle") {
+  if (target.entityKind === "circle" || target.entityKind === "arc") {
     return typeof entity.radius === "number" ? entity.radius : undefined;
   }
 
@@ -27708,6 +27797,21 @@ function validateSketchEntitySnapshot(
       issues
     );
   } else if (value.kind === "arc" && isV21Schema) {
+    validateV21ExactObjectKeys(
+      value,
+      [
+        "id",
+        "kind",
+        "center",
+        "radius",
+        "startAngleDegrees",
+        "sweepAngleDegrees",
+        "construction"
+      ],
+      path,
+      issues,
+      "V21 arc"
+    );
     validateVec2Field(value.center, `${path}.center`, issues);
     if (
       typeof value.radius !== "number" ||
@@ -28474,12 +28578,7 @@ function validateV21ProfileConsumerFeatureSnapshot(
 
   const legacyFields =
     value.kind === "sweep"
-      ? [
-          "profileSketchId",
-          "profileEntityId",
-          "pathSketchId",
-          "pathEntityIds"
-        ]
+      ? ["profileSketchId", "profileEntityId", "pathSketchId", "pathEntityIds"]
       : ["sketchId", "entityId", "profileKind"];
   for (const field of legacyFields) {
     if (value[field] !== undefined) {
@@ -28559,7 +28658,13 @@ function validateV21ProfileConsumerFeatureSnapshot(
 
   if (value.kind === "revolve") {
     validateV21RevolveFields(value, path, profileSketchId, issues);
-    validateV21FeatureBodyId(value.bodyId, path, issues, seenBodyIds, "Revolve");
+    validateV21FeatureBodyId(
+      value.bodyId,
+      path,
+      issues,
+      seenBodyIds,
+      "Revolve"
+    );
     return;
   }
 
@@ -28626,6 +28731,13 @@ function validateV21ProfileRef(
     );
   }
   if (value.kind === "entity") {
+    validateV21ExactObjectKeys(
+      value,
+      ["kind", "sketchId", "entityId"],
+      path,
+      issues,
+      "V21 entity profile reference"
+    );
     validateV21ReferencedEntity(
       value.entityId,
       `${path}.entityId`,
@@ -28637,6 +28749,13 @@ function validateV21ProfileRef(
     );
     return sketchId;
   }
+  validateV21ExactObjectKeys(
+    value,
+    ["kind", "sketchId", "segments"],
+    path,
+    issues,
+    "V21 wire profile reference"
+  );
   if (!allowWire) {
     addProjectIssue(
       issues,
@@ -28655,6 +28774,26 @@ function validateV21ProfileRef(
     false
   );
   return sketchId;
+}
+
+function validateV21ExactObjectKeys(
+  value: Record<string, unknown>,
+  allowedKeys: readonly string[],
+  path: string,
+  issues: CadProjectImportIssue[],
+  label: string
+): void {
+  const allowed = new Set(allowedKeys);
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) {
+      addProjectIssue(
+        issues,
+        "SCHEMA_V21_SOURCE_INVALID",
+        `${path}.${key}`,
+        `${label} contains a non-canonical source field.`
+      );
+    }
+  }
 }
 
 function validateV21PathRef(
@@ -28684,6 +28823,13 @@ function validateV21PathRef(
     );
   }
   if (value.kind === "entity") {
+    validateV21ExactObjectKeys(
+      value,
+      ["kind", "sketchId", "entityId", "orientation"],
+      path,
+      issues,
+      "V21 entity path reference"
+    );
     validateV21Orientation(value.orientation, `${path}.orientation`, issues);
     validateV21ReferencedEntity(
       value.entityId,
@@ -28696,6 +28842,13 @@ function validateV21PathRef(
     );
     return;
   }
+  validateV21ExactObjectKeys(
+    value,
+    ["kind", "sketchId", "segments"],
+    path,
+    issues,
+    "V21 chain path reference"
+  );
   validateV21OrientedSegments(
     value.segments,
     `${path}.segments`,
@@ -28711,7 +28864,7 @@ function validateV21OrientedSegments(
   value: unknown,
   path: string,
   sketchId: SketchId | undefined,
-  supportedKinds: readonly SketchEntityKind[],
+  supportedKinds: readonly SketchEntityKindV21[],
   issues: CadProjectImportIssue[],
   sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>,
   allowConstruction: boolean
@@ -28737,6 +28890,13 @@ function validateV21OrientedSegments(
       );
       return;
     }
+    validateV21ExactObjectKeys(
+      segment,
+      ["entityId", "orientation"],
+      segmentPath,
+      issues,
+      "V21 oriented segment"
+    );
     validateV21Orientation(
       segment.orientation,
       `${segmentPath}.orientation`,
@@ -28769,7 +28929,7 @@ function validateV21ReferencedEntity(
   entityIdValue: unknown,
   path: string,
   sketchId: SketchId | undefined,
-  supportedKinds: readonly SketchEntityKind[],
+  supportedKinds: readonly SketchEntityKindV21[],
   issues: CadProjectImportIssue[],
   sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>,
   allowConstruction: boolean
@@ -28905,7 +29065,8 @@ function validateV21TargetFields(
   path: string,
   issues: CadProjectImportIssue[]
 ): void {
-  const needsTarget = value.operationMode === "add" || value.operationMode === "cut";
+  const needsTarget =
+    value.operationMode === "add" || value.operationMode === "cut";
   if (needsTarget) {
     if (typeof value.targetBodyId !== "string" || value.targetBodyId === "") {
       addProjectIssue(
@@ -30146,7 +30307,7 @@ function validateSweepSnapshotEntityRef(
   sketchId: unknown,
   entityId: unknown,
   path: string,
-  supportedKinds: readonly SketchEntityKind[],
+  supportedKinds: readonly SketchEntityKindV21[],
   label: string,
   issues: CadProjectImportIssue[],
   seenSketchIds: ReadonlySet<string>,
@@ -32141,7 +32302,7 @@ function isSketchPlane(value: unknown): value is SketchPlane {
   return value === "XY" || value === "XZ" || value === "YZ";
 }
 
-function isSketchEntityKind(value: unknown): value is SketchEntityKind {
+function isSketchEntityKind(value: unknown): value is SketchEntityKindV21 {
   return (
     value === "point" ||
     value === "line" ||
@@ -32153,12 +32314,13 @@ function isSketchEntityKind(value: unknown): value is SketchEntityKind {
 
 function isSketchDimensionTarget(
   value: unknown
-): value is SketchDimensionTarget {
+): value is SketchDimensionTargetV21 {
   return (
     isRecord(value) &&
     ((value.entityKind === "rectangle" &&
       (value.role === "width" || value.role === "height")) ||
       (value.entityKind === "circle" && value.role === "radius") ||
+      (value.entityKind === "arc" && value.role === "radius") ||
       (value.entityKind === "line" && value.role === "length"))
   );
 }

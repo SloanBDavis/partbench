@@ -96,8 +96,9 @@ describe("V17 V21 storage and migration", () => {
 
     const parsed = parseCadProjectJson(JSON.stringify(v20));
     const restored = importCadProject(parsed);
-    expect(restored.getDocument().sketches.get("profile")?.entities.get("circle"))
-      .not.toHaveProperty("construction");
+    expect(
+      restored.getDocument().sketches.get("profile")?.entities.get("circle")
+    ).toMatchObject({ construction: false });
 
     const saved = exportCadProject(restored);
     expect(saved.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V20);
@@ -176,6 +177,78 @@ describe("V17 V21 storage and migration", () => {
         })
       );
     }
+
+    const extraFields = createV21ArcProject() as unknown as {
+      document: {
+        sketches: { entities: Record<string, unknown>[] }[];
+        features: Record<string, unknown>[];
+      };
+    };
+    extraFields.document.sketches[1]!.entities[1]!.end = [1, 2];
+    (
+      extraFields.document.features[0]!.path as Record<string, unknown>
+    ).cachedLength = 5;
+    expect(() => parseCadProjectJson(JSON.stringify(extraFields))).toThrowError(
+      expect.objectContaining({
+        issues: expect.arrayContaining([
+          expect.objectContaining({
+            path: "$.document.sketches[1].entities[1].end"
+          }),
+          expect.objectContaining({
+            path: "$.document.features[0].path.cachedLength"
+          })
+        ])
+      })
+    );
+  });
+
+  it("accepts V21 arc dimensions and normalized arc constraint targets", () => {
+    const source = createV21ArcProject() as any;
+    source.document.sketchDimensions = [
+      {
+        id: "arc_dimension",
+        name: "Arc radius",
+        sketchId: "path",
+        entityId: "arc",
+        target: { entityKind: "arc", role: "radius" },
+        valueSource: { type: "literal", value: 5 }
+      }
+    ];
+    source.document.sketchConstraints = [
+      {
+        id: "arc_fixed",
+        name: "Arc center fixed",
+        sketchId: "path",
+        entityId: "arc",
+        kind: "fixed",
+        target: { entityId: "arc", entityKind: "arc", role: "center" },
+        coordinate: [0, 0]
+      },
+      {
+        id: "arc_coincident",
+        name: "Arc and circle centers",
+        sketchId: "path",
+        entityId: "arc",
+        kind: "coincident",
+        primaryTarget: {
+          entityId: "arc",
+          entityKind: "arc",
+          role: "center"
+        },
+        secondaryTarget: { entityId: "line", role: "start" }
+      },
+      {
+        id: "arc_tangent",
+        name: "Arc tangent",
+        sketchId: "path",
+        entityId: "line",
+        kind: "tangent",
+        primaryTarget: { entityId: "arc", entityKind: "arc" },
+        secondaryTarget: { entityId: "line", entityKind: "line" }
+      }
+    ];
+
+    expect(() => parseCadProjectJson(JSON.stringify(source))).not.toThrow();
   });
 
   it("includes construction, sweep sign, segment order, and orientation in source identity", () => {
@@ -215,8 +288,9 @@ describe("V17 V21 storage and migration", () => {
       return project;
     };
     const savedVersion = (project: CadProject) =>
-      exportCadProject(importCadProject(parseCadProjectJson(JSON.stringify(project))))
-        .schemaVersion;
+      exportCadProject(
+        importCadProject(parseCadProjectJson(JSON.stringify(project)))
+      ).schemaVersion;
 
     expect(savedVersion(createForwardLineSource())).toBe(
       CAD_PROJECT_FORMAT_VERSION_V20

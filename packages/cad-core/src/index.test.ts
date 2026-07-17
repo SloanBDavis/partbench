@@ -5936,7 +5936,15 @@ describe("cad-core", () => {
           id: "sketch_1",
           name: "Plan",
           plane: "YZ",
-          entities: [{ id: "point_1", kind: "point", point: [4, 5] }]
+          attachment: undefined,
+          entities: [
+            {
+              id: "point_1",
+              kind: "point",
+              point: [4, 5],
+              construction: false
+            }
+          ]
         }
       ]
     });
@@ -5948,7 +5956,15 @@ describe("cad-core", () => {
         id: "sketch_1",
         name: "Plan",
         plane: "YZ",
-        entities: [{ id: "point_1", kind: "point", point: [4, 5] }]
+        attachment: undefined,
+        entities: [
+          {
+            id: "point_1",
+            kind: "point",
+            point: [4, 5],
+            construction: false
+          }
+        ]
       }
     });
     expect(missingResponse).toEqual({
@@ -13876,7 +13892,8 @@ describe("cad-core", () => {
       kind: "rectangle",
       center: [1, 2],
       width: 6,
-      height: 5
+      height: 5,
+      construction: false
     });
     expect(result.transaction.diff.sketches).toMatchObject({
       entitiesModified: [
@@ -13981,7 +13998,8 @@ describe("cad-core", () => {
       id: "circle_1",
       kind: "circle",
       center: [2, 3],
-      radius: 5
+      radius: 5,
+      construction: false
     });
     expect(restoredFeature).toMatchObject({
       id: "feat_circle_1",
@@ -21303,7 +21321,8 @@ describe("cad-core", () => {
       kind: "rectangle",
       center: [0, 0],
       width: 3,
-      height: 2
+      height: 2,
+      construction: false
     });
   });
 
@@ -23200,7 +23219,8 @@ describe("cad-core", () => {
       kind: "rectangle",
       center: [1, 2],
       width: 3,
-      height: 4
+      height: 4,
+      construction: false
     });
     expect(convertedFeature.depth).toBe(5);
     expect(restored.getTransactions()[1]?.diff.features).toMatchObject({
@@ -23221,7 +23241,8 @@ describe("cad-core", () => {
       kind: "rectangle",
       center: [10, 20],
       width: 30,
-      height: 40
+      height: 40,
+      construction: false
     });
     expect(undoneFeature.depth).toBe(50);
   });
