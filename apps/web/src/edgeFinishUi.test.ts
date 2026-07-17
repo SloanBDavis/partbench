@@ -21,6 +21,11 @@ import {
 } from "./edgeFinishUi";
 import type { GeneratedReferenceSelectionState } from "./generatedReferenceSelection";
 
+type PrimitiveExtrudeFeatureSummary = Extract<
+  Extract<CadFeatureSummary, { readonly kind: "extrude" }>,
+  { readonly profile?: undefined }
+>;
+
 describe("edge finish UI helpers", () => {
   it("filters selected and named generated rectangle edge references", () => {
     const edge = createEdge();
@@ -514,10 +519,8 @@ function createBody(overrides: Partial<CadBodySnapshot> = {}): CadBodySnapshot {
 
 function createExtrudeFeature(
   profileKind: "rectangle" | "circle" = "rectangle",
-  overrides: Partial<
-    Extract<CadFeatureSummary, { readonly kind: "extrude" }>
-  > = {}
-): Extract<CadFeatureSummary, { readonly kind: "extrude" }> {
+  overrides: Partial<PrimitiveExtrudeFeatureSummary> = {}
+): PrimitiveExtrudeFeatureSummary {
   return {
     id: "feat_rect",
     kind: "extrude",

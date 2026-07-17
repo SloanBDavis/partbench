@@ -15,6 +15,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { Inspector } from "./Inspector";
 
+type PrimitiveExtrudeFeatureSummary = Extract<
+  Extract<CadFeatureSummary, { readonly kind: "extrude" }>,
+  { readonly profile?: undefined }
+>;
+
 describe("Inspector", () => {
   it("renders generated references as grouped actionable cards", () => {
     const face = createFace();
@@ -1107,10 +1112,8 @@ function createBody(overrides: Partial<CadBodySnapshot> = {}): CadBodySnapshot {
 }
 
 function createFeature(
-  overrides: Partial<
-    Extract<CadFeatureSummary, { readonly kind: "extrude" }>
-  > = {}
-): Extract<CadFeatureSummary, { readonly kind: "extrude" }> {
+  overrides: Partial<PrimitiveExtrudeFeatureSummary> = {}
+): PrimitiveExtrudeFeatureSummary {
   return {
     id: "feat_rect",
     kind: "extrude",

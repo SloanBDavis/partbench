@@ -25,6 +25,11 @@ import {
 import type { ViewportSelectionDisplay } from "./viewportSelectionDisplay";
 import { createViewportVisualStateModel } from "./viewportVisualState";
 
+type PrimitiveExtrudeFeatureSummary = Extract<
+  Extract<CadFeatureSummary, { readonly kind: "extrude" }>,
+  { readonly profile?: undefined }
+>;
+
 describe("viewport contextual commands", () => {
   it("derives compact body actions from modeling readiness", () => {
     const face = createFace();
@@ -840,10 +845,8 @@ function createBody(overrides: Partial<CadBodySnapshot> = {}): CadBodySnapshot {
 }
 
 function createExtrudeFeature(
-  overrides: Partial<
-    Extract<CadFeatureSummary, { readonly kind: "extrude" }>
-  > = {}
-): Extract<CadFeatureSummary, { readonly kind: "extrude" }> {
+  overrides: Partial<PrimitiveExtrudeFeatureSummary> = {}
+): PrimitiveExtrudeFeatureSummary {
   return {
     id: "feat_rect",
     kind: "extrude",

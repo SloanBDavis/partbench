@@ -50,8 +50,14 @@ import type {
   DerivedGeometrySphereInput,
   DerivedGeometryTorusInput
 } from "./derivedGeometryRuntime";
+
 import { createDerivedGeometrySourcesFromDocument } from "./derivedGeometrySources";
 import { createGeneratedFaceReferenceKey } from "./sketchDisplayFrames";
+
+type PrimitiveExtrudeFeatureSummary = Extract<
+  Extract<CadFeatureSummary, { readonly kind: "extrude" }>,
+  { readonly profile?: undefined }
+>;
 
 type RuntimeInput =
   | DerivedGeometryBoxInput
@@ -1648,15 +1654,17 @@ describe("derivedGeometry", () => {
     ]);
 
     const baseFeature = getProjectStructureFeatures(engine).find(
-      (feature): feature is Extract<CadFeatureSummary, { kind: "extrude" }> =>
-        feature.kind === "extrude" && feature.bodyId === "body_rect_1"
+      (feature): feature is PrimitiveExtrudeFeatureSummary =>
+        feature.kind === "extrude" &&
+        feature.profile === undefined &&
+        feature.bodyId === "body_rect_1"
     );
 
     if (!baseFeature) {
       throw new Error("Expected base extrude feature.");
     }
 
-    const cut1Feature: Extract<CadFeatureSummary, { kind: "extrude" }> = {
+    const cut1Feature: PrimitiveExtrudeFeatureSummary = {
       ...baseFeature,
       id: "feat_cut_1",
       bodyId: "body_cut_1",
@@ -1671,7 +1679,7 @@ describe("derivedGeometry", () => {
         entityId: "rect_cut_1"
       }
     };
-    const cut2Feature: Extract<CadFeatureSummary, { kind: "extrude" }> = {
+    const cut2Feature: PrimitiveExtrudeFeatureSummary = {
       ...baseFeature,
       id: "feat_cut_2",
       bodyId: "body_cut_2",
@@ -3137,15 +3145,17 @@ describe("derivedGeometry", () => {
     ]);
 
     const baseFeature = getProjectStructureFeatures(engine).find(
-      (feature): feature is Extract<CadFeatureSummary, { kind: "extrude" }> =>
-        feature.kind === "extrude" && feature.bodyId === "body_rect_1"
+      (feature): feature is PrimitiveExtrudeFeatureSummary =>
+        feature.kind === "extrude" &&
+        feature.profile === undefined &&
+        feature.bodyId === "body_rect_1"
     );
 
     if (!baseFeature) {
       throw new Error("Expected base extrude feature.");
     }
 
-    const cutFeature: Extract<CadFeatureSummary, { kind: "extrude" }> = {
+    const cutFeature: PrimitiveExtrudeFeatureSummary = {
       ...baseFeature,
       id: "feat_cut_1",
       bodyId: "body_cut_1",
@@ -3283,15 +3293,17 @@ describe("derivedGeometry", () => {
     ]);
 
     const baseFeature = getProjectStructureFeatures(engine).find(
-      (feature): feature is Extract<CadFeatureSummary, { kind: "extrude" }> =>
-        feature.kind === "extrude" && feature.bodyId === "body_circle_1"
+      (feature): feature is PrimitiveExtrudeFeatureSummary =>
+        feature.kind === "extrude" &&
+        feature.profile === undefined &&
+        feature.bodyId === "body_circle_1"
     );
 
     if (!baseFeature) {
       throw new Error("Expected base circle extrude feature.");
     }
 
-    const cutFeature: Extract<CadFeatureSummary, { kind: "extrude" }> = {
+    const cutFeature: PrimitiveExtrudeFeatureSummary = {
       ...baseFeature,
       id: "feat_cut_1",
       bodyId: "body_cut_1",
