@@ -7,6 +7,7 @@ import {
   exportCadProject,
   exportCadProjectWcad,
   importCadProject,
+  parseCadProjectJson,
   resolveMirrorPlaneFrame,
   type CadProject
 } from "./index";
@@ -527,5 +528,245 @@ describe("V16 protocol and V20 persistence", () => {
         schemaVersion: CAD_PROJECT_FORMAT_VERSION_V20
       })
     );
+  });
+
+  it("imports parsed V19 linear, circular, and mirror sugar without revalidating normalized shapes", () => {
+    const engine = createSeedEngine();
+    engine.applyBatch([
+      {
+        op: "feature.linearPattern",
+        id: "feat_linear",
+        bodyId: "body_linear",
+        seedBodyId: "body_seed",
+        direction: { kind: "globalAxis", axis: "y" },
+        spacing: 4,
+        instanceCount: 3
+      },
+      {
+        op: "feature.circularPattern",
+        id: "feat_circular",
+        bodyId: "body_circular",
+        seedBodyId: "body_linear",
+        rotationAxis: { kind: "globalAxis", axis: "z" },
+        totalAngleDegrees: 270,
+        instanceCount: 3
+      },
+      {
+        op: "feature.mirror",
+        id: "feat_mirror",
+        bodyId: "body_mirror",
+        seedBodyId: "body_circular",
+        plane: { kind: "standardPlane", plane: "XZ", offset: 0 },
+        includeOriginal: true
+      }
+    ]);
+
+    const v20 = exportCadProject(engine);
+    const legacyFeatures = v20.document.features.map((feature) => {
+      if (feature.kind === "linearPattern") {
+        const {
+          direction: _direction,
+          instances: _instances,
+          ...base
+        } = feature;
+        return { ...base, axis: "y" as const };
+      }
+      if (feature.kind === "circularPattern") {
+        const { instances: _instances, ...base } = feature;
+        return { ...base, rotationAxis: "z" as const };
+      }
+      if (feature.kind === "mirror") {
+        const { plane: _plane, ...base } = feature;
+        return { ...base, mirrorPlane: "XZ" as const };
+      }
+      return feature;
+    });
+    const rawV19 = {
+      ...v20,
+      schemaVersion: CAD_PROJECT_FORMAT_VERSION_V19,
+      document: {
+        ...v20.document,
+        features: legacyFeatures,
+        topologyIdentity: createEmptyTopologyIdentitySourceSnapshot()
+      },
+      history: [],
+      redoStack: []
+    } as unknown as CadProject;
+
+    const parsed = parseCadProjectJson(JSON.stringify(rawV19));
+    expect(parsed.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V19);
+    expect(parsed.document.features).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "feat_linear",
+          direction: { kind: "globalAxis", axis: "y" },
+          instances: expect.any(Array)
+        }),
+        expect.objectContaining({
+          id: "feat_circular",
+          rotationAxis: { kind: "globalAxis", axis: "z" },
+          instances: expect.any(Array)
+        }),
+        expect.objectContaining({
+          id: "feat_mirror",
+          plane: { kind: "standardPlane", plane: "XZ", offset: 0 }
+        })
+      ])
+    );
+
+    const restored = importCadProject(parsed);
+    expect(restored.getDocument().features.get("feat_linear")).toMatchObject({
+      direction: { kind: "globalAxis", axis: "y" }
+    });
+    expect(restored.getDocument().features.get("feat_circular")).toMatchObject({
+      rotationAxis: { kind: "globalAxis", axis: "z" }
+    });
+    expect(restored.getDocument().features.get("feat_mirror")).toMatchObject({
+      plane: { kind: "standardPlane", plane: "XZ", offset: 0 }
+    });
+
+    const mixedCases = [
+      {
+        featureId: "feat_linear",
+        field: "direction",
+        value: { kind: "globalAxis", axis: "y" },
+        path: "$.document.features[1].direction"
+      },
+      {
+        featureId: "feat_circular",
+        field: "instances",
+        value: [
+          { instanceIndex: 0, transform: IDENTITY },
+          { instanceIndex: 1, transform: IDENTITY },
+          { instanceIndex: 2, transform: IDENTITY }
+        ],
+        path: "$.document.features[2].instances"
+      },
+      {
+        featureId: "feat_mirror",
+        field: "plane",
+        value: { kind: "standardPlane", plane: "XZ", offset: 0 },
+        path: "$.document.features[3].plane"
+      }
+    ];
+    for (const testCase of mixedCases) {
+      const mixed = JSON.parse(JSON.stringify(rawV19)) as any;
+      mixed.document.features.find(
+        (feature: any) => feature.id === testCase.featureId
+      )[testCase.field] = testCase.value;
+      expect(() => parseCadProjectJson(JSON.stringify(mixed))).toThrowError(
+        expect.objectContaining({
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              code: "INVALID_FEATURE",
+              path: testCase.path
+            })
+          ])
+        })
+      );
+    }
+  });
+
+  it("imports parsed V20 sweep and loft source through the normalized internal boundary", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "base", name: "Base", plane: "XY" },
+      {
+        op: "sketch.addCircle",
+        sketchId: "base",
+        id: "base_circle",
+        center: [0, 0],
+        radius: 1
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "base",
+        id: "pedestal_profile",
+        center: [5, 0],
+        width: 2,
+        height: 2
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_pedestal",
+        bodyId: "body_pedestal",
+        sketchId: "base",
+        entityId: "pedestal_profile",
+        depth: 5
+      },
+      {
+        op: "sketch.createOnFace",
+        id: "top",
+        name: "Top",
+        bodyId: "body_pedestal",
+        faceStableId: "generated:face:body_pedestal:endCap"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "top",
+        id: "top_circle",
+        center: [0, 0],
+        radius: 2
+      },
+      { op: "sketch.create", id: "path", name: "Path", plane: "XZ" },
+      {
+        op: "sketch.addLine",
+        sketchId: "path",
+        id: "path_line",
+        start: [0, 0],
+        end: [0, 5]
+      },
+      {
+        op: "feature.sweep",
+        id: "feat_sweep",
+        bodyId: "body_sweep",
+        profileSketchId: "base",
+        profileEntityId: "base_circle",
+        pathSketchId: "path",
+        pathEntityIds: ["path_line"]
+      },
+      {
+        op: "feature.loft",
+        id: "feat_loft",
+        bodyId: "body_loft",
+        sections: [
+          { sketchId: "base", entityId: "base_circle" },
+          { sketchId: "top", entityId: "top_circle" }
+        ]
+      }
+    ]);
+
+    const source = exportCadProject(engine);
+    expect(source.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V20);
+    const restored = importCadProject(
+      parseCadProjectJson(JSON.stringify(source))
+    );
+    expect(restored.getDocument().features.get("feat_sweep")).toMatchObject({
+      profile: { kind: "entity", sketchId: "base", entityId: "base_circle" },
+      path: {
+        kind: "entity",
+        sketchId: "path",
+        entityId: "path_line",
+        orientation: "forward"
+      }
+    });
+    expect(restored.getDocument().features.get("feat_loft")).toMatchObject({
+      sections: [
+        {
+          profile: {
+            kind: "entity",
+            sketchId: "base",
+            entityId: "base_circle"
+          }
+        },
+        {
+          profile: {
+            kind: "entity",
+            sketchId: "top",
+            entityId: "top_circle"
+          }
+        }
+      ]
+    });
   });
 });

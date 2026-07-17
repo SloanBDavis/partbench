@@ -1194,6 +1194,11 @@ export interface CadProject {
   readonly redoStack: readonly Transaction[];
 }
 
+// parseCadProject* validates raw stored schema exactly once, then returns a
+// normalized value. Preserve that boundary without making normalized V19/V20
+// shapes publicly acceptable as raw source on a later load.
+const parsedNormalizedCadProjects = new WeakMap<CadProject, CadProject>();
+
 export interface WcadTopologyCheckpointPayloadInput {
   readonly checkpointId: string;
   readonly bodyId: BodyId;
@@ -1396,8 +1401,15 @@ export class CadEngine {
   }
 
   loadProject(project: CadProject): void {
-    assertValidCadProject(project);
-    const normalizedProject = normalizeCadProject(project);
+    const parsedSnapshot = parsedNormalizedCadProjects.get(project);
+    const isUnchangedParsedProject =
+      parsedSnapshot !== undefined && stableJsonEqual(project, parsedSnapshot);
+    if (!isUnchangedParsedProject) {
+      assertValidCadProject(project);
+    }
+    const normalizedProject = isUnchangedParsedProject
+      ? project
+      : normalizeCadProject(project);
     const state = createProjectState(normalizedProject);
 
     this.#document = state.document;
@@ -23119,7 +23131,9 @@ function featuresEqual(left: Feature, right: Feature): boolean {
 
 function parseCadProject(value: unknown): CadProject {
   assertValidCadProject(value);
-  return normalizeCadProject(value);
+  const normalized = normalizeCadProject(value);
+  parsedNormalizedCadProjects.set(normalized, cloneJsonSource(normalized));
+  return normalized;
 }
 
 function assertValidCadProject(value: unknown): asserts value is CadProject {
@@ -30076,6 +30090,15 @@ function validatePatternFeatureSnapshotFields(
       "Linear pattern spacing",
       issues
     );
+
+    if (!isV20Schema && value.direction !== undefined) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.direction`,
+        "V19 linear pattern snapshots store axis sugar only."
+      );
+    }
   }
 
   if (value.kind === "circularPattern") {
@@ -30142,6 +30165,13 @@ function validatePatternFeatureSnapshotFields(
         "V20 linear pattern snapshots emit direction and instances only; axis sugar is not stored."
       );
     }
+  } else if (value.instances !== undefined) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.instances`,
+      "V19 pattern snapshots must not store V20 durable instances."
+    );
   }
 
   if (typeof value.bodyId !== "string" || value.bodyId.length === 0) {
@@ -30199,6 +30229,13 @@ function validateMirrorFeatureSnapshotFields(
       "INVALID_FEATURE",
       `${path}.mirrorPlane`,
       "V20 mirror snapshots emit plane only; mirrorPlane sugar is not stored."
+    );
+  } else if (!isV20Schema && value.plane !== undefined) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.plane`,
+      "V19 mirror snapshots store mirrorPlane sugar only."
     );
   }
 
