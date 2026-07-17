@@ -29,6 +29,7 @@ import type {
 
 import type { CadDocument, Sketch } from "./index";
 import { createSupportedBooleanBodyTargetOperations } from "./booleanTargetSupport";
+import { isPrimitiveBodyId } from "./primitiveBodyIdentity";
 import { SKETCH_GEOMETRY_POLICY } from "./sketchGeometryPolicy";
 import {
   areSketchPointsCoincident,
@@ -1253,6 +1254,7 @@ function createResolvedTargetCompatibility(
     target !== undefined &&
     consumedBy === undefined &&
     supportedOperations.includes(requiredOperation);
+  const primitiveTarget = isPrimitiveBodyId(document, targetBodyId);
   const diagnostics = supported
     ? []
     : [
@@ -1261,12 +1263,16 @@ function createResolvedTargetCompatibility(
             ? consumedBy
               ? "TARGET_BODY_NOT_SUPPORTED"
               : "UNSUPPORTED_BODY_REFERENCES"
-            : "BODY_NOT_FOUND",
+            : primitiveTarget
+              ? "TARGET_BODY_NOT_SUPPORTED"
+              : "BODY_NOT_FOUND",
           target
             ? consumedBy
               ? `Target body is already consumed by feature ${consumedBy.id}: ${targetBodyId}.`
               : `Target body is outside the supported boolean target matrix: ${targetBodyId}.`
-            : `Target body does not exist: ${targetBodyId}.`,
+            : primitiveTarget
+              ? `Primitive-derived body cannot be targeted by feature.extrude: ${targetBodyId}.`
+              : `Target body does not exist: ${targetBodyId}.`,
           { bodyId: targetBodyId }
         )
       ];

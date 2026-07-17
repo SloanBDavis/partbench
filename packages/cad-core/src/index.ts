@@ -242,6 +242,10 @@ import {
   filterSupportedBooleanBodyTargetOperations
 } from "./booleanTargetSupport";
 import {
+  createPrimitiveBodyId,
+  isPrimitiveBodyId
+} from "./primitiveBodyIdentity";
+import {
   resolveActiveTopologyAnchorBodyTargetId as resolveSharedActiveTopologyAnchorBodyTargetId,
   resolveActiveTopologyAnchorTargetSource
 } from "./topologyAnchorTargetResolution";
@@ -15231,16 +15235,6 @@ function isSupportedBooleanToolProfileKind(
   return profileKind === "rectangle" || profileKind === "circle";
 }
 
-function isPrimitiveBodyId(state: MutableDocumentState, id: BodyId): boolean {
-  for (const objectId of state.objects.keys()) {
-    if (createPrimitiveBodyId(objectId) === id) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 function assertSketchNotInUse(
   features: ReadonlyMap<FeatureId, Feature>,
   sketchId: SketchId,
@@ -21441,10 +21435,6 @@ function createPrimitiveFeatureSummary(
 
 function createPrimitiveFeatureId(objectId: ObjectId): string {
   return `feature:${objectId}`;
-}
-
-function createPrimitiveBodyId(objectId: ObjectId): BodyId {
-  return `body:${objectId}`;
 }
 
 function createPrimitiveBodySnapshot(object: SceneObject): CadBodySnapshot {

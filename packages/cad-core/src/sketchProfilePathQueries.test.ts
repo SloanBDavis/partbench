@@ -1074,6 +1074,88 @@ describe("V17 profile and path queries", () => {
       targetCompatibility: { status: "ready", targetBodyId: "target-body" }
     });
 
+    engine.applyBatch([
+      {
+        op: "scene.createBox",
+        id: "box",
+        dimensions: { width: 1, height: 1, depth: 1 }
+      },
+      {
+        op: "scene.createCylinder",
+        id: "cylinder",
+        dimensions: { radius: 1, height: 1 }
+      },
+      {
+        op: "scene.createSphere",
+        id: "sphere",
+        dimensions: { radius: 1 }
+      },
+      {
+        op: "scene.createCone",
+        id: "cone",
+        dimensions: { radius: 1, height: 1 }
+      },
+      {
+        op: "scene.createTorus",
+        id: "torus",
+        dimensions: { majorRadius: 2, minorRadius: 0.5 }
+      }
+    ]);
+    for (const primitiveId of ["box", "cylinder", "sphere", "cone", "torus"]) {
+      for (const operationMode of ["add", "cut"] as const) {
+        const primitive = query<
+          Extract<
+            SketchProfilePathQueryResponse,
+            { query: "sketch.profileReadiness" }
+          >
+        >(engine, {
+          version: "cadops.v1",
+          query: {
+            query: "sketch.profileReadiness",
+            profile,
+            consumer: {
+              featureKind: "extrude",
+              operationMode,
+              targetBodyId: `body:${primitiveId}`
+            }
+          }
+        });
+        expect(primitive).toMatchObject({
+          status: "blocked",
+          targetCompatibility: {
+            status: "unsupported",
+            targetBodyId: `body:${primitiveId}`,
+            diagnostics: [{ code: "TARGET_BODY_NOT_SUPPORTED" }]
+          }
+        });
+      }
+    }
+    const trulyMissing = query<
+      Extract<
+        SketchProfilePathQueryResponse,
+        { query: "sketch.profileReadiness" }
+      >
+    >(engine, {
+      version: "cadops.v1",
+      query: {
+        query: "sketch.profileReadiness",
+        profile,
+        consumer: {
+          featureKind: "extrude",
+          operationMode: "cut",
+          targetBodyId: "body:missing"
+        }
+      }
+    });
+    expect(trulyMissing).toMatchObject({
+      status: "blocked",
+      targetCompatibility: {
+        status: "unsupported",
+        targetBodyId: "body:missing",
+        diagnostics: [{ code: "BODY_NOT_FOUND" }]
+      }
+    });
+
     addBodyTopologyAnchor(engine, "target-body", "target-feature");
     const anchorReady = query<
       Extract<
