@@ -197,6 +197,12 @@ describe("V17 analytic sketch wire geometry", () => {
         )
       )
     ).toEqual({ overlap: false, points: [] });
+    expect(
+      intersectSketchSegments(
+        resolve(line("huge-left", [0, 0], [2e12, 0])),
+        resolve(line("huge-offset", [1e12, 0.0004], [3e12, 0.0004]))
+      )
+    ).toEqual({ overlap: false, points: [] });
   });
 
   it("clips analytic line-circle crossings and tangencies to finite arc support", () => {
@@ -231,14 +237,14 @@ describe("V17 analytic sketch wire geometry", () => {
         upperHalf
       )
     ).toEqual({ overlap: false, points: [] });
-    for (const gap of [tolerance / 2, tolerance]) {
-      expect(
-        intersectSketchSegments(
-          resolve(line("near-miss", [-2, 1 + gap], [2, 1 + gap])),
-          upperHalf
-        )
-      ).toMatchObject({ overlap: false, points: [{ kind: "tangent" }] });
-    }
+    expect(
+      intersectSketchSegments(
+        resolve(
+          line("near-miss", [-2, 1 + tolerance / 2], [2, 1 + tolerance / 2])
+        ),
+        upperHalf
+      )
+    ).toMatchObject({ overlap: false, points: [{ kind: "tangent" }] });
     expect(
       intersectSketchSegments(
         resolve(
@@ -407,6 +413,77 @@ describe("V17 analytic sketch wire geometry", () => {
       overlap: false,
       points: []
     });
+  });
+
+  it("does not widen the absolute policy at large representable gaps", () => {
+    const radius = 1e8;
+    const outsideCoordinate = 100000000.00000012;
+    const insideCoordinate = 100000000.00000009;
+    const outsideGap = outsideCoordinate - radius;
+    const insideGap = insideCoordinate - radius;
+    expect(outsideGap).toBe(1.1920928955078125e-7);
+    expect(outsideGap).toBeGreaterThan(tolerance);
+    expect(insideGap).toBeLessThanOrEqual(tolerance);
+
+    const upper = resolve(arc("upper-large", [0, 0], radius, 0, 180));
+    expect(
+      intersectSketchSegments(
+        resolve(
+          line(
+            "outside-line",
+            [-radius, outsideCoordinate],
+            [radius, outsideCoordinate]
+          )
+        ),
+        upper
+      )
+    ).toEqual({ overlap: false, points: [] });
+    expect(
+      intersectSketchSegments(
+        resolve(
+          line(
+            "inside-line",
+            [-radius, insideCoordinate],
+            [radius, insideCoordinate]
+          )
+        ),
+        upper
+      ).points
+    ).toHaveLength(1);
+
+    const left = resolve(arc("left", [0, 0], radius, -90, 180));
+    expect(
+      intersectSketchSegments(
+        left,
+        resolve(arc("outside-right", [200000000.00000012, 0], radius, 90, 180))
+      )
+    ).toEqual({ overlap: false, points: [] });
+    expect(
+      intersectSketchSegments(
+        left,
+        resolve(arc("inside-right", [200000000.00000009, 0], radius, 90, 180))
+      ).points
+    ).toHaveLength(1);
+
+    const translated = resolve(
+      arc("translated", [radius, radius], radius, 0, 180)
+    );
+    expect(
+      intersectSketchSegments(
+        translated,
+        resolve(
+          arc("outside-support", [radius, outsideCoordinate], radius, 0, 180)
+        )
+      ).overlap
+    ).toBe(false);
+    expect(
+      intersectSketchSegments(
+        translated,
+        resolve(
+          arc("inside-support", [radius, insideCoordinate], radius, 0, 180)
+        )
+      ).overlap
+    ).toBe(true);
   });
 
   it("rejects overflowed derived geometry while retaining valid large scales", () => {

@@ -99,14 +99,9 @@ function floatingTolerance(...values: readonly number[]): number {
 
 function withinLinearTolerance(
   value: number,
-  policy: SketchGeometryPolicy,
-  ...calculationScale: readonly number[]
+  policy: SketchGeometryPolicy
 ): boolean {
-  return (
-    value <= policy.linearTolerance ||
-    value - policy.linearTolerance <=
-      floatingTolerance(value, policy.linearTolerance, ...calculationScale)
-  );
+  return value <= policy.linearTolerance;
 }
 
 function pointAt(center: Vec2, radius: number, angle: number): Vec2 {
@@ -150,7 +145,7 @@ export function resolveOrientedSketchSegment(
         "Line-derived length and tangent geometry must remain finite."
       );
     }
-    if (withinLinearTolerance(length, policy, ...delta)) {
+    if (withinLinearTolerance(length, policy)) {
       return resolutionIssue(
         entity.id,
         "SKETCH_LINE_ZERO_LENGTH",
@@ -217,7 +212,7 @@ export function resolveOrientedSketchSegment(
       "Arc-derived angles, length, and area geometry must remain finite."
     );
   }
-  if (withinLinearTolerance(arcLength, policy, entity.radius, authoredSweep)) {
+  if (withinLinearTolerance(arcLength, policy)) {
     return resolutionIssue(
       entity.id,
       "SKETCH_ARC_ZERO_LENGTH",
@@ -266,7 +261,7 @@ export function areSketchPointsCoincident(
   policy: SketchGeometryPolicy = SKETCH_GEOMETRY_POLICY
 ): boolean {
   const pointDistance = distance(left, right);
-  return withinLinearTolerance(pointDistance, policy, pointDistance);
+  return withinLinearTolerance(pointDistance, policy);
 }
 
 function arcContainsAngle(
@@ -419,7 +414,7 @@ function lineLineIntersection(
   }
 
   const perpendicularDistance = Math.abs(cross(offset, leftDirection));
-  if (!withinLinearTolerance(perpendicularDistance, policy, ...offset)) {
+  if (!withinLinearTolerance(perpendicularDistance, policy)) {
     return { overlap: false, points: [] };
   }
   const startDistance = dot(offset, leftDirection);
@@ -463,11 +458,7 @@ function lineArcIntersection(
   const centerProjection = dot(toCenter, direction);
   const perpendicularDistance = Math.abs(cross(direction, toCenter));
   const radialGap = perpendicularDistance - arc.radius;
-  if (
-    radialGap > 0 &&
-    !withinLinearTolerance(radialGap, policy, perpendicularDistance, arc.radius)
-  )
-    return [];
+  if (radialGap > 0 && !withinLinearTolerance(radialGap, policy)) return [];
   const halfChord =
     radialGap >= 0
       ? 0
@@ -510,18 +501,8 @@ function circleSupportCoincident(
   policy: SketchGeometryPolicy
 ): boolean {
   return (
-    withinLinearTolerance(
-      distance(left.center, right.center),
-      policy,
-      left.radius,
-      right.radius
-    ) &&
-    withinLinearTolerance(
-      Math.abs(left.radius - right.radius),
-      policy,
-      left.radius,
-      right.radius
-    )
+    withinLinearTolerance(distance(left.center, right.center), policy) &&
+    withinLinearTolerance(Math.abs(left.radius - right.radius), policy)
   );
 }
 
@@ -598,31 +579,20 @@ function arcArcIntersection(
   const externalGap = centerDistance - radiusSum;
   const internalGap = radiusDifference - centerDistance;
   if (
-    (externalGap > 0 &&
-      !withinLinearTolerance(externalGap, policy, centerDistance, radiusSum)) ||
-    (internalGap > 0 &&
-      !withinLinearTolerance(
-        internalGap,
-        policy,
-        centerDistance,
-        radiusDifference
-      )) ||
-    withinLinearTolerance(centerDistance, policy, left.radius, right.radius)
+    (externalGap > 0 && !withinLinearTolerance(externalGap, policy)) ||
+    (internalGap > 0 && !withinLinearTolerance(internalGap, policy)) ||
+    withinLinearTolerance(centerDistance, policy)
   ) {
     return { overlap: false, points: [] };
   }
   const direction: Vec2 = [dx / centerDistance, dy / centerDistance];
-  const numericalDistanceTolerance = Math.min(
-    policy.linearTolerance,
-    floatingTolerance(centerDistance, radiusSum, radiusDifference)
-  );
   const along =
     (centerDistance +
       ((left.radius - right.radius) * radiusSum) / centerDistance) /
     2;
   if (!Number.isFinite(along)) return { overlap: false, points: [] };
-  const separatedTangent = externalGap >= -numericalDistanceTolerance;
-  const containedTangent = internalGap >= -numericalDistanceTolerance;
+  const separatedTangent = externalGap >= 0;
+  const containedTangent = internalGap >= 0;
   let candidates: Vec2[];
   if (separatedTangent || containedTangent) {
     candidates = [
