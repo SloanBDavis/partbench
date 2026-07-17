@@ -255,9 +255,10 @@ export type SketchConstraintKind =
 
 export type SketchPointTargetRole = "position" | "start" | "end" | "center";
 
-export interface SketchPointTarget {
+export interface SketchLegacyPointTarget {
   readonly entityId: SketchEntityId;
   readonly role: SketchPointTargetRole;
+  readonly entityKind?: never;
 }
 
 export interface SketchArcPointTarget {
@@ -266,23 +267,36 @@ export interface SketchArcPointTarget {
   readonly role: "center" | "start" | "end";
 }
 
-export type SketchPointTargetV21 = SketchPointTarget | SketchArcPointTarget;
+export type SketchPointTarget = SketchLegacyPointTarget | SketchArcPointTarget;
 
-export type SketchCurveConstraintTargetKind = "line" | "circle";
+export type SketchPointTargetV21 = SketchPointTarget;
 
-export interface SketchCurveConstraintTarget {
+export type SketchCurveConstraintTargetKind = "line" | "circle" | "arc";
+
+export interface SketchLineCurveConstraintTarget {
   readonly entityId: SketchEntityId;
-  readonly entityKind: SketchCurveConstraintTargetKind;
+  readonly entityKind: "line";
 }
+
+export interface SketchCircleCurveConstraintTarget {
+  readonly entityId: SketchEntityId;
+  readonly entityKind: "circle";
+}
+
+export type SketchLegacyCurveConstraintTarget =
+  | SketchLineCurveConstraintTarget
+  | SketchCircleCurveConstraintTarget;
 
 export interface SketchArcCurveConstraintTarget {
   readonly entityId: SketchEntityId;
   readonly entityKind: "arc";
 }
 
-export type SketchCurveConstraintTargetV21 =
-  | SketchCurveConstraintTarget
+export type SketchCurveConstraintTarget =
+  | SketchLegacyCurveConstraintTarget
   | SketchArcCurveConstraintTarget;
+
+export type SketchCurveConstraintTargetV21 = SketchCurveConstraintTarget;
 
 export interface SketchRadiusCurveTarget {
   readonly entityId: SketchEntityId;
@@ -295,7 +309,8 @@ export type SketchDimensionIssueCode =
   | "SKETCH_ENTITY_NOT_FOUND"
   | "UNSUPPORTED_TARGET"
   | "INVALID_VALUE"
-  | "INCONSISTENT_CONSTRAINT";
+  | "INCONSISTENT_CONSTRAINT"
+  | "SKETCH_ARC_DIMENSION_INVALID";
 
 export type SketchConstraintIssueCode =
   | "SKETCH_NOT_FOUND"
@@ -303,16 +318,20 @@ export type SketchConstraintIssueCode =
   | "UNSUPPORTED_TARGET"
   | "INVALID_VALUE"
   | "INCONSISTENT_CONSTRAINT"
-  | "CONFLICTING_CONSTRAINT";
+  | "CONFLICTING_CONSTRAINT"
+  | "SKETCH_TANGENCY_OUTSIDE_ARC"
+  | "SKETCH_ARC_SOLVE_BRANCH_INVALID";
 
-export type SketchDimensionTarget =
+export type SketchDimensionTargetV20 =
   | SketchRectangleDimensionTarget
   | SketchCircleDimensionTarget
   | SketchLineDimensionTarget;
 
-export type SketchDimensionTargetV21 =
-  | SketchDimensionTarget
+export type SketchDimensionTarget =
+  | SketchDimensionTargetV20
   | SketchArcDimensionTarget;
+
+export type SketchDimensionTargetV21 = SketchDimensionTarget;
 
 export interface SketchRectangleDimensionTarget {
   readonly entityKind: "rectangle";
@@ -740,7 +759,11 @@ export type SketchConstraintCreateOp =
   | SketchCoincidentConstraintCreateOp
   | SketchMidpointConstraintCreateOp
   | SketchParallelConstraintCreateOp
-  | SketchPerpendicularConstraintCreateOp;
+  | SketchPerpendicularConstraintCreateOp
+  | SketchTangentConstraintCreateOp
+  | SketchConcentricConstraintCreateOp
+  | SketchEqualRadiusConstraintCreateOp
+  | SketchSymmetryConstraintCreateOp;
 
 export interface SketchOrientationConstraintCreateOp {
   readonly op: "sketch.constraint.create";
@@ -778,7 +801,7 @@ export interface SketchMidpointConstraintCreateOp {
   readonly sketchId: SketchId;
   readonly kind: "midpoint";
   readonly lineEntityId: SketchEntityId;
-  readonly target: SketchPointTarget;
+  readonly target: SketchLegacyPointTarget;
 }
 
 export interface SketchParallelConstraintCreateOp {
@@ -799,6 +822,73 @@ export interface SketchPerpendicularConstraintCreateOp {
   readonly kind: "perpendicular";
   readonly primaryLineEntityId: SketchEntityId;
   readonly secondaryLineEntityId: SketchEntityId;
+}
+
+interface SketchNamedConstraintCreateOpBase {
+  readonly op: "sketch.constraint.create";
+  readonly id?: SketchConstraintId;
+  readonly name: string;
+  readonly sketchId: SketchId;
+}
+
+export type SketchTangentConstraintTargetPair =
+  | {
+      readonly primaryTarget: SketchLineCurveConstraintTarget;
+      readonly secondaryTarget:
+        | SketchCircleCurveConstraintTarget
+        | SketchArcCurveConstraintTarget;
+    }
+  | {
+      readonly primaryTarget: SketchCircleCurveConstraintTarget;
+      readonly secondaryTarget:
+        | SketchLineCurveConstraintTarget
+        | SketchArcCurveConstraintTarget;
+    }
+  | {
+      readonly primaryTarget: SketchArcCurveConstraintTarget;
+      readonly secondaryTarget: SketchCurveConstraintTarget;
+    };
+
+export type SketchTangentConstraintCreateOp =
+  SketchNamedConstraintCreateOpBase & {
+    readonly kind: "tangent";
+  } & SketchTangentConstraintTargetPair;
+
+interface SketchRadiusConstraintCreateOpBase extends SketchNamedConstraintCreateOpBase {
+  readonly kind: "concentric" | "equalRadius";
+}
+
+export interface SketchLegacyRadiusConstraintCreateTargets {
+  readonly primaryCircleEntityId: SketchEntityId;
+  readonly secondaryCircleEntityId: SketchEntityId;
+  readonly primaryTarget?: never;
+  readonly secondaryTarget?: never;
+}
+
+export interface SketchNormalizedRadiusConstraintCreateTargets {
+  readonly primaryTarget: SketchRadiusCurveTarget;
+  readonly secondaryTarget: SketchRadiusCurveTarget;
+  readonly primaryCircleEntityId?: never;
+  readonly secondaryCircleEntityId?: never;
+}
+
+export type SketchConcentricConstraintCreateOp =
+  SketchRadiusConstraintCreateOpBase & { readonly kind: "concentric" } & (
+      | SketchLegacyRadiusConstraintCreateTargets
+      | SketchNormalizedRadiusConstraintCreateTargets
+    );
+
+export type SketchEqualRadiusConstraintCreateOp =
+  SketchRadiusConstraintCreateOpBase & { readonly kind: "equalRadius" } & (
+      | SketchLegacyRadiusConstraintCreateTargets
+      | SketchNormalizedRadiusConstraintCreateTargets
+    );
+
+export interface SketchSymmetryConstraintCreateOp extends SketchNamedConstraintCreateOpBase {
+  readonly kind: "symmetry";
+  readonly primaryTarget: SketchPointTarget;
+  readonly secondaryTarget: SketchPointTarget;
+  readonly symmetryLineEntityId: SketchEntityId;
 }
 
 export interface SketchConstraintRenameOp {
@@ -1531,8 +1621,8 @@ export interface CadSketchConstraintRef {
   readonly entityId: SketchEntityId;
   readonly kind: SketchConstraintKind;
   readonly target?: SketchPointTarget;
-  readonly primaryTarget?: SketchPointTarget;
-  readonly secondaryTarget?: SketchPointTarget;
+  readonly primaryTarget?: SketchPointTarget | SketchRadiusCurveTarget;
+  readonly secondaryTarget?: SketchPointTarget | SketchRadiusCurveTarget;
   readonly lineEntityId?: SketchEntityId;
   readonly primaryLineEntityId?: SketchEntityId;
   readonly secondaryLineEntityId?: SketchEntityId;
@@ -1703,6 +1793,9 @@ export type CadBatchValidationErrorCode =
   | "SKETCH_ARC_RADIUS_INVALID"
   | "SKETCH_ARC_SWEEP_INVALID"
   | "SKETCH_ARC_FULL_CIRCLE_USE_CIRCLE"
+  | "SKETCH_TANGENCY_OUTSIDE_ARC"
+  | "SKETCH_ARC_SOLVE_BRANCH_INVALID"
+  | "SKETCH_ARC_DIMENSION_INVALID"
   | "SKETCH_ENTITY_CONSTRUCTION_INVALID"
   | "SKETCH_PROFILE_EMPTY"
   | "SKETCH_PROFILE_ENTITY_MISSING"
@@ -2380,10 +2473,17 @@ export interface SketchDimensionSnapshotV21 extends Omit<
   SketchDimensionSnapshot,
   "target"
 > {
-  readonly target: SketchDimensionTargetV21;
+  readonly target: SketchDimensionTarget;
 }
 
-export type SketchConstraintSnapshot =
+export interface SketchDimensionSnapshotV20 extends Omit<
+  SketchDimensionSnapshot,
+  "target"
+> {
+  readonly target: SketchDimensionTargetV20;
+}
+
+export type SketchConstraintSnapshotV20 =
   | SketchOrientationConstraintSnapshot
   | SketchFixedConstraintSnapshot
   | SketchCoincidentConstraintSnapshot
@@ -2432,7 +2532,7 @@ export interface SketchMidpointConstraintSnapshot {
   readonly entityId: SketchEntityId;
   readonly kind: "midpoint";
   readonly lineEntityId: SketchEntityId;
-  readonly target: SketchPointTarget;
+  readonly target: SketchLegacyPointTarget;
 }
 
 export interface SketchParallelConstraintSnapshot {
@@ -2473,6 +2573,8 @@ export interface SketchConcentricConstraintSnapshot {
   readonly kind: "concentric";
   readonly primaryCircleEntityId: SketchEntityId;
   readonly secondaryCircleEntityId: SketchEntityId;
+  readonly primaryTarget?: never;
+  readonly secondaryTarget?: never;
 }
 
 export interface SketchEqualLengthConstraintSnapshot {
@@ -2493,6 +2595,8 @@ export interface SketchEqualRadiusConstraintSnapshot {
   readonly kind: "equalRadius";
   readonly primaryCircleEntityId: SketchEntityId;
   readonly secondaryCircleEntityId: SketchEntityId;
+  readonly primaryTarget?: never;
+  readonly secondaryTarget?: never;
 }
 
 export interface SketchConcentricConstraintV21 {
@@ -2503,6 +2607,8 @@ export interface SketchConcentricConstraintV21 {
   readonly kind: "concentric";
   readonly primaryTarget: SketchRadiusCurveTarget;
   readonly secondaryTarget: SketchRadiusCurveTarget;
+  readonly primaryCircleEntityId?: never;
+  readonly secondaryCircleEntityId?: never;
 }
 
 export interface SketchEqualRadiusConstraintV21 {
@@ -2513,6 +2619,8 @@ export interface SketchEqualRadiusConstraintV21 {
   readonly kind: "equalRadius";
   readonly primaryTarget: SketchRadiusCurveTarget;
   readonly secondaryTarget: SketchRadiusCurveTarget;
+  readonly primaryCircleEntityId?: never;
+  readonly secondaryCircleEntityId?: never;
 }
 
 export type SketchRadiusConstraintV21 =
@@ -2534,13 +2642,11 @@ export interface SketchCoincidentConstraintV21 extends Omit<
   readonly secondaryTarget: SketchPointTargetV21;
 }
 
-export interface SketchTangentConstraintV21 extends Omit<
+export type SketchTangentConstraintV21 = Omit<
   SketchTangentConstraintSnapshot,
   "primaryTarget" | "secondaryTarget"
-> {
-  readonly primaryTarget: SketchCurveConstraintTargetV21;
-  readonly secondaryTarget: SketchCurveConstraintTargetV21;
-}
+> &
+  SketchTangentConstraintTargetPair;
 
 export interface SketchSymmetryConstraintV21 extends Omit<
   SketchSymmetryConstraintSnapshot,
@@ -2563,6 +2669,9 @@ export type SketchConstraintV21 =
   | SketchEqualRadiusConstraintV21
   | SketchAngleConstraintSnapshot
   | SketchSymmetryConstraintV21;
+
+/** Canonical live V21 storage and query shape. */
+export type SketchConstraintSnapshot = SketchConstraintV21;
 
 export interface SketchAngleConstraintSnapshot {
   readonly id: SketchConstraintId;
@@ -3928,7 +4037,10 @@ export type CadSketchSolverDiagnosticCode =
   | "SKETCH_SOLVER_PREVIEW_DEFERRED"
   | "SKETCH_SOLVER_SCHEMA_V17_DEFERRED"
   | "SKETCH_SOLVER_PROFILE_OPEN"
-  | "SKETCH_SOLVER_PROFILE_VALID";
+  | "SKETCH_SOLVER_PROFILE_VALID"
+  | "SKETCH_TANGENCY_OUTSIDE_ARC"
+  | "SKETCH_ARC_SOLVE_BRANCH_INVALID"
+  | "SKETCH_ARC_DIMENSION_INVALID";
 
 export type CadSketchSolverSourceRecordKind =
   | "advancedConstraint"
@@ -3978,12 +4090,13 @@ export interface CadSketchSolverEntityTargetReference {
   readonly entityKind: SketchEntityKind;
 }
 
-export interface CadSketchSolverPointTargetReference {
+interface CadSketchSolverPointTargetReferenceBase {
   readonly type: "point";
   readonly sketchId: SketchId;
-  readonly entityId: SketchEntityId;
-  readonly role: SketchPointTargetRole;
 }
+
+export type CadSketchSolverPointTargetReference =
+  CadSketchSolverPointTargetReferenceBase & SketchPointTarget;
 
 export interface CadSketchSolverDimensionTargetReference {
   readonly type: "dimension";
@@ -4111,7 +4224,9 @@ export interface CadSketchSolverEngineSummary {
     | "failed"
     | "unsupported";
   readonly numericalSolverEngine?: "@web-cad/sketch-solver";
-  readonly numericalSolverModelVersion?: "partbench.sketch-solver.v1";
+  readonly numericalSolverModelVersion?:
+    | "partbench.sketch-solver.v1"
+    | "partbench.sketch-solver.v2";
   readonly modelBuilt: boolean;
   readonly solverRan: boolean;
   readonly canSolveNumerically: boolean;

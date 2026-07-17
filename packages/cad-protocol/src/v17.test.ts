@@ -4,7 +4,10 @@ import type {
   CadProjectSchemaDiagnostic,
   CadQueryRequest,
   CadSketchEditProposal,
+  CadSketchSolverDiagnostic,
+  CadSketchSolverDimensionSummary,
   CadSketchSolverEntitySummary,
+  CadSketchSolverPointTargetReference,
   FeatureExtrudeCommandInput,
   FeatureInputReferenceSemanticDiff,
   FeatureRevolveCommandInput,
@@ -14,6 +17,8 @@ import type {
   SketchArcDimensionTarget,
   SketchArcEntity,
   SketchArcPointTarget,
+  SketchConstraintSnapshot,
+  SketchConstraintSnapshotV20,
   SketchConstraintV21,
   SketchEntityKind,
   SketchEntityKindV20,
@@ -25,6 +30,7 @@ import type {
   SketchPathRef,
   SketchProfileRef,
   SketchRadiusConstraintV21,
+  SketchTangentConstraintCreateOp,
   SketchUpdateEntityOp
 } from "./index";
 import { CAD_V17_PROJECT_SCHEMA_VERSION } from "./index";
@@ -545,5 +551,245 @@ describe("V17 protocol declarations", () => {
     expect(entityDiff.entityKind).toBe("arc");
     expect(referenceDiff.inputKind).toBe("profile");
     expect(schemaDiagnostic.severity).toBe("info");
+  });
+
+  it("activates the required arc constraint command forms", () => {
+    const fixed: CadOp = {
+      op: "sketch.constraint.create",
+      name: "Fix arc start",
+      sketchId: "sketch_1",
+      kind: "fixed",
+      target: { entityId: "arc_1", entityKind: "arc", role: "start" }
+    };
+    const coincident: CadOp = {
+      op: "sketch.constraint.create",
+      name: "Join arc and line",
+      sketchId: "sketch_1",
+      kind: "coincident",
+      primaryTarget: { entityId: "arc_1", entityKind: "arc", role: "end" },
+      secondaryTarget: { entityId: "line_1", role: "start" }
+    };
+    const symmetry: CadOp = {
+      op: "sketch.constraint.create",
+      name: "Symmetric arc endpoints",
+      sketchId: "sketch_1",
+      kind: "symmetry",
+      primaryTarget: { entityId: "arc_1", entityKind: "arc", role: "start" },
+      secondaryTarget: { entityId: "arc_1", entityKind: "arc", role: "end" },
+      symmetryLineEntityId: "axis_1"
+    };
+    const tangencies: readonly SketchTangentConstraintCreateOp[] = [
+      {
+        op: "sketch.constraint.create",
+        name: "Line circle tangent",
+        sketchId: "sketch_1",
+        kind: "tangent",
+        primaryTarget: { entityId: "line_1", entityKind: "line" },
+        secondaryTarget: { entityId: "circle_1", entityKind: "circle" }
+      },
+      {
+        op: "sketch.constraint.create",
+        name: "Line arc tangent",
+        sketchId: "sketch_1",
+        kind: "tangent",
+        primaryTarget: { entityId: "line_1", entityKind: "line" },
+        secondaryTarget: { entityId: "arc_1", entityKind: "arc" }
+      },
+      {
+        op: "sketch.constraint.create",
+        name: "Arc circle tangent",
+        sketchId: "sketch_1",
+        kind: "tangent",
+        primaryTarget: { entityId: "arc_1", entityKind: "arc" },
+        secondaryTarget: { entityId: "circle_1", entityKind: "circle" }
+      },
+      {
+        op: "sketch.constraint.create",
+        name: "Arc arc tangent",
+        sketchId: "sketch_1",
+        kind: "tangent",
+        primaryTarget: { entityId: "arc_1", entityKind: "arc" },
+        secondaryTarget: { entityId: "arc_2", entityKind: "arc" }
+      }
+    ];
+
+    expect([fixed, coincident, symmetry]).toHaveLength(3);
+    expect(
+      tangencies.map((constraint) => constraint.secondaryTarget.entityKind)
+    ).toEqual(["circle", "arc", "circle", "arc"]);
+  });
+
+  it("keeps legacy radius commands but makes normalized radius targets exclusive", () => {
+    const legacyConcentric: CadOp = {
+      op: "sketch.constraint.create",
+      name: "Legacy concentric circles",
+      sketchId: "sketch_1",
+      kind: "concentric",
+      primaryCircleEntityId: "circle_1",
+      secondaryCircleEntityId: "circle_2"
+    };
+    const normalizedEqualRadius: CadOp = {
+      op: "sketch.constraint.create",
+      name: "Arc circle equal radius",
+      sketchId: "sketch_1",
+      kind: "equalRadius",
+      primaryTarget: { entityId: "arc_1", entityKind: "arc" },
+      secondaryTarget: { entityId: "circle_1", entityKind: "circle" }
+    };
+
+    const invalidMixed: CadOp = {
+      op: "sketch.constraint.create",
+      name: "Mixed",
+      sketchId: "sketch_1",
+      kind: "concentric",
+      primaryCircleEntityId: "circle_1",
+      secondaryCircleEntityId: "circle_2",
+      // @ts-expect-error Normalized and legacy radius target fields cannot be mixed.
+      primaryTarget: { entityId: "arc_1", entityKind: "arc" },
+      // @ts-expect-error Normalized and legacy radius target fields cannot be mixed.
+      secondaryTarget: { entityId: "circle_1", entityKind: "circle" }
+    };
+    // @ts-expect-error A normalized radius target pair must be complete.
+    const invalidPartial: CadOp = {
+      op: "sketch.constraint.create",
+      name: "Partial",
+      sketchId: "sketch_1",
+      kind: "equalRadius",
+      primaryTarget: { entityId: "arc_1", entityKind: "arc" }
+    };
+
+    expect(legacyConcentric.kind).toBe("concentric");
+    expect(normalizedEqualRadius.kind).toBe("equalRadius");
+    expect([invalidMixed, invalidPartial]).toHaveLength(2);
+  });
+
+  it("keeps live stored radius constraints canonical and V20 history explicit", () => {
+    const stored: SketchConstraintSnapshot = {
+      id: "constraint_1",
+      name: "Concentric",
+      sketchId: "sketch_1",
+      entityId: "arc_1",
+      kind: "concentric",
+      primaryTarget: { entityId: "arc_1", entityKind: "arc" },
+      secondaryTarget: { entityId: "circle_1", entityKind: "circle" }
+    };
+    const history: SketchConstraintSnapshotV20 = {
+      id: "constraint_legacy",
+      name: "Legacy equal radius",
+      sketchId: "sketch_1",
+      entityId: "circle_1",
+      kind: "equalRadius",
+      primaryCircleEntityId: "circle_1",
+      secondaryCircleEntityId: "circle_2"
+    };
+
+    // @ts-expect-error Live V21 storage cannot use legacy circle-ID fields.
+    const invalidLiveLegacy: SketchConstraintSnapshot = history;
+    const invalidStoredMixed: SketchConstraintSnapshot = {
+      ...stored,
+      // @ts-expect-error Canonical V21 storage rejects mixed target representations.
+      primaryCircleEntityId: "circle_1",
+      // @ts-expect-error Canonical V21 storage rejects mixed target representations.
+      secondaryCircleEntityId: "circle_2"
+    };
+
+    expect(stored.kind).toBe("concentric");
+    expect(history.kind).toBe("equalRadius");
+    expect([invalidLiveLegacy, invalidStoredMixed]).toHaveLength(2);
+  });
+
+  it("exposes arc dimension and solver diagnostic query contracts", () => {
+    const createDimension: CadOp = {
+      op: "sketch.dimension.create",
+      name: "Arc sweep",
+      sketchId: "sketch_1",
+      entityId: "arc_1",
+      target: { entityKind: "arc", role: "sweep" },
+      value: 90
+    };
+    const pointRef: CadSketchSolverPointTargetReference = {
+      type: "point",
+      sketchId: "sketch_1",
+      entityId: "arc_1",
+      entityKind: "arc",
+      role: "center"
+    };
+    const diagnostic: CadSketchSolverDiagnostic = {
+      code: "SKETCH_TANGENCY_OUTSIDE_ARC",
+      severity: "blocker",
+      message: "The solved circle contact is outside the finite arc.",
+      target: pointRef
+    };
+    const dimension: CadSketchSolverDimensionSummary = {
+      dimensionId: "dimension_1",
+      sketchId: "sketch_1",
+      entityId: "arc_1",
+      target: { entityKind: "arc", role: "radius" },
+      valueSource: { type: "literal", value: 4 },
+      effectiveValue: 4,
+      status: "healthy",
+      supported: true,
+      targetRef: {
+        type: "dimension",
+        sketchId: "sketch_1",
+        dimensionId: "dimension_1",
+        entityId: "arc_1",
+        dimensionTarget: { entityKind: "arc", role: "radius" }
+      },
+      diagnosticCount: 2,
+      diagnostics: [
+        diagnostic,
+        {
+          code: "SKETCH_ARC_SOLVE_BRANCH_INVALID",
+          severity: "blocker",
+          message: "The current tangent branch became invalid."
+        }
+      ]
+    };
+
+    // @ts-expect-error Arc point targets require an arc-compatible role.
+    const invalidArcPoint: CadSketchSolverPointTargetReference = {
+      type: "point",
+      sketchId: "sketch_1",
+      entityId: "arc_1",
+      entityKind: "arc",
+      role: "position"
+    };
+    const invalidArcMidpoint: CadOp = {
+      op: "sketch.constraint.create",
+      name: "Invalid midpoint",
+      sketchId: "sketch_1",
+      kind: "midpoint",
+      lineEntityId: "line_1",
+      // @ts-expect-error Midpoint does not accept arc point targets.
+      target: { entityId: "arc_1", entityKind: "arc", role: "center" }
+    };
+    const invalidCircleCircleTangent: CadOp = {
+      op: "sketch.constraint.create",
+      name: "Invalid circle tangent",
+      sketchId: "sketch_1",
+      kind: "tangent",
+      primaryTarget: { entityId: "circle_1", entityKind: "circle" },
+      // @ts-expect-error Circle-circle tangency is outside the V17 Must matrix.
+      secondaryTarget: { entityId: "circle_2", entityKind: "circle" }
+    };
+    const invalidLineLineTangent: CadOp = {
+      op: "sketch.constraint.create",
+      name: "Invalid line tangent",
+      sketchId: "sketch_1",
+      kind: "tangent",
+      primaryTarget: { entityId: "line_1", entityKind: "line" },
+      // @ts-expect-error Line-line tangency is outside the V17 Must matrix.
+      secondaryTarget: { entityId: "line_2", entityKind: "line" }
+    };
+
+    expect(createDimension.op).toBe("sketch.dimension.create");
+    expect(dimension.target.role).toBe("radius");
+    expect([
+      invalidArcPoint,
+      invalidArcMidpoint,
+      invalidCircleCircleTangent,
+      invalidLineLineTangent
+    ]).toHaveLength(4);
   });
 });
