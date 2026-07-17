@@ -84,8 +84,20 @@ describe("loft feature", () => {
       kind: "loft",
       name: "Transition",
       sections: [
-        { sketchId: "sketch_base", entityId: "base_profile" },
-        { sketchId: "sketch_top", entityId: "top_circle" }
+        {
+          profile: {
+            kind: "entity",
+            sketchId: "sketch_base",
+            entityId: "base_profile"
+          }
+        },
+        {
+          profile: {
+            kind: "entity",
+            sketchId: "sketch_top",
+            entityId: "top_circle"
+          }
+        }
       ],
       bodyId: "body_loft"
     });
@@ -139,8 +151,20 @@ describe("loft feature", () => {
     });
     expect(engine.getDocument().features.get("feat_loft")).toMatchObject({
       sections: [
-        { sketchId: "sketch_base", entityId: "base_profile" },
-        { sketchId: "sketch_top", entityId: "top_rectangle" }
+        {
+          profile: {
+            kind: "entity",
+            sketchId: "sketch_base",
+            entityId: "base_profile"
+          }
+        },
+        {
+          profile: {
+            kind: "entity",
+            sketchId: "sketch_top",
+            entityId: "top_rectangle"
+          }
+        }
       ]
     });
 

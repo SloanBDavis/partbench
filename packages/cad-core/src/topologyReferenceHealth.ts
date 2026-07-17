@@ -236,7 +236,7 @@ function filterTopologyAnchorBodyTargetCommandOperations({
   }
 
   return filterSupportedBooleanBodyTargetOperations(
-    document.features,
+    document,
     anchor.bodyId,
     anchor.anchorId,
     operations

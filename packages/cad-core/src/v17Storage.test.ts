@@ -89,6 +89,64 @@ function createV21ArcProject(): CadProject {
   };
 }
 
+function createV21BooleanChainProject(): CadProject {
+  const engine = new CadEngine();
+  engine.applyBatch([
+    { op: "sketch.create", id: "base_sketch", name: "Base", plane: "XY" },
+    {
+      op: "sketch.addRectangle",
+      sketchId: "base_sketch",
+      id: "base_profile",
+      center: [0, 0],
+      width: 10,
+      height: 10
+    },
+    {
+      op: "feature.extrude",
+      id: "base_feature",
+      bodyId: "base_body",
+      sketchId: "base_sketch",
+      entityId: "base_profile",
+      depth: 5
+    },
+    { op: "sketch.create", id: "tool_sketch", name: "Tool", plane: "XY" },
+    {
+      op: "sketch.addCircle",
+      sketchId: "tool_sketch",
+      id: "tool_profile",
+      center: [0, 0],
+      radius: 2
+    },
+    {
+      op: "feature.extrude",
+      id: "cut_feature",
+      bodyId: "cut_body",
+      sketchId: "tool_sketch",
+      entityId: "tool_profile",
+      depth: 5,
+      operationMode: "cut",
+      targetBodyId: "base_body"
+    }
+  ]);
+  const project: any = exportCadProject(engine);
+  project.schemaVersion = CAD_PROJECT_FORMAT_VERSION_V21;
+  project.document.sketches = project.document.sketches.map((sketch: any) => ({
+    ...sketch,
+    entities: sketch.entities.map((entity: any) => ({
+      ...entity,
+      construction: false
+    }))
+  }));
+  project.document.features = project.document.features.map((feature: any) => {
+    const { sketchId, entityId, profileKind: _profileKind, ...base } = feature;
+    return {
+      ...base,
+      profile: { kind: "entity", sketchId, entityId }
+    };
+  });
+  return project;
+}
+
 describe("V17 V21 storage and migration", () => {
   it("applies V21-compatible V20 defaults while preserving minimum V20 export", () => {
     const v20 = createSweepProject();
@@ -249,6 +307,24 @@ describe("V17 V21 storage and migration", () => {
     ];
 
     expect(() => parseCadProjectJson(JSON.stringify(source))).not.toThrow();
+  });
+
+  it("validates upgraded normalized boolean chains instead of skipping them", () => {
+    const source = createV21BooleanChainProject();
+    expect(() => parseCadProjectJson(JSON.stringify(source))).not.toThrow();
+
+    const dangling: any = JSON.parse(JSON.stringify(source));
+    dangling.document.features[1].targetBodyId = "missing_body";
+    expect(() => parseCadProjectJson(JSON.stringify(dangling))).toThrowError(
+      expect.objectContaining({
+        issues: expect.arrayContaining([
+          expect.objectContaining({
+            code: "INVALID_FEATURE",
+            path: "$.document.features[1].targetBodyId"
+          })
+        ])
+      })
+    );
   });
 
   it("includes construction, sweep sign, segment order, and orientation in source identity", () => {

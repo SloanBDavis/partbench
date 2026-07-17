@@ -70,10 +70,17 @@ describe("sweep feature", () => {
         id: "feat_sweep",
         kind: "sweep",
         name: "Rail",
-        profileSketchId: "sketch_profile",
-        profileEntityId: "profile",
-        pathSketchId: "sketch_path",
-        pathEntityIds: ["path"],
+        profile: {
+          kind: "entity",
+          sketchId: "sketch_profile",
+          entityId: "profile"
+        },
+        path: {
+          kind: "entity",
+          sketchId: "sketch_path",
+          entityId: "path",
+          orientation: "forward"
+        },
         bodyId: "body_sweep"
       });
 
@@ -145,7 +152,12 @@ describe("sweep feature", () => {
         pathEntityIds: ["path_next"]
       });
       expect(engine.getDocument().features.get("feat_sweep")).toMatchObject({
-        pathEntityIds: ["path_next"]
+        path: {
+          kind: "entity",
+          sketchId: "sketch_path",
+          entityId: "path_next",
+          orientation: "forward"
+        }
       });
 
       const exported = exportCadProject(engine);

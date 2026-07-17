@@ -1146,9 +1146,11 @@ function createStaleProfileExtrudeEngine(): CadEngine {
           {
             id: "feat_rect_1",
             kind: "extrude",
-            sketchId: "sketch_1",
-            entityId: "rect_1",
-            profileKind: "rectangle",
+            profile: {
+              kind: "entity",
+              sketchId: "sketch_1",
+              entityId: "rect_1"
+            },
             depth: 3,
             side: "positive",
             operationMode: "newBody",
@@ -9564,7 +9566,11 @@ describe("cad-core", () => {
     });
     expect(engine.getDocument().features.get("feat_revolve_1")).toMatchObject({
       kind: "revolve",
-      profileKind: "circle"
+      profile: {
+        kind: "entity",
+        sketchId: "sketch_1",
+        entityId: "circle_1"
+      }
     });
 
     engine.undo();
@@ -14004,9 +14010,11 @@ describe("cad-core", () => {
     expect(restoredFeature).toMatchObject({
       id: "feat_circle_1",
       bodyId: "body_circle_1",
-      sketchId: "sketch_1",
-      entityId: "circle_1",
-      profileKind: "circle"
+      profile: {
+        kind: "entity",
+        sketchId: "sketch_1",
+        entityId: "circle_1"
+      }
     });
 
     if (!history.ok || history.query !== "transaction.history") {
@@ -21393,9 +21401,11 @@ describe("cad-core", () => {
     expect(feature).toEqual({
       id: "feat_circle_1",
       kind: "extrude",
-      sketchId: "sketch_1",
-      entityId: "circle_1",
-      profileKind: "circle",
+      profile: {
+        kind: "entity",
+        sketchId: "sketch_1",
+        entityId: "circle_1"
+      },
       depth: 6,
       side: "symmetric",
       operationMode: "newBody",
@@ -22070,8 +22080,11 @@ describe("cad-core", () => {
     expect(restored.getDocument().features.get("feat_add_face")).toMatchObject({
       operationMode: "add",
       targetBodyId: "body_rect_1",
-      sketchId: "sketch_add_face",
-      entityId: "rect_add_face"
+      profile: {
+        kind: "entity",
+        sketchId: "sketch_add_face",
+        entityId: "rect_add_face"
+      }
     });
     expect(structure).toMatchObject({
       ok: true,
@@ -22370,7 +22383,11 @@ describe("cad-core", () => {
     ).toMatchObject({
       operationMode: "cut",
       targetBodyId: "body_circle_1",
-      profileKind: "rectangle"
+      profile: {
+        kind: "entity",
+        sketchId: "sketch_1",
+        entityId: "rect_tool"
+      }
     });
 
     restored.undo();
@@ -24242,10 +24259,18 @@ describe("cad-core", () => {
       ok: true
     });
     expect(engine.getDocument().features.get("feat_rect_1")).toMatchObject({
-      profileKind: "rectangle"
+      profile: {
+        kind: "entity",
+        sketchId: "sketch_1",
+        entityId: "rect_1"
+      }
     });
     expect(engine.getDocument().features.get("feat_add")).toMatchObject({
-      profileKind: "circle"
+      profile: {
+        kind: "entity",
+        sketchId: "sketch_tool",
+        entityId: "rect_tool"
+      }
     });
     expect(
       engine.executeQuery({
@@ -37256,7 +37281,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       getExtrudeFeature(rectangleEngine, "feat_rect_circle_add")
     ).toMatchObject({
       kind: "extrude",
-      profileKind: "circle",
+      profile: expect.objectContaining({ kind: "entity" }),
       operationMode: "add",
       targetBodyId: "body_rect_result_cut",
       targetTopologyAnchorId: "anchor_body_rect_circle_tool",
@@ -37377,7 +37402,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       getExtrudeFeature(circleEngine, "feat_circle_circle_cut")
     ).toMatchObject({
       kind: "extrude",
-      profileKind: "circle",
+      profile: expect.objectContaining({ kind: "entity" }),
       operationMode: "cut",
       targetBodyId: "body_circle_result_cut",
       targetTopologyAnchorId: "anchor_body_circle_circle_tool",
@@ -37387,7 +37412,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       getExtrudeFeature(circleEngine, "feat_circle_circle_add")
     ).toMatchObject({
       kind: "extrude",
-      profileKind: "circle",
+      profile: expect.objectContaining({ kind: "entity" }),
       operationMode: "add",
       targetBodyId: "body_circle_circle_cut",
       targetTopologyAnchorId: "anchor_body_circle_circle_tool",

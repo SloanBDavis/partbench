@@ -3,17 +3,34 @@ import type {
   CadSelectionReferenceOperation,
   FeatureExtrudeOperationMode,
   FeatureExtrudeProfileKind,
-  FeatureId
+  FeatureId,
+  SketchEntityId,
+  SketchId,
+  SketchProfileRef
 } from "@web-cad/cad-protocol";
+
+import { getSupportedEntityProfileKind } from "./featureSourceReferences";
 
 export interface BooleanTargetSupportFeature {
   readonly id: FeatureId;
   readonly kind: string;
   readonly bodyId: BodyId;
-  readonly profileKind?: string;
+  readonly profile?: SketchProfileRef;
   readonly operationMode?: string;
   readonly targetBodyId?: BodyId;
   readonly targetTopologyAnchorId?: string;
+}
+
+export interface BooleanTargetSupportDocument<
+  TFeature extends BooleanTargetSupportFeature
+> {
+  readonly features: ReadonlyMap<FeatureId, TFeature>;
+  readonly sketches: ReadonlyMap<
+    SketchId,
+    {
+      readonly entities: ReadonlyMap<SketchEntityId, { readonly kind: string }>;
+    }
+  >;
 }
 
 type SupportedBooleanTargetKind = FeatureExtrudeProfileKind | "importedBody";
@@ -21,13 +38,13 @@ type SupportedBooleanTargetKind = FeatureExtrudeProfileKind | "importedBody";
 export function createSupportedBooleanBodyTargetOperations<
   TFeature extends BooleanTargetSupportFeature
 >(
-  features: ReadonlyMap<FeatureId, TFeature>,
+  document: BooleanTargetSupportDocument<TFeature>,
   bodyId: BodyId,
   topologyAnchorId: string
 ): readonly CadSelectionReferenceOperation[] {
-  const targetFeature = findFeatureByBodyId(features, bodyId);
+  const targetFeature = findFeatureByBodyId(document.features, bodyId);
   const targetProfileKind = resolveSupportedBooleanTargetProfileKind(
-    features,
+    document,
     targetFeature,
     topologyAnchorId,
     bodyId
@@ -61,14 +78,14 @@ export function createSupportedBooleanBodyTargetOperations<
 export function filterSupportedBooleanBodyTargetOperations<
   TFeature extends BooleanTargetSupportFeature
 >(
-  features: ReadonlyMap<FeatureId, TFeature>,
+  document: BooleanTargetSupportDocument<TFeature>,
   bodyId: BodyId,
   topologyAnchorId: string,
   operations: readonly CadSelectionReferenceOperation[]
 ): readonly CadSelectionReferenceOperation[] {
   const supportedOperations = new Set(
     createSupportedBooleanBodyTargetOperations(
-      features,
+      document,
       bodyId,
       topologyAnchorId
     )
@@ -101,7 +118,7 @@ function findFeatureByBodyId<TFeature extends BooleanTargetSupportFeature>(
 function resolveSupportedBooleanTargetProfileKind<
   TFeature extends BooleanTargetSupportFeature
 >(
-  features: ReadonlyMap<FeatureId, TFeature>,
+  document: BooleanTargetSupportDocument<TFeature>,
   targetFeature: TFeature | undefined,
   targetTopologyAnchorId?: string,
   activeResultBodyId?: BodyId
@@ -112,14 +129,16 @@ function resolveSupportedBooleanTargetProfileKind<
 
   if (
     targetFeature?.kind !== "extrude" ||
-    !isFeatureExtrudeProfileKind(targetFeature.profileKind) ||
     !isFeatureExtrudeOperationMode(targetFeature.operationMode)
   ) {
     return undefined;
   }
 
+  const targetProfileKind = resolveProfileKind(document, targetFeature);
+  if (!targetProfileKind) return undefined;
+
   if (targetFeature.operationMode === "newBody") {
-    return targetFeature.profileKind;
+    return targetProfileKind;
   }
 
   if (!isConsumingExtrudeOperationMode(targetFeature.operationMode)) {
@@ -138,14 +157,13 @@ function resolveSupportedBooleanTargetProfileKind<
 
   while (
     current?.kind === "extrude" &&
-    isFeatureExtrudeProfileKind(current.profileKind) &&
     isFeatureExtrudeOperationMode(current.operationMode) &&
     !visitedFeatureIds.has(current.id)
   ) {
     visitedFeatureIds.add(current.id);
 
     if (current.operationMode === "newBody") {
-      return current.profileKind;
+      return resolveProfileKind(document, current);
     }
 
     if (current.targetBodyId === undefined) {
@@ -161,10 +179,22 @@ function resolveSupportedBooleanTargetProfileKind<
       return undefined;
     }
 
-    current = findFeatureByBodyId(features, current.targetBodyId);
+    current = findFeatureByBodyId(document.features, current.targetBodyId);
   }
 
   return undefined;
+}
+
+function resolveProfileKind<TFeature extends BooleanTargetSupportFeature>(
+  document: BooleanTargetSupportDocument<TFeature>,
+  feature: TFeature
+): FeatureExtrudeProfileKind | undefined {
+  const profile =
+    feature.profile?.kind === "entity" ? feature.profile : undefined;
+  const entity = profile
+    ? document.sketches.get(profile.sketchId)?.entities.get(profile.entityId)
+    : undefined;
+  return getSupportedEntityProfileKind(entity);
 }
 
 function isFeatureExtrudeOperationMode(
@@ -181,12 +211,6 @@ function isConsumingExtrudeOperationMode(
   operationMode: FeatureExtrudeOperationMode
 ): boolean {
   return operationMode === "add" || operationMode === "cut";
-}
-
-function isFeatureExtrudeProfileKind(
-  profileKind: string | undefined
-): profileKind is FeatureExtrudeProfileKind {
-  return profileKind === "rectangle" || profileKind === "circle";
 }
 
 function isSupportedCutTargetProfileKind(

@@ -102,8 +102,13 @@ import type {
   SketchEntityKind,
   SketchEntitySnapshot,
   ProfileConsumerFeatureV21,
+  ExtrudeFeatureV21,
+  RevolveFeatureV21,
+  SweepFeatureV21,
+  LoftFeatureV21,
   SketchId,
   SketchAttachmentSnapshot,
+  SketchEntityProfileRef,
   SketchPlane,
   SketchPointTarget,
   SketchPointTargetV21,
@@ -168,6 +173,21 @@ import {
   encodeCanonicalCbor
 } from "./canonicalCbor";
 import { SKETCH_GEOMETRY_POLICY } from "./sketchGeometryPolicy";
+import {
+  normalizeFeatureInputs,
+  type NormalizedFeature
+} from "./normalizedFeatureInputs";
+export {
+  cloneSketchPathRef,
+  cloneSketchProfileRef,
+  getPathEntityRefs,
+  getProfileConsumerRefs,
+  getProfileEntityRefs,
+  getSingleEntityProfile,
+  normalizeFeatureInputs,
+  type NormalizedFeature,
+  type NormalizedSketchEntityRef
+} from "./normalizedFeatureInputs";
 export {
   SKETCH_GEOMETRY_POLICY,
   type SketchGeometryPolicy
@@ -615,34 +635,9 @@ export type Feature =
   | LoftFeature
   | ImportedBodyFeature;
 
-export interface ExtrudeFeature {
-  readonly id: FeatureId;
-  readonly kind: "extrude";
-  readonly name?: string;
-  readonly sketchId: SketchId;
-  readonly entityId: SketchEntityId;
-  readonly profileKind: FeatureExtrudeProfileKind;
-  readonly depth: number;
-  readonly side: FeatureExtrudeSide;
-  readonly operationMode: FeatureExtrudeOperationMode;
-  readonly targetBodyId?: BodyId;
-  readonly targetTopologyAnchorId?: string;
-  readonly bodyId: BodyId;
-}
+export type ExtrudeFeature = ExtrudeFeatureV21;
 
-export interface RevolveFeature {
-  readonly id: FeatureId;
-  readonly kind: "revolve";
-  readonly name?: string;
-  readonly sketchId: SketchId;
-  readonly entityId: SketchEntityId;
-  readonly profileKind: FeatureRevolveProfileKind;
-  readonly axis: FeatureRevolveAxis;
-  readonly angleDegrees: number;
-  readonly operationMode: FeatureRevolveOperationMode;
-  readonly targetBodyId?: BodyId;
-  readonly bodyId: BodyId;
-}
+export type RevolveFeature = RevolveFeatureV21;
 
 export interface HoleFeature {
   readonly id: FeatureId;
@@ -737,24 +732,9 @@ export interface ShellFeature {
   readonly bodyId: BodyId;
 }
 
-export interface SweepFeature {
-  readonly id: FeatureId;
-  readonly kind: "sweep";
-  readonly name?: string;
-  readonly profileSketchId: SketchId;
-  readonly profileEntityId: SketchEntityId;
-  readonly pathSketchId: SketchId;
-  readonly pathEntityIds: readonly SketchEntityId[];
-  readonly bodyId: BodyId;
-}
+export type SweepFeature = SweepFeatureV21;
 
-export interface LoftFeature {
-  readonly id: FeatureId;
-  readonly kind: "loft";
-  readonly name?: string;
-  readonly sections: readonly LoftSection[];
-  readonly bodyId: BodyId;
-}
+export type LoftFeature = LoftFeatureV21;
 
 export interface CadDocument {
   readonly objects: ReadonlyMap<ObjectId, SceneObject>;
@@ -6040,9 +6020,11 @@ function applyOperation(
         id: op.id ?? createFeatureId(),
         kind: "extrude",
         name: normalizeOptionalFeatureName(op.name, opIndex, op.id),
-        sketchId: op.sketchId,
-        entityId: op.entityId,
-        profileKind,
+        profile: {
+          kind: "entity",
+          sketchId: op.sketchId,
+          entityId: op.entityId
+        },
         depth,
         side,
         operationMode,
@@ -6079,17 +6061,30 @@ function applyOperation(
         opIndex
       );
       validateRevolveTargetBodyId(operationMode, op.targetBodyId, opIndex);
+      if (operationMode !== "newBody") {
+        throwValidationError({
+          code: "UNSUPPORTED_FEATURE_OPERATION",
+          message:
+            "Normalized revolve features support newBody operation mode.",
+          opIndex,
+          path: operationPath(opIndex, "operationMode"),
+          expected: "newBody",
+          received: operationMode
+        });
+      }
 
       const feature: RevolveFeature = {
         id: op.id ?? createFeatureId(),
         kind: "revolve",
         name: normalizeOptionalFeatureName(op.name, opIndex, op.id),
-        sketchId: op.sketchId,
-        entityId: op.entityId,
-        profileKind,
+        profile: {
+          kind: "entity",
+          sketchId: op.sketchId,
+          entityId: op.entityId
+        },
         axis,
         angleDegrees,
-        operationMode,
+        operationMode: "newBody",
         bodyId: op.bodyId ?? createBodyId()
       };
 
@@ -10793,6 +10788,9 @@ function updateSketchEntityAndDependents(
   const nextFeatures = new Map(state.features);
   const updatedBodyIds = new Set<BodyId>();
   const updatedFeatureIds = new Set<FeatureId>();
+  const entities = new Map(sketch.entities);
+  entities.set(entity.id, entity);
+  state.sketches.set(sketch.id, { ...sketch, entities });
 
   for (const feature of updatedFeatures) {
     nextFeatures.set(feature.id, feature);
@@ -10808,7 +10806,7 @@ function updateSketchEntityAndDependents(
     assertSupportedExtrudeOperation(
       { ...state, features: nextFeatures },
       feature.operationMode,
-      feature.profileKind,
+      getFeatureProfileKindOrThrow(state, feature, opIndex),
       feature.targetBodyId,
       feature.targetTopologyAnchorId,
       opIndex,
@@ -10835,7 +10833,7 @@ function updateSketchEntityAndDependents(
       assertSupportedExtrudeOperation(
         { ...state, features: nextFeatures },
         feature.operationMode,
-        feature.profileKind,
+        getFeatureProfileKindOrThrow(state, feature, opIndex),
         feature.targetBodyId,
         feature.targetTopologyAnchorId,
         opIndex,
@@ -10876,14 +10874,11 @@ function updateSketchEntityAndDependents(
     downstreamFeatures.push(feature);
   }
 
-  const entities = new Map(sketch.entities);
-  entities.set(entity.id, entity);
-  state.sketches.set(sketch.id, { ...sketch, entities });
   pushSketchEntityModified(diff, sketchEntityRef(sketch.id, entity));
 
   for (const updated of [...updatedFeatures, ...downstreamFeatures]) {
     state.features.set(updated.id, updated);
-    pushFeatureModified(diff, featureRef(updated));
+    pushFeatureModified(diff, featureRef(state, updated));
     pushBodyModified(diff, bodyRef(updated));
   }
 
@@ -10968,17 +10963,13 @@ function updateDependentFeatureForSketchEntity(
   }
 
   if (feature.kind === "revolve") {
-    return {
-      ...feature,
-      profileKind: assertRevolvableProfile(entity, opIndex, sketchId, entity.id)
-    };
+    assertRevolvableProfile(entity, opIndex, sketchId, entity.id);
+    return feature;
   }
 
   if (feature.kind === "extrude") {
-    return {
-      ...feature,
-      profileKind: assertExtrudableProfile(entity, opIndex, sketchId, entity.id)
-    };
+    assertExtrudableProfile(entity, opIndex, sketchId, entity.id);
+    return feature;
   }
 
   return feature;
@@ -11251,8 +11242,52 @@ function addFeature(
   }
 
   state.features.set(feature.id, feature);
-  pushFeatureCreated(diff, featureRef(feature));
+  pushFeatureCreated(diff, featureRef(state, feature));
   pushBodyCreated(diff, bodyRef(feature));
+}
+
+function getFeatureEntityProfile(
+  feature: ExtrudeFeature | RevolveFeature | SweepFeature
+): SketchEntityProfileRef | undefined {
+  return feature.profile.kind === "entity" ? feature.profile : undefined;
+}
+
+function getFeaturePrimaryProfileEntityRef(
+  feature: ExtrudeFeature | RevolveFeature | SweepFeature
+): { readonly sketchId: SketchId; readonly entityId: SketchEntityId } {
+  if (feature.profile.kind === "entity") return feature.profile;
+  return {
+    sketchId: feature.profile.sketchId,
+    entityId: feature.profile.segments[0]!.entityId
+  };
+}
+
+function getFeatureProfileKindOrThrow(
+  state: { readonly sketches: ReadonlyMap<SketchId, Sketch> },
+  feature: ExtrudeFeature | RevolveFeature | SweepFeature,
+  opIndex?: number
+): FeatureExtrudeProfileKind {
+  const profile = getFeatureEntityProfile(feature);
+  const entity = profile
+    ? state.sketches.get(profile.sketchId)?.entities.get(profile.entityId)
+    : undefined;
+  if (!profile || !entity) {
+    throwValidationError({
+      code: "SKETCH_ENTITY_NOT_FOUND",
+      message: `Feature ${feature.id} requires one resolved entity profile.`,
+      opIndex,
+      featureId: feature.id,
+      path: operationPath(opIndex, "profile"),
+      expected: "resolved rectangle or circle entity profile",
+      received: profile ? profile.entityId : feature.profile.kind
+    });
+  }
+  return assertExtrudableProfile(
+    entity,
+    opIndex,
+    profile.sketchId,
+    profile.entityId
+  );
 }
 
 function deleteFeature(
@@ -11307,7 +11342,7 @@ function deleteFeature(
   }
 
   state.features.delete(featureId);
-  pushFeatureDeleted(diff, featureRef(feature));
+  pushFeatureDeleted(diff, featureRef(state, feature));
   pushBodyDeleted(diff, bodyRef(feature));
 }
 
@@ -11401,10 +11436,13 @@ function updateExtrudeFeature(
   };
 
   state.features.set(featureId, updated);
-  pushFeatureModified(diff, featureRef(updated));
+  pushFeatureModified(diff, featureRef(state, updated));
   pushBodyModified(diff, bodyRef(updated));
   if (scopedRebuildChain) {
-    pushFeatureModified(diff, featureRef(scopedRebuildChain.consumingFeature));
+    pushFeatureModified(
+      diff,
+      featureRef(state, scopedRebuildChain.consumingFeature)
+    );
     pushBodyModified(diff, bodyRef(scopedRebuildChain.consumingFeature));
   }
   pushFeatureReferenceEffects(
@@ -11510,7 +11548,7 @@ function validateDirectConsumingFeatureForSourceExtrudeRebuild(
     assertSupportedExtrudeOperation(
       state,
       feature.operationMode,
-      feature.profileKind,
+      getFeatureProfileKindOrThrow(state, feature, opIndex),
       feature.targetBodyId,
       feature.targetTopologyAnchorId,
       opIndex,
@@ -11632,7 +11670,7 @@ function updateRevolveFeature(
   };
 
   state.features.set(feature.id, updated);
-  pushFeatureModified(diff, featureRef(updated));
+  pushFeatureModified(diff, featureRef(state, updated));
   pushBodyModified(diff, bodyRef(updated));
   pushFeatureReferenceEffects(
     diff,
@@ -11739,7 +11777,7 @@ function updateHoleFeature(
   );
 
   state.features.set(feature.id, updated);
-  pushFeatureModified(diff, featureRef(updated));
+  pushFeatureModified(diff, featureRef(state, updated));
   pushBodyModified(diff, bodyRef(updated));
   pushFeatureReferenceEffects(
     diff,
@@ -11774,7 +11812,7 @@ function updateChamferFeature(
 
   assertEdgeFinishFeatureEditable(state, updated, "feature.chamfer", opIndex);
   state.features.set(feature.id, updated);
-  pushFeatureModified(diff, featureRef(updated));
+  pushFeatureModified(diff, featureRef(state, updated));
   pushBodyModified(diff, bodyRef(updated));
   pushFeatureReferenceEffects(
     diff,
@@ -11809,7 +11847,7 @@ function updateFilletFeature(
 
   assertEdgeFinishFeatureEditable(state, updated, "feature.fillet", opIndex);
   state.features.set(feature.id, updated);
-  pushFeatureModified(diff, featureRef(updated));
+  pushFeatureModified(diff, featureRef(state, updated));
   pushBodyModified(diff, bodyRef(updated));
   pushFeatureReferenceEffects(
     diff,
@@ -11875,7 +11913,7 @@ function updateLinearPatternFeature(
     opIndex
   );
   state.features.set(feature.id, updated);
-  pushFeatureModified(diff, featureRef(updated));
+  pushFeatureModified(diff, featureRef(state, updated));
   pushBodyModified(diff, bodyRef(updated));
   pushFeatureReferenceEffects(
     diff,
@@ -11943,7 +11981,7 @@ function updateCircularPatternFeature(
     opIndex
   );
   state.features.set(feature.id, updated);
-  pushFeatureModified(diff, featureRef(updated));
+  pushFeatureModified(diff, featureRef(state, updated));
   pushBodyModified(diff, bodyRef(updated));
   pushFeatureReferenceEffects(
     diff,
@@ -11988,7 +12026,7 @@ function updateMirrorFeature(
 
   assertMirrorFeatureEditable(state, updated, "feature.updateMirror", opIndex);
   state.features.set(feature.id, updated);
-  pushFeatureModified(diff, featureRef(updated));
+  pushFeatureModified(diff, featureRef(state, updated));
   pushBodyModified(diff, bodyRef(updated));
   pushFeatureReferenceEffects(
     diff,
@@ -12043,7 +12081,7 @@ function updateShellFeature(
 
   assertShellFeatureEditable(state, updated, "feature.updateShell", opIndex);
   state.features.set(feature.id, updated);
-  pushFeatureModified(diff, featureRef(updated));
+  pushFeatureModified(diff, featureRef(state, updated));
   pushBodyModified(diff, bodyRef(updated));
   pushFeatureReferenceEffects(
     diff,
@@ -12076,10 +12114,11 @@ function updateSweepFeature(
   );
   const inputs = validateSweepInputs(
     state,
-    op.profileSketchId ?? feature.profileSketchId,
-    op.profileEntityId ?? feature.profileEntityId,
-    op.pathSketchId ?? feature.pathSketchId,
-    op.pathEntityIds ?? feature.pathEntityIds,
+    op.profileSketchId ?? feature.profile.sketchId,
+    op.profileEntityId ?? feature.profile.entityId,
+    op.pathSketchId ?? feature.path.sketchId,
+    op.pathEntityIds ??
+      (feature.path.kind === "entity" ? [feature.path.entityId] : undefined),
     opIndex
   );
   const updated: SweepFeature = { ...feature, ...inputs };
@@ -12090,7 +12129,7 @@ function updateSweepFeature(
     opIndex
   );
   state.features.set(feature.id, updated);
-  pushFeatureModified(diff, featureRef(updated));
+  pushFeatureModified(diff, featureRef(state, updated));
   pushBodyModified(diff, bodyRef(updated));
   pushFeatureReferenceEffects(
     diff,
@@ -12115,10 +12154,7 @@ function validateSweepInputs(
   pathSketchId: unknown,
   pathEntityIds: unknown,
   opIndex?: number
-): Pick<
-  SweepFeature,
-  "profileSketchId" | "profileEntityId" | "pathSketchId" | "pathEntityIds"
-> {
+): Pick<SweepFeature, "profile" | "path"> {
   if (typeof profileSketchId !== "string" || !profileSketchId) {
     throwSweepValidationError(
       "SWEEP_ENTITY_UNRESOLVED",
@@ -12239,10 +12275,17 @@ function validateSweepInputs(
   }
 
   return {
-    profileSketchId,
-    profileEntityId,
-    pathSketchId,
-    pathEntityIds: [pathEntityId]
+    profile: {
+      kind: "entity",
+      sketchId: profileSketchId,
+      entityId: profileEntityId
+    },
+    path: {
+      kind: "entity",
+      sketchId: pathSketchId,
+      entityId: pathEntityId,
+      orientation: "forward"
+    }
   };
 }
 
@@ -12288,7 +12331,7 @@ function updateLoftFeature(
     opIndex
   );
   state.features.set(feature.id, updated);
-  pushFeatureModified(diff, featureRef(updated));
+  pushFeatureModified(diff, featureRef(state, updated));
   pushBodyModified(diff, bodyRef(updated));
   pushFeatureReferenceEffects(
     diff,
@@ -12310,7 +12353,7 @@ function validateLoftSections(
   state: MutableDocumentState,
   sections: unknown,
   opIndex?: number
-): readonly LoftSection[] {
+): LoftFeature["sections"] {
   if (!Array.isArray(sections) || sections.length < 2) {
     throwLoftValidationError(
       "LOFT_SECTION_UNSUPPORTED",
@@ -12322,7 +12365,7 @@ function validateLoftSections(
     );
   }
 
-  const validated = sections.map((section, index): LoftSection => {
+  const validated = sections.map((section, index) => {
     if (
       !isRecord(section) ||
       typeof section.sketchId !== "string" ||
@@ -12359,11 +12402,17 @@ function validateLoftSections(
         opIndex
       );
     }
-    return { sketchId: section.sketchId, entityId: section.entityId };
+    return {
+      profile: {
+        kind: "entity" as const,
+        sketchId: section.sketchId,
+        entityId: section.entityId
+      }
+    };
   });
 
   const keys = validated.map(
-    (section) => `${section.sketchId}\n${section.entityId}`
+    (section) => `${section.profile.sketchId}\n${section.profile.entityId}`
   );
   if (new Set(keys).size !== keys.length) {
     throwLoftValidationError(
@@ -12377,7 +12426,7 @@ function validateLoftSections(
   }
 
   const frames = validated.map((section, index) => {
-    const sketch = state.sketches.get(section.sketchId)!;
+    const sketch = state.sketches.get(section.profile.sketchId)!;
     const frame = createSourceMeasurementFrame(state, sketch, DEFAULT_PART_ID);
     if (!frame) {
       throwLoftValidationError(
@@ -12385,7 +12434,7 @@ function validateLoftSections(
         "Loft section sketch plane frame could not be resolved.",
         `sections.${index}.sketchId`,
         "resolved planar sketch frame",
-        section.sketchId,
+        section.profile.sketchId,
         opIndex
       );
     }
@@ -12405,7 +12454,7 @@ function validateLoftSections(
         "Loft section frames must be roughly parallel.",
         `sections.${index}.sketchId`,
         "planar frame parallel to the first section",
-        validated[index]!.sketchId,
+        validated[index]!.profile.sketchId,
         opIndex
       );
     }
@@ -12420,7 +12469,7 @@ function validateLoftSections(
         "Loft section frames must have non-zero separation.",
         `sections.${index}.sketchId`,
         "non-coplanar planar frame",
-        validated[index]!.sketchId,
+        validated[index]!.profile.sketchId,
         opIndex
       );
     }
@@ -12723,7 +12772,7 @@ function assertSupportedEdgeFinishTarget(
     });
   }
 
-  if (isSupportedEdgeFinishTargetFeature(targetFeature)) {
+  if (isSupportedEdgeFinishTargetFeature(state, targetFeature)) {
     return;
   }
 
@@ -12740,7 +12789,7 @@ function assertSupportedEdgeFinishTarget(
       targetFeatureKind: targetFeature.kind,
       targetProfileKind:
         targetFeature.kind === "extrude"
-          ? targetFeature.profileKind
+          ? getFeatureProfileKindOrThrow(state, targetFeature, opIndex)
           : undefined,
       targetOperationMode:
         targetFeature.kind === "extrude"
@@ -14470,11 +14519,14 @@ function assertSketchNotInUse(
 
 function featureUsesSketch(feature: Feature, sketchId: SketchId): boolean {
   if (feature.kind === "loft") {
-    return feature.sections.some((section) => section.sketchId === sketchId);
+    return feature.sections.some(
+      (section) => section.profile.sketchId === sketchId
+    );
   }
   if (feature.kind === "sweep") {
     return (
-      feature.profileSketchId === sketchId || feature.pathSketchId === sketchId
+      feature.profile.sketchId === sketchId ||
+      feature.path.sketchId === sketchId
     );
   }
   if (
@@ -14489,7 +14541,9 @@ function featureUsesSketch(feature: Feature, sketchId: SketchId): boolean {
     return false;
   }
 
-  return feature.sketchId === sketchId;
+  return feature.kind === "hole"
+    ? feature.sketchId === sketchId
+    : feature.profile.sketchId === sketchId;
 }
 
 function assertSketchEntityNotInUse(
@@ -14527,17 +14581,22 @@ function findFeaturesBySketchEntity(
       feature.kind === "loft" &&
       feature.sections.some(
         (section) =>
-          section.sketchId === sketchId && section.entityId === entityId
+          section.profile.sketchId === sketchId &&
+          section.profile.entityId === entityId
       )
     ) {
       return true;
     }
     if (
       feature.kind === "sweep" &&
-      ((feature.profileSketchId === sketchId &&
-        feature.profileEntityId === entityId) ||
-        (feature.pathSketchId === sketchId &&
-          feature.pathEntityIds.includes(entityId)))
+      ((feature.profile.sketchId === sketchId &&
+        feature.profile.entityId === entityId) ||
+        (feature.path.sketchId === sketchId &&
+          (feature.path.kind === "entity"
+            ? feature.path.entityId === entityId
+            : feature.path.segments.some(
+                (segment) => segment.entityId === entityId
+              ))))
     ) {
       return true;
     }
@@ -14551,8 +14610,12 @@ function findFeaturesBySketchEntity(
 
     if (
       (feature.kind === "extrude" || feature.kind === "revolve") &&
-      feature.sketchId === sketchId &&
-      feature.entityId === entityId
+      feature.profile.sketchId === sketchId &&
+      (feature.profile.kind === "entity"
+        ? feature.profile.entityId === entityId
+        : feature.profile.segments.some(
+            (segment) => segment.entityId === entityId
+          ))
     ) {
       return true;
     }
@@ -15014,7 +15077,7 @@ function assertSupportedHoleTarget(
 ): void {
   const targetFeature = findFeatureByBodyId(state.features, targetBodyId);
   const targetProfileKind = resolveSupportedBooleanTargetProfileKind(
-    state.features,
+    state,
     targetFeature,
     targetTopologyAnchorId,
     targetBodyId
@@ -15042,7 +15105,7 @@ function assertSupportedHoleTarget(
       targetProfileKind:
         targetProfileKind ??
         (targetFeature?.kind === "extrude"
-          ? targetFeature.profileKind
+          ? getFeatureProfileKindOrThrow(state, targetFeature, opIndex)
           : undefined),
       targetFeatureKind: targetFeature?.kind,
       targetOperationMode:
@@ -15177,12 +15240,14 @@ function validateEdgeFinishTargetBodyId(
     targetBodyId,
     targetFeatureKind: targetFeature.kind,
     targetProfileKind:
-      targetFeature.kind === "extrude" ? targetFeature.profileKind : undefined,
+      targetFeature.kind === "extrude"
+        ? getFeatureProfileKindOrThrow(state, targetFeature, opIndex)
+        : undefined,
     targetOperationMode:
       targetFeature.kind === "extrude" ? targetFeature.operationMode : undefined
   };
 
-  if (isSupportedEdgeFinishTargetFeature(targetFeature)) {
+  if (isSupportedEdgeFinishTargetFeature(state, targetFeature)) {
     return targetFeature.bodyId;
   }
 
@@ -15198,16 +15263,20 @@ function validateEdgeFinishTargetBodyId(
   });
 }
 
-function isSupportedEdgeFinishTargetFeature(feature: Feature): boolean {
+function isSupportedEdgeFinishTargetFeature(
+  state: Pick<MutableDocumentState, "sketches">,
+  feature: Feature
+): boolean {
   if (feature.kind === "importedBody") {
     return true;
   }
 
+  if (feature.kind !== "extrude") return false;
+  const profileKind = getFeatureProfileKindOrThrow(state, feature);
   return (
-    feature.kind === "extrude" &&
-    ((feature.operationMode === "newBody" &&
-      isSupportedCutTargetProfileKind(feature.profileKind)) ||
-      (feature.operationMode === "cut" && feature.profileKind === "rectangle"))
+    (feature.operationMode === "newBody" &&
+      isSupportedCutTargetProfileKind(profileKind)) ||
+    (feature.operationMode === "cut" && profileKind === "rectangle")
   );
 }
 
@@ -15531,7 +15600,7 @@ function createTopologyAnchorProofCommandOperations(
 ): readonly CadSelectionReferenceOperation[] {
   if (proof.entityKind === "body") {
     return createSupportedBooleanBodyTargetOperations(
-      state.features,
+      state,
       bodyId,
       topologyAnchorId
     );
@@ -16089,7 +16158,7 @@ function assertSupportedExtrudeOperation(
     consumingFeature !== undefined &&
     consumingFeature.id !== ignoreConsumingFeatureId;
   const targetProfileKind = resolveSupportedBooleanTargetProfileKind(
-    state.features,
+    state,
     targetFeature,
     targetTopologyAnchorId,
     targetBodyId
@@ -16144,7 +16213,7 @@ function assertSupportedExtrudeOperation(
       targetProfileKind:
         targetProfileKind ??
         (targetFeature?.kind === "extrude"
-          ? targetFeature.profileKind
+          ? getFeatureProfileKindOrThrow(state, targetFeature, opIndex)
           : undefined),
       targetOperationMode:
         targetFeature?.kind === "extrude"
@@ -16159,7 +16228,7 @@ function assertSupportedExtrudeOperation(
 }
 
 function resolveSupportedBooleanTargetProfileKind(
-  features: ReadonlyMap<FeatureId, Feature>,
+  state: Pick<MutableDocumentState, "features" | "sketches">,
   targetFeature: Feature | undefined,
   targetTopologyAnchorId?: string,
   activeResultBodyId?: BodyId
@@ -16173,7 +16242,7 @@ function resolveSupportedBooleanTargetProfileKind(
   }
 
   if (targetFeature.operationMode === "newBody") {
-    return targetFeature.profileKind;
+    return getFeatureProfileKindOrThrow(state, targetFeature);
   }
 
   if (!isConsumingExtrudeOperationMode(targetFeature.operationMode)) {
@@ -16194,7 +16263,7 @@ function resolveSupportedBooleanTargetProfileKind(
     visitedFeatureIds.add(current.id);
 
     if (current.operationMode === "newBody") {
-      return current.profileKind;
+      return getFeatureProfileKindOrThrow(state, current);
     }
 
     if (current.targetBodyId === undefined) {
@@ -16210,7 +16279,7 @@ function resolveSupportedBooleanTargetProfileKind(
       return undefined;
     }
 
-    const parent = findFeatureByBodyId(features, current.targetBodyId);
+    const parent = findFeatureByBodyId(state.features, current.targetBodyId);
     current = parent?.kind === "extrude" ? parent : undefined;
   }
 
@@ -17720,7 +17789,7 @@ function filterTopologyAnchorBodyTargetCommandOperations({
   }
 
   return filterSupportedBooleanBodyTargetOperations(
-    document.features,
+    document,
     bodyId,
     topologyAnchorId,
     operations
@@ -18424,16 +18493,22 @@ function sketchEntityRef(
   };
 }
 
-function featureRef(feature: Feature): CadFeatureRef {
+function featureRef(
+  state: Pick<MutableDocumentState, "sketches">,
+  feature: Feature
+): CadFeatureRef {
   if (feature.kind === "sweep") {
     return {
       id: feature.id,
       kind: "sweep",
       bodyId: feature.bodyId,
-      profileSketchId: feature.profileSketchId,
-      profileEntityId: feature.profileEntityId,
-      pathSketchId: feature.pathSketchId,
-      pathEntityIds: [...feature.pathEntityIds]
+      profileSketchId: feature.profile.sketchId,
+      profileEntityId: feature.profile.entityId,
+      pathSketchId: feature.path.sketchId,
+      pathEntityIds:
+        feature.path.kind === "entity"
+          ? [feature.path.entityId]
+          : feature.path.segments.map((segment) => segment.entityId)
     };
   }
   if (feature.kind === "importedBody") {
@@ -18552,13 +18627,15 @@ function featureRef(feature: Feature): CadFeatureRef {
       id: feature.id,
       kind: "revolve",
       bodyId: feature.bodyId,
-      sketchId: feature.sketchId,
-      entityId: feature.entityId,
-      profileKind: feature.profileKind,
+      sketchId: feature.profile.sketchId,
+      entityId:
+        feature.profile.kind === "entity"
+          ? feature.profile.entityId
+          : feature.profile.segments[0]!.entityId,
+      profileKind: getFeatureProfileKindOrThrow(state, feature),
       axis: feature.axis,
       angleDegrees: feature.angleDegrees,
-      operationMode: feature.operationMode,
-      ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {})
+      operationMode: feature.operationMode
     };
   }
 
@@ -18567,7 +18644,10 @@ function featureRef(feature: Feature): CadFeatureRef {
       id: feature.id,
       kind: "loft",
       name: feature.name,
-      sections: feature.sections.map((section) => ({ ...section })),
+      sections: feature.sections.map((section) => ({
+        sketchId: section.profile.sketchId,
+        entityId: section.profile.entityId
+      })),
       bodyId: feature.bodyId
     };
   }
@@ -18576,9 +18656,12 @@ function featureRef(feature: Feature): CadFeatureRef {
     id: feature.id,
     kind: "extrude",
     bodyId: feature.bodyId,
-    sketchId: feature.sketchId,
-    entityId: feature.entityId,
-    profileKind: feature.profileKind,
+    sketchId: feature.profile.sketchId,
+    entityId:
+      feature.profile.kind === "entity"
+        ? feature.profile.entityId
+        : feature.profile.segments[0]!.entityId,
+    profileKind: getFeatureProfileKindOrThrow(state, feature),
     depth: feature.depth,
     side: feature.side,
     operationMode: feature.operationMode,
@@ -19131,7 +19214,7 @@ function scaleDocumentLengthValues(
         depth: scaleLength(feature.depth, scaleFactor)
       };
       state.features.set(feature.id, scaled);
-      pushFeatureModified(diff, featureRef(scaled));
+      pushFeatureModified(diff, featureRef(state, scaled));
       pushBodyModified(diff, bodyRef(scaled));
     }
 
@@ -19141,7 +19224,7 @@ function scaleDocumentLengthValues(
         depth: scaleLength(feature.depth, scaleFactor)
       };
       state.features.set(feature.id, scaled);
-      pushFeatureModified(diff, featureRef(scaled));
+      pushFeatureModified(diff, featureRef(state, scaled));
       pushBodyModified(diff, bodyRef(scaled));
     }
   }
@@ -19616,238 +19699,17 @@ function cloneSketchAttachment(
 }
 
 function createFeatureSnapshot(feature: Feature): FeatureSnapshot {
-  const storedFeature = feature as unknown as Record<string, unknown>;
-  if (
-    (feature.kind === "extrude" ||
-      feature.kind === "revolve" ||
-      feature.kind === "sweep") &&
-    isRecord(storedFeature.profile)
-  ) {
-    return cloneJsonSource(feature) as unknown as FeatureSnapshot;
-  }
-  if (
-    feature.kind === "loft" &&
-    Array.isArray(storedFeature.sections) &&
-    storedFeature.sections.some(
-      (section) => isRecord(section) && isRecord(section.profile)
-    )
-  ) {
-    return cloneJsonSource(feature) as unknown as FeatureSnapshot;
-  }
-  if (feature.kind === "sweep") {
-    return {
-      id: feature.id,
-      kind: "sweep",
-      name: feature.name,
-      profileSketchId: feature.profileSketchId,
-      profileEntityId: feature.profileEntityId,
-      pathSketchId: feature.pathSketchId,
-      pathEntityIds: [...feature.pathEntityIds],
-      bodyId: feature.bodyId
-    };
-  }
-  if (feature.kind === "importedBody") {
-    return {
-      id: feature.id,
-      kind: "importedBody",
-      name: feature.name,
-      sourceFileName: feature.sourceFileName,
-      sourceFormat: feature.sourceFormat,
-      bodyId: feature.bodyId,
-      checkpointId: feature.checkpointId,
-      healingApplied: feature.healingApplied
-    };
-  }
-
-  if (feature.kind === "linearPattern") {
-    return {
-      id: feature.id,
-      kind: "linearPattern",
-      name: feature.name,
-      seedBodyId: feature.seedBodyId,
-      direction: { ...feature.direction },
-      spacing: feature.spacing,
-      instanceCount: feature.instanceCount,
-      bodyId: feature.bodyId,
-      instances: feature.instances.map(clonePatternInstance)
-    };
-  }
-
-  if (feature.kind === "circularPattern") {
-    return {
-      id: feature.id,
-      kind: "circularPattern",
-      name: feature.name,
-      seedBodyId: feature.seedBodyId,
-      rotationAxis: { ...feature.rotationAxis },
-      totalAngleDegrees: feature.totalAngleDegrees,
-      instanceCount: feature.instanceCount,
-      bodyId: feature.bodyId,
-      instances: feature.instances.map(clonePatternInstance)
-    };
-  }
-
-  if (feature.kind === "mirror") {
-    return {
-      id: feature.id,
-      kind: "mirror",
-      name: feature.name,
-      seedBodyId: feature.seedBodyId,
-      plane: { ...feature.plane },
-      includeOriginal: feature.includeOriginal,
-      bodyId: feature.bodyId
-    };
-  }
-
-  if (feature.kind === "shell") {
-    return {
-      id: feature.id,
-      kind: "shell",
-      name: feature.name,
-      targetBodyId: feature.targetBodyId,
-      wallThickness: feature.wallThickness,
-      openFaceRefs: [...feature.openFaceRefs],
-      bodyId: feature.bodyId
-    };
-  }
-
-  if (feature.kind === "chamfer") {
-    return {
-      id: feature.id,
-      kind: "chamfer",
-      name: feature.name,
-      targetBodyId: feature.targetBodyId,
-      ...(feature.edgeStableId ? { edgeStableId: feature.edgeStableId } : {}),
-      ...(feature.namedReference
-        ? { namedReference: feature.namedReference }
-        : {}),
-      ...(feature.topologyAnchorId
-        ? { topologyAnchorId: feature.topologyAnchorId }
-        : {}),
-      distance: feature.distance,
-      bodyId: feature.bodyId
-    };
-  }
-
-  if (feature.kind === "fillet") {
-    return {
-      id: feature.id,
-      kind: "fillet",
-      name: feature.name,
-      targetBodyId: feature.targetBodyId,
-      ...(feature.edgeStableId ? { edgeStableId: feature.edgeStableId } : {}),
-      ...(feature.namedReference
-        ? { namedReference: feature.namedReference }
-        : {}),
-      ...(feature.topologyAnchorId
-        ? { topologyAnchorId: feature.topologyAnchorId }
-        : {}),
-      radius: feature.radius,
-      bodyId: feature.bodyId
-    };
-  }
-
-  if (feature.kind === "hole") {
-    return {
-      id: feature.id,
-      kind: "hole",
-      name: feature.name,
-      targetBodyId: feature.targetBodyId,
-      ...(feature.targetTopologyAnchorId
-        ? { targetTopologyAnchorId: feature.targetTopologyAnchorId }
-        : {}),
-      sketchId: feature.sketchId,
-      circleEntityId: feature.circleEntityId,
-      depthMode: feature.depthMode,
-      ...(feature.depth !== undefined ? { depth: feature.depth } : {}),
-      direction: feature.direction,
-      bodyId: feature.bodyId
-    };
-  }
-
-  if (feature.kind === "revolve") {
-    return {
-      id: feature.id,
-      kind: "revolve",
-      name: feature.name,
-      sketchId: feature.sketchId,
-      entityId: feature.entityId,
-      profileKind: feature.profileKind,
-      axis: feature.axis,
-      angleDegrees: feature.angleDegrees,
-      operationMode: feature.operationMode,
-      ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {}),
-      bodyId: feature.bodyId
-    };
-  }
-
-  if (feature.kind === "loft") {
-    return {
-      id: feature.id,
-      kind: "loft",
-      name: feature.name,
-      sections: feature.sections.map((section) => ({ ...section })),
-      bodyId: feature.bodyId
-    };
-  }
-
-  return {
-    id: feature.id,
-    kind: "extrude",
-    name: feature.name,
-    sketchId: feature.sketchId,
-    entityId: feature.entityId,
-    profileKind: feature.profileKind,
-    depth: feature.depth,
-    side: feature.side,
-    operationMode: feature.operationMode,
-    ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {}),
-    ...(feature.targetTopologyAnchorId
-      ? { targetTopologyAnchorId: feature.targetTopologyAnchorId }
-      : {}),
-    bodyId: feature.bodyId
-  };
+  return cloneJsonSource(feature) as unknown as FeatureSnapshot;
 }
 
 function createFeatureFromSnapshot(snapshot: FeatureSnapshot): Feature {
-  const storedSnapshot = snapshot as unknown as Record<string, unknown>;
   if (
-    (snapshot.kind === "extrude" ||
-      snapshot.kind === "revolve" ||
-      snapshot.kind === "sweep") &&
-    isRecord(storedSnapshot.profile)
+    snapshot.kind === "extrude" ||
+    snapshot.kind === "revolve" ||
+    snapshot.kind === "sweep" ||
+    snapshot.kind === "loft"
   ) {
-    return cloneJsonSource(snapshot) as unknown as Feature;
-  }
-  if (
-    snapshot.kind === "loft" &&
-    Array.isArray(storedSnapshot.sections) &&
-    storedSnapshot.sections.some(
-      (section) => isRecord(section) && isRecord(section.profile)
-    )
-  ) {
-    return cloneJsonSource(snapshot) as unknown as Feature;
-  }
-  if (snapshot.kind === "loft") {
-    return {
-      id: snapshot.id,
-      kind: "loft",
-      name: snapshot.name,
-      sections: snapshot.sections.map((section) => ({ ...section })),
-      bodyId: snapshot.bodyId
-    };
-  }
-  if (snapshot.kind === "sweep") {
-    return {
-      id: snapshot.id,
-      kind: "sweep",
-      name: snapshot.name,
-      profileSketchId: snapshot.profileSketchId,
-      profileEntityId: snapshot.profileEntityId,
-      pathSketchId: snapshot.pathSketchId,
-      pathEntityIds: [...snapshot.pathEntityIds],
-      bodyId: snapshot.bodyId
-    };
+    return normalizeFeatureInputs(snapshot) as Feature;
   }
   if (snapshot.kind === "importedBody") {
     return {
@@ -20004,36 +19866,7 @@ function createFeatureFromSnapshot(snapshot: FeatureSnapshot): Feature {
     };
   }
 
-  if (snapshot.kind === "revolve") {
-    return {
-      id: snapshot.id,
-      kind: "revolve",
-      name: snapshot.name,
-      sketchId: snapshot.sketchId,
-      entityId: snapshot.entityId,
-      profileKind: snapshot.profileKind,
-      axis: snapshot.axis,
-      angleDegrees: snapshot.angleDegrees,
-      operationMode: snapshot.operationMode ?? "newBody",
-      targetBodyId: snapshot.targetBodyId,
-      bodyId: snapshot.bodyId
-    };
-  }
-
-  return {
-    id: snapshot.id,
-    kind: "extrude",
-    name: snapshot.name,
-    sketchId: snapshot.sketchId,
-    entityId: snapshot.entityId,
-    profileKind: snapshot.profileKind,
-    depth: snapshot.depth,
-    side: snapshot.side ?? "positive",
-    operationMode: snapshot.operationMode ?? "newBody",
-    targetBodyId: snapshot.targetBodyId,
-    targetTopologyAnchorId: snapshot.targetTopologyAnchorId,
-    bodyId: snapshot.bodyId
-  };
+  throw new Error("Unsupported feature snapshot kind.");
 }
 
 function cloneNamedReferenceSnapshot(
@@ -20566,8 +20399,8 @@ function createProjectStructure(
       }
     )
   );
-  const authoredFeatures = [...document.features.values()].map(
-    createFeatureSummary
+  const authoredFeatures = [...document.features.values()].map((feature) =>
+    createFeatureSummary(document, feature)
   );
   const consumedBodyIds = createConsumedBodyMap(document.features);
   const features: readonly CadFeatureSummary[] = [
@@ -20577,7 +20410,11 @@ function createProjectStructure(
   const bodies = [
     ...objects.map(createPrimitiveBodySnapshot),
     ...[...document.features.values()].map((feature) =>
-      createFeatureBodySnapshot(feature, consumedBodyIds.get(feature.bodyId))
+      createFeatureBodySnapshot(
+        document,
+        feature,
+        consumedBodyIds.get(feature.bodyId)
+      )
     )
   ];
   const objectSources = objects.map(createObjectModelSource);
@@ -20661,7 +20498,10 @@ function createPrimitiveBodySnapshot(object: SceneObject): CadBodySnapshot {
   };
 }
 
-function createFeatureSummary(feature: Feature): CadFeatureSummary {
+function createFeatureSummary(
+  document: Pick<CadDocument, "sketches">,
+  feature: Feature
+): CadFeatureSummary {
   if (feature.kind === "loft") {
     return {
       id: feature.id,
@@ -20669,10 +20509,16 @@ function createFeatureSummary(feature: Feature): CadFeatureSummary {
       partId: DEFAULT_PART_ID,
       bodyId: feature.bodyId,
       name: feature.name,
-      sections: feature.sections.map((section) => ({ ...section })),
+      sections: feature.sections.map((section) => ({
+        sketchId: section.profile.sketchId,
+        entityId: section.profile.entityId
+      })),
       source: {
         type: "loftFeature",
-        sections: feature.sections.map((section) => ({ ...section }))
+        sections: feature.sections.map((section) => ({
+          sketchId: section.profile.sketchId,
+          entityId: section.profile.entityId
+        }))
       }
     };
   }
@@ -20683,16 +20529,22 @@ function createFeatureSummary(feature: Feature): CadFeatureSummary {
       partId: DEFAULT_PART_ID,
       bodyId: feature.bodyId,
       name: feature.name,
-      profileSketchId: feature.profileSketchId,
-      profileEntityId: feature.profileEntityId,
-      pathSketchId: feature.pathSketchId,
-      pathEntityIds: [...feature.pathEntityIds],
+      profileSketchId: feature.profile.sketchId,
+      profileEntityId: feature.profile.entityId,
+      pathSketchId: feature.path.sketchId,
+      pathEntityIds:
+        feature.path.kind === "entity"
+          ? [feature.path.entityId]
+          : feature.path.segments.map((segment) => segment.entityId),
       source: {
         type: "sweepFeature",
-        profileSketchId: feature.profileSketchId,
-        profileEntityId: feature.profileEntityId,
-        pathSketchId: feature.pathSketchId,
-        pathEntityIds: [...feature.pathEntityIds]
+        profileSketchId: feature.profile.sketchId,
+        profileEntityId: feature.profile.entityId,
+        pathSketchId: feature.path.sketchId,
+        pathEntityIds:
+          feature.path.kind === "entity"
+            ? [feature.path.entityId]
+            : feature.path.segments.map((segment) => segment.entityId)
       }
     };
   }
@@ -20879,37 +20731,38 @@ function createFeatureSummary(feature: Feature): CadFeatureSummary {
   }
 
   if (feature.kind === "revolve") {
+    const profile = getFeaturePrimaryProfileEntityRef(feature);
     return {
       id: feature.id,
       kind: "revolve",
       partId: DEFAULT_PART_ID,
       bodyId: feature.bodyId,
       name: feature.name,
-      sketchId: feature.sketchId,
-      entityId: feature.entityId,
-      profileKind: feature.profileKind,
+      sketchId: profile.sketchId,
+      entityId: profile.entityId,
+      profileKind: getFeatureProfileKindOrThrow(document, feature),
       axis: feature.axis,
       angleDegrees: feature.angleDegrees,
       operationMode: feature.operationMode,
-      ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {}),
       source: {
         type: "sketchEntityWithAxis",
-        sketchId: feature.sketchId,
-        entityId: feature.entityId,
+        sketchId: profile.sketchId,
+        entityId: profile.entityId,
         axis: feature.axis
       }
     };
   }
 
+  const profile = getFeaturePrimaryProfileEntityRef(feature);
   return {
     id: feature.id,
     kind: "extrude",
     partId: DEFAULT_PART_ID,
     bodyId: feature.bodyId,
     name: feature.name,
-    sketchId: feature.sketchId,
-    entityId: feature.entityId,
-    profileKind: feature.profileKind,
+    sketchId: profile.sketchId,
+    entityId: profile.entityId,
+    profileKind: getFeatureProfileKindOrThrow(document, feature),
     depth: feature.depth,
     side: feature.side,
     operationMode: feature.operationMode,
@@ -20919,8 +20772,8 @@ function createFeatureSummary(feature: Feature): CadFeatureSummary {
       : {}),
     source: {
       type: "sketchEntity",
-      sketchId: feature.sketchId,
-      entityId: feature.entityId,
+      sketchId: profile.sketchId,
+      entityId: profile.entityId,
       ...(feature.targetTopologyAnchorId
         ? { targetTopologyAnchorId: feature.targetTopologyAnchorId }
         : {})
@@ -20929,6 +20782,7 @@ function createFeatureSummary(feature: Feature): CadFeatureSummary {
 }
 
 function createFeatureBodySnapshot(
+  document: Pick<CadDocument, "sketches">,
   feature: Feature,
   consumedByFeatureId?: FeatureId
 ): CadBodySnapshot {
@@ -20943,7 +20797,10 @@ function createFeatureBodySnapshot(
       source: {
         type: "loftFeature",
         featureId: feature.id,
-        sections: feature.sections.map((section) => ({ ...section }))
+        sections: feature.sections.map((section) => ({
+          sketchId: section.profile.sketchId,
+          entityId: section.profile.entityId
+        }))
       }
     };
   }
@@ -20958,10 +20815,13 @@ function createFeatureBodySnapshot(
       source: {
         type: "sweepFeature",
         featureId: feature.id,
-        profileSketchId: feature.profileSketchId,
-        profileEntityId: feature.profileEntityId,
-        pathSketchId: feature.pathSketchId,
-        pathEntityIds: [...feature.pathEntityIds]
+        profileSketchId: feature.profile.sketchId,
+        profileEntityId: feature.profile.entityId,
+        pathSketchId: feature.path.sketchId,
+        pathEntityIds:
+          feature.path.kind === "entity"
+            ? [feature.path.entityId]
+            : feature.path.segments.map((segment) => segment.entityId)
       }
     };
   }
@@ -21126,6 +20986,7 @@ function createFeatureBodySnapshot(
   }
 
   if (feature.kind === "revolve") {
+    const profile = getFeaturePrimaryProfileEntityRef(feature);
     return {
       id: feature.bodyId,
       kind: "solid",
@@ -21136,14 +20997,15 @@ function createFeatureBodySnapshot(
       source: {
         type: "sketchRevolveFeature",
         featureId: feature.id,
-        sketchId: feature.sketchId,
-        entityId: feature.entityId,
-        profileKind: feature.profileKind,
+        sketchId: profile.sketchId,
+        entityId: profile.entityId,
+        profileKind: getFeatureProfileKindOrThrow(document, feature),
         axis: feature.axis
       }
     };
   }
 
+  const profile = getFeaturePrimaryProfileEntityRef(feature);
   return {
     id: feature.bodyId,
     kind: "solid",
@@ -21154,9 +21016,9 @@ function createFeatureBodySnapshot(
     source: {
       type: "sketchExtrudeFeature",
       featureId: feature.id,
-      sketchId: feature.sketchId,
-      entityId: feature.entityId,
-      profileKind: feature.profileKind
+      sketchId: profile.sketchId,
+      entityId: profile.entityId,
+      profileKind: getFeatureProfileKindOrThrow(document, feature)
     }
   };
 }
@@ -24592,11 +24454,16 @@ function validateCadDocumentSnapshot(
           maxGeneratedBodyNumber,
           generatedNumbers.maxGeneratedBodyNumber
         );
-        collectValidExtrudeFeatureByBodyId(feature, extrudeFeatureByBodyId);
+        collectValidExtrudeFeatureByBodyId(
+          feature,
+          extrudeFeatureByBodyId,
+          sketchEntityRefs
+        );
         collectValidAuthoredFeatureByBodyId(
           feature,
           `${path}.features[${index}]`,
-          authoredFeatureByBodyId
+          authoredFeatureByBodyId,
+          sketchEntityRefs
         );
       }
 
@@ -26974,17 +26841,51 @@ function getImportedSketchDimensionTargetValue(
   return undefined;
 }
 
+function getImportEntityProfileDescriptor(
+  value: unknown,
+  sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>
+):
+  | {
+      readonly sketchId: SketchId;
+      readonly entityId: SketchEntityId;
+      readonly profileKind: FeatureExtrudeProfileKind;
+    }
+  | undefined {
+  if (!isRecord(value)) return undefined;
+  if (isRecord(value.profile) && value.profile.kind === "entity") {
+    const sketchId = value.profile.sketchId;
+    const entityId = value.profile.entityId;
+    if (typeof sketchId !== "string" || typeof entityId !== "string") {
+      return undefined;
+    }
+    const entity = sketchEntityRefs.get(entityId);
+    return entity?.sketchId === sketchId &&
+      (entity.kind === "rectangle" || entity.kind === "circle")
+      ? { sketchId, entityId, profileKind: entity.kind }
+      : undefined;
+  }
+  return typeof value.sketchId === "string" &&
+    typeof value.entityId === "string" &&
+    (value.profileKind === "rectangle" || value.profileKind === "circle")
+    ? {
+        sketchId: value.sketchId,
+        entityId: value.entityId,
+        profileKind: value.profileKind
+      }
+    : undefined;
+}
+
 function collectValidExtrudeFeatureByBodyId(
   value: unknown,
-  featuresByBodyId: Map<BodyId, ExtrudeFeatureSnapshot>
+  featuresByBodyId: Map<BodyId, ExtrudeFeatureSnapshot>,
+  sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>
 ): void {
+  const profile = getImportEntityProfileDescriptor(value, sketchEntityRefs);
   if (
     isRecord(value) &&
     value.kind === "extrude" &&
     typeof value.id === "string" &&
-    typeof value.sketchId === "string" &&
-    typeof value.entityId === "string" &&
-    (value.profileKind === "rectangle" || value.profileKind === "circle") &&
+    profile !== undefined &&
     typeof value.depth === "number" &&
     isPositiveFiniteNumber(value.depth) &&
     (value.side === undefined || isExtrudeSide(value.side)) &&
@@ -26997,9 +26898,9 @@ function collectValidExtrudeFeatureByBodyId(
       id: value.id,
       kind: "extrude",
       name: typeof value.name === "string" ? value.name : undefined,
-      sketchId: value.sketchId,
-      entityId: value.entityId,
-      profileKind: value.profileKind,
+      sketchId: profile.sketchId,
+      entityId: profile.entityId,
+      profileKind: profile.profileKind,
       depth: value.depth,
       side: value.side ?? "positive",
       operationMode: value.operationMode ?? "newBody",
@@ -27011,15 +26912,15 @@ function collectValidExtrudeFeatureByBodyId(
 function collectValidAuthoredFeatureByBodyId(
   value: unknown,
   path: string,
-  featuresByBodyId: Map<BodyId, FeatureSnapshot & { readonly path: string }>
+  featuresByBodyId: Map<BodyId, FeatureSnapshot & { readonly path: string }>,
+  sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>
 ): void {
+  const profile = getImportEntityProfileDescriptor(value, sketchEntityRefs);
   if (
     isRecord(value) &&
     value.kind === "extrude" &&
     typeof value.id === "string" &&
-    typeof value.sketchId === "string" &&
-    typeof value.entityId === "string" &&
-    (value.profileKind === "rectangle" || value.profileKind === "circle") &&
+    profile !== undefined &&
     typeof value.depth === "number" &&
     isPositiveFiniteNumber(value.depth) &&
     (value.side === undefined || isExtrudeSide(value.side)) &&
@@ -27035,9 +26936,9 @@ function collectValidAuthoredFeatureByBodyId(
       id: value.id,
       kind: "extrude",
       name: typeof value.name === "string" ? value.name : undefined,
-      sketchId: value.sketchId,
-      entityId: value.entityId,
-      profileKind: value.profileKind,
+      sketchId: profile.sketchId,
+      entityId: profile.entityId,
+      profileKind: profile.profileKind,
       depth: value.depth,
       side: value.side ?? "positive",
       operationMode: value.operationMode ?? "newBody",
@@ -27053,9 +26954,7 @@ function collectValidAuthoredFeatureByBodyId(
     isRecord(value) &&
     value.kind === "revolve" &&
     typeof value.id === "string" &&
-    typeof value.sketchId === "string" &&
-    typeof value.entityId === "string" &&
-    (value.profileKind === "rectangle" || value.profileKind === "circle") &&
+    profile !== undefined &&
     isFeatureRevolveAxis(value.axis) &&
     typeof value.angleDegrees === "number" &&
     isPositiveFiniteNumber(value.angleDegrees) &&
@@ -27068,9 +26967,9 @@ function collectValidAuthoredFeatureByBodyId(
       id: value.id,
       kind: "revolve",
       name: typeof value.name === "string" ? value.name : undefined,
-      sketchId: value.sketchId,
-      entityId: value.entityId,
-      profileKind: value.profileKind,
+      sketchId: profile.sketchId,
+      entityId: profile.entityId,
+      profileKind: profile.profileKind,
       axis: value.axis,
       angleDegrees: value.angleDegrees,
       operationMode: "newBody",
@@ -27739,6 +27638,21 @@ function validateSketchEntitySnapshot(
         "SCHEMA_V21_SOURCE_INVALID",
         `${path}.construction`,
         "V21 sketch entities must store construction as a boolean."
+      );
+    }
+    const allowedKeysByKind: Record<string, readonly string[]> = {
+      point: ["id", "kind", "point", "construction"],
+      line: ["id", "kind", "start", "end", "construction"],
+      rectangle: ["id", "kind", "center", "width", "height", "construction"],
+      circle: ["id", "kind", "center", "radius", "construction"]
+    };
+    if (typeof value.kind === "string" && value.kind !== "arc") {
+      validateV21ExactObjectKeys(
+        value,
+        allowedKeysByKind[value.kind] ?? [],
+        path,
+        issues,
+        `V21 ${value.kind} entity`
       );
     }
   } else if (value.construction !== undefined) {
@@ -28574,6 +28488,39 @@ function validateV21ProfileConsumerFeatureSnapshot(
   seenSketchIds: ReadonlySet<string>,
   sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>
 ): void {
+  const allowedKeysByKind: Record<string, readonly string[]> = {
+    extrude: [
+      "id",
+      "kind",
+      "name",
+      "profile",
+      "operationMode",
+      "targetBodyId",
+      "targetTopologyAnchorId",
+      "depth",
+      "side",
+      "bodyId"
+    ],
+    revolve: [
+      "id",
+      "kind",
+      "name",
+      "profile",
+      "axis",
+      "angleDegrees",
+      "operationMode",
+      "bodyId"
+    ],
+    sweep: ["id", "kind", "name", "profile", "path", "bodyId"],
+    loft: ["id", "kind", "name", "sections", "bodyId"]
+  };
+  validateV21ExactObjectKeys(
+    value,
+    allowedKeysByKind[String(value.kind)] ?? [],
+    path,
+    issues,
+    `V21 ${String(value.kind)} feature`
+  );
   validateOptionalFeatureName(value.name, `${path}.name`, issues);
 
   const legacyFields =
@@ -28611,6 +28558,13 @@ function validateV21ProfileConsumerFeatureSnapshot(
           );
           return;
         }
+        validateV21ExactObjectKeys(
+          section,
+          ["profile"],
+          sectionPath,
+          issues,
+          "V21 loft section"
+        );
         for (const field of ["sketchId", "entityId"]) {
           if (section[field] !== undefined) {
             addProjectIssue(
@@ -28657,7 +28611,13 @@ function validateV21ProfileConsumerFeatureSnapshot(
   }
 
   if (value.kind === "revolve") {
-    validateV21RevolveFields(value, path, profileSketchId, issues);
+    validateV21RevolveFields(
+      value,
+      path,
+      profileSketchId,
+      sketchEntityRefs,
+      issues
+    );
     validateV21FeatureBodyId(
       value.bodyId,
       path,
@@ -29002,6 +28962,7 @@ function validateV21RevolveFields(
   value: Record<string, unknown>,
   path: string,
   profileSketchId: SketchId | undefined,
+  sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>,
   issues: CadProjectImportIssue[]
 ): void {
   if (!isRecord(value.axis) || value.axis.type !== "sketchLine") {
@@ -29027,6 +28988,30 @@ function validateV21RevolveFields(
         `${path}.axis.entityId`,
         "V21 revolve axis entityId must be a non-empty string."
       );
+    } else {
+      const axisEntity = sketchEntityRefs.get(value.axis.entityId);
+      if (!axisEntity) {
+        addProjectIssue(
+          issues,
+          "SCHEMA_V21_SOURCE_INVALID",
+          `${path}.axis.entityId`,
+          "V21 revolve axis entityId must reference an existing sketch entity."
+        );
+      } else if (axisEntity.sketchId !== profileSketchId) {
+        addProjectIssue(
+          issues,
+          "SCHEMA_V21_SOURCE_INVALID",
+          `${path}.axis.entityId`,
+          "V21 revolve axis entity must belong to the profile sketch."
+        );
+      } else if (axisEntity.kind !== "line") {
+        addProjectIssue(
+          issues,
+          "SCHEMA_V21_SOURCE_INVALID",
+          `${path}.axis.entityId`,
+          "V21 revolve axis entity must be a sketch line."
+        );
+      }
     }
   }
   if (
