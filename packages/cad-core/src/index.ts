@@ -112,6 +112,7 @@ import type {
   SketchId,
   SketchAttachmentSnapshot,
   SketchEntityProfileRef,
+  SketchProfileRef,
   SketchPlane,
   SketchPointTarget,
   SketchPointTargetV21,
@@ -144,6 +145,7 @@ import type {
   FeatureRevolveProfileKind,
   FeatureShellOpenFaceRef,
   FeatureSemanticDiff,
+  FeatureInputReferenceSemanticDiff,
   NamedGeneratedReferenceEntry,
   NamedGeneratedReferenceSnapshot,
   NamedReferenceName,
@@ -184,6 +186,11 @@ import {
   type SketchArcValidationIssue
 } from "./sketchArcMath";
 import { normalizeFeatureInputs } from "./normalizedFeatureInputs";
+import {
+  validateProfileInputSource,
+  validateSketchPathRefSource,
+  validateSketchProfileRefSource
+} from "./v21SourceValidation";
 export {
   cloneSketchPathRef,
   cloneSketchProfileRef,
@@ -315,6 +322,10 @@ import {
   createSketchProfileHealthEntries,
   createSketchProfileLifecycleEffects
 } from "./sketchProfileHealth";
+import {
+  createProfileInputReference,
+  resolveNewBodyWireExtrudeProfile
+} from "./wireExtrudeProfile";
 import {
   createProjectExactExport,
   createProjectExportReadiness
@@ -5281,6 +5292,7 @@ type MutableFeatureSemanticDiff = {
   bodiesDeleted: CadBodyRef[];
   referenceEffects: CadFeatureReferenceChangeSummary[];
   lifecycleEffects: CadBodyLifecycleEffectSummary[];
+  inputReferences: FeatureInputReferenceSemanticDiff[];
 };
 
 type MutableReferenceSemanticDiff = {
@@ -6163,25 +6175,59 @@ function applyOperation(
     }
 
     case "feature.extrude": {
-      const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
-      const entity = sketch.entities.get(op.entityId);
-
-      if (!entity) {
-        throwSketchEntityNotFound(op.sketchId, op.entityId, opIndex);
-      }
-
-      const profileKind = assertExtrudableProfile(
-        entity,
-        opIndex,
-        op.sketchId,
-        op.entityId
-      );
       const depth = validateExtrudeDepth(op.depth, opIndex);
       const side = validateExtrudeSide(op.side, opIndex);
       const operationMode = parseExtrudeOperationMode(
         op.operationMode,
         opIndex
       );
+      const requestedProfile = resolveExtrudeCommandInputProfile(op, opIndex);
+      let profile = requestedProfile;
+      let profileKind: FeatureExtrudeProfileKind | undefined;
+      let profileOrientationNormalized = false;
+
+      if (requestedProfile.kind === "wire") {
+        const resolution = resolveNewBodyWireExtrudeProfile(
+          state,
+          requestedProfile,
+          operationMode
+        );
+        if (!resolution.ok) {
+          throwValidationError({
+            code: resolution.code,
+            message: resolution.message,
+            opIndex,
+            sketchId: resolution.sketchId,
+            sketchEntityId: resolution.sketchEntityId,
+            path: operationPath(opIndex, "profile"),
+            expected:
+              "feature-ready composite wire profile for newBody extrude",
+            received: requestedProfile.kind
+          });
+        }
+        profile = resolution.profile;
+        profileOrientationNormalized = resolution.orientationNormalized;
+      } else {
+        const sketch = getSketchOrThrow(
+          state.sketches,
+          requestedProfile.sketchId,
+          opIndex
+        );
+        const entity = sketch.entities.get(requestedProfile.entityId);
+        if (!entity) {
+          throwSketchEntityNotFound(
+            requestedProfile.sketchId,
+            requestedProfile.entityId,
+            opIndex
+          );
+        }
+        profileKind = assertExtrudableProfile(
+          entity,
+          opIndex,
+          requestedProfile.sketchId,
+          requestedProfile.entityId
+        );
+      }
       const target = validateExtrudeTarget(
         state,
         operationMode,
@@ -6189,23 +6235,21 @@ function applyOperation(
         op.targetTopologyAnchorId,
         opIndex
       );
-      assertSupportedExtrudeOperation(
-        state,
-        operationMode,
-        profileKind,
-        target.targetBodyId,
-        target.targetTopologyAnchorId,
-        opIndex
-      );
+      if (profileKind) {
+        assertSupportedExtrudeOperation(
+          state,
+          operationMode,
+          profileKind,
+          target.targetBodyId,
+          target.targetTopologyAnchorId,
+          opIndex
+        );
+      }
       const feature: ExtrudeFeature = {
         id: op.id ?? createFeatureId(),
         kind: "extrude",
         name: normalizeOptionalFeatureName(op.name, opIndex, op.id),
-        profile: {
-          kind: "entity",
-          sketchId: op.sketchId,
-          entityId: op.entityId
-        },
+        profile,
         depth,
         side,
         operationMode,
@@ -6215,6 +6259,16 @@ function applyOperation(
       };
 
       addFeature(state, feature, diff, opIndex);
+      if (profile.kind === "wire") {
+        pushFeatureInputReference(
+          diff,
+          createProfileInputReference(
+            feature.id,
+            profile,
+            profileOrientationNormalized
+          )
+        );
+      }
       return;
     }
 
@@ -11529,6 +11583,9 @@ function updateSketchEntityAndDependents(
     if (feature.kind !== "extrude") {
       continue;
     }
+    if (feature.profile.kind === "wire") {
+      continue;
+    }
 
     assertSupportedExtrudeOperation(
       { ...state, features: nextFeatures },
@@ -11699,6 +11756,9 @@ function updateDependentFeatureForSketchEntity(
   }
 
   if (feature.kind === "extrude") {
+    if (feature.profile.kind === "wire") {
+      return feature;
+    }
     assertExtrudableProfile(entity, opIndex, sketchId, entity.id, true);
     return feature;
   }
@@ -12144,20 +12204,72 @@ function updateExtrudeFeature(
     opIndex
   );
 
-  if (op.depth === undefined && op.side === undefined) {
+  const requestedProfile = resolveUpdateExtrudeCommandInputProfile(op, opIndex);
+
+  if (
+    op.depth === undefined &&
+    op.side === undefined &&
+    requestedProfile === undefined
+  ) {
     throwValidationError({
       code: "INVALID_FEATURE",
-      message: "feature.updateExtrude requires depth or side.",
+      message: "feature.updateExtrude requires profile, depth, or side.",
       opIndex,
       featureId,
       path: operationPath(opIndex),
-      expected: "depth or side",
+      expected: "profile, depth, or side",
       received: "no editable fields"
     });
   }
 
+  let profile = requestedProfile ?? feature.profile;
+  let profileOrientationNormalized = false;
+  if (profile.kind === "wire") {
+    const resolution = resolveNewBodyWireExtrudeProfile(
+      state,
+      profile,
+      feature.operationMode
+    );
+    if (!resolution.ok) {
+      throwValidationError({
+        code: resolution.code,
+        message: resolution.message,
+        opIndex,
+        featureId,
+        sketchId: resolution.sketchId,
+        sketchEntityId: resolution.sketchEntityId,
+        path: operationPath(opIndex, "profile"),
+        expected: "feature-ready composite wire profile for newBody extrude",
+        received: profile.kind
+      });
+    }
+    profile = resolution.profile;
+    profileOrientationNormalized = resolution.orientationNormalized;
+  } else if (requestedProfile?.kind === "entity") {
+    const sketch = getSketchOrThrow(
+      state.sketches,
+      requestedProfile.sketchId,
+      opIndex
+    );
+    const entity = sketch.entities.get(requestedProfile.entityId);
+    if (!entity) {
+      throwSketchEntityNotFound(
+        requestedProfile.sketchId,
+        requestedProfile.entityId,
+        opIndex
+      );
+    }
+    assertExtrudableProfile(
+      entity,
+      opIndex,
+      requestedProfile.sketchId,
+      requestedProfile.entityId
+    );
+  }
+
   const updated: ExtrudeFeature = {
     ...feature,
+    profile,
     depth:
       op.depth === undefined
         ? feature.depth
@@ -12171,6 +12283,17 @@ function updateExtrudeFeature(
   state.features.set(featureId, updated);
   pushFeatureModified(diff, featureRef(state, updated));
   pushBodyModified(diff, bodyRef(updated));
+  if (requestedProfile) {
+    pushFeatureInputReference(
+      diff,
+      createProfileInputReference(
+        updated.id,
+        profile,
+        profileOrientationNormalized,
+        feature.profile
+      )
+    );
+  }
   if (scopedRebuildChain) {
     pushFeatureModified(
       diff,
@@ -16710,6 +16833,52 @@ function validateExtrudeDepth(value: number, opIndex?: number): number {
   });
 }
 
+function resolveExtrudeCommandInputProfile(
+  op: Extract<CadOp, { readonly op: "feature.extrude" }>,
+  opIndex?: number
+): SketchProfileRef {
+  const resolution = validateProfileInputSource(
+    op as unknown as Record<string, unknown>,
+    operationPath(opIndex, "profile")
+  );
+  if (!resolution.ok || !resolution.value) {
+    const issue = resolution.ok ? undefined : resolution.issues[0];
+    throwValidationError({
+      code: issue?.code ?? "SCHEMA_V21_SOURCE_INVALID",
+      message: issue?.message ?? "feature.extrude requires a profile.",
+      opIndex,
+      path: issue?.path ?? operationPath(opIndex, "profile"),
+      expected: "normalized profile or complete legacy sketchId/entityId pair",
+      received: describeReceived(op)
+    });
+  }
+  return resolution.value;
+}
+
+function resolveUpdateExtrudeCommandInputProfile(
+  op: Extract<CadOp, { readonly op: "feature.updateExtrude" }>,
+  opIndex?: number
+): SketchProfileRef | undefined {
+  const resolution = validateProfileInputSource(
+    op as unknown as Record<string, unknown>,
+    operationPath(opIndex, "profile"),
+    true
+  );
+  if (!resolution.ok) {
+    const issue = resolution.issues[0]!;
+    throwValidationError({
+      code: issue.code,
+      message: issue.message,
+      opIndex,
+      path: issue.path,
+      expected:
+        "normalized profile, complete legacy sketchId/entityId pair, or omission",
+      received: describeReceived(op)
+    });
+  }
+  return resolution.value;
+}
+
 function validateExtrudeSide(
   value: FeatureExtrudeSide | undefined,
   opIndex?: number
@@ -19496,15 +19665,29 @@ function featureRef(
     };
   }
 
+  if (feature.profile.kind === "wire") {
+    return {
+      id: feature.id,
+      kind: "extrude",
+      bodyId: feature.bodyId,
+      sketchId: feature.profile.sketchId,
+      profile: structuredClone(feature.profile),
+      depth: feature.depth,
+      side: feature.side,
+      operationMode: feature.operationMode,
+      ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {}),
+      ...(feature.targetTopologyAnchorId
+        ? { targetTopologyAnchorId: feature.targetTopologyAnchorId }
+        : {})
+    };
+  }
+
   return {
     id: feature.id,
     kind: "extrude",
     bodyId: feature.bodyId,
     sketchId: feature.profile.sketchId,
-    entityId:
-      feature.profile.kind === "entity"
-        ? feature.profile.entityId
-        : feature.profile.segments[0]!.entityId,
+    entityId: feature.profile.entityId,
     profileKind: getFeatureProfileKindOrThrow(state, feature, undefined, true),
     depth: feature.depth,
     side: feature.side,
@@ -19856,6 +20039,13 @@ function pushFeatureLifecycleEffects(
   ensureFeatureDiff(diff).lifecycleEffects.push(...effects);
 }
 
+function pushFeatureInputReference(
+  diff: MutableSemanticDiff,
+  inputReference: FeatureInputReferenceSemanticDiff
+): void {
+  ensureFeatureDiff(diff).inputReferences.push(inputReference);
+}
+
 function ensureFeatureDiff(
   diff: MutableSemanticDiff
 ): MutableFeatureSemanticDiff {
@@ -19867,7 +20057,8 @@ function ensureFeatureDiff(
     bodiesModified: [],
     bodiesDeleted: [],
     referenceEffects: [],
-    lifecycleEffects: []
+    lifecycleEffects: [],
+    inputReferences: []
   };
 
   return diff.features;
@@ -21716,6 +21907,26 @@ function createFeatureSummary(
     };
   }
 
+  if (feature.profile.kind === "wire") {
+    return {
+      id: feature.id,
+      kind: "extrude",
+      partId: DEFAULT_PART_ID,
+      bodyId: feature.bodyId,
+      name: feature.name,
+      sketchId: feature.profile.sketchId,
+      profile: structuredClone(feature.profile),
+      depth: feature.depth,
+      side: feature.side,
+      operationMode: feature.operationMode,
+      source: {
+        type: "sketchEntity",
+        sketchId: feature.profile.sketchId,
+        profile: structuredClone(feature.profile)
+      }
+    };
+  }
+
   const profile = getFeaturePrimaryProfileEntityRef(feature);
   return {
     id: feature.id,
@@ -21974,6 +22185,23 @@ function createFeatureBodySnapshot(
           true
         ),
         axis: feature.axis
+      }
+    };
+  }
+
+  if (feature.profile.kind === "wire") {
+    return {
+      id: feature.bodyId,
+      kind: "solid",
+      partId: DEFAULT_PART_ID,
+      featureId: feature.id,
+      ...(consumedByFeatureId ? { consumedByFeatureId } : {}),
+      name: feature.name,
+      source: {
+        type: "sketchExtrudeFeature",
+        featureId: feature.id,
+        sketchId: feature.profile.sketchId,
+        profile: structuredClone(feature.profile)
       }
     };
   }
@@ -32322,14 +32550,15 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   if (value.op === "feature.extrude") {
+    const profile = validateProfileInputSource(value);
     return (
       isOptionalString(value.id) &&
       isOptionalString(value.bodyId) &&
       isOptionalString(value.targetBodyId) &&
       isOptionalString(value.targetTopologyAnchorId) &&
       isOptionalString(value.name) &&
-      typeof value.sketchId === "string" &&
-      typeof value.entityId === "string" &&
+      profile.ok &&
+      profile.value !== undefined &&
       typeof value.depth === "number" &&
       isPositiveFiniteNumber(value.depth) &&
       (value.side === undefined || isExtrudeSide(value.side)) &&
@@ -32486,13 +32715,17 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   if (value.op === "feature.updateExtrude") {
+    const profile = validateProfileInputSource(value, "profile", true);
     return (
       typeof value.id === "string" &&
+      profile.ok &&
       (value.depth === undefined ||
         (typeof value.depth === "number" &&
           isPositiveFiniteNumber(value.depth))) &&
       (value.side === undefined || isExtrudeSide(value.side)) &&
-      (value.depth !== undefined || value.side !== undefined)
+      (value.depth !== undefined ||
+        value.side !== undefined ||
+        profile.value !== undefined)
     );
   }
 
@@ -32835,7 +33068,39 @@ function isFeatureSemanticDiff(value: unknown): value is FeatureSemanticDiff {
         value.referenceEffects.every(isCadFeatureReferenceChangeSummary))) &&
     (value.lifecycleEffects === undefined ||
       (Array.isArray(value.lifecycleEffects) &&
-        value.lifecycleEffects.every(isCadBodyLifecycleEffectSummary)))
+        value.lifecycleEffects.every(isCadBodyLifecycleEffectSummary))) &&
+    (value.inputReferences === undefined ||
+      (Array.isArray(value.inputReferences) &&
+        value.inputReferences.every(isFeatureInputReferenceSemanticDiff)))
+  );
+}
+
+function isFeatureInputReferenceSemanticDiff(
+  value: unknown
+): value is FeatureInputReferenceSemanticDiff {
+  if (
+    !isRecord(value) ||
+    typeof value.featureId !== "string" ||
+    (value.inputKind !== "profile" && value.inputKind !== "path") ||
+    !Array.isArray(value.affectedSketchIds) ||
+    !value.affectedSketchIds.every((id) => typeof id === "string") ||
+    !Array.isArray(value.affectedEntityIds) ||
+    !value.affectedEntityIds.every((id) => typeof id === "string") ||
+    (value.profileOrientationNormalized !== undefined &&
+      typeof value.profileOrientationNormalized !== "boolean")
+  ) {
+    return false;
+  }
+  const isReference = (reference: unknown): boolean => {
+    const resolution =
+      value.inputKind === "profile"
+        ? validateSketchProfileRefSource(reference)
+        : validateSketchPathRefSource(reference);
+    return resolution.ok && stableJsonEqual(reference, resolution.value);
+  };
+  return (
+    isReference(value.after) &&
+    (value.before === undefined || isReference(value.before))
   );
 }
 
@@ -33173,6 +33438,24 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
       Array.isArray(value.sections) &&
       value.sections.length >= 2 &&
       value.sections.every(isLoftSectionShape)
+    );
+  }
+
+  if (value.kind === "extrude" && value.profile !== undefined) {
+    const profile = validateSketchProfileRefSource(value.profile);
+    return (
+      profile.ok &&
+      profile.value.kind === "wire" &&
+      typeof value.sketchId === "string" &&
+      value.sketchId === profile.value.sketchId &&
+      typeof value.depth === "number" &&
+      isPositiveFiniteNumber(value.depth) &&
+      isExtrudeSide(value.side) &&
+      value.operationMode === "newBody" &&
+      value.entityId === undefined &&
+      value.profileKind === undefined &&
+      value.targetBodyId === undefined &&
+      value.targetTopologyAnchorId === undefined
     );
   }
 

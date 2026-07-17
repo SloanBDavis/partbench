@@ -487,8 +487,15 @@ function createAffectedSummary(
       affectedSketchIds.add(feature.sketchId);
     }
 
-    if ("entityId" in feature) {
+    if ("entityId" in feature && feature.entityId !== undefined) {
       affectedSketchEntityIds.add(feature.entityId);
+    }
+
+    if (feature.kind === "extrude" && feature.profile?.kind === "wire") {
+      affectedSketchIds.add(feature.profile.sketchId);
+      for (const segment of feature.profile.segments) {
+        affectedSketchEntityIds.add(segment.entityId);
+      }
     }
 
     if ("circleEntityId" in feature) {

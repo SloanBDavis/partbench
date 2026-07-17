@@ -10,6 +10,8 @@ import type {
 
 import { createSketchProfileValidityFromSource } from "./sketchSolverStatus";
 import type { SketchSolverDocument, SketchSolverSketch } from "./sketchSolver";
+import { createSketchProfileReadinessResponse } from "./sketchProfilePathQueries";
+import type { CadDocument } from "./index";
 
 export type SketchProfileHealthStatus =
   | "ready"
@@ -99,6 +101,51 @@ function createFeatureProfileHealthEntry(
   document: SketchProfileHealthDocument,
   feature: CadFeatureSummary
 ): readonly SketchProfileHealthEntry[] {
+  if (feature.kind === "extrude" && feature.profile?.kind === "wire") {
+    const source = {
+      sketchId: feature.profile.sketchId,
+      sketchEntityId: feature.profile.segments[0]!.entityId
+    };
+    if (!document.sketches.has(source.sketchId)) {
+      return [
+        createEntry(feature, source, {
+          status: "missing",
+          message: `Feature ${feature.id} source sketch is missing: ${source.sketchId}.`,
+          expected: "feature-ready composite wire profile",
+          received: "missing sketch"
+        })
+      ];
+    }
+    const readiness = createSketchProfileReadinessResponse(
+      document as CadDocument,
+      {
+        query: "sketch.profileReadiness",
+        profile: feature.profile,
+        consumer: { featureKind: "extrude", operationMode: "newBody" }
+      },
+      "cadops.v1"
+    );
+    const diagnostic = readiness.diagnostics.find(
+      (candidate) => candidate.severity === "blocker"
+    );
+    return [
+      createEntry(feature, source, {
+        status: readiness.status === "ready" ? "ready" : "stale",
+        profileValidityStatus:
+          readiness.status === "ready" ? "valid" : "invalid",
+        message:
+          readiness.status === "ready"
+            ? `Feature ${feature.id} composite wire profile is feature-ready.`
+            : (diagnostic?.message ??
+              `Feature ${feature.id} composite wire profile is not feature-ready.`),
+        expected: "feature-ready composite wire profile",
+        received:
+          readiness.status === "ready"
+            ? "feature-ready"
+            : (diagnostic?.code ?? "blocked")
+      })
+    ];
+  }
   return getFeatureProfileSources(feature).flatMap((source) =>
     createFeatureProfileSourceHealthEntry(document, feature, source)
   );
@@ -195,7 +242,9 @@ function getFeatureProfileSources(feature: CadFeatureSummary): readonly {
   readonly sketchEntityId: SketchEntityId;
 }[] {
   if (feature.kind === "extrude" || feature.kind === "revolve") {
-    return [{ sketchId: feature.sketchId, sketchEntityId: feature.entityId }];
+    return feature.entityId
+      ? [{ sketchId: feature.sketchId, sketchEntityId: feature.entityId }]
+      : [];
   }
 
   if (feature.kind === "hole") {

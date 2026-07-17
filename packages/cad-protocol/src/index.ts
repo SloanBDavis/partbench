@@ -407,7 +407,7 @@ export type CadOp =
   | SketchConstraintCreateOp
   | SketchConstraintRenameOp
   | SketchConstraintDeleteOp
-  | FeatureExtrudeOp
+  | FeatureExtrudeCommandInput
   | FeatureRevolveOp
   | FeatureHoleOp
   | FeatureChamferOp
@@ -418,7 +418,7 @@ export type CadOp =
   | FeatureShellOp
   | FeatureSweepOp
   | FeatureLoftOp
-  | FeatureUpdateExtrudeOp
+  | FeatureUpdateExtrudeCommandInput
   | FeatureUpdateRevolveOp
   | FeatureUpdateHoleOp
   | FeatureUpdateChamferOp
@@ -1443,19 +1443,31 @@ export type CadFeatureRef =
   | CadSweepFeatureRef
   | CadLoftFeatureRef;
 
-export interface CadExtrudeFeatureRef {
+interface CadExtrudeFeatureRefBase {
   readonly id: FeatureId;
   readonly kind: "extrude";
   readonly bodyId: BodyId;
   readonly sketchId: SketchId;
-  readonly entityId: SketchEntityId;
-  readonly profileKind: FeatureExtrudeProfileKind;
   readonly depth: number;
   readonly side: FeatureExtrudeSide;
   readonly operationMode: FeatureExtrudeOperationMode;
   readonly targetBodyId?: BodyId;
   readonly targetTopologyAnchorId?: string;
 }
+
+export type CadExtrudeFeatureRef = CadExtrudeFeatureRefBase &
+  (
+    | {
+        readonly entityId: SketchEntityId;
+        readonly profileKind: FeatureExtrudeProfileKind;
+        readonly profile?: never;
+      }
+    | {
+        readonly profile: SketchWireProfileRef;
+        readonly entityId?: never;
+        readonly profileKind?: never;
+      }
+  );
 
 export interface CadRevolveFeatureRef {
   readonly id: FeatureId;
@@ -1803,6 +1815,7 @@ export type CadBatchValidationErrorCode =
   | "SKETCH_PROFILE_CONSTRUCTION_ENTITY"
   | "SKETCH_PROFILE_ENTITY_REPEATED"
   | "SKETCH_PROFILE_DISCONNECTED"
+  | "SKETCH_PROFILE_BRANCHING"
   | "SKETCH_PROFILE_OPEN"
   | "SKETCH_PROFILE_SELF_INTERSECTING"
   | "SKETCH_PROFILE_OVERLAPPING"
@@ -3339,22 +3352,25 @@ export interface CadPrimitiveFeatureSummary {
   readonly source: CadPrimitiveFeatureSource;
 }
 
-export interface CadExtrudeFeatureSource {
+interface CadExtrudeFeatureSourceBase {
   readonly type: "sketchEntity";
   readonly sketchId: SketchId;
-  readonly entityId: SketchEntityId;
   readonly targetTopologyAnchorId?: string;
 }
 
-export interface CadExtrudeFeatureSummary {
+export type CadExtrudeFeatureSource = CadExtrudeFeatureSourceBase &
+  (
+    | { readonly entityId: SketchEntityId; readonly profile?: never }
+    | { readonly profile: SketchWireProfileRef; readonly entityId?: never }
+  );
+
+interface CadExtrudeFeatureSummaryBase {
   readonly id: FeatureId;
   readonly kind: "extrude";
   readonly partId: PartId;
   readonly bodyId: BodyId;
   readonly name?: string;
   readonly sketchId: SketchId;
-  readonly entityId: SketchEntityId;
-  readonly profileKind: FeatureExtrudeProfileKind;
   readonly depth: number;
   readonly side: FeatureExtrudeSide;
   readonly operationMode: FeatureExtrudeOperationMode;
@@ -3362,6 +3378,20 @@ export interface CadExtrudeFeatureSummary {
   readonly targetTopologyAnchorId?: string;
   readonly source: CadExtrudeFeatureSource;
 }
+
+export type CadExtrudeFeatureSummary = CadExtrudeFeatureSummaryBase &
+  (
+    | {
+        readonly entityId: SketchEntityId;
+        readonly profileKind: FeatureExtrudeProfileKind;
+        readonly profile?: never;
+      }
+    | {
+        readonly profile: SketchWireProfileRef;
+        readonly entityId?: never;
+        readonly profileKind?: never;
+      }
+  );
 
 export interface CadRevolveFeatureSource {
   readonly type: "sketchEntityWithAxis";
@@ -4504,13 +4534,25 @@ export interface CadPrimitiveBodySource {
   readonly objectId: ObjectId;
 }
 
-export interface CadSketchExtrudeBodySource {
+interface CadSketchExtrudeBodySourceBase {
   readonly type: "sketchExtrudeFeature";
   readonly featureId: FeatureId;
   readonly sketchId: SketchId;
-  readonly entityId: SketchEntityId;
-  readonly profileKind: FeatureExtrudeProfileKind;
 }
+
+export type CadSketchExtrudeBodySource = CadSketchExtrudeBodySourceBase &
+  (
+    | {
+        readonly entityId: SketchEntityId;
+        readonly profileKind: FeatureExtrudeProfileKind;
+        readonly profile?: never;
+      }
+    | {
+        readonly profile: SketchWireProfileRef;
+        readonly entityId?: never;
+        readonly profileKind?: never;
+      }
+  );
 
 export interface CadSketchRevolveBodySource {
   readonly type: "sketchRevolveFeature";

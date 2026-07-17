@@ -532,6 +532,29 @@ function addFeatureSourceEdges(
     return;
   }
 
+  if (feature.kind === "extrude" && feature.profile?.kind === "wire") {
+    addEdge(edges, {
+      kind: "sources",
+      from: sketchNodeId(feature.profile.sketchId),
+      to: featureNodeId(feature.id),
+      label: "composite profile sketch source",
+      sourceFeatureId: feature.id,
+      sketchId: feature.profile.sketchId
+    });
+    for (const segment of feature.profile.segments) {
+      addEdge(edges, {
+        kind: "sources",
+        from: sketchEntityNodeId(feature.profile.sketchId, segment.entityId),
+        to: featureNodeId(feature.id),
+        label: "ordered composite profile source",
+        sourceFeatureId: feature.id,
+        sketchId: feature.profile.sketchId,
+        sketchEntityId: segment.entityId
+      });
+    }
+    return;
+  }
+
   addEdge(edges, {
     kind: "sources",
     from: sketchNodeId(feature.sketchId),
@@ -540,15 +563,16 @@ function addFeatureSourceEdges(
     sourceFeatureId: feature.id,
     sketchId: feature.sketchId
   });
-  addEdge(edges, {
-    kind: "sources",
-    from: sketchEntityNodeId(feature.sketchId, feature.entityId),
-    to: featureNodeId(feature.id),
-    label: "sources",
-    sourceFeatureId: feature.id,
-    sketchId: feature.sketchId,
-    sketchEntityId: feature.entityId
-  });
+  if (feature.entityId)
+    addEdge(edges, {
+      kind: "sources",
+      from: sketchEntityNodeId(feature.sketchId, feature.entityId),
+      to: featureNodeId(feature.id),
+      label: "sources",
+      sourceFeatureId: feature.id,
+      sketchId: feature.sketchId,
+      sketchEntityId: feature.entityId
+    });
 
   if (feature.kind === "extrude" && feature.targetTopologyAnchorId) {
     addEdge(edges, {
