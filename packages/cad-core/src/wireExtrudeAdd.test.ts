@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { CadBodyDerivedExactMetadataSnapshot } from "@web-cad/cad-protocol";
 
 import {
+  CURRENT_CAD_PROJECT_FORMAT_VERSION,
   CadEngine,
+  createCadProjectSourceIdentity,
   exportCadProject,
   exportCadProjectJson,
   exportCadProjectToWcad,
@@ -11,6 +13,11 @@ import {
   readCadProjectWcad,
   type ExtrudeFeature
 } from "./index";
+import { createBodyTopology } from "./bodyTopology";
+import {
+  createProjectExactExport,
+  createProjectExportReadiness
+} from "./projectExportReadiness";
 
 const profile = {
   kind: "wire" as const,
@@ -92,6 +99,39 @@ function addWire(engine: CadEngine): ReturnType<CadEngine["executeBatch"]> {
         targetBodyId: "body_target"
       }
     ]
+  });
+}
+
+function addWireThroughTargetAnchor(engine: CadEngine): void {
+  engine.apply({
+    op: "topology.checkpoint.create",
+    checkpointId: "checkpoint_target",
+    bodyId: "body_target",
+    sourceFeatureId: "feature_target",
+    sourceIdentity: {
+      algorithm: "partbench-source-v1",
+      sha256: "a".repeat(64)
+    },
+    status: "active"
+  });
+  engine.apply({
+    op: "topology.anchor.create",
+    anchorId: "anchor_target",
+    entityKind: "body",
+    bodyId: "body_target",
+    checkpointId: "checkpoint_target",
+    checkpointEntityId: "body:0",
+    sourceFeatureId: "feature_target",
+    signatureHash: "target-body-signature"
+  });
+  engine.apply({
+    op: "feature.extrude",
+    id: "feature_add",
+    bodyId: "body_add",
+    profile,
+    depth: 3,
+    operationMode: "add",
+    targetTopologyAnchorId: "anchor_target"
   });
 }
 
@@ -574,6 +614,117 @@ describe("V17 composite wire extrude add", () => {
       ).toMatchObject({
         ok: true,
         topology: { exactGeometryAvailable: false }
+      });
+    }
+  });
+
+  it("rejects duplicate exact metadata body ids instead of resolving readiness and export differently", () => {
+    const engine = createEngine();
+    addWire(engine);
+    const ready = exactMetadata(engine);
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "project.exportExact",
+          format: "step",
+          bodyIds: ["body_add"],
+          derivedExactMetadata: [ready, { ...ready, status: "stale" }]
+        }
+      })
+    ).toMatchObject({ ok: false, error: { code: "INVALID_QUERY" } });
+  });
+
+  it("defers composite add readiness and export when its target anchor is missing, stale, or inactive", () => {
+    const engine = createEngine();
+    addWireThroughTargetAnchor(engine);
+    const topologyIdentity = engine.getDocument().topologyIdentity;
+    if (!topologyIdentity)
+      throw new Error("Expected topology identity source.");
+    const variants = [
+      {
+        label: "missing anchor",
+        topologyIdentity: { ...topologyIdentity, anchors: [] }
+      },
+      {
+        label: "stale checkpoint",
+        topologyIdentity: {
+          ...topologyIdentity,
+          checkpoints: topologyIdentity.checkpoints.map((checkpoint) =>
+            checkpoint.checkpointId === "checkpoint_target"
+              ? { ...checkpoint, status: "stale" as const }
+              : checkpoint
+          )
+        }
+      },
+      {
+        label: "inactive anchor",
+        topologyIdentity: {
+          ...topologyIdentity,
+          anchors: topologyIdentity.anchors.map((anchor) =>
+            anchor.anchorId === "anchor_target"
+              ? { ...anchor, state: "stale" as const }
+              : anchor
+          )
+        }
+      }
+    ];
+    const bodies = structure(engine).bodies;
+
+    for (const variant of variants) {
+      const document = {
+        ...engine.getDocument(),
+        topologyIdentity: variant.topologyIdentity
+      };
+      const topology = createBodyTopology({
+        document,
+        bodyId: "body_add",
+        units: document.units,
+        ownerPartId: "part:default",
+        bodyExists: (bodyId) => bodies.some((body) => body.id === bodyId)
+      });
+      if (!topology.ok) throw new Error(`Expected topology: ${variant.label}`);
+      const metadata = {
+        ...exactMetadata(engine),
+        sourceIdentitySignature: topology.topology.sourceIdentity.signature
+      };
+      const readiness = createProjectExportReadiness({
+        document,
+        cadOpsVersion: "cadops.v1",
+        bodies,
+        derivedExactMetadata: [metadata]
+      });
+      expect(readiness.bodies, variant.label).toContainEqual(
+        expect.objectContaining({
+          bodyId: "body_add",
+          sourceStatus: "deferred"
+        })
+      );
+      const exact = createProjectExactExport({
+        document,
+        cadOpsVersion: "cadops.v1",
+        bodies,
+        query: {
+          query: "project.exportExact",
+          format: "step",
+          bodyIds: ["body_add"],
+          derivedExactMetadata: [metadata]
+        },
+        documentSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+        currentSourceIdentity: createCadProjectSourceIdentity(
+          exportCadProject(engine)
+        )
+      });
+      expect(exact, variant.label).toMatchObject({
+        status: "deferred",
+        exportableBodyCount: 0,
+        exportSources: [],
+        bodies: [
+          expect.objectContaining({
+            bodyId: "body_add",
+            sourceStatus: "deferred"
+          })
+        ]
       });
     }
   });

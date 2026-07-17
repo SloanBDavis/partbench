@@ -840,8 +840,11 @@ describe("V17 composite wire extrude generated references", () => {
     });
     if (!exact.ok || exact.query !== "project.exportExact") return;
     const exportSource = exact.exportSources[0];
-    expect(exportSource?.profile.kind).toBe("wire");
-    if (exportSource?.profile.kind === "wire") {
+    if (!exportSource || !("profile" in exportSource)) {
+      throw new Error("Expected resolved wire STEP source.");
+    }
+    expect(exportSource.profile.kind).toBe("wire");
+    if (exportSource.profile.kind === "wire") {
       expect(exportSource.profile.sourceIdentity).toMatch(
         /^partbench-wire-extrude-v1:/
       );
@@ -921,7 +924,7 @@ describe("V17 composite wire extrude generated references", () => {
     });
     if (!exact.ok || exact.query !== "project.exportExact") return;
     const source = exact.exportSources[0];
-    if (source?.profile.kind !== "wire") {
+    if (!source || !("profile" in source) || source.profile.kind !== "wire") {
       throw new Error("Expected resolved wire STEP source.");
     }
     expect(source.profile.sourceIdentity).toContain('"sourceEntityId":"arc_b"');

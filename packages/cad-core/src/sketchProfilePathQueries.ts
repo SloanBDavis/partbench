@@ -6,6 +6,7 @@ import type {
   SketchConstructionExclusion,
   SketchConsumerCompatibility,
   SketchEntityId,
+  SketchId,
   SketchPathCandidate,
   SketchPathCandidatesQueryResponse,
   SketchPathDiagnostic,
@@ -37,7 +38,10 @@ import {
   createSupportedBooleanBodyTargetOperations,
   type BooleanTargetSupportFeature
 } from "./booleanTargetSupport";
-import { isPrimitiveBodyId } from "./primitiveBodyIdentity";
+import {
+  isPrimitiveBodyId,
+  type PrimitiveBodyIdentityDocument
+} from "./primitiveBodyIdentity";
 import { SKETCH_GEOMETRY_POLICY } from "./sketchGeometryPolicy";
 import {
   areSketchPointsCoincident,
@@ -104,11 +108,13 @@ interface EntityComponent {
 const DEFAULT_PART_ID = "part:default";
 const LINEAR_TOLERANCE = SKETCH_GEOMETRY_POLICY.linearTolerance;
 
-export interface SketchProfileReadinessDocument {
-  readonly sketches: ReadonlyMap<SketchId, Sketch>;
+export interface SketchProfileReadinessDocument extends PrimitiveBodyIdentityDocument {
+  readonly sketches: ReadonlyMap<SketchId, ProfileReadinessSketch>;
   readonly features: ReadonlyMap<FeatureId, BooleanTargetSupportFeature>;
   readonly topologyIdentity?: CadTopologyIdentitySourceSnapshot;
 }
+
+type ProfileReadinessSketch = Pick<Sketch, "id" | "entities">;
 
 function distance(left: Vec2, right: Vec2): number {
   return Math.hypot(left[0] - right[0], left[1] - right[1]);
@@ -177,7 +183,7 @@ function createJoin(
 }
 
 function resolveWire(
-  sketch: Sketch,
+  sketch: ProfileReadinessSketch,
   references: readonly OrientedSketchSegmentRef[]
 ): ResolvedWire {
   const diagnostics: SketchProfileDiagnostic[] = [];
@@ -768,7 +774,7 @@ function componentSortKey(component: EntityComponent): string {
 }
 
 function rejectedProfileComponent(
-  sketch: Sketch,
+  sketch: ProfileReadinessSketch,
   component: EntityComponent,
   componentIndex: number,
   extraDiagnostics: readonly SketchProfileDiagnostic[] = []
@@ -820,7 +826,7 @@ function rejectedProfileComponent(
 }
 
 function createEntityProfileCandidate(
-  sketch: Sketch,
+  sketch: ProfileReadinessSketch,
   entity: Extract<
     ReturnType<Sketch["entities"]["get"]>,
     { readonly kind: "rectangle" | "circle" }
@@ -855,7 +861,7 @@ function createEntityProfileCandidate(
 }
 
 function createRejectedEntityProfile(
-  sketch: Sketch,
+  sketch: ProfileReadinessSketch,
   entity: Extract<
     ReturnType<Sketch["entities"]["get"]>,
     { readonly kind: "rectangle" | "circle" }
@@ -891,7 +897,7 @@ function createRejectedEntityProfile(
 }
 
 export function createSketchProfileCandidatesResponse(
-  sketch: Sketch,
+  sketch: ProfileReadinessSketch,
   cadOpsVersion: CadOpsVersion
 ): SketchProfileCandidatesQueryResponse {
   const candidates: SketchProfileCandidate[] = [];
@@ -1247,7 +1253,7 @@ function createTargetCompatibility(
 }
 
 function createResolvedTargetCompatibility(
-  document: CadDocument,
+  document: SketchProfileReadinessDocument,
   targetBodyId: string,
   requiredOperation: "feature.extrudeAddTarget" | "feature.extrudeCutTarget",
   targetTopologyAnchorId?: string
@@ -1300,7 +1306,7 @@ function createResolvedTargetCompatibility(
 }
 
 export function createNewBodyWireProfileReadinessResponse(
-  sketch: Sketch,
+  sketch: ProfileReadinessSketch,
   profile: SketchWireProfileRef,
   cadOpsVersion: CadOpsVersion
 ): SketchProfileReadinessQueryResponse {
@@ -1325,7 +1331,7 @@ export function createNewBodyWireProfileReadinessResponse(
 }
 
 function createWireProfileReadinessResponse(
-  sketch: Sketch,
+  sketch: ProfileReadinessSketch,
   profile: SketchWireProfileRef,
   consumer: SketchProfileConsumerIntent,
   consumerCompatibility: SketchConsumerCompatibility,

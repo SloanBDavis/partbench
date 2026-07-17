@@ -41,6 +41,7 @@ import {
 } from "./sketchProfileHealth";
 import { createTopologyAnchorReferenceChangesForBody } from "./topologyReferenceHealth";
 import { resolveWireExtrudeProfile } from "./wireExtrudeProfile";
+import type { CadDocument } from "./index";
 
 const SOURCE_BOUNDARY_NOTE =
   "Feature editability is derived from authoritative document source features and semantic generated/named references.";
@@ -52,9 +53,10 @@ export interface CreateFeatureEditabilityResponseOptions {
   readonly featureId: FeatureId;
   readonly proposedEdit?: CadFeatureEditProposal;
   readonly units: DocumentUnits;
-  readonly document: GeneratedReferencesDocument & {
-    readonly topologyIdentity?: CadTopologyIdentitySourceSnapshot;
-  };
+  readonly document: GeneratedReferencesDocument &
+    Pick<CadDocument, "objects"> & {
+      readonly topologyIdentity?: CadTopologyIdentitySourceSnapshot;
+    };
   readonly features: readonly CadFeatureSummary[];
   readonly bodies: readonly CadBodySnapshot[];
   readonly namedReferences: readonly NamedGeneratedReferenceSnapshot[];

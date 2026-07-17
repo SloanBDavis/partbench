@@ -8492,10 +8492,24 @@ function isProjectExactExportQuery(value: Record<string, unknown>): boolean {
       isWcadSourceIdentityInput(value.sourceIdentity)) &&
     (value.derivedExactMetadata === undefined ||
       (Array.isArray(value.derivedExactMetadata) &&
-        value.derivedExactMetadata.every(
-          isCadBodyDerivedExactMetadataSnapshot
-        )))
+        hasUniqueDerivedExactMetadataBodyIds(value.derivedExactMetadata)))
   );
+}
+
+function hasUniqueDerivedExactMetadataBodyIds(
+  values: readonly unknown[]
+): boolean {
+  const bodyIds = new Set<string>();
+  for (const value of values) {
+    if (
+      !isCadBodyDerivedExactMetadataSnapshot(value) ||
+      bodyIds.has(value.bodyId)
+    ) {
+      return false;
+    }
+    bodyIds.add(value.bodyId);
+  }
+  return true;
 }
 
 function isWcadSourceIdentityInput(
@@ -29019,6 +29033,7 @@ function isSupportedImportEdgeFinishTargetCombination(
 
   return (
     (operationMode === "newBody" &&
+      target.profileKind !== "wire" &&
       isSupportedCutTargetProfileKind(target.profileKind)) ||
     (operationMode === "cut" && target.profileKind === "rectangle")
   );

@@ -3,6 +3,7 @@ import type {
   CadBodySnapshot,
   CadBodyDerivedExactMetadataSnapshot,
   CadExactExportBooleanSource,
+  CadExactExportBooleanResultSource,
   CadExactExportBodySource,
   CadExactExportPrimitiveExtrudeSource,
   CadExactExportWireExtrudeSource,
@@ -30,7 +31,10 @@ import {
   getSupportedEntityProfileKind
 } from "./normalizedFeatureInputs";
 import { createSourceMeasurementFrame } from "./sourceMeasurementGeometry";
-import { createResolvedWireExtrudeProfile } from "./wireExtrudeProfile";
+import {
+  createResolvedWireExtrudeProfile,
+  resolveWireExtrudeProfile
+} from "./wireExtrudeProfile";
 import { createBodyTopology } from "./bodyTopology";
 
 interface ProjectExportReadinessInput {
@@ -168,12 +172,17 @@ export function createProjectExactExport({
   currentSourceIdentity,
   exactStepWriterStatus = "available"
 }: ProjectExactExportInput): ProjectExactExportQueryResponse {
+  const exactMetadataByBodyId = new Map(
+    query.derivedExactMetadata?.map(
+      (metadata) => [metadata.bodyId, metadata] as const
+    ) ?? []
+  );
   const readiness = createProjectExportReadiness({
     document,
     cadOpsVersion,
     bodies,
     exactStepWriterStatus,
-    derivedExactMetadata: query.derivedExactMetadata
+    derivedExactMetadata: [...exactMetadataByBodyId.values()]
   });
   const bodyById = new Map(
     readiness.bodies.map((body) => [body.bodyId, body] as const)
@@ -206,9 +215,7 @@ export function createProjectExactExport({
       createExactExportBodySource(
         document,
         body,
-        query.derivedExactMetadata?.find(
-          (metadata) => metadata.bodyId === body.bodyId
-        )
+        exactMetadataByBodyId.get(body.bodyId)
       )
     )
     .filter(
@@ -869,7 +876,7 @@ function createExactExportBodySource(
       new Set()
     );
     const sketch = document.sketches.get(feature.profile.sketchId);
-    if (!source || source.kind !== "booleanExtrudes" || !sketch) {
+    if (!source || !isExactBooleanResultSource(source) || !sketch) {
       return undefined;
     }
     return {
@@ -890,8 +897,10 @@ function createExactExportBodySource(
         : {}),
       exactResultSourceIdentitySignature:
         derivedExactMetadata.sourceIdentitySignature,
-      ...source,
-      operation: "add"
+      kind: "booleanExtrudes",
+      operation: "add",
+      target: source.target,
+      tool: source.tool
     };
   }
 
@@ -1003,11 +1012,24 @@ function createExactBooleanSource(
   visitedFeatureIds: ReadonlySet<string>
 ): CadExactExportBooleanSource | undefined {
   if (visitedFeatureIds.has(feature.id)) return undefined;
+  if (feature.operationMode === "add" && feature.profile.kind === "wire") {
+    const resolution = resolveWireExtrudeProfile(
+      document,
+      feature.profile,
+      feature.operationMode,
+      {
+        targetBodyId: feature.targetBodyId,
+        targetTopologyAnchorId: feature.targetTopologyAnchorId,
+        ignoreFeatureId: feature.id
+      }
+    );
+    if (!resolution.ok) return undefined;
+  }
   const visited = new Set(visitedFeatureIds).add(feature.id);
   const tool = createExactExtrudeToolSource(document, feature, ownerPartId);
   if (!tool) return undefined;
   if (feature.operationMode === "newBody") {
-    return feature.profile.kind === "entity" ? tool : undefined;
+    return isExactWireExtrudeSource(tool) ? undefined : tool;
   }
   if (!feature.targetBodyId) return undefined;
   const targetFeature = [...document.features.values()].find(
@@ -1023,11 +1045,23 @@ function createExactBooleanSource(
   );
   if (!target) return undefined;
   if (feature.operationMode === "cut") {
-    return feature.profile.kind === "entity"
-      ? { kind: "booleanExtrudes", operation: "cut", target, tool }
-      : undefined;
+    return isExactWireExtrudeSource(tool)
+      ? undefined
+      : { kind: "booleanExtrudes", operation: "cut", target, tool };
   }
   return { kind: "booleanExtrudes", operation: "add", target, tool };
+}
+
+function isExactBooleanResultSource(
+  source: CadExactExportBooleanSource
+): source is CadExactExportBooleanResultSource {
+  return "kind" in source && source.kind === "booleanExtrudes";
+}
+
+function isExactWireExtrudeSource(
+  source: CadExactExportPrimitiveExtrudeSource | CadExactExportWireExtrudeSource
+): source is CadExactExportWireExtrudeSource {
+  return source.profile.kind === "wire";
 }
 
 function createExactExtrudeToolSource(
