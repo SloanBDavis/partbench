@@ -1,4 +1,8 @@
-import type { CadFeatureSummary, SketchSnapshot } from "@web-cad/cad-core";
+import {
+  CadEngine,
+  type CadFeatureSummary,
+  type SketchSnapshot
+} from "@web-cad/cad-core";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -164,6 +168,39 @@ describe("V17 composite extrude web integration", () => {
     );
   });
 
+  it("invalidates and restores the resolved cache recipe across edit, undo, and redo", () => {
+    const engine = createWireEngine();
+    const initial = resolveEngineWireSource(engine);
+    const initialKey = createDerivedGeometryCacheKey(initial);
+
+    engine.applyBatch([
+      {
+        op: "sketch.updateEntity",
+        sketchId: "sketch_wire",
+        entity: line("diameter", [0, -2], [0, 2])
+      },
+      {
+        op: "sketch.updateEntity",
+        sketchId: "sketch_wire",
+        entity: arc("round", [0, 0], 2, 90, 180)
+      }
+    ]);
+    const editedKey = createDerivedGeometryCacheKey(
+      resolveEngineWireSource(engine)
+    );
+    expect(editedKey).not.toBe(initialKey);
+
+    engine.undo();
+    expect(createDerivedGeometryCacheKey(resolveEngineWireSource(engine))).toBe(
+      initialKey
+    );
+
+    engine.redo();
+    expect(createDerivedGeometryCacheKey(resolveEngineWireSource(engine))).toBe(
+      editedKey
+    );
+  });
+
   it("publishes no stale mesh after an edit fails asynchronously", async () => {
     const first = deferred<DerivedGeometryResult>();
     const second = deferred<DerivedGeometryResult>();
@@ -265,6 +302,79 @@ function resolveWireSource(
     throw new Error("Expected one composite new-body extrude source.");
   }
   return source;
+}
+
+function resolveEngineWireSource(
+  engine: CadEngine
+): DerivedExtrudeGeometrySource {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.structure" }
+  });
+  if (!response.ok || response.query !== "project.structure") {
+    throw new Error("Expected project structure.");
+  }
+  const sketches = [...engine.getDocument().sketches.values()].map(
+    (sketch) => ({
+      id: sketch.id,
+      name: sketch.name,
+      plane: sketch.plane,
+      attachment: sketch.attachment,
+      entities: [...sketch.entities.values()]
+    })
+  );
+  const [source] = createExtrudeDerivedGeometrySources(
+    response.features,
+    sketches
+  );
+  if (!source || source.kind !== "extrude" || source.profile.kind !== "wire") {
+    throw new Error("Expected resolved engine wire source.");
+  }
+  return source;
+}
+
+function createWireEngine(): CadEngine {
+  const engine = new CadEngine();
+  engine.applyBatch([
+    {
+      op: "sketch.create",
+      id: "sketch_wire",
+      name: "Wire sketch",
+      plane: "XY"
+    },
+    {
+      op: "sketch.addLine",
+      sketchId: "sketch_wire",
+      id: "diameter",
+      start: [0, -1],
+      end: [0, 1]
+    },
+    {
+      op: "sketch.addArc",
+      sketchId: "sketch_wire",
+      id: "round",
+      definition: {
+        kind: "centerAngles",
+        center: [0, 0],
+        radius: 1,
+        startAngleDegrees: 90,
+        sweepAngleDegrees: 180
+      }
+    },
+    {
+      op: "feature.extrude",
+      id: "feature_wire",
+      bodyId: "body_wire",
+      profile: {
+        kind: "wire",
+        sketchId: "sketch_wire",
+        segments: [segment("diameter"), segment("round")]
+      },
+      depth: 4,
+      operationMode: "newBody"
+    }
+  ]);
+  return engine;
 }
 
 function wireFeature(
