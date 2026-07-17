@@ -1732,7 +1732,7 @@ function validateRequest(
       return {
         code: "UNSUPPORTED_PROFILE",
         message:
-          "Boolean extrude feasibility currently supports rectangle/circle tools on rectangle or circle targets."
+          "Boolean extrude feasibility requires a rectangle or circle-rooted target; tools may be rectangle, circle, or resolved wire."
       };
     }
   } else if (request.op === "geometry.hole") {
