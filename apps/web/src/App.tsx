@@ -180,7 +180,7 @@ import {
   createEmptyDerivedExactMetadataSnapshot,
   DerivedExactMetadataService,
   formatDerivedExactMetadataEntryStatus,
-  getDerivedExactMetadataEntryForBody,
+  getCurrentDerivedExactMetadataEntryForBody,
   isExactMetadataSource,
   type DerivedExactMetadataSource,
   type DerivedExactMetadataSnapshot
@@ -1060,7 +1060,8 @@ function readBodyMeasurements(bodyId: string | undefined): {
 
 function readBodyTopology(
   bodyId: string | undefined,
-  exactMetadata: DerivedExactMetadataSnapshot
+  exactMetadata: DerivedExactMetadataSnapshot,
+  currentExactMetadataSource: DerivedExactMetadataSource | undefined
 ): {
   readonly topology?: CadBodyTopologySnapshot;
   readonly error?: string;
@@ -1070,9 +1071,10 @@ function readBodyTopology(
     return {};
   }
 
-  const exactMetadataEntry = getDerivedExactMetadataEntryForBody(
+  const exactMetadataEntry = getCurrentDerivedExactMetadataEntryForBody(
     exactMetadata,
-    bodyId
+    bodyId,
+    currentExactMetadataSource
   );
   const exactMetadataStatus =
     formatDerivedExactMetadataEntryStatus(exactMetadataEntry);
@@ -1118,12 +1120,17 @@ function readBodyTopology(
 function readBodyMassProperties(
   bodyId: string,
   topology: CadBodyTopologySnapshot | undefined,
-  exactMetadata: DerivedExactMetadataSnapshot
+  exactMetadata: DerivedExactMetadataSnapshot,
+  currentExactMetadataSource: DerivedExactMetadataSource | undefined
 ): {
   readonly massProperties?: CadMassPropertiesSnapshot;
   readonly error?: string;
 } {
-  const entry = getDerivedExactMetadataEntryForBody(exactMetadata, bodyId);
+  const entry = getCurrentDerivedExactMetadataEntryForBody(
+    exactMetadata,
+    bodyId,
+    currentExactMetadataSource
+  );
   const derivedExactMetadata = topology
     ? createBodyTopologyDerivedExactMetadataSnapshot(
         entry,
@@ -1753,15 +1760,25 @@ export function App() {
   const selectedBodyMeasurements = selectedBody
     ? readBodyMeasurements(selectedBody.id)
     : {};
+  const selectedBodyExactMetadataSource = selectedBody
+    ? currentExactMetadataSources.find(
+        (source) => source.id === selectedBody.id
+      )
+    : undefined;
   const selectedBodyTopology =
     selectedBody !== undefined
-      ? readBodyTopology(selectedBody.id, derivedExactMetadata)
+      ? readBodyTopology(
+          selectedBody.id,
+          derivedExactMetadata,
+          selectedBodyExactMetadataSource
+        )
       : {};
   const selectedBodyMassProperties = selectedBody
     ? readBodyMassProperties(
         selectedBody.id,
         selectedBodyTopology.topology,
-        derivedExactMetadata
+        derivedExactMetadata,
+        selectedBodyExactMetadataSource
       )
     : {};
   const namedReferences = readNamedReferences();

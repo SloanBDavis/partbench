@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createDerivedExactMetadataCacheKey,
+  getCurrentDerivedExactMetadataEntryForBody,
   type DerivedExactMetadataSnapshot
 } from "./derivedExactMetadata";
 import type { DerivedBooleanExtrudeGeometrySource } from "./derivedGeometry";
@@ -174,6 +175,9 @@ describe("project exact export query evidence", () => {
     expect(source.sourceIdentitySignature).toBe(
       readBodySourceIdentitySignature(engine, "body_cut")
     );
+    expect(
+      getCurrentDerivedExactMetadataEntryForBody(ready, source.id, source)
+    ).toMatchObject({ status: "ready" });
     expect(evidence).toHaveLength(1);
     const readiness = readProjectExportReadiness(engine, ready, [source]);
     expect(
@@ -274,6 +278,9 @@ describe("project exact export query evidence", () => {
       createDerivedExactMetadataCacheKey(source)
     );
     expect(
+      getCurrentDerivedExactMetadataEntryForBody(ready, edited.id, edited)
+    ).toBeUndefined();
+    expect(
       createCurrentDerivedExactMetadataSnapshots(engine, ready, [edited])
     ).toEqual([]);
     expect(readProjectExactStepExport(engine, ready, [edited])?.available).toBe(
@@ -286,6 +293,10 @@ describe("project exact export query evidence", () => {
     const initial = readCompositeAddSource(engine);
     const ready = readySnapshot(initial);
 
+    expect(
+      getCurrentDerivedExactMetadataEntryForBody(ready, initial.id, initial)
+    ).toMatchObject({ status: "ready" });
+
     engine.apply({ op: "feature.delete", id: "feature_add" });
     createWireAdd(engine, "body_target_2");
     const retargeted = readCompositeAddSource(engine);
@@ -296,6 +307,13 @@ describe("project exact export query evidence", () => {
     expect(createDerivedExactMetadataCacheKey(retargeted)).not.toBe(
       createDerivedExactMetadataCacheKey(initial)
     );
+    expect(
+      getCurrentDerivedExactMetadataEntryForBody(
+        ready,
+        retargeted.id,
+        retargeted
+      )
+    ).toBeUndefined();
     expect(
       createCurrentDerivedExactMetadataSnapshots(engine, ready, [retargeted])
     ).toEqual([]);
@@ -318,6 +336,13 @@ describe("project exact export query evidence", () => {
       createDerivedExactMetadataCacheKey(retargeted)
     );
     expect(
+      getCurrentDerivedExactMetadataEntryForBody(
+        readySnapshot(retargeted),
+        recreatedIdentity.id,
+        recreatedIdentity
+      )
+    ).toBeUndefined();
+    expect(
       createCurrentDerivedExactMetadataSnapshots(
         engine,
         readySnapshot(retargeted),
@@ -333,12 +358,23 @@ describe("project exact export query evidence", () => {
     const initial = readCompositeBooleanSource(engine, "body_add");
     const ready = readySnapshot(initial);
 
+    expect(
+      getCurrentDerivedExactMetadataEntryForBody(ready, initial.id, initial)
+    ).toMatchObject({ status: "ready" });
+
     engine.apply({ op: "feature.delete", id: "feature_add" });
     createWireBoolean(engine, "body_target_2", "cut");
     const retargeted = readCompositeBooleanSource(engine, "body_add");
     expect(createDerivedExactMetadataCacheKey(retargeted)).not.toBe(
       createDerivedExactMetadataCacheKey(initial)
     );
+    expect(
+      getCurrentDerivedExactMetadataEntryForBody(
+        ready,
+        retargeted.id,
+        retargeted
+      )
+    ).toBeUndefined();
     expect(
       createCurrentDerivedExactMetadataSnapshots(engine, ready, [retargeted])
     ).toEqual([]);
@@ -359,6 +395,13 @@ describe("project exact export query evidence", () => {
     expect(createDerivedExactMetadataCacheKey(recreated)).not.toBe(
       createDerivedExactMetadataCacheKey(retargeted)
     );
+    expect(
+      getCurrentDerivedExactMetadataEntryForBody(
+        readySnapshot(retargeted),
+        recreated.id,
+        recreated
+      )
+    ).toBeUndefined();
     expect(
       createCurrentDerivedExactMetadataSnapshots(
         engine,

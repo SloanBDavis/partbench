@@ -1,4 +1,8 @@
-import type { CadFeatureSummary, SketchSnapshot } from "@web-cad/cad-core";
+import {
+  CadEngine,
+  type CadFeatureSummary,
+  type SketchSnapshot
+} from "@web-cad/cad-core";
 import { describe, expect, it, vi } from "vitest";
 
 import { createBooleanExtrudeResultRuntimeSource } from "./booleanExtrudeRuntimeSource";
@@ -19,7 +23,10 @@ import type {
   DerivedGeometryResult,
   DerivedGeometryRuntime
 } from "./derivedGeometryRuntime";
-import { createExtrudeDerivedGeometrySources } from "./derivedGeometrySources";
+import {
+  createDerivedGeometrySourcesFromDocument,
+  createExtrudeDerivedGeometrySources
+} from "./derivedGeometrySources";
 
 describe("V17 composite add web integration", () => {
   it("uses one recursive mixed line/arc recipe for display and exact routes", async () => {
@@ -103,6 +110,7 @@ describe("V17 composite add web integration", () => {
     const runtimeSource = createBooleanExtrudeResultRuntimeSource(source);
     const booleanExtrudes = vi.fn(async () => createMeshResult(source.id));
 
+    expect(source.sourceIdentitySignature).toEqual(expect.any(String));
     expect(runtimeSource).toMatchObject({
       kind: "booleanExtrudes",
       operation: "cut",
@@ -126,11 +134,11 @@ describe("V17 composite add web integration", () => {
             vAxis: [0, 1, 0]
           },
           segments: [
-            expect.objectContaining({ sourceEntityId: "cut_diameter" }),
             expect.objectContaining({
               sourceEntityId: "cut_arc",
-              sweepAngleDegrees: -180
-            })
+              sweepAngleDegrees: 180
+            }),
+            expect.objectContaining({ sourceEntityId: "cut_diameter" })
           ]
         }),
         depth: 2,
@@ -367,13 +375,164 @@ function resolveAddSource(
 }
 
 function resolveAddCutChainSource(): DerivedBooleanExtrudeGeometrySource {
-  const features = [
-    rectangleTargetFeature(),
-    wireAddFeature(false),
-    wireCutFeature()
-  ];
-  const sketches = [rectangleTargetSketch(), wireToolSketch(), wireCutSketch()];
-  const [source] = createExtrudeDerivedGeometrySources(features, sketches);
+  const engine = new CadEngine();
+  engine.applyBatch([
+    {
+      op: "sketch.create",
+      id: "sketch_target",
+      name: "Target sketch",
+      plane: "XY"
+    },
+    {
+      op: "sketch.addRectangle",
+      sketchId: "sketch_target",
+      id: "target_rect",
+      center: [0, 0],
+      width: 4,
+      height: 4
+    },
+    {
+      op: "feature.extrude",
+      id: "feature_target",
+      bodyId: "body_target",
+      sketchId: "sketch_target",
+      entityId: "target_rect",
+      depth: 4,
+      operationMode: "newBody"
+    },
+    {
+      op: "sketch.create",
+      id: "sketch_tool",
+      name: "Add tool sketch",
+      plane: "XY"
+    },
+    {
+      op: "sketch.addLine",
+      sketchId: "sketch_tool",
+      id: "tool_diameter",
+      start: [0, -1],
+      end: [0, 1]
+    },
+    {
+      op: "sketch.addArc",
+      sketchId: "sketch_tool",
+      id: "tool_arc",
+      definition: {
+        kind: "centerAngles",
+        center: [0, 0],
+        radius: 1,
+        startAngleDegrees: 90,
+        sweepAngleDegrees: 180
+      }
+    },
+    {
+      op: "feature.extrude",
+      id: "feature_add",
+      bodyId: "body_add",
+      profile: {
+        kind: "wire",
+        sketchId: "sketch_tool",
+        segments: [
+          { entityId: "tool_diameter", orientation: "forward" },
+          { entityId: "tool_arc", orientation: "forward" }
+        ]
+      },
+      depth: 4,
+      operationMode: "add",
+      targetBodyId: "body_target"
+    },
+    {
+      op: "topology.checkpoint.create",
+      checkpointId: "checkpoint_add",
+      bodyId: "body_add",
+      sourceFeatureId: "feature_add",
+      sourceIdentity: {
+        algorithm: "partbench-source-v1",
+        sha256:
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      status: "active"
+    },
+    {
+      op: "topology.anchor.create",
+      anchorId: "anchor_body_add",
+      entityKind: "body",
+      bodyId: "body_add",
+      checkpointId: "checkpoint_add",
+      checkpointEntityId: "body:0",
+      sourceFeatureId: "feature_add",
+      signatureHash: "add-body-signature"
+    },
+    {
+      op: "sketch.create",
+      id: "sketch_cut",
+      name: "Cut tool sketch",
+      plane: "XY"
+    },
+    {
+      op: "sketch.addLine",
+      sketchId: "sketch_cut",
+      id: "cut_diameter",
+      start: [0, 0.5],
+      end: [0, -0.5]
+    },
+    {
+      op: "sketch.addArc",
+      sketchId: "sketch_cut",
+      id: "cut_arc",
+      definition: {
+        kind: "centerAngles",
+        center: [0, 0],
+        radius: 0.5,
+        startAngleDegrees: 270,
+        sweepAngleDegrees: -180
+      }
+    },
+    {
+      op: "feature.extrude",
+      id: "feature_cut",
+      bodyId: "body_cut",
+      profile: {
+        kind: "wire",
+        sketchId: "sketch_cut",
+        segments: [
+          { entityId: "cut_diameter", orientation: "forward" },
+          { entityId: "cut_arc", orientation: "forward" }
+        ]
+      },
+      depth: 2,
+      side: "negative",
+      operationMode: "cut",
+      targetTopologyAnchorId: "anchor_body_add"
+    }
+  ]);
+  const structure = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.structure" }
+  });
+  if (!structure.ok || structure.query !== "project.structure") {
+    throw new Error("Expected project structure for the add-to-cut chain.");
+  }
+  const cutFeature = structure.features.find(
+    (feature) => feature.id === "feature_cut"
+  );
+  if (
+    cutFeature?.kind !== "extrude" ||
+    cutFeature.targetTopologyAnchorId !== "anchor_body_add"
+  ) {
+    throw new Error("Expected the cut to retain its active body anchor.");
+  }
+  const source = createDerivedGeometrySourcesFromDocument(
+    engine.getDocument(),
+    structure.features,
+    new Map(),
+    new Map(
+      structure.bodies.map((body) => [
+        body.id,
+        readBodySourceIdentitySignature(engine, body.id)
+      ])
+    )
+  ).find((candidate) => candidate.id === "body_cut");
 
   if (
     !source ||
@@ -386,6 +545,20 @@ function resolveAddCutChainSource(): DerivedBooleanExtrudeGeometrySource {
     throw new Error("Expected one active recursive add-to-cut wire result.");
   }
   return source;
+}
+
+function readBodySourceIdentitySignature(
+  engine: CadEngine,
+  bodyId: string
+): string {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "body.topology", bodyId }
+  });
+  if (!response.ok || response.query !== "body.topology") {
+    throw new Error(`Expected body topology for ${bodyId}.`);
+  }
+  return response.topology.sourceIdentity.signature;
 }
 
 function rectangleTargetFeature(): Extract<
@@ -439,37 +612,6 @@ function wireAddFeature(
     source: {
       type: "sketchEntity",
       sketchId: "sketch_tool",
-      profile
-    }
-  };
-}
-
-function wireCutFeature(): Extract<
-  CadFeatureSummary,
-  { readonly kind: "extrude" }
-> {
-  const profile = {
-    kind: "wire" as const,
-    sketchId: "sketch_cut",
-    segments: [
-      { entityId: "cut_diameter", orientation: "forward" as const },
-      { entityId: "cut_arc", orientation: "forward" as const }
-    ]
-  };
-  return {
-    id: "feature_cut",
-    kind: "extrude",
-    partId: "part_1",
-    bodyId: "body_cut",
-    sketchId: "sketch_cut",
-    profile,
-    depth: 2,
-    side: "negative",
-    operationMode: "cut",
-    targetBodyId: "body_add",
-    source: {
-      type: "sketchEntity",
-      sketchId: "sketch_cut",
       profile
     }
   };
@@ -530,32 +672,6 @@ function wireToolSketch(
         radius: 1,
         startAngleDegrees: options.reversedArc ? 270 : 90,
         sweepAngleDegrees: options.reversedArc ? -180 : 180,
-        construction: false
-      }
-    ]
-  };
-}
-
-function wireCutSketch(): SketchSnapshot {
-  return {
-    id: "sketch_cut",
-    name: "Cut tool sketch",
-    plane: "XY",
-    entities: [
-      {
-        id: "cut_diameter",
-        kind: "line",
-        start: [0, -0.5],
-        end: [0, 0.5],
-        construction: false
-      },
-      {
-        id: "cut_arc",
-        kind: "arc",
-        center: [0, 0],
-        radius: 0.5,
-        startAngleDegrees: 270,
-        sweepAngleDegrees: -180,
         construction: false
       }
     ]

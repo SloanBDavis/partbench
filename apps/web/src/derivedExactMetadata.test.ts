@@ -14,6 +14,7 @@ import {
   createProjectQueryDerivedExactMetadataSnapshots,
   DerivedExactMetadataService,
   formatDerivedExactMetadataEntryStatus,
+  getCurrentDerivedExactMetadataEntryForBody,
   getDerivedExactMetadataEntryForBody,
   type DerivedExactMetadataEntry,
   type DerivedExactMetadataSnapshot
@@ -97,7 +98,17 @@ describe("derivedExactMetadata", () => {
 
     service.reconcile([imported]);
     await flushPromises();
-    expect(service.getSnapshot().entries[0]?.status).toBe("ready");
+    const ready = service.getSnapshot();
+    expect(ready.entries[0]?.status).toBe("ready");
+    expect(
+      getCurrentDerivedExactMetadataEntryForBody(ready, imported.id, imported)
+    ).toMatchObject({ status: "ready", sourceKind: "importedBody" });
+    expect(
+      getCurrentDerivedExactMetadataEntryForBody(ready, imported.id, {
+        ...imported,
+        checkpointId: "checkpoint_imported_recreated"
+      })
+    ).toBeUndefined();
 
     service.reconcile([createExtrudeSource("body_unrelated"), imported]);
     await flushPromises();

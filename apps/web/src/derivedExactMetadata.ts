@@ -338,6 +338,21 @@ export function getDerivedExactMetadataEntryForBody(
   return snapshot.entries.find((entry) => entry.bodyId === bodyId);
 }
 
+export function getCurrentDerivedExactMetadataEntryForBody(
+  snapshot: DerivedExactMetadataSnapshot,
+  bodyId: string | undefined,
+  currentSource: DerivedExactMetadataSource | undefined
+): DerivedExactMetadataEntry | undefined {
+  if (!bodyId || currentSource?.id !== bodyId) {
+    return undefined;
+  }
+
+  const entry = getDerivedExactMetadataEntryForBody(snapshot, bodyId);
+  return entry?.cacheKey === createDerivedExactMetadataCacheKey(currentSource)
+    ? entry
+    : undefined;
+}
+
 export function createBodyTopologyDerivedExactMetadataSnapshot(
   entry: DerivedExactMetadataEntry | undefined,
   sourceIdentitySignature: string
