@@ -309,6 +309,8 @@ export interface CadOpsAgentOperationReview {
   readonly sketchEntityId?: string;
   readonly sketchDimensionId?: string;
   readonly sketchConstraintId?: string;
+  readonly construction?: boolean;
+  readonly arcDefinition?: "centerAngles" | "threePoint";
   readonly featureId?: string;
   readonly bodyId?: string;
   readonly targetBodyId?: string;
@@ -1946,6 +1948,26 @@ function createOperationReview(
     case "sketch.addCircle":
       return createSketchEntityAddOperationReview(index, op, "circle");
 
+    case "sketch.addArc": {
+      const arcDefinition = op.definition.kind;
+      const definitionLabel =
+        arcDefinition === "centerAngles" ? "center-angle" : "three-point";
+      const construction = op.construction ?? false;
+
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Add ${definitionLabel} arc ${op.id ?? "with generated ID"} to ${op.sketchId} as ${construction ? "construction" : "regular"} geometry`
+        ),
+        sketchId: op.sketchId,
+        ...(op.id ? { sketchEntityId: op.id } : {}),
+        construction,
+        arcDefinition
+      };
+    }
+
     case "sketch.updateEntity":
       return {
         ...operationReviewBase(
@@ -1968,6 +1990,19 @@ function createOperationReview(
         ),
         sketchId: op.sketchId,
         sketchEntityId: op.entityId
+      };
+
+    case "sketch.setEntityConstruction":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "modify",
+          `Set ${op.entityId} in ${op.sketchId} to ${op.construction ? "construction" : "regular"} geometry`
+        ),
+        sketchId: op.sketchId,
+        sketchEntityId: op.entityId,
+        construction: op.construction
       };
 
     case "sketch.dimension.create":
@@ -4649,7 +4684,8 @@ function isCadOp(value: unknown): value is CadOp {
     return (
       typeof value.sketchId === "string" &&
       isOptionalString(value.id) &&
-      isVec2(value.point)
+      isVec2(value.point) &&
+      isOptionalBoolean(value.construction)
     );
   }
 
@@ -4658,7 +4694,8 @@ function isCadOp(value: unknown): value is CadOp {
       typeof value.sketchId === "string" &&
       isOptionalString(value.id) &&
       isVec2(value.start) &&
-      isVec2(value.end)
+      isVec2(value.end) &&
+      isOptionalBoolean(value.construction)
     );
   }
 
@@ -4668,7 +4705,8 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.id) &&
       isVec2(value.center) &&
       typeof value.width === "number" &&
-      typeof value.height === "number"
+      typeof value.height === "number" &&
+      isOptionalBoolean(value.construction)
     );
   }
 
@@ -4677,7 +4715,17 @@ function isCadOp(value: unknown): value is CadOp {
       typeof value.sketchId === "string" &&
       isOptionalString(value.id) &&
       isVec2(value.center) &&
-      typeof value.radius === "number"
+      typeof value.radius === "number" &&
+      isOptionalBoolean(value.construction)
+    );
+  }
+
+  if (value.op === "sketch.addArc") {
+    return (
+      typeof value.sketchId === "string" &&
+      isOptionalString(value.id) &&
+      isOptionalBoolean(value.construction) &&
+      isSketchArcDefinition(value.definition)
     );
   }
 
@@ -4688,6 +4736,14 @@ function isCadOp(value: unknown): value is CadOp {
   if (value.op === "sketch.deleteEntity") {
     return (
       typeof value.sketchId === "string" && typeof value.entityId === "string"
+    );
+  }
+
+  if (value.op === "sketch.setEntityConstruction") {
+    return (
+      typeof value.sketchId === "string" &&
+      typeof value.entityId === "string" &&
+      typeof value.construction === "boolean"
     );
   }
 
@@ -5133,29 +5189,70 @@ function isVec2(value: unknown): value is readonly [number, number] {
   );
 }
 
+function isSketchArcDefinition(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (value.kind === "centerAngles") {
+    return (
+      isVec2(value.center) &&
+      typeof value.radius === "number" &&
+      typeof value.startAngleDegrees === "number" &&
+      typeof value.sweepAngleDegrees === "number"
+    );
+  }
+
+  return (
+    value.kind === "threePoint" &&
+    isVec2(value.start) &&
+    isVec2(value.pointOnArc) &&
+    isVec2(value.end)
+  );
+}
+
 function isSketchEntity(value: unknown): boolean {
   if (!isRecord(value) || typeof value.id !== "string") {
     return false;
   }
 
   if (value.kind === "point") {
-    return isVec2(value.point);
+    return isVec2(value.point) && isOptionalBoolean(value.construction);
   }
 
   if (value.kind === "line") {
-    return isVec2(value.start) && isVec2(value.end);
+    return (
+      isVec2(value.start) &&
+      isVec2(value.end) &&
+      isOptionalBoolean(value.construction)
+    );
   }
 
   if (value.kind === "rectangle") {
     return (
       isVec2(value.center) &&
       typeof value.width === "number" &&
-      typeof value.height === "number"
+      typeof value.height === "number" &&
+      isOptionalBoolean(value.construction)
     );
   }
 
   if (value.kind === "circle") {
-    return isVec2(value.center) && typeof value.radius === "number";
+    return (
+      isVec2(value.center) &&
+      typeof value.radius === "number" &&
+      isOptionalBoolean(value.construction)
+    );
+  }
+
+  if (value.kind === "arc") {
+    return (
+      isVec2(value.center) &&
+      typeof value.radius === "number" &&
+      typeof value.startAngleDegrees === "number" &&
+      typeof value.sweepAngleDegrees === "number" &&
+      typeof value.construction === "boolean"
+    );
   }
 
   return false;
@@ -5163,6 +5260,10 @@ function isSketchEntity(value: unknown): boolean {
 
 function isOptionalString(value: unknown): value is string | undefined {
   return value === undefined || typeof value === "string";
+}
+
+function isOptionalBoolean(value: unknown): value is boolean | undefined {
+  return value === undefined || typeof value === "boolean";
 }
 
 function isSketchDimensionTarget(value: unknown): boolean {

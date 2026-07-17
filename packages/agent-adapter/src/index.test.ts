@@ -733,6 +733,115 @@ describe("agent-adapter", () => {
     expect(adapter.getEngine().getTransactions()).toHaveLength(0);
   });
 
+  it("reviews both arc definitions and construction toggles without changing legacy reviews", () => {
+    const adapter = new CadOpsAgentAdapter();
+    const request = parseCadOpsAgentRequestJson(
+      JSON.stringify({
+        requestId: "agent_req_v17_arc_review",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_arc",
+              name: "Arc sketch",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addLine",
+              sketchId: "sketch_arc",
+              id: "line_legacy",
+              start: [0, 0],
+              end: [1, 0]
+            },
+            {
+              op: "sketch.addArc",
+              sketchId: "sketch_arc",
+              id: "arc_center",
+              construction: true,
+              definition: {
+                kind: "centerAngles",
+                center: [0, 0],
+                radius: 2,
+                startAngleDegrees: 0,
+                sweepAngleDegrees: 90
+              }
+            },
+            {
+              op: "sketch.addArc",
+              sketchId: "sketch_arc",
+              id: "arc_three_point",
+              definition: {
+                kind: "threePoint",
+                start: [1, 0],
+                pointOnArc: [0, 1],
+                end: [-1, 0]
+              }
+            },
+            {
+              op: "sketch.setEntityConstruction",
+              sketchId: "sketch_arc",
+              entityId: "arc_center",
+              construction: false
+            }
+          ]
+        }
+      })
+    );
+
+    const response = adapter.execute(request);
+
+    expect(response.ok).toBe(true);
+    expect(response.ok && response.review.operations).toEqual(
+      expect.arrayContaining([
+        {
+          index: 1,
+          op: "sketch.addLine",
+          intent: "create",
+          label: "Add line line_legacy to sketch_arc",
+          sketchId: "sketch_arc",
+          sketchEntityId: "line_legacy"
+        },
+        {
+          index: 2,
+          op: "sketch.addArc",
+          intent: "create",
+          label:
+            "Add center-angle arc arc_center to sketch_arc as construction geometry",
+          sketchId: "sketch_arc",
+          sketchEntityId: "arc_center",
+          construction: true,
+          arcDefinition: "centerAngles"
+        },
+        {
+          index: 3,
+          op: "sketch.addArc",
+          intent: "create",
+          label:
+            "Add three-point arc arc_three_point to sketch_arc as regular geometry",
+          sketchId: "sketch_arc",
+          sketchEntityId: "arc_three_point",
+          construction: false,
+          arcDefinition: "threePoint"
+        },
+        {
+          index: 4,
+          op: "sketch.setEntityConstruction",
+          intent: "modify",
+          label: "Set arc_center in sketch_arc to regular geometry",
+          sketchId: "sketch_arc",
+          sketchEntityId: "arc_center",
+          construction: false
+        }
+      ])
+    );
+    expect(JSON.stringify(response.review)).not.toMatch(
+      /circumcenter|tessell|kernel|occt|solver/i
+    );
+  });
+
   it("returns a reviewable dry-run preview for a representative V7 workflow", () => {
     const adapter = new CadOpsAgentAdapter();
 
