@@ -107,6 +107,15 @@ describe("V17 analytic sketch wire geometry", () => {
         issue: { code: "SKETCH_ARC_SWEEP_INVALID" }
       });
     }
+    expect(
+      resolveOrientedSketchSegment(
+        arc("short-arc", [0, 0], tolerance * 1.01, 0, 0.1),
+        "forward"
+      )
+    ).toMatchObject({
+      ok: false,
+      issue: { code: "SKETCH_ARC_ZERO_LENGTH" }
+    });
   });
 
   it("resolves authored arc traversal in both signs and reverses it without mutating support", () => {
@@ -222,11 +231,29 @@ describe("V17 analytic sketch wire geometry", () => {
         upperHalf
       )
     ).toEqual({ overlap: false, points: [] });
+    for (const gap of [tolerance / 2, tolerance]) {
+      expect(
+        intersectSketchSegments(
+          resolve(line("near-miss", [-2, 1 + gap], [2, 1 + gap])),
+          upperHalf
+        )
+      ).toMatchObject({ overlap: false, points: [{ kind: "tangent" }] });
+    }
     expect(
       intersectSketchSegments(
         resolve(
-          line("near-miss", [-2, 1 + tolerance / 2], [2, 1 + tolerance / 2])
+          line(
+            "outside-tolerance",
+            [-2, 1 + tolerance * 1.01],
+            [2, 1 + tolerance * 1.01]
+          )
         ),
+        upperHalf
+      )
+    ).toEqual({ overlap: false, points: [] });
+    expect(
+      intersectSketchSegments(
+        resolve(line("large-no-hit", [-1e9, 2], [1e9, 2])),
         upperHalf
       )
     ).toEqual({ overlap: false, points: [] });
@@ -267,7 +294,7 @@ describe("V17 analytic sketch wire geometry", () => {
         upper,
         resolve(arc("offset-support", [0, tolerance / 2], 1, 0, 180))
       ).overlap
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("computes exact circular signed area and normalizes clockwise traversal", () => {
@@ -287,6 +314,132 @@ describe("V17 analytic sketch wire geometry", () => {
       4 * Math.PI,
       12
     );
+  });
+
+  it("keeps line and circular area stable under large translations", () => {
+    const offset = 1e12;
+    const square = [
+      resolve(line("bottom", [offset, offset], [offset + 1, offset])),
+      resolve(line("right", [offset + 1, offset], [offset + 1, offset + 1])),
+      resolve(line("top", [offset + 1, offset + 1], [offset, offset + 1])),
+      resolve(line("left", [offset, offset + 1], [offset, offset]))
+    ];
+    expect(getSketchWireSignedArea(square)).toBe(1);
+
+    const translatedCircle = [
+      resolve(arc("upper", [offset, -offset], 2, 0, 180)),
+      resolve(arc("lower", [offset, -offset], 2, 180, 180))
+    ];
+    expect(getSketchWireSignedArea(translatedCircle)).toBeCloseTo(
+      4 * Math.PI,
+      12
+    );
+    expect(normalizeSketchWireCounterClockwise(translatedCircle)).toMatchObject(
+      { normalized: false }
+    );
+    const translatedClockwise = [...translatedCircle]
+      .reverse()
+      .map(reverseSketchSegmentTraversal);
+    expect(getSketchWireSignedArea(translatedClockwise)).toBeCloseTo(
+      -4 * Math.PI,
+      12
+    );
+    expect(
+      normalizeSketchWireCounterClockwise(translatedClockwise)
+    ).toMatchObject({ normalized: true, signedArea: 4 * Math.PI });
+  });
+
+  it("uses absolute support tolerance independent of translated coordinates", () => {
+    const offset = 1e12;
+    const base = resolve(arc("base", [offset, offset], 10, 0, 180));
+    const displaced = resolve(
+      arc("displaced", [offset, offset + 0.001], 10, 0, 180)
+    );
+    expect(intersectSketchSegments(base, displaced).overlap).toBe(false);
+
+    for (const delta of [tolerance * 0.99, tolerance]) {
+      const localBase = resolve(arc("local-base", [0, 0], 10, 0, 180));
+      const within = resolve(arc("within", [0, delta], 10, 0, 180));
+      expect(intersectSketchSegments(localBase, within).overlap).toBe(true);
+    }
+    const outside = resolve(arc("outside", [0, tolerance * 1.01], 10, 0, 180));
+    expect(
+      intersectSketchSegments(
+        resolve(arc("local-base", [0, 0], 10, 0, 180)),
+        outside
+      ).overlap
+    ).toBe(false);
+  });
+
+  it("handles wrapped positive and negative cocircular overlap deterministically", () => {
+    const wrapped = resolve(arc("wrapped", [0, 0], 5, 350, 30));
+    const reverseAuthored = resolve(arc("negative", [0, 0], 5, 20, -30));
+    const endpointOnly = resolve(arc("endpoint", [0, 0], 5, 20, 30));
+    const disjoint = resolve(arc("disjoint", [0, 0], 5, 60, 30));
+
+    expect(intersectSketchSegments(wrapped, reverseAuthored)).toEqual({
+      overlap: true,
+      points: []
+    });
+    expect(intersectSketchSegments(wrapped, endpointOnly)).toMatchObject({
+      overlap: false,
+      points: [{ leftLocation: "end", rightLocation: "start" }]
+    });
+    expect(intersectSketchSegments(wrapped, disjoint)).toEqual({
+      overlap: false,
+      points: []
+    });
+  });
+
+  it("uses absolute tolerance for large-radius arc tangency", () => {
+    const radius = 1e8;
+    const left = resolve(arc("large-left", [0, 0], radius, -90, 180));
+    const against = (gap: number) =>
+      resolve(arc("large-right", [2 * radius + gap, 0], radius, 90, 180));
+
+    expect(
+      intersectSketchSegments(left, against(tolerance / 2)).points
+    ).toHaveLength(1);
+    expect(
+      intersectSketchSegments(left, against(tolerance)).points
+    ).toHaveLength(1);
+    expect(intersectSketchSegments(left, against(5e-7))).toEqual({
+      overlap: false,
+      points: []
+    });
+  });
+
+  it("rejects overflowed derived geometry while retaining valid large scales", () => {
+    expect(
+      resolveOrientedSketchSegment(
+        line("overflow-line", [-Number.MAX_VALUE, 0], [Number.MAX_VALUE, 0]),
+        "forward"
+      )
+    ).toMatchObject({
+      ok: false,
+      issue: { code: "SKETCH_SEGMENT_DERIVED_GEOMETRY_NON_FINITE" }
+    });
+    expect(
+      resolveOrientedSketchSegment(
+        arc("overflow-arc", [0, 0], 1e200, 0, 180),
+        "forward"
+      )
+    ).toMatchObject({
+      ok: false,
+      issue: { code: "SKETCH_SEGMENT_DERIVED_GEOMETRY_NON_FINITE" }
+    });
+    expect(
+      resolveOrientedSketchSegment(
+        line("large-line", [1e150, 1e150], [1e150 + 1e140, 1e150]),
+        "forward"
+      )
+    ).toMatchObject({ ok: true });
+    expect(
+      resolveOrientedSketchSegment(
+        arc("large-arc", [0, 0], 1e150, 0, 180),
+        "forward"
+      )
+    ).toMatchObject({ ok: true });
   });
 
   it("derives traversal-aware endpoint tangents and exact angular G1 boundaries", () => {
@@ -324,5 +477,12 @@ describe("V17 analytic sketch wire geometry", () => {
     ]);
     expect(merged).toEqual({ min: [-5, -4], max: [4, 10] });
     expect(mergeSketchSegmentBounds([])).toBeUndefined();
+
+    const offset = 1e12;
+    expect(
+      getSketchSegmentBounds(
+        resolve(arc("translated", [offset, offset], 2, 0, 180))
+      )
+    ).toEqual({ min: [offset - 2, offset], max: [offset + 2, offset + 2] });
   });
 });
