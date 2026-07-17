@@ -29,6 +29,10 @@ import {
 import { sha256Hex } from "./sha256";
 import { createSourceMeasurementFrame } from "./sourceMeasurementGeometry";
 
+const MAX_BOOLEAN_TOPOLOGY_RESULT_NODES = 64;
+const BOOLEAN_TOPOLOGY_RESULT_NODE_LIMIT_RECEIVED =
+  "boolean-result-node-limit-exceeded";
+
 export interface BodyTopologyRequest {
   readonly document: GeneratedReferencesDocument;
   readonly bodyId: BodyId;
@@ -103,7 +107,8 @@ function createAuthoredFeatureTopology(
   units: DocumentUnits,
   ownerPartId: PartId,
   feature: GeneratedReferencesFeature,
-  visitedBodyIds: ReadonlySet<BodyId> = new Set()
+  visitedBodyIds: ReadonlySet<BodyId> = new Set(),
+  traversedResultNodeCount = 0
 ): CadBodyTopologySnapshot {
   if (visitedBodyIds.has(bodyId)) {
     const sourceIdentityInput: Omit<
@@ -134,6 +139,18 @@ function createAuthoredFeatureTopology(
       ]
     });
   }
+  const nextResultNodeCount =
+    feature.kind === "extrude" && feature.operationMode !== "newBody"
+      ? traversedResultNodeCount + 1
+      : traversedResultNodeCount;
+  if (nextResultNodeCount > MAX_BOOLEAN_TOPOLOGY_RESULT_NODES) {
+    return createBooleanTargetLineageLimitTopology(
+      bodyId,
+      units,
+      feature,
+      nextResultNodeCount
+    );
+  }
   const nextVisitedBodyIds = new Set(visitedBodyIds).add(bodyId);
   if (feature.kind !== "extrude") {
     return createUnsupportedAuthoredFeatureTopology(
@@ -154,7 +171,8 @@ function createAuthoredFeatureTopology(
         ...feature,
         profile: feature.profile
       },
-      nextVisitedBodyIds
+      nextVisitedBodyIds,
+      nextResultNodeCount
     );
   }
 
@@ -196,7 +214,8 @@ function createAuthoredFeatureTopology(
           feature.targetTopologyAnchorId,
           units,
           ownerPartId,
-          nextVisitedBodyIds
+          nextVisitedBodyIds,
+          nextResultNodeCount
         );
   const sourceIdentityInput: Omit<CadBodyTopologySourceIdentity, "signature"> =
     {
@@ -246,6 +265,9 @@ function createAuthoredFeatureTopology(
   }
 
   const issues: CadBodyTopologyIssue[] = [
+    ...(targetLineage?.targetTraversalLimitExceeded
+      ? [createBooleanTargetLineageLimitIssue(bodyId, feature.id)]
+      : []),
     {
       code:
         feature.operationMode === "newBody"
@@ -265,7 +287,12 @@ function createAuthoredFeatureTopology(
     units,
     sourceIdentity,
     issues,
-    status: feature.operationMode === "newBody" ? "stale" : "ambiguous"
+    status:
+      feature.operationMode === "newBody"
+        ? "stale"
+        : targetLineage?.targetTraversalLimitExceeded
+          ? "unsupported"
+          : "ambiguous"
   });
 
   if (feature.operationMode !== "newBody") {
@@ -284,6 +311,57 @@ function createAuthoredFeatureTopology(
   return unsupportedTopology;
 }
 
+function createBooleanTargetLineageLimitTopology(
+  bodyId: BodyId,
+  units: DocumentUnits,
+  feature: GeneratedReferencesFeature,
+  resultNodeCount: number
+): CadBodyTopologySnapshot {
+  const sourceIdentityInput: Omit<CadBodyTopologySourceIdentity, "signature"> =
+    {
+      bodyId,
+      sourceKind: "authoredExtrude",
+      units,
+      featureId: feature.id,
+      featureSourceSignature: `boolean-target-lineage-limit:${MAX_BOOLEAN_TOPOLOGY_RESULT_NODES}`
+    };
+  return createUnsupportedTopologySnapshot({
+    bodyId,
+    units,
+    sourceIdentity: {
+      ...sourceIdentityInput,
+      signature: createTopologySourceSignature(sourceIdentityInput)
+    },
+    status: "unsupported",
+    issues: [
+      createBooleanTargetLineageLimitIssue(bodyId, feature.id, resultNodeCount)
+    ]
+  });
+}
+
+function createBooleanTargetLineageLimitIssue(
+  bodyId: BodyId,
+  featureId: string,
+  resultNodeCount = MAX_BOOLEAN_TOPOLOGY_RESULT_NODES + 1
+): CadBodyTopologyIssue {
+  return {
+    code: "UNSUPPORTED_BODY_TOPOLOGY",
+    message: `Boolean target lineage exceeds the ${MAX_BOOLEAN_TOPOLOGY_RESULT_NODES}-result-node topology limit.`,
+    bodyId,
+    featureId,
+    expected: `at most ${MAX_BOOLEAN_TOPOLOGY_RESULT_NODES} boolean result nodes`,
+    received: `${BOOLEAN_TOPOLOGY_RESULT_NODE_LIMIT_RECEIVED}:${resultNodeCount}`
+  };
+}
+
+function hasBooleanTargetLineageLimitIssue(
+  topology: CadBodyTopologySnapshot
+): boolean {
+  return topology.issues.some((issue) =>
+    issue.received?.startsWith(BOOLEAN_TOPOLOGY_RESULT_NODE_LIMIT_RECEIVED)
+  );
+}
+
 function createCompositeExtrudeTopology(
   document: GeneratedReferencesDocument,
   bodyId: BodyId,
@@ -295,7 +373,8 @@ function createCompositeExtrudeTopology(
       { kind: "wire" }
     >;
   },
-  visitedBodyIds: ReadonlySet<BodyId>
+  visitedBodyIds: ReadonlySet<BodyId>,
+  traversedResultNodeCount: number
 ): CadBodyTopologySnapshot {
   const sourceSketchEntityIds = feature.profile.segments.map(
     (segment) => segment.entityId
@@ -335,7 +414,8 @@ function createCompositeExtrudeTopology(
     feature.targetTopologyAnchorId,
     units,
     ownerPartId,
-    visitedBodyIds
+    visitedBodyIds,
+    traversedResultNodeCount
   );
   const sourceIdentityInput: Omit<CadBodyTopologySourceIdentity, "signature"> =
     {
@@ -374,6 +454,9 @@ function createCompositeExtrudeTopology(
     units,
     sourceIdentity,
     issues: [
+      ...(targetLineage.targetTraversalLimitExceeded
+        ? [createBooleanTargetLineageLimitIssue(bodyId, feature.id)]
+        : []),
       {
         code: "UNSUPPORTED_BODY_TOPOLOGY",
         message: `Composite wire extrude ${feature.operationMode} topology requires matching kernel-derived exact topology evidence.`,
@@ -385,7 +468,9 @@ function createCompositeExtrudeTopology(
   if (feature.operationMode === "newBody") return topology;
   return {
     ...topology,
-    status: "ambiguous",
+    status: targetLineage.targetTraversalLimitExceeded
+      ? "unsupported"
+      : "ambiguous",
     booleanTopology: createBooleanResultTopologyReadiness({
       bodyId,
       feature,
@@ -405,10 +490,12 @@ function createCompositeTargetLineage(
   targetTopologyAnchorId: string | undefined,
   units: DocumentUnits,
   ownerPartId: PartId,
-  visitedBodyIds: ReadonlySet<BodyId>
+  visitedBodyIds: ReadonlySet<BodyId>,
+  traversedResultNodeCount: number
 ): {
   readonly targetBodyId?: BodyId;
   readonly targetSourceIdentitySignature?: string;
+  readonly targetTraversalLimitExceeded?: true;
   readonly targetAnchorCheckpointLineage?: {
     readonly anchorId: string;
     readonly checkpointId: string;
@@ -424,16 +511,22 @@ function createCompositeTargetLineage(
         (candidate) => candidate.bodyId === targetBodyId
       )
     : undefined;
-  const targetSourceIdentitySignature = target
+  const targetTopology = target
     ? createAuthoredFeatureTopology(
         document,
         target.bodyId,
         units,
         ownerPartId,
         target,
-        visitedBodyIds
-      ).sourceIdentity.signature
+        visitedBodyIds,
+        traversedResultNodeCount
+      )
     : undefined;
+  const targetSourceIdentitySignature =
+    targetTopology?.sourceIdentity.signature;
+  const targetTraversalLimitExceeded = targetTopology
+    ? hasBooleanTargetLineageLimitIssue(targetTopology)
+    : false;
   const anchor = targetTopologyAnchorId
     ? document.topologyIdentity?.anchors.find(
         (candidate) => candidate.anchorId === targetTopologyAnchorId
@@ -447,6 +540,9 @@ function createCompositeTargetLineage(
   return {
     ...(targetBodyId ? { targetBodyId } : {}),
     ...(targetSourceIdentitySignature ? { targetSourceIdentitySignature } : {}),
+    ...(targetTraversalLimitExceeded
+      ? { targetTraversalLimitExceeded: true as const }
+      : {}),
     ...(anchor
       ? {
           targetAnchorCheckpointLineage: {
@@ -1348,6 +1444,18 @@ function applyDerivedExactMetadata(
       expected: topology.sourceIdentity.signature,
       received: metadata.sourceIdentitySignature
     });
+  }
+
+  if (hasBooleanTargetLineageLimitIssue(topology)) {
+    return {
+      ...topology,
+      status: "unsupported",
+      booleanTopology: updateBooleanExactValidationStatus(
+        topology.booleanTopology,
+        "unsupported"
+      ),
+      exactGeometryAvailable: false
+    };
   }
 
   if (metadata.status === "ready") {

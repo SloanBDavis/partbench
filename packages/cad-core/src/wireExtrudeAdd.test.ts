@@ -11,6 +11,7 @@ import {
   importCadProject,
   importCadProjectJson,
   readCadProjectWcad,
+  type CadDocument,
   type ExtrudeFeature
 } from "./index";
 import { createBodyTopology } from "./bodyTopology";
@@ -263,6 +264,42 @@ function exactMetadata(
       diagnostics: []
     }
   };
+}
+
+function createBooleanTopologyChainDocument(
+  engine: CadEngine,
+  resultNodeCount: number,
+  profileKind: "entity" | "wire"
+): CadDocument {
+  const document = engine.getDocument();
+  const root = document.features.get("feature_target");
+  if (!root || root.kind !== "extrude") {
+    throw new Error("Expected root extrude feature.");
+  }
+  const features = new Map(document.features);
+  let targetBodyId = "body_target";
+  for (let index = resultNodeCount - 1; index >= 0; index -= 1) {
+    const bodyId = `body_chain_${index}`;
+    const feature: ExtrudeFeature = {
+      ...root,
+      id: `feature_chain_${index}`,
+      bodyId,
+      profile:
+        profileKind === "wire"
+          ? profile
+          : {
+              kind: "entity",
+              sketchId: "sketch_target",
+              entityId: "rectangle_target"
+            },
+      operationMode: "add",
+      targetBodyId,
+      targetTopologyAnchorId: undefined
+    };
+    features.set(feature.id, feature);
+    targetBodyId = bodyId;
+  }
+  return { ...document, features };
 }
 
 describe("V17 composite wire extrude add", () => {
@@ -1013,6 +1050,132 @@ describe("V17 composite wire extrude add", () => {
         targetTopologyAnchorId: "anchor_body_add"
       })
     );
+  });
+
+  it("accepts 64 entity or wire result nodes and rejects the 65th without recursion overflow", () => {
+    const engine = createEngine();
+    for (const profileKind of ["entity", "wire"] as const) {
+      const document64 = createBooleanTopologyChainDocument(
+        engine,
+        64,
+        profileKind
+      );
+      const bodyExists64 = (bodyId: string) =>
+        [...document64.features.values()].some(
+          (feature) => feature.bodyId === bodyId
+        );
+      const topology64 = createBodyTopology({
+        document: document64,
+        bodyId: "body_chain_0",
+        units: document64.units,
+        ownerPartId: "part:default",
+        bodyExists: bodyExists64
+      });
+      if (!topology64.ok)
+        throw new Error(`Expected 64-node ${profileKind} chain.`);
+      expect(topology64.topology.issues, profileKind).not.toContainEqual(
+        expect.objectContaining({
+          received: expect.stringContaining("result-node-limit-exceeded")
+        })
+      );
+      const evidence64: CadBodyDerivedExactMetadataSnapshot = {
+        bodyId: "body_chain_0",
+        sourceIdentitySignature: topology64.topology.sourceIdentity.signature,
+        status: "ready",
+        metadata: {
+          source: "kernel-derived",
+          confidence: "kernel-derived",
+          volume: 1,
+          surfaceArea: 1,
+          centroid: [0, 0, 0],
+          topologyCounts: {
+            solidCount: 1,
+            faceCount: 6,
+            edgeCount: 12,
+            vertexCount: 8
+          },
+          diagnostics: []
+        }
+      };
+      const validated64 = createBodyTopology({
+        document: document64,
+        bodyId: "body_chain_0",
+        units: document64.units,
+        ownerPartId: "part:default",
+        bodyExists: bodyExists64,
+        derivedExactMetadata: evidence64
+      });
+      if (!validated64.ok)
+        throw new Error(`Expected validated 64-node ${profileKind} chain.`);
+      expect(validated64.topology.exactGeometryAvailable, profileKind).toBe(
+        true
+      );
+
+      const document65 = createBooleanTopologyChainDocument(
+        engine,
+        65,
+        profileKind
+      );
+      const bodyExists65 = (bodyId: string) =>
+        [...document65.features.values()].some(
+          (feature) => feature.bodyId === bodyId
+        );
+      const topology65 = createBodyTopology({
+        document: document65,
+        bodyId: "body_chain_0",
+        units: document65.units,
+        ownerPartId: "part:default",
+        bodyExists: bodyExists65
+      });
+      if (!topology65.ok)
+        throw new Error(`Expected 65-node ${profileKind} chain.`);
+      expect(topology65.topology, profileKind).toMatchObject({
+        status: "unsupported",
+        exactGeometryAvailable: false,
+        issues: expect.arrayContaining([
+          expect.objectContaining({
+            code: "UNSUPPORTED_BODY_TOPOLOGY",
+            expected: "at most 64 boolean result nodes",
+            received: expect.stringContaining("result-node-limit-exceeded")
+          })
+        ])
+      });
+
+      const stale65 = createBodyTopology({
+        document: document65,
+        bodyId: "body_chain_0",
+        units: document65.units,
+        ownerPartId: "part:default",
+        bodyExists: bodyExists65,
+        derivedExactMetadata: evidence64
+      });
+      if (!stale65.ok)
+        throw new Error(`Expected stale 65-node ${profileKind} chain.`);
+      expect(stale65.topology, profileKind).toMatchObject({
+        status: "stale",
+        exactGeometryAvailable: false,
+        booleanTopology: { derivedExactValidationStatus: "stale" }
+      });
+
+      const matching65 = createBodyTopology({
+        document: document65,
+        bodyId: "body_chain_0",
+        units: document65.units,
+        ownerPartId: "part:default",
+        bodyExists: bodyExists65,
+        derivedExactMetadata: {
+          ...evidence64,
+          sourceIdentitySignature: topology65.topology.sourceIdentity.signature
+        }
+      });
+      if (!matching65.ok)
+        throw new Error(`Expected matching 65-node ${profileKind} chain.`);
+      expect(matching65.topology, profileKind).toMatchObject({
+        status: "unsupported",
+        exactGeometryAvailable: false,
+        booleanTopology: { derivedExactValidationStatus: "unsupported" }
+      });
+    }
   });
 
   it("terminates malformed cyclic composite target lineage", () => {
