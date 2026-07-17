@@ -94,6 +94,47 @@ describe("derived mesh OPFS cache", () => {
     });
   });
 
+  it("round-trips composite generated-reference evidence", async () => {
+    const target = createMockOpfsTarget();
+    const sourceKey = "derived-source:wire-extrude";
+    const generatedReferences = {
+      status: "ready" as const,
+      sourceIdentity: "wire-profile-identity",
+      faces: [
+        {
+          role: "side" as const,
+          sourceEntityId: "arc_1",
+          surfaceClass: "cylinder" as const,
+          evidence: "kernel-builder" as const
+        }
+      ],
+      edges: [
+        {
+          role: "longitudinal" as const,
+          adjacentSourceEntityIds: ["line_1", "arc_1"] as const,
+          evidence: "kernel-builder" as const
+        }
+      ]
+    };
+
+    await writeDerivedMeshOpfsCache({
+      target,
+      context: CURRENT_CONTEXT,
+      sourceKey,
+      result: { ...createResult("body_wire"), generatedReferences }
+    });
+    const read = await readDerivedMeshOpfsCache({
+      target,
+      context: CURRENT_CONTEXT,
+      sourceKey
+    });
+
+    expect(read).toMatchObject({
+      ok: true,
+      result: { generatedReferences }
+    });
+  });
+
   it("returns structured diagnostics and marks corrupt artifacts", async () => {
     const target = createMockOpfsTarget();
     const sourceKey = "derived-source:box_1";

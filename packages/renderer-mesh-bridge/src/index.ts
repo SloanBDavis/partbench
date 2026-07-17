@@ -1,4 +1,7 @@
-import type { SerializableMeshData } from "@web-cad/geometry-kernel";
+import type {
+  GeometryKernelGeneratedReferences,
+  SerializableMeshData
+} from "@web-cad/geometry-kernel";
 import type { GeometryWorkerResponse } from "@web-cad/geometry-worker";
 import type {
   RenderTransform,
@@ -27,6 +30,7 @@ export interface MeshRendererBridgeResult {
   readonly bounds: MeshBounds;
   readonly vertexCount: number;
   readonly triangleCount: number;
+  readonly generatedReferences?: GeometryKernelGeneratedReferences;
 }
 
 export function createRenderMeshFromSerializableMesh(
@@ -55,7 +59,10 @@ export function createRenderMeshFromSerializableMesh(
     },
     bounds: getBounds(vertices),
     vertexCount: mesh.vertexCount,
-    triangleCount: mesh.triangleCount
+    triangleCount: mesh.triangleCount,
+    ...(mesh.generatedReferences
+      ? { generatedReferences: mesh.generatedReferences }
+      : {})
   };
 }
 

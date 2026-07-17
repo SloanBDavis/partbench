@@ -124,6 +124,9 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
       message: `Displayed derived OCCT mesh for ${input.id}.`,
       ...(response.response.warnings.length
         ? { warnings: [...response.response.warnings] }
+        : {}),
+      ...(bridgeResult.generatedReferences
+        ? { generatedReferences: bridgeResult.generatedReferences }
         : {})
     };
   }

@@ -14,8 +14,10 @@ import {
   type DerivedGeometryErrorDetails,
   type DerivedGeometryMetrics,
   type DerivedGeometryPatternSeedSource,
+  type DerivedGeometryPrimitiveExtrudeProfile,
   type DerivedGeometryResult,
-  type DerivedGeometryRuntime
+  type DerivedGeometryRuntime,
+  type DerivedGeometryWireExtrudeProfile
 } from "./derivedGeometryRuntime";
 import {
   mapSketchPlanePointToDisplayFrame,
@@ -67,17 +69,8 @@ export interface DerivedExtrudeGeometrySource {
   readonly kind: "extrude";
   readonly sketchPlane: "XY" | "XZ" | "YZ";
   readonly profile:
-    | {
-        readonly kind: "rectangle";
-        readonly center: readonly [number, number];
-        readonly width: number;
-        readonly height: number;
-      }
-    | {
-        readonly kind: "circle";
-        readonly center: readonly [number, number];
-        readonly radius: number;
-      };
+    | DerivedGeometryPrimitiveExtrudeProfile
+    | DerivedGeometryWireExtrudeProfile;
   readonly depth: number;
   readonly side: "positive" | "negative" | "symmetric";
   readonly placementFrame?: SketchDisplayFrame;
@@ -99,7 +92,7 @@ export interface DerivedRevolveGeometrySource {
   readonly id: string;
   readonly kind: "revolve";
   readonly sketchPlane: "XY" | "XZ" | "YZ";
-  readonly profile: DerivedExtrudeGeometrySource["profile"];
+  readonly profile: DerivedGeometryPrimitiveExtrudeProfile;
   readonly axis: {
     readonly start: readonly [number, number];
     readonly end: readonly [number, number];
@@ -114,7 +107,7 @@ export interface DerivedSweepGeometrySource {
   readonly kind: "sweep";
   readonly profile: {
     readonly sketchPlane: "XY" | "XZ" | "YZ";
-    readonly profile: DerivedExtrudeGeometrySource["profile"];
+    readonly profile: DerivedGeometryPrimitiveExtrudeProfile;
     readonly placementFrame?: SketchDisplayFrame;
   };
   readonly pathSegments: readonly {
@@ -262,6 +255,7 @@ export interface DerivedGeometryReadyEntry extends DerivedGeometryBaseEntry {
   readonly mesh: RenderTriangleMesh;
   readonly metrics: DerivedGeometryMetrics;
   readonly warnings?: readonly string[];
+  readonly generatedReferences?: DerivedGeometryResult["generatedReferences"];
 }
 
 export interface DerivedGeometryErrorEntry extends DerivedGeometryBaseEntry {
@@ -525,7 +519,10 @@ export class DerivedGeometryService {
       status: "ready",
       mesh: result.mesh,
       metrics: result.metrics,
-      ...(result.warnings?.length ? { warnings: [...result.warnings] } : {})
+      ...(result.warnings?.length ? { warnings: [...result.warnings] } : {}),
+      ...(result.generatedReferences
+        ? { generatedReferences: result.generatedReferences }
+        : {})
     });
     this.#requestVersions.delete(source.id);
     this.#emitChange();
@@ -917,6 +914,10 @@ export function applyExtrudePlacement(
   source: DerivedExtrudeGeometrySource,
   result: DerivedGeometryResult
 ): DerivedGeometryResult {
+  if (source.profile.kind === "wire") {
+    return result;
+  }
+
   return applySketchPlanePlacement(
     result,
     source.sketchPlane,
@@ -961,6 +962,12 @@ function createBooleanRuntimeSource(
 function createPrimitiveBooleanRuntimeSource(
   source: DerivedExtrudeGeometrySource
 ): DerivedGeometryBooleanExtrudePrimitiveInputSource {
+  if (source.profile.kind === "wire") {
+    throw new Error(
+      "Composite wire extrudes are not primitive boolean runtime sources."
+    );
+  }
+
   return {
     sketchPlane: source.sketchPlane,
     profile: source.profile,

@@ -64,6 +64,7 @@ export interface DerivedMeshCacheArtifactV1 {
   readonly mesh: RenderTriangleMesh;
   readonly metrics: DerivedGeometryMetrics;
   readonly message: string;
+  readonly generatedReferences?: DerivedGeometryResult["generatedReferences"];
   readonly writtenAt: string;
 }
 
@@ -287,7 +288,10 @@ export async function readDerivedMeshOpfsCache(input: {
       result: {
         mesh: artifact.mesh,
         metrics: artifact.metrics,
-        message: "Loaded display geometry from the local cache."
+        message: "Loaded display geometry from the local cache.",
+        ...(artifact.generatedReferences
+          ? { generatedReferences: artifact.generatedReferences }
+          : {})
       }
     };
   } catch (error) {
@@ -339,6 +343,9 @@ export async function writeDerivedMeshOpfsCache(input: {
     mesh: input.result.mesh,
     metrics: input.result.metrics,
     message: input.result.message,
+    ...(input.result.generatedReferences
+      ? { generatedReferences: input.result.generatedReferences }
+      : {}),
     writtenAt
   };
   const bytes = encodeDerivedMeshCacheArtifact(artifact);
@@ -607,7 +614,51 @@ function isDerivedMeshCacheArtifact(
     isRenderTriangleMesh(value.mesh) &&
     isDerivedGeometryMetrics(value.metrics) &&
     typeof value.message === "string" &&
+    (value.generatedReferences === undefined ||
+      isGeneratedReferences(value.generatedReferences)) &&
     typeof value.writtenAt === "string"
+  );
+}
+
+function isGeneratedReferences(
+  value: unknown
+): value is NonNullable<DerivedGeometryResult["generatedReferences"]> {
+  return (
+    isRecord(value) &&
+    (value.status === "ready" ||
+      value.status === "unavailable" ||
+      value.status === "ambiguous") &&
+    typeof value.sourceIdentity === "string" &&
+    Array.isArray(value.faces) &&
+    value.faces.every(
+      (face) =>
+        isRecord(face) &&
+        (face.role === "startCap" ||
+          face.role === "endCap" ||
+          face.role === "side") &&
+        (face.sourceEntityId === undefined ||
+          typeof face.sourceEntityId === "string") &&
+        (face.surfaceClass === "plane" || face.surfaceClass === "cylinder") &&
+        face.evidence === "kernel-builder"
+    ) &&
+    Array.isArray(value.edges) &&
+    value.edges.every(
+      (edge) =>
+        isRecord(edge) &&
+        (edge.role === "startCapBoundary" ||
+          edge.role === "endCapBoundary" ||
+          edge.role === "longitudinal") &&
+        (edge.sourceEntityId === undefined ||
+          typeof edge.sourceEntityId === "string") &&
+        (edge.adjacentSourceEntityIds === undefined ||
+          (Array.isArray(edge.adjacentSourceEntityIds) &&
+            edge.adjacentSourceEntityIds.length === 2 &&
+            edge.adjacentSourceEntityIds.every(
+              (entityId) => typeof entityId === "string"
+            ))) &&
+        edge.evidence === "kernel-builder"
+    ) &&
+    (value.diagnostic === undefined || typeof value.diagnostic === "string")
   );
 }
 

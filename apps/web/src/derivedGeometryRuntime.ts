@@ -3,8 +3,10 @@ import type {
   GeometryKernelExactBodyMetadata,
   GeometryKernelImportedBodyPayload,
   GeometryKernelStepImportDiagnostic,
+  GeometryKernelGeneratedReferences,
   GeometryWorkerDiagnostics,
-  GeometryWorkerResponse
+  GeometryWorkerResponse,
+  ResolvedPlanarWireProfile
 } from "@web-cad/geometry-worker";
 import type { MeshRendererBridgeResult } from "@web-cad/renderer-mesh-bridge";
 import type { RenderTransform, RenderTriangleMesh } from "@web-cad/renderer";
@@ -54,21 +56,27 @@ export interface DerivedGeometryTorusInput {
   readonly transform: RenderTransform;
 }
 
+export type DerivedGeometryPrimitiveExtrudeProfile =
+  | {
+      readonly kind: "rectangle";
+      readonly center: readonly [number, number];
+      readonly width: number;
+      readonly height: number;
+    }
+  | {
+      readonly kind: "circle";
+      readonly center: readonly [number, number];
+      readonly radius: number;
+    };
+
+export type DerivedGeometryWireExtrudeProfile = ResolvedPlanarWireProfile;
+
 export interface DerivedGeometryExtrudeInput {
   readonly id: string;
   readonly sketchPlane: "XY" | "XZ" | "YZ";
   readonly profile:
-    | {
-        readonly kind: "rectangle";
-        readonly center: readonly [number, number];
-        readonly width: number;
-        readonly height: number;
-      }
-    | {
-        readonly kind: "circle";
-        readonly center: readonly [number, number];
-        readonly radius: number;
-      };
+    | DerivedGeometryPrimitiveExtrudeProfile
+    | DerivedGeometryWireExtrudeProfile;
   readonly depth: number;
   readonly side: "positive" | "negative" | "symmetric";
   readonly transform: RenderTransform;
@@ -77,7 +85,7 @@ export interface DerivedGeometryExtrudeInput {
 export interface DerivedGeometryRevolveInput {
   readonly id: string;
   readonly sketchPlane: "XY" | "XZ" | "YZ";
-  readonly profile: DerivedGeometryExtrudeInput["profile"];
+  readonly profile: DerivedGeometryPrimitiveExtrudeProfile;
   readonly axis: {
     readonly start: readonly [number, number];
     readonly end: readonly [number, number];
@@ -98,7 +106,7 @@ export type DerivedGeometryBooleanExtrudeInputSource =
 
 export interface DerivedGeometryBooleanExtrudePrimitiveInputSource {
   readonly sketchPlane: "XY" | "XZ" | "YZ";
-  readonly profile: DerivedGeometryExtrudeInput["profile"];
+  readonly profile: DerivedGeometryPrimitiveExtrudeProfile;
   readonly depth: number;
   readonly side: "positive" | "negative" | "symmetric";
   readonly placementFrame?: DerivedGeometryExtrudePlacementFrame;
@@ -181,7 +189,7 @@ export interface DerivedGeometrySweepInput {
   readonly id: string;
   readonly profile: {
     readonly sketchPlane: "XY" | "XZ" | "YZ";
-    readonly profile: DerivedGeometryExtrudeInput["profile"];
+    readonly profile: DerivedGeometryPrimitiveExtrudeProfile;
     readonly placementFrame?: DerivedGeometryExtrudePlacementFrame;
   };
   readonly pathSegments: readonly {
@@ -221,10 +229,18 @@ export interface DerivedExactMetadataInput {
     | {
         readonly kind: "extrude";
         readonly sketchPlane: "XY" | "XZ" | "YZ";
-        readonly profile: DerivedGeometryExtrudeInput["profile"];
+        readonly profile: DerivedGeometryPrimitiveExtrudeProfile;
         readonly depth: number;
         readonly side: "positive" | "negative" | "symmetric";
         readonly placementFrame?: DerivedGeometryExtrudePlacementFrame;
+      }
+    | {
+        readonly kind: "extrude";
+        readonly sketchPlane: "XY" | "XZ" | "YZ";
+        readonly profile: DerivedGeometryWireExtrudeProfile;
+        readonly depth: number;
+        readonly side: "positive" | "negative" | "symmetric";
+        readonly placementFrame?: never;
       }
     | {
         readonly kind: "booleanExtrudes";
@@ -235,7 +251,7 @@ export interface DerivedExactMetadataInput {
     | {
         readonly kind: "revolve";
         readonly sketchPlane: "XY" | "XZ" | "YZ";
-        readonly profile: DerivedGeometryExtrudeInput["profile"];
+        readonly profile: DerivedGeometryPrimitiveExtrudeProfile;
         readonly axis: DerivedGeometryRevolveInput["axis"];
         readonly angleDegrees: number;
         readonly placementFrame?: DerivedGeometryExtrudePlacementFrame;
@@ -301,6 +317,7 @@ export interface DerivedGeometryResult {
   readonly metrics: DerivedGeometryMetrics;
   readonly message: string;
   readonly warnings?: readonly string[];
+  readonly generatedReferences?: GeometryKernelGeneratedReferences;
 }
 
 export interface DerivedExactMetadataResult {

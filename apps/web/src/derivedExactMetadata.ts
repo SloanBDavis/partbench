@@ -442,6 +442,19 @@ export function createExactMetadataRuntimeInput(
     };
   }
   if (source.kind === "extrude") {
+    if (source.profile.kind === "wire") {
+      return {
+        id: source.id,
+        source: {
+          kind: "extrude",
+          sketchPlane: source.sketchPlane,
+          profile: source.profile,
+          depth: source.depth,
+          side: source.side
+        }
+      };
+    }
+
     return {
       id: source.id,
       source: {
@@ -623,6 +636,12 @@ function createExactPatternSeedRuntimeSource(
 function createExactMetadataPrimitiveBooleanRuntimeSource(
   source: DerivedExtrudeGeometrySource
 ): DerivedGeometryBooleanExtrudePrimitiveInputSource {
+  if (source.profile.kind === "wire") {
+    throw new Error(
+      "Composite wire extrudes are not primitive boolean metadata sources."
+    );
+  }
+
   return {
     sketchPlane: source.sketchPlane,
     profile: source.profile,

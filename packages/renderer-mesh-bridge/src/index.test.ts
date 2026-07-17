@@ -51,6 +51,37 @@ describe("renderer mesh bridge", () => {
     ]);
   });
 
+  it("preserves generated-reference evidence without adding it to render meshes", () => {
+    const generatedReferences = {
+      status: "ready" as const,
+      sourceIdentity: "wire:sketch_1:line_1,arc_1",
+      faces: [
+        {
+          role: "side" as const,
+          sourceEntityId: "arc_1",
+          surfaceClass: "cylinder" as const,
+          evidence: "kernel-builder" as const
+        }
+      ],
+      edges: []
+    };
+    const result = createRenderMeshFromSerializableMesh(
+      {
+        primitive: "extrude",
+        positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+        indices: new Uint32Array([0, 1, 2]),
+        vertexCount: 3,
+        triangleCount: 1,
+        faceCount: 1,
+        generatedReferences
+      },
+      { id: "mesh_wire_extrude" }
+    );
+
+    expect(result.generatedReferences).toEqual(generatedReferences);
+    expect(result.mesh).not.toHaveProperty("generatedReferences");
+  });
+
   it("adapts a tessellated box response from the geometry worker", async () => {
     const worker = new GeometryKernelWorker();
     const response = await worker.execute(

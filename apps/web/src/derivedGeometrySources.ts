@@ -4,6 +4,7 @@ import type {
   SketchSnapshot
 } from "@web-cad/cad-core";
 import {
+  SKETCH_GEOMETRY_POLICY,
   resolveMirrorPlaneFrame,
   resolvePatternDirectionFrame,
   resolvePatternRotationAxisFrame
@@ -27,6 +28,7 @@ import {
   type DerivedSweepGeometrySource,
   type DerivedLoftGeometrySource
 } from "./derivedGeometry";
+import type { DerivedGeometryWireExtrudeProfile } from "./derivedGeometryRuntime";
 import {
   createAttachedSketchGeometryFrame,
   createDefaultSketchDisplayFrame,
@@ -653,9 +655,13 @@ export function createExtrudeDerivedGeometrySources(
       generatedFacesByKey
     );
 
-    if (source) {
-      sources.push(source);
-    }
+    sources.push(
+      source ??
+        createUnavailableExtrudeSource(
+          feature.bodyId,
+          `Extrude feature ${feature.id} cannot be displayed because its current profile source is unavailable.`
+        )
+    );
   }
 
   return sources;
@@ -876,11 +882,25 @@ function createExtrudeSourceForFeature(
   const sketch = sketches.find(
     (candidate) => candidate.id === feature.sketchId
   );
-  const entity = sketch?.entities.find(
+
+  if (!sketch) {
+    return undefined;
+  }
+
+  if (feature.profile?.kind === "wire") {
+    return createWireExtrudeSource(
+      feature,
+      feature.profile,
+      sketch,
+      generatedFacesByKey
+    );
+  }
+
+  const entity = sketch.entities.find(
     (candidate) => candidate.id === feature.entityId
   );
 
-  if (!sketch || !entity) {
+  if (!entity) {
     return undefined;
   }
 
@@ -924,6 +944,94 @@ function createExtrudeSourceForFeature(
   }
 
   return undefined;
+}
+
+function createWireExtrudeSource(
+  feature: Extract<CadFeatureSummary, { kind: "extrude" }>,
+  profile: NonNullable<
+    Extract<CadFeatureSummary, { kind: "extrude" }>["profile"]
+  >,
+  sketch: SketchSnapshot,
+  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>
+): DerivedExtrudeGeometrySource {
+  const placement = createAttachedSketchFeaturePlacement(
+    sketch,
+    generatedFacesByKey,
+    "extrude"
+  );
+  const frame =
+    placement.placementFrame ?? createDefaultSketchDisplayFrame(sketch.plane);
+  const segments: Array<DerivedGeometryWireExtrudeProfile["segments"][number]> =
+    [];
+
+  for (const reference of profile.segments) {
+    const entity = sketch.entities.find(
+      (candidate) => candidate.id === reference.entityId
+    );
+
+    if (!entity || (entity.kind !== "line" && entity.kind !== "arc")) {
+      return createUnavailableExtrudeSource(
+        feature.bodyId,
+        `Composite extrude feature ${feature.id} cannot be displayed because profile entity ${reference.entityId} is unavailable.`
+      );
+    }
+
+    if (entity.kind === "line") {
+      segments.push({
+        kind: "line",
+        sourceEntityId: entity.id,
+        start: reference.orientation === "forward" ? entity.start : entity.end,
+        end: reference.orientation === "forward" ? entity.end : entity.start
+      });
+      continue;
+    }
+
+    const forward = reference.orientation === "forward";
+    segments.push({
+      kind: "arc",
+      sourceEntityId: entity.id,
+      center: entity.center,
+      radius: entity.radius,
+      startAngleDegrees: normalizeDegrees(
+        forward
+          ? entity.startAngleDegrees
+          : entity.startAngleDegrees + entity.sweepAngleDegrees
+      ),
+      sweepAngleDegrees: forward
+        ? entity.sweepAngleDegrees
+        : -entity.sweepAngleDegrees
+    });
+  }
+
+  const identityRecipe = {
+    sketchId: sketch.id,
+    frame,
+    segments,
+    geometryPolicy: SKETCH_GEOMETRY_POLICY
+  };
+  return {
+    id: feature.bodyId,
+    kind: "extrude",
+    sketchPlane: sketch.plane,
+    profile: {
+      kind: "wire",
+      frame,
+      closed: true,
+      segments,
+      sourceIdentity: `partbench-wire-extrude-v1:${JSON.stringify(identityRecipe)}`,
+      geometryPolicy: SKETCH_GEOMETRY_POLICY
+    },
+    depth: feature.depth,
+    side: feature.side,
+    ...(placement.placementError
+      ? { placementError: placement.placementError }
+      : {})
+  };
+}
+
+function normalizeDegrees(value: number): number {
+  const normalized = ((value % 360) + 360) % 360;
+  return Object.is(normalized, -0) ? 0 : normalized;
 }
 
 function createHoleToolSourceForFeature(
@@ -1443,7 +1551,8 @@ function formatEdgeFinishLabel(
 }
 
 function createUnavailableExtrudeSource(
-  id: string
+  id: string,
+  placementError = "Extrude source is unavailable."
 ): DerivedExtrudeGeometrySource {
   return {
     id,
@@ -1452,7 +1561,7 @@ function createUnavailableExtrudeSource(
     profile: { kind: "rectangle", center: [0, 0], width: 1, height: 1 },
     depth: 1,
     side: "positive",
-    placementError: "Extrude source is unavailable."
+    placementError
   };
 }
 
