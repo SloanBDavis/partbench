@@ -1609,10 +1609,20 @@ describe("occt-wasm", () => {
       expect(mesh.vertexCount).toBeGreaterThan(0);
       expect(mesh.triangleCount).toBeGreaterThan(0);
       expect("generatedReferences" in mesh).toBe(false);
-      expect(metadata.bounds).toEqual({
-        min: [-4, -3, side === "positive" ? 0 : side === "negative" ? -4 : -2],
-        max: [4, 3, side === "negative" ? 0 : side === "positive" ? 4 : 2]
-      });
+      const expectedMin = [
+        -4,
+        -3,
+        side === "positive" ? 0 : side === "negative" ? -4 : -2
+      ] as const;
+      const expectedMax = [
+        7,
+        3,
+        side === "negative" ? 0 : side === "positive" ? 4 : 2
+      ] as const;
+      for (const axis of [0, 1, 2] as const) {
+        expect(metadata.bounds.min[axis]).toBeCloseTo(expectedMin[axis], 4);
+        expect(metadata.bounds.max[axis]).toBeCloseTo(expectedMax[axis], 4);
+      }
       expect(metadata.topologyCounts.solidCount).toBe(1);
       expect(metadata.volume).toBeCloseTo(208 + 2 * Math.PI, 5);
       expect(metadata.generatedReferences).toBeUndefined();
@@ -1651,6 +1661,20 @@ describe("occt-wasm", () => {
       expect(mesh.vertexCount).toBeGreaterThan(0);
       expect(mesh.triangleCount).toBeGreaterThan(0);
       expect("generatedReferences" in mesh).toBe(false);
+      const expectedMin = [
+        -4,
+        -3,
+        side === "positive" ? 0 : side === "negative" ? -4 : -2
+      ] as const;
+      const expectedMax = [
+        4,
+        3,
+        side === "negative" ? 0 : side === "positive" ? 4 : 2
+      ] as const;
+      for (const axis of [0, 1, 2] as const) {
+        expect(metadata.bounds.min[axis]).toBeCloseTo(expectedMin[axis], 4);
+        expect(metadata.bounds.max[axis]).toBeCloseTo(expectedMax[axis], 4);
+      }
       expect(metadata.topologyCounts.solidCount).toBe(1);
       expect(metadata.volume).toBeCloseTo(160 - 4 * Math.PI, 5);
       expect(metadata.generatedReferences).toBeUndefined();
