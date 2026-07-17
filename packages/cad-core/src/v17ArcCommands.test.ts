@@ -626,6 +626,51 @@ describe("V17 arc and construction commands", () => {
       constructionBefore: false,
       constructionAfter: true
     };
+    const invalidToggleBefore = captureEngineProofState(engine);
+    const nonBoolean = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          ...toggleOp,
+          construction: "yes"
+        } as never
+      ]
+    });
+    expect(nonBoolean).toMatchObject({
+      ok: false,
+      error: {
+        code: "SKETCH_ENTITY_CONSTRUCTION_INVALID",
+        path: "$.ops[0].construction",
+        expected: "boolean",
+        received: "yes"
+      }
+    });
+    expect(captureEngineProofState(engine)).toEqual(invalidToggleBefore);
+
+    const missing = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          ...toggleOp,
+          entityId: "missing_arc"
+        }
+      ]
+    });
+    expect(missing).toMatchObject({
+      ok: false,
+      error: {
+        code: "SKETCH_ENTITY_NOT_FOUND",
+        path: "$.ops[0].entityId",
+        sketchId: "sketch_arc",
+        sketchEntityId: "missing_arc",
+        expected: "existing sketch entity id",
+        received: "missing_arc"
+      }
+    });
+    expect(captureEngineProofState(engine)).toEqual(invalidToggleBefore);
+
     const toggleDryRun = executeDryRunWithoutMutation(engine, [toggleOp]);
     expect(
       toggleDryRun.ok && toggleDryRun.semanticDiff.sketches?.entityChanges
@@ -638,6 +683,7 @@ describe("V17 arc and construction commands", () => {
     expect(
       toggleCommit.ok && toggleCommit.semanticDiff.sketches?.entityChanges
     ).toEqual([toggleChange]);
+    expect(toggleCommit).toMatchObject({ transactionId: "txn_3" });
     const toggled = captureEngineProofState(engine);
     expectUndoRedoExact(engine, toggleBefore, toggled);
 
