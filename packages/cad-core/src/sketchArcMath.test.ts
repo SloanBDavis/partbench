@@ -98,6 +98,60 @@ describe("V17 sketch arc math", () => {
     });
   });
 
+  it("applies the linear tolerance at coincidence and scale-aware collinearity boundaries", () => {
+    const tolerance = SKETCH_GEOMETRY_POLICY.linearTolerance;
+    const threePoint = (
+      middle: readonly [number, number],
+      end: readonly [number, number]
+    ) =>
+      canonicalizeSketchArcDefinition({
+        kind: "threePoint",
+        start: [0, 0],
+        pointOnArc: middle,
+        end
+      });
+
+    for (const distance of [tolerance, tolerance * (1 - 1e-6)]) {
+      expect(threePoint([distance, 0], [0, 1])).toMatchObject({
+        ok: false,
+        issues: [{ code: "SKETCH_ARC_POINTS_COINCIDENT", path: "definition" }]
+      });
+    }
+    expect(threePoint([tolerance * (1 + 1e-6), 0], [0, 1])).toMatchObject({
+      ok: true
+    });
+
+    const scaleBoundary = 2 * tolerance;
+    for (const height of [scaleBoundary, scaleBoundary * (1 - 1e-6)]) {
+      expect(threePoint([1, 0], [2, height])).toMatchObject({
+        ok: false,
+        issues: [
+          { code: "SKETCH_ARC_THREE_POINT_COLLINEAR", path: "definition" }
+        ]
+      });
+    }
+    const justOutsideCollinearity = {
+      kind: "threePoint" as const,
+      start: [0, 0] as const,
+      pointOnArc: [1, 0] as const,
+      end: [2, scaleBoundary * (1 + 1e-6)] as const
+    };
+    // Immediately outside the linear gate, the frozen policy advances to its
+    // independent angular sweep gate instead of calling the points collinear.
+    expect(
+      canonicalizeSketchArcDefinition(justOutsideCollinearity)
+    ).toMatchObject({
+      ok: false,
+      issues: [{ code: "SKETCH_ARC_SWEEP_INVALID", path: "definition" }]
+    });
+    expect(
+      canonicalizeSketchArcDefinition(justOutsideCollinearity, {
+        ...SKETCH_GEOMETRY_POLICY,
+        angularToleranceDegrees: 1e-8
+      })
+    ).toMatchObject({ ok: true });
+  });
+
   it("accepts exact angular bounds and rejects values immediately outside them", () => {
     const canonicalizeSweep = (sweepAngleDegrees: number) =>
       canonicalizeSketchArcDefinition({

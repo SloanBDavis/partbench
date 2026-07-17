@@ -29,220 +29,141 @@ function createEmptyProject(): CadProject {
   return exportCadProject(new CadEngine());
 }
 
-function stampLegacyProject(project: CadProject, version: number): CadProject {
-  const source = project.document as unknown as Record<string, unknown>;
-  const document: Record<string, unknown> = {
-    units: source.units,
-    objects: source.objects,
-    nextObjectNumber: source.nextObjectNumber
-  };
-  const copy = (keys: readonly string[]) => {
-    for (const key of keys) document[key] = source[key];
+type HistoricalDocumentFragment = Record<string, unknown>;
+
+function historicalSketch(
+  id: string,
+  entities: readonly HistoricalDocumentFragment[],
+  extras: HistoricalDocumentFragment = {}
+): HistoricalDocumentFragment {
+  return { id, name: id, plane: "XY", entities, ...extras };
+}
+
+function historicalProject(
+  version: number,
+  fragment: HistoricalDocumentFragment
+): CadProject {
+  const document: HistoricalDocumentFragment = {
+    units: "mm",
+    objects: [],
+    nextObjectNumber: 1
   };
   if (version >= 2) {
-    copy(["sketches", "nextSketchNumber", "nextSketchEntityNumber"]);
+    Object.assign(document, {
+      sketches: [],
+      nextSketchNumber: 1,
+      nextSketchEntityNumber: 1
+    });
   }
   if (version >= 3) {
-    copy(["features", "nextFeatureNumber", "nextBodyNumber"]);
+    Object.assign(document, {
+      features: [],
+      nextFeatureNumber: 1,
+      nextBodyNumber: 1
+    });
   }
-  if (version >= 5) copy(["namedReferences"]);
+  if (version >= 5) document.namedReferences = [];
   if (version >= 7) {
-    copy([
-      "parameters",
-      "sketchDimensions",
-      "nextParameterNumber",
-      "nextSketchDimensionNumber"
-    ]);
+    Object.assign(document, {
+      parameters: [],
+      sketchDimensions: [],
+      nextParameterNumber: 1,
+      nextSketchDimensionNumber: 1
+    });
   }
   if (version >= 8) {
-    copy(["sketchConstraints", "nextSketchConstraintNumber"]);
-  }
-  if (version >= 18 && source.topologyIdentity) {
-    copy(["topologyIdentity"]);
+    Object.assign(document, {
+      sketchConstraints: [],
+      nextSketchConstraintNumber: 1
+    });
   }
   return {
     schemaVersion: `web-cad.project.v${version}`,
-    document,
+    document: { ...document, ...fragment },
     history: [],
     redoStack: []
   } as unknown as CadProject;
 }
 
-function createBaseExtrudeEngine(): CadEngine {
-  const engine = new CadEngine();
-  engine.applyBatch([
-    { op: "sketch.create", id: "base_sketch", name: "Base", plane: "XY" },
-    {
-      op: "sketch.addRectangle",
-      sketchId: "base_sketch",
-      id: "base_rect",
-      center: [0, 0],
-      width: 4,
-      height: 3
-    },
-    {
-      op: "feature.extrude",
-      id: "base_extrude",
-      bodyId: "base_body",
-      sketchId: "base_sketch",
-      entityId: "base_rect",
-      depth: 3
-    }
-  ]);
-  return engine;
-}
+const BASE_RECTANGLE_SKETCH = historicalSketch("base_sketch", [
+  {
+    id: "base_rect",
+    kind: "rectangle",
+    center: [0, 0],
+    width: 4,
+    height: 3
+  }
+]);
 
-function createConstraintProject(version: number): CadProject {
-  const engine = new CadEngine();
-  const secondLine =
-    version === 12
-      ? { start: [0, 1] as const, end: [2, 1] as const }
-      : { start: [0, 0] as const, end: [0, 2] as const };
-  engine.applyBatch([
-    {
-      op: "sketch.create",
-      id: "constraint_sketch",
-      name: "Constraint",
-      plane: "XY"
-    },
-    {
-      op: "sketch.addLine",
-      sketchId: "constraint_sketch",
-      id: "line_1",
-      start: [0, 0],
-      end: [2, 0]
-    },
-    {
-      op: "sketch.addLine",
-      sketchId: "constraint_sketch",
-      id: "line_2",
-      ...secondLine
-    },
-    {
-      op: "sketch.addPoint",
-      sketchId: "constraint_sketch",
-      id: "point_1",
-      point: version === 10 ? [0, 0] : [1, 0]
-    }
-  ]);
-  const constraints: Record<number, any> = {
+const BASE_EXTRUDE_V3 = {
+  id: "base_extrude",
+  kind: "extrude",
+  sketchId: "base_sketch",
+  entityId: "base_rect",
+  profileKind: "rectangle",
+  depth: 3,
+  bodyId: "base_body"
+} as const;
+
+function historicalConstraintProject(version: number): CadProject {
+  const constraints: Record<number, HistoricalDocumentFragment> = {
     8: { kind: "horizontal", entityId: "line_1" },
-    9: { kind: "fixed", target: { entityId: "point_1", role: "position" } },
+    9: {
+      kind: "fixed",
+      entityId: "point_1",
+      target: { entityId: "point_1", role: "position" },
+      coordinate: [1, 0]
+    },
     10: {
       kind: "coincident",
+      entityId: "point_1",
       primaryTarget: { entityId: "point_1", role: "position" },
       secondaryTarget: { entityId: "line_1", role: "start" }
     },
     11: {
       kind: "midpoint",
+      entityId: "line_1",
       lineEntityId: "line_1",
       target: { entityId: "point_1", role: "position" }
     },
     12: {
       kind: "parallel",
+      entityId: "line_2",
       primaryLineEntityId: "line_1",
       secondaryLineEntityId: "line_2"
     },
     13: {
       kind: "perpendicular",
+      entityId: "line_2",
       primaryLineEntityId: "line_1",
       secondaryLineEntityId: "line_2"
     }
   };
-  engine.apply({
-    op: "sketch.constraint.create",
-    id: `constraint_v${version}`,
-    name: `V${version} constraint`,
-    sketchId: "constraint_sketch",
-    ...constraints[version]
-  } as never);
-  return exportCadProject(engine);
-}
-
-function createV20ConsumerMigrationProject(): CadProject {
-  const engine = new CadEngine();
-  engine.applyBatch([
-    { op: "sketch.create", id: "v20_profile", name: "Profile", plane: "XY" },
-    {
-      op: "sketch.addRectangle",
-      sketchId: "v20_profile",
-      id: "v20_rect",
-      center: [2, 0],
-      width: 2,
-      height: 1
-    },
-    {
-      op: "sketch.addCircle",
-      sketchId: "v20_profile",
-      id: "v20_circle",
-      center: [0, 0],
-      radius: 1
-    },
-    {
-      op: "sketch.addLine",
-      sketchId: "v20_profile",
-      id: "v20_axis",
-      start: [0, -2],
-      end: [0, 2]
-    },
-    { op: "sketch.create", id: "v20_path", name: "Path", plane: "XZ" },
-    {
-      op: "sketch.addLine",
-      sketchId: "v20_path",
-      id: "v20_path_line",
-      start: [0, 0],
-      end: [0, 5]
-    },
-    { op: "sketch.create", id: "v20_loft", name: "Loft", plane: "XY" },
-    {
-      op: "sketch.addCircle",
-      sketchId: "v20_loft",
-      id: "v20_loft_circle",
-      center: [0, 0],
-      radius: 2
-    },
-    {
-      op: "feature.extrude",
-      id: "v20_extrude",
-      bodyId: "v20_extrude_body",
-      sketchId: "v20_profile",
-      entityId: "v20_rect",
-      depth: 2
-    },
-    {
-      op: "feature.revolve",
-      id: "v20_revolve",
-      bodyId: "v20_revolve_body",
-      sketchId: "v20_profile",
-      entityId: "v20_rect",
-      axis: {
-        type: "sketchLine",
-        sketchId: "v20_profile",
-        entityId: "v20_axis"
-      },
-      angleDegrees: 180
-    },
-    {
-      op: "feature.sweep",
-      id: "v20_sweep",
-      bodyId: "v20_sweep_body",
-      profileSketchId: "v20_profile",
-      profileEntityId: "v20_circle",
-      pathSketchId: "v20_path",
-      pathEntityIds: ["v20_path_line"]
-    }
-  ]);
-  const project = exportCadProject(engine) as any;
-  project.document.features.push({
-    id: "v20_loft_feature",
-    kind: "loft",
-    bodyId: "v20_loft_body",
-    sections: [
-      { sketchId: "v20_profile", entityId: "v20_circle" },
-      { sketchId: "v20_loft", entityId: "v20_loft_circle" }
+  const secondLine =
+    version === 12
+      ? { id: "line_2", kind: "line", start: [0, 1], end: [2, 1] }
+      : { id: "line_2", kind: "line", start: [0, 0], end: [0, 2] };
+  return historicalProject(version, {
+    sketches: [
+      historicalSketch("constraint_sketch", [
+        { id: "line_1", kind: "line", start: [0, 0], end: [2, 0] },
+        secondLine,
+        {
+          id: "point_1",
+          kind: "point",
+          point: version === 10 ? [0, 0] : [1, 0]
+        }
+      ])
+    ],
+    sketchConstraints: [
+      {
+        id: `constraint_v${version}`,
+        name: `V${version} constraint`,
+        sketchId: "constraint_sketch",
+        ...constraints[version]
+      }
     ]
   });
-  return stampLegacyProject(project, 20);
 }
 
 function createMigrationCorpus(): readonly {
@@ -250,214 +171,346 @@ function createMigrationCorpus(): readonly {
   readonly marker: string;
   readonly project: CadProject;
 }[] {
-  const fixture = (version: number, marker: string, engine: CadEngine) => ({
+  const fixture = (
+    version: number,
+    marker: string,
+    fragment: HistoricalDocumentFragment
+  ) => ({
     version,
     marker,
-    project: stampLegacyProject(exportCadProject(engine), version)
+    project: historicalProject(version, fragment)
   });
-  const box = new CadEngine();
-  box.apply({
-    op: "scene.createBox",
-    id: "v1_box",
-    dimensions: { width: 1, height: 2, depth: 3 }
-  });
-  const sketchOnly = new CadEngine();
-  sketchOnly.applyBatch([
-    { op: "sketch.create", id: "v2_sketch", name: "V2 sketch", plane: "XY" },
-    {
-      op: "sketch.addPoint",
-      sketchId: "v2_sketch",
-      id: "v2_point",
-      point: [1, 2]
-    }
-  ]);
-  const v4 = createBaseExtrudeEngine();
-  v4.apply({
-    op: "sketch.createOnFace",
-    id: "v4_attached",
-    name: "Attached",
-    bodyId: "base_body",
-    faceStableId: "generated:face:base_body:endCap"
-  });
-  const v5 = createBaseExtrudeEngine();
-  v5.apply({
-    op: "reference.nameGenerated",
-    name: "V5 top",
-    bodyId: "base_body",
-    stableId: "generated:face:base_body:endCap"
-  });
-  const v7 = new CadEngine();
-  v7.applyBatch([
-    { op: "sketch.create", id: "v7_sketch", name: "V7", plane: "XY" },
-    {
-      op: "sketch.addRectangle",
-      sketchId: "v7_sketch",
-      id: "v7_rect",
-      center: [0, 0],
-      width: 2,
-      height: 1
-    },
-    { op: "parameter.create", id: "v7_parameter", name: "Width", value: 2 },
-    {
-      op: "sketch.dimension.create",
-      id: "v7_dimension",
-      name: "Width",
-      sketchId: "v7_sketch",
-      entityId: "v7_rect",
-      target: { entityKind: "rectangle", role: "width" },
-      parameterId: "v7_parameter"
-    }
-  ]);
-  const v14 = new CadEngine();
-  v14.applyBatch([
-    { op: "sketch.create", id: "v14_sketch", name: "V14", plane: "XY" },
-    {
-      op: "sketch.addRectangle",
-      sketchId: "v14_sketch",
-      id: "v14_rect",
-      center: [2, 0],
-      width: 1,
-      height: 2
-    },
-    {
-      op: "sketch.addLine",
-      sketchId: "v14_sketch",
-      id: "v14_axis",
-      start: [0, -2],
-      end: [0, 2]
-    },
-    {
-      op: "feature.revolve",
-      id: "v14_revolve",
-      bodyId: "v14_body",
-      sketchId: "v14_sketch",
-      entityId: "v14_rect",
-      axis: {
-        type: "sketchLine",
-        sketchId: "v14_sketch",
-        entityId: "v14_axis"
-      },
-      angleDegrees: 180
-    }
-  ]);
-  const v15 = createBaseExtrudeEngine();
-  v15.applyBatch([
-    { op: "sketch.create", id: "v15_hole_sketch", name: "Hole", plane: "XY" },
-    {
-      op: "sketch.addCircle",
-      sketchId: "v15_hole_sketch",
-      id: "v15_circle",
-      center: [0, 0],
-      radius: 0.5
-    },
-    {
-      op: "feature.hole",
-      id: "v15_hole",
-      bodyId: "v15_body",
-      targetBodyId: "base_body",
-      sketchId: "v15_hole_sketch",
-      circleEntityId: "v15_circle",
-      depthMode: "blind",
-      depth: 1,
-      direction: "positive"
-    }
-  ]);
-  const v16 = createBaseExtrudeEngine();
-  v16.apply({
-    op: "feature.chamfer",
-    id: "v16_chamfer",
-    bodyId: "v16_body",
-    targetBodyId: "base_body",
-    edgeStableId: "generated:edge:base_body:start:uMin",
-    distance: 0.2
-  });
-  const v17 = new CadEngine();
-  v17.applyBatch([
-    { op: "sketch.create", id: "v17_sketch", name: "V17", plane: "XY" },
-    {
-      op: "sketch.addLine",
-      sketchId: "v17_sketch",
-      id: "v17_line",
-      start: [-2, 0],
-      end: [2, 0]
-    },
-    {
-      op: "sketch.addCircle",
-      sketchId: "v17_sketch",
-      id: "v17_circle",
-      center: [0, 1],
-      radius: 1
-    }
-  ]);
-  const v17Project = exportCadProject(v17) as any;
-  v17Project.document.sketchConstraints = [
-    {
-      id: "v17_tangent",
-      name: "Tangent",
-      sketchId: "v17_sketch",
-      entityId: "v17_circle",
-      kind: "tangent",
-      primaryTarget: { entityId: "v17_line", entityKind: "line" },
-      secondaryTarget: { entityId: "v17_circle", entityKind: "circle" }
-    }
-  ];
-  const v18Project = exportCadProject(createBaseExtrudeEngine()) as any;
-  v18Project.document.topologyIdentity =
-    createEmptyTopologyIdentitySourceSnapshot();
-  const v19 = createBaseExtrudeEngine();
-  v19.apply({
-    op: "feature.linearPattern",
-    id: "v19_pattern",
-    bodyId: "v19_body",
-    seedBodyId: "base_body",
-    direction: { kind: "globalAxis", axis: "x" },
-    spacing: 6,
-    instanceCount: 3
-  });
-  const v19Project = exportCadProject(v19) as any;
-  const v19Pattern = v19Project.document.features.find(
-    (feature: any) => feature.id === "v19_pattern"
-  );
-  delete v19Pattern.direction;
-  delete v19Pattern.instances;
-  v19Pattern.axis = "x";
-
   return [
-    fixture(1, "object", box),
-    fixture(2, "sketch", sketchOnly),
-    fixture(3, "extrude", createBaseExtrudeEngine()),
-    fixture(4, "attachment", v4),
-    fixture(5, "named reference", v5),
-    fixture(6, "named reference clone", v5),
-    fixture(7, "parameter dimension", v7),
+    fixture(1, "object", {
+      objects: [
+        {
+          id: "v1_box",
+          kind: "box",
+          dimensions: { width: 1, height: 2, depth: 3 },
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          }
+        }
+      ]
+    }),
+    fixture(2, "sketch", {
+      sketches: [
+        historicalSketch("v2_sketch", [
+          { id: "v2_point", kind: "point", point: [1, 2] }
+        ])
+      ]
+    }),
+    fixture(3, "extrude defaults", {
+      sketches: [BASE_RECTANGLE_SKETCH],
+      features: [BASE_EXTRUDE_V3]
+    }),
+    fixture(4, "generated-face attachment", {
+      sketches: [
+        BASE_RECTANGLE_SKETCH,
+        historicalSketch("v4_attached", [], {
+          attachment: {
+            kind: "generatedFace",
+            bodyId: "base_body",
+            faceStableId: "generated:face:base_body:endCap",
+            sourceFeatureId: "base_extrude",
+            sourceSketchId: "base_sketch",
+            sourceSketchEntityId: "base_rect",
+            faceRole: "endCap"
+          }
+        })
+      ],
+      features: [BASE_EXTRUDE_V3]
+    }),
+    fixture(5, "named reference", {
+      sketches: [BASE_RECTANGLE_SKETCH],
+      features: [BASE_EXTRUDE_V3],
+      namedReferences: [
+        {
+          name: "V5 top",
+          bodyId: "base_body",
+          stableId: "generated:face:base_body:endCap",
+          kind: "face"
+        }
+      ]
+    }),
+    fixture(6, "named reference clone", {
+      sketches: [BASE_RECTANGLE_SKETCH],
+      features: [BASE_EXTRUDE_V3],
+      namedReferences: [
+        {
+          name: "V5 top",
+          bodyId: "base_body",
+          stableId: "generated:face:base_body:endCap",
+          kind: "face"
+        }
+      ]
+    }),
+    fixture(7, "parameter dimension", {
+      sketches: [
+        historicalSketch("v7_sketch", [
+          {
+            id: "v7_rect",
+            kind: "rectangle",
+            center: [0, 0],
+            width: 2,
+            height: 1
+          }
+        ])
+      ],
+      parameters: [{ id: "v7_parameter", name: "Width", value: 2 }],
+      sketchDimensions: [
+        {
+          id: "v7_dimension",
+          name: "Width",
+          sketchId: "v7_sketch",
+          entityId: "v7_rect",
+          target: { entityKind: "rectangle", role: "width" },
+          valueSource: { type: "parameter", parameterId: "v7_parameter" }
+        }
+      ]
+    }),
     ...[8, 9, 10, 11, 12, 13].map((version) => ({
       version,
       marker: `constraint v${version}`,
-      project: stampLegacyProject(createConstraintProject(version), version)
+      project: historicalConstraintProject(version)
     })),
-    fixture(14, "revolve", v14),
-    fixture(15, "hole", v15),
-    fixture(16, "chamfer", v16),
-    {
-      version: 17,
-      marker: "advanced constraint",
-      project: stampLegacyProject(v17Project, 17)
-    },
-    {
-      version: 18,
-      marker: "topology identity",
-      project: stampLegacyProject(v18Project, 18)
-    },
-    {
-      version: 19,
-      marker: "pattern",
-      project: stampLegacyProject(v19Project, 19)
-    },
-    {
-      version: 20,
-      marker: "all profile consumers",
-      project: createV20ConsumerMigrationProject()
-    }
+    fixture(14, "revolve default", {
+      sketches: [
+        historicalSketch("v14_sketch", [
+          {
+            id: "v14_rect",
+            kind: "rectangle",
+            center: [2, 0],
+            width: 1,
+            height: 2
+          },
+          { id: "v14_axis", kind: "line", start: [0, -2], end: [0, 2] }
+        ])
+      ],
+      features: [
+        {
+          id: "v14_revolve",
+          kind: "revolve",
+          sketchId: "v14_sketch",
+          entityId: "v14_rect",
+          profileKind: "rectangle",
+          axis: {
+            type: "sketchLine",
+            sketchId: "v14_sketch",
+            entityId: "v14_axis"
+          },
+          angleDegrees: 180,
+          bodyId: "v14_body"
+        }
+      ]
+    }),
+    fixture(15, "hole union", {
+      sketches: [
+        BASE_RECTANGLE_SKETCH,
+        historicalSketch("v15_hole_sketch", [
+          {
+            id: "v15_circle",
+            kind: "circle",
+            center: [0, 0],
+            radius: 0.5
+          }
+        ])
+      ],
+      features: [
+        BASE_EXTRUDE_V3,
+        {
+          id: "v15_hole",
+          kind: "hole",
+          targetBodyId: "base_body",
+          sketchId: "v15_hole_sketch",
+          circleEntityId: "v15_circle",
+          depthMode: "blind",
+          depth: 1,
+          direction: "negative",
+          bodyId: "v15_body"
+        }
+      ]
+    }),
+    fixture(16, "chamfer", {
+      sketches: [BASE_RECTANGLE_SKETCH],
+      features: [
+        BASE_EXTRUDE_V3,
+        {
+          id: "v16_chamfer",
+          kind: "chamfer",
+          targetBodyId: "base_body",
+          edgeStableId: "generated:edge:base_body:start:uMin",
+          distance: 0.2,
+          bodyId: "v16_body"
+        }
+      ]
+    }),
+    fixture(17, "advanced constraint", {
+      sketches: [
+        historicalSketch("v17_sketch", [
+          { id: "v17_line", kind: "line", start: [-2, 0], end: [2, 0] },
+          {
+            id: "v17_circle",
+            kind: "circle",
+            center: [0, 1],
+            radius: 1
+          }
+        ])
+      ],
+      sketchConstraints: [
+        {
+          id: "v17_tangent",
+          name: "Tangent",
+          sketchId: "v17_sketch",
+          entityId: "v17_circle",
+          kind: "tangent",
+          primaryTarget: { entityId: "v17_line", entityKind: "line" },
+          secondaryTarget: { entityId: "v17_circle", entityKind: "circle" }
+        }
+      ]
+    }),
+    fixture(18, "topology identity", {
+      sketches: [BASE_RECTANGLE_SKETCH],
+      features: [BASE_EXTRUDE_V3],
+      topologyIdentity: {
+        schemaVersion: "web-cad.project.v18",
+        settings: {
+          contractVersion: "partbench.topology-identity.v1",
+          matchingPolicy: "evidence-scored-explicit-repair",
+          checkpointPolicy: "required-for-topology-anchors",
+          minimumAutomaticConfidence: "high",
+          allowSilentRetargeting: false
+        },
+        checkpoints: [],
+        anchors: [],
+        repairs: []
+      }
+    }),
+    fixture(19, "pattern mirror shell expression", {
+      sketches: [BASE_RECTANGLE_SKETCH],
+      features: [
+        BASE_EXTRUDE_V3,
+        {
+          id: "v19_pattern",
+          kind: "linearPattern",
+          seedBodyId: "base_body",
+          axis: "x",
+          spacing: 6,
+          instanceCount: 3,
+          bodyId: "v19_pattern_body"
+        },
+        {
+          id: "v19_mirror",
+          kind: "mirror",
+          seedBodyId: "v19_pattern_body",
+          mirrorPlane: "YZ",
+          includeOriginal: true,
+          bodyId: "v19_mirror_body"
+        },
+        {
+          id: "v19_shell",
+          kind: "shell",
+          targetBodyId: "v19_mirror_body",
+          wallThickness: 0.25,
+          openFaceRefs: [],
+          bodyId: "v19_shell_body"
+        }
+      ],
+      parameters: [
+        {
+          id: "v19_parameter",
+          name: "Pitch",
+          value: 6,
+          expression: "2 * 3"
+        }
+      ]
+    }),
+    fixture(20, "legacy profile consumers", {
+      sketches: [
+        historicalSketch("v20_profile", [
+          {
+            id: "v20_rect",
+            kind: "rectangle",
+            center: [2, 0],
+            width: 2,
+            height: 1
+          },
+          {
+            id: "v20_circle",
+            kind: "circle",
+            center: [0, 0],
+            radius: 1
+          },
+          { id: "v20_axis", kind: "line", start: [0, -2], end: [0, 2] }
+        ]),
+        historicalSketch(
+          "v20_path",
+          [
+            {
+              id: "v20_path_line",
+              kind: "line",
+              start: [0, 0],
+              end: [0, 5]
+            }
+          ],
+          { plane: "XZ" }
+        ),
+        historicalSketch("v20_loft", [
+          {
+            id: "v20_loft_circle",
+            kind: "circle",
+            center: [0, 0],
+            radius: 2
+          }
+        ])
+      ],
+      features: [
+        {
+          id: "v20_extrude",
+          kind: "extrude",
+          sketchId: "v20_profile",
+          entityId: "v20_rect",
+          profileKind: "rectangle",
+          depth: 2,
+          side: "negative",
+          bodyId: "v20_extrude_body"
+        },
+        {
+          id: "v20_revolve",
+          kind: "revolve",
+          sketchId: "v20_profile",
+          entityId: "v20_rect",
+          profileKind: "rectangle",
+          axis: {
+            type: "sketchLine",
+            sketchId: "v20_profile",
+            entityId: "v20_axis"
+          },
+          angleDegrees: 180,
+          bodyId: "v20_revolve_body"
+        },
+        {
+          id: "v20_sweep",
+          kind: "sweep",
+          profileSketchId: "v20_profile",
+          profileEntityId: "v20_circle",
+          pathSketchId: "v20_path",
+          pathEntityIds: ["v20_path_line"],
+          bodyId: "v20_sweep_body"
+        },
+        {
+          id: "v20_loft_feature",
+          kind: "loft",
+          sections: [
+            { sketchId: "v20_profile", entityId: "v20_circle" },
+            { sketchId: "v20_loft", entityId: "v20_loft_circle" }
+          ],
+          bodyId: "v20_loft_body"
+        }
+      ]
+    })
   ];
 }
 
@@ -909,6 +962,86 @@ describe("V17 V21 storage proof", () => {
       Array.from({ length: 20 }, (_, index) => index + 1)
     );
 
+    const rawV3 = corpus[2]!.project as any;
+    expect(rawV3.document).not.toHaveProperty("namedReferences");
+    expect(rawV3.document).not.toHaveProperty("parameters");
+    expect(rawV3.document.features[0]).not.toHaveProperty("side");
+    expect(rawV3.document.features[0]).not.toHaveProperty("operationMode");
+
+    const rawV4 = corpus[3]!.project as any;
+    expect(rawV4.document).not.toHaveProperty("namedReferences");
+    expect(rawV4.document.sketches[1].attachment).toMatchObject({
+      kind: "generatedFace",
+      sourceFeatureId: "base_extrude",
+      sourceSketchId: "base_sketch",
+      sourceSketchEntityId: "base_rect"
+    });
+
+    const rawV14 = corpus[13]!.project as any;
+    expect(rawV14.document).not.toHaveProperty("topologyIdentity");
+    expect(rawV14.document.features[0]).not.toHaveProperty("operationMode");
+
+    const rawV15 = corpus[14]!.project as any;
+    expect(rawV15.document).not.toHaveProperty("topologyIdentity");
+    expect(rawV15.document.features[1]).toMatchObject({
+      kind: "hole",
+      depthMode: "blind",
+      direction: "negative"
+    });
+
+    const rawV17 = corpus[16]!.project as any;
+    expect(rawV17.document).not.toHaveProperty("topologyIdentity");
+    expect(rawV17.document.sketches[0].entities[0]).not.toHaveProperty(
+      "construction"
+    );
+    expect(rawV17.document.sketchConstraints[0]).toMatchObject({
+      kind: "tangent",
+      primaryTarget: { entityKind: "line" },
+      secondaryTarget: { entityKind: "circle" }
+    });
+
+    const rawV18 = corpus[17]!.project as any;
+    expect(rawV18.document.topologyIdentity).toEqual(
+      expect.objectContaining({
+        schemaVersion: "web-cad.project.v18",
+        checkpoints: [],
+        anchors: [],
+        repairs: []
+      })
+    );
+
+    const rawV19 = corpus[18]!.project as any;
+    const rawV19Pattern = rawV19.document.features[1];
+    const rawV19Mirror = rawV19.document.features[2];
+    expect(rawV19Pattern).toMatchObject({ axis: "x" });
+    expect(rawV19Pattern).not.toHaveProperty("direction");
+    expect(rawV19Pattern).not.toHaveProperty("instances");
+    expect(rawV19Mirror).toMatchObject({ mirrorPlane: "YZ" });
+    expect(rawV19Mirror).not.toHaveProperty("plane");
+    expect(rawV19.document.features[3]).toMatchObject({ kind: "shell" });
+    expect(rawV19.document.parameters[0]).toMatchObject({
+      expression: "2 * 3"
+    });
+
+    const rawV20 = corpus[19]!.project as any;
+    expect(rawV20.document.sketches[0].entities[0]).not.toHaveProperty(
+      "construction"
+    );
+    expect(rawV20.document.features[0]).toMatchObject({
+      sketchId: "v20_profile",
+      entityId: "v20_rect"
+    });
+    expect(rawV20.document.features[0]).not.toHaveProperty("profile");
+    expect(rawV20.document.features[2]).toMatchObject({
+      profileSketchId: "v20_profile",
+      pathEntityIds: ["v20_path_line"]
+    });
+    expect(rawV20.document.features[2]).not.toHaveProperty("path");
+    expect(rawV20.document.features[3].sections[0]).toEqual({
+      sketchId: "v20_profile",
+      entityId: "v20_circle"
+    });
+
     for (const { version, marker, project } of corpus) {
       const parsed = parseCadProjectJson(JSON.stringify(project));
       const expectedSchema =
@@ -916,7 +1049,7 @@ describe("V17 V21 storage proof", () => {
           ? CURRENT_CAD_PROJECT_FORMAT_VERSION
           : version === 19
             ? CAD_PROJECT_FORMAT_VERSION_V20
-          : `web-cad.project.v${version}`;
+            : `web-cad.project.v${version}`;
       expect(
         parsed.schemaVersion,
         `V${version} ${marker} normalized schema`
@@ -946,7 +1079,12 @@ describe("V17 V21 storage proof", () => {
         ]);
       } else if (version === 3) {
         expect(reexported.document.features).toContainEqual(
-          expect.objectContaining({ id: "base_extrude", kind: "extrude" })
+          expect.objectContaining({
+            id: "base_extrude",
+            kind: "extrude",
+            side: "positive",
+            operationMode: "newBody"
+          })
         );
       } else if (version === 4) {
         expect(reexported.document.sketches).toContainEqual(
@@ -972,11 +1110,20 @@ describe("V17 V21 storage proof", () => {
         );
       } else if (version === 14) {
         expect(reexported.document.features).toContainEqual(
-          expect.objectContaining({ id: "v14_revolve", kind: "revolve" })
+          expect.objectContaining({
+            id: "v14_revolve",
+            kind: "revolve",
+            operationMode: "newBody"
+          })
         );
       } else if (version === 15) {
         expect(reexported.document.features).toContainEqual(
-          expect.objectContaining({ id: "v15_hole", kind: "hole" })
+          expect.objectContaining({
+            id: "v15_hole",
+            kind: "hole",
+            depthMode: "blind",
+            direction: "negative"
+          })
         );
       } else if (version === 16) {
         expect(reexported.document.features).toContainEqual(
@@ -990,7 +1137,28 @@ describe("V17 V21 storage proof", () => {
         expect(reexported.document.topologyIdentity).toBeDefined();
       } else if (version === 19) {
         expect(reexported.document.features).toContainEqual(
-          expect.objectContaining({ id: "v19_pattern", kind: "linearPattern" })
+          expect.objectContaining({
+            id: "v19_pattern",
+            kind: "linearPattern",
+            direction: { kind: "globalAxis", axis: "x" },
+            instances: expect.any(Array)
+          })
+        );
+        expect(reexported.document.features).toContainEqual(
+          expect.objectContaining({
+            id: "v19_mirror",
+            kind: "mirror",
+            plane: { kind: "standardPlane", plane: "YZ", offset: 0 }
+          })
+        );
+        expect(reexported.document.features).toContainEqual(
+          expect.objectContaining({ id: "v19_shell", kind: "shell" })
+        );
+        expect(reexported.document.parameters).toContainEqual(
+          expect.objectContaining({
+            id: "v19_parameter",
+            expression: "2 * 3"
+          })
         );
       }
     }
@@ -1065,6 +1233,38 @@ describe("V17 V21 storage proof", () => {
       mutate(changed);
       expect(createCadProjectSourceIdentity(changed).sha256).not.toBe(baseline);
     }
+  });
+
+  it("reports exact V21 paths for malformed normalized references", () => {
+    const dangling = clone(createOrderedWireAndChainProject()) as any;
+    dangling.document.features[0].profile.segments[1].entityId = "missing";
+    expectV21Issue(
+      dangling,
+      "$.document.features[0].profile.segments[1].entityId"
+    );
+
+    const mixedSketch = clone(createOrderedWireAndChainProject()) as any;
+    mixedSketch.document.features[0].profile.segments[1].entityId = "axis";
+    expectV21Issue(
+      mixedSketch,
+      "$.document.features[0].profile.segments[1].entityId"
+    );
+
+    const invalidOrientation = clone(createOrderedWireAndChainProject()) as any;
+    invalidOrientation.document.features[0].profile.segments[0].orientation =
+      "clockwise";
+    expectV21Issue(
+      invalidOrientation,
+      "$.document.features[0].profile.segments[0].orientation"
+    );
+
+    const crossSketchAxis = clone(createNormalizedV21Project()) as any;
+    crossSketchAxis.document.features[1].axis = {
+      type: "sketchLine",
+      sketchId: "path",
+      entityId: "path_1"
+    };
+    expectV21Issue(crossSketchAxis, "$.document.features[1].axis.sketchId");
   });
 
   it("downgrades normalized nontriggers and circle-only radius constraints to V20", () => {
