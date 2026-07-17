@@ -2224,7 +2224,7 @@ function isSupportedBooleanTarget(
   if (
     !toolProfileKind ||
     !isSupportedBooleanToolProfileKind(toolProfileKind) ||
-    (toolProfileKind === "wire" && feature.operationMode !== "add")
+    (toolProfileKind === "wire" && feature.operationMode === "newBody")
   ) {
     return false;
   }
@@ -2405,10 +2405,10 @@ function getUnsupportedBooleanFeatureMessage(
   operationMode: FeatureExtrudeOperationMode
 ): string {
   if (operationMode === "add") {
-    return "Add features currently require a rectangle or circle profile and an active rectangle source or topology-backed result target body.";
+    return "Add features currently require a rectangle, circle, or composite wire profile and an active rectangle source or topology-backed result target body.";
   }
 
-  return "Cut features currently require a rectangle or circle profile and an active rectangle, circle, or topology-backed result target body.";
+  return "Cut features currently require a rectangle, circle, or composite wire profile and an active rectangle, circle, or topology-backed result target body.";
 }
 
 function statusFromIssues(

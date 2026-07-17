@@ -12427,9 +12427,9 @@ function updateExtrudeFeature(
     });
   }
 
-  const isCompositeAdd =
-    feature.operationMode === "add" && feature.profile.kind === "wire";
-  if (feature.operationMode !== "newBody" && !isCompositeAdd) {
+  const isCompositeBoolean =
+    feature.operationMode !== "newBody" && feature.profile.kind === "wire";
+  if (feature.operationMode !== "newBody" && !isCompositeBoolean) {
     throwValidationError({
       code: "FEATURE_NOT_EDITABLE",
       message: `Feature ${featureId} cannot be edited through feature.updateExtrude because ${feature.operationMode} result topology is not editable as a body-level feature result yet.`,
@@ -12437,7 +12437,7 @@ function updateExtrudeFeature(
       featureId,
       bodyId: feature.bodyId,
       path: operationPath(opIndex, "id"),
-      expected: "authored newBody or composite add extrude feature id",
+      expected: "authored newBody or composite wire boolean extrude feature id",
       received: feature.operationMode
     });
   }
@@ -12470,14 +12470,14 @@ function updateExtrudeFeature(
   let profile = requestedProfile ?? feature.profile;
   let profileOrientationNormalized = false;
   if (
-    isCompositeAdd &&
+    isCompositeBoolean &&
     requestedProfile?.kind !== undefined &&
     requestedProfile.kind !== "wire"
   ) {
     throwValidationError({
       code: "UNSUPPORTED_FEATURE_OPERATION",
       message:
-        "Composite wire add extrudes cannot be changed to an entity profile until primitive add editing is enabled as a complete vertical slice.",
+        "Composite wire boolean extrudes cannot be changed to an entity profile until primitive boolean editing is enabled as a complete vertical slice.",
       opIndex,
       featureId,
       bodyId: feature.bodyId,
@@ -15646,7 +15646,11 @@ function isSupportedAddToolProfileKind(
 function isSupportedCutToolProfileKind(
   profileKind: FeatureExtrudeProfileKind | "wire"
 ): boolean {
-  return profileKind === "rectangle" || profileKind === "circle";
+  return (
+    profileKind === "rectangle" ||
+    profileKind === "circle" ||
+    profileKind === "wire"
+  );
 }
 
 function assertSketchNotInUse(
@@ -17406,11 +17410,11 @@ function assertSupportedExtrudeOperation(
   const expected =
     operationMode === "add"
       ? "add with rectangle/circle/composite wire source and active rectangle source or supported topology-backed result target"
-      : "cut with rectangle/circle source and active rectangle/circle source or topology-backed result target";
+      : "cut with rectangle/circle/composite wire source and active rectangle/circle source or topology-backed result target";
   const message =
     operationMode === "add"
       ? "Add extrudes currently support rectangle, circle, or composite wire tools fusing with one active rectangle source or supported topology-backed result target body."
-      : "Cut extrudes currently support rectangle or circle tools cutting one active rectangle, circle, or topology-backed result target body.";
+      : "Cut extrudes currently support rectangle, circle, or composite wire tools cutting one active rectangle, circle, or topology-backed result target body.";
 
   throwValidationError({
     code: "UNSUPPORTED_FEATURE_OPERATION",
@@ -28577,7 +28581,7 @@ function collectValidAuthoredFeatureByBodyId(
     typeof value.depth === "number" &&
     isPositiveFiniteNumber(value.depth) &&
     isExtrudeSide(value.side) &&
-    (value.operationMode === "newBody" || value.operationMode === "add") &&
+    isExtrudeOperationMode(value.operationMode) &&
     (value.targetBodyId === undefined ||
       typeof value.targetBodyId === "string") &&
     (value.targetTopologyAnchorId === undefined ||
@@ -29107,11 +29111,7 @@ function isSupportedBooleanExtrudeCombination(
   target: ImportFeatureSnapshot & { readonly path: string }
 ): boolean {
   const operationMode = feature.operationMode ?? "newBody";
-  if (
-    (feature.profileKind === "wire" && operationMode !== "add") ||
-    (feature.profileKind !== "wire" &&
-      !isSupportedCutToolProfileKind(feature.profileKind))
-  ) {
+  if (!isSupportedCutToolProfileKind(feature.profileKind)) {
     return false;
   }
 
@@ -29205,10 +29205,10 @@ function getUnsupportedBooleanExtrudeMessage(
   operationMode: FeatureExtrudeOperationMode
 ): string {
   if (operationMode === "add") {
-    return "Add extrudes currently support rectangle or circle tools fusing with one active rectangle source or supported topology-backed result target body.";
+    return "Add extrudes currently support rectangle, circle, or composite wire tools fusing with one active rectangle source or supported topology-backed result target body.";
   }
 
-  return "Cut extrudes currently support rectangle or circle tools cutting one active rectangle, circle, or topology-backed result target body.";
+  return "Cut extrudes currently support rectangle, circle, or composite wire tools cutting one active rectangle, circle, or topology-backed result target body.";
 }
 
 function formatTargetConsumingFeatureForIssue(
@@ -30342,18 +30342,6 @@ function validateV21ProfileConsumerFeatureSnapshot(
       "SCHEMA_V21_SOURCE_INVALID",
       `${path}.operationMode`,
       "V21 extrude operationMode must be newBody, add, or cut."
-    );
-  }
-  if (
-    isRecord(value.profile) &&
-    value.profile.kind === "wire" &&
-    value.operationMode === "cut"
-  ) {
-    addProjectIssue(
-      issues,
-      "SCHEMA_V21_SOURCE_INVALID",
-      `${path}.operationMode`,
-      "Composite wire extrude cut is not enabled until its complete V17 slice is implemented."
     );
   }
   validateV21TargetFields(value, path, issues);
@@ -33836,7 +33824,7 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
       ((value.operationMode === "newBody" &&
         value.targetBodyId === undefined &&
         value.targetTopologyAnchorId === undefined) ||
-        (value.operationMode === "add" &&
+        ((value.operationMode === "add" || value.operationMode === "cut") &&
           typeof value.targetBodyId === "string" &&
           (value.targetTopologyAnchorId === undefined ||
             typeof value.targetTopologyAnchorId === "string")))

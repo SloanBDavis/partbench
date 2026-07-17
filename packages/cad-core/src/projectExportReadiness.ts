@@ -536,7 +536,7 @@ function classifyBodySource(
     }
 
     if (
-      feature.operationMode === "add" &&
+      feature.operationMode !== "newBody" &&
       feature.profile.kind === "wire" &&
       hasCurrentReadyExactResultEvidence(
         document,
@@ -552,7 +552,7 @@ function classifyBodySource(
           createBodyDiagnostic(
             "EXPORT_BODY_SOURCE_SUPPORTED",
             "supported",
-            `Composite wire add result body ${body.id} has current exact result evidence and a recursive exact STEP recipe.`,
+            `Composite wire ${feature.operationMode} result body ${body.id} has current exact result evidence and a recursive exact STEP recipe.`,
             body,
             sourceKind
           )
@@ -858,7 +858,7 @@ function createExactExportBodySource(
     return undefined;
   }
 
-  if (feature.operationMode === "add" && feature.profile.kind === "wire") {
+  if (feature.operationMode !== "newBody" && feature.profile.kind === "wire") {
     if (
       !derivedExactMetadata ||
       !hasCurrentReadyExactResultEvidence(
@@ -898,7 +898,7 @@ function createExactExportBodySource(
       exactResultSourceIdentitySignature:
         derivedExactMetadata.sourceIdentitySignature,
       kind: "booleanExtrudes",
-      operation: "add",
+      operation: feature.operationMode,
       target: source.target,
       tool: source.tool
     };
@@ -1012,7 +1012,7 @@ function createExactBooleanSource(
   visitedFeatureIds: ReadonlySet<string>
 ): CadExactExportBooleanSource | undefined {
   if (visitedFeatureIds.has(feature.id)) return undefined;
-  if (feature.operationMode === "add" && feature.profile.kind === "wire") {
+  if (feature.operationMode !== "newBody" && feature.profile.kind === "wire") {
     const resolution = resolveWireExtrudeProfile(
       document,
       feature.profile,
@@ -1045,9 +1045,7 @@ function createExactBooleanSource(
   );
   if (!target) return undefined;
   if (feature.operationMode === "cut") {
-    return isExactWireExtrudeSource(tool)
-      ? undefined
-      : { kind: "booleanExtrudes", operation: "cut", target, tool };
+    return { kind: "booleanExtrudes", operation: "cut", target, tool };
   }
   return { kind: "booleanExtrudes", operation: "add", target, tool };
 }

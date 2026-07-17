@@ -457,9 +457,9 @@ function createExtrudeEditabilityResponse(
     );
   }
 
-  const isCompositeAdd =
-    feature.operationMode === "add" && feature.profile?.kind === "wire";
-  if (feature.operationMode !== "newBody" && !isCompositeAdd) {
+  const isCompositeBoolean =
+    feature.operationMode !== "newBody" && feature.profile?.kind === "wire";
+  if (feature.operationMode !== "newBody" && !isCompositeBoolean) {
     blockingDiagnostics.push(
       createDiagnostic({
         code: "AMBIGUOUS_RESULT_TOPOLOGY",
@@ -469,7 +469,7 @@ function createExtrudeEditabilityResponse(
         featureId: feature.id,
         bodyId: feature.bodyId,
         targetBodyId: feature.targetBodyId,
-        expected: "newBody or composite wire add extrude",
+        expected: "newBody or composite wire boolean extrude",
         received: feature.operationMode
       })
     );
@@ -1656,7 +1656,7 @@ function createExtrudeProfileProposalDiagnostics(
   document: CreateFeatureEditabilityResponseOptions["document"]
 ): readonly CadFeatureEditDiagnostic[] {
   if (
-    feature.operationMode === "add" &&
+    feature.operationMode !== "newBody" &&
     feature.profile?.kind === "wire" &&
     profile.kind !== "wire"
   ) {
@@ -1665,7 +1665,7 @@ function createExtrudeProfileProposalDiagnostics(
         code: "FEATURE_EDIT_INVALID_PROPOSAL",
         severity: "blocker",
         message:
-          "Composite wire add extrudes cannot be changed to an entity profile until primitive add editing is enabled as a complete vertical slice.",
+          "Composite wire boolean extrudes cannot be changed to an entity profile until primitive boolean editing is enabled as a complete vertical slice.",
         featureId: feature.id,
         bodyId: feature.bodyId,
         fieldPath: "profile",

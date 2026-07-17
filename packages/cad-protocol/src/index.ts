@@ -6759,7 +6759,9 @@ export type CadExactExportBooleanResultSource =
       readonly kind: "booleanExtrudes";
       readonly operation: "cut";
       readonly target: CadExactExportBooleanSource;
-      readonly tool: CadExactExportPrimitiveExtrudeSource;
+      readonly tool:
+        | CadExactExportPrimitiveExtrudeSource
+        | CadExactExportWireExtrudeSource;
     };
 
 export type CadExactExportExtrudeBodySource =
@@ -6792,7 +6794,7 @@ export type CadExactExportExtrudeBodySource =
     })
   | (CadExactExportExtrudeBodySourceBase &
       CadExactExportBooleanResultSource & {
-        readonly operation: "add";
+        readonly operation: "add" | "cut";
         readonly sourceSketchEntityId?: never;
         readonly sourceSketchEntityIds: readonly SketchEntityId[];
         readonly targetBodyId: BodyId;

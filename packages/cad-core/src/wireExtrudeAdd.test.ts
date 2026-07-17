@@ -460,7 +460,7 @@ describe("V17 composite wire extrude add", () => {
     expect(engine.createSnapshot()).toEqual(beforeRejectedTransition);
   });
 
-  it("rejects missing, already consumed, and wire cut targets atomically", () => {
+  it("rejects missing and already consumed add targets atomically", () => {
     const cases = [
       { targetBodyId: "missing", code: "BODY_NOT_FOUND" },
       { targetBodyId: "body:box", code: "BODY_NOT_FOUND" }
@@ -487,28 +487,10 @@ describe("V17 composite wire extrude add", () => {
       });
       expect(engine.createSnapshot()).toEqual(before);
     }
-    const cutEngine = createEngine();
+    const addEngine = createEngine();
+    addWire(addEngine);
     expect(
-      cutEngine.executeBatch({
-        version: "cadops.v1",
-        mode: "commit",
-        ops: [
-          {
-            op: "feature.extrude",
-            profile,
-            depth: 1,
-            operationMode: "cut",
-            targetBodyId: "body_target"
-          }
-        ]
-      })
-    ).toMatchObject({
-      ok: false,
-      error: { code: "UNSUPPORTED_FEATURE_OPERATION" }
-    });
-    addWire(cutEngine);
-    expect(
-      cutEngine.executeBatch({
+      addEngine.executeBatch({
         version: "cadops.v1",
         mode: "commit",
         ops: [
@@ -555,7 +537,7 @@ describe("V17 composite wire extrude add", () => {
     ).toMatchObject({ ok: true, status: "unsupported" });
   });
 
-  it("round-trips V21 JSON source/history and rejects persisted wire cut", () => {
+  it("round-trips V21 JSON source and history", () => {
     const engine = createEngine();
     addWire(engine);
     const json = exportCadProjectJson(engine);
@@ -563,15 +545,6 @@ describe("V17 composite wire extrude add", () => {
     expect(reopened.createSnapshot()).toEqual(engine.createSnapshot());
     expect(reopened.getTransactions().at(-1)?.diff.features).toEqual(
       engine.getTransactions().at(-1)?.diff.features
-    );
-    const invalid = JSON.parse(json) as {
-      document: { features: Array<Record<string, unknown>> };
-    };
-    invalid.document.features.find(
-      (feature) => feature.id === "feature_add"
-    )!.operationMode = "cut";
-    expect(() => importCadProjectJson(JSON.stringify(invalid))).toThrow(
-      /wire extrude cut/i
     );
   });
 

@@ -44,15 +44,6 @@ export function resolveWireExtrudeProfile(
     readonly ignoreFeatureId?: string;
   }
 ): WireExtrudeProfileResolution {
-  if (operationMode === "cut") {
-    return {
-      ok: false,
-      code: "UNSUPPORTED_FEATURE_OPERATION",
-      message:
-        "Composite wire extrude cut is not enabled until its complete V17 slice is implemented."
-    };
-  }
-
   if (!document.sketches.has(profile.sketchId)) {
     return {
       ok: false,
@@ -70,7 +61,7 @@ export function resolveWireExtrudeProfile(
         }
       : {
           featureKind: "extrude" as const,
-          operationMode: "add" as const,
+          operationMode,
           ...(target?.targetTopologyAnchorId
             ? { targetTopologyAnchorId: target.targetTopologyAnchorId }
             : target?.targetBodyId
