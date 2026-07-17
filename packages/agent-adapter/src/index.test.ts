@@ -9,9 +9,11 @@ import type {
   CadBodyDerivedExactMetadataSnapshot,
   CadTopologyMatchResult
 } from "@web-cad/cad-protocol";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   CadOpsAgentAdapter,
+  type CadOpsAgentQueryRequest,
+  type CadOpsAgentQueryResponse,
   executeCadOpsAgentQueryRequest,
   executeCadOpsAgentRequest,
   parseCadOpsAgentQueryRequestJson,
@@ -2777,6 +2779,121 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("passes V17 profile and path queries through unchanged", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "agent_profile_path_sketch",
+        name: "Agent profile and path sketch",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "agent_profile_path_sketch",
+        id: "profile_rectangle",
+        center: [0, 0],
+        width: 4,
+        height: 2
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "agent_profile_path_sketch",
+        id: "path_line",
+        start: [10, 0],
+        end: [12, 0]
+      }
+    ]);
+    const executeQuery = vi.spyOn(engine, "executeQuery");
+    const requests = [
+      {
+        requestId: "agent_profile_candidates",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "sketch.profileCandidates",
+            sketchId: "agent_profile_path_sketch"
+          }
+        }
+      },
+      {
+        requestId: "agent_profile_readiness",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "sketch.profileReadiness",
+            profile: {
+              kind: "entity",
+              sketchId: "agent_profile_path_sketch",
+              entityId: "profile_rectangle"
+            },
+            consumer: {
+              featureKind: "extrude",
+              operationMode: "newBody"
+            }
+          }
+        }
+      },
+      {
+        requestId: "agent_path_candidates",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "sketch.pathCandidates",
+            sketchId: "agent_profile_path_sketch"
+          }
+        }
+      },
+      {
+        requestId: "agent_path_readiness",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "sketch.pathReadiness",
+            path: {
+              kind: "entity",
+              sketchId: "agent_profile_path_sketch",
+              entityId: "path_line",
+              orientation: "forward"
+            }
+          }
+        }
+      }
+    ] as const satisfies readonly CadOpsAgentQueryRequest[];
+
+    for (const request of requests) {
+      const direct = engine.executeQuery(request.query);
+      const response: CadOpsAgentQueryResponse = executeCadOpsAgentQueryRequest(
+        engine,
+        request
+      );
+
+      expect(executeQuery).toHaveBeenLastCalledWith(request.query);
+      expect(response).toEqual({
+        ...direct,
+        requestId: request.requestId,
+        adapterVersion: request.adapterVersion
+      });
+    }
+
+    expect(() =>
+      parseCadOpsAgentQueryRequestJson(
+        JSON.stringify({
+          requestId: "invalid_profile_candidates",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          query: {
+            version: "cadops.v1",
+            query: { query: "sketch.profileCandidates" }
+          }
+        })
+      )
+    ).toThrow("Invalid CADOps agent adapter query request.");
+  });
+
   it("passes V11 sketch solver status queries through the adapter", () => {
     const engine = new CadEngine();
 
@@ -2838,7 +2955,7 @@ describe("agent-adapter", () => {
         engine: "current-direct-evaluator",
         numericalSolverStatus: "under-defined",
         numericalSolverEngine: "@web-cad/sketch-solver",
-        numericalSolverModelVersion: "partbench.sketch-solver.v1",
+        numericalSolverModelVersion: "partbench.sketch-solver.v2",
         modelBuilt: true,
         solverRan: true,
         canSolveNumerically: true
@@ -5744,8 +5861,8 @@ describe("agent-adapter", () => {
       ok: true,
       requestId: "agent_project_health",
       query: "project.health",
-      status: "under-defined",
-      issueCount: 1,
+      status: "healthy",
+      issueCount: 0,
       authoredExtrudeCount: 1,
       sketchEvaluationCount: 1,
       sketchDimensionCount: 0,
@@ -5762,10 +5879,10 @@ describe("agent-adapter", () => {
       sketchEvaluations: [
         expect.objectContaining({
           sketchId: "sketch_health",
-          status: "under-defined",
+          status: "healthy",
           affectedFeatureIds: ["feat_health"],
           affectedBodyIds: ["body_health"],
-          issues: [expect.objectContaining({ code: "UNDER_DEFINED_SKETCH" })]
+          issues: []
         })
       ],
       sketchDimensions: [],

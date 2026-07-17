@@ -1,5 +1,8 @@
 import { CadEngine, type CadProject } from "@web-cad/cad-core";
-import { WCAD_SOURCE_IDENTITY_ALGORITHM } from "@web-cad/cad-protocol";
+import {
+  validateSketchProfilePathQueryRequest,
+  WCAD_SOURCE_IDENTITY_ALGORITHM
+} from "@web-cad/cad-protocol";
 import type {
   CadActorMetadata,
   CadBatch,
@@ -62,6 +65,10 @@ import type {
   TopologyAnchorRepairPlanQueryResponse,
   TopologyMatchSnapshotsQueryResponse,
   SketchEditReadinessQueryResponse,
+  SketchPathCandidatesQueryResponse,
+  SketchPathReadinessQueryResponse,
+  SketchProfileCandidatesQueryResponse,
+  SketchProfileReadinessQueryResponse,
   SketchSolverStatusQueryResponse,
   CadProjectSummaryExportSummary,
   CadProjectSummaryHealthSummary,
@@ -69,6 +76,7 @@ import type {
   CadProjectSummaryStructureCounts,
   CadProjectSummaryWorkflowHint,
   CadQueryError,
+  CadQueryKind,
   CadQueryRequest,
   CadQueryResponse,
   FeatureEditabilityQueryResponse,
@@ -395,6 +403,10 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentBodyImportedBodyStatusQueryResponse
   | CadOpsAgentProjectExtentsQueryResponse
   | CadOpsAgentSketchGetQueryResponse
+  | CadOpsAgentSketchProfileCandidatesQueryResponse
+  | CadOpsAgentSketchProfileReadinessQueryResponse
+  | CadOpsAgentSketchPathCandidatesQueryResponse
+  | CadOpsAgentSketchPathReadinessQueryResponse
   | CadOpsAgentSketchEditReadinessQueryResponse
   | CadOpsAgentSketchSolverStatusQueryResponse
   | CadOpsAgentSketchEvaluationQueryResponse
@@ -756,6 +768,36 @@ export interface CadOpsAgentSketchGetQueryResponse {
   readonly sketch: SketchSnapshot;
 }
 
+export interface CadOpsAgentSketchProfileCandidatesQueryResponse extends Omit<
+  SketchProfileCandidatesQueryResponse,
+  "ok"
+> {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+}
+
+export type CadOpsAgentSketchProfileReadinessQueryResponse =
+  SketchProfileReadinessQueryResponse & {
+    readonly requestId: string;
+    readonly adapterVersion: AgentAdapterVersion;
+  };
+
+export interface CadOpsAgentSketchPathCandidatesQueryResponse extends Omit<
+  SketchPathCandidatesQueryResponse,
+  "ok"
+> {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+}
+
+export type CadOpsAgentSketchPathReadinessQueryResponse =
+  SketchPathReadinessQueryResponse & {
+    readonly requestId: string;
+    readonly adapterVersion: AgentAdapterVersion;
+  };
+
 export interface CadOpsAgentSketchEditReadinessQueryResponse extends Omit<
   SketchEditReadinessQueryResponse,
   "ok"
@@ -916,52 +958,7 @@ export interface CadOpsAgentQueryErrorResponse {
   readonly requestId: string;
   readonly adapterVersion: AgentAdapterVersion;
   readonly cadOpsVersion: CadOpsVersion;
-  readonly query:
-    | "parameter.list"
-    | "parameter.get"
-    | "project.parameterEvaluation"
-    | "feature.editability"
-    | "project.summary"
-    | "project.features"
-    | "project.structure"
-    | "project.health"
-    | "project.dependencyGraph"
-    | "project.rebuildPlan"
-    | "project.topologyIdentityReadiness"
-    | "topology.matchSnapshots"
-    | "topology.anchorRepairCandidates"
-    | "topology.anchorCommandReadiness"
-    | "topology.commandTargetReadiness"
-    | "topology.anchorCreationPlan"
-    | "topology.anchorRepairPlan"
-    | "project.exportReadiness"
-    | "project.exportExact"
-    | "project.packageReadiness"
-    | "project.importReadiness"
-    | "project.sketches"
-    | "object.get"
-    | "object.measurements"
-    | "body.topology"
-    | "body.topologyIdentity"
-    | "body.measurements"
-    | "body.patternInstances"
-    | "body.massProperties"
-    | "body.importedBodyStatus"
-    | "project.extents"
-    | "sketch.get"
-    | "sketch.editReadiness"
-    | "sketch.solverStatus"
-    | "sketch.evaluation"
-    | "sketch.dimensions"
-    | "sketch.dimension.get"
-    | "body.generatedReferences"
-    | "body.resolveGeneratedReference"
-    | "body.generatedReferenceMeasurements"
-    | "reference.listNamed"
-    | "reference.resolveNamed"
-    | "reference.health"
-    | "selection.referenceCandidates"
-    | "transaction.history";
+  readonly query: CadQueryKind;
   readonly error: CadQueryError;
 }
 
@@ -3078,6 +3075,19 @@ function toAgentQueryResponse(
     };
   }
 
+  if (
+    response.query === "sketch.profileCandidates" ||
+    response.query === "sketch.profileReadiness" ||
+    response.query === "sketch.pathCandidates" ||
+    response.query === "sketch.pathReadiness"
+  ) {
+    return {
+      ...response,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion
+    };
+  }
+
   if (response.query === "sketch.editReadiness") {
     return {
       ok: true,
@@ -3804,6 +3814,11 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
             )))) ||
       (value.query.query === "sketch.get" &&
         typeof value.query.id === "string") ||
+      ((value.query.query === "sketch.profileCandidates" ||
+        value.query.query === "sketch.profileReadiness" ||
+        value.query.query === "sketch.pathCandidates" ||
+        value.query.query === "sketch.pathReadiness") &&
+        validateSketchProfilePathQueryRequest(value).ok) ||
       (value.query.query === "sketch.editReadiness" &&
         isCadSketchEditProposal(value.query.edit)) ||
       (value.query.query === "sketch.solverStatus" &&
