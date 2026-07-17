@@ -914,6 +914,8 @@ describe("V17 V21 storage proof", () => {
       const expectedSchema =
         version <= 16
           ? CURRENT_CAD_PROJECT_FORMAT_VERSION
+          : version === 19
+            ? CAD_PROJECT_FORMAT_VERSION_V20
           : `web-cad.project.v${version}`;
       expect(
         parsed.schemaVersion,
