@@ -20,6 +20,10 @@ import type {
   WcadDocumentSchemaVersion
 } from "@web-cad/cad-protocol";
 import type { CadDocument, ExtrudeFeature, SketchEntity } from "./index";
+import {
+  getFeatureEntityProfileRef,
+  getSupportedEntityProfileKind
+} from "./featureSourceReferences";
 import { createSourceMeasurementFrame } from "./sourceMeasurementGeometry";
 
 interface ProjectExportReadinessInput {
@@ -516,6 +520,16 @@ function classifyBodySource(
       };
     }
 
+    const profile = getFeatureEntityProfileRef(feature);
+    const entity = profile
+      ? document.sketches.get(profile.sketchId)?.entities.get(profile.entityId)
+      : undefined;
+    const profileKind = getSupportedEntityProfileKind(entity);
+
+    if (!profileKind) {
+      return createUnresolvedBodySourceReadiness(body, sourceKind);
+    }
+
     return {
       sourceKind,
       sourceStatus: "supported",
@@ -523,7 +537,7 @@ function classifyBodySource(
         createBodyDiagnostic(
           "EXPORT_BODY_SOURCE_SUPPORTED",
           "supported",
-          `Authored ${feature.profileKind} newBody extrude body ${body.id} has supported source semantics for future file export.`,
+          `Authored ${profileKind} newBody extrude body ${body.id} has supported source semantics for future file export.`,
           body,
           sourceKind
         )
@@ -763,10 +777,11 @@ function createExactExportBodySource(
     return undefined;
   }
 
-  const sketch = document.sketches.get(feature.sketchId);
-  const entity = sketch?.entities.get(feature.entityId);
+  const profile = getFeatureEntityProfileRef(feature);
+  const sketch = profile ? document.sketches.get(profile.sketchId) : undefined;
+  const entity = sketch?.entities.get(profile?.entityId ?? "");
 
-  if (!sketch || !entity || !isExactExportExtrudeEntity(feature, entity)) {
+  if (!profile || !sketch || !entity || !isExactExportExtrudeEntity(entity)) {
     return undefined;
   }
 
@@ -781,8 +796,8 @@ function createExactExportBodySource(
     ...(body.bodyName ? { bodyName: body.bodyName } : {}),
     sourceKind: "authoredExtrude",
     featureId: feature.id,
-    sourceSketchId: feature.sketchId,
-    sourceSketchEntityId: feature.entityId,
+    sourceSketchId: profile.sketchId,
+    sourceSketchEntityId: profile.entityId,
     sketchPlane: sketch.plane,
     profile:
       entity.kind === "rectangle"
@@ -812,13 +827,9 @@ function createExactExportBodySource(
 }
 
 function isExactExportExtrudeEntity(
-  feature: ExtrudeFeature,
   entity: SketchEntity
 ): entity is Extract<SketchEntity, { readonly kind: "rectangle" | "circle" }> {
-  return (
-    (feature.profileKind === "rectangle" && entity.kind === "rectangle") ||
-    (feature.profileKind === "circle" && entity.kind === "circle")
-  );
+  return entity.kind === "rectangle" || entity.kind === "circle";
 }
 
 function createUnsupportedExactBodyDiagnostic(

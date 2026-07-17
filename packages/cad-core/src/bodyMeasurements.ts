@@ -7,10 +7,7 @@ import type {
 } from "@web-cad/cad-protocol";
 
 import type { SketchEntity } from "./index";
-import type {
-  GeneratedReferencesDocument,
-  GeneratedReferencesExtrudeFeature
-} from "./generatedReferences";
+import type { GeneratedReferencesDocument } from "./generatedReferences";
 import {
   cleanMeasurementNumber,
   createExtrudeMeasurementDepthRange,
@@ -18,6 +15,10 @@ import {
   createSourceMeasurementFrame,
   mapLocalExtrudePointToSourceMeasurementFrame
 } from "./sourceMeasurementGeometry";
+import {
+  getFeatureEntityProfileRef,
+  getSupportedEntityProfileKind
+} from "./featureSourceReferences";
 
 export function createBodyMeasurements(
   document: GeneratedReferencesDocument,
@@ -41,10 +42,12 @@ export function createBodyMeasurements(
     return undefined;
   }
 
-  const sketch = document.sketches.get(feature.sketchId);
-  const entity = sketch?.entities.get(feature.entityId);
+  const profile = getFeatureEntityProfileRef(feature);
+  const sketch = profile ? document.sketches.get(profile.sketchId) : undefined;
+  const entity = sketch?.entities.get(profile?.entityId ?? "");
+  const profileKind = getSupportedEntityProfileKind(entity);
 
-  if (!sketch || !entity || !isExtrudeMeasurementEntity(feature, entity)) {
+  if (!profile || !sketch || !entity || !isExtrudeMeasurementEntity(entity)) {
     return undefined;
   }
 
@@ -70,9 +73,9 @@ export function createBodyMeasurements(
   return {
     bodyId: feature.bodyId,
     sourceFeatureId: feature.id,
-    sourceSketchId: feature.sketchId,
-    sourceSketchEntityId: feature.entityId,
-    profileKind: feature.profileKind,
+    sourceSketchId: profile.sketchId,
+    sourceSketchEntityId: profile.entityId,
+    profileKind: profileKind!,
     units,
     sketchPlane: sketch.plane,
     side: feature.side,
@@ -94,13 +97,9 @@ type ExtrudeMeasurementEntity =
   | Extract<SketchEntity, { readonly kind: "circle" }>;
 
 function isExtrudeMeasurementEntity(
-  feature: GeneratedReferencesExtrudeFeature,
   entity: SketchEntity
 ): entity is ExtrudeMeasurementEntity {
-  return (
-    (feature.profileKind === "rectangle" && entity.kind === "rectangle") ||
-    (feature.profileKind === "circle" && entity.kind === "circle")
-  );
+  return entity.kind === "rectangle" || entity.kind === "circle";
 }
 
 interface ExtrudeMeasurementInput {

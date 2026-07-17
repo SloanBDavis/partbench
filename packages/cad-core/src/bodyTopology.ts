@@ -11,6 +11,7 @@ import type {
   CadGeneratedReferenceProfileSignature,
   CadQueryError,
   DocumentUnits,
+  FeatureExtrudeProfileKind,
   PartId,
   Vec2
 } from "@web-cad/cad-protocol";
@@ -21,6 +22,10 @@ import {
   type GeneratedReferencesFeature
 } from "./generatedReferences";
 import { createBodyMeasurements } from "./bodyMeasurements";
+import {
+  getFeatureEntityProfileRef,
+  getSupportedEntityProfileKind
+} from "./featureSourceReferences";
 import { sha256Hex } from "./sha256";
 
 export interface BodyTopologyRequest {
@@ -107,6 +112,23 @@ function createAuthoredFeatureTopology(
     );
   }
 
+  const profileRef = getFeatureEntityProfileRef(feature);
+  const profileEntity = profileRef
+    ? document.sketches
+        .get(profileRef.sketchId)
+        ?.entities.get(profileRef.entityId)
+    : undefined;
+  const profileKind = getSupportedEntityProfileKind(profileEntity);
+
+  if (!profileRef || !profileKind) {
+    return createUnsupportedAuthoredFeatureTopology(
+      document,
+      bodyId,
+      units,
+      feature
+    );
+  }
+
   const references = createBodyGeneratedReferences(
     document,
     bodyId,
@@ -130,9 +152,9 @@ function createAuthoredFeatureTopology(
       operationMode: feature.operationMode,
       targetBodyId: feature.targetBodyId,
       targetTopologyAnchorId: feature.targetTopologyAnchorId,
-      sourceSketchId: feature.sketchId,
-      sourceSketchEntityId: feature.entityId,
-      profileKind: feature.profileKind,
+      sourceSketchId: profileRef.sketchId,
+      sourceSketchEntityId: profileRef.entityId,
+      profileKind,
       profileSignature,
       side: feature.side,
       depth: feature.depth
@@ -142,9 +164,9 @@ function createAuthoredFeatureTopology(
     operationMode: feature.operationMode,
     targetBodyId: feature.targetBodyId,
     targetTopologyAnchorId: feature.targetTopologyAnchorId,
-    sourceSketchId: feature.sketchId,
-    sourceSketchEntityId: feature.entityId,
-    profileKind: feature.profileKind,
+    sourceSketchId: profileRef.sketchId,
+    sourceSketchEntityId: profileRef.entityId,
+    profileKind,
     profileSignature,
     side: feature.side,
     depth: feature.depth
@@ -198,6 +220,8 @@ function createAuthoredFeatureTopology(
       booleanTopology: createBooleanResultTopologyReadiness({
         bodyId,
         feature,
+        profileRef,
+        profileKind,
         derivedExactValidationStatus: "notProvided"
       })
     };
@@ -209,13 +233,18 @@ function createAuthoredFeatureTopology(
 function createBooleanResultTopologyReadiness(input: {
   readonly bodyId: BodyId;
   readonly feature: Extract<GeneratedReferencesFeature, { kind: "extrude" }>;
+  readonly profileRef: {
+    readonly sketchId: string;
+    readonly entityId: string;
+  };
+  readonly profileKind: "rectangle" | "circle";
   readonly derivedExactValidationStatus: CadBooleanResultTopologyDerivedExactValidationStatus;
 }): CadBooleanResultTopologyReadiness {
   const operationMode = input.feature.operationMode === "add" ? "add" : "cut";
   const roleReadiness = createBooleanRoleReadiness({
     bodyId: input.bodyId,
     operationMode,
-    profileKind: input.feature.profileKind
+    profileKind: input.profileKind
   });
   const hasSourceTopologyRole = roleReadiness.some(
     (role) =>
@@ -237,9 +266,9 @@ function createBooleanResultTopologyReadiness(input: {
       resultBodyId: input.bodyId,
       operationMode,
       targetBodyId: input.feature.targetBodyId,
-      toolSketchId: input.feature.sketchId,
-      toolSketchEntityId: input.feature.entityId,
-      toolProfileKind: input.feature.profileKind
+      toolSketchId: input.profileRef.sketchId,
+      toolSketchEntityId: input.profileRef.entityId,
+      toolProfileKind: input.profileKind
     },
     roleReadiness,
     diagnostics: [
@@ -348,10 +377,7 @@ function createBooleanExactValidationDiagnostic(
 function createBooleanRoleReadiness(input: {
   readonly bodyId: BodyId;
   readonly operationMode: "add" | "cut";
-  readonly profileKind: Extract<
-    GeneratedReferencesFeature,
-    { kind: "extrude" }
-  >["profileKind"];
+  readonly profileKind: FeatureExtrudeProfileKind;
 }): readonly CadBooleanResultTopologyRoleReadiness[] {
   const common: CadBooleanResultTopologyRoleReadiness[] = [
     {
@@ -470,10 +496,7 @@ function createBooleanRoleReadiness(input: {
 
 function createAddedWallFaceRoleReadiness(
   bodyId: BodyId,
-  profileKind: Extract<
-    GeneratedReferencesFeature,
-    { kind: "extrude" }
-  >["profileKind"]
+  profileKind: FeatureExtrudeProfileKind
 ): readonly CadBooleanResultTopologyRoleReadiness[] {
   if (profileKind === "rectangle") {
     return ["side:uMin", "side:uMax", "side:vMin", "side:vMax"].map(
@@ -512,10 +535,7 @@ function createAddedWallFaceRoleReadiness(
 
 function createAddedCapFaceRoleReadiness(
   bodyId: BodyId,
-  profileKind: Extract<
-    GeneratedReferencesFeature,
-    { kind: "extrude" }
-  >["profileKind"]
+  profileKind: FeatureExtrudeProfileKind
 ): readonly CadBooleanResultTopologyRoleReadiness[] {
   if (profileKind === "rectangle") {
     return [
@@ -553,10 +573,7 @@ function createAddedCapFaceRoleReadiness(
 
 function createCutWallFaceRoleReadiness(
   bodyId: BodyId,
-  profileKind: Extract<
-    GeneratedReferencesFeature,
-    { kind: "extrude" }
-  >["profileKind"]
+  profileKind: FeatureExtrudeProfileKind
 ): readonly CadBooleanResultTopologyRoleReadiness[] {
   if (profileKind === "rectangle") {
     return ["side:uMin", "side:uMax", "side:vMin", "side:vMax"].map(
@@ -614,10 +631,7 @@ function createCommandReadyBooleanFaceRole(input: {
 
 function createCutWallProfileEdgeRoleReadiness(
   bodyId: BodyId,
-  profileKind: Extract<
-    GeneratedReferencesFeature,
-    { kind: "extrude" }
-  >["profileKind"]
+  profileKind: FeatureExtrudeProfileKind
 ): readonly CadBooleanResultTopologyRoleReadiness[] {
   if (profileKind === "rectangle") {
     return [
@@ -651,10 +665,7 @@ function createCutWallProfileEdgeRoleReadiness(
 
 function createCutStartRimEdgeRoleReadiness(
   bodyId: BodyId,
-  profileKind: Extract<
-    GeneratedReferencesFeature,
-    { kind: "extrude" }
-  >["profileKind"]
+  profileKind: FeatureExtrudeProfileKind
 ): readonly CadBooleanResultTopologyRoleReadiness[] {
   if (profileKind === "circle") {
     return [
@@ -681,10 +692,7 @@ function createCutStartRimEdgeRoleReadiness(
 
 function createCutTerminalRimEdgeRoleReadiness(
   bodyId: BodyId,
-  profileKind: Extract<
-    GeneratedReferencesFeature,
-    { kind: "extrude" }
-  >["profileKind"]
+  profileKind: FeatureExtrudeProfileKind
 ): readonly CadBooleanResultTopologyRoleReadiness[] {
   if (profileKind === "circle") {
     return [
@@ -734,10 +742,7 @@ function createCommandReadyBooleanEdgeRole(input: {
 
 function createAddProfileEdgeRoleReadiness(
   bodyId: BodyId,
-  profileKind: Extract<
-    GeneratedReferencesFeature,
-    { kind: "extrude" }
-  >["profileKind"]
+  profileKind: FeatureExtrudeProfileKind
 ): readonly CadBooleanResultTopologyRoleReadiness[] {
   if (profileKind === "rectangle") {
     return ["end:uMin", "end:uMax", "end:vMin", "end:vMax"].map((sourceRole) =>
@@ -936,16 +941,21 @@ function createRevolveSourceIdentityInput(
   units: DocumentUnits,
   feature: Extract<GeneratedReferencesFeature, { kind: "revolve" }>
 ): Omit<CadBodyTopologySourceIdentity, "signature"> {
+  const profile = getFeatureEntityProfileRef(feature);
+  const entity = profile
+    ? document.sketches.get(profile.sketchId)?.entities.get(profile.entityId)
+    : undefined;
+  const profileKind = getSupportedEntityProfileKind(entity);
+
   return {
     bodyId,
     sourceKind: "authoredRevolve",
     units,
     featureId: feature.id,
     operationMode: feature.operationMode,
-    targetBodyId: feature.targetBodyId,
-    sourceSketchId: feature.sketchId,
-    sourceSketchEntityId: feature.entityId,
-    profileKind: feature.profileKind,
+    sourceSketchId: profile?.sketchId,
+    sourceSketchEntityId: profile?.entityId,
+    profileKind,
     profileSignature: createRevolveProfileSignature(document, feature),
     revolveAxis: feature.axis,
     revolveAxisSignature: createRevolveAxisSignature(document, feature),
@@ -957,10 +967,12 @@ function createRevolveProfileSignature(
   document: GeneratedReferencesDocument,
   feature: Extract<GeneratedReferencesFeature, { kind: "revolve" }>
 ): CadGeneratedReferenceProfileSignature | undefined {
-  const sketch = document.sketches.get(feature.sketchId);
-  const entity = sketch?.entities.get(feature.entityId);
+  const profile = getFeatureEntityProfileRef(feature);
+  const entity = profile
+    ? document.sketches.get(profile.sketchId)?.entities.get(profile.entityId)
+    : undefined;
 
-  if (feature.profileKind === "rectangle" && entity?.kind === "rectangle") {
+  if (entity?.kind === "rectangle") {
     return {
       kind: "rectangle",
       center: entity.center,
@@ -969,7 +981,7 @@ function createRevolveProfileSignature(
     };
   }
 
-  if (feature.profileKind === "circle" && entity?.kind === "circle") {
+  if (entity?.kind === "circle") {
     return {
       kind: "circle",
       center: entity.center,

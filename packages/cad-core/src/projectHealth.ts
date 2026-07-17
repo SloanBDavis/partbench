@@ -24,9 +24,6 @@ import type {
   FeatureExtrudeProfileKind,
   FeatureHoleDepthMode,
   FeatureHoleDirection,
-  FeatureRevolveAxis,
-  FeatureRevolveOperationMode,
-  FeatureRevolveProfileKind,
   FeatureId,
   NamedGeneratedReferenceSnapshot,
   NamedReferenceName,
@@ -54,8 +51,16 @@ import {
   type GeneratedReferenceValidationError,
   type GeneratedReferencesDocument,
   type GeneratedReferencesExtrudeFeature,
+  type GeneratedReferencesRevolveFeature,
   type GeneratedReferencesSketch
 } from "./generatedReferences";
+import {
+  getFeatureEntityProfileRef,
+  getLoftSectionProfiles,
+  getProfileEntityReferences,
+  getSupportedEntityProfileKind,
+  getSweepPathEntityReferences
+} from "./featureSourceReferences";
 import { resolveTopologyAnchorGeneratedReferenceFromSourceRole } from "./topologyAnchorGeneratedReferenceResolution";
 import type {
   LinearPatternFeature,
@@ -121,18 +126,7 @@ export type ProjectHealthFeature =
   | SweepFeature
   | LoftFeature;
 
-export interface ProjectHealthRevolveFeature {
-  readonly id: FeatureId;
-  readonly kind: "revolve";
-  readonly bodyId: BodyId;
-  readonly sketchId: SketchId;
-  readonly entityId: SketchEntityId;
-  readonly profileKind: FeatureRevolveProfileKind;
-  readonly axis: FeatureRevolveAxis;
-  readonly angleDegrees: number;
-  readonly operationMode: FeatureRevolveOperationMode;
-  readonly targetBodyId?: BodyId;
-}
+export type ProjectHealthRevolveFeature = GeneratedReferencesRevolveFeature;
 
 export interface ProjectHealthHoleFeature {
   readonly id: FeatureId;
@@ -311,37 +305,47 @@ function createAuthoredExtrudeHealth(
   options: ProjectHealthOptions
 ): CadAuthoredExtrudeHealth {
   const issues: CadDependencyHealthIssue[] = [];
-  const sketch = document.sketches.get(feature.sketchId);
+  const profile = getFeatureEntityProfileRef(feature);
+  const sketch = profile ? document.sketches.get(profile.sketchId) : undefined;
+  const entity = sketch?.entities.get(profile?.entityId ?? "");
+  const profileKind = getSupportedEntityProfileKind(entity) ?? "rectangle";
 
-  if (!sketch) {
+  if (!profile) {
     issues.push({
-      code: "SKETCH_NOT_FOUND",
-      message: `Source sketch does not exist for feature ${feature.id}: ${feature.sketchId}`,
+      code: "UNSUPPORTED_BODY_REFERENCES",
+      message: `Feature ${feature.id} uses a composite profile that is not exposed by the V16 health response.`,
       featureId: feature.id,
       bodyId: feature.bodyId,
-      sketchId: feature.sketchId
+      expected: "single rectangle or circle profile entity",
+      received: feature.profile.kind
+    });
+  } else if (!sketch) {
+    issues.push({
+      code: "SKETCH_NOT_FOUND",
+      message: `Source sketch does not exist for feature ${feature.id}: ${profile.sketchId}`,
+      featureId: feature.id,
+      bodyId: feature.bodyId,
+      sketchId: profile.sketchId
     });
   } else {
-    const entity = sketch.entities.get(feature.entityId);
-
     if (!entity) {
       issues.push({
         code: "SKETCH_ENTITY_NOT_FOUND",
-        message: `Source sketch entity does not exist for feature ${feature.id}: ${feature.entityId}`,
+        message: `Source sketch entity does not exist for feature ${feature.id}: ${profile.entityId}`,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        sketchId: feature.sketchId,
-        sketchEntityId: feature.entityId
+        sketchId: profile.sketchId,
+        sketchEntityId: profile.entityId
       });
-    } else if (!entityMatchesProfileKind(entity, feature.profileKind)) {
+    } else if (!getSupportedEntityProfileKind(entity)) {
       issues.push({
         code: "PROFILE_KIND_MISMATCH",
-        message: `Source sketch entity ${feature.entityId} is ${entity.kind}, but feature ${feature.id} expects ${feature.profileKind}.`,
+        message: `Source sketch entity ${profile.entityId} is ${entity.kind}, but feature ${feature.id} expects a rectangle or circle.`,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        sketchId: feature.sketchId,
-        sketchEntityId: feature.entityId,
-        expected: feature.profileKind,
+        sketchId: profile.sketchId,
+        sketchEntityId: profile.entityId,
+        expected: "rectangle or circle",
         received: entity.kind
       });
     }
@@ -371,9 +375,7 @@ function createAuthoredExtrudeHealth(
           featureId: feature.id,
           bodyId: feature.targetBodyId
         });
-      } else if (
-        !isSupportedBooleanTarget(feature, targetFeature, document.features)
-      ) {
+      } else if (!isSupportedBooleanTarget(feature, targetFeature, document)) {
         issues.push({
           code: "UNSUPPORTED_BODY_REFERENCES",
           message: getUnsupportedBooleanFeatureMessage(feature.operationMode),
@@ -383,7 +385,7 @@ function createAuthoredExtrudeHealth(
             feature.operationMode === "add"
               ? "active rectangle source body or topology-backed result body"
               : "active rectangle/circle source body or topology-backed result body",
-          received: describeFeatureForHealth(targetFeature)
+          received: describeFeatureForHealth(targetFeature, document)
         });
       }
     }
@@ -405,9 +407,11 @@ function createAuthoredExtrudeHealth(
   return {
     featureId: feature.id,
     bodyId: feature.bodyId,
-    sketchId: feature.sketchId,
-    entityId: feature.entityId,
-    profileKind: feature.profileKind,
+    sketchId: profile?.sketchId ?? feature.profile.sketchId,
+    entityId:
+      profile?.entityId ??
+      getProfileEntityReferences(feature.profile)[0]!.entityId,
+    profileKind,
     operationMode: feature.operationMode,
     ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {}),
     ...(feature.targetTopologyAnchorId
@@ -435,52 +439,62 @@ function createAuthoredRevolveHealth(
   options: ProjectHealthOptions
 ): CadAuthoredRevolveHealth {
   const issues: CadDependencyHealthIssue[] = [];
-  const sketch = document.sketches.get(feature.sketchId);
+  const profile = getFeatureEntityProfileRef(feature);
+  const sketch = profile ? document.sketches.get(profile.sketchId) : undefined;
+  const entity = sketch?.entities.get(profile?.entityId ?? "");
+  const profileKind = getSupportedEntityProfileKind(entity) ?? "rectangle";
 
-  if (!sketch) {
+  if (!profile) {
     issues.push({
-      code: "SKETCH_NOT_FOUND",
-      message: `Source sketch does not exist for revolve feature ${feature.id}: ${feature.sketchId}`,
+      code: "UNSUPPORTED_BODY_REFERENCES",
+      message: `Revolve feature ${feature.id} uses a composite profile that is not exposed by the V16 health response.`,
       featureId: feature.id,
       bodyId: feature.bodyId,
-      sketchId: feature.sketchId
+      expected: "single rectangle or circle profile entity",
+      received: feature.profile.kind
+    });
+  } else if (!sketch) {
+    issues.push({
+      code: "SKETCH_NOT_FOUND",
+      message: `Source sketch does not exist for revolve feature ${feature.id}: ${profile.sketchId}`,
+      featureId: feature.id,
+      bodyId: feature.bodyId,
+      sketchId: profile.sketchId
     });
   } else {
-    const entity = sketch.entities.get(feature.entityId);
-
     if (!entity) {
       issues.push({
         code: "SKETCH_ENTITY_NOT_FOUND",
-        message: `Source sketch entity does not exist for revolve feature ${feature.id}: ${feature.entityId}`,
+        message: `Source sketch entity does not exist for revolve feature ${feature.id}: ${profile.entityId}`,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        sketchId: feature.sketchId,
-        sketchEntityId: feature.entityId
+        sketchId: profile.sketchId,
+        sketchEntityId: profile.entityId
       });
-    } else if (!entityMatchesProfileKind(entity, feature.profileKind)) {
+    } else if (!getSupportedEntityProfileKind(entity)) {
       issues.push({
         code: "PROFILE_KIND_MISMATCH",
-        message: `Source sketch entity ${feature.entityId} is ${entity.kind}, but revolve feature ${feature.id} expects ${feature.profileKind}.`,
+        message: `Source sketch entity ${profile.entityId} is ${entity.kind}, but revolve feature ${feature.id} expects a rectangle or circle.`,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        sketchId: feature.sketchId,
-        sketchEntityId: feature.entityId,
-        expected: feature.profileKind,
+        sketchId: profile.sketchId,
+        sketchEntityId: profile.entityId,
+        expected: "rectangle or circle",
         received: entity.kind
       });
     }
 
     const axisEntity = sketch.entities.get(feature.axis.entityId);
 
-    if (feature.axis.sketchId !== feature.sketchId) {
+    if (feature.axis.sketchId !== profile.sketchId) {
       issues.push({
         code: "UNSUPPORTED_BODY_REFERENCES",
         message: `Revolve feature ${feature.id} axis must reference the same sketch.`,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        sketchId: feature.sketchId,
+        sketchId: profile.sketchId,
         sketchEntityId: feature.axis.entityId,
-        expected: feature.sketchId,
+        expected: profile.sketchId,
         received: feature.axis.sketchId
       });
     } else if (!axisEntity) {
@@ -489,7 +503,7 @@ function createAuthoredRevolveHealth(
         message: `Revolve axis line does not exist for feature ${feature.id}: ${feature.axis.entityId}`,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        sketchId: feature.sketchId,
+        sketchId: profile.sketchId,
         sketchEntityId: feature.axis.entityId
       });
     } else if (axisEntity.kind !== "line") {
@@ -498,7 +512,7 @@ function createAuthoredRevolveHealth(
         message: `Revolve axis entity ${feature.axis.entityId} is ${axisEntity.kind}, but feature ${feature.id} expects a line.`,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        sketchId: feature.sketchId,
+        sketchId: profile.sketchId,
         sketchEntityId: feature.axis.entityId,
         expected: "line",
         received: axisEntity.kind
@@ -522,13 +536,14 @@ function createAuthoredRevolveHealth(
   return {
     featureId: feature.id,
     bodyId: feature.bodyId,
-    sketchId: feature.sketchId,
-    entityId: feature.entityId,
-    profileKind: feature.profileKind,
+    sketchId: profile?.sketchId ?? feature.profile.sketchId,
+    entityId:
+      profile?.entityId ??
+      getProfileEntityReferences(feature.profile)[0]!.entityId,
+    profileKind,
     axis: feature.axis,
     angleDegrees: feature.angleDegrees,
     operationMode: feature.operationMode,
-    ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {}),
     ...(topologySnapshot
       ? {
           topologyStatus: topologySnapshot.status,
@@ -670,9 +685,7 @@ function createAuthoredHoleHealth(
       featureId: feature.id,
       bodyId: feature.targetBodyId
     });
-  } else if (
-    !isSupportedHoleTargetFeature(feature, targetFeature, document.features)
-  ) {
+  } else if (!isSupportedHoleTargetFeature(feature, targetFeature, document)) {
     issues.push({
       code: "UNSUPPORTED_BODY_REFERENCES",
       message:
@@ -681,7 +694,7 @@ function createAuthoredHoleHealth(
       bodyId: feature.targetBodyId,
       expected:
         "active rectangle/circle source or topology-backed result target body",
-      received: describeFeatureForHealth(targetFeature)
+      received: describeFeatureForHealth(targetFeature, document)
     });
   } else {
     const consumedBy = [...document.features.values()].find(
@@ -875,7 +888,7 @@ function createEdgeFinishHealth(
       featureId: feature.id,
       bodyId: feature.targetBodyId
     });
-  } else if (!isSupportedEdgeFinishTargetFeature(targetFeature)) {
+  } else if (!isSupportedEdgeFinishTargetFeature(targetFeature, document)) {
     issues.push({
       code: "UNSUPPORTED_BODY_REFERENCES",
       message: `${formatEdgeFinishFeatureLabel(feature)} features currently support one stable generated edge on an active rectangle/circle newBody extrude target body or a supported rectangle cut result body.`,
@@ -883,7 +896,7 @@ function createEdgeFinishHealth(
       bodyId: feature.targetBodyId,
       expected:
         "active rectangle/circle newBody extrude target body or supported rectangle cut result body",
-      received: describeFeatureForHealth(targetFeature)
+      received: describeFeatureForHealth(targetFeature, document)
     });
   } else {
     const consumedBy = [...document.features.values()].find(
@@ -1675,10 +1688,10 @@ function collectSketchEntityAffectedFeatures(
     if (
       feature.kind === "loft" &&
       targets.some((target) =>
-        feature.sections.some(
-          (section) =>
-            section.sketchId === target.sketchId &&
-            section.entityId === target.entityId
+        getLoftSectionProfiles(feature).some(
+          (profile) =>
+            profile.sketchId === target.sketchId &&
+            profile.entityId === target.entityId
         )
       )
     ) {
@@ -1690,10 +1703,16 @@ function collectSketchEntityAffectedFeatures(
       feature.kind === "sweep" &&
       targets.some(
         (target) =>
-          (feature.profileSketchId === target.sketchId &&
-            feature.profileEntityId === target.entityId) ||
-          (feature.pathSketchId === target.sketchId &&
-            feature.pathEntityIds.includes(target.entityId))
+          getProfileEntityReferences(feature.profile).some(
+            (ref) =>
+              ref.sketchId === target.sketchId &&
+              ref.entityId === target.entityId
+          ) ||
+          getSweepPathEntityReferences(feature.path).some(
+            (ref) =>
+              ref.sketchId === target.sketchId &&
+              ref.entityId === target.entityId
+          )
       )
     ) {
       featureIds.add(feature.id);
@@ -1702,11 +1721,13 @@ function collectSketchEntityAffectedFeatures(
     }
     if (
       hasSketchEntitySource(feature) &&
-      targets.some(
-        (target) =>
-          feature.sketchId === target.sketchId &&
-          getProjectHealthFeaturePrimaryEntityId(feature) === target.entityId
-      )
+      targets.some((target) => {
+        const source = getProjectHealthFeaturePrimaryEntityRef(feature);
+        return (
+          source?.sketchId === target.sketchId &&
+          source.entityId === target.entityId
+        );
+      })
     ) {
       featureIds.add(feature.id);
       bodyIds.add(feature.bodyId);
@@ -1739,7 +1760,7 @@ function collectSketchEntityAffectedFeatures(
   };
 }
 
-function getProjectHealthFeaturePrimaryEntityId(
+function getProjectHealthFeaturePrimaryEntityRef(
   feature: Exclude<
     ProjectHealthFeature,
     | ProjectHealthChamferFeature
@@ -1752,8 +1773,17 @@ function getProjectHealthFeaturePrimaryEntityId(
     | SweepFeature
     | LoftFeature
   >
-): SketchEntityId {
-  return feature.kind === "hole" ? feature.circleEntityId : feature.entityId;
+):
+  | { readonly sketchId: SketchId; readonly entityId: SketchEntityId }
+  | undefined {
+  if (feature.kind === "hole") {
+    return { sketchId: feature.sketchId, entityId: feature.circleEntityId };
+  }
+
+  const profile = getFeatureEntityProfileRef(feature);
+  return profile
+    ? { sketchId: profile.sketchId, entityId: profile.entityId }
+    : undefined;
 }
 
 function hasSketchEntitySource(
@@ -2058,16 +2088,6 @@ function createQueryErrorFromGeneratedReferenceError(
   };
 }
 
-function entityMatchesProfileKind(
-  entity: SketchEntitySnapshot,
-  profileKind: FeatureExtrudeProfileKind
-): boolean {
-  return (
-    (profileKind === "rectangle" && entity.kind === "rectangle") ||
-    (profileKind === "circle" && entity.kind === "circle")
-  );
-}
-
 function isSupportedCutTargetProfileKind(
   profileKind: FeatureExtrudeProfileKind
 ): boolean {
@@ -2093,15 +2113,16 @@ function isSupportedBooleanToolProfileKind(
 function isSupportedBooleanTarget(
   feature: GeneratedReferencesExtrudeFeature,
   targetFeature: ProjectHealthFeature,
-  features: ReadonlyMap<FeatureId, ProjectHealthFeature>
+  document: ProjectHealthDocument
 ): boolean {
-  if (!isSupportedBooleanToolProfileKind(feature.profileKind)) {
+  const toolProfileKind = getProjectHealthProfileKind(document, feature);
+  if (!toolProfileKind || !isSupportedBooleanToolProfileKind(toolProfileKind)) {
     return false;
   }
 
   const targetProfileKind = resolveBooleanTargetProfileKind(
     targetFeature,
-    features,
+    document,
     feature.targetTopologyAnchorId,
     feature.targetBodyId
   );
@@ -2122,7 +2143,7 @@ function isSupportedBooleanTarget(
 
 function resolveBooleanTargetProfileKind(
   targetFeature: ProjectHealthFeature,
-  features: ReadonlyMap<FeatureId, ProjectHealthFeature>,
+  document: ProjectHealthDocument,
   targetTopologyAnchorId?: string,
   activeResultBodyId?: BodyId
 ): FeatureExtrudeProfileKind | undefined {
@@ -2131,7 +2152,7 @@ function resolveBooleanTargetProfileKind(
   }
 
   if (targetFeature.operationMode === "newBody") {
-    return targetFeature.profileKind;
+    return getProjectHealthProfileKind(document, targetFeature);
   }
 
   const allowActiveResultBodyAnchor =
@@ -2148,7 +2169,7 @@ function resolveBooleanTargetProfileKind(
     visitedFeatureIds.add(current.id);
 
     if (current.operationMode === "newBody") {
-      return current.profileKind;
+      return getProjectHealthProfileKind(document, current);
     }
 
     const isAllowedActiveResultBody =
@@ -2166,7 +2187,7 @@ function resolveBooleanTargetProfileKind(
 
     const targetBodyId: BodyId = current.targetBodyId;
     const parent: ProjectHealthFeature | undefined = [
-      ...features.values()
+      ...document.features.values()
     ].find((candidate) => candidate.bodyId === targetBodyId);
     current = parent?.kind === "extrude" ? parent : undefined;
   }
@@ -2177,11 +2198,11 @@ function resolveBooleanTargetProfileKind(
 function isSupportedHoleTargetFeature(
   feature: ProjectHealthHoleFeature,
   targetFeature: ProjectHealthFeature,
-  features: ReadonlyMap<FeatureId, ProjectHealthFeature>
+  document: ProjectHealthDocument
 ): boolean {
   const targetProfileKind = resolveBooleanTargetProfileKind(
     targetFeature,
-    features,
+    document,
     feature.targetTopologyAnchorId,
     feature.targetBodyId
   );
@@ -2193,17 +2214,26 @@ function isSupportedHoleTargetFeature(
 }
 
 function isSupportedEdgeFinishTargetFeature(
-  feature: ProjectHealthFeature
+  feature: ProjectHealthFeature,
+  document: ProjectHealthDocument
 ): boolean {
+  const profileKind =
+    feature.kind === "extrude"
+      ? getProjectHealthProfileKind(document, feature)
+      : undefined;
   return (
     feature.kind === "extrude" &&
     ((feature.operationMode === "newBody" &&
-      isSupportedCutTargetProfileKind(feature.profileKind)) ||
-      (feature.operationMode === "cut" && feature.profileKind === "rectangle"))
+      profileKind !== undefined &&
+      isSupportedCutTargetProfileKind(profileKind)) ||
+      (feature.operationMode === "cut" && profileKind === "rectangle"))
   );
 }
 
-function describeFeatureForHealth(feature: ProjectHealthFeature): string {
+function describeFeatureForHealth(
+  feature: ProjectHealthFeature,
+  document: ProjectHealthDocument
+): string {
   if (feature.kind === "hole") {
     return "hole result";
   }
@@ -2217,7 +2247,7 @@ function describeFeatureForHealth(feature: ProjectHealthFeature): string {
   }
 
   if (feature.kind === "revolve") {
-    return `${feature.profileKind} revolve`;
+    return `${getProjectHealthProfileKind(document, feature) ?? "unsupported profile"} revolve`;
   }
 
   if (feature.kind === "importedBody") {
@@ -2248,7 +2278,18 @@ function describeFeatureForHealth(feature: ProjectHealthFeature): string {
     return "loft result";
   }
 
-  return `${feature.profileKind} ${feature.operationMode}`;
+  return `${getProjectHealthProfileKind(document, feature) ?? "unsupported profile"} ${feature.operationMode}`;
+}
+
+function getProjectHealthProfileKind(
+  document: ProjectHealthDocument,
+  feature: GeneratedReferencesExtrudeFeature | ProjectHealthRevolveFeature
+): FeatureExtrudeProfileKind | undefined {
+  const profile = getFeatureEntityProfileRef(feature);
+  const entity = profile
+    ? document.sketches.get(profile.sketchId)?.entities.get(profile.entityId)
+    : undefined;
+  return getSupportedEntityProfileKind(entity);
 }
 
 function getUnsupportedBooleanFeatureMessage(

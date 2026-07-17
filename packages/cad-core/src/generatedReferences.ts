@@ -16,15 +16,15 @@ import type {
   CadGeneratedReferenceProfileSignature,
   CadGeneratedReferenceSignature,
   CadGeneratedVertexReference,
-  FeatureExtrudeOperationMode,
   FeatureExtrudeProfileKind,
   FeatureExtrudeSide,
   FeatureHoleDepthMode,
   FeatureHoleDirection,
   FeatureId,
-  FeatureRevolveAxis,
-  FeatureRevolveOperationMode,
-  FeatureRevolveProfileKind,
+  ExtrudeFeatureV21,
+  RevolveFeatureV21,
+  SweepFeatureV21,
+  LoftFeatureV21,
   PartId,
   SketchCircleEntitySnapshot,
   SketchEntityId,
@@ -36,6 +36,10 @@ import type {
   Vec2,
   Vec3
 } from "@web-cad/cad-protocol";
+import {
+  getFeatureEntityProfileRef,
+  getSupportedEntityProfileKind
+} from "./featureSourceReferences";
 
 const SEMANTIC_REFERENCE_NOTE =
   "Generated references are semantic first-slice references, not exact B-rep topology.";
@@ -106,32 +110,9 @@ export type GeneratedReferencesFeature =
   | GeneratedReferencesSweepFeature
   | GeneratedReferencesLoftFeature;
 
-export interface GeneratedReferencesExtrudeFeature {
-  readonly id: FeatureId;
-  readonly kind: "extrude";
-  readonly sketchId: SketchId;
-  readonly entityId: SketchEntityId;
-  readonly profileKind: FeatureExtrudeProfileKind;
-  readonly depth: number;
-  readonly side: FeatureExtrudeSide;
-  readonly operationMode: FeatureExtrudeOperationMode;
-  readonly targetBodyId?: BodyId;
-  readonly targetTopologyAnchorId?: string;
-  readonly bodyId: BodyId;
-}
+export type GeneratedReferencesExtrudeFeature = ExtrudeFeatureV21;
 
-export interface GeneratedReferencesRevolveFeature {
-  readonly id: FeatureId;
-  readonly kind: "revolve";
-  readonly sketchId: SketchId;
-  readonly entityId: SketchEntityId;
-  readonly profileKind: FeatureRevolveProfileKind;
-  readonly axis: FeatureRevolveAxis;
-  readonly angleDegrees: number;
-  readonly operationMode: FeatureRevolveOperationMode;
-  readonly targetBodyId?: BodyId;
-  readonly bodyId: BodyId;
-}
+export type GeneratedReferencesRevolveFeature = RevolveFeatureV21;
 
 export interface GeneratedReferencesChamferFeature {
   readonly id: FeatureId;
@@ -199,17 +180,9 @@ export interface GeneratedReferencesShellFeature {
   readonly bodyId: BodyId;
 }
 
-export interface GeneratedReferencesSweepFeature {
-  readonly id: FeatureId;
-  readonly kind: "sweep";
-  readonly bodyId: BodyId;
-}
+export type GeneratedReferencesSweepFeature = SweepFeatureV21;
 
-export interface GeneratedReferencesLoftFeature {
-  readonly id: FeatureId;
-  readonly kind: "loft";
-  readonly bodyId: BodyId;
-}
+export type GeneratedReferencesLoftFeature = LoftFeatureV21;
 
 export interface BodyGeneratedReferencesSnapshot {
   readonly body: CadGeneratedBodyReference;
@@ -427,26 +400,44 @@ function createGeneratedReferenceProfileSignature(
   throw new Error(`Unsupported generated reference profile: ${entity.kind}`);
 }
 
+interface GeneratedEntityProfileSource {
+  readonly profileRef: {
+    readonly sketchId: SketchId;
+    readonly entityId: SketchEntityId;
+  };
+  readonly sketch: GeneratedReferencesSketch;
+  readonly entity: GeneratedReferencesSketchEntity;
+  readonly profileKind: FeatureExtrudeProfileKind;
+}
+
+function resolveGeneratedEntityProfile(
+  document: GeneratedReferencesDocument,
+  feature: GeneratedReferencesExtrudeFeature | GeneratedReferencesRevolveFeature
+): GeneratedEntityProfileSource | undefined {
+  const profileRef = getFeatureEntityProfileRef(feature);
+  const sketch = profileRef
+    ? document.sketches.get(profileRef.sketchId)
+    : undefined;
+  const entity = sketch?.entities.get(profileRef?.entityId ?? "");
+  const profileKind = getSupportedEntityProfileKind(entity);
+
+  return profileRef && sketch && entity && profileKind
+    ? { profileRef, sketch, entity, profileKind }
+    : undefined;
+}
+
 function createExtrudeBodyGeneratedReferences(
   document: GeneratedReferencesDocument,
   feature: GeneratedReferencesExtrudeFeature,
   ownerPartId: PartId
 ): BodyGeneratedReferencesSnapshot | undefined {
-  const sketch = document.sketches.get(feature.sketchId);
-  const entity = sketch?.entities.get(feature.entityId);
+  const source = resolveGeneratedEntityProfile(document, feature);
 
-  if (!sketch || !entity) {
+  if (!source) {
     return undefined;
   }
 
-  if (feature.profileKind === "rectangle" && entity.kind !== "rectangle") {
-    return undefined;
-  }
-
-  if (feature.profileKind === "circle" && entity.kind !== "circle") {
-    return undefined;
-  }
-
+  const { profileRef, sketch, entity, profileKind } = source;
   const profile = createGeneratedReferenceProfileSignature(entity);
 
   if (feature.operationMode === "cut") {
@@ -455,6 +446,7 @@ function createExtrudeBodyGeneratedReferences(
       feature,
       sketch,
       profile,
+      profileRef,
       ownerPartId
     );
   }
@@ -465,6 +457,7 @@ function createExtrudeBodyGeneratedReferences(
       feature,
       sketch,
       profile,
+      profileRef,
       ownerPartId
     );
   }
@@ -476,16 +469,16 @@ function createExtrudeBodyGeneratedReferences(
   const body: CadGeneratedBodyReference = {
     kind: "body",
     stableId: `generated:body:${feature.bodyId}`,
-    label: createBodyReferenceLabel(feature.profileKind),
-    description: createBodyReferenceDescription(feature),
+    label: createBodyReferenceLabel(profileKind),
+    description: createBodyReferenceDescription(feature, profileKind),
     eligibleOperations: createBodyEligibleOperations(),
     eligibilityNotes: createBodyEligibilityNotes(),
     bodyId: feature.bodyId,
     ownerPartId,
     sourceFeatureId: feature.id,
-    sourceSketchId: feature.sketchId,
-    sourceSketchEntityId: feature.entityId,
-    profileKind: feature.profileKind,
+    sourceSketchId: profileRef.sketchId,
+    sourceSketchEntityId: profileRef.entityId,
+    profileKind,
     geometricSignature: createGeneratedReferenceSignature(
       feature,
       sketch,
@@ -500,7 +493,7 @@ function createExtrudeBodyGeneratedReferences(
   return {
     body,
     faces:
-      feature.profileKind === "rectangle"
+      profileKind === "rectangle"
         ? createRectangleExtrudeFaceReferences(
             feature,
             sketch,
@@ -514,7 +507,7 @@ function createExtrudeBodyGeneratedReferences(
             ownerPartId
           ),
     edges:
-      feature.profileKind === "rectangle"
+      profileKind === "rectangle"
         ? createRectangleExtrudeEdgeReferences(
             feature,
             sketch,
@@ -528,7 +521,7 @@ function createExtrudeBodyGeneratedReferences(
             ownerPartId
           ),
     vertices:
-      feature.profileKind === "rectangle" && profile.kind === "rectangle"
+      profileKind === "rectangle" && profile.kind === "rectangle"
         ? createRectangleExtrudeVertexReferences(
             feature,
             sketch,
@@ -545,6 +538,10 @@ function createAddExtrudeBodyGeneratedReferences(
   feature: GeneratedReferencesExtrudeFeature,
   sketch: GeneratedReferencesSketch,
   profile: CadGeneratedReferenceProfileSignature,
+  profileRef: {
+    readonly sketchId: SketchId;
+    readonly entityId: SketchEntityId;
+  },
   ownerPartId: PartId
 ): BodyGeneratedReferencesSnapshot | undefined {
   if (
@@ -559,15 +556,15 @@ function createAddExtrudeBodyGeneratedReferences(
     kind: "body",
     stableId: `generated:body:${feature.bodyId}`,
     label: "Boolean add result body",
-    description: `Result body generated by ${feature.profileKind} add feature ${feature.id} fused to target body ${feature.targetBodyId}.`,
+    description: `Result body generated by ${profile.kind} add feature ${feature.id} fused to target body ${feature.targetBodyId}.`,
     eligibleOperations: [],
     eligibilityNotes: createBooleanAddEligibilityNotes(),
     bodyId: feature.bodyId,
     ownerPartId,
     sourceFeatureId: feature.id,
-    sourceSketchId: feature.sketchId,
-    sourceSketchEntityId: feature.entityId,
-    profileKind: feature.profileKind,
+    sourceSketchId: profileRef.sketchId,
+    sourceSketchEntityId: profileRef.entityId,
+    profileKind: profile.kind,
     geometricSignature: createGeneratedReferenceSignature(
       feature,
       sketch,
@@ -614,6 +611,10 @@ function createCutExtrudeBodyGeneratedReferences(
   feature: GeneratedReferencesExtrudeFeature,
   sketch: GeneratedReferencesSketch,
   profile: CadGeneratedReferenceProfileSignature,
+  profileRef: {
+    readonly sketchId: SketchId;
+    readonly entityId: SketchEntityId;
+  },
   ownerPartId: PartId
 ): BodyGeneratedReferencesSnapshot | undefined {
   if (
@@ -628,15 +629,15 @@ function createCutExtrudeBodyGeneratedReferences(
     kind: "body",
     stableId: `generated:body:${feature.bodyId}`,
     label: "Boolean cut result body",
-    description: `Result body generated by ${feature.profileKind} cut feature ${feature.id} in target body ${feature.targetBodyId}.`,
+    description: `Result body generated by ${profile.kind} cut feature ${feature.id} in target body ${feature.targetBodyId}.`,
     eligibleOperations: [],
     eligibilityNotes: createBooleanCutEligibilityNotes(),
     bodyId: feature.bodyId,
     ownerPartId,
     sourceFeatureId: feature.id,
-    sourceSketchId: feature.sketchId,
-    sourceSketchEntityId: feature.entityId,
-    profileKind: feature.profileKind,
+    sourceSketchId: profileRef.sketchId,
+    sourceSketchEntityId: profileRef.entityId,
+    profileKind: profile.kind,
     geometricSignature: createGeneratedReferenceSignature(
       feature,
       sketch,
@@ -684,13 +685,10 @@ function createCutExtrudeBodyGeneratedReferences(
 }
 
 function isBooleanToolProfile(
-  feature: GeneratedReferencesExtrudeFeature,
+  _feature: GeneratedReferencesExtrudeFeature,
   profile: CadGeneratedReferenceProfileSignature
 ): boolean {
-  return (
-    (feature.profileKind === "rectangle" && profile.kind === "rectangle") ||
-    (feature.profileKind === "circle" && profile.kind === "circle")
-  );
+  return profile.kind === "rectangle" || profile.kind === "circle";
 }
 
 function isSupportedBooleanAddTarget(
@@ -742,7 +740,7 @@ function resolveBooleanTargetProfileKind(
   }
 
   if (targetFeature.operationMode === "newBody") {
-    return targetFeature.profileKind;
+    return resolveGeneratedEntityProfile(document, targetFeature)?.profileKind;
   }
 
   const allowActiveResultBodyAnchor =
@@ -759,7 +757,7 @@ function resolveBooleanTargetProfileKind(
     visitedFeatureIds.add(current.id);
 
     if (current.operationMode === "newBody") {
-      return current.profileKind;
+      return resolveGeneratedEntityProfile(document, current)?.profileKind;
     }
 
     const isAllowedActiveResultBody =
@@ -794,20 +792,11 @@ function createRevolveBodyGeneratedReferences(
     return undefined;
   }
 
-  const sketch = document.sketches.get(feature.sketchId);
-  const entity = sketch?.entities.get(feature.entityId);
+  const source = resolveGeneratedEntityProfile(document, feature);
   const axisSketch = document.sketches.get(feature.axis.sketchId);
   const axisEntity = axisSketch?.entities.get(feature.axis.entityId);
 
-  if (!sketch || !entity || !axisSketch || !axisEntity) {
-    return undefined;
-  }
-
-  if (feature.profileKind === "rectangle" && entity.kind !== "rectangle") {
-    return undefined;
-  }
-
-  if (feature.profileKind === "circle" && entity.kind !== "circle") {
+  if (!source || !axisSketch || !axisEntity) {
     return undefined;
   }
 
@@ -815,21 +804,22 @@ function createRevolveBodyGeneratedReferences(
     return undefined;
   }
 
+  const { profileRef, sketch, entity, profileKind } = source;
   const profile = createGeneratedReferenceProfileSignature(entity);
   const axisSignature = createRevolveAxisSourceSignature(feature, axisEntity);
   const body: CadGeneratedBodyReference = {
     kind: "body",
     stableId: `generated:body:${feature.bodyId}`,
-    label: `${capitalize(feature.profileKind)} revolve body`,
-    description: `Solid body generated by ${feature.profileKind} revolve feature ${feature.id}.`,
+    label: `${capitalize(profileKind)} revolve body`,
+    description: `Solid body generated by ${profileKind} revolve feature ${feature.id}.`,
     eligibleOperations: createSourceSemanticSelectionOperations(),
     eligibilityNotes: createRevolveEligibilityNotes(),
     bodyId: feature.bodyId,
     ownerPartId,
     sourceFeatureId: feature.id,
-    sourceSketchId: feature.sketchId,
-    sourceSketchEntityId: feature.entityId,
-    profileKind: feature.profileKind,
+    sourceSketchId: profileRef.sketchId,
+    sourceSketchEntityId: profileRef.entityId,
+    profileKind,
     geometricSignature: createRevolveGeneratedReferenceSignature(
       feature,
       sketch,
@@ -1109,8 +1099,8 @@ function createBooleanAddFaceReference(
     bodyId: feature.bodyId,
     ownerPartId,
     sourceFeatureId: feature.id,
-    sourceSketchId: feature.sketchId,
-    sourceSketchEntityId: feature.entityId,
+    sourceSketchId: feature.profile.sketchId,
+    sourceSketchEntityId: getFeatureEntityProfileRef(feature)!.entityId,
     role,
     geometricSignature: createGeneratedReferenceSignature(
       feature,
@@ -1158,8 +1148,8 @@ function createCircleAddProfileEdgeReferences(
       bodyId: feature.bodyId,
       ownerPartId,
       sourceFeatureId: feature.id,
-      sourceSketchId: feature.sketchId,
-      sourceSketchEntityId: feature.entityId,
+      sourceSketchId: feature.profile.sketchId,
+      sourceSketchEntityId: getFeatureEntityProfileRef(feature)!.entityId,
       role: "end:circular",
       adjacentFaceRoles: ["endCap", "side:circular"],
       geometricSignature: createGeneratedReferenceSignature(
@@ -1235,8 +1225,8 @@ function createBooleanAddProfileEdgeReference(
     bodyId: feature.bodyId,
     ownerPartId,
     sourceFeatureId: feature.id,
-    sourceSketchId: feature.sketchId,
-    sourceSketchEntityId: feature.entityId,
+    sourceSketchId: feature.profile.sketchId,
+    sourceSketchEntityId: getFeatureEntityProfileRef(feature)!.entityId,
     role,
     adjacentFaceRoles,
     geometricSignature: createGeneratedReferenceSignature(
@@ -1330,8 +1320,8 @@ function createBooleanCutWallFaceReference(
     bodyId: feature.bodyId,
     ownerPartId,
     sourceFeatureId: feature.id,
-    sourceSketchId: feature.sketchId,
-    sourceSketchEntityId: feature.entityId,
+    sourceSketchId: feature.profile.sketchId,
+    sourceSketchEntityId: getFeatureEntityProfileRef(feature)!.entityId,
     role,
     geometricSignature: createGeneratedReferenceSignature(
       feature,
@@ -1405,8 +1395,8 @@ function createBooleanCutCircularRimEdgeReference(
     bodyId: feature.bodyId,
     ownerPartId,
     sourceFeatureId: feature.id,
-    sourceSketchId: feature.sketchId,
-    sourceSketchEntityId: feature.entityId,
+    sourceSketchId: feature.profile.sketchId,
+    sourceSketchEntityId: getFeatureEntityProfileRef(feature)!.entityId,
     role,
     adjacentFaceRoles: [isStart ? "startCap" : "endCap", "side:circular"],
     geometricSignature: createGeneratedReferenceSignature(
@@ -1473,8 +1463,8 @@ function createBooleanCutWallProfileEdgeReference(
     bodyId: feature.bodyId,
     ownerPartId,
     sourceFeatureId: feature.id,
-    sourceSketchId: feature.sketchId,
-    sourceSketchEntityId: feature.entityId,
+    sourceSketchId: feature.profile.sketchId,
+    sourceSketchEntityId: getFeatureEntityProfileRef(feature)!.entityId,
     role,
     adjacentFaceRoles,
     geometricSignature: createGeneratedReferenceSignature(
@@ -1650,8 +1640,8 @@ function createGeneratedFaceReference(
     bodyId: feature.bodyId,
     ownerPartId,
     sourceFeatureId: feature.id,
-    sourceSketchId: feature.sketchId,
-    sourceSketchEntityId: feature.entityId,
+    sourceSketchId: feature.profile.sketchId,
+    sourceSketchEntityId: getFeatureEntityProfileRef(feature)!.entityId,
     role,
     geometricSignature: createGeneratedReferenceSignature(
       feature,
@@ -1684,8 +1674,8 @@ function createGeneratedEdgeReference(
     bodyId: feature.bodyId,
     ownerPartId,
     sourceFeatureId: feature.id,
-    sourceSketchId: feature.sketchId,
-    sourceSketchEntityId: feature.entityId,
+    sourceSketchId: feature.profile.sketchId,
+    sourceSketchEntityId: getFeatureEntityProfileRef(feature)!.entityId,
     role,
     adjacentFaceRoles,
     geometricSignature: createGeneratedReferenceSignature(
@@ -1720,8 +1710,8 @@ function createGeneratedVertexReference(
     bodyId: feature.bodyId,
     ownerPartId,
     sourceFeatureId: feature.id,
-    sourceSketchId: feature.sketchId,
-    sourceSketchEntityId: feature.entityId,
+    sourceSketchId: feature.profile.sketchId,
+    sourceSketchEntityId: getFeatureEntityProfileRef(feature)!.entityId,
     role,
     adjacentFaceRoles,
     adjacentEdgeRoles,
@@ -1924,7 +1914,7 @@ function createGeneratedReferenceSignature(
     sourceKind: "extrude",
     targetBodyId: feature.targetBodyId,
     targetTopologyAnchorId: feature.targetTopologyAnchorId,
-    profileKind: feature.profileKind,
+    profileKind: profile.kind,
     sketchPlane: sketch.plane,
     extrudeOperationMode: feature.operationMode,
     extrudeSide: feature.side,
@@ -1945,7 +1935,7 @@ function createRevolveGeneratedReferenceSignature(
 ): CadGeneratedReferenceSignature {
   return {
     sourceKind: "revolve",
-    profileKind: feature.profileKind,
+    profileKind: profile.kind,
     sketchPlane: sketch.plane,
     revolveAxis: feature.axis,
     revolveAxisSignature: axisSignature,
@@ -2100,9 +2090,10 @@ function createBodyReferenceLabel(
 }
 
 function createBodyReferenceDescription(
-  feature: GeneratedReferencesExtrudeFeature
+  feature: GeneratedReferencesExtrudeFeature,
+  profileKind: FeatureExtrudeProfileKind
 ): string {
-  return `Solid body generated by ${feature.profileKind} extrude feature ${feature.id}.`;
+  return `Solid body generated by ${profileKind} extrude feature ${feature.id}.`;
 }
 
 function createBodyEligibleOperations(): readonly CadGeneratedReferenceEligibleOperation[] {
