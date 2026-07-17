@@ -86,6 +86,19 @@ export const CAD_V16_PROJECT_SCHEMA_VERSION: CadV16ProjectSchemaVersion =
 export const CAD_V17_PROJECT_SCHEMA_VERSION: CadV17ProjectSchemaVersion =
   "web-cad.project.v21";
 
+export type CadProjectSchemaDiagnosticCode =
+  | "SCHEMA_UPGRADED_TO_V21"
+  | "SCHEMA_V21_SOURCE_INVALID";
+
+export interface CadProjectSchemaDiagnostic {
+  readonly code: CadProjectSchemaDiagnosticCode;
+  readonly severity: "info" | "error";
+  readonly message: string;
+  readonly path?: string;
+  readonly expected?: string;
+  readonly received?: string;
+}
+
 export type Vec2 = readonly [number, number];
 export type Vec3 = readonly [number, number, number];
 /** Row-major document-space rigid transform. Pattern instances never scale. */
@@ -169,7 +182,9 @@ export interface TorusDimensions {
 }
 
 export type CadObjectKind = "box" | "cylinder" | "sphere" | "cone" | "torus";
-export type SketchEntityKind =
+export type SketchEntityKind = "point" | "line" | "rectangle" | "circle";
+
+export type SketchEntityKindV21 =
   | "point"
   | "line"
   | "rectangle"
@@ -211,18 +226,6 @@ export interface SketchChainPathRef {
 }
 
 export type SketchPathRef = SketchEntityPathRef | SketchChainPathRef;
-
-export interface SketchGeometryPolicy {
-  readonly linearTolerance: 1e-7;
-  readonly angularToleranceDegrees: 0.1;
-  readonly minimumProfileArea: 1e-12;
-}
-
-export const SKETCH_GEOMETRY_POLICY = Object.freeze({
-  linearTolerance: 1e-7,
-  angularToleranceDegrees: 0.1,
-  minimumProfileArea: 1e-12
-}) satisfies SketchGeometryPolicy;
 
 export type SketchDimensionStatus =
   | "healthy"
@@ -633,19 +636,12 @@ export interface SketchAddCircleOp {
   readonly radius: number;
 }
 
-export type SketchAddPointOpV21 = SketchAddPointOp & {
-  readonly construction?: boolean;
-};
-
-export type SketchAddLineOpV21 = SketchAddLineOp & {
-  readonly construction?: boolean;
-};
-
-export type SketchAddRectangleOpV21 = SketchAddRectangleOp & {
-  readonly construction?: boolean;
-};
-
-export type SketchAddCircleOpV21 = SketchAddCircleOp & {
+export type SketchAddEntityOpV21 = (
+  | SketchAddPointOp
+  | SketchAddLineOp
+  | SketchAddRectangleOp
+  | SketchAddCircleOp
+) & {
   readonly construction?: boolean;
 };
 
@@ -850,11 +846,13 @@ export interface FeatureRevolveOp {
 
 export interface FeatureRevolveOpV21 extends Omit<
   FeatureRevolveOp,
-  "sketchId" | "entityId"
+  "sketchId" | "entityId" | "targetBodyId" | "operationMode"
 > {
   readonly profile: SketchProfileRef;
+  readonly operationMode: "newBody";
   readonly sketchId?: never;
   readonly entityId?: never;
+  readonly targetBodyId?: never;
 }
 
 export type FeatureRevolveCommandInput =
@@ -1077,28 +1075,24 @@ export interface FeatureUpdateRevolveOp {
   readonly angleDegrees: number;
 }
 
-export interface FeatureUpdateRevolveOpV21 extends Omit<
-  FeatureUpdateRevolveOp,
-  "angleDegrees"
-> {
-  readonly angleDegrees?: number;
-  readonly profile?: SketchProfileRef;
-  readonly sketchId?: never;
-  readonly entityId?: never;
-}
-
 export type FeatureUpdateRevolveCommandInput =
-  | (FeatureUpdateRevolveOpV21 & {
+  | (FeatureUpdateRevolveOp & {
       readonly profile?: never;
       readonly sketchId?: never;
       readonly entityId?: never;
     })
-  | (Omit<FeatureUpdateRevolveOpV21, "profile" | "sketchId" | "entityId"> & {
+  | (Omit<FeatureUpdateRevolveOp, "angleDegrees"> & {
+      readonly angleDegrees?: number;
       readonly profile?: never;
       readonly sketchId: SketchId;
       readonly entityId: SketchEntityId;
     })
-  | (FeatureUpdateRevolveOpV21 & { readonly profile: SketchProfileRef });
+  | (Omit<FeatureUpdateRevolveOp, "angleDegrees"> & {
+      readonly angleDegrees?: number;
+      readonly profile: SketchProfileRef;
+      readonly sketchId?: never;
+      readonly entityId?: never;
+    });
 
 export interface FeatureUpdateHoleOp {
   readonly op: "feature.updateHole";
@@ -1166,21 +1160,70 @@ export interface FeatureUpdateSweepOp {
   readonly pathEntityIds?: readonly SketchEntityId[];
 }
 
-export interface FeatureUpdateSweepOpV21 extends Omit<
-  FeatureUpdateSweepOp,
-  "profileSketchId" | "profileEntityId" | "pathSketchId" | "pathEntityIds"
-> {
-  readonly profile?: SketchEntityProfileRef;
-  readonly path?: SketchPathRef;
+type FeatureUpdateSweepBase = Pick<FeatureUpdateSweepOp, "op" | "id">;
+
+type FeatureUpdateSweepNoSourcePatch = {
+  readonly profile?: never;
+  readonly path?: never;
   readonly profileSketchId?: never;
   readonly profileEntityId?: never;
   readonly pathSketchId?: never;
   readonly pathEntityIds?: never;
-}
+};
 
-export type FeatureUpdateSweepCommandInput =
-  | FeatureUpdateSweepOp
-  | FeatureUpdateSweepOpV21;
+type FeatureUpdateSweepLegacyProfilePatch = {
+  readonly profile?: never;
+  readonly path?: never;
+  readonly profileSketchId: SketchId;
+  readonly profileEntityId: SketchEntityId;
+  readonly pathSketchId?: never;
+  readonly pathEntityIds?: never;
+};
+
+type FeatureUpdateSweepLegacyPathPatch = {
+  readonly profile?: never;
+  readonly path?: never;
+  readonly profileSketchId?: never;
+  readonly profileEntityId?: never;
+  readonly pathSketchId: SketchId;
+  readonly pathEntityIds: readonly SketchEntityId[];
+};
+
+type FeatureUpdateSweepLegacyCompletePatch = {
+  readonly profile?: never;
+  readonly path?: never;
+  readonly profileSketchId: SketchId;
+  readonly profileEntityId: SketchEntityId;
+  readonly pathSketchId: SketchId;
+  readonly pathEntityIds: readonly SketchEntityId[];
+};
+
+type FeatureUpdateSweepNormalizedPatch =
+  | {
+      readonly profile: SketchEntityProfileRef;
+      readonly path?: SketchPathRef;
+      readonly profileSketchId?: never;
+      readonly profileEntityId?: never;
+      readonly pathSketchId?: never;
+      readonly pathEntityIds?: never;
+    }
+  | {
+      readonly profile?: SketchEntityProfileRef;
+      readonly path: SketchPathRef;
+      readonly profileSketchId?: never;
+      readonly profileEntityId?: never;
+      readonly pathSketchId?: never;
+      readonly pathEntityIds?: never;
+    };
+
+export type FeatureUpdateSweepCommandInput = FeatureUpdateSweepBase &
+  (
+    | FeatureUpdateSweepNoSourcePatch
+    | FeatureUpdateSweepLegacyProfilePatch
+    | FeatureUpdateSweepLegacyPathPatch
+    | FeatureUpdateSweepLegacyCompletePatch
+    | FeatureUpdateSweepNormalizedPatch
+  );
 
 export interface FeatureUpdateLoftOp {
   readonly op: "feature.updateLoft";
@@ -1528,7 +1571,7 @@ export interface SketchEntitySemanticDiff {
   readonly sketchId: SketchId;
   readonly entityId: SketchEntityId;
   readonly action: "added" | "updated" | "deleted";
-  readonly entityKind: SketchEntityKind;
+  readonly entityKind: SketchEntityKindV21;
   readonly changedFields: readonly string[];
   readonly constructionBefore?: boolean;
   readonly constructionAfter?: boolean;
@@ -1665,7 +1708,6 @@ export type CadBatchValidationErrorCode =
   | "SKETCH_PROFILE_AREA_TOO_SMALL"
   | "SKETCH_PROFILE_MULTIPLE_REGIONS_UNSUPPORTED"
   | "SKETCH_PROFILE_INNER_LOOP_UNSUPPORTED"
-  | "SKETCH_PROFILE_ORIENTATION_NORMALIZED"
   | "SKETCH_PROFILE_CONSUMER_UNSUPPORTED"
   | "SKETCH_PATH_EMPTY"
   | "SKETCH_PATH_ENTITY_MISSING"
@@ -2125,39 +2167,6 @@ export interface SketchDimensionGetQuery {
   readonly id: SketchDimensionId;
 }
 
-export interface SketchProfileCandidatesQuery {
-  readonly query: "sketch.profileCandidates";
-  readonly sketchId: SketchId;
-}
-
-export type SketchProfileReadinessConsumer =
-  | {
-      readonly kind: "extrude";
-      readonly operationMode: FeatureExtrudeOperationMode;
-      readonly targetBodyId?: BodyId;
-    }
-  | {
-      readonly kind: "revolve";
-      readonly operationMode: "newBody";
-    };
-
-export interface SketchProfileReadinessQuery {
-  readonly query: "sketch.profileReadiness";
-  readonly profile: SketchProfileRef;
-  readonly consumer: SketchProfileReadinessConsumer;
-}
-
-export interface SketchPathCandidatesQuery {
-  readonly query: "sketch.pathCandidates";
-  readonly sketchId: SketchId;
-}
-
-export interface SketchPathReadinessQuery {
-  readonly query: "sketch.pathReadiness";
-  readonly path: SketchPathRef;
-  readonly sweepProfile?: SketchEntityProfileRef;
-}
-
 export interface BodyGeneratedReferencesQuery {
   readonly query: "body.generatedReferences";
   readonly bodyId: BodyId;
@@ -2323,26 +2332,6 @@ export interface SketchCircleEntitySnapshot {
   readonly radius: number;
 }
 
-/** Normalized V21 point source. Historical snapshot unions remain unchanged. */
-export interface SketchPointEntityV21 extends SketchPointEntitySnapshot {
-  readonly construction: boolean;
-}
-
-/** Normalized V21 line source. Historical snapshot unions remain unchanged. */
-export interface SketchLineEntityV21 extends SketchLineEntitySnapshot {
-  readonly construction: boolean;
-}
-
-/** Normalized V21 rectangle source. Historical snapshot unions remain unchanged. */
-export interface SketchRectangleEntityV21 extends SketchRectangleEntitySnapshot {
-  readonly construction: boolean;
-}
-
-/** Normalized V21 circle source. Historical snapshot unions remain unchanged. */
-export interface SketchCircleEntityV21 extends SketchCircleEntitySnapshot {
-  readonly construction: boolean;
-}
-
 export interface SketchArcEntity {
   readonly id: SketchEntityId;
   readonly kind: "arc";
@@ -2356,14 +2345,11 @@ export interface SketchArcEntity {
 }
 
 export type SketchEntityV21 =
-  | SketchPointEntityV21
-  | SketchLineEntityV21
-  | SketchRectangleEntityV21
-  | SketchCircleEntityV21
+  | (SketchPointEntitySnapshot & { readonly construction: boolean })
+  | (SketchLineEntitySnapshot & { readonly construction: boolean })
+  | (SketchRectangleEntitySnapshot & { readonly construction: boolean })
+  | (SketchCircleEntitySnapshot & { readonly construction: boolean })
   | SketchArcEntity;
-
-export type SketchArcEntitySnapshot = SketchArcEntity;
-export type SketchEntitySnapshotV21 = SketchEntityV21;
 
 export interface CadParameterSnapshot {
   readonly id: ParameterId;
@@ -7167,117 +7153,6 @@ export interface SketchDimensionGetQueryResponse {
   readonly dimension: SketchDimensionEntry;
 }
 
-export type SketchReferenceReadinessStatus = "ready" | "blocked";
-export type SketchReferenceDiagnosticSeverity = "info" | "warning" | "blocker";
-
-export interface SketchReferenceDiagnostic {
-  readonly code: CadBatchValidationErrorCode;
-  readonly severity: SketchReferenceDiagnosticSeverity;
-  readonly message: string;
-  readonly sketchId?: SketchId;
-  readonly entityId?: SketchEntityId;
-  readonly segmentIndex?: number;
-  readonly expected?: string;
-  readonly received?: string;
-}
-
-export interface SketchBounds2d {
-  readonly min: Vec2;
-  readonly max: Vec2;
-}
-
-export interface SketchProfileJoinHealth {
-  readonly previousEntityId: SketchEntityId;
-  readonly nextEntityId: SketchEntityId;
-  readonly coincidentWithinTolerance: boolean;
-  readonly gap: number;
-}
-
-export interface SketchProfileCandidate {
-  readonly profile: SketchProfileRef;
-  readonly status: SketchReferenceReadinessStatus;
-  readonly area: number;
-  readonly orientation: "counterclockwise";
-  readonly bounds: SketchBounds2d;
-  readonly joins: readonly SketchProfileJoinHealth[];
-  readonly diagnostics: readonly SketchReferenceDiagnostic[];
-}
-
-export interface SketchProfileRejectedComponent {
-  readonly entityIds: readonly SketchEntityId[];
-  readonly diagnostics: readonly SketchReferenceDiagnostic[];
-}
-
-export interface SketchProfileCandidatesQueryResponse {
-  readonly ok: true;
-  readonly query: "sketch.profileCandidates";
-  readonly cadOpsVersion: CadOpsVersion;
-  readonly sketchId: SketchId;
-  readonly candidates: readonly SketchProfileCandidate[];
-  readonly rejectedComponents: readonly SketchProfileRejectedComponent[];
-  readonly constructionExcludedEntityIds: readonly SketchEntityId[];
-  readonly mutatesSource: false;
-}
-
-export interface SketchProfileReadinessQueryResponse {
-  readonly ok: true;
-  readonly query: "sketch.profileReadiness";
-  readonly cadOpsVersion: CadOpsVersion;
-  readonly status: SketchReferenceReadinessStatus;
-  readonly profile: SketchProfileRef;
-  readonly normalizedProfile?: SketchProfileRef;
-  readonly orientation?: "clockwise" | "counterclockwise";
-  readonly area?: number;
-  readonly sketchIds: readonly SketchId[];
-  readonly entityIds: readonly SketchEntityId[];
-  readonly targetCompatible?: boolean;
-  readonly diagnostics: readonly SketchReferenceDiagnostic[];
-  readonly mutatesSource: false;
-}
-
-export interface SketchPathJoinHealth {
-  readonly previousEntityId: SketchEntityId;
-  readonly nextEntityId: SketchEntityId;
-  readonly coincidentWithinTolerance: boolean;
-  readonly tangentWithinTolerance: boolean;
-  readonly gap: number;
-  readonly tangentAngleDegrees?: number;
-}
-
-export interface SketchPathCandidate {
-  readonly path: SketchPathRef;
-  readonly status: SketchReferenceReadinessStatus;
-  readonly joins: readonly SketchPathJoinHealth[];
-  readonly diagnostics: readonly SketchReferenceDiagnostic[];
-}
-
-export interface SketchPathCandidatesQueryResponse {
-  readonly ok: true;
-  readonly query: "sketch.pathCandidates";
-  readonly cadOpsVersion: CadOpsVersion;
-  readonly sketchId: SketchId;
-  readonly candidates: readonly SketchPathCandidate[];
-  readonly rejectedComponents: readonly SketchProfileRejectedComponent[];
-  readonly mutatesSource: false;
-}
-
-export interface SketchPathReadinessQueryResponse {
-  readonly ok: true;
-  readonly query: "sketch.pathReadiness";
-  readonly cadOpsVersion: CadOpsVersion;
-  readonly status: SketchReferenceReadinessStatus;
-  readonly path: SketchPathRef;
-  readonly sketchIds: readonly SketchId[];
-  readonly entityIds: readonly SketchEntityId[];
-  readonly joins: readonly SketchPathJoinHealth[];
-  readonly connected: boolean;
-  readonly tangent: boolean;
-  readonly selfIntersects: boolean;
-  readonly frameValid?: boolean;
-  readonly diagnostics: readonly SketchReferenceDiagnostic[];
-  readonly mutatesSource: false;
-}
-
 export interface BodyGeneratedReferencesQueryResponse {
   readonly ok: true;
   readonly query: "body.generatedReferences";
@@ -7475,1049 +7350,6 @@ export interface CadQueryErrorResponse {
   readonly query: CadQueryKind;
   readonly cadOpsVersion: CadOpsVersion;
   readonly error: CadQueryError;
-}
-
-export type V17ProtocolValidationIssueCode =
-  | "SKETCH_ARC_DEFINITION_INVALID"
-  | "SKETCH_ARC_THREE_POINT_COLLINEAR"
-  | "SKETCH_ARC_POINTS_COINCIDENT"
-  | "SKETCH_ARC_RADIUS_INVALID"
-  | "SKETCH_ARC_SWEEP_INVALID"
-  | "SKETCH_ARC_FULL_CIRCLE_USE_CIRCLE"
-  | "SKETCH_ENTITY_CONSTRUCTION_INVALID"
-  | "SKETCH_PROFILE_EMPTY"
-  | "SKETCH_PROFILE_ENTITY_REPEATED"
-  | "SKETCH_PATH_EMPTY"
-  | "SKETCH_PATH_ENTITY_REPEATED"
-  | "COMMAND_INPUT_AMBIGUOUS"
-  | "SCHEMA_V21_SOURCE_INVALID";
-
-export interface V17ProtocolValidationIssue {
-  readonly code: V17ProtocolValidationIssueCode;
-  readonly path: string;
-  readonly message: string;
-  readonly expected?: string;
-  readonly received?: string;
-}
-
-export type V17ProtocolValidationResult<T> =
-  | { readonly ok: true; readonly value: T }
-  | {
-      readonly ok: false;
-      readonly issues: readonly V17ProtocolValidationIssue[];
-    };
-
-export interface CanonicalSketchArcGeometry {
-  readonly center: Vec2;
-  readonly radius: number;
-  readonly startAngleDegrees: number;
-  readonly sweepAngleDegrees: number;
-}
-
-function v17Invalid<T>(
-  code: V17ProtocolValidationIssueCode,
-  path: string,
-  message: string,
-  expected?: string,
-  received?: string
-): V17ProtocolValidationResult<T> {
-  return {
-    ok: false,
-    issues: [{ code, path, message, expected, received }]
-  };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isFiniteVec2(value: unknown): value is Vec2 {
-  return (
-    Array.isArray(value) &&
-    value.length === 2 &&
-    typeof value[0] === "number" &&
-    Number.isFinite(value[0]) &&
-    typeof value[1] === "number" &&
-    Number.isFinite(value[1])
-  );
-}
-
-function isNonEmptyId(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0;
-}
-
-function hasOnlyKeys(
-  value: Record<string, unknown>,
-  allowedKeys: readonly string[]
-): boolean {
-  const allowed = new Set(allowedKeys);
-  return Object.keys(value).every((key) => allowed.has(key));
-}
-
-function canonicalZero(value: number): number {
-  return Object.is(value, -0) ? 0 : value;
-}
-
-/** Normalizes any finite authored start angle to canonical [0, 360). */
-export function normalizeSketchArcStartAngleDegrees(
-  angleDegrees: number
-): number {
-  if (!Number.isFinite(angleDegrees)) {
-    return Number.NaN;
-  }
-  return canonicalZero(((angleDegrees % 360) + 360) % 360);
-}
-
-function validateArcRadius(
-  radius: number,
-  policy: SketchGeometryPolicy,
-  path: string
-): V17ProtocolValidationResult<number> {
-  if (!Number.isFinite(radius) || radius <= policy.linearTolerance) {
-    return v17Invalid(
-      "SKETCH_ARC_RADIUS_INVALID",
-      path,
-      "Arc radius must be finite and greater than the sketch linear tolerance.",
-      `>${policy.linearTolerance}`,
-      String(radius)
-    );
-  }
-  return { ok: true, value: canonicalZero(radius) };
-}
-
-function validateArcSweep(
-  sweepAngleDegrees: number,
-  policy: SketchGeometryPolicy,
-  path: string
-): V17ProtocolValidationResult<number> {
-  if (!Number.isFinite(sweepAngleDegrees)) {
-    return v17Invalid(
-      "SKETCH_ARC_SWEEP_INVALID",
-      path,
-      "Arc sweep must be finite.",
-      "finite signed degrees",
-      String(sweepAngleDegrees)
-    );
-  }
-  if (Math.abs(sweepAngleDegrees) === 360) {
-    return v17Invalid(
-      "SKETCH_ARC_FULL_CIRCLE_USE_CIRCLE",
-      path,
-      "A full circle must use a circle entity.",
-      `abs(sweep) <= ${360 - policy.angularToleranceDegrees}`,
-      String(sweepAngleDegrees)
-    );
-  }
-  const magnitude = Math.abs(sweepAngleDegrees);
-  if (
-    magnitude < policy.angularToleranceDegrees ||
-    magnitude > 360 - policy.angularToleranceDegrees
-  ) {
-    return v17Invalid(
-      "SKETCH_ARC_SWEEP_INVALID",
-      path,
-      "Arc sweep is outside the supported angular bounds.",
-      `${policy.angularToleranceDegrees} <= abs(sweep) <= ${360 - policy.angularToleranceDegrees}`,
-      String(sweepAngleDegrees)
-    );
-  }
-  return { ok: true, value: canonicalZero(sweepAngleDegrees) };
-}
-
-function canonicalizeCenterAnglesArc(
-  definition: SketchArcCenterAnglesDefinition,
-  policy: SketchGeometryPolicy
-): V17ProtocolValidationResult<CanonicalSketchArcGeometry> {
-  if (!isFiniteVec2(definition.center)) {
-    return v17Invalid(
-      "SKETCH_ARC_DEFINITION_INVALID",
-      "definition.center",
-      "Arc center must contain two finite coordinates."
-    );
-  }
-  if (!Number.isFinite(definition.startAngleDegrees)) {
-    return v17Invalid(
-      "SKETCH_ARC_DEFINITION_INVALID",
-      "definition.startAngleDegrees",
-      "Arc start angle must be finite."
-    );
-  }
-  const radius = validateArcRadius(
-    definition.radius,
-    policy,
-    "definition.radius"
-  );
-  if (!radius.ok) return radius;
-  const sweep = validateArcSweep(
-    definition.sweepAngleDegrees,
-    policy,
-    "definition.sweepAngleDegrees"
-  );
-  if (!sweep.ok) return sweep;
-  return {
-    ok: true,
-    value: {
-      center: [
-        canonicalZero(definition.center[0]),
-        canonicalZero(definition.center[1])
-      ],
-      radius: radius.value,
-      startAngleDegrees: normalizeSketchArcStartAngleDegrees(
-        definition.startAngleDegrees
-      ),
-      sweepAngleDegrees: sweep.value
-    }
-  };
-}
-
-function squaredDistance(a: Vec2, b: Vec2): number {
-  const dx = a[0] - b[0];
-  const dy = a[1] - b[1];
-  return dx * dx + dy * dy;
-}
-
-function canonicalizeThreePointArc(
-  definition: SketchArcThreePointDefinition,
-  policy: SketchGeometryPolicy
-): V17ProtocolValidationResult<CanonicalSketchArcGeometry> {
-  const points = [definition.start, definition.pointOnArc, definition.end];
-  const paths = ["definition.start", "definition.pointOnArc", "definition.end"];
-  for (let index = 0; index < points.length; index += 1) {
-    if (!isFiniteVec2(points[index])) {
-      return v17Invalid(
-        "SKETCH_ARC_DEFINITION_INVALID",
-        paths[index] ?? "definition",
-        "Three-point arc inputs must contain finite coordinates."
-      );
-    }
-  }
-  const start = definition.start;
-  const middle = definition.pointOnArc;
-  const end = definition.end;
-  const coincidenceLimitSquared = policy.linearTolerance ** 2;
-  if (
-    squaredDistance(start, middle) <= coincidenceLimitSquared ||
-    squaredDistance(start, end) <= coincidenceLimitSquared ||
-    squaredDistance(middle, end) <= coincidenceLimitSquared
-  ) {
-    return v17Invalid(
-      "SKETCH_ARC_POINTS_COINCIDENT",
-      "definition",
-      "Three-point arc inputs must be distinct beyond the linear tolerance."
-    );
-  }
-
-  const ax = start[0];
-  const ay = start[1];
-  const bx = middle[0];
-  const by = middle[1];
-  const cx = end[0];
-  const cy = end[1];
-  const ux = bx - ax;
-  const uy = by - ay;
-  const vx = cx - ax;
-  const vy = cy - ay;
-  const cross = ux * vy - uy * vx;
-  const scale = Math.max(
-    Math.sqrt(squaredDistance(start, middle)),
-    Math.sqrt(squaredDistance(start, end)),
-    Math.sqrt(squaredDistance(middle, end))
-  );
-  if (
-    !Number.isFinite(cross) ||
-    Math.abs(cross) <= policy.linearTolerance * scale
-  ) {
-    return v17Invalid(
-      "SKETCH_ARC_THREE_POINT_COLLINEAR",
-      "definition",
-      "Three-point arc inputs must define a unique finite circle."
-    );
-  }
-
-  const uSquared = ux * ux + uy * uy;
-  const vSquared = vx * vx + vy * vy;
-  const denominator = 2 * cross;
-  const centerX = ax + (uSquared * vy - vSquared * uy) / denominator;
-  const centerY = ay + (ux * vSquared - vx * uSquared) / denominator;
-  const radius = Math.hypot(ax - centerX, ay - centerY);
-  if (!Number.isFinite(centerX) || !Number.isFinite(centerY)) {
-    return v17Invalid(
-      "SKETCH_ARC_DEFINITION_INVALID",
-      "definition",
-      "Three-point arc conversion did not produce a finite center."
-    );
-  }
-  const radiusResult = validateArcRadius(radius, policy, "definition");
-  if (!radiusResult.ok) return radiusResult;
-
-  const startAngle = normalizeSketchArcStartAngleDegrees(
-    (Math.atan2(ay - centerY, ax - centerX) * 180) / Math.PI
-  );
-  const middleAngle = normalizeSketchArcStartAngleDegrees(
-    (Math.atan2(by - centerY, bx - centerX) * 180) / Math.PI
-  );
-  const endAngle = normalizeSketchArcStartAngleDegrees(
-    (Math.atan2(cy - centerY, cx - centerX) * 180) / Math.PI
-  );
-  const ccwMiddle = normalizeSketchArcStartAngleDegrees(
-    middleAngle - startAngle
-  );
-  const ccwEnd = normalizeSketchArcStartAngleDegrees(endAngle - startAngle);
-  const sweep = ccwMiddle < ccwEnd ? ccwEnd : ccwEnd - 360;
-  const sweepResult = validateArcSweep(sweep, policy, "definition");
-  if (!sweepResult.ok) return sweepResult;
-
-  return {
-    ok: true,
-    value: {
-      center: [canonicalZero(centerX), canonicalZero(centerY)],
-      radius: radiusResult.value,
-      startAngleDegrees: startAngle,
-      sweepAngleDegrees: sweepResult.value
-    }
-  };
-}
-
-/** Converts create-tool arc input into the only persisted V21 arc geometry. */
-export function canonicalizeSketchArcDefinition(
-  definition: SketchArcDefinition,
-  policy: SketchGeometryPolicy = SKETCH_GEOMETRY_POLICY
-): V17ProtocolValidationResult<CanonicalSketchArcGeometry> {
-  if (!isRecord(definition)) {
-    return v17Invalid(
-      "SKETCH_ARC_DEFINITION_INVALID",
-      "definition",
-      "Arc definition must be an object."
-    );
-  }
-  if (definition.kind === "centerAngles") {
-    return canonicalizeCenterAnglesArc(definition, policy);
-  }
-  if (definition.kind === "threePoint") {
-    return canonicalizeThreePointArc(definition, policy);
-  }
-  return v17Invalid(
-    "SKETCH_ARC_DEFINITION_INVALID",
-    "definition.kind",
-    "Arc definition kind must be centerAngles or threePoint."
-  );
-}
-
-/** Builds a canonical V21 arc snapshot from either supported create input. */
-export function createCanonicalSketchArcEntity(
-  id: SketchEntityId,
-  definition: SketchArcDefinition,
-  construction = false,
-  policy: SketchGeometryPolicy = SKETCH_GEOMETRY_POLICY
-): V17ProtocolValidationResult<SketchArcEntity> {
-  if (!isNonEmptyId(id)) {
-    return v17Invalid(
-      "SCHEMA_V21_SOURCE_INVALID",
-      "id",
-      "Arc entity ID must be a non-empty string."
-    );
-  }
-  if (typeof construction !== "boolean") {
-    return v17Invalid(
-      "SKETCH_ENTITY_CONSTRUCTION_INVALID",
-      "construction",
-      "Construction state must be boolean."
-    );
-  }
-  const geometry = canonicalizeSketchArcDefinition(definition, policy);
-  if (!geometry.ok) return geometry;
-  return {
-    ok: true,
-    value: { id, kind: "arc", ...geometry.value, construction }
-  };
-}
-
-/** Strict stored-source validation; unlike command conversion, import never normalizes. */
-export function validateSketchArcEntity(
-  value: unknown,
-  policy: SketchGeometryPolicy = SKETCH_GEOMETRY_POLICY
-): V17ProtocolValidationResult<SketchArcEntity> {
-  if (!isRecord(value) || value.kind !== "arc" || !isNonEmptyId(value.id)) {
-    return v17Invalid(
-      "SCHEMA_V21_SOURCE_INVALID",
-      "entity",
-      "Stored arc must have a non-empty ID and kind arc."
-    );
-  }
-  if (
-    !hasOnlyKeys(value, [
-      "id",
-      "kind",
-      "center",
-      "radius",
-      "startAngleDegrees",
-      "sweepAngleDegrees",
-      "construction"
-    ])
-  ) {
-    return v17Invalid(
-      "SCHEMA_V21_SOURCE_INVALID",
-      "entity",
-      "Stored arcs may contain only canonical V21 source fields."
-    );
-  }
-  if (typeof value.construction !== "boolean") {
-    return v17Invalid(
-      "SKETCH_ENTITY_CONSTRUCTION_INVALID",
-      "entity.construction",
-      "Stored V21 construction state must be boolean."
-    );
-  }
-  if (!isFiniteVec2(value.center)) {
-    return v17Invalid(
-      "SKETCH_ARC_DEFINITION_INVALID",
-      "entity.center",
-      "Stored arc center must contain finite coordinates."
-    );
-  }
-  const radius = validateArcRadius(
-    value.radius as number,
-    policy,
-    "entity.radius"
-  );
-  if (!radius.ok) return radius;
-  if (
-    typeof value.startAngleDegrees !== "number" ||
-    !Number.isFinite(value.startAngleDegrees) ||
-    value.startAngleDegrees < 0 ||
-    value.startAngleDegrees >= 360 ||
-    Object.is(value.startAngleDegrees, -0)
-  ) {
-    return v17Invalid(
-      "SCHEMA_V21_SOURCE_INVALID",
-      "entity.startAngleDegrees",
-      "Stored V21 arc start angle must already be canonical in [0, 360)."
-    );
-  }
-  const sweep = validateArcSweep(
-    value.sweepAngleDegrees as number,
-    policy,
-    "entity.sweepAngleDegrees"
-  );
-  if (!sweep.ok) return sweep;
-  return {
-    ok: true,
-    value: {
-      id: value.id,
-      kind: "arc",
-      center: [canonicalZero(value.center[0]), canonicalZero(value.center[1])],
-      radius: radius.value,
-      startAngleDegrees: value.startAngleDegrees,
-      sweepAngleDegrees: sweep.value,
-      construction: value.construction
-    }
-  };
-}
-
-/** Structural validation shared by V21 import and canonical-source readers. */
-export function validateSketchEntityV21(
-  value: unknown,
-  policy: SketchGeometryPolicy = SKETCH_GEOMETRY_POLICY
-): V17ProtocolValidationResult<SketchEntityV21> {
-  if (isRecord(value) && value.kind === "arc") {
-    return validateSketchArcEntity(value, policy);
-  }
-  if (
-    !isRecord(value) ||
-    !isNonEmptyId(value.id) ||
-    typeof value.construction !== "boolean"
-  ) {
-    return v17Invalid(
-      isRecord(value) && typeof value.construction !== "boolean"
-        ? "SKETCH_ENTITY_CONSTRUCTION_INVALID"
-        : "SCHEMA_V21_SOURCE_INVALID",
-      "entity",
-      "Every normalized V21 sketch entity requires identity, kind, and boolean construction state."
-    );
-  }
-  const common = { id: value.id, construction: value.construction };
-  if (
-    value.kind === "point" &&
-    isFiniteVec2(value.point) &&
-    hasOnlyKeys(value, ["id", "kind", "point", "construction"])
-  ) {
-    return {
-      ok: true,
-      value: { ...common, kind: "point", point: value.point }
-    };
-  }
-  if (
-    value.kind === "line" &&
-    isFiniteVec2(value.start) &&
-    isFiniteVec2(value.end) &&
-    hasOnlyKeys(value, ["id", "kind", "start", "end", "construction"])
-  ) {
-    return {
-      ok: true,
-      value: { ...common, kind: "line", start: value.start, end: value.end }
-    };
-  }
-  if (
-    value.kind === "rectangle" &&
-    isFiniteVec2(value.center) &&
-    typeof value.width === "number" &&
-    Number.isFinite(value.width) &&
-    value.width > 0 &&
-    typeof value.height === "number" &&
-    Number.isFinite(value.height) &&
-    value.height > 0 &&
-    hasOnlyKeys(value, [
-      "id",
-      "kind",
-      "center",
-      "width",
-      "height",
-      "construction"
-    ])
-  ) {
-    return {
-      ok: true,
-      value: {
-        ...common,
-        kind: "rectangle",
-        center: value.center,
-        width: value.width,
-        height: value.height
-      }
-    };
-  }
-  if (
-    value.kind === "circle" &&
-    isFiniteVec2(value.center) &&
-    typeof value.radius === "number" &&
-    Number.isFinite(value.radius) &&
-    value.radius > 0 &&
-    hasOnlyKeys(value, ["id", "kind", "center", "radius", "construction"])
-  ) {
-    return {
-      ok: true,
-      value: {
-        ...common,
-        kind: "circle",
-        center: value.center,
-        radius: value.radius
-      }
-    };
-  }
-  return v17Invalid(
-    "SCHEMA_V21_SOURCE_INVALID",
-    "entity",
-    "Normalized V21 sketch entity has invalid or non-canonical fields."
-  );
-}
-
-function validateSegmentRefs(
-  value: unknown,
-  path: string,
-  emptyCode: "SKETCH_PROFILE_EMPTY" | "SKETCH_PATH_EMPTY",
-  repeatedCode: "SKETCH_PROFILE_ENTITY_REPEATED" | "SKETCH_PATH_ENTITY_REPEATED"
-): V17ProtocolValidationResult<readonly OrientedSketchSegmentRef[]> {
-  if (!Array.isArray(value) || value.length < 2) {
-    return v17Invalid(
-      emptyCode,
-      path,
-      "An ordered wire or chain must contain at least two segments."
-    );
-  }
-  const seen = new Set<string>();
-  const segments: OrientedSketchSegmentRef[] = [];
-  for (let index = 0; index < value.length; index += 1) {
-    const segment = value[index];
-    if (
-      !isRecord(segment) ||
-      !isNonEmptyId(segment.entityId) ||
-      (segment.orientation !== "forward" && segment.orientation !== "reverse")
-    ) {
-      return v17Invalid(
-        "SCHEMA_V21_SOURCE_INVALID",
-        `${path}[${index}]`,
-        "Segment references require a non-empty entityId and explicit orientation."
-      );
-    }
-    if (seen.has(segment.entityId)) {
-      return v17Invalid(
-        repeatedCode,
-        `${path}[${index}].entityId`,
-        "An entity may occur only once in an ordered reference."
-      );
-    }
-    seen.add(segment.entityId);
-    segments.push({
-      entityId: segment.entityId,
-      orientation: segment.orientation
-    });
-  }
-  return { ok: true, value: segments };
-}
-
-export function validateSketchProfileRef(
-  value: unknown,
-  path = "profile"
-): V17ProtocolValidationResult<SketchProfileRef> {
-  if (!isRecord(value) || !isNonEmptyId(value.sketchId)) {
-    return v17Invalid(
-      "SCHEMA_V21_SOURCE_INVALID",
-      path,
-      "Profile reference requires a non-empty sketchId."
-    );
-  }
-  if (value.kind === "entity" && isNonEmptyId(value.entityId)) {
-    if (hasOwn(value, "segments") || hasOwn(value, "orientation")) {
-      return v17Invalid(
-        "SCHEMA_V21_SOURCE_INVALID",
-        path,
-        "Entity profile references cannot contain wire or path fields."
-      );
-    }
-    return {
-      ok: true,
-      value: {
-        kind: "entity",
-        sketchId: value.sketchId,
-        entityId: value.entityId
-      }
-    };
-  }
-  if (value.kind === "wire") {
-    if (hasOwn(value, "entityId") || hasOwn(value, "orientation")) {
-      return v17Invalid(
-        "SCHEMA_V21_SOURCE_INVALID",
-        path,
-        "Wire profile references cannot contain entity-path fields."
-      );
-    }
-    const segments = validateSegmentRefs(
-      value.segments,
-      `${path}.segments`,
-      "SKETCH_PROFILE_EMPTY",
-      "SKETCH_PROFILE_ENTITY_REPEATED"
-    );
-    if (!segments.ok) return segments;
-    return {
-      ok: true,
-      value: {
-        kind: "wire",
-        sketchId: value.sketchId,
-        segments: segments.value
-      }
-    };
-  }
-  return v17Invalid(
-    "SCHEMA_V21_SOURCE_INVALID",
-    path,
-    "Profile reference must be an entity or wire reference."
-  );
-}
-
-export function validateSketchPathRef(
-  value: unknown,
-  path = "path"
-): V17ProtocolValidationResult<SketchPathRef> {
-  if (!isRecord(value) || !isNonEmptyId(value.sketchId)) {
-    return v17Invalid(
-      "SCHEMA_V21_SOURCE_INVALID",
-      path,
-      "Path reference requires a non-empty sketchId."
-    );
-  }
-  if (
-    value.kind === "entity" &&
-    isNonEmptyId(value.entityId) &&
-    (value.orientation === "forward" || value.orientation === "reverse")
-  ) {
-    if (hasOwn(value, "segments")) {
-      return v17Invalid(
-        "SCHEMA_V21_SOURCE_INVALID",
-        path,
-        "Entity path references cannot contain chain segments."
-      );
-    }
-    return {
-      ok: true,
-      value: {
-        kind: "entity",
-        sketchId: value.sketchId,
-        entityId: value.entityId,
-        orientation: value.orientation
-      }
-    };
-  }
-  if (value.kind === "chain") {
-    if (hasOwn(value, "entityId") || hasOwn(value, "orientation")) {
-      return v17Invalid(
-        "SCHEMA_V21_SOURCE_INVALID",
-        path,
-        "Chain path references cannot contain entity-path fields."
-      );
-    }
-    const segments = validateSegmentRefs(
-      value.segments,
-      `${path}.segments`,
-      "SKETCH_PATH_EMPTY",
-      "SKETCH_PATH_ENTITY_REPEATED"
-    );
-    if (!segments.ok) return segments;
-    return {
-      ok: true,
-      value: {
-        kind: "chain",
-        sketchId: value.sketchId,
-        segments: segments.value
-      }
-    };
-  }
-  return v17Invalid(
-    "SCHEMA_V21_SOURCE_INVALID",
-    path,
-    "Path reference must be an oriented entity or ordered chain reference."
-  );
-}
-
-export function validateSketchPointTargetV21(
-  value: unknown,
-  path = "target"
-): V17ProtocolValidationResult<SketchPointTargetV21> {
-  if (!isRecord(value) || !isNonEmptyId(value.entityId)) {
-    return v17Invalid(
-      "SCHEMA_V21_SOURCE_INVALID",
-      path,
-      "Point target requires a non-empty entityId."
-    );
-  }
-  if (value.entityKind === "arc") {
-    if (
-      value.role !== "center" &&
-      value.role !== "start" &&
-      value.role !== "end"
-    ) {
-      return v17Invalid(
-        "SCHEMA_V21_SOURCE_INVALID",
-        `${path}.role`,
-        "Arc point target role must be center, start, or end."
-      );
-    }
-    return {
-      ok: true,
-      value: { entityId: value.entityId, entityKind: "arc", role: value.role }
-    };
-  }
-  if (hasOwn(value, "entityKind")) {
-    return v17Invalid(
-      "SCHEMA_V21_SOURCE_INVALID",
-      `${path}.entityKind`,
-      "Only arc point targets store entityKind in V21."
-    );
-  }
-  if (
-    value.role !== "position" &&
-    value.role !== "start" &&
-    value.role !== "end" &&
-    value.role !== "center"
-  ) {
-    return v17Invalid(
-      "SCHEMA_V21_SOURCE_INVALID",
-      `${path}.role`,
-      "Legacy point target role is invalid."
-    );
-  }
-  return { ok: true, value: { entityId: value.entityId, role: value.role } };
-}
-
-function validateRadiusCurveTarget(
-  value: unknown,
-  path: string
-): V17ProtocolValidationResult<SketchRadiusCurveTarget> {
-  if (
-    !isRecord(value) ||
-    !isNonEmptyId(value.entityId) ||
-    (value.entityKind !== "circle" && value.entityKind !== "arc")
-  ) {
-    return v17Invalid(
-      "SCHEMA_V21_SOURCE_INVALID",
-      path,
-      "Radius curve target requires a non-empty entityId and circle or arc entityKind."
-    );
-  }
-  return {
-    ok: true,
-    value: { entityId: value.entityId, entityKind: value.entityKind }
-  };
-}
-
-/** Validates normalized V21 concentric/equal-radius source and rejects legacy mixing. */
-export function validateSketchRadiusConstraintV21(
-  value: unknown,
-  path = "constraint"
-): V17ProtocolValidationResult<SketchRadiusConstraintV21> {
-  if (
-    !isRecord(value) ||
-    (value.kind !== "concentric" && value.kind !== "equalRadius") ||
-    !isNonEmptyId(value.id) ||
-    !isNonEmptyId(value.name) ||
-    !isNonEmptyId(value.sketchId) ||
-    !isNonEmptyId(value.entityId)
-  ) {
-    return v17Invalid(
-      "SCHEMA_V21_SOURCE_INVALID",
-      path,
-      "Normalized radius constraint requires identity fields and a supported kind."
-    );
-  }
-  const hasPrimary = hasOwn(value, "primaryTarget");
-  const hasSecondary = hasOwn(value, "secondaryTarget");
-  const hasLegacy =
-    hasOwn(value, "primaryCircleEntityId") ||
-    hasOwn(value, "secondaryCircleEntityId");
-  if ((hasPrimary || hasSecondary) && hasLegacy) {
-    return v17Invalid(
-      "COMMAND_INPUT_AMBIGUOUS",
-      path,
-      "V21 radius constraints cannot mix normalized targets and legacy circle ID fields."
-    );
-  }
-  if (!hasPrimary || !hasSecondary || hasLegacy) {
-    return v17Invalid(
-      "SCHEMA_V21_SOURCE_INVALID",
-      path,
-      "V21 radius constraints require complete primaryTarget and secondaryTarget fields."
-    );
-  }
-  const primary = validateRadiusCurveTarget(
-    value.primaryTarget,
-    `${path}.primaryTarget`
-  );
-  if (!primary.ok) return primary;
-  const secondary = validateRadiusCurveTarget(
-    value.secondaryTarget,
-    `${path}.secondaryTarget`
-  );
-  if (!secondary.ok) return secondary;
-  const common = {
-    id: value.id,
-    name: value.name,
-    sketchId: value.sketchId,
-    entityId: value.entityId,
-    primaryTarget: primary.value,
-    secondaryTarget: secondary.value
-  };
-  return value.kind === "concentric"
-    ? { ok: true, value: { ...common, kind: "concentric" } }
-    : { ok: true, value: { ...common, kind: "equalRadius" } };
-}
-
-function hasOwn(value: Record<string, unknown>, key: string): boolean {
-  return Object.prototype.hasOwnProperty.call(value, key);
-}
-
-function validateProfileInputForm(
-  value: Record<string, unknown>,
-  allowAbsent: boolean
-): V17ProtocolValidationResult<SketchProfileRef | undefined> {
-  const hasProfile = hasOwn(value, "profile");
-  const hasSketchId = hasOwn(value, "sketchId");
-  const hasEntityId = hasOwn(value, "entityId");
-  if (hasProfile && (hasSketchId || hasEntityId)) {
-    return v17Invalid(
-      "COMMAND_INPUT_AMBIGUOUS",
-      "profile",
-      "Provide either profile or the complete legacy sketchId/entityId pair, never both."
-    );
-  }
-  if (hasProfile) return validateSketchProfileRef(value.profile);
-  if (hasSketchId !== hasEntityId) {
-    return v17Invalid(
-      "SCHEMA_V21_SOURCE_INVALID",
-      "profile",
-      "Legacy profile input requires both sketchId and entityId."
-    );
-  }
-  if (hasSketchId && hasEntityId) {
-    if (!isNonEmptyId(value.sketchId) || !isNonEmptyId(value.entityId)) {
-      return v17Invalid(
-        "SCHEMA_V21_SOURCE_INVALID",
-        "profile",
-        "Legacy profile IDs must be non-empty strings."
-      );
-    }
-    return {
-      ok: true,
-      value: {
-        kind: "entity",
-        sketchId: value.sketchId,
-        entityId: value.entityId
-      }
-    };
-  }
-  if (allowAbsent) return { ok: true, value: undefined };
-  return v17Invalid(
-    "SCHEMA_V21_SOURCE_INVALID",
-    "profile",
-    "A normalized profile or complete legacy profile input is required."
-  );
-}
-
-/** Validates V21 normalized versus V20 compatibility source fields on feature commands. */
-export function validateV21FeatureCommandSource(
-  value: unknown
-): V17ProtocolValidationResult<unknown> {
-  if (!isRecord(value) || typeof value.op !== "string") {
-    return v17Invalid(
-      "SCHEMA_V21_SOURCE_INVALID",
-      "op",
-      "Feature command must be an object with an operation name."
-    );
-  }
-  if (value.op === "feature.extrude" || value.op === "feature.revolve") {
-    const result = validateProfileInputForm(value, false);
-    return result.ok ? { ok: true, value } : result;
-  }
-  if (
-    value.op === "feature.updateExtrude" ||
-    value.op === "feature.updateRevolve"
-  ) {
-    const result = validateProfileInputForm(value, true);
-    return result.ok ? { ok: true, value } : result;
-  }
-  if (value.op === "feature.sweep" || value.op === "feature.updateSweep") {
-    const normalizedProfile = hasOwn(value, "profile");
-    const normalizedPath = hasOwn(value, "path");
-    const legacyKeys = [
-      "profileSketchId",
-      "profileEntityId",
-      "pathSketchId",
-      "pathEntityIds"
-    ];
-    const hasLegacy = legacyKeys.some((key) => hasOwn(value, key));
-    if ((normalizedProfile || normalizedPath) && hasLegacy) {
-      return v17Invalid(
-        "COMMAND_INPUT_AMBIGUOUS",
-        "profile",
-        "Provide normalized sweep profile/path fields or legacy fields, never both."
-      );
-    }
-    if (normalizedProfile) {
-      const profile = validateSketchProfileRef(value.profile);
-      if (!profile.ok) return profile;
-      if (profile.value.kind !== "entity") {
-        return v17Invalid(
-          "SCHEMA_V21_SOURCE_INVALID",
-          "profile",
-          "V17 sweep profiles must be entity profile references."
-        );
-      }
-    }
-    if (normalizedPath) {
-      const path = validateSketchPathRef(value.path);
-      if (!path.ok) return path;
-    }
-    if (
-      value.op === "feature.sweep" &&
-      (!normalizedProfile || !normalizedPath)
-    ) {
-      if (!hasLegacy) {
-        return v17Invalid(
-          "SCHEMA_V21_SOURCE_INVALID",
-          "profile",
-          "Sweep creation requires normalized profile and path or the complete legacy field set."
-        );
-      }
-    }
-    if (hasLegacy) {
-      for (const key of legacyKeys) {
-        if (!hasOwn(value, key)) {
-          return v17Invalid(
-            "SCHEMA_V21_SOURCE_INVALID",
-            key,
-            "Legacy sweep input requires the complete legacy field set."
-          );
-        }
-      }
-      if (
-        !isNonEmptyId(value.profileSketchId) ||
-        !isNonEmptyId(value.profileEntityId) ||
-        !isNonEmptyId(value.pathSketchId) ||
-        !Array.isArray(value.pathEntityIds) ||
-        value.pathEntityIds.length !== 1 ||
-        !isNonEmptyId(value.pathEntityIds[0])
-      ) {
-        return v17Invalid(
-          "SCHEMA_V21_SOURCE_INVALID",
-          "pathEntityIds",
-          "Legacy V20 sweep input requires one path entity and non-empty IDs."
-        );
-      }
-    }
-    return { ok: true, value };
-  }
-  if (value.op === "feature.loft" || value.op === "feature.updateLoft") {
-    if (!Array.isArray(value.sections) || value.sections.length === 0) {
-      return v17Invalid(
-        "SCHEMA_V21_SOURCE_INVALID",
-        "sections",
-        "Loft sections must be a non-empty array."
-      );
-    }
-    let form: "legacy" | "normalized" | undefined;
-    for (let index = 0; index < value.sections.length; index += 1) {
-      const section = value.sections[index];
-      if (!isRecord(section)) {
-        return v17Invalid(
-          "SCHEMA_V21_SOURCE_INVALID",
-          `sections[${index}]`,
-          "Loft section must be an object."
-        );
-      }
-      const hasProfile = hasOwn(section, "profile");
-      const hasLegacy =
-        hasOwn(section, "sketchId") || hasOwn(section, "entityId");
-      if (hasProfile && hasLegacy) {
-        return v17Invalid(
-          "COMMAND_INPUT_AMBIGUOUS",
-          `sections[${index}]`,
-          "A loft section cannot mix normalized and legacy profile fields."
-        );
-      }
-      const nextForm = hasProfile ? "normalized" : "legacy";
-      if (form && form !== nextForm) {
-        return v17Invalid(
-          "COMMAND_INPUT_AMBIGUOUS",
-          `sections[${index}]`,
-          "A loft command cannot mix normalized and legacy section forms."
-        );
-      }
-      form = nextForm;
-      if (hasProfile) {
-        const profile = validateSketchProfileRef(
-          section.profile,
-          `sections[${index}].profile`
-        );
-        if (!profile.ok) return profile;
-        if (profile.value.kind !== "entity") {
-          return v17Invalid(
-            "SCHEMA_V21_SOURCE_INVALID",
-            `sections[${index}].profile`,
-            "V17 loft sections must use entity profile references."
-          );
-        }
-      } else if (
-        !isNonEmptyId(section.sketchId) ||
-        !isNonEmptyId(section.entityId)
-      ) {
-        return v17Invalid(
-          "SCHEMA_V21_SOURCE_INVALID",
-          `sections[${index}]`,
-          "Legacy loft sections require sketchId and entityId."
-        );
-      }
-    }
-    return { ok: true, value };
-  }
-  return { ok: true, value };
 }
 
 export const protocolPackage: PackageInfo = {
