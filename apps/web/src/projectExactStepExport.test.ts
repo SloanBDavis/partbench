@@ -154,6 +154,119 @@ describe("projectExactStepExport", () => {
     });
     expect(request.payload.bodies[0]).not.toHaveProperty("placementFrame");
   });
+
+  it("passes one recursive composite add body to STEP without replacing its world frame", async () => {
+    const wireProfile = {
+      kind: "wire" as const,
+      frame: {
+        origin: [5, 0, 0] as const,
+        uAxis: [0, 1, 0] as const,
+        vAxis: [0, 0, 1] as const
+      },
+      closed: true as const,
+      segments: [
+        {
+          kind: "line" as const,
+          sourceEntityId: "add_line",
+          start: [0, -1] as const,
+          end: [0, 1] as const
+        },
+        {
+          kind: "arc" as const,
+          sourceEntityId: "add_arc",
+          center: [0, 0] as const,
+          radius: 1,
+          startAngleDegrees: 90,
+          sweepAngleDegrees: 180
+        }
+      ],
+      sourceIdentity: "partbench-wire-extrude-v1:add-step-recipe",
+      geometryPolicy: {
+        linearTolerance: 1e-7,
+        angularToleranceDegrees: 0.1,
+        minimumProfileArea: 1e-12
+      }
+    };
+    const addSource: CadExactExportBodySource = {
+      bodyId: "body_step_add",
+      bodyName: "Composite add",
+      sourceKind: "authoredExtrude",
+      featureId: "feat_step_add",
+      sourceSketchId: "sketch_step_add",
+      sourceSketchEntityIds: ["add_line", "add_arc"],
+      sketchPlane: "XY",
+      depth: 3,
+      side: "positive",
+      targetBodyId: "body_step_target",
+      exactResultSourceIdentitySignature: "current-add-result-signature",
+      kind: "booleanExtrudes",
+      operation: "add",
+      target: {
+        sketchPlane: "XY",
+        profile: {
+          kind: "rectangle",
+          center: [0, 0],
+          width: 4,
+          height: 4
+        },
+        depth: 3,
+        side: "positive"
+      },
+      tool: {
+        sketchPlane: "XY",
+        profile: wireProfile,
+        depth: 3,
+        side: "positive"
+      }
+    };
+    let request: GeometryWorkerRequest | undefined;
+    const bytes = new TextEncoder().encode("ISO-10303-21;");
+
+    const result = await executeProjectExactStepExport({
+      exactExport: createExactExportResponse(addSource),
+      worker: createWorker(
+        {
+          ok: true,
+          id: "project-export-step:payload",
+          op: "geometry.exportStep",
+          artifact: {
+            format: "step",
+            schema: "AP242DIS",
+            units: "mm",
+            bodyCount: 1,
+            byteLength: bytes.byteLength,
+            bytes
+          },
+          warnings: []
+        },
+        (candidate) => {
+          request = candidate;
+        }
+      )
+    });
+
+    expect(result.artifact).toMatchObject({ byteLength: bytes.byteLength });
+    expect(request).toBeDefined();
+    if (!request || request.payload.op !== "geometry.exportStep") return;
+    expect(request.payload.bodies).toHaveLength(1);
+    expect(request.payload.bodies[0]).toEqual({
+      bodyId: "body_step_add",
+      bodyName: "Composite add",
+      kind: "booleanExtrudes",
+      operation: "add",
+      target: addSource.target,
+      tool: {
+        sketchPlane: "XY",
+        profile: wireProfile,
+        depth: 3,
+        side: "positive"
+      }
+    });
+    expect(request.payload.bodies[0]).not.toHaveProperty("placementFrame");
+    expect(request.payload.bodies[0]).not.toHaveProperty(
+      "exactResultSourceIdentitySignature"
+    );
+  });
 });
 
 function createExactExportResponse(

@@ -352,18 +352,28 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
         await import("@web-cad/geometry-worker/browser");
       const requestId = createRequestId(input.id);
 
-      return executeTessellationRequest(
-        input,
-        createExtrudeBooleanWorkerRequest({
-          id: requestId,
-          payloadId: `${requestId}:kernel`,
-          operation: input.operation,
-          target: input.target,
-          tool: input.tool,
-          linearDeflection: 0.25,
-          angularDeflection: 0.5
-        })
-      );
+      const request =
+        input.operation === "cut"
+          ? createExtrudeBooleanWorkerRequest({
+              id: requestId,
+              payloadId: `${requestId}:kernel`,
+              operation: "cut",
+              target: input.target,
+              tool: input.tool,
+              linearDeflection: 0.25,
+              angularDeflection: 0.5
+            })
+          : createExtrudeBooleanWorkerRequest({
+              id: requestId,
+              payloadId: `${requestId}:kernel`,
+              operation: "add",
+              target: input.target,
+              tool: input.tool,
+              linearDeflection: 0.25,
+              angularDeflection: 0.5
+            });
+
+      return executeTessellationRequest(input, request);
     },
     async hole(input: DerivedGeometryHoleInput) {
       const { createHoleWorkerRequest } =

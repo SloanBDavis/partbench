@@ -189,8 +189,18 @@ describe("V17 composite extrude web integration", () => {
       const exactSource = exact.exportSources.find(
         (candidate) => candidate.bodyId === "body_wire"
       );
-      expect(exactSource?.profile.kind).toBe("wire");
-      if (exactSource?.profile.kind !== "wire") continue;
+      expect(
+        exactSource && "profile" in exactSource
+          ? exactSource.profile.kind
+          : undefined
+      ).toBe("wire");
+      if (
+        !exactSource ||
+        !("profile" in exactSource) ||
+        exactSource.profile.kind !== "wire"
+      ) {
+        continue;
+      }
 
       expect(displaySource.profile).toEqual(exactSource.profile);
     }

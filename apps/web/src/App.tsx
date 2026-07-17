@@ -38,8 +38,6 @@ import type {
   FeatureEditabilityQueryResponse,
   FeatureHoleDepthMode,
   FeatureHoleDirection,
-  ProjectExactExportQueryResponse,
-  ProjectExportReadinessQueryResponse,
   ProjectHealthQueryResponse,
   ProjectImportReadinessQueryResponse,
   ProjectParameterEvaluationQueryResponse,
@@ -180,12 +178,18 @@ import { executeProjectExactStepExport } from "./projectExactStepExport";
 import {
   createBodyTopologyDerivedExactMetadataSnapshot,
   createEmptyDerivedExactMetadataSnapshot,
-  createProjectQueryDerivedExactMetadataSnapshots,
   DerivedExactMetadataService,
   formatDerivedExactMetadataEntryStatus,
   getDerivedExactMetadataEntryForBody,
+  isExactMetadataSource,
+  type DerivedExactMetadataSource,
   type DerivedExactMetadataSnapshot
 } from "./derivedExactMetadata";
+import {
+  createCurrentDerivedExactMetadataSnapshots,
+  readProjectExactStepExport,
+  readProjectExportReadiness
+} from "./projectExactExportQueries";
 import {
   createAuthoredFeatureDerivedGeometrySources,
   createDerivedGeometrySourcesFromDocument
@@ -459,10 +463,14 @@ function readProjectStructure(): {
 }
 
 function readProjectHealth(
-  exactMetadata: DerivedExactMetadataSnapshot
+  exactMetadata: DerivedExactMetadataSnapshot,
+  currentSources: readonly DerivedExactMetadataSource[]
 ): ProjectHealthQueryResponse {
-  const derivedExactMetadata =
-    createDerivedExactMetadataSnapshotsForProjectQuery(exactMetadata);
+  const derivedExactMetadata = createCurrentDerivedExactMetadataSnapshots(
+    engine,
+    exactMetadata,
+    currentSources
+  );
   const response = engine.executeQuery({
     version: "cadops.v1",
     query: {
@@ -504,19 +512,6 @@ function readProjectHealth(
       };
 }
 
-function readProjectExportReadiness():
-  | ProjectExportReadinessQueryResponse
-  | undefined {
-  const response = engine.executeQuery({
-    version: "cadops.v1",
-    query: { query: "project.exportReadiness" }
-  });
-
-  return response.ok && response.query === "project.exportReadiness"
-    ? response
-    : undefined;
-}
-
 function readProjectImportReadiness():
   | ProjectImportReadinessQueryResponse
   | undefined {
@@ -543,19 +538,6 @@ function readProjectTopologyIdentityReadiness():
     : undefined;
 }
 
-function readProjectExactStepExport():
-  | ProjectExactExportQueryResponse
-  | undefined {
-  const response = engine.executeQuery({
-    version: "cadops.v1",
-    query: { query: "project.exportExact", format: "step" }
-  });
-
-  return response.ok && response.query === "project.exportExact"
-    ? response
-    : undefined;
-}
-
 function readFeatureEditability(
   featureId: string | undefined
 ): FeatureEditabilityQueryResponse | undefined {
@@ -574,35 +556,6 @@ function readFeatureEditability(
   return response.ok && response.query === "feature.editability"
     ? response
     : undefined;
-}
-
-function createDerivedExactMetadataSnapshotsForProjectQuery(
-  exactMetadata: DerivedExactMetadataSnapshot
-) {
-  if (exactMetadata.entries.length === 0) {
-    return [];
-  }
-
-  const sourceIdentitySignaturesByBodyId = new Map<string, string>();
-
-  for (const entry of exactMetadata.entries) {
-    const response = engine.executeQuery({
-      version: "cadops.v1",
-      query: { query: "body.topology", bodyId: entry.bodyId }
-    });
-
-    if (response.ok && response.query === "body.topology") {
-      sourceIdentitySignaturesByBodyId.set(
-        entry.bodyId,
-        response.topology.sourceIdentity.signature
-      );
-    }
-  }
-
-  return createProjectQueryDerivedExactMetadataSnapshots(
-    exactMetadata,
-    sourceIdentitySignaturesByBodyId
-  );
 }
 
 function exportCadProjectForDocument(
@@ -1560,8 +1513,6 @@ export function App() {
     [document]
   );
   const projectStructure = readProjectStructure();
-  const projectHealth = readProjectHealth(derivedExactMetadata);
-  const projectExportReadiness = readProjectExportReadiness();
   const projectImportReadiness = readProjectImportReadiness();
   const projectTopologyIdentityReadiness =
     readProjectTopologyIdentityReadiness();
@@ -1627,6 +1578,44 @@ export function App() {
         sourcePlacementFacesByKey
       ),
     [document, projectStructure.features, sourcePlacementFacesByKey]
+  );
+  const importedExactMetadataSources = useMemo(() => {
+    const importedBodyIds = new Set(
+      [...document.features.values()]
+        .filter((feature) => feature.kind === "importedBody")
+        .map((feature) => feature.bodyId)
+    );
+    return wcadTopologyCheckpointPayloadCache
+      .filter((payload) => importedBodyIds.has(payload.bodyId))
+      .map((payload) => ({
+        id: payload.bodyId,
+        kind: "importedBody" as const,
+        checkpointId: payload.checkpointId,
+        brepBytes: payload.brepBytes
+      }));
+  }, [document.features, wcadTopologyCheckpointPayloadCache]);
+  const currentExactMetadataSources = useMemo<
+    readonly DerivedExactMetadataSource[]
+  >(
+    () => [
+      ...derivedGeometrySources.filter(
+        (
+          source
+        ): source is DerivedGeometrySource & DerivedExactMetadataSource =>
+          isExactMetadataSource(source)
+      ),
+      ...importedExactMetadataSources
+    ],
+    [derivedGeometrySources, importedExactMetadataSources]
+  );
+  const projectExportReadiness = readProjectExportReadiness(
+    engine,
+    derivedExactMetadata,
+    currentExactMetadataSources
+  );
+  const projectHealth = readProjectHealth(
+    derivedExactMetadata,
+    currentExactMetadataSources
   );
   const selectedObject = selectedId
     ? document.objects.get(selectedId)
@@ -2092,30 +2081,13 @@ export function App() {
       geometryService.reconcile(derivedGeometrySources);
     }
 
-    const importedBodyIds = new Set(
-      [...document.features.values()]
-        .filter((feature) => feature.kind === "importedBody")
-        .map((feature) => feature.bodyId)
-    );
-    const importedExactMetadataSources = wcadTopologyCheckpointPayloadCache
-      .filter((payload) => importedBodyIds.has(payload.bodyId))
-      .map((payload) => ({
-        id: payload.bodyId,
-        kind: "importedBody" as const,
-        checkpointId: payload.checkpointId,
-        brepBytes: payload.brepBytes
-      }));
-    getDerivedExactMetadataService().reconcile([
-      ...derivedGeometrySources,
-      ...importedExactMetadataSources
-    ]);
+    getDerivedExactMetadataService().reconcile(currentExactMetadataSources);
   }, [
     derivedGeometrySources,
     derivedMeshCacheContextKey,
+    currentExactMetadataSources,
     getDerivedExactMetadataService,
-    getDerivedGeometryService,
-    document,
-    wcadTopologyCheckpointPayloadCache
+    getDerivedGeometryService
   ]);
 
   function syncDocument(
@@ -3509,7 +3481,11 @@ export function App() {
       return;
     }
 
-    const exactExport = readProjectExactStepExport();
+    const exactExport = readProjectExactStepExport(
+      engine,
+      derivedExactMetadata,
+      currentExactMetadataSources
+    );
 
     if (!exactExport?.available) {
       const diagnostic = exactExport?.diagnostics.find(

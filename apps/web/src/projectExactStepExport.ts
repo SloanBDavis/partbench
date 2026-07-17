@@ -1,11 +1,19 @@
 import type {
   CadExactExportArtifact,
   CadExactExportBodySource,
+  CadExactExportBooleanResultSource,
+  CadExactExportBooleanSource,
+  CadExactExportPrimitiveExtrudeSource,
+  CadExactExportWireExtrudeSource,
   CadExportDiagnostic,
   ProjectExactExportQueryResponse
 } from "@web-cad/cad-protocol";
 import { createExactStepExportWorkerRequest } from "@web-cad/geometry-worker/browser";
 import type {
+  BooleanExtrudePrimitiveSource,
+  BooleanExtrudeResultSource,
+  BooleanExtrudeSource,
+  BooleanExtrudeToolSource,
   GeometryWorker,
   GeometryKernelExactStepExportArtifact,
   ResolvedPlanarWireProfile
@@ -14,6 +22,10 @@ import type {
 type ExactStepExportWorkerBody = Parameters<
   typeof createExactStepExportWorkerRequest
 >[0]["bodies"][number];
+type CadExactExportBooleanBodySource = Extract<
+  CadExactExportBodySource,
+  { readonly kind: "booleanExtrudes" }
+>;
 
 export interface ProjectExactStepExportExecutionInput {
   readonly exactExport: ProjectExactExportQueryResponse;
@@ -70,6 +82,14 @@ export async function executeProjectExactStepExport({
 function mapExactExportSourceToWorkerBody(
   source: CadExactExportBodySource
 ): ExactStepExportWorkerBody {
+  if (isCadExactExportBooleanBodySource(source)) {
+    return {
+      bodyId: source.bodyId,
+      ...(source.bodyName ? { bodyName: source.bodyName } : {}),
+      ...mapExactExportBooleanResultSource(source)
+    };
+  }
+
   if (source.profile.kind === "wire") {
     const profile: ResolvedPlanarWireProfile = source.profile;
     return {
@@ -91,6 +111,81 @@ function mapExactExportSourceToWorkerBody(
     side: source.side,
     ...(source.placementFrame ? { placementFrame: source.placementFrame } : {})
   };
+}
+
+function mapExactExportBooleanResultSource(
+  source: CadExactExportBooleanResultSource
+): BooleanExtrudeResultSource {
+  const target = mapExactExportBooleanSource(source.target);
+  if (source.operation === "cut") {
+    return {
+      kind: "booleanExtrudes",
+      operation: "cut",
+      target,
+      tool: mapExactExportPrimitiveSource(source.tool)
+    };
+  }
+
+  return {
+    kind: "booleanExtrudes",
+    operation: "add",
+    target,
+    tool: mapExactExportBooleanTool(source.tool)
+  };
+}
+
+function mapExactExportBooleanSource(
+  source: CadExactExportBooleanSource
+): BooleanExtrudeSource {
+  return isCadExactExportBooleanResultSource(source)
+    ? mapExactExportBooleanResultSource(source)
+    : mapExactExportPrimitiveSource(source);
+}
+
+function mapExactExportBooleanTool(
+  source: CadExactExportPrimitiveExtrudeSource | CadExactExportWireExtrudeSource
+): BooleanExtrudeToolSource {
+  if (isCadExactExportWireSource(source)) {
+    const profile: ResolvedPlanarWireProfile = source.profile;
+    return {
+      sketchPlane: source.sketchPlane,
+      profile,
+      depth: source.depth,
+      side: source.side
+    };
+  }
+
+  return mapExactExportPrimitiveSource(source);
+}
+
+function mapExactExportPrimitiveSource(
+  source: CadExactExportPrimitiveExtrudeSource
+): BooleanExtrudePrimitiveSource {
+  return {
+    sketchPlane: source.sketchPlane,
+    profile: source.profile,
+    depth: source.depth,
+    side: source.side,
+    ...(source.placementFrame ? { placementFrame: source.placementFrame } : {})
+  };
+}
+
+function isCadExactExportBooleanBodySource(
+  source: CadExactExportBodySource
+): source is CadExactExportBooleanBodySource {
+  return "kind" in source && source.kind === "booleanExtrudes";
+}
+
+function isCadExactExportBooleanResultSource(
+  source: CadExactExportBooleanSource
+): source is CadExactExportBooleanResultSource {
+  return "kind" in source && source.kind === "booleanExtrudes";
+}
+
+function isCadExactExportWireSource(
+  source: CadExactExportPrimitiveExtrudeSource | CadExactExportWireExtrudeSource
+): source is CadExactExportWireExtrudeSource {
+  return source.profile.kind === "wire";
 }
 
 async function createProtocolArtifact(

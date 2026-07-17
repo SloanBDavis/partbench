@@ -8,9 +8,13 @@ import type {
 } from "@web-cad/cad-core";
 import type { RenderTriangleMesh } from "@web-cad/renderer";
 import {
+  createBooleanExtrudeResultRuntimeSource,
+  createBooleanExtrudeRuntimeSource,
+  createPrimitiveBooleanExtrudeRuntimeSource,
+  getBooleanExtrudeRuntimeSourceError
+} from "./booleanExtrudeRuntimeSource";
+import {
   createDerivedGeometryErrorDetails,
-  type DerivedGeometryBooleanExtrudeInputSource,
-  type DerivedGeometryBooleanExtrudePrimitiveInputSource,
   type DerivedGeometryErrorDetails,
   type DerivedGeometryMetrics,
   type DerivedGeometryPatternSeedSource,
@@ -737,12 +741,20 @@ function deriveSourceMesh(
       throw new Error(unsupportedMessage);
     }
 
-    return runtime.booleanExtrudes({
-      id: source.id,
-      operation: source.operation,
-      target: createBooleanRuntimeSource(source.target),
-      tool: createPrimitiveBooleanRuntimeSource(source.tool)
-    });
+    const runtimeSource = createBooleanExtrudeResultRuntimeSource(source);
+    return runtimeSource.operation === "cut"
+      ? runtime.booleanExtrudes({
+          id: source.id,
+          operation: "cut",
+          target: runtimeSource.target,
+          tool: runtimeSource.tool
+        })
+      : runtime.booleanExtrudes({
+          id: source.id,
+          operation: "add",
+          target: runtimeSource.target,
+          tool: runtimeSource.tool
+        });
   }
 
   if (source.kind === "hole") {
@@ -758,7 +770,7 @@ function deriveSourceMesh(
 
     return runtime.hole({
       id: source.id,
-      target: createBooleanRuntimeSource(source.target),
+      target: createBooleanExtrudeRuntimeSource(source.target),
       tool: {
         sketchPlane: source.tool.sketchPlane,
         circle: source.tool.circle,
@@ -786,14 +798,14 @@ function deriveSourceMesh(
         ? {
             id: source.id,
             operation: source.operation,
-            target: createBooleanRuntimeSource(source.target),
+            target: createBooleanExtrudeRuntimeSource(source.target),
             edgeStableId: source.edgeStableId,
             distance: source.distance
           }
         : {
             id: source.id,
             operation: source.operation,
-            target: createBooleanRuntimeSource(source.target),
+            target: createBooleanExtrudeRuntimeSource(source.target),
             edgeStableId: source.edgeStableId,
             radius: source.radius
           }
@@ -944,52 +956,17 @@ export function applySketchPlanePlacement(
   };
 }
 
-function createBooleanRuntimeSource(
-  source: DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource
-): DerivedGeometryBooleanExtrudeInputSource {
-  if (source.kind === "extrudeBoolean") {
-    return {
-      kind: "booleanExtrudes",
-      operation: source.operation,
-      target: createBooleanRuntimeSource(source.target),
-      tool: createPrimitiveBooleanRuntimeSource(source.tool)
-    };
-  }
-
-  return createPrimitiveBooleanRuntimeSource(source);
-}
-
-function createPrimitiveBooleanRuntimeSource(
-  source: DerivedExtrudeGeometrySource
-): DerivedGeometryBooleanExtrudePrimitiveInputSource {
-  if (source.profile.kind === "wire") {
-    throw new Error(
-      "Composite wire extrudes are not primitive boolean runtime sources."
-    );
-  }
-
-  return {
-    sketchPlane: source.sketchPlane,
-    profile: source.profile,
-    depth: source.depth,
-    side: source.side,
-    placementFrame: source.placementFrame
-  };
-}
-
 function createPatternSeedRuntimeSource(
   seed: DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource
 ): DerivedGeometryPatternSeedSource {
   if (seed.kind === "extrudeBoolean") {
-    return {
-      kind: "booleanExtrudes",
-      operation: seed.operation,
-      target: createBooleanRuntimeSource(seed.target),
-      tool: createPrimitiveBooleanRuntimeSource(seed.tool)
-    };
+    return createBooleanExtrudeResultRuntimeSource(seed);
   }
 
-  return { kind: "extrude", ...createPrimitiveBooleanRuntimeSource(seed) };
+  return {
+    kind: "extrude",
+    ...createPrimitiveBooleanExtrudeRuntimeSource(seed)
+  };
 }
 
 export function transformExtrudeMeshToPlacement(
@@ -1112,6 +1089,9 @@ function isSupportedBooleanExtrudeSource(
 function getUnsupportedBooleanSourceMessage(
   source: DerivedBooleanExtrudeGeometrySource
 ): string | undefined {
+  const runtimeSourceError = getBooleanExtrudeRuntimeSourceError(source);
+  if (runtimeSourceError) return runtimeSourceError;
+
   const targetProfileKind = getBooleanSourceProfileKind(source.target);
 
   if (

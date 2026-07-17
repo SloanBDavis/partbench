@@ -130,6 +130,51 @@ describe("projectWcadTopologyCheckpoints", () => {
     );
   });
 
+  it("hands the recursive composite add recipe to checkpoint generation", async () => {
+    const engine = createWireAddCheckpointEngine();
+    const runtime = createCheckpointRuntime();
+    const structure = readProjectStructure(engine);
+
+    const payloads = await createProjectWcadTopologyCheckpointPayloadInputs({
+      document: engine.getDocument(),
+      features: structure.features,
+      sketches: readSketches(engine),
+      runtime
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(runtime.exactTopologyCheckpointPayload).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "body_wire_add",
+        checkpointId: "checkpoint_wire_add",
+        bodyId: "body_wire_add",
+        source: {
+          kind: "booleanExtrudes",
+          operation: "add",
+          target: expect.objectContaining({
+            profile: expect.objectContaining({ kind: "rectangle" })
+          }),
+          tool: expect.objectContaining({
+            profile: expect.objectContaining({
+              kind: "wire",
+              sourceIdentity: expect.any(String),
+              segments: [
+                expect.objectContaining({
+                  kind: "line",
+                  sourceEntityId: "wire_add_diameter"
+                }),
+                expect.objectContaining({
+                  kind: "arc",
+                  sourceEntityId: "wire_add_arc"
+                })
+              ]
+            })
+          })
+        }
+      })
+    );
+  });
+
   it("exports checkpointed projects with generated payloads through the app save helper", async () => {
     const engine = createRectangleCheckpointEngine();
     const runtime = createCheckpointRuntime();
@@ -1006,6 +1051,91 @@ function createWireCheckpointEngine(): CadEngine {
         algorithm: "partbench-source-v1",
         sha256:
           "3333333333333333333333333333333333333333333333333333333333333333"
+      },
+      status: "active"
+    }
+  ]);
+
+  return engine;
+}
+
+function createWireAddCheckpointEngine(): CadEngine {
+  const engine = new CadEngine();
+
+  engine.applyBatch([
+    {
+      op: "sketch.create",
+      id: "sketch_add_target",
+      name: "Add target",
+      plane: "XY"
+    },
+    {
+      op: "sketch.addRectangle",
+      sketchId: "sketch_add_target",
+      id: "rect_add_target",
+      center: [0, 0],
+      width: 4,
+      height: 4
+    },
+    {
+      op: "feature.extrude",
+      id: "feat_add_target",
+      bodyId: "body_add_target",
+      sketchId: "sketch_add_target",
+      entityId: "rect_add_target",
+      depth: 3,
+      operationMode: "newBody"
+    },
+    {
+      op: "sketch.create",
+      id: "sketch_wire_add",
+      name: "Wire add tool",
+      plane: "XY"
+    },
+    {
+      op: "sketch.addLine",
+      sketchId: "sketch_wire_add",
+      id: "wire_add_diameter",
+      start: [0, -1],
+      end: [0, 1]
+    },
+    {
+      op: "sketch.addArc",
+      sketchId: "sketch_wire_add",
+      id: "wire_add_arc",
+      definition: {
+        kind: "centerAngles",
+        center: [0, 0],
+        radius: 1,
+        startAngleDegrees: 90,
+        sweepAngleDegrees: 180
+      }
+    },
+    {
+      op: "feature.extrude",
+      id: "feat_wire_add",
+      bodyId: "body_wire_add",
+      profile: {
+        kind: "wire",
+        sketchId: "sketch_wire_add",
+        segments: [
+          { entityId: "wire_add_diameter", orientation: "forward" },
+          { entityId: "wire_add_arc", orientation: "forward" }
+        ]
+      },
+      depth: 3,
+      operationMode: "add",
+      targetBodyId: "body_add_target"
+    },
+    {
+      op: "topology.checkpoint.create",
+      checkpointId: "checkpoint_wire_add",
+      bodyId: "body_wire_add",
+      sourceFeatureId: "feat_wire_add",
+      sourceIdentity: {
+        algorithm: "partbench-source-v1",
+        sha256:
+          "4444444444444444444444444444444444444444444444444444444444444444"
       },
       status: "active"
     }

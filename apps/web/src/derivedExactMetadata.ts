@@ -5,6 +5,11 @@ import type {
   CadBodyExactMetadataSnapshot
 } from "@web-cad/cad-protocol";
 
+import {
+  createBooleanExtrudeResultRuntimeSource,
+  createBooleanExtrudeRuntimeSource,
+  getBooleanExtrudeRuntimeSourceError
+} from "./booleanExtrudeRuntimeSource";
 import type {
   DerivedBooleanExtrudeGeometrySource,
   DerivedEdgeFinishGeometrySource,
@@ -22,8 +27,6 @@ import type {
 import { createDerivedGeometryCacheKey } from "./derivedGeometry";
 import {
   createDerivedGeometryErrorDetails,
-  type DerivedGeometryBooleanExtrudeInputSource,
-  type DerivedGeometryBooleanExtrudePrimitiveInputSource,
   type DerivedGeometryPatternSeedSource,
   type DerivedExactBodyMetadata,
   type DerivedExactMetadataMetrics,
@@ -559,7 +562,7 @@ export function createExactMetadataRuntimeInput(
       id: source.id,
       source: {
         kind: "hole",
-        target: createExactMetadataBooleanRuntimeSource(source.target),
+        target: createBooleanExtrudeRuntimeSource(source.target),
         tool: {
           sketchPlane: source.tool.sketchPlane,
           circle: source.tool.circle,
@@ -575,7 +578,7 @@ export function createExactMetadataRuntimeInput(
   }
 
   if (source.kind === "edgeFinish") {
-    const target = createExactMetadataBooleanRuntimeSource(source.target);
+    const target = createBooleanExtrudeRuntimeSource(source.target);
 
     return {
       id: source.id,
@@ -600,55 +603,17 @@ export function createExactMetadataRuntimeInput(
 
   return {
     id: source.id,
-    source: {
-      kind: "booleanExtrudes",
-      operation: source.operation,
-      target: createExactMetadataBooleanRuntimeSource(source.target),
-      tool: createExactMetadataPrimitiveBooleanRuntimeSource(source.tool)
-    }
+    source: createBooleanExtrudeResultRuntimeSource(source)
   };
-}
-
-function createExactMetadataBooleanRuntimeSource(
-  source: DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource
-): DerivedGeometryBooleanExtrudeInputSource {
-  if (source.kind === "extrudeBoolean") {
-    return {
-      kind: "booleanExtrudes",
-      operation: source.operation,
-      target: createExactMetadataBooleanRuntimeSource(source.target),
-      tool: createExactMetadataPrimitiveBooleanRuntimeSource(source.tool)
-    };
-  }
-
-  return createExactMetadataPrimitiveBooleanRuntimeSource(source);
 }
 
 function createExactPatternSeedRuntimeSource(
   source: DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource
 ): DerivedGeometryPatternSeedSource {
-  const runtimeSource = createExactMetadataBooleanRuntimeSource(source);
+  const runtimeSource = createBooleanExtrudeRuntimeSource(source);
   return "profile" in runtimeSource
     ? { kind: "extrude", ...runtimeSource }
     : runtimeSource;
-}
-
-function createExactMetadataPrimitiveBooleanRuntimeSource(
-  source: DerivedExtrudeGeometrySource
-): DerivedGeometryBooleanExtrudePrimitiveInputSource {
-  if (source.profile.kind === "wire") {
-    throw new Error(
-      "Composite wire extrudes are not primitive boolean metadata sources."
-    );
-  }
-
-  return {
-    sketchPlane: source.sketchPlane,
-    profile: source.profile,
-    depth: source.depth,
-    side: source.side,
-    ...(source.placementFrame ? { placementFrame: source.placementFrame } : {})
-  };
 }
 
 function createCadExactMetadata(
@@ -714,7 +679,7 @@ function createPendingEntry(
   };
 }
 
-function isExactMetadataSource(
+export function isExactMetadataSource(
   source: DerivedExactMetadataCandidate
 ): source is DerivedExactMetadataSource {
   return (
@@ -820,6 +785,9 @@ function getUnsupportedExactMetadataSourceMessage(
   if (source.placementError) {
     return source.placementError;
   }
+
+  const runtimeSourceError = getBooleanExtrudeRuntimeSourceError(source);
+  if (runtimeSourceError) return runtimeSourceError;
 
   const targetProfileKind = getExactBooleanSourceProfileKind(source.target);
 
