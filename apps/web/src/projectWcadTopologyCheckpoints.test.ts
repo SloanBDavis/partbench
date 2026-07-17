@@ -175,6 +175,41 @@ describe("projectWcadTopologyCheckpoints", () => {
     );
   });
 
+  it("hands the recursive composite wire cut recipe to checkpoint rebuild", async () => {
+    const engine = createWireAddCheckpointEngine("cut");
+    const runtime = createCheckpointRuntime();
+    const structure = readProjectStructure(engine);
+
+    const payloads = await createProjectWcadTopologyCheckpointPayloadInputs({
+      document: engine.getDocument(),
+      features: structure.features,
+      sketches: readSketches(engine),
+      runtime
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(runtime.exactTopologyCheckpointPayload).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "body_wire_add",
+        checkpointId: "checkpoint_wire_add",
+        bodyId: "body_wire_add",
+        source: {
+          kind: "booleanExtrudes",
+          operation: "cut",
+          target: expect.objectContaining({
+            profile: expect.objectContaining({ kind: "rectangle" })
+          }),
+          tool: expect.objectContaining({
+            profile: expect.objectContaining({
+              kind: "wire",
+              sourceIdentity: expect.any(String)
+            })
+          })
+        }
+      })
+    );
+  });
+
   it("exports checkpointed projects with generated payloads through the app save helper", async () => {
     const engine = createRectangleCheckpointEngine();
     const runtime = createCheckpointRuntime();
@@ -1059,7 +1094,9 @@ function createWireCheckpointEngine(): CadEngine {
   return engine;
 }
 
-function createWireAddCheckpointEngine(): CadEngine {
+function createWireAddCheckpointEngine(
+  operationMode: "add" | "cut" = "add"
+): CadEngine {
   const engine = new CadEngine();
 
   engine.applyBatch([
@@ -1124,7 +1161,7 @@ function createWireAddCheckpointEngine(): CadEngine {
         ]
       },
       depth: 3,
-      operationMode: "add",
+      operationMode,
       targetBodyId: "body_add_target"
     },
     {

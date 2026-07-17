@@ -98,6 +98,64 @@ describe("V17 composite add web integration", () => {
     );
   });
 
+  it("resolves a real add-to-cut chain through the same ordered recursive recipe", async () => {
+    const source = resolveAddCutChainSource();
+    const runtimeSource = createBooleanExtrudeResultRuntimeSource(source);
+    const booleanExtrudes = vi.fn(async () => createMeshResult(source.id));
+
+    expect(runtimeSource).toMatchObject({
+      kind: "booleanExtrudes",
+      operation: "cut",
+      target: {
+        kind: "booleanExtrudes",
+        operation: "add",
+        target: expect.objectContaining({
+          profile: expect.objectContaining({ kind: "rectangle" })
+        }),
+        tool: expect.objectContaining({
+          profile: expect.objectContaining({ kind: "wire" })
+        })
+      },
+      tool: {
+        sketchPlane: "XY",
+        profile: expect.objectContaining({
+          kind: "wire",
+          frame: {
+            origin: [0, 0, 0],
+            uAxis: [1, 0, 0],
+            vAxis: [0, 1, 0]
+          },
+          segments: [
+            expect.objectContaining({ sourceEntityId: "cut_diameter" }),
+            expect.objectContaining({
+              sourceEntityId: "cut_arc",
+              sweepAngleDegrees: -180
+            })
+          ]
+        }),
+        depth: 2,
+        side: "negative"
+      }
+    });
+    expect(runtimeSource.tool).not.toHaveProperty("placementFrame");
+    expect(createExactMetadataRuntimeInput(source)).toEqual({
+      id: "body_cut",
+      source: runtimeSource
+    });
+    await expect(
+      deriveGeometrySourceMesh(
+        { booleanExtrudes } as unknown as DerivedGeometryRuntime,
+        source
+      )
+    ).resolves.toMatchObject({ mesh: { id: "body_cut" } });
+    expect(booleanExtrudes).toHaveBeenCalledWith({
+      id: "body_cut",
+      operation: "cut",
+      target: runtimeSource.target,
+      tool: runtimeSource.tool
+    });
+  });
+
   it("keys target and tool edits and ignores both stale mesh completions", async () => {
     const source = resolveAddSource();
     const targetEdited = editAddTarget(source, 6);
@@ -140,7 +198,10 @@ describe("V17 composite add web integration", () => {
   });
 
   it("keys retarget and recreated source lineage and ignores every stale completion", async () => {
-    const geometry = resolveAddSource();
+    const geometry = {
+      ...resolveAddSource(),
+      operation: "cut" as const
+    };
     const initial = {
       ...geometry,
       sourceIdentitySignature: "body-topology-source:v1:target-a"
@@ -214,8 +275,11 @@ describe("V17 composite add web integration", () => {
     expect(exactSnapshot.entries[0]?.status).toBe("ready");
   });
 
-  it("clears exact metadata while edited add evidence is pending or failed", async () => {
-    const source = resolveAddSource();
+  it("clears exact metadata while an edited cut rebuild is pending or failed", async () => {
+    const source = {
+      ...resolveAddSource(),
+      operation: "cut" as const
+    };
     const edited = editAddToolDepth(source, 8);
     const first = deferred<DerivedExactMetadataResult>();
     const second = deferred<DerivedExactMetadataResult>();
@@ -238,30 +302,48 @@ describe("V17 composite add web integration", () => {
     expect(snapshot.entries[0]?.status).toBe("pending");
     expect(snapshot.entries[0]).not.toHaveProperty("metadata");
 
-    second.reject(new Error("edited add failed exact construction"));
+    second.reject(new Error("edited cut failed exact construction"));
     await flushPromises();
     expect(snapshot.entries[0]?.status).toBe("error");
     expect(snapshot.entries[0]).not.toHaveProperty("metadata");
   });
 
-  it("rejects malformed composite wire cut before any runtime request", async () => {
+  it("routes a committed composite wire cut and still rejects wire targets", async () => {
     const add = resolveAddSource();
-    const malformed = {
+    const cut = {
       ...add,
       operation: "cut"
     } satisfies DerivedBooleanExtrudeGeometrySource;
-    const booleanExtrudes = vi.fn();
+    const booleanExtrudes = vi.fn(async () => createMeshResult(cut.id));
 
-    expect(() => createBooleanExtrudeResultRuntimeSource(malformed)).toThrow(
-      "Composite wire extrudes are not supported as cut tools"
-    );
+    expect(createBooleanExtrudeResultRuntimeSource(cut)).toMatchObject({
+      kind: "booleanExtrudes",
+      operation: "cut",
+      target: expect.objectContaining({
+        profile: expect.objectContaining({ kind: "rectangle" })
+      }),
+      tool: expect.objectContaining({
+        profile: expect.objectContaining({ kind: "wire" })
+      })
+    });
     await expect(
       deriveGeometrySourceMesh(
         { booleanExtrudes } as unknown as DerivedGeometryRuntime,
-        malformed
+        cut
       )
-    ).rejects.toThrow("Composite wire extrudes are not supported as cut tools");
-    expect(booleanExtrudes).not.toHaveBeenCalled();
+    ).resolves.toMatchObject({ mesh: { id: cut.id } });
+    expect(booleanExtrudes).toHaveBeenCalledWith(
+      expect.objectContaining({ operation: "cut" })
+    );
+
+    const wireTarget = {
+      ...cut,
+      target: cut.tool,
+      tool: cut.target.kind === "extrude" ? cut.target : cut.target.tool
+    } satisfies DerivedBooleanExtrudeGeometrySource;
+    expect(() => createBooleanExtrudeResultRuntimeSource(wireTarget)).toThrow(
+      "composite new-body wire extrude"
+    );
   });
 });
 
@@ -280,6 +362,28 @@ function resolveAddSource(
   }
   if (source.tool.profile.kind !== "wire") {
     throw new Error("Expected a composite wire add tool.");
+  }
+  return source;
+}
+
+function resolveAddCutChainSource(): DerivedBooleanExtrudeGeometrySource {
+  const features = [
+    rectangleTargetFeature(),
+    wireAddFeature(false),
+    wireCutFeature()
+  ];
+  const sketches = [rectangleTargetSketch(), wireToolSketch(), wireCutSketch()];
+  const [source] = createExtrudeDerivedGeometrySources(features, sketches);
+
+  if (
+    !source ||
+    source.kind !== "extrudeBoolean" ||
+    source.operation !== "cut" ||
+    source.target.kind !== "extrudeBoolean" ||
+    source.target.operation !== "add" ||
+    source.tool.profile.kind !== "wire"
+  ) {
+    throw new Error("Expected one active recursive add-to-cut wire result.");
   }
   return source;
 }
@@ -340,6 +444,37 @@ function wireAddFeature(
   };
 }
 
+function wireCutFeature(): Extract<
+  CadFeatureSummary,
+  { readonly kind: "extrude" }
+> {
+  const profile = {
+    kind: "wire" as const,
+    sketchId: "sketch_cut",
+    segments: [
+      { entityId: "cut_diameter", orientation: "forward" as const },
+      { entityId: "cut_arc", orientation: "forward" as const }
+    ]
+  };
+  return {
+    id: "feature_cut",
+    kind: "extrude",
+    partId: "part_1",
+    bodyId: "body_cut",
+    sketchId: "sketch_cut",
+    profile,
+    depth: 2,
+    side: "negative",
+    operationMode: "cut",
+    targetBodyId: "body_add",
+    source: {
+      type: "sketchEntity",
+      sketchId: "sketch_cut",
+      profile
+    }
+  };
+}
+
 function rectangleTargetSketch(): SketchSnapshot {
   return {
     id: "sketch_target",
@@ -358,10 +493,12 @@ function rectangleTargetSketch(): SketchSnapshot {
   };
 }
 
-function wireToolSketch(options: {
-  readonly attached?: boolean;
-  readonly reversedArc?: boolean;
-}): SketchSnapshot {
+function wireToolSketch(
+  options: {
+    readonly attached?: boolean;
+    readonly reversedArc?: boolean;
+  } = {}
+): SketchSnapshot {
   return {
     id: "sketch_tool",
     name: "Tool sketch",
@@ -393,6 +530,32 @@ function wireToolSketch(options: {
         radius: 1,
         startAngleDegrees: options.reversedArc ? 270 : 90,
         sweepAngleDegrees: options.reversedArc ? -180 : 180,
+        construction: false
+      }
+    ]
+  };
+}
+
+function wireCutSketch(): SketchSnapshot {
+  return {
+    id: "sketch_cut",
+    name: "Cut tool sketch",
+    plane: "XY",
+    entities: [
+      {
+        id: "cut_diameter",
+        kind: "line",
+        start: [0, -0.5],
+        end: [0, 0.5],
+        construction: false
+      },
+      {
+        id: "cut_arc",
+        kind: "arc",
+        center: [0, 0],
+        radius: 0.5,
+        startAngleDegrees: 270,
+        sweepAngleDegrees: -180,
         construction: false
       }
     ]

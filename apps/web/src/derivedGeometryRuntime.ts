@@ -139,7 +139,7 @@ export interface DerivedGeometryBooleanExtrudeCutResultInputSource {
   readonly kind: "booleanExtrudes";
   readonly operation: "cut";
   readonly target: DerivedGeometryBooleanExtrudeInputSource;
-  readonly tool: DerivedGeometryBooleanExtrudePrimitiveInputSource;
+  readonly tool: DerivedGeometryBooleanExtrudeToolInputSource;
 }
 
 interface DerivedGeometryBooleanExtrudeInputBase {
@@ -154,7 +154,7 @@ export type DerivedGeometryBooleanExtrudeInput =
     })
   | (DerivedGeometryBooleanExtrudeInputBase & {
       readonly operation: "cut";
-      readonly tool: DerivedGeometryBooleanExtrudePrimitiveInputSource;
+      readonly tool: DerivedGeometryBooleanExtrudeToolInputSource;
     });
 
 export interface DerivedGeometryHoleInput {

@@ -32,7 +32,7 @@ export function createBooleanExtrudeResultRuntimeSource(
       kind: "booleanExtrudes",
       operation: "cut",
       target,
-      tool: createPrimitiveBooleanExtrudeRuntimeSource(source.tool)
+      tool: createBooleanExtrudeToolRuntimeSource(source.tool)
     };
   }
 
@@ -40,7 +40,7 @@ export function createBooleanExtrudeResultRuntimeSource(
     kind: "booleanExtrudes",
     operation: "add",
     target,
-    tool: createAddBooleanExtrudeToolRuntimeSource(source.tool)
+    tool: createBooleanExtrudeToolRuntimeSource(source.tool)
   };
 }
 
@@ -54,10 +54,6 @@ export function getBooleanExtrudeRuntimeSourceError(
     return "Boolean result targets must resolve to a supported primitive or topology-backed result body, not a composite new-body wire extrude.";
   }
 
-  if (source.operation === "cut" && source.tool.profile.kind === "wire") {
-    return "Composite wire extrudes are not supported as cut tools until the V17 cut row is enabled.";
-  }
-
   return undefined;
 }
 
@@ -66,7 +62,7 @@ export function createPrimitiveBooleanExtrudeRuntimeSource(
 ): DerivedGeometryBooleanExtrudePrimitiveInputSource {
   if (source.profile.kind === "wire") {
     throw new Error(
-      "Composite wire extrudes are supported only as add tools; boolean targets and cut tools remain primitive-only."
+      "Composite wire extrudes are supported only as boolean tools, not standalone boolean targets."
     );
   }
 
@@ -79,7 +75,7 @@ export function createPrimitiveBooleanExtrudeRuntimeSource(
   };
 }
 
-function createAddBooleanExtrudeToolRuntimeSource(
+function createBooleanExtrudeToolRuntimeSource(
   source: DerivedExtrudeGeometrySource
 ): DerivedGeometryBooleanExtrudeToolInputSource {
   if (source.profile.kind !== "wire") {

@@ -163,6 +163,124 @@ describe("project exact export query evidence", () => {
     });
   });
 
+  it("filters current recursive add-to-cut evidence through health, mass, extents, and STEP", () => {
+    const engine = createCompositeCutEngine();
+    const source = readCompositeBooleanSource(engine, "body_cut");
+    const ready = readySnapshot(source);
+    const evidence = createCurrentDerivedExactMetadataSnapshots(engine, ready, [
+      source
+    ]);
+
+    expect(source.sourceIdentitySignature).toBe(
+      readBodySourceIdentitySignature(engine, "body_cut")
+    );
+    expect(evidence).toHaveLength(1);
+    const readiness = readProjectExportReadiness(engine, ready, [source]);
+    expect(
+      readiness?.bodies.find((body) => body.bodyId === "body_cut")?.sourceStatus
+    ).toBe("supported");
+    expect(readProjectExactStepExport(engine, ready, [source])).toMatchObject({
+      available: true,
+      exportSources: [
+        expect.objectContaining({
+          bodyId: "body_cut",
+          kind: "booleanExtrudes",
+          operation: "cut",
+          target: expect.objectContaining({
+            kind: "booleanExtrudes",
+            operation: "add",
+            tool: expect.objectContaining({
+              profile: expect.objectContaining({ kind: "wire" })
+            })
+          }),
+          tool: expect.objectContaining({
+            profile: expect.objectContaining({ kind: "wire" })
+          })
+        })
+      ]
+    });
+
+    const health = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.health", derivedExactMetadata: evidence }
+    });
+    expect(health).toMatchObject({
+      ok: true,
+      query: "project.health",
+      authoredExtrudes: expect.arrayContaining([
+        expect.objectContaining({
+          featureId: "feature_cut",
+          status: "healthy",
+          topologyStatus: "healthy"
+        })
+      ])
+    });
+    const mass = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.massProperties",
+        bodyId: "body_cut",
+        derivedExactMetadata: evidence[0]!
+      }
+    });
+    expect(mass).toMatchObject({
+      ok: true,
+      massProperties: { bodyId: "body_cut", volume: 40 }
+    });
+    const extents = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.extents", derivedExactMetadata: evidence }
+    });
+    expect(extents).toMatchObject({
+      ok: true,
+      bodies: [expect.objectContaining({ bodyId: "body_cut", volume: 40 })]
+    });
+
+    engine.applyBatch([
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_cut",
+        id: "cut_diameter_recreated",
+        start: [0, -0.5],
+        end: [0, 0.5]
+      },
+      {
+        op: "sketch.addArc",
+        sketchId: "sketch_cut",
+        id: "cut_arc_recreated",
+        definition: {
+          kind: "centerAngles",
+          center: [0, 0],
+          radius: 0.5,
+          startAngleDegrees: 90,
+          sweepAngleDegrees: 180
+        }
+      },
+      {
+        op: "feature.updateExtrude",
+        id: "feature_cut",
+        profile: {
+          kind: "wire",
+          sketchId: "sketch_cut",
+          segments: [
+            { entityId: "cut_diameter_recreated", orientation: "forward" },
+            { entityId: "cut_arc_recreated", orientation: "forward" }
+          ]
+        }
+      }
+    ]);
+    const edited = readCompositeBooleanSource(engine, "body_cut");
+    expect(createDerivedExactMetadataCacheKey(edited)).not.toBe(
+      createDerivedExactMetadataCacheKey(source)
+    );
+    expect(
+      createCurrentDerivedExactMetadataSnapshots(engine, ready, [edited])
+    ).toEqual([]);
+    expect(readProjectExactStepExport(engine, ready, [edited])?.available).toBe(
+      false
+    );
+  });
+
   it("invalidates identical geometry when an add is retargeted or its target identity is recreated", () => {
     const engine = createCompositeAddEngine(true);
     const initial = readCompositeAddSource(engine);
@@ -204,6 +322,48 @@ describe("project exact export query evidence", () => {
         engine,
         readySnapshot(retargeted),
         [recreatedIdentity]
+      )
+    ).toEqual([]);
+  });
+
+  it("invalidates identical geometry when a wire cut is retargeted or its target source is recreated", () => {
+    const engine = createCompositeAddEngine(true);
+    engine.apply({ op: "feature.delete", id: "feature_add" });
+    createWireBoolean(engine, "body_target", "cut");
+    const initial = readCompositeBooleanSource(engine, "body_add");
+    const ready = readySnapshot(initial);
+
+    engine.apply({ op: "feature.delete", id: "feature_add" });
+    createWireBoolean(engine, "body_target_2", "cut");
+    const retargeted = readCompositeBooleanSource(engine, "body_add");
+    expect(createDerivedExactMetadataCacheKey(retargeted)).not.toBe(
+      createDerivedExactMetadataCacheKey(initial)
+    );
+    expect(
+      createCurrentDerivedExactMetadataSnapshots(engine, ready, [retargeted])
+    ).toEqual([]);
+
+    engine.apply({ op: "feature.delete", id: "feature_add" });
+    engine.apply({ op: "feature.delete", id: "feature_target_2" });
+    engine.apply({
+      op: "feature.extrude",
+      id: "feature_target_2_cut_recreated",
+      bodyId: "body_target_2",
+      sketchId: "sketch_target_2",
+      entityId: "target_rect_2",
+      depth: 4,
+      operationMode: "newBody"
+    });
+    createWireBoolean(engine, "body_target_2", "cut");
+    const recreated = readCompositeBooleanSource(engine, "body_add");
+    expect(createDerivedExactMetadataCacheKey(recreated)).not.toBe(
+      createDerivedExactMetadataCacheKey(retargeted)
+    );
+    expect(
+      createCurrentDerivedExactMetadataSnapshots(
+        engine,
+        readySnapshot(retargeted),
+        [recreated]
       )
     ).toEqual([]);
   });
@@ -307,7 +467,85 @@ function createCompositeAddEngine(includeSecondTarget = false): CadEngine {
   return engine;
 }
 
+function createCompositeCutEngine(): CadEngine {
+  const engine = createCompositeAddEngine();
+  engine.applyBatch([
+    {
+      op: "topology.checkpoint.create",
+      checkpointId: "checkpoint_add",
+      bodyId: "body_add",
+      sourceFeatureId: "feature_add",
+      sourceIdentity: {
+        algorithm: "partbench-source-v1",
+        sha256:
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      status: "active"
+    },
+    {
+      op: "topology.anchor.create",
+      anchorId: "anchor_body_add",
+      entityKind: "body",
+      bodyId: "body_add",
+      checkpointId: "checkpoint_add",
+      checkpointEntityId: "body:0",
+      sourceFeatureId: "feature_add",
+      signatureHash: "add-body-signature"
+    },
+    {
+      op: "sketch.create",
+      id: "sketch_cut",
+      name: "Composite cut tool",
+      plane: "XY"
+    },
+    {
+      op: "sketch.addLine",
+      sketchId: "sketch_cut",
+      id: "cut_diameter",
+      start: [0, -0.5],
+      end: [0, 0.5]
+    },
+    {
+      op: "sketch.addArc",
+      sketchId: "sketch_cut",
+      id: "cut_arc",
+      definition: {
+        kind: "centerAngles",
+        center: [0, 0],
+        radius: 0.5,
+        startAngleDegrees: 90,
+        sweepAngleDegrees: 180
+      }
+    },
+    {
+      op: "feature.extrude",
+      id: "feature_cut",
+      bodyId: "body_cut",
+      profile: {
+        kind: "wire",
+        sketchId: "sketch_cut",
+        segments: [
+          { entityId: "cut_diameter", orientation: "forward" },
+          { entityId: "cut_arc", orientation: "forward" }
+        ]
+      },
+      depth: 4,
+      operationMode: "cut",
+      targetTopologyAnchorId: "anchor_body_add"
+    }
+  ]);
+  return engine;
+}
+
 function createWireAdd(engine: CadEngine, targetBodyId: string): void {
+  createWireBoolean(engine, targetBodyId, "add");
+}
+
+function createWireBoolean(
+  engine: CadEngine,
+  targetBodyId: string,
+  operationMode: "add" | "cut"
+): void {
   engine.apply({
     op: "feature.extrude",
     id: "feature_add",
@@ -321,13 +559,14 @@ function createWireAdd(engine: CadEngine, targetBodyId: string): void {
       ]
     },
     depth: 4,
-    operationMode: "add",
+    operationMode,
     targetBodyId
   });
 }
 
-function readCompositeAddSource(
-  engine: CadEngine
+function readCompositeBooleanSource(
+  engine: CadEngine,
+  bodyId: string
 ): DerivedBooleanExtrudeGeometrySource {
   const structure = engine.executeQuery({
     version: "cadops.v1",
@@ -349,9 +588,19 @@ function readCompositeAddSource(
   );
   const source = sources.find(
     (candidate): candidate is DerivedBooleanExtrudeGeometrySource =>
-      candidate.id === "body_add" && candidate.kind === "extrudeBoolean"
+      candidate.id === bodyId && candidate.kind === "extrudeBoolean"
   );
   if (!source || source.tool.profile.kind !== "wire") {
+    throw new Error(`Expected a composite wire boolean source for ${bodyId}.`);
+  }
+  return source;
+}
+
+function readCompositeAddSource(
+  engine: CadEngine
+): DerivedBooleanExtrudeGeometrySource {
+  const source = readCompositeBooleanSource(engine, "body_add");
+  if (source.operation !== "add") {
     throw new Error("Expected a composite add source.");
   }
   return source;

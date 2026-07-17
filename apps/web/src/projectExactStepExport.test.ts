@@ -267,7 +267,131 @@ describe("projectExactStepExport", () => {
       "exactResultSourceIdentitySignature"
     );
   });
+
+  it("passes a recursive add-to-wire-cut body to STEP with the canonical cut tool", async () => {
+    const addWire = createStepWireProfile("add");
+    const cutWire = createStepWireProfile("cut");
+    const addResult = {
+      kind: "booleanExtrudes" as const,
+      operation: "add" as const,
+      target: {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "rectangle" as const,
+          center: [0, 0] as const,
+          width: 4,
+          height: 4
+        },
+        depth: 3,
+        side: "positive" as const
+      },
+      tool: {
+        sketchPlane: "XY" as const,
+        profile: addWire,
+        depth: 3,
+        side: "positive" as const
+      }
+    };
+    const source: CadExactExportBodySource = {
+      bodyId: "body_step_cut",
+      bodyName: "Composite cut",
+      sourceKind: "authoredExtrude",
+      featureId: "feat_step_cut",
+      sourceSketchId: "sketch_step_cut",
+      sourceSketchEntityIds: ["cut_line", "cut_arc"],
+      sketchPlane: "XY",
+      depth: 2,
+      side: "negative",
+      targetBodyId: "body_step_add",
+      exactResultSourceIdentitySignature: "current-cut-result-signature",
+      kind: "booleanExtrudes",
+      operation: "cut",
+      target: addResult,
+      tool: {
+        sketchPlane: "XY",
+        profile: cutWire,
+        depth: 2,
+        side: "negative"
+      }
+    };
+    let request: GeometryWorkerRequest | undefined;
+    const bytes = new TextEncoder().encode("ISO-10303-21;");
+
+    await executeProjectExactStepExport({
+      exactExport: createExactExportResponse(source),
+      worker: createWorker(
+        {
+          ok: true,
+          id: "project-export-step:payload",
+          op: "geometry.exportStep",
+          artifact: {
+            format: "step",
+            schema: "AP242DIS",
+            units: "mm",
+            bodyCount: 1,
+            byteLength: bytes.byteLength,
+            bytes
+          },
+          warnings: []
+        },
+        (candidate) => {
+          request = candidate;
+        }
+      )
+    });
+
+    expect(request).toBeDefined();
+    if (!request || request.payload.op !== "geometry.exportStep") return;
+    expect(request.payload.bodies[0]).toEqual({
+      bodyId: "body_step_cut",
+      bodyName: "Composite cut",
+      kind: "booleanExtrudes",
+      operation: "cut",
+      target: addResult,
+      tool: {
+        sketchPlane: "XY",
+        profile: cutWire,
+        depth: 2,
+        side: "negative"
+      }
+    });
+    expect(request.payload.bodies[0]).not.toHaveProperty("placementFrame");
+  });
 });
+
+function createStepWireProfile(prefix: "add" | "cut") {
+  return {
+    kind: "wire" as const,
+    frame: {
+      origin: [0, 0, 0] as const,
+      uAxis: [1, 0, 0] as const,
+      vAxis: [0, 1, 0] as const
+    },
+    closed: true as const,
+    segments: [
+      {
+        kind: "line" as const,
+        sourceEntityId: `${prefix}_line`,
+        start: [0, -1] as const,
+        end: [0, 1] as const
+      },
+      {
+        kind: "arc" as const,
+        sourceEntityId: `${prefix}_arc`,
+        center: [0, 0] as const,
+        radius: 1,
+        startAngleDegrees: 90,
+        sweepAngleDegrees: 180
+      }
+    ],
+    sourceIdentity: `partbench-wire-extrude-v1:${prefix}-step-recipe`,
+    geometryPolicy: {
+      linearTolerance: 1e-7,
+      angularToleranceDegrees: 0.1,
+      minimumProfileArea: 1e-12
+    }
+  };
+}
 
 function createExactExportResponse(
   source: CadExactExportBodySource = {

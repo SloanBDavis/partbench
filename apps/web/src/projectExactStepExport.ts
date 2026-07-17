@@ -122,7 +122,7 @@ function mapExactExportBooleanResultSource(
       kind: "booleanExtrudes",
       operation: "cut",
       target,
-      tool: mapExactExportPrimitiveSource(source.tool)
+      tool: mapExactExportBooleanTool(source.tool)
     };
   }
 
