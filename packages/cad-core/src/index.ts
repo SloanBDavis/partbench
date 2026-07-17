@@ -242,6 +242,10 @@ import {
   filterSupportedBooleanBodyTargetOperations
 } from "./booleanTargetSupport";
 import {
+  resolveActiveTopologyAnchorBodyTargetId as resolveSharedActiveTopologyAnchorBodyTargetId,
+  resolveActiveTopologyAnchorTargetSource
+} from "./topologyAnchorTargetResolution";
+import {
   createBodyGeneratedReferences,
   type GeneratedReferenceValidationError,
   resolveGeneratedReference,
@@ -16827,28 +16831,7 @@ function resolveActiveTopologyAnchorBodyTargetId(
   state: MutableDocumentState,
   target: { readonly bodyId: BodyId; readonly topologyAnchorId: string }
 ): BodyId {
-  let activeBodyId = target.bodyId;
-  const visitedBodyIds = new Set<BodyId>();
-
-  while (!visitedBodyIds.has(activeBodyId)) {
-    visitedBodyIds.add(activeBodyId);
-    const consumingFeature = findConsumingFeatureByTargetBodyId(
-      state.features,
-      activeBodyId
-    );
-
-    if (
-      consumingFeature?.kind !== "extrude" ||
-      !isConsumingExtrudeOperationMode(consumingFeature.operationMode) ||
-      consumingFeature.targetTopologyAnchorId !== target.topologyAnchorId
-    ) {
-      return activeBodyId;
-    }
-
-    activeBodyId = consumingFeature.bodyId;
-  }
-
-  return activeBodyId;
+  return resolveSharedActiveTopologyAnchorBodyTargetId(state.features, target);
 }
 
 function validateExtrudeTargetBodyId(
@@ -17449,9 +17432,15 @@ function resolveActiveTopologyAnchorTarget(
   readonly topologyAnchorId: string;
   readonly checkpointId: string;
 } {
-  const anchorId = topologyAnchorId.trim();
+  const resolution = resolveActiveTopologyAnchorTargetSource(
+    state.topologyIdentity,
+    topologyAnchorId,
+    expectedKind
+  );
+  if (resolution.ok) return resolution.target;
 
-  if (anchorId.length === 0) {
+  const issue = resolution.issue;
+  if (issue.code === "invalid-id") {
     throwValidationError({
       code: "INVALID_TOPOLOGY_ANCHOR",
       message: "Topology anchor ID must be non-empty.",
@@ -17463,77 +17452,56 @@ function resolveActiveTopologyAnchorTarget(
     });
   }
 
-  const topologyIdentity = state.topologyIdentity;
-  const anchor = topologyIdentity?.anchors.find(
-    (candidate) => candidate.anchorId === anchorId
-  );
-
-  if (!topologyIdentity || !anchor) {
+  if (issue.code === "anchor-not-found") {
     throwValidationError({
       code: "TOPOLOGY_ANCHOR_NOT_FOUND",
-      message: `Topology anchor does not exist: ${anchorId}`,
+      message: `Topology anchor does not exist: ${issue.topologyAnchorId}`,
       opIndex,
-      topologyAnchorId: anchorId,
+      topologyAnchorId: issue.topologyAnchorId,
       path: operationPath(opIndex, pathField),
       expected: "existing topology anchor",
-      received: anchorId
+      received: issue.topologyAnchorId
     });
   }
-
-  const checkpoint = topologyIdentity.checkpoints.find(
-    (candidate) => candidate.checkpointId === anchor.checkpointId
-  );
-
-  if (!checkpoint) {
+  if (issue.code === "checkpoint-not-found") {
     throwValidationError({
       code: "TOPOLOGY_CHECKPOINT_NOT_FOUND",
-      message: `Topology checkpoint does not exist: ${anchor.checkpointId}`,
+      message: `Topology checkpoint does not exist: ${issue.checkpointId}`,
       opIndex,
-      topologyAnchorId: anchor.anchorId,
-      checkpointId: anchor.checkpointId,
+      topologyAnchorId: issue.topologyAnchorId,
+      checkpointId: issue.checkpointId,
       path: operationPath(opIndex, pathField),
       expected: "existing topology checkpoint",
-      received: anchor.checkpointId
+      received: issue.checkpointId
     });
   }
-
-  if (checkpoint.status !== "active" || anchor.state !== "active") {
+  if (issue.code === "inactive") {
     throwValidationError({
       code: "INVALID_TOPOLOGY_ANCHOR",
-      message: `Topology anchor ${anchor.anchorId} is not active.`,
+      message: `Topology anchor ${issue.topologyAnchorId} is not active.`,
       opIndex,
-      bodyId: anchor.bodyId,
-      topologyAnchorId: anchor.anchorId,
-      checkpointId: anchor.checkpointId,
+      bodyId: issue.bodyId,
+      topologyAnchorId: issue.topologyAnchorId,
+      checkpointId: issue.checkpointId,
       path: operationPath(opIndex, pathField),
       expected: "active topology anchor and checkpoint",
-      received: `anchor:${anchor.state}, checkpoint:${checkpoint.status}`
+      received: `anchor:${issue.anchorState}, checkpoint:${issue.checkpointStatus}`
     });
   }
-
-  if (anchor.entityKind !== expectedKind) {
+  if (issue.code === "kind-mismatch") {
     throwValidationError({
       code: "INVALID_TOPOLOGY_ANCHOR",
-      message: `Topology anchor ${anchor.anchorId} is ${anchor.entityKind}, not a ${expectedKind}.`,
+      message: `Topology anchor ${issue.topologyAnchorId} is ${issue.actualKind}, not a ${expectedKind}.`,
       opIndex,
-      bodyId: anchor.bodyId,
-      topologyAnchorId: anchor.anchorId,
-      checkpointId: anchor.checkpointId,
+      bodyId: issue.bodyId,
+      topologyAnchorId: issue.topologyAnchorId,
+      checkpointId: issue.checkpointId,
       path: operationPath(opIndex, pathField),
       expected: `${expectedKind} topology anchor`,
-      received: anchor.entityKind
+      received: issue.actualKind
     });
   }
-
-  return {
-    bodyId: anchor.bodyId,
-    ...(anchor.stableId ? { stableId: anchor.stableId } : {}),
-    ...(anchor.sourceSemanticRole
-      ? { sourceSemanticRole: anchor.sourceSemanticRole }
-      : {}),
-    topologyAnchorId: anchor.anchorId,
-    checkpointId: anchor.checkpointId
-  };
+  throw new Error("Unhandled topology anchor target resolution issue.");
 }
 
 function resolveActiveTopologyAnchorStableTarget(

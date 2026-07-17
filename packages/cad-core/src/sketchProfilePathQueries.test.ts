@@ -41,6 +41,37 @@ function addSquare(
   );
 }
 
+function addBodyTopologyAnchor(
+  engine: CadEngine,
+  bodyId: string,
+  sourceFeatureId: string,
+  anchorId = "target-anchor"
+): void {
+  engine.apply({
+    op: "topology.checkpoint.create",
+    checkpointId: "target-checkpoint",
+    bodyId,
+    sourceFeatureId,
+    sourceIdentity: {
+      algorithm: "partbench-source-v1",
+      sha256: "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    status: "active"
+  });
+  engine.apply({
+    op: "topology.anchor.create",
+    anchorId,
+    entityKind: "body",
+    bodyId,
+    checkpointId: "target-checkpoint",
+    checkpointEntityId: "checkpoint-target-body",
+    sourceFeatureId,
+    stableId: `generated:body:${bodyId}`,
+    sourceSemanticRole: "source body",
+    signatureHash: "target_body_signature"
+  });
+}
+
 function query<T extends SketchProfilePathQueryResponse>(
   engine: CadEngine,
   request: Parameters<CadEngine["executeQuery"]>[0]
@@ -122,6 +153,19 @@ describe("V17 profile and path queries", () => {
         orderedEntityIds: ["a", "b", "c", "d"]
       }
     });
+    expect(
+      firstResponse.candidates.map((candidate) => candidate.profile)
+    ).toEqual([
+      {
+        kind: "wire",
+        sketchId: "sketch",
+        segments: ["a", "b", "c", "d"].map((entityId) => ({
+          entityId,
+          orientation: "forward"
+        }))
+      },
+      { kind: "entity", sketchId: "sketch", entityId: "rectangle" }
+    ]);
     expect(firstResponse.constructionExclusions).toMatchObject([
       { entityId: "guide", entityKind: "circle" }
     ]);
@@ -261,6 +305,21 @@ describe("V17 profile and path queries", () => {
         id: "tiny-circle",
         center: [1, 0],
         radius: 0.0000002
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "tiny",
+        id: "boundary-rectangle",
+        center: [2, 0],
+        width: 0.000001,
+        height: 0.000001
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "tiny",
+        id: "boundary-circle",
+        center: [3, 0],
+        radius: Math.sqrt(0.000000000001 / Math.PI) * (1 + 1e-10)
       }
     ]);
 
@@ -283,6 +342,25 @@ describe("V17 profile and path queries", () => {
       expect(response.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(
         ["SKETCH_PROFILE_AREA_TOO_SMALL"]
       );
+    }
+
+    for (const entityId of ["boundary-rectangle", "boundary-circle"]) {
+      const response = query<
+        Extract<
+          SketchProfilePathQueryResponse,
+          { query: "sketch.profileReadiness" }
+        >
+      >(engine, {
+        version: "cadops.v1",
+        query: {
+          query: "sketch.profileReadiness",
+          profile: { kind: "entity", sketchId: "tiny", entityId },
+          consumer: { featureKind: "extrude", operationMode: "newBody" }
+        }
+      });
+      expect(response.status).toBe("ready");
+      expect(response.area).toBeCloseTo(0.000000000001, 18);
+      expect(response.diagnostics).toEqual([]);
     }
   });
 
@@ -560,12 +638,64 @@ describe("V17 profile and path queries", () => {
       query: { query: "sketch.pathCandidates", sketchId: "paths" }
     });
     expect(candidates.candidateCount).toBe(6);
-    expect(
-      candidates.candidates.filter(
-        (candidate) => candidate.path.kind === "chain"
-      )
-    ).toHaveLength(2);
+    const chains = candidates.candidates
+      .map((candidate) => candidate.path)
+      .filter((path) => path.kind === "chain");
+    expect(chains).toEqual([
+      {
+        kind: "chain",
+        sketchId: "paths",
+        segments: [
+          { entityId: "arc", orientation: "reverse" },
+          { entityId: "line", orientation: "reverse" }
+        ]
+      },
+      {
+        kind: "chain",
+        sketchId: "paths",
+        segments: [
+          { entityId: "line", orientation: "forward" },
+          { entityId: "arc", orientation: "forward" }
+        ]
+      }
+    ]);
     expect(candidates.rejectedComponentCount).toBe(0);
+
+    const reverseInsertion = new CadEngine();
+    addSketch(reverseInsertion, "paths");
+    reverseInsertion.applyBatch([
+      {
+        op: "sketch.addArc",
+        sketchId: "paths",
+        id: "arc",
+        construction: true,
+        definition: {
+          kind: "centerAngles",
+          center: [1, 1],
+          radius: 1,
+          startAngleDegrees: 270,
+          sweepAngleDegrees: 90
+        }
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "paths",
+        id: "line",
+        start: [0, 0],
+        end: [1, 0],
+        construction: true
+      }
+    ]);
+    const reverseCandidates = query<
+      Extract<
+        SketchProfilePathQueryResponse,
+        { query: "sketch.pathCandidates" }
+      >
+    >(reverseInsertion, {
+      version: "cadops.v1",
+      query: { query: "sketch.pathCandidates", sketchId: "paths" }
+    });
+    expect(reverseCandidates.candidates).toEqual(candidates.candidates);
 
     const g0 = new CadEngine();
     addSketch(g0, "g0");
@@ -642,6 +772,17 @@ describe("V17 profile and path queries", () => {
         (diagnostic) => diagnostic.code
       )
     ).toContain("SKETCH_PATH_BRANCHING");
+    expect(branchResponse.rejectedComponents[0]).toMatchObject({
+      connectionStatus: "branching",
+      entityIds: ["a", "b", "c"],
+      diagnostics: [
+        {
+          code: "SKETCH_PATH_BRANCHING",
+          severity: "blocker",
+          sketchId: "branch-path"
+        }
+      ]
+    });
 
     const crossing = new CadEngine();
     addSketch(crossing, "crossing-path");
@@ -933,6 +1074,201 @@ describe("V17 profile and path queries", () => {
       targetCompatibility: { status: "ready", targetBodyId: "target-body" }
     });
 
+    addBodyTopologyAnchor(engine, "target-body", "target-feature");
+    const anchorReady = query<
+      Extract<
+        SketchProfilePathQueryResponse,
+        { query: "sketch.profileReadiness" }
+      >
+    >(engine, {
+      version: "cadops.v1",
+      query: {
+        query: "sketch.profileReadiness",
+        profile,
+        consumer: {
+          featureKind: "extrude",
+          operationMode: "add",
+          targetTopologyAnchorId: "target-anchor"
+        }
+      }
+    });
+    expect(anchorReady).toMatchObject({
+      status: "ready",
+      targetCompatibility: {
+        status: "ready",
+        targetBodyId: "target-body",
+        targetTopologyAnchorId: "target-anchor"
+      }
+    });
+
+    const anchoredDocument = engine.getDocument();
+    const staleAnchorEngine = new CadEngine({
+      ...anchoredDocument,
+      topologyIdentity: {
+        ...anchoredDocument.topologyIdentity!,
+        checkpoints: anchoredDocument.topologyIdentity!.checkpoints.map(
+          (checkpoint) => ({ ...checkpoint, status: "stale" as const })
+        )
+      }
+    });
+    const staleAnchor = query<
+      Extract<
+        SketchProfilePathQueryResponse,
+        { query: "sketch.profileReadiness" }
+      >
+    >(staleAnchorEngine, {
+      version: "cadops.v1",
+      query: {
+        query: "sketch.profileReadiness",
+        profile,
+        consumer: {
+          featureKind: "extrude",
+          operationMode: "cut",
+          targetTopologyAnchorId: "target-anchor"
+        }
+      }
+    });
+    expect(staleAnchor).toMatchObject({
+      status: "blocked",
+      targetCompatibility: {
+        status: "stale",
+        targetBodyId: "target-body",
+        targetTopologyAnchorId: "target-anchor"
+      }
+    });
+
+    const wrongKindAnchorEngine = new CadEngine({
+      ...anchoredDocument,
+      topologyIdentity: {
+        ...anchoredDocument.topologyIdentity!,
+        anchors: anchoredDocument.topologyIdentity!.anchors.map((anchor) => ({
+          ...anchor,
+          entityKind: "edge" as const
+        }))
+      }
+    });
+    const wrongKindAnchor = query<
+      Extract<
+        SketchProfilePathQueryResponse,
+        { query: "sketch.profileReadiness" }
+      >
+    >(wrongKindAnchorEngine, {
+      version: "cadops.v1",
+      query: {
+        query: "sketch.profileReadiness",
+        profile,
+        consumer: {
+          featureKind: "extrude",
+          operationMode: "cut",
+          targetTopologyAnchorId: "target-anchor"
+        }
+      }
+    });
+    expect(wrongKindAnchor).toMatchObject({
+      status: "blocked",
+      targetCompatibility: {
+        status: "unsupported",
+        targetBodyId: "target-body",
+        targetTopologyAnchorId: "target-anchor"
+      }
+    });
+
+    const missingAnchor = query<
+      Extract<
+        SketchProfilePathQueryResponse,
+        { query: "sketch.profileReadiness" }
+      >
+    >(engine, {
+      version: "cadops.v1",
+      query: {
+        query: "sketch.profileReadiness",
+        profile,
+        consumer: {
+          featureKind: "extrude",
+          operationMode: "cut",
+          targetTopologyAnchorId: "missing-anchor"
+        }
+      }
+    });
+    expect(missingAnchor).toMatchObject({
+      status: "blocked",
+      targetCompatibility: {
+        status: "missing",
+        targetTopologyAnchorId: "missing-anchor"
+      }
+    });
+
+    engine.applyBatch([
+      {
+        op: "sketch.addRectangle",
+        sketchId: "profiles",
+        id: "anchor-tool",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "anchor-add-feature",
+        bodyId: "anchor-add-body",
+        sketchId: "profiles",
+        entityId: "anchor-tool",
+        depth: 1,
+        operationMode: "add",
+        targetTopologyAnchorId: "target-anchor"
+      }
+    ]);
+    const advancedAnchor = query<
+      Extract<
+        SketchProfilePathQueryResponse,
+        { query: "sketch.profileReadiness" }
+      >
+    >(engine, {
+      version: "cadops.v1",
+      query: {
+        query: "sketch.profileReadiness",
+        profile,
+        consumer: {
+          featureKind: "extrude",
+          operationMode: "cut",
+          targetTopologyAnchorId: "target-anchor"
+        }
+      }
+    });
+    expect(advancedAnchor).toMatchObject({
+      status: "ready",
+      targetCompatibility: {
+        status: "ready",
+        targetBodyId: "anchor-add-body",
+        targetTopologyAnchorId: "target-anchor"
+      }
+    });
+
+    const consumedDirect = query<
+      Extract<
+        SketchProfilePathQueryResponse,
+        { query: "sketch.profileReadiness" }
+      >
+    >(engine, {
+      version: "cadops.v1",
+      query: {
+        query: "sketch.profileReadiness",
+        profile,
+        consumer: {
+          featureKind: "extrude",
+          operationMode: "cut",
+          targetBodyId: "target-body"
+        }
+      }
+    });
+    expect(consumedDirect).toMatchObject({
+      status: "blocked",
+      targetCompatibility: {
+        status: "unsupported",
+        targetBodyId: "target-body"
+      }
+    });
+
     const missingTarget = query<
       Extract<
         SketchProfilePathQueryResponse,
@@ -1001,6 +1337,32 @@ describe("V17 profile and path queries", () => {
         end: [2, 0]
       },
       {
+        op: "sketch.addArc",
+        sketchId: "path",
+        id: "normal-arc",
+        definition: {
+          kind: "centerAngles",
+          center: [-1, 0],
+          radius: 1,
+          startAngleDegrees: 0,
+          sweepAngleDegrees: 90
+        }
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "path",
+        id: "chain-a",
+        start: [0, 0],
+        end: [0, 1]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "path",
+        id: "chain-b",
+        start: [0, 1],
+        end: [0, 2]
+      },
+      {
         op: "sketch.addCircle",
         sketchId: "path",
         id: "circle",
@@ -1030,6 +1392,64 @@ describe("V17 profile and path queries", () => {
     });
     expect(ready).toMatchObject({ status: "ready", frameStatus: "ready" });
     expect(sourceState(engine)).toEqual(before);
+
+    const frameCases = [
+      {
+        path: {
+          kind: "entity" as const,
+          sketchId: "path",
+          entityId: "normal-arc",
+          orientation: "forward" as const
+        }
+      },
+      {
+        path: {
+          kind: "chain" as const,
+          sketchId: "path",
+          segments: ["chain-a", "chain-b"].map((entityId) => ({
+            entityId,
+            orientation: "forward" as const
+          }))
+        }
+      }
+    ];
+    for (const frameCase of frameCases) {
+      const withProfile = query<
+        Extract<
+          SketchProfilePathQueryResponse,
+          { query: "sketch.pathReadiness" }
+        >
+      >(engine, {
+        version: "cadops.v1",
+        query: {
+          query: "sketch.pathReadiness",
+          path: frameCase.path,
+          sweepProfile: {
+            kind: "entity",
+            sketchId: "profile",
+            entityId: "profile-rect"
+          }
+        }
+      });
+      expect(withProfile).toMatchObject({
+        status: "ready",
+        frameStatus: "ready"
+      });
+
+      const withoutProfile = query<
+        Extract<
+          SketchProfilePathQueryResponse,
+          { query: "sketch.pathReadiness" }
+        >
+      >(engine, {
+        version: "cadops.v1",
+        query: { query: "sketch.pathReadiness", path: frameCase.path }
+      });
+      expect(withoutProfile).toMatchObject({
+        status: "ready",
+        frameStatus: "not-evaluated"
+      });
+    }
 
     const badFrame = query<
       Extract<SketchProfilePathQueryResponse, { query: "sketch.pathReadiness" }>

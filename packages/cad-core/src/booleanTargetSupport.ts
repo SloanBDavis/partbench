@@ -40,7 +40,7 @@ export function createSupportedBooleanBodyTargetOperations<
 >(
   document: BooleanTargetSupportDocument<TFeature>,
   bodyId: BodyId,
-  topologyAnchorId: string
+  topologyAnchorId?: string
 ): readonly CadSelectionReferenceOperation[] {
   const targetFeature = findFeatureByBodyId(document.features, bodyId);
   const targetProfileKind = resolveSupportedBooleanTargetProfileKind(
@@ -60,7 +60,10 @@ export function createSupportedBooleanBodyTargetOperations<
 
   if (
     targetProfileKind !== undefined &&
-    isSupportedAddTargetProfileKind(targetProfileKind)
+    isSupportedAddTargetProfileKind(
+      targetProfileKind,
+      topologyAnchorId !== undefined
+    )
   ) {
     operations.push("feature.extrudeAddTarget");
   }
@@ -224,11 +227,12 @@ function isSupportedCutTargetProfileKind(
 }
 
 function isSupportedAddTargetProfileKind(
-  profileKind: SupportedBooleanTargetKind
+  profileKind: SupportedBooleanTargetKind,
+  hasTopologyAnchorTarget: boolean
 ): boolean {
   return (
     profileKind === "rectangle" ||
-    profileKind === "circle" ||
+    (hasTopologyAnchorTarget && profileKind === "circle") ||
     profileKind === "importedBody"
   );
 }

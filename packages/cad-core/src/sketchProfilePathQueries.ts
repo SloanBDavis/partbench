@@ -28,6 +28,7 @@ import type {
 } from "@web-cad/cad-protocol";
 
 import type { CadDocument, Sketch } from "./index";
+import { createSupportedBooleanBodyTargetOperations } from "./booleanTargetSupport";
 import { SKETCH_GEOMETRY_POLICY } from "./sketchGeometryPolicy";
 import {
   areSketchPointsCoincident,
@@ -46,6 +47,10 @@ import {
   createSourceMeasurementFrame,
   mapSketchPointToSourceMeasurementFrame
 } from "./sourceMeasurementGeometry";
+import {
+  resolveActiveTopologyAnchorBodyTargetId,
+  resolveActiveTopologyAnchorTargetSource
+} from "./topologyAnchorTargetResolution";
 
 interface ResolvedWire {
   readonly segments: readonly ResolvedSketchSegment[];
@@ -1147,11 +1152,11 @@ function createTargetCompatibility(
   ) {
     return { status: "not-applicable", diagnosticCount: 0, diagnostics: [] };
   }
-  if (!consumer.targetBodyId) {
+  if (!consumer.targetBodyId && !consumer.targetTopologyAnchorId) {
     const diagnostics = [
       profileDiagnostic(
-        "BODY_NOT_FOUND",
-        `${consumer.operationMode} readiness requires a target body id.`
+        "TARGET_BODY_REQUIRED",
+        `${consumer.operationMode} readiness requires a target body or body topology anchor.`
       )
     ];
     return {
@@ -1160,40 +1165,115 @@ function createTargetCompatibility(
       diagnostics
     };
   }
+  const requiredOperation =
+    consumer.operationMode === "add"
+      ? "feature.extrudeAddTarget"
+      : "feature.extrudeCutTarget";
+
+  if (consumer.targetTopologyAnchorId) {
+    const anchorResolution = resolveActiveTopologyAnchorTargetSource(
+      document.topologyIdentity,
+      consumer.targetTopologyAnchorId,
+      "body"
+    );
+    if (!anchorResolution.ok) {
+      const issue = anchorResolution.issue;
+      const missing =
+        issue.code === "invalid-id" || issue.code === "anchor-not-found";
+      const stale =
+        issue.code === "checkpoint-not-found" || issue.code === "inactive";
+      const resolvedBodyId = "bodyId" in issue ? issue.bodyId : undefined;
+      const diagnostics = [
+        profileDiagnostic(
+          missing ? "TOPOLOGY_ANCHOR_NOT_FOUND" : "INVALID_TOPOLOGY_ANCHOR",
+          missing
+            ? `Topology anchor does not exist: ${consumer.targetTopologyAnchorId}.`
+            : `Topology anchor is not an active body target: ${consumer.targetTopologyAnchorId}.`,
+          { ...(resolvedBodyId ? { bodyId: resolvedBodyId } : {}) }
+        )
+      ];
+      const responseDetails = {
+        targetTopologyAnchorId: consumer.targetTopologyAnchorId,
+        diagnosticCount: diagnostics.length,
+        diagnostics
+      };
+      if (missing) return { status: "missing", ...responseDetails };
+      if (stale) {
+        return {
+          status: "stale",
+          ...(resolvedBodyId ? { targetBodyId: resolvedBodyId } : {}),
+          ...responseDetails
+        };
+      }
+      return {
+        status: "unsupported",
+        targetBodyId: resolvedBodyId!,
+        ...responseDetails
+      };
+    }
+
+    const targetBodyId = resolveActiveTopologyAnchorBodyTargetId(
+      document.features,
+      anchorResolution.target
+    );
+    return createResolvedTargetCompatibility(
+      document,
+      targetBodyId,
+      requiredOperation,
+      consumer.targetTopologyAnchorId
+    );
+  }
+
+  return createResolvedTargetCompatibility(
+    document,
+    consumer.targetBodyId!,
+    requiredOperation
+  );
+}
+
+function createResolvedTargetCompatibility(
+  document: CadDocument,
+  targetBodyId: string,
+  requiredOperation: "feature.extrudeAddTarget" | "feature.extrudeCutTarget",
+  targetTopologyAnchorId?: string
+): SketchProfileReadinessQueryResponse["targetCompatibility"] {
   const target = [...document.features.values()].find(
-    (feature) => feature.bodyId === consumer.targetBodyId
+    (feature) => feature.bodyId === targetBodyId
   );
-  const consumed = [...document.features.values()].some(
+  const consumedBy = [...document.features.values()].find(
     (feature) =>
-      "targetBodyId" in feature &&
-      feature.targetBodyId === consumer.targetBodyId
+      "targetBodyId" in feature && feature.targetBodyId === targetBodyId
   );
-  const targetProfile = target?.kind === "extrude" ? target.profile : undefined;
-  const targetEntity =
-    targetProfile?.kind === "entity"
-      ? document.sketches
-          .get(targetProfile.sketchId)
-          ?.entities.get(targetProfile.entityId)
-      : undefined;
+  const supportedOperations = createSupportedBooleanBodyTargetOperations(
+    document,
+    targetBodyId,
+    targetTopologyAnchorId
+  );
   const supported =
-    !consumed &&
-    target?.kind === "extrude" &&
-    target.operationMode === "newBody" &&
-    (targetEntity?.kind === "rectangle" || targetEntity?.kind === "circle");
+    target !== undefined &&
+    consumedBy === undefined &&
+    supportedOperations.includes(requiredOperation);
   const diagnostics = supported
     ? []
     : [
         profileDiagnostic(
-          target ? "UNSUPPORTED_BODY_REFERENCES" : "BODY_NOT_FOUND",
           target
-            ? `Target body is outside the supported active authored extrude matrix: ${consumer.targetBodyId}.`
-            : `Target body does not exist: ${consumer.targetBodyId}.`,
-          { bodyId: consumer.targetBodyId }
+            ? consumedBy
+              ? "TARGET_BODY_NOT_SUPPORTED"
+              : "UNSUPPORTED_BODY_REFERENCES"
+            : "BODY_NOT_FOUND",
+          target
+            ? consumedBy
+              ? `Target body is already consumed by feature ${consumedBy.id}: ${targetBodyId}.`
+              : `Target body is outside the supported boolean target matrix: ${targetBodyId}.`
+            : `Target body does not exist: ${targetBodyId}.`,
+          { bodyId: targetBodyId }
         )
       ];
   return {
     status: supported ? "ready" : "unsupported",
-    targetBodyId: consumer.targetBodyId,
+    targetBodyId,
+    ...(targetTopologyAnchorId ? { targetTopologyAnchorId } : {}),
     diagnosticCount: diagnostics.length,
     diagnostics
   };
