@@ -762,6 +762,9 @@ describe("sketch panel UI helpers", () => {
       getSketchDimensionTargetLabel({ entityKind: "rectangle", role: "height" })
     ).toBe("Height");
     expect(
+      getSketchDimensionTargetLabel({ entityKind: "arc", role: "sweep" })
+    ).toBe("Sweep");
+    expect(
       getSketchDimensionTargetValue(rectangle, {
         entityKind: "rectangle",
         role: "width"

@@ -628,6 +628,8 @@ export function getSketchDimensionTargetLabel(
       return "Radius";
     case "length":
       return "Length";
+    case "sweep":
+      return "Sweep";
   }
 }
 
