@@ -141,6 +141,7 @@ describe("sketch panel UI helpers", () => {
             {
               id: "circle_1",
               kind: "circle",
+              construction: false,
               center: [0, 0],
               radius: 1
             }
@@ -155,11 +156,18 @@ describe("sketch panel UI helpers", () => {
       {
         id: "rect_1",
         kind: "rectangle",
+        construction: false,
         center: [0, 0],
         width: 4,
         height: 2
       },
-      { id: "circle_1", kind: "circle", center: [1, 1], radius: 2 }
+      {
+        id: "circle_1",
+        kind: "circle",
+        construction: false,
+        center: [1, 1],
+        radius: 2
+      }
     ];
 
     expect(chooseSketchEntitySelection(entities, "circle_1")).toBe("circle_1");
@@ -205,6 +213,7 @@ describe("sketch panel UI helpers", () => {
       isExtrudableSketchEntity({
         id: "point_1",
         kind: "point",
+        construction: false,
         point: [0, 0]
       })
     ).toBe(false);
@@ -212,6 +221,7 @@ describe("sketch panel UI helpers", () => {
       isRevolvableSketchEntity({
         id: "line_1",
         kind: "line",
+        construction: false,
         start: [0, 0],
         end: [1, 0]
       })
@@ -222,24 +232,28 @@ describe("sketch panel UI helpers", () => {
     const line: SketchSnapshot["entities"][number] = {
       id: "line_1",
       kind: "line",
+      construction: false,
       start: [0, 0],
       end: [3, 4]
     };
     const secondLine: SketchSnapshot["entities"][number] = {
       id: "line_2",
       kind: "line",
+      construction: false,
       start: [10, 10],
       end: [10, 12]
     };
     const zeroLine: SketchSnapshot["entities"][number] = {
       id: "line_zero",
       kind: "line",
+      construction: false,
       start: [2, 2],
       end: [2, 2]
     };
     const rectangle: SketchSnapshot["entities"][number] = {
       id: "rect_1",
       kind: "rectangle",
+      construction: false,
       center: [0, 0],
       width: 4,
       height: 2
@@ -247,13 +261,24 @@ describe("sketch panel UI helpers", () => {
     const circle: SketchSnapshot["entities"][number] = {
       id: "circle_1",
       kind: "circle",
+      construction: false,
       center: [7, 8],
       radius: 2
     };
     const point: SketchSnapshot["entities"][number] = {
       id: "point_1",
       kind: "point",
+      construction: false,
       point: [5, 6]
+    };
+    const arc: SketchSnapshot["entities"][number] = {
+      id: "arc_1",
+      kind: "arc",
+      construction: false,
+      center: [2, 3],
+      radius: 4,
+      startAngleDegrees: 15,
+      sweepAngleDegrees: -60
     };
     const horizontalConstraint = {
       id: "con_horizontal",
@@ -438,6 +463,7 @@ describe("sketch panel UI helpers", () => {
         coordinate: [7, 8]
       }
     ]);
+    expect(createSketchPointTargetOptionsForEntity(arc)).toEqual([]);
     expect(
       createAvailableSketchConstraintKindOptions(line, [], [line, point])
     ).toEqual([
@@ -678,6 +704,7 @@ describe("sketch panel UI helpers", () => {
     const rectangle: SketchSnapshot["entities"][number] = {
       id: "rect_1",
       kind: "rectangle",
+      construction: false,
       center: [0, 0],
       width: 4,
       height: 2
@@ -685,12 +712,14 @@ describe("sketch panel UI helpers", () => {
     const circle: SketchSnapshot["entities"][number] = {
       id: "circle_1",
       kind: "circle",
+      construction: false,
       center: [0, 0],
       radius: 3
     };
     const line: SketchSnapshot["entities"][number] = {
       id: "line_1",
       kind: "line",
+      construction: false,
       start: [0, 0],
       end: [3, 4]
     };
@@ -725,6 +754,7 @@ describe("sketch panel UI helpers", () => {
       createSketchDimensionTargetOptions({
         id: "point_1",
         kind: "point",
+        construction: false,
         point: [0, 0]
       })
     ).toEqual([]);
@@ -749,6 +779,7 @@ describe("sketch panel UI helpers", () => {
     const rectangle: SketchSnapshot["entities"][number] = {
       id: "rect_1",
       kind: "rectangle",
+      construction: false,
       center: [0, 0],
       width: 4,
       height: 2
@@ -1197,6 +1228,7 @@ describe("sketch panel UI helpers", () => {
     const rectangle: SketchSnapshot["entities"][number] = {
       id: "rect_1",
       kind: "rectangle",
+      construction: false,
       center: [0, 0],
       width: 1,
       height: 1
@@ -1245,6 +1277,7 @@ describe("sketch panel UI helpers", () => {
     const rectangle: SketchSnapshot["entities"][number] = {
       id: "rect_1",
       kind: "rectangle",
+      construction: false,
       center: [0, 0],
       width: 1,
       height: 1
@@ -1547,6 +1580,7 @@ describe("sketch panel UI helpers", () => {
     const rectangle: SketchSnapshot["entities"][number] = {
       id: "rect_1",
       kind: "rectangle",
+      construction: false,
       center: [0, 0],
       width: 4,
       height: 2
@@ -1554,6 +1588,7 @@ describe("sketch panel UI helpers", () => {
     const circle: SketchSnapshot["entities"][number] = {
       id: "circle_1",
       kind: "circle",
+      construction: false,
       center: [0, 0],
       radius: 1
     };
@@ -1590,6 +1625,7 @@ describe("sketch panel UI helpers", () => {
     const rectangle: SketchSnapshot["entities"][number] = {
       id: "rect_1",
       kind: "rectangle",
+      construction: false,
       center: [0, 0],
       width: 4,
       height: 2
@@ -1597,6 +1633,7 @@ describe("sketch panel UI helpers", () => {
     const circle: SketchSnapshot["entities"][number] = {
       id: "circle_1",
       kind: "circle",
+      construction: false,
       center: [0, 0],
       radius: 1
     };
@@ -1704,6 +1741,7 @@ describe("sketch panel UI helpers", () => {
     const rectangle: SketchSnapshot["entities"][number] = {
       id: "rect_1",
       kind: "rectangle",
+      construction: false,
       center: [0, 0],
       width: 4,
       height: 2
@@ -1711,6 +1749,7 @@ describe("sketch panel UI helpers", () => {
     const circle: SketchSnapshot["entities"][number] = {
       id: "circle_1",
       kind: "circle",
+      construction: false,
       center: [0, 0],
       radius: 1
     };
@@ -1748,6 +1787,7 @@ describe("sketch panel UI helpers", () => {
     const rectangle: SketchSnapshot["entities"][number] = {
       id: "rect_1",
       kind: "rectangle",
+      construction: false,
       center: [0, 0],
       width: 4,
       height: 2
@@ -1755,23 +1795,27 @@ describe("sketch panel UI helpers", () => {
     const circle: SketchSnapshot["entities"][number] = {
       id: "circle_1",
       kind: "circle",
+      construction: false,
       center: [0, 0],
       radius: 1
     };
     const point: SketchSnapshot["entities"][number] = {
       id: "point_1",
       kind: "point",
+      construction: false,
       point: [0, 0]
     };
     const validLine: SketchSnapshot["entities"][number] = {
       id: "axis_1",
       kind: "line",
+      construction: false,
       start: [0, -2],
       end: [0, 2]
     };
     const zeroLine: SketchSnapshot["entities"][number] = {
       id: "axis_zero",
       kind: "line",
+      construction: false,
       start: [1, 1],
       end: [1, 1]
     };

@@ -83,6 +83,7 @@ import type {
   SketchConstraintId,
   SketchConstraintRenameOp,
   SketchEntitySnapshot,
+  SketchEntityKindV20,
   SketchId,
   SketchPlane,
   SketchPointTargetRole,
@@ -189,6 +190,9 @@ export interface SketchEntityForm {
   readonly startAngleDegrees: number;
   readonly sweepAngleDegrees: number;
 }
+
+/** Arc creation remains a Slice H workflow; V17 Slice B edits existing arcs. */
+export type CreatableSketchEntityKind = SketchEntityKindV20;
 
 export interface FeatureExtrudeForm {
   readonly id: string;

@@ -16,6 +16,7 @@ import type {
   SketchSnapshot
 } from "@web-cad/cad-protocol";
 import type {
+  CreatableSketchEntityKind,
   FeatureExtrudeForm,
   FeatureHoleForm,
   FeatureRevolveForm,
@@ -135,7 +136,7 @@ export interface SketchPanelProps {
   readonly onDeleteSketch: (sketchId: string) => void;
   readonly onAddEntity: (
     sketchId: string,
-    kind: SketchEntityKind,
+    kind: CreatableSketchEntityKind,
     form: SketchEntityForm
   ) => void;
   readonly onUpdateEntity: (
@@ -845,7 +846,7 @@ export function SketchPanel({
     setEntityForm(entityToSketchEntityForm(entity));
   }
 
-  function addEntity(kind?: SketchEntityKind) {
+  function addEntity(kind?: CreatableSketchEntityKind) {
     setEditingEntityId(undefined);
     setIsAddingEntity(true);
     setEntityKind(kind ?? getDefaultSketchEntityKind(selectedSketch));
@@ -873,6 +874,10 @@ export function SketchPanel({
         sketchEntityFormToEntity(editingEntityId, entityKind, entityForm)
       );
       setEditingEntityId(undefined);
+      return;
+    }
+
+    if (entityKind === "arc") {
       return;
     }
 

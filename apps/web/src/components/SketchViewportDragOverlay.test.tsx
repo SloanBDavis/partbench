@@ -11,13 +11,29 @@ describe("SketchViewportDragOverlay", () => {
     name: "Overlay sketch",
     plane: "XY",
     entities: [
-      { id: "line_a", kind: "line", start: [0, 0], end: [1, 0] },
+      {
+        id: "line_a",
+        kind: "line",
+        construction: false,
+        start: [0, 0],
+        end: [1, 0]
+      },
       {
         id: "rect_a",
         kind: "rectangle",
+        construction: false,
         center: [0, 0],
         width: 1,
         height: 1
+      },
+      {
+        id: "arc_a",
+        kind: "arc",
+        construction: false,
+        center: [2, 0],
+        radius: 1,
+        startAngleDegrees: 0,
+        sweepAngleDegrees: 90
       }
     ]
   };
@@ -47,6 +63,20 @@ describe("SketchViewportDragOverlay", () => {
       createElement(SketchViewportDragOverlay, {
         camera: createDefaultCamera(),
         selectedEntityId: "rect_a",
+        size: { width: 900, height: 600 },
+        sketch: baseSketch,
+        onCommitEntity: () => undefined
+      })
+    );
+
+    expect(markup).toBe("");
+  });
+
+  it("does not render handles for Slice B arc drags", () => {
+    const markup = renderToStaticMarkup(
+      createElement(SketchViewportDragOverlay, {
+        camera: createDefaultCamera(),
+        selectedEntityId: "arc_a",
         size: { width: 900, height: 600 },
         sketch: baseSketch,
         onCommitEntity: () => undefined

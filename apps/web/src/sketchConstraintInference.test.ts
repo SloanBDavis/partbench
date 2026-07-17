@@ -100,6 +100,7 @@ describe("createSketchConstraintInferenceCandidates", () => {
     const circle: SketchEntitySnapshot = {
       id: "circle_1",
       kind: "circle",
+      construction: false,
       center: [0, 0],
       radius: 1
     };
@@ -144,6 +145,7 @@ function createLine(
   return {
     id,
     kind: "line",
+    construction: false,
     start,
     end
   };

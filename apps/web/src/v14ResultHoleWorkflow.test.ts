@@ -19,6 +19,7 @@ import {
   WEB_UI_ACTOR
 } from "./cadCommands";
 import { createEffectiveHoleTargetForm } from "./sketchPanelUi";
+import { defaultSketchEntityForm } from "./sketchEntityForms";
 import { createSketchOnFaceCommandPlan } from "./sketchOnFacePromotion";
 import { preflightHoleGeometryCommand } from "./holeGeometryPreflight";
 import type {
@@ -94,6 +95,7 @@ describe("V14 result hole workflow", () => {
     execute(engine, sketchPlan.ops, "commit");
 
     const circleOp = buildAddSketchCircleOp("sketch_result_hole", {
+      ...defaultSketchEntityForm,
       id: "circle_result_hole",
       x: 0,
       y: 0,
@@ -455,6 +457,7 @@ function createAttachedResultHoleFixture(): {
         topologyAnchorProof: createResultFaceProof()
       },
       buildAddSketchCircleOp("sketch_result_hole", {
+        ...defaultSketchEntityForm,
         id: "circle_result_hole",
         x: 0,
         y: 0,

@@ -82,6 +82,7 @@ describe("structure panel UI helpers", () => {
       {
         id: "rect_1",
         kind: "rectangle",
+        construction: false,
         center: [0, 0],
         width: 4,
         height: 2
@@ -89,6 +90,7 @@ describe("structure panel UI helpers", () => {
       {
         id: "circle_1",
         kind: "circle",
+        construction: false,
         center: [1, 1],
         radius: 0.5
       }

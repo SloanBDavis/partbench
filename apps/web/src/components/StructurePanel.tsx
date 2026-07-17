@@ -1085,6 +1085,8 @@ function formatEntityTitle(entity: SketchEntitySnapshot): string {
       return "Rectangle";
     case "circle":
       return "Circle";
+    case "arc":
+      return "Arc";
   }
 }
 
@@ -1097,6 +1099,8 @@ function formatEntityRole(entity: SketchEntitySnapshot): string {
     case "rectangle":
     case "circle":
       return "Profile";
+    case "arc":
+      return "Curve";
   }
 }
 
@@ -1115,6 +1119,10 @@ function formatEntityDetail(
       )} ${units}`;
     case "circle":
       return `radius ${formatNumber(entity.radius)} ${units}`;
+    case "arc":
+      return `radius ${formatNumber(entity.radius)} ${units} · start ${formatNumber(
+        entity.startAngleDegrees
+      )}° · sweep ${formatNumber(entity.sweepAngleDegrees)}°`;
   }
 }
 

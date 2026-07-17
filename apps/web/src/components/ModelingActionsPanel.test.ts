@@ -24,6 +24,7 @@ describe("ModelingActionsPanel", () => {
     const rectangle: SketchSnapshot["entities"][number] = {
       id: "rect_1",
       kind: "rectangle",
+      construction: false,
       center: [0, 0],
       width: 4,
       height: 2
@@ -67,6 +68,7 @@ describe("ModelingActionsPanel", () => {
     const rectangle: SketchSnapshot["entities"][number] = {
       id: "rect_1",
       kind: "rectangle",
+      construction: false,
       center: [0, 0],
       width: 4,
       height: 2
@@ -94,6 +96,38 @@ describe("ModelingActionsPanel", () => {
     expect(markup).toContain("Rename");
     expect(markup).toContain("Delete");
     expect(markup).toContain("Rectangle in Sketch 1");
+  });
+
+  it("renders existing arcs as editable curves without exposing arc creation", () => {
+    const arc: SketchSnapshot["entities"][number] = {
+      id: "arc_1",
+      kind: "arc",
+      construction: true,
+      center: [1, -2],
+      radius: 3,
+      startAngleDegrees: 350,
+      sweepAngleDegrees: -80
+    };
+    const sketch = createSketch("sketch_1", "Sketch 1", [arc]);
+    const context = {
+      selectionKind: "sketchEntity" as const,
+      sketch,
+      entity: arc
+    };
+    const markup = renderToStaticMarkup(
+      createElement(ModelingActionsPanel, {
+        actions: deriveModelingActions({ context }),
+        context
+      })
+    );
+
+    expect(markup).toContain("Arc in Sketch 1");
+    expect(markup).toContain("Selected curve");
+    expect(markup).toContain("Edit Arc");
+    expect(markup).toContain("start 350°");
+    expect(markup).toContain("sweep -80°");
+    expect(markup).not.toContain("+ Arc");
+    expect(markup).not.toContain("Selected profile");
   });
 
   it("uses the next available sketch name for quick sketch creation", () => {
@@ -460,6 +494,7 @@ describe("ModelingActionsPanel", () => {
     const rectangle: SketchSnapshot["entities"][number] = {
       id: "rect_face",
       kind: "rectangle",
+      construction: false,
       center: [0, 0],
       width: 1,
       height: 1
@@ -566,6 +601,7 @@ describe("ModelingActionsPanel", () => {
     const circle: SketchSnapshot["entities"][number] = {
       id: "circle_1",
       kind: "circle",
+      construction: false,
       center: [0, 0],
       radius: 0.3
     };
@@ -601,6 +637,7 @@ describe("ModelingActionsPanel", () => {
     const circle: SketchSnapshot["entities"][number] = {
       id: "circle_1",
       kind: "circle",
+      construction: false,
       center: [0, 1.5],
       radius: 0.2
     };
@@ -678,6 +715,7 @@ describe("ModelingActionsPanel", () => {
     const circle: SketchSnapshot["entities"][number] = {
       id: "circle_1",
       kind: "circle",
+      construction: false,
       center: [0, 0],
       radius: 0.3
     };
@@ -768,6 +806,7 @@ describe("ModelingActionsPanel", () => {
     const line: SketchSnapshot["entities"][number] = {
       id: "line_axis",
       kind: "line",
+      construction: false,
       start: [0, 0],
       end: [0, 5]
     };
@@ -795,6 +834,7 @@ describe("ModelingActionsPanel", () => {
     const rectangle: SketchSnapshot["entities"][number] = {
       id: "rect_1",
       kind: "rectangle",
+      construction: false,
       center: [0, 0],
       width: 4,
       height: 2

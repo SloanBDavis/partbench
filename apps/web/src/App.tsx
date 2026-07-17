@@ -52,7 +52,6 @@ import type {
   SketchEvaluationQueryResponse,
   SketchSolverStatusQueryResponse,
   WcadPackageValidationIssue,
-  SketchEntityKind,
   SketchEntitySnapshot,
   SketchSnapshot
 } from "@web-cad/cad-protocol";
@@ -140,6 +139,7 @@ import {
   type SketchCreateOnFaceForm,
   type SketchCreateForm,
   type SketchEntityForm,
+  type CreatableSketchEntityKind,
   type TransformCommandForm
 } from "./cadCommands";
 import type { EdgeFinishOperation } from "./edgeFinishUi";
@@ -2582,7 +2582,7 @@ export function App() {
 
   async function addSketchEntity(
     sketchId: string,
-    kind: SketchEntityKind,
+    kind: CreatableSketchEntityKind,
     form: SketchEntityForm
   ) {
     const op =

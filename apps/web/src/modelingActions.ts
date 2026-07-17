@@ -50,6 +50,7 @@ import {
   type SketchConstraintKindOption,
   type SketchDimensionTargetOption
 } from "./sketchPanelUi";
+import type { CreatableSketchEntityKind } from "./cadCommands";
 
 const DEFAULT_HOLE_FORM = {
   depthMode: "throughAll" as const,
@@ -66,7 +67,7 @@ const SKETCH_ENTITY_ADD_ACTION_IDS = {
   line: "sketch.entity.add.line",
   rectangle: "sketch.entity.add.rectangle",
   circle: "sketch.entity.add.circle"
-} as const satisfies Record<SketchEntityKind, ModelingActionId>;
+} as const satisfies Record<CreatableSketchEntityKind, ModelingActionId>;
 
 export type ModelingActionId =
   | "sketch.create"
@@ -101,7 +102,7 @@ export type ModelingActionCategory =
 
 export interface ModelingActionTargetMetadata {
   readonly sketchId?: SketchId;
-  readonly addEntityKind?: SketchEntityKind;
+  readonly addEntityKind?: CreatableSketchEntityKind;
   readonly sketchEntityId?: SketchEntityId;
   readonly sketchEntityKind?: SketchEntityKind;
   readonly dimensionTargets?: readonly SketchDimensionTargetOption[];
@@ -241,7 +242,7 @@ function createSketchActions(
 
 function createAddSketchEntityAction(
   sketch: SketchSnapshot,
-  entityKind: SketchEntityKind,
+  entityKind: CreatableSketchEntityKind,
   label: string
 ): ModelingActionDescriptor {
   return {

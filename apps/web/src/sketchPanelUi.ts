@@ -26,6 +26,7 @@ import type {
   SketchSnapshot,
   TopologyCommandTargetReadinessQueryResponse
 } from "@web-cad/cad-protocol";
+import type { CreatableSketchEntityKind } from "./cadCommands";
 export {
   createSketchEntitySelectionId,
   createSketchSelectionId
@@ -226,7 +227,7 @@ export function chooseInitialSketchPanelSelection(
 
 export function getDefaultSketchEntityKind(
   sketch: SketchSnapshot | undefined
-): SketchEntityKind {
+): CreatableSketchEntityKind {
   return sketch?.attachment && sketch.entities.length === 0
     ? "rectangle"
     : "point";
@@ -684,14 +685,18 @@ export function createSketchPointTargetOptionsForEntity(
     ];
   }
 
-  return [
-    {
-      target: { entityId: entity.id, role: "center" },
-      label: `${entity.id} center`,
-      detail: "Circle center",
-      coordinate: entity.center
-    }
-  ];
+  if (entity.kind === "circle") {
+    return [
+      {
+        target: { entityId: entity.id, role: "center" },
+        label: `${entity.id} center`,
+        detail: "Circle center",
+        coordinate: entity.center
+      }
+    ];
+  }
+
+  return [];
 }
 
 export function createAvailableFixedPointTargetOptions(

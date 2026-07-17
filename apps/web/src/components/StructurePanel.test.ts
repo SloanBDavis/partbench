@@ -54,6 +54,49 @@ describe("StructurePanel", () => {
     expect(markup).not.toContain("Objects");
   });
 
+  it("summarizes existing arcs as curves without profile claims", () => {
+    const sketch = createSketch();
+    const arcSketch: SketchSnapshot = {
+      ...sketch,
+      entities: [
+        ...sketch.entities,
+        {
+          id: "arc_1",
+          kind: "arc",
+          construction: true,
+          center: [1, 2],
+          radius: 3,
+          startAngleDegrees: 45,
+          sweepAngleDegrees: -120
+        }
+      ]
+    };
+    const markup = renderToStaticMarkup(
+      createElement(StructurePanel, {
+        bodies: [
+          createExtrudeBody("body_base", "feature_base", {
+            consumedByFeatureId: "feature_cut"
+          }),
+          createExtrudeBody("body_cut", "feature_cut")
+        ],
+        features: [createBaseFeature(), createCutFeature()],
+        health: createHealth(),
+        namedReferences: [],
+        objects: [],
+        parts: [createPart()],
+        sketches: [arcSketch],
+        units: "mm",
+        onFocusSketch: () => undefined,
+        onInspectNamedReference: () => undefined,
+        onSelect: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Curve");
+    expect(markup).toContain("Arc");
+    expect(markup).toContain("radius 3 mm · start 45° · sweep -120°");
+  });
+
   it("renders selected generated references inside the primary body lineage", () => {
     const references = createGeneratedReferences();
     const face = references.faces[0];
@@ -395,6 +438,7 @@ function createSketch(): SketchSnapshot {
       {
         id: "rect_1",
         kind: "rectangle",
+        construction: false,
         center: [0, 0],
         width: 4,
         height: 2

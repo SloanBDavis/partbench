@@ -348,6 +348,7 @@ describe("cad command builders", () => {
       buildUpdateSketchEntityOp("sketch_1", {
         id: "rect_1",
         kind: "rectangle",
+        construction: false,
         center: [1, 2],
         width: 3,
         height: 4
@@ -358,6 +359,7 @@ describe("cad command builders", () => {
       entity: {
         id: "rect_1",
         kind: "rectangle",
+        construction: false,
         center: [1, 2],
         width: 3,
         height: 4
@@ -374,7 +376,10 @@ describe("cad command builders", () => {
       y2: 4,
       width: 5,
       height: 6,
-      radius: 7
+      radius: 7,
+      construction: false,
+      startAngleDegrees: 0,
+      sweepAngleDegrees: 90
     };
 
     expect(

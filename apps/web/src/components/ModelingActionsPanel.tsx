@@ -19,6 +19,7 @@ import type {
 } from "@web-cad/cad-protocol";
 import { useState } from "react";
 import type {
+  CreatableSketchEntityKind,
   FeatureEdgeFinishForm,
   FeatureCircularPatternEdit,
   FeatureCircularPatternForm,
@@ -138,7 +139,7 @@ export interface ModelingActionsPanelProps {
   readonly sketches?: readonly SketchSnapshot[];
   readonly onAddEntity?: (
     sketchId: string,
-    kind: SketchEntityKind,
+    kind: CreatableSketchEntityKind,
     form: SketchEntityForm
   ) => void;
   readonly onCreateConstraint?: (
@@ -764,7 +765,7 @@ function SketchWorkbench({
   readonly sketches: readonly SketchSnapshot[];
   readonly onAddEntity?: (
     sketchId: string,
-    kind: SketchEntityKind,
+    kind: CreatableSketchEntityKind,
     form: SketchEntityForm
   ) => void;
   readonly onSelectSketch?: (sketchId: string, entityId?: string) => void;
@@ -853,7 +854,7 @@ function SketchEntityWorkbench({
   readonly sketches: readonly SketchSnapshot[];
   readonly onAddEntity?: (
     sketchId: string,
-    kind: SketchEntityKind,
+    kind: CreatableSketchEntityKind,
     form: SketchEntityForm
   ) => void;
   readonly onCreateConstraint?: (
@@ -1165,7 +1166,7 @@ function RevolveSetupCard({
   readonly sketches: readonly SketchSnapshot[];
   readonly onAddEntity?: (
     sketchId: string,
-    kind: SketchEntityKind,
+    kind: CreatableSketchEntityKind,
     form: SketchEntityForm
   ) => void;
 }) {
@@ -4300,6 +4301,8 @@ function formatSketchEntityKind(kind: SketchEntityKind): string {
       return "Rectangle";
     case "circle":
       return "Circle";
+    case "arc":
+      return "Arc";
   }
 }
 
@@ -4310,6 +4313,8 @@ function formatSketchEntityRole(kind: SketchEntityKind): string {
     case "rectangle":
     case "circle":
       return "profile";
+    case "arc":
+      return "curve";
     case "point":
       return "point";
   }

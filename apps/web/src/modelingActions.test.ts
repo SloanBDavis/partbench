@@ -59,6 +59,7 @@ describe("modeling action helpers", () => {
     const rectangle: SketchSnapshot["entities"][number] = {
       id: "rect_1",
       kind: "rectangle",
+      construction: false,
       center: [0, 0],
       width: 4,
       height: 2
@@ -91,16 +92,52 @@ describe("modeling action helpers", () => {
     });
   });
 
+  it("limits existing arc actions to property editing in Slice B", () => {
+    const arc: SketchSnapshot["entities"][number] = {
+      id: "arc_1",
+      kind: "arc",
+      construction: false,
+      center: [0, 0],
+      radius: 2,
+      startAngleDegrees: 15,
+      sweepAngleDegrees: 120
+    };
+    const sketch = createSketch("sketch_1", { entities: [arc] });
+    const actions = deriveModelingActions({
+      context: { selectionKind: "sketchEntity", sketch, entity: arc }
+    });
+
+    expect(actions.map((action) => action.id)).toEqual([
+      "sketch.entity.edit",
+      "sketch.dimension.add",
+      "sketch.constraint.add"
+    ]);
+    expect(actionById(actions, "sketch.entity.edit")).toMatchObject({
+      available: true,
+      target: { sketchEntityKind: "arc" }
+    });
+    expect(actionById(actions, "sketch.dimension.add")).toMatchObject({
+      available: false,
+      target: { dimensionTargets: [] }
+    });
+    expect(actionById(actions, "sketch.constraint.add")).toMatchObject({
+      available: false,
+      target: { constraintKinds: [] }
+    });
+  });
+
   it("enables circle hole and revolve actions when eligible targets exist", () => {
     const circle: SketchSnapshot["entities"][number] = {
       id: "circle_1",
       kind: "circle",
+      construction: false,
       center: [0, 0],
       radius: 1
     };
     const axis: SketchSnapshot["entities"][number] = {
       id: "axis_1",
       kind: "line",
+      construction: false,
       start: [0, -2],
       end: [0, 2]
     };
@@ -146,6 +183,7 @@ describe("modeling action helpers", () => {
     const circle: SketchSnapshot["entities"][number] = {
       id: "circle_1",
       kind: "circle",
+      construction: false,
       center: [0, 0],
       radius: 1
     };
@@ -186,6 +224,7 @@ describe("modeling action helpers", () => {
     const circle: SketchSnapshot["entities"][number] = {
       id: "circle_1",
       kind: "circle",
+      construction: false,
       center: [0, 0],
       radius: 1
     };
@@ -217,6 +256,7 @@ describe("modeling action helpers", () => {
     const circle: SketchSnapshot["entities"][number] = {
       id: "circle_1",
       kind: "circle",
+      construction: false,
       center: [0, 0],
       radius: 1
     };
@@ -236,6 +276,7 @@ describe("modeling action helpers", () => {
     const line: SketchSnapshot["entities"][number] = {
       id: "axis_1",
       kind: "line",
+      construction: false,
       start: [0, -1],
       end: [0, 1]
     };
@@ -616,6 +657,7 @@ describe("modeling action helpers", () => {
     const circle: SketchSnapshot["entities"][number] = {
       id: "circle_1",
       kind: "circle",
+      construction: false,
       center: [0, 0],
       radius: 1
     };

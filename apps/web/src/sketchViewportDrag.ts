@@ -136,6 +136,8 @@ export function applySketchViewportDrag(
       return applyCircleDrag(entity, handle, nextSketchPoint);
     case "rectangle":
       return entity;
+    case "arc":
+      return entity;
   }
 }
 
@@ -217,6 +219,8 @@ function createEntityDragHandles(
         )
       ].filter(isDefined);
     case "rectangle":
+      return [];
+    case "arc":
       return [];
   }
 }

@@ -18,15 +18,37 @@ describe("sketchViewportDrag", () => {
     name: "Drag sketch",
     plane: "XY",
     entities: [
-      { id: "point_a", kind: "point", point: [0, 0] },
-      { id: "line_a", kind: "line", start: [0, 0], end: [1, 0] },
-      { id: "circle_a", kind: "circle", center: [2, 0], radius: 0.5 },
+      { id: "point_a", kind: "point", construction: false, point: [0, 0] },
+      {
+        id: "line_a",
+        kind: "line",
+        construction: false,
+        start: [0, 0],
+        end: [1, 0]
+      },
+      {
+        id: "circle_a",
+        kind: "circle",
+        construction: false,
+        center: [2, 0],
+        radius: 0.5
+      },
       {
         id: "rect_a",
         kind: "rectangle",
+        construction: false,
         center: [0, 0],
         width: 1,
         height: 1
+      },
+      {
+        id: "arc_a",
+        kind: "arc",
+        construction: false,
+        center: [3, 0],
+        radius: 0.75,
+        startAngleDegrees: 20,
+        sweepAngleDegrees: -120
       }
     ]
   };
@@ -50,6 +72,12 @@ describe("sketchViewportDrag", () => {
       size,
       sketch
     });
+    const arcHandles = createSketchViewportDragHandles({
+      camera,
+      selectedEntityId: "arc_a",
+      size,
+      sketch
+    });
 
     expect(lineHandles.map((handle) => handle.kind)).toEqual([
       "lineStart",
@@ -61,6 +89,7 @@ describe("sketchViewportDrag", () => {
       "circleRadius"
     ]);
     expect(rectangleHandles).toEqual([]);
+    expect(arcHandles).toEqual([]);
     expect(
       [...lineHandles, ...circleHandles].map((handle) => handle.id)
     ).not.toContain("renderer");
@@ -99,17 +128,20 @@ describe("sketchViewportDrag", () => {
     const point: SketchEntitySnapshot = {
       id: "point_a",
       kind: "point",
+      construction: false,
       point: [0, 0]
     };
     const line: SketchEntitySnapshot = {
       id: "line_a",
       kind: "line",
+      construction: false,
       start: [0, 0],
       end: [1, 0]
     };
     const circle: SketchEntitySnapshot = {
       id: "circle_a",
       kind: "circle",
+      construction: false,
       center: [2, 0],
       radius: 0.5
     };
@@ -149,16 +181,23 @@ describe("sketchViewportDrag", () => {
         [2, 2]
       )
     ).toEqual({ ...circle, radius: 2 });
-    expect(point).toEqual({ id: "point_a", kind: "point", point: [0, 0] });
+    expect(point).toEqual({
+      id: "point_a",
+      kind: "point",
+      construction: false,
+      point: [0, 0]
+    });
     expect(line).toEqual({
       id: "line_a",
       kind: "line",
+      construction: false,
       start: [0, 0],
       end: [1, 0]
     });
     expect(circle).toEqual({
       id: "circle_a",
       kind: "circle",
+      construction: false,
       center: [2, 0],
       radius: 0.5
     });
@@ -168,6 +207,7 @@ describe("sketchViewportDrag", () => {
     const rectangle: SketchEntitySnapshot = {
       id: "rect_a",
       kind: "rectangle",
+      construction: false,
       center: [0, 0],
       width: 1,
       height: 1
@@ -182,10 +222,31 @@ describe("sketchViewportDrag", () => {
     ).toBe(rectangle);
   });
 
+  it("keeps Slice B arc drag previews explicitly unsupported and non-mutating", () => {
+    const arc: SketchEntitySnapshot = {
+      id: "arc_a",
+      kind: "arc",
+      construction: true,
+      center: [2, 1],
+      radius: 3,
+      startAngleDegrees: 30,
+      sweepAngleDegrees: -90
+    };
+
+    expect(
+      applySketchViewportDrag(
+        arc,
+        { kind: "point", sketchPoint: [0, 0] },
+        [4, 5]
+      )
+    ).toBe(arc);
+  });
+
   it("clamps circle radius previews to a positive value", () => {
     const circle: SketchEntitySnapshot = {
       id: "circle_a",
       kind: "circle",
+      construction: false,
       center: [2, 0],
       radius: 0.5
     };
