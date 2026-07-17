@@ -2296,10 +2296,9 @@ export type SketchProfilePathQuery =
   | SketchPathCandidatesQuery
   | SketchPathReadinessQuery;
 
-export interface SketchProfilePathQueryRequest {
-  readonly version: CadOpsVersion;
+export type SketchProfilePathQueryRequest = Omit<CadQueryRequest, "query"> & {
   readonly query: SketchProfilePathQuery;
-}
+};
 
 export interface SketchEditReadinessQuery {
   readonly query: "sketch.editReadiness";
@@ -7972,6 +7971,99 @@ function validateFiniteNumber(
   return false;
 }
 
+function validateNonNegativeNumber(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): value is number {
+  if (!validateFiniteNumber(value, path, issues)) return false;
+  if (value >= 0) return true;
+  issues.push({
+    code: "INVALID_VALUE",
+    path,
+    message: "Expected a non-negative number."
+  });
+  return false;
+}
+
+function validatePositiveNumber(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): value is number {
+  if (!validateFiniteNumber(value, path, issues)) return false;
+  if (value > 0) return true;
+  issues.push({
+    code: "INVALID_VALUE",
+    path,
+    message: "Expected a positive number."
+  });
+  return false;
+}
+
+function validateNonNegativeInteger(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): value is number {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
+    return true;
+  }
+  issues.push({
+    code: "INVALID_VALUE",
+    path,
+    message: "Expected a non-negative integer."
+  });
+  return false;
+}
+
+function validateBoolean(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): value is boolean {
+  if (typeof value === "boolean") return true;
+  issues.push({
+    code: "INVALID_TYPE",
+    path,
+    message: "Expected a boolean."
+  });
+  return false;
+}
+
+function validateEnum(
+  value: unknown,
+  allowed: readonly string[],
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): value is string {
+  if (typeof value === "string" && allowed.includes(value)) return true;
+  issues.push({
+    code: "INVALID_VALUE",
+    path,
+    message: `Expected one of: ${allowed.join(", ")}.`
+  });
+  return false;
+}
+
+function validateIdArray(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  if (!Array.isArray(value)) {
+    issues.push({
+      code: "INVALID_TYPE",
+      path,
+      message: "Expected an ID array."
+    });
+    return;
+  }
+  value.forEach((id, index) =>
+    validateNonEmptyString(id, `${path}[${index}]`, issues)
+  );
+}
+
 function validateOrientedSegments(
   value: unknown,
   path: string,
@@ -8258,7 +8350,7 @@ function validateCountedArray(
   path: string,
   issues: SketchProfilePathValidationIssue[]
 ): readonly unknown[] {
-  validateFiniteNumber(record[countKey], `${path}.${countKey}`, issues);
+  validateNonNegativeInteger(record[countKey], `${path}.${countKey}`, issues);
   const array = record[arrayKey];
   if (!Array.isArray(array)) {
     issues.push({
@@ -8378,6 +8470,8 @@ function validateBounds(
   issues: SketchProfilePathValidationIssue[]
 ): void {
   if (!validateExactRecord(value, path, ["min", "max"], [], issues)) return;
+  let min: readonly [number, number] | undefined;
+  let max: readonly [number, number] | undefined;
   for (const key of ["min", "max"] as const) {
     const point = value[key];
     if (!Array.isArray(point) || point.length !== 2) {
@@ -8390,6 +8484,23 @@ function validateBounds(
     }
     validateFiniteNumber(point[0], `${path}.${key}[0]`, issues);
     validateFiniteNumber(point[1], `${path}.${key}[1]`, issues);
+    if (
+      typeof point[0] === "number" &&
+      Number.isFinite(point[0]) &&
+      typeof point[1] === "number" &&
+      Number.isFinite(point[1])
+    ) {
+      const validatedPoint = [point[0], point[1]] as const;
+      if (key === "min") min = validatedPoint;
+      else max = validatedPoint;
+    }
+  }
+  if (min && max && (min[0] > max[0] || min[1] > max[1])) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path,
+      message: "Bounds minimum must not exceed maximum."
+    });
   }
 }
 
@@ -8409,18 +8520,7 @@ function validateDependencies(
   )
     return;
   for (const key of ["sketchIds", "orderedEntityIds"] as const) {
-    const ids = value[key];
-    if (!Array.isArray(ids)) {
-      issues.push({
-        code: "INVALID_TYPE",
-        path: `${path}.${key}`,
-        message: "Expected an ID array."
-      });
-    } else {
-      ids.forEach((id, index) =>
-        validateNonEmptyString(id, `${path}.${key}[${index}]`, issues)
-      );
-    }
+    validateIdArray(value[key], `${path}.${key}`, issues);
   }
 }
 
@@ -8445,7 +8545,14 @@ function validateJoinArray(
     const optional = pathJoin ? ["angularDeviationDegrees"] : [];
     if (!validateExactRecord(join, joinPath, required, optional, issues))
       return;
-    validateFiniteNumber(join.joinIndex, `${joinPath}.joinIndex`, issues);
+    validateNonNegativeInteger(join.joinIndex, `${joinPath}.joinIndex`, issues);
+    if (join.joinIndex !== index) {
+      issues.push({
+        code: "INVALID_VALUE",
+        path: `${joinPath}.joinIndex`,
+        message: "joinIndex must match deterministic array order."
+      });
+    }
     validateNonEmptyString(
       join.primaryEntityId,
       `${joinPath}.primaryEntityId`,
@@ -8456,13 +8563,50 @@ function validateJoinArray(
       `${joinPath}.secondaryEntityId`,
       issues
     );
-    validateFiniteNumber(join.gapDistance, `${joinPath}.gapDistance`, issues);
+    validateEnum(
+      join.connectionStatus,
+      ["exact", "within-tolerance", "disconnected"],
+      `${joinPath}.connectionStatus`,
+      issues
+    );
+    validateBoolean(
+      join.coincidentWithinTolerance,
+      `${joinPath}.coincidentWithinTolerance`,
+      issues
+    );
+    validateNonNegativeNumber(
+      join.gapDistance,
+      `${joinPath}.gapDistance`,
+      issues
+    );
+    if (pathJoin) {
+      validateEnum(
+        join.tangentStatus,
+        ["tangent", "not-tangent", "not-evaluated"],
+        `${joinPath}.tangentStatus`,
+        issues
+      );
+    }
     if ("angularDeviationDegrees" in join) {
-      validateFiniteNumber(
+      validateNonNegativeNumber(
         join.angularDeviationDegrees,
         `${joinPath}.angularDeviationDegrees`,
         issues
       );
+    }
+    if (
+      typeof join.coincidentWithinTolerance === "boolean" &&
+      typeof join.connectionStatus === "string"
+    ) {
+      const expected = join.connectionStatus === "within-tolerance";
+      if (join.coincidentWithinTolerance !== expected) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: `${joinPath}.coincidentWithinTolerance`,
+          message:
+            "coincidentWithinTolerance must be true only for a within-tolerance join."
+        });
+      }
     }
   });
 }
@@ -8506,6 +8650,7 @@ function validateDiagnosticArray(
   issues: SketchProfilePathValidationIssue[]
 ): void {
   if (!Array.isArray(value)) return;
+  const isProfile = codes === PROFILE_DIAGNOSTIC_CODES;
   value.forEach((diagnostic, index) => {
     const diagnosticPath = `${path}[${index}]`;
     if (
@@ -8516,11 +8661,11 @@ function validateDiagnosticArray(
         [
           "sketchId",
           "entityId",
-          "bodyId",
           "segmentIndex",
           "joinIndex",
           "expected",
-          "received"
+          "received",
+          ...(isProfile ? ["bodyId"] : [])
         ],
         issues
       )
@@ -8545,12 +8690,40 @@ function validateDiagnosticArray(
       `${diagnosticPath}.message`,
       issues
     );
+    for (const key of ["sketchId", "entityId", "bodyId"] as const) {
+      if (key in diagnostic) {
+        validateNonEmptyString(
+          diagnostic[key],
+          `${diagnosticPath}.${key}`,
+          issues
+        );
+      }
+    }
+    for (const key of ["segmentIndex", "joinIndex"] as const) {
+      if (key in diagnostic) {
+        validateNonNegativeInteger(
+          diagnostic[key],
+          `${diagnosticPath}.${key}`,
+          issues
+        );
+      }
+    }
+    for (const key of ["expected", "received"] as const) {
+      if (key in diagnostic && typeof diagnostic[key] !== "string") {
+        issues.push({
+          code: "INVALID_TYPE",
+          path: `${diagnosticPath}.${key}`,
+          message: "Expected a string."
+        });
+      }
+    }
   });
 }
 
 function validateConsumerCompatibility(
   value: unknown,
   path: string,
+  consumer: unknown,
   issues: SketchProfilePathValidationIssue[]
 ): void {
   if (
@@ -8576,6 +8749,30 @@ function validateConsumerCompatibility(
       message: "Invalid consumer status."
     });
   }
+  validateEnum(
+    value.featureKind,
+    ["extrude", "revolve", "sweep", "loft"],
+    `${path}.featureKind`,
+    issues
+  );
+  validateEnum(
+    value.operationMode,
+    ["newBody", "add", "cut"],
+    `${path}.operationMode`,
+    issues
+  );
+  if (
+    isUnknownRecord(consumer) &&
+    (value.featureKind !== consumer.featureKind ||
+      value.operationMode !== consumer.operationMode)
+  ) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path,
+      message:
+        "Consumer compatibility must echo the requested consumer operation."
+    });
+  }
   validateCountedArray(value, "diagnosticCount", "diagnostics", path, issues);
   validateDiagnosticArray(
     value.diagnostics,
@@ -8588,6 +8785,7 @@ function validateConsumerCompatibility(
 function validateTargetCompatibility(
   value: unknown,
   path: string,
+  consumer: unknown,
   issues: SketchProfilePathValidationIssue[]
 ): void {
   if (!isUnknownRecord(value)) {
@@ -8632,10 +8830,198 @@ function validateTargetCompatibility(
     PROFILE_DIAGNOSTIC_CODES,
     issues
   );
+  if (value.status === "not-applicable") {
+    if (
+      value.diagnosticCount !== 0 ||
+      (Array.isArray(value.diagnostics) && value.diagnostics.length !== 0)
+    ) {
+      issues.push({
+        code: "INVALID_VALUE",
+        path,
+        message: "A not-applicable target cannot carry target diagnostics."
+      });
+    }
+  }
+  if (isUnknownRecord(consumer)) {
+    const targetApplies =
+      consumer.featureKind === "extrude" &&
+      (consumer.operationMode === "add" || consumer.operationMode === "cut");
+    if (!targetApplies && value.status !== "not-applicable") {
+      issues.push({
+        code: "INVALID_VALUE",
+        path: `${path}.status`,
+        message: "Only extrude add/cut has target compatibility."
+      });
+    }
+    if (targetApplies) {
+      const requestedTarget = consumer.targetBodyId;
+      if (requestedTarget === undefined && value.status !== "missing") {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: `${path}.status`,
+          message: "A missing add/cut target must report status 'missing'."
+        });
+      }
+      if (
+        typeof requestedTarget === "string" &&
+        (value.status === "ready" || value.status === "unsupported") &&
+        value.targetBodyId !== requestedTarget
+      ) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: `${path}.targetBodyId`,
+          message:
+            "Target compatibility must describe the requested target body."
+        });
+      }
+      if (typeof requestedTarget === "string" && value.status === "missing") {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: `${path}.status`,
+          message: "A supplied target body cannot report status 'missing'."
+        });
+      }
+    }
+  }
+}
+
+function sameOrientedSegments(left: unknown, right: unknown): boolean {
+  if (
+    !Array.isArray(left) ||
+    !Array.isArray(right) ||
+    left.length !== right.length
+  ) {
+    return false;
+  }
+  return left.every((segment, index) => {
+    const other = right[index];
+    return (
+      isUnknownRecord(segment) &&
+      isUnknownRecord(other) &&
+      segment.entityId === other.entityId &&
+      segment.orientation === other.orientation
+    );
+  });
+}
+
+function sameProfileRef(left: unknown, right: unknown): boolean {
+  if (
+    !isUnknownRecord(left) ||
+    !isUnknownRecord(right) ||
+    left.kind !== right.kind
+  ) {
+    return false;
+  }
+  if (left.sketchId !== right.sketchId) return false;
+  if (left.kind === "entity") return left.entityId === right.entityId;
+  if (left.kind === "wire")
+    return sameOrientedSegments(left.segments, right.segments);
+  return false;
+}
+
+function samePathRef(left: unknown, right: unknown): boolean {
+  if (
+    !isUnknownRecord(left) ||
+    !isUnknownRecord(right) ||
+    left.kind !== right.kind
+  ) {
+    return false;
+  }
+  if (left.sketchId !== right.sketchId) return false;
+  if (left.kind === "entity") {
+    return (
+      left.entityId === right.entityId && left.orientation === right.orientation
+    );
+  }
+  if (left.kind === "chain")
+    return sameOrientedSegments(left.segments, right.segments);
+  return false;
+}
+
+function sameConsumerIntent(left: unknown, right: unknown): boolean {
+  return (
+    isUnknownRecord(left) &&
+    isUnknownRecord(right) &&
+    left.featureKind === right.featureKind &&
+    left.operationMode === right.operationMode &&
+    left.targetBodyId === right.targetBodyId
+  );
+}
+
+function validateResponseRequestConsistency(
+  response: UnknownRecord,
+  request: SketchProfilePathQueryRequest,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  if (response.cadOpsVersion !== request.version) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path: "$.cadOpsVersion",
+      message: "Response CADOps version does not match the request."
+    });
+  }
+  if (response.query !== request.query.query) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path: "$.query",
+      message: "Response query kind does not match the request."
+    });
+    return;
+  }
+  switch (request.query.query) {
+    case "sketch.profileCandidates":
+    case "sketch.pathCandidates":
+      if (response.sketchId !== request.query.sketchId) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: "$.sketchId",
+          message: "Response sketchId does not match the request."
+        });
+      }
+      break;
+    case "sketch.profileReadiness":
+      if (!sameProfileRef(response.requestedProfile, request.query.profile)) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: "$.requestedProfile",
+          message: "Response profile does not match the request."
+        });
+      }
+      if (!sameConsumerIntent(response.consumer, request.query.consumer)) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: "$.consumer",
+          message: "Response consumer does not match the request."
+        });
+      }
+      break;
+    case "sketch.pathReadiness":
+      if (!samePathRef(response.requestedPath, request.query.path)) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: "$.requestedPath",
+          message: "Response path does not match the request."
+        });
+      }
+      if (
+        (request.query.sweepProfile === undefined) !==
+          (response.sweepProfile === undefined) ||
+        (request.query.sweepProfile !== undefined &&
+          !sameProfileRef(response.sweepProfile, request.query.sweepProfile))
+      ) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: "$.sweepProfile",
+          message: "Response sweep profile does not match the request."
+        });
+      }
+      break;
+  }
 }
 
 export function validateSketchProfilePathQueryResponse(
-  value: unknown
+  value: unknown,
+  request?: unknown
 ): SketchProfilePathValidationResult<SketchProfilePathQueryResponse> {
   const issues: SketchProfilePathValidationIssue[] = [];
   if (!isUnknownRecord(value)) {
@@ -8650,6 +9036,20 @@ export function validateSketchProfilePathQueryResponse(
       ]
     };
   }
+  let validatedRequest: SketchProfilePathQueryRequest | undefined;
+  if (request !== undefined) {
+    const requestResult = validateSketchProfilePathQueryRequest(request);
+    if (requestResult.ok) {
+      validatedRequest = requestResult.value;
+    } else {
+      issues.push({
+        code: "INVALID_VALUE",
+        path: "$request",
+        message:
+          "The supplied request is not a valid profile/path query request."
+      });
+    }
+  }
   switch (value.query) {
     case "sketch.profileCandidates": {
       validateExactRecord(value, "$", PROFILE_RESPONSE_KEYS, [], issues);
@@ -8661,6 +9061,7 @@ export function validateSketchProfilePathQueryResponse(
         issues
       );
       validateNonEmptyString(value.sketchId, "$.sketchId", issues);
+      validateEnum(value.status, ["ready", "blocked"], "$.status", issues);
       const candidates = validateCountedArray(
         value,
         "candidateCount",
@@ -8720,6 +9121,37 @@ export function validateSketchProfilePathQueryResponse(
               message: "Candidates must be ready."
             });
           }
+          validateNonNegativeInteger(
+            candidate.candidateIndex,
+            `${path}.candidateIndex`,
+            issues
+          );
+          if (candidate.candidateIndex !== index) {
+            issues.push({
+              code: "INVALID_VALUE",
+              path: `${path}.candidateIndex`,
+              message: "candidateIndex must match deterministic array order."
+            });
+          }
+          validateNonEmptyString(candidate.sortKey, `${path}.sortKey`, issues);
+          validateEnum(
+            candidate.orientation,
+            ["counterclockwise"],
+            `${path}.orientation`,
+            issues
+          );
+          validatePositiveNumber(candidate.area, `${path}.area`, issues);
+          validatePositiveNumber(
+            candidate.signedArea,
+            `${path}.signedArea`,
+            issues
+          );
+          validateEnum(
+            candidate.intersectionStatus,
+            ["clear"],
+            `${path}.intersectionStatus`,
+            issues
+          );
           validateBounds(candidate.bounds, `${path}.bounds`, issues);
           validateDependencies(
             candidate.dependencies,
@@ -8767,6 +9199,37 @@ export function validateSketchProfilePathQueryResponse(
             issues
           )
         ) {
+          validateEnum(component.status, ["blocked"], `${path}.status`, issues);
+          validateNonNegativeInteger(
+            component.componentIndex,
+            `${path}.componentIndex`,
+            issues
+          );
+          if (component.componentIndex !== index) {
+            issues.push({
+              code: "INVALID_VALUE",
+              path: `${path}.componentIndex`,
+              message: "componentIndex must match deterministic array order."
+            });
+          }
+          validateNonEmptyString(component.sortKey, `${path}.sortKey`, issues);
+          validateNonEmptyString(
+            component.sketchId,
+            `${path}.sketchId`,
+            issues
+          );
+          validateIdArray(component.entityIds, `${path}.entityIds`, issues);
+          validateBoolean(component.closed, `${path}.closed`, issues);
+          validateBoolean(component.branchFree, `${path}.branchFree`, issues);
+          validateEnum(
+            component.intersectionStatus,
+            ["clear", "self-intersecting", "overlapping", "not-evaluated"],
+            `${path}.intersectionStatus`,
+            issues
+          );
+          if ("area" in component) {
+            validateNonNegativeNumber(component.area, `${path}.area`, issues);
+          }
           if ("bounds" in component)
             validateBounds(component.bounds, `${path}.bounds`, issues);
           validateCountedArray(component, "joinCount", "joins", path, issues);
@@ -8796,12 +9259,34 @@ export function validateSketchProfilePathQueryResponse(
             issues
           )
         ) {
+          validateNonEmptyString(
+            exclusion.entityId,
+            `$.constructionExclusions[${index}].entityId`,
+            issues
+          );
+          validateEnum(
+            exclusion.entityKind,
+            ["rectangle", "circle", "line", "arc"],
+            `$.constructionExclusions[${index}].entityKind`,
+            issues
+          );
           validateDiagnosticArray(
             [exclusion.diagnostic],
             `$.constructionExclusions[${index}].diagnostics`,
             PROFILE_DIAGNOSTIC_CODES,
             issues
           );
+          if (
+            isUnknownRecord(exclusion.diagnostic) &&
+            exclusion.diagnostic.code !== "SKETCH_PROFILE_CONSTRUCTION_ENTITY"
+          ) {
+            issues.push({
+              code: "INVALID_VALUE",
+              path: `$.constructionExclusions[${index}].diagnostic.code`,
+              message:
+                "A construction exclusion requires SKETCH_PROFILE_CONSTRUCTION_ENTITY."
+            });
+          }
         }
       });
       break;
@@ -8816,6 +9301,7 @@ export function validateSketchProfilePathQueryResponse(
         issues
       );
       validateNonEmptyString(value.sketchId, "$.sketchId", issues);
+      validateEnum(value.status, ["ready", "blocked"], "$.status", issues);
       const candidates = validateCountedArray(
         value,
         "candidateCount",
@@ -8868,6 +9354,38 @@ export function validateSketchProfilePathQueryResponse(
               message: "Candidates must be ready."
             });
           }
+          validateNonNegativeInteger(
+            candidate.candidateIndex,
+            `${path}.candidateIndex`,
+            issues
+          );
+          if (candidate.candidateIndex !== index) {
+            issues.push({
+              code: "INVALID_VALUE",
+              path: `${path}.candidateIndex`,
+              message: "candidateIndex must match deterministic array order."
+            });
+          }
+          validateNonEmptyString(candidate.sortKey, `${path}.sortKey`, issues);
+          validatePositiveNumber(candidate.length, `${path}.length`, issues);
+          validateEnum(
+            candidate.connectionStatus,
+            ["connected"],
+            `${path}.connectionStatus`,
+            issues
+          );
+          validateEnum(
+            candidate.tangentStatus,
+            ["tangent"],
+            `${path}.tangentStatus`,
+            issues
+          );
+          validateEnum(
+            candidate.selfIntersectionStatus,
+            ["clear"],
+            `${path}.selfIntersectionStatus`,
+            issues
+          );
           validateBounds(candidate.bounds, `${path}.bounds`, issues);
           validateDependencies(
             candidate.dependencies,
@@ -8915,6 +9433,44 @@ export function validateSketchProfilePathQueryResponse(
             issues
           )
         ) {
+          validateEnum(component.status, ["blocked"], `${path}.status`, issues);
+          validateNonNegativeInteger(
+            component.componentIndex,
+            `${path}.componentIndex`,
+            issues
+          );
+          if (component.componentIndex !== index) {
+            issues.push({
+              code: "INVALID_VALUE",
+              path: `${path}.componentIndex`,
+              message: "componentIndex must match deterministic array order."
+            });
+          }
+          validateNonEmptyString(component.sortKey, `${path}.sortKey`, issues);
+          validateNonEmptyString(
+            component.sketchId,
+            `${path}.sketchId`,
+            issues
+          );
+          validateIdArray(component.entityIds, `${path}.entityIds`, issues);
+          validateEnum(
+            component.connectionStatus,
+            ["connected", "disconnected", "branching"],
+            `${path}.connectionStatus`,
+            issues
+          );
+          validateEnum(
+            component.tangentStatus,
+            ["tangent", "not-tangent", "not-evaluated"],
+            `${path}.tangentStatus`,
+            issues
+          );
+          validateEnum(
+            component.selfIntersectionStatus,
+            ["clear", "self-intersecting", "not-evaluated"],
+            `${path}.selfIntersectionStatus`,
+            issues
+          );
           if ("bounds" in component)
             validateBounds(component.bounds, `${path}.bounds`, issues);
           validateCountedArray(component, "joinCount", "joins", path, issues);
@@ -8997,17 +9553,44 @@ export function validateSketchProfilePathQueryResponse(
       validateConsumerCompatibility(
         value.consumerCompatibility,
         "$.consumerCompatibility",
+        value.consumer,
         issues
       );
       validateTargetCompatibility(
         value.targetCompatibility,
         "$.targetCompatibility",
+        value.consumer,
         issues
       );
       validateDependencies(value.dependencies, "$.dependencies", issues);
       validateCountedArray(value, "joinCount", "joins", "$", issues);
       validateJoinArray(value.joins, "$.joins", false, issues);
       if ("bounds" in value) validateBounds(value.bounds, "$.bounds", issues);
+      validateBoolean(
+        value.orientationNormalized,
+        "$.orientationNormalized",
+        issues
+      );
+      validateEnum(
+        value.intersectionStatus,
+        ["clear", "self-intersecting", "overlapping", "not-evaluated"],
+        "$.intersectionStatus",
+        issues
+      );
+      if ("orientation" in value) {
+        validateEnum(
+          value.orientation,
+          ["clockwise", "counterclockwise"],
+          "$.orientation",
+          issues
+        );
+      }
+      if ("area" in value) {
+        validateNonNegativeNumber(value.area, "$.area", issues);
+      }
+      if ("signedArea" in value) {
+        validateFiniteNumber(value.signedArea, "$.signedArea", issues);
+      }
       if (value.status === "ready") {
         for (const key of [
           "normalizedProfile",
@@ -9023,6 +9606,20 @@ export function validateSketchProfilePathQueryResponse(
               message: `Ready response requires '${key}'.`
             });
         }
+        validateEnum(
+          value.orientation,
+          ["counterclockwise"],
+          "$.orientation",
+          issues
+        );
+        validatePositiveNumber(value.area, "$.area", issues);
+        validatePositiveNumber(value.signedArea, "$.signedArea", issues);
+        validateEnum(
+          value.intersectionStatus,
+          ["clear"],
+          "$.intersectionStatus",
+          issues
+        );
       } else if (value.status !== "blocked") {
         issues.push({
           code: "INVALID_VALUE",
@@ -9110,6 +9707,33 @@ export function validateSketchProfilePathQueryResponse(
       validateCountedArray(value, "joinCount", "joins", "$", issues);
       validateJoinArray(value.joins, "$.joins", true, issues);
       if ("bounds" in value) validateBounds(value.bounds, "$.bounds", issues);
+      validateEnum(
+        value.connectionStatus,
+        ["connected", "disconnected", "branching"],
+        "$.connectionStatus",
+        issues
+      );
+      validateEnum(
+        value.tangentStatus,
+        ["tangent", "not-tangent", "not-evaluated"],
+        "$.tangentStatus",
+        issues
+      );
+      validateEnum(
+        value.selfIntersectionStatus,
+        ["clear", "self-intersecting", "not-evaluated"],
+        "$.selfIntersectionStatus",
+        issues
+      );
+      validateEnum(
+        value.frameStatus,
+        ["ready", "invalid", "not-evaluated"],
+        "$.frameStatus",
+        issues
+      );
+      if ("length" in value) {
+        validateNonNegativeNumber(value.length, "$.length", issues);
+      }
       if (value.status === "ready") {
         for (const key of ["normalizedPath", "length", "bounds"]) {
           if (!(key in value))
@@ -9119,11 +9743,43 @@ export function validateSketchProfilePathQueryResponse(
               message: `Ready response requires '${key}'.`
             });
         }
+        validateEnum(
+          value.connectionStatus,
+          ["connected"],
+          "$.connectionStatus",
+          issues
+        );
+        validateEnum(
+          value.tangentStatus,
+          ["tangent"],
+          "$.tangentStatus",
+          issues
+        );
+        validateEnum(
+          value.selfIntersectionStatus,
+          ["clear"],
+          "$.selfIntersectionStatus",
+          issues
+        );
+        validateEnum(
+          value.frameStatus,
+          ["ready", "not-evaluated"],
+          "$.frameStatus",
+          issues
+        );
+        validatePositiveNumber(value.length, "$.length", issues);
       } else if (value.status !== "blocked") {
         issues.push({
           code: "INVALID_VALUE",
           path: "$.status",
           message: "Invalid readiness status."
+        });
+      }
+      if (!("sweepProfile" in value) && value.frameStatus !== "not-evaluated") {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: "$.frameStatus",
+          message: "Frame status requires a sweep profile to evaluate."
         });
       }
       break;
@@ -9133,6 +9789,9 @@ export function validateSketchProfilePathQueryResponse(
         path: "$.query",
         message: "Unknown profile/path response kind."
       });
+  }
+  if (validatedRequest) {
+    validateResponseRequestConsistency(value, validatedRequest, issues);
   }
   return issues.length === 0
     ? { ok: true, value: value as unknown as SketchProfilePathQueryResponse }
