@@ -112,6 +112,13 @@ function createAuthoredFeatureTopology(
     );
   }
 
+  if (feature.profile.kind === "wire") {
+    return createCompositeExtrudeTopology(document, bodyId, units, {
+      ...feature,
+      profile: feature.profile
+    });
+  }
+
   const profileRef = getFeatureEntityProfileRef(feature);
   const profileEntity = profileRef
     ? document.sketches
@@ -228,6 +235,65 @@ function createAuthoredFeatureTopology(
   }
 
   return unsupportedTopology;
+}
+
+function createCompositeExtrudeTopology(
+  document: GeneratedReferencesDocument,
+  bodyId: BodyId,
+  units: DocumentUnits,
+  feature: Extract<GeneratedReferencesFeature, { kind: "extrude" }> & {
+    readonly profile: Extract<
+      Extract<GeneratedReferencesFeature, { kind: "extrude" }>["profile"],
+      { kind: "wire" }
+    >;
+  }
+): CadBodyTopologySnapshot {
+  const sourceSketchEntityIds = feature.profile.segments.map(
+    (segment) => segment.entityId
+  );
+  const profileEntities = feature.profile.segments.map((segment) => ({
+    ...segment,
+    entity: document.sketches
+      .get(feature.profile.sketchId)
+      ?.entities.get(segment.entityId)
+  }));
+  const sourceIdentityInput: Omit<CadBodyTopologySourceIdentity, "signature"> =
+    {
+      bodyId,
+      sourceKind: "authoredExtrude",
+      units,
+      featureId: feature.id,
+      operationMode: feature.operationMode,
+      sourceSketchId: feature.profile.sketchId,
+      sourceSketchEntityIds,
+      profileKind: "wire",
+      side: feature.side,
+      depth: feature.depth,
+      featureSourceSignature: sha256Hex(
+        new TextEncoder().encode(
+          JSON.stringify({ profile: feature.profile, profileEntities })
+        )
+      )
+    };
+  const sourceIdentity: CadBodyTopologySourceIdentity = {
+    ...sourceIdentityInput,
+    signature: createTopologySourceSignature(sourceIdentityInput)
+  };
+
+  return createUnsupportedTopologySnapshot({
+    bodyId,
+    units,
+    sourceIdentity,
+    issues: [
+      {
+        code: "UNSUPPORTED_BODY_TOPOLOGY",
+        message:
+          "Composite wire extrude topology requires matching kernel-derived exact topology evidence.",
+        bodyId,
+        featureId: feature.id
+      }
+    ]
+  });
 }
 
 function createBooleanResultTopologyReadiness(input: {
@@ -1115,8 +1181,24 @@ function applyDerivedExactMetadata(
       });
     }
 
+    const topologyCounts = metadata.metadata.topologyCounts;
+    const exactTopologyReady =
+      topology.sourceIdentity.profileKind === "wire" &&
+      topologyCounts?.solidCount === 1;
+
     return {
       ...topology,
+      ...(exactTopologyReady
+        ? {
+            status: "healthy" as const,
+            topologyModel: "kernel-derived" as const,
+            topologyAvailable: true,
+            faceCount: topologyCounts?.faceCount,
+            edgeCount: topologyCounts?.edgeCount,
+            vertexCount: topologyCounts?.vertexCount,
+            issues: []
+          }
+        : {}),
       booleanTopology: updateBooleanExactValidationStatus(
         topology.booleanTopology,
         "available"

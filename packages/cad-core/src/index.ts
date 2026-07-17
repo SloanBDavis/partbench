@@ -35,6 +35,7 @@ import type {
   CadStepImportDiagnostic,
   BodyExtentSnapshot,
   CadBodyDerivedExactMetadataSnapshot,
+  CadBodyGeneratedReferenceEvidenceSnapshot,
   CadBodyExactMetadataSnapshot,
   CadBodyLifecycleEffectSummary,
   CadBodyLifecycleState,
@@ -2738,34 +2739,59 @@ export class CadEngine {
 
       case "body.generatedReferences": {
         const { bodyId } = request.query;
+        const structure = createProjectStructure(
+          this.#document,
+          this.#history.map((entry) => entry.transaction)
+        );
+        const bodyExists = structure.bodies.some((body) => body.id === bodyId);
+        const topology = createBodyTopology({
+          document: this.#document,
+          bodyId,
+          units: this.#document.units,
+          ownerPartId: DEFAULT_PART_ID,
+          bodyExists: (candidateBodyId) =>
+            structure.bodies.some((body) => body.id === candidateBodyId)
+        });
         const references = createBodyGeneratedReferences(
           this.#document,
           bodyId,
-          DEFAULT_PART_ID
+          DEFAULT_PART_ID,
+          request.query.derivedGeneratedReferences,
+          topology.ok ? topology.topology.sourceIdentity.signature : undefined
         );
 
         if (!references) {
-          const bodyExists = createProjectStructure(
-            this.#document,
-            this.#history.map((entry) => entry.transaction)
-          ).bodies.some((body) => body.id === bodyId);
+          const compositeExtrude = [...this.#document.features.values()].find(
+            (feature) =>
+              feature.kind === "extrude" &&
+              feature.bodyId === bodyId &&
+              feature.profile.kind === "wire"
+          );
 
           return {
             ok: false,
             query: request.query.query,
             cadOpsVersion: request.version,
-            error: bodyExists
+            error: !bodyExists
               ? {
-                  code: "UNSUPPORTED_BODY_REFERENCES",
-                  message:
-                    "Generated references are currently available only for authored sketch-extrude bodies, supported authored revolve newBody result bodies, and supported authored hole result bodies.",
-                  bodyId
-                }
-              : {
                   code: "BODY_NOT_FOUND",
                   message: `Body does not exist: ${bodyId}`,
                   bodyId
                 }
+              : compositeExtrude
+                ? createGeneratedReferenceCorrespondenceError(
+                    bodyId,
+                    request.query.derivedGeneratedReferences,
+                    topology.ok
+                      ? topology.topology.sourceIdentity.signature
+                      : undefined
+                  )
+                : {
+                    code: "UNSUPPORTED_BODY_REFERENCES",
+                    message:
+                      "Generated references are currently available only for authored sketch-extrude bodies, supported authored revolve newBody result bodies, and supported authored hole result bodies.",
+                    bodyId
+                  }
           };
         }
 
@@ -2787,34 +2813,59 @@ export class CadEngine {
 
       case "body.resolveGeneratedReference": {
         const { bodyId, stableId } = request.query;
+        const structure = createProjectStructure(
+          this.#document,
+          this.#history.map((entry) => entry.transaction)
+        );
+        const bodyExists = structure.bodies.some((body) => body.id === bodyId);
+        const topology = createBodyTopology({
+          document: this.#document,
+          bodyId,
+          units: this.#document.units,
+          ownerPartId: DEFAULT_PART_ID,
+          bodyExists: (candidateBodyId) =>
+            structure.bodies.some((body) => body.id === candidateBodyId)
+        });
         const references = createBodyGeneratedReferences(
           this.#document,
           bodyId,
-          DEFAULT_PART_ID
+          DEFAULT_PART_ID,
+          request.query.derivedGeneratedReferences,
+          topology.ok ? topology.topology.sourceIdentity.signature : undefined
         );
 
         if (!references) {
-          const bodyExists = createProjectStructure(
-            this.#document,
-            this.#history.map((entry) => entry.transaction)
-          ).bodies.some((body) => body.id === bodyId);
+          const compositeExtrude = [...this.#document.features.values()].find(
+            (feature) =>
+              feature.kind === "extrude" &&
+              feature.bodyId === bodyId &&
+              feature.profile.kind === "wire"
+          );
 
           return {
             ok: false,
             query: request.query.query,
             cadOpsVersion: request.version,
-            error: bodyExists
+            error: !bodyExists
               ? {
-                  code: "UNSUPPORTED_BODY_REFERENCES",
-                  message:
-                    "Generated references are currently available only for authored sketch-extrude bodies, supported authored revolve newBody result bodies, and supported authored hole result bodies.",
-                  bodyId
-                }
-              : {
                   code: "BODY_NOT_FOUND",
                   message: `Body does not exist: ${bodyId}`,
                   bodyId
                 }
+              : compositeExtrude
+                ? createGeneratedReferenceCorrespondenceError(
+                    bodyId,
+                    request.query.derivedGeneratedReferences,
+                    topology.ok
+                      ? topology.topology.sourceIdentity.signature
+                      : undefined
+                  )
+                : {
+                    code: "UNSUPPORTED_BODY_REFERENCES",
+                    message:
+                      "Generated references are currently available only for authored sketch-extrude bodies, supported authored revolve newBody result bodies, and supported authored hole result bodies.",
+                    bodyId
+                  }
           };
         }
 
@@ -7697,6 +7748,133 @@ function isCadQueryKind(value: string): value is CadQueryKind {
   return false;
 }
 
+function isCadBodyGeneratedReferenceEvidenceSnapshot(
+  value: unknown
+): value is CadBodyGeneratedReferenceEvidenceSnapshot {
+  if (
+    !isRecord(value) ||
+    !Object.keys(value).every((key) =>
+      [
+        "bodyId",
+        "sourceIdentitySignature",
+        "status",
+        "recipeIdentity",
+        "faces",
+        "edges",
+        "diagnostic"
+      ].includes(key)
+    ) ||
+    typeof value.bodyId !== "string" ||
+    typeof value.sourceIdentitySignature !== "string" ||
+    value.sourceIdentitySignature.length === 0 ||
+    !["ready", "unavailable", "ambiguous"].includes(
+      typeof value.status === "string" ? value.status : ""
+    ) ||
+    (value.recipeIdentity !== undefined &&
+      (typeof value.recipeIdentity !== "string" ||
+        value.recipeIdentity.length === 0)) ||
+    (value.diagnostic !== undefined && typeof value.diagnostic !== "string") ||
+    !Array.isArray(value.faces) ||
+    !value.faces.every(isCadBodyGeneratedReferenceFaceEvidence) ||
+    !Array.isArray(value.edges) ||
+    !value.edges.every(isCadBodyGeneratedReferenceEdgeEvidence)
+  ) {
+    return false;
+  }
+
+  return value.status === "ready"
+    ? value.diagnostic === undefined
+    : typeof value.diagnostic === "string" &&
+        value.diagnostic.length > 0 &&
+        value.faces.length === 0 &&
+        value.edges.length === 0;
+}
+
+function isCadBodyGeneratedReferenceFaceEvidence(value: unknown): boolean {
+  if (
+    !isRecord(value) ||
+    !Object.keys(value).every((key) =>
+      ["role", "sourceEntityId", "surfaceClass", "evidence"].includes(key)
+    ) ||
+    !["startCap", "endCap", "side"].includes(
+      typeof value.role === "string" ? value.role : ""
+    ) ||
+    !["plane", "cylinder"].includes(
+      typeof value.surfaceClass === "string" ? value.surfaceClass : ""
+    ) ||
+    value.evidence !== "kernel-builder"
+  ) {
+    return false;
+  }
+
+  return value.role === "side"
+    ? typeof value.sourceEntityId === "string"
+    : value.sourceEntityId === undefined;
+}
+
+function isCadBodyGeneratedReferenceEdgeEvidence(value: unknown): boolean {
+  if (
+    !isRecord(value) ||
+    !Object.keys(value).every((key) =>
+      [
+        "role",
+        "sourceEntityId",
+        "adjacentSourceEntityIds",
+        "evidence"
+      ].includes(key)
+    ) ||
+    !["startCapBoundary", "endCapBoundary", "longitudinal"].includes(
+      typeof value.role === "string" ? value.role : ""
+    ) ||
+    value.evidence !== "kernel-builder"
+  ) {
+    return false;
+  }
+
+  if (value.role === "longitudinal") {
+    return (
+      value.sourceEntityId === undefined &&
+      Array.isArray(value.adjacentSourceEntityIds) &&
+      value.adjacentSourceEntityIds.length === 2 &&
+      value.adjacentSourceEntityIds.every(
+        (entityId) => typeof entityId === "string"
+      )
+    );
+  }
+
+  return (
+    typeof value.sourceEntityId === "string" &&
+    value.adjacentSourceEntityIds === undefined
+  );
+}
+
+function createGeneratedReferenceCorrespondenceError(
+  bodyId: BodyId,
+  evidence: CadBodyGeneratedReferenceEvidenceSnapshot | undefined,
+  expectedSourceIdentitySignature: string | undefined
+): CadQueryError {
+  const generatedReferencesStatus =
+    evidence?.status === "ambiguous" ? "ambiguous" : "unavailable";
+  const reason =
+    evidence === undefined
+      ? "Kernel-derived correspondence evidence was not provided."
+      : evidence.bodyId !== bodyId
+        ? `Correspondence evidence belongs to body ${evidence.bodyId}.`
+        : expectedSourceIdentitySignature === undefined ||
+            evidence.sourceIdentitySignature !== expectedSourceIdentitySignature
+          ? "Correspondence evidence does not match the current body topology source identity."
+          : evidence.status !== "ready"
+            ? evidence.diagnostic
+            : "Correspondence evidence is incomplete, duplicated, or inconsistent with the authored wire profile.";
+
+  return {
+    code: "GENERATED_REFERENCE_CORRESPONDENCE_UNPROVEN",
+    message: `Generated references are unavailable for composite wire extrude body ${bodyId}. ${reason}`,
+    bodyId,
+    generatedReferencesStatus
+  };
+}
+
 function isCadQuery(value: unknown): boolean {
   if (!isRecord(value) || typeof value.query !== "string") {
     return false;
@@ -7826,7 +8004,6 @@ function isCadQuery(value: unknown): boolean {
     case "sketch.evaluation":
     case "sketch.dimensions":
       return typeof value.sketchId === "string";
-    case "body.generatedReferences":
     case "body.importedBodyStatus":
     case "body.measurements":
     case "body.patternInstances":
@@ -7834,6 +8011,17 @@ function isCadQuery(value: unknown): boolean {
         typeof value.bodyId === "string" &&
         (value.derivedExactMetadata === undefined ||
           isCadBodyDerivedExactMetadataSnapshot(value.derivedExactMetadata))
+      );
+    case "body.generatedReferences":
+      return (
+        typeof value.bodyId === "string" &&
+        Object.keys(value).every((key) =>
+          ["query", "bodyId", "derivedGeneratedReferences"].includes(key)
+        ) &&
+        (value.derivedGeneratedReferences === undefined ||
+          isCadBodyGeneratedReferenceEvidenceSnapshot(
+            value.derivedGeneratedReferences
+          ))
       );
     case "body.massProperties":
       return (
@@ -7856,10 +8044,26 @@ function isCadQuery(value: unknown): boolean {
         (value.derivedExactMetadata === undefined ||
           isCadBodyDerivedExactMetadataSnapshot(value.derivedExactMetadata))
       );
-    case "body.resolveGeneratedReference":
     case "body.generatedReferenceMeasurements":
       return (
         typeof value.bodyId === "string" && typeof value.stableId === "string"
+      );
+    case "body.resolveGeneratedReference":
+      return (
+        typeof value.bodyId === "string" &&
+        typeof value.stableId === "string" &&
+        Object.keys(value).every((key) =>
+          [
+            "query",
+            "bodyId",
+            "stableId",
+            "derivedGeneratedReferences"
+          ].includes(key)
+        ) &&
+        (value.derivedGeneratedReferences === undefined ||
+          isCadBodyGeneratedReferenceEvidenceSnapshot(
+            value.derivedGeneratedReferences
+          ))
       );
     case "reference.resolveNamed":
       return typeof value.name === "string";
@@ -19219,6 +19423,11 @@ function sketchPlaneFromPlanarAxis(axis: "x" | "y" | "z"): SketchPlane {
 function createSketchFaceAttachment(
   face: CadGeneratedFaceReference
 ): SketchAttachmentSnapshot {
+  if (face.sourceSketchEntityId === undefined) {
+    throw new Error(
+      "Composite generated faces require an ordered-source attachment schema."
+    );
+  }
   return {
     kind: "generatedFace",
     bodyId: face.bodyId,
@@ -22655,7 +22864,8 @@ function createKernelDerivedBodyExtent(
             sourceSketchEntityId: topology.sourceIdentity.sourceSketchEntityId
           }
         : {}),
-      ...(topology.sourceIdentity.profileKind
+      ...(topology.sourceIdentity.profileKind &&
+      topology.sourceIdentity.profileKind !== "wire"
         ? { profileKind: topology.sourceIdentity.profileKind }
         : {}),
       ...(exactMetadata.surfaceArea !== undefined

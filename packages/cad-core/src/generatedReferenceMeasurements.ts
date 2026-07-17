@@ -98,6 +98,22 @@ export function createGeneratedReferenceMeasurements(
     };
   }
 
+  if (
+    validation.reference.geometricSignature.profileKind === "wire" ||
+    validation.reference.sourceSketchEntityId === undefined
+  ) {
+    return {
+      ok: false,
+      error: {
+        code: "UNSUPPORTED_GENERATED_REFERENCE_MEASUREMENTS",
+        message:
+          "Composite generated-reference measurements require exact derived measurement evidence.",
+        bodyId: options.bodyId,
+        stableId: options.stableId
+      }
+    };
+  }
+
   const base = {
     stableId: validation.reference.stableId,
     bodyId: validation.reference.bodyId,
@@ -430,6 +446,8 @@ function createFaceLocalPoints(
     case "side:circular":
       return createProfileExtrudeBoundsPoints(extents, depthRange);
   }
+
+  throw new Error(`Unsupported source-analytic face role: ${role}`);
 }
 
 function createFaceArea(
@@ -488,6 +506,8 @@ function createFaceCenter(
         depth
       ]);
   }
+
+  throw new Error(`Unsupported source-analytic face role: ${role}`);
 }
 
 function createRectangleEdgeEndpoints(

@@ -62,7 +62,9 @@ import {
   getSweepPathEntityReferences
 } from "./normalizedFeatureInputs";
 import { resolveTopologyAnchorGeneratedReferenceFromSourceRole } from "./topologyAnchorGeneratedReferenceResolution";
+import { resolveNewBodyWireExtrudeProfile } from "./wireExtrudeProfile";
 import type {
+  CadDocument,
   LinearPatternFeature,
   CircularPatternFeature,
   MirrorFeature,
@@ -86,6 +88,8 @@ export interface ProjectHealthOptions {
 }
 
 export interface ProjectHealthDocument extends GeneratedReferencesDocument {
+  readonly objects: CadDocument["objects"];
+  readonly units: DocumentUnits;
   readonly sketches: ReadonlyMap<SketchId, ProjectHealthSketch>;
   readonly features: ReadonlyMap<FeatureId, ProjectHealthFeature>;
   readonly parameters: ReadonlyMap<ParameterId, CadParameterSnapshot>;
@@ -310,7 +314,25 @@ function createAuthoredExtrudeHealth(
   const entity = sketch?.entities.get(profile?.entityId ?? "");
   const profileKind = getSupportedEntityProfileKind(entity) ?? "rectangle";
 
-  if (!profile) {
+  if (feature.profile.kind === "wire") {
+    const resolution = resolveNewBodyWireExtrudeProfile(
+      document,
+      feature.profile,
+      feature.operationMode
+    );
+    if (!resolution.ok) {
+      issues.push({
+        code: "UNSUPPORTED_BODY_REFERENCES",
+        message: resolution.message,
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        sketchId: resolution.sketchId ?? feature.profile.sketchId,
+        ...(resolution.sketchEntityId
+          ? { sketchEntityId: resolution.sketchEntityId }
+          : {})
+      });
+    }
+  } else if (!profile) {
     issues.push({
       code: "UNSUPPORTED_BODY_REFERENCES",
       message: `Feature ${feature.id} uses a composite profile that is not exposed by the V16 health response.`,
@@ -414,15 +436,48 @@ function createAuthoredExtrudeHealth(
     bodyExists: options.bodyExists
   });
   const topologySnapshot = topology.ok ? topology.topology : undefined;
+  if (
+    feature.profile.kind === "wire" &&
+    topologySnapshot?.status !== "healthy"
+  ) {
+    const topologyIssue = topologySnapshot?.issues.at(-1);
+    const code =
+      topologyIssue?.code === "STALE_BODY_TOPOLOGY"
+        ? "STALE_BODY_TOPOLOGY"
+        : topologyIssue?.code === "INVALID_EXACT_GEOMETRY_RESULT" ||
+            topologyIssue?.code === "EMPTY_EXACT_GEOMETRY_RESULT"
+          ? "INVALID_EXACT_GEOMETRY_RESULT"
+          : topologyIssue?.code === "EXACT_GEOMETRY_KERNEL_FAILED"
+            ? "EXACT_GEOMETRY_KERNEL_FAILED"
+            : topologyIssue?.code === "EXACT_GEOMETRY_BINDING_UNAVAILABLE"
+              ? "EXACT_GEOMETRY_BINDING_UNAVAILABLE"
+              : "GENERATED_REFERENCE_CORRESPONDENCE_UNPROVEN";
+    issues.push({
+      code,
+      message:
+        topologyIssue?.message ??
+        `Composite wire extrude ${feature.id} requires matching exact topology evidence.`,
+      featureId: feature.id,
+      bodyId: feature.bodyId,
+      expected: topologySnapshot?.sourceIdentity.signature,
+      received: getDerivedExactMetadataForBody(options, feature.bodyId)
+        ?.sourceIdentitySignature
+    });
+  }
 
   return {
     featureId: feature.id,
     bodyId: feature.bodyId,
     sketchId: profile?.sketchId ?? feature.profile.sketchId,
-    entityId:
-      profile?.entityId ??
-      getProfileEntityReferences(feature.profile)[0]!.entityId,
-    profileKind,
+    ...(profile ? { entityId: profile.entityId } : {}),
+    ...(feature.profile.kind === "wire"
+      ? {
+          sourceEntityIds: feature.profile.segments.map(
+            (segment) => segment.entityId
+          ),
+          profileKind: "wire" as const
+        }
+      : { profileKind }),
     operationMode: feature.operationMode,
     ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {}),
     ...(feature.targetTopologyAnchorId
@@ -2404,8 +2459,12 @@ function statusFromIssue(
     case "INCONSISTENT_SKETCH_CONSTRAINT":
     case "CONFLICTING_SKETCH_CONSTRAINT":
     case "UNSUPPORTED_BODY_REFERENCES":
+    case "GENERATED_REFERENCE_CORRESPONDENCE_UNPROVEN":
     case "GENERATED_REFERENCE_KIND_MISMATCH":
     case "GENERATED_REFERENCE_OPERATION_NOT_ELIGIBLE":
+    case "INVALID_EXACT_GEOMETRY_RESULT":
+    case "EXACT_GEOMETRY_KERNEL_FAILED":
+    case "EXACT_GEOMETRY_BINDING_UNAVAILABLE":
       return "unsupported";
 
     case "OVER_DEFINED_SKETCH":
@@ -2419,6 +2478,7 @@ function statusFromIssue(
     case "ATTACHMENT_SOURCE_MISMATCH":
     case "NAMED_REFERENCE_KIND_CHANGED":
     case "NAMED_REFERENCE_NOT_FOUND":
+    case "STALE_BODY_TOPOLOGY":
       return "stale";
   }
 }

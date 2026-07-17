@@ -2356,12 +2356,14 @@ export interface SketchDimensionGetQuery {
 export interface BodyGeneratedReferencesQuery {
   readonly query: "body.generatedReferences";
   readonly bodyId: BodyId;
+  readonly derivedGeneratedReferences?: CadBodyGeneratedReferenceEvidenceSnapshot;
 }
 
 export interface BodyResolveGeneratedReferenceQuery {
   readonly query: "body.resolveGeneratedReference";
   readonly bodyId: BodyId;
   readonly stableId: string;
+  readonly derivedGeneratedReferences?: CadBodyGeneratedReferenceEvidenceSnapshot;
 }
 
 export interface BodyImportedBodyStatusQuery {
@@ -5019,7 +5021,8 @@ export type CadGeneratedExtrudeFaceRole =
   | "side:uMax"
   | "side:vMin"
   | "side:vMax"
-  | "side:circular";
+  | "side:circular"
+  | `side:segment:${SketchEntityId}`;
 
 export type CadGeneratedHoleFaceRole = "holeWall";
 
@@ -5041,7 +5044,10 @@ export type CadGeneratedExtrudeEdgeRole =
   | "longitudinal:uMax:vMin"
   | "longitudinal:uMax:vMax"
   | "start:circular"
-  | "end:circular";
+  | "end:circular"
+  | `start:segment:${SketchEntityId}`
+  | `end:segment:${SketchEntityId}`
+  | `longitudinal:join:${SketchEntityId}:${SketchEntityId}`;
 
 export type CadGeneratedHoleEdgeRole = "startRim";
 
@@ -5096,11 +5102,49 @@ export type CadGeneratedReferenceProfileSignature =
       readonly radius: number;
     };
 
+export type CadGeneratedReferenceProfileKind =
+  | FeatureExtrudeProfileKind
+  | "wire";
+
+export interface CadBodyGeneratedReferenceFaceEvidence {
+  readonly role: "startCap" | "endCap" | "side";
+  readonly sourceEntityId?: SketchEntityId;
+  readonly surfaceClass: "plane" | "cylinder";
+  readonly evidence: "kernel-builder";
+}
+
+export interface CadBodyGeneratedReferenceEdgeEvidence {
+  readonly role: "startCapBoundary" | "endCapBoundary" | "longitudinal";
+  readonly sourceEntityId?: SketchEntityId;
+  readonly adjacentSourceEntityIds?: readonly [SketchEntityId, SketchEntityId];
+  readonly evidence: "kernel-builder";
+}
+
+interface CadBodyGeneratedReferenceEvidenceSnapshotBase {
+  readonly bodyId: BodyId;
+  readonly sourceIdentitySignature: string;
+  readonly recipeIdentity?: string;
+}
+
+export type CadBodyGeneratedReferenceEvidenceSnapshot =
+  | (CadBodyGeneratedReferenceEvidenceSnapshotBase & {
+      readonly status: "ready";
+      readonly faces: readonly CadBodyGeneratedReferenceFaceEvidence[];
+      readonly edges: readonly CadBodyGeneratedReferenceEdgeEvidence[];
+      readonly diagnostic?: never;
+    })
+  | (CadBodyGeneratedReferenceEvidenceSnapshotBase & {
+      readonly status: "unavailable" | "ambiguous";
+      readonly faces: readonly never[];
+      readonly edges: readonly never[];
+      readonly diagnostic: string;
+    });
+
 export interface CadGeneratedReferenceSignature {
   readonly sourceKind?: "extrude" | "revolve" | "hole";
   readonly targetBodyId?: BodyId;
   readonly targetTopologyAnchorId?: string;
-  readonly profileKind: FeatureExtrudeProfileKind;
+  readonly profileKind: CadGeneratedReferenceProfileKind;
   readonly sketchPlane: SketchPlane;
   readonly extrudeOperationMode?: FeatureExtrudeOperationMode;
   readonly extrudeSide?: FeatureExtrudeSide;
@@ -5133,8 +5177,9 @@ export interface CadGeneratedBodyReference {
   readonly ownerPartId: PartId;
   readonly sourceFeatureId: FeatureId;
   readonly sourceSketchId: SketchId;
-  readonly sourceSketchEntityId: SketchEntityId;
-  readonly profileKind: FeatureExtrudeProfileKind;
+  readonly sourceSketchEntityId?: SketchEntityId;
+  readonly sourceSketchEntityIds?: readonly SketchEntityId[];
+  readonly profileKind: CadGeneratedReferenceProfileKind;
   readonly geometricSignature: CadGeneratedReferenceSignature;
 }
 
@@ -5149,7 +5194,8 @@ export interface CadGeneratedFaceReference {
   readonly ownerPartId: PartId;
   readonly sourceFeatureId: FeatureId;
   readonly sourceSketchId: SketchId;
-  readonly sourceSketchEntityId: SketchEntityId;
+  readonly sourceSketchEntityId?: SketchEntityId;
+  readonly sourceSketchEntityIds?: readonly SketchEntityId[];
   readonly role: CadGeneratedFaceRole;
   readonly geometricSignature: CadGeneratedReferenceSignature;
 }
@@ -5165,7 +5211,8 @@ export interface CadGeneratedEdgeReference {
   readonly ownerPartId: PartId;
   readonly sourceFeatureId: FeatureId;
   readonly sourceSketchId: SketchId;
-  readonly sourceSketchEntityId: SketchEntityId;
+  readonly sourceSketchEntityId?: SketchEntityId;
+  readonly sourceSketchEntityIds?: readonly SketchEntityId[];
   readonly role: CadGeneratedEdgeRole;
   readonly adjacentFaceRoles: readonly CadGeneratedFaceRole[];
   readonly geometricSignature: CadGeneratedReferenceSignature;
@@ -5641,6 +5688,11 @@ export type CadDependencyHealthIssueCode =
   | "OVER_DEFINED_SKETCH"
   | "BODY_NOT_FOUND"
   | "UNSUPPORTED_BODY_REFERENCES"
+  | "GENERATED_REFERENCE_CORRESPONDENCE_UNPROVEN"
+  | "STALE_BODY_TOPOLOGY"
+  | "INVALID_EXACT_GEOMETRY_RESULT"
+  | "EXACT_GEOMETRY_KERNEL_FAILED"
+  | "EXACT_GEOMETRY_BINDING_UNAVAILABLE"
   | "GENERATED_REFERENCE_NOT_FOUND"
   | "GENERATED_REFERENCE_KIND_MISMATCH"
   | "GENERATED_REFERENCE_OPERATION_NOT_ELIGIBLE"
@@ -5671,8 +5723,9 @@ export interface CadAuthoredExtrudeHealth {
   readonly featureId: FeatureId;
   readonly bodyId: BodyId;
   readonly sketchId: SketchId;
-  readonly entityId: SketchEntityId;
-  readonly profileKind: FeatureExtrudeProfileKind;
+  readonly entityId?: SketchEntityId;
+  readonly sourceEntityIds?: readonly SketchEntityId[];
+  readonly profileKind: CadGeneratedReferenceProfileKind;
   readonly operationMode: FeatureExtrudeOperationMode;
   readonly targetBodyId?: BodyId;
   readonly targetTopologyAnchorId?: string;
@@ -6139,6 +6192,7 @@ export type CadQueryErrorCode =
   | "SKETCH_DIMENSION_NOT_FOUND"
   | "BODY_NOT_FOUND"
   | "UNSUPPORTED_BODY_REFERENCES"
+  | "GENERATED_REFERENCE_CORRESPONDENCE_UNPROVEN"
   | "UNSUPPORTED_BODY_MEASUREMENTS"
   | "UNSUPPORTED_BODY_PATTERN_INSTANCES"
   | "MASS_PROPERTIES_UNAVAILABLE"
@@ -6169,6 +6223,7 @@ export interface CadQueryError {
   readonly stableId?: string;
   readonly referenceName?: NamedReferenceName;
   readonly checkpointId?: string;
+  readonly generatedReferencesStatus?: "unavailable" | "ambiguous";
 }
 
 export type CadBodyTopologyStatus =
@@ -6194,7 +6249,10 @@ export type CadBodyTopologySourceKind =
   | "importedBody"
   | "primitiveCompatibility";
 
-export type CadBodyTopologyModel = "none" | "semantic-source";
+export type CadBodyTopologyModel =
+  | "none"
+  | "semantic-source"
+  | "kernel-derived";
 
 export type CadBodyTopologyMeasurementConfidence =
   | "none"
@@ -6463,7 +6521,8 @@ export interface CadBodyTopologySourceIdentity {
   readonly targetTopologyAnchorId?: string;
   readonly sourceSketchId?: SketchId;
   readonly sourceSketchEntityId?: SketchEntityId;
-  readonly profileKind?: FeatureExtrudeProfileKind;
+  readonly sourceSketchEntityIds?: readonly SketchEntityId[];
+  readonly profileKind?: CadGeneratedReferenceProfileKind;
   readonly revolveAxis?: FeatureRevolveAxis;
   readonly revolveAxisSignature?: {
     readonly start: Vec2;

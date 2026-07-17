@@ -724,7 +724,13 @@ function createGeneratedReferenceHealth(
     ...(consumedByFeatureId ? { consumedByFeatureId } : {}),
     dependencies: createReferenceDependencies({
       sketchIds: [reference.sourceSketchId],
-      sketchEntityIds: [reference.sourceSketchEntityId],
+      sketchEntityIds:
+        ("sourceSketchEntityIds" in reference
+          ? reference.sourceSketchEntityIds
+          : undefined) ??
+        (reference.sourceSketchEntityId
+          ? [reference.sourceSketchEntityId]
+          : []),
       featureIds: [reference.sourceFeatureId],
       bodyIds: [body.id],
       generatedReferenceStableIds: [reference.stableId],
