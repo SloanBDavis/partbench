@@ -277,15 +277,25 @@ function resolveWire(
         rightIndex === leftIndex + 1 ||
         (leftIndex === 0 && rightIndex === segments.length - 1);
       const allowedEndpoint = adjacent
-        ? leftIndex === 0 && rightIndex === segments.length - 1
+        ? segments.length === 2
           ? intersection.points.every(
               (point) =>
-                point.leftLocation === "start" && point.rightLocation === "end"
+                (point.leftLocation === "start" &&
+                  point.rightLocation === "end") ||
+                (point.leftLocation === "end" &&
+                  point.rightLocation === "start")
             )
-          : intersection.points.every(
-              (point) =>
-                point.leftLocation === "end" && point.rightLocation === "start"
-            )
+          : leftIndex === 0 && rightIndex === segments.length - 1
+            ? intersection.points.every(
+                (point) =>
+                  point.leftLocation === "start" &&
+                  point.rightLocation === "end"
+              )
+            : intersection.points.every(
+                (point) =>
+                  point.leftLocation === "end" &&
+                  point.rightLocation === "start"
+              )
         : false;
       if (intersection.overlap) {
         intersectionStatus = "overlapping";

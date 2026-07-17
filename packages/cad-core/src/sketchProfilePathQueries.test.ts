@@ -196,6 +196,53 @@ describe("V17 profile and path queries", () => {
     expect(response.normalizedProfile?.kind).toBe("wire");
   });
 
+  it("discovers a two-arc closed profile using analytic area and finite supports", () => {
+    const engine = new CadEngine();
+    addSketch(engine, "arcs");
+    engine.applyBatch([
+      {
+        op: "sketch.addArc",
+        sketchId: "arcs",
+        id: "a-upper",
+        definition: {
+          kind: "centerAngles",
+          center: [0, 0],
+          radius: 1,
+          startAngleDegrees: 0,
+          sweepAngleDegrees: 180
+        }
+      },
+      {
+        op: "sketch.addArc",
+        sketchId: "arcs",
+        id: "b-lower",
+        definition: {
+          kind: "centerAngles",
+          center: [0, 0],
+          radius: 1,
+          startAngleDegrees: 180,
+          sweepAngleDegrees: 180
+        }
+      }
+    ]);
+    const response = query<
+      Extract<
+        SketchProfilePathQueryResponse,
+        { query: "sketch.profileCandidates" }
+      >
+    >(engine, {
+      version: "cadops.v1",
+      query: { query: "sketch.profileCandidates", sketchId: "arcs" }
+    });
+    expect(response.candidateCount).toBe(1);
+    expect(response.candidates[0]).toMatchObject({
+      profile: { kind: "wire" },
+      intersectionStatus: "clear",
+      joinCount: 2
+    });
+    expect(response.candidates[0]!.area).toBeCloseTo(Math.PI, 12);
+  });
+
   it("rejects branches, gaps, overlaps, self-intersections, and nested loops explicitly", () => {
     const branch = new CadEngine();
     addSketch(branch, "branch");
@@ -510,6 +557,95 @@ describe("V17 profile and path queries", () => {
     expect(
       rejected.rejectedComponents[0]?.diagnostics.map((value) => value.code)
     ).toContain("SKETCH_PATH_JOIN_NOT_TANGENT");
+  });
+
+  it("reports branching and analytic self-intersection for path selections", () => {
+    const branch = new CadEngine();
+    addSketch(branch, "branch-path");
+    branch.applyBatch([
+      {
+        op: "sketch.addLine",
+        sketchId: "branch-path",
+        id: "a",
+        start: [0, 0],
+        end: [1, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "branch-path",
+        id: "b",
+        start: [1, 0],
+        end: [2, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "branch-path",
+        id: "c",
+        start: [1, 0],
+        end: [1, 1]
+      }
+    ]);
+    const branchResponse = query<
+      Extract<
+        SketchProfilePathQueryResponse,
+        { query: "sketch.pathCandidates" }
+      >
+    >(branch, {
+      version: "cadops.v1",
+      query: { query: "sketch.pathCandidates", sketchId: "branch-path" }
+    });
+    expect(
+      branchResponse.rejectedComponents[0]?.diagnostics.map(
+        (diagnostic) => diagnostic.code
+      )
+    ).toContain("SKETCH_PATH_BRANCHING");
+
+    const crossing = new CadEngine();
+    addSketch(crossing, "crossing-path");
+    crossing.applyBatch([
+      {
+        op: "sketch.addLine",
+        sketchId: "crossing-path",
+        id: "a",
+        start: [0, 0],
+        end: [2, 2]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "crossing-path",
+        id: "b",
+        start: [2, 2],
+        end: [0, 2]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "crossing-path",
+        id: "c",
+        start: [0, 2],
+        end: [2, 0]
+      }
+    ]);
+    const crossingResponse = query<
+      Extract<SketchProfilePathQueryResponse, { query: "sketch.pathReadiness" }>
+    >(crossing, {
+      version: "cadops.v1",
+      query: {
+        query: "sketch.pathReadiness",
+        path: {
+          kind: "chain",
+          sketchId: "crossing-path",
+          segments: ["a", "b", "c"].map((entityId) => ({
+            entityId,
+            orientation: "forward"
+          }))
+        }
+      }
+    });
+    expect(crossingResponse.status).toBe("blocked");
+    expect(crossingResponse.selfIntersectionStatus).toBe("self-intersecting");
+    expect(
+      crossingResponse.diagnostics.map((diagnostic) => diagnostic.code)
+    ).toContain("SKETCH_PATH_SELF_INTERSECTING");
   });
 
   it("reports consumer and target compatibility without enabling later feature commands", () => {
