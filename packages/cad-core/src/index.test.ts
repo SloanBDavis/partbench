@@ -26991,7 +26991,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         }),
       {
         code: "INVALID_SKETCH_CONSTRAINT",
-        path: "$.document.sketchConstraints[0].primaryTarget.entityId",
+        path: "$.document.sketchConstraints[0].primaryTarget.entityKind",
         message: "must reference a line sketch entity"
       }
     );

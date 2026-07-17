@@ -39,7 +39,7 @@ import type {
 import {
   getFeatureEntityProfileRef,
   getSupportedEntityProfileKind
-} from "./featureSourceReferences";
+} from "./normalizedFeatureInputs";
 
 const SEMANTIC_REFERENCE_NOTE =
   "Generated references are semantic first-slice references, not exact B-rep topology.";

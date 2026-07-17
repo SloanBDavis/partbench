@@ -60,7 +60,7 @@ import {
   getProfileEntityReferences,
   getSupportedEntityProfileKind,
   getSweepPathEntityReferences
-} from "./featureSourceReferences";
+} from "./normalizedFeatureInputs";
 import { resolveTopologyAnchorGeneratedReferenceFromSourceRole } from "./topologyAnchorGeneratedReferenceResolution";
 import type {
   LinearPatternFeature,

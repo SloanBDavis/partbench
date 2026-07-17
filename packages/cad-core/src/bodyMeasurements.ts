@@ -18,7 +18,7 @@ import {
 import {
   getFeatureEntityProfileRef,
   getSupportedEntityProfileKind
-} from "./featureSourceReferences";
+} from "./normalizedFeatureInputs";
 
 export function createBodyMeasurements(
   document: GeneratedReferencesDocument,

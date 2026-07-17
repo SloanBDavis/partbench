@@ -101,7 +101,6 @@ import type {
   SketchEntityId,
   SketchEntityKind,
   SketchEntitySnapshot,
-  ProfileConsumerFeatureV21,
   ExtrudeFeatureV21,
   RevolveFeatureV21,
   SweepFeatureV21,
@@ -180,12 +179,27 @@ import {
 export {
   cloneSketchPathRef,
   cloneSketchProfileRef,
+  getEntityProfileRef,
+  getFeatureEntityProfileRef,
+  getFeaturePrimaryEntityRef,
+  getFeatureProfileRef,
+  getLoftSectionProfiles,
   getPathEntityRefs,
   getProfileConsumerRefs,
+  getProfileEntityIds,
   getProfileEntityRefs,
+  getProfileEntityReferences,
+  getProfileSketchId,
   getSingleEntityProfile,
+  getSupportedEntityProfileKind,
+  getSweepPathEntityIds,
+  getSweepPathEntityReferences,
+  getSweepPathSketchId,
   normalizeFeatureInputs,
+  type NormalizedEntityProfileConsumerFeature,
   type NormalizedFeature,
+  type NormalizedSingleProfileConsumerFeature,
+  type SketchEntitySourceReference,
   type NormalizedSketchEntityRef
 } from "./normalizedFeatureInputs";
 export {
@@ -3255,66 +3269,8 @@ function serializeSketchConstraintForSchema(
   return cloneSketchConstraintSnapshot(constraint);
 }
 
-function serializeFeatureForV21(
-  feature: FeatureSnapshot
-): ProfileConsumerFeatureV21 | FeatureSnapshot {
-  const stored = feature as unknown as Record<string, unknown>;
-  if (feature.kind === "extrude" || feature.kind === "revolve") {
-    if (isRecord(stored.profile)) {
-      return cloneJsonSource(stored) as unknown as ProfileConsumerFeatureV21;
-    }
-    const { sketchId, entityId, profileKind: _profileKind, ...base } = stored;
-    void _profileKind;
-    return {
-      ...base,
-      profile: { kind: "entity", sketchId, entityId }
-    } as unknown as ProfileConsumerFeatureV21;
-  }
-  if (feature.kind === "sweep") {
-    if (isRecord(stored.profile) && isRecord(stored.path)) {
-      return cloneJsonSource(stored) as unknown as ProfileConsumerFeatureV21;
-    }
-    const {
-      profileSketchId,
-      profileEntityId,
-      pathSketchId,
-      pathEntityIds,
-      ...base
-    } = stored;
-    return {
-      ...base,
-      profile: {
-        kind: "entity",
-        sketchId: profileSketchId,
-        entityId: profileEntityId
-      },
-      path: {
-        kind: "entity",
-        sketchId: pathSketchId,
-        entityId: Array.isArray(pathEntityIds) ? pathEntityIds[0] : undefined,
-        orientation: "forward"
-      }
-    } as unknown as ProfileConsumerFeatureV21;
-  }
-  if (feature.kind === "loft") {
-    const sections = Array.isArray(stored.sections) ? stored.sections : [];
-    return {
-      ...stored,
-      sections: sections.map((section) => {
-        if (isRecord(section) && isRecord(section.profile)) {
-          return { profile: cloneJsonSource(section.profile) };
-        }
-        return {
-          profile: {
-            kind: "entity",
-            sketchId: isRecord(section) ? section.sketchId : undefined,
-            entityId: isRecord(section) ? section.entityId : undefined
-          }
-        };
-      })
-    } as unknown as ProfileConsumerFeatureV21;
-  }
-  return normalizeFeatureSnapshot(feature);
+function serializeFeatureForV21(feature: FeatureSnapshot): FeatureSnapshot {
+  return cloneJsonSource(feature);
 }
 
 function serializeFeatureForLegacySchema(
@@ -3324,7 +3280,7 @@ function serializeFeatureForLegacySchema(
   const stored = feature as unknown as Record<string, unknown>;
   if (feature.kind === "extrude" || feature.kind === "revolve") {
     if (!isRecord(stored.profile)) {
-      return cloneJsonSource(feature);
+      throw new Error("Internal profile consumers must be normalized.");
     }
     const profile = stored.profile;
     if (profile.kind !== "entity" || typeof profile.entityId !== "string") {
@@ -3343,7 +3299,7 @@ function serializeFeatureForLegacySchema(
   }
   if (feature.kind === "sweep") {
     if (!isRecord(stored.profile) || !isRecord(stored.path)) {
-      return cloneJsonSource(feature);
+      throw new Error("Internal sweep inputs must be normalized.");
     }
     if (
       stored.profile.kind !== "entity" ||
@@ -3367,9 +3323,10 @@ function serializeFeatureForLegacySchema(
       ...stored,
       sections: sections.map((section) => {
         const profile = isRecord(section) ? section.profile : undefined;
-        return isRecord(profile)
-          ? { sketchId: profile.sketchId, entityId: profile.entityId }
-          : section;
+        if (!isRecord(profile)) {
+          throw new Error("Internal loft sections must be normalized.");
+        }
+        return { sketchId: profile.sketchId, entityId: profile.entityId };
       })
     } as unknown as FeatureSnapshot;
   }
@@ -23499,7 +23456,7 @@ function normalizeCadDocumentV21Source(
     sketchConstraints: document.sketchConstraints.map(
       normalizeSketchConstraintV21Source
     ),
-    features: document.features.map(normalizeFeatureSnapshotV21Source)
+    features: document.features.map(cloneJsonSource)
   };
 }
 
@@ -23619,14 +23576,6 @@ function normalizeFeatureSnapshot(feature: FeatureSnapshot): FeatureSnapshot {
     side: feature.side ?? "positive",
     operationMode: feature.operationMode ?? "newBody"
   };
-}
-
-function normalizeFeatureSnapshotV21Source(
-  feature: FeatureSnapshot
-): FeatureSnapshot {
-  return serializeFeatureForV21(
-    normalizeFeatureSnapshot(feature)
-  ) as unknown as FeatureSnapshot;
 }
 
 function normalizeTransactionSnapshot(transaction: Transaction): Transaction {
@@ -25079,6 +25028,16 @@ function validateSketchDimensionTargetShape(
     return false;
   }
 
+  if (isV21Schema) {
+    validateV21ExactObjectKeys(
+      value,
+      ["entityKind", "role"],
+      path,
+      issues,
+      "V21 sketch dimension target"
+    );
+  }
+
   const valid =
     (entityKind === "rectangle" &&
       value.entityKind === "rectangle" &&
@@ -25089,7 +25048,7 @@ function validateSketchDimensionTargetShape(
     (isV21Schema &&
       entityKind === "arc" &&
       value.entityKind === "arc" &&
-      value.role === "radius") ||
+      (value.role === "radius" || value.role === "sweep")) ||
     (entityKind === "line" &&
       value.entityKind === "line" &&
       value.role === "length");
@@ -25120,6 +25079,16 @@ function validateSketchPointTargetSnapshot(
       "Fixed sketch constraint target must be an object."
     );
     return undefined;
+  }
+
+  if (isV21Schema) {
+    validateV21ExactObjectKeys(
+      value,
+      ["entityId", "role", "entityKind"],
+      path,
+      issues,
+      "V21 sketch point target"
+    );
   }
 
   if (typeof value.entityId !== "string" || value.entityId.length === 0) {
@@ -25196,6 +25165,16 @@ function validateSketchCurveConstraintTargetSnapshot(
     return undefined;
   }
 
+  if (isV21Schema) {
+    validateV21ExactObjectKeys(
+      value,
+      ["entityId", "entityKind"],
+      path,
+      issues,
+      "V21 sketch curve target"
+    );
+  }
+
   if (typeof value.entityId !== "string" || value.entityId.length === 0) {
     addProjectIssue(
       issues,
@@ -25245,6 +25224,13 @@ function validateV21RadiusCurveTargetForImport(
     );
     return undefined;
   }
+  validateV21ExactObjectKeys(
+    value,
+    ["entityId", "entityKind"],
+    path,
+    issues,
+    "V21 radius curve target"
+  );
   const entityId =
     typeof value.entityId === "string" && value.entityId.length > 0
       ? value.entityId
@@ -25318,6 +25304,7 @@ function validateStringIdField(
 function validateSketchEntityReferenceForImport(args: {
   readonly entityId: string | undefined;
   readonly path: string;
+  readonly kindPath?: string;
   readonly label: string;
   readonly sketchId: unknown;
   readonly expectedKind: SketchEntityKindV21;
@@ -25327,6 +25314,7 @@ function validateSketchEntityReferenceForImport(args: {
   const {
     entityId,
     path,
+    kindPath,
     label,
     sketchId,
     expectedKind,
@@ -25363,7 +25351,7 @@ function validateSketchEntityReferenceForImport(args: {
     addProjectIssue(
       issues,
       "INVALID_SKETCH_CONSTRAINT",
-      path,
+      kindPath ?? path,
       `${label} must reference a ${expectedKind} sketch entity.`
     );
   }
@@ -25386,6 +25374,7 @@ function validateSketchCurveTargetEntityForImport(args: {
   validateSketchEntityReferenceForImport({
     entityId: target.entityId,
     path: `${path}.entityId`,
+    kindPath: `${path}.entityKind`,
     label,
     sketchId,
     expectedKind: target.entityKind,
@@ -25411,6 +25400,27 @@ function isSketchPointTargetSupportedForImport(
       "entityKind" in target &&
       target.entityKind === "arc")
   );
+}
+
+function validateSketchPointTargetEntityKindForImport(
+  entityKind: SketchEntityKindV21,
+  target: SketchPointTargetV21,
+  path: string,
+  issues: CadProjectImportIssue[],
+  isV21Schema: boolean
+): void {
+  if (!isV21Schema) return;
+  const storedKind = "entityKind" in target ? target.entityKind : undefined;
+  if (entityKind === "arc" ? storedKind !== "arc" : storedKind !== undefined) {
+    addProjectIssue(
+      issues,
+      "SCHEMA_V21_SOURCE_INVALID",
+      `${path}.entityKind`,
+      entityKind === "arc"
+        ? "V21 arc point targets must store entityKind arc."
+        : "V21 non-arc point targets must not store entityKind."
+    );
+  }
 }
 
 function isMidpointSketchPointTargetSupportedForImport(
@@ -26058,6 +26068,26 @@ function validateSketchConstraintSnapshot(
         );
       }
 
+      if (value.kind === "fixed" && target) {
+        validateSketchPointTargetEntityKindForImport(
+          entityRef.kind,
+          target,
+          `${path}.target`,
+          issues,
+          isV21Schema
+        );
+      }
+
+      if (value.kind === "coincident" && primaryTarget) {
+        validateSketchPointTargetEntityKindForImport(
+          entityRef.kind,
+          primaryTarget,
+          `${path}.primaryTarget`,
+          issues,
+          isV21Schema
+        );
+      }
+
       if (value.kind === "midpoint" && entityRef.kind !== "line") {
         addProjectIssue(
           issues,
@@ -26170,6 +26200,13 @@ function validateSketchConstraintSnapshot(
         "Coincident sketch constraint secondary target entityId must reference an existing sketch entity."
       );
     } else {
+      validateSketchPointTargetEntityKindForImport(
+        secondaryEntityRef.kind,
+        secondaryTarget,
+        `${path}.secondaryTarget`,
+        issues,
+        isV21Schema
+      );
       if (secondaryEntityRef.sketchId !== value.sketchId) {
         addProjectIssue(
           issues,
@@ -26329,6 +26366,13 @@ function validateSketchConstraintSnapshot(
           "Symmetry sketch constraint primaryTarget must reference an existing sketch entity."
         );
       } else {
+        validateSketchPointTargetEntityKindForImport(
+          primaryEntityRef.kind,
+          primaryTarget,
+          `${path}.primaryTarget`,
+          issues,
+          isV21Schema
+        );
         if (primaryEntityRef.sketchId !== value.sketchId) {
           addProjectIssue(
             issues,
@@ -26365,6 +26409,13 @@ function validateSketchConstraintSnapshot(
           "Symmetry sketch constraint secondaryTarget must reference an existing sketch entity."
         );
       } else {
+        validateSketchPointTargetEntityKindForImport(
+          secondaryEntityRef.kind,
+          secondaryTarget,
+          `${path}.secondaryTarget`,
+          issues,
+          isV21Schema
+        );
         if (secondaryEntityRef.sketchId !== value.sketchId) {
           addProjectIssue(
             issues,
@@ -26823,6 +26874,12 @@ function getImportedSketchDimensionTargetValue(
   if (target.entityKind === "rectangle") {
     const value = entity[target.role];
     return typeof value === "number" ? value : undefined;
+  }
+
+  if (target.entityKind === "arc" && target.role === "sweep") {
+    return typeof entity.sweepAngleDegrees === "number"
+      ? Math.abs(entity.sweepAngleDegrees)
+      : undefined;
   }
 
   if (target.entityKind === "circle" || target.entityKind === "arc") {
@@ -28973,6 +29030,13 @@ function validateV21RevolveFields(
       "V21 revolve axis must be a sketchLine reference."
     );
   } else {
+    validateV21ExactObjectKeys(
+      value.axis,
+      ["type", "sketchId", "entityId"],
+      `${path}.axis`,
+      issues,
+      "V21 revolve axis"
+    );
     if (value.axis.sketchId !== profileSketchId) {
       addProjectIssue(
         issues,
@@ -32305,7 +32369,8 @@ function isSketchDimensionTarget(
     ((value.entityKind === "rectangle" &&
       (value.role === "width" || value.role === "height")) ||
       (value.entityKind === "circle" && value.role === "radius") ||
-      (value.entityKind === "arc" && value.role === "radius") ||
+      (value.entityKind === "arc" &&
+        (value.role === "radius" || value.role === "sweep")) ||
       (value.entityKind === "line" && value.role === "length"))
   );
 }

@@ -25,7 +25,7 @@ import { createBodyMeasurements } from "./bodyMeasurements";
 import {
   getFeatureEntityProfileRef,
   getSupportedEntityProfileKind
-} from "./featureSourceReferences";
+} from "./normalizedFeatureInputs";
 import { sha256Hex } from "./sha256";
 
 export interface BodyTopologyRequest {

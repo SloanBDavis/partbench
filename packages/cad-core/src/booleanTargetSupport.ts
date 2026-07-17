@@ -9,7 +9,7 @@ import type {
   SketchProfileRef
 } from "@web-cad/cad-protocol";
 
-import { getSupportedEntityProfileKind } from "./featureSourceReferences";
+import { getSupportedEntityProfileKind } from "./normalizedFeatureInputs";
 
 export interface BooleanTargetSupportFeature {
   readonly id: FeatureId;

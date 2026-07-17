@@ -309,6 +309,260 @@ describe("V17 V21 storage and migration", () => {
     expect(() => parseCadProjectJson(JSON.stringify(source))).not.toThrow();
   });
 
+  it("round-trips positive and negative arc sweep dimensions from literals and parameters", () => {
+    for (const sweepAngleDegrees of [-90, 90]) {
+      for (const valueSource of [
+        { type: "literal", value: 90 },
+        { type: "parameter", parameterId: "sweep_parameter" }
+      ]) {
+        const source = createV21ArcProject() as any;
+        source.document.sketches[1].entities[1].sweepAngleDegrees =
+          sweepAngleDegrees;
+        source.document.parameters = [
+          { id: "sweep_parameter", name: "Sweep", value: 90 }
+        ];
+        source.document.sketchDimensions = [
+          {
+            id: `sweep_${sweepAngleDegrees}_${valueSource.type}`,
+            name: "Arc sweep",
+            sketchId: "path",
+            entityId: "arc",
+            target: { entityKind: "arc", role: "sweep" },
+            valueSource
+          }
+        ];
+
+        const parsed = parseCadProjectJson(JSON.stringify(source));
+        const saved = exportCadProject(importCadProject(parsed));
+        expect(saved.document.sketchDimensions).toEqual(
+          source.document.sketchDimensions
+        );
+        expect(
+          (saved.document.sketches[1]?.entities[1] as any).sweepAngleDegrees
+        ).toBe(sweepAngleDegrees);
+      }
+    }
+  });
+
+  it("rejects resolved point and curve target discriminator mismatches at entityKind", () => {
+    const cases = [
+      {
+        path: "$.document.sketchConstraints[0].target.entityKind",
+        constraint: {
+          id: "fixed_arc",
+          name: "Fixed arc",
+          sketchId: "path",
+          entityId: "arc",
+          kind: "fixed",
+          target: { entityId: "arc", role: "center" },
+          coordinate: [0, 0]
+        }
+      },
+      {
+        path: "$.document.sketchConstraints[0].primaryTarget.entityKind",
+        constraint: {
+          id: "coincident_line",
+          name: "Coincident line",
+          sketchId: "path",
+          entityId: "line",
+          kind: "coincident",
+          primaryTarget: {
+            entityId: "line",
+            entityKind: "arc",
+            role: "start"
+          },
+          secondaryTarget: {
+            entityId: "arc",
+            entityKind: "arc",
+            role: "center"
+          }
+        }
+      },
+      {
+        path: "$.document.sketchConstraints[0].secondaryTarget.entityKind",
+        constraint: {
+          id: "symmetry_arc",
+          name: "Symmetry arc",
+          sketchId: "path",
+          entityId: "arc",
+          kind: "symmetry",
+          primaryTarget: { entityId: "line", role: "start" },
+          secondaryTarget: { entityId: "arc", role: "center" },
+          symmetryLineEntityId: "axis"
+        },
+        addAxis: true
+      },
+      {
+        path: "$.document.sketchConstraints[0].primaryTarget.entityKind",
+        constraint: {
+          id: "tangent_arc",
+          name: "Tangent arc",
+          sketchId: "path",
+          entityId: "line",
+          kind: "tangent",
+          primaryTarget: { entityId: "arc", entityKind: "line" },
+          secondaryTarget: { entityId: "line", entityKind: "line" }
+        }
+      }
+    ];
+
+    for (const testCase of cases) {
+      const source = createV21ArcProject() as any;
+      if (testCase.addAxis) {
+        source.document.sketches[1].entities.push({
+          id: "axis",
+          kind: "line",
+          start: [-5, 0],
+          end: [5, 0],
+          construction: false
+        });
+      }
+      source.document.sketchConstraints = [testCase.constraint];
+      expect(() => parseCadProjectJson(JSON.stringify(source))).toThrowError(
+        expect.objectContaining({
+          issues: expect.arrayContaining([
+            expect.objectContaining({ path: testCase.path })
+          ])
+        })
+      );
+    }
+  });
+
+  it("rejects noncanonical fields in every nested V21 target and revolve axis", () => {
+    const nestedCases = [
+      {
+        path: "$.document.sketchDimensions[0].target.cached",
+        apply(source: any) {
+          source.document.sketchDimensions = [
+            {
+              id: "arc_radius",
+              name: "Arc radius",
+              sketchId: "path",
+              entityId: "arc",
+              target: { entityKind: "arc", role: "radius", cached: true },
+              valueSource: { type: "literal", value: 5 }
+            }
+          ];
+        }
+      },
+      {
+        path: "$.document.sketchConstraints[0].target.cached",
+        apply(source: any) {
+          source.document.sketchConstraints = [
+            {
+              id: "fixed_arc",
+              name: "Fixed arc",
+              sketchId: "path",
+              entityId: "arc",
+              kind: "fixed",
+              target: {
+                entityId: "arc",
+                entityKind: "arc",
+                role: "center",
+                cached: true
+              },
+              coordinate: [0, 0]
+            }
+          ];
+        }
+      },
+      {
+        path: "$.document.sketchConstraints[0].primaryTarget.cached",
+        apply(source: any) {
+          source.document.sketchConstraints = [
+            {
+              id: "tangent_arc",
+              name: "Tangent arc",
+              sketchId: "path",
+              entityId: "line",
+              kind: "tangent",
+              primaryTarget: {
+                entityId: "arc",
+                entityKind: "arc",
+                cached: true
+              },
+              secondaryTarget: { entityId: "line", entityKind: "line" }
+            }
+          ];
+        }
+      },
+      {
+        path: "$.document.sketchConstraints[0].primaryTarget.cached",
+        apply(source: any) {
+          source.document.sketchConstraints = [
+            {
+              id: "equal_radius",
+              name: "Equal radius",
+              sketchId: "path",
+              entityId: "arc",
+              kind: "equalRadius",
+              primaryTarget: {
+                entityId: "arc",
+                entityKind: "arc",
+                cached: true
+              },
+              secondaryTarget: { entityId: "circle", entityKind: "circle" }
+            }
+          ];
+        }
+      }
+    ];
+
+    for (const testCase of nestedCases) {
+      const source = createV21ArcProject() as any;
+      testCase.apply(source);
+      expect(() => parseCadProjectJson(JSON.stringify(source))).toThrowError(
+        expect.objectContaining({
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              code: "SCHEMA_V21_SOURCE_INVALID",
+              path: testCase.path
+            })
+          ])
+        })
+      );
+    }
+
+    const revolve = createV21BooleanChainProject() as any;
+    revolve.document.sketches[0].entities.push({
+      id: "axis",
+      kind: "line",
+      start: [0, -10],
+      end: [0, 10],
+      construction: false
+    });
+    revolve.document.features = [
+      {
+        id: "revolve",
+        kind: "revolve",
+        profile: {
+          kind: "entity",
+          sketchId: "base_sketch",
+          entityId: "base_profile"
+        },
+        axis: {
+          type: "sketchLine",
+          sketchId: "base_sketch",
+          entityId: "axis",
+          cached: true
+        },
+        angleDegrees: 180,
+        operationMode: "newBody",
+        bodyId: "revolve_body"
+      }
+    ];
+    expect(() => parseCadProjectJson(JSON.stringify(revolve))).toThrowError(
+      expect.objectContaining({
+        issues: expect.arrayContaining([
+          expect.objectContaining({
+            code: "SCHEMA_V21_SOURCE_INVALID",
+            path: "$.document.features[0].axis.cached"
+          })
+        ])
+      })
+    );
+  });
+
   it("validates upgraded normalized boolean chains instead of skipping them", () => {
     const source = createV21BooleanChainProject();
     expect(() => parseCadProjectJson(JSON.stringify(source))).not.toThrow();

@@ -1,14 +1,18 @@
 import type {
+  ExtrudeFeatureV21,
+  FeatureExtrudeProfileKind,
   FeatureSnapshot,
   FeatureSnapshotV21,
   LoftFeatureV21,
   OrientedSketchSegmentRef,
   ProfileConsumerFeatureV21,
+  RevolveFeatureV21,
   SketchEntityId,
   SketchEntityProfileRef,
   SketchId,
   SketchPathRef,
-  SketchProfileRef
+  SketchProfileRef,
+  SweepFeatureV21
 } from "@web-cad/cad-protocol";
 
 export type NormalizedFeature = FeatureSnapshotV21;
@@ -18,6 +22,21 @@ export interface NormalizedSketchEntityRef {
   readonly entityId: SketchEntityId;
   readonly orientation?: "forward" | "reverse";
 }
+
+export type NormalizedEntityProfileConsumerFeature =
+  | ExtrudeFeatureV21
+  | RevolveFeatureV21
+  | SweepFeatureV21;
+
+export type NormalizedSingleProfileConsumerFeature = Exclude<
+  ProfileConsumerFeatureV21,
+  LoftFeatureV21
+>;
+
+export type SketchEntitySourceReference = Pick<
+  NormalizedSketchEntityRef,
+  "sketchId" | "entityId"
+>;
 
 function cloneSegments(
   segments: readonly OrientedSketchSegmentRef[]
@@ -157,4 +176,79 @@ export function getSingleEntityProfile(
   feature: Exclude<ProfileConsumerFeatureV21, LoftFeatureV21>
 ): SketchEntityProfileRef | undefined {
   return feature.profile.kind === "entity" ? feature.profile : undefined;
+}
+
+export function getFeatureProfileRef(
+  feature: NormalizedSingleProfileConsumerFeature
+): SketchProfileRef {
+  return feature.profile;
+}
+
+export const getEntityProfileRef = getSingleEntityProfile;
+
+export function getFeatureEntityProfileRef(
+  feature: NormalizedEntityProfileConsumerFeature
+): SketchEntityProfileRef | undefined {
+  return getSingleEntityProfile(feature);
+}
+
+export function getProfileSketchId(profile: SketchProfileRef): SketchId {
+  return profile.sketchId;
+}
+
+export function getProfileEntityIds(
+  profile: SketchProfileRef
+): readonly SketchEntityId[] {
+  return getProfileEntityRefs(profile).map((reference) => reference.entityId);
+}
+
+export function getProfileEntityReferences(
+  profile: SketchProfileRef
+): readonly SketchEntitySourceReference[] {
+  return getProfileEntityRefs(profile).map(({ sketchId, entityId }) => ({
+    sketchId,
+    entityId
+  }));
+}
+
+export function getSweepPathSketchId(path: SketchPathRef): SketchId {
+  return path.sketchId;
+}
+
+export function getSweepPathEntityIds(
+  path: SketchPathRef
+): readonly SketchEntityId[] {
+  return getPathEntityRefs(path).map((reference) => reference.entityId);
+}
+
+export function getSweepPathEntityReferences(
+  path: SketchPathRef
+): readonly SketchEntitySourceReference[] {
+  return getPathEntityRefs(path).map(({ sketchId, entityId }) => ({
+    sketchId,
+    entityId
+  }));
+}
+
+export function getFeaturePrimaryEntityRef(
+  feature: NormalizedEntityProfileConsumerFeature
+): SketchEntitySourceReference | undefined {
+  const profile = getFeatureEntityProfileRef(feature);
+  return profile
+    ? { sketchId: profile.sketchId, entityId: profile.entityId }
+    : undefined;
+}
+
+export function getSupportedEntityProfileKind(
+  entity: { readonly kind: string } | undefined
+): FeatureExtrudeProfileKind | undefined {
+  return entity?.kind === "rectangle" || entity?.kind === "circle"
+    ? entity.kind
+    : undefined;
+}
+
+export function getLoftSectionProfiles(
+  feature: LoftFeatureV21
+): readonly SketchEntityProfileRef[] {
+  return feature.sections.map((section) => section.profile);
 }

@@ -23,7 +23,7 @@ import type { CadDocument, ExtrudeFeature, SketchEntity } from "./index";
 import {
   getFeatureEntityProfileRef,
   getSupportedEntityProfileKind
-} from "./featureSourceReferences";
+} from "./normalizedFeatureInputs";
 import { createSourceMeasurementFrame } from "./sourceMeasurementGeometry";
 
 interface ProjectExportReadinessInput {
