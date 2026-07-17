@@ -3666,6 +3666,7 @@ export type CadFeatureEditDiagnosticCode =
 
 export interface CadFeatureExtrudeEditProposal {
   readonly kind: "extrude";
+  readonly profile?: SketchProfileRef;
   readonly depth?: number;
   readonly side?: FeatureExtrudeSide;
 }
@@ -5065,7 +5066,9 @@ export type CadGeneratedExtrudeVertexRole =
   | "end:uMin:vMin"
   | "end:uMin:vMax"
   | "end:uMax:vMin"
-  | "end:uMax:vMax";
+  | "end:uMax:vMax"
+  | `start:join:${SketchEntityId}:${SketchEntityId}`
+  | `end:join:${SketchEntityId}:${SketchEntityId}`;
 
 export type CadGeneratedSurfaceType = "plane" | "cylinder";
 export type CadGeneratedCurveType = "line" | "circle";
@@ -5106,19 +5109,36 @@ export type CadGeneratedReferenceProfileKind =
   | FeatureExtrudeProfileKind
   | "wire";
 
-export interface CadBodyGeneratedReferenceFaceEvidence {
-  readonly role: "startCap" | "endCap" | "side";
-  readonly sourceEntityId?: SketchEntityId;
-  readonly surfaceClass: "plane" | "cylinder";
-  readonly evidence: "kernel-builder";
-}
+export type CadBodyGeneratedReferenceFaceEvidence =
+  | {
+      readonly role: "startCap" | "endCap";
+      readonly sourceEntityId?: never;
+      readonly surfaceClass: "plane";
+      readonly evidence: "kernel-builder";
+    }
+  | {
+      readonly role: "side";
+      readonly sourceEntityId: SketchEntityId;
+      readonly surfaceClass: "plane" | "cylinder";
+      readonly evidence: "kernel-builder";
+    };
 
-export interface CadBodyGeneratedReferenceEdgeEvidence {
-  readonly role: "startCapBoundary" | "endCapBoundary" | "longitudinal";
-  readonly sourceEntityId?: SketchEntityId;
-  readonly adjacentSourceEntityIds?: readonly [SketchEntityId, SketchEntityId];
-  readonly evidence: "kernel-builder";
-}
+export type CadBodyGeneratedReferenceEdgeEvidence =
+  | {
+      readonly role: "startCapBoundary" | "endCapBoundary";
+      readonly sourceEntityId: SketchEntityId;
+      readonly adjacentSourceEntityIds?: never;
+      readonly evidence: "kernel-builder";
+    }
+  | {
+      readonly role: "longitudinal";
+      readonly sourceEntityId?: never;
+      readonly adjacentSourceEntityIds: readonly [
+        SketchEntityId,
+        SketchEntityId
+      ];
+      readonly evidence: "kernel-builder";
+    };
 
 interface CadBodyGeneratedReferenceEvidenceSnapshotBase {
   readonly bodyId: BodyId;
@@ -5166,7 +5186,17 @@ export interface CadGeneratedReferenceSignature {
   readonly positionRole?: string;
 }
 
-export interface CadGeneratedBodyReference {
+type CadGeneratedReferenceSketchSource =
+  | {
+      readonly sourceSketchEntityId: SketchEntityId;
+      readonly sourceSketchEntityIds?: never;
+    }
+  | {
+      readonly sourceSketchEntityId?: never;
+      readonly sourceSketchEntityIds: readonly SketchEntityId[];
+    };
+
+interface CadGeneratedBodyReferenceBase {
   readonly kind: "body";
   readonly stableId: string;
   readonly label: string;
@@ -5177,13 +5207,14 @@ export interface CadGeneratedBodyReference {
   readonly ownerPartId: PartId;
   readonly sourceFeatureId: FeatureId;
   readonly sourceSketchId: SketchId;
-  readonly sourceSketchEntityId?: SketchEntityId;
-  readonly sourceSketchEntityIds?: readonly SketchEntityId[];
   readonly profileKind: CadGeneratedReferenceProfileKind;
   readonly geometricSignature: CadGeneratedReferenceSignature;
 }
 
-export interface CadGeneratedFaceReference {
+export type CadGeneratedBodyReference = CadGeneratedBodyReferenceBase &
+  CadGeneratedReferenceSketchSource;
+
+interface CadGeneratedFaceReferenceBase {
   readonly kind: "face";
   readonly stableId: string;
   readonly label: string;
@@ -5194,13 +5225,14 @@ export interface CadGeneratedFaceReference {
   readonly ownerPartId: PartId;
   readonly sourceFeatureId: FeatureId;
   readonly sourceSketchId: SketchId;
-  readonly sourceSketchEntityId?: SketchEntityId;
-  readonly sourceSketchEntityIds?: readonly SketchEntityId[];
   readonly role: CadGeneratedFaceRole;
   readonly geometricSignature: CadGeneratedReferenceSignature;
 }
 
-export interface CadGeneratedEdgeReference {
+export type CadGeneratedFaceReference = CadGeneratedFaceReferenceBase &
+  CadGeneratedReferenceSketchSource;
+
+interface CadGeneratedEdgeReferenceBase {
   readonly kind: "edge";
   readonly stableId: string;
   readonly label: string;
@@ -5211,14 +5243,15 @@ export interface CadGeneratedEdgeReference {
   readonly ownerPartId: PartId;
   readonly sourceFeatureId: FeatureId;
   readonly sourceSketchId: SketchId;
-  readonly sourceSketchEntityId?: SketchEntityId;
-  readonly sourceSketchEntityIds?: readonly SketchEntityId[];
   readonly role: CadGeneratedEdgeRole;
   readonly adjacentFaceRoles: readonly CadGeneratedFaceRole[];
   readonly geometricSignature: CadGeneratedReferenceSignature;
 }
 
-export interface CadGeneratedVertexReference {
+export type CadGeneratedEdgeReference = CadGeneratedEdgeReferenceBase &
+  CadGeneratedReferenceSketchSource;
+
+interface CadGeneratedVertexReferenceBase {
   readonly kind: "vertex";
   readonly stableId: string;
   readonly label: string;
@@ -5229,12 +5262,14 @@ export interface CadGeneratedVertexReference {
   readonly ownerPartId: PartId;
   readonly sourceFeatureId: FeatureId;
   readonly sourceSketchId: SketchId;
-  readonly sourceSketchEntityId: SketchEntityId;
   readonly role: CadGeneratedExtrudeVertexRole;
   readonly adjacentFaceRoles: readonly CadGeneratedFaceRole[];
   readonly adjacentEdgeRoles: readonly CadGeneratedExtrudeEdgeRole[];
   readonly geometricSignature: CadGeneratedReferenceSignature;
 }
+
+export type CadGeneratedVertexReference = CadGeneratedVertexReferenceBase &
+  CadGeneratedReferenceSketchSource;
 
 export interface CadGeneratedAxisReference {
   readonly kind: "axis";

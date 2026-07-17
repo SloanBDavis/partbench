@@ -27,6 +27,7 @@ import {
   getSupportedEntityProfileKind
 } from "./normalizedFeatureInputs";
 import { sha256Hex } from "./sha256";
+import { createSourceMeasurementFrame } from "./sourceMeasurementGeometry";
 
 export interface BodyTopologyRequest {
   readonly document: GeneratedReferencesDocument;
@@ -113,10 +114,16 @@ function createAuthoredFeatureTopology(
   }
 
   if (feature.profile.kind === "wire") {
-    return createCompositeExtrudeTopology(document, bodyId, units, {
-      ...feature,
-      profile: feature.profile
-    });
+    return createCompositeExtrudeTopology(
+      document,
+      bodyId,
+      units,
+      ownerPartId,
+      {
+        ...feature,
+        profile: feature.profile
+      }
+    );
   }
 
   const profileRef = getFeatureEntityProfileRef(feature);
@@ -241,6 +248,7 @@ function createCompositeExtrudeTopology(
   document: GeneratedReferencesDocument,
   bodyId: BodyId,
   units: DocumentUnits,
+  ownerPartId: PartId,
   feature: Extract<GeneratedReferencesFeature, { kind: "extrude" }> & {
     readonly profile: Extract<
       Extract<GeneratedReferencesFeature, { kind: "extrude" }>["profile"],
@@ -251,12 +259,35 @@ function createCompositeExtrudeTopology(
   const sourceSketchEntityIds = feature.profile.segments.map(
     (segment) => segment.entityId
   );
-  const profileEntities = feature.profile.segments.map((segment) => ({
-    ...segment,
-    entity: document.sketches
-      .get(feature.profile.sketchId)
-      ?.entities.get(segment.entityId)
-  }));
+  const sketch = document.sketches.get(feature.profile.sketchId);
+  const profileEntities = feature.profile.segments.map((segment) => {
+    const entity = sketch?.entities.get(segment.entityId);
+    return {
+      entityId: segment.entityId,
+      orientation: segment.orientation,
+      geometry:
+        entity?.kind === "line"
+          ? {
+              kind: entity.kind,
+              start: entity.start,
+              end: entity.end,
+              construction: entity.construction
+            }
+          : entity?.kind === "arc"
+            ? {
+                kind: entity.kind,
+                center: entity.center,
+                radius: entity.radius,
+                startAngleDegrees: entity.startAngleDegrees,
+                sweepAngleDegrees: entity.sweepAngleDegrees,
+                construction: entity.construction
+              }
+            : undefined
+    };
+  });
+  const resolvedFrame = sketch
+    ? createSourceMeasurementFrame(document, sketch, ownerPartId)
+    : undefined;
   const sourceIdentityInput: Omit<CadBodyTopologySourceIdentity, "signature"> =
     {
       bodyId,
@@ -271,7 +302,11 @@ function createCompositeExtrudeTopology(
       depth: feature.depth,
       featureSourceSignature: sha256Hex(
         new TextEncoder().encode(
-          JSON.stringify({ profile: feature.profile, profileEntities })
+          JSON.stringify({
+            profile: feature.profile,
+            profileEntities,
+            resolvedFrame: resolvedFrame ?? null
+          })
         )
       )
     };

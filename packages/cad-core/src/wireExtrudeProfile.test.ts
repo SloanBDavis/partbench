@@ -408,6 +408,64 @@ describe("V17 composite wire extrude newBody", () => {
     );
   });
 
+  it("dry-runs proposed composite profile retargets through feature.editability", () => {
+    const engine = createWireEngine();
+    engine.apply({
+      op: "feature.extrude",
+      id: "feature_wire",
+      bodyId: "body_wire",
+      profile: counterclockwiseProfile,
+      depth: 2
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "feature.editability",
+          featureId: "feature_wire",
+          proposedEdit: { kind: "extrude", profile: clockwiseProfile }
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      status: "editable",
+      dryRun: {
+        status: "valid",
+        willMutateDocument: false,
+        commitOperation: "feature.updateExtrude"
+      }
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "feature.editability",
+          featureId: "feature_wire",
+          proposedEdit: {
+            kind: "extrude",
+            profile: {
+              ...counterclockwiseProfile,
+              segments: counterclockwiseProfile.segments.slice(0, 3)
+            }
+          }
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      dryRun: {
+        status: "blocked",
+        diagnostics: [
+          expect.objectContaining({
+            code: "FEATURE_EDIT_INVALID_PROPOSAL",
+            fieldPath: "profile"
+          })
+        ]
+      }
+    });
+  });
+
   it("returns typed blocker errors and rejects mismatched input-reference history", () => {
     const engine = createWireEngine();
     const openProfile = {

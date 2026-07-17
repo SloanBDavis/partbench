@@ -19,13 +19,13 @@ const profile = {
   ]
 };
 
-function createEngine(): CadEngine {
+function createEngine(plane: "XY" | "XZ" | "YZ" = "XY"): CadEngine {
   const engine = new CadEngine();
   engine.apply({
     op: "sketch.create",
     id: "sketch_wire",
     name: "Wire",
-    plane: "XY"
+    plane
   });
   engine.applyBatch([
     {
@@ -301,7 +301,7 @@ describe("V17 composite wire extrude generated references", () => {
       },
       faceCount: 6,
       edgeCount: 12,
-      vertexCount: 0
+      vertexCount: 8
     });
     if (!result.ok || result.query !== "body.generatedReferences") return;
     expect(result.faces.map((face) => face.role)).toEqual([
@@ -337,6 +337,16 @@ describe("V17 composite wire extrude generated references", () => {
       "longitudinal:join:line_b:line_c",
       "longitudinal:join:line_c:line_d",
       "longitudinal:join:line_d:line_a"
+    ]);
+    expect(result.vertices.map((vertex) => vertex.role)).toEqual([
+      "start:join:line_a:line_b",
+      "end:join:line_a:line_b",
+      "start:join:line_b:line_c",
+      "end:join:line_b:line_c",
+      "start:join:line_c:line_d",
+      "end:join:line_c:line_d",
+      "start:join:line_d:line_a",
+      "end:join:line_d:line_a"
     ]);
 
     const resolved = engine.executeQuery({
@@ -495,6 +505,39 @@ describe("V17 composite wire extrude generated references", () => {
       ok: false,
       error: { code: "GENERATED_REFERENCE_CORRESPONDENCE_UNPROVEN" }
     });
+  });
+
+  it("keeps source identity stable across rename and binds it to the resolved plane frame", () => {
+    const engine = createEngine();
+    const initial = sourceIdentitySignature(engine);
+    engine.apply({ op: "sketch.rename", id: "sketch_wire", name: "Renamed" });
+    expect(sourceIdentitySignature(engine)).toBe(initial);
+    expect(sourceIdentitySignature(createEngine("XZ"))).not.toBe(initial);
+  });
+
+  it("invalidates source identity when an attached topology frame changes", () => {
+    const createAttachedEngine = (planarCoordinate: number): CadEngine => {
+      const base = createEngine();
+      const document = base.getDocument();
+      const sketch = document.sketches.get("sketch_wire")!;
+      const sketches = new Map(document.sketches);
+      sketches.set("sketch_wire", {
+        ...sketch,
+        attachment: {
+          kind: "topologyAnchorFace",
+          bodyId: "body_parent",
+          topologyAnchorId: "anchor_parent_face",
+          checkpointId: "checkpoint_parent",
+          planarAxis: "z",
+          planarCoordinate
+        }
+      });
+      return new CadEngine({ ...document, sketches });
+    };
+
+    const initial = sourceIdentitySignature(createAttachedEngine(3));
+    expect(sourceIdentitySignature(createAttachedEngine(3))).toBe(initial);
+    expect(sourceIdentitySignature(createAttachedEngine(4))).not.toBe(initial);
   });
 
   it("promotes matching exact topology and preserves explicit stale/failure health", () => {

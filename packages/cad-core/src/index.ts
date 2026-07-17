@@ -8229,8 +8229,10 @@ function isCadFeatureEditProposal(value: unknown): boolean {
   if (value.kind === "extrude") {
     return (
       Object.keys(value).every((key) =>
-        ["kind", "depth", "side"].includes(key)
+        ["kind", "profile", "depth", "side"].includes(key)
       ) &&
+      (value.profile === undefined ||
+        validateSketchProfileRefSource(value.profile).ok) &&
       (value.depth === undefined || typeof value.depth === "number") &&
       (value.side === undefined ||
         value.side === "positive" ||

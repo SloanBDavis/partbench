@@ -26,6 +26,7 @@ import type {
   NamedReferenceName,
   SketchEntityId,
   SketchId,
+  SketchProfileRef,
   FeatureEditabilityQueryResponse
 } from "@web-cad/cad-protocol";
 
@@ -39,6 +40,8 @@ import {
   type SketchProfileHealthEntry
 } from "./sketchProfileHealth";
 import { createTopologyAnchorReferenceChangesForBody } from "./topologyReferenceHealth";
+import { resolveNewBodyWireExtrudeProfile } from "./wireExtrudeProfile";
+import type { CadDocument } from "./index";
 
 const SOURCE_BOUNDARY_NOTE =
   "Feature editability is derived from authoritative document source features and semantic generated/named references.";
@@ -503,8 +506,8 @@ function createExtrudeEditabilityResponse(
           code: "FEATURE_EDIT_SUPPORTED",
           severity: "info",
           message: scopedRebuildConsumer
-            ? "Extrude depth and side can be edited through feature.updateExtrude with one direct downstream rebuild; this query does not mutate document state."
-            : "Extrude depth and side can be edited through feature.updateExtrude; this query does not mutate document state.",
+            ? "Extrude profile, depth, and side can be edited through feature.updateExtrude with one direct downstream rebuild; this query does not mutate document state."
+            : "Extrude profile, depth, and side can be edited through feature.updateExtrude; this query does not mutate document state.",
           featureId: feature.id,
           bodyId: feature.bodyId
         })
@@ -535,7 +538,8 @@ function createExtrudeEditabilityResponse(
   const dryRunDiagnostics = createExtrudeDryRunDiagnostics(
     feature,
     options.proposedEdit,
-    blockingDiagnostics
+    blockingDiagnostics,
+    options.document
   );
   const dryRunStatus = chooseExtrudeDryRunStatus(
     options.proposedEdit,
@@ -1547,7 +1551,8 @@ function createReferenceField(
 function createExtrudeDryRunDiagnostics(
   feature: Extract<CadFeatureSummary, { readonly kind: "extrude" }>,
   proposedEdit: CadFeatureEditProposal | undefined,
-  blockingDiagnostics: readonly CadFeatureEditDiagnostic[]
+  blockingDiagnostics: readonly CadFeatureEditDiagnostic[],
+  document: CreateFeatureEditabilityResponseOptions["document"]
 ): readonly CadFeatureEditDiagnostic[] {
   if (proposedEdit === undefined) {
     return [];
@@ -1575,17 +1580,31 @@ function createExtrudeDryRunDiagnostics(
     return diagnostics;
   }
 
-  if (proposedEdit.depth === undefined && proposedEdit.side === undefined) {
+  if (
+    proposedEdit.profile === undefined &&
+    proposedEdit.depth === undefined &&
+    proposedEdit.side === undefined
+  ) {
     diagnostics.push(
       createDiagnostic({
         code: "FEATURE_EDIT_INVALID_PROPOSAL",
         severity: "blocker",
-        message: "Extrude edit dry-run requires depth or side.",
+        message: "Extrude edit dry-run requires profile, depth, or side.",
         featureId: feature.id,
         bodyId: feature.bodyId,
-        expected: "depth or side",
+        expected: "profile, depth, or side",
         received: "no editable fields"
       })
+    );
+  }
+
+  if (proposedEdit.profile !== undefined) {
+    diagnostics.push(
+      ...createExtrudeProfileProposalDiagnostics(
+        feature,
+        proposedEdit.profile,
+        document
+      )
     );
   }
 
@@ -1626,6 +1645,65 @@ function createExtrudeDryRunDiagnostics(
   }
 
   return diagnostics;
+}
+
+function createExtrudeProfileProposalDiagnostics(
+  feature: Extract<CadFeatureSummary, { readonly kind: "extrude" }>,
+  profile: SketchProfileRef,
+  document: CreateFeatureEditabilityResponseOptions["document"]
+): readonly CadFeatureEditDiagnostic[] {
+  if (profile.kind === "wire") {
+    const resolution = resolveNewBodyWireExtrudeProfile(
+      document as CadDocument,
+      profile,
+      feature.operationMode
+    );
+    return resolution.ok
+      ? []
+      : [
+          createDiagnostic({
+            code: "FEATURE_EDIT_INVALID_PROPOSAL",
+            severity: "blocker",
+            message: resolution.message,
+            featureId: feature.id,
+            bodyId: feature.bodyId,
+            sketchId: resolution.sketchId ?? profile.sketchId,
+            ...(resolution.sketchEntityId
+              ? { sketchEntityId: resolution.sketchEntityId }
+              : {}),
+            fieldPath: "profile",
+            expected: "feature-ready composite wire profile",
+            received: resolution.code
+          })
+        ];
+  }
+
+  const entity = document.sketches
+    .get(profile.sketchId)
+    ?.entities.get(profile.entityId);
+  if (
+    entity &&
+    (entity.kind === "rectangle" || entity.kind === "circle") &&
+    entity.construction === false
+  ) {
+    return [];
+  }
+
+  return [
+    createDiagnostic({
+      code: "FEATURE_EDIT_INVALID_PROPOSAL",
+      severity: "blocker",
+      message:
+        "Extrude profile edit must resolve to a non-construction rectangle, circle, or feature-ready composite wire.",
+      featureId: feature.id,
+      bodyId: feature.bodyId,
+      sketchId: profile.sketchId,
+      sketchEntityId: profile.entityId,
+      fieldPath: "profile",
+      expected: "feature-ready extrude profile",
+      received: entity?.kind ?? "missing entity"
+    })
+  ];
 }
 
 function createRevolveDryRunDiagnostics(

@@ -577,7 +577,39 @@ function createCompositeExtrudeGeneratedReferences(
       geometricSignature: signature({ curveType: "line" })
     };
   });
-  return { body, faces, edges, vertices: [], axes: [] };
+  const vertices: CadGeneratedVertexReference[] = sourceEntityIds.flatMap(
+    (currentEntityId, index) => {
+      const nextEntityId =
+        sourceEntityIds[(index + 1) % sourceEntityIds.length]!;
+      return (["start", "end"] as const).map((position) => ({
+        kind: "vertex" as const,
+        stableId: `generated:vertex:${composite.bodyId}:${position}:join:${encodeURIComponent(currentEntityId)}:${encodeURIComponent(nextEntityId)}`,
+        label: `${position === "start" ? "Start" : "End"} join vertex ${currentEntityId} / ${nextEntityId}`,
+        eligibleOperations: COMPOSITE_CORRESPONDENCE_OPERATIONS,
+        eligibilityNotes: [COMPOSITE_CORRESPONDENCE_NOTE],
+        bodyId: composite.bodyId,
+        ownerPartId,
+        sourceFeatureId: composite.id,
+        sourceSketchId: composite.profile.sketchId,
+        sourceSketchEntityIds: [currentEntityId, nextEntityId],
+        role: `${position}:join:${currentEntityId}:${nextEntityId}` as const,
+        adjacentFaceRoles: [
+          position === "start" ? "startCap" : "endCap",
+          `side:segment:${currentEntityId}`,
+          `side:segment:${nextEntityId}`
+        ],
+        adjacentEdgeRoles: [
+          `${position}:segment:${currentEntityId}`,
+          `${position}:segment:${nextEntityId}`,
+          `longitudinal:join:${currentEntityId}:${nextEntityId}`
+        ],
+        geometricSignature: signature({
+          positionRole: `${position}:join:${currentEntityId}:${nextEntityId}`
+        })
+      }));
+    }
+  );
+  return { body, faces, edges, vertices, axes: [] };
 }
 
 function isReadyCompositeExtrudeEvidence(
