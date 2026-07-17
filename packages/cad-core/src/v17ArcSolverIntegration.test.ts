@@ -659,6 +659,34 @@ describe("V17 cad-core arc solver integration", () => {
     expect(exportCadProjectJson(engine)).toBe(before);
   });
 
+  it("rejects an indeterminate authored tangency branch without source mutation", () => {
+    const engine = createArcSolverEngine();
+    const before = exportCadProjectJson(engine);
+    const response = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "sketch.constraint.create",
+          id: "invalid_tangent_branch",
+          name: "Indeterminate tangent branch",
+          sketchId: "sketch_1",
+          kind: "tangent",
+          primaryTarget: { entityId: "arc_a", entityKind: "arc" },
+          secondaryTarget: {
+            entityId: "circle_same",
+            entityKind: "circle"
+          }
+        }
+      ]
+    });
+    expect(response).toMatchObject({
+      ok: false,
+      error: { code: "SKETCH_ARC_SOLVE_BRANCH_INVALID" }
+    });
+    expect(exportCadProjectJson(engine)).toBe(before);
+  });
+
   it("round-trips V21 arc solver source and transaction history through JSON and WCAD", async () => {
     const engine = createArcSolverEngine();
     engine.apply({
