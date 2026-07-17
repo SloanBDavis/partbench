@@ -780,7 +780,7 @@ describe("geometry-worker", () => {
     });
   });
 
-  it("keeps wire cut out of the typed and runtime worker boundary", async () => {
+  it("passes a typed composite wire cut through the runtime worker boundary", async () => {
     const wireTool = {
       sketchPlane: "XY" as const,
       profile: workerWireProfile,
@@ -791,7 +791,52 @@ describe("geometry-worker", () => {
       { operation: "cut" }
     >["tool"];
     type WireToolFitsCut = typeof wireTool extends CutTool ? true : false;
-    expectTypeOf<WireToolFitsCut>().toEqualTypeOf<false>();
+    expectTypeOf<WireToolFitsCut>().toEqualTypeOf<true>();
+    const request = createExtrudeBooleanWorkerRequest({
+      id: "worker_req_boolean_wire_cut",
+      payloadId: "geometry_req_boolean_wire_cut",
+      operation: "cut",
+      target: {
+        sketchPlane: "XY",
+        profile: {
+          kind: "rectangle",
+          center: [0, 0],
+          width: 8,
+          height: 8
+        },
+        depth: 4
+      },
+      tool: wireTool
+    });
+    const response = await new GeometryKernelWorker().execute(request);
+
+    expect(request).toMatchObject({
+      id: "worker_req_boolean_wire_cut",
+      kind: "geometry-worker.booleanFeature",
+      payload: {
+        id: "geometry_req_boolean_wire_cut",
+        op: "geometry.booleanExtrudes",
+        operation: "cut",
+        tool: wireTool
+      }
+    });
+    expect(response).toMatchObject({
+      id: "worker_req_boolean_wire_cut",
+      payloadId: "geometry_req_boolean_wire_cut",
+      response: {
+        ok: true,
+        op: "geometry.booleanExtrudes",
+        mesh: {
+          primitive: "boolean",
+          vertexCount: expect.any(Number),
+          triangleCount: expect.any(Number)
+        }
+      },
+      transferables: [expect.any(ArrayBuffer), expect.any(ArrayBuffer)]
+    });
+  }, 120_000);
+
+  it("rejects malformed composite wire cut payloads without transferables", async () => {
     const response = await new GeometryKernelWorker().execute({
       id: "worker_req_malformed_wire_cut",
       version: "geometry-worker.v1",
@@ -811,7 +856,16 @@ describe("geometry-worker", () => {
           },
           depth: 4
         },
-        tool: wireTool
+        tool: {
+          sketchPlane: "XY",
+          profile: workerWireProfile,
+          depth: 4,
+          placementFrame: {
+            origin: [0, 0, 0],
+            uAxis: [1, 0, 0],
+            vAxis: [0, 1, 0]
+          }
+        }
       }
     } as never);
 
@@ -819,6 +873,7 @@ describe("geometry-worker", () => {
       ok: false,
       error: { code: "INVALID_DIMENSIONS" }
     });
+    expect(response.transferables).toEqual([]);
   });
 
   it("creates a typed hole worker request", () => {

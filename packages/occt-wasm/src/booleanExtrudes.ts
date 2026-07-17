@@ -66,7 +66,7 @@ export interface OcctBooleanExtrudeCutResultSource {
   readonly kind: "booleanExtrudes";
   readonly operation: "cut";
   readonly target: OcctBooleanExtrudeSource;
-  readonly tool: OcctBooleanExtrudePrimitiveSource;
+  readonly tool: OcctBooleanExtrudeToolSource;
 }
 
 export interface OcctBooleanExtrudePlacementFrame {
@@ -88,7 +88,7 @@ export type OcctBooleanExtrudeInput =
     })
   | (OcctBooleanExtrudeInputBase & {
       readonly operation: "cut";
-      readonly tool: OcctBooleanExtrudePrimitiveSource;
+      readonly tool: OcctBooleanExtrudeToolSource;
     });
 
 interface ExtrudeFrame {
@@ -216,11 +216,6 @@ export function createOcctBooleanExtrudeMeshWithShapeFactories(
 
 function assertSupportedBooleanInput(input: OcctBooleanExtrudeInput): void {
   const tool = input.tool as OcctBooleanExtrudeToolSource;
-  if (input.operation === "cut" && tool.profile.kind === "wire") {
-    throw new Error(
-      "Composite wire boolean cut is not enabled in this geometry slice."
-    );
-  }
   if (tool.profile.kind === "wire" && tool.placementFrame !== undefined) {
     throw new Error(
       "Composite wire boolean tools use their resolved profile frame and cannot also provide placementFrame."

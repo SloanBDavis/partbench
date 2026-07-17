@@ -447,6 +447,7 @@ function getEdgeFinishReferenceSource(
   }
 
   if (source.operation !== "cut") return undefined;
+  if (!isPrimitiveBooleanExtrudeTool(source.tool)) return undefined;
   if (
     role.startsWith("longitudinal:") &&
     source.tool.profile.kind === "rectangle"
@@ -455,6 +456,12 @@ function getEdgeFinishReferenceSource(
   }
 
   return undefined;
+}
+
+function isPrimitiveBooleanExtrudeTool(
+  source: OcctBooleanExtrudeResultSource["tool"]
+): source is OcctBooleanExtrudePrimitiveSource {
+  return source.profile.kind !== "wire";
 }
 
 function isOcctBooleanExtrudeResultSource(

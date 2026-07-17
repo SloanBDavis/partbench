@@ -1244,11 +1244,13 @@ describe("geometry-kernel facade", () => {
   );
 
   it.each([
-    [MAX_BOOLEAN_EXTRUDE_RECIPE_DEPTH - 1, true],
-    [MAX_BOOLEAN_EXTRUDE_RECIPE_DEPTH, false]
+    ["add", MAX_BOOLEAN_EXTRUDE_RECIPE_DEPTH - 1, true],
+    ["add", MAX_BOOLEAN_EXTRUDE_RECIPE_DEPTH, false],
+    ["cut", MAX_BOOLEAN_EXTRUDE_RECIPE_DEPTH - 1, true],
+    ["cut", MAX_BOOLEAN_EXTRUDE_RECIPE_DEPTH, false]
   ] as const)(
-    "keeps a target with %i result nodes at the same mesh, exact metadata, and STEP boundary",
-    async (targetDepth, expectedOk) => {
+    "keeps %s with a target of %i result nodes at the same mesh, exact metadata, and STEP boundary",
+    async (operation, targetDepth, expectedOk) => {
       const unusedFactory = async () => {
         throw new Error("Unexpected mesh factory call.");
       };
@@ -1292,33 +1294,62 @@ describe("geometry-kernel facade", () => {
         })
       };
       const target = createNestedBooleanRecipe(targetDepth);
-      const completeSource = {
-        kind: "booleanExtrudes" as const,
-        operation: "add" as const,
-        target,
-        tool: booleanRecipePrimitive
-      };
+      const tool =
+        operation === "cut"
+          ? {
+              sketchPlane: "XY" as const,
+              profile: mixedWireProfile,
+              depth: 4
+            }
+          : booleanRecipePrimitive;
+      const completeSource =
+        operation === "add"
+          ? {
+              kind: "booleanExtrudes" as const,
+              operation: "add" as const,
+              target,
+              tool
+            }
+          : {
+              kind: "booleanExtrudes" as const,
+              operation: "cut" as const,
+              target,
+              tool
+            };
+      const meshRequest =
+        operation === "add"
+          ? {
+              id: `geometry_req_boundary_${operation}_${targetDepth}_mesh`,
+              version: "geometry-kernel.v1" as const,
+              op: "geometry.booleanExtrudes" as const,
+              operation: "add" as const,
+              target,
+              tool
+            }
+          : {
+              id: `geometry_req_boundary_${operation}_${targetDepth}_mesh`,
+              version: "geometry-kernel.v1" as const,
+              op: "geometry.booleanExtrudes" as const,
+              operation: "cut" as const,
+              target,
+              tool
+            };
       const [mesh, exact, step] = await Promise.all([
+        executeGeometryKernelRequestWithMeshFactory(factories, meshRequest),
         executeGeometryKernelRequestWithMeshFactory(factories, {
-          id: `geometry_req_boundary_${targetDepth}_mesh`,
-          version: "geometry-kernel.v1",
-          op: "geometry.booleanExtrudes",
-          operation: "add",
-          target,
-          tool: booleanRecipePrimitive
-        }),
-        executeGeometryKernelRequestWithMeshFactory(factories, {
-          id: `geometry_req_boundary_${targetDepth}_exact`,
+          id: `geometry_req_boundary_${operation}_${targetDepth}_exact`,
           version: "geometry-kernel.v1",
           op: "geometry.exactBodyMetadata",
           source: completeSource
         }),
         executeGeometryKernelRequestWithMeshFactory(factories, {
-          id: `geometry_req_boundary_${targetDepth}_step`,
+          id: `geometry_req_boundary_${operation}_${targetDepth}_step`,
           version: "geometry-kernel.v1",
           op: "geometry.exportStep",
           units: "mm",
-          bodies: [{ ...completeSource, bodyId: `body_${targetDepth}` }]
+          bodies: [
+            { ...completeSource, bodyId: `body_${operation}_${targetDepth}` }
+          ]
         })
       ]);
 
@@ -1869,6 +1900,110 @@ describe("geometry-kernel facade", () => {
     OCCT_WASM_TEST_TIMEOUT_MS
   );
 
+  it(
+    "runs a composite wire cut through mesh, exact metadata, topology, checkpoint, and STEP",
+    async () => {
+      const source = {
+        kind: "booleanExtrudes" as const,
+        operation: "cut" as const,
+        target: {
+          sketchPlane: "XY" as const,
+          profile: {
+            kind: "rectangle" as const,
+            center: [0, 0] as const,
+            width: 8,
+            height: 6
+          },
+          depth: 4,
+          side: "symmetric" as const
+        },
+        tool: {
+          sketchPlane: "XY" as const,
+          profile: mixedWireProfile,
+          depth: 4,
+          side: "symmetric" as const
+        }
+      };
+      const [mesh, metadata, topology, checkpoint, step] = await Promise.all([
+        executeGeometryKernelRequest({
+          id: "geometry_req_wire_cut",
+          version: "geometry-kernel.v1",
+          op: "geometry.booleanExtrudes",
+          operation: "cut",
+          target: source.target,
+          tool: source.tool
+        }),
+        executeGeometryKernelRequest({
+          id: "geometry_req_wire_cut_metadata",
+          version: "geometry-kernel.v1",
+          op: "geometry.exactBodyMetadata",
+          source
+        }),
+        executeGeometryKernelRequest({
+          id: "geometry_req_wire_cut_topology",
+          version: "geometry-kernel.v1",
+          op: "geometry.exactTopologySnapshot",
+          source
+        }),
+        executeGeometryKernelRequest({
+          id: "geometry_req_wire_cut_checkpoint",
+          version: "geometry-kernel.v1",
+          op: "geometry.exactTopologyCheckpointPayload",
+          checkpointId: "checkpoint_wire_cut",
+          bodyId: "body_wire_cut",
+          source
+        }),
+        executeGeometryKernelRequest({
+          id: "geometry_req_wire_cut_step",
+          version: "geometry-kernel.v1",
+          op: "geometry.exportStep",
+          units: "mm",
+          bodies: [{ ...source, bodyId: "body_wire_cut" }]
+        })
+      ]);
+
+      expect(mesh.ok).toBe(true);
+      expect(metadata.ok).toBe(true);
+      expect(topology.ok).toBe(true);
+      expect(checkpoint.ok).toBe(true);
+      expect(step.ok).toBe(true);
+      if (
+        !mesh.ok ||
+        !metadata.ok ||
+        !topology.ok ||
+        !checkpoint.ok ||
+        !step.ok
+      ) {
+        throw new Error("Expected every composite cut geometry route to pass.");
+      }
+      expect(mesh.mesh.generatedReferences).toBeUndefined();
+      expect(getMeshBounds(mesh.mesh.positions)).toEqual({
+        min: [-4, -3, -2],
+        max: [4, 3, 2]
+      });
+      expect(metadata.metadata.bounds).toEqual({
+        min: [
+          expect.closeTo(-4, 5),
+          expect.closeTo(-3, 5),
+          expect.closeTo(-2, 5)
+        ],
+        max: [expect.closeTo(4, 5), expect.closeTo(3, 5), expect.closeTo(2, 5)]
+      });
+      expect(metadata.metadata.volume).toBeGreaterThan(0);
+      expect(metadata.metadata.volume).toBeLessThan(8 * 6 * 4);
+      expect(metadata.metadata.topologyCounts.solidCount).toBe(1);
+      expect(metadata.metadata.topologyCounts.faceCount).toBe(
+        topology.snapshot.entityCounts.faceCount
+      );
+      expect(checkpoint.checkpointPayload.topologySnapshot.signature).toBe(
+        topology.snapshot.signature
+      );
+      expect(step.artifact.bodyCount).toBe(1);
+      expect(step.artifact.byteLength).toBeGreaterThan(1000);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
   it("rejects malformed wire-cut and mixed-frame boolean branches", async () => {
     const target = {
       sketchPlane: "XY" as const,
@@ -1885,13 +2020,20 @@ describe("geometry-kernel facade", () => {
       profile: mixedWireProfile,
       depth: 4
     };
-    const cut = await executeGeometryKernelRequest({
-      id: "geometry_req_wire_cut_rejected",
+    const malformedCut = await executeGeometryKernelRequest({
+      id: "geometry_req_wire_cut_mixed_frame",
       version: "geometry-kernel.v1",
       op: "geometry.booleanExtrudes",
       operation: "cut",
       target,
-      tool
+      tool: {
+        ...tool,
+        placementFrame: {
+          origin: [0, 0, 0],
+          uAxis: [1, 0, 0],
+          vAxis: [0, 1, 0]
+        }
+      }
     } as never);
     const mixedFrame = await executeGeometryKernelRequest({
       id: "geometry_req_wire_add_mixed_frame",
@@ -1936,7 +2078,7 @@ describe("geometry-kernel facade", () => {
       tool
     } as never);
 
-    expect(cut).toMatchObject({
+    expect(malformedCut).toMatchObject({
       ok: false,
       error: { code: "INVALID_DIMENSIONS" }
     });

@@ -252,7 +252,7 @@ export interface BooleanExtrudeCutResultSource {
   readonly kind: "booleanExtrudes";
   readonly operation: "cut";
   readonly target: BooleanExtrudeSource;
-  readonly tool: BooleanExtrudePrimitiveSource;
+  readonly tool: BooleanExtrudeToolSource;
 }
 
 export interface BooleanExtrudePlacementFrame {
@@ -343,7 +343,7 @@ export type BooleanExtrudesRequest =
     })
   | (BooleanExtrudesRequestBase & {
       readonly operation: "cut";
-      readonly tool: BooleanExtrudePrimitiveSource;
+      readonly tool: BooleanExtrudeToolSource;
     });
 
 export interface HoleToolSource {
@@ -2738,7 +2738,9 @@ function isValidBooleanExtrudeToolSource(
 ): boolean {
   if (!isRecord(source) || !isRecord(source.profile)) return false;
   if (isBooleanExtrudeWireSource(source)) {
-    return operation === "add" && isValidBooleanExtrudeWireSource(source);
+    return (
+      isBooleanOperation(operation) && isValidBooleanExtrudeWireSource(source)
+    );
   }
   return isValidBooleanExtrudePrimitiveSource(source);
 }
@@ -3721,6 +3723,7 @@ function getEdgeFinishReferenceSource(
   }
 
   if (source.operation !== "cut") return undefined;
+  if (isBooleanExtrudeWireSource(source.tool)) return undefined;
   if (
     role.startsWith("longitudinal:") &&
     source.tool.profile.kind === "rectangle"
