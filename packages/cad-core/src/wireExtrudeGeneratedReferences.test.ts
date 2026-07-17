@@ -312,11 +312,18 @@ describe("V17 composite wire extrude generated references", () => {
       "side:segment:line_c",
       "side:segment:line_d"
     ]);
-    expect(result.faces[0]?.eligibleOperations).toEqual([
-      "feature.shell",
-      "feature.measureReference",
-      "feature.selectReference"
-    ]);
+    for (const reference of [
+      result.body,
+      ...result.faces,
+      ...result.edges,
+      ...result.vertices,
+      ...result.axes
+    ]) {
+      expect(reference).toMatchObject({
+        eligibleOperations: ["feature.selectReference"],
+        eligibilityNotes: [expect.stringContaining("topology-anchor proof")]
+      });
+    }
     expect(result.edges.map((edge) => edge.role)).toEqual([
       "start:segment:line_a",
       "end:segment:line_a",
@@ -385,11 +392,7 @@ describe("V17 composite wire extrude generated references", () => {
       result.faces.find((face) => face.role === "side:segment:arc_b")
     ).toMatchObject({
       geometricSignature: { surfaceType: "cylinder" },
-      eligibleOperations: [
-        "feature.shell",
-        "feature.measureReference",
-        "feature.selectReference"
-      ]
+      eligibleOperations: ["feature.selectReference"]
     });
   });
 
@@ -588,6 +591,57 @@ describe("V17 composite wire extrude generated references", () => {
         bodyId: "body_wire",
         topologySnapshot: { status: "ready" }
       }
+    });
+
+    const multipleSolids: CadBodyDerivedExactMetadataSnapshot = {
+      ...derivedExactMetadata,
+      metadata: {
+        ...derivedExactMetadata.metadata!,
+        topologySnapshot: undefined,
+        topologyCounts: {
+          solidCount: 2,
+          faceCount: 12,
+          edgeCount: 24,
+          vertexCount: 16
+        }
+      }
+    };
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.topology",
+          bodyId: "body_wire",
+          derivedExactMetadata: multipleSolids
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      topology: {
+        status: "unsupported",
+        topologyModel: "none",
+        topologyAvailable: false,
+        exactGeometryAvailable: true,
+        issues: [{ code: "UNSUPPORTED_BODY_TOPOLOGY" }]
+      }
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "project.health",
+          derivedExactMetadata: [multipleSolids]
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      authoredExtrudes: [
+        {
+          status: "unsupported",
+          topologyAvailable: false,
+          issues: [{ code: "GENERATED_REFERENCE_CORRESPONDENCE_UNPROVEN" }]
+        }
+      ]
     });
 
     const stale = {
