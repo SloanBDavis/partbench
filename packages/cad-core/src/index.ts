@@ -1194,11 +1194,6 @@ export interface CadProject {
   readonly redoStack: readonly Transaction[];
 }
 
-// parseCadProject* validates raw stored schema exactly once, then returns a
-// normalized value. Preserve that boundary without making normalized V19/V20
-// shapes publicly acceptable as raw source on a later load.
-const parsedNormalizedCadProjects = new WeakMap<CadProject, CadProject>();
-
 export interface WcadTopologyCheckpointPayloadInput {
   readonly checkpointId: string;
   readonly bodyId: BodyId;
@@ -1401,15 +1396,8 @@ export class CadEngine {
   }
 
   loadProject(project: CadProject): void {
-    const parsedSnapshot = parsedNormalizedCadProjects.get(project);
-    const isUnchangedParsedProject =
-      parsedSnapshot !== undefined && stableJsonEqual(project, parsedSnapshot);
-    if (!isUnchangedParsedProject) {
-      assertValidCadProject(project);
-    }
-    const normalizedProject = isUnchangedParsedProject
-      ? project
-      : normalizeCadProject(project);
+    assertValidCadProject(project);
+    const normalizedProject = normalizeCadProject(project);
     const state = createProjectState(normalizedProject);
 
     this.#document = state.document;
@@ -23131,9 +23119,7 @@ function featuresEqual(left: Feature, right: Feature): boolean {
 
 function parseCadProject(value: unknown): CadProject {
   assertValidCadProject(value);
-  const normalized = normalizeCadProject(value);
-  parsedNormalizedCadProjects.set(normalized, cloneJsonSource(normalized));
-  return normalized;
+  return normalizeCadProject(value);
 }
 
 function assertValidCadProject(value: unknown): asserts value is CadProject {
@@ -23151,9 +23137,20 @@ function normalizeCadProject(value: CadProject): CadProject {
     value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V20 ||
     value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V21
   ) {
+    const features = value.document.features.map(normalizeFeatureSnapshot);
+    const schemaVersion =
+      value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19 &&
+      features.some(
+        (feature) =>
+          feature.kind === "linearPattern" ||
+          feature.kind === "circularPattern" ||
+          feature.kind === "mirror"
+      )
+        ? CAD_PROJECT_FORMAT_VERSION_V20
+        : value.schemaVersion;
     return {
       ...value,
-      schemaVersion: value.schemaVersion,
+      schemaVersion,
       document: {
         ...value.document,
         parameters: value.document.parameters.map(cloneParameterSnapshot),
@@ -23163,7 +23160,7 @@ function normalizeCadProject(value: CadProject): CadProject {
         sketchConstraints: value.document.sketchConstraints.map(
           cloneSketchConstraintSnapshot
         ),
-        features: value.document.features.map(normalizeFeatureSnapshot),
+        features,
         namedReferences: value.document.namedReferences.map(
           cloneNamedReferenceSnapshot
         ),

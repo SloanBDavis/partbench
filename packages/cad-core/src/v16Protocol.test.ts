@@ -594,7 +594,7 @@ describe("V16 protocol and V20 persistence", () => {
     } as unknown as CadProject;
 
     const parsed = parseCadProjectJson(JSON.stringify(rawV19));
-    expect(parsed.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V19);
+    expect(parsed.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V20);
     expect(parsed.document.features).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -624,6 +624,39 @@ describe("V16 protocol and V20 persistence", () => {
     expect(restored.getDocument().features.get("feat_mirror")).toMatchObject({
       plane: { kind: "standardPlane", plane: "XZ", offset: 0 }
     });
+
+    const cloned = JSON.parse(JSON.stringify(parsed)) as CadProject;
+    expect(() => importCadProject(cloned)).not.toThrow();
+
+    const renamed = {
+      ...parsed,
+      document: {
+        ...parsed.document,
+        features: parsed.document.features.map((feature) =>
+          feature.id === "feat_linear"
+            ? { ...feature, name: "Renamed linear pattern" }
+            : feature
+        )
+      }
+    } as CadProject;
+    expect(
+      importCadProject(renamed).getDocument().features.get("feat_linear")
+    ).toMatchObject({ name: "Renamed linear pattern" });
+
+    const invalidNormalized = JSON.parse(JSON.stringify(parsed)) as any;
+    invalidNormalized.document.features.find(
+      (feature: any) => feature.id === "feat_linear"
+    ).direction.axis = "invalid";
+    expect(() => importCadProject(invalidNormalized)).toThrowError(
+      expect.objectContaining({
+        issues: expect.arrayContaining([
+          expect.objectContaining({
+            code: "INVALID_FEATURE",
+            path: "$.document.features[1].direction"
+          })
+        ])
+      })
+    );
 
     const mixedCases = [
       {
