@@ -193,17 +193,35 @@ function createEntitySummary(
   entity: SketchEntitySnapshot
 ): CadSketchSolverEntitySummary {
   const targets = createEntityTargets(sketchId, entity);
+  const diagnostics =
+    entity.kind === "arc"
+      ? [
+          createDiagnostic({
+            code: "SKETCH_SOLVER_UNSUPPORTED_ENTITY",
+            severity: "warning",
+            message:
+              "Arc source geometry is preserved, but arc degrees of freedom are not supported by the current sketch solver.",
+            sketchId,
+            sketchEntityId: entity.id,
+            expected: "point, line, rectangle, or circle solver entity",
+            received: "arc"
+          })
+        ]
+      : [];
+  const degreesOfFreedom =
+    entity.kind === "arc" ? 0 : getSketchEntityDegreesOfFreedom(entity);
   return {
     sketchId,
     entityId: entity.id,
     entityKind: entity.kind,
-    supported: true,
-    variableCount: getSketchEntityDegreesOfFreedom(entity),
-    degreesOfFreedom: getSketchEntityDegreesOfFreedom(entity),
+    construction: entity.construction,
+    supported: entity.kind !== "arc",
+    variableCount: degreesOfFreedom,
+    degreesOfFreedom,
     targetCount: targets.length,
     targets,
-    diagnosticCount: 0,
-    diagnostics: []
+    diagnosticCount: diagnostics.length,
+    diagnostics
   };
 }
 
@@ -556,15 +574,31 @@ function createProfileCandidate(
   sourceHealthyEnoughForFeature: boolean
 ): CadSketchProfileCandidateSummary {
   if (entity.kind === "rectangle" || entity.kind === "circle") {
+    const diagnostics = entity.construction
+      ? [
+          createDiagnostic({
+            code: "SKETCH_SOLVER_UNSUPPORTED_ENTITY",
+            severity: "warning",
+            message:
+              "Construction geometry is excluded from solid feature profile candidates.",
+            sketchId,
+            sketchEntityId: entity.id,
+            expected: "non-construction closed profile",
+            received: "construction geometry"
+          })
+        ]
+      : [];
     return {
       sketchId,
       entityId: entity.id,
       entityKind: entity.kind,
+      construction: entity.construction,
       profileKind: entity.kind,
       closed: true,
-      featureReady: sourceHealthyEnoughForFeature,
-      diagnosticCount: 0,
-      diagnostics: []
+      featureReady:
+        sourceHealthyEnoughForFeature && entity.construction === false,
+      diagnosticCount: diagnostics.length,
+      diagnostics
     };
   }
 
@@ -581,6 +615,7 @@ function createProfileCandidate(
     sketchId,
     entityId: entity.id,
     entityKind: entity.kind,
+    construction: entity.construction,
     profileKind: "open",
     closed: false,
     featureReady: false,

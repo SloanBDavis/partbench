@@ -15,14 +15,31 @@ import {
   type SketchSolverSketch
 } from "./sketchSolver";
 
+type SketchEntityInput = {
+  [Kind in SketchEntitySnapshot["kind"]]: Omit<
+    Extract<SketchEntitySnapshot, { readonly kind: Kind }>,
+    "construction"
+  > & {
+    readonly construction?: boolean;
+  };
+}[SketchEntitySnapshot["kind"]];
+
 function createSketch(
-  entities: readonly SketchEntitySnapshot[]
+  entities: readonly SketchEntityInput[]
 ): SketchSolverSketch {
   return {
     id: "sketch_1",
     name: "Profile",
     plane: "XY",
-    entities: new Map(entities.map((entity) => [entity.id, entity]))
+    entities: new Map(
+      entities.map((entity) => [
+        entity.id,
+        {
+          ...entity,
+          construction: entity.construction ?? false
+        } as SketchEntitySnapshot
+      ])
+    )
   };
 }
 
@@ -296,7 +313,8 @@ describe("sketch solver boundary", () => {
       id: "line_1",
       kind: "line",
       start: [-1.5, -2],
-      end: [4.5, 6]
+      end: [4.5, 6],
+      construction: false
     });
 
     if (line?.kind !== "line") {
@@ -311,7 +329,8 @@ describe("sketch solver boundary", () => {
       id: "line_1",
       kind: "line",
       start: [0, 0],
-      end: [1, 1]
+      end: [1, 1],
+      construction: false
     };
 
     const horizontal = applySketchConstraintValue(diagonal, {
@@ -335,7 +354,8 @@ describe("sketch solver boundary", () => {
         id: "line_1",
         kind: "line",
         start: [-0.207106781187, 0.5],
-        end: [1.207106781187, 0.5]
+        end: [1.207106781187, 0.5],
+        construction: false
       }
     });
     expect(vertical).toEqual({
@@ -344,7 +364,8 @@ describe("sketch solver boundary", () => {
         id: "line_1",
         kind: "line",
         start: [0.5, -0.207106781187],
-        end: [0.5, 1.207106781187]
+        end: [0.5, 1.207106781187],
+        construction: false
       }
     });
   });
@@ -432,7 +453,8 @@ describe("sketch solver boundary", () => {
       id: "fixed_line",
       kind: "line",
       start: [10, 10],
-      end: [13, 14]
+      end: [13, 14],
+      construction: false
     });
     expect(
       evaluation.evaluatedGeometry.entities.get("coincident_line")
@@ -440,7 +462,8 @@ describe("sketch solver boundary", () => {
       id: "coincident_line",
       kind: "line",
       start: [5, 5],
-      end: [5, 9]
+      end: [5, 9],
+      construction: false
     });
     expect(
       evaluation.evaluatedGeometry.entities.get("horizontal_line")
@@ -448,7 +471,8 @@ describe("sketch solver boundary", () => {
       id: "horizontal_line",
       kind: "line",
       start: [2, 3],
-      end: [8, 3]
+      end: [8, 3],
+      construction: false
     });
     expect(evaluation.dimensions).toEqual(
       expect.arrayContaining([
@@ -954,7 +978,8 @@ describe("sketch solver boundary", () => {
     const point: SketchEntitySnapshot = {
       id: "point_1",
       kind: "point",
-      point: [0, 0]
+      point: [0, 0],
+      construction: false
     };
 
     expect(
@@ -1152,7 +1177,8 @@ describe("sketch solver boundary", () => {
       id: "secondary",
       kind: "line",
       start: [9.4, 10.2],
-      end: [10.6, 11.8]
+      end: [10.6, 11.8],
+      construction: false
     });
     expect(evaluation.constraints).toEqual(
       expect.arrayContaining([
@@ -1241,7 +1267,8 @@ describe("sketch solver boundary", () => {
       id: "secondary",
       kind: "line",
       start: [10.8, 10.4],
-      end: [9.2, 11.6]
+      end: [9.2, 11.6],
+      construction: false
     });
     expect(evaluation.constraints).toEqual(
       expect.arrayContaining([

@@ -1118,7 +1118,8 @@ function createStaleProfileExtrudeEngine(): CadEngine {
                   kind: "rectangle",
                   center: [0, 0],
                   width: 4,
-                  height: 2
+                  height: 2,
+                  construction: false
                 }
               ]
             ])
@@ -3156,7 +3157,8 @@ describe("cad-core", () => {
         { sketchId: "sketch_1", id: "circle_1", kind: "circle" }
       ],
       entitiesModified: [],
-      entitiesDeleted: []
+      entitiesDeleted: [],
+      entityChanges: expect.any(Array)
     });
   });
 
@@ -3182,7 +3184,8 @@ describe("cad-core", () => {
           id: "circle_1",
           kind: "circle",
           center: [2, 3],
-          radius: 4
+          radius: 4,
+          construction: false
         }
       },
       { op: "sketch.rename", id: "sketch_1", name: "Updated profile" },
@@ -7516,7 +7519,8 @@ describe("cad-core", () => {
         id: "circle_hole",
         kind: "circle",
         center: [1, -1],
-        radius: 0.75
+        radius: 0.75,
+        construction: false
       }
     });
 
@@ -7614,7 +7618,8 @@ describe("cad-core", () => {
         id: "axis_1",
         kind: "line",
         start: [0, -3],
-        end: [0, 3]
+        end: [0, 3],
+        construction: false
       }
     });
 
@@ -7988,7 +7993,8 @@ describe("cad-core", () => {
         kind: "rectangle",
         center: [1, 1],
         width: 6,
-        height: 4
+        height: 4,
+        construction: false
       }
     });
 
@@ -10213,7 +10219,8 @@ describe("cad-core", () => {
         id: "axis_1",
         kind: "line",
         start: [0, -3],
-        end: [0, 3]
+        end: [0, 3],
+        construction: false
       }
     });
 
@@ -10253,7 +10260,8 @@ describe("cad-core", () => {
             id: "axis_1",
             kind: "line",
             start: [0, 0],
-            end: [0, 0]
+            end: [0, 0],
+            construction: false
           }
         }
       ]
@@ -13879,7 +13887,8 @@ describe("cad-core", () => {
         kind: "rectangle",
         center: [1, 2],
         width: 6,
-        height: 5
+        height: 5,
+        construction: false
       }
     });
     const structure = engine.executeQuery({
@@ -13983,7 +13992,8 @@ describe("cad-core", () => {
         id: "circle_1",
         kind: "circle",
         center: [2, 3],
-        radius: 5
+        radius: 5,
+        construction: false
       }
     });
 
@@ -14549,7 +14559,8 @@ describe("cad-core", () => {
         kind: "rectangle",
         center: [1, 2],
         width: 6,
-        height: 5
+        height: 5,
+        construction: false
       }
     });
 
@@ -14585,7 +14596,8 @@ describe("cad-core", () => {
         id: "circle_1",
         kind: "circle",
         center: [2, 3],
-        radius: 5
+        radius: 5,
+        construction: false
       }
     });
 
@@ -15078,7 +15090,8 @@ describe("cad-core", () => {
         kind: "rectangle",
         center: [1, 2],
         width: 6,
-        height: 5
+        height: 5,
+        construction: false
       }
     });
     engine.apply({
@@ -17841,7 +17854,8 @@ describe("cad-core", () => {
         kind: "rectangle",
         center: [0, 0],
         width: 5,
-        height: 2
+        height: 2,
+        construction: false
       }
     });
 
@@ -18530,7 +18544,8 @@ describe("cad-core", () => {
         id: "axis_1",
         kind: "line",
         start: [0, -3],
-        end: [0, 3]
+        end: [0, 3],
+        construction: false
       }
     });
 
@@ -19231,7 +19246,8 @@ describe("cad-core", () => {
         kind: "rectangle",
         center: [1, 1],
         width: 6,
-        height: 4
+        height: 4,
+        construction: false
       }
     });
 
@@ -19618,7 +19634,8 @@ describe("cad-core", () => {
         kind: "rectangle",
         center: [1, 2],
         width: 6,
-        height: 4
+        height: 4,
+        construction: false
       }
     });
     circleEngine.apply({
@@ -19628,7 +19645,8 @@ describe("cad-core", () => {
         id: "circle_1",
         kind: "circle",
         center: [2, 3],
-        radius: 5
+        radius: 5,
+        construction: false
       }
     });
 
@@ -20387,7 +20405,8 @@ describe("cad-core", () => {
         id: "axis_1",
         kind: "line",
         start: [0, -3],
-        end: [0, 3]
+        end: [0, 3],
+        construction: false
       }
     });
 
@@ -20431,7 +20450,8 @@ describe("cad-core", () => {
         kind: "rectangle",
         center: [1, 2],
         width: 6,
-        height: 4
+        height: 4,
+        construction: false
       }
     });
 
@@ -24189,7 +24209,7 @@ describe("cad-core", () => {
     );
   });
 
-  it("rejects source profile edits that would invalidate existing boolean operations", () => {
+  it("rejects sketch entity kind changes without mutating dependent features", () => {
     const engine = createRectangleExtrudeEngine();
     engine.applyBatch([
       {
@@ -24229,7 +24249,8 @@ describe("cad-core", () => {
             id: "rect_1",
             kind: "circle",
             center: [0, 0],
-            radius: 1
+            radius: 1,
+            construction: false
           }
         }
       ]
@@ -24245,7 +24266,8 @@ describe("cad-core", () => {
             id: "rect_tool",
             kind: "circle",
             center: [0, 0],
-            radius: 1
+            radius: 1,
+            construction: false
           }
         }
       ]
@@ -24253,10 +24275,11 @@ describe("cad-core", () => {
 
     expect(targetEdit).toMatchObject({
       ok: false,
-      error: { code: "UNSUPPORTED_FEATURE_OPERATION" }
+      error: { code: "INVALID_SKETCH_ENTITY" }
     });
     expect(toolEdit).toMatchObject({
-      ok: true
+      ok: false,
+      error: { code: "INVALID_SKETCH_ENTITY" }
     });
     expect(engine.getDocument().features.get("feat_rect_1")).toMatchObject({
       profile: {
@@ -24285,16 +24308,16 @@ describe("cad-core", () => {
       query: "body.generatedReferences",
       faces: expect.arrayContaining([
         expect.objectContaining({
-          stableId: "generated:face:body_add:side:circular",
-          label: "Added circular wall face"
+          stableId: "generated:face:body_add:side:uMin",
+          label: "Added wall face uMin"
         })
       ]),
-      edges: [
+      edges: expect.arrayContaining([
         expect.objectContaining({
-          stableId: "generated:edge:body_add:end:circular",
-          label: "Added cap circular edge"
+          stableId: "generated:edge:body_add:end:uMin",
+          label: "Added cap profile edge uMin"
         })
-      ]
+      ])
     });
   });
 
@@ -25403,7 +25426,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           id: "line_zero",
           kind: "line",
           start: [1, 1],
-          end: [1, 1]
+          end: [1, 1],
+          construction: false
         }
       ],
       [
@@ -25412,7 +25436,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           id: "line_1",
           kind: "line",
           start: [0, 0],
-          end: [1, 0]
+          end: [1, 0],
+          construction: false
         }
       ]
     ]);
@@ -27694,7 +27719,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         id: "mid_line",
         kind: "line",
         start: [2, 4],
-        end: [6, 8]
+        end: [6, 8],
+        construction: false
       }
     });
 
@@ -27840,7 +27866,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         id: "circle_mid_line",
         kind: "line",
         start: [2, 4],
-        end: [6, 8]
+        end: [6, 8],
+        construction: false
       }
     });
 
@@ -27919,7 +27946,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         id: "attached_mid_line",
         kind: "line",
         start: [0, 2],
-        end: [2, 4]
+        end: [2, 4],
+        construction: false
       }
     });
 
@@ -28009,7 +28037,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           id: "target_mid_line",
           kind: "line",
           start: [2, 4],
-          end: [6, 8]
+          end: [6, 8],
+          construction: false
         }
       });
 
@@ -28110,7 +28139,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         id: "circle_target_mid_line",
         kind: "line",
         start: [2, 4],
-        end: [6, 8]
+        end: [6, 8],
+        construction: false
       }
     });
 
@@ -28178,7 +28208,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         id: "perpendicular_primary",
         kind: "line",
         start: [0, 0],
-        end: [0, 4]
+        end: [0, 4],
+        construction: false
       }
     });
 
@@ -28340,7 +28371,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         id: "circle_perpendicular_primary",
         kind: "line",
         start: [0, 0],
-        end: [0, 4]
+        end: [0, 4],
+        construction: false
       }
     });
 
@@ -28424,7 +28456,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         id: "perpendicular_length_primary",
         kind: "line",
         start: [0, 0],
-        end: [0, 4]
+        end: [0, 4],
+        construction: false
       }
     });
 
@@ -28565,7 +28598,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         id: "attached_perpendicular_primary",
         kind: "line",
         start: [0, 0],
-        end: [0, 4]
+        end: [0, 4],
+        construction: false
       }
     });
 
@@ -28677,7 +28711,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           id: "target_perpendicular_primary",
           kind: "line",
           start: [0, 0],
-          end: [0, 4]
+          end: [0, 4],
+          construction: false
         }
       });
 
@@ -28790,7 +28825,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         id: "circle_target_perpendicular_primary",
         kind: "line",
         start: [0, 0],
-        end: [0, 4]
+        end: [0, 4],
+        construction: false
       }
     });
 
@@ -28865,7 +28901,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
               id: "line_1",
               kind: "line",
               start: [2, 2],
-              end: [4, 4]
+              end: [4, 4],
+              construction: false
             }
           }
         ]
@@ -28957,7 +28994,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
               id: "line_1",
               kind: "line",
               start: [2, 2],
-              end: [4, 4]
+              end: [4, 4],
+              construction: false
             }
           }
         ]
@@ -28997,8 +29035,14 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
 
   it("surfaces inconsistent sketch constraints through project health", () => {
     const entities = new Map<string, SketchEntitySnapshot>([
-      ["point_1", { id: "point_1", kind: "point", point: [0, 0] }],
-      ["point_2", { id: "point_2", kind: "point", point: [2, 0] }]
+      [
+        "point_1",
+        { id: "point_1", kind: "point", point: [0, 0], construction: false }
+      ],
+      [
+        "point_2",
+        { id: "point_2", kind: "point", point: [2, 0], construction: false }
+      ]
     ]);
     const sketchConstraints = new Map<string, SketchConstraintSnapshot>([
       [

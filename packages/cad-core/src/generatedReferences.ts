@@ -26,6 +26,7 @@ import type {
   SweepFeatureV21,
   LoftFeatureV21,
   PartId,
+  SketchArcEntity,
   SketchCircleEntitySnapshot,
   SketchEntityId,
   SketchPlane,
@@ -94,7 +95,8 @@ export type GeneratedReferencesSketchEntity =
   | SketchPointEntitySnapshot
   | SketchLineEntitySnapshot
   | SketchRectangleEntitySnapshot
-  | SketchCircleEntitySnapshot;
+  | SketchCircleEntitySnapshot
+  | SketchArcEntity;
 
 export type GeneratedReferencesFeature =
   | GeneratedReferencesExtrudeFeature

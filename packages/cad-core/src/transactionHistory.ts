@@ -419,7 +419,8 @@ function createOperationSummaries(
       case "sketch.addPoint":
       case "sketch.addLine":
       case "sketch.addRectangle":
-      case "sketch.addCircle": {
+      case "sketch.addCircle":
+      case "sketch.addArc": {
         const entityId = op.id ?? createdSketchEntityRef?.id;
         const entityKind = getSketchEntityKindFromAddOp(op.op);
 
@@ -453,6 +454,14 @@ function createOperationSummaries(
           bodyId: modifiedFeatureRef?.bodyId
         });
       }
+
+      case "sketch.setEntityConstruction":
+        return createSketchOperationSummary({
+          op: op.op,
+          label: `Set construction=${op.construction} on entity ${op.entityId} in ${op.sketchId}`,
+          sketchId: op.sketchId,
+          sketchEntityId: op.entityId
+        });
 
       case "sketch.deleteEntity":
         return createSketchOperationSummary({
@@ -1240,6 +1249,7 @@ function getSketchEntityKindFromAddOp(
     | "sketch.addLine"
     | "sketch.addRectangle"
     | "sketch.addCircle"
+    | "sketch.addArc"
 ): SketchEntityKind {
   switch (op) {
     case "sketch.addPoint":
@@ -1250,6 +1260,8 @@ function getSketchEntityKindFromAddOp(
       return "rectangle";
     case "sketch.addCircle":
       return "circle";
+    case "sketch.addArc":
+      return "arc";
   }
 }
 
@@ -1392,7 +1404,8 @@ function cloneSketchSemanticDiff(diff: SketchSemanticDiff): SketchSemanticDiff {
       : {}),
     ...(diff.entitiesDeleted
       ? { entitiesDeleted: [...diff.entitiesDeleted] }
-      : {})
+      : {}),
+    ...(diff.entityChanges ? { entityChanges: [...diff.entityChanges] } : {})
   };
 }
 
@@ -1424,13 +1437,15 @@ function isSketchAddEntityOp(op: CadOp): op is Extract<
       | "sketch.addPoint"
       | "sketch.addLine"
       | "sketch.addRectangle"
-      | "sketch.addCircle";
+      | "sketch.addCircle"
+      | "sketch.addArc";
   }
 > {
   return (
     op.op === "sketch.addPoint" ||
     op.op === "sketch.addLine" ||
     op.op === "sketch.addRectangle" ||
-    op.op === "sketch.addCircle"
+    op.op === "sketch.addCircle" ||
+    op.op === "sketch.addArc"
   );
 }
