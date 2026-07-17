@@ -19,7 +19,8 @@ import {
   createOcctExactTopologySnapshotWithInstance,
   createOcctExactTopologyCheckpointPayloadWithInstance,
   createOcctStepImportWithInstance,
-  createOcctStepExportWithInstance
+  createOcctStepExportWithInstance,
+  createOcctWireExtrudeMeshWithInstance
 } from "@web-cad/occt-wasm/browser";
 import {
   executeGeometryKernelRequestWithMeshFactory,
@@ -112,7 +113,8 @@ import {
   type TessellateSphereRequest,
   type TessellateTorusRequest,
   type TorusGeometryDimensions,
-  type TessellationOptions
+  type TessellationOptions,
+  type ResolvedPlanarWireProfile
 } from "./kernel";
 
 type BrowserOcctPrimitive = Exclude<
@@ -255,6 +257,7 @@ export async function executeTimedBrowserGeometryKernelRequest<
       createConeMesh: (input) => createMeshWithBrowserOcct(input, "cone"),
       createTorusMesh: (input) => createMeshWithBrowserOcct(input, "torus"),
       createBooleanExtrudeMesh: createBooleanExtrudeMeshWithBrowserOcct,
+      createWireExtrudeMesh: createWireExtrudeMeshWithBrowserOcct,
       createEdgeFinishMesh: createEdgeFinishMeshWithBrowserOcct,
       createHoleMesh: createHoleMeshWithBrowserOcct,
       createRevolveProfileMesh: createRevolveProfileMeshWithBrowserOcct,
@@ -365,6 +368,32 @@ export async function executeTimedBrowserGeometryKernelRequest<
 
     try {
       return createOcctBooleanExtrudeMeshWithInstance(oc, input);
+    } catch (error) {
+      failureStage = "tessellation";
+      throw error;
+    } finally {
+      tessellationMs = performance.now() - tessellationStart;
+    }
+  }
+
+  async function createWireExtrudeMeshWithBrowserOcct(
+    input: Omit<TessellateExtrudeRequest, "id" | "version" | "op"> & {
+      readonly profile: ResolvedPlanarWireProfile;
+    }
+  ) {
+    const occtLoadStart = performance.now();
+    let oc: Awaited<ReturnType<typeof loadBrowserOcct>>;
+    try {
+      oc = await loadBrowserOcct();
+    } catch (error) {
+      occtLoadMs = performance.now() - occtLoadStart;
+      failureStage = "wasmLoad";
+      throw error;
+    }
+    occtLoadMs = performance.now() - occtLoadStart;
+    const tessellationStart = performance.now();
+    try {
+      return createOcctWireExtrudeMeshWithInstance(oc, input);
     } catch (error) {
       failureStage = "tessellation";
       throw error;

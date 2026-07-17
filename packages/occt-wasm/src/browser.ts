@@ -127,6 +127,15 @@ import {
   type OcctLoftInput,
   type OcctLoftSection
 } from "./loft";
+import {
+  createOcctWireExtrudeMeshWithInstance,
+  createOcctWireExtrudeMeshWithLoader,
+  makeWireExtrudeShape,
+  type OcctGeneratedReferences,
+  type OcctResolvedPlanarWireProfile,
+  type OcctWireExtrudeInput,
+  type OcctWireExtrudeSource
+} from "./wireExtrude";
 
 export type {
   OcctBooleanExtrudeInput,
@@ -170,7 +179,11 @@ export type {
   OcctSweepProfileSource,
   OcctLoftInput,
   OcctLoftSection,
-  OcctMeshData
+  OcctMeshData,
+  OcctGeneratedReferences,
+  OcctResolvedPlanarWireProfile,
+  OcctWireExtrudeInput,
+  OcctWireExtrudeSource
 };
 export {
   createOcctBoxMeshWithInstance,
@@ -185,6 +198,9 @@ export {
   createOcctTorusMeshWithLoader,
   createOcctBooleanExtrudeMeshWithInstance,
   createOcctBooleanExtrudeMeshWithLoader,
+  createOcctWireExtrudeMeshWithInstance,
+  createOcctWireExtrudeMeshWithLoader,
+  makeWireExtrudeShape,
   createOcctEdgeFinishMeshWithInstance,
   createOcctEdgeFinishMeshWithLoader,
   createOcctHoleMeshWithInstance,
@@ -328,6 +344,14 @@ export async function createOcctBooleanExtrudeMesh(
   input: OcctBooleanExtrudeInput
 ): Promise<OcctMeshData> {
   return createOcctBooleanExtrudeMeshWithLoader(loadBrowserOcct, input);
+}
+
+export async function createOcctWireExtrudeMesh(
+  input: OcctWireExtrudeInput
+): Promise<
+  OcctMeshData & { readonly generatedReferences: OcctGeneratedReferences }
+> {
+  return createOcctWireExtrudeMeshWithLoader(loadBrowserOcct, input);
 }
 
 export async function createOcctEdgeFinishMesh(

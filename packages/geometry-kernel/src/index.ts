@@ -18,7 +18,8 @@ import {
   createOcctMirrorMesh,
   createOcctShellMesh,
   createOcctSweepMesh,
-  createOcctLoftMesh
+  createOcctLoftMesh,
+  createOcctWireExtrudeMesh
 } from "@web-cad/occt-wasm";
 import {
   executeGeometryKernelRequestWithMeshFactory,
@@ -112,6 +113,12 @@ import {
   type HoleRequest,
   type HoleToolSource,
   type RectangleExtrudeProfile,
+  type PrimitiveExtrudeGeometryProfile,
+  type ResolvedPlaneFrame,
+  type ResolvedSketchGeometryPolicy,
+  type ResolvedLineSegment2d,
+  type ResolvedArcSegment2d,
+  type ResolvedPlanarWireProfile,
   type RevolveGeometryAxis,
   type RevolveGeometryProfile,
   type RevolveProfileRequest,
@@ -252,6 +259,12 @@ export type {
   HoleRequest,
   HoleToolSource,
   RectangleExtrudeProfile,
+  PrimitiveExtrudeGeometryProfile,
+  ResolvedPlaneFrame,
+  ResolvedSketchGeometryPolicy,
+  ResolvedLineSegment2d,
+  ResolvedArcSegment2d,
+  ResolvedPlanarWireProfile,
   RevolveGeometryAxis,
   RevolveGeometryProfile,
   RevolveProfileRequest,
@@ -302,6 +315,7 @@ export async function executeGeometryKernelRequest<
       createConeMesh: createOcctConeMesh,
       createTorusMesh: createOcctTorusMesh,
       createBooleanExtrudeMesh: createOcctBooleanExtrudeMesh,
+      createWireExtrudeMesh: createOcctWireExtrudeMesh,
       createEdgeFinishMesh: createOcctEdgeFinishMesh,
       createHoleMesh: createOcctHoleMesh,
       createRevolveProfileMesh: createOcctRevolveProfileMesh,

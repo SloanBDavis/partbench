@@ -16,6 +16,52 @@ import {
 
 const OCCT_WASM_TEST_TIMEOUT_MS = 120_000;
 
+const mixedWireProfile = {
+  kind: "wire" as const,
+  frame: {
+    origin: [0, 0, 0] as const,
+    uAxis: [1, 0, 0] as const,
+    vAxis: [0, 1, 0] as const
+  },
+  closed: true as const,
+  segments: [
+    {
+      kind: "line" as const,
+      sourceEntityId: "line-bottom",
+      start: [-2, -1] as const,
+      end: [2, -1] as const
+    },
+    {
+      kind: "arc" as const,
+      sourceEntityId: "arc-right",
+      center: [2, 0] as const,
+      radius: 1,
+      startAngleDegrees: 270,
+      sweepAngleDegrees: 180
+    },
+    {
+      kind: "line" as const,
+      sourceEntityId: "line-top",
+      start: [2, 1] as const,
+      end: [-2, 1] as const
+    },
+    {
+      kind: "arc" as const,
+      sourceEntityId: "arc-left",
+      center: [-2, 0] as const,
+      radius: 1,
+      startAngleDegrees: 90,
+      sweepAngleDegrees: 180
+    }
+  ],
+  sourceIdentity: "sketch-slot:line-bottom,arc-right,line-top,arc-left",
+  geometryPolicy: {
+    linearTolerance: 1e-7 as const,
+    angularToleranceDegrees: 0.1 as const,
+    minimumProfileArea: 1e-12 as const
+  }
+};
+
 function createTopologyEntityFixture(
   kind: GeometryKernelTopologyEntityDescriptor["kind"],
   index: number
@@ -990,6 +1036,113 @@ describe("geometry-kernel facade", () => {
       expect(circleBounds.min[2] + circleBounds.max[2]).toBeCloseTo(0, 6);
     },
     OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it("routes one validated resolved line/arc wire to the isolated wire factory", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected factory call.");
+    };
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory,
+      createWireExtrudeMesh: async ({ profile, depth, side }) => ({
+        primitive: "extrude",
+        positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, depth]),
+        indices: new Uint32Array([0, 1, 2]),
+        vertexCount: 3,
+        triangleCount: 1,
+        faceCount: 1,
+        generatedReferences: {
+          status: "unavailable",
+          sourceIdentity: profile.sourceIdentity,
+          faces: [],
+          edges: [],
+          diagnostic: `Injected ${side ?? "positive"} proof boundary.`
+        }
+      })
+    };
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_wire_contract",
+        version: "geometry-kernel.v1",
+        op: "geometry.tessellateExtrude",
+        sketchPlane: "XY",
+        profile: mixedWireProfile,
+        depth: 3,
+        side: "negative"
+      }
+    );
+
+    expect(response.ok).toBe(true);
+    if (!response.ok) throw new Error("Expected wire contract success.");
+    expect(response.mesh.generatedReferences).toEqual({
+      status: "unavailable",
+      sourceIdentity: mixedWireProfile.sourceIdentity,
+      faces: [],
+      edges: [],
+      diagnostic: "Injected negative proof boundary."
+    });
+  });
+
+  it.each([
+    [
+      "gap",
+      { ...mixedWireProfile, segments: mixedWireProfile.segments.slice(0, 3) }
+    ],
+    [
+      "zero line",
+      {
+        ...mixedWireProfile,
+        segments: [
+          { ...mixedWireProfile.segments[0], end: [-2, -1] as const },
+          ...mixedWireProfile.segments.slice(1)
+        ]
+      }
+    ],
+    [
+      "full arc",
+      {
+        ...mixedWireProfile,
+        segments: [
+          mixedWireProfile.segments[0],
+          { ...mixedWireProfile.segments[1], sweepAngleDegrees: 360 },
+          ...mixedWireProfile.segments.slice(2)
+        ]
+      }
+    ],
+    [
+      "nonfinite arc",
+      {
+        ...mixedWireProfile,
+        segments: [
+          mixedWireProfile.segments[0],
+          { ...mixedWireProfile.segments[1], radius: Number.NaN },
+          ...mixedWireProfile.segments.slice(2)
+        ]
+      }
+    ]
+  ])(
+    "rejects invalid resolved wire input before OCCT: %s",
+    async (_label, profile) => {
+      const response = await executeGeometryKernelRequest({
+        id: "geometry_req_invalid_wire_contract",
+        version: "geometry-kernel.v1",
+        op: "geometry.tessellateExtrude",
+        sketchPlane: "XY",
+        profile,
+        depth: 3
+      });
+      expect(response).toMatchObject({
+        ok: false,
+        error: { code: "INVALID_DIMENSIONS" }
+      });
+    }
   );
 
   it(

@@ -35,6 +35,10 @@ import {
 } from "./pattern";
 import { makeMirrorShape, type OcctMirrorPlaneFrame } from "./mirror";
 import { makeShellShape } from "./shell";
+import {
+  makeWireExtrudeShape,
+  type OcctWireExtrudeSource
+} from "./wireExtrude";
 
 const TOPOLOGY_EVIDENCE_TOLERANCE = 1e-6;
 
@@ -52,9 +56,10 @@ export type OcctExactBodyMetadataSource =
   | OcctExactHoleMetadataSource
   | OcctExactEdgeFinishMetadataSource;
 
-export interface OcctExactExtrudeMetadataSource extends OcctBooleanExtrudePrimitiveSource {
-  readonly kind: "extrude";
-}
+export type OcctExactExtrudeMetadataSource = (
+  | OcctBooleanExtrudePrimitiveSource
+  | OcctWireExtrudeSource
+) & { readonly kind: "extrude" };
 
 export interface OcctExactBooleanExtrudesMetadataSource extends OcctBooleanExtrudeResultSource {
   readonly kind: "booleanExtrudes";
@@ -394,7 +399,13 @@ export function withOcctExactBodyShape<T>(
   assertExactMetadataBindings(oc);
 
   if (source.kind === "extrude") {
-    const shapeBuilder = makeBooleanExtrudeShape(oc, source);
+    const shapeBuilder =
+      source.profile.kind === "wire"
+        ? makeWireExtrudeShape(oc, source as OcctWireExtrudeSource)
+        : makeBooleanExtrudeShape(
+            oc,
+            source as OcctBooleanExtrudePrimitiveSource
+          );
 
     try {
       return readShape(shapeBuilder.Shape(), source.kind);

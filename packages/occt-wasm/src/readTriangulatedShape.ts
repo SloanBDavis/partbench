@@ -12,6 +12,7 @@ export type OcctPrimitiveKind =
   | "sphere"
   | "cone"
   | "torus"
+  | "extrude"
   | "revolve"
   | "boolean"
   | "hole"

@@ -4,14 +4,21 @@ import {
   type OcctBooleanExtrudePrimitiveSource
 } from "./booleanExtrudes";
 import type { OcctLoader } from "./tessellateBox";
+import {
+  makeWireExtrudeShape,
+  type OcctWireExtrudeSource
+} from "./wireExtrude";
 
 export type OcctStepExportUnit = "mm" | "cm" | "m" | "in";
 export type OcctStepExportSchema = "AP242DIS";
 
-export interface OcctStepExportBodySource extends OcctBooleanExtrudePrimitiveSource {
+export type OcctStepExportBodySource = (
+  | OcctBooleanExtrudePrimitiveSource
+  | OcctWireExtrudeSource
+) & {
   readonly bodyId: string;
   readonly bodyName?: string;
-}
+};
 
 export interface OcctStepExportInput {
   readonly units: OcctStepExportUnit;
@@ -81,7 +88,14 @@ export function createOcctStepExportWithInstance(
   const schema = input.schema ?? DEFAULT_STEP_SCHEMA;
   const writer = new oc.STEPControl_Writer_1();
   const progress = new oc.Message_ProgressRange_1();
-  const shapes = input.bodies.map((body) => makeBooleanExtrudeShape(oc, body));
+  const shapes = input.bodies.map((body) =>
+    body.profile.kind === "wire"
+      ? makeWireExtrudeShape(oc, body as OcctWireExtrudeSource)
+      : makeBooleanExtrudeShape(
+          oc,
+          body as OcctBooleanExtrudePrimitiveSource
+        )
+  );
   const asIsStepModelType = oc.STEPControl_StepModelType
     .STEPControl_AsIs as unknown as Parameters<typeof writer.Transfer>[1];
   const filename = `/tmp/partbench-step-${Date.now()}-${Math.random()

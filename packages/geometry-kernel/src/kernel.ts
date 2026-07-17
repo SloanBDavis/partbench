@@ -97,7 +97,7 @@ export type GeometryKernelPrimitive =
   | "sweep"
   | "loft";
 export type GeometryKernelSketchPlane = "XY" | "XZ" | "YZ";
-export type GeometryKernelExtrudeProfileKind = "rectangle" | "circle";
+export type GeometryKernelExtrudeProfileKind = "rectangle" | "circle" | "wire";
 export type GeometryKernelExtrudeSide = "positive" | "negative" | "symmetric";
 export type GeometryKernelDocumentUnit = "mm" | "cm" | "m" | "in";
 export type GeometryKernelBooleanOperation = "add" | "cut";
@@ -160,11 +160,52 @@ export interface CircleExtrudeProfile {
   readonly radius: number;
 }
 
-export type ExtrudeGeometryProfile =
+export interface ResolvedPlaneFrame {
+  readonly origin: readonly [number, number, number];
+  readonly uAxis: readonly [number, number, number];
+  readonly vAxis: readonly [number, number, number];
+}
+
+export interface ResolvedSketchGeometryPolicy {
+  readonly linearTolerance: number;
+  readonly angularToleranceDegrees: number;
+  readonly minimumProfileArea: number;
+}
+
+export interface ResolvedLineSegment2d {
+  readonly kind: "line";
+  readonly sourceEntityId: string;
+  readonly start: readonly [number, number];
+  readonly end: readonly [number, number];
+}
+
+export interface ResolvedArcSegment2d {
+  readonly kind: "arc";
+  readonly sourceEntityId: string;
+  readonly center: readonly [number, number];
+  readonly radius: number;
+  readonly startAngleDegrees: number;
+  readonly sweepAngleDegrees: number;
+}
+
+export interface ResolvedPlanarWireProfile {
+  readonly kind: "wire";
+  readonly frame: ResolvedPlaneFrame;
+  readonly closed: true;
+  readonly segments: readonly (ResolvedLineSegment2d | ResolvedArcSegment2d)[];
+  readonly sourceIdentity: string;
+  readonly geometryPolicy: ResolvedSketchGeometryPolicy;
+}
+
+export type PrimitiveExtrudeGeometryProfile =
   | RectangleExtrudeProfile
   | CircleExtrudeProfile;
 
-export type RevolveGeometryProfile = ExtrudeGeometryProfile;
+export type ExtrudeGeometryProfile =
+  | PrimitiveExtrudeGeometryProfile
+  | ResolvedPlanarWireProfile;
+
+export type RevolveGeometryProfile = PrimitiveExtrudeGeometryProfile;
 
 export interface RevolveGeometryAxis {
   readonly start: readonly [number, number];
@@ -177,7 +218,7 @@ export type BooleanExtrudeSource =
 
 export interface BooleanExtrudePrimitiveSource {
   readonly sketchPlane: GeometryKernelSketchPlane;
-  readonly profile: ExtrudeGeometryProfile;
+  readonly profile: PrimitiveExtrudeGeometryProfile;
   readonly depth: number;
   readonly side?: GeometryKernelExtrudeSide;
   readonly placementFrame?: BooleanExtrudePlacementFrame;
@@ -389,7 +430,7 @@ export interface ShellRequest {
 
 export interface SweepProfileSource {
   readonly sketchPlane: GeometryKernelSketchPlane;
-  readonly profile: ExtrudeGeometryProfile;
+  readonly profile: PrimitiveExtrudeGeometryProfile;
   readonly placementFrame?: BooleanExtrudePlacementFrame;
 }
 
@@ -434,9 +475,15 @@ export type ExactTopologySourceKind =
   | ExactBodyMetadataSource["kind"]
   | "importedBody";
 
-export interface ExactExtrudeMetadataSource extends BooleanExtrudePrimitiveSource {
-  readonly kind: "extrude";
-}
+export type ExactExtrudeMetadataSource = (
+  | BooleanExtrudePrimitiveSource
+  | {
+      readonly sketchPlane: GeometryKernelSketchPlane;
+      readonly profile: ResolvedPlanarWireProfile;
+      readonly depth: number;
+      readonly side?: GeometryKernelExtrudeSide;
+    }
+) & { readonly kind: "extrude" };
 
 export interface ExactBooleanExtrudesMetadataSource extends BooleanExtrudeResultSource {
   readonly kind: "booleanExtrudes";
@@ -544,10 +591,18 @@ export interface ExactTopologyCheckpointPayloadRequest {
   readonly source: ExactBodyMetadataSource;
 }
 
-export interface ExactStepExportBodySource extends BooleanExtrudePrimitiveSource {
+export type ExactStepExportBodySource = (
+  | BooleanExtrudePrimitiveSource
+  | {
+      readonly sketchPlane: GeometryKernelSketchPlane;
+      readonly profile: ResolvedPlanarWireProfile;
+      readonly depth: number;
+      readonly side?: GeometryKernelExtrudeSide;
+    }
+) & {
   readonly bodyId: string;
   readonly bodyName?: string;
-}
+};
 
 export interface ExactStepExportRequest {
   readonly id: string;
@@ -607,6 +662,29 @@ export interface SerializableMeshData {
   readonly vertexCount: number;
   readonly triangleCount: number;
   readonly faceCount: number;
+  readonly generatedReferences?: GeometryKernelGeneratedReferences;
+}
+
+export interface GeometryKernelGeneratedFaceReference {
+  readonly role: "startCap" | "endCap" | "side";
+  readonly sourceEntityId?: string;
+  readonly surfaceClass: "plane" | "cylinder";
+  readonly evidence: "kernel-builder";
+}
+
+export interface GeometryKernelGeneratedEdgeReference {
+  readonly role: "startCapBoundary" | "endCapBoundary" | "longitudinal";
+  readonly sourceEntityId?: string;
+  readonly adjacentSourceEntityIds?: readonly [string, string];
+  readonly evidence: "kernel-builder";
+}
+
+export interface GeometryKernelGeneratedReferences {
+  readonly status: "ready" | "unavailable" | "ambiguous";
+  readonly sourceIdentity: string;
+  readonly faces: readonly GeometryKernelGeneratedFaceReference[];
+  readonly edges: readonly GeometryKernelGeneratedEdgeReference[];
+  readonly diagnostic?: string;
 }
 
 export type GeometryKernelResponse =
@@ -959,6 +1037,7 @@ export interface GeometryKernelMeshResult {
   readonly triangleCount: number;
   readonly faceCount: number;
   readonly warnings?: readonly string[];
+  readonly generatedReferences?: GeometryKernelGeneratedReferences;
 }
 
 export type GeometryKernelBoxMeshFactory = (
@@ -984,6 +1063,12 @@ export type GeometryKernelTorusMeshFactory = (
 export type GeometryKernelBooleanExtrudeMeshFactory = (
   input: Omit<BooleanExtrudesRequest, "id" | "version" | "op"> &
     TessellationOptions
+) => Promise<GeometryKernelMeshResult>;
+
+export type GeometryKernelWireExtrudeMeshFactory = (
+  input: Omit<TessellateExtrudeRequest, "id" | "version" | "op"> & {
+    readonly profile: ResolvedPlanarWireProfile;
+  }
 ) => Promise<GeometryKernelMeshResult>;
 
 export type GeometryKernelHoleMeshFactory = (
@@ -1058,6 +1143,7 @@ export interface GeometryKernelMeshFactories {
   readonly createConeMesh: GeometryKernelConeMeshFactory;
   readonly createTorusMesh: GeometryKernelTorusMeshFactory;
   readonly createBooleanExtrudeMesh: GeometryKernelBooleanExtrudeMeshFactory;
+  readonly createWireExtrudeMesh?: GeometryKernelWireExtrudeMeshFactory;
   readonly createHoleMesh?: GeometryKernelHoleMeshFactory;
   readonly createEdgeFinishMesh?: GeometryKernelEdgeFinishMeshFactory;
   readonly createRevolveProfileMesh?: GeometryKernelRevolveProfileMeshFactory;
@@ -1360,7 +1446,10 @@ export async function executeGeometryKernelRequestWithMeshFactory<
         indices: mesh.indices,
         vertexCount: mesh.vertexCount,
         triangleCount: mesh.triangleCount,
-        faceCount: mesh.faceCount
+        faceCount: mesh.faceCount,
+        ...(mesh.generatedReferences
+          ? { generatedReferences: mesh.generatedReferences }
+          : {})
       },
       warnings: mesh.warnings ?? []
     } as unknown as GeometryKernelResponseForRequest<T>;
@@ -1567,11 +1656,11 @@ function validateRequest(
     }
 
     for (const body of request.bodies) {
-      if (!body.bodyId || !isValidBooleanExtrudeSource(body)) {
+      if (!body.bodyId || !isValidExactExtrudeSource(body)) {
         return {
           code: "INVALID_DIMENSIONS",
           message:
-            "STEP export currently supports active rectangle/circle newBody extrude sources with finite positive dimensions."
+            "STEP export requires an active supported exact newBody extrude source with finite positive dimensions."
         };
       }
     }
@@ -2008,6 +2097,22 @@ async function createExtrudeMesh(
   factories: GeometryKernelMeshFactories,
   request: TessellateExtrudeRequest
 ): Promise<GeometryKernelMeshResult> {
+  if (request.profile.kind === "wire") {
+    if (!factories.createWireExtrudeMesh) {
+      return Promise.reject({
+        code: "UNAVAILABLE_BINDING",
+        message: "Composite wire extrude requires an OCCT wire extrude factory."
+      } satisfies GeometryKernelError);
+    }
+    return factories.createWireExtrudeMesh({
+      sketchPlane: request.sketchPlane,
+      profile: request.profile,
+      depth: request.depth,
+      side: request.side,
+      tessellation: request.tessellation
+    });
+  }
+
   const mesh =
     request.profile.kind === "rectangle"
       ? await factories.createBoxMesh({
@@ -2290,7 +2395,133 @@ function isValidExtrudeProfile(profile: ExtrudeGeometryProfile): boolean {
     return isVec2(profile.center) && isPositiveFiniteNumber(profile.radius);
   }
 
-  return false;
+  return isValidResolvedPlanarWireProfile(profile);
+}
+
+function isValidPrimitiveExtrudeProfile(
+  profile: PrimitiveExtrudeGeometryProfile
+): boolean {
+  return profile.kind === "rectangle"
+    ? isVec2(profile.center) &&
+        isPositiveFiniteNumber(profile.width) &&
+        isPositiveFiniteNumber(profile.height)
+    : isVec2(profile.center) && isPositiveFiniteNumber(profile.radius);
+}
+
+function isValidResolvedPlanarWireProfile(
+  profile: ResolvedPlanarWireProfile
+): boolean {
+  const tolerance = profile.geometryPolicy?.linearTolerance;
+  if (
+    profile.closed !== true ||
+    typeof profile.sourceIdentity !== "string" ||
+    profile.sourceIdentity.trim().length === 0 ||
+    tolerance !== 1e-7 ||
+    profile.geometryPolicy.angularToleranceDegrees !== 0.1 ||
+    profile.geometryPolicy.minimumProfileArea !== 1e-12 ||
+    !isVec3(profile.frame?.origin) ||
+    !isUnitVec3(profile.frame.uAxis) ||
+    !isUnitVec3(profile.frame.vAxis) ||
+    Math.abs(dotVec3(profile.frame.uAxis, profile.frame.vAxis)) > 1e-12 ||
+    !Array.isArray(profile.segments) ||
+    profile.segments.length < 2
+  ) {
+    return false;
+  }
+
+  const sourceIds = new Set<string>();
+  const endpoints: Array<{
+    readonly start: readonly [number, number];
+    readonly end: readonly [number, number];
+  }> = [];
+  for (const segment of profile.segments) {
+    if (
+      !segment ||
+      typeof segment.sourceEntityId !== "string" ||
+      segment.sourceEntityId.length === 0 ||
+      sourceIds.has(segment.sourceEntityId)
+    ) {
+      return false;
+    }
+    sourceIds.add(segment.sourceEntityId);
+
+    if (segment.kind === "line") {
+      if (
+        !isVec2(segment.start) ||
+        !isVec2(segment.end) ||
+        distanceVec2(segment.start, segment.end) <= tolerance
+      ) {
+        return false;
+      }
+      endpoints.push({ start: segment.start, end: segment.end });
+      continue;
+    }
+
+    if (
+      segment.kind !== "arc" ||
+      !isVec2(segment.center) ||
+      !isPositiveFiniteNumber(segment.radius) ||
+      segment.radius <= tolerance ||
+      !Number.isFinite(segment.startAngleDegrees) ||
+      !Number.isFinite(segment.sweepAngleDegrees) ||
+      segment.startAngleDegrees < 0 ||
+      segment.startAngleDegrees >= 360 ||
+      Math.abs(segment.sweepAngleDegrees) < 0.1 ||
+      Math.abs(segment.sweepAngleDegrees) > 359.9
+    ) {
+      return false;
+    }
+    endpoints.push(getArcEndpoints(segment));
+  }
+
+  return endpoints.every((segment, index) =>
+    pointsCoincide(
+      segment.end,
+      endpoints[(index + 1) % endpoints.length].start,
+      tolerance
+    )
+  );
+}
+
+function getArcEndpoints(segment: ResolvedArcSegment2d): {
+  readonly start: readonly [number, number];
+  readonly end: readonly [number, number];
+} {
+  const startRadians = (segment.startAngleDegrees * Math.PI) / 180;
+  const endRadians =
+    ((segment.startAngleDegrees + segment.sweepAngleDegrees) * Math.PI) / 180;
+  return {
+    start: [
+      segment.center[0] + segment.radius * Math.cos(startRadians),
+      segment.center[1] + segment.radius * Math.sin(startRadians)
+    ],
+    end: [
+      segment.center[0] + segment.radius * Math.cos(endRadians),
+      segment.center[1] + segment.radius * Math.sin(endRadians)
+    ]
+  };
+}
+
+function distanceVec2(
+  left: readonly [number, number],
+  right: readonly [number, number]
+): number {
+  return Math.hypot(left[0] - right[0], left[1] - right[1]);
+}
+
+function pointsCoincide(
+  left: readonly [number, number],
+  right: readonly [number, number],
+  tolerance: number
+): boolean {
+  return distanceVec2(left, right) <= tolerance;
+}
+
+function dotVec3(
+  left: readonly [number, number, number],
+  right: readonly [number, number, number]
+): number {
+  return left[0] * right[0] + left[1] * right[1] + left[2] * right[2];
 }
 
 function isValidRevolveAxis(axis: RevolveGeometryAxis): boolean {
@@ -2308,7 +2539,7 @@ function isValidBooleanExtrudePrimitiveSource(
     isSketchPlane(source.sketchPlane) &&
     isPositiveFiniteNumber(source.depth) &&
     isExtrudeSide(source.side ?? "positive") &&
-    isValidExtrudeProfile(source.profile) &&
+    isValidPrimitiveExtrudeProfile(source.profile) &&
     (source.placementFrame === undefined ||
       isValidBooleanExtrudePlacementFrame(source.placementFrame))
   );
@@ -2317,7 +2548,7 @@ function isValidBooleanExtrudePrimitiveSource(
 function isValidSweepProfileSource(source: SweepProfileSource): boolean {
   return (
     isSketchPlane(source.sketchPlane) &&
-    isValidExtrudeProfile(source.profile) &&
+    isValidPrimitiveExtrudeProfile(source.profile) &&
     (source.placementFrame === undefined ||
       isValidBooleanExtrudePlacementFrame(source.placementFrame))
   );
@@ -2356,7 +2587,7 @@ function isValidHoleToolSource(source: HoleToolSource): boolean {
   return (
     isSketchPlane(source.sketchPlane) &&
     source.circle.kind === "circle" &&
-    isValidExtrudeProfile(source.circle) &&
+    isValidPrimitiveExtrudeProfile(source.circle) &&
     isHoleDepthMode(source.depthMode) &&
     isHoleDirection(source.direction ?? "positive") &&
     (source.depthMode === "blind"
@@ -2527,7 +2758,7 @@ function validateExactBodyMetadataSource(
   source: ExactBodyMetadataSource
 ): GeometryKernelError | undefined {
   if (source.kind === "extrude") {
-    return isValidBooleanExtrudeSource(source)
+    return isValidExactExtrudeSource(source)
       ? undefined
       : createInvalidExactBodyMetadataSourceError();
   }
@@ -2663,6 +2894,19 @@ function validateExactBodyMetadataSource(
   }
 
   return createInvalidExactBodyMetadataSourceError();
+}
+
+function isValidExactExtrudeSource(
+  source: Omit<ExactExtrudeMetadataSource, "kind"> | ExactStepExportBodySource
+): boolean {
+  return source.profile.kind === "wire"
+    ? isSketchPlane(source.sketchPlane) &&
+        isPositiveFiniteNumber(source.depth) &&
+        isExtrudeSide(source.side ?? "positive") &&
+        isValidResolvedPlanarWireProfile(source.profile)
+    : isValidBooleanExtrudePrimitiveSource(
+        source as BooleanExtrudePrimitiveSource
+      );
 }
 
 function createInvalidExactBodyMetadataSourceError(): GeometryKernelError {
