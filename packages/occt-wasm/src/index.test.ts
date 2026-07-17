@@ -27,8 +27,11 @@ import {
 import type { OpenCascadeInstance } from "opencascade.js";
 import {
   createOcctBooleanExtrudeMeshWithShapeFactories,
+  makeBooleanExtrudeShape,
+  MAX_OCCT_BOOLEAN_EXTRUDE_RECIPE_DEPTH,
   type OcctBooleanExtrudeShapeBuilder,
-  type OcctBooleanExtrudeShapeFactories
+  type OcctBooleanExtrudeShapeFactories,
+  type OcctBooleanExtrudeSource
 } from "./booleanExtrudes";
 import {
   assertWireExtrudeSolidCount,
@@ -133,6 +136,32 @@ const notchedWireProfile = {
     }
   ]
 };
+
+const occtBooleanRecipePrimitive = {
+  sketchPlane: "XY" as const,
+  profile: {
+    kind: "rectangle" as const,
+    center: [0, 0] as const,
+    width: 4,
+    height: 4
+  },
+  depth: 4
+};
+
+function createNestedOcctBooleanRecipe(
+  resultDepth: number
+): OcctBooleanExtrudeSource {
+  let source: OcctBooleanExtrudeSource = occtBooleanRecipePrimitive;
+  for (let index = 0; index < resultDepth; index += 1) {
+    source = {
+      kind: "booleanExtrudes",
+      operation: "add",
+      target: source,
+      tool: occtBooleanRecipePrimitive
+    };
+  }
+  return source;
+}
 
 describe("occt-wasm", () => {
   it.each(["positive", "negative", "symmetric"] as const)(
@@ -526,6 +555,64 @@ describe("occt-wasm", () => {
       "vertex-builder"
     ]);
   });
+
+  it.each(["normal-direction", "x-direction", "axis"] as const)(
+    "disposes partial primitive axes after injected %s constructor failure",
+    (failureStage) => {
+      const deleted: string[] = [];
+      let directionIndex = 0;
+      class Point {
+        delete() {
+          deleted.push("point");
+        }
+      }
+      class Direction {
+        readonly #label: string;
+        constructor() {
+          directionIndex += 1;
+          if (
+            (failureStage === "normal-direction" && directionIndex === 1) ||
+            (failureStage === "x-direction" && directionIndex === 2)
+          ) {
+            throw new Error(`Injected ${failureStage} failure.`);
+          }
+          this.#label = directionIndex === 1 ? "normal" : "x-direction";
+        }
+        delete() {
+          deleted.push(this.#label);
+        }
+      }
+      class Axis {
+        constructor() {
+          if (failureStage === "axis") {
+            throw new Error("Injected axis failure.");
+          }
+        }
+      }
+      class UnexpectedBox {
+        constructor() {
+          throw new Error("Box allocation must not be reached.");
+        }
+      }
+      const oc = {
+        gp_Pnt_3: Point,
+        gp_Dir_4: Direction,
+        gp_Ax2_2: Axis,
+        BRepPrimAPI_MakeBox_5: UnexpectedBox
+      } as unknown as OpenCascadeInstance;
+
+      expect(() =>
+        makeBooleanExtrudeShape(oc, occtBooleanRecipePrimitive)
+      ).toThrow(`Injected ${failureStage} failure`);
+      expect(deleted).toEqual(
+        failureStage === "normal-direction"
+          ? ["point"]
+          : failureStage === "x-direction"
+            ? ["normal", "point"]
+            : ["x-direction", "normal", "point"]
+      );
+    }
+  );
 
   it("disposes boolean target/tool builders when later allocation fails", () => {
     const createPrimitiveOcct = (
@@ -1599,6 +1686,81 @@ describe("occt-wasm", () => {
   );
 
   it(
+    "rebuilds a nested composite-add result target through every exact route",
+    async () => {
+      const inner = {
+        kind: "booleanExtrudes" as const,
+        operation: "add" as const,
+        target: {
+          sketchPlane: "XY" as const,
+          profile: {
+            kind: "rectangle" as const,
+            center: [0, 0] as const,
+            width: 8,
+            height: 6
+          },
+          depth: 4,
+          side: "symmetric" as const
+        },
+        tool: {
+          sketchPlane: "XY" as const,
+          profile: {
+            ...slotWireProfile,
+            frame: { ...slotWireProfile.frame, origin: [4, 0, 0] as const }
+          },
+          depth: 4,
+          side: "symmetric" as const
+        }
+      };
+      const source = {
+        kind: "booleanExtrudes" as const,
+        operation: "add" as const,
+        target: inner,
+        tool: {
+          sketchPlane: "XY" as const,
+          profile: {
+            ...slotWireProfile,
+            sourceIdentity: "slot:nested-outer",
+            frame: { ...slotWireProfile.frame, origin: [0, 3, 0] as const }
+          },
+          depth: 4,
+          side: "symmetric" as const
+        }
+      };
+      const [mesh, metadata, topology, checkpoint] = await Promise.all([
+        createOcctBooleanExtrudeMesh(source),
+        createOcctExactBodyMetadata({ source }),
+        createOcctExactTopologySnapshot({ source }),
+        createOcctExactTopologyCheckpointPayload({
+          checkpointId: "checkpoint_nested_wire_add",
+          bodyId: "body_nested_wire_add",
+          source
+        })
+      ]);
+      const step = await createOcctStepExport({
+        units: "mm",
+        bodies: [{ ...source, bodyId: "body_nested_wire_add" }]
+      });
+
+      expect(mesh.primitive).toBe("boolean");
+      expect(metadata.volume).toBeCloseTo(224 + 4 * Math.PI, 5);
+      expect(metadata.topologyCounts.solidCount).toBe(1);
+      expect(metadata.topologyCounts.faceCount).toBe(
+        topology.entityCounts.faceCount
+      );
+      expect(metadata.topologyCounts.edgeCount).toBe(
+        topology.entityCounts.edgeCount
+      );
+      expect(topology.generatedReferences).toBeUndefined();
+      expect(checkpoint.topologySnapshot.signature).toBe(topology.signature);
+      expect(checkpoint.brepByteLength).toBeGreaterThan(1000);
+      expect(step.bodyCount).toBe(1);
+      expect(step.byteLength).toBeGreaterThan(1000);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
     "rejects disjoint composite add compounds and keeps composite cut unavailable",
     async () => {
       const target = {
@@ -1639,6 +1801,27 @@ describe("occt-wasm", () => {
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );
+
+  it("rejects cyclic and over-deep direct OCCT boolean recipes before allocation", () => {
+    const cyclic = {
+      kind: "booleanExtrudes" as const,
+      operation: "add" as const,
+      target: occtBooleanRecipePrimitive as OcctBooleanExtrudeSource,
+      tool: occtBooleanRecipePrimitive
+    };
+    (cyclic as { target: OcctBooleanExtrudeSource }).target = cyclic;
+    const overDeep = createNestedOcctBooleanRecipe(
+      MAX_OCCT_BOOLEAN_EXTRUDE_RECIPE_DEPTH + 1
+    );
+    const oc = {} as OpenCascadeInstance;
+
+    expect(() => makeBooleanExtrudeShape(oc, cyclic)).toThrow(
+      "boolean recipe is cyclic"
+    );
+    expect(() => makeBooleanExtrudeShape(oc, overDeep)).toThrow(
+      `exceeds ${MAX_OCCT_BOOLEAN_EXTRUDE_RECIPE_DEPTH}`
+    );
+  });
 
   it(
     "creates a chained rectangle boolean cut through Open CASCADE WASM",

@@ -101,6 +101,7 @@ export type GeometryKernelExtrudeProfileKind = "rectangle" | "circle" | "wire";
 export type GeometryKernelExtrudeSide = "positive" | "negative" | "symmetric";
 export type GeometryKernelDocumentUnit = "mm" | "cm" | "m" | "in";
 export type GeometryKernelBooleanOperation = "add" | "cut";
+export const MAX_BOOLEAN_EXTRUDE_RECIPE_DEPTH = 64;
 export type GeometryKernelHoleDepthMode = "blind" | "throughAll";
 export type GeometryKernelHoleDirection = "positive" | "negative";
 export type GeometryKernelEdgeFinishOperation = "chamfer" | "fillet";
@@ -2774,12 +2775,33 @@ function isValidSweepPathSegments(
   );
 }
 
-function isValidBooleanExtrudeSource(source: BooleanExtrudeSource): boolean {
+interface BooleanExtrudeValidationContext {
+  readonly visited: WeakSet<object>;
+  readonly depth: number;
+}
+
+function isValidBooleanExtrudeSource(
+  source: BooleanExtrudeSource,
+  context: BooleanExtrudeValidationContext = {
+    visited: new WeakSet<object>(),
+    depth: 0
+  }
+): boolean {
   if (!isRecord(source)) return false;
   if (isBooleanExtrudeResultSource(source)) {
+    if (
+      context.depth >= MAX_BOOLEAN_EXTRUDE_RECIPE_DEPTH ||
+      context.visited.has(source)
+    ) {
+      return false;
+    }
+    context.visited.add(source);
     return (
       isBooleanOperation(source.operation) &&
-      isValidBooleanExtrudeSource(source.target) &&
+      isValidBooleanExtrudeSource(source.target, {
+        visited: context.visited,
+        depth: context.depth + 1
+      }) &&
       isValidBooleanExtrudeToolSource(source.operation, source.tool) &&
       isSupportedBooleanExtrudeSourcePair(source)
     );
@@ -2972,10 +2994,7 @@ function validateExactBodyMetadataSource(
   }
 
   if (source.kind === "booleanExtrudes") {
-    return isBooleanOperation(source.operation) &&
-      isValidBooleanExtrudeSource(source.target) &&
-      isValidBooleanExtrudeToolSource(source.operation, source.tool) &&
-      isSupportedBooleanExtrudeSourcePair(source)
+    return isValidBooleanExtrudeSource(source)
       ? undefined
       : createInvalidExactBodyMetadataSourceError();
   }

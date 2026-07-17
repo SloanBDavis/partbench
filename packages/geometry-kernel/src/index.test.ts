@@ -7,6 +7,8 @@ import {
 } from "./index";
 import {
   executeGeometryKernelRequestWithMeshFactory,
+  MAX_BOOLEAN_EXTRUDE_RECIPE_DEPTH,
+  type BooleanExtrudeSource,
   type GeometryKernelExactTopologyCheckpointPayload,
   type GeometryKernelImportedBodyCheckpointPayload,
   type GeometryKernelImportedBodyPayload,
@@ -61,6 +63,30 @@ const mixedWireProfile = {
     minimumProfileArea: 1e-12 as const
   }
 };
+
+const booleanRecipePrimitive = {
+  sketchPlane: "XY" as const,
+  profile: {
+    kind: "rectangle" as const,
+    center: [0, 0] as const,
+    width: 4,
+    height: 4
+  },
+  depth: 4
+};
+
+function createNestedBooleanRecipe(resultDepth: number): BooleanExtrudeSource {
+  let source: BooleanExtrudeSource = booleanRecipePrimitive;
+  for (let index = 0; index < resultDepth; index += 1) {
+    source = {
+      kind: "booleanExtrudes",
+      operation: "add",
+      target: source,
+      tool: booleanRecipePrimitive
+    };
+  }
+  return source;
+}
 
 function createTopologyEntityFixture(
   kind: GeometryKernelTopologyEntityDescriptor["kind"],
@@ -1841,6 +1867,61 @@ describe("geometry-kernel facade", () => {
       error: { code: "INVALID_DIMENSIONS" }
     });
   });
+
+  it.each([
+    ["cyclic", undefined],
+    ["over-deep", MAX_BOOLEAN_EXTRUDE_RECIPE_DEPTH + 1]
+  ] as const)(
+    "rejects %s recursive boolean recipes for mesh, exact metadata, and STEP",
+    async (label, resultDepth) => {
+      let source: BooleanExtrudeSource;
+      if (resultDepth === undefined) {
+        const cyclic = {
+          kind: "booleanExtrudes" as const,
+          operation: "add" as const,
+          target: booleanRecipePrimitive as BooleanExtrudeSource,
+          tool: booleanRecipePrimitive
+        };
+        (cyclic as { target: BooleanExtrudeSource }).target = cyclic;
+        source = cyclic;
+      } else {
+        source = createNestedBooleanRecipe(resultDepth);
+      }
+      const [mesh, exact, step] = await Promise.all([
+        executeGeometryKernelRequest({
+          id: `geometry_req_${label}_boolean_mesh`,
+          version: "geometry-kernel.v1",
+          op: "geometry.booleanExtrudes",
+          operation: "add",
+          target: source,
+          tool: booleanRecipePrimitive
+        }),
+        executeGeometryKernelRequest({
+          id: `geometry_req_${label}_boolean_exact`,
+          version: "geometry-kernel.v1",
+          op: "geometry.exactBodyMetadata",
+          source: source as Extract<
+            BooleanExtrudeSource,
+            { kind: "booleanExtrudes" }
+          >
+        }),
+        executeGeometryKernelRequest({
+          id: `geometry_req_${label}_boolean_step`,
+          version: "geometry-kernel.v1",
+          op: "geometry.exportStep",
+          units: "mm",
+          bodies: [{ ...source, bodyId: `body_${label}` }]
+        } as never)
+      ]);
+
+      for (const response of [mesh, exact, step]) {
+        expect(response).toMatchObject({
+          ok: false,
+          error: { code: "INVALID_DIMENSIONS" }
+        });
+      }
+    }
+  );
 
   it(
     "runs circle-tool boolean feasibility requests on supported targets",

@@ -10,6 +10,7 @@ import {
 } from "./wireExtrude";
 
 export type OcctBooleanOperation = "add" | "cut";
+export const MAX_OCCT_BOOLEAN_EXTRUDE_RECIPE_DEPTH = 64;
 export type OcctSketchPlane = "XY" | "XZ" | "YZ";
 export type OcctExtrudeSide = "positive" | "negative" | "symmetric";
 
@@ -111,6 +112,11 @@ export interface OcctBooleanExtrudeShapeFactories {
     oc: OpenCascadeInstance,
     source: OcctBooleanExtrudeToolSource
   ) => OcctBooleanExtrudeShapeBuilder;
+}
+
+interface OcctBooleanExtrudeBuildContext {
+  readonly visited: WeakSet<object>;
+  readonly depth: number;
 }
 
 export async function createOcctBooleanExtrudeMeshWithLoader(
@@ -222,8 +228,28 @@ export function makeBooleanExtrudeShape(
   oc: OpenCascadeInstance,
   source: OcctBooleanExtrudeSource
 ): OcctBooleanExtrudeShapeBuilder {
+  return makeBooleanExtrudeShapeWithContext(oc, source, {
+    visited: new WeakSet<object>(),
+    depth: 0
+  });
+}
+
+function makeBooleanExtrudeShapeWithContext(
+  oc: OpenCascadeInstance,
+  source: OcctBooleanExtrudeSource,
+  context: OcctBooleanExtrudeBuildContext
+): OcctBooleanExtrudeShapeBuilder {
   if (isOcctBooleanExtrudeResultSource(source)) {
-    return makeBooleanExtrudeResultShape(oc, source);
+    if (
+      context.depth >= MAX_OCCT_BOOLEAN_EXTRUDE_RECIPE_DEPTH ||
+      context.visited.has(source)
+    ) {
+      throw new Error(
+        `Open CASCADE boolean recipe is cyclic or exceeds ${MAX_OCCT_BOOLEAN_EXTRUDE_RECIPE_DEPTH} result nodes.`
+      );
+    }
+    context.visited.add(source);
+    return makeBooleanExtrudeResultShape(oc, source, context);
   }
 
   return makePrimitiveBooleanExtrudeShape(oc, source);
@@ -269,7 +295,8 @@ function makePrimitiveBooleanExtrudeShape(
 
 function makeBooleanExtrudeResultShape(
   oc: OpenCascadeInstance,
-  source: OcctBooleanExtrudeResultSource
+  source: OcctBooleanExtrudeResultSource,
+  context: OcctBooleanExtrudeBuildContext
 ): OcctBooleanExtrudeShapeBuilder {
   assertSupportedBooleanInput(source);
   let targetShape: OcctBooleanExtrudeShapeBuilder | undefined;
@@ -283,7 +310,10 @@ function makeBooleanExtrudeResultShape(
     | undefined;
 
   try {
-    targetShape = makeBooleanExtrudeShape(oc, source.target);
+    targetShape = makeBooleanExtrudeShapeWithContext(oc, source.target, {
+      visited: context.visited,
+      depth: context.depth + 1
+    });
     toolShape = makeBooleanExtrudeToolShape(oc, source.tool);
     range = new oc.Message_ProgressRange_1();
     let target: TopoDS_Shape | undefined;
@@ -530,20 +560,32 @@ function createOcctAxes(
   readonly axis: InstanceType<typeof oc.gp_Ax2_2>;
   readonly delete: () => void;
 } {
-  const point = new oc.gp_Pnt_3(origin[0], origin[1], origin[2]);
-  const normal = new oc.gp_Dir_4(normalAxis[0], normalAxis[1], normalAxis[2]);
-  const xDirection = new oc.gp_Dir_4(uAxis[0], uAxis[1], uAxis[2]);
-  const axis = new oc.gp_Ax2_2(point, normal, xDirection);
-
-  return {
-    axis,
-    delete: () => {
-      axis.delete();
-      xDirection.delete();
-      normal.delete();
-      point.delete();
-    }
-  };
+  let point: InstanceType<typeof oc.gp_Pnt_3> | undefined;
+  let normal: InstanceType<typeof oc.gp_Dir_4> | undefined;
+  let xDirection: InstanceType<typeof oc.gp_Dir_4> | undefined;
+  let axis: InstanceType<typeof oc.gp_Ax2_2> | undefined;
+  try {
+    point = new oc.gp_Pnt_3(origin[0], origin[1], origin[2]);
+    normal = new oc.gp_Dir_4(normalAxis[0], normalAxis[1], normalAxis[2]);
+    xDirection = new oc.gp_Dir_4(uAxis[0], uAxis[1], uAxis[2]);
+    axis = new oc.gp_Ax2_2(point, normal, xDirection);
+    const handles = { axis, xDirection, normal, point };
+    return {
+      axis: handles.axis,
+      delete: () => {
+        handles.axis.delete();
+        handles.xDirection.delete();
+        handles.normal.delete();
+        handles.point.delete();
+      }
+    };
+  } catch (error) {
+    axis?.delete();
+    xDirection?.delete();
+    normal?.delete();
+    point?.delete();
+    throw error;
+  }
 }
 
 function getNormalRange(
