@@ -4,7 +4,7 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the repo state and the
 active implementation roadmap.
 
-Last updated: 2026-07-15.
+Last updated: 2026-07-17.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/v12.md` for the completed
@@ -14,12 +14,14 @@ record, `docs/v14.md` for the completed topology-backed downstream modeling
 release record, `docs/v15.md` for the completed V15 STEP import, expanded
 feature families, and parameter expressions release record, `docs/v16.md` for
 the completed V16 sweep, loft, pattern depth, expression extensions, and mass
-properties release record,
+properties release record, and `docs/v17.md` for the approved V17 composite
+sketch profiles, arcs, and curved sweep paths implementation contract,
 `docs/native-format.md` for project-format direction, and
 `docs/occt-wasm-size.md` for OCCT/WASM load-size findings. V7, V8, V9, V10,
 and V11 are completed historical releases whose details are now condensed in
 this plan instead of maintained as separate release documents. V16 is complete;
-follow `docs/v16.md` for its compatibility and support contract.
+follow `docs/v16.md` for its compatibility contract and `docs/v17.md` for the
+only active release scope.
 
 ## Active Rules
 
@@ -132,6 +134,14 @@ These constraints remain active:
     free construction/offset sketch planes, multi-body pattern instances as
     public bodies, hosted collaboration, IGES/proprietary import, full
     scripting.
+13c. V17 is **planned and approved for implementation**. Its binding contract
+    is `docs/v17.md`. Its center is source-backed circular arcs, explicit
+    construction geometry, stable ordered composite sketch profiles, and
+    line/arc sweep paths. Product V17 uses source schema
+    **`web-cad.project.v21`** only when V17 source shapes are present and keeps
+    `.wcad` at `partbench.wcad.v2`. V17 must not absorb datum planes,
+    assemblies, splines, general trimming, multi-region profiles, production
+    WebGPU, drawings, direct modeling, or unrelated feature breadth.
 14. V8 Tranche A is implemented as a protocol and pure-helper slice only:
     `partbench.wcad.v1` manifest/source-identity types, structured package
     validation diagnostics, `project.packageReadiness`, and thin agent/MCP
@@ -446,40 +456,48 @@ and focused packages:
   viewport with V9 body/face/edge picking, visual-state routing, compact
   contextual command surface, single-target Measure/Inspect, session-only
   two-target measurement, compact camera/navigation controls, first feature
-  tree, Modeling panels for extrude/revolve/hole/edge-finish plus V15
-  pattern/mirror/shell, parameter expression status UI, and focused UI helpers.
+  tree, Modeling panels for extrude/revolve/hole/edge-finish, pattern/mirror/
+  shell, sweep/loft, parameter-expression status, mass properties, and focused
+  UI helpers.
 - `packages/cad-protocol` - typed CADOps command, batch, query, actor metadata,
   feature editability, dependency/reference-health, generated-reference role
-  and signature, named-reference repair diff shape, V15 import/pattern/mirror/
-  shell/expression command and query shapes, and validation error shapes.
+  and signature, named-reference repair diff shape, import/pattern/mirror/
+  shell/sweep/loft/expression commands, pattern-instance and mass-properties
+  queries, and validation error shapes.
 - `packages/cad-core` - authoritative in-memory document model, transactions,
   semantic diffs, undo/redo, queries, measurements/extents, source-of-truth
-  sketches, document parameters with arithmetic expressions, driving sketch
+  sketches, document parameters with expression language v2, driving sketch
   dimensions, horizontal/vertical line constraints, fixed/coincident/midpoint
   point constraints, parallel and perpendicular line constraints, authored
   rectangle/circle extrude features, narrow rectangle-tool add/cut boolean
-  source data, authored revolve, hole, chamfer, and fillet source intent, V15
+  source data, authored revolve, hole, chamfer, fillet, sweep, and loft source
+  intent, V15
   imported-body, linear-pattern, circular-pattern, mirror, and shell source
   intent, named references, feature editability, source-derived dependency
   graph/reference-health queries, topology identity and command-target
   readiness, source-semantic generated references for supported authored hole
   result bodies, explicit named-reference repair, and versioned project JSON/
-  `.wcad` import/export through V19.
+  `.wcad` import/export through V20, pattern instance identity, resolved
+  pattern/mirror references, and derived-exact-metadata mass-property
+  projection.
 - `packages/renderer` - renderer-facing primitive and mesh types plus the
   current canvas viewport.
 - `packages/renderer-mesh-bridge` - adapter from serializable geometry-worker
   mesh data into renderer mesh data.
 - `packages/occt-wasm` - isolated OCCT/WASM loading, tessellation, STEP
-  import/export, pattern, mirror, shell, and related exact-geometry boundary.
+  import/export, pattern, mirror, shell, sweep, loft, exact metadata, and
+  related exact-geometry boundary.
 - `packages/geometry-kernel` - typed primitive, extrude, narrow boolean,
-  exact-metadata, revolve, hole, edge-finish, pattern, mirror, shell, and STEP
-  import/export geometry facade around the isolated OCCT path.
+  exact-metadata, revolve, hole, edge-finish, pattern, mirror, shell, sweep,
+  loft, mass-properties metadata, and STEP import/export geometry facade around
+  the isolated OCCT path.
 - `packages/geometry-worker` - async geometry worker request/response boundary.
 - `packages/sketch-solver` - pure TypeScript 2D sketch solver package for V11
   normalized solve models, constraints, dimensions, diagnostics, and
   deterministic numerical results.
 - `packages/agent-adapter` - structured adapter over CADOps batch/query APIs,
-  including V15 import/pattern/mirror/shell/expression pass-through.
+  including import, pattern/mirror/shell, sweep/loft, expression-v2,
+  pattern-instance, and mass-properties pass-through.
 - `packages/mcp-adapter` - MCP tool wrapper over the structured adapter.
 - `packages/mcp-stdio-server` - minimal stdio JSON-RPC MCP transport.
 - `scripts/smoke-v7-release-samples.mjs` and
@@ -493,9 +511,9 @@ and focused packages:
   boolean topology/reference smoke over rectangle and circle tool cut/add
   chains.
 - `scripts/smoke-v13-release-samples.mjs` through
-  `scripts/smoke-v15-release-samples.mjs` and the matching V15 workflow smokes
-  for STEP import, feature families, and expressions - deterministic
-  non-browser cad-core / async-resolver acceptance smokes.
+  `scripts/smoke-v16-release-samples.mjs` and the matching V15/V16 workflow
+  smokes - deterministic non-browser cad-core / async geometry acceptance
+  smokes.
 - `scripts/smoke-occt-browser.mjs` and `scripts/occt-smoke` - non-gating
   browser smoke/metrics runner for the OCCT worker path.
 
@@ -503,16 +521,17 @@ Compatibility identifiers retained during the Partbench rename:
 
 - `@web-cad/*` workspace package names remain stable to avoid broad import and
   lockfile churn.
-- `web-cad.project.v1` through `web-cad.project.v19` remain project-format
+- `web-cad.project.v1` through `web-cad.project.v20` remain project-format
   schema identifiers. Renaming them would be a storage migration.
 - `web-cad.project.v7` is an older saved-project schema version, not the V7
   release. `web-cad.project.v8` is also an older saved-project schema version,
   not the V8 release. Current exports use the lowest schema required by source
   truth: V16 for ordinary current features, V17 for advanced sketch constraints,
-  V18 for topology identity records, and V19 for V15 imported-body / pattern /
-  mirror / shell / expression records. A future release that adds new
-  source-of-truth document data after V19 should introduce the next schema only
-  after updating `docs/native-format.md`.
+  V18 for topology identity records, V19 for V15 imported-body / pattern /
+  mirror / shell / expression records, and V20 for V16 sweep/loft, resolved
+  pattern/mirror references, and pattern instance transforms. V17 source shapes
+  will use V21 after Slice A passes, as specified by `docs/v17.md` and
+  `docs/native-format.md`.
 - `web-cad.agent-adapter.v1` remains the adapter protocol identifier.
 
 ## Current Scripts
@@ -688,9 +707,10 @@ Current Partbench can:
   path;
 - add/edit/delete point, line, rectangle, and circle sketch entities;
 - create and edit source-of-truth document parameters through CADOps;
-- set arithmetic parameter expressions through `parameter.setExpression`,
-  evaluate them in dependency order with circular-reference rejection, and
-  rebuild bound sketch dimensions and dependent features;
+- set pure parameter expressions with arithmetic, comparisons, degree-first
+  trigonometry, built-in math functions, ternary/`if` conditionals, dependency
+  ordering, domain validation, and circular-reference rejection, then rebuild
+  bound sketch dimensions and dependent features;
 - create and edit driving sketch dimensions for rectangle width, rectangle
   height, circle radius, and line length through CADOps;
 - create, rename, and delete source-of-truth horizontal/vertical line
@@ -715,6 +735,15 @@ Current Partbench can:
 - create and edit supported V15 `feature.linearPattern`,
   `feature.circularPattern`, `feature.mirror`, and `feature.shell` features
   for supported seed/target body classes;
+- create and edit supported V16 `feature.sweep` and `feature.loft` new-body
+  features, with a single-line sweep path and parallel face-attached loft
+  sections as the required green paths;
+- query durable fused-pattern instance indexes and rigid Mat4 transforms, use
+  supported generated/named/topology direction and axis references, and mirror
+  across offset standard or proven planar reference planes;
+- query exact-metadata-backed volume, area, center of mass, mass, and supported
+  inertia values through `body.massProperties` without persisting derived
+  measurements as source truth;
 - import supported STEP files through `project.importStep`, creating V19
   `ImportedBodyFeature` records, V18 topology checkpoint metadata, and `.wcad`
   v2 checkpoint payload preservation;
@@ -785,7 +814,7 @@ Current Partbench can:
   supported Extrude, Revolve, Hole, Chamfer, Fillet, Pattern, Mirror, Shell,
   and STEP import operations without offering known-unsupported targets as
   valid;
-- save/load current `web-cad.project.v16` through `web-cad.project.v19` JSON and
+- save/load current `web-cad.project.v16` through `web-cad.project.v20` JSON and
   native `.wcad` packages with migrations from older accepted schemas, while
   the Project panel shows draft source, schema/migration status, structured
   validation issues, replacement/history impact, same-document-source detection
@@ -798,27 +827,28 @@ Current Partbench can:
 
 ## Current Limitations
 
-The repo now includes completed V7–V15 product surfaces through topology-backed
-single-part modeling, STEP import, expanded feature families, and arithmetic
-parameter expressions. It is not yet a full CAD system.
+The repo now includes completed V7–V16 product surfaces through topology-backed
+single-part modeling, STEP import, expanded feature families, expression
+language v2, sweep/loft, durable pattern identity, and mass properties. It is
+not yet a full CAD system.
 
 Current limitations:
 
-- The V11 sketch solver is implemented for the planned supported constraint
-  subset, but imported curve constraints, ellipse/spline solving, and broad
-  advanced-constraint creation UI remain deferred.
+- Sketch entities remain point, line, rectangle, and circle. Circular arcs,
+  composite profiles, construction geometry, ellipse/spline solving, and broad
+  curve editing are not implemented before V17.
 - Sketch dimensions currently drive rectangle width/height, circle radius, line
   length, and supported solver-backed source edits. Broader dimension families
   remain deferred.
-- Parameter expressions support pure arithmetic, grouping, named parameter
-  references, and a small built-in math set. Scripting, conditionals, and
-  trigonometric functions remain deferred.
-- Feature breadth beyond the supported extrude/boolean, revolve, hole,
-  chamfer/fillet, linear/circular pattern, mirror, and shell matrix remains
-  deferred. Sweep and loft were not implemented in V15.
-- Pattern instances are not individually addressable bodies. Pattern direction
-  is limited to global axes; mirror planes are limited to XY/XZ/YZ through the
-  document origin; circular pattern axes are limited to the V15 support matrix.
+- Parameter expressions deliberately remain a pure expression language: no
+  statements, loops, strings, user functions, or direct binding to pattern and
+  mirror feature fields.
+- Sweep supports a single line path; ordered line chains and curved paths are
+  not enabled. Loft supports the documented parallel, separated planar-section
+  matrix and has no guide curves or free datum-plane authoring.
+- Pattern instances are addressable by durable index and rigid transform but
+  remain one fused public result body. Face/edge lineage after fuse is
+  confidence-labeled and not generally kernel-proven.
 - Generated references and healthy semantic topology exist for simple authored
   rectangle/circle newBody extrude bodies, the supported V12 cut/add boolean
   result face/edge subsets, V13/V14 topology-anchor command targets on the
@@ -835,13 +865,14 @@ Current limitations:
   in Selection/Inspector/Modeling. Exact face/edge/vertex highlighting,
   generated vertex picking, persisted measurement annotations, sketch
   measurement constraints, and selection-buffer mapping are not implemented yet.
-- V15 acceptance smokes prove cad-core command/query and async STEP import
-  resolver paths. They are not launched-browser CDP UI automation scripts. Real
-  OCCT STEP import is covered at the geometry boundary unit/integration layer.
-- `body.measurements` remains source-derived/source-analytic for simple
-  supported shapes and references. Exact mass-property health is surfaced
-  through derived exact metadata snapshots on `body.topology`, `project.extents`,
-  and `project.health`, not through persisted source data.
+- V15/V16 acceptance smokes primarily prove cad-core command/query and async
+  geometry resolver paths rather than launched-browser CDP UI automation. Real
+  OCCT STEP, sweep, loft, and mass-property behavior is covered at geometry
+  boundary unit/integration layers.
+- `body.measurements` remains source-derived/source-analytic for simple shapes.
+  General exact values are available through `body.massProperties` only when
+  matching derived exact metadata is injected per query; unavailable or stale
+  metadata produces structured diagnostics.
 - Circle-target edge finishing breadth, direct edits, general unrestricted
   booleans, production WebGPU, assemblies, hosted collaboration, production MCP
   auth, natural-language command entry, IGES, and proprietary CAD import remain
@@ -3099,6 +3130,47 @@ collaboration, IGES, or proprietary CAD import. Prefer Must matrix over Stretch
 items in `docs/v16.md` when capacity is tight. When implementation evidence
 contradicts the Must matrix (e.g. MakePipe/ThruSections limits), update
 `docs/v16.md` before expanding scope.
+
+## V17 Approved Scope
+
+V17 is approved for implementation under the decision-complete contract in
+`docs/v17.md`. Product release V17 uses `web-cad.project.v21` for V17-only
+source shapes and retains `partbench.wcad.v2`.
+
+### V17 center
+
+```text
+canonical source-backed circular arcs + construction state
+-> explicit ordered/oriented profile and path references
+-> composite extrude and revolve
+-> curved single-arc and smooth line/arc-chain sweep paths
+-> topology, exact metadata, storage, UI, and agent/MCP parity
+```
+
+### V17 implementation order
+
+| Order | Slice | Gate |
+| --- | --- | --- |
+| 1 | A — protocol and V21 storage | Round-trip and migration before consumers |
+| 2 | B — arc commands and display | Source identity before composite features |
+| 3 | C — arc solver | Full documented constraint matrix |
+| 4 | D — profile/path validation and queries | Analytic deterministic refs before OCCT consumers |
+| 5 | E — composite extrude | Enable new/add/cut rows independently only when vertically complete |
+| 6 | F — composite revolve | New-body support matrix only |
+| 7 | G — curved sweep | Single arc before smooth line/arc chains |
+| 8 | H — product integration | UI and adapter parity; no new support rows |
+| 9 | I — release proof | Named smokes, migration corpus, full checks, docs |
+
+The complete vertical-slice gate in `docs/v17.md` is normative. A kernel shape,
+display mesh, UI control, or accepted source record alone is not a supported
+V17 capability.
+
+### V17 guardrails
+
+Do not mix V17 with splines, trimming, multiple profile regions/inner loops,
+composite loft or sweep profiles, G0 sweep corners, datum planes, assemblies,
+drawings, direct modeling, production WebGPU, collaboration, or format breadth.
+Do not begin Stretch work until every Must Definition of Done item passes.
 
 ## Definition of Done
 
