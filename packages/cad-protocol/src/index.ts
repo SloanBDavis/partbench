@@ -2227,6 +2227,7 @@ export interface TopologyAnchorRepairPlanQuery {
 
 export interface ProjectExportReadinessQuery {
   readonly query: "project.exportReadiness";
+  readonly derivedExactMetadata?: readonly CadBodyDerivedExactMetadataSnapshot[];
 }
 
 export interface ProjectExactExportQuery {
@@ -2234,6 +2235,7 @@ export interface ProjectExactExportQuery {
   readonly format: CadExactExportFormatId;
   readonly bodyIds?: readonly BodyId[];
   readonly sourceIdentity?: WcadSourceIdentity;
+  readonly derivedExactMetadata?: readonly CadBodyDerivedExactMetadataSnapshot[];
 }
 
 export interface ProjectPackageReadinessQuery {
@@ -6379,7 +6381,8 @@ export interface CadBooleanResultTopologySourceInputs {
   readonly targetBodyId?: BodyId;
   readonly toolSketchId?: SketchId;
   readonly toolSketchEntityId?: SketchEntityId;
-  readonly toolProfileKind?: FeatureExtrudeProfileKind;
+  readonly toolSketchEntityIds?: readonly SketchEntityId[];
+  readonly toolProfileKind?: FeatureExtrudeProfileKind | "wire";
 }
 
 export interface CadBooleanResultTopologyReadiness {
@@ -6708,6 +6711,57 @@ export interface CadExactExportResolvedWireProfile {
   };
 }
 
+export interface CadExactExportPrimitiveExtrudeSource {
+  readonly sketchPlane: SketchPlane;
+  readonly profile:
+    | {
+        readonly kind: "rectangle";
+        readonly center: Vec2;
+        readonly width: number;
+        readonly height: number;
+      }
+    | {
+        readonly kind: "circle";
+        readonly center: Vec2;
+        readonly radius: number;
+      };
+  readonly depth: number;
+  readonly side: FeatureExtrudeSide;
+  readonly placementFrame?: {
+    readonly origin: Vec3;
+    readonly uAxis: Vec3;
+    readonly vAxis: Vec3;
+  };
+}
+
+export interface CadExactExportWireExtrudeSource {
+  readonly sketchPlane: SketchPlane;
+  readonly profile: CadExactExportResolvedWireProfile;
+  readonly depth: number;
+  readonly side: FeatureExtrudeSide;
+  readonly placementFrame?: never;
+}
+
+export type CadExactExportBooleanSource =
+  | CadExactExportPrimitiveExtrudeSource
+  | CadExactExportBooleanResultSource;
+
+export type CadExactExportBooleanResultSource =
+  | {
+      readonly kind: "booleanExtrudes";
+      readonly operation: "add";
+      readonly target: CadExactExportBooleanSource;
+      readonly tool:
+        | CadExactExportPrimitiveExtrudeSource
+        | CadExactExportWireExtrudeSource;
+    }
+  | {
+      readonly kind: "booleanExtrudes";
+      readonly operation: "cut";
+      readonly target: CadExactExportBooleanSource;
+      readonly tool: CadExactExportPrimitiveExtrudeSource;
+    };
+
 export type CadExactExportExtrudeBodySource =
   | (CadExactExportExtrudeBodySourceBase & {
       readonly sourceSketchEntityId: SketchEntityId;
@@ -6735,7 +6789,16 @@ export type CadExactExportExtrudeBodySource =
       readonly sourceSketchEntityIds: readonly SketchEntityId[];
       readonly profile: CadExactExportResolvedWireProfile;
       readonly placementFrame?: never;
-    });
+    })
+  | (CadExactExportExtrudeBodySourceBase &
+      CadExactExportBooleanResultSource & {
+        readonly operation: "add";
+        readonly sourceSketchEntityId?: never;
+        readonly sourceSketchEntityIds: readonly SketchEntityId[];
+        readonly targetBodyId: BodyId;
+        readonly targetTopologyAnchorId?: string;
+        readonly exactResultSourceIdentitySignature: string;
+      });
 
 export type CadExactExportBodySource = CadExactExportExtrudeBodySource;
 

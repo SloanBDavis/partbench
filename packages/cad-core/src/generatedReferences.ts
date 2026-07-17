@@ -17,6 +17,7 @@ import type {
   CadGeneratedReferenceProfileSignature,
   CadGeneratedReferenceSignature,
   CadGeneratedVertexReference,
+  CadTopologyIdentitySourceSnapshot,
   FeatureExtrudeProfileKind,
   FeatureExtrudeSide,
   FeatureHoleDepthMode,
@@ -87,6 +88,7 @@ const CIRCULAR_SIDE_FACE_NOTE =
 export interface GeneratedReferencesDocument {
   readonly sketches: ReadonlyMap<SketchId, GeneratedReferencesSketch>;
   readonly features: ReadonlyMap<FeatureId, GeneratedReferencesFeature>;
+  readonly topologyIdentity?: CadTopologyIdentitySourceSnapshot;
 }
 
 export interface GeneratedReferencesSketch {

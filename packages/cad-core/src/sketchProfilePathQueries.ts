@@ -1,5 +1,7 @@
 import type {
   CadOpsVersion,
+  CadTopologyIdentitySourceSnapshot,
+  FeatureId,
   OrientedSketchSegmentRef,
   SketchConstructionExclusion,
   SketchConsumerCompatibility,
@@ -31,7 +33,10 @@ import type {
 } from "@web-cad/cad-protocol";
 
 import type { CadDocument, Sketch } from "./index";
-import { createSupportedBooleanBodyTargetOperations } from "./booleanTargetSupport";
+import {
+  createSupportedBooleanBodyTargetOperations,
+  type BooleanTargetSupportFeature
+} from "./booleanTargetSupport";
 import { isPrimitiveBodyId } from "./primitiveBodyIdentity";
 import { SKETCH_GEOMETRY_POLICY } from "./sketchGeometryPolicy";
 import {
@@ -98,6 +103,12 @@ interface EntityComponent {
 
 const DEFAULT_PART_ID = "part:default";
 const LINEAR_TOLERANCE = SKETCH_GEOMETRY_POLICY.linearTolerance;
+
+export interface SketchProfileReadinessDocument {
+  readonly sketches: ReadonlyMap<SketchId, Sketch>;
+  readonly features: ReadonlyMap<FeatureId, BooleanTargetSupportFeature>;
+  readonly topologyIdentity?: CadTopologyIdentitySourceSnapshot;
+}
 
 function distance(left: Vec2, right: Vec2): number {
   return Math.hypot(left[0] - right[0], left[1] - right[1]);
@@ -1147,7 +1158,7 @@ function createConsumerCompatibility(
 }
 
 function createTargetCompatibility(
-  document: CadDocument,
+  document: SketchProfileReadinessDocument,
   consumer: SketchProfileConsumerIntent
 ): SketchProfileReadinessQueryResponse["targetCompatibility"] {
   if (
@@ -1433,7 +1444,7 @@ function createWireProfileReadinessResponse(
 }
 
 export function createSketchProfileReadinessResponse(
-  document: CadDocument,
+  document: SketchProfileReadinessDocument,
   query: SketchProfileReadinessQuery,
   cadOpsVersion: CadOpsVersion
 ): SketchProfileReadinessQueryResponse {

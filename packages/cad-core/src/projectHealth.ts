@@ -62,7 +62,7 @@ import {
   getSweepPathEntityReferences
 } from "./normalizedFeatureInputs";
 import { resolveTopologyAnchorGeneratedReferenceFromSourceRole } from "./topologyAnchorGeneratedReferenceResolution";
-import { resolveNewBodyWireExtrudeProfile } from "./wireExtrudeProfile";
+import { resolveWireExtrudeProfile } from "./wireExtrudeProfile";
 import type {
   CadDocument,
   LinearPatternFeature,
@@ -315,10 +315,15 @@ function createAuthoredExtrudeHealth(
   const profileKind = getSupportedEntityProfileKind(entity) ?? "rectangle";
 
   if (feature.profile.kind === "wire") {
-    const resolution = resolveNewBodyWireExtrudeProfile(
+    const resolution = resolveWireExtrudeProfile(
       document,
       feature.profile,
-      feature.operationMode
+      feature.operationMode,
+      {
+        targetBodyId: feature.targetBodyId,
+        targetTopologyAnchorId: feature.targetTopologyAnchorId,
+        ignoreFeatureId: feature.id
+      }
     );
     if (!resolution.ok) {
       issues.push({
@@ -2198,9 +2203,13 @@ function isSupportedAddTargetProfileKind(
 }
 
 function isSupportedBooleanToolProfileKind(
-  profileKind: FeatureExtrudeProfileKind
+  profileKind: FeatureExtrudeProfileKind | "wire"
 ): boolean {
-  return profileKind === "rectangle" || profileKind === "circle";
+  return (
+    profileKind === "rectangle" ||
+    profileKind === "circle" ||
+    profileKind === "wire"
+  );
 }
 
 function isSupportedBooleanTarget(
@@ -2208,8 +2217,15 @@ function isSupportedBooleanTarget(
   targetFeature: ProjectHealthFeature,
   document: ProjectHealthDocument
 ): boolean {
-  const toolProfileKind = getProjectHealthProfileKind(document, feature);
-  if (!toolProfileKind || !isSupportedBooleanToolProfileKind(toolProfileKind)) {
+  const toolProfileKind =
+    feature.profile.kind === "wire"
+      ? "wire"
+      : getProjectHealthProfileKind(document, feature);
+  if (
+    !toolProfileKind ||
+    !isSupportedBooleanToolProfileKind(toolProfileKind) ||
+    (toolProfileKind === "wire" && feature.operationMode !== "add")
+  ) {
     return false;
   }
 

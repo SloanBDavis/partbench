@@ -12,7 +12,10 @@ import type {
 } from "@web-cad/cad-protocol";
 
 import type { CadDocument } from "./index";
-import { createNewBodyWireProfileReadinessResponse } from "./sketchProfilePathQueries";
+import {
+  createSketchProfileReadinessResponse,
+  type SketchProfileReadinessDocument
+} from "./sketchProfilePathQueries";
 import { SKETCH_GEOMETRY_POLICY } from "./sketchGeometryPolicy";
 import { createSourceMeasurementFrame } from "./sourceMeasurementGeometry";
 
@@ -30,18 +33,23 @@ export type WireExtrudeProfileResolution =
       readonly sketchEntityId?: string;
     };
 
-/** Resolves the sole enabled V17 composite-profile feature row. */
-export function resolveNewBodyWireExtrudeProfile(
-  document: Pick<CadDocument, "sketches">,
+/** Resolves the enabled V17 composite-profile extrude rows. */
+export function resolveWireExtrudeProfile(
+  document: SketchProfileReadinessDocument,
   profile: SketchWireProfileRef,
-  operationMode: "newBody" | "add" | "cut"
+  operationMode: "newBody" | "add" | "cut",
+  target?: {
+    readonly targetBodyId?: string;
+    readonly targetTopologyAnchorId?: string;
+    readonly ignoreFeatureId?: string;
+  }
 ): WireExtrudeProfileResolution {
-  if (operationMode !== "newBody") {
+  if (operationMode === "cut") {
     return {
       ok: false,
       code: "UNSUPPORTED_FEATURE_OPERATION",
       message:
-        "Composite wire extrudes currently support newBody operation mode only."
+        "Composite wire extrude cut is not enabled until its complete V17 slice is implemented."
     };
   }
 
@@ -54,9 +62,31 @@ export function resolveNewBodyWireExtrudeProfile(
     };
   }
 
-  const readiness = createNewBodyWireProfileReadinessResponse(
-    document.sketches.get(profile.sketchId)!,
-    profile,
+  const consumer =
+    operationMode === "newBody"
+      ? {
+          featureKind: "extrude" as const,
+          operationMode: "newBody" as const
+        }
+      : {
+          featureKind: "extrude" as const,
+          operationMode: "add" as const,
+          ...(target?.targetTopologyAnchorId
+            ? { targetTopologyAnchorId: target.targetTopologyAnchorId }
+            : target?.targetBodyId
+              ? { targetBodyId: target.targetBodyId }
+              : {})
+        };
+  const readinessDocument = {
+    ...document,
+    features: new Map(document.features)
+  };
+  if (target?.ignoreFeatureId) {
+    readinessDocument.features.delete(target.ignoreFeatureId);
+  }
+  const readiness = createSketchProfileReadinessResponse(
+    readinessDocument,
+    { query: "sketch.profileReadiness", profile, consumer },
     "cadops.v1"
   );
 
@@ -87,11 +117,7 @@ export function createResolvedWireExtrudeProfile(
   profile: SketchWireProfileRef,
   ownerPartId: PartId
 ): CadExactExportResolvedWireProfile | undefined {
-  const resolution = resolveNewBodyWireExtrudeProfile(
-    document,
-    profile,
-    "newBody"
-  );
+  const resolution = resolveWireExtrudeProfile(document, profile, "newBody");
   if (!resolution.ok) return undefined;
   const sketch = document.sketches.get(resolution.profile.sketchId);
   if (!sketch) return undefined;

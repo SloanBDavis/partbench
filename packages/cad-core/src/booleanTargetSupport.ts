@@ -137,11 +137,8 @@ function resolveSupportedBooleanTargetProfileKind<
     return undefined;
   }
 
-  const targetProfileKind = resolveProfileKind(document, targetFeature);
-  if (!targetProfileKind) return undefined;
-
   if (targetFeature.operationMode === "newBody") {
-    return targetProfileKind;
+    return resolveProfileKind(document, targetFeature);
   }
 
   if (!isConsumingExtrudeOperationMode(targetFeature.operationMode)) {

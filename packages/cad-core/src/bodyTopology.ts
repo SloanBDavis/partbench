@@ -102,8 +102,39 @@ function createAuthoredFeatureTopology(
   bodyId: BodyId,
   units: DocumentUnits,
   ownerPartId: PartId,
-  feature: GeneratedReferencesFeature
+  feature: GeneratedReferencesFeature,
+  visitedBodyIds: ReadonlySet<BodyId> = new Set()
 ): CadBodyTopologySnapshot {
+  if (visitedBodyIds.has(bodyId)) {
+    const sourceIdentityInput: Omit<
+      CadBodyTopologySourceIdentity,
+      "signature"
+    > = {
+      bodyId,
+      sourceKind: "authoredExtrude",
+      units,
+      featureId: feature.id,
+      featureSourceSignature: `cyclic-target-lineage:${bodyId}`
+    };
+    return createUnsupportedTopologySnapshot({
+      bodyId,
+      units,
+      sourceIdentity: {
+        ...sourceIdentityInput,
+        signature: createTopologySourceSignature(sourceIdentityInput)
+      },
+      status: "ambiguous",
+      issues: [
+        {
+          code: "AMBIGUOUS_BODY_TOPOLOGY",
+          message: "Composite boolean target lineage contains a cycle.",
+          bodyId,
+          featureId: feature.id
+        }
+      ]
+    });
+  }
+  const nextVisitedBodyIds = new Set(visitedBodyIds).add(bodyId);
   if (feature.kind !== "extrude") {
     return createUnsupportedAuthoredFeatureTopology(
       document,
@@ -122,7 +153,8 @@ function createAuthoredFeatureTopology(
       {
         ...feature,
         profile: feature.profile
-      }
+      },
+      nextVisitedBodyIds
     );
   }
 
@@ -254,7 +286,8 @@ function createCompositeExtrudeTopology(
       Extract<GeneratedReferencesFeature, { kind: "extrude" }>["profile"],
       { kind: "wire" }
     >;
-  }
+  },
+  visitedBodyIds: ReadonlySet<BodyId>
 ): CadBodyTopologySnapshot {
   const sourceSketchEntityIds = feature.profile.segments.map(
     (segment) => segment.entityId
@@ -288,6 +321,14 @@ function createCompositeExtrudeTopology(
   const resolvedFrame = sketch
     ? createSourceMeasurementFrame(document, sketch, ownerPartId)
     : undefined;
+  const targetLineage = createCompositeTargetLineage(
+    document,
+    feature.targetBodyId,
+    feature.targetTopologyAnchorId,
+    units,
+    ownerPartId,
+    visitedBodyIds
+  );
   const sourceIdentityInput: Omit<CadBodyTopologySourceIdentity, "signature"> =
     {
       bodyId,
@@ -295,6 +336,8 @@ function createCompositeExtrudeTopology(
       units,
       featureId: feature.id,
       operationMode: feature.operationMode,
+      targetBodyId: feature.targetBodyId,
+      targetTopologyAnchorId: feature.targetTopologyAnchorId,
       sourceSketchId: feature.profile.sketchId,
       sourceSketchEntityIds,
       profileKind: "wire",
@@ -305,7 +348,10 @@ function createCompositeExtrudeTopology(
           JSON.stringify({
             profile: feature.profile,
             profileEntities,
-            resolvedFrame: resolvedFrame ?? null
+            resolvedFrame: resolvedFrame ?? null,
+            targetBodyId: feature.targetBodyId ?? null,
+            targetTopologyAnchorId: feature.targetTopologyAnchorId ?? null,
+            targetLineage
           })
         )
       )
@@ -315,20 +361,104 @@ function createCompositeExtrudeTopology(
     signature: createTopologySourceSignature(sourceIdentityInput)
   };
 
-  return createUnsupportedTopologySnapshot({
+  const topology = createUnsupportedTopologySnapshot({
     bodyId,
     units,
     sourceIdentity,
     issues: [
       {
         code: "UNSUPPORTED_BODY_TOPOLOGY",
-        message:
-          "Composite wire extrude topology requires matching kernel-derived exact topology evidence.",
+        message: `Composite wire extrude ${feature.operationMode} topology requires matching kernel-derived exact topology evidence.`,
         bodyId,
         featureId: feature.id
       }
     ]
   });
+  if (feature.operationMode === "newBody") return topology;
+  return {
+    ...topology,
+    status: "ambiguous",
+    booleanTopology: createBooleanResultTopologyReadiness({
+      bodyId,
+      feature,
+      profileRef: {
+        sketchId: feature.profile.sketchId,
+        entityIds: sourceSketchEntityIds
+      },
+      profileKind: "wire",
+      derivedExactValidationStatus: "notProvided"
+    })
+  };
+}
+
+function createCompositeTargetLineage(
+  document: GeneratedReferencesDocument,
+  targetBodyId: BodyId | undefined,
+  targetTopologyAnchorId: string | undefined,
+  units: DocumentUnits,
+  ownerPartId: PartId,
+  visitedBodyIds: ReadonlySet<BodyId>
+): {
+  readonly targetBodyId?: BodyId;
+  readonly targetSourceIdentitySignature?: string;
+  readonly targetAnchorCheckpointLineage?: {
+    readonly anchorId: string;
+    readonly checkpointId: string;
+    readonly checkpointEntityId: string;
+    readonly anchorSignatureHash?: string;
+    readonly anchorState: string;
+    readonly checkpointSourceIdentity?: string;
+    readonly checkpointStatus?: string;
+  };
+} {
+  const target = targetBodyId
+    ? [...document.features.values()].find(
+        (candidate) => candidate.bodyId === targetBodyId
+      )
+    : undefined;
+  const targetSourceIdentitySignature = target
+    ? createAuthoredFeatureTopology(
+        document,
+        target.bodyId,
+        units,
+        ownerPartId,
+        target,
+        visitedBodyIds
+      ).sourceIdentity.signature
+    : undefined;
+  const anchor = targetTopologyAnchorId
+    ? document.topologyIdentity?.anchors.find(
+        (candidate) => candidate.anchorId === targetTopologyAnchorId
+      )
+    : undefined;
+  const checkpoint = anchor
+    ? document.topologyIdentity?.checkpoints.find(
+        (candidate) => candidate.checkpointId === anchor.checkpointId
+      )
+    : undefined;
+  return {
+    ...(targetBodyId ? { targetBodyId } : {}),
+    ...(targetSourceIdentitySignature ? { targetSourceIdentitySignature } : {}),
+    ...(anchor
+      ? {
+          targetAnchorCheckpointLineage: {
+            anchorId: anchor.anchorId,
+            checkpointId: anchor.checkpointId,
+            checkpointEntityId: anchor.checkpointEntityId,
+            ...(anchor.signatureHash
+              ? { anchorSignatureHash: anchor.signatureHash }
+              : {}),
+            anchorState: anchor.state,
+            ...(checkpoint
+              ? {
+                  checkpointSourceIdentity: checkpoint.sourceIdentity.sha256,
+                  checkpointStatus: checkpoint.status
+                }
+              : {})
+          }
+        }
+      : {})
+  };
 }
 
 function createBooleanResultTopologyReadiness(input: {
@@ -336,9 +466,10 @@ function createBooleanResultTopologyReadiness(input: {
   readonly feature: Extract<GeneratedReferencesFeature, { kind: "extrude" }>;
   readonly profileRef: {
     readonly sketchId: string;
-    readonly entityId: string;
+    readonly entityId?: string;
+    readonly entityIds?: readonly string[];
   };
-  readonly profileKind: "rectangle" | "circle";
+  readonly profileKind: "rectangle" | "circle" | "wire";
   readonly derivedExactValidationStatus: CadBooleanResultTopologyDerivedExactValidationStatus;
 }): CadBooleanResultTopologyReadiness {
   const operationMode = input.feature.operationMode === "add" ? "add" : "cut";
@@ -360,7 +491,7 @@ function createBooleanResultTopologyReadiness(input: {
     contractVersion: "partbench.boolean-topology.v1",
     status: hasSourceTopologyRole ? "partial" : "ambiguous",
     commandReady: false,
-    sourceSemanticsAvailable: true,
+    sourceSemanticsAvailable: hasSourceTopologyRole,
     derivedExactValidationStatus: input.derivedExactValidationStatus,
     sourceInputs: {
       featureId: input.feature.id,
@@ -368,7 +499,12 @@ function createBooleanResultTopologyReadiness(input: {
       operationMode,
       targetBodyId: input.feature.targetBodyId,
       toolSketchId: input.profileRef.sketchId,
-      toolSketchEntityId: input.profileRef.entityId,
+      ...(input.profileRef.entityId
+        ? { toolSketchEntityId: input.profileRef.entityId }
+        : {}),
+      ...(input.profileRef.entityIds
+        ? { toolSketchEntityIds: input.profileRef.entityIds }
+        : {}),
       toolProfileKind: input.profileKind
     },
     roleReadiness,
@@ -478,7 +614,7 @@ function createBooleanExactValidationDiagnostic(
 function createBooleanRoleReadiness(input: {
   readonly bodyId: BodyId;
   readonly operationMode: "add" | "cut";
-  readonly profileKind: FeatureExtrudeProfileKind;
+  readonly profileKind: FeatureExtrudeProfileKind | "wire";
 }): readonly CadBooleanResultTopologyRoleReadiness[] {
   const common: CadBooleanResultTopologyRoleReadiness[] = [
     {
@@ -597,7 +733,7 @@ function createBooleanRoleReadiness(input: {
 
 function createAddedWallFaceRoleReadiness(
   bodyId: BodyId,
-  profileKind: FeatureExtrudeProfileKind
+  profileKind: FeatureExtrudeProfileKind | "wire"
 ): readonly CadBooleanResultTopologyRoleReadiness[] {
   if (profileKind === "rectangle") {
     return ["side:uMin", "side:uMax", "side:vMin", "side:vMax"].map(
@@ -636,7 +772,7 @@ function createAddedWallFaceRoleReadiness(
 
 function createAddedCapFaceRoleReadiness(
   bodyId: BodyId,
-  profileKind: FeatureExtrudeProfileKind
+  profileKind: FeatureExtrudeProfileKind | "wire"
 ): readonly CadBooleanResultTopologyRoleReadiness[] {
   if (profileKind === "rectangle") {
     return [
@@ -674,7 +810,7 @@ function createAddedCapFaceRoleReadiness(
 
 function createCutWallFaceRoleReadiness(
   bodyId: BodyId,
-  profileKind: FeatureExtrudeProfileKind
+  profileKind: FeatureExtrudeProfileKind | "wire"
 ): readonly CadBooleanResultTopologyRoleReadiness[] {
   if (profileKind === "rectangle") {
     return ["side:uMin", "side:uMax", "side:vMin", "side:vMax"].map(
@@ -732,7 +868,7 @@ function createCommandReadyBooleanFaceRole(input: {
 
 function createCutWallProfileEdgeRoleReadiness(
   bodyId: BodyId,
-  profileKind: FeatureExtrudeProfileKind
+  profileKind: FeatureExtrudeProfileKind | "wire"
 ): readonly CadBooleanResultTopologyRoleReadiness[] {
   if (profileKind === "rectangle") {
     return [
@@ -766,7 +902,7 @@ function createCutWallProfileEdgeRoleReadiness(
 
 function createCutStartRimEdgeRoleReadiness(
   bodyId: BodyId,
-  profileKind: FeatureExtrudeProfileKind
+  profileKind: FeatureExtrudeProfileKind | "wire"
 ): readonly CadBooleanResultTopologyRoleReadiness[] {
   if (profileKind === "circle") {
     return [
@@ -793,7 +929,7 @@ function createCutStartRimEdgeRoleReadiness(
 
 function createCutTerminalRimEdgeRoleReadiness(
   bodyId: BodyId,
-  profileKind: FeatureExtrudeProfileKind
+  profileKind: FeatureExtrudeProfileKind | "wire"
 ): readonly CadBooleanResultTopologyRoleReadiness[] {
   if (profileKind === "circle") {
     return [
@@ -843,7 +979,7 @@ function createCommandReadyBooleanEdgeRole(input: {
 
 function createAddProfileEdgeRoleReadiness(
   bodyId: BodyId,
-  profileKind: FeatureExtrudeProfileKind
+  profileKind: FeatureExtrudeProfileKind | "wire"
 ): readonly CadBooleanResultTopologyRoleReadiness[] {
   if (profileKind === "rectangle") {
     return ["end:uMin", "end:uMax", "end:vMin", "end:vMax"].map((sourceRole) =>

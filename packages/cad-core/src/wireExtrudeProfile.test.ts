@@ -156,7 +156,7 @@ describe("V17 composite wire extrude newBody", () => {
     expect(bodySummary?.source).not.toHaveProperty("profileKind");
   });
 
-  it("keeps dry-run deterministic and blocks composite add without consuming ids", () => {
+  it("keeps dry-run deterministic and reports a missing composite add target without consuming ids", () => {
     const engine = createWireEngine();
     const before = engine.createSnapshot();
     const dryRun = engine.executeBatch({
@@ -191,7 +191,7 @@ describe("V17 composite wire extrude newBody", () => {
     });
     expect(blocked).toMatchObject({
       ok: false,
-      error: { code: "UNSUPPORTED_FEATURE_OPERATION" }
+      error: { code: "BODY_NOT_FOUND" }
     });
     expect(engine.createSnapshot()).toEqual(before);
   });

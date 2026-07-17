@@ -40,8 +40,7 @@ import {
   type SketchProfileHealthEntry
 } from "./sketchProfileHealth";
 import { createTopologyAnchorReferenceChangesForBody } from "./topologyReferenceHealth";
-import { resolveNewBodyWireExtrudeProfile } from "./wireExtrudeProfile";
-import type { CadDocument } from "./index";
+import { resolveWireExtrudeProfile } from "./wireExtrudeProfile";
 
 const SOURCE_BOUNDARY_NOTE =
   "Feature editability is derived from authoritative document source features and semantic generated/named references.";
@@ -456,7 +455,9 @@ function createExtrudeEditabilityResponse(
     );
   }
 
-  if (feature.operationMode !== "newBody") {
+  const isCompositeAdd =
+    feature.operationMode === "add" && feature.profile?.kind === "wire";
+  if (feature.operationMode !== "newBody" && !isCompositeAdd) {
     blockingDiagnostics.push(
       createDiagnostic({
         code: "AMBIGUOUS_RESULT_TOPOLOGY",
@@ -466,7 +467,7 @@ function createExtrudeEditabilityResponse(
         featureId: feature.id,
         bodyId: feature.bodyId,
         targetBodyId: feature.targetBodyId,
-        expected: "newBody extrude",
+        expected: "newBody or composite wire add extrude",
         received: feature.operationMode
       })
     );
@@ -1652,11 +1653,36 @@ function createExtrudeProfileProposalDiagnostics(
   profile: SketchProfileRef,
   document: CreateFeatureEditabilityResponseOptions["document"]
 ): readonly CadFeatureEditDiagnostic[] {
+  if (
+    feature.operationMode === "add" &&
+    feature.profile?.kind === "wire" &&
+    profile.kind !== "wire"
+  ) {
+    return [
+      createDiagnostic({
+        code: "FEATURE_EDIT_INVALID_PROPOSAL",
+        severity: "blocker",
+        message:
+          "Composite wire add extrudes cannot be changed to an entity profile until primitive add editing is enabled as a complete vertical slice.",
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        fieldPath: "profile",
+        expected: "composite wire profile",
+        received: profile.kind
+      })
+    ];
+  }
+
   if (profile.kind === "wire") {
-    const resolution = resolveNewBodyWireExtrudeProfile(
-      document as CadDocument,
+    const resolution = resolveWireExtrudeProfile(
+      document,
       profile,
-      feature.operationMode
+      feature.operationMode,
+      {
+        targetBodyId: feature.targetBodyId,
+        targetTopologyAnchorId: feature.targetTopologyAnchorId,
+        ignoreFeatureId: feature.id
+      }
     );
     return resolution.ok
       ? []

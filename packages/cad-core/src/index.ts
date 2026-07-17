@@ -325,7 +325,7 @@ import {
 } from "./sketchProfileHealth";
 import {
   createProfileInputReference,
-  resolveNewBodyWireExtrudeProfile
+  resolveWireExtrudeProfile
 } from "./wireExtrudeProfile";
 export { createResolvedWireExtrudeRecipe } from "./wireExtrudeProfile";
 import {
@@ -1915,7 +1915,8 @@ export class CadEngine {
         return createProjectExportReadiness({
           document: this.#document,
           cadOpsVersion: request.version,
-          bodies: structure.bodies
+          bodies: structure.bodies,
+          derivedExactMetadata: request.query.derivedExactMetadata
         });
       }
 
@@ -6234,15 +6235,23 @@ function applyOperation(
         opIndex
       );
       const requestedProfile = resolveExtrudeCommandInputProfile(op, opIndex);
+      const target = validateExtrudeTarget(
+        state,
+        operationMode,
+        op.targetBodyId,
+        op.targetTopologyAnchorId,
+        opIndex
+      );
       let profile = requestedProfile;
       let profileKind: FeatureExtrudeProfileKind | undefined;
       let profileOrientationNormalized = false;
 
       if (requestedProfile.kind === "wire") {
-        const resolution = resolveNewBodyWireExtrudeProfile(
+        const resolution = resolveWireExtrudeProfile(
           state,
           requestedProfile,
-          operationMode
+          operationMode,
+          target
         );
         if (!resolution.ok) {
           throwValidationError({
@@ -6252,8 +6261,7 @@ function applyOperation(
             sketchId: resolution.sketchId,
             sketchEntityId: resolution.sketchEntityId,
             path: operationPath(opIndex, "profile"),
-            expected:
-              "feature-ready composite wire profile for newBody extrude",
+            expected: `feature-ready composite wire profile for ${operationMode} extrude`,
             received: requestedProfile.kind
           });
         }
@@ -6280,23 +6288,14 @@ function applyOperation(
           requestedProfile.entityId
         );
       }
-      const target = validateExtrudeTarget(
+      assertSupportedExtrudeOperation(
         state,
         operationMode,
-        op.targetBodyId,
-        op.targetTopologyAnchorId,
+        profileKind ?? "wire",
+        target.targetBodyId,
+        target.targetTopologyAnchorId,
         opIndex
       );
-      if (profileKind) {
-        assertSupportedExtrudeOperation(
-          state,
-          operationMode,
-          profileKind,
-          target.targetBodyId,
-          target.targetTopologyAnchorId,
-          opIndex
-        );
-      }
       const feature: ExtrudeFeature = {
         id: op.id ?? createFeatureId(),
         kind: "extrude",
@@ -7889,12 +7888,22 @@ function isCadQuery(value: unknown): boolean {
     case "project.structure":
     case "project.topologyIdentityReadiness":
     case "project.importReadiness":
-    case "project.exportReadiness":
     case "project.packageReadiness":
     case "project.sketches":
     case "reference.listNamed":
     case "transaction.history":
       return Object.keys(value).length === 1;
+    case "project.exportReadiness":
+      return (
+        Object.keys(value).every((key) =>
+          ["query", "derivedExactMetadata"].includes(key)
+        ) &&
+        (value.derivedExactMetadata === undefined ||
+          (Array.isArray(value.derivedExactMetadata) &&
+            value.derivedExactMetadata.every(
+              isCadBodyDerivedExactMetadataSnapshot
+            )))
+      );
     case "project.dependencyGraph":
     case "project.rebuildPlan":
       return (
@@ -8464,7 +8473,13 @@ function isCadReferenceHealthTarget(value: unknown): boolean {
 }
 
 function isProjectExactExportQuery(value: Record<string, unknown>): boolean {
-  const allowedKeys = ["query", "format", "bodyIds", "sourceIdentity"];
+  const allowedKeys = [
+    "query",
+    "format",
+    "bodyIds",
+    "sourceIdentity",
+    "derivedExactMetadata"
+  ];
 
   return (
     value.query === "project.exportExact" &&
@@ -8474,7 +8489,12 @@ function isProjectExactExportQuery(value: Record<string, unknown>): boolean {
       (Array.isArray(value.bodyIds) &&
         value.bodyIds.every((bodyId) => typeof bodyId === "string"))) &&
     (value.sourceIdentity === undefined ||
-      isWcadSourceIdentityInput(value.sourceIdentity))
+      isWcadSourceIdentityInput(value.sourceIdentity)) &&
+    (value.derivedExactMetadata === undefined ||
+      (Array.isArray(value.derivedExactMetadata) &&
+        value.derivedExactMetadata.every(
+          isCadBodyDerivedExactMetadataSnapshot
+        )))
   );
 }
 
@@ -11824,7 +11844,9 @@ function updateSketchEntityAndDependents(
       assertSupportedExtrudeOperation(
         { ...state, features: nextFeatures },
         feature.operationMode,
-        getFeatureProfileKindOrThrow(state, feature, opIndex, true),
+        feature.profile.kind === "wire"
+          ? "wire"
+          : getFeatureProfileKindOrThrow(state, feature, opIndex, true),
         feature.targetBodyId,
         feature.targetTopologyAnchorId,
         opIndex,
@@ -12391,7 +12413,9 @@ function updateExtrudeFeature(
     });
   }
 
-  if (feature.operationMode !== "newBody") {
+  const isCompositeAdd =
+    feature.operationMode === "add" && feature.profile.kind === "wire";
+  if (feature.operationMode !== "newBody" && !isCompositeAdd) {
     throwValidationError({
       code: "FEATURE_NOT_EDITABLE",
       message: `Feature ${featureId} cannot be edited through feature.updateExtrude because ${feature.operationMode} result topology is not editable as a body-level feature result yet.`,
@@ -12399,7 +12423,7 @@ function updateExtrudeFeature(
       featureId,
       bodyId: feature.bodyId,
       path: operationPath(opIndex, "id"),
-      expected: "authored newBody extrude feature id",
+      expected: "authored newBody or composite add extrude feature id",
       received: feature.operationMode
     });
   }
@@ -12431,11 +12455,33 @@ function updateExtrudeFeature(
 
   let profile = requestedProfile ?? feature.profile;
   let profileOrientationNormalized = false;
+  if (
+    isCompositeAdd &&
+    requestedProfile?.kind !== undefined &&
+    requestedProfile.kind !== "wire"
+  ) {
+    throwValidationError({
+      code: "UNSUPPORTED_FEATURE_OPERATION",
+      message:
+        "Composite wire add extrudes cannot be changed to an entity profile until primitive add editing is enabled as a complete vertical slice.",
+      opIndex,
+      featureId,
+      bodyId: feature.bodyId,
+      path: operationPath(opIndex, "profile"),
+      expected: "composite wire profile",
+      received: requestedProfile.kind
+    });
+  }
   if (profile.kind === "wire") {
-    const resolution = resolveNewBodyWireExtrudeProfile(
+    const resolution = resolveWireExtrudeProfile(
       state,
       profile,
-      feature.operationMode
+      feature.operationMode,
+      {
+        targetBodyId: feature.targetBodyId,
+        targetTopologyAnchorId: feature.targetTopologyAnchorId,
+        ignoreFeatureId: feature.id
+      }
     );
     if (!resolution.ok) {
       throwValidationError({
@@ -12446,7 +12492,7 @@ function updateExtrudeFeature(
         sketchId: resolution.sketchId,
         sketchEntityId: resolution.sketchEntityId,
         path: operationPath(opIndex, "profile"),
-        expected: "feature-ready composite wire profile for newBody extrude",
+        expected: `feature-ready composite wire profile for ${feature.operationMode} extrude`,
         received: profile.kind
       });
     }
@@ -12486,6 +12532,18 @@ function updateExtrudeFeature(
         ? feature.side
         : validateExtrudeSide(op.side, opIndex)
   };
+
+  assertSupportedExtrudeOperation(
+    state,
+    updated.operationMode,
+    updated.profile.kind === "wire"
+      ? "wire"
+      : getFeatureProfileKindOrThrow(state, updated, opIndex),
+    updated.targetBodyId,
+    updated.targetTopologyAnchorId,
+    opIndex,
+    updated.id
+  );
 
   state.features.set(featureId, updated);
   pushFeatureModified(diff, featureRef(state, updated));
@@ -12611,7 +12669,9 @@ function validateDirectConsumingFeatureForSourceExtrudeRebuild(
     assertSupportedExtrudeOperation(
       state,
       feature.operationMode,
-      getFeatureProfileKindOrThrow(state, feature, opIndex),
+      feature.profile.kind === "wire"
+        ? "wire"
+        : getFeatureProfileKindOrThrow(state, feature, opIndex),
       feature.targetBodyId,
       feature.targetTopologyAnchorId,
       opIndex,
@@ -15559,8 +15619,18 @@ function isSupportedHoleTargetProfileKind(
   return profileKind === "rectangle" || profileKind === "circle";
 }
 
-function isSupportedBooleanToolProfileKind(
-  profileKind: FeatureExtrudeProfileKind
+function isSupportedAddToolProfileKind(
+  profileKind: FeatureExtrudeProfileKind | "wire"
+): boolean {
+  return (
+    profileKind === "rectangle" ||
+    profileKind === "circle" ||
+    profileKind === "wire"
+  );
+}
+
+function isSupportedCutToolProfileKind(
+  profileKind: FeatureExtrudeProfileKind | "wire"
 ): boolean {
   return profileKind === "rectangle" || profileKind === "circle";
 }
@@ -17267,7 +17337,7 @@ function validateExtrudeTargetBodyId(
 function assertSupportedExtrudeOperation(
   state: MutableDocumentState,
   operationMode: FeatureExtrudeOperationMode,
-  profileKind: FeatureExtrudeProfileKind,
+  profileKind: FeatureExtrudeProfileKind | "wire",
   targetBodyId: BodyId | undefined,
   targetTopologyAnchorId?: string,
   opIndex?: number,
@@ -17297,7 +17367,7 @@ function assertSupportedExtrudeOperation(
   if (
     operationMode === "cut" &&
     targetBodyId &&
-    isSupportedBooleanToolProfileKind(profileKind) &&
+    isSupportedCutToolProfileKind(profileKind) &&
     targetProfileKind !== undefined &&
     isSupportedCutTargetProfileKind(targetProfileKind) &&
     !hasBlockingConsumingFeature
@@ -17308,7 +17378,7 @@ function assertSupportedExtrudeOperation(
   if (
     operationMode === "add" &&
     targetBodyId &&
-    isSupportedBooleanToolProfileKind(profileKind) &&
+    isSupportedAddToolProfileKind(profileKind) &&
     targetProfileKind !== undefined &&
     isSupportedAddTargetProfileKind(
       targetProfileKind,
@@ -17321,11 +17391,11 @@ function assertSupportedExtrudeOperation(
 
   const expected =
     operationMode === "add"
-      ? "add with rectangle/circle source and active rectangle source or supported topology-backed result target"
+      ? "add with rectangle/circle/composite wire source and active rectangle source or supported topology-backed result target"
       : "cut with rectangle/circle source and active rectangle/circle source or topology-backed result target";
   const message =
     operationMode === "add"
-      ? "Add extrudes currently support rectangle or circle tools fusing with one active rectangle source or supported topology-backed result target body."
+      ? "Add extrudes currently support rectangle, circle, or composite wire tools fusing with one active rectangle source or supported topology-backed result target body."
       : "Cut extrudes currently support rectangle or circle tools cutting one active rectangle, circle, or topology-backed result target body.";
 
   throwValidationError({
@@ -17342,7 +17412,8 @@ function assertSupportedExtrudeOperation(
       targetTopologyAnchorId,
       targetProfileKind:
         targetProfileKind ??
-        (targetFeature?.kind === "extrude"
+        (targetFeature?.kind === "extrude" &&
+        targetFeature.profile.kind === "entity"
           ? getFeatureProfileKindOrThrow(state, targetFeature, opIndex)
           : undefined),
       targetOperationMode:
@@ -17372,6 +17443,7 @@ function resolveSupportedBooleanTargetProfileKind(
   }
 
   if (targetFeature.operationMode === "newBody") {
+    if (targetFeature.profile.kind === "wire") return undefined;
     return getFeatureProfileKindOrThrow(state, targetFeature);
   }
 
@@ -22131,10 +22203,17 @@ function createFeatureSummary(
       depth: feature.depth,
       side: feature.side,
       operationMode: feature.operationMode,
+      ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {}),
+      ...(feature.targetTopologyAnchorId
+        ? { targetTopologyAnchorId: feature.targetTopologyAnchorId }
+        : {}),
       source: {
         type: "sketchEntity",
         sketchId: feature.profile.sketchId,
-        profile: structuredClone(feature.profile)
+        profile: structuredClone(feature.profile),
+        ...(feature.targetTopologyAnchorId
+          ? { targetTopologyAnchorId: feature.targetTopologyAnchorId }
+          : {})
       }
     };
   }
@@ -25218,6 +25297,19 @@ function sortPlainJson(value: unknown): unknown {
   );
 }
 
+type ImportExtrudeFeatureSnapshot = Omit<
+  ExtrudeFeatureSnapshot,
+  "entityId" | "profileKind"
+> & {
+  readonly entityId?: SketchEntityId;
+  readonly profileKind: FeatureExtrudeProfileKind | "wire";
+  readonly profile?: Extract<SketchProfileRef, { readonly kind: "wire" }>;
+};
+
+type ImportFeatureSnapshot =
+  | Exclude<FeatureSnapshot, ExtrudeFeatureSnapshot>
+  | ImportExtrudeFeatureSnapshot;
+
 function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
   const issues: CadProjectImportIssue[] = [];
 
@@ -25544,7 +25636,7 @@ function validateCadDocumentSnapshot(
   const extrudeFeatureByBodyId = new Map<BodyId, ExtrudeFeatureSnapshot>();
   const authoredFeatureByBodyId = new Map<
     BodyId,
-    FeatureSnapshot & { readonly path: string }
+    ImportFeatureSnapshot & { readonly path: string }
   >();
   let namedReferencesByName = new Map<
     NamedReferenceName,
@@ -28451,10 +28543,50 @@ function collectValidExtrudeFeatureByBodyId(
 function collectValidAuthoredFeatureByBodyId(
   value: unknown,
   path: string,
-  featuresByBodyId: Map<BodyId, FeatureSnapshot & { readonly path: string }>,
+  featuresByBodyId: Map<
+    BodyId,
+    ImportFeatureSnapshot & { readonly path: string }
+  >,
   sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>
 ): void {
   const profile = getImportEntityProfileDescriptor(value, sketchEntityRefs);
+  const normalizedProfile =
+    isRecord(value) && value.kind === "extrude"
+      ? validateSketchProfileRefSource(value.profile)
+      : undefined;
+  if (
+    isRecord(value) &&
+    value.kind === "extrude" &&
+    typeof value.id === "string" &&
+    normalizedProfile?.ok &&
+    normalizedProfile.value.kind === "wire" &&
+    typeof value.depth === "number" &&
+    isPositiveFiniteNumber(value.depth) &&
+    isExtrudeSide(value.side) &&
+    (value.operationMode === "newBody" || value.operationMode === "add") &&
+    (value.targetBodyId === undefined ||
+      typeof value.targetBodyId === "string") &&
+    (value.targetTopologyAnchorId === undefined ||
+      typeof value.targetTopologyAnchorId === "string") &&
+    typeof value.bodyId === "string"
+  ) {
+    featuresByBodyId.set(value.bodyId, {
+      id: value.id,
+      kind: "extrude",
+      name: typeof value.name === "string" ? value.name : undefined,
+      sketchId: normalizedProfile.value.sketchId,
+      profile: normalizedProfile.value,
+      profileKind: "wire",
+      depth: value.depth,
+      side: value.side,
+      operationMode: value.operationMode,
+      targetBodyId: value.targetBodyId,
+      targetTopologyAnchorId: value.targetTopologyAnchorId,
+      bodyId: value.bodyId,
+      path
+    });
+    return;
+  }
   if (
     isRecord(value) &&
     value.kind === "extrude" &&
@@ -28771,7 +28903,7 @@ function collectValidAuthoredFeatureByBodyId(
 function validateFeatureTargetBodyReferences(
   featuresByBodyId: ReadonlyMap<
     BodyId,
-    FeatureSnapshot & { readonly path: string }
+    ImportFeatureSnapshot & { readonly path: string }
   >,
   issues: CadProjectImportIssue[]
 ): void {
@@ -28865,8 +28997,11 @@ function validateFeatureTargetBodyReferences(
 }
 
 function isSupportedImportEdgeFinishTargetCombination(
-  feature: Extract<FeatureSnapshot, { readonly kind: "chamfer" | "fillet" }>,
-  target: FeatureSnapshot
+  feature: Extract<
+    ImportFeatureSnapshot,
+    { readonly kind: "chamfer" | "fillet" }
+  >,
+  target: ImportFeatureSnapshot
 ): boolean {
   if (target.kind === "importedBody") {
     return (
@@ -28892,10 +29027,10 @@ function isSupportedImportEdgeFinishTargetCombination(
 function isSupportedImportHoleTargetCombination(
   featuresByBodyId: ReadonlyMap<
     BodyId,
-    FeatureSnapshot & { readonly path: string }
+    ImportFeatureSnapshot & { readonly path: string }
   >,
   feature: HoleFeatureSnapshot,
-  target: ExtrudeFeatureSnapshot
+  target: ImportExtrudeFeatureSnapshot
 ): boolean {
   const targetProfileKind = resolveImportBooleanTargetProfileKind(
     featuresByBodyId,
@@ -28910,7 +29045,9 @@ function isSupportedImportHoleTargetCombination(
   );
 }
 
-function isImportTargetConsumingFeature(feature: FeatureSnapshot): boolean {
+function isImportTargetConsumingFeature(
+  feature: ImportFeatureSnapshot
+): boolean {
   return (
     (feature.kind === "extrude" &&
       isConsumingExtrudeOperationMode(feature.operationMode ?? "newBody") &&
@@ -28924,7 +29061,7 @@ function isImportTargetConsumingFeature(feature: FeatureSnapshot): boolean {
 }
 
 function getImportFeatureTargetBodyId(
-  feature: FeatureSnapshot
+  feature: ImportFeatureSnapshot
 ): BodyId | undefined {
   if (
     feature.kind === "chamfer" ||
@@ -28941,24 +29078,27 @@ function getImportFeatureTargetBodyId(
 }
 
 function isExtrudeFeatureSnapshot(
-  feature: FeatureSnapshot
-): feature is ExtrudeFeatureSnapshot {
+  feature: ImportFeatureSnapshot
+): feature is ImportExtrudeFeatureSnapshot {
   return feature.kind === "extrude";
 }
 
 function isSupportedBooleanExtrudeCombination(
   featuresByBodyId: ReadonlyMap<
     BodyId,
-    FeatureSnapshot & { readonly path: string }
+    ImportFeatureSnapshot & { readonly path: string }
   >,
-  feature: ExtrudeFeatureSnapshot,
-  target: FeatureSnapshot & { readonly path: string }
+  feature: ImportExtrudeFeatureSnapshot,
+  target: ImportFeatureSnapshot & { readonly path: string }
 ): boolean {
-  if (!isSupportedBooleanToolProfileKind(feature.profileKind)) {
+  const operationMode = feature.operationMode ?? "newBody";
+  if (
+    (feature.profileKind === "wire" && operationMode !== "add") ||
+    (feature.profileKind !== "wire" &&
+      !isSupportedCutToolProfileKind(feature.profileKind))
+  ) {
     return false;
   }
-
-  const operationMode = feature.operationMode ?? "newBody";
 
   if (target.kind === "importedBody") {
     return (
@@ -28999,14 +29139,14 @@ function isSupportedBooleanExtrudeCombination(
 function resolveImportBooleanTargetProfileKind(
   featuresByBodyId: ReadonlyMap<
     BodyId,
-    FeatureSnapshot & { readonly path: string }
+    ImportFeatureSnapshot & { readonly path: string }
   >,
-  target: ExtrudeFeatureSnapshot,
+  target: ImportExtrudeFeatureSnapshot,
   targetTopologyAnchorId?: string,
   activeResultBodyId?: BodyId
 ): FeatureExtrudeProfileKind | undefined {
   if ((target.operationMode ?? "newBody") === "newBody") {
-    return target.profileKind;
+    return target.profileKind === "wire" ? undefined : target.profileKind;
   }
 
   const allowActiveResultBodyAnchor =
@@ -29016,14 +29156,14 @@ function resolveImportBooleanTargetProfileKind(
     return undefined;
   }
 
-  let current: ExtrudeFeatureSnapshot | undefined = target;
+  let current: ImportExtrudeFeatureSnapshot | undefined = target;
   const visitedFeatureIds = new Set<FeatureId>();
 
   while (current && !visitedFeatureIds.has(current.id)) {
     visitedFeatureIds.add(current.id);
 
     if ((current.operationMode ?? "newBody") === "newBody") {
-      return current.profileKind;
+      return current.profileKind === "wire" ? undefined : current.profileKind;
     }
 
     const isAllowedActiveResultBody =
@@ -29057,7 +29197,7 @@ function getUnsupportedBooleanExtrudeMessage(
 }
 
 function formatTargetConsumingFeatureForIssue(
-  feature: FeatureSnapshot
+  feature: ImportFeatureSnapshot
 ): string {
   if (feature.kind === "hole") {
     return "Hole feature";
@@ -29483,7 +29623,7 @@ function validateNamedReferenceSnapshots(
 function validateEdgeFinishNamedReferenceSnapshots(
   featuresByBodyId: ReadonlyMap<
     BodyId,
-    FeatureSnapshot & { readonly path: string }
+    ImportFeatureSnapshot & { readonly path: string }
   >,
   namedReferencesByName: ReadonlyMap<
     NamedReferenceName,
@@ -30187,6 +30327,18 @@ function validateV21ProfileConsumerFeatureSnapshot(
       "SCHEMA_V21_SOURCE_INVALID",
       `${path}.operationMode`,
       "V21 extrude operationMode must be newBody, add, or cut."
+    );
+  }
+  if (
+    isRecord(value.profile) &&
+    value.profile.kind === "wire" &&
+    value.operationMode === "cut"
+  ) {
+    addProjectIssue(
+      issues,
+      "SCHEMA_V21_SOURCE_INVALID",
+      `${path}.operationMode`,
+      "Composite wire extrude cut is not enabled until its complete V17 slice is implemented."
     );
   }
   validateV21TargetFields(value, path, issues);
@@ -33664,11 +33816,15 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
       typeof value.depth === "number" &&
       isPositiveFiniteNumber(value.depth) &&
       isExtrudeSide(value.side) &&
-      value.operationMode === "newBody" &&
       value.entityId === undefined &&
       value.profileKind === undefined &&
-      value.targetBodyId === undefined &&
-      value.targetTopologyAnchorId === undefined
+      ((value.operationMode === "newBody" &&
+        value.targetBodyId === undefined &&
+        value.targetTopologyAnchorId === undefined) ||
+        (value.operationMode === "add" &&
+          typeof value.targetBodyId === "string" &&
+          (value.targetTopologyAnchorId === undefined ||
+            typeof value.targetTopologyAnchorId === "string")))
     );
   }
 

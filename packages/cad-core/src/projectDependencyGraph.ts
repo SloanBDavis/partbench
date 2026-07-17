@@ -552,6 +552,16 @@ function addFeatureSourceEdges(
         sketchEntityId: segment.entityId
       });
     }
+    if (feature.targetTopologyAnchorId) {
+      addEdge(edges, {
+        kind: "sources",
+        from: topologyAnchorNodeId(feature.targetTopologyAnchorId),
+        to: featureNodeId(feature.id),
+        label: "target topology anchor source",
+        sourceFeatureId: feature.id,
+        topologyAnchorId: feature.targetTopologyAnchorId
+      });
+    }
     return;
   }
 
