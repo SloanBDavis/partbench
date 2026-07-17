@@ -125,6 +125,16 @@ function readSolverStatus(engine: CadEngine): CadQueryResponse {
   });
 }
 
+function captureExactEngineState(engine: CadEngine) {
+  return {
+    snapshot: engine.createSnapshot(),
+    project: exportCadProject(engine),
+    projectJson: exportCadProjectJson(engine),
+    transactions: engine.getTransactions(),
+    redoStack: engine.getRedoStack()
+  };
+}
+
 describe("V17 cad-core arc solver integration", () => {
   it.each(["center", "start", "end"] as const)(
     "proves fixed arc %s target dry-run/commit/diff/undo/redo/invalid",
@@ -685,6 +695,123 @@ describe("V17 cad-core arc solver integration", () => {
       error: { code: "SKETCH_ARC_SOLVE_BRANCH_INVALID" }
     });
     expect(exportCadProjectJson(engine)).toBe(before);
+  });
+
+  it.each([
+    ["exactly on", 0],
+    ["within tolerance of", 5e-8]
+  ] as const)(
+    "rolls back ambiguous line-arc tangency with the arc center %s the line",
+    (_label, centerOffset) => {
+      const engine = new CadEngine();
+      engine.applyBatch([
+        {
+          op: "sketch.create",
+          id: "sketch_1",
+          name: "Line arc ambiguity",
+          plane: "XY"
+        },
+        {
+          op: "sketch.addLine",
+          sketchId: "sketch_1",
+          id: "line_branch",
+          start: [-4, 0],
+          end: [4, 0]
+        },
+        {
+          op: "sketch.addArc",
+          sketchId: "sketch_1",
+          id: "arc_branch",
+          definition: {
+            kind: "centerAngles",
+            center: [0, centerOffset],
+            radius: 2,
+            startAngleDegrees: 180,
+            sweepAngleDegrees: 180
+          }
+        }
+      ]);
+      const before = captureExactEngineState(engine);
+
+      const response = engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.constraint.create",
+            id: "ambiguous_line_arc",
+            name: "Ambiguous line arc",
+            sketchId: "sketch_1",
+            kind: "tangent",
+            primaryTarget: { entityId: "line_branch", entityKind: "line" },
+            secondaryTarget: { entityId: "arc_branch", entityKind: "arc" }
+          }
+        ]
+      });
+
+      expect(response).toMatchObject({
+        ok: false,
+        error: { code: "SKETCH_ARC_SOLVE_BRANCH_INVALID" }
+      });
+      expect(captureExactEngineState(engine)).toEqual(before);
+    }
+  );
+
+  it("rolls back a within-tolerance internal/external arc-circle branch tie", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "sketch_1",
+        name: "Round branch tie",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addArc",
+        sketchId: "sketch_1",
+        id: "arc_primary",
+        definition: {
+          kind: "centerAngles",
+          center: [0, 0],
+          radius: 5,
+          startAngleDegrees: 270,
+          sweepAngleDegrees: 180
+        }
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_1",
+        id: "circle_secondary",
+        center: [5 + 2.5e-8, 0],
+        radius: 2
+      }
+    ]);
+    const before = captureExactEngineState(engine);
+
+    const response = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "sketch.constraint.create",
+          id: "ambiguous_round_branch",
+          name: "Ambiguous round branch",
+          sketchId: "sketch_1",
+          kind: "tangent",
+          primaryTarget: { entityId: "arc_primary", entityKind: "arc" },
+          secondaryTarget: {
+            entityId: "circle_secondary",
+            entityKind: "circle"
+          }
+        }
+      ]
+    });
+
+    expect(response).toMatchObject({
+      ok: false,
+      error: { code: "SKETCH_ARC_SOLVE_BRANCH_INVALID" }
+    });
+    expect(captureExactEngineState(engine)).toEqual(before);
   });
 
   it("round-trips V21 arc solver source and transaction history through JSON and WCAD", async () => {
