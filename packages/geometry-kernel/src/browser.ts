@@ -27,9 +27,12 @@ import {
   getGeometryKernelStepImportCapabilities,
   getGeometryResponseTransferables,
   type BooleanExtrudePrimitiveSource,
+  type BooleanExtrudeMeshFactoryInput,
   type BooleanExtrudeResultSource,
   type BooleanExtrudesRequest,
   type BooleanExtrudeSource,
+  type BooleanExtrudeToolSource,
+  type BooleanExtrudeWireSource,
   type BoxGeometryDimensions,
   type ChamferEdgeFinishRequest,
   type ConeGeometryDimensions,
@@ -127,9 +130,12 @@ type BrowserOcctPrimitive = Exclude<
 
 export type {
   BooleanExtrudePrimitiveSource,
+  BooleanExtrudeMeshFactoryInput,
   BooleanExtrudeResultSource,
   BooleanExtrudesRequest,
   BooleanExtrudeSource,
+  BooleanExtrudeToolSource,
+  BooleanExtrudeWireSource,
   BoxGeometryDimensions,
   ChamferEdgeFinishRequest,
   ConeGeometryDimensions,
@@ -355,8 +361,7 @@ export async function executeTimedBrowserGeometryKernelRequest<
   }
 
   async function createBooleanExtrudeMeshWithBrowserOcct(
-    input: Omit<BooleanExtrudesRequest, "id" | "version" | "op"> &
-      TessellationOptions
+    input: BooleanExtrudeMeshFactoryInput
   ) {
     const occtLoadStart = performance.now();
     let oc: Awaited<ReturnType<typeof loadBrowserOcct>>;

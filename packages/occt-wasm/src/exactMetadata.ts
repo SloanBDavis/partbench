@@ -64,9 +64,8 @@ export type OcctExactExtrudeMetadataSource = (
   | OcctWireExtrudeSource
 ) & { readonly kind: "extrude" };
 
-export interface OcctExactBooleanExtrudesMetadataSource extends OcctBooleanExtrudeResultSource {
-  readonly kind: "booleanExtrudes";
-}
+export type OcctExactBooleanExtrudesMetadataSource =
+  OcctBooleanExtrudeResultSource;
 
 export interface OcctExactRevolveMetadataSource {
   readonly kind: "revolve";
@@ -438,12 +437,12 @@ export function withOcctExactBodyShape<T>(
             oc,
             source as OcctBooleanExtrudePrimitiveSource
           );
-    const shape = shapeBuilder.Shape();
-
+    let shape: TopoDS_Shape | undefined;
     try {
+      shape = shapeBuilder.Shape();
       return readShape(shape, source.kind);
     } finally {
-      shape.delete();
+      shape?.delete();
       shapeBuilder.delete();
     }
   }
@@ -540,9 +539,15 @@ export function withOcctExactBodyShape<T>(
     );
   }
 
-  return withOcctBooleanExactBodyShape(oc, source, (shape) =>
-    readShape(shape, source.kind)
-  );
+  const shapeBuilder = makeBooleanExtrudeShape(oc, source);
+  let shape: TopoDS_Shape | undefined;
+  try {
+    shape = shapeBuilder.Shape();
+    return readShape(shape, source.kind);
+  } finally {
+    shape?.delete();
+    shapeBuilder.delete();
+  }
 }
 
 let nextImportedBrepReadId = 1;
@@ -572,46 +577,6 @@ function withImportedBrepShape<T>(
     builder.delete();
     shape.delete();
     oc.FS.unlink(fileName);
-  }
-}
-
-function withOcctBooleanExactBodyShape<T>(
-  oc: OpenCascadeInstance,
-  source: OcctExactBooleanExtrudesMetadataSource,
-  readShape: (shape: TopoDS_Shape) => T
-): T {
-  const targetShape = makeBooleanExtrudeShape(oc, source.target);
-  const toolShape = makeBooleanExtrudeShape(oc, source.tool);
-  const range = new oc.Message_ProgressRange_1();
-  let booleanOperation:
-    | InstanceType<typeof oc.BRepAlgoAPI_Fuse_3>
-    | InstanceType<typeof oc.BRepAlgoAPI_Cut_3>
-    | undefined;
-
-  try {
-    booleanOperation =
-      source.operation === "add"
-        ? new oc.BRepAlgoAPI_Fuse_3(
-            targetShape.Shape(),
-            toolShape.Shape(),
-            range
-          )
-        : new oc.BRepAlgoAPI_Cut_3(
-            targetShape.Shape(),
-            toolShape.Shape(),
-            range
-          );
-
-    if (booleanOperation.HasErrors()) {
-      throw new Error(`Open CASCADE boolean ${source.operation} failed.`);
-    }
-
-    return readShape(booleanOperation.Shape());
-  } finally {
-    booleanOperation?.delete();
-    range.delete();
-    targetShape.delete();
-    toolShape.delete();
   }
 }
 

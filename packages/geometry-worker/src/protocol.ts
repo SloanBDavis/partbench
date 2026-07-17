@@ -1,6 +1,6 @@
 import type {
-  BooleanExtrudePrimitiveSource,
   BooleanExtrudeSource,
+  BooleanExtrudeToolSource,
   BooleanExtrudesRequest,
   EdgeFinishRequest,
   ExactBodyMetadataRequest,
@@ -12,7 +12,6 @@ import type {
   GeometryKernelRequest,
   GeometryKernelResponseForRequest,
   GeometryKernelResponse,
-  GeometryKernelBooleanOperation,
   GeometryKernelDocumentUnit,
   GeometryKernelExtrudeSide,
   ExtrudeGeometryProfile,
@@ -48,6 +47,12 @@ import type {
 } from "@web-cad/geometry-kernel";
 
 export type {
+  BooleanExtrudePrimitiveSource,
+  BooleanExtrudeResultSource,
+  BooleanExtrudeSource,
+  BooleanExtrudeToolSource,
+  BooleanExtrudeWireSource,
+  BooleanExtrudesRequest,
   GeometryKernelExactBodyMetadata,
   GeometryKernelExactTopologySnapshot,
   GeometryKernelExactTopologyCheckpointPayload,
@@ -563,29 +568,59 @@ export function createRevolveProfileWorkerRequest(input: {
   };
 }
 
-export function createExtrudeBooleanWorkerRequest(input: {
+type ExtrudeBooleanWorkerRequestInputBase = {
   readonly id: string;
   readonly payloadId?: string;
-  readonly operation: GeometryKernelBooleanOperation;
   readonly target: BooleanExtrudeSource;
-  readonly tool: BooleanExtrudePrimitiveSource;
   readonly linearDeflection?: number;
   readonly angularDeflection?: number;
-}): GeometryWorkerRequest<BooleanExtrudesRequest> {
-  const tessellation = createTessellationOptions(input);
+};
 
-  return {
+export type ExtrudeBooleanWorkerRequestInput =
+  | (ExtrudeBooleanWorkerRequestInputBase & {
+      readonly operation: "add";
+      readonly tool: BooleanExtrudeToolSource;
+    })
+  | (ExtrudeBooleanWorkerRequestInputBase & {
+      readonly operation: "cut";
+      readonly tool: Extract<
+        BooleanExtrudesRequest,
+        { operation: "cut" }
+      >["tool"];
+    });
+
+export function createExtrudeBooleanWorkerRequest(
+  input: ExtrudeBooleanWorkerRequestInput
+): GeometryWorkerRequest<BooleanExtrudesRequest> {
+  const tessellation = createTessellationOptions(input);
+  const base = {
     id: input.id,
-    version: "geometry-worker.v1",
-    kind: "geometry-worker.booleanFeature",
+    version: "geometry-worker.v1" as const,
+    kind: "geometry-worker.booleanFeature" as const
+  };
+  const payloadBase = {
+    id: input.payloadId ?? `${input.id}:payload`,
+    version: "geometry-kernel.v1" as const,
+    op: "geometry.booleanExtrudes" as const,
+    target: input.target,
+    ...(tessellation ? { tessellation } : {})
+  };
+  if (input.operation === "cut") {
+    return {
+      ...base,
+      payload: {
+        ...payloadBase,
+        operation: "cut",
+        tool: input.tool
+      }
+    };
+  }
+  return {
+    ...base,
     payload: {
-      id: input.payloadId ?? `${input.id}:payload`,
-      version: "geometry-kernel.v1",
-      op: "geometry.booleanExtrudes",
-      operation: input.operation,
-      target: input.target,
-      tool: input.tool,
-      ...(tessellation ? { tessellation } : {})
+      ...payloadBase,
+      operation: "add",
+      tool: input.tool
     }
   };
 }

@@ -366,6 +366,41 @@ describe("geometry-kernel facade", () => {
     OCCT_WASM_TEST_TIMEOUT_MS
   );
 
+  it("rejects malformed exact STEP body records without entering OCCT", async () => {
+    const [nullBody, nullProfile] = await Promise.all([
+      executeGeometryKernelRequest({
+        id: "geometry_req_step_export_null_body",
+        version: "geometry-kernel.v1",
+        op: "geometry.exportStep",
+        units: "mm",
+        bodies: [null]
+      } as never),
+      executeGeometryKernelRequest({
+        id: "geometry_req_step_export_null_profile",
+        version: "geometry-kernel.v1",
+        op: "geometry.exportStep",
+        units: "mm",
+        bodies: [
+          {
+            bodyId: "body_step_null_profile",
+            sketchPlane: "XY",
+            profile: null,
+            depth: 3
+          }
+        ]
+      } as never)
+    ]);
+
+    expect(nullBody).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_DIMENSIONS" }
+    });
+    expect(nullProfile).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_DIMENSIONS" }
+    });
+  });
+
   it(
     "imports STEP bytes into transient imported body payloads through the isolated OCCT WASM adapter",
     async () => {
@@ -1624,6 +1659,188 @@ describe("geometry-kernel facade", () => {
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );
+
+  it(
+    "runs a composite wire add through mesh, exact metadata, topology, checkpoint, and STEP",
+    async () => {
+      const source = {
+        kind: "booleanExtrudes" as const,
+        operation: "add" as const,
+        target: {
+          sketchPlane: "XY" as const,
+          profile: {
+            kind: "rectangle" as const,
+            center: [0, 0] as const,
+            width: 8,
+            height: 6
+          },
+          depth: 4,
+          side: "symmetric" as const
+        },
+        tool: {
+          sketchPlane: "XY" as const,
+          profile: {
+            ...mixedWireProfile,
+            frame: { ...mixedWireProfile.frame, origin: [4, 0, 0] as const }
+          },
+          depth: 4,
+          side: "symmetric" as const
+        }
+      };
+      const [mesh, metadata, topology, checkpoint, step] = await Promise.all([
+        executeGeometryKernelRequest({
+          id: "geometry_req_wire_add",
+          version: "geometry-kernel.v1",
+          op: "geometry.booleanExtrudes",
+          operation: "add",
+          target: source.target,
+          tool: source.tool
+        }),
+        executeGeometryKernelRequest({
+          id: "geometry_req_wire_add_metadata",
+          version: "geometry-kernel.v1",
+          op: "geometry.exactBodyMetadata",
+          source
+        }),
+        executeGeometryKernelRequest({
+          id: "geometry_req_wire_add_topology",
+          version: "geometry-kernel.v1",
+          op: "geometry.exactTopologySnapshot",
+          source
+        }),
+        executeGeometryKernelRequest({
+          id: "geometry_req_wire_add_checkpoint",
+          version: "geometry-kernel.v1",
+          op: "geometry.exactTopologyCheckpointPayload",
+          checkpointId: "checkpoint_wire_add",
+          bodyId: "body_wire_add",
+          source
+        }),
+        executeGeometryKernelRequest({
+          id: "geometry_req_wire_add_step",
+          version: "geometry-kernel.v1",
+          op: "geometry.exportStep",
+          units: "mm",
+          bodies: [{ ...source, bodyId: "body_wire_add" }]
+        })
+      ]);
+
+      expect(mesh.ok).toBe(true);
+      expect(metadata.ok).toBe(true);
+      expect(topology.ok).toBe(true);
+      expect(checkpoint.ok).toBe(true);
+      expect(step.ok).toBe(true);
+      if (
+        !mesh.ok ||
+        !metadata.ok ||
+        !topology.ok ||
+        !checkpoint.ok ||
+        !step.ok
+      ) {
+        throw new Error("Expected every composite add geometry route to pass.");
+      }
+      expect(mesh.mesh.generatedReferences).toBeUndefined();
+      expect(metadata.metadata.topologyCounts.solidCount).toBe(1);
+      expect(metadata.metadata.topologyCounts.faceCount).toBe(
+        topology.snapshot.entityCounts.faceCount
+      );
+      expect(checkpoint.checkpointPayload.topologySnapshot.signature).toBe(
+        topology.snapshot.signature
+      );
+      expect(step.artifact.bodyCount).toBe(1);
+      expect(step.artifact.byteLength).toBeGreaterThan(1000);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it("rejects malformed wire-cut and mixed-frame boolean branches", async () => {
+    const target = {
+      sketchPlane: "XY" as const,
+      profile: {
+        kind: "rectangle" as const,
+        center: [0, 0] as const,
+        width: 8,
+        height: 6
+      },
+      depth: 4
+    };
+    const tool = {
+      sketchPlane: "XY" as const,
+      profile: mixedWireProfile,
+      depth: 4
+    };
+    const cut = await executeGeometryKernelRequest({
+      id: "geometry_req_wire_cut_rejected",
+      version: "geometry-kernel.v1",
+      op: "geometry.booleanExtrudes",
+      operation: "cut",
+      target,
+      tool
+    } as never);
+    const mixedFrame = await executeGeometryKernelRequest({
+      id: "geometry_req_wire_add_mixed_frame",
+      version: "geometry-kernel.v1",
+      op: "geometry.booleanExtrudes",
+      operation: "add",
+      target,
+      tool: {
+        ...tool,
+        placementFrame: {
+          origin: [0, 0, 0],
+          uAxis: [1, 0, 0],
+          vAxis: [0, 1, 0]
+        }
+      }
+    } as never);
+    const missingTool = await executeGeometryKernelRequest({
+      id: "geometry_req_wire_add_missing_tool",
+      version: "geometry-kernel.v1",
+      op: "geometry.booleanExtrudes",
+      operation: "add",
+      target
+    } as never);
+    const nullProfile = await executeGeometryKernelRequest({
+      id: "geometry_req_wire_add_null_profile",
+      version: "geometry-kernel.v1",
+      op: "geometry.booleanExtrudes",
+      operation: "add",
+      target,
+      tool: {
+        sketchPlane: "XY",
+        profile: null,
+        depth: 4
+      }
+    } as never);
+    const nullTarget = await executeGeometryKernelRequest({
+      id: "geometry_req_wire_add_null_target",
+      version: "geometry-kernel.v1",
+      op: "geometry.booleanExtrudes",
+      operation: "add",
+      target: null,
+      tool
+    } as never);
+
+    expect(cut).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_DIMENSIONS" }
+    });
+    expect(mixedFrame).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_DIMENSIONS" }
+    });
+    expect(missingTool).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_DIMENSIONS" }
+    });
+    expect(nullProfile).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_DIMENSIONS" }
+    });
+    expect(nullTarget).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_DIMENSIONS" }
+    });
+  });
 
   it(
     "runs circle-tool boolean feasibility requests on supported targets",

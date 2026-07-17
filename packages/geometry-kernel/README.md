@@ -28,16 +28,17 @@ Output:
   - face, vertex, and triangle counts
 - Failure returns a structured error code and message
 
-`geometry.booleanExtrudes` is intentionally geometry-only. It accepts two
-source-derived rectangle/circle extrude inputs plus `operation: "add" | "cut"`.
-The current OCCT-backed implementation supports rectangle extrude add,
-rectangle extrude cut, and the next feasibility case: a circle target cut by a
-rectangle tool. It returns mesh data for feasibility tests, not document
-mutations, topology maps, stable generated references, or project source data.
+`geometry.booleanExtrudes` is intentionally geometry-only. It accepts resolved
+source-derived extrudes plus `operation: "add" | "cut"`. Add tools may use a
+V17 ordered line/arc wire recipe; cut remains limited to rectangle/circle tools
+until its separate vertical slice lands. Composite add reuses the existing
+boolean result recipe for mesh, exact metadata, topology checkpoint, mass
+properties, and STEP. It does not invent source-semantic result-face references.
 The circle-target cut feasibility path is covered for positive, negative, and
 symmetric sides; XY, XZ, and YZ sketch planes; placement-frame inputs;
 non-overlapping tools; fully removed targets; and unsupported profile
-combinations.
+combinations. A disjoint add compound is rejected instead of being advertised
+as one result solid.
 
 `geometry.hole` is also intentionally geometry-only. It accepts a
 source-derived rectangle/circle extrude target plus a circular sketch tool with

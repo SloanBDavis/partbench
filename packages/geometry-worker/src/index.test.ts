@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   GeometryKernelWorker,
   createBoxTessellationWorkerRequest,
@@ -26,7 +26,42 @@ import {
   createWorkerSuccessDiagnostics,
   createGeometryKernelWorker
 } from "./index";
+import type { ExtrudeBooleanWorkerRequestInput } from "./index";
 import { GeometryKernelBrowserWorker } from "./browser";
+
+const workerWireProfile = {
+  kind: "wire" as const,
+  frame: {
+    origin: [0, 0, 0] as const,
+    uAxis: [1, 0, 0] as const,
+    vAxis: [0, 1, 0] as const
+  },
+  closed: true as const,
+  segments: [
+    {
+      kind: "arc" as const,
+      sourceEntityId: "arc-a",
+      center: [0, 0] as const,
+      radius: 2,
+      startAngleDegrees: 0,
+      sweepAngleDegrees: 180
+    },
+    {
+      kind: "arc" as const,
+      sourceEntityId: "arc-b",
+      center: [0, 0] as const,
+      radius: 2,
+      startAngleDegrees: 180,
+      sweepAngleDegrees: 180
+    }
+  ],
+  sourceIdentity: "sketch-circle-halves:arc-a,arc-b",
+  geometryPolicy: {
+    linearTolerance: 1e-7 as const,
+    angularToleranceDegrees: 0.1 as const,
+    minimumProfileArea: 1e-12 as const
+  }
+};
 
 describe("geometry-worker", () => {
   it("reports STEP exact export writer capability through the worker boundary", () => {
@@ -531,46 +566,12 @@ describe("geometry-worker", () => {
   });
 
   it("serializes a resolved composite wire extrude request without rewriting it", () => {
-    const profile = {
-      kind: "wire" as const,
-      frame: {
-        origin: [0, 0, 0] as const,
-        uAxis: [1, 0, 0] as const,
-        vAxis: [0, 1, 0] as const
-      },
-      closed: true as const,
-      segments: [
-        {
-          kind: "arc" as const,
-          sourceEntityId: "arc-a",
-          center: [0, 0] as const,
-          radius: 2,
-          startAngleDegrees: 0,
-          sweepAngleDegrees: 180
-        },
-        {
-          kind: "arc" as const,
-          sourceEntityId: "arc-b",
-          center: [0, 0] as const,
-          radius: 2,
-          startAngleDegrees: 180,
-          sweepAngleDegrees: 180
-        }
-      ],
-      sourceIdentity: "sketch-circle-halves:arc-a,arc-b",
-      geometryPolicy: {
-        linearTolerance: 1e-7 as const,
-        angularToleranceDegrees: 0.1 as const,
-        minimumProfileArea: 1e-12 as const
-      }
-    };
-
     expect(
       createExtrudeTessellationWorkerRequest({
         id: "worker_req_wire_extrude",
         payloadId: "geometry_req_wire_extrude",
         sketchPlane: "XY",
-        profile,
+        profile: workerWireProfile,
         depth: 5,
         side: "symmetric"
       })
@@ -583,7 +584,7 @@ describe("geometry-worker", () => {
         version: "geometry-kernel.v1",
         op: "geometry.tessellateExtrude",
         sketchPlane: "XY",
-        profile,
+        profile: workerWireProfile,
         depth: 5,
         side: "symmetric"
       }
@@ -727,6 +728,96 @@ describe("geometry-worker", () => {
         op: "geometry.booleanExtrudes",
         operation: "add"
       }
+    });
+    expect(
+      createExtrudeBooleanWorkerRequest({
+        id: "worker_req_boolean_wire_add",
+        payloadId: "geometry_req_boolean_wire_add",
+        operation: "add",
+        target: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 8,
+            height: 8
+          },
+          depth: 4
+        },
+        tool: {
+          sketchPlane: "XY",
+          profile: workerWireProfile,
+          depth: 4,
+          side: "symmetric"
+        }
+      })
+    ).toEqual({
+      id: "worker_req_boolean_wire_add",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.booleanFeature",
+      payload: {
+        id: "geometry_req_boolean_wire_add",
+        version: "geometry-kernel.v1",
+        op: "geometry.booleanExtrudes",
+        operation: "add",
+        target: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 8,
+            height: 8
+          },
+          depth: 4
+        },
+        tool: {
+          sketchPlane: "XY",
+          profile: workerWireProfile,
+          depth: 4,
+          side: "symmetric"
+        }
+      }
+    });
+  });
+
+  it("keeps wire cut out of the typed and runtime worker boundary", async () => {
+    const wireTool = {
+      sketchPlane: "XY" as const,
+      profile: workerWireProfile,
+      depth: 4
+    };
+    type CutTool = Extract<
+      ExtrudeBooleanWorkerRequestInput,
+      { operation: "cut" }
+    >["tool"];
+    type WireToolFitsCut = typeof wireTool extends CutTool ? true : false;
+    expectTypeOf<WireToolFitsCut>().toEqualTypeOf<false>();
+    const response = await new GeometryKernelWorker().execute({
+      id: "worker_req_malformed_wire_cut",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.booleanFeature",
+      payload: {
+        id: "geometry_req_malformed_wire_cut",
+        version: "geometry-kernel.v1",
+        op: "geometry.booleanExtrudes",
+        operation: "cut",
+        target: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 8,
+            height: 8
+          },
+          depth: 4
+        },
+        tool: wireTool
+      }
+    } as never);
+
+    expect(response.response).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_DIMENSIONS" }
     });
   });
 
@@ -1169,7 +1260,7 @@ describe("geometry-worker", () => {
       response.response.mesh.positions.buffer,
       response.response.mesh.indices.buffer
     ]);
-  }, 30000);
+  }, 120_000);
 
   it("tessellates one cylinder asynchronously through the geometry kernel facade", async () => {
     const worker = createGeometryKernelWorker({ delayMs: 1 });

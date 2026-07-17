@@ -1,7 +1,8 @@
 import type { OpenCascadeInstance } from "opencascade.js";
 import {
   makeBooleanExtrudeShape,
-  type OcctBooleanExtrudePrimitiveSource
+  type OcctBooleanExtrudePrimitiveSource,
+  type OcctBooleanExtrudeResultSource
 } from "./booleanExtrudes";
 import type { OcctLoader } from "./tessellateBox";
 import {
@@ -14,6 +15,7 @@ export type OcctStepExportSchema = "AP242DIS";
 
 export type OcctStepExportBodySource = (
   | OcctBooleanExtrudePrimitiveSource
+  | OcctBooleanExtrudeResultSource
   | OcctWireExtrudeSource
 ) & {
   readonly bodyId: string;
@@ -180,9 +182,16 @@ function createOcctStepExportShape(
   oc: OpenCascadeInstance,
   body: OcctStepExportBodySource
 ): ReturnType<OcctStepExportShapeFactory> {
-  return body.profile.kind === "wire"
-    ? makeWireExtrudeShape(oc, body as OcctWireExtrudeSource)
-    : makeBooleanExtrudeShape(oc, body as OcctBooleanExtrudePrimitiveSource);
+  if ((body as { readonly kind?: unknown }).kind === "booleanExtrudes") {
+    return makeBooleanExtrudeShape(oc, body as OcctBooleanExtrudeResultSource);
+  }
+  const extrude = body as (
+    | OcctBooleanExtrudePrimitiveSource
+    | OcctWireExtrudeSource
+  ) & { readonly bodyId: string };
+  return extrude.profile.kind === "wire"
+    ? makeWireExtrudeShape(oc, extrude as OcctWireExtrudeSource)
+    : makeBooleanExtrudeShape(oc, extrude as OcctBooleanExtrudePrimitiveSource);
 }
 
 export function getOcctStepWriterCapabilityWithInstance(

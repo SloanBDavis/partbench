@@ -41,9 +41,8 @@ export interface OcctPatternSeedExtrudeSource extends OcctBooleanExtrudePrimitiv
   readonly kind: "extrude";
 }
 
-export interface OcctPatternSeedBooleanExtrudesSource extends OcctBooleanExtrudeResultSource {
-  readonly kind: "booleanExtrudes";
-}
+export type OcctPatternSeedBooleanExtrudesSource =
+  OcctBooleanExtrudeResultSource;
 
 export interface OcctPatternSeedRevolveSource {
   readonly kind: "revolve";

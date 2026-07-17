@@ -37,13 +37,12 @@ V6 circular-hole feasibility path:
 For the default box, the current smoke test observes 6 faces, 24 per-face
 vertices, and 12 triangles.
 
-The boolean feasibility path builds source-derived rectangle extrude solids
-with `BRepPrimAPI_MakeBox`, circle extrude solids with
-`BRepPrimAPI_MakeCylinder`, combines supported pairs with `BRepAlgoAPI_Fuse` or
-`BRepAlgoAPI_Cut`, tessellates the result, and returns only serializable mesh
-data. The current isolated support covers rectangle add/cut and circle target
-cut by rectangle tool. It intentionally does not expose OCCT shape handles,
-topology maps, generated-reference updates, or authoritative document changes.
+The boolean path builds source-derived rectangle and circle extrudes plus exact
+V17 line/arc wire prisms. It combines supported pairs with `BRepAlgoAPI_Fuse`
+or `BRepAlgoAPI_Cut`, validates the result, and disposes every OCCT handle at
+the boundary. Composite wire tools are enabled for add only. Their result B-rep
+feeds mesh, exact metadata, topology checkpoints, mass properties, and STEP;
+split/merged result faces do not receive guessed source-semantic references.
 The circle-target feasibility slice has smoke coverage for extrusion sides,
 base sketch planes, placement frames, non-overlap, full target removal, and
 unsupported source-profile combinations.

@@ -216,6 +216,18 @@ export type BooleanExtrudeSource =
   | BooleanExtrudePrimitiveSource
   | BooleanExtrudeResultSource;
 
+export interface BooleanExtrudeWireSource {
+  readonly sketchPlane: GeometryKernelSketchPlane;
+  readonly profile: ResolvedPlanarWireProfile;
+  readonly depth: number;
+  readonly side?: GeometryKernelExtrudeSide;
+  readonly placementFrame?: never;
+}
+
+export type BooleanExtrudeToolSource =
+  | BooleanExtrudePrimitiveSource
+  | BooleanExtrudeWireSource;
+
 export interface BooleanExtrudePrimitiveSource {
   readonly sketchPlane: GeometryKernelSketchPlane;
   readonly profile: PrimitiveExtrudeGeometryProfile;
@@ -224,9 +236,20 @@ export interface BooleanExtrudePrimitiveSource {
   readonly placementFrame?: BooleanExtrudePlacementFrame;
 }
 
-export interface BooleanExtrudeResultSource {
+export type BooleanExtrudeResultSource =
+  | BooleanExtrudeAddResultSource
+  | BooleanExtrudeCutResultSource;
+
+export interface BooleanExtrudeAddResultSource {
   readonly kind: "booleanExtrudes";
-  readonly operation: GeometryKernelBooleanOperation;
+  readonly operation: "add";
+  readonly target: BooleanExtrudeSource;
+  readonly tool: BooleanExtrudeToolSource;
+}
+
+export interface BooleanExtrudeCutResultSource {
+  readonly kind: "booleanExtrudes";
+  readonly operation: "cut";
   readonly target: BooleanExtrudeSource;
   readonly tool: BooleanExtrudePrimitiveSource;
 }
@@ -304,15 +327,23 @@ export interface RevolveProfileRequest {
   readonly tessellation?: TessellationOptions;
 }
 
-export interface BooleanExtrudesRequest {
+interface BooleanExtrudesRequestBase {
   readonly id: string;
   readonly version: GeometryKernelVersion;
   readonly op: "geometry.booleanExtrudes";
-  readonly operation: GeometryKernelBooleanOperation;
   readonly target: BooleanExtrudeSource;
-  readonly tool: BooleanExtrudePrimitiveSource;
   readonly tessellation?: TessellationOptions;
 }
+
+export type BooleanExtrudesRequest =
+  | (BooleanExtrudesRequestBase & {
+      readonly operation: "add";
+      readonly tool: BooleanExtrudeToolSource;
+    })
+  | (BooleanExtrudesRequestBase & {
+      readonly operation: "cut";
+      readonly tool: BooleanExtrudePrimitiveSource;
+    });
 
 export interface HoleToolSource {
   readonly sketchPlane: GeometryKernelSketchPlane;
@@ -378,9 +409,7 @@ export interface PatternSeedExtrudeSource extends BooleanExtrudePrimitiveSource 
   readonly kind: "extrude";
 }
 
-export interface PatternSeedBooleanExtrudesSource extends BooleanExtrudeResultSource {
-  readonly kind: "booleanExtrudes";
-}
+export type PatternSeedBooleanExtrudesSource = BooleanExtrudeResultSource;
 
 export interface LinearPatternRequest {
   readonly id: string;
@@ -485,9 +514,7 @@ export type ExactExtrudeMetadataSource = (
     }
 ) & { readonly kind: "extrude" };
 
-export interface ExactBooleanExtrudesMetadataSource extends BooleanExtrudeResultSource {
-  readonly kind: "booleanExtrudes";
-}
+export type ExactBooleanExtrudesMetadataSource = BooleanExtrudeResultSource;
 
 export interface ExactRevolveMetadataSource {
   readonly kind: "revolve";
@@ -593,12 +620,8 @@ export interface ExactTopologyCheckpointPayloadRequest {
 
 export type ExactStepExportBodySource = (
   | BooleanExtrudePrimitiveSource
-  | {
-      readonly sketchPlane: GeometryKernelSketchPlane;
-      readonly profile: ResolvedPlanarWireProfile;
-      readonly depth: number;
-      readonly side?: GeometryKernelExtrudeSide;
-    }
+  | BooleanExtrudeWireSource
+  | BooleanExtrudeResultSource
 ) & {
   readonly bodyId: string;
   readonly bodyName?: string;
@@ -1063,9 +1086,15 @@ export type GeometryKernelTorusMeshFactory = (
 ) => Promise<GeometryKernelMeshResult>;
 
 export type GeometryKernelBooleanExtrudeMeshFactory = (
-  input: Omit<BooleanExtrudesRequest, "id" | "version" | "op"> &
-    TessellationOptions
+  input: BooleanExtrudeMeshFactoryInput
 ) => Promise<GeometryKernelMeshResult>;
+
+type GeometryRequestPayload<TRequest> = TRequest extends unknown
+  ? Omit<TRequest, "id" | "version" | "op">
+  : never;
+
+export type BooleanExtrudeMeshFactoryInput =
+  GeometryRequestPayload<BooleanExtrudesRequest> & TessellationOptions;
 
 export type GeometryKernelWireExtrudeMeshFactory = (
   input: Omit<TessellateExtrudeRequest, "id" | "version" | "op"> & {
@@ -1686,7 +1715,7 @@ function validateRequest(
 
     if (
       !isValidBooleanExtrudeSource(request.target) ||
-      !isValidBooleanExtrudePrimitiveSource(request.tool)
+      !isValidBooleanExtrudeToolSource(request.operation, request.tool)
     ) {
       return {
         code: "INVALID_DIMENSIONS",
@@ -1771,7 +1800,7 @@ function validateRequest(
       };
     }
   } else if (request.op === "geometry.exportStep") {
-    if (request.bodies.length === 0) {
+    if (!Array.isArray(request.bodies) || request.bodies.length === 0) {
       return {
         code: "INVALID_DIMENSIONS",
         message: "STEP export requests require at least one exact body source."
@@ -1779,11 +1808,16 @@ function validateRequest(
     }
 
     for (const body of request.bodies) {
-      if (!body.bodyId || !isValidExactExtrudeSource(body)) {
+      if (
+        !isRecord(body) ||
+        typeof body.bodyId !== "string" ||
+        body.bodyId.length === 0 ||
+        !isValidExactStepExportBodySource(body)
+      ) {
         return {
           code: "INVALID_DIMENSIONS",
           message:
-            "STEP export requires an active supported exact newBody extrude source with finite positive dimensions."
+            "STEP export requires an active supported exact extrude or boolean-result source with finite positive dimensions."
         };
       }
     }
@@ -1905,13 +1939,21 @@ function createMesh(
     case "geometry.revolveProfile":
       return createRevolveProfileMesh(factories, request);
     case "geometry.booleanExtrudes":
-      return factories.createBooleanExtrudeMesh({
-        operation: request.operation,
-        target: request.target,
-        tool: request.tool,
-        linearDeflection: request.tessellation?.linearDeflection,
-        angularDeflection: request.tessellation?.angularDeflection
-      });
+      return request.operation === "cut"
+        ? factories.createBooleanExtrudeMesh({
+            operation: "cut",
+            target: request.target,
+            tool: request.tool,
+            linearDeflection: request.tessellation?.linearDeflection,
+            angularDeflection: request.tessellation?.angularDeflection
+          })
+        : factories.createBooleanExtrudeMesh({
+            operation: "add",
+            target: request.target,
+            tool: request.tool,
+            linearDeflection: request.tessellation?.linearDeflection,
+            angularDeflection: request.tessellation?.angularDeflection
+          });
     case "geometry.hole":
       return createHoleMesh(factories, request);
     case "geometry.edgeFinish":
@@ -2659,12 +2701,51 @@ function isValidBooleanExtrudePrimitiveSource(
   source: BooleanExtrudePrimitiveSource
 ): boolean {
   return (
+    isRecord(source) &&
+    isRecord(source.profile) &&
+    (source.profile.kind === "rectangle" || source.profile.kind === "circle") &&
     isSketchPlane(source.sketchPlane) &&
     isPositiveFiniteNumber(source.depth) &&
     isExtrudeSide(source.side ?? "positive") &&
     isValidPrimitiveExtrudeProfile(source.profile) &&
     (source.placementFrame === undefined ||
       isValidBooleanExtrudePlacementFrame(source.placementFrame))
+  );
+}
+
+function isValidBooleanExtrudeWireSource(
+  source: BooleanExtrudeWireSource
+): boolean {
+  return (
+    isRecord(source) &&
+    isRecord(source.profile) &&
+    source.profile.kind === "wire" &&
+    isSketchPlane(source.sketchPlane) &&
+    isPositiveFiniteNumber(source.depth) &&
+    isExtrudeSide(source.side ?? "positive") &&
+    source.placementFrame === undefined &&
+    isValidResolvedPlanarWireProfile(source.profile)
+  );
+}
+
+function isValidBooleanExtrudeToolSource(
+  operation: GeometryKernelBooleanOperation,
+  source: BooleanExtrudeToolSource
+): boolean {
+  if (!isRecord(source) || !isRecord(source.profile)) return false;
+  if (isBooleanExtrudeWireSource(source)) {
+    return operation === "add" && isValidBooleanExtrudeWireSource(source);
+  }
+  return isValidBooleanExtrudePrimitiveSource(source);
+}
+
+function isBooleanExtrudeWireSource(
+  source: BooleanExtrudeToolSource
+): source is BooleanExtrudeWireSource {
+  return (
+    isRecord(source) &&
+    isRecord(source.profile) &&
+    source.profile.kind === "wire"
   );
 }
 
@@ -2694,11 +2775,12 @@ function isValidSweepPathSegments(
 }
 
 function isValidBooleanExtrudeSource(source: BooleanExtrudeSource): boolean {
+  if (!isRecord(source)) return false;
   if (isBooleanExtrudeResultSource(source)) {
     return (
       isBooleanOperation(source.operation) &&
       isValidBooleanExtrudeSource(source.target) &&
-      isValidBooleanExtrudePrimitiveSource(source.tool) &&
+      isValidBooleanExtrudeToolSource(source.operation, source.tool) &&
       isSupportedBooleanExtrudeSourcePair(source)
     );
   }
@@ -2880,6 +2962,9 @@ function validateEdgeFinishRequest(
 function validateExactBodyMetadataSource(
   source: ExactBodyMetadataSource
 ): GeometryKernelError | undefined {
+  if (typeof source !== "object" || source === null) {
+    return createInvalidExactBodyMetadataSourceError();
+  }
   if (source.kind === "extrude") {
     return isValidExactExtrudeSource(source)
       ? undefined
@@ -2887,19 +2972,10 @@ function validateExactBodyMetadataSource(
   }
 
   if (source.kind === "booleanExtrudes") {
-    const request: BooleanExtrudesRequest = {
-      id: "exact-metadata-validation",
-      version: "geometry-kernel.v1",
-      op: "geometry.booleanExtrudes",
-      operation: source.operation,
-      target: source.target,
-      tool: source.tool
-    };
-
     return isBooleanOperation(source.operation) &&
       isValidBooleanExtrudeSource(source.target) &&
-      isValidBooleanExtrudePrimitiveSource(source.tool) &&
-      isSupportedBooleanExtrudeProfilePair(request)
+      isValidBooleanExtrudeToolSource(source.operation, source.tool) &&
+      isSupportedBooleanExtrudeSourcePair(source)
       ? undefined
       : createInvalidExactBodyMetadataSourceError();
   }
@@ -3019,17 +3095,36 @@ function validateExactBodyMetadataSource(
   return createInvalidExactBodyMetadataSourceError();
 }
 
-function isValidExactExtrudeSource(
-  source: Omit<ExactExtrudeMetadataSource, "kind"> | ExactStepExportBodySource
-): boolean {
+function isValidExactExtrudeSource(source: {
+  readonly sketchPlane: GeometryKernelSketchPlane;
+  readonly profile: ExtrudeGeometryProfile;
+  readonly depth: number;
+  readonly side?: GeometryKernelExtrudeSide;
+  readonly placementFrame?: BooleanExtrudePlacementFrame;
+}): boolean {
+  if (!isRecord(source) || !isRecord(source.profile)) return false;
   return source.profile.kind === "wire"
     ? isSketchPlane(source.sketchPlane) &&
         isPositiveFiniteNumber(source.depth) &&
         isExtrudeSide(source.side ?? "positive") &&
+        source.placementFrame === undefined &&
         isValidResolvedPlanarWireProfile(source.profile)
     : isValidBooleanExtrudePrimitiveSource(
         source as BooleanExtrudePrimitiveSource
       );
+}
+
+function isValidExactStepExportBodySource(source: unknown): boolean {
+  if (typeof source !== "object" || source === null) return false;
+  if ((source as { readonly kind?: unknown }).kind === "booleanExtrudes") {
+    return (
+      validateExactBodyMetadataSource(source as BooleanExtrudeResultSource) ===
+      undefined
+    );
+  }
+  return isValidExactExtrudeSource(
+    source as BooleanExtrudePrimitiveSource | BooleanExtrudeWireSource
+  );
 }
 
 function createInvalidExactBodyMetadataSourceError(): GeometryKernelError {
@@ -3586,7 +3681,7 @@ function isBooleanExtrudeResultSource(
   source: BooleanExtrudeSource
 ): source is BooleanExtrudeResultSource {
   return (
-    "kind" in source &&
+    isRecord(source) &&
     (source as { readonly kind?: unknown }).kind === "booleanExtrudes"
   );
 }
@@ -3603,8 +3698,8 @@ function getEdgeFinishReferenceSource(
     return source.profile.kind === "rectangle" ? source : undefined;
   }
 
+  if (source.operation !== "cut") return undefined;
   if (
-    source.operation === "cut" &&
     role.startsWith("longitudinal:") &&
     source.tool.profile.kind === "rectangle"
   ) {

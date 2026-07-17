@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertBooleanAddSolidCount,
   createOcctBooleanExtrudeMesh,
+  createOcctBooleanExtrudeMeshWithInstance,
   createOcctBoxMesh,
   createOcctConeMesh,
   createOcctCylinderMesh,
@@ -23,6 +25,11 @@ import {
   createOcctWireExtrudeMeshWithInstance
 } from "./index";
 import type { OpenCascadeInstance } from "opencascade.js";
+import {
+  createOcctBooleanExtrudeMeshWithShapeFactories,
+  type OcctBooleanExtrudeShapeBuilder,
+  type OcctBooleanExtrudeShapeFactories
+} from "./booleanExtrudes";
 import {
   assertWireExtrudeSolidCount,
   withOcctWireExtrudeBuildShape,
@@ -80,6 +87,51 @@ const slotWireProfile = {
     angularToleranceDegrees: 0.1 as const,
     minimumProfileArea: 1e-12 as const
   }
+};
+
+const notchedWireProfile = {
+  ...slotWireProfile,
+  sourceIdentity: "notched:bottom,right,top-right,reverse-arc,top-left,left",
+  segments: [
+    {
+      kind: "line" as const,
+      sourceEntityId: "notch-bottom",
+      start: [-2, -1] as const,
+      end: [2, -1] as const
+    },
+    {
+      kind: "line" as const,
+      sourceEntityId: "notch-right",
+      start: [2, -1] as const,
+      end: [2, 1] as const
+    },
+    {
+      kind: "line" as const,
+      sourceEntityId: "notch-top-right",
+      start: [2, 1] as const,
+      end: [1, 1] as const
+    },
+    {
+      kind: "arc" as const,
+      sourceEntityId: "notch-reverse-arc",
+      center: [0, 1] as const,
+      radius: 1,
+      startAngleDegrees: 0,
+      sweepAngleDegrees: -180
+    },
+    {
+      kind: "line" as const,
+      sourceEntityId: "notch-top-left",
+      start: [-1, 1] as const,
+      end: [-2, 1] as const
+    },
+    {
+      kind: "line" as const,
+      sourceEntityId: "notch-left",
+      start: [-2, 1] as const,
+      end: [-2, -1] as const
+    }
+  ]
 };
 
 describe("occt-wasm", () => {
@@ -474,6 +526,267 @@ describe("occt-wasm", () => {
       "vertex-builder"
     ]);
   });
+
+  it("disposes boolean target/tool builders when later allocation fails", () => {
+    const createPrimitiveOcct = (
+      deleted: string[],
+      Wire: new () => unknown,
+      Progress: new () => unknown
+    ) => {
+      class Point {
+        delete() {
+          deleted.push("point");
+        }
+      }
+      class Direction {
+        delete() {
+          deleted.push("direction");
+        }
+      }
+      class Axes {
+        delete() {
+          deleted.push("axes");
+        }
+      }
+      class Box {
+        delete() {
+          deleted.push("box");
+        }
+      }
+      return {
+        gp_Pnt_3: Point,
+        gp_Dir_4: Direction,
+        gp_Ax2_2: Axes,
+        BRepPrimAPI_MakeBox_5: Box,
+        BRepBuilderAPI_MakeWire_1: Wire,
+        Message_ProgressRange_1: Progress
+      } as unknown as OpenCascadeInstance;
+    };
+    const target = {
+      sketchPlane: "XY" as const,
+      profile: {
+        kind: "rectangle" as const,
+        center: [0, 0] as const,
+        width: 4,
+        height: 4
+      },
+      depth: 4
+    };
+    const tool = {
+      sketchPlane: "XY" as const,
+      profile: slotWireProfile,
+      depth: 4
+    };
+    const toolFailureDeleted: string[] = [];
+    class FailingWire {
+      constructor() {
+        throw new Error("Injected wire allocation failure.");
+      }
+    }
+    class UnusedProgress {}
+    expect(() =>
+      createOcctBooleanExtrudeMeshWithInstance(
+        createPrimitiveOcct(toolFailureDeleted, FailingWire, UnusedProgress),
+        { operation: "add", target, tool }
+      )
+    ).toThrow("Injected wire allocation failure");
+    expect(toolFailureDeleted).toEqual([
+      "axes",
+      "direction",
+      "direction",
+      "point",
+      "box"
+    ]);
+
+    const progressFailureDeleted: string[] = [];
+    class UnusedWire {}
+    class FailingProgress {
+      constructor() {
+        throw new Error("Injected boolean progress failure.");
+      }
+    }
+    expect(() =>
+      createOcctBooleanExtrudeMeshWithInstance(
+        createPrimitiveOcct(
+          progressFailureDeleted,
+          UnusedWire,
+          FailingProgress
+        ),
+        {
+          operation: "add",
+          target,
+          tool: {
+            ...target,
+            profile: { ...target.profile, center: [1, 0] as const }
+          }
+        }
+      )
+    ).toThrow("Injected boolean progress failure");
+    expect(progressFailureDeleted).toEqual([
+      "axes",
+      "direction",
+      "direction",
+      "point",
+      "axes",
+      "direction",
+      "direction",
+      "point",
+      "box",
+      "box"
+    ]);
+  });
+
+  it.each(["boolean", "completion", "analyzer", "mesh"] as const)(
+    "disposes composite-add allocations after injected %s failure",
+    (failureStage) => {
+      const deleted: string[] = [];
+      const makeBuilder = (label: string): OcctBooleanExtrudeShapeBuilder => ({
+        Shape: () =>
+          ({
+            delete: () => deleted.push(`${label}-shape`)
+          }) as never,
+        delete: () => deleted.push(`${label}-builder`)
+      });
+      const factories: OcctBooleanExtrudeShapeFactories = {
+        target: () => makeBuilder("target"),
+        tool: () => makeBuilder("wire-tool")
+      };
+      class Progress {
+        delete() {
+          deleted.push("progress");
+        }
+      }
+      class Fuse {
+        constructor() {
+          if (failureStage === "boolean") {
+            throw new Error("Injected boolean builder failure.");
+          }
+        }
+        HasErrors() {
+          return false;
+        }
+        IsDone() {
+          return failureStage !== "completion";
+        }
+        Shape() {
+          return {
+            IsNull: () => false,
+            delete: () => deleted.push("result-shape")
+          };
+        }
+        delete() {
+          deleted.push("boolean-builder");
+        }
+      }
+      class Analyzer {
+        constructor() {
+          if (failureStage === "analyzer") {
+            throw new Error("Injected analyzer failure.");
+          }
+        }
+        IsValid_2() {
+          return true;
+        }
+        delete() {
+          deleted.push("analyzer");
+        }
+      }
+      class Explorer {
+        #more = true;
+        More() {
+          return this.#more;
+        }
+        Next() {
+          this.#more = false;
+        }
+        delete() {
+          deleted.push("explorer");
+        }
+      }
+      class Mesh {
+        constructor() {
+          throw new Error("Injected mesh failure.");
+        }
+      }
+      const oc = {
+        Message_ProgressRange_1: Progress,
+        BRepAlgoAPI_Fuse_3: Fuse,
+        BRepCheck_Analyzer: Analyzer,
+        TopExp_Explorer_2: Explorer,
+        BRepMesh_IncrementalMesh_2: Mesh,
+        TopAbs_ShapeEnum: {
+          TopAbs_SOLID: "solid",
+          TopAbs_SHAPE: "shape"
+        }
+      } as unknown as OpenCascadeInstance;
+      const input = {
+        operation: "add" as const,
+        target: {
+          sketchPlane: "XY" as const,
+          profile: {
+            kind: "rectangle" as const,
+            center: [0, 0] as const,
+            width: 4,
+            height: 4
+          },
+          depth: 4
+        },
+        tool: {
+          sketchPlane: "XY" as const,
+          profile: slotWireProfile,
+          depth: 4
+        }
+      };
+
+      expect(() =>
+        createOcctBooleanExtrudeMeshWithShapeFactories(oc, input, factories)
+      ).toThrow(
+        failureStage === "completion"
+          ? "boolean add builder did not complete"
+          : `Injected ${failureStage}`
+      );
+      expect(deleted).toEqual(
+        failureStage === "boolean"
+          ? [
+              "wire-tool-shape",
+              "target-shape",
+              "progress",
+              "wire-tool-builder",
+              "target-builder"
+            ]
+          : failureStage === "completion"
+            ? [
+                "wire-tool-shape",
+                "target-shape",
+                "boolean-builder",
+                "progress",
+                "wire-tool-builder",
+                "target-builder"
+              ]
+            : failureStage === "analyzer"
+              ? [
+                  "wire-tool-shape",
+                  "target-shape",
+                  "result-shape",
+                  "boolean-builder",
+                  "progress",
+                  "wire-tool-builder",
+                  "target-builder"
+                ]
+              : [
+                  "wire-tool-shape",
+                  "target-shape",
+                  "analyzer",
+                  "explorer",
+                  "result-shape",
+                  "boolean-builder",
+                  "progress",
+                  "wire-tool-builder",
+                  "target-builder"
+                ]
+      );
+    }
+  );
 
   it("disposes a composite build when Shape acquisition or reading throws", () => {
     const references: OcctGeneratedReferences = {
@@ -1129,6 +1442,200 @@ describe("occt-wasm", () => {
       expect(mesh.triangleCount).toBeGreaterThan(0);
       expect(mesh.positions).toHaveLength(mesh.vertexCount * 3);
       expect(mesh.indices).toHaveLength(mesh.triangleCount * 3);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it.each(["positive", "negative", "symmetric"] as const)(
+    "fuses an exact mixed line/arc composite %s tool into one result solid",
+    async (side) => {
+      const source = {
+        kind: "booleanExtrudes" as const,
+        operation: "add" as const,
+        target: {
+          sketchPlane: "XY" as const,
+          profile: {
+            kind: "rectangle" as const,
+            center: [0, 0] as const,
+            width: 8,
+            height: 6
+          },
+          depth: 4,
+          side
+        },
+        tool: {
+          sketchPlane: "XY" as const,
+          profile: {
+            ...slotWireProfile,
+            frame: { ...slotWireProfile.frame, origin: [4, 0, 0] as const }
+          },
+          depth: 4,
+          side
+        }
+      };
+      const mesh = await createOcctBooleanExtrudeMesh(source);
+      const metadata = await createOcctExactBodyMetadata({ source });
+
+      expect(mesh.primitive).toBe("boolean");
+      expect(mesh.vertexCount).toBeGreaterThan(0);
+      expect(mesh.triangleCount).toBeGreaterThan(0);
+      expect("generatedReferences" in mesh).toBe(false);
+      expect(metadata.topologyCounts.solidCount).toBe(1);
+      expect(metadata.volume).toBeCloseTo(208 + 2 * Math.PI, 5);
+      expect(metadata.generatedReferences).toBeUndefined();
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "fuses a reverse-arc wire through its resolved attached world frame",
+    async () => {
+      const frame = {
+        origin: [10, 20, 30] as const,
+        uAxis: [0, 1, 0] as const,
+        vAxis: [0, 0, 1] as const
+      };
+      const source = {
+        kind: "booleanExtrudes" as const,
+        operation: "add" as const,
+        target: {
+          sketchPlane: "YZ" as const,
+          profile: {
+            kind: "rectangle" as const,
+            center: [0, 0] as const,
+            width: 8,
+            height: 6
+          },
+          depth: 4,
+          side: "symmetric" as const,
+          placementFrame: frame
+        },
+        tool: {
+          sketchPlane: "XY" as const,
+          profile: {
+            ...notchedWireProfile,
+            frame: {
+              ...frame,
+              origin: [10, 24, 30] as const
+            }
+          },
+          depth: 4,
+          side: "symmetric" as const
+        }
+      };
+      const [mesh, topology] = await Promise.all([
+        createOcctBooleanExtrudeMesh(source),
+        createOcctExactTopologySnapshot({ source })
+      ]);
+
+      expect(mesh.primitive).toBe("boolean");
+      expect(topology.entityCounts.solidCount).toBe(1);
+      expect(
+        Math.min(...mesh.positions.filter((_, index) => index % 3 === 1))
+      ).toBeCloseTo(16, 5);
+      expect(
+        Math.max(...mesh.positions.filter((_, index) => index % 3 === 1))
+      ).toBeCloseTo(26, 5);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "keeps composite-add exact metadata, topology, checkpoint, and STEP on the same result B-rep recipe",
+    async () => {
+      const source = {
+        kind: "booleanExtrudes" as const,
+        operation: "add" as const,
+        target: {
+          sketchPlane: "XY" as const,
+          profile: {
+            kind: "rectangle" as const,
+            center: [0, 0] as const,
+            width: 8,
+            height: 6
+          },
+          depth: 4,
+          side: "symmetric" as const
+        },
+        tool: {
+          sketchPlane: "XY" as const,
+          profile: {
+            ...slotWireProfile,
+            frame: { ...slotWireProfile.frame, origin: [4, 0, 0] as const }
+          },
+          depth: 4,
+          side: "symmetric" as const
+        }
+      };
+      const [metadata, topology, checkpoint] = await Promise.all([
+        createOcctExactBodyMetadata({ source }),
+        createOcctExactTopologySnapshot({ source }),
+        createOcctExactTopologyCheckpointPayload({
+          checkpointId: "checkpoint_wire_add",
+          bodyId: "body_wire_add",
+          source
+        })
+      ]);
+      const step = await createOcctStepExport({
+        units: "mm",
+        bodies: [{ ...source, bodyId: "body_wire_add" }]
+      });
+
+      expect(metadata.sourceKind).toBe("booleanExtrudes");
+      expect(metadata.topologyCounts.solidCount).toBe(1);
+      expect(metadata.topologyCounts.faceCount).toBe(
+        topology.entityCounts.faceCount
+      );
+      expect(metadata.topologyCounts.edgeCount).toBe(
+        topology.entityCounts.edgeCount
+      );
+      expect(topology.generatedReferences).toBeUndefined();
+      expect(checkpoint.topologySnapshot.signature).toBe(topology.signature);
+      expect(checkpoint.brepByteLength).toBeGreaterThan(1000);
+      expect(step.bodyCount).toBe(1);
+      expect(step.byteLength).toBeGreaterThan(1000);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "rejects disjoint composite add compounds and keeps composite cut unavailable",
+    async () => {
+      const target = {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "rectangle" as const,
+          center: [0, 0] as const,
+          width: 4,
+          height: 4
+        },
+        depth: 4
+      };
+      const tool = {
+        sketchPlane: "XY" as const,
+        profile: {
+          ...slotWireProfile,
+          frame: { ...slotWireProfile.frame, origin: [20, 0, 0] as const }
+        },
+        depth: 4
+      };
+
+      await expect(
+        createOcctBooleanExtrudeMesh({ operation: "add", target, tool })
+      ).rejects.toThrow("must return exactly one solid; received 2");
+      await expect(
+        createOcctBooleanExtrudeMesh({
+          operation: "cut",
+          target,
+          tool
+        } as never)
+      ).rejects.toThrow("Composite wire boolean cut is not enabled");
+      expect(() => assertBooleanAddSolidCount(0)).toThrow(
+        "exactly one solid; received 0"
+      );
+      expect(() => assertBooleanAddSolidCount(2)).toThrow(
+        "exactly one solid; received 2"
+      );
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );

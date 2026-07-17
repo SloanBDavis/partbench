@@ -30,9 +30,12 @@ import {
   type OcctTorusInput
 } from "./tessellateTorus";
 import {
+  assertBooleanAddSolidCount,
   createOcctBooleanExtrudeMeshWithInstance,
   createOcctBooleanExtrudeMeshWithLoader,
-  type OcctBooleanExtrudeInput
+  type OcctBooleanExtrudeInput,
+  type OcctBooleanExtrudeToolSource,
+  type OcctBooleanExtrudeWireSource
 } from "./booleanExtrudes";
 import {
   createOcctEdgeFinishMeshWithInstance,
@@ -141,6 +144,8 @@ import {
 
 export type {
   OcctBooleanExtrudeInput,
+  OcctBooleanExtrudeToolSource,
+  OcctBooleanExtrudeWireSource,
   OcctEdgeFinishInput,
   OcctHoleInput,
   OcctBoxInput,
@@ -189,6 +194,7 @@ export type {
   OcctWireExtrudeShapeBuild
 };
 export {
+  assertBooleanAddSolidCount,
   createOcctBoxMeshWithInstance,
   createOcctBoxMeshWithLoader,
   createOcctCylinderMeshWithInstance,

@@ -27,8 +27,11 @@ import {
   getGeometryKernelStepImportCapabilities,
   getGeometryResponseTransferables,
   type BooleanExtrudePrimitiveSource,
+  type BooleanExtrudeMeshFactoryInput,
   type BooleanExtrudeResultSource,
   type BooleanExtrudeSource,
+  type BooleanExtrudeToolSource,
+  type BooleanExtrudeWireSource,
   type BooleanExtrudesRequest,
   type BoxGeometryDimensions,
   type ChamferEdgeFinishRequest,
@@ -167,8 +170,11 @@ import {
 
 export type {
   BooleanExtrudePrimitiveSource,
+  BooleanExtrudeMeshFactoryInput,
   BooleanExtrudeResultSource,
   BooleanExtrudeSource,
+  BooleanExtrudeToolSource,
+  BooleanExtrudeWireSource,
   BooleanExtrudesRequest,
   BoxGeometryDimensions,
   ChamferEdgeFinishRequest,

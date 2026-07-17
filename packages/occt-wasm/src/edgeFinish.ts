@@ -446,8 +446,8 @@ function getEdgeFinishReferenceSource(
     return source.profile.kind === "rectangle" ? source : undefined;
   }
 
+  if (source.operation !== "cut") return undefined;
   if (
-    source.operation === "cut" &&
     role.startsWith("longitudinal:") &&
     source.tool.profile.kind === "rectangle"
   ) {

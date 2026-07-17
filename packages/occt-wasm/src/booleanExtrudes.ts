@@ -1,9 +1,13 @@
-import type { OpenCascadeInstance } from "opencascade.js";
+import type { OpenCascadeInstance, TopoDS_Shape } from "opencascade.js";
 import {
   readTriangulatedShape,
   type OcctMeshData
 } from "./readTriangulatedShape";
 import type { OcctLoader } from "./tessellateBox";
+import {
+  makeWireExtrudeShape,
+  type OcctWireExtrudeSource
+} from "./wireExtrude";
 
 export type OcctBooleanOperation = "add" | "cut";
 export type OcctSketchPlane = "XY" | "XZ" | "YZ";
@@ -30,6 +34,14 @@ export type OcctBooleanExtrudeSource =
   | OcctBooleanExtrudePrimitiveSource
   | OcctBooleanExtrudeResultSource;
 
+export type OcctBooleanExtrudeWireSource = OcctWireExtrudeSource & {
+  readonly placementFrame?: never;
+};
+
+export type OcctBooleanExtrudeToolSource =
+  | OcctBooleanExtrudePrimitiveSource
+  | OcctBooleanExtrudeWireSource;
+
 export interface OcctBooleanExtrudePrimitiveSource {
   readonly sketchPlane: OcctSketchPlane;
   readonly profile: OcctExtrudeProfile;
@@ -38,9 +50,20 @@ export interface OcctBooleanExtrudePrimitiveSource {
   readonly placementFrame?: OcctBooleanExtrudePlacementFrame;
 }
 
-export interface OcctBooleanExtrudeResultSource {
+export type OcctBooleanExtrudeResultSource =
+  | OcctBooleanExtrudeAddResultSource
+  | OcctBooleanExtrudeCutResultSource;
+
+export interface OcctBooleanExtrudeAddResultSource {
   readonly kind: "booleanExtrudes";
-  readonly operation: OcctBooleanOperation;
+  readonly operation: "add";
+  readonly target: OcctBooleanExtrudeSource;
+  readonly tool: OcctBooleanExtrudeToolSource;
+}
+
+export interface OcctBooleanExtrudeCutResultSource {
+  readonly kind: "booleanExtrudes";
+  readonly operation: "cut";
   readonly target: OcctBooleanExtrudeSource;
   readonly tool: OcctBooleanExtrudePrimitiveSource;
 }
@@ -51,19 +74,43 @@ export interface OcctBooleanExtrudePlacementFrame {
   readonly vAxis: readonly [number, number, number];
 }
 
-export interface OcctBooleanExtrudeInput {
-  readonly operation: OcctBooleanOperation;
+interface OcctBooleanExtrudeInputBase {
   readonly target: OcctBooleanExtrudeSource;
-  readonly tool: OcctBooleanExtrudePrimitiveSource;
   readonly linearDeflection?: number;
   readonly angularDeflection?: number;
 }
+
+export type OcctBooleanExtrudeInput =
+  | (OcctBooleanExtrudeInputBase & {
+      readonly operation: "add";
+      readonly tool: OcctBooleanExtrudeToolSource;
+    })
+  | (OcctBooleanExtrudeInputBase & {
+      readonly operation: "cut";
+      readonly tool: OcctBooleanExtrudePrimitiveSource;
+    });
 
 interface ExtrudeFrame {
   readonly origin: readonly [number, number, number];
   readonly uAxis: readonly [number, number, number];
   readonly vAxis: readonly [number, number, number];
   readonly normalAxis: readonly [number, number, number];
+}
+
+export interface OcctBooleanExtrudeShapeBuilder {
+  Shape(): TopoDS_Shape;
+  delete(): void;
+}
+
+export interface OcctBooleanExtrudeShapeFactories {
+  readonly target: (
+    oc: OpenCascadeInstance,
+    source: OcctBooleanExtrudeSource
+  ) => OcctBooleanExtrudeShapeBuilder;
+  readonly tool: (
+    oc: OpenCascadeInstance,
+    source: OcctBooleanExtrudeToolSource
+  ) => OcctBooleanExtrudeShapeBuilder;
 }
 
 export async function createOcctBooleanExtrudeMeshWithLoader(
@@ -79,44 +126,65 @@ export function createOcctBooleanExtrudeMeshWithInstance(
   oc: OpenCascadeInstance,
   input: OcctBooleanExtrudeInput
 ): OcctMeshData {
+  return createOcctBooleanExtrudeMeshWithShapeFactories(oc, input, {
+    target: makeBooleanExtrudeShape,
+    tool: makeBooleanExtrudeToolShape
+  });
+}
+
+export function createOcctBooleanExtrudeMeshWithShapeFactories(
+  oc: OpenCascadeInstance,
+  input: OcctBooleanExtrudeInput,
+  factories: OcctBooleanExtrudeShapeFactories
+): OcctMeshData {
+  assertSupportedBooleanInput(input);
   const linearDeflection = input.linearDeflection ?? 0.5;
   const angularDeflection = input.angularDeflection ?? 0.5;
-  const targetShape = makeBooleanExtrudeShape(oc, input.target);
-  const toolShape = makeBooleanExtrudeShape(oc, input.tool);
-  const range = new oc.Message_ProgressRange_1();
+  let targetShape: OcctBooleanExtrudeShapeBuilder | undefined;
+  let toolShape: OcctBooleanExtrudeShapeBuilder | undefined;
+  let range:
+    | InstanceType<OpenCascadeInstance["Message_ProgressRange_1"]>
+    | undefined;
   let booleanOperation:
     | InstanceType<typeof oc.BRepAlgoAPI_Fuse_3>
     | InstanceType<typeof oc.BRepAlgoAPI_Cut_3>
     | undefined;
 
   try {
-    booleanOperation =
-      input.operation === "add"
-        ? new oc.BRepAlgoAPI_Fuse_3(
-            targetShape.Shape(),
-            toolShape.Shape(),
-            range
-          )
-        : new oc.BRepAlgoAPI_Cut_3(
-            targetShape.Shape(),
-            toolShape.Shape(),
-            range
-          );
-
-    if (booleanOperation.HasErrors()) {
-      throw new Error(`Open CASCADE boolean ${input.operation} failed.`);
+    targetShape = factories.target(oc, input.target);
+    toolShape = factories.tool(oc, input.tool);
+    range = new oc.Message_ProgressRange_1();
+    let target: TopoDS_Shape | undefined;
+    let tool: TopoDS_Shape | undefined;
+    try {
+      target = targetShape.Shape();
+      tool = toolShape.Shape();
+      booleanOperation =
+        input.operation === "add"
+          ? new oc.BRepAlgoAPI_Fuse_3(target, tool, range)
+          : new oc.BRepAlgoAPI_Cut_3(target, tool, range);
+    } finally {
+      tool?.delete();
+      target?.delete();
     }
 
-    const resultShape = booleanOperation.Shape();
-    const mesh = new oc.BRepMesh_IncrementalMesh_2(
-      resultShape,
-      linearDeflection,
-      false,
-      angularDeflection,
-      false
-    );
+    assertBooleanBuilderCompleted(booleanOperation, input.operation);
+
+    let resultShape: TopoDS_Shape | undefined;
+    let mesh:
+      | InstanceType<OpenCascadeInstance["BRepMesh_IncrementalMesh_2"]>
+      | undefined;
 
     try {
+      resultShape = booleanOperation.Shape();
+      assertValidBooleanResult(oc, resultShape, input.operation);
+      mesh = new oc.BRepMesh_IncrementalMesh_2(
+        resultShape,
+        linearDeflection,
+        false,
+        angularDeflection,
+        false
+      );
       if (!mesh.IsDone()) {
         throw new Error(
           `Open CASCADE meshing failed with status ${mesh.GetStatusFlags()}.`
@@ -125,29 +193,55 @@ export function createOcctBooleanExtrudeMeshWithInstance(
 
       return readTriangulatedShape(oc, resultShape, "boolean");
     } finally {
-      mesh.delete();
+      mesh?.delete();
+      resultShape?.delete();
     }
   } finally {
     booleanOperation?.delete();
-    range.delete();
-    targetShape.delete();
-    toolShape.delete();
+    range?.delete();
+    toolShape?.delete();
+    targetShape?.delete();
+  }
+}
+
+function assertSupportedBooleanInput(input: OcctBooleanExtrudeInput): void {
+  const tool = input.tool as OcctBooleanExtrudeToolSource;
+  if (input.operation === "cut" && tool.profile.kind === "wire") {
+    throw new Error(
+      "Composite wire boolean cut is not enabled in this geometry slice."
+    );
+  }
+  if (tool.profile.kind === "wire" && tool.placementFrame !== undefined) {
+    throw new Error(
+      "Composite wire boolean tools use their resolved profile frame and cannot also provide placementFrame."
+    );
   }
 }
 
 export function makeBooleanExtrudeShape(
   oc: OpenCascadeInstance,
   source: OcctBooleanExtrudeSource
-):
-  | InstanceType<typeof oc.BRepPrimAPI_MakeBox_5>
-  | InstanceType<typeof oc.BRepPrimAPI_MakeCylinder_3>
-  | InstanceType<typeof oc.BRepAlgoAPI_Fuse_3>
-  | InstanceType<typeof oc.BRepAlgoAPI_Cut_3> {
+): OcctBooleanExtrudeShapeBuilder {
   if (isOcctBooleanExtrudeResultSource(source)) {
     return makeBooleanExtrudeResultShape(oc, source);
   }
 
   return makePrimitiveBooleanExtrudeShape(oc, source);
+}
+
+export function makeBooleanExtrudeToolShape(
+  oc: OpenCascadeInstance,
+  source: OcctBooleanExtrudeToolSource
+): OcctBooleanExtrudeShapeBuilder {
+  return isOcctBooleanExtrudeWireSource(source)
+    ? makeWireExtrudeShape(oc, source)
+    : makePrimitiveBooleanExtrudeShape(oc, source);
+}
+
+function isOcctBooleanExtrudeWireSource(
+  source: OcctBooleanExtrudeToolSource
+): source is OcctBooleanExtrudeWireSource {
+  return source.profile.kind === "wire";
 }
 
 function isOcctBooleanExtrudeResultSource(
@@ -176,37 +270,117 @@ function makePrimitiveBooleanExtrudeShape(
 function makeBooleanExtrudeResultShape(
   oc: OpenCascadeInstance,
   source: OcctBooleanExtrudeResultSource
-):
-  | InstanceType<typeof oc.BRepAlgoAPI_Fuse_3>
-  | InstanceType<typeof oc.BRepAlgoAPI_Cut_3> {
-  const targetShape = makeBooleanExtrudeShape(oc, source.target);
-  const toolShape = makePrimitiveBooleanExtrudeShape(oc, source.tool);
-  const range = new oc.Message_ProgressRange_1();
+): OcctBooleanExtrudeShapeBuilder {
+  assertSupportedBooleanInput(source);
+  let targetShape: OcctBooleanExtrudeShapeBuilder | undefined;
+  let toolShape: OcctBooleanExtrudeShapeBuilder | undefined;
+  let range:
+    | InstanceType<OpenCascadeInstance["Message_ProgressRange_1"]>
+    | undefined;
+  let operation:
+    | InstanceType<typeof oc.BRepAlgoAPI_Fuse_3>
+    | InstanceType<typeof oc.BRepAlgoAPI_Cut_3>
+    | undefined;
 
   try {
-    const operation =
-      source.operation === "add"
-        ? new oc.BRepAlgoAPI_Fuse_3(
-            targetShape.Shape(),
-            toolShape.Shape(),
-            range
-          )
-        : new oc.BRepAlgoAPI_Cut_3(
-            targetShape.Shape(),
-            toolShape.Shape(),
-            range
-          );
+    targetShape = makeBooleanExtrudeShape(oc, source.target);
+    toolShape = makeBooleanExtrudeToolShape(oc, source.tool);
+    range = new oc.Message_ProgressRange_1();
+    let target: TopoDS_Shape | undefined;
+    let tool: TopoDS_Shape | undefined;
+    try {
+      target = targetShape.Shape();
+      tool = toolShape.Shape();
+      operation =
+        source.operation === "add"
+          ? new oc.BRepAlgoAPI_Fuse_3(target, tool, range)
+          : new oc.BRepAlgoAPI_Cut_3(target, tool, range);
+    } finally {
+      tool?.delete();
+      target?.delete();
+    }
 
-    if (operation.HasErrors()) {
-      operation.delete();
-      throw new Error(`Open CASCADE boolean ${source.operation} failed.`);
+    assertBooleanBuilderCompleted(operation, source.operation);
+
+    const result = operation.Shape();
+    try {
+      assertValidBooleanResult(oc, result, source.operation);
+    } finally {
+      result.delete();
     }
 
     return operation;
+  } catch (error) {
+    operation?.delete();
+    throw error;
   } finally {
-    range.delete();
-    targetShape.delete();
-    toolShape.delete();
+    range?.delete();
+    toolShape?.delete();
+    targetShape?.delete();
+  }
+}
+
+function assertBooleanBuilderCompleted(
+  operation:
+    | InstanceType<OpenCascadeInstance["BRepAlgoAPI_Fuse_3"]>
+    | InstanceType<OpenCascadeInstance["BRepAlgoAPI_Cut_3"]>,
+  kind: OcctBooleanOperation
+): void {
+  if (!operation.IsDone()) {
+    throw new Error(`Open CASCADE boolean ${kind} builder did not complete.`);
+  }
+  if (operation.HasErrors()) {
+    throw new Error(`Open CASCADE boolean ${kind} failed.`);
+  }
+}
+
+function assertValidBooleanResult(
+  oc: OpenCascadeInstance,
+  shape: TopoDS_Shape,
+  operation: OcctBooleanOperation
+): void {
+  if (shape.IsNull()) {
+    throw new Error(`Open CASCADE boolean ${operation} returned a null shape.`);
+  }
+  const analyzer = new oc.BRepCheck_Analyzer(shape, true, false);
+  try {
+    if (!analyzer.IsValid_2()) {
+      throw new Error(
+        `Open CASCADE boolean ${operation} returned an invalid shape.`
+      );
+    }
+  } finally {
+    analyzer.delete();
+  }
+  if (operation === "add") {
+    assertBooleanAddSolidCount(countSolids(oc, shape));
+  }
+}
+
+export function assertBooleanAddSolidCount(solidCount: number): void {
+  if (solidCount !== 1) {
+    throw new Error(
+      `Open CASCADE boolean add must return exactly one solid; received ${solidCount}.`
+    );
+  }
+}
+
+function countSolids(oc: OpenCascadeInstance, shape: TopoDS_Shape): number {
+  const explorer = new oc.TopExp_Explorer_2(
+    shape,
+    oc.TopAbs_ShapeEnum.TopAbs_SOLID as ConstructorParameters<
+      typeof oc.TopExp_Explorer_2
+    >[1],
+    oc.TopAbs_ShapeEnum.TopAbs_SHAPE as ConstructorParameters<
+      typeof oc.TopExp_Explorer_2
+    >[2]
+  );
+  let count = 0;
+  try {
+    for (; explorer.More(); explorer.Next()) count += 1;
+    return count;
+  } finally {
+    explorer.delete();
   }
 }
 
