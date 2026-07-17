@@ -43,7 +43,8 @@ export function createDerivedGeometrySourcesFromDocument(
   generatedFacesByKey: ReadonlyMap<
     string,
     CadGeneratedFaceReference
-  > = new Map()
+  > = new Map(),
+  sourceIdentitySignaturesByBodyId: ReadonlyMap<string, string> = new Map()
 ): readonly DerivedGeometrySource[] {
   const sketches = [...document.sketches.values()].map((sketch) => ({
     id: sketch.id,
@@ -61,7 +62,8 @@ export function createDerivedGeometrySourcesFromDocument(
       generatedFacesByKey,
       document.namedReferences,
       document.topologyIdentity,
-      document
+      document,
+      sourceIdentitySignaturesByBodyId
     )
   ];
 }
@@ -75,7 +77,8 @@ export function createAuthoredFeatureDerivedGeometrySources(
   > = new Map(),
   namedReferences: CadDocument["namedReferences"] = new Map(),
   topologyIdentity: CadDocument["topologyIdentity"] = undefined,
-  referenceDocument?: CadDocument
+  referenceDocument?: CadDocument,
+  sourceIdentitySignaturesByBodyId: ReadonlyMap<string, string> = new Map()
 ): readonly (
   | DerivedExtrudeGeometrySource
   | DerivedBooleanExtrudeGeometrySource
@@ -91,7 +94,7 @@ export function createAuthoredFeatureDerivedGeometrySources(
 )[] {
   const consumedBodyIds = createConsumedBodyIds(features);
 
-  return [
+  const sources = [
     ...createExtrudeDerivedGeometrySources(
       features,
       sketches,
@@ -159,6 +162,15 @@ export function createAuthoredFeatureDerivedGeometrySources(
       consumedBodyIds
     )
   ];
+
+  return sources.map((source) => {
+    const sourceIdentitySignature = sourceIdentitySignaturesByBodyId.get(
+      source.id
+    );
+    return sourceIdentitySignature
+      ? { ...source, sourceIdentitySignature }
+      : source;
+  });
 }
 
 export function createLoftDerivedGeometrySources(

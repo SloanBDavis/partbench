@@ -162,11 +162,83 @@ describe("project exact export query evidence", () => {
       }
     });
   });
+
+  it("invalidates identical geometry when an add is retargeted or its target identity is recreated", () => {
+    const engine = createCompositeAddEngine(true);
+    const initial = readCompositeAddSource(engine);
+    const ready = readySnapshot(initial);
+
+    engine.apply({ op: "feature.delete", id: "feature_add" });
+    createWireAdd(engine, "body_target_2");
+    const retargeted = readCompositeAddSource(engine);
+
+    expect(retargeted.sourceIdentitySignature).toBe(
+      readBodySourceIdentitySignature(engine, "body_add")
+    );
+    expect(createDerivedExactMetadataCacheKey(retargeted)).not.toBe(
+      createDerivedExactMetadataCacheKey(initial)
+    );
+    expect(
+      createCurrentDerivedExactMetadataSnapshots(engine, ready, [retargeted])
+    ).toEqual([]);
+
+    engine.apply({ op: "feature.delete", id: "feature_add" });
+    engine.apply({ op: "feature.delete", id: "feature_target_2" });
+    engine.apply({
+      op: "feature.extrude",
+      id: "feature_target_2_recreated",
+      bodyId: "body_target_2",
+      sketchId: "sketch_target_2",
+      entityId: "target_rect_2",
+      depth: 4,
+      operationMode: "newBody"
+    });
+    createWireAdd(engine, "body_target_2");
+    const recreatedIdentity = readCompositeAddSource(engine);
+
+    expect(createDerivedExactMetadataCacheKey(recreatedIdentity)).not.toBe(
+      createDerivedExactMetadataCacheKey(retargeted)
+    );
+    expect(
+      createCurrentDerivedExactMetadataSnapshots(
+        engine,
+        readySnapshot(retargeted),
+        [recreatedIdentity]
+      )
+    ).toEqual([]);
+  });
 });
 
-function createCompositeAddEngine(): CadEngine {
+function createCompositeAddEngine(includeSecondTarget = false): CadEngine {
   const engine = new CadEngine();
   engine.applyBatch([
+    ...(includeSecondTarget
+      ? [
+          {
+            op: "sketch.create" as const,
+            id: "sketch_target_2",
+            name: "Second target",
+            plane: "XY" as const
+          },
+          {
+            op: "sketch.addRectangle" as const,
+            sketchId: "sketch_target_2",
+            id: "target_rect_2",
+            center: [0, 0] as const,
+            width: 4,
+            height: 4
+          },
+          {
+            op: "feature.extrude" as const,
+            id: "feature_target_2",
+            bodyId: "body_target_2",
+            sketchId: "sketch_target_2",
+            entityId: "target_rect_2",
+            depth: 4,
+            operationMode: "newBody" as const
+          }
+        ]
+      : []),
     {
       op: "sketch.create",
       id: "sketch_target",
@@ -235,6 +307,25 @@ function createCompositeAddEngine(): CadEngine {
   return engine;
 }
 
+function createWireAdd(engine: CadEngine, targetBodyId: string): void {
+  engine.apply({
+    op: "feature.extrude",
+    id: "feature_add",
+    bodyId: "body_add",
+    profile: {
+      kind: "wire",
+      sketchId: "sketch_tool",
+      segments: [
+        { entityId: "tool_diameter", orientation: "forward" },
+        { entityId: "tool_arc", orientation: "forward" }
+      ]
+    },
+    depth: 4,
+    operationMode: "add",
+    targetBodyId
+  });
+}
+
 function readCompositeAddSource(
   engine: CadEngine
 ): DerivedBooleanExtrudeGeometrySource {
@@ -247,7 +338,14 @@ function readCompositeAddSource(
   }
   const sources = createDerivedGeometrySourcesFromDocument(
     engine.getDocument(),
-    structure.features
+    structure.features,
+    new Map(),
+    new Map(
+      structure.bodies.map((body) => [
+        body.id,
+        readBodySourceIdentitySignature(engine, body.id)
+      ])
+    )
   );
   const source = sources.find(
     (candidate): candidate is DerivedBooleanExtrudeGeometrySource =>
@@ -257,6 +355,20 @@ function readCompositeAddSource(
     throw new Error("Expected a composite add source.");
   }
   return source;
+}
+
+function readBodySourceIdentitySignature(
+  engine: CadEngine,
+  bodyId: string
+): string {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "body.topology", bodyId }
+  });
+  if (!response.ok || response.query !== "body.topology") {
+    throw new Error(`Expected body topology for ${bodyId}.`);
+  }
+  return response.topology.sourceIdentity.signature;
 }
 
 function pendingSnapshot(

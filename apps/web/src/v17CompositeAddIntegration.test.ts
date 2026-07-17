@@ -139,6 +139,81 @@ describe("V17 composite add web integration", () => {
     expect(snapshot.meshes.map((mesh) => mesh.id)).toEqual(["body_add"]);
   });
 
+  it("keys retarget and recreated source lineage and ignores every stale completion", async () => {
+    const geometry = resolveAddSource();
+    const initial = {
+      ...geometry,
+      sourceIdentitySignature: "body-topology-source:v1:target-a"
+    };
+    const retargeted = {
+      ...geometry,
+      sourceIdentitySignature: "body-topology-source:v1:target-b"
+    };
+    const recreatedTarget = {
+      ...geometry,
+      sourceIdentitySignature: "body-topology-source:v1:target-b-recreated"
+    };
+    const firstMesh = deferred<DerivedGeometryResult>();
+    const secondMesh = deferred<DerivedGeometryResult>();
+    const thirdMesh = deferred<DerivedGeometryResult>();
+    const firstExact = deferred<DerivedExactMetadataResult>();
+    const secondExact = deferred<DerivedExactMetadataResult>();
+    const thirdExact = deferred<DerivedExactMetadataResult>();
+    let geometrySnapshot = createEmptyDerivedGeometrySnapshot();
+    let exactSnapshot = createEmptyDerivedExactMetadataSnapshot();
+    const geometryService = new DerivedGeometryService({
+      runtime: {
+        booleanExtrudes: vi
+          .fn()
+          .mockReturnValueOnce(firstMesh.promise)
+          .mockReturnValueOnce(secondMesh.promise)
+          .mockReturnValueOnce(thirdMesh.promise)
+      } as unknown as DerivedGeometryRuntime,
+      onChange(next) {
+        geometrySnapshot = next;
+      }
+    });
+    const exactService = new DerivedExactMetadataService({
+      runtime: {
+        exactBodyMetadata: vi
+          .fn()
+          .mockReturnValueOnce(firstExact.promise)
+          .mockReturnValueOnce(secondExact.promise)
+          .mockReturnValueOnce(thirdExact.promise)
+      } as unknown as DerivedGeometryRuntime,
+      onChange(next) {
+        exactSnapshot = next;
+      }
+    });
+
+    expect(createDerivedGeometryCacheKey(retargeted)).not.toBe(
+      createDerivedGeometryCacheKey(initial)
+    );
+    expect(createDerivedGeometryCacheKey(recreatedTarget)).not.toBe(
+      createDerivedGeometryCacheKey(retargeted)
+    );
+    geometryService.reconcile([initial]);
+    exactService.reconcile([initial]);
+    geometryService.reconcile([retargeted]);
+    exactService.reconcile([retargeted]);
+    geometryService.reconcile([recreatedTarget]);
+    exactService.reconcile([recreatedTarget]);
+
+    firstMesh.resolve(createMeshResult(initial.id));
+    firstExact.resolve(createExactResult(initial.id));
+    secondMesh.resolve(createMeshResult(retargeted.id));
+    secondExact.resolve(createExactResult(retargeted.id));
+    await flushPromises();
+    expect(geometrySnapshot.entries[0]?.status).toBe("pending");
+    expect(exactSnapshot.entries[0]?.status).toBe("pending");
+
+    thirdMesh.resolve(createMeshResult(recreatedTarget.id));
+    thirdExact.resolve(createExactResult(recreatedTarget.id));
+    await flushPromises();
+    expect(geometrySnapshot.entries[0]?.status).toBe("ready");
+    expect(exactSnapshot.entries[0]?.status).toBe("ready");
+  });
+
   it("clears exact metadata while edited add evidence is pending or failed", async () => {
     const source = resolveAddSource();
     const edited = editAddToolDepth(source, 8);

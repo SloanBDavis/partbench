@@ -462,6 +462,24 @@ function readProjectStructure(): {
     : { parts: [], features: [], bodies: [] };
 }
 
+function readBodySourceIdentitySignatures(
+  bodyIds: Iterable<string>
+): ReadonlyMap<string, string> {
+  const signatures = new Map<string, string>();
+
+  for (const bodyId of bodyIds) {
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.topology", bodyId }
+    });
+    if (response.ok && response.query === "body.topology") {
+      signatures.set(bodyId, response.topology.sourceIdentity.signature);
+    }
+  }
+
+  return signatures;
+}
+
 function readProjectHealth(
   exactMetadata: DerivedExactMetadataSnapshot,
   currentSources: readonly DerivedExactMetadataSource[]
@@ -1513,6 +1531,16 @@ export function App() {
     [document]
   );
   const projectStructure = readProjectStructure();
+  const bodySourceIdentitySignatures = useMemo(
+    () =>
+      readBodySourceIdentitySignatures(
+        new Set([
+          ...document.objects.keys(),
+          ...[...document.features.values()].map((feature) => feature.bodyId)
+        ])
+      ),
+    [document]
+  );
   const projectImportReadiness = readProjectImportReadiness();
   const projectTopologyIdentityReadiness =
     readProjectTopologyIdentityReadiness();
@@ -1533,10 +1561,14 @@ export function App() {
         projectStructure.features,
         sketches,
         sourcePlacementFacesByKey,
-        document.namedReferences
+        document.namedReferences,
+        document.topologyIdentity,
+        document,
+        bodySourceIdentitySignatures
       ),
     [
-      document.namedReferences,
+      bodySourceIdentitySignatures,
+      document,
       projectStructure.features,
       sourcePlacementFacesByKey,
       sketches
@@ -1575,9 +1607,15 @@ export function App() {
       createDerivedGeometrySourcesFromDocument(
         document,
         projectStructure.features,
-        sourcePlacementFacesByKey
+        sourcePlacementFacesByKey,
+        bodySourceIdentitySignatures
       ),
-    [document, projectStructure.features, sourcePlacementFacesByKey]
+    [
+      bodySourceIdentitySignatures,
+      document,
+      projectStructure.features,
+      sourcePlacementFacesByKey
+    ]
   );
   const importedExactMetadataSources = useMemo(() => {
     const importedBodyIds = new Set(
@@ -2202,10 +2240,12 @@ export function App() {
     const nextDerivedGeometrySources = createDerivedGeometrySourcesFromDocument(
       nextDocument,
       nextStructure.features,
-      nextGeneratedFacesByKey
+      nextGeneratedFacesByKey,
+      readBodySourceIdentitySignatures(
+        nextStructure.bodies.map((body) => body.id)
+      )
     );
     getDerivedGeometryService().reconcile(nextDerivedGeometrySources);
-    getDerivedExactMetadataService().reconcile(nextDerivedGeometrySources);
   }
 
   async function commitOps(

@@ -68,7 +68,11 @@ export interface DerivedPrimitiveGeometrySource {
   readonly object: SceneObject;
 }
 
-export interface DerivedExtrudeGeometrySource {
+export interface DerivedAuthoredGeometrySourceIdentity {
+  readonly sourceIdentitySignature?: string;
+}
+
+export interface DerivedExtrudeGeometrySource extends DerivedAuthoredGeometrySourceIdentity {
   readonly id: string;
   readonly kind: "extrude";
   readonly sketchPlane: "XY" | "XZ" | "YZ";
@@ -81,7 +85,7 @@ export interface DerivedExtrudeGeometrySource {
   readonly placementError?: string;
 }
 
-export interface DerivedBooleanExtrudeGeometrySource {
+export interface DerivedBooleanExtrudeGeometrySource extends DerivedAuthoredGeometrySourceIdentity {
   readonly id: string;
   readonly kind: "extrudeBoolean";
   readonly operation: "add" | "cut";
@@ -92,7 +96,7 @@ export interface DerivedBooleanExtrudeGeometrySource {
   readonly placementError?: string;
 }
 
-export interface DerivedRevolveGeometrySource {
+export interface DerivedRevolveGeometrySource extends DerivedAuthoredGeometrySourceIdentity {
   readonly id: string;
   readonly kind: "revolve";
   readonly sketchPlane: "XY" | "XZ" | "YZ";
@@ -106,7 +110,7 @@ export interface DerivedRevolveGeometrySource {
   readonly placementError?: string;
 }
 
-export interface DerivedSweepGeometrySource {
+export interface DerivedSweepGeometrySource extends DerivedAuthoredGeometrySourceIdentity {
   readonly id: string;
   readonly kind: "sweep";
   readonly profile: {
@@ -121,14 +125,14 @@ export interface DerivedSweepGeometrySource {
   readonly placementError?: string;
 }
 
-export interface DerivedLoftGeometrySource {
+export interface DerivedLoftGeometrySource extends DerivedAuthoredGeometrySourceIdentity {
   readonly id: string;
   readonly kind: "loft";
   readonly sections: readonly DerivedSweepGeometrySource["profile"][];
   readonly placementError?: string;
 }
 
-export interface DerivedHoleGeometrySource {
+export interface DerivedHoleGeometrySource extends DerivedAuthoredGeometrySourceIdentity {
   readonly id: string;
   readonly kind: "hole";
   readonly target:
@@ -154,7 +158,7 @@ export type DerivedEdgeFinishGeometrySource =
   | DerivedChamferGeometrySource
   | DerivedFilletGeometrySource;
 
-export interface DerivedChamferGeometrySource {
+export interface DerivedChamferGeometrySource extends DerivedAuthoredGeometrySourceIdentity {
   readonly id: string;
   readonly kind: "edgeFinish";
   readonly operation: "chamfer";
@@ -166,7 +170,7 @@ export interface DerivedChamferGeometrySource {
   readonly placementError?: string;
 }
 
-export interface DerivedFilletGeometrySource {
+export interface DerivedFilletGeometrySource extends DerivedAuthoredGeometrySourceIdentity {
   readonly id: string;
   readonly kind: "edgeFinish";
   readonly operation: "fillet";
@@ -178,7 +182,7 @@ export interface DerivedFilletGeometrySource {
   readonly placementError?: string;
 }
 
-export interface DerivedLinearPatternGeometrySource {
+export interface DerivedLinearPatternGeometrySource extends DerivedAuthoredGeometrySourceIdentity {
   readonly id: string;
   readonly kind: "linearPattern";
   readonly seed:
@@ -190,7 +194,7 @@ export interface DerivedLinearPatternGeometrySource {
   readonly placementError?: string;
 }
 
-export interface DerivedCircularPatternGeometrySource {
+export interface DerivedCircularPatternGeometrySource extends DerivedAuthoredGeometrySourceIdentity {
   readonly id: string;
   readonly kind: "circularPattern";
   readonly seed:
@@ -205,7 +209,7 @@ export interface DerivedCircularPatternGeometrySource {
   readonly placementError?: string;
 }
 
-export interface DerivedMirrorGeometrySource {
+export interface DerivedMirrorGeometrySource extends DerivedAuthoredGeometrySourceIdentity {
   readonly id: string;
   readonly kind: "mirror";
   readonly seed:
@@ -219,7 +223,7 @@ export interface DerivedMirrorGeometrySource {
   readonly placementError?: string;
 }
 
-export interface DerivedShellGeometrySource {
+export interface DerivedShellGeometrySource extends DerivedAuthoredGeometrySourceIdentity {
   readonly id: string;
   readonly kind: "shell";
   readonly target:
@@ -1246,6 +1250,7 @@ export function createDerivedGeometryCacheKey(
     source.kind === "extrude"
       ? {
           kind: source.kind,
+          sourceIdentitySignature: source.sourceIdentitySignature,
           sketchPlane: source.sketchPlane,
           profile: source.profile,
           depth: source.depth,
@@ -1256,6 +1261,7 @@ export function createDerivedGeometryCacheKey(
       : source.kind === "extrudeBoolean"
         ? {
             kind: source.kind,
+            sourceIdentitySignature: source.sourceIdentitySignature,
             operation: source.operation,
             target: createDerivedGeometryCacheKey(source.target),
             tool: createDerivedGeometryCacheKey(source.tool),
@@ -1264,6 +1270,7 @@ export function createDerivedGeometryCacheKey(
         : source.kind === "revolve"
           ? {
               kind: source.kind,
+              sourceIdentitySignature: source.sourceIdentitySignature,
               sketchPlane: source.sketchPlane,
               profile: source.profile,
               axis: source.axis,
@@ -1274,6 +1281,7 @@ export function createDerivedGeometryCacheKey(
           : source.kind === "hole"
             ? {
                 kind: source.kind,
+                sourceIdentitySignature: source.sourceIdentitySignature,
                 target: createDerivedGeometryCacheKey(source.target),
                 tool: source.tool,
                 placementError: source.placementError
@@ -1282,6 +1290,7 @@ export function createDerivedGeometryCacheKey(
               ? source.operation === "chamfer"
                 ? {
                     kind: source.kind,
+                    sourceIdentitySignature: source.sourceIdentitySignature,
                     operation: source.operation,
                     target: createDerivedGeometryCacheKey(source.target),
                     edgeStableId: source.edgeStableId,
@@ -1290,6 +1299,7 @@ export function createDerivedGeometryCacheKey(
                   }
                 : {
                     kind: source.kind,
+                    sourceIdentitySignature: source.sourceIdentitySignature,
                     operation: source.operation,
                     target: createDerivedGeometryCacheKey(source.target),
                     edgeStableId: source.edgeStableId,
@@ -1299,6 +1309,7 @@ export function createDerivedGeometryCacheKey(
               : source.kind === "linearPattern"
                 ? {
                     kind: source.kind,
+                    sourceIdentitySignature: source.sourceIdentitySignature,
                     seed: createDerivedGeometryCacheKey(source.seed),
                     direction: source.direction,
                     spacing: source.spacing,
@@ -1308,6 +1319,7 @@ export function createDerivedGeometryCacheKey(
                 : source.kind === "circularPattern"
                   ? {
                       kind: source.kind,
+                      sourceIdentitySignature: source.sourceIdentitySignature,
                       seed: createDerivedGeometryCacheKey(source.seed),
                       axis: source.axis,
                       totalAngleDegrees: source.totalAngleDegrees,
@@ -1317,6 +1329,7 @@ export function createDerivedGeometryCacheKey(
                   : source.kind === "mirror"
                     ? {
                         kind: source.kind,
+                        sourceIdentitySignature: source.sourceIdentitySignature,
                         seed: createDerivedGeometryCacheKey(source.seed),
                         plane: source.plane,
                         includeOriginal: source.includeOriginal,
@@ -1325,6 +1338,8 @@ export function createDerivedGeometryCacheKey(
                     : source.kind === "shell"
                       ? {
                           kind: source.kind,
+                          sourceIdentitySignature:
+                            source.sourceIdentitySignature,
                           target: createDerivedGeometryCacheKey(source.target),
                           wallThickness: source.wallThickness,
                           openFaceStableIds: source.openFaceStableIds,
@@ -1333,6 +1348,8 @@ export function createDerivedGeometryCacheKey(
                       : source.kind === "sweep"
                         ? {
                             kind: source.kind,
+                            sourceIdentitySignature:
+                              source.sourceIdentitySignature,
                             profile: source.profile,
                             pathSegments: source.pathSegments,
                             placementError: source.placementError
@@ -1340,6 +1357,8 @@ export function createDerivedGeometryCacheKey(
                         : source.kind === "loft"
                           ? {
                               kind: source.kind,
+                              sourceIdentitySignature:
+                                source.sourceIdentitySignature,
                               sections: source.sections,
                               placementError: source.placementError
                             }

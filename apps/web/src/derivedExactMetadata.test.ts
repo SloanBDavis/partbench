@@ -80,6 +80,37 @@ describe("derivedExactMetadata", () => {
     });
   });
 
+  it("preserves ready imported checkpoint evidence across unrelated full-list reconciliation", async () => {
+    const imported = {
+      id: "body_imported",
+      kind: "importedBody" as const,
+      checkpointId: "checkpoint_imported",
+      brepBytes: new Uint8Array([1, 2, 3])
+    };
+    const runtime = createRuntime(async (input) =>
+      createMetadataResult(input.id, input.source.kind)
+    );
+    const service = new DerivedExactMetadataService({
+      runtime,
+      onChange: () => {}
+    });
+
+    service.reconcile([imported]);
+    await flushPromises();
+    expect(service.getSnapshot().entries[0]?.status).toBe("ready");
+
+    service.reconcile([createExtrudeSource("body_unrelated"), imported]);
+    await flushPromises();
+    expect(
+      service
+        .getSnapshot()
+        .entries.find((entry) => entry.bodyId === imported.id)?.status
+    ).toBe("ready");
+    expect(
+      runtime.exactInputs.filter((input) => input.id === imported.id)
+    ).toHaveLength(1);
+  });
+
   it("builds exact metadata inputs for loft sources", () => {
     const source: DerivedLoftGeometrySource = {
       id: "body_loft",
