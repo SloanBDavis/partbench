@@ -82,6 +82,54 @@ describe("projectWcadTopologyCheckpoints", () => {
     );
   });
 
+  it("hands the resolved composite wire recipe to checkpoint generation", async () => {
+    const engine = createWireCheckpointEngine();
+    const runtime = createCheckpointRuntime();
+    const structure = readProjectStructure(engine);
+
+    const payloads = await createProjectWcadTopologyCheckpointPayloadInputs({
+      document: engine.getDocument(),
+      features: structure.features,
+      sketches: readSketches(engine),
+      runtime
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(runtime.exactTopologyCheckpointPayload).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "body_wire_1",
+        checkpointId: "checkpoint_wire_1",
+        bodyId: "body_wire_1",
+        source: expect.objectContaining({
+          kind: "extrude",
+          profile: expect.objectContaining({
+            kind: "wire",
+            closed: true,
+            frame: {
+              origin: [0, 0, 0],
+              uAxis: [1, 0, 0],
+              vAxis: [0, 1, 0]
+            },
+            segments: [
+              expect.objectContaining({
+                kind: "line",
+                sourceEntityId: "wire_diameter",
+                start: [0, -1],
+                end: [0, 1]
+              }),
+              expect.objectContaining({
+                kind: "arc",
+                sourceEntityId: "wire_arc",
+                startAngleDegrees: 90,
+                sweepAngleDegrees: 180
+              })
+            ]
+          })
+        })
+      })
+    );
+  });
+
   it("exports checkpointed projects with generated payloads through the app save helper", async () => {
     const engine = createRectangleCheckpointEngine();
     const runtime = createCheckpointRuntime();
@@ -899,6 +947,67 @@ function createRectangleCheckpointEngine(): CadEngine {
       sourceFeatureId: "feat_rect_1",
       sourceSemanticRole: "end cap",
       signatureHash: "checkpoint_rect_1_end_face_signature"
+    }
+  ]);
+
+  return engine;
+}
+
+function createWireCheckpointEngine(): CadEngine {
+  const engine = new CadEngine();
+
+  engine.applyBatch([
+    {
+      op: "sketch.create",
+      id: "sketch_wire_1",
+      name: "Wire sketch",
+      plane: "XY"
+    },
+    {
+      op: "sketch.addLine",
+      sketchId: "sketch_wire_1",
+      id: "wire_diameter",
+      start: [0, -1],
+      end: [0, 1]
+    },
+    {
+      op: "sketch.addArc",
+      sketchId: "sketch_wire_1",
+      id: "wire_arc",
+      definition: {
+        kind: "centerAngles",
+        center: [0, 0],
+        radius: 1,
+        startAngleDegrees: 90,
+        sweepAngleDegrees: 180
+      }
+    },
+    {
+      op: "feature.extrude",
+      id: "feat_wire_1",
+      bodyId: "body_wire_1",
+      profile: {
+        kind: "wire",
+        sketchId: "sketch_wire_1",
+        segments: [
+          { entityId: "wire_diameter", orientation: "forward" },
+          { entityId: "wire_arc", orientation: "forward" }
+        ]
+      },
+      depth: 3,
+      operationMode: "newBody"
+    },
+    {
+      op: "topology.checkpoint.create",
+      checkpointId: "checkpoint_wire_1",
+      bodyId: "body_wire_1",
+      sourceFeatureId: "feat_wire_1",
+      sourceIdentity: {
+        algorithm: "partbench-source-v1",
+        sha256:
+          "3333333333333333333333333333333333333333333333333333333333333333"
+      },
+      status: "active"
     }
   ]);
 
