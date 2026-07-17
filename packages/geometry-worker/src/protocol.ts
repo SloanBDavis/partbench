@@ -59,7 +59,9 @@ export type {
   GeometryKernelImportedBodyShapeType,
   GeometryKernelStepImportDiagnostic,
   GeometryKernelStepImportResult,
-  StepImportRequest
+  StepImportRequest,
+  ResolvedPlanarWireProfile,
+  GeometryKernelGeneratedReferences
 } from "@web-cad/geometry-kernel";
 
 export type GeometryWorkerVersion = "geometry-worker.v1";

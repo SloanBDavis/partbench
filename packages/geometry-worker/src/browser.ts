@@ -52,6 +52,8 @@ export {
   type GeometryKernelImportedBodyShapeType,
   type GeometryKernelStepImportDiagnostic,
   type GeometryKernelStepImportResult,
+  type ResolvedPlanarWireProfile,
+  type GeometryKernelGeneratedReferences,
   type GeometryWorkerOptions,
   type GeometryWorkerRequest,
   type GeometryWorkerRequestKind,
