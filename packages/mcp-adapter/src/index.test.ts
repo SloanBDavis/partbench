@@ -2748,6 +2748,248 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("passes composite wire add dry-run and commit while wire cut stays gated", () => {
+    const server = new CadMcpServer();
+    const profile = {
+      kind: "wire",
+      sketchId: "mcp_add_wire_sketch",
+      segments: [
+        { entityId: "mcp_add_wire_bottom", orientation: "forward" },
+        { entityId: "mcp_add_wire_right", orientation: "forward" },
+        { entityId: "mcp_add_wire_top", orientation: "forward" },
+        { entityId: "mcp_add_wire_left", orientation: "forward" }
+      ]
+    };
+    const seed = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_v17_wire_add_seed",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "mcp_add_target_sketch",
+              name: "Composite add target",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "mcp_add_target_sketch",
+              id: "mcp_add_target_rect",
+              center: [0, 0],
+              width: 10,
+              height: 10
+            },
+            {
+              op: "feature.extrude",
+              id: "mcp_add_target_feature",
+              bodyId: "mcp_add_target_body",
+              sketchId: "mcp_add_target_sketch",
+              entityId: "mcp_add_target_rect",
+              depth: 4
+            },
+            {
+              op: "topology.checkpoint.create",
+              checkpointId: "mcp_add_target_checkpoint",
+              bodyId: "mcp_add_target_body",
+              sourceFeatureId: "mcp_add_target_feature",
+              sourceIdentity: {
+                algorithm: "partbench-source-v1",
+                sha256:
+                  "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+              },
+              status: "active"
+            },
+            {
+              op: "topology.anchor.create",
+              anchorId: "mcp_add_target_anchor",
+              entityKind: "body",
+              bodyId: "mcp_add_target_body",
+              checkpointId: "mcp_add_target_checkpoint",
+              checkpointEntityId: "mcp-add-target-body",
+              sourceFeatureId: "mcp_add_target_feature",
+              stableId: "generated:body:mcp_add_target_body"
+            },
+            {
+              op: "sketch.create",
+              id: "mcp_add_wire_sketch",
+              name: "Composite add wire",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addLine",
+              sketchId: "mcp_add_wire_sketch",
+              id: "mcp_add_wire_bottom",
+              start: [-2, -1],
+              end: [2, -1]
+            },
+            {
+              op: "sketch.addArc",
+              sketchId: "mcp_add_wire_sketch",
+              id: "mcp_add_wire_right",
+              definition: {
+                kind: "centerAngles",
+                center: [2, 0],
+                radius: 1,
+                startAngleDegrees: -90,
+                sweepAngleDegrees: 180
+              }
+            },
+            {
+              op: "sketch.addLine",
+              sketchId: "mcp_add_wire_sketch",
+              id: "mcp_add_wire_top",
+              start: [2, 1],
+              end: [-2, 1]
+            },
+            {
+              op: "sketch.addArc",
+              sketchId: "mcp_add_wire_sketch",
+              id: "mcp_add_wire_left",
+              definition: {
+                kind: "centerAngles",
+                center: [-2, 0],
+                radius: 1,
+                startAngleDegrees: 90,
+                sweepAngleDegrees: 180
+              }
+            }
+          ]
+        }
+      }
+    });
+    const operation = {
+      op: "feature.extrude",
+      id: "mcp_add_wire_feature",
+      bodyId: "mcp_add_wire_body",
+      profile,
+      depth: 2,
+      side: "symmetric",
+      operationMode: "add",
+      targetTopologyAnchorId: "mcp_add_target_anchor"
+    };
+    const cut = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_v17_wire_cut_gated",
+      arguments: {
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: [{ ...operation, operationMode: "cut" }]
+        }
+      }
+    });
+    const dryRun = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_v17_wire_add_dry_run",
+      arguments: {
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: [operation]
+        }
+      }
+    });
+    const commit = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_v17_wire_add_commit",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [operation]
+        }
+      }
+    });
+    const structure = server.callTool({
+      name: "cad.project_structure",
+      requestId: "mcp_req_v17_wire_add_structure"
+    });
+
+    expect(seed).toMatchObject({ isError: false });
+    expect(cut).toMatchObject({
+      toolName: "cad.batch",
+      isError: true,
+      structuredContent: {
+        ok: false,
+        error: {
+          code: "UNSUPPORTED_FEATURE_OPERATION",
+          path: "$.ops[0].profile"
+        }
+      }
+    });
+    for (const result of [dryRun, commit]) {
+      expect(result).toMatchObject({
+        toolName: "cad.batch",
+        isError: false,
+        structuredContent: {
+          ok: true,
+          createdFeatureIds: ["mcp_add_wire_feature"],
+          createdBodyIds: ["mcp_add_wire_body"],
+          semanticDiff: {
+            features: {
+              created: [
+                expect.objectContaining({
+                  id: "mcp_add_wire_feature",
+                  profile,
+                  side: "symmetric",
+                  operationMode: "add",
+                  targetBodyId: "mcp_add_target_body",
+                  targetTopologyAnchorId: "mcp_add_target_anchor"
+                })
+              ]
+            }
+          },
+          review: {
+            operations: [
+              expect.objectContaining({
+                op: "feature.extrude",
+                sketchId: "mcp_add_wire_sketch",
+                operationMode: "add",
+                targetTopologyAnchorId: "mcp_add_target_anchor"
+              })
+            ]
+          }
+        }
+      });
+    }
+    expect(dryRun.structuredContent).toMatchObject({ mode: "dryRun" });
+    expect(commit.structuredContent).toMatchObject({ mode: "commit" });
+    expect(structure).toMatchObject({
+      toolName: "cad.project_structure",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        features: expect.arrayContaining([
+          expect.objectContaining({
+            id: "mcp_add_wire_feature",
+            profile,
+            depth: 2,
+            side: "symmetric",
+            operationMode: "add",
+            targetBodyId: "mcp_add_target_body",
+            targetTopologyAnchorId: "mcp_add_target_anchor"
+          })
+        ]),
+        bodies: expect.arrayContaining([
+          expect.objectContaining({
+            id: "mcp_add_target_body",
+            consumedByFeatureId: "mcp_add_wire_feature"
+          }),
+          expect.objectContaining({
+            id: "mcp_add_wire_body",
+            featureId: "mcp_add_wire_feature",
+            source: expect.objectContaining({ profile })
+          })
+        ])
+      }
+    });
+  });
+
   it("passes feature.revolve through cad.batch", () => {
     const server = new CadMcpServer();
     const batchResult = server.callTool({

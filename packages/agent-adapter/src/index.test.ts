@@ -1731,6 +1731,255 @@ describe("agent-adapter", () => {
     ).toThrow("Invalid CADOps agent adapter request.");
   });
 
+  it("round-trips composite wire add dry-run and commit while wire cut stays gated", () => {
+    const adapter = new CadOpsAgentAdapter();
+    const profile = {
+      kind: "wire",
+      sketchId: "agent_add_wire_sketch",
+      segments: [
+        { entityId: "agent_add_wire_bottom", orientation: "forward" },
+        { entityId: "agent_add_wire_right", orientation: "forward" },
+        { entityId: "agent_add_wire_top", orientation: "forward" },
+        { entityId: "agent_add_wire_left", orientation: "forward" }
+      ]
+    };
+    const seed = JSON.parse(
+      adapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_v17_wire_add_seed",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          permissions: { allowCommit: true },
+          batch: {
+            version: "cadops.v1",
+            mode: "commit",
+            ops: [
+              {
+                op: "sketch.create",
+                id: "agent_add_target_sketch",
+                name: "Composite add target",
+                plane: "XY"
+              },
+              {
+                op: "sketch.addRectangle",
+                sketchId: "agent_add_target_sketch",
+                id: "agent_add_target_rect",
+                center: [0, 0],
+                width: 10,
+                height: 10
+              },
+              {
+                op: "feature.extrude",
+                id: "agent_add_target_feature",
+                bodyId: "agent_add_target_body",
+                sketchId: "agent_add_target_sketch",
+                entityId: "agent_add_target_rect",
+                depth: 4
+              },
+              {
+                op: "topology.checkpoint.create",
+                checkpointId: "agent_add_target_checkpoint",
+                bodyId: "agent_add_target_body",
+                sourceFeatureId: "agent_add_target_feature",
+                sourceIdentity: {
+                  algorithm: "partbench-source-v1",
+                  sha256:
+                    "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+                },
+                status: "active"
+              },
+              {
+                op: "topology.anchor.create",
+                anchorId: "agent_add_target_anchor",
+                entityKind: "body",
+                bodyId: "agent_add_target_body",
+                checkpointId: "agent_add_target_checkpoint",
+                checkpointEntityId: "agent-add-target-body",
+                sourceFeatureId: "agent_add_target_feature",
+                stableId: "generated:body:agent_add_target_body"
+              },
+              {
+                op: "sketch.create",
+                id: "agent_add_wire_sketch",
+                name: "Composite add wire",
+                plane: "XY"
+              },
+              {
+                op: "sketch.addLine",
+                sketchId: "agent_add_wire_sketch",
+                id: "agent_add_wire_bottom",
+                start: [-2, -1],
+                end: [2, -1]
+              },
+              {
+                op: "sketch.addArc",
+                sketchId: "agent_add_wire_sketch",
+                id: "agent_add_wire_right",
+                definition: {
+                  kind: "centerAngles",
+                  center: [2, 0],
+                  radius: 1,
+                  startAngleDegrees: -90,
+                  sweepAngleDegrees: 180
+                }
+              },
+              {
+                op: "sketch.addLine",
+                sketchId: "agent_add_wire_sketch",
+                id: "agent_add_wire_top",
+                start: [2, 1],
+                end: [-2, 1]
+              },
+              {
+                op: "sketch.addArc",
+                sketchId: "agent_add_wire_sketch",
+                id: "agent_add_wire_left",
+                definition: {
+                  kind: "centerAngles",
+                  center: [-2, 0],
+                  radius: 1,
+                  startAngleDegrees: 90,
+                  sweepAngleDegrees: 180
+                }
+              }
+            ]
+          }
+        })
+      )
+    );
+    const operation = {
+      op: "feature.extrude",
+      id: "agent_add_wire_feature",
+      bodyId: "agent_add_wire_body",
+      profile,
+      depth: 2,
+      side: "symmetric",
+      operationMode: "add",
+      targetTopologyAnchorId: "agent_add_target_anchor"
+    };
+    const cut = JSON.parse(
+      adapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_v17_wire_cut_gated",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          batch: {
+            version: "cadops.v1",
+            mode: "dryRun",
+            ops: [{ ...operation, operationMode: "cut" }]
+          }
+        })
+      )
+    );
+    const dryRun = JSON.parse(
+      adapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_v17_wire_add_dry_run",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          batch: {
+            version: "cadops.v1",
+            mode: "dryRun",
+            ops: [operation]
+          }
+        })
+      )
+    );
+    const beforeCommit = adapter.getEngine().executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+    const commit = JSON.parse(
+      adapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_v17_wire_add_commit",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          permissions: { allowCommit: true },
+          batch: {
+            version: "cadops.v1",
+            mode: "commit",
+            ops: [operation]
+          }
+        })
+      )
+    );
+    const structure = adapter.getEngine().executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+
+    expect(seed).toMatchObject({ ok: true });
+    expect(cut).toMatchObject({
+      ok: false,
+      error: {
+        code: "UNSUPPORTED_FEATURE_OPERATION",
+        path: "$.ops[0].profile"
+      }
+    });
+    expect(beforeCommit).not.toMatchObject({
+      features: expect.arrayContaining([
+        expect.objectContaining({ id: "agent_add_wire_feature" })
+      ])
+    });
+    for (const response of [dryRun, commit]) {
+      expect(response).toMatchObject({
+        ok: true,
+        createdFeatureIds: ["agent_add_wire_feature"],
+        createdBodyIds: ["agent_add_wire_body"],
+        semanticDiff: {
+          features: {
+            created: [
+              expect.objectContaining({
+                id: "agent_add_wire_feature",
+                profile,
+                side: "symmetric",
+                operationMode: "add",
+                targetBodyId: "agent_add_target_body",
+                targetTopologyAnchorId: "agent_add_target_anchor"
+              })
+            ]
+          }
+        },
+        review: {
+          operations: [
+            expect.objectContaining({
+              op: "feature.extrude",
+              sketchId: "agent_add_wire_sketch",
+              operationMode: "add",
+              targetTopologyAnchorId: "agent_add_target_anchor",
+              label:
+                "Create add extrude feature agent_add_wire_feature from agent_add_wire_sketch composite wire"
+            })
+          ]
+        }
+      });
+    }
+    expect(dryRun).toMatchObject({ mode: "dryRun" });
+    expect(commit).toMatchObject({ mode: "commit" });
+    expect(structure).toMatchObject({
+      ok: true,
+      features: expect.arrayContaining([
+        expect.objectContaining({
+          id: "agent_add_wire_feature",
+          profile,
+          depth: 2,
+          side: "symmetric",
+          operationMode: "add",
+          targetBodyId: "agent_add_target_body",
+          targetTopologyAnchorId: "agent_add_target_anchor"
+        })
+      ]),
+      bodies: expect.arrayContaining([
+        expect.objectContaining({
+          id: "agent_add_target_body",
+          consumedByFeatureId: "agent_add_wire_feature"
+        }),
+        expect.objectContaining({
+          id: "agent_add_wire_body",
+          featureId: "agent_add_wire_feature",
+          source: expect.objectContaining({ profile })
+        })
+      ])
+    });
+  });
+
   it("passes feature.revolve through JSON batch commit", () => {
     const adapter = new CadOpsAgentAdapter();
     const response = JSON.parse(

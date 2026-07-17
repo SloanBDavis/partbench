@@ -496,6 +496,273 @@ describe("mcp stdio server", () => {
     });
   });
 
+  it("round-trips composite wire add and keeps wire cut gated over line-delimited JSON-RPC", () => {
+    const session = createMcpStdioSession();
+    const callBatch = (id: string, argumentsValue: unknown) =>
+      parseLineResponse(
+        session.handleLine(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id,
+            method: "tools/call",
+            params: { name: "cad.batch", arguments: argumentsValue }
+          })
+        )
+      );
+    const profile = {
+      kind: "wire",
+      sketchId: "stdio_add_wire_sketch",
+      segments: [
+        { entityId: "stdio_add_wire_bottom", orientation: "forward" },
+        { entityId: "stdio_add_wire_right", orientation: "forward" },
+        { entityId: "stdio_add_wire_top", orientation: "forward" },
+        { entityId: "stdio_add_wire_left", orientation: "forward" }
+      ]
+    };
+    const seed = callBatch("stdio-wire-add-seed", {
+      allowCommit: true,
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.create",
+            id: "stdio_add_target_sketch",
+            name: "Composite add target",
+            plane: "XY"
+          },
+          {
+            op: "sketch.addRectangle",
+            sketchId: "stdio_add_target_sketch",
+            id: "stdio_add_target_rect",
+            center: [0, 0],
+            width: 10,
+            height: 10
+          },
+          {
+            op: "feature.extrude",
+            id: "stdio_add_target_feature",
+            bodyId: "stdio_add_target_body",
+            sketchId: "stdio_add_target_sketch",
+            entityId: "stdio_add_target_rect",
+            depth: 4
+          },
+          {
+            op: "topology.checkpoint.create",
+            checkpointId: "stdio_add_target_checkpoint",
+            bodyId: "stdio_add_target_body",
+            sourceFeatureId: "stdio_add_target_feature",
+            sourceIdentity: {
+              algorithm: "partbench-source-v1",
+              sha256:
+                "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+            },
+            status: "active"
+          },
+          {
+            op: "topology.anchor.create",
+            anchorId: "stdio_add_target_anchor",
+            entityKind: "body",
+            bodyId: "stdio_add_target_body",
+            checkpointId: "stdio_add_target_checkpoint",
+            checkpointEntityId: "stdio-add-target-body",
+            sourceFeatureId: "stdio_add_target_feature",
+            stableId: "generated:body:stdio_add_target_body"
+          },
+          {
+            op: "sketch.create",
+            id: "stdio_add_wire_sketch",
+            name: "Composite add wire",
+            plane: "XY"
+          },
+          {
+            op: "sketch.addLine",
+            sketchId: "stdio_add_wire_sketch",
+            id: "stdio_add_wire_bottom",
+            start: [-2, -1],
+            end: [2, -1]
+          },
+          {
+            op: "sketch.addArc",
+            sketchId: "stdio_add_wire_sketch",
+            id: "stdio_add_wire_right",
+            definition: {
+              kind: "centerAngles",
+              center: [2, 0],
+              radius: 1,
+              startAngleDegrees: -90,
+              sweepAngleDegrees: 180
+            }
+          },
+          {
+            op: "sketch.addLine",
+            sketchId: "stdio_add_wire_sketch",
+            id: "stdio_add_wire_top",
+            start: [2, 1],
+            end: [-2, 1]
+          },
+          {
+            op: "sketch.addArc",
+            sketchId: "stdio_add_wire_sketch",
+            id: "stdio_add_wire_left",
+            definition: {
+              kind: "centerAngles",
+              center: [-2, 0],
+              radius: 1,
+              startAngleDegrees: 90,
+              sweepAngleDegrees: 180
+            }
+          }
+        ]
+      }
+    });
+    const operation = {
+      op: "feature.extrude",
+      id: "stdio_add_wire_feature",
+      bodyId: "stdio_add_wire_body",
+      profile,
+      depth: 2,
+      side: "symmetric",
+      operationMode: "add",
+      targetTopologyAnchorId: "stdio_add_target_anchor"
+    };
+    const cut = callBatch("stdio-wire-cut-gated", {
+      batch: {
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [{ ...operation, operationMode: "cut" }]
+      }
+    });
+    const dryRun = callBatch("stdio-wire-add-dry-run", {
+      batch: {
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [operation]
+      }
+    });
+    const commit = callBatch("stdio-wire-add-commit", {
+      allowCommit: true,
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [operation]
+      }
+    });
+    const structure = parseLineResponse(
+      session.handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: "stdio-wire-add-structure",
+          method: "tools/call",
+          params: {
+            name: "cad.project_structure",
+            arguments: {}
+          }
+        })
+      )
+    );
+
+    expect(seed).toMatchObject({
+      jsonrpc: "2.0",
+      id: "stdio-wire-add-seed",
+      result: { toolName: "cad.batch", isError: false }
+    });
+    expect(cut).toMatchObject({
+      jsonrpc: "2.0",
+      id: "stdio-wire-cut-gated",
+      result: {
+        toolName: "cad.batch",
+        isError: true,
+        structuredContent: {
+          ok: false,
+          error: {
+            code: "UNSUPPORTED_FEATURE_OPERATION",
+            path: "$.ops[0].profile"
+          }
+        }
+      }
+    });
+    for (const response of [dryRun, commit]) {
+      expect(response).toMatchObject({
+        jsonrpc: "2.0",
+        result: {
+          toolName: "cad.batch",
+          isError: false,
+          structuredContent: {
+            ok: true,
+            createdFeatureIds: ["stdio_add_wire_feature"],
+            createdBodyIds: ["stdio_add_wire_body"],
+            semanticDiff: {
+              features: {
+                created: [
+                  expect.objectContaining({
+                    id: "stdio_add_wire_feature",
+                    profile,
+                    side: "symmetric",
+                    operationMode: "add",
+                    targetBodyId: "stdio_add_target_body",
+                    targetTopologyAnchorId: "stdio_add_target_anchor"
+                  })
+                ]
+              }
+            },
+            review: {
+              operations: [
+                expect.objectContaining({
+                  op: "feature.extrude",
+                  sketchId: "stdio_add_wire_sketch",
+                  operationMode: "add",
+                  targetTopologyAnchorId: "stdio_add_target_anchor"
+                })
+              ]
+            }
+          }
+        }
+      });
+    }
+    expect(dryRun).toMatchObject({
+      id: "stdio-wire-add-dry-run",
+      result: { structuredContent: { mode: "dryRun" } }
+    });
+    expect(commit).toMatchObject({
+      id: "stdio-wire-add-commit",
+      result: { structuredContent: { mode: "commit" } }
+    });
+    expect(structure).toMatchObject({
+      jsonrpc: "2.0",
+      id: "stdio-wire-add-structure",
+      result: {
+        toolName: "cad.project_structure",
+        isError: false,
+        structuredContent: {
+          ok: true,
+          features: expect.arrayContaining([
+            expect.objectContaining({
+              id: "stdio_add_wire_feature",
+              profile,
+              depth: 2,
+              side: "symmetric",
+              operationMode: "add",
+              targetBodyId: "stdio_add_target_body",
+              targetTopologyAnchorId: "stdio_add_target_anchor"
+            })
+          ]),
+          bodies: expect.arrayContaining([
+            expect.objectContaining({
+              id: "stdio_add_target_body",
+              consumedByFeatureId: "stdio_add_wire_feature"
+            }),
+            expect.objectContaining({
+              id: "stdio_add_wire_body",
+              featureId: "stdio_add_wire_feature",
+              source: expect.objectContaining({ profile })
+            })
+          ])
+        }
+      }
+    });
+  });
+
   it("handles extrude depth updates over line-delimited JSON-RPC", () => {
     const session = createMcpStdioSession();
 
