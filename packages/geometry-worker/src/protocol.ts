@@ -15,6 +15,7 @@ import type {
   GeometryKernelBooleanOperation,
   GeometryKernelDocumentUnit,
   GeometryKernelExtrudeSide,
+  ExtrudeGeometryProfile,
   GeometryKernelExactExportCapability,
   GeometryKernelExactExportFormat,
   GeometryKernelStepImportCapability,
@@ -492,18 +493,7 @@ export function createExtrudeTessellationWorkerRequest(input: {
   readonly id: string;
   readonly payloadId?: string;
   readonly sketchPlane: GeometryKernelSketchPlane;
-  readonly profile:
-    | {
-        readonly kind: "rectangle";
-        readonly center: readonly [number, number];
-        readonly width: number;
-        readonly height: number;
-      }
-    | {
-        readonly kind: "circle";
-        readonly center: readonly [number, number];
-        readonly radius: number;
-      };
+  readonly profile: ExtrudeGeometryProfile;
   readonly depth: number;
   readonly side?: GeometryKernelExtrudeSide;
   readonly linearDeflection?: number;

@@ -530,6 +530,66 @@ describe("geometry-worker", () => {
     });
   });
 
+  it("serializes a resolved composite wire extrude request without rewriting it", () => {
+    const profile = {
+      kind: "wire" as const,
+      frame: {
+        origin: [0, 0, 0] as const,
+        uAxis: [1, 0, 0] as const,
+        vAxis: [0, 1, 0] as const
+      },
+      closed: true as const,
+      segments: [
+        {
+          kind: "arc" as const,
+          sourceEntityId: "arc-a",
+          center: [0, 0] as const,
+          radius: 2,
+          startAngleDegrees: 0,
+          sweepAngleDegrees: 180
+        },
+        {
+          kind: "arc" as const,
+          sourceEntityId: "arc-b",
+          center: [0, 0] as const,
+          radius: 2,
+          startAngleDegrees: 180,
+          sweepAngleDegrees: 180
+        }
+      ],
+      sourceIdentity: "sketch-circle-halves:arc-a,arc-b",
+      geometryPolicy: {
+        linearTolerance: 1e-7 as const,
+        angularToleranceDegrees: 0.1 as const,
+        minimumProfileArea: 1e-12 as const
+      }
+    };
+
+    expect(
+      createExtrudeTessellationWorkerRequest({
+        id: "worker_req_wire_extrude",
+        payloadId: "geometry_req_wire_extrude",
+        sketchPlane: "XY",
+        profile,
+        depth: 5,
+        side: "symmetric"
+      })
+    ).toEqual({
+      id: "worker_req_wire_extrude",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.tessellateFeature",
+      payload: {
+        id: "geometry_req_wire_extrude",
+        version: "geometry-kernel.v1",
+        op: "geometry.tessellateExtrude",
+        sketchPlane: "XY",
+        profile,
+        depth: 5,
+        side: "symmetric"
+      }
+    });
+  });
+
   it("creates a typed revolve profile worker request", () => {
     expect(
       createRevolveProfileWorkerRequest({
