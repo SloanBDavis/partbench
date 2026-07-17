@@ -1588,6 +1588,149 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("round-trips a V17 composite wire newBody extrude for external JSON callers", () => {
+    const adapter = new CadOpsAgentAdapter();
+    const profile = {
+      kind: "wire",
+      sketchId: "agent_wire_sketch",
+      segments: [
+        { entityId: "agent_wire_bottom", orientation: "forward" },
+        { entityId: "agent_wire_arc", orientation: "forward" },
+        { entityId: "agent_wire_top", orientation: "forward" },
+        { entityId: "agent_wire_left", orientation: "forward" }
+      ]
+    };
+    const response = JSON.parse(
+      adapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_v17_wire_extrude",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          permissions: { allowCommit: true },
+          batch: {
+            version: "cadops.v1",
+            mode: "commit",
+            ops: [
+              {
+                op: "sketch.create",
+                id: "agent_wire_sketch",
+                name: "Composite wire",
+                plane: "XY"
+              },
+              {
+                op: "sketch.addLine",
+                sketchId: "agent_wire_sketch",
+                id: "agent_wire_bottom",
+                start: [0, 0],
+                end: [4, 0]
+              },
+              {
+                op: "sketch.addArc",
+                sketchId: "agent_wire_sketch",
+                id: "agent_wire_arc",
+                definition: {
+                  kind: "centerAngles",
+                  center: [4, 2],
+                  radius: 2,
+                  startAngleDegrees: -90,
+                  sweepAngleDegrees: 180
+                }
+              },
+              {
+                op: "sketch.addLine",
+                sketchId: "agent_wire_sketch",
+                id: "agent_wire_top",
+                start: [4, 4],
+                end: [0, 4]
+              },
+              {
+                op: "sketch.addLine",
+                sketchId: "agent_wire_sketch",
+                id: "agent_wire_left",
+                start: [0, 4],
+                end: [0, 0]
+              },
+              {
+                op: "feature.extrude",
+                id: "agent_wire_extrude",
+                bodyId: "agent_wire_body",
+                profile,
+                depth: 5,
+                operationMode: "newBody"
+              }
+            ]
+          }
+        })
+      )
+    ) as {
+      readonly ok: boolean;
+      readonly createdFeatureIds?: readonly string[];
+      readonly createdBodyIds?: readonly string[];
+      readonly review?: { readonly operations: readonly unknown[] };
+    };
+    const structure = adapter.getEngine().executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["agent_wire_extrude"],
+      createdBodyIds: ["agent_wire_body"],
+      review: {
+        operations: expect.arrayContaining([
+          expect.objectContaining({
+            op: "feature.extrude",
+            sketchId: "agent_wire_sketch",
+            operationMode: "newBody",
+            label:
+              "Create new body extrude feature agent_wire_extrude from agent_wire_sketch composite wire"
+          })
+        ])
+      }
+    });
+    expect(structure).toMatchObject({
+      ok: true,
+      features: [
+        {
+          id: "agent_wire_extrude",
+          kind: "extrude",
+          profile,
+          operationMode: "newBody"
+        }
+      ],
+      bodies: [
+        {
+          id: "agent_wire_body",
+          featureId: "agent_wire_extrude",
+          source: { profile }
+        }
+      ]
+    });
+
+    expect(() =>
+      adapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_v17_wire_extrude_mixed_source",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          batch: {
+            version: "cadops.v1",
+            mode: "dryRun",
+            ops: [
+              {
+                op: "feature.extrude",
+                profile,
+                sketchId: "agent_wire_sketch",
+                entityId: "agent_wire_bottom",
+                depth: 5,
+                operationMode: "newBody"
+              }
+            ]
+          }
+        })
+      )
+    ).toThrow("Invalid CADOps agent adapter request.");
+  });
+
   it("passes feature.revolve through JSON batch commit", () => {
     const adapter = new CadOpsAgentAdapter();
     const response = JSON.parse(

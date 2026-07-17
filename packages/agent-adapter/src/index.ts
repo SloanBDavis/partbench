@@ -102,6 +102,7 @@ import type {
   SketchEntityId,
   SketchPointTarget,
   SketchPlane,
+  SketchProfileRef,
   CadTransactionAuditMetadata,
   CadTransactionHistoryEntry,
   DocumentUnits,
@@ -2086,13 +2087,21 @@ function createOperationReview(
       const operationMode = op.operationMode ?? "newBody";
       const operationLabel =
         operationMode === "newBody" ? "new body" : operationMode;
+      const profile = "profile" in op ? op.profile : undefined;
+      const sketchId = profile?.sketchId ?? op.sketchId;
+      const sourceLabel =
+        profile?.kind === "wire"
+          ? `${profile.sketchId} composite wire`
+          : profile
+            ? `${profile.sketchId}/${profile.entityId}`
+            : `${op.sketchId}/${op.entityId}`;
 
       return {
         ...operationReviewBase(
           index,
           op,
           "create",
-          `Create ${operationLabel} extrude feature ${op.id ?? "with generated ID"} from ${op.sketchId}/${op.entityId}`
+          `Create ${operationLabel} extrude feature ${op.id ?? "with generated ID"} from ${sourceLabel}`
         ),
         ...(op.id ? { featureId: op.id } : {}),
         ...(op.bodyId ? { bodyId: op.bodyId } : {}),
@@ -2101,8 +2110,12 @@ function createOperationReview(
           ? { targetTopologyAnchorId: op.targetTopologyAnchorId }
           : {}),
         operationMode,
-        sketchId: op.sketchId,
-        sketchEntityId: op.entityId
+        sketchId,
+        ...(profile?.kind === "entity"
+          ? { sketchEntityId: profile.entityId }
+          : !profile
+            ? { sketchEntityId: op.entityId }
+            : {})
       };
     }
 
@@ -4835,14 +4848,22 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   if (value.op === "feature.extrude") {
+    const hasLegacyProfile =
+      typeof value.sketchId === "string" &&
+      typeof value.entityId === "string" &&
+      value.profile === undefined;
+    const hasV21Profile =
+      value.sketchId === undefined &&
+      value.entityId === undefined &&
+      isSketchProfileRef(value.profile);
+
     return (
       isOptionalString(value.id) &&
       isOptionalString(value.bodyId) &&
       isOptionalString(value.targetBodyId) &&
       isOptionalString(value.targetTopologyAnchorId) &&
       isOptionalString(value.name) &&
-      typeof value.sketchId === "string" &&
-      typeof value.entityId === "string" &&
+      (hasLegacyProfile || hasV21Profile) &&
       typeof value.depth === "number" &&
       (value.side === undefined || isExtrudeSide(value.side)) &&
       (value.operationMode === undefined ||
@@ -5223,6 +5244,28 @@ function isSketchArcDefinition(value: unknown): boolean {
     isVec2(value.start) &&
     isVec2(value.pointOnArc) &&
     isVec2(value.end)
+  );
+}
+
+function isSketchProfileRef(value: unknown): value is SketchProfileRef {
+  if (!isRecord(value) || typeof value.sketchId !== "string") {
+    return false;
+  }
+
+  if (value.kind === "entity") {
+    return typeof value.entityId === "string";
+  }
+
+  return (
+    value.kind === "wire" &&
+    Array.isArray(value.segments) &&
+    value.segments.length > 0 &&
+    value.segments.every(
+      (segment) =>
+        isRecord(segment) &&
+        typeof segment.entityId === "string" &&
+        (segment.orientation === "forward" || segment.orientation === "reverse")
+    )
   );
 }
 

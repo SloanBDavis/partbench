@@ -2629,6 +2629,125 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("round-trips a V17 composite wire newBody extrude through cad.batch", () => {
+    const server = new CadMcpServer();
+    const profile = {
+      kind: "wire",
+      sketchId: "mcp_wire_sketch",
+      segments: [
+        { entityId: "mcp_wire_bottom", orientation: "forward" },
+        { entityId: "mcp_wire_arc", orientation: "forward" },
+        { entityId: "mcp_wire_top", orientation: "forward" },
+        { entityId: "mcp_wire_left", orientation: "forward" }
+      ]
+    };
+    const batchResult = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_v17_wire_extrude",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "mcp_wire_sketch",
+              name: "Composite wire",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addLine",
+              sketchId: "mcp_wire_sketch",
+              id: "mcp_wire_bottom",
+              start: [0, 0],
+              end: [4, 0]
+            },
+            {
+              op: "sketch.addArc",
+              sketchId: "mcp_wire_sketch",
+              id: "mcp_wire_arc",
+              definition: {
+                kind: "centerAngles",
+                center: [4, 2],
+                radius: 2,
+                startAngleDegrees: -90,
+                sweepAngleDegrees: 180
+              }
+            },
+            {
+              op: "sketch.addLine",
+              sketchId: "mcp_wire_sketch",
+              id: "mcp_wire_top",
+              start: [4, 4],
+              end: [0, 4]
+            },
+            {
+              op: "sketch.addLine",
+              sketchId: "mcp_wire_sketch",
+              id: "mcp_wire_left",
+              start: [0, 4],
+              end: [0, 0]
+            },
+            {
+              op: "feature.extrude",
+              id: "mcp_wire_extrude",
+              bodyId: "mcp_wire_body",
+              profile,
+              depth: 5,
+              operationMode: "newBody"
+            }
+          ]
+        }
+      }
+    });
+    const structureResult = server.callTool({
+      name: "cad.project_structure",
+      requestId: "mcp_req_v17_wire_structure"
+    });
+
+    expect(batchResult).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        createdFeatureIds: ["mcp_wire_extrude"],
+        createdBodyIds: ["mcp_wire_body"],
+        review: {
+          operations: expect.arrayContaining([
+            expect.objectContaining({
+              op: "feature.extrude",
+              sketchId: "mcp_wire_sketch",
+              operationMode: "newBody"
+            })
+          ])
+        }
+      }
+    });
+    expect(structureResult).toMatchObject({
+      toolName: "cad.project_structure",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        features: [
+          {
+            id: "mcp_wire_extrude",
+            kind: "extrude",
+            profile,
+            operationMode: "newBody"
+          }
+        ],
+        bodies: [
+          {
+            id: "mcp_wire_body",
+            featureId: "mcp_wire_extrude",
+            source: { profile }
+          }
+        ]
+      }
+    });
+  });
+
   it("passes feature.revolve through cad.batch", () => {
     const server = new CadMcpServer();
     const batchResult = server.callTool({
@@ -4936,7 +5055,7 @@ describe("mcp-adapter", () => {
     ).not.toMatch(/mesh|occt|opfs|fileHandle|selectionBuffer|viewport/i);
   });
 
-  it("returns V11 sketch solver status through cad.sketch_solver_status", () => {
+  it("returns sketch solver status through cad.sketch_solver_status", () => {
     const server = new CadMcpServer();
 
     seedMcpExtrudeFeature(server, {
@@ -4968,7 +5087,7 @@ describe("mcp-adapter", () => {
           engine: "current-direct-evaluator",
           numericalSolverStatus: "under-defined",
           numericalSolverEngine: "@web-cad/sketch-solver",
-          numericalSolverModelVersion: "partbench.sketch-solver.v1",
+          numericalSolverModelVersion: "partbench.sketch-solver.v2",
           modelBuilt: true,
           solverRan: true,
           canSolveNumerically: true
