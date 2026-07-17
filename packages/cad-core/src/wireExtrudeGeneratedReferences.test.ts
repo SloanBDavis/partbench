@@ -593,56 +593,72 @@ describe("V17 composite wire extrude generated references", () => {
       }
     });
 
-    const multipleSolids: CadBodyDerivedExactMetadataSnapshot = {
-      ...derivedExactMetadata,
-      metadata: {
-        ...derivedExactMetadata.metadata!,
-        topologySnapshot: undefined,
-        topologyCounts: {
-          solidCount: 2,
-          faceCount: 12,
-          edgeCount: 24,
-          vertexCount: 16
+    for (const solidCount of [undefined, 0, 2] as const) {
+      const invalidSolids: CadBodyDerivedExactMetadataSnapshot = {
+        ...derivedExactMetadata,
+        metadata: {
+          ...derivedExactMetadata.metadata!,
+          topologySnapshot: undefined,
+          topologyCounts:
+            solidCount === undefined
+              ? undefined
+              : {
+                  solidCount,
+                  faceCount: solidCount * 6,
+                  edgeCount: solidCount * 12,
+                  vertexCount: solidCount * 8
+                }
         }
-      }
-    };
-    expect(
-      engine.executeQuery({
-        version: "cadops.v1",
-        query: {
-          query: "body.topology",
-          bodyId: "body_wire",
-          derivedExactMetadata: multipleSolids
-        }
-      })
-    ).toMatchObject({
-      ok: true,
-      topology: {
-        status: "unsupported",
-        topologyModel: "none",
-        topologyAvailable: false,
-        exactGeometryAvailable: true,
-        issues: [{ code: "UNSUPPORTED_BODY_TOPOLOGY" }]
-      }
-    });
-    expect(
-      engine.executeQuery({
-        version: "cadops.v1",
-        query: {
-          query: "project.health",
-          derivedExactMetadata: [multipleSolids]
-        }
-      })
-    ).toMatchObject({
-      ok: true,
-      authoredExtrudes: [
-        {
-          status: "unsupported",
+      };
+      expect(
+        engine.executeQuery({
+          version: "cadops.v1",
+          query: {
+            query: "body.topology",
+            bodyId: "body_wire",
+            derivedExactMetadata: invalidSolids
+          }
+        })
+      ).toMatchObject({
+        ok: true,
+        topology: {
+          status: "kernel-failed",
+          topologyModel: "none",
           topologyAvailable: false,
-          issues: [{ code: "GENERATED_REFERENCE_CORRESPONDENCE_UNPROVEN" }]
+          exactGeometryAvailable: false,
+          issues: [
+            { code: "UNSUPPORTED_BODY_TOPOLOGY" },
+            {
+              code: "INVALID_EXACT_GEOMETRY_RESULT",
+              expected: "solidCount=1",
+              received:
+                solidCount === undefined
+                  ? "topologyCounts missing"
+                  : `solidCount=${solidCount}`
+            }
+          ]
         }
-      ]
-    });
+      });
+      expect(
+        engine.executeQuery({
+          version: "cadops.v1",
+          query: {
+            query: "project.health",
+            derivedExactMetadata: [invalidSolids]
+          }
+        })
+      ).toMatchObject({
+        ok: true,
+        authoredExtrudes: [
+          {
+            status: "unsupported",
+            topologyStatus: "kernel-failed",
+            topologyAvailable: false,
+            issues: [{ code: "INVALID_EXACT_GEOMETRY_RESULT" }]
+          }
+        ]
+      });
+    }
 
     const stale = {
       ...derivedExactMetadata,
