@@ -5006,7 +5006,7 @@ describe("geometry-kernel facade", () => {
       error: {
         code: "INVALID_DIMENSIONS",
         message:
-          "Revolve profile requests require a supported sketch plane, valid rectangle, circle, or resolved wire profile, non-zero finite axis that does not cross or overlap a wire edge, and positive finite angle no greater than 360 degrees."
+          "Revolve profile requests require a supported sketch plane, valid rectangle, circle, or resolved wire profile, a non-zero finite axis (longer than the shared linear tolerance for resolved wires), wire contact limited to profile vertices with the wire entirely on one side, and a positive finite angle no greater than 360 degrees."
       },
       warnings: []
     });
@@ -5017,7 +5017,7 @@ describe("geometry-kernel facade", () => {
       error: {
         code: "INVALID_DIMENSIONS",
         message:
-          "Revolve profile requests require a supported sketch plane, valid rectangle, circle, or resolved wire profile, non-zero finite axis that does not cross or overlap a wire edge, and positive finite angle no greater than 360 degrees."
+          "Revolve profile requests require a supported sketch plane, valid rectangle, circle, or resolved wire profile, a non-zero finite axis (longer than the shared linear tolerance for resolved wires), wire contact limited to profile vertices with the wire entirely on one side, and a positive finite angle no greater than 360 degrees."
       },
       warnings: []
     });
@@ -5046,12 +5046,30 @@ describe("geometry-kernel facade", () => {
           faceCount: 1
         };
       },
-      createExactBodyMetadata: async () => {
-        throw new Error("Invalid exact recipe reached the factory.");
-      },
-      createExactStepExport: async () => {
-        throw new Error("Invalid STEP recipe reached the factory.");
-      }
+      createExactBodyMetadata: async (input) => ({
+        sourceKind: input.source.kind,
+        bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+        volume: 1,
+        surfaceArea: 6,
+        centroid: [0.5, 0.5, 0.5],
+        topologyCounts: {
+          solidCount: 1,
+          faceCount: 6,
+          edgeCount: 12,
+          vertexCount: 8
+        },
+        measurementSource: "kernel-derived",
+        measurementConfidence: "kernel-derived",
+        diagnostics: []
+      }),
+      createExactStepExport: async (input) => ({
+        format: "step",
+        schema: "AP242DIS",
+        units: input.units,
+        bodyCount: input.bodies.length,
+        byteLength: 1,
+        bytes: new Uint8Array([1])
+      })
     };
     const circleWire = {
       kind: "wire" as const,
@@ -5125,6 +5143,39 @@ describe("geometry-kernel facade", () => {
       sourceIdentity: "endpoint-touch-triangle",
       geometryPolicy: mixedWireProfile.geometryPolicy
     };
+    const oppositeVertexDiamond = {
+      kind: "wire" as const,
+      frame: mixedWireProfile.frame,
+      closed: true as const,
+      segments: [
+        {
+          kind: "line" as const,
+          sourceEntityId: "top-right",
+          start: [0, 2] as const,
+          end: [2, 0] as const
+        },
+        {
+          kind: "line" as const,
+          sourceEntityId: "right-bottom",
+          start: [2, 0] as const,
+          end: [0, -2] as const
+        },
+        {
+          kind: "line" as const,
+          sourceEntityId: "bottom-left",
+          start: [0, -2] as const,
+          end: [-2, 0] as const
+        },
+        {
+          kind: "line" as const,
+          sourceEntityId: "left-top",
+          start: [-2, 0] as const,
+          end: [0, 2] as const
+        }
+      ],
+      sourceIdentity: "opposite-vertex-diamond",
+      geometryPolicy: mixedWireProfile.geometryPolicy
+    };
     const cases = [
       {
         label: "crosses beyond the finite axis endpoints",
@@ -5154,6 +5205,17 @@ describe("geometry-kernel facade", () => {
         label: "overlaps a line edge",
         profile: endpointTouchTriangle,
         axis: { start: [2, -10] as const, end: [2, 10] as const }
+      },
+      {
+        label:
+          "straddles the axis through two otherwise legal profile vertices",
+        profile: oppositeVertexDiamond,
+        axis: { start: [0, -10] as const, end: [0, 10] as const }
+      },
+      {
+        label: "uses an axis exactly equal to the shared linear tolerance",
+        profile: endpointTouchTriangle,
+        axis: { start: [-1, 0] as const, end: [-1, 1e-7] as const }
       }
     ];
 
@@ -5214,6 +5276,36 @@ describe("geometry-kernel facade", () => {
     }
     expect(revolveCalls).toBe(2);
     expect(JSON.stringify(endpointTouchTriangle)).toBe(snapshot);
+
+    const aboveToleranceSource = {
+      kind: "revolve" as const,
+      sketchPlane: "XY" as const,
+      profile: endpointTouchTriangle,
+      axis: { start: [-1, 0] as const, end: [-1, 1.01e-7] as const },
+      angleDegrees: 180
+    };
+    const [mesh, exact, step] = await Promise.all([
+      executeGeometryKernelRequestWithMeshFactory(factories, {
+        ...aboveToleranceSource,
+        id: "wire-axis-above-tolerance-mesh",
+        version: "geometry-kernel.v1" as const,
+        op: "geometry.revolveProfile" as const
+      }),
+      executeGeometryKernelRequestWithMeshFactory(factories, {
+        id: "wire-axis-above-tolerance-exact",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactBodyMetadata",
+        source: aboveToleranceSource
+      }),
+      executeGeometryKernelRequestWithMeshFactory(factories, {
+        id: "wire-axis-above-tolerance-step",
+        version: "geometry-kernel.v1",
+        op: "geometry.exportStep",
+        units: "mm",
+        bodies: [{ ...aboveToleranceSource, bodyId: "body-above-tolerance" }]
+      })
+    ]);
+    expect([mesh.ok, exact.ok, step.ok]).toEqual([true, true, true]);
   });
 });
 

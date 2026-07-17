@@ -1698,7 +1698,7 @@ function validateRequest(
       return {
         code: "INVALID_DIMENSIONS",
         message:
-          "Revolve profile requests require a supported sketch plane, valid rectangle, circle, or resolved wire profile, non-zero finite axis that does not cross or overlap a wire edge, and positive finite angle no greater than 360 degrees."
+          "Revolve profile requests require a supported sketch plane, valid rectangle, circle, or resolved wire profile, a non-zero finite axis (longer than the shared linear tolerance for resolved wires), wire contact limited to profile vertices with the wire entirely on one side, and a positive finite angle no greater than 360 degrees."
       };
     }
   } else if (request.op === "geometry.booleanExtrudes") {
@@ -2723,8 +2723,14 @@ function isValidRevolveRecipe(source: {
   return (
     source.placementFrame === undefined &&
     isValidResolvedPlanarWireProfile(source.profile) &&
+    revolveAxisLength(source.axis) >
+      source.profile.geometryPolicy.linearTolerance &&
     !resolvedWireTouchesAxisAwayFromVertices(source.profile, source.axis)
   );
+}
+
+function revolveAxisLength(axis: RevolveGeometryAxis): number {
+  return Math.hypot(axis.end[0] - axis.start[0], axis.end[1] - axis.start[1]);
 }
 
 function resolvedWireTouchesAxisAwayFromVertices(
