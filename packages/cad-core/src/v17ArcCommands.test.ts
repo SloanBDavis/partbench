@@ -998,34 +998,30 @@ describe("V17 arc and construction commands", () => {
     });
     expect(evaluation).toMatchObject({
       ok: true,
-      status: "unsupported",
-      issues: [{ code: "UNSUPPORTED_TARGET", sketchEntityId: "arc_query" }]
+      status: "under-defined",
+      issues: [{ code: "UNDER_DEFINED_SKETCH" }]
     });
     expect(readiness).toMatchObject({
       ok: true,
-      status: "unsupported",
-      dryRun: { status: "unsupported" },
+      status: "ready",
+      dryRun: { status: "valid" },
       affected: {
         sketchIds: ["sketch_arc"],
         sketchEntityIds: ["arc_query"]
       },
       diagnostics: expect.arrayContaining([
-        expect.objectContaining({
-          code: "SKETCH_EDIT_UNSUPPORTED",
-          sketchEntityId: "arc_query"
-        })
+        expect.objectContaining({ code: "SKETCH_EDIT_UNDER_DEFINED" })
       ])
     });
     expect(updateReadiness).toMatchObject({
       ok: true,
-      status: "unsupported",
+      status: "ready",
       dryRun: {
-        status: "unsupported",
+        status: "valid",
         willMutateDocument: false,
         diagnostics: expect.arrayContaining([
           expect.objectContaining({
-            code: "SKETCH_EDIT_UNSUPPORTED",
-            sketchEntityId: "arc_query"
+            code: "SKETCH_EDIT_UNDER_DEFINED"
           })
         ])
       },
@@ -1066,20 +1062,15 @@ describe("V17 arc and construction commands", () => {
     expect(solverStatus).toMatchObject({
       ok: true,
       query: "sketch.solverStatus",
-      status: "unsupported",
+      status: "under-defined",
       entities: [
         expect.objectContaining({
           entityId: "arc_query",
           entityKind: "arc",
-          supported: false,
-          variableCount: 0,
-          degreesOfFreedom: 0,
-          diagnostics: [
-            expect.objectContaining({
-              code: "SKETCH_SOLVER_UNSUPPORTED_ENTITY",
-              sketchEntityId: "arc_query"
-            })
-          ]
+          supported: true,
+          variableCount: 5,
+          degreesOfFreedom: 5,
+          diagnostics: []
         })
       ]
     });

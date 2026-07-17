@@ -1,12 +1,16 @@
 import {
   SKETCH_SOLVER_MODEL_VERSION,
   solveSketch,
+  type SketchSolveArcVariable,
   type SketchSolveConstraint,
   type SketchSolveConstraintKind,
   type SketchSolveDiagnostic,
   type SketchSolveDimension,
   type SketchSolveModel,
   type SketchSolvePointVariable,
+  type SketchSolvePointTarget as SketchSolverPointTarget,
+  type SketchSolveCurveTarget as SketchSolverCurveTarget,
+  type SketchSolveRadiusCurveTarget as SketchSolverRadiusCurveTarget,
   type SketchSolveResult,
   type SketchSolveScalarVariable,
   type SketchSolverVec2
@@ -15,23 +19,37 @@ import type {
   CadSketchSolverDiagnostic,
   CadSketchSolverDiagnosticCode,
   SketchConstraintSnapshot,
+  SketchCurveConstraintTarget,
   SketchDimensionSnapshot,
   SketchEntityId,
+  SketchEntitySnapshot,
   SketchId,
-  SketchPointTarget
+  SketchPointTarget,
+  SketchPlane
 } from "@web-cad/cad-protocol";
-import {
-  cleanSketchNumber,
-  evaluateSketchDimension,
-  type SketchSolverDocument,
-  type SketchSolverSketch
-} from "./sketchSolver";
+import { SKETCH_GEOMETRY_POLICY } from "./sketchGeometryPolicy";
+import { createCanonicalSketchArcEntity } from "./sketchArcMath";
+import { cleanSketchNumber } from "./sketchNumber";
+
+export interface SketchSolverPackageDocument {
+  readonly parameters: ReadonlyMap<string, { readonly value: number }>;
+  readonly sketchDimensions: ReadonlyMap<string, SketchDimensionSnapshot>;
+  readonly sketchConstraints: ReadonlyMap<string, SketchConstraintSnapshot>;
+}
+
+export interface SketchSolverPackageSketch {
+  readonly id: SketchId;
+  readonly name: string;
+  readonly plane: SketchPlane;
+  readonly entities: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>;
+}
 
 export interface SketchSolverPackageModelBuild {
   readonly modelBuilt: true;
   readonly model: SketchSolveModel;
   readonly mappedPointCount: number;
   readonly mappedScalarCount: number;
+  readonly mappedArcCount: number;
   readonly mappedConstraintCount: number;
   readonly mappedDimensionCount: number;
   readonly diagnosticCount: number;
@@ -48,13 +66,15 @@ export interface SketchSolverPackageProbe {
 }
 
 export function createSketchSolveModelFromCadSource(
-  document: SketchSolverDocument,
-  sketch: SketchSolverSketch
+  document: SketchSolverPackageDocument,
+  sketch: SketchSolverPackageSketch
 ): SketchSolverPackageModelBuild {
   const pointTargetIds = new Map<string, string>();
   const scalarIds = new Map<SketchEntityId, string>();
   const points: SketchSolvePointVariable[] = [];
   const scalars: SketchSolveScalarVariable[] = [];
+  const arcs: SketchSolveArcVariable[] = [];
+  const arcIds = new Set<SketchEntityId>();
   const constraints: SketchSolveConstraint[] = [];
   const dimensions: SketchSolveDimension[] = [];
   const diagnostics: CadSketchSolverDiagnostic[] = [];
@@ -100,19 +120,35 @@ export function createSketchSolveModelFromCadSource(
       continue;
     }
 
-    addPointVariable({
-      points,
-      pointTargetIds,
-      entityId: entity.id,
-      role: "center",
-      initial: entity.center
-    });
-    const radiusId = createRadiusScalarId(entity.id);
-    scalarIds.set(entity.id, radiusId);
-    scalars.push({
-      id: radiusId,
-      initial: cleanSketchNumber(entity.radius)
-    });
+    if (entity.kind === "circle") {
+      addPointVariable({
+        points,
+        pointTargetIds,
+        entityId: entity.id,
+        role: "center",
+        initial: entity.center
+      });
+      const radiusId = createRadiusScalarId(entity.id);
+      scalarIds.set(entity.id, radiusId);
+      scalars.push({
+        id: radiusId,
+        initial: cleanSketchNumber(entity.radius)
+      });
+      continue;
+    }
+
+    if (entity.kind === "arc") {
+      arcIds.add(entity.id);
+      arcs.push({
+        id: entity.id,
+        initial: {
+          center: cleanVec2(entity.center),
+          radius: cleanSketchNumber(entity.radius),
+          startAngleDegrees: cleanSketchNumber(entity.startAngleDegrees),
+          sweepAngleDegrees: cleanSketchNumber(entity.sweepAngleDegrees)
+        }
+      });
+    }
   }
 
   for (const constraint of document.sketchConstraints.values()) {
@@ -124,7 +160,8 @@ export function createSketchSolveModelFromCadSource(
       constraint,
       sketch,
       pointTargetIds,
-      scalarIds
+      scalarIds,
+      arcIds
     });
 
     if (mapped.constraint) {
@@ -144,7 +181,8 @@ export function createSketchSolveModelFromCadSource(
       dimension,
       sketch,
       pointTargetIds,
-      scalarIds
+      scalarIds,
+      arcIds
     });
 
     if (mapped.dimension) {
@@ -158,8 +196,13 @@ export function createSketchSolveModelFromCadSource(
     version: SKETCH_SOLVER_MODEL_VERSION,
     points,
     scalars,
+    arcs,
     constraints,
-    dimensions
+    dimensions,
+    settings: {
+      tolerance: SKETCH_GEOMETRY_POLICY.linearTolerance,
+      angularToleranceDegrees: SKETCH_GEOMETRY_POLICY.angularToleranceDegrees
+    }
   };
 
   return {
@@ -167,6 +210,7 @@ export function createSketchSolveModelFromCadSource(
     model,
     mappedPointCount: points.length,
     mappedScalarCount: scalars.length,
+    mappedArcCount: arcs.length,
     mappedConstraintCount: constraints.length,
     mappedDimensionCount: dimensions.length,
     diagnosticCount: diagnostics.length,
@@ -175,8 +219,8 @@ export function createSketchSolveModelFromCadSource(
 }
 
 export function runSketchSolverPackageProbe(
-  document: SketchSolverDocument,
-  sketch: SketchSolverSketch
+  document: SketchSolverPackageDocument,
+  sketch: SketchSolverPackageSketch
 ): SketchSolverPackageProbe {
   const build = createSketchSolveModelFromCadSource(document, sketch);
   const result = solveSketch(build.model);
@@ -193,6 +237,82 @@ export function runSketchSolverPackageProbe(
     diagnosticCount: diagnostics.length,
     diagnostics
   };
+}
+
+export function applySketchSolveResultToCadEntities(
+  sketch: SketchSolverPackageSketch,
+  result: SketchSolveResult
+): ReadonlyMap<SketchEntityId, SketchEntitySnapshot> {
+  const pointById = new Map(
+    result.points.map((point) => [point.id, point.value])
+  );
+  const scalarById = new Map(
+    result.scalars.map((scalar) => [scalar.id, scalar.value])
+  );
+  const arcById = new Map(result.arcs.map((arc) => [arc.id, arc]));
+  const entities = new Map<SketchEntityId, SketchEntitySnapshot>();
+
+  for (const entity of sketch.entities.values()) {
+    if (entity.kind === "point") {
+      entities.set(entity.id, {
+        ...entity,
+        point:
+          pointById.get(createPointTargetId(entity.id, "position")) ??
+          entity.point
+      });
+      continue;
+    }
+    if (entity.kind === "line") {
+      entities.set(entity.id, {
+        ...entity,
+        start:
+          pointById.get(createPointTargetId(entity.id, "start")) ??
+          entity.start,
+        end: pointById.get(createPointTargetId(entity.id, "end")) ?? entity.end
+      });
+      continue;
+    }
+    if (entity.kind === "rectangle") {
+      entities.set(entity.id, {
+        ...entity,
+        center:
+          pointById.get(createPointTargetId(entity.id, "center")) ??
+          entity.center
+      });
+      continue;
+    }
+    if (entity.kind === "circle") {
+      entities.set(entity.id, {
+        ...entity,
+        center:
+          pointById.get(createPointTargetId(entity.id, "center")) ??
+          entity.center,
+        radius: scalarById.get(createRadiusScalarId(entity.id)) ?? entity.radius
+      });
+      continue;
+    }
+
+    const solved = arcById.get(entity.id);
+    if (!solved) {
+      entities.set(entity.id, entity);
+      continue;
+    }
+    const canonical = createCanonicalSketchArcEntity(
+      entity.id,
+      {
+        kind: "centerAngles",
+        center: solved.center,
+        radius: solved.radius,
+        startAngleDegrees: solved.startAngleDegrees,
+        sweepAngleDegrees: solved.sweepAngleDegrees
+      },
+      entity.construction,
+      SKETCH_GEOMETRY_POLICY
+    );
+    entities.set(entity.id, canonical.ok ? canonical.value : entity);
+  }
+
+  return entities;
 }
 
 function addPointVariable({
@@ -220,20 +340,22 @@ function mapConstraintToSketchSolveConstraint({
   constraint,
   sketch,
   pointTargetIds,
-  scalarIds
+  scalarIds,
+  arcIds
 }: {
   readonly constraint: SketchConstraintSnapshot;
-  readonly sketch: SketchSolverSketch;
+  readonly sketch: SketchSolverPackageSketch;
   readonly pointTargetIds: ReadonlyMap<string, string>;
   readonly scalarIds: ReadonlyMap<SketchEntityId, string>;
+  readonly arcIds: ReadonlySet<SketchEntityId>;
 }): {
   readonly constraint?: SketchSolveConstraint;
   readonly diagnostics: readonly CadSketchSolverDiagnostic[];
 } {
   if (constraint.kind === "fixed") {
-    const pointId = pointIdForTarget(pointTargetIds, constraint.target);
+    const target = mapPointTarget(pointTargetIds, arcIds, constraint.target);
 
-    if (!pointId) {
+    if (!target) {
       return {
         diagnostics: [
           createMappingDiagnostic({
@@ -254,7 +376,7 @@ function mapConstraintToSketchSolveConstraint({
       constraint: {
         id: constraint.id,
         kind: "fixedPoint",
-        pointId,
+        target,
         value: cleanVec2(constraint.coordinate)
       },
       diagnostics: []
@@ -262,13 +384,18 @@ function mapConstraintToSketchSolveConstraint({
   }
 
   if (constraint.kind === "coincident") {
-    const pointAId = pointIdForTarget(pointTargetIds, constraint.primaryTarget);
-    const pointBId = pointIdForTarget(
+    const primaryTarget = mapPointTarget(
       pointTargetIds,
+      arcIds,
+      constraint.primaryTarget
+    );
+    const secondaryTarget = mapPointTarget(
+      pointTargetIds,
+      arcIds,
       constraint.secondaryTarget
     );
 
-    if (!pointAId || !pointBId) {
+    if (!primaryTarget || !secondaryTarget) {
       return {
         diagnostics: [
           createMappingDiagnostic({
@@ -289,8 +416,8 @@ function mapConstraintToSketchSolveConstraint({
       constraint: {
         id: constraint.id,
         kind: "coincident",
-        pointAId,
-        pointBId
+        primaryTarget,
+        secondaryTarget
       },
       diagnostics: []
     };
@@ -394,72 +521,32 @@ function mapConstraintToSketchSolveConstraint({
   }
 
   if (constraint.kind === "tangent") {
-    const primaryEntity = sketch.entities.get(
-      constraint.primaryTarget.entityId
-    );
-    const secondaryEntity = sketch.entities.get(
-      constraint.secondaryTarget.entityId
-    );
-    const lineEntity =
-      primaryEntity?.kind === "line"
-        ? primaryEntity
-        : secondaryEntity?.kind === "line"
-          ? secondaryEntity
-          : undefined;
-    const circleEntity =
-      primaryEntity?.kind === "circle"
-        ? primaryEntity
-        : secondaryEntity?.kind === "circle"
-          ? secondaryEntity
-          : undefined;
-
-    if (!lineEntity || !circleEntity) {
-      return {
-        diagnostics: [
-          createMappingDiagnostic({
-            code: "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT",
-            message:
-              "Tangent constraints currently map to the numerical solver only for one line and one circle target.",
-            sketchId: constraint.sketchId,
-            sketchConstraintId: constraint.id,
-            sketchEntityId: constraint.entityId,
-            expected: "line-circle tangent targets",
-            received: `${primaryEntity?.kind ?? "missing"}:${secondaryEntity?.kind ?? "missing"}`
-          })
-        ]
-      };
-    }
-
-    const lineStartPointId = pointIdForTarget(pointTargetIds, {
-      entityId: lineEntity.id,
-      role: "start"
+    const primaryTarget = mapCurveTarget({
+      sketch,
+      pointTargetIds,
+      scalarIds,
+      arcIds,
+      target: constraint.primaryTarget
     });
-    const lineEndPointId = pointIdForTarget(pointTargetIds, {
-      entityId: lineEntity.id,
-      role: "end"
+    const secondaryTarget = mapCurveTarget({
+      sketch,
+      pointTargetIds,
+      scalarIds,
+      arcIds,
+      target: constraint.secondaryTarget
     });
-    const circleCenterPointId = pointIdForTarget(pointTargetIds, {
-      entityId: circleEntity.id,
-      role: "center"
-    });
-    const circleRadiusId = scalarIds.get(circleEntity.id);
 
-    if (
-      !lineStartPointId ||
-      !lineEndPointId ||
-      !circleCenterPointId ||
-      !circleRadiusId
-    ) {
+    if (!primaryTarget || !secondaryTarget) {
       return {
         diagnostics: [
           createMappingDiagnostic({
             code: "SKETCH_SOLVER_MISSING_TARGET",
             message:
-              "Tangent constraint targets cannot be mapped to solver line endpoints, circle center, and circle radius.",
+              "Tangent constraint targets cannot be mapped to solver curve targets.",
             sketchId: constraint.sketchId,
             sketchConstraintId: constraint.id,
             sketchEntityId: constraint.entityId,
-            expected: "line endpoints, circle center point, and radius scalar",
+            expected: "resolved line, circle, or arc curve targets",
             received: "missing tangent solver target"
           })
         ]
@@ -470,39 +557,36 @@ function mapConstraintToSketchSolveConstraint({
       constraint: {
         id: constraint.id,
         kind: "tangent",
-        lineStartPointId,
-        lineEndPointId,
-        circleCenterPointId,
-        circleRadiusId
+        primaryTarget,
+        secondaryTarget
       },
       diagnostics: []
     };
   }
 
   if (constraint.kind === "symmetry") {
-    const primaryPointId = pointIdForTarget(
+    const primaryTarget = mapPointTarget(
       pointTargetIds,
+      arcIds,
       constraint.primaryTarget
     );
-    const secondaryPointId = pointIdForTarget(
+    const secondaryTarget = mapPointTarget(
       pointTargetIds,
+      arcIds,
       constraint.secondaryTarget
     );
-    const lineStartPointId = pointIdForTarget(pointTargetIds, {
-      entityId: constraint.symmetryLineEntityId,
-      role: "start"
-    });
-    const lineEndPointId = pointIdForTarget(pointTargetIds, {
-      entityId: constraint.symmetryLineEntityId,
-      role: "end"
+    const axisTarget = mapCurveTarget({
+      sketch,
+      pointTargetIds,
+      scalarIds,
+      arcIds,
+      target: {
+        entityId: constraint.symmetryLineEntityId,
+        entityKind: "line"
+      }
     });
 
-    if (
-      !primaryPointId ||
-      !secondaryPointId ||
-      !lineStartPointId ||
-      !lineEndPointId
-    ) {
+    if (!primaryTarget || !secondaryTarget || axisTarget?.kind !== "line") {
       return {
         diagnostics: [
           createMappingDiagnostic({
@@ -523,10 +607,9 @@ function mapConstraintToSketchSolveConstraint({
       constraint: {
         id: constraint.id,
         kind: "symmetry",
-        primaryPointId,
-        secondaryPointId,
-        lineStartPointId,
-        lineEndPointId
+        primaryTarget,
+        secondaryTarget,
+        axisTarget
       },
       diagnostics: []
     };
@@ -649,54 +732,33 @@ function mapConstraintToSketchSolveConstraint({
   }
 
   if (constraint.kind === "concentric") {
-    const primaryEntity = sketch.entities.get(constraint.primaryCircleEntityId);
-    const secondaryEntity = sketch.entities.get(
-      constraint.secondaryCircleEntityId
-    );
+    const primaryTarget = mapRadiusCurveTarget({
+      sketch,
+      pointTargetIds,
+      scalarIds,
+      arcIds,
+      target: constraint.primaryTarget
+    });
+    const secondaryTarget = mapRadiusCurveTarget({
+      sketch,
+      pointTargetIds,
+      scalarIds,
+      arcIds,
+      target: constraint.secondaryTarget
+    });
 
-    if (
-      !primaryEntity ||
-      primaryEntity.kind !== "circle" ||
-      !secondaryEntity ||
-      secondaryEntity.kind !== "circle"
-    ) {
+    if (!primaryTarget || !secondaryTarget) {
       return {
         diagnostics: [
           createMappingDiagnostic({
             code: "SKETCH_SOLVER_MISSING_TARGET",
             message:
-              "Concentric constraint targets cannot be mapped to solver circles.",
+              "Concentric constraint targets cannot be mapped to solver radius curves.",
             sketchId: constraint.sketchId,
             sketchConstraintId: constraint.id,
-            sketchEntityId: constraint.primaryCircleEntityId,
-            expected: "two circle entities",
-            received: `${primaryEntity?.kind ?? "missing"}:${secondaryEntity?.kind ?? "missing"}`
-          })
-        ]
-      };
-    }
-
-    const primaryCenterPointId = pointIdForTarget(pointTargetIds, {
-      entityId: primaryEntity.id,
-      role: "center"
-    });
-    const secondaryCenterPointId = pointIdForTarget(pointTargetIds, {
-      entityId: secondaryEntity.id,
-      role: "center"
-    });
-
-    if (!primaryCenterPointId || !secondaryCenterPointId) {
-      return {
-        diagnostics: [
-          createMappingDiagnostic({
-            code: "SKETCH_SOLVER_MISSING_TARGET",
-            message:
-              "Concentric constraint centers cannot be mapped to solver points.",
-            sketchId: constraint.sketchId,
-            sketchConstraintId: constraint.id,
-            sketchEntityId: constraint.primaryCircleEntityId,
-            expected: "circle center solver points",
-            received: "missing center point"
+            sketchEntityId: constraint.primaryTarget.entityId,
+            expected: "circle or arc radius curve targets",
+            received: "missing concentric curve target"
           })
         ]
       };
@@ -706,56 +768,41 @@ function mapConstraintToSketchSolveConstraint({
       constraint: {
         id: constraint.id,
         kind: "concentric",
-        primaryCenterPointId,
-        secondaryCenterPointId
+        primaryTarget,
+        secondaryTarget
       },
       diagnostics: []
     };
   }
 
   if (constraint.kind === "equalRadius") {
-    const primaryEntity = sketch.entities.get(constraint.primaryCircleEntityId);
-    const secondaryEntity = sketch.entities.get(
-      constraint.secondaryCircleEntityId
-    );
+    const primaryTarget = mapRadiusCurveTarget({
+      sketch,
+      pointTargetIds,
+      scalarIds,
+      arcIds,
+      target: constraint.primaryTarget
+    });
+    const secondaryTarget = mapRadiusCurveTarget({
+      sketch,
+      pointTargetIds,
+      scalarIds,
+      arcIds,
+      target: constraint.secondaryTarget
+    });
 
-    if (
-      !primaryEntity ||
-      primaryEntity.kind !== "circle" ||
-      !secondaryEntity ||
-      secondaryEntity.kind !== "circle"
-    ) {
+    if (!primaryTarget || !secondaryTarget) {
       return {
         diagnostics: [
           createMappingDiagnostic({
             code: "SKETCH_SOLVER_MISSING_TARGET",
             message:
-              "Equal-radius constraint targets cannot be mapped to solver circles.",
+              "Equal-radius constraint targets cannot be mapped to solver radius curves.",
             sketchId: constraint.sketchId,
             sketchConstraintId: constraint.id,
-            sketchEntityId: constraint.primaryCircleEntityId,
-            expected: "two circle entities",
-            received: `${primaryEntity?.kind ?? "missing"}:${secondaryEntity?.kind ?? "missing"}`
-          })
-        ]
-      };
-    }
-
-    const primaryRadiusId = scalarIds.get(primaryEntity.id);
-    const secondaryRadiusId = scalarIds.get(secondaryEntity.id);
-
-    if (!primaryRadiusId || !secondaryRadiusId) {
-      return {
-        diagnostics: [
-          createMappingDiagnostic({
-            code: "SKETCH_SOLVER_MISSING_TARGET",
-            message:
-              "Equal-radius constraint radii cannot be mapped to solver scalars.",
-            sketchId: constraint.sketchId,
-            sketchConstraintId: constraint.id,
-            sketchEntityId: constraint.primaryCircleEntityId,
-            expected: "circle radius solver scalars",
-            received: "missing radius scalar"
+            sketchEntityId: constraint.primaryTarget.entityId,
+            expected: "circle or arc radius curve targets",
+            received: "missing equal-radius curve target"
           })
         ]
       };
@@ -765,8 +812,8 @@ function mapConstraintToSketchSolveConstraint({
       constraint: {
         id: constraint.id,
         kind: "equalRadius",
-        primaryRadiusId,
-        secondaryRadiusId
+        primaryTarget,
+        secondaryTarget
       },
       diagnostics: []
     };
@@ -793,22 +840,25 @@ function mapDimensionToSketchSolveDimension({
   dimension,
   sketch,
   pointTargetIds,
-  scalarIds
+  scalarIds,
+  arcIds
 }: {
-  readonly document: SketchSolverDocument;
+  readonly document: SketchSolverPackageDocument;
   readonly dimension: SketchDimensionSnapshot;
-  readonly sketch: SketchSolverSketch;
+  readonly sketch: SketchSolverPackageSketch;
   readonly pointTargetIds: ReadonlyMap<string, string>;
   readonly scalarIds: ReadonlyMap<SketchEntityId, string>;
+  readonly arcIds: ReadonlySet<SketchEntityId>;
 }): {
   readonly dimension?: SketchSolveDimension;
   readonly diagnostics: readonly CadSketchSolverDiagnostic[];
 } {
-  const entry = evaluateSketchDimension(document, dimension, undefined, {
-    checkConsistency: false
-  });
+  const effectiveValue =
+    dimension.valueSource.type === "literal"
+      ? dimension.valueSource.value
+      : document.parameters.get(dimension.valueSource.parameterId)?.value;
 
-  if (entry.effectiveValue === undefined) {
+  if (effectiveValue === undefined) {
     return {
       diagnostics: [
         createMappingDiagnostic({
@@ -880,7 +930,7 @@ function mapDimensionToSketchSolveDimension({
         kind: "lineLength",
         startPointId,
         endPointId,
-        value: cleanSketchNumber(entry.effectiveValue)
+        value: cleanSketchNumber(effectiveValue)
       },
       diagnostics: []
     };
@@ -914,7 +964,36 @@ function mapDimensionToSketchSolveDimension({
         id: dimension.id,
         kind: "circleRadius",
         radiusId,
-        value: cleanSketchNumber(entry.effectiveValue)
+        value: cleanSketchNumber(effectiveValue)
+      },
+      diagnostics: []
+    };
+  }
+
+  if (dimension.target.entityKind === "arc") {
+    if (!arcIds.has(dimension.entityId)) {
+      return {
+        diagnostics: [
+          createMappingDiagnostic({
+            code: "SKETCH_SOLVER_MISSING_TARGET",
+            message:
+              "Arc dimension target cannot be mapped to a solver arc variable.",
+            sketchId: dimension.sketchId,
+            sketchDimensionId: dimension.id,
+            sketchEntityId: dimension.entityId,
+            expected: "arc solver variable",
+            received: "missing arc"
+          })
+        ]
+      };
+    }
+
+    return {
+      dimension: {
+        id: dimension.id,
+        kind: dimension.target.role === "radius" ? "arcRadius" : "arcSweep",
+        arcId: dimension.entityId,
+        value: cleanSketchNumber(effectiveValue)
       },
       diagnostics: []
     };
@@ -929,7 +1008,8 @@ function mapDimensionToSketchSolveDimension({
         sketchId: dimension.sketchId,
         sketchDimensionId: dimension.id,
         sketchEntityId: dimension.entityId,
-        expected: "line.length or circle.radius dimension",
+        expected:
+          "line.length, circle.radius, arc.radius, or arc.sweep dimension",
         received: `${dimension.target.entityKind}.${dimension.target.role}`
       })
     ]
@@ -941,6 +1021,78 @@ function pointIdForTarget(
   target: SketchPointTarget
 ): string | undefined {
   return pointTargetIds.get(createPointTargetKey(target.entityId, target.role));
+}
+
+function mapPointTarget(
+  pointTargetIds: ReadonlyMap<string, string>,
+  arcIds: ReadonlySet<SketchEntityId>,
+  target: SketchPointTarget
+): SketchSolverPointTarget | undefined {
+  if (target.entityKind === "arc") {
+    return arcIds.has(target.entityId)
+      ? { kind: "arc", arcId: target.entityId, role: target.role }
+      : undefined;
+  }
+
+  const pointId = pointIdForTarget(pointTargetIds, target);
+  return pointId ? { kind: "point", pointId } : undefined;
+}
+
+function mapCurveTarget({
+  sketch,
+  pointTargetIds,
+  scalarIds,
+  arcIds,
+  target
+}: {
+  readonly sketch: SketchSolverPackageSketch;
+  readonly pointTargetIds: ReadonlyMap<string, string>;
+  readonly scalarIds: ReadonlyMap<SketchEntityId, string>;
+  readonly arcIds: ReadonlySet<SketchEntityId>;
+  readonly target: SketchCurveConstraintTarget;
+}): SketchSolverCurveTarget | undefined {
+  const entity = sketch.entities.get(target.entityId);
+  if (!entity || entity.kind !== target.entityKind) {
+    return undefined;
+  }
+
+  if (target.entityKind === "arc") {
+    return arcIds.has(target.entityId)
+      ? { kind: "arc", arcId: target.entityId }
+      : undefined;
+  }
+
+  if (target.entityKind === "line") {
+    const startPointId = pointIdForTarget(pointTargetIds, {
+      entityId: target.entityId,
+      role: "start"
+    });
+    const endPointId = pointIdForTarget(pointTargetIds, {
+      entityId: target.entityId,
+      role: "end"
+    });
+    return startPointId && endPointId
+      ? { kind: "line", startPointId, endPointId }
+      : undefined;
+  }
+
+  const centerPointId = pointIdForTarget(pointTargetIds, {
+    entityId: target.entityId,
+    role: "center"
+  });
+  const radiusId = scalarIds.get(target.entityId);
+  return centerPointId && radiusId
+    ? { kind: "circle", centerPointId, radiusId }
+    : undefined;
+}
+
+function mapRadiusCurveTarget(
+  options: Parameters<typeof mapCurveTarget>[0]
+): SketchSolverRadiusCurveTarget | undefined {
+  const target = mapCurveTarget(options);
+  return target?.kind === "circle" || target?.kind === "arc"
+    ? target
+    : undefined;
 }
 
 function createPointTargetId(
@@ -1070,6 +1222,12 @@ function mapSketchSolveDiagnosticCode(
       return "SKETCH_SOLVER_NOT_RUN";
     case "SKETCH_SOLVER_REDUNDANT":
       return "SKETCH_SOLVER_REDUNDANT";
+    case "SKETCH_TANGENCY_OUTSIDE_ARC":
+      return "SKETCH_TANGENCY_OUTSIDE_ARC";
+    case "SKETCH_ARC_SOLVE_BRANCH_INVALID":
+      return "SKETCH_ARC_SOLVE_BRANCH_INVALID";
+    case "SKETCH_ARC_DIMENSION_INVALID":
+      return "SKETCH_ARC_DIMENSION_INVALID";
     case "SKETCH_SOLVER_INVALID_VALUE":
     case "SKETCH_SOLVER_NON_CONVERGENCE":
       return "SKETCH_SOLVER_FAILED";

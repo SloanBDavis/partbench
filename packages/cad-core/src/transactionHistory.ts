@@ -520,7 +520,11 @@ function createOperationSummaries(
                 ? op.lineEntityId
                 : op.kind === "parallel" || op.kind === "perpendicular"
                   ? op.secondaryLineEntityId
-                  : op.entityId;
+                  : op.kind === "tangent" || op.kind === "symmetry"
+                    ? op.primaryTarget.entityId
+                    : op.kind === "concentric" || op.kind === "equalRadius"
+                      ? (op.primaryTarget?.entityId ?? op.primaryCircleEntityId)
+                      : op.entityId;
         const targetLabel =
           op.kind === "fixed"
             ? `${op.sketchId}/${op.target.entityId}.${op.target.role}`
@@ -530,7 +534,13 @@ function createOperationSummaries(
                 ? `${op.sketchId}/${op.lineEntityId} midpoint -> ${op.target.entityId}.${op.target.role}`
                 : op.kind === "parallel" || op.kind === "perpendicular"
                   ? `${op.sketchId}/${op.primaryLineEntityId} ${op.kind} -> ${op.secondaryLineEntityId}`
-                  : `${op.sketchId}/${op.entityId}`;
+                  : op.kind === "tangent"
+                    ? `${op.sketchId}/${op.primaryTarget.entityId} ${op.kind} -> ${op.secondaryTarget.entityId}`
+                    : op.kind === "concentric" || op.kind === "equalRadius"
+                      ? `${op.sketchId}/${op.primaryTarget?.entityId ?? op.primaryCircleEntityId} ${op.kind} -> ${op.secondaryTarget?.entityId ?? op.secondaryCircleEntityId}`
+                      : op.kind === "symmetry"
+                        ? `${op.sketchId}/${op.primaryTarget.entityId} symmetry ${op.secondaryTarget.entityId} about ${op.symmetryLineEntityId}`
+                        : `${op.sketchId}/${op.entityId}`;
 
         return createSketchConstraintOperationSummary({
           op: op.op,

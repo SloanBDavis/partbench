@@ -1072,7 +1072,7 @@ function createV17TangentRectangleProfileProject(): CadProject {
   ]);
 
   const project = exportCadProject(engine);
-  const advancedConstraints: SketchConstraintSnapshot[] = [
+  const advancedConstraints = [
     ...(project.document.sketchConstraints as SketchConstraintSnapshot[]),
     {
       id: "skcon_tangent",
@@ -1083,7 +1083,7 @@ function createV17TangentRectangleProfileProject(): CadProject {
       primaryTarget: { entityId: "line_1", entityKind: "line" },
       secondaryTarget: { entityId: "circle_1", entityKind: "circle" }
     }
-  ];
+  ] as unknown as SketchConstraintSnapshot[];
 
   return {
     ...project,
@@ -1222,7 +1222,7 @@ function createV17AdvancedConstraintProject(): CadProject {
   ]);
 
   const project = exportCadProject(engine);
-  const advancedConstraints: SketchConstraintSnapshot[] = [
+  const advancedConstraints = [
     {
       id: "skcon_201",
       name: "Tangent source",
@@ -1279,7 +1279,7 @@ function createV17AdvancedConstraintProject(): CadProject {
       secondaryTarget: { entityId: "point_2", role: "position" },
       symmetryLineEntityId: "line_1"
     }
-  ];
+  ] as unknown as SketchConstraintSnapshot[];
 
   return {
     ...project,
@@ -1334,7 +1334,7 @@ function createV17CirclePairConstraintProject(): CadProject {
   ]);
 
   const project = exportCadProject(engine);
-  const advancedConstraints: SketchConstraintSnapshot[] = [
+  const advancedConstraints = [
     ...(project.document.sketchConstraints as SketchConstraintSnapshot[]),
     {
       id: "skcon_concentric",
@@ -1354,7 +1354,7 @@ function createV17CirclePairConstraintProject(): CadProject {
       primaryCircleEntityId: "circle_1",
       secondaryCircleEntityId: "circle_2"
     }
-  ];
+  ] as unknown as SketchConstraintSnapshot[];
 
   return {
     ...project,
@@ -1418,7 +1418,7 @@ function createV17LinePairConstraintProject(): CadProject {
   ]);
 
   const project = exportCadProject(engine);
-  const advancedConstraints: SketchConstraintSnapshot[] = [
+  const advancedConstraints = [
     ...(project.document.sketchConstraints as SketchConstraintSnapshot[]),
     {
       id: "skcon_equal_length",
@@ -1439,7 +1439,7 @@ function createV17LinePairConstraintProject(): CadProject {
       secondaryLineEntityId: "line_2",
       angleDegrees: 60
     }
-  ];
+  ] as unknown as SketchConstraintSnapshot[];
 
   return {
     ...project,
@@ -1526,7 +1526,7 @@ function createV17TangentConstraintProject(
     targetOrder === "line-circle"
       ? ({ entityId: "circle_1", entityKind: "circle" } as const)
       : ({ entityId: "line_1", entityKind: "line" } as const);
-  const advancedConstraints: SketchConstraintSnapshot[] = [
+  const advancedConstraints = [
     ...(project.document.sketchConstraints as SketchConstraintSnapshot[]),
     {
       id: "skcon_tangent",
@@ -1537,7 +1537,7 @@ function createV17TangentConstraintProject(
       primaryTarget,
       secondaryTarget
     }
-  ];
+  ] as unknown as SketchConstraintSnapshot[];
 
   return {
     ...project,
@@ -1579,7 +1579,7 @@ function createV17UnsupportedTangentConstraintProject(): CadProject {
   ]);
 
   const project = exportCadProject(engine);
-  const advancedConstraints: SketchConstraintSnapshot[] = [
+  const advancedConstraints = [
     ...(project.document.sketchConstraints as SketchConstraintSnapshot[]),
     {
       id: "skcon_tangent",
@@ -1590,7 +1590,7 @@ function createV17UnsupportedTangentConstraintProject(): CadProject {
       primaryTarget: { entityId: "line_1", entityKind: "line" },
       secondaryTarget: { entityId: "line_2", entityKind: "line" }
     }
-  ];
+  ] as unknown as SketchConstraintSnapshot[];
 
   return {
     ...project,
@@ -1664,7 +1664,7 @@ function createV17SymmetryConstraintProject(): CadProject {
   ]);
 
   const project = exportCadProject(engine);
-  const advancedConstraints: SketchConstraintSnapshot[] = [
+  const advancedConstraints = [
     ...(project.document.sketchConstraints as SketchConstraintSnapshot[]),
     {
       id: "skcon_symmetry",
@@ -1676,7 +1676,7 @@ function createV17SymmetryConstraintProject(): CadProject {
       secondaryTarget: { entityId: "point_2", role: "position" },
       symmetryLineEntityId: "line_1"
     }
-  ];
+  ] as unknown as SketchConstraintSnapshot[];
 
   return {
     ...project,
@@ -25640,7 +25640,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         engine: "current-direct-evaluator",
         numericalSolverStatus: "converged",
         numericalSolverEngine: "@web-cad/sketch-solver",
-        numericalSolverModelVersion: "partbench.sketch-solver.v1",
+        numericalSolverModelVersion: "partbench.sketch-solver.v2",
         modelBuilt: true,
         solverRan: true,
         canSolveNumerically: true,
@@ -25887,7 +25887,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(response.solver).toMatchObject({
       numericalSolverStatus: "under-defined",
       numericalSolverEngine: "@web-cad/sketch-solver",
-      numericalSolverModelVersion: "partbench.sketch-solver.v1",
+      numericalSolverModelVersion: "partbench.sketch-solver.v2",
       modelBuilt: true,
       solverRan: true,
       canSolveNumerically: true,
@@ -26073,7 +26073,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(convergedStatus.solver).toMatchObject({
       numericalSolverStatus: "converged",
       numericalSolverEngine: "@web-cad/sketch-solver",
-      numericalSolverModelVersion: "partbench.sketch-solver.v1",
+      numericalSolverModelVersion: "partbench.sketch-solver.v2",
       modelBuilt: true,
       solverRan: true,
       canSolveNumerically: true,
@@ -26365,7 +26365,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(response).toMatchObject({
       ok: true,
       query: "sketch.solverStatus",
-      status: "unsupported",
+      status: "under-defined",
       sourceContract: {
         currentProjectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V17,
         emittedProjectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V17,
@@ -26389,14 +26389,9 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           kind: "tangent",
           status: "current-source",
           sourceBacked: true,
-          supportedByCurrentEvaluator: false,
+          supportedByCurrentEvaluator: true,
           supportedByNumericalSolver: true,
-          diagnostics: expect.arrayContaining([
-            expect.objectContaining({
-              code: "SKETCH_SOLVER_UNSUPPORTED_ENTITY",
-              received: "tangent"
-            })
-          ]),
+          diagnostics: [],
           targetRefs: expect.arrayContaining([
             expect.objectContaining({
               type: "entity",
@@ -26413,7 +26408,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         expect.objectContaining({
           constraintId: "skcon_202",
           kind: "concentric",
-          supportedByCurrentEvaluator: false,
+          supportedByCurrentEvaluator: true,
           supportedByNumericalSolver: true,
           targetRefs: expect.arrayContaining([
             expect.objectContaining({
@@ -26431,7 +26426,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         expect.objectContaining({
           constraintId: "skcon_203",
           kind: "equalLength",
-          supportedByCurrentEvaluator: false,
+          supportedByCurrentEvaluator: true,
           supportedByNumericalSolver: true,
           targetRefs: expect.arrayContaining([
             expect.objectContaining({
@@ -26449,7 +26444,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         expect.objectContaining({
           constraintId: "skcon_204",
           kind: "equalRadius",
-          supportedByCurrentEvaluator: false,
+          supportedByCurrentEvaluator: true,
           supportedByNumericalSolver: true,
           targetRefs: expect.arrayContaining([
             expect.objectContaining({
@@ -26467,7 +26462,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         expect.objectContaining({
           constraintId: "skcon_205",
           kind: "angle",
-          supportedByCurrentEvaluator: false,
+          supportedByCurrentEvaluator: true,
           supportedByNumericalSolver: true,
           targetRefs: expect.arrayContaining([
             expect.objectContaining({
@@ -26485,7 +26480,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         expect.objectContaining({
           constraintId: "skcon_206",
           kind: "symmetry",
-          supportedByCurrentEvaluator: false,
+          supportedByCurrentEvaluator: true,
           supportedByNumericalSolver: true,
           targetRefs: expect.arrayContaining([
             expect.objectContaining({
@@ -26509,12 +26504,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           received: CAD_PROJECT_FORMAT_VERSION_V17
         }),
         expect.objectContaining({
-          code: "SKETCH_SOLVER_UNSUPPORTED_ENTITY",
-          received: "tangent"
-        }),
-        expect.objectContaining({
-          code: "SKETCH_SOLVER_UNSUPPORTED_ENTITY",
-          received: "symmetry"
+          code: "SKETCH_SOLVER_UNDER_DEFINED",
+          received: "under-defined"
         })
       ])
     );
@@ -26654,13 +26645,13 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
 
       expect(response).toMatchObject({
         query: "sketch.solverStatus",
-        status: "unsupported",
+        status: "under-defined",
         sourceContract: {
           currentProjectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V17,
           emittedProjectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V17
         },
         solver: {
-          numericalSolverStatus: "converged",
+          numericalSolverStatus: "under-defined",
           numericalSolverEngine: "@web-cad/sketch-solver",
           modelBuilt: true,
           solverRan: true,
@@ -26673,7 +26664,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
             constraintId: "skcon_tangent",
             kind: "tangent",
             sourceBacked: true,
-            supportedByCurrentEvaluator: false,
+            supportedByCurrentEvaluator: true,
             supportedByNumericalSolver: true
           })
         ]),
@@ -26719,7 +26710,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         expect.objectContaining({
           code: "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT",
           sketchConstraintId: "skcon_tangent",
-          expected: "line-circle tangent targets",
+          expected: "line-circle, line-arc, arc-circle, or arc-arc",
           received: "line:line"
         })
       ])
@@ -26736,7 +26727,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
 
     expect(response).toMatchObject({
       query: "sketch.solverStatus",
-      status: "unsupported",
+      status: "fully-defined",
       sourceContract: {
         currentProjectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V17,
         emittedProjectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V17
@@ -26755,7 +26746,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           constraintId: "skcon_symmetry",
           kind: "symmetry",
           sourceBacked: true,
-          supportedByCurrentEvaluator: false,
+          supportedByCurrentEvaluator: true,
           supportedByNumericalSolver: true
         })
       ]),
@@ -26783,7 +26774,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     const solverStatus = readSketchSolverStatus(engine, "sketch_1");
     expect(solverStatus).toMatchObject({
       query: "sketch.solverStatus",
-      status: "unsupported",
+      status: "under-defined",
       solver: {
         numericalSolverEngine: "@web-cad/sketch-solver",
         modelBuilt: true,
@@ -26981,13 +26972,13 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       SketchConstraintSnapshot,
       { readonly kind: "tangent" }
     >;
-    const malformedTangentConstraint: SketchConstraintSnapshot = {
+    const malformedTangentConstraint = {
       ...tangentConstraint,
       primaryTarget: {
         entityId: "circle_1",
         entityKind: "line"
       }
-    };
+    } as unknown as SketchConstraintSnapshot;
 
     expectProjectImportError(
       () =>

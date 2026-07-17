@@ -1925,11 +1925,11 @@ function getSketchConstraintAffectedTargets(
     return [
       {
         sketchId: constraint.sketchId,
-        entityId: constraint.primaryCircleEntityId
+        entityId: constraint.primaryTarget.entityId
       },
       {
         sketchId: constraint.sketchId,
-        entityId: constraint.secondaryCircleEntityId
+        entityId: constraint.secondaryTarget.entityId
       }
     ];
   }
@@ -2032,6 +2032,7 @@ function mapSketchDimensionIssueCode(
       return "UNSUPPORTED_SKETCH_DIMENSION_TARGET";
 
     case "INVALID_VALUE":
+    case "SKETCH_ARC_DIMENSION_INVALID":
       return "INVALID_SKETCH_DIMENSION_VALUE";
 
     case "INCONSISTENT_CONSTRAINT":
@@ -2096,7 +2097,11 @@ function mapSketchConstraintIssueCode(
       return "UNSUPPORTED_SKETCH_CONSTRAINT_TARGET";
 
     case "INVALID_VALUE":
+    case "SKETCH_ARC_SOLVE_BRANCH_INVALID":
       return "INVALID_SKETCH_CONSTRAINT_VALUE";
+
+    case "SKETCH_TANGENCY_OUTSIDE_ARC":
+      return "INCONSISTENT_SKETCH_CONSTRAINT";
 
     case "INCONSISTENT_CONSTRAINT":
       return "INCONSISTENT_SKETCH_CONSTRAINT";

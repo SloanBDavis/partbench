@@ -91,8 +91,8 @@ describe("sketch solver boundary", () => {
       issues: [
         expect.objectContaining({
           code: "UNDER_DEFINED_SKETCH",
-          expected: "4 constrained degrees",
-          received: "1 constrained degrees"
+          expected: "0 degrees of freedom",
+          received: "2"
         })
       ]
     });
@@ -246,8 +246,8 @@ describe("sketch solver boundary", () => {
       issues: [
         expect.objectContaining({
           code: "OVER_DEFINED_SKETCH",
-          expected: "4 constrained degrees",
-          received: "5 constrained degrees"
+          expected: "at most 4 independent residual equations",
+          received: "5 residual equations"
         })
       ]
     });

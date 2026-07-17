@@ -115,6 +115,7 @@ import type {
   SketchPointTarget,
   SketchPointTargetV21,
   SketchCurveConstraintTargetV21,
+  SketchRadiusCurveTarget,
   SketchDimensionTargetV21,
   SketchSemanticDiff,
   SketchSnapshot,
@@ -153,6 +154,7 @@ import type {
   SketchConstraintKind,
   SketchConstraintSemanticDiff,
   SketchConstraintSnapshot,
+  SketchConstraintSnapshotV20,
   SketchDimensionId,
   SketchDimensionSnapshot,
   SketchDimensionTarget,
@@ -177,6 +179,7 @@ import { SKETCH_GEOMETRY_POLICY } from "./sketchGeometryPolicy";
 import {
   canonicalizeSketchArcDefinition,
   createCanonicalSketchArcEntity,
+  getSketchArcPoint,
   type SketchArcValidationIssue
 } from "./sketchArcMath";
 import { normalizeFeatureInputs } from "./normalizedFeatureInputs";
@@ -213,6 +216,7 @@ export {
 export {
   canonicalizeSketchArcDefinition,
   createCanonicalSketchArcEntity,
+  getSketchArcPoint,
   normalizeSketchArcStartAngleDegrees,
   type CanonicalSketchArcGeometry,
   type SketchArcValidationIssue,
@@ -288,6 +292,10 @@ import {
 } from "./sketchSolver";
 import { createSketchEditReadinessResponse } from "./sketchEditReadiness";
 import { createSketchSolverStatusResponse } from "./sketchSolverStatus";
+import {
+  applySketchSolveResultToCadEntities,
+  runSketchSolverPackageProbe
+} from "./sketchSolverPackageMapping";
 import {
   createSketchProfileHealthEntries,
   createSketchProfileLifecycleEffects
@@ -9498,7 +9506,31 @@ function createSketchConstraintFromOp(
     return createLinePairSketchConstraintFromOp(state, op, id, opIndex);
   }
 
-  return createOrientationSketchConstraintFromOp(state, op, id, opIndex);
+  if (op.kind === "tangent") {
+    return createTangentSketchConstraintFromOp(state, op, id, opIndex);
+  }
+
+  if (op.kind === "concentric" || op.kind === "equalRadius") {
+    return createRadiusSketchConstraintFromOp(state, op, id, opIndex);
+  }
+
+  if (op.kind === "symmetry") {
+    return createSymmetrySketchConstraintFromOp(state, op, id, opIndex);
+  }
+
+  if (op.kind === "horizontal" || op.kind === "vertical") {
+    return createOrientationSketchConstraintFromOp(state, op, id, opIndex);
+  }
+
+  throwValidationError({
+    code: "INVALID_SKETCH_CONSTRAINT",
+    message: "Sketch constraint kind is not commandable.",
+    opIndex,
+    path: operationPath(opIndex, "kind"),
+    expected:
+      "horizontal, vertical, fixed, coincident, midpoint, parallel, perpendicular, tangent, concentric, equalRadius, or symmetry",
+    received: describeReceived((op as { readonly kind?: unknown }).kind)
+  });
 }
 
 function createOrientationSketchConstraintFromOp(
@@ -9726,7 +9758,7 @@ function createMidpointSketchConstraintFromOp(
     entityId: op.lineEntityId,
     kind: "midpoint",
     lineEntityId: op.lineEntityId,
-    target
+    target: target as typeof op.target
   };
 }
 
@@ -9821,6 +9853,262 @@ function createLinePairSketchConstraintFromOp(
   };
 }
 
+function createTangentSketchConstraintFromOp(
+  state: MutableDocumentState,
+  op: Extract<
+    CadOp,
+    { readonly op: "sketch.constraint.create"; readonly kind: "tangent" }
+  >,
+  id: SketchConstraintId,
+  opIndex: number
+): Extract<SketchConstraint, { readonly kind: "tangent" }> {
+  const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+  const primaryTarget = validateSketchCurveConstraintTarget(
+    sketch,
+    op.primaryTarget,
+    opIndex,
+    "primaryTarget"
+  );
+  const secondaryTarget = validateSketchCurveConstraintTarget(
+    sketch,
+    op.secondaryTarget,
+    opIndex,
+    "secondaryTarget"
+  );
+  if (primaryTarget.entityId === secondaryTarget.entityId) {
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message: "Tangent sketch constraint curve targets must be distinct.",
+      opIndex,
+      sketchId: op.sketchId,
+      sketchEntityId: secondaryTarget.entityId,
+      path: operationPath(opIndex, "secondaryTarget"),
+      expected: "distinct curve target",
+      received: secondaryTarget.entityId
+    });
+  }
+  if (
+    primaryTarget.entityKind !== "arc" &&
+    secondaryTarget.entityKind !== "arc" &&
+    !(
+      (primaryTarget.entityKind === "line" &&
+        secondaryTarget.entityKind === "circle") ||
+      (primaryTarget.entityKind === "circle" &&
+        secondaryTarget.entityKind === "line")
+    )
+  ) {
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message: "Tangent sketch constraint curve pair is unsupported.",
+      opIndex,
+      sketchId: op.sketchId,
+      path: operationPath(opIndex, "secondaryTarget"),
+      expected: "line-circle, line-arc, arc-circle, or arc-arc targets",
+      received: `${primaryTarget.entityKind}:${secondaryTarget.entityKind}`
+    });
+  }
+  return {
+    id,
+    name: normalizeSketchConstraintName(op.name, opIndex, op.id),
+    sketchId: op.sketchId,
+    entityId: secondaryTarget.entityId,
+    kind: "tangent",
+    primaryTarget,
+    secondaryTarget
+  } as Extract<SketchConstraint, { readonly kind: "tangent" }>;
+}
+
+function createRadiusSketchConstraintFromOp(
+  state: MutableDocumentState,
+  op: Extract<
+    CadOp,
+    {
+      readonly op: "sketch.constraint.create";
+      readonly kind: "concentric" | "equalRadius";
+    }
+  >,
+  id: SketchConstraintId,
+  opIndex: number
+): Extract<SketchConstraint, { readonly kind: "concentric" | "equalRadius" }> {
+  const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+  const primaryInput: SketchRadiusCurveTarget = op.primaryTarget ?? {
+    entityId: op.primaryCircleEntityId,
+    entityKind: "circle"
+  };
+  const secondaryInput: SketchRadiusCurveTarget = op.secondaryTarget ?? {
+    entityId: op.secondaryCircleEntityId,
+    entityKind: "circle"
+  };
+  const primaryTarget = validateSketchRadiusCurveTarget(
+    sketch,
+    primaryInput,
+    opIndex,
+    "primaryTarget"
+  );
+  const secondaryTarget = validateSketchRadiusCurveTarget(
+    sketch,
+    secondaryInput,
+    opIndex,
+    "secondaryTarget"
+  );
+  if (primaryTarget.entityId === secondaryTarget.entityId) {
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message: `${op.kind} sketch constraint radius targets must be distinct.`,
+      opIndex,
+      sketchId: op.sketchId,
+      sketchEntityId: secondaryTarget.entityId,
+      path: operationPath(opIndex, "secondaryTarget"),
+      expected: "distinct circle or arc target",
+      received: secondaryTarget.entityId
+    });
+  }
+  return {
+    id,
+    name: normalizeSketchConstraintName(op.name, opIndex, op.id),
+    sketchId: op.sketchId,
+    entityId: secondaryTarget.entityId,
+    kind: op.kind,
+    primaryTarget,
+    secondaryTarget
+  };
+}
+
+function createSymmetrySketchConstraintFromOp(
+  state: MutableDocumentState,
+  op: Extract<
+    CadOp,
+    { readonly op: "sketch.constraint.create"; readonly kind: "symmetry" }
+  >,
+  id: SketchConstraintId,
+  opIndex: number
+): Extract<SketchConstraint, { readonly kind: "symmetry" }> {
+  const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+  const primaryTarget = validateSketchPointTarget(
+    op.primaryTarget,
+    opIndex,
+    "primaryTarget"
+  );
+  const secondaryTarget = validateSketchPointTarget(
+    op.secondaryTarget,
+    opIndex,
+    "secondaryTarget"
+  );
+  if (sketchPointTargetsEqual(primaryTarget, secondaryTarget)) {
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message: "Symmetry sketch constraint point targets must be distinct.",
+      opIndex,
+      sketchId: op.sketchId,
+      path: operationPath(opIndex, "secondaryTarget"),
+      expected: "distinct point target",
+      received: sketchPointTargetKey(secondaryTarget)
+    });
+  }
+  for (const [field, target] of [
+    ["primaryTarget", primaryTarget],
+    ["secondaryTarget", secondaryTarget]
+  ] as const) {
+    const entity = sketch.entities.get(target.entityId);
+    if (!entity)
+      throwSketchEntityNotFound(op.sketchId, target.entityId, opIndex);
+    assertSketchPointTargetSupported(
+      entity,
+      target,
+      opIndex,
+      op.sketchId,
+      field
+    );
+  }
+  const axis = sketch.entities.get(op.symmetryLineEntityId);
+  if (!axis) {
+    throwSketchEntityNotFound(op.sketchId, op.symmetryLineEntityId, opIndex);
+  }
+  assertSketchEntityIsLine(
+    axis,
+    op.sketchId,
+    opIndex,
+    "symmetryLineEntityId",
+    "Symmetry sketch constraint axis must be a line entity."
+  );
+  return {
+    id,
+    name: normalizeSketchConstraintName(op.name, opIndex, op.id),
+    sketchId: op.sketchId,
+    entityId: secondaryTarget.entityId,
+    kind: "symmetry",
+    primaryTarget,
+    secondaryTarget,
+    symmetryLineEntityId: op.symmetryLineEntityId
+  };
+}
+
+function validateSketchCurveConstraintTarget(
+  sketch: Sketch,
+  value: unknown,
+  opIndex: number,
+  field: string
+): SketchCurveConstraintTargetV21 {
+  if (
+    !isRecord(value) ||
+    typeof value.entityId !== "string" ||
+    (value.entityKind !== "line" &&
+      value.entityKind !== "circle" &&
+      value.entityKind !== "arc")
+  ) {
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message: "Sketch curve constraint target is invalid.",
+      opIndex,
+      path: operationPath(opIndex, field),
+      expected: "line, circle, or arc curve target",
+      received: describeReceived(value)
+    });
+  }
+  const entity = sketch.entities.get(value.entityId);
+  if (!entity) throwSketchEntityNotFound(sketch.id, value.entityId, opIndex);
+  if (entity.kind !== value.entityKind) {
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message: "Sketch curve target entityKind must match its entity.",
+      opIndex,
+      sketchId: sketch.id,
+      sketchEntityId: entity.id,
+      path: operationPath(opIndex, `${field}.entityKind`),
+      expected: entity.kind,
+      received: value.entityKind
+    });
+  }
+  return { entityId: value.entityId, entityKind: value.entityKind };
+}
+
+function validateSketchRadiusCurveTarget(
+  sketch: Sketch,
+  value: unknown,
+  opIndex: number,
+  field: string
+): SketchRadiusCurveTarget {
+  const target = validateSketchCurveConstraintTarget(
+    sketch,
+    value,
+    opIndex,
+    field
+  );
+  if (target.entityKind === "line") {
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message: "Radius constraint target must be a circle or arc.",
+      opIndex,
+      sketchId: sketch.id,
+      sketchEntityId: target.entityId,
+      path: operationPath(opIndex, `${field}.entityKind`),
+      expected: "circle or arc",
+      received: "line"
+    });
+  }
+  return target;
+}
+
 function assertSketchEntityIsLine(
   entity: SketchEntity,
   sketchId: SketchId,
@@ -9889,6 +10177,39 @@ function assertSketchConstraintTargetsStillValid(
       continue;
     }
 
+    if (
+      constraint.kind === "tangent" &&
+      [constraint.primaryTarget, constraint.secondaryTarget].some(
+        (target) =>
+          target.entityId === entity.id && target.entityKind === entity.kind
+      )
+    ) {
+      continue;
+    }
+
+    if (
+      (constraint.kind === "concentric" || constraint.kind === "equalRadius") &&
+      [constraint.primaryTarget, constraint.secondaryTarget].some(
+        (target) =>
+          target.entityId === entity.id && target.entityKind === entity.kind
+      )
+    ) {
+      continue;
+    }
+
+    if (
+      constraint.kind === "symmetry" &&
+      ((constraint.symmetryLineEntityId === entity.id &&
+        entity.kind === "line") ||
+        [constraint.primaryTarget, constraint.secondaryTarget].some(
+          (target) =>
+            target.entityId === entity.id &&
+            isSketchPointTargetSupported(entity, target)
+        ))
+    ) {
+      continue;
+    }
+
     throwValidationError({
       code: "INVALID_SKETCH_CONSTRAINT",
       message:
@@ -9931,10 +10252,29 @@ function sketchConstraintReferencesEntity(
     );
   }
 
-  if (isLinePairSketchConstraint(constraint)) {
+  if (constraint.kind === "parallel" || constraint.kind === "perpendicular") {
     return (
       constraint.primaryLineEntityId === entityId ||
       constraint.secondaryLineEntityId === entityId
+    );
+  }
+
+  if (
+    constraint.kind === "tangent" ||
+    constraint.kind === "concentric" ||
+    constraint.kind === "equalRadius"
+  ) {
+    return (
+      constraint.primaryTarget.entityId === entityId ||
+      constraint.secondaryTarget.entityId === entityId
+    );
+  }
+
+  if (constraint.kind === "symmetry") {
+    return (
+      constraint.primaryTarget.entityId === entityId ||
+      constraint.secondaryTarget.entityId === entityId ||
+      constraint.symmetryLineEntityId === entityId
     );
   }
 
@@ -10025,10 +10365,36 @@ function validateSketchPointTarget(
     });
   }
 
-  return {
-    entityId: value.entityId,
-    role: value.role
-  };
+  if (value.entityKind !== undefined && value.entityKind !== "arc") {
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message: "Only arc point targets declare entityKind.",
+      opIndex,
+      sketchEntityId: value.entityId,
+      path: operationPath(opIndex, `${field}.entityKind`),
+      expected: "arc or omitted",
+      received: describeReceived(value.entityKind)
+    });
+  }
+  if (value.entityKind === "arc" && value.role === "position") {
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message: "Arc point target role must be center, start, or end.",
+      opIndex,
+      sketchEntityId: value.entityId,
+      path: operationPath(opIndex, `${field}.role`),
+      expected: "center, start, or end",
+      received: "position"
+    });
+  }
+
+  return value.entityKind === "arc"
+    ? {
+        entityId: value.entityId,
+        entityKind: "arc",
+        role: value.role as "center" | "start" | "end"
+      }
+    : { entityId: value.entityId, role: value.role };
 }
 
 function assertSketchPointTargetSupported(
@@ -10087,11 +10453,20 @@ function isSketchPointTargetSupported(
   }
 
   return (
-    (entity.kind === "point" && target.role === "position") ||
+    (entity.kind === "point" &&
+      target.entityKind === undefined &&
+      target.role === "position") ||
     (entity.kind === "line" &&
+      target.entityKind === undefined &&
       (target.role === "start" || target.role === "end")) ||
     ((entity.kind === "rectangle" || entity.kind === "circle") &&
-      target.role === "center")
+      target.role === "center" &&
+      target.entityKind === undefined) ||
+    (entity.kind === "arc" &&
+      target.entityKind === "arc" &&
+      (target.role === "center" ||
+        target.role === "start" ||
+        target.role === "end"))
   );
 }
 
@@ -10140,6 +10515,16 @@ function getSketchPointTargetCoordinate(
       cleanMeasurementNumber(entity.center[0]),
       cleanMeasurementNumber(entity.center[1])
     ];
+  }
+
+  if (
+    entity.kind === "arc" &&
+    target.entityKind === "arc" &&
+    (target.role === "center" ||
+      target.role === "start" ||
+      target.role === "end")
+  ) {
+    return getSketchArcPoint(entity, target.role);
   }
 
   return [NaN, NaN];
@@ -10492,6 +10877,17 @@ function applySketchConstraintToEntity(
 ): void {
   const propagation = createSketchConstraintPropagationContext(constraint.id);
 
+  if (requiresNumericalSketchConstraintApplication(constraint)) {
+    applyNumericalSketchConstraint(
+      state,
+      constraint,
+      diff,
+      opIndex,
+      propagation
+    );
+    return;
+  }
+
   if (constraint.kind === "coincident") {
     applyCoincidentSketchConstraintToEntities(
       state,
@@ -10514,7 +10910,7 @@ function applySketchConstraintToEntity(
     return;
   }
 
-  if (isLinePairSketchConstraint(constraint)) {
+  if (constraint.kind === "parallel" || constraint.kind === "perpendicular") {
     applyLinePairSketchConstraintToEntity(
       state,
       constraint,
@@ -10554,6 +10950,101 @@ function applySketchConstraintToEntity(
     opIndex,
     propagation
   );
+}
+
+function requiresNumericalSketchConstraintApplication(
+  constraint: SketchConstraint
+): boolean {
+  if (
+    constraint.kind === "tangent" ||
+    constraint.kind === "concentric" ||
+    constraint.kind === "equalRadius" ||
+    constraint.kind === "symmetry"
+  ) {
+    return true;
+  }
+  if (constraint.kind === "fixed") {
+    return constraint.target.entityKind === "arc";
+  }
+  return (
+    constraint.kind === "coincident" &&
+    (constraint.primaryTarget.entityKind === "arc" ||
+      constraint.secondaryTarget.entityKind === "arc")
+  );
+}
+
+function applyNumericalSketchConstraint(
+  state: MutableDocumentState,
+  constraint: SketchConstraint,
+  diff: MutableSemanticDiff,
+  opIndex: number,
+  propagation: SketchConstraintPropagationContext
+): void {
+  const sketch = getSketchOrThrow(state.sketches, constraint.sketchId, opIndex);
+  const probe = runSketchSolverPackageProbe(state, sketch);
+  const exactFailure = probe.diagnostics.find(
+    (diagnostic) =>
+      diagnostic.code === "SKETCH_TANGENCY_OUTSIDE_ARC" ||
+      diagnostic.code === "SKETCH_ARC_SOLVE_BRANCH_INVALID"
+  );
+  if (exactFailure) {
+    throwValidationError({
+      code:
+        exactFailure.code === "SKETCH_TANGENCY_OUTSIDE_ARC"
+          ? "SKETCH_TANGENCY_OUTSIDE_ARC"
+          : "SKETCH_ARC_SOLVE_BRANCH_INVALID",
+      message: exactFailure.message,
+      opIndex,
+      sketchId: constraint.sketchId,
+      sketchEntityId: exactFailure.sketchEntityId,
+      sketchConstraintId: constraint.id,
+      path: operationPath(opIndex, "secondaryTarget"),
+      expected: exactFailure.expected,
+      received: exactFailure.received
+    });
+  }
+  if (!probe.result || probe.result.status === "failed") {
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message: "Sketch constraint could not produce a valid numerical solve.",
+      opIndex,
+      sketchId: constraint.sketchId,
+      sketchConstraintId: constraint.id,
+      path: operationPath(opIndex, "kind"),
+      expected: "valid solver state preserving the current arc branch",
+      received: probe.result?.status ?? "not-run"
+    });
+  }
+  if (probe.result.status === "conflicting") {
+    return;
+  }
+
+  const solvedEntities = applySketchSolveResultToCadEntities(
+    sketch,
+    probe.result
+  );
+  for (const [entityId, solvedEntity] of solvedEntities) {
+    const currentSketch = getSketchOrThrow(
+      state.sketches,
+      constraint.sketchId,
+      opIndex
+    );
+    const existing = currentSketch.entities.get(entityId);
+    if (
+      !existing ||
+      JSON.stringify(existing) === JSON.stringify(solvedEntity)
+    ) {
+      continue;
+    }
+    updateSketchEntityAndDependents(
+      state,
+      currentSketch,
+      solvedEntity,
+      diff,
+      opIndex,
+      propagation
+    );
+  }
 }
 
 function applySketchConstraintsToEntity(
@@ -19041,8 +19532,8 @@ function sketchConstraintRef(
       : {}),
     ...(constraint.kind === "concentric"
       ? {
-          primaryCircleEntityId: constraint.primaryCircleEntityId,
-          secondaryCircleEntityId: constraint.secondaryCircleEntityId
+          primaryTarget: { ...constraint.primaryTarget },
+          secondaryTarget: { ...constraint.secondaryTarget }
         }
       : {}),
     ...(constraint.kind === "equalLength"
@@ -19053,8 +19544,8 @@ function sketchConstraintRef(
       : {}),
     ...(constraint.kind === "equalRadius"
       ? {
-          primaryCircleEntityId: constraint.primaryCircleEntityId,
-          secondaryCircleEntityId: constraint.secondaryCircleEntityId
+          primaryTarget: { ...constraint.primaryTarget },
+          secondaryTarget: { ...constraint.secondaryTarget }
         }
       : {}),
     ...(constraint.kind === "angle"
@@ -19904,7 +20395,7 @@ function cloneSketchDimensionSnapshot(
 }
 
 function cloneSketchConstraintSnapshot(
-  constraint: SketchConstraintSnapshot
+  constraint: SketchConstraintSnapshot | SketchConstraintSnapshotV20
 ): SketchConstraint {
   const storedConstraint = constraint as unknown as Record<string, unknown>;
   if (
@@ -19950,7 +20441,7 @@ function cloneSketchConstraintSnapshot(
     };
   }
 
-  if (isLinePairSketchConstraint(constraint)) {
+  if (constraint.kind === "parallel" || constraint.kind === "perpendicular") {
     return {
       id: constraint.id,
       name: constraint.name,
@@ -19971,7 +20462,7 @@ function cloneSketchConstraintSnapshot(
       kind: "tangent",
       primaryTarget: { ...constraint.primaryTarget },
       secondaryTarget: { ...constraint.secondaryTarget }
-    };
+    } as Extract<SketchConstraint, { readonly kind: "tangent" }>;
   }
 
   if (constraint.kind === "concentric") {
@@ -19981,8 +20472,14 @@ function cloneSketchConstraintSnapshot(
       sketchId: constraint.sketchId,
       entityId: constraint.entityId,
       kind: "concentric",
-      primaryCircleEntityId: constraint.primaryCircleEntityId,
-      secondaryCircleEntityId: constraint.secondaryCircleEntityId
+      primaryTarget: {
+        entityId: storedConstraint.primaryCircleEntityId as string,
+        entityKind: "circle"
+      },
+      secondaryTarget: {
+        entityId: storedConstraint.secondaryCircleEntityId as string,
+        entityKind: "circle"
+      }
     };
   }
 
@@ -20005,8 +20502,14 @@ function cloneSketchConstraintSnapshot(
       sketchId: constraint.sketchId,
       entityId: constraint.entityId,
       kind: "equalRadius",
-      primaryCircleEntityId: constraint.primaryCircleEntityId,
-      secondaryCircleEntityId: constraint.secondaryCircleEntityId
+      primaryTarget: {
+        entityId: storedConstraint.primaryCircleEntityId as string,
+        entityKind: "circle"
+      },
+      secondaryTarget: {
+        entityId: storedConstraint.secondaryCircleEntityId as string,
+        entityKind: "circle"
+      }
     };
   }
 
@@ -23585,8 +24088,10 @@ function normalizeCadProject(value: CadProject): CadProject {
         sketchDimensions: value.document.sketchDimensions.map(
           cloneSketchDimensionSnapshot
         ),
-        sketchConstraints: value.document.sketchConstraints.map(
-          cloneSketchConstraintSnapshot
+        sketchConstraints: value.document.sketchConstraints.map((constraint) =>
+          schemaVersion === CAD_PROJECT_FORMAT_VERSION_V21
+            ? cloneSketchConstraintSnapshot(constraint)
+            : cloneJsonSource(constraint)
         ),
         features,
         namedReferences: value.document.namedReferences.map(
@@ -23615,9 +24120,8 @@ function normalizeCadProject(value: CadProject): CadProject {
         sketchDimensions: value.document.sketchDimensions.map(
           cloneSketchDimensionSnapshot
         ),
-        sketchConstraints: value.document.sketchConstraints.map(
-          cloneSketchConstraintSnapshot
-        ),
+        sketchConstraints:
+          value.document.sketchConstraints.map(cloneJsonSource),
         features: value.document.features.map(normalizeFeatureSnapshot),
         namedReferences: value.document.namedReferences.map(
           cloneNamedReferenceSnapshot
@@ -23900,14 +24404,14 @@ function normalizeCadDocumentV21Source(
 }
 
 function normalizeSketchConstraintV21Source(
-  constraint: SketchConstraintSnapshot
+  constraint: SketchConstraintSnapshot | SketchConstraintSnapshotV20
 ): SketchConstraintSnapshot {
   const stored = constraint as unknown as Record<string, unknown>;
   if (constraint.kind !== "concentric" && constraint.kind !== "equalRadius") {
     return cloneSketchConstraintSnapshot(constraint);
   }
   if (isRecord(stored.primaryTarget) && isRecord(stored.secondaryTarget)) {
-    return cloneJsonSource(constraint);
+    return cloneJsonSource(constraint) as SketchConstraintSnapshot;
   }
   const { primaryCircleEntityId, secondaryCircleEntityId, ...base } = stored;
   return {
@@ -25577,14 +26081,19 @@ function validateSketchPointTargetSnapshot(
     );
   }
 
-  return typeof value.entityId === "string" &&
-    isSketchPointTargetRole(value.role)
+  if (
+    typeof value.entityId !== "string" ||
+    !isSketchPointTargetRole(value.role)
+  ) {
+    return undefined;
+  }
+  return value.entityKind === "arc"
     ? {
         entityId: value.entityId,
-        role: value.role,
-        ...(value.entityKind === "arc" ? { entityKind: "arc" as const } : {})
+        entityKind: "arc",
+        role: value.role as "center" | "start" | "end"
       }
-    : undefined;
+    : { entityId: value.entityId, role: value.role };
 }
 
 function validateSketchCurveConstraintTargetSnapshot(

@@ -22,6 +22,10 @@ import type {
   SketchPointTarget,
   Vec2
 } from "@web-cad/cad-protocol";
+import { createCanonicalSketchArcEntity } from "./sketchArcMath";
+import { SKETCH_GEOMETRY_POLICY } from "./sketchGeometryPolicy";
+import { cleanSketchNumber } from "./sketchNumber";
+import { runSketchSolverPackageProbe } from "./sketchSolverPackageMapping";
 
 export interface SketchSolverSketch {
   readonly id: SketchId;
@@ -52,7 +56,11 @@ export type SketchSolverStatus = SketchDimensionEntry["status"];
 
 export interface SketchSolverApplyIssue {
   readonly kind: "dimension" | "constraint";
-  readonly code: "INVALID_SKETCH_DIMENSION" | "INVALID_SKETCH_CONSTRAINT";
+  readonly code:
+    | "INVALID_SKETCH_DIMENSION"
+    | "INVALID_SKETCH_CONSTRAINT"
+    | "SKETCH_ARC_DIMENSION_INVALID"
+    | "SKETCH_ARC_SOLVE_BRANCH_INVALID";
   readonly message: string;
   readonly sketchId: SketchId;
   readonly sketchEntityId: SketchEntityId;
@@ -125,31 +133,34 @@ export function evaluateSketch(
     .map((dimension) =>
       evaluateSketchDimension(document, dimension, evaluatedGeometry.entities)
     );
-  const constraints = [...document.sketchConstraints.values()]
+  const sourceConstraints = [...document.sketchConstraints.values()]
     .filter((constraint) => constraint.sketchId === sketch.id)
     .map((constraint) =>
       evaluateSketchConstraint(document, constraint, evaluatedGeometry.entities)
     );
+  const solverProbe = runSketchSolverPackageProbe(document, sketch);
+  const unsupportedConstraintIds = new Set(
+    solverProbe.diagnostics
+      .filter(
+        (diagnostic) =>
+          diagnostic.code === "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT" &&
+          diagnostic.sketchConstraintId
+      )
+      .map((diagnostic) => diagnostic.sketchConstraintId as SketchConstraintId)
+  );
+  const constraints = sourceConstraints.map((constraint) =>
+    isAdvancedSketchConstraint(constraint) &&
+    !unsupportedConstraintIds.has(constraint.id)
+      ? { ...constraint, status: "healthy" as const, issues: [] }
+      : constraint
+  );
   const issues = [
     ...dimensions.flatMap((dimension) => dimension.issues),
-    ...constraints.flatMap((constraint) => constraint.issues),
-    ...[...sketch.entities.values()]
-      .filter((entity) => entity.kind === "arc")
-      .map(
-        (entity): SketchConstraintIssue => ({
-          code: "UNSUPPORTED_TARGET",
-          message:
-            "Arc entities are preserved as source, but the current sketch evaluator does not solve arc degrees of freedom.",
-          sketchId: sketch.id,
-          sketchEntityId: entity.id,
-          expected: "point, line, rectangle, or circle evaluator target",
-          received: "arc"
-        })
-      )
+    ...constraints.flatMap((constraint) => constraint.issues)
   ];
   const completenessIssues =
     issues.length === 0
-      ? evaluateSketchCompleteness(sketch, dimensions, constraints)
+      ? createNumericalSketchEvaluationIssues(sketch, solverProbe)
       : [];
   const allIssues = [...issues, ...completenessIssues];
   const drivenEntityIds = [
@@ -170,6 +181,114 @@ export function evaluateSketch(
     issues: allIssues,
     evaluatedGeometry
   };
+}
+
+function createNumericalSketchEvaluationIssues(
+  sketch: SketchSolverSketch,
+  probe: ReturnType<typeof runSketchSolverPackageProbe>
+): readonly SketchEvaluationIssue[] {
+  const result = probe.result;
+  if (!result) {
+    return evaluateSketchCompleteness(sketch, [], []);
+  }
+
+  const exactDiagnostic = result.diagnostics.find(
+    (diagnostic) =>
+      diagnostic.code === "SKETCH_TANGENCY_OUTSIDE_ARC" ||
+      diagnostic.code === "SKETCH_ARC_SOLVE_BRANCH_INVALID" ||
+      diagnostic.code === "SKETCH_ARC_DIMENSION_INVALID"
+  );
+  if (exactDiagnostic?.code === "SKETCH_ARC_DIMENSION_INVALID") {
+    return [
+      {
+        code: "SKETCH_ARC_DIMENSION_INVALID",
+        message: exactDiagnostic.message,
+        sketchId: sketch.id,
+        sketchDimensionId: exactDiagnostic.sourceId,
+        expected: exactDiagnostic.expected,
+        received: exactDiagnostic.received
+      }
+    ];
+  }
+  if (
+    exactDiagnostic?.code === "SKETCH_TANGENCY_OUTSIDE_ARC" ||
+    exactDiagnostic?.code === "SKETCH_ARC_SOLVE_BRANCH_INVALID"
+  ) {
+    return [
+      {
+        code: exactDiagnostic.code,
+        message: exactDiagnostic.message,
+        sketchId: sketch.id,
+        sketchConstraintId: exactDiagnostic.sourceId,
+        expected: exactDiagnostic.expected,
+        received: exactDiagnostic.received
+      }
+    ];
+  }
+
+  if (result.status === "under-defined") {
+    return [
+      {
+        code: "UNDER_DEFINED_SKETCH",
+        message: "Sketch still has unconstrained numerical degrees of freedom.",
+        sketchId: sketch.id,
+        expected: "0 degrees of freedom",
+        received: String(result.degreesOfFreedomEstimate)
+      }
+    ];
+  }
+  if (result.status === "over-defined") {
+    return [
+      {
+        code: "OVER_DEFINED_SKETCH",
+        message: "Sketch has redundant numerical constraint equations.",
+        sketchId: sketch.id,
+        expected: `at most ${result.variableCount} independent residual equations`,
+        received: `${result.residualCount} residual equations`
+      }
+    ];
+  }
+  if (result.status === "conflicting") {
+    return [
+      {
+        code: "INCONSISTENT_CONSTRAINT",
+        message: "Sketch numerical constraints have conflicting residuals.",
+        sketchId: sketch.id,
+        expected: `max residual <= ${result.settings.tolerance}`,
+        received: `max=${result.maxResidual}; rms=${result.rmsResidual}`
+      }
+    ];
+  }
+  if (result.status === "unsupported") {
+    const diagnostic = probe.diagnostics.find(
+      (candidate) => candidate.code === "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT"
+    );
+    return [
+      {
+        code: "UNSUPPORTED_TARGET",
+        message:
+          diagnostic?.message ??
+          "Sketch contains a constraint target outside the supported solver matrix.",
+        sketchId: sketch.id,
+        sketchConstraintId: diagnostic?.sketchConstraintId,
+        expected: diagnostic?.expected,
+        received: diagnostic?.received
+      }
+    ];
+  }
+  if (result.status === "failed" || result.status === "not-run") {
+    return [
+      {
+        code: "INVALID_VALUE",
+        message: "Sketch numerical solve did not produce a usable result.",
+        sketchId: sketch.id,
+        expected: "converged numerical solve",
+        received: result.status
+      }
+    ];
+  }
+
+  return [];
 }
 
 export function createSketchEvaluationQueryResponse(
@@ -287,6 +406,29 @@ export function evaluateSketchDimension(
       message: "Sketch dimension effective value must be positive and finite.",
       sketchDimensionId: dimension.id,
       expected: "positive finite number",
+      received: describeReceived(effectiveValue)
+    });
+  }
+
+  if (
+    entity?.kind === "arc" &&
+    dimension.target.entityKind === "arc" &&
+    effectiveValue !== undefined &&
+    !isValidArcDimensionValue(dimension.target.role, effectiveValue)
+  ) {
+    issues.push({
+      code: "SKETCH_ARC_DIMENSION_INVALID",
+      message:
+        dimension.target.role === "radius"
+          ? "Arc radius dimension must remain greater than the sketch linear tolerance."
+          : "Arc sweep dimension must remain within the supported non-zero, non-full-circle magnitude range.",
+      sketchId: dimension.sketchId,
+      sketchEntityId: dimension.entityId,
+      sketchDimensionId: dimension.id,
+      expected:
+        dimension.target.role === "radius"
+          ? `>${SKETCH_GEOMETRY_POLICY.linearTolerance}`
+          : `${SKETCH_GEOMETRY_POLICY.angularToleranceDegrees} <= sweep <= ${360 - SKETCH_GEOMETRY_POLICY.angularToleranceDegrees}`,
       received: describeReceived(effectiveValue)
     });
   }
@@ -1399,6 +1541,13 @@ export function isSupportedSketchDimensionTarget(
     return target.entityKind === "line" && target.role === "length";
   }
 
+  if (entity.kind === "arc") {
+    return (
+      target.entityKind === "arc" &&
+      (target.role === "radius" || target.role === "sweep")
+    );
+  }
+
   return false;
 }
 
@@ -1442,6 +1591,61 @@ export function applySketchDimensionValue(
     return applyLineLengthDimensionValue(entity, dimension, value);
   }
 
+  if (entity.kind === "arc" && dimension.target.entityKind === "arc") {
+    if (!isValidArcDimensionValue(dimension.target.role, value)) {
+      return {
+        ok: false,
+        issue: {
+          kind: "dimension",
+          code: "SKETCH_ARC_DIMENSION_INVALID",
+          message:
+            "Arc dimension value violates the shared sketch geometry policy.",
+          sketchId: dimension.sketchId,
+          sketchEntityId: dimension.entityId,
+          sketchDimensionId: dimension.id,
+          pathField: "value",
+          expected:
+            dimension.target.role === "radius"
+              ? `>${SKETCH_GEOMETRY_POLICY.linearTolerance}`
+              : `${SKETCH_GEOMETRY_POLICY.angularToleranceDegrees} <= sweep <= ${360 - SKETCH_GEOMETRY_POLICY.angularToleranceDegrees}`,
+          received: describeReceived(value)
+        }
+      };
+    }
+    const result = createCanonicalSketchArcEntity(
+      entity.id,
+      {
+        kind: "centerAngles",
+        center: entity.center,
+        radius: dimension.target.role === "radius" ? value : entity.radius,
+        startAngleDegrees: entity.startAngleDegrees,
+        sweepAngleDegrees:
+          dimension.target.role === "sweep"
+            ? Math.sign(entity.sweepAngleDegrees) * value
+            : entity.sweepAngleDegrees
+      },
+      entity.construction,
+      SKETCH_GEOMETRY_POLICY
+    );
+    if (!result.ok) {
+      return {
+        ok: false,
+        issue: {
+          kind: "dimension",
+          code: "SKETCH_ARC_DIMENSION_INVALID",
+          message: result.issues[0]!.message,
+          sketchId: dimension.sketchId,
+          sketchEntityId: dimension.entityId,
+          sketchDimensionId: dimension.id,
+          pathField: "value",
+          expected: result.issues[0]!.expected,
+          received: result.issues[0]!.received
+        }
+      };
+    }
+    return { ok: true, entity: result.value };
+  }
+
   return {
     ok: false,
     issue: {
@@ -1483,6 +1687,17 @@ export function getSketchDimensionTargetValue(
     return {
       ok: true,
       value: getLineLength(entity)
+    };
+  }
+
+  if (entity.kind === "arc" && dimension.target.entityKind === "arc") {
+    return {
+      ok: true,
+      value: cleanSketchNumber(
+        dimension.target.role === "radius"
+          ? entity.radius
+          : Math.abs(entity.sweepAngleDegrees)
+      )
     };
   }
 
@@ -1799,10 +2014,7 @@ function getSketchConstraintDegrees(constraint: SketchConstraintEntry): number {
   return 1;
 }
 
-export function cleanSketchNumber(value: number): number {
-  const rounded = Math.round(value * 1e12) / 1e12;
-  return Object.is(rounded, -0) ? 0 : rounded;
-}
+export { cleanSketchNumber } from "./sketchNumber";
 
 function applyLineLengthDimensionValue(
   entity: Extract<SketchEntitySnapshot, { readonly kind: "line" }>,
@@ -2937,8 +3149,8 @@ function getSketchConstraintDrivenEntityIds(
   if (constraint.kind === "concentric" || constraint.kind === "equalRadius") {
     return [
       constraint.entityId,
-      constraint.primaryCircleEntityId,
-      constraint.secondaryCircleEntityId
+      constraint.primaryTarget.entityId,
+      constraint.secondaryTarget.entityId
     ];
   }
 
@@ -3182,7 +3394,7 @@ function cloneSketchConstraintSnapshot(
       kind: "tangent",
       primaryTarget: { ...constraint.primaryTarget },
       secondaryTarget: { ...constraint.secondaryTarget }
-    };
+    } as Extract<SketchConstraintSnapshot, { readonly kind: "tangent" }>;
   }
 
   if (constraint.kind === "concentric") {
@@ -3192,8 +3404,8 @@ function cloneSketchConstraintSnapshot(
       sketchId: constraint.sketchId,
       entityId: constraint.entityId,
       kind: "concentric",
-      primaryCircleEntityId: constraint.primaryCircleEntityId,
-      secondaryCircleEntityId: constraint.secondaryCircleEntityId
+      primaryTarget: { ...constraint.primaryTarget },
+      secondaryTarget: { ...constraint.secondaryTarget }
     };
   }
 
@@ -3216,8 +3428,8 @@ function cloneSketchConstraintSnapshot(
       sketchId: constraint.sketchId,
       entityId: constraint.entityId,
       kind: "equalRadius",
-      primaryCircleEntityId: constraint.primaryCircleEntityId,
-      secondaryCircleEntityId: constraint.secondaryCircleEntityId
+      primaryTarget: { ...constraint.primaryTarget },
+      secondaryTarget: { ...constraint.secondaryTarget }
     };
   }
 
@@ -3258,6 +3470,17 @@ function cloneSketchConstraintSnapshot(
 
 function isPositiveFiniteNumber(value: number): boolean {
   return Number.isFinite(value) && value > 0;
+}
+
+function isValidArcDimensionValue(
+  role: "radius" | "sweep",
+  value: number
+): boolean {
+  if (!Number.isFinite(value)) return false;
+  return role === "radius"
+    ? value > SKETCH_GEOMETRY_POLICY.linearTolerance
+    : value >= SKETCH_GEOMETRY_POLICY.angularToleranceDegrees &&
+        value <= 360 - SKETCH_GEOMETRY_POLICY.angularToleranceDegrees;
 }
 
 function describeReceived(value: unknown): string {

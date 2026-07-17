@@ -121,16 +121,19 @@ export function createSketchSolverStatusResponse({
     }),
     createDiagnostic({
       code:
-        currentProjectSchemaVersion === "web-cad.project.v17"
+        currentProjectSchemaVersion === "web-cad.project.v17" ||
+        currentProjectSchemaVersion === "web-cad.project.v21"
           ? "SKETCH_SOLVER_STATUS_READY"
           : "SKETCH_SOLVER_SCHEMA_V17_DEFERRED",
       severity: "info",
       message:
-        currentProjectSchemaVersion === "web-cad.project.v17"
-          ? "V11 V17 sketch solver source records are present; supported advanced constraint target combinations can run through the numerical solver."
-          : "V11 source records are documented, but this project emits V16 until V17 solver source data is present.",
+        currentProjectSchemaVersion === "web-cad.project.v17" ||
+        currentProjectSchemaVersion === "web-cad.project.v21"
+          ? "Source-backed advanced sketch solver records are present and supported target combinations run through the numerical solver."
+          : "V17 solver source records require project schema V21 when V17-only source is present.",
       sketchId: sketch.id,
-      expected: "web-cad.project.v17 only when new source data is committed",
+      expected:
+        "web-cad.project.v17 for legacy advanced source or web-cad.project.v21 for V17-only source",
       received: currentProjectSchemaVersion
     }),
     ...evaluation.issues.map((issue) =>
@@ -193,29 +196,14 @@ function createEntitySummary(
   entity: SketchEntitySnapshot
 ): CadSketchSolverEntitySummary {
   const targets = createEntityTargets(sketchId, entity);
-  const diagnostics =
-    entity.kind === "arc"
-      ? [
-          createDiagnostic({
-            code: "SKETCH_SOLVER_UNSUPPORTED_ENTITY",
-            severity: "warning",
-            message:
-              "Arc source geometry is preserved, but arc degrees of freedom are not supported by the current sketch solver.",
-            sketchId,
-            sketchEntityId: entity.id,
-            expected: "point, line, rectangle, or circle solver entity",
-            received: "arc"
-          })
-        ]
-      : [];
-  const degreesOfFreedom =
-    entity.kind === "arc" ? 0 : getSketchEntityDegreesOfFreedom(entity);
+  const diagnostics: CadSketchSolverDiagnostic[] = [];
+  const degreesOfFreedom = getSketchEntityDegreesOfFreedom(entity);
   return {
     sketchId,
     entityId: entity.id,
     entityKind: entity.kind,
     construction: entity.construction,
-    supported: entity.kind !== "arc",
+    supported: true,
     variableCount: degreesOfFreedom,
     degreesOfFreedom,
     targetCount: targets.length,
@@ -737,11 +725,16 @@ function isConstraintSupportedByNumericalSolver(
   constraint: SketchConstraintEntry
 ): boolean {
   if (constraint.kind === "tangent") {
+    const pair = [
+      constraint.primaryTarget.entityKind,
+      constraint.secondaryTarget.entityKind
+    ].sort();
+    const pairKey = pair.join(":");
     return (
-      (constraint.primaryTarget.entityKind === "line" &&
-        constraint.secondaryTarget.entityKind === "circle") ||
-      (constraint.primaryTarget.entityKind === "circle" &&
-        constraint.secondaryTarget.entityKind === "line")
+      pairKey === "circle:line" ||
+      pairKey === "arc:line" ||
+      pairKey === "arc:circle" ||
+      pairKey === "arc:arc"
     );
   }
 
@@ -792,6 +785,27 @@ function createEntityTargets(
     return [
       entityTarget,
       createPointTargetRef(sketchId, { entityId: entity.id, role: "center" })
+    ];
+  }
+
+  if (entity.kind === "arc") {
+    return [
+      entityTarget,
+      createPointTargetRef(sketchId, {
+        entityId: entity.id,
+        entityKind: "arc",
+        role: "center"
+      }),
+      createPointTargetRef(sketchId, {
+        entityId: entity.id,
+        entityKind: "arc",
+        role: "start"
+      }),
+      createPointTargetRef(sketchId, {
+        entityId: entity.id,
+        entityKind: "arc",
+        role: "end"
+      })
     ];
   }
 
@@ -878,14 +892,14 @@ function createConstraintTargets(
       {
         type: "entity",
         sketchId: constraint.sketchId,
-        entityId: constraint.primaryCircleEntityId,
-        entityKind: "circle"
+        entityId: constraint.primaryTarget.entityId,
+        entityKind: constraint.primaryTarget.entityKind
       },
       {
         type: "entity",
         sketchId: constraint.sketchId,
-        entityId: constraint.secondaryCircleEntityId,
-        entityKind: "circle"
+        entityId: constraint.secondaryTarget.entityId,
+        entityKind: constraint.secondaryTarget.entityKind
       }
     ];
   }
@@ -1065,6 +1079,12 @@ function mapIssueCode(
       return "SKETCH_SOLVER_CONFLICTING";
     case "INVALID_VALUE":
       return "SKETCH_SOLVER_FAILED";
+    case "SKETCH_ARC_DIMENSION_INVALID":
+      return "SKETCH_ARC_DIMENSION_INVALID";
+    case "SKETCH_TANGENCY_OUTSIDE_ARC":
+      return "SKETCH_TANGENCY_OUTSIDE_ARC";
+    case "SKETCH_ARC_SOLVE_BRANCH_INVALID":
+      return "SKETCH_ARC_SOLVE_BRANCH_INVALID";
   }
 }
 
@@ -1078,6 +1098,9 @@ function mapIssueSeverity(
     case "INCONSISTENT_CONSTRAINT":
     case "CONFLICTING_CONSTRAINT":
     case "INVALID_VALUE":
+    case "SKETCH_ARC_DIMENSION_INVALID":
+    case "SKETCH_TANGENCY_OUTSIDE_ARC":
+    case "SKETCH_ARC_SOLVE_BRANCH_INVALID":
       return "blocker";
     case "UNSUPPORTED_TARGET":
       return "warning";
@@ -1095,6 +1118,10 @@ function getSketchEntityDegreesOfFreedom(entity: SketchEntitySnapshot): number {
 
   if (entity.kind === "circle") {
     return 3;
+  }
+
+  if (entity.kind === "arc") {
+    return 5;
   }
 
   return 4;

@@ -74,6 +74,28 @@ export function normalizeSketchArcStartAngleDegrees(
   return canonicalZero(((angleDegrees % 360) + 360) % 360);
 }
 
+export function getSketchArcPoint(
+  arc: Pick<
+    SketchArcEntity,
+    "center" | "radius" | "startAngleDegrees" | "sweepAngleDegrees"
+  >,
+  role: "center" | "start" | "end"
+): Vec2 {
+  if (role === "center") {
+    return [arc.center[0], arc.center[1]];
+  }
+
+  const angleDegrees =
+    role === "start"
+      ? arc.startAngleDegrees
+      : arc.startAngleDegrees + arc.sweepAngleDegrees;
+  const angleRadians = (angleDegrees * Math.PI) / 180;
+  return [
+    canonicalZero(arc.center[0] + arc.radius * Math.cos(angleRadians)),
+    canonicalZero(arc.center[1] + arc.radius * Math.sin(angleRadians))
+  ];
+}
+
 function validateRadius(
   radius: number,
   policy: SketchGeometryPolicy,

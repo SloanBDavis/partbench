@@ -1783,8 +1783,8 @@ function getConstraintAffectedEntityIds(
 
   if (constraint.kind === "concentric" || constraint.kind === "equalRadius") {
     return [
-      constraint.primaryCircleEntityId,
-      constraint.secondaryCircleEntityId
+      constraint.primaryTarget.entityId,
+      constraint.secondaryTarget.entityId
     ];
   }
 
