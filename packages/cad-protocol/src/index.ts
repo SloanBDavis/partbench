@@ -8588,11 +8588,20 @@ function validateJoinArray(
       );
     }
     if ("angularDeviationDegrees" in join) {
-      validateNonNegativeNumber(
-        join.angularDeviationDegrees,
-        `${joinPath}.angularDeviationDegrees`,
-        issues
-      );
+      if (
+        validateNonNegativeNumber(
+          join.angularDeviationDegrees,
+          `${joinPath}.angularDeviationDegrees`,
+          issues
+        ) &&
+        join.angularDeviationDegrees > 180
+      ) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: `${joinPath}.angularDeviationDegrees`,
+          message: "Angular deviation must be at most 180 degrees."
+        });
+      }
     }
     if (
       typeof join.coincidentWithinTolerance === "boolean" &&
@@ -8860,6 +8869,18 @@ function validateTargetCompatibility(
           code: "INVALID_VALUE",
           path: `${path}.status`,
           message: "A missing add/cut target must report status 'missing'."
+        });
+      }
+      if (
+        typeof requestedTarget === "string" &&
+        value.status !== "ready" &&
+        value.status !== "unsupported"
+      ) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: `${path}.status`,
+          message:
+            "A supplied add/cut target must report status 'ready' or 'unsupported'."
         });
       }
       if (
@@ -9620,6 +9641,31 @@ export function validateSketchProfilePathQueryResponse(
           "$.intersectionStatus",
           issues
         );
+        if (
+          !isUnknownRecord(value.consumerCompatibility) ||
+          value.consumerCompatibility.status !== "ready"
+        ) {
+          issues.push({
+            code: "INVALID_VALUE",
+            path: "$.consumerCompatibility.status",
+            message: "A ready profile requires ready consumer compatibility."
+          });
+        }
+        if (
+          isUnknownRecord(value.consumer) &&
+          value.consumer.featureKind === "extrude" &&
+          (value.consumer.operationMode === "add" ||
+            value.consumer.operationMode === "cut") &&
+          (!isUnknownRecord(value.targetCompatibility) ||
+            value.targetCompatibility.status !== "ready")
+        ) {
+          issues.push({
+            code: "INVALID_VALUE",
+            path: "$.targetCompatibility.status",
+            message:
+              "A ready add/cut profile requires ready target compatibility."
+          });
+        }
       } else if (value.status !== "blocked") {
         issues.push({
           code: "INVALID_VALUE",
@@ -9780,6 +9826,17 @@ export function validateSketchProfilePathQueryResponse(
           code: "INVALID_VALUE",
           path: "$.frameStatus",
           message: "Frame status requires a sweep profile to evaluate."
+        });
+      }
+      if (
+        value.status === "ready" &&
+        "sweepProfile" in value &&
+        value.frameStatus !== "ready"
+      ) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: "$.frameStatus",
+          message: "A ready path with a sweep profile requires a ready frame."
         });
       }
       break;

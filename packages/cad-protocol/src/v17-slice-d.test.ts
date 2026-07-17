@@ -1253,6 +1253,218 @@ describe("V17 Slice D query contracts", () => {
     ).toBe(false);
   });
 
+  it("enforces profile consumer and target readiness cross-products", () => {
+    type ProfileReadinessCase = {
+      readonly name: string;
+      readonly status: "ready" | "blocked";
+      readonly operationMode: "newBody" | "add" | "cut";
+      readonly targetBodyId?: string;
+      readonly consumerStatus: "ready" | "blocked";
+      readonly targetStatus:
+        | "not-applicable"
+        | "missing"
+        | "ready"
+        | "unsupported";
+      readonly expected: boolean;
+    };
+    const cases: readonly ProfileReadinessCase[] = [
+      {
+        name: "new body ready",
+        status: "ready",
+        operationMode: "newBody",
+        consumerStatus: "ready",
+        targetStatus: "not-applicable",
+        expected: true
+      },
+      {
+        name: "add omitted target is blocked missing",
+        status: "blocked",
+        operationMode: "add",
+        consumerStatus: "ready",
+        targetStatus: "missing",
+        expected: true
+      },
+      {
+        name: "add supplied target ready",
+        status: "ready",
+        operationMode: "add",
+        targetBodyId: "body_1",
+        consumerStatus: "ready",
+        targetStatus: "ready",
+        expected: true
+      },
+      {
+        name: "cut supplied target unsupported while blocked",
+        status: "blocked",
+        operationMode: "cut",
+        targetBodyId: "body_1",
+        consumerStatus: "ready",
+        targetStatus: "unsupported",
+        expected: true
+      },
+      {
+        name: "supplied target cannot be not applicable",
+        status: "blocked",
+        operationMode: "add",
+        targetBodyId: "body_1",
+        consumerStatus: "ready",
+        targetStatus: "not-applicable",
+        expected: false
+      },
+      {
+        name: "supplied target cannot be missing",
+        status: "blocked",
+        operationMode: "cut",
+        targetBodyId: "body_1",
+        consumerStatus: "ready",
+        targetStatus: "missing",
+        expected: false
+      },
+      {
+        name: "ready add cannot have unsupported target",
+        status: "ready",
+        operationMode: "add",
+        targetBodyId: "body_1",
+        consumerStatus: "ready",
+        targetStatus: "unsupported",
+        expected: false
+      },
+      {
+        name: "ready add cannot omit target",
+        status: "ready",
+        operationMode: "add",
+        consumerStatus: "ready",
+        targetStatus: "missing",
+        expected: false
+      },
+      {
+        name: "ready profile cannot have blocked consumer",
+        status: "ready",
+        operationMode: "newBody",
+        consumerStatus: "blocked",
+        targetStatus: "not-applicable",
+        expected: false
+      }
+    ];
+
+    for (const testCase of cases) {
+      const response = mutableRecord(makeProfileReadinessResponse());
+      response.status = testCase.status;
+      response.consumer = {
+        featureKind: "extrude",
+        operationMode: testCase.operationMode,
+        ...(testCase.targetBodyId === undefined
+          ? {}
+          : { targetBodyId: testCase.targetBodyId })
+      };
+      response.consumerCompatibility = {
+        status: testCase.consumerStatus,
+        featureKind: "extrude",
+        operationMode: testCase.operationMode,
+        diagnosticCount: 0,
+        diagnostics: []
+      };
+      response.targetCompatibility =
+        testCase.targetStatus === "ready" ||
+        testCase.targetStatus === "unsupported"
+          ? {
+              status: testCase.targetStatus,
+              targetBodyId: testCase.targetBodyId ?? "body_1",
+              diagnosticCount: 0,
+              diagnostics: []
+            }
+          : {
+              status: testCase.targetStatus,
+              diagnosticCount: 0,
+              diagnostics: []
+            };
+
+      expect(
+        validateSketchProfilePathQueryResponse(response).ok,
+        testCase.name
+      ).toBe(testCase.expected);
+    }
+  });
+
+  it("enforces sweep-profile frame readiness cross-products", () => {
+    const cases = [
+      {
+        name: "ready without profile is not evaluated",
+        status: "ready",
+        profile: false,
+        frame: "not-evaluated",
+        expected: true
+      },
+      {
+        name: "ready with profile is ready",
+        status: "ready",
+        profile: true,
+        frame: "ready",
+        expected: true
+      },
+      {
+        name: "blocked with profile may be invalid",
+        status: "blocked",
+        profile: true,
+        frame: "invalid",
+        expected: true
+      },
+      {
+        name: "ready with profile cannot be unevaluated",
+        status: "ready",
+        profile: true,
+        frame: "not-evaluated",
+        expected: false
+      },
+      {
+        name: "ready with profile cannot be invalid",
+        status: "ready",
+        profile: true,
+        frame: "invalid",
+        expected: false
+      },
+      {
+        name: "ready without profile cannot claim ready frame",
+        status: "ready",
+        profile: false,
+        frame: "ready",
+        expected: false
+      }
+    ] as const;
+
+    for (const testCase of cases) {
+      const response = mutableRecord(makePathReadinessResponse());
+      response.status = testCase.status;
+      response.frameStatus = testCase.frame;
+      if (testCase.profile) response.sweepProfile = entityProfile;
+      expect(
+        validateSketchProfilePathQueryResponse(response).ok,
+        testCase.name
+      ).toBe(testCase.expected);
+    }
+  });
+
+  it("accepts angular-deviation endpoints and rejects values outside 0..180", () => {
+    const cases = [
+      { value: 0, expected: true },
+      { value: 180, expected: true },
+      { value: -Number.EPSILON, expected: false },
+      { value: 180 + Number.EPSILON * 180, expected: false },
+      { value: Number.POSITIVE_INFINITY, expected: false }
+    ] as const;
+
+    for (const testCase of cases) {
+      const response = mutableRecord(makePathCandidatesResponse());
+      const candidate = mutableRecord(mutableArray(response.candidates)[0]);
+      mutableRecord(mutableArray(candidate.joins)[0]).angularDeviationDegrees =
+        testCase.value;
+      expect(
+        validateSketchProfilePathQueryResponse(response).ok,
+        String(testCase.value)
+      ).toBe(testCase.expected);
+    }
+  });
+
   it("keeps missing sketches at the query-error envelope", () => {
     const invalidDiagnostic: SketchProfileDiagnostic = {
       // @ts-expect-error SKETCH_NOT_FOUND is a CadQueryError, not a successful profile diagnostic.
