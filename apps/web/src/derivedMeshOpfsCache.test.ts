@@ -97,6 +97,10 @@ describe("derived mesh OPFS cache", () => {
   it("round-trips composite generated-reference evidence", async () => {
     const target = createMockOpfsTarget();
     const sourceKey = "derived-source:wire-extrude";
+    const context: DerivedMeshCacheContext = {
+      ...CURRENT_CONTEXT,
+      documentSchemaVersion: "web-cad.project.v21"
+    };
     const generatedReferences = {
       status: "ready" as const,
       sourceIdentity: "wire-profile-identity",
@@ -119,13 +123,13 @@ describe("derived mesh OPFS cache", () => {
 
     await writeDerivedMeshOpfsCache({
       target,
-      context: CURRENT_CONTEXT,
+      context,
       sourceKey,
       result: { ...createResult("body_wire"), generatedReferences }
     });
     const read = await readDerivedMeshOpfsCache({
       target,
-      context: CURRENT_CONTEXT,
+      context,
       sourceKey
     });
 

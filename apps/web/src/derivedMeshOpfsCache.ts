@@ -606,7 +606,11 @@ function isDerivedMeshCacheArtifact(
     typeof value.sourceKey === "string" &&
     isSourceIdentity(value.sourceIdentity) &&
     (value.documentSchemaVersion === "web-cad.project.v16" ||
-      value.documentSchemaVersion === "web-cad.project.v17") &&
+      value.documentSchemaVersion === "web-cad.project.v17" ||
+      value.documentSchemaVersion === "web-cad.project.v18" ||
+      value.documentSchemaVersion === "web-cad.project.v19" ||
+      value.documentSchemaVersion === "web-cad.project.v20" ||
+      value.documentSchemaVersion === "web-cad.project.v21") &&
     (value.units === "mm" ||
       value.units === "cm" ||
       value.units === "m" ||
