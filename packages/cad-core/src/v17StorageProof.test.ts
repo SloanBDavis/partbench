@@ -25,6 +25,65 @@ function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+type MutableFixtureRecord = Record<string, unknown>;
+
+interface MutableReferenceFixture extends MutableFixtureRecord {
+  segments: MutableFixtureRecord[];
+}
+
+interface MutableSectionFixture extends MutableFixtureRecord {
+  profile: MutableReferenceFixture;
+}
+
+interface MutableFeatureFixture extends MutableFixtureRecord {
+  profile: MutableReferenceFixture;
+  path: MutableReferenceFixture;
+  sections: MutableSectionFixture[];
+  axis: MutableFixtureRecord;
+}
+
+interface MutableSketchFixture extends MutableFixtureRecord {
+  entities: MutableFixtureRecord[];
+  attachment: MutableFixtureRecord;
+}
+
+interface MutableDocumentFixture extends MutableFixtureRecord {
+  sketches: MutableSketchFixture[];
+  features: MutableFeatureFixture[];
+  parameters: MutableFixtureRecord[];
+  sketchDimensions: MutableFixtureRecord[];
+  sketchConstraints: MutableFixtureRecord[];
+}
+
+interface MutableProjectFixture extends MutableFixtureRecord {
+  document: MutableDocumentFixture;
+}
+
+function mutableProjectFixture(project: CadProject): MutableProjectFixture {
+  return project as unknown as MutableProjectFixture;
+}
+
+function omitFixtureFields(
+  value: object,
+  fields: readonly string[]
+): MutableFixtureRecord {
+  const copy = { ...(value as unknown as MutableFixtureRecord) };
+  for (const field of fields) delete copy[field];
+  return copy;
+}
+
+function findSketchEntityFixture(
+  project: MutableProjectFixture,
+  sketchIndex: number,
+  entityId: string
+): MutableFixtureRecord {
+  const entity = project.document.sketches[sketchIndex]?.entities.find(
+    (candidate) => candidate.id === entityId
+  );
+  if (!entity) throw new Error(`Missing sketch entity fixture: ${entityId}.`);
+  return entity;
+}
+
 function createEmptyProject(): CadProject {
   return exportCadProject(new CadEngine());
 }
@@ -656,7 +715,7 @@ function createNormalizedV21Project(): CadProject {
 }
 
 function createOrderedWireAndChainProject(): CadProject {
-  const project = clone(createNormalizedV21Project()) as any;
+  const project = mutableProjectFixture(clone(createNormalizedV21Project()));
   project.document.sketches[1].entities.push(
     entity("path_2", "line", { start: [0, 5], end: [5, 5] })
   );
@@ -676,10 +735,10 @@ function createOrderedWireAndChainProject(): CadProject {
       { entityId: "path_2", orientation: "forward" }
     ]
   };
-  return project;
+  return project as unknown as CadProject;
 }
 
-function expectV21Issue(project: CadProject, path: string): void {
+function expectV21Issue(project: unknown, path: string): void {
   try {
     parseCadProjectJson(JSON.stringify(project));
     throw new Error(`Expected V21 source rejection at ${path}.`);
@@ -692,7 +751,7 @@ function expectV21Issue(project: CadProject, path: string): void {
 }
 
 function expectProjectIssue(
-  project: CadProject,
+  project: unknown,
   code: string,
   path: string
 ): void {
@@ -765,16 +824,20 @@ describe("V17 V21 storage proof", () => {
             construction: false
           }))
         })) as never,
-        features: legacy.document.features.map((feature: any) => {
-          const {
-            sketchId,
-            entityId,
-            profileKind: _profileKind,
-            ...rest
-          } = feature;
+        features: legacy.document.features.map((feature) => {
+          const record = feature as unknown as MutableFixtureRecord;
+          const rest = omitFixtureFields(feature, [
+            "sketchId",
+            "entityId",
+            "profileKind"
+          ]);
           return {
             ...rest,
-            profile: { kind: "entity", sketchId, entityId }
+            profile: {
+              kind: "entity",
+              sketchId: record.sketchId,
+              entityId: record.entityId
+            }
           };
         }) as never
       }
@@ -859,7 +922,7 @@ describe("V17 V21 storage proof", () => {
   });
 
   it("preserves V21 topology checkpoint bytes and source identities in WCAD v2", async () => {
-    const source = clone(createNormalizedV21Project()) as any;
+    const source = mutableProjectFixture(clone(createNormalizedV21Project()));
     const checkpointId = "checkpoint_v21";
     const paths = createWcadV2CheckpointEntryPaths(checkpointId);
     const placeholderIdentity = {
@@ -928,9 +991,12 @@ describe("V17 V21 storage proof", () => {
         entities: []
       })
     };
-    const packed = await exportCadProjectToWcad(source, {
-      topologyCheckpoints: [payload]
-    });
+    const packed = await exportCadProjectToWcad(
+      source as unknown as CadProject,
+      {
+        topologyCheckpoints: [payload]
+      }
+    );
     const read = await readCadProjectWcad(packed.bytes);
 
     if (!read.ok) {
@@ -962,13 +1028,13 @@ describe("V17 V21 storage proof", () => {
       Array.from({ length: 20 }, (_, index) => index + 1)
     );
 
-    const rawV3 = corpus[2]!.project as any;
+    const rawV3 = mutableProjectFixture(corpus[2]!.project);
     expect(rawV3.document).not.toHaveProperty("namedReferences");
     expect(rawV3.document).not.toHaveProperty("parameters");
     expect(rawV3.document.features[0]).not.toHaveProperty("side");
     expect(rawV3.document.features[0]).not.toHaveProperty("operationMode");
 
-    const rawV4 = corpus[3]!.project as any;
+    const rawV4 = mutableProjectFixture(corpus[3]!.project);
     expect(rawV4.document).not.toHaveProperty("namedReferences");
     expect(rawV4.document.sketches[1].attachment).toMatchObject({
       kind: "generatedFace",
@@ -977,11 +1043,11 @@ describe("V17 V21 storage proof", () => {
       sourceSketchEntityId: "base_rect"
     });
 
-    const rawV14 = corpus[13]!.project as any;
+    const rawV14 = mutableProjectFixture(corpus[13]!.project);
     expect(rawV14.document).not.toHaveProperty("topologyIdentity");
     expect(rawV14.document.features[0]).not.toHaveProperty("operationMode");
 
-    const rawV15 = corpus[14]!.project as any;
+    const rawV15 = mutableProjectFixture(corpus[14]!.project);
     expect(rawV15.document).not.toHaveProperty("topologyIdentity");
     expect(rawV15.document.features[1]).toMatchObject({
       kind: "hole",
@@ -989,7 +1055,7 @@ describe("V17 V21 storage proof", () => {
       direction: "negative"
     });
 
-    const rawV17 = corpus[16]!.project as any;
+    const rawV17 = mutableProjectFixture(corpus[16]!.project);
     expect(rawV17.document).not.toHaveProperty("topologyIdentity");
     expect(rawV17.document.sketches[0].entities[0]).not.toHaveProperty(
       "construction"
@@ -1000,7 +1066,7 @@ describe("V17 V21 storage proof", () => {
       secondaryTarget: { entityKind: "circle" }
     });
 
-    const rawV18 = corpus[17]!.project as any;
+    const rawV18 = mutableProjectFixture(corpus[17]!.project);
     expect(rawV18.document.topologyIdentity).toEqual(
       expect.objectContaining({
         schemaVersion: "web-cad.project.v18",
@@ -1010,7 +1076,7 @@ describe("V17 V21 storage proof", () => {
       })
     );
 
-    const rawV19 = corpus[18]!.project as any;
+    const rawV19 = mutableProjectFixture(corpus[18]!.project);
     const rawV19Pattern = rawV19.document.features[1];
     const rawV19Mirror = rawV19.document.features[2];
     expect(rawV19Pattern).toMatchObject({ axis: "x" });
@@ -1023,7 +1089,7 @@ describe("V17 V21 storage proof", () => {
       expression: "2 * 3"
     });
 
-    const rawV20 = corpus[19]!.project as any;
+    const rawV20 = mutableProjectFixture(corpus[19]!.project);
     expect(rawV20.document.sketches[0].entities[0]).not.toHaveProperty(
       "construction"
     );
@@ -1217,40 +1283,50 @@ describe("V17 V21 storage proof", () => {
     const source = createOrderedWireAndChainProject();
     const baseline = createCadProjectSourceIdentity(source).sha256;
     const variants = [
-      (project: any) => project.document.features[0].profile.segments.reverse(),
-      (project: any) => {
+      (project: MutableProjectFixture) =>
+        project.document.features[0].profile.segments.reverse(),
+      (project: MutableProjectFixture) => {
         project.document.features[0].profile.segments[0].orientation =
           "reverse";
       },
-      (project: any) => project.document.features[2].path.segments.reverse(),
-      (project: any) => {
+      (project: MutableProjectFixture) =>
+        project.document.features[2].path.segments.reverse(),
+      (project: MutableProjectFixture) => {
         project.document.features[2].path.segments[1].orientation = "reverse";
       }
     ];
 
     for (const mutate of variants) {
-      const changed = clone(source);
+      const changed = mutableProjectFixture(clone(source));
       mutate(changed);
-      expect(createCadProjectSourceIdentity(changed).sha256).not.toBe(baseline);
+      expect(
+        createCadProjectSourceIdentity(changed as unknown as CadProject).sha256
+      ).not.toBe(baseline);
     }
   });
 
   it("reports exact V21 paths for malformed normalized references", () => {
-    const dangling = clone(createOrderedWireAndChainProject()) as any;
+    const dangling = mutableProjectFixture(
+      clone(createOrderedWireAndChainProject())
+    );
     dangling.document.features[0].profile.segments[1].entityId = "missing";
     expectV21Issue(
       dangling,
       "$.document.features[0].profile.segments[1].entityId"
     );
 
-    const mixedSketch = clone(createOrderedWireAndChainProject()) as any;
+    const mixedSketch = mutableProjectFixture(
+      clone(createOrderedWireAndChainProject())
+    );
     mixedSketch.document.features[0].profile.segments[1].entityId = "axis";
     expectV21Issue(
       mixedSketch,
       "$.document.features[0].profile.segments[1].entityId"
     );
 
-    const invalidOrientation = clone(createOrderedWireAndChainProject()) as any;
+    const invalidOrientation = mutableProjectFixture(
+      clone(createOrderedWireAndChainProject())
+    );
     invalidOrientation.document.features[0].profile.segments[0].orientation =
       "clockwise";
     expectV21Issue(
@@ -1258,7 +1334,9 @@ describe("V17 V21 storage proof", () => {
       "$.document.features[0].profile.segments[0].orientation"
     );
 
-    const crossSketchAxis = clone(createNormalizedV21Project()) as any;
+    const crossSketchAxis = mutableProjectFixture(
+      clone(createNormalizedV21Project())
+    );
     crossSketchAxis.document.features[1].axis = {
       type: "sketchLine",
       sketchId: "path",
@@ -1272,7 +1350,7 @@ describe("V17 V21 storage proof", () => {
       importCadProject(
         parseCadProjectJson(JSON.stringify(createNormalizedV21Project()))
       )
-    ) as any;
+    );
 
     expect(saved.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V20);
     expect(saved.document.features).toEqual([
@@ -1326,7 +1404,7 @@ describe("V17 V21 storage proof", () => {
   });
 
   it("validates generated-face attachments against normalized V21 extrude sources", () => {
-    const source = clone(createNormalizedV21Project()) as any;
+    const source = mutableProjectFixture(clone(createNormalizedV21Project()));
     source.document.sketches.push({
       id: "attached_sketch",
       name: "Attached sketch",
@@ -1351,7 +1429,9 @@ describe("V17 V21 storage proof", () => {
       ["sourceSketchEntityId", "circle_a"]
     ];
     for (const [field, value] of provenanceCases) {
-      const mismatched = clone(source) as any;
+      const mismatched = mutableProjectFixture(
+        clone(source as unknown as CadProject)
+      );
       mismatched.document.sketches[4].attachment[field] = value;
       expectProjectIssue(
         mismatched,
@@ -1359,7 +1439,9 @@ describe("V17 V21 storage proof", () => {
         `$.document.sketches[4].attachment.${field}`
       );
     }
-    const wrongStableId = clone(source) as any;
+    const wrongStableId = mutableProjectFixture(
+      clone(source as unknown as CadProject)
+    );
     wrongStableId.document.sketches[4].attachment.faceStableId =
       "generated:face:body_extrude:startCap";
     expectProjectIssue(
@@ -1377,7 +1459,9 @@ describe("V17 V21 storage proof", () => {
       parseCadProjectJson(JSON.stringify(createOrderedWireAndChainProject()))
     ).not.toThrow();
 
-    const revolveWire = clone(createNormalizedV21Project()) as any;
+    const revolveWire = mutableProjectFixture(
+      clone(createNormalizedV21Project())
+    );
     revolveWire.document.sketches[0].entities.push(
       entity("profile_line_2", "line", { start: [0, 3], end: [3, 3] })
     );
@@ -1396,7 +1480,7 @@ describe("V17 V21 storage proof", () => {
     const deniedConsumers: readonly [
       path: string,
       featureIndex: number,
-      mutate: (feature: any) => void
+      mutate: (feature: MutableFeatureFixture) => void
     ][] = [
       [
         "$.document.features[2].profile.kind",
@@ -1428,20 +1512,18 @@ describe("V17 V21 storage proof", () => {
       ]
     ];
     for (const [path, featureIndex, mutate] of deniedConsumers) {
-      const denied = clone(revolveWire) as any;
+      const denied = mutableProjectFixture(
+        clone(revolveWire as unknown as CadProject)
+      );
       mutate(denied.document.features[featureIndex]);
       expectV21Issue(denied, path);
     }
   });
 
   it("allows construction guides for axes and paths but rejects every solid profile", () => {
-    const guides = clone(createNormalizedV21Project()) as any;
-    guides.document.sketches[0].entities.find(
-      (item: any) => item.id === "axis"
-    ).construction = true;
-    guides.document.sketches[1].entities.find(
-      (item: any) => item.id === "path_1"
-    ).construction = true;
+    const guides = mutableProjectFixture(clone(createNormalizedV21Project()));
+    findSketchEntityFixture(guides, 0, "axis").construction = true;
+    findSketchEntityFixture(guides, 1, "path_1").construction = true;
     expect(() => parseCadProjectJson(JSON.stringify(guides))).not.toThrow();
 
     const profileCases: readonly [entityId: string, path: string][] = [
@@ -1451,10 +1533,10 @@ describe("V17 V21 storage proof", () => {
       ["loft_rect_a", "$.document.features[3].sections[0].profile.entityId"]
     ];
     for (const [entityId, path] of profileCases) {
-      const denied = clone(createNormalizedV21Project()) as any;
+      const denied = mutableProjectFixture(clone(createNormalizedV21Project()));
       for (const sourceSketch of denied.document.sketches) {
         const profileEntity = sourceSketch.entities.find(
-          (item: any) => item.id === entityId
+          (item) => item.id === entityId
         );
         if (profileEntity) profileEntity.construction = true;
       }
@@ -1463,7 +1545,10 @@ describe("V17 V21 storage proof", () => {
   });
 
   it("rejects mixed legacy and normalized fields for every consumer and radius target", () => {
-    const cases: readonly [path: string, mutate: (project: any) => void][] = [
+    const cases: readonly [
+      path: string,
+      mutate: (project: MutableProjectFixture) => void
+    ][] = [
       [
         "$.document.features[0].sketchId",
         (p) => (p.document.features[0].sketchId = "profiles")
@@ -1493,7 +1578,7 @@ describe("V17 V21 storage proof", () => {
     ];
 
     for (const [path, mutate] of cases) {
-      const mixed = clone(createNormalizedV21Project());
+      const mixed = mutableProjectFixture(clone(createNormalizedV21Project()));
       mutate(mixed);
       expectV21Issue(mixed, path);
     }

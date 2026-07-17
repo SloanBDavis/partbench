@@ -13,6 +13,58 @@ import {
   type CadProject
 } from "./index";
 
+type MutableFixtureRecord = Record<string, unknown>;
+
+interface MutableReferenceFixture extends MutableFixtureRecord {
+  segments?: MutableFixtureRecord[];
+}
+
+interface MutableSectionFixture extends MutableFixtureRecord {
+  profile: MutableReferenceFixture;
+}
+
+interface MutableFeatureFixture extends MutableFixtureRecord {
+  profile: MutableReferenceFixture;
+  path: MutableReferenceFixture;
+  sections: MutableSectionFixture[];
+}
+
+interface MutableSketchFixture extends MutableFixtureRecord {
+  entities: MutableFixtureRecord[];
+  attachment: MutableFixtureRecord;
+}
+
+interface MutableDocumentFixture extends MutableFixtureRecord {
+  sketches: MutableSketchFixture[];
+  features: MutableFeatureFixture[];
+  parameters: MutableFixtureRecord[];
+  sketchDimensions: MutableFixtureRecord[];
+  sketchConstraints: MutableFixtureRecord[];
+}
+
+interface MutableProjectFixture extends MutableFixtureRecord {
+  document: MutableDocumentFixture;
+}
+
+function mutableProjectFixture(project: CadProject): MutableProjectFixture {
+  return project as unknown as MutableProjectFixture;
+}
+
+function cloneMutableProjectFixture(project: unknown): MutableProjectFixture {
+  return JSON.parse(
+    JSON.stringify(project)
+  ) as unknown as MutableProjectFixture;
+}
+
+function omitFixtureFields(
+  value: MutableFixtureRecord,
+  fields: readonly string[]
+): MutableFixtureRecord {
+  const copy = { ...value };
+  for (const field of fields) delete copy[field];
+  return copy;
+}
+
 function createSweepProject(): CadProject {
   const engine = new CadEngine();
   engine.applyBatch([
@@ -128,23 +180,34 @@ function createV21BooleanChainProject(): CadProject {
       targetBodyId: "base_body"
     }
   ]);
-  const project: any = exportCadProject(engine);
+  const project = mutableProjectFixture(exportCadProject(engine));
   project.schemaVersion = CAD_PROJECT_FORMAT_VERSION_V21;
-  project.document.sketches = project.document.sketches.map((sketch: any) => ({
-    ...sketch,
-    entities: sketch.entities.map((entity: any) => ({
-      ...entity,
-      construction: false
-    }))
-  }));
-  project.document.features = project.document.features.map((feature: any) => {
-    const { sketchId, entityId, profileKind: _profileKind, ...base } = feature;
+  project.document.sketches = project.document.sketches.map(
+    (sketch) =>
+      ({
+        ...sketch,
+        entities: sketch.entities.map((entity) => ({
+          ...entity,
+          construction: false
+        }))
+      }) as MutableSketchFixture
+  );
+  project.document.features = project.document.features.map((feature) => {
+    const base = omitFixtureFields(feature, [
+      "sketchId",
+      "entityId",
+      "profileKind"
+    ]);
     return {
       ...base,
-      profile: { kind: "entity", sketchId, entityId }
-    };
+      profile: {
+        kind: "entity",
+        sketchId: feature.sketchId,
+        entityId: feature.entityId
+      }
+    } as unknown as MutableFeatureFixture;
   });
-  return project;
+  return project as unknown as CadProject;
 }
 
 describe("V17 V21 storage and migration", () => {
@@ -261,7 +324,7 @@ describe("V17 V21 storage and migration", () => {
   });
 
   it("accepts V21 arc dimensions and normalized arc constraint targets", () => {
-    const source = createV21ArcProject() as any;
+    const source = mutableProjectFixture(createV21ArcProject());
     source.document.sketchDimensions = [
       {
         id: "arc_dimension",
@@ -315,7 +378,7 @@ describe("V17 V21 storage and migration", () => {
         { type: "literal", value: 90 },
         { type: "parameter", parameterId: "sweep_parameter" }
       ]) {
-        const source = createV21ArcProject() as any;
+        const source = mutableProjectFixture(createV21ArcProject());
         source.document.sketches[1].entities[1].sweepAngleDegrees =
           sweepAngleDegrees;
         source.document.parameters = [
@@ -338,7 +401,8 @@ describe("V17 V21 storage and migration", () => {
           source.document.sketchDimensions
         );
         expect(
-          (saved.document.sketches[1]?.entities[1] as any).sweepAngleDegrees
+          mutableProjectFixture(saved).document.sketches[1]?.entities[1]
+            ?.sweepAngleDegrees
         ).toBe(sweepAngleDegrees);
       }
     }
@@ -407,7 +471,7 @@ describe("V17 V21 storage and migration", () => {
     ];
 
     for (const testCase of cases) {
-      const source = createV21ArcProject() as any;
+      const source = mutableProjectFixture(createV21ArcProject());
       if (testCase.addAxis) {
         source.document.sketches[1].entities.push({
           id: "axis",
@@ -432,7 +496,7 @@ describe("V17 V21 storage and migration", () => {
     const nestedCases = [
       {
         path: "$.document.sketchDimensions[0].target.cached",
-        apply(source: any) {
+        apply(source: MutableProjectFixture) {
           source.document.sketchDimensions = [
             {
               id: "arc_radius",
@@ -447,7 +511,7 @@ describe("V17 V21 storage and migration", () => {
       },
       {
         path: "$.document.sketchConstraints[0].target.cached",
-        apply(source: any) {
+        apply(source: MutableProjectFixture) {
           source.document.sketchConstraints = [
             {
               id: "fixed_arc",
@@ -468,7 +532,7 @@ describe("V17 V21 storage and migration", () => {
       },
       {
         path: "$.document.sketchConstraints[0].primaryTarget.cached",
-        apply(source: any) {
+        apply(source: MutableProjectFixture) {
           source.document.sketchConstraints = [
             {
               id: "tangent_arc",
@@ -488,7 +552,7 @@ describe("V17 V21 storage and migration", () => {
       },
       {
         path: "$.document.sketchConstraints[0].primaryTarget.cached",
-        apply(source: any) {
+        apply(source: MutableProjectFixture) {
           source.document.sketchConstraints = [
             {
               id: "equal_radius",
@@ -509,7 +573,7 @@ describe("V17 V21 storage and migration", () => {
     ];
 
     for (const testCase of nestedCases) {
-      const source = createV21ArcProject() as any;
+      const source = mutableProjectFixture(createV21ArcProject());
       testCase.apply(source);
       expect(() => parseCadProjectJson(JSON.stringify(source))).toThrowError(
         expect.objectContaining({
@@ -523,7 +587,7 @@ describe("V17 V21 storage and migration", () => {
       );
     }
 
-    const revolve = createV21BooleanChainProject() as any;
+    const revolve = mutableProjectFixture(createV21BooleanChainProject());
     revolve.document.sketches[0].entities.push({
       id: "axis",
       kind: "line",
@@ -549,7 +613,7 @@ describe("V17 V21 storage and migration", () => {
         angleDegrees: 180,
         operationMode: "newBody",
         bodyId: "revolve_body"
-      }
+      } as unknown as MutableFeatureFixture
     ];
     expect(() => parseCadProjectJson(JSON.stringify(revolve))).toThrowError(
       expect.objectContaining({
@@ -567,7 +631,7 @@ describe("V17 V21 storage and migration", () => {
     const source = createV21BooleanChainProject();
     expect(() => parseCadProjectJson(JSON.stringify(source))).not.toThrow();
 
-    const dangling: any = JSON.parse(JSON.stringify(source));
+    const dangling = cloneMutableProjectFixture(source);
     dangling.document.features[1].targetBodyId = "missing_body";
     expect(() => parseCadProjectJson(JSON.stringify(dangling))).toThrowError(
       expect.objectContaining({
@@ -585,29 +649,31 @@ describe("V17 V21 storage and migration", () => {
     const source = createV21ArcProject();
     const baseline = createCadProjectSourceIdentity(source).sha256;
     const variants = [
-      (project: any) => {
+      (project: MutableProjectFixture) => {
         project.document.sketches[1].entities[1].construction = false;
       },
-      (project: any) => {
+      (project: MutableProjectFixture) => {
         project.document.sketches[1].entities[1].sweepAngleDegrees = 90;
       },
-      (project: any) => {
+      (project: MutableProjectFixture) => {
         project.document.features[0].path.orientation = "forward";
       }
     ];
     for (const mutate of variants) {
-      const variant = JSON.parse(JSON.stringify(source));
+      const variant = cloneMutableProjectFixture(source);
       mutate(variant);
-      expect(createCadProjectSourceIdentity(variant).sha256).not.toBe(baseline);
+      expect(
+        createCadProjectSourceIdentity(variant as unknown as CadProject).sha256
+      ).not.toBe(baseline);
     }
   });
 
   it("selects V21 for each V17-only trigger and keeps normalized non-triggers at V20", () => {
-    const createForwardLineSource = (): any => {
-      const project: any = createV21ArcProject();
+    const createForwardLineSource = (): MutableProjectFixture => {
+      const project = mutableProjectFixture(createV21ArcProject());
       project.document.sketches[1].entities =
         project.document.sketches[1].entities.filter(
-          (entity: any) => entity.kind !== "arc"
+          (entity) => entity.kind !== "arc"
         );
       project.document.features[0].path = {
         kind: "entity",
@@ -617,7 +683,7 @@ describe("V17 V21 storage and migration", () => {
       };
       return project;
     };
-    const savedVersion = (project: CadProject) =>
+    const savedVersion = (project: MutableProjectFixture) =>
       exportCadProject(
         importCadProject(parseCadProjectJson(JSON.stringify(project)))
       ).schemaVersion;
@@ -634,7 +700,7 @@ describe("V17 V21 storage and migration", () => {
     reverse.document.features[0].path.orientation = "reverse";
     expect(savedVersion(reverse)).toBe(CAD_PROJECT_FORMAT_VERSION_V21);
 
-    const arc = createV21ArcProject() as any;
+    const arc = mutableProjectFixture(createV21ArcProject());
     arc.document.sketches[1].entities[1].construction = false;
     arc.document.features[0].path.orientation = "forward";
     expect(savedVersion(arc)).toBe(CAD_PROJECT_FORMAT_VERSION_V21);
@@ -674,7 +740,7 @@ describe("V17 V21 storage and migration", () => {
         depth: 2,
         side: "positive",
         bodyId: "body_wire"
-      }
+      } as unknown as MutableFeatureFixture
     ];
     wire.document.sketches[1].entities.push({
       id: "line_2",

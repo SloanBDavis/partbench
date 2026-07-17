@@ -14,6 +14,59 @@ import {
 
 const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] as const;
 
+type MutableFixtureRecord = Record<string, unknown>;
+
+function requireFixtureRecord(
+  value: unknown,
+  label: string
+): MutableFixtureRecord {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`Expected ${label} to be an object fixture.`);
+  }
+  return value as MutableFixtureRecord;
+}
+
+function requireFixtureRecords(
+  value: unknown,
+  label: string
+): MutableFixtureRecord[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`Expected ${label} to be an array fixture.`);
+  }
+  return value.map((entry, index) =>
+    requireFixtureRecord(entry, `${label}[${index}]`)
+  );
+}
+
+function cloneFixtureRecord(
+  value: unknown,
+  label: string
+): MutableFixtureRecord {
+  return requireFixtureRecord(JSON.parse(JSON.stringify(value)), label);
+}
+
+function findFixtureFeature(
+  project: MutableFixtureRecord,
+  featureId: string
+): MutableFixtureRecord {
+  const document = requireFixtureRecord(project.document, "project.document");
+  const feature = requireFixtureRecords(
+    document.features,
+    "project.document.features"
+  ).find((candidate) => candidate.id === featureId);
+  if (!feature) throw new Error(`Missing feature fixture: ${featureId}.`);
+  return feature;
+}
+
+function omitFixtureFields(
+  value: object,
+  fields: readonly string[]
+): MutableFixtureRecord {
+  const copy = { ...(value as unknown as MutableFixtureRecord) };
+  for (const field of fields) delete copy[field];
+  return copy;
+}
+
 function createSeedEngine(): CadEngine {
   const engine = new CadEngine();
   engine.applyBatch([
@@ -564,19 +617,15 @@ describe("V16 protocol and V20 persistence", () => {
     const v20 = exportCadProject(engine);
     const legacyFeatures = v20.document.features.map((feature) => {
       if (feature.kind === "linearPattern") {
-        const {
-          direction: _direction,
-          instances: _instances,
-          ...base
-        } = feature;
+        const base = omitFixtureFields(feature, ["direction", "instances"]);
         return { ...base, axis: "y" as const };
       }
       if (feature.kind === "circularPattern") {
-        const { instances: _instances, ...base } = feature;
+        const base = omitFixtureFields(feature, ["instances"]);
         return { ...base, rotationAxis: "z" as const };
       }
       if (feature.kind === "mirror") {
-        const { plane: _plane, ...base } = feature;
+        const base = omitFixtureFields(feature, ["plane"]);
         return { ...base, mirrorPlane: "XZ" as const };
       }
       return feature;
@@ -643,11 +692,15 @@ describe("V16 protocol and V20 persistence", () => {
       importCadProject(renamed).getDocument().features.get("feat_linear")
     ).toMatchObject({ name: "Renamed linear pattern" });
 
-    const invalidNormalized = JSON.parse(JSON.stringify(parsed)) as any;
-    invalidNormalized.document.features.find(
-      (feature: any) => feature.id === "feat_linear"
-    ).direction.axis = "invalid";
-    expect(() => importCadProject(invalidNormalized)).toThrowError(
+    const invalidNormalized = cloneFixtureRecord(parsed, "parsed project");
+    const invalidDirection = requireFixtureRecord(
+      findFixtureFeature(invalidNormalized, "feat_linear").direction,
+      "linear pattern direction"
+    );
+    invalidDirection.axis = "invalid";
+    expect(() =>
+      importCadProject(invalidNormalized as unknown as CadProject)
+    ).toThrowError(
       expect.objectContaining({
         issues: expect.arrayContaining([
           expect.objectContaining({
@@ -683,10 +736,9 @@ describe("V16 protocol and V20 persistence", () => {
       }
     ];
     for (const testCase of mixedCases) {
-      const mixed = JSON.parse(JSON.stringify(rawV19)) as any;
-      mixed.document.features.find(
-        (feature: any) => feature.id === testCase.featureId
-      )[testCase.field] = testCase.value;
+      const mixed = cloneFixtureRecord(rawV19, "raw V19 project");
+      findFixtureFeature(mixed, testCase.featureId)[testCase.field] =
+        testCase.value;
       expect(() => parseCadProjectJson(JSON.stringify(mixed))).toThrowError(
         expect.objectContaining({
           issues: expect.arrayContaining([

@@ -19,7 +19,7 @@ import type {
   WcadSourceIdentity,
   WcadDocumentSchemaVersion
 } from "@web-cad/cad-protocol";
-import type { CadDocument, ExtrudeFeature, SketchEntity } from "./index";
+import type { CadDocument, SketchEntity } from "./index";
 import {
   getFeatureEntityProfileRef,
   getSupportedEntityProfileKind

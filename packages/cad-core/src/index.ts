@@ -153,7 +153,6 @@ import type {
   SketchConstraintKind,
   SketchConstraintSemanticDiff,
   SketchConstraintSnapshot,
-  SketchCurveConstraintTarget,
   SketchDimensionId,
   SketchDimensionSnapshot,
   SketchDimensionTarget,
@@ -180,10 +179,7 @@ import {
   createCanonicalSketchArcEntity,
   type SketchArcValidationIssue
 } from "./sketchArcMath";
-import {
-  normalizeFeatureInputs,
-  type NormalizedFeature
-} from "./normalizedFeatureInputs";
+import { normalizeFeatureInputs } from "./normalizedFeatureInputs";
 export {
   cloneSketchPathRef,
   cloneSketchProfileRef,
@@ -6129,12 +6125,7 @@ function applyOperation(
         throwSketchEntityNotFound(op.sketchId, op.entityId, opIndex);
       }
 
-      const profileKind = assertRevolvableProfile(
-        entity,
-        opIndex,
-        op.sketchId,
-        op.entityId
-      );
+      assertRevolvableProfile(entity, opIndex, op.sketchId, op.entityId);
       const axis = validateRevolveAxis(state, op.axis, op.sketchId, opIndex);
       const angleDegrees = validateRevolveAngleDegrees(
         op.angleDegrees,
