@@ -372,7 +372,7 @@ describe("viewport measurement overlay", () => {
       bodyId: reference.bodyId,
       sourceFeatureId: reference.sourceFeatureId,
       sourceSketchId: reference.sourceSketchId,
-      sourceSketchEntityId: reference.sourceSketchEntityId,
+      sourceSketchEntityId: reference.sourceSketchEntityId!,
       profileKind: "rectangle",
       units: "mm",
       measurementModel: "sourceAnalytic",

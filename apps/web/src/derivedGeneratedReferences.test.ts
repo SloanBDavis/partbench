@@ -121,6 +121,45 @@ describe("derived generated-reference freshness", () => {
     ).toBeUndefined();
   });
 
+  it("rejects ready kernel evidence with an invalid discriminated shape", () => {
+    const source = wireSource("current-recipe");
+    for (const generatedReferences of [
+      {
+        status: "ready" as const,
+        sourceIdentity: "current-recipe",
+        faces: [
+          {
+            role: "side" as const,
+            surfaceClass: "plane" as const,
+            evidence: "kernel-builder" as const
+          }
+        ],
+        edges: []
+      },
+      {
+        status: "ready" as const,
+        sourceIdentity: "current-recipe",
+        faces: [],
+        edges: [
+          {
+            role: "longitudinal" as const,
+            sourceEntityId: "line_1",
+            evidence: "kernel-builder" as const
+          }
+        ]
+      }
+    ]) {
+      expect(
+        createBodyGeneratedReferenceEvidence(
+          "body_wire",
+          "current-topology-signature",
+          snapshot(readyEntry(generatedReferences)),
+          [source]
+        )
+      ).toBeUndefined();
+    }
+  });
+
   it("rejects pending and failed generations that contain no current evidence", () => {
     const source = wireSource("current-recipe");
     for (const status of ["pending", "error"] as const) {

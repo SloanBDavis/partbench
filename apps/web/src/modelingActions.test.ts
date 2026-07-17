@@ -894,7 +894,12 @@ function createGeneratedReferences({
 }
 
 function createFace(
-  overrides: Partial<CadGeneratedFaceReference> = {}
+  overrides: Partial<
+    Extract<
+      CadGeneratedFaceReference,
+      { readonly sourceSketchEntityId: string }
+    >
+  > = {}
 ): CadGeneratedFaceReference {
   return {
     kind: "face",
@@ -923,7 +928,12 @@ function createFace(
 }
 
 function createEdge(
-  overrides: Partial<CadGeneratedEdgeReference> = {}
+  overrides: Partial<
+    Extract<
+      CadGeneratedEdgeReference,
+      { readonly sourceSketchEntityId: string }
+    >
+  > = {}
 ): CadGeneratedEdgeReference {
   return {
     kind: "edge",

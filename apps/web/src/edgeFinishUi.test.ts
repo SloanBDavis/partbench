@@ -542,7 +542,12 @@ function createExtrudeFeature(
 }
 
 function createEdge(
-  overrides: Partial<CadGeneratedEdgeReference> = {}
+  overrides: Partial<
+    Extract<
+      CadGeneratedEdgeReference,
+      { readonly sourceSketchEntityId: string }
+    >
+  > = {}
 ): CadGeneratedEdgeReference {
   return {
     kind: "edge",
