@@ -16,6 +16,10 @@ import {
   resolveViewportPickedBodyId,
   resolveViewportPickIntent
 } from "./viewportPickIntent";
+import {
+  createSketchEntitySelectionId,
+  createSketchSelectionId
+} from "./sketchRenderIds";
 
 describe("viewport pick intent", () => {
   it("creates private V9 body hit candidates from body render IDs", () => {
@@ -350,7 +354,7 @@ describe("viewport pick intent", () => {
 
   it("returns V9 unsupported and renderer-only diagnostics for non-body picks", () => {
     const sketchIntent = resolveViewportPickIntent({
-      pickedRenderId: "sketch:sketch_1",
+      pickedRenderId: createSketchSelectionId("sketch_1"),
       bodies: [],
       objects: []
     });
@@ -420,7 +424,7 @@ describe("viewport pick intent", () => {
       ]
     };
     const intent = resolveViewportPickIntent({
-      pickedRenderId: "sketch:sketch_1:entity:arc_1",
+      pickedRenderId: createSketchEntitySelectionId("sketch_1", "arc_1"),
       bodies: [],
       objects: [],
       sketches: [sketch]
@@ -428,10 +432,10 @@ describe("viewport pick intent", () => {
 
     expect(intent).toEqual({
       kind: "sketchEntity",
-      selectedId: "sketch:sketch_1:entity:arc_1",
+      selectedId: createSketchEntitySelectionId("sketch_1", "arc_1"),
       sketchId: "sketch_1",
       entityId: "arc_1",
-      renderTargetId: "sketch:sketch_1:entity:arc_1",
+      renderTargetId: createSketchEntitySelectionId("sketch_1", "arc_1"),
       issues: [],
       interactionDiagnostics: []
     });

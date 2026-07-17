@@ -243,7 +243,19 @@ export function getRenderObjectBounds(
     }
   }
 
-  return undefined;
+  let groupedBounds: MutableBounds | undefined;
+  for (const mesh of meshes) {
+    if (mesh.parentId !== objectId) {
+      continue;
+    }
+
+    const meshBounds = getMeshBounds(mesh);
+    if (meshBounds) {
+      groupedBounds = includeBounds(groupedBounds, meshBounds);
+    }
+  }
+
+  return groupedBounds;
 }
 
 function fitCameraToBounds(

@@ -8,16 +8,51 @@ import type {
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { SketchPanel } from "./SketchPanel";
+import { entityToSketchEntityForm } from "../sketchEntityForms";
+import { EntityEditor, SketchPanel } from "./SketchPanel";
 
 describe("SketchPanel", () => {
+  it("renders canonical arc edit fields without exposing an arc create tool", () => {
+    const arc: SketchSnapshot["entities"][number] = {
+      id: "arc_1",
+      kind: "arc",
+      center: [1, 2],
+      radius: 3,
+      startAngleDegrees: 350,
+      sweepAngleDegrees: -80,
+      construction: true
+    };
+    const markup = renderToStaticMarkup(
+      createElement(EntityEditor, {
+        disabled: false,
+        canCancel: true,
+        editingEntityId: arc.id,
+        entityForm: entityToSketchEntityForm(arc),
+        entityKind: arc.kind,
+        validation: { ok: true },
+        onCancelEdit: () => undefined,
+        onEntityFormChange: () => undefined,
+        onEntityKindChange: () => undefined,
+        onSave: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Edit sketch entity");
+    expect(markup).toContain("Start angle (deg)");
+    expect(markup).toContain("Signed sweep (deg)");
+    expect(markup).toContain('value="350"');
+    expect(markup).toContain('value="-80"');
+    expect(markup).toContain('<option value="arc" selected="">Arc</option>');
+  });
+
   it("renders compact solver status and selected entity intent", () => {
     const rectangle: SketchSnapshot["entities"][number] = {
       id: "rect_1",
       kind: "rectangle",
       center: [0, 0],
       width: 4,
-      height: 2
+      height: 2,
+      construction: false
     };
     const sketch: SketchSnapshot = {
       id: "sketch_1",
@@ -183,7 +218,8 @@ describe("SketchPanel", () => {
       id: "line_1",
       kind: "line",
       start: [0, 0],
-      end: [4, 0.1]
+      end: [4, 0.1],
+      construction: false
     };
     const sketch: SketchSnapshot = {
       id: "sketch_1",

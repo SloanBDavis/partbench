@@ -33,7 +33,7 @@ import {
 import {
   createSketchEntitySelectionId,
   createSketchSelectionId
-} from "./sketchPanelUi";
+} from "./sketchRenderIds";
 
 export interface RenderSceneInputs {
   readonly primitives: readonly RenderPrimitive[];
@@ -133,7 +133,8 @@ export function createSketchDisplayMeshes(
         createSketchEntitySelectionId(sketch.id, entity.id),
         `${sketch.name}: ${entity.id}`,
         createSketchEntityDisplayEdges(displayFrame, entity),
-        entity.construction
+        entity.construction,
+        createSketchSelectionId(sketch.id)
       )
     );
   });
@@ -143,12 +144,14 @@ function createSketchDisplayMesh(
   id: string,
   label: string,
   edgeSegments: readonly RenderEdgeSegment[],
-  construction: boolean
+  construction: boolean,
+  parentId?: string
 ): RenderTriangleMesh {
   return {
     id,
+    ...(parentId ? { parentId } : {}),
     kind: "mesh",
-    vertices: edgeSegments.flatMap((edge) => [edge.start, edge.end]),
+    vertices: [],
     indices: [],
     transform: createIdentityTransform(),
     edgeSegments,
@@ -157,21 +160,6 @@ function createSketchDisplayMesh(
     source: "sketch",
     label
   };
-}
-
-export function createSketchDisplayEdges(
-  sketch: SketchSnapshot,
-  displayFrame: SketchDisplayFrame = createDefaultSketchDisplayFrame(
-    sketch.plane
-  )
-): readonly RenderEdgeSegment[] {
-  if (sketch.entities.length === 0) {
-    return createEmptySketchPlaneMarker(displayFrame);
-  }
-
-  return sketch.entities.flatMap((entity) =>
-    createSketchEntityDisplayEdges(displayFrame, entity)
-  );
 }
 
 export function addMeshDisplayEdges(

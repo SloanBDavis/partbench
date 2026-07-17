@@ -178,6 +178,7 @@ export interface SketchConstraintForm {
 
 export interface SketchEntityForm {
   readonly id: string;
+  readonly construction: boolean;
   readonly x: number;
   readonly y: number;
   readonly x2: number;
@@ -185,6 +186,8 @@ export interface SketchEntityForm {
   readonly width: number;
   readonly height: number;
   readonly radius: number;
+  readonly startAngleDegrees: number;
+  readonly sweepAngleDegrees: number;
 }
 
 export interface FeatureExtrudeForm {

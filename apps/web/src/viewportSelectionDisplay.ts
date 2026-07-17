@@ -26,6 +26,7 @@ export type ViewportSelectionKind =
   | "none"
   | "object"
   | "body"
+  | "sketchEntity"
   | "generatedReference";
 
 export type ViewportSelectionTone = "idle" | "ready" | "warning" | "blocked";
@@ -47,6 +48,8 @@ export interface ViewportSelectionDisplay {
   readonly detail: string;
   readonly tone: ViewportSelectionTone;
   readonly renderTargetId?: string;
+  readonly sketchId?: string;
+  readonly entityId?: string;
   readonly geometryStatus: ViewportGeometryDisplayStatus;
   readonly geometryDetail?: string;
   readonly referenceStatus?: CadSelectionReferenceStatus;
@@ -170,6 +173,19 @@ export function createViewportSelectionDisplay({
     });
   }
 
+  if (viewportPickIntent?.kind === "sketchEntity") {
+    return createDisplay({
+      selectionKind: "sketchEntity",
+      title: `${viewportPickIntent.entityId} (Sketch entity)`,
+      detail: `Selected entity in sketch ${viewportPickIntent.sketchId}`,
+      tone: "idle",
+      renderTargetId: viewportPickIntent.renderTargetId,
+      sketchId: viewportPickIntent.sketchId,
+      entityId: viewportPickIntent.entityId,
+      geometry
+    });
+  }
+
   if (
     viewportPickIntent?.kind === "unsupported" ||
     viewportPickIntent?.kind === "renderer-only" ||
@@ -225,6 +241,8 @@ function createDisplay({
   diagnostics = [],
   geometry,
   renderTargetId,
+  sketchId,
+  entityId,
   selectionKind,
   title,
   tone
@@ -237,6 +255,8 @@ function createDisplay({
     readonly detail: string;
   };
   readonly renderTargetId?: string;
+  readonly sketchId?: string;
+  readonly entityId?: string;
   readonly selectionKind: ViewportSelectionKind;
   readonly title: string;
   readonly tone: ViewportSelectionTone;
@@ -247,6 +267,8 @@ function createDisplay({
     detail,
     tone,
     ...(renderTargetId ? { renderTargetId } : {}),
+    ...(sketchId ? { sketchId } : {}),
+    ...(entityId ? { entityId } : {}),
     geometryStatus: geometry.status,
     geometryDetail: geometry.detail,
     referenceStatus: candidateDisplay?.referenceStatus,

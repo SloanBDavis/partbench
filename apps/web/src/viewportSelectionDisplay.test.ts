@@ -2,13 +2,93 @@ import type {
   CadBodySnapshot,
   CadGeneratedFaceReference,
   CadGeneratedReference,
+  SketchSnapshot,
   SelectionReferenceCandidatesQueryResponse
 } from "@web-cad/cad-protocol";
 import { describe, expect, it } from "vitest";
 import type { DerivedGeometryEntry } from "./derivedGeometry";
 import { createViewportSelectionDisplay } from "./viewportSelectionDisplay";
+import { resolveViewportPickIntent } from "./viewportPickIntent";
+import { createViewportVisualStateModel } from "./viewportVisualState";
+import { createSketchEntitySelectionId } from "./sketchRenderIds";
+import { createSketchModelingSelectionContext } from "./sketchModelingSelectionContext";
 
 describe("viewportSelectionDisplay", () => {
+  it("carries a sketch entity pick through display, highlight, and inspector context", () => {
+    const sketch: SketchSnapshot = {
+      id: "sketch:source",
+      name: "Arc sketch",
+      plane: "XY",
+      entities: [
+        {
+          id: "arc:entity",
+          kind: "arc",
+          center: [0, 0],
+          radius: 2,
+          startAngleDegrees: 350,
+          sweepAngleDegrees: 30,
+          construction: false
+        }
+      ]
+    };
+    const renderTargetId = createSketchEntitySelectionId(
+      sketch.id,
+      sketch.entities[0].id
+    );
+    const pickIntent = resolveViewportPickIntent({
+      pickedRenderId: renderTargetId,
+      bodies: [],
+      objects: [],
+      sketches: [sketch]
+    });
+    const display = createViewportSelectionDisplay({
+      derivedGeometryEnabled: true,
+      selectedGeneratedReferenceState: { status: "none" },
+      viewportPickIntent: pickIntent
+    });
+    const visualState = createViewportVisualStateModel({
+      selectionDisplay: display,
+      selectedGeneratedReferenceState: { status: "none" }
+    });
+    const inspectorContext = createSketchModelingSelectionContext({
+      selectedId: pickIntent.selectedId,
+      selectedSketchContext: undefined,
+      focusedSketchId: undefined,
+      sketchDimensionsBySketchId: new Map(),
+      sketchEvaluationsBySketchId: new Map(),
+      sketchSolverStatusesBySketchId: new Map(),
+      sketches: [sketch]
+    });
+
+    expect(pickIntent).toMatchObject({
+      kind: "sketchEntity",
+      sketchId: sketch.id,
+      entityId: sketch.entities[0].id,
+      selectedId: renderTargetId
+    });
+    expect(display).toMatchObject({
+      selectionKind: "sketchEntity",
+      renderTargetId,
+      sketchId: sketch.id,
+      entityId: sketch.entities[0].id
+    });
+    expect(visualState).toMatchObject({
+      selectedRenderTargetId: renderTargetId,
+      rendererVisualStates: [
+        {
+          targetId: renderTargetId,
+          targetKind: "sketchEntity",
+          state: "selected"
+        }
+      ]
+    });
+    expect(inspectorContext).toMatchObject({
+      selectionKind: "sketchEntity",
+      sketch: { id: sketch.id },
+      entity: { id: sketch.entities[0].id, kind: "arc" }
+    });
+  });
+
   it("derives selected body viewport status from reference candidates", () => {
     const face = createFaceReference();
     const display = createViewportSelectionDisplay({

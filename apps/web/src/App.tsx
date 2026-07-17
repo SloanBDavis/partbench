@@ -302,10 +302,9 @@ import {
   createAddTargetBodyOptions,
   createCutTargetBodyOptions,
   createHoleTargetBodyOptions,
-  createSketchEntitySelectionId,
-  createSketchSelectionId,
   type SketchPanelSelectionContext
 } from "./sketchPanelUi";
+import { createSketchModelingSelectionContext } from "./sketchModelingSelectionContext";
 import {
   createNamedReferenceHealthByName,
   formatNamedReferenceRepairBatchError,
@@ -1280,109 +1279,6 @@ function createModelingSelectionContext({
       sketches
     }) ?? { selectionKind: "none" }
   );
-}
-
-function createSketchModelingSelectionContext({
-  focusedSketchId,
-  selectedId,
-  selectedSketchContext,
-  sketchDimensionsBySketchId,
-  sketchEvaluationsBySketchId,
-  sketchSolverStatusesBySketchId,
-  sketches
-}: {
-  readonly focusedSketchId?: string;
-  readonly selectedId?: string;
-  readonly selectedSketchContext?: SketchPanelSelectionContext;
-  readonly sketchDimensionsBySketchId: ReadonlyMap<
-    string,
-    readonly SketchDimensionEntry[]
-  >;
-  readonly sketchEvaluationsBySketchId: ReadonlyMap<
-    string,
-    SketchEvaluationQueryResponse
-  >;
-  readonly sketchSolverStatusesBySketchId: ReadonlyMap<
-    string,
-    SketchSolverStatusQueryResponse
-  >;
-  readonly sketches: readonly SketchSnapshot[];
-}): ModelingSelectionContext | undefined {
-  if (selectedSketchContext) {
-    const sketch = sketches.find(
-      (candidate) => candidate.id === selectedSketchContext.sketchId
-    );
-    const entity = sketch?.entities.find(
-      (candidate) => candidate.id === selectedSketchContext.entityId
-    );
-
-    if (sketch && entity) {
-      const evaluation = sketchEvaluationsBySketchId.get(sketch.id);
-      const solverStatus = sketchSolverStatusesBySketchId.get(sketch.id);
-
-      return {
-        selectionKind: "sketchEntity",
-        sketch,
-        entity,
-        dimensions:
-          evaluation?.dimensions ?? sketchDimensionsBySketchId.get(sketch.id),
-        constraints: evaluation?.constraints,
-        solverStatus
-      };
-    }
-
-    if (sketch) {
-      return {
-        selectionKind: "sketch",
-        sketch,
-        solverStatus: sketchSolverStatusesBySketchId.get(sketch.id)
-      };
-    }
-  }
-
-  if (selectedId) {
-    for (const sketch of sketches) {
-      for (const entity of sketch.entities) {
-        if (
-          selectedId === createSketchEntitySelectionId(sketch.id, entity.id)
-        ) {
-          const evaluation = sketchEvaluationsBySketchId.get(sketch.id);
-          const solverStatus = sketchSolverStatusesBySketchId.get(sketch.id);
-
-          return {
-            selectionKind: "sketchEntity",
-            sketch,
-            entity,
-            dimensions:
-              evaluation?.dimensions ??
-              sketchDimensionsBySketchId.get(sketch.id),
-            constraints: evaluation?.constraints,
-            solverStatus
-          };
-        }
-      }
-
-      if (selectedId === createSketchSelectionId(sketch.id)) {
-        return {
-          selectionKind: "sketch",
-          sketch,
-          solverStatus: sketchSolverStatusesBySketchId.get(sketch.id)
-        };
-      }
-    }
-  }
-
-  const focusedSketch = focusedSketchId
-    ? sketches.find((sketch) => sketch.id === focusedSketchId)
-    : undefined;
-
-  return focusedSketch
-    ? {
-        selectionKind: "sketch",
-        sketch: focusedSketch,
-        solverStatus: sketchSolverStatusesBySketchId.get(focusedSketch.id)
-      }
-    : undefined;
 }
 
 export function App() {

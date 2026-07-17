@@ -22,7 +22,8 @@ describe("sketch entity form helpers", () => {
         kind: "rectangle",
         center: [0, 0],
         width: 4,
-        height: 2
+        height: 2,
+        construction: false
       }
     ]);
 
@@ -38,7 +39,8 @@ describe("sketch entity form helpers", () => {
         kind: "rectangle",
         center: [0, 0],
         width: 4,
-        height: 2
+        height: 2,
+        construction: false
       }
     ]);
     const attachedSketch = createAttachedSketch(
@@ -65,7 +67,8 @@ describe("sketch entity form helpers", () => {
         id: "circle_1",
         kind: "circle",
         center: [0, 0],
-        radius: 2
+        radius: 2,
+        construction: false
       }
     ]);
     const attachedSketch = createAttachedSketch(
@@ -91,7 +94,8 @@ describe("sketch entity form helpers", () => {
       kind: "rectangle",
       center: [0, 0],
       width: 4,
-      height: 2
+      height: 2,
+      construction: true
     };
     const form = entityToSketchEntityForm(entity);
     const updatedEntity = sketchEntityFormToEntity("rect_1", "rectangle", {
@@ -107,7 +111,8 @@ describe("sketch entity form helpers", () => {
       kind: "rectangle",
       center: [1, 2],
       width: 6,
-      height: 5
+      height: 5,
+      construction: true
     });
     expect(buildUpdateSketchEntityOp("sketch_1", updatedEntity)).toEqual({
       op: "sketch.updateEntity",
@@ -121,7 +126,8 @@ describe("sketch entity form helpers", () => {
       id: "circle_1",
       kind: "circle",
       center: [0, 0],
-      radius: 2
+      radius: 2,
+      construction: true
     };
     const form = entityToSketchEntityForm(entity);
     const updatedEntity = sketchEntityFormToEntity("circle_1", "circle", {
@@ -135,7 +141,8 @@ describe("sketch entity form helpers", () => {
       id: "circle_1",
       kind: "circle",
       center: [-1, 3],
-      radius: 4
+      radius: 4,
+      construction: true
     });
     expect(buildUpdateSketchEntityOp("sketch_1", updatedEntity)).toEqual({
       op: "sketch.updateEntity",
@@ -147,6 +154,7 @@ describe("sketch entity form helpers", () => {
   it("validates rectangle and circle source-profile forms before saving", () => {
     expect(
       validateSketchEntityForm("rectangle", {
+        ...defaultSketchEntityForm,
         id: "rect_1",
         x: 0,
         y: 0,
@@ -163,6 +171,7 @@ describe("sketch entity form helpers", () => {
 
     expect(
       validateSketchEntityForm("circle", {
+        ...defaultSketchEntityForm,
         id: "circle_1",
         x: Number.NaN,
         y: 0,
@@ -179,6 +188,7 @@ describe("sketch entity form helpers", () => {
 
     expect(
       validateSketchEntityForm("circle", {
+        ...defaultSketchEntityForm,
         id: "circle_1",
         x: 0,
         y: 0,
@@ -212,9 +222,149 @@ describe("sketch entity form helpers", () => {
         kind: "rectangle",
         center: [1, 2],
         width: 6,
-        height: 5
+        height: 5,
+        construction: false
       })
     ).toBe("Rectangle 6 x 5 at (1, 2)");
+  });
+
+  it("converts a selected arc into canonical editable fields and update source", () => {
+    const arc: SketchEntitySnapshot = {
+      id: "arc_1",
+      kind: "arc",
+      center: [1, -2],
+      radius: 4,
+      startAngleDegrees: 350,
+      sweepAngleDegrees: -120,
+      construction: true
+    };
+    const selectedForm = entityToSketchEntityForm(arc);
+    const updated = sketchEntityFormToEntity("arc_1", "arc", {
+      ...selectedForm,
+      x: 3,
+      radius: 5,
+      startAngleDegrees: 370,
+      sweepAngleDegrees: 80
+    });
+
+    expect(selectedForm).toMatchObject({
+      x: 1,
+      y: -2,
+      radius: 4,
+      startAngleDegrees: 350,
+      sweepAngleDegrees: -120,
+      construction: true
+    });
+    expect(updated).toEqual({
+      id: "arc_1",
+      kind: "arc",
+      center: [3, -2],
+      radius: 5,
+      startAngleDegrees: 10,
+      sweepAngleDegrees: 80,
+      construction: true
+    });
+    expect(buildUpdateSketchEntityOp("sketch_1", updated)).toEqual({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: updated
+    });
+    expect(getSketchEntityFormLabels("arc")).toMatchObject({
+      x: "Center X",
+      radius: "Radius",
+      startAngleDegrees: "Start angle (deg)",
+      sweepAngleDegrees: "Signed sweep (deg)"
+    });
+    expect(formatSketchEntity(updated)).toBe(
+      "Arc r 5 at (3, -2), start 10°, sweep 80°"
+    );
+  });
+
+  it("validates finite canonical arc fields and signed sweep policy", () => {
+    expect(
+      validateSketchEntityForm("arc", {
+        ...defaultSketchEntityForm,
+        radius: 0,
+        startAngleDegrees: 0,
+        sweepAngleDegrees: 90
+      })
+    ).toEqual({
+      ok: false,
+      message: "Arc radius must exceed the sketch tolerance."
+    });
+    expect(
+      validateSketchEntityForm("arc", {
+        ...defaultSketchEntityForm,
+        startAngleDegrees: Number.NaN,
+        sweepAngleDegrees: 90
+      })
+    ).toEqual({
+      ok: false,
+      message: "Arc start and signed sweep angles must be finite numbers."
+    });
+    expect(
+      validateSketchEntityForm("arc", {
+        ...defaultSketchEntityForm,
+        sweepAngleDegrees: 360
+      })
+    ).toEqual({
+      ok: false,
+      message:
+        "Arc signed sweep must be between 0.1 and 359.9 degrees in magnitude."
+    });
+    expect(
+      validateSketchEntityForm("arc", {
+        ...defaultSketchEntityForm,
+        startAngleDegrees: -10,
+        sweepAngleDegrees: -90
+      })
+    ).toEqual({ ok: true });
+  });
+
+  it("preserves construction when editing every sketch entity kind", () => {
+    const entities: readonly SketchEntitySnapshot[] = [
+      { id: "point", kind: "point", point: [1, 2], construction: true },
+      {
+        id: "line",
+        kind: "line",
+        start: [0, 0],
+        end: [1, 1],
+        construction: true
+      },
+      {
+        id: "rectangle",
+        kind: "rectangle",
+        center: [0, 0],
+        width: 2,
+        height: 3,
+        construction: true
+      },
+      {
+        id: "circle",
+        kind: "circle",
+        center: [0, 0],
+        radius: 2,
+        construction: true
+      },
+      {
+        id: "arc",
+        kind: "arc",
+        center: [0, 0],
+        radius: 2,
+        startAngleDegrees: 10,
+        sweepAngleDegrees: -90,
+        construction: true
+      }
+    ];
+
+    for (const entity of entities) {
+      const roundTripped = sketchEntityFormToEntity(
+        entity.id,
+        entity.kind,
+        entityToSketchEntityForm(entity)
+      );
+      expect(roundTripped.construction).toBe(true);
+    }
   });
 });
 

@@ -3333,7 +3333,7 @@ function DimensionValueSourceFields({
   );
 }
 
-function EntityEditor({
+export function EntityEditor({
   disabled,
   canCancel,
   editingEntityId,
@@ -3385,6 +3385,9 @@ function EntityEditor({
             <option value="line">Line</option>
             <option value="rectangle">Rectangle</option>
             <option value="circle">Circle</option>
+            {editingEntityId && entityKind === "arc" && (
+              <option value="arc">Arc</option>
+            )}
           </select>
         </label>
         {editingEntityId ? (
@@ -3456,13 +3459,33 @@ function EntityEditor({
             />
           </>
         )}
-        {entityKind === "circle" && (
+        {(entityKind === "circle" || entityKind === "arc") && (
           <NumberField
             disabled={disabled}
             label={labels.radius ?? "Radius"}
             value={entityForm.radius}
             onChange={(radius) => onEntityFormChange({ ...entityForm, radius })}
           />
+        )}
+        {entityKind === "arc" && (
+          <>
+            <NumberField
+              disabled={disabled}
+              label={labels.startAngleDegrees ?? "Start angle (deg)"}
+              value={entityForm.startAngleDegrees}
+              onChange={(startAngleDegrees) =>
+                onEntityFormChange({ ...entityForm, startAngleDegrees })
+              }
+            />
+            <NumberField
+              disabled={disabled}
+              label={labels.sweepAngleDegrees ?? "Signed sweep (deg)"}
+              value={entityForm.sweepAngleDegrees}
+              onChange={(sweepAngleDegrees) =>
+                onEntityFormChange({ ...entityForm, sweepAngleDegrees })
+              }
+            />
+          </>
         )}
       </div>
       {!validation.ok && <p className="error-text">{validation.message}</p>}

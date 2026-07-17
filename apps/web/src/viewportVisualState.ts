@@ -124,6 +124,8 @@ function getSelectedVisualTargetKind(
       return "object";
     case "generatedReference":
       return "body";
+    case "sketchEntity":
+      return "sketchEntity";
     case "body":
     case "none":
       return "body";

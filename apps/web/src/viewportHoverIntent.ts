@@ -16,7 +16,7 @@ import {
 } from "./generatedReferenceSelection";
 import { formatObjectKind, getObjectDisplayName } from "./sceneObjectDisplay";
 import { formatVisibleDiagnosticMessage } from "./viewportVisibleText";
-import { createSketchEntitySelectionId } from "./sketchPanelUi";
+import { parseSketchRenderId } from "./sketchRenderIds";
 
 export type ViewportHoverKind =
   | "empty"
@@ -190,14 +190,17 @@ export function resolveViewportHoverIntent({
     };
   }
 
-  for (const sketch of sketches) {
-    const entity = sketch.entities.find(
-      (candidate) =>
-        createSketchEntitySelectionId(sketch.id, candidate.id) ===
-        hoveredRenderId
+  const sketchRenderTarget = parseSketchRenderId(hoveredRenderId);
+
+  if (sketchRenderTarget?.kind === "sketchEntity") {
+    const sketch = sketches.find(
+      (candidate) => candidate.id === sketchRenderTarget.sketchId
+    );
+    const entity = sketch?.entities.find(
+      (candidate) => candidate.id === sketchRenderTarget.entityId
     );
 
-    if (entity) {
+    if (sketch && entity) {
       const kindLabel = formatSketchEntityKindLabel(entity.kind);
 
       return {
@@ -217,7 +220,7 @@ export function resolveViewportHoverIntent({
     }
   }
 
-  if (hoveredRenderId.startsWith("sketch:")) {
+  if (sketchRenderTarget) {
     return createBlockedHoverState(
       "unsupported",
       "Viewport hover unsupported",

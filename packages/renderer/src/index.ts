@@ -76,6 +76,8 @@ export interface RenderEdgeSegment {
 
 export interface RenderTriangleMesh {
   readonly id: string;
+  /** Optional renderer-only group used for aggregate visual state and bounds. */
+  readonly parentId?: string;
   readonly kind: "mesh";
   readonly vertices: readonly Vec3[];
   readonly indices: readonly number[];
@@ -291,7 +293,9 @@ export function renderCanvasScene(
     drawPrimitive(context, primitive, camera, size, createEmptyVisualStyle());
   }
 
-  for (const mesh of meshes.filter((mesh) => !visualStates.has(mesh.id))) {
+  for (const mesh of meshes.filter(
+    (mesh) => !hasMeshVisualState(mesh, visualStates)
+  )) {
     drawTriangleMesh(context, mesh, camera, size, createEmptyVisualStyle());
   }
 
@@ -307,15 +311,54 @@ export function renderCanvasScene(
     );
   }
 
-  for (const mesh of meshes.filter((mesh) => visualStates.has(mesh.id))) {
+  for (const mesh of meshes.filter((mesh) =>
+    hasMeshVisualState(mesh, visualStates)
+  )) {
     drawTriangleMesh(
       context,
       mesh,
       camera,
       size,
-      visualStates.get(mesh.id) ?? createEmptyVisualStyle()
+      getMeshVisualStyle(mesh, visualStates)
     );
   }
+}
+
+function hasMeshVisualState(
+  mesh: RenderTriangleMesh,
+  visualStates: ReadonlyMap<string, RenderVisualStyle>
+): boolean {
+  return (
+    visualStates.has(mesh.id) ||
+    (mesh.parentId !== undefined && visualStates.has(mesh.parentId))
+  );
+}
+
+function getMeshVisualStyle(
+  mesh: RenderTriangleMesh,
+  visualStates: ReadonlyMap<string, RenderVisualStyle>
+): RenderVisualStyle {
+  const entityStyle = visualStates.get(mesh.id);
+  const parentStyle = mesh.parentId
+    ? visualStates.get(mesh.parentId)
+    : undefined;
+
+  if (!entityStyle) {
+    return parentStyle ?? createEmptyVisualStyle();
+  }
+
+  if (!parentStyle) {
+    return entityStyle;
+  }
+
+  return {
+    hover: entityStyle.hover || parentStyle.hover,
+    selected: entityStyle.selected || parentStyle.selected,
+    commandTarget: entityStyle.commandTarget || parentStyle.commandTarget,
+    warning: entityStyle.warning || parentStyle.warning,
+    pending: entityStyle.pending || parentStyle.pending,
+    failed: entityStyle.failed || parentStyle.failed
+  };
 }
 
 export interface RenderVisualStyle {
@@ -629,7 +672,10 @@ function drawTriangleMesh(
     transformPoint(vertex, mesh.transform)
   );
   const displayEdges = mesh.edgeSegments ?? [];
-  const outline = createProjectedMeshOutline(vertices, camera, size);
+  const outline =
+    displayEdges.length === 0
+      ? createProjectedMeshOutline(vertices, camera, size)
+      : [];
 
   context.save();
   context.lineJoin = "round";
@@ -1004,11 +1050,16 @@ function createEdgeSegmentPickCandidate(
       size
     );
 
-    if (!start || !end || distanceToProjectedSegment(point, start, end) > 6) {
+    if (!start || !end) {
       continue;
     }
 
-    const depth = Math.min(start.depth, end.depth);
+    const closest = getClosestProjectedSegmentPoint(point, start, end);
+    if (closest.distance > 6) {
+      continue;
+    }
+
+    const depth = start.depth + (end.depth - start.depth) * closest.fraction;
     nearestDepth =
       nearestDepth === undefined ? depth : Math.min(nearestDepth, depth);
   }
@@ -1018,17 +1069,20 @@ function createEdgeSegmentPickCandidate(
     : { id: mesh.id, depth: nearestDepth };
 }
 
-function distanceToProjectedSegment(
+function getClosestProjectedSegmentPoint(
   point: ViewportPoint,
   start: ProjectedPoint,
   end: ProjectedPoint
-): number {
+): { readonly distance: number; readonly fraction: number } {
   const deltaX = end.x - start.x;
   const deltaY = end.y - start.y;
   const lengthSquared = deltaX * deltaX + deltaY * deltaY;
 
   if (lengthSquared === 0) {
-    return Math.hypot(point.x - start.x, point.y - start.y);
+    return {
+      distance: Math.hypot(point.x - start.x, point.y - start.y),
+      fraction: 0
+    };
   }
 
   const fraction = clamp(
@@ -1038,10 +1092,13 @@ function distanceToProjectedSegment(
     1
   );
 
-  return Math.hypot(
-    point.x - (start.x + fraction * deltaX),
-    point.y - (start.y + fraction * deltaY)
-  );
+  return {
+    distance: Math.hypot(
+      point.x - (start.x + fraction * deltaX),
+      point.y - (start.y + fraction * deltaY)
+    ),
+    fraction
+  };
 }
 
 function getProjectedPrimitiveBounds(

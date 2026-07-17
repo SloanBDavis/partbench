@@ -236,6 +236,101 @@ describe("renderer", () => {
     ).toBeUndefined();
   });
 
+  it("interpolates edge depth at the closest projected crossing", () => {
+    const camera = {
+      target: [0, 0, 0] as const,
+      yaw: 0,
+      pitch: 0,
+      distance: 10
+    };
+    const size = { width: 800, height: 600 };
+    const transform = {
+      translation: [0, 0, 0] as const,
+      rotation: [0, 0, 0] as const,
+      scale: [1, 1, 1] as const
+    };
+    const crossingMeshes = [
+      {
+        id: "varying-depth",
+        kind: "mesh" as const,
+        vertices: [],
+        indices: [],
+        transform,
+        edgeSegments: [
+          {
+            start: [-2, -5, 0] as const,
+            end: [2, 5, 0] as const
+          }
+        ],
+        pickMode: "edgeSegments" as const
+      },
+      {
+        id: "near-at-crossing",
+        kind: "mesh" as const,
+        vertices: [],
+        indices: [],
+        transform,
+        edgeSegments: [
+          {
+            start: [-2, 0, 0] as const,
+            end: [2, 0, 0] as const
+          }
+        ],
+        pickMode: "edgeSegments" as const
+      }
+    ];
+
+    expect(
+      pickRenderScene([], crossingMeshes, camera, size, { x: 400, y: 300 })
+    ).toBe("near-at-crossing");
+  });
+
+  it("orders edge and body hits by their projected depth", () => {
+    const camera = {
+      target: [0, 0, 0] as const,
+      yaw: 0,
+      pitch: 0,
+      distance: 10
+    };
+    const size = { width: 800, height: 600 };
+    const box = {
+      id: "body",
+      kind: "box" as const,
+      dimensions: { width: 4, height: 2, depth: 4 },
+      transform: {
+        translation: [0, 0, 0] as const,
+        rotation: [0, 0, 0] as const,
+        scale: [1, 1, 1] as const
+      }
+    };
+    const createEdge = (id: string, y: number) => ({
+      id,
+      kind: "mesh" as const,
+      vertices: [],
+      indices: [],
+      transform: {
+        translation: [0, 0, 0] as const,
+        rotation: [0, 0, 0] as const,
+        scale: [1, 1, 1] as const
+      },
+      edgeSegments: [{ start: [-1, y, 0] as const, end: [1, y, 0] as const }],
+      pickMode: "edgeSegments" as const
+    });
+
+    expect(
+      pickRenderScene([box], [createEdge("edge-behind", 3)], camera, size, {
+        x: 400,
+        y: 300
+      })
+    ).toBe("body");
+    expect(
+      pickRenderScene([box], [createEdge("edge-in-front", -3)], camera, size, {
+        x: 400,
+        y: 300
+      })
+    ).toBe("edge-in-front");
+  });
+
   it("renders construction edges with the restrained dashed vocabulary", () => {
     const recorder = createRecordingCanvasContext();
 
@@ -267,6 +362,40 @@ describe("renderer", () => {
       lineDash: [5, 4],
       lineWidth: 2,
       strokeStyle: "#6f7c86"
+    });
+  });
+
+  it("applies sketch-level visual state to child entity meshes", () => {
+    const recorder = createRecordingCanvasContext();
+
+    renderCanvasScene(recorder.context, {
+      camera: createDefaultCamera(),
+      size: { width: 800, height: 600 },
+      primitives: [],
+      meshes: [
+        {
+          id: "entity",
+          parentId: "sketch",
+          kind: "mesh",
+          vertices: [],
+          indices: [],
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          },
+          edgeSegments: [{ start: [0, 0, 0], end: [1, 0, 0] }]
+        }
+      ],
+      selectedId: "sketch"
+    });
+
+    expect(recorder.strokes.some((stroke) => stroke.lineWidth === 7)).toBe(
+      true
+    );
+    expect(recorder.strokes.at(-1)).toMatchObject({
+      lineWidth: 3,
+      strokeStyle: "#f2a541"
     });
   });
 

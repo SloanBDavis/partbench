@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { GeneratedReferenceSelectionState } from "./generatedReferenceSelection";
 import { createViewportVisualStateModel } from "./viewportVisualState";
 import type { ViewportSelectionDisplay } from "./viewportSelectionDisplay";
+import { createSketchEntitySelectionId } from "./sketchRenderIds";
 
 describe("viewport visual state", () => {
   it("marks selected command-ready bodies as selected command targets", () => {
@@ -152,7 +153,7 @@ describe("viewport visual state", () => {
   });
 
   it("preselects a hovered sketch entity by its semantic render ID", () => {
-    const targetId = "sketch:sketch_1:entity:arc_1";
+    const targetId = createSketchEntitySelectionId("sketch_1", "arc_1");
     const visualState = createViewportVisualStateModel({
       hoverState: {
         kind: "sketchEntity",

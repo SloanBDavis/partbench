@@ -15,7 +15,7 @@ import {
   createViewportInteractionDiagnosticsFromCandidates,
   resolveViewportHitCandidateSelection
 } from "./viewportInteractionContract";
-import { createSketchEntitySelectionId } from "./sketchPanelUi";
+import { parseSketchRenderId } from "./sketchRenderIds";
 
 export type ViewportPickIntentKind =
   | "empty"
@@ -268,7 +268,7 @@ export function createViewportBodyHitTarget({
     };
   }
 
-  if (pickedRenderId.startsWith("sketch:")) {
+  if (parseSketchRenderId(pickedRenderId)) {
     return {
       kind: "unsupported",
       hitCandidate: {
@@ -298,14 +298,17 @@ export function resolveViewportPickIntent({
   readReferenceCandidates
 }: ResolveViewportPickIntentInput): ViewportPickIntent {
   if (!hitCandidate && pickedRenderId) {
-    for (const sketch of sketches) {
-      const entity = sketch.entities.find(
-        (candidate) =>
-          createSketchEntitySelectionId(sketch.id, candidate.id) ===
-          pickedRenderId
+    const sketchRenderTarget = parseSketchRenderId(pickedRenderId);
+
+    if (sketchRenderTarget?.kind === "sketchEntity") {
+      const sketch = sketches.find(
+        (candidate) => candidate.id === sketchRenderTarget.sketchId
+      );
+      const entity = sketch?.entities.find(
+        (candidate) => candidate.id === sketchRenderTarget.entityId
       );
 
-      if (entity) {
+      if (sketch && entity) {
         return {
           kind: "sketchEntity",
           selectedId: pickedRenderId,

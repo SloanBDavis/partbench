@@ -193,9 +193,9 @@ describe("sketch panel UI helpers", () => {
         selected: true
       }
     ]);
-    expect(createSketchSelectionId("sketch_1")).toBe("sketch:sketch_1");
+    expect(createSketchSelectionId("sketch_1")).toBe("sketch:8:sketch_1");
     expect(createSketchEntitySelectionId("sketch_1", "circle_1")).toBe(
-      "sketch:sketch_1:entity:circle_1"
+      "sketch:8:sketch_1:entity:8:circle_1"
     );
     expect(isExtrudableSketchEntity(entities[0])).toBe(true);
     expect(isExtrudableSketchEntity(entities[1])).toBe(true);

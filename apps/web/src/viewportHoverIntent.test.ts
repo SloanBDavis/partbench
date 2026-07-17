@@ -9,6 +9,10 @@ import type {
 } from "@web-cad/cad-protocol";
 import { describe, expect, it } from "vitest";
 import { resolveViewportHoverIntent } from "./viewportHoverIntent";
+import {
+  createSketchEntitySelectionId,
+  createSketchSelectionId
+} from "./sketchRenderIds";
 
 describe("viewport hover intent", () => {
   it("resolves authored body render IDs to semantic body hover state", () => {
@@ -128,7 +132,7 @@ describe("viewport hover intent", () => {
 
   it("does not convert sketch or unknown render IDs into generated-reference hover state", () => {
     const sketchHover = resolveViewportHoverIntent({
-      hoveredRenderId: "sketch:sketch_1",
+      hoveredRenderId: createSketchSelectionId("sketch_1"),
       bodies: [],
       objects: []
     });
@@ -181,7 +185,7 @@ describe("viewport hover intent", () => {
       ]
     };
     const hover = resolveViewportHoverIntent({
-      hoveredRenderId: "sketch:sketch_1:entity:arc_1",
+      hoveredRenderId: createSketchEntitySelectionId("sketch_1", "arc_1"),
       bodies: [],
       objects: [],
       sketches: [sketch]
@@ -194,7 +198,7 @@ describe("viewport hover intent", () => {
       tone: "idle",
       sketchId: "sketch_1",
       entityId: "arc_1",
-      renderTargetId: "sketch:sketch_1:entity:arc_1",
+      renderTargetId: createSketchEntitySelectionId("sketch_1", "arc_1"),
       commandOperations: [],
       commandOperationLabels: [],
       diagnostics: []

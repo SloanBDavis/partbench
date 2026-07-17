@@ -26,10 +26,14 @@ import {
   createMeshDisplayEdges,
   createRenderSceneInputs,
   createSketchArcDisplayEdges,
-  createSketchDisplayEdges,
   createSketchDisplayMeshes
 } from "./renderScene";
 import { createDefaultSketchDisplayFrame } from "./sketchDisplayFrames";
+import {
+  createSketchEntitySelectionId,
+  createSketchSelectionId
+} from "./sketchRenderIds";
+import { getRenderObjectBounds } from "./viewportCamera";
 
 describe("renderScene", () => {
   it("prefers a ready derived mesh over the primitive fallback", () => {
@@ -647,8 +651,10 @@ describe("renderScene", () => {
 
     expect(scene.meshes).toHaveLength(1);
     expect(scene.meshes[0]).toMatchObject({
-      id: "sketch:sketch_1:entity:rect_1",
+      id: createSketchEntitySelectionId("sketch_1", "rect_1"),
+      parentId: createSketchSelectionId("sketch_1"),
       kind: "mesh",
+      vertices: [],
       indices: [],
       pickMode: "edgeSegments",
       lineStyle: "solid",
@@ -723,7 +729,9 @@ describe("renderScene", () => {
     const before = createSketchDisplayMeshes([createArcSketch(45)]);
     const after = createSketchDisplayMeshes([createArcSketch(200)]);
 
-    expect(before[0]?.id).toBe("sketch:sketch_1:entity:arc_1");
+    expect(before[0]?.id).toBe(
+      createSketchEntitySelectionId("sketch_1", "arc_1")
+    );
     expect(after[0]?.id).toBe(before[0]?.id);
     expect(after[0]?.edgeSegments?.length).toBeGreaterThan(
       before[0]?.edgeSegments?.length ?? Number.POSITIVE_INFINITY
@@ -751,7 +759,7 @@ describe("renderScene", () => {
     ]);
 
     expect(meshes[0]).toMatchObject({
-      id: "sketch:sketch_1:entity:arc_construction",
+      id: createSketchEntitySelectionId("sketch_1", "arc_construction"),
       lineStyle: "construction",
       pickMode: "edgeSegments",
       source: "sketch"
@@ -800,7 +808,7 @@ describe("renderScene", () => {
         x: onArc?.x ?? 0,
         y: onArc?.y ?? 0
       })
-    ).toBe("sketch:sketch_1:entity:arc_1");
+    ).toBe(createSketchEntitySelectionId("sketch_1", "arc_1"));
     expect(
       pickRenderScene([], mesh ? [mesh] : [], camera, size, {
         x: absentSupportCircle?.x ?? 0,
@@ -809,15 +817,128 @@ describe("renderScene", () => {
     ).toBeUndefined();
   });
 
-  it("adds a small plane marker for empty sketches", () => {
+  it("keeps multi-entity and delimiter-heavy source identities independently pickable", () => {
+    const sketchId = "a:entity:b";
+    const meshes = createSketchDisplayMeshes([
+      {
+        id: sketchId,
+        name: "Adversarial IDs",
+        plane: "XY",
+        entities: [
+          {
+            id: "c",
+            kind: "line",
+            start: [-2, -2],
+            end: [2, -2],
+            construction: false
+          },
+          {
+            id: "b:entity:c",
+            kind: "line",
+            start: [-2, 2],
+            end: [2, 2],
+            construction: false
+          }
+        ]
+      }
+    ]);
+    const camera: RenderCamera = {
+      target: [0, 0, 0],
+      yaw: Math.PI / 4,
+      pitch: -Math.PI / 3,
+      distance: 18
+    };
+    const size = { width: 800, height: 600 };
+
+    expect(meshes.map((mesh) => mesh.id)).toEqual([
+      createSketchEntitySelectionId(sketchId, "c"),
+      createSketchEntitySelectionId(sketchId, "b:entity:c")
+    ]);
+    expect(new Set(meshes.map((mesh) => mesh.id)).size).toBe(2);
     expect(
-      createSketchDisplayEdges({
+      meshes.every(
+        (mesh) => mesh.parentId === createSketchSelectionId(sketchId)
+      )
+    ).toBe(true);
+
+    for (const [entityId, point] of [
+      ["c", [0, -2, 0]],
+      ["b:entity:c", [0, 2, 0]]
+    ] as const) {
+      const projected = projectPoint(point, camera, size);
+      expect(projected).toBeDefined();
+      expect(
+        pickRenderScene([], meshes, camera, size, {
+          x: projected?.x ?? 0,
+          y: projected?.y ?? 0
+        })
+      ).toBe(createSketchEntitySelectionId(sketchId, entityId));
+    }
+  });
+
+  it("aggregates exact child bounds for a sketch in a rotated attached frame", () => {
+    const sketch: SketchSnapshot = {
+      id: "sketch_attached",
+      name: "Attached",
+      plane: "XY",
+      entities: [
+        {
+          id: "line_1",
+          kind: "line",
+          start: [-1, -2],
+          end: [3, 4],
+          construction: false
+        },
+        {
+          id: "point_1",
+          kind: "point",
+          point: [5, 6],
+          construction: true
+        }
+      ]
+    };
+    const meshes = createSketchDisplayMeshes(
+      [sketch],
+      new Map([
+        [
+          sketch.id,
+          {
+            origin: [10, 20, 30],
+            uAxis: [0, 1, 0],
+            vAxis: [0, 0, 1]
+          }
+        ]
+      ])
+    );
+
+    expect(
+      getRenderObjectBounds(createSketchSelectionId(sketch.id), [], meshes)
+    ).toEqual({
+      min: [10, 19, 28],
+      max: [10, 25.1, 36.1]
+    });
+    expect(
+      getRenderObjectBounds(
+        createSketchEntitySelectionId(sketch.id, "line_1"),
+        [],
+        meshes
+      )
+    ).toEqual({ min: [10, 19, 28], max: [10, 23, 34] });
+  });
+
+  it("adds a small plane marker for empty sketches", () => {
+    const meshes = createSketchDisplayMeshes([
+      {
         id: "sketch_empty",
         name: "Empty sketch",
         plane: "XZ",
         entities: []
-      })
-    ).toEqual([
+      }
+    ]);
+
+    expect(meshes).toHaveLength(1);
+    expect(meshes[0]?.id).toBe(createSketchSelectionId("sketch_empty"));
+    expect(meshes[0]?.edgeSegments).toEqual([
       {
         start: [-0.5, 0, -0.5],
         end: [0.5, 0, -0.5]

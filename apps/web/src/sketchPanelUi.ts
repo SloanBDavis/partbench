@@ -26,6 +26,10 @@ import type {
   SketchSnapshot,
   TopologyCommandTargetReadinessQueryResponse
 } from "@web-cad/cad-protocol";
+export {
+  createSketchEntitySelectionId,
+  createSketchSelectionId
+} from "./sketchRenderIds";
 
 export interface BooleanTargetBodyOption {
   readonly bodyId: string;
@@ -250,17 +254,6 @@ export function chooseSketchEntitySelection(
   return entities[0]?.id;
 }
 
-export function createSketchSelectionId(sketchId: SketchId): string {
-  return `sketch:${sketchId}`;
-}
-
-export function createSketchEntitySelectionId(
-  sketchId: SketchId,
-  entityId: SketchEntityId
-): string {
-  return `${createSketchSelectionId(sketchId)}:entity:${entityId}`;
-}
-
 export function createSketchEntityListItems(
   entities: readonly SketchEntitySnapshot[],
   selectedEntityId: SketchEntityId | undefined
@@ -313,6 +306,8 @@ export function getSketchEntityOptionLabel(
       return `${entity.id} / rectangle ${entity.width} x ${entity.height}`;
     case "circle":
       return `${entity.id} / circle r ${entity.radius}`;
+    case "arc":
+      return `${entity.id} / arc r ${entity.radius} / ${entity.startAngleDegrees}° + ${entity.sweepAngleDegrees}°`;
   }
 }
 
@@ -326,6 +321,8 @@ export function getSketchEntityKindLabel(kind: SketchEntityKind): string {
       return "Rectangle";
     case "circle":
       return "Circle";
+    case "arc":
+      return "Arc";
   }
 }
 
@@ -345,6 +342,8 @@ function getSketchEntityListDetail(entity: SketchEntitySnapshot): string {
       return `Center ${formatSketchPointCoordinate(entity.center)} / radius ${
         entity.radius
       }`;
+    case "arc":
+      return `Center ${formatSketchPointCoordinate(entity.center)} / radius ${entity.radius} / start ${entity.startAngleDegrees}° / sweep ${entity.sweepAngleDegrees}°`;
   }
 }
 
