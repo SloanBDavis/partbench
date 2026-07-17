@@ -668,8 +668,23 @@ export interface SketchAddArcOp {
 export interface SketchUpdateEntityOp {
   readonly op: "sketch.updateEntity";
   readonly sketchId: SketchId;
-  readonly entity: SketchEntitySnapshot;
+  readonly entity: SketchEntityUpdateInput;
 }
+
+export type SketchEntityUpdateInput =
+  | (Omit<SketchPointEntitySnapshot, "construction"> & {
+      readonly construction?: boolean;
+    })
+  | (Omit<SketchLineEntitySnapshot, "construction"> & {
+      readonly construction?: boolean;
+    })
+  | (Omit<SketchRectangleEntitySnapshot, "construction"> & {
+      readonly construction?: boolean;
+    })
+  | (Omit<SketchCircleEntitySnapshot, "construction"> & {
+      readonly construction?: boolean;
+    })
+  | SketchArcEntity;
 
 export interface SketchUpdateEntityOpV21 {
   readonly op: "sketch.updateEntity";

@@ -282,6 +282,63 @@ describe("V17 protocol declarations", () => {
     expect([missingConstruction, invalidThreePointUpdate]).toHaveLength(2);
   });
 
+  it("preserves legacy non-arc whole-entity update payloads without weakening stored snapshots", () => {
+    const omittedConstruction: SketchUpdateEntityOp = {
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "line_1",
+        kind: "line",
+        start: [0, 0],
+        end: [2, 0]
+      }
+    };
+    const explicitConstruction: SketchUpdateEntityOp = {
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "line_1",
+        kind: "line",
+        start: [0, 0],
+        end: [2, 0],
+        construction: true
+      }
+    };
+
+    expect(omittedConstruction.entity).not.toHaveProperty("construction");
+    expect(explicitConstruction.entity.construction).toBe(true);
+
+    const invalidNonArcConstruction: SketchUpdateEntityOp = {
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "line_1",
+        kind: "line",
+        start: [0, 0],
+        end: [2, 0],
+        // @ts-expect-error A provided legacy construction value remains boolean-only.
+        construction: "true"
+      }
+    };
+    const invalidArcWithoutConstruction: SketchUpdateEntityOp = {
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      // @ts-expect-error Arc updates require explicit canonical construction state.
+      entity: {
+        id: "arc_1",
+        kind: "arc",
+        center: [0, 0],
+        radius: 2,
+        startAngleDegrees: 0,
+        sweepAngleDegrees: 90
+      }
+    };
+    expect([
+      invalidNonArcConstruction,
+      invalidArcWithoutConstruction
+    ]).toHaveLength(2);
+  });
+
   it("types oriented profile and path source refs", () => {
     const profile: SketchProfileRef = {
       kind: "wire",
