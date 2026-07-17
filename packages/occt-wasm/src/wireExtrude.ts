@@ -95,6 +95,20 @@ export interface OcctWireExtrudeShapeBuild {
   delete(): void;
 }
 
+export function withOcctWireExtrudeBuildShape<T>(
+  build: OcctWireExtrudeShapeBuild,
+  read: (shape: TopoDS_Shape, references: OcctGeneratedReferences) => T
+): T {
+  let shape: TopoDS_Shape | undefined;
+  try {
+    shape = build.builder.Shape();
+    return read(shape, build.generatedReferences);
+  } finally {
+    shape?.delete();
+    build.delete();
+  }
+}
+
 export async function createOcctWireExtrudeMeshWithLoader(
   loadOcct: OcctLoader,
   input: OcctWireExtrudeInput
@@ -109,16 +123,18 @@ export function createOcctWireExtrudeMeshWithInstance(
   input: OcctWireExtrudeInput
 ): OcctMeshData & { readonly generatedReferences: OcctGeneratedReferences } {
   const build = makeWireExtrudeBuild(oc, input);
-  try {
-    const shape = build.builder.Shape();
-    const mesh = new oc.BRepMesh_IncrementalMesh_2(
-      shape,
-      input.tessellation?.linearDeflection ?? 0.5,
-      false,
-      input.tessellation?.angularDeflection ?? 0.5,
-      false
-    );
+  return withOcctWireExtrudeBuildShape(build, (shape, generatedReferences) => {
+    let mesh:
+      | InstanceType<OpenCascadeInstance["BRepMesh_IncrementalMesh_2"]>
+      | undefined;
     try {
+      mesh = new oc.BRepMesh_IncrementalMesh_2(
+        shape,
+        input.tessellation?.linearDeflection ?? 0.5,
+        false,
+        input.tessellation?.angularDeflection ?? 0.5,
+        false
+      );
       if (!mesh.IsDone()) {
         throw new Error(
           `Open CASCADE composite extrude meshing failed with status ${mesh.GetStatusFlags()}.`
@@ -126,15 +142,12 @@ export function createOcctWireExtrudeMeshWithInstance(
       }
       return {
         ...readTriangulatedShape(oc, shape, "extrude"),
-        generatedReferences: build.generatedReferences
+        generatedReferences
       };
     } finally {
-      mesh.delete();
-      shape.delete();
+      mesh?.delete();
     }
-  } finally {
-    build.delete();
-  }
+  });
 }
 
 export function makeWireExtrudeShape(
@@ -242,7 +255,15 @@ function makeWireExtrudeBuild(
       const endVertex = sharedVertices[(index + 1) % sharedVertices.length];
       const edgeBuilder =
         segment.kind === "line"
-          ? new oc.BRepBuilderAPI_MakeEdge_2(startVertex, endVertex)
+          ? makeLineEdge(
+              oc,
+              profile.frame,
+              normal,
+              normalStart,
+              segment,
+              startVertex,
+              endVertex
+            )
           : makeArcEdge(
               oc,
               profile.frame,
@@ -440,6 +461,36 @@ function makeWireExtrudeBuild(
   }
 }
 
+function makeLineEdge(
+  oc: OpenCascadeInstance,
+  frame: OcctResolvedPlaneFrame,
+  normal: readonly [number, number, number],
+  normalStart: number,
+  segment: OcctResolvedLineSegment2d,
+  startVertex: TopoDS_Vertex,
+  endVertex: TopoDS_Vertex
+): InstanceType<OpenCascadeInstance["BRepBuilderAPI_MakeEdge_7"]> {
+  const start = mapPoint(frame, normal, segment.start, normalStart);
+  const end = mapPoint(frame, normal, segment.end, normalStart);
+  let point: InstanceType<OpenCascadeInstance["gp_Pnt_3"]> | undefined;
+  let direction: InstanceType<OpenCascadeInstance["gp_Dir_4"]> | undefined;
+  let line: InstanceType<OpenCascadeInstance["gp_Lin_3"]> | undefined;
+  try {
+    point = new oc.gp_Pnt_3(...start);
+    direction = new oc.gp_Dir_4(
+      end[0] - start[0],
+      end[1] - start[1],
+      end[2] - start[2]
+    );
+    line = new oc.gp_Lin_3(point, direction);
+    return new oc.BRepBuilderAPI_MakeEdge_7(line, startVertex, endVertex);
+  } finally {
+    line?.delete();
+    direction?.delete();
+    point?.delete();
+  }
+}
+
 function makeArcEdge(
   oc: OpenCascadeInstance,
   frame: OcctResolvedPlaneFrame,
@@ -450,24 +501,29 @@ function makeArcEdge(
   endVertex: TopoDS_Vertex
 ): InstanceType<OpenCascadeInstance["BRepBuilderAPI_MakeEdge_11"]> {
   const center = mapPoint(frame, normal, segment.center, normalStart);
-  const point = new oc.gp_Pnt_3(center[0], center[1], center[2]);
   const sense = Math.sign(segment.sweepAngleDegrees);
-  const circleNormal = new oc.gp_Dir_4(
-    normal[0] * sense,
-    normal[1] * sense,
-    normal[2] * sense
-  );
-  const xDirection = new oc.gp_Dir_4(...frame.uAxis);
-  const axes = new oc.gp_Ax2_2(point, circleNormal, xDirection);
-  const circle = new oc.gp_Circ_2(axes, segment.radius);
+  let point: InstanceType<OpenCascadeInstance["gp_Pnt_3"]> | undefined;
+  let circleNormal: InstanceType<OpenCascadeInstance["gp_Dir_4"]> | undefined;
+  let xDirection: InstanceType<OpenCascadeInstance["gp_Dir_4"]> | undefined;
+  let axes: InstanceType<OpenCascadeInstance["gp_Ax2_2"]> | undefined;
+  let circle: InstanceType<OpenCascadeInstance["gp_Circ_2"]> | undefined;
   try {
+    point = new oc.gp_Pnt_3(center[0], center[1], center[2]);
+    circleNormal = new oc.gp_Dir_4(
+      normal[0] * sense,
+      normal[1] * sense,
+      normal[2] * sense
+    );
+    xDirection = new oc.gp_Dir_4(...frame.uAxis);
+    axes = new oc.gp_Ax2_2(point, circleNormal, xDirection);
+    circle = new oc.gp_Circ_2(axes, segment.radius);
     return new oc.BRepBuilderAPI_MakeEdge_11(circle, startVertex, endVertex);
   } finally {
-    circle.delete();
-    axes.delete();
-    xDirection.delete();
-    circleNormal.delete();
-    point.delete();
+    circle?.delete();
+    axes?.delete();
+    xDirection?.delete();
+    circleNormal?.delete();
+    point?.delete();
   }
 }
 
@@ -489,9 +545,11 @@ function buildGeneratedReferences(
       diagnostic: `The analyzed wire traversal could not prove ${!sourceEdgeOrderProven ? "source segment order" : "oriented join correspondence"}.`
     };
   }
-  const capShapes = [prism.FirstShape_1(), prism.LastShape_1()];
-  let capsProven: boolean;
+  const capShapes: TopoDS_Shape[] = [];
+  let capsProven = false;
   try {
+    capShapes.push(prism.FirstShape_1());
+    capShapes.push(prism.LastShape_1());
     capsProven =
       capShapes.every((shape) =>
         isShapeKind(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE)
@@ -512,16 +570,18 @@ function buildGeneratedReferences(
     }
   });
   const boundariesProven = edges.every((edge) => {
-    const first = prism.FirstShape_2(edge);
-    const last = prism.LastShape_2(edge);
+    let first: TopoDS_Shape | undefined;
+    let last: TopoDS_Shape | undefined;
     try {
+      first = prism.FirstShape_2(edge);
+      last = prism.LastShape_2(edge);
       return (
         isShapeKind(first, oc.TopAbs_ShapeEnum.TopAbs_EDGE) &&
         isShapeKind(last, oc.TopAbs_ShapeEnum.TopAbs_EDGE)
       );
     } finally {
-      first.delete();
-      last.delete();
+      first?.delete();
+      last?.delete();
     }
   });
   const joinsProven = vertices.every((vertex) => {
@@ -633,10 +693,15 @@ function boundaryShapesAreDistinct(
   edges: readonly TopoDS_Edge[],
   boundary: "first" | "last"
 ): boolean {
-  const shapes = edges.map((edge) =>
-    boundary === "first" ? prism.FirstShape_2(edge) : prism.LastShape_2(edge)
-  );
+  const shapes: TopoDS_Shape[] = [];
   try {
+    for (const edge of edges) {
+      shapes.push(
+        boundary === "first"
+          ? prism.FirstShape_2(edge)
+          : prism.LastShape_2(edge)
+      );
+    }
     return shapes.every(
       (shape, index) =>
         !shape.IsNull() &&

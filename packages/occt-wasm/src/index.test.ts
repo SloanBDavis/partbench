@@ -23,7 +23,16 @@ import {
   createOcctWireExtrudeMeshWithInstance
 } from "./index";
 import type { OpenCascadeInstance } from "opencascade.js";
-import { assertWireExtrudeSolidCount } from "./wireExtrude";
+import {
+  assertWireExtrudeSolidCount,
+  withOcctWireExtrudeBuildShape,
+  type OcctGeneratedReferences,
+  type OcctWireExtrudeShapeBuild
+} from "./wireExtrude";
+import {
+  createOcctStepExportWithShapeFactory,
+  type OcctStepExportShapeFactory
+} from "./exactStepExport";
 
 const OCCT_WASM_TEST_TIMEOUT_MS = 120_000;
 
@@ -177,6 +186,133 @@ describe("occt-wasm", () => {
   );
 
   it(
+    "preserves reverse arc traversal and current-next join identity",
+    async () => {
+      const profile = {
+        ...slotWireProfile,
+        sourceIdentity: "reverse-slot:left,top,right,bottom",
+        segments: [
+          {
+            kind: "arc" as const,
+            sourceEntityId: "left",
+            center: [-2, 0] as const,
+            radius: 1,
+            startAngleDegrees: 270,
+            sweepAngleDegrees: -180
+          },
+          {
+            kind: "line" as const,
+            sourceEntityId: "top",
+            start: [-2, 1] as const,
+            end: [2, 1] as const
+          },
+          {
+            kind: "arc" as const,
+            sourceEntityId: "right",
+            center: [2, 0] as const,
+            radius: 1,
+            startAngleDegrees: 90,
+            sweepAngleDegrees: -180
+          },
+          {
+            kind: "line" as const,
+            sourceEntityId: "bottom",
+            start: [2, -1] as const,
+            end: [-2, -1] as const
+          }
+        ]
+      };
+      const mesh = await createOcctWireExtrudeMesh({
+        sketchPlane: "XY",
+        profile,
+        depth: 2
+      });
+
+      expect(mesh.generatedReferences.status).toBe("ready");
+      expect(
+        mesh.generatedReferences.edges
+          .filter((edge) => edge.role === "longitudinal")
+          .map((edge) => edge.adjacentSourceEntityIds)
+      ).toEqual([
+        ["left", "top"],
+        ["top", "right"],
+        ["right", "bottom"],
+        ["bottom", "left"]
+      ]);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "retains authored exact line support when a shared join is healed within tolerance",
+    async () => {
+      const profile = {
+        ...slotWireProfile,
+        sourceIdentity: "tolerant-lines:bottom,right,top,left",
+        segments: [
+          {
+            kind: "line" as const,
+            sourceEntityId: "bottom",
+            start: [0, 0] as const,
+            end: [2, 0] as const
+          },
+          {
+            kind: "line" as const,
+            sourceEntityId: "right",
+            start: [2, 5e-8] as const,
+            end: [2, 1] as const
+          },
+          {
+            kind: "line" as const,
+            sourceEntityId: "top",
+            start: [2, 1] as const,
+            end: [0, 1] as const
+          },
+          {
+            kind: "line" as const,
+            sourceEntityId: "left",
+            start: [0, 1] as const,
+            end: [0, 0] as const
+          }
+        ]
+      };
+      const topology = await createOcctExactTopologySnapshot({
+        source: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile,
+          depth: 3
+        }
+      });
+      const authoredHorizontalEdges = topology.entities.filter(
+        (entity) =>
+          entity.kind === "edge" &&
+          entity.curveClass === "line" &&
+          entity.length !== undefined &&
+          Math.abs(entity.length - 2) < 1e-6
+      );
+
+      expect(topology.generatedReferences?.status).toBe("ready");
+      expect(authoredHorizontalEdges).toHaveLength(4);
+      expect(
+        authoredHorizontalEdges.some((edge) => (edge.axis?.[0] ?? 0) > 0.99)
+      ).toBe(true);
+      expect(
+        authoredHorizontalEdges.some((edge) => (edge.axis?.[0] ?? 0) < -0.99)
+      ).toBe(true);
+      expect(
+        authoredHorizontalEdges.every(
+          (edge) => Math.abs(edge.axis?.[0] ?? 0) > 0.99
+        )
+      ).toBe(true);
+      for (const edge of authoredHorizontalEdges) {
+        expect(Math.abs(edge.axis?.[1] ?? Number.NaN)).toBeLessThan(1e-12);
+      }
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
     "rebuilds composite extrude exact metadata, topology, checkpoint, and STEP from one recipe",
     async () => {
       const source = {
@@ -278,12 +414,24 @@ describe("occt-wasm", () => {
         deleted.push("edge-builder");
       }
     }
+    class Direction {
+      delete() {
+        deleted.push("line-direction");
+      }
+    }
+    class Line {
+      delete() {
+        deleted.push("line");
+      }
+    }
     const oc = {
       gp_Pnt_3: Point,
       BRepBuilderAPI_MakeVertex: VertexBuilder,
       BRepBuilderAPI_MakeWire_1: WireBuilder,
       BRep_Builder: TopologyBuilder,
-      BRepBuilderAPI_MakeEdge_2: FailedEdgeBuilder
+      gp_Dir_4: Direction,
+      gp_Lin_3: Line,
+      BRepBuilderAPI_MakeEdge_7: FailedEdgeBuilder
     } as unknown as OpenCascadeInstance;
     const lineProfile = {
       ...slotWireProfile,
@@ -315,6 +463,9 @@ describe("occt-wasm", () => {
       "point",
       "point",
       "topology-builder",
+      "line",
+      "line-direction",
+      "point",
       "wire-builder",
       "edge-builder",
       "vertex-shape",
@@ -322,6 +473,135 @@ describe("occt-wasm", () => {
       "vertex-builder",
       "vertex-builder"
     ]);
+  });
+
+  it("disposes a composite build when Shape acquisition or reading throws", () => {
+    const references: OcctGeneratedReferences = {
+      status: "unavailable",
+      sourceIdentity: "failure-shape",
+      faces: [],
+      edges: [],
+      diagnostic: "Injected failure evidence."
+    };
+    const acquiredDeleted: string[] = [];
+    const acquisitionBuild = {
+      builder: {
+        Shape() {
+          throw new Error("Injected Shape failure.");
+        }
+      },
+      generatedReferences: references,
+      delete() {
+        acquiredDeleted.push("build");
+      }
+    } as unknown as OcctWireExtrudeShapeBuild;
+    expect(() =>
+      withOcctWireExtrudeBuildShape(acquisitionBuild, () => undefined)
+    ).toThrow("Injected Shape failure");
+    expect(acquiredDeleted).toEqual(["build"]);
+
+    const readDeleted: string[] = [];
+    const readBuild = {
+      builder: {
+        Shape() {
+          return {
+            delete() {
+              readDeleted.push("shape");
+            }
+          };
+        }
+      },
+      generatedReferences: references,
+      delete() {
+        readDeleted.push("build");
+      }
+    } as unknown as OcctWireExtrudeShapeBuild;
+    expect(() =>
+      withOcctWireExtrudeBuildShape(readBuild, () => {
+        throw new Error("Injected read failure.");
+      })
+    ).toThrow("Injected read failure");
+    expect(readDeleted).toEqual(["shape", "build"]);
+  });
+
+  it("disposes STEP allocations when progress or a later body build throws", () => {
+    const createOcct = (
+      deleted: string[],
+      Progress: new () => { delete(): void }
+    ) =>
+      ({
+        STEPControl_Writer_1: class {
+          delete() {
+            deleted.push("writer");
+          }
+        },
+        Message_ProgressRange_1: Progress,
+        STEPControl_StepModelType: { STEPControl_AsIs: 1 },
+        IFSelect_ReturnStatus: { IFSelect_RetDone: 1 },
+        Interface_Static: { SetCVal: () => true },
+        FS: { readFile: () => new Uint8Array(), unlink: () => undefined },
+        BRepPrimAPI_MakeBox_5: class {},
+        BRepPrimAPI_MakeCylinder_3: class {}
+      }) as unknown as OpenCascadeInstance;
+    const stepBodies = [
+      {
+        sketchPlane: "XY" as const,
+        profile: slotWireProfile,
+        depth: 1,
+        bodyId: "body-a"
+      },
+      {
+        sketchPlane: "XY" as const,
+        profile: slotWireProfile,
+        depth: 1,
+        bodyId: "body-b"
+      }
+    ];
+    const progressFailureDeleted: string[] = [];
+    class FailingProgress {
+      constructor() {
+        throw new Error("Injected progress failure.");
+      }
+      delete() {}
+    }
+    expect(() =>
+      createOcctStepExportWithShapeFactory(
+        createOcct(progressFailureDeleted, FailingProgress),
+        { units: "mm", bodies: stepBodies },
+        () => {
+          throw new Error("Shape factory must not be called.");
+        }
+      )
+    ).toThrow("Injected progress failure");
+    expect(progressFailureDeleted).toEqual(["writer"]);
+
+    const bodyFailureDeleted: string[] = [];
+    class Progress {
+      delete() {
+        bodyFailureDeleted.push("progress");
+      }
+    }
+    let bodyIndex = 0;
+    expect(() =>
+      createOcctStepExportWithShapeFactory(
+        createOcct(bodyFailureDeleted, Progress),
+        { units: "mm", bodies: stepBodies },
+        () => {
+          if (bodyIndex++ === 1) {
+            throw new Error("Injected second body failure.");
+          }
+          return {
+            Shape() {
+              throw new Error("Shape must not be requested.");
+            },
+            delete() {
+              bodyFailureDeleted.push("shape-builder");
+            }
+          } as ReturnType<OcctStepExportShapeFactory>;
+        }
+      )
+    ).toThrow("Injected second body failure");
+    expect(bodyFailureDeleted).toEqual(["shape-builder", "progress", "writer"]);
   });
 
   it("rejects composite extrudes unless OCCT returns exactly one solid", () => {

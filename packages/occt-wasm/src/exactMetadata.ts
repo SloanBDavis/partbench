@@ -38,6 +38,7 @@ import { makeShellShape } from "./shell";
 import {
   makeWireExtrudeShape,
   makeWireExtrudeShapeWithReferences,
+  withOcctWireExtrudeBuildShape,
   type OcctGeneratedReferences,
   type OcctWireExtrudeSource
 } from "./wireExtrude";
@@ -416,13 +417,7 @@ function withWireExtrudeExactShape<T>(
   read: (shape: TopoDS_Shape, references: OcctGeneratedReferences) => T
 ): T {
   const build = makeWireExtrudeShapeWithReferences(oc, source);
-  const shape = build.builder.Shape();
-  try {
-    return read(shape, build.generatedReferences);
-  } finally {
-    shape.delete();
-    build.delete();
-  }
+  return withOcctWireExtrudeBuildShape(build, read);
 }
 
 export function withOcctExactBodyShape<T>(

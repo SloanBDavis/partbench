@@ -9,6 +9,7 @@ import {
 } from "./exactMetadata";
 import {
   makeWireExtrudeShapeWithReferences,
+  withOcctWireExtrudeBuildShape,
   type OcctGeneratedReferences,
   type OcctWireExtrudeSource
 } from "./wireExtrude";
@@ -91,19 +92,9 @@ export function createOcctExactTopologyCheckpointPayloadWithInstance(
       oc,
       input.source as OcctWireExtrudeSource
     );
-    const shape = build.builder.Shape();
-    try {
-      return createCheckpointPayload(
-        oc,
-        input,
-        shape,
-        input.source.kind,
-        build.generatedReferences
-      );
-    } finally {
-      shape.delete();
-      build.delete();
-    }
+    return withOcctWireExtrudeBuildShape(build, (shape, references) =>
+      createCheckpointPayload(oc, input, shape, input.source.kind, references)
+    );
   }
 
   return withOcctExactBodyShape(oc, input.source, (shape, sourceKind) =>

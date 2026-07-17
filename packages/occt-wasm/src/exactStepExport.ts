@@ -35,6 +35,14 @@ export interface OcctStepExportArtifact {
   readonly bytes: Uint8Array;
 }
 
+export type OcctStepExportShapeFactory = (
+  oc: OpenCascadeInstance,
+  body: OcctStepExportBodySource
+) => {
+  Shape(): InstanceType<OpenCascadeInstance["TopoDS_Shape"]>;
+  delete(): void;
+};
+
 export type OcctStepWriterCapabilityStatus = "available" | "unavailable";
 
 export interface OcctStepWriterCapability {
@@ -79,6 +87,18 @@ export function createOcctStepExportWithInstance(
   oc: OpenCascadeInstance,
   input: OcctStepExportInput
 ): OcctStepExportArtifact {
+  return createOcctStepExportWithShapeFactory(
+    oc,
+    input,
+    createOcctStepExportShape
+  );
+}
+
+export function createOcctStepExportWithShapeFactory(
+  oc: OpenCascadeInstance,
+  input: OcctStepExportInput,
+  createShape: OcctStepExportShapeFactory
+): OcctStepExportArtifact {
   assertStepWriterBindings(oc);
 
   if (input.bodies.length === 0) {
@@ -86,20 +106,27 @@ export function createOcctStepExportWithInstance(
   }
 
   const schema = input.schema ?? DEFAULT_STEP_SCHEMA;
-  const writer = new oc.STEPControl_Writer_1();
-  const progress = new oc.Message_ProgressRange_1();
-  const shapes = input.bodies.map((body) =>
-    body.profile.kind === "wire"
-      ? makeWireExtrudeShape(oc, body as OcctWireExtrudeSource)
-      : makeBooleanExtrudeShape(oc, body as OcctBooleanExtrudePrimitiveSource)
-  );
-  const asIsStepModelType = oc.STEPControl_StepModelType
-    .STEPControl_AsIs as unknown as Parameters<typeof writer.Transfer>[1];
+  let writer:
+    | InstanceType<OpenCascadeInstance["STEPControl_Writer_1"]>
+    | undefined;
+  let progress:
+    | InstanceType<OpenCascadeInstance["Message_ProgressRange_1"]>
+    | undefined;
+  const shapes: ReturnType<OcctStepExportShapeFactory>[] = [];
   const filename = `/tmp/partbench-step-${Date.now()}-${Math.random()
     .toString(36)
     .slice(2)}.step`;
 
   try {
+    writer = new oc.STEPControl_Writer_1();
+    progress = new oc.Message_ProgressRange_1();
+    const asIsStepModelType = oc.STEPControl_StepModelType
+      .STEPControl_AsIs as unknown as Parameters<typeof writer.Transfer>[1];
+
+    for (const body of input.bodies) {
+      shapes.push(createShape(oc, body));
+    }
+
     setStepWriterStatic(oc, "write.step.schema", schema);
     setStepWriterStatic(oc, "write.step.unit", mapStepUnit(input.units));
 
@@ -144,9 +171,18 @@ export function createOcctStepExportWithInstance(
       shape.delete();
     }
 
-    progress.delete();
-    writer.delete();
+    progress?.delete();
+    writer?.delete();
   }
+}
+
+function createOcctStepExportShape(
+  oc: OpenCascadeInstance,
+  body: OcctStepExportBodySource
+): ReturnType<OcctStepExportShapeFactory> {
+  return body.profile.kind === "wire"
+    ? makeWireExtrudeShape(oc, body as OcctWireExtrudeSource)
+    : makeBooleanExtrudeShape(oc, body as OcctBooleanExtrudePrimitiveSource);
 }
 
 export function getOcctStepWriterCapabilityWithInstance(
