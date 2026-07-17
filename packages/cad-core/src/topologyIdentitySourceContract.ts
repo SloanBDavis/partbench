@@ -4,6 +4,7 @@ import {
   CAD_TOPOLOGY_IDENTITY_PROJECT_SCHEMA_VERSION,
   CAD_V15_PROJECT_SCHEMA_VERSION,
   CAD_V16_PROJECT_SCHEMA_VERSION,
+  CAD_V17_PROJECT_SCHEMA_VERSION,
   WCAD_COMMANDS_ENTRY_PATH,
   WCAD_DOCUMENT_ENTRY_PATH,
   WCAD_SOURCE_IDENTITY_ALGORITHM,
@@ -208,15 +209,16 @@ export function validateWcadManifestV2Contract(
       value.document.schemaVersion !==
         CAD_TOPOLOGY_IDENTITY_PROJECT_SCHEMA_VERSION &&
       value.document.schemaVersion !== CAD_V15_PROJECT_SCHEMA_VERSION &&
-      value.document.schemaVersion !== CAD_V16_PROJECT_SCHEMA_VERSION
+      value.document.schemaVersion !== CAD_V16_PROJECT_SCHEMA_VERSION &&
+      value.document.schemaVersion !== CAD_V17_PROJECT_SCHEMA_VERSION
     ) {
       issues.push(
         createWcadIssue(
           "WCAD_UNSUPPORTED_DOCUMENT_SCHEMA",
           "error",
-          "WCAD v2 checkpointed projects must use web-cad.project.v18, web-cad.project.v19, or web-cad.project.v20.",
+          "WCAD v2 checkpointed projects must use web-cad.project.v18, web-cad.project.v19, web-cad.project.v20, or web-cad.project.v21.",
           "$.document.schemaVersion",
-          `${CAD_TOPOLOGY_IDENTITY_PROJECT_SCHEMA_VERSION}, ${CAD_V15_PROJECT_SCHEMA_VERSION}, or ${CAD_V16_PROJECT_SCHEMA_VERSION}`,
+          `${CAD_TOPOLOGY_IDENTITY_PROJECT_SCHEMA_VERSION}, ${CAD_V15_PROJECT_SCHEMA_VERSION}, ${CAD_V16_PROJECT_SCHEMA_VERSION}, or ${CAD_V17_PROJECT_SCHEMA_VERSION}`,
           typeof value.document.schemaVersion === "string"
             ? value.document.schemaVersion
             : typeof value.document.schemaVersion,
