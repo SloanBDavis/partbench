@@ -2024,6 +2024,10 @@ export type CadQueryKind =
   | "object.measurements"
   | "project.extents"
   | "sketch.get"
+  | "sketch.profileCandidates"
+  | "sketch.profileReadiness"
+  | "sketch.pathCandidates"
+  | "sketch.pathReadiness"
   | "sketch.editReadiness"
   | "sketch.solverStatus"
   | "sketch.evaluation"
@@ -2071,6 +2075,10 @@ export type CadQuery =
   | ObjectMeasurementsQuery
   | ProjectExtentsQuery
   | SketchGetQuery
+  | SketchProfileCandidatesQuery
+  | SketchProfileReadinessQuery
+  | SketchPathCandidatesQuery
+  | SketchPathReadinessQuery
   | SketchEditReadinessQuery
   | SketchSolverStatusQuery
   | SketchEvaluationQuery
@@ -2241,6 +2249,56 @@ export interface ProjectExtentsQuery {
 export interface SketchGetQuery {
   readonly query: "sketch.get";
   readonly id: SketchId;
+}
+
+export interface SketchProfileCandidatesQuery {
+  readonly query: "sketch.profileCandidates";
+  readonly sketchId: SketchId;
+}
+
+export type SketchProfileConsumerIntent =
+  | {
+      readonly featureKind: "extrude";
+      readonly operationMode: "newBody";
+      readonly targetBodyId?: never;
+    }
+  | {
+      readonly featureKind: "extrude";
+      readonly operationMode: "add" | "cut";
+      readonly targetBodyId?: BodyId;
+    }
+  | {
+      readonly featureKind: "revolve" | "sweep" | "loft";
+      readonly operationMode: "newBody";
+      readonly targetBodyId?: never;
+    };
+
+export interface SketchProfileReadinessQuery {
+  readonly query: "sketch.profileReadiness";
+  readonly profile: SketchProfileRef;
+  readonly consumer: SketchProfileConsumerIntent;
+}
+
+export interface SketchPathCandidatesQuery {
+  readonly query: "sketch.pathCandidates";
+  readonly sketchId: SketchId;
+}
+
+export interface SketchPathReadinessQuery {
+  readonly query: "sketch.pathReadiness";
+  readonly path: SketchPathRef;
+  readonly sweepProfile?: SketchEntityProfileRef;
+}
+
+export type SketchProfilePathQuery =
+  | SketchProfileCandidatesQuery
+  | SketchProfileReadinessQuery
+  | SketchPathCandidatesQuery
+  | SketchPathReadinessQuery;
+
+export interface SketchProfilePathQueryRequest {
+  readonly version: CadOpsVersion;
+  readonly query: SketchProfilePathQuery;
 }
 
 export interface SketchEditReadinessQuery {
@@ -6541,6 +6599,334 @@ export interface CadExportBodyReadiness {
   readonly diagnostics: readonly CadExportDiagnostic[];
 }
 
+export interface SketchBounds2d {
+  readonly min: Vec2;
+  readonly max: Vec2;
+}
+
+export interface SketchReferenceDependencies {
+  readonly sketchIds: readonly SketchId[];
+  /** Preserves traversal order; unlike dependency graph sets, this may not be sorted. */
+  readonly orderedEntityIds: readonly SketchEntityId[];
+}
+
+export type SketchProfileDiagnosticCode =
+  | "SKETCH_PROFILE_EMPTY"
+  | "SKETCH_PROFILE_ENTITY_MISSING"
+  | "SKETCH_PROFILE_ENTITY_UNSUPPORTED"
+  | "SKETCH_PROFILE_CONSTRUCTION_ENTITY"
+  | "SKETCH_PROFILE_ENTITY_REPEATED"
+  | "SKETCH_PROFILE_DISCONNECTED"
+  | "SKETCH_PROFILE_BRANCHING"
+  | "SKETCH_PROFILE_OPEN"
+  | "SKETCH_PROFILE_SELF_INTERSECTING"
+  | "SKETCH_PROFILE_OVERLAPPING"
+  | "SKETCH_PROFILE_AREA_TOO_SMALL"
+  | "SKETCH_PROFILE_MULTIPLE_REGIONS_UNSUPPORTED"
+  | "SKETCH_PROFILE_INNER_LOOP_UNSUPPORTED"
+  | "SKETCH_PROFILE_ORIENTATION_NORMALIZED"
+  | "SKETCH_PROFILE_CONSUMER_UNSUPPORTED"
+  | "BODY_NOT_FOUND"
+  | "UNSUPPORTED_BODY_REFERENCES";
+
+export type SketchPathDiagnosticCode =
+  | "SKETCH_PATH_EMPTY"
+  | "SKETCH_PATH_ENTITY_MISSING"
+  | "SKETCH_PATH_ENTITY_UNSUPPORTED"
+  | "SKETCH_PATH_ENTITY_REPEATED"
+  | "SKETCH_PATH_DISCONNECTED"
+  | "SKETCH_PATH_BRANCHING"
+  | "SKETCH_PATH_CLOSED_UNSUPPORTED"
+  | "SKETCH_PATH_SELF_INTERSECTING"
+  | "SKETCH_PATH_JOIN_NOT_TANGENT"
+  | "SKETCH_PATH_FRAME_INVALID";
+
+export interface SketchProfileDiagnostic {
+  readonly code: SketchProfileDiagnosticCode;
+  readonly severity: CadFeatureEditDiagnosticSeverity;
+  readonly message: string;
+  readonly sketchId?: SketchId;
+  readonly entityId?: SketchEntityId;
+  readonly bodyId?: BodyId;
+  readonly segmentIndex?: number;
+  readonly joinIndex?: number;
+  readonly expected?: string;
+  readonly received?: string;
+}
+
+export interface SketchPathDiagnostic {
+  readonly code: SketchPathDiagnosticCode;
+  readonly severity: CadFeatureEditDiagnosticSeverity;
+  readonly message: string;
+  readonly sketchId?: SketchId;
+  readonly entityId?: SketchEntityId;
+  readonly segmentIndex?: number;
+  readonly joinIndex?: number;
+  readonly expected?: string;
+  readonly received?: string;
+}
+
+export type SketchJoinConnectionStatus =
+  | "exact"
+  | "within-tolerance"
+  | "disconnected";
+
+export interface SketchProfileJoinHealth {
+  readonly joinIndex: number;
+  readonly primaryEntityId: SketchEntityId;
+  readonly secondaryEntityId: SketchEntityId;
+  readonly connectionStatus: SketchJoinConnectionStatus;
+  readonly coincidentWithinTolerance: boolean;
+  readonly gapDistance: number;
+}
+
+export type SketchPathJoinTangentStatus =
+  | "tangent"
+  | "not-tangent"
+  | "not-evaluated";
+
+export interface SketchPathJoinHealth extends SketchProfileJoinHealth {
+  readonly tangentStatus: SketchPathJoinTangentStatus;
+  readonly angularDeviationDegrees?: number;
+}
+
+export type SketchProfileIntersectionStatus =
+  | "clear"
+  | "self-intersecting"
+  | "overlapping"
+  | "not-evaluated";
+
+export type SketchPathSelfIntersectionStatus =
+  | "clear"
+  | "self-intersecting"
+  | "not-evaluated";
+
+export type SketchPathFrameStatus = "ready" | "invalid" | "not-evaluated";
+
+export interface SketchConstructionExclusion {
+  readonly entityId: SketchEntityId;
+  readonly entityKind: Extract<
+    SketchEntityKind,
+    "rectangle" | "circle" | "line" | "arc"
+  >;
+  readonly diagnostic: SketchProfileDiagnostic;
+}
+
+export interface SketchProfileCandidate {
+  readonly status: "ready";
+  readonly candidateIndex: number;
+  readonly sortKey: string;
+  readonly profile: SketchProfileRef;
+  readonly orientation: "counterclockwise";
+  readonly area: number;
+  readonly signedArea: number;
+  readonly bounds: SketchBounds2d;
+  readonly joinCount: number;
+  readonly joins: readonly SketchProfileJoinHealth[];
+  readonly intersectionStatus: "clear";
+  readonly dependencies: SketchReferenceDependencies;
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly SketchProfileDiagnostic[];
+}
+
+export interface SketchProfileRejectedComponent {
+  readonly status: "blocked";
+  readonly componentIndex: number;
+  readonly sortKey: string;
+  readonly sketchId: SketchId;
+  readonly entityIds: readonly SketchEntityId[];
+  readonly bounds?: SketchBounds2d;
+  readonly closed: boolean;
+  readonly branchFree: boolean;
+  readonly intersectionStatus: SketchProfileIntersectionStatus;
+  readonly area?: number;
+  readonly joinCount: number;
+  readonly joins: readonly SketchProfileJoinHealth[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly SketchProfileDiagnostic[];
+}
+
+export interface SketchPathCandidate {
+  readonly status: "ready";
+  readonly candidateIndex: number;
+  readonly sortKey: string;
+  readonly path: SketchPathRef;
+  readonly length: number;
+  readonly bounds: SketchBounds2d;
+  readonly connectionStatus: "connected";
+  readonly tangentStatus: "tangent";
+  readonly selfIntersectionStatus: "clear";
+  readonly joinCount: number;
+  readonly joins: readonly SketchPathJoinHealth[];
+  readonly dependencies: SketchReferenceDependencies;
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly SketchPathDiagnostic[];
+}
+
+export interface SketchPathRejectedComponent {
+  readonly status: "blocked";
+  readonly componentIndex: number;
+  readonly sortKey: string;
+  readonly sketchId: SketchId;
+  readonly entityIds: readonly SketchEntityId[];
+  readonly bounds?: SketchBounds2d;
+  readonly connectionStatus: "connected" | "disconnected" | "branching";
+  readonly tangentStatus: SketchPathJoinTangentStatus;
+  readonly selfIntersectionStatus: SketchPathSelfIntersectionStatus;
+  readonly joinCount: number;
+  readonly joins: readonly SketchPathJoinHealth[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly SketchPathDiagnostic[];
+}
+
+export interface SketchConsumerCompatibility {
+  readonly status: "ready" | "blocked";
+  readonly featureKind: SketchProfileConsumerIntent["featureKind"];
+  readonly operationMode: "newBody" | "add" | "cut";
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly SketchProfileDiagnostic[];
+}
+
+export type SketchProfileTargetCompatibility =
+  | {
+      readonly status: "not-applicable";
+      readonly targetBodyId?: never;
+      readonly diagnosticCount: 0;
+      readonly diagnostics: readonly [];
+    }
+  | {
+      readonly status: "missing";
+      readonly targetBodyId?: never;
+      readonly diagnosticCount: number;
+      readonly diagnostics: readonly SketchProfileDiagnostic[];
+    }
+  | {
+      readonly status: "ready" | "unsupported";
+      readonly targetBodyId: BodyId;
+      readonly diagnosticCount: number;
+      readonly diagnostics: readonly SketchProfileDiagnostic[];
+    };
+
+interface SketchProfileReadinessQueryResponseBase {
+  readonly ok: true;
+  readonly query: "sketch.profileReadiness";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly requestedProfile: SketchProfileRef;
+  readonly consumer: SketchProfileConsumerIntent;
+  readonly consumerCompatibility: SketchConsumerCompatibility;
+  readonly targetCompatibility: SketchProfileTargetCompatibility;
+  readonly dependencies: SketchReferenceDependencies;
+  readonly joinCount: number;
+  readonly joins: readonly SketchProfileJoinHealth[];
+  readonly intersectionStatus: SketchProfileIntersectionStatus;
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly SketchProfileDiagnostic[];
+}
+
+export interface SketchProfileReadinessReadyQueryResponse extends SketchProfileReadinessQueryResponseBase {
+  readonly status: "ready";
+  readonly normalizedProfile: SketchProfileRef;
+  readonly orientation: "counterclockwise";
+  readonly orientationNormalized: boolean;
+  readonly area: number;
+  readonly signedArea: number;
+  readonly bounds: SketchBounds2d;
+  readonly intersectionStatus: "clear";
+}
+
+export interface SketchProfileReadinessBlockedQueryResponse extends SketchProfileReadinessQueryResponseBase {
+  readonly status: "blocked";
+  readonly normalizedProfile?: SketchProfileRef;
+  readonly orientation?: "clockwise" | "counterclockwise";
+  readonly orientationNormalized: boolean;
+  readonly area?: number;
+  readonly signedArea?: number;
+  readonly bounds?: SketchBounds2d;
+}
+
+export type SketchProfileReadinessQueryResponse =
+  | SketchProfileReadinessReadyQueryResponse
+  | SketchProfileReadinessBlockedQueryResponse;
+
+export interface SketchProfileCandidatesQueryResponse {
+  readonly ok: true;
+  readonly query: "sketch.profileCandidates";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly sketchId: SketchId;
+  readonly status: "ready" | "blocked";
+  readonly candidateCount: number;
+  readonly candidates: readonly SketchProfileCandidate[];
+  readonly rejectedComponentCount: number;
+  readonly rejectedComponents: readonly SketchProfileRejectedComponent[];
+  readonly constructionExclusionCount: number;
+  readonly constructionExclusions: readonly SketchConstructionExclusion[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly SketchProfileDiagnostic[];
+}
+
+export interface SketchPathCandidatesQueryResponse {
+  readonly ok: true;
+  readonly query: "sketch.pathCandidates";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly sketchId: SketchId;
+  readonly status: "ready" | "blocked";
+  readonly candidateCount: number;
+  readonly candidates: readonly SketchPathCandidate[];
+  readonly rejectedComponentCount: number;
+  readonly rejectedComponents: readonly SketchPathRejectedComponent[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly SketchPathDiagnostic[];
+}
+
+interface SketchPathReadinessQueryResponseBase {
+  readonly ok: true;
+  readonly query: "sketch.pathReadiness";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly requestedPath: SketchPathRef;
+  readonly normalizedPath?: SketchPathRef;
+  readonly sweepProfile?: SketchEntityProfileRef;
+  readonly consumer: {
+    readonly featureKind: "sweep";
+    readonly operationMode: "newBody";
+  };
+  readonly dependencies: SketchReferenceDependencies;
+  readonly connectionStatus: "connected" | "disconnected" | "branching";
+  readonly tangentStatus: SketchPathJoinTangentStatus;
+  readonly selfIntersectionStatus: SketchPathSelfIntersectionStatus;
+  readonly frameStatus: SketchPathFrameStatus;
+  readonly length?: number;
+  readonly bounds?: SketchBounds2d;
+  readonly joinCount: number;
+  readonly joins: readonly SketchPathJoinHealth[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly SketchPathDiagnostic[];
+}
+
+export interface SketchPathReadinessReadyQueryResponse extends SketchPathReadinessQueryResponseBase {
+  readonly status: "ready";
+  readonly normalizedPath: SketchPathRef;
+  readonly connectionStatus: "connected";
+  readonly tangentStatus: "tangent";
+  readonly selfIntersectionStatus: "clear";
+  readonly frameStatus: "ready" | "not-evaluated";
+  readonly length: number;
+  readonly bounds: SketchBounds2d;
+}
+
+export interface SketchPathReadinessBlockedQueryResponse extends SketchPathReadinessQueryResponseBase {
+  readonly status: "blocked";
+}
+
+export type SketchPathReadinessQueryResponse =
+  | SketchPathReadinessReadyQueryResponse
+  | SketchPathReadinessBlockedQueryResponse;
+
+export type SketchProfilePathQueryResponse =
+  | SketchProfileCandidatesQueryResponse
+  | SketchProfileReadinessQueryResponse
+  | SketchPathCandidatesQueryResponse
+  | SketchPathReadinessQueryResponse;
+
 export type CadQueryResponse =
   | ParameterListQueryResponse
   | ParameterGetQueryResponse
@@ -6568,6 +6954,10 @@ export type CadQueryResponse =
   | ObjectMeasurementsQueryResponse
   | ProjectExtentsQueryResponse
   | SketchGetQueryResponse
+  | SketchProfileCandidatesQueryResponse
+  | SketchProfileReadinessQueryResponse
+  | SketchPathCandidatesQueryResponse
+  | SketchPathReadinessQueryResponse
   | SketchEditReadinessQueryResponse
   | SketchSolverStatusQueryResponse
   | SketchEvaluationQueryResponse
@@ -7493,6 +7883,1260 @@ export interface CadQueryErrorResponse {
   readonly query: CadQueryKind;
   readonly cadOpsVersion: CadOpsVersion;
   readonly error: CadQueryError;
+}
+
+export type SketchProfilePathValidationIssueCode =
+  | "INVALID_TYPE"
+  | "MISSING_FIELD"
+  | "UNKNOWN_FIELD"
+  | "INVALID_VALUE"
+  | "COUNT_MISMATCH";
+
+export interface SketchProfilePathValidationIssue {
+  readonly code: SketchProfilePathValidationIssueCode;
+  readonly path: string;
+  readonly message: string;
+}
+
+export type SketchProfilePathValidationResult<T> =
+  | { readonly ok: true; readonly value: T }
+  | {
+      readonly ok: false;
+      readonly issues: readonly SketchProfilePathValidationIssue[];
+    };
+
+type UnknownRecord = Record<string, unknown>;
+
+function isUnknownRecord(value: unknown): value is UnknownRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function validateExactRecord(
+  value: unknown,
+  path: string,
+  required: readonly string[],
+  optional: readonly string[],
+  issues: SketchProfilePathValidationIssue[]
+): value is UnknownRecord {
+  if (!isUnknownRecord(value)) {
+    issues.push({ code: "INVALID_TYPE", path, message: "Expected an object." });
+    return false;
+  }
+  const allowed = new Set([...required, ...optional]);
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) {
+      issues.push({
+        code: "UNKNOWN_FIELD",
+        path: `${path}.${key}`,
+        message: `Field '${key}' is not part of this query contract.`
+      });
+    }
+  }
+  for (const key of required) {
+    if (!(key in value)) {
+      issues.push({
+        code: "MISSING_FIELD",
+        path: `${path}.${key}`,
+        message: `Required field '${key}' is missing.`
+      });
+    }
+  }
+  return true;
+}
+
+function validateNonEmptyString(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): value is string {
+  if (typeof value === "string" && value.length > 0) return true;
+  issues.push({
+    code: "INVALID_VALUE",
+    path,
+    message: "Expected a non-empty string."
+  });
+  return false;
+}
+
+function validateFiniteNumber(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): value is number {
+  if (typeof value === "number" && Number.isFinite(value)) return true;
+  issues.push({
+    code: "INVALID_VALUE",
+    path,
+    message: "Expected a finite number."
+  });
+  return false;
+}
+
+function validateOrientedSegments(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  if (!Array.isArray(value)) {
+    issues.push({ code: "INVALID_TYPE", path, message: "Expected an array." });
+    return;
+  }
+  value.forEach((segment, index) => {
+    const segmentPath = `${path}[${index}]`;
+    if (
+      !validateExactRecord(
+        segment,
+        segmentPath,
+        ["entityId", "orientation"],
+        [],
+        issues
+      )
+    ) {
+      return;
+    }
+    validateNonEmptyString(segment.entityId, `${segmentPath}.entityId`, issues);
+    if (
+      segment.orientation !== "forward" &&
+      segment.orientation !== "reverse"
+    ) {
+      issues.push({
+        code: "INVALID_VALUE",
+        path: `${segmentPath}.orientation`,
+        message: "Expected 'forward' or 'reverse'."
+      });
+    }
+  });
+}
+
+function validateProfileRef(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[],
+  entityOnly = false
+): void {
+  if (!isUnknownRecord(value)) {
+    issues.push({
+      code: "INVALID_TYPE",
+      path,
+      message: "Expected a profile reference."
+    });
+    return;
+  }
+  if (value.kind === "entity") {
+    if (
+      !validateExactRecord(
+        value,
+        path,
+        ["kind", "sketchId", "entityId"],
+        [],
+        issues
+      )
+    )
+      return;
+    validateNonEmptyString(value.sketchId, `${path}.sketchId`, issues);
+    validateNonEmptyString(value.entityId, `${path}.entityId`, issues);
+    return;
+  }
+  if (!entityOnly && value.kind === "wire") {
+    if (
+      !validateExactRecord(
+        value,
+        path,
+        ["kind", "sketchId", "segments"],
+        [],
+        issues
+      )
+    )
+      return;
+    validateNonEmptyString(value.sketchId, `${path}.sketchId`, issues);
+    validateOrientedSegments(value.segments, `${path}.segments`, issues);
+    return;
+  }
+  issues.push({
+    code: "INVALID_VALUE",
+    path: `${path}.kind`,
+    message: entityOnly
+      ? "Expected an entity profile reference."
+      : "Expected profile kind 'entity' or 'wire'."
+  });
+}
+
+function validatePathRef(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  if (!isUnknownRecord(value)) {
+    issues.push({
+      code: "INVALID_TYPE",
+      path,
+      message: "Expected a path reference."
+    });
+    return;
+  }
+  if (value.kind === "entity") {
+    if (
+      !validateExactRecord(
+        value,
+        path,
+        ["kind", "sketchId", "entityId", "orientation"],
+        [],
+        issues
+      )
+    )
+      return;
+    validateNonEmptyString(value.sketchId, `${path}.sketchId`, issues);
+    validateNonEmptyString(value.entityId, `${path}.entityId`, issues);
+    if (value.orientation !== "forward" && value.orientation !== "reverse") {
+      issues.push({
+        code: "INVALID_VALUE",
+        path: `${path}.orientation`,
+        message: "Invalid orientation."
+      });
+    }
+    return;
+  }
+  if (value.kind === "chain") {
+    if (
+      !validateExactRecord(
+        value,
+        path,
+        ["kind", "sketchId", "segments"],
+        [],
+        issues
+      )
+    )
+      return;
+    validateNonEmptyString(value.sketchId, `${path}.sketchId`, issues);
+    validateOrientedSegments(value.segments, `${path}.segments`, issues);
+    return;
+  }
+  issues.push({
+    code: "INVALID_VALUE",
+    path: `${path}.kind`,
+    message: "Expected path kind 'entity' or 'chain'."
+  });
+}
+
+function validateProfileConsumer(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  if (!isUnknownRecord(value)) {
+    issues.push({
+      code: "INVALID_TYPE",
+      path,
+      message: "Expected a consumer intent."
+    });
+    return;
+  }
+  const featureKind = value.featureKind;
+  const operationMode = value.operationMode;
+  const isBooleanExtrude =
+    featureKind === "extrude" &&
+    (operationMode === "add" || operationMode === "cut");
+  validateExactRecord(
+    value,
+    path,
+    ["featureKind", "operationMode"],
+    isBooleanExtrude ? ["targetBodyId"] : [],
+    issues
+  );
+  if (!["extrude", "revolve", "sweep", "loft"].includes(String(featureKind))) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path: `${path}.featureKind`,
+      message: "Invalid profile consumer."
+    });
+  }
+  const operationValid =
+    operationMode === "newBody" ||
+    (featureKind === "extrude" &&
+      (operationMode === "add" || operationMode === "cut"));
+  if (!operationValid) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path: `${path}.operationMode`,
+      message: "Unsupported operation."
+    });
+  }
+  if ("targetBodyId" in value) {
+    validateNonEmptyString(value.targetBodyId, `${path}.targetBodyId`, issues);
+  }
+}
+
+export function validateSketchProfilePathQueryRequest(
+  value: unknown
+): SketchProfilePathValidationResult<SketchProfilePathQueryRequest> {
+  const issues: SketchProfilePathValidationIssue[] = [];
+  if (!validateExactRecord(value, "$", ["version", "query"], [], issues)) {
+    return { ok: false, issues };
+  }
+  if (value.version !== "cadops.v1") {
+    issues.push({
+      code: "INVALID_VALUE",
+      path: "$.version",
+      message: "Unsupported CADOps version."
+    });
+  }
+  if (!isUnknownRecord(value.query)) {
+    issues.push({
+      code: "INVALID_TYPE",
+      path: "$.query",
+      message: "Expected a query object."
+    });
+  } else {
+    const query = value.query;
+    switch (query.query) {
+      case "sketch.profileCandidates":
+      case "sketch.pathCandidates":
+        if (
+          validateExactRecord(
+            query,
+            "$.query",
+            ["query", "sketchId"],
+            [],
+            issues
+          )
+        ) {
+          validateNonEmptyString(query.sketchId, "$.query.sketchId", issues);
+        }
+        break;
+      case "sketch.profileReadiness":
+        if (
+          validateExactRecord(
+            query,
+            "$.query",
+            ["query", "profile", "consumer"],
+            [],
+            issues
+          )
+        ) {
+          validateProfileRef(query.profile, "$.query.profile", issues);
+          validateProfileConsumer(query.consumer, "$.query.consumer", issues);
+        }
+        break;
+      case "sketch.pathReadiness":
+        if (
+          validateExactRecord(
+            query,
+            "$.query",
+            ["query", "path"],
+            ["sweepProfile"],
+            issues
+          )
+        ) {
+          validatePathRef(query.path, "$.query.path", issues);
+          if ("sweepProfile" in query) {
+            validateProfileRef(
+              query.sweepProfile,
+              "$.query.sweepProfile",
+              issues,
+              true
+            );
+          }
+        }
+        break;
+      default:
+        issues.push({
+          code: "INVALID_VALUE",
+          path: "$.query.query",
+          message: "Expected a V17 profile or path query kind."
+        });
+    }
+  }
+  return issues.length === 0
+    ? { ok: true, value: value as unknown as SketchProfilePathQueryRequest }
+    : { ok: false, issues };
+}
+
+function validateCountedArray(
+  record: UnknownRecord,
+  countKey: string,
+  arrayKey: string,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): readonly unknown[] {
+  validateFiniteNumber(record[countKey], `${path}.${countKey}`, issues);
+  const array = record[arrayKey];
+  if (!Array.isArray(array)) {
+    issues.push({
+      code: "INVALID_TYPE",
+      path: `${path}.${arrayKey}`,
+      message: "Expected an array."
+    });
+    return [];
+  }
+  if (record[countKey] !== array.length) {
+    issues.push({
+      code: "COUNT_MISMATCH",
+      path: `${path}.${countKey}`,
+      message: `${countKey} must match ${arrayKey}.length.`
+    });
+  }
+  return array;
+}
+
+const PROFILE_RESPONSE_KEYS = [
+  "ok",
+  "query",
+  "cadOpsVersion",
+  "sketchId",
+  "status",
+  "candidateCount",
+  "candidates",
+  "rejectedComponentCount",
+  "rejectedComponents",
+  "constructionExclusionCount",
+  "constructionExclusions",
+  "diagnosticCount",
+  "diagnostics"
+] as const;
+const PATH_RESPONSE_KEYS = [
+  "ok",
+  "query",
+  "cadOpsVersion",
+  "sketchId",
+  "status",
+  "candidateCount",
+  "candidates",
+  "rejectedComponentCount",
+  "rejectedComponents",
+  "diagnosticCount",
+  "diagnostics"
+] as const;
+const PROFILE_READINESS_KEYS = [
+  "ok",
+  "query",
+  "cadOpsVersion",
+  "status",
+  "requestedProfile",
+  "normalizedProfile",
+  "consumer",
+  "consumerCompatibility",
+  "targetCompatibility",
+  "dependencies",
+  "joinCount",
+  "joins",
+  "intersectionStatus",
+  "orientation",
+  "orientationNormalized",
+  "area",
+  "signedArea",
+  "bounds",
+  "diagnosticCount",
+  "diagnostics"
+] as const;
+const PATH_READINESS_KEYS = [
+  "ok",
+  "query",
+  "cadOpsVersion",
+  "status",
+  "requestedPath",
+  "normalizedPath",
+  "sweepProfile",
+  "consumer",
+  "dependencies",
+  "connectionStatus",
+  "tangentStatus",
+  "selfIntersectionStatus",
+  "frameStatus",
+  "length",
+  "bounds",
+  "joinCount",
+  "joins",
+  "diagnosticCount",
+  "diagnostics"
+] as const;
+
+function validateResponseEnvelope(
+  value: UnknownRecord,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  if (value.ok !== true) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path: `${path}.ok`,
+      message: "Expected a successful response."
+    });
+  }
+  if (value.cadOpsVersion !== "cadops.v1") {
+    issues.push({
+      code: "INVALID_VALUE",
+      path: `${path}.cadOpsVersion`,
+      message: "Invalid CADOps version."
+    });
+  }
+  validateCountedArray(value, "diagnosticCount", "diagnostics", path, issues);
+}
+
+function validateBounds(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  if (!validateExactRecord(value, path, ["min", "max"], [], issues)) return;
+  for (const key of ["min", "max"] as const) {
+    const point = value[key];
+    if (!Array.isArray(point) || point.length !== 2) {
+      issues.push({
+        code: "INVALID_TYPE",
+        path: `${path}.${key}`,
+        message: "Expected a 2D point."
+      });
+      continue;
+    }
+    validateFiniteNumber(point[0], `${path}.${key}[0]`, issues);
+    validateFiniteNumber(point[1], `${path}.${key}[1]`, issues);
+  }
+}
+
+function validateDependencies(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  if (
+    !validateExactRecord(
+      value,
+      path,
+      ["sketchIds", "orderedEntityIds"],
+      [],
+      issues
+    )
+  )
+    return;
+  for (const key of ["sketchIds", "orderedEntityIds"] as const) {
+    const ids = value[key];
+    if (!Array.isArray(ids)) {
+      issues.push({
+        code: "INVALID_TYPE",
+        path: `${path}.${key}`,
+        message: "Expected an ID array."
+      });
+    } else {
+      ids.forEach((id, index) =>
+        validateNonEmptyString(id, `${path}.${key}[${index}]`, issues)
+      );
+    }
+  }
+}
+
+function validateJoinArray(
+  value: unknown,
+  path: string,
+  pathJoin: boolean,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  if (!Array.isArray(value)) return;
+  value.forEach((join, index) => {
+    const joinPath = `${path}[${index}]`;
+    const required = [
+      "joinIndex",
+      "primaryEntityId",
+      "secondaryEntityId",
+      "connectionStatus",
+      "coincidentWithinTolerance",
+      "gapDistance",
+      ...(pathJoin ? ["tangentStatus"] : [])
+    ];
+    const optional = pathJoin ? ["angularDeviationDegrees"] : [];
+    if (!validateExactRecord(join, joinPath, required, optional, issues))
+      return;
+    validateFiniteNumber(join.joinIndex, `${joinPath}.joinIndex`, issues);
+    validateNonEmptyString(
+      join.primaryEntityId,
+      `${joinPath}.primaryEntityId`,
+      issues
+    );
+    validateNonEmptyString(
+      join.secondaryEntityId,
+      `${joinPath}.secondaryEntityId`,
+      issues
+    );
+    validateFiniteNumber(join.gapDistance, `${joinPath}.gapDistance`, issues);
+    if ("angularDeviationDegrees" in join) {
+      validateFiniteNumber(
+        join.angularDeviationDegrees,
+        `${joinPath}.angularDeviationDegrees`,
+        issues
+      );
+    }
+  });
+}
+
+const PROFILE_DIAGNOSTIC_CODES: ReadonlySet<string> = new Set([
+  "SKETCH_PROFILE_EMPTY",
+  "SKETCH_PROFILE_ENTITY_MISSING",
+  "SKETCH_PROFILE_ENTITY_UNSUPPORTED",
+  "SKETCH_PROFILE_CONSTRUCTION_ENTITY",
+  "SKETCH_PROFILE_ENTITY_REPEATED",
+  "SKETCH_PROFILE_DISCONNECTED",
+  "SKETCH_PROFILE_BRANCHING",
+  "SKETCH_PROFILE_OPEN",
+  "SKETCH_PROFILE_SELF_INTERSECTING",
+  "SKETCH_PROFILE_OVERLAPPING",
+  "SKETCH_PROFILE_AREA_TOO_SMALL",
+  "SKETCH_PROFILE_MULTIPLE_REGIONS_UNSUPPORTED",
+  "SKETCH_PROFILE_INNER_LOOP_UNSUPPORTED",
+  "SKETCH_PROFILE_ORIENTATION_NORMALIZED",
+  "SKETCH_PROFILE_CONSUMER_UNSUPPORTED",
+  "BODY_NOT_FOUND",
+  "UNSUPPORTED_BODY_REFERENCES"
+]);
+const PATH_DIAGNOSTIC_CODES: ReadonlySet<string> = new Set([
+  "SKETCH_PATH_EMPTY",
+  "SKETCH_PATH_ENTITY_MISSING",
+  "SKETCH_PATH_ENTITY_UNSUPPORTED",
+  "SKETCH_PATH_ENTITY_REPEATED",
+  "SKETCH_PATH_DISCONNECTED",
+  "SKETCH_PATH_BRANCHING",
+  "SKETCH_PATH_CLOSED_UNSUPPORTED",
+  "SKETCH_PATH_SELF_INTERSECTING",
+  "SKETCH_PATH_JOIN_NOT_TANGENT",
+  "SKETCH_PATH_FRAME_INVALID"
+]);
+
+function validateDiagnosticArray(
+  value: unknown,
+  path: string,
+  codes: ReadonlySet<string>,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  if (!Array.isArray(value)) return;
+  value.forEach((diagnostic, index) => {
+    const diagnosticPath = `${path}[${index}]`;
+    if (
+      !validateExactRecord(
+        diagnostic,
+        diagnosticPath,
+        ["code", "severity", "message"],
+        [
+          "sketchId",
+          "entityId",
+          "bodyId",
+          "segmentIndex",
+          "joinIndex",
+          "expected",
+          "received"
+        ],
+        issues
+      )
+    )
+      return;
+    if (!codes.has(String(diagnostic.code))) {
+      issues.push({
+        code: "INVALID_VALUE",
+        path: `${diagnosticPath}.code`,
+        message: "Invalid diagnostic code."
+      });
+    }
+    if (!["info", "warning", "blocker"].includes(String(diagnostic.severity))) {
+      issues.push({
+        code: "INVALID_VALUE",
+        path: `${diagnosticPath}.severity`,
+        message: "Invalid severity."
+      });
+    }
+    validateNonEmptyString(
+      diagnostic.message,
+      `${diagnosticPath}.message`,
+      issues
+    );
+  });
+}
+
+function validateConsumerCompatibility(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  if (
+    !validateExactRecord(
+      value,
+      path,
+      [
+        "status",
+        "featureKind",
+        "operationMode",
+        "diagnosticCount",
+        "diagnostics"
+      ],
+      [],
+      issues
+    )
+  )
+    return;
+  if (value.status !== "ready" && value.status !== "blocked") {
+    issues.push({
+      code: "INVALID_VALUE",
+      path: `${path}.status`,
+      message: "Invalid consumer status."
+    });
+  }
+  validateCountedArray(value, "diagnosticCount", "diagnostics", path, issues);
+  validateDiagnosticArray(
+    value.diagnostics,
+    `${path}.diagnostics`,
+    PROFILE_DIAGNOSTIC_CODES,
+    issues
+  );
+}
+
+function validateTargetCompatibility(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  if (!isUnknownRecord(value)) {
+    issues.push({
+      code: "INVALID_TYPE",
+      path,
+      message: "Expected target compatibility."
+    });
+    return;
+  }
+  const requiresTarget =
+    value.status === "ready" || value.status === "unsupported";
+  if (
+    !validateExactRecord(
+      value,
+      path,
+      requiresTarget
+        ? ["status", "targetBodyId", "diagnosticCount", "diagnostics"]
+        : ["status", "diagnosticCount", "diagnostics"],
+      [],
+      issues
+    )
+  )
+    return;
+  if (
+    !["not-applicable", "missing", "ready", "unsupported"].includes(
+      String(value.status)
+    )
+  ) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path: `${path}.status`,
+      message: "Invalid target status."
+    });
+  }
+  if (requiresTarget)
+    validateNonEmptyString(value.targetBodyId, `${path}.targetBodyId`, issues);
+  validateCountedArray(value, "diagnosticCount", "diagnostics", path, issues);
+  validateDiagnosticArray(
+    value.diagnostics,
+    `${path}.diagnostics`,
+    PROFILE_DIAGNOSTIC_CODES,
+    issues
+  );
+}
+
+export function validateSketchProfilePathQueryResponse(
+  value: unknown
+): SketchProfilePathValidationResult<SketchProfilePathQueryResponse> {
+  const issues: SketchProfilePathValidationIssue[] = [];
+  if (!isUnknownRecord(value)) {
+    return {
+      ok: false,
+      issues: [
+        {
+          code: "INVALID_TYPE",
+          path: "$",
+          message: "Expected a query response object."
+        }
+      ]
+    };
+  }
+  switch (value.query) {
+    case "sketch.profileCandidates": {
+      validateExactRecord(value, "$", PROFILE_RESPONSE_KEYS, [], issues);
+      validateResponseEnvelope(value, "$", issues);
+      validateDiagnosticArray(
+        value.diagnostics,
+        "$.diagnostics",
+        PROFILE_DIAGNOSTIC_CODES,
+        issues
+      );
+      validateNonEmptyString(value.sketchId, "$.sketchId", issues);
+      const candidates = validateCountedArray(
+        value,
+        "candidateCount",
+        "candidates",
+        "$",
+        issues
+      );
+      const rejected = validateCountedArray(
+        value,
+        "rejectedComponentCount",
+        "rejectedComponents",
+        "$",
+        issues
+      );
+      const exclusions = validateCountedArray(
+        value,
+        "constructionExclusionCount",
+        "constructionExclusions",
+        "$",
+        issues
+      );
+      candidates.forEach((candidate, index) => {
+        const path = `$.candidates[${index}]`;
+        if (
+          validateExactRecord(
+            candidate,
+            path,
+            [
+              "status",
+              "candidateIndex",
+              "sortKey",
+              "profile",
+              "orientation",
+              "area",
+              "signedArea",
+              "bounds",
+              "joinCount",
+              "joins",
+              "intersectionStatus",
+              "dependencies",
+              "diagnosticCount",
+              "diagnostics"
+            ],
+            [],
+            issues
+          )
+        ) {
+          validateProfileRef(
+            candidate.profile,
+            `$.candidates[${index}].profile`,
+            issues
+          );
+          if (candidate.status !== "ready") {
+            issues.push({
+              code: "INVALID_VALUE",
+              path: `$.candidates[${index}].status`,
+              message: "Candidates must be ready."
+            });
+          }
+          validateBounds(candidate.bounds, `${path}.bounds`, issues);
+          validateDependencies(
+            candidate.dependencies,
+            `${path}.dependencies`,
+            issues
+          );
+          validateCountedArray(candidate, "joinCount", "joins", path, issues);
+          validateCountedArray(
+            candidate,
+            "diagnosticCount",
+            "diagnostics",
+            path,
+            issues
+          );
+          validateDiagnosticArray(
+            candidate.diagnostics,
+            `${path}.diagnostics`,
+            PROFILE_DIAGNOSTIC_CODES,
+            issues
+          );
+          validateJoinArray(candidate.joins, `${path}.joins`, false, issues);
+        }
+      });
+      rejected.forEach((component, index) => {
+        const path = `$.rejectedComponents[${index}]`;
+        if (
+          validateExactRecord(
+            component,
+            path,
+            [
+              "status",
+              "componentIndex",
+              "sortKey",
+              "sketchId",
+              "entityIds",
+              "closed",
+              "branchFree",
+              "intersectionStatus",
+              "joinCount",
+              "joins",
+              "diagnosticCount",
+              "diagnostics"
+            ],
+            ["bounds", "area"],
+            issues
+          )
+        ) {
+          if ("bounds" in component)
+            validateBounds(component.bounds, `${path}.bounds`, issues);
+          validateCountedArray(component, "joinCount", "joins", path, issues);
+          validateCountedArray(
+            component,
+            "diagnosticCount",
+            "diagnostics",
+            path,
+            issues
+          );
+          validateDiagnosticArray(
+            component.diagnostics,
+            `${path}.diagnostics`,
+            PROFILE_DIAGNOSTIC_CODES,
+            issues
+          );
+          validateJoinArray(component.joins, `${path}.joins`, false, issues);
+        }
+      });
+      exclusions.forEach((exclusion, index) => {
+        if (
+          validateExactRecord(
+            exclusion,
+            `$.constructionExclusions[${index}]`,
+            ["entityId", "entityKind", "diagnostic"],
+            [],
+            issues
+          )
+        ) {
+          validateDiagnosticArray(
+            [exclusion.diagnostic],
+            `$.constructionExclusions[${index}].diagnostics`,
+            PROFILE_DIAGNOSTIC_CODES,
+            issues
+          );
+        }
+      });
+      break;
+    }
+    case "sketch.pathCandidates": {
+      validateExactRecord(value, "$", PATH_RESPONSE_KEYS, [], issues);
+      validateResponseEnvelope(value, "$", issues);
+      validateDiagnosticArray(
+        value.diagnostics,
+        "$.diagnostics",
+        PATH_DIAGNOSTIC_CODES,
+        issues
+      );
+      validateNonEmptyString(value.sketchId, "$.sketchId", issues);
+      const candidates = validateCountedArray(
+        value,
+        "candidateCount",
+        "candidates",
+        "$",
+        issues
+      );
+      const rejected = validateCountedArray(
+        value,
+        "rejectedComponentCount",
+        "rejectedComponents",
+        "$",
+        issues
+      );
+      candidates.forEach((candidate, index) => {
+        const path = `$.candidates[${index}]`;
+        if (
+          validateExactRecord(
+            candidate,
+            path,
+            [
+              "status",
+              "candidateIndex",
+              "sortKey",
+              "path",
+              "length",
+              "bounds",
+              "connectionStatus",
+              "tangentStatus",
+              "selfIntersectionStatus",
+              "joinCount",
+              "joins",
+              "dependencies",
+              "diagnosticCount",
+              "diagnostics"
+            ],
+            [],
+            issues
+          )
+        ) {
+          validatePathRef(
+            candidate.path,
+            `$.candidates[${index}].path`,
+            issues
+          );
+          if (candidate.status !== "ready") {
+            issues.push({
+              code: "INVALID_VALUE",
+              path: `$.candidates[${index}].status`,
+              message: "Candidates must be ready."
+            });
+          }
+          validateBounds(candidate.bounds, `${path}.bounds`, issues);
+          validateDependencies(
+            candidate.dependencies,
+            `${path}.dependencies`,
+            issues
+          );
+          validateCountedArray(candidate, "joinCount", "joins", path, issues);
+          validateCountedArray(
+            candidate,
+            "diagnosticCount",
+            "diagnostics",
+            path,
+            issues
+          );
+          validateDiagnosticArray(
+            candidate.diagnostics,
+            `${path}.diagnostics`,
+            PATH_DIAGNOSTIC_CODES,
+            issues
+          );
+          validateJoinArray(candidate.joins, `${path}.joins`, true, issues);
+        }
+      });
+      rejected.forEach((component, index) => {
+        const path = `$.rejectedComponents[${index}]`;
+        if (
+          validateExactRecord(
+            component,
+            path,
+            [
+              "status",
+              "componentIndex",
+              "sortKey",
+              "sketchId",
+              "entityIds",
+              "connectionStatus",
+              "tangentStatus",
+              "selfIntersectionStatus",
+              "joinCount",
+              "joins",
+              "diagnosticCount",
+              "diagnostics"
+            ],
+            ["bounds"],
+            issues
+          )
+        ) {
+          if ("bounds" in component)
+            validateBounds(component.bounds, `${path}.bounds`, issues);
+          validateCountedArray(component, "joinCount", "joins", path, issues);
+          validateCountedArray(
+            component,
+            "diagnosticCount",
+            "diagnostics",
+            path,
+            issues
+          );
+          validateDiagnosticArray(
+            component.diagnostics,
+            `${path}.diagnostics`,
+            PATH_DIAGNOSTIC_CODES,
+            issues
+          );
+          validateJoinArray(component.joins, `${path}.joins`, true, issues);
+        }
+      });
+      break;
+    }
+    case "sketch.profileReadiness":
+      validateExactRecord(
+        value,
+        "$",
+        [
+          "ok",
+          "query",
+          "cadOpsVersion",
+          "status",
+          "requestedProfile",
+          "consumer",
+          "consumerCompatibility",
+          "targetCompatibility",
+          "dependencies",
+          "joinCount",
+          "joins",
+          "intersectionStatus",
+          "orientationNormalized",
+          "diagnosticCount",
+          "diagnostics"
+        ],
+        PROFILE_READINESS_KEYS.filter(
+          (key) =>
+            ![
+              "ok",
+              "query",
+              "cadOpsVersion",
+              "status",
+              "requestedProfile",
+              "consumer",
+              "consumerCompatibility",
+              "targetCompatibility",
+              "dependencies",
+              "joinCount",
+              "joins",
+              "intersectionStatus",
+              "orientationNormalized",
+              "diagnosticCount",
+              "diagnostics"
+            ].includes(key)
+        ),
+        issues
+      );
+      validateResponseEnvelope(value, "$", issues);
+      validateDiagnosticArray(
+        value.diagnostics,
+        "$.diagnostics",
+        PROFILE_DIAGNOSTIC_CODES,
+        issues
+      );
+      validateProfileRef(value.requestedProfile, "$.requestedProfile", issues);
+      if ("normalizedProfile" in value)
+        validateProfileRef(
+          value.normalizedProfile,
+          "$.normalizedProfile",
+          issues
+        );
+      validateProfileConsumer(value.consumer, "$.consumer", issues);
+      validateConsumerCompatibility(
+        value.consumerCompatibility,
+        "$.consumerCompatibility",
+        issues
+      );
+      validateTargetCompatibility(
+        value.targetCompatibility,
+        "$.targetCompatibility",
+        issues
+      );
+      validateDependencies(value.dependencies, "$.dependencies", issues);
+      validateCountedArray(value, "joinCount", "joins", "$", issues);
+      validateJoinArray(value.joins, "$.joins", false, issues);
+      if ("bounds" in value) validateBounds(value.bounds, "$.bounds", issues);
+      if (value.status === "ready") {
+        for (const key of [
+          "normalizedProfile",
+          "orientation",
+          "area",
+          "signedArea",
+          "bounds"
+        ]) {
+          if (!(key in value))
+            issues.push({
+              code: "MISSING_FIELD",
+              path: `$.${key}`,
+              message: `Ready response requires '${key}'.`
+            });
+        }
+      } else if (value.status !== "blocked") {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: "$.status",
+          message: "Invalid readiness status."
+        });
+      }
+      break;
+    case "sketch.pathReadiness":
+      validateExactRecord(
+        value,
+        "$",
+        [
+          "ok",
+          "query",
+          "cadOpsVersion",
+          "status",
+          "requestedPath",
+          "consumer",
+          "dependencies",
+          "connectionStatus",
+          "tangentStatus",
+          "selfIntersectionStatus",
+          "frameStatus",
+          "joinCount",
+          "joins",
+          "diagnosticCount",
+          "diagnostics"
+        ],
+        PATH_READINESS_KEYS.filter(
+          (key) =>
+            ![
+              "ok",
+              "query",
+              "cadOpsVersion",
+              "status",
+              "requestedPath",
+              "consumer",
+              "dependencies",
+              "connectionStatus",
+              "tangentStatus",
+              "selfIntersectionStatus",
+              "frameStatus",
+              "joinCount",
+              "joins",
+              "diagnosticCount",
+              "diagnostics"
+            ].includes(key)
+        ),
+        issues
+      );
+      validateResponseEnvelope(value, "$", issues);
+      validateDiagnosticArray(
+        value.diagnostics,
+        "$.diagnostics",
+        PATH_DIAGNOSTIC_CODES,
+        issues
+      );
+      validatePathRef(value.requestedPath, "$.requestedPath", issues);
+      if ("normalizedPath" in value)
+        validatePathRef(value.normalizedPath, "$.normalizedPath", issues);
+      if ("sweepProfile" in value)
+        validateProfileRef(value.sweepProfile, "$.sweepProfile", issues, true);
+      if (
+        validateExactRecord(
+          value.consumer,
+          "$.consumer",
+          ["featureKind", "operationMode"],
+          [],
+          issues
+        )
+      ) {
+        if (
+          value.consumer.featureKind !== "sweep" ||
+          value.consumer.operationMode !== "newBody"
+        ) {
+          issues.push({
+            code: "INVALID_VALUE",
+            path: "$.consumer",
+            message: "Path readiness is sweep newBody only."
+          });
+        }
+      }
+      validateDependencies(value.dependencies, "$.dependencies", issues);
+      validateCountedArray(value, "joinCount", "joins", "$", issues);
+      validateJoinArray(value.joins, "$.joins", true, issues);
+      if ("bounds" in value) validateBounds(value.bounds, "$.bounds", issues);
+      if (value.status === "ready") {
+        for (const key of ["normalizedPath", "length", "bounds"]) {
+          if (!(key in value))
+            issues.push({
+              code: "MISSING_FIELD",
+              path: `$.${key}`,
+              message: `Ready response requires '${key}'.`
+            });
+        }
+      } else if (value.status !== "blocked") {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: "$.status",
+          message: "Invalid readiness status."
+        });
+      }
+      break;
+    default:
+      issues.push({
+        code: "INVALID_VALUE",
+        path: "$.query",
+        message: "Unknown profile/path response kind."
+      });
+  }
+  return issues.length === 0
+    ? { ok: true, value: value as unknown as SketchProfilePathQueryResponse }
+    : { ok: false, issues };
 }
 
 export const protocolPackage: PackageInfo = {
