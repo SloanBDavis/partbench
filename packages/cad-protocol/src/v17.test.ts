@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type {
+  CadOp,
   CadProjectSchemaDiagnostic,
+  CadQueryRequest,
+  CadSketchEditProposal,
+  CadSketchSolverEntitySummary,
   FeatureExtrudeCommandInput,
   FeatureInputReferenceSemanticDiff,
   FeatureRevolveCommandInput,
@@ -12,12 +16,16 @@ import type {
   SketchArcPointTarget,
   SketchConstraintV21,
   SketchEntityKind,
+  SketchEntityKindV20,
   SketchEntityKindV21,
   SketchEntitySemanticDiff,
   SketchEntityV21,
+  SketchEntitySnapshot,
+  SketchGetQueryResponse,
   SketchPathRef,
   SketchProfileRef,
-  SketchRadiusConstraintV21
+  SketchRadiusConstraintV21,
+  SketchUpdateEntityOp
 } from "./index";
 import { CAD_V17_PROJECT_SCHEMA_VERSION } from "./index";
 
@@ -35,15 +43,17 @@ const entityPath = {
 } as const;
 
 describe("V17 protocol declarations", () => {
-  it("exports V21 without widening the live V16 entity-kind union", () => {
-    const liveKind: SketchEntityKind = "circle";
+  it("activates arc in the live entity kind while preserving a V20 kind alias", () => {
+    const legacyKind: SketchEntityKindV20 = "circle";
+    const liveKind: SketchEntityKind = "arc";
     const v21Kind: SketchEntityKindV21 = "arc";
-    // @ts-expect-error Arc is V21-only until the command/storage slice is live.
-    const invalidLiveKind: SketchEntityKind = "arc";
+    // @ts-expect-error V20 source did not have arc entities.
+    const invalidLegacyKind: SketchEntityKindV20 = "arc";
 
     expect(CAD_V17_PROJECT_SCHEMA_VERSION).toBe("web-cad.project.v21");
-    expect([liveKind, v21Kind, invalidLiveKind]).toEqual([
+    expect([legacyKind, liveKind, v21Kind, invalidLegacyKind]).toEqual([
       "circle",
+      "arc",
       "arc",
       "arc"
     ]);
@@ -94,6 +104,182 @@ describe("V17 protocol declarations", () => {
       true
     ]);
     expect(arc.sweepAngleDegrees).toBe(90);
+  });
+
+  it("activates arc and construction mutations in the live CadOp union", () => {
+    const legacyAddWithoutConstruction: CadOp = {
+      op: "sketch.addPoint",
+      sketchId: "sketch_1",
+      point: [0, 0]
+    };
+    const constructedLine: CadOp = {
+      op: "sketch.addLine",
+      sketchId: "sketch_1",
+      start: [0, 0],
+      end: [1, 0],
+      construction: true
+    };
+    const canonicalArc: CadOp = {
+      op: "sketch.addArc",
+      sketchId: "sketch_1",
+      id: "arc_1",
+      construction: false,
+      definition: {
+        kind: "centerAngles",
+        center: [0, 0],
+        radius: 2,
+        startAngleDegrees: 350,
+        sweepAngleDegrees: 20
+      }
+    };
+    const threePointArc: CadOp = {
+      op: "sketch.addArc",
+      sketchId: "sketch_1",
+      definition: {
+        kind: "threePoint",
+        start: [1, 0],
+        pointOnArc: [0, 1],
+        end: [-1, 0]
+      }
+    };
+    const constructionToggle: CadOp = {
+      op: "sketch.setEntityConstruction",
+      sketchId: "sketch_1",
+      entityId: "arc_1",
+      construction: true
+    };
+
+    expect(legacyAddWithoutConstruction).not.toHaveProperty("construction");
+    expect(constructedLine.construction).toBe(true);
+    expect(canonicalArc.definition.kind).toBe("centerAngles");
+    expect(threePointArc.definition.kind).toBe("threePoint");
+    expect(constructionToggle.construction).toBe(true);
+
+    const invalidToggle: CadOp = {
+      op: "sketch.setEntityConstruction",
+      sketchId: "sketch_1",
+      entityId: "arc_1",
+      // @ts-expect-error Construction state is strictly boolean.
+      construction: "true"
+    };
+    const invalidMixedArc: CadOp = {
+      op: "sketch.addArc",
+      sketchId: "sketch_1",
+      definition: {
+        kind: "centerAngles",
+        center: [0, 0],
+        radius: 2,
+        startAngleDegrees: 0,
+        sweepAngleDegrees: 90,
+        // @ts-expect-error Arc definitions cannot mix canonical and three-point fields.
+        start: [1, 0],
+        pointOnArc: [0, 1],
+        end: [-1, 0]
+      }
+    };
+    expect([invalidToggle, invalidMixedArc]).toHaveLength(2);
+  });
+
+  it("uses canonical whole-entity arc updates and exposes arcs through sketch queries", () => {
+    const arc: SketchEntitySnapshot = {
+      id: "arc_1",
+      kind: "arc",
+      center: [0, 0],
+      radius: 2,
+      startAngleDegrees: 350,
+      sweepAngleDegrees: 20,
+      construction: false
+    };
+    const update: SketchUpdateEntityOp = {
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: arc
+    };
+    const response: SketchGetQueryResponse = {
+      ok: true,
+      query: "sketch.get",
+      cadOpsVersion: "cadops.v1",
+      sketch: {
+        id: "sketch_1",
+        name: "Arc sketch",
+        plane: "XY",
+        entities: [arc]
+      }
+    };
+    const entityEdit: CadSketchEditProposal = {
+      editKind: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: { ...arc, radius: 3 }
+    };
+    const constructionEdit: CadSketchEditProposal = {
+      editKind: "sketch.setEntityConstruction",
+      sketchId: "sketch_1",
+      entityId: "arc_1",
+      construction: true
+    };
+    const readinessRequests: readonly CadQueryRequest[] = [
+      {
+        version: "cadops.v1",
+        query: { query: "sketch.editReadiness", edit: entityEdit }
+      },
+      {
+        version: "cadops.v1",
+        query: { query: "sketch.editReadiness", edit: constructionEdit }
+      }
+    ];
+    const deferredSolverEntity: CadSketchSolverEntitySummary = {
+      sketchId: "sketch_1",
+      entityId: "arc_1",
+      entityKind: "arc",
+      construction: false,
+      supported: false,
+      variableCount: 0,
+      degreesOfFreedom: 0,
+      targetCount: 0,
+      targets: [],
+      diagnosticCount: 1,
+      diagnostics: [
+        {
+          code: "SKETCH_SOLVER_UNSUPPORTED_ENTITY",
+          severity: "warning",
+          message: "Arc solving is not active in this slice.",
+          sketchId: "sketch_1",
+          sketchEntityId: "arc_1"
+        }
+      ]
+    };
+
+    expect(update.entity).toEqual(arc);
+    expect(response.sketch.entities).toEqual([arc]);
+    expect(readinessRequests).toHaveLength(2);
+    expect(deferredSolverEntity.supported).toBe(false);
+
+    // @ts-expect-error Stored/query snapshots require explicit construction state.
+    const missingConstruction: SketchEntitySnapshot = {
+      id: "arc_2",
+      kind: "arc",
+      center: [0, 0],
+      radius: 1,
+      startAngleDegrees: 0,
+      sweepAngleDegrees: 90
+    };
+    const invalidThreePointUpdate: SketchUpdateEntityOp = {
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "arc_1",
+        kind: "arc",
+        construction: false,
+        // @ts-expect-error Three-point input is create sugar, not a stored entity update.
+        definition: {
+          kind: "threePoint",
+          start: [1, 0],
+          pointOnArc: [0, 1],
+          end: [-1, 0]
+        }
+      }
+    };
+    expect([missingConstruction, invalidThreePointUpdate]).toHaveLength(2);
   });
 
   it("types oriented profile and path source refs", () => {

@@ -182,14 +182,10 @@ export interface TorusDimensions {
 }
 
 export type CadObjectKind = "box" | "cylinder" | "sphere" | "cone" | "torus";
-export type SketchEntityKind = "point" | "line" | "rectangle" | "circle";
+export type SketchEntityKindV20 = "point" | "line" | "rectangle" | "circle";
 
-export type SketchEntityKindV21 =
-  | "point"
-  | "line"
-  | "rectangle"
-  | "circle"
-  | "arc";
+export type SketchEntityKind = SketchEntityKindV20 | "arc";
+export type SketchEntityKindV21 = SketchEntityKind;
 
 export type SketchSegmentOrientation = "forward" | "reverse";
 
@@ -381,8 +377,10 @@ export type CadOp =
   | SketchAddLineOp
   | SketchAddRectangleOp
   | SketchAddCircleOp
+  | SketchAddArcOp
   | SketchUpdateEntityOp
   | SketchDeleteEntityOp
+  | SketchSetEntityConstructionOp
   | SketchDimensionCreateOp
   | SketchDimensionUpdateOp
   | SketchDimensionRenameOp
@@ -609,6 +607,7 @@ export interface SketchAddPointOp {
   readonly sketchId: SketchId;
   readonly id?: SketchEntityId;
   readonly point: Vec2;
+  readonly construction?: boolean;
 }
 
 export interface SketchAddLineOp {
@@ -617,6 +616,7 @@ export interface SketchAddLineOp {
   readonly id?: SketchEntityId;
   readonly start: Vec2;
   readonly end: Vec2;
+  readonly construction?: boolean;
 }
 
 export interface SketchAddRectangleOp {
@@ -626,6 +626,7 @@ export interface SketchAddRectangleOp {
   readonly center: Vec2;
   readonly width: number;
   readonly height: number;
+  readonly construction?: boolean;
 }
 
 export interface SketchAddCircleOp {
@@ -634,16 +635,8 @@ export interface SketchAddCircleOp {
   readonly id?: SketchEntityId;
   readonly center: Vec2;
   readonly radius: number;
-}
-
-export type SketchAddEntityOpV21 = (
-  | SketchAddPointOp
-  | SketchAddLineOp
-  | SketchAddRectangleOp
-  | SketchAddCircleOp
-) & {
   readonly construction?: boolean;
-};
+}
 
 export type SketchArcDefinition =
   | SketchArcCenterAnglesDefinition
@@ -2302,12 +2295,14 @@ export type SketchEntitySnapshot =
   | SketchPointEntitySnapshot
   | SketchLineEntitySnapshot
   | SketchRectangleEntitySnapshot
-  | SketchCircleEntitySnapshot;
+  | SketchCircleEntitySnapshot
+  | SketchArcEntity;
 
 export interface SketchPointEntitySnapshot {
   readonly id: SketchEntityId;
   readonly kind: "point";
   readonly point: Vec2;
+  readonly construction: boolean;
 }
 
 export interface SketchLineEntitySnapshot {
@@ -2315,6 +2310,7 @@ export interface SketchLineEntitySnapshot {
   readonly kind: "line";
   readonly start: Vec2;
   readonly end: Vec2;
+  readonly construction: boolean;
 }
 
 export interface SketchRectangleEntitySnapshot {
@@ -2323,6 +2319,7 @@ export interface SketchRectangleEntitySnapshot {
   readonly center: Vec2;
   readonly width: number;
   readonly height: number;
+  readonly construction: boolean;
 }
 
 export interface SketchCircleEntitySnapshot {
@@ -2330,6 +2327,7 @@ export interface SketchCircleEntitySnapshot {
   readonly kind: "circle";
   readonly center: Vec2;
   readonly radius: number;
+  readonly construction: boolean;
 }
 
 export interface SketchArcEntity {
@@ -2344,12 +2342,7 @@ export interface SketchArcEntity {
   readonly construction: boolean;
 }
 
-export type SketchEntityV21 =
-  | (SketchPointEntitySnapshot & { readonly construction: boolean })
-  | (SketchLineEntitySnapshot & { readonly construction: boolean })
-  | (SketchRectangleEntitySnapshot & { readonly construction: boolean })
-  | (SketchCircleEntitySnapshot & { readonly construction: boolean })
-  | SketchArcEntity;
+export type SketchEntityV21 = SketchEntitySnapshot;
 
 export interface CadParameterSnapshot {
   readonly id: ParameterId;
@@ -3710,6 +3703,20 @@ export interface CadSketchEntityDimensionEditProposal {
   readonly value: number;
 }
 
+export interface CadSketchEntityUpdateEditProposal extends Omit<
+  SketchUpdateEntityOp,
+  "op"
+> {
+  readonly editKind: "sketch.updateEntity";
+}
+
+export interface CadSketchEntityConstructionEditProposal extends Omit<
+  SketchSetEntityConstructionOp,
+  "op"
+> {
+  readonly editKind: "sketch.setEntityConstruction";
+}
+
 export interface CadSketchDimensionCreateEditProposal extends Omit<
   SketchDimensionCreateOp,
   "op"
@@ -3759,6 +3766,8 @@ export interface CadSketchConstraintDeleteEditProposal extends Omit<
 }
 
 export type CadSketchEditProposal =
+  | CadSketchEntityUpdateEditProposal
+  | CadSketchEntityConstructionEditProposal
   | CadSketchEntityDimensionEditProposal
   | CadSketchDimensionCreateEditProposal
   | CadSketchDimensionUpdateEditProposal
@@ -3982,6 +3991,7 @@ export interface CadSketchSolverEntitySummary {
   readonly sketchId: SketchId;
   readonly entityId: SketchEntityId;
   readonly entityKind: SketchEntityKind;
+  readonly construction: boolean;
   readonly supported: boolean;
   readonly variableCount: number;
   readonly degreesOfFreedom: number;
@@ -4030,6 +4040,7 @@ export interface CadSketchProfileCandidateSummary {
   readonly sketchId: SketchId;
   readonly entityId: SketchEntityId;
   readonly entityKind: SketchEntityKind;
+  readonly construction: boolean;
   readonly profileKind: "rectangle" | "circle" | "open" | "unsupported";
   readonly closed: boolean;
   readonly featureReady: boolean;

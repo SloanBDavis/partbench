@@ -1492,7 +1492,8 @@ describe("cad-protocol", () => {
         entity: {
           id: "skent_1",
           kind: "point",
-          point: [2, 3]
+          point: [2, 3],
+          construction: false
         }
       },
       {
@@ -2611,6 +2612,7 @@ describe("cad-protocol", () => {
           sketchId: "sketch_1",
           entityId: "rect_1",
           entityKind: "rectangle",
+          construction: false,
           supported: true,
           variableCount: 4,
           degreesOfFreedom: 4,
@@ -2682,6 +2684,7 @@ describe("cad-protocol", () => {
             sketchId: "sketch_1",
             entityId: "rect_1",
             entityKind: "rectangle",
+            construction: false,
             profileKind: "rectangle",
             closed: true,
             featureReady: true,
