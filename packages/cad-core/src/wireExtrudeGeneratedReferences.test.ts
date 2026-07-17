@@ -252,6 +252,12 @@ function createExactTopologyMetadata(
     metadata: {
       source: "kernel-derived",
       confidence: "kernel-derived",
+      bounds: {
+        min: [-2, -1, 0],
+        max: [2, 1, 3],
+        size: [4, 2, 3],
+        center: [0, 0, 1.5]
+      },
       volume: 60,
       topologyCounts: {
         solidCount: 1,
@@ -540,9 +546,10 @@ describe("V17 composite wire extrude generated references", () => {
     expect(sourceIdentitySignature(createAttachedEngine(4))).not.toBe(initial);
   });
 
-  it("promotes matching exact topology and preserves explicit stale/failure health", () => {
+  it("promotes one-solid newBody evidence and rejects other exact solid counts", () => {
     const engine = createEngine();
     const sourceSignature = sourceIdentitySignature(engine);
+    const derivedExactMetadata = createExactTopologyMetadata(engine);
     const initialTopology = engine.executeQuery({
       version: "cadops.v1",
       query: { query: "body.topology", bodyId: "body_wire" }
@@ -574,8 +581,27 @@ describe("V17 composite wire extrude generated references", () => {
         }
       ]
     });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "project.extents",
+          derivedExactMetadata: [derivedExactMetadata]
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      bodies: [
+        expect.objectContaining({
+          bodyId: "body_wire",
+          extentSource: "kernel-derived",
+          volume: 60,
+          topologyCounts: expect.objectContaining({ solidCount: 1 })
+        })
+      ],
+      warnings: []
+    });
 
-    const derivedExactMetadata = createExactTopologyMetadata(engine);
     expect(
       engine.executeQuery({
         version: "cadops.v1",
@@ -699,6 +725,29 @@ describe("V17 composite wire extrude generated references", () => {
             topologyAvailable: false,
             issues: [{ code: "INVALID_EXACT_GEOMETRY_RESULT" }]
           }
+        ]
+      });
+      expect(
+        engine.executeQuery({
+          version: "cadops.v1",
+          query: {
+            query: "project.extents",
+            derivedExactMetadata: [invalidSolids]
+          }
+        })
+      ).toMatchObject({
+        ok: true,
+        bodies: [],
+        warnings: [
+          expect.objectContaining({
+            code: "DERIVED_EXACT_METADATA_INVALID",
+            bodyId: "body_wire",
+            expected: "solidCount=1",
+            received:
+              solidCount === undefined
+                ? "topologyCounts missing"
+                : `solidCount=${solidCount}`
+          })
         ]
       });
     }

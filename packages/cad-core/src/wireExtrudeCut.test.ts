@@ -135,6 +135,12 @@ function exactMetadata(
     metadata: {
       source: "kernel-derived",
       confidence: "kernel-derived",
+      bounds: {
+        min: [-4, -3, 0],
+        max: [4, 3, 4],
+        size: [8, 6, 4],
+        center: [0, 0, 2]
+      },
       volume: 80,
       surfaceArea: 120,
       centroid: [0, 0, 2],
@@ -424,7 +430,7 @@ describe("V17 composite wire extrude cut", () => {
     });
   });
 
-  it("supports topology-backed targets and gates health and exact STEP on fresh one-solid evidence", () => {
+  it("accepts positive cut result evidence while rejecting an empty result", () => {
     const engine = createEngine();
     engine.apply({
       op: "topology.checkpoint.create",
@@ -502,6 +508,203 @@ describe("V17 composite wire extrude cut", () => {
         })
       ]
     });
+    const compound = exactMetadata(engine, 2);
+    const empty = exactMetadata(engine, 0);
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.topology",
+          bodyId: "body_cut",
+          derivedExactMetadata: compound
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      topology: {
+        status: "healthy",
+        topologyModel: "kernel-derived",
+        topologyAvailable: true,
+        exactGeometryAvailable: true,
+        exactMeasurementsAvailable: true,
+        exactMetadata: {
+          topologyCounts: { solidCount: 2 },
+          diagnostics: []
+        },
+        issues: []
+      }
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "project.health",
+          derivedExactMetadata: [compound]
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      authoredExtrudes: expect.arrayContaining([
+        expect.objectContaining({
+          featureId: "feature_cut",
+          status: "healthy",
+          topologyStatus: "healthy",
+          exactMeasurementsAvailable: true
+        })
+      ])
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.massProperties",
+          bodyId: "body_cut",
+          derivedExactMetadata: compound
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      massProperties: {
+        bodyId: "body_cut",
+        volume: 80,
+        diagnostics: []
+      }
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "project.extents",
+          derivedExactMetadata: [compound]
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      bodies: [
+        expect.objectContaining({
+          bodyId: "body_cut",
+          topologyCounts: expect.objectContaining({ solidCount: 2 })
+        })
+      ],
+      warnings: []
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "project.exportExact",
+          format: "step",
+          bodyIds: ["body_cut"],
+          derivedExactMetadata: [compound]
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      status: "supported",
+      exportableBodyCount: 1,
+      exportSources: [
+        expect.objectContaining({
+          bodyId: "body_cut",
+          kind: "booleanExtrudes",
+          operation: "cut"
+        })
+      ]
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.topology",
+          bodyId: "body_cut",
+          derivedExactMetadata: empty
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      topology: {
+        status: "kernel-failed",
+        exactGeometryAvailable: false,
+        issues: expect.arrayContaining([
+          expect.objectContaining({
+            code: "INVALID_EXACT_GEOMETRY_RESULT",
+            expected: "solidCount>=1",
+            received: "solidCount=0"
+          })
+        ])
+      }
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "project.health",
+          derivedExactMetadata: [empty]
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      authoredExtrudes: expect.arrayContaining([
+        expect.objectContaining({
+          featureId: "feature_cut",
+          topologyStatus: "kernel-failed",
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              code: "INVALID_EXACT_GEOMETRY_RESULT"
+            })
+          ])
+        })
+      ])
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.massProperties",
+          bodyId: "body_cut",
+          derivedExactMetadata: empty
+        }
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "MASS_PROPERTIES_UNAVAILABLE" }
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "project.extents",
+          derivedExactMetadata: [empty]
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      bodies: [],
+      warnings: [
+        expect.objectContaining({
+          code: "DERIVED_EXACT_METADATA_INVALID",
+          bodyId: "body_cut",
+          expected: "solidCount>=1",
+          received: "solidCount=0"
+        })
+      ]
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "project.exportExact",
+          format: "step",
+          bodyIds: ["body_cut"],
+          derivedExactMetadata: [empty]
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      exportableBodyCount: 0,
+      exportSources: []
+    });
+
     const stale = exactMetadata(engine, 1, "stale");
     expect(
       engine.executeQuery({
@@ -518,21 +721,6 @@ describe("V17 composite wire extrude cut", () => {
       exportableBodyCount: 0,
       exportSources: []
     });
-    for (const solidCount of [0, 2]) {
-      expect(
-        engine.executeQuery({
-          version: "cadops.v1",
-          query: {
-            query: "body.topology",
-            bodyId: "body_cut",
-            derivedExactMetadata: exactMetadata(engine, solidCount)
-          }
-        })
-      ).toMatchObject({
-        ok: true,
-        topology: { exactGeometryAvailable: false }
-      });
-    }
   });
 
   it("cuts a topology-anchored composite add result through the canonical target matrix", () => {

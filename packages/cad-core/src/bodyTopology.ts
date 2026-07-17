@@ -1469,16 +1469,23 @@ function applyDerivedExactMetadata(
     }
 
     const topologyCounts = metadata.metadata.topologyCounts;
+    const wireOperationMode = topology.sourceIdentity.operationMode;
+    const wireSolidCountIsValid =
+      wireOperationMode === "cut"
+        ? topologyCounts !== undefined && topologyCounts.solidCount > 0
+        : topologyCounts?.solidCount === 1;
     if (
       topology.sourceIdentity.profileKind === "wire" &&
-      topologyCounts?.solidCount !== 1
+      !wireSolidCountIsValid
     ) {
+      const isCut = wireOperationMode === "cut";
       return applyDerivedExactMetadataIssue(topology, {
         code: "INVALID_EXACT_GEOMETRY_RESULT",
         status: "kernel-failed",
-        message:
-          "Composite wire newBody exact metadata must prove exactly one solid.",
-        expected: "solidCount=1",
+        message: isCut
+          ? "Composite wire cut exact metadata must prove at least one solid."
+          : `Composite wire ${wireOperationMode ?? "newBody"} exact metadata must prove exactly one solid.`,
+        expected: isCut ? "solidCount>=1" : "solidCount=1",
         received:
           topologyCounts === undefined
             ? "topologyCounts missing"
@@ -1486,8 +1493,7 @@ function applyDerivedExactMetadata(
       });
     }
     const exactTopologyReady =
-      topology.sourceIdentity.profileKind === "wire" &&
-      topologyCounts?.solidCount === 1;
+      topology.sourceIdentity.profileKind === "wire" && wireSolidCountIsValid;
 
     return {
       ...topology,

@@ -685,25 +685,55 @@ describe("V17 composite wire extrude add", () => {
         })
       ]
     });
-    for (const metadata of [
-      exactMetadata(engine, 0),
-      exactMetadata(engine, 2),
-      exactMetadata(engine, 1, "stale")
-    ]) {
+    for (const solidCount of [0, 2]) {
       expect(
         engine.executeQuery({
           version: "cadops.v1",
           query: {
             query: "body.topology",
             bodyId: "body_add",
-            derivedExactMetadata: metadata
+            derivedExactMetadata: exactMetadata(engine, solidCount)
           }
         })
       ).toMatchObject({
         ok: true,
-        topology: { exactGeometryAvailable: false }
+        topology: {
+          status: "kernel-failed",
+          exactGeometryAvailable: false,
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              code: "INVALID_EXACT_GEOMETRY_RESULT",
+              expected: "solidCount=1",
+              received: `solidCount=${solidCount}`
+            })
+          ])
+        }
       });
     }
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "project.exportExact",
+          format: "step",
+          bodyIds: ["body_add"],
+          derivedExactMetadata: [exactMetadata(engine, 2)]
+        }
+      })
+    ).toMatchObject({ ok: true, exportableBodyCount: 0, exportSources: [] });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.topology",
+          bodyId: "body_add",
+          derivedExactMetadata: exactMetadata(engine, 1, "stale")
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      topology: { status: "stale", exactGeometryAvailable: false }
+    });
   });
 
   it("rejects duplicate exact metadata body ids instead of resolving readiness and export differently", () => {

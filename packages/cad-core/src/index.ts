@@ -2602,6 +2602,7 @@ export class CadEngine {
           bodyId,
           units: this.#document.units,
           ownerPartId: DEFAULT_PART_ID,
+          derivedExactMetadata,
           bodyExists: (candidateBodyId) =>
             structure.bodies.some(
               (candidate) => candidate.id === candidateBodyId
@@ -2633,6 +2634,22 @@ export class CadEngine {
             error: {
               code: "MASS_PROPERTIES_STALE",
               message: `Kernel-derived exact metadata is stale for body ${bodyId}.`,
+              bodyId
+            }
+          };
+        }
+
+        if (
+          topology.topology.sourceIdentity.profileKind === "wire" &&
+          !topology.topology.exactGeometryAvailable
+        ) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: {
+              code: "MASS_PROPERTIES_UNAVAILABLE",
+              message: `Validated exact geometry evidence is unavailable for composite wire body ${bodyId}.`,
               bodyId
             }
           };
@@ -22791,6 +22808,7 @@ function createBodyExtents(
       bodyId: body.id,
       units,
       ownerPartId: body.partId,
+      derivedExactMetadata: derivedExactMetadataByBodyId.get(body.id),
       bodyExists
     });
 
@@ -22851,7 +22869,8 @@ function shouldUseDerivedExactMetadataForProjectExtents(
   return (
     topology.sourceKind === "authoredExtrude" &&
     topology.sourceIdentity.operationMode !== undefined &&
-    topology.sourceIdentity.operationMode !== "newBody"
+    (topology.sourceIdentity.operationMode !== "newBody" ||
+      topology.sourceIdentity.profileKind === "wire")
   );
 }
 
@@ -22919,6 +22938,30 @@ function createKernelDerivedBodyExtent(
     return {
       ok: false,
       warning: createDerivedExactMetadataStatusWarning(topology, metadata)
+    };
+  }
+
+  if (
+    topology.sourceIdentity.profileKind === "wire" &&
+    !topology.exactGeometryAvailable
+  ) {
+    const topologyIssue = topology.issues.at(-1);
+    return {
+      ok: false,
+      warning: {
+        code: "DERIVED_EXACT_METADATA_INVALID",
+        message:
+          topologyIssue?.message ??
+          `Kernel-derived exact metadata did not prove valid composite wire geometry for body ${topology.bodyId}.`,
+        bodyId: topology.bodyId,
+        featureId,
+        status: "ready",
+        errorCode: "INVALID_READY_METADATA",
+        ...(topologyIssue?.expected
+          ? { expected: topologyIssue.expected }
+          : {}),
+        ...(topologyIssue?.received ? { received: topologyIssue.received } : {})
+      }
     };
   }
 

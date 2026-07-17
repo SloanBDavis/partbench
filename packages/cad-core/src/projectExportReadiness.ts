@@ -1000,8 +1000,7 @@ function hasCurrentReadyExactResultEvidence(
     topology.ok &&
     topology.topology.status === "healthy" &&
     topology.topology.exactGeometryAvailable &&
-    metadata.status === "ready" &&
-    metadata.metadata?.topologyCounts?.solidCount === 1
+    metadata.status === "ready"
   );
 }
 
