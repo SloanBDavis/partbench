@@ -282,7 +282,15 @@ export function createGeneratedReferenceDetailRows(
     { label: "Body", value: reference.bodyId },
     { label: "Source feature", value: reference.sourceFeatureId },
     { label: "Source sketch", value: reference.sourceSketchId },
-    { label: "Source entity", value: reference.sourceSketchEntityId },
+    {
+      label: "Source entity",
+      value:
+        reference.sourceSketchEntityId ??
+        ("sourceSketchEntityIds" in reference
+          ? reference.sourceSketchEntityIds?.join(", ")
+          : undefined) ??
+        "Composite profile"
+    },
     { label: "Profile", value: reference.geometricSignature.profileKind },
     ...generatedReferenceRoleRows(reference)
   ];

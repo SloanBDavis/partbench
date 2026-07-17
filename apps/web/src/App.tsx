@@ -20,6 +20,7 @@ import {
 } from "@web-cad/cad-core";
 import type {
   BodyGeneratedReferencesQueryResponse,
+  CadBodyGeneratedReferenceEvidenceSnapshot,
   CadBatchResponse,
   CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
@@ -165,6 +166,8 @@ import {
   type DerivedGeometrySource,
   type DerivedGeometrySnapshot
 } from "./derivedGeometry";
+import { createBodyGeneratedReferenceEvidence } from "./derivedGeneratedReferences";
+import { createCompositeGeneratedFaceFrames } from "./compositeGeneratedFaceFrames";
 import {
   createDerivedMeshOpfsCache,
   DERIVED_MESH_CACHE_ARTIFACT_VERSION,
@@ -695,7 +698,10 @@ function formatStepImportNumber(value: number): string {
     : value.toFixed(3).replace(/\.?0+$/, "");
 }
 
-function readBodyGeneratedReferences(bodyId: string | undefined): {
+function readBodyGeneratedReferences(
+  bodyId: string | undefined,
+  derivedEvidence?: CadBodyGeneratedReferenceEvidenceSnapshot
+): {
   readonly references?: BodyGeneratedReferencesQueryResponse;
   readonly error?: string;
 } {
@@ -705,7 +711,13 @@ function readBodyGeneratedReferences(bodyId: string | undefined): {
 
   const response = engine.executeQuery({
     version: "cadops.v1",
-    query: { query: "body.generatedReferences", bodyId }
+    query: {
+      query: "body.generatedReferences",
+      bodyId,
+      ...(derivedEvidence
+        ? { derivedGeneratedReferences: derivedEvidence }
+        : {})
+    }
   });
 
   if (response.ok && response.query === "body.generatedReferences") {
@@ -1165,12 +1177,19 @@ function readBodyMassProperties(
 }
 
 function readGeneratedFaceReferencesByKey(
-  bodies: readonly CadBodySnapshot[]
+  bodies: readonly CadBodySnapshot[],
+  evidenceByBodyId: ReadonlyMap<
+    string,
+    CadBodyGeneratedReferenceEvidenceSnapshot
+  > = new Map()
 ): ReadonlyMap<string, CadGeneratedFaceReference> {
   const facesByKey = new Map<string, CadGeneratedFaceReference>();
 
   for (const body of bodies) {
-    const response = readBodyGeneratedReferences(body.id);
+    const response = readBodyGeneratedReferences(
+      body.id,
+      evidenceByBodyId.get(body.id)
+    );
 
     for (const face of response.references?.faces ?? []) {
       facesByKey.set(
@@ -1184,12 +1203,19 @@ function readGeneratedFaceReferencesByKey(
 }
 
 function readGeneratedEdgeReferencesByKey(
-  bodies: readonly CadBodySnapshot[]
+  bodies: readonly CadBodySnapshot[],
+  evidenceByBodyId: ReadonlyMap<
+    string,
+    CadBodyGeneratedReferenceEvidenceSnapshot
+  > = new Map()
 ): ReadonlyMap<string, CadGeneratedEdgeReference> {
   const edgesByKey = new Map<string, CadGeneratedEdgeReference>();
 
   for (const body of bodies) {
-    const response = readBodyGeneratedReferences(body.id);
+    const response = readBodyGeneratedReferences(
+      body.id,
+      evidenceByBodyId.get(body.id)
+    );
 
     for (const edge of response.references?.edges ?? []) {
       edgesByKey.set(`${edge.bodyId}\n${edge.stableId}`, edge);
@@ -1197,6 +1223,42 @@ function readGeneratedEdgeReferencesByKey(
   }
 
   return edgesByKey;
+}
+
+function createDerivedGeneratedReferenceEvidenceByBodyId(
+  snapshot: DerivedGeometrySnapshot,
+  sources: readonly DerivedGeometrySource[]
+): ReadonlyMap<string, CadBodyGeneratedReferenceEvidenceSnapshot> {
+  const evidenceByBodyId = new Map<
+    string,
+    CadBodyGeneratedReferenceEvidenceSnapshot
+  >();
+
+  for (const source of sources) {
+    if (source.kind !== "extrude" || source.profile.kind !== "wire") {
+      continue;
+    }
+
+    const topology = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.topology", bodyId: source.id }
+    });
+    if (!topology.ok || topology.query !== "body.topology") {
+      continue;
+    }
+
+    const evidence = createBodyGeneratedReferenceEvidence(
+      source.id,
+      topology.topology.sourceIdentity.signature,
+      snapshot,
+      sources
+    );
+    if (evidence) {
+      evidenceByBodyId.set(source.id, evidence);
+    }
+  }
+
+  return evidenceByBodyId;
 }
 
 function createModelingSelectionContext({
@@ -1511,17 +1573,56 @@ export function App() {
       ),
     [projectStructure.bodies]
   );
-  const generatedFacesByKey = useMemo(
+  const sourcePlacementFacesByKey = useMemo(
     () => readGeneratedFaceReferencesByKey(sketchExtrudeBodies),
     [sketchExtrudeBodies]
   );
-  const generatedEdgesByKey = useMemo(
-    () => readGeneratedEdgeReferencesByKey(sketchExtrudeBodies),
-    [sketchExtrudeBodies]
+  const firstPassFeatureGeometrySources = useMemo(
+    () =>
+      createAuthoredFeatureDerivedGeometrySources(
+        projectStructure.features,
+        sketches,
+        sourcePlacementFacesByKey,
+        document.namedReferences
+      ),
+    [
+      document.namedReferences,
+      projectStructure.features,
+      sourcePlacementFacesByKey,
+      sketches
+    ]
   );
-  const sketchDisplayState = useMemo(
-    () => createSketchDisplayState(sketches, generatedFacesByKey),
-    [generatedFacesByKey, sketches]
+  const derivedGeneratedReferenceEvidenceByBodyId = useMemo(
+    () =>
+      createDerivedGeneratedReferenceEvidenceByBodyId(
+        derivedGeometry,
+        firstPassFeatureGeometrySources
+      ),
+    [derivedGeometry, firstPassFeatureGeometrySources]
+  );
+  const generatedFacesByKey = useMemo(
+    () =>
+      readGeneratedFaceReferencesByKey(
+        sketchExtrudeBodies,
+        derivedGeneratedReferenceEvidenceByBodyId
+      ),
+    [derivedGeneratedReferenceEvidenceByBodyId, sketchExtrudeBodies]
+  );
+  const generatedEdgesByKey = useMemo(
+    () =>
+      readGeneratedEdgeReferencesByKey(
+        sketchExtrudeBodies,
+        derivedGeneratedReferenceEvidenceByBodyId
+      ),
+    [derivedGeneratedReferenceEvidenceByBodyId, sketchExtrudeBodies]
+  );
+  const compositeGeneratedFaceFramesByKey = useMemo(
+    () =>
+      createCompositeGeneratedFaceFrames(
+        firstPassFeatureGeometrySources,
+        derivedGeneratedReferenceEvidenceByBodyId
+      ),
+    [derivedGeneratedReferenceEvidenceByBodyId, firstPassFeatureGeometrySources]
   );
   const featureGeometrySources = useMemo(
     () =>
@@ -1529,23 +1630,37 @@ export function App() {
         projectStructure.features,
         sketches,
         generatedFacesByKey,
-        document.namedReferences
+        document.namedReferences,
+        undefined,
+        undefined,
+        compositeGeneratedFaceFramesByKey
       ),
     [
-      document.namedReferences,
+      compositeGeneratedFaceFramesByKey,
+      document,
       generatedFacesByKey,
       projectStructure.features,
       sketches
     ]
+  );
+  const sketchDisplayState = useMemo(
+    () => createSketchDisplayState(sketches, generatedFacesByKey),
+    [generatedFacesByKey, sketches]
   );
   const derivedGeometrySources = useMemo<readonly DerivedGeometrySource[]>(
     () =>
       createDerivedGeometrySourcesFromDocument(
         document,
         projectStructure.features,
-        generatedFacesByKey
+        generatedFacesByKey,
+        compositeGeneratedFaceFramesByKey
       ),
-    [document, generatedFacesByKey, projectStructure.features]
+    [
+      compositeGeneratedFaceFramesByKey,
+      document,
+      generatedFacesByKey,
+      projectStructure.features
+    ]
   );
   const selectedObject = selectedId
     ? document.objects.get(selectedId)
@@ -1624,11 +1739,19 @@ export function App() {
     selectedFeature?.id
   );
   const selectedBodyGeneratedReferences = readBodyGeneratedReferences(
-    selectedBody?.id
+    selectedBody?.id,
+    selectedBody
+      ? derivedGeneratedReferenceEvidenceByBodyId.get(selectedBody.id)
+      : undefined
   );
   const selectedShellTargetGeneratedReferences =
     selectedFeature?.kind === "shell"
-      ? readBodyGeneratedReferences(selectedFeature.targetBodyId).references
+      ? readBodyGeneratedReferences(
+          selectedFeature.targetBodyId,
+          derivedGeneratedReferenceEvidenceByBodyId.get(
+            selectedFeature.targetBodyId
+          )
+        ).references
       : undefined;
   const selectedGeneratedReferenceMeasurements =
     readGeneratedReferenceMeasurements(
