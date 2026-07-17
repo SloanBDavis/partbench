@@ -36,6 +36,9 @@ import type {
   Vec2
 } from "@web-cad/cad-protocol";
 
+import { createCanonicalSketchArcEntity } from "./sketchArcMath";
+import { SKETCH_GEOMETRY_POLICY } from "./sketchGeometryPolicy";
+
 import {
   applySketchDimensionValue,
   evaluateSketch,
@@ -126,9 +129,11 @@ export function createSketchEditReadinessResponse(
   const afterEvaluation = afterSketch
     ? evaluateSketch(simulation.document, afterSketch)
     : undefined;
-  const evaluationDiagnostics = collectEvaluationDiagnostics(
-    afterEvaluation ?? beforeEvaluation
-  );
+  const evaluationDiagnostics = simulation.diagnostics.some(
+    (diagnostic) => diagnostic.severity === "blocker"
+  )
+    ? []
+    : collectEvaluationDiagnostics(afterEvaluation ?? beforeEvaluation);
   const editedTargets = collectEditedTargets(
     simulation.sketchId ?? beforeSketchId,
     simulation.editedEntityIds
@@ -263,14 +268,47 @@ function simulateSketchEdit(
         );
       } else {
         const entities = new Map(sketch.entities);
-        entities.set(edit.entity.id, {
-          ...edit.entity,
-          construction:
-            edit.entity.construction === undefined
-              ? existing.construction
-              : edit.entity.construction
-        } as SketchEntitySnapshot);
-        simulated.sketches.set(sketch.id, { ...sketch, entities });
+        if (edit.entity.kind === "arc") {
+          const canonical = createCanonicalSketchArcEntity(
+            edit.entity.id,
+            {
+              kind: "centerAngles",
+              center: edit.entity.center,
+              radius: edit.entity.radius,
+              startAngleDegrees: edit.entity.startAngleDegrees,
+              sweepAngleDegrees: edit.entity.sweepAngleDegrees
+            },
+            edit.entity.construction,
+            SKETCH_GEOMETRY_POLICY
+          );
+          if (!canonical.ok) {
+            const issue = canonical.issues[0]!;
+            diagnostics.push(
+              createDiagnostic({
+                code: "SKETCH_EDIT_INVALID_VALUE",
+                severity: "blocker",
+                message: issue.message,
+                sketchId: edit.sketchId,
+                sketchEntityId: edit.entity.id,
+                fieldPath: `entity.${issue.path.replace(/^definition\./, "")}`,
+                expected: issue.expected,
+                received: issue.received
+              })
+            );
+          } else {
+            entities.set(edit.entity.id, canonical.value);
+            simulated.sketches.set(sketch.id, { ...sketch, entities });
+          }
+        } else {
+          entities.set(edit.entity.id, {
+            ...edit.entity,
+            construction:
+              edit.entity.construction === undefined
+                ? existing.construction
+                : edit.entity.construction
+          });
+          simulated.sketches.set(sketch.id, { ...sketch, entities });
+        }
       }
 
       return {
@@ -1409,6 +1447,30 @@ function findFeatureDirectImpact(
     return "source-hole-circle";
   }
 
+  if (
+    feature.kind === "sweep" &&
+    targets.some(
+      (target) =>
+        target.sketchId === feature.profileSketchId &&
+        target.entityId === feature.profileEntityId
+    )
+  ) {
+    return "source-profile";
+  }
+
+  if (
+    feature.kind === "loft" &&
+    feature.sections.some((section) =>
+      targets.some(
+        (target) =>
+          target.sketchId === section.sketchId &&
+          target.entityId === section.entityId
+      )
+    )
+  ) {
+    return "source-profile";
+  }
+
   return undefined;
 }
 
@@ -1421,6 +1483,14 @@ function getFeaturePrimaryEntityId(
 
   if (feature.kind === "hole") {
     return feature.circleEntityId;
+  }
+
+  if (feature.kind === "sweep") {
+    return feature.profileEntityId;
+  }
+
+  if (feature.kind === "loft") {
+    return feature.sections[0]?.entityId;
   }
 
   return undefined;

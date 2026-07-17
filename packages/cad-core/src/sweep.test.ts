@@ -41,6 +41,139 @@ function createSweepEngine(
 }
 
 describe("sweep feature", () => {
+  it("rejects construction profiles while allowing construction paths and invalidates existing results", () => {
+    const rejectedEngine = createSweepEngine();
+    rejectedEngine.apply({
+      op: "sketch.setEntityConstruction",
+      sketchId: "sketch_profile",
+      entityId: "profile",
+      construction: true
+    });
+    const rejected = rejectedEngine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "feature.sweep",
+          id: "rejected_sweep",
+          bodyId: "rejected_body",
+          profileSketchId: "sketch_profile",
+          profileEntityId: "profile",
+          pathSketchId: "sketch_path",
+          pathEntityIds: ["path"]
+        }
+      ]
+    });
+    expect(rejected).toMatchObject({
+      ok: false,
+      error: {
+        code: "SKETCH_PROFILE_CONSTRUCTION_ENTITY",
+        path: "$.ops[0].profileEntityId",
+        expected: "non-construction rectangle or circle entity",
+        received: "profile"
+      }
+    });
+    expect(rejectedEngine.getDocument().features.has("rejected_sweep")).toBe(
+      false
+    );
+
+    const engine = createSweepEngine();
+    engine.apply({
+      op: "sketch.setEntityConstruction",
+      sketchId: "sketch_path",
+      entityId: "path",
+      construction: true
+    });
+    engine.apply({
+      op: "feature.sweep",
+      id: "feat_sweep_construction",
+      bodyId: "body_sweep_construction",
+      profileSketchId: "sketch_profile",
+      profileEntityId: "profile",
+      pathSketchId: "sketch_path",
+      pathEntityIds: ["path"]
+    });
+    const sourceBefore = engine
+      .getDocument()
+      .features.get("feat_sweep_construction");
+    const readiness = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "sketch.editReadiness",
+        edit: {
+          editKind: "sketch.setEntityConstruction",
+          sketchId: "sketch_profile",
+          entityId: "profile",
+          construction: true
+        }
+      }
+    });
+    expect(readiness).toMatchObject({
+      ok: true,
+      affected: {
+        sketchIds: ["sketch_profile"],
+        sketchEntityIds: ["profile"],
+        featureIds: ["feat_sweep_construction"],
+        bodyIds: ["body_sweep_construction"]
+      },
+      featureImpacts: [
+        expect.objectContaining({
+          featureId: "feat_sweep_construction",
+          impact: "source-profile"
+        })
+      ]
+    });
+    expect(
+      engine.getDocument().features.get("feat_sweep_construction")
+    ).toEqual(sourceBefore);
+
+    engine.apply({
+      op: "sketch.setEntityConstruction",
+      sketchId: "sketch_profile",
+      entityId: "profile",
+      construction: true
+    });
+    expect(
+      engine.getDocument().features.get("feat_sweep_construction")
+    ).toEqual(sourceBefore);
+    const rebuild = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.rebuildPlan" }
+    });
+    expect(rebuild).toMatchObject({
+      ok: true,
+      bodyLifecycles: expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_sweep_construction",
+          primaryState: "stale",
+          states: expect.arrayContaining(["unsupported", "stale"]),
+          commandReady: false,
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({ code: "REBUILD_BODY_UNSUPPORTED" })
+          ])
+        })
+      ])
+    });
+    const update = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "feature.updateSweep",
+          id: "feat_sweep_construction",
+          pathEntityIds: ["path"]
+        }
+      ]
+    });
+    expect(update).toMatchObject({
+      ok: false,
+      error: { code: "SKETCH_PROFILE_CONSTRUCTION_ENTITY" }
+    });
+    expect(
+      engine.getDocument().features.get("feat_sweep_construction")
+    ).toEqual(sourceBefore);
+  });
+
   it.each(["rectangle", "circle"] as const)(
     "creates, queries, updates, and round-trips a %s profile sweep",
     (profile) => {

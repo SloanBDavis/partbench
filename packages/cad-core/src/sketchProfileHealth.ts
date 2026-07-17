@@ -72,7 +72,11 @@ export function findSketchProfileHealthEntry(
   entries: readonly SketchProfileHealthEntry[],
   featureId: FeatureId
 ): SketchProfileHealthEntry | undefined {
-  return entries.find((entry) => entry.featureId === featureId);
+  return (
+    entries.find(
+      (entry) => entry.featureId === featureId && entry.status !== "ready"
+    ) ?? entries.find((entry) => entry.featureId === featureId)
+  );
 }
 
 export function createFeatureProfileEditDiagnostic(
@@ -95,12 +99,19 @@ function createFeatureProfileHealthEntry(
   document: SketchProfileHealthDocument,
   feature: CadFeatureSummary
 ): readonly SketchProfileHealthEntry[] {
-  const source = getFeatureProfileSource(feature);
+  return getFeatureProfileSources(feature).flatMap((source) =>
+    createFeatureProfileSourceHealthEntry(document, feature, source)
+  );
+}
 
-  if (!source) {
-    return [];
+function createFeatureProfileSourceHealthEntry(
+  document: SketchProfileHealthDocument,
+  feature: CadFeatureSummary,
+  source: {
+    readonly sketchId: SketchId;
+    readonly sketchEntityId: SketchEntityId;
   }
-
+): readonly SketchProfileHealthEntry[] {
   const sketch = document.sketches.get(source.sketchId);
 
   if (!sketch) {
@@ -123,6 +134,18 @@ function createFeatureProfileHealthEntry(
         message: `Feature ${feature.id} source sketch entity is missing: ${source.sketchEntityId}.`,
         expected: "feature-ready source sketch entity",
         received: "missing sketch entity"
+      })
+    ];
+  }
+
+  if (entity.construction) {
+    return [
+      createEntry(feature, source, {
+        status: "stale",
+        profileValidityStatus: "invalid",
+        message: `Feature ${feature.id} source profile is construction geometry; downstream rebuild/reference health is not command-ready.`,
+        expected: "non-construction feature-ready source sketch profile",
+        received: "construction geometry"
       })
     ];
   }
@@ -167,24 +190,40 @@ function createFeatureProfileHealthEntry(
   ];
 }
 
-function getFeatureProfileSource(feature: CadFeatureSummary):
-  | {
-      readonly sketchId: SketchId;
-      readonly sketchEntityId: SketchEntityId;
-    }
-  | undefined {
+function getFeatureProfileSources(feature: CadFeatureSummary): readonly {
+  readonly sketchId: SketchId;
+  readonly sketchEntityId: SketchEntityId;
+}[] {
   if (feature.kind === "extrude" || feature.kind === "revolve") {
-    return { sketchId: feature.sketchId, sketchEntityId: feature.entityId };
+    return [{ sketchId: feature.sketchId, sketchEntityId: feature.entityId }];
   }
 
   if (feature.kind === "hole") {
-    return {
-      sketchId: feature.sketchId,
-      sketchEntityId: feature.circleEntityId
-    };
+    return [
+      {
+        sketchId: feature.sketchId,
+        sketchEntityId: feature.circleEntityId
+      }
+    ];
   }
 
-  return undefined;
+  if (feature.kind === "sweep") {
+    return [
+      {
+        sketchId: feature.profileSketchId,
+        sketchEntityId: feature.profileEntityId
+      }
+    ];
+  }
+
+  if (feature.kind === "loft") {
+    return feature.sections.map((section) => ({
+      sketchId: section.sketchId,
+      sketchEntityId: section.entityId
+    }));
+  }
+
+  return [];
 }
 
 function createEntry(

@@ -7967,7 +7967,10 @@ function isCadSketchEditProposal(value: unknown): boolean {
   }
 
   if (value.editKind === "sketch.updateEntity") {
-    return typeof value.sketchId === "string" && isSketchEntity(value.entity);
+    return (
+      typeof value.sketchId === "string" &&
+      isSketchEntityUpdateInput(value.entity)
+    );
   }
 
   if (value.editKind === "sketch.setEntityConstruction") {
@@ -12349,6 +12352,16 @@ function validateSweepInputs(
       opIndex
     );
   }
+  if (profile.construction) {
+    throwSweepValidationError(
+      "SKETCH_PROFILE_CONSTRUCTION_ENTITY",
+      "Sweep profile cannot use construction geometry.",
+      "profileEntityId",
+      "non-construction rectangle or circle entity",
+      profileEntityId,
+      opIndex
+    );
+  }
   if (!pathSketch || !path) {
     throwSweepValidationError(
       "SWEEP_ENTITY_UNRESOLVED",
@@ -12507,6 +12520,16 @@ function validateLoftSections(
         `sections.${index}.entityId`,
         "rectangle or circle entity",
         entity.kind,
+        opIndex
+      );
+    }
+    if (entity.construction) {
+      throwLoftValidationError(
+        "SKETCH_PROFILE_CONSTRUCTION_ENTITY",
+        "Loft sections cannot use construction geometry.",
+        `sections.${index}.entityId`,
+        "non-construction rectangle or circle entity",
+        section.entityId,
         opIndex
       );
     }
@@ -31616,7 +31639,10 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   if (value.op === "sketch.updateEntity") {
-    return typeof value.sketchId === "string" && isSketchEntity(value.entity);
+    return (
+      typeof value.sketchId === "string" &&
+      isSketchEntityUpdateInput(value.entity)
+    );
   }
 
   if (value.op === "sketch.deleteEntity") {
@@ -32789,7 +32815,7 @@ function isSketchEntity(value: unknown): value is SketchEntitySnapshot {
   if (
     !isRecord(value) ||
     typeof value.id !== "string" ||
-    !isOptionalBoolean(value.construction)
+    typeof value.construction !== "boolean"
   ) {
     return false;
   }
@@ -32834,6 +32860,47 @@ function isSketchEntity(value: unknown): value is SketchEntitySnapshot {
   }
 
   return false;
+}
+
+function isSketchEntityUpdateInput(
+  value: unknown
+): value is SketchEntityUpdateInput {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    !isOptionalBoolean(value.construction)
+  ) {
+    return false;
+  }
+
+  if (value.kind === "arc") {
+    return isSketchEntity(value);
+  }
+
+  if (value.kind === "point") {
+    return isVec2(value.point);
+  }
+
+  if (value.kind === "line") {
+    return isVec2(value.start) && isVec2(value.end);
+  }
+
+  if (value.kind === "rectangle") {
+    return (
+      isVec2(value.center) &&
+      typeof value.width === "number" &&
+      isPositiveFiniteNumber(value.width) &&
+      typeof value.height === "number" &&
+      isPositiveFiniteNumber(value.height)
+    );
+  }
+
+  return (
+    value.kind === "circle" &&
+    isVec2(value.center) &&
+    typeof value.radius === "number" &&
+    isPositiveFiniteNumber(value.radius)
+  );
 }
 
 function isSketchArcDefinition(value: unknown): boolean {

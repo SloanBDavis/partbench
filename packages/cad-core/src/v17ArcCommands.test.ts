@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
+import type { CadOp } from "@web-cad/cad-protocol";
 
 import {
+  CAD_PROJECT_FORMAT_VERSION_V21,
   CadEngine,
+  createCadProjectSourceIdentity,
   exportCadProject,
   exportCadProjectJson,
+  exportCadProjectToWcad,
   importCadProject,
-  importCadProjectJson
+  importCadProjectJson,
+  readCadProjectWcad
 } from "./index";
 
 function createSketchEngine(): CadEngine {
@@ -21,6 +26,60 @@ function createSketchEngine(): CadEngine {
 
 function getEntity(engine: CadEngine, id: string) {
   return engine.getDocument().sketches.get("sketch_arc")?.entities.get(id);
+}
+
+function captureEngineProofState(engine: CadEngine) {
+  const project = exportCadProject(engine);
+  return {
+    project,
+    snapshot: engine.createSnapshot(),
+    sourceIdentity: createCadProjectSourceIdentity(project)
+  };
+}
+
+function executeDryRunWithoutMutation(
+  engine: CadEngine,
+  ops: readonly CadOp[]
+) {
+  const before = captureEngineProofState(engine);
+  const response = engine.executeBatch({
+    version: "cadops.v1",
+    mode: "dryRun",
+    ops
+  });
+  expect(response.ok).toBe(true);
+  expect(captureEngineProofState(engine)).toEqual(before);
+  return response;
+}
+
+function expectUndoRedoExact(
+  engine: CadEngine,
+  before: ReturnType<typeof captureEngineProofState>,
+  committed: ReturnType<typeof captureEngineProofState>
+): void {
+  const committedTransaction = committed.project.history.at(-1)!;
+  const undo = engine.undo();
+  expect(undo?.transaction).toEqual({
+    ...committedTransaction,
+    status: "undone"
+  });
+  expect(engine.createSnapshot()).toEqual(before.snapshot);
+  expect(engine.getTransactions()).toEqual(before.project.history);
+  expect(engine.getRedoStack()).toEqual([
+    { ...committedTransaction, status: "undone" }
+  ]);
+
+  const redo = engine.redo();
+  expect(redo?.transaction).toEqual(committedTransaction);
+  expect(captureEngineProofState(engine)).toEqual(committed);
+}
+
+function historyOps(engine: CadEngine) {
+  const project = exportCadProject(engine);
+  return {
+    history: project.history.map((transaction) => transaction.ops),
+    redo: project.redoStack.map((transaction) => transaction.ops)
+  };
 }
 
 describe("V17 arc and construction commands", () => {
@@ -378,6 +437,262 @@ describe("V17 arc and construction commands", () => {
     });
   });
 
+  it("proves arc update dry-run, validation, semantic diff, and history invariants", () => {
+    const engine = createSketchEngine();
+    engine.apply({
+      op: "sketch.addArc",
+      sketchId: "sketch_arc",
+      id: "arc_history_update",
+      definition: {
+        kind: "centerAngles",
+        center: [0, 0],
+        radius: 2,
+        startAngleDegrees: 15,
+        sweepAngleDegrees: 120
+      },
+      construction: false
+    });
+    const before = captureEngineProofState(engine);
+    const op = {
+      op: "sketch.updateEntity" as const,
+      sketchId: "sketch_arc",
+      entity: {
+        id: "arc_history_update",
+        kind: "arc" as const,
+        center: [3, 4] as const,
+        radius: 5,
+        startAngleDegrees: 725,
+        sweepAngleDegrees: -80,
+        construction: true
+      }
+    };
+    const expectedChange = {
+      sketchId: "sketch_arc",
+      entityId: "arc_history_update",
+      action: "updated",
+      entityKind: "arc",
+      changedFields: [
+        "center",
+        "radius",
+        "startAngleDegrees",
+        "sweepAngleDegrees",
+        "construction"
+      ],
+      constructionBefore: false,
+      constructionAfter: true
+    };
+    const dryRun = executeDryRunWithoutMutation(engine, [op]);
+    expect(dryRun.ok && dryRun.semanticDiff.sketches?.entityChanges).toEqual([
+      expectedChange
+    ]);
+
+    const committedResponse = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [op]
+    });
+    expect(
+      committedResponse.ok &&
+        committedResponse.semanticDiff.sketches?.entityChanges
+    ).toEqual([expectedChange]);
+    expect(getEntity(engine, "arc_history_update")).toEqual({
+      ...op.entity,
+      startAngleDegrees: 5
+    });
+    expect(engine.createSnapshot().nextSketchEntityNumber).toBe(
+      before.snapshot.nextSketchEntityNumber
+    );
+    const committed = captureEngineProofState(engine);
+
+    const invalidBefore = captureEngineProofState(engine);
+    const invalid = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          ...op,
+          entity: { ...op.entity, sweepAngleDegrees: 360 }
+        }
+      ]
+    });
+    expect(invalid).toMatchObject({
+      ok: false,
+      error: { code: "SKETCH_ARC_FULL_CIRCLE_USE_CIRCLE" }
+    });
+    expect(captureEngineProofState(engine)).toEqual(invalidBefore);
+    expectUndoRedoExact(engine, before, committed);
+  });
+
+  it("proves legacy omitted-construction update dry-run and history invariants", () => {
+    const engine = createSketchEngine();
+    engine.apply({
+      op: "sketch.addLine",
+      sketchId: "sketch_arc",
+      id: "legacy_history_line",
+      start: [0, 0],
+      end: [1, 1],
+      construction: true
+    });
+    const before = captureEngineProofState(engine);
+    const op = {
+      op: "sketch.updateEntity" as const,
+      sketchId: "sketch_arc",
+      entity: {
+        id: "legacy_history_line",
+        kind: "line" as const,
+        start: [2, 3] as const,
+        end: [4, 6] as const
+      }
+    };
+    const expectedChange = {
+      sketchId: "sketch_arc",
+      entityId: "legacy_history_line",
+      action: "updated",
+      entityKind: "line",
+      changedFields: ["start", "end"]
+    };
+    const dryRun = executeDryRunWithoutMutation(engine, [op]);
+    expect(dryRun.ok && dryRun.semanticDiff.sketches?.entityChanges).toEqual([
+      expectedChange
+    ]);
+    const committedResponse = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [op]
+    });
+    expect(
+      committedResponse.ok &&
+        committedResponse.semanticDiff.sketches?.entityChanges
+    ).toEqual([expectedChange]);
+    expect(getEntity(engine, "legacy_history_line")).toEqual({
+      ...op.entity,
+      construction: true
+    });
+    const committed = captureEngineProofState(engine);
+
+    const invalidBefore = captureEngineProofState(engine);
+    const invalid = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "sketch.updateEntity",
+          sketchId: "sketch_arc",
+          entity: {
+            id: "legacy_history_line",
+            kind: "circle",
+            center: [0, 0],
+            radius: 1
+          }
+        }
+      ]
+    });
+    expect(invalid).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_SKETCH_ENTITY" }
+    });
+    expect(captureEngineProofState(engine)).toEqual(invalidBefore);
+    expectUndoRedoExact(engine, before, committed);
+  });
+
+  it("proves construction toggle and arc delete dry-run and history invariants", () => {
+    const engine = createSketchEngine();
+    engine.apply({
+      op: "sketch.addArc",
+      sketchId: "sketch_arc",
+      id: "arc_toggle_delete",
+      definition: {
+        kind: "centerAngles",
+        center: [1, 2],
+        radius: 3,
+        startAngleDegrees: 30,
+        sweepAngleDegrees: -140
+      }
+    });
+
+    const toggleBefore = captureEngineProofState(engine);
+    const toggleOp = {
+      op: "sketch.setEntityConstruction" as const,
+      sketchId: "sketch_arc",
+      entityId: "arc_toggle_delete",
+      construction: true
+    };
+    const toggleChange = {
+      sketchId: "sketch_arc",
+      entityId: "arc_toggle_delete",
+      action: "updated",
+      entityKind: "arc",
+      changedFields: ["construction"],
+      constructionBefore: false,
+      constructionAfter: true
+    };
+    const toggleDryRun = executeDryRunWithoutMutation(engine, [toggleOp]);
+    expect(
+      toggleDryRun.ok && toggleDryRun.semanticDiff.sketches?.entityChanges
+    ).toEqual([toggleChange]);
+    const toggleCommit = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [toggleOp]
+    });
+    expect(
+      toggleCommit.ok && toggleCommit.semanticDiff.sketches?.entityChanges
+    ).toEqual([toggleChange]);
+    const toggled = captureEngineProofState(engine);
+    expectUndoRedoExact(engine, toggleBefore, toggled);
+
+    const deleteBefore = captureEngineProofState(engine);
+    const deleteOp = {
+      op: "sketch.deleteEntity" as const,
+      sketchId: "sketch_arc",
+      entityId: "arc_toggle_delete"
+    };
+    const deleteChange = {
+      sketchId: "sketch_arc",
+      entityId: "arc_toggle_delete",
+      action: "deleted",
+      entityKind: "arc",
+      changedFields: [
+        "center",
+        "radius",
+        "startAngleDegrees",
+        "sweepAngleDegrees",
+        "construction"
+      ],
+      constructionBefore: true
+    };
+    const deleteDryRun = executeDryRunWithoutMutation(engine, [deleteOp]);
+    expect(
+      deleteDryRun.ok && deleteDryRun.semanticDiff.sketches?.entityChanges
+    ).toEqual([deleteChange]);
+    const deleteCommit = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [deleteOp]
+    });
+    expect(
+      deleteCommit.ok && deleteCommit.semanticDiff.sketches?.entityChanges
+    ).toEqual([deleteChange]);
+    expect(getEntity(engine, "arc_toggle_delete")).toBeUndefined();
+    expect(engine.createSnapshot().nextSketchEntityNumber).toBe(
+      deleteBefore.snapshot.nextSketchEntityNumber
+    );
+    const deleted = captureEngineProofState(engine);
+
+    const invalidBefore = captureEngineProofState(engine);
+    const invalid = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [deleteOp]
+    });
+    expect(invalid).toMatchObject({
+      ok: false,
+      error: { code: "SKETCH_ENTITY_NOT_FOUND" }
+    });
+    expect(captureEngineProofState(engine)).toEqual(invalidBefore);
+    expectUndoRedoExact(engine, deleteBefore, deleted);
+  });
+
   it("restores exact arc source and counters through undo and redo", () => {
     const engine = createSketchEngine();
     engine.apply({
@@ -587,6 +902,49 @@ describe("V17 arc and construction commands", () => {
         }
       }
     });
+    const updateSourceBefore = captureEngineProofState(engine);
+    const updateReadiness = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "sketch.editReadiness",
+        edit: {
+          editKind: "sketch.updateEntity",
+          sketchId: "sketch_arc",
+          entity: {
+            id: "arc_query",
+            kind: "arc",
+            center: [2, 3],
+            radius: 4,
+            startAngleDegrees: 725,
+            sweepAngleDegrees: -120,
+            construction: false
+          }
+        }
+      }
+    });
+    const invalidReadiness = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "sketch.editReadiness",
+        edit: {
+          editKind: "sketch.updateEntity",
+          sketchId: "sketch_arc",
+          entity: {
+            id: "arc_query",
+            kind: "arc",
+            center: [2, 3],
+            radius: 0,
+            startAngleDegrees: 0,
+            sweepAngleDegrees: 90,
+            construction: false
+          }
+        }
+      }
+    });
+    const solverStatus = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "sketch.solverStatus", sketchId: "sketch_arc" }
+    });
 
     expect(get).toMatchObject({
       ok: true,
@@ -600,8 +958,86 @@ describe("V17 arc and construction commands", () => {
     expect(readiness).toMatchObject({
       ok: true,
       status: "unsupported",
-      dryRun: { status: "unsupported" }
+      dryRun: { status: "unsupported" },
+      affected: {
+        sketchIds: ["sketch_arc"],
+        sketchEntityIds: ["arc_query"]
+      },
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_EDIT_UNSUPPORTED",
+          sketchEntityId: "arc_query"
+        })
+      ])
     });
+    expect(updateReadiness).toMatchObject({
+      ok: true,
+      status: "unsupported",
+      dryRun: {
+        status: "unsupported",
+        willMutateDocument: false,
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({
+            code: "SKETCH_EDIT_UNSUPPORTED",
+            sketchEntityId: "arc_query"
+          })
+        ])
+      },
+      affected: {
+        sketchIds: ["sketch_arc"],
+        sketchEntityIds: ["arc_query"],
+        featureIds: [],
+        bodyIds: []
+      }
+    });
+    expect(invalidReadiness).toMatchObject({
+      ok: true,
+      status: "blocked",
+      dryRun: {
+        status: "blocked",
+        willMutateDocument: false,
+        diagnostics: [
+          {
+            code: "SKETCH_EDIT_INVALID_VALUE",
+            severity: "blocker",
+            message:
+              "Arc radius must be finite and greater than the sketch linear tolerance.",
+            sketchId: "sketch_arc",
+            sketchEntityId: "arc_query",
+            fieldPath: "entity.radius",
+            expected: ">1e-7",
+            received: "0"
+          }
+        ]
+      },
+      affected: {
+        sketchIds: ["sketch_arc"],
+        sketchEntityIds: ["arc_query"],
+        featureIds: [],
+        bodyIds: []
+      }
+    });
+    expect(solverStatus).toMatchObject({
+      ok: true,
+      query: "sketch.solverStatus",
+      status: "unsupported",
+      entities: [
+        expect.objectContaining({
+          entityId: "arc_query",
+          entityKind: "arc",
+          supported: false,
+          variableCount: 0,
+          degreesOfFreedom: 0,
+          diagnostics: [
+            expect.objectContaining({
+              code: "SKETCH_SOLVER_UNSUPPORTED_ENTITY",
+              sketchEntityId: "arc_query"
+            })
+          ]
+        })
+      ]
+    });
+    expect(captureEngineProofState(engine)).toEqual(updateSourceBefore);
 
     const projectRoundTrip = importCadProject(exportCadProject(engine));
     const jsonRoundTrip = importCadProjectJson(exportCadProjectJson(engine));
@@ -611,5 +1047,135 @@ describe("V17 arc and construction commands", () => {
     expect(getEntity(jsonRoundTrip, "arc_query")).toEqual(
       getEntity(engine, "arc_query")
     );
+  });
+
+  it("preserves authored V21 and historical update payloads through JSON and WCAD", async () => {
+    const engine = createSketchEngine();
+    engine.apply({
+      op: "sketch.addLine",
+      sketchId: "sketch_arc",
+      id: "legacy_payload_line",
+      start: [0, 0],
+      end: [1, 1],
+      construction: true
+    });
+    engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_arc",
+      entity: {
+        id: "legacy_payload_line",
+        kind: "line",
+        start: [2, 2],
+        end: [4, 5]
+      }
+    });
+    engine.apply({
+      op: "sketch.addArc",
+      sketchId: "sketch_arc",
+      id: "arc_payload",
+      definition: {
+        kind: "centerAngles",
+        center: [1, 2],
+        radius: 3,
+        startAngleDegrees: 20,
+        sweepAngleDegrees: 100
+      }
+    });
+    engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_arc",
+      entity: {
+        id: "arc_payload",
+        kind: "arc",
+        center: [3, 4],
+        radius: 5,
+        startAngleDegrees: 380,
+        sweepAngleDegrees: -90,
+        construction: false
+      }
+    });
+    engine.apply({
+      op: "sketch.setEntityConstruction",
+      sketchId: "sketch_arc",
+      entityId: "arc_payload",
+      construction: true
+    });
+    engine.apply({
+      op: "sketch.deleteEntity",
+      sketchId: "sketch_arc",
+      entityId: "arc_payload"
+    });
+    engine.undo();
+
+    const source = exportCadProject(engine);
+    const expectedOps = historyOps(engine);
+    const expectedIdentity = createCadProjectSourceIdentity(source);
+    expect(source.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V21);
+    const legacyUpdate = expectedOps.history
+      .flat()
+      .find(
+        (op) =>
+          op.op === "sketch.updateEntity" &&
+          op.entity.id === "legacy_payload_line"
+      );
+    expect(legacyUpdate).toEqual({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_arc",
+      entity: {
+        id: "legacy_payload_line",
+        kind: "line",
+        start: [2, 2],
+        end: [4, 5]
+      }
+    });
+    if (!legacyUpdate || legacyUpdate.op !== "sketch.updateEntity") {
+      throw new Error("Expected historical sketch.updateEntity payload.");
+    }
+    expect(legacyUpdate.entity).not.toHaveProperty("construction");
+    expect(expectedOps.redo[0]?.[0]).toEqual({
+      op: "sketch.deleteEntity",
+      sketchId: "sketch_arc",
+      entityId: "arc_payload"
+    });
+
+    const json = exportCadProjectJson(engine);
+    const rawJson = JSON.parse(json) as typeof source;
+    expect({
+      history: rawJson.history.map((transaction) => transaction.ops),
+      redo: rawJson.redoStack.map((transaction) => transaction.ops)
+    }).toEqual(expectedOps);
+    expect(createCadProjectSourceIdentity(rawJson)).toEqual(expectedIdentity);
+    const jsonEngine = importCadProjectJson(json);
+    expect(historyOps(jsonEngine)).toEqual(expectedOps);
+    expect(
+      createCadProjectSourceIdentity(exportCadProject(jsonEngine))
+    ).toEqual(expectedIdentity);
+    expect(getEntity(jsonEngine, "legacy_payload_line")).toMatchObject({
+      construction: true
+    });
+    jsonEngine.redo();
+    expect(getEntity(jsonEngine, "arc_payload")).toBeUndefined();
+
+    const packed = await exportCadProjectToWcad(source);
+    expect(packed.manifest.document.schemaVersion).toBe(
+      CAD_PROJECT_FORMAT_VERSION_V21
+    );
+    const read = await readCadProjectWcad(packed.bytes);
+    expect(read.ok).toBe(true);
+    if (!read.ok) {
+      return;
+    }
+    expect(read.sourceIdentity).toEqual(packed.sourceIdentity);
+    expect(createCadProjectSourceIdentity(read.project)).toEqual(
+      expectedIdentity
+    );
+    expect({
+      history: read.project.history.map((transaction) => transaction.ops),
+      redo: read.project.redoStack.map((transaction) => transaction.ops)
+    }).toEqual(expectedOps);
+    const wcadEngine = importCadProject(read.project);
+    expect(historyOps(wcadEngine)).toEqual(expectedOps);
+    wcadEngine.redo();
+    expect(getEntity(wcadEngine, "arc_payload")).toBeUndefined();
   });
 });

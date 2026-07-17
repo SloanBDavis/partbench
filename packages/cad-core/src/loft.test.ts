@@ -55,6 +55,136 @@ function createLoftEngine(): CadEngine {
 }
 
 describe("loft feature", () => {
+  it("rejects construction sections and invalidates an existing loft source", () => {
+    const rejectedEngine = createLoftEngine();
+    rejectedEngine.apply({
+      op: "sketch.setEntityConstruction",
+      sketchId: "sketch_top",
+      entityId: "top_circle",
+      construction: true
+    });
+    const rejected = rejectedEngine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "feature.loft",
+          id: "rejected_loft",
+          bodyId: "rejected_loft_body",
+          sections: [
+            { sketchId: "sketch_base", entityId: "base_profile" },
+            { sketchId: "sketch_top", entityId: "top_circle" }
+          ]
+        }
+      ]
+    });
+    expect(rejected).toMatchObject({
+      ok: false,
+      error: {
+        code: "SKETCH_PROFILE_CONSTRUCTION_ENTITY",
+        path: "$.ops[0].sections.1.entityId",
+        expected: "non-construction rectangle or circle entity",
+        received: "top_circle"
+      }
+    });
+    expect(rejectedEngine.getDocument().features.has("rejected_loft")).toBe(
+      false
+    );
+
+    const engine = createLoftEngine();
+    engine.apply({
+      op: "feature.loft",
+      id: "feat_loft_construction",
+      bodyId: "body_loft_construction",
+      sections: [
+        { sketchId: "sketch_base", entityId: "base_profile" },
+        { sketchId: "sketch_top", entityId: "top_circle" }
+      ]
+    });
+    const sourceBefore = engine
+      .getDocument()
+      .features.get("feat_loft_construction");
+    const readiness = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "sketch.editReadiness",
+        edit: {
+          editKind: "sketch.setEntityConstruction",
+          sketchId: "sketch_top",
+          entityId: "top_circle",
+          construction: true
+        }
+      }
+    });
+    expect(readiness).toMatchObject({
+      ok: true,
+      affected: {
+        sketchIds: ["sketch_top"],
+        sketchEntityIds: ["top_circle"],
+        featureIds: ["feat_loft_construction"],
+        bodyIds: ["body_loft_construction"]
+      },
+      featureImpacts: [
+        expect.objectContaining({
+          featureId: "feat_loft_construction",
+          impact: "source-profile"
+        })
+      ]
+    });
+    expect(engine.getDocument().features.get("feat_loft_construction")).toEqual(
+      sourceBefore
+    );
+
+    engine.apply({
+      op: "sketch.setEntityConstruction",
+      sketchId: "sketch_top",
+      entityId: "top_circle",
+      construction: true
+    });
+    expect(engine.getDocument().features.get("feat_loft_construction")).toEqual(
+      sourceBefore
+    );
+    const rebuild = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.rebuildPlan" }
+    });
+    expect(rebuild).toMatchObject({
+      ok: true,
+      bodyLifecycles: expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_loft_construction",
+          primaryState: "stale",
+          states: expect.arrayContaining(["unsupported", "stale"]),
+          commandReady: false,
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({ code: "REBUILD_BODY_UNSUPPORTED" })
+          ])
+        })
+      ])
+    });
+    const update = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "feature.updateLoft",
+          id: "feat_loft_construction",
+          sections: [
+            { sketchId: "sketch_base", entityId: "base_profile" },
+            { sketchId: "sketch_top", entityId: "top_circle" }
+          ]
+        }
+      ]
+    });
+    expect(update).toMatchObject({
+      ok: false,
+      error: { code: "SKETCH_PROFILE_CONSTRUCTION_ENTITY" }
+    });
+    expect(engine.getDocument().features.get("feat_loft_construction")).toEqual(
+      sourceBefore
+    );
+  });
+
   it("creates, queries, updates, and round-trips a separated face-attached loft", () => {
     const engine = createLoftEngine();
     const created = engine.executeBatch({
