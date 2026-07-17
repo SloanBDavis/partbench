@@ -1243,6 +1243,96 @@ describe("geometry-kernel facade", () => {
     }
   );
 
+  it.each([
+    [MAX_BOOLEAN_EXTRUDE_RECIPE_DEPTH - 1, true],
+    [MAX_BOOLEAN_EXTRUDE_RECIPE_DEPTH, false]
+  ] as const)(
+    "keeps a target with %i result nodes at the same mesh, exact metadata, and STEP boundary",
+    async (targetDepth, expectedOk) => {
+      const unusedFactory = async () => {
+        throw new Error("Unexpected mesh factory call.");
+      };
+      const factories: GeometryKernelMeshFactories = {
+        createBoxMesh: unusedFactory,
+        createCylinderMesh: unusedFactory,
+        createSphereMesh: unusedFactory,
+        createConeMesh: unusedFactory,
+        createTorusMesh: unusedFactory,
+        createBooleanExtrudeMesh: async () => ({
+          primitive: "boolean",
+          positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+          indices: new Uint32Array([0, 1, 2]),
+          vertexCount: 3,
+          triangleCount: 1,
+          faceCount: 1
+        }),
+        createExactBodyMetadata: async (input) => ({
+          sourceKind: input.source.kind,
+          bounds: { min: [0, 0, 0], max: [4, 4, 4] },
+          volume: 64,
+          surfaceArea: 96,
+          centroid: [2, 2, 2],
+          topologyCounts: {
+            solidCount: 1,
+            faceCount: 6,
+            edgeCount: 12,
+            vertexCount: 8
+          },
+          measurementSource: "kernel-derived",
+          measurementConfidence: "kernel-derived",
+          diagnostics: []
+        }),
+        createExactStepExport: async (input) => ({
+          format: "step",
+          schema: "AP242DIS",
+          units: input.units,
+          bodyCount: input.bodies.length,
+          byteLength: 1,
+          bytes: new Uint8Array([1])
+        })
+      };
+      const target = createNestedBooleanRecipe(targetDepth);
+      const completeSource = {
+        kind: "booleanExtrudes" as const,
+        operation: "add" as const,
+        target,
+        tool: booleanRecipePrimitive
+      };
+      const [mesh, exact, step] = await Promise.all([
+        executeGeometryKernelRequestWithMeshFactory(factories, {
+          id: `geometry_req_boundary_${targetDepth}_mesh`,
+          version: "geometry-kernel.v1",
+          op: "geometry.booleanExtrudes",
+          operation: "add",
+          target,
+          tool: booleanRecipePrimitive
+        }),
+        executeGeometryKernelRequestWithMeshFactory(factories, {
+          id: `geometry_req_boundary_${targetDepth}_exact`,
+          version: "geometry-kernel.v1",
+          op: "geometry.exactBodyMetadata",
+          source: completeSource
+        }),
+        executeGeometryKernelRequestWithMeshFactory(factories, {
+          id: `geometry_req_boundary_${targetDepth}_step`,
+          version: "geometry-kernel.v1",
+          op: "geometry.exportStep",
+          units: "mm",
+          bodies: [{ ...completeSource, bodyId: `body_${targetDepth}` }]
+        })
+      ]);
+
+      for (const response of [mesh, exact, step]) {
+        expect(response.ok).toBe(expectedOk);
+        if (!expectedOk) {
+          expect(response).toMatchObject({
+            error: { code: "INVALID_DIMENSIONS" }
+          });
+        }
+      }
+    }
+  );
+
   it(
     "tessellates rectangle and circle revolve profiles through the isolated OCCT WASM adapter",
     async () => {

@@ -133,7 +133,7 @@ export function createOcctBooleanExtrudeMeshWithInstance(
   input: OcctBooleanExtrudeInput
 ): OcctMeshData {
   return createOcctBooleanExtrudeMeshWithShapeFactories(oc, input, {
-    target: makeBooleanExtrudeShape,
+    target: makeBooleanExtrudeMeshTargetShape,
     tool: makeBooleanExtrudeToolShape
   });
 }
@@ -144,6 +144,10 @@ export function createOcctBooleanExtrudeMeshWithShapeFactories(
   factories: OcctBooleanExtrudeShapeFactories
 ): OcctMeshData {
   assertSupportedBooleanInput(input);
+  assertBooleanExtrudeRecipeWithinLimit(input.target, {
+    visited: new WeakSet<object>(),
+    depth: 1
+  });
   const linearDeflection = input.linearDeflection ?? 0.5;
   const angularDeflection = input.angularDeflection ?? 0.5;
   let targetShape: OcctBooleanExtrudeShapeBuilder | undefined;
@@ -231,6 +235,36 @@ export function makeBooleanExtrudeShape(
   return makeBooleanExtrudeShapeWithContext(oc, source, {
     visited: new WeakSet<object>(),
     depth: 0
+  });
+}
+
+function makeBooleanExtrudeMeshTargetShape(
+  oc: OpenCascadeInstance,
+  source: OcctBooleanExtrudeSource
+): OcctBooleanExtrudeShapeBuilder {
+  return makeBooleanExtrudeShapeWithContext(oc, source, {
+    visited: new WeakSet<object>(),
+    depth: 1
+  });
+}
+
+function assertBooleanExtrudeRecipeWithinLimit(
+  source: OcctBooleanExtrudeSource,
+  context: OcctBooleanExtrudeBuildContext
+): void {
+  if (!isOcctBooleanExtrudeResultSource(source)) return;
+  if (
+    context.depth >= MAX_OCCT_BOOLEAN_EXTRUDE_RECIPE_DEPTH ||
+    context.visited.has(source)
+  ) {
+    throw new Error(
+      `Open CASCADE boolean recipe is cyclic or exceeds ${MAX_OCCT_BOOLEAN_EXTRUDE_RECIPE_DEPTH} result nodes.`
+    );
+  }
+  context.visited.add(source);
+  assertBooleanExtrudeRecipeWithinLimit(source.target, {
+    visited: context.visited,
+    depth: context.depth + 1
   });
 }
 

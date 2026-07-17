@@ -1823,6 +1823,43 @@ describe("occt-wasm", () => {
     );
   });
 
+  it.each([
+    [MAX_OCCT_BOOLEAN_EXTRUDE_RECIPE_DEPTH - 1, true],
+    [MAX_OCCT_BOOLEAN_EXTRUDE_RECIPE_DEPTH, false]
+  ] as const)(
+    "reserves the outer mesh operation for a target with %i result nodes",
+    (targetDepth, reachesTargetFactory) => {
+      let targetFactoryCalls = 0;
+      const targetFactoryReached = new Error("Target factory reached.");
+      const factories: OcctBooleanExtrudeShapeFactories = {
+        target: () => {
+          targetFactoryCalls += 1;
+          throw targetFactoryReached;
+        },
+        tool: () => {
+          throw new Error("Unexpected tool factory call.");
+        }
+      };
+
+      expect(() =>
+        createOcctBooleanExtrudeMeshWithShapeFactories(
+          {} as OpenCascadeInstance,
+          {
+            operation: "add",
+            target: createNestedOcctBooleanRecipe(targetDepth),
+            tool: occtBooleanRecipePrimitive
+          },
+          factories
+        )
+      ).toThrow(
+        reachesTargetFactory
+          ? targetFactoryReached
+          : `exceeds ${MAX_OCCT_BOOLEAN_EXTRUDE_RECIPE_DEPTH}`
+      );
+      expect(targetFactoryCalls).toBe(reachesTargetFactory ? 1 : 0);
+    }
+  );
+
   it(
     "creates a chained rectangle boolean cut through Open CASCADE WASM",
     async () => {

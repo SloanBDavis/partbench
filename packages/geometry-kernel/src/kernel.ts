@@ -1715,7 +1715,10 @@ function validateRequest(
     }
 
     if (
-      !isValidBooleanExtrudeSource(request.target) ||
+      !isValidBooleanExtrudeSource(request.target, {
+        visited: new WeakSet<object>(),
+        depth: 1
+      }) ||
       !isValidBooleanExtrudeToolSource(request.operation, request.tool)
     ) {
       return {
