@@ -1,14 +1,20 @@
 import type {
   CadBatchValidationErrorCode,
+  CadExactExportResolvedWireProfile,
   FeatureId,
   FeatureInputReferenceSemanticDiff,
   SketchProfileDiagnosticCode,
   SketchProfileRef,
-  SketchWireProfileRef
+  SketchWireProfileRef,
+  PartId,
+  SketchEntityId,
+  SketchEntitySnapshot
 } from "@web-cad/cad-protocol";
 
 import type { CadDocument } from "./index";
-import { createSketchProfileReadinessResponse } from "./sketchProfilePathQueries";
+import { createNewBodyWireProfileReadinessResponse } from "./sketchProfilePathQueries";
+import { SKETCH_GEOMETRY_POLICY } from "./sketchGeometryPolicy";
+import { createSourceMeasurementFrame } from "./sourceMeasurementGeometry";
 
 export type WireExtrudeProfileResolution =
   | {
@@ -26,7 +32,7 @@ export type WireExtrudeProfileResolution =
 
 /** Resolves the sole enabled V17 composite-profile feature row. */
 export function resolveNewBodyWireExtrudeProfile(
-  document: CadDocument,
+  document: Pick<CadDocument, "sketches">,
   profile: SketchWireProfileRef,
   operationMode: "newBody" | "add" | "cut"
 ): WireExtrudeProfileResolution {
@@ -48,13 +54,9 @@ export function resolveNewBodyWireExtrudeProfile(
     };
   }
 
-  const readiness = createSketchProfileReadinessResponse(
-    document,
-    {
-      query: "sketch.profileReadiness",
-      profile,
-      consumer: { featureKind: "extrude", operationMode: "newBody" }
-    },
+  const readiness = createNewBodyWireProfileReadinessResponse(
+    document.sketches.get(profile.sketchId)!,
+    profile,
     "cadops.v1"
   );
 
@@ -77,6 +79,89 @@ export function resolveNewBodyWireExtrudeProfile(
     sketchId: diagnostic?.sketchId ?? profile.sketchId,
     sketchEntityId: diagnostic?.entityId
   };
+}
+
+/** Resolves the normalized authoritative wire into the shared exact/display recipe. */
+export function createResolvedWireExtrudeProfile(
+  document: CadDocument,
+  profile: SketchWireProfileRef,
+  ownerPartId: PartId
+): CadExactExportResolvedWireProfile | undefined {
+  const resolution = resolveNewBodyWireExtrudeProfile(
+    document,
+    profile,
+    "newBody"
+  );
+  if (!resolution.ok) return undefined;
+  const sketch = document.sketches.get(resolution.profile.sketchId);
+  if (!sketch) return undefined;
+  const frame = createSourceMeasurementFrame(document, sketch, ownerPartId);
+  if (!frame) return undefined;
+
+  return createResolvedWireExtrudeRecipe(resolution.profile, sketch.entities, {
+    origin: frame.origin,
+    uAxis: frame.uAxis,
+    vAxis: frame.vAxis
+  });
+}
+
+/** Pure normalized traversal mapping shared by display, exact metadata, and STEP. */
+export function createResolvedWireExtrudeRecipe(
+  profile: SketchWireProfileRef,
+  entities: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>,
+  frame: CadExactExportResolvedWireProfile["frame"]
+): CadExactExportResolvedWireProfile | undefined {
+  const segments: CadExactExportResolvedWireProfile["segments"][number][] = [];
+  for (const reference of profile.segments) {
+    const entity = entities.get(reference.entityId);
+    if (!entity || (entity.kind !== "line" && entity.kind !== "arc")) {
+      return undefined;
+    }
+    if (entity.kind === "line") {
+      segments.push({
+        kind: "line",
+        sourceEntityId: entity.id,
+        start: reference.orientation === "forward" ? entity.start : entity.end,
+        end: reference.orientation === "forward" ? entity.end : entity.start
+      });
+      continue;
+    }
+    const forward = reference.orientation === "forward";
+    segments.push({
+      kind: "arc",
+      sourceEntityId: entity.id,
+      center: entity.center,
+      radius: entity.radius,
+      startAngleDegrees: normalizeDegrees(
+        forward
+          ? entity.startAngleDegrees
+          : entity.startAngleDegrees + entity.sweepAngleDegrees
+      ),
+      sweepAngleDegrees: forward
+        ? entity.sweepAngleDegrees
+        : -entity.sweepAngleDegrees
+    });
+  }
+
+  const identityRecipe = {
+    sketchId: profile.sketchId,
+    frame,
+    segments,
+    geometryPolicy: SKETCH_GEOMETRY_POLICY
+  };
+  return {
+    kind: "wire",
+    frame,
+    closed: true,
+    segments,
+    sourceIdentity: `partbench-wire-extrude-v1:${JSON.stringify(identityRecipe)}`,
+    geometryPolicy: SKETCH_GEOMETRY_POLICY
+  };
+}
+
+function normalizeDegrees(value: number): number {
+  const normalized = ((value % 360) + 360) % 360;
+  return Object.is(normalized, -0) ? 0 : normalized;
 }
 
 function mapProfileDiagnosticToBatchError(

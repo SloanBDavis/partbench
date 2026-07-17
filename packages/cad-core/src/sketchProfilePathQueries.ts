@@ -2,6 +2,7 @@ import type {
   CadOpsVersion,
   OrientedSketchSegmentRef,
   SketchConstructionExclusion,
+  SketchConsumerCompatibility,
   SketchEntityId,
   SketchPathCandidate,
   SketchPathCandidatesQueryResponse,
@@ -18,7 +19,9 @@ import type {
   SketchProfileJoinHealth,
   SketchProfileReadinessQuery,
   SketchProfileReadinessQueryResponse,
+  SketchProfileTargetCompatibility,
   SketchProfileRef,
+  SketchWireProfileRef,
   SketchProfileRejectedComponent,
   SketchReferenceDependencies,
   SketchSegmentOrientation,
@@ -1054,7 +1057,7 @@ export function createSketchProfileCandidatesResponse(
     (component) => component.diagnostics
   );
   return {
-    ok: true,
+    ok: true as const,
     query: "sketch.profileCandidates",
     cadOpsVersion,
     sketchId: sketch.id,
@@ -1285,6 +1288,150 @@ function createResolvedTargetCompatibility(
   };
 }
 
+export function createNewBodyWireProfileReadinessResponse(
+  sketch: Sketch,
+  profile: SketchWireProfileRef,
+  cadOpsVersion: CadOpsVersion
+): SketchProfileReadinessQueryResponse {
+  const consumer = {
+    featureKind: "extrude" as const,
+    operationMode: "newBody" as const
+  };
+  const consumerCompatibility = createConsumerCompatibility(profile, consumer);
+  const targetCompatibility = {
+    status: "not-applicable" as const,
+    diagnosticCount: 0 as const,
+    diagnostics: [] as const
+  };
+  return createWireProfileReadinessResponse(
+    sketch,
+    profile,
+    consumer,
+    consumerCompatibility,
+    targetCompatibility,
+    cadOpsVersion
+  );
+}
+
+function createWireProfileReadinessResponse(
+  sketch: Sketch,
+  profile: SketchWireProfileRef,
+  consumer: SketchProfileConsumerIntent,
+  consumerCompatibility: SketchConsumerCompatibility,
+  targetCompatibility: SketchProfileTargetCompatibility,
+  cadOpsVersion: CadOpsVersion
+): SketchProfileReadinessQueryResponse {
+  const wire = resolveWire(sketch, profile.segments);
+  const normalized =
+    wire.segments.length === profile.segments.length
+      ? normalizeSketchWireCounterClockwise(wire.segments)
+      : undefined;
+  const normalizedProfile: SketchProfileRef | undefined = normalized
+    ? {
+        kind: "wire",
+        sketchId: sketch.id,
+        segments: refsFromSegments(normalized.segments)
+      }
+    : undefined;
+  const orientationDiagnostic = normalized?.normalized
+    ? [
+        {
+          code: "SKETCH_PROFILE_ORIENTATION_NORMALIZED" as const,
+          severity: "info" as const,
+          message: "Profile traversal was normalized counterclockwise.",
+          sketchId: sketch.id
+        }
+      ]
+    : [];
+  const selectedKey = profile.segments
+    .map((segment) => segment.entityId)
+    .sort()
+    .join("|");
+  const nestingDiagnostics = createSketchProfileCandidatesResponse(
+    sketch,
+    cadOpsVersion
+  )
+    .rejectedComponents.filter(
+      (component) => [...component.entityIds].sort().join("|") === selectedKey
+    )
+    .flatMap((component) => component.diagnostics)
+    .filter(
+      (diagnostic) =>
+        diagnostic.code === "SKETCH_PROFILE_INNER_LOOP_UNSUPPORTED"
+    );
+  const diagnostics = [
+    ...wire.diagnostics,
+    ...orientationDiagnostic,
+    ...nestingDiagnostics,
+    ...consumerCompatibility.diagnostics,
+    ...targetCompatibility.diagnostics
+  ];
+  const ready =
+    wire.closed &&
+    wire.intersectionStatus === "clear" &&
+    wire.area !== undefined &&
+    wire.bounds !== undefined &&
+    normalized !== undefined &&
+    normalizedProfile !== undefined &&
+    wire.area >= SKETCH_GEOMETRY_POLICY.minimumProfileArea &&
+    consumerCompatibility.status === "ready" &&
+    (targetCompatibility.status === "not-applicable" ||
+      targetCompatibility.status === "ready") &&
+    !diagnostics.some((diagnostic) => diagnostic.severity === "blocker");
+  const responseBase = {
+    ok: true as const,
+    query: "sketch.profileReadiness" as const,
+    cadOpsVersion,
+    requestedProfile: profile,
+    consumer,
+    consumerCompatibility,
+    targetCompatibility,
+    dependencies: {
+      sketchIds: [sketch.id],
+      orderedEntityIds: profile.segments.map((segment) => segment.entityId)
+    },
+    joinCount: wire.joins.length,
+    joins: wire.joins,
+    intersectionStatus: wire.intersectionStatus,
+    diagnosticCount: diagnostics.length,
+    diagnostics
+  };
+  if (ready) {
+    return {
+      ...responseBase,
+      status: "ready",
+      normalizedProfile,
+      orientation: "counterclockwise",
+      orientationNormalized: normalized.normalized,
+      area: wire.area,
+      signedArea: normalized.signedArea,
+      bounds: wire.bounds,
+      intersectionStatus: "clear"
+    };
+  }
+  return {
+    ...responseBase,
+    status: "blocked",
+    ...(normalizedProfile ? { normalizedProfile } : {}),
+    ...(wire.signedArea === undefined
+      ? {}
+      : {
+          orientation:
+            wire.signedArea < 0
+              ? ("clockwise" as const)
+              : ("counterclockwise" as const)
+        }),
+    orientationNormalized: normalized?.normalized ?? false,
+    ...(wire.area === undefined ? {} : { area: wire.area }),
+    ...(normalized
+      ? { signedArea: normalized.signedArea }
+      : wire.signedArea === undefined
+        ? {}
+        : { signedArea: wire.signedArea }),
+    ...(wire.bounds ? { bounds: wire.bounds } : {})
+  };
+}
+
 export function createSketchProfileReadinessResponse(
   document: CadDocument,
   query: SketchProfileReadinessQuery,
@@ -1407,99 +1554,14 @@ export function createSketchProfileReadinessResponse(
     } as SketchProfileReadinessQueryResponse;
   }
 
-  const wire = resolveWire(sketch, query.profile.segments);
-  const normalized =
-    wire.segments.length === query.profile.segments.length
-      ? normalizeSketchWireCounterClockwise(wire.segments)
-      : undefined;
-  const normalizedProfile: SketchProfileRef | undefined = normalized
-    ? {
-        kind: "wire",
-        sketchId: sketch.id,
-        segments: refsFromSegments(normalized.segments)
-      }
-    : undefined;
-  const orientationDiagnostic = normalized?.normalized
-    ? [
-        {
-          code: "SKETCH_PROFILE_ORIENTATION_NORMALIZED" as const,
-          severity: "info" as const,
-          message: "Profile traversal was normalized counterclockwise.",
-          sketchId: sketch.id
-        }
-      ]
-    : [];
-  const selectedKey = query.profile.segments
-    .map((segment) => segment.entityId)
-    .sort()
-    .join("|");
-  const nestingDiagnostics = createSketchProfileCandidatesResponse(
+  return createWireProfileReadinessResponse(
     sketch,
-    cadOpsVersion
-  )
-    .rejectedComponents.filter(
-      (component) => [...component.entityIds].sort().join("|") === selectedKey
-    )
-    .flatMap((component) => component.diagnostics)
-    .filter(
-      (diagnostic) =>
-        diagnostic.code === "SKETCH_PROFILE_INNER_LOOP_UNSUPPORTED"
-    );
-  const diagnostics = [
-    ...wire.diagnostics,
-    ...orientationDiagnostic,
-    ...nestingDiagnostics,
-    ...consumerCompatibility.diagnostics,
-    ...targetDiagnostics
-  ];
-  const ready =
-    wire.closed &&
-    wire.intersectionStatus === "clear" &&
-    wire.area !== undefined &&
-    wire.area >= SKETCH_GEOMETRY_POLICY.minimumProfileArea &&
-    consumerCompatibility.status === "ready" &&
-    (targetCompatibility.status === "not-applicable" ||
-      targetCompatibility.status === "ready") &&
-    !diagnostics.some((diagnostic) => diagnostic.severity === "blocker");
-  return {
-    ok: true,
-    query: "sketch.profileReadiness",
-    cadOpsVersion,
-    status: ready ? "ready" : "blocked",
-    requestedProfile: query.profile,
-    ...(normalizedProfile ? { normalizedProfile } : {}),
-    ...(wire.signedArea === undefined
-      ? {}
-      : {
-          orientation: ready
-            ? ("counterclockwise" as const)
-            : wire.signedArea < 0
-              ? ("clockwise" as const)
-              : ("counterclockwise" as const)
-        }),
-    orientationNormalized: normalized?.normalized ?? false,
-    ...(wire.area === undefined ? {} : { area: wire.area }),
-    ...(normalized
-      ? { signedArea: normalized.signedArea }
-      : wire.signedArea === undefined
-        ? {}
-        : { signedArea: wire.signedArea }),
-    ...(wire.bounds ? { bounds: wire.bounds } : {}),
-    consumer: query.consumer,
+    query.profile,
+    query.consumer,
     consumerCompatibility,
     targetCompatibility,
-    dependencies: {
-      sketchIds: [sketch.id],
-      orderedEntityIds: query.profile.segments.map(
-        (segment) => segment.entityId
-      )
-    },
-    joinCount: wire.joins.length,
-    joins: wire.joins,
-    intersectionStatus: wire.intersectionStatus,
-    diagnosticCount: diagnostics.length,
-    diagnostics
-  } as SketchProfileReadinessQueryResponse;
+    cadOpsVersion
+  );
 }
 
 function rejectedPathComponent(

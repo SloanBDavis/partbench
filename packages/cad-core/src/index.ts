@@ -327,6 +327,7 @@ import {
   createProfileInputReference,
   resolveNewBodyWireExtrudeProfile
 } from "./wireExtrudeProfile";
+export { createResolvedWireExtrudeRecipe } from "./wireExtrudeProfile";
 import {
   createProjectExactExport,
   createProjectExportReadiness

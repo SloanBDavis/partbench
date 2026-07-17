@@ -25,6 +25,7 @@ import {
   getSupportedEntityProfileKind
 } from "./normalizedFeatureInputs";
 import { createSourceMeasurementFrame } from "./sourceMeasurementGeometry";
+import { createResolvedWireExtrudeProfile } from "./wireExtrudeProfile";
 
 interface ProjectExportReadinessInput {
   readonly document: CadDocument;
@@ -520,6 +521,30 @@ function classifyBodySource(
       };
     }
 
+    if (feature.profile.kind === "wire") {
+      const resolved = createResolvedWireExtrudeProfile(
+        document,
+        feature.profile,
+        body.partId
+      );
+      if (!resolved) {
+        return createUnresolvedBodySourceReadiness(body, sourceKind);
+      }
+      return {
+        sourceKind,
+        sourceStatus: "supported",
+        diagnostics: [
+          createBodyDiagnostic(
+            "EXPORT_BODY_SOURCE_SUPPORTED",
+            "supported",
+            `Authored composite wire newBody extrude body ${body.id} has a resolved exact STEP recipe.`,
+            body,
+            sourceKind
+          )
+        ]
+      };
+    }
+
     const profile = getFeatureEntityProfileRef(feature);
     const entity = profile
       ? document.sketches.get(profile.sketchId)?.entities.get(profile.entityId)
@@ -775,6 +800,30 @@ function createExactExportBodySource(
 
   if (feature.operationMode !== "newBody") {
     return undefined;
+  }
+
+  if (feature.profile.kind === "wire") {
+    const sketch = document.sketches.get(feature.profile.sketchId);
+    const resolved = createResolvedWireExtrudeProfile(
+      document,
+      feature.profile,
+      body.partId
+    );
+    if (!sketch || !resolved) return undefined;
+    return {
+      bodyId: body.bodyId,
+      ...(body.bodyName ? { bodyName: body.bodyName } : {}),
+      sourceKind: "authoredExtrude",
+      featureId: feature.id,
+      sourceSketchId: feature.profile.sketchId,
+      sourceSketchEntityIds: feature.profile.segments.map(
+        (segment) => segment.entityId
+      ),
+      sketchPlane: sketch.plane,
+      profile: resolved,
+      depth: feature.depth,
+      side: feature.side
+    };
   }
 
   const profile = getFeatureEntityProfileRef(feature);

@@ -68,7 +68,7 @@ function createEngine(): CadEngine {
   return engine;
 }
 
-function createArcEngine(): CadEngine {
+function createArcEngine(reversedArc = false): CadEngine {
   const engine = new CadEngine();
   engine.apply({
     op: "sketch.create",
@@ -92,8 +92,8 @@ function createArcEngine(): CadEngine {
         kind: "centerAngles",
         center: [4, 2],
         radius: 2,
-        startAngleDegrees: -90,
-        sweepAngleDegrees: 180
+        startAngleDegrees: reversedArc ? 90 : -90,
+        sweepAngleDegrees: reversedArc ? -180 : 180
       }
     },
     {
@@ -119,7 +119,10 @@ function createArcEngine(): CadEngine {
       ...profile,
       segments: [
         profile.segments[0]!,
-        { entityId: "arc_b", orientation: "forward" },
+        {
+          entityId: "arc_b",
+          orientation: reversedArc ? "reverse" : "forward"
+        },
         profile.segments[2]!,
         profile.segments[3]!
       ]
@@ -657,5 +660,160 @@ describe("V17 composite wire extrude generated references", () => {
       ok: false,
       error: { code: "INVALID_QUERY" }
     });
+  });
+
+  it("exports the canonical resolved wire recipe and withdraws stale sources", () => {
+    const engine = createEngine();
+    const exact = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.exportExact", format: "step" }
+    });
+    expect(exact).toMatchObject({
+      ok: true,
+      status: "supported",
+      exportableBodyCount: 1,
+      exportSources: [
+        {
+          bodyId: "body_wire",
+          sourceKind: "authoredExtrude",
+          featureId: "feature_wire",
+          sourceSketchId: "sketch_wire",
+          sourceSketchEntityIds: ["line_a", "line_b", "line_c", "line_d"],
+          sketchPlane: "XY",
+          profile: {
+            kind: "wire",
+            frame: {
+              origin: [0, 0, 0],
+              uAxis: [1, 0, 0],
+              vAxis: [0, 1, 0]
+            },
+            closed: true,
+            segments: [
+              {
+                kind: "line",
+                sourceEntityId: "line_a",
+                start: [0, 0],
+                end: [4, 0]
+              },
+              {
+                kind: "line",
+                sourceEntityId: "line_b",
+                start: [4, 0],
+                end: [4, 3]
+              },
+              {
+                kind: "line",
+                sourceEntityId: "line_c",
+                start: [4, 3],
+                end: [0, 3]
+              },
+              {
+                kind: "line",
+                sourceEntityId: "line_d",
+                start: [0, 3],
+                end: [0, 0]
+              }
+            ],
+            geometryPolicy: {
+              linearTolerance: 1e-7,
+              angularToleranceDegrees: 0.1,
+              minimumProfileArea: 1e-12
+            }
+          },
+          depth: 5,
+          side: "positive"
+        }
+      ]
+    });
+    if (!exact.ok || exact.query !== "project.exportExact") return;
+    const exportSource = exact.exportSources[0];
+    expect(exportSource?.profile.kind).toBe("wire");
+    if (exportSource?.profile.kind === "wire") {
+      expect(exportSource.profile.sourceIdentity).toMatch(
+        /^partbench-wire-extrude-v1:/
+      );
+    }
+    expect(exact.exportSources[0]).not.toHaveProperty("sourceSketchEntityId");
+
+    engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_wire",
+      entity: {
+        id: "line_b",
+        kind: "line",
+        start: [4, 0],
+        end: [5, 3],
+        construction: false
+      }
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.exportExact", format: "step" }
+      })
+    ).toMatchObject({
+      ok: true,
+      status: "unavailable",
+      exportableBodyCount: 0,
+      exportSources: [],
+      bodies: [
+        {
+          bodyId: "body_wire",
+          sourceStatus: "unavailable",
+          diagnostics: [{ code: "EXPORT_BODY_SOURCE_UNRESOLVED" }]
+        }
+      ]
+    });
+  });
+
+  it("exports a reversed authored arc as canonical forward wire traversal", () => {
+    const engine = createArcEngine(true);
+    const exact = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.exportExact", format: "step" }
+    });
+    expect(exact).toMatchObject({
+      ok: true,
+      status: "supported",
+      exportSources: [
+        {
+          sourceSketchEntityIds: ["line_a", "arc_b", "line_c", "line_d"],
+          profile: {
+            kind: "wire",
+            segments: [
+              expect.objectContaining({
+                kind: "line",
+                sourceEntityId: "line_a"
+              }),
+              {
+                kind: "arc",
+                sourceEntityId: "arc_b",
+                center: [4, 2],
+                radius: 2,
+                startAngleDegrees: 270,
+                sweepAngleDegrees: 180
+              },
+              expect.objectContaining({
+                kind: "line",
+                sourceEntityId: "line_c"
+              }),
+              expect.objectContaining({
+                kind: "line",
+                sourceEntityId: "line_d"
+              })
+            ]
+          }
+        }
+      ]
+    });
+    if (!exact.ok || exact.query !== "project.exportExact") return;
+    const source = exact.exportSources[0];
+    if (source?.profile.kind !== "wire") {
+      throw new Error("Expected resolved wire STEP source.");
+    }
+    expect(source.profile.sourceIdentity).toContain('"sourceEntityId":"arc_b"');
+    expect(source.profile.sourceIdentity).toContain(
+      '"startAngleDegrees":270,"sweepAngleDegrees":180'
+    );
   });
 });

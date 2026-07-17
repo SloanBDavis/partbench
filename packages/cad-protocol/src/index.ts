@@ -6629,34 +6629,78 @@ export interface CadExportDiagnostic {
   readonly received?: string;
 }
 
-export interface CadExactExportExtrudeBodySource {
+interface CadExactExportExtrudeBodySourceBase {
   readonly bodyId: BodyId;
   readonly bodyName?: string;
   readonly sourceKind: "authoredExtrude";
   readonly featureId: FeatureId;
   readonly sourceSketchId: SketchId;
-  readonly sourceSketchEntityId: SketchEntityId;
   readonly sketchPlane: SketchPlane;
-  readonly profile:
-    | {
-        readonly kind: "rectangle";
-        readonly center: Vec2;
-        readonly width: number;
-        readonly height: number;
-      }
-    | {
-        readonly kind: "circle";
-        readonly center: Vec2;
-        readonly radius: number;
-      };
   readonly depth: number;
   readonly side: FeatureExtrudeSide;
-  readonly placementFrame?: {
+}
+
+export type CadExactExportResolvedWireSegment =
+  | {
+      readonly kind: "line";
+      readonly sourceEntityId: SketchEntityId;
+      readonly start: Vec2;
+      readonly end: Vec2;
+    }
+  | {
+      readonly kind: "arc";
+      readonly sourceEntityId: SketchEntityId;
+      readonly center: Vec2;
+      readonly radius: number;
+      readonly startAngleDegrees: number;
+      readonly sweepAngleDegrees: number;
+    };
+
+export interface CadExactExportResolvedWireProfile {
+  readonly kind: "wire";
+  readonly frame: {
     readonly origin: Vec3;
     readonly uAxis: Vec3;
     readonly vAxis: Vec3;
   };
+  readonly closed: true;
+  readonly segments: readonly CadExactExportResolvedWireSegment[];
+  readonly sourceIdentity: string;
+  readonly geometryPolicy: {
+    readonly linearTolerance: number;
+    readonly angularToleranceDegrees: number;
+    readonly minimumProfileArea: number;
+  };
 }
+
+export type CadExactExportExtrudeBodySource =
+  | (CadExactExportExtrudeBodySourceBase & {
+      readonly sourceSketchEntityId: SketchEntityId;
+      readonly sourceSketchEntityIds?: never;
+      readonly placementFrame?: {
+        readonly origin: Vec3;
+        readonly uAxis: Vec3;
+        readonly vAxis: Vec3;
+      };
+      readonly profile:
+        | {
+            readonly kind: "rectangle";
+            readonly center: Vec2;
+            readonly width: number;
+            readonly height: number;
+          }
+        | {
+            readonly kind: "circle";
+            readonly center: Vec2;
+            readonly radius: number;
+          };
+    })
+  | (CadExactExportExtrudeBodySourceBase & {
+      readonly sourceSketchEntityId?: never;
+      readonly sourceSketchEntityIds: readonly SketchEntityId[];
+      readonly profile: CadExactExportResolvedWireProfile;
+      readonly placementFrame?: never;
+    });
 
 export type CadExactExportBodySource = CadExactExportExtrudeBodySource;
 
