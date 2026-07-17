@@ -9031,8 +9031,43 @@ function createSketchDimensionValueSource(
 
   return {
     type: "literal",
-    value: validatePositiveDimensionValue(op.value, opIndex, "value")
+    value:
+      "target" in op && op.target.entityKind === "arc"
+        ? validateArcDimensionValue(op.value, op.target.role, opIndex, "value")
+        : validatePositiveDimensionValue(op.value, opIndex, "value")
   };
+}
+
+function validateArcDimensionValue(
+  value: unknown,
+  role: "radius" | "sweep",
+  opIndex: number,
+  field: string
+): number {
+  const valid =
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    (role === "radius"
+      ? value > SKETCH_GEOMETRY_POLICY.linearTolerance
+      : value >= SKETCH_GEOMETRY_POLICY.angularToleranceDegrees &&
+        value <= 360 - SKETCH_GEOMETRY_POLICY.angularToleranceDegrees);
+  if (!valid) {
+    throwValidationError({
+      code: "SKETCH_ARC_DIMENSION_INVALID",
+      message:
+        role === "radius"
+          ? "Arc radius dimension must remain greater than the sketch linear tolerance."
+          : "Arc sweep dimension must remain within the supported non-zero, non-full-circle magnitude range.",
+      opIndex,
+      path: operationPath(opIndex, field),
+      expected:
+        role === "radius"
+          ? `>${SKETCH_GEOMETRY_POLICY.linearTolerance}`
+          : `${SKETCH_GEOMETRY_POLICY.angularToleranceDegrees} <= sweep <= ${360 - SKETCH_GEOMETRY_POLICY.angularToleranceDegrees}`,
+      received: describeReceived(value)
+    });
+  }
+  return cleanMeasurementNumber(value);
 }
 
 function validatePositiveDimensionValue(

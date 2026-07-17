@@ -22,7 +22,10 @@ import type {
   SketchPointTarget,
   Vec2
 } from "@web-cad/cad-protocol";
-import { createCanonicalSketchArcEntity } from "./sketchArcMath";
+import {
+  createCanonicalSketchArcEntity,
+  getSketchArcPoint
+} from "./sketchArcMath";
 import { SKETCH_GEOMETRY_POLICY } from "./sketchGeometryPolicy";
 import { cleanSketchNumber } from "./sketchNumber";
 import { runSketchSolverPackageProbe } from "./sketchSolverPackageMapping";
@@ -3011,7 +3014,12 @@ function isSketchPointTargetSupported(
     (entity.kind === "line" &&
       (target.role === "start" || target.role === "end")) ||
     ((entity.kind === "rectangle" || entity.kind === "circle") &&
-      target.role === "center")
+      target.role === "center") ||
+    (entity.kind === "arc" &&
+      target.entityKind === "arc" &&
+      (target.role === "center" ||
+        target.role === "start" ||
+        target.role === "end"))
   );
 }
 
@@ -3195,6 +3203,16 @@ function getSketchPointTargetCoordinate(
     target.role === "center"
   ) {
     return cleanVec2(entity.center);
+  }
+
+  if (
+    entity.kind === "arc" &&
+    target.entityKind === "arc" &&
+    (target.role === "center" ||
+      target.role === "start" ||
+      target.role === "end")
+  ) {
+    return cleanVec2(getSketchArcPoint(entity, target.role));
   }
 
   return [NaN, NaN];
