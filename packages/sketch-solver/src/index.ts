@@ -1,4 +1,4 @@
-export const SKETCH_SOLVER_MODEL_VERSION = "partbench.sketch-solver.v1";
+export const SKETCH_SOLVER_MODEL_VERSION = "partbench.sketch-solver.v2";
 
 export const sketchSolverPackage = {
   name: "@web-cad/sketch-solver",
@@ -38,7 +38,9 @@ export type SketchSolveDiagnosticCode =
   | "SKETCH_SOLVER_UNDER_DEFINED"
   | "SKETCH_SOLVER_OVER_DEFINED"
   | "SKETCH_SOLVER_REDUNDANT"
-  | "SKETCH_SOLVER_NOT_RUN";
+  | "SKETCH_SOLVER_NOT_RUN"
+  | "SKETCH_TANGENCY_OUTSIDE_ARC"
+  | "SKETCH_ARC_SOLVE_BRANCH_INVALID";
 
 export type SketchSolveConstraintKind =
   | "fixedPoint"
@@ -61,7 +63,9 @@ export type SketchSolveDeferredConstraintKind = never;
 export type SketchSolveDimensionKind =
   | "pointDistance"
   | "lineLength"
-  | "circleRadius";
+  | "circleRadius"
+  | "arcRadius"
+  | "arcSweep";
 
 export interface SketchSolvePointVariable {
   readonly id: SketchSolverPointId;
@@ -72,6 +76,50 @@ export interface SketchSolveScalarVariable {
   readonly id: SketchSolverScalarId;
   readonly initial: number;
 }
+
+export interface SketchSolveArcVariable {
+  readonly id: string;
+  readonly initial: {
+    readonly center: SketchSolverVec2;
+    readonly radius: number;
+    readonly startAngleDegrees: number;
+    readonly sweepAngleDegrees: number;
+  };
+}
+
+export type SketchSolvePointTarget =
+  | { readonly kind: "point"; readonly pointId: SketchSolverPointId }
+  | {
+      readonly kind: "arc";
+      readonly arcId: string;
+      readonly role: "center" | "start" | "end";
+    };
+
+export interface SketchSolveLineCurveTarget {
+  readonly kind: "line";
+  readonly startPointId: SketchSolverPointId;
+  readonly endPointId: SketchSolverPointId;
+}
+
+export interface SketchSolveCircleCurveTarget {
+  readonly kind: "circle";
+  readonly centerPointId: SketchSolverPointId;
+  readonly radiusId: SketchSolverScalarId;
+}
+
+export interface SketchSolveArcCurveTarget {
+  readonly kind: "arc";
+  readonly arcId: string;
+}
+
+export type SketchSolveCurveTarget =
+  | SketchSolveLineCurveTarget
+  | SketchSolveCircleCurveTarget
+  | SketchSolveArcCurveTarget;
+
+export type SketchSolveRadiusCurveTarget =
+  | SketchSolveCircleCurveTarget
+  | SketchSolveArcCurveTarget;
 
 export type SketchSolveConstraint =
   | SketchSolveFixedPointConstraint
@@ -87,7 +135,56 @@ export type SketchSolveConstraint =
   | SketchSolveAngleConstraint
   | SketchSolveTangentConstraint
   | SketchSolveSymmetryConstraint
+  | SketchSolveFixedTargetConstraint
+  | SketchSolveCoincidentTargetConstraint
+  | SketchSolveConcentricTargetConstraint
+  | SketchSolveEqualRadiusTargetConstraint
+  | SketchSolveTangentTargetConstraint
+  | SketchSolveSymmetryTargetConstraint
   | SketchSolveDeferredConstraint;
+
+export interface SketchSolveFixedTargetConstraint {
+  readonly id: SketchSolverConstraintId;
+  readonly kind: "fixedPoint";
+  readonly target: SketchSolvePointTarget;
+  readonly value: SketchSolverVec2;
+}
+
+export interface SketchSolveCoincidentTargetConstraint {
+  readonly id: SketchSolverConstraintId;
+  readonly kind: "coincident";
+  readonly primaryTarget: SketchSolvePointTarget;
+  readonly secondaryTarget: SketchSolvePointTarget;
+}
+
+export interface SketchSolveConcentricTargetConstraint {
+  readonly id: SketchSolverConstraintId;
+  readonly kind: "concentric";
+  readonly primaryTarget: SketchSolveRadiusCurveTarget;
+  readonly secondaryTarget: SketchSolveRadiusCurveTarget;
+}
+
+export interface SketchSolveEqualRadiusTargetConstraint {
+  readonly id: SketchSolverConstraintId;
+  readonly kind: "equalRadius";
+  readonly primaryTarget: SketchSolveRadiusCurveTarget;
+  readonly secondaryTarget: SketchSolveRadiusCurveTarget;
+}
+
+export interface SketchSolveTangentTargetConstraint {
+  readonly id: SketchSolverConstraintId;
+  readonly kind: "tangent";
+  readonly primaryTarget: SketchSolveCurveTarget;
+  readonly secondaryTarget: SketchSolveCurveTarget;
+}
+
+export interface SketchSolveSymmetryTargetConstraint {
+  readonly id: SketchSolverConstraintId;
+  readonly kind: "symmetry";
+  readonly primaryTarget: SketchSolvePointTarget;
+  readonly secondaryTarget: SketchSolvePointTarget;
+  readonly axisTarget: SketchSolveLineCurveTarget;
+}
 
 export interface SketchSolveFixedPointConstraint {
   readonly id: SketchSolverConstraintId;
@@ -203,7 +300,9 @@ export interface SketchSolveDeferredConstraint {
 export type SketchSolveDimension =
   | SketchSolvePointDistanceDimension
   | SketchSolveLineLengthDimension
-  | SketchSolveCircleRadiusDimension;
+  | SketchSolveCircleRadiusDimension
+  | SketchSolveArcRadiusDimension
+  | SketchSolveArcSweepDimension;
 
 export interface SketchSolvePointDistanceDimension {
   readonly id: SketchSolverDimensionId;
@@ -228,8 +327,24 @@ export interface SketchSolveCircleRadiusDimension {
   readonly value: number;
 }
 
+export interface SketchSolveArcRadiusDimension {
+  readonly id: SketchSolverDimensionId;
+  readonly kind: "arcRadius";
+  readonly arcId: string;
+  readonly value: number;
+}
+
+export interface SketchSolveArcSweepDimension {
+  readonly id: SketchSolverDimensionId;
+  readonly kind: "arcSweep";
+  readonly arcId: string;
+  /** Positive magnitude in degrees; the authored arc sign is preserved. */
+  readonly value: number;
+}
+
 export interface SketchSolveSettings {
   readonly tolerance: number;
+  readonly angularToleranceDegrees: number;
   readonly maxIterations: number;
   readonly damping: number;
   readonly finiteDifferenceStep: number;
@@ -239,6 +354,7 @@ export interface SketchSolveModel {
   readonly version: SketchSolverModelVersion;
   readonly points: readonly SketchSolvePointVariable[];
   readonly scalars?: readonly SketchSolveScalarVariable[];
+  readonly arcs?: readonly SketchSolveArcVariable[];
   readonly constraints?: readonly SketchSolveConstraint[];
   readonly dimensions?: readonly SketchSolveDimension[];
   readonly settings?: Partial<SketchSolveSettings>;
@@ -272,6 +388,16 @@ export interface SketchSolveScalarResult {
   readonly value: number;
 }
 
+export interface SketchSolveArcResult {
+  readonly id: string;
+  readonly center: SketchSolverVec2;
+  readonly radius: number;
+  readonly startAngleDegrees: number;
+  readonly sweepAngleDegrees: number;
+  readonly start: SketchSolverVec2;
+  readonly end: SketchSolverVec2;
+}
+
 export interface SketchSolveResult {
   readonly version: SketchSolverModelVersion;
   readonly status: SketchSolveStatus;
@@ -285,6 +411,7 @@ export interface SketchSolveResult {
   readonly settings: SketchSolveSettings;
   readonly points: readonly SketchSolvePointResult[];
   readonly scalars: readonly SketchSolveScalarResult[];
+  readonly arcs: readonly SketchSolveArcResult[];
   readonly diagnosticCount: number;
   readonly diagnostics: readonly SketchSolveDiagnostic[];
 }
@@ -319,10 +446,12 @@ interface SolverStateAccess {
   readonly variables: readonly SolverVariable[];
   readonly pointIndex: ReadonlyMap<SketchSolverPointId, number>;
   readonly scalarIndex: ReadonlyMap<SketchSolverScalarId, number>;
+  readonly arcIndex: ReadonlyMap<string, number>;
 }
 
 const DEFAULT_SETTINGS: SketchSolveSettings = {
   tolerance: 1e-7,
+  angularToleranceDegrees: 0.1,
   maxIterations: 80,
   damping: 1e-6,
   finiteDifferenceStep: 1e-6
@@ -362,7 +491,13 @@ export function getSketchSolverCapabilities(): {
       "tangent",
       "symmetry"
     ],
-    supportedDimensionKinds: ["pointDistance", "lineLength", "circleRadius"],
+    supportedDimensionKinds: [
+      "pointDistance",
+      "lineLength",
+      "circleRadius",
+      "arcRadius",
+      "arcSweep"
+    ],
     deferredConstraintKinds: [...DEFERRED_CONSTRAINT_KINDS]
   };
 }
@@ -460,6 +595,24 @@ export function solveSketch(model: SketchSolveModel): SketchSolveResult {
   }
 
   const solve = runDampedSolve(initialState, residualBlocks, settings);
+  const solvedStateDiagnostics = validateSolvedState(
+    model,
+    settings,
+    stateAccess,
+    solve.state
+  );
+  if (solvedStateDiagnostics.length > 0) {
+    return createResult({
+      model,
+      settings,
+      stateAccess,
+      state: initialState,
+      status: "failed",
+      iterations: solve.iterations,
+      diagnostics: [...diagnostics, ...solvedStateDiagnostics],
+      residuals: solve.residuals
+    });
+  }
   const status = classifySolveStatus({
     converged: solve.converged,
     variableCount: stateAccess.variables.length,
@@ -532,6 +685,7 @@ function createStateAccess(model: SketchSolveModel): SolverStateAccess {
   const variables: SolverVariable[] = [];
   const pointIndex = new Map<SketchSolverPointId, number>();
   const scalarIndex = new Map<SketchSolverScalarId, number>();
+  const arcIndex = new Map<string, number>();
 
   for (const point of model.points) {
     pointIndex.set(point.id, variables.length);
@@ -559,10 +713,47 @@ function createStateAccess(model: SketchSolveModel): SolverStateAccess {
     });
   }
 
+  for (const arc of model.arcs ?? []) {
+    arcIndex.set(arc.id, variables.length);
+    variables.push(
+      {
+        id: `${arc.id}:centerX`,
+        kind: "pointX",
+        sourceId: arc.id,
+        initial: arc.initial.center[0]
+      },
+      {
+        id: `${arc.id}:centerY`,
+        kind: "pointY",
+        sourceId: arc.id,
+        initial: arc.initial.center[1]
+      },
+      {
+        id: `${arc.id}:radius`,
+        kind: "scalar",
+        sourceId: arc.id,
+        initial: arc.initial.radius
+      },
+      {
+        id: `${arc.id}:startAngleDegrees`,
+        kind: "scalar",
+        sourceId: arc.id,
+        initial: arc.initial.startAngleDegrees
+      },
+      {
+        id: `${arc.id}:sweepAngleDegrees`,
+        kind: "scalar",
+        sourceId: arc.id,
+        initial: arc.initial.sweepAngleDegrees
+      }
+    );
+  }
+
   return {
     variables,
     pointIndex,
-    scalarIndex
+    scalarIndex,
+    arcIndex
   };
 }
 
@@ -585,14 +776,14 @@ function validateModel(
   }
 
   validateSettings(settings, diagnostics);
-  validateVariables(model, diagnostics);
+  validateVariables(model, settings, diagnostics);
 
   for (const constraint of model.constraints ?? []) {
     validateConstraint(constraint, stateAccess, diagnostics);
   }
 
   for (const dimension of model.dimensions ?? []) {
-    validateDimension(dimension, stateAccess, diagnostics);
+    validateDimension(dimension, settings, stateAccess, diagnostics);
   }
 
   return diagnostics;
@@ -618,10 +809,12 @@ function validateSettings(
 
 function validateVariables(
   model: SketchSolveModel,
+  settings: SketchSolveSettings,
   diagnostics: SketchSolveDiagnostic[]
 ): void {
   const pointIds = new Set<SketchSolverPointId>();
   const scalarIds = new Set<SketchSolverScalarId>();
+  const arcIds = new Set<string>();
 
   for (const point of model.points) {
     if (pointIds.has(point.id)) {
@@ -676,6 +869,88 @@ function validateVariables(
       });
     }
   }
+
+  for (const arc of model.arcs ?? []) {
+    if (arcIds.has(arc.id)) {
+      diagnostics.push({
+        code: "SKETCH_SOLVER_INVALID_VALUE",
+        severity: "blocker",
+        message: `Duplicate arc variable id: ${arc.id}`,
+        sourceType: "model",
+        sourceId: arc.id,
+        expected: "unique arc id",
+        received: arc.id
+      });
+    }
+    arcIds.add(arc.id);
+
+    if (!isFiniteVec2(arc.initial.center)) {
+      diagnostics.push(
+        invalidArcDiagnostic(
+          arc.id,
+          "center",
+          "finite [x, y]",
+          arc.initial.center
+        )
+      );
+    }
+    if (
+      !Number.isFinite(arc.initial.radius) ||
+      arc.initial.radius <= settings.tolerance
+    ) {
+      diagnostics.push(
+        invalidArcDiagnostic(
+          arc.id,
+          "radius",
+          `finite radius > ${settings.tolerance}`,
+          arc.initial.radius
+        )
+      );
+    }
+    if (!Number.isFinite(arc.initial.startAngleDegrees)) {
+      diagnostics.push(
+        invalidArcDiagnostic(
+          arc.id,
+          "start angle",
+          "finite degrees",
+          arc.initial.startAngleDegrees
+        )
+      );
+    }
+    const magnitude = Math.abs(arc.initial.sweepAngleDegrees);
+    if (
+      !Number.isFinite(arc.initial.sweepAngleDegrees) ||
+      magnitude < settings.angularToleranceDegrees ||
+      magnitude > 360 - settings.angularToleranceDegrees
+    ) {
+      diagnostics.push(
+        invalidArcDiagnostic(
+          arc.id,
+          "signed sweep",
+          `${settings.angularToleranceDegrees} <= abs(sweep) <= ${360 - settings.angularToleranceDegrees}`,
+          arc.initial.sweepAngleDegrees
+        )
+      );
+    }
+  }
+}
+
+function invalidArcDiagnostic(
+  arcId: string,
+  field: string,
+  expected: string,
+  received: unknown
+): SketchSolveDiagnostic {
+  return {
+    code: "SKETCH_SOLVER_INVALID_VALUE",
+    severity: "blocker",
+    message: `Arc ${field} must satisfy the V17 geometry policy.`,
+    sourceType: "model",
+    sourceId: arcId,
+    targetId: field,
+    expected,
+    received: describeReceived(received)
+  };
 }
 
 function validateConstraint(
@@ -697,13 +972,46 @@ function validateConstraint(
     return;
   }
 
+  const raw = constraint as unknown as Record<string, unknown>;
+  if (
+    (constraint.kind === "midpoint" ||
+      constraint.kind === "parallel" ||
+      constraint.kind === "perpendicular" ||
+      constraint.kind === "equalLength" ||
+      constraint.kind === "angle") &&
+    [raw.target, raw.primaryTarget, raw.secondaryTarget].some((target) =>
+      isWholeArcTarget(target)
+    )
+  ) {
+    diagnostics.push({
+      code: "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT",
+      severity: "warning",
+      message: `${formatConstraintKindForMessage(constraint.kind)} does not support whole-arc targets in V17.`,
+      sourceType: "constraint",
+      sourceId: constraint.id,
+      constraintKind: constraint.kind,
+      expected: "supported point or line target",
+      received: "arc curve target"
+    });
+    return;
+  }
+
   if (constraint.kind === "fixedPoint") {
-    validatePointTarget(
-      constraint.pointId,
-      constraint,
-      stateAccess,
-      diagnostics
-    );
+    if ("target" in constraint) {
+      validateDerivedPointTarget(
+        constraint.target,
+        constraint,
+        stateAccess,
+        diagnostics
+      );
+    } else {
+      validatePointTarget(
+        constraint.pointId,
+        constraint,
+        stateAccess,
+        diagnostics
+      );
+    }
     if (!isFiniteVec2(constraint.value)) {
       diagnostics.push({
         code: "SKETCH_SOLVER_INVALID_VALUE",
@@ -720,18 +1028,33 @@ function validateConstraint(
   }
 
   if (constraint.kind === "coincident") {
-    validatePointTarget(
-      constraint.pointAId,
-      constraint,
-      stateAccess,
-      diagnostics
-    );
-    validatePointTarget(
-      constraint.pointBId,
-      constraint,
-      stateAccess,
-      diagnostics
-    );
+    if ("primaryTarget" in constraint) {
+      validateDerivedPointTarget(
+        constraint.primaryTarget,
+        constraint,
+        stateAccess,
+        diagnostics
+      );
+      validateDerivedPointTarget(
+        constraint.secondaryTarget,
+        constraint,
+        stateAccess,
+        diagnostics
+      );
+    } else {
+      validatePointTarget(
+        constraint.pointAId,
+        constraint,
+        stateAccess,
+        diagnostics
+      );
+      validatePointTarget(
+        constraint.pointBId,
+        constraint,
+        stateAccess,
+        diagnostics
+      );
+    }
     return;
   }
 
@@ -765,22 +1088,52 @@ function validateConstraint(
   }
 
   if (constraint.kind === "concentric") {
-    validatePointTarget(
-      constraint.primaryCenterPointId,
-      constraint,
-      stateAccess,
-      diagnostics
-    );
-    validatePointTarget(
-      constraint.secondaryCenterPointId,
-      constraint,
-      stateAccess,
-      diagnostics
-    );
+    if ("primaryTarget" in constraint) {
+      validateRadiusCurveTarget(
+        constraint.primaryTarget,
+        constraint,
+        stateAccess,
+        diagnostics
+      );
+      validateRadiusCurveTarget(
+        constraint.secondaryTarget,
+        constraint,
+        stateAccess,
+        diagnostics
+      );
+    } else {
+      validatePointTarget(
+        constraint.primaryCenterPointId,
+        constraint,
+        stateAccess,
+        diagnostics
+      );
+      validatePointTarget(
+        constraint.secondaryCenterPointId,
+        constraint,
+        stateAccess,
+        diagnostics
+      );
+    }
     return;
   }
 
   if (constraint.kind === "equalRadius") {
+    if ("primaryTarget" in constraint) {
+      validateRadiusCurveTarget(
+        constraint.primaryTarget,
+        constraint,
+        stateAccess,
+        diagnostics
+      );
+      validateRadiusCurveTarget(
+        constraint.secondaryTarget,
+        constraint,
+        stateAccess,
+        diagnostics
+      );
+      return;
+    }
     validateScalarTarget(
       constraint.primaryRadiusId,
       constraint,
@@ -811,6 +1164,10 @@ function validateConstraint(
   }
 
   if (constraint.kind === "tangent") {
+    if ("primaryTarget" in constraint) {
+      validateTangentTargetConstraint(constraint, stateAccess, diagnostics);
+      return;
+    }
     const hasLineStart = validatePointTargetField(
       constraint,
       "lineStartPointId",
@@ -864,6 +1221,27 @@ function validateConstraint(
   }
 
   if (constraint.kind === "symmetry") {
+    if ("axisTarget" in constraint) {
+      validateDerivedPointTarget(
+        constraint.primaryTarget,
+        constraint,
+        stateAccess,
+        diagnostics
+      );
+      validateDerivedPointTarget(
+        constraint.secondaryTarget,
+        constraint,
+        stateAccess,
+        diagnostics
+      );
+      validateCurveTarget(
+        constraint.axisTarget,
+        constraint,
+        stateAccess,
+        diagnostics
+      );
+      return;
+    }
     const hasLineStart = validatePointTargetField(
       constraint,
       "lineStartPointId",
@@ -973,6 +1351,129 @@ function validateLinePairConstraint(
   });
 }
 
+function validateDerivedPointTarget(
+  target: SketchSolvePointTarget,
+  source: SketchSolveConstraint,
+  stateAccess: SolverStateAccess,
+  diagnostics: SketchSolveDiagnostic[]
+): void {
+  if (target.kind === "point") {
+    validatePointTarget(target.pointId, source, stateAccess, diagnostics);
+    return;
+  }
+  if (!stateAccess.arcIndex.has(target.arcId)) {
+    diagnostics.push(missingTargetDiagnostic(source, target.arcId));
+  }
+}
+
+function validateCurveTarget(
+  target: SketchSolveCurveTarget,
+  source: SketchSolveConstraint,
+  stateAccess: SolverStateAccess,
+  diagnostics: SketchSolveDiagnostic[]
+): void {
+  if (target.kind === "arc") {
+    if (!stateAccess.arcIndex.has(target.arcId)) {
+      diagnostics.push(missingTargetDiagnostic(source, target.arcId));
+    }
+    return;
+  }
+  if (target.kind === "line") {
+    validatePointTarget(target.startPointId, source, stateAccess, diagnostics);
+    validatePointTarget(target.endPointId, source, stateAccess, diagnostics);
+    const start = readInitialPoint(stateAccess, target.startPointId);
+    const end = readInitialPoint(stateAccess, target.endPointId);
+    if (start && end && distance(start, end) <= 1e-12) {
+      diagnostics.push({
+        code: "SKETCH_SOLVER_INVALID_VALUE",
+        severity: "blocker",
+        message: "Line curve target must have non-zero length.",
+        sourceType: "constraint",
+        sourceId: source.id,
+        constraintKind: source.kind,
+        expected: "non-zero line direction",
+        received: "zero-length line"
+      });
+    }
+    return;
+  }
+  validatePointTarget(target.centerPointId, source, stateAccess, diagnostics);
+  validateScalarTarget(target.radiusId, source, stateAccess, diagnostics);
+  const radius = readInitialScalar(stateAccess, target.radiusId);
+  if (radius !== undefined && radius <= 0) {
+    diagnostics.push({
+      code: "SKETCH_SOLVER_INVALID_VALUE",
+      severity: "blocker",
+      message: "Circle curve target radius must be positive.",
+      sourceType: "constraint",
+      sourceId: source.id,
+      constraintKind: source.kind,
+      targetId: target.radiusId,
+      expected: "positive radius",
+      received: describeReceived(radius)
+    });
+  }
+}
+
+function validateRadiusCurveTarget(
+  target: SketchSolveRadiusCurveTarget,
+  source: SketchSolveConstraint,
+  stateAccess: SolverStateAccess,
+  diagnostics: SketchSolveDiagnostic[]
+): void {
+  validateCurveTarget(target, source, stateAccess, diagnostics);
+}
+
+function validateTangentTargetConstraint(
+  constraint: SketchSolveTangentTargetConstraint,
+  stateAccess: SolverStateAccess,
+  diagnostics: SketchSolveDiagnostic[]
+): void {
+  validateCurveTarget(
+    constraint.primaryTarget,
+    constraint,
+    stateAccess,
+    diagnostics
+  );
+  validateCurveTarget(
+    constraint.secondaryTarget,
+    constraint,
+    stateAccess,
+    diagnostics
+  );
+  const kinds = [constraint.primaryTarget.kind, constraint.secondaryTarget.kind]
+    .sort()
+    .join(":");
+  if (kinds === "line:line" || kinds === "circle:circle") {
+    diagnostics.push({
+      code: "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT",
+      severity: "warning",
+      message: `Tangency between ${constraint.primaryTarget.kind} and ${constraint.secondaryTarget.kind} is outside the V17 support matrix.`,
+      sourceType: "constraint",
+      sourceId: constraint.id,
+      constraintKind: constraint.kind,
+      expected: "line-circle, line-arc, arc-circle, or arc-arc",
+      received: kinds
+    });
+  }
+}
+
+function missingTargetDiagnostic(
+  source: SketchSolveConstraint | SketchSolveDimension,
+  targetId: string
+): SketchSolveDiagnostic {
+  return {
+    code: "SKETCH_SOLVER_MISSING_TARGET",
+    severity: "blocker",
+    message: `Sketch solve target does not exist: ${targetId}`,
+    sourceType: getSourceType(source),
+    sourceId: source.id,
+    targetId,
+    ...(isConstraintSource(source) ? { constraintKind: source.kind } : {}),
+    ...(isDimensionSource(source) ? { dimensionKind: source.kind } : {})
+  };
+}
+
 function validateNonZeroLineTarget({
   constraint,
   stateAccess,
@@ -1035,6 +1536,7 @@ function validateAngleConstraint(
 
 function validateDimension(
   dimension: SketchSolveDimension,
+  settings: SketchSolveSettings,
   stateAccess: SolverStateAccess,
   diagnostics: SketchSolveDiagnostic[]
 ): void {
@@ -1058,6 +1560,45 @@ function validateDimension(
       stateAccess,
       diagnostics
     );
+    return;
+  }
+
+  if (dimension.kind === "arcRadius" || dimension.kind === "arcSweep") {
+    if (!stateAccess.arcIndex.has(dimension.arcId)) {
+      diagnostics.push(missingTargetDiagnostic(dimension, dimension.arcId));
+      return;
+    }
+    if (
+      dimension.kind === "arcRadius" &&
+      dimension.value <= settings.tolerance
+    ) {
+      diagnostics.push({
+        code: "SKETCH_SOLVER_INVALID_VALUE",
+        severity: "blocker",
+        message: "Arc radius dimension must exceed the linear tolerance.",
+        sourceType: "dimension",
+        sourceId: dimension.id,
+        dimensionKind: dimension.kind,
+        expected: `radius > ${settings.tolerance}`,
+        received: describeReceived(dimension.value)
+      });
+    }
+    if (
+      dimension.kind === "arcSweep" &&
+      (dimension.value < settings.angularToleranceDegrees ||
+        dimension.value > 360 - settings.angularToleranceDegrees)
+    ) {
+      diagnostics.push({
+        code: "SKETCH_SOLVER_INVALID_VALUE",
+        severity: "blocker",
+        message: "Arc sweep dimension magnitude is outside the V17 bounds.",
+        sourceType: "dimension",
+        sourceId: dimension.id,
+        dimensionKind: dimension.kind,
+        expected: `${settings.angularToleranceDegrees} <= sweep <= ${360 - settings.angularToleranceDegrees}`,
+        received: describeReceived(dimension.value)
+      });
+    }
     return;
   }
 
@@ -1255,15 +1796,24 @@ function createConstraintResidual(
 ): ResidualEvaluator {
   if (constraint.kind === "fixedPoint") {
     return (state) => {
-      const point = readPoint(state, stateAccess, constraint.pointId);
+      const point =
+        "target" in constraint
+          ? readPointTarget(state, stateAccess, constraint.target)
+          : readPoint(state, stateAccess, constraint.pointId);
       return [point[0] - constraint.value[0], point[1] - constraint.value[1]];
     };
   }
 
   if (constraint.kind === "coincident") {
     return (state) => {
-      const pointA = readPoint(state, stateAccess, constraint.pointAId);
-      const pointB = readPoint(state, stateAccess, constraint.pointBId);
+      const pointA =
+        "primaryTarget" in constraint
+          ? readPointTarget(state, stateAccess, constraint.primaryTarget)
+          : readPoint(state, stateAccess, constraint.pointAId);
+      const pointB =
+        "primaryTarget" in constraint
+          ? readPointTarget(state, stateAccess, constraint.secondaryTarget)
+          : readPoint(state, stateAccess, constraint.pointBId);
       return [pointA[0] - pointB[0], pointA[1] - pointB[1]];
     };
   }
@@ -1295,28 +1845,36 @@ function createConstraintResidual(
 
   if (constraint.kind === "concentric") {
     return (state) => {
-      const primary = readPoint(
-        state,
-        stateAccess,
-        constraint.primaryCenterPointId
-      );
-      const secondary = readPoint(
-        state,
-        stateAccess,
-        constraint.secondaryCenterPointId
-      );
+      const primary =
+        "primaryTarget" in constraint
+          ? readCurveCenter(state, stateAccess, constraint.primaryTarget)
+          : readPoint(state, stateAccess, constraint.primaryCenterPointId);
+      const secondary =
+        "primaryTarget" in constraint
+          ? readCurveCenter(state, stateAccess, constraint.secondaryTarget)
+          : readPoint(state, stateAccess, constraint.secondaryCenterPointId);
       return [primary[0] - secondary[0], primary[1] - secondary[1]];
     };
   }
 
   if (constraint.kind === "equalRadius") {
-    return (state) => [
-      readScalar(state, stateAccess, constraint.primaryRadiusId) -
-        readScalar(state, stateAccess, constraint.secondaryRadiusId)
-    ];
+    return (state) => {
+      const primary =
+        "primaryTarget" in constraint
+          ? readCurveRadius(state, stateAccess, constraint.primaryTarget)
+          : readScalar(state, stateAccess, constraint.primaryRadiusId);
+      const secondary =
+        "primaryTarget" in constraint
+          ? readCurveRadius(state, stateAccess, constraint.secondaryTarget)
+          : readScalar(state, stateAccess, constraint.secondaryRadiusId);
+      return [primary - secondary];
+    };
   }
 
   if (constraint.kind === "tangent") {
+    if ("primaryTarget" in constraint) {
+      return createCurveTangencyResidual(constraint, stateAccess);
+    }
     return (state) => {
       const lineDirection = readLineDirection(
         state,
@@ -1353,28 +1911,34 @@ function createConstraintResidual(
 
   if (constraint.kind === "symmetry") {
     return (state) => {
+      const axis =
+        "axisTarget" in constraint
+          ? constraint.axisTarget
+          : {
+              kind: "line" as const,
+              startPointId: constraint.lineStartPointId,
+              endPointId: constraint.lineEndPointId
+            };
       const lineDirection = readLineDirection(
         state,
         stateAccess,
-        constraint.lineStartPointId,
-        constraint.lineEndPointId
+        axis.startPointId,
+        axis.endPointId
       );
 
       if (!lineDirection) {
         return [1, 1];
       }
 
-      const lineStart = readPoint(
-        state,
-        stateAccess,
-        constraint.lineStartPointId
-      );
-      const primary = readPoint(state, stateAccess, constraint.primaryPointId);
-      const secondary = readPoint(
-        state,
-        stateAccess,
-        constraint.secondaryPointId
-      );
+      const lineStart = readPoint(state, stateAccess, axis.startPointId);
+      const primary =
+        "axisTarget" in constraint
+          ? readPointTarget(state, stateAccess, constraint.primaryTarget)
+          : readPoint(state, stateAccess, constraint.primaryPointId);
+      const secondary =
+        "axisTarget" in constraint
+          ? readPointTarget(state, stateAccess, constraint.secondaryTarget)
+          : readPoint(state, stateAccess, constraint.secondaryPointId);
       const normal: SketchSolverVec2 = [-lineDirection[1], lineDirection[0]];
       const midpoint: SketchSolverVec2 = [
         (primary[0] + secondary[0]) / 2,
@@ -1475,6 +2039,96 @@ function createLinePairResidual(
   };
 }
 
+function createCurveTangencyResidual(
+  constraint: SketchSolveTangentTargetConstraint,
+  stateAccess: SolverStateAccess
+): ResidualEvaluator {
+  const initialState = stateAccess.variables.map(
+    (variable) => variable.initial
+  );
+  const lineTarget =
+    constraint.primaryTarget.kind === "line"
+      ? constraint.primaryTarget
+      : constraint.secondaryTarget.kind === "line"
+        ? constraint.secondaryTarget
+        : undefined;
+  const roundTarget =
+    constraint.primaryTarget.kind !== "line"
+      ? constraint.primaryTarget
+      : constraint.secondaryTarget.kind !== "line"
+        ? constraint.secondaryTarget
+        : undefined;
+
+  if (lineTarget && roundTarget) {
+    const lineStart = readPoint(
+      initialState,
+      stateAccess,
+      lineTarget.startPointId
+    );
+    const direction = readLineDirection(
+      initialState,
+      stateAccess,
+      lineTarget.startPointId,
+      lineTarget.endPointId
+    );
+    const center = readCurveCenter(initialState, stateAccess, roundTarget);
+    const initialSignedDistance = direction
+      ? cross(direction, [center[0] - lineStart[0], center[1] - lineStart[1]])
+      : 1;
+    const side = initialSignedDistance < 0 ? -1 : 1;
+    return (state) => {
+      const currentDirection = readLineDirection(
+        state,
+        stateAccess,
+        lineTarget.startPointId,
+        lineTarget.endPointId
+      );
+      if (!currentDirection) return [1];
+      const currentStart = readPoint(
+        state,
+        stateAccess,
+        lineTarget.startPointId
+      );
+      const currentCenter = readCurveCenter(state, stateAccess, roundTarget);
+      const signedDistance = cross(currentDirection, [
+        currentCenter[0] - currentStart[0],
+        currentCenter[1] - currentStart[1]
+      ]);
+      return [
+        signedDistance - side * readCurveRadius(state, stateAccess, roundTarget)
+      ];
+    };
+  }
+
+  const primary = constraint.primaryTarget as SketchSolveRadiusCurveTarget;
+  const secondary = constraint.secondaryTarget as SketchSolveRadiusCurveTarget;
+  const initialDistance = distance(
+    readCurveCenter(initialState, stateAccess, primary),
+    readCurveCenter(initialState, stateAccess, secondary)
+  );
+  const primaryRadius = readCurveRadius(initialState, stateAccess, primary);
+  const secondaryRadius = readCurveRadius(initialState, stateAccess, secondary);
+  const externalError = Math.abs(
+    initialDistance - primaryRadius - secondaryRadius
+  );
+  const internalError = Math.abs(
+    initialDistance - Math.abs(primaryRadius - secondaryRadius)
+  );
+  const external = externalError <= internalError;
+  return (state) => {
+    const currentDistance = distance(
+      readCurveCenter(state, stateAccess, primary),
+      readCurveCenter(state, stateAccess, secondary)
+    );
+    const radiusA = readCurveRadius(state, stateAccess, primary);
+    const radiusB = readCurveRadius(state, stateAccess, secondary);
+    return [
+      currentDistance -
+        (external ? radiusA + radiusB : Math.abs(radiusA - radiusB))
+    ];
+  };
+}
+
 function createDimensionResidual(
   dimension: SketchSolveDimension,
   stateAccess: SolverStateAccess
@@ -1482,6 +2136,21 @@ function createDimensionResidual(
   if (dimension.kind === "circleRadius") {
     return (state) => [
       readScalar(state, stateAccess, dimension.radiusId) - dimension.value
+    ];
+  }
+
+  if (dimension.kind === "arcRadius") {
+    return (state) => [
+      readArc(state, stateAccess, dimension.arcId).radius - dimension.value
+    ];
+  }
+
+  if (dimension.kind === "arcSweep") {
+    const initial = readInitialArc(stateAccess, dimension.arcId);
+    const sign = (initial?.sweepAngleDegrees ?? 1) < 0 ? -1 : 1;
+    return (state) => [
+      readArc(state, stateAccess, dimension.arcId).sweepAngleDegrees -
+        sign * dimension.value
     ];
   }
 
@@ -1703,6 +2372,262 @@ function classifySolveStatus({
   return "converged";
 }
 
+function validateSolvedState(
+  model: SketchSolveModel,
+  settings: SketchSolveSettings,
+  stateAccess: SolverStateAccess,
+  state: readonly number[]
+): readonly SketchSolveDiagnostic[] {
+  const diagnostics: SketchSolveDiagnostic[] = [];
+  for (const arcVariable of model.arcs ?? []) {
+    const initial = arcVariable.initial;
+    const solved = readArc(state, stateAccess, arcVariable.id);
+    if (
+      !Number.isFinite(solved.radius) ||
+      solved.radius <= settings.tolerance ||
+      !Number.isFinite(solved.startAngleDegrees) ||
+      !Number.isFinite(solved.sweepAngleDegrees) ||
+      Math.abs(solved.sweepAngleDegrees) < settings.angularToleranceDegrees ||
+      Math.abs(solved.sweepAngleDegrees) >
+        360 - settings.angularToleranceDegrees
+    ) {
+      diagnostics.push(
+        invalidArcDiagnostic(
+          arcVariable.id,
+          "solved geometry",
+          `radius > ${settings.tolerance}; ${settings.angularToleranceDegrees} <= abs(sweep) <= ${360 - settings.angularToleranceDegrees}`,
+          solved
+        )
+      );
+      continue;
+    }
+    if (
+      Math.sign(solved.sweepAngleDegrees) !==
+      Math.sign(initial.sweepAngleDegrees)
+    ) {
+      diagnostics.push({
+        code: "SKETCH_ARC_SOLVE_BRANCH_INVALID",
+        severity: "blocker",
+        message: "Arc solve would reverse the authored sweep branch.",
+        sourceType: "model",
+        sourceId: arcVariable.id,
+        expected:
+          initial.sweepAngleDegrees < 0 ? "negative sweep" : "positive sweep",
+        received: describeReceived(solved.sweepAngleDegrees)
+      });
+    }
+  }
+
+  for (const constraint of model.constraints ?? []) {
+    if (constraint.kind !== "tangent" || !("primaryTarget" in constraint))
+      continue;
+    diagnostics.push(
+      ...validateTangencyContact(constraint, stateAccess, state, settings)
+    );
+  }
+  return diagnostics;
+}
+
+function validateTangencyContact(
+  constraint: SketchSolveTangentTargetConstraint,
+  stateAccess: SolverStateAccess,
+  state: readonly number[],
+  settings: SketchSolveSettings
+): readonly SketchSolveDiagnostic[] {
+  const diagnostics: SketchSolveDiagnostic[] = [];
+  const initialState = stateAccess.variables.map(
+    (variable) => variable.initial
+  );
+  const lineTarget =
+    constraint.primaryTarget.kind === "line"
+      ? constraint.primaryTarget
+      : constraint.secondaryTarget.kind === "line"
+        ? constraint.secondaryTarget
+        : undefined;
+  const roundTarget =
+    constraint.primaryTarget.kind !== "line"
+      ? constraint.primaryTarget
+      : constraint.secondaryTarget.kind !== "line"
+        ? constraint.secondaryTarget
+        : undefined;
+
+  if (lineTarget && roundTarget) {
+    const initialDirection = readLineDirection(
+      initialState,
+      stateAccess,
+      lineTarget.startPointId,
+      lineTarget.endPointId
+    );
+    const solvedDirection = readLineDirection(
+      state,
+      stateAccess,
+      lineTarget.startPointId,
+      lineTarget.endPointId
+    );
+    if (!initialDirection || !solvedDirection) return diagnostics;
+    const initialStart = readPoint(
+      initialState,
+      stateAccess,
+      lineTarget.startPointId
+    );
+    const solvedStart = readPoint(state, stateAccess, lineTarget.startPointId);
+    const initialCenter = readCurveCenter(
+      initialState,
+      stateAccess,
+      roundTarget
+    );
+    const solvedCenter = readCurveCenter(state, stateAccess, roundTarget);
+    const initialSide =
+      Math.sign(
+        cross(initialDirection, [
+          initialCenter[0] - initialStart[0],
+          initialCenter[1] - initialStart[1]
+        ])
+      ) || 1;
+    const solvedSignedDistance = cross(solvedDirection, [
+      solvedCenter[0] - solvedStart[0],
+      solvedCenter[1] - solvedStart[1]
+    ]);
+    if ((Math.sign(solvedSignedDistance) || 1) !== initialSide) {
+      diagnostics.push(
+        branchDiagnostic(constraint.id, "line tangency side changed")
+      );
+    }
+    if (roundTarget.kind === "arc") {
+      const normal: SketchSolverVec2 = [
+        -solvedDirection[1],
+        solvedDirection[0]
+      ];
+      const contact: SketchSolverVec2 = [
+        solvedCenter[0] - solvedSignedDistance * normal[0],
+        solvedCenter[1] - solvedSignedDistance * normal[1]
+      ];
+      if (
+        !pointLiesOnArc(
+          state,
+          stateAccess,
+          roundTarget.arcId,
+          contact,
+          settings
+        )
+      ) {
+        diagnostics.push(
+          outsideArcDiagnostic(constraint.id, roundTarget.arcId)
+        );
+      }
+    }
+    return diagnostics;
+  }
+
+  const primary = constraint.primaryTarget as SketchSolveRadiusCurveTarget;
+  const secondary = constraint.secondaryTarget as SketchSolveRadiusCurveTarget;
+  const initialCenterA = readCurveCenter(initialState, stateAccess, primary);
+  const initialCenterB = readCurveCenter(initialState, stateAccess, secondary);
+  const initialRadiusA = readCurveRadius(initialState, stateAccess, primary);
+  const initialRadiusB = readCurveRadius(initialState, stateAccess, secondary);
+  const initialDistance = distance(initialCenterA, initialCenterB);
+  const external =
+    Math.abs(initialDistance - initialRadiusA - initialRadiusB) <=
+    Math.abs(initialDistance - Math.abs(initialRadiusA - initialRadiusB));
+  const initialOwner = Math.sign(initialRadiusA - initialRadiusB);
+  const centerA = readCurveCenter(state, stateAccess, primary);
+  const centerB = readCurveCenter(state, stateAccess, secondary);
+  const radiusA = readCurveRadius(state, stateAccess, primary);
+  const radiusB = readCurveRadius(state, stateAccess, secondary);
+  if (
+    !external &&
+    (Math.sign(radiusA - radiusB) || initialOwner) !== initialOwner
+  ) {
+    diagnostics.push(
+      branchDiagnostic(constraint.id, "internal tangency containment changed")
+    );
+  }
+  const centerDistance = distance(centerA, centerB);
+  if (centerDistance <= settings.tolerance) return diagnostics;
+  const direction: SketchSolverVec2 = [
+    (centerB[0] - centerA[0]) / centerDistance,
+    (centerB[1] - centerA[1]) / centerDistance
+  ];
+  const primaryContactSign = external || radiusA >= radiusB ? 1 : -1;
+  const contactA: SketchSolverVec2 = [
+    centerA[0] + primaryContactSign * radiusA * direction[0],
+    centerA[1] + primaryContactSign * radiusA * direction[1]
+  ];
+  const contactB: SketchSolverVec2 = external
+    ? [centerB[0] - radiusB * direction[0], centerB[1] - radiusB * direction[1]]
+    : contactA;
+  if (
+    primary.kind === "arc" &&
+    !pointLiesOnArc(state, stateAccess, primary.arcId, contactA, settings)
+  ) {
+    diagnostics.push(outsideArcDiagnostic(constraint.id, primary.arcId));
+  }
+  if (
+    secondary.kind === "arc" &&
+    !pointLiesOnArc(state, stateAccess, secondary.arcId, contactB, settings)
+  ) {
+    diagnostics.push(outsideArcDiagnostic(constraint.id, secondary.arcId));
+  }
+  return diagnostics;
+}
+
+function pointLiesOnArc(
+  state: readonly number[],
+  stateAccess: SolverStateAccess,
+  arcId: string,
+  point: SketchSolverVec2,
+  settings: SketchSolveSettings
+): boolean {
+  const arc = readArc(state, stateAccess, arcId);
+  const angle = normalizeDegrees(
+    (Math.atan2(point[1] - arc.center[1], point[0] - arc.center[0]) * 180) /
+      Math.PI
+  );
+  const traveled =
+    arc.sweepAngleDegrees > 0
+      ? normalizeDegrees(angle - arc.startAngleDegrees)
+      : normalizeDegrees(arc.startAngleDegrees - angle);
+  return (
+    traveled <=
+    Math.abs(arc.sweepAngleDegrees) + settings.angularToleranceDegrees
+  );
+}
+
+function outsideArcDiagnostic(
+  constraintId: string,
+  arcId: string
+): SketchSolveDiagnostic {
+  return {
+    code: "SKETCH_TANGENCY_OUTSIDE_ARC",
+    severity: "blocker",
+    message:
+      "Tangency contact lies on the support circle but outside the finite arc interval.",
+    sourceType: "constraint",
+    sourceId: constraintId,
+    constraintKind: "tangent",
+    targetId: arcId,
+    expected: "contact inside authored finite arc",
+    received: "support-circle-only contact"
+  };
+}
+
+function branchDiagnostic(
+  constraintId: string,
+  received: string
+): SketchSolveDiagnostic {
+  return {
+    code: "SKETCH_ARC_SOLVE_BRANCH_INVALID",
+    severity: "blocker",
+    message:
+      "Tangency solve would change the branch selected by authored geometry.",
+    sourceType: "constraint",
+    sourceId: constraintId,
+    constraintKind: "tangent",
+    expected: "authored tangency branch",
+    received
+  };
+}
+
 function createResult({
   model,
   settings,
@@ -1742,6 +2667,27 @@ function createResult({
       value: cleanNumber(index === undefined ? scalar.initial : state[index])
     };
   });
+  const arcs = (model.arcs ?? []).map((arcVariable) => {
+    const arc = readArc(state, stateAccess, arcVariable.id);
+    const startAngleDegrees = normalizeDegrees(arc.startAngleDegrees);
+    return {
+      id: arcVariable.id,
+      center: [cleanNumber(arc.center[0]), cleanNumber(arc.center[1])] as const,
+      radius: cleanNumber(arc.radius),
+      startAngleDegrees: cleanNumber(startAngleDegrees),
+      sweepAngleDegrees: cleanNumber(arc.sweepAngleDegrees),
+      start: cleanVec2(
+        pointOnCircle(arc.center, arc.radius, startAngleDegrees)
+      ),
+      end: cleanVec2(
+        pointOnCircle(
+          arc.center,
+          arc.radius,
+          startAngleDegrees + arc.sweepAngleDegrees
+        )
+      )
+    };
+  });
   const maxResidual = getMaxResidual(residuals);
 
   return {
@@ -1763,9 +2709,19 @@ function createResult({
     settings,
     points,
     scalars,
+    arcs,
     diagnosticCount: diagnostics.length,
     diagnostics
   };
+}
+
+function cleanVec2(value: SketchSolverVec2): SketchSolverVec2 {
+  return [cleanNumber(value[0]), cleanNumber(value[1])];
+}
+
+function normalizeDegrees(value: number): number {
+  const normalized = ((value % 360) + 360) % 360;
+  return Object.is(normalized, -0) ? 0 : normalized;
 }
 
 function getResiduals(
@@ -1787,6 +2743,100 @@ function readPoint(
   }
 
   return [state[index], state[index + 1]];
+}
+
+interface ArcState {
+  readonly center: SketchSolverVec2;
+  readonly radius: number;
+  readonly startAngleDegrees: number;
+  readonly sweepAngleDegrees: number;
+}
+
+function readArc(
+  state: readonly number[],
+  stateAccess: SolverStateAccess,
+  arcId: string
+): ArcState {
+  const index = stateAccess.arcIndex.get(arcId);
+  if (index === undefined) {
+    return {
+      center: [Number.NaN, Number.NaN],
+      radius: Number.NaN,
+      startAngleDegrees: Number.NaN,
+      sweepAngleDegrees: Number.NaN
+    };
+  }
+  return {
+    center: [state[index], state[index + 1]],
+    radius: state[index + 2],
+    startAngleDegrees: state[index + 3],
+    sweepAngleDegrees: state[index + 4]
+  };
+}
+
+function readInitialArc(
+  stateAccess: SolverStateAccess,
+  arcId: string
+): ArcState | undefined {
+  if (!stateAccess.arcIndex.has(arcId)) return undefined;
+  return readArc(
+    stateAccess.variables.map((variable) => variable.initial),
+    stateAccess,
+    arcId
+  );
+}
+
+function readPointTarget(
+  state: readonly number[],
+  stateAccess: SolverStateAccess,
+  target: SketchSolvePointTarget
+): SketchSolverVec2 {
+  if (target.kind === "point") {
+    return readPoint(state, stateAccess, target.pointId);
+  }
+  const arc = readArc(state, stateAccess, target.arcId);
+  if (target.role === "center") return arc.center;
+  const angle =
+    target.role === "start"
+      ? arc.startAngleDegrees
+      : arc.startAngleDegrees + arc.sweepAngleDegrees;
+  return pointOnCircle(arc.center, arc.radius, angle);
+}
+
+function readCurveCenter(
+  state: readonly number[],
+  stateAccess: SolverStateAccess,
+  target: SketchSolveRadiusCurveTarget
+): SketchSolverVec2 {
+  return target.kind === "arc"
+    ? readArc(state, stateAccess, target.arcId).center
+    : readPoint(state, stateAccess, target.centerPointId);
+}
+
+function readCurveRadius(
+  state: readonly number[],
+  stateAccess: SolverStateAccess,
+  target: SketchSolveRadiusCurveTarget
+): number {
+  return target.kind === "arc"
+    ? readArc(state, stateAccess, target.arcId).radius
+    : readScalar(state, stateAccess, target.radiusId);
+}
+
+function pointOnCircle(
+  center: SketchSolverVec2,
+  radius: number,
+  angleDegrees: number
+): SketchSolverVec2 {
+  const angle = (angleDegrees * Math.PI) / 180;
+  return [
+    center[0] + radius * Math.cos(angle),
+    center[1] + radius * Math.sin(angle)
+  ];
+}
+
+function cross(a: SketchSolverVec2, b: SketchSolverVec2): number {
+  return a[0] * b[1] - a[1] * b[0];
 }
 
 function readInitialPoint(
@@ -1892,6 +2942,15 @@ function isValidTargetId(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
+function isWholeArcTarget(value: unknown): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { readonly kind?: unknown }).kind === "arc" &&
+    !("role" in value)
+  );
+}
+
 function isDeferredConstraint(
   constraint: SketchSolveConstraint
 ): constraint is SketchSolveDeferredConstraint {
@@ -1912,7 +2971,9 @@ function isDimensionSource(
   return (
     source.kind === "pointDistance" ||
     source.kind === "lineLength" ||
-    source.kind === "circleRadius"
+    source.kind === "circleRadius" ||
+    source.kind === "arcRadius" ||
+    source.kind === "arcSweep"
   );
 }
 

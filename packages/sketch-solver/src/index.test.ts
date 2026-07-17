@@ -111,7 +111,13 @@ describe("sketch-solver", () => {
         "tangent",
         "symmetry"
       ],
-      supportedDimensionKinds: ["pointDistance", "lineLength", "circleRadius"],
+      supportedDimensionKinds: [
+        "pointDistance",
+        "lineLength",
+        "circleRadius",
+        "arcRadius",
+        "arcSweep"
+      ],
       deferredConstraintKinds: []
     });
     expect(getSketchSolverCapabilities().deferredConstraintKinds).not.toEqual(
