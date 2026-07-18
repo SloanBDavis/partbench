@@ -130,6 +130,54 @@ describe("projectWcadTopologyCheckpoints", () => {
     );
   });
 
+  it("hands a resolved composite revolve recipe to checkpoint generation", async () => {
+    const engine = createWireRevolveCheckpointEngine();
+    const runtime = createCheckpointRuntime();
+    const structure = readProjectStructure(engine);
+
+    const payloads = await createProjectWcadTopologyCheckpointPayloadInputs({
+      document: engine.getDocument(),
+      features: structure.features,
+      sketches: readSketches(engine),
+      runtime
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(runtime.exactTopologyCheckpointPayload).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "body_wire_revolve",
+        checkpointId: "checkpoint_wire_revolve",
+        bodyId: "body_wire_revolve",
+        source: {
+          kind: "revolve",
+          sketchPlane: "XY",
+          profile: expect.objectContaining({
+            kind: "wire",
+            frame: {
+              origin: [0, 0, 0],
+              uAxis: [1, 0, 0],
+              vAxis: [0, 1, 0]
+            },
+            segments: [
+              expect.objectContaining({
+                sourceEntityId: "revolve_lower"
+              }),
+              expect.objectContaining({
+                kind: "arc",
+                sourceEntityId: "revolve_arc"
+              }),
+              expect.objectContaining({
+                sourceEntityId: "revolve_upper"
+              })
+            ]
+          }),
+          axis: { start: [0, -3], end: [0, 3] },
+          angleDegrees: 270
+        }
+      })
+    );
+  });
+
   it("hands the recursive composite add recipe to checkpoint generation", async () => {
     const engine = createWireAddCheckpointEngine();
     const runtime = createCheckpointRuntime();
@@ -1086,6 +1134,88 @@ function createWireCheckpointEngine(): CadEngine {
         algorithm: "partbench-source-v1",
         sha256:
           "3333333333333333333333333333333333333333333333333333333333333333"
+      },
+      status: "active"
+    }
+  ]);
+
+  return engine;
+}
+
+function createWireRevolveCheckpointEngine(): CadEngine {
+  const engine = new CadEngine();
+
+  engine.applyBatch([
+    {
+      op: "sketch.create",
+      id: "sketch_wire_revolve",
+      name: "Wire revolve sketch",
+      plane: "XY"
+    },
+    {
+      op: "sketch.addLine",
+      sketchId: "sketch_wire_revolve",
+      id: "revolve_axis",
+      start: [0, -3],
+      end: [0, 3],
+      construction: true
+    },
+    {
+      op: "sketch.addLine",
+      sketchId: "sketch_wire_revolve",
+      id: "revolve_lower",
+      start: [0, 0],
+      end: [2, -1]
+    },
+    {
+      op: "sketch.addArc",
+      sketchId: "sketch_wire_revolve",
+      id: "revolve_arc",
+      definition: {
+        kind: "centerAngles",
+        center: [2, 0],
+        radius: 1,
+        startAngleDegrees: 270,
+        sweepAngleDegrees: 180
+      }
+    },
+    {
+      op: "sketch.addLine",
+      sketchId: "sketch_wire_revolve",
+      id: "revolve_upper",
+      start: [2, 1],
+      end: [0, 0]
+    },
+    {
+      op: "feature.revolve",
+      id: "feature_wire_revolve",
+      bodyId: "body_wire_revolve",
+      profile: {
+        kind: "wire",
+        sketchId: "sketch_wire_revolve",
+        segments: [
+          { entityId: "revolve_lower", orientation: "forward" },
+          { entityId: "revolve_arc", orientation: "forward" },
+          { entityId: "revolve_upper", orientation: "forward" }
+        ]
+      },
+      axis: {
+        type: "sketchLine",
+        sketchId: "sketch_wire_revolve",
+        entityId: "revolve_axis"
+      },
+      angleDegrees: 270,
+      operationMode: "newBody"
+    },
+    {
+      op: "topology.checkpoint.create",
+      checkpointId: "checkpoint_wire_revolve",
+      bodyId: "body_wire_revolve",
+      sourceFeatureId: "feature_wire_revolve",
+      sourceIdentity: {
+        algorithm: "partbench-source-v1",
+        sha256:
+          "4444444444444444444444444444444444444444444444444444444444444444"
       },
       status: "active"
     }

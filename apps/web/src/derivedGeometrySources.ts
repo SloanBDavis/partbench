@@ -5,6 +5,7 @@ import type {
 } from "@web-cad/cad-core";
 import {
   createResolvedWireExtrudeRecipe,
+  createResolvedWireRevolveRecipe,
   resolveMirrorPlaneFrame,
   resolvePatternDirectionFrame,
   resolvePatternRotationAxisFrame
@@ -1064,7 +1065,7 @@ function createRevolveSourceForFeature(
     (candidate) => candidate.id === feature.axis.entityId
   );
 
-  if (!sketch || !entity || !axis || axis.kind !== "line") {
+  if (!sketch) {
     return undefined;
   }
 
@@ -1080,6 +1081,35 @@ function createRevolveSourceForFeature(
           placementError:
             "Revolve display currently supports newBody revolve features only."
         };
+
+  if (feature.profile?.kind === "wire") {
+    const frame =
+      placement.placementFrame ?? createDefaultSketchDisplayFrame(sketch.plane);
+    const recipe = createResolvedWireRevolveRecipe(
+      feature.profile,
+      feature.axis,
+      new Map(sketch.entities.map((candidate) => [candidate.id, candidate])),
+      frame
+    );
+    if (!recipe) {
+      return undefined;
+    }
+    return {
+      id: feature.bodyId,
+      kind: "revolve",
+      sketchPlane: sketch.plane,
+      profile: recipe.profile,
+      axis: { start: recipe.axis.start, end: recipe.axis.end },
+      angleDegrees: feature.angleDegrees,
+      ...(placementState.placementError
+        ? { placementError: placementState.placementError }
+        : {})
+    };
+  }
+
+  if (!entity || !axis || axis.kind !== "line") {
+    return undefined;
+  }
 
   if (entity.kind === "rectangle") {
     return {

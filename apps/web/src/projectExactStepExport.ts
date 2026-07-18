@@ -82,6 +82,18 @@ export async function executeProjectExactStepExport({
 function mapExactExportSourceToWorkerBody(
   source: CadExactExportBodySource
 ): ExactStepExportWorkerBody {
+  if (source.sourceKind === "authoredRevolve") {
+    return {
+      bodyId: source.bodyId,
+      ...(source.bodyName ? { bodyName: source.bodyName } : {}),
+      kind: "revolve",
+      sketchPlane: source.sketchPlane,
+      profile: source.profile,
+      axis: { start: source.axis.start, end: source.axis.end },
+      angleDegrees: source.angleDegrees
+    };
+  }
+
   if (isCadExactExportBooleanBodySource(source)) {
     return {
       bodyId: source.bodyId,

@@ -85,7 +85,9 @@ export interface DerivedGeometryExtrudeInput {
 export interface DerivedGeometryRevolveInput {
   readonly id: string;
   readonly sketchPlane: "XY" | "XZ" | "YZ";
-  readonly profile: DerivedGeometryPrimitiveExtrudeProfile;
+  readonly profile:
+    | DerivedGeometryPrimitiveExtrudeProfile
+    | DerivedGeometryWireExtrudeProfile;
   readonly axis: {
     readonly start: readonly [number, number];
     readonly end: readonly [number, number];
@@ -281,6 +283,14 @@ export interface DerivedExactMetadataInput {
         readonly axis: DerivedGeometryRevolveInput["axis"];
         readonly angleDegrees: number;
         readonly placementFrame?: DerivedGeometryExtrudePlacementFrame;
+      }
+    | {
+        readonly kind: "revolve";
+        readonly sketchPlane: "XY" | "XZ" | "YZ";
+        readonly profile: DerivedGeometryWireExtrudeProfile;
+        readonly axis: DerivedGeometryRevolveInput["axis"];
+        readonly angleDegrees: number;
+        readonly placementFrame?: never;
       }
     | ({ readonly kind: "sweep" } & Omit<DerivedGeometrySweepInput, "id">)
     | ({ readonly kind: "loft" } & Omit<DerivedGeometryLoftInput, "id">)

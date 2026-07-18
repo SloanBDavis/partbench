@@ -100,7 +100,9 @@ export interface DerivedRevolveGeometrySource extends DerivedAuthoredGeometrySou
   readonly id: string;
   readonly kind: "revolve";
   readonly sketchPlane: "XY" | "XZ" | "YZ";
-  readonly profile: DerivedGeometryPrimitiveExtrudeProfile;
+  readonly profile:
+    | DerivedGeometryPrimitiveExtrudeProfile
+    | DerivedGeometryWireExtrudeProfile;
   readonly axis: {
     readonly start: readonly [number, number];
     readonly end: readonly [number, number];
@@ -725,13 +727,7 @@ function deriveSourceMesh(
           scale: [1, 1, 1]
         }
       })
-      .then((result) =>
-        applySketchPlanePlacement(
-          result,
-          source.sketchPlane,
-          source.placementFrame
-        )
-      );
+      .then((result) => applyRevolvePlacement(source, result));
   }
 
   if (source.kind === "extrudeBoolean") {
@@ -928,6 +924,21 @@ function deriveSourceMesh(
 
 export function applyExtrudePlacement(
   source: DerivedExtrudeGeometrySource,
+  result: DerivedGeometryResult
+): DerivedGeometryResult {
+  if (source.profile.kind === "wire") {
+    return result;
+  }
+
+  return applySketchPlanePlacement(
+    result,
+    source.sketchPlane,
+    source.placementFrame
+  );
+}
+
+export function applyRevolvePlacement(
+  source: DerivedRevolveGeometrySource,
   result: DerivedGeometryResult
 ): DerivedGeometryResult {
   if (source.profile.kind === "wire") {

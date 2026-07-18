@@ -155,6 +155,65 @@ describe("projectExactStepExport", () => {
     expect(request.payload.bodies[0]).not.toHaveProperty("placementFrame");
   });
 
+  it("maps an authored wire revolve source to the geometry STEP discriminant", async () => {
+    const profile = createStepWireProfile("add");
+    const revolveSource: CadExactExportBodySource = {
+      bodyId: "body_step_revolve",
+      bodyName: "Composite revolve",
+      sourceKind: "authoredRevolve",
+      featureId: "feature_step_revolve",
+      sourceSketchId: "sketch_step_revolve",
+      sourceSketchEntityIds: ["add_line", "add_arc"],
+      sketchPlane: "XY",
+      profile,
+      axis: {
+        sourceEntityId: "axis",
+        start: [0, -2],
+        end: [0, 2]
+      },
+      angleDegrees: 270,
+      solidPolicy: "exactlyOne"
+    };
+    let request: GeometryWorkerRequest | undefined;
+    const bytes = new TextEncoder().encode("ISO-10303-21;");
+
+    await executeProjectExactStepExport({
+      exactExport: createExactExportResponse(revolveSource),
+      worker: createWorker(
+        {
+          ok: true,
+          id: "project-export-step:payload",
+          op: "geometry.exportStep",
+          artifact: {
+            format: "step",
+            schema: "AP242DIS",
+            units: "mm",
+            bodyCount: 1,
+            byteLength: bytes.byteLength,
+            bytes
+          },
+          warnings: []
+        },
+        (candidate) => {
+          request = candidate;
+        }
+      )
+    });
+
+    expect(request).toBeDefined();
+    if (!request || request.payload.op !== "geometry.exportStep") return;
+    expect(request.payload.bodies[0]).toEqual({
+      bodyId: "body_step_revolve",
+      bodyName: "Composite revolve",
+      kind: "revolve",
+      sketchPlane: "XY",
+      profile,
+      axis: { start: [0, -2], end: [0, 2] },
+      angleDegrees: 270
+    });
+    expect(request.payload.bodies[0]).not.toHaveProperty("placementFrame");
+  });
+
   it("passes one recursive composite add body to STEP without replacing its world frame", async () => {
     const wireProfile = {
       kind: "wire" as const,

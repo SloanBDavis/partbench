@@ -530,6 +530,19 @@ export function createExactMetadataRuntimeInput(
   }
 
   if (source.kind === "revolve") {
+    if (source.profile.kind === "wire") {
+      return {
+        id: source.id,
+        source: {
+          kind: "revolve",
+          sketchPlane: source.sketchPlane,
+          profile: source.profile,
+          axis: source.axis,
+          angleDegrees: source.angleDegrees
+        }
+      };
+    }
+
     return {
       id: source.id,
       source: {
