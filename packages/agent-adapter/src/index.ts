@@ -124,6 +124,11 @@ import type {
   WcadSourceIdentity
 } from "@web-cad/cad-protocol";
 
+export {
+  createV17AdapterCompositeParityFixture,
+  type V17AdapterCompositeParityFixture
+} from "./v17CompositeParityFixtures";
+
 const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/;
 
 export type AgentAdapterVersion = "web-cad.agent-adapter.v1";
@@ -2222,19 +2227,32 @@ function createOperationReview(
       };
     }
 
-    case "feature.sweep":
+    case "feature.sweep": {
+      const profile = "profile" in op ? op.profile : undefined;
+      const path = "path" in op ? op.path : undefined;
+      const sketchId = profile?.sketchId ?? op.profileSketchId;
+      const sketchEntityId = profile?.entityId ?? op.profileEntityId;
+      const sourceLabel = profile
+        ? `${profile.sketchId}/${profile.entityId}`
+        : `${op.profileSketchId}/${op.profileEntityId}`;
+      const pathLabel = path
+        ? path.kind === "chain"
+          ? `${path.sketchId} chain with ${path.segments.length} segments`
+          : `${path.sketchId}/${path.entityId} ${path.orientation}`
+        : `${op.pathSketchId} legacy path`;
       return {
         ...operationReviewBase(
           index,
           op,
           "create",
-          `Create sweep feature ${op.id ?? "with generated ID"} from ${op.profileSketchId}/${op.profileEntityId}`
+          `Create sweep feature ${op.id ?? "with generated ID"} from ${sourceLabel} along ${pathLabel}`
         ),
         ...(op.id ? { featureId: op.id } : {}),
         ...(op.bodyId ? { bodyId: op.bodyId } : {}),
-        sketchId: op.profileSketchId,
-        sketchEntityId: op.profileEntityId
+        ...(sketchId ? { sketchId } : {}),
+        ...(sketchEntityId ? { sketchEntityId } : {})
       };
+    }
 
     case "feature.loft":
       return {
@@ -2255,7 +2273,18 @@ function createOperationReview(
       };
 
     case "feature.updateExtrude": {
+      const profile = "profile" in op ? op.profile : undefined;
+      const sketchId = profile?.sketchId ?? op.sketchId;
+      const sketchEntityId =
+        profile?.kind === "entity" ? profile.entityId : op.entityId;
       const edits = [
+        ...(profile?.kind === "wire"
+          ? [`profile ${profile.sketchId} composite wire`]
+          : profile
+            ? [`profile ${profile.sketchId}/${profile.entityId}`]
+            : sketchId && sketchEntityId
+              ? [`profile ${sketchId}/${sketchEntityId}`]
+              : []),
         ...(op.depth !== undefined ? [`depth ${op.depth}`] : []),
         ...(op.side !== undefined ? [`side ${op.side}`] : [])
       ];
@@ -2269,7 +2298,9 @@ function createOperationReview(
             edits.length > 0 ? ` (${edits.join(", ")})` : ""
           }`
         ),
-        featureId: op.id
+        featureId: op.id,
+        ...(sketchId ? { sketchId } : {}),
+        ...(sketchEntityId ? { sketchEntityId } : {})
       };
     }
 
@@ -2346,7 +2377,10 @@ function createOperationReview(
         featureId: op.id
       };
 
-    case "feature.updateSweep":
+    case "feature.updateSweep": {
+      const profile = "profile" in op ? op.profile : undefined;
+      const sketchId = profile?.sketchId ?? op.profileSketchId;
+      const sketchEntityId = profile?.entityId ?? op.profileEntityId;
       return {
         ...operationReviewBase(
           index,
@@ -2354,8 +2388,11 @@ function createOperationReview(
           "modify",
           `Update sweep feature ${op.id}`
         ),
-        featureId: op.id
+        featureId: op.id,
+        ...(sketchId ? { sketchId } : {}),
+        ...(sketchEntityId ? { sketchEntityId } : {})
       };
+    }
 
     case "feature.updateLoft":
       return {
@@ -4884,13 +4921,8 @@ function isCadOp(value: unknown): value is CadOp {
 
   if (value.op === "feature.extrude") {
     const hasLegacyProfile =
-      typeof value.sketchId === "string" &&
-      typeof value.entityId === "string" &&
-      value.profile === undefined;
-    const hasV21Profile =
-      value.sketchId === undefined &&
-      value.entityId === undefined &&
-      isSketchProfileRef(value.profile);
+      typeof value.sketchId === "string" && typeof value.entityId === "string";
+    const hasV21Profile = isSketchProfileRef(value.profile);
 
     return (
       isOptionalString(value.id) &&
@@ -4908,13 +4940,8 @@ function isCadOp(value: unknown): value is CadOp {
 
   if (value.op === "feature.revolve") {
     const hasLegacyProfile =
-      typeof value.sketchId === "string" &&
-      typeof value.entityId === "string" &&
-      value.profile === undefined;
-    const hasV21Profile =
-      value.sketchId === undefined &&
-      value.entityId === undefined &&
-      isSketchProfileRef(value.profile);
+      typeof value.sketchId === "string" && typeof value.entityId === "string";
+    const hasV21Profile = isSketchProfileRef(value.profile);
 
     return (
       isOptionalString(value.id) &&
@@ -4967,11 +4994,17 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   if (value.op === "feature.updateExtrude") {
+    const hasLegacyProfile =
+      typeof value.sketchId === "string" && typeof value.entityId === "string";
+    const hasV21Profile = isSketchProfileRef(value.profile);
     return (
       typeof value.id === "string" &&
       (value.depth === undefined || typeof value.depth === "number") &&
       (value.side === undefined || isExtrudeSide(value.side)) &&
-      (value.depth !== undefined || value.side !== undefined)
+      (value.depth !== undefined ||
+        value.side !== undefined ||
+        hasLegacyProfile ||
+        hasV21Profile)
     );
   }
 
@@ -4985,13 +5018,8 @@ function isCadOp(value: unknown): value is CadOp {
       value.sketchId === undefined &&
       value.entityId === undefined;
     const hasLegacyProfile =
-      value.profile === undefined &&
-      typeof value.sketchId === "string" &&
-      typeof value.entityId === "string";
-    const hasV21Profile =
-      isSketchProfileRef(value.profile) &&
-      value.sketchId === undefined &&
-      value.entityId === undefined;
+      typeof value.sketchId === "string" && typeof value.entityId === "string";
+    const hasV21Profile = isSketchProfileRef(value.profile);
 
     return (
       typeof value.id === "string" &&
@@ -5130,6 +5158,56 @@ function isCadOp(value: unknown): value is CadOp {
         (Array.isArray(value.openFaceRefs) &&
           value.openFaceRefs.every(isFeatureShellOpenFaceRefShape))) &&
       (value.wallThickness !== undefined || value.openFaceRefs !== undefined)
+    );
+  }
+
+  if (value.op === "feature.sweep") {
+    const hasLegacyProfile =
+      typeof value.profileSketchId === "string" &&
+      typeof value.profileEntityId === "string";
+    const hasLegacyPath =
+      typeof value.pathSketchId === "string" &&
+      Array.isArray(value.pathEntityIds) &&
+      value.pathEntityIds.every((entityId) => typeof entityId === "string");
+    const hasNormalizedProfile = isSketchEntityProfileRef(value.profile);
+    const hasNormalizedPath = isSketchPathRef(value.path);
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      ((hasLegacyProfile && hasLegacyPath) ||
+        (hasNormalizedProfile && hasNormalizedPath))
+    );
+  }
+
+  if (value.op === "feature.updateSweep") {
+    const hasLegacyProfile =
+      typeof value.profileSketchId === "string" &&
+      typeof value.profileEntityId === "string";
+    const hasLegacyPath =
+      typeof value.pathSketchId === "string" &&
+      Array.isArray(value.pathEntityIds) &&
+      value.pathEntityIds.every((entityId) => typeof entityId === "string");
+    const hasNormalizedProfile = isSketchEntityProfileRef(value.profile);
+    const hasNormalizedPath = isSketchPathRef(value.path);
+    return (
+      typeof value.id === "string" &&
+      (hasLegacyProfile ||
+        hasLegacyPath ||
+        hasNormalizedProfile ||
+        hasNormalizedPath)
+    );
+  }
+
+  if (value.op === "feature.loft" || value.op === "feature.updateLoft") {
+    return (
+      (value.op === "feature.loft"
+        ? isOptionalString(value.id) &&
+          isOptionalString(value.bodyId) &&
+          isOptionalString(value.name)
+        : typeof value.id === "string") &&
+      Array.isArray(value.sections) &&
+      value.sections.every(isLoftSectionInput)
     );
   }
 
@@ -5328,6 +5406,48 @@ function isSketchProfileRef(value: unknown): value is SketchProfileRef {
         typeof segment.entityId === "string" &&
         (segment.orientation === "forward" || segment.orientation === "reverse")
     )
+  );
+}
+
+function isSketchEntityProfileRef(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    value.kind === "entity" &&
+    typeof value.sketchId === "string" &&
+    typeof value.entityId === "string"
+  );
+}
+
+function isOrientedSketchSegmentRef(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.entityId === "string" &&
+    (value.orientation === "forward" || value.orientation === "reverse")
+  );
+}
+
+function isSketchPathRef(value: unknown): boolean {
+  if (!isRecord(value) || typeof value.sketchId !== "string") return false;
+  if (value.kind === "entity") {
+    return (
+      typeof value.entityId === "string" &&
+      (value.orientation === "forward" || value.orientation === "reverse")
+    );
+  }
+  return (
+    value.kind === "chain" &&
+    Array.isArray(value.segments) &&
+    value.segments.length > 0 &&
+    value.segments.every(isOrientedSketchSegmentRef)
+  );
+}
+
+function isLoftSectionInput(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    ((typeof value.sketchId === "string" &&
+      typeof value.entityId === "string") ||
+      isSketchEntityProfileRef(value.profile))
   );
 }
 

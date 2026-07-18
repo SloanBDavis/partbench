@@ -10,6 +10,10 @@ import {
   type CadOpsAgentResponse,
   type CadOpsAgentV8ProjectSurfaceResponse
 } from "@web-cad/agent-adapter";
+export {
+  createV17AdapterCompositeParityFixture,
+  type V17AdapterCompositeParityFixture
+} from "@web-cad/agent-adapter";
 import { WCAD_SOURCE_IDENTITY_ALGORITHM } from "@web-cad/cad-protocol";
 import type {
   CadActorMetadata,

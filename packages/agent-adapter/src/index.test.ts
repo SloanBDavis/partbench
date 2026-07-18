@@ -1707,28 +1707,36 @@ describe("agent-adapter", () => {
       ]
     });
 
-    expect(() =>
-      adapter.executeJson(
-        JSON.stringify({
-          requestId: "agent_req_v17_wire_extrude_mixed_source",
-          adapterVersion: "web-cad.agent-adapter.v1",
-          batch: {
-            version: "cadops.v1",
-            mode: "dryRun",
-            ops: [
-              {
-                op: "feature.extrude",
-                profile,
-                sketchId: "agent_wire_sketch",
-                entityId: "agent_wire_bottom",
-                depth: 5,
-                operationMode: "newBody"
-              }
-            ]
-          }
-        })
+    expect(
+      JSON.parse(
+        adapter.executeJson(
+          JSON.stringify({
+            requestId: "agent_req_v17_wire_extrude_mixed_source",
+            adapterVersion: "web-cad.agent-adapter.v1",
+            batch: {
+              version: "cadops.v1",
+              mode: "dryRun",
+              ops: [
+                {
+                  op: "feature.extrude",
+                  profile,
+                  sketchId: "agent_wire_sketch",
+                  entityId: "agent_wire_bottom",
+                  depth: 5,
+                  operationMode: "newBody"
+                }
+              ]
+            }
+          })
+        )
       )
-    ).toThrow("Invalid CADOps agent adapter request.");
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "COMMAND_INPUT_AMBIGUOUS",
+        path: "$.ops[0].profile"
+      }
+    });
   });
 
   it("round-trips composite wire cut dry-run and commit through an anchored add result", () => {
