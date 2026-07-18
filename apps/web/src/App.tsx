@@ -224,6 +224,7 @@ import {
 import { createQuickStartSourceBodyPlan } from "./quickStartBodies";
 import { createRenderSceneInputs } from "./renderScene";
 import {
+  createDefaultSketchDisplayFrame,
   createGeneratedFaceReferenceKey,
   createSketchDisplayState
 } from "./sketchDisplayFrames";
@@ -2840,11 +2841,18 @@ export function App() {
     setViewportPickIntent(undefined);
   }
 
+  function getSketchViewportDisplayFrame(sketchId: string) {
+    const resolved = sketchDisplayState.frames.get(sketchId);
+    if (resolved) return resolved;
+    const sketch = sketches.find((candidate) => candidate.id === sketchId);
+    return sketch ? createDefaultSketchDisplayFrame(sketch.plane) : undefined;
+  }
+
   function mapArcToolPickToSketchPoint(
     pick: ViewportCanvasPick,
     sketchId: string
   ): Vec2 | undefined {
-    const displayFrame = sketchDisplayState.frames.get(sketchId);
+    const displayFrame = getSketchViewportDisplayFrame(sketchId);
     if (!displayFrame) return undefined;
     const basis = createSketchViewportProjectionBasis({
       camera: pick.camera,
@@ -4639,7 +4647,7 @@ export function App() {
                 <SketchViewportDragOverlay
                   camera={camera}
                   disabled={commandPending}
-                  displayFrame={sketchDisplayState.frames.get(
+                  displayFrame={getSketchViewportDisplayFrame(
                     sketchViewportDragTarget.sketch.id
                   )}
                   selectedEntityId={sketchViewportDragTarget.entityId}
@@ -4652,11 +4660,11 @@ export function App() {
                 />
               ) : null}
               {threePointArcTool &&
-              sketchDisplayState.frames.get(threePointArcTool.sketchId) ? (
+              getSketchViewportDisplayFrame(threePointArcTool.sketchId) ? (
                 <SketchArcToolOverlay
                   camera={camera}
                   displayFrame={
-                    sketchDisplayState.frames.get(threePointArcTool.sketchId)!
+                    getSketchViewportDisplayFrame(threePointArcTool.sketchId)!
                   }
                   session={threePointArcTool}
                   size={size}

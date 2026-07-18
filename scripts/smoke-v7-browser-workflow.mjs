@@ -981,7 +981,7 @@ async function v7BrowserWorkflowSmoke({
   openTreePanel();
   const modelStructure = getElementByAriaLabel("Model structure");
   const modeling = getSectionByAriaLabel("Modeling context");
-  clickButtonContaining(modelStructure, ids.circleBodyName);
+  clickModelStoryResultBodyContaining(modelStructure, ids.circleBodyName);
   openSelectionPanel();
 
   await waitForBodyCommandReady(
@@ -995,7 +995,7 @@ async function v7BrowserWorkflowSmoke({
   );
 
   openTreePanel();
-  clickButtonContaining(modelStructure, ids.bodyName);
+  clickModelStoryResultBodyContaining(modelStructure, ids.bodyName);
   await waitFor(
     () => includesText(getElementByAriaLabel("Inspector"), ids.bodyId),
     "rectangle body selected before circle viewport body pick"
@@ -8038,6 +8038,16 @@ async function v7BrowserWorkflowSmoke({
 
   function openTreePanel() {
     clickButtonContaining(getElementByAriaLabel("Model browser tabs"), "Tree");
+  }
+
+  function clickModelStoryResultBodyContaining(scope, text) {
+    const button = [
+      ...scope.querySelectorAll('[data-testid="model-story-result-body"]')
+    ].find((candidate) => normalize(candidate.textContent).includes(text));
+    if (!(button instanceof globalThis.HTMLButtonElement)) {
+      throw new Error(`Could not find result body containing ${text}.`);
+    }
+    clickEnabledButton(button, `result body ${text}`);
   }
 
   function openSelectionPanel() {
