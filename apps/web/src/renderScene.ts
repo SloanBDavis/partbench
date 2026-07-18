@@ -82,16 +82,17 @@ export function createRenderSceneInputs(
 
     if (derivedGeometry?.status === "ready") {
       meshes.push(
-        source.kind === "extrude"
+        source.kind === "extrude" && source.profile.kind !== "wire"
           ? addExtrudeMeshDisplayEdges(derivedGeometry.mesh, source)
           : derivedGeometry.mesh
       );
       continue;
     }
 
-    // Only plain extrudes have a local primitive fallback while tessellation
-    // is pending. Pattern/mirror/shell/boolean/etc. wait for derived meshes.
-    if (source.kind !== "extrude") {
+    // Only primitive-profile extrudes have an honest local fallback while
+    // tessellation is pending. Wire profiles and the other derived feature
+    // families wait for their exact worker mesh.
+    if (source.kind !== "extrude" || source.profile.kind === "wire") {
       continue;
     }
 

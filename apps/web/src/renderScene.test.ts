@@ -442,6 +442,57 @@ describe("renderScene", () => {
     }
   });
 
+  it("renders wire extrudes only when their exact mesh is ready", () => {
+    const source = createWireExtrudeSource("body_wire");
+    const readyMesh = createMesh(source.id);
+    const readyScene = createRenderSceneInputs(
+      [],
+      new Map([
+        [
+          source.id,
+          {
+            objectId: source.id,
+            objectKind: "extrude",
+            sourceId: source.id,
+            sourceKind: "extrude",
+            cacheKey: "wire-ready",
+            status: "ready",
+            mesh: readyMesh,
+            metrics: {
+              objectId: source.id,
+              roundTripMs: 1,
+              vertexCount: 4,
+              triangleCount: 2
+            }
+          }
+        ]
+      ]),
+      [source]
+    );
+    const pendingScene = createRenderSceneInputs(
+      [],
+      new Map([
+        [
+          source.id,
+          {
+            objectId: source.id,
+            objectKind: "extrude",
+            sourceId: source.id,
+            sourceKind: "extrude",
+            cacheKey: "wire-pending",
+            status: "pending"
+          }
+        ]
+      ]),
+      [source]
+    );
+
+    expect(readyScene.primitives).toEqual([]);
+    expect(readyScene.meshes).toEqual([readyMesh]);
+    expect(pendingScene.primitives).toEqual([]);
+    expect(pendingScene.meshes).toEqual([]);
+  });
+
   it("renders ready revolve meshes without a primitive-style pending fallback", () => {
     const source = createRevolveSource("body_revolve_1");
     const readyMesh = createMesh(source.id);
@@ -1096,6 +1147,47 @@ function createAttachedExtrudeSource(
       uAxis: [0, 1, 0],
       vAxis: [0, 0, 1]
     }
+  };
+}
+
+function createWireExtrudeSource(id: string): DerivedExtrudeGeometrySource {
+  return {
+    id,
+    kind: "extrude",
+    sketchPlane: "XY",
+    profile: {
+      kind: "wire",
+      frame: {
+        origin: [0, 0, 0],
+        uAxis: [1, 0, 0],
+        vAxis: [0, 1, 0]
+      },
+      closed: true,
+      segments: [
+        {
+          kind: "line",
+          sourceEntityId: "line_1",
+          start: [0, 0],
+          end: [2, 0]
+        },
+        {
+          kind: "arc",
+          sourceEntityId: "arc_1",
+          center: [1, 0],
+          radius: 1,
+          startAngleDegrees: 0,
+          sweepAngleDegrees: 180
+        }
+      ],
+      sourceIdentity: "partbench-wire-extrude-v1:render-scene",
+      geometryPolicy: {
+        linearTolerance: 1e-7,
+        angularToleranceDegrees: 0.1,
+        minimumProfileArea: 1e-12
+      }
+    },
+    depth: 4,
+    side: "positive"
   };
 }
 
