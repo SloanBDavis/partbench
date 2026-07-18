@@ -2119,20 +2119,35 @@ function createOperationReview(
       };
     }
 
-    case "feature.revolve":
+    case "feature.revolve": {
+      const profile = "profile" in op ? op.profile : undefined;
+      const sketchId = profile?.sketchId ?? op.sketchId;
+      const sourceLabel =
+        profile?.kind === "wire"
+          ? `${profile.sketchId} composite wire`
+          : profile
+            ? `${profile.sketchId}/${profile.entityId}`
+            : `${op.sketchId}/${op.entityId}`;
+
       return {
         ...operationReviewBase(
           index,
           op,
           "create",
-          `Create revolve feature ${op.id ?? "with generated ID"} from ${op.sketchId}/${op.entityId}`
+          `Create revolve feature ${op.id ?? "with generated ID"} from ${sourceLabel}`
         ),
         ...(op.id ? { featureId: op.id } : {}),
         ...(op.bodyId ? { bodyId: op.bodyId } : {}),
         ...(op.targetBodyId ? { targetBodyId: op.targetBodyId } : {}),
-        sketchId: op.sketchId,
-        sketchEntityId: op.entityId
+        operationMode: op.operationMode ?? "newBody",
+        sketchId,
+        ...(profile?.kind === "entity"
+          ? { sketchEntityId: profile.entityId }
+          : !profile
+            ? { sketchEntityId: op.entityId }
+            : {})
       };
+    }
 
     case "feature.hole": {
       const target = op.targetTopologyAnchorId
@@ -2258,16 +2273,36 @@ function createOperationReview(
       };
     }
 
-    case "feature.updateRevolve":
+    case "feature.updateRevolve": {
+      const profile = "profile" in op ? op.profile : undefined;
+      const sketchId = profile?.sketchId ?? op.sketchId;
+      const sketchEntityId =
+        profile?.kind === "entity" ? profile.entityId : op.entityId;
+      const edits = [
+        ...(profile?.kind === "wire"
+          ? [`profile ${profile.sketchId} composite wire`]
+          : profile
+            ? [`profile ${profile.sketchId}/${profile.entityId}`]
+            : sketchId && sketchEntityId
+              ? [`profile ${sketchId}/${sketchEntityId}`]
+              : []),
+        ...(op.angleDegrees !== undefined ? [`angle ${op.angleDegrees}`] : [])
+      ];
+
       return {
         ...operationReviewBase(
           index,
           op,
           "modify",
-          `Update revolve feature ${op.id} (angle ${op.angleDegrees})`
+          `Update revolve feature ${op.id}${
+            edits.length > 0 ? ` (${edits.join(", ")})` : ""
+          }`
         ),
-        featureId: op.id
+        featureId: op.id,
+        ...(sketchId ? { sketchId } : {}),
+        ...(sketchEntityId ? { sketchEntityId } : {})
       };
+    }
 
     case "feature.updateHole": {
       const edits = [
@@ -4872,13 +4907,21 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   if (value.op === "feature.revolve") {
+    const hasLegacyProfile =
+      typeof value.sketchId === "string" &&
+      typeof value.entityId === "string" &&
+      value.profile === undefined;
+    const hasV21Profile =
+      value.sketchId === undefined &&
+      value.entityId === undefined &&
+      isSketchProfileRef(value.profile);
+
     return (
       isOptionalString(value.id) &&
       isOptionalString(value.bodyId) &&
       isOptionalString(value.targetBodyId) &&
       isOptionalString(value.name) &&
-      typeof value.sketchId === "string" &&
-      typeof value.entityId === "string" &&
+      (hasLegacyProfile || hasV21Profile) &&
       isFeatureRevolveAxis(value.axis) &&
       typeof value.angleDegrees === "number" &&
       (value.operationMode === undefined ||
@@ -4933,8 +4976,27 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   if (value.op === "feature.updateRevolve") {
+    const validAngle =
+      value.angleDegrees === undefined ||
+      typeof value.angleDegrees === "number";
+    const hasAngleOnly =
+      typeof value.angleDegrees === "number" &&
+      value.profile === undefined &&
+      value.sketchId === undefined &&
+      value.entityId === undefined;
+    const hasLegacyProfile =
+      value.profile === undefined &&
+      typeof value.sketchId === "string" &&
+      typeof value.entityId === "string";
+    const hasV21Profile =
+      isSketchProfileRef(value.profile) &&
+      value.sketchId === undefined &&
+      value.entityId === undefined;
+
     return (
-      typeof value.id === "string" && typeof value.angleDegrees === "number"
+      typeof value.id === "string" &&
+      validAngle &&
+      (hasAngleOnly || hasLegacyProfile || hasV21Profile)
     );
   }
 
