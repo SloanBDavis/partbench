@@ -201,7 +201,6 @@ export interface SketchEntityForm {
   readonly sweepAngleDegrees: number;
 }
 
-/** Arc creation remains a Slice H workflow; V17 Slice B edits existing arcs. */
 export type CreatableSketchEntityKind = SketchEntityKind;
 
 export interface SketchThreePointArcForm {

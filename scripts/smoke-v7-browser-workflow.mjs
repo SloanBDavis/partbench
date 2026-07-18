@@ -1904,8 +1904,10 @@ async function v7BrowserWorkflowSmoke({
     const beforeArcProject = await readV17ProjectJson(
       "V17 project before arc authoring"
     );
-    const beforeArcEntities = getV17Sketch(beforeArcProject, ids.sketchId)
-      .entities;
+    const beforeArcEntities = getV17Sketch(
+      beforeArcProject,
+      ids.sketchId
+    ).entities;
     const firstArcRatios = [
       [0.44, 0.56],
       [0.5, 0.44],
@@ -1938,12 +1940,22 @@ async function v7BrowserWorkflowSmoke({
     sketches = getSectionByAriaLabel("Sketches");
     selectV17SketchEntity(sketches, firstArc.id);
     await waitFor(
-      () => Boolean(getButtonByText(getSectionByAriaLabel("Sketches"), "Make construction")),
+      () =>
+        Boolean(
+          getButtonByText(
+            getSectionByAriaLabel("Sketches"),
+            "Make construction"
+          )
+        ),
       "V17 selected arc construction action"
     );
     clickButton(sketches, "Make construction");
     await waitFor(
-      () => includesText(getSectionByAriaLabel("Sketches"), "Construction geometry"),
+      () =>
+        includesText(
+          getSectionByAriaLabel("Sketches"),
+          "Construction geometry"
+        ),
       "V17 construction state"
     );
     project = await waitForV17Project(
@@ -1989,31 +2001,29 @@ async function v7BrowserWorkflowSmoke({
     }
 
     const sweepProfileId = "v17_sweep_profile";
+    const alternateSweepProfileId = "v17_sweep_profile_alt";
+    const revolveAxisId = "v17_revolve_axis";
     const arcStart = v17ArcEndpoint(firstArc, false);
-    clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Sketches");
-    sketches = getSectionByAriaLabel("Sketches");
-    clickButton(getElementByAriaLabel("Add sketch entity"), "Circle");
-    const circleEditor = await waitForSectionByAriaLabel(
-      "Sketch entity editor",
-      "V17 sweep profile editor"
+    const sweepProfileRadius = Math.max(
+      0.02,
+      Math.min(0.15, firstArc.radius / 5)
     );
-    setSelectByLabel(circleEditor, "Entity", "circle");
-    setInputByDetailsSummary(circleEditor, "Optional ID", sweepProfileId);
-    setFieldByLabel(circleEditor, "Center X", String(arcStart[0]));
-    setFieldByLabel(circleEditor, "Center Y", String(arcStart[1]));
-    setFieldByLabel(
-      circleEditor,
-      "Radius",
-      String(Math.max(0.02, Math.min(0.15, firstArc.radius / 5)))
+    await addV17CircleProfile(
+      sweepProfileId,
+      arcStart,
+      sweepProfileRadius,
+      "V17 sweep profile"
     );
-    clickButton(circleEditor, "Add entity");
-    await waitFor(
-      () =>
-        includesText(
-          getElementByAriaLabel("Select sketch entity"),
-          sweepProfileId
-        ),
-      "V17 sweep profile persisted"
+    await addV17CircleProfile(
+      alternateSweepProfileId,
+      arcStart,
+      sweepProfileRadius * 0.72,
+      "V17 alternate sweep profile"
+    );
+    await addV17ConstructionAxis(
+      revolveAxisId,
+      authoredArcs,
+      "V17 revolve construction axis"
     );
 
     const composite = getSectionByAriaLabel("Composite features");
@@ -2022,7 +2032,9 @@ async function v7BrowserWorkflowSmoke({
       includes: [firstArc.id, secondArc.id]
     });
     await waitFor(
-      () => includesText(composite, "Ready") && includesText(composite, "healthy joins"),
+      () =>
+        includesText(composite, "Ready") &&
+        includesText(composite, "healthy joins"),
       "V17 composite profile candidate ready"
     );
     const beforeCompositeFeatureCount = project.document.features.length;
@@ -2044,6 +2056,90 @@ async function v7BrowserWorkflowSmoke({
       "explicit two-arc profile candidate creates a composite extrude"
     );
 
+    clickButton(composite, "Revolve");
+    await waitFor(
+      () => Boolean(queryControlByLabel(composite, "Axis line")),
+      "V17 composite revolve controls"
+    );
+    setSelectByLabel(composite, "Profile sketch", ids.sketchId);
+    await selectV17Candidate(composite, "Profile candidate", {
+      includes: [firstArc.id, secondArc.id]
+    });
+    setSelectByLabel(composite, "Axis line", revolveAxisId);
+    setFieldByLabel(composite, "Angle (deg)", "220");
+    await waitFor(() => {
+      const create = getButtonByText(composite, "Create revolve");
+      return Boolean(create && !create.disabled);
+    }, "V17 composite revolve ready");
+    const beforeRevolveFeatureCount = project.document.features.length;
+    clickButton(composite, "Create revolve");
+    project = await waitForV17Project(
+      (candidate) =>
+        candidate.document.features.length > beforeRevolveFeatureCount &&
+        candidate.document.features.some(
+          (feature) =>
+            feature.kind === "revolve" &&
+            feature.profile?.kind === "wire" &&
+            v17WireEntityIds(feature.profile).includes(firstArc.id) &&
+            v17WireEntityIds(feature.profile).includes(secondArc.id) &&
+            feature.axis?.entityId === revolveAxisId
+        ),
+      "V17 composite revolve created"
+    );
+    const revolveFeature = project.document.features.find(
+      (feature) =>
+        feature.kind === "revolve" &&
+        feature.profile?.kind === "wire" &&
+        feature.axis?.entityId === revolveAxisId
+    );
+    if (!revolveFeature?.id || !revolveFeature.bodyId) {
+      throw new Error(
+        "V17 composite revolve has no stable feature/body identity."
+      );
+    }
+    pass(
+      "v17-composite-revolve-create-browser",
+      "two-arc wire and selected construction axis create a composite revolve"
+    );
+
+    selectV17FeatureForEditing("Revolve");
+    const revolveSourceEditor = await waitForSectionByAriaLabel(
+      "Composite source editor",
+      "V17 revolve source editor"
+    );
+    await selectV17Candidate(revolveSourceEditor, "Query-returned profile", {
+      includes: [ids.entityId]
+    });
+    await waitFor(() => {
+      const save = getButtonByText(
+        getSectionByAriaLabel("Composite source editor"),
+        "Save source references"
+      );
+      return Boolean(save && !save.disabled);
+    }, "V17 revolve profile retarget ready");
+    clickButton(revolveSourceEditor, "Save source references");
+    project = await waitForV17Project((candidate) => {
+      const feature = candidate.document.features.find(
+        (entry) => entry.id === revolveFeature.id
+      );
+      return (
+        feature?.kind === "revolve" &&
+        feature.bodyId === revolveFeature.bodyId &&
+        feature.profile?.kind === "entity" &&
+        feature.profile.entityId === ids.entityId &&
+        feature.axis?.entityId === revolveAxisId
+      );
+    }, "V17 revolve profile retarget persisted");
+    await waitForV17FeatureDisplayReady(
+      "Revolve",
+      "V17 retargeted composite revolve display geometry"
+    );
+    pass(
+      "v17-composite-revolve-source-edit-browser",
+      "Inspector retargets the revolve profile while preserving feature, body, and axis references",
+      `feature ${revolveFeature.id}; body ${revolveFeature.bodyId}`
+    );
+
     clickButton(composite, "Sweep");
     await waitFor(
       () => Boolean(queryControlByLabel(composite, "Path sketch")),
@@ -2060,7 +2156,10 @@ async function v7BrowserWorkflowSmoke({
     });
     await waitFor(
       () =>
-        includesText(getElementByAriaLabel("Profile candidate health"), "Ready") &&
+        includesText(
+          getElementByAriaLabel("Profile candidate health"),
+          "Ready"
+        ) &&
         includesText(getElementByAriaLabel("Path candidate health"), "Ready"),
       "V17 explicit profile and path candidates ready"
     );
@@ -2099,13 +2198,60 @@ async function v7BrowserWorkflowSmoke({
       sweepFeature.bodyId,
       "initial V17 curved sweep display geometry"
     );
-    const editedArc = createV17EndpointPreservingArcEdit(firstArc);
+    selectLatestV17FeatureForEditing();
+    const sweepSourceEditor = await waitForSectionByAriaLabel(
+      "Composite source editor",
+      "V17 sweep source editor"
+    );
+    await selectV17Candidate(sweepSourceEditor, "Query-returned profile", {
+      includes: [alternateSweepProfileId]
+    });
+    setSelectByLabel(sweepSourceEditor, "Path sketch", ids.sketchId);
+    await selectV17Candidate(sweepSourceEditor, "Query-returned path", {
+      includes: [secondArc.id],
+      excludes: [firstArc.id]
+    });
+    clickButton(sweepSourceEditor, "Reverse submitted direction");
+    await waitFor(() => {
+      const save = getButtonByText(
+        getSectionByAriaLabel("Composite source editor"),
+        "Save source references"
+      );
+      return Boolean(save && !save.disabled);
+    }, "V17 sweep source retarget and reversal ready");
+    clickButton(sweepSourceEditor, "Save source references");
+    project = await waitForV17Project((candidate) => {
+      const feature = candidate.document.features.find(
+        (entry) => entry.id === sweepFeature.id
+      );
+      return (
+        feature?.kind === "sweep" &&
+        feature.bodyId === sweepFeature.bodyId &&
+        feature.profile?.entityId === alternateSweepProfileId &&
+        v17PathHasEntityOrientation(feature.path, secondArc.id, "reverse")
+      );
+    }, "V17 sweep source retarget and reversal persisted");
+    await waitForV17BodyDisplayReady(
+      sweepFeature.bodyId,
+      "retargeted V17 curved sweep display geometry"
+    );
+    pass(
+      "v17-sweep-source-retarget-reverse-browser",
+      "Inspector retargets and reverses sweep sources while preserving feature and body identity",
+      `feature ${sweepFeature.id}; body ${sweepFeature.bodyId}`
+    );
+
+    const referencedArc = secondArc;
+    const editedArc = createV17EndpointPreservingArcEdit(referencedArc);
     clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Sketches");
     sketches = getSectionByAriaLabel("Sketches");
     setSelectByLabel(sketches, "Active sketch", ids.sketchId);
-    selectV17SketchEntity(sketches, firstArc.id);
+    selectV17SketchEntity(sketches, referencedArc.id);
     await waitFor(
-      () => Boolean(getButtonByText(getSectionByAriaLabel("Sketches"), "Edit source")),
+      () =>
+        Boolean(
+          getButtonByText(getSectionByAriaLabel("Sketches"), "Edit source")
+        ),
       "V17 selected referenced arc edit action"
     );
     clickButton(sketches, "Edit source");
@@ -2127,23 +2273,20 @@ async function v7BrowserWorkflowSmoke({
       String(editedArc.sweepAngleDegrees)
     );
     clickButton(arcEditor, "Update entity");
-    project = await waitForV17Project(
-      (candidate) => {
-        const arc = getV17Sketch(candidate, ids.sketchId).entities.find(
-          (entity) => entity.id === firstArc.id
-        );
-        const sweep = candidate.document.features.find(
-          (feature) => feature.bodyId === sweepFeature.bodyId
-        );
-        return (
-          arc?.kind === "arc" &&
-          Math.abs(arc.radius - editedArc.radius) < 1e-7 &&
-          sweep?.kind === "sweep" &&
-          v17PathEntityIds(sweep.path).includes(firstArc.id)
-        );
-      },
-      "V17 referenced arc edit persisted"
-    );
+    project = await waitForV17Project((candidate) => {
+      const arc = getV17Sketch(candidate, ids.sketchId).entities.find(
+        (entity) => entity.id === referencedArc.id
+      );
+      const sweep = candidate.document.features.find(
+        (feature) => feature.bodyId === sweepFeature.bodyId
+      );
+      return (
+        arc?.kind === "arc" &&
+        Math.abs(arc.radius - editedArc.radius) < 1e-7 &&
+        sweep?.kind === "sweep" &&
+        v17PathHasEntityOrientation(sweep.path, referencedArc.id, "reverse")
+      );
+    }, "V17 referenced arc edit persisted");
     await waitForV17BodyDisplayReady(
       sweepFeature.bodyId,
       "rebuilt V17 curved sweep display geometry"
@@ -2210,6 +2353,92 @@ async function v7BrowserWorkflowSmoke({
       () => !document.querySelector('[aria-label="Three-point arc tool"]'),
       `${label} commit`
     );
+  }
+
+  async function addV17CircleProfile(id, center, radius, label) {
+    clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Sketches");
+    const sketches = getSectionByAriaLabel("Sketches");
+    setSelectByLabel(sketches, "Active sketch", ids.sketchId);
+    clickButton(getElementByAriaLabel("Add sketch entity"), "Circle");
+    const editor = await waitForSectionByAriaLabel(
+      "Sketch entity editor",
+      `${label} editor`
+    );
+    setSelectByLabel(editor, "Entity", "circle");
+    setInputByDetailsSummary(editor, "Optional ID", id);
+    setFieldByLabel(editor, "Center X", String(center[0]));
+    setFieldByLabel(editor, "Center Y", String(center[1]));
+    setFieldByLabel(editor, "Radius", String(radius));
+    clickButton(editor, "Add entity");
+    await waitFor(
+      () => includesText(getElementByAriaLabel("Select sketch entity"), id),
+      `${label} persisted`
+    );
+  }
+
+  async function addV17ConstructionAxis(id, arcs, label) {
+    const minX = Math.min(...arcs.map((arc) => arc.center[0] - arc.radius));
+    const minY = Math.min(...arcs.map((arc) => arc.center[1] - arc.radius));
+    const maxY = Math.max(...arcs.map((arc) => arc.center[1] + arc.radius));
+    clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Sketches");
+    const sketches = getSectionByAriaLabel("Sketches");
+    setSelectByLabel(sketches, "Active sketch", ids.sketchId);
+    clickButton(getElementByAriaLabel("Add sketch entity"), "Line");
+    const editor = await waitForSectionByAriaLabel(
+      "Sketch entity editor",
+      `${label} editor`
+    );
+    setSelectByLabel(editor, "Entity", "line");
+    setInputByDetailsSummary(editor, "Optional ID", id);
+    setFieldByLabel(editor, "Start X", String(minX - 0.5));
+    setFieldByLabel(editor, "Start Y", String(minY - 1));
+    setFieldByLabel(editor, "End X", String(minX - 0.5));
+    setFieldByLabel(editor, "End Y", String(maxY + 1));
+    const construction = getControlByLabel(editor, "Construction geometry");
+    if (!(construction instanceof HTMLInputElement)) {
+      throw new Error(`${label} construction control is not a checkbox.`);
+    }
+    if (!construction.checked) construction.click();
+    clickButton(editor, "Add entity");
+    await waitFor(
+      () => includesText(getElementByAriaLabel("Select sketch entity"), id),
+      `${label} persisted`
+    );
+  }
+
+  function selectV17FeatureForEditing(title) {
+    openTreePanel();
+    const section = [...document.querySelectorAll(".model-story-feature")].find(
+      (candidate) => {
+        const featureButton = candidate.querySelector(
+          ":scope > button.model-story-row.feature"
+        );
+        return (
+          normalize(
+            featureButton?.querySelector(".model-story-title")?.textContent
+          ) === title
+        );
+      }
+    );
+    const button = section?.querySelector(
+      ":scope > button.model-story-row.feature"
+    );
+    if (!(button instanceof HTMLButtonElement)) {
+      throw new Error(`Could not select V17 ${title} feature for editing.`);
+    }
+    clickEnabledButton(button, `${title} feature`);
+  }
+
+  function selectLatestV17FeatureForEditing() {
+    openTreePanel();
+    const sections = [...document.querySelectorAll(".model-story-feature")];
+    const button = sections
+      .at(-1)
+      ?.querySelector(":scope > button.model-story-row.feature");
+    if (!(button instanceof HTMLButtonElement)) {
+      throw new Error("Could not select the latest V17 feature for editing.");
+    }
+    clickEnabledButton(button, "latest V17 feature");
   }
 
   async function readV17ProjectJson(label) {
@@ -2317,10 +2546,20 @@ async function v7BrowserWorkflowSmoke({
       : [path.entityId];
   }
 
+  function v17PathHasEntityOrientation(path, entityId, orientation) {
+    if (!path) return false;
+    if (path.kind === "chain") {
+      return path.segments.some(
+        (segment) =>
+          segment.entityId === entityId && segment.orientation === orientation
+      );
+    }
+    return path.entityId === entityId && path.orientation === orientation;
+  }
+
   function v17ArcEndpoint(arc, end) {
     const angle =
-      ((arc.startAngleDegrees + (end ? arc.sweepAngleDegrees : 0)) *
-        Math.PI) /
+      ((arc.startAngleDegrees + (end ? arc.sweepAngleDegrees : 0)) * Math.PI) /
       180;
     return [
       arc.center[0] + arc.radius * Math.cos(angle),
@@ -2334,10 +2573,7 @@ async function v7BrowserWorkflowSmoke({
     const chord = [end[0] - start[0], end[1] - start[1]];
     const chordLength = Math.hypot(chord[0], chord[1]);
     const radius = Math.max(arc.radius * 1.12, chordLength * 0.525);
-    const midpoint = [
-      (start[0] + end[0]) / 2,
-      (start[1] + end[1]) / 2
-    ];
+    const midpoint = [(start[0] + end[0]) / 2, (start[1] + end[1]) / 2];
     const normal = [-chord[1] / chordLength, chord[0] / chordLength];
     const height = Math.sqrt(
       Math.max(0, radius * radius - (chordLength * chordLength) / 4)
@@ -2352,13 +2588,11 @@ async function v7BrowserWorkflowSmoke({
         Math.hypot(right[0] - arc.center[0], right[1] - arc.center[1])
     )[0];
     const startAngleDegrees =
-      (Math.atan2(start[1] - center[1], start[0] - center[0]) * 180) /
-      Math.PI;
+      (Math.atan2(start[1] - center[1], start[0] - center[0]) * 180) / Math.PI;
     const endAngleDegrees =
-      (Math.atan2(end[1] - center[1], end[0] - center[0]) * 180) /
-      Math.PI;
+      (Math.atan2(end[1] - center[1], end[0] - center[0]) * 180) / Math.PI;
     const positiveSweep =
-      ((endAngleDegrees - startAngleDegrees) % 360 + 360) % 360;
+      (((endAngleDegrees - startAngleDegrees) % 360) + 360) % 360;
     const sweepAngleDegrees =
       arc.sweepAngleDegrees >= 0 ? positiveSweep : positiveSweep - 360;
     return {
@@ -2370,23 +2604,57 @@ async function v7BrowserWorkflowSmoke({
   }
 
   async function waitForV17BodyDisplayReady(bodyId, label) {
-    await waitFor(() => {
-      const rows = [
-        ...document.querySelectorAll(
+    await waitFor(
+      () => {
+        const rows = [
+          ...document.querySelectorAll(
+            '[data-testid="model-story-result-body"]'
+          )
+        ];
+        const row = rows.at(-1);
+        if (!row || !includesText(row, "Display geometry ready")) {
+          throw new Error(
+            `${label} (${bodyId}): ${compactText(
+              row?.textContent ?? "body row missing",
+              360
+            )}`
+          );
+        }
+        return true;
+      },
+      label,
+      120_000
+    );
+  }
+
+  async function waitForV17FeatureDisplayReady(title, label) {
+    await waitFor(
+      () => {
+        const section = [
+          ...document.querySelectorAll(".model-story-feature")
+        ].find((candidate) => {
+          const featureButton = candidate.querySelector(
+            ":scope > button.model-story-row.feature"
+          );
+          return (
+            normalize(
+              featureButton?.querySelector(".model-story-title")?.textContent
+            ) === title
+          );
+        });
+        const row = section?.querySelector(
           '[data-testid="model-story-result-body"]'
-        )
-      ];
-      const row = rows.at(-1);
-      if (!row || !includesText(row, "Display geometry ready")) {
-        throw new Error(
-          `${label} (${bodyId}): ${compactText(
-            row?.textContent ?? "body row missing",
-            360
-          )}`
         );
-      }
-      return true;
-    }, label, 120_000);
+        if (!row || !includesText(row, "Display geometry ready")) {
+          throw new Error(
+            `${label}: ${compactText(row?.textContent ?? "result row missing", 360)}`
+          );
+        }
+        return true;
+      },
+      label,
+      120_000
+    );
   }
 
   async function runV14TopologyBackedBrowserWorkflowSmoke(projectJson) {

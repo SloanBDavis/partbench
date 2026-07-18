@@ -291,11 +291,36 @@ describe("V7 browser workflow smoke summary", () => {
     expect(smokeSource).toContain('"Profile candidate"');
     expect(smokeSource).toContain('"Path candidate"');
     expect(smokeSource).toContain('clickButton(composite, "Create extrude")');
+    expect(smokeSource).toContain('clickButton(composite, "Create revolve")');
     expect(smokeSource).toContain('clickButton(composite, "Create sweep")');
+    expect(smokeSource).toContain("selectV17FeatureForEditing");
+    expect(smokeSource).toContain("selectLatestV17FeatureForEditing");
+    expect(smokeSource).toContain('"Query-returned profile"');
+    expect(smokeSource).toContain('"Query-returned path"');
+    expect(smokeSource).toContain(
+      'clickButton(sweepSourceEditor, "Reverse submitted direction")'
+    );
+    expect(smokeSource).toContain(
+      'clickButton(revolveSourceEditor, "Save source references")'
+    );
+    expect(smokeSource).toContain(
+      'clickButton(sweepSourceEditor, "Save source references")'
+    );
     expect(smokeSource).toContain('clickButton(arcEditor, "Update entity")');
     expect(smokeSource).toContain("await waitForV17BodyDisplayReady");
     expect(smokeSource).not.toContain(
       "verifyV17AuthoringAndDerivedGeometryMarkers"
+    );
+  });
+
+  it("does not retain the obsolete pre-authoring Slice H comment", async () => {
+    const commandsSource = await readFile(
+      resolve(repoRoot, "apps/web/src/cadCommands.ts"),
+      "utf8"
+    );
+
+    expect(commandsSource).not.toContain(
+      "Arc creation remains a Slice H workflow"
     );
   });
 

@@ -163,7 +163,10 @@ export const V17_BROWSER_WORKFLOW_CHECK_IDS = Object.freeze([
   "v17-construction-toggle-browser",
   "v17-profile-path-candidates-browser",
   "v17-composite-feature-create-browser",
+  "v17-composite-revolve-create-browser",
+  "v17-composite-revolve-source-edit-browser",
   "v17-curved-sweep-create-browser",
+  "v17-sweep-source-retarget-reverse-browser",
   "v17-referenced-arc-edit-rebuild-browser",
   "v17-derived-geometry-browser"
 ]);
