@@ -1885,46 +1885,276 @@ async function v7BrowserWorkflowSmoke({
   }
 
   if (requireV17Workflow) {
-    verifyV17AuthoringAndDerivedGeometryMarkers();
+    await runV17MustBrowserWorkflowSmoke();
   }
 
   return { checks, ids, skipped };
 
-  function verifyV17AuthoringAndDerivedGeometryMarkers() {
-    const arcMarker = document.querySelector(
-      '[data-testid="v17-three-point-arc-authoring"], [aria-label="Three-point arc tool"]'
+  async function runV17MustBrowserWorkflowSmoke() {
+    clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Sketches");
+    let sketches = getSectionByAriaLabel("Sketches");
+    setSelectByLabel(sketches, "Active sketch", ids.sketchId);
+    await waitFor(
+      () =>
+        getControlByLabel(getSectionByAriaLabel("Sketches"), "Active sketch")
+          .value === ids.sketchId,
+      "V17 source sketch selection"
     );
-    const compositeMarker = document.querySelector(
-      '[data-testid="v17-composite-feature-authoring"], [aria-label="Composite features"]'
-    );
-    const canvas = document.querySelector('[aria-label="3D scene viewport"]');
 
-    if (arcMarker) {
-      pass(
-        "v17-three-point-arc-authoring-browser",
-        "V17 three-point arc authoring marker is rendered"
-      );
-    } else {
-      fail(
-        "v17-three-point-arc-authoring-browser",
-        "V17 three-point arc authoring marker is rendered",
-        'Missing data-testid="v17-three-point-arc-authoring" (or the Three-point arc tool surface was not active).'
-      );
+    const beforeArcProject = await readV17ProjectJson(
+      "V17 project before arc authoring"
+    );
+    const beforeArcEntities = getV17Sketch(beforeArcProject, ids.sketchId)
+      .entities;
+    const firstArcRatios = [
+      [0.44, 0.56],
+      [0.5, 0.44],
+      [0.56, 0.56]
+    ];
+    await authorV17ThreePointArc(firstArcRatios, "first V17 three-point arc");
+    let project = await waitForV17Project(
+      (candidate) =>
+        getV17Sketch(candidate, ids.sketchId).entities.filter(
+          (entity) => entity.kind === "arc"
+        ).length >
+        beforeArcEntities.filter((entity) => entity.kind === "arc").length,
+      "first V17 arc persisted"
+    );
+    const firstArc = getV17Sketch(project, ids.sketchId).entities.find(
+      (entity) =>
+        entity.kind === "arc" &&
+        !beforeArcEntities.some((before) => before.id === entity.id)
+    );
+    if (!firstArc || firstArc.kind !== "arc") {
+      throw new Error("The viewport-authored V17 arc was not in the project.");
+    }
+    pass(
+      "v17-three-point-arc-authoring-browser",
+      "three viewport picks create a document-model arc",
+      `radius ${firstArc.radius}; signed sweep ${firstArc.sweepAngleDegrees}`
+    );
+
+    clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Sketches");
+    sketches = getSectionByAriaLabel("Sketches");
+    selectV17SketchEntity(sketches, firstArc.id);
+    await waitFor(
+      () => Boolean(getButtonByText(getSectionByAriaLabel("Sketches"), "Make construction")),
+      "V17 selected arc construction action"
+    );
+    clickButton(sketches, "Make construction");
+    await waitFor(
+      () => includesText(getSectionByAriaLabel("Sketches"), "Construction geometry"),
+      "V17 construction state"
+    );
+    project = await waitForV17Project(
+      (candidate) =>
+        getV17Sketch(candidate, ids.sketchId).entities.find(
+          (entity) => entity.id === firstArc.id
+        )?.construction === true,
+      "V17 construction persisted"
+    );
+    clickButton(getSectionByAriaLabel("Sketches"), "Use as profile");
+    await waitForV17Project(
+      (candidate) =>
+        getV17Sketch(candidate, ids.sketchId).entities.find(
+          (entity) => entity.id === firstArc.id
+        )?.construction === false,
+      "V17 profile state restored"
+    );
+    pass(
+      "v17-construction-toggle-browser",
+      "selected arc toggles between construction and profile geometry"
+    );
+
+    await authorV17ThreePointArc(
+      [firstArcRatios[2], [0.5, 0.68], firstArcRatios[0]],
+      "second V17 three-point arc"
+    );
+    project = await waitForV17Project(
+      (candidate) =>
+        getV17Sketch(candidate, ids.sketchId).entities.filter(
+          (entity) => entity.kind === "arc"
+        ).length >=
+        beforeArcEntities.filter((entity) => entity.kind === "arc").length + 2,
+      "second V17 arc persisted"
+    );
+    const authoredArcs = getV17Sketch(project, ids.sketchId).entities.filter(
+      (entity) =>
+        entity.kind === "arc" &&
+        !beforeArcEntities.some((before) => before.id === entity.id)
+    );
+    const secondArc = authoredArcs.find((entity) => entity.id !== firstArc.id);
+    if (!secondArc || secondArc.kind !== "arc") {
+      throw new Error("The closing V17 arc was not in the project.");
     }
 
-    if (compositeMarker) {
-      pass(
-        "v17-composite-feature-authoring-browser",
-        "V17 composite feature authoring/edit marker is rendered"
-      );
-    } else {
-      fail(
-        "v17-composite-feature-authoring-browser",
-        "V17 composite feature authoring/edit marker is rendered",
-        'Missing data-testid="v17-composite-feature-authoring" (or the Composite features surface was not active).'
-      );
-    }
+    const sweepProfileId = "v17_sweep_profile";
+    const arcStart = v17ArcEndpoint(firstArc, false);
+    clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Sketches");
+    sketches = getSectionByAriaLabel("Sketches");
+    clickButton(getElementByAriaLabel("Add sketch entity"), "Circle");
+    const circleEditor = await waitForSectionByAriaLabel(
+      "Sketch entity editor",
+      "V17 sweep profile editor"
+    );
+    setSelectByLabel(circleEditor, "Entity", "circle");
+    setInputByDetailsSummary(circleEditor, "Optional ID", sweepProfileId);
+    setFieldByLabel(circleEditor, "Center X", String(arcStart[0]));
+    setFieldByLabel(circleEditor, "Center Y", String(arcStart[1]));
+    setFieldByLabel(
+      circleEditor,
+      "Radius",
+      String(Math.max(0.02, Math.min(0.15, firstArc.radius / 5)))
+    );
+    clickButton(circleEditor, "Add entity");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Select sketch entity"),
+          sweepProfileId
+        ),
+      "V17 sweep profile persisted"
+    );
 
+    const composite = getSectionByAriaLabel("Composite features");
+    setSelectByLabel(composite, "Profile sketch", ids.sketchId);
+    await selectV17Candidate(composite, "Profile candidate", {
+      includes: [firstArc.id, secondArc.id]
+    });
+    await waitFor(
+      () => includesText(composite, "Ready") && includesText(composite, "healthy joins"),
+      "V17 composite profile candidate ready"
+    );
+    const beforeCompositeFeatureCount = project.document.features.length;
+    clickButton(composite, "Create extrude");
+    project = await waitForV17Project(
+      (candidate) =>
+        candidate.document.features.length > beforeCompositeFeatureCount &&
+        candidate.document.features.some(
+          (feature) =>
+            feature.kind === "extrude" &&
+            feature.profile?.kind === "wire" &&
+            v17WireEntityIds(feature.profile).includes(firstArc.id) &&
+            v17WireEntityIds(feature.profile).includes(secondArc.id)
+        ),
+      "V17 composite extrude created"
+    );
+    pass(
+      "v17-composite-feature-create-browser",
+      "explicit two-arc profile candidate creates a composite extrude"
+    );
+
+    clickButton(composite, "Sweep");
+    await waitFor(
+      () => Boolean(queryControlByLabel(composite, "Path sketch")),
+      "V17 sweep authoring controls"
+    );
+    setSelectByLabel(composite, "Profile sketch", ids.sketchId);
+    await selectV17Candidate(composite, "Profile candidate", {
+      includes: [sweepProfileId]
+    });
+    setSelectByLabel(composite, "Path sketch", ids.sketchId);
+    await selectV17Candidate(composite, "Path candidate", {
+      includes: [firstArc.id],
+      excludes: [secondArc.id]
+    });
+    await waitFor(
+      () =>
+        includesText(getElementByAriaLabel("Profile candidate health"), "Ready") &&
+        includesText(getElementByAriaLabel("Path candidate health"), "Ready"),
+      "V17 explicit profile and path candidates ready"
+    );
+    pass(
+      "v17-profile-path-candidates-browser",
+      "explicit query-returned profile and curved path candidates are selected"
+    );
+    const beforeSweepFeatureCount = project.document.features.length;
+    clickButton(composite, "Create sweep");
+    project = await waitForV17Project(
+      (candidate) =>
+        candidate.document.features.length > beforeSweepFeatureCount &&
+        candidate.document.features.some(
+          (feature) =>
+            feature.kind === "sweep" &&
+            feature.profile?.entityId === sweepProfileId &&
+            v17PathEntityIds(feature.path).includes(firstArc.id)
+        ),
+      "V17 curved sweep created"
+    );
+    const sweepFeature = project.document.features.find(
+      (feature) =>
+        feature.kind === "sweep" &&
+        feature.profile?.entityId === sweepProfileId &&
+        v17PathEntityIds(feature.path).includes(firstArc.id)
+    );
+    if (!sweepFeature?.bodyId) {
+      throw new Error("V17 curved sweep has no result body identity.");
+    }
+    pass(
+      "v17-curved-sweep-create-browser",
+      "explicit curved arc path creates a normalized sweep feature"
+    );
+
+    await waitForV17BodyDisplayReady(
+      sweepFeature.bodyId,
+      "initial V17 curved sweep display geometry"
+    );
+    const editedArc = createV17EndpointPreservingArcEdit(firstArc);
+    clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Sketches");
+    sketches = getSectionByAriaLabel("Sketches");
+    setSelectByLabel(sketches, "Active sketch", ids.sketchId);
+    selectV17SketchEntity(sketches, firstArc.id);
+    await waitFor(
+      () => Boolean(getButtonByText(getSectionByAriaLabel("Sketches"), "Edit source")),
+      "V17 selected referenced arc edit action"
+    );
+    clickButton(sketches, "Edit source");
+    const arcEditor = await waitForSectionByAriaLabel(
+      "Sketch entity editor",
+      "V17 referenced arc editor"
+    );
+    setFieldByLabel(arcEditor, "Center X", String(editedArc.center[0]));
+    setFieldByLabel(arcEditor, "Center Y", String(editedArc.center[1]));
+    setFieldByLabel(arcEditor, "Radius", String(editedArc.radius));
+    setFieldByLabel(
+      arcEditor,
+      "Start angle (deg)",
+      String(editedArc.startAngleDegrees)
+    );
+    setFieldByLabel(
+      arcEditor,
+      "Signed sweep (deg)",
+      String(editedArc.sweepAngleDegrees)
+    );
+    clickButton(arcEditor, "Update entity");
+    project = await waitForV17Project(
+      (candidate) => {
+        const arc = getV17Sketch(candidate, ids.sketchId).entities.find(
+          (entity) => entity.id === firstArc.id
+        );
+        const sweep = candidate.document.features.find(
+          (feature) => feature.bodyId === sweepFeature.bodyId
+        );
+        return (
+          arc?.kind === "arc" &&
+          Math.abs(arc.radius - editedArc.radius) < 1e-7 &&
+          sweep?.kind === "sweep" &&
+          v17PathEntityIds(sweep.path).includes(firstArc.id)
+        );
+      },
+      "V17 referenced arc edit persisted"
+    );
+    await waitForV17BodyDisplayReady(
+      sweepFeature.bodyId,
+      "rebuilt V17 curved sweep display geometry"
+    );
+    pass(
+      "v17-referenced-arc-edit-rebuild-browser",
+      "endpoint-preserving arc edit keeps the dependent sweep current and display-ready",
+      `body ${sweepFeature.bodyId}`
+    );
+
+    const canvas = getElementByAriaLabel("3D scene viewport");
     if (
       canvas instanceof HTMLCanvasElement &&
       canvas.width > 0 &&
@@ -1932,16 +2162,231 @@ async function v7BrowserWorkflowSmoke({
     ) {
       pass(
         "v17-derived-geometry-browser",
-        "V17 derived-geometry build renders an active viewport canvas",
+        "V17 authored features finish with active derived display geometry",
         `${canvas.width}x${canvas.height}`
       );
     } else {
       fail(
         "v17-derived-geometry-browser",
-        "V17 derived-geometry build renders an active viewport canvas",
+        "V17 authored features finish with active derived display geometry",
         "The derived build did not expose a sized 3D scene viewport canvas."
       );
     }
+  }
+
+  async function authorV17ThreePointArc(ratios, label) {
+    clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Sketches");
+    const sketches = getSectionByAriaLabel("Sketches");
+    setSelectByLabel(sketches, "Active sketch", ids.sketchId);
+    clickButton(getElementByAriaLabel("Add sketch entity"), "Arc (3 point)");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Three-point arc tool"),
+          "the start point"
+        ),
+      `${label} start prompt`
+    );
+    clickViewportAtRatio(ratios[0][0], ratios[0][1]);
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Three-point arc tool"),
+          "a point on the arc"
+        ),
+      `${label} middle prompt`
+    );
+    clickViewportAtRatio(ratios[1][0], ratios[1][1]);
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Three-point arc tool"),
+          "the end point"
+        ),
+      `${label} end prompt`
+    );
+    clickViewportAtRatio(ratios[2][0], ratios[2][1]);
+    await waitFor(
+      () => !document.querySelector('[aria-label="Three-point arc tool"]'),
+      `${label} commit`
+    );
+  }
+
+  async function readV17ProjectJson(label) {
+    openDetailsBySummary(document.body, "Project/File");
+    const projectPanel = getSectionByAriaLabel("Project");
+    const exportButton = getButtonByText(projectPanel, "Export JSON");
+    if (!exportButton || exportButton.disabled) {
+      throw new Error(
+        `${label}: JSON export is unavailable (${compactText(
+          projectPanel.textContent,
+          360
+        )}).`
+      );
+    }
+    exportButton.click();
+    await delay(50);
+    await waitFor(() => {
+      const value = getProjectJsonEditorValue(projectPanel);
+      if (!value.trim()) throw new Error(`${label}: JSON preview is empty.`);
+      JSON.parse(value);
+      return true;
+    }, label);
+    return JSON.parse(getProjectJsonEditorValue(projectPanel));
+  }
+
+  async function waitForV17Project(predicate, label) {
+    const deadline = Date.now() + timeoutMs;
+    let lastError;
+    while (Date.now() < deadline) {
+      try {
+        const project = await readV17ProjectJson(label);
+        if (predicate(project)) return project;
+        lastError = new Error(`${label}: project predicate is not ready.`);
+      } catch (error) {
+        lastError = error;
+      }
+      await delay(100);
+    }
+    throw new Error(
+      `Timed out waiting for ${label}. Last error: ${
+        lastError instanceof Error ? lastError.message : String(lastError)
+      }`
+    );
+  }
+
+  function getV17Sketch(project, sketchId) {
+    const sketch = project?.document?.sketches?.find(
+      (candidate) => candidate.id === sketchId
+    );
+    if (!sketch) throw new Error(`V17 sketch ${sketchId} is unavailable.`);
+    return sketch;
+  }
+
+  function selectV17SketchEntity(sketches, entityId) {
+    const entityList = getElementByAriaLabel("Select sketch entity");
+    const button = getButtonContaining(entityList, entityId);
+    if (!button) {
+      throw new Error(`V17 sketch entity ${entityId} is not selectable.`);
+    }
+    clickEnabledButton(button, `sketch entity ${entityId}`);
+  }
+
+  async function selectV17Candidate(
+    scope,
+    label,
+    { includes = [], excludes = [] }
+  ) {
+    let option;
+    await waitFor(() => {
+      const select = getControlByLabel(scope, label);
+      if (!(select instanceof HTMLSelectElement)) {
+        throw new Error(`${label} is not a select.`);
+      }
+      option = [...select.options].find((candidate) => {
+        const text = normalize(candidate.textContent);
+        return (
+          candidate.value &&
+          includes.every((value) => text.includes(value)) &&
+          excludes.every((value) => !text.includes(value))
+        );
+      });
+      if (!option) {
+        throw new Error(
+          `${label} has no requested option: ${compactText(
+            select.textContent,
+            520
+          )}`
+        );
+      }
+      return true;
+    }, `${label} option`);
+    setSelectByLabel(scope, label, option.value);
+  }
+
+  function v17WireEntityIds(profile) {
+    return profile?.kind === "wire"
+      ? profile.segments.map((segment) => segment.entityId)
+      : [];
+  }
+
+  function v17PathEntityIds(path) {
+    if (!path) return [];
+    return path.kind === "chain"
+      ? path.segments.map((segment) => segment.entityId)
+      : [path.entityId];
+  }
+
+  function v17ArcEndpoint(arc, end) {
+    const angle =
+      ((arc.startAngleDegrees + (end ? arc.sweepAngleDegrees : 0)) *
+        Math.PI) /
+      180;
+    return [
+      arc.center[0] + arc.radius * Math.cos(angle),
+      arc.center[1] + arc.radius * Math.sin(angle)
+    ];
+  }
+
+  function createV17EndpointPreservingArcEdit(arc) {
+    const start = v17ArcEndpoint(arc, false);
+    const end = v17ArcEndpoint(arc, true);
+    const chord = [end[0] - start[0], end[1] - start[1]];
+    const chordLength = Math.hypot(chord[0], chord[1]);
+    const radius = Math.max(arc.radius * 1.12, chordLength * 0.525);
+    const midpoint = [
+      (start[0] + end[0]) / 2,
+      (start[1] + end[1]) / 2
+    ];
+    const normal = [-chord[1] / chordLength, chord[0] / chordLength];
+    const height = Math.sqrt(
+      Math.max(0, radius * radius - (chordLength * chordLength) / 4)
+    );
+    const centers = [
+      [midpoint[0] + normal[0] * height, midpoint[1] + normal[1] * height],
+      [midpoint[0] - normal[0] * height, midpoint[1] - normal[1] * height]
+    ];
+    const center = centers.sort(
+      (left, right) =>
+        Math.hypot(left[0] - arc.center[0], left[1] - arc.center[1]) -
+        Math.hypot(right[0] - arc.center[0], right[1] - arc.center[1])
+    )[0];
+    const startAngleDegrees =
+      (Math.atan2(start[1] - center[1], start[0] - center[0]) * 180) /
+      Math.PI;
+    const endAngleDegrees =
+      (Math.atan2(end[1] - center[1], end[0] - center[0]) * 180) /
+      Math.PI;
+    const positiveSweep =
+      ((endAngleDegrees - startAngleDegrees) % 360 + 360) % 360;
+    const sweepAngleDegrees =
+      arc.sweepAngleDegrees >= 0 ? positiveSweep : positiveSweep - 360;
+    return {
+      center,
+      radius,
+      startAngleDegrees,
+      sweepAngleDegrees
+    };
+  }
+
+  async function waitForV17BodyDisplayReady(bodyId, label) {
+    await waitFor(() => {
+      const rows = [
+        ...document.querySelectorAll(
+          '[data-testid="model-story-result-body"]'
+        )
+      ];
+      const row = rows.at(-1);
+      if (!row || !includesText(row, "Display geometry ready")) {
+        throw new Error(
+          `${label} (${bodyId}): ${compactText(
+            row?.textContent ?? "body row missing",
+            360
+          )}`
+        );
+      }
+      return true;
+    }, label, 120_000);
   }
 
   async function runV14TopologyBackedBrowserWorkflowSmoke(projectJson) {

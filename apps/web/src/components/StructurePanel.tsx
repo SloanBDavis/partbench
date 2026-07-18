@@ -758,6 +758,7 @@ function ModelStoryResultBody({
     <div className="model-story-body-block">
       <button
         type="button"
+        data-testid="model-story-result-body"
         className={`model-story-row body${
           resultBody.id === selectedId ? " selected" : ""
         }`}

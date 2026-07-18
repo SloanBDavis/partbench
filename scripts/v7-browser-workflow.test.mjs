@@ -280,6 +280,25 @@ describe("V7 browser workflow smoke summary", () => {
     }
   });
 
+  it("drives V17 Must authoring and edit actions instead of marker-only probes", async () => {
+    const smokeSource = await readFile(
+      resolve(repoRoot, "scripts/smoke-v7-browser-workflow.mjs"),
+      "utf8"
+    );
+
+    expect(smokeSource).toContain("await authorV17ThreePointArc");
+    expect(smokeSource).toContain('clickButton(sketches, "Make construction")');
+    expect(smokeSource).toContain('"Profile candidate"');
+    expect(smokeSource).toContain('"Path candidate"');
+    expect(smokeSource).toContain('clickButton(composite, "Create extrude")');
+    expect(smokeSource).toContain('clickButton(composite, "Create sweep")');
+    expect(smokeSource).toContain('clickButton(arcEditor, "Update entity")');
+    expect(smokeSource).toContain("await waitForV17BodyDisplayReady");
+    expect(smokeSource).not.toContain(
+      "verifyV17AuthoringAndDerivedGeometryMarkers"
+    );
+  });
+
   it("fails clearly when required GLB download is skipped", () => {
     const result = createV7BrowserWorkflowSmokeResult({
       checks: [

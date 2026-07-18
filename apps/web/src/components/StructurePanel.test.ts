@@ -136,6 +136,7 @@ describe("StructurePanel", () => {
     expect(markup).toContain("Edges");
     expect(markup).toContain("Start cap");
     expect(markup).toContain("Ready reference");
+    expect(markup).toContain('data-testid="model-story-result-body"');
     expect(markup).toContain("Start uMin edge");
     expect(markup).not.toContain("generated:face:body_base:startCap");
   });
