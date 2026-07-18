@@ -44,10 +44,13 @@ export function SketchArcToolOverlay({
       <div className="sketch-arc-tool-prompt">
         <strong>Three-point arc</strong>
         <span>
-          Click {formatStage(getThreePointArcToolStage(session))}. Escape cancels.
+          Click {formatStage(getThreePointArcToolStage(session))}. Escape
+          cancels.
         </span>
         {preview?.ok === false && (
-          <small>{preview.issues[0]?.message ?? "Arc preview is invalid."}</small>
+          <small>
+            {preview.issues[0]?.message ?? "Arc preview is invalid."}
+          </small>
         )}
       </div>
       <svg
@@ -60,7 +63,9 @@ export function SketchArcToolOverlay({
           <polyline
             className="sketch-arc-tool-preview"
             points={previewPoints
-              .filter((point): point is NonNullable<typeof point> => Boolean(point))
+              .filter((point): point is NonNullable<typeof point> =>
+                Boolean(point)
+              )
               .map((point) => `${point.x},${point.y}`)
               .join(" ")}
           />

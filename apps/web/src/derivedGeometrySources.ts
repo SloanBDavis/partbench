@@ -35,7 +35,6 @@ import {
   createDefaultSketchDisplayFrame,
   createGeneratedFaceReferenceKey,
   createTopologyAnchorFaceDisplayFrame,
-  mapSketchPointToDisplayFrame,
   type SketchDisplayFrame
 } from "./sketchDisplayFrames";
 import { mapResolvedSweepPathSegmentToWorld } from "./sweepGeometryRecipe";

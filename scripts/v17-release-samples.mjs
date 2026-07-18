@@ -710,7 +710,7 @@ export async function runV17StorageMigrationWorkflow(cadCore) {
           : {};
       const first = await cadCore.exportCadProjectToWcad(restored, wcadOptions);
       const second = await cadCore.exportCadProjectToWcad(
-        structuredClone(restored),
+        globalThis.structuredClone(restored),
         wcadOptions
       );
       invariant(

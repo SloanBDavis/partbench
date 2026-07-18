@@ -133,55 +133,145 @@ describe("cad command builders", () => {
 
   it("builds V17 arc, construction, and exact composite reference operations", () => {
     const entityForm = {
-      id: " arc_1 ", construction: true, x: 1, y: 2, x2: 0, y2: 0,
-      width: 1, height: 1, radius: 3, startAngleDegrees: 45,
+      id: " arc_1 ",
+      construction: true,
+      x: 1,
+      y: 2,
+      x2: 0,
+      y2: 0,
+      width: 1,
+      height: 1,
+      radius: 3,
+      startAngleDegrees: 45,
       sweepAngleDegrees: -120
     };
     expect(buildAddSketchArcOp("sketch_profile", entityForm)).toEqual({
-      op: "sketch.addArc", sketchId: "sketch_profile", id: "arc_1",
+      op: "sketch.addArc",
+      sketchId: "sketch_profile",
+      id: "arc_1",
       construction: true,
-      definition: { kind: "centerAngles", center: [1, 2], radius: 3,
-        startAngleDegrees: 45, sweepAngleDegrees: -120 }
+      definition: {
+        kind: "centerAngles",
+        center: [1, 2],
+        radius: 3,
+        startAngleDegrees: 45,
+        sweepAngleDegrees: -120
+      }
     });
-    expect(buildAddSketchThreePointArcOp("sketch_profile", {
-      id: "", construction: false, start: [0, 0], pointOnArc: [1, 1], end: [2, 0]
-    })).toEqual({
-      op: "sketch.addArc", sketchId: "sketch_profile", id: undefined,
+    expect(
+      buildAddSketchThreePointArcOp("sketch_profile", {
+        id: "",
+        construction: false,
+        start: [0, 0],
+        pointOnArc: [1, 1],
+        end: [2, 0]
+      })
+    ).toEqual({
+      op: "sketch.addArc",
+      sketchId: "sketch_profile",
+      id: undefined,
       construction: false,
-      definition: { kind: "threePoint", start: [0, 0], pointOnArc: [1, 1], end: [2, 0] }
+      definition: {
+        kind: "threePoint",
+        start: [0, 0],
+        pointOnArc: [1, 1],
+        end: [2, 0]
+      }
     });
-    expect(buildSetSketchEntityConstructionOp("sketch_profile", "arc_1", false)).toEqual({
-      op: "sketch.setEntityConstruction", sketchId: "sketch_profile",
-      entityId: "arc_1", construction: false
+    expect(
+      buildSetSketchEntityConstructionOp("sketch_profile", "arc_1", false)
+    ).toEqual({
+      op: "sketch.setEntityConstruction",
+      sketchId: "sketch_profile",
+      entityId: "arc_1",
+      construction: false
     });
 
-    const profile = { kind: "wire" as const, sketchId: "sketch_profile", segments: [
-      { entityId: "line", orientation: "forward" as const },
-      { entityId: "arc", orientation: "reverse" as const }
-    ] };
-    expect(buildFeatureCompositeExtrudeOp({ id: "", bodyId: "", name: "",
-      profile, depth: 4, side: "positive", operationMode: "newBody" })).toMatchObject({
-      op: "feature.extrude", profile, depth: 4, operationMode: "newBody"
+    const profile = {
+      kind: "wire" as const,
+      sketchId: "sketch_profile",
+      segments: [
+        { entityId: "line", orientation: "forward" as const },
+        { entityId: "arc", orientation: "reverse" as const }
+      ]
+    };
+    expect(
+      buildFeatureCompositeExtrudeOp({
+        id: "",
+        bodyId: "",
+        name: "",
+        profile,
+        depth: 4,
+        side: "positive",
+        operationMode: "newBody"
+      })
+    ).toMatchObject({
+      op: "feature.extrude",
+      profile,
+      depth: 4,
+      operationMode: "newBody"
     });
-    expect(buildFeatureCompositeRevolveOp({ id: "", bodyId: "", name: "",
-      profile, axisEntityId: "axis", angleDegrees: 180 })).toMatchObject({
-      op: "feature.revolve", profile,
-      axis: { type: "sketchLine", sketchId: "sketch_profile", entityId: "axis" },
-      angleDegrees: 180, operationMode: "newBody"
+    expect(
+      buildFeatureCompositeRevolveOp({
+        id: "",
+        bodyId: "",
+        name: "",
+        profile,
+        axisEntityId: "axis",
+        angleDegrees: 180
+      })
+    ).toMatchObject({
+      op: "feature.revolve",
+      profile,
+      axis: {
+        type: "sketchLine",
+        sketchId: "sketch_profile",
+        entityId: "axis"
+      },
+      angleDegrees: 180,
+      operationMode: "newBody"
     });
-    const sweepProfile = { kind: "entity" as const, sketchId: "profile", entityId: "circle" };
-    const path = { kind: "entity" as const, sketchId: "path", entityId: "arc", orientation: "reverse" as const };
-    expect(buildFeatureCompositeSweepOp({ id: "", bodyId: "", name: "", profile: sweepProfile, path })).toMatchObject({
-      op: "feature.sweep", profile: sweepProfile, path
+    const sweepProfile = {
+      kind: "entity" as const,
+      sketchId: "profile",
+      entityId: "circle"
+    };
+    const path = {
+      kind: "entity" as const,
+      sketchId: "path",
+      entityId: "arc",
+      orientation: "reverse" as const
+    };
+    expect(
+      buildFeatureCompositeSweepOp({
+        id: "",
+        bodyId: "",
+        name: "",
+        profile: sweepProfile,
+        path
+      })
+    ).toMatchObject({
+      op: "feature.sweep",
+      profile: sweepProfile,
+      path
     });
     expect(buildFeatureUpdateCompositeExtrudeOp("extrude", profile)).toEqual({
-      op: "feature.updateExtrude", id: "extrude", profile
+      op: "feature.updateExtrude",
+      id: "extrude",
+      profile
     });
     expect(buildFeatureUpdateCompositeRevolveOp("revolve", profile)).toEqual({
-      op: "feature.updateRevolve", id: "revolve", profile
+      op: "feature.updateRevolve",
+      id: "revolve",
+      profile
     });
-    expect(buildFeatureUpdateCompositeSweepOp("sweep", sweepProfile, path)).toEqual({
-      op: "feature.updateSweep", id: "sweep", profile: sweepProfile, path
+    expect(
+      buildFeatureUpdateCompositeSweepOp("sweep", sweepProfile, path)
+    ).toEqual({
+      op: "feature.updateSweep",
+      id: "sweep",
+      profile: sweepProfile,
+      path
     });
   });
 

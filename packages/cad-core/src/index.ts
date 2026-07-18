@@ -113,7 +113,6 @@ import type {
   SketchId,
   SketchAttachmentSnapshot,
   SketchEntityProfileRef,
-  SketchPathRef,
   SketchProfileRef,
   SketchPlane,
   SketchPointTarget,

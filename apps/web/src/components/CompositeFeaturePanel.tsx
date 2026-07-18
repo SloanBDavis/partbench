@@ -1,8 +1,6 @@
 import type {
   SketchPathCandidatesQueryResponse,
-  SketchPathRef,
   SketchProfileCandidatesQueryResponse,
-  SketchProfileRef,
   SketchSnapshot
 } from "@web-cad/cad-protocol";
 import { useMemo, useState } from "react";

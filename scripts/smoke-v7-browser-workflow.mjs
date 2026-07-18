@@ -2299,7 +2299,7 @@ async function v7BrowserWorkflowSmoke({
 
     const canvas = getElementByAriaLabel("3D scene viewport");
     if (
-      canvas instanceof HTMLCanvasElement &&
+      canvas instanceof globalThis.HTMLCanvasElement &&
       canvas.width > 0 &&
       canvas.height > 0
     ) {
@@ -2423,7 +2423,7 @@ async function v7BrowserWorkflowSmoke({
     const button = section?.querySelector(
       ":scope > button.model-story-row.feature"
     );
-    if (!(button instanceof HTMLButtonElement)) {
+    if (!(button instanceof globalThis.HTMLButtonElement)) {
       throw new Error(`Could not select V17 ${title} feature for editing.`);
     }
     clickEnabledButton(button, `${title} feature`);
@@ -2435,7 +2435,7 @@ async function v7BrowserWorkflowSmoke({
     const button = sections
       .at(-1)
       ?.querySelector(":scope > button.model-story-row.feature");
-    if (!(button instanceof HTMLButtonElement)) {
+    if (!(button instanceof globalThis.HTMLButtonElement)) {
       throw new Error("Could not select the latest V17 feature for editing.");
     }
     clickEnabledButton(button, "latest V17 feature");

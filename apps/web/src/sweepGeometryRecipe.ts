@@ -52,10 +52,7 @@ function pointOnSketchArc(
   const angleRadians = (angleDegrees * Math.PI) / 180;
   const cosine = canonicalUnitCircleValue(Math.cos(angleRadians));
   const sine = canonicalUnitCircleValue(Math.sin(angleRadians));
-  return [
-    center[0] + radius * cosine,
-    center[1] + radius * sine
-  ];
+  return [center[0] + radius * cosine, center[1] + radius * sine];
 }
 
 function canonicalUnitCircleValue(value: number): number {
