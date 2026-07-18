@@ -122,6 +122,16 @@ export function mapViewportDeltaToSketchDelta(
   ]);
 }
 
+export function mapViewportPointToSketchPoint(
+  basis: SketchViewportProjectionBasis,
+  point: ViewportPoint
+): Vec2 | undefined {
+  return mapViewportDeltaToSketchDelta(basis, {
+    x: point.x - basis.origin.x,
+    y: point.y - basis.origin.y
+  });
+}
+
 export function applySketchViewportDrag(
   entity: SketchEntitySnapshot,
   handle: Pick<SketchViewportDragHandle, "kind" | "sketchPoint">,

@@ -50,15 +50,20 @@ import type {
   SketchConstraintEntry,
   SketchEvaluationQueryResponse,
   SketchSolverStatusQueryResponse,
+  SketchPathCandidatesQueryResponse,
+  SketchProfileCandidatesQueryResponse,
   WcadPackageValidationIssue,
   SketchEntitySnapshot,
-  SketchSnapshot
+  SketchSnapshot,
+  Vec2
 } from "@web-cad/cad-protocol";
 import { createGeometryKernelBrowserWorker } from "@web-cad/geometry-worker/browser";
 import { createDerivedGeometryRuntime } from "@web-cad/derived-geometry-runtime";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   buildBatch,
+  buildAddSketchArcOp,
+  buildAddSketchThreePointArcOp,
   buildAddSketchCircleOp,
   buildAddSketchLineOp,
   buildAddSketchPointOp,
@@ -81,13 +86,16 @@ import {
   buildFeatureChamferOp,
   buildFeatureCircularPatternOp,
   buildFeatureExtrudeOp,
+  buildFeatureCompositeExtrudeOp,
   buildFeatureFilletOp,
   buildFeatureHoleOp,
   buildFeatureLinearPatternOp,
   buildFeatureMirrorOp,
   buildFeatureRevolveOp,
+  buildFeatureCompositeRevolveOp,
   buildFeatureShellOp,
   buildFeatureSweepOp,
+  buildFeatureCompositeSweepOp,
   buildFeatureLoftOp,
   buildFeatureUpdateChamferOp,
   buildFeatureUpdateCircularPatternOp,
@@ -110,6 +118,7 @@ import {
   buildUpdateConeDimensionsOp,
   buildUpdateCylinderDimensionsOp,
   buildUpdateSketchEntityOp,
+  buildSetSketchEntityConstructionOp,
   buildUpdateSphereDimensionsOp,
   buildUpdateTorusDimensionsOp,
   buildUpdateUnitsOp,
@@ -120,15 +129,18 @@ import {
   type FeatureCircularPatternEdit,
   type FeatureCircularPatternForm,
   type FeatureExtrudeForm,
+  type FeatureCompositeExtrudeForm,
   type FeatureHoleForm,
   type FeatureLinearPatternEdit,
   type FeatureLinearPatternForm,
   type FeatureMirrorEdit,
   type FeatureMirrorForm,
   type FeatureRevolveForm,
+  type FeatureCompositeRevolveForm,
   type FeatureShellEdit,
   type FeatureShellForm,
   type FeatureSweepForm,
+  type FeatureCompositeSweepForm,
   type FeatureLoftForm,
   type ParameterCreateForm,
   type ParameterEditForm,
@@ -146,8 +158,10 @@ import { BrowserCadCommandWorker } from "./browserCadCommandWorker";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { Inspector } from "./components/Inspector";
 import { ModelingActionsPanel } from "./components/ModelingActionsPanel";
+import { CompositeFeaturePanel } from "./components/CompositeFeaturePanel";
 import { ProjectJsonPanel } from "./components/ProjectJsonPanel";
 import { SketchPanel } from "./components/SketchPanel";
+import { SketchArcToolOverlay } from "./components/SketchArcToolOverlay";
 import { SketchViewportDragOverlay } from "./components/SketchViewportDragOverlay";
 import { StructurePanel } from "./components/StructurePanel";
 import type { StructureSelectionOptions } from "./components/StructurePanel";
@@ -206,6 +220,17 @@ import {
   createGeneratedFaceReferenceKey,
   createSketchDisplayState
 } from "./sketchDisplayFrames";
+import {
+  createSketchViewportProjectionBasis,
+  mapViewportPointToSketchPoint
+} from "./sketchViewportDrag";
+import {
+  captureThreePointArcToolPoint,
+  createThreePointArcToolSession,
+  getThreePointArcDefinition,
+  updateThreePointArcToolHover,
+  type ThreePointArcToolSession
+} from "./v17ProductIntegration";
 import {
   formatGeneratedReferenceMeasurementError,
   formatGeneratedReferencesError,
@@ -1369,6 +1394,9 @@ export function App() {
   const [activeModelBrowserPanel, setActiveModelBrowserPanel] =
     useState<ModelBrowserPanelId>("tree");
   const [focusedSketchId, setFocusedSketchId] = useState<string | undefined>();
+  const [threePointArcTool, setThreePointArcTool] = useState<
+    ThreePointArcToolSession | undefined
+  >();
   const [selectedSketchContext, setSelectedSketchContext] = useState<
     SketchPanelSelectionContext | undefined
   >();
@@ -1538,6 +1566,32 @@ export function App() {
       })),
     [document]
   );
+  const profileCandidatesBySketchId = useMemo(() => {
+    const responses = new Map<string, SketchProfileCandidatesQueryResponse>();
+    for (const sketch of sketches) {
+      const response = engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.profileCandidates", sketchId: sketch.id }
+      });
+      if (response.ok && response.query === "sketch.profileCandidates") {
+        responses.set(sketch.id, response);
+      }
+    }
+    return responses;
+  }, [document, sketches]);
+  const pathCandidatesBySketchId = useMemo(() => {
+    const responses = new Map<string, SketchPathCandidatesQueryResponse>();
+    for (const sketch of sketches) {
+      const response = engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.pathCandidates", sketchId: sketch.id }
+      });
+      if (response.ok && response.query === "sketch.pathCandidates") {
+        responses.set(sketch.id, response);
+      }
+    }
+    return responses;
+  }, [document, sketches]);
   const projectStructure = readProjectStructure();
   const bodySourceIdentitySignatures = useMemo(
     () =>
@@ -1996,11 +2050,13 @@ export function App() {
     );
   const viewportTransientStateActive =
     viewportTwoTargetMeasurementSessionActive ||
+    threePointArcTool !== undefined ||
     viewportHoverPick !== undefined ||
     viewportPickIntent !== undefined;
   const clearViewportTransientState = useCallback(() => {
     setViewportHoverPick(undefined);
     setViewportPickIntent(undefined);
+    setThreePointArcTool(undefined);
     setViewportTwoTargetMeasurementSession((current) =>
       updateViewportTwoTargetMeasurementSession(current, { type: "clear" })
     );
@@ -2586,6 +2642,27 @@ export function App() {
     );
   }
 
+  async function createCompositeExtrude(form: FeatureCompositeExtrudeForm) {
+    await commitOps(
+      [buildFeatureCompositeExtrudeOp(form)],
+      (response) => response.createdBodyIds?.[0] ?? selectedId
+    );
+  }
+
+  async function createCompositeRevolve(form: FeatureCompositeRevolveForm) {
+    await commitOps(
+      [buildFeatureCompositeRevolveOp(form)],
+      (response) => response.createdBodyIds?.[0] ?? selectedId
+    );
+  }
+
+  async function createCompositeSweep(form: FeatureCompositeSweepForm) {
+    await commitOps(
+      [buildFeatureCompositeSweepOp(form)],
+      (response) => response.createdBodyIds?.[0] ?? selectedId
+    );
+  }
+
   async function createLoft(form: FeatureLoftForm) {
     await commitOps(
       [buildFeatureLoftOp(form)],
@@ -2701,8 +2778,10 @@ export function App() {
         : kind === "line"
           ? buildAddSketchLineOp(sketchId, form)
           : kind === "rectangle"
-            ? buildAddSketchRectangleOp(sketchId, form)
-            : buildAddSketchCircleOp(sketchId, form);
+          ? buildAddSketchRectangleOp(sketchId, form)
+            : kind === "circle"
+              ? buildAddSketchCircleOp(sketchId, form)
+              : buildAddSketchArcOp(sketchId, form);
 
     await commitOps([op], (response) => {
       const entityId = response.createdSketchEntityIds?.[0];
@@ -2715,6 +2794,97 @@ export function App() {
 
       return null;
     });
+  }
+
+  async function setSketchEntityConstruction(
+    sketchId: string,
+    entityId: string,
+    construction: boolean
+  ) {
+    await commitOps(
+      [
+        buildSetSketchEntityConstructionOp(
+          sketchId,
+          entityId,
+          construction
+        )
+      ],
+      () => selectedId
+    );
+  }
+
+  function startThreePointArcTool(sketchId: string) {
+    setThreePointArcTool(createThreePointArcToolSession(sketchId));
+    setFocusedSketchId(sketchId);
+    setSelectedSketchContext({ sketchId });
+    setViewportHoverPick(undefined);
+    setViewportPickIntent(undefined);
+  }
+
+  function mapArcToolPickToSketchPoint(
+    pick: ViewportCanvasPick,
+    sketchId: string
+  ): Vec2 | undefined {
+    const displayFrame = sketchDisplayState.frames.get(sketchId);
+    if (!displayFrame) return undefined;
+    const basis = createSketchViewportProjectionBasis({
+      camera: pick.camera,
+      displayFrame,
+      size: pick.size
+    });
+    return basis
+      ? mapViewportPointToSketchPoint(basis, pick.point)
+      : undefined;
+  }
+
+  function hoverThreePointArcTool(pick: ViewportCanvasPick | undefined) {
+    setThreePointArcTool((current) => {
+      if (!current) return current;
+      const point = pick
+        ? mapArcToolPickToSketchPoint(pick, current.sketchId)
+        : undefined;
+      return updateThreePointArcToolHover(current, point);
+    });
+  }
+
+  async function captureThreePointArcToolPick(pick: ViewportCanvasPick) {
+    const current = threePointArcTool;
+    if (!current) return;
+    const point = mapArcToolPickToSketchPoint(pick, current.sketchId);
+    if (!point) {
+      setCommandError("The active sketch plane cannot be projected in this view.");
+      return;
+    }
+
+    const next = captureThreePointArcToolPoint(current, point);
+    const definition = getThreePointArcDefinition(next);
+    if (!definition || definition.kind !== "threePoint") {
+      setThreePointArcTool(next);
+      return;
+    }
+
+    const response = await commitOps(
+      [
+        buildAddSketchThreePointArcOp(current.sketchId, {
+          id: "",
+          construction: false,
+          start: definition.start,
+          pointOnArc: definition.pointOnArc,
+          end: definition.end
+        })
+      ],
+      () => null
+    );
+    if (response?.ok) {
+      const entityId = response.createdSketchEntityIds?.[0];
+      setThreePointArcTool(undefined);
+      setSelectedSketchContext({
+        sketchId: current.sketchId,
+        ...(entityId ? { entityId } : {})
+      });
+    } else {
+      setThreePointArcTool(next);
+    }
   }
 
   async function updateSketchEntity(
@@ -4360,12 +4530,25 @@ export function App() {
               onSelectReference={selectGeneratedReference}
             />
           }
-          onHover={hoverViewportPick}
-          onSelect={selectViewportPick}
+          onHover={(pick) => {
+            if (threePointArcTool) {
+              hoverThreePointArcTool(pick);
+            } else {
+              hoverViewportPick(pick);
+            }
+          }}
+          onSelect={(pick) => {
+            if (threePointArcTool) {
+              void captureThreePointArcToolPick(pick);
+            } else {
+              selectViewportPick(pick);
+            }
+          }}
           onCancelTransientState={clearViewportTransientState}
-          sketchOverlay={({ camera, size }) =>
-            sketchViewportDragTarget ? (
-              <SketchViewportDragOverlay
+          sketchOverlay={({ camera, size }) => (
+            <>
+              {sketchViewportDragTarget ? (
+                <SketchViewportDragOverlay
                 camera={camera}
                 disabled={commandPending}
                 displayFrame={sketchDisplayState.frames.get(
@@ -4378,12 +4561,37 @@ export function App() {
                   void updateSketchEntity(sketchId, entity)
                 }
                 onPreviewEntity={previewSketchEntityUpdate}
-              />
-            ) : null
-          }
+                />
+              ) : null}
+              {threePointArcTool &&
+                sketchDisplayState.frames.get(threePointArcTool.sketchId) ? (
+                  <SketchArcToolOverlay
+                    camera={camera}
+                    displayFrame={
+                      sketchDisplayState.frames.get(
+                        threePointArcTool.sketchId
+                      )!
+                    }
+                    session={threePointArcTool}
+                    size={size}
+                  />
+                ) : null}
+            </>
+          )}
         />
 
         <div className="right-rail" aria-label="Project and modeling tools">
+          <CompositeFeaturePanel
+            addTargetBodies={addTargetBodyOptions}
+            cutTargetBodies={cutTargetBodyOptions}
+            disabled={commandPending}
+            pathCandidatesBySketchId={pathCandidatesBySketchId}
+            profileCandidatesBySketchId={profileCandidatesBySketchId}
+            sketches={sketches}
+            onCreateExtrude={(form) => void createCompositeExtrude(form)}
+            onCreateRevolve={(form) => void createCompositeRevolve(form)}
+            onCreateSweep={(form) => void createCompositeSweep(form)}
+          />
           <ModelingActionsPanel
             actions={modelingActions}
             addTargetBodies={addTargetBodyOptions}
@@ -4577,6 +4785,7 @@ export function App() {
                     displayStatuses={sketchDisplayState.statuses}
                     focusedSketchId={focusedSketchId}
                     focusedEntityId={selectedSketchContext?.entityId}
+                    arcToolActiveSketchId={threePointArcTool?.sketchId}
                     features={projectStructure.features}
                     onCreateSketch={(form) => void createSketch(form)}
                     onCreateParameter={(form) => void createParameter(form)}
@@ -4599,6 +4808,18 @@ export function App() {
                     onDeleteEntity={(sketchId, entityId) =>
                       void deleteSketchEntity(sketchId, entityId)
                     }
+                    onSetEntityConstruction={(
+                      sketchId,
+                      entityId,
+                      construction
+                    ) =>
+                      void setSketchEntityConstruction(
+                        sketchId,
+                        entityId,
+                        construction
+                      )
+                    }
+                    onStartThreePointArcTool={startThreePointArcTool}
                     onCreateDimension={(sketchId, entityId, target, form) =>
                       void createSketchDimension(
                         sketchId,

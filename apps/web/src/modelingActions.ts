@@ -66,7 +66,8 @@ const SKETCH_ENTITY_ADD_ACTION_IDS = {
   point: "sketch.entity.add.point",
   line: "sketch.entity.add.line",
   rectangle: "sketch.entity.add.rectangle",
-  circle: "sketch.entity.add.circle"
+  circle: "sketch.entity.add.circle",
+  arc: "sketch.entity.add.arc"
 } as const satisfies Record<CreatableSketchEntityKind, ModelingActionId>;
 
 export type ModelingActionId =
@@ -75,6 +76,7 @@ export type ModelingActionId =
   | "sketch.entity.add.line"
   | "sketch.entity.add.rectangle"
   | "sketch.entity.add.circle"
+  | "sketch.entity.add.arc"
   | "sketch.entity.edit"
   | "sketch.dimension.add"
   | "sketch.constraint.add"
@@ -236,7 +238,8 @@ function createSketchActions(
     createAddSketchEntityAction(sketch, "point", "Add point"),
     createAddSketchEntityAction(sketch, "line", "Add line"),
     createAddSketchEntityAction(sketch, "rectangle", "Add rectangle"),
-    createAddSketchEntityAction(sketch, "circle", "Add circle")
+    createAddSketchEntityAction(sketch, "circle", "Add circle"),
+    createAddSketchEntityAction(sketch, "arc", "Add three-point arc")
   ];
 }
 

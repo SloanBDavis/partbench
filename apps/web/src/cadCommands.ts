@@ -13,6 +13,7 @@ import type {
   FeatureExtrudeOperationMode,
   FeatureExtrudeSide,
   FeatureExtrudeOp,
+  FeatureExtrudeCommandInput,
   FeatureChamferOp,
   FeatureFilletOp,
   FeatureHoleDepthMode,
@@ -25,19 +26,24 @@ import type {
   PatternDirectionRef,
   PatternRotationAxisRef,
   FeatureRevolveOp,
+  FeatureRevolveCommandInput,
   FeatureShellOp,
   FeatureSweepOp,
+  FeatureSweepCommandInput,
   FeatureLoftOp,
   LoftSection,
   FeatureShellOpenFaceRef,
   FeatureUpdateCircularPatternOp,
   FeatureUpdateExtrudeOp,
+  FeatureUpdateExtrudeCommandInput,
   FeatureUpdateChamferOp,
   FeatureUpdateFilletOp,
   FeatureUpdateHoleOp,
   FeatureUpdateLinearPatternOp,
   FeatureUpdateMirrorOp,
   FeatureUpdateRevolveOp,
+  FeatureUpdateRevolveCommandInput,
+  FeatureUpdateSweepCommandInput,
   FeatureUpdateShellOp,
   ParameterCreateOp,
   ParameterDeleteOp,
@@ -63,6 +69,7 @@ import type {
   SceneUpdateTorusDimensionsOp,
   SceneUpdateTransformOp,
   SketchAddCircleOp,
+  SketchAddArcOp,
   SketchAddLineOp,
   SketchAddPointOp,
   SketchAddRectangleOp,
@@ -83,7 +90,10 @@ import type {
   SketchConstraintId,
   SketchConstraintRenameOp,
   SketchEntitySnapshot,
-  SketchEntityKindV20,
+  SketchEntityKind,
+  SketchPathRef,
+  SketchProfileRef,
+  SketchSetEntityConstructionOp,
   SketchId,
   SketchPlane,
   SketchPointTargetRole,
@@ -192,7 +202,15 @@ export interface SketchEntityForm {
 }
 
 /** Arc creation remains a Slice H workflow; V17 Slice B edits existing arcs. */
-export type CreatableSketchEntityKind = SketchEntityKindV20;
+export type CreatableSketchEntityKind = SketchEntityKind;
+
+export interface SketchThreePointArcForm {
+  readonly id: string;
+  readonly construction: boolean;
+  readonly start: Vec2;
+  readonly pointOnArc: Vec2;
+  readonly end: Vec2;
+}
 
 export interface FeatureExtrudeForm {
   readonly id: string;
@@ -303,6 +321,20 @@ export interface FeatureSweepForm {
   readonly name: string;
   readonly pathSketchId: string;
   readonly pathEntityIds: readonly string[];
+}
+
+export interface FeatureCompositeExtrudeForm extends FeatureExtrudeForm {
+  readonly profile: SketchProfileRef;
+}
+
+export interface FeatureCompositeRevolveForm extends FeatureRevolveForm {
+  readonly profile: SketchProfileRef;
+}
+
+export interface FeatureCompositeSweepForm
+  extends Omit<FeatureSweepForm, "pathSketchId" | "pathEntityIds"> {
+  readonly profile: Extract<SketchProfileRef, { readonly kind: "entity" }>;
+  readonly path: SketchPathRef;
 }
 
 export interface FeatureLoftForm {
@@ -674,7 +706,8 @@ export function buildAddSketchPointOp(
     op: "sketch.addPoint",
     sketchId,
     id: normalizeOptionalId(form.id),
-    point: toVec2(form.x, form.y)
+    point: toVec2(form.x, form.y),
+    construction: form.construction
   };
 }
 
@@ -687,7 +720,8 @@ export function buildAddSketchLineOp(
     sketchId,
     id: normalizeOptionalId(form.id),
     start: toVec2(form.x, form.y),
-    end: toVec2(form.x2, form.y2)
+    end: toVec2(form.x2, form.y2),
+    construction: form.construction
   };
 }
 
@@ -701,7 +735,8 @@ export function buildAddSketchRectangleOp(
     id: normalizeOptionalId(form.id),
     center: toVec2(form.x, form.y),
     width: form.width,
-    height: form.height
+    height: form.height,
+    construction: form.construction
   };
 }
 
@@ -714,7 +749,58 @@ export function buildAddSketchCircleOp(
     sketchId,
     id: normalizeOptionalId(form.id),
     center: toVec2(form.x, form.y),
-    radius: form.radius
+    radius: form.radius,
+    construction: form.construction
+  };
+}
+
+export function buildAddSketchArcOp(
+  sketchId: SketchId,
+  form: SketchEntityForm
+): SketchAddArcOp {
+  return {
+    op: "sketch.addArc",
+    sketchId,
+    id: normalizeOptionalId(form.id),
+    construction: form.construction,
+    definition: {
+      kind: "centerAngles",
+      center: toVec2(form.x, form.y),
+      radius: form.radius,
+      startAngleDegrees: form.startAngleDegrees,
+      sweepAngleDegrees: form.sweepAngleDegrees
+    }
+  };
+}
+
+export function buildAddSketchThreePointArcOp(
+  sketchId: SketchId,
+  form: SketchThreePointArcForm
+): SketchAddArcOp {
+  return {
+    op: "sketch.addArc",
+    sketchId,
+    id: normalizeOptionalId(form.id),
+    construction: form.construction,
+    definition: {
+      kind: "threePoint",
+      start: form.start,
+      pointOnArc: form.pointOnArc,
+      end: form.end
+    }
+  };
+}
+
+export function buildSetSketchEntityConstructionOp(
+  sketchId: SketchId,
+  entityId: string,
+  construction: boolean
+): SketchSetEntityConstructionOp {
+  return {
+    op: "sketch.setEntityConstruction",
+    sketchId,
+    entityId,
+    construction
   };
 }
 
@@ -944,6 +1030,31 @@ export function buildFeatureExtrudeOp(
   };
 }
 
+export function buildFeatureCompositeExtrudeOp(
+  form: FeatureCompositeExtrudeForm
+): FeatureExtrudeCommandInput {
+  const targetBodyId = normalizeOptionalId(form.targetBodyId ?? "");
+  const targetTopologyAnchorId = normalizeOptionalId(
+    form.targetTopologyAnchorId ?? ""
+  );
+
+  return {
+    op: "feature.extrude",
+    id: normalizeOptionalId(form.id),
+    bodyId: normalizeOptionalId(form.bodyId),
+    ...(targetTopologyAnchorId
+      ? { targetTopologyAnchorId }
+      : targetBodyId
+        ? { targetBodyId }
+        : {}),
+    name: form.name.trim() || undefined,
+    profile: form.profile,
+    depth: form.depth,
+    side: form.side,
+    operationMode: form.operationMode
+  };
+}
+
 export function buildFeatureRevolveOp(
   sketchId: SketchId,
   entityId: string,
@@ -966,6 +1077,25 @@ export function buildFeatureRevolveOp(
   };
 }
 
+export function buildFeatureCompositeRevolveOp(
+  form: FeatureCompositeRevolveForm
+): FeatureRevolveCommandInput {
+  return {
+    op: "feature.revolve",
+    id: normalizeOptionalId(form.id),
+    bodyId: normalizeOptionalId(form.bodyId),
+    name: form.name.trim() || undefined,
+    profile: form.profile,
+    axis: {
+      type: "sketchLine",
+      sketchId: form.profile.sketchId,
+      entityId: form.axisEntityId
+    },
+    angleDegrees: form.angleDegrees,
+    operationMode: "newBody"
+  };
+}
+
 export function buildFeatureSweepOp(
   profileSketchId: SketchId,
   profileEntityId: string,
@@ -980,6 +1110,19 @@ export function buildFeatureSweepOp(
     profileEntityId,
     pathSketchId: form.pathSketchId,
     pathEntityIds: form.pathEntityIds
+  };
+}
+
+export function buildFeatureCompositeSweepOp(
+  form: FeatureCompositeSweepForm
+): FeatureSweepCommandInput {
+  return {
+    op: "feature.sweep",
+    id: normalizeOptionalId(form.id),
+    bodyId: normalizeOptionalId(form.bodyId),
+    name: form.name.trim() || undefined,
+    profile: form.profile,
+    path: form.path
   };
 }
 
@@ -1097,6 +1240,21 @@ export function buildFeatureUpdateExtrudeOp(
   };
 }
 
+export function buildFeatureUpdateCompositeExtrudeOp(
+  id: string,
+  profile: SketchProfileRef,
+  depth?: number,
+  side?: FeatureExtrudeSide
+): FeatureUpdateExtrudeCommandInput {
+  return {
+    op: "feature.updateExtrude",
+    id,
+    profile,
+    ...(depth !== undefined ? { depth } : {}),
+    ...(side ? { side } : {})
+  };
+}
+
 export function buildFeatureUpdateRevolveOp(
   id: string,
   angleDegrees: number
@@ -1106,6 +1264,32 @@ export function buildFeatureUpdateRevolveOp(
     id,
     angleDegrees
   };
+}
+
+export function buildFeatureUpdateCompositeRevolveOp(
+  id: string,
+  profile: SketchProfileRef,
+  angleDegrees?: number
+): FeatureUpdateRevolveCommandInput {
+  return {
+    op: "feature.updateRevolve",
+    id,
+    profile,
+    ...(angleDegrees !== undefined ? { angleDegrees } : {})
+  };
+}
+
+export function buildFeatureUpdateCompositeSweepOp(
+  id: string,
+  profile?: Extract<SketchProfileRef, { readonly kind: "entity" }>,
+  path?: SketchPathRef
+): FeatureUpdateSweepCommandInput {
+  return {
+    op: "feature.updateSweep",
+    id,
+    ...(profile ? { profile } : {}),
+    ...(path ? { path } : {})
+  } as FeatureUpdateSweepCommandInput;
 }
 
 export function buildFeatureUpdateHoleOp(

@@ -12,6 +12,8 @@ import {
   buildCreateSketchOp,
   buildCreateTorusOp,
   buildAddSketchCircleOp,
+  buildAddSketchArcOp,
+  buildAddSketchThreePointArcOp,
   buildAddSketchLineOp,
   buildAddSketchPointOp,
   buildAddSketchRectangleOp,
@@ -19,11 +21,14 @@ import {
   buildFeatureChamferOp,
   buildFeatureCircularPatternOp,
   buildFeatureExtrudeOp,
+  buildFeatureCompositeExtrudeOp,
   buildFeatureFilletOp,
   buildFeatureHoleOp,
   buildFeatureLinearPatternOp,
   buildFeatureRevolveOp,
+  buildFeatureCompositeRevolveOp,
   buildFeatureSweepOp,
+  buildFeatureCompositeSweepOp,
   buildFeatureLoftOp,
   buildFeatureUpdateCircularPatternOp,
   buildFeatureUpdateChamferOp,
@@ -50,6 +55,7 @@ import {
   buildRenameSketchOp,
   buildRenameSketchDimensionOp,
   buildSetParameterExpressionOp,
+  buildSetSketchEntityConstructionOp,
   buildSketchConstraintEditOps,
   buildSketchDimensionEditOps,
   buildUpdateBoxDimensionsOp,
@@ -119,6 +125,51 @@ describe("cad command builders", () => {
       profileEntityId: "profile",
       pathSketchId: "path_sketch",
       pathEntityIds: ["path"]
+    });
+  });
+
+  it("builds V17 arc, construction, and exact composite reference operations", () => {
+    const entityForm = {
+      id: " arc_1 ", construction: true, x: 1, y: 2, x2: 0, y2: 0,
+      width: 1, height: 1, radius: 3, startAngleDegrees: 45,
+      sweepAngleDegrees: -120
+    };
+    expect(buildAddSketchArcOp("sketch_profile", entityForm)).toEqual({
+      op: "sketch.addArc", sketchId: "sketch_profile", id: "arc_1",
+      construction: true,
+      definition: { kind: "centerAngles", center: [1, 2], radius: 3,
+        startAngleDegrees: 45, sweepAngleDegrees: -120 }
+    });
+    expect(buildAddSketchThreePointArcOp("sketch_profile", {
+      id: "", construction: false, start: [0, 0], pointOnArc: [1, 1], end: [2, 0]
+    })).toEqual({
+      op: "sketch.addArc", sketchId: "sketch_profile", id: undefined,
+      construction: false,
+      definition: { kind: "threePoint", start: [0, 0], pointOnArc: [1, 1], end: [2, 0] }
+    });
+    expect(buildSetSketchEntityConstructionOp("sketch_profile", "arc_1", false)).toEqual({
+      op: "sketch.setEntityConstruction", sketchId: "sketch_profile",
+      entityId: "arc_1", construction: false
+    });
+
+    const profile = { kind: "wire" as const, sketchId: "sketch_profile", segments: [
+      { entityId: "line", orientation: "forward" as const },
+      { entityId: "arc", orientation: "reverse" as const }
+    ] };
+    expect(buildFeatureCompositeExtrudeOp({ id: "", bodyId: "", name: "",
+      profile, depth: 4, side: "positive", operationMode: "newBody" })).toMatchObject({
+      op: "feature.extrude", profile, depth: 4, operationMode: "newBody"
+    });
+    expect(buildFeatureCompositeRevolveOp({ id: "", bodyId: "", name: "",
+      profile, axisEntityId: "axis", angleDegrees: 180 })).toMatchObject({
+      op: "feature.revolve", profile,
+      axis: { type: "sketchLine", sketchId: "sketch_profile", entityId: "axis" },
+      angleDegrees: 180, operationMode: "newBody"
+    });
+    const sweepProfile = { kind: "entity" as const, sketchId: "profile", entityId: "circle" };
+    const path = { kind: "entity" as const, sketchId: "path", entityId: "arc", orientation: "reverse" as const };
+    expect(buildFeatureCompositeSweepOp({ id: "", bodyId: "", name: "", profile: sweepProfile, path })).toMatchObject({
+      op: "feature.sweep", profile: sweepProfile, path
     });
   });
 
@@ -407,14 +458,16 @@ describe("cad command builders", () => {
       op: "sketch.addPoint",
       sketchId: "sketch_1",
       id: "entity_1",
-      point: [1, 2]
+      point: [1, 2],
+      construction: false
     });
     expect(buildAddSketchLineOp("sketch_1", entityForm)).toEqual({
       op: "sketch.addLine",
       sketchId: "sketch_1",
       id: "entity_1",
       start: [1, 2],
-      end: [3, 4]
+      end: [3, 4],
+      construction: false
     });
     expect(buildAddSketchRectangleOp("sketch_1", entityForm)).toEqual({
       op: "sketch.addRectangle",
@@ -422,14 +475,16 @@ describe("cad command builders", () => {
       id: "entity_1",
       center: [1, 2],
       width: 5,
-      height: 6
+      height: 6,
+      construction: false
     });
     expect(buildAddSketchCircleOp("sketch_1", entityForm)).toEqual({
       op: "sketch.addCircle",
       sketchId: "sketch_1",
       id: "entity_1",
       center: [1, 2],
-      radius: 7
+      radius: 7,
+      construction: false
     });
     expect(buildDeleteSketchEntityOp("sketch_1", "entity_1")).toEqual({
       op: "sketch.deleteEntity",

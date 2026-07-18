@@ -43,7 +43,8 @@ describe("modeling action helpers", () => {
       "sketch.entity.add.point",
       "sketch.entity.add.line",
       "sketch.entity.add.rectangle",
-      "sketch.entity.add.circle"
+      "sketch.entity.add.circle",
+      "sketch.entity.add.arc"
     ]);
     expect(actions.every((action) => action.available)).toBe(true);
     expect(actions[2]).toMatchObject({

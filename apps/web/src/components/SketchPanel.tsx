@@ -144,6 +144,13 @@ export interface SketchPanelProps {
     entity: SketchEntitySnapshot
   ) => void;
   readonly onDeleteEntity: (sketchId: string, entityId: string) => void;
+  readonly onSetEntityConstruction: (
+    sketchId: string,
+    entityId: string,
+    construction: boolean
+  ) => void;
+  readonly onStartThreePointArcTool: (sketchId: string) => void;
+  readonly arcToolActiveSketchId?: string;
   readonly onCreateDimension: (
     sketchId: string,
     entityId: string,
@@ -300,6 +307,9 @@ export function SketchPanel({
   onAddEntity,
   onUpdateEntity,
   onDeleteEntity,
+  onSetEntityConstruction,
+  onStartThreePointArcTool,
+  arcToolActiveSketchId,
   onCreateDimension,
   onApplyDimensionEdit,
   onDeleteDimension,
@@ -1201,6 +1211,22 @@ export function SketchPanel({
                         </button>
                       )
                     )}
+                    <button
+                      type="button"
+                      className={
+                        arcToolActiveSketchId === selectedSketch.id
+                          ? "selected"
+                          : undefined
+                      }
+                      disabled={disabled}
+                      onClick={() => {
+                        setEditingEntityId(undefined);
+                        setIsAddingEntity(false);
+                        onStartThreePointArcTool(selectedSketch.id);
+                      }}
+                    >
+                      Arc (3 point)
+                    </button>
                   </div>
 
                   {selectedSketch.entities.length > 0 && (
@@ -1297,6 +1323,11 @@ export function SketchPanel({
                   <div className="entity-summary">
                     <code>{selectedEntity.id}</code>
                     <span>{formatSketchEntity(selectedEntity)}</span>
+                    <small className="entity-usage">
+                      {selectedEntity.construction
+                        ? "Construction geometry"
+                        : "Profile geometry"}
+                    </small>
                     {selectedEntityUsageLabel && (
                       <small className="entity-usage">
                         {selectedEntityUsageLabel}
@@ -1309,6 +1340,21 @@ export function SketchPanel({
                         onClick={() => editEntity(selectedEntity)}
                       >
                         {selectedEntityUsageLabel ? "Edit source" : "Edit"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={disabled}
+                        onClick={() =>
+                          onSetEntityConstruction(
+                            selectedSketch.id,
+                            selectedEntity.id,
+                            !selectedEntity.construction
+                          )
+                        }
+                      >
+                        {selectedEntity.construction
+                          ? "Use as profile"
+                          : "Make construction"}
                       </button>
                       <button
                         type="button"
@@ -3493,6 +3539,20 @@ export function EntityEditor({
           </>
         )}
       </div>
+      <label className="checkbox-field">
+        <input
+          type="checkbox"
+          checked={entityForm.construction}
+          disabled={disabled}
+          onChange={(event) =>
+            onEntityFormChange({
+              ...entityForm,
+              construction: event.currentTarget.checked
+            })
+          }
+        />
+        Construction geometry
+      </label>
       {!validation.ok && <p className="error-text">{validation.message}</p>}
       <div className="button-row">
         <button
