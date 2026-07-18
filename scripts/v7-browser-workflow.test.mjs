@@ -294,7 +294,8 @@ describe("V7 browser workflow smoke summary", () => {
     expect(smokeSource).toContain('clickButton(composite, "Create revolve")');
     expect(smokeSource).toContain('clickButton(composite, "Create sweep")');
     expect(smokeSource).toContain("selectV17FeatureForEditing");
-    expect(smokeSource).toContain("selectLatestV17FeatureForEditing");
+    expect(smokeSource).toContain('selectV17FeatureForEditing("Sweep")');
+    expect(smokeSource).not.toContain("selectLatestV17FeatureForEditing");
     expect(smokeSource).toContain('"Query-returned profile"');
     expect(smokeSource).toContain('"Query-returned path"');
     expect(smokeSource).toContain(
@@ -306,7 +307,8 @@ describe("V7 browser workflow smoke summary", () => {
     expect(smokeSource).toContain(
       'clickButton(sweepSourceEditor, "Save source references")'
     );
-    expect(smokeSource).toContain('clickButton(arcEditor, "Update entity")');
+    expect(smokeSource).toContain("editV17ArcGeometry");
+    expect(smokeSource).toContain('clickButton(editor, "Update entity")');
     expect(smokeSource).toContain("await waitForV17BodyDisplayReady");
     expect(smokeSource).not.toContain(
       "verifyV17AuthoringAndDerivedGeometryMarkers"
