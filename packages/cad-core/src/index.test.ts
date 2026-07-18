@@ -9611,6 +9611,43 @@ describe("cad-core", () => {
     );
   });
 
+  it("rejects composite wire hole inputs before circle or target resolution", () => {
+    const engine = new CadEngine();
+    const beforeSnapshot = engine.createSnapshot();
+    const beforeTransactions = engine.getTransactions();
+    const response = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "feature.hole",
+          profile: {
+            kind: "wire",
+            sketchId: "wire_hole_sketch",
+            segments: [
+              { entityId: "line_a", orientation: "forward" },
+              { entityId: "line_b", orientation: "forward" }
+            ]
+          },
+          sketchId: "wire_hole_sketch",
+          circleEntityId: "not_a_circle_profile",
+          targetBodyId: "missing_target",
+          depthMode: "throughAll"
+        } as never
+      ]
+    });
+
+    expect(response).toMatchObject({
+      ok: false,
+      error: {
+        code: "UNSUPPORTED_SKETCH_PROFILE",
+        path: "$.ops[0].profile"
+      }
+    });
+    expect(engine.createSnapshot()).toEqual(beforeSnapshot);
+    expect(engine.getTransactions()).toEqual(beforeTransactions);
+  });
+
   it("creates authored hole features as consuming source intent only", () => {
     const engine = new CadEngine();
 

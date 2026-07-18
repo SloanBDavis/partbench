@@ -137,10 +137,7 @@ export function resolveSweep(
     );
     return {
       ok: false,
-      code: mapPathDiagnosticToBatchError(
-        diagnostic?.code,
-        needsV17FrameValidation
-      ),
+      code: mapPathDiagnosticToBatchError(diagnostic?.code),
       message: diagnostic?.message ?? "Sweep path is not feature-ready.",
       sketchId: diagnostic?.sketchId ?? path.sketchId,
       sketchEntityId: diagnostic?.entityId ?? pathEntityIds[0]
@@ -290,13 +287,11 @@ function normalizeDegrees(value: number): number {
 }
 
 function mapPathDiagnosticToBatchError(
-  code: SketchPathDiagnosticCode | undefined,
-  curvedPath: boolean
+  code: SketchPathDiagnosticCode | undefined
 ): CadBatchValidationErrorCode {
   if (code === "SKETCH_PATH_FRAME_INVALID") {
     return "SWEEP_PROFILE_PATH_FRAME_INVALID";
   }
-  if (curvedPath) return "SWEEP_CURVED_PATH_UNSUPPORTED";
   switch (code) {
     case "SKETCH_PATH_EMPTY":
     case "SKETCH_PATH_ENTITY_MISSING":

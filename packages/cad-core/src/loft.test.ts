@@ -58,6 +58,52 @@ function createLoftEngine(): CadEngine {
 }
 
 describe("loft feature", () => {
+  it("rejects normalized wire sections atomically", () => {
+    const engine = createLoftEngine();
+    const before = exportCadProjectJson(engine);
+    const beforeSnapshot = engine.createSnapshot();
+    const beforeTransactions = engine.getTransactions();
+    const response = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "feature.loft",
+          sections: [
+            {
+              profile: {
+                kind: "wire",
+                sketchId: "sketch_base",
+                segments: [
+                  { entityId: "wire_a", orientation: "forward" },
+                  { entityId: "wire_b", orientation: "forward" }
+                ]
+              }
+            },
+            {
+              profile: {
+                kind: "entity",
+                sketchId: "sketch_top",
+                entityId: "top_circle"
+              }
+            }
+          ]
+        } as never
+      ]
+    });
+
+    expect(response).toMatchObject({
+      ok: false,
+      error: {
+        code: "LOFT_SECTION_UNSUPPORTED",
+        path: "$.ops[0].sections.0.profile.kind"
+      }
+    });
+    expect(exportCadProjectJson(engine)).toBe(before);
+    expect(engine.createSnapshot()).toEqual(beforeSnapshot);
+    expect(engine.getTransactions()).toEqual(beforeTransactions);
+  });
+
   it("accepts normalized V21 sections and rejects mixed command shapes atomically", () => {
     const engine = createLoftEngine();
     engine.apply({

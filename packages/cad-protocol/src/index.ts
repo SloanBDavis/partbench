@@ -964,6 +964,8 @@ export interface FeatureHoleOp {
   readonly targetBodyId?: BodyId;
   readonly targetTopologyAnchorId?: string;
   readonly name?: string;
+  /** Holes remain circle-entity consumers, not general profile consumers. */
+  readonly profile?: never;
   readonly sketchId: SketchId;
   readonly circleEntityId: SketchEntityId;
   readonly depthMode: FeatureHoleDepthMode;
@@ -1097,6 +1099,9 @@ export interface FeatureSweepOp {
   readonly id?: FeatureId;
   readonly bodyId?: BodyId;
   readonly name?: string;
+  readonly operationMode?: "newBody";
+  readonly targetBodyId?: never;
+  readonly targetTopologyAnchorId?: never;
   readonly profileSketchId: SketchId;
   readonly profileEntityId: SketchEntityId;
   readonly pathSketchId: SketchId;
@@ -1252,13 +1257,19 @@ export interface FeatureUpdateMirrorOp {
 export interface FeatureUpdateSweepOp {
   readonly op: "feature.updateSweep";
   readonly id: FeatureId;
+  readonly operationMode?: "newBody";
+  readonly targetBodyId?: never;
+  readonly targetTopologyAnchorId?: never;
   readonly profileSketchId?: SketchId;
   readonly profileEntityId?: SketchEntityId;
   readonly pathSketchId?: SketchId;
   readonly pathEntityIds?: readonly SketchEntityId[];
 }
 
-type FeatureUpdateSweepBase = Pick<FeatureUpdateSweepOp, "op" | "id">;
+type FeatureUpdateSweepBase = Pick<
+  FeatureUpdateSweepOp,
+  "op" | "id" | "operationMode" | "targetBodyId" | "targetTopologyAnchorId"
+>;
 
 type FeatureUpdateSweepNoSourcePatch = {
   readonly profile?: never;

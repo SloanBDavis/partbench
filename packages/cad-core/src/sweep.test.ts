@@ -42,7 +42,102 @@ function createSweepEngine(
   return engine;
 }
 
+function expectRejectedAtomically(
+  engine: CadEngine,
+  op: unknown,
+  code: string,
+  path?: string
+): void {
+  const beforeProject = exportCadProject(engine);
+  const beforeSnapshot = engine.createSnapshot();
+  const beforeTransactions = engine.getTransactions();
+  const response = engine.executeBatch({
+    version: "cadops.v1",
+    mode: "commit",
+    ops: [op]
+  } as never);
+
+  expect(response).toMatchObject({
+    ok: false,
+    error: { code, ...(path ? { path } : {}) }
+  });
+  expect(exportCadProject(engine)).toEqual(beforeProject);
+  expect(engine.createSnapshot()).toEqual(beforeSnapshot);
+  expect(engine.getTransactions()).toEqual(beforeTransactions);
+}
+
 describe("sweep feature", () => {
+  it("rejects add/cut and every target field on create and update without consuming state", () => {
+    const createCases = [
+      {
+        patch: { operationMode: "add" },
+        code: "UNSUPPORTED_FEATURE_OPERATION",
+        path: "$.ops[0].operationMode"
+      },
+      {
+        patch: { operationMode: "cut" },
+        code: "UNSUPPORTED_FEATURE_OPERATION",
+        path: "$.ops[0].operationMode"
+      },
+      {
+        patch: { targetBodyId: "body_target" },
+        code: "TARGET_BODY_NOT_SUPPORTED",
+        path: "$.ops[0].targetBodyId"
+      },
+      {
+        patch: { targetTopologyAnchorId: "anchor_target" },
+        code: "TARGET_BODY_NOT_SUPPORTED",
+        path: "$.ops[0].targetTopologyAnchorId"
+      }
+    ] as const;
+
+    for (const testCase of createCases) {
+      const engine = createSweepEngine();
+      expectRejectedAtomically(
+        engine,
+        {
+          op: "feature.sweep",
+          profileSketchId: "sketch_profile",
+          profileEntityId: "profile",
+          pathSketchId: "sketch_path",
+          pathEntityIds: ["path"],
+          ...testCase.patch
+        },
+        testCase.code,
+        testCase.path
+      );
+    }
+
+    for (const testCase of createCases) {
+      const engine = createSweepEngine();
+      engine.apply({
+        op: "feature.sweep",
+        id: "existing_sweep",
+        bodyId: "existing_body",
+        profileSketchId: "sketch_profile",
+        profileEntityId: "profile",
+        pathSketchId: "sketch_path",
+        pathEntityIds: ["path"]
+      });
+      expectRejectedAtomically(
+        engine,
+        {
+          op: "feature.updateSweep",
+          id: "existing_sweep",
+          path: {
+            kind: "entity",
+            sketchId: "sketch_path",
+            entityId: "path",
+            orientation: "forward"
+          },
+          ...testCase.patch
+        },
+        testCase.code,
+        testCase.path
+      );
+    }
+  });
+
   it("rejects construction profiles while allowing construction paths and invalidates existing results", () => {
     const rejectedEngine = createSweepEngine();
     rejectedEngine.apply({
@@ -289,6 +384,7 @@ describe("sweep feature", () => {
       engine.apply({
         op: "feature.updateSweep",
         id: "feat_sweep",
+        operationMode: "newBody",
         path: {
           kind: "entity",
           sketchId: "sketch_path",
@@ -413,6 +509,7 @@ describe("sweep feature", () => {
           op: "feature.sweep",
           id: "forward_sweep",
           bodyId: "forward_body",
+          operationMode: "newBody",
           profile: {
             kind: "entity",
             sketchId: "profiles",
@@ -524,7 +621,7 @@ describe("sweep feature", () => {
     });
     expect(nonG1).toMatchObject({
       ok: false,
-      error: { code: "SWEEP_CURVED_PATH_UNSUPPORTED" }
+      error: { code: "SKETCH_PATH_JOIN_NOT_TANGENT" }
     });
 
     const invalidFrame = engine.executeBatch({
@@ -548,5 +645,179 @@ describe("sweep feature", () => {
       error: { code: "SWEEP_PROFILE_PATH_FRAME_INVALID" }
     });
     expect(engine.getDocument().features.size).toBe(0);
+  });
+
+  it("rejects every unsupported V17 path and profile row at the command boundary atomically", () => {
+    const engine = createSweepEngine("circle");
+    engine.applyBatch([
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_profile",
+        id: "profile_line_a",
+        start: [0, 0],
+        end: [1, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_profile",
+        id: "profile_line_b",
+        start: [1, 0],
+        end: [0, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_path",
+        id: "disconnected_a",
+        start: [0, 0],
+        end: [0, 1]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_path",
+        id: "disconnected_b",
+        start: [0, 2],
+        end: [0, 3]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_path",
+        id: "g0_a",
+        start: [0, 0],
+        end: [0, 1]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_path",
+        id: "g0_b",
+        start: [0, 1],
+        end: [1, 1]
+      },
+      {
+        op: "sketch.addArc",
+        sketchId: "sketch_path",
+        id: "closed_a",
+        definition: {
+          kind: "centerAngles",
+          center: [0, 0],
+          radius: 1,
+          startAngleDegrees: 0,
+          sweepAngleDegrees: 180
+        }
+      },
+      {
+        op: "sketch.addArc",
+        sketchId: "sketch_path",
+        id: "closed_b",
+        definition: {
+          kind: "centerAngles",
+          center: [0, 0],
+          radius: 1,
+          startAngleDegrees: 180,
+          sweepAngleDegrees: 180
+        }
+      },
+      {
+        op: "sketch.addArc",
+        sketchId: "sketch_path",
+        id: "overlap_a",
+        definition: {
+          kind: "centerAngles",
+          center: [0, 0],
+          radius: 1,
+          startAngleDegrees: 0,
+          sweepAngleDegrees: 270
+        }
+      },
+      {
+        op: "sketch.addArc",
+        sketchId: "sketch_path",
+        id: "overlap_b",
+        definition: {
+          kind: "centerAngles",
+          center: [0, 0],
+          radius: 1,
+          startAngleDegrees: 270,
+          sweepAngleDegrees: 180
+        }
+      }
+    ]);
+    const profile = {
+      kind: "entity" as const,
+      sketchId: "sketch_profile",
+      entityId: "profile"
+    };
+    const chain = (...entityIds: readonly string[]) => ({
+      kind: "chain" as const,
+      sketchId: "sketch_path",
+      segments: entityIds.map((entityId) => ({
+        entityId,
+        orientation: "forward" as const
+      }))
+    });
+    const cases = [
+      {
+        profile,
+        path: chain("path", "path"),
+        code: "SKETCH_PATH_ENTITY_REPEATED",
+        pathError: "$.ops[0].path.segments[1].entityId"
+      },
+      {
+        profile,
+        path: chain("closed_a", "closed_b"),
+        code: "SKETCH_PATH_CLOSED_UNSUPPORTED",
+        pathError: "$.ops[0].path"
+      },
+      {
+        profile,
+        path: chain("overlap_a", "overlap_b"),
+        code: "SKETCH_PATH_SELF_INTERSECTING",
+        pathError: "$.ops[0].path"
+      },
+      {
+        profile,
+        path: chain("disconnected_a", "disconnected_b"),
+        code: "SKETCH_PATH_DISCONNECTED",
+        pathError: "$.ops[0].path"
+      },
+      {
+        profile,
+        path: chain("g0_a", "g0_b"),
+        code: "SKETCH_PATH_JOIN_NOT_TANGENT",
+        pathError: "$.ops[0].path"
+      },
+      {
+        profile: {
+          kind: "wire",
+          sketchId: "sketch_profile",
+          segments: ["profile_line_a", "profile_line_b"].map((entityId) => ({
+            entityId,
+            orientation: "forward" as const
+          }))
+        },
+        path: {
+          kind: "entity" as const,
+          sketchId: "sketch_path",
+          entityId: "path",
+          orientation: "forward" as const
+        },
+        code: "SWEEP_PROFILE_UNSUPPORTED",
+        pathError: "$.ops[0].profile"
+      }
+    ] as const;
+
+    for (const [index, testCase] of cases.entries()) {
+      expectRejectedAtomically(
+        engine,
+        {
+          op: "feature.sweep",
+          id: `rejected_matrix_sweep_${index}`,
+          bodyId: `rejected_matrix_body_${index}`,
+          profile: testCase.profile,
+          path: testCase.path
+        },
+        testCase.code,
+        testCase.pathError
+      );
+    }
   });
 });

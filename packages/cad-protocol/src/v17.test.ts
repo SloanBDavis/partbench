@@ -386,7 +386,8 @@ describe("V17 protocol declarations", () => {
     const sweep: FeatureSweepCommandInput = {
       op: "feature.sweep",
       profile: entityProfile,
-      path: entityPath
+      path: entityPath,
+      operationMode: "newBody"
     };
     const loft: FeatureLoftCommandInput = {
       op: "feature.loft",
@@ -400,6 +401,7 @@ describe("V17 protocol declarations", () => {
 
     expect(extrude.op).toBe("feature.extrude");
     expect(revolve.operationMode).toBe("newBody");
+    expect(sweep.operationMode).toBe("newBody");
     expect(sweep.path).toEqual(entityPath);
     expect(loft.sections).toHaveLength(2);
     expect(updateLoft.sections).toHaveLength(2);
@@ -429,6 +431,36 @@ describe("V17 protocol declarations", () => {
       entityId: "circle_1",
       depth: 4
     };
+    const invalidSweepMode: FeatureSweepCommandInput = {
+      op: "feature.sweep",
+      profile: entityProfile,
+      path: entityPath,
+      // @ts-expect-error Sweep add/cut modes are outside the V17 support matrix.
+      operationMode: "add"
+    };
+    const invalidSweepTarget: FeatureSweepCommandInput = {
+      op: "feature.sweep",
+      profile: entityProfile,
+      path: entityPath,
+      // @ts-expect-error New-body sweeps cannot target an existing body.
+      targetBodyId: "body_1"
+    };
+    const invalidSweepUpdateTarget: FeatureUpdateSweepCommandInput = {
+      op: "feature.updateSweep",
+      id: "sweep_1",
+      path: entityPath,
+      // @ts-expect-error Sweep updates cannot target topology anchors.
+      targetTopologyAnchorId: "anchor_1"
+    };
+    const invalidHoleProfile: CadOp = {
+      op: "feature.hole",
+      // @ts-expect-error Holes do not accept general profile references.
+      profile: entityProfile,
+      sketchId: "sketch_1",
+      circleEntityId: "circle_1",
+      targetBodyId: "body_1",
+      depthMode: "throughAll"
+    };
     const invalidMixedLoft: FeatureLoftCommandInput = {
       op: "feature.loft",
       sections: [
@@ -450,9 +482,13 @@ describe("V17 protocol declarations", () => {
       invalidMode,
       invalidTarget,
       invalidMixed,
+      invalidSweepMode,
+      invalidSweepTarget,
+      invalidSweepUpdateTarget,
+      invalidHoleProfile,
       invalidMixedLoft,
       invalidMixedLoftArray
-    ]).toHaveLength(5);
+    ]).toHaveLength(9);
   });
 
   it("preserves complete V20 updateSweep profile-only and path-only patches", () => {

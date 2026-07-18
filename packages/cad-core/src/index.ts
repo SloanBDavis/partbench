@@ -6448,6 +6448,18 @@ function applyOperation(
     }
 
     case "feature.hole": {
+      const input = op as unknown as Record<string, unknown>;
+      if (Object.prototype.hasOwnProperty.call(input, "profile")) {
+        throwValidationError({
+          code: "UNSUPPORTED_SKETCH_PROFILE",
+          message:
+            "feature.hole accepts one circleEntityId and does not support general profile references.",
+          opIndex,
+          path: operationPath(opIndex, "profile"),
+          expected: "omitted profile; use sketchId and circleEntityId",
+          received: describeReceived(input.profile)
+        });
+      }
       const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
       const entity = sketch.entities.get(op.circleEntityId);
 
@@ -13477,6 +13489,31 @@ function resolveSweepCommandInputs(
   const input = op as unknown as Record<string, unknown>;
   const owns = (key: string): boolean =>
     Object.prototype.hasOwnProperty.call(input, key);
+  if (owns("operationMode") && input.operationMode !== "newBody") {
+    throwSweepValidationError(
+      "UNSUPPORTED_FEATURE_OPERATION",
+      "feature.sweep supports only newBody operation mode.",
+      "operationMode",
+      "newBody or omitted",
+      input.operationMode,
+      opIndex
+    );
+  }
+  for (const targetField of [
+    "targetBodyId",
+    "targetTopologyAnchorId"
+  ] as const) {
+    if (owns(targetField)) {
+      throwSweepValidationError(
+        "TARGET_BODY_NOT_SUPPORTED",
+        `feature.sweep newBody inputs must not include ${targetField}.`,
+        targetField,
+        `omitted ${targetField}`,
+        input[targetField],
+        opIndex
+      );
+    }
+  }
   const hasNormalized = owns("profile") || owns("path");
   const hasLegacy =
     owns("profileSketchId") ||
@@ -33507,6 +33544,7 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.name) &&
       isOptionalString(value.targetBodyId) &&
       isOptionalString(value.targetTopologyAnchorId) &&
+      value.profile === undefined &&
       typeof value.sketchId === "string" &&
       typeof value.circleEntityId === "string" &&
       isHoleDepthMode(value.depthMode) &&
@@ -33623,6 +33661,10 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.id) &&
       isOptionalString(value.bodyId) &&
       isOptionalString(value.name) &&
+      (value.operationMode === undefined ||
+        value.operationMode === "newBody") &&
+      value.targetBodyId === undefined &&
+      value.targetTopologyAnchorId === undefined &&
       (normalized || legacy)
     );
   }
@@ -33791,6 +33833,10 @@ function isCadOp(value: unknown): value is CadOp {
           value.pathEntityIds.every((id) => typeof id === "string");
     return (
       typeof value.id === "string" &&
+      (value.operationMode === undefined ||
+        value.operationMode === "newBody") &&
+      value.targetBodyId === undefined &&
+      value.targetTopologyAnchorId === undefined &&
       (normalized ||
         (hasLegacy && !hasNormalized && legacyProfile && legacyPath))
     );
