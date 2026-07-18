@@ -2803,7 +2803,7 @@ export function App() {
         : kind === "line"
           ? buildAddSketchLineOp(sketchId, form)
           : kind === "rectangle"
-          ? buildAddSketchRectangleOp(sketchId, form)
+            ? buildAddSketchRectangleOp(sketchId, form)
             : kind === "circle"
               ? buildAddSketchCircleOp(sketchId, form)
               : buildAddSketchArcOp(sketchId, form);
@@ -2827,13 +2827,7 @@ export function App() {
     construction: boolean
   ) {
     await commitOps(
-      [
-        buildSetSketchEntityConstructionOp(
-          sketchId,
-          entityId,
-          construction
-        )
-      ],
+      [buildSetSketchEntityConstructionOp(sketchId, entityId, construction)],
       () => selectedId
     );
   }
@@ -2857,9 +2851,7 @@ export function App() {
       displayFrame,
       size: pick.size
     });
-    return basis
-      ? mapViewportPointToSketchPoint(basis, pick.point)
-      : undefined;
+    return basis ? mapViewportPointToSketchPoint(basis, pick.point) : undefined;
   }
 
   function hoverThreePointArcTool(pick: ViewportCanvasPick | undefined) {
@@ -2873,11 +2865,14 @@ export function App() {
   }
 
   async function captureThreePointArcToolPick(pick: ViewportCanvasPick) {
+    if (commandPending) return;
     const current = threePointArcTool;
     if (!current) return;
     const point = mapArcToolPickToSketchPoint(pick, current.sketchId);
     if (!point) {
-      setCommandError("The active sketch plane cannot be projected in this view.");
+      setCommandError(
+        "The active sketch plane cannot be projected in this view."
+      );
       return;
     }
 
@@ -4513,9 +4508,7 @@ export function App() {
                     disabled={commandPending}
                     feature={selectedFeature}
                     pathCandidatesBySketchId={pathCandidatesBySketchId}
-                    profileCandidatesBySketchId={
-                      profileCandidatesBySketchId
-                    }
+                    profileCandidatesBySketchId={profileCandidatesBySketchId}
                     sketches={sketches}
                     inspectProposal={readFeatureEditProposal}
                     onUpdateExtrudeProfile={(featureId, profile) =>
@@ -4644,33 +4637,31 @@ export function App() {
             <>
               {sketchViewportDragTarget ? (
                 <SketchViewportDragOverlay
-                camera={camera}
-                disabled={commandPending}
-                displayFrame={sketchDisplayState.frames.get(
-                  sketchViewportDragTarget.sketch.id
-                )}
-                selectedEntityId={sketchViewportDragTarget.entityId}
-                size={size}
-                sketch={sketchViewportDragTarget.sketch}
-                onCommitEntity={(sketchId, entity) =>
-                  void updateSketchEntity(sketchId, entity)
-                }
-                onPreviewEntity={previewSketchEntityUpdate}
+                  camera={camera}
+                  disabled={commandPending}
+                  displayFrame={sketchDisplayState.frames.get(
+                    sketchViewportDragTarget.sketch.id
+                  )}
+                  selectedEntityId={sketchViewportDragTarget.entityId}
+                  size={size}
+                  sketch={sketchViewportDragTarget.sketch}
+                  onCommitEntity={(sketchId, entity) =>
+                    void updateSketchEntity(sketchId, entity)
+                  }
+                  onPreviewEntity={previewSketchEntityUpdate}
                 />
               ) : null}
               {threePointArcTool &&
-                sketchDisplayState.frames.get(threePointArcTool.sketchId) ? (
-                  <SketchArcToolOverlay
-                    camera={camera}
-                    displayFrame={
-                      sketchDisplayState.frames.get(
-                        threePointArcTool.sketchId
-                      )!
-                    }
-                    session={threePointArcTool}
-                    size={size}
-                  />
-                ) : null}
+              sketchDisplayState.frames.get(threePointArcTool.sketchId) ? (
+                <SketchArcToolOverlay
+                  camera={camera}
+                  displayFrame={
+                    sketchDisplayState.frames.get(threePointArcTool.sketchId)!
+                  }
+                  session={threePointArcTool}
+                  size={size}
+                />
+              ) : null}
             </>
           )}
         />

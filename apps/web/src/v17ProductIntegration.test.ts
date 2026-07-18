@@ -14,6 +14,7 @@ import {
   describeSketchPathEndpoints,
   formatCandidateDiagnostics,
   formatSketchPathMembership,
+  getEligibleProfileCandidates,
   getThreePointArcDefinition,
   getThreePointArcPreview,
   getThreePointArcToolStage,
@@ -22,14 +23,17 @@ import {
 } from "./v17ProductIntegration";
 
 describe("V17 product integration helpers", () => {
-  it("preselects only a sole ready candidate and never guesses among multiples", () => {
+  it("requires an explicit query candidate key even when only one is ready", () => {
     const first = profileCandidate("profile-a", "a");
     const second = profileCandidate("profile-b", "b");
-    expect(chooseProfileCandidate(profileResponse([first]))).toMatchObject({
-      selectedKey: "a",
-      selected: first,
-      requiresExplicitChoice: false
+    expect(chooseProfileCandidate(profileResponse([first]))).toEqual({
+      selectedKey: undefined,
+      selected: undefined,
+      requiresExplicitChoice: true
     });
+    expect(chooseProfileCandidate(profileResponse([first]), "a")).toMatchObject(
+      { selectedKey: "a", selected: first, requiresExplicitChoice: false }
+    );
     expect(chooseProfileCandidate(profileResponse([first, second]))).toEqual({
       selectedKey: undefined,
       selected: undefined,
@@ -41,17 +45,42 @@ describe("V17 product integration helpers", () => {
     ).toEqual(second.profile);
   });
 
+  it("keeps unsupported wire profiles out of the sweep consumer matrix", () => {
+    const entity = profileCandidate("circle", "entity");
+    const wire: SketchProfileCandidate = {
+      ...profileCandidate("unused", "wire"),
+      profile: {
+        kind: "wire",
+        sketchId: "sketch",
+        segments: [
+          { entityId: "line", orientation: "forward" },
+          { entityId: "arc", orientation: "forward" }
+        ]
+      }
+    };
+    expect(getEligibleProfileCandidates([entity, wire], "sweep")).toEqual([
+      entity
+    ]);
+    expect(getEligibleProfileCandidates([entity, wire], "extrude")).toEqual([
+      entity,
+      wire
+    ]);
+  });
+
   it("reverses only submitted path traversal and exposes visible endpoints", () => {
     const sketch = pathSketch();
     const candidate = pathCandidate();
     const response = pathResponse([candidate]);
-    const choice = choosePathCandidate(response);
+    const choice = choosePathCandidate(response, candidate.sortKey);
     expect(choice.selected?.path).toEqual(candidate.path);
     const reversed = reverseSketchPath(candidate.path);
     expect(formatSketchPathMembership(reversed)).toBe(
       "1. arc (reverse) · 2. line (reverse)"
     );
-    const forwardEndpoints = describeSketchPathEndpoints(sketch, candidate.path);
+    const forwardEndpoints = describeSketchPathEndpoints(
+      sketch,
+      candidate.path
+    );
     const reverseEndpoints = describeSketchPathEndpoints(sketch, reversed);
     expect(forwardEndpoints?.start).toEqual([0, 0]);
     expect(forwardEndpoints?.end[0]).toBeCloseTo(2);
@@ -82,6 +111,27 @@ describe("V17 product integration helpers", () => {
     });
   });
 
+  it("keeps an invalid third arc point transient so another endpoint can be tried", () => {
+    let session = createThreePointArcToolSession("sketch");
+    session = captureThreePointArcToolPoint(session, [0, 0]);
+    session = captureThreePointArcToolPoint(session, [1, 0]);
+    const beforeInvalidPoint = session;
+    session = captureThreePointArcToolPoint(session, [2, 0]);
+
+    expect(session.points).toEqual(beforeInvalidPoint.points);
+    expect(session.hoverPoint).toEqual([2, 0]);
+    expect(getThreePointArcToolStage(session)).toBe("end");
+    expect(getThreePointArcDefinition(session)).toBeUndefined();
+    expect(getThreePointArcPreview(session)).toMatchObject({ ok: false });
+
+    session = captureThreePointArcToolPoint(session, [1, 1]);
+    expect(getThreePointArcToolStage(session)).toBe("complete");
+    expect(getThreePointArcDefinition(session)).toMatchObject({
+      kind: "threePoint",
+      end: [1, 1]
+    });
+  });
+
   it("formats actionable diagnostics next to blocked candidates", () => {
     expect(
       formatCandidateDiagnostics([
@@ -100,48 +150,117 @@ describe("V17 product integration helpers", () => {
   });
 });
 
-function profileCandidate(entityId: string, sortKey: string): SketchProfileCandidate {
+function profileCandidate(
+  entityId: string,
+  sortKey: string
+): SketchProfileCandidate {
   return {
-    status: "ready", candidateIndex: 0, sortKey,
+    status: "ready",
+    candidateIndex: 0,
+    sortKey,
     profile: { kind: "entity", sketchId: "sketch", entityId },
-    orientation: "counterclockwise", area: 1, signedArea: 1,
-    bounds: { min: [0, 0], max: [1, 1] }, joinCount: 0, joins: [],
-    intersectionStatus: "clear", dependencies: { sketchIds: ["sketch"], orderedEntityIds: [entityId] },
-    diagnosticCount: 0, diagnostics: []
+    orientation: "counterclockwise",
+    area: 1,
+    signedArea: 1,
+    bounds: { min: [0, 0], max: [1, 1] },
+    joinCount: 0,
+    joins: [],
+    intersectionStatus: "clear",
+    dependencies: { sketchIds: ["sketch"], orderedEntityIds: [entityId] },
+    diagnosticCount: 0,
+    diagnostics: []
   };
 }
 
-function profileResponse(candidates: readonly SketchProfileCandidate[]): SketchProfileCandidatesQueryResponse {
-  return { ok: true, query: "sketch.profileCandidates", cadOpsVersion: "cadops.v1",
-    sketchId: "sketch", status: candidates.length ? "ready" : "blocked",
-    candidateCount: candidates.length, candidates, rejectedComponentCount: 0,
-    rejectedComponents: [], constructionExclusionCount: 0,
-    constructionExclusions: [], diagnosticCount: 0, diagnostics: [] };
+function profileResponse(
+  candidates: readonly SketchProfileCandidate[]
+): SketchProfileCandidatesQueryResponse {
+  return {
+    ok: true,
+    query: "sketch.profileCandidates",
+    cadOpsVersion: "cadops.v1",
+    sketchId: "sketch",
+    status: candidates.length ? "ready" : "blocked",
+    candidateCount: candidates.length,
+    candidates,
+    rejectedComponentCount: 0,
+    rejectedComponents: [],
+    constructionExclusionCount: 0,
+    constructionExclusions: [],
+    diagnosticCount: 0,
+    diagnostics: []
+  };
 }
 
 function pathCandidate(): SketchPathCandidate {
-  return { status: "ready", candidateIndex: 0, sortKey: "path",
-    path: { kind: "chain", sketchId: "path-sketch", segments: [
-      { entityId: "line", orientation: "forward" },
-      { entityId: "arc", orientation: "forward" }
-    ] }, length: 3, bounds: { min: [0, 0], max: [2, 1] },
-    connectionStatus: "connected", tangentStatus: "tangent",
-    selfIntersectionStatus: "clear", joinCount: 1, joins: [],
-    dependencies: { sketchIds: ["path-sketch"], orderedEntityIds: ["line", "arc"] },
-    diagnosticCount: 0, diagnostics: [] };
+  return {
+    status: "ready",
+    candidateIndex: 0,
+    sortKey: "path",
+    path: {
+      kind: "chain",
+      sketchId: "path-sketch",
+      segments: [
+        { entityId: "line", orientation: "forward" },
+        { entityId: "arc", orientation: "forward" }
+      ]
+    },
+    length: 3,
+    bounds: { min: [0, 0], max: [2, 1] },
+    connectionStatus: "connected",
+    tangentStatus: "tangent",
+    selfIntersectionStatus: "clear",
+    joinCount: 1,
+    joins: [],
+    dependencies: {
+      sketchIds: ["path-sketch"],
+      orderedEntityIds: ["line", "arc"]
+    },
+    diagnosticCount: 0,
+    diagnostics: []
+  };
 }
 
-function pathResponse(candidates: readonly SketchPathCandidate[]): SketchPathCandidatesQueryResponse {
-  return { ok: true, query: "sketch.pathCandidates", cadOpsVersion: "cadops.v1",
-    sketchId: "path-sketch", status: candidates.length ? "ready" : "blocked",
-    candidateCount: candidates.length, candidates, rejectedComponentCount: 0,
-    rejectedComponents: [], diagnosticCount: 0, diagnostics: [] };
+function pathResponse(
+  candidates: readonly SketchPathCandidate[]
+): SketchPathCandidatesQueryResponse {
+  return {
+    ok: true,
+    query: "sketch.pathCandidates",
+    cadOpsVersion: "cadops.v1",
+    sketchId: "path-sketch",
+    status: candidates.length ? "ready" : "blocked",
+    candidateCount: candidates.length,
+    candidates,
+    rejectedComponentCount: 0,
+    rejectedComponents: [],
+    diagnosticCount: 0,
+    diagnostics: []
+  };
 }
 
 function pathSketch(): SketchSnapshot {
-  return { id: "path-sketch", name: "Path", plane: "XY", entities: [
-    { id: "line", kind: "line", start: [0, 0], end: [1, 0], construction: false },
-    { id: "arc", kind: "arc", center: [1, 1], radius: 1,
-      startAngleDegrees: 270, sweepAngleDegrees: 90, construction: false }
-  ] };
+  return {
+    id: "path-sketch",
+    name: "Path",
+    plane: "XY",
+    entities: [
+      {
+        id: "line",
+        kind: "line",
+        start: [0, 0],
+        end: [1, 0],
+        construction: false
+      },
+      {
+        id: "arc",
+        kind: "arc",
+        center: [1, 1],
+        radius: 1,
+        startAngleDegrees: 270,
+        sweepAngleDegrees: 90,
+        construction: false
+      }
+    ]
+  };
 }
