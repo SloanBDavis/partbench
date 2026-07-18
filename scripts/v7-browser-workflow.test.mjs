@@ -324,6 +324,16 @@ describe("V7 browser workflow smoke summary", () => {
     );
   });
 
+  it("keeps the container no-sandbox browser workaround explicitly opt-in", async () => {
+    const smokeSource = await readFile(
+      resolve(repoRoot, "scripts/smoke-v7-browser-workflow.mjs"),
+      "utf8"
+    );
+
+    expect(smokeSource).toContain("PARTBENCH_SMOKE_BROWSER_NO_SANDBOX");
+    expect(smokeSource).toContain('? ["--no-sandbox"]');
+  });
+
   it("fails clearly when required GLB download is skipped", () => {
     const result = createV7BrowserWorkflowSmokeResult({
       checks: [

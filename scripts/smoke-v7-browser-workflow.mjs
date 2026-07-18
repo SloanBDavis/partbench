@@ -55,6 +55,9 @@ try {
     "--disable-dev-shm-usage",
     "--no-default-browser-check",
     "--no-first-run",
+    ...(isTruthy(process.env.PARTBENCH_SMOKE_BROWSER_NO_SANDBOX)
+      ? ["--no-sandbox"]
+      : []),
     `--remote-debugging-port=${remoteDebuggingPort}`,
     `--user-data-dir=${profileDir}`,
     "about:blank"
