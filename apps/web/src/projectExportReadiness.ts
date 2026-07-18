@@ -205,6 +205,8 @@ function getBodySourceDetail(body: CadExportBodyReadiness): string {
         : "Authored extrude source is waiting on export support.";
     case "authoredRevolve":
       return "Revolve bodies are not ready for STEP export yet.";
+    case "authoredSweep":
+      return "Sweep bodies are not ready for STEP export yet.";
     case "authoredHole":
       return "Hole bodies are not ready for STEP export yet.";
     case "authoredChamfer":

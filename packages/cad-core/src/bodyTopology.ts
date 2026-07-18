@@ -28,6 +28,8 @@ import {
 } from "./normalizedFeatureInputs";
 import { sha256Hex } from "./sha256";
 import { createSourceMeasurementFrame } from "./sourceMeasurementGeometry";
+import { createResolvedSweepSource } from "./sweepProfile";
+import type { CadDocument } from "./index";
 
 const MAX_BOOLEAN_TOPOLOGY_RESULT_NODES = 64;
 const BOOLEAN_TOPOLOGY_RESULT_NODE_LIMIT_RECEIVED =
@@ -1129,21 +1131,29 @@ function createUnsupportedAuthoredFeatureTopology(
           ownerPartId,
           feature
         )
-      : feature.kind === "hole"
-        ? createHoleSourceIdentityInput(document, bodyId, units, feature)
-        : feature.kind === "chamfer"
-          ? createChamferSourceIdentityInput(bodyId, units, feature)
-          : feature.kind === "fillet"
-            ? createFilletSourceIdentityInput(bodyId, units, feature)
-            : {
-                bodyId,
-                sourceKind,
-                units,
-                featureId: feature.id,
-                featureSourceSignature: sha256Hex(
-                  new TextEncoder().encode(JSON.stringify(feature))
-                )
-              };
+      : feature.kind === "sweep"
+        ? createSweepSourceIdentityInput(
+            document,
+            bodyId,
+            units,
+            ownerPartId,
+            feature
+          )
+        : feature.kind === "hole"
+          ? createHoleSourceIdentityInput(document, bodyId, units, feature)
+          : feature.kind === "chamfer"
+            ? createChamferSourceIdentityInput(bodyId, units, feature)
+            : feature.kind === "fillet"
+              ? createFilletSourceIdentityInput(bodyId, units, feature)
+              : {
+                  bodyId,
+                  sourceKind,
+                  units,
+                  featureId: feature.id,
+                  featureSourceSignature: sha256Hex(
+                    new TextEncoder().encode(JSON.stringify(feature))
+                  )
+                };
   const sourceIdentity: CadBodyTopologySourceIdentity = {
     ...sourceIdentityInput,
     signature: createTopologySourceSignature(sourceIdentityInput)
@@ -1161,12 +1171,50 @@ function createUnsupportedAuthoredFeatureTopology(
             ? "Semantic topology references are not derived for authored hole result bodies yet."
             : feature.kind === "chamfer" || feature.kind === "fillet"
               ? "Semantic topology references are not derived for authored edge-finishing result bodies yet."
-              : "Semantic topology references are not derived for authored revolve bodies yet.",
+              : feature.kind === "sweep"
+                ? "Curved sweep topology awaits matching kernel-derived exact metadata; source identity is resolved from the profile, ordered path geometry, and both sketch frames."
+                : "Semantic topology references are not derived for authored revolve bodies yet.",
         bodyId,
         featureId: feature.id
       }
     ]
   });
+}
+
+function createSweepSourceIdentityInput(
+  document: GeneratedReferencesDocument,
+  bodyId: BodyId,
+  units: DocumentUnits,
+  ownerPartId: PartId,
+  feature: Extract<GeneratedReferencesFeature, { kind: "sweep" }>
+): Omit<CadBodyTopologySourceIdentity, "signature"> {
+  const resolved = createResolvedSweepSource(
+    document as CadDocument,
+    feature,
+    ownerPartId
+  );
+  return {
+    bodyId,
+    sourceKind: "authoredSweep",
+    units,
+    featureId: feature.id,
+    sourceSketchId: feature.profile.sketchId,
+    sourceSketchEntityId: feature.profile.entityId,
+    sourceSketchEntityIds: [
+      feature.profile.entityId,
+      ...(feature.path.kind === "entity"
+        ? [feature.path.entityId]
+        : feature.path.segments.map((segment) => segment.entityId))
+    ],
+    profileKind: resolved?.profile.kind,
+    featureSourceSignature: resolved
+      ? sha256Hex(new TextEncoder().encode(JSON.stringify(resolved)))
+      : sha256Hex(
+          new TextEncoder().encode(
+            JSON.stringify({ profile: feature.profile, path: feature.path })
+          )
+        )
+  };
 }
 
 function createAuthoredFeatureTopologySourceKind(
@@ -1460,6 +1508,7 @@ function applyDerivedExactMetadata(
   if (
     topology.sourceKind !== "authoredExtrude" &&
     topology.sourceKind !== "authoredRevolve" &&
+    topology.sourceKind !== "authoredSweep" &&
     topology.sourceKind !== "authoredHole" &&
     topology.sourceKind !== "authoredChamfer" &&
     topology.sourceKind !== "authoredFillet"
@@ -1517,6 +1566,19 @@ function applyDerivedExactMetadata(
 
     const topologyCounts = metadata.metadata.topologyCounts;
     const wireOperationMode = topology.sourceIdentity.operationMode;
+    const isSweep = topology.sourceKind === "authoredSweep";
+    if (isSweep && topologyCounts?.solidCount !== 1) {
+      return applyDerivedExactMetadataIssue(topology, {
+        code: "INVALID_EXACT_GEOMETRY_RESULT",
+        status: "kernel-failed",
+        message: "Curved sweep exact metadata must prove exactly one solid.",
+        expected: "solidCount=1",
+        received:
+          topologyCounts === undefined
+            ? "topologyCounts missing"
+            : `solidCount=${topologyCounts.solidCount}`
+      });
+    }
     const wireSolidCountIsValid =
       wireOperationMode === "cut"
         ? topologyCounts !== undefined && topologyCounts.solidCount > 0
@@ -1540,7 +1602,8 @@ function applyDerivedExactMetadata(
       });
     }
     const exactTopologyReady =
-      topology.sourceIdentity.profileKind === "wire" && wireSolidCountIsValid;
+      isSweep ||
+      (topology.sourceIdentity.profileKind === "wire" && wireSolidCountIsValid);
 
     return {
       ...topology,

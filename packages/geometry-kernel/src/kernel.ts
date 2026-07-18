@@ -464,10 +464,22 @@ export interface SweepProfileSource {
   readonly placementFrame?: BooleanExtrudePlacementFrame;
 }
 
-export interface SweepPathSegment {
+export interface SweepLinePathSegment {
+  readonly kind?: "line";
   readonly start: GeometryKernelDirection;
   readonly end: GeometryKernelDirection;
 }
+
+export interface SweepArcPathSegment {
+  readonly kind: "arc";
+  readonly start: GeometryKernelDirection;
+  readonly end: GeometryKernelDirection;
+  readonly center: GeometryKernelDirection;
+  readonly normal: GeometryKernelDirection;
+  readonly sweepAngleDegrees: number;
+}
+
+export type SweepPathSegment = SweepLinePathSegment | SweepArcPathSegment;
 
 export interface SweepRequest {
   readonly id: string;
@@ -624,6 +636,7 @@ export type ExactStepExportBodySource = (
   | BooleanExtrudeWireSource
   | BooleanExtrudeResultSource
   | ExactRevolveMetadataSource
+  | ExactSweepMetadataSource
 ) & {
   readonly bodyId: string;
   readonly bodyName?: string;
@@ -886,6 +899,8 @@ export type GeometryKernelErrorCode =
   | "INVALID_EDGE_ROLE"
   | "EDGE_FINISH_TOO_LARGE"
   | "INVALID_PLACEMENT"
+  | "SWEEP_CURVED_PATH_UNSUPPORTED"
+  | "SWEEP_CURVED_GEOMETRY_FAILED"
   | "KERNEL_FAILURE"
   | "EMPTY_RESULT"
   | "INVALID_RESULT"
@@ -1850,14 +1865,19 @@ function validateRequest(
       };
     }
   } else if (request.op === "geometry.sweep") {
-    if (
-      !isValidSweepProfileSource(request.profile) ||
-      !isValidSweepPathSegments(request.pathSegments)
-    ) {
+    if (!isValidSweepProfileSource(request.profile)) {
       return {
         code: "INVALID_DIMENSIONS",
-        message:
-          "Sweep requests require a rectangle or circle profile and exactly one finite non-degenerate line path segment."
+        message: "Sweep requests require a rectangle or circle profile."
+      };
+    }
+    if (!isValidSweepPathSegments(request.pathSegments)) {
+      const curved = isCurvedSweepPath(request.pathSegments);
+      return {
+        code: curved ? "SWEEP_CURVED_PATH_UNSUPPORTED" : "INVALID_DIMENSIONS",
+        message: curved
+          ? "Curved sweep requests require a finite open connected G1 line/arc path."
+          : "Sweep requests require one finite non-degenerate line path."
       };
     }
   } else if (request.op === "geometry.loft") {
@@ -2503,6 +2523,8 @@ function isGeometryKernelErrorCode(
     value === "INVALID_EDGE_ROLE" ||
     value === "EDGE_FINISH_TOO_LARGE" ||
     value === "INVALID_PLACEMENT" ||
+    value === "SWEEP_CURVED_PATH_UNSUPPORTED" ||
+    value === "SWEEP_CURVED_GEOMETRY_FAILED" ||
     value === "KERNEL_FAILURE" ||
     value === "EMPTY_RESULT" ||
     value === "INVALID_RESULT" ||
@@ -2930,17 +2952,137 @@ function isValidSweepProfileSource(source: SweepProfileSource): boolean {
 function isValidSweepPathSegments(
   segments: readonly SweepPathSegment[]
 ): boolean {
-  if (!Array.isArray(segments) || segments.length !== 1) return false;
-  const segment = segments[0];
+  if (!Array.isArray(segments) || segments.length === 0) return false;
+  if (!segments.every(isValidSweepPathSegment)) return false;
+  const joinTolerance = 1e-7;
+  const minimumTangentCosine = Math.cos((0.1 * Math.PI) / 180);
+  for (let index = 1; index < segments.length; index += 1) {
+    const previous = segments[index - 1]!;
+    const current = segments[index]!;
+    if (vectorDistance(previous.end, current.start) > joinTolerance) {
+      return false;
+    }
+    const outgoing = getSweepPathTangent(previous, "end");
+    const incoming = getSweepPathTangent(current, "start");
+    if (dotVec3(outgoing, incoming) < minimumTangentCosine) return false;
+  }
   return (
-    isVec3(segment?.start) &&
-    isVec3(segment?.end) &&
-    Math.hypot(
-      segment.end[0] - segment.start[0],
-      segment.end[1] - segment.start[1],
-      segment.end[2] - segment.start[2]
-    ) > 1e-12
+    vectorDistance(segments[0]!.start, segments.at(-1)!.end) > joinTolerance
   );
+}
+
+function isCurvedSweepPath(segments: readonly SweepPathSegment[]): boolean {
+  return (
+    Array.isArray(segments) &&
+    (segments.length > 1 || segments.some((segment) => segment?.kind === "arc"))
+  );
+}
+
+function isValidSweepPathSegment(segment: SweepPathSegment): boolean {
+  if (!segment || !isVec3(segment.start) || !isVec3(segment.end)) return false;
+  if (segment.kind !== "arc") {
+    return (
+      (segment.kind === undefined || segment.kind === "line") &&
+      vectorDistance(segment.start, segment.end) > 1e-12
+    );
+  }
+  if (
+    !isVec3(segment.center) ||
+    !isUnitVec3(segment.normal) ||
+    !Number.isFinite(segment.sweepAngleDegrees) ||
+    Math.abs(segment.sweepAngleDegrees) < 0.1 ||
+    Math.abs(segment.sweepAngleDegrees) > 359.9
+  ) {
+    return false;
+  }
+  const startRadius = subtractVec3(segment.start, segment.center);
+  const endRadius = subtractVec3(segment.end, segment.center);
+  const radius = vectorLength(startRadius);
+  if (radius <= 1e-12) return false;
+  const tolerance = Math.max(1e-6, radius * 1e-9);
+  if (
+    Math.abs(vectorLength(endRadius) - radius) > tolerance ||
+    Math.abs(dotVec3(startRadius, segment.normal)) > tolerance ||
+    Math.abs(dotVec3(endRadius, segment.normal)) > tolerance
+  ) {
+    return false;
+  }
+  return (
+    vectorDistance(
+      rotateVectorAroundAxis(
+        startRadius,
+        segment.normal,
+        (segment.sweepAngleDegrees * Math.PI) / 180
+      ),
+      endRadius
+    ) <= tolerance
+  );
+}
+
+function getSweepPathTangent(
+  segment: SweepPathSegment,
+  endpoint: "start" | "end"
+): GeometryKernelDirection {
+  if (segment.kind !== "arc") {
+    return normalizeVec3(subtractVec3(segment.end, segment.start));
+  }
+  const radiusVector = subtractVec3(
+    endpoint === "start" ? segment.start : segment.end,
+    segment.center
+  );
+  const sign = Math.sign(segment.sweepAngleDegrees);
+  return normalizeVec3([
+    sign *
+      (segment.normal[1] * radiusVector[2] -
+        segment.normal[2] * radiusVector[1]),
+    sign *
+      (segment.normal[2] * radiusVector[0] -
+        segment.normal[0] * radiusVector[2]),
+    sign *
+      (segment.normal[0] * radiusVector[1] -
+        segment.normal[1] * radiusVector[0])
+  ]);
+}
+
+function normalizeVec3(
+  vector: GeometryKernelDirection
+): GeometryKernelDirection {
+  const magnitude = vectorLength(vector);
+  return [vector[0] / magnitude, vector[1] / magnitude, vector[2] / magnitude];
+}
+
+function subtractVec3(
+  left: GeometryKernelDirection,
+  right: GeometryKernelDirection
+): GeometryKernelDirection {
+  return [left[0] - right[0], left[1] - right[1], left[2] - right[2]];
+}
+
+function vectorDistance(
+  left: GeometryKernelDirection,
+  right: GeometryKernelDirection
+): number {
+  return vectorLength(subtractVec3(left, right));
+}
+
+function rotateVectorAroundAxis(
+  vector: GeometryKernelDirection,
+  axis: GeometryKernelDirection,
+  angleRadians: number
+): GeometryKernelDirection {
+  const cosine = Math.cos(angleRadians);
+  const sine = Math.sin(angleRadians);
+  const projectionScale = dotVec3(vector, axis) * (1 - cosine);
+  const cross: GeometryKernelDirection = [
+    axis[1] * vector[2] - axis[2] * vector[1],
+    axis[2] * vector[0] - axis[0] * vector[2],
+    axis[0] * vector[1] - axis[1] * vector[0]
+  ];
+  return [
+    vector[0] * cosine + cross[0] * sine + axis[0] * projectionScale,
+    vector[1] * cosine + cross[1] * sine + axis[1] * projectionScale,
+    vector[2] * cosine + cross[2] * sine + axis[2] * projectionScale
+  ];
 }
 
 interface BooleanExtrudeValidationContext {
@@ -3299,6 +3441,13 @@ function isValidExactStepExportBodySource(source: unknown): boolean {
   if (typeof source !== "object" || source === null) return false;
   if ((source as { readonly kind?: unknown }).kind === "revolve") {
     return isValidRevolveRecipe(source as ExactRevolveMetadataSource);
+  }
+  if ((source as { readonly kind?: unknown }).kind === "sweep") {
+    const sweep = source as ExactSweepMetadataSource;
+    return (
+      isValidSweepProfileSource(sweep.profile) &&
+      isValidSweepPathSegments(sweep.pathSegments)
+    );
   }
   if ((source as { readonly kind?: unknown }).kind === "booleanExtrudes") {
     return (

@@ -113,6 +113,7 @@ import type {
   SketchId,
   SketchAttachmentSnapshot,
   SketchEntityProfileRef,
+  SketchPathRef,
   SketchProfileRef,
   SketchPlane,
   SketchPointTarget,
@@ -328,6 +329,11 @@ import {
   resolveWireExtrudeProfile
 } from "./wireExtrudeProfile";
 import { resolveWireRevolveProfile } from "./wireRevolveProfile";
+import { createPathInputReference, resolveSweep } from "./sweepProfile";
+export {
+  createResolvedSingleEntitySweepSource,
+  createResolvedSweepSource
+} from "./sweepProfile";
 export { createResolvedWireExtrudeRecipe } from "./wireExtrudeProfile";
 export {
   createResolvedWireRevolveProfile,
@@ -2786,11 +2792,9 @@ export class CadEngine {
         );
 
         if (!references) {
-          const compositeExtrude = [...this.#document.features.values()].find(
-            (feature) =>
-              feature.kind === "extrude" &&
-              feature.bodyId === bodyId &&
-              feature.profile.kind === "wire"
+          const correspondenceKind = getUnprovenGeneratedReferenceKind(
+            this.#document,
+            bodyId
           );
 
           return {
@@ -2803,13 +2807,14 @@ export class CadEngine {
                   message: `Body does not exist: ${bodyId}`,
                   bodyId
                 }
-              : compositeExtrude
+              : correspondenceKind
                 ? createGeneratedReferenceCorrespondenceError(
                     bodyId,
                     request.query.derivedGeneratedReferences,
                     topology.ok
                       ? topology.topology.sourceIdentity.signature
-                      : undefined
+                      : undefined,
+                    correspondenceKind
                   )
                 : {
                     code: "UNSUPPORTED_BODY_REFERENCES",
@@ -2860,11 +2865,9 @@ export class CadEngine {
         );
 
         if (!references) {
-          const compositeExtrude = [...this.#document.features.values()].find(
-            (feature) =>
-              feature.kind === "extrude" &&
-              feature.bodyId === bodyId &&
-              feature.profile.kind === "wire"
+          const correspondenceKind = getUnprovenGeneratedReferenceKind(
+            this.#document,
+            bodyId
           );
 
           return {
@@ -2877,13 +2880,14 @@ export class CadEngine {
                   message: `Body does not exist: ${bodyId}`,
                   bodyId
                 }
-              : compositeExtrude
+              : correspondenceKind
                 ? createGeneratedReferenceCorrespondenceError(
                     bodyId,
                     request.query.derivedGeneratedReferences,
                     topology.ok
                       ? topology.topology.sourceIdentity.signature
-                      : undefined
+                      : undefined,
+                    correspondenceKind
                   )
                 : {
                     code: "UNSUPPORTED_BODY_REFERENCES",
@@ -6646,14 +6650,7 @@ function applyOperation(
     }
 
     case "feature.sweep": {
-      const inputs = validateSweepInputs(
-        state,
-        op.profileSketchId,
-        op.profileEntityId,
-        op.pathSketchId,
-        op.pathEntityIds,
-        opIndex
-      );
+      const inputs = resolveSweepCommandInputs(state, op, undefined, opIndex);
       const feature: SweepFeature = {
         id: op.id ?? createFeatureId(),
         kind: "sweep",
@@ -6662,6 +6659,14 @@ function applyOperation(
         bodyId: op.bodyId ?? createBodyId()
       };
       addFeature(state, feature, diff, opIndex);
+      pushFeatureInputReference(
+        diff,
+        createProfileInputReference(feature.id, feature.profile, false)
+      );
+      pushFeatureInputReference(
+        diff,
+        createPathInputReference(feature.id, feature.path)
+      );
       return;
     }
 
@@ -7918,10 +7923,37 @@ function isCadBodyGeneratedReferenceEdgeEvidence(value: unknown): boolean {
   );
 }
 
+type UnprovenGeneratedReferenceKind =
+  | "composite wire extrude"
+  | "composite wire revolve"
+  | "curved sweep";
+
+function getUnprovenGeneratedReferenceKind(
+  document: CadDocument,
+  bodyId: BodyId
+): UnprovenGeneratedReferenceKind | undefined {
+  const feature = [...document.features.values()].find(
+    (candidate) => candidate.bodyId === bodyId
+  );
+  if (feature?.kind === "extrude" && feature.profile.kind === "wire") {
+    return "composite wire extrude";
+  }
+  if (feature?.kind === "revolve" && feature.profile.kind === "wire") {
+    return "composite wire revolve";
+  }
+  if (feature?.kind !== "sweep") return undefined;
+  if (feature.path.kind === "chain") return "curved sweep";
+  const pathEntity = document.sketches
+    .get(feature.path.sketchId)
+    ?.entities.get(feature.path.entityId);
+  return pathEntity?.kind === "arc" ? "curved sweep" : undefined;
+}
+
 function createGeneratedReferenceCorrespondenceError(
   bodyId: BodyId,
   evidence: CadBodyGeneratedReferenceEvidenceSnapshot | undefined,
-  expectedSourceIdentitySignature: string | undefined
+  expectedSourceIdentitySignature: string | undefined,
+  kind: UnprovenGeneratedReferenceKind = "composite wire extrude"
 ): CadQueryError {
   const generatedReferencesStatus =
     evidence?.status === "ambiguous" ? "ambiguous" : "unavailable";
@@ -7935,11 +7967,11 @@ function createGeneratedReferenceCorrespondenceError(
           ? "Correspondence evidence does not match the current body topology source identity."
           : evidence.status !== "ready"
             ? evidence.diagnostic
-            : "Correspondence evidence is incomplete, duplicated, or inconsistent with the authored wire profile.";
+            : `Correspondence evidence is incomplete, duplicated, or inconsistent with the authored ${kind} recipe.`;
 
   return {
     code: "GENERATED_REFERENCE_CORRESPONDENCE_UNPROVEN",
-    message: `Generated references are unavailable for composite wire extrude body ${bodyId}. ${reason}`,
+    message: `Generated references are unavailable for ${kind} body ${bodyId}. ${reason}`,
     bodyId,
     generatedReferencesStatus
   };
@@ -8375,12 +8407,19 @@ function isCadFeatureEditProposal(value: unknown): boolean {
       Object.keys(value).every((key) =>
         [
           "kind",
+          "profile",
+          "path",
           "profileSketchId",
           "profileEntityId",
           "pathSketchId",
           "pathEntityIds"
         ].includes(key)
       ) &&
+      (value.profile === undefined ||
+        (validateSketchProfileRefSource(value.profile).ok &&
+          (value.profile as Record<string, unknown>).kind === "entity")) &&
+      (value.path === undefined ||
+        validateSketchPathRefSource(value.path).ok) &&
       (value.profileSketchId === undefined ||
         typeof value.profileSketchId === "string") &&
       (value.profileEntityId === undefined ||
@@ -13385,15 +13424,7 @@ function updateSweepFeature(
     "feature.updateSweep",
     opIndex
   );
-  const inputs = validateSweepInputs(
-    state,
-    op.profileSketchId ?? feature.profile.sketchId,
-    op.profileEntityId ?? feature.profile.entityId,
-    op.pathSketchId ?? feature.path.sketchId,
-    op.pathEntityIds ??
-      (feature.path.kind === "entity" ? [feature.path.entityId] : undefined),
-    opIndex
-  );
+  const inputs = resolveSweepCommandInputs(state, op, feature, opIndex);
   const updated: SweepFeature = { ...feature, ...inputs };
   assertFeatureResultBodyActiveForEdit(
     state,
@@ -13404,6 +13435,23 @@ function updateSweepFeature(
   state.features.set(feature.id, updated);
   pushFeatureModified(diff, featureRef(state, updated));
   pushBodyModified(diff, bodyRef(updated));
+  if (!stableJsonEqual(feature.profile, updated.profile)) {
+    pushFeatureInputReference(
+      diff,
+      createProfileInputReference(
+        updated.id,
+        updated.profile,
+        false,
+        feature.profile
+      )
+    );
+  }
+  if (!stableJsonEqual(feature.path, updated.path)) {
+    pushFeatureInputReference(
+      diff,
+      createPathInputReference(updated.id, updated.path, feature.path)
+    );
+  }
   pushFeatureReferenceEffects(
     diff,
     createAmbiguousResultFeatureEditReferenceEffects(
@@ -13420,7 +13468,147 @@ function updateSweepFeature(
   );
 }
 
-function validateSweepInputs(
+function resolveSweepCommandInputs(
+  state: MutableDocumentState,
+  op: Extract<CadOp, { readonly op: "feature.sweep" | "feature.updateSweep" }>,
+  prior: SweepFeature | undefined,
+  opIndex?: number
+): Pick<SweepFeature, "profile" | "path"> {
+  const input = op as unknown as Record<string, unknown>;
+  const owns = (key: string): boolean =>
+    Object.prototype.hasOwnProperty.call(input, key);
+  const hasNormalized = owns("profile") || owns("path");
+  const hasLegacy =
+    owns("profileSketchId") ||
+    owns("profileEntityId") ||
+    owns("pathSketchId") ||
+    owns("pathEntityIds");
+  if (hasNormalized && hasLegacy) {
+    throwSweepValidationError(
+      "COMMAND_INPUT_AMBIGUOUS",
+      "Provide normalized sweep profile/path or legacy sweep fields, never both.",
+      "profile",
+      "one complete sweep input form",
+      "mixed normalized and legacy fields",
+      opIndex
+    );
+  }
+
+  let requested: Pick<SweepFeature, "profile" | "path">;
+  if (hasNormalized) {
+    const profileResult = owns("profile")
+      ? validateSketchProfileRefSource(input.profile, "profile")
+      : { ok: true as const, value: prior?.profile };
+    const pathResult = owns("path")
+      ? validateSketchPathRefSource(input.path, "path")
+      : { ok: true as const, value: prior?.path };
+    if (!profileResult.ok) {
+      const issue = profileResult.issues[0]!;
+      throwSweepValidationError(
+        issue.code,
+        issue.message,
+        issue.path,
+        "normalized entity sweep profile",
+        input.profile,
+        opIndex
+      );
+    }
+    if (!pathResult.ok) {
+      const issue = pathResult.issues[0]!;
+      throwSweepValidationError(
+        issue.code,
+        issue.message,
+        issue.path,
+        "normalized oriented sweep path",
+        input.path,
+        opIndex
+      );
+    }
+    if (!profileResult.value || !pathResult.value) {
+      throwSweepValidationError(
+        "SCHEMA_V21_SOURCE_INVALID",
+        "Sweep creation requires both profile and path.",
+        "profile",
+        "normalized profile and path",
+        input,
+        opIndex
+      );
+    }
+    if (profileResult.value.kind !== "entity") {
+      throwSweepValidationError(
+        "SWEEP_PROFILE_UNSUPPORTED",
+        "V17 sweep profiles remain one rectangle or circle entity.",
+        "profile",
+        "entity profile",
+        profileResult.value.kind,
+        opIndex
+      );
+    }
+    requested = {
+      profile: profileResult.value,
+      path: pathResult.value
+    };
+  } else {
+    if (prior && !hasLegacy) {
+      throwSweepValidationError(
+        "INVALID_FEATURE",
+        "feature.updateSweep requires profile or path fields.",
+        "id",
+        "profile or path patch",
+        input,
+        opIndex
+      );
+    }
+    const profilePatch = owns("profileSketchId") || owns("profileEntityId");
+    const pathPatch = owns("pathSketchId") || owns("pathEntityIds");
+    if (
+      (profilePatch && !(owns("profileSketchId") && owns("profileEntityId"))) ||
+      (pathPatch && !(owns("pathSketchId") && owns("pathEntityIds")))
+    ) {
+      throwSweepValidationError(
+        "SCHEMA_V21_SOURCE_INVALID",
+        "Legacy sweep patches require complete sketch/entity field pairs.",
+        profilePatch ? "profileSketchId" : "pathSketchId",
+        "complete legacy sweep source patch",
+        input,
+        opIndex
+      );
+    }
+    requested = validateLegacySweepInputs(
+      state,
+      profilePatch ? input.profileSketchId : prior?.profile.sketchId,
+      profilePatch ? input.profileEntityId : prior?.profile.entityId,
+      pathPatch ? input.pathSketchId : prior?.path.sketchId,
+      pathPatch
+        ? input.pathEntityIds
+        : prior?.path.kind === "entity"
+          ? [prior.path.entityId]
+          : undefined,
+      opIndex
+    );
+  }
+
+  const resolution = resolveSweep(
+    state as CadDocument,
+    requested.profile,
+    requested.path
+  );
+  if (!resolution.ok) {
+    throwValidationError({
+      code: resolution.code,
+      message: resolution.message,
+      opIndex,
+      sketchId: resolution.sketchId,
+      sketchEntityId: resolution.sketchEntityId,
+      path: operationPath(opIndex, "path"),
+      expected: "feature-ready line, arc, or open ordered G1 line/arc chain",
+      received: requested.path.kind
+    });
+  }
+  return { profile: resolution.profile, path: resolution.path };
+}
+
+function validateLegacySweepInputs(
   state: MutableDocumentState,
   profileSketchId: unknown,
   profileEntityId: unknown,
@@ -13461,9 +13649,9 @@ function validateSweepInputs(
   if (!Array.isArray(pathEntityIds) || pathEntityIds.length === 0) {
     throwSweepValidationError(
       "SWEEP_PATH_UNSUPPORTED",
-      "Sweep requires one line path entity.",
+      "Sweep requires one line or arc path entity.",
       "pathEntityIds",
-      "array containing exactly one line entity id",
+      "array containing exactly one line or arc entity id",
       pathEntityIds,
       opIndex
     );
@@ -13471,9 +13659,9 @@ function validateSweepInputs(
   if (pathEntityIds.length !== 1) {
     throwSweepValidationError(
       "SWEEP_PATH_UNSUPPORTED",
-      "V16 sweep currently supports exactly one line path entity.",
+      "The single-arc tranche supports exactly one line or arc path entity.",
       "pathEntityIds",
-      "one line entity id",
+      "one line or arc entity id",
       pathEntityIds,
       opIndex
     );
@@ -13484,7 +13672,7 @@ function validateSweepInputs(
       "SWEEP_ENTITY_UNRESOLVED",
       "Sweep path entity id must be a non-empty string.",
       "pathEntityIds",
-      "existing line entity id",
+      "existing line or arc entity id",
       pathEntityId,
       opIndex
     );
@@ -13529,22 +13717,23 @@ function validateSweepInputs(
       "SWEEP_ENTITY_UNRESOLVED",
       "Sweep path sketch or entity no longer resolves.",
       "pathEntityIds",
-      "existing line path",
+      "existing line or arc path",
       pathEntityId,
       opIndex
     );
   }
-  if (path.kind !== "line") {
+  if (path.kind !== "line" && path.kind !== "arc") {
     throwSweepValidationError(
       "SWEEP_PATH_UNSUPPORTED",
-      "Sweep path must be a line entity.",
+      "Sweep path must be a line or arc entity.",
       "pathEntityIds",
-      "line entity",
+      "line or arc entity",
       path.kind,
       opIndex
     );
   }
   if (
+    path.kind === "line" &&
     Math.hypot(path.end[0] - path.start[0], path.end[1] - path.start[1]) <= 1e-9
   ) {
     throwSweepValidationError(
@@ -22165,12 +22354,22 @@ function createFeatureSummary(
     };
   }
   if (feature.kind === "sweep") {
+    const profile = { ...feature.profile };
+    const path =
+      feature.path.kind === "entity"
+        ? { ...feature.path }
+        : {
+            ...feature.path,
+            segments: feature.path.segments.map((segment) => ({ ...segment }))
+          };
     return {
       id: feature.id,
       kind: "sweep",
       partId: DEFAULT_PART_ID,
       bodyId: feature.bodyId,
       name: feature.name,
+      profile,
+      path,
       profileSketchId: feature.profile.sketchId,
       profileEntityId: feature.profile.entityId,
       pathSketchId: feature.path.sketchId,
@@ -22180,6 +22379,8 @@ function createFeatureSummary(
           : feature.path.segments.map((segment) => segment.entityId),
       source: {
         type: "sweepFeature",
+        profile,
+        path,
         profileSketchId: feature.profile.sketchId,
         profileEntityId: feature.profile.entityId,
         pathSketchId: feature.path.sketchId,
@@ -22504,6 +22705,14 @@ function createFeatureBodySnapshot(
     };
   }
   if (feature.kind === "sweep") {
+    const profile = { ...feature.profile };
+    const path =
+      feature.path.kind === "entity"
+        ? { ...feature.path }
+        : {
+            ...feature.path,
+            segments: feature.path.segments.map((segment) => ({ ...segment }))
+          };
     return {
       id: feature.bodyId,
       kind: "solid",
@@ -22514,6 +22723,8 @@ function createFeatureBodySnapshot(
       source: {
         type: "sweepFeature",
         featureId: feature.id,
+        profile,
+        path,
         profileSketchId: feature.profile.sketchId,
         profileEntityId: feature.profile.entityId,
         pathSketchId: feature.path.sketchId,
@@ -33324,15 +33535,26 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   if (value.op === "feature.sweep") {
-    return (
-      isOptionalString(value.id) &&
-      isOptionalString(value.bodyId) &&
-      isOptionalString(value.name) &&
+    const normalized =
+      validateSketchProfileRefSource(value.profile).ok &&
+      validateSketchPathRefSource(value.path).ok &&
+      value.profileSketchId === undefined &&
+      value.profileEntityId === undefined &&
+      value.pathSketchId === undefined &&
+      value.pathEntityIds === undefined;
+    const legacy =
+      value.profile === undefined &&
+      value.path === undefined &&
       typeof value.profileSketchId === "string" &&
       typeof value.profileEntityId === "string" &&
       typeof value.pathSketchId === "string" &&
       Array.isArray(value.pathEntityIds) &&
-      value.pathEntityIds.every((id) => typeof id === "string")
+      value.pathEntityIds.every((id) => typeof id === "string");
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      (normalized || legacy)
     );
   }
 
@@ -33475,21 +33697,34 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   if (value.op === "feature.updateSweep") {
+    const hasNormalized =
+      value.profile !== undefined || value.path !== undefined;
+    const hasLegacy =
+      value.profileSketchId !== undefined ||
+      value.profileEntityId !== undefined ||
+      value.pathSketchId !== undefined ||
+      value.pathEntityIds !== undefined;
+    const normalized =
+      hasNormalized &&
+      !hasLegacy &&
+      (value.profile === undefined ||
+        validateSketchProfileRefSource(value.profile).ok) &&
+      (value.path === undefined || validateSketchPathRefSource(value.path).ok);
+    const legacyProfile =
+      value.profileSketchId === undefined && value.profileEntityId === undefined
+        ? true
+        : typeof value.profileSketchId === "string" &&
+          typeof value.profileEntityId === "string";
+    const legacyPath =
+      value.pathSketchId === undefined && value.pathEntityIds === undefined
+        ? true
+        : typeof value.pathSketchId === "string" &&
+          Array.isArray(value.pathEntityIds) &&
+          value.pathEntityIds.every((id) => typeof id === "string");
     return (
       typeof value.id === "string" &&
-      (value.profileSketchId === undefined ||
-        typeof value.profileSketchId === "string") &&
-      (value.profileEntityId === undefined ||
-        typeof value.profileEntityId === "string") &&
-      (value.pathSketchId === undefined ||
-        typeof value.pathSketchId === "string") &&
-      (value.pathEntityIds === undefined ||
-        (Array.isArray(value.pathEntityIds) &&
-          value.pathEntityIds.every((id) => typeof id === "string"))) &&
-      (value.profileSketchId !== undefined ||
-        value.profileEntityId !== undefined ||
-        value.pathSketchId !== undefined ||
-        value.pathEntityIds !== undefined)
+      (normalized ||
+        (hasLegacy && !hasNormalized && legacyProfile && legacyPath))
     );
   }
 

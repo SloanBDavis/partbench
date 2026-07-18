@@ -214,6 +214,98 @@ describe("projectExactStepExport", () => {
     expect(request.payload.bodies[0]).not.toHaveProperty("placementFrame");
   });
 
+  it("maps a reversed arc sweep through its attached profile and base path frames", async () => {
+    const sweepSource: CadExactExportBodySource = {
+      bodyId: "body_step_arc_sweep",
+      bodyName: "Attached arc sweep",
+      sourceKind: "authoredSweep",
+      featureId: "feature_step_arc_sweep",
+      profileSketchId: "attached_profile",
+      profileEntityId: "profile_circle",
+      pathSketchId: "base_path",
+      pathEntityIds: ["path_arc"],
+      profileFrame: {
+        origin: [0, 0, 3],
+        uAxis: [1, 0, 0],
+        vAxis: [0, 1, 0]
+      },
+      profile: {
+        kind: "circle",
+        center: [0, 0],
+        radius: 0.25
+      },
+      path: {
+        frame: {
+          origin: [0, 0, 0],
+          uAxis: [1, 0, 0],
+          vAxis: [0, 0, 1]
+        },
+        closed: false,
+        segments: [
+          {
+            kind: "arc",
+            sourceEntityId: "path_arc",
+            center: [-1, 3],
+            radius: 1,
+            startAngleDegrees: 0,
+            sweepAngleDegrees: -90
+          }
+        ],
+        sourceIdentity: "reversed-arc-path"
+      },
+      frameMode: "correctedFrenet",
+      solidPolicy: "exactlyOne"
+    };
+    let request: GeometryWorkerRequest | undefined;
+    const bytes = new TextEncoder().encode("ISO-10303-21;");
+
+    await executeProjectExactStepExport({
+      exactExport: createExactExportResponse(sweepSource),
+      worker: createWorker(
+        {
+          ok: true,
+          id: "project-export-step:payload",
+          op: "geometry.exportStep",
+          artifact: {
+            format: "step",
+            schema: "AP242DIS",
+            units: "mm",
+            bodyCount: 1,
+            byteLength: bytes.byteLength,
+            bytes
+          },
+          warnings: []
+        },
+        (candidate) => {
+          request = candidate;
+        }
+      )
+    });
+
+    expect(request).toBeDefined();
+    if (!request || request.payload.op !== "geometry.exportStep") return;
+    expect(request.payload.bodies[0]).toEqual({
+      bodyId: "body_step_arc_sweep",
+      bodyName: "Attached arc sweep",
+      kind: "sweep",
+      profile: {
+        sketchPlane: "XY",
+        profile: sweepSource.profile,
+        placementFrame: sweepSource.profileFrame
+      },
+      pathSegments: [
+        {
+          kind: "arc",
+          start: [0, 0, 3],
+          end: [-1, 0, 2],
+          center: [-1, 0, 3],
+          normal: [0, -1, 0],
+          sweepAngleDegrees: -90
+        }
+      ]
+    });
+  });
+
   it("passes one recursive composite add body to STEP without replacing its world frame", async () => {
     const wireProfile = {
       kind: "wire" as const,

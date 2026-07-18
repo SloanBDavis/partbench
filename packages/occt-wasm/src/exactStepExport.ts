@@ -16,6 +16,11 @@ import {
   type OcctRevolveProfile,
   type OcctRevolveSketchPlane
 } from "./revolveProfile";
+import {
+  makeSweepShape,
+  type OcctSweepPathSegment,
+  type OcctSweepProfileSource
+} from "./sweep";
 
 export interface OcctStepExportRevolveSource {
   readonly kind: "revolve";
@@ -26,6 +31,12 @@ export interface OcctStepExportRevolveSource {
   readonly placementFrame?: OcctRevolvePlacementFrame;
 }
 
+export interface OcctStepExportSweepSource {
+  readonly kind: "sweep";
+  readonly profile: OcctSweepProfileSource;
+  readonly pathSegments: readonly OcctSweepPathSegment[];
+}
+
 export type OcctStepExportUnit = "mm" | "cm" | "m" | "in";
 export type OcctStepExportSchema = "AP242DIS";
 
@@ -34,6 +45,7 @@ export type OcctStepExportBodySource = (
   | OcctBooleanExtrudeResultSource
   | OcctWireExtrudeSource
   | OcctStepExportRevolveSource
+  | OcctStepExportSweepSource
 ) & {
   readonly bodyId: string;
   readonly bodyName?: string;
@@ -201,6 +213,9 @@ function createOcctStepExportShape(
 ): ReturnType<OcctStepExportShapeFactory> {
   if ((body as { readonly kind?: unknown }).kind === "revolve") {
     return makeRevolveProfileShape(oc, body as OcctStepExportRevolveSource);
+  }
+  if ((body as { readonly kind?: unknown }).kind === "sweep") {
+    return makeSweepShape(oc, body as OcctStepExportSweepSource);
   }
   if ((body as { readonly kind?: unknown }).kind === "booleanExtrudes") {
     return makeBooleanExtrudeShape(oc, body as OcctBooleanExtrudeResultSource);

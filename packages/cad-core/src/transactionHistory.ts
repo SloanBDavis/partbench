@@ -646,12 +646,19 @@ function createOperationSummaries(
       case "feature.sweep": {
         const featureId = op.id ?? createdFeatureRef?.id;
         const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
+        const profileSketchId = op.profile?.sketchId ?? op.profileSketchId;
+        const profileEntityId = op.profile?.entityId ?? op.profileEntityId;
+        const pathEntityIds = op.path
+          ? op.path.kind === "entity"
+            ? [op.path.entityId]
+            : op.path.segments.map((segment) => segment.entityId)
+          : (op.pathEntityIds ?? []);
 
         return createFeatureOperationSummary({
           op: op.op,
-          label: `Create sweep feature ${featureId ?? "with generated ID"} from profile ${op.profileSketchId}/${op.profileEntityId} along ${op.pathEntityIds.length} path segment${op.pathEntityIds.length === 1 ? "" : "s"}${bodyId ? ` -> body ${bodyId}` : ""}`,
-          sketchId: op.profileSketchId,
-          sketchEntityId: op.profileEntityId,
+          label: `Create sweep feature ${featureId ?? "with generated ID"} from profile ${profileSketchId}/${profileEntityId} along ${pathEntityIds.length} path segment${pathEntityIds.length === 1 ? "" : "s"}${bodyId ? ` -> body ${bodyId}` : ""}`,
+          sketchId: profileSketchId,
+          sketchEntityId: profileEntityId,
           featureId,
           bodyId
         });

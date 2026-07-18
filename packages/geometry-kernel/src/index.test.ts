@@ -2461,6 +2461,171 @@ describe("geometry-kernel facade", () => {
     });
   });
 
+  it("passes signed arcs and ordered G1 chains to sweep and exact STEP boundaries", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    const captured: unknown[] = [];
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory,
+      createSweepMesh: async (input) => {
+        captured.push(input);
+        return {
+          primitive: "sweep",
+          positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+          indices: new Uint32Array([0, 1, 2]),
+          vertexCount: 3,
+          triangleCount: 1,
+          faceCount: 1
+        };
+      },
+      createExactStepExport: async (input) => {
+        captured.push(input);
+        return {
+          format: "step",
+          schema: "AP242DIS",
+          units: input.units,
+          bodyCount: input.bodies.length,
+          byteLength: 1,
+          bytes: new Uint8Array([1])
+        };
+      }
+    };
+    const profile = {
+      sketchPlane: "XY" as const,
+      profile: {
+        kind: "circle" as const,
+        center: [0, 0] as const,
+        radius: 0.5
+      }
+    };
+    const pathSegments = [
+      {
+        kind: "arc" as const,
+        start: [0, 0, 0] as const,
+        end: [5, 0, 5] as const,
+        center: [5, 0, 0] as const,
+        normal: [0, 1, 0] as const,
+        sweepAngleDegrees: 90
+      }
+    ];
+    const chainSegments = [
+      {
+        kind: "line" as const,
+        start: [0, 0, 0] as const,
+        end: [0, 0, 2] as const
+      },
+      {
+        kind: "arc" as const,
+        start: [0, 0, 2] as const,
+        end: [2, 0, 2] as const,
+        center: [1, 0, 2] as const,
+        normal: [0, -1, 0] as const,
+        sweepAngleDegrees: -180
+      },
+      {
+        kind: "line" as const,
+        start: [2, 0, 2] as const,
+        end: [2, 0, 0] as const
+      }
+    ];
+    const [mesh, step, chainMesh, chainStep] = await Promise.all([
+      executeGeometryKernelRequestWithMeshFactory(factories, {
+        id: "geometry_req_arc_sweep",
+        version: "geometry-kernel.v1",
+        op: "geometry.sweep",
+        profile,
+        pathSegments
+      }),
+      executeGeometryKernelRequestWithMeshFactory(factories, {
+        id: "geometry_req_arc_sweep_step",
+        version: "geometry-kernel.v1",
+        op: "geometry.exportStep",
+        units: "mm",
+        bodies: [{ kind: "sweep", profile, pathSegments, bodyId: "body_arc" }]
+      }),
+      executeGeometryKernelRequestWithMeshFactory(factories, {
+        id: "geometry_req_chain_sweep",
+        version: "geometry-kernel.v1",
+        op: "geometry.sweep",
+        profile,
+        pathSegments: chainSegments
+      }),
+      executeGeometryKernelRequestWithMeshFactory(factories, {
+        id: "geometry_req_chain_sweep_step",
+        version: "geometry-kernel.v1",
+        op: "geometry.exportStep",
+        units: "mm",
+        bodies: [
+          {
+            kind: "sweep",
+            profile,
+            pathSegments: chainSegments,
+            bodyId: "body_chain"
+          }
+        ]
+      })
+    ]);
+
+    expect(mesh.ok).toBe(true);
+    expect(step.ok).toBe(true);
+    expect(chainMesh.ok).toBe(true);
+    expect(chainStep.ok).toBe(true);
+    expect(captured).toHaveLength(4);
+  });
+
+  it("rejects inconsistent arcs and non-G1 path chains", async () => {
+    const profile = {
+      sketchPlane: "XY" as const,
+      profile: {
+        kind: "circle" as const,
+        center: [0, 0] as const,
+        radius: 0.5
+      }
+    };
+    const invalidArc = {
+      kind: "arc" as const,
+      start: [0, 0, 0] as const,
+      end: [5, 0, -5] as const,
+      center: [5, 0, 0] as const,
+      normal: [0, 1, 0] as const,
+      sweepAngleDegrees: 90
+    };
+    const [inconsistent, chain] = await Promise.all([
+      executeGeometryKernelRequest({
+        id: "geometry_req_bad_arc_sweep",
+        version: "geometry-kernel.v1",
+        op: "geometry.sweep",
+        profile,
+        pathSegments: [invalidArc]
+      }),
+      executeGeometryKernelRequest({
+        id: "geometry_req_g0_chain_sweep",
+        version: "geometry-kernel.v1",
+        op: "geometry.sweep",
+        profile,
+        pathSegments: [
+          { start: [0, 0, 0], end: [0, 0, 5] },
+          { start: [0, 0, 5], end: [5, 0, 5] }
+        ]
+      })
+    ]);
+
+    expect(inconsistent).toMatchObject({
+      ok: false,
+      error: { code: "SWEEP_CURVED_PATH_UNSUPPORTED" }
+    });
+    expect(chain).toMatchObject({
+      ok: false,
+      error: { code: "SWEEP_CURVED_PATH_UNSUPPORTED" }
+    });
+  });
+
   it(
     "runs a circle-target cut by rectangle tool feasibility request",
     async () => {

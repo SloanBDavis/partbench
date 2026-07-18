@@ -18,6 +18,7 @@ import type {
   GeometryKernelExactStepExportArtifact,
   ResolvedPlanarWireProfile
 } from "@web-cad/geometry-worker";
+import { mapResolvedSweepPathSegmentToWorld } from "./sweepGeometryRecipe";
 
 type ExactStepExportWorkerBody = Parameters<
   typeof createExactStepExportWorkerRequest
@@ -91,6 +92,23 @@ function mapExactExportSourceToWorkerBody(
       profile: source.profile,
       axis: { start: source.axis.start, end: source.axis.end },
       angleDegrees: source.angleDegrees
+    };
+  }
+
+  if (source.sourceKind === "authoredSweep") {
+    return {
+      bodyId: source.bodyId,
+      ...(source.bodyName ? { bodyName: source.bodyName } : {}),
+      kind: "sweep",
+      profile: {
+        // placementFrame is authoritative; XY is the canonical local basis.
+        sketchPlane: "XY",
+        profile: source.profile,
+        placementFrame: source.profileFrame
+      },
+      pathSegments: source.path.segments.map((segment) =>
+        mapResolvedSweepPathSegmentToWorld(segment, source.path.frame)
+      )
     };
   }
 

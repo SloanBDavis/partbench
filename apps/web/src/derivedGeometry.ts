@@ -21,6 +21,7 @@ import {
   type DerivedGeometryPrimitiveExtrudeProfile,
   type DerivedGeometryResult,
   type DerivedGeometryRuntime,
+  type DerivedGeometrySweepPathSegment,
   type DerivedGeometryWireExtrudeProfile
 } from "./derivedGeometryRuntime";
 import {
@@ -120,10 +121,7 @@ export interface DerivedSweepGeometrySource extends DerivedAuthoredGeometrySourc
     readonly profile: DerivedGeometryPrimitiveExtrudeProfile;
     readonly placementFrame?: SketchDisplayFrame;
   };
-  readonly pathSegments: readonly {
-    readonly start: readonly [number, number, number];
-    readonly end: readonly [number, number, number];
-  }[];
+  readonly pathSegments: readonly DerivedGeometrySweepPathSegment[];
   readonly placementError?: string;
 }
 

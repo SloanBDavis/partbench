@@ -44,6 +44,7 @@ import {
   type OcctStepExportShapeFactory
 } from "./exactStepExport";
 import { assertRevolveSolidResult } from "./revolveProfile";
+import { assertSweepSolidResult } from "./sweep";
 
 const OCCT_WASM_TEST_TIMEOUT_MS = 120_000;
 
@@ -1074,6 +1075,39 @@ describe("occt-wasm", () => {
     }
   });
 
+  it("rejects null, invalid, shell, and multi-solid sweep results", () => {
+    const solid = "solid";
+    expect(() =>
+      assertSweepSolidResult(false, true, solid, solid, 1)
+    ).not.toThrow();
+    for (const args of [
+      [true, false, "null", solid, 0],
+      [false, false, solid, solid, 1],
+      [false, true, "shell", solid, 0],
+      [false, true, solid, solid, 2]
+    ] as const) {
+      expect(() =>
+        assertSweepSolidResult(args[0], args[1], args[2], args[3], args[4])
+      ).toThrow();
+    }
+    let curvedError: unknown;
+    try {
+      assertSweepSolidResult(
+        false,
+        false,
+        solid,
+        solid,
+        1,
+        "SWEEP_CURVED_GEOMETRY_FAILED"
+      );
+    } catch (error) {
+      curvedError = error;
+    }
+    expect(curvedError).toMatchObject({
+      code: "SWEEP_CURVED_GEOMETRY_FAILED"
+    });
+  });
+
   it(
     "sweeps rectangle and circle profiles along a line as real OCCT solids",
     async () => {
@@ -1129,6 +1163,193 @@ describe("occt-wasm", () => {
       expect(circleMetadata.sourceKind).toBe("sweep");
       expect(circleMetadata.volume).toBeCloseTo(5 * Math.PI, 5);
       expect(circleMetadata.topologyCounts.solidCount).toBe(1);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "rebuilds an attached signed arc sweep across mesh, exact, topology, checkpoint, and STEP",
+    async () => {
+      const profile = {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "rectangle" as const,
+          center: [0, 0] as const,
+          width: 2,
+          height: 1
+        },
+        placementFrame: {
+          origin: [10, 20, 30] as const,
+          uAxis: [1, 0, 0] as const,
+          vAxis: [0, 1, 0] as const
+        }
+      };
+      const pathSegments = [
+        {
+          kind: "arc" as const,
+          start: [10, 20, 30] as const,
+          end: [15, 20, 35] as const,
+          center: [15, 20, 30] as const,
+          normal: [0, 1, 0] as const,
+          sweepAngleDegrees: 90
+        }
+      ];
+      const source = { kind: "sweep" as const, profile, pathSegments };
+      const before = JSON.stringify(source);
+      const [mesh, metadata, topology, checkpoint, step] = await Promise.all([
+        createOcctSweepMesh({ profile, pathSegments }),
+        createOcctExactBodyMetadata({ source }),
+        createOcctExactTopologySnapshot({ source }),
+        createOcctExactTopologyCheckpointPayload({
+          checkpointId: "checkpoint_arc_sweep",
+          bodyId: "body_arc_sweep",
+          source
+        }),
+        createOcctStepExport({
+          units: "mm",
+          bodies: [{ ...source, bodyId: "body_arc_sweep" }]
+        })
+      ]);
+
+      expect(mesh).toMatchObject({ primitive: "sweep" });
+      expect(mesh.vertexCount).toBeGreaterThan(0);
+      expect(metadata.sourceKind).toBe("sweep");
+      expect(metadata.topologyCounts.solidCount).toBe(1);
+      expect(metadata.volume).toBeCloseTo(5 * Math.PI, 4);
+      expect(metadata.bounds.min[0]).toBeGreaterThan(8.9);
+      expect(metadata.bounds.min[1]).toBeCloseTo(19.5, 4);
+      expect(metadata.bounds.min[2]).toBeGreaterThanOrEqual(29.999);
+      expect(metadata.bounds.max[0]).toBeGreaterThan(15);
+      expect(metadata.bounds.max[2]).toBeGreaterThan(35);
+      expect(topology.sourceKind).toBe("sweep");
+      expect(topology.entityCounts.solidCount).toBe(1);
+      expect(checkpoint.sourceKind).toBe("sweep");
+      expect(checkpoint.brepByteLength).toBeGreaterThan(1000);
+      expect(step.bodyCount).toBe(1);
+      expect(step.byteLength).toBeGreaterThan(1000);
+      expect(JSON.stringify(source)).toBe(before);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "preserves negative signed arc sweep orientation",
+    async () => {
+      const profile = {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "circle" as const,
+          center: [0, 0] as const,
+          radius: 0.5
+        }
+      };
+      const pathSegments = [
+        {
+          kind: "arc" as const,
+          start: [0, 0, 0] as const,
+          end: [5, 0, -5] as const,
+          center: [5, 0, 0] as const,
+          normal: [0, 1, 0] as const,
+          sweepAngleDegrees: -90
+        }
+      ];
+      const metadata = await createOcctExactBodyMetadata({
+        source: { kind: "sweep", profile, pathSegments }
+      });
+
+      expect(metadata.topologyCounts.solidCount).toBe(1);
+      expect(metadata.volume).toBeCloseTo((5 * Math.PI * Math.PI) / 8, 4);
+      expect(metadata.bounds.min[2]).toBeLessThan(-5);
+      expect(metadata.bounds.max[2]).toBeLessThanOrEqual(0.001);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "builds one exact solid from a G1 line/arc chain in both orientations",
+    async () => {
+      const forward = [
+        {
+          kind: "line" as const,
+          start: [0, 0, 0] as const,
+          end: [0, 0, 2] as const
+        },
+        {
+          kind: "arc" as const,
+          start: [0, 0, 2] as const,
+          end: [1, 0, 3] as const,
+          center: [1, 0, 2] as const,
+          normal: [0, -1, 0] as const,
+          sweepAngleDegrees: -90
+        }
+      ];
+      const reverse = [
+        {
+          kind: "arc" as const,
+          start: [1, 0, 3] as const,
+          end: [0, 0, 2] as const,
+          center: [1, 0, 2] as const,
+          normal: [0, -1, 0] as const,
+          sweepAngleDegrees: 90
+        },
+        {
+          kind: "line" as const,
+          start: [0, 0, 2] as const,
+          end: [0, 0, 0] as const
+        }
+      ];
+      const createProfile = (
+        origin: readonly [number, number, number],
+        uAxis: readonly [number, number, number] = [1, 0, 0],
+        vAxis: readonly [number, number, number] = [0, 1, 0]
+      ) => ({
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "circle" as const,
+          center: [0, 0] as const,
+          radius: 0.2
+        },
+        placementFrame: {
+          origin,
+          uAxis,
+          vAxis
+        }
+      });
+      const [forwardMesh, reverseMesh, forwardMetadata, reverseMetadata] =
+        await Promise.all([
+          createOcctSweepMesh({
+            profile: createProfile([0, 0, 0]),
+            pathSegments: forward
+          }),
+          createOcctSweepMesh({
+            profile: createProfile([1, 0, 3], [0, -1, 0], [0, 0, 1]),
+            pathSegments: reverse
+          }),
+          createOcctExactBodyMetadata({
+            source: {
+              kind: "sweep",
+              profile: createProfile([0, 0, 0]),
+              pathSegments: forward
+            }
+          }),
+          createOcctExactBodyMetadata({
+            source: {
+              kind: "sweep",
+              profile: createProfile([1, 0, 3], [0, -1, 0], [0, 0, 1]),
+              pathSegments: reverse
+            }
+          })
+        ]);
+
+      expect(forwardMesh.triangleCount).toBeGreaterThan(0);
+      expect(reverseMesh.triangleCount).toBeGreaterThan(0);
+      expect(forwardMetadata.topologyCounts.solidCount).toBe(1);
+      expect(reverseMetadata.topologyCounts.solidCount).toBe(1);
+      expect(forwardMetadata.volume).toBeCloseTo(reverseMetadata.volume, 5);
+      expect(forwardMetadata.volume).toBeCloseTo(
+        (2 + Math.PI / 2) * Math.PI * 0.2 * 0.2,
+        3
+      );
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );

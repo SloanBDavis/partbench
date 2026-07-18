@@ -937,6 +937,234 @@ describe("derivedGeometry", () => {
     );
   });
 
+  it("derives oriented single-arc sweep paths as analytic world recipes", async () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "arc_profile_sketch",
+        name: "Arc profile",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "arc_profile_sketch",
+        id: "arc_profile",
+        center: [0, 0],
+        radius: 0.25
+      },
+      {
+        op: "sketch.create",
+        id: "arc_path_sketch",
+        name: "Arc paths",
+        plane: "XZ"
+      },
+      {
+        op: "sketch.addArc",
+        sketchId: "arc_path_sketch",
+        id: "forward_arc",
+        definition: {
+          kind: "centerAngles",
+          center: [-1, 0],
+          radius: 1,
+          startAngleDegrees: 0,
+          sweepAngleDegrees: 90
+        }
+      },
+      {
+        op: "sketch.addArc",
+        sketchId: "arc_path_sketch",
+        id: "reverse_arc",
+        definition: {
+          kind: "centerAngles",
+          center: [-1, 0],
+          radius: 1,
+          startAngleDegrees: -90,
+          sweepAngleDegrees: 90
+        }
+      },
+      {
+        op: "feature.sweep",
+        id: "forward_arc_sweep",
+        bodyId: "forward_arc_body",
+        profile: {
+          kind: "entity",
+          sketchId: "arc_profile_sketch",
+          entityId: "arc_profile"
+        },
+        path: {
+          kind: "entity",
+          sketchId: "arc_path_sketch",
+          entityId: "forward_arc",
+          orientation: "forward"
+        }
+      },
+      {
+        op: "feature.sweep",
+        id: "reverse_arc_sweep",
+        bodyId: "reverse_arc_body",
+        profile: {
+          kind: "entity",
+          sketchId: "arc_profile_sketch",
+          entityId: "arc_profile"
+        },
+        path: {
+          kind: "entity",
+          sketchId: "arc_path_sketch",
+          entityId: "reverse_arc",
+          orientation: "reverse"
+        }
+      }
+    ]);
+
+    const sources = createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      getProjectStructureFeatures(engine)
+    );
+    const forward = sources.find((source) => source.id === "forward_arc_body");
+    const reverse = sources.find((source) => source.id === "reverse_arc_body");
+
+    expect(forward).toMatchObject({
+      kind: "sweep",
+      pathSegments: [
+        {
+          kind: "arc",
+          start: [0, 0, 0],
+          end: [-1, 0, 1],
+          center: [-1, 0, 0],
+          normal: [0, -1, 0],
+          sweepAngleDegrees: 90
+        }
+      ]
+    });
+    expect(reverse).toMatchObject({
+      kind: "sweep",
+      pathSegments: [
+        {
+          kind: "arc",
+          start: [0, 0, 0],
+          end: [-1, 0, -1],
+          center: [-1, 0, 0],
+          normal: [0, -1, 0],
+          sweepAngleDegrees: -90
+        }
+      ]
+    });
+
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    await deriveGeometrySourceMesh(runtime, forward!);
+    expect(runtime.inputs.at(-1)).toEqual(
+      expect.objectContaining({
+        id: "forward_arc_body",
+        pathSegments: forward?.kind === "sweep" ? forward.pathSegments : []
+      })
+    );
+  });
+
+  it("derives ordered G1 line/arc chain recipes and drops invalid edited paths", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "chain_profile",
+        name: "Profile",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "chain_profile",
+        id: "profile",
+        center: [0, 0],
+        radius: 0.2
+      },
+      { op: "sketch.create", id: "chain_path", name: "Path", plane: "XZ" },
+      {
+        op: "sketch.addLine",
+        sketchId: "chain_path",
+        id: "lead",
+        start: [0, 0],
+        end: [0, 2]
+      },
+      {
+        op: "sketch.addArc",
+        sketchId: "chain_path",
+        id: "bend",
+        definition: {
+          kind: "centerAngles",
+          center: [1, 2],
+          radius: 1,
+          startAngleDegrees: 180,
+          sweepAngleDegrees: -180
+        }
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "chain_path",
+        id: "tail",
+        start: [2, 2],
+        end: [2, 0]
+      },
+      {
+        op: "feature.sweep",
+        id: "chain_sweep",
+        bodyId: "chain_body",
+        profile: {
+          kind: "entity",
+          sketchId: "chain_profile",
+          entityId: "profile"
+        },
+        path: {
+          kind: "chain",
+          sketchId: "chain_path",
+          segments: ["lead", "bend", "tail"].map((entityId) => ({
+            entityId,
+            orientation: "forward"
+          }))
+        }
+      }
+    ]);
+
+    const source = createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      getProjectStructureFeatures(engine)
+    ).find((candidate) => candidate.id === "chain_body");
+    expect(source).toMatchObject({
+      kind: "sweep",
+      pathSegments: [
+        { kind: "line", start: [0, 0, 0], end: [0, 0, 2] },
+        {
+          kind: "arc",
+          start: [0, 0, 2],
+          end: [2, 0, 2],
+          center: [1, 0, 2],
+          normal: [0, -1, 0],
+          sweepAngleDegrees: -180
+        },
+        { kind: "line", start: [2, 0, 2], end: [2, 0, 0] }
+      ]
+    });
+
+    engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "chain_path",
+      entity: {
+        id: "tail",
+        kind: "line",
+        start: [2, 2],
+        end: [3, 2],
+        construction: false
+      }
+    });
+    expect(
+      createDerivedGeometrySourcesFromDocument(
+        engine.getDocument(),
+        getProjectStructureFeatures(engine)
+      ).some((candidate) => candidate.id === "chain_body")
+    ).toBe(false);
+  });
+
   it("derives and executes a loft source from separated profile sketches", async () => {
     const engine = new CadEngine();
     engine.applyBatch([

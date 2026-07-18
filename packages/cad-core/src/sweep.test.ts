@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   CAD_PROJECT_FORMAT_VERSION_V20,
   CadEngine,
+  DEFAULT_PART_ID,
+  createResolvedSweepSource,
   exportCadProject,
   importCadProject
 } from "./index";
@@ -161,7 +163,12 @@ describe("sweep feature", () => {
         {
           op: "feature.updateSweep",
           id: "feat_sweep_construction",
-          pathEntityIds: ["path"]
+          path: {
+            kind: "entity",
+            sketchId: "sketch_path",
+            entityId: "path",
+            orientation: "forward"
+          }
         }
       ]
     });
@@ -265,7 +272,7 @@ describe("sweep feature", () => {
       ).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            path: "pathEntityIds",
+            path: "path",
             editable: true,
             commitOperation: "feature.updateSweep"
           })
@@ -282,7 +289,12 @@ describe("sweep feature", () => {
       engine.apply({
         op: "feature.updateSweep",
         id: "feat_sweep",
-        pathEntityIds: ["path_next"]
+        path: {
+          kind: "entity",
+          sketchId: "sketch_path",
+          entityId: "path_next",
+          orientation: "forward"
+        }
       });
       expect(engine.getDocument().features.get("feat_sweep")).toMatchObject({
         path: {
@@ -328,5 +340,213 @@ describe("sweep feature", () => {
       expect(response).toMatchObject({ ok: false, error: { code } });
       expect(engine.getDocument().features.size).toBe(0);
     }
+  });
+
+  it("creates ordered G1 line/arc chains in both orientations and resolves one exact recipe", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "profiles", name: "Profiles", plane: "XY" },
+      {
+        op: "sketch.addCircle",
+        sketchId: "profiles",
+        id: "forward_profile",
+        center: [0, 0],
+        radius: 0.2
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "profiles",
+        id: "reverse_profile",
+        center: [2, 0],
+        radius: 0.2
+      },
+      { op: "sketch.create", id: "chain", name: "Chain", plane: "XZ" },
+      {
+        op: "sketch.addLine",
+        sketchId: "chain",
+        id: "lead",
+        start: [0, 0],
+        end: [0, 2]
+      },
+      {
+        op: "sketch.addArc",
+        sketchId: "chain",
+        id: "bend",
+        definition: {
+          kind: "centerAngles",
+          center: [1, 2],
+          radius: 1,
+          startAngleDegrees: 180,
+          sweepAngleDegrees: -180
+        }
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "chain",
+        id: "tail",
+        start: [2, 2],
+        end: [2, 0]
+      }
+    ]);
+    const beforeDryRun = exportCadProject(engine);
+    const forwardPath = {
+      kind: "chain" as const,
+      sketchId: "chain",
+      segments: ["lead", "bend", "tail"].map((entityId) => ({
+        entityId,
+        orientation: "forward" as const
+      }))
+    };
+    const reversePath = {
+      kind: "chain" as const,
+      sketchId: "chain",
+      segments: ["tail", "bend", "lead"].map((entityId) => ({
+        entityId,
+        orientation: "reverse" as const
+      }))
+    };
+    const dryRun = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "feature.sweep",
+          id: "forward_sweep",
+          bodyId: "forward_body",
+          profile: {
+            kind: "entity",
+            sketchId: "profiles",
+            entityId: "forward_profile"
+          },
+          path: forwardPath
+        }
+      ]
+    });
+    expect(dryRun).toMatchObject({
+      ok: true,
+      createdBodyIds: ["forward_body"]
+    });
+    expect(exportCadProject(engine)).toEqual(beforeDryRun);
+
+    engine.applyBatch([
+      {
+        op: "feature.sweep",
+        id: "forward_sweep",
+        bodyId: "forward_body",
+        profile: {
+          kind: "entity",
+          sketchId: "profiles",
+          entityId: "forward_profile"
+        },
+        path: forwardPath
+      },
+      {
+        op: "feature.sweep",
+        id: "reverse_sweep",
+        bodyId: "reverse_body",
+        profile: {
+          kind: "entity",
+          sketchId: "profiles",
+          entityId: "reverse_profile"
+        },
+        path: reversePath
+      }
+    ]);
+
+    for (const [featureId, expectedIds] of [
+      ["forward_sweep", ["lead", "bend", "tail"]],
+      ["reverse_sweep", ["tail", "bend", "lead"]]
+    ] as const) {
+      const feature = engine.getDocument().features.get(featureId);
+      expect(feature).toMatchObject({ kind: "sweep", path: { kind: "chain" } });
+      if (feature?.kind !== "sweep") throw new Error("Expected sweep feature.");
+      const recipe = createResolvedSweepSource(
+        engine.getDocument(),
+        feature,
+        DEFAULT_PART_ID
+      );
+      expect(recipe).toMatchObject({
+        sourceKind: "authoredSweep",
+        pathEntityIds: expectedIds,
+        path: { closed: false },
+        frameMode: "correctedFrenet",
+        solidPolicy: "exactlyOne"
+      });
+      expect(recipe?.path.segments).toHaveLength(3);
+    }
+  });
+
+  it("uses V17 feature diagnostics for non-G1 chains and invalid profile/path frames", () => {
+    const engine = createSweepEngine("circle");
+    engine.applyBatch([
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_path",
+        id: "g0",
+        start: [0, 8],
+        end: [1, 8]
+      },
+      {
+        op: "sketch.addArc",
+        sketchId: "sketch_path",
+        id: "offset_arc",
+        definition: {
+          kind: "centerAngles",
+          center: [0, 0],
+          radius: 1,
+          startAngleDegrees: 0,
+          sweepAngleDegrees: 90
+        }
+      }
+    ]);
+    const profile = {
+      kind: "entity" as const,
+      sketchId: "sketch_profile",
+      entityId: "profile"
+    };
+    const nonG1 = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "feature.sweep",
+          profile,
+          path: {
+            kind: "chain",
+            sketchId: "sketch_path",
+            segments: ["path", "g0"].map((entityId) => ({
+              entityId,
+              orientation: "forward" as const
+            }))
+          }
+        }
+      ]
+    });
+    expect(nonG1).toMatchObject({
+      ok: false,
+      error: { code: "SWEEP_CURVED_PATH_UNSUPPORTED" }
+    });
+
+    const invalidFrame = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "feature.sweep",
+          profile,
+          path: {
+            kind: "entity",
+            sketchId: "sketch_path",
+            entityId: "offset_arc",
+            orientation: "forward"
+          }
+        }
+      ]
+    });
+    expect(invalidFrame).toMatchObject({
+      ok: false,
+      error: { code: "SWEEP_PROFILE_PATH_FRAME_INVALID" }
+    });
+    expect(engine.getDocument().features.size).toBe(0);
   });
 });

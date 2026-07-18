@@ -416,7 +416,7 @@ export type CadOp =
   | FeatureCircularPatternOp
   | FeatureMirrorOp
   | FeatureShellOp
-  | FeatureSweepOp
+  | FeatureSweepCommandInput
   | FeatureLoftOp
   | FeatureUpdateExtrudeCommandInput
   | FeatureUpdateRevolveCommandInput
@@ -427,7 +427,7 @@ export type CadOp =
   | FeatureUpdateCircularPatternOp
   | FeatureUpdateMirrorOp
   | FeatureUpdateShellOp
-  | FeatureUpdateSweepOp
+  | FeatureUpdateSweepCommandInput
   | FeatureUpdateLoftOp
   | FeatureDeleteOp
   | ReferenceNameGeneratedOp
@@ -1901,8 +1901,10 @@ export type CadBatchValidationErrorCode =
   | "SWEEP_PROFILE_UNSUPPORTED"
   | "SWEEP_PATH_UNSUPPORTED"
   | "SWEEP_PATH_DISCONNECTED"
+  | "SWEEP_CURVED_PATH_UNSUPPORTED"
   | "SWEEP_PROFILE_PATH_FRAME_INVALID"
   | "SWEEP_GEOMETRY_FAILED"
+  | "SWEEP_CURVED_GEOMETRY_FAILED"
   | "SWEEP_ENTITY_UNRESOLVED"
   | "LOFT_SECTION_UNSUPPORTED"
   | "LOFT_SECTION_UNRESOLVED"
@@ -3615,14 +3617,23 @@ export interface CadShellFeatureSummary {
 
 export interface CadSweepFeatureSource {
   readonly type: "sweepFeature";
+  /** Normalized V21 source, including ordered traversal orientation. */
+  readonly profile: SketchEntityProfileRef;
+  readonly path: SketchPathRef;
+  /** V20-compatible flattened source fields. */
   readonly profileSketchId: SketchId;
   readonly profileEntityId: SketchEntityId;
   readonly pathSketchId: SketchId;
   readonly pathEntityIds: readonly SketchEntityId[];
 }
 
-export interface CadSweepFeatureSummary extends SweepFeatureSnapshot {
+export interface CadSweepFeatureSummary extends SweepFeatureV21 {
   readonly partId: PartId;
+  /** V20-compatible flattened source fields. */
+  readonly profileSketchId: SketchId;
+  readonly profileEntityId: SketchEntityId;
+  readonly pathSketchId: SketchId;
+  readonly pathEntityIds: readonly SketchEntityId[];
   readonly source: CadSweepFeatureSource;
 }
 
@@ -3735,6 +3746,9 @@ export interface CadFeatureShellEditProposal {
 
 export interface CadFeatureSweepEditProposal {
   readonly kind: "sweep";
+  readonly profile?: SketchEntityProfileRef;
+  readonly path?: SketchPathRef;
+  /** V20-compatible proposal fields. */
   readonly profileSketchId?: SketchId;
   readonly profileEntityId?: SketchEntityId;
   readonly pathSketchId?: SketchId;
@@ -4678,6 +4692,10 @@ export interface CadShellBodySource {
 export interface CadSweepBodySource {
   readonly type: "sweepFeature";
   readonly featureId: FeatureId;
+  /** Normalized V21 source, including ordered traversal orientation. */
+  readonly profile: SketchEntityProfileRef;
+  readonly path: SketchPathRef;
+  /** V20-compatible flattened source fields. */
   readonly profileSketchId: SketchId;
   readonly profileEntityId: SketchEntityId;
   readonly pathSketchId: SketchId;
@@ -6675,6 +6693,7 @@ export type CadExportReadinessStatus = "supported" | "deferred" | "unavailable";
 export type CadExportBodySourceKind =
   | "authoredExtrude"
   | "authoredRevolve"
+  | "authoredSweep"
   | "authoredHole"
   | "authoredChamfer"
   | "authoredFillet"
@@ -6867,9 +6886,52 @@ export interface CadExactExportRevolveBodySource {
   readonly solidPolicy: "exactlyOne";
 }
 
+export interface CadExactExportResolvedSweepPath {
+  readonly frame: {
+    readonly origin: Vec3;
+    readonly uAxis: Vec3;
+    readonly vAxis: Vec3;
+  };
+  readonly closed: false;
+  readonly segments: readonly CadExactExportResolvedWireSegment[];
+  readonly sourceIdentity: string;
+}
+
+export interface CadExactExportSweepBodySource {
+  readonly bodyId: BodyId;
+  readonly bodyName?: string;
+  readonly sourceKind: "authoredSweep";
+  readonly featureId: FeatureId;
+  readonly profileSketchId: SketchId;
+  readonly profileEntityId: SketchEntityId;
+  readonly pathSketchId: SketchId;
+  readonly pathEntityIds: readonly SketchEntityId[];
+  readonly profileFrame: {
+    readonly origin: Vec3;
+    readonly uAxis: Vec3;
+    readonly vAxis: Vec3;
+  };
+  readonly profile:
+    | {
+        readonly kind: "rectangle";
+        readonly center: Vec2;
+        readonly width: number;
+        readonly height: number;
+      }
+    | {
+        readonly kind: "circle";
+        readonly center: Vec2;
+        readonly radius: number;
+      };
+  readonly path: CadExactExportResolvedSweepPath;
+  readonly frameMode: "correctedFrenet";
+  readonly solidPolicy: "exactlyOne";
+}
+
 export type CadExactExportBodySource =
   | CadExactExportExtrudeBodySource
-  | CadExactExportRevolveBodySource;
+  | CadExactExportRevolveBodySource
+  | CadExactExportSweepBodySource;
 
 export interface CadExportFormatReadiness {
   readonly format: CadExportFormatId;

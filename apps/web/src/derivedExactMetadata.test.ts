@@ -293,6 +293,41 @@ describe("derivedExactMetadata", () => {
     });
   });
 
+  it("keeps the same analytic arc sweep recipe for exact metadata", () => {
+    const source: DerivedSweepGeometrySource = {
+      id: "body_arc_sweep",
+      kind: "sweep",
+      profile: {
+        sketchPlane: "XY",
+        profile: { kind: "circle", center: [0, 0], radius: 0.25 },
+        placementFrame: {
+          origin: [0, 0, 3],
+          uAxis: [1, 0, 0],
+          vAxis: [0, 1, 0]
+        }
+      },
+      pathSegments: [
+        {
+          kind: "arc",
+          start: [0, 0, 3],
+          end: [-1, 0, 4],
+          center: [-1, 0, 3],
+          normal: [0, -1, 0],
+          sweepAngleDegrees: 90
+        }
+      ]
+    };
+
+    expect(createExactMetadataRuntimeInput(source)).toEqual({
+      id: source.id,
+      source: {
+        kind: "sweep",
+        profile: source.profile,
+        pathSegments: source.pathSegments
+      }
+    });
+  });
+
   it("creates cache keys from the same authored source inputs as mesh sources", () => {
     const source = createExtrudeSource("body_rect_1");
     const deeperSource: DerivedExtrudeGeometrySource = {

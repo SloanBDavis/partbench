@@ -501,6 +501,17 @@ function createAffectedSummary(
       }
     }
 
+    if (feature.kind === "sweep") {
+      affectedSketchIds.add(feature.profile.sketchId);
+      affectedSketchEntityIds.add(feature.profile.entityId);
+      affectedSketchIds.add(feature.path.sketchId);
+      for (const entityId of feature.path.kind === "entity"
+        ? [feature.path.entityId]
+        : feature.path.segments.map((segment) => segment.entityId)) {
+        affectedSketchEntityIds.add(entityId);
+      }
+    }
+
     if ("circleEntityId" in feature) {
       affectedSketchEntityIds.add(feature.circleEntityId);
     }

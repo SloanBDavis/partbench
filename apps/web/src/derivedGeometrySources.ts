@@ -4,6 +4,7 @@ import type {
   SketchSnapshot
 } from "@web-cad/cad-core";
 import {
+  createResolvedSweepSource,
   createResolvedWireExtrudeRecipe,
   createResolvedWireRevolveRecipe,
   resolveMirrorPlaneFrame,
@@ -37,6 +38,7 @@ import {
   mapSketchPointToDisplayFrame,
   type SketchDisplayFrame
 } from "./sketchDisplayFrames";
+import { mapResolvedSweepPathSegmentToWorld } from "./sweepGeometryRecipe";
 
 export function createDerivedGeometrySourcesFromDocument(
   document: CadDocument,
@@ -112,7 +114,8 @@ export function createAuthoredFeatureDerivedGeometrySources(
       features,
       sketches,
       generatedFacesByKey,
-      consumedBodyIds
+      consumedBodyIds,
+      referenceDocument
     ),
     ...createLoftDerivedGeometrySources(
       features,
@@ -254,7 +257,8 @@ export function createSweepDerivedGeometrySources(
     string,
     CadGeneratedFaceReference
   > = new Map(),
-  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features)
+  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features),
+  referenceDocument?: CadDocument
 ): readonly DerivedSweepGeometrySource[] {
   return features
     .filter(
@@ -266,25 +270,14 @@ export function createSweepDerivedGeometrySources(
       const profileSketch = sketches.find(
         (sketch) => sketch.id === feature.profileSketchId
       );
-      const profileEntity = profileSketch?.entities.find(
-        (entity) => entity.id === feature.profileEntityId
-      );
       const pathSketch = sketches.find(
         (sketch) => sketch.id === feature.pathSketchId
       );
-      const pathEntities = feature.pathEntityIds.map((entityId) =>
-        pathSketch?.entities.find((entity) => entity.id === entityId)
-      );
+      const resolved = referenceDocument
+        ? createResolvedSweepSource(referenceDocument, feature, feature.partId)
+        : undefined;
 
-      if (
-        !profileSketch ||
-        !profileEntity ||
-        (profileEntity.kind !== "rectangle" &&
-          profileEntity.kind !== "circle") ||
-        !pathSketch ||
-        pathEntities.length !== 1 ||
-        pathEntities[0]?.kind !== "line"
-      ) {
+      if (!profileSketch || !pathSketch || !resolved) {
         return undefined;
       }
 
@@ -301,37 +294,29 @@ export function createSweepDerivedGeometrySources(
       const pathFrame =
         pathPlacement.placementFrame ??
         createDefaultSketchDisplayFrame(pathSketch.plane);
-      const path = pathEntities[0];
-      const profile =
-        profileEntity.kind === "rectangle"
-          ? {
-              kind: profileEntity.kind,
-              center: profileEntity.center,
-              width: profileEntity.width,
-              height: profileEntity.height
-            }
-          : {
-              kind: profileEntity.kind,
-              center: profileEntity.center,
-              radius: profileEntity.radius
-            };
+      const preserveLegacyLineShape =
+        feature.path.kind === "entity" &&
+        resolved.path.segments[0]?.kind === "line";
 
       return {
         id: feature.bodyId,
         kind: "sweep" as const,
         profile: {
           sketchPlane: profileSketch.plane,
-          profile,
+          profile: resolved.profile,
           ...(profilePlacement.placementFrame
             ? { placementFrame: profilePlacement.placementFrame }
             : {})
         },
-        pathSegments: [
-          {
-            start: mapSketchPointToDisplayFrame(pathFrame, path.start),
-            end: mapSketchPointToDisplayFrame(pathFrame, path.end)
-          }
-        ],
+        pathSegments: resolved.path.segments.map((segment) => {
+          const worldSegment = mapResolvedSweepPathSegmentToWorld(
+            segment,
+            pathFrame
+          );
+          return preserveLegacyLineShape && worldSegment.kind === "line"
+            ? { start: worldSegment.start, end: worldSegment.end }
+            : worldSegment;
+        }),
         ...(profilePlacement.placementError || pathPlacement.placementError
           ? {
               placementError:

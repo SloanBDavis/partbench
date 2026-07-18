@@ -225,11 +225,29 @@ export interface DerivedGeometrySweepInput {
     readonly profile: DerivedGeometryPrimitiveExtrudeProfile;
     readonly placementFrame?: DerivedGeometryExtrudePlacementFrame;
   };
-  readonly pathSegments: readonly {
-    readonly start: readonly [number, number, number];
-    readonly end: readonly [number, number, number];
-  }[];
+  readonly pathSegments: readonly DerivedGeometrySweepPathSegment[];
 }
+
+export type DerivedGeometrySweepPathSegment =
+  | {
+      /** V16-compatible single-line recipe. */
+      readonly start: readonly [number, number, number];
+      readonly end: readonly [number, number, number];
+      readonly kind?: never;
+    }
+  | {
+      readonly kind: "line";
+      readonly start: readonly [number, number, number];
+      readonly end: readonly [number, number, number];
+    }
+  | {
+      readonly kind: "arc";
+      readonly start: readonly [number, number, number];
+      readonly end: readonly [number, number, number];
+      readonly center: readonly [number, number, number];
+      readonly normal: readonly [number, number, number];
+      readonly sweepAngleDegrees: number;
+    };
 
 export interface DerivedGeometryLoftInput {
   readonly id: string;

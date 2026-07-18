@@ -6,6 +6,7 @@ import type {
   CadExactExportBooleanResultSource,
   CadExactExportBodySource,
   CadExactExportPrimitiveExtrudeSource,
+  CadExactExportSweepBodySource,
   CadExactExportWireExtrudeSource,
   CadExactExportSourceIdentityStatus,
   CadExactExportWriterStatus,
@@ -29,6 +30,7 @@ import type {
   CadDocument,
   ExtrudeFeature,
   RevolveFeature,
+  SweepFeature,
   SketchEntity
 } from "./index";
 import {
@@ -42,6 +44,7 @@ import {
 } from "./wireExtrudeProfile";
 import { createBodyTopology } from "./bodyTopology";
 import { createResolvedWireRevolveProfile } from "./wireRevolveProfile";
+import { createResolvedSweepSource } from "./sweepProfile";
 
 interface ProjectExportReadinessInput {
   readonly document: CadDocument;
@@ -665,6 +668,52 @@ function classifyBodySource(
     }
   }
 
+  if (body.source.type === "sweepFeature") {
+    const feature = document.features.get(body.featureId);
+    const isCurvedV17Sweep =
+      feature?.kind === "sweep" &&
+      (feature.path.kind === "chain" ||
+        document.sketches
+          .get(feature.path.sketchId)
+          ?.entities.get(feature.path.entityId)?.kind === "arc");
+    const resolved =
+      feature?.kind === "sweep" && isCurvedV17Sweep
+        ? createResolvedSweepSource(document, feature, body.partId, body.name)
+        : undefined;
+    if (!resolved) {
+      return {
+        sourceKind,
+        sourceStatus: "deferred",
+        diagnostics: [
+          createBodyDiagnostic(
+            "EXPORT_RESULT_BODY_DEFERRED",
+            "deferred",
+            `Sweep body ${body.id} is source-modeled, but only V17 curved sweep exact export is enabled.`,
+            body,
+            sourceKind,
+            {
+              expected: "resolved V17 arc or G1 line/arc-chain sweep",
+              received: "legacy or unresolved sweep"
+            }
+          )
+        ]
+      };
+    }
+    return {
+      sourceKind,
+      sourceStatus: "supported",
+      diagnostics: [
+        createBodyDiagnostic(
+          "EXPORT_BODY_SOURCE_SUPPORTED",
+          "supported",
+          `Authored curved sweep body ${body.id} has a resolved exact STEP recipe.`,
+          body,
+          sourceKind
+        )
+      ]
+    };
+  }
+
   if (
     body.source.type === "sketchRevolveFeature" ||
     body.source.type === "sketchHoleFeature" ||
@@ -764,9 +813,10 @@ function getBodyExportSourceKind(
     case "linearPatternFeature":
     case "circularPatternFeature":
     case "mirrorFeature":
-    case "sweepFeature":
     case "loftFeature":
       return "unresolvedSource";
+    case "sweepFeature":
+      return "authoredSweep";
   }
 }
 
@@ -896,6 +946,10 @@ function createExactExportBodySource(
 
   if (feature.kind === "revolve") {
     return createExactRevolveBodySource(document, body, feature);
+  }
+
+  if (feature.kind === "sweep") {
+    return createExactSweepBodySource(document, body, feature);
   }
 
   if (feature.kind !== "extrude") return undefined;
@@ -1052,6 +1106,19 @@ function createExactRevolveBodySource(
     angleDegrees: feature.angleDegrees,
     solidPolicy: "exactlyOne"
   };
+}
+
+function createExactSweepBodySource(
+  document: CadDocument,
+  body: CadExportBodyReadiness,
+  feature: SweepFeature
+): CadExactExportSweepBodySource | undefined {
+  return createResolvedSweepSource(
+    document,
+    feature,
+    body.partId,
+    body.bodyName
+  );
 }
 
 function hasCurrentReadyExactResultEvidence(

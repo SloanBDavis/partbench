@@ -27,6 +27,7 @@ import type {
   SketchEntityId,
   SketchId,
   SketchProfileRef,
+  SketchPathRef,
   FeatureEditabilityQueryResponse
 } from "@web-cad/cad-protocol";
 
@@ -42,6 +43,7 @@ import {
 import { createTopologyAnchorReferenceChangesForBody } from "./topologyReferenceHealth";
 import { resolveWireExtrudeProfile } from "./wireExtrudeProfile";
 import { resolveWireRevolveProfile } from "./wireRevolveProfile";
+import { resolveSweep } from "./sweepProfile";
 import type { CadDocument } from "./index";
 
 const SOURCE_BOUNDARY_NOTE =
@@ -299,14 +301,29 @@ function createSweepEditabilityResponse(
 ): FeatureEditabilityQueryResponse {
   const proposal =
     options.proposedEdit?.kind === "sweep" ? options.proposedEdit : undefined;
-  const profileSketchId = proposal?.profileSketchId ?? feature.profileSketchId;
-  const profileEntityId = proposal?.profileEntityId ?? feature.profileEntityId;
-  const pathSketchId = proposal?.pathSketchId ?? feature.pathSketchId;
-  const pathEntityIds = proposal?.pathEntityIds ?? feature.pathEntityIds;
-  const profileEntity = options.document.sketches
-    .get(profileSketchId)
-    ?.entities.get(profileEntityId);
-  const pathSketch = options.document.sketches.get(pathSketchId);
+  const profile =
+    proposal?.profile ??
+    (proposal?.profileSketchId || proposal?.profileEntityId
+      ? {
+          kind: "entity" as const,
+          sketchId: proposal.profileSketchId ?? feature.profile.sketchId,
+          entityId: proposal.profileEntityId ?? feature.profile.entityId
+        }
+      : feature.profile);
+  const path: SketchPathRef =
+    proposal?.path ??
+    (proposal?.pathSketchId || proposal?.pathEntityIds
+      ? {
+          kind: "entity" as const,
+          sketchId: proposal.pathSketchId ?? feature.path.sketchId,
+          entityId:
+            proposal.pathEntityIds?.[0] ??
+            (feature.path.kind === "entity"
+              ? feature.path.entityId
+              : feature.path.segments[0]!.entityId),
+          orientation: "forward" as const
+        }
+      : feature.path);
   const blockingDiagnostics = createResultBodyBlockingDiagnostics(
     feature.id,
     feature.bodyId,
@@ -315,38 +332,21 @@ function createSweepEditabilityResponse(
     "feature.updateSweep"
   );
 
-  if (
-    !profileEntity ||
-    (profileEntity.kind !== "rectangle" && profileEntity.kind !== "circle")
-  ) {
+  const resolution = resolveSweep(
+    options.document as CadDocument,
+    profile,
+    path
+  );
+  if (!resolution.ok) {
     blockingDiagnostics.push(
       createDiagnostic({
         code: "FEATURE_EDIT_INVALID_PROPOSAL",
         severity: "blocker",
-        message: "Sweep profile must resolve to a rectangle or circle entity.",
+        message: resolution.message,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        sketchId: profileSketchId,
-        sketchEntityId: profileEntityId
-      })
-    );
-  }
-
-  if (
-    !pathSketch ||
-    pathEntityIds.length !== 1 ||
-    pathEntityIds.some(
-      (entityId) => pathSketch.entities.get(entityId)?.kind !== "line"
-    )
-  ) {
-    blockingDiagnostics.push(
-      createDiagnostic({
-        code: "FEATURE_EDIT_INVALID_PROPOSAL",
-        severity: "blocker",
-        message: "Sweep path must resolve to exactly one line entity.",
-        featureId: feature.id,
-        bodyId: feature.bodyId,
-        sketchId: pathSketchId
+        sketchId: resolution.sketchId,
+        sketchEntityId: resolution.sketchEntityId
       })
     );
   }
@@ -378,10 +378,8 @@ function createSweepEditabilityResponse(
     : [];
   const diagnostics = [...supportDiagnostics, ...blockingDiagnostics];
   const fields = [
-    ["profileSketchId", "Profile sketch", feature.profileSketchId],
-    ["profileEntityId", "Profile entity", feature.profileEntityId],
-    ["pathSketchId", "Path sketch", feature.pathSketchId],
-    ["pathEntityIds", "Path entities", feature.pathEntityIds.join(", ")]
+    ["profile", "Profile", JSON.stringify(feature.profile)],
+    ["path", "Path", JSON.stringify(feature.path)]
   ].map(([path, label, currentValue]) => ({
     path: path!,
     label: label!,
@@ -409,7 +407,7 @@ function createSweepEditabilityResponse(
     dryRunDiagnostics: blockingDiagnostics,
     commitOperation: "feature.updateSweep",
     affected: createAffectedSummary(
-      [profileSketchId, pathSketchId],
+      [profile.sketchId, path.sketchId],
       [feature.id],
       [feature.bodyId],
       countGeneratedReferences(options, feature.bodyId),

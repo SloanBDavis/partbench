@@ -340,6 +340,29 @@ describe("geometry-worker", () => {
     });
   });
 
+  it("preserves one signed analytic arc in a sweep worker request", () => {
+    const pathSegments = [
+      {
+        kind: "arc" as const,
+        start: [0, 0, 0] as const,
+        end: [5, 0, 5] as const,
+        center: [5, 0, 0] as const,
+        normal: [0, 1, 0] as const,
+        sweepAngleDegrees: 90
+      }
+    ];
+    const request = createSweepWorkerRequest({
+      id: "worker_req_arc_sweep",
+      profile: {
+        sketchPlane: "XY",
+        profile: { kind: "circle", center: [0, 0], radius: 0.5 }
+      },
+      pathSegments
+    });
+
+    expect(request.payload.pathSegments).toEqual(pathSegments);
+  });
+
   it("creates a typed loft feature worker request", () => {
     const sections = [
       {
