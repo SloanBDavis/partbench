@@ -13,7 +13,7 @@ The current implementation source of truth is:
 - `docs/v14.md`
 - `docs/v15.md`
 - `docs/v16.md` — completed V16 release record
-- `docs/v17.md` — approved composite sketch profiles, arcs, and curved sweep paths release contract
+- `docs/v17.md` — completed composite sketch profiles, arcs, and curved sweep paths release record
 - `AGENTS.md`
 
 When architecture and implementation-plan conflict, follow the implementation plan for the current milestone.
@@ -933,9 +933,12 @@ topology-backed downstream modeling, and V15 STEP import, expanded feature
 families, and parameter expressions releases. Follow
 `docs/implementation-plan.md` for the current implementation source of truth.
 V16 (sweep, loft, pattern depth, expression extensions, and mass properties)
-is complete; its release record is `docs/v16.md`. V17 is the active scoped
-release for composite sketch profiles, circular arcs, and curved sweep paths;
-its binding contract is `docs/v17.md`.
+is complete; its release record is `docs/v16.md`. V17 is also complete for the
+documented composite sketch profile, circular-arc, construction-geometry, and
+curved-sweep support matrix; its release record is `docs/v17.md`. V17 source
+uses minimum-triggered `web-cad.project.v21` while `.wcad` remains
+`partbench.wcad.v2`; the six named `pnpm smoke:v17-*` workflows provide the
+release-level integration proof.
 
 The first implementation should not start with a full CAD UI. It should start with the command engine, WASM kernel bridge, and renderer skeleton.
 

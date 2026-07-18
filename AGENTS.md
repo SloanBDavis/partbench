@@ -17,9 +17,10 @@ The current implementation source of truth is:
 - `docs/v14.md` — completed V14 topology-backed downstream modeling release record
 - `docs/v15.md` — completed V15 STEP import, expanded feature families, and parameter expressions release record
 - `docs/v16.md` — completed V16 sweep, loft, pattern depth, expression extensions, and mass properties release record
-- `docs/v17.md` — approved V17 composite sketch profiles, arcs, and curved sweep paths implementation contract
+- `docs/v17.md` — completed V17 composite sketch profiles, arcs, and curved sweep paths release record
 
-Do not attempt to build the entire architecture at once. Implement only the milestone requested by the user. V16 is complete; follow `docs/v16.md` for compatibility and `docs/v17.md` as the active release contract. Do not weaken a V17 Must row or expose it before its complete vertical slice is implemented.
+Do not attempt to build the entire architecture at once. Implement only the milestone requested by the user. V17 is complete; follow `docs/v16.md` and `docs/v17.md` as compatibility and support-matrix records. Do not weaken a completed V17 Must row or expand beyond its documented matrix without an explicitly approved later milestone.
+The six `pnpm smoke:v17-*` commands recorded in `docs/v17.md` are the named V17 release workflows; V21 remains minimum-triggered rather than the default for every save.
 
 ## Core Architectural Rules
 
