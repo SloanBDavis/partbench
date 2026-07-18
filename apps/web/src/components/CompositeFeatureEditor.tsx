@@ -10,6 +10,7 @@ import type {
 } from "@web-cad/cad-protocol";
 import { useState } from "react";
 import {
+  areSketchRefsEqual,
   choosePathCandidate,
   chooseProfileCandidate,
   describeSketchPathEndpoints,
@@ -18,6 +19,7 @@ import {
   formatCandidateDiagnostics,
   formatSketchPathMembership,
   formatSketchProfileMembership,
+  getEligibleProfileCandidates,
   reverseSketchPath
 } from "../v17ProductIntegration";
 
@@ -93,12 +95,10 @@ export function CompositeFeatureEditor({
 
   const profileResponse = profileCandidatesBySketchId.get(profileSketchId);
   const allProfileCandidates = profileResponse?.candidates ?? [];
-  const eligibleProfileCandidates =
-    feature.kind === "sweep"
-      ? allProfileCandidates.filter(
-          (candidate) => candidate.profile.kind === "entity"
-        )
-      : allProfileCandidates;
+  const eligibleProfileCandidates = getEligibleProfileCandidates(
+    allProfileCandidates,
+    feature.kind
+  );
   const effectiveProfileResponse = profileResponse
     ? { ...profileResponse, candidates: eligibleProfileCandidates }
     : undefined;
@@ -131,14 +131,19 @@ export function CompositeFeatureEditor({
   const completeProposal =
     feature.kind === "sweep"
       ? proposedProfile?.kind === "entity" && proposedPath
-        ? { kind: "sweep" as const, profile: proposedProfile, path: proposedPath }
+        ? {
+            kind: "sweep" as const,
+            profile: proposedProfile,
+            path: proposedPath
+          }
         : undefined
       : proposedProfile
         ? { kind: feature.kind, profile: proposedProfile }
         : undefined;
   const hasChanges = completeProposal
-    ? !refsEqual(proposedProfile, currentProfile) ||
-      (feature.kind === "sweep" && !refsEqual(proposedPath, currentPath))
+    ? !areSketchRefsEqual(proposedProfile!, currentProfile) ||
+      (feature.kind === "sweep" &&
+        !areSketchRefsEqual(proposedPath!, currentPath!))
     : false;
   const proposalInspection =
     completeProposal && hasChanges
@@ -166,9 +171,14 @@ export function CompositeFeatureEditor({
   }
 
   return (
-    <section className="command-card nested" aria-label="Composite source editor">
+    <section
+      className="command-card nested"
+      aria-label="Composite source editor"
+    >
       <div className="command-card-heading">
-        <h3>{feature.kind === "sweep" ? "Sweep source" : "Composite profile"}</h3>
+        <h3>
+          {feature.kind === "sweep" ? "Sweep source" : "Composite profile"}
+        </h3>
         <span>{hasChanges ? "Proposed" : "Current"}</span>
       </div>
       <SourceMembership
@@ -194,7 +204,9 @@ export function CompositeFeatureEditor({
           }}
         >
           {sketches.map((sketch) => (
-            <option key={sketch.id} value={sketch.id}>{sketch.name}</option>
+            <option key={sketch.id} value={sketch.id}>
+              {sketch.name}
+            </option>
           ))}
         </select>
       </label>
@@ -243,7 +255,9 @@ export function CompositeFeatureEditor({
               }}
             >
               {sketches.map((sketch) => (
-                <option key={sketch.id} value={sketch.id}>{sketch.name}</option>
+                <option key={sketch.id} value={sketch.id}>
+                  {sketch.name}
+                </option>
               ))}
             </select>
           </label>
@@ -314,11 +328,13 @@ export function CompositeFeatureEditor({
 
 function getFeatureProfile(feature: EditableFeature): SketchProfileRef {
   if (feature.kind === "sweep") return feature.profile;
-  return feature.profile ?? {
-    kind: "entity",
-    sketchId: feature.sketchId,
-    entityId: feature.entityId
-  };
+  return (
+    feature.profile ?? {
+      kind: "entity",
+      sketchId: feature.sketchId,
+      entityId: feature.entityId
+    }
+  );
 }
 
 function SourceMembership({
@@ -327,7 +343,10 @@ function SourceMembership({
   label,
   membership
 }: {
-  readonly endpoints?: { readonly start: readonly [number, number]; readonly end: readonly [number, number] };
+  readonly endpoints?: {
+    readonly start: readonly [number, number];
+    readonly end: readonly [number, number];
+  };
   readonly direction?: string;
   readonly label: string;
   readonly membership: string;
@@ -339,17 +358,24 @@ function SourceMembership({
       {direction && <small>Direction: {direction}</small>}
       {endpoints && (
         <small>
-          Start {formatPoint(endpoints.start)} → end {formatPoint(endpoints.end)}
+          Start {formatPoint(endpoints.start)} → end{" "}
+          {formatPoint(endpoints.end)}
         </small>
       )}
     </div>
   );
 }
 
-function DiagnosticList({ messages }: { readonly messages: readonly string[] }) {
+function DiagnosticList({
+  messages
+}: {
+  readonly messages: readonly string[];
+}) {
   return (
     <ul className="diagnostic-list" aria-label="Source edit blockers">
-      {messages.map((message, index) => <li key={`${index}:${message}`}>{message}</li>)}
+      {messages.map((message, index) => (
+        <li key={`${index}:${message}`}>{message}</li>
+      ))}
     </ul>
   );
 }
@@ -358,7 +384,9 @@ function formatEditDiagnostic(
   diagnostic: FeatureEditabilityQueryResponse["diagnostics"][number]
 ) {
   const field = diagnostic.fieldPath ? ` (${diagnostic.fieldPath})` : "";
-  const expected = diagnostic.expected ? ` Expected ${diagnostic.expected}.` : "";
+  const expected = diagnostic.expected
+    ? ` Expected ${diagnostic.expected}.`
+    : "";
   return `${diagnostic.message}${field}${expected}`;
 }
 
@@ -370,8 +398,4 @@ function formatPathDirection(path: SketchPathRef) {
   return path.kind === "entity"
     ? path.orientation
     : `${path.segments[0]?.orientation ?? "forward"} ordered chain`;
-}
-
-function refsEqual(left: unknown, right: unknown) {
-  return JSON.stringify(left) === JSON.stringify(right);
 }

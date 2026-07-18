@@ -19,6 +19,7 @@ import {
   formatCandidateDiagnostics,
   formatSketchPathMembership,
   formatSketchProfileMembership,
+  getEligibleProfileCandidates,
   reverseSketchPath
 } from "../v17ProductIntegration";
 
@@ -49,9 +50,7 @@ export function CompositeFeaturePanel({
   readonly onCreateRevolve: (form: FeatureCompositeRevolveForm) => void;
   readonly onCreateSweep: (form: FeatureCompositeSweepForm) => void;
 }) {
-  const [mode, setMode] = useState<"extrude" | "revolve" | "sweep">(
-    "extrude"
-  );
+  const [mode, setMode] = useState<"extrude" | "revolve" | "sweep">("extrude");
   const [profileSketchId, setProfileSketchId] = useState(sketches[0]?.id ?? "");
   const [profileKey, setProfileKey] = useState<string>();
   const [pathSketchId, setPathSketchId] = useState(sketches[0]?.id ?? "");
@@ -62,14 +61,25 @@ export function CompositeFeaturePanel({
   const [side, setSide] = useState<"positive" | "negative" | "symmetric">(
     "positive"
   );
-  const [operationMode, setOperationMode] = useState<
-    "newBody" | "add" | "cut"
-  >("newBody");
+  const [operationMode, setOperationMode] = useState<"newBody" | "add" | "cut">(
+    "newBody"
+  );
   const [targetBodyId, setTargetBodyId] = useState("");
   const [axisEntityId, setAxisEntityId] = useState("");
 
   const profileResponse = profileCandidatesBySketchId.get(profileSketchId);
-  const profileChoice = chooseProfileCandidate(profileResponse, profileKey);
+  const profileCandidates = profileResponse?.candidates ?? [];
+  const eligibleProfileCandidates = getEligibleProfileCandidates(
+    profileCandidates,
+    mode
+  );
+  const eligibleProfileResponse = profileResponse
+    ? { ...profileResponse, candidates: eligibleProfileCandidates }
+    : undefined;
+  const profileChoice = chooseProfileCandidate(
+    eligibleProfileResponse,
+    profileKey
+  );
   const pathResponse = pathCandidatesBySketchId.get(pathSketchId);
   const pathChoice = choosePathCandidate(pathResponse, pathKey);
   const selectedPath = pathChoice.selected
@@ -77,7 +87,9 @@ export function CompositeFeaturePanel({
       ? reverseSketchPath(pathChoice.selected.path)
       : pathChoice.selected.path
     : undefined;
-  const profileSketch = sketches.find((sketch) => sketch.id === profileSketchId);
+  const profileSketch = sketches.find(
+    (sketch) => sketch.id === profileSketchId
+  );
   const pathSketch = sketches.find((sketch) => sketch.id === pathSketchId);
   const pathEndpoints =
     pathSketch && selectedPath
@@ -106,7 +118,8 @@ export function CompositeFeaturePanel({
           angleDegrees > 0 &&
           angleDegrees <= 360
         : Boolean(sweepProfile && selectedPath);
-  const targetReady = operationMode === "newBody" || Boolean(targetBodyId);
+  const targetReady =
+    mode !== "extrude" || operationMode === "newBody" || Boolean(targetBodyId);
 
   function submit() {
     if (!selectedProfile || !modeReady) return;
@@ -180,15 +193,17 @@ export function CompositeFeaturePanel({
           }}
         >
           {sketches.map((sketch) => (
-            <option key={sketch.id} value={sketch.id}>{sketch.name}</option>
+            <option key={sketch.id} value={sketch.id}>
+              {sketch.name}
+            </option>
           ))}
         </select>
       </label>
       <CandidateSelect
         label="Profile candidate"
         value={profileChoice.selectedKey ?? ""}
-        disabled={disabled || (profileResponse?.candidateCount ?? 0) === 0}
-        options={(profileResponse?.candidates ?? []).map((candidate) => ({
+        disabled={disabled || eligibleProfileCandidates.length === 0}
+        options={eligibleProfileCandidates.map((candidate) => ({
           key: candidate.sortKey,
           label: `${candidate.candidateIndex + 1}: ${formatSketchProfileMembership(candidate.profile)}`
         }))}
@@ -201,79 +216,182 @@ export function CompositeFeaturePanel({
       />
       {profileChoice.selected && (
         <div className="candidate-health" aria-label="Profile candidate health">
-          <strong>Ready · {profileChoice.selected.area.toPrecision(5)} area</strong>
-          <small>{formatSketchProfileMembership(profileChoice.selected.profile)}</small>
-          <small>{profileChoice.selected.joinCount} healthy joins · clear intersections</small>
+          <strong>
+            Ready · {profileChoice.selected.area.toPrecision(5)} area
+          </strong>
+          <small>
+            {formatSketchProfileMembership(profileChoice.selected.profile)}
+          </small>
+          <small>
+            {profileChoice.selected.joinCount} healthy joins · clear
+            intersections
+          </small>
         </div>
       )}
       {(profileResponse?.diagnostics.length ?? 0) > 0 && !selectedProfile && (
-        <Diagnostics diagnostics={formatCandidateDiagnostics(profileResponse!.diagnostics)} />
+        <Diagnostics
+          diagnostics={formatCandidateDiagnostics(profileResponse!.diagnostics)}
+        />
       )}
 
       {mode === "extrude" && (
         <>
-          <label>Operation
-            <select value={operationMode} disabled={disabled} onChange={(event) => {
-              setOperationMode(event.currentTarget.value as typeof operationMode);
-              setTargetBodyId("");
-            }}>
+          <label>
+            Operation
+            <select
+              value={operationMode}
+              disabled={disabled}
+              onChange={(event) => {
+                setOperationMode(
+                  event.currentTarget.value as typeof operationMode
+                );
+                setTargetBodyId("");
+              }}
+            >
               <option value="newBody">New body</option>
               <option value="add">Add</option>
               <option value="cut">Cut</option>
             </select>
           </label>
           {operationMode !== "newBody" && (
-            <label>Target body
-              <select value={targetBodyId} disabled={disabled || targetOptions.length === 0} onChange={(event) => setTargetBodyId(event.currentTarget.value)}>
+            <label>
+              Target body
+              <select
+                value={targetBodyId}
+                disabled={disabled || targetOptions.length === 0}
+                onChange={(event) => setTargetBodyId(event.currentTarget.value)}
+              >
                 <option value="">Choose a target</option>
-                {targetOptions.map((target) => <option key={target.bodyId} value={target.bodyId}>{target.label}</option>)}
+                {targetOptions.map((target) => (
+                  <option key={target.bodyId} value={target.bodyId}>
+                    {target.label}
+                  </option>
+                ))}
               </select>
             </label>
           )}
-          <NumberInput label="Depth" value={depth} disabled={disabled} onChange={setDepth} />
-          <label>Side
-            <select value={side} disabled={disabled} onChange={(event) => setSide(event.currentTarget.value as typeof side)}>
-              <option value="positive">Positive</option><option value="negative">Negative</option><option value="symmetric">Symmetric</option>
+          <NumberInput
+            label="Depth"
+            value={depth}
+            disabled={disabled}
+            onChange={setDepth}
+          />
+          <label>
+            Side
+            <select
+              value={side}
+              disabled={disabled}
+              onChange={(event) =>
+                setSide(event.currentTarget.value as typeof side)
+              }
+            >
+              <option value="positive">Positive</option>
+              <option value="negative">Negative</option>
+              <option value="symmetric">Symmetric</option>
             </select>
           </label>
         </>
       )}
       {mode === "revolve" && (
         <>
-          <label>Axis line
-            <select value={axisEntityId} disabled={disabled || axisOptions.length === 0} onChange={(event) => setAxisEntityId(event.currentTarget.value)}>
+          <label>
+            Axis line
+            <select
+              value={axisEntityId}
+              disabled={disabled || axisOptions.length === 0}
+              onChange={(event) => setAxisEntityId(event.currentTarget.value)}
+            >
               <option value="">Choose an axis</option>
-              {axisOptions.map((entity) => <option key={entity.id} value={entity.id}>{entity.id}{entity.construction ? " · construction" : ""}</option>)}
+              {axisOptions.map((entity) => (
+                <option key={entity.id} value={entity.id}>
+                  {entity.id}
+                  {entity.construction ? " · construction" : ""}
+                </option>
+              ))}
             </select>
           </label>
-          <NumberInput label="Angle (deg)" value={angleDegrees} disabled={disabled} onChange={setAngleDegrees} />
+          <NumberInput
+            label="Angle (deg)"
+            value={angleDegrees}
+            disabled={disabled}
+            onChange={setAngleDegrees}
+          />
         </>
       )}
       {mode === "sweep" && (
         <>
-          {!sweepProfile && selectedProfile && <p className="error-text">Sweep profiles must be one rectangle or circle candidate.</p>}
-          <label>Path sketch
-            <select value={pathSketchId} disabled={disabled} onChange={(event) => { setPathSketchId(event.currentTarget.value); setPathKey(undefined); setPathReversed(false); }}>
-              {sketches.map((sketch) => <option key={sketch.id} value={sketch.id}>{sketch.name}</option>)}
+          {!sweepProfile && selectedProfile && (
+            <p className="error-text">
+              Sweep profiles must be one rectangle or circle candidate.
+            </p>
+          )}
+          <label>
+            Path sketch
+            <select
+              value={pathSketchId}
+              disabled={disabled}
+              onChange={(event) => {
+                setPathSketchId(event.currentTarget.value);
+                setPathKey(undefined);
+                setPathReversed(false);
+              }}
+            >
+              {sketches.map((sketch) => (
+                <option key={sketch.id} value={sketch.id}>
+                  {sketch.name}
+                </option>
+              ))}
             </select>
           </label>
           <CandidateSelect
             label="Path candidate"
             value={pathChoice.selectedKey ?? ""}
             disabled={disabled || (pathResponse?.candidateCount ?? 0) === 0}
-            options={(pathResponse?.candidates ?? []).map((candidate) => ({ key: candidate.sortKey, label: `${candidate.candidateIndex + 1}: ${formatSketchPathMembership(candidate.path)}` }))}
-            placeholder={pathChoice.requiresExplicitChoice ? "Choose a path" : "No ready paths"}
-            onChange={(key) => { setPathKey(key); setPathReversed(false); }}
+            options={(pathResponse?.candidates ?? []).map((candidate) => ({
+              key: candidate.sortKey,
+              label: `${candidate.candidateIndex + 1}: ${formatSketchPathMembership(candidate.path)}`
+            }))}
+            placeholder={
+              pathChoice.requiresExplicitChoice
+                ? "Choose a path"
+                : "No ready paths"
+            }
+            onChange={(key) => {
+              setPathKey(key);
+              setPathReversed(false);
+            }}
           />
           {selectedPath && (
-            <div className="candidate-health" aria-label="Path candidate health">
-              <strong>Ready · {pathChoice.selected?.length.toPrecision(5)} length</strong>
+            <div
+              className="candidate-health"
+              aria-label="Path candidate health"
+            >
+              <strong>
+                Ready · {pathChoice.selected?.length.toPrecision(5)} length
+              </strong>
               <small>{formatSketchPathMembership(selectedPath)}</small>
-              {pathEndpoints && <small>Start {formatPoint(pathEndpoints.start)} → end {formatPoint(pathEndpoints.end)}</small>}
-              <button type="button" disabled={disabled} onClick={() => setPathReversed((value) => !value)}>Reverse submitted direction</button>
+              {pathEndpoints && (
+                <small>
+                  Start {formatPoint(pathEndpoints.start)} → end{" "}
+                  {formatPoint(pathEndpoints.end)}
+                </small>
+              )}
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => setPathReversed((value) => !value)}
+              >
+                Reverse submitted direction
+              </button>
             </div>
           )}
-          {(pathResponse?.diagnostics.length ?? 0) > 0 && !selectedPath && <Diagnostics diagnostics={formatCandidateDiagnostics(pathResponse!.diagnostics)} />}
+          {(pathResponse?.diagnostics.length ?? 0) > 0 && !selectedPath && (
+            <Diagnostics
+              diagnostics={formatCandidateDiagnostics(
+                pathResponse!.diagnostics
+              )}
+            />
+          )}
         </>
       )}
       {!modeReady && (
@@ -285,26 +403,92 @@ export function CompositeFeaturePanel({
               : "Complete the required ready inputs before creating the feature."}
         </p>
       )}
-      {!targetReady && <p className="error-text">Choose one ready target body for this boolean operation.</p>}
-      <button type="button" disabled={disabled || !modeReady || !targetReady} onClick={submit}>Create {mode}</button>
+      {!targetReady && (
+        <p className="error-text">
+          Choose one ready target body for this boolean operation.
+        </p>
+      )}
+      <button
+        type="button"
+        disabled={disabled || !modeReady || !targetReady}
+        onClick={submit}
+      >
+        Create {mode}
+      </button>
     </section>
   );
 }
 
-function CandidateSelect({ label, value, disabled, options, placeholder, onChange }: {
-  readonly label: string; readonly value: string; readonly disabled: boolean;
+function CandidateSelect({
+  label,
+  value,
+  disabled,
+  options,
+  placeholder,
+  onChange
+}: {
+  readonly label: string;
+  readonly value: string;
+  readonly disabled: boolean;
   readonly options: readonly { readonly key: string; readonly label: string }[];
-  readonly placeholder: string; readonly onChange: (key: string) => void;
+  readonly placeholder: string;
+  readonly onChange: (key: string) => void;
 }) {
-  return <label>{label}<select value={value} disabled={disabled} onChange={(event) => onChange(event.currentTarget.value)}><option value="">{placeholder}</option>{options.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</select></label>;
+  return (
+    <label>
+      {label}
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.currentTarget.value)}
+      >
+        <option value="">{placeholder}</option>
+        {options.map((option) => (
+          <option key={option.key} value={option.key}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
 }
 
-function NumberInput({ label, value, disabled, onChange }: { readonly label: string; readonly value: number; readonly disabled: boolean; readonly onChange: (value: number) => void }) {
-  return <label>{label}<input type="number" value={value} disabled={disabled} onChange={(event) => onChange(event.currentTarget.valueAsNumber)} /></label>;
+function NumberInput({
+  label,
+  value,
+  disabled,
+  onChange
+}: {
+  readonly label: string;
+  readonly value: number;
+  readonly disabled: boolean;
+  readonly onChange: (value: number) => void;
+}) {
+  return (
+    <label>
+      {label}
+      <input
+        type="number"
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.currentTarget.valueAsNumber)}
+      />
+    </label>
+  );
 }
 
-function Diagnostics({ diagnostics }: { readonly diagnostics: readonly string[] }) {
-  return <ul className="diagnostic-list" aria-label="Blocked diagnostics">{diagnostics.map((diagnostic) => <li key={diagnostic}>{diagnostic}</li>)}</ul>;
+function Diagnostics({
+  diagnostics
+}: {
+  readonly diagnostics: readonly string[];
+}) {
+  return (
+    <ul className="diagnostic-list" aria-label="Blocked diagnostics">
+      {diagnostics.map((diagnostic) => (
+        <li key={diagnostic}>{diagnostic}</li>
+      ))}
+    </ul>
+  );
 }
 
 function formatPoint(point: readonly [number, number]) {

@@ -331,8 +331,10 @@ export interface FeatureCompositeRevolveForm extends FeatureRevolveForm {
   readonly profile: SketchProfileRef;
 }
 
-export interface FeatureCompositeSweepForm
-  extends Omit<FeatureSweepForm, "pathSketchId" | "pathEntityIds"> {
+export interface FeatureCompositeSweepForm extends Omit<
+  FeatureSweepForm,
+  "pathSketchId" | "pathEntityIds"
+> {
   readonly profile: Extract<SketchProfileRef, { readonly kind: "entity" }>;
   readonly path: SketchPathRef;
 }
@@ -1281,15 +1283,15 @@ export function buildFeatureUpdateCompositeRevolveOp(
 
 export function buildFeatureUpdateCompositeSweepOp(
   id: string,
-  profile?: Extract<SketchProfileRef, { readonly kind: "entity" }>,
-  path?: SketchPathRef
+  profile: Extract<SketchProfileRef, { readonly kind: "entity" }>,
+  path: SketchPathRef
 ): FeatureUpdateSweepCommandInput {
   return {
     op: "feature.updateSweep",
     id,
-    ...(profile ? { profile } : {}),
-    ...(path ? { path } : {})
-  } as FeatureUpdateSweepCommandInput;
+    profile,
+    path
+  };
 }
 
 export function buildFeatureUpdateHoleOp(

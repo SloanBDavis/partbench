@@ -37,12 +37,22 @@ export function choosePathCandidate(
   return chooseCandidate(response?.candidates ?? [], selectedKey);
 }
 
+export function getEligibleProfileCandidates(
+  candidates: readonly SketchProfileCandidate[],
+  consumer: "extrude" | "revolve" | "sweep"
+): readonly SketchProfileCandidate[] {
+  return consumer === "sweep"
+    ? candidates.filter((candidate) => candidate.profile.kind === "entity")
+    : candidates;
+}
+
 export function findProfileCandidateKey(
   response: SketchProfileCandidatesQueryResponse | undefined,
   profile: SketchProfileRef
 ): string | undefined {
-  return response?.candidates.find((candidate) => refsEqual(candidate.profile, profile))
-    ?.sortKey;
+  return response?.candidates.find((candidate) =>
+    areSketchRefsEqual(candidate.profile, profile)
+  )?.sortKey;
 }
 
 export function findPathCandidateSelection(
@@ -50,17 +60,51 @@ export function findPathCandidateSelection(
   path: SketchPathRef
 ): { readonly key: string; readonly reversed: boolean } | undefined {
   const exact = response?.candidates.find((candidate) =>
-    refsEqual(candidate.path, path)
+    areSketchRefsEqual(candidate.path, path)
   );
   if (exact) return { key: exact.sortKey, reversed: false };
   const reversed = response?.candidates.find((candidate) =>
-    refsEqual(reverseSketchPath(candidate.path), path)
+    areSketchRefsEqual(reverseSketchPath(candidate.path), path)
   );
   return reversed ? { key: reversed.sortKey, reversed: true } : undefined;
 }
 
-function refsEqual(left: SketchProfileRef | SketchPathRef, right: SketchProfileRef | SketchPathRef) {
-  return JSON.stringify(left) === JSON.stringify(right);
+export function areSketchRefsEqual(
+  left: SketchProfileRef | SketchPathRef,
+  right: SketchProfileRef | SketchPathRef
+): boolean {
+  if (left.kind !== right.kind || left.sketchId !== right.sketchId)
+    return false;
+  if (left.kind === "entity" && right.kind === "entity") {
+    const leftOrientation =
+      "orientation" in left ? left.orientation : undefined;
+    const rightOrientation =
+      "orientation" in right ? right.orientation : undefined;
+    return (
+      left.entityId === right.entityId && leftOrientation === rightOrientation
+    );
+  }
+  if (left.kind === "wire" && right.kind === "wire") {
+    return segmentsEqual(left.segments, right.segments);
+  }
+  if (left.kind === "chain" && right.kind === "chain") {
+    return segmentsEqual(left.segments, right.segments);
+  }
+  return false;
+}
+
+function segmentsEqual(
+  left: readonly OrientedSketchSegmentRef[],
+  right: readonly OrientedSketchSegmentRef[]
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every(
+      (segment, index) =>
+        segment.entityId === right[index]?.entityId &&
+        segment.orientation === right[index]?.orientation
+    )
+  );
 }
 
 function chooseCandidate<T extends { readonly sortKey: string }>(
@@ -69,14 +113,12 @@ function chooseCandidate<T extends { readonly sortKey: string }>(
 ): CandidateChoice<T> {
   const selected = selectedKey
     ? candidates.find((candidate) => candidate.sortKey === selectedKey)
-    : candidates.length === 1
-      ? candidates[0]
-      : undefined;
+    : undefined;
 
   return {
     selectedKey: selected?.sortKey,
     selected,
-    requiresExplicitChoice: candidates.length > 1 && selected === undefined
+    requiresExplicitChoice: candidates.length > 0 && selected === undefined
   };
 }
 
@@ -84,8 +126,7 @@ export function reverseSketchPath(path: SketchPathRef): SketchPathRef {
   if (path.kind === "entity") {
     return {
       ...path,
-      orientation:
-        path.orientation === "forward" ? "reverse" : "forward"
+      orientation: path.orientation === "forward" ? "reverse" : "forward"
     };
   }
 
@@ -102,12 +143,13 @@ function reverseSegment(
 ): OrientedSketchSegmentRef {
   return {
     entityId: segment.entityId,
-    orientation:
-      segment.orientation === "forward" ? "reverse" : "forward"
+    orientation: segment.orientation === "forward" ? "reverse" : "forward"
   };
 }
 
-export function formatSketchProfileMembership(profile: SketchProfileRef): string {
+export function formatSketchProfileMembership(
+  profile: SketchProfileRef
+): string {
   return profile.kind === "entity"
     ? profile.entityId
     : profile.segments
@@ -232,24 +274,37 @@ export function captureThreePointArcToolPoint(
   point: Vec2
 ): ThreePointArcToolSession {
   if (session.points.length >= 3) return session;
-  return { ...session, points: [...session.points, point], hoverPoint: undefined };
+  const points = [...session.points, point];
+  if (
+    points.length === 3 &&
+    !canonicalizeSketchArcDefinition({
+      kind: "threePoint",
+      start: points[0]!,
+      pointOnArc: points[1]!,
+      end: points[2]!
+    }).ok
+  ) {
+    return { ...session, hoverPoint: point };
+  }
+  return { ...session, points, hoverPoint: undefined };
 }
 
 export function getThreePointArcDefinition(
   session: ThreePointArcToolSession
 ): SketchArcDefinition | undefined {
   if (session.points.length !== 3) return undefined;
-  return {
+  const definition: SketchArcDefinition = {
     kind: "threePoint",
     start: session.points[0]!,
     pointOnArc: session.points[1]!,
     end: session.points[2]!
   };
+  return canonicalizeSketchArcDefinition(definition).ok
+    ? definition
+    : undefined;
 }
 
-export function getThreePointArcPreview(
-  session: ThreePointArcToolSession
-) {
+export function getThreePointArcPreview(session: ThreePointArcToolSession) {
   const previewPoints = session.hoverPoint
     ? [...session.points, session.hoverPoint]
     : session.points;
