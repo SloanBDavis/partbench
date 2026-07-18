@@ -10,6 +10,7 @@ import {
   V12_BROWSER_WORKFLOW_CHECK_IDS,
   V13_BROWSER_WORKFLOW_CHECK_IDS,
   V14_BROWSER_WORKFLOW_CHECK_IDS,
+  V17_BROWSER_WORKFLOW_CHECK_IDS,
   V8_WCAD_WORKFLOW_DERIVED_MESH_CACHE_CHECK_ID,
   V7_BROWSER_WORKFLOW_GLB_DOWNLOAD_CHECK_ID,
   V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS
@@ -250,6 +251,31 @@ describe("V7 browser workflow smoke summary", () => {
     );
 
     for (const id of V14_BROWSER_WORKFLOW_CHECK_IDS) {
+      expect(emittedCheckIds).toContain(id);
+    }
+  });
+
+  it("keeps V17 authoring and derived-geometry checks optional unless required", () => {
+    expect(getV7BrowserWorkflowRequiredCheckIds()).not.toEqual(
+      expect.arrayContaining(V17_BROWSER_WORKFLOW_CHECK_IDS)
+    );
+    expect(
+      getV7BrowserWorkflowRequiredCheckIds({ requireV17Workflow: true })
+    ).toEqual(expect.arrayContaining(V17_BROWSER_WORKFLOW_CHECK_IDS));
+  });
+
+  it("emits every required V17 browser workflow check from the smoke runner", async () => {
+    const smokeSource = await readFile(
+      resolve(repoRoot, "scripts/smoke-v7-browser-workflow.mjs"),
+      "utf8"
+    );
+    const emittedCheckIds = new Set(
+      [...smokeSource.matchAll(/\b(?:pass|fail)\(\s*"([^"]+)"/g)].map(
+        (match) => match[1]
+      )
+    );
+
+    for (const id of V17_BROWSER_WORKFLOW_CHECK_IDS) {
       expect(emittedCheckIds).toContain(id);
     }
   });

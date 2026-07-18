@@ -158,6 +158,11 @@ export const V14_BROWSER_WORKFLOW_CHECK_IDS = Object.freeze([
   "v14-result-hole-topology-source-json-browser",
   "v14-normal-surfaces-user-facing-copy-browser"
 ]);
+export const V17_BROWSER_WORKFLOW_CHECK_IDS = Object.freeze([
+  "v17-three-point-arc-authoring-browser",
+  "v17-composite-feature-authoring-browser",
+  "v17-derived-geometry-browser"
+]);
 
 export function getV7BrowserWorkflowRequiredCheckIds({
   requireGlbDownload = false,
@@ -165,7 +170,8 @@ export function getV7BrowserWorkflowRequiredCheckIds({
   requireV10Workflow = false,
   requireV12Workflow = false,
   requireV13Workflow = false,
-  requireV14Workflow = false
+  requireV14Workflow = false,
+  requireV17Workflow = false
 } = {}) {
   const requiredCheckIds = [...V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS];
 
@@ -212,6 +218,12 @@ export function getV7BrowserWorkflowRequiredCheckIds({
       if (!requiredCheckIds.includes(id)) {
         requiredCheckIds.push(id);
       }
+    }
+  }
+
+  if (requireV17Workflow) {
+    for (const id of V17_BROWSER_WORKFLOW_CHECK_IDS) {
+      if (!requiredCheckIds.includes(id)) requiredCheckIds.push(id);
     }
   }
 

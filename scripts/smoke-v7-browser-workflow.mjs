@@ -108,6 +108,9 @@ function parseSmokeOptions(args, env) {
   const requireV14Workflow = isTruthy(
     env.PARTBENCH_V14_BROWSER_WORKFLOW_REQUIRED
   );
+  const requireV17Workflow = isTruthy(
+    env.PARTBENCH_V17_BROWSER_WORKFLOW_REQUIRED
+  );
 
   let nextRequireGlbDownload = requireGlbDownload;
   let nextRequireDerivedMeshCache = requireDerivedMeshCache;
@@ -115,6 +118,7 @@ function parseSmokeOptions(args, env) {
   let nextRequireV12Workflow = requireV12Workflow;
   let nextRequireV13Workflow = requireV13Workflow;
   let nextRequireV14Workflow = requireV14Workflow;
+  let nextRequireV17Workflow = requireV17Workflow;
 
   for (const arg of args) {
     if (arg === "--require-glb" || arg === "--require-glb-download") {
@@ -177,6 +181,16 @@ function parseSmokeOptions(args, env) {
       continue;
     }
 
+    if (arg === "--require-v17-workflow") {
+      nextRequireV17Workflow = true;
+      continue;
+    }
+
+    if (arg === "--no-require-v17-workflow") {
+      nextRequireV17Workflow = false;
+      continue;
+    }
+
     throw new Error(`Unknown option ${arg}`);
   }
 
@@ -186,7 +200,8 @@ function parseSmokeOptions(args, env) {
     requireV10Workflow: nextRequireV10Workflow,
     requireV12Workflow: nextRequireV12Workflow,
     requireV13Workflow: nextRequireV13Workflow,
-    requireV14Workflow: nextRequireV14Workflow
+    requireV14Workflow: nextRequireV14Workflow,
+    requireV17Workflow: nextRequireV17Workflow
   };
 }
 
@@ -254,7 +269,8 @@ async function runV7BrowserWorkflowSmoke(
     requireV10Workflow = false,
     requireV12Workflow = false,
     requireV13Workflow = false,
-    requireV14Workflow = false
+    requireV14Workflow = false,
+    requireV17Workflow = false
   } = {}
 ) {
   const target = await client.send("Target.createTarget", {
@@ -347,6 +363,7 @@ async function runV7BrowserWorkflowSmoke(
         requireV12Workflow,
         requireV13Workflow,
         requireV14Workflow,
+        requireV17Workflow,
         v10C2ProjectJson,
         v13ProjectJson,
         v14ProjectJson,
@@ -401,7 +418,8 @@ async function runV7BrowserWorkflowSmoke(
       requireV10Workflow,
       requireV12Workflow,
       requireV13Workflow,
-      requireV14Workflow
+      requireV14Workflow,
+      requireV17Workflow
     }),
     consoleErrors,
     exceptions
@@ -631,6 +649,7 @@ async function v7BrowserWorkflowSmoke({
   v10C2ProjectJson,
   requireV13Workflow,
   requireV14Workflow,
+  requireV17Workflow,
   v13ProjectJson,
   v14ProjectJson,
   timeoutMs
@@ -1865,7 +1884,65 @@ async function v7BrowserWorkflowSmoke({
     await runV14TopologyBackedBrowserWorkflowSmoke(v14ProjectJson);
   }
 
+  if (requireV17Workflow) {
+    verifyV17AuthoringAndDerivedGeometryMarkers();
+  }
+
   return { checks, ids, skipped };
+
+  function verifyV17AuthoringAndDerivedGeometryMarkers() {
+    const arcMarker = document.querySelector(
+      '[data-testid="v17-three-point-arc-authoring"], [aria-label="Three-point arc tool"]'
+    );
+    const compositeMarker = document.querySelector(
+      '[data-testid="v17-composite-feature-authoring"], [aria-label="Composite features"]'
+    );
+    const canvas = document.querySelector('[aria-label="3D scene viewport"]');
+
+    if (arcMarker) {
+      pass(
+        "v17-three-point-arc-authoring-browser",
+        "V17 three-point arc authoring marker is rendered"
+      );
+    } else {
+      fail(
+        "v17-three-point-arc-authoring-browser",
+        "V17 three-point arc authoring marker is rendered",
+        'Missing data-testid="v17-three-point-arc-authoring" (or the Three-point arc tool surface was not active).'
+      );
+    }
+
+    if (compositeMarker) {
+      pass(
+        "v17-composite-feature-authoring-browser",
+        "V17 composite feature authoring/edit marker is rendered"
+      );
+    } else {
+      fail(
+        "v17-composite-feature-authoring-browser",
+        "V17 composite feature authoring/edit marker is rendered",
+        'Missing data-testid="v17-composite-feature-authoring" (or the Composite features surface was not active).'
+      );
+    }
+
+    if (
+      canvas instanceof HTMLCanvasElement &&
+      canvas.width > 0 &&
+      canvas.height > 0
+    ) {
+      pass(
+        "v17-derived-geometry-browser",
+        "V17 derived-geometry build renders an active viewport canvas",
+        `${canvas.width}x${canvas.height}`
+      );
+    } else {
+      fail(
+        "v17-derived-geometry-browser",
+        "V17 derived-geometry build renders an active viewport canvas",
+        "The derived build did not expose a sized 3D scene viewport canvas."
+      );
+    }
+  }
 
   async function runV14TopologyBackedBrowserWorkflowSmoke(projectJson) {
     if (!projectJson) {
