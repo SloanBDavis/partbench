@@ -491,7 +491,10 @@ function createAffectedSummary(
       affectedSketchEntityIds.add(feature.entityId);
     }
 
-    if (feature.kind === "extrude" && feature.profile?.kind === "wire") {
+    if (
+      (feature.kind === "extrude" || feature.kind === "revolve") &&
+      feature.profile?.kind === "wire"
+    ) {
       affectedSketchIds.add(feature.profile.sketchId);
       for (const segment of feature.profile.segments) {
         affectedSketchEntityIds.add(segment.entityId);

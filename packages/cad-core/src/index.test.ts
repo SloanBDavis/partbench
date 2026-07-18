@@ -12524,6 +12524,11 @@ describe("cad-core", () => {
       status: "editable",
       fields: [
         expect.objectContaining({
+          path: "profile",
+          editable: true,
+          commitOperation: "feature.updateRevolve"
+        }),
+        expect.objectContaining({
           path: "angleDegrees",
           editable: true,
           commitOperation: "feature.updateRevolve"

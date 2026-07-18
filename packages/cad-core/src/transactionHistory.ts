@@ -18,6 +18,7 @@ import type {
   SemanticDiff,
   SketchEntityId,
   SketchEntityKind,
+  SketchProfileRef,
   SketchSemanticDiff,
   SketchId,
   TransactionId,
@@ -591,14 +592,27 @@ function createOperationSummaries(
         const featureId = op.id ?? createdFeatureRef?.id;
         const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
         const operationMode = op.operationMode ?? "newBody";
+        const profile: SketchProfileRef =
+          "profile" in op && op.profile
+            ? (op.profile as SketchProfileRef)
+            : {
+                kind: "entity" as const,
+                sketchId: op.sketchId,
+                entityId: op.entityId
+              };
+        const profileLabel =
+          profile.kind === "entity"
+            ? `${profile.sketchId}/${profile.entityId}`
+            : `${profile.sketchId}/wire(${profile.segments.map((segment) => segment.entityId).join(",")})`;
 
         return createFeatureOperationSummary({
           op: op.op,
-          label: `Create new body revolve feature ${featureId ?? "with generated ID"} from ${op.sketchId}/${op.entityId} around ${op.axis.entityId} at ${op.angleDegrees} degrees${
+          label: `Create new body revolve feature ${featureId ?? "with generated ID"} from ${profileLabel} around ${op.axis.entityId} at ${op.angleDegrees} degrees${
             bodyId ? ` -> body ${bodyId}` : ""
           }`,
-          sketchId: op.sketchId,
-          sketchEntityId: op.entityId,
+          sketchId: profile.sketchId,
+          sketchEntityId:
+            profile.kind === "entity" ? profile.entityId : undefined,
           featureId,
           bodyId,
           targetBodyId: op.targetBodyId,
@@ -796,7 +810,11 @@ function createOperationSummaries(
 
         return createFeatureOperationSummary({
           op: op.op,
-          label: `Update revolve feature ${op.id} angle to ${op.angleDegrees}`,
+          label: `Update revolve feature ${op.id}${
+            op.angleDegrees === undefined
+              ? " profile"
+              : ` angle to ${op.angleDegrees}`
+          }`,
           featureId: op.id,
           bodyId: modifiedFeatureRef?.bodyId,
           sketchId: modifiedFeatureRef

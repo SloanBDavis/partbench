@@ -327,7 +327,13 @@ import {
   createProfileInputReference,
   resolveWireExtrudeProfile
 } from "./wireExtrudeProfile";
+import { resolveWireRevolveProfile } from "./wireRevolveProfile";
 export { createResolvedWireExtrudeRecipe } from "./wireExtrudeProfile";
+export {
+  createResolvedWireRevolveProfile,
+  createResolvedWireRevolveRecipe,
+  resolveWireRevolveProfile
+} from "./wireRevolveProfile";
 import {
   createProjectExactExport,
   createProjectExportReadiness
@@ -6341,15 +6347,56 @@ function applyOperation(
     }
 
     case "feature.revolve": {
-      const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
-      const entity = sketch.entities.get(op.entityId);
-
-      if (!entity) {
-        throwSketchEntityNotFound(op.sketchId, op.entityId, opIndex);
+      const requestedProfile = resolveRevolveCommandInputProfile(op, opIndex);
+      let profile = requestedProfile;
+      let profileOrientationNormalized = false;
+      if (requestedProfile.kind === "wire") {
+        const resolution = resolveWireRevolveProfile(
+          state,
+          requestedProfile,
+          op.axis
+        );
+        if (!resolution.ok) {
+          throwValidationError({
+            code: resolution.code,
+            message: resolution.message,
+            opIndex,
+            sketchId: resolution.sketchId,
+            sketchEntityId: resolution.sketchEntityId,
+            path: operationPath(opIndex, "profile"),
+            expected: "feature-ready composite wire revolve profile",
+            received: requestedProfile.kind
+          });
+        }
+        profile = resolution.profile;
+        profileOrientationNormalized = resolution.orientationNormalized;
+      } else {
+        const sketch = getSketchOrThrow(
+          state.sketches,
+          requestedProfile.sketchId,
+          opIndex
+        );
+        const entity = sketch.entities.get(requestedProfile.entityId);
+        if (!entity) {
+          throwSketchEntityNotFound(
+            requestedProfile.sketchId,
+            requestedProfile.entityId,
+            opIndex
+          );
+        }
+        assertRevolvableProfile(
+          entity,
+          opIndex,
+          requestedProfile.sketchId,
+          requestedProfile.entityId
+        );
       }
-
-      assertRevolvableProfile(entity, opIndex, op.sketchId, op.entityId);
-      const axis = validateRevolveAxis(state, op.axis, op.sketchId, opIndex);
+      const axis = validateRevolveAxis(
+        state,
+        op.axis,
+        profile.sketchId,
+        opIndex
+      );
       const angleDegrees = validateRevolveAngleDegrees(
         op.angleDegrees,
         opIndex
@@ -6375,11 +6422,7 @@ function applyOperation(
         id: op.id ?? createFeatureId(),
         kind: "revolve",
         name: normalizeOptionalFeatureName(op.name, opIndex, op.id),
-        profile: {
-          kind: "entity",
-          sketchId: op.sketchId,
-          entityId: op.entityId
-        },
+        profile,
         axis,
         angleDegrees,
         operationMode: "newBody",
@@ -6387,6 +6430,16 @@ function applyOperation(
       };
 
       addFeature(state, feature, diff, opIndex);
+      if (profile.kind === "wire") {
+        pushFeatureInputReference(
+          diff,
+          createProfileInputReference(
+            feature.id,
+            profile,
+            profileOrientationNormalized
+          )
+        );
+      }
       return;
     }
 
@@ -8270,8 +8323,10 @@ function isCadFeatureEditProposal(value: unknown): boolean {
   if (value.kind === "revolve") {
     return (
       Object.keys(value).every((key) =>
-        ["kind", "angleDegrees"].includes(key)
+        ["kind", "profile", "angleDegrees"].includes(key)
       ) &&
+      (value.profile === undefined ||
+        validateSketchProfileRefSource(value.profile).ok) &&
       (value.angleDegrees === undefined ||
         typeof value.angleDegrees === "number")
     );
@@ -12011,6 +12066,9 @@ function updateDependentFeatureForSketchEntity(
   }
 
   if (feature.kind === "revolve") {
+    if (feature.profile.kind === "wire") {
+      return feature;
+    }
     assertRevolvableProfile(entity, opIndex, sketchId, entity.id, true);
     return feature;
   }
@@ -12818,14 +12876,75 @@ function updateRevolveFeature(
     opIndex
   );
 
+  const requestedProfile = resolveUpdateRevolveCommandInputProfile(op, opIndex);
+  if (op.angleDegrees === undefined && requestedProfile === undefined) {
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: "feature.updateRevolve requires profile or angleDegrees.",
+      opIndex,
+      featureId: feature.id,
+      path: operationPath(opIndex),
+      expected: "profile or angleDegrees",
+      received: "no editable fields"
+    });
+  }
+  let profile = requestedProfile ?? feature.profile;
+  let profileOrientationNormalized = false;
+  if (profile.kind === "wire") {
+    const resolution = resolveWireRevolveProfile(state, profile, feature.axis);
+    if (!resolution.ok) {
+      throwValidationError({
+        code: resolution.code,
+        message: resolution.message,
+        opIndex,
+        featureId: feature.id,
+        sketchId: resolution.sketchId,
+        sketchEntityId: resolution.sketchEntityId,
+        path: operationPath(opIndex, "profile"),
+        expected: "feature-ready composite wire revolve profile",
+        received: profile.kind
+      });
+    }
+    profile = resolution.profile;
+    profileOrientationNormalized = resolution.orientationNormalized;
+  } else if (requestedProfile) {
+    const sketch = getSketchOrThrow(state.sketches, profile.sketchId, opIndex);
+    const entity = sketch.entities.get(profile.entityId);
+    if (!entity) {
+      throwSketchEntityNotFound(profile.sketchId, profile.entityId, opIndex);
+    }
+    assertRevolvableProfile(
+      entity,
+      opIndex,
+      profile.sketchId,
+      profile.entityId
+    );
+    validateRevolveAxis(state, feature.axis, profile.sketchId, opIndex);
+  }
+
   const updated: RevolveFeature = {
     ...feature,
-    angleDegrees: validateRevolveAngleDegrees(op.angleDegrees, opIndex)
+    profile,
+    angleDegrees:
+      op.angleDegrees === undefined
+        ? feature.angleDegrees
+        : validateRevolveAngleDegrees(op.angleDegrees, opIndex)
   };
 
   state.features.set(feature.id, updated);
   pushFeatureModified(diff, featureRef(state, updated));
   pushBodyModified(diff, bodyRef(updated));
+  if (requestedProfile) {
+    pushFeatureInputReference(
+      diff,
+      createProfileInputReference(
+        updated.id,
+        updated.profile,
+        profileOrientationNormalized,
+        feature.profile
+      )
+    );
+  }
   pushFeatureReferenceEffects(
     diff,
     createAmbiguousResultFeatureEditReferenceEffects(
@@ -17191,6 +17310,52 @@ function resolveUpdateExtrudeCommandInputProfile(
   return resolution.value;
 }
 
+function resolveRevolveCommandInputProfile(
+  op: Extract<CadOp, { readonly op: "feature.revolve" }>,
+  opIndex?: number
+): SketchProfileRef {
+  const resolution = validateProfileInputSource(
+    op as unknown as Record<string, unknown>,
+    operationPath(opIndex, "profile")
+  );
+  if (!resolution.ok || !resolution.value) {
+    const issue = resolution.ok ? undefined : resolution.issues[0];
+    throwValidationError({
+      code: issue?.code ?? "SCHEMA_V21_SOURCE_INVALID",
+      message: issue?.message ?? "feature.revolve requires a profile.",
+      opIndex,
+      path: issue?.path ?? operationPath(opIndex, "profile"),
+      expected: "normalized profile or complete legacy sketchId/entityId pair",
+      received: describeReceived(op)
+    });
+  }
+  return resolution.value;
+}
+
+function resolveUpdateRevolveCommandInputProfile(
+  op: Extract<CadOp, { readonly op: "feature.updateRevolve" }>,
+  opIndex?: number
+): SketchProfileRef | undefined {
+  const resolution = validateProfileInputSource(
+    op as unknown as Record<string, unknown>,
+    operationPath(opIndex, "profile"),
+    true
+  );
+  if (!resolution.ok) {
+    const issue = resolution.issues[0]!;
+    throwValidationError({
+      code: issue.code,
+      message: issue.message,
+      opIndex,
+      path: issue.path,
+      expected:
+        "normalized profile, complete legacy sketchId/entityId pair, or omission",
+      received: describeReceived(op)
+    });
+  }
+  return resolution.value;
+}
+
 function validateExtrudeSide(
   value: FeatureExtrudeSide | undefined,
   opIndex?: number
@@ -19950,15 +20115,24 @@ function featureRef(
   }
 
   if (feature.kind === "revolve") {
+    if (feature.profile.kind === "wire") {
+      return {
+        id: feature.id,
+        kind: "revolve",
+        bodyId: feature.bodyId,
+        sketchId: feature.profile.sketchId,
+        profile: structuredClone(feature.profile),
+        axis: feature.axis,
+        angleDegrees: feature.angleDegrees,
+        operationMode: feature.operationMode
+      };
+    }
     return {
       id: feature.id,
       kind: "revolve",
       bodyId: feature.bodyId,
       sketchId: feature.profile.sketchId,
-      entityId:
-        feature.profile.kind === "entity"
-          ? feature.profile.entityId
-          : feature.profile.segments[0]!.entityId,
+      entityId: feature.profile.entityId,
       profileKind: getFeatureProfileKindOrThrow(
         state,
         feature,
@@ -22199,7 +22373,27 @@ function createFeatureSummary(
   }
 
   if (feature.kind === "revolve") {
-    const profile = getFeaturePrimaryProfileEntityRef(feature);
+    if (feature.profile.kind === "wire") {
+      return {
+        id: feature.id,
+        kind: "revolve",
+        partId: DEFAULT_PART_ID,
+        bodyId: feature.bodyId,
+        name: feature.name,
+        sketchId: feature.profile.sketchId,
+        profile: structuredClone(feature.profile),
+        axis: feature.axis,
+        angleDegrees: feature.angleDegrees,
+        operationMode: feature.operationMode,
+        source: {
+          type: "sketchEntityWithAxis",
+          sketchId: feature.profile.sketchId,
+          profile: structuredClone(feature.profile),
+          axis: feature.axis
+        }
+      };
+    }
+    const profile = feature.profile;
     return {
       id: feature.id,
       kind: "revolve",
@@ -22491,7 +22685,24 @@ function createFeatureBodySnapshot(
   }
 
   if (feature.kind === "revolve") {
-    const profile = getFeaturePrimaryProfileEntityRef(feature);
+    if (feature.profile.kind === "wire") {
+      return {
+        id: feature.bodyId,
+        kind: "solid",
+        partId: DEFAULT_PART_ID,
+        featureId: feature.id,
+        ...(consumedByFeatureId ? { consumedByFeatureId } : {}),
+        name: feature.name,
+        source: {
+          type: "sketchRevolveFeature",
+          featureId: feature.id,
+          sketchId: feature.profile.sketchId,
+          profile: structuredClone(feature.profile),
+          axis: feature.axis
+        }
+      };
+    }
+    const profile = feature.profile;
     return {
       id: feature.bodyId,
       kind: "solid",
@@ -25210,6 +25421,19 @@ function normalizeCadOpSnapshot(op: CadOp): CadOp {
   }
 
   if (op.op === "feature.revolve") {
+    if (op.profile !== undefined) {
+      return {
+        op: "feature.revolve",
+        id: op.id,
+        bodyId: op.bodyId,
+        name: op.name,
+        profile: op.profile,
+        axis: op.axis,
+        angleDegrees: op.angleDegrees,
+        operationMode: "newBody"
+      };
+    }
+
     return {
       ...op,
       operationMode: op.operationMode ?? "newBody"
@@ -32979,13 +33203,14 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   if (value.op === "feature.revolve") {
+    const profile = validateProfileInputSource(value);
     return (
       isOptionalString(value.id) &&
       isOptionalString(value.bodyId) &&
       isOptionalString(value.targetBodyId) &&
       isOptionalString(value.name) &&
-      typeof value.sketchId === "string" &&
-      typeof value.entityId === "string" &&
+      profile.ok &&
+      profile.value !== undefined &&
       isFeatureRevolveAxis(value.axis) &&
       typeof value.angleDegrees === "number" &&
       isPositiveFiniteNumber(value.angleDegrees) &&
@@ -33141,11 +33366,15 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   if (value.op === "feature.updateRevolve") {
+    const profile = validateProfileInputSource(value, "profile", true);
     return (
       typeof value.id === "string" &&
-      typeof value.angleDegrees === "number" &&
-      isPositiveFiniteNumber(value.angleDegrees) &&
-      value.angleDegrees <= 360
+      profile.ok &&
+      (value.angleDegrees === undefined ||
+        (typeof value.angleDegrees === "number" &&
+          isPositiveFiniteNumber(value.angleDegrees) &&
+          value.angleDegrees <= 360)) &&
+      (value.angleDegrees !== undefined || profile.value !== undefined)
     );
   }
 
@@ -33871,6 +34100,24 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
           typeof value.targetBodyId === "string" &&
           (value.targetTopologyAnchorId === undefined ||
             typeof value.targetTopologyAnchorId === "string")))
+    );
+  }
+
+  if (value.kind === "revolve" && value.profile !== undefined) {
+    const profile = validateSketchProfileRefSource(value.profile);
+    return (
+      profile.ok &&
+      profile.value.kind === "wire" &&
+      typeof value.sketchId === "string" &&
+      value.sketchId === profile.value.sketchId &&
+      value.entityId === undefined &&
+      value.profileKind === undefined &&
+      isFeatureRevolveAxis(value.axis) &&
+      typeof value.angleDegrees === "number" &&
+      isPositiveFiniteNumber(value.angleDegrees) &&
+      value.angleDegrees <= 360 &&
+      value.operationMode === "newBody" &&
+      value.targetBodyId === undefined
     );
   }
 

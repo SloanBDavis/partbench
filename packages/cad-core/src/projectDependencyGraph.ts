@@ -584,6 +584,23 @@ function addFeatureSourceEdges(
       sketchEntityId: feature.entityId
     });
 
+  if (
+    (feature.kind === "extrude" || feature.kind === "revolve") &&
+    feature.profile?.kind === "wire"
+  ) {
+    for (const segment of feature.profile.segments) {
+      addEdge(edges, {
+        kind: "sources",
+        from: sketchEntityNodeId(feature.profile.sketchId, segment.entityId),
+        to: featureNodeId(feature.id),
+        label: "profile source",
+        sourceFeatureId: feature.id,
+        sketchId: feature.profile.sketchId,
+        sketchEntityId: segment.entityId
+      });
+    }
+  }
+
   if (feature.kind === "extrude" && feature.targetTopologyAnchorId) {
     addEdge(edges, {
       kind: "sources",

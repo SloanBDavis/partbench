@@ -69,6 +69,19 @@ export interface SketchSegmentIntersection {
   readonly points: readonly SketchSegmentIntersectionPoint[];
 }
 
+export type SketchSegmentInfiniteLineRelation =
+  | "clear"
+  | "vertex-touch"
+  | "interior-touch"
+  | "crossing"
+  | "overlap";
+
+export type SketchWireInfiniteLineSide =
+  | "negative"
+  | "positive"
+  | "on-line"
+  | "straddling";
+
 export interface SketchSegmentBounds {
   readonly min: Vec2;
   readonly max: Vec2;
@@ -671,6 +684,139 @@ export function intersectSketchSegments(
       createIntersectionPoint(left, right, point, policy)
     )
   };
+}
+
+/** Classify one analytic segment against an infinite line under shared policy. */
+export function classifySketchSegmentAgainstInfiniteLine(
+  segment: ResolvedSketchSegment,
+  lineStart: Vec2,
+  lineEnd: Vec2,
+  policy: SketchGeometryPolicy = SKETCH_GEOMETRY_POLICY
+): SketchSegmentInfiniteLineRelation {
+  const lineVector: Vec2 = [
+    lineEnd[0] - lineStart[0],
+    lineEnd[1] - lineStart[1]
+  ];
+  const lineLength = Math.hypot(...lineVector);
+  if (!Number.isFinite(lineLength) || lineLength <= policy.linearTolerance) {
+    return "clear";
+  }
+  const direction: Vec2 = [
+    lineVector[0] / lineLength,
+    lineVector[1] / lineLength
+  ];
+  const signedDistance = (point: Vec2): number =>
+    cross(direction, [point[0] - lineStart[0], point[1] - lineStart[1]]);
+
+  if (segment.kind === "line") {
+    const startDistance = signedDistance(segment.start);
+    const endDistance = signedDistance(segment.end);
+    const startOn = Math.abs(startDistance) <= policy.linearTolerance;
+    const endOn = Math.abs(endDistance) <= policy.linearTolerance;
+    if (startOn && endOn) return "overlap";
+    if (startOn || endOn) return "vertex-touch";
+    return (startDistance < -policy.linearTolerance &&
+      endDistance > policy.linearTolerance) ||
+      (endDistance < -policy.linearTolerance &&
+        startDistance > policy.linearTolerance)
+      ? "crossing"
+      : "clear";
+  }
+
+  const centerOffset: Vec2 = [
+    segment.center[0] - lineStart[0],
+    segment.center[1] - lineStart[1]
+  ];
+  const centerProjection = dot(centerOffset, direction);
+  const perpendicularDistance = Math.abs(cross(direction, centerOffset));
+  const radialGap = perpendicularDistance - segment.radius;
+  if (radialGap > policy.linearTolerance) return "clear";
+  const foot: Vec2 = [
+    lineStart[0] + centerProjection * direction[0],
+    lineStart[1] + centerProjection * direction[1]
+  ];
+  const halfChord =
+    radialGap >= 0
+      ? 0
+      : Math.sqrt(
+          Math.max(
+            0,
+            (segment.radius - perpendicularDistance) *
+              (segment.radius + perpendicularDistance)
+          )
+        );
+  const candidates = uniquePoints(
+    (halfChord <= policy.linearTolerance
+      ? [foot]
+      : [
+          [
+            foot[0] - halfChord * direction[0],
+            foot[1] - halfChord * direction[1]
+          ] as Vec2,
+          [
+            foot[0] + halfChord * direction[0],
+            foot[1] + halfChord * direction[1]
+          ] as Vec2
+        ]
+    ).filter((point) =>
+      arcContainsAngle(
+        segment,
+        Math.atan2(point[1] - segment.center[1], point[0] - segment.center[0]),
+        policy
+      )
+    ),
+    policy
+  );
+  if (candidates.length === 0) return "clear";
+  const locations = candidates.map((point) =>
+    pointLocation(segment, point, policy)
+  );
+  if (locations.every((location) => location !== "interior")) {
+    return "vertex-touch";
+  }
+  return halfChord <= policy.linearTolerance ? "interior-touch" : "crossing";
+}
+
+/** Classify the complete analytic wire support by side of an infinite line. */
+export function classifySketchWireAgainstInfiniteLine(
+  segments: readonly ResolvedSketchSegment[],
+  lineStart: Vec2,
+  lineEnd: Vec2,
+  policy: SketchGeometryPolicy = SKETCH_GEOMETRY_POLICY
+): SketchWireInfiniteLineSide {
+  const vector: Vec2 = [lineEnd[0] - lineStart[0], lineEnd[1] - lineStart[1]];
+  const length = Math.hypot(...vector);
+  if (!Number.isFinite(length) || length <= policy.linearTolerance) {
+    return "on-line";
+  }
+  const direction: Vec2 = [vector[0] / length, vector[1] / length];
+  const signedDistance = (point: Vec2): number =>
+    cross(direction, [point[0] - lineStart[0], point[1] - lineStart[1]]);
+  let minimum = Infinity;
+  let maximum = -Infinity;
+  const include = (point: Vec2): void => {
+    const value = signedDistance(point);
+    minimum = Math.min(minimum, value);
+    maximum = Math.max(maximum, value);
+  };
+  for (const segment of segments) {
+    include(segment.start);
+    include(segment.end);
+    if (segment.kind === "arc") {
+      const normalAngle = Math.atan2(direction[0], -direction[1]);
+      for (const angle of [normalAngle, normalAngle + Math.PI]) {
+        if (arcContainsAngle(segment, angle, policy)) {
+          include(pointAt(segment.center, segment.radius, angle));
+        }
+      }
+    }
+  }
+  const negative = minimum < -policy.linearTolerance;
+  const positive = maximum > policy.linearTolerance;
+  if (negative && positive) return "straddling";
+  if (negative) return "negative";
+  if (positive) return "positive";
+  return "on-line";
 }
 
 export function getSketchSegmentSignedArea(

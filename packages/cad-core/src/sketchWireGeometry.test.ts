@@ -8,6 +8,8 @@ import { SKETCH_GEOMETRY_POLICY } from "./sketchGeometryPolicy";
 import {
   areSketchPointsCoincident,
   areSketchTangentsG1,
+  classifySketchSegmentAgainstInfiniteLine,
+  classifySketchWireAgainstInfiniteLine,
   getSketchSegmentBounds,
   getSketchSegmentEndpointTangent,
   getSketchWireSignedArea,
@@ -60,6 +62,104 @@ function resolve(
 }
 
 describe("V17 analytic sketch wire geometry", () => {
+  it("classifies line crossings, vertex touches, and tolerance-bound overlaps against an infinite axis", () => {
+    const axisStart = [0, 100] as const;
+    const axisEnd = [0, 101] as const;
+    expect(
+      classifySketchSegmentAgainstInfiniteLine(
+        resolve(line("cross-beyond-axis", [-1, 0], [1, 0])),
+        axisStart,
+        axisEnd
+      )
+    ).toBe("crossing");
+    expect(
+      classifySketchSegmentAgainstInfiniteLine(
+        resolve(line("vertex", [0, 0], [1, 0])),
+        axisStart,
+        axisEnd
+      )
+    ).toBe("vertex-touch");
+    expect(
+      classifySketchSegmentAgainstInfiniteLine(
+        resolve(line("within", [tolerance, -1], [tolerance, 1])),
+        axisStart,
+        axisEnd
+      )
+    ).toBe("overlap");
+    expect(
+      classifySketchSegmentAgainstInfiniteLine(
+        resolve(line("outside", [tolerance * 1.01, -1], [tolerance * 1.01, 1])),
+        axisStart,
+        axisEnd
+      )
+    ).toBe("clear");
+  });
+
+  it("classifies whole-wire straddling through opposite vertices without rejecting one-sided touches", () => {
+    const axisStart = [0, -2] as const;
+    const axisEnd = [0, 2] as const;
+    const wire = (points: readonly (readonly [number, number])[]) =>
+      points.map((point, index) =>
+        resolve(
+          line(`side-${index}`, point, points[(index + 1) % points.length]!)
+        )
+      );
+    expect(
+      classifySketchWireAgainstInfiniteLine(
+        wire([
+          [0, 1],
+          [1, 0],
+          [0, -1],
+          [-1, 0]
+        ]),
+        axisStart,
+        axisEnd
+      )
+    ).toBe("straddling");
+    expect(
+      classifySketchWireAgainstInfiniteLine(
+        wire([
+          [0, -1],
+          [1, 0],
+          [0, 1]
+        ]),
+        axisStart,
+        axisEnd
+      )
+    ).toBe("negative");
+  });
+
+  it("classifies endpoint, tangent, reversed-major, and scale-stable arc contacts", () => {
+    const axisStart = [0, -0.1] as const;
+    const axisEnd = [0, 0.1] as const;
+    const classify = (entity: SketchArcEntity) =>
+      classifySketchSegmentAgainstInfiniteLine(
+        resolve(entity),
+        axisStart,
+        axisEnd
+      );
+
+    expect(classify(arc("endpoint", [0, 0], 1, -90, 180))).toBe("vertex-touch");
+    expect(classify(arc("endpoint-reversed", [0, 0], 1, 90, -180))).toBe(
+      "vertex-touch"
+    );
+    expect(classify(arc("interior-tangent", [1, 0], 1, 90, 180))).toBe(
+      "interior-touch"
+    );
+    expect(
+      classify(arc("near-tangent", [1 + tolerance / 2, 0], 1, 90, 180))
+    ).toBe("interior-touch");
+    expect(
+      classify(arc("outside-tangent", [1 + tolerance * 1.01, 0], 1, 90, 180))
+    ).toBe("clear");
+    expect(classify(arc("major-cross", [1, 0], 2, 90, 270))).toBe("crossing");
+    expect(
+      classify(
+        arc("large-near-tangent", [1e6 + tolerance / 2, 0], 1e6, 90, 180)
+      )
+    ).toBe("interior-touch");
+  });
+
   it("rejects non-finite and degenerate source at exact policy boundaries", () => {
     expect(
       resolveOrientedSketchSegment(

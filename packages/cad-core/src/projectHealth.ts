@@ -63,6 +63,10 @@ import {
 } from "./normalizedFeatureInputs";
 import { resolveTopologyAnchorGeneratedReferenceFromSourceRole } from "./topologyAnchorGeneratedReferenceResolution";
 import { resolveWireExtrudeProfile } from "./wireExtrudeProfile";
+import {
+  createResolvedWireRevolveProfile,
+  resolveWireRevolveProfile
+} from "./wireRevolveProfile";
 import type {
   CadDocument,
   LinearPatternFeature,
@@ -511,56 +515,89 @@ function createAuthoredRevolveHealth(
 ): CadAuthoredRevolveHealth {
   const issues: CadDependencyHealthIssue[] = [];
   const profile = getFeatureEntityProfileRef(feature);
-  const sketch = profile ? document.sketches.get(profile.sketchId) : undefined;
+  const sketch = document.sketches.get(feature.profile.sketchId);
   const entity = sketch?.entities.get(profile?.entityId ?? "");
-  const profileKind = getSupportedEntityProfileKind(entity) ?? "rectangle";
+  const profileKind =
+    feature.profile.kind === "wire"
+      ? ("wire" as const)
+      : (getSupportedEntityProfileKind(entity) ?? "rectangle");
 
-  if (!profile) {
-    issues.push({
-      code: "UNSUPPORTED_BODY_REFERENCES",
-      message: `Revolve feature ${feature.id} uses a composite profile that is not exposed by the V16 health response.`,
-      featureId: feature.id,
-      bodyId: feature.bodyId,
-      expected: "single rectangle or circle profile entity",
-      received: feature.profile.kind
-    });
+  if (feature.profile.kind === "wire") {
+    const resolution = resolveWireRevolveProfile(
+      document,
+      feature.profile,
+      feature.axis
+    );
+    if (!resolution.ok) {
+      issues.push({
+        code:
+          resolution.code === "COMPOSITE_REVOLVE_PROFILE_UNSUPPORTED" ||
+          resolution.code === "COMPOSITE_REVOLVE_AXIS_INTERSECTION"
+            ? resolution.code
+            : "UNSUPPORTED_BODY_REFERENCES",
+        message: resolution.message,
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        sketchId: resolution.sketchId,
+        sketchEntityId: resolution.sketchEntityId,
+        expected: "feature-ready composite wire revolve profile",
+        received: resolution.code
+      });
+    } else if (
+      !createResolvedWireRevolveProfile(
+        document,
+        resolution.profile,
+        feature.axis,
+        options.ownerPartId
+      )
+    ) {
+      issues.push({
+        code: "UNSUPPORTED_BODY_REFERENCES",
+        message: `Composite wire revolve ${feature.id} source frame could not be resolved.`,
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        sketchId: feature.profile.sketchId,
+        expected: "owner-part-aware resolved profile and axis recipe",
+        received: "unresolved source frame"
+      });
+    }
   } else if (!sketch) {
     issues.push({
       code: "SKETCH_NOT_FOUND",
-      message: `Source sketch does not exist for revolve feature ${feature.id}: ${profile.sketchId}`,
+      message: `Source sketch does not exist for revolve feature ${feature.id}: ${feature.profile.sketchId}`,
       featureId: feature.id,
       bodyId: feature.bodyId,
-      sketchId: profile.sketchId
+      sketchId: feature.profile.sketchId
     });
   } else {
     if (!entity) {
       issues.push({
         code: "SKETCH_ENTITY_NOT_FOUND",
-        message: `Source sketch entity does not exist for revolve feature ${feature.id}: ${profile.entityId}`,
+        message: `Source sketch entity does not exist for revolve feature ${feature.id}: ${feature.profile.entityId}`,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        sketchId: profile.sketchId,
-        sketchEntityId: profile.entityId
+        sketchId: feature.profile.sketchId,
+        sketchEntityId: feature.profile.entityId
       });
     } else if (!getSupportedEntityProfileKind(entity)) {
       issues.push({
         code: "PROFILE_KIND_MISMATCH",
-        message: `Source sketch entity ${profile.entityId} is ${entity.kind}, but revolve feature ${feature.id} expects a rectangle or circle.`,
+        message: `Source sketch entity ${feature.profile.entityId} is ${entity.kind}, but revolve feature ${feature.id} expects a rectangle or circle.`,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        sketchId: profile.sketchId,
-        sketchEntityId: profile.entityId,
+        sketchId: feature.profile.sketchId,
+        sketchEntityId: feature.profile.entityId,
         expected: "rectangle or circle",
         received: entity.kind
       });
     } else if (entity.construction) {
       issues.push({
         code: "PROFILE_KIND_MISMATCH",
-        message: `Source sketch entity ${profile.entityId} is construction geometry and cannot remain a solid profile for revolve feature ${feature.id}.`,
+        message: `Source sketch entity ${feature.profile.entityId} is construction geometry and cannot remain a solid profile for revolve feature ${feature.id}.`,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        sketchId: profile.sketchId,
-        sketchEntityId: profile.entityId,
+        sketchId: feature.profile.sketchId,
+        sketchEntityId: feature.profile.entityId,
         expected: "non-construction rectangle or circle",
         received: "construction geometry"
       });
@@ -568,15 +605,15 @@ function createAuthoredRevolveHealth(
 
     const axisEntity = sketch.entities.get(feature.axis.entityId);
 
-    if (feature.axis.sketchId !== profile.sketchId) {
+    if (feature.axis.sketchId !== feature.profile.sketchId) {
       issues.push({
         code: "UNSUPPORTED_BODY_REFERENCES",
         message: `Revolve feature ${feature.id} axis must reference the same sketch.`,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        sketchId: profile.sketchId,
+        sketchId: feature.profile.sketchId,
         sketchEntityId: feature.axis.entityId,
-        expected: profile.sketchId,
+        expected: feature.profile.sketchId,
         received: feature.axis.sketchId
       });
     } else if (!axisEntity) {
@@ -585,7 +622,7 @@ function createAuthoredRevolveHealth(
         message: `Revolve axis line does not exist for feature ${feature.id}: ${feature.axis.entityId}`,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        sketchId: profile.sketchId,
+        sketchId: feature.profile.sketchId,
         sketchEntityId: feature.axis.entityId
       });
     } else if (axisEntity.kind !== "line") {
@@ -594,7 +631,7 @@ function createAuthoredRevolveHealth(
         message: `Revolve axis entity ${feature.axis.entityId} is ${axisEntity.kind}, but feature ${feature.id} expects a line.`,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        sketchId: profile.sketchId,
+        sketchId: feature.profile.sketchId,
         sketchEntityId: feature.axis.entityId,
         expected: "line",
         received: axisEntity.kind
@@ -614,14 +651,46 @@ function createAuthoredRevolveHealth(
     bodyExists: options.bodyExists
   });
   const topologySnapshot = topology.ok ? topology.topology : undefined;
+  if (
+    feature.profile.kind === "wire" &&
+    topologySnapshot?.status !== "healthy"
+  ) {
+    const topologyIssue = topologySnapshot?.issues.at(-1);
+    const code =
+      topologyIssue?.code === "STALE_BODY_TOPOLOGY"
+        ? "STALE_BODY_TOPOLOGY"
+        : topologyIssue?.code === "INVALID_EXACT_GEOMETRY_RESULT" ||
+            topologyIssue?.code === "EMPTY_EXACT_GEOMETRY_RESULT"
+          ? "INVALID_EXACT_GEOMETRY_RESULT"
+          : topologyIssue?.code === "EXACT_GEOMETRY_KERNEL_FAILED"
+            ? "EXACT_GEOMETRY_KERNEL_FAILED"
+            : topologyIssue?.code === "EXACT_GEOMETRY_BINDING_UNAVAILABLE"
+              ? "EXACT_GEOMETRY_BINDING_UNAVAILABLE"
+              : "GENERATED_REFERENCE_CORRESPONDENCE_UNPROVEN";
+    issues.push({
+      code,
+      message:
+        topologyIssue?.message ??
+        `Composite wire revolve ${feature.id} requires matching exactly-one-solid topology evidence.`,
+      featureId: feature.id,
+      bodyId: feature.bodyId,
+      expected: topologySnapshot?.sourceIdentity.signature,
+      received: getDerivedExactMetadataForBody(options, feature.bodyId)
+        ?.sourceIdentitySignature
+    });
+  }
 
   return {
     featureId: feature.id,
     bodyId: feature.bodyId,
     sketchId: profile?.sketchId ?? feature.profile.sketchId,
-    entityId:
-      profile?.entityId ??
-      getProfileEntityReferences(feature.profile)[0]!.entityId,
+    ...(profile
+      ? { entityId: profile.entityId }
+      : {
+          sourceEntityIds: getProfileEntityReferences(feature.profile).map(
+            (reference) => reference.entityId
+          )
+        }),
     profileKind,
     axis: feature.axis,
     angleDegrees: feature.angleDegrees,
@@ -2475,6 +2544,8 @@ function statusFromIssue(
     case "INCONSISTENT_SKETCH_CONSTRAINT":
     case "CONFLICTING_SKETCH_CONSTRAINT":
     case "UNSUPPORTED_BODY_REFERENCES":
+    case "COMPOSITE_REVOLVE_PROFILE_UNSUPPORTED":
+    case "COMPOSITE_REVOLVE_AXIS_INTERSECTION":
     case "GENERATED_REFERENCE_CORRESPONDENCE_UNPROVEN":
     case "GENERATED_REFERENCE_KIND_MISMATCH":
     case "GENERATED_REFERENCE_OPERATION_NOT_ELIGIBLE":

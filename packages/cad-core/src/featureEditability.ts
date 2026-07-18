@@ -41,6 +41,7 @@ import {
 } from "./sketchProfileHealth";
 import { createTopologyAnchorReferenceChangesForBody } from "./topologyReferenceHealth";
 import { resolveWireExtrudeProfile } from "./wireExtrudeProfile";
+import { resolveWireRevolveProfile } from "./wireRevolveProfile";
 import type { CadDocument } from "./index";
 
 const SOURCE_BOUNDARY_NOTE =
@@ -681,6 +682,12 @@ function createRevolveEditabilityResponse(
     feature,
     fields: [
       {
+        path: "profile",
+        label: "Profile",
+        valueType: "reference",
+        referenceEditable: true
+      },
+      {
         path: "angleDegrees",
         label: "Angle",
         valueType: "number",
@@ -691,11 +698,12 @@ function createRevolveEditabilityResponse(
     blockingDiagnostics,
     commitOperation: "feature.updateRevolve",
     supportMessage:
-      "Revolve angle can be edited through feature.updateRevolve; this query does not mutate document state.",
+      "Revolve profile and angle can be edited through feature.updateRevolve; this query does not mutate document state.",
     dryRunDiagnostics: createRevolveDryRunDiagnostics(
       feature,
       options.proposedEdit,
-      blockingDiagnostics
+      blockingDiagnostics,
+      options.document
     ),
     affectedSketchIds: [feature.sketchId],
     affectedBodyIds: [feature.bodyId],
@@ -961,6 +969,7 @@ interface SourceEditableFieldInput {
   readonly currentValue?: number | string;
   readonly unit?: CadFeatureEditFieldDescriptor["unit"];
   readonly enumValues?: readonly string[];
+  readonly referenceEditable?: boolean;
 }
 
 function createSourceParameterEditabilityResponse(args: {
@@ -977,14 +986,15 @@ function createSourceParameterEditabilityResponse(args: {
 }): FeatureEditabilityQueryResponse {
   const editable = args.blockingDiagnostics.length === 0;
   const fieldDiagnostics = editable ? [] : args.blockingDiagnostics;
-  const fields = args.fields.map((field) => ({
+  const fields = args.fields.map(({ referenceEditable, ...field }) => ({
     ...field,
-    editable: field.valueType === "reference" ? false : editable,
-    ...(editable && field.valueType !== "reference"
+    editable:
+      field.valueType === "reference" && !referenceEditable ? false : editable,
+    ...(editable && (field.valueType !== "reference" || referenceEditable)
       ? { commitOperation: args.commitOperation }
       : {}),
     diagnostics:
-      field.valueType === "reference"
+      field.valueType === "reference" && !referenceEditable
         ? [
             createDiagnostic({
               code: "FEATURE_EDIT_UNSUPPORTED",
@@ -1737,7 +1747,8 @@ function createExtrudeProfileProposalDiagnostics(
 function createRevolveDryRunDiagnostics(
   feature: Extract<CadFeatureSummary, { readonly kind: "revolve" }>,
   proposedEdit: CadFeatureEditProposal | undefined,
-  blockingDiagnostics: readonly CadFeatureEditDiagnostic[]
+  blockingDiagnostics: readonly CadFeatureEditDiagnostic[],
+  document: CreateFeatureEditabilityResponseOptions["document"]
 ): readonly CadFeatureEditDiagnostic[] {
   if (proposedEdit === undefined) {
     return [];
@@ -1751,8 +1762,70 @@ function createRevolveDryRunDiagnostics(
     feature,
     proposedEdit,
     "revolve",
-    ["angleDegrees"]
+    ["profile", "angleDegrees"]
   );
+
+  if (proposedEdit.kind === "revolve" && proposedEdit.profile) {
+    const profile = proposedEdit.profile;
+    if (profile.kind === "wire") {
+      const resolution = resolveWireRevolveProfile(
+        document,
+        profile,
+        feature.axis
+      );
+      if (!resolution.ok) {
+        diagnostics.push(
+          createDiagnostic({
+            code: "FEATURE_EDIT_INVALID_PROPOSAL",
+            severity: "blocker",
+            message: resolution.message,
+            featureId: feature.id,
+            bodyId: feature.bodyId,
+            sketchId: resolution.sketchId,
+            sketchEntityId: resolution.sketchEntityId,
+            fieldPath: "profile",
+            expected: "feature-ready composite wire revolve profile",
+            received: resolution.code
+          })
+        );
+      }
+    } else {
+      const entity = document.sketches
+        .get(profile.sketchId)
+        ?.entities.get(profile.entityId);
+      const axis = document.sketches
+        .get(feature.axis.sketchId)
+        ?.entities.get(feature.axis.entityId);
+      const validAxis =
+        profile.sketchId === feature.axis.sketchId &&
+        axis?.kind === "line" &&
+        Math.hypot(axis.end[0] - axis.start[0], axis.end[1] - axis.start[1]) >
+          0;
+      if (
+        !entity ||
+        (entity.kind !== "rectangle" && entity.kind !== "circle") ||
+        entity.construction ||
+        !validAxis
+      ) {
+        diagnostics.push(
+          createDiagnostic({
+            code: "FEATURE_EDIT_INVALID_PROPOSAL",
+            severity: "blocker",
+            message:
+              "Revolve entity profile must be a non-construction rectangle or circle on the same sketch as a non-zero line axis.",
+            featureId: feature.id,
+            bodyId: feature.bodyId,
+            sketchId: profile.sketchId,
+            sketchEntityId: profile.entityId,
+            fieldPath: "profile",
+            expected:
+              "same-sketch non-construction rectangle/circle with non-zero line axis",
+            received: entity?.kind ?? "missing entity"
+          })
+        );
+      }
+    }
+  }
 
   if (
     proposedEdit.kind === "revolve" &&

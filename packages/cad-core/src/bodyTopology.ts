@@ -157,6 +157,7 @@ function createAuthoredFeatureTopology(
       document,
       bodyId,
       units,
+      ownerPartId,
       feature
     );
   }
@@ -189,6 +190,7 @@ function createAuthoredFeatureTopology(
       document,
       bodyId,
       units,
+      ownerPartId,
       feature
     );
   }
@@ -1114,12 +1116,19 @@ function createUnsupportedAuthoredFeatureTopology(
   document: GeneratedReferencesDocument,
   bodyId: BodyId,
   units: DocumentUnits,
+  ownerPartId: PartId,
   feature: GeneratedReferencesFeature
 ): CadBodyTopologySnapshot {
   const sourceKind = createAuthoredFeatureTopologySourceKind(feature);
   const sourceIdentityInput: Omit<CadBodyTopologySourceIdentity, "signature"> =
     feature.kind === "revolve"
-      ? createRevolveSourceIdentityInput(document, bodyId, units, feature)
+      ? createRevolveSourceIdentityInput(
+          document,
+          bodyId,
+          units,
+          ownerPartId,
+          feature
+        )
       : feature.kind === "hole"
         ? createHoleSourceIdentityInput(document, bodyId, units, feature)
         : feature.kind === "chamfer"
@@ -1280,8 +1289,46 @@ function createRevolveSourceIdentityInput(
   document: GeneratedReferencesDocument,
   bodyId: BodyId,
   units: DocumentUnits,
+  ownerPartId: PartId,
   feature: Extract<GeneratedReferencesFeature, { kind: "revolve" }>
 ): Omit<CadBodyTopologySourceIdentity, "signature"> {
+  if (feature.profile.kind === "wire") {
+    const sketch = document.sketches.get(feature.profile.sketchId);
+    const profileEntities = feature.profile.segments.map((segment) => ({
+      entityId: segment.entityId,
+      orientation: segment.orientation,
+      geometry: sketch?.entities.get(segment.entityId)
+    }));
+    const axisEntity = sketch?.entities.get(feature.axis.entityId);
+    const resolvedFrame = sketch
+      ? createSourceMeasurementFrame(document, sketch, ownerPartId)
+      : undefined;
+    return {
+      bodyId,
+      sourceKind: "authoredRevolve",
+      units,
+      featureId: feature.id,
+      operationMode: feature.operationMode,
+      sourceSketchId: feature.profile.sketchId,
+      sourceSketchEntityIds: feature.profile.segments.map(
+        (segment) => segment.entityId
+      ),
+      profileKind: "wire",
+      revolveAxis: feature.axis,
+      revolveAxisSignature: createRevolveAxisSignature(document, feature),
+      revolveAngleDegrees: feature.angleDegrees,
+      featureSourceSignature: sha256Hex(
+        new TextEncoder().encode(
+          JSON.stringify({
+            profile: feature.profile,
+            profileEntities,
+            axisEntity: axisEntity ?? null,
+            resolvedFrame: resolvedFrame ?? null
+          })
+        )
+      )
+    };
+  }
   const profile = getFeatureEntityProfileRef(feature);
   const entity = profile
     ? document.sketches.get(profile.sketchId)?.entities.get(profile.entityId)

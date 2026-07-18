@@ -408,7 +408,7 @@ export type CadOp =
   | SketchConstraintRenameOp
   | SketchConstraintDeleteOp
   | FeatureExtrudeCommandInput
-  | FeatureRevolveOp
+  | FeatureRevolveCommandInput
   | FeatureHoleOp
   | FeatureChamferOp
   | FeatureFilletOp
@@ -419,7 +419,7 @@ export type CadOp =
   | FeatureSweepOp
   | FeatureLoftOp
   | FeatureUpdateExtrudeCommandInput
-  | FeatureUpdateRevolveOp
+  | FeatureUpdateRevolveCommandInput
   | FeatureUpdateHoleOp
   | FeatureUpdateChamferOp
   | FeatureUpdateFilletOp
@@ -1469,18 +1469,30 @@ export type CadExtrudeFeatureRef = CadExtrudeFeatureRefBase &
       }
   );
 
-export interface CadRevolveFeatureRef {
+interface CadRevolveFeatureRefBase {
   readonly id: FeatureId;
   readonly kind: "revolve";
   readonly bodyId: BodyId;
   readonly sketchId: SketchId;
-  readonly entityId: SketchEntityId;
-  readonly profileKind: FeatureRevolveProfileKind;
   readonly axis: FeatureRevolveAxis;
   readonly angleDegrees: number;
   readonly operationMode: FeatureRevolveOperationMode;
   readonly targetBodyId?: BodyId;
 }
+
+export type CadRevolveFeatureRef = CadRevolveFeatureRefBase &
+  (
+    | {
+        readonly entityId: SketchEntityId;
+        readonly profileKind: FeatureRevolveProfileKind;
+        readonly profile?: never;
+      }
+    | {
+        readonly profile: SketchWireProfileRef;
+        readonly entityId?: never;
+        readonly profileKind?: never;
+      }
+  );
 
 export interface CadHoleFeatureRef {
   readonly id: FeatureId;
@@ -1823,6 +1835,8 @@ export type CadBatchValidationErrorCode =
   | "SKETCH_PROFILE_MULTIPLE_REGIONS_UNSUPPORTED"
   | "SKETCH_PROFILE_INNER_LOOP_UNSUPPORTED"
   | "SKETCH_PROFILE_CONSUMER_UNSUPPORTED"
+  | "COMPOSITE_REVOLVE_PROFILE_UNSUPPORTED"
+  | "COMPOSITE_REVOLVE_AXIS_INTERSECTION"
   | "SKETCH_PATH_EMPTY"
   | "SKETCH_PATH_ENTITY_MISSING"
   | "SKETCH_PATH_ENTITY_UNSUPPORTED"
@@ -3397,28 +3411,45 @@ export type CadExtrudeFeatureSummary = CadExtrudeFeatureSummaryBase &
       }
   );
 
-export interface CadRevolveFeatureSource {
+interface CadRevolveFeatureSourceBase {
   readonly type: "sketchEntityWithAxis";
   readonly sketchId: SketchId;
-  readonly entityId: SketchEntityId;
   readonly axis: FeatureRevolveAxis;
 }
 
-export interface CadRevolveFeatureSummary {
+export type CadRevolveFeatureSource = CadRevolveFeatureSourceBase &
+  (
+    | { readonly entityId: SketchEntityId; readonly profile?: never }
+    | { readonly profile: SketchWireProfileRef; readonly entityId?: never }
+  );
+
+interface CadRevolveFeatureSummaryBase {
   readonly id: FeatureId;
   readonly kind: "revolve";
   readonly partId: PartId;
   readonly bodyId: BodyId;
   readonly name?: string;
   readonly sketchId: SketchId;
-  readonly entityId: SketchEntityId;
-  readonly profileKind: FeatureRevolveProfileKind;
   readonly axis: FeatureRevolveAxis;
   readonly angleDegrees: number;
   readonly operationMode: FeatureRevolveOperationMode;
   readonly targetBodyId?: BodyId;
   readonly source: CadRevolveFeatureSource;
 }
+
+export type CadRevolveFeatureSummary = CadRevolveFeatureSummaryBase &
+  (
+    | {
+        readonly entityId: SketchEntityId;
+        readonly profileKind: FeatureRevolveProfileKind;
+        readonly profile?: never;
+      }
+    | {
+        readonly profile: SketchWireProfileRef;
+        readonly entityId?: never;
+        readonly profileKind?: never;
+      }
+  );
 
 export interface CadHoleFeatureSource {
   readonly type: "sketchCircleHole";
@@ -3675,6 +3706,7 @@ export interface CadFeatureExtrudeEditProposal {
 
 export interface CadFeatureRevolveEditProposal {
   readonly kind: "revolve";
+  readonly profile?: SketchProfileRef;
   readonly angleDegrees?: number;
 }
 
@@ -4559,14 +4591,26 @@ export type CadSketchExtrudeBodySource = CadSketchExtrudeBodySourceBase &
       }
   );
 
-export interface CadSketchRevolveBodySource {
+interface CadSketchRevolveBodySourceBase {
   readonly type: "sketchRevolveFeature";
   readonly featureId: FeatureId;
   readonly sketchId: SketchId;
-  readonly entityId: SketchEntityId;
-  readonly profileKind: FeatureRevolveProfileKind;
   readonly axis: FeatureRevolveAxis;
 }
+
+export type CadSketchRevolveBodySource = CadSketchRevolveBodySourceBase &
+  (
+    | {
+        readonly entityId: SketchEntityId;
+        readonly profileKind: FeatureRevolveProfileKind;
+        readonly profile?: never;
+      }
+    | {
+        readonly profile: SketchWireProfileRef;
+        readonly entityId?: never;
+        readonly profileKind?: never;
+      }
+  );
 
 export interface CadSketchHoleBodySource {
   readonly type: "sketchHoleFeature";
@@ -5725,6 +5769,8 @@ export type CadDependencyHealthIssueCode =
   | "OVER_DEFINED_SKETCH"
   | "BODY_NOT_FOUND"
   | "UNSUPPORTED_BODY_REFERENCES"
+  | "COMPOSITE_REVOLVE_PROFILE_UNSUPPORTED"
+  | "COMPOSITE_REVOLVE_AXIS_INTERSECTION"
   | "GENERATED_REFERENCE_CORRESPONDENCE_UNPROVEN"
   | "STALE_BODY_TOPOLOGY"
   | "INVALID_EXACT_GEOMETRY_RESULT"
@@ -5780,8 +5826,9 @@ export interface CadAuthoredRevolveHealth {
   readonly featureId: FeatureId;
   readonly bodyId: BodyId;
   readonly sketchId: SketchId;
-  readonly entityId: SketchEntityId;
-  readonly profileKind: FeatureRevolveProfileKind;
+  readonly entityId?: SketchEntityId;
+  readonly sourceEntityIds?: readonly SketchEntityId[];
+  readonly profileKind: CadGeneratedReferenceProfileKind;
   readonly axis: FeatureRevolveAxis;
   readonly angleDegrees: number;
   readonly operationMode: FeatureRevolveOperationMode;
@@ -6802,7 +6849,27 @@ export type CadExactExportExtrudeBodySource =
         readonly exactResultSourceIdentitySignature: string;
       });
 
-export type CadExactExportBodySource = CadExactExportExtrudeBodySource;
+export interface CadExactExportRevolveBodySource {
+  readonly bodyId: BodyId;
+  readonly bodyName?: string;
+  readonly sourceKind: "authoredRevolve";
+  readonly featureId: FeatureId;
+  readonly sourceSketchId: SketchId;
+  readonly sourceSketchEntityIds: readonly SketchEntityId[];
+  readonly sketchPlane: SketchPlane;
+  readonly profile: CadExactExportResolvedWireProfile;
+  readonly axis: {
+    readonly sourceEntityId: SketchEntityId;
+    readonly start: Vec2;
+    readonly end: Vec2;
+  };
+  readonly angleDegrees: number;
+  readonly solidPolicy: "exactlyOne";
+}
+
+export type CadExactExportBodySource =
+  | CadExactExportExtrudeBodySource
+  | CadExactExportRevolveBodySource;
 
 export interface CadExportFormatReadiness {
   readonly format: CadExportFormatId;

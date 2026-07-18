@@ -25,7 +25,12 @@ import type {
   WcadSourceIdentity,
   WcadDocumentSchemaVersion
 } from "@web-cad/cad-protocol";
-import type { CadDocument, ExtrudeFeature, SketchEntity } from "./index";
+import type {
+  CadDocument,
+  ExtrudeFeature,
+  RevolveFeature,
+  SketchEntity
+} from "./index";
 import {
   getFeatureEntityProfileRef,
   getSupportedEntityProfileKind
@@ -36,6 +41,7 @@ import {
   resolveWireExtrudeProfile
 } from "./wireExtrudeProfile";
 import { createBodyTopology } from "./bodyTopology";
+import { createResolvedWireRevolveProfile } from "./wireRevolveProfile";
 
 interface ProjectExportReadinessInput {
   readonly document: CadDocument;
@@ -629,6 +635,36 @@ function classifyBodySource(
     };
   }
 
+  if (body.source.type === "sketchRevolveFeature") {
+    const feature = document.features.get(body.featureId);
+    if (feature?.kind === "revolve" && feature.profile.kind === "wire") {
+      if (
+        feature.operationMode !== "newBody" ||
+        !createResolvedWireRevolveProfile(
+          document,
+          feature.profile,
+          feature.axis,
+          body.partId
+        )
+      ) {
+        return createUnresolvedBodySourceReadiness(body, sourceKind);
+      }
+      return {
+        sourceKind,
+        sourceStatus: "supported",
+        diagnostics: [
+          createBodyDiagnostic(
+            "EXPORT_BODY_SOURCE_SUPPORTED",
+            "supported",
+            `Authored composite wire revolve body ${body.id} has a resolved exact STEP recipe.`,
+            body,
+            sourceKind
+          )
+        ]
+      };
+    }
+  }
+
   if (
     body.source.type === "sketchRevolveFeature" ||
     body.source.type === "sketchHoleFeature" ||
@@ -854,9 +890,15 @@ function createExactExportBodySource(
 ): CadExactExportBodySource | undefined {
   const feature = document.features.get(body.featureId);
 
-  if (!feature || feature.kind !== "extrude") {
+  if (!feature) {
     return undefined;
   }
+
+  if (feature.kind === "revolve") {
+    return createExactRevolveBodySource(document, body, feature);
+  }
+
+  if (feature.kind !== "extrude") return undefined;
 
   if (feature.operationMode !== "newBody" && feature.profile.kind === "wire") {
     if (
@@ -976,6 +1018,39 @@ function createExactExportBodySource(
           }
         }
       : {})
+  };
+}
+
+function createExactRevolveBodySource(
+  document: CadDocument,
+  body: CadExportBodyReadiness,
+  feature: RevolveFeature
+): CadExactExportBodySource | undefined {
+  if (feature.operationMode !== "newBody" || feature.profile.kind !== "wire") {
+    return undefined;
+  }
+  const sketch = document.sketches.get(feature.profile.sketchId);
+  const resolved = createResolvedWireRevolveProfile(
+    document,
+    feature.profile,
+    feature.axis,
+    body.partId
+  );
+  if (!sketch || !resolved) return undefined;
+  return {
+    bodyId: body.bodyId,
+    ...(body.bodyName ? { bodyName: body.bodyName } : {}),
+    sourceKind: "authoredRevolve",
+    featureId: feature.id,
+    sourceSketchId: feature.profile.sketchId,
+    sourceSketchEntityIds: feature.profile.segments.map(
+      (segment) => segment.entityId
+    ),
+    sketchPlane: sketch.plane,
+    profile: resolved.profile,
+    axis: resolved.axis,
+    angleDegrees: feature.angleDegrees,
+    solidPolicy: "exactlyOne"
   };
 }
 
