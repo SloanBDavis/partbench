@@ -5,8 +5,17 @@ import {
   type WcadTopologyCheckpointPayloadInput
 } from "@web-cad/cad-core";
 import type { CadGeneratedFaceReference } from "@web-cad/cad-protocol";
+import {
+  GeometryKernelWorker,
+  type GeometryWorker,
+  type GeometryWorkerRequest
+} from "@web-cad/geometry-worker";
 import { describe, expect, it, vi } from "vitest";
 
+import type {
+  GeometryWorkerMessage,
+  GeometryWorkerTransport
+} from "./browserGeometryWorker";
 import {
   createDerivedGeometryCacheKey,
   createEmptyDerivedGeometrySnapshot,
@@ -37,9 +46,191 @@ import {
   createCurrentDerivedExactMetadataSnapshots,
   readProjectExactStepExport
 } from "./projectExactExportQueries";
+import { executeProjectExactStepExport } from "./projectExactStepExport";
+import { createProjectWcadTopologyCheckpointPayloadInputs } from "./projectWcadTopologyCheckpoints";
 import { createGeneratedFaceReferenceKey } from "./sketchDisplayFrames";
 
 describe("V17 composite revolve web integration", () => {
+  it("rebuilds one CadEngine wire revolve through the real node worker and OCCT boundary", async () => {
+    const source = readRevolveSource(
+      createWireRevolveEngine(),
+      "body_revolve_partial"
+    );
+
+    await withNodeOcctDerivedGeometryRuntime(async (runtime) => {
+      let displayInput: DerivedGeometryRevolveInput | undefined;
+      const displayRuntime = {
+        ...runtime,
+        async revolveProfile(input: DerivedGeometryRevolveInput) {
+          displayInput = input;
+          return runtime.revolveProfile(input);
+        }
+      } satisfies DerivedGeometryRuntime;
+      const exactInput = createExactMetadataRuntimeInput(source);
+      const displayed = await deriveGeometrySourceMesh(displayRuntime, source);
+      const exact = await runtime.exactBodyMetadata(exactInput);
+
+      expect(displayInput).toMatchObject({
+        profile: source.profile,
+        axis: source.axis,
+        angleDegrees: source.angleDegrees
+      });
+      expect(exactInput.source).toMatchObject({
+        kind: "revolve",
+        profile: source.profile,
+        axis: source.axis,
+        angleDegrees: source.angleDegrees
+      });
+      expect(displayed.mesh.vertices.length).toBeGreaterThan(0);
+      expect(displayed.mesh.indices.length).toBeGreaterThan(0);
+      expect(exact.metadata).toMatchObject({
+        sourceKind: "revolve",
+        topologyCounts: { solidCount: 1 }
+      });
+      expect(exact.metadata.volume).toBeGreaterThan(0);
+    });
+  }, 120_000);
+
+  it("keeps one attached world recipe across real display, exact, checkpoint, and project STEP boundaries", async () => {
+    const engine = createWireRevolveEngine({ attachedParentDepth: 5 });
+    const sourceIdentity = readBodySourceIdentitySignature(
+      engine,
+      "body_revolve_partial"
+    );
+    engine.apply({
+      op: "topology.checkpoint.create",
+      checkpointId: "checkpoint_revolve_attached",
+      bodyId: "body_revolve_partial",
+      sourceFeatureId: "feature_revolve_partial",
+      sourceIdentity: {
+        algorithm: "partbench-source-v1",
+        sha256: sourceIdentity
+      },
+      status: "active"
+    });
+    const source = readRevolveSource(engine, "body_revolve_partial");
+
+    await withNodeOcctDerivedGeometryRuntime(async (runtime) => {
+      let displayInput: DerivedGeometryRevolveInput | undefined;
+      let checkpointInput:
+        | Parameters<
+            DerivedGeometryRuntime["exactTopologyCheckpointPayload"]
+          >[0]
+        | undefined;
+      const displayRuntime = {
+        ...runtime,
+        async revolveProfile(input: DerivedGeometryRevolveInput) {
+          displayInput = input;
+          return runtime.revolveProfile(input);
+        }
+      } satisfies DerivedGeometryRuntime;
+      const exactInput = createExactMetadataRuntimeInput(source);
+      const displayed = await deriveGeometrySourceMesh(displayRuntime, source);
+      const exact = await runtime.exactBodyMetadata(exactInput);
+      const checkpointPayloads =
+        await createProjectWcadTopologyCheckpointPayloadInputs({
+          document: engine.getDocument(),
+          features: readFeatures(engine),
+          sketches: readSketches(engine),
+          generatedFacesByKey: readGeneratedFaces(engine),
+          runtime: {
+            exactTopologyCheckpointPayload(input) {
+              checkpointInput = input;
+              return runtime.exactTopologyCheckpointPayload(input);
+            }
+          }
+        });
+
+      const exactExport = readProjectExactStepExport(
+        engine,
+        createEmptyDerivedExactMetadataSnapshot(),
+        [source]
+      );
+      if (!exactExport) {
+        throw new Error("Expected project STEP export input.");
+      }
+      let stepRequest: GeometryWorkerRequest | undefined;
+      const kernelWorker = new GeometryKernelWorker();
+      const stepWorker: GeometryWorker = {
+        execute(request) {
+          stepRequest = request;
+          return kernelWorker.execute(request);
+        }
+      };
+      const step = await executeProjectExactStepExport({
+        exactExport,
+        worker: stepWorker
+      });
+
+      if (!displayInput) throw new Error("Expected display revolve input.");
+      if (!checkpointInput) {
+        throw new Error("Expected checkpoint revolve input.");
+      }
+      if (exactInput.source.kind !== "revolve") {
+        throw new Error("Expected exact revolve input.");
+      }
+      if (checkpointInput.source.kind !== "revolve") {
+        throw new Error("Expected checkpoint revolve input.");
+      }
+      if (!stepRequest || stepRequest.payload.op !== "geometry.exportStep") {
+        throw new Error("Expected project STEP worker request.");
+      }
+      const stepBody = stepRequest.payload.bodies.find(
+        (body) => body.bodyId === source.id
+      );
+      if (!stepBody || !("kind" in stepBody) || stepBody.kind !== "revolve") {
+        throw new Error("Expected project STEP revolve body.");
+      }
+      const expectedRecipe = {
+        profile: source.profile,
+        axis: source.axis,
+        angleDegrees: source.angleDegrees
+      };
+
+      expect(source.profile).toMatchObject({
+        kind: "wire",
+        frame: {
+          origin: [0, 0, 5],
+          uAxis: [1, 0, 0],
+          vAxis: [0, 1, 0]
+        }
+      });
+      expect(displayInput).toMatchObject(expectedRecipe);
+      expect(exactInput.source).toMatchObject(expectedRecipe);
+      expect(checkpointInput.source).toMatchObject(expectedRecipe);
+      expect(stepBody).toMatchObject(expectedRecipe);
+      for (const input of [
+        displayInput,
+        exactInput.source,
+        checkpointInput.source,
+        stepBody
+      ]) {
+        expect(input).not.toHaveProperty("placementFrame");
+      }
+
+      expect(displayed.mesh.vertices.length).toBeGreaterThan(0);
+      expect(exact.metadata).toMatchObject({
+        sourceKind: "revolve",
+        topologyCounts: { solidCount: 1 }
+      });
+      expect(checkpointPayloads).toHaveLength(1);
+      expect(checkpointPayloads[0]?.brepBytes.byteLength).toBeGreaterThan(
+        1_000
+      );
+      expect(checkpointPayloads[0]?.topologyBytes.byteLength).toBeGreaterThan(
+        0
+      );
+      expect(step).toMatchObject({
+        available: true,
+        artifact: {
+          format: "step",
+          byteLength: expect.any(Number)
+        }
+      });
+      expect(step.artifact?.byteLength).toBeGreaterThan(1_000);
+    });
+  }, 120_000);
+
   it("maps real partial and full wire revolves into one display/exact recipe", async () => {
     const engine = createWireRevolveEngine({ includeFull: true });
     const partial = readRevolveSource(engine, "body_revolve_partial");
@@ -818,6 +1009,90 @@ function importBody(
     ]
   });
   if (!response.ok) throw new Error(response.error.message);
+}
+
+interface NodeWorkerMessageEvent {
+  readonly data: GeometryWorkerMessage;
+}
+
+interface NodeWorkerErrorEvent {
+  readonly error?: unknown;
+  readonly message?: string;
+}
+
+type NodeWorkerMessageListener = (event: NodeWorkerMessageEvent) => void;
+type NodeWorkerErrorListener = (event: NodeWorkerErrorEvent) => void;
+
+class NodeOcctGeometryWorkerTransport implements GeometryWorkerTransport {
+  readonly #worker = new GeometryKernelWorker();
+  readonly #messageListeners = new Set<NodeWorkerMessageListener>();
+  readonly #errorListeners = new Set<NodeWorkerErrorListener>();
+
+  postMessage(message: GeometryWorkerRequest): void {
+    queueMicrotask(() => {
+      void this.#worker.execute(message).then(
+        (response) => {
+          for (const listener of this.#messageListeners) {
+            listener({ data: response });
+          }
+        },
+        (error: unknown) => {
+          for (const listener of this.#errorListeners) {
+            listener({ error });
+          }
+        }
+      );
+    });
+  }
+
+  addEventListener(type: "message", listener: NodeWorkerMessageListener): void;
+  addEventListener(type: "error", listener: NodeWorkerErrorListener): void;
+  addEventListener(
+    type: "message" | "error",
+    listener: NodeWorkerMessageListener | NodeWorkerErrorListener
+  ): void {
+    if (type === "message") {
+      this.#messageListeners.add(listener as NodeWorkerMessageListener);
+      return;
+    }
+    this.#errorListeners.add(listener as NodeWorkerErrorListener);
+  }
+
+  removeEventListener(
+    type: "message",
+    listener: NodeWorkerMessageListener
+  ): void;
+  removeEventListener(type: "error", listener: NodeWorkerErrorListener): void;
+  removeEventListener(
+    type: "message" | "error",
+    listener: NodeWorkerMessageListener | NodeWorkerErrorListener
+  ): void {
+    if (type === "message") {
+      this.#messageListeners.delete(listener as NodeWorkerMessageListener);
+      return;
+    }
+    this.#errorListeners.delete(listener as NodeWorkerErrorListener);
+  }
+
+  terminate(): void {
+    this.#messageListeners.clear();
+    this.#errorListeners.clear();
+  }
+}
+
+async function withNodeOcctDerivedGeometryRuntime<T>(
+  run: (runtime: DerivedGeometryRuntime) => Promise<T>
+): Promise<T> {
+  vi.stubGlobal("Worker", NodeOcctGeometryWorkerTransport);
+  const { createDerivedGeometryRuntime } =
+    await import("./derivedGeometryRuntime.browser");
+  const runtime = createDerivedGeometryRuntime();
+  try {
+    return await run(runtime);
+  } finally {
+    runtime.dispose();
+    vi.unstubAllGlobals();
+  }
 }
 
 function deferred<T>() {
