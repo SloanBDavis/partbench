@@ -146,7 +146,11 @@ export function CompositeFeaturePanel({
   }
 
   return (
-    <section className="command-card" aria-label="Composite features">
+    <section
+      className="command-card"
+      aria-label="Composite features"
+      data-testid="v17-composite-feature-authoring"
+    >
       <div className="command-card-heading">
         <h3>Composite features</h3>
         <span>V17</span>

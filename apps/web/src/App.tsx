@@ -33,6 +33,7 @@ import type {
   GeneratedReferenceMeasurement,
   NamedGeneratedReferenceEntry,
   CadOp,
+  CadFeatureEditProposal,
   DocumentUnitUpdateMode,
   FeatureExtrudeSide,
   FeatureEditabilityQueryResponse,
@@ -55,6 +56,8 @@ import type {
   WcadPackageValidationIssue,
   SketchEntitySnapshot,
   SketchSnapshot,
+  SketchPathRef,
+  SketchProfileRef,
   Vec2
 } from "@web-cad/cad-protocol";
 import { createGeometryKernelBrowserWorker } from "@web-cad/geometry-worker/browser";
@@ -100,11 +103,14 @@ import {
   buildFeatureUpdateChamferOp,
   buildFeatureUpdateCircularPatternOp,
   buildFeatureUpdateExtrudeOp,
+  buildFeatureUpdateCompositeExtrudeOp,
   buildFeatureUpdateFilletOp,
   buildFeatureUpdateHoleOp,
   buildFeatureUpdateLinearPatternOp,
   buildFeatureUpdateMirrorOp,
   buildFeatureUpdateRevolveOp,
+  buildFeatureUpdateCompositeRevolveOp,
+  buildFeatureUpdateCompositeSweepOp,
   buildFeatureUpdateShellOp,
   buildNameGeneratedReferenceOp,
   buildParameterEditOps,
@@ -159,6 +165,7 @@ import { HistoryPanel } from "./components/HistoryPanel";
 import { Inspector } from "./components/Inspector";
 import { ModelingActionsPanel } from "./components/ModelingActionsPanel";
 import { CompositeFeaturePanel } from "./components/CompositeFeaturePanel";
+import { CompositeFeatureEditor } from "./components/CompositeFeatureEditor";
 import { ProjectJsonPanel } from "./components/ProjectJsonPanel";
 import { SketchPanel } from "./components/SketchPanel";
 import { SketchArcToolOverlay } from "./components/SketchArcToolOverlay";
@@ -594,6 +601,24 @@ function readFeatureEditability(
     query: {
       query: "feature.editability",
       featureId
+    }
+  });
+
+  return response.ok && response.query === "feature.editability"
+    ? response
+    : undefined;
+}
+
+function readFeatureEditProposal(
+  featureId: string,
+  proposedEdit: CadFeatureEditProposal
+): FeatureEditabilityQueryResponse | undefined {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: {
+      query: "feature.editability",
+      featureId,
+      proposedEdit
     }
   });
 
@@ -3116,6 +3141,49 @@ export function App() {
     );
   }
 
+  async function updateCompositeExtrudeProfile(
+    featureId: string,
+    profile: SketchProfileRef
+  ) {
+    const feature = projectStructure.features.find(
+      (candidate) => candidate.id === featureId
+    );
+    if (feature?.kind !== "extrude") return;
+    await commitOps(
+      [buildFeatureUpdateCompositeExtrudeOp(featureId, profile)],
+      () => feature.bodyId
+    );
+  }
+
+  async function updateCompositeRevolveProfile(
+    featureId: string,
+    profile: SketchProfileRef
+  ) {
+    const feature = projectStructure.features.find(
+      (candidate) => candidate.id === featureId
+    );
+    if (feature?.kind !== "revolve") return;
+    await commitOps(
+      [buildFeatureUpdateCompositeRevolveOp(featureId, profile)],
+      () => feature.bodyId
+    );
+  }
+
+  async function updateCompositeSweepRefs(
+    featureId: string,
+    profile: Extract<SketchProfileRef, { readonly kind: "entity" }>,
+    path: SketchPathRef
+  ) {
+    const feature = projectStructure.features.find(
+      (candidate) => candidate.id === featureId
+    );
+    if (feature?.kind !== "sweep") return;
+    await commitOps(
+      [buildFeatureUpdateCompositeSweepOp(featureId, profile, path)],
+      () => feature.bodyId
+    );
+  }
+
   async function updateAuthoredHole(
     featureId: string,
     depthMode: FeatureHoleDepthMode,
@@ -4435,6 +4503,33 @@ export function App() {
               body={selectedBody}
               featureEditability={selectedFeatureEditability}
               feature={selectedFeature}
+              featureSourceEditor={
+                selectedFeature &&
+                (selectedFeature.kind === "extrude" ||
+                  selectedFeature.kind === "revolve" ||
+                  selectedFeature.kind === "sweep") ? (
+                  <CompositeFeatureEditor
+                    key={`${selectedFeature.id}:source`}
+                    disabled={commandPending}
+                    feature={selectedFeature}
+                    pathCandidatesBySketchId={pathCandidatesBySketchId}
+                    profileCandidatesBySketchId={
+                      profileCandidatesBySketchId
+                    }
+                    sketches={sketches}
+                    inspectProposal={readFeatureEditProposal}
+                    onUpdateExtrudeProfile={(featureId, profile) =>
+                      void updateCompositeExtrudeProfile(featureId, profile)
+                    }
+                    onUpdateRevolveProfile={(featureId, profile) =>
+                      void updateCompositeRevolveProfile(featureId, profile)
+                    }
+                    onUpdateSweepRefs={(featureId, profile, path) =>
+                      void updateCompositeSweepRefs(featureId, profile, path)
+                    }
+                  />
+                ) : undefined
+              }
               generatedReferences={selectedBodyGeneratedReferences.references}
               generatedReferencesError={selectedBodyGeneratedReferences.error}
               generatedReferenceMeasurements={

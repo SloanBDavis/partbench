@@ -21,7 +21,7 @@ import type {
   NamedGeneratedReferenceEntry,
   SelectionReferenceCandidatesQueryResponse
 } from "@web-cad/cad-protocol";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   areBoxDimensionFormsEqual,
   areConeDimensionFormsEqual,
@@ -121,6 +121,7 @@ export function Inspector({
   bodyMassPropertiesError,
   feature,
   featureEditability,
+  featureSourceEditor,
   generatedReferences,
   generatedReferencesError,
   generatedReferenceMeasurements,
@@ -168,6 +169,7 @@ export function Inspector({
   readonly bodyMassPropertiesError?: string;
   readonly feature?: CadFeatureSummary;
   readonly featureEditability?: FeatureEditabilityQueryResponse;
+  readonly featureSourceEditor?: ReactNode;
   readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
   readonly generatedReferencesError?: string;
   readonly generatedReferenceMeasurements?: ReadonlyMap<
@@ -296,6 +298,7 @@ export function Inspector({
         topologyRepairPreview,
         units
       })}
+      {body ? featureSourceEditor : null}
       <NamedReferencesPanel
         disabled={disabled}
         candidatesByName={namedReferenceCandidatesByName}

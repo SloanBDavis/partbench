@@ -36,7 +36,11 @@ export function SketchArcToolOverlay({
   ].map((point) => toScreenPoint(point, displayFrame, camera, size));
 
   return (
-    <div className="sketch-arc-tool-layer" aria-label="Three-point arc tool">
+    <div
+      className="sketch-arc-tool-layer"
+      aria-label="Three-point arc tool"
+      data-testid="v17-three-point-arc-authoring"
+    >
       <div className="sketch-arc-tool-prompt">
         <strong>Three-point arc</strong>
         <span>

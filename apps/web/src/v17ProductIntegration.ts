@@ -37,6 +37,32 @@ export function choosePathCandidate(
   return chooseCandidate(response?.candidates ?? [], selectedKey);
 }
 
+export function findProfileCandidateKey(
+  response: SketchProfileCandidatesQueryResponse | undefined,
+  profile: SketchProfileRef
+): string | undefined {
+  return response?.candidates.find((candidate) => refsEqual(candidate.profile, profile))
+    ?.sortKey;
+}
+
+export function findPathCandidateSelection(
+  response: SketchPathCandidatesQueryResponse | undefined,
+  path: SketchPathRef
+): { readonly key: string; readonly reversed: boolean } | undefined {
+  const exact = response?.candidates.find((candidate) =>
+    refsEqual(candidate.path, path)
+  );
+  if (exact) return { key: exact.sortKey, reversed: false };
+  const reversed = response?.candidates.find((candidate) =>
+    refsEqual(reverseSketchPath(candidate.path), path)
+  );
+  return reversed ? { key: reversed.sortKey, reversed: true } : undefined;
+}
+
+function refsEqual(left: SketchProfileRef | SketchPathRef, right: SketchProfileRef | SketchPathRef) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 function chooseCandidate<T extends { readonly sortKey: string }>(
   candidates: readonly T[],
   selectedKey?: string

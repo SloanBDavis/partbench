@@ -33,10 +33,13 @@ import {
   buildFeatureUpdateCircularPatternOp,
   buildFeatureUpdateChamferOp,
   buildFeatureUpdateExtrudeOp,
+  buildFeatureUpdateCompositeExtrudeOp,
   buildFeatureUpdateFilletOp,
   buildFeatureUpdateHoleOp,
   buildFeatureUpdateLinearPatternOp,
   buildFeatureUpdateRevolveOp,
+  buildFeatureUpdateCompositeRevolveOp,
+  buildFeatureUpdateCompositeSweepOp,
   buildDeleteNamedReferenceOp,
   buildDeleteParameterOp,
   buildDeleteSketchConstraintOp,
@@ -170,6 +173,15 @@ describe("cad command builders", () => {
     const path = { kind: "entity" as const, sketchId: "path", entityId: "arc", orientation: "reverse" as const };
     expect(buildFeatureCompositeSweepOp({ id: "", bodyId: "", name: "", profile: sweepProfile, path })).toMatchObject({
       op: "feature.sweep", profile: sweepProfile, path
+    });
+    expect(buildFeatureUpdateCompositeExtrudeOp("extrude", profile)).toEqual({
+      op: "feature.updateExtrude", id: "extrude", profile
+    });
+    expect(buildFeatureUpdateCompositeRevolveOp("revolve", profile)).toEqual({
+      op: "feature.updateRevolve", id: "revolve", profile
+    });
+    expect(buildFeatureUpdateCompositeSweepOp("sweep", sweepProfile, path)).toEqual({
+      op: "feature.updateSweep", id: "sweep", profile: sweepProfile, path
     });
   });
 

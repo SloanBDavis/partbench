@@ -272,6 +272,48 @@ When no actor is provided, the MCP wrapper marks committed transactions as an
 agent-originated MCP commit. Actor metadata is audit context only; it is not an
 authorization or permission system.
 
+### V17 explicit refs
+
+V17 profile/path candidates are query results, not geometry for MCP to resolve.
+After choosing a candidate, pass its ordered ref unchanged through `cad.batch`.
+This update example uses explicit IDs and a path copied from a
+`sketch.pathCandidates` response:
+
+```json
+{
+  "name": "cad.batch",
+  "arguments": {
+    "batch": {
+      "version": "cadops.v1",
+      "mode": "dryRun",
+      "ops": [
+        {
+          "op": "feature.updateSweep",
+          "id": "feature_curved_sweep",
+          "profile": {
+            "kind": "entity",
+            "sketchId": "sketch_profile",
+            "entityId": "circle_profile"
+          },
+          "path": {
+            "kind": "chain",
+            "sketchId": "sketch_path",
+            "segments": [
+              { "entityId": "line_entry", "orientation": "forward" },
+              { "entityId": "arc_turn", "orientation": "forward" }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+Run the same operation in commit mode with `allowCommit: true` only after the
+dry-run is accepted. MCP does not choose the first, largest, or nearest
+candidate and does not reorder the returned segments.
+
 MCP also passes generic audit metadata through the agent adapter: source `mcp`,
 tool name `cad.batch`, request ID, intent, and operation count. The committed
 transaction history exposes this audit metadata. Missing `allowCommit: true`

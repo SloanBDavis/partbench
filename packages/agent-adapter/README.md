@@ -224,6 +224,54 @@ directly to `CadEngine.executeQuery()`. CADOps remains the internal API; MCP,
 SDKs, scripts, and future agent tools should wrap this adapter rather than define
 their own CAD operation model.
 
+## V17 explicit profile and path references
+
+Automation must query candidates and submit the returned ordered ref unchanged;
+it must not infer a loop or path from coordinates. For example, query an
+explicitly named sketch:
+
+```json
+{
+  "requestId": "agent_profile_candidates",
+  "adapterVersion": "web-cad.agent-adapter.v1",
+  "query": {
+    "version": "cadops.v1",
+    "query": {
+      "query": "sketch.profileCandidates",
+      "sketchId": "sketch_profile"
+    }
+  }
+}
+```
+
+If the chosen candidate returns the following `profile`, copy that exact object
+into the dry-run and commit batches:
+
+```json
+{
+  "op": "feature.extrude",
+  "id": "feature_wire_extrude",
+  "bodyId": "body_wire_extrude",
+  "profile": {
+    "kind": "wire",
+    "sketchId": "sketch_profile",
+    "segments": [
+      { "entityId": "line_bottom", "orientation": "forward" },
+      { "entityId": "arc_right", "orientation": "forward" },
+      { "entityId": "line_top", "orientation": "reverse" },
+      { "entityId": "line_left", "orientation": "reverse" }
+    ]
+  },
+  "depth": 8,
+  "side": "positive",
+  "operationMode": "newBody"
+}
+```
+
+Curved sweeps follow the same rule with `sketch.pathCandidates`; reversing a
+path means reversing segment order and orientations in the submitted ref, not
+reordering sketch source entities.
+
 ## Responses
 
 Dry-run and commit both return structured fields suitable for agents:
