@@ -97,6 +97,37 @@ describe("StructurePanel", () => {
     expect(markup).toContain("radius 3 mm · start 45° · sweep -120°");
   });
 
+  it("labels sweep features and their normalized source shape", () => {
+    const feature = createSweepFeature();
+    const markup = renderToStaticMarkup(
+      createElement(StructurePanel, {
+        bodies: [createExtrudeBody(feature.bodyId, feature.id)],
+        features: [feature],
+        health: createHealth(),
+        namedReferences: [],
+        objects: [],
+        parts: [
+          {
+            ...createPart(),
+            featureIds: [feature.id],
+            bodyIds: [feature.bodyId]
+          }
+        ],
+        sketches: [createSketch()],
+        units: "mm",
+        onFocusSketch: () => undefined,
+        onInspectNamedReference: () => undefined,
+        onSelect: () => undefined
+      })
+    );
+
+    expect(markup).toContain('<span class="model-story-title">Sweep</span>');
+    expect(markup).toContain("entity profile · entity path");
+    expect(markup).not.toContain(
+      '<span class="model-story-title">Fillet</span>'
+    );
+  });
+
   it("renders selected generated references inside the primary body lineage", () => {
     const references = createGeneratedReferences();
     const face = references.faces[0];
@@ -476,6 +507,42 @@ function createCutFeature(): Extract<CadFeatureSummary, { kind: "extrude" }> {
     depth: 1,
     operationMode: "cut",
     targetBodyId: "body_base"
+  };
+}
+
+function createSweepFeature(): Extract<CadFeatureSummary, { kind: "sweep" }> {
+  const profile = {
+    kind: "entity" as const,
+    sketchId: "sketch_1",
+    entityId: "rect_1"
+  };
+  const path = {
+    kind: "entity" as const,
+    sketchId: "sketch_1",
+    entityId: "arc_1",
+    orientation: "forward" as const
+  };
+
+  return {
+    id: "feature_sweep",
+    kind: "sweep",
+    partId: "part:default",
+    bodyId: "body_sweep",
+    profile,
+    path,
+    profileSketchId: profile.sketchId,
+    profileEntityId: profile.entityId,
+    pathSketchId: path.sketchId,
+    pathEntityIds: [path.entityId],
+    source: {
+      type: "sweepFeature",
+      profile,
+      path,
+      profileSketchId: profile.sketchId,
+      profileEntityId: profile.entityId,
+      pathSketchId: path.sketchId,
+      pathEntityIds: [path.entityId]
+    }
   };
 }
 

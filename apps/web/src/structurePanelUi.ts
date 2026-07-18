@@ -34,7 +34,9 @@ export type AuthoredStructureFeature = Extract<
       | "hole"
       | "chamfer"
       | "fillet"
-      | "mirror";
+      | "mirror"
+      | "sweep"
+      | "loft";
   }
 >;
 
@@ -84,7 +86,9 @@ export function isAuthoredStructureFeature(
     feature.kind === "hole" ||
     feature.kind === "chamfer" ||
     feature.kind === "fillet" ||
-    feature.kind === "mirror"
+    feature.kind === "mirror" ||
+    feature.kind === "sweep" ||
+    feature.kind === "loft"
   );
 }
 
@@ -95,7 +99,9 @@ export function isAuthoredStructureBody(body: CadBodySnapshot): boolean {
     body.source.type === "sketchHoleFeature" ||
     body.source.type === "edgeChamferFeature" ||
     body.source.type === "edgeFilletFeature" ||
-    body.source.type === "mirrorFeature"
+    body.source.type === "mirrorFeature" ||
+    body.source.type === "sweepFeature" ||
+    body.source.type === "loftFeature"
   );
 }
 
@@ -306,6 +312,14 @@ function getFeatureSketchId(
     return feature.sketchId;
   }
 
+  if (feature.kind === "sweep") {
+    return feature.profile.sketchId;
+  }
+
+  if (feature.kind === "loft") {
+    return feature.sections[0]?.sketchId;
+  }
+
   return undefined;
 }
 
@@ -318,6 +332,14 @@ function getFeatureEntityId(
 
   if (feature.kind === "extrude" || feature.kind === "revolve") {
     return feature.entityId;
+  }
+
+  if (feature.kind === "sweep") {
+    return feature.profile.entityId;
+  }
+
+  if (feature.kind === "loft") {
+    return feature.sections[0]?.entityId;
   }
 
   return undefined;
@@ -659,6 +681,14 @@ export function formatFeatureLine(
     } / seed ${feature.seedBodyId}`;
   }
 
+  if (feature.kind === "sweep") {
+    return `sweep / profile ${feature.profile.sketchId}/${feature.profile.entityId} / ${feature.path.kind} path`;
+  }
+
+  if (feature.kind === "loft") {
+    return `loft / ${feature.sections.length} sections`;
+  }
+
   const target =
     (feature.operationMode === "add" || feature.operationMode === "cut") &&
     feature.targetBodyId
@@ -679,6 +709,14 @@ export function formatFeatureSourceLine(
 
   if (feature.kind === "mirror") {
     return `Seed ${feature.seedBodyId} / ${formatMirrorPlaneSource(feature)} plane`;
+  }
+
+  if (feature.kind === "sweep") {
+    return `Profile ${feature.profile.sketchId}/${feature.profile.entityId} / path ${feature.path.sketchId}`;
+  }
+
+  if (feature.kind === "loft") {
+    return `Sections ${feature.sections.map((section) => `${section.sketchId}/${section.entityId}`).join(", ")}`;
   }
 
   const entityId =
@@ -788,6 +826,14 @@ export function formatFeatureKindLabel(
 
   if (feature.kind === "mirror") {
     return "Mirror";
+  }
+
+  if (feature.kind === "sweep") {
+    return "Sweep";
+  }
+
+  if (feature.kind === "loft") {
+    return "Loft";
   }
 
   return "Fillet";

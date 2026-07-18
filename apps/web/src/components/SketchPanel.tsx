@@ -394,6 +394,16 @@ export function SketchPanel({
   const selectedEntity = selectedSketch?.entities.find(
     (entity) => entity.id === effectiveSelectedEntityId
   );
+  useEffect(() => {
+    if (!selectedSketch || selectedSketch.id !== focusedSketchId) return;
+    if (!focusedEntityId) return;
+    if (
+      !selectedSketch.entities.some((entity) => entity.id === focusedEntityId)
+    )
+      return;
+
+    setSelectedEntityId(focusedEntityId);
+  }, [focusedEntityId, focusedSketchId, selectedSketch]);
   const entityListItems = useMemo(
     () =>
       createSketchEntityListItems(

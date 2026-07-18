@@ -1162,7 +1162,15 @@ function formatFeatureStoryTitle(
     return "Mirror";
   }
 
-  return "Fillet";
+  if (feature.kind === "fillet") {
+    return "Fillet";
+  }
+
+  if (feature.kind === "sweep") {
+    return "Sweep";
+  }
+
+  return "Loft";
 }
 
 function formatFeatureStoryDetail(
@@ -1206,6 +1214,14 @@ function formatFeatureStoryDetail(
     return `${plane} plane · ${
       feature.includeOriginal ? "union with original" : "copy only"
     }`;
+  }
+
+  if (feature.kind === "sweep") {
+    return `${feature.profile.kind} profile · ${feature.path.kind} path`;
+  }
+
+  if (feature.kind === "loft") {
+    return `${feature.sections.length} sections`;
   }
 
   return `${formatOperationLabel(feature.operationMode)} · ${
