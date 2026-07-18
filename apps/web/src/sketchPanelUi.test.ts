@@ -172,7 +172,7 @@ describe("sketch panel UI helpers", () => {
 
     expect(chooseSketchEntitySelection(entities, "circle_1")).toBe("circle_1");
     expect(chooseSketchEntitySelection(entities, "rect_1", "circle_1")).toBe(
-      "rect_1"
+      "circle_1"
     );
     expect(chooseSketchEntitySelection(entities, "rect_1", "missing")).toBe(
       "rect_1"

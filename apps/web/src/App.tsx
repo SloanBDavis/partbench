@@ -1604,7 +1604,7 @@ export function App() {
       }
     }
     return responses;
-  }, [document, sketches]);
+  }, [sketches]);
   const pathCandidatesBySketchId = useMemo(() => {
     const responses = new Map<string, SketchPathCandidatesQueryResponse>();
     for (const sketch of sketches) {
@@ -1617,7 +1617,7 @@ export function App() {
       }
     }
     return responses;
-  }, [document, sketches]);
+  }, [sketches]);
   const projectStructure = readProjectStructure();
   const bodySourceIdentitySignatures = useMemo(
     () =>

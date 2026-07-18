@@ -2303,11 +2303,7 @@ async function v7BrowserWorkflowSmoke({
 
     const referencedArc = secondArc;
     const editedArc = createV17EndpointPreservingArcEdit(referencedArc);
-    await editV17ArcGeometry(
-      referencedArc.id,
-      editedArc,
-      "V17 referenced arc"
-    );
+    await editV17ArcGeometry(referencedArc.id, editedArc, "V17 referenced arc");
     project = await waitForV17Project((candidate) => {
       const arc = getV17Sketch(candidate, ids.sketchId).entities.find(
         (entity) => entity.id === referencedArc.id

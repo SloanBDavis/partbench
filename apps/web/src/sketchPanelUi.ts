@@ -239,17 +239,17 @@ export function chooseSketchEntitySelection(
   focusedEntityId?: SketchEntityId
 ): SketchEntityId | undefined {
   if (
-    currentEntityId &&
-    entities.some((entity) => entity.id === currentEntityId)
-  ) {
-    return currentEntityId;
-  }
-
-  if (
     focusedEntityId &&
     entities.some((entity) => entity.id === focusedEntityId)
   ) {
     return focusedEntityId;
+  }
+
+  if (
+    currentEntityId &&
+    entities.some((entity) => entity.id === currentEntityId)
+  ) {
+    return currentEntityId;
   }
 
   return entities[0]?.id;
