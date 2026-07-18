@@ -10,8 +10,10 @@ import type {
   CadSketchSolverPointTargetReference,
   FeatureExtrudeCommandInput,
   FeatureInputReferenceSemanticDiff,
+  FeatureLoftCommandInput,
   FeatureRevolveCommandInput,
   FeatureSweepCommandInput,
+  FeatureUpdateLoftCommandInput,
   FeatureUpdateRevolveCommandInput,
   FeatureUpdateSweepCommandInput,
   SketchArcDimensionTarget,
@@ -386,10 +388,21 @@ describe("V17 protocol declarations", () => {
       profile: entityProfile,
       path: entityPath
     };
+    const loft: FeatureLoftCommandInput = {
+      op: "feature.loft",
+      sections: [{ profile: entityProfile }, { profile: entityProfile }]
+    };
+    const updateLoft: FeatureUpdateLoftCommandInput = {
+      op: "feature.updateLoft",
+      id: "loft_1",
+      sections: [{ profile: entityProfile }, { profile: entityProfile }]
+    };
 
     expect(extrude.op).toBe("feature.extrude");
     expect(revolve.operationMode).toBe("newBody");
     expect(sweep.path).toEqual(entityPath);
+    expect(loft.sections).toHaveLength(2);
+    expect(updateLoft.sections).toHaveLength(2);
 
     // @ts-expect-error Normalized V21 revolve does not support add/cut.
     const invalidMode: FeatureRevolveCommandInput = {
@@ -416,8 +429,30 @@ describe("V17 protocol declarations", () => {
       entityId: "circle_1",
       depth: 4
     };
+    const invalidMixedLoft: FeatureLoftCommandInput = {
+      op: "feature.loft",
+      sections: [
+        // @ts-expect-error Normalized and legacy loft section fields are exclusive.
+        { profile: entityProfile, sketchId: "sketch_1", entityId: "circle_1" },
+        { profile: entityProfile }
+      ]
+    };
+    const invalidMixedLoftArray: FeatureLoftCommandInput = {
+      op: "feature.loft",
+      // @ts-expect-error A loft command cannot mix legacy and normalized sections.
+      sections: [
+        { sketchId: "sketch_1", entityId: "circle_1" },
+        { profile: entityProfile }
+      ]
+    };
 
-    expect([invalidMode, invalidTarget, invalidMixed]).toHaveLength(3);
+    expect([
+      invalidMode,
+      invalidTarget,
+      invalidMixed,
+      invalidMixedLoft,
+      invalidMixedLoftArray
+    ]).toHaveLength(5);
   });
 
   it("preserves complete V20 updateSweep profile-only and path-only patches", () => {

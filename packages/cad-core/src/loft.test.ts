@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   CAD_PROJECT_FORMAT_VERSION_V20,
+  CAD_PROJECT_FORMAT_VERSION_V21,
   CadEngine,
   exportCadProject,
-  importCadProject
+  exportCadProjectJson,
+  importCadProject,
+  importCadProjectJson
 } from "./index";
 
 function createLoftEngine(): CadEngine {
@@ -55,6 +58,116 @@ function createLoftEngine(): CadEngine {
 }
 
 describe("loft feature", () => {
+  it("accepts normalized V21 sections and rejects mixed command shapes atomically", () => {
+    const engine = createLoftEngine();
+    engine.apply({
+      op: "sketch.addPoint",
+      sketchId: "sketch_base",
+      id: "construction_marker",
+      point: [10, 10],
+      construction: true
+    });
+    const normalizedSections = [
+      {
+        profile: {
+          kind: "entity" as const,
+          sketchId: "sketch_base",
+          entityId: "base_profile"
+        }
+      },
+      {
+        profile: {
+          kind: "entity" as const,
+          sketchId: "sketch_top",
+          entityId: "top_circle"
+        }
+      }
+    ];
+    const request = {
+      version: "cadops.v1" as const,
+      ops: [
+        {
+          op: "feature.loft" as const,
+          id: "normalized_loft",
+          bodyId: "normalized_loft_body",
+          name: "Normalized loft",
+          sections: normalizedSections
+        }
+      ]
+    };
+
+    const dryRun = engine.executeBatch({ ...request, mode: "dryRun" });
+    const committed = engine.executeBatch({ ...request, mode: "commit" });
+    expect(dryRun).toMatchObject({ ok: true });
+    expect(committed).toMatchObject({ ok: true });
+    if (!dryRun.ok || !committed.ok) return;
+    expect(dryRun.semanticDiff).toEqual(committed.semanticDiff);
+    expect(engine.getDocument().features.get("normalized_loft")).toMatchObject({
+      sections: normalizedSections
+    });
+
+    engine.apply({
+      op: "feature.updateLoft",
+      id: "normalized_loft",
+      sections: [
+        normalizedSections[0]!,
+        {
+          profile: {
+            kind: "entity",
+            sketchId: "sketch_top",
+            entityId: "top_rectangle"
+          }
+        }
+      ]
+    });
+    const beforeMixed = exportCadProjectJson(engine);
+    const mixed = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "feature.updateLoft",
+          id: "normalized_loft",
+          sections: [
+            { sketchId: "sketch_base", entityId: "base_profile" },
+            normalizedSections[1]!
+          ]
+        } as never
+      ]
+    });
+    expect(mixed).toMatchObject({
+      ok: false,
+      error: {
+        code: "COMMAND_INPUT_AMBIGUOUS",
+        path: "$.ops[0].sections"
+      }
+    });
+    expect(exportCadProjectJson(engine)).toBe(beforeMixed);
+
+    const exported = exportCadProject(engine);
+    expect(exported.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V21);
+    expect(exported.document.features).toContainEqual(
+      expect.objectContaining({
+        id: "normalized_loft",
+        sections: [
+          { profile: normalizedSections[0]!.profile },
+          {
+            profile: {
+              kind: "entity",
+              sketchId: "sketch_top",
+              entityId: "top_rectangle"
+            }
+          }
+        ]
+      })
+    );
+    expect(
+      importCadProjectJson(JSON.stringify(exported))
+        .getDocument()
+        .features.get("normalized_loft")
+    ).toEqual(engine.getDocument().features.get("normalized_loft"));
+  });
+
   it("rejects construction sections and invalidates an existing loft source", () => {
     const rejectedEngine = createLoftEngine();
     rejectedEngine.apply({

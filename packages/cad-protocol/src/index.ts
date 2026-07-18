@@ -417,7 +417,7 @@ export type CadOp =
   | FeatureMirrorOp
   | FeatureShellOp
   | FeatureSweepCommandInput
-  | FeatureLoftOp
+  | FeatureLoftCommandInput
   | FeatureUpdateExtrudeCommandInput
   | FeatureUpdateRevolveCommandInput
   | FeatureUpdateHoleOp
@@ -428,7 +428,7 @@ export type CadOp =
   | FeatureUpdateMirrorOp
   | FeatureUpdateShellOp
   | FeatureUpdateSweepCommandInput
-  | FeatureUpdateLoftOp
+  | FeatureUpdateLoftCommandInput
   | FeatureDeleteOp
   | ReferenceNameGeneratedOp
   | ReferenceRepairNameOp
@@ -3029,6 +3029,8 @@ export interface SweepFeatureSnapshot {
 export interface LoftSection {
   readonly sketchId: SketchId;
   readonly entityId: SketchEntityId;
+  /** Normalized V21 command/storage shape is mutually exclusive. */
+  readonly profile?: never;
 }
 
 export interface LoftFeatureSnapshot {
@@ -3074,6 +3076,9 @@ export interface SweepFeatureV21 {
 
 export interface LoftSectionV21 {
   readonly profile: SketchEntityProfileRef;
+  /** Legacy V20 command/storage fields are mutually exclusive. */
+  readonly sketchId?: never;
+  readonly entityId?: never;
 }
 
 export interface LoftFeatureV21 {

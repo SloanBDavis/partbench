@@ -13837,23 +13837,92 @@ function validateLoftSections(
     );
   }
 
+  const owns = (value: Record<string, unknown>, key: string): boolean =>
+    Object.prototype.hasOwnProperty.call(value, key);
+  const hasNormalizedSections = sections.some(
+    (section) => isRecord(section) && owns(section, "profile")
+  );
+  const hasLegacySections = sections.some(
+    (section) =>
+      isRecord(section) &&
+      (owns(section, "sketchId") || owns(section, "entityId"))
+  );
+  if (hasNormalizedSections && hasLegacySections) {
+    throwLoftValidationError(
+      "COMMAND_INPUT_AMBIGUOUS",
+      "Provide normalized loft profiles or legacy sketchId/entityId sections, never both.",
+      "sections",
+      "one complete loft section input form",
+      "mixed normalized and legacy fields",
+      opIndex
+    );
+  }
+
   const validated = sections.map((section, index) => {
-    if (
-      !isRecord(section) ||
-      typeof section.sketchId !== "string" ||
-      typeof section.entityId !== "string"
-    ) {
+    if (!isRecord(section)) {
       throwLoftValidationError(
         "LOFT_SECTION_UNRESOLVED",
         "Each loft section must identify an existing sketch profile.",
         `sections.${index}`,
-        "{ sketchId, entityId }",
+        "{ profile } or { sketchId, entityId }",
         section,
         opIndex
       );
     }
-    const sketch = state.sketches.get(section.sketchId);
-    const entity = sketch?.entities.get(section.entityId);
+
+    let sketchId: string;
+    let entityId: string;
+    let entityPath: string;
+    if (hasNormalizedSections) {
+      const profile = validateSketchProfileRefSource(
+        section.profile,
+        `sections.${index}.profile`
+      );
+      if (!profile.ok) {
+        const issue = profile.issues[0]!;
+        throwLoftValidationError(
+          issue.code,
+          issue.message,
+          issue.path,
+          "normalized entity loft profile",
+          section.profile,
+          opIndex
+        );
+      }
+      if (profile.value.kind !== "entity") {
+        throwLoftValidationError(
+          "LOFT_SECTION_UNSUPPORTED",
+          "Loft sections support normalized entity profiles only.",
+          `sections.${index}.profile.kind`,
+          "entity",
+          profile.value.kind,
+          opIndex
+        );
+      }
+      sketchId = profile.value.sketchId;
+      entityId = profile.value.entityId;
+      entityPath = `sections.${index}.profile.entityId`;
+    } else {
+      if (
+        typeof section.sketchId !== "string" ||
+        typeof section.entityId !== "string"
+      ) {
+        throwLoftValidationError(
+          "LOFT_SECTION_UNRESOLVED",
+          "Each legacy loft section must identify an existing sketch profile.",
+          `sections.${index}`,
+          "{ sketchId, entityId }",
+          section,
+          opIndex
+        );
+      }
+      sketchId = section.sketchId;
+      entityId = section.entityId;
+      entityPath = `sections.${index}.entityId`;
+    }
+
+    const sketch = state.sketches.get(sketchId);
+    const entity = sketch?.entities.get(entityId);
     if (!sketch || !entity) {
       throwLoftValidationError(
         "LOFT_SECTION_UNRESOLVED",
@@ -13868,7 +13937,7 @@ function validateLoftSections(
       throwLoftValidationError(
         "LOFT_SECTION_UNSUPPORTED",
         "Loft sections must be rectangle or circle entities.",
-        `sections.${index}.entityId`,
+        entityPath,
         "rectangle or circle entity",
         entity.kind,
         opIndex
@@ -13878,17 +13947,17 @@ function validateLoftSections(
       throwLoftValidationError(
         "SKETCH_PROFILE_CONSTRUCTION_ENTITY",
         "Loft sections cannot use construction geometry.",
-        `sections.${index}.entityId`,
+        entityPath,
         "non-construction rectangle or circle entity",
-        section.entityId,
+        entityId,
         opIndex
       );
     }
     return {
       profile: {
         kind: "entity" as const,
-        sketchId: section.sketchId,
-        entityId: section.entityId
+        sketchId,
+        entityId
       }
     };
   });
@@ -33563,8 +33632,7 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.id) &&
       isOptionalString(value.bodyId) &&
       isOptionalString(value.name) &&
-      Array.isArray(value.sections) &&
-      value.sections.every(isLoftSectionShape)
+      isLoftCommandSectionsShape(value.sections)
     );
   }
 
@@ -33730,9 +33798,7 @@ function isCadOp(value: unknown): value is CadOp {
 
   if (value.op === "feature.updateLoft") {
     return (
-      typeof value.id === "string" &&
-      Array.isArray(value.sections) &&
-      value.sections.every(isLoftSectionShape)
+      typeof value.id === "string" && isLoftCommandSectionsShape(value.sections)
     );
   }
 
@@ -34709,8 +34775,28 @@ function isOptionalString(value: unknown): value is string | undefined {
 function isLoftSectionShape(value: unknown): value is LoftSection {
   return (
     isRecord(value) &&
+    !Object.prototype.hasOwnProperty.call(value, "profile") &&
     typeof value.sketchId === "string" &&
     typeof value.entityId === "string"
+  );
+}
+
+function isNormalizedLoftSectionShape(value: unknown): boolean {
+  if (
+    !isRecord(value) ||
+    Object.prototype.hasOwnProperty.call(value, "sketchId") ||
+    Object.prototype.hasOwnProperty.call(value, "entityId")
+  ) {
+    return false;
+  }
+  const profile = validateSketchProfileRefSource(value.profile);
+  return profile.ok && profile.value.kind === "entity";
+}
+
+function isLoftCommandSectionsShape(value: unknown): boolean {
+  if (!Array.isArray(value)) return false;
+  return (
+    value.every(isLoftSectionShape) || value.every(isNormalizedLoftSectionShape)
   );
 }
 
