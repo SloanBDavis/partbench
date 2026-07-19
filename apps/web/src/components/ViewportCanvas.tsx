@@ -46,6 +46,12 @@ export interface ViewportCanvasStatus {
   readonly tone: "idle" | "ready" | "warning" | "blocked" | "failed";
 }
 
+export const VIEWPORT_COMMAND_EVENT = "partbench:viewport-command";
+export type ViewportCommand =
+  | "fit-all"
+  | "fit-selection"
+  | ViewportStandardViewId;
+
 export function ViewportCanvas({
   contextualSurface,
   meshes,
@@ -258,10 +264,14 @@ export function ViewportCanvas({
   function fitView() {
     updateCamera(
       (current) =>
-        applyViewportCameraAction(current, { type: "fitAll" }, {
-          primitives,
-          meshes
-        }).camera
+        applyViewportCameraAction(
+          current,
+          { type: "fitAll" },
+          {
+            primitives,
+            meshes
+          }
+        ).camera
     );
   }
 
@@ -319,6 +329,18 @@ export function ViewportCanvas({
         ).camera
     );
   }
+
+  useEffect(() => {
+    function handleViewportCommand(event: Event) {
+      const command = (event as CustomEvent<ViewportCommand>).detail;
+      if (command === "fit-all") fitView();
+      else if (command === "fit-selection") fitSelectedView();
+      else setStandardView(command);
+    }
+    window.addEventListener(VIEWPORT_COMMAND_EVENT, handleViewportCommand);
+    return () =>
+      window.removeEventListener(VIEWPORT_COMMAND_EVENT, handleViewportCommand);
+  });
 
   function getEventViewportPoint(
     event: PointerEvent<HTMLCanvasElement>

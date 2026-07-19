@@ -15,6 +15,7 @@
 }
 
 .pb-sketch-dock__header {
+  padding-inline-end: 48px;
   border-block-end: 1px solid var(--pb-color-border);
 }
 

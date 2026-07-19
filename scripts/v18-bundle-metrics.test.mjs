@@ -38,4 +38,24 @@ describe("V18 bundle metrics", () => {
       expect.stringContaining("command worker")
     ]);
   });
+
+  it("fails when a baseline worker or WASM artifact is not measured", () => {
+    const baseline = {
+      commandWorker: { gzipBytes: 100 },
+      geometryWorker: { gzipBytes: 200 },
+      occtWasm: { gzipBytes: 300 }
+    };
+    const metrics = {
+      criticalJavaScript: { gzipBytes: 1 },
+      criticalCss: { gzipBytes: 1 },
+      allUiJavaScript: { gzipBytes: 1 },
+      commandWorker: { gzipBytes: 100 },
+      geometryWorker: { gzipBytes: 0 },
+      occtWasm: { gzipBytes: 300 }
+    };
+
+    expect(auditV18Bundle(metrics, baseline)).toEqual([
+      expect.stringContaining("geometry worker")
+    ]);
+  });
 });

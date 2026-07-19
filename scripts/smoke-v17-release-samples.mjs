@@ -34,7 +34,13 @@ if (!supported.has(workflow)) {
   ) {
     const child = spawnSync(
       process.platform === "win32" ? "pnpm.cmd" : "pnpm",
-      ["exec", "vitest", "run", "scripts/v17-geometry-workflows.test.mjs"],
+      [
+        "exec",
+        "vitest",
+        "run",
+        "scripts/v17-geometry-workflows.test.mjs",
+        "--maxWorkers=1"
+      ],
       {
         cwd: repoRoot,
         env: { ...process.env, PARTBENCH_V17_SMOKE_WORKFLOW: workflow },

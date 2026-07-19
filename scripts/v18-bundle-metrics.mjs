@@ -9,7 +9,7 @@ export const V18_BUNDLE_LIMITS = Object.freeze({
   allUiJavaScriptGzipBytes: 550 * 1024
 });
 
-export function measureV18Bundle(distDirectory) {
+export function measureV18Bundle(distDirectory, geometryWorkerDistDirectory) {
   const assetsDirectory = join(distDirectory, "assets");
   const indexHtml = readFileSync(join(distDirectory, "index.html"), "utf8");
   const assetNames = readdirSync(assetsDirectory).sort();
@@ -36,6 +36,10 @@ export function measureV18Bundle(distDirectory) {
     (name) => extname(name) === ".js" && !isWorker(name)
   );
 
+  const geometryWorkerFiles = geometryWorkerDistDirectory
+    ? readAssetMetrics(geometryWorkerDistDirectory)
+    : {};
+
   return {
     profile: {
       build: "production",
@@ -49,15 +53,19 @@ export function measureV18Bundle(distDirectory) {
     commandWorker: sum(
       assetNames.filter((name) => name.includes("cadCommand.worker"))
     ),
-    geometryWorker: sum(
-      assetNames.filter((name) => name.includes("geometryTessellation.worker"))
+    geometryWorker: sumNamedMetrics(
+      geometryWorkerFiles,
+      Object.keys(geometryWorkerFiles).filter((name) =>
+        name.includes("geometryTessellation.worker")
+      )
     ),
     occtWasm: sum(
       assetNames.filter(
         (name) => extname(name) === ".wasm" && name.includes("opencascade")
       )
     ),
-    files
+    files,
+    geometryWorkerFiles
   };
 }
 
@@ -96,6 +104,10 @@ export function auditV18Bundle(metrics, baseline) {
     ["geometry worker", "geometryWorker"],
     ["OCCT WASM", "occtWasm"]
   ]) {
+    if (baseline[key].gzipBytes > 0 && metrics[key].gzipBytes === 0) {
+      failures.push(`${label}: expected an emitted artifact but measured none`);
+      continue;
+    }
     checkMaximum(
       failures,
       label,
@@ -107,6 +119,31 @@ export function auditV18Bundle(metrics, baseline) {
   return failures;
 }
 
+function readAssetMetrics(distDirectory) {
+  const assetsDirectory = join(distDirectory, "assets");
+  return Object.fromEntries(
+    readdirSync(assetsDirectory)
+      .sort()
+      .map((name) => {
+        const bytes = readFileSync(join(assetsDirectory, name));
+        return [
+          name,
+          { rawBytes: bytes.byteLength, gzipBytes: gzipSync(bytes).byteLength }
+        ];
+      })
+  );
+}
+
+function sumNamedMetrics(files, names) {
+  return names.reduce(
+    (total, name) => ({
+      rawBytes: total.rawBytes + (files[name]?.rawBytes ?? 0),
+      gzipBytes: total.gzipBytes + (files[name]?.gzipBytes ?? 0)
+    }),
+    { rawBytes: 0, gzipBytes: 0 }
+  );
+}
+
 function checkMaximum(failures, label, actual, maximum) {
   if (actual > maximum) {
     failures.push(`${label}: ${actual} gzip bytes exceeds ${maximum}`);
@@ -116,7 +153,10 @@ function checkMaximum(failures, label, actual, maximum) {
 function run() {
   const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
   const reportOnly = process.argv.includes("--report-only");
-  const metrics = measureV18Bundle(join(repositoryRoot, "apps/web/dist"));
+  const metrics = measureV18Bundle(
+    join(repositoryRoot, "apps/web/dist"),
+    join(repositoryRoot, "apps/web/dist-geometry-worker-smoke")
+  );
   const outputPath = join(repositoryRoot, ".metrics/v18-bundle.json");
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, `${JSON.stringify(metrics, null, 2)}\n`);

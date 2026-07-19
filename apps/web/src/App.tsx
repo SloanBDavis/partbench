@@ -124,6 +124,11 @@ import {
   buildSketchDimensionEditOps,
   buildUpdateSketchEntityOp,
   buildSetSketchEntityConstructionOp,
+  buildUpdateBoxDimensionsOp,
+  buildUpdateConeDimensionsOp,
+  buildUpdateCylinderDimensionsOp,
+  buildUpdateSphereDimensionsOp,
+  buildUpdateTorusDimensionsOp,
   buildUpdateUnitsOp,
   buildUpdateTransformOp,
   WEB_UI_ACTOR,
@@ -207,8 +212,10 @@ import {
 } from "./workbench/documentTreeProjection";
 import { ContextualActionStrip } from "./workbench/ContextualActionStrip";
 import {
+  VIEWPORT_COMMAND_EVENT,
   ViewportCanvas,
-  type ViewportCanvasPick
+  type ViewportCanvasPick,
+  type ViewportCommand
 } from "./components/ViewportCanvas";
 import type { DerivedGeometryRuntime } from "./derivedGeometryRuntime";
 import {
@@ -1940,7 +1947,7 @@ export function App() {
         { kind: "feature", id: feature.id },
         {
           canEdit: feature.kind !== "importedBody",
-          canDelete: true
+          canDelete: feature.kind !== "primitive"
         }
       );
     }
@@ -2247,7 +2254,7 @@ export function App() {
     selectedBody?.id ?? solidBodyChoices[0]?.value ?? "";
   const solidEditorRequest = useMemo<SolidEditorRequest | undefined>(() => {
     const actionId = workbenchUi.activeTool;
-    const key = `${actionId ?? "solid"}:${document.revision}`;
+    const key = `${actionId ?? "solid"}:${transactionHistory.length}`;
     if (
       actionId === "solid.box" ||
       actionId === "solid.cylinder" ||
@@ -2279,6 +2286,23 @@ export function App() {
       } as SolidEditorRequest;
     }
     if (actionId === "solid.edit" && selectedFeature) {
+      if (selectedFeature.kind === "primitive") {
+        const transform = selectedFeature.transform;
+        return {
+          key,
+          kind: selectedFeature.primitive,
+          title: `Edit ${formatCadKindLabel(selectedFeature.primitive)}`,
+          mode: "edit",
+          initialDraft: {
+            ...createPrimitiveDraft(selectedFeature.primitive),
+            ...selectedFeature.dimensions,
+            id: selectedFeature.objectId,
+            translationX: transform.translation[0],
+            translationY: transform.translation[1],
+            translationZ: transform.translation[2]
+          }
+        } as SolidEditorRequest;
+      }
       if (selectedFeature.kind === "extrude") {
         const profile =
           selectedFeature.profile ??
@@ -2676,7 +2700,7 @@ export function App() {
           name: "",
           depthMode: "throughAll",
           depth: 10,
-          direction: "normal"
+          direction: "positive"
         },
         choices: { targetBodies: solidBodyChoices },
         blockedReason: circleReady
@@ -2800,10 +2824,11 @@ export function App() {
     }
     return undefined;
   }, [
-    document.revision,
+    transactionHistory.length,
     modelingSelectionContext,
     selectedBody,
     selectedEntityProfile,
+    selectedFeature,
     selectedObject,
     selectedPath,
     selectedProfile,
@@ -2912,7 +2937,7 @@ export function App() {
   const selectedReferenceHealth = selectedNamedReferenceName
     ? namedReferenceHealthByName.get(selectedNamedReferenceName)
     : selectedGeneratedReferenceState.status === "selected"
-      ? referenceHealth.find(
+      ? referenceHealth?.referenceHealth.find(
           (entry) =>
             entry.stableId ===
               selectedGeneratedReferenceState.reference.stableId &&
@@ -5541,6 +5566,55 @@ export function App() {
   ): Promise<void> {
     if (workbenchUi.activeTool === "solid.edit" && selectedFeature) {
       if (
+        selectedFeature.kind === "primitive" &&
+        submission.kind === selectedFeature.primitive
+      ) {
+        const dimensionsOp =
+          submission.kind === "box"
+            ? buildUpdateBoxDimensionsOp(
+                selectedFeature.objectId,
+                submission.draft
+              )
+            : submission.kind === "cylinder"
+              ? buildUpdateCylinderDimensionsOp(
+                  selectedFeature.objectId,
+                  submission.draft
+                )
+              : submission.kind === "sphere"
+                ? buildUpdateSphereDimensionsOp(
+                    selectedFeature.objectId,
+                    submission.draft
+                  )
+                : submission.kind === "cone"
+                  ? buildUpdateConeDimensionsOp(
+                      selectedFeature.objectId,
+                      submission.draft
+                    )
+                  : buildUpdateTorusDimensionsOp(
+                      selectedFeature.objectId,
+                      submission.draft
+                    );
+        const transform = selectedFeature.transform;
+        await commitOps(
+          [
+            dimensionsOp,
+            buildUpdateTransformOp(selectedFeature.objectId, {
+              translationX: submission.draft.translationX,
+              translationY: submission.draft.translationY,
+              translationZ: submission.draft.translationZ,
+              rotationX: transform.rotation[0],
+              rotationY: transform.rotation[1],
+              rotationZ: transform.rotation[2],
+              scaleX: transform.scale[0],
+              scaleY: transform.scale[1],
+              scaleZ: transform.scale[2]
+            })
+          ],
+          () => selectedFeature.objectId
+        );
+        return;
+      }
+      if (
         selectedFeature.kind === "extrude" &&
         submission.kind === "compositeExtrude"
       ) {
@@ -5823,6 +5897,12 @@ export function App() {
       case "project.parameters":
         openProjectPage("parameters");
         return;
+      case "project.create-parameter":
+        openProjectPage("parameters");
+        setCommandNotice(
+          "Complete the new parameter draft, then choose Create parameter."
+        );
+        return;
       case "project.history":
         openProjectPage("history");
         return;
@@ -5851,6 +5931,105 @@ export function App() {
           startViewportTwoTargetMeasurement(viewportTwoTargetMeasurementTarget);
         }
         return;
+      case "solid.rename":
+        if (selectedObject) {
+          renameDocumentTreeItem({ kind: "object", id: selectedObject.id });
+        } else if (selectedSketchContext) {
+          renameDocumentTreeItem({
+            kind: "sketch",
+            id: selectedSketchContext.sketchId
+          });
+        }
+        return;
+      case "solid.delete":
+        if (selectedFeature && selectedFeature.kind !== "primitive") {
+          if (
+            window.confirm(
+              `Delete ${selectedFeature.name ?? formatCadKindLabel(selectedFeature.kind)}?`
+            )
+          ) {
+            void deleteAuthoredFeature(selectedFeature.id);
+          }
+        } else if (selectedObject) {
+          deleteDocumentTreeItem({ kind: "object", id: selectedObject.id });
+        } else if (selectedSketchContext?.entityId) {
+          deleteDocumentTreeItem({
+            kind: "sketch-entity",
+            sketchId: selectedSketchContext.sketchId,
+            id: selectedSketchContext.entityId
+          });
+        } else if (selectedSketchContext) {
+          deleteDocumentTreeItem({
+            kind: "sketch",
+            id: selectedSketchContext.sketchId
+          });
+        }
+        return;
+      case "inspect.name-reference":
+        navigateToMode("inspect");
+        if (selectedGeneratedReferenceState.status === "selected") {
+          const name = window.prompt(
+            "Reference name",
+            inspectReference?.name ?? ""
+          );
+          if (name?.trim()) {
+            void nameGeneratedReference(
+              name.trim(),
+              selectedGeneratedReferenceState.selection
+            );
+          }
+        }
+        return;
+      case "inspect.repair-reference":
+        navigateToMode("inspect");
+        if (
+          selectedNamedReferenceName &&
+          selectedGeneratedReferenceState.status === "selected"
+        ) {
+          void repairNamedReference(
+            selectedNamedReferenceName,
+            selectedGeneratedReferenceState.selection
+          );
+        }
+        return;
+      case "sketch.construction":
+        if (selectedSketchContext?.entityId) {
+          const sketch = sketches.find(
+            (candidate) => candidate.id === selectedSketchContext.sketchId
+          );
+          const entity = sketch?.entities.find(
+            (candidate) => candidate.id === selectedSketchContext.entityId
+          );
+          if (entity) {
+            void setSketchEntityConstruction(
+              sketch!.id,
+              entity.id,
+              !entity.construction
+            );
+          }
+        }
+        return;
+      case "sketch.delete":
+        if (selectedSketchContext?.entityId) {
+          deleteDocumentTreeItem({
+            kind: "sketch-entity",
+            sketchId: selectedSketchContext.sketchId,
+            id: selectedSketchContext.entityId
+          });
+        }
+        return;
+      case "inspect.fit-all":
+      case "inspect.fit-selection":
+      case "inspect.top":
+      case "inspect.front":
+      case "inspect.right":
+      case "inspect.isometric": {
+        const command = actionId.slice("inspect.".length) as ViewportCommand;
+        window.dispatchEvent(
+          new CustomEvent(VIEWPORT_COMMAND_EVENT, { detail: command })
+        );
+        return;
+      }
       case "inspect.measure-between":
       case "inspect.mass-properties":
       case "inspect.health":
@@ -5882,23 +6061,165 @@ export function App() {
     }
   }
 
-  const uiActionAvailability = useMemo<UiActionAvailabilityProjection>(
-    () => ({
+  const uiActionAvailability = useMemo<UiActionAvailabilityProjection>(() => {
+    const ready = { status: "ready" } as const;
+    const needs = (message: string) =>
+      ({ status: "needs-selection", message }) as const;
+    const selectedSketch = selectedSketchContext
+      ? sketches.find(
+          (candidate) => candidate.id === selectedSketchContext.sketchId
+        )
+      : undefined;
+    const selectedEntity = selectedSketch?.entities.find(
+      (candidate) => candidate.id === selectedSketchContext?.entityId
+    );
+    const sketchReady = focusedSketchId
+      ? ready
+      : needs("Select or create a sketch first.");
+    const selectedEntityReady = selectedEntity
+      ? ready
+      : needs("Select a sketch entity first.");
+    return {
       "project.undo": engine.getTransactions().length
-        ? { status: "ready" }
+        ? ready
         : { status: "blocked", message: "There is nothing to undo." },
       "project.redo": engine.getRedoStack().length
-        ? { status: "ready" }
+        ? ready
         : { status: "blocked", message: "There is nothing to redo." },
+      "solid.extrude": selectedProfile
+        ? ready
+        : needs("Select a supported sketch profile."),
+      "solid.revolve":
+        selectedProfile && solidAxisChoices.length > 0
+          ? ready
+          : needs("Select a supported sketch profile and axis."),
+      "solid.sweep":
+        selectedEntityProfile && selectedPath
+          ? ready
+          : needs("Select a supported profile and path."),
+      "solid.loft":
+        solidProfileChoices.filter((choice) => choice.value.kind === "entity")
+          .length >= 2
+          ? ready
+          : needs("At least two supported sketch sections are required."),
+      "solid.transform": selectedObject
+        ? ready
+        : needs("Select an editable source object."),
+      "solid.hole":
+        modelingSelectionContext.selectionKind === "sketchEntity" &&
+        modelingSelectionContext.entity.kind === "circle" &&
+        Boolean(selectedSolidBodyId)
+          ? ready
+          : needs("Select a supported circle and target body."),
+      "solid.fillet":
+        solidEdgeChoices.length > 0
+          ? ready
+          : needs("Select a supported generated edge."),
+      "solid.chamfer":
+        solidEdgeChoices.length > 0
+          ? ready
+          : needs("Select a supported generated edge."),
+      "solid.shell": selectedSolidBodyId
+        ? ready
+        : needs("Select a supported body."),
+      "solid.linear-pattern": selectedSolidBodyId
+        ? ready
+        : needs("Select a supported body."),
+      "solid.circular-pattern": selectedSolidBodyId
+        ? ready
+        : needs("Select a supported body."),
+      "solid.mirror": selectedSolidBodyId
+        ? ready
+        : needs("Select a supported body."),
+      "solid.edit":
+        selectedObject ||
+        (selectedFeature && selectedFeature.kind !== "importedBody")
+          ? ready
+          : needs("Select an editable feature or object."),
+      "solid.rename":
+        selectedObject || selectedSketchContext
+          ? ready
+          : needs("Select a renameable object or sketch."),
+      "solid.delete":
+        selectedObject || selectedSketchContext
+          ? ready
+          : needs("Select a deletable object or sketch item."),
+      "sketch.point": sketchReady,
+      "sketch.line": sketchReady,
+      "sketch.rectangle": sketchReady,
+      "sketch.circle": sketchReady,
+      "sketch.arc": sketchReady,
+      "sketch.construction": selectedEntityReady,
+      "sketch.delete": selectedEntityReady,
+      "sketch.horizontal":
+        selectedEntity?.kind === "line"
+          ? ready
+          : needs("Select an eligible line."),
+      "sketch.vertical":
+        selectedEntity?.kind === "line"
+          ? ready
+          : needs("Select an eligible line."),
+      "sketch.fixed": selectedEntityReady,
+      "sketch.coincident": selectedEntityReady,
+      "sketch.midpoint": selectedEntityReady,
+      "sketch.parallel":
+        selectedEntity?.kind === "line"
+          ? ready
+          : needs("Select an eligible line."),
+      "sketch.perpendicular":
+        selectedEntity?.kind === "line"
+          ? ready
+          : needs("Select an eligible line."),
+      "sketch.rectangle-width":
+        selectedEntity?.kind === "rectangle"
+          ? ready
+          : needs("Select a rectangle."),
+      "sketch.rectangle-height":
+        selectedEntity?.kind === "rectangle"
+          ? ready
+          : needs("Select a rectangle."),
+      "sketch.line-length":
+        selectedEntity?.kind === "line" ? ready : needs("Select a line."),
+      "sketch.radius":
+        selectedEntity?.kind === "circle" || selectedEntity?.kind === "arc"
+          ? ready
+          : needs("Select a circle or arc."),
+      "sketch.arc-sweep":
+        selectedEntity?.kind === "arc" ? ready : needs("Select an arc."),
+      "inspect.mass-properties": selectedBody ? ready : needs("Select a body."),
+      "inspect.name-reference":
+        selectedGeneratedReferenceState.status === "selected"
+          ? ready
+          : needs("Select a supported face or edge."),
+      "inspect.repair-reference":
+        selectedNamedReferenceName &&
+        selectedGeneratedReferenceState.status === "selected"
+          ? ready
+          : needs("Select a named reference and its replacement."),
       "inspect.fit-selection": selectedViewportRenderId
-        ? { status: "ready" }
-        : {
-            status: "needs-selection",
-            message: "Select a visible body, face, or edge."
-          }
-    }),
-    [document, selectedViewportRenderId]
-  );
+        ? ready
+        : needs("Select a visible body, face, or edge.")
+    };
+  }, [
+    document,
+    focusedSketchId,
+    modelingSelectionContext,
+    selectedBody,
+    selectedEntityProfile,
+    selectedFeature,
+    selectedGeneratedReferenceState,
+    selectedNamedReferenceName,
+    selectedObject,
+    selectedPath,
+    selectedProfile,
+    selectedSketchContext,
+    selectedSolidBodyId,
+    selectedViewportRenderId,
+    sketches,
+    solidAxisChoices.length,
+    solidEdgeChoices.length,
+    solidProfileChoices
+  ]);
   const workbenchActionRunnerRef = useRef<(id: UiActionId) => void>(
     () => undefined
   );
@@ -6347,7 +6668,7 @@ export function App() {
                 }
               >
                 <SketchModeDock
-                  key={focusedSketchId ?? "sketch-mode"}
+                  key={`${focusedSketchId ?? "sketch-mode"}:${workbenchUi.activeTool ?? ""}`}
                   disabled={commandPending}
                   sketches={sketches}
                   parameters={parameters}
@@ -6359,6 +6680,9 @@ export function App() {
                   activeSketchId={focusedSketchId}
                   selectedEntityId={selectedSketchContext?.entityId}
                   arcToolActiveSketchId={threePointArcTool?.sketchId}
+                  initialActionId={
+                    workbenchUi.activeTool as UiActionId | undefined
+                  }
                   onSelectSketch={focusSketch}
                   onSelectEntity={focusSketch}
                   onCreateSketch={(form) => void createSketch(form)}
@@ -6400,7 +6724,7 @@ export function App() {
                   }
                   onFinish={() => {
                     setThreePointArcTool(undefined);
-                    dispatchWorkbench({ type: "set-mode", mode: "solid" });
+                    navigateToMode("solid");
                   }}
                 />
               </Suspense>

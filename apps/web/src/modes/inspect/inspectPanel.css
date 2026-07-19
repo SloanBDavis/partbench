@@ -6,6 +6,7 @@
 
 .pb-inspect-panel__header {
   padding: var(--pb-space-16);
+  padding-inline-end: 48px;
   border-block-end: 1px solid var(--pb-color-border);
 }
 

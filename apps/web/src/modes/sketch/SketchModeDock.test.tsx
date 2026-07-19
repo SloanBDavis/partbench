@@ -59,6 +59,23 @@ describe("V18 Sketch mode dock", () => {
     expect(markup).not.toContain("sourceBoundaryNote");
     expect(markup).not.toContain("derivedBoundaryNote");
   });
+
+  it("opens exact ribbon geometry and dimension drafts without mutating", () => {
+    const lineMarkup = renderToStaticMarkup(
+      createElement(SketchModeDock, props({ initialActionId: "sketch.line" }))
+    );
+    const widthMarkup = renderToStaticMarkup(
+      createElement(
+        SketchModeDock,
+        props({ initialActionId: "sketch.rectangle-width" })
+      )
+    );
+
+    expect(lineMarkup).toContain('aria-label="Create Line"');
+    expect(lineMarkup).toContain("Draft");
+    expect(widthMarkup).toContain('value="Width"');
+    expect(widthMarkup).toContain("Value source");
+  });
 });
 
 function props(

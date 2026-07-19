@@ -51,6 +51,7 @@ import {
   getSketchEntityExtrudeUsages
 } from "../../sketchEntityUsage";
 import type { CadFeatureSummary } from "@web-cad/cad-protocol";
+import type { UiActionId } from "../../actions/actionRegistry";
 import {
   DEFAULT_SKETCH_CONSTRAINT_FORM,
   constraintToRenameDraft,
@@ -89,6 +90,7 @@ export interface SketchModeDockProps {
   readonly activeSketchId?: string;
   readonly selectedEntityId?: string;
   readonly arcToolActiveSketchId?: string;
+  readonly initialActionId?: UiActionId;
   readonly onSelectSketch: (sketchId: string) => void;
   readonly onSelectEntity: (sketchId: string, entityId: string) => void;
   readonly onCreateSketch: (form: SketchCreateForm) => void;
@@ -188,6 +190,7 @@ export function SketchModeDock(props: SketchModeDockProps) {
     activeSketchId,
     selectedEntityId,
     arcToolActiveSketchId,
+    initialActionId,
     onSelectSketch,
     onSelectEntity,
     onCreateSketch,
@@ -231,11 +234,54 @@ export function SketchModeDock(props: SketchModeDockProps) {
         constraintIncludesEntity(item, selectedEntity.id)
       )
     : [];
-  const [section, setSection] = useState<DockSection>("geometry");
+  const requestedEntityKind = getRequestedEntityKind(initialActionId);
+  const requestedDimensionRole = getRequestedDimensionRole(initialActionId);
+  const requestedDimension = createAvailableSketchDimensionTargetOptions(
+    selectedEntity,
+    entityDimensions
+  ).find((option) => option.target.role === requestedDimensionRole);
+  const requestedConstraintKind = getRequestedConstraintKind(initialActionId);
+  const [section, setSection] = useState<DockSection>(() =>
+    requestedDimension || requestedConstraintKind ? "constraints" : "geometry"
+  );
   const [constructionForNew, setConstructionForNew] = useState(false);
-  const [entityDraft, setEntityDraft] = useState<EntityDraft>();
-  const [dimensionDraft, setDimensionDraft] = useState<DimensionDraft>();
-  const [constraintDraft, setConstraintDraft] = useState<ConstraintDraft>();
+  const [entityDraft, setEntityDraft] = useState<EntityDraft | undefined>(() =>
+    requestedEntityKind
+      ? {
+          mode: "create",
+          kind: requestedEntityKind,
+          form: createEntityDraft(requestedEntityKind, false)
+        }
+      : undefined
+  );
+  const [dimensionDraft, setDimensionDraft] = useState<
+    DimensionDraft | undefined
+  >(() =>
+    requestedDimension
+      ? {
+          mode: "create",
+          ...createDimensionDraft(
+            requestedDimension.label,
+            requestedDimension.target,
+            requestedDimension.currentValue
+          )
+        }
+      : undefined
+  );
+  const [constraintDraft, setConstraintDraft] = useState<
+    ConstraintDraft | undefined
+  >(() =>
+    requestedConstraintKind
+      ? {
+          mode: "create",
+          form: {
+            ...DEFAULT_SKETCH_CONSTRAINT_FORM,
+            name: getSketchConstraintKindLabel(requestedConstraintKind),
+            kind: requestedConstraintKind
+          }
+        }
+      : undefined
+  );
   const [createSketchDraft, setCreateSketchDraft] = useState<SketchCreateForm>(
     DEFAULT_CREATE_SKETCH
   );
@@ -425,6 +471,65 @@ export function SketchModeDock(props: SketchModeDockProps) {
       </footer>
     </aside>
   );
+}
+
+function getRequestedEntityKind(
+  actionId: UiActionId | undefined
+): SketchCreateEntityKind | undefined {
+  switch (actionId) {
+    case "sketch.point":
+      return "point";
+    case "sketch.line":
+      return "line";
+    case "sketch.rectangle":
+      return "rectangle";
+    case "sketch.circle":
+      return "circle";
+    default:
+      return undefined;
+  }
+}
+
+function getRequestedDimensionRole(
+  actionId: UiActionId | undefined
+): SketchDimensionTarget["role"] | undefined {
+  switch (actionId) {
+    case "sketch.rectangle-width":
+      return "width";
+    case "sketch.rectangle-height":
+      return "height";
+    case "sketch.line-length":
+      return "length";
+    case "sketch.radius":
+      return "radius";
+    case "sketch.arc-sweep":
+      return "sweep";
+    default:
+      return undefined;
+  }
+}
+
+function getRequestedConstraintKind(
+  actionId: UiActionId | undefined
+): SketchConstraintForm["kind"] | undefined {
+  switch (actionId) {
+    case "sketch.horizontal":
+      return "horizontal";
+    case "sketch.vertical":
+      return "vertical";
+    case "sketch.fixed":
+      return "fixed";
+    case "sketch.coincident":
+      return "coincident";
+    case "sketch.midpoint":
+      return "midpoint";
+    case "sketch.parallel":
+      return "parallel";
+    case "sketch.perpendicular":
+      return "perpendicular";
+    default:
+      return undefined;
+  }
 }
 
 function GeometrySection({

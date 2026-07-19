@@ -11,7 +11,7 @@ describe("ContextualActionStrip", () => {
       selectionKey: "body-selection",
       title: "Result body",
       detail: "Solid body",
-      tone: "selected",
+      tone: "ready",
       actions: [
         action("body.measureTopology", "Measure"),
         action("body.references.inspect", "References"),

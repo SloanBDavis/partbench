@@ -8,7 +8,7 @@
     "dev": "pnpm --filter @web-cad/web dev",
     "build": "pnpm -r build",
     "build:geometry-worker": "pnpm --filter @web-cad/web build:geometry-worker",
-    "check:v18-bundle": "VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build && node scripts/v18-bundle-metrics.mjs",
+    "check:v18-bundle": "VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build && VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build:geometry-worker && node scripts/v18-bundle-metrics.mjs",
     "lint": "eslint .",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
