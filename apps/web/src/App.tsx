@@ -195,8 +195,13 @@ import {
 } from "./state/uiPreferences";
 import { SketchArcToolOverlay } from "./components/SketchArcToolOverlay";
 import { SketchViewportDragOverlay } from "./components/SketchViewportDragOverlay";
-import { StructurePanel } from "./components/StructurePanel";
-import type { StructureSelectionOptions } from "./components/StructurePanel";
+import { DocumentTreeDock } from "./workbench/DocumentTreeDock";
+import {
+  createDocumentTreeProjection,
+  documentTreeSelectionKey,
+  type DocumentTreeRowCapabilities,
+  type DocumentTreeSelection
+} from "./workbench/documentTreeProjection";
 import { ViewportContextualCommandSurface } from "./components/ViewportContextualCommandSurface";
 import {
   ViewportCanvas,
@@ -367,6 +372,7 @@ import {
   createCutTargetBodyOptions,
   createHoleTargetBodyOptions,
   formatSketchSolverStatus,
+  getParameterDimensionUsageCount,
   type SketchPanelSelectionContext
 } from "./sketchPanelUi";
 import { createSketchModelingSelectionContext } from "./sketchModelingSelectionContext";
@@ -403,9 +409,9 @@ const CompositeFeatureEditor = lazy(() =>
     default: module.CompositeFeatureEditor
   }))
 );
-const ProjectJsonPanel = lazy(() =>
-  import("./components/ProjectJsonPanel").then((module) => ({
-    default: module.ProjectJsonPanel
+const ProjectWorkspace = lazy(() =>
+  import("./modes/project/ProjectWorkspace").then((module) => ({
+    default: module.ProjectWorkspace
   }))
 );
 const SketchPanel = lazy(() =>
@@ -1489,9 +1495,6 @@ export function App() {
   const [activeUtilityPanel, setActiveUtilityPanel] = useState<
     "sketches" | "history"
   >("sketches");
-  const [activeModelBrowserPanel, setActiveModelBrowserPanel] = useState<
-    "tree" | "selection"
-  >("tree");
   const [focusedSketchId, setFocusedSketchId] = useState<string | undefined>();
   const [threePointArcTool, setThreePointArcTool] = useState<
     ThreePointArcToolSession | undefined
@@ -1502,8 +1505,6 @@ export function App() {
   const [preferredHoleTargetBodyId, setPreferredHoleTargetBodyId] = useState<
     string | undefined
   >();
-  const [unitUpdateMode, setUnitUpdateMode] =
-    useState<DocumentUnitUpdateMode>("metadataOnly");
   const [projectJson, setProjectJson] = useState("");
   const [projectJsonDraftSource, setProjectJsonDraftSource] =
     useState<ProjectJsonDraftSource>({ kind: "empty" });
@@ -2066,6 +2067,19 @@ export function App() {
     () => readSketchDimensionsBySketchId(sketches),
     [document, sketches]
   );
+  const parameterUsageCounts = useMemo(
+    () =>
+      Object.fromEntries(
+        parameters.map((parameter) => [
+          parameter.id,
+          getParameterDimensionUsageCount(
+            parameter.id,
+            [...sketchDimensionsBySketchId.values()].flat()
+          )
+        ])
+      ),
+    [parameters, sketchDimensionsBySketchId]
+  );
   const sketchEvaluationsBySketchId = useMemo(
     () => readSketchEvaluationsBySketchId(sketches),
     [document, sketches]
@@ -2074,6 +2088,109 @@ export function App() {
     () => readSketchSolverStatusesBySketchId(sketches),
     [document, sketches]
   );
+  const documentTreeCapabilities = useMemo(() => {
+    const entries = new Map<string, DocumentTreeRowCapabilities>();
+    const register = (
+      selection: DocumentTreeSelection,
+      capabilities: DocumentTreeRowCapabilities
+    ) => entries.set(documentTreeSelectionKey(selection), capabilities);
+
+    for (const parameter of parameters) {
+      register(
+        { kind: "parameter", id: parameter.id },
+        { canEdit: true, canDelete: true }
+      );
+    }
+    for (const sketch of sketches) {
+      register(
+        { kind: "sketch", id: sketch.id },
+        { canRename: true, canEdit: true, canDelete: true }
+      );
+      for (const entity of sketch.entities) {
+        register(
+          { kind: "sketch-entity", sketchId: sketch.id, id: entity.id },
+          { canEdit: true, canDelete: true }
+        );
+      }
+    }
+    for (const feature of projectStructure.features) {
+      register(
+        { kind: "feature", id: feature.id },
+        {
+          canEdit: feature.kind !== "importedBody",
+          canDelete: true
+        }
+      );
+    }
+    for (const object of sceneObjects) {
+      register(
+        { kind: "object", id: object.id },
+        { canRename: true, canEdit: true, canDelete: true }
+      );
+    }
+    for (const reference of namedReferences) {
+      register(
+        { kind: "named-reference", name: reference.name },
+        { canEdit: true, canDelete: true }
+      );
+    }
+    return entries;
+  }, [
+    namedReferences,
+    parameters,
+    projectStructure.features,
+    sceneObjects,
+    sketches
+  ]);
+  const documentTreeProjection = useMemo(
+    () =>
+      createDocumentTreeProjection({
+        parts: projectStructure.parts,
+        parameters,
+        sketches,
+        features: projectStructure.features,
+        bodies: projectStructure.bodies,
+        objects: sceneObjects,
+        namedReferences,
+        health: projectHealth,
+        capabilitiesBySelectionKey: documentTreeCapabilities
+      }),
+    [
+      documentTreeCapabilities,
+      namedReferences,
+      parameters,
+      projectHealth,
+      projectStructure.bodies,
+      projectStructure.features,
+      projectStructure.parts,
+      sceneObjects,
+      sketches
+    ]
+  );
+  const selectedDocumentTreeKey = selectedNamedReferenceName
+    ? documentTreeSelectionKey({
+        kind: "named-reference",
+        name: selectedNamedReferenceName
+      })
+    : selectedSketchContext?.entityId
+      ? documentTreeSelectionKey({
+          kind: "sketch-entity",
+          sketchId: selectedSketchContext.sketchId,
+          id: selectedSketchContext.entityId
+        })
+      : selectedSketchContext
+        ? documentTreeSelectionKey({
+            kind: "sketch",
+            id: selectedSketchContext.sketchId
+          })
+        : selectedBody
+          ? documentTreeSelectionKey({ kind: "body", id: selectedBody.id })
+          : selectedObject
+            ? documentTreeSelectionKey({
+                kind: "object",
+                id: selectedObject.id
+              })
+            : undefined;
   const selectedTopologyAnchoredGeneratedReference = useMemo(
     () =>
       enrichSelectedGeneratedReferenceWithTopologyAnchor(
@@ -2460,21 +2577,12 @@ export function App() {
     );
   }
 
-  function selectObject(
-    objectId: string | undefined,
-    options?: StructureSelectionOptions
-  ) {
+  function selectObject(objectId: string | undefined) {
     setSelectedId(objectId);
     setSelectedGeneratedReference(undefined);
     setViewportPickIntent(undefined);
     setViewportHoverPick(undefined);
     dispatchWorkbench({ type: "set-active-tool" });
-    if (options?.panel === "selection") {
-      dispatchWorkbench({
-        type: "request-navigation",
-        intent: { kind: "mode", mode: "inspect" }
-      });
-    }
   }
 
   function selectViewportPick(pick: ViewportCanvasPick) {
@@ -2662,15 +2770,15 @@ export function App() {
     );
   }
 
-  async function updateDocumentUnits(units: CadDocument["units"]) {
+  async function updateDocumentUnits(
+    units: CadDocument["units"],
+    mode: DocumentUnitUpdateMode
+  ) {
     if (units === document.units) {
       return;
     }
 
-    await commitOps(
-      [buildUpdateUnitsOp(units, unitUpdateMode)],
-      () => selectedId
-    );
+    await commitOps([buildUpdateUnitsOp(units, mode)], () => selectedId);
   }
 
   async function renameSelectedObject(name: string) {
@@ -4499,10 +4607,28 @@ export function App() {
     URL.revokeObjectURL(url);
   }
 
-  function loadProjectFile(projectJson: string, fileName: string) {
-    setProjectJson(projectJson);
+  function createNewProject() {
+    engine.loadProject(exportCadProject(new CadEngine()));
+    stepImportPayloadStoreRef.current.clear();
+    setWcadTopologyCheckpointPayloadCache([]);
+    setProjectFileHandle(undefined);
+    setProjectFile(createInitialProjectFileWorkflowState());
+    setProjectJson("");
+    setProjectJsonDraftSource({ kind: "empty" });
+    setCommandError(undefined);
+    setSelectedGeneratedReference(undefined);
+    setSelectedNamedReferenceName(undefined);
+    setFocusedSketchId(undefined);
+    setSelectedSketchContext(undefined);
+    setProjectMessage("Created a new project.");
+    setProjectMessageTone("info");
+    syncDocument(undefined);
+  }
+
+  function loadProjectJsonDraft(projectJsonText: string, fileName: string) {
+    setProjectJson(projectJsonText);
     setProjectJsonDraftSource({ kind: "loadedFile", fileName });
-    setProjectMessage(`Loaded ${fileName} for import preview.`);
+    setProjectMessage(`Loaded ${fileName} for import validation.`);
     setProjectMessageTone("info");
   }
 
@@ -4537,6 +4663,99 @@ export function App() {
     syncDocument(undefined);
   }
 
+  function selectDocumentTreeItem(selection: DocumentTreeSelection) {
+    switch (selection.kind) {
+      case "origin-plane":
+        setCommandNotice(
+          `${selection.plane} plane is available for a new sketch.`
+        );
+        return;
+      case "parameter":
+        openProjectPage("parameters");
+        return;
+      case "sketch":
+        focusSketch(selection.id);
+        return;
+      case "sketch-entity":
+        focusSketch(selection.sketchId, selection.id);
+        return;
+      case "feature": {
+        const body = projectStructure.bodies.find(
+          (candidate) => candidate.featureId === selection.id
+        );
+        selectObject(body?.id);
+        return;
+      }
+      case "object":
+      case "body":
+        selectObject(selection.id);
+        return;
+      case "named-reference":
+        inspectNamedReference(selection.name);
+        navigateToMode("inspect");
+        return;
+    }
+  }
+
+  function editDocumentTreeItem(selection: DocumentTreeSelection) {
+    selectDocumentTreeItem(selection);
+    if (selection.kind === "feature" || selection.kind === "object") {
+      dispatchWorkbench({ type: "set-active-tool", actionId: "solid.edit" });
+    }
+  }
+
+  function renameDocumentTreeItem(selection: DocumentTreeSelection) {
+    if (selection.kind === "sketch") {
+      const sketch = sketches.find(
+        (candidate) => candidate.id === selection.id
+      );
+      const name = window.prompt("Sketch name", sketch?.name ?? "Sketch");
+      if (name?.trim()) void renameSketch(selection.id, name.trim());
+      return;
+    }
+    if (selection.kind === "object") {
+      const object = document.objects.get(selection.id);
+      const name = window.prompt("Object name", object?.name ?? "Object");
+      if (name?.trim()) {
+        void commitOps(
+          [buildRenameObjectOp(selection.id, name.trim())],
+          () => selection.id
+        );
+      }
+    }
+  }
+
+  function deleteDocumentTreeItem(selection: DocumentTreeSelection) {
+    const row = documentTreeProjection.rowsById.get(
+      documentTreeSelectionKey(selection)
+    );
+    if (!window.confirm(`Delete ${row?.label ?? "this item"}?`)) return;
+
+    switch (selection.kind) {
+      case "parameter":
+        void deleteParameter(selection.id);
+        return;
+      case "sketch":
+        void deleteSketch(selection.id);
+        return;
+      case "sketch-entity":
+        void deleteSketchEntity(selection.sketchId, selection.id);
+        return;
+      case "feature":
+        void deleteAuthoredFeature(selection.id);
+        return;
+      case "object":
+        void commitOps([buildDeleteObjectOp(selection.id)], () => undefined);
+        return;
+      case "named-reference":
+        void deleteNamedReference(selection.name);
+        return;
+      case "origin-plane":
+      case "body":
+        return;
+    }
+  }
+
   function navigateToMode(mode: "project" | "solid" | "sketch" | "inspect") {
     dispatchWorkbench({
       type: "request-navigation",
@@ -4558,7 +4777,7 @@ export function App() {
     switch (actionId) {
       case "project.new":
         openProjectPage("files");
-        setProjectMessage("Create a new project from the Files workspace.");
+        createNewProject();
         return;
       case "project.open":
         openProjectPage("files");
@@ -4727,7 +4946,7 @@ export function App() {
         rightDockWidth={workbenchUi.rightDockWidth}
         leftDockCollapsed={workbenchUi.leftDockCollapsed}
         rightDockCollapsed={workbenchUi.rightDockCollapsed}
-        projectDetailsOpen={workbenchUi.mode === "project"}
+        projectDetailsOpen={false}
         onDockCollapsedChange={(side, collapsed) =>
           dispatchWorkbench({
             type: "set-dock-collapsed",
@@ -4743,9 +4962,9 @@ export function App() {
             <GlobalHeader
               documentName={getProjectFileNameLabel(projectFile)}
               saveState={
-                projectFile.dirty
+                projectFile.dirty || projectFile.mode === "unsaved"
                   ? "unsaved"
-                  : projectFileHandle
+                  : projectFile.mode === "wcadHandle" && projectFileHandle
                     ? "saved-local"
                     : "saved-browser"
               }
@@ -4824,238 +5043,19 @@ export function App() {
               ))}
             </nav>
           ) : (
-            <div className="model-browser-shell" aria-label="Model browser">
-              <div
-                className="model-browser-tabs"
-                role="tablist"
-                aria-label="Model browser tabs"
-              >
-                <button
-                  id="model-browser-tab-tree"
-                  type="button"
-                  role="tab"
-                  aria-controls="model-browser-panel-tree"
-                  aria-selected={activeModelBrowserPanel === "tree"}
-                  className={activeModelBrowserPanel === "tree" ? "active" : ""}
-                  onClick={() => setActiveModelBrowserPanel("tree")}
-                >
-                  <span>Tree</span>
-                </button>
-                <button
-                  id="model-browser-tab-selection"
-                  type="button"
-                  role="tab"
-                  aria-controls="model-browser-panel-selection"
-                  aria-selected={activeModelBrowserPanel === "selection"}
-                  className={
-                    activeModelBrowserPanel === "selection" ? "active" : ""
-                  }
-                  onClick={() => setActiveModelBrowserPanel("selection")}
-                >
-                  <span>Selection</span>
-                </button>
-              </div>
-
-              <div
-                id="model-browser-panel-tree"
-                role="tabpanel"
-                aria-labelledby="model-browser-tab-tree"
-                className="model-browser-panel"
-                hidden={activeModelBrowserPanel !== "tree"}
-              >
-                <StructurePanel
-                  bodies={projectStructure.bodies}
-                  features={projectStructure.features}
-                  featureEditability={selectedFeatureEditability}
-                  focusedSketchId={focusedSketchId}
-                  generatedReferences={
-                    selectedBodyGeneratedReferences.references
-                  }
-                  geometryStatuses={
-                    derivedGeometryEnabled
-                      ? geometryStatusBySourceId
-                      : undefined
-                  }
-                  health={projectHealth}
-                  namedReferences={namedReferences}
-                  namedReferenceCandidatesByName={
-                    namedReferenceCandidatesByName
-                  }
-                  objects={sceneObjects}
-                  parts={projectStructure.parts}
-                  referenceCandidatesByStableId={referenceCandidatesByStableId}
-                  selectedId={selectedId}
-                  selectedGeneratedReference={selectedGeneratedReference}
-                  sketches={sketches}
-                  units={document.units}
-                  onFocusSketch={focusSketch}
-                  onInspectNamedReference={inspectNamedReference}
-                  onSelect={selectObject}
-                  onSelectGeneratedReference={selectGeneratedReference}
-                />
-              </div>
-
-              <div
-                id="model-browser-panel-selection"
-                role="tabpanel"
-                aria-labelledby="model-browser-tab-selection"
-                className="model-browser-panel selection-browser-panel"
-                hidden={activeModelBrowserPanel !== "selection"}
-              >
-                {activeModelBrowserPanel === "selection" ? (
-                  <Suspense
-                    fallback={
-                      <p className="panel-loading">Loading selection…</p>
-                    }
-                  >
-                    <Inspector
-                      disabled={commandPending}
-                      measurements={selectedMeasurements}
-                      bodyMeasurements={selectedBodyMeasurements.measurements}
-                      bodyMeasurementsError={selectedBodyMeasurements.error}
-                      bodyTopology={selectedBodyTopology.topology}
-                      bodyTopologyError={selectedBodyTopology.error}
-                      bodyTopologyExactMetadataStatus={
-                        selectedBodyTopology.exactMetadataStatus
-                      }
-                      bodyMassProperties={
-                        selectedBodyMassProperties.massProperties
-                      }
-                      bodyMassPropertiesError={selectedBodyMassProperties.error}
-                      body={selectedBody}
-                      featureEditability={selectedFeatureEditability}
-                      feature={selectedFeature}
-                      featureSourceEditor={
-                        selectedFeature &&
-                        (selectedFeature.kind === "extrude" ||
-                          selectedFeature.kind === "revolve" ||
-                          selectedFeature.kind === "sweep") ? (
-                          <CompositeFeatureEditor
-                            key={`${selectedFeature.id}:source`}
-                            disabled={commandPending}
-                            feature={selectedFeature}
-                            pathCandidatesBySketchId={pathCandidatesBySketchId}
-                            profileCandidatesBySketchId={
-                              profileCandidatesBySketchId
-                            }
-                            sketches={sketches}
-                            inspectProposal={readFeatureEditProposal}
-                            onUpdateExtrudeProfile={(featureId, profile) =>
-                              void updateCompositeExtrudeProfile(
-                                featureId,
-                                profile
-                              )
-                            }
-                            onUpdateRevolveProfile={(featureId, profile) =>
-                              void updateCompositeRevolveProfile(
-                                featureId,
-                                profile
-                              )
-                            }
-                            onUpdateSweepRefs={(featureId, profile, path) =>
-                              void updateCompositeSweepRefs(
-                                featureId,
-                                profile,
-                                path
-                              )
-                            }
-                          />
-                        ) : undefined
-                      }
-                      generatedReferences={
-                        selectedBodyGeneratedReferences.references
-                      }
-                      generatedReferencesError={
-                        selectedBodyGeneratedReferences.error
-                      }
-                      generatedReferenceMeasurements={
-                        selectedGeneratedReferenceMeasurements
-                      }
-                      namedReferences={namedReferences}
-                      namedReferenceHealthByName={namedReferenceHealthByName}
-                      namedReferenceCandidatesByName={
-                        namedReferenceCandidatesByName
-                      }
-                      object={selectedObject}
-                      referenceCandidatesByStableId={
-                        referenceCandidatesByStableId
-                      }
-                      selectedGeneratedReference={selectedGeneratedReference}
-                      selectedNamedReferenceName={selectedNamedReferenceName}
-                      selectionReferenceCandidates={
-                        selectedSelectionReferenceCandidates
-                      }
-                      units={document.units}
-                      onApplyDimensions={(form) =>
-                        void updateSelectedDimensions(form)
-                      }
-                      onApplyName={(name) => void renameSelectedObject(name)}
-                      onApplyTransform={(form) =>
-                        void updateSelectedTransform(form)
-                      }
-                      onDelete={() => void deleteSelectedObject()}
-                      onDeleteFeature={(featureId) =>
-                        void deleteAuthoredFeature(featureId)
-                      }
-                      onCreateSketchOnFace={(form) =>
-                        void createSketchOnFace(form)
-                      }
-                      onCreateEdgeFinish={(operation, form) =>
-                        void createEdgeFinish(operation, form)
-                      }
-                      onDeleteNamedReference={(name) =>
-                        void deleteNamedReference(name)
-                      }
-                      onNameGeneratedReference={(name, target) =>
-                        void nameGeneratedReference(name, target)
-                      }
-                      onCreateTopologyAnchor={(target) =>
-                        void createStableTopologyReference(target)
-                      }
-                      onRepairTopologyAnchor={(target) =>
-                        void repairStableTopologyReference(target)
-                      }
-                      onRepairTopologyAnchorCandidate={(target, candidateId) =>
-                        void repairStableTopologyReference(target, candidateId)
-                      }
-                      onPreviewTopologyAnchorRepair={(target) =>
-                        void previewStableTopologyRepair(target)
-                      }
-                      onRepairNamedReference={(name, target) =>
-                        void repairNamedReference(name, target)
-                      }
-                      onInspectNamedReference={inspectNamedReference}
-                      onSelectGeneratedReference={(selection) => {
-                        setSelectedGeneratedReference(selection);
-                        setViewportPickIntent(undefined);
-                        setViewportHoverPick(undefined);
-                      }}
-                      onUpdateExtrude={(featureId, depth, side) =>
-                        void updateAuthoredExtrude(featureId, depth, side)
-                      }
-                      onUpdateRevolve={(featureId, angleDegrees) =>
-                        void updateAuthoredRevolve(featureId, angleDegrees)
-                      }
-                      onUpdateHole={(featureId, depthMode, depth, direction) =>
-                        void updateAuthoredHole(
-                          featureId,
-                          depthMode,
-                          depth,
-                          direction
-                        )
-                      }
-                      onUpdateChamfer={(featureId, distance) =>
-                        void updateAuthoredChamfer(featureId, distance)
-                      }
-                      onUpdateFillet={(featureId, radius) =>
-                        void updateAuthoredFillet(featureId, radius)
-                      }
-                      topologyRepairPreview={topologyRepairPreview}
-                    />
-                  </Suspense>
-                ) : null}
-              </div>
-            </div>
+            <DocumentTreeDock
+              projection={documentTreeProjection}
+              selectedKey={selectedDocumentTreeKey}
+              editingKey={
+                workbenchUi.activeEditor?.sourceId
+                  ? `feature:${workbenchUi.activeEditor.sourceId}`
+                  : undefined
+              }
+              onSelect={selectDocumentTreeItem}
+              onRename={renameDocumentTreeItem}
+              onEdit={editDocumentTreeItem}
+              onDelete={deleteDocumentTreeItem}
+            />
           )
         }
         viewport={
@@ -5132,29 +5132,77 @@ export function App() {
           />
         }
         projectWorkspace={
-          <section
-            className="pb-project-workspace"
-            aria-label="Project workspace"
+          <Suspense
+            fallback={<p className="panel-loading">Loading project…</p>}
           >
-            <header>
-              <p>Project</p>
-              <h2>
-                {workbenchUi.projectPage === "files"
-                  ? "Files"
-                  : workbenchUi.projectPage === "parameters"
-                    ? "Parameters"
-                    : workbenchUi.projectPage === "history"
-                      ? "History"
-                      : workbenchUi.projectPage === "export"
-                        ? "Export"
-                        : "Overview"}
-              </h2>
-            </header>
-            <p>
-              Review document settings, files, parameters, history, and export
-              readiness for {getProjectFileNameLabel(projectFile)}.
-            </p>
-          </section>
+            <ProjectWorkspace
+              page={workbenchUi.projectPage ?? "overview"}
+              disabled={commandPending}
+              documentName={getProjectFileNameLabel(projectFile)}
+              units={document.units}
+              summary={currentProjectSummary}
+              projectFile={projectFile}
+              storageCapabilities={projectStorageCapabilities}
+              health={projectHealth}
+              topologyIdentityReadiness={projectTopologyIdentityReadiness}
+              importReadiness={projectImportReadiness}
+              exportReadiness={projectExportReadiness}
+              visualizationExport={visualizationMeshExportStatus}
+              jsonDraft={projectJson}
+              jsonWorkflow={projectJsonWorkflow}
+              opfsCacheStatus={projectOpfsCacheStatus}
+              parameters={parameters}
+              parameterEvaluation={parameterEvaluation}
+              parameterUsageCounts={parameterUsageCounts}
+              transactions={transactionHistory}
+              canUndo={engine.getTransactions().length > 0}
+              canRedo={engine.getRedoStack().length > 0}
+              message={projectMessage}
+              messageTone={projectMessageTone}
+              onNew={createNewProject}
+              onOpenWcad={openProjectWcad}
+              onOpenStep={openProjectStepImport}
+              onOpenWcadFileLoaded={(bytes, fileName) =>
+                void importProjectWcadBytes(bytes, fileName, "uploadedFallback")
+              }
+              onStepFileLoaded={(bytes, fileName) =>
+                void importProjectStepBytes(bytes, fileName)
+              }
+              onJsonFileLoaded={loadProjectJsonDraft}
+              onFileError={(message) => {
+                setProjectMessage(message);
+                setProjectMessageTone("error");
+              }}
+              onSave={() => void saveProjectWcad()}
+              onSaveAs={() => void saveProjectWcadAs()}
+              onPrepareJson={exportProjectJson}
+              onDownloadJson={downloadProjectJson}
+              onJsonDraftChange={(value) => {
+                setProjectJson(value);
+                setProjectJsonDraftSource(
+                  createProjectJsonDraftSourceForEditorValue(value)
+                );
+                setProjectMessage(undefined);
+              }}
+              onImportJson={importProjectJson}
+              onRefreshOpfsCache={() => void refreshProjectOpfsCache(true)}
+              onClearOpfsCache={() => void clearProjectOpfsCache()}
+              onDownloadStep={() => void downloadExactStepExport()}
+              onDownloadVisualization={downloadVisualizationMeshExport}
+              onUpdateUnits={(units, mode) =>
+                void updateDocumentUnits(units, mode)
+              }
+              onCreateParameter={(form) => void createParameter(form)}
+              onEditParameter={(parameter, form) =>
+                void applyParameterEdit(parameter, form)
+              }
+              onDeleteParameter={(parameterId) =>
+                void deleteParameter(parameterId)
+              }
+              onUndo={undo}
+              onRedo={redo}
+            />
+          </Suspense>
         }
         rightDock={
           <div className="right-rail" aria-label="Project and modeling tools">
@@ -5278,74 +5326,142 @@ export function App() {
               </section>
             ) : null}
 
-            {workbenchUi.mode === "project" ? (
+            {workbenchUi.mode === "inspect" ? (
               <Suspense
-                fallback={
-                  <p className="panel-loading">Loading project tools…</p>
-                }
+                fallback={<p className="panel-loading">Loading inspection…</p>}
               >
-                <details className="project-file-drawer" open>
-                  <summary>
-                    <span>Project/File</span>
-                    <small>
-                      {getProjectFileNameLabel(projectFile)} ·{" "}
-                      {getProjectFileDirtyLabel(projectFile)}
-                    </small>
-                  </summary>
-
-                  <ProjectJsonPanel
-                    disabled={commandPending}
-                    exportReadiness={projectExportReadiness}
-                    importReadiness={projectImportReadiness}
-                    topologyIdentityReadiness={projectTopologyIdentityReadiness}
-                    visualizationDownloadAvailable={
-                      projectStorageCapabilities.jsonDownloadAvailable
-                    }
-                    visualizationExport={visualizationMeshExportStatus}
-                    projectJson={projectJson}
-                    projectFile={projectFile}
-                    opfsCacheStatus={projectOpfsCacheStatus}
-                    storageCapabilities={projectStorageCapabilities}
-                    workflow={projectJsonWorkflow}
-                    message={projectMessage}
-                    messageTone={projectMessageTone}
-                    onOpenWcad={openProjectWcad}
-                    onOpenStep={openProjectStepImport}
-                    onOpenWcadFileLoaded={(bytes, fileName) =>
-                      void importProjectWcadBytes(
-                        bytes,
-                        fileName,
-                        "uploadedFallback"
-                      )
-                    }
-                    onStepFileLoaded={(bytes, fileName) =>
-                      void importProjectStepBytes(bytes, fileName)
-                    }
-                    onProjectJsonChange={(value) => {
-                      setProjectJson(value);
-                      setProjectJsonDraftSource(
-                        createProjectJsonDraftSourceForEditorValue(value)
-                      );
-                      setProjectMessage(undefined);
-                    }}
-                    onProjectFileLoaded={loadProjectFile}
-                    onProjectFileError={(message) => {
-                      setProjectMessage(message);
-                      setProjectMessageTone("error");
-                    }}
-                    onRefreshOpfsCache={() =>
-                      void refreshProjectOpfsCache(true)
-                    }
-                    onClearOpfsCache={() => void clearProjectOpfsCache()}
-                    onSaveWcad={() => void saveProjectWcad()}
-                    onSaveAsWcad={() => void saveProjectWcadAs()}
-                    onExport={exportProjectJson}
-                    onDownload={downloadProjectJson}
-                    onDownloadStep={() => void downloadExactStepExport()}
-                    onDownloadVisualization={downloadVisualizationMeshExport}
-                    onImport={importProjectJson}
-                  />
-                </details>
+                <Inspector
+                  disabled={commandPending}
+                  measurements={selectedMeasurements}
+                  bodyMeasurements={selectedBodyMeasurements.measurements}
+                  bodyMeasurementsError={selectedBodyMeasurements.error}
+                  bodyTopology={selectedBodyTopology.topology}
+                  bodyTopologyError={selectedBodyTopology.error}
+                  bodyTopologyExactMetadataStatus={
+                    selectedBodyTopology.exactMetadataStatus
+                  }
+                  bodyMassProperties={selectedBodyMassProperties.massProperties}
+                  bodyMassPropertiesError={selectedBodyMassProperties.error}
+                  body={selectedBody}
+                  featureEditability={selectedFeatureEditability}
+                  feature={selectedFeature}
+                  featureSourceEditor={
+                    selectedFeature &&
+                    (selectedFeature.kind === "extrude" ||
+                      selectedFeature.kind === "revolve" ||
+                      selectedFeature.kind === "sweep") ? (
+                      <CompositeFeatureEditor
+                        key={`${selectedFeature.id}:source`}
+                        disabled={commandPending}
+                        feature={selectedFeature}
+                        pathCandidatesBySketchId={pathCandidatesBySketchId}
+                        profileCandidatesBySketchId={
+                          profileCandidatesBySketchId
+                        }
+                        sketches={sketches}
+                        inspectProposal={readFeatureEditProposal}
+                        onUpdateExtrudeProfile={(featureId, profile) =>
+                          void updateCompositeExtrudeProfile(featureId, profile)
+                        }
+                        onUpdateRevolveProfile={(featureId, profile) =>
+                          void updateCompositeRevolveProfile(featureId, profile)
+                        }
+                        onUpdateSweepRefs={(featureId, profile, path) =>
+                          void updateCompositeSweepRefs(
+                            featureId,
+                            profile,
+                            path
+                          )
+                        }
+                      />
+                    ) : undefined
+                  }
+                  generatedReferences={
+                    selectedBodyGeneratedReferences.references
+                  }
+                  generatedReferencesError={
+                    selectedBodyGeneratedReferences.error
+                  }
+                  generatedReferenceMeasurements={
+                    selectedGeneratedReferenceMeasurements
+                  }
+                  namedReferences={namedReferences}
+                  namedReferenceHealthByName={namedReferenceHealthByName}
+                  namedReferenceCandidatesByName={
+                    namedReferenceCandidatesByName
+                  }
+                  object={selectedObject}
+                  referenceCandidatesByStableId={referenceCandidatesByStableId}
+                  selectedGeneratedReference={selectedGeneratedReference}
+                  selectedNamedReferenceName={selectedNamedReferenceName}
+                  selectionReferenceCandidates={
+                    selectedSelectionReferenceCandidates
+                  }
+                  units={document.units}
+                  onApplyDimensions={(form) =>
+                    void updateSelectedDimensions(form)
+                  }
+                  onApplyName={(name) => void renameSelectedObject(name)}
+                  onApplyTransform={(form) =>
+                    void updateSelectedTransform(form)
+                  }
+                  onDelete={() => void deleteSelectedObject()}
+                  onDeleteFeature={(featureId) =>
+                    void deleteAuthoredFeature(featureId)
+                  }
+                  onCreateSketchOnFace={(form) => void createSketchOnFace(form)}
+                  onCreateEdgeFinish={(operation, form) =>
+                    void createEdgeFinish(operation, form)
+                  }
+                  onDeleteNamedReference={(name) =>
+                    void deleteNamedReference(name)
+                  }
+                  onNameGeneratedReference={(name, target) =>
+                    void nameGeneratedReference(name, target)
+                  }
+                  onCreateTopologyAnchor={(target) =>
+                    void createStableTopologyReference(target)
+                  }
+                  onRepairTopologyAnchor={(target) =>
+                    void repairStableTopologyReference(target)
+                  }
+                  onRepairTopologyAnchorCandidate={(target, candidateId) =>
+                    void repairStableTopologyReference(target, candidateId)
+                  }
+                  onPreviewTopologyAnchorRepair={(target) =>
+                    void previewStableTopologyRepair(target)
+                  }
+                  onRepairNamedReference={(name, target) =>
+                    void repairNamedReference(name, target)
+                  }
+                  onInspectNamedReference={inspectNamedReference}
+                  onSelectGeneratedReference={(selection) => {
+                    setSelectedGeneratedReference(selection);
+                    setViewportPickIntent(undefined);
+                    setViewportHoverPick(undefined);
+                  }}
+                  onUpdateExtrude={(featureId, depth, side) =>
+                    void updateAuthoredExtrude(featureId, depth, side)
+                  }
+                  onUpdateRevolve={(featureId, angleDegrees) =>
+                    void updateAuthoredRevolve(featureId, angleDegrees)
+                  }
+                  onUpdateHole={(featureId, depthMode, depth, direction) =>
+                    void updateAuthoredHole(
+                      featureId,
+                      depthMode,
+                      depth,
+                      direction
+                    )
+                  }
+                  onUpdateChamfer={(featureId, distance) =>
+                    void updateAuthoredChamfer(featureId, distance)
+                  }
+                  onUpdateFillet={(featureId, radius) =>
+                    void updateAuthoredFillet(featureId, radius)
+                  }
+                  topologyRepairPreview={topologyRepairPreview}
+                />
               </Suspense>
             ) : null}
 

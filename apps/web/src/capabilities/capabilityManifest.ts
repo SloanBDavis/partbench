@@ -134,7 +134,7 @@ const ACTION_AUDIT_BY_ID = {
     "downloadProjectJson",
     "projectStorageCapabilities.jsonDownloadAvailable",
     uiOnly("download exportCadProjectJson output"),
-    "components/ProjectJsonPanel.test.tsx",
+    "modes/project/ProjectWorkspace.test.tsx",
     "G"
   ),
   "project.export-step": audit(
@@ -346,7 +346,7 @@ const ACTION_AUDIT_BY_ID = {
     "deleteSelectedObject / deleteSketch / deleteAuthoredFeature",
     "selected semantic target + pending state",
     cadops("buildDeleteObjectOp / buildDeleteSketchOp / buildFeatureDeleteOp"),
-    "components/StructurePanel.test.ts",
+    "workbench/DocumentTreeDock.test.tsx",
     "C"
   ),
   "solid.measure": audit(
@@ -654,7 +654,7 @@ const NON_REGISTRY_CAPABILITIES = [
     "DocumentTreeDock",
     "ui:row has children",
     uiOnly("change expanded row UI state"),
-    "components/StructurePanel.test.ts",
+    "workbench/DocumentTreeDock.test.tsx",
     "C"
   ),
   nonAction(
@@ -667,7 +667,7 @@ const NON_REGISTRY_CAPABILITIES = [
     "DocumentTreeDock",
     "shared semantic projection",
     uiOnly("update semantic UI selection"),
-    "components/StructurePanel.test.ts",
+    "workbench/DocumentTreeDock.test.tsx",
     "C"
   ),
   nonAction(
@@ -680,7 +680,7 @@ const NON_REGISTRY_CAPABILITIES = [
     "DocumentTreeDock",
     "reference.resolveNamed",
     uiOnly("resolve and select the named reference"),
-    "components/StructurePanel.test.ts",
+    "workbench/DocumentTreeDock.test.tsx",
     "C"
   ),
   nonAction(
@@ -862,7 +862,7 @@ const NON_REGISTRY_CAPABILITIES = [
     "AdvancedInterchange",
     "ui:local JSON draft",
     uiOnly("edit local JSON text without source mutation"),
-    "components/ProjectJsonPanel.test.tsx",
+    "modes/project/ProjectWorkspace.test.tsx",
     "G"
   ),
   nonAction(
@@ -875,7 +875,7 @@ const NON_REGISTRY_CAPABILITIES = [
     "ProjectFiles",
     "projectStorageCapabilities.wcadUploadAvailable",
     uiOnly("read and validate an uploaded .wcad"),
-    "components/ProjectJsonPanel.test.tsx",
+    "modes/project/ProjectWorkspace.test.tsx",
     "G"
   ),
   nonAction(
@@ -888,7 +888,7 @@ const NON_REGISTRY_CAPABILITIES = [
     "ProjectFiles",
     "projectStorageCapabilities.stepUploadAvailable",
     uiOnly("read and validate an uploaded STEP file"),
-    "components/ProjectJsonPanel.test.tsx",
+    "modes/project/ProjectWorkspace.test.tsx",
     "G"
   ),
   nonAction(

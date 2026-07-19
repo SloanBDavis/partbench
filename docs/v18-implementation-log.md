@@ -113,12 +113,35 @@ stack.
 - Consequence: document mutations remain the invalidation source; render meshes
   remain derived views and no geometry internals move into React components.
 
+### D008 — Interleave tree sources by explicit ownership dependencies
+
+- Date: 2026-07-19
+- Decision: within each part, place each source sketch immediately before the
+  first authored feature that explicitly consumes it, preserve feature order,
+  then append unconsumed sketches in their recorded part order.
+- Reason: the existing projection exposes ordered sketch and feature arrays but
+  no combined cross-family sequence; dependency fields are the available source
+  truth and require no new query or schema.
+- Consequence: rows preserve actual ownership and never infer a rollback or
+  insertion position that the document does not record.
+
+### D009 — Compatibility JSON and local cache stay disclosed in Project Files
+
+- Date: 2026-07-19
+- Decision: retain editable JSON validation/import and local derived-cache
+  refresh/clear under collapsed Advanced Interchange details in the Files page.
+- Reason: these are completed compatibility workflows, but neither is the
+  primary project experience or default visible copy.
+- Consequence: malformed JSON remains a draft and cannot replace the current
+  document; clearing cache remains app-local and does not mutate source.
+
 ## Increment ledger
 
 | Increment | Scope | Evidence | Commit |
 | --- | --- | --- | --- |
 | A | Inventory/foundation | 50 focused UI tests, 2 bundle-script tests, immutable V17 production metrics | `4c9c1cb` |
-| B | Persistent shell/search integration | 1536/1280/960 screenshots; compact-root regression fixed; full production build; critical JS 371.93 KiB gzip and CSS 13.38 KiB gzip | Pending |
+| B | Persistent shell/search integration | 1536/1280/960 screenshots; compact-root regression fixed; full production build; critical JS 371.93 KiB gzip and CSS 13.38 KiB gzip | `4a54ef0` |
+| C/G support | Ownership tree, Project workspace, shared editor primitives | 29 focused tests; web typecheck; 1536 Project and tree screenshots; 390 no-scroll viewport check; critical JS 370.56 KiB gzip and CSS 13.96 KiB gzip | Pending |
 
 ## Completion evidence
 
