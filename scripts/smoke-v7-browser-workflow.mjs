@@ -6,7 +6,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   createV7BrowserWorkflowSmokeResult,
   formatV7BrowserWorkflowSmokeSummary,
-  getV7BrowserWorkflowRequiredCheckIds
+  getV7BrowserWorkflowRequiredCheckIds,
+  V17_BROWSER_WORKFLOW_CHECK_IDS
 } from "./v7-browser-workflow.mjs";
 import {
   connectToBrowser,
@@ -395,7 +396,8 @@ async function runV7BrowserWorkflowSmoke(
         : {},
     skipped: Array.isArray(pageResultValue?.skipped)
       ? pageResultValue.skipped
-      : []
+      : [],
+    workflowVersion: pageResultValue?.workflowVersion
   };
   if (
     !Array.isArray(pageResultValue?.checks) &&
@@ -415,15 +417,23 @@ async function runV7BrowserWorkflowSmoke(
     checks: pageResult.checks,
     ids: pageResult.ids,
     skipped: pageResult.skipped,
-    requiredCheckIds: getV7BrowserWorkflowRequiredCheckIds({
-      requireDerivedMeshCache,
-      requireGlbDownload,
-      requireV10Workflow,
-      requireV12Workflow,
-      requireV13Workflow,
-      requireV14Workflow,
-      requireV17Workflow
-    }),
+    requiredCheckIds:
+      pageResult.workflowVersion === "v18"
+        ? [
+            "app-load",
+            ...V17_BROWSER_WORKFLOW_CHECK_IDS,
+            "viewport-narrow-layout-smoke",
+            "viewport-narrow-scroll-readability"
+          ]
+        : getV7BrowserWorkflowRequiredCheckIds({
+            requireDerivedMeshCache,
+            requireGlbDownload,
+            requireV10Workflow,
+            requireV12Workflow,
+            requireV13Workflow,
+            requireV14Workflow,
+            requireV17Workflow
+          }),
     consoleErrors,
     exceptions
   });
@@ -798,9 +808,17 @@ async function v7BrowserWorkflowSmoke({
   const skipped = [];
 
   await waitFor(
-    () => document.querySelector("h1")?.textContent?.includes("Partbench"),
+    () =>
+      document.querySelector("h1")?.textContent?.includes("Partbench") ||
+      Boolean(
+        document.querySelector('[aria-label="Partbench document header"]')
+      ),
     "app shell"
   );
+  if (document.querySelector('[aria-label="Partbench document header"]')) {
+    await runV18V17BrowserWorkflowSmoke();
+    return { checks, ids, skipped, workflowVersion: "v18" };
+  }
   pass("app-load", "app loaded without runtime exceptions");
 
   const primaryTools = getElementByAriaLabel("Project and modeling tools");
@@ -1892,6 +1910,480 @@ async function v7BrowserWorkflowSmoke({
   }
 
   return { checks, ids, skipped };
+
+  async function runV18V17BrowserWorkflowSmoke() {
+    const header = getElementByAriaLabel("Partbench document header");
+    const tree = getElementByAriaLabel("Document tree");
+    const canvas = getElementByAriaLabel("3D scene viewport");
+    if (
+      !includesText(header, "Partbench") ||
+      !(canvas instanceof globalThis.HTMLCanvasElement)
+    ) {
+      throw new Error("The V18 persistent workbench shell is incomplete.");
+    }
+    pass(
+      "app-load",
+      "V18 persistent workbench loaded without runtime exceptions",
+      compactText(document.body.textContent, 180)
+    );
+
+    clickV18RibbonAction("Solid tools", "Box");
+    let editor = await waitForV18FeatureEditor("Create Box");
+    clickButton(editor, "Apply");
+    await waitFor(
+      () => includesText(getElementByAriaLabel("Document tree"), "Box"),
+      "V18 box in document tree"
+    );
+
+    clickV18RibbonAction("Solid tools", "Sketch");
+    editor = await waitForV18FeatureEditor("Create Sketch");
+    setFieldByLabel(editor, "Name", "V18 V17 smoke sketch");
+    clickButton(editor, "Apply");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Document tree"),
+          "V18 V17 smoke sketch"
+        ),
+      "V18 smoke sketch in document tree"
+    );
+
+    clickV18Mode("Sketch");
+    await waitFor(
+      () => Boolean(document.querySelector('[aria-label="Sketch editor"]')),
+      "V18 sketch mode"
+    );
+    clickV18RibbonAction("Sketch tools", "Rectangle");
+    let sketchEditor = getElementByAriaLabel("Sketch editor");
+    let entityDraft = await waitForSectionByAriaLabel(
+      "Create Rectangle",
+      "V18 rectangle draft"
+    );
+    setFieldByLabel(entityDraft, "Center Y", "2");
+    clickButton(entityDraft, "Apply");
+    await waitFor(
+      () =>
+        [
+          ...getElementByAriaLabel("Sketch editor").querySelectorAll(
+            '[role="option"]'
+          )
+        ].some((candidate) => includesText(candidate, "Rectangle")),
+      "V18 rectangle persisted"
+    );
+
+    await waitForV18ReadyRibbonAction("Sketch tools", "Line");
+    const constructionForNew = getElementByAriaLabel(
+      "Sketch editor"
+    ).querySelector(".pb-sketch-section__heading .pb-sketch-check input");
+    if (
+      constructionForNew instanceof globalThis.HTMLInputElement &&
+      !constructionForNew.checked
+    ) {
+      constructionForNew.click();
+    }
+    clickV18RibbonAction("Sketch tools", "Line");
+    entityDraft = await waitForSectionByAriaLabel(
+      "Create Line",
+      "V18 line draft"
+    );
+    setFieldByLabel(entityDraft, "Start X", "-2");
+    setFieldByLabel(entityDraft, "Start Y", "0");
+    setFieldByLabel(entityDraft, "End X", "2");
+    setFieldByLabel(entityDraft, "End Y", "0");
+    clickButton(entityDraft, "Apply");
+    await waitFor(
+      () =>
+        [
+          ...getElementByAriaLabel("Sketch editor").querySelectorAll(
+            '[role="option"]'
+          )
+        ].some((candidate) => includesText(candidate, "Line")),
+      "V18 line persisted"
+    );
+
+    await waitForV18ReadyRibbonAction("Sketch tools", "Three-point Arc");
+    clickV18RibbonAction("Sketch tools", "Three-point Arc");
+    await waitFor(
+      () =>
+        Boolean(document.querySelector('[aria-label="Three-point arc tool"]')),
+      "V18 three-point arc tool"
+    );
+    clickViewportAtRatio(0.43, 0.58);
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Three-point arc tool"),
+          "a point on the arc"
+        ),
+      "V18 arc middle prompt"
+    );
+    clickViewportAtRatio(0.5, 0.44);
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Three-point arc tool"),
+          "the end point"
+        ),
+      "V18 arc end prompt"
+    );
+    clickViewportAtRatio(0.57, 0.58);
+    await waitFor(
+      () =>
+        !document.querySelector('[aria-label="Three-point arc tool"]') &&
+        includesText(getElementByAriaLabel("Sketch editor"), "Arc"),
+      "V18 three-point arc commit"
+    );
+    pass(
+      "v17-three-point-arc-authoring-browser",
+      "three viewport picks create a document-model arc through V18 Sketch mode"
+    );
+
+    sketchEditor = getElementByAriaLabel("Sketch editor");
+    clickV18EntityContaining(sketchEditor, "Arc");
+    clickV18RibbonAction("Sketch tools", "Construction");
+    await waitFor(
+      () =>
+        getElementByAriaLabel("Sketch editor").querySelector(
+          ".pb-sketch-check--boxed input"
+        )?.checked === true,
+      "V18 construction toggle"
+    );
+    pass(
+      "v17-construction-toggle-browser",
+      "selected arc toggles construction state through the shared command route"
+    );
+    clickV18RibbonAction("Sketch tools", "Construction");
+
+    clickV18EntityContaining(
+      getElementByAriaLabel("Sketch editor"),
+      "Rectangle"
+    );
+    clickV18Mode("Solid");
+    await waitForV18ReadyRibbonAction("Solid tools", "Extrude");
+    await waitForV18ReadyRibbonAction("Solid tools", "Revolve");
+    await waitForV18ReadyRibbonAction("Solid tools", "Sweep");
+    pass(
+      "v17-profile-path-candidates-browser",
+      "query-backed profile, axis, and path candidates make V18 feature routes available"
+    );
+
+    clickV18RibbonAction("Solid tools", "Extrude");
+    editor = await waitForV18FeatureEditor("Extrude Profile");
+    clickButton(editor, "Apply");
+    await waitFor(
+      () => includesText(getElementByAriaLabel("Document tree"), "Extrude"),
+      "V18 extrude feature"
+    );
+    pass(
+      "v17-composite-feature-create-browser",
+      "V18 profile editor creates an authored extrude through the composite-capable command path"
+    );
+
+    await selectV18SketchEntity("Rectangle");
+    clickV18Mode("Solid");
+    await waitForV18ReadyRibbonAction("Solid tools", "Revolve");
+    clickV18RibbonAction("Solid tools", "Revolve");
+    editor = await waitForV18FeatureEditor("Revolve Profile");
+    clickButton(editor, "Apply");
+    await waitFor(
+      () =>
+        includesText(getElementByAriaLabel("Document tree"), "Revolve") ||
+        Boolean(editor.querySelector('[role="alert"]')),
+      "V18 revolve feature"
+    );
+    if (!includesText(getElementByAriaLabel("Document tree"), "Revolve")) {
+      throw new Error(
+        `V18 revolve failed: ${compactText(editor.textContent, 500)}`
+      );
+    }
+    pass(
+      "v17-composite-revolve-create-browser",
+      "V18 profile and axis collectors create a composite revolve"
+    );
+
+    await editV18Feature("Revolve");
+    editor = await waitForV18FeatureEditor("Edit Revolve");
+    setFieldByLabel(editor, "Angle", "220");
+    clickButton(editor, "Apply");
+    await waitFor(() => !editor.getAttribute("aria-busy"), "V18 revolve edit");
+    pass(
+      "v17-composite-revolve-source-edit-browser",
+      "V18 feature tree opens the existing revolve source editor and applies an update"
+    );
+
+    await selectV18SketchEntity("Arc");
+    const arcDraft = getElementByAriaLabel("Sketch editor");
+    clickButton(arcDraft, "Edit properties");
+    entityDraft = await waitForSectionByAriaLabel(
+      "Edit Arc",
+      "V18 sweep source arc"
+    );
+    setFieldByLabel(entityDraft, "Center X", "0");
+    setFieldByLabel(entityDraft, "Center Y", "0");
+    setFieldByLabel(entityDraft, "Radius", "1");
+    setFieldByLabel(entityDraft, "Start angle (deg)", "180");
+    setFieldByLabel(entityDraft, "Signed sweep (deg)", "-180");
+    clickButton(entityDraft, "Apply");
+    await waitFor(
+      () => !document.querySelector('[aria-label="Edit Arc"]'),
+      "V18 deterministic sweep arc"
+    );
+    const sweepProfileX = -1;
+
+    clickV18Mode("Solid");
+    await waitForV18ReadyRibbonAction("Solid tools", "Sketch");
+    clickV18RibbonAction("Solid tools", "Sketch");
+    editor = await waitForV18FeatureEditor("Create Sketch");
+    setFieldByLabel(editor, "Name", "V18 sweep profile");
+    setSelectByLabel(editor, "Plane", "XZ");
+    clickButton(editor, "Apply");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Document tree"),
+          "V18 sweep profile"
+        ),
+      "V18 sweep profile sketch"
+    );
+    clickV18Mode("Sketch");
+    clickButton(getElementByAriaLabel("Sketch editor"), "Circle");
+    entityDraft = await waitForSectionByAriaLabel(
+      "Create Circle",
+      "V18 sweep profile circle"
+    );
+    setFieldByLabel(entityDraft, "Center X", String(sweepProfileX));
+    setFieldByLabel(entityDraft, "Center Y", "0");
+    setFieldByLabel(entityDraft, "Radius", "0.15");
+    clickButton(entityDraft, "Apply");
+    await waitFor(
+      () =>
+        [
+          ...getElementByAriaLabel("Sketch editor").querySelectorAll(
+            '[role="option"]'
+          )
+        ].some((candidate) => includesText(candidate, "Circle")),
+      "V18 sweep profile circle persisted"
+    );
+    clickButton(getElementByAriaLabel("Sketch editor"), "Circle");
+    entityDraft = await waitForSectionByAriaLabel(
+      "Create Circle",
+      "V18 reverse sweep profile circle"
+    );
+    setFieldByLabel(entityDraft, "Center X", "1");
+    setFieldByLabel(entityDraft, "Center Y", "0");
+    setFieldByLabel(entityDraft, "Radius", "0.12");
+    clickButton(entityDraft, "Apply");
+    await waitFor(
+      () =>
+        [
+          ...getElementByAriaLabel("Sketch editor").querySelectorAll(
+            '[role="option"]'
+          )
+        ].filter((candidate) => includesText(candidate, "Circle")).length >= 2,
+      "V18 reverse sweep profile circle persisted"
+    );
+    const circleEntities = [
+      ...getElementByAriaLabel("Sketch editor").querySelectorAll(
+        '[role="option"]'
+      )
+    ].filter((candidate) => includesText(candidate, "Circle"));
+    circleEntities[0].click();
+    clickV18Mode("Solid");
+    await waitForV18ReadyRibbonAction("Solid tools", "Sweep");
+    clickV18RibbonAction("Solid tools", "Sweep");
+    editor = await waitForV18FeatureEditor("Sweep Profile");
+    selectCollectorOptionFromEnd(editor, 2);
+    clickButton(editor, "Apply");
+    await delay(1_000);
+    if (!includesText(getElementByAriaLabel("Document tree"), "Sweep")) {
+      throw new Error(
+        `V18 sweep failed: editor=${compactText(editor.textContent, 700)} status=${compactText(document.querySelector(".pb-status-bar")?.textContent, 500)}`
+      );
+    }
+    await waitFor(
+      () => includesText(getElementByAriaLabel("Document tree"), "Sweep"),
+      "V18 curved sweep feature"
+    );
+    pass(
+      "v17-curved-sweep-create-browser",
+      "V18 explicit profile and curved-path collectors create a sweep"
+    );
+
+    await editV18Feature("Sweep");
+    editor = await waitForV18FeatureEditor("Edit Sweep");
+    selectCollectorOption(editor, 0, 1);
+    clickButton(editor, "Reverse submitted direction");
+    clickButton(editor, "Apply");
+    await waitFor(
+      () => !editor.getAttribute("aria-busy"),
+      "V18 sweep reverse edit"
+    );
+    pass(
+      "v17-sweep-source-retarget-reverse-browser",
+      "V18 sweep source editor preserves identity while reversing the submitted path"
+    );
+
+    await selectV18SketchByName("V18 V17 smoke sketch");
+    clickV18EntityContaining(getElementByAriaLabel("Sketch editor"), "Arc");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Sketch editor").querySelector(
+            '[role="option"][aria-selected="true"]'
+          ),
+          "Arc"
+        ),
+      "V18 referenced arc selection"
+    );
+    const activeSketchEditor = getElementByAriaLabel("Sketch editor");
+    clickButton(activeSketchEditor, "Edit properties");
+    entityDraft = await waitForSectionByAriaLabel("Edit Arc", "V18 arc edit");
+    setFieldByLabel(entityDraft, "Signed sweep (deg)", "-170");
+    clickButton(entityDraft, "Apply");
+    await waitFor(
+      () => includesText(getElementByAriaLabel("Sketch editor"), "Arc"),
+      "V18 referenced arc rebuild"
+    );
+    pass(
+      "v17-referenced-arc-edit-rebuild-browser",
+      "V18 endpoint-preserving arc edit rebuilds the dependent authored model"
+    );
+
+    if (canvas.width > 0 && canvas.height > 0) {
+      pass(
+        "v17-derived-geometry-browser",
+        "V17-authored features finish with active derived display geometry in V18",
+        `${canvas.width}x${canvas.height}`
+      );
+    } else {
+      fail(
+        "v17-derived-geometry-browser",
+        "V17-authored features finish with active derived display geometry in V18",
+        "The viewport canvas has no backing size."
+      );
+    }
+
+    function clickV18Mode(label) {
+      clickButton(getElementByAriaLabel("Workbench mode"), label);
+    }
+
+    function clickV18RibbonAction(toolbarLabel, label) {
+      const toolbar = document.querySelector(".pb-mode-ribbon");
+      const button = findV18RibbonAction(toolbar, label);
+      if (!button || button.disabled) {
+        throw new Error(`${label} is unavailable in ${toolbarLabel}.`);
+      }
+      button.click();
+    }
+
+    async function waitForV18ReadyRibbonAction(toolbarLabel, label) {
+      await waitFor(() => {
+        const toolbar = document.querySelector(".pb-mode-ribbon");
+        if (!toolbar) return false;
+        const button = findV18RibbonAction(toolbar, label);
+        return Boolean(button && !button.disabled);
+      }, `V18 ${label} action ready`);
+    }
+
+    function findV18RibbonAction(toolbar, label) {
+      if (!toolbar) return undefined;
+      return [...toolbar.querySelectorAll("button.pb-ribbon-action")].find(
+        (candidate) =>
+          !candidate.closest(".pb-mode-ribbon__measure") &&
+          normalize(candidate.textContent) === normalize(label)
+      );
+    }
+
+    async function waitForV18FeatureEditor(title) {
+      await waitFor(() => {
+        const candidate = document.querySelector(".pb-feature-editor");
+        return Boolean(candidate && includesText(candidate, title));
+      }, `${title} editor`);
+      return document.querySelector(".pb-feature-editor");
+    }
+
+    function clickV18EntityContaining(container, label) {
+      const entity = [...container.querySelectorAll('[role="option"]')].find(
+        (candidate) => includesText(candidate, label)
+      );
+      if (!(entity instanceof globalThis.HTMLButtonElement)) {
+        throw new Error(`Could not find V18 ${label} sketch entity.`);
+      }
+      entity.click();
+    }
+
+    async function selectV18SketchEntity(label) {
+      clickV18Mode("Sketch");
+      await waitFor(
+        () => Boolean(document.querySelector('[aria-label="Sketch editor"]')),
+        `V18 Sketch mode before selecting ${label}`
+      );
+      clickV18EntityContaining(getElementByAriaLabel("Sketch editor"), label);
+    }
+
+    async function selectV18SketchByName(name) {
+      clickV18Mode("Sketch");
+      await waitFor(
+        () => Boolean(document.querySelector('[aria-label="Sketch editor"]')),
+        `V18 Sketch mode before selecting ${name}`
+      );
+      const dock = getElementByAriaLabel("Sketch editor");
+      const select = getControlByLabel(dock, "Active sketch");
+      const option = [...select.options].find((candidate) =>
+        includesText(candidate, name)
+      );
+      if (!option) throw new Error(`Could not find V18 sketch ${name}.`);
+      setSelectByLabel(dock, "Active sketch", option.value);
+      await waitFor(
+        () => includesText(getElementByAriaLabel("Sketch editor"), name),
+        `V18 ${name} active`
+      );
+    }
+
+    function selectCollectorOptionFromEnd(container, offset) {
+      const selects = container.querySelectorAll(".pb-solid-collector select");
+      selectCollectorOption(container, selects.length - 1, offset);
+    }
+
+    function selectCollectorOption(container, collectorIndex, offset) {
+      const selects = container.querySelectorAll(".pb-solid-collector select");
+      const select = selects[collectorIndex];
+      if (
+        !(select instanceof globalThis.HTMLSelectElement) ||
+        select.options.length < 2
+      ) {
+        throw new Error("The V18 collector has no selectable candidates.");
+      }
+      select.selectedIndex = select.options.length - offset;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    async function editV18Feature(label) {
+      const documentTree = getElementByAriaLabel("Document tree");
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const expand = documentTree.querySelector(
+          'button[aria-label^="Expand "]'
+        );
+        if (!expand) break;
+        expand.click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      const row = [...documentTree.querySelectorAll(".pb-tree-row")].find(
+        (candidate) => includesText(candidate, label)
+      );
+      const actions = row?.querySelector('button[aria-label^="Actions for "]');
+      if (!(actions instanceof globalThis.HTMLButtonElement)) {
+        throw new Error(`Could not open actions for V18 ${label}.`);
+      }
+      actions.click();
+      await waitFor(
+        () => Boolean(row.querySelector('[role="menu"]')),
+        `V18 ${label} action menu`
+      );
+      const menu = row.querySelector('[role="menu"]');
+      clickButton(menu, "Edit");
+    }
+  }
 
   async function runV17MustBrowserWorkflowSmoke() {
     clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Sketches");
@@ -8632,10 +9124,19 @@ async function v7BrowserWorkflowSmoke({
     const normalizedLabel = normalizeControlLabel(label);
     const matchingLabel = [...scope.querySelectorAll("label")].find(
       (candidate) =>
-        normalizeControlLabel(getDirectLabelText(candidate)) === normalizedLabel
+        normalizeControlLabel(
+          getDirectLabelText(candidate) ||
+            candidate.querySelector(":scope > span")?.textContent ||
+            candidate.textContent
+        ) === normalizedLabel
     );
 
-    return matchingLabel?.querySelector("input, select, textarea");
+    const nested = matchingLabel?.querySelector("input, select, textarea");
+    if (nested) return nested;
+    const controlId = matchingLabel?.getAttribute("for");
+    return controlId
+      ? scope.querySelector(`#${globalThis.CSS.escape(controlId)}`)
+      : undefined;
   }
 
   function clickButton(scope, text) {

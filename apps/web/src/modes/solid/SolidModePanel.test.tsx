@@ -1,7 +1,11 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import type { FeatureExtrudeForm, FeatureLoftForm } from "../../cadCommands";
+import type {
+  FeatureCompositeSweepForm,
+  FeatureExtrudeForm,
+  FeatureLoftForm
+} from "../../cadCommands";
 import { SolidModePanel, validateSolidDraft } from "./SolidModePanel";
 import { createPrimitiveDraft } from "./solidEditorDefaults";
 import { applySolidDraftOnce, cancelSolidDraft } from "./solidEditorSession";
@@ -121,6 +125,46 @@ describe("SolidModePanel", () => {
     expect(markup).toContain("Bottom profile");
     expect(markup).not.toContain("private-sketch-a");
     expect(markup).not.toContain("private-profile-b");
+  });
+
+  it("keeps V17 sweep source orientation editable", () => {
+    const draft: FeatureCompositeSweepForm = {
+      id: "sweep-a",
+      bodyId: "body-a",
+      name: "Rail",
+      profile: { kind: "entity", sketchId: "profile", entityId: "circle" },
+      path: {
+        kind: "entity",
+        sketchId: "path",
+        entityId: "arc",
+        orientation: "reverse"
+      }
+    };
+    const markup = renderToStaticMarkup(
+      createElement(SolidModePanel, {
+        activeEditor: {
+          key: "sweep-edit",
+          kind: "compositeSweep",
+          title: "Edit Sweep",
+          mode: "edit",
+          initialDraft: draft,
+          choices: {
+            profiles: [],
+            paths: [
+              {
+                key: "path:arc",
+                value: draft.path,
+                label: "Arc path",
+                kind: "path"
+              }
+            ]
+          }
+        },
+        onApply: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Reverse submitted direction");
   });
 });
 

@@ -2246,7 +2246,15 @@ export function App() {
       })),
     []
   );
-  const selectedProfile = solidProfileChoices[0]?.value;
+  const selectedProfile =
+    (modelingSelectionContext.selectionKind === "sketchEntity"
+      ? solidProfileChoices.find(
+          (choice) =>
+            choice.value.kind === "entity" &&
+            choice.value.sketchId === modelingSelectionContext.sketch.id &&
+            choice.value.entityId === modelingSelectionContext.entity.id
+        )?.value
+      : undefined) ?? solidProfileChoices[0]?.value;
   const selectedEntityProfile =
     selectedProfile?.kind === "entity" ? selectedProfile : undefined;
   const selectedPath = solidPathChoices[0]?.value;

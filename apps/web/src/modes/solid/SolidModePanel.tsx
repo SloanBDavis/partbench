@@ -990,8 +990,35 @@ function CompositeSweepFields({
         onChange={(path) => onChange({ ...draft, path })}
         onClear={() => undefined}
       />
+      <div className="pb-solid-inline-action">
+        <Button
+          onClick={() =>
+            onChange({ ...draft, path: reverseSketchPath(draft.path) })
+          }
+        >
+          Reverse submitted direction
+        </Button>
+      </div>
     </>
   );
+}
+
+function reverseSketchPath(
+  path: FeatureCompositeSweepForm["path"]
+): FeatureCompositeSweepForm["path"] {
+  if (path.kind === "entity") {
+    return {
+      ...path,
+      orientation: path.orientation === "forward" ? "reverse" : "forward"
+    };
+  }
+  return {
+    ...path,
+    segments: [...path.segments].reverse().map((segment) => ({
+      ...segment,
+      orientation: segment.orientation === "forward" ? "reverse" : "forward"
+    }))
+  };
 }
 
 function LoftFields({
