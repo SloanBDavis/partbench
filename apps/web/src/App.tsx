@@ -24,7 +24,6 @@ import type {
   CadBatchResponse,
   CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
-  CadGeneratedReference,
   CadSelectionReferenceOperation,
   CadSelectionReferenceInput,
   CadParameterSnapshot,
@@ -33,10 +32,7 @@ import type {
   GeneratedReferenceMeasurement,
   NamedGeneratedReferenceEntry,
   CadOp,
-  CadFeatureEditProposal,
   DocumentUnitUpdateMode,
-  FeatureExtrudeSide,
-  FeatureEditabilityQueryResponse,
   FeatureHoleDepthMode,
   FeatureHoleDirection,
   ProjectHealthQueryResponse,
@@ -110,13 +106,11 @@ import {
   buildFeatureLoftOp,
   buildFeatureUpdateChamferOp,
   buildFeatureUpdateCircularPatternOp,
-  buildFeatureUpdateExtrudeOp,
   buildFeatureUpdateCompositeExtrudeOp,
   buildFeatureUpdateFilletOp,
   buildFeatureUpdateHoleOp,
   buildFeatureUpdateLinearPatternOp,
   buildFeatureUpdateMirrorOp,
-  buildFeatureUpdateRevolveOp,
   buildFeatureUpdateCompositeRevolveOp,
   buildFeatureUpdateCompositeSweepOp,
   buildFeatureUpdateShellOp,
@@ -128,17 +122,11 @@ import {
   buildRenameSketchOp,
   buildSketchConstraintEditOps,
   buildSketchDimensionEditOps,
-  buildUpdateBoxDimensionsOp,
-  buildUpdateConeDimensionsOp,
-  buildUpdateCylinderDimensionsOp,
   buildUpdateSketchEntityOp,
   buildSetSketchEntityConstructionOp,
-  buildUpdateSphereDimensionsOp,
-  buildUpdateTorusDimensionsOp,
   buildUpdateUnitsOp,
   buildUpdateTransformOp,
   WEB_UI_ACTOR,
-  type DimensionCommandForm,
   type FeatureEdgeFinishForm,
   type FeatureCircularPatternEdit,
   type FeatureCircularPatternForm,
@@ -185,6 +173,21 @@ import { GlobalHeader } from "./workbench/GlobalHeader";
 import { ModeRibbon } from "./workbench/ModeRibbon";
 import { StatusBar } from "./workbench/StatusBar";
 import { WorkbenchShell } from "./workbench/WorkbenchShell";
+import type {
+  InspectHealthProjection,
+  InspectMeasurementsProjection,
+  InspectMetricProjection,
+  InspectReferenceProjection,
+  InspectSelectionProjection
+} from "./modes/inspect/InspectPanel";
+import {
+  createPrimitiveDraft,
+  createSketchDraft,
+  createTransformDraft,
+  type SolidChoice,
+  type SolidEditorRequest,
+  type SolidEditorSubmission
+} from "./modes/solid";
 import {
   createInitialWorkbenchUiState,
   workbenchReducer
@@ -202,7 +205,7 @@ import {
   type DocumentTreeRowCapabilities,
   type DocumentTreeSelection
 } from "./workbench/documentTreeProjection";
-import { ViewportContextualCommandSurface } from "./components/ViewportContextualCommandSurface";
+import { ContextualActionStrip } from "./workbench/ContextualActionStrip";
 import {
   ViewportCanvas,
   type ViewportCanvasPick
@@ -211,7 +214,6 @@ import type { DerivedGeometryRuntime } from "./derivedGeometryRuntime";
 import {
   createEmptyDerivedGeometrySnapshot,
   DerivedGeometryService,
-  getDerivedGeometryStatusLabel,
   type DerivedGeometrySource,
   type DerivedGeometrySnapshot
 } from "./derivedGeometry";
@@ -247,8 +249,16 @@ import {
 } from "./derivedGeometrySources";
 import { preflightHoleGeometryCommand } from "./holeGeometryPreflight";
 import {
+  createBodyMeasurementRows,
+  formatArea,
   formatBodyMeasurementError,
-  formatBodyTopologyError
+  formatBodyTopologyStatus,
+  formatBodyTopologyError,
+  formatBounds,
+  formatDimensions,
+  formatObjectKind,
+  formatVector,
+  formatVolume
 } from "./sceneObjectDisplay";
 import { createQuickStartSourceBodyPlan } from "./quickStartBodies";
 import { createRenderSceneInputs } from "./renderScene";
@@ -270,6 +280,7 @@ import {
 } from "./v17ProductIntegration";
 import {
   formatGeneratedReferenceMeasurementError,
+  formatGeneratedReferenceKind,
   formatGeneratedReferencesError,
   getGeneratedReferenceItems,
   type GeneratedReferenceMeasurementDisplay
@@ -309,8 +320,6 @@ import {
   type ViewportTwoTargetMeasurementSession,
   type ViewportTwoTargetMeasurementTarget
 } from "./viewportTwoTargetMeasurement";
-import { createViewportReferenceActions } from "./viewportReferenceActions";
-import { createViewportInteractionSurface } from "./viewportInteractionSurface";
 import {
   deriveModelingActions,
   type ModelingSelectionContext
@@ -368,9 +377,6 @@ import {
   type ProjectOpfsCacheTargetLike
 } from "./projectOpfsCache";
 import {
-  createAddTargetBodyOptions,
-  createCutTargetBodyOptions,
-  createHoleTargetBodyOptions,
   formatSketchSolverStatus,
   getParameterDimensionUsageCount,
   type SketchPanelSelectionContext
@@ -382,31 +388,16 @@ import {
   formatNamedReferenceRepairBatchMessage
 } from "./namedReferenceRepairUi";
 import "./styles/base.css";
-import "./styles.css";
+import "./styles/viewport.css";
 
-const HistoryPanel = lazy(() =>
-  import("./components/HistoryPanel").then((module) => ({
-    default: module.HistoryPanel
+const InspectPanel = lazy(() =>
+  import("./modes/inspect/InspectPanel").then((module) => ({
+    default: module.InspectPanel
   }))
 );
-const Inspector = lazy(() =>
-  import("./components/Inspector").then((module) => ({
-    default: module.Inspector
-  }))
-);
-const ModelingActionsPanel = lazy(() =>
-  import("./components/ModelingActionsPanel").then((module) => ({
-    default: module.ModelingActionsPanel
-  }))
-);
-const CompositeFeaturePanel = lazy(() =>
-  import("./components/CompositeFeaturePanel").then((module) => ({
-    default: module.CompositeFeaturePanel
-  }))
-);
-const CompositeFeatureEditor = lazy(() =>
-  import("./components/CompositeFeatureEditor").then((module) => ({
-    default: module.CompositeFeatureEditor
+const SolidModePanel = lazy(() =>
+  import("./modes/solid").then((module) => ({
+    default: module.SolidModePanel
   }))
 );
 const ProjectWorkspace = lazy(() =>
@@ -414,9 +405,9 @@ const ProjectWorkspace = lazy(() =>
     default: module.ProjectWorkspace
   }))
 );
-const SketchPanel = lazy(() =>
-  import("./components/SketchPanel").then((module) => ({
-    default: module.SketchPanel
+const SketchModeDock = lazy(() =>
+  import("./modes/sketch").then((module) => ({
+    default: module.SketchModeDock
   }))
 );
 
@@ -425,71 +416,6 @@ const derivedGeometryEnabled = __PARTBENCH_DERIVED_GEOMETRY_ENABLED__;
 const supportedOpfsCacheArtifactVersions = [
   DERIVED_MESH_CACHE_ARTIFACT_VERSION
 ] as const;
-
-const quickBoxForm: PrimitiveCommandForm = {
-  id: "",
-  width: 2.4,
-  height: 1.8,
-  depth: 1.6,
-  radius: 0.9,
-  majorRadius: 1.4,
-  minorRadius: 0.35,
-  translationX: 0,
-  translationY: 0,
-  translationZ: 0.8
-};
-
-const quickCylinderForm: PrimitiveCommandForm = {
-  id: "",
-  width: 2,
-  height: 2.2,
-  depth: 2,
-  radius: 0.9,
-  majorRadius: 1.4,
-  minorRadius: 0.35,
-  translationX: 0,
-  translationY: 0,
-  translationZ: 1.1
-};
-
-const quickSphereForm: PrimitiveCommandForm = {
-  id: "",
-  width: 2,
-  height: 2,
-  depth: 2,
-  radius: 1,
-  majorRadius: 1.4,
-  minorRadius: 0.35,
-  translationX: 0,
-  translationY: 0,
-  translationZ: 1
-};
-
-const quickConeForm: PrimitiveCommandForm = {
-  id: "",
-  width: 2,
-  height: 2.4,
-  depth: 2,
-  radius: 1,
-  majorRadius: 1.4,
-  minorRadius: 0.35,
-  translationX: 0,
-  translationY: 0,
-  translationZ: 1.2
-};
-
-const quickTorusForm: PrimitiveCommandForm = {
-  id: "",
-  width: 2,
-  height: 2,
-  depth: 2,
-  radius: 1,
-  majorRadius: 1.4,
-  minorRadius: 0.35,
-  translationX: 0,
-  translationY: 0,
-  translationZ: 0
-};
 
 function createWcadTopologyCheckpointPayloadInputCache(
   payloads: readonly WcadTopologyCheckpointPayload[] | undefined
@@ -650,44 +576,6 @@ function readProjectTopologyIdentityReadiness():
   });
 
   return response.ok && response.query === "project.topologyIdentityReadiness"
-    ? response
-    : undefined;
-}
-
-function readFeatureEditability(
-  featureId: string | undefined
-): FeatureEditabilityQueryResponse | undefined {
-  if (!featureId) {
-    return undefined;
-  }
-
-  const response = engine.executeQuery({
-    version: "cadops.v1",
-    query: {
-      query: "feature.editability",
-      featureId
-    }
-  });
-
-  return response.ok && response.query === "feature.editability"
-    ? response
-    : undefined;
-}
-
-function readFeatureEditProposal(
-  featureId: string,
-  proposedEdit: CadFeatureEditProposal
-): FeatureEditabilityQueryResponse | undefined {
-  const response = engine.executeQuery({
-    version: "cadops.v1",
-    query: {
-      query: "feature.editability",
-      featureId,
-      proposedEdit
-    }
-  });
-
-  return response.ok && response.query === "feature.editability"
     ? response
     : undefined;
 }
@@ -1436,6 +1324,13 @@ function createModelingSelectionContext({
   );
 }
 
+function formatCadKindLabel(value: string): string {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replaceAll("-", " ")
+    .replace(/^./, (character) => character.toUpperCase());
+}
+
 export function App() {
   const [workbenchUi, dispatchWorkbench] = useReducer(
     workbenchReducer,
@@ -1492,9 +1387,6 @@ export function App() {
   const [commandError, setCommandError] = useState<string | undefined>();
   const [commandNotice, setCommandNotice] = useState<string | undefined>();
   const [commandPending, setCommandPending] = useState(false);
-  const [activeUtilityPanel, setActiveUtilityPanel] = useState<
-    "sketches" | "history"
-  >("sketches");
   const [focusedSketchId, setFocusedSketchId] = useState<string | undefined>();
   const [threePointArcTool, setThreePointArcTool] = useState<
     ThreePointArcToolSession | undefined
@@ -1869,46 +1761,6 @@ export function App() {
       setPreferredHoleTargetBodyId(undefined);
     }
   }, [preferredHoleTargetBodyId, projectStructure.bodies]);
-  const addTargetReadinessByTopologyAnchorId = useMemo(
-    () =>
-      readTopologyAnchorCommandTargetReadinessByAnchorId(
-        document.topologyIdentity?.anchors,
-        "feature.extrudeAddTarget"
-      ),
-    [document]
-  );
-  const addTargetBodyOptions = useMemo(
-    () =>
-      createAddTargetBodyOptions(
-        projectStructure.bodies,
-        projectStructure.features,
-        selectedBody?.id,
-        document.topologyIdentity?.anchors,
-        addTargetReadinessByTopologyAnchorId
-      ),
-    [
-      addTargetReadinessByTopologyAnchorId,
-      document.topologyIdentity?.anchors,
-      projectStructure.bodies,
-      projectStructure.features,
-      selectedBody?.id
-    ]
-  );
-  const cutTargetBodyOptions = useMemo(
-    () =>
-      createCutTargetBodyOptions(
-        projectStructure.bodies,
-        projectStructure.features,
-        selectedBody?.id,
-        document.topologyIdentity?.anchors
-      ),
-    [
-      document.topologyIdentity?.anchors,
-      projectStructure.bodies,
-      projectStructure.features,
-      selectedBody?.id
-    ]
-  );
   const holeTargetReadinessByTopologyAnchorId = useMemo(
     () =>
       readTopologyAnchorCommandTargetReadinessByAnchorId(
@@ -1917,32 +1769,11 @@ export function App() {
       ),
     [document]
   );
-  const holeTargetBodyOptions = useMemo(
-    () =>
-      createHoleTargetBodyOptions(
-        projectStructure.bodies,
-        projectStructure.features,
-        preferredHoleBodyId,
-        document.topologyIdentity?.anchors,
-        holeTargetReadinessByTopologyAnchorId
-      ),
-    [
-      document.topologyIdentity?.anchors,
-      holeTargetReadinessByTopologyAnchorId,
-      preferredHoleBodyId,
-      projectStructure.bodies,
-      projectStructure.features
-    ]
-  );
   const selectedFeature = selectedBody
     ? projectStructure.features.find(
         (feature) => feature.id === selectedBody.featureId
       )
     : undefined;
-  const selectedFeatureEditability = useMemo(
-    () => readFeatureEditability(selectedFeature?.id),
-    [document, selectedFeature?.id]
-  );
   const selectedBodyGeneratedReferences = useMemo(
     () =>
       readBodyGeneratedReferences(
@@ -1953,15 +1784,6 @@ export function App() {
       ),
     [derivedGeneratedReferenceEvidenceByBodyId, document, selectedBody?.id]
   );
-  const selectedShellTargetGeneratedReferences =
-    selectedFeature?.kind === "shell"
-      ? readBodyGeneratedReferences(
-          selectedFeature.targetBodyId,
-          derivedGeneratedReferenceEvidenceByBodyId.get(
-            selectedFeature.targetBodyId
-          )
-        ).references
-      : undefined;
   const selectedGeneratedReferenceMeasurements = useMemo(
     () =>
       readGeneratedReferenceMeasurements(
@@ -2299,6 +2121,704 @@ export function App() {
       projectStructure.features
     ]
   );
+  const solidBodyChoices = useMemo<readonly SolidChoice<string>[]>(
+    () =>
+      projectStructure.bodies
+        .filter((body) => body.consumedByFeatureId === undefined)
+        .map((body, index) => ({
+          key: body.id,
+          value: body.id,
+          label: body.name ?? `Body ${index + 1}`,
+          kind: "body"
+        })),
+    [projectStructure.bodies]
+  );
+  const solidProfileChoices = useMemo(
+    () =>
+      sketches.flatMap((sketch) =>
+        (profileCandidatesBySketchId.get(sketch.id)?.candidates ?? []).map(
+          (candidate) => ({
+            key: `${sketch.id}:${candidate.sortKey}`,
+            value: candidate.profile,
+            label: `${sketch.name} · Profile ${candidate.candidateIndex + 1}`,
+            kind: candidate.profile.kind === "wire" ? "wire" : "profile"
+          })
+        )
+      ),
+    [profileCandidatesBySketchId, sketches]
+  );
+  const solidPathChoices = useMemo(
+    () =>
+      sketches.flatMap((sketch) =>
+        (pathCandidatesBySketchId.get(sketch.id)?.candidates ?? []).map(
+          (candidate) => ({
+            key: `${sketch.id}:${candidate.sortKey}`,
+            value: candidate.path,
+            label: `${sketch.name} · Path ${candidate.candidateIndex + 1}`,
+            kind: candidate.path.kind === "chain" ? "chain" : "path"
+          })
+        )
+      ),
+    [pathCandidatesBySketchId, sketches]
+  );
+  const solidAxisChoices = useMemo(
+    () =>
+      sketches.flatMap((sketch) =>
+        sketch.entities
+          .filter((entity) => entity.kind === "line")
+          .map((entity, index) => ({
+            key: `${sketch.id}:${entity.id}`,
+            value: entity.id,
+            label: `${sketch.name} · Line ${index + 1}`,
+            kind: "sketch line"
+          }))
+      ),
+    [sketches]
+  );
+  const solidEdgeChoices = useMemo(
+    () =>
+      (selectedBodyGeneratedReferences.references?.edges ?? []).map(
+        (edge, index) => ({
+          key: edge.stableId,
+          value: {
+            targetBodyId: edge.bodyId,
+            edgeStableId: edge.stableId
+          },
+          label: edge.label || `Edge ${index + 1}`,
+          kind: "edge"
+        })
+      ),
+    [selectedBodyGeneratedReferences.references]
+  );
+  const solidFaceChoices = useMemo(
+    () =>
+      (selectedBodyGeneratedReferences.references?.faces ?? []).map(
+        (face, index) => ({
+          key: face.stableId,
+          value: {
+            kind: "generatedFace" as const,
+            bodyId: face.bodyId,
+            stableId: face.stableId
+          },
+          label: face.label || `Face ${index + 1}`,
+          kind: "face"
+        })
+      ),
+    [selectedBodyGeneratedReferences.references]
+  );
+  const solidDirectionChoices = useMemo(
+    () => [
+      ...(["x", "y", "z"] as const).map((axis) => ({
+        key: `axis:${axis}`,
+        value: { kind: "globalAxis" as const, axis },
+        label: `${axis.toUpperCase()} axis`,
+        kind: "global axis"
+      })),
+      ...(selectedBodyGeneratedReferences.references?.edges ?? []).map(
+        (edge, index) => ({
+          key: `edge:${edge.stableId}`,
+          value: {
+            kind: "generatedEdge" as const,
+            bodyId: edge.bodyId,
+            stableId: edge.stableId
+          },
+          label: edge.label || `Edge ${index + 1}`,
+          kind: "generated edge"
+        })
+      )
+    ],
+    [selectedBodyGeneratedReferences.references]
+  );
+  const solidPlaneChoices = useMemo(
+    () =>
+      (["XY", "XZ", "YZ"] as const).map((plane) => ({
+        key: `plane:${plane}`,
+        value: { kind: "standardPlane" as const, plane },
+        label: `${plane} plane`,
+        kind: "standard plane"
+      })),
+    []
+  );
+  const selectedProfile = solidProfileChoices[0]?.value;
+  const selectedEntityProfile =
+    selectedProfile?.kind === "entity" ? selectedProfile : undefined;
+  const selectedPath = solidPathChoices[0]?.value;
+  const selectedSolidBodyId =
+    selectedBody?.id ?? solidBodyChoices[0]?.value ?? "";
+  const solidEditorRequest = useMemo<SolidEditorRequest | undefined>(() => {
+    const actionId = workbenchUi.activeTool;
+    const key = `${actionId ?? "solid"}:${document.revision}`;
+    if (
+      actionId === "solid.box" ||
+      actionId === "solid.cylinder" ||
+      actionId === "solid.sphere" ||
+      actionId === "solid.cone" ||
+      actionId === "solid.torus"
+    ) {
+      const kind = actionId.slice("solid.".length) as
+        | "box"
+        | "cylinder"
+        | "sphere"
+        | "cone"
+        | "torus";
+      return {
+        key,
+        kind,
+        title: `Create ${formatCadKindLabel(kind)}`,
+        mode: "create",
+        initialDraft: createPrimitiveDraft(kind)
+      } as SolidEditorRequest;
+    }
+    if (actionId === "solid.sketch") {
+      return {
+        key,
+        kind: "sketch",
+        title: "Create Sketch",
+        mode: "create",
+        initialDraft: createSketchDraft(sketches.length + 1)
+      } as SolidEditorRequest;
+    }
+    if (actionId === "solid.edit" && selectedFeature) {
+      if (selectedFeature.kind === "extrude") {
+        const profile =
+          selectedFeature.profile ??
+          (selectedFeature.entityId
+            ? {
+                kind: "entity" as const,
+                sketchId: selectedFeature.sketchId,
+                entityId: selectedFeature.entityId
+              }
+            : undefined);
+        return {
+          key,
+          kind: "compositeExtrude",
+          title: "Edit Extrude",
+          mode: "edit",
+          initialDraft: {
+            id: selectedFeature.id,
+            bodyId: selectedFeature.bodyId,
+            name: selectedFeature.name ?? "",
+            profile: profile ?? {
+              kind: "entity",
+              sketchId: "",
+              entityId: ""
+            },
+            depth: selectedFeature.depth,
+            side: selectedFeature.side,
+            operationMode: selectedFeature.operationMode,
+            targetBodyId: selectedFeature.targetBodyId,
+            targetTopologyAnchorId: selectedFeature.targetTopologyAnchorId
+          },
+          choices: {
+            profiles: solidProfileChoices,
+            targetBodies: solidBodyChoices
+          },
+          blockedReason: profile
+            ? undefined
+            : "The source profile is unavailable.",
+          deletable: true
+        } as SolidEditorRequest;
+      }
+      if (selectedFeature.kind === "revolve") {
+        const profile =
+          selectedFeature.profile ??
+          (selectedFeature.entityId
+            ? {
+                kind: "entity" as const,
+                sketchId: selectedFeature.sketchId,
+                entityId: selectedFeature.entityId
+              }
+            : undefined);
+        return {
+          key,
+          kind: "compositeRevolve",
+          title: "Edit Revolve",
+          mode: "edit",
+          initialDraft: {
+            id: selectedFeature.id,
+            bodyId: selectedFeature.bodyId,
+            name: selectedFeature.name ?? "",
+            profile: profile ?? {
+              kind: "entity",
+              sketchId: "",
+              entityId: ""
+            },
+            axisEntityId: selectedFeature.axis.entityId,
+            angleDegrees: selectedFeature.angleDegrees
+          },
+          choices: { profiles: solidProfileChoices, axes: solidAxisChoices },
+          blockedReason: profile
+            ? undefined
+            : "The source profile is unavailable.",
+          deletable: true
+        } as SolidEditorRequest;
+      }
+      if (selectedFeature.kind === "sweep") {
+        return {
+          key,
+          kind: "compositeSweep",
+          title: "Edit Sweep",
+          mode: "edit",
+          initialDraft: {
+            id: selectedFeature.id,
+            bodyId: selectedFeature.bodyId,
+            name: selectedFeature.name ?? "",
+            profile: selectedFeature.profile,
+            path: selectedFeature.path
+          },
+          choices: {
+            profiles: solidProfileChoices.filter(
+              (choice) => choice.value.kind === "entity"
+            ),
+            paths: solidPathChoices
+          },
+          deletable: true
+        } as SolidEditorRequest;
+      }
+      if (selectedFeature.kind === "hole") {
+        return {
+          key,
+          kind: "hole",
+          title: "Edit Hole",
+          mode: "edit",
+          initialDraft: {
+            id: selectedFeature.id,
+            bodyId: selectedFeature.bodyId,
+            targetBodyId: selectedFeature.targetBodyId,
+            targetTopologyAnchorId: selectedFeature.targetTopologyAnchorId,
+            name: selectedFeature.name ?? "",
+            depthMode: selectedFeature.depthMode,
+            depth: selectedFeature.depth ?? 10,
+            direction: selectedFeature.direction
+          },
+          choices: { targetBodies: solidBodyChoices },
+          deletable: true
+        } as SolidEditorRequest;
+      }
+      if (
+        selectedFeature.kind === "fillet" ||
+        selectedFeature.kind === "chamfer"
+      ) {
+        return {
+          key,
+          kind: selectedFeature.kind,
+          title:
+            selectedFeature.kind === "fillet" ? "Edit Fillet" : "Edit Chamfer",
+          mode: "edit",
+          initialDraft: {
+            id: selectedFeature.id,
+            bodyId: selectedFeature.bodyId,
+            targetBodyId: selectedFeature.targetBodyId,
+            name: selectedFeature.name ?? "",
+            edgeStableId: selectedFeature.edgeStableId,
+            namedReference: selectedFeature.namedReference,
+            topologyAnchorId: selectedFeature.topologyAnchorId,
+            distance:
+              selectedFeature.kind === "chamfer" ? selectedFeature.distance : 1,
+            radius:
+              selectedFeature.kind === "fillet" ? selectedFeature.radius : 1
+          },
+          choices: { edges: solidEdgeChoices },
+          deletable: true
+        } as SolidEditorRequest;
+      }
+      if (selectedFeature.kind === "shell") {
+        return {
+          key,
+          kind: "shell",
+          title: "Edit Shell",
+          mode: "edit",
+          initialDraft: {
+            id: selectedFeature.id,
+            bodyId: selectedFeature.bodyId,
+            targetBodyId: selectedFeature.targetBodyId,
+            name: selectedFeature.name ?? "",
+            wallThickness: selectedFeature.wallThickness,
+            openFaceRefs: selectedFeature.openFaceRefs
+          },
+          choices: {
+            targetBodies: solidBodyChoices,
+            openFaces: solidFaceChoices
+          },
+          deletable: true
+        } as SolidEditorRequest;
+      }
+      if (selectedFeature.kind === "linearPattern") {
+        return {
+          key,
+          kind: "linearPattern",
+          title: "Edit Linear Pattern",
+          mode: "edit",
+          initialDraft: {
+            id: selectedFeature.id,
+            bodyId: selectedFeature.bodyId,
+            seedBodyId: selectedFeature.seedBodyId,
+            name: selectedFeature.name ?? "",
+            direction: selectedFeature.direction,
+            spacing: selectedFeature.spacing,
+            instanceCount: selectedFeature.instanceCount
+          },
+          choices: {
+            seedBodies: solidBodyChoices,
+            directions: solidDirectionChoices
+          },
+          deletable: true
+        } as SolidEditorRequest;
+      }
+      if (selectedFeature.kind === "circularPattern") {
+        return {
+          key,
+          kind: "circularPattern",
+          title: "Edit Circular Pattern",
+          mode: "edit",
+          initialDraft: {
+            id: selectedFeature.id,
+            bodyId: selectedFeature.bodyId,
+            seedBodyId: selectedFeature.seedBodyId,
+            name: selectedFeature.name ?? "",
+            rotationAxis: selectedFeature.rotationAxis,
+            totalAngleDegrees: selectedFeature.totalAngleDegrees,
+            instanceCount: selectedFeature.instanceCount
+          },
+          choices: {
+            seedBodies: solidBodyChoices,
+            rotationAxes: solidDirectionChoices
+          },
+          deletable: true
+        } as SolidEditorRequest;
+      }
+      if (selectedFeature.kind === "mirror") {
+        return {
+          key,
+          kind: "mirror",
+          title: "Edit Mirror",
+          mode: "edit",
+          initialDraft: {
+            id: selectedFeature.id,
+            bodyId: selectedFeature.bodyId,
+            seedBodyId: selectedFeature.seedBodyId,
+            name: selectedFeature.name ?? "",
+            plane: selectedFeature.plane,
+            includeOriginal: selectedFeature.includeOriginal
+          },
+          choices: {
+            seedBodies: solidBodyChoices,
+            mirrorPlanes: solidPlaneChoices
+          },
+          deletable: true
+        } as SolidEditorRequest;
+      }
+      return {
+        key,
+        kind: "transform",
+        title: `Edit ${formatCadKindLabel(selectedFeature.kind)}`,
+        mode: "edit",
+        initialDraft: createTransformDraft(),
+        blockedReason:
+          "This feature family does not support property editing in the V17 command matrix.",
+        deletable: true
+      } as SolidEditorRequest;
+    }
+    if (actionId === "solid.transform" || actionId === "solid.edit") {
+      const currentTransform = selectedObject?.transform;
+      return {
+        key,
+        kind: "transform",
+        title: "Transform Object",
+        mode: currentTransform ? "edit" : "create",
+        initialDraft: currentTransform
+          ? {
+              translationX: currentTransform.translation[0],
+              translationY: currentTransform.translation[1],
+              translationZ: currentTransform.translation[2],
+              rotationX: currentTransform.rotation[0],
+              rotationY: currentTransform.rotation[1],
+              rotationZ: currentTransform.rotation[2],
+              scaleX: currentTransform.scale[0],
+              scaleY: currentTransform.scale[1],
+              scaleZ: currentTransform.scale[2]
+            }
+          : createTransformDraft(),
+        blockedReason: selectedObject
+          ? undefined
+          : "Select an editable source object.",
+        deletable: Boolean(selectedObject)
+      } as SolidEditorRequest;
+    }
+    if (actionId === "solid.extrude") {
+      return {
+        key,
+        kind: "compositeExtrude",
+        title: "Extrude Profile",
+        mode: "create",
+        initialDraft: {
+          id: "",
+          bodyId: "",
+          name: "",
+          profile: selectedProfile ?? {
+            kind: "entity",
+            sketchId: "",
+            entityId: ""
+          },
+          depth: 10,
+          side: "positive",
+          operationMode: "newBody"
+        },
+        choices: {
+          profiles: solidProfileChoices,
+          targetBodies: solidBodyChoices
+        },
+        blockedReason: selectedProfile
+          ? undefined
+          : "Create or select a supported closed sketch profile."
+      } as SolidEditorRequest;
+    }
+    if (actionId === "solid.revolve") {
+      return {
+        key,
+        kind: "compositeRevolve",
+        title: "Revolve Profile",
+        mode: "create",
+        initialDraft: {
+          id: "",
+          bodyId: "",
+          name: "",
+          profile: selectedProfile ?? {
+            kind: "entity",
+            sketchId: "",
+            entityId: ""
+          },
+          axisEntityId: solidAxisChoices[0]?.value ?? "",
+          angleDegrees: 360
+        },
+        choices: { profiles: solidProfileChoices, axes: solidAxisChoices },
+        blockedReason:
+          selectedProfile && solidAxisChoices.length > 0
+            ? undefined
+            : "A supported profile and sketch line axis are required."
+      } as SolidEditorRequest;
+    }
+    if (actionId === "solid.sweep") {
+      return {
+        key,
+        kind: "compositeSweep",
+        title: "Sweep Profile",
+        mode: "create",
+        initialDraft: {
+          id: "",
+          bodyId: "",
+          name: "",
+          profile: selectedEntityProfile ?? {
+            kind: "entity",
+            sketchId: "",
+            entityId: ""
+          },
+          path: selectedPath ?? {
+            kind: "entity",
+            sketchId: "",
+            entityId: "",
+            orientation: "forward"
+          }
+        },
+        choices: {
+          profiles: solidProfileChoices.filter(
+            (choice) => choice.value.kind === "entity"
+          ),
+          paths: solidPathChoices
+        },
+        blockedReason:
+          selectedEntityProfile && selectedPath
+            ? undefined
+            : "A supported entity profile and tangent path are required."
+      } as SolidEditorRequest;
+    }
+    if (actionId === "solid.loft") {
+      const sections = solidProfileChoices
+        .map((choice) => choice.value)
+        .filter((profile) => profile.kind === "entity")
+        .map((profile) => ({
+          sketchId: profile.sketchId,
+          entityId: profile.entityId
+        }));
+      return {
+        key,
+        kind: "loft",
+        title: "Loft Sections",
+        mode: "create",
+        initialDraft: { id: "", bodyId: "", name: "", sections },
+        choices: {
+          loftSections: sections.map((section, index) => ({
+            key: `${section.sketchId}:${section.entityId}`,
+            value: section,
+            label: `Section ${index + 1}`,
+            kind: "profile section"
+          }))
+        },
+        blockedReason:
+          sections.length >= 2
+            ? undefined
+            : "At least two supported profile sections are required."
+      } as SolidEditorRequest;
+    }
+    if (actionId === "solid.hole") {
+      const circleReady =
+        modelingSelectionContext.selectionKind === "sketchEntity" &&
+        modelingSelectionContext.entity.kind === "circle";
+      return {
+        key,
+        kind: "hole",
+        title: "Create Hole",
+        mode: "create",
+        initialDraft: {
+          id: "",
+          bodyId: "",
+          targetBodyId: selectedSolidBodyId,
+          name: "",
+          depthMode: "throughAll",
+          depth: 10,
+          direction: "normal"
+        },
+        choices: { targetBodies: solidBodyChoices },
+        blockedReason: circleReady
+          ? undefined
+          : "Select a supported sketch circle."
+      } as SolidEditorRequest;
+    }
+    if (actionId === "solid.fillet" || actionId === "solid.chamfer") {
+      const edge = solidEdgeChoices[0]?.value;
+      return {
+        key,
+        kind: actionId === "solid.fillet" ? "fillet" : "chamfer",
+        title: actionId === "solid.fillet" ? "Fillet Edge" : "Chamfer Edge",
+        mode: "create",
+        initialDraft: {
+          id: "",
+          bodyId: "",
+          targetBodyId: edge?.targetBodyId ?? selectedSolidBodyId,
+          name: "",
+          edgeStableId: edge?.edgeStableId,
+          distance: 1,
+          radius: 1
+        },
+        choices: { edges: solidEdgeChoices },
+        blockedReason: edge ? undefined : "Select a supported generated edge."
+      } as SolidEditorRequest;
+    }
+    if (actionId === "solid.shell") {
+      return {
+        key,
+        kind: "shell",
+        title: "Shell Body",
+        mode: "create",
+        initialDraft: {
+          id: "",
+          bodyId: "",
+          targetBodyId: selectedSolidBodyId,
+          name: "",
+          wallThickness: 1,
+          openFaceRefs: []
+        },
+        choices: {
+          targetBodies: solidBodyChoices,
+          openFaces: solidFaceChoices
+        },
+        blockedReason: selectedSolidBodyId
+          ? undefined
+          : "Select a supported body."
+      } as SolidEditorRequest;
+    }
+    if (actionId === "solid.linear-pattern") {
+      return {
+        key,
+        kind: "linearPattern",
+        title: "Linear Pattern",
+        mode: "create",
+        initialDraft: {
+          id: "",
+          bodyId: "",
+          seedBodyId: selectedSolidBodyId,
+          name: "",
+          direction: solidDirectionChoices[0]!.value,
+          spacing: 10,
+          instanceCount: 3
+        },
+        choices: {
+          seedBodies: solidBodyChoices,
+          directions: solidDirectionChoices
+        },
+        blockedReason: selectedSolidBodyId
+          ? undefined
+          : "Select a supported seed body."
+      } as SolidEditorRequest;
+    }
+    if (actionId === "solid.circular-pattern") {
+      return {
+        key,
+        kind: "circularPattern",
+        title: "Circular Pattern",
+        mode: "create",
+        initialDraft: {
+          id: "",
+          bodyId: "",
+          seedBodyId: selectedSolidBodyId,
+          name: "",
+          rotationAxis: solidDirectionChoices[2]!.value,
+          totalAngleDegrees: 360,
+          instanceCount: 3
+        },
+        choices: {
+          seedBodies: solidBodyChoices,
+          rotationAxes: solidDirectionChoices
+        },
+        blockedReason: selectedSolidBodyId
+          ? undefined
+          : "Select a supported seed body."
+      } as SolidEditorRequest;
+    }
+    if (actionId === "solid.mirror") {
+      return {
+        key,
+        kind: "mirror",
+        title: "Mirror Body",
+        mode: "create",
+        initialDraft: {
+          id: "",
+          bodyId: "",
+          seedBodyId: selectedSolidBodyId,
+          name: "",
+          plane: solidPlaneChoices[0]!.value,
+          includeOriginal: true
+        },
+        choices: {
+          seedBodies: solidBodyChoices,
+          mirrorPlanes: solidPlaneChoices
+        },
+        blockedReason: selectedSolidBodyId
+          ? undefined
+          : "Select a supported seed body."
+      } as SolidEditorRequest;
+    }
+    return undefined;
+  }, [
+    document.revision,
+    modelingSelectionContext,
+    selectedBody,
+    selectedEntityProfile,
+    selectedObject,
+    selectedPath,
+    selectedProfile,
+    selectedSolidBodyId,
+    sketches.length,
+    solidAxisChoices,
+    solidBodyChoices,
+    solidDirectionChoices,
+    solidEdgeChoices,
+    solidFaceChoices,
+    solidPathChoices,
+    solidPlaneChoices,
+    solidProfileChoices,
+    workbenchUi.activeTool
+  ]);
   const sketchViewportDragTarget =
     modelingSelectionContext.selectionKind === "sketchEntity"
       ? {
@@ -2386,19 +2906,411 @@ export function App() {
     session: viewportTwoTargetMeasurementSession,
     units: document.units
   });
-  const viewportReferenceActions = createViewportReferenceActions({
-    candidatesByStableId: referenceCandidatesByStableId,
-    references: selectedBodyGeneratedReferences.references,
-    selectedGeneratedReference
-  });
-  const viewportInteractionSurface = createViewportInteractionSurface({
-    selectionDisplay: viewportSelectionDisplay,
-    hoverState: viewportHoverState,
-    measurementOverlay: viewportMeasurementOverlay,
-    referenceActions: viewportReferenceActions,
-    maxMeasurementRows: 3,
-    maxReferenceActions: 4
-  });
+  const selectedPart = selectedBody
+    ? projectStructure.parts.find((part) => part.id === selectedBody.partId)
+    : projectStructure.parts[0];
+  const selectedReferenceHealth = selectedNamedReferenceName
+    ? namedReferenceHealthByName.get(selectedNamedReferenceName)
+    : selectedGeneratedReferenceState.status === "selected"
+      ? referenceHealth.find(
+          (entry) =>
+            entry.stableId ===
+              selectedGeneratedReferenceState.reference.stableId &&
+            entry.bodyId === selectedGeneratedReferenceState.reference.bodyId
+        )
+      : undefined;
+  const inspectSelection = useMemo<
+    InspectSelectionProjection | undefined
+  >(() => {
+    if (selectedGeneratedReferenceState.status === "selected") {
+      const reference = selectedGeneratedReferenceState.reference;
+      return {
+        kind:
+          reference.kind === "edge"
+            ? "edge"
+            : reference.kind === "face"
+              ? "face"
+              : "body",
+        typeLabel: formatGeneratedReferenceKind(reference.kind),
+        name: reference.label,
+        owner: {
+          part: selectedPart?.name,
+          body: selectedBody?.name ?? "Result body",
+          feature: selectedFeature
+            ? formatCadKindLabel(selectedFeature.kind)
+            : undefined
+        }
+      };
+    }
+
+    if (selectedNamedReference) {
+      return {
+        kind: "named-reference",
+        typeLabel: "Named reference",
+        name: selectedNamedReference.name,
+        owner: {
+          part: selectedPart?.name,
+          body: selectedBody?.name ?? "Result body"
+        },
+        properties: [
+          {
+            label: "Target",
+            value: formatGeneratedReferenceKind(selectedNamedReference.kind)
+          }
+        ]
+      };
+    }
+
+    if (selectedBody) {
+      return {
+        kind: "body",
+        typeLabel: "Body",
+        name: selectedBody.name ?? "Result body",
+        owner: {
+          part: selectedPart?.name,
+          feature: selectedFeature
+            ? formatCadKindLabel(selectedFeature.kind)
+            : undefined
+        },
+        properties: [
+          { label: "Shape", value: "Solid" },
+          ...(selectedBody.primitive
+            ? [
+                {
+                  label: "Source",
+                  value: formatObjectKind(selectedBody.primitive)
+                }
+              ]
+            : [])
+        ]
+      };
+    }
+
+    if (selectedObject) {
+      return {
+        kind: "object",
+        typeLabel: formatObjectKind(selectedObject.kind),
+        name: selectedObject.name ?? formatObjectKind(selectedObject.kind),
+        owner: { part: selectedPart?.name },
+        properties: [
+          {
+            label: "Dimensions",
+            value: formatDimensions(selectedObject, document.units)
+          },
+          {
+            label: "Position",
+            value: formatVector(selectedObject.transform.translation)
+          }
+        ]
+      };
+    }
+
+    return undefined;
+  }, [
+    document.units,
+    selectedBody,
+    selectedFeature,
+    selectedGeneratedReferenceState,
+    selectedNamedReference,
+    selectedObject,
+    selectedPart?.name
+  ]);
+  const inspectMeasurements = useMemo<InspectMeasurementsProjection>(
+    () => ({
+      ...(selectedMeasurements
+        ? {
+            object: {
+              title: "Authored measurements",
+              status: "ready" as const,
+              confidence: "From authored values",
+              rows: [
+                {
+                  label: "Local bounds",
+                  value: formatBounds(
+                    selectedMeasurements.localBounds,
+                    document.units
+                  )
+                },
+                {
+                  label: "World bounds",
+                  value: formatBounds(
+                    selectedMeasurements.worldBounds,
+                    document.units
+                  )
+                },
+                {
+                  label: "Approximate volume",
+                  value: formatVolume(
+                    selectedMeasurements.approximateVolume,
+                    document.units
+                  )
+                }
+              ]
+            }
+          }
+        : {}),
+      ...(selectedBody
+        ? {
+            body: selectedBodyMeasurements.measurements
+              ? {
+                  title: "Body measurements",
+                  status: "ready" as const,
+                  confidence: "Source analytic",
+                  rows: createBodyMeasurementRows(
+                    selectedBodyMeasurements.measurements,
+                    document.units
+                  ).filter((row) => row.label !== "Model")
+                }
+              : {
+                  title: "Body measurements",
+                  status: "blocked" as const,
+                  message:
+                    selectedBodyMeasurements.error ??
+                    "Measurements are unavailable for this body."
+                }
+          }
+        : {}),
+      ...(selectedGeneratedReferenceState.status === "selected"
+        ? {
+            generatedReference: {
+              title: `${formatGeneratedReferenceKind(
+                selectedGeneratedReferenceState.reference.kind
+              )} measurements`,
+              status: selectedGeneratedReferenceState.measurement?.measurement
+                ? ("ready" as const)
+                : ("blocked" as const),
+              confidence: selectedGeneratedReferenceState.measurement
+                ?.measurement
+                ? "Source analytic"
+                : undefined,
+              rows: selectedGeneratedReferenceState.measurementRows,
+              message:
+                selectedGeneratedReferenceState.measurement?.error ?? undefined
+            }
+          }
+        : {}),
+      twoTarget: {
+        status:
+          viewportTwoTargetMeasurement.status === "waitingForSecond"
+            ? "waiting-for-second"
+            : viewportTwoTargetMeasurement.status,
+        firstTarget: viewportTwoTargetMeasurement.firstTarget?.title,
+        secondTarget: viewportTwoTargetMeasurement.secondTarget?.title,
+        prompt: viewportTwoTargetMeasurement.prompt,
+        results: viewportTwoTargetMeasurement.results.flatMap(
+          (result) => result.rows
+        ),
+        confidence: viewportTwoTargetMeasurement.results[0]?.authorityLabel
+      }
+    }),
+    [
+      document.units,
+      selectedBody,
+      selectedBodyMeasurements.error,
+      selectedBodyMeasurements.measurements,
+      selectedGeneratedReferenceState,
+      selectedMeasurements,
+      viewportTwoTargetMeasurement
+    ]
+  );
+  const inspectMassProperties = useMemo<InspectMetricProjection | undefined>(
+    () =>
+      selectedBody
+        ? selectedBodyMassProperties.massProperties
+          ? {
+              title: "Exact mass properties",
+              status: "ready",
+              confidence: "Kernel derived",
+              rows: [
+                {
+                  label: "Volume",
+                  value: formatVolume(
+                    selectedBodyMassProperties.massProperties.volume,
+                    document.units
+                  )
+                },
+                {
+                  label: "Surface area",
+                  value: formatArea(
+                    selectedBodyMassProperties.massProperties.surfaceArea,
+                    document.units
+                  )
+                },
+                {
+                  label: "Center of mass",
+                  value: formatVector(
+                    selectedBodyMassProperties.massProperties.centerOfMass
+                  )
+                },
+                {
+                  label: "Mass",
+                  value:
+                    selectedBodyMassProperties.massProperties.mass.toString()
+                }
+              ]
+            }
+          : {
+              title: "Exact mass properties",
+              status: "blocked",
+              message:
+                selectedBodyMassProperties.error ??
+                "Exact mass properties are unavailable for this body."
+            }
+        : undefined,
+    [document.units, selectedBody, selectedBodyMassProperties]
+  );
+  const inspectHealth = useMemo<readonly InspectHealthProjection[]>(
+    () => [
+      {
+        scope: "project",
+        label: "Project",
+        statusLabel: formatCadKindLabel(projectHealth.status),
+        tone:
+          projectHealth.status === "healthy"
+            ? "success"
+            : projectHealth.status === "under-defined"
+              ? "warning"
+              : "danger",
+        message:
+          projectHealth.issueCount === 0
+            ? "No dependency issues reported."
+            : `${projectHealth.issueCount} dependency issue${projectHealth.issueCount === 1 ? "" : "s"} reported.`
+      },
+      ...(selectedBody
+        ? [
+            {
+              scope: "body" as const,
+              label: "Body topology",
+              statusLabel: selectedBodyTopology.topology
+                ? formatBodyTopologyStatus(selectedBodyTopology.topology.status)
+                : "Unavailable",
+              tone:
+                selectedBodyTopology.topology?.status === "healthy"
+                  ? ("success" as const)
+                  : selectedBodyTopology.error
+                    ? ("danger" as const)
+                    : ("warning" as const),
+              message:
+                selectedBodyTopology.error ??
+                selectedBodyTopology.exactMetadataStatus
+            }
+          ]
+        : []),
+      ...(selectedReferenceHealth
+        ? [
+            {
+              scope: "reference" as const,
+              label: "Reference",
+              statusLabel: formatCadKindLabel(selectedReferenceHealth.status),
+              tone: selectedReferenceHealth.commandable
+                ? ("success" as const)
+                : selectedReferenceHealth.status === "repair-needed" ||
+                    selectedReferenceHealth.status === "ambiguous"
+                  ? ("warning" as const)
+                  : ("danger" as const),
+              message: selectedReferenceHealth.diagnostics[0]?.message
+            }
+          ]
+        : [])
+    ],
+    [
+      projectHealth.issueCount,
+      projectHealth.status,
+      selectedBody,
+      selectedBodyTopology,
+      selectedReferenceHealth
+    ]
+  );
+  const inspectReference = useMemo<
+    InspectReferenceProjection | undefined
+  >(() => {
+    if (selectedGeneratedReferenceState.status !== "selected") {
+      return undefined;
+    }
+    const reference = selectedGeneratedReferenceState.reference;
+    const referenceName = namedReferences.find(
+      (candidate) =>
+        candidate.bodyId === reference.bodyId &&
+        candidate.stableId === reference.stableId
+    )?.name;
+    const healthy = selectedReferenceHealth?.commandable ?? true;
+    const previewKey = createTopologyRepairPreviewKey(
+      selectedGeneratedReferenceState.selection
+    );
+    const repairPreview =
+      topologyRepairPreview?.key === previewKey
+        ? topologyRepairPreview
+        : undefined;
+    const repairableCandidates =
+      repairPreview?.preview?.rows.filter((row) => row.repairable) ?? [];
+    return {
+      kindLabel: formatGeneratedReferenceKind(reference.kind),
+      name: referenceName,
+      health: {
+        scope: "reference",
+        label: "Reference health",
+        statusLabel: healthy ? "Ready" : "Needs attention",
+        tone: healthy ? "success" : "warning",
+        message: selectedReferenceHealth?.diagnostics[0]?.message
+      },
+      naming: {
+        status: commandPending ? "pending" : "ready",
+        message: commandPending ? "A command is already running." : undefined
+      },
+      ...(!selectedGeneratedReferenceState.selection.topologyAnchorId
+        ? {
+            stability: {
+              status: commandPending
+                ? ("pending" as const)
+                : ("ready" as const),
+              message: commandPending
+                ? "A command is already running."
+                : undefined
+            }
+          }
+        : {}),
+      ...(repairPreview
+        ? {
+            repairPreview: repairPreview.pending
+              ? {
+                  title: "Repair candidates",
+                  status: "loading" as const
+                }
+              : repairPreview.error
+                ? {
+                    title: "Repair candidates",
+                    status: "blocked" as const,
+                    message: repairPreview.error
+                  }
+                : {
+                    title: "Repair candidates",
+                    status:
+                      repairableCandidates.length > 0
+                        ? ("ready" as const)
+                        : ("blocked" as const),
+                    message: repairPreview.preview?.summary,
+                    rows: repairPreview.preview?.rows.map((row, index) => ({
+                      label: `${row.entityKind} ${index + 1} · ${row.confidence}`,
+                      value: `${row.state} · ${row.action}`
+                    }))
+                  }
+          }
+        : {}),
+      ...(referenceName
+        ? {
+            repair: {
+              status: healthy ? ("ready" as const) : ("ready" as const)
+            }
+          }
+        : {})
+    };
+  }, [
+    commandPending,
+    namedReferences,
+    selectedGeneratedReferenceState,
+    selectedReferenceHealth,
+    topologyRepairPreview
+  ]);
   const viewportContextualCommandSurface =
     createViewportContextualCommandSurface({
       modelingActions,
@@ -2445,19 +3357,6 @@ export function App() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [clearViewportTransientState, viewportTransientStateActive]);
-  const geometryStatusBySourceId = useMemo(
-    () =>
-      new Map(
-        derivedGeometry.entries.map((entry) => [
-          entry.sourceId ?? entry.objectId,
-          {
-            label: getDerivedGeometryStatusLabel(entry),
-            status: entry.status
-          }
-        ])
-      ),
-    [derivedGeometry]
-  );
   const selectedViewportRenderId =
     viewportVisualState.selectedRenderTargetId ??
     selectedObject?.id ??
@@ -2510,10 +3409,6 @@ export function App() {
         : undefined,
     [derivedGeometry, derivedGeometrySources, projectExportReadiness]
   );
-  const utilityPanels = [
-    { id: "sketches", label: "Sketches" },
-    { id: "history", label: "Log" }
-  ] as const;
   useEffect(() => {
     return () => {
       derivedGeometryServiceRef.current?.dispose();
@@ -2703,69 +3598,43 @@ export function App() {
     }
   }
 
-  async function createBox() {
-    const offset = projectStructure.bodies.length * 2.8;
+  async function createBox(form: PrimitiveCommandForm) {
     const plan = createQuickStartSourceBodyPlan({
       document,
-      form: {
-        ...quickBoxForm,
-        translationX: offset
-      },
+      form,
       kind: "box"
     });
 
     await commitOps(plan.ops, () => plan.bodyId);
   }
 
-  async function createCylinder() {
-    const offset = projectStructure.bodies.length * 2.8;
+  async function createCylinder(form: PrimitiveCommandForm) {
     const plan = createQuickStartSourceBodyPlan({
       document,
-      form: {
-        ...quickCylinderForm,
-        translationX: offset
-      },
+      form,
       kind: "cylinder"
     });
 
     await commitOps(plan.ops, () => plan.bodyId);
   }
 
-  async function createSphere() {
-    const offset = document.objects.size * 2.8;
+  async function createSphere(form: PrimitiveCommandForm) {
     await commitOps(
-      [
-        buildCreateSphereOp({
-          ...quickSphereForm,
-          translationX: offset
-        })
-      ],
+      [buildCreateSphereOp(form)],
       (response) => response.createdIds[0]
     );
   }
 
-  async function createCone() {
-    const offset = document.objects.size * 2.8;
+  async function createCone(form: PrimitiveCommandForm) {
     await commitOps(
-      [
-        buildCreateConeOp({
-          ...quickConeForm,
-          translationX: offset
-        })
-      ],
+      [buildCreateConeOp(form)],
       (response) => response.createdIds[0]
     );
   }
 
-  async function createTorus() {
-    const offset = document.objects.size * 2.8;
+  async function createTorus(form: PrimitiveCommandForm) {
     await commitOps(
-      [
-        buildCreateTorusOp({
-          ...quickTorusForm,
-          translationX: offset
-        })
-      ],
+      [buildCreateTorusOp(form)],
       (response) => response.createdIds[0]
     );
   }
@@ -2781,15 +3650,6 @@ export function App() {
     await commitOps([buildUpdateUnitsOp(units, mode)], () => selectedId);
   }
 
-  async function renameSelectedObject(name: string) {
-    if (!selectedObject) {
-      return;
-    }
-
-    const objectId = selectedObject.id;
-    await commitOps([buildRenameObjectOp(objectId, name)], () => objectId);
-  }
-
   async function updateSelectedTransform(form: TransformCommandForm) {
     if (!selectedObject) {
       return;
@@ -2797,26 +3657,6 @@ export function App() {
 
     const objectId = selectedObject.id;
     await commitOps([buildUpdateTransformOp(objectId, form)], () => objectId);
-  }
-
-  async function updateSelectedDimensions(form: DimensionCommandForm) {
-    if (!selectedObject) {
-      return;
-    }
-
-    const objectId = selectedObject.id;
-    const op =
-      selectedObject.kind === "box"
-        ? buildUpdateBoxDimensionsOp(objectId, form)
-        : selectedObject.kind === "cylinder"
-          ? buildUpdateCylinderDimensionsOp(objectId, form)
-          : selectedObject.kind === "sphere"
-            ? buildUpdateSphereDimensionsOp(objectId, form)
-            : selectedObject.kind === "cone"
-              ? buildUpdateConeDimensionsOp(objectId, form)
-              : buildUpdateTorusDimensionsOp(objectId, form);
-
-    await commitOps([op], () => objectId);
   }
 
   async function deleteSelectedObject() {
@@ -3446,71 +4286,6 @@ export function App() {
     setCommandNotice(formatFeatureDeleteNotice(feature));
   }
 
-  async function updateAuthoredExtrude(
-    featureId: string,
-    depth: number,
-    side: FeatureExtrudeSide
-  ) {
-    const feature = projectStructure.features.find(
-      (candidate) => candidate.id === featureId
-    );
-
-    if (feature?.kind !== "extrude") {
-      return;
-    }
-
-    await commitOps(
-      [buildFeatureUpdateExtrudeOp(feature.id, depth, side)],
-      () => feature.bodyId
-    );
-  }
-
-  async function updateAuthoredRevolve(
-    featureId: string,
-    angleDegrees: number
-  ) {
-    const feature = projectStructure.features.find(
-      (candidate) => candidate.id === featureId
-    );
-
-    if (feature?.kind !== "revolve") {
-      return;
-    }
-
-    await commitOps(
-      [buildFeatureUpdateRevolveOp(feature.id, angleDegrees)],
-      () => feature.bodyId
-    );
-  }
-
-  async function updateCompositeExtrudeProfile(
-    featureId: string,
-    profile: SketchProfileRef
-  ) {
-    const feature = projectStructure.features.find(
-      (candidate) => candidate.id === featureId
-    );
-    if (feature?.kind !== "extrude") return;
-    await commitOps(
-      [buildFeatureUpdateCompositeExtrudeOp(featureId, profile)],
-      () => feature.bodyId
-    );
-  }
-
-  async function updateCompositeRevolveProfile(
-    featureId: string,
-    profile: SketchProfileRef
-  ) {
-    const feature = projectStructure.features.find(
-      (candidate) => candidate.id === featureId
-    );
-    if (feature?.kind !== "revolve") return;
-    await commitOps(
-      [buildFeatureUpdateCompositeRevolveOp(featureId, profile)],
-      () => feature.bodyId
-    );
-  }
-
   async function updateCompositeSweepRefs(
     featureId: string,
     profile: Extract<SketchProfileRef, { readonly kind: "entity" }>,
@@ -3843,13 +4618,6 @@ export function App() {
     setViewportHoverPick(undefined);
   }
 
-  function selectGeneratedReference(reference: CadGeneratedReference) {
-    setSelectedId(reference.bodyId);
-    setSelectedGeneratedReference(createSelectedGeneratedReference(reference));
-    setViewportPickIntent(undefined);
-    setViewportHoverPick(undefined);
-  }
-
   function runViewportContextualCommand(
     action: ViewportContextualCommandAction
   ) {
@@ -3861,11 +4629,25 @@ export function App() {
       selectionReferenceCandidates: selectedSelectionReferenceCandidates,
       selectedGeneratedReferenceState,
       onContinueInModeling: (modelingAction) => {
-        setCommandNotice(
-          modelingAction.id === "sketch.createOnFace"
-            ? "Continue in Modeling to choose the target face."
-            : "Continue in Modeling for the full command inputs."
-        );
+        const actionId =
+          modelingAction.id === "feature.chamfer"
+            ? "solid.chamfer"
+            : modelingAction.id === "feature.fillet"
+              ? "solid.fillet"
+              : modelingAction.id === "feature.shell"
+                ? "solid.shell"
+                : undefined;
+        if (actionId) {
+          navigateToMode("solid");
+          dispatchWorkbench({ type: "set-active-tool", actionId });
+          setCommandNotice("Review the selection and parameters, then apply.");
+        } else {
+          setCommandNotice(
+            modelingAction.id === "sketch.createOnFace"
+              ? "Use the selected face from the Sketch creation workflow."
+              : "Continue in Solid for the full command inputs."
+          );
+        }
       },
       onCreateEdgeFinish: (operation, form) =>
         void createEdgeFinish(operation, form),
@@ -3882,30 +4664,12 @@ export function App() {
     }
   }
 
-  function nameViewportContextualReference(
-    name: string,
-    target: SelectedGeneratedReference
-  ) {
-    void nameGeneratedReference(name, target);
-  }
-
   function startViewportTwoTargetMeasurement(
     target: ViewportTwoTargetMeasurementTarget
   ) {
     setViewportTwoTargetMeasurementSession((current) =>
       updateViewportTwoTargetMeasurementSession(current, {
         type: "start",
-        target
-      })
-    );
-  }
-
-  function setSecondViewportTwoTargetMeasurement(
-    target: ViewportTwoTargetMeasurementTarget
-  ) {
-    setViewportTwoTargetMeasurementSession((current) =>
-      updateViewportTwoTargetMeasurementSession(current, {
-        type: "setSecond",
         target
       })
     );
@@ -4772,6 +5536,245 @@ export function App() {
     });
   }
 
+  async function applySolidEditorSubmission(
+    submission: SolidEditorSubmission
+  ): Promise<void> {
+    if (workbenchUi.activeTool === "solid.edit" && selectedFeature) {
+      if (
+        selectedFeature.kind === "extrude" &&
+        submission.kind === "compositeExtrude"
+      ) {
+        if (
+          submission.draft.operationMode !== selectedFeature.operationMode ||
+          submission.draft.targetBodyId !== selectedFeature.targetBodyId
+        ) {
+          throw new Error(
+            "The V17 command matrix does not support changing an extrude boolean target."
+          );
+        }
+        await commitOps(
+          [
+            buildFeatureUpdateCompositeExtrudeOp(
+              selectedFeature.id,
+              submission.draft.profile,
+              submission.draft.depth,
+              submission.draft.side
+            )
+          ],
+          () => selectedFeature.bodyId
+        );
+        return;
+      }
+      if (
+        selectedFeature.kind === "revolve" &&
+        submission.kind === "compositeRevolve"
+      ) {
+        if (submission.draft.axisEntityId !== selectedFeature.axis.entityId) {
+          throw new Error(
+            "The V17 command matrix does not support changing a revolve axis."
+          );
+        }
+        await commitOps(
+          [
+            buildFeatureUpdateCompositeRevolveOp(
+              selectedFeature.id,
+              submission.draft.profile,
+              submission.draft.angleDegrees
+            )
+          ],
+          () => selectedFeature.bodyId
+        );
+        return;
+      }
+      if (
+        selectedFeature.kind === "sweep" &&
+        submission.kind === "compositeSweep"
+      ) {
+        await updateCompositeSweepRefs(
+          selectedFeature.id,
+          submission.draft.profile,
+          submission.draft.path
+        );
+        return;
+      }
+      if (selectedFeature.kind === "hole" && submission.kind === "hole") {
+        if (submission.draft.targetBodyId !== selectedFeature.targetBodyId) {
+          throw new Error(
+            "The V17 command matrix does not support changing a hole target body."
+          );
+        }
+        await updateAuthoredHole(
+          selectedFeature.id,
+          submission.draft.depthMode,
+          submission.draft.depthMode === "blind"
+            ? submission.draft.depth
+            : undefined,
+          submission.draft.direction
+        );
+        return;
+      }
+      if (selectedFeature.kind === "chamfer" && submission.kind === "chamfer") {
+        await updateAuthoredChamfer(
+          selectedFeature.id,
+          submission.draft.distance
+        );
+        return;
+      }
+      if (selectedFeature.kind === "fillet" && submission.kind === "fillet") {
+        await updateAuthoredFillet(selectedFeature.id, submission.draft.radius);
+        return;
+      }
+      if (selectedFeature.kind === "shell" && submission.kind === "shell") {
+        if (submission.draft.targetBodyId !== selectedFeature.targetBodyId) {
+          throw new Error(
+            "The V17 command matrix does not support changing a shell target body."
+          );
+        }
+        await updateAuthoredShell(selectedFeature.id, {
+          wallThickness: submission.draft.wallThickness,
+          openFaceRefs: submission.draft.openFaceRefs
+        });
+        return;
+      }
+      if (
+        selectedFeature.kind === "linearPattern" &&
+        submission.kind === "linearPattern"
+      ) {
+        if (submission.draft.seedBodyId !== selectedFeature.seedBodyId) {
+          throw new Error(
+            "The V17 command matrix does not support changing a pattern seed body."
+          );
+        }
+        await updateAuthoredLinearPattern(selectedFeature.id, {
+          direction: submission.draft.direction,
+          spacing: submission.draft.spacing,
+          instanceCount: submission.draft.instanceCount
+        });
+        return;
+      }
+      if (
+        selectedFeature.kind === "circularPattern" &&
+        submission.kind === "circularPattern"
+      ) {
+        if (submission.draft.seedBodyId !== selectedFeature.seedBodyId) {
+          throw new Error(
+            "The V17 command matrix does not support changing a pattern seed body."
+          );
+        }
+        await updateAuthoredCircularPattern(selectedFeature.id, {
+          rotationAxis: submission.draft.rotationAxis,
+          totalAngleDegrees: submission.draft.totalAngleDegrees,
+          instanceCount: submission.draft.instanceCount
+        });
+        return;
+      }
+      if (selectedFeature.kind === "mirror" && submission.kind === "mirror") {
+        if (submission.draft.seedBodyId !== selectedFeature.seedBodyId) {
+          throw new Error(
+            "The V17 command matrix does not support changing a mirror seed body."
+          );
+        }
+        await updateAuthoredMirror(selectedFeature.id, {
+          plane: submission.draft.plane,
+          includeOriginal: submission.draft.includeOriginal
+        });
+        return;
+      }
+      throw new Error(
+        "This feature edit is not supported by the V17 command matrix."
+      );
+    }
+    switch (submission.kind) {
+      case "box":
+        await createBox(submission.draft);
+        return;
+      case "cylinder":
+        await createCylinder(submission.draft);
+        return;
+      case "sphere":
+        await createSphere(submission.draft);
+        return;
+      case "cone":
+        await createCone(submission.draft);
+        return;
+      case "torus":
+        await createTorus(submission.draft);
+        return;
+      case "sketch":
+        await createSketch(submission.draft);
+        return;
+      case "transform":
+        await updateSelectedTransform(submission.draft);
+        return;
+      case "compositeExtrude":
+        await createCompositeExtrude(submission.draft);
+        return;
+      case "compositeRevolve":
+        await createCompositeRevolve(submission.draft);
+        return;
+      case "compositeSweep":
+        await createCompositeSweep(submission.draft);
+        return;
+      case "loft":
+        await createLoft(submission.draft);
+        return;
+      case "fillet":
+      case "chamfer":
+        await createEdgeFinish(submission.kind, submission.draft);
+        return;
+      case "shell":
+        await createShell(submission.draft);
+        return;
+      case "linearPattern":
+        await createLinearPattern(submission.draft);
+        return;
+      case "circularPattern":
+        await createCircularPattern(submission.draft);
+        return;
+      case "mirror":
+        await createMirror(submission.draft);
+        return;
+      case "extrude":
+        if (modelingSelectionContext.selectionKind === "sketchEntity") {
+          await extrudeSketchEntity(
+            modelingSelectionContext.sketch.id,
+            modelingSelectionContext.entity.id,
+            submission.draft
+          );
+        }
+        return;
+      case "revolve":
+        if (modelingSelectionContext.selectionKind === "sketchEntity") {
+          await revolveSketchEntity(
+            modelingSelectionContext.sketch.id,
+            modelingSelectionContext.entity.id,
+            submission.draft
+          );
+        }
+        return;
+      case "sweep":
+        if (modelingSelectionContext.selectionKind === "sketchEntity") {
+          await createSweep(
+            modelingSelectionContext.sketch.id,
+            modelingSelectionContext.entity.id,
+            submission.draft
+          );
+        }
+        return;
+      case "hole":
+        if (
+          modelingSelectionContext.selectionKind === "sketchEntity" &&
+          modelingSelectionContext.entity.kind === "circle"
+        ) {
+          await holeSketchEntity(
+            modelingSelectionContext.sketch.id,
+            modelingSelectionContext.entity.id,
+            submission.draft
+          );
+        }
+    }
+  }
+
   function runWorkbenchAction(actionId: UiActionId): void {
     dispatchWorkbench({ type: "set-active-tool", actionId });
     switch (actionId) {
@@ -4833,23 +5836,13 @@ export function App() {
         redo();
         return;
       case "solid.box":
-        void createBox();
-        return;
       case "solid.cylinder":
-        void createCylinder();
-        return;
       case "solid.sphere":
-        void createSphere();
-        return;
       case "solid.cone":
-        void createCone();
-        return;
       case "solid.torus":
-        void createTorus();
-        return;
       case "solid.sketch":
-        navigateToMode("sketch");
-        setCommandNotice("Choose a plane and name in the sketch editor.");
+        navigateToMode("solid");
+        setCommandNotice("Review the draft, then choose Apply.");
         return;
       case "solid.measure":
       case "inspect.measure":
@@ -5067,20 +6060,35 @@ export function App() {
             visualStates={viewportVisualState.rendererVisualStates}
             status={viewportVisualState.status}
             contextualSurface={
-              <ViewportContextualCommandSurface
+              <ContextualActionStrip
                 disabled={commandPending}
                 surface={viewportContextualCommandSurface}
-                interactionSurface={viewportInteractionSurface}
-                twoTargetMeasurement={viewportTwoTargetMeasurement}
-                onClearTwoTargetMeasurement={clearViewportTwoTargetMeasurement}
-                onContinueInModeling={runViewportContextualCommand}
-                onNameReference={nameViewportContextualReference}
-                onRunCommand={runViewportContextualCommand}
-                onSetSecondTwoTargetMeasurement={
-                  setSecondViewportTwoTargetMeasurement
-                }
-                onStartTwoTargetMeasurement={startViewportTwoTargetMeasurement}
-                onSelectReference={selectGeneratedReference}
+                onInvoke={(action) => {
+                  if (action.route === "name" && action.target) {
+                    const name = window.prompt("Reference name", "");
+                    if (name?.trim()) {
+                      void nameGeneratedReference(name.trim(), action.target);
+                    }
+                    return;
+                  }
+                  if (
+                    action.route === "inspect" ||
+                    action.route === "measure" ||
+                    action.route === "references"
+                  ) {
+                    navigateToMode("inspect");
+                    if (
+                      action.route === "measure" &&
+                      viewportTwoTargetMeasurementTarget
+                    ) {
+                      startViewportTwoTargetMeasurement(
+                        viewportTwoTargetMeasurementTarget
+                      );
+                    }
+                    return;
+                  }
+                  runViewportContextualCommand(action);
+                }}
               />
             }
             onHover={(pick) => {
@@ -5206,261 +6214,128 @@ export function App() {
         }
         rightDock={
           <div className="right-rail" aria-label="Project and modeling tools">
-            {workbenchUi.mode === "solid" && workbenchUi.activeTool ? (
+            {workbenchUi.mode === "solid" ? (
               <Suspense
                 fallback={
                   <p className="panel-loading">Loading modeling tools…</p>
                 }
               >
-                <CompositeFeaturePanel
-                  addTargetBodies={addTargetBodyOptions}
-                  cutTargetBodies={cutTargetBodyOptions}
-                  disabled={commandPending}
-                  pathCandidatesBySketchId={pathCandidatesBySketchId}
-                  profileCandidatesBySketchId={profileCandidatesBySketchId}
-                  sketches={sketches}
-                  onCreateExtrude={(form) => void createCompositeExtrude(form)}
-                  onCreateRevolve={(form) => void createCompositeRevolve(form)}
-                  onCreateSweep={(form) => void createCompositeSweep(form)}
-                />
-                <ModelingActionsPanel
-                  actions={modelingActions}
-                  addTargetBodies={addTargetBodyOptions}
-                  context={modelingSelectionContext}
-                  cutTargetBodies={cutTargetBodyOptions}
-                  disabled={commandPending}
-                  holeTargetBodies={holeTargetBodyOptions}
-                  namedReferences={namedReferences}
-                  namedReferenceHealthByName={namedReferenceHealthByName}
-                  selectedNamedReferenceName={selectedNamedReferenceName}
-                  shellTargetGeneratedReferences={
-                    selectedShellTargetGeneratedReferences
+                <SolidModePanel
+                  activeEditor={solidEditorRequest}
+                  onApply={applySolidEditorSubmission}
+                  onCancel={() =>
+                    dispatchWorkbench({ type: "set-active-tool" })
                   }
-                  sketches={sketches}
-                  onAddEntity={(sketchId, kind, form) =>
-                    void addSketchEntity(sketchId, kind, form)
+                  onDelete={
+                    selectedObject
+                      ? () => void deleteSelectedObject()
+                      : selectedFeature
+                        ? () => void deleteAuthoredFeature(selectedFeature.id)
+                        : undefined
                   }
-                  onCreateConstraint={(sketchId, entityId, form) =>
-                    void createSketchConstraint(sketchId, entityId, form)
-                  }
-                  onCreateDimension={(sketchId, entityId, target, form) =>
-                    void createSketchDimension(sketchId, entityId, target, form)
-                  }
-                  onCreateEdgeFinish={(operation, form) =>
-                    void createEdgeFinish(operation, form)
-                  }
-                  onCreateSideHoleSketch={(form, targetBodyId) =>
-                    void createSideHoleSketch(form, targetBodyId)
-                  }
-                  onCreateLinearPattern={(form) =>
-                    void createLinearPattern(form)
-                  }
-                  onCreateCircularPattern={(form) =>
-                    void createCircularPattern(form)
-                  }
-                  onCreateMirror={(form) => void createMirror(form)}
-                  onCreateShell={(form) => void createShell(form)}
-                  onCreateSweep={(profileSketchId, profileEntityId, form) =>
-                    void createSweep(profileSketchId, profileEntityId, form)
-                  }
-                  onCreateLoft={(form) => void createLoft(form)}
-                  onCreateSketch={(form) => void createSketch(form)}
-                  onCreateSketchOnFace={(form) => void createSketchOnFace(form)}
-                  onExtrudeEntity={(sketchId, entityId, form) =>
-                    void extrudeSketchEntity(sketchId, entityId, form)
-                  }
-                  onHoleEntity={(sketchId, entityId, form) =>
-                    void holeSketchEntity(sketchId, entityId, form)
-                  }
-                  onNameGeneratedReference={(name, target) =>
-                    void nameGeneratedReference(name, target)
-                  }
-                  onRepairNamedReference={(name, target) =>
-                    void repairNamedReference(name, target)
-                  }
-                  onSelectBody={selectObject}
-                  onUpdateLinearPattern={(featureId, edit) =>
-                    void updateAuthoredLinearPattern(featureId, edit)
-                  }
-                  onUpdateCircularPattern={(featureId, edit) =>
-                    void updateAuthoredCircularPattern(featureId, edit)
-                  }
-                  onUpdateMirror={(featureId, edit) =>
-                    void updateAuthoredMirror(featureId, edit)
-                  }
-                  onUpdateShell={(featureId, edit) =>
-                    void updateAuthoredShell(featureId, edit)
-                  }
-                  onDeleteFeature={(featureId) =>
-                    void deleteAuthoredFeature(featureId)
-                  }
-                  onDeleteEntity={(sketchId, entityId) =>
-                    void deleteSketchEntity(sketchId, entityId)
-                  }
-                  onDeleteSketch={(sketchId) => void deleteSketch(sketchId)}
-                  onRenameSketch={(sketchId, name) =>
-                    void renameSketch(sketchId, name)
-                  }
-                  onRevolveEntity={(sketchId, entityId, form) =>
-                    void revolveSketchEntity(sketchId, entityId, form)
-                  }
-                  onSelectSketch={focusSketch}
-                  onUpdateEntity={(sketchId, entity) =>
-                    void updateSketchEntity(sketchId, entity)
+                  onCollect={(request) =>
+                    setCommandNotice(
+                      `Select ${request.acceptedKinds.join(" or ")} in the viewport or model tree.`
+                    )
                   }
                 />
               </Suspense>
-            ) : workbenchUi.mode === "solid" ? (
-              <section
-                className="pb-inspector-empty"
-                aria-label="Solid inspector"
-              >
-                <h2>
-                  {selectedBody || selectedObject ? "Selection" : "Solid"}
-                </h2>
-                <p>
-                  {selectedBody || selectedObject
-                    ? "Open Inspect for measurements and detailed properties."
-                    : "Choose a labeled tool from the ribbon to begin."}
-                </p>
-              </section>
             ) : null}
 
             {workbenchUi.mode === "inspect" ? (
               <Suspense
                 fallback={<p className="panel-loading">Loading inspection…</p>}
               >
-                <Inspector
-                  disabled={commandPending}
-                  measurements={selectedMeasurements}
-                  bodyMeasurements={selectedBodyMeasurements.measurements}
-                  bodyMeasurementsError={selectedBodyMeasurements.error}
-                  bodyTopology={selectedBodyTopology.topology}
-                  bodyTopologyError={selectedBodyTopology.error}
-                  bodyTopologyExactMetadataStatus={
-                    selectedBodyTopology.exactMetadataStatus
-                  }
-                  bodyMassProperties={selectedBodyMassProperties.massProperties}
-                  bodyMassPropertiesError={selectedBodyMassProperties.error}
-                  body={selectedBody}
-                  featureEditability={selectedFeatureEditability}
-                  feature={selectedFeature}
-                  featureSourceEditor={
-                    selectedFeature &&
-                    (selectedFeature.kind === "extrude" ||
-                      selectedFeature.kind === "revolve" ||
-                      selectedFeature.kind === "sweep") ? (
-                      <CompositeFeatureEditor
-                        key={`${selectedFeature.id}:source`}
-                        disabled={commandPending}
-                        feature={selectedFeature}
-                        pathCandidatesBySketchId={pathCandidatesBySketchId}
-                        profileCandidatesBySketchId={
-                          profileCandidatesBySketchId
-                        }
-                        sketches={sketches}
-                        inspectProposal={readFeatureEditProposal}
-                        onUpdateExtrudeProfile={(featureId, profile) =>
-                          void updateCompositeExtrudeProfile(featureId, profile)
-                        }
-                        onUpdateRevolveProfile={(featureId, profile) =>
-                          void updateCompositeRevolveProfile(featureId, profile)
-                        }
-                        onUpdateSweepRefs={(featureId, profile, path) =>
-                          void updateCompositeSweepRefs(
-                            featureId,
-                            profile,
-                            path
+                <InspectPanel
+                  selection={inspectSelection}
+                  measurements={inspectMeasurements}
+                  massProperties={inspectMassProperties}
+                  reference={inspectReference}
+                  health={inspectHealth}
+                  onMeasureSelection={
+                    viewportTwoTargetMeasurementTarget
+                      ? () =>
+                          startViewportTwoTargetMeasurement(
+                            viewportTwoTargetMeasurementTarget
                           )
+                      : undefined
+                  }
+                  onBeginTwoTargetMeasurement={
+                    viewportTwoTargetMeasurementTarget
+                      ? () =>
+                          startViewportTwoTargetMeasurement(
+                            viewportTwoTargetMeasurementTarget
+                          )
+                      : undefined
+                  }
+                  onClearTwoTargetMeasurement={
+                    viewportTwoTargetMeasurementSessionActive
+                      ? clearViewportTwoTargetMeasurement
+                      : undefined
+                  }
+                  onNameReference={
+                    selectedGeneratedReferenceState.status === "selected"
+                      ? () => {
+                          const name = window.prompt(
+                            "Reference name",
+                            inspectReference?.name ?? ""
+                          );
+                          if (name?.trim()) {
+                            void nameGeneratedReference(
+                              name.trim(),
+                              selectedGeneratedReferenceState.selection
+                            );
+                          }
                         }
-                      />
-                    ) : undefined
+                      : undefined
                   }
-                  generatedReferences={
-                    selectedBodyGeneratedReferences.references
+                  onRepairReference={
+                    selectedNamedReferenceName &&
+                    selectedGeneratedReferenceState.status === "selected"
+                      ? () =>
+                          void repairNamedReference(
+                            selectedNamedReferenceName,
+                            selectedGeneratedReferenceState.selection
+                          )
+                      : undefined
                   }
-                  generatedReferencesError={
-                    selectedBodyGeneratedReferences.error
+                  onSaveStableReference={
+                    selectedGeneratedReferenceState.status === "selected" &&
+                    !selectedGeneratedReferenceState.selection.topologyAnchorId
+                      ? () =>
+                          void createStableTopologyReference(
+                            selectedGeneratedReferenceState.selection
+                          )
+                      : undefined
                   }
-                  generatedReferenceMeasurements={
-                    selectedGeneratedReferenceMeasurements
+                  onPreviewStableRepair={
+                    selectedGeneratedReferenceState.status === "selected" &&
+                    selectedGeneratedReferenceState.selection.topologyAnchorId
+                      ? () =>
+                          void previewStableTopologyRepair(
+                            selectedGeneratedReferenceState.selection
+                          )
+                      : undefined
                   }
-                  namedReferences={namedReferences}
-                  namedReferenceHealthByName={namedReferenceHealthByName}
-                  namedReferenceCandidatesByName={
-                    namedReferenceCandidatesByName
-                  }
-                  object={selectedObject}
-                  referenceCandidatesByStableId={referenceCandidatesByStableId}
-                  selectedGeneratedReference={selectedGeneratedReference}
-                  selectedNamedReferenceName={selectedNamedReferenceName}
-                  selectionReferenceCandidates={
-                    selectedSelectionReferenceCandidates
-                  }
-                  units={document.units}
-                  onApplyDimensions={(form) =>
-                    void updateSelectedDimensions(form)
-                  }
-                  onApplyName={(name) => void renameSelectedObject(name)}
-                  onApplyTransform={(form) =>
-                    void updateSelectedTransform(form)
-                  }
-                  onDelete={() => void deleteSelectedObject()}
-                  onDeleteFeature={(featureId) =>
-                    void deleteAuthoredFeature(featureId)
-                  }
-                  onCreateSketchOnFace={(form) => void createSketchOnFace(form)}
-                  onCreateEdgeFinish={(operation, form) =>
-                    void createEdgeFinish(operation, form)
-                  }
-                  onDeleteNamedReference={(name) =>
-                    void deleteNamedReference(name)
-                  }
-                  onNameGeneratedReference={(name, target) =>
-                    void nameGeneratedReference(name, target)
-                  }
-                  onCreateTopologyAnchor={(target) =>
-                    void createStableTopologyReference(target)
-                  }
-                  onRepairTopologyAnchor={(target) =>
-                    void repairStableTopologyReference(target)
-                  }
-                  onRepairTopologyAnchorCandidate={(target, candidateId) =>
-                    void repairStableTopologyReference(target, candidateId)
-                  }
-                  onPreviewTopologyAnchorRepair={(target) =>
-                    void previewStableTopologyRepair(target)
-                  }
-                  onRepairNamedReference={(name, target) =>
-                    void repairNamedReference(name, target)
-                  }
-                  onInspectNamedReference={inspectNamedReference}
-                  onSelectGeneratedReference={(selection) => {
-                    setSelectedGeneratedReference(selection);
-                    setViewportPickIntent(undefined);
-                    setViewportHoverPick(undefined);
-                  }}
-                  onUpdateExtrude={(featureId, depth, side) =>
-                    void updateAuthoredExtrude(featureId, depth, side)
-                  }
-                  onUpdateRevolve={(featureId, angleDegrees) =>
-                    void updateAuthoredRevolve(featureId, angleDegrees)
-                  }
-                  onUpdateHole={(featureId, depthMode, depth, direction) =>
-                    void updateAuthoredHole(
-                      featureId,
-                      depthMode,
-                      depth,
-                      direction
+                  onRepairStableReference={
+                    selectedGeneratedReferenceState.status === "selected" &&
+                    topologyRepairPreview?.preview?.rows.some(
+                      (row) => row.repairable
                     )
+                      ? () => {
+                          const candidate =
+                            topologyRepairPreview.preview?.rows.find(
+                              (row) => row.repairable
+                            );
+                          if (candidate) {
+                            void repairStableTopologyReference(
+                              selectedGeneratedReferenceState.selection,
+                              candidate.candidateId
+                            );
+                          }
+                        }
+                      : undefined
                   }
-                  onUpdateChamfer={(featureId, distance) =>
-                    void updateAuthoredChamfer(featureId, distance)
-                  }
-                  onUpdateFillet={(featureId, radius) =>
-                    void updateAuthoredFillet(featureId, radius)
-                  }
-                  topologyRepairPreview={topologyRepairPreview}
                 />
               </Suspense>
             ) : null}
@@ -5471,164 +6346,63 @@ export function App() {
                   <p className="panel-loading">Loading sketch tools…</p>
                 }
               >
-                <details className="advanced-tools-drawer" open>
-                  <summary>
-                    <span>Workspace tools</span>
-                    <small>Sketches, log</small>
-                  </summary>
-
-                  <section
-                    className="utility-dock"
-                    aria-label="Workspace tools"
-                  >
-                    <div
-                      className="utility-tabs"
-                      role="tablist"
-                      aria-label="Tool tabs"
-                    >
-                      {utilityPanels.map((panel) => (
-                        <button
-                          key={panel.id}
-                          id={`utility-tab-${panel.id}`}
-                          type="button"
-                          role="tab"
-                          aria-controls={`utility-panel-${panel.id}`}
-                          aria-selected={activeUtilityPanel === panel.id}
-                          className={
-                            activeUtilityPanel === panel.id ? "active" : ""
-                          }
-                          onClick={() => setActiveUtilityPanel(panel.id)}
-                        >
-                          <span>{panel.label}</span>
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="utility-panels">
-                      <div
-                        id="utility-panel-sketches"
-                        role="tabpanel"
-                        aria-labelledby="utility-tab-sketches"
-                        className="utility-panel"
-                        hidden={activeUtilityPanel !== "sketches"}
-                      >
-                        <SketchPanel
-                          key={focusedSketchId ?? "sketch-panel"}
-                          disabled={commandPending}
-                          sketches={sketches}
-                          parameters={parameters}
-                          parameterEvaluation={parameterEvaluation}
-                          sketchDimensionsBySketchId={
-                            sketchDimensionsBySketchId
-                          }
-                          sketchEvaluationsBySketchId={
-                            sketchEvaluationsBySketchId
-                          }
-                          sketchSolverStatusesBySketchId={
-                            sketchSolverStatusesBySketchId
-                          }
-                          addTargetBodies={addTargetBodyOptions}
-                          cutTargetBodies={cutTargetBodyOptions}
-                          holeTargetBodies={holeTargetBodyOptions}
-                          displayStatuses={sketchDisplayState.statuses}
-                          focusedSketchId={focusedSketchId}
-                          focusedEntityId={selectedSketchContext?.entityId}
-                          arcToolActiveSketchId={threePointArcTool?.sketchId}
-                          features={projectStructure.features}
-                          onCreateSketch={(form) => void createSketch(form)}
-                          onCreateParameter={(form) =>
-                            void createParameter(form)
-                          }
-                          onApplyParameterEdit={(parameter, form) =>
-                            void applyParameterEdit(parameter, form)
-                          }
-                          onDeleteParameter={(parameterId) =>
-                            void deleteParameter(parameterId)
-                          }
-                          onRenameSketch={(sketchId, name) =>
-                            void renameSketch(sketchId, name)
-                          }
-                          onDeleteSketch={(sketchId) =>
-                            void deleteSketch(sketchId)
-                          }
-                          onAddEntity={(sketchId, kind, form) =>
-                            void addSketchEntity(sketchId, kind, form)
-                          }
-                          onUpdateEntity={(sketchId, entity) =>
-                            void updateSketchEntity(sketchId, entity)
-                          }
-                          onDeleteEntity={(sketchId, entityId) =>
-                            void deleteSketchEntity(sketchId, entityId)
-                          }
-                          onSetEntityConstruction={(
-                            sketchId,
-                            entityId,
-                            construction
-                          ) =>
-                            void setSketchEntityConstruction(
-                              sketchId,
-                              entityId,
-                              construction
-                            )
-                          }
-                          onStartThreePointArcTool={startThreePointArcTool}
-                          onCreateDimension={(
-                            sketchId,
-                            entityId,
-                            target,
-                            form
-                          ) =>
-                            void createSketchDimension(
-                              sketchId,
-                              entityId,
-                              target,
-                              form
-                            )
-                          }
-                          onApplyDimensionEdit={(dimension, form) =>
-                            void applySketchDimensionEdit(dimension, form)
-                          }
-                          onDeleteDimension={(dimensionId) =>
-                            void deleteSketchDimension(dimensionId)
-                          }
-                          onCreateConstraint={(sketchId, entityId, form) =>
-                            void createSketchConstraint(
-                              sketchId,
-                              entityId,
-                              form
-                            )
-                          }
-                          onApplyConstraintEdit={(constraint, form) =>
-                            void applySketchConstraintEdit(constraint, form)
-                          }
-                          onDeleteConstraint={(constraintId) =>
-                            void deleteSketchConstraint(constraintId)
-                          }
-                          onExtrudeEntity={(sketchId, entityId, form) =>
-                            void extrudeSketchEntity(sketchId, entityId, form)
-                          }
-                          onRevolveEntity={(sketchId, entityId, form) =>
-                            void revolveSketchEntity(sketchId, entityId, form)
-                          }
-                          onHoleEntity={(sketchId, entityId, form) =>
-                            void holeSketchEntity(sketchId, entityId, form)
-                          }
-                          onSelectionContextChange={setSelectedSketchContext}
-                        />
-                      </div>
-
-                      <div
-                        id="utility-panel-history"
-                        role="tabpanel"
-                        aria-labelledby="utility-tab-history"
-                        className="utility-panel"
-                        hidden={activeUtilityPanel !== "history"}
-                      >
-                        <HistoryPanel transactions={transactionHistory} />
-                      </div>
-                    </div>
-                  </section>
-                </details>
+                <SketchModeDock
+                  key={focusedSketchId ?? "sketch-mode"}
+                  disabled={commandPending}
+                  sketches={sketches}
+                  parameters={parameters}
+                  features={projectStructure.features}
+                  dimensionsBySketchId={sketchDimensionsBySketchId}
+                  evaluationsBySketchId={sketchEvaluationsBySketchId}
+                  solverStatusesBySketchId={sketchSolverStatusesBySketchId}
+                  pathCandidatesBySketchId={pathCandidatesBySketchId}
+                  activeSketchId={focusedSketchId}
+                  selectedEntityId={selectedSketchContext?.entityId}
+                  arcToolActiveSketchId={threePointArcTool?.sketchId}
+                  onSelectSketch={focusSketch}
+                  onSelectEntity={focusSketch}
+                  onCreateSketch={(form) => void createSketch(form)}
+                  onAddEntity={(sketchId, kind, form) =>
+                    void addSketchEntity(sketchId, kind, form)
+                  }
+                  onUpdateEntity={(sketchId, entity) =>
+                    void updateSketchEntity(sketchId, entity)
+                  }
+                  onDeleteEntity={(sketchId, entityId) =>
+                    void deleteSketchEntity(sketchId, entityId)
+                  }
+                  onSetEntityConstruction={(sketchId, entityId, construction) =>
+                    void setSketchEntityConstruction(
+                      sketchId,
+                      entityId,
+                      construction
+                    )
+                  }
+                  onStartThreePointArcTool={startThreePointArcTool}
+                  onCancelGesture={() => setThreePointArcTool(undefined)}
+                  onCreateDimension={(sketchId, entityId, target, form) =>
+                    void createSketchDimension(sketchId, entityId, target, form)
+                  }
+                  onApplyDimensionEdit={(dimension, form) =>
+                    void applySketchDimensionEdit(dimension, form)
+                  }
+                  onDeleteDimension={(dimensionId) =>
+                    void deleteSketchDimension(dimensionId)
+                  }
+                  onCreateConstraint={(sketchId, entityId, form) =>
+                    void createSketchConstraint(sketchId, entityId, form)
+                  }
+                  onApplyConstraintEdit={(constraint, form) =>
+                    void applySketchConstraintEdit(constraint, form)
+                  }
+                  onDeleteConstraint={(constraintId) =>
+                    void deleteSketchConstraint(constraintId)
+                  }
+                  onFinish={() => {
+                    setThreePointArcTool(undefined);
+                    dispatchWorkbench({ type: "set-mode", mode: "solid" });
+                  }}
+                />
               </Suspense>
             ) : null}
           </div>

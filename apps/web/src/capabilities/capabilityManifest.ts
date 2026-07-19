@@ -175,7 +175,7 @@ const ACTION_AUDIT_BY_ID = {
     "createParameter",
     "parameter form validation",
     cadops("buildCreateParameterOp"),
-    "components/SketchPanel.test.tsx",
+    "modes/project/ProjectWorkspace.test.tsx",
     "G",
     { editor: "ParameterEditor" }
   ),
@@ -231,7 +231,7 @@ const ACTION_AUDIT_BY_ID = {
     "createSketch",
     "ui:collector complete",
     cadops("buildCreateSketchOp"),
-    "components/ModelingActionsPanel.test.tsx",
+    "modes/solid/SolidModePanel.test.tsx",
     "D",
     { editor: "SketchEditor" }
   ),
@@ -268,7 +268,7 @@ const ACTION_AUDIT_BY_ID = {
     "updateSelectedTransform",
     "selected editable object",
     cadops("buildUpdateTransformOp"),
-    "components/Inspector.test.tsx",
+    "modes/inspect/InspectPanel.test.tsx",
     "D",
     { editor: "PrimitiveEditor" }
   ),
@@ -326,7 +326,7 @@ const ACTION_AUDIT_BY_ID = {
     "selection + edit callback",
     "feature.editability",
     uiOnly("open the matching V18 editor without changing source"),
-    "components/CompositeFeatureEditor.test.tsx",
+    "modes/solid/SolidModePanel.test.tsx",
     "D",
     { editor: "FeatureEditorShell" }
   ),
@@ -337,7 +337,7 @@ const ACTION_AUDIT_BY_ID = {
     cadops(
       "buildRenameObjectOp / buildRenameSketchOp / inventoried entry-specific rename builder"
     ),
-    "components/Inspector.test.tsx",
+    "modes/inspect/InspectPanel.test.tsx",
     "C",
     { editor: "SelectionInspector" }
   ),
@@ -354,7 +354,7 @@ const ACTION_AUDIT_BY_ID = {
     "open measurement surface",
     "body/generated-reference measurement queries",
     uiOnly("enter Inspect with the eligible current selection"),
-    "components/ViewportContextualCommandSurface.test.tsx",
+    "workbench/ContextualActionStrip.test.tsx",
     "F"
   ),
 
@@ -379,7 +379,7 @@ const ACTION_AUDIT_BY_ID = {
     "setSketchEntityConstruction",
     "selected sketch entity",
     cadops("buildSetSketchEntityConstructionOp"),
-    "components/SketchPanel.test.tsx",
+    "modes/sketch/SketchModeDock.test.tsx",
     "E",
     { editor: "SketchInspector" }
   ),
@@ -390,7 +390,7 @@ const ACTION_AUDIT_BY_ID = {
     cadops(
       "buildDeleteSketchEntityOp / buildDeleteSketchDimensionOp / buildDeleteSketchConstraintOp"
     ),
-    "components/SketchPanel.test.tsx",
+    "modes/sketch/SketchModeDock.test.tsx",
     "E"
   ),
   "sketch.horizontal": constraintAudit("Horizontal"),
@@ -410,7 +410,7 @@ const ACTION_AUDIT_BY_ID = {
     "focusSketch / mode navigation",
     "ui:active sketch",
     uiOnly("leave Sketch mode without a source mutation"),
-    "components/SketchPanel.test.tsx",
+    "modes/sketch/SketchModeDock.test.tsx",
     "E",
     { source: "v18-contract", v18Owner: "SketchMode" }
   ),
@@ -548,7 +548,7 @@ const NON_REGISTRY_CAPABILITIES = [
     cadops(
       "buildUpdate*DimensionsOp / buildUpdateTransformOp / buildRenameObjectOp"
     ),
-    "components/Inspector.test.tsx",
+    "modes/inspect/InspectPanel.test.tsx",
     "D"
   ),
   nonAction(
@@ -574,7 +574,7 @@ const NON_REGISTRY_CAPABILITIES = [
     "ParameterEditor",
     "project.parameterEvaluation",
     cadops("buildParameterEditOps"),
-    "components/SketchPanel.test.tsx",
+    "modes/sketch/SketchModeDock.test.tsx",
     "G"
   ),
   nonAction(
@@ -587,7 +587,7 @@ const NON_REGISTRY_CAPABILITIES = [
     "ParameterEditor",
     "selected parameter",
     cadops("buildDeleteParameterOp"),
-    "components/SketchPanel.test.tsx",
+    "modes/sketch/SketchModeDock.test.tsx",
     "G"
   ),
   nonAction(
@@ -602,7 +602,7 @@ const NON_REGISTRY_CAPABILITIES = [
     cadops(
       "buildFeatureUpdateExtrudeOp / buildFeatureUpdateCompositeExtrudeOp / buildFeatureUpdateRevolveOp / buildFeatureUpdateCompositeRevolveOp / buildFeatureUpdateCompositeSweepOp / buildFeatureUpdateHoleOp / buildFeatureUpdateChamferOp / buildFeatureUpdateFilletOp / buildFeatureUpdateLinearPatternOp / buildFeatureUpdateCircularPatternOp / buildFeatureUpdateMirrorOp / buildFeatureUpdateShellOp"
     ),
-    "components/CompositeFeatureEditor.test.tsx",
+    "modes/solid/SolidModePanel.test.tsx",
     "D"
   ),
   nonAction(
@@ -628,7 +628,7 @@ const NON_REGISTRY_CAPABILITIES = [
     "SketchInspector",
     "sketch evaluation + local form validation",
     cadops("buildSketchDimensionEditOps"),
-    "components/SketchPanel.test.tsx",
+    "modes/sketch/SketchModeDock.test.tsx",
     "E"
   ),
   nonAction(
@@ -641,7 +641,7 @@ const NON_REGISTRY_CAPABILITIES = [
     "SketchInspector",
     "loaded constraint kind + editable fields",
     cadops("buildSketchConstraintEditOps"),
-    "components/SketchPanel.test.tsx",
+    "modes/sketch/SketchModeDock.test.tsx",
     "E"
   ),
   nonAction(
@@ -966,7 +966,7 @@ const NON_REGISTRY_CAPABILITIES = [
     "InspectorDock",
     "document snapshots + selection/reference queries",
     uiOnly("render human-oriented semantic selection details"),
-    "components/Inspector.test.tsx",
+    "modes/inspect/InspectPanel.test.tsx",
     "F"
   )
 ] as const satisfies readonly V18CapabilityManifestRow[];

@@ -135,13 +135,49 @@ stack.
 - Consequence: malformed JSON remains a draft and cannot replace the current
   document; clearing cache remains app-local and does not mutate source.
 
+### D010 — Ribbon actions open drafts; only Apply submits CADOps
+
+- Date: 2026-07-19
+- Decision: every Solid primitive and feature entry opens a typed, local draft
+  in the right dock; no ribbon action creates geometry immediately.
+- Reason: V18 requires the explicit select, parameterize, validate,
+  apply/cancel loop and forbids mutation while a draft is merely open.
+- Consequence: existing CADOps builders remain the only mutation boundary;
+  create-mode drafts are immediately editable, edit-mode drafts begin clean,
+  Apply is single-submit guarded, and Cancel restores local state without a
+  transaction.
+
+### D011 — Stable topology workflows remain explicit Inspect operations
+
+- Date: 2026-07-19
+- Decision: keep stable-reference creation, repair-plan preview, and explicit
+  repair in the focused Inspect reference section alongside named-reference
+  naming and repair.
+- Reason: these are completed V13–V17 UI workflows recorded in the capability
+  manifest; simplifying the old Inspector must not remove them.
+- Consequence: repair candidates come only from the existing topology repair
+  plan, internal candidate IDs stay out of visible copy, and a repair runs only
+  after the user explicitly chooses the repair action.
+
+### D012 — Retire the legacy stylesheet with its component owners
+
+- Date: 2026-07-19
+- Decision: delete `apps/web/src/styles.css` with the legacy panels and move the
+  remaining live viewport/overlay rules into tokenized `styles/viewport.css`.
+- Reason: retaining the broad legacy stylesheet would preserve obsolete
+  selectors and undermine direct replacement even if the old components were
+  no longer rendered.
+- Consequence: the production CSS graph now contains only workbench, mode,
+  editor, project, tree, viewport, and overlay owners.
+
 ## Increment ledger
 
 | Increment | Scope | Evidence | Commit |
 | --- | --- | --- | --- |
 | A | Inventory/foundation | 50 focused UI tests, 2 bundle-script tests, immutable V17 production metrics | `4c9c1cb` |
 | B | Persistent shell/search integration | 1536/1280/960 screenshots; compact-root regression fixed; full production build; critical JS 371.93 KiB gzip and CSS 13.38 KiB gzip | `4a54ef0` |
-| C/G support | Ownership tree, Project workspace, shared editor primitives | 29 focused tests; web typecheck; 1536 Project and tree screenshots; 390 no-scroll viewport check; critical JS 370.56 KiB gzip and CSS 13.96 KiB gzip | Pending |
+| C/G support | Ownership tree, Project workspace, shared editor primitives | 29 focused tests; web typecheck; 1536 Project and tree screenshots; 390 no-scroll viewport check; critical JS 370.56 KiB gzip and CSS 13.96 KiB gzip | `0e64b6a` |
+| D/E/F | Solid drafts/editors, precision Sketch mode, focused Inspect, compact contextual strip, legacy retirement | 32 focused capability/action/mode tests; web typecheck; ESLint with no errors; legacy component and stylesheet graph removed | Pending |
 
 ## Completion evidence
 
