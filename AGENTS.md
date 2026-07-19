@@ -18,9 +18,16 @@ The current implementation source of truth is:
 - `docs/v15.md` — completed V15 STEP import, expanded feature families, and parameter expressions release record
 - `docs/v16.md` — completed V16 sweep, loft, pattern depth, expression extensions, and mass properties release record
 - `docs/v17.md` — completed V17 composite sketch profiles, arcs, and curved sweep paths release record
+- `docs/v18.md` — planned V18 frontend-only Precision CAD UI overhaul contract
 
 Do not attempt to build the entire architecture at once. Implement only the milestone requested by the user. V17 is complete; follow `docs/v16.md` and `docs/v17.md` as compatibility and support-matrix records. Do not weaken a completed V17 Must row or expand beyond its documented matrix without an explicitly approved later milestone.
 The six `pnpm smoke:v17-*` commands recorded in `docs/v17.md` are the named V17 release workflows; V21 remains minimum-triggered rather than the default for every save.
+
+V18 is planned, not implemented. Follow `docs/v18.md` when V18 implementation
+is explicitly requested. Its reference images define visual direction, not new
+CAD capability: production changes stay in `apps/web`, and V18 must not add
+commands, queries, source records, geometry/renderer contracts, schemas, file
+formats, or adapter behavior.
 
 ## Core Architectural Rules
 
