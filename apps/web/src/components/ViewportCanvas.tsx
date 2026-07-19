@@ -26,6 +26,12 @@ import {
 } from "../viewportCamera";
 import { shouldCancelViewportTransientState } from "../viewportKeyboard";
 import { formatVisibleDiagnosticMessage } from "../viewportVisibleText";
+import {
+  createAnimationFrameCoalescer,
+  getViewportBackingPixelRatio,
+  shouldNotifyViewportHover,
+  type AnimationFrameCoalescer
+} from "./animationFrameCoalescer";
 
 export interface ViewportCanvasPick {
   readonly camera: RenderCamera;
@@ -43,6 +49,7 @@ export interface ViewportCanvasStatus {
 export function ViewportCanvas({
   contextualSurface,
   meshes,
+  notifyHoverPointChanges = false,
   onHover,
   onSelect,
   onCancelTransientState,
@@ -54,6 +61,8 @@ export function ViewportCanvas({
 }: {
   readonly contextualSurface?: ReactNode;
   readonly meshes?: readonly RenderTriangleMesh[];
+  /** Allows active point-authoring tools to receive one pointer sample per frame. */
+  readonly notifyHoverPointChanges?: boolean;
   readonly onHover?: (pick: ViewportCanvasPick | undefined) => void;
   readonly onSelect: (pick: ViewportCanvasPick) => void;
   readonly onCancelTransientState?: () => void;
@@ -73,6 +82,43 @@ export function ViewportCanvas({
   );
   const [size, setSize] = useState({ width: 900, height: 600 });
   const [hoveredId, setHoveredId] = useState<string | undefined>();
+  const cameraRef = useRef(camera);
+  const sizeRef = useRef(size);
+  const hoveredIdRef = useRef<string | undefined>(undefined);
+  const hoverFrameRef = useRef<
+    AnimationFrameCoalescer<ViewportPoint> | undefined
+  >(undefined);
+  const navigationFrameRef = useRef<
+    | AnimationFrameCoalescer<{
+        readonly delta: ViewportPoint;
+        readonly mode: "orbit" | "pan";
+      }>
+    | undefined
+  >(undefined);
+  const resizeFrameRef = useRef<
+    AnimationFrameCoalescer<ViewportSize> | undefined
+  >(undefined);
+  const queuedNavigationRef = useRef<
+    | {
+        readonly delta: ViewportPoint;
+        readonly mode: "orbit" | "pan";
+      }
+    | undefined
+  >(undefined);
+  const latestInputsRef = useRef({
+    meshes,
+    notifyHoverPointChanges,
+    onHover,
+    onSelect,
+    primitives
+  });
+  latestInputsRef.current = {
+    meshes,
+    notifyHoverPointChanges,
+    onHover,
+    onSelect,
+    primitives
+  };
   const canFitSelected = Boolean(
     selectedId && getRenderObjectBounds(selectedId, primitives, meshes ?? [])
   );
@@ -101,15 +147,81 @@ export function ViewportCanvas({
       return undefined;
     }
 
+    const requestFrame = (callback: FrameRequestCallback) =>
+      window.requestAnimationFrame(callback);
+    const cancelFrame = (frameId: number) =>
+      window.cancelAnimationFrame(frameId);
+
+    resizeFrameRef.current = createAnimationFrameCoalescer({
+      cancelFrame,
+      onFrame: (nextSize: ViewportSize) => {
+        const currentSize = sizeRef.current;
+
+        if (
+          currentSize.width === nextSize.width &&
+          currentSize.height === nextSize.height
+        ) {
+          return;
+        }
+
+        sizeRef.current = nextSize;
+        setSize(nextSize);
+      },
+      requestFrame
+    });
+    hoverFrameRef.current = createAnimationFrameCoalescer({
+      cancelFrame,
+      onFrame: (point: ViewportPoint) => {
+        const inputs = latestInputsRef.current;
+        const currentCamera = cameraRef.current;
+        const currentSize = sizeRef.current;
+        const pickedRenderId = pickRenderScene(
+          inputs.primitives,
+          inputs.meshes ?? [],
+          currentCamera,
+          currentSize,
+          point
+        );
+        publishViewportHover({
+          camera: currentCamera,
+          pickedRenderId,
+          point,
+          size: currentSize
+        });
+      },
+      requestFrame
+    });
+    navigationFrameRef.current = createAnimationFrameCoalescer({
+      cancelFrame,
+      onFrame: ({ delta, mode }) => {
+        queuedNavigationRef.current = undefined;
+        updateCamera((current) =>
+          mode === "pan"
+            ? panCamera(current, delta, sizeRef.current)
+            : orbitCamera(current, delta)
+        );
+      },
+      requestFrame
+    });
+
     const observer = new ResizeObserver(([entry]) => {
       const { height, width } = entry.contentRect;
-      setSize({
+      resizeFrameRef.current?.schedule({
         width: Math.max(width, 320),
         height: Math.max(height, 240)
       });
     });
     observer.observe(wrapper);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      hoverFrameRef.current?.cancel();
+      navigationFrameRef.current?.cancel();
+      resizeFrameRef.current?.cancel();
+      hoverFrameRef.current = undefined;
+      navigationFrameRef.current = undefined;
+      resizeFrameRef.current = undefined;
+      queuedNavigationRef.current = undefined;
+    };
   }, []);
 
   useEffect(() => {
@@ -119,7 +231,7 @@ export function ViewportCanvas({
       return;
     }
 
-    const ratio = window.devicePixelRatio || 1;
+    const ratio = getViewportBackingPixelRatio(window.devicePixelRatio);
     canvas.width = Math.round(size.width * ratio);
     canvas.height = Math.round(size.height * ratio);
     canvas.style.width = `${size.width}px`;
@@ -144,18 +256,17 @@ export function ViewportCanvas({
   }, [camera, hoveredId, meshes, primitives, selectedId, size, visualStates]);
 
   function fitView() {
-    setCamera(
+    updateCamera(
       (current) =>
-        applyViewportCameraAction(
-          current,
-          { type: "fitAll" },
-          { primitives, meshes }
-        ).camera
+        applyViewportCameraAction(current, { type: "fitAll" }, {
+          primitives,
+          meshes
+        }).camera
     );
   }
 
   function fitSelectedView() {
-    setCamera(
+    updateCamera(
       (current) =>
         applyViewportCameraAction(
           current,
@@ -166,7 +277,7 @@ export function ViewportCanvas({
   }
 
   function resetView() {
-    setCamera(
+    updateCamera(
       (current) =>
         applyViewportCameraAction(
           current,
@@ -177,7 +288,7 @@ export function ViewportCanvas({
   }
 
   function zoomIn() {
-    setCamera(
+    updateCamera(
       (current) =>
         applyViewportCameraAction(
           current,
@@ -188,7 +299,7 @@ export function ViewportCanvas({
   }
 
   function zoomOut() {
-    setCamera(
+    updateCamera(
       (current) =>
         applyViewportCameraAction(
           current,
@@ -199,7 +310,7 @@ export function ViewportCanvas({
   }
 
   function setStandardView(viewId: ViewportStandardViewId) {
-    setCamera(
+    updateCamera(
       (current) =>
         applyViewportCameraAction(
           current,
@@ -218,6 +329,42 @@ export function ViewportCanvas({
       x: event.clientX - rect.left,
       y: event.clientY - rect.top
     };
+  }
+
+  function updateCamera(
+    updater: (current: RenderCamera) => RenderCamera
+  ): void {
+    const nextCamera = updater(cameraRef.current);
+    cameraRef.current = nextCamera;
+    setCamera(nextCamera);
+  }
+
+  function setInternalHoveredId(nextId: string | undefined): boolean {
+    if (hoveredIdRef.current === nextId) {
+      return false;
+    }
+
+    hoveredIdRef.current = nextId;
+    setHoveredId(nextId);
+    return true;
+  }
+
+  function publishViewportHover(pick: ViewportCanvasPick | undefined): void {
+    const inputs = latestInputsRef.current;
+    const previousId = hoveredIdRef.current;
+    const nextId = pick?.pickedRenderId;
+    const semanticTargetChanged = setInternalHoveredId(nextId);
+
+    if (
+      semanticTargetChanged ||
+      shouldNotifyViewportHover(
+        previousId,
+        nextId,
+        Boolean(pick) && inputs.notifyHoverPointChanges
+      )
+    ) {
+      inputs.onHover?.(pick);
+    }
   }
 
   return (
@@ -294,8 +441,8 @@ export function ViewportCanvas({
           tabIndex={0}
           onPointerDown={(event) => {
             setCanvasPointerCapture(event.currentTarget, event.pointerId);
-            setHoveredId(undefined);
-            onHover?.(undefined);
+            hoverFrameRef.current?.cancel();
+            publishViewportHover(undefined);
             pointerRef.current = {
               id: event.pointerId,
               x: event.clientX,
@@ -311,21 +458,7 @@ export function ViewportCanvas({
             const pointer = pointerRef.current;
 
             if (!pointer) {
-              const point = getEventViewportPoint(event);
-              const id = pickRenderScene(
-                primitives,
-                meshes ?? [],
-                camera,
-                size,
-                point
-              );
-              setHoveredId(id);
-              onHover?.({
-                camera,
-                pickedRenderId: id,
-                point,
-                size
-              });
+              hoverFrameRef.current?.schedule(getEventViewportPoint(event));
               return;
             }
 
@@ -345,11 +478,16 @@ export function ViewportCanvas({
                 y: event.clientY,
                 moved: true
               };
-              setCamera((current) =>
-                pointer.mode === "pan"
-                  ? panCamera(current, delta, size)
-                  : orbitCamera(current, delta)
-              );
+              const pending = queuedNavigationRef.current;
+              const queuedNavigation = {
+                delta: {
+                  x: (pending?.delta.x ?? 0) + delta.x,
+                  y: (pending?.delta.y ?? 0) + delta.y
+                },
+                mode: pointer.mode
+              };
+              queuedNavigationRef.current = queuedNavigation;
+              navigationFrameRef.current?.schedule(queuedNavigation);
             }
           }}
           onPointerUp={(event) => {
@@ -367,19 +505,22 @@ export function ViewportCanvas({
             }
 
             const point = getEventViewportPoint(event);
+            const currentCamera = cameraRef.current;
+            const currentSize = sizeRef.current;
+            const inputs = latestInputsRef.current;
             const id = pickRenderScene(
-              primitives,
-              meshes ?? [],
-              camera,
-              size,
+              inputs.primitives,
+              inputs.meshes ?? [],
+              currentCamera,
+              currentSize,
               point
             );
-            setHoveredId(id);
-            onSelect({
-              camera,
+            setInternalHoveredId(id);
+            inputs.onSelect({
+              camera: currentCamera,
               pickedRenderId: id,
               point,
-              size
+              size: currentSize
             });
           }}
           onPointerCancel={(event) => {
@@ -391,15 +532,15 @@ export function ViewportCanvas({
           }}
           onPointerLeave={() => {
             if (!pointerRef.current) {
-              setHoveredId(undefined);
-              onHover?.(undefined);
+              hoverFrameRef.current?.cancel();
+              publishViewportHover(undefined);
             }
           }}
           onWheel={(event) => {
             event.preventDefault();
             const deltaY =
               event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY;
-            setCamera(
+            updateCamera(
               (current) =>
                 applyViewportCameraAction(
                   current,

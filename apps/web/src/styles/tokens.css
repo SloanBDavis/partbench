@@ -1,0 +1,77 @@
+:root {
+  /* Color */
+  --pb-color-background: #e8ebef;
+  --pb-color-viewport: #e3e7eb;
+  --pb-color-surface: #f7f8fa;
+  --pb-color-surface-elevated: #ffffff;
+  --pb-color-header: #252a31;
+  --pb-color-header-text: #f7f8fa;
+  --pb-color-border: #c9ced6;
+  --pb-color-border-strong: #aeb5c0;
+  --pb-color-text: #252a31;
+  --pb-color-text-muted: #626c78;
+  --pb-color-accent: #1f5fbf;
+  --pb-color-accent-hover: #194f9f;
+  --pb-color-selection: #2d6fd2;
+  --pb-color-success: #287a45;
+  --pb-color-success-surface: #e7f3eb;
+  --pb-color-warning: #945b00;
+  --pb-color-warning-surface: #fff3d6;
+  --pb-color-danger: #b32734;
+  --pb-color-danger-surface: #fbe9eb;
+  --pb-color-disabled: #8b939d;
+  --pb-color-disabled-surface: #edf0f3;
+
+  /* Spacing */
+  --pb-space-2: 2px;
+  --pb-space-4: 4px;
+  --pb-space-6: 6px;
+  --pb-space-8: 8px;
+  --pb-space-12: 12px;
+  --pb-space-16: 16px;
+  --pb-space-24: 24px;
+
+  /* Control density */
+  --pb-control-height-dense: 28px;
+  --pb-control-height: 32px;
+  --pb-control-height-comfortable: 36px;
+  --pb-tree-row-height: 28px;
+  --pb-icon-size-inline: 16px;
+  --pb-icon-size-toolbar: 20px;
+  --pb-icon-size-mode: 24px;
+  --pb-radius-control: 4px;
+  --pb-radius-popover: 6px;
+
+  /* Typography */
+  --pb-font-application:
+    Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  --pb-font-numeric: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --pb-font-size-body: 13px;
+  --pb-font-size-heading: 14px;
+  --pb-font-size-caption: 11px;
+  --pb-line-height-body: 1.4;
+  --pb-line-height-caption: 1.35;
+  --pb-font-weight-heading: 650;
+
+  /* Elevation is reserved for transient surfaces. */
+  --pb-elevation-dock: none;
+  --pb-elevation-popover: 0 6px 18px rgb(27 35 45 / 18%);
+  --pb-elevation-command-search: 0 14px 40px rgb(27 35 45 / 24%);
+
+  /* Focus and semantic selection */
+  --pb-focus-ring: 0 0 0 2px #ffffff, 0 0 0 4px var(--pb-color-accent);
+  --pb-selection-outline: 2px solid var(--pb-color-selection);
+
+  /* Stable shell geometry */
+  --pb-left-dock-width: 282px;
+  --pb-left-dock-min-width: 220px;
+  --pb-left-dock-max-width: 380px;
+  --pb-right-dock-width: 350px;
+  --pb-right-dock-min-width: 300px;
+  --pb-right-dock-max-width: 460px;
+  --pb-header-height: 48px;
+  --pb-ribbon-max-height: 108px;
+  --pb-status-height: 40px;
+  --pb-min-inline-viewport-width: 480px;
+}

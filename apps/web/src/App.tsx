@@ -160,7 +160,11 @@ import {
   type TransformCommandForm
 } from "./cadCommands";
 import type { EdgeFinishOperation } from "./edgeFinishUi";
-import { BrowserCadCommandWorker } from "./browserCadCommandWorker";
+import { LazyCadCommandWorker } from "./lazyCadCommandWorker";
+import {
+  markPartbenchPerformance,
+  PARTBENCH_PERFORMANCE_MARKS
+} from "./workbench/performanceMarks";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { Inspector } from "./components/Inspector";
 import { ModelingActionsPanel } from "./components/ModelingActionsPanel";
@@ -1536,16 +1540,36 @@ export function App() {
 
     return derivedGeometryRuntimeRef.current;
   }, []);
+  const commandWorker = useMemo(() => new LazyCadCommandWorker(), []);
   const commandExecutor = useMemo(
     () =>
-      new AsyncCadCommandExecutor(engine, new BrowserCadCommandWorker(), {
+      new AsyncCadCommandExecutor(engine, commandWorker, {
         stepImportResolver: createProjectStepImportResolver({
           getRuntime: getDerivedGeometryRuntime,
           payloadStore: stepImportPayloadStoreRef.current
         })
       }),
-    [getDerivedGeometryRuntime]
+    [commandWorker, getDerivedGeometryRuntime]
   );
+  const commandWorkerLifecycleRef = useRef(0);
+  useEffect(() => {
+    const lifecycle = commandWorkerLifecycleRef.current + 1;
+    commandWorkerLifecycleRef.current = lifecycle;
+
+    return () => {
+      queueMicrotask(() => {
+        if (commandWorkerLifecycleRef.current === lifecycle) {
+          commandWorker.dispose();
+        }
+      });
+    };
+  }, [commandWorker]);
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      markPartbenchPerformance(PARTBENCH_PERFORMANCE_MARKS.shellReady);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
   const getDerivedGeometryService = useCallback((): DerivedGeometryService => {
     if (!derivedGeometryServiceRef.current) {
       derivedGeometryServiceRef.current = new DerivedGeometryService({
@@ -4606,6 +4630,7 @@ export function App() {
         <ViewportCanvas
           primitives={renderScene.primitives}
           meshes={renderScene.meshes}
+          notifyHoverPointChanges={Boolean(threePointArcTool)}
           selectedId={selectedViewportRenderId}
           visualStates={viewportVisualState.rendererVisualStates}
           status={viewportVisualState.status}

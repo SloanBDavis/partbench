@@ -1,0 +1,31 @@
+{
+  "sourceCommit": "ac8637d",
+  "profile": {
+    "build": "production",
+    "derivedGeometry": true
+  },
+  "criticalJavaScript": {
+    "rawBytes": 2083929,
+    "gzipBytes": 483972
+  },
+  "criticalCss": {
+    "rawBytes": 53274,
+    "gzipBytes": 9342
+  },
+  "allUiJavaScript": {
+    "rawBytes": 2087660,
+    "gzipBytes": 485588
+  },
+  "commandWorker": {
+    "rawBytes": 923178,
+    "gzipBytes": 194158
+  },
+  "geometryWorker": {
+    "rawBytes": 360712,
+    "gzipBytes": 82576
+  },
+  "occtWasm": {
+    "rawBytes": 50305130,
+    "gzipBytes": 13808536
+  }
+}

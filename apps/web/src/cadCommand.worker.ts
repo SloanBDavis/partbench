@@ -3,7 +3,7 @@ import {
   type CadWorkerRequest
 } from "@web-cad/cad-core";
 
-const commandWorker = new SnapshotCadCommandWorker({ delayMs: 75 });
+const commandWorker = new SnapshotCadCommandWorker();
 
 self.addEventListener("message", (event: MessageEvent<CadWorkerRequest>) => {
   void executeCommand(event.data);

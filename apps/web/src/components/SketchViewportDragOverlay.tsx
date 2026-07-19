@@ -29,6 +29,17 @@ import {
   type SketchDisplayFrame
 } from "../sketchDisplayFrames";
 
+interface SketchViewportDragState {
+  readonly pointerId: number;
+  readonly handle: SketchViewportDragHandle;
+  readonly startClientPoint: ViewportPoint;
+  readonly startEntity: SketchEntitySnapshot;
+  readonly previewEntity: SketchEntitySnapshot;
+  readonly moved: boolean;
+  readonly previewSequence: number;
+  readonly previewStatus: "valid" | "pending" | "invalid";
+}
+
 export function SketchViewportDragOverlay({
   camera,
   disabled = false,
@@ -65,19 +76,12 @@ export function SketchViewportDragOverlay({
       }),
     [camera, frame, size]
   );
-  const [drag, setDrag] = useState<
-    | {
-        readonly pointerId: number;
-        readonly handle: SketchViewportDragHandle;
-        readonly startClientPoint: ViewportPoint;
-        readonly startEntity: SketchEntitySnapshot;
-        readonly previewEntity: SketchEntitySnapshot;
-        readonly moved: boolean;
-        readonly previewSequence: number;
-        readonly previewStatus: "valid" | "pending" | "invalid";
-      }
-    | undefined
-  >();
+  const [drag, setDrag] = useState<SketchViewportDragState | undefined>();
+  const dragRef = useRef<SketchViewportDragState | undefined>(undefined);
+  const basisRef = useRef(basis);
+  basisRef.current = basis;
+  const latestInputsRef = useRef({ onCommitEntity, onPreviewEntity, sketch });
+  latestInputsRef.current = { onCommitEntity, onPreviewEntity, sketch };
   const displaySketch = useMemo(
     () =>
       drag
@@ -104,22 +108,52 @@ export function SketchViewportDragOverlay({
   const preview = drag?.previewEntity;
 
   useEffect(() => {
-    if (!drag) {
+    if (!dragRef.current) {
       return undefined;
     }
 
+    let moveFrameId: number | undefined;
+    let pendingMove:
+      | { readonly pointerId: number; readonly point: ViewportPoint }
+      | undefined;
+
+    const flushMove = () => {
+      moveFrameId = undefined;
+      const move = pendingMove;
+      pendingMove = undefined;
+
+      if (move) {
+        moveDragFromPoint(move.pointerId, move.point);
+      }
+    };
+
     const move = (event: PointerEvent) => {
-      moveDragFromPoint(event.pointerId, {
-        x: event.clientX,
-        y: event.clientY
-      });
+      if (event.pointerId !== dragRef.current?.pointerId) {
+        return;
+      }
+
+      pendingMove = {
+        pointerId: event.pointerId,
+        point: { x: event.clientX, y: event.clientY }
+      };
+      if (moveFrameId === undefined) {
+        moveFrameId = window.requestAnimationFrame(flushMove);
+      }
     };
     const finish = (event: PointerEvent) => {
+      if (event.pointerId !== dragRef.current?.pointerId) {
+        return;
+      }
+
+      if (moveFrameId !== undefined) {
+        window.cancelAnimationFrame(moveFrameId);
+      }
+      flushMove();
       void finishDragFromPointer(event.pointerId);
     };
     const cancel = (event: PointerEvent) => {
-      if (event.pointerId === drag.pointerId) {
-        setDrag(undefined);
+      if (event.pointerId === dragRef.current?.pointerId) {
+        clearDrag();
       }
     };
 
@@ -127,11 +161,15 @@ export function SketchViewportDragOverlay({
     window.addEventListener("pointerup", finish);
     window.addEventListener("pointercancel", cancel);
     return () => {
+      if (moveFrameId !== undefined) {
+        window.cancelAnimationFrame(moveFrameId);
+      }
+      pendingMove = undefined;
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", finish);
       window.removeEventListener("pointercancel", cancel);
     };
-  });
+  }, [drag?.pointerId]);
 
   if (disabled || !selectedEntityId || handles.length === 0 || !basis) {
     return null;
@@ -191,7 +229,7 @@ export function SketchViewportDragOverlay({
 
     event.preventDefault();
     event.stopPropagation();
-    setDrag({
+    setCurrentDrag({
       pointerId: event.pointerId,
       handle,
       startClientPoint: { x: event.clientX, y: event.clientY },
@@ -204,87 +242,111 @@ export function SketchViewportDragOverlay({
   }
 
   function moveDragFromPoint(pointerId: number, clientPoint: ViewportPoint) {
-    if (!drag || drag.pointerId !== pointerId || !basis) {
+    const currentDrag = dragRef.current;
+    const currentBasis = basisRef.current;
+
+    if (!currentDrag || currentDrag.pointerId !== pointerId || !currentBasis) {
       return;
     }
 
-    const sketchDelta = mapViewportDeltaToSketchDelta(basis, {
-      x: clientPoint.x - drag.startClientPoint.x,
-      y: clientPoint.y - drag.startClientPoint.y
+    const sketchDelta = mapViewportDeltaToSketchDelta(currentBasis, {
+      x: clientPoint.x - currentDrag.startClientPoint.x,
+      y: clientPoint.y - currentDrag.startClientPoint.y
     });
 
     if (!sketchDelta) {
       return;
     }
 
-    const activePointerId = drag.pointerId;
+    const activePointerId = currentDrag.pointerId;
     const previewSequence = previewSequenceRef.current + 1;
     const previewEntity = applySketchViewportDrag(
-      drag.startEntity,
-      drag.handle,
-      addVec2(drag.handle.sketchPoint, sketchDelta)
+      currentDrag.startEntity,
+      currentDrag.handle,
+      addVec2(currentDrag.handle.sketchPoint, sketchDelta)
     );
+    const inputs = latestInputsRef.current;
     previewSequenceRef.current = previewSequence;
-    setDrag({
-      ...drag,
+    setCurrentDrag({
+      ...currentDrag,
       moved: true,
       previewEntity,
       previewSequence,
-      previewStatus: onPreviewEntity ? "pending" : "valid"
+      previewStatus: inputs.onPreviewEntity ? "pending" : "valid"
     });
 
-    if (onPreviewEntity) {
-      void Promise.resolve(onPreviewEntity(sketch.id, previewEntity)).then(
+    if (inputs.onPreviewEntity) {
+      void Promise.resolve(
+        inputs.onPreviewEntity(inputs.sketch.id, previewEntity)
+      ).then(
         (valid) => {
-          setDrag((current) =>
+          const current = dragRef.current;
+          if (
             current?.pointerId === activePointerId &&
             current.previewSequence === previewSequence
-              ? {
-                  ...current,
-                  previewStatus: valid ? "valid" : "invalid"
-                }
-              : current
-          );
+          ) {
+            setCurrentDrag({
+              ...current,
+              previewStatus: valid ? "valid" : "invalid"
+            });
+          }
         },
         () => {
-          setDrag((current) =>
+          const current = dragRef.current;
+          if (
             current?.pointerId === activePointerId &&
             current.previewSequence === previewSequence
-              ? { ...current, previewStatus: "invalid" }
-              : current
-          );
+          ) {
+            setCurrentDrag({ ...current, previewStatus: "invalid" });
+          }
         }
       );
     }
   }
 
   async function finishDragFromPointer(pointerId: number) {
-    if (!drag || drag.pointerId !== pointerId) {
+    const currentDrag = dragRef.current;
+
+    if (!currentDrag || currentDrag.pointerId !== pointerId) {
       return;
     }
 
-    setDrag(undefined);
-    if (!drag.moved) {
+    clearDrag();
+    if (!currentDrag.moved) {
       return;
     }
 
+    const inputs = latestInputsRef.current;
     const valid =
-      drag.previewStatus === "valid" ||
-      (onPreviewEntity
+      currentDrag.previewStatus === "valid" ||
+      (inputs.onPreviewEntity
         ? await Promise.resolve(
-            onPreviewEntity(sketch.id, drag.previewEntity)
+            inputs.onPreviewEntity(inputs.sketch.id, currentDrag.previewEntity)
           ).catch(() => false)
         : true);
 
     if (valid) {
-      await onCommitEntity(sketch.id, drag.previewEntity);
+      await inputs.onCommitEntity(
+        inputs.sketch.id,
+        currentDrag.previewEntity
+      );
     }
   }
 
   function cancelDrag(event: ReactPointerEvent<SVGCircleElement>) {
-    if (drag?.pointerId === event.pointerId) {
-      setDrag(undefined);
+    if (dragRef.current?.pointerId === event.pointerId) {
+      clearDrag();
     }
+  }
+
+  function setCurrentDrag(nextDrag: SketchViewportDragState): void {
+    dragRef.current = nextDrag;
+    setDrag(nextDrag);
+  }
+
+  function clearDrag(): void {
+    dragRef.current = undefined;
+    setDrag(undefined);
   }
 }
 
