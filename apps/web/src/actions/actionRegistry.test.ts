@@ -122,6 +122,16 @@ describe("V18 UI action registry", () => {
       blocked.availability
     );
     expect(runAction).not.toHaveBeenCalledWith("solid.extrude");
+
+    const collectorContext = createContext({ runAction });
+    const needsSelection = find(
+      projectUiActions(collectorContext),
+      "solid.revolve"
+    );
+    await expect(
+      invokeUiAction(needsSelection, collectorContext)
+    ).resolves.toEqual({ status: "started" });
+    expect(runAction).toHaveBeenCalledWith("solid.revolve");
   });
 });
 

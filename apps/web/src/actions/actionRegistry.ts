@@ -719,7 +719,7 @@ export async function invokeUiAction(
 ): Promise<UiActionInvocationResult> {
   if (action.pending) return { status: "pending" };
 
-  if (action.availability.status !== "ready") {
+  if (action.availability.status === "blocked") {
     context.explainUnavailable?.(action.definition.id, action.availability);
     return { status: "unavailable", availability: action.availability };
   }

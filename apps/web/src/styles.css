@@ -3483,13 +3483,6 @@ button.dimension-status-row {
 }
 
 @media (max-width: 980px) {
-  html,
-  body,
-  #root {
-    height: auto;
-    overflow: auto;
-  }
-
   .app-shell {
     height: auto;
     min-height: 100dvh;

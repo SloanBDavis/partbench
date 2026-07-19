@@ -60,9 +60,17 @@ import type {
   SketchProfileRef,
   Vec2
 } from "@web-cad/cad-protocol";
-import { createGeometryKernelBrowserWorker } from "@web-cad/geometry-worker/browser";
 import { createDerivedGeometryRuntime } from "@web-cad/derived-geometry-runtime";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  lazy,
+  useMemo,
+  useReducer,
+  useRef,
+  Suspense,
+  useState
+} from "react";
 import {
   buildBatch,
   buildAddSketchArcOp,
@@ -162,16 +170,29 @@ import {
 import type { EdgeFinishOperation } from "./edgeFinishUi";
 import { LazyCadCommandWorker } from "./lazyCadCommandWorker";
 import {
+  invokeUiAction,
+  projectUiActions,
+  type UiActionAvailabilityProjection,
+  type UiActionContext,
+  type UiActionId
+} from "./actions/actionRegistry";
+import { CommandSearchDialog } from "./actions/CommandSearchDialog";
+import {
   markPartbenchPerformance,
   PARTBENCH_PERFORMANCE_MARKS
 } from "./workbench/performanceMarks";
-import { HistoryPanel } from "./components/HistoryPanel";
-import { Inspector } from "./components/Inspector";
-import { ModelingActionsPanel } from "./components/ModelingActionsPanel";
-import { CompositeFeaturePanel } from "./components/CompositeFeaturePanel";
-import { CompositeFeatureEditor } from "./components/CompositeFeatureEditor";
-import { ProjectJsonPanel } from "./components/ProjectJsonPanel";
-import { SketchPanel } from "./components/SketchPanel";
+import { GlobalHeader } from "./workbench/GlobalHeader";
+import { ModeRibbon } from "./workbench/ModeRibbon";
+import { StatusBar } from "./workbench/StatusBar";
+import { WorkbenchShell } from "./workbench/WorkbenchShell";
+import {
+  createInitialWorkbenchUiState,
+  workbenchReducer
+} from "./state/workbenchReducer";
+import {
+  loadWorkbenchUiPreferences,
+  saveWorkbenchUiPreferences
+} from "./state/uiPreferences";
 import { SketchArcToolOverlay } from "./components/SketchArcToolOverlay";
 import { SketchViewportDragOverlay } from "./components/SketchViewportDragOverlay";
 import { StructurePanel } from "./components/StructurePanel";
@@ -199,7 +220,6 @@ import {
   createVisualizationMeshExportArtifact,
   createVisualizationMeshExportStatus
 } from "./visualizationMeshExport";
-import { executeProjectExactStepExport } from "./projectExactStepExport";
 import {
   createBodyTopologyDerivedExactMetadataSnapshot,
   createEmptyDerivedExactMetadataSnapshot,
@@ -346,6 +366,7 @@ import {
   createAddTargetBodyOptions,
   createCutTargetBodyOptions,
   createHoleTargetBodyOptions,
+  formatSketchSolverStatus,
   type SketchPanelSelectionContext
 } from "./sketchPanelUi";
 import { createSketchModelingSelectionContext } from "./sketchModelingSelectionContext";
@@ -354,7 +375,44 @@ import {
   formatNamedReferenceRepairBatchError,
   formatNamedReferenceRepairBatchMessage
 } from "./namedReferenceRepairUi";
+import "./styles/base.css";
 import "./styles.css";
+
+const HistoryPanel = lazy(() =>
+  import("./components/HistoryPanel").then((module) => ({
+    default: module.HistoryPanel
+  }))
+);
+const Inspector = lazy(() =>
+  import("./components/Inspector").then((module) => ({
+    default: module.Inspector
+  }))
+);
+const ModelingActionsPanel = lazy(() =>
+  import("./components/ModelingActionsPanel").then((module) => ({
+    default: module.ModelingActionsPanel
+  }))
+);
+const CompositeFeaturePanel = lazy(() =>
+  import("./components/CompositeFeaturePanel").then((module) => ({
+    default: module.CompositeFeaturePanel
+  }))
+);
+const CompositeFeatureEditor = lazy(() =>
+  import("./components/CompositeFeatureEditor").then((module) => ({
+    default: module.CompositeFeatureEditor
+  }))
+);
+const ProjectJsonPanel = lazy(() =>
+  import("./components/ProjectJsonPanel").then((module) => ({
+    default: module.ProjectJsonPanel
+  }))
+);
+const SketchPanel = lazy(() =>
+  import("./components/SketchPanel").then((module) => ({
+    default: module.SketchPanel
+  }))
+);
 
 const engine = new CadEngine();
 const derivedGeometryEnabled = __PARTBENCH_DERIVED_GEOMETRY_ENABLED__;
@@ -426,10 +484,6 @@ const quickTorusForm: PrimitiveCommandForm = {
   translationY: 0,
   translationZ: 0
 };
-
-type UtilityPanelId = "sketches" | "history";
-
-type ModelBrowserPanelId = "tree" | "selection";
 
 function createWcadTopologyCheckpointPayloadInputCache(
   payloads: readonly WcadTopologyCheckpointPayload[] | undefined
@@ -1377,6 +1431,19 @@ function createModelingSelectionContext({
 }
 
 export function App() {
+  const [workbenchUi, dispatchWorkbench] = useReducer(
+    workbenchReducer,
+    undefined,
+    () => {
+      const preferences = loadWorkbenchUiPreferences();
+      return createInitialWorkbenchUiState({
+        leftDockWidth: preferences.leftDockWidth,
+        rightDockWidth: preferences.rightDockWidth,
+        leftDockCollapsed: preferences.leftDockCollapsed,
+        rightDockCollapsed: preferences.rightDockCollapsed
+      });
+    }
+  );
   const derivedGeometryRuntimeRef = useRef<DerivedGeometryRuntime | undefined>(
     undefined
   );
@@ -1419,10 +1486,12 @@ export function App() {
   const [commandError, setCommandError] = useState<string | undefined>();
   const [commandNotice, setCommandNotice] = useState<string | undefined>();
   const [commandPending, setCommandPending] = useState(false);
-  const [activeUtilityPanel, setActiveUtilityPanel] =
-    useState<UtilityPanelId>("sketches");
-  const [activeModelBrowserPanel, setActiveModelBrowserPanel] =
-    useState<ModelBrowserPanelId>("tree");
+  const [activeUtilityPanel, setActiveUtilityPanel] = useState<
+    "sketches" | "history"
+  >("sketches");
+  const [activeModelBrowserPanel, setActiveModelBrowserPanel] = useState<
+    "tree" | "selection"
+  >("tree");
   const [focusedSketchId, setFocusedSketchId] = useState<string | undefined>();
   const [threePointArcTool, setThreePointArcTool] = useState<
     ThreePointArcToolSession | undefined
@@ -1570,6 +1639,19 @@ export function App() {
     });
     return () => window.cancelAnimationFrame(frame);
   }, []);
+  useEffect(() => {
+    saveWorkbenchUiPreferences({
+      leftDockWidth: workbenchUi.leftDockWidth,
+      rightDockWidth: workbenchUi.rightDockWidth,
+      leftDockCollapsed: workbenchUi.leftDockCollapsed,
+      rightDockCollapsed: workbenchUi.rightDockCollapsed
+    });
+  }, [
+    workbenchUi.leftDockCollapsed,
+    workbenchUi.leftDockWidth,
+    workbenchUi.rightDockCollapsed,
+    workbenchUi.rightDockWidth
+  ]);
   const getDerivedGeometryService = useCallback((): DerivedGeometryService => {
     if (!derivedGeometryServiceRef.current) {
       derivedGeometryServiceRef.current = new DerivedGeometryService({
@@ -1642,7 +1724,7 @@ export function App() {
     }
     return responses;
   }, [sketches]);
-  const projectStructure = readProjectStructure();
+  const projectStructure = useMemo(() => readProjectStructure(), [document]);
   const bodySourceIdentitySignatures = useMemo(
     () =>
       readBodySourceIdentitySignatures(
@@ -1653,9 +1735,14 @@ export function App() {
       ),
     [document]
   );
-  const projectImportReadiness = readProjectImportReadiness();
-  const projectTopologyIdentityReadiness =
-    readProjectTopologyIdentityReadiness();
+  const projectImportReadiness = useMemo(
+    () => readProjectImportReadiness(),
+    [document]
+  );
+  const projectTopologyIdentityReadiness = useMemo(
+    () => readProjectTopologyIdentityReadiness(),
+    [document]
+  );
   const sketchExtrudeBodies = useMemo(
     () =>
       projectStructure.bodies.filter(
@@ -1749,14 +1836,18 @@ export function App() {
     ],
     [derivedGeometrySources, importedExactMetadataSources]
   );
-  const projectExportReadiness = readProjectExportReadiness(
-    engine,
-    derivedExactMetadata,
-    currentExactMetadataSources
+  const projectExportReadiness = useMemo(
+    () =>
+      readProjectExportReadiness(
+        engine,
+        derivedExactMetadata,
+        currentExactMetadataSources
+      ),
+    [derivedExactMetadata, currentExactMetadataSources, document]
   );
-  const projectHealth = readProjectHealth(
-    derivedExactMetadata,
-    currentExactMetadataSources
+  const projectHealth = useMemo(
+    () => readProjectHealth(derivedExactMetadata, currentExactMetadataSources),
+    [derivedExactMetadata, currentExactMetadataSources, document]
   );
   const selectedObject = selectedId
     ? document.objects.get(selectedId)
@@ -1777,11 +1868,14 @@ export function App() {
       setPreferredHoleTargetBodyId(undefined);
     }
   }, [preferredHoleTargetBodyId, projectStructure.bodies]);
-  const addTargetReadinessByTopologyAnchorId =
-    readTopologyAnchorCommandTargetReadinessByAnchorId(
-      document.topologyIdentity?.anchors,
-      "feature.extrudeAddTarget"
-    );
+  const addTargetReadinessByTopologyAnchorId = useMemo(
+    () =>
+      readTopologyAnchorCommandTargetReadinessByAnchorId(
+        document.topologyIdentity?.anchors,
+        "feature.extrudeAddTarget"
+      ),
+    [document]
+  );
   const addTargetBodyOptions = useMemo(
     () =>
       createAddTargetBodyOptions(
@@ -1814,31 +1908,49 @@ export function App() {
       selectedBody?.id
     ]
   );
-  const holeTargetReadinessByTopologyAnchorId =
-    readTopologyAnchorCommandTargetReadinessByAnchorId(
+  const holeTargetReadinessByTopologyAnchorId = useMemo(
+    () =>
+      readTopologyAnchorCommandTargetReadinessByAnchorId(
+        document.topologyIdentity?.anchors,
+        "feature.holeTarget"
+      ),
+    [document]
+  );
+  const holeTargetBodyOptions = useMemo(
+    () =>
+      createHoleTargetBodyOptions(
+        projectStructure.bodies,
+        projectStructure.features,
+        preferredHoleBodyId,
+        document.topologyIdentity?.anchors,
+        holeTargetReadinessByTopologyAnchorId
+      ),
+    [
       document.topologyIdentity?.anchors,
-      "feature.holeTarget"
-    );
-  const holeTargetBodyOptions = createHoleTargetBodyOptions(
-    projectStructure.bodies,
-    projectStructure.features,
-    preferredHoleBodyId,
-    document.topologyIdentity?.anchors,
-    holeTargetReadinessByTopologyAnchorId
+      holeTargetReadinessByTopologyAnchorId,
+      preferredHoleBodyId,
+      projectStructure.bodies,
+      projectStructure.features
+    ]
   );
   const selectedFeature = selectedBody
     ? projectStructure.features.find(
         (feature) => feature.id === selectedBody.featureId
       )
     : undefined;
-  const selectedFeatureEditability = readFeatureEditability(
-    selectedFeature?.id
+  const selectedFeatureEditability = useMemo(
+    () => readFeatureEditability(selectedFeature?.id),
+    [document, selectedFeature?.id]
   );
-  const selectedBodyGeneratedReferences = readBodyGeneratedReferences(
-    selectedBody?.id,
-    selectedBody
-      ? derivedGeneratedReferenceEvidenceByBodyId.get(selectedBody.id)
-      : undefined
+  const selectedBodyGeneratedReferences = useMemo(
+    () =>
+      readBodyGeneratedReferences(
+        selectedBody?.id,
+        selectedBody
+          ? derivedGeneratedReferenceEvidenceByBodyId.get(selectedBody.id)
+          : undefined
+      ),
+    [derivedGeneratedReferenceEvidenceByBodyId, document, selectedBody?.id]
   );
   const selectedShellTargetGeneratedReferences =
     selectedFeature?.kind === "shell"
@@ -1849,36 +1961,52 @@ export function App() {
           )
         ).references
       : undefined;
-  const selectedGeneratedReferenceMeasurements =
-    readGeneratedReferenceMeasurements(
-      selectedBodyGeneratedReferences.references
-    );
-  const selectedBodyMeasurements = selectedBody
-    ? readBodyMeasurements(selectedBody.id)
-    : {};
+  const selectedGeneratedReferenceMeasurements = useMemo(
+    () =>
+      readGeneratedReferenceMeasurements(
+        selectedBodyGeneratedReferences.references
+      ),
+    [document, selectedBodyGeneratedReferences.references]
+  );
+  const selectedBodyMeasurements = useMemo(
+    () => (selectedBody ? readBodyMeasurements(selectedBody.id) : {}),
+    [document, selectedBody]
+  );
   const selectedBodyExactMetadataSource = selectedBody
     ? currentExactMetadataSources.find(
         (source) => source.id === selectedBody.id
       )
     : undefined;
-  const selectedBodyTopology =
-    selectedBody !== undefined
-      ? readBodyTopology(
-          selectedBody.id,
-          derivedExactMetadata,
-          selectedBodyExactMetadataSource
-        )
-      : {};
-  const selectedBodyMassProperties = selectedBody
-    ? readBodyMassProperties(
-        selectedBody.id,
-        selectedBodyTopology.topology,
-        derivedExactMetadata,
-        selectedBodyExactMetadataSource
-      )
-    : {};
-  const namedReferences = readNamedReferences();
-  const referenceHealth = readReferenceHealth();
+  const selectedBodyTopology = useMemo(
+    () =>
+      selectedBody !== undefined
+        ? readBodyTopology(
+            selectedBody.id,
+            derivedExactMetadata,
+            selectedBodyExactMetadataSource
+          )
+        : {},
+    [derivedExactMetadata, selectedBody, selectedBodyExactMetadataSource]
+  );
+  const selectedBodyMassProperties = useMemo(
+    () =>
+      selectedBody
+        ? readBodyMassProperties(
+            selectedBody.id,
+            selectedBodyTopology.topology,
+            derivedExactMetadata,
+            selectedBodyExactMetadataSource
+          )
+        : {},
+    [
+      derivedExactMetadata,
+      selectedBody,
+      selectedBodyExactMetadataSource,
+      selectedBodyTopology.topology
+    ]
+  );
+  const namedReferences = useMemo(() => readNamedReferences(), [document]);
+  const referenceHealth = useMemo(() => readReferenceHealth(), [document]);
   const namedReferenceHealthByName =
     createNamedReferenceHealthByName(referenceHealth);
   useEffect(() => {
@@ -1899,53 +2027,91 @@ export function App() {
     selectedGeneratedReference?.kind,
     selectedGeneratedReference?.topologyAnchorId
   ]);
-  const selectedBodyReferenceCandidates = selectedBody
-    ? readSelectionReferenceCandidates({
-        type: "body",
-        bodyId: selectedBody.id
-      })
-    : undefined;
-  const referenceCandidatesByStableId =
-    readSelectionReferenceCandidatesByStableId(
-      selectedBodyGeneratedReferences.references
-    );
-  const namedReferenceCandidatesByName =
-    readNamedReferenceCandidatesByName(namedReferences);
+  const selectedBodyReferenceCandidates = useMemo(
+    () =>
+      selectedBody
+        ? readSelectionReferenceCandidates({
+            type: "body",
+            bodyId: selectedBody.id
+          })
+        : undefined,
+    [document, selectedBody]
+  );
+  const referenceCandidatesByStableId = useMemo(
+    () =>
+      readSelectionReferenceCandidatesByStableId(
+        selectedBodyGeneratedReferences.references
+      ),
+    [document, selectedBodyGeneratedReferences.references]
+  );
+  const namedReferenceCandidatesByName = useMemo(
+    () => readNamedReferenceCandidatesByName(namedReferences),
+    [document, namedReferences]
+  );
   const selectedNamedReference = selectedNamedReferenceName
     ? namedReferences.find(
         (reference) => reference.name === selectedNamedReferenceName
       )
     : undefined;
-  const transactionHistory = readTransactionHistory();
-  const parameters = readParameters();
-  const parameterEvaluation = readParameterEvaluation();
-  const sketchDimensionsBySketchId = readSketchDimensionsBySketchId(sketches);
-  const sketchEvaluationsBySketchId = readSketchEvaluationsBySketchId(sketches);
-  const sketchSolverStatusesBySketchId =
-    readSketchSolverStatusesBySketchId(sketches);
-  const selectedTopologyAnchoredGeneratedReference =
-    enrichSelectedGeneratedReferenceWithTopologyAnchor(
-      selectedGeneratedReference,
-      document.topologyIdentity
-    );
-  const selectedGeneratedReferenceState = getGeneratedReferenceSelectionState(
-    selectedTopologyAnchoredGeneratedReference,
-    selectedBodyGeneratedReferences.references,
-    selectedGeneratedReferenceMeasurements,
-    document.units
+  const transactionHistory = useMemo(
+    () => readTransactionHistory(),
+    [document]
   );
-  const selectedGeneratedReferenceCandidates =
-    selectedGeneratedReferenceState.status === "selected"
-      ? (referenceCandidatesByStableId.get(
-          selectedGeneratedReferenceState.reference.stableId
-        ) ??
-        readSelectionReferenceCandidates({
-          type: "generatedReference",
-          bodyId: selectedGeneratedReferenceState.reference.bodyId,
-          stableId: selectedGeneratedReferenceState.reference.stableId,
-          expectedKind: selectedGeneratedReferenceState.reference.kind
-        }))
-      : undefined;
+  const parameters = useMemo(() => readParameters(), [document]);
+  const parameterEvaluation = useMemo(
+    () => readParameterEvaluation(),
+    [document]
+  );
+  const sketchDimensionsBySketchId = useMemo(
+    () => readSketchDimensionsBySketchId(sketches),
+    [document, sketches]
+  );
+  const sketchEvaluationsBySketchId = useMemo(
+    () => readSketchEvaluationsBySketchId(sketches),
+    [document, sketches]
+  );
+  const sketchSolverStatusesBySketchId = useMemo(
+    () => readSketchSolverStatusesBySketchId(sketches),
+    [document, sketches]
+  );
+  const selectedTopologyAnchoredGeneratedReference = useMemo(
+    () =>
+      enrichSelectedGeneratedReferenceWithTopologyAnchor(
+        selectedGeneratedReference,
+        document.topologyIdentity
+      ),
+    [document.topologyIdentity, selectedGeneratedReference]
+  );
+  const selectedGeneratedReferenceState = useMemo(
+    () =>
+      getGeneratedReferenceSelectionState(
+        selectedTopologyAnchoredGeneratedReference,
+        selectedBodyGeneratedReferences.references,
+        selectedGeneratedReferenceMeasurements,
+        document.units
+      ),
+    [
+      document.units,
+      selectedBodyGeneratedReferences.references,
+      selectedGeneratedReferenceMeasurements,
+      selectedTopologyAnchoredGeneratedReference
+    ]
+  );
+  const selectedGeneratedReferenceCandidates = useMemo(
+    () =>
+      selectedGeneratedReferenceState.status === "selected"
+        ? (referenceCandidatesByStableId.get(
+            selectedGeneratedReferenceState.reference.stableId
+          ) ??
+          readSelectionReferenceCandidates({
+            type: "generatedReference",
+            bodyId: selectedGeneratedReferenceState.reference.bodyId,
+            stableId: selectedGeneratedReferenceState.reference.stableId,
+            expectedKind: selectedGeneratedReferenceState.reference.kind
+          }))
+        : undefined,
+    [document, referenceCandidatesByStableId, selectedGeneratedReferenceState]
+  );
   const selectedNamedReferenceCandidates =
     selectedNamedReference &&
     selectedGeneratedReferenceState.status === "selected" &&
@@ -1959,31 +2125,63 @@ export function App() {
     selectedNamedReferenceCandidates ?? selectedGeneratedReferenceCandidates;
   const selectedSelectionReferenceCandidates =
     selectedReferenceCandidates ?? selectedBodyReferenceCandidates;
-  const modelingSelectionContext = createModelingSelectionContext({
-    focusedSketchId,
-    namedReferences,
-    referenceCandidatesByStableId,
-    selectedBody,
-    selectedBodyGeneratedReferences: selectedBodyGeneratedReferences.references,
-    selectedBodyReferenceCandidates,
-    selectedFeature,
-    selectedGeneratedReferenceCandidates: selectedReferenceCandidates,
-    selectedGeneratedReferenceState,
-    selectedId,
-    selectedSketchContext,
-    sketchDimensionsBySketchId,
-    sketchEvaluationsBySketchId,
-    sketchSolverStatusesBySketchId,
-    sketches
-  });
-  const modelingActions = deriveModelingActions({
-    context: modelingSelectionContext,
-    bodies: projectStructure.bodies,
-    features: projectStructure.features,
-    preferredBodyId: preferredHoleBodyId,
-    topologyAnchors: document.topologyIdentity?.anchors,
-    holeTargetReadinessByTopologyAnchorId
-  });
+  const modelingSelectionContext = useMemo(
+    () =>
+      createModelingSelectionContext({
+        focusedSketchId,
+        namedReferences,
+        referenceCandidatesByStableId,
+        selectedBody,
+        selectedBodyGeneratedReferences:
+          selectedBodyGeneratedReferences.references,
+        selectedBodyReferenceCandidates,
+        selectedFeature,
+        selectedGeneratedReferenceCandidates: selectedReferenceCandidates,
+        selectedGeneratedReferenceState,
+        selectedId,
+        selectedSketchContext,
+        sketchDimensionsBySketchId,
+        sketchEvaluationsBySketchId,
+        sketchSolverStatusesBySketchId,
+        sketches
+      }),
+    [
+      focusedSketchId,
+      namedReferences,
+      referenceCandidatesByStableId,
+      selectedBody,
+      selectedBodyGeneratedReferences.references,
+      selectedBodyReferenceCandidates,
+      selectedFeature,
+      selectedGeneratedReferenceState,
+      selectedId,
+      selectedReferenceCandidates,
+      selectedSketchContext,
+      sketchDimensionsBySketchId,
+      sketchEvaluationsBySketchId,
+      sketchSolverStatusesBySketchId,
+      sketches
+    ]
+  );
+  const modelingActions = useMemo(
+    () =>
+      deriveModelingActions({
+        context: modelingSelectionContext,
+        bodies: projectStructure.bodies,
+        features: projectStructure.features,
+        preferredBodyId: preferredHoleBodyId,
+        topologyAnchors: document.topologyIdentity?.anchors,
+        holeTargetReadinessByTopologyAnchorId
+      }),
+    [
+      document.topologyIdentity?.anchors,
+      holeTargetReadinessByTopologyAnchorId,
+      modelingSelectionContext,
+      preferredHoleBodyId,
+      projectStructure.bodies,
+      projectStructure.features
+    ]
+  );
   const sketchViewportDragTarget =
     modelingSelectionContext.selectionKind === "sketchEntity"
       ? {
@@ -2195,14 +2393,10 @@ export function App() {
         : undefined,
     [derivedGeometry, derivedGeometrySources, projectExportReadiness]
   );
-  const utilityPanels: readonly {
-    readonly id: UtilityPanelId;
-    readonly label: string;
-  }[] = [
+  const utilityPanels = [
     { id: "sketches", label: "Sketches" },
     { id: "history", label: "Log" }
-  ];
-
+  ] as const;
   useEffect(() => {
     return () => {
       derivedGeometryServiceRef.current?.dispose();
@@ -2274,8 +2468,12 @@ export function App() {
     setSelectedGeneratedReference(undefined);
     setViewportPickIntent(undefined);
     setViewportHoverPick(undefined);
-    if (options?.panel) {
-      setActiveModelBrowserPanel(options.panel);
+    dispatchWorkbench({ type: "set-active-tool" });
+    if (options?.panel === "selection") {
+      dispatchWorkbench({
+        type: "request-navigation",
+        intent: { kind: "mode", mode: "inspect" }
+      });
     }
   }
 
@@ -2287,7 +2485,9 @@ export function App() {
     });
     const targetGeneratedReferenceBodyId =
       chooseViewportGeneratedReferencePickBodyId({
-        activeSelectionPanel: activeModelBrowserPanel === "selection",
+        activeSelectionPanel:
+          workbenchUi.mode === "inspect" ||
+          workbenchUi.selectionFilter !== "body",
         generatedReferenceSelected: selectedGeneratedReference !== undefined,
         pickedBodyId,
         selectedBodyId: selectedBody?.id
@@ -2537,6 +2737,10 @@ export function App() {
       setSelectedGeneratedReference(undefined);
       setFocusedSketchId(sketchId);
       setSelectedSketchContext({ sketchId });
+      dispatchWorkbench({
+        type: "request-navigation",
+        intent: { kind: "mode", mode: "sketch" }
+      });
     }
 
     return sketchId;
@@ -2796,10 +3000,13 @@ export function App() {
     setSelectedId(undefined);
     setSelectedGeneratedReference(undefined);
     setFocusedSketchId(sketchId);
-    setActiveUtilityPanel("sketches");
     setSelectedSketchContext({
       sketchId,
       ...(entityId ? { entityId } : {})
+    });
+    dispatchWorkbench({
+      type: "request-navigation",
+      intent: { kind: "mode", mode: "sketch" }
     });
   }
 
@@ -3814,6 +4021,13 @@ export function App() {
       return;
     }
 
+    const [
+      { createGeometryKernelBrowserWorker },
+      { executeProjectExactStepExport }
+    ] = await Promise.all([
+      import("@web-cad/geometry-worker/browser"),
+      import("./projectExactStepExport")
+    ]);
     const result = await executeProjectExactStepExport({
       exactExport,
       worker: createGeometryKernelBrowserWorker()
@@ -4323,672 +4537,1087 @@ export function App() {
     syncDocument(undefined);
   }
 
-  return (
-    <main className="app-shell">
-      <header className="app-toolbar">
-        <div className="brand-block">
-          <img className="brand-mark" src="/favicon.svg" alt="" aria-hidden />
-          <div className="brand-copy">
-            <h1>Partbench</h1>
-          </div>
-        </div>
-        <div className="toolbar-actions" aria-label="Command controls">
-          {commandPending && (
-            <span className="pending-status" role="status">
-              Updating model
-            </span>
-          )}
-          <div className="toolbar-group toolbar-units">
-            <label className="toolbar-field">
-              Units
-              <select
-                value={document.units}
-                disabled={commandPending}
-                onChange={(event) =>
-                  void updateDocumentUnits(
-                    event.currentTarget.value as CadDocument["units"]
-                  )
-                }
-              >
-                <option value="mm">mm</option>
-                <option value="cm">cm</option>
-                <option value="m">m</option>
-                <option value="in">in</option>
-              </select>
-            </label>
-            <label className="toolbar-field wide">
-              Unit change
-              <select
-                value={unitUpdateMode}
-                disabled={commandPending}
-                onChange={(event) =>
-                  setUnitUpdateMode(
-                    event.currentTarget.value as DocumentUnitUpdateMode
-                  )
-                }
-              >
-                <option value="metadataOnly">Relabel values</option>
-                <option value="preservePhysicalSize">Convert size</option>
-              </select>
-            </label>
-          </div>
-          <div className="toolbar-group quick-create">
-            <button
-              type="button"
-              aria-label="Create box"
-              title="Create box"
-              onClick={() => void createBox()}
-              disabled={commandPending}
-            >
-              Box
-            </button>
-            <button
-              type="button"
-              aria-label="Create cylinder"
-              title="Create cylinder"
-              onClick={() => void createCylinder()}
-              disabled={commandPending}
-            >
-              Cylinder
-            </button>
-            <button
-              type="button"
-              aria-label="Create sphere"
-              title="Create sphere"
-              onClick={() => void createSphere()}
-              disabled={commandPending}
-            >
-              Sphere
-            </button>
-            <button
-              type="button"
-              aria-label="Create cone"
-              title="Create cone"
-              onClick={() => void createCone()}
-              disabled={commandPending}
-            >
-              Cone
-            </button>
-            <button
-              type="button"
-              aria-label="Create torus"
-              title="Create torus"
-              onClick={() => void createTorus()}
-              disabled={commandPending}
-            >
-              Torus
-            </button>
-          </div>
-          <div className="toolbar-group history-controls">
-            <button
-              type="button"
-              onClick={undo}
-              disabled={commandPending || engine.getTransactions().length === 0}
-            >
-              Undo
-            </button>
-            <button
-              type="button"
-              onClick={redo}
-              disabled={commandPending || engine.getRedoStack().length === 0}
-            >
-              Redo
-            </button>
-          </div>
-        </div>
-        {commandError && <p className="toolbar-error">{commandError}</p>}
-        {commandNotice && !commandError && (
-          <p className="toolbar-notice">{commandNotice}</p>
-        )}
-      </header>
+  function navigateToMode(mode: "project" | "solid" | "sketch" | "inspect") {
+    dispatchWorkbench({
+      type: "request-navigation",
+      intent: { kind: "mode", mode }
+    });
+  }
 
-      <section className="workspace" aria-label="CAD workspace">
-        <aside className="model-browser-shell" aria-label="Model browser">
-          <div
-            className="model-browser-tabs"
-            role="tablist"
-            aria-label="Model browser tabs"
-          >
-            <button
-              id="model-browser-tab-tree"
-              type="button"
-              role="tab"
-              aria-controls="model-browser-panel-tree"
-              aria-selected={activeModelBrowserPanel === "tree"}
-              className={activeModelBrowserPanel === "tree" ? "active" : ""}
-              onClick={() => setActiveModelBrowserPanel("tree")}
-            >
-              <span>Tree</span>
-            </button>
-            <button
-              id="model-browser-tab-selection"
-              type="button"
-              role="tab"
-              aria-controls="model-browser-panel-selection"
-              aria-selected={activeModelBrowserPanel === "selection"}
-              className={
-                activeModelBrowserPanel === "selection" ? "active" : ""
-              }
-              onClick={() => setActiveModelBrowserPanel("selection")}
-            >
-              <span>Selection</span>
-            </button>
-          </div>
+  function openProjectPage(
+    page: "overview" | "files" | "parameters" | "history" | "export"
+  ) {
+    dispatchWorkbench({
+      type: "request-navigation",
+      intent: { kind: "project-page", page }
+    });
+  }
 
-          <div
-            id="model-browser-panel-tree"
-            role="tabpanel"
-            aria-labelledby="model-browser-tab-tree"
-            className="model-browser-panel"
-            hidden={activeModelBrowserPanel !== "tree"}
-          >
-            <StructurePanel
-              bodies={projectStructure.bodies}
-              features={projectStructure.features}
-              featureEditability={selectedFeatureEditability}
-              focusedSketchId={focusedSketchId}
-              generatedReferences={selectedBodyGeneratedReferences.references}
-              geometryStatuses={
-                derivedGeometryEnabled ? geometryStatusBySourceId : undefined
-              }
-              health={projectHealth}
-              namedReferences={namedReferences}
-              namedReferenceCandidatesByName={namedReferenceCandidatesByName}
-              objects={sceneObjects}
-              parts={projectStructure.parts}
-              referenceCandidatesByStableId={referenceCandidatesByStableId}
-              selectedId={selectedId}
-              selectedGeneratedReference={selectedGeneratedReference}
-              sketches={sketches}
-              units={document.units}
-              onFocusSketch={focusSketch}
-              onInspectNamedReference={inspectNamedReference}
-              onSelect={selectObject}
-              onSelectGeneratedReference={selectGeneratedReference}
-            />
-          </div>
+  function runWorkbenchAction(actionId: UiActionId): void {
+    dispatchWorkbench({ type: "set-active-tool", actionId });
+    switch (actionId) {
+      case "project.new":
+        openProjectPage("files");
+        setProjectMessage("Create a new project from the Files workspace.");
+        return;
+      case "project.open":
+        openProjectPage("files");
+        void openProjectWcad();
+        return;
+      case "project.save":
+        void saveProjectWcad();
+        return;
+      case "project.save-as":
+        void saveProjectWcadAs();
+        return;
+      case "project.import-step":
+        openProjectPage("files");
+        void openProjectStepImport();
+        return;
+      case "project.import-json":
+        openProjectPage("files");
+        return;
+      case "project.export-json":
+        openProjectPage("files");
+        exportProjectJson();
+        return;
+      case "project.download-json":
+        downloadProjectJson();
+        return;
+      case "project.export-step":
+        openProjectPage("export");
+        void downloadExactStepExport();
+        return;
+      case "project.export-glb":
+        openProjectPage("export");
+        downloadVisualizationMeshExport();
+        return;
+      case "project.overview":
+        openProjectPage("overview");
+        return;
+      case "project.files":
+        openProjectPage("files");
+        return;
+      case "project.parameters":
+        openProjectPage("parameters");
+        return;
+      case "project.history":
+        openProjectPage("history");
+        return;
+      case "project.export":
+        openProjectPage("export");
+        return;
+      case "project.undo":
+        undo();
+        return;
+      case "project.redo":
+        redo();
+        return;
+      case "solid.box":
+        void createBox();
+        return;
+      case "solid.cylinder":
+        void createCylinder();
+        return;
+      case "solid.sphere":
+        void createSphere();
+        return;
+      case "solid.cone":
+        void createCone();
+        return;
+      case "solid.torus":
+        void createTorus();
+        return;
+      case "solid.sketch":
+        navigateToMode("sketch");
+        setCommandNotice("Choose a plane and name in the sketch editor.");
+        return;
+      case "solid.measure":
+      case "inspect.measure":
+        navigateToMode("inspect");
+        if (viewportTwoTargetMeasurementTarget) {
+          startViewportTwoTargetMeasurement(viewportTwoTargetMeasurementTarget);
+        }
+        return;
+      case "inspect.measure-between":
+      case "inspect.mass-properties":
+      case "inspect.health":
+        navigateToMode("inspect");
+        return;
+      case "sketch.arc":
+        if (focusedSketchId) startThreePointArcTool(focusedSketchId);
+        else setCommandNotice("Select or create a sketch first.");
+        return;
+      case "sketch.finish":
+        setThreePointArcTool(undefined);
+        navigateToMode("solid");
+        setCommandNotice("Sketch finished. No model change was created.");
+        return;
+      default: {
+        const mode = actionId.slice(0, actionId.indexOf("."));
+        if (
+          mode === "project" ||
+          mode === "solid" ||
+          mode === "sketch" ||
+          mode === "inspect"
+        ) {
+          navigateToMode(mode);
+        }
+        setCommandNotice(
+          "Complete this action in the focused workbench panel."
+        );
+      }
+    }
+  }
 
-          <div
-            id="model-browser-panel-selection"
-            role="tabpanel"
-            aria-labelledby="model-browser-tab-selection"
-            className="model-browser-panel selection-browser-panel"
-            hidden={activeModelBrowserPanel !== "selection"}
-          >
-            <Inspector
-              disabled={commandPending}
-              measurements={selectedMeasurements}
-              bodyMeasurements={selectedBodyMeasurements.measurements}
-              bodyMeasurementsError={selectedBodyMeasurements.error}
-              bodyTopology={selectedBodyTopology.topology}
-              bodyTopologyError={selectedBodyTopology.error}
-              bodyTopologyExactMetadataStatus={
-                selectedBodyTopology.exactMetadataStatus
-              }
-              bodyMassProperties={selectedBodyMassProperties.massProperties}
-              bodyMassPropertiesError={selectedBodyMassProperties.error}
-              body={selectedBody}
-              featureEditability={selectedFeatureEditability}
-              feature={selectedFeature}
-              featureSourceEditor={
-                selectedFeature &&
-                (selectedFeature.kind === "extrude" ||
-                  selectedFeature.kind === "revolve" ||
-                  selectedFeature.kind === "sweep") ? (
-                  <CompositeFeatureEditor
-                    key={`${selectedFeature.id}:source`}
-                    disabled={commandPending}
-                    feature={selectedFeature}
-                    pathCandidatesBySketchId={pathCandidatesBySketchId}
-                    profileCandidatesBySketchId={profileCandidatesBySketchId}
-                    sketches={sketches}
-                    inspectProposal={readFeatureEditProposal}
-                    onUpdateExtrudeProfile={(featureId, profile) =>
-                      void updateCompositeExtrudeProfile(featureId, profile)
-                    }
-                    onUpdateRevolveProfile={(featureId, profile) =>
-                      void updateCompositeRevolveProfile(featureId, profile)
-                    }
-                    onUpdateSweepRefs={(featureId, profile, path) =>
-                      void updateCompositeSweepRefs(featureId, profile, path)
-                    }
-                  />
-                ) : undefined
-              }
-              generatedReferences={selectedBodyGeneratedReferences.references}
-              generatedReferencesError={selectedBodyGeneratedReferences.error}
-              generatedReferenceMeasurements={
-                selectedGeneratedReferenceMeasurements
-              }
-              namedReferences={namedReferences}
-              namedReferenceHealthByName={namedReferenceHealthByName}
-              namedReferenceCandidatesByName={namedReferenceCandidatesByName}
-              object={selectedObject}
-              referenceCandidatesByStableId={referenceCandidatesByStableId}
-              selectedGeneratedReference={selectedGeneratedReference}
-              selectedNamedReferenceName={selectedNamedReferenceName}
-              selectionReferenceCandidates={
-                selectedSelectionReferenceCandidates
-              }
-              units={document.units}
-              onApplyDimensions={(form) => void updateSelectedDimensions(form)}
-              onApplyName={(name) => void renameSelectedObject(name)}
-              onApplyTransform={(form) => void updateSelectedTransform(form)}
-              onDelete={() => void deleteSelectedObject()}
-              onDeleteFeature={(featureId) =>
-                void deleteAuthoredFeature(featureId)
-              }
-              onCreateSketchOnFace={(form) => void createSketchOnFace(form)}
-              onCreateEdgeFinish={(operation, form) =>
-                void createEdgeFinish(operation, form)
-              }
-              onDeleteNamedReference={(name) => void deleteNamedReference(name)}
-              onNameGeneratedReference={(name, target) =>
-                void nameGeneratedReference(name, target)
-              }
-              onCreateTopologyAnchor={(target) =>
-                void createStableTopologyReference(target)
-              }
-              onRepairTopologyAnchor={(target) =>
-                void repairStableTopologyReference(target)
-              }
-              onRepairTopologyAnchorCandidate={(target, candidateId) =>
-                void repairStableTopologyReference(target, candidateId)
-              }
-              onPreviewTopologyAnchorRepair={(target) =>
-                void previewStableTopologyRepair(target)
-              }
-              onRepairNamedReference={(name, target) =>
-                void repairNamedReference(name, target)
-              }
-              onInspectNamedReference={inspectNamedReference}
-              onSelectGeneratedReference={(selection) => {
-                setSelectedGeneratedReference(selection);
-                setViewportPickIntent(undefined);
-                setViewportHoverPick(undefined);
-              }}
-              onUpdateExtrude={(featureId, depth, side) =>
-                void updateAuthoredExtrude(featureId, depth, side)
-              }
-              onUpdateRevolve={(featureId, angleDegrees) =>
-                void updateAuthoredRevolve(featureId, angleDegrees)
-              }
-              onUpdateHole={(featureId, depthMode, depth, direction) =>
-                void updateAuthoredHole(featureId, depthMode, depth, direction)
-              }
-              onUpdateChamfer={(featureId, distance) =>
-                void updateAuthoredChamfer(featureId, distance)
-              }
-              onUpdateFillet={(featureId, radius) =>
-                void updateAuthoredFillet(featureId, radius)
-              }
-              topologyRepairPreview={topologyRepairPreview}
-            />
-          </div>
-        </aside>
-
-        <ViewportCanvas
-          primitives={renderScene.primitives}
-          meshes={renderScene.meshes}
-          notifyHoverPointChanges={Boolean(threePointArcTool)}
-          selectedId={selectedViewportRenderId}
-          visualStates={viewportVisualState.rendererVisualStates}
-          status={viewportVisualState.status}
-          contextualSurface={
-            <ViewportContextualCommandSurface
-              disabled={commandPending}
-              surface={viewportContextualCommandSurface}
-              interactionSurface={viewportInteractionSurface}
-              twoTargetMeasurement={viewportTwoTargetMeasurement}
-              onClearTwoTargetMeasurement={clearViewportTwoTargetMeasurement}
-              onContinueInModeling={runViewportContextualCommand}
-              onNameReference={nameViewportContextualReference}
-              onRunCommand={runViewportContextualCommand}
-              onSetSecondTwoTargetMeasurement={
-                setSecondViewportTwoTargetMeasurement
-              }
-              onStartTwoTargetMeasurement={startViewportTwoTargetMeasurement}
-              onSelectReference={selectGeneratedReference}
-            />
+  const uiActionAvailability = useMemo<UiActionAvailabilityProjection>(
+    () => ({
+      "project.undo": engine.getTransactions().length
+        ? { status: "ready" }
+        : { status: "blocked", message: "There is nothing to undo." },
+      "project.redo": engine.getRedoStack().length
+        ? { status: "ready" }
+        : { status: "blocked", message: "There is nothing to redo." },
+      "inspect.fit-selection": selectedViewportRenderId
+        ? { status: "ready" }
+        : {
+            status: "needs-selection",
+            message: "Select a visible body, face, or edge."
           }
-          onHover={(pick) => {
-            if (threePointArcTool) {
-              hoverThreePointArcTool(pick);
-            } else {
-              hoverViewportPick(pick);
-            }
-          }}
-          onSelect={(pick) => {
-            if (threePointArcTool) {
-              void captureThreePointArcToolPick(pick);
-            } else {
-              selectViewportPick(pick);
-            }
-          }}
-          onCancelTransientState={clearViewportTransientState}
-          sketchOverlay={({ camera, size }) => (
-            <>
-              {sketchViewportDragTarget ? (
-                <SketchViewportDragOverlay
-                  camera={camera}
-                  disabled={commandPending}
-                  displayFrame={getSketchViewportDisplayFrame(
-                    sketchViewportDragTarget.sketch.id
-                  )}
-                  selectedEntityId={sketchViewportDragTarget.entityId}
-                  size={size}
-                  sketch={sketchViewportDragTarget.sketch}
-                  onCommitEntity={(sketchId, entity) =>
-                    void updateSketchEntity(sketchId, entity)
-                  }
-                  onPreviewEntity={previewSketchEntityUpdate}
-                />
-              ) : null}
-              {threePointArcTool &&
-              getSketchViewportDisplayFrame(threePointArcTool.sketchId) ? (
-                <SketchArcToolOverlay
-                  camera={camera}
-                  displayFrame={
-                    getSketchViewportDisplayFrame(threePointArcTool.sketchId)!
-                  }
-                  session={threePointArcTool}
-                  size={size}
-                />
-              ) : null}
-            </>
-          )}
-        />
+    }),
+    [document, selectedViewportRenderId]
+  );
+  const workbenchActionRunnerRef = useRef<(id: UiActionId) => void>(
+    () => undefined
+  );
+  workbenchActionRunnerRef.current = runWorkbenchAction;
+  const uiActionContext = useMemo<UiActionContext>(
+    () => ({
+      availability: uiActionAvailability,
+      pending: commandPending,
+      runAction: (id) => workbenchActionRunnerRef.current(id),
+      explainUnavailable: (_id, availability) =>
+        setCommandNotice(availability.message)
+    }),
+    [commandPending, uiActionAvailability]
+  );
+  const projectedUiActions = useMemo(
+    () => projectUiActions(uiActionContext),
+    [uiActionContext]
+  );
+  useEffect(() => {
+    const openSearch = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        dispatchWorkbench({
+          type: "set-command-search-open",
+          open: true
+        });
+      }
+    };
+    window.addEventListener("keydown", openSearch);
+    return () => window.removeEventListener("keydown", openSearch);
+  }, []);
 
-        <div className="right-rail" aria-label="Project and modeling tools">
-          <CompositeFeaturePanel
-            addTargetBodies={addTargetBodyOptions}
-            cutTargetBodies={cutTargetBodyOptions}
-            disabled={commandPending}
-            pathCandidatesBySketchId={pathCandidatesBySketchId}
-            profileCandidatesBySketchId={profileCandidatesBySketchId}
-            sketches={sketches}
-            onCreateExtrude={(form) => void createCompositeExtrude(form)}
-            onCreateRevolve={(form) => void createCompositeRevolve(form)}
-            onCreateSweep={(form) => void createCompositeSweep(form)}
-          />
-          <ModelingActionsPanel
-            actions={modelingActions}
-            addTargetBodies={addTargetBodyOptions}
-            context={modelingSelectionContext}
-            cutTargetBodies={cutTargetBodyOptions}
-            disabled={commandPending}
-            holeTargetBodies={holeTargetBodyOptions}
-            namedReferences={namedReferences}
-            namedReferenceHealthByName={namedReferenceHealthByName}
-            selectedNamedReferenceName={selectedNamedReferenceName}
-            shellTargetGeneratedReferences={
-              selectedShellTargetGeneratedReferences
-            }
-            sketches={sketches}
-            onAddEntity={(sketchId, kind, form) =>
-              void addSketchEntity(sketchId, kind, form)
-            }
-            onCreateConstraint={(sketchId, entityId, form) =>
-              void createSketchConstraint(sketchId, entityId, form)
-            }
-            onCreateDimension={(sketchId, entityId, target, form) =>
-              void createSketchDimension(sketchId, entityId, target, form)
-            }
-            onCreateEdgeFinish={(operation, form) =>
-              void createEdgeFinish(operation, form)
-            }
-            onCreateSideHoleSketch={(form, targetBodyId) =>
-              void createSideHoleSketch(form, targetBodyId)
-            }
-            onCreateLinearPattern={(form) => void createLinearPattern(form)}
-            onCreateCircularPattern={(form) => void createCircularPattern(form)}
-            onCreateMirror={(form) => void createMirror(form)}
-            onCreateShell={(form) => void createShell(form)}
-            onCreateSweep={(profileSketchId, profileEntityId, form) =>
-              void createSweep(profileSketchId, profileEntityId, form)
-            }
-            onCreateLoft={(form) => void createLoft(form)}
-            onCreateSketch={(form) => void createSketch(form)}
-            onCreateSketchOnFace={(form) => void createSketchOnFace(form)}
-            onExtrudeEntity={(sketchId, entityId, form) =>
-              void extrudeSketchEntity(sketchId, entityId, form)
-            }
-            onHoleEntity={(sketchId, entityId, form) =>
-              void holeSketchEntity(sketchId, entityId, form)
-            }
-            onNameGeneratedReference={(name, target) =>
-              void nameGeneratedReference(name, target)
-            }
-            onRepairNamedReference={(name, target) =>
-              void repairNamedReference(name, target)
-            }
-            onSelectBody={selectObject}
-            onUpdateLinearPattern={(featureId, edit) =>
-              void updateAuthoredLinearPattern(featureId, edit)
-            }
-            onUpdateCircularPattern={(featureId, edit) =>
-              void updateAuthoredCircularPattern(featureId, edit)
-            }
-            onUpdateMirror={(featureId, edit) =>
-              void updateAuthoredMirror(featureId, edit)
-            }
-            onUpdateShell={(featureId, edit) =>
-              void updateAuthoredShell(featureId, edit)
-            }
-            onDeleteFeature={(featureId) =>
-              void deleteAuthoredFeature(featureId)
-            }
-            onDeleteEntity={(sketchId, entityId) =>
-              void deleteSketchEntity(sketchId, entityId)
-            }
-            onDeleteSketch={(sketchId) => void deleteSketch(sketchId)}
-            onRenameSketch={(sketchId, name) =>
-              void renameSketch(sketchId, name)
-            }
-            onRevolveEntity={(sketchId, entityId, form) =>
-              void revolveSketchEntity(sketchId, entityId, form)
-            }
-            onSelectSketch={focusSketch}
-            onUpdateEntity={(sketchId, entity) =>
-              void updateSketchEntity(sketchId, entity)
-            }
-          />
-
-          <details className="project-file-drawer">
-            <summary>
-              <span>Project/File</span>
-              <small>
-                {getProjectFileNameLabel(projectFile)} ·{" "}
-                {getProjectFileDirtyLabel(projectFile)}
-              </small>
-            </summary>
-
-            <ProjectJsonPanel
-              disabled={commandPending}
-              exportReadiness={projectExportReadiness}
-              importReadiness={projectImportReadiness}
-              topologyIdentityReadiness={projectTopologyIdentityReadiness}
-              visualizationDownloadAvailable={
-                projectStorageCapabilities.jsonDownloadAvailable
+  return (
+    <>
+      <WorkbenchShell
+        mode={workbenchUi.mode}
+        leftDockWidth={workbenchUi.leftDockWidth}
+        rightDockWidth={workbenchUi.rightDockWidth}
+        leftDockCollapsed={workbenchUi.leftDockCollapsed}
+        rightDockCollapsed={workbenchUi.rightDockCollapsed}
+        projectDetailsOpen={workbenchUi.mode === "project"}
+        onDockCollapsedChange={(side, collapsed) =>
+          dispatchWorkbench({
+            type: "set-dock-collapsed",
+            side,
+            collapsed
+          })
+        }
+        onDockWidthChange={(side, width) =>
+          dispatchWorkbench({ type: "set-dock-width", side, width })
+        }
+        header={
+          <>
+            <GlobalHeader
+              documentName={getProjectFileNameLabel(projectFile)}
+              saveState={
+                projectFile.dirty
+                  ? "unsaved"
+                  : projectFileHandle
+                    ? "saved-local"
+                    : "saved-browser"
               }
-              visualizationExport={visualizationMeshExportStatus}
-              projectJson={projectJson}
-              projectFile={projectFile}
-              opfsCacheStatus={projectOpfsCacheStatus}
-              storageCapabilities={projectStorageCapabilities}
-              workflow={projectJsonWorkflow}
-              message={projectMessage}
-              messageTone={projectMessageTone}
-              onOpenWcad={openProjectWcad}
-              onOpenStep={openProjectStepImport}
-              onOpenWcadFileLoaded={(bytes, fileName) =>
-                void importProjectWcadBytes(bytes, fileName, "uploadedFallback")
-              }
-              onStepFileLoaded={(bytes, fileName) =>
-                void importProjectStepBytes(bytes, fileName)
-              }
-              onProjectJsonChange={(value) => {
-                setProjectJson(value);
-                setProjectJsonDraftSource(
-                  createProjectJsonDraftSourceForEditorValue(value)
-                );
-                setProjectMessage(undefined);
+              undo={{
+                available:
+                  !commandPending && engine.getTransactions().length > 0,
+                pending: commandPending,
+                unavailableReason:
+                  engine.getTransactions().length === 0
+                    ? "There is nothing to undo."
+                    : undefined,
+                run: undo
               }}
-              onProjectFileLoaded={loadProjectFile}
-              onProjectFileError={(message) => {
-                setProjectMessage(message);
-                setProjectMessageTone("error");
+              redo={{
+                available: !commandPending && engine.getRedoStack().length > 0,
+                pending: commandPending,
+                unavailableReason:
+                  engine.getRedoStack().length === 0
+                    ? "There is nothing to redo."
+                    : undefined,
+                run: redo
               }}
-              onRefreshOpfsCache={() => void refreshProjectOpfsCache(true)}
-              onClearOpfsCache={() => void clearProjectOpfsCache()}
-              onSaveWcad={() => void saveProjectWcad()}
-              onSaveAsWcad={() => void saveProjectWcadAs()}
-              onExport={exportProjectJson}
-              onDownload={downloadProjectJson}
-              onDownloadStep={() => void downloadExactStepExport()}
-              onDownloadVisualization={downloadVisualizationMeshExport}
-              onImport={importProjectJson}
+              onOpenCommandSearch={() =>
+                dispatchWorkbench({
+                  type: "set-command-search-open",
+                  open: true
+                })
+              }
+              onOpenHelp={() =>
+                setCommandNotice(
+                  "Shortcuts: Ctrl+K search, Ctrl+Z undo, Ctrl+Shift+Z redo, F fit, Escape cancel."
+                )
+              }
+              pendingLabel={commandPending ? "Updating model" : undefined}
             />
-          </details>
-
-          <details className="advanced-tools-drawer">
-            <summary>
-              <span>Workspace tools</span>
-              <small>Sketches, log</small>
-            </summary>
-
-            <section className="utility-dock" aria-label="Workspace tools">
+          </>
+        }
+        ribbon={
+          <ModeRibbon
+            mode={workbenchUi.mode}
+            actions={projectedUiActions}
+            activeActionId={workbenchUi.activeTool}
+            onModeChange={navigateToMode}
+            onInvokeAction={(action) =>
+              void invokeUiAction(action, uiActionContext)
+            }
+            onExplainUnavailable={(_action, availability) =>
+              setCommandNotice(availability.message)
+            }
+          />
+        }
+        leftDock={
+          workbenchUi.mode === "project" ? (
+            <nav className="pb-project-navigation" aria-label="Project pages">
+              {(
+                [
+                  ["overview", "Overview"],
+                  ["files", "Files"],
+                  ["parameters", "Parameters"],
+                  ["history", "History"],
+                  ["export", "Export"]
+                ] as const
+              ).map(([page, label]) => (
+                <button
+                  key={page}
+                  type="button"
+                  aria-current={
+                    (workbenchUi.projectPage ?? "overview") === page
+                      ? "page"
+                      : undefined
+                  }
+                  onClick={() => openProjectPage(page)}
+                >
+                  {label}
+                </button>
+              ))}
+            </nav>
+          ) : (
+            <div className="model-browser-shell" aria-label="Model browser">
               <div
-                className="utility-tabs"
+                className="model-browser-tabs"
                 role="tablist"
-                aria-label="Tool tabs"
+                aria-label="Model browser tabs"
               >
-                {utilityPanels.map((panel) => (
-                  <button
-                    key={panel.id}
-                    id={`utility-tab-${panel.id}`}
-                    type="button"
-                    role="tab"
-                    aria-controls={`utility-panel-${panel.id}`}
-                    aria-selected={activeUtilityPanel === panel.id}
-                    className={activeUtilityPanel === panel.id ? "active" : ""}
-                    onClick={() => setActiveUtilityPanel(panel.id)}
-                  >
-                    <span>{panel.label}</span>
-                  </button>
-                ))}
+                <button
+                  id="model-browser-tab-tree"
+                  type="button"
+                  role="tab"
+                  aria-controls="model-browser-panel-tree"
+                  aria-selected={activeModelBrowserPanel === "tree"}
+                  className={activeModelBrowserPanel === "tree" ? "active" : ""}
+                  onClick={() => setActiveModelBrowserPanel("tree")}
+                >
+                  <span>Tree</span>
+                </button>
+                <button
+                  id="model-browser-tab-selection"
+                  type="button"
+                  role="tab"
+                  aria-controls="model-browser-panel-selection"
+                  aria-selected={activeModelBrowserPanel === "selection"}
+                  className={
+                    activeModelBrowserPanel === "selection" ? "active" : ""
+                  }
+                  onClick={() => setActiveModelBrowserPanel("selection")}
+                >
+                  <span>Selection</span>
+                </button>
               </div>
 
-              <div className="utility-panels">
-                <div
-                  id="utility-panel-sketches"
-                  role="tabpanel"
-                  aria-labelledby="utility-tab-sketches"
-                  className="utility-panel"
-                  hidden={activeUtilityPanel !== "sketches"}
-                >
-                  <SketchPanel
-                    key={focusedSketchId ?? "sketch-panel"}
+              <div
+                id="model-browser-panel-tree"
+                role="tabpanel"
+                aria-labelledby="model-browser-tab-tree"
+                className="model-browser-panel"
+                hidden={activeModelBrowserPanel !== "tree"}
+              >
+                <StructurePanel
+                  bodies={projectStructure.bodies}
+                  features={projectStructure.features}
+                  featureEditability={selectedFeatureEditability}
+                  focusedSketchId={focusedSketchId}
+                  generatedReferences={
+                    selectedBodyGeneratedReferences.references
+                  }
+                  geometryStatuses={
+                    derivedGeometryEnabled
+                      ? geometryStatusBySourceId
+                      : undefined
+                  }
+                  health={projectHealth}
+                  namedReferences={namedReferences}
+                  namedReferenceCandidatesByName={
+                    namedReferenceCandidatesByName
+                  }
+                  objects={sceneObjects}
+                  parts={projectStructure.parts}
+                  referenceCandidatesByStableId={referenceCandidatesByStableId}
+                  selectedId={selectedId}
+                  selectedGeneratedReference={selectedGeneratedReference}
+                  sketches={sketches}
+                  units={document.units}
+                  onFocusSketch={focusSketch}
+                  onInspectNamedReference={inspectNamedReference}
+                  onSelect={selectObject}
+                  onSelectGeneratedReference={selectGeneratedReference}
+                />
+              </div>
+
+              <div
+                id="model-browser-panel-selection"
+                role="tabpanel"
+                aria-labelledby="model-browser-tab-selection"
+                className="model-browser-panel selection-browser-panel"
+                hidden={activeModelBrowserPanel !== "selection"}
+              >
+                {activeModelBrowserPanel === "selection" ? (
+                  <Suspense
+                    fallback={
+                      <p className="panel-loading">Loading selection…</p>
+                    }
+                  >
+                    <Inspector
+                      disabled={commandPending}
+                      measurements={selectedMeasurements}
+                      bodyMeasurements={selectedBodyMeasurements.measurements}
+                      bodyMeasurementsError={selectedBodyMeasurements.error}
+                      bodyTopology={selectedBodyTopology.topology}
+                      bodyTopologyError={selectedBodyTopology.error}
+                      bodyTopologyExactMetadataStatus={
+                        selectedBodyTopology.exactMetadataStatus
+                      }
+                      bodyMassProperties={
+                        selectedBodyMassProperties.massProperties
+                      }
+                      bodyMassPropertiesError={selectedBodyMassProperties.error}
+                      body={selectedBody}
+                      featureEditability={selectedFeatureEditability}
+                      feature={selectedFeature}
+                      featureSourceEditor={
+                        selectedFeature &&
+                        (selectedFeature.kind === "extrude" ||
+                          selectedFeature.kind === "revolve" ||
+                          selectedFeature.kind === "sweep") ? (
+                          <CompositeFeatureEditor
+                            key={`${selectedFeature.id}:source`}
+                            disabled={commandPending}
+                            feature={selectedFeature}
+                            pathCandidatesBySketchId={pathCandidatesBySketchId}
+                            profileCandidatesBySketchId={
+                              profileCandidatesBySketchId
+                            }
+                            sketches={sketches}
+                            inspectProposal={readFeatureEditProposal}
+                            onUpdateExtrudeProfile={(featureId, profile) =>
+                              void updateCompositeExtrudeProfile(
+                                featureId,
+                                profile
+                              )
+                            }
+                            onUpdateRevolveProfile={(featureId, profile) =>
+                              void updateCompositeRevolveProfile(
+                                featureId,
+                                profile
+                              )
+                            }
+                            onUpdateSweepRefs={(featureId, profile, path) =>
+                              void updateCompositeSweepRefs(
+                                featureId,
+                                profile,
+                                path
+                              )
+                            }
+                          />
+                        ) : undefined
+                      }
+                      generatedReferences={
+                        selectedBodyGeneratedReferences.references
+                      }
+                      generatedReferencesError={
+                        selectedBodyGeneratedReferences.error
+                      }
+                      generatedReferenceMeasurements={
+                        selectedGeneratedReferenceMeasurements
+                      }
+                      namedReferences={namedReferences}
+                      namedReferenceHealthByName={namedReferenceHealthByName}
+                      namedReferenceCandidatesByName={
+                        namedReferenceCandidatesByName
+                      }
+                      object={selectedObject}
+                      referenceCandidatesByStableId={
+                        referenceCandidatesByStableId
+                      }
+                      selectedGeneratedReference={selectedGeneratedReference}
+                      selectedNamedReferenceName={selectedNamedReferenceName}
+                      selectionReferenceCandidates={
+                        selectedSelectionReferenceCandidates
+                      }
+                      units={document.units}
+                      onApplyDimensions={(form) =>
+                        void updateSelectedDimensions(form)
+                      }
+                      onApplyName={(name) => void renameSelectedObject(name)}
+                      onApplyTransform={(form) =>
+                        void updateSelectedTransform(form)
+                      }
+                      onDelete={() => void deleteSelectedObject()}
+                      onDeleteFeature={(featureId) =>
+                        void deleteAuthoredFeature(featureId)
+                      }
+                      onCreateSketchOnFace={(form) =>
+                        void createSketchOnFace(form)
+                      }
+                      onCreateEdgeFinish={(operation, form) =>
+                        void createEdgeFinish(operation, form)
+                      }
+                      onDeleteNamedReference={(name) =>
+                        void deleteNamedReference(name)
+                      }
+                      onNameGeneratedReference={(name, target) =>
+                        void nameGeneratedReference(name, target)
+                      }
+                      onCreateTopologyAnchor={(target) =>
+                        void createStableTopologyReference(target)
+                      }
+                      onRepairTopologyAnchor={(target) =>
+                        void repairStableTopologyReference(target)
+                      }
+                      onRepairTopologyAnchorCandidate={(target, candidateId) =>
+                        void repairStableTopologyReference(target, candidateId)
+                      }
+                      onPreviewTopologyAnchorRepair={(target) =>
+                        void previewStableTopologyRepair(target)
+                      }
+                      onRepairNamedReference={(name, target) =>
+                        void repairNamedReference(name, target)
+                      }
+                      onInspectNamedReference={inspectNamedReference}
+                      onSelectGeneratedReference={(selection) => {
+                        setSelectedGeneratedReference(selection);
+                        setViewportPickIntent(undefined);
+                        setViewportHoverPick(undefined);
+                      }}
+                      onUpdateExtrude={(featureId, depth, side) =>
+                        void updateAuthoredExtrude(featureId, depth, side)
+                      }
+                      onUpdateRevolve={(featureId, angleDegrees) =>
+                        void updateAuthoredRevolve(featureId, angleDegrees)
+                      }
+                      onUpdateHole={(featureId, depthMode, depth, direction) =>
+                        void updateAuthoredHole(
+                          featureId,
+                          depthMode,
+                          depth,
+                          direction
+                        )
+                      }
+                      onUpdateChamfer={(featureId, distance) =>
+                        void updateAuthoredChamfer(featureId, distance)
+                      }
+                      onUpdateFillet={(featureId, radius) =>
+                        void updateAuthoredFillet(featureId, radius)
+                      }
+                      topologyRepairPreview={topologyRepairPreview}
+                    />
+                  </Suspense>
+                ) : null}
+              </div>
+            </div>
+          )
+        }
+        viewport={
+          <ViewportCanvas
+            primitives={renderScene.primitives}
+            meshes={renderScene.meshes}
+            notifyHoverPointChanges={Boolean(threePointArcTool)}
+            selectedId={selectedViewportRenderId}
+            visualStates={viewportVisualState.rendererVisualStates}
+            status={viewportVisualState.status}
+            contextualSurface={
+              <ViewportContextualCommandSurface
+                disabled={commandPending}
+                surface={viewportContextualCommandSurface}
+                interactionSurface={viewportInteractionSurface}
+                twoTargetMeasurement={viewportTwoTargetMeasurement}
+                onClearTwoTargetMeasurement={clearViewportTwoTargetMeasurement}
+                onContinueInModeling={runViewportContextualCommand}
+                onNameReference={nameViewportContextualReference}
+                onRunCommand={runViewportContextualCommand}
+                onSetSecondTwoTargetMeasurement={
+                  setSecondViewportTwoTargetMeasurement
+                }
+                onStartTwoTargetMeasurement={startViewportTwoTargetMeasurement}
+                onSelectReference={selectGeneratedReference}
+              />
+            }
+            onHover={(pick) => {
+              if (threePointArcTool) {
+                hoverThreePointArcTool(pick);
+              } else {
+                hoverViewportPick(pick);
+              }
+            }}
+            onSelect={(pick) => {
+              if (threePointArcTool) {
+                void captureThreePointArcToolPick(pick);
+              } else {
+                selectViewportPick(pick);
+              }
+            }}
+            onCancelTransientState={clearViewportTransientState}
+            sketchOverlay={({ camera, size }) => (
+              <>
+                {sketchViewportDragTarget ? (
+                  <SketchViewportDragOverlay
+                    camera={camera}
                     disabled={commandPending}
-                    sketches={sketches}
-                    parameters={parameters}
-                    parameterEvaluation={parameterEvaluation}
-                    sketchDimensionsBySketchId={sketchDimensionsBySketchId}
-                    sketchEvaluationsBySketchId={sketchEvaluationsBySketchId}
-                    sketchSolverStatusesBySketchId={
-                      sketchSolverStatusesBySketchId
-                    }
-                    addTargetBodies={addTargetBodyOptions}
-                    cutTargetBodies={cutTargetBodyOptions}
-                    holeTargetBodies={holeTargetBodyOptions}
-                    displayStatuses={sketchDisplayState.statuses}
-                    focusedSketchId={focusedSketchId}
-                    focusedEntityId={selectedSketchContext?.entityId}
-                    arcToolActiveSketchId={threePointArcTool?.sketchId}
-                    features={projectStructure.features}
-                    onCreateSketch={(form) => void createSketch(form)}
-                    onCreateParameter={(form) => void createParameter(form)}
-                    onApplyParameterEdit={(parameter, form) =>
-                      void applyParameterEdit(parameter, form)
-                    }
-                    onDeleteParameter={(parameterId) =>
-                      void deleteParameter(parameterId)
-                    }
-                    onRenameSketch={(sketchId, name) =>
-                      void renameSketch(sketchId, name)
-                    }
-                    onDeleteSketch={(sketchId) => void deleteSketch(sketchId)}
-                    onAddEntity={(sketchId, kind, form) =>
-                      void addSketchEntity(sketchId, kind, form)
-                    }
-                    onUpdateEntity={(sketchId, entity) =>
+                    displayFrame={getSketchViewportDisplayFrame(
+                      sketchViewportDragTarget.sketch.id
+                    )}
+                    selectedEntityId={sketchViewportDragTarget.entityId}
+                    size={size}
+                    sketch={sketchViewportDragTarget.sketch}
+                    onCommitEntity={(sketchId, entity) =>
                       void updateSketchEntity(sketchId, entity)
                     }
-                    onDeleteEntity={(sketchId, entityId) =>
-                      void deleteSketchEntity(sketchId, entityId)
-                    }
-                    onSetEntityConstruction={(
-                      sketchId,
-                      entityId,
-                      construction
-                    ) =>
-                      void setSketchEntityConstruction(
-                        sketchId,
-                        entityId,
-                        construction
-                      )
-                    }
-                    onStartThreePointArcTool={startThreePointArcTool}
-                    onCreateDimension={(sketchId, entityId, target, form) =>
-                      void createSketchDimension(
-                        sketchId,
-                        entityId,
-                        target,
-                        form
-                      )
-                    }
-                    onApplyDimensionEdit={(dimension, form) =>
-                      void applySketchDimensionEdit(dimension, form)
-                    }
-                    onDeleteDimension={(dimensionId) =>
-                      void deleteSketchDimension(dimensionId)
-                    }
-                    onCreateConstraint={(sketchId, entityId, form) =>
-                      void createSketchConstraint(sketchId, entityId, form)
-                    }
-                    onApplyConstraintEdit={(constraint, form) =>
-                      void applySketchConstraintEdit(constraint, form)
-                    }
-                    onDeleteConstraint={(constraintId) =>
-                      void deleteSketchConstraint(constraintId)
-                    }
-                    onExtrudeEntity={(sketchId, entityId, form) =>
-                      void extrudeSketchEntity(sketchId, entityId, form)
-                    }
-                    onRevolveEntity={(sketchId, entityId, form) =>
-                      void revolveSketchEntity(sketchId, entityId, form)
-                    }
-                    onHoleEntity={(sketchId, entityId, form) =>
-                      void holeSketchEntity(sketchId, entityId, form)
-                    }
-                    onSelectionContextChange={setSelectedSketchContext}
+                    onPreviewEntity={previewSketchEntityUpdate}
                   />
-                </div>
+                ) : null}
+                {threePointArcTool &&
+                getSketchViewportDisplayFrame(threePointArcTool.sketchId) ? (
+                  <SketchArcToolOverlay
+                    camera={camera}
+                    displayFrame={
+                      getSketchViewportDisplayFrame(threePointArcTool.sketchId)!
+                    }
+                    session={threePointArcTool}
+                    size={size}
+                  />
+                ) : null}
+              </>
+            )}
+          />
+        }
+        projectWorkspace={
+          <section
+            className="pb-project-workspace"
+            aria-label="Project workspace"
+          >
+            <header>
+              <p>Project</p>
+              <h2>
+                {workbenchUi.projectPage === "files"
+                  ? "Files"
+                  : workbenchUi.projectPage === "parameters"
+                    ? "Parameters"
+                    : workbenchUi.projectPage === "history"
+                      ? "History"
+                      : workbenchUi.projectPage === "export"
+                        ? "Export"
+                        : "Overview"}
+              </h2>
+            </header>
+            <p>
+              Review document settings, files, parameters, history, and export
+              readiness for {getProjectFileNameLabel(projectFile)}.
+            </p>
+          </section>
+        }
+        rightDock={
+          <div className="right-rail" aria-label="Project and modeling tools">
+            {workbenchUi.mode === "solid" && workbenchUi.activeTool ? (
+              <Suspense
+                fallback={
+                  <p className="panel-loading">Loading modeling tools…</p>
+                }
+              >
+                <CompositeFeaturePanel
+                  addTargetBodies={addTargetBodyOptions}
+                  cutTargetBodies={cutTargetBodyOptions}
+                  disabled={commandPending}
+                  pathCandidatesBySketchId={pathCandidatesBySketchId}
+                  profileCandidatesBySketchId={profileCandidatesBySketchId}
+                  sketches={sketches}
+                  onCreateExtrude={(form) => void createCompositeExtrude(form)}
+                  onCreateRevolve={(form) => void createCompositeRevolve(form)}
+                  onCreateSweep={(form) => void createCompositeSweep(form)}
+                />
+                <ModelingActionsPanel
+                  actions={modelingActions}
+                  addTargetBodies={addTargetBodyOptions}
+                  context={modelingSelectionContext}
+                  cutTargetBodies={cutTargetBodyOptions}
+                  disabled={commandPending}
+                  holeTargetBodies={holeTargetBodyOptions}
+                  namedReferences={namedReferences}
+                  namedReferenceHealthByName={namedReferenceHealthByName}
+                  selectedNamedReferenceName={selectedNamedReferenceName}
+                  shellTargetGeneratedReferences={
+                    selectedShellTargetGeneratedReferences
+                  }
+                  sketches={sketches}
+                  onAddEntity={(sketchId, kind, form) =>
+                    void addSketchEntity(sketchId, kind, form)
+                  }
+                  onCreateConstraint={(sketchId, entityId, form) =>
+                    void createSketchConstraint(sketchId, entityId, form)
+                  }
+                  onCreateDimension={(sketchId, entityId, target, form) =>
+                    void createSketchDimension(sketchId, entityId, target, form)
+                  }
+                  onCreateEdgeFinish={(operation, form) =>
+                    void createEdgeFinish(operation, form)
+                  }
+                  onCreateSideHoleSketch={(form, targetBodyId) =>
+                    void createSideHoleSketch(form, targetBodyId)
+                  }
+                  onCreateLinearPattern={(form) =>
+                    void createLinearPattern(form)
+                  }
+                  onCreateCircularPattern={(form) =>
+                    void createCircularPattern(form)
+                  }
+                  onCreateMirror={(form) => void createMirror(form)}
+                  onCreateShell={(form) => void createShell(form)}
+                  onCreateSweep={(profileSketchId, profileEntityId, form) =>
+                    void createSweep(profileSketchId, profileEntityId, form)
+                  }
+                  onCreateLoft={(form) => void createLoft(form)}
+                  onCreateSketch={(form) => void createSketch(form)}
+                  onCreateSketchOnFace={(form) => void createSketchOnFace(form)}
+                  onExtrudeEntity={(sketchId, entityId, form) =>
+                    void extrudeSketchEntity(sketchId, entityId, form)
+                  }
+                  onHoleEntity={(sketchId, entityId, form) =>
+                    void holeSketchEntity(sketchId, entityId, form)
+                  }
+                  onNameGeneratedReference={(name, target) =>
+                    void nameGeneratedReference(name, target)
+                  }
+                  onRepairNamedReference={(name, target) =>
+                    void repairNamedReference(name, target)
+                  }
+                  onSelectBody={selectObject}
+                  onUpdateLinearPattern={(featureId, edit) =>
+                    void updateAuthoredLinearPattern(featureId, edit)
+                  }
+                  onUpdateCircularPattern={(featureId, edit) =>
+                    void updateAuthoredCircularPattern(featureId, edit)
+                  }
+                  onUpdateMirror={(featureId, edit) =>
+                    void updateAuthoredMirror(featureId, edit)
+                  }
+                  onUpdateShell={(featureId, edit) =>
+                    void updateAuthoredShell(featureId, edit)
+                  }
+                  onDeleteFeature={(featureId) =>
+                    void deleteAuthoredFeature(featureId)
+                  }
+                  onDeleteEntity={(sketchId, entityId) =>
+                    void deleteSketchEntity(sketchId, entityId)
+                  }
+                  onDeleteSketch={(sketchId) => void deleteSketch(sketchId)}
+                  onRenameSketch={(sketchId, name) =>
+                    void renameSketch(sketchId, name)
+                  }
+                  onRevolveEntity={(sketchId, entityId, form) =>
+                    void revolveSketchEntity(sketchId, entityId, form)
+                  }
+                  onSelectSketch={focusSketch}
+                  onUpdateEntity={(sketchId, entity) =>
+                    void updateSketchEntity(sketchId, entity)
+                  }
+                />
+              </Suspense>
+            ) : workbenchUi.mode === "solid" ? (
+              <section
+                className="pb-inspector-empty"
+                aria-label="Solid inspector"
+              >
+                <h2>
+                  {selectedBody || selectedObject ? "Selection" : "Solid"}
+                </h2>
+                <p>
+                  {selectedBody || selectedObject
+                    ? "Open Inspect for measurements and detailed properties."
+                    : "Choose a labeled tool from the ribbon to begin."}
+                </p>
+              </section>
+            ) : null}
 
-                <div
-                  id="utility-panel-history"
-                  role="tabpanel"
-                  aria-labelledby="utility-tab-history"
-                  className="utility-panel"
-                  hidden={activeUtilityPanel !== "history"}
-                >
-                  <HistoryPanel transactions={transactionHistory} />
-                </div>
-              </div>
-            </section>
-          </details>
-        </div>
-      </section>
-    </main>
+            {workbenchUi.mode === "project" ? (
+              <Suspense
+                fallback={
+                  <p className="panel-loading">Loading project tools…</p>
+                }
+              >
+                <details className="project-file-drawer" open>
+                  <summary>
+                    <span>Project/File</span>
+                    <small>
+                      {getProjectFileNameLabel(projectFile)} ·{" "}
+                      {getProjectFileDirtyLabel(projectFile)}
+                    </small>
+                  </summary>
+
+                  <ProjectJsonPanel
+                    disabled={commandPending}
+                    exportReadiness={projectExportReadiness}
+                    importReadiness={projectImportReadiness}
+                    topologyIdentityReadiness={projectTopologyIdentityReadiness}
+                    visualizationDownloadAvailable={
+                      projectStorageCapabilities.jsonDownloadAvailable
+                    }
+                    visualizationExport={visualizationMeshExportStatus}
+                    projectJson={projectJson}
+                    projectFile={projectFile}
+                    opfsCacheStatus={projectOpfsCacheStatus}
+                    storageCapabilities={projectStorageCapabilities}
+                    workflow={projectJsonWorkflow}
+                    message={projectMessage}
+                    messageTone={projectMessageTone}
+                    onOpenWcad={openProjectWcad}
+                    onOpenStep={openProjectStepImport}
+                    onOpenWcadFileLoaded={(bytes, fileName) =>
+                      void importProjectWcadBytes(
+                        bytes,
+                        fileName,
+                        "uploadedFallback"
+                      )
+                    }
+                    onStepFileLoaded={(bytes, fileName) =>
+                      void importProjectStepBytes(bytes, fileName)
+                    }
+                    onProjectJsonChange={(value) => {
+                      setProjectJson(value);
+                      setProjectJsonDraftSource(
+                        createProjectJsonDraftSourceForEditorValue(value)
+                      );
+                      setProjectMessage(undefined);
+                    }}
+                    onProjectFileLoaded={loadProjectFile}
+                    onProjectFileError={(message) => {
+                      setProjectMessage(message);
+                      setProjectMessageTone("error");
+                    }}
+                    onRefreshOpfsCache={() =>
+                      void refreshProjectOpfsCache(true)
+                    }
+                    onClearOpfsCache={() => void clearProjectOpfsCache()}
+                    onSaveWcad={() => void saveProjectWcad()}
+                    onSaveAsWcad={() => void saveProjectWcadAs()}
+                    onExport={exportProjectJson}
+                    onDownload={downloadProjectJson}
+                    onDownloadStep={() => void downloadExactStepExport()}
+                    onDownloadVisualization={downloadVisualizationMeshExport}
+                    onImport={importProjectJson}
+                  />
+                </details>
+              </Suspense>
+            ) : null}
+
+            {workbenchUi.mode === "sketch" ? (
+              <Suspense
+                fallback={
+                  <p className="panel-loading">Loading sketch tools…</p>
+                }
+              >
+                <details className="advanced-tools-drawer" open>
+                  <summary>
+                    <span>Workspace tools</span>
+                    <small>Sketches, log</small>
+                  </summary>
+
+                  <section
+                    className="utility-dock"
+                    aria-label="Workspace tools"
+                  >
+                    <div
+                      className="utility-tabs"
+                      role="tablist"
+                      aria-label="Tool tabs"
+                    >
+                      {utilityPanels.map((panel) => (
+                        <button
+                          key={panel.id}
+                          id={`utility-tab-${panel.id}`}
+                          type="button"
+                          role="tab"
+                          aria-controls={`utility-panel-${panel.id}`}
+                          aria-selected={activeUtilityPanel === panel.id}
+                          className={
+                            activeUtilityPanel === panel.id ? "active" : ""
+                          }
+                          onClick={() => setActiveUtilityPanel(panel.id)}
+                        >
+                          <span>{panel.label}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="utility-panels">
+                      <div
+                        id="utility-panel-sketches"
+                        role="tabpanel"
+                        aria-labelledby="utility-tab-sketches"
+                        className="utility-panel"
+                        hidden={activeUtilityPanel !== "sketches"}
+                      >
+                        <SketchPanel
+                          key={focusedSketchId ?? "sketch-panel"}
+                          disabled={commandPending}
+                          sketches={sketches}
+                          parameters={parameters}
+                          parameterEvaluation={parameterEvaluation}
+                          sketchDimensionsBySketchId={
+                            sketchDimensionsBySketchId
+                          }
+                          sketchEvaluationsBySketchId={
+                            sketchEvaluationsBySketchId
+                          }
+                          sketchSolverStatusesBySketchId={
+                            sketchSolverStatusesBySketchId
+                          }
+                          addTargetBodies={addTargetBodyOptions}
+                          cutTargetBodies={cutTargetBodyOptions}
+                          holeTargetBodies={holeTargetBodyOptions}
+                          displayStatuses={sketchDisplayState.statuses}
+                          focusedSketchId={focusedSketchId}
+                          focusedEntityId={selectedSketchContext?.entityId}
+                          arcToolActiveSketchId={threePointArcTool?.sketchId}
+                          features={projectStructure.features}
+                          onCreateSketch={(form) => void createSketch(form)}
+                          onCreateParameter={(form) =>
+                            void createParameter(form)
+                          }
+                          onApplyParameterEdit={(parameter, form) =>
+                            void applyParameterEdit(parameter, form)
+                          }
+                          onDeleteParameter={(parameterId) =>
+                            void deleteParameter(parameterId)
+                          }
+                          onRenameSketch={(sketchId, name) =>
+                            void renameSketch(sketchId, name)
+                          }
+                          onDeleteSketch={(sketchId) =>
+                            void deleteSketch(sketchId)
+                          }
+                          onAddEntity={(sketchId, kind, form) =>
+                            void addSketchEntity(sketchId, kind, form)
+                          }
+                          onUpdateEntity={(sketchId, entity) =>
+                            void updateSketchEntity(sketchId, entity)
+                          }
+                          onDeleteEntity={(sketchId, entityId) =>
+                            void deleteSketchEntity(sketchId, entityId)
+                          }
+                          onSetEntityConstruction={(
+                            sketchId,
+                            entityId,
+                            construction
+                          ) =>
+                            void setSketchEntityConstruction(
+                              sketchId,
+                              entityId,
+                              construction
+                            )
+                          }
+                          onStartThreePointArcTool={startThreePointArcTool}
+                          onCreateDimension={(
+                            sketchId,
+                            entityId,
+                            target,
+                            form
+                          ) =>
+                            void createSketchDimension(
+                              sketchId,
+                              entityId,
+                              target,
+                              form
+                            )
+                          }
+                          onApplyDimensionEdit={(dimension, form) =>
+                            void applySketchDimensionEdit(dimension, form)
+                          }
+                          onDeleteDimension={(dimensionId) =>
+                            void deleteSketchDimension(dimensionId)
+                          }
+                          onCreateConstraint={(sketchId, entityId, form) =>
+                            void createSketchConstraint(
+                              sketchId,
+                              entityId,
+                              form
+                            )
+                          }
+                          onApplyConstraintEdit={(constraint, form) =>
+                            void applySketchConstraintEdit(constraint, form)
+                          }
+                          onDeleteConstraint={(constraintId) =>
+                            void deleteSketchConstraint(constraintId)
+                          }
+                          onExtrudeEntity={(sketchId, entityId, form) =>
+                            void extrudeSketchEntity(sketchId, entityId, form)
+                          }
+                          onRevolveEntity={(sketchId, entityId, form) =>
+                            void revolveSketchEntity(sketchId, entityId, form)
+                          }
+                          onHoleEntity={(sketchId, entityId, form) =>
+                            void holeSketchEntity(sketchId, entityId, form)
+                          }
+                          onSelectionContextChange={setSelectedSketchContext}
+                        />
+                      </div>
+
+                      <div
+                        id="utility-panel-history"
+                        role="tabpanel"
+                        aria-labelledby="utility-tab-history"
+                        className="utility-panel"
+                        hidden={activeUtilityPanel !== "history"}
+                      >
+                        <HistoryPanel transactions={transactionHistory} />
+                      </div>
+                    </div>
+                  </section>
+                </details>
+              </Suspense>
+            ) : null}
+          </div>
+        }
+        statusBar={
+          workbenchUi.mode === "project" ? (
+            <StatusBar
+              mode="project"
+              fileState={getProjectFileNameLabel(projectFile)}
+              saveState={getProjectFileDirtyLabel(projectFile)}
+              readiness={
+                commandError ?? commandNotice ?? "Review export readiness"
+              }
+              pendingLabel={commandPending ? "Updating model" : undefined}
+            />
+          ) : workbenchUi.mode === "sketch" ? (
+            <StatusBar
+              mode="sketch"
+              instruction={
+                commandError ??
+                commandNotice ??
+                (threePointArcTool
+                  ? "Place the next arc point"
+                  : focusedSketchId
+                    ? "Sketch tools are ready"
+                    : "Select or create a sketch")
+              }
+              zoom="Viewport"
+              units={document.units}
+              solver={formatSketchSolverStatus(
+                focusedSketchId
+                  ? sketchSolverStatusesBySketchId.get(focusedSketchId)
+                  : undefined
+              )}
+              pendingLabel={commandPending ? "Updating sketch" : undefined}
+            />
+          ) : workbenchUi.mode === "inspect" ? (
+            <StatusBar
+              mode="inspect"
+              instruction={
+                commandError ??
+                commandNotice ??
+                (viewportTwoTargetMeasurementSessionActive
+                  ? "Select the second measurement target"
+                  : "Select geometry to inspect")
+              }
+              selectionFilter={workbenchUi.selectionFilter}
+              onSelectionFilterChange={(filter) =>
+                dispatchWorkbench({
+                  type: "set-selection-filter",
+                  filter
+                })
+              }
+              zoom="Viewport"
+              units={document.units}
+              pendingLabel={commandPending ? "Updating model" : undefined}
+            />
+          ) : (
+            <StatusBar
+              mode="solid"
+              instruction={
+                commandError ??
+                commandNotice ??
+                (selectedGeneratedReference
+                  ? "Reference selected"
+                  : selectedBody
+                    ? "Body selected"
+                    : selectedObject
+                      ? "Object selected"
+                      : "Select geometry or choose a modeling tool")
+              }
+              selectionFilter={workbenchUi.selectionFilter}
+              onSelectionFilterChange={(filter) =>
+                dispatchWorkbench({
+                  type: "set-selection-filter",
+                  filter
+                })
+              }
+              zoom="Viewport"
+              units={document.units}
+              rebuildState={commandPending ? "Updating" : "Ready"}
+              pendingLabel={commandPending ? "Updating model" : undefined}
+            />
+          )
+        }
+      />
+      <CommandSearchDialog
+        open={workbenchUi.commandSearchOpen}
+        actions={projectedUiActions}
+        actionContext={uiActionContext}
+        currentMode={workbenchUi.mode}
+        onRequestClose={() =>
+          dispatchWorkbench({
+            type: "set-command-search-open",
+            open: false
+          })
+        }
+        onInvocationError={(_action, error) =>
+          setCommandError(
+            error instanceof Error
+              ? error.message
+              : "The command could not be started."
+          )
+        }
+      />
+    </>
   );
 }

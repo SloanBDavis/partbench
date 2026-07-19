@@ -90,11 +90,35 @@ stack.
 - Consequence: `scripts/v18-bundle-baseline.json` is not refreshed to excuse a
   regression; any future threshold change requires an explicit plan amendment.
 
+### D006 — Split optional mode surfaces at their existing UI boundaries
+
+- Date: 2026-07-19
+- Decision: load the existing Project, Sketch, modeling, inspector, history,
+  and exact STEP export surfaces only when their owning mode or workflow needs
+  them while their V18 replacements are integrated.
+- Reason: the persistent shell must not force unrelated workflows into the
+  initial interaction path, and the immutable V17 bundle comparison showed the
+  monolithic UI entry exceeded the V18 critical budget.
+- Consequence: workers and command handlers remain unchanged; code splitting is
+  a presentation-loading concern and cannot become a legacy-shell fallback.
+
+### D007 — Project read projections are memoized by document state
+
+- Date: 2026-07-19
+- Decision: derive project structure, readiness, health, and topology lookup
+  projections from document/derived state changes instead of recomputing them
+  during pointer-driven viewport renders.
+- Reason: hover and orbit are visual hot paths and must not re-run unrelated
+  command-query projections.
+- Consequence: document mutations remain the invalidation source; render meshes
+  remain derived views and no geometry internals move into React components.
+
 ## Increment ledger
 
 | Increment | Scope | Evidence | Commit |
 | --- | --- | --- | --- |
-| A | Inventory/foundation | 50 focused UI tests, 2 bundle-script tests, immutable V17 production metrics | Pending |
+| A | Inventory/foundation | 50 focused UI tests, 2 bundle-script tests, immutable V17 production metrics | `4c9c1cb` |
+| B | Persistent shell/search integration | 1536/1280/960 screenshots; compact-root regression fixed; full production build; critical JS 371.93 KiB gzip and CSS 13.38 KiB gzip | Pending |
 
 ## Completion evidence
 
