@@ -71,7 +71,9 @@ function renderModeStatus(props: StatusBarProps) {
       return (
         <>
           <StatusInstruction text={props.instruction} />
-          {props.coordinates ? <PassiveValue label="Pointer" value={props.coordinates} /> : null}
+          {props.coordinates ? (
+            <PassiveValue label="Pointer" value={props.coordinates} />
+          ) : null}
           <PassiveValue label="Zoom" value={props.zoom} />
           <PassiveValue label="Units" value={props.units} />
           <PassiveValue label="Solver" value={props.solver} />
@@ -81,8 +83,13 @@ function renderModeStatus(props: StatusBarProps) {
       return (
         <>
           <StatusInstruction text={props.instruction} />
-          <FilterControl value={props.selectionFilter} onChange={props.onSelectionFilterChange} />
-          {props.coordinates ? <PassiveValue label="Pointer" value={props.coordinates} /> : null}
+          <FilterControl
+            value={props.selectionFilter}
+            onChange={props.onSelectionFilterChange}
+          />
+          {props.coordinates ? (
+            <PassiveValue label="Pointer" value={props.coordinates} />
+          ) : null}
           <PassiveValue label="Zoom" value={props.zoom} />
           <PassiveValue label="Units" value={props.units} />
           <PassiveValue label="Rebuild" value={props.rebuildState} />
@@ -92,7 +99,10 @@ function renderModeStatus(props: StatusBarProps) {
       return (
         <>
           <StatusInstruction text={props.instruction} />
-          <FilterControl value={props.selectionFilter} onChange={props.onSelectionFilterChange} />
+          <FilterControl
+            value={props.selectionFilter}
+            onChange={props.onSelectionFilterChange}
+          />
           <PassiveValue label="Zoom" value={props.zoom} />
           <PassiveValue label="Units" value={props.units} />
         </>
@@ -126,7 +136,9 @@ function PassiveValue({
   readonly primary?: boolean;
 }) {
   return (
-    <span className={primary ? "pb-status-bar__primary" : "pb-status-bar__value"}>
+    <span
+      className={primary ? "pb-status-bar__primary" : "pb-status-bar__value"}
+    >
       <span className="pb-visually-hidden">{label}: </span>
       {value}
     </span>
@@ -140,13 +152,16 @@ function FilterControl({
   readonly value: SelectionFilter;
   readonly onChange?: (filter: SelectionFilter) => void;
 }) {
-  if (!onChange) return <PassiveValue label="Selection filter" value={formatMode(value)} />;
+  if (!onChange)
+    return <PassiveValue label="Selection filter" value={formatMode(value)} />;
   return (
     <label className="pb-status-bar__filter">
       <span className="pb-visually-hidden">Selection filter</span>
       <select
         value={value}
-        onChange={(event) => onChange(event.currentTarget.value as SelectionFilter)}
+        onChange={(event) =>
+          onChange(event.currentTarget.value as SelectionFilter)
+        }
       >
         <option value="body">Body</option>
         <option value="face">Face</option>

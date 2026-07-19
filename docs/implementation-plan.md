@@ -4,7 +4,7 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the repo state and the
 active implementation roadmap.
 
-Last updated: 2026-07-18.
+Last updated: 2026-07-19.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/v12.md` for the completed
@@ -14,14 +14,15 @@ record, `docs/v14.md` for the completed topology-backed downstream modeling
 release record, `docs/v15.md` for the completed V15 STEP import, expanded
 feature families, and parameter expressions release record, `docs/v16.md` for
 the completed V16 sweep, loft, pattern depth, expression extensions, and mass
-properties release record, and `docs/v17.md` for the completed V17 composite
-sketch profiles, arcs, and curved sweep paths release record,
+properties release record, `docs/v17.md` for the completed V17 composite
+sketch profiles, arcs, and curved sweep paths release record, and `docs/v18.md`
+for the completed frontend-only Precision CAD UI overhaul release record,
 `docs/native-format.md` for project-format direction, and
 `docs/occt-wasm-size.md` for OCCT/WASM load-size findings. V7, V8, V9, V10,
 and V11 are completed historical releases whose details are now condensed in
-this plan instead of maintained as separate release documents. V16 and V17 are
-complete; follow `docs/v16.md` and `docs/v17.md` for their compatibility and
-support-matrix records.
+this plan instead of maintained as separate release documents. V16, V17, and
+V18 are complete; follow their release records for compatibility, support-
+matrix, UI, and performance constraints.
 
 ## Active Rules
 
@@ -145,6 +146,14 @@ These constraints remain active:
     implemented protocol/storage, arc commands and solver support, analytic
     profile/path validation, composite extrude/revolve, curved sweeps, product
     integration, adapter parity, migration proof, and named release smokes.
+13d. V18 is **complete**. Its binding release record is `docs/v18.md`, with the
+    auditable decision and requirement ledger in `docs/v18-implementation-log.md`.
+    V18 directly replaced the production web shell with the Project, Sketch,
+    Solid, feature-edit, and Inspect workbench; centralized UI action
+    availability; retained completed V17 workflows through CADOps; added no CAD
+    capability, schema, geometry/renderer contract, file format, or adapter
+    behavior; and established immutable bundle, runtime-performance, browser,
+    responsive, accessibility, and visual-artifact release gates.
 14. V8 Tranche A is implemented as a protocol and pure-helper slice only:
     `partbench.wcad.v1` manifest/source-identity types, structured package
     validation diagnostics, `project.packageReadiness`, and thin agent/MCP
@@ -844,11 +853,12 @@ Current Partbench can:
 
 ## Current Limitations
 
-The repo now includes completed V7–V17 product surfaces through topology-backed
+The repo now includes completed V7–V18 product surfaces through topology-backed
 single-part modeling, STEP import, expanded feature families, expression
 language v2, arcs, construction geometry, explicit composite profiles, curved
-sweeps, durable pattern identity, and mass properties. It is not yet a full CAD
-system.
+sweeps, durable pattern identity, mass properties, and the frontend-only
+Precision CAD workbench. V18 does not expand the modeling matrix. It is not yet
+a full CAD system.
 
 Current limitations:
 

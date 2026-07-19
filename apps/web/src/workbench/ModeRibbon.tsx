@@ -27,7 +27,9 @@ const HEADER_OWNED_ACTIONS = new Set<UiActionId>([
   "project.redo"
 ]);
 
-const MODE_RIBBON_GROUPS: Readonly<Record<WorkbenchMode, readonly string[] | undefined>> = {
+const MODE_RIBBON_GROUPS: Readonly<
+  Record<WorkbenchMode, readonly string[] | undefined>
+> = {
   project: undefined,
   solid: ["Create", "Modify", "Pattern", "Inspect"],
   sketch: ["Create", "State", "Constraint", "Dimension", "Finish"],
@@ -65,7 +67,8 @@ export function projectRibbonGroups(
     if (
       HEADER_OWNED_ACTIONS.has(action.definition.id) ||
       !action.definition.modes.includes(mode) ||
-      (allowedGroups !== undefined && !allowedGroups.includes(action.definition.group))
+      (allowedGroups !== undefined &&
+        !allowedGroups.includes(action.definition.group))
     ) {
       continue;
     }
@@ -95,7 +98,8 @@ export function chooseVisibleRibbonGroupIds(
   const visible = new Set(groups.map((group) => group.id));
   const total = () =>
     groups.reduce(
-      (sum, group) => sum + (visible.has(group.id) ? (widths[group.id] ?? 0) : 0),
+      (sum, group) =>
+        sum + (visible.has(group.id) ? (widths[group.id] ?? 0) : 0),
       0
     );
 
@@ -119,7 +123,10 @@ export function ModeRibbon({
   onExplainUnavailable,
   availableGroupWidth
 }: ModeRibbonProps) {
-  const groups = useMemo(() => projectRibbonGroups(mode, actions), [mode, actions]);
+  const groups = useMemo(
+    () => projectRibbonGroups(mode, actions),
+    [mode, actions]
+  );
   const [visibleGroupIds, setVisibleGroupIds] = useState<ReadonlySet<string>>(
     () => new Set(groups.map((group) => group.id))
   );
@@ -128,12 +135,10 @@ export function ModeRibbon({
   const groupsRef = useRef<HTMLDivElement>(null);
   const modeRef = useRef<HTMLDivElement>(null);
   const measuringRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!rovingId.startsWith("mode-") && !activeActionId) {
-      setRovingId(`mode-${mode}`);
-    }
-  }, [activeActionId, mode, rovingId]);
+  const effectiveRovingId =
+    !activeActionId && !rovingId.startsWith("mode-")
+      ? `mode-${mode}`
+      : rovingId;
 
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -142,18 +147,29 @@ export function ModeRibbon({
 
     const measure = () => {
       const widths: Record<string, number> = {};
-      for (const element of measuring.querySelectorAll<HTMLElement>("[data-ribbon-group-id]")) {
+      for (const element of measuring.querySelectorAll<HTMLElement>(
+        "[data-ribbon-group-id]"
+      )) {
         const id = element.dataset.ribbonGroupId;
-        if (id) widths[id] = Math.ceil(element.getBoundingClientRect().width) + 1;
+        if (id)
+          widths[id] = Math.ceil(element.getBoundingClientRect().width) + 1;
       }
-      const reserved = (modeRef.current?.getBoundingClientRect().width ?? 132) + 24;
+      const reserved =
+        (modeRef.current?.getBoundingClientRect().width ?? 132) + 24;
       const available =
-        availableGroupWidth ?? Math.max(0, root.getBoundingClientRect().width - reserved);
-      setVisibleGroupIds(chooseVisibleRibbonGroupIds(groups, widths, available));
+        availableGroupWidth ??
+        Math.max(0, root.getBoundingClientRect().width - reserved);
+      setVisibleGroupIds(
+        chooseVisibleRibbonGroupIds(groups, widths, available)
+      );
     };
 
     measure();
-    if (availableGroupWidth !== undefined || typeof ResizeObserver === "undefined") return;
+    if (
+      availableGroupWidth !== undefined ||
+      typeof ResizeObserver === "undefined"
+    )
+      return;
     const observer = new ResizeObserver(measure);
     observer.observe(root);
     return () => observer.disconnect();
@@ -161,21 +177,28 @@ export function ModeRibbon({
 
   useEffect(() => {
     const current = rootRef.current?.querySelector<HTMLElement>(
-      `[data-ribbon-roving-id="${escapeSelector(rovingId)}"]`
+      `[data-ribbon-roving-id="${escapeSelector(effectiveRovingId)}"]`
     );
     if (!current || current.hidden) setRovingId(`mode-${mode}`);
-  }, [mode, rovingId, visibleGroupIds]);
+  }, [effectiveRovingId, mode, visibleGroupIds]);
 
-  const overflowGroups = groups.filter((group) => !visibleGroupIds.has(group.id));
+  const overflowGroups = groups.filter(
+    (group) => !visibleGroupIds.has(group.id)
+  );
 
   const handleToolbarKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-    const elements = [...(groupsRef.current?.querySelectorAll<HTMLElement>(
-      '[data-ribbon-roving-id]:not([hidden]):not([disabled])'
-    ) ?? [])];
+    const elements = [
+      ...(groupsRef.current?.querySelectorAll<HTMLElement>(
+        "[data-ribbon-roving-id]:not([hidden]):not([disabled])"
+      ) ?? [])
+    ];
     if (elements.length === 0) return;
     event.preventDefault();
-    const currentIndex = Math.max(0, elements.indexOf(document.activeElement as HTMLElement));
+    const currentIndex = Math.max(
+      0,
+      elements.indexOf(document.activeElement as HTMLElement)
+    );
     const nextIndex =
       event.key === "Home"
         ? 0
@@ -199,7 +222,12 @@ export function ModeRibbon({
       onKeyDown={handleToolbarKeyDown}
     >
       <div ref={groupsRef} className="pb-mode-ribbon__contents">
-        <div ref={modeRef} className="pb-mode-selector" role="tablist" aria-label="Workbench mode">
+        <div
+          ref={modeRef}
+          className="pb-mode-selector"
+          role="tablist"
+          aria-label="Workbench mode"
+        >
           {MODES.map((candidate) => (
             <button
               key={candidate}
@@ -208,7 +236,7 @@ export function ModeRibbon({
               role="tab"
               aria-selected={candidate === mode}
               data-ribbon-roving-id={`mode-${candidate}`}
-              tabIndex={rovingId === `mode-${candidate}` ? 0 : -1}
+              tabIndex={effectiveRovingId === `mode-${candidate}` ? 0 : -1}
               onFocus={() => setRovingId(`mode-${candidate}`)}
               onClick={() => onModeChange(candidate)}
             >
@@ -225,7 +253,7 @@ export function ModeRibbon({
               group={group}
               hidden={!visibleGroupIds.has(group.id)}
               activeActionId={activeActionId}
-              rovingId={rovingId}
+              rovingId={effectiveRovingId}
               onRovingChange={setRovingId}
               onInvokeAction={onInvokeAction}
               onExplainUnavailable={onExplainUnavailable}
@@ -237,15 +265,23 @@ export function ModeRibbon({
           <details className="pb-ribbon-overflow">
             <summary
               data-ribbon-roving-id="ribbon-more"
-              tabIndex={rovingId === "ribbon-more" ? 0 : -1}
+              tabIndex={effectiveRovingId === "ribbon-more" ? 0 : -1}
               onFocus={() => setRovingId("ribbon-more")}
             >
               <Icon name="more" size={20} />
               <span>More</span>
             </summary>
-            <div className="pb-ribbon-overflow__menu" role="menu" aria-label="More tools">
+            <div
+              className="pb-ribbon-overflow__menu"
+              role="menu"
+              aria-label="More tools"
+            >
               {overflowGroups.map((group) => (
-                <section key={group.id} className="pb-ribbon-overflow__group" aria-label={group.label}>
+                <section
+                  key={group.id}
+                  className="pb-ribbon-overflow__group"
+                  aria-label={group.label}
+                >
                   <h3>{group.label}</h3>
                   {group.actions.map((action) => (
                     <RibbonActionButton
@@ -264,7 +300,11 @@ export function ModeRibbon({
         ) : null}
       </div>
 
-      <div ref={measuringRef} className="pb-mode-ribbon__measure" aria-hidden="true">
+      <div
+        ref={measuringRef}
+        className="pb-mode-ribbon__measure"
+        aria-hidden="true"
+      >
         {groups.map((group) => (
           <RibbonGroup
             key={group.id}
@@ -350,7 +390,8 @@ function RibbonActionButton({
 }) {
   const blocked = action.availability.status === "blocked";
   const needsSelection = action.availability.status === "needs-selection";
-  const reason = blocked || needsSelection ? action.availability.message : undefined;
+  const reason =
+    blocked || needsSelection ? action.availability.message : undefined;
   const invoke = () => {
     if (action.pending) return;
     if (blocked) {
@@ -459,7 +500,10 @@ export function getActionIcon(id: UiActionId): IconName {
 }
 
 function slug(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
 }
 
 function format(mode: WorkbenchMode): string {

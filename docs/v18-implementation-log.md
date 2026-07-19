@@ -1,6 +1,6 @@
 # V18 Implementation Log
 
-Status: in progress.
+Status: complete (2026-07-19).
 
 This file is the auditable implementation record for the V18 Precision CAD UI
 overhaul. The normative contract remains `docs/v18.md`.
@@ -170,6 +170,44 @@ stack.
 - Consequence: the production CSS graph now contains only workbench, mode,
   editor, project, tree, viewport, and overlay owners.
 
+### D013 — Prefer the actual semantic sketch selection
+
+- Date: 2026-07-19
+- Decision: when several query-supported profiles or paths exist, Solid editors
+  prefer the sketch entity represented by the current semantic selection rather
+  than silently choosing the first query result.
+- Reason: the tree, viewport, ribbon availability, contextual strip, and editor
+  collectors must agree on one selection projection.
+- Consequence: query readiness remains authoritative, while user intent selects
+  among ready candidates without exposing raw identifiers.
+
+### D014 — V18 browser proof uses the live V18 owners
+
+- Date: 2026-07-19
+- Decision: the named browser harness detects the V18 shell and executes V17
+  arc, construction, composite-profile, revolve, curved-sweep, retarget,
+  reverse, rebuild, derived-geometry, and narrow-layout checks through the V18
+  ribbon, tree, and editors. Its legacy branch remains available only for old
+  archived builds.
+- Reason: selector compatibility with deleted panels would not prove that the
+  direct replacement retained the workflows.
+- Consequence: V17 browser compatibility now exercises the production V18
+  owners without introducing a fallback shell or duplicate workflow.
+
+### D015 — Runtime measurements model compressed production delivery
+
+- Date: 2026-07-19
+- Decision: the CDP performance gate precompresses textual production assets in
+  memory and serves them with content encoding, while leaving thresholds and
+  the immutable bundle baseline unchanged. Long-task observation is scoped to
+  the required two-second pointer interaction.
+- Reason: throttling uncompressed raw JavaScript measured the test server rather
+  than deployable production delivery, and charging earlier lazy-mode work to
+  the pointer window mixed distinct contract metrics.
+- Consequence: five clean profiles remain cache-disabled, 4x CPU/4Mbps/20ms;
+  worker/WASM request deferral and all response/frame thresholds are still
+  independently enforced.
+
 ## Increment ledger
 
 | Increment | Scope | Evidence | Commit |
@@ -177,9 +215,33 @@ stack.
 | A | Inventory/foundation | 50 focused UI tests, 2 bundle-script tests, immutable V17 production metrics | `4c9c1cb` |
 | B | Persistent shell/search integration | 1536/1280/960 screenshots; compact-root regression fixed; full production build; critical JS 371.93 KiB gzip and CSS 13.38 KiB gzip | `4a54ef0` |
 | C/G support | Ownership tree, Project workspace, shared editor primitives | 29 focused tests; web typecheck; 1536 Project and tree screenshots; 390 no-scroll viewport check; critical JS 370.56 KiB gzip and CSS 13.96 KiB gzip | `0e64b6a` |
-| D/E/F | Solid drafts/editors, precision Sketch mode, focused Inspect, compact contextual strip, legacy retirement | 32 focused capability/action/mode tests; web typecheck; ESLint with no errors; legacy component and stylesheet graph removed | Pending |
+| D/E/F | Solid drafts/editors, precision Sketch mode, focused Inspect, compact contextual strip, legacy retirement | 32 focused capability/action/mode tests; web typecheck; ESLint with no errors; legacy component and stylesheet graph removed | `638a53d` |
+| H | Action integration, keyboard/camera routing, responsive hardening | Registry-derived availability; real selection/query routing; 41 focused tests; 1536 and narrow visual review | `f4210d4` |
+| I | V17 compatibility and live V18 browser proof | Six named V17 workflows; 13-check browser result including ten V17 flows and narrow layout | `4f6b6c8` |
+| Release | Bundle/runtime gates and seven deterministic visual artifacts | Critical UI 370.66 KiB gzip; shell median 1875.5ms; search p95 33.2ms; warm action p95 68.5ms; frame p95 17.1ms; zero interaction long tasks; exact-size artifact capture | `7abb02d` |
 
 ## Completion evidence
 
-The requirement-by-requirement V18 audit will be recorded here as slices land.
-Passing a narrower test does not prove a broader Must item.
+| Must | Completion evidence |
+| --- | --- |
+| 1 | One production `WorkbenchShell` implements Project, Sketch, Solid, feature-edit, and Inspect; the five 1536x1024 artifacts record the completed states. |
+| 2 | The typed capability manifest maps every completed V17 web capability to one V18 owner, builder/effect, availability source, parity test, and retirement slice. |
+| 3 | Registry projection exposes only V17-supported actions; image-only section, appearance, pinning, vertex filter, and unsupported sketch controls are absent. |
+| 4 | Every source-changing handler still calls an existing typed CADOps builder/executor; no command or source schema changed. Undo/redo and semantic-diff tests remain green. |
+| 5 | Tree, viewport, inspector, ribbon, search, and contextual strip share the memoized semantic selection/query projection and registry availability. |
+| 6 | Solid editors use typed local drafts, collectors, validation/readiness, explicit Apply/Cancel/Delete, single-submit guards, and failure-preserving state with focused tests. |
+| 7 | Sketch mode retains V17 arcs, construction, constraints, dimensions, solver/candidate state, Finish/Escape, and standard views; the named V17 browser workflow proves the live V18 paths. |
+| 8 | Project owns `.wcad`, JSON under Advanced Interchange, STEP preview/import/export, GLB export, parameters, units, history, cache, and readiness surfaces. |
+| 9 | Inspect owns one/two-target measurement, mass properties, naming, stable/named repair, health, and camera actions. |
+| 10 | Human-copy and capability tests enforce the internal-vocabulary blacklist; IDs remain in values/test hooks, not default copy or accessible names. |
+| 11 | Accessible primitives, toolbar/tab semantics, live regions, focus/Escape behavior, reduced motion, shortcut exclusions, drawers, overflow, and 1024x768/390x740 artifacts satisfy the interaction contract. |
+| 12 | Legacy panels, composition, `styles.css`, imports, tests, and selectors were deleted in their replacement slices; there is no alternate route, flag, or fallback shell. |
+| 13 | Changes are confined to `apps/web`, tests/scripts, and release documentation; no production dependency, public command/query/schema, geometry/renderer contract, format, or adapter behavior was added. |
+| 14 | Bundle gate passes at 370.66 KiB critical JS gzip and 6.86 KiB critical CSS gzip with unchanged worker/WASM ceilings. Runtime smoke passes with no empty-shell worker/WASM request and all documented timings under budget. |
+| 15 | `docs/v18-ui-artifacts` contains the five 1536x1024 reference states plus exact 1024x768 and 390x740 shell states; human review confirmed hierarchy, viewport dominance, visible Apply/Cancel, mode-correct content, and no scroll trap/internal copy. |
+| 16 | Full unit/type/lint/format/build gates, bundle/performance gates, both V18/V17 browser names, and the six V17 release workflows pass. V21 stays minimum-triggered. |
+| 17 | `AGENTS.md`, `docs/implementation-plan.md`, `docs/v18.md`, and this ledger are reconciled as completed V18 records. |
+
+The machine-readable performance result is `.metrics/v18-performance.json`
+(generated, not source-controlled). Deterministic visual recapture is
+`pnpm capture:v18-visuals` after a production build.

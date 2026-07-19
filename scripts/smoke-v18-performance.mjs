@@ -126,7 +126,7 @@ async function measureColdRun(index) {
         return {
           shellReadyMs,
           deferredAssetRequests: resources.filter((name) =>
-            /cadCommand\.worker|geometryTessellation\.worker|opencascade\.full.*\.wasm/.test(name)
+            /cadCommand\\.worker|geometryTessellation\\.worker|opencascade\\.full.*\\.wasm/.test(name)
           )
         };
       })()

@@ -79,9 +79,7 @@ export function SketchViewportDragOverlay({
   const [drag, setDrag] = useState<SketchViewportDragState | undefined>();
   const dragRef = useRef<SketchViewportDragState | undefined>(undefined);
   const basisRef = useRef(basis);
-  basisRef.current = basis;
   const latestInputsRef = useRef({ onCommitEntity, onPreviewEntity, sketch });
-  latestInputsRef.current = { onCommitEntity, onPreviewEntity, sketch };
   const displaySketch = useMemo(
     () =>
       drag
@@ -106,6 +104,14 @@ export function SketchViewportDragOverlay({
     [camera, displaySketch, frame, selectedEntityId, size]
   );
   const preview = drag?.previewEntity;
+
+  useEffect(() => {
+    basisRef.current = basis;
+  }, [basis]);
+
+  useEffect(() => {
+    latestInputsRef.current = { onCommitEntity, onPreviewEntity, sketch };
+  }, [onCommitEntity, onPreviewEntity, sketch]);
 
   useEffect(() => {
     if (!dragRef.current) {
@@ -326,10 +332,7 @@ export function SketchViewportDragOverlay({
         : true);
 
     if (valid) {
-      await inputs.onCommitEntity(
-        inputs.sketch.id,
-        currentDrag.previewEntity
-      );
+      await inputs.onCommitEntity(inputs.sketch.id, currentDrag.previewEntity);
     }
   }
 

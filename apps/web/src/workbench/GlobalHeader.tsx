@@ -19,7 +19,9 @@ export interface GlobalHeaderProps {
   readonly pendingLabel?: string;
 }
 
-const SAVE_STATE_LABELS: Readonly<Record<GlobalHeaderProps["saveState"], string>> = {
+const SAVE_STATE_LABELS: Readonly<
+  Record<GlobalHeaderProps["saveState"], string>
+> = {
   "saved-local": "All changes saved locally",
   "saved-browser": "All changes saved in this browser",
   unsaved: "Unsaved changes"

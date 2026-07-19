@@ -1913,7 +1913,6 @@ async function v7BrowserWorkflowSmoke({
 
   async function runV18V17BrowserWorkflowSmoke() {
     const header = getElementByAriaLabel("Partbench document header");
-    const tree = getElementByAriaLabel("Document tree");
     const canvas = getElementByAriaLabel("3D scene viewport");
     if (
       !includesText(header, "Partbench") ||

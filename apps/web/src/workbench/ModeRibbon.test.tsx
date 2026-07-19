@@ -1,7 +1,10 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { projectUiActions, type UiActionContext } from "../actions/actionRegistry";
+import {
+  projectUiActions,
+  type UiActionContext
+} from "../actions/actionRegistry";
 import {
   ModeRibbon,
   chooseVisibleRibbonGroupIds,
@@ -11,12 +14,9 @@ import {
 describe("V18 mode ribbon", () => {
   it("projects ordered, labeled mode groups and leaves header actions in the header", () => {
     const projected = projectUiActions(context());
-    expect(projectRibbonGroups("solid", projected).map((group) => group.label)).toEqual([
-      "Create",
-      "Modify",
-      "Pattern",
-      "Inspect"
-    ]);
+    expect(
+      projectRibbonGroups("solid", projected).map((group) => group.label)
+    ).toEqual(["Create", "Modify", "Pattern", "Inspect"]);
     expect(
       projectRibbonGroups("project", projected)
         .flatMap((group) => group.actions)
@@ -34,7 +34,9 @@ describe("V18 mode ribbon", () => {
     const visible = chooseVisibleRibbonGroupIds(groups, widths, 268, 68);
 
     expect([...visible]).toEqual([groups[0].id, groups.at(-1)?.id]);
-    expect(groups.every((group) => visible.has(group.id) || !visible.has(group.id))).toBe(true);
+    expect(
+      groups.every((group) => visible.has(group.id) || !visible.has(group.id))
+    ).toBe(true);
   });
 
   it("renders shared ready, selection-needed, blocked, and pending projections", () => {

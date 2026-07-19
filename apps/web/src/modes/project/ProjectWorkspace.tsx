@@ -9,7 +9,7 @@ import type {
   ProjectParameterEvaluationQueryResponse,
   ProjectTopologyIdentityReadinessQueryResponse
 } from "@web-cad/cad-protocol";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { ParameterCreateForm, ParameterEditForm } from "../../cadCommands";
 import type {
   ProjectJsonSummary,
@@ -163,6 +163,7 @@ export function ProjectWorkspace({
     >
       {page === "overview" ? (
         <ProjectOverview
+          key={units}
           disabled={disabled}
           documentName={documentName}
           units={units}
@@ -263,7 +264,6 @@ function ProjectOverview({
   | "onUpdateUnits"
 >) {
   const [nextUnits, setNextUnits] = useState(units);
-  useEffect(() => setNextUnits(units), [units]);
   const identity = topologyIdentityReadiness
     ? createProjectTopologyIdentityDisplay(topologyIdentityReadiness)
     : undefined;
@@ -680,12 +680,6 @@ function ProjectParameters({
   );
   const createIssue = getCreateParameterIssue(createForm);
   const editIssue = getEditParameterIssue(editForm);
-
-  useEffect(() => {
-    if (editingId && !editingParameter) {
-      setEditingId(undefined);
-    }
-  }, [editingId, editingParameter]);
 
   function beginEdit(parameter: CadParameterSnapshot): void {
     setEditingId(parameter.id);

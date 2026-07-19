@@ -206,7 +206,9 @@
   }
 
   .pb-mode-selector__button > span,
-  .pb-ribbon-group:not([aria-label="Finish"]):not([aria-label="Commit"]) .pb-ribbon-action > span {
+  .pb-ribbon-group:not([aria-label="Finish"]):not([aria-label="Commit"])
+    .pb-ribbon-action
+    > span {
     display: none;
   }
 
@@ -249,5 +251,4 @@
   .pb-mode-selector__button {
     padding-inline: var(--pb-space-6);
   }
-
 }
