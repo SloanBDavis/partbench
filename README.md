@@ -45,12 +45,11 @@ Run the browser app:
 pnpm dev
 ```
 
-When running the local Vite server, boxes, cylinders, spheres, cones, and tori
-are submitted to the derived geometry service by default and tessellated
-asynchronously in the browser Worker. The returned mesh is displayed as derived
-renderer data, app status surfaces report derived/cache/export readiness where
-appropriate, and the authoritative CAD document is not updated by mesh
-generation.
+In development and production builds, supported authored features are submitted
+to the derived geometry service by default and tessellated asynchronously in
+the browser Worker. The returned mesh is displayed as derived renderer data,
+app status surfaces report result readiness where appropriate, and the
+authoritative CAD document is not updated by mesh generation.
 
 Disable derived geometry for fallback debugging:
 
@@ -58,10 +57,10 @@ Disable derived geometry for fallback debugging:
 VITE_DISABLE_DERIVED_GEOMETRY=true pnpm dev
 ```
 
-Production builds keep derived geometry disabled unless explicitly enabled:
+The same explicit fallback is available for production-build diagnostics:
 
 ```sh
-VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build
+VITE_DISABLE_DERIVED_GEOMETRY=true pnpm build
 ```
 
 Run the full build:

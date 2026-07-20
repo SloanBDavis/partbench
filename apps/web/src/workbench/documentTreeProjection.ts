@@ -225,7 +225,7 @@ export function createDocumentTreeProjection(
         const health = healthForBody(input.health, body.id);
         return {
           id: documentTreeSelectionKey(bodySelection),
-          label: body.name ?? "Result body",
+          label: body.name && body.name !== feature.name ? body.name : "Result",
           detail: body.consumedByFeatureId
             ? "Replaced by a later feature"
             : "Solid body",
@@ -524,11 +524,16 @@ function createHealth(
   status: CadDependencyHealthStatus | undefined,
   issues: readonly string[]
 ): DocumentTreeHealth | undefined {
-  if (!status || status === "healthy") return undefined;
+  // Normal sketch freedom is design information, not a failed model result.
+  // Sketch mode and Project health retain the detailed solver/readiness view;
+  // the history tree reserves alarm badges for actionable failures.
+  if (!status || status === "healthy" || status === "under-defined") {
+    return undefined;
+  }
   const label = formatHealthLabel(status);
   return {
     label,
-    tone: status === "under-defined" ? "warning" : "error",
+    tone: "error",
     description: issues[0] ?? label
   };
 }

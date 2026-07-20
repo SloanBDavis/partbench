@@ -323,9 +323,13 @@ function TreeRow({
         >
           <Icon name={row.icon} size={16} />
           <span className="pb-tree-row__copy">
-            <span className="pb-tree-row__label">{row.label}</span>
+            <span className="pb-tree-row__label" title={row.label}>
+              {row.label}
+            </span>
             {row.detail ? (
-              <span className="pb-tree-row__detail">{row.detail}</span>
+              <span className="pb-tree-row__detail" title={row.detail}>
+                {row.detail}
+              </span>
             ) : null}
           </span>
           {editing ? (

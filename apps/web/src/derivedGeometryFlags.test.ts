@@ -5,14 +5,14 @@ describe("derivedGeometryFlags", () => {
   it("enables derived geometry by default for local serve builds", () => {
     expect(resolveDerivedGeometryFlags({ command: "serve", env: {} })).toEqual({
       enabled: true,
-      source: "serve-default"
+      source: "default-enabled"
     });
   });
 
-  it("keeps derived geometry disabled by default for production builds", () => {
+  it("enables derived geometry by default for production builds", () => {
     expect(resolveDerivedGeometryFlags({ command: "build", env: {} })).toEqual({
-      enabled: false,
-      source: "disabled"
+      enabled: true,
+      source: "default-enabled"
     });
   });
 

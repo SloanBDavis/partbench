@@ -1,4 +1,4 @@
-import type { ProjectedUiAction } from "./actionRegistry";
+import type { ProjectedUiAction, WorkbenchMode } from "./actionRegistry";
 
 export interface UiActionSearchResult extends ProjectedUiAction {
   readonly match: "exact-label" | "label-prefix" | "alias-prefix" | "other";
@@ -7,7 +7,8 @@ export interface UiActionSearchResult extends ProjectedUiAction {
 /** Case-insensitive substring and token-prefix search with deterministic order. */
 export function searchUiActions(
   actions: readonly ProjectedUiAction[],
-  query: string
+  query: string,
+  currentMode?: WorkbenchMode
 ): readonly UiActionSearchResult[] {
   const normalizedQuery = normalize(query);
 
@@ -24,6 +25,8 @@ export function searchUiActions(
     .sort(
       (left, right) =>
         left.rank - right.rank ||
+        getContextRank(left.action, currentMode) -
+          getContextRank(right.action, currentMode) ||
         left.action.registryIndex - right.action.registryIndex
     )
     .map(({ action, rank }) => ({
@@ -37,6 +40,20 @@ export function searchUiActions(
               ? "alias-prefix"
               : "other"
     }));
+}
+
+function getContextRank(
+  action: ProjectedUiAction,
+  currentMode: WorkbenchMode | undefined
+): number {
+  const inCurrentMode = currentMode
+    ? action.definition.modes.includes(currentMode)
+    : false;
+  if (inCurrentMode && action.availability.status === "ready") return 0;
+  if (inCurrentMode) return 1;
+  if (action.availability.status === "ready") return 2;
+  if (action.availability.status === "needs-selection") return 3;
+  return 4;
 }
 
 function getMatchRank(

@@ -198,7 +198,7 @@ export const UI_ACTION_METADATA = [
   ),
   action(
     "solid.sketch",
-    "Sketch",
+    "Create Sketch",
     "Create",
     ["solid"],
     ["create sketch", "draw"],
@@ -242,7 +242,9 @@ export const UI_ACTION_METADATA = [
     ["sections"],
     true,
     undefined,
-    needs("Select supported sketch sections.")
+    needs(
+      "Select at least two profiles on parallel planes. Create a sketch on a parallel planar body face to add an offset section."
+    )
   ),
   action(
     "solid.transform",
@@ -296,7 +298,7 @@ export const UI_ACTION_METADATA = [
   ),
   action(
     "solid.linear-pattern",
-    "Linear Pattern",
+    "Linear Body Pattern",
     "Pattern",
     ["solid"],
     ["array", "repeat"],
@@ -306,7 +308,7 @@ export const UI_ACTION_METADATA = [
   ),
   action(
     "solid.circular-pattern",
-    "Circular Pattern",
+    "Circular Body Pattern",
     "Pattern",
     ["solid"],
     ["radial pattern", "array"],

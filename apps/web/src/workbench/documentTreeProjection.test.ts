@@ -53,6 +53,7 @@ describe("document tree projection", () => {
       "object:box_1",
       "body:body_box"
     ]);
+    expect(projection.rowsById.get("body:body_pad")?.label).toBe("Result");
     expect(allIds.filter((id) => id === "body:body_box")).toHaveLength(1);
     expect(allIds).toContain("named-reference:top face");
   });
@@ -103,6 +104,54 @@ describe("document tree projection", () => {
         description: "Named reference target is stale."
       }
     );
+  });
+
+  it("keeps normal under-defined sketch freedom out of alarm badges", () => {
+    const projection = createDocumentTreeProjection({
+      ...createProjectionInput(),
+      health: createHealth({
+        status: "under-defined",
+        issueCount: 1,
+        authoredExtrudes: [
+          {
+            featureId: "feature_pad",
+            bodyId: "body_pad",
+            sketchId: "sketch_profile",
+            entityId: "rect_1",
+            profileKind: "rectangle",
+            operationMode: "newBody",
+            status: "healthy",
+            issues: []
+          }
+        ],
+        sketchEvaluations: [
+          {
+            sketchId: "sketch_profile",
+            sketchName: "Profile",
+            plane: "XY",
+            status: "under-defined",
+            drivenEntityIds: ["rect_1"],
+            affectedFeatureIds: ["feature_pad"],
+            affectedBodyIds: ["body_pad"],
+            issues: [
+              {
+                code: "UNDER_DEFINED_SKETCH",
+                message: "This sketch still has degrees of freedom.",
+                sketchId: "sketch_profile"
+              }
+            ]
+          }
+        ]
+      })
+    });
+
+    expect(
+      projection.rowsById.get("sketch:sketch_profile")?.health
+    ).toBeUndefined();
+    expect(
+      projection.rowsById.get("feature:feature_pad")?.health
+    ).toBeUndefined();
+    expect(projection.rowsById.get("body:body_pad")?.health).toBeUndefined();
   });
 });
 
@@ -219,6 +268,7 @@ function createPrimitiveBody(): CadBodySnapshot {
 function createExtrudeBody(): CadBodySnapshot {
   return {
     id: "body_pad",
+    name: "Pad",
     kind: "solid",
     partId: "part:default",
     featureId: "feature_pad",

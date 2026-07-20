@@ -151,60 +151,44 @@ function createCompactStatus(
   selectionDisplay: ViewportSelectionDisplay,
   selectedGeneratedReferenceState: GeneratedReferenceSelectionState
 ): Pick<ViewportVisualStateModel, "status"> {
-  if (
-    selectionDisplay.selectionKind === "none" &&
-    selectionDisplay.tone === "idle"
-  ) {
+  const staleReferenceStatus =
+    selectedGeneratedReferenceState.status === "stale"
+      ? {
+          label: "Reference stale",
+          detail: selectedGeneratedReferenceState.message,
+          tone: "blocked" as const
+        }
+      : undefined;
+  const geometryStatus =
+    selectionDisplay.geometryStatus === "pending"
+      ? {
+          label: "Building display geometry",
+          detail:
+            selectionDisplay.geometryDetail ?? "Display geometry is updating.",
+          tone: "warning" as const
+        }
+      : selectionDisplay.geometryStatus === "error"
+        ? {
+            label: "Display geometry failed",
+            detail:
+              selectionDisplay.geometryDetail ??
+              "Display geometry could not be built.",
+            tone: "failed" as const
+          }
+        : undefined;
+  const status = staleReferenceStatus ?? geometryStatus;
+
+  if (!status) {
     return {};
   }
 
-  const generatedReferenceStatus =
-    selectedGeneratedReferenceState.status === "selected"
-      ? {
-          label: `${formatTargetKind(selectedGeneratedReferenceState.reference.kind === "axis" ? "body" : selectedGeneratedReferenceState.reference.kind)} selected`,
-          detail:
-            selectedGeneratedReferenceState.reference.kind === "body"
-              ? selectionDisplay.detail
-              : "Owning body highlighted; use the Inspector for exact face or edge details."
-        }
-      : selectedGeneratedReferenceState.status === "stale"
-        ? {
-            label: "Reference stale",
-            detail: selectedGeneratedReferenceState.message
-          }
-        : undefined;
-
   return {
     status: {
-      label: redactInternalViewportIds(
-        generatedReferenceStatus?.label ?? selectionDisplay.title
-      ),
-      detail: redactInternalViewportIds(
-        generatedReferenceStatus?.detail ?? selectionDisplay.detail
-      ),
-      tone:
-        selectionDisplay.geometryStatus === "error"
-          ? "failed"
-          : selectionDisplay.tone
+      label: redactInternalViewportIds(status.label),
+      detail: redactInternalViewportIds(status.detail),
+      tone: status.tone
     }
   };
-}
-
-function formatTargetKind(kind: VisualTargetKind): string {
-  switch (kind) {
-    case "body":
-      return "Body";
-    case "face":
-      return "Face";
-    case "edge":
-      return "Edge";
-    case "vertex":
-      return "Vertex";
-    case "object":
-      return "Object";
-    case "sketchEntity":
-      return "Sketch entity";
-  }
 }
 
 function dedupeVisualStates(

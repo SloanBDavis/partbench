@@ -24,7 +24,12 @@ describe("quickStartBodies", () => {
       featureId: "feat_1",
       sketchId: "sketch_1",
       ops: [
-        { op: "sketch.create", id: "sketch_1", plane: "XY" },
+        {
+          op: "sketch.create",
+          id: "sketch_1",
+          name: "Box 1 profile",
+          plane: "XY"
+        },
         {
           op: "sketch.addRectangle",
           sketchId: "sketch_1",
@@ -37,6 +42,7 @@ describe("quickStartBodies", () => {
           op: "feature.extrude",
           id: "feat_1",
           bodyId: "body_1",
+          name: "Box 1",
           sketchId: "sketch_1",
           entityId: "skent_1",
           depth: 0.5,
@@ -101,7 +107,12 @@ describe("quickStartBodies", () => {
     });
 
     expect(plan.ops).toMatchObject([
-      { op: "sketch.create", id: "sketch_2", plane: "XY" },
+      {
+        op: "sketch.create",
+        id: "sketch_2",
+        name: "Cylinder 1 profile",
+        plane: "XY"
+      },
       {
         op: "sketch.addCircle",
         sketchId: "sketch_2",
@@ -113,6 +124,7 @@ describe("quickStartBodies", () => {
         op: "feature.extrude",
         id: "feat_1",
         bodyId: "body_1",
+        name: "Cylinder 1",
         sketchId: "sketch_2",
         entityId: "skent_1",
         depth: 3,
@@ -134,6 +146,32 @@ describe("quickStartBodies", () => {
       createdFeatureIds: ["feat_1"],
       createdBodyIds: ["body_1"]
     });
+  });
+
+  it("keeps repeated quick-body names unique", () => {
+    const engine = new CadEngine();
+    const first = createQuickStartSourceBodyPlan({
+      document: engine.getDocument(),
+      form: createPrimitiveForm({}),
+      kind: "cylinder"
+    });
+    engine.applyBatch(first.ops);
+
+    const second = createQuickStartSourceBodyPlan({
+      document: engine.getDocument(),
+      form: createPrimitiveForm({}),
+      kind: "cylinder"
+    });
+
+    expect(second.ops).toContainEqual(
+      expect.objectContaining({
+        op: "sketch.create",
+        name: "Cylinder 2 profile"
+      })
+    );
+    expect(second.ops).toContainEqual(
+      expect.objectContaining({ op: "feature.extrude", name: "Cylinder 2" })
+    );
   });
 });
 

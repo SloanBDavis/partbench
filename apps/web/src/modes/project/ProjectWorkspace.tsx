@@ -42,6 +42,7 @@ import {
 } from "../../transactionHistoryDisplay";
 import { Button } from "../../ui/Button";
 import type { ProjectPageId } from "../../workbench/types";
+import { formatProjectHealthSummary } from "./projectHealthSummary";
 import "./projectWorkspace.css";
 
 const EMPTY_PARAMETER_USAGE: Readonly<Record<string, number>> = {};
@@ -267,11 +268,7 @@ function ProjectOverview({
   const identity = topologyIdentityReadiness
     ? createProjectTopologyIdentityDisplay(topologyIdentityReadiness)
     : undefined;
-  const healthLabel = health
-    ? health.issueCount === 0
-      ? "Healthy"
-      : `${health.issueCount} ${health.issueCount === 1 ? "issue" : "issues"}`
-    : "Not checked";
+  const healthLabel = formatProjectHealthSummary(health);
   const exportLabel = exportReadiness
     ? getExportReadinessStatusLabel(exportReadiness.status)
     : "Not checked";

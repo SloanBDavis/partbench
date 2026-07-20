@@ -20,6 +20,7 @@ import {
   ProjectWorkspace,
   type ProjectWorkspaceProps
 } from "./ProjectWorkspace";
+import { formatProjectHealthSummary } from "./projectHealthSummary";
 
 const summary: ProjectJsonSummary = {
   schemaVersion: "web-cad.project.v21",
@@ -114,6 +115,23 @@ describe("ProjectWorkspace", () => {
   it("renders empty history and export states without inventing readiness", () => {
     expect(renderPage("history")).toContain("No changes yet");
     expect(renderPage("export")).toContain("Export readiness unavailable");
+  });
+});
+
+describe("project health summary", () => {
+  it("separates ordinary sketch design freedom from actionable issues", () => {
+    expect(
+      formatProjectHealthSummary({
+        status: "under-defined",
+        issueCount: 2
+      } as ProjectWorkspaceProps["health"])
+    ).toBe("2 design notes");
+    expect(
+      formatProjectHealthSummary({
+        status: "missing-source",
+        issueCount: 1
+      } as ProjectWorkspaceProps["health"])
+    ).toBe("1 issue");
   });
 });
 

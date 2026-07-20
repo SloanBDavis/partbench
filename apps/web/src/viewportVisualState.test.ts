@@ -19,11 +19,7 @@ describe("viewport visual state", () => {
       { targetId: "body_rect", targetKind: "body", state: "selected" },
       { targetId: "body_rect", targetKind: "body", state: "commandTarget" }
     ]);
-    expect(visualState.status).toEqual({
-      label: "Body selected",
-      detail: "Ready reference",
-      tone: "ready"
-    });
+    expect(visualState.status).toBeUndefined();
   });
 
   it("maps selected generated faces to owning body target IDs with face display metadata", () => {
@@ -41,12 +37,7 @@ describe("viewport visual state", () => {
       { targetId: "body_rect", targetKind: "face", state: "selected" },
       { targetId: "body_rect", targetKind: "face", state: "commandTarget" }
     ]);
-    expect(visualState.status).toEqual({
-      label: "Face selected",
-      detail:
-        "Owning body highlighted; use the Inspector for exact face or edge details.",
-      tone: "ready"
-    });
+    expect(visualState.status).toBeUndefined();
     expect(JSON.stringify(visualState.rendererVisualStates)).not.toContain(
       "generated:face:body_rect:startCap"
     );
@@ -67,7 +58,7 @@ describe("viewport visual state", () => {
       { targetId: "body_rect", targetKind: "edge", state: "selected" },
       { targetId: "body_rect", targetKind: "edge", state: "commandTarget" }
     ]);
-    expect(visualState.status?.label).toBe("Edge selected");
+    expect(visualState.status).toBeUndefined();
     expect(JSON.stringify(visualState.rendererVisualStates)).not.toContain(
       "generated:edge:body_rect:start:uMin"
     );
@@ -87,7 +78,7 @@ describe("viewport visual state", () => {
       { targetId: "body_rect", targetKind: "body", state: "selected" },
       { targetId: "body_rect", targetKind: "body", state: "warning" }
     ]);
-    expect(visualState.status?.tone).toBe("warning");
+    expect(visualState.status).toBeUndefined();
   });
 
   it("uses blocked warning state for stale generated references", () => {
@@ -149,6 +140,12 @@ describe("viewport visual state", () => {
       targetKind: "body",
       state: "failed"
     });
+    expect(pending.status).toEqual({
+      label: "Building display geometry",
+      detail: "Building display geometry",
+      tone: "warning"
+    });
+    expect(failed.status?.detail).toBe("OCCT mesh failed");
     expect(failed.status?.tone).toBe("failed");
   });
 

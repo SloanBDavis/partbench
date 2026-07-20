@@ -47,4 +47,14 @@ describe("viewport visible text", () => {
       formatVisibleDiagnosticMessage("Body body_rect was consumed by feat_cut.")
     ).toBe("Selected body already has a downstream result.");
   });
+
+  it("separates a complete solid from unavailable downstream references", () => {
+    expect(
+      formatVisibleDiagnosticMessage(
+        "Body body_revolve does not expose stable command-ready generated references yet."
+      )
+    ).toBe(
+      "This solid is complete, but its faces and edges are not available to downstream modeling tools."
+    );
+  });
 });

@@ -31,12 +31,51 @@ describe("SolidModePanel", () => {
     expect(markup).toContain("Width");
     expect(markup).toContain("Height");
     expect(markup).toContain("Depth");
+    expect(markup).toContain("Profile center");
+    expect(markup).toContain("Move along Z is not supported");
+    expect(markup).not.toContain("solid-translation-z");
     expect(markup).toContain("Cancel");
     expect(markup).toContain("This action is not connected.");
     const applyButton = markup.match(
       /<button[^>]*title="Apply \(Ctrl\/Cmd\+Enter\)"[^>]*>/
     )?.[0];
     expect(applyButton).toContain('disabled=""');
+  });
+
+  it("keeps full XYZ placement for primitives whose command honors it", () => {
+    const markup = renderToStaticMarkup(
+      createElement(SolidModePanel, {
+        activeEditor: {
+          key: "sphere-new",
+          kind: "sphere",
+          title: "New sphere",
+          initialDraft: createPrimitiveDraft("sphere")
+        },
+        onApply: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Center position");
+    expect(markup).toContain("solid-translation-z");
+  });
+
+  it("keeps Z placement when editing a legacy primitive box", () => {
+    const markup = renderToStaticMarkup(
+      createElement(SolidModePanel, {
+        activeEditor: {
+          key: "box-edit",
+          kind: "box",
+          mode: "edit",
+          title: "Edit box",
+          initialDraft: createPrimitiveDraft("box")
+        },
+        onApply: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Center position");
+    expect(markup).toContain("solid-translation-z");
+    expect(markup).not.toContain("Move along Z is not supported");
   });
 
   it("renders the target collector and every extrude parameter", () => {
@@ -75,6 +114,8 @@ describe("SolidModePanel", () => {
 
     expect(markup).toContain("Target body");
     expect(markup).toContain("Main body");
+    expect(markup).toContain("Accepts a body.");
+    expect(markup).not.toContain("Select a body.");
     expect(markup).toContain("Operation");
     expect(markup).toContain("Depth");
     expect(markup).toContain("Side");
@@ -123,6 +164,8 @@ describe("SolidModePanel", () => {
 
     expect(markup).toContain("Top profile");
     expect(markup).toContain("Bottom profile");
+    expect(markup).toContain("numbered order shown");
+    expect(markup).toContain("parallel planar body face");
     expect(markup).not.toContain("private-sketch-a");
     expect(markup).not.toContain("private-profile-b");
   });
@@ -164,7 +207,7 @@ describe("SolidModePanel", () => {
       })
     );
 
-    expect(markup).toContain("Reverse submitted direction");
+    expect(markup).toContain("Reverse path direction");
   });
 });
 

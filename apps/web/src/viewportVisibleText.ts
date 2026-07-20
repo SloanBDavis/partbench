@@ -39,6 +39,10 @@ const INTERNAL_DIAGNOSTIC_COPY_REPLACEMENTS: readonly [RegExp, string][] = [
     "Selected body already has a downstream result."
   ],
   [
+    /\bBody\s+\S+\s+does not expose stable command-ready generated references yet\./gi,
+    "This solid is complete, but its faces and edges are not available to downstream modeling tools."
+  ],
+  [
     /\bdoes not expose command-ready semantic generated references\b/gi,
     "does not expose saved faces or edges for modeling actions"
   ],

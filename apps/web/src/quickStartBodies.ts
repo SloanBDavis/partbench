@@ -32,8 +32,12 @@ export function createQuickStartSourceBodyPlan({
     form.translationX,
     form.translationY
   ];
-  const sketchName = kind === "box" ? "Box profile" : "Cylinder profile";
-  const featureName = kind === "box" ? "Box" : "Cylinder";
+  const featureBaseName = kind === "box" ? "Box" : "Cylinder";
+  const featureName = createNextFeatureName(
+    featureBaseName,
+    [...document.features.values()].map((feature) => feature.name)
+  );
+  const sketchName = `${featureName} profile`;
   const profileOp: CadOp =
     kind === "box"
       ? {
@@ -78,6 +82,22 @@ export function createQuickStartSourceBodyPlan({
       }
     ]
   };
+}
+
+function createNextFeatureName(
+  baseName: string,
+  existingNames: Iterable<string | undefined>
+): string {
+  let highest = 0;
+  const numbered = new RegExp(`^${baseName} (\\d+)$`);
+
+  for (const name of existingNames) {
+    if (name === baseName) highest = Math.max(highest, 1);
+    const match = name?.match(numbered);
+    if (match) highest = Math.max(highest, Number(match[1]));
+  }
+
+  return `${baseName} ${highest + 1}`;
 }
 
 function createNextAvailableId(

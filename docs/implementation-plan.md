@@ -588,7 +588,8 @@ pnpm smoke:v13-browser-workflow
 pnpm smoke:v14-browser-workflow
 ```
 
-Derived geometry is enabled by default for local Vite serve:
+Derived geometry is enabled by default for local Vite serve and production
+builds:
 
 ```sh
 pnpm dev
@@ -600,10 +601,11 @@ Use primitive fallback mode when debugging rendering or geometry-worker issues:
 VITE_DISABLE_DERIVED_GEOMETRY=true pnpm dev
 ```
 
-Production builds keep derived geometry disabled unless explicitly enabled:
+The primitive fallback remains available as an explicit production-build
+diagnostic:
 
 ```sh
-VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build
+VITE_DISABLE_DERIVED_GEOMETRY=true pnpm build
 ```
 
 OCCT browser smoke/metrics:
@@ -677,8 +679,9 @@ narrow viewport visibility and scroll-trap checks,
 named-reference routing, attached-sketch creation on a generated planar face,
 consumed-body structured diagnostics, and Project/File JSON export/load/import
 round-trip behavior, then reports required checks plus optional skipped GLB
-download readiness. Default production builds keep derived geometry disabled,
-so the GLB download check may be skipped with a structured reason. The smoke
+download readiness. Derived geometry is enabled in default production builds;
+an explicitly disabled diagnostic build may skip the GLB download check with a
+structured reason. The smoke
 also verifies the reduced Advanced tools surface no longer exposes Batch or Mesh
 tabs and can scroll overflowing panel content. The derived smoke builds with
 `VITE_ENABLE_DERIVED_GEOMETRY=true` and

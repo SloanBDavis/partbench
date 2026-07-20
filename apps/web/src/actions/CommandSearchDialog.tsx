@@ -75,8 +75,8 @@ function OpenCommandSearchDialog({
   const [invokingIndex, setInvokingIndex] = useState<number>();
   const [announcement, setAnnouncement] = useState("");
   const results = useMemo(
-    () => searchUiActions(actions, query),
-    [actions, query]
+    () => searchUiActions(actions, query, currentMode),
+    [actions, currentMode, query]
   );
 
   useEffect(() => {

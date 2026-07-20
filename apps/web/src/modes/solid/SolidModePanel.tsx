@@ -263,6 +263,7 @@ function SolidDraftFields({
       return (
         <PrimitiveFields
           kind={request.kind}
+          featureBackedQuickBody={request.mode !== "edit"}
           draft={draft as PrimitiveCommandForm}
           onChange={onChange}
         />
@@ -419,13 +420,17 @@ function SolidDraftFields({
 
 function PrimitiveFields({
   kind,
+  featureBackedQuickBody,
   draft,
   onChange
 }: {
   readonly kind: "box" | "cylinder" | "sphere" | "cone" | "torus";
+  readonly featureBackedQuickBody: boolean;
   readonly draft: PrimitiveCommandForm;
   readonly onChange: (draft: PrimitiveCommandForm) => void;
 }) {
+  const usesTopPlaneProfile =
+    featureBackedQuickBody && (kind === "box" || kind === "cylinder");
   return (
     <>
       {kind === "box" ? (
@@ -499,7 +504,9 @@ function PrimitiveFields({
         </>
       ) : null}
       <fieldset className="pb-solid-fieldset">
-        <legend>Position</legend>
+        <legend>
+          {usesTopPlaneProfile ? "Profile center" : "Center position"}
+        </legend>
         <NumberField
           label="X"
           name="translation-x"
@@ -514,14 +521,21 @@ function PrimitiveFields({
           unit="mm"
           onChange={(translationY) => onChange({ ...draft, translationY })}
         />
-        <NumberField
-          label="Z"
-          name="translation-z"
-          value={draft.translationZ}
-          unit="mm"
-          onChange={(translationZ) => onChange({ ...draft, translationZ })}
-        />
+        {!usesTopPlaneProfile ? (
+          <NumberField
+            label="Z"
+            name="translation-z"
+            value={draft.translationZ}
+            unit="mm"
+            onChange={(translationZ) => onChange({ ...draft, translationZ })}
+          />
+        ) : null}
       </fieldset>
+      <p className="pb-solid-field-note">
+        {usesTopPlaneProfile
+          ? "Creates a separate feature-backed body centered on the Top plane. Move along Z is not supported in this quick workflow."
+          : "Creates a separate modeling object."}
+      </p>
     </>
   );
 }
@@ -996,7 +1010,7 @@ function CompositeSweepFields({
             onChange({ ...draft, path: reverseSketchPath(draft.path) })
           }
         >
-          Reverse submitted direction
+          Reverse path direction
         </Button>
       </div>
     </>
@@ -1053,6 +1067,11 @@ function LoftFields({
         onCollect={onCollect}
         onChange={(sections) => onChange({ ...draft, sections })}
       />
+      <p className="pb-solid-field-note">
+        Sections are lofted in the numbered order shown. Supported sections must
+        lie on parallel planes; create another sketch on a parallel planar body
+        face when only one section is available.
+      </p>
     </>
   );
 }

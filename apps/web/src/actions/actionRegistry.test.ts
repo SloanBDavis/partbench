@@ -190,6 +190,25 @@ describe("V18 command search", () => {
       searchUiActions(actions, " ").map((result) => result.definition.id)
     ).toEqual(UI_ACTION_REGISTRY.map((action) => action.id));
   });
+
+  it("uses current-mode readiness to break equally relevant matches", () => {
+    const actions = projectUiActions(createContext()).filter((action) =>
+      ["solid.measure", "inspect.measure"].includes(action.definition.id)
+    );
+
+    expect(
+      searchUiActions(actions, "measure", "inspect").map(
+        (result) => result.definition.id
+      )
+    ).toEqual(["inspect.measure", "solid.measure"]);
+    expect(
+      searchUiActions(
+        projectUiActions(createContext()),
+        "create sketch",
+        "solid"
+      )[0]?.definition
+    ).toMatchObject({ id: "solid.sketch", label: "Create Sketch" });
+  });
 });
 
 function createContext(

@@ -5,11 +5,7 @@ export interface DerivedGeometryFlagInput {
 
 export interface DerivedGeometryFlagState {
   readonly enabled: boolean;
-  readonly source:
-    | "disabled"
-    | "serve-default"
-    | "explicit-enable"
-    | "explicit-disable";
+  readonly source: "default-enabled" | "explicit-enable" | "explicit-disable";
 }
 
 export function resolveDerivedGeometryFlags(
@@ -32,16 +28,9 @@ export function resolveDerivedGeometryFlags(
     };
   }
 
-  if (input.command === "serve") {
-    return {
-      enabled: true,
-      source: "serve-default"
-    };
-  }
-
   return {
-    enabled: false,
-    source: "disabled"
+    enabled: true,
+    source: "default-enabled"
   };
 }
 

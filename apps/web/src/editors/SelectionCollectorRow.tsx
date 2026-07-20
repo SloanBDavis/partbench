@@ -33,7 +33,8 @@ export function SelectionCollectorRow<Value>({
         {required ? <span aria-hidden="true"> *</span> : null}
       </legend>
       <p className="pb-selection-collector__kinds">
-        Select {formatAcceptedKinds(acceptedKinds)}.
+        {targets.length > 0 && !collecting ? "Accepts" : "Select"}{" "}
+        {formatAcceptedKinds(acceptedKinds)}.
       </p>
 
       {targets.length > 0 ? (

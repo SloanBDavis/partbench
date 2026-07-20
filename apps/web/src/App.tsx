@@ -193,6 +193,7 @@ import {
   type SolidEditorRequest,
   type SolidEditorSubmission
 } from "./modes/solid";
+import { applyCommittedSolidEditorSubmission } from "./modes/solid/solidEditorApply";
 import {
   createInitialWorkbenchUiState,
   workbenchReducer
@@ -269,6 +270,7 @@ import {
 } from "./sceneObjectDisplay";
 import { createQuickStartSourceBodyPlan } from "./quickStartBodies";
 import { createRenderSceneInputs } from "./renderScene";
+import { createModelingResultState } from "./modelingResultState";
 import {
   createDefaultSketchDisplayFrame,
   createGeneratedFaceReferenceKey,
@@ -1365,6 +1367,7 @@ export function App() {
   const derivedExactMetadataServiceRef = useRef<
     DerivedExactMetadataService | undefined
   >(undefined);
+  const successfulCommitCountRef = useRef(0);
   const stepImportPayloadStoreRef = useRef(
     createProjectStepImportPayloadStore()
   );
@@ -1748,6 +1751,24 @@ export function App() {
   const projectHealth = useMemo(
     () => readProjectHealth(derivedExactMetadata, currentExactMetadataSources),
     [derivedExactMetadata, currentExactMetadataSources, document]
+  );
+  const modelingResultState = useMemo(
+    () =>
+      createModelingResultState({
+        commandPending,
+        commandFailed: commandError !== undefined,
+        derivedGeometryEnabled,
+        derivedSourceCount: derivedGeometrySources.length,
+        derivedGeometry,
+        projectHealthStatus: projectHealth.status
+      }),
+    [
+      commandError,
+      commandPending,
+      derivedGeometry,
+      derivedGeometrySources.length,
+      projectHealth.status
+    ]
   );
   const selectedObject = selectedId
     ? document.objects.get(selectedId)
@@ -2144,12 +2165,23 @@ export function App() {
     () =>
       sketches.flatMap((sketch) =>
         (profileCandidatesBySketchId.get(sketch.id)?.candidates ?? []).map(
-          (candidate) => ({
-            key: `${sketch.id}:${candidate.sortKey}`,
-            value: candidate.profile,
-            label: `${sketch.name} · Profile ${candidate.candidateIndex + 1}`,
-            kind: candidate.profile.kind === "wire" ? "wire" : "profile"
-          })
+          (candidate) => {
+            const profile = candidate.profile;
+            const entity =
+              profile.kind === "entity"
+                ? sketch.entities.find((item) => item.id === profile.entityId)
+                : undefined;
+            const profileKind =
+              profile.kind === "wire"
+                ? "Wire profile"
+                : `${formatCadKindLabel(entity?.kind ?? "entity")} profile`;
+            return {
+              key: `${sketch.id}:${candidate.sortKey}`,
+              value: profile,
+              label: `${sketch.name} · ${profileKind} ${candidate.candidateIndex + 1}`,
+              kind: profileKind.toLocaleLowerCase()
+            };
+          }
         )
       ),
     [profileCandidatesBySketchId, sketches]
@@ -2158,12 +2190,23 @@ export function App() {
     () =>
       sketches.flatMap((sketch) =>
         (pathCandidatesBySketchId.get(sketch.id)?.candidates ?? []).map(
-          (candidate) => ({
-            key: `${sketch.id}:${candidate.sortKey}`,
-            value: candidate.path,
-            label: `${sketch.name} · Path ${candidate.candidateIndex + 1}`,
-            kind: candidate.path.kind === "chain" ? "chain" : "path"
-          })
+          (candidate) => {
+            const path = candidate.path;
+            const entity =
+              path.kind === "entity"
+                ? sketch.entities.find((item) => item.id === path.entityId)
+                : undefined;
+            const description =
+              path.kind === "entity"
+                ? `${formatCadKindLabel(entity?.kind ?? "curve")} path · ${formatCadKindLabel(path.orientation)}`
+                : `${path.segments.length}-segment tangent path`;
+            return {
+              key: `${sketch.id}:${candidate.sortKey}`,
+              value: path,
+              label: `${sketch.name} · ${description}`,
+              kind: path.kind === "chain" ? "chain" : "path"
+            };
+          }
         )
       ),
     [pathCandidatesBySketchId, sketches]
@@ -2176,8 +2219,8 @@ export function App() {
           .map((entity, index) => ({
             key: `${sketch.id}:${entity.id}`,
             value: entity.id,
-            label: `${sketch.name} · Line ${index + 1}`,
-            kind: "sketch line"
+            label: `${sketch.name} · ${entity.construction ? "Construction line" : "Line"} ${index + 1}`,
+            kind: entity.construction ? "construction line" : "sketch line"
           }))
       ),
     [sketches]
@@ -2665,13 +2708,20 @@ export function App() {
       } as SolidEditorRequest;
     }
     if (actionId === "solid.loft") {
-      const sections = solidProfileChoices
-        .map((choice) => choice.value)
-        .filter((profile) => profile.kind === "entity")
-        .map((profile) => ({
-          sketchId: profile.sketchId,
-          entityId: profile.entityId
-        }));
+      const sectionChoices = solidProfileChoices.flatMap((choice) =>
+        choice.value.kind === "entity"
+          ? [
+              {
+                section: {
+                  sketchId: choice.value.sketchId,
+                  entityId: choice.value.entityId
+                },
+                sourceLabel: choice.label
+              }
+            ]
+          : []
+      );
+      const sections = sectionChoices.map((choice) => choice.section);
       return {
         key,
         kind: "loft",
@@ -2679,17 +2729,17 @@ export function App() {
         mode: "create",
         initialDraft: { id: "", bodyId: "", name: "", sections },
         choices: {
-          loftSections: sections.map((section, index) => ({
-            key: `${section.sketchId}:${section.entityId}`,
-            value: section,
-            label: `Section ${index + 1}`,
+          loftSections: sectionChoices.map((choice, index) => ({
+            key: `${choice.section.sketchId}:${choice.section.entityId}`,
+            value: choice.section,
+            label: `${index + 1}. ${choice.sourceLabel}`,
             kind: "profile section"
           }))
         },
         blockedReason:
           sections.length >= 2
             ? undefined
-            : "At least two supported profile sections are required."
+            : "Loft needs at least two profiles on parallel planes. Select a planar body face and choose Create sketch to add an offset section."
       } as SolidEditorRequest;
     }
     if (actionId === "solid.hole") {
@@ -2763,7 +2813,7 @@ export function App() {
       return {
         key,
         kind: "linearPattern",
-        title: "Linear Pattern",
+        title: "Linear Body Pattern",
         mode: "create",
         initialDraft: {
           id: "",
@@ -2787,7 +2837,7 @@ export function App() {
       return {
         key,
         kind: "circularPattern",
-        title: "Circular Pattern",
+        title: "Circular Body Pattern",
         mode: "create",
         initialDraft: {
           id: "",
@@ -3618,6 +3668,7 @@ export function App() {
       }
 
       syncDocument(getNextSelectedId(response));
+      successfulCommitCountRef.current += 1;
       setWcadTopologyCheckpointPayloadCache((current) =>
         mergeWcadTopologyCheckpointPayloadInputCache(
           current,
@@ -5572,6 +5623,16 @@ export function App() {
   async function applySolidEditorSubmission(
     submission: SolidEditorSubmission
   ): Promise<void> {
+    await applyCommittedSolidEditorSubmission({
+      readSuccessfulCommitCount: () => successfulCommitCountRef.current,
+      submit: () => executeSolidEditorSubmission(submission),
+      close: () => dispatchWorkbench({ type: "set-active-tool" })
+    });
+  }
+
+  async function executeSolidEditorSubmission(
+    submission: SolidEditorSubmission
+  ): Promise<void> {
     if (workbenchUi.activeTool === "solid.edit" && selectedFeature) {
       if (
         selectedFeature.kind === "primitive" &&
@@ -5932,6 +5993,60 @@ export function App() {
         navigateToMode("solid");
         setCommandNotice("Review the draft, then choose Apply.");
         return;
+      case "solid.extrude":
+        navigateToMode("solid");
+        setCommandNotice(
+          "Choose a closed sketch profile, review the operation, then apply."
+        );
+        return;
+      case "solid.revolve":
+        navigateToMode("solid");
+        setCommandNotice(
+          "Choose a closed profile and a sketch line axis, then apply. Construction lines are listed as axes."
+        );
+        return;
+      case "solid.sweep":
+        navigateToMode("solid");
+        setCommandNotice(
+          "Choose a profile and path direction, review the path preview, then apply."
+        );
+        return;
+      case "solid.loft":
+        navigateToMode("solid");
+        setCommandNotice(
+          "Loft needs at least two ordered profiles on parallel planes. Create the next section on a parallel planar body face."
+        );
+        return;
+      case "solid.hole":
+        navigateToMode("solid");
+        setCommandNotice(
+          "Select a circle sketch profile; the intersected solid is offered as the target body."
+        );
+        return;
+      case "solid.fillet":
+      case "solid.chamfer":
+        navigateToMode("solid");
+        dispatchWorkbench({ type: "set-selection-filter", filter: "edge" });
+        setCommandNotice(
+          "Edge selection is active. Select a generated solid edge, review the size, then apply."
+        );
+        return;
+      case "solid.shell":
+        navigateToMode("solid");
+        dispatchWorkbench({ type: "set-selection-filter", filter: "face" });
+        setCommandNotice(
+          "Face selection is active. Choose the body and any faces to open, then apply."
+        );
+        return;
+      case "solid.linear-pattern":
+      case "solid.circular-pattern":
+      case "solid.mirror":
+        navigateToMode("solid");
+        dispatchWorkbench({ type: "set-selection-filter", filter: "body" });
+        setCommandNotice(
+          "This operation repeats the selected result body. Choose a seed body and review the placement."
+        );
+        return;
       case "solid.measure":
       case "inspect.measure":
         navigateToMode("inspect");
@@ -6109,7 +6224,9 @@ export function App() {
         solidProfileChoices.filter((choice) => choice.value.kind === "entity")
           .length >= 2
           ? ready
-          : needs("At least two supported sketch sections are required."),
+          : needs(
+              "Select at least two profiles on parallel planes. Create a sketch on a parallel planar body face to add an offset section."
+            ),
       "solid.transform": selectedObject
         ? ready
         : needs("Select an editable source object."),
@@ -6815,7 +6932,7 @@ export function App() {
               }
               zoom="Viewport"
               units={document.units}
-              rebuildState={commandPending ? "Updating" : "Ready"}
+              rebuildState={modelingResultState}
               pendingLabel={commandPending ? "Updating model" : undefined}
             />
           )
