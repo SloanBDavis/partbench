@@ -1963,11 +1963,20 @@ export interface CadBatchValidationError {
   readonly received?: string;
 }
 
-export interface CadBatchValidationResult {
-  readonly ok: boolean;
-  readonly errors: readonly CadBatchValidationError[];
-  readonly warnings: readonly string[];
-}
+export type CadBatchValidationResult =
+  | {
+      readonly ok: true;
+      readonly errors: readonly [];
+      readonly warnings: readonly string[];
+    }
+  | {
+      readonly ok: false;
+      readonly errors: readonly [
+        CadBatchValidationError,
+        ...CadBatchValidationError[]
+      ];
+      readonly warnings: readonly string[];
+    };
 
 export type CadBatchResponse = CadBatchSuccessResponse | CadBatchErrorResponse;
 
