@@ -45,7 +45,7 @@ import {
   type OcctWireExtrudeShapeBuild
 } from "./wireExtrude";
 import { readTriangulatedShape } from "./readTriangulatedShape";
-import { withOcctPatternSeedShape } from "./pattern";
+import { makeLinearPatternShape, withOcctPatternSeedShape } from "./pattern";
 import {
   createOcctStepExportWithShapeFactory,
   type OcctStepExportShapeFactory
@@ -558,6 +558,40 @@ describe("occt-wasm", () => {
       "shape",
       "box-builder"
     ]);
+  });
+
+  it("disposes partial linear transform parameters after builder failure", () => {
+    const deleted: string[] = [];
+    class Vector {
+      delete() {
+        deleted.push("vector");
+      }
+    }
+    class Transform {
+      SetTranslation_1() {}
+      delete() {
+        deleted.push("transform");
+      }
+    }
+    class FailingTransformBuilder {
+      constructor() {
+        throw new Error("Injected linear transform builder failure.");
+      }
+    }
+    const oc = {
+      gp_Vec_4: Vector,
+      gp_Trsf_1: Transform,
+      BRepBuilderAPI_Transform_2: FailingTransformBuilder
+    } as unknown as OpenCascadeInstance;
+
+    expect(() =>
+      makeLinearPatternShape(oc, {} as never, {
+        direction: [1, 0, 0],
+        spacing: 2,
+        instanceCount: 1
+      })
+    ).toThrow("Injected linear transform builder failure");
+    expect(deleted).toEqual(["transform", "vector"]);
   });
 
   it.each([
