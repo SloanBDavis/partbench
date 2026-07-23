@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   CAD_PROJECT_FORMAT_VERSION_V19,
   CadEngine,
-  exportCadProject
+  exportCadProject,
+  parseParameterExpression
 } from "./index";
 
 function createExpressionEngine(): CadEngine {
@@ -28,6 +29,20 @@ function resultValue(engine: CadEngine): number | undefined {
 }
 
 describe("parameter expression language v2", () => {
+  it("reports deeply nested expressions without leaking a stack overflow", () => {
+    const depth = 20_000;
+    const expression = `${"(".repeat(depth)}1${")".repeat(depth)}`;
+
+    expect(parseParameterExpression(expression)).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "EXPRESSION_PARSE_ERROR",
+        expected: "expression with shallower nesting",
+        received: "parser recursion limit exceeded"
+      }
+    });
+  });
+
   it("evaluates degree-first trigonometry and explicit angle conversions", () => {
     const cases: readonly [string, number][] = [
       ["radius * sin(angle)", 5],

@@ -134,7 +134,24 @@ export function parseParameterExpression(expression: string):
   }
 
   const parser = new ExpressionParser(tokens.tokens, expression);
-  return parser.parse();
+  try {
+    return parser.parse();
+  } catch (error) {
+    if (error instanceof RangeError) {
+      return {
+        ok: false,
+        diagnostic: {
+          code: "EXPRESSION_PARSE_ERROR",
+          message: "Parameter expression is too deeply nested to parse safely.",
+          expression,
+          position: 0,
+          expected: "expression with shallower nesting",
+          received: "parser recursion limit exceeded"
+        }
+      };
+    }
+    throw error;
+  }
 }
 
 export function evaluateParameterExpressions(
