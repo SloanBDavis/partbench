@@ -1599,9 +1599,11 @@ function isInvalidWireGeneratedReferences(
       (face) =>
         face.role === "side" && face.sourceEntityId === segment.sourceEntityId
     );
+    const sideFace = side[0];
     if (
       side.length !== 1 ||
-      side[0].surfaceClass !== (segment.kind === "line" ? "plane" : "cylinder")
+      !sideFace ||
+      sideFace.surfaceClass !== (segment.kind === "line" ? "plane" : "cylinder")
     ) {
       return true;
     }
@@ -1620,6 +1622,7 @@ function isInvalidWireGeneratedReferences(
   return profile.segments.some((segment, index) => {
     const next = profile.segments[(index + 1) % profile.segments.length];
     return (
+      !next ||
       references.edges.filter(
         (edge) =>
           edge.role === "longitudinal" &&
