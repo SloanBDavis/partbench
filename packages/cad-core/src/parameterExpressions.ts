@@ -207,8 +207,9 @@ export function evaluateParameterExpressions(
     const references: ParameterId[] = [];
     for (const referenceName of parsed.parsed.referenceNames) {
       const matches = parametersByName.get(referenceName) ?? [];
+      const match = matches[0];
 
-      if (matches.length === 0) {
+      if (!match) {
         addNodeDiagnostic(
           nodeDiagnostics,
           parameter.id,
@@ -242,7 +243,7 @@ export function evaluateParameterExpressions(
         continue;
       }
 
-      references.push(matches[0].id);
+      references.push(match.id);
     }
 
     const uniqueReferences = [...new Set(references)];

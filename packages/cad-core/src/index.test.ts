@@ -2470,7 +2470,7 @@ describe("cad-core", () => {
     expect(engine.getDocument().parameters.get("p_half")?.value).toBe(6);
   });
 
-  it("rejects circular and ambiguous parameter expressions without mutating source", () => {
+  it("rejects circular, unknown, and ambiguous parameter expressions without mutating source", () => {
     const engine = new CadEngine();
     engine.applyBatch([
       { op: "parameter.create", id: "p_a", name: "A", value: 1 },
@@ -2493,6 +2493,30 @@ describe("cad-core", () => {
       error: {
         code: "PARAMETER_CIRCULAR_REFERENCE",
         parameterId: "p_a"
+      }
+    });
+    expect(
+      engine.getDocument().parameters.get("p_b")?.expression
+    ).toBeUndefined();
+
+    const unknown = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "parameter.setExpression",
+          id: "p_b",
+          expression: "Missing + 1"
+        }
+      ]
+    });
+
+    expect(unknown).toMatchObject({
+      ok: false,
+      error: {
+        code: "PARAMETER_REF_NOT_FOUND",
+        parameterId: "p_b",
+        referencedName: "Missing"
       }
     });
     expect(
