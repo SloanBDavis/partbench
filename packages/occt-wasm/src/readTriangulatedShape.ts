@@ -54,7 +54,13 @@ export function readTriangulatedShape(
 
   try {
     for (; explorer.More(); explorer.Next()) {
-      const face = oc.TopoDS.Face_1(explorer.Current());
+      const current = explorer.Current();
+      let face: TopoDS_Face;
+      try {
+        face = oc.TopoDS.Face_1(current);
+      } finally {
+        current.delete();
+      }
 
       try {
         const faceTriangles = readFaceTriangulation(oc, face);
