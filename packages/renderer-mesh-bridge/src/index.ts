@@ -54,8 +54,8 @@ export function createRenderMeshFromSerializableMesh(
       vertices,
       indices,
       transform: options.transform ?? createIdentityTransform(),
-      source: options.source,
-      label: options.label
+      ...(options.source !== undefined ? { source: options.source } : {}),
+      ...(options.label !== undefined ? { label: options.label } : {})
     },
     bounds: getBounds(vertices),
     vertexCount: mesh.vertexCount,
@@ -100,6 +100,18 @@ function validateMesh(mesh: SerializableMeshData): void {
     throw new Error(`Unsupported mesh primitive: ${mesh.primitive}`);
   }
 
+  if (!Number.isInteger(mesh.vertexCount) || mesh.vertexCount < 0) {
+    throw new Error("Mesh vertex count must be a non-negative integer.");
+  }
+
+  if (!Number.isInteger(mesh.triangleCount) || mesh.triangleCount < 0) {
+    throw new Error("Mesh triangle count must be a non-negative integer.");
+  }
+
+  if (!Number.isInteger(mesh.faceCount) || mesh.faceCount < 0) {
+    throw new Error("Mesh face count must be a non-negative integer.");
+  }
+
   if (mesh.positions.length !== mesh.vertexCount * 3) {
     throw new Error("Mesh positions length does not match vertex count.");
   }
@@ -125,11 +137,13 @@ function toVertices(positions: Float32Array): Vec3[] {
   const vertices: Vec3[] = [];
 
   for (let index = 0; index < positions.length; index += 3) {
-    vertices.push([
-      positions[index],
-      positions[index + 1],
-      positions[index + 2]
-    ]);
+    const x = positions[index];
+    const y = positions[index + 1];
+    const z = positions[index + 2];
+    if (x === undefined || y === undefined || z === undefined) {
+      throw new Error("Mesh positions ended before a complete vertex.");
+    }
+    vertices.push([x, y, z]);
   }
 
   return vertices;

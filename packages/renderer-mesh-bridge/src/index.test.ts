@@ -49,6 +49,7 @@ describe("renderer mesh bridge", () => {
       [1, 0, 0],
       [0, 1, 0]
     ]);
+    expect(result.mesh).not.toHaveProperty("source");
   });
 
   it("preserves generated-reference evidence without adding it to render meshes", () => {
@@ -371,5 +372,42 @@ describe("renderer mesh bridge", () => {
         { id: "bad_mesh" }
       )
     ).toThrow("Mesh indices must reference existing vertices.");
+  });
+
+  it("rejects invalid mesh counts before decoding numeric buffers", () => {
+    const createInvalidMesh = (
+      counts: Partial<{
+        vertexCount: number;
+        triangleCount: number;
+        faceCount: number;
+      }>
+    ) => ({
+      primitive: "box" as const,
+      positions: new Float32Array(),
+      indices: new Uint32Array(),
+      vertexCount: 0,
+      triangleCount: 0,
+      faceCount: 0,
+      ...counts
+    });
+
+    expect(() =>
+      createRenderMeshFromSerializableMesh(
+        createInvalidMesh({ vertexCount: 0.5 }),
+        { id: "fractional_vertex_count" }
+      )
+    ).toThrow("Mesh vertex count must be a non-negative integer.");
+    expect(() =>
+      createRenderMeshFromSerializableMesh(
+        createInvalidMesh({ triangleCount: -1 }),
+        { id: "negative_triangle_count" }
+      )
+    ).toThrow("Mesh triangle count must be a non-negative integer.");
+    expect(() =>
+      createRenderMeshFromSerializableMesh(
+        createInvalidMesh({ faceCount: Number.NaN }),
+        { id: "invalid_face_count" }
+      )
+    ).toThrow("Mesh face count must be a non-negative integer.");
   });
 });
