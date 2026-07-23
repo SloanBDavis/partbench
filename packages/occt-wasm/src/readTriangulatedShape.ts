@@ -101,15 +101,21 @@ function readFaceTriangulation(
 } {
   const positions: number[] = [];
   const indices: number[] = [];
-  const location = new oc.TopLoc_Location_1();
+  let location:
+    | InstanceType<OpenCascadeInstance["TopLoc_Location_1"]>
+    | undefined;
+  let triangulationHandle:
+    | ReturnType<OpenCascadeInstance["BRep_Tool"]["Triangulation"]>
+    | undefined;
   const meshPurpose = 0 as Parameters<typeof oc.BRep_Tool.Triangulation>[2];
-  const triangulationHandle = oc.BRep_Tool.Triangulation(
-    face,
-    location,
-    meshPurpose
-  );
 
   try {
+    location = new oc.TopLoc_Location_1();
+    triangulationHandle = oc.BRep_Tool.Triangulation(
+      face,
+      location,
+      meshPurpose
+    );
     if (triangulationHandle.IsNull()) {
       return { positions, indices };
     }
@@ -142,8 +148,8 @@ function readFaceTriangulation(
 
     return { positions, indices };
   } finally {
-    triangulationHandle.delete();
-    location.delete();
+    triangulationHandle?.delete();
+    location?.delete();
   }
 }
 
