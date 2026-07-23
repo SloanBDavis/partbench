@@ -106,6 +106,13 @@ class FakeGeometryWorkerTransport implements GeometryWorkerTransport {
   }
 }
 
+class ThrowingTerminationTransport extends FakeGeometryWorkerTransport {
+  override terminate(): void {
+    super.terminate();
+    throw new Error("Injected terminate failure.");
+  }
+}
+
 function createPrimitiveTessellationTransport(): FakeGeometryWorkerTransport {
   return new FakeGeometryWorkerTransport(async (request) =>
     createPrimitiveTessellationMessage(request)
@@ -256,6 +263,32 @@ describe("BrowserGeometryWorker", () => {
       }
     });
     expect(transport.requests).toHaveLength(0);
+    expect(transport.terminationCount).toBe(1);
+  });
+
+  it("rejects pending work before transport cleanup can fail", async () => {
+    const transport = new ThrowingTerminationTransport(
+      () => new Promise<GeometryWorkerMessage>(() => undefined)
+    );
+    const worker = new BrowserGeometryWorker(transport);
+    const pending = worker.execute(
+      createBoxTessellationWorkerRequest({
+        id: "cleanup_request",
+        width: 1,
+        height: 1,
+        depth: 1
+      })
+    );
+
+    expect(() => worker.dispose()).toThrow("Injected terminate failure.");
+    await expect(pending).rejects.toMatchObject({
+      diagnostics: {
+        error: {
+          code: "WORKER_TRANSPORT_FAILED",
+          message: "Geometry worker was disposed before completing a request."
+        }
+      }
+    });
     expect(transport.terminationCount).toBe(1);
   });
 
