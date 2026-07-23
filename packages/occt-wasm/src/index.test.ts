@@ -6,7 +6,9 @@ import {
   createOcctBoxMesh,
   createOcctBoxMeshWithInstance,
   createOcctConeMesh,
+  createOcctConeMeshWithInstance,
   createOcctCylinderMesh,
+  createOcctCylinderMeshWithInstance,
   createOcctEdgeFinishMesh,
   createOcctExactBodyMetadata,
   createOcctExactTopologyCheckpointPayload,
@@ -16,12 +18,14 @@ import {
   createOcctSweepMesh,
   createOcctLoftMesh,
   createOcctSphereMesh,
+  createOcctSphereMeshWithInstance,
   createOcctStepImport,
   createOcctStepExport,
   getOcctBrepCheckpointWriterCapability,
   getOcctStepReaderCapability,
   getOcctStepWriterCapability,
   createOcctTorusMesh,
+  createOcctTorusMeshWithInstance,
   createOcctWireExtrudeMesh,
   createOcctWireExtrudeMeshWithInstance
 } from "./index";
@@ -493,6 +497,68 @@ describe("occt-wasm", () => {
     ).toThrow("Injected box mesher failure");
     expect(deleted).toEqual(["shape", "box-builder"]);
   });
+
+  it.each([
+    [
+      "cylinder",
+      "BRepPrimAPI_MakeCylinder_1",
+      (oc: OpenCascadeInstance) =>
+        createOcctCylinderMeshWithInstance(oc, { radius: 1, height: 2 })
+    ],
+    [
+      "sphere",
+      "BRepPrimAPI_MakeSphere_1",
+      (oc: OpenCascadeInstance) =>
+        createOcctSphereMeshWithInstance(oc, { radius: 1 })
+    ],
+    [
+      "cone",
+      "BRepPrimAPI_MakeCone_1",
+      (oc: OpenCascadeInstance) =>
+        createOcctConeMeshWithInstance(oc, { radius: 1, height: 2 })
+    ],
+    [
+      "torus",
+      "BRepPrimAPI_MakeTorus_1",
+      (oc: OpenCascadeInstance) =>
+        createOcctTorusMeshWithInstance(oc, {
+          majorRadius: 2,
+          minorRadius: 0.5
+        })
+    ]
+  ] as const)(
+    "disposes a %s result shape when mesher construction fails",
+    (primitive, builderName, createMesh) => {
+      const deleted: string[] = [];
+      class Shape {
+        delete() {
+          deleted.push("shape");
+        }
+      }
+      class PrimitiveBuilder {
+        Shape() {
+          return new Shape();
+        }
+        delete() {
+          deleted.push(`${primitive}-builder`);
+        }
+      }
+      class FailingMesher {
+        constructor() {
+          throw new Error(`Injected ${primitive} mesher failure.`);
+        }
+      }
+      const oc = {
+        [builderName]: PrimitiveBuilder,
+        BRepMesh_IncrementalMesh_2: FailingMesher
+      } as unknown as OpenCascadeInstance;
+
+      expect(() => createMesh(oc)).toThrow(
+        `Injected ${primitive} mesher failure`
+      );
+      expect(deleted).toEqual(["shape", `${primitive}-builder`]);
+    }
+  );
 
   it("disposes every allocated wrapper when an exact edge builder fails", () => {
     const deleted: string[] = [];
