@@ -438,10 +438,12 @@ function applyTranslation(
   shape: TopoDS_Shape,
   translation: readonly [number, number, number]
 ): TopoDS_Shape {
-  const vec = new oc.gp_Vec_4(translation[0], translation[1], translation[2]);
-  const trsf = new oc.gp_Trsf_1();
+  let vec: InstanceType<typeof oc.gp_Vec_4> | undefined;
+  let trsf: InstanceType<typeof oc.gp_Trsf_1> | undefined;
 
   try {
+    vec = new oc.gp_Vec_4(translation[0], translation[1], translation[2]);
+    trsf = new oc.gp_Trsf_1();
     trsf.SetTranslation_1(vec);
     const transform = new oc.BRepBuilderAPI_Transform_2(shape, trsf, true);
 
@@ -458,8 +460,8 @@ function applyTranslation(
       transform.delete();
     }
   } finally {
-    trsf.delete();
-    vec.delete();
+    trsf?.delete();
+    vec?.delete();
   }
 }
 
