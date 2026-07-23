@@ -123,13 +123,19 @@ export function createOcctStepImportWithInstance(
     throw new Error("STEP import requires non-empty STEP bytes.");
   }
 
-  const progress = new oc.Message_ProgressRange_1();
-  const reader = new oc.STEPControl_Reader_1();
+  let progress:
+    | InstanceType<OpenCascadeInstance["Message_ProgressRange_1"]>
+    | undefined;
+  let reader:
+    | InstanceType<OpenCascadeInstance["STEPControl_Reader_1"]>
+    | undefined;
   const filename = `/tmp/partbench-import-${Date.now()}-${Math.random()
     .toString(36)
     .slice(2)}.step`;
 
   try {
+    progress = new oc.Message_ProgressRange_1();
+    reader = new oc.STEPControl_Reader_1();
     getOcctFs(oc).writeFile(filename, input.bytes);
 
     const readStatus = reader.ReadFile(filename);
@@ -264,8 +270,8 @@ export function createOcctStepImportWithInstance(
       // The file may not exist if STEP reader setup failed before writing.
     }
 
-    progress.delete();
-    reader.delete();
+    reader?.delete();
+    progress?.delete();
   }
 }
 
