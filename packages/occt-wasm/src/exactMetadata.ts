@@ -558,11 +558,17 @@ function withImportedBrepShape<T>(
   readShape: (shape: TopoDS_Shape) => T
 ): T {
   const fileName = `/partbench-exact-metadata-${nextImportedBrepReadId++}.brep`;
-  const shape = new oc.TopoDS_Shape();
-  const builder = new oc.BRep_Builder();
-  const range = new oc.Message_ProgressRange_1();
-  oc.FS.writeFile(fileName, bytes);
+  let shape: InstanceType<OpenCascadeInstance["TopoDS_Shape"]> | undefined;
+  let builder: InstanceType<OpenCascadeInstance["BRep_Builder"]> | undefined;
+  let range:
+    | InstanceType<OpenCascadeInstance["Message_ProgressRange_1"]>
+    | undefined;
+
   try {
+    shape = new oc.TopoDS_Shape();
+    builder = new oc.BRep_Builder();
+    range = new oc.Message_ProgressRange_1();
+    oc.FS.writeFile(fileName, bytes);
     if (
       !oc.BRepTools.Read_2(shape, fileName, builder, range) ||
       shape.IsNull()
@@ -573,10 +579,14 @@ function withImportedBrepShape<T>(
     }
     return readShape(shape);
   } finally {
-    range.delete();
-    builder.delete();
-    shape.delete();
-    oc.FS.unlink(fileName);
+    range?.delete();
+    builder?.delete();
+    shape?.delete();
+    try {
+      oc.FS.unlink(fileName);
+    } catch {
+      // The file may not exist if setup failed before writing.
+    }
   }
 }
 
