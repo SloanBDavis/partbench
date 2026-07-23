@@ -407,14 +407,14 @@ function createInspectOverlay({
   readonly diagnostics: readonly ViewportMeasureInspectDiagnostic[];
   readonly target: ViewportMeasureInspectTarget;
 }): ViewportInspectOverlay {
+  const [diagnostic] = diagnostics;
   return {
     title: `Inspect ${target.targetKind === "body" ? "body" : "target"}`,
-    detail:
-      diagnostics.length > 0
-        ? diagnostics[0].message
-        : commandOperationLabels.length > 0
-          ? "Ready target"
-          : "Single semantic target",
+    detail: diagnostic
+      ? diagnostic.message
+      : commandOperationLabels.length > 0
+        ? "Ready target"
+        : "Single semantic target",
     authority,
     authorityLabel: formatViewportMeasurementAuthority(authority),
     rows: createInspectRows(target, commandOperationLabels),
