@@ -27,6 +27,25 @@ type PrimitiveExtrudeFeatureSummary = Extract<
 >;
 
 describe("edge finish UI helpers", () => {
+  it("parses supported generated edge IDs and rejects malformed body IDs", () => {
+    expect(
+      parseGeneratedRectangleEdgeStableId("generated:edge:body_rect:start:uMin")
+    ).toEqual({ bodyId: "body_rect" });
+    expect(
+      parseGeneratedRectangleEdgeStableId(
+        "generated:edge:body_rect:longitudinal:uMin:vMax"
+      )
+    ).toEqual({ bodyId: "body_rect" });
+    expect(
+      parseGeneratedRectangleEdgeStableId(
+        "generated:edge:body_rect:end:circular"
+      )
+    ).toEqual({ bodyId: "body_rect" });
+    expect(
+      parseGeneratedRectangleEdgeStableId("generated:edge::start:uMin")
+    ).toBeUndefined();
+  });
+
   it("filters selected and named generated rectangle edge references", () => {
     const edge = createEdge();
     const named = createNamedReference("Top edge", edge);

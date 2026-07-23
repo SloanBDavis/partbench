@@ -297,25 +297,28 @@ export function parseGeneratedEdgeFinishStableId(
   const capEdge = stableId.match(
     /^generated:edge:([^:]+):(start|end):(uMin|uMax|vMin|vMax)$/
   );
+  const capEdgeBodyId = capEdge?.[1];
 
-  if (capEdge) {
-    return { bodyId: capEdge[1] };
+  if (capEdgeBodyId) {
+    return { bodyId: capEdgeBodyId };
   }
 
   const longitudinalEdge = stableId.match(
     /^generated:edge:([^:]+):longitudinal:(uMin|uMax):(vMin|vMax)$/
   );
+  const longitudinalEdgeBodyId = longitudinalEdge?.[1];
 
-  if (longitudinalEdge) {
-    return { bodyId: longitudinalEdge[1] };
+  if (longitudinalEdgeBodyId) {
+    return { bodyId: longitudinalEdgeBodyId };
   }
 
   const circularEdge = stableId.match(
     /^generated:edge:([^:]+):(start|end):circular$/
   );
+  const circularEdgeBodyId = circularEdge?.[1];
 
-  if (circularEdge) {
-    return { bodyId: circularEdge[1] };
+  if (circularEdgeBodyId) {
+    return { bodyId: circularEdgeBodyId };
   }
 
   return undefined;
