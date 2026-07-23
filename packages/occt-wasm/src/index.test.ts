@@ -50,6 +50,7 @@ import {
   makeLinearPatternShape,
   withOcctPatternSeedShape
 } from "./pattern";
+import { makeMirrorShape } from "./mirror";
 import {
   createOcctStepExportWithShapeFactory,
   type OcctStepExportShapeFactory
@@ -663,6 +664,51 @@ describe("occt-wasm", () => {
       "origin",
       "copied-shape"
     ]);
+  });
+
+  it("disposes partial mirror parameters after builder failure", () => {
+    const deleted: string[] = [];
+    class Origin {
+      delete() {
+        deleted.push("origin");
+      }
+    }
+    class Direction {
+      delete() {
+        deleted.push("direction");
+      }
+    }
+    class Axis {
+      delete() {
+        deleted.push("axis");
+      }
+    }
+    class Transform {
+      SetMirror_3() {}
+      delete() {
+        deleted.push("transform");
+      }
+    }
+    class FailingTransformBuilder {
+      constructor() {
+        throw new Error("Injected mirror transform builder failure.");
+      }
+    }
+    const oc = {
+      gp_Pnt_3: Origin,
+      gp_Dir_4: Direction,
+      gp_Ax2_3: Axis,
+      gp_Trsf_1: Transform,
+      BRepBuilderAPI_Transform_2: FailingTransformBuilder
+    } as unknown as OpenCascadeInstance;
+
+    expect(() =>
+      makeMirrorShape(oc, {} as never, {
+        plane: { point: [0, 0, 0], normal: [1, 0, 0] },
+        includeOriginal: false
+      })
+    ).toThrow("Injected mirror transform builder failure");
+    expect(deleted).toEqual(["transform", "axis", "direction", "origin"]);
   });
 
   it.each([
