@@ -381,20 +381,34 @@ function createOcctAxes(
   readonly axis: InstanceType<typeof oc.gp_Ax2_2>;
   readonly delete: () => void;
 } {
-  const point = new oc.gp_Pnt_3(origin[0], origin[1], origin[2]);
-  const normal = new oc.gp_Dir_4(normalAxis[0], normalAxis[1], normalAxis[2]);
-  const xDirection = new oc.gp_Dir_4(uAxis[0], uAxis[1], uAxis[2]);
-  const axis = new oc.gp_Ax2_2(point, normal, xDirection);
+  let point: InstanceType<typeof oc.gp_Pnt_3> | undefined;
+  let normal: InstanceType<typeof oc.gp_Dir_4> | undefined;
+  let xDirection: InstanceType<typeof oc.gp_Dir_4> | undefined;
+  let axis: InstanceType<typeof oc.gp_Ax2_2> | undefined;
 
-  return {
-    axis,
-    delete: () => {
-      axis.delete();
-      xDirection.delete();
-      normal.delete();
-      point.delete();
-    }
-  };
+  try {
+    point = new oc.gp_Pnt_3(origin[0], origin[1], origin[2]);
+    normal = new oc.gp_Dir_4(normalAxis[0], normalAxis[1], normalAxis[2]);
+    xDirection = new oc.gp_Dir_4(uAxis[0], uAxis[1], uAxis[2]);
+    axis = new oc.gp_Ax2_2(point, normal, xDirection);
+    const handles = { axis, xDirection, normal, point };
+
+    return {
+      axis: handles.axis,
+      delete: () => {
+        handles.axis.delete();
+        handles.xDirection.delete();
+        handles.normal.delete();
+        handles.point.delete();
+      }
+    };
+  } catch (error) {
+    axis?.delete();
+    xDirection?.delete();
+    normal?.delete();
+    point?.delete();
+    throw error;
+  }
 }
 
 function subtractVec3(
