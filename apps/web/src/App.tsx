@@ -594,15 +594,24 @@ function readProjectTopologyIdentityReadiness():
     : undefined;
 }
 
-function exportCadProjectForDocument(
-  engine: CadEngine,
-  documentSnapshot: CadDocument
-) {
+function readEngineStateForDocument<T>(
+  documentSnapshot: CadDocument,
+  read: () => T
+): T {
   // CadEngine is stable and mutates internally; documentSnapshot invalidates
   // React memoization after command application.
   void documentSnapshot;
 
-  return exportCadProject(engine);
+  return read();
+}
+
+function exportCadProjectForDocument(
+  engine: CadEngine,
+  documentSnapshot: CadDocument
+) {
+  return readEngineStateForDocument(documentSnapshot, () =>
+    exportCadProject(engine)
+  );
 }
 
 function base64ToBytes(base64: string): Uint8Array {
@@ -1688,7 +1697,10 @@ export function App() {
     }
     return responses;
   }, [sketches]);
-  const projectStructure = useMemo(() => readProjectStructure(), [document]);
+  const projectStructure = useMemo(
+    () => readEngineStateForDocument(document, readProjectStructure),
+    [document]
+  );
   const bodySourceIdentitySignatures = useMemo(
     () =>
       readBodySourceIdentitySignatures(
@@ -1700,11 +1712,15 @@ export function App() {
     [document]
   );
   const projectImportReadiness = useMemo(
-    () => readProjectImportReadiness(),
+    () => readEngineStateForDocument(document, readProjectImportReadiness),
     [document]
   );
   const projectTopologyIdentityReadiness = useMemo(
-    () => readProjectTopologyIdentityReadiness(),
+    () =>
+      readEngineStateForDocument(
+        document,
+        readProjectTopologyIdentityReadiness
+      ),
     [document]
   );
   const sketchExtrudeBodies = useMemo(
@@ -1802,15 +1818,20 @@ export function App() {
   );
   const projectExportReadiness = useMemo(
     () =>
-      readProjectExportReadiness(
-        engine,
-        derivedExactMetadata,
-        currentExactMetadataSources
+      readEngineStateForDocument(document, () =>
+        readProjectExportReadiness(
+          engine,
+          derivedExactMetadata,
+          currentExactMetadataSources
+        )
       ),
     [derivedExactMetadata, currentExactMetadataSources, document]
   );
   const projectHealth = useMemo(
-    () => readProjectHealth(derivedExactMetadata, currentExactMetadataSources),
+    () =>
+      readEngineStateForDocument(document, () =>
+        readProjectHealth(derivedExactMetadata, currentExactMetadataSources)
+      ),
     [derivedExactMetadata, currentExactMetadataSources, document]
   );
   const retryableModelResultCount =
@@ -1907,7 +1928,8 @@ export function App() {
   const selectedBody = selectedId
     ? projectStructure.bodies.find((body) => body.id === selectedId)
     : undefined;
-  const preferredHoleBodyId = selectedBody?.id ?? preferredHoleTargetBodyId;
+  const selectedBodyId = selectedBody?.id;
+  const preferredHoleBodyId = selectedBodyId ?? preferredHoleTargetBodyId;
   useEffect(() => {
     if (
       preferredHoleTargetBodyId &&
@@ -1935,29 +1957,34 @@ export function App() {
     : undefined;
   const selectedBodyGeneratedReferences = useMemo(
     () =>
-      readBodyGeneratedReferences(
-        selectedBody?.id,
-        selectedBody
-          ? derivedGeneratedReferenceEvidenceByBodyId.get(selectedBody.id)
-          : undefined
+      readEngineStateForDocument(document, () =>
+        readBodyGeneratedReferences(
+          selectedBodyId,
+          selectedBodyId
+            ? derivedGeneratedReferenceEvidenceByBodyId.get(selectedBodyId)
+            : undefined
+        )
       ),
-    [derivedGeneratedReferenceEvidenceByBodyId, document, selectedBody?.id]
+    [derivedGeneratedReferenceEvidenceByBodyId, document, selectedBodyId]
   );
   const selectedGeneratedReferenceMeasurements = useMemo(
     () =>
-      readGeneratedReferenceMeasurements(
-        selectedBodyGeneratedReferences.references
+      readEngineStateForDocument(document, () =>
+        readGeneratedReferenceMeasurements(
+          selectedBodyGeneratedReferences.references
+        )
       ),
     [document, selectedBodyGeneratedReferences.references]
   );
   const selectedBodyMeasurements = useMemo(
-    () => (selectedBody ? readBodyMeasurements(selectedBody.id) : {}),
-    [document, selectedBody]
+    () =>
+      readEngineStateForDocument(document, () =>
+        selectedBodyId ? readBodyMeasurements(selectedBodyId) : {}
+      ),
+    [document, selectedBodyId]
   );
-  const selectedBodyExactMetadataSource = selectedBody
-    ? currentExactMetadataSources.find(
-        (source) => source.id === selectedBody.id
-      )
+  const selectedBodyExactMetadataSource = selectedBodyId
+    ? currentExactMetadataSources.find((source) => source.id === selectedBodyId)
     : undefined;
   const selectedBodyTopology = useMemo(
     () =>
@@ -1987,8 +2014,14 @@ export function App() {
       selectedBodyTopology.topology
     ]
   );
-  const namedReferences = useMemo(() => readNamedReferences(), [document]);
-  const referenceHealth = useMemo(() => readReferenceHealth(), [document]);
+  const namedReferences = useMemo(
+    () => readEngineStateForDocument(document, readNamedReferences),
+    [document]
+  );
+  const referenceHealth = useMemo(
+    () => readEngineStateForDocument(document, readReferenceHealth),
+    [document]
+  );
   const namedReferenceHealthByName =
     createNamedReferenceHealthByName(referenceHealth);
   useEffect(() => {
@@ -2011,23 +2044,30 @@ export function App() {
   ]);
   const selectedBodyReferenceCandidates = useMemo(
     () =>
-      selectedBody
-        ? readSelectionReferenceCandidates({
-            type: "body",
-            bodyId: selectedBody.id
-          })
-        : undefined,
-    [document, selectedBody]
+      readEngineStateForDocument(document, () =>
+        selectedBodyId
+          ? readSelectionReferenceCandidates({
+              type: "body",
+              bodyId: selectedBodyId
+            })
+          : undefined
+      ),
+    [document, selectedBodyId]
   );
   const referenceCandidatesByStableId = useMemo(
     () =>
-      readSelectionReferenceCandidatesByStableId(
-        selectedBodyGeneratedReferences.references
+      readEngineStateForDocument(document, () =>
+        readSelectionReferenceCandidatesByStableId(
+          selectedBodyGeneratedReferences.references
+        )
       ),
     [document, selectedBodyGeneratedReferences.references]
   );
   const namedReferenceCandidatesByName = useMemo(
-    () => readNamedReferenceCandidatesByName(namedReferences),
+    () =>
+      readEngineStateForDocument(document, () =>
+        readNamedReferenceCandidatesByName(namedReferences)
+      ),
     [document, namedReferences]
   );
   const selectedNamedReference = selectedNamedReferenceName
@@ -2036,16 +2076,22 @@ export function App() {
       )
     : undefined;
   const transactionHistory = useMemo(
-    () => readTransactionHistory(),
+    () => readEngineStateForDocument(document, readTransactionHistory),
     [document]
   );
-  const parameters = useMemo(() => readParameters(), [document]);
+  const parameters = useMemo(
+    () => readEngineStateForDocument(document, readParameters),
+    [document]
+  );
   const parameterEvaluation = useMemo(
-    () => readParameterEvaluation(),
+    () => readEngineStateForDocument(document, readParameterEvaluation),
     [document]
   );
   const sketchDimensionsBySketchId = useMemo(
-    () => readSketchDimensionsBySketchId(sketches),
+    () =>
+      readEngineStateForDocument(document, () =>
+        readSketchDimensionsBySketchId(sketches)
+      ),
     [document, sketches]
   );
   const parameterUsageCounts = useMemo(
@@ -2062,11 +2108,17 @@ export function App() {
     [parameters, sketchDimensionsBySketchId]
   );
   const sketchEvaluationsBySketchId = useMemo(
-    () => readSketchEvaluationsBySketchId(sketches),
+    () =>
+      readEngineStateForDocument(document, () =>
+        readSketchEvaluationsBySketchId(sketches)
+      ),
     [document, sketches]
   );
   const sketchSolverStatusesBySketchId = useMemo(
-    () => readSketchSolverStatusesBySketchId(sketches),
+    () =>
+      readEngineStateForDocument(document, () =>
+        readSketchSolverStatusesBySketchId(sketches)
+      ),
     [document, sketches]
   );
   const documentTreeCapabilities = useMemo(() => {
@@ -2197,17 +2249,19 @@ export function App() {
   );
   const selectedGeneratedReferenceCandidates = useMemo(
     () =>
-      selectedGeneratedReferenceState.status === "selected"
-        ? (referenceCandidatesByStableId.get(
-            selectedGeneratedReferenceState.reference.stableId
-          ) ??
-          readSelectionReferenceCandidates({
-            type: "generatedReference",
-            bodyId: selectedGeneratedReferenceState.reference.bodyId,
-            stableId: selectedGeneratedReferenceState.reference.stableId,
-            expectedKind: selectedGeneratedReferenceState.reference.kind
-          }))
-        : undefined,
+      readEngineStateForDocument(document, () =>
+        selectedGeneratedReferenceState.status === "selected"
+          ? (referenceCandidatesByStableId.get(
+              selectedGeneratedReferenceState.reference.stableId
+            ) ??
+            readSelectionReferenceCandidates({
+              type: "generatedReference",
+              bodyId: selectedGeneratedReferenceState.reference.bodyId,
+              stableId: selectedGeneratedReferenceState.reference.stableId,
+              expectedKind: selectedGeneratedReferenceState.reference.kind
+            }))
+          : undefined
+      ),
     [document, referenceCandidatesByStableId, selectedGeneratedReferenceState]
   );
   const selectedNamedReferenceCandidates =
@@ -3015,7 +3069,6 @@ export function App() {
   }, [
     transactionHistory.length,
     modelingSelectionContext,
-    selectedBody,
     selectedEntityProfile,
     selectedFeature,
     selectedObject,
@@ -6346,6 +6399,9 @@ export function App() {
   }
 
   const uiActionAvailability = useMemo<UiActionAvailabilityProjection>(() => {
+    // The command engine is mutable; the document snapshot invalidates undo and
+    // redo availability after command application.
+    void document;
     const ready = { status: "ready" } as const;
     const needs = (message: string) =>
       ({ status: "needs-selection", message }) as const;
