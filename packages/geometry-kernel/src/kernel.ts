@@ -2688,13 +2688,10 @@ function isValidResolvedPlanarWireProfile(
     endpoints.push(getArcEndpoints(segment));
   }
 
-  return endpoints.every((segment, index) =>
-    pointsCoincide(
-      segment.end,
-      endpoints[(index + 1) % endpoints.length].start,
-      tolerance
-    )
-  );
+  return endpoints.every((segment, index) => {
+    const next = endpoints[(index + 1) % endpoints.length];
+    return Boolean(next && pointsCoincide(segment.end, next.start, tolerance));
+  });
 }
 
 function getArcEndpoints(segment: ResolvedArcSegment2d): {
@@ -3805,7 +3802,9 @@ function isGeometryKernelBounds(value: unknown): value is GeometryKernelBounds {
   return (
     min.every(isFiniteNumber) &&
     max.every(isFiniteNumber) &&
-    min.every((component, index) => component <= max[index])
+    min[0] <= max[0] &&
+    min[1] <= max[1] &&
+    min[2] <= max[2]
   );
 }
 
