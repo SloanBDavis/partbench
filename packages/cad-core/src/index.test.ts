@@ -1976,6 +1976,9 @@ function corruptFirstMatchingByte(
   bytes: Uint8Array,
   needle: Uint8Array
 ): Uint8Array {
+  if (needle.byteLength === 0) {
+    throw new Error("Expected a non-empty byte sequence to corrupt.");
+  }
   const copy = new Uint8Array(bytes);
 
   for (
@@ -1984,7 +1987,11 @@ function corruptFirstMatchingByte(
     index += 1
   ) {
     if (needle.every((byte, offset) => copy[index + offset] === byte)) {
-      copy[index] = copy[index] ^ 0xff;
+      const original = copy[index];
+      if (original === undefined) {
+        break;
+      }
+      copy[index] = original ^ 0xff;
       return copy;
     }
   }
@@ -7021,8 +7028,12 @@ describe("cad-core", () => {
     if (!references.ok || references.query !== "body.generatedReferences") {
       throw new Error("Expected hole generated references response.");
     }
+    const firstFace = references.faces[0];
+    if (!firstFace) {
+      throw new Error("Expected at least one generated hole face.");
+    }
 
-    expect(references.faces[0].eligibilityNotes?.join(" ")).toContain(
+    expect(firstFace.eligibilityNotes?.join(" ")).toContain(
       "terminal and exit rims are deferred"
     );
     expect(JSON.stringify(references)).not.toContain(
@@ -24593,7 +24604,11 @@ describe("edge finishing feature source models", () => {
     expect(dryRun.createdFeatureIds).toEqual(["feat_chamfer_1"]);
     expect(engine.getDocument().features.has("feat_chamfer_1")).toBe(false);
 
-    engine.apply(batch.ops[0]);
+    const chamferOp = batch.ops[0];
+    if (!chamferOp) {
+      throw new Error("Expected one chamfer operation.");
+    }
+    engine.apply(chamferOp);
     expect(engine.getDocument().features.has("feat_chamfer_1")).toBe(true);
     engine.undo();
     expect(engine.getDocument().features.has("feat_chamfer_1")).toBe(false);
@@ -33397,6 +33412,10 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           "5555555555555555555555555555555555555555555555555555555555555555"
       }
     ];
+    const [brepEntry, topologyEntry, signatureEntry] = checkpointEntries;
+    if (!brepEntry || !topologyEntry || !signatureEntry) {
+      throw new Error("Expected three checkpoint source entries.");
+    }
     const sourceIdentity = await createWcadSourceIdentity({
       packageVersion: "partbench.wcad.v2",
       documentSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
@@ -33431,19 +33450,19 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       },
       tolerance: { linearTolerance: 0.001 },
       brep: {
-        ...checkpointEntries[0],
+        ...brepEntry,
         checkpointId: "checkpoint_1",
         source: true as const,
         sourceIdentity
       },
       topology: {
-        ...checkpointEntries[1],
+        ...topologyEntry,
         checkpointId: "checkpoint_1",
         source: true as const,
         sourceIdentity
       },
       signature: {
-        ...checkpointEntries[2],
+        ...signatureEntry,
         checkpointId: "checkpoint_1",
         source: true as const,
         sourceIdentity
@@ -40698,6 +40717,11 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       project.document.sketchConstraints
     );
 
+    const [firstConstraint, ...remainingConstraints] =
+      project.document.sketchConstraints;
+    if (!firstConstraint) {
+      throw new Error("Expected at least one advanced sketch constraint.");
+    }
     const firstIdentity = createCadProjectSourceIdentity(project);
     const secondIdentity = createCadProjectSourceIdentity(parsedJson);
     const changedIdentity = createCadProjectSourceIdentity({
@@ -40706,10 +40730,10 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         ...project.document,
         sketchConstraints: [
           {
-            ...project.document.sketchConstraints[0],
+            ...firstConstraint,
             name: "Tangent source renamed"
           },
-          ...project.document.sketchConstraints.slice(1)
+          ...remainingConstraints
         ]
       }
     });
