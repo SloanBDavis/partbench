@@ -1,4 +1,4 @@
-import type { OpenCascadeInstance } from "opencascade.js";
+import type { OpenCascadeInstance, TopoDS_Shape } from "opencascade.js";
 import {
   readTriangulatedShape,
   type OcctMeshData
@@ -27,9 +27,10 @@ export function createOcctSphereMeshWithInstance(
   const linearDeflection = input.linearDeflection ?? 0.5;
   const angularDeflection = input.angularDeflection ?? 0.5;
   const makeSphere = new oc.BRepPrimAPI_MakeSphere_1(input.radius);
+  let shape: TopoDS_Shape | undefined;
 
   try {
-    const shape = makeSphere.Shape();
+    shape = makeSphere.Shape();
     const mesh = new oc.BRepMesh_IncrementalMesh_2(
       shape,
       linearDeflection,
@@ -50,6 +51,7 @@ export function createOcctSphereMeshWithInstance(
       mesh.delete();
     }
   } finally {
+    shape?.delete();
     makeSphere.delete();
   }
 }
