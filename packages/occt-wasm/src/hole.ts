@@ -114,26 +114,35 @@ export function withOcctHoleResultShape<T>(
   assertHoleResultBindings(oc);
 
   const targetShape = makeBooleanExtrudeShape(oc, input.target);
-  const toolShape = makeHoleToolShape(oc, targetShape.Shape(), input.tool);
-  const range = new oc.Message_ProgressRange_1();
+  let target: TopoDS_Shape | undefined;
+  let toolShape: HoleToolShapeHandle | undefined;
+  let tool: TopoDS_Shape | undefined;
+  let range:
+    | InstanceType<OpenCascadeInstance["Message_ProgressRange_1"]>
+    | undefined;
   let cut: InstanceType<typeof oc.BRepAlgoAPI_Cut_3> | undefined;
+  let resultShape: TopoDS_Shape | undefined;
 
   try {
-    cut = new oc.BRepAlgoAPI_Cut_3(
-      targetShape.Shape(),
-      toolShape.shape.Shape(),
-      range
-    );
+    target = targetShape.Shape();
+    toolShape = makeHoleToolShape(oc, target, input.tool);
+    tool = toolShape.shape.Shape();
+    range = new oc.Message_ProgressRange_1();
+    cut = new oc.BRepAlgoAPI_Cut_3(target, tool, range);
 
     if (cut.HasErrors()) {
       throw new Error("Open CASCADE hole cut failed.");
     }
 
-    return readResult(cut.Shape());
+    resultShape = cut.Shape();
+    return readResult(resultShape);
   } finally {
+    resultShape?.delete();
     cut?.delete();
-    range.delete();
-    toolShape.delete();
+    range?.delete();
+    tool?.delete();
+    toolShape?.delete();
+    target?.delete();
     targetShape.delete();
   }
 }
