@@ -23,7 +23,8 @@ import {
 describe("generated reference selection helpers", () => {
   it("creates and resolves selected reference state with measurements", () => {
     const references = createReferences();
-    const selection = createSelectedGeneratedReference(references.faces[0]);
+    const face = requireFirst(references.faces, "generated face");
+    const selection = createSelectedGeneratedReference(face);
     const measurement: GeneratedReferenceMeasurement = {
       kind: "face",
       stableId: "generated:face:body_1:startCap",
@@ -72,14 +73,13 @@ describe("generated reference selection helpers", () => {
         { label: "Normal role", value: "startCap" }
       ]
     });
-    expect(isSelectedGeneratedReference(selection, references.faces[0])).toBe(
-      true
-    );
+    expect(isSelectedGeneratedReference(selection, face)).toBe(true);
   });
 
   it("enriches selected references from matching active topology anchors", () => {
     const references = createReferences();
-    const selection = createSelectedGeneratedReference(references.faces[0]);
+    const face = requireFirst(references.faces, "generated face");
+    const selection = createSelectedGeneratedReference(face);
 
     expect(
       enrichSelectedGeneratedReferenceWithTopologyAnchor(
@@ -92,7 +92,7 @@ describe("generated reference selection helpers", () => {
             checkpointId: "checkpoint_1",
             checkpointEntityId: "checkpoint-face-1",
             sourceFeatureId: "feat_1",
-            stableId: references.faces[0].stableId,
+            stableId: face.stableId,
             sourceSemanticRole: "startCap",
             state: "active",
             diagnostics: []
@@ -107,7 +107,8 @@ describe("generated reference selection helpers", () => {
 
   it("does not enrich selected references from non-active topology anchors", () => {
     const references = createReferences();
-    const selection = createSelectedGeneratedReference(references.faces[0]);
+    const face = requireFirst(references.faces, "generated face");
+    const selection = createSelectedGeneratedReference(face);
 
     expect(
       enrichSelectedGeneratedReferenceWithTopologyAnchor(
@@ -120,7 +121,7 @@ describe("generated reference selection helpers", () => {
             checkpointId: "checkpoint_1",
             checkpointEntityId: "checkpoint-face-1",
             sourceFeatureId: "feat_1",
-            stableId: references.faces[0].stableId,
+            stableId: face.stableId,
             sourceSemanticRole: "startCap",
             state: "repair-needed",
             diagnostics: [
@@ -257,6 +258,7 @@ describe("generated reference selection helpers", () => {
 
   it("summarizes V7 selection reference candidate query responses", () => {
     const references = createReferences();
+    const face = requireFirst(references.faces, "generated face");
     const response: SelectionReferenceCandidatesQueryResponse = {
       ok: true,
       query: "selection.referenceCandidates",
@@ -264,7 +266,7 @@ describe("generated reference selection helpers", () => {
       selection: {
         type: "generatedReference",
         bodyId: "body_1",
-        stableId: references.faces[0].stableId,
+        stableId: face.stableId,
         expectedKind: "face"
       },
       requiredOperation: "feature.attachSketchPlane",
@@ -276,10 +278,10 @@ describe("generated reference selection helpers", () => {
           target: {
             type: "generatedReference",
             bodyId: "body_1",
-            stableId: references.faces[0].stableId,
+            stableId: face.stableId,
             kind: "face"
           },
-          reference: references.faces[0],
+          reference: face,
           commandable: true,
           commandOperations: [
             "reference.nameGenerated",
@@ -287,8 +289,8 @@ describe("generated reference selection helpers", () => {
             "feature.measureReference",
             "feature.selectReference"
           ],
-          label: references.faces[0].label,
-          description: references.faces[0].description,
+          label: face.label,
+          description: face.description,
           issues: []
         }
       ],
@@ -297,7 +299,7 @@ describe("generated reference selection helpers", () => {
     };
 
     expect(getPrimarySelectionReferenceCandidate(response)).toEqual(
-      response.candidates[0]
+      requireFirst(response.candidates, "selection reference candidate")
     );
     expect(createSelectionReferenceCandidateSummaries(response)).toEqual([
       {
@@ -359,6 +361,7 @@ describe("generated reference selection helpers", () => {
 
   it("summarizes topology-anchor-backed selection candidates without private ids", () => {
     const references = createReferences();
+    const face = requireFirst(references.faces, "generated face");
     const response: SelectionReferenceCandidatesQueryResponse = {
       ok: true,
       query: "selection.referenceCandidates",
@@ -372,12 +375,12 @@ describe("generated reference selection helpers", () => {
           target: {
             type: "generatedReference",
             bodyId: "body_1",
-            stableId: references.faces[0].stableId,
+            stableId: face.stableId,
             kind: "face",
             topologyAnchorId: "anchor_face_1",
             checkpointId: "checkpoint_1"
           },
-          reference: references.faces[0],
+          reference: face,
           commandable: true,
           commandOperations: [
             "reference.nameGenerated",
@@ -385,8 +388,8 @@ describe("generated reference selection helpers", () => {
             "feature.measureReference",
             "feature.selectReference"
           ],
-          label: references.faces[0].label,
-          description: references.faces[0].description,
+          label: face.label,
+          description: face.description,
           issues: []
         }
       ],
@@ -396,7 +399,9 @@ describe("generated reference selection helpers", () => {
 
     const summaries = createSelectionReferenceCandidateSummaries(response);
 
-    expect(summaries[0]).toMatchObject({
+    expect(
+      requireFirst(summaries, "selection candidate summary")
+    ).toMatchObject({
       tone: "ready",
       title: "Face: Start cap",
       topologyDetail: undefined
@@ -408,6 +413,7 @@ describe("generated reference selection helpers", () => {
 
   it("derives V7 operation availability from selection reference candidates", () => {
     const references = createReferences();
+    const face = requireFirst(references.faces, "generated face");
     const resolvedResponse: SelectionReferenceCandidatesQueryResponse = {
       ok: true,
       query: "selection.referenceCandidates",
@@ -415,7 +421,7 @@ describe("generated reference selection helpers", () => {
       selection: {
         type: "generatedReference",
         bodyId: "body_1",
-        stableId: references.faces[0].stableId,
+        stableId: face.stableId,
         expectedKind: "face"
       },
       status: "resolved",
@@ -426,28 +432,32 @@ describe("generated reference selection helpers", () => {
           target: {
             type: "generatedReference",
             bodyId: "body_1",
-            stableId: references.faces[0].stableId,
+            stableId: face.stableId,
             kind: "face"
           },
-          reference: references.faces[0],
+          reference: face,
           commandable: true,
           commandOperations: [
             "reference.nameGenerated",
             "feature.attachSketchPlane"
           ],
-          label: references.faces[0].label,
+          label: face.label,
           issues: []
         }
       ],
       issueCount: 0,
       issues: []
     };
+    const resolvedCandidate = requireFirst(
+      resolvedResponse.candidates,
+      "resolved selection candidate"
+    );
     const consumedResponse: SelectionReferenceCandidatesQueryResponse = {
       ...resolvedResponse,
       status: "consumed",
       candidates: [
         {
-          ...resolvedResponse.candidates[0],
+          ...resolvedCandidate,
           commandable: false,
           commandOperations: [],
           issues: [
@@ -511,6 +521,14 @@ describe("generated reference selection helpers", () => {
     });
   });
 });
+
+function requireFirst<T>(items: readonly T[], label: string): T {
+  const [item] = items;
+  if (!item) {
+    throw new Error(`Expected ${label}.`);
+  }
+  return item;
+}
 
 function createReferences(): BodyGeneratedReferencesQueryResponse {
   const body: CadGeneratedReference = {
