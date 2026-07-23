@@ -3126,8 +3126,8 @@ function createResult({
         index === undefined
           ? point.initial
           : ([
-              cleanNumber(state[index]),
-              cleanNumber(state[index + 1])
+              cleanNumber(readStateValue(state, index)),
+              cleanNumber(readStateValue(state, index + 1))
             ] as const)
     };
   });
@@ -3135,7 +3135,9 @@ function createResult({
     const index = stateAccess.scalarIndex.get(scalar.id);
     return {
       id: scalar.id,
-      value: cleanNumber(index === undefined ? scalar.initial : state[index])
+      value: cleanNumber(
+        index === undefined ? scalar.initial : readStateValue(state, index)
+      )
     };
   });
   const arcs = (model.arcs ?? []).map((arcVariable) => {
@@ -3215,7 +3217,7 @@ function readPoint(
     return [Number.NaN, Number.NaN];
   }
 
-  return [state[index], state[index + 1]];
+  return [readStateValue(state, index), readStateValue(state, index + 1)];
 }
 
 interface ArcState {
@@ -3240,10 +3242,10 @@ function readArc(
     };
   }
   return {
-    center: [state[index], state[index + 1]],
-    radius: state[index + 2],
-    startAngleDegrees: state[index + 3],
-    sweepAngleDegrees: state[index + 4]
+    center: [readStateValue(state, index), readStateValue(state, index + 1)],
+    radius: readStateValue(state, index + 2),
+    startAngleDegrees: readStateValue(state, index + 3),
+    sweepAngleDegrees: readStateValue(state, index + 4)
   };
 }
 
@@ -3325,7 +3327,12 @@ function readInitialPoint(
   const x = stateAccess.variables[index]?.initial;
   const y = stateAccess.variables[index + 1]?.initial;
 
-  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+  if (
+    x === undefined ||
+    y === undefined ||
+    !Number.isFinite(x) ||
+    !Number.isFinite(y)
+  ) {
     return undefined;
   }
 
@@ -3362,7 +3369,11 @@ function readScalar(
     return Number.NaN;
   }
 
-  return state[index];
+  return readStateValue(state, index);
+}
+
+function readStateValue(state: readonly number[], index: number): number {
+  return state[index] ?? Number.NaN;
 }
 
 function readInitialScalar(
