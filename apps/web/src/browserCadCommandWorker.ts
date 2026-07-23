@@ -89,6 +89,12 @@ export class BrowserCadCommandWorker implements CadCommandWorker {
   }
 
   execute(request: CadWorkerRequest): Promise<CadWorkerResponse> {
+    if (this.#pendingRequests.has(request.id)) {
+      return Promise.reject(
+        new Error(`Duplicate CAD command worker request id: ${request.id}.`)
+      );
+    }
+
     return new Promise((resolve, reject) => {
       this.#pendingRequests.set(request.id, { resolve, reject });
       this.#transport.postMessage(request);

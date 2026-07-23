@@ -160,6 +160,65 @@ describe("BrowserCadCommandWorker", () => {
     expect(isSettled).toBe(true);
   });
 
+  it("rejects duplicate in-flight request ids without losing the first request", async () => {
+    let resolveFirst: ((response: CadWorkerResponse) => void) | undefined;
+    const transport = new FakeWorkerTransport(
+      (request) =>
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+          expect(request.id).toBe("worker_req_duplicate");
+        })
+    );
+    const worker = new BrowserCadCommandWorker(transport);
+    const request: CadWorkerRequest = {
+      id: "worker_req_duplicate",
+      document: {
+        units: "mm",
+        objects: [],
+        sketches: [],
+        parameters: [],
+        sketchDimensions: [],
+        sketchConstraints: [],
+        features: [],
+        namedReferences: [],
+        nextObjectNumber: 1,
+        nextSketchNumber: 1,
+        nextSketchEntityNumber: 1,
+        nextParameterNumber: 1,
+        nextSketchDimensionNumber: 1,
+        nextSketchConstraintNumber: 1,
+        nextFeatureNumber: 1,
+        nextBodyNumber: 1
+      },
+      batch: {
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: []
+      }
+    };
+
+    const first = worker.execute(request);
+    await expect(worker.execute(request)).rejects.toThrow(
+      "Duplicate CAD command worker request id: worker_req_duplicate."
+    );
+    expect(transport.requests).toHaveLength(1);
+
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    resolveFirst?.({
+      id: request.id,
+      response: {
+        ok: true,
+        mode: "dryRun",
+        semanticDiff: { created: [], modified: [], deleted: [] },
+        createdIds: [],
+        modifiedIds: [],
+        deletedIds: [],
+        warnings: []
+      }
+    });
+    await expect(first).resolves.toMatchObject({ id: request.id });
+  });
+
   it("keeps cad-core authoritative after browser worker validation", async () => {
     const engine = new CadEngine();
     const mockWorker = new MockCadCommandWorker();
