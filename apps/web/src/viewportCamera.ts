@@ -57,6 +57,14 @@ export interface ViewportCameraActionResult {
 }
 
 const TOP_VIEW_PITCH = Math.PI / 2 - 0.1;
+const defaultCamera = createDefaultCamera();
+const ISOMETRIC_STANDARD_VIEW: ViewportStandardView = {
+  id: "isometric",
+  label: "Iso",
+  title: "Isometric view",
+  yaw: defaultCamera.yaw,
+  pitch: defaultCamera.pitch
+};
 
 export const VIEWPORT_STANDARD_VIEWS: readonly ViewportStandardView[] = [
   {
@@ -80,13 +88,7 @@ export const VIEWPORT_STANDARD_VIEWS: readonly ViewportStandardView[] = [
     yaw: Math.PI / 2,
     pitch: 0
   },
-  {
-    id: "isometric",
-    label: "Iso",
-    title: "Isometric view",
-    yaw: createDefaultCamera().yaw,
-    pitch: createDefaultCamera().pitch
-  }
+  ISOMETRIC_STANDARD_VIEW
 ];
 
 export function applyViewportCameraAction(
@@ -194,7 +196,7 @@ export function getViewportStandardView(
   return (
     VIEWPORT_STANDARD_VIEWS.find(
       (standardView) => standardView.id === viewId
-    ) ?? VIEWPORT_STANDARD_VIEWS[VIEWPORT_STANDARD_VIEWS.length - 1]
+    ) ?? ISOMETRIC_STANDARD_VIEW
   );
 }
 

@@ -6,6 +6,7 @@ import {
   fitCameraToRenderScene,
   getRenderObjectBounds,
   getRenderSceneBounds,
+  getViewportStandardView,
   VIEWPORT_STANDARD_VIEWS
 } from "./viewportCamera";
 
@@ -238,6 +239,10 @@ describe("viewport camera helpers", () => {
       expect(result.camera.yaw).toBeCloseTo(standardView.yaw);
       expect(result.camera.pitch).toBeCloseTo(standardView.pitch);
     }
+  });
+
+  it("falls back to isometric for an invalid runtime standard-view ID", () => {
+    expect(getViewportStandardView("invalid" as never).id).toBe("isometric");
   });
 
   it("resets and zooms through the shared camera action helper", () => {
