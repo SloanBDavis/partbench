@@ -363,8 +363,21 @@ function collectFaces(
 
   try {
     for (; explorer.More(); explorer.Next()) {
-      const face = oc.TopoDS.Face_1(explorer.Current());
-      const bounds = readShapeBounds(oc, face);
+      const current = explorer.Current();
+      let face: TopoDS_Face;
+      try {
+        face = oc.TopoDS.Face_1(current);
+      } finally {
+        current.delete();
+      }
+
+      let bounds: ReturnType<typeof readShapeBounds>;
+      try {
+        bounds = readShapeBounds(oc, face);
+      } catch (error) {
+        face.delete();
+        throw error;
+      }
       faces.push({
         face,
         center: {
@@ -379,6 +392,11 @@ function collectFaces(
         }
       });
     }
+  } catch (error) {
+    for (const candidate of faces) {
+      candidate.face.delete();
+    }
+    throw error;
   } finally {
     explorer.delete();
   }
