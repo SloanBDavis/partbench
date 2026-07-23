@@ -437,13 +437,21 @@ type SketchSolveLineTargetConstraint =
   | SketchSolveTangentConstraint
   | SketchSolveSymmetryConstraint;
 
-interface ResidualBlock {
-  readonly sourceType: "constraint" | "dimension";
+interface ConstraintResidualBlock {
+  readonly sourceType: "constraint";
   readonly sourceId: string;
-  readonly constraintKind?: SketchSolveConstraintKind;
-  readonly dimensionKind?: SketchSolveDimensionKind;
+  readonly constraintKind: SketchSolveConstraintKind;
   readonly evaluator: ResidualEvaluator;
 }
+
+interface DimensionResidualBlock {
+  readonly sourceType: "dimension";
+  readonly sourceId: string;
+  readonly dimensionKind: SketchSolveDimensionKind;
+  readonly evaluator: ResidualEvaluator;
+}
+
+type ResidualBlock = ConstraintResidualBlock | DimensionResidualBlock;
 
 interface SolverStateAccess {
   readonly variables: readonly SolverVariable[];
@@ -737,8 +745,9 @@ function createConflictEvidenceDiagnostics(
         message: "Residual source remains inconsistent at the solve minimum.",
         sourceType: block.sourceType,
         sourceId: block.sourceId,
-        constraintKind: block.constraintKind,
-        dimensionKind: block.dimensionKind,
+        ...(block.sourceType === "constraint"
+          ? { constraintKind: block.constraintKind }
+          : { dimensionKind: block.dimensionKind }),
         expected: `block max residual <= ${tolerance}`,
         received: String(cleanNumber(maxResidual))
       }

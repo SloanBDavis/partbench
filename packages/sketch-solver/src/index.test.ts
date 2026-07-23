@@ -1282,6 +1282,28 @@ describe("sketch-solver", () => {
         expect.objectContaining({ code: "SKETCH_SOLVER_CONFLICTING" })
       ])
     );
+    const equalRadiusEvidence = equalRadiusConflict.diagnostics.filter(
+      (diagnostic) => diagnostic.code === "SKETCH_SOLVER_CONFLICTING"
+    );
+    expect(equalRadiusEvidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceType: "constraint",
+          constraintKind: "equalRadius"
+        }),
+        expect.objectContaining({
+          sourceType: "dimension",
+          dimensionKind: "circleRadius"
+        })
+      ])
+    );
+    for (const diagnostic of equalRadiusEvidence) {
+      if (diagnostic.sourceType === "constraint") {
+        expect(diagnostic).not.toHaveProperty("dimensionKind");
+      } else if (diagnostic.sourceType === "dimension") {
+        expect(diagnostic).not.toHaveProperty("constraintKind");
+      }
+    }
   });
 
   it("reports missing and zero-length line-pair targets as structured failures", () => {
