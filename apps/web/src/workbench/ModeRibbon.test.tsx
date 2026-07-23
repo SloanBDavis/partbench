@@ -32,8 +32,13 @@ describe("V18 mode ribbon", () => {
     const groups = projectRibbonGroups("sketch", projectUiActions(context()));
     const widths = Object.fromEntries(groups.map((group) => [group.id, 100]));
     const visible = chooseVisibleRibbonGroupIds(groups, widths, 268, 68);
+    const firstGroup = groups.at(0);
+    const lastGroup = groups.at(-1);
+    if (!firstGroup || !lastGroup) {
+      throw new Error("Expected projected sketch ribbon groups.");
+    }
 
-    expect([...visible]).toEqual([groups[0].id, groups.at(-1)?.id]);
+    expect([...visible]).toEqual([firstGroup.id, lastGroup.id]);
     expect(
       groups.every((group) => visible.has(group.id) || !visible.has(group.id))
     ).toBe(true);
