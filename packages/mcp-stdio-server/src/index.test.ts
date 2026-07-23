@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { CadMcpServer } from "@web-cad/mcp-adapter";
 import { createMcpStdioSession } from "./index";
 
 interface ToolsListResponse {
@@ -950,6 +951,27 @@ describe("mcp stdio server", () => {
       error: {
         code: -32700,
         message: "Parse error."
+      }
+    });
+  });
+
+  it("does not misreport server failures as JSON parse errors", () => {
+    const server = {
+      handleJsonRpc() {
+        throw new Error("Injected server failure.");
+      }
+    } as unknown as CadMcpServer;
+    const session = createMcpStdioSession({ server });
+    const response = parseLineResponse(
+      session.handleLine('{"jsonrpc":"2.0","id":7,"method":"tools/list"}')
+    );
+
+    expect(response).toEqual({
+      jsonrpc: "2.0",
+      id: 7,
+      error: {
+        code: -32603,
+        message: "Internal error."
       }
     });
   });

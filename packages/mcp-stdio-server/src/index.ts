@@ -2,6 +2,7 @@ import {
   createCadMcpServer,
   type CadMcpServer,
   type McpJsonRpcError,
+  type McpJsonRpcId,
   type McpJsonRpcResponse
 } from "@web-cad/mcp-adapter";
 
@@ -27,10 +28,18 @@ export class McpStdioSession {
   }
 
   handleMessage(message: string): McpJsonRpcResponse {
+    let request: unknown;
+
     try {
-      return this.#server.handleJsonRpc(JSON.parse(message) as unknown);
+      request = JSON.parse(message) as unknown;
     } catch {
       return createParseError();
+    }
+
+    try {
+      return this.#server.handleJsonRpc(request);
+    } catch {
+      return createInternalError(readRequestId(request));
     }
   }
 }
@@ -50,4 +59,26 @@ function createParseError(): McpJsonRpcError {
       message: "Parse error."
     }
   };
+}
+
+function createInternalError(id: McpJsonRpcId): McpJsonRpcError {
+  return {
+    jsonrpc: "2.0",
+    id,
+    error: {
+      code: -32603,
+      message: "Internal error."
+    }
+  };
+}
+
+function readRequestId(request: unknown): McpJsonRpcId {
+  if (typeof request !== "object" || request === null || !("id" in request)) {
+    return null;
+  }
+
+  const { id } = request;
+  return typeof id === "string" || typeof id === "number" || id === null
+    ? id
+    : null;
 }
