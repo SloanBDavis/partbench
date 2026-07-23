@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -181,11 +182,14 @@ export function WorkbenchShell({
   const previousEditorRef = useRef(activeEditor);
   const drawerOpenerRef = useRef<HTMLElement | null>(null);
 
-  const setOpenDrawer = (side: DockSide | undefined, opener?: HTMLElement) => {
-    if (opener) drawerOpenerRef.current = opener;
-    if (controlledOpenDrawer === undefined) setUncontrolledDrawer(side);
-    onOpenDrawerChange?.(side);
-  };
+  const setOpenDrawer = useCallback(
+    (side: DockSide | undefined, opener?: HTMLElement) => {
+      if (opener) drawerOpenerRef.current = opener;
+      if (controlledOpenDrawer === undefined) setUncontrolledDrawer(side);
+      onOpenDrawerChange?.(side);
+    },
+    [controlledOpenDrawer, onOpenDrawerChange]
+  );
 
   useEffect(() => {
     if (
@@ -196,7 +200,7 @@ export function WorkbenchShell({
       setOpenDrawer("right");
     }
     previousEditorRef.current = activeEditor;
-  }, [activeEditor, measuredWidth]);
+  }, [activeEditor, measuredWidth, setOpenDrawer]);
 
   const rightDockSuppressed = mode === "project" && !projectDetailsOpen;
   const layout = resolveWorkbenchLayout({

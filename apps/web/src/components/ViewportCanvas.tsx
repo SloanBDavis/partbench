@@ -12,6 +12,7 @@ import {
   type ViewportSize
 } from "@web-cad/renderer";
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -145,6 +146,38 @@ export function ViewportCanvas({
       }
     | undefined
   >(undefined);
+  const setInternalHoveredId = useCallback(
+    (nextId: string | undefined): boolean => {
+      if (hoveredIdRef.current === nextId) {
+        return false;
+      }
+
+      hoveredIdRef.current = nextId;
+      setHoveredId(nextId);
+      return true;
+    },
+    []
+  );
+  const publishViewportHover = useCallback(
+    (pick: ViewportCanvasPick | undefined): void => {
+      const inputs = latestInputsRef.current;
+      const previousId = hoveredIdRef.current;
+      const nextId = pick?.pickedRenderId;
+      const semanticTargetChanged = setInternalHoveredId(nextId);
+
+      if (
+        semanticTargetChanged ||
+        shouldNotifyViewportHover(
+          previousId,
+          nextId,
+          Boolean(pick) && inputs.notifyHoverPointChanges
+        )
+      ) {
+        inputs.onHover?.(pick);
+      }
+    },
+    [setInternalHoveredId]
+  );
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
@@ -228,7 +261,7 @@ export function ViewportCanvas({
       resizeFrameRef.current = undefined;
       queuedNavigationRef.current = undefined;
     };
-  }, []);
+  }, [publishViewportHover]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -359,34 +392,6 @@ export function ViewportCanvas({
     const nextCamera = updater(cameraRef.current);
     cameraRef.current = nextCamera;
     setCamera(nextCamera);
-  }
-
-  function setInternalHoveredId(nextId: string | undefined): boolean {
-    if (hoveredIdRef.current === nextId) {
-      return false;
-    }
-
-    hoveredIdRef.current = nextId;
-    setHoveredId(nextId);
-    return true;
-  }
-
-  function publishViewportHover(pick: ViewportCanvasPick | undefined): void {
-    const inputs = latestInputsRef.current;
-    const previousId = hoveredIdRef.current;
-    const nextId = pick?.pickedRenderId;
-    const semanticTargetChanged = setInternalHoveredId(nextId);
-
-    if (
-      semanticTargetChanged ||
-      shouldNotifyViewportHover(
-        previousId,
-        nextId,
-        Boolean(pick) && inputs.notifyHoverPointChanges
-      )
-    ) {
-      inputs.onHover?.(pick);
-    }
   }
 
   return (
