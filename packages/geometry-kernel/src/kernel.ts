@@ -2341,18 +2341,21 @@ function mapExtrudePositions(
 ): Float32Array {
   const mapped = new Float32Array(positions.length);
   const bounds = getPositionBounds(positions);
+  if (!bounds) {
+    return positions.slice();
+  }
   const profileCenterX = (bounds.min[0] + bounds.max[0]) / 2;
   const profileCenterY = (bounds.min[1] + bounds.max[1]) / 2;
   const normalOrigin = bounds.min[2];
 
   for (let index = 0; index < positions.length; index += 3) {
-    const profileX = positions[index] - profileCenterX + center[0];
-    const profileY = positions[index + 1] - profileCenterY + center[1];
-    const normal = mapExtrudeNormal(
-      positions[index + 2] - normalOrigin,
-      depth,
-      side
-    );
+    const position = readPositionTuple(positions, index);
+    if (!position) {
+      return positions.slice();
+    }
+    const profileX = position[0] - profileCenterX + center[0];
+    const profileY = position[1] - profileCenterY + center[1];
+    const normal = mapExtrudeNormal(position[2] - normalOrigin, depth, side);
     const [x, y, z] = mapPlanePoint(sketchPlane, profileX, profileY, normal);
 
     mapped[index] = x;
@@ -2378,10 +2381,16 @@ function mapExtrudeNormal(
   }
 }
 
-function getPositionBounds(positions: Float32Array): {
-  readonly min: readonly [number, number, number];
-  readonly max: readonly [number, number, number];
-} {
+function getPositionBounds(positions: Float32Array):
+  | {
+      readonly min: readonly [number, number, number];
+      readonly max: readonly [number, number, number];
+    }
+  | undefined {
+  if (positions.length === 0 || positions.length % 3 !== 0) {
+    return undefined;
+  }
+
   let minX = Number.POSITIVE_INFINITY;
   let minY = Number.POSITIVE_INFINITY;
   let minZ = Number.POSITIVE_INFINITY;
@@ -2390,18 +2399,34 @@ function getPositionBounds(positions: Float32Array): {
   let maxZ = Number.NEGATIVE_INFINITY;
 
   for (let index = 0; index < positions.length; index += 3) {
-    minX = Math.min(minX, positions[index]);
-    minY = Math.min(minY, positions[index + 1]);
-    minZ = Math.min(minZ, positions[index + 2]);
-    maxX = Math.max(maxX, positions[index]);
-    maxY = Math.max(maxY, positions[index + 1]);
-    maxZ = Math.max(maxZ, positions[index + 2]);
+    const position = readPositionTuple(positions, index);
+    if (!position) {
+      return undefined;
+    }
+    minX = Math.min(minX, position[0]);
+    minY = Math.min(minY, position[1]);
+    minZ = Math.min(minZ, position[2]);
+    maxX = Math.max(maxX, position[0]);
+    maxY = Math.max(maxY, position[1]);
+    maxZ = Math.max(maxZ, position[2]);
   }
 
   return {
     min: [minX, minY, minZ],
     max: [maxX, maxY, maxZ]
   };
+}
+
+function readPositionTuple(
+  positions: Float32Array,
+  index: number
+): readonly [number, number, number] | undefined {
+  const x = positions[index];
+  const y = positions[index + 1];
+  const z = positions[index + 2];
+  return x === undefined || y === undefined || z === undefined
+    ? undefined
+    : [x, y, z];
 }
 
 function mapPlanePoint(

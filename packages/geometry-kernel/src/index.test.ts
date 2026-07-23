@@ -3705,6 +3705,51 @@ describe("geometry-kernel facade", () => {
     });
   });
 
+  it("rejects malformed primitive position tuples before mapping them", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: async () => ({
+        primitive: "box",
+        positions: new Float32Array([0, 0, 0, 1]),
+        indices: new Uint32Array([0, 0, 0]),
+        vertexCount: 1,
+        triangleCount: 1,
+        faceCount: 1
+      }),
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory
+    };
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_invalid_extrude_positions",
+        version: "geometry-kernel.v1",
+        op: "geometry.tessellateExtrude",
+        sketchPlane: "XY",
+        profile: {
+          kind: "rectangle",
+          center: [0, 0],
+          width: 2,
+          height: 2
+        },
+        depth: 2
+      }
+    );
+
+    expect(response).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_RESULT"
+      }
+    });
+  });
+
   it("returns hole meshes from an injected factory", async () => {
     const unusedFactory = async () => {
       throw new Error("Unexpected mesh factory call.");
