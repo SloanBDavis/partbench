@@ -283,7 +283,9 @@ function readLocalEntryBytes(
 
   const nameLength = readUint16(view, localHeaderOffset + 26);
   const extraLength = readUint16(view, localHeaderOffset + 28);
-  const dataStart = localHeaderOffset + 30 + nameLength + extraLength;
+  const nameStart = localHeaderOffset + 30;
+  const nameEnd = nameStart + nameLength;
+  const dataStart = nameEnd + extraLength;
   const dataEnd = dataStart + size;
 
   if (dataEnd > bytes.byteLength) {
@@ -292,6 +294,19 @@ function readLocalEntryBytes(
         "WCAD_INVALID_PACKAGE",
         "WCAD package entry data is outside the archive bounds.",
         `$.entries.${path}`,
+        path
+      )
+    );
+    return undefined;
+  }
+
+  const localPath = decodeZipPath(bytes.slice(nameStart, nameEnd));
+  if (localPath !== path) {
+    issues.push(
+      createZipIssue(
+        "WCAD_INVALID_PACKAGE",
+        "WCAD package local file header path does not match the central directory.",
+        `$.entries.${path}.localHeader.path`,
         path
       )
     );

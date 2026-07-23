@@ -37,4 +37,25 @@ describe("WCAD ZIP storage", () => {
       new Uint8Array([1, 2, 3])
     );
   });
+
+  it("rejects local entry paths that disagree with the central directory", () => {
+    const archive = writeZipStore([
+      {
+        path: "document.cbor",
+        bytes: new Uint8Array([1, 2, 3])
+      }
+    ]);
+    archive[30] = "x".charCodeAt(0);
+
+    const result = readZipStore(archive);
+
+    expect(result.entries.has("document.cbor")).toBe(false);
+    expect(result.issues).toEqual([
+      expect.objectContaining({
+        code: "WCAD_INVALID_PACKAGE",
+        entryPath: "document.cbor",
+        path: "$.entries.document.cbor.localHeader.path"
+      })
+    ]);
+  });
 });
