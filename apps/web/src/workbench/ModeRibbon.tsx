@@ -354,7 +354,7 @@ function RibbonActionButton({
 }
 
 function format(mode: WorkbenchMode): string {
-  return mode[0].toUpperCase() + mode.slice(1);
+  return mode.charAt(0).toUpperCase() + mode.slice(1);
 }
 
 function escapeSelector(value: string): string {
