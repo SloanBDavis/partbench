@@ -54,6 +54,7 @@ import {
 import { makeMirrorShape } from "./mirror";
 import { makeShellShape } from "./shell";
 import { makeLoftShape } from "./loft";
+import { withOcctHoleResultShape } from "./hole";
 import {
   createOcctStepExportWithShapeFactory,
   type OcctStepExportShapeFactory
@@ -830,6 +831,97 @@ describe("occt-wasm", () => {
       })
     ).toThrow("Injected STEP reader failure");
     expect(deleted).toEqual(["progress"]);
+  });
+
+  it("disposes partial hole axes and its target after direction failure", () => {
+    const deleted: string[] = [];
+    let pointIndex = 0;
+    let directionIndex = 0;
+    let axisIndex = 0;
+    class Point {
+      readonly #label: string;
+      constructor() {
+        pointIndex += 1;
+        this.#label = `point-${pointIndex}`;
+      }
+      delete() {
+        deleted.push(this.#label);
+      }
+    }
+    class Direction {
+      readonly #label: string;
+      constructor() {
+        directionIndex += 1;
+        if (directionIndex === 4) {
+          throw new Error("Injected hole x-direction failure.");
+        }
+        this.#label = `direction-${directionIndex}`;
+      }
+      delete() {
+        deleted.push(this.#label);
+      }
+    }
+    class Axis {
+      readonly #label: string;
+      constructor() {
+        axisIndex += 1;
+        this.#label = `axis-${axisIndex}`;
+      }
+      delete() {
+        deleted.push(this.#label);
+      }
+    }
+    class TargetShape {
+      delete() {
+        deleted.push("target-shape");
+      }
+    }
+    class BoxBuilder {
+      Shape() {
+        return new TargetShape();
+      }
+      delete() {
+        deleted.push("box-builder");
+      }
+    }
+    class UnusedBinding {}
+    const oc = {
+      gp_Pnt_3: Point,
+      gp_Dir_4: Direction,
+      gp_Ax2_2: Axis,
+      BRepPrimAPI_MakeBox_5: BoxBuilder,
+      BRepPrimAPI_MakeCylinder_3: UnusedBinding,
+      BRepAlgoAPI_Cut_3: UnusedBinding,
+      Message_ProgressRange_1: UnusedBinding,
+      BRepBndLib: { AddOptimal() {} },
+      Bnd_Box_1: UnusedBinding
+    } as unknown as OpenCascadeInstance;
+
+    expect(() =>
+      withOcctHoleResultShape(
+        oc,
+        {
+          target: occtBooleanRecipePrimitive,
+          tool: {
+            sketchPlane: "XY",
+            circle: { kind: "circle", center: [0, 0], radius: 0.5 },
+            depthMode: "blind",
+            depth: 1
+          }
+        },
+        () => undefined
+      )
+    ).toThrow("Injected hole x-direction failure");
+    expect(deleted).toEqual([
+      "axis-1",
+      "direction-2",
+      "direction-1",
+      "point-1",
+      "direction-3",
+      "point-2",
+      "target-shape",
+      "box-builder"
+    ]);
   });
 
   it.each([
