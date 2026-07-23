@@ -25,6 +25,10 @@ describe("visualizationMeshExport", () => {
     const first = createGlbFromRenderMeshes([{ label: "Body 1", mesh }]);
     const second = createGlbFromRenderMeshes([{ label: "Body 1", mesh }]);
     const parsed = parseGlb(first.bytes);
+    const [buffer] = parsed.json.buffers;
+    if (!buffer) {
+      throw new Error("Expected one GLB buffer.");
+    }
 
     expect(Array.from(first.bytes)).toEqual(Array.from(second.bytes));
     expect(first.meshMetadata).toEqual([{ vertexCount: 3, triangleCount: 1 }]);
@@ -41,7 +45,7 @@ describe("visualizationMeshExport", () => {
       exportKind: "visualization",
       authoritative: false
     });
-    expect(parsed.json.buffers[0].byteLength).toBe(first.binaryByteLength);
+    expect(buffer.byteLength).toBe(first.binaryByteLength);
     expect(parsed.binaryChunkType).toBe(0x004e4942);
   });
 
@@ -161,10 +165,14 @@ describe("visualizationMeshExport", () => {
     const failedEngine = createSingleRectangleExtrudeProject("body_failed");
     const failedReadiness = readExportReadiness(failedEngine);
     const failedSources = readDerivedSources(failedEngine);
+    const [failedSource] = failedSources;
+    if (!failedSource) {
+      throw new Error("Expected failed derived geometry source.");
+    }
     const failedStatus = createVisualizationMeshExportStatus({
       exportReadiness: failedReadiness,
       derivedGeometry: createDerivedGeometrySnapshot([
-        createErrorEntry(failedSources[0])
+        createErrorEntry(failedSource)
       ]),
       derivedGeometrySources: failedSources
     });
@@ -242,11 +250,15 @@ describe("visualizationMeshExport", () => {
     const engine = createSingleRectangleExtrudeProject("body_public");
     const readiness = readExportReadiness(engine);
     const sources = readDerivedSources(engine);
+    const [source] = sources;
+    if (!source) {
+      throw new Error("Expected public derived geometry source.");
+    }
     const mesh = createTriangleMesh("mesh-triangle-private");
     const result = createVisualizationMeshExportArtifact({
       exportReadiness: readiness,
       derivedGeometry: createDerivedGeometrySnapshot([
-        createReadyEntry(sources[0], mesh)
+        createReadyEntry(source, mesh)
       ]),
       derivedGeometrySources: sources
     });
