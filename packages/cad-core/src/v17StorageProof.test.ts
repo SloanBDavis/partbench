@@ -63,6 +63,18 @@ function mutableProjectFixture(project: CadProject): MutableProjectFixture {
   return project as unknown as MutableProjectFixture;
 }
 
+function fixtureAt<T>(
+  values: readonly T[],
+  index: number,
+  collection: string
+): T {
+  const value = values[index];
+  if (value === undefined) {
+    throw new Error(`Missing ${collection} fixture at index ${index}.`);
+  }
+  return value;
+}
+
 function omitFixtureFields(
   value: object,
   fields: readonly string[]
@@ -716,10 +728,10 @@ function createNormalizedV21Project(): CadProject {
 
 function createOrderedWireAndChainProject(): CadProject {
   const project = mutableProjectFixture(clone(createNormalizedV21Project()));
-  project.document.sketches[1].entities.push(
+  fixtureAt(project.document.sketches, 1, "sketch").entities.push(
     entity("path_2", "line", { start: [0, 5], end: [5, 5] })
   );
-  project.document.features[0].profile = {
+  fixtureAt(project.document.features, 0, "feature").profile = {
     kind: "wire",
     sketchId: "path",
     segments: [
@@ -727,7 +739,7 @@ function createOrderedWireAndChainProject(): CadProject {
       { entityId: "path_2", orientation: "reverse" }
     ]
   };
-  project.document.features[2].path = {
+  fixtureAt(project.document.features, 2, "feature").path = {
     kind: "chain",
     sketchId: "path",
     segments: [
@@ -1036,7 +1048,9 @@ describe("V17 V21 storage proof", () => {
 
     const rawV4 = mutableProjectFixture(corpus[3]!.project);
     expect(rawV4.document).not.toHaveProperty("namedReferences");
-    expect(rawV4.document.sketches[1].attachment).toMatchObject({
+    expect(
+      fixtureAt(rawV4.document.sketches, 1, "sketch").attachment
+    ).toMatchObject({
       kind: "generatedFace",
       sourceFeatureId: "base_extrude",
       sourceSketchId: "base_sketch",
@@ -1057,10 +1071,16 @@ describe("V17 V21 storage proof", () => {
 
     const rawV17 = mutableProjectFixture(corpus[16]!.project);
     expect(rawV17.document).not.toHaveProperty("topologyIdentity");
-    expect(rawV17.document.sketches[0].entities[0]).not.toHaveProperty(
-      "construction"
-    );
-    expect(rawV17.document.sketchConstraints[0]).toMatchObject({
+    expect(
+      fixtureAt(
+        fixtureAt(rawV17.document.sketches, 0, "sketch").entities,
+        0,
+        "entity"
+      )
+    ).not.toHaveProperty("construction");
+    expect(
+      fixtureAt(rawV17.document.sketchConstraints, 0, "constraint")
+    ).toMatchObject({
       kind: "tangent",
       primaryTarget: { entityKind: "line" },
       secondaryTarget: { entityKind: "circle" }
@@ -1090,9 +1110,13 @@ describe("V17 V21 storage proof", () => {
     });
 
     const rawV20 = mutableProjectFixture(corpus[19]!.project);
-    expect(rawV20.document.sketches[0].entities[0]).not.toHaveProperty(
-      "construction"
-    );
+    expect(
+      fixtureAt(
+        fixtureAt(rawV20.document.sketches, 0, "sketch").entities,
+        0,
+        "entity"
+      )
+    ).not.toHaveProperty("construction");
     expect(rawV20.document.features[0]).toMatchObject({
       sketchId: "v20_profile",
       entityId: "v20_rect"
@@ -1103,7 +1127,13 @@ describe("V17 V21 storage proof", () => {
       pathEntityIds: ["v20_path_line"]
     });
     expect(rawV20.document.features[2]).not.toHaveProperty("path");
-    expect(rawV20.document.features[3].sections[0]).toEqual({
+    expect(
+      fixtureAt(
+        fixtureAt(rawV20.document.features, 3, "feature").sections,
+        0,
+        "section"
+      )
+    ).toEqual({
       sketchId: "v20_profile",
       entityId: "v20_circle"
     });
@@ -1284,15 +1314,30 @@ describe("V17 V21 storage proof", () => {
     const baseline = createCadProjectSourceIdentity(source).sha256;
     const variants = [
       (project: MutableProjectFixture) =>
-        project.document.features[0].profile.segments.reverse(),
+        fixtureAt(
+          project.document.features,
+          0,
+          "feature"
+        ).profile.segments.reverse(),
       (project: MutableProjectFixture) => {
-        project.document.features[0].profile.segments[0].orientation =
-          "reverse";
+        fixtureAt(
+          fixtureAt(project.document.features, 0, "feature").profile.segments,
+          0,
+          "profile segment"
+        ).orientation = "reverse";
       },
       (project: MutableProjectFixture) =>
-        project.document.features[2].path.segments.reverse(),
+        fixtureAt(
+          project.document.features,
+          2,
+          "feature"
+        ).path.segments.reverse(),
       (project: MutableProjectFixture) => {
-        project.document.features[2].path.segments[1].orientation = "reverse";
+        fixtureAt(
+          fixtureAt(project.document.features, 2, "feature").path.segments,
+          1,
+          "path segment"
+        ).orientation = "reverse";
       }
     ];
 
@@ -1309,7 +1354,11 @@ describe("V17 V21 storage proof", () => {
     const dangling = mutableProjectFixture(
       clone(createOrderedWireAndChainProject())
     );
-    dangling.document.features[0].profile.segments[1].entityId = "missing";
+    fixtureAt(
+      fixtureAt(dangling.document.features, 0, "feature").profile.segments,
+      1,
+      "profile segment"
+    ).entityId = "missing";
     expectV21Issue(
       dangling,
       "$.document.features[0].profile.segments[1].entityId"
@@ -1318,7 +1367,11 @@ describe("V17 V21 storage proof", () => {
     const mixedSketch = mutableProjectFixture(
       clone(createOrderedWireAndChainProject())
     );
-    mixedSketch.document.features[0].profile.segments[1].entityId = "axis";
+    fixtureAt(
+      fixtureAt(mixedSketch.document.features, 0, "feature").profile.segments,
+      1,
+      "profile segment"
+    ).entityId = "axis";
     expectV21Issue(
       mixedSketch,
       "$.document.features[0].profile.segments[1].entityId"
@@ -1327,8 +1380,12 @@ describe("V17 V21 storage proof", () => {
     const invalidOrientation = mutableProjectFixture(
       clone(createOrderedWireAndChainProject())
     );
-    invalidOrientation.document.features[0].profile.segments[0].orientation =
-      "clockwise";
+    fixtureAt(
+      fixtureAt(invalidOrientation.document.features, 0, "feature").profile
+        .segments,
+      0,
+      "profile segment"
+    ).orientation = "clockwise";
     expectV21Issue(
       invalidOrientation,
       "$.document.features[0].profile.segments[0].orientation"
@@ -1337,7 +1394,7 @@ describe("V17 V21 storage proof", () => {
     const crossSketchAxis = mutableProjectFixture(
       clone(createNormalizedV21Project())
     );
-    crossSketchAxis.document.features[1].axis = {
+    fixtureAt(crossSketchAxis.document.features, 1, "feature").axis = {
       type: "sketchLine",
       sketchId: "path",
       entityId: "path_1"
@@ -1432,7 +1489,8 @@ describe("V17 V21 storage proof", () => {
       const mismatched = mutableProjectFixture(
         clone(source as unknown as CadProject)
       );
-      mismatched.document.sketches[4].attachment[field] = value;
+      fixtureAt(mismatched.document.sketches, 4, "sketch").attachment[field] =
+        value;
       expectProjectIssue(
         mismatched,
         "INVALID_SKETCH",
@@ -1442,8 +1500,11 @@ describe("V17 V21 storage proof", () => {
     const wrongStableId = mutableProjectFixture(
       clone(source as unknown as CadProject)
     );
-    wrongStableId.document.sketches[4].attachment.faceStableId =
-      "generated:face:body_extrude:startCap";
+    fixtureAt(
+      wrongStableId.document.sketches,
+      4,
+      "sketch"
+    ).attachment.faceStableId = "generated:face:body_extrude:startCap";
     expectProjectIssue(
       wrongStableId,
       "INVALID_SKETCH",
@@ -1462,10 +1523,10 @@ describe("V17 V21 storage proof", () => {
     const revolveWire = mutableProjectFixture(
       clone(createNormalizedV21Project())
     );
-    revolveWire.document.sketches[0].entities.push(
+    fixtureAt(revolveWire.document.sketches, 0, "sketch").entities.push(
       entity("profile_line_2", "line", { start: [0, 3], end: [3, 3] })
     );
-    revolveWire.document.features[1].profile = {
+    fixtureAt(revolveWire.document.features, 1, "feature").profile = {
       kind: "wire",
       sketchId: "profiles",
       segments: [
@@ -1500,7 +1561,7 @@ describe("V17 V21 storage proof", () => {
         "$.document.features[3].sections[0].profile.kind",
         3,
         (feature) => {
-          feature.sections[0].profile = {
+          fixtureAt(feature.sections, 0, "section").profile = {
             kind: "wire",
             sketchId: "profiles",
             segments: [
@@ -1515,7 +1576,7 @@ describe("V17 V21 storage proof", () => {
       const denied = mutableProjectFixture(
         clone(revolveWire as unknown as CadProject)
       );
-      mutate(denied.document.features[featureIndex]);
+      mutate(fixtureAt(denied.document.features, featureIndex, "feature"));
       expectV21Issue(denied, path);
     }
   });
@@ -1551,29 +1612,47 @@ describe("V17 V21 storage proof", () => {
     ][] = [
       [
         "$.document.features[0].sketchId",
-        (p) => (p.document.features[0].sketchId = "profiles")
+        (p) =>
+          (fixtureAt(p.document.features, 0, "feature").sketchId = "profiles")
       ],
       [
         "$.document.features[1].entityId",
-        (p) => (p.document.features[1].entityId = "circle_a")
+        (p) =>
+          (fixtureAt(p.document.features, 1, "feature").entityId = "circle_a")
       ],
       [
         "$.document.features[2].pathEntityIds",
-        (p) => (p.document.features[2].pathEntityIds = ["path_1"])
+        (p) =>
+          (fixtureAt(p.document.features, 2, "feature").pathEntityIds = [
+            "path_1"
+          ])
       ],
       [
         "$.document.features[3].sections[0].sketchId",
-        (p) => (p.document.features[3].sections[0].sketchId = "loft_a")
+        (p) =>
+          (fixtureAt(
+            fixtureAt(p.document.features, 3, "feature").sections,
+            0,
+            "section"
+          ).sketchId = "loft_a")
       ],
       [
         "$.document.sketchConstraints[0].primaryCircleEntityId",
         (p) =>
-          (p.document.sketchConstraints[0].primaryCircleEntityId = "circle_a")
+          (fixtureAt(
+            p.document.sketchConstraints,
+            0,
+            "constraint"
+          ).primaryCircleEntityId = "circle_a")
       ],
       [
         "$.document.sketchConstraints[1].secondaryCircleEntityId",
         (p) =>
-          (p.document.sketchConstraints[1].secondaryCircleEntityId = "circle_d")
+          (fixtureAt(
+            p.document.sketchConstraints,
+            1,
+            "constraint"
+          ).secondaryCircleEntityId = "circle_d")
       ]
     ];
 
