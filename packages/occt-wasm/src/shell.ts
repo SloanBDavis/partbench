@@ -148,7 +148,12 @@ export function makeShellShape(
       } satisfies GeometryKernelLikeError;
     }
 
-    return copyShape(oc, maker.Shape());
+    const shellShape = maker.Shape();
+    try {
+      return copyShape(oc, shellShape);
+    } finally {
+      shellShape.delete();
+    }
   } finally {
     for (const face of selectedFaces) {
       face.delete();
