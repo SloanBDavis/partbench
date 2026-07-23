@@ -152,23 +152,22 @@ describe("sketch panel UI helpers", () => {
   });
 
   it("keeps selected entities compact and falls back when stale", () => {
-    const entities: SketchSnapshot["entities"] = [
-      {
-        id: "rect_1",
-        kind: "rectangle",
-        construction: false,
-        center: [0, 0],
-        width: 4,
-        height: 2
-      },
-      {
-        id: "circle_1",
-        kind: "circle",
-        construction: false,
-        center: [1, 1],
-        radius: 2
-      }
-    ];
+    const rectangleEntity: SketchSnapshot["entities"][number] = {
+      id: "rect_1",
+      kind: "rectangle",
+      construction: false,
+      center: [0, 0],
+      width: 4,
+      height: 2
+    };
+    const circleEntity: SketchSnapshot["entities"][number] = {
+      id: "circle_1",
+      kind: "circle",
+      construction: false,
+      center: [1, 1],
+      radius: 2
+    };
+    const entities = [rectangleEntity, circleEntity];
 
     expect(chooseSketchEntitySelection(entities, "circle_1")).toBe("circle_1");
     expect(chooseSketchEntitySelection(entities, "rect_1", "circle_1")).toBe(
@@ -182,10 +181,10 @@ describe("sketch panel UI helpers", () => {
     );
     expect(chooseSketchEntitySelection(entities, "missing")).toBe("rect_1");
     expect(chooseSketchEntitySelection([], "missing")).toBeUndefined();
-    expect(getSketchEntityOptionLabel(entities[0])).toBe(
+    expect(getSketchEntityOptionLabel(rectangleEntity)).toBe(
       "rect_1 / rectangle 4 x 2"
     );
-    expect(getSketchEntityOptionLabel(entities[1])).toBe(
+    expect(getSketchEntityOptionLabel(circleEntity)).toBe(
       "circle_1 / circle r 2"
     );
     expect(createSketchEntityListItems(entities, "circle_1")).toEqual([
@@ -208,10 +207,10 @@ describe("sketch panel UI helpers", () => {
     expect(createSketchEntitySelectionId("sketch_1", "circle_1")).toBe(
       "sketch:8:sketch_1:entity:8:circle_1"
     );
-    expect(isExtrudableSketchEntity(entities[0])).toBe(true);
-    expect(isExtrudableSketchEntity(entities[1])).toBe(true);
-    expect(isRevolvableSketchEntity(entities[0])).toBe(true);
-    expect(isRevolvableSketchEntity(entities[1])).toBe(true);
+    expect(isExtrudableSketchEntity(rectangleEntity)).toBe(true);
+    expect(isExtrudableSketchEntity(circleEntity)).toBe(true);
+    expect(isRevolvableSketchEntity(rectangleEntity)).toBe(true);
+    expect(isRevolvableSketchEntity(circleEntity)).toBe(true);
     expect(
       isExtrudableSketchEntity({
         id: "point_1",
@@ -790,19 +789,18 @@ describe("sketch panel UI helpers", () => {
       width: 4,
       height: 2
     };
-    const dimensions = [
-      {
-        id: "dim_width",
-        name: "Width",
-        sketchId: "sketch_1",
-        entityId: "rect_1",
-        target: { entityKind: "rectangle" as const, role: "width" as const },
-        valueSource: { type: "parameter" as const, parameterId: "p_width" },
-        status: "healthy" as const,
-        issues: [],
-        effectiveValue: 6
-      }
-    ];
+    const widthDimension: SketchDimensionEntry = {
+      id: "dim_width",
+      name: "Width",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      target: { entityKind: "rectangle", role: "width" },
+      valueSource: { type: "parameter", parameterId: "p_width" },
+      status: "healthy",
+      issues: [],
+      effectiveValue: 6
+    };
+    const dimensions = [widthDimension];
 
     expect(
       createAvailableSketchDimensionTargetOptions(rectangle, dimensions)
@@ -820,22 +818,22 @@ describe("sketch panel UI helpers", () => {
     ).toEqual([{ parameterId: "p_width", label: "Width (6)" }]);
     expect(getParameterDimensionUsageCount("p_width", dimensions)).toBe(1);
     expect(
-      formatSketchDimensionValueSource(dimensions[0], [
+      formatSketchDimensionValueSource(widthDimension, [
         { id: "p_width", name: "Width", value: 6 }
       ])
     ).toBe("Width = 6");
-    expect(formatSketchDimensionEffectiveValue(dimensions[0])).toBe(
+    expect(formatSketchDimensionEffectiveValue(widthDimension)).toBe(
       "Effective 6"
     );
-    expect(formatSketchDimensionStatus(dimensions[0])).toBe(
+    expect(formatSketchDimensionStatus(widthDimension)).toBe(
       "Healthy · Effective 6"
     );
-    expect(getSketchDimensionStatusDisplay(dimensions[0])).toEqual({
+    expect(getSketchDimensionStatusDisplay(widthDimension)).toEqual({
       label: "Healthy",
       detail: "Healthy · Effective 6",
       tone: "healthy"
     });
-    expect(formatSketchDimensionValueSource(dimensions[0], [])).toBe(
+    expect(formatSketchDimensionValueSource(widthDimension, [])).toBe(
       "Missing parameter p_width"
     );
   });
@@ -906,6 +904,11 @@ describe("sketch panel UI helpers", () => {
         }
       ]
     };
+    const [underDefinedIssue] = underDefinedEvaluation.issues;
+    const [missingParameterIssue] = badDimension.issues;
+    if (!underDefinedIssue || !missingParameterIssue) {
+      throw new Error("Expected sketch evaluation issues.");
+    }
 
     expect(formatSketchEvaluationStatus(undefined)).toBe(
       "Evaluation unavailable"
@@ -929,10 +932,10 @@ describe("sketch panel UI helpers", () => {
       detail: "Under-defined · 1 issue",
       tone: "warning"
     });
-    expect(formatSketchEvaluationIssue(underDefinedEvaluation.issues[0])).toBe(
+    expect(formatSketchEvaluationIssue(underDefinedIssue)).toBe(
       "sketch_1: Sketch sketch_1 is under-defined."
     );
-    expect(formatSketchEvaluationIssue(badDimension.issues[0])).toBe(
+    expect(formatSketchEvaluationIssue(missingParameterIssue)).toBe(
       "dim_missing_parameter: Parameter does not exist: missing_parameter"
     );
     expect(getSketchDimensionStatusDisplay(badDimension)).toEqual({
@@ -964,6 +967,10 @@ describe("sketch panel UI helpers", () => {
         }
       ]
     });
+    const [conflictingDiagnostic] = failedStatus.diagnostics;
+    if (!conflictingDiagnostic) {
+      throw new Error("Expected conflicting sketch solver diagnostic.");
+    }
     const dimension: SketchDimensionEntry = {
       id: "dim_length",
       name: "Length",
@@ -999,7 +1006,7 @@ describe("sketch panel UI helpers", () => {
     expect(formatSketchSolverStatus(failedStatus)).toBe(
       "Conflicting · 1 diagnostic · 0/0 unsupported profiles"
     );
-    expect(formatSketchSolverDiagnostic(failedStatus.diagnostics[0])).toBe(
+    expect(formatSketchSolverDiagnostic(conflictingDiagnostic)).toBe(
       "constraint_conflict: Line length conflicts with fixed endpoints."
     );
     expect(
