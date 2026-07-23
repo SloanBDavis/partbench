@@ -156,26 +156,31 @@ export function withOcctEdgeFinishResultShape<T>(
   validateEdgeFinishInput(input);
 
   const targetShape = makeBooleanExtrudeShape(oc, input.target);
-  const edge = findRectangleEdge(oc, targetShape.Shape(), input);
-  const range = new oc.Message_ProgressRange_1();
+  let target: TopoDS_Shape | undefined;
+  let edge: EdgeHandle | undefined;
+  let range:
+    | InstanceType<OpenCascadeInstance["Message_ProgressRange_1"]>
+    | undefined;
   let builder:
     | InstanceType<typeof oc.BRepFilletAPI_MakeChamfer>
     | InstanceType<typeof oc.BRepFilletAPI_MakeFillet>
     | undefined;
+  let resultShape: TopoDS_Shape | undefined;
 
   try {
+    target = targetShape.Shape();
+    edge = findRectangleEdge(oc, target, input);
+    range = new oc.Message_ProgressRange_1();
+
     if (input.operation === "chamfer") {
-      builder = new oc.BRepFilletAPI_MakeChamfer(targetShape.Shape());
+      builder = new oc.BRepFilletAPI_MakeChamfer(target);
       builder.Add_2(input.distance, edge.edge);
     } else {
       const filletShape = oc.ChFi3d_FilletShape
         .ChFi3d_Rational as ConstructorParameters<
         typeof oc.BRepFilletAPI_MakeFillet
       >[1];
-      builder = new oc.BRepFilletAPI_MakeFillet(
-        targetShape.Shape(),
-        filletShape
-      );
+      builder = new oc.BRepFilletAPI_MakeFillet(target, filletShape);
       builder.Add_2(input.radius, edge.edge);
     }
 
@@ -185,13 +190,15 @@ export function withOcctEdgeFinishResultShape<T>(
       throw new Error(`Open CASCADE ${input.operation} failed.`);
     }
 
-    const resultShape = builder.Shape();
+    resultShape = builder.Shape();
 
     return readResult(resultShape);
   } finally {
+    resultShape?.delete();
     builder?.delete();
-    range.delete();
-    edge.delete();
+    range?.delete();
+    edge?.delete();
+    target?.delete();
     targetShape.delete();
   }
 }
