@@ -45,7 +45,11 @@ import {
   type OcctWireExtrudeShapeBuild
 } from "./wireExtrude";
 import { readTriangulatedShape } from "./readTriangulatedShape";
-import { makeLinearPatternShape, withOcctPatternSeedShape } from "./pattern";
+import {
+  makeCircularPatternShape,
+  makeLinearPatternShape,
+  withOcctPatternSeedShape
+} from "./pattern";
 import {
   createOcctStepExportWithShapeFactory,
   type OcctStepExportShapeFactory
@@ -592,6 +596,73 @@ describe("occt-wasm", () => {
       })
     ).toThrow("Injected linear transform builder failure");
     expect(deleted).toEqual(["transform", "vector"]);
+  });
+
+  it("disposes partial circular rotation parameters after builder failure", () => {
+    const deleted: string[] = [];
+    class CopiedShape {
+      delete() {
+        deleted.push("copied-shape");
+      }
+    }
+    class CopyBuilder {
+      Shape() {
+        return new CopiedShape();
+      }
+      delete() {
+        deleted.push("copy-builder");
+      }
+    }
+    class Origin {
+      delete() {
+        deleted.push("origin");
+      }
+    }
+    class Direction {
+      delete() {
+        deleted.push("direction");
+      }
+    }
+    class Axis {
+      delete() {
+        deleted.push("axis");
+      }
+    }
+    class Transform {
+      SetRotation_1() {}
+      delete() {
+        deleted.push("transform");
+      }
+    }
+    class FailingTransformBuilder {
+      constructor() {
+        throw new Error("Injected circular transform builder failure.");
+      }
+    }
+    const oc = {
+      BRepBuilderAPI_Copy_2: CopyBuilder,
+      gp_Pnt_3: Origin,
+      gp_Dir_4: Direction,
+      gp_Ax1_2: Axis,
+      gp_Trsf_1: Transform,
+      BRepBuilderAPI_Transform_2: FailingTransformBuilder
+    } as unknown as OpenCascadeInstance;
+
+    expect(() =>
+      makeCircularPatternShape(oc, {} as never, {
+        axis: { origin: [0, 0, 0], direction: [0, 0, 1] },
+        totalAngleDegrees: 360,
+        instanceCount: 2
+      })
+    ).toThrow("Injected circular transform builder failure");
+    expect(deleted).toEqual([
+      "copy-builder",
+      "transform",
+      "axis",
+      "direction",
+      "origin",
+      "copied-shape"
+    ]);
   });
 
   it.each([
