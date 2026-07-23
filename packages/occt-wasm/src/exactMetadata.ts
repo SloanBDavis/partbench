@@ -596,17 +596,25 @@ function readExactBodyMetadata(
   sourceKind: OcctExactBodyMetadataSource["kind"]
 ): OcctExactBodyMetadata {
   const bounds = readBounds(oc, shape);
-  const volumeProps = new oc.GProp_GProps_1();
-  const surfaceProps = new oc.GProp_GProps_1();
+  let volumeProps:
+    | InstanceType<OpenCascadeInstance["GProp_GProps_1"]>
+    | undefined;
+  let surfaceProps:
+    | InstanceType<OpenCascadeInstance["GProp_GProps_1"]>
+    | undefined;
 
   try {
+    volumeProps = new oc.GProp_GProps_1();
+    surfaceProps = new oc.GProp_GProps_1();
     oc.BRepGProp.VolumeProperties_1(shape, volumeProps, true, false, false);
     oc.BRepGProp.SurfaceProperties_1(shape, surfaceProps, false, false);
 
-    const centroidPoint = volumeProps.CentreOfMass();
-    const inertia = volumeProps.MatrixOfInertia();
+    let centroidPoint: ReturnType<typeof volumeProps.CentreOfMass> | undefined;
+    let inertia: ReturnType<typeof volumeProps.MatrixOfInertia> | undefined;
 
     try {
+      centroidPoint = volumeProps.CentreOfMass();
+      inertia = volumeProps.MatrixOfInertia();
       const momentsOfInertia = {
         xx: inertia.Value(1, 1),
         yy: inertia.Value(2, 2),
@@ -634,12 +642,12 @@ function readExactBodyMetadata(
         diagnostics: []
       };
     } finally {
-      inertia.delete();
-      centroidPoint.delete();
+      inertia?.delete();
+      centroidPoint?.delete();
     }
   } finally {
-    volumeProps.delete();
-    surfaceProps.delete();
+    surfaceProps?.delete();
+    volumeProps?.delete();
   }
 }
 
