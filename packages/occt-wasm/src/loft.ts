@@ -113,9 +113,12 @@ export function makeLoftShape(
     }
     const shape = loft.Shape();
     const handles = { loft, range, shape };
+    let disposed = false;
     return {
       shape: handles.shape,
       delete: () => {
+        if (disposed) return;
+        disposed = true;
         handles.shape.delete();
         handles.loft.delete();
         handles.range.delete();
