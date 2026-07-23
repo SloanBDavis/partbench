@@ -43,6 +43,30 @@ describe("parameter expression language v2", () => {
     });
   });
 
+  it("handles terminal tokens and incomplete lookahead without unsafe character reads", () => {
+    for (const expression of ["42", "radius", "1."]) {
+      expect(parseParameterExpression(expression)).toMatchObject({ ok: true });
+    }
+
+    expect(parseParameterExpression("[radius")).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "EXPRESSION_PARSE_ERROR",
+        position: 0,
+        expected: "]",
+        received: "end of expression"
+      }
+    });
+    expect(parseParameterExpression("@")).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "EXPRESSION_PARSE_ERROR",
+        position: 0,
+        received: "@"
+      }
+    });
+  });
+
   it("evaluates degree-first trigonometry and explicit angle conversions", () => {
     const cases: readonly [string, number][] = [
       ["radius * sin(angle)", 5],

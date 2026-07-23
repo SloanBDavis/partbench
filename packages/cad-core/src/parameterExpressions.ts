@@ -420,7 +420,7 @@ function tokenizeExpression(expression: string):
   let position = 0;
 
   while (position < expression.length) {
-    const char = expression[position];
+    const char = expression.charAt(position);
 
     if (/\s/.test(char)) {
       position += 1;
@@ -432,15 +432,15 @@ function tokenizeExpression(expression: string):
       position += 1;
       while (
         position < expression.length &&
-        /[0-9]/.test(expression[position])
+        /[0-9]/.test(expression.charAt(position))
       ) {
         position += 1;
       }
-      if (expression[position] === ".") {
+      if (expression.charAt(position) === ".") {
         position += 1;
         while (
           position < expression.length &&
-          /[0-9]/.test(expression[position])
+          /[0-9]/.test(expression.charAt(position))
         ) {
           position += 1;
         }
@@ -471,7 +471,7 @@ function tokenizeExpression(expression: string):
       position += 1;
       while (
         position < expression.length &&
-        /[A-Za-z0-9_]/.test(expression[position])
+        /[A-Za-z0-9_]/.test(expression.charAt(position))
       ) {
         position += 1;
       }
@@ -486,7 +486,10 @@ function tokenizeExpression(expression: string):
     if (char === "[") {
       const start = position;
       position += 1;
-      while (position < expression.length && expression[position] !== "]") {
+      while (
+        position < expression.length &&
+        expression.charAt(position) !== "]"
+      ) {
         position += 1;
       }
 
