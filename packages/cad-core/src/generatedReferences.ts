@@ -539,43 +539,47 @@ function createCompositeExtrudeGeneratedReferences(
       })
   ];
   const edges: CadGeneratedEdgeReference[] = evidence.edges.map((edge) => {
-    const isBoundary = edge.role !== "longitudinal";
-    const sourceIds = isBoundary
-      ? [edge.sourceEntityId!]
-      : [...edge.adjacentSourceEntityIds!];
-    const role: CadGeneratedExtrudeEdgeRole =
-      edge.role === "startCapBoundary"
-        ? `start:segment:${edge.sourceEntityId!}`
-        : edge.role === "endCapBoundary"
-          ? `end:segment:${edge.sourceEntityId!}`
-          : `longitudinal:join:${edge.adjacentSourceEntityIds![0]}:${edge.adjacentSourceEntityIds![1]}`;
-    const encodedRole =
-      edge.role === "longitudinal"
-        ? `longitudinal:join:${edge.adjacentSourceEntityIds!.map(encodeURIComponent).join(":")}`
-        : `${edge.role === "startCapBoundary" ? "start" : "end"}:segment:${encodeURIComponent(edge.sourceEntityId!)}`;
-    const adjacentFaceRoles: CadGeneratedFaceRole[] = isBoundary
-      ? [
-          edge.role === "startCapBoundary" ? "startCap" : "endCap",
-          `side:segment:${edge.sourceEntityId!}`
-        ]
-      : edge.adjacentSourceEntityIds!.map(
+    if (edge.role === "longitudinal") {
+      const [leftSourceId, rightSourceId] = edge.adjacentSourceEntityIds;
+      const role =
+        `longitudinal:join:${leftSourceId}:${rightSourceId}` as const;
+      return {
+        kind: "edge",
+        stableId: `generated:edge:${composite.bodyId}:longitudinal:join:${edge.adjacentSourceEntityIds.map(encodeURIComponent).join(":")}`,
+        label: `${edge.role} edge from ${leftSourceId} / ${rightSourceId}`,
+        eligibleOperations: COMPOSITE_CORRESPONDENCE_OPERATIONS,
+        eligibilityNotes: [COMPOSITE_CORRESPONDENCE_NOTE],
+        bodyId: composite.bodyId,
+        ownerPartId,
+        sourceFeatureId: composite.id,
+        sourceSketchId: composite.profile.sketchId,
+        sourceSketchEntityIds: edge.adjacentSourceEntityIds,
+        role,
+        adjacentFaceRoles: edge.adjacentSourceEntityIds.map(
           (id) => `side:segment:${id}` as const
-        );
+        ),
+        geometricSignature: signature({ curveType: "line" })
+      };
+    }
+
+    const position = edge.role === "startCapBoundary" ? "start" : "end";
+    const role: CadGeneratedExtrudeEdgeRole = `${position}:segment:${edge.sourceEntityId}`;
     return {
       kind: "edge",
-      stableId: `generated:edge:${composite.bodyId}:${encodedRole}`,
-      label: `${edge.role} edge from ${sourceIds.join(" / ")}`,
+      stableId: `generated:edge:${composite.bodyId}:${position}:segment:${encodeURIComponent(edge.sourceEntityId)}`,
+      label: `${edge.role} edge from ${edge.sourceEntityId}`,
       eligibleOperations: COMPOSITE_CORRESPONDENCE_OPERATIONS,
       eligibilityNotes: [COMPOSITE_CORRESPONDENCE_NOTE],
       bodyId: composite.bodyId,
       ownerPartId,
       sourceFeatureId: composite.id,
       sourceSketchId: composite.profile.sketchId,
-      ...(sourceIds.length === 1
-        ? { sourceSketchEntityId: sourceIds[0] }
-        : { sourceSketchEntityIds: sourceIds }),
+      sourceSketchEntityId: edge.sourceEntityId,
       role,
-      adjacentFaceRoles,
+      adjacentFaceRoles: [
+        edge.role === "startCapBoundary" ? "startCap" : "endCap",
+        `side:segment:${edge.sourceEntityId}`
+      ],
       geometricSignature: signature({ curveType: "line" })
     };
   });
