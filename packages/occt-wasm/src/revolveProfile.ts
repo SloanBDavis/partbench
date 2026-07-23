@@ -1,5 +1,6 @@
 import type {
   OpenCascadeInstance,
+  TopoDS_Edge,
   TopoDS_Face,
   TopoDS_Shape,
   TopoDS_Wire
@@ -323,38 +324,78 @@ function makeCircleProfileFace(
   frame: SketchFrame,
   profile: OcctCircleRevolveProfile
 ): ProfileFaceHandle {
-  const center = createPoint(
-    oc,
-    mapFramePoint(frame, profile.center[0], profile.center[1])
-  );
-  const axes = createOcctAxes(oc, center, frame.normalAxis, frame.uAxis);
-  const circle = new oc.gp_Circ_2(axes.axis, profile.radius);
-  const edgeMaker = new oc.BRepBuilderAPI_MakeEdge_8(circle);
-  const edge = edgeMaker.Edge();
-  const wireMaker = new oc.BRepBuilderAPI_MakeWire_2(edge);
-  const wire = wireMaker.Wire();
-  const faceMaker = new oc.BRepBuilderAPI_MakeFace_15(wire, true);
-  const face = faceMaker.Face();
+  let center: ReturnType<typeof createPoint> | undefined;
+  let axes: ReturnType<typeof createOcctAxes> | undefined;
+  let circle: InstanceType<typeof oc.gp_Circ_2> | undefined;
+  let edgeMaker:
+    | InstanceType<OpenCascadeInstance["BRepBuilderAPI_MakeEdge_8"]>
+    | undefined;
+  let edge: TopoDS_Edge | undefined;
+  let wireMaker:
+    | InstanceType<OpenCascadeInstance["BRepBuilderAPI_MakeWire_2"]>
+    | undefined;
+  let wire: TopoDS_Wire | undefined;
+  let faceMaker:
+    | InstanceType<OpenCascadeInstance["BRepBuilderAPI_MakeFace_15"]>
+    | undefined;
+  let face: TopoDS_Face | undefined;
 
-  if (!edgeMaker.IsDone() || !wireMaker.IsDone() || !faceMaker.IsDone()) {
-    throw new Error("Open CASCADE failed to create a circle revolve face.");
-  }
+  try {
+    center = createPoint(
+      oc,
+      mapFramePoint(frame, profile.center[0], profile.center[1])
+    );
+    axes = createOcctAxes(oc, center, frame.normalAxis, frame.uAxis);
+    circle = new oc.gp_Circ_2(axes.axis, profile.radius);
+    edgeMaker = new oc.BRepBuilderAPI_MakeEdge_8(circle);
+    edge = edgeMaker.Edge();
+    wireMaker = new oc.BRepBuilderAPI_MakeWire_2(edge);
+    wire = wireMaker.Wire();
+    faceMaker = new oc.BRepBuilderAPI_MakeFace_15(wire, true);
+    face = faceMaker.Face();
 
-  return {
-    face,
-    wire,
-    delete: () => {
-      face.delete();
-      faceMaker.delete();
-      wire.delete();
-      wireMaker.delete();
-      edge.delete();
-      edgeMaker.delete();
-      circle.delete();
-      axes.delete();
-      center.delete();
+    if (!edgeMaker.IsDone() || !wireMaker.IsDone() || !faceMaker.IsDone()) {
+      throw new Error("Open CASCADE failed to create a circle revolve face.");
     }
-  };
+
+    const handles = {
+      axes,
+      center,
+      circle,
+      edge,
+      edgeMaker,
+      face,
+      faceMaker,
+      wire,
+      wireMaker
+    };
+    return {
+      face: handles.face,
+      wire: handles.wire,
+      delete: () => {
+        handles.face.delete();
+        handles.faceMaker.delete();
+        handles.wire.delete();
+        handles.wireMaker.delete();
+        handles.edge.delete();
+        handles.edgeMaker.delete();
+        handles.circle.delete();
+        handles.axes.delete();
+        handles.center.delete();
+      }
+    };
+  } catch (error) {
+    face?.delete();
+    faceMaker?.delete();
+    wire?.delete();
+    wireMaker?.delete();
+    edge?.delete();
+    edgeMaker?.delete();
+    circle?.delete();
+    axes?.delete();
+    center?.delete();
+    throw error;
+  }
 }
 
 function createRevolveAxis(
