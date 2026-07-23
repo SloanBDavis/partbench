@@ -630,6 +630,105 @@ describe("occt-wasm", () => {
     ]);
   });
 
+  it("disposes mesh point transforms after transformation fails", () => {
+    const deleted: string[] = [];
+    class CurrentShape {
+      delete() {
+        deleted.push("current-shape");
+      }
+    }
+    class Face {
+      delete() {
+        deleted.push("face");
+      }
+    }
+    class Explorer {
+      #more = true;
+      More() {
+        return this.#more;
+      }
+      Current() {
+        return new CurrentShape();
+      }
+      Next() {
+        this.#more = false;
+      }
+      delete() {
+        deleted.push("explorer");
+      }
+    }
+    class Transformation {
+      delete() {
+        deleted.push("transformation");
+      }
+    }
+    class Location {
+      IsIdentity() {
+        return false;
+      }
+      Transformation() {
+        return new Transformation();
+      }
+      delete() {
+        deleted.push("location");
+      }
+    }
+    class Point {
+      Transformed() {
+        throw new Error("Injected point transformation failure.");
+      }
+      delete() {
+        deleted.push("point");
+      }
+    }
+    class Triangulation {
+      NbNodes() {
+        return 1;
+      }
+      Node() {
+        return new Point();
+      }
+    }
+    class TriangulationHandle {
+      IsNull() {
+        return false;
+      }
+      get() {
+        return new Triangulation();
+      }
+      delete() {
+        deleted.push("triangulation-handle");
+      }
+    }
+    const oc = {
+      TopAbs_ShapeEnum: {
+        TopAbs_FACE: "face",
+        TopAbs_SHAPE: "shape"
+      },
+      TopExp_Explorer_2: Explorer,
+      TopoDS: {
+        Face_1: () => new Face()
+      },
+      TopLoc_Location_1: Location,
+      BRep_Tool: {
+        Triangulation: () => new TriangulationHandle()
+      }
+    } as unknown as OpenCascadeInstance;
+
+    expect(() => readTriangulatedShape(oc, {} as never, "box")).toThrow(
+      "Injected point transformation failure"
+    );
+    expect(deleted).toEqual([
+      "current-shape",
+      "transformation",
+      "point",
+      "triangulation-handle",
+      "location",
+      "face",
+      "explorer"
+    ]);
+  });
+
   it("disposes every allocated wrapper when an exact edge builder fails", () => {
     const deleted: string[] = [];
     class Point {
