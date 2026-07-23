@@ -94,23 +94,25 @@ export function makeMirrorShape(
   // includeOriginal === true: fuse seed + mirrored
   try {
     const range = new oc.Message_ProgressRange_1();
+    let fuse:
+      | InstanceType<OpenCascadeInstance["BRepAlgoAPI_Fuse_3"]>
+      | undefined;
 
     try {
-      const fuse = new oc.BRepAlgoAPI_Fuse_3(seedShape, mirroredShape, range);
+      fuse = new oc.BRepAlgoAPI_Fuse_3(seedShape, mirroredShape, range);
 
       if (fuse.HasErrors()) {
-        fuse.delete();
         throw {
           code: "MIRROR_GEOMETRY_FAILED",
           message: "Open CASCADE mirror BRepAlgoAPI_Fuse failed."
         } satisfies GeometryKernelLikeError;
       }
 
-      const fusedShape = copyShape(oc, fuse.Shape());
-      fuse.delete();
+      const fusedShape = copyBuilderShape(oc, fuse);
       mirroredShape.delete();
       return fusedShape;
     } finally {
+      fuse?.delete();
       range.delete();
     }
   } catch (error) {
@@ -150,7 +152,7 @@ function applyMirror(
         } satisfies GeometryKernelLikeError;
       }
 
-      return copyShape(oc, transform.Shape());
+      return copyBuilderShape(oc, transform);
     } finally {
       transform.delete();
     }
@@ -159,6 +161,19 @@ function applyMirror(
     ax2.delete();
     dir.delete();
     origin.delete();
+  }
+}
+
+function copyBuilderShape(
+  oc: OpenCascadeInstance,
+  builder: { Shape(): TopoDS_Shape }
+): TopoDS_Shape {
+  const shape = builder.Shape();
+
+  try {
+    return copyShape(oc, shape);
+  } finally {
+    shape.delete();
   }
 }
 
