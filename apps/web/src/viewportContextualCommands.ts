@@ -739,8 +739,9 @@ function dedupeActions(
 
     if (previousIndex >= 0) {
       const previous = deduped[previousIndex];
-      deduped[previousIndex] =
-        previous.disabled && !action.disabled ? action : previous;
+      if (previous?.disabled && !action.disabled) {
+        deduped[previousIndex] = action;
+      }
       continue;
     }
 
