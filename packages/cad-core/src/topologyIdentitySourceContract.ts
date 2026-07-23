@@ -17,6 +17,7 @@ import {
   type WcadSourceIdentity
 } from "@web-cad/cad-protocol";
 import { SHA256_HEX_PATTERN } from "./sha256";
+import { isValidWcadPackagePath } from "./wcadPackagePath";
 
 export const WCAD_CHECKPOINT_ENTRY_PREFIX = "checkpoints";
 export const WCAD_CHECKPOINT_BREP_EXTENSION = ".brep";
@@ -1052,21 +1053,6 @@ function isWcadSourceIdentity(value: unknown): value is WcadSourceIdentity {
 
 function isValidCheckpointId(checkpointId: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(checkpointId);
-}
-
-function isValidWcadPackagePath(path: string): boolean {
-  if (
-    path.length === 0 ||
-    path.startsWith("/") ||
-    path.startsWith("\\") ||
-    path.includes("\\")
-  ) {
-    return false;
-  }
-
-  return path
-    .split("/")
-    .every((part) => part !== "" && part !== "." && part !== "..");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

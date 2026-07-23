@@ -23,6 +23,7 @@ import {
   type WcadSourceIdentity
 } from "@web-cad/cad-protocol";
 import { SHA256_HEX_PATTERN, sha256Hex } from "./sha256";
+import { isValidWcadPackagePath } from "./wcadPackagePath";
 
 interface ProjectPackageReadinessInput {
   readonly cadOpsVersion: CadOpsVersion;
@@ -776,21 +777,6 @@ function validateSourceIdentityObject(
   }
 
   return issues;
-}
-
-function isValidWcadPackagePath(path: string): boolean {
-  if (
-    path.length === 0 ||
-    path.startsWith("/") ||
-    path.startsWith("\\") ||
-    path.includes("\\")
-  ) {
-    return false;
-  }
-
-  return path
-    .split("/")
-    .every((part) => part !== "" && part !== "." && part !== "..");
 }
 
 function isSupportedDocumentSchema(

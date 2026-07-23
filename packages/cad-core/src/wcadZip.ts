@@ -1,4 +1,5 @@
 import type { WcadPackageValidationIssue } from "@web-cad/cad-protocol";
+import { isValidWcadPackagePath } from "./wcadPackagePath";
 
 interface ZipStoreEntry {
   readonly path: string;
@@ -184,7 +185,7 @@ export function readZipStore(bytes: Uint8Array): ZipStoreReadResult {
 
     const path = decodeZipPath(bytes.slice(nameStart, nameEnd));
 
-    if (!path || !isValidZipPath(path)) {
+    if (!path || !isValidWcadPackagePath(path)) {
       issues.push(
         createZipIssue(
           "WCAD_INVALID_PACKAGE_PATH",
@@ -224,7 +225,7 @@ export function readZipStore(bytes: Uint8Array): ZipStoreReadResult {
           path
         )
       );
-    } else if (path && isValidZipPath(path) && !entries.has(path)) {
+    } else if (path && isValidWcadPackagePath(path) && !entries.has(path)) {
       const entryBytes = readLocalEntryBytes(
         bytes,
         view,
@@ -393,18 +394,6 @@ function decodeZipPath(bytes: Uint8Array): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-function isValidZipPath(path: string): boolean {
-  return (
-    path.length > 0 &&
-    !path.startsWith("/") &&
-    !path.startsWith("\\") &&
-    !path.includes("\\") &&
-    path
-      .split("/")
-      .every((part) => part !== "" && part !== "." && part !== "..")
-  );
 }
 
 function createZipIssue(
