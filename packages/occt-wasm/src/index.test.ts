@@ -20,6 +20,7 @@ import {
   createOcctSphereMesh,
   createOcctSphereMeshWithInstance,
   createOcctStepImport,
+  createOcctStepImportWithInstance,
   createOcctStepExport,
   getOcctBrepCheckpointWriterCapability,
   getOcctStepReaderCapability,
@@ -779,6 +780,55 @@ describe("occt-wasm", () => {
     expect(() => makeLoftShape(oc, { sections: [section, section] })).toThrow(
       "Injected loft builder failure"
     );
+    expect(deleted).toEqual(["progress"]);
+  });
+
+  it("disposes STEP progress after reader construction fails", () => {
+    const deleted: string[] = [];
+    class Progress {
+      delete() {
+        deleted.push("progress");
+      }
+    }
+    class FailingReader {
+      constructor() {
+        throw new Error("Injected STEP reader failure.");
+      }
+    }
+    class ReaderBindings {
+      ReadFile() {}
+      TransferRoots() {}
+      OneShape() {}
+    }
+    class ShapeFixBindings {
+      Init() {}
+      Perform() {}
+      Shape() {}
+    }
+    const oc = {
+      Message_ProgressRange_1: Progress,
+      STEPControl_Reader_1: FailingReader,
+      STEPControl_Reader: ReaderBindings,
+      ShapeFix_Shape_1: ShapeFixBindings,
+      ShapeFix_Shape: ShapeFixBindings,
+      IFSelect_ReturnStatus: { IFSelect_RetDone: 1 },
+      BRepTools: { Write_3() {} },
+      FS: {
+        writeFile() {},
+        readFile() {
+          return new Uint8Array();
+        },
+        unlink() {}
+      },
+      TopExp: { MapShapes_1() {} }
+    } as unknown as OpenCascadeInstance;
+
+    expect(() =>
+      createOcctStepImportWithInstance(oc, {
+        sourceFileName: "failure.step",
+        bytes: new Uint8Array([1])
+      })
+    ).toThrow("Injected STEP reader failure");
     expect(deleted).toEqual(["progress"]);
   });
 
