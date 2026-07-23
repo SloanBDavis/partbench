@@ -42,6 +42,7 @@ export type DerivedExactMetadataStatusKind =
   | "unsupported"
   | "pending"
   | "ready"
+  | "cancelled"
   | "error";
 
 export type DerivedExactMetadataSource =
@@ -106,10 +107,51 @@ type DerivedExactMetadataCandidate =
   | DerivedGeometrySource
   | DerivedImportedBodyExactMetadataSource;
 
+export interface DerivedExactMetadataRetryPlan {
+  readonly immediate: readonly DerivedExactMetadataSource[];
+  readonly deferred: readonly DerivedExactMetadataSource[];
+}
+
+export function planExactMetadataRetry(
+  sources: readonly DerivedExactMetadataSource[],
+  displaySnapshot: {
+    readonly entries: readonly {
+      readonly sourceId?: string;
+      readonly objectId: string;
+      readonly status: string;
+    }[];
+  }
+): DerivedExactMetadataRetryPlan {
+  const immediate: DerivedExactMetadataSource[] = [];
+  const deferred: DerivedExactMetadataSource[] = [];
+
+  for (const source of sources) {
+    if (source.kind === "importedBody") {
+      immediate.push(source);
+      continue;
+    }
+
+    const displayEntry = displaySnapshot.entries.find(
+      (entry) => (entry.sourceId ?? entry.objectId) === source.id
+    );
+    if (
+      displayEntry?.status === "ready" ||
+      displayEntry?.status === "unsupported"
+    ) {
+      immediate.push(source);
+    } else {
+      deferred.push(source);
+    }
+  }
+
+  return { immediate, deferred };
+}
+
 export type DerivedExactMetadataEntry =
   | DerivedExactMetadataUnsupportedEntry
   | DerivedExactMetadataPendingEntry
   | DerivedExactMetadataReadyEntry
+  | DerivedExactMetadataCancelledEntry
   | DerivedExactMetadataErrorEntry;
 
 export interface DerivedExactMetadataBaseEntry {
@@ -139,11 +181,17 @@ export interface DerivedExactMetadataErrorEntry extends DerivedExactMetadataBase
   readonly error: ReturnType<typeof createDerivedGeometryErrorDetails>;
 }
 
+export interface DerivedExactMetadataCancelledEntry extends DerivedExactMetadataBaseEntry {
+  readonly status: "cancelled";
+  readonly message: string;
+}
+
 export interface DerivedExactMetadataSnapshot {
   readonly entries: readonly DerivedExactMetadataEntry[];
   readonly supportedCount: number;
   readonly pendingCount: number;
   readonly readyCount: number;
+  readonly cancelledCount?: number;
   readonly errorCount: number;
 }
 
@@ -195,6 +243,11 @@ export class DerivedExactMetadataService {
         getUnsupportedExactMetadataSourceMessage(source);
 
       if (unsupportedMessage) {
+        this.#runtime.invalidateDerivedWork?.(
+          "exact",
+          source.id,
+          this.#requestVersions.get(source.id) ?? this.#nextRequestVersion
+        );
         this.#requestVersions.delete(source.id);
         const unsupported: DerivedExactMetadataUnsupportedEntry = {
           bodyId: source.id,
@@ -224,6 +277,11 @@ export class DerivedExactMetadataService {
 
     for (const bodyId of this.#entries.keys()) {
       if (!nextIds.has(bodyId)) {
+        this.#runtime.invalidateDerivedWork?.(
+          "exact",
+          bodyId,
+          this.#requestVersions.get(bodyId) ?? this.#nextRequestVersion
+        );
         this.#entries.delete(bodyId);
         this.#requestVersions.delete(bodyId);
         changed = true;
@@ -243,6 +301,71 @@ export class DerivedExactMetadataService {
     this.#clearState();
     this.#emitChange();
     this.reconcile(sources);
+  }
+
+  cancelPending(
+    message = "Exact model result generation was cancelled."
+  ): void {
+    let changed = false;
+    for (const [bodyId, entry] of this.#entries) {
+      if (entry.status !== "pending") continue;
+      this.#requestVersions.delete(bodyId);
+      this.#entries.set(bodyId, {
+        bodyId: entry.bodyId,
+        sourceKind: entry.sourceKind,
+        cacheKey: entry.cacheKey,
+        status: "cancelled",
+        message
+      });
+      changed = true;
+    }
+    if (changed) this.#emitChange();
+  }
+
+  retryCurrent(sources: readonly DerivedExactMetadataCandidate[]): void {
+    if (this.#disposed) return;
+    let changed = false;
+    for (const source of sources.filter(isExactMetadataSource)) {
+      const existing = this.#entries.get(source.id);
+      const cacheKey = createDerivedExactMetadataCacheKey(source);
+      if (
+        existing?.cacheKey !== cacheKey ||
+        (existing.status !== "error" && existing.status !== "cancelled")
+      ) {
+        continue;
+      }
+      const request = this.#beginRequest(source);
+      this.#entries.set(source.id, createPendingEntry(source, cacheKey));
+      changed = true;
+      void this.#deriveSource(source, request);
+    }
+    if (changed) this.#emitChange();
+  }
+
+  deferRetryable(sources: readonly DerivedExactMetadataCandidate[]): void {
+    if (this.#disposed) return;
+    let changed = false;
+    for (const source of sources.filter(isExactMetadataSource)) {
+      const existing = this.#entries.get(source.id);
+      const cacheKey = createDerivedExactMetadataCacheKey(source);
+      if (
+        existing?.cacheKey !== cacheKey ||
+        (existing.status !== "error" && existing.status !== "cancelled")
+      ) {
+        continue;
+      }
+
+      this.#nextRequestVersion += 1;
+      this.#runtime.invalidateDerivedWork?.(
+        "exact",
+        source.id,
+        this.#nextRequestVersion
+      );
+      this.#requestVersions.delete(source.id);
+      this.#entries.delete(source.id);
+      changed = true;
+    }
+    if (changed) this.#emitChange();
   }
 
   dispose(): void {
@@ -271,7 +394,12 @@ export class DerivedExactMetadataService {
   ): Promise<void> {
     try {
       const result = await this.#runtime.exactBodyMetadata(
-        createExactMetadataRuntimeInput(source)
+        createExactMetadataRuntimeInput(source),
+        {
+          sourceId: request.bodyId,
+          cacheKey: request.cacheKey,
+          documentRevision: request.version
+        }
       );
 
       this.#applyReadyResult(source, request, result);
@@ -346,6 +474,7 @@ export function createEmptyDerivedExactMetadataSnapshot(): DerivedExactMetadataS
     supportedCount: 0,
     pendingCount: 0,
     readyCount: 0,
+    cancelledCount: 0,
     errorCount: 0
   };
 }
@@ -398,7 +527,7 @@ export function createBodyTopologyDerivedExactMetadataSnapshot(
   entry: DerivedExactMetadataEntry | undefined,
   sourceIdentitySignature: string
 ): CadBodyDerivedExactMetadataSnapshot | undefined {
-  if (!entry || entry.status === "pending") {
+  if (!entry || entry.status === "pending" || entry.status === "cancelled") {
     return undefined;
   }
 
@@ -484,6 +613,8 @@ export function formatDerivedExactMetadataEntryStatus(
       return "Ready";
     case "unsupported":
       return "Unsupported";
+    case "cancelled":
+      return "Cancelled";
     case "error":
       return entry.error.code === "UNAVAILABLE_BINDING"
         ? "Binding unavailable"
@@ -948,6 +1079,9 @@ function createDerivedExactMetadataSnapshot(
       .length,
     readyCount: orderedEntries.filter((entry) => entry.status === "ready")
       .length,
+    cancelledCount: orderedEntries.filter(
+      (entry) => entry.status === "cancelled"
+    ).length,
     errorCount: orderedEntries.filter((entry) => entry.status === "error")
       .length
   };

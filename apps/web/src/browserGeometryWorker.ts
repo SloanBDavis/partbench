@@ -8,7 +8,10 @@ import { createWorkerErrorDiagnostics } from "@web-cad/geometry-worker/browser";
 
 export type GeometryWorkerMessage =
   | GeometryWorkerResponse
-  | GeometryWorkerErrorResponse;
+  | GeometryWorkerErrorResponse
+  | GeometryWorkerStartedMessage;
+
+export type GeometryWorkerStartedMessage = readonly [id: string];
 
 export interface GeometryWorkerErrorResponse {
   readonly id: string;
@@ -49,6 +52,12 @@ export interface GeometryWorkerTransport {
 interface PendingRequest {
   readonly resolve: (response: GeometryWorkerResponse) => void;
   readonly reject: (error: BrowserGeometryWorkerError) => void;
+  readonly onStarted?: () => void;
+  started: boolean;
+}
+
+export interface BrowserGeometryWorkerExecutionCallbacks {
+  readonly onStarted?: () => void;
 }
 
 export class BrowserGeometryWorkerError extends Error {
@@ -67,9 +76,20 @@ export class BrowserGeometryWorker implements GeometryWorker {
   readonly #handleMessage = (
     event: WorkerMessageEvent<GeometryWorkerMessage>
   ) => {
-    const pending = this.#pendingRequests.get(event.data.id);
+    const requestId = isGeometryWorkerStartedMessage(event.data)
+      ? event.data[0]
+      : event.data.id;
+    const pending = this.#pendingRequests.get(requestId);
 
     if (!pending) {
+      return;
+    }
+
+    if (isGeometryWorkerStartedMessage(event.data)) {
+      if (!pending.started) {
+        pending.started = true;
+        pending.onStarted?.();
+      }
       return;
     }
 
@@ -120,6 +140,13 @@ export class BrowserGeometryWorker implements GeometryWorker {
   execute<TPayload extends GeometryWorkerRequest["payload"]>(
     request: GeometryWorkerRequest<TPayload>
   ): Promise<GeometryWorkerResponse<TPayload>> {
+    return this.executeTracked(request);
+  }
+
+  executeTracked<TPayload extends GeometryWorkerRequest["payload"]>(
+    request: GeometryWorkerRequest<TPayload>,
+    callbacks: BrowserGeometryWorkerExecutionCallbacks = {}
+  ): Promise<GeometryWorkerResponse<TPayload>> {
     if (this.#pendingRequests.has(request.id)) {
       return Promise.reject(
         new BrowserGeometryWorkerError(
@@ -134,7 +161,12 @@ export class BrowserGeometryWorker implements GeometryWorker {
     }
 
     return new Promise<GeometryWorkerResponse<TPayload>>((resolve, reject) => {
-      this.#pendingRequests.set(request.id, { resolve, reject });
+      this.#pendingRequests.set(request.id, {
+        resolve,
+        reject,
+        started: false,
+        ...(callbacks.onStarted ? { onStarted: callbacks.onStarted } : {})
+      });
 
       try {
         this.#transport.postMessage(request);
@@ -165,6 +197,12 @@ export class BrowserGeometryWorker implements GeometryWorker {
       message: "Geometry worker was disposed before completing a request."
     });
   }
+}
+
+function isGeometryWorkerStartedMessage(
+  message: GeometryWorkerMessage
+): message is GeometryWorkerStartedMessage {
+  return Array.isArray(message);
 }
 
 function createBrowserGeometryWorkerTransport(): GeometryWorkerTransport {

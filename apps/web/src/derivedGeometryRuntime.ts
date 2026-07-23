@@ -5,6 +5,7 @@ import type {
   GeometryKernelStepImportDiagnostic,
   GeometryKernelGeneratedReferences,
   GeometryWorkerDiagnostics,
+  GeometryWorkerRequest,
   GeometryWorkerResponse,
   ResolvedPlanarWireProfile
 } from "@web-cad/geometry-worker";
@@ -418,50 +419,119 @@ export interface DerivedGeometryErrorDetails {
   readonly wasmLoadStatus: string;
 }
 
+export interface DerivedGeometryRuntimeWorkSnapshot {
+  readonly generation: number;
+  readonly stopped: boolean;
+  readonly active: boolean;
+  readonly queuedCount: number;
+  readonly cancelledUserKinds: readonly (
+    | "preflight"
+    | "import"
+    | "export"
+    | "checkpoint"
+  )[];
+}
+
+export interface DerivedGeometryRequestContext {
+  readonly sourceId: string;
+  readonly cacheKey: string;
+  readonly documentRevision: number;
+}
+
+export type DerivedGeometryExecutionContext =
+  | DerivedGeometryRequestContext
+  | { readonly intent: "user" };
+
+type DerivedExactStepExportPayload = Extract<
+  GeometryWorkerRequest["payload"],
+  { readonly op: "geometry.exportStep" }
+>;
+
 export interface DerivedGeometryRuntime {
-  tessellateBox(input: DerivedGeometryBoxInput): Promise<DerivedGeometryResult>;
+  executeExactStepExport(
+    request: GeometryWorkerRequest<DerivedExactStepExportPayload>
+  ): Promise<GeometryWorkerResponse<DerivedExactStepExportPayload>>;
+  tessellateBox(
+    input: DerivedGeometryBoxInput,
+    context?: DerivedGeometryRequestContext
+  ): Promise<DerivedGeometryResult>;
   tessellateCylinder(
-    input: DerivedGeometryCylinderInput
+    input: DerivedGeometryCylinderInput,
+    context?: DerivedGeometryRequestContext
   ): Promise<DerivedGeometryResult>;
   tessellateSphere(
-    input: DerivedGeometrySphereInput
+    input: DerivedGeometrySphereInput,
+    context?: DerivedGeometryRequestContext
   ): Promise<DerivedGeometryResult>;
   tessellateCone(
-    input: DerivedGeometryConeInput
+    input: DerivedGeometryConeInput,
+    context?: DerivedGeometryRequestContext
   ): Promise<DerivedGeometryResult>;
   tessellateTorus(
-    input: DerivedGeometryTorusInput
+    input: DerivedGeometryTorusInput,
+    context?: DerivedGeometryRequestContext
   ): Promise<DerivedGeometryResult>;
   tessellateExtrude(
-    input: DerivedGeometryExtrudeInput
+    input: DerivedGeometryExtrudeInput,
+    context?: DerivedGeometryRequestContext
   ): Promise<DerivedGeometryResult>;
   revolveProfile(
-    input: DerivedGeometryRevolveInput
+    input: DerivedGeometryRevolveInput,
+    context?: DerivedGeometryRequestContext
   ): Promise<DerivedGeometryResult>;
   booleanExtrudes(
-    input: DerivedGeometryBooleanExtrudeInput
+    input: DerivedGeometryBooleanExtrudeInput,
+    context?: DerivedGeometryRequestContext
   ): Promise<DerivedGeometryResult>;
-  hole(input: DerivedGeometryHoleInput): Promise<DerivedGeometryResult>;
+  hole(
+    input: DerivedGeometryHoleInput,
+    context?: DerivedGeometryExecutionContext
+  ): Promise<DerivedGeometryResult>;
   edgeFinish(
-    input: DerivedGeometryEdgeFinishInput
+    input: DerivedGeometryEdgeFinishInput,
+    context?: DerivedGeometryRequestContext
   ): Promise<DerivedGeometryResult>;
   linearPattern(
-    input: DerivedGeometryLinearPatternInput
+    input: DerivedGeometryLinearPatternInput,
+    context?: DerivedGeometryRequestContext
   ): Promise<DerivedGeometryResult>;
   circularPattern(
-    input: DerivedGeometryCircularPatternInput
+    input: DerivedGeometryCircularPatternInput,
+    context?: DerivedGeometryRequestContext
   ): Promise<DerivedGeometryResult>;
-  mirror(input: DerivedGeometryMirrorInput): Promise<DerivedGeometryResult>;
-  shell(input: DerivedGeometryShellInput): Promise<DerivedGeometryResult>;
-  sweep(input: DerivedGeometrySweepInput): Promise<DerivedGeometryResult>;
-  loft(input: DerivedGeometryLoftInput): Promise<DerivedGeometryResult>;
+  mirror(
+    input: DerivedGeometryMirrorInput,
+    context?: DerivedGeometryRequestContext
+  ): Promise<DerivedGeometryResult>;
+  shell(
+    input: DerivedGeometryShellInput,
+    context?: DerivedGeometryRequestContext
+  ): Promise<DerivedGeometryResult>;
+  sweep(
+    input: DerivedGeometrySweepInput,
+    context?: DerivedGeometryRequestContext
+  ): Promise<DerivedGeometryResult>;
+  loft(
+    input: DerivedGeometryLoftInput,
+    context?: DerivedGeometryRequestContext
+  ): Promise<DerivedGeometryResult>;
   exactBodyMetadata(
-    input: DerivedExactMetadataInput
+    input: DerivedExactMetadataInput,
+    context?: DerivedGeometryRequestContext
   ): Promise<DerivedExactMetadataResult>;
   exactTopologyCheckpointPayload(
     input: DerivedExactTopologyCheckpointPayloadInput
   ): Promise<DerivedExactTopologyCheckpointPayloadResult>;
   importStep(input: DerivedStepImportInput): Promise<DerivedStepImportResult>;
+  cancelModelWork(message?: string): number;
+  resumeModelWork(): number;
+  getModelWorkSnapshot(): DerivedGeometryRuntimeWorkSnapshot;
+  subscribeModelWork(listener: () => void): () => void;
+  invalidateDerivedWork?(
+    intent: "display" | "exact",
+    sourceId: string,
+    documentRevision?: number
+  ): void;
   dispose(): void;
 }
 

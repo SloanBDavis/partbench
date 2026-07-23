@@ -299,7 +299,7 @@ describe("V7 browser workflow smoke summary", () => {
     expect(smokeSource).toContain('"Query-returned profile"');
     expect(smokeSource).toContain('"Query-returned path"');
     expect(smokeSource).toContain(
-      'clickButton(sweepSourceEditor, "Reverse submitted direction")'
+      'clickButton(sweepSourceEditor, "Reverse path direction")'
     );
     expect(smokeSource).toContain(
       'clickButton(revolveSourceEditor, "Save source references")'

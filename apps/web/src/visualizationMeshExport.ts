@@ -22,6 +22,7 @@ export type VisualizationMeshExportDiagnosticCode =
   | "VISUALIZATION_EXPORT_SOURCE_UNSUPPORTED"
   | "VISUALIZATION_EXPORT_MESH_MISSING"
   | "VISUALIZATION_EXPORT_MESH_PENDING"
+  | "VISUALIZATION_EXPORT_MESH_CANCELLED"
   | "VISUALIZATION_EXPORT_MESH_FAILED"
   | "VISUALIZATION_EXPORT_MESH_UNSUPPORTED"
   | "VISUALIZATION_EXPORT_MESH_STALE"
@@ -555,6 +556,16 @@ function createEntryDiagnostic(
         bodyName,
         expected: "ready display geometry",
         received: "failed display geometry"
+      });
+    case "cancelled":
+      return createExportDiagnostic({
+        code: "VISUALIZATION_EXPORT_MESH_CANCELLED",
+        status: "deferred",
+        message: `Body ${bodyId} display geometry was cancelled.`,
+        bodyId,
+        bodyName,
+        expected: "ready display geometry",
+        received: "cancelled display geometry"
       });
     case "unsupported":
       return createExportDiagnostic({

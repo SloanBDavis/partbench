@@ -3,6 +3,14 @@ import type { SelectionFilter, WorkbenchMode } from "./types";
 interface CommonStatus {
   readonly mode: WorkbenchMode;
   readonly pendingLabel?: string;
+  readonly modelSourceIds?: readonly string[];
+  readonly modelWorkControl?: {
+    readonly label: string;
+    readonly actionLabel: string;
+    readonly disabled?: boolean;
+    readonly busy?: boolean;
+    readonly onAction: () => void;
+  };
 }
 
 export interface SketchStatus extends CommonStatus {
@@ -54,11 +62,25 @@ export function StatusBar(props: StatusBarProps) {
       role="status"
       aria-label={`${formatMode(props.mode)} status`}
       aria-live="polite"
+      data-model-source-ids={props.modelSourceIds?.join(" ") || undefined}
     >
       {renderModeStatus(props)}
       {props.pendingLabel ? (
         <span className="pb-status-bar__pending" aria-busy="true">
           {props.pendingLabel}
+        </span>
+      ) : null}
+      {props.modelWorkControl ? (
+        <span className="pb-status-bar__model-work">
+          <span>{props.modelWorkControl.label}</span>
+          <button
+            type="button"
+            disabled={props.modelWorkControl.disabled}
+            aria-busy={props.modelWorkControl.busy || undefined}
+            onClick={props.modelWorkControl.onAction}
+          >
+            {props.modelWorkControl.actionLabel}
+          </button>
         </span>
       ) : null}
     </footer>

@@ -1,7 +1,6 @@
-import type {
-  GeometryWorker,
-  GeometryWorkerRequest
-} from "@web-cad/geometry-worker";
+import type { GeometryWorkerRequest } from "@web-cad/geometry-worker";
+import { GeometryJobScheduler } from "./geometryJobScheduler";
+import { emitGeometryDiagnosticEvent } from "./geometryDiagnosticEvents";
 import {
   createDerivedGeometryErrorFromWorkerResponse,
   createDerivedExactMetadataMetrics,
@@ -23,6 +22,8 @@ import {
   type DerivedGeometrySphereInput,
   type DerivedGeometryTorusInput,
   type DerivedGeometryResult,
+  type DerivedGeometryExecutionContext,
+  type DerivedGeometryRequestContext,
   type DerivedGeometryRuntime,
   type DerivedExactMetadataInput,
   type DerivedExactMetadataResult,
@@ -32,27 +33,21 @@ import {
   type DerivedStepImportResult
 } from "./derivedGeometryRuntime";
 
-type DisposableGeometryWorker = GeometryWorker & {
-  dispose(): void;
-};
-
 export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
-  let geometryWorker: DisposableGeometryWorker | undefined;
   let nextRequestNumber = 1;
+  const scheduler = new GeometryJobScheduler({
+    onEvent: (job) =>
+      emitGeometryDiagnosticEvent({
+        phase: "worker-job",
+        timestamp: performance.now(),
+        job
+      })
+  });
 
   function createRequestId(inputId: string): string {
     const requestId = `occt_mesh_${inputId}_${nextRequestNumber}`;
     nextRequestNumber += 1;
     return requestId;
-  }
-
-  async function getGeometryWorker(): Promise<DisposableGeometryWorker> {
-    if (!geometryWorker) {
-      const { BrowserGeometryWorker } = await import("./browserGeometryWorker");
-      geometryWorker = new BrowserGeometryWorker();
-    }
-
-    return geometryWorker;
   }
 
   async function executeTessellationRequest(
@@ -73,13 +68,23 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
       | DerivedGeometryShellInput
       | DerivedGeometrySweepInput
       | DerivedGeometryLoftInput,
-    request: GeometryWorkerRequest
+    request: GeometryWorkerRequest,
+    context?: DerivedGeometryExecutionContext
   ): Promise<DerivedGeometryResult> {
     const { createRenderMeshFromGeometryWorkerResponse } =
       await import("@web-cad/renderer-mesh-bridge");
-    const worker = await getGeometryWorker();
     const roundTripStart = performance.now();
-    const response = await worker.execute(request);
+    const response = await scheduler.execute(
+      context && "intent" in context
+        ? { intent: "user", userKind: "preflight" }
+        : {
+            intent: "display",
+            sourceId: context?.sourceId ?? input.id,
+            documentRevision: context?.documentRevision ?? 0,
+            cacheKey: context?.cacheKey ?? request.payload.id
+          },
+      request
+    );
     const roundTripMs = performance.now() - roundTripStart;
 
     if (!response.response.ok) {
@@ -133,11 +138,19 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
 
   async function executeExactMetadataRequest(
     input: DerivedExactMetadataInput,
-    request: GeometryWorkerRequest
+    request: GeometryWorkerRequest,
+    context?: DerivedGeometryRequestContext
   ): Promise<DerivedExactMetadataResult> {
-    const worker = await getGeometryWorker();
     const roundTripStart = performance.now();
-    const response = await worker.execute(request);
+    const response = await scheduler.execute(
+      {
+        intent: "exact",
+        sourceId: context?.sourceId ?? input.id,
+        documentRevision: context?.documentRevision ?? 0,
+        cacheKey: context?.cacheKey ?? request.payload.id
+      },
+      request
+    );
     const roundTripMs = performance.now() - roundTripStart;
 
     if (!response.response.ok) {
@@ -165,9 +178,11 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
     input: DerivedExactTopologyCheckpointPayloadInput,
     request: GeometryWorkerRequest
   ): Promise<DerivedExactTopologyCheckpointPayloadResult> {
-    const worker = await getGeometryWorker();
     const roundTripStart = performance.now();
-    const response = await worker.execute(request);
+    const response = await scheduler.execute(
+      { intent: "user", userKind: "checkpoint" },
+      request
+    );
     const roundTripMs = performance.now() - roundTripStart;
 
     if (!response.response.ok) {
@@ -195,9 +210,11 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
     input: DerivedStepImportInput,
     request: GeometryWorkerRequest
   ): Promise<DerivedStepImportResult> {
-    const worker = await getGeometryWorker();
     const roundTripStart = performance.now();
-    const response = await worker.execute(request);
+    const response = await scheduler.execute(
+      { intent: "user", userKind: "import" },
+      request
+    );
     const roundTripMs = performance.now() - roundTripStart;
 
     if (!response.response.ok) {
@@ -224,7 +241,10 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
   }
 
   return {
-    async tessellateBox(input: DerivedGeometryBoxInput) {
+    async executeExactStepExport(request) {
+      return scheduler.execute({ intent: "user", userKind: "export" }, request);
+    },
+    async tessellateBox(input: DerivedGeometryBoxInput, context) {
       const { createBoxTessellationWorkerRequest } =
         await import("@web-cad/geometry-worker/browser");
       const requestId = createRequestId(input.id);
@@ -239,10 +259,11 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           depth: input.dimensions.depth,
           linearDeflection: 0.25,
           angularDeflection: 0.5
-        })
+        }),
+        context
       );
     },
-    async tessellateCylinder(input: DerivedGeometryCylinderInput) {
+    async tessellateCylinder(input: DerivedGeometryCylinderInput, context) {
       const { createCylinderTessellationWorkerRequest } =
         await import("@web-cad/geometry-worker/browser");
       const requestId = createRequestId(input.id);
@@ -256,10 +277,11 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           height: input.dimensions.height,
           linearDeflection: 0.25,
           angularDeflection: 0.5
-        })
+        }),
+        context
       );
     },
-    async tessellateSphere(input: DerivedGeometrySphereInput) {
+    async tessellateSphere(input: DerivedGeometrySphereInput, context) {
       const { createSphereTessellationWorkerRequest } =
         await import("@web-cad/geometry-worker/browser");
       const requestId = createRequestId(input.id);
@@ -272,10 +294,11 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           radius: input.dimensions.radius,
           linearDeflection: 0.25,
           angularDeflection: 0.5
-        })
+        }),
+        context
       );
     },
-    async tessellateCone(input: DerivedGeometryConeInput) {
+    async tessellateCone(input: DerivedGeometryConeInput, context) {
       const { createConeTessellationWorkerRequest } =
         await import("@web-cad/geometry-worker/browser");
       const requestId = createRequestId(input.id);
@@ -289,10 +312,11 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           height: input.dimensions.height,
           linearDeflection: 0.25,
           angularDeflection: 0.5
-        })
+        }),
+        context
       );
     },
-    async tessellateTorus(input: DerivedGeometryTorusInput) {
+    async tessellateTorus(input: DerivedGeometryTorusInput, context) {
       const { createTorusTessellationWorkerRequest } =
         await import("@web-cad/geometry-worker/browser");
       const requestId = createRequestId(input.id);
@@ -306,10 +330,11 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           minorRadius: input.dimensions.minorRadius,
           linearDeflection: 0.25,
           angularDeflection: 0.5
-        })
+        }),
+        context
       );
     },
-    async tessellateExtrude(input: DerivedGeometryExtrudeInput) {
+    async tessellateExtrude(input: DerivedGeometryExtrudeInput, context) {
       const { createExtrudeTessellationWorkerRequest } =
         await import("@web-cad/geometry-worker/browser");
       const requestId = createRequestId(input.id);
@@ -325,10 +350,11 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           side: input.side,
           linearDeflection: 0.25,
           angularDeflection: 0.5
-        })
+        }),
+        context
       );
     },
-    async revolveProfile(input: DerivedGeometryRevolveInput) {
+    async revolveProfile(input: DerivedGeometryRevolveInput, context) {
       const { createRevolveProfileWorkerRequest } =
         await import("@web-cad/geometry-worker/browser");
       const requestId = createRequestId(input.id);
@@ -344,10 +370,11 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           angleDegrees: input.angleDegrees,
           linearDeflection: 0.25,
           angularDeflection: 0.5
-        })
+        }),
+        context
       );
     },
-    async booleanExtrudes(input: DerivedGeometryBooleanExtrudeInput) {
+    async booleanExtrudes(input: DerivedGeometryBooleanExtrudeInput, context) {
       const { createExtrudeBooleanWorkerRequest } =
         await import("@web-cad/geometry-worker/browser");
       const requestId = createRequestId(input.id);
@@ -373,9 +400,12 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
               angularDeflection: 0.5
             });
 
-      return executeTessellationRequest(input, request);
+      return executeTessellationRequest(input, request, context);
     },
-    async hole(input: DerivedGeometryHoleInput) {
+    async hole(
+      input: DerivedGeometryHoleInput,
+      context?: DerivedGeometryExecutionContext
+    ) {
       const { createHoleWorkerRequest } =
         await import("@web-cad/geometry-worker/browser");
       const requestId = createRequestId(input.id);
@@ -389,10 +419,11 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           tool: input.tool,
           linearDeflection: 0.25,
           angularDeflection: 0.5
-        })
+        }),
+        context
       );
     },
-    async edgeFinish(input: DerivedGeometryEdgeFinishInput) {
+    async edgeFinish(input: DerivedGeometryEdgeFinishInput, context) {
       const { createEdgeFinishWorkerRequest } =
         await import("@web-cad/geometry-worker/browser");
       const requestId = createRequestId(input.id);
@@ -410,10 +441,11 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
             : { radius: input.radius }),
           linearDeflection: 0.25,
           angularDeflection: 0.5
-        })
+        }),
+        context
       );
     },
-    async linearPattern(input: DerivedGeometryLinearPatternInput) {
+    async linearPattern(input: DerivedGeometryLinearPatternInput, context) {
       const { createLinearPatternWorkerRequest } =
         await import("@web-cad/geometry-worker/browser");
       const requestId = createRequestId(input.id);
@@ -429,10 +461,11 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           instanceCount: input.instanceCount,
           linearDeflection: 0.25,
           angularDeflection: 0.5
-        })
+        }),
+        context
       );
     },
-    async circularPattern(input: DerivedGeometryCircularPatternInput) {
+    async circularPattern(input: DerivedGeometryCircularPatternInput, context) {
       const { createCircularPatternWorkerRequest } =
         await import("@web-cad/geometry-worker/browser");
       const requestId = createRequestId(input.id);
@@ -448,10 +481,11 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           instanceCount: input.instanceCount,
           linearDeflection: 0.25,
           angularDeflection: 0.5
-        })
+        }),
+        context
       );
     },
-    async mirror(input: DerivedGeometryMirrorInput) {
+    async mirror(input: DerivedGeometryMirrorInput, context) {
       const { createMirrorWorkerRequest } =
         await import("@web-cad/geometry-worker/browser");
       const requestId = createRequestId(input.id);
@@ -466,10 +500,11 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           includeOriginal: input.includeOriginal,
           linearDeflection: 0.25,
           angularDeflection: 0.5
-        })
+        }),
+        context
       );
     },
-    async shell(input: DerivedGeometryShellInput) {
+    async shell(input: DerivedGeometryShellInput, context) {
       const { createShellWorkerRequest } =
         await import("@web-cad/geometry-worker/browser");
       const requestId = createRequestId(input.id);
@@ -484,10 +519,11 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           openFaceStableIds: input.openFaceStableIds,
           linearDeflection: 0.25,
           angularDeflection: 0.5
-        })
+        }),
+        context
       );
     },
-    async sweep(input: DerivedGeometrySweepInput) {
+    async sweep(input: DerivedGeometrySweepInput, context) {
       const { createSweepWorkerRequest } =
         await import("@web-cad/geometry-worker/browser");
       const requestId = createRequestId(input.id);
@@ -501,10 +537,11 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           pathSegments: input.pathSegments,
           linearDeflection: 0.25,
           angularDeflection: 0.5
-        })
+        }),
+        context
       );
     },
-    async loft(input: DerivedGeometryLoftInput) {
+    async loft(input: DerivedGeometryLoftInput, context) {
       const { createLoftWorkerRequest } =
         await import("@web-cad/geometry-worker/browser");
       const requestId = createRequestId(input.id);
@@ -517,10 +554,11 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           sections: input.sections,
           linearDeflection: 0.25,
           angularDeflection: 0.5
-        })
+        }),
+        context
       );
     },
-    async exactBodyMetadata(input: DerivedExactMetadataInput) {
+    async exactBodyMetadata(input: DerivedExactMetadataInput, context) {
       const { createExactBodyMetadataWorkerRequest } =
         await import("@web-cad/geometry-worker/browser");
       const requestId = createRequestId(input.id);
@@ -531,7 +569,8 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           id: requestId,
           payloadId: `${requestId}:kernel`,
           source: input.source
-        })
+        }),
+        context
       );
     },
     async exactTopologyCheckpointPayload(
@@ -571,8 +610,33 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
       );
     },
     dispose() {
-      geometryWorker?.dispose();
-      geometryWorker = undefined;
+      scheduler.dispose();
+    },
+    cancelModelWork(message) {
+      return scheduler.cancelGeneration(message);
+    },
+    resumeModelWork() {
+      return scheduler.resumeGeneration();
+    },
+    getModelWorkSnapshot() {
+      const snapshot = scheduler.getSnapshot();
+      const queuedCount =
+        snapshot.queuedUserCount +
+        snapshot.queuedDisplayCount +
+        snapshot.queuedExactCount;
+      return {
+        generation: snapshot.generation,
+        stopped: snapshot.stopped,
+        active: snapshot.inFlightRunId !== undefined || queuedCount > 0,
+        queuedCount,
+        cancelledUserKinds: snapshot.cancelledUserKinds
+      };
+    },
+    subscribeModelWork(listener) {
+      return scheduler.subscribe(listener);
+    },
+    invalidateDerivedWork(intent, sourceId, documentRevision) {
+      scheduler.invalidateDerived(intent, sourceId, documentRevision);
     }
   };
 }

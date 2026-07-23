@@ -2,6 +2,9 @@ import type { DerivedGeometryRuntime } from "./derivedGeometryRuntime";
 
 export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
   return {
+    async executeExactStepExport() {
+      throw new Error("Derived geometry runtime is disabled.");
+    },
     async tessellateBox() {
       throw new Error("Derived geometry runtime is disabled.");
     },
@@ -59,6 +62,25 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
     async importStep() {
       throw new Error("Derived geometry runtime is disabled.");
     },
+    cancelModelWork() {
+      return 0;
+    },
+    resumeModelWork() {
+      return 0;
+    },
+    getModelWorkSnapshot() {
+      return {
+        generation: 0,
+        stopped: false,
+        active: false,
+        queuedCount: 0,
+        cancelledUserKinds: []
+      };
+    },
+    subscribeModelWork() {
+      return () => undefined;
+    },
+    invalidateDerivedWork() {},
     dispose() {}
   };
 }

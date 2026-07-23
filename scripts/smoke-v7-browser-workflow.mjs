@@ -15,6 +15,7 @@ import {
   getAvailablePort,
   startStaticServer
 } from "./occt-smoke/browser.mjs";
+import { acquireBrowserSmokeLease } from "./v18-geometry-reliability.mjs";
 
 /* global Blob, clearTimeout, DataTransfer, document, Event, File, getComputedStyle, HTMLDetailsElement, HTMLInputElement, HTMLSelectElement, HTMLTextAreaElement, KeyboardEvent, MouseEvent, Node, PointerEvent, TextDecoder, window */
 
@@ -38,6 +39,7 @@ if (!browserExecutable) {
 let appServer;
 let browserProcess;
 let client;
+let browserLease;
 const profileDir = join(
   repoRoot,
   ".metrics",
@@ -46,6 +48,9 @@ const profileDir = join(
 
 try {
   await mkdir(dirname(profileDir), { recursive: true });
+  browserLease = await acquireBrowserSmokeLease({
+    lockPath: join(repoRoot, ".metrics", "browser-smoke.lock")
+  });
   appServer = await startStaticServer(appDistDir);
   const appUrl = `http://127.0.0.1:${appServer.port}/index.html`;
   const remoteDebuggingPort = await getAvailablePort();
@@ -81,6 +86,7 @@ try {
   await stopBrowserProcess(browserProcess);
   appServer?.close();
   await rm(profileDir, { force: true, recursive: true }).catch(() => {});
+  await browserLease?.release().catch(() => {});
 }
 
 async function assertAppBuildExists() {
@@ -1934,7 +1940,16 @@ async function v7BrowserWorkflowSmoke({
       "V18 box in document tree"
     );
 
-    clickV18RibbonAction("Solid tools", "Sketch");
+    const topPlaneRow = [
+      ...getElementByAriaLabel("Document tree").querySelectorAll(".pb-tree-row")
+    ].find((candidate) => includesText(candidate, "Top plane"));
+    const topPlaneSelect = topPlaneRow?.querySelector(".pb-tree-row__select");
+    if (!(topPlaneSelect instanceof globalThis.HTMLButtonElement)) {
+      throw new Error("The V18 Top plane row is unavailable.");
+    }
+    topPlaneSelect.click();
+    await waitForV18ReadyRibbonAction("Solid tools", "Create Sketch");
+    clickV18RibbonAction("Solid tools", "Create Sketch");
     editor = await waitForV18FeatureEditor("Create Sketch");
     setFieldByLabel(editor, "Name", "V18 V17 smoke sketch");
     clickButton(editor, "Apply");
@@ -2130,8 +2145,8 @@ async function v7BrowserWorkflowSmoke({
     const sweepProfileX = -1;
 
     clickV18Mode("Solid");
-    await waitForV18ReadyRibbonAction("Solid tools", "Sketch");
-    clickV18RibbonAction("Solid tools", "Sketch");
+    await waitForV18ReadyRibbonAction("Solid tools", "Create Sketch");
+    clickV18RibbonAction("Solid tools", "Create Sketch");
     editor = await waitForV18FeatureEditor("Create Sketch");
     setFieldByLabel(editor, "Name", "V18 sweep profile");
     setSelectByLabel(editor, "Plane", "XZ");
@@ -2211,7 +2226,7 @@ async function v7BrowserWorkflowSmoke({
     await editV18Feature("Sweep");
     editor = await waitForV18FeatureEditor("Edit Sweep");
     selectCollectorOption(editor, 0, 1);
-    clickButton(editor, "Reverse submitted direction");
+    clickButton(editor, "Reverse path direction");
     clickButton(editor, "Apply");
     await waitFor(
       () => !editor.getAttribute("aria-busy"),
@@ -2762,7 +2777,7 @@ async function v7BrowserWorkflowSmoke({
       includes: [secondArc.id],
       excludes: [firstArc.id]
     });
-    clickButton(sweepSourceEditor, "Reverse submitted direction");
+    clickButton(sweepSourceEditor, "Reverse path direction");
     await waitFor(() => {
       const save = getButtonByText(
         getSectionByAriaLabel("Composite source editor"),

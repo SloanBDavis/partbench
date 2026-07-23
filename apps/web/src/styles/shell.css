@@ -405,6 +405,29 @@
   color: var(--pb-color-accent);
 }
 
+.pb-status-bar__model-work {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--pb-space-8);
+  color: var(--pb-color-text-muted);
+}
+
+.pb-status-bar__model-work button {
+  min-height: 28px;
+  padding: 0 var(--pb-space-8);
+  border: 1px solid var(--pb-color-border-strong);
+  border-radius: var(--pb-radius-control);
+  background: var(--pb-color-surface-elevated);
+  color: var(--pb-color-text);
+  cursor: pointer;
+}
+
+.pb-status-bar__model-work button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
 .pb-status-bar__filter select {
   height: 28px;
   min-width: 92px;

@@ -8,7 +8,8 @@ import {
   findBrowserExecutable,
   getAvailablePort,
   runSmokePage,
-  startStaticServer
+  startStaticServer,
+  stopBrowserProcess
 } from "./occt-smoke/browser.mjs";
 import {
   assertSmokeResult,
@@ -17,6 +18,7 @@ import {
   printFailureSummary,
   printSummary
 } from "./occt-smoke/records.mjs";
+import { acquireBrowserSmokeLease } from "./v18-geometry-reliability.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const smokeDistDir = join(repoRoot, "apps/web/dist-geometry-worker-smoke");
@@ -55,6 +57,7 @@ let remoteDebuggingPort;
 let browserVersion;
 let browserProcess;
 let client;
+let browserLease;
 
 const profileDir = join(
   repoRoot,
@@ -63,6 +66,9 @@ const profileDir = join(
 );
 
 try {
+  browserLease = await acquireBrowserSmokeLease({
+    lockPath: join(metricsDir, "browser-smoke.lock")
+  });
   assetMetrics = await getAssetMetrics(smokeDistDir);
   appServer = await startStaticServer(smokeDistDir);
   appUrl = `http://127.0.0.1:${appServer.port}/geometry-worker-smoke.html`;
@@ -122,9 +128,10 @@ try {
   throw error;
 } finally {
   await client?.close().catch(() => {});
-  browserProcess?.kill();
-  appServer?.close();
+  await stopBrowserProcess(browserProcess);
+  await appServer?.close();
   await rm(profileDir, { force: true, recursive: true }).catch(() => {});
+  await browserLease?.release().catch(() => {});
 }
 
 async function assertSmokeBuildExists() {

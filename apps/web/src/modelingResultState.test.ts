@@ -7,6 +7,11 @@ describe("modeling result state", () => {
     errorCount: 0,
     pendingCount: 0
   };
+  const readyExactMetadata = {
+    entries: [{ status: "ready" as const }],
+    errorCount: 0,
+    pendingCount: 0
+  };
 
   it("does not call a compiled-out derived result ready", () => {
     expect(
@@ -89,6 +94,103 @@ describe("modeling result state", () => {
         projectHealthStatus: "missing-source"
       })
     ).toBe("Needs attention");
+  });
+
+  it("does not report ready while an exact result is missing or pending", () => {
+    const base = {
+      commandPending: false,
+      commandFailed: false,
+      derivedGeometryEnabled: true,
+      derivedSourceCount: 1,
+      derivedGeometry: readyGeometry,
+      derivedExactSourceCount: 1,
+      projectHealthStatus: "healthy" as const
+    };
+
+    expect(createModelingResultState(base)).toBe(
+      "Display ready · Building exact results"
+    );
+    expect(
+      createModelingResultState({
+        ...base,
+        derivedExactMetadata: {
+          entries: [{ status: "pending" }],
+          errorCount: 0,
+          pendingCount: 1
+        }
+      })
+    ).toBe("Display ready · Building exact results");
+  });
+
+  it("reports failed, cancelled, and unavailable exact results", () => {
+    const base = {
+      commandPending: false,
+      commandFailed: false,
+      derivedGeometryEnabled: true,
+      derivedSourceCount: 1,
+      derivedGeometry: readyGeometry,
+      derivedExactSourceCount: 1,
+      projectHealthStatus: "healthy" as const
+    };
+
+    expect(
+      createModelingResultState({
+        ...base,
+        derivedExactMetadata: {
+          entries: [{ status: "error" }],
+          errorCount: 1,
+          pendingCount: 0
+        }
+      })
+    ).toBe("1 exact result failed");
+    expect(
+      createModelingResultState({
+        ...base,
+        derivedExactMetadata: {
+          entries: [{ status: "cancelled" }],
+          errorCount: 0,
+          pendingCount: 0,
+          cancelledCount: 1
+        }
+      })
+    ).toBe("1 exact result cancelled");
+    expect(
+      createModelingResultState({
+        ...base,
+        derivedExactMetadata: {
+          entries: [{ status: "unsupported" }],
+          errorCount: 0,
+          pendingCount: 0
+        }
+      })
+    ).toBe("1 exact result unavailable");
+  });
+
+  it("reports ready only after current display and exact results settle", () => {
+    expect(
+      createModelingResultState({
+        commandPending: false,
+        commandFailed: false,
+        derivedGeometryEnabled: true,
+        derivedSourceCount: 1,
+        derivedGeometry: readyGeometry,
+        derivedExactSourceCount: 1,
+        derivedExactMetadata: readyExactMetadata,
+        projectHealthStatus: "healthy"
+      })
+    ).toBe("Ready");
+    expect(
+      createModelingResultState({
+        commandPending: false,
+        commandFailed: false,
+        derivedGeometryEnabled: true,
+        derivedSourceCount: 1,
+        derivedGeometry: readyGeometry,
+        derivedExactSourceCount: 1,
+        derivedExactMetadata: readyExactMetadata,
+        projectHealthStatus: "under-defined"
+      })
+    ).toBe("Ready with design notes");
   });
 
   it("prioritizes live command state and command failure", () => {

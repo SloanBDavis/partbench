@@ -14,7 +14,7 @@ import type {
   BooleanExtrudeResultSource,
   BooleanExtrudeSource,
   BooleanExtrudeToolSource,
-  GeometryWorker,
+  GeometryWorkerResponse,
   GeometryKernelExactStepExportArtifact,
   ResolvedPlanarWireProfile
 } from "@web-cad/geometry-worker";
@@ -30,7 +30,15 @@ type CadExactExportBooleanBodySource = Extract<
 
 export interface ProjectExactStepExportExecutionInput {
   readonly exactExport: ProjectExactExportQueryResponse;
-  readonly worker: GeometryWorker;
+  readonly worker: {
+    execute(
+      request: ReturnType<typeof createExactStepExportWorkerRequest>
+    ): Promise<
+      GeometryWorkerResponse<
+        ReturnType<typeof createExactStepExportWorkerRequest>["payload"]
+      >
+    >;
+  };
 }
 
 export async function executeProjectExactStepExport({

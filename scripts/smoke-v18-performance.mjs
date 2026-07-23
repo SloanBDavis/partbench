@@ -15,8 +15,10 @@ import { gzipSync } from "node:zlib";
 import {
   connectToBrowser,
   findBrowserExecutable,
-  getAvailablePort
+  getAvailablePort,
+  stopBrowserProcess
 } from "./occt-smoke/browser.mjs";
+import { acquireBrowserSmokeLease } from "./v18-geometry-reliability.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const distDir = join(repoRoot, "apps/web/dist");
@@ -35,9 +37,15 @@ await stat(join(distDir, "index.html")).catch(() => {
   );
 });
 
-const server = await startCompressedStaticServer(distDir);
-const appUrl = `http://127.0.0.1:${server.port}/index.html`;
+let browserLease;
+let server;
+let appUrl;
 try {
+  browserLease = await acquireBrowserSmokeLease({
+    lockPath: join(metricsDir, "browser-smoke.lock")
+  });
+  server = await startCompressedStaticServer(distDir);
+  appUrl = `http://127.0.0.1:${server.port}/index.html`;
   const coldRuns = [];
   for (let index = 0; index < 5; index += 1) {
     coldRuns.push(await measureColdRun(index));
@@ -87,7 +95,8 @@ try {
   console.log(JSON.stringify(result, null, 2));
   if (!result.ok) process.exitCode = 1;
 } finally {
-  server.close();
+  await server?.close();
+  await browserLease?.release();
 }
 
 async function measureColdRun(index) {
@@ -269,7 +278,7 @@ async function withBrowser(label, callback, dpr = 1) {
     return await callback(client, sessionId);
   } finally {
     await client?.close().catch(() => {});
-    browser.kill("SIGTERM");
+    await stopBrowserProcess(browser);
     await rm(profileDir, { recursive: true, force: true }).catch(() => {});
   }
 }
@@ -327,7 +336,11 @@ async function startCompressedStaticServer(rootDirectory) {
   return {
     port,
     close() {
-      server.close();
+      return new Promise((resolveClose, rejectClose) => {
+        server.close((error) =>
+          error ? rejectClose(error) : resolveClose(undefined)
+        );
+      });
     }
   };
 }

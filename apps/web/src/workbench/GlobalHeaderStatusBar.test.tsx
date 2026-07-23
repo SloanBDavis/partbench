@@ -66,4 +66,49 @@ describe("V18 global header and mode status", () => {
     expect(markup).toContain("Selection filter");
     expect(markup).toContain('<option value="face" selected="">Face</option>');
   });
+
+  it("keeps model-work cancellation accessible alongside pending commands", () => {
+    const markup = renderToStaticMarkup(
+      createElement(StatusBar, {
+        mode: "project",
+        fileState: "Gearbox Mount.wcad",
+        saveState: "Unsaved",
+        readiness: "Building results",
+        pendingLabel: "Updating model",
+        modelWorkControl: {
+          label: "Model results are building",
+          actionLabel: "Cancel model work",
+          onAction: vi.fn()
+        }
+      })
+    );
+
+    expect(markup).toContain("Model results are building");
+    expect(markup).toContain("Cancel model work");
+    expect(markup).not.toContain('disabled=""');
+  });
+
+  it("renders a busy-disabled retry without hiding its recovery label", () => {
+    const markup = renderToStaticMarkup(
+      createElement(StatusBar, {
+        mode: "solid",
+        instruction: "Model work cancelled",
+        selectionFilter: "body",
+        zoom: "Viewport",
+        units: "mm",
+        rebuildState: "1 display result cancelled",
+        modelWorkControl: {
+          label: "Model results need attention",
+          actionLabel: "Retry model results",
+          disabled: true,
+          busy: true,
+          onAction: vi.fn()
+        }
+      })
+    );
+
+    expect(markup).toContain("Retry model results");
+    expect(markup).toContain('aria-busy="true"');
+    expect(markup).toContain('disabled=""');
+  });
 });

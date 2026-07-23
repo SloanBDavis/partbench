@@ -83,6 +83,12 @@ class FakeGeometryWorkerTransport implements GeometryWorkerTransport {
     this.#errorListeners.clear();
   }
 
+  emitMessage(message: GeometryWorkerMessage): void {
+    for (const listener of this.#messageListeners) {
+      listener({ data: message });
+    }
+  }
+
   async #postResponse(request: GeometryWorkerRequest): Promise<void> {
     try {
       const response = await this.#handler(request);
@@ -224,6 +230,44 @@ describe("BrowserGeometryWorker", () => {
     expect(transport.requests).toHaveLength(1);
 
     worker.dispose();
+  });
+
+  it("reports worker entry once without settling the request", async () => {
+    let resolveResponse: ((message: GeometryWorkerMessage) => void) | undefined;
+    const transport = new FakeGeometryWorkerTransport(
+      () =>
+        new Promise<GeometryWorkerMessage>((resolve) => {
+          resolveResponse = resolve;
+        })
+    );
+    const worker = new BrowserGeometryWorker(transport);
+    const request = createBoxTessellationWorkerRequest({
+      id: "tracked_request",
+      width: 1,
+      height: 1,
+      depth: 1
+    });
+    let startedCount = 0;
+    let settled = false;
+    const responsePromise = worker.executeTracked(request, {
+      onStarted: () => {
+        startedCount += 1;
+      }
+    });
+    void responsePromise.then(() => {
+      settled = true;
+    });
+
+    await Promise.resolve();
+    transport.emitMessage([request.id]);
+    transport.emitMessage([request.id]);
+
+    expect(startedCount).toBe(1);
+    expect(settled).toBe(false);
+
+    resolveResponse?.(createPrimitiveTessellationMessage(request));
+    await expect(responsePromise).resolves.toMatchObject({ id: request.id });
+    expect(settled).toBe(true);
   });
 
   it("passes one box tessellation message through the browser transport wrapper", async () => {

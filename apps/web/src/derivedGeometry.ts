@@ -16,6 +16,8 @@ import {
 import {
   createDerivedGeometryErrorDetails,
   type DerivedGeometryErrorDetails,
+  type DerivedGeometryExecutionContext,
+  type DerivedGeometryRequestContext,
   type DerivedGeometryMetrics,
   type DerivedGeometryPatternSeedSource,
   type DerivedGeometryPrimitiveExtrudeProfile,
@@ -33,6 +35,7 @@ export type DerivedGeometryStatusKind =
   | "unsupported"
   | "pending"
   | "ready"
+  | "cancelled"
   | "error";
 export type DerivedGeometrySourceKind =
   | SceneObject["kind"]
@@ -238,6 +241,7 @@ export type DerivedGeometryEntry =
   | DerivedGeometryUnsupportedEntry
   | DerivedGeometryPendingEntry
   | DerivedGeometryReadyEntry
+  | DerivedGeometryCancelledEntry
   | DerivedGeometryErrorEntry;
 
 export interface DerivedGeometryBaseEntry {
@@ -271,12 +275,18 @@ export interface DerivedGeometryErrorEntry extends DerivedGeometryBaseEntry {
   readonly error: DerivedGeometryErrorDetails;
 }
 
+export interface DerivedGeometryCancelledEntry extends DerivedGeometryBaseEntry {
+  readonly status: "cancelled";
+  readonly message: string;
+}
+
 export interface DerivedGeometrySnapshot {
   readonly entries: readonly DerivedGeometryEntry[];
   readonly meshes: readonly RenderTriangleMesh[];
   readonly supportedCount: number;
   readonly pendingCount: number;
   readonly readyCount: number;
+  readonly cancelledCount?: number;
   readonly errorCount: number;
 }
 
@@ -367,6 +377,11 @@ export class DerivedGeometryService {
       const existing = this.#entries.get(source.id);
 
       if (!isSupportedDerivedGeometrySource(source)) {
+        this.#runtime.invalidateDerivedWork?.(
+          "display",
+          source.id,
+          this.#requestVersions.get(source.id) ?? this.#nextRequestVersion
+        );
         this.#requestVersions.delete(source.id);
         const unsupported: DerivedGeometryUnsupportedEntry = {
           objectId: source.id,
@@ -400,6 +415,11 @@ export class DerivedGeometryService {
 
     for (const sourceId of this.#entries.keys()) {
       if (!nextIds.has(sourceId)) {
+        this.#runtime.invalidateDerivedWork?.(
+          "display",
+          sourceId,
+          this.#requestVersions.get(sourceId) ?? this.#nextRequestVersion
+        );
         this.#entries.delete(sourceId);
         this.#requestVersions.delete(sourceId);
         changed = true;
@@ -419,6 +439,46 @@ export class DerivedGeometryService {
     this.#clearState();
     this.#emitChange();
     this.reconcile(sources);
+  }
+
+  cancelPending(message = "Model result generation was cancelled."): void {
+    let changed = false;
+    for (const [sourceId, entry] of this.#entries) {
+      if (entry.status !== "pending") continue;
+      this.#requestVersions.delete(sourceId);
+      this.#entries.set(sourceId, {
+        objectId: entry.objectId,
+        objectKind: entry.objectKind,
+        sourceId: entry.sourceId,
+        sourceKind: entry.sourceKind,
+        cacheKey: entry.cacheKey,
+        status: "cancelled",
+        message
+      });
+      changed = true;
+    }
+    if (changed) this.#emitChange();
+  }
+
+  retryCurrent(sources: readonly DerivedGeometryInput[]): void {
+    if (this.#disposed) return;
+    let changed = false;
+    for (const source of sources.map(toDerivedGeometrySource)) {
+      if (!isSupportedDerivedGeometrySource(source)) continue;
+      const existing = this.#entries.get(source.id);
+      const cacheKey = createDerivedGeometryCacheKey(source);
+      if (
+        existing?.cacheKey !== cacheKey ||
+        (existing.status !== "error" && existing.status !== "cancelled")
+      ) {
+        continue;
+      }
+      const request = this.#beginRequest(source);
+      this.#entries.set(source.id, createPendingEntry(source, cacheKey));
+      changed = true;
+      void this.#deriveSource(source, request);
+    }
+    if (changed) this.#emitChange();
   }
 
   dispose(): void {
@@ -456,7 +516,11 @@ export class DerivedGeometryService {
         return;
       }
 
-      const result = await deriveSourceMesh(this.#runtime, source);
+      const result = await deriveSourceMesh(this.#runtime, source, {
+        sourceId: request.sourceId,
+        cacheKey: request.cacheKey,
+        documentRevision: request.version
+      });
 
       if (!this.#canApplyResult(request)) {
         return;
@@ -673,18 +737,24 @@ function isSupportedDerivedGeometryObject(object: SceneObject): boolean {
 
 export function deriveGeometrySourceMesh(
   runtime: DerivedGeometryRuntime,
-  source: DerivedGeometrySource
+  source: DerivedGeometrySource,
+  context?: DerivedGeometryExecutionContext
 ): Promise<DerivedGeometryResult> {
   if (!isSupportedDerivedGeometrySource(source)) {
     return Promise.reject(new Error(getUnsupportedSourceMessage(source)));
   }
 
-  return deriveSourceMesh(runtime, source as SupportedDerivedGeometrySource);
+  return deriveSourceMesh(
+    runtime,
+    source as SupportedDerivedGeometrySource,
+    context
+  );
 }
 
 function deriveSourceMesh(
   runtime: DerivedGeometryRuntime,
-  source: SupportedDerivedGeometrySource
+  source: SupportedDerivedGeometrySource,
+  context?: DerivedGeometryExecutionContext
 ): Promise<DerivedGeometryResult> {
   if (source.kind === "extrude") {
     if (source.placementError) {
@@ -692,18 +762,21 @@ function deriveSourceMesh(
     }
 
     return runtime
-      .tessellateExtrude({
-        id: source.id,
-        sketchPlane: source.sketchPlane,
-        profile: source.profile,
-        depth: source.depth,
-        side: source.side,
-        transform: {
-          translation: [0, 0, 0],
-          rotation: [0, 0, 0],
-          scale: [1, 1, 1]
-        }
-      })
+      .tessellateExtrude(
+        {
+          id: source.id,
+          sketchPlane: source.sketchPlane,
+          profile: source.profile,
+          depth: source.depth,
+          side: source.side,
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          }
+        },
+        context && "intent" in context ? undefined : context
+      )
       .then((result) => applyExtrudePlacement(source, result));
   }
 
@@ -713,18 +786,21 @@ function deriveSourceMesh(
     }
 
     return runtime
-      .revolveProfile({
-        id: source.id,
-        sketchPlane: source.sketchPlane,
-        profile: source.profile,
-        axis: source.axis,
-        angleDegrees: source.angleDegrees,
-        transform: {
-          translation: [0, 0, 0],
-          rotation: [0, 0, 0],
-          scale: [1, 1, 1]
-        }
-      })
+      .revolveProfile(
+        {
+          id: source.id,
+          sketchPlane: source.sketchPlane,
+          profile: source.profile,
+          axis: source.axis,
+          angleDegrees: source.angleDegrees,
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          }
+        },
+        context && "intent" in context ? undefined : context
+      )
       .then((result) => applyRevolvePlacement(source, result));
   }
 
@@ -741,18 +817,24 @@ function deriveSourceMesh(
 
     const runtimeSource = createBooleanExtrudeResultRuntimeSource(source);
     return runtimeSource.operation === "cut"
-      ? runtime.booleanExtrudes({
-          id: source.id,
-          operation: "cut",
-          target: runtimeSource.target,
-          tool: runtimeSource.tool
-        })
-      : runtime.booleanExtrudes({
-          id: source.id,
-          operation: "add",
-          target: runtimeSource.target,
-          tool: runtimeSource.tool
-        });
+      ? runtime.booleanExtrudes(
+          {
+            id: source.id,
+            operation: "cut",
+            target: runtimeSource.target,
+            tool: runtimeSource.tool
+          },
+          context as DerivedGeometryRequestContext | undefined
+        )
+      : runtime.booleanExtrudes(
+          {
+            id: source.id,
+            operation: "add",
+            target: runtimeSource.target,
+            tool: runtimeSource.tool
+          },
+          context as DerivedGeometryRequestContext | undefined
+        );
   }
 
   if (source.kind === "hole") {
@@ -766,18 +848,21 @@ function deriveSourceMesh(
       throw new Error(unsupportedMessage);
     }
 
-    return runtime.hole({
-      id: source.id,
-      target: createBooleanExtrudeRuntimeSource(source.target),
-      tool: {
-        sketchPlane: source.tool.sketchPlane,
-        circle: source.tool.circle,
-        depthMode: source.tool.depthMode,
-        depth: source.tool.depth,
-        direction: source.tool.direction,
-        placementFrame: source.tool.placementFrame
-      }
-    });
+    return runtime.hole(
+      {
+        id: source.id,
+        target: createBooleanExtrudeRuntimeSource(source.target),
+        tool: {
+          sketchPlane: source.tool.sketchPlane,
+          circle: source.tool.circle,
+          depthMode: source.tool.depthMode,
+          depth: source.tool.depth,
+          direction: source.tool.direction,
+          placementFrame: source.tool.placementFrame
+        }
+      },
+      context
+    );
   }
 
   if (source.kind === "edgeFinish") {
@@ -806,7 +891,8 @@ function deriveSourceMesh(
             target: createBooleanExtrudeRuntimeSource(source.target),
             edgeStableId: source.edgeStableId,
             radius: source.radius
-          }
+          },
+      context as DerivedGeometryRequestContext | undefined
     );
   }
 
@@ -815,13 +901,16 @@ function deriveSourceMesh(
       throw new Error(source.placementError);
     }
 
-    return runtime.linearPattern({
-      id: source.id,
-      seed: createPatternSeedRuntimeSource(source.seed),
-      direction: source.direction,
-      spacing: source.spacing,
-      instanceCount: source.instanceCount
-    });
+    return runtime.linearPattern(
+      {
+        id: source.id,
+        seed: createPatternSeedRuntimeSource(source.seed),
+        direction: source.direction,
+        spacing: source.spacing,
+        instanceCount: source.instanceCount
+      },
+      context as DerivedGeometryRequestContext | undefined
+    );
   }
 
   if (source.kind === "circularPattern") {
@@ -829,13 +918,16 @@ function deriveSourceMesh(
       throw new Error(source.placementError);
     }
 
-    return runtime.circularPattern({
-      id: source.id,
-      seed: createPatternSeedRuntimeSource(source.seed),
-      axis: source.axis,
-      totalAngleDegrees: source.totalAngleDegrees,
-      instanceCount: source.instanceCount
-    });
+    return runtime.circularPattern(
+      {
+        id: source.id,
+        seed: createPatternSeedRuntimeSource(source.seed),
+        axis: source.axis,
+        totalAngleDegrees: source.totalAngleDegrees,
+        instanceCount: source.instanceCount
+      },
+      context as DerivedGeometryRequestContext | undefined
+    );
   }
 
   if (source.kind === "mirror") {
@@ -843,12 +935,15 @@ function deriveSourceMesh(
       throw new Error(source.placementError);
     }
 
-    return runtime.mirror({
-      id: source.id,
-      seed: createPatternSeedRuntimeSource(source.seed),
-      plane: source.plane,
-      includeOriginal: source.includeOriginal
-    });
+    return runtime.mirror(
+      {
+        id: source.id,
+        seed: createPatternSeedRuntimeSource(source.seed),
+        plane: source.plane,
+        includeOriginal: source.includeOriginal
+      },
+      context as DerivedGeometryRequestContext | undefined
+    );
   }
 
   if (source.kind === "shell") {
@@ -856,12 +951,15 @@ function deriveSourceMesh(
       throw new Error(source.placementError);
     }
 
-    return runtime.shell({
-      id: source.id,
-      target: createPatternSeedRuntimeSource(source.target),
-      wallThickness: source.wallThickness,
-      openFaceStableIds: source.openFaceStableIds
-    });
+    return runtime.shell(
+      {
+        id: source.id,
+        target: createPatternSeedRuntimeSource(source.target),
+        wallThickness: source.wallThickness,
+        openFaceStableIds: source.openFaceStableIds
+      },
+      context as DerivedGeometryRequestContext | undefined
+    );
   }
 
   if (source.kind === "sweep") {
@@ -869,11 +967,14 @@ function deriveSourceMesh(
       throw new Error(source.placementError);
     }
 
-    return runtime.sweep({
-      id: source.id,
-      profile: source.profile,
-      pathSegments: source.pathSegments
-    });
+    return runtime.sweep(
+      {
+        id: source.id,
+        profile: source.profile,
+        pathSegments: source.pathSegments
+      },
+      context as DerivedGeometryRequestContext | undefined
+    );
   }
 
   if (source.kind === "loft") {
@@ -881,42 +982,60 @@ function deriveSourceMesh(
       throw new Error(source.placementError);
     }
 
-    return runtime.loft({ id: source.id, sections: source.sections });
+    return runtime.loft(
+      { id: source.id, sections: source.sections },
+      context as DerivedGeometryRequestContext | undefined
+    );
   }
 
   const object = source.object as SupportedDerivedGeometryObject;
 
   switch (object.kind) {
     case "box":
-      return runtime.tessellateBox({
-        id: object.id,
-        dimensions: object.dimensions,
-        transform: object.transform
-      });
+      return runtime.tessellateBox(
+        {
+          id: object.id,
+          dimensions: object.dimensions,
+          transform: object.transform
+        },
+        context as DerivedGeometryRequestContext | undefined
+      );
     case "cylinder":
-      return runtime.tessellateCylinder({
-        id: object.id,
-        dimensions: object.dimensions,
-        transform: object.transform
-      });
+      return runtime.tessellateCylinder(
+        {
+          id: object.id,
+          dimensions: object.dimensions,
+          transform: object.transform
+        },
+        context as DerivedGeometryRequestContext | undefined
+      );
     case "sphere":
-      return runtime.tessellateSphere({
-        id: object.id,
-        dimensions: object.dimensions,
-        transform: object.transform
-      });
+      return runtime.tessellateSphere(
+        {
+          id: object.id,
+          dimensions: object.dimensions,
+          transform: object.transform
+        },
+        context as DerivedGeometryRequestContext | undefined
+      );
     case "cone":
-      return runtime.tessellateCone({
-        id: object.id,
-        dimensions: object.dimensions,
-        transform: object.transform
-      });
+      return runtime.tessellateCone(
+        {
+          id: object.id,
+          dimensions: object.dimensions,
+          transform: object.transform
+        },
+        context as DerivedGeometryRequestContext | undefined
+      );
     case "torus":
-      return runtime.tessellateTorus({
-        id: object.id,
-        dimensions: object.dimensions,
-        transform: object.transform
-      });
+      return runtime.tessellateTorus(
+        {
+          id: object.id,
+          dimensions: object.dimensions,
+          transform: object.transform
+        },
+        context as DerivedGeometryRequestContext | undefined
+      );
   }
 }
 
@@ -1247,6 +1366,7 @@ export function createEmptyDerivedGeometrySnapshot(): DerivedGeometrySnapshot {
     supportedCount: 0,
     pendingCount: 0,
     readyCount: 0,
+    cancelledCount: 0,
     errorCount: 0
   };
 }
@@ -1392,6 +1512,8 @@ export function getDerivedGeometryStatusLabel(
       return "Display geometry ready";
     case "pending":
       return "Building display geometry";
+    case "cancelled":
+      return "Display geometry cancelled";
     case "error":
       if (entry.sourceKind === "extrudeBoolean") {
         return "Boolean display geometry issue";
@@ -1457,6 +1579,9 @@ function createDerivedGeometrySnapshot(
     pendingCount: orderedEntries.filter((entry) => entry.status === "pending")
       .length,
     readyCount: meshes.length,
+    cancelledCount: orderedEntries.filter(
+      (entry) => entry.status === "cancelled"
+    ).length,
     errorCount: orderedEntries.filter((entry) => entry.status === "error")
       .length
   };

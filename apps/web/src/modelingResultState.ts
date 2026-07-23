@@ -7,10 +7,35 @@ export interface ModelingResultStateInput {
   readonly derivedSourceCount: number;
   readonly derivedGeometry: {
     readonly entries: readonly {
-      readonly status: "unsupported" | "pending" | "ready" | "error";
+      readonly status:
+        | "unsupported"
+        | "pending"
+        | "ready"
+        | "error"
+        | "cancelled";
     }[];
     readonly errorCount: number;
     readonly pendingCount: number;
+    readonly cancelledCount?: number;
+  };
+  /**
+   * Current exact-result sources and their app-local derived states. These are
+   * optional while callers migrate, but a positive source count without a
+   * snapshot is still treated as pending rather than ready.
+   */
+  readonly derivedExactSourceCount?: number;
+  readonly derivedExactMetadata?: {
+    readonly entries: readonly {
+      readonly status:
+        | "unsupported"
+        | "pending"
+        | "ready"
+        | "error"
+        | "cancelled";
+    }[];
+    readonly errorCount: number;
+    readonly pendingCount: number;
+    readonly cancelledCount?: number;
   };
   readonly projectHealthStatus: CadDependencyHealthStatus;
 }
@@ -26,8 +51,13 @@ export function createModelingResultState({
   derivedGeometryEnabled,
   derivedSourceCount,
   derivedGeometry,
+  derivedExactMetadata,
+  derivedExactSourceCount,
   projectHealthStatus
 }: ModelingResultStateInput): string {
+  const exactSourceCount =
+    derivedExactSourceCount ?? derivedExactMetadata?.entries.length ?? 0;
+
   if (commandPending) return "Updating";
   if (commandFailed) return "Update failed";
 
@@ -41,6 +71,19 @@ export function createModelingResultState({
       "result",
       "results"
     )} failed`;
+  }
+
+  const displayCancelledCount = Math.max(
+    derivedGeometry.cancelledCount ?? 0,
+    derivedGeometry.entries.filter((entry) => entry.status === "cancelled")
+      .length
+  );
+  if (displayCancelledCount > 0) {
+    return `${displayCancelledCount} display ${plural(
+      displayCancelledCount,
+      "result",
+      "results"
+    )} cancelled`;
   }
 
   const unsupportedCount = derivedGeometry.entries.filter(
@@ -59,6 +102,47 @@ export function createModelingResultState({
     derivedGeometry.entries.length < derivedSourceCount
   ) {
     return "Building results";
+  }
+
+  if (derivedExactMetadata?.errorCount) {
+    return `${derivedExactMetadata.errorCount} exact ${plural(
+      derivedExactMetadata.errorCount,
+      "result",
+      "results"
+    )} failed`;
+  }
+
+  const exactCancelledCount = Math.max(
+    derivedExactMetadata?.cancelledCount ?? 0,
+    derivedExactMetadata?.entries.filter(
+      (entry) => entry.status === "cancelled"
+    ).length ?? 0
+  );
+  if (exactCancelledCount > 0) {
+    return `${exactCancelledCount} exact ${plural(
+      exactCancelledCount,
+      "result",
+      "results"
+    )} cancelled`;
+  }
+
+  const exactUnsupportedCount =
+    derivedExactMetadata?.entries.filter(
+      (entry) => entry.status === "unsupported"
+    ).length ?? 0;
+  if (exactUnsupportedCount > 0) {
+    return `${exactUnsupportedCount} exact ${plural(
+      exactUnsupportedCount,
+      "result",
+      "results"
+    )} unavailable`;
+  }
+
+  if (
+    (derivedExactMetadata?.pendingCount ?? 0) > 0 ||
+    (derivedExactMetadata?.entries.length ?? 0) < exactSourceCount
+  ) {
+    return "Display ready · Building exact results";
   }
 
   if (projectHealthStatus === "under-defined") {

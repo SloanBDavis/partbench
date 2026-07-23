@@ -69,7 +69,11 @@ export async function startStaticServer(rootDir) {
       return { ...metrics };
     },
     close() {
-      server.close();
+      return new Promise((resolveClose, rejectClose) => {
+        server.close((error) =>
+          error ? rejectClose(error) : resolveClose(undefined)
+        );
+      });
     }
   };
 }
@@ -213,6 +217,37 @@ export function findBrowserExecutable() {
   return undefined;
 }
 
+export async function stopBrowserProcess(processToStop, timeoutMs = 5_000) {
+  if (
+    !processToStop ||
+    processToStop.exitCode !== null ||
+    processToStop.signalCode !== null
+  ) {
+    return;
+  }
+
+  processToStop.kill("SIGTERM");
+  if (await waitForProcessExit(processToStop, timeoutMs)) return;
+  processToStop.kill("SIGKILL");
+  if (!(await waitForProcessExit(processToStop, timeoutMs))) {
+    throw new Error("Browser process did not exit after SIGKILL.");
+  }
+}
+
+function waitForProcessExit(processToStop, timeoutMs) {
+  return new Promise((resolvePromise) => {
+    const onExit = () => {
+      globalThis.clearTimeout(timeout);
+      resolvePromise(true);
+    };
+    const timeout = setTimeout(() => {
+      processToStop.off("exit", onExit);
+      resolvePromise(false);
+    }, timeoutMs);
+    processToStop.once("exit", onExit);
+  });
+}
+
 function getContentType(filePath) {
   switch (extname(filePath)) {
     case ".html":
@@ -258,7 +293,7 @@ function createCdpClient(webSocketUrl) {
 
     if (listeners) {
       for (const listener of listeners) {
-        listener(message.params);
+        listener(message.params, { sessionId: message.sessionId });
       }
     }
   });
@@ -268,6 +303,12 @@ function createCdpClient(webSocketUrl) {
       request.reject(new Error("Browser websocket failed."));
     }
 
+    pending.clear();
+  });
+  websocket.addEventListener("close", () => {
+    for (const request of pending.values()) {
+      request.reject(new Error("Browser websocket closed."));
+    }
     pending.clear();
   });
 

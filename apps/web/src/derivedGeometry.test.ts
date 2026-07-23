@@ -5808,6 +5808,9 @@ function createRuntime(
 
   return {
     inputs,
+    executeExactStepExport() {
+      throw new Error("STEP export is not used by derived geometry tests.");
+    },
     get disposeCount() {
       return disposeCount;
     },
@@ -5885,6 +5888,24 @@ function createRuntime(
     },
     importStep() {
       throw new Error("STEP import is not used by derived geometry tests.");
+    },
+    cancelModelWork() {
+      return 0;
+    },
+    resumeModelWork() {
+      return 0;
+    },
+    getModelWorkSnapshot() {
+      return {
+        generation: 0,
+        stopped: false,
+        active: false,
+        queuedCount: 0,
+        cancelledUserKinds: []
+      };
+    },
+    subscribeModelWork() {
+      return () => undefined;
     },
     dispose() {
       disposeCount += 1;

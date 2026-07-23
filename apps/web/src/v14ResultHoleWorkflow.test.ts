@@ -563,6 +563,7 @@ function createHolePreflightRuntime(
 
   return {
     holeInputs,
+    executeExactStepExport: unused,
     tessellateBox: unused,
     tessellateCylinder: unused,
     tessellateSphere: unused,
@@ -584,6 +585,24 @@ function createHolePreflightRuntime(
     hole(input) {
       holeInputs.push(input);
       return handler(input);
+    },
+    cancelModelWork() {
+      return 0;
+    },
+    resumeModelWork() {
+      return 0;
+    },
+    getModelWorkSnapshot() {
+      return {
+        generation: 0,
+        stopped: false,
+        active: false,
+        queuedCount: 0,
+        cancelledUserKinds: []
+      };
+    },
+    subscribeModelWork() {
+      return () => undefined;
     },
     dispose() {}
   };

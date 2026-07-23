@@ -57,6 +57,7 @@ import type {
   Vec2
 } from "@web-cad/cad-protocol";
 import { createDerivedGeometryRuntime } from "@web-cad/derived-geometry-runtime";
+import { emitGeometryDiagnosticEvent } from "./geometryDiagnosticEvents";
 import {
   useCallback,
   useEffect,
@@ -218,7 +219,10 @@ import {
   type ViewportCanvasPick,
   type ViewportCommand
 } from "./components/ViewportCanvas";
-import type { DerivedGeometryRuntime } from "./derivedGeometryRuntime";
+import type {
+  DerivedGeometryRuntime,
+  DerivedGeometryRuntimeWorkSnapshot
+} from "./derivedGeometryRuntime";
 import {
   createEmptyDerivedGeometrySnapshot,
   DerivedGeometryService,
@@ -243,6 +247,7 @@ import {
   formatDerivedExactMetadataEntryStatus,
   getCurrentDerivedExactMetadataEntryForBody,
   isExactMetadataSource,
+  planExactMetadataRetry,
   type DerivedExactMetadataSource,
   type DerivedExactMetadataSnapshot
 } from "./derivedExactMetadata";
@@ -1340,6 +1345,17 @@ function formatCadKindLabel(value: string): string {
     .replace(/^./, (character) => character.toUpperCase());
 }
 
+function formatCancelledUserKinds(
+  kinds: DerivedGeometryRuntimeWorkSnapshot["cancelledUserKinds"]
+): string {
+  const labels = kinds.map((kind) =>
+    kind === "preflight" ? "hole preflight" : kind
+  );
+  if (labels.length === 0) return "model operation";
+  if (labels.length === 1) return labels[0]!;
+  return `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
+}
+
 export function App() {
   const [workbenchUi, dispatchWorkbench] = useReducer(
     workbenchReducer,
@@ -1357,6 +1373,14 @@ export function App() {
   const derivedGeometryRuntimeRef = useRef<DerivedGeometryRuntime | undefined>(
     undefined
   );
+  const [modelWorkSnapshot, setModelWorkSnapshot] =
+    useState<DerivedGeometryRuntimeWorkSnapshot>({
+      generation: 0,
+      stopped: false,
+      active: false,
+      queuedCount: 0,
+      cancelledUserKinds: []
+    });
   const derivedGeometryServiceRef = useRef<DerivedGeometryService | undefined>(
     undefined
   );
@@ -1512,6 +1536,13 @@ export function App() {
 
     return derivedGeometryRuntimeRef.current;
   }, []);
+  useEffect(() => {
+    if (!derivedGeometryEnabled) return;
+    const runtime = getDerivedGeometryRuntime();
+    const update = () => setModelWorkSnapshot(runtime.getModelWorkSnapshot());
+    update();
+    return runtime.subscribeModelWork(update);
+  }, [getDerivedGeometryRuntime]);
   const commandWorker = useMemo(() => new LazyCadCommandWorker(), []);
   const commandExecutor = useMemo(
     () =>
@@ -1559,7 +1590,22 @@ export function App() {
     if (!derivedGeometryServiceRef.current) {
       derivedGeometryServiceRef.current = new DerivedGeometryService({
         runtime: getDerivedGeometryRuntime(),
-        onChange: setDerivedGeometry,
+        onChange: (snapshot) => {
+          emitGeometryDiagnosticEvent({
+            phase: "display-snapshot",
+            timestamp: performance.now(),
+            supportedCount: snapshot.supportedCount,
+            pendingCount: snapshot.pendingCount,
+            readyCount: snapshot.readyCount,
+            errorCount: snapshot.errorCount,
+            entries: snapshot.entries.map((entry) => ({
+              id: entry.sourceId ?? entry.objectId,
+              cacheKey: entry.cacheKey,
+              status: entry.status
+            }))
+          });
+          setDerivedGeometry(snapshot);
+        },
         meshCache: createDerivedMeshOpfsCache({
           target:
             typeof window !== "undefined"
@@ -1579,7 +1625,22 @@ export function App() {
         derivedExactMetadataServiceRef.current =
           new DerivedExactMetadataService({
             runtime: getDerivedGeometryRuntime(),
-            onChange: setDerivedExactMetadata
+            onChange: (snapshot) => {
+              emitGeometryDiagnosticEvent({
+                phase: "exact-snapshot",
+                timestamp: performance.now(),
+                supportedCount: snapshot.supportedCount,
+                pendingCount: snapshot.pendingCount,
+                readyCount: snapshot.readyCount,
+                errorCount: snapshot.errorCount,
+                entries: snapshot.entries.map((entry) => ({
+                  id: entry.bodyId,
+                  cacheKey: entry.cacheKey,
+                  status: entry.status
+                }))
+              });
+              setDerivedExactMetadata(snapshot);
+            }
           });
       }
 
@@ -1752,6 +1813,72 @@ export function App() {
     () => readProjectHealth(derivedExactMetadata, currentExactMetadataSources),
     [derivedExactMetadata, currentExactMetadataSources, document]
   );
+  const retryableModelResultCount =
+    derivedGeometry.errorCount +
+    (derivedGeometry.cancelledCount ?? 0) +
+    derivedExactMetadata.errorCount +
+    (derivedExactMetadata.cancelledCount ?? 0);
+
+  function cancelModelWork() {
+    const runtime = derivedGeometryRuntimeRef.current;
+    if (!runtime || !modelWorkSnapshot.active) return;
+    runtime.cancelModelWork("Model work was cancelled by the user.");
+    derivedGeometryServiceRef.current?.cancelPending();
+    derivedExactMetadataServiceRef.current?.cancelPending();
+    setCommandNotice(
+      "Model work cancelled. Retry derived results and re-invoke any cancelled import, export, checkpoint, or preflight operation."
+    );
+  }
+
+  function retryModelResults() {
+    const runtime = getDerivedGeometryRuntime();
+    runtime.resumeModelWork();
+    const geometryService = getDerivedGeometryService();
+    const exactService = getDerivedExactMetadataService();
+    geometryService.retryCurrent(derivedGeometrySources);
+    const { immediate, deferred } = planExactMetadataRetry(
+      currentExactMetadataSources,
+      geometryService.getSnapshot()
+    );
+    exactService.deferRetryable(deferred);
+    exactService.retryCurrent(immediate);
+    setCommandError(undefined);
+    setCommandNotice(
+      modelWorkSnapshot.cancelledUserKinds.length > 0
+        ? `Retrying derived results. Re-invoke cancelled ${formatCancelledUserKinds(modelWorkSnapshot.cancelledUserKinds)}.`
+        : "Retrying current model results."
+    );
+  }
+
+  function resumeCancelledUserWork() {
+    getDerivedGeometryRuntime().resumeModelWork();
+    setCommandError(undefined);
+    setCommandNotice(
+      `Model worker resumed. Re-invoke cancelled ${formatCancelledUserKinds(modelWorkSnapshot.cancelledUserKinds)}.`
+    );
+  }
+
+  const modelWorkControl = modelWorkSnapshot.active
+    ? {
+        label: "Model results are building",
+        actionLabel: "Cancel model work",
+        onAction: cancelModelWork
+      }
+    : modelWorkSnapshot.stopped &&
+        modelWorkSnapshot.cancelledUserKinds.length > 0 &&
+        retryableModelResultCount === 0
+      ? {
+          label: `${formatCancelledUserKinds(modelWorkSnapshot.cancelledUserKinds)} cancelled`,
+          actionLabel: "Resume model worker",
+          onAction: resumeCancelledUserWork
+        }
+      : modelWorkSnapshot.stopped || retryableModelResultCount > 0
+        ? {
+            label: "Model results need attention",
+            actionLabel: "Retry model results",
+            onAction: retryModelResults
+          }
+        : undefined;
   const modelingResultState = useMemo(
     () =>
       createModelingResultState({
@@ -1760,6 +1887,8 @@ export function App() {
         derivedGeometryEnabled,
         derivedSourceCount: derivedGeometrySources.length,
         derivedGeometry,
+        derivedExactSourceCount: currentExactMetadataSources.length,
+        derivedExactMetadata,
         projectHealthStatus: projectHealth.status
       }),
     [
@@ -1767,6 +1896,8 @@ export function App() {
       commandPending,
       derivedGeometry,
       derivedGeometrySources.length,
+      derivedExactMetadata,
+      currentExactMetadataSources.length,
       projectHealth.status
     ]
   );
@@ -3523,11 +3654,23 @@ export function App() {
       geometryService.reconcile(derivedGeometrySources);
     }
 
-    getDerivedExactMetadataService().reconcile(currentExactMetadataSources);
+    const stagedExactSources = currentExactMetadataSources.filter((source) => {
+      if (source.kind === "importedBody") return true;
+      const displayEntry = geometryService
+        .getSnapshot()
+        .entries.find((entry) => entry.sourceId === source.id);
+      return (
+        displayEntry?.status === "ready" ||
+        displayEntry?.status === "error" ||
+        displayEntry?.status === "unsupported"
+      );
+    });
+    getDerivedExactMetadataService().reconcile(stagedExactSources);
   }, [
     derivedGeometrySources,
     derivedMeshCacheContextKey,
     currentExactMetadataSources,
+    derivedGeometry,
     getDerivedExactMetadataService,
     getDerivedGeometryService
   ]);
@@ -3667,6 +3810,10 @@ export function App() {
         return response;
       }
 
+      emitGeometryDiagnosticEvent({
+        phase: "command-committed",
+        timestamp: performance.now()
+      });
       syncDocument(getNextSelectedId(response));
       successfulCommitCountRef.current += 1;
       setWcadTopologyCheckpointPayloadCache((current) =>
@@ -4977,17 +5124,31 @@ export function App() {
       return;
     }
 
-    const [
-      { createGeometryKernelBrowserWorker },
-      { executeProjectExactStepExport }
-    ] = await Promise.all([
-      import("@web-cad/geometry-worker/browser"),
-      import("./projectExactStepExport")
-    ]);
-    const result = await executeProjectExactStepExport({
-      exactExport,
-      worker: createGeometryKernelBrowserWorker()
-    });
+    const { executeProjectExactStepExport } =
+      await import("./projectExactStepExport");
+    const runtime = getDerivedGeometryRuntime();
+    let result;
+    try {
+      result = await executeProjectExactStepExport({
+        exactExport,
+        worker: {
+          execute: (request) => runtime.executeExactStepExport(request)
+        }
+      });
+    } catch (error) {
+      const cancelled =
+        error instanceof Error &&
+        (error.name === "GeometryJobGenerationError" ||
+          ("code" in error &&
+            error.code === "GEOMETRY_JOB_GENERATION_CANCELLED"));
+      setProjectMessage(
+        cancelled
+          ? "STEP export was cancelled. Resume the model worker, then invoke STEP export again."
+          : `STEP export failed: ${error instanceof Error ? error.message : "The geometry worker did not complete the export."}`
+      );
+      setProjectMessageTone("error");
+      return;
+    }
 
     if (!result.artifact) {
       const diagnostic = result.diagnostics.find(
@@ -6866,6 +7027,7 @@ export function App() {
                 commandError ?? commandNotice ?? "Review export readiness"
               }
               pendingLabel={commandPending ? "Updating model" : undefined}
+              modelWorkControl={modelWorkControl}
             />
           ) : workbenchUi.mode === "sketch" ? (
             <StatusBar
@@ -6887,6 +7049,7 @@ export function App() {
                   : undefined
               )}
               pendingLabel={commandPending ? "Updating sketch" : undefined}
+              modelWorkControl={modelWorkControl}
             />
           ) : workbenchUi.mode === "inspect" ? (
             <StatusBar
@@ -6908,6 +7071,7 @@ export function App() {
               zoom="Viewport"
               units={document.units}
               pendingLabel={commandPending ? "Updating model" : undefined}
+              modelWorkControl={modelWorkControl}
             />
           ) : (
             <StatusBar
@@ -6933,7 +7097,11 @@ export function App() {
               zoom="Viewport"
               units={document.units}
               rebuildState={modelingResultState}
+              modelSourceIds={derivedGeometry.entries.map(
+                (entry) => entry.sourceId ?? entry.objectId
+              )}
               pendingLabel={commandPending ? "Updating model" : undefined}
+              modelWorkControl={modelWorkControl}
             />
           )
         }

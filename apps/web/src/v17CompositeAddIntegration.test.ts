@@ -156,12 +156,15 @@ describe("V17 composite add web integration", () => {
         source
       )
     ).resolves.toMatchObject({ mesh: { id: "body_cut" } });
-    expect(booleanExtrudes).toHaveBeenCalledWith({
-      id: "body_cut",
-      operation: "cut",
-      target: runtimeSource.target,
-      tool: runtimeSource.tool
-    });
+    expect(booleanExtrudes).toHaveBeenCalledWith(
+      {
+        id: "body_cut",
+        operation: "cut",
+        target: runtimeSource.target,
+        tool: runtimeSource.tool
+      },
+      undefined
+    );
   });
 
   it("keys target and tool edits and ignores both stale mesh completions", async () => {
@@ -341,7 +344,8 @@ describe("V17 composite add web integration", () => {
       )
     ).resolves.toMatchObject({ mesh: { id: cut.id } });
     expect(booleanExtrudes).toHaveBeenCalledWith(
-      expect.objectContaining({ operation: "cut" })
+      expect.objectContaining({ operation: "cut" }),
+      undefined
     );
 
     const wireTarget = {

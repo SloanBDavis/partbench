@@ -142,7 +142,8 @@ describe("V17 composite extrude web integration", () => {
     const exact = createExactMetadataRuntimeInput(source);
 
     expect(tessellateExtrude).toHaveBeenCalledWith(
-      expect.objectContaining({ profile: source.profile })
+      expect.objectContaining({ profile: source.profile }),
+      undefined
     );
     expect(displayed.mesh.vertices).toEqual([[1, 2, 3]]);
     expect(exact.source).toMatchObject({

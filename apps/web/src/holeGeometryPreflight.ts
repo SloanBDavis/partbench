@@ -81,7 +81,7 @@ export async function preflightHoleGeometryCommand({
   }
 
   try {
-    await deriveGeometrySourceMesh(runtime, source);
+    await deriveGeometrySourceMesh(runtime, source, { intent: "user" });
   } catch (error) {
     return {
       ok: false,

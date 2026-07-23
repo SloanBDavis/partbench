@@ -18,6 +18,7 @@ import {
   formatDerivedExactMetadataEntryStatus,
   getCurrentDerivedExactMetadataEntryForBody,
   getDerivedExactMetadataEntryForBody,
+  planExactMetadataRetry,
   type DerivedExactMetadataEntry,
   type DerivedExactMetadataSnapshot
 } from "./derivedExactMetadata";
@@ -46,6 +47,68 @@ import type {
 import { createGeneratedFaceReferenceKey } from "./sketchDisplayFrames";
 
 describe("derivedExactMetadata", () => {
+  it("defers authored exact retries until display settles while imported exact stays independent", () => {
+    const pendingDisplay = createExtrudeSource("body_pending");
+    const readyDisplay = createExtrudeSource("body_ready");
+    const imported = {
+      id: "body_imported",
+      kind: "importedBody" as const,
+      checkpointId: "checkpoint_1",
+      brepBytes: new Uint8Array([1])
+    };
+
+    const retry = planExactMetadataRetry(
+      [pendingDisplay, readyDisplay, imported],
+      {
+        entries: [
+          {
+            objectId: pendingDisplay.id,
+            sourceId: pendingDisplay.id,
+            status: "pending"
+          },
+          {
+            objectId: readyDisplay.id,
+            sourceId: readyDisplay.id,
+            status: "ready"
+          }
+        ]
+      }
+    );
+
+    expect(retry.immediate.map((source) => source.id)).toEqual([
+      "body_ready",
+      "body_imported"
+    ]);
+    expect(retry.deferred.map((source) => source.id)).toEqual(["body_pending"]);
+  });
+
+  it("clears a retryable exact failure without starting work until reconciled", async () => {
+    const source = createExtrudeSource("body_deferred_retry");
+    let attempts = 0;
+    const runtime = createRuntime(async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("fatal display generation");
+      return createMetadataResult(source.id, "extrude");
+    });
+    const service = new DerivedExactMetadataService({
+      runtime,
+      onChange: () => undefined
+    });
+
+    service.reconcile([source]);
+    await flushPromises();
+    expect(service.getSnapshot().entries[0]?.status).toBe("error");
+
+    service.deferRetryable([source]);
+    expect(service.getSnapshot().entries).toEqual([]);
+    expect(attempts).toBe(1);
+
+    service.reconcile([source]);
+    await flushPromises();
+    expect(attempts).toBe(2);
+    expect(service.getSnapshot().entries[0]?.status).toBe("ready");
+  });
+
   it("builds exact metadata inputs for pattern sources", () => {
     const seed = createExtrudeSource("body_seed");
     const source: DerivedLinearPatternGeometrySource = {
@@ -2194,6 +2257,9 @@ function createRuntime(
 
   return {
     exactInputs,
+    executeExactStepExport() {
+      throw new Error("STEP export is not used by exact metadata tests.");
+    },
     tessellateBox() {
       throw new Error("Mesh requests are not used by exact metadata tests.");
     },
@@ -2253,6 +2319,24 @@ function createRuntime(
     },
     importStep() {
       throw new Error("STEP import is not used by exact metadata tests.");
+    },
+    cancelModelWork() {
+      return 0;
+    },
+    resumeModelWork() {
+      return 0;
+    },
+    getModelWorkSnapshot() {
+      return {
+        generation: 0,
+        stopped: false,
+        active: false,
+        queuedCount: 0,
+        cancelledUserKinds: []
+      };
+    },
+    subscribeModelWork() {
+      return () => undefined;
     },
     dispose() {}
   };

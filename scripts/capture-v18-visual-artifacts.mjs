@@ -6,8 +6,10 @@ import {
   connectToBrowser,
   findBrowserExecutable,
   getAvailablePort,
-  startStaticServer
+  startStaticServer,
+  stopBrowserProcess
 } from "./occt-smoke/browser.mjs";
+import { acquireBrowserSmokeLease } from "./v18-geometry-reliability.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const distDirectory = join(repositoryRoot, "apps/web/dist");
@@ -24,35 +26,40 @@ await stat(join(distDirectory, "index.html")).catch(() => {
 });
 
 await mkdir(outputDirectory, { recursive: true });
-const server = await startStaticServer(distDirectory);
 const profileDirectory = join(
   repositoryRoot,
   ".metrics",
   `chrome-profile-v18-visuals-${process.pid}`
 );
-await mkdir(profileDirectory, { recursive: true });
-const port = await getAvailablePort();
-const browser = spawn(
-  browserExecutable,
-  [
-    "--headless=new",
-    "--disable-gpu",
-    "--disable-dev-shm-usage",
-    "--force-prefers-reduced-motion",
-    "--no-default-browser-check",
-    "--no-first-run",
-    ...(process.env.PARTBENCH_SMOKE_BROWSER_NO_SANDBOX === "1"
-      ? ["--no-sandbox"]
-      : []),
-    `--remote-debugging-port=${port}`,
-    `--user-data-dir=${profileDirectory}`,
-    "about:blank"
-  ],
-  { stdio: "ignore" }
-);
-
 let client;
+let browserLease;
+let server;
+let browser;
 try {
+  browserLease = await acquireBrowserSmokeLease({
+    lockPath: join(repositoryRoot, ".metrics", "browser-smoke.lock")
+  });
+  server = await startStaticServer(distDirectory);
+  await mkdir(profileDirectory, { recursive: true });
+  const port = await getAvailablePort();
+  browser = spawn(
+    browserExecutable,
+    [
+      "--headless=new",
+      "--disable-gpu",
+      "--disable-dev-shm-usage",
+      "--force-prefers-reduced-motion",
+      "--no-default-browser-check",
+      "--no-first-run",
+      ...(process.env.PARTBENCH_SMOKE_BROWSER_NO_SANDBOX === "1"
+        ? ["--no-sandbox"]
+        : []),
+      `--remote-debugging-port=${port}`,
+      `--user-data-dir=${profileDirectory}`,
+      "about:blank"
+    ],
+    { stdio: "ignore" }
+  );
   ({ client } = await connectToBrowser(port));
   const target = await client.send("Target.createTarget", {
     url: "about:blank"
@@ -180,9 +187,10 @@ try {
   }
 } finally {
   await client?.close().catch(() => {});
-  browser.kill("SIGTERM");
-  server.close();
+  await stopBrowserProcess(browser);
+  await server?.close();
   await rm(profileDirectory, { recursive: true, force: true }).catch(() => {});
+  await browserLease?.release();
 }
 
 async function evaluate(client, sessionId, expression) {
