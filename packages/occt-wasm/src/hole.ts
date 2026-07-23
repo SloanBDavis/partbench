@@ -252,17 +252,19 @@ function readBounds(oc: OpenCascadeInstance, shape: TopoDS_Shape): ShapeBounds {
       } satisfies GeometryKernelLikeError;
     }
 
-    const min = bounds.CornerMin();
-    const max = bounds.CornerMax();
+    let min: ReturnType<typeof bounds.CornerMin> | undefined;
+    let max: ReturnType<typeof bounds.CornerMax> | undefined;
 
     try {
+      min = bounds.CornerMin();
+      max = bounds.CornerMax();
       return {
         min: [min.X(), min.Y(), min.Z()],
         max: [max.X(), max.Y(), max.Z()]
       };
     } finally {
-      min.delete();
-      max.delete();
+      max?.delete();
+      min?.delete();
     }
   } finally {
     bounds.delete();
