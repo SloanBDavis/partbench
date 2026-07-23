@@ -144,10 +144,10 @@ function matchEntity({
       candidate.entity.kind !== previous.entity.kind &&
       candidate.entity.signature === previous.entity.signature
   );
+  const exactCandidate = exactCandidates[0];
 
-  if (exactCandidates.length === 1) {
-    const candidate = exactCandidates[0];
-    const evidence = createEvidence(previous, candidate, true);
+  if (exactCandidates.length === 1 && exactCandidate) {
+    const evidence = createEvidence(previous, exactCandidate, true);
     const state =
       previousSignatureCount > 1 && candidateSignatureCount === 1
         ? "merged"
@@ -155,7 +155,7 @@ function matchEntity({
 
     return createMatchResult({
       previous,
-      candidate,
+      candidate: exactCandidate,
       state,
       confidence: "exact",
       confidenceScore: 1,
@@ -183,7 +183,7 @@ function matchEntity({
           ? compactRepairCandidates([
               createMatchRepairCandidate({
                 previous,
-                candidate,
+                candidate: exactCandidate,
                 state,
                 confidence: "exact",
                 confidenceScore: 1,
@@ -203,7 +203,7 @@ function matchEntity({
     });
   }
 
-  if (exactCandidates.length > 1) {
+  if (exactCandidates.length > 1 && exactCandidate) {
     const scoredExactCandidates = exactCandidates
       .map((candidate) => scoreExactDuplicate(previous, candidate))
       .sort((left, right) => {
@@ -256,7 +256,7 @@ function matchEntity({
     }
 
     const state = previousSignatureCount === 1 ? "split" : "ambiguous";
-    const candidate = best?.candidate ?? exactCandidates[0];
+    const candidate = best?.candidate ?? exactCandidate;
     const diagnostics = [
       createDiagnostic(
         state === "split" ? "TOPOLOGY_MATCH_SPLIT" : "TOPOLOGY_MATCH_AMBIGUOUS",
@@ -296,12 +296,11 @@ function matchEntity({
     });
   }
 
-  if (kindMismatchCandidates.length > 0) {
-    const candidate = kindMismatchCandidates[0];
-
+  const kindMismatchCandidate = kindMismatchCandidates[0];
+  if (kindMismatchCandidate) {
     return createMatchResult({
       previous,
-      candidate,
+      candidate: kindMismatchCandidate,
       state: "repair-needed",
       confidence: "low",
       confidenceScore: 0.2,
@@ -313,7 +312,7 @@ function matchEntity({
           message:
             "Geometry signature matched a candidate with a different topology kind.",
           previousValue: previous.entity.signature,
-          candidateValue: candidate.entity.signature
+          candidateValue: kindMismatchCandidate.entity.signature
         }
       ],
       diagnostics: [
@@ -323,13 +322,13 @@ function matchEntity({
           "Topology entity signature matched a different entity kind; explicit repair is required.",
           previous.entity.kind,
           String(previous.entity.kind),
-          String(candidate.entity.kind)
+          String(kindMismatchCandidate.entity.kind)
         )
       ],
       repairCandidates: compactRepairCandidates([
         createMatchRepairCandidate({
           previous,
-          candidate,
+          candidate: kindMismatchCandidate,
           state: "repair-needed",
           confidence: "low",
           confidenceScore: 0.2,
@@ -341,7 +340,7 @@ function matchEntity({
               message:
                 "Geometry signature matched a candidate with a different topology kind.",
               previousValue: previous.entity.signature,
-              candidateValue: candidate.entity.signature
+              candidateValue: kindMismatchCandidate.entity.signature
             }
           ],
           diagnostics: [
@@ -351,7 +350,7 @@ function matchEntity({
               "Topology entity signature matched a different entity kind; explicit repair is required.",
               previous.entity.kind,
               String(previous.entity.kind),
-              String(candidate.entity.kind)
+              String(kindMismatchCandidate.entity.kind)
             )
           ],
           recommendedAction: "inspect"
@@ -374,8 +373,8 @@ function matchEntity({
       );
     });
 
-  if (scored.length > 0) {
-    const best = scored[0];
+  const best = scored[0];
+  if (best) {
     const ties = scored.filter((candidate) => candidate.score === best.score);
 
     if (ties.length > 1) {
