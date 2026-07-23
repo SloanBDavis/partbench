@@ -37,20 +37,19 @@ const summary: ProjectJsonSummary = {
   redoTransactionCount: 0
 };
 
-const parameters: readonly CadParameterSnapshot[] = [
-  {
-    id: "parameter_width",
-    name: "width",
-    value: 24,
-    description: "Overall width"
-  },
-  {
-    id: "parameter_half",
-    name: "halfWidth",
-    value: 12,
-    expression: "width / 2"
-  }
-];
+const widthParameter = {
+  id: "parameter_width",
+  name: "width",
+  value: 24,
+  description: "Overall width"
+} satisfies CadParameterSnapshot;
+const halfWidthParameter = {
+  id: "parameter_half",
+  name: "halfWidth",
+  value: 12,
+  expression: "width / 2"
+} satisfies CadParameterSnapshot;
+const parameters = [widthParameter, halfWidthParameter] as const;
 
 const jsonWorkflow: ProjectJsonWorkflowState = {
   current: {
@@ -139,7 +138,7 @@ describe("project health summary", () => {
 
 describe("project parameter editor model", () => {
   it("creates an edit draft from the selected source parameter", () => {
-    expect(createParameterEditForm(parameters[1])).toEqual({
+    expect(createParameterEditForm(halfWidthParameter)).toEqual({
       name: "halfWidth",
       value: 12,
       expression: "width / 2",
@@ -171,20 +170,26 @@ describe("project parameter editor model", () => {
 
   it("reports literal, valid, and circular expression states from query truth", () => {
     const evaluation = createEvaluation();
+    const halfWidthNode = evaluation.nodes.find(
+      (node) => node.parameterId === halfWidthParameter.id
+    );
+    if (!halfWidthNode) {
+      throw new Error("Expected half-width evaluation node.");
+    }
 
-    expect(getParameterExpressionStatus(parameters[0], evaluation)).toBe(
+    expect(getParameterExpressionStatus(widthParameter, evaluation)).toBe(
       "Literal"
     );
-    expect(getParameterExpressionStatus(parameters[1], evaluation)).toBe(
+    expect(getParameterExpressionStatus(halfWidthParameter, evaluation)).toBe(
       "Valid"
     );
     expect(
-      getParameterExpressionStatus(parameters[1], {
+      getParameterExpressionStatus(halfWidthParameter, {
         ...evaluation,
         status: "circular",
         nodes: [
           {
-            ...evaluation.nodes[1],
+            ...halfWidthNode,
             diagnostics: [
               {
                 code: "PARAMETER_CIRCULAR_REFERENCE",
