@@ -257,10 +257,7 @@ export function createOcctStepImportWithInstance(
         diagnostics
       };
     } finally {
-      if (healedShape && !isSameShape(sourceShape, healedShape)) {
-        healedShape.delete();
-      }
-
+      healedShape?.delete();
       sourceShape.delete();
     }
   } finally {
@@ -461,14 +458,6 @@ function hasStepReaderBinding(
       return typeof oc.TopExp?.MapShapes_1 === "function";
     default:
       return false;
-  }
-}
-
-function isSameShape(left: TopoDS_Shape, right: TopoDS_Shape): boolean {
-  try {
-    return left.IsSame(right);
-  } catch {
-    return false;
   }
 }
 
