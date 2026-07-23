@@ -493,12 +493,13 @@ class MockDirectoryHandle implements ProjectOpfsCacheDirectoryHandleLike {
 
   overwriteOnlyFileForTest(bytes: Uint8Array): void {
     const names = [...this.files.keys()];
+    const [name] = names;
 
-    if (names.length !== 1) {
+    if (names.length !== 1 || !name) {
       throw new Error("Expected exactly one mock file.");
     }
 
-    this.files.set(names[0], new Uint8Array(bytes));
+    this.files.set(name, new Uint8Array(bytes));
   }
 }
 
