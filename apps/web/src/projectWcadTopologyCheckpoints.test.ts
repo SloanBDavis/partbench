@@ -1448,62 +1448,63 @@ function createCheckpointPayloadFixture(
     readonly duplicateEndCapFace?: boolean;
   } = {}
 ): GeometryKernelExactTopologyCheckpointPayload {
+  type TopologyEntity =
+    GeometryKernelExactTopologyCheckpointPayload["topologySnapshot"]["entities"][number];
   const brepBytes = new TextEncoder().encode(
     `CASCADE Topology checkpoint fixture ${checkpointId}`
   );
-  const entities = [
-    {
-      localId: "checkpoint-local-body",
-      kind: "body" as const,
-      source: "kernel-derived" as const,
-      signature: `${bodyId}:body`,
-      bounds: {
-        min: [0, 0, 0] as const,
-        max: [1, 1, depth] as const
-      }
-    },
-    {
-      localId: "checkpoint-local-face",
-      kind: "face" as const,
-      source: "kernel-derived" as const,
-      signature: `${bodyId}:face`,
-      bounds: {
-        min: [0, 0, depth] as const,
-        max: [1, 1, depth] as const
-      }
+  const bodyEntity: TopologyEntity = {
+    localId: "checkpoint-local-body",
+    kind: "body",
+    source: "kernel-derived",
+    signature: `${bodyId}:body`,
+    bounds: {
+      min: [0, 0, 0],
+      max: [1, 1, depth]
     }
-  ];
-  const topologyEntities = options.booleanToolSideFaces
+  };
+  const endCapEntity: TopologyEntity = {
+    localId: "checkpoint-local-face",
+    kind: "face",
+    source: "kernel-derived",
+    signature: `${bodyId}:face`,
+    bounds: {
+      min: [0, 0, depth],
+      max: [1, 1, depth]
+    }
+  };
+  const entities: TopologyEntity[] = [bodyEntity, endCapEntity];
+  const topologyEntities: TopologyEntity[] = options.booleanToolSideFaces
     ? [
-        entities[0],
+        bodyEntity,
         {
           localId: "checkpoint-local-tool-u-min",
-          kind: "face" as const,
-          source: "kernel-derived" as const,
+          kind: "face",
+          source: "kernel-derived",
           signature: `${bodyId}:face:tool-u-min`,
           bounds: {
-            min: [-0.25, -0.25, 0] as const,
-            max: [-0.25, 0.25, depth] as const
+            min: [-0.25, -0.25, 0],
+            max: [-0.25, 0.25, depth]
           }
         },
         {
           localId: "checkpoint-local-tool-u-max",
-          kind: "face" as const,
-          source: "kernel-derived" as const,
+          kind: "face",
+          source: "kernel-derived",
           signature: `${bodyId}:face:tool-u-max`,
           bounds: {
-            min: [0.25, -0.25, 0] as const,
-            max: [0.25, 0.25, depth] as const
+            min: [0.25, -0.25, 0],
+            max: [0.25, 0.25, depth]
           }
         },
         {
           localId: "checkpoint-local-cap",
-          kind: "face" as const,
-          source: "kernel-derived" as const,
+          kind: "face",
+          source: "kernel-derived",
           signature: `${bodyId}:face:cap`,
           bounds: {
-            min: [-0.25, -0.25, depth] as const,
-            max: [0.25, 0.25, depth] as const
+            min: [-0.25, -0.25, depth],
+            max: [0.25, 0.25, depth]
           }
         }
       ]
@@ -1511,7 +1512,7 @@ function createCheckpointPayloadFixture(
       ? [
           ...entities,
           {
-            ...entities[1],
+            ...endCapEntity,
             localId: "checkpoint-local-face-duplicate"
           }
         ]
