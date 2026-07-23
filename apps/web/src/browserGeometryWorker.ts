@@ -223,9 +223,26 @@ export class BrowserGeometryWorker implements GeometryWorker {
     this.#handleError({
       message: "Geometry worker was disposed before completing a request."
     });
-    this.#transport.removeEventListener("message", this.#handleMessage);
-    this.#transport.removeEventListener("error", this.#handleError);
-    this.#transport.terminate();
+    let cleanupFailed = false;
+    let cleanupError: unknown;
+    const cleanUp = (action: () => void) => {
+      try {
+        action();
+      } catch (error) {
+        if (!cleanupFailed) {
+          cleanupFailed = true;
+          cleanupError = error;
+        }
+      }
+    };
+    cleanUp(() =>
+      this.#transport.removeEventListener("message", this.#handleMessage)
+    );
+    cleanUp(() =>
+      this.#transport.removeEventListener("error", this.#handleError)
+    );
+    cleanUp(() => this.#transport.terminate());
+    if (cleanupFailed) throw cleanupError;
   }
 }
 

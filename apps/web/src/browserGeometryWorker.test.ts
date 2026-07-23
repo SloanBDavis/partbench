@@ -31,6 +31,7 @@ type ErrorListener = (event: WorkerErrorEvent) => void;
 class FakeGeometryWorkerTransport implements GeometryWorkerTransport {
   readonly requests: GeometryWorkerRequest[] = [];
   terminationCount = 0;
+  throwOnMessageRemoval = false;
   readonly #handler: (
     request: GeometryWorkerRequest
   ) => Promise<GeometryWorkerMessage>;
@@ -73,6 +74,9 @@ class FakeGeometryWorkerTransport implements GeometryWorkerTransport {
   ): void {
     if (type === "message") {
       this.#messageListeners.delete(listener as MessageListener);
+      if (this.throwOnMessageRemoval) {
+        throw new Error("Injected listener removal failure.");
+      }
       return;
     }
 
@@ -327,6 +331,19 @@ describe("BrowserGeometryWorker", () => {
         }
       }
     });
+    expect(transport.terminationCount).toBe(1);
+  });
+
+  it("attempts transport termination after listener cleanup fails", () => {
+    const transport = new FakeGeometryWorkerTransport(
+      () => new Promise<GeometryWorkerMessage>(() => undefined)
+    );
+    const worker = new BrowserGeometryWorker(transport);
+    transport.throwOnMessageRemoval = true;
+
+    expect(() => worker.dispose()).toThrow(
+      "Injected listener removal failure."
+    );
     expect(transport.terminationCount).toBe(1);
   });
 

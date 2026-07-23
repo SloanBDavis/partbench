@@ -29,6 +29,7 @@ type ErrorListener = (event: WorkerErrorEvent) => void;
 class FakeWorkerTransport implements CadCommandWorkerTransport {
   readonly requests: CadWorkerRequest[] = [];
   terminationCount = 0;
+  throwOnMessageRemoval = false;
   readonly #handler: (request: CadWorkerRequest) => Promise<CadWorkerResponse>;
   readonly #messageListeners = new Set<MessageListener>();
   readonly #errorListeners = new Set<ErrorListener>();
@@ -69,6 +70,9 @@ class FakeWorkerTransport implements CadCommandWorkerTransport {
   ): void {
     if (type === "message") {
       this.#messageListeners.delete(listener as MessageListener);
+      if (this.throwOnMessageRemoval) {
+        throw new Error("Injected listener removal failure.");
+      }
       return;
     }
 
@@ -343,6 +347,19 @@ describe("BrowserCadCommandWorker", () => {
     expect(() => worker.dispose()).toThrow("Injected terminate failure.");
     await expect(pending).rejects.toThrow(
       "CAD command worker was disposed before completing a request."
+    );
+    expect(transport.terminationCount).toBe(1);
+  });
+
+  it("attempts transport termination after listener cleanup fails", () => {
+    const transport = new FakeWorkerTransport(
+      () => new Promise<CadWorkerResponse>(() => undefined)
+    );
+    const worker = new BrowserCadCommandWorker(transport);
+    transport.throwOnMessageRemoval = true;
+
+    expect(() => worker.dispose()).toThrow(
+      "Injected listener removal failure."
     );
     expect(transport.terminationCount).toBe(1);
   });
