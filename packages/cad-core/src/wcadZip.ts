@@ -115,7 +115,7 @@ export function readZipStore(bytes: Uint8Array): ZipStoreReadResult {
 
   if (
     centralDirectoryOffset + centralDirectorySize > bytes.byteLength ||
-    centralDirectoryOffset >= endOffset
+    centralDirectoryOffset + centralDirectorySize !== endOffset
   ) {
     return {
       entries,
@@ -302,18 +302,51 @@ function readLocalEntryBytes(
 }
 
 function findEndOfCentralDirectory(bytes: Uint8Array): number {
-  for (let offset = bytes.byteLength - 22; offset >= 0; offset -= 1) {
-    if (
-      bytes[offset] === 0x50 &&
-      bytes[offset + 1] === 0x4b &&
-      bytes[offset + 2] === 0x05 &&
-      bytes[offset + 3] === 0x06
-    ) {
+  const minimumRecordLength = 22;
+  const maximumCommentLength = 0xffff;
+  const minimumOffset = Math.max(
+    0,
+    bytes.byteLength - minimumRecordLength - maximumCommentLength
+  );
+  const view = createDataView(bytes);
+
+  for (
+    let offset = bytes.byteLength - minimumRecordLength;
+    offset >= minimumOffset;
+    offset -= 1
+  ) {
+    if (isEndOfCentralDirectoryAt(view, bytes.byteLength, offset)) {
       return offset;
     }
   }
 
   return -1;
+}
+
+function isEndOfCentralDirectoryAt(
+  view: DataView,
+  archiveLength: number,
+  offset: number
+): boolean {
+  if (readUint32(view, offset) !== END_OF_CENTRAL_DIRECTORY_SIGNATURE) {
+    return false;
+  }
+
+  const diskNumber = readUint16(view, offset + 4);
+  const centralDirectoryDisk = readUint16(view, offset + 6);
+  const diskEntryCount = readUint16(view, offset + 8);
+  const totalEntryCount = readUint16(view, offset + 10);
+  const centralDirectorySize = readUint32(view, offset + 12);
+  const centralDirectoryOffset = readUint32(view, offset + 16);
+  const commentLength = readUint16(view, offset + 20);
+
+  return (
+    diskNumber === 0 &&
+    centralDirectoryDisk === 0 &&
+    diskEntryCount === totalEntryCount &&
+    centralDirectoryOffset + centralDirectorySize === offset &&
+    offset + 22 + commentLength === archiveLength
+  );
 }
 
 function decodeZipPath(bytes: Uint8Array): string | undefined {
