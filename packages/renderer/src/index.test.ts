@@ -431,8 +431,40 @@ describe("renderer", () => {
       (stroke) => stroke.lineWidth === 3
     );
     expect(selectedMeshStrokes).toHaveLength(1);
-    expect(selectedMeshStrokes[0].closed).toBe(true);
-    expect(selectedMeshStrokes[0].points).toHaveLength(4);
+    const selectedMeshStroke = selectedMeshStrokes[0];
+    expect(selectedMeshStroke).toBeDefined();
+    expect(selectedMeshStroke?.closed).toBe(true);
+    expect(selectedMeshStroke?.points).toHaveLength(4);
+  });
+
+  it("skips malformed mesh faces without discarding valid triangles", () => {
+    const recorder = createRecordingCanvasContext();
+
+    renderCanvasScene(recorder.context, {
+      camera: createDefaultCamera(),
+      size: { width: 800, height: 600 },
+      primitives: [],
+      meshes: [
+        {
+          id: "partially_malformed_mesh",
+          kind: "mesh",
+          vertices: [
+            [-2, -2, 0],
+            [2, -2, 0],
+            [0, 2, 0]
+          ],
+          indices: [0, 1, 2, 0, 2, 99],
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          }
+        }
+      ]
+    });
+
+    expect(recorder.fills).toHaveLength(1);
+    expect(recorder.fills[0]).toHaveLength(3);
   });
 
   it("normalizes semantic display visual states without storing generated refs", () => {
@@ -483,8 +515,10 @@ interface StrokeRecord {
 
 function createRecordingCanvasContext(): {
   readonly context: CanvasRenderingContext2D;
+  readonly fills: { readonly x: number; readonly y: number }[][];
   readonly strokes: StrokeRecord[];
 } {
+  const fills: { readonly x: number; readonly y: number }[][] = [];
   const strokes: StrokeRecord[] = [];
   let closed = false;
   let lineDash: number[] = [];
@@ -512,7 +546,9 @@ function createRecordingCanvasContext(): {
     setLineDash: (value: number[]) => {
       lineDash = [...value];
     },
-    fill: () => {},
+    fill: () => {
+      fills.push([...points]);
+    },
     stroke: () => {
       strokes.push({
         closed,
@@ -536,5 +572,5 @@ function createRecordingCanvasContext(): {
     }
   } as unknown as CanvasRenderingContext2D;
 
-  return { context, strokes };
+  return { context, fills, strokes };
 }

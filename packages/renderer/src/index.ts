@@ -498,15 +498,14 @@ function drawBox(
   context.strokeStyle = getVisualStrokeColor(style, "#2f6f97");
   context.lineWidth = getVisualLineWidth(style, 2);
   context.fillStyle = getVisualFillColor(style, "rgb(47 111 151 / 10%)");
-  fillProjectedFace(context, camera, size, [
-    vertices[4],
-    vertices[5],
-    vertices[6],
-    vertices[7]
-  ]);
+  fillProjectedFace(context, camera, size, vertices.slice(4));
 
   for (const [start, end] of edges) {
-    strokeProjectedLine(context, camera, size, vertices[start], vertices[end]);
+    const startVertex = vertices[start];
+    const endVertex = vertices[end];
+    if (startVertex && endVertex) {
+      strokeProjectedLine(context, camera, size, startVertex, endVertex);
+    }
   }
 
   context.restore();
@@ -525,33 +524,26 @@ function drawCylinder(
   context.strokeStyle = getVisualStrokeColor(style, "#6f8c3a");
   context.lineWidth = getVisualLineWidth(style, 2);
 
-  for (let index = 0; index < segments.top.length; index += 1) {
-    const nextIndex = (index + 1) % segments.top.length;
-    strokeProjectedLine(
-      context,
-      camera,
-      size,
-      segments.top[index],
-      segments.top[nextIndex]
-    );
-    strokeProjectedLine(
-      context,
-      camera,
-      size,
-      segments.bottom[index],
-      segments.bottom[nextIndex]
-    );
+  const firstBottom = segments.bottom[0];
+  if (!firstBottom) {
+    context.restore();
+    return;
+  }
+
+  forEachClosedSegment(segments.top, (topStart, topEnd, index) => {
+    const bottomStart = segments.bottom[index];
+    const bottomEnd = segments.bottom[index + 1] ?? firstBottom;
+    if (!bottomStart) {
+      return;
+    }
+
+    strokeProjectedLine(context, camera, size, topStart, topEnd);
+    strokeProjectedLine(context, camera, size, bottomStart, bottomEnd);
 
     if (index % 4 === 0) {
-      strokeProjectedLine(
-        context,
-        camera,
-        size,
-        segments.top[index],
-        segments.bottom[index]
-      );
+      strokeProjectedLine(context, camera, size, topStart, bottomStart);
     }
-  }
+  });
 
   context.restore();
 }
@@ -570,15 +562,9 @@ function drawSphere(
   context.lineWidth = getVisualLineWidth(style, 2);
 
   for (const ring of [rings.xy, rings.xz, rings.yz]) {
-    for (let index = 0; index < ring.length; index += 1) {
-      strokeProjectedLine(
-        context,
-        camera,
-        size,
-        ring[index],
-        ring[(index + 1) % ring.length]
-      );
-    }
+    forEachClosedSegment(ring, (start, end) => {
+      strokeProjectedLine(context, camera, size, start, end);
+    });
   }
 
   context.restore();
@@ -597,26 +583,13 @@ function drawCone(
   context.strokeStyle = getVisualStrokeColor(style, "#a35f2a");
   context.lineWidth = getVisualLineWidth(style, 2);
 
-  for (let index = 0; index < segments.base.length; index += 1) {
-    const nextIndex = (index + 1) % segments.base.length;
-    strokeProjectedLine(
-      context,
-      camera,
-      size,
-      segments.base[index],
-      segments.base[nextIndex]
-    );
+  forEachClosedSegment(segments.base, (start, end, index) => {
+    strokeProjectedLine(context, camera, size, start, end);
 
     if (index % 4 === 0) {
-      strokeProjectedLine(
-        context,
-        camera,
-        size,
-        segments.base[index],
-        segments.apex
-      );
+      strokeProjectedLine(context, camera, size, start, segments.apex);
     }
-  }
+  });
 
   context.restore();
 }
@@ -635,27 +608,15 @@ function drawTorus(
   context.lineWidth = getVisualLineWidth(style, 2);
 
   for (const ring of [rings.center, rings.outer, rings.inner]) {
-    for (let index = 0; index < ring.length; index += 1) {
-      strokeProjectedLine(
-        context,
-        camera,
-        size,
-        ring[index],
-        ring[(index + 1) % ring.length]
-      );
-    }
+    forEachClosedSegment(ring, (start, end) => {
+      strokeProjectedLine(context, camera, size, start, end);
+    });
   }
 
   for (const crossSection of rings.crossSections) {
-    for (let index = 0; index < crossSection.length; index += 1) {
-      strokeProjectedLine(
-        context,
-        camera,
-        size,
-        crossSection[index],
-        crossSection[(index + 1) % crossSection.length]
-      );
-    }
+    forEachClosedSegment(crossSection, (start, end) => {
+      strokeProjectedLine(context, camera, size, start, end);
+    });
   }
 
   context.restore();
@@ -725,6 +686,20 @@ function drawTriangleMesh(
   }
 
   context.restore();
+}
+
+function forEachClosedSegment(
+  points: readonly Vec3[],
+  visit: (start: Vec3, end: Vec3, index: number) => void
+): void {
+  const first = points[0];
+  if (!first) {
+    return;
+  }
+
+  for (const [index, start] of points.entries()) {
+    visit(start, points[index + 1] ?? first, index);
+  }
 }
 
 function getVisualStrokeColor(
@@ -846,10 +821,20 @@ function drawMeshFaces(
   size: ViewportSize
 ): void {
   for (let index = 0; index + 2 < indices.length; index += 3) {
-    const first = vertices[indices[index]];
-    const second = vertices[indices[index + 1]];
-    const third = vertices[indices[index + 2]];
+    const firstIndex = indices[index];
+    const secondIndex = indices[index + 1];
+    const thirdIndex = indices[index + 2];
+    if (
+      firstIndex === undefined ||
+      secondIndex === undefined ||
+      thirdIndex === undefined
+    ) {
+      continue;
+    }
 
+    const first = vertices[firstIndex];
+    const second = vertices[secondIndex];
+    const third = vertices[thirdIndex];
     if (first && second && third) {
       fillProjectedFace(context, camera, size, [first, second, third]);
     }
@@ -902,14 +887,12 @@ function createProjectedMeshOutline(
 
   const lower: ProjectedPoint[] = [];
   for (const point of projected) {
-    while (
-      lower.length >= 2 &&
-      getProjectedTurn(
-        lower[lower.length - 2],
-        lower[lower.length - 1],
-        point
-      ) <= 0
-    ) {
+    while (lower.length >= 2) {
+      const origin = lower.at(-2);
+      const first = lower.at(-1);
+      if (!origin || !first || getProjectedTurn(origin, first, point) > 0) {
+        break;
+      }
       lower.pop();
     }
     lower.push(point);
@@ -917,14 +900,12 @@ function createProjectedMeshOutline(
 
   const upper: ProjectedPoint[] = [];
   for (const point of [...projected].reverse()) {
-    while (
-      upper.length >= 2 &&
-      getProjectedTurn(
-        upper[upper.length - 2],
-        upper[upper.length - 1],
-        point
-      ) <= 0
-    ) {
+    while (upper.length >= 2) {
+      const origin = upper.at(-2);
+      const first = upper.at(-1);
+      if (!origin || !first || getProjectedTurn(origin, first, point) > 0) {
+        break;
+      }
       upper.pop();
     }
     upper.push(point);
@@ -948,8 +929,13 @@ function strokeProjectedOutline(
   context: CanvasRenderingContext2D,
   outline: readonly ProjectedPoint[]
 ): void {
+  const first = outline[0];
+  if (!first) {
+    return;
+  }
+
   context.beginPath();
-  context.moveTo(outline[0].x, outline[0].y);
+  context.moveTo(first.x, first.y);
 
   for (const point of outline.slice(1)) {
     context.lineTo(point.x, point.y);
@@ -991,13 +977,14 @@ function fillProjectedFace(
   const projected = points
     .map((point) => projectPoint(point, camera, size))
     .filter((point): point is ProjectedPoint => Boolean(point));
+  const first = projected[0];
 
-  if (projected.length !== points.length) {
+  if (projected.length !== points.length || !first) {
     return;
   }
 
   context.beginPath();
-  context.moveTo(projected[0].x, projected[0].y);
+  context.moveTo(first.x, first.y);
 
   for (const point of projected.slice(1)) {
     context.lineTo(point.x, point.y);
