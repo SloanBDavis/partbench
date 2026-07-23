@@ -5,6 +5,7 @@ import type {
   GeometryWorkerResponse
 } from "@web-cad/geometry-worker";
 import { createWorkerErrorDiagnostics } from "@web-cad/geometry-worker/browser";
+import { runCleanupActions } from "./runCleanupActions";
 
 export type GeometryWorkerMessage =
   | GeometryWorkerResponse
@@ -223,26 +224,11 @@ export class BrowserGeometryWorker implements GeometryWorker {
     this.#handleError({
       message: "Geometry worker was disposed before completing a request."
     });
-    let cleanupFailed = false;
-    let cleanupError: unknown;
-    const cleanUp = (action: () => void) => {
-      try {
-        action();
-      } catch (error) {
-        if (!cleanupFailed) {
-          cleanupFailed = true;
-          cleanupError = error;
-        }
-      }
-    };
-    cleanUp(() =>
-      this.#transport.removeEventListener("message", this.#handleMessage)
-    );
-    cleanUp(() =>
-      this.#transport.removeEventListener("error", this.#handleError)
-    );
-    cleanUp(() => this.#transport.terminate());
-    if (cleanupFailed) throw cleanupError;
+    runCleanupActions([
+      () => this.#transport.removeEventListener("message", this.#handleMessage),
+      () => this.#transport.removeEventListener("error", this.#handleError),
+      () => this.#transport.terminate()
+    ]);
   }
 }
 
