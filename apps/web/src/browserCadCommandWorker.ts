@@ -97,7 +97,16 @@ export class BrowserCadCommandWorker implements CadCommandWorker {
 
     return new Promise((resolve, reject) => {
       this.#pendingRequests.set(request.id, { resolve, reject });
-      this.#transport.postMessage(request);
+      try {
+        this.#transport.postMessage(request);
+      } catch (error) {
+        this.#pendingRequests.delete(request.id);
+        reject(
+          error instanceof Error
+            ? error
+            : new Error("CAD command worker failed to post a request.")
+        );
+      }
     });
   }
 

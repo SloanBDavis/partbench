@@ -94,6 +94,32 @@ class FakeWorkerTransport implements CadCommandWorkerTransport {
   }
 }
 
+class ThrowingWorkerTransport extends FakeWorkerTransport {
+  shouldThrow = true;
+
+  constructor() {
+    super(async (request) => ({
+      id: request.id,
+      response: {
+        ok: true,
+        mode: request.batch.mode,
+        semanticDiff: { created: [], modified: [], deleted: [] },
+        createdIds: [],
+        modifiedIds: [],
+        deletedIds: [],
+        warnings: []
+      }
+    }));
+  }
+
+  override postMessage(message: CadWorkerRequest): void {
+    if (this.shouldThrow) {
+      throw new Error("Injected postMessage failure.");
+    }
+    super.postMessage(message);
+  }
+}
+
 describe("BrowserCadCommandWorker", () => {
   it("sends requests through a worker-like transport asynchronously", async () => {
     const transport = new FakeWorkerTransport(async (request) => ({
@@ -219,6 +245,22 @@ describe("BrowserCadCommandWorker", () => {
     await expect(first).resolves.toMatchObject({ id: request.id });
   });
 
+  it("removes a pending request when transport dispatch throws", async () => {
+    const transport = new ThrowingWorkerTransport();
+    const worker = new BrowserCadCommandWorker(transport);
+    const request = createTestRequest("worker_req_retry");
+
+    await expect(worker.execute(request)).rejects.toThrow(
+      "Injected postMessage failure."
+    );
+
+    transport.shouldThrow = false;
+    await expect(worker.execute(request)).resolves.toMatchObject({
+      id: request.id
+    });
+    expect(transport.requests).toEqual([request]);
+  });
+
   it("keeps cad-core authoritative after browser worker validation", async () => {
     const engine = new CadEngine();
     const mockWorker = new MockCadCommandWorker();
@@ -321,3 +363,32 @@ describe("BrowserCadCommandWorker", () => {
     );
   });
 });
+
+function createTestRequest(id: string): CadWorkerRequest {
+  return {
+    id,
+    document: {
+      units: "mm",
+      objects: [],
+      sketches: [],
+      parameters: [],
+      sketchDimensions: [],
+      sketchConstraints: [],
+      features: [],
+      namedReferences: [],
+      nextObjectNumber: 1,
+      nextSketchNumber: 1,
+      nextSketchEntityNumber: 1,
+      nextParameterNumber: 1,
+      nextSketchDimensionNumber: 1,
+      nextSketchConstraintNumber: 1,
+      nextFeatureNumber: 1,
+      nextBodyNumber: 1
+    },
+    batch: {
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: []
+    }
+  };
+}
