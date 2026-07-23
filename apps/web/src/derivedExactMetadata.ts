@@ -1024,19 +1024,32 @@ function parseGeneratedRectangleEdgeStableId(
   const capEdge = stableId.match(
     /^generated:edge:([^:]+):(start|end):(uMin|uMax|vMin|vMax)$/
   );
+  const capEdgeBodyId = capEdge?.[1];
+  const capEdgeEnd = capEdge?.[2];
+  const capEdgeSide = capEdge?.[3];
 
-  if (capEdge) {
-    return { bodyId: capEdge[1], role: `${capEdge[2]}:${capEdge[3]}` };
+  if (capEdgeBodyId && capEdgeEnd && capEdgeSide) {
+    return {
+      bodyId: capEdgeBodyId,
+      role: `${capEdgeEnd}:${capEdgeSide}`
+    };
   }
 
   const longitudinalEdge = stableId.match(
     /^generated:edge:([^:]+):longitudinal:(uMin|uMax):(vMin|vMax)$/
   );
+  const longitudinalEdgeBodyId = longitudinalEdge?.[1];
+  const longitudinalEdgeUSide = longitudinalEdge?.[2];
+  const longitudinalEdgeVSide = longitudinalEdge?.[3];
 
-  if (longitudinalEdge) {
+  if (
+    longitudinalEdgeBodyId &&
+    longitudinalEdgeUSide &&
+    longitudinalEdgeVSide
+  ) {
     return {
-      bodyId: longitudinalEdge[1],
-      role: `longitudinal:${longitudinalEdge[2]}:${longitudinalEdge[3]}`
+      bodyId: longitudinalEdgeBodyId,
+      role: `longitudinal:${longitudinalEdgeUSide}:${longitudinalEdgeVSide}`
     };
   }
 

@@ -1434,6 +1434,10 @@ describe("derivedExactMetadata", () => {
         edgeStableId: "generated:edge:body_rect_1:start:circular"
       },
       {
+        ...createChamferSource("body_unsupported_malformed_edge"),
+        edgeStableId: "generated:edge::start:uMin"
+      },
+      {
         ...createChamferSource("body_unsupported_circle_target"),
         target: createCircleExtrudeSource("body_rect_1")
       }
@@ -1465,6 +1469,12 @@ describe("derivedExactMetadata", () => {
       },
       {
         bodyId: "body_unsupported_circle_edge",
+        status: "unsupported",
+        message:
+          "Exact metadata for edge finishing currently supports generated rectangle edge references only."
+      },
+      {
+        bodyId: "body_unsupported_malformed_edge",
         status: "unsupported",
         message:
           "Exact metadata for edge finishing currently supports generated rectangle edge references only."
