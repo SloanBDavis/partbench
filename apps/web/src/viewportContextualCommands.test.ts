@@ -58,7 +58,7 @@ describe("viewport contextual commands", () => {
       "body.measureTopology",
       "body.references.inspect"
     ]);
-    expect(surface.actions[0]).toMatchObject({
+    expect(actionById(surface.actions, "sketch.createOnFace")).toMatchObject({
       label: "Choose face",
       route: "modeling",
       disabled: false
@@ -73,7 +73,7 @@ describe("viewport contextual commands", () => {
       modelingActions: actions,
       selectionDisplay: createSelectionDisplay({
         selectionKind: "generatedReference",
-        commandOperations: candidates.candidates[0].commandOperations
+        commandOperations: candidateCommandOperations(candidates)
       }),
       selectedGeneratedReferenceState: createSelectedReferenceState(face),
       selectionReferenceCandidates: candidates
@@ -85,12 +85,12 @@ describe("viewport contextual commands", () => {
       "feature.measureReference",
       "feature.selectReference"
     ]);
-    expect(surface.actions[0]).toMatchObject({
+    expect(actionById(surface.actions, "sketch.createOnFace")).toMatchObject({
       label: "Create sketch",
       route: "command",
       disabled: false
     });
-    expect(surface.actions[1].target).toEqual({
+    expect(actionById(surface.actions, "reference.name").target).toEqual({
       bodyId: "body_rect",
       stableId: "generated:face:body_rect:startCap",
       kind: "face"
@@ -147,7 +147,7 @@ describe("viewport contextual commands", () => {
       modelingActions: actions,
       selectionDisplay: createSelectionDisplay({
         selectionKind: "generatedReference",
-        commandOperations: candidates.candidates[0].commandOperations
+        commandOperations: candidateCommandOperations(candidates)
       }),
       selectedGeneratedReferenceState: createSelectedReferenceState(face),
       selectionReferenceCandidates: candidates
@@ -159,7 +159,7 @@ describe("viewport contextual commands", () => {
       "feature.measureReference",
       "feature.selectReference"
     ]);
-    expect(surface.actions[0]).toMatchObject({
+    expect(actionById(surface.actions, "sketch.createSideHole")).toMatchObject({
       label: "Side hole",
       route: "command",
       disabled: false,
@@ -176,7 +176,7 @@ describe("viewport contextual commands", () => {
       modelingActions: actions,
       selectionDisplay: createSelectionDisplay({
         selectionKind: "generatedReference",
-        commandOperations: candidates.candidates[0].commandOperations
+        commandOperations: candidateCommandOperations(candidates)
       }),
       selectedGeneratedReferenceState: createSelectedReferenceState(edge),
       selectionReferenceCandidates: candidates
@@ -232,7 +232,7 @@ describe("viewport contextual commands", () => {
       modelingActions: actions,
       selectionDisplay: createSelectionDisplay({
         selectionKind: "generatedReference",
-        commandOperations: candidates.candidates[0].commandOperations
+        commandOperations: candidateCommandOperations(candidates)
       }),
       selectedGeneratedReferenceState: selectedState,
       selectionReferenceCandidates: candidates
@@ -304,7 +304,7 @@ describe("viewport contextual commands", () => {
       selectionDisplay: createSelectionDisplay({
         selectionKind: "generatedReference",
         title: "Edge: Cut wall profile edge uMin/vMin",
-        commandOperations: candidates.candidates[0].commandOperations
+        commandOperations: candidateCommandOperations(candidates)
       }),
       selectedGeneratedReferenceState: createSelectedReferenceState(edge),
       selectionReferenceCandidates: candidates
@@ -504,7 +504,7 @@ describe("viewport contextual commands", () => {
       modelingActions: actions,
       selectionDisplay: createSelectionDisplay({
         selectionKind: "generatedReference",
-        commandOperations: candidates.candidates[0].commandOperations
+        commandOperations: candidateCommandOperations(candidates)
       }),
       selectedGeneratedReferenceState: createSelectedReferenceState(face),
       selectionReferenceCandidates: candidates
@@ -545,7 +545,7 @@ describe("viewport contextual commands", () => {
       modelingActions: createGeneratedReferenceActions(face, candidates),
       selectionDisplay: createSelectionDisplay({
         selectionKind: "generatedReference",
-        commandOperations: candidates.candidates[0].commandOperations
+        commandOperations: candidateCommandOperations(candidates)
       }),
       selectedGeneratedReferenceState: selectedState,
       selectionReferenceCandidates: candidates
@@ -626,7 +626,7 @@ describe("viewport contextual commands", () => {
       selectedNamedReferenceName: "Mounting face",
       selectionDisplay: createSelectionDisplay({
         selectionKind: "generatedReference",
-        commandOperations: candidates.candidates[0].commandOperations
+        commandOperations: candidateCommandOperations(candidates)
       }),
       selectedGeneratedReferenceState: createSelectedReferenceState(face),
       selectionReferenceCandidates: candidates
@@ -781,13 +781,25 @@ function createGeneratedReferenceActions(
   });
 }
 
-function actionById<
-  T extends { readonly id: string },
-  Id extends T["id"] & string
->(actions: readonly T[], id: Id): Extract<T, { readonly id: Id }> {
+function actionById<T extends { readonly id: string }>(
+  actions: readonly T[],
+  id: T["id"]
+): T {
   const action = actions.find((candidate) => candidate.id === id);
-  expect(action).toBeDefined();
-  return action as Extract<T, { readonly id: Id }>;
+  if (!action) {
+    throw new Error(`Expected action ${id}.`);
+  }
+  return action;
+}
+
+function candidateCommandOperations(
+  candidates: SelectionReferenceCandidatesQueryResponse
+): SelectionReferenceCandidatesQueryResponse["candidates"][number]["commandOperations"] {
+  const [candidate] = candidates.candidates;
+  if (!candidate) {
+    throw new Error("Expected selection reference candidate.");
+  }
+  return candidate.commandOperations;
 }
 
 function createSelectionDisplay(
