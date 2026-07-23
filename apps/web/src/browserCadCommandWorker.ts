@@ -86,7 +86,17 @@ export class BrowserCadCommandWorker implements CadCommandWorker {
   constructor(transport = createBrowserCadCommandWorkerTransport()) {
     this.#transport = transport;
     this.#transport.addEventListener("message", this.#handleMessage);
-    this.#transport.addEventListener("error", this.#handleError);
+    try {
+      this.#transport.addEventListener("error", this.#handleError);
+    } catch (error) {
+      try {
+        this.#transport.removeEventListener("message", this.#handleMessage);
+        this.#transport.terminate();
+      } catch {
+        // Preserve the listener setup failure.
+      }
+      throw error;
+    }
   }
 
   execute(request: CadWorkerRequest): Promise<CadWorkerResponse> {

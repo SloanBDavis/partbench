@@ -129,7 +129,44 @@ class ThrowingTerminationTransport extends FakeWorkerTransport {
   }
 }
 
+class PartialSetupFailureTransport implements CadCommandWorkerTransport {
+  messageListenerRemoved = false;
+  terminated = false;
+
+  postMessage(): void {}
+
+  addEventListener(type: "message", listener: MessageListener): void;
+  addEventListener(type: "error", listener: ErrorListener): void;
+  addEventListener(type: "message" | "error"): void {
+    if (type === "error") {
+      throw new Error("Injected listener setup failure.");
+    }
+  }
+
+  removeEventListener(type: "message", listener: MessageListener): void;
+  removeEventListener(type: "error", listener: ErrorListener): void;
+  removeEventListener(type: "message" | "error"): void {
+    if (type === "message") {
+      this.messageListenerRemoved = true;
+    }
+  }
+
+  terminate(): void {
+    this.terminated = true;
+  }
+}
+
 describe("BrowserCadCommandWorker", () => {
+  it("cleans up partial listener setup when construction fails", () => {
+    const transport = new PartialSetupFailureTransport();
+
+    expect(() => new BrowserCadCommandWorker(transport)).toThrow(
+      "Injected listener setup failure."
+    );
+    expect(transport.messageListenerRemoved).toBe(true);
+    expect(transport.terminated).toBe(true);
+  });
+
   it("sends requests through a worker-like transport asynchronously", async () => {
     const transport = new FakeWorkerTransport(async (request) => ({
       id: request.id,
