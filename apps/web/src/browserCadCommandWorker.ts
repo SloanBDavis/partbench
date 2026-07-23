@@ -91,6 +91,10 @@ export class BrowserCadCommandWorker implements CadCommandWorker {
     } catch (error) {
       try {
         this.#transport.removeEventListener("message", this.#handleMessage);
+      } catch {
+        // Preserve the listener setup failure.
+      }
+      try {
         this.#transport.terminate();
       } catch {
         // Preserve the listener setup failure.

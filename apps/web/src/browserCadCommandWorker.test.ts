@@ -148,6 +148,7 @@ class PartialSetupFailureTransport implements CadCommandWorkerTransport {
   removeEventListener(type: "message" | "error"): void {
     if (type === "message") {
       this.messageListenerRemoved = true;
+      throw new Error("Injected listener cleanup failure.");
     }
   }
 
