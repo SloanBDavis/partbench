@@ -4,6 +4,7 @@ import {
   createOcctBooleanExtrudeMesh,
   createOcctBooleanExtrudeMeshWithInstance,
   createOcctBoxMesh,
+  createOcctBoxMeshWithInstance,
   createOcctConeMesh,
   createOcctCylinderMesh,
   createOcctEdgeFinishMesh,
@@ -457,6 +458,41 @@ describe("occt-wasm", () => {
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );
+
+  it("disposes a box result shape when mesher construction fails", () => {
+    const deleted: string[] = [];
+    class Shape {
+      delete() {
+        deleted.push("shape");
+      }
+    }
+    class BoxBuilder {
+      Shape() {
+        return new Shape();
+      }
+      delete() {
+        deleted.push("box-builder");
+      }
+    }
+    class FailingMesher {
+      constructor() {
+        throw new Error("Injected box mesher failure.");
+      }
+    }
+    const oc = {
+      BRepPrimAPI_MakeBox_2: BoxBuilder,
+      BRepMesh_IncrementalMesh_2: FailingMesher
+    } as unknown as OpenCascadeInstance;
+
+    expect(() =>
+      createOcctBoxMeshWithInstance(oc, {
+        width: 1,
+        height: 2,
+        depth: 3
+      })
+    ).toThrow("Injected box mesher failure");
+    expect(deleted).toEqual(["shape", "box-builder"]);
+  });
 
   it("disposes every allocated wrapper when an exact edge builder fails", () => {
     const deleted: string[] = [];
