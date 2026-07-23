@@ -19,6 +19,7 @@ The current implementation source of truth is:
 - `docs/v16.md` — completed V16 sweep, loft, pattern depth, expression extensions, and mass properties release record
 - `docs/v17.md` — completed V17 composite sketch profiles, arcs, and curved sweep paths release record
 - `docs/v18.md` — completed V18 frontend-only Precision CAD UI overhaul release record
+- `docs/v19.md` — reviewed proposed V19 production sketching and multi-region profiles specification; not implemented
 
 Do not attempt to build the entire architecture at once. Implement only the milestone requested by the user. V17 is complete; follow `docs/v16.md` and `docs/v17.md` as compatibility and support-matrix records. Do not weaken a completed V17 Must row or expand beyond its documented matrix without an explicitly approved later milestone.
 The six `pnpm smoke:v17-*` commands recorded in `docs/v17.md` are the named V17 release workflows; V21 remains minimum-triggered rather than the default for every save.
@@ -28,6 +29,13 @@ record. Its reference images define visual direction, not new CAD capability:
 production changes stay in `apps/web`, and maintenance must not add commands,
 queries, source records, geometry/renderer contracts, schemas, file formats, or
 adapter behavior without an explicitly approved later milestone.
+
+V19 is proposed, not implemented. `docs/v19.md` defines the reviewed planning
+boundary for a future production-sketching and multi-region-profiles release.
+Do not claim its commands, queries, consumer rows, named scripts, or planned
+`web-cad.project.v22` schema as current behavior. V21 remains the latest
+implemented project schema until an explicitly requested V19 implementation
+slice lands with its complete vertical proof.
 
 ## Core Architectural Rules
 

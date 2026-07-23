@@ -4,7 +4,7 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the repo state and the
 active implementation roadmap.
 
-Last updated: 2026-07-19.
+Last updated: 2026-07-23.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/v12.md` for the completed
@@ -16,8 +16,10 @@ feature families, and parameter expressions release record, `docs/v16.md` for
 the completed V16 sweep, loft, pattern depth, expression extensions, and mass
 properties release record, `docs/v17.md` for the completed V17 composite
 sketch profiles, arcs, and curved sweep paths release record, and `docs/v18.md`
-for the completed frontend-only Precision CAD UI overhaul release record,
-`docs/native-format.md` for project-format direction, and
+for the completed frontend-only Precision CAD UI overhaul release record.
+`docs/v19.md` is the reviewed proposed production sketching and multi-region
+profiles specification; it is not implemented. Use `docs/native-format.md` for
+project-format direction, and
 `docs/occt-wasm-size.md` for OCCT/WASM load-size findings. V7, V8, V9, V10,
 and V11 are completed historical releases whose details are now condensed in
 this plan instead of maintained as separate release documents. V16, V17, and
@@ -154,6 +156,16 @@ These constraints remain active:
     capability, schema, geometry/renderer contract, file format, or adapter
     behavior; and established immutable bundle, runtime-performance, browser,
     responsive, accessibility, and visual-artifact release gates.
+13e. V19 is **proposed and not implemented**. Its reviewed specification is
+    `docs/v19.md`. Its planned center is deterministic production sketch
+    editing, broader command-backed dimensions/constraints, explicit
+    whole-loop material regions with holes, and a bounded region
+    extrude/revolve matrix. The proposal reserves minimum-triggered
+    `web-cad.project.v22` for its enumerated source/history/redo shapes while
+    retaining `partbench.wcad.v2`. Until an explicitly requested V19 slice
+    lands with its vertical gate, the current implementation remains V18 with
+    schemas through minimum-triggered V21; no proposed V19 command, query,
+    script, source record, or consumer row is current behavior.
 14. V8 Tranche A is implemented as a protocol and pure-helper slice only:
     `partbench.wcad.v1` manifest/source-identity types, structured package
     validation diagnostics, `project.packageReadiness`, and thin agent/MCP
@@ -922,6 +934,10 @@ Current limitations:
 - OCCT currently uses the full OpenCascade.js WASM in the main path. Custom
   build findings are documented separately and should not block modeling,
   topology, storage, or export work.
+
+The reviewed `docs/v19.md` proposal addresses a bounded subset of these sketch
+editing, dimension/constraint, and profile-region limitations. It is a future
+release contract, not evidence that those limitations have been removed.
 
 ## Completed Milestones
 
@@ -3210,6 +3226,34 @@ composite loft or sweep profiles, G0 sweep corners, datum planes, assemblies,
 drawings, direct modeling, production WebGPU, collaboration, or format breadth.
 The Must Definition of Done is complete. Stretch or later-release work must not
 weaken this guardrail matrix.
+
+## Proposed V19 Production Sketching and Multi-Region Profiles
+
+V19 is a reviewed proposal and is not implemented. Its complete decision,
+support matrix, command/query contracts, migration rules, release gates, and
+non-goals are in `docs/v19.md`.
+
+The proposed release center is:
+
+```text
+deterministic trim / extend / split / offset
+-> command-backed constraint and dimension breadth
+-> slots and rounded rectangles as ordinary sketch-source sugar
+-> explicit whole-loop material regions with holes
+-> bounded region extrude and revolve
+```
+
+The plan introduces no spline or general arrangement engine, associative offset
+feature, composite sweep/loft profile, assembly, drawing, production WebGPU, or
+new native-package layout. Its planned `web-cad.project.v22` is
+minimum-triggered only by the exact source/history/redo shapes listed in
+`docs/v19.md`; `.wcad` remains `partbench.wcad.v2`.
+
+Do not add V19 product affordances or claim its named release scripts until the
+corresponding sequential slice passes its full protocol, cad-core, solver,
+geometry, UI, adapter, storage, and release-proof gate. Current capability and
+format statements elsewhere in this plan continue to stop at completed V18 and
+minimum-triggered V21.
 
 ## Definition of Done
 

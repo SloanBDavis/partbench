@@ -45,9 +45,11 @@ for new source records that cannot be represented by V18: `ImportedBodyFeature`,
 `ShellFeature`, and `CadParameter.expression`. See `docs/v15.md` for the V15
 storage contract. V16 introduced `web-cad.project.v20`; see `docs/v16.md`.
 Product V17 introduced `web-cad.project.v21`; see `docs/v17.md`. This
-document continues to define the project-format and
-source/derived rules that storage, solver, and topology-backed downstream
-modeling work must preserve.
+document continues to define the project-format and source/derived rules that
+storage, solver, and topology-backed downstream modeling work must preserve.
+The reviewed product V19 proposal in `docs/v19.md` plans
+`web-cad.project.v22`, but V22 is not implemented and is not part of the
+current loader/export matrix.
 
 V16 expression-language features (degree-first trigonometry, comparisons,
 ternary expressions, and `if`) remain text in the existing
@@ -1812,6 +1814,40 @@ validation, and trigger matrix.
 The completed storage behavior is exercised by
 `pnpm smoke:v17-storage-migration-workflow` and the other five named
 `pnpm smoke:v17-*` release workflows listed in `docs/v17.md`.
+
+## Proposed Product V19 Sketch Editing and Region Storage Decision
+
+This section records a reviewed proposal, not implemented behavior.
+`docs/v19.md` is normative for the full proposed contract. Product V19 plans
+minimum-triggered `web-cad.project.v22`; product and project version numbers
+remain independent.
+
+V22 is planned only when authoritative source/history/redo contains at least
+one:
+
+- `SketchRegionsProfileRef`;
+- normalized diameter dimension target;
+- point-pair, point-to-line-distance, or line-angle dimension target;
+- V19-only command or semantic-diff shape retained in history or redo; or
+- future trigger added by an explicitly approved V19 amendment.
+
+Ordinary V21 line, arc, circle, rectangle, construction, constraint, and
+entity-local scalar-dimension source remains losslessly lowerable when no V22
+trigger exists. When V22 is required, all live dimensions use the normalized
+V22 target shape, region profile membership is stored canonically, and the new
+source/history/redo forms participate in canonical CBOR, source identity,
+hashes, JSON, history replay, package validation, and minimum-schema export.
+Lowering is refused while any trigger remains in the live document, history,
+or redo stack.
+
+The proposal retains `partbench.wcad.v2`; it adds no package entry or new
+checkpoint-payload path. Candidate regions, intersection graphs, edit
+previews, solver evaluations, label positions, region-fill tessellation,
+meshes, exact metadata, and OCCT handles remain derived.
+
+Until V19 implementation lands, the loader accepts V1 through V21, exports at
+the lowest sufficient schema through V21, and every current-format statement
+elsewhere in this document remains unchanged.
 
 ## V8 Native Package Direction
 
