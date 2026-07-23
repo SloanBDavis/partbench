@@ -3,6 +3,21 @@ import { describe, expect, it } from "vitest";
 import { readZipStore, writeZipStore } from "./wcadZip";
 
 describe("WCAD ZIP storage", () => {
+  it("rejects invalid, duplicate, and overlong entry paths before writing", () => {
+    expect(() =>
+      writeZipStore([{ path: "../document.cbor", bytes: new Uint8Array([1]) }])
+    ).toThrow("Invalid ZIP entry path");
+    expect(() =>
+      writeZipStore([
+        { path: "document.cbor", bytes: new Uint8Array([1]) },
+        { path: "document.cbor", bytes: new Uint8Array([2]) }
+      ])
+    ).toThrow("Duplicate ZIP entry path");
+    expect(() =>
+      writeZipStore([{ path: "a".repeat(0x10000), bytes: new Uint8Array([1]) }])
+    ).toThrow("ZIP entry path exceeds the 16-bit UTF-8 length limit");
+  });
+
   it("round-trips an empty stored archive", () => {
     const result = readZipStore(writeZipStore([]));
 

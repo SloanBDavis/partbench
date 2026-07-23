@@ -24,12 +24,31 @@ const textDecoder = new TextDecoder("utf-8", { fatal: true });
 const crc32Table = createCrc32Table();
 
 export function writeZipStore(entries: readonly ZipStoreEntry[]): Uint8Array {
+  if (entries.length > 0xffff) {
+    throw new TypeError("ZIP entry count exceeds the 16-bit archive limit.");
+  }
+
   const localChunks: Uint8Array[] = [];
   const centralChunks: Uint8Array[] = [];
+  const entryPaths = new Set<string>();
   let offset = 0;
 
   entries.forEach((entry) => {
+    if (!isValidWcadPackagePath(entry.path)) {
+      throw new TypeError(`Invalid ZIP entry path: ${entry.path}`);
+    }
+    if (entryPaths.has(entry.path)) {
+      throw new TypeError(`Duplicate ZIP entry path: ${entry.path}`);
+    }
+    entryPaths.add(entry.path);
+
     const nameBytes = textEncoder.encode(entry.path);
+    if (nameBytes.byteLength > 0xffff) {
+      throw new TypeError(
+        "ZIP entry path exceeds the 16-bit UTF-8 length limit."
+      );
+    }
+
     const crc32 = calculateCrc32(entry.bytes);
     const localHeader = new Uint8Array(30 + nameBytes.byteLength);
     const localView = new DataView(localHeader.buffer);
