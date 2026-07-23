@@ -330,6 +330,7 @@ function containsPointInPolygon(
   ) {
     const current = polygon[currentIndex];
     const previous = polygon[previousIndex];
+    if (!current || !previous) continue;
     const intersects =
       current.y > point.y !== previous.y > point.y &&
       point.x <
