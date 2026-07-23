@@ -12755,8 +12755,9 @@ function validateScopedSourceExtrudeRebuildChain(
     state.features,
     feature.bodyId
   );
+  const consumingFeature = consumingFeatures[0];
 
-  if (consumingFeatures.length === 0) {
+  if (!consumingFeature) {
     return undefined;
   }
 
@@ -12773,7 +12774,6 @@ function validateScopedSourceExtrudeRebuildChain(
     });
   }
 
-  const consumingFeature = consumingFeatures[0];
   const nextConsumer = findConsumingFeatureByTargetBodyId(
     state.features,
     consumingFeature.bodyId
