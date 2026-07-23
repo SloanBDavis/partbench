@@ -224,7 +224,6 @@ interface SweepPathEdgeHandle {
 
 function disposePathEdges(edges: readonly SweepPathEdgeHandle[]): void {
   for (const edge of edges) {
-    edge.edge.delete();
     edge.delete();
   }
 }
@@ -249,9 +248,13 @@ function makeLinePathEdge(
     end = new oc.gp_Pnt_3(...segment.end);
     builder = new oc.BRepBuilderAPI_MakeEdge_3(start, end);
     const edge = builder.Edge();
+    let disposed = false;
     return {
       edge,
       delete: () => {
+        if (disposed) return;
+        disposed = true;
+        edge.delete();
         builder?.delete();
         start?.delete();
         end?.delete();
@@ -297,9 +300,16 @@ function makeArcPathEdge(
       (Math.abs(segment.sweepAngleDegrees) * Math.PI) / 180
     );
     try {
+      const edge = builder.Edge();
+      let disposed = false;
       return {
-        edge: builder.Edge(),
-        delete: () => builder.delete()
+        edge,
+        delete: () => {
+          if (disposed) return;
+          disposed = true;
+          edge.delete();
+          builder.delete();
+        }
       };
     } catch (error) {
       builder.delete();
