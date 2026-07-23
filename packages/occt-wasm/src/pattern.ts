@@ -476,16 +476,16 @@ function applyRotation(
     return copyShape(oc, shape);
   }
 
-  const origin = new oc.gp_Pnt_3(axisOrigin[0], axisOrigin[1], axisOrigin[2]);
-  const dir = new oc.gp_Dir_4(
-    axisDirection[0],
-    axisDirection[1],
-    axisDirection[2]
-  );
-  const ax1 = new oc.gp_Ax1_2(origin, dir);
-  const trsf = new oc.gp_Trsf_1();
+  let origin: InstanceType<typeof oc.gp_Pnt_3> | undefined;
+  let dir: InstanceType<typeof oc.gp_Dir_4> | undefined;
+  let ax1: InstanceType<typeof oc.gp_Ax1_2> | undefined;
+  let trsf: InstanceType<typeof oc.gp_Trsf_1> | undefined;
 
   try {
+    origin = new oc.gp_Pnt_3(axisOrigin[0], axisOrigin[1], axisOrigin[2]);
+    dir = new oc.gp_Dir_4(axisDirection[0], axisDirection[1], axisDirection[2]);
+    ax1 = new oc.gp_Ax1_2(origin, dir);
+    trsf = new oc.gp_Trsf_1();
     trsf.SetRotation_1(ax1, (angleDeg * Math.PI) / 180);
     const transform = new oc.BRepBuilderAPI_Transform_2(shape, trsf, true);
 
@@ -502,10 +502,10 @@ function applyRotation(
       transform.delete();
     }
   } finally {
-    trsf.delete();
-    ax1.delete();
-    dir.delete();
-    origin.delete();
+    trsf?.delete();
+    ax1?.delete();
+    dir?.delete();
+    origin?.delete();
   }
 }
 
