@@ -190,12 +190,17 @@ function makeHoleToolShape(
       tool.circle.radius,
       depth
     );
+    const result = shape;
+    let disposed = false;
 
     return {
-      shape,
+      shape: result,
       delete: () => {
+        if (disposed) return;
+        disposed = true;
         shape?.delete();
         axes.delete();
+        shape = undefined;
       }
     };
   } catch (error) {
