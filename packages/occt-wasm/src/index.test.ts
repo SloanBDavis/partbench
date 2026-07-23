@@ -678,6 +678,45 @@ describe("occt-wasm", () => {
     ]);
   });
 
+  it("disposes earlier rectangle points after point construction fails", () => {
+    const deleted: string[] = [];
+    let pointIndex = 0;
+    class Point {
+      constructor() {
+        pointIndex += 1;
+        if (pointIndex === 2) {
+          throw new Error("Injected rectangle point failure.");
+        }
+      }
+      delete() {
+        deleted.push("point");
+      }
+    }
+    class UnexpectedPolygon {
+      constructor() {
+        throw new Error("Polygon construction must not be reached.");
+      }
+    }
+    const oc = {
+      gp_Pnt_3: Point,
+      BRepBuilderAPI_MakePolygon_4: UnexpectedPolygon
+    } as unknown as OpenCascadeInstance;
+
+    expect(() =>
+      makeProfileFace(
+        oc,
+        {
+          origin: [0, 0, 0],
+          uAxis: [1, 0, 0],
+          vAxis: [0, 1, 0],
+          normalAxis: [0, 0, 1]
+        },
+        { kind: "rectangle", center: [0, 0], width: 2, height: 1 }
+      )
+    ).toThrow("Injected rectangle point failure");
+    expect(deleted).toEqual(["point"]);
+  });
+
   it("disposes boolean target/tool builders when later allocation fails", () => {
     const createPrimitiveOcct = (
       deleted: string[],
