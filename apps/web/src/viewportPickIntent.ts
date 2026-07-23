@@ -215,10 +215,9 @@ export function createViewportBodyHitTarget({
     const objectBodies = bodies.filter(
       (candidate) => candidate.objectId === object.id
     );
+    const [objectBody] = objectBodies;
 
-    if (objectBodies.length === 1) {
-      const objectBody = objectBodies[0];
-
+    if (objectBodies.length === 1 && objectBody) {
       return {
         kind: "object",
         bodyId: objectBody.id,
