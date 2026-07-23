@@ -2398,15 +2398,27 @@ function runDampedSolve(
     }
 
     let stepScale = 1;
-    let candidate = state.map(
-      (value, index) => value + stepScale * delta[index]
-    );
+    let candidate = createCandidateState(state, delta, stepScale);
+    if (!candidate) {
+      return {
+        state,
+        iterations: iteration - 1,
+        converged: false,
+        stateGuardConstrained,
+        residuals,
+        maxResidual
+      };
+    }
     if (!isStateAllowed(candidate)) {
       stateGuardConstrained = true;
     }
     while (!isStateAllowed(candidate) && stepScale > 1e-9) {
       stepScale /= 2;
-      candidate = state.map((value, index) => value + stepScale * delta[index]);
+      const nextCandidate = createCandidateState(state, delta, stepScale);
+      if (!nextCandidate) {
+        break;
+      }
+      candidate = nextCandidate;
     }
     if (!isStateAllowed(candidate)) {
       return {
@@ -2444,6 +2456,27 @@ function runDampedSolve(
   };
 }
 
+function createCandidateState(
+  state: readonly number[],
+  delta: readonly number[],
+  stepScale: number
+): number[] | undefined {
+  if (state.length !== delta.length) {
+    return undefined;
+  }
+
+  const candidate: number[] = [];
+  for (let index = 0; index < state.length; index += 1) {
+    const value = state[index];
+    const change = delta[index];
+    if (value === undefined || change === undefined) {
+      return undefined;
+    }
+    candidate.push(value + stepScale * change);
+  }
+  return candidate;
+}
+
 function arcStateStaysWithinAuthoredBranch(
   model: SketchSolveModel,
   stateAccess: SolverStateAccess,
@@ -2472,7 +2505,9 @@ function finiteDifferenceJacobian(
   residuals: readonly number[],
   step: number
 ): readonly (readonly number[])[] {
-  const columns: number[][] = [];
+  const jacobian = residuals.map(() =>
+    Array.from({ length: state.length }, () => 0)
+  );
 
   for (
     let variableIndex = 0;
@@ -2480,19 +2515,31 @@ function finiteDifferenceJacobian(
     variableIndex += 1
   ) {
     const perturbed = [...state];
-    perturbed[variableIndex] += step;
+    const stateValue = perturbed[variableIndex];
+    if (stateValue === undefined) {
+      return [];
+    }
+    perturbed[variableIndex] = stateValue + step;
     const perturbedResiduals = getResiduals(residualBlocks, perturbed);
-    columns.push(
-      perturbedResiduals.map(
-        (residual, residualIndex) =>
-          (residual - residuals[residualIndex]) / step
-      )
-    );
+    if (perturbedResiduals.length !== residuals.length) {
+      return [];
+    }
+    for (
+      let residualIndex = 0;
+      residualIndex < residuals.length;
+      residualIndex += 1
+    ) {
+      const row = jacobian[residualIndex];
+      const residual = perturbedResiduals[residualIndex];
+      const baseline = residuals[residualIndex];
+      if (!row || residual === undefined || baseline === undefined) {
+        return [];
+      }
+      row[variableIndex] = (residual - baseline) / step;
+    }
   }
 
-  return residuals.map((_, residualIndex) =>
-    columns.map((column) => column[residualIndex])
-  );
+  return jacobian;
 }
 
 function solveDampedNormalEquations(
@@ -2501,23 +2548,51 @@ function solveDampedNormalEquations(
   damping: number
 ): readonly number[] | undefined {
   const variableCount = jacobian[0]?.length ?? 0;
+  if (
+    variableCount === 0 ||
+    jacobian.length !== residuals.length ||
+    jacobian.some((row) => row.length !== variableCount)
+  ) {
+    return undefined;
+  }
   const normal = Array.from({ length: variableCount }, () =>
     Array.from({ length: variableCount }, () => 0)
   );
   const rhs = Array.from({ length: variableCount }, () => 0);
 
   for (let row = 0; row < jacobian.length; row += 1) {
+    const jacobianRow = jacobian[row];
+    const residual = residuals[row];
+    if (!jacobianRow || residual === undefined) {
+      return undefined;
+    }
     for (let col = 0; col < variableCount; col += 1) {
-      rhs[col] -= jacobian[row][col] * residuals[row];
+      const jacobianValue = jacobianRow[col];
+      const rhsValue = rhs[col];
+      const normalRow = normal[col];
+      if (jacobianValue === undefined || rhsValue === undefined || !normalRow) {
+        return undefined;
+      }
+      rhs[col] = rhsValue - jacobianValue * residual;
 
       for (let otherCol = 0; otherCol < variableCount; otherCol += 1) {
-        normal[col][otherCol] += jacobian[row][col] * jacobian[row][otherCol];
+        const otherJacobianValue = jacobianRow[otherCol];
+        const normalValue = normalRow[otherCol];
+        if (otherJacobianValue === undefined || normalValue === undefined) {
+          return undefined;
+        }
+        normalRow[otherCol] = normalValue + jacobianValue * otherJacobianValue;
       }
     }
   }
 
   for (let diagonal = 0; diagonal < variableCount; diagonal += 1) {
-    normal[diagonal][diagonal] += damping;
+    const row = normal[diagonal];
+    const value = row?.[diagonal];
+    if (!row || value === undefined) {
+      return undefined;
+    }
+    row[diagonal] = value + damping;
   }
 
   return solveLinearSystem(normal, rhs);
