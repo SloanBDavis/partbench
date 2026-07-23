@@ -871,42 +871,56 @@ function createTopologyShapeIndex(
   const shapeMap = new oc.TopTools_IndexedMapOfShape_1();
   const entries: TopologyShapeEntry[] = [];
 
-  oc.TopExp.MapShapes_1(shape, shapeType, shapeMap);
+  try {
+    oc.TopExp.MapShapes_1(shape, shapeType, shapeMap);
 
-  for (let index = 1; index <= shapeMap.Size(); index += 1) {
-    const current = shapeMap.FindKey(index);
-    const bounds = readBounds(oc, current);
+    for (let index = 1; index <= shapeMap.Size(); index += 1) {
+      let current: TopoDS_Shape | undefined;
 
-    entries.push({
-      kind,
-      index,
-      localId: createTopologyEntityLocalId(kind, index),
-      shape: current,
-      bounds,
-      signature: createTopologyEntitySignature({
-        sourceKind,
-        entityKind: kind,
-        bounds
-      })
-    });
-  }
-
-  return {
-    entries,
-    map: shapeMap,
-    find: (target) => {
-      const index = shapeMap.FindIndex(target);
-
-      return index > 0 ? entries[index - 1] : undefined;
-    },
-    delete: () => {
-      for (const entry of entries) {
-        entry.shape.delete();
+      try {
+        current = shapeMap.FindKey(index);
+        const bounds = readBounds(oc, current);
+        entries.push({
+          kind,
+          index,
+          localId: createTopologyEntityLocalId(kind, index),
+          shape: current,
+          bounds,
+          signature: createTopologyEntitySignature({
+            sourceKind,
+            entityKind: kind,
+            bounds
+          })
+        });
+        current = undefined;
+      } finally {
+        current?.delete();
       }
-
-      shapeMap.delete();
     }
-  };
+
+    return {
+      entries,
+      map: shapeMap,
+      find: (target) => {
+        const index = shapeMap.FindIndex(target);
+
+        return index > 0 ? entries[index - 1] : undefined;
+      },
+      delete: () => {
+        for (const entry of entries) {
+          entry.shape.delete();
+        }
+
+        shapeMap.delete();
+      }
+    };
+  } catch (error) {
+    for (const entry of entries) {
+      entry.shape.delete();
+    }
+    shapeMap.delete();
+    throw error;
+  }
 }
 
 function createTopologyEntitiesFromIndex(
