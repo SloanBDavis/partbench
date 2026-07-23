@@ -1541,6 +1541,9 @@ describe("occt-wasm", () => {
         checkpointId: "checkpoint_imported_roundtrip"
       });
       const body = importResult.bodies[0];
+      if (!body) {
+        throw new Error("Expected one imported STEP body.");
+      }
       const brepText = new TextDecoder().decode(
         body.checkpointPayload.brepBytes
       );
