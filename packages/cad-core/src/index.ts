@@ -15911,7 +15911,7 @@ function createScopedSourceExtrudeRebuildLifecycleEffects(
 }
 
 function formatFeatureKindForMessage(kind: Feature["kind"]): string {
-  return kind[0].toUpperCase() + kind.slice(1);
+  return kind.charAt(0).toUpperCase() + kind.slice(1);
 }
 
 function validateFeatureId(id: FeatureId, opIndex?: number): FeatureId {
