@@ -169,12 +169,18 @@ export function createVisualizationMeshExportArtifact(
         mesh: body.mesh
       }))
     );
-    const bodySummaries = plan.bodies.map((body, index) => ({
-      bodyId: body.bodyId,
-      ...(body.bodyName ? { bodyName: body.bodyName } : {}),
-      vertexCount: glb.meshMetadata[index].vertexCount,
-      triangleCount: glb.meshMetadata[index].triangleCount
-    }));
+    const bodySummaries = plan.bodies.map((body, index) => {
+      const meshMetadata = glb.meshMetadata[index];
+      if (!meshMetadata) {
+        throw new Error(`Missing GLB metadata for body ${body.bodyId}.`);
+      }
+      return {
+        bodyId: body.bodyId,
+        ...(body.bodyName ? { bodyName: body.bodyName } : {}),
+        vertexCount: meshMetadata.vertexCount,
+        triangleCount: meshMetadata.triangleCount
+      };
+    });
 
     return {
       ok: true,
