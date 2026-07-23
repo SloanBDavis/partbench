@@ -1731,16 +1731,15 @@ function createReviewHints(
   const destructiveOps = request.batch.ops
     .map((op, index) => ({ op, index }))
     .filter(({ op }) => isDestructiveOperation(op));
+  const firstDestructiveOp = destructiveOps[0];
 
-  if (destructiveOps.length > 0) {
-    const first = destructiveOps[0];
-
+  if (firstDestructiveOp) {
     hints.push({
       code: "DESTRUCTIVE_DELETE",
       severity: "warning",
       message: `Batch includes ${destructiveOps.length} destructive delete operation(s); review targets before commit.`,
-      opIndex: first.index,
-      op: first.op.op
+      opIndex: firstDestructiveOp.index,
+      op: firstDestructiveOp.op.op
     });
   }
 
