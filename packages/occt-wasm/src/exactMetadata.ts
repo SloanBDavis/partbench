@@ -1857,12 +1857,13 @@ function findAxisAlignedPlane(
   bounds: OcctExactBodyMetadata["bounds"]
 ): { readonly normal: readonly [number, number, number] } | undefined {
   const degenerateAxes = getDegenerateAxes(bounds);
+  const axisIndex = degenerateAxes[0];
 
-  if (degenerateAxes.length !== 1) {
+  if (degenerateAxes.length !== 1 || axisIndex === undefined) {
     return undefined;
   }
 
-  return { normal: axisUnitVector(degenerateAxes[0]!) };
+  return { normal: axisUnitVector(axisIndex) };
 }
 
 function findAxisAlignedLine(bounds: OcctExactBodyMetadata["bounds"]):
@@ -1878,7 +1879,9 @@ function findAxisAlignedLine(bounds: OcctExactBodyMetadata["bounds"]):
     return undefined;
   }
 
-  const axisIndex = [0, 1, 2].find((index) => !degenerateAxes.includes(index));
+  const axisIndex = AXIS_INDICES.find(
+    (index) => !degenerateAxes.includes(index)
+  );
 
   if (axisIndex === undefined) {
     return undefined;
@@ -1905,15 +1908,23 @@ function isPointBounds(bounds: OcctExactBodyMetadata["bounds"]): boolean {
   return getDegenerateAxes(bounds).length === 3;
 }
 
-function getDegenerateAxes(bounds: OcctExactBodyMetadata["bounds"]): number[] {
-  return [0, 1, 2].filter(
+type AxisIndex = 0 | 1 | 2;
+
+const AXIS_INDICES: readonly AxisIndex[] = [0, 1, 2];
+
+function getDegenerateAxes(
+  bounds: OcctExactBodyMetadata["bounds"]
+): AxisIndex[] {
+  return AXIS_INDICES.filter(
     (index) =>
       Math.abs(bounds.max[index] - bounds.min[index]) <=
       TOPOLOGY_EVIDENCE_TOLERANCE
   );
 }
 
-function axisUnitVector(axisIndex: number): readonly [number, number, number] {
+function axisUnitVector(
+  axisIndex: AxisIndex
+): readonly [number, number, number] {
   return [
     axisIndex === 0 ? 1 : 0,
     axisIndex === 1 ? 1 : 0,
