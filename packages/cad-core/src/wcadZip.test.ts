@@ -58,4 +58,25 @@ describe("WCAD ZIP storage", () => {
       })
     ]);
   });
+
+  it("rejects local entry metadata that disagrees with the central directory", () => {
+    const archive = writeZipStore([
+      {
+        path: "document.cbor",
+        bytes: new Uint8Array([1, 2, 3])
+      }
+    ]);
+    new DataView(archive.buffer).setUint32(14, 0, true);
+
+    const result = readZipStore(archive);
+
+    expect(result.entries.has("document.cbor")).toBe(false);
+    expect(result.issues).toEqual([
+      expect.objectContaining({
+        code: "WCAD_INVALID_PACKAGE",
+        entryPath: "document.cbor",
+        path: "$.entries.document.cbor.localHeader"
+      })
+    ]);
+  });
 });

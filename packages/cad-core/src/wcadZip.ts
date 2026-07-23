@@ -230,6 +230,7 @@ export function readZipStore(bytes: Uint8Array): ZipStoreReadResult {
         view,
         localHeaderOffset,
         compressedSize,
+        expectedCrc32,
         path,
         issues
       );
@@ -263,6 +264,7 @@ function readLocalEntryBytes(
   view: DataView,
   localHeaderOffset: number,
   size: number,
+  expectedCrc32: number,
   path: string,
   issues: WcadPackageValidationIssue[]
 ): Uint8Array | undefined {
@@ -281,6 +283,10 @@ function readLocalEntryBytes(
     return undefined;
   }
 
+  const method = readUint16(view, localHeaderOffset + 8);
+  const crc32 = readUint32(view, localHeaderOffset + 14);
+  const compressedSize = readUint32(view, localHeaderOffset + 18);
+  const uncompressedSize = readUint32(view, localHeaderOffset + 22);
   const nameLength = readUint16(view, localHeaderOffset + 26);
   const extraLength = readUint16(view, localHeaderOffset + 28);
   const nameStart = localHeaderOffset + 30;
@@ -294,6 +300,23 @@ function readLocalEntryBytes(
         "WCAD_INVALID_PACKAGE",
         "WCAD package entry data is outside the archive bounds.",
         `$.entries.${path}`,
+        path
+      )
+    );
+    return undefined;
+  }
+
+  if (
+    method !== ZIP_STORE_METHOD ||
+    crc32 !== expectedCrc32 ||
+    compressedSize !== size ||
+    uncompressedSize !== size
+  ) {
+    issues.push(
+      createZipIssue(
+        "WCAD_INVALID_PACKAGE",
+        "WCAD package local file header metadata does not match the central directory.",
+        `$.entries.${path}.localHeader`,
         path
       )
     );
@@ -403,7 +426,11 @@ function calculateCrc32(bytes: Uint8Array): number {
   let crc = 0xffffffff;
 
   bytes.forEach((byte) => {
-    crc = (crc >>> 8) ^ crc32Table[(crc ^ byte) & 0xff];
+    const tableEntry = crc32Table[(crc ^ byte) & 0xff];
+    if (tableEntry === undefined) {
+      throw new Error("CRC32 table lookup failed.");
+    }
+    crc = (crc >>> 8) ^ tableEntry;
   });
 
   return (crc ^ 0xffffffff) >>> 0;
