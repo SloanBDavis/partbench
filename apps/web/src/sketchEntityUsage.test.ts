@@ -2,7 +2,8 @@ import type { CadFeatureSummary } from "@web-cad/cad-protocol";
 import { describe, expect, it } from "vitest";
 import {
   formatSketchEntityUsageLabel,
-  getSketchEntityExtrudeUsages
+  getSketchEntityExtrudeUsages,
+  type SketchEntityExtrudeUsage
 } from "./sketchEntityUsage";
 
 describe("sketch entity usage helpers", () => {
@@ -81,6 +82,12 @@ describe("sketch entity usage helpers", () => {
         }
       ])
     ).toBe("Used by 2 features");
+  });
+
+  it("treats a sparse usage list as empty", () => {
+    expect(
+      formatSketchEntityUsageLabel(new Array<SketchEntityExtrudeUsage>(1))
+    ).toBeUndefined();
   });
 
   it("finds revolve axis usage for line entities", () => {

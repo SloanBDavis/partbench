@@ -80,12 +80,12 @@ function getSketchEntityFeatureUsageRole(
 export function formatSketchEntityUsageLabel(
   usages: readonly SketchEntityExtrudeUsage[]
 ): string | undefined {
-  if (usages.length === 0) {
+  const [usage] = usages;
+  if (!usage) {
     return undefined;
   }
 
   if (usages.length === 1) {
-    const usage = usages[0];
     const featureLabel = usage.featureName ?? usage.featureId;
 
     return `${formatFeatureUsageRole(usage)} ${featureLabel} -> ${usage.bodyId}`;
