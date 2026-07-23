@@ -294,7 +294,13 @@ function findRectangleEdge(
 
   try {
     for (; explorer.More(); explorer.Next()) {
-      const edge = oc.TopoDS.Edge_1(explorer.Current());
+      const current = explorer.Current();
+      let edge: TopoDS_Edge;
+      try {
+        edge = oc.TopoDS.Edge_1(current);
+      } finally {
+        current.delete();
+      }
 
       if (edgeMatchesExpectedEndpoints(oc, edge, expected, tolerance)) {
         return {
