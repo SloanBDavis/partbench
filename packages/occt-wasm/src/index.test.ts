@@ -1058,6 +1058,24 @@ describe("occt-wasm", () => {
     expect(() => assertWireExtrudeSolidCount(1)).not.toThrow();
   });
 
+  it(
+    "rejects empty composite profiles before OCCT wire construction",
+    async () => {
+      await expect(
+        createOcctWireExtrudeMesh({
+          sketchPlane: "XY",
+          profile: {
+            ...slotWireProfile,
+            segments: [],
+            sourceIdentity: "empty-profile"
+          },
+          depth: 1
+        })
+      ).rejects.toThrow("requires at least one source segment");
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
   it("rejects composite revolves unless the result itself is exactly one solid", () => {
     const solid = "solid";
     expect(() => assertRevolveSolidResult(solid, solid, 1)).not.toThrow();

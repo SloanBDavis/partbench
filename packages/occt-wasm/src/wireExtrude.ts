@@ -278,6 +278,14 @@ export function makeResolvedPlanarWireFace(
   profile: OcctResolvedPlanarWireProfile,
   normalOffset = 0
 ): OcctResolvedPlanarWireFaceBuild {
+  const firstSegment = profile.segments[0];
+  const lastSegment = profile.segments.at(-1);
+  if (!firstSegment || !lastSegment) {
+    throw new Error(
+      "Open CASCADE composite profile requires at least one source segment."
+    );
+  }
+
   const normal = normalize(cross(profile.frame.uAxis, profile.frame.vAxis));
   const edgeBuilders: Array<
     InstanceType<OpenCascadeInstance["BRepBuilderAPI_MakeEdge"]>
@@ -319,15 +327,21 @@ export function makeResolvedPlanarWireFace(
 
     const topologyBuilder = new oc.BRep_Builder();
     try {
-      for (let index = 0; index < profile.segments.length; index += 1) {
-        const previous =
-          (index + profile.segments.length - 1) % profile.segments.length;
+      for (const [index, segment] of profile.segments.entries()) {
+        const previousSegment =
+          index === 0 ? lastSegment : profile.segments[index - 1];
+        const sharedVertex = sharedVertices[index];
+        if (!previousSegment || !sharedVertex) {
+          throw new Error(
+            "Open CASCADE composite profile vertex construction is incomplete."
+          );
+        }
         const discrepancy = distance(
-          segmentEnd(profile.segments[previous]),
-          segmentStart(profile.segments[index])
+          segmentEnd(previousSegment),
+          segmentStart(segment)
         );
         topologyBuilder.UpdateVertex_6(
-          sharedVertices[index],
+          sharedVertex,
           Math.min(
             profile.geometryPolicy.linearTolerance,
             Math.max(discrepancy, 1e-12)
@@ -338,10 +352,21 @@ export function makeResolvedPlanarWireFace(
       topologyBuilder.delete();
     }
 
-    for (let index = 0; index < profile.segments.length; index += 1) {
-      const segment = profile.segments[index];
+    const firstVertex = sharedVertices[0];
+    if (!firstVertex) {
+      throw new Error(
+        "Open CASCADE composite profile did not create a starting vertex."
+      );
+    }
+
+    for (const [index, segment] of profile.segments.entries()) {
       const startVertex = sharedVertices[index];
-      const endVertex = sharedVertices[(index + 1) % sharedVertices.length];
+      const endVertex = sharedVertices[index + 1] ?? firstVertex;
+      if (!startVertex) {
+        throw new Error(
+          "Open CASCADE composite profile vertex construction is incomplete."
+        );
+      }
       const edgeBuilder =
         segment.kind === "line"
           ? makeLineEdge(
@@ -373,11 +398,17 @@ export function makeResolvedPlanarWireFace(
       edgeEndVertices.push(edgeBuilder.Vertex2());
     }
 
-    for (let index = 0; index < edges.length; index += 1) {
-      wireBuilder.Add_1(edges[index]);
+    for (const [index, edge] of edges.entries()) {
+      const segment = profile.segments[index];
+      if (!segment) {
+        throw new Error(
+          "Open CASCADE composite profile edge construction is inconsistent."
+        );
+      }
+      wireBuilder.Add_1(edge);
       if (!wireBuilder.IsDone()) {
         throw new Error(
-          `Open CASCADE failed to append ${profile.segments[index].sourceEntityId} to the ordered wire.`
+          `Open CASCADE failed to append ${segment.sourceEntityId} to the ordered wire.`
         );
       }
     }
@@ -398,13 +429,15 @@ export function makeResolvedPlanarWireFace(
     }
     const sourceEdgeOrderProven = edges.every((sourceEdge) => {
       const matches = exploredEdges.filter((edge) => edge.IsSame(sourceEdge));
+      const match = matches[0];
       if (
         matches.length !== 1 ||
-        matches[0].Orientation_1() !== sourceEdge.Orientation_1()
+        !match ||
+        match.Orientation_1() !== sourceEdge.Orientation_1()
       ) {
         return false;
       }
-      generatedEdges.push(matches[0]);
+      generatedEdges.push(match);
       return true;
     });
     if (sourceEdgeOrderProven) {
@@ -416,7 +449,12 @@ export function makeResolvedPlanarWireFace(
       sourceEdgeOrderProven &&
       generatedVertices.every((vertex, index) => {
         const next = (index + 1) % generatedEdges.length;
-        const nextFirst = oc.TopExp.FirstVertex(generatedEdges[next], true);
+        const nextEdge = generatedEdges[next];
+        const segment = profile.segments[index];
+        if (!nextEdge || !segment) {
+          return false;
+        }
+        const nextFirst = oc.TopExp.FirstVertex(nextEdge, true);
         try {
           return (
             vertex.IsSame(nextFirst) &&
@@ -426,7 +464,7 @@ export function makeResolvedPlanarWireFace(
               mapPoint(
                 profile.frame,
                 normal,
-                segmentEnd(profile.segments[index]),
+                segmentEnd(segment),
                 normalOffset
               ),
               profile.geometryPolicy.linearTolerance
