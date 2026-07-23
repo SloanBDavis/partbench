@@ -355,10 +355,10 @@ function getPolylinePointDistance(
   let distance = Number.POSITIVE_INFINITY;
 
   for (let index = 0; index < polyline.length - 1; index += 1) {
-    distance = Math.min(
-      distance,
-      getPointSegmentDistance(point, polyline[index], polyline[index + 1])
-    );
+    const start = polyline[index];
+    const end = polyline[index + 1];
+    if (!start || !end) continue;
+    distance = Math.min(distance, getPointSegmentDistance(point, start, end));
   }
 
   return distance;
