@@ -45,6 +45,7 @@ import {
   type OcctWireExtrudeShapeBuild
 } from "./wireExtrude";
 import { readTriangulatedShape } from "./readTriangulatedShape";
+import { withOcctPatternSeedShape } from "./pattern";
 import {
   createOcctStepExportWithShapeFactory,
   type OcctStepExportShapeFactory
@@ -497,6 +498,66 @@ describe("occt-wasm", () => {
       })
     ).toThrow("Injected box mesher failure");
     expect(deleted).toEqual(["shape", "box-builder"]);
+  });
+
+  it("disposes a primitive pattern seed wrapper after its callback", () => {
+    const deleted: string[] = [];
+    let directionIndex = 0;
+    class Point {
+      delete() {
+        deleted.push("point");
+      }
+    }
+    class Direction {
+      readonly #label: string;
+      constructor() {
+        directionIndex += 1;
+        this.#label = directionIndex === 1 ? "normal" : "x-direction";
+      }
+      delete() {
+        deleted.push(this.#label);
+      }
+    }
+    class Axis {
+      delete() {
+        deleted.push("axis");
+      }
+    }
+    class Shape {
+      delete() {
+        deleted.push("shape");
+      }
+    }
+    class BoxBuilder {
+      Shape() {
+        return new Shape();
+      }
+      delete() {
+        deleted.push("box-builder");
+      }
+    }
+    const oc = {
+      gp_Pnt_3: Point,
+      gp_Dir_4: Direction,
+      gp_Ax2_2: Axis,
+      BRepPrimAPI_MakeBox_5: BoxBuilder
+    } as unknown as OpenCascadeInstance;
+
+    expect(
+      withOcctPatternSeedShape(
+        oc,
+        { kind: "extrude", ...occtBooleanRecipePrimitive },
+        () => "read"
+      )
+    ).toBe("read");
+    expect(deleted).toEqual([
+      "axis",
+      "x-direction",
+      "normal",
+      "point",
+      "shape",
+      "box-builder"
+    ]);
   });
 
   it.each([
