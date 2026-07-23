@@ -144,6 +144,31 @@ describe("parameter expression language v2", () => {
     }
   });
 
+  it("rejects invalid built-in function arities without mutating parameters", () => {
+    for (const expression of ["max(1)", "abs(1, 2)", "if(1, 2)"]) {
+      const engine = createExpressionEngine();
+      const response = engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [{ op: "parameter.setExpression", id: "p_result", expression }]
+      });
+
+      expect(response).toMatchObject({
+        ok: false,
+        error: {
+          code: "EXPRESSION_INVALID_FUNCTION",
+          parameterId: "p_result"
+        }
+      });
+      expect(engine.getDocument().parameters.get("p_result")).toMatchObject({
+        value: 0
+      });
+      expect(
+        engine.getDocument().parameters.get("p_result")?.expression
+      ).toBeUndefined();
+    }
+  });
+
   it("reports v2 portability without forcing a V20 schema", () => {
     const engine = createExpressionEngine();
     setResultExpression(engine, "radius * sin(angle)");

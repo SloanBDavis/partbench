@@ -1063,8 +1063,8 @@ function evaluateAst(
         };
       }
 
-      if (!arities.includes(ast.args.length)) {
-        return {
+      const invalidArityResult = () =>
+        ({
           ok: false,
           diagnostic: createDiagnostic({
             code: "EXPRESSION_INVALID_FUNCTION",
@@ -1075,16 +1075,23 @@ function evaluateAst(
             expected: `${arities.join(" or ")} argument(s)`,
             received: String(ast.args.length)
           })
-        };
+        }) as const;
+
+      if (!arities.includes(ast.args.length)) {
+        return invalidArityResult();
       }
 
       if (ast.name === "if") {
-        const condition = evaluateAst(ast.args[0], context);
+        const [conditionAst, whenTrueAst, whenFalseAst] = ast.args;
+        if (!conditionAst || !whenTrueAst || !whenFalseAst) {
+          return invalidArityResult();
+        }
+        const condition = evaluateAst(conditionAst, context);
         if (!condition.ok) {
           return condition;
         }
         return evaluateAst(
-          condition.value === 0 ? ast.args[2] : ast.args[1],
+          condition.value === 0 ? whenFalseAst : whenTrueAst,
           context
         );
       }
@@ -1097,8 +1104,19 @@ function evaluateAst(
         }
         args.push(evaluated.value);
       }
+      const [firstArg, secondArg] = args;
+      if (firstArg === undefined) {
+        return invalidArityResult();
+      }
+      if (
+        (ast.name === "max" || ast.name === "min" || ast.name === "atan2") &&
+        secondArg === undefined
+      ) {
+        return invalidArityResult();
+      }
+      const binarySecondArg = secondArg ?? firstArg;
 
-      if (ast.name === "sqrt" && args[0] < 0) {
+      if (ast.name === "sqrt" && firstArg < 0) {
         return {
           ok: false,
           diagnostic: createDiagnostic({
@@ -1108,69 +1126,69 @@ function evaluateAst(
             expression: context.expression,
             referencedName: ast.name,
             expected: "non-negative value",
-            received: String(args[0])
+            received: String(firstArg)
           })
         };
       }
 
       if (
         (ast.name === "asin" || ast.name === "acos") &&
-        (args[0] < -1 || args[0] > 1)
+        (firstArg < -1 || firstArg > 1)
       ) {
         return expressionDomainError(
           context,
           ast.name,
           "value in [-1, 1]",
-          args[0]
+          firstArg
         );
       }
 
       if (
         ast.name === "tan" &&
-        Math.abs(Math.cos(degreesToRadians(args[0]))) <= 1e-12
+        Math.abs(Math.cos(degreesToRadians(firstArg))) <= 1e-12
       ) {
         return expressionDomainError(
           context,
           ast.name,
           "angle whose cosine is non-zero",
-          args[0]
+          firstArg
         );
       }
 
       const value =
         ast.name === "max"
-          ? Math.max(args[0], args[1])
+          ? Math.max(firstArg, binarySecondArg)
           : ast.name === "min"
-            ? Math.min(args[0], args[1])
+            ? Math.min(firstArg, binarySecondArg)
             : ast.name === "abs"
-              ? Math.abs(args[0])
+              ? Math.abs(firstArg)
               : ast.name === "sqrt"
-                ? Math.sqrt(args[0])
+                ? Math.sqrt(firstArg)
                 : ast.name === "round"
-                  ? Math.round(args[0])
+                  ? Math.round(firstArg)
                   : ast.name === "floor"
-                    ? Math.floor(args[0])
+                    ? Math.floor(firstArg)
                     : ast.name === "ceil"
-                      ? Math.ceil(args[0])
+                      ? Math.ceil(firstArg)
                       : ast.name === "sin"
-                        ? Math.sin(degreesToRadians(args[0]))
+                        ? Math.sin(degreesToRadians(firstArg))
                         : ast.name === "cos"
-                          ? Math.cos(degreesToRadians(args[0]))
+                          ? Math.cos(degreesToRadians(firstArg))
                           : ast.name === "tan"
-                            ? Math.tan(degreesToRadians(args[0]))
+                            ? Math.tan(degreesToRadians(firstArg))
                             : ast.name === "asin"
-                              ? radiansToDegrees(Math.asin(args[0]))
+                              ? radiansToDegrees(Math.asin(firstArg))
                               : ast.name === "acos"
-                                ? radiansToDegrees(Math.acos(args[0]))
+                                ? radiansToDegrees(Math.acos(firstArg))
                                 : ast.name === "atan"
-                                  ? radiansToDegrees(Math.atan(args[0]))
+                                  ? radiansToDegrees(Math.atan(firstArg))
                                   : ast.name === "atan2"
                                     ? radiansToDegrees(
-                                        Math.atan2(args[0], args[1])
+                                        Math.atan2(firstArg, binarySecondArg)
                                       )
                                     : ast.name === "deg"
-                                      ? radiansToDegrees(args[0])
-                                      : degreesToRadians(args[0]);
+                                      ? radiansToDegrees(firstArg)
+                                      : degreesToRadians(firstArg);
       return validateEvaluatedNumber(value, context);
     }
   }
