@@ -422,17 +422,19 @@ function readShapeBounds(
 
   try {
     oc.BRepBndLib.AddOptimal(shape, box, false, true);
-    const min = box.CornerMin();
-    const max = box.CornerMax();
+    let min: ReturnType<typeof box.CornerMin> | undefined;
+    let max: ReturnType<typeof box.CornerMax> | undefined;
 
     try {
+      min = box.CornerMin();
+      max = box.CornerMax();
       return {
         min: { x: min.X(), y: min.Y(), z: min.Z() },
         max: { x: max.X(), y: max.Y(), z: max.Z() }
       };
     } finally {
-      min.delete();
-      max.delete();
+      max?.delete();
+      min?.delete();
     }
   } finally {
     box.delete();
