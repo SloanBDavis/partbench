@@ -73,6 +73,7 @@ export class BrowserGeometryWorkerError extends Error {
 export class BrowserGeometryWorker implements GeometryWorker {
   readonly #transport: GeometryWorkerTransport;
   readonly #pendingRequests = new Map<string, PendingRequest>();
+  #disposed = false;
   readonly #handleMessage = (
     event: WorkerMessageEvent<GeometryWorkerMessage>
   ) => {
@@ -147,6 +148,19 @@ export class BrowserGeometryWorker implements GeometryWorker {
     request: GeometryWorkerRequest<TPayload>,
     callbacks: BrowserGeometryWorkerExecutionCallbacks = {}
   ): Promise<GeometryWorkerResponse<TPayload>> {
+    if (this.#disposed) {
+      return Promise.reject(
+        new BrowserGeometryWorkerError(
+          createWorkerErrorDiagnostics({
+            stage: "transport",
+            code: "WORKER_TRANSPORT_FAILED",
+            message: "Geometry worker has already been disposed.",
+            workerStarted: false
+          })
+        )
+      );
+    }
+
     if (this.#pendingRequests.has(request.id)) {
       return Promise.reject(
         new BrowserGeometryWorkerError(
@@ -190,6 +204,8 @@ export class BrowserGeometryWorker implements GeometryWorker {
   }
 
   dispose(): void {
+    if (this.#disposed) return;
+    this.#disposed = true;
     this.#transport.removeEventListener("message", this.#handleMessage);
     this.#transport.removeEventListener("error", this.#handleError);
     this.#transport.terminate();

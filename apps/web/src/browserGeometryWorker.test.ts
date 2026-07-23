@@ -30,6 +30,7 @@ type ErrorListener = (event: WorkerErrorEvent) => void;
 
 class FakeGeometryWorkerTransport implements GeometryWorkerTransport {
   readonly requests: GeometryWorkerRequest[] = [];
+  terminationCount = 0;
   readonly #handler: (
     request: GeometryWorkerRequest
   ) => Promise<GeometryWorkerMessage>;
@@ -79,6 +80,7 @@ class FakeGeometryWorkerTransport implements GeometryWorkerTransport {
   }
 
   terminate(): void {
+    this.terminationCount += 1;
     this.#messageListeners.clear();
     this.#errorListeners.clear();
   }
@@ -230,6 +232,31 @@ describe("BrowserGeometryWorker", () => {
     expect(transport.requests).toHaveLength(1);
 
     worker.dispose();
+  });
+
+  it("rejects use after dispose and only terminates once", async () => {
+    const transport = createPrimitiveTessellationTransport();
+    const worker = new BrowserGeometryWorker(transport);
+    const request = createBoxTessellationWorkerRequest({
+      id: "disposed_request",
+      width: 1,
+      height: 1,
+      depth: 1
+    });
+
+    worker.dispose();
+    worker.dispose();
+
+    await expect(worker.execute(request)).rejects.toMatchObject({
+      diagnostics: {
+        error: {
+          code: "WORKER_TRANSPORT_FAILED",
+          message: "Geometry worker has already been disposed."
+        }
+      }
+    });
+    expect(transport.requests).toHaveLength(0);
+    expect(transport.terminationCount).toBe(1);
   });
 
   it("reports worker entry once without settling the request", async () => {
