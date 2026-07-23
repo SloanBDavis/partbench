@@ -43,7 +43,7 @@ import {
   createOcctStepExportWithShapeFactory,
   type OcctStepExportShapeFactory
 } from "./exactStepExport";
-import { assertRevolveSolidResult } from "./revolveProfile";
+import { assertRevolveSolidResult, makeProfileFace } from "./revolveProfile";
 import { assertSweepSolidResult } from "./sweep";
 
 const OCCT_WASM_TEST_TIMEOUT_MS = 120_000;
@@ -615,6 +615,68 @@ describe("occt-wasm", () => {
       );
     }
   );
+
+  it("disposes a partial circle profile after edge construction fails", () => {
+    const deleted: string[] = [];
+    let directionIndex = 0;
+    class Point {
+      delete() {
+        deleted.push("point");
+      }
+    }
+    class Direction {
+      readonly #label: string;
+      constructor() {
+        directionIndex += 1;
+        this.#label = directionIndex === 1 ? "normal" : "x-direction";
+      }
+      delete() {
+        deleted.push(this.#label);
+      }
+    }
+    class Axis {
+      delete() {
+        deleted.push("axis");
+      }
+    }
+    class Circle {
+      delete() {
+        deleted.push("circle");
+      }
+    }
+    class FailingEdgeBuilder {
+      constructor() {
+        throw new Error("Injected circle edge failure.");
+      }
+    }
+    const oc = {
+      gp_Pnt_3: Point,
+      gp_Dir_4: Direction,
+      gp_Ax2_2: Axis,
+      gp_Circ_2: Circle,
+      BRepBuilderAPI_MakeEdge_8: FailingEdgeBuilder
+    } as unknown as OpenCascadeInstance;
+
+    expect(() =>
+      makeProfileFace(
+        oc,
+        {
+          origin: [0, 0, 0],
+          uAxis: [1, 0, 0],
+          vAxis: [0, 1, 0],
+          normalAxis: [0, 0, 1]
+        },
+        { kind: "circle", center: [0, 0], radius: 1 }
+      )
+    ).toThrow("Injected circle edge failure");
+    expect(deleted).toEqual([
+      "circle",
+      "axis",
+      "x-direction",
+      "normal",
+      "point"
+    ]);
+  });
 
   it("disposes boolean target/tool builders when later allocation fails", () => {
     const createPrimitiveOcct = (
