@@ -118,7 +118,11 @@ describe("project WCAD workflow helpers", () => {
     expect(summarizeWcadDiagnostics(failed.diagnostics)).toBe(
       "1 package error"
     );
-    expect(formatWcadValidationIssue(failed.diagnostics[0])).toContain(
+    const [diagnostic] = failed.diagnostics;
+    if (!diagnostic) {
+      throw new Error("Expected missing-manifest diagnostic.");
+    }
+    expect(formatWcadValidationIssue(diagnostic)).toContain(
       "WCAD_MISSING_MANIFEST"
     );
   });
