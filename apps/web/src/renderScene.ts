@@ -675,7 +675,7 @@ function createBoxDisplayEdges(dimensions: {
   const halfX = width / 2;
   const halfY = height / 2;
   const halfZ = depth / 2;
-  const vertices: readonly Vec3[] = [
+  const vertices = [
     [-halfX, -halfY, -halfZ],
     [halfX, -halfY, -halfZ],
     [halfX, halfY, -halfZ],
@@ -684,7 +684,7 @@ function createBoxDisplayEdges(dimensions: {
     [halfX, -halfY, halfZ],
     [halfX, halfY, halfZ],
     [-halfX, halfY, halfZ]
-  ];
+  ] as const satisfies readonly Vec3[];
   const edges = [
     [0, 1],
     [1, 2],
