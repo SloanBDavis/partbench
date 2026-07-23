@@ -52,6 +52,7 @@ import {
 } from "./pattern";
 import { makeMirrorShape } from "./mirror";
 import { makeShellShape } from "./shell";
+import { makeLoftShape } from "./loft";
 import {
   createOcctStepExportWithShapeFactory,
   type OcctStepExportShapeFactory
@@ -747,6 +748,38 @@ describe("occt-wasm", () => {
       })
     ).toThrow("Injected shell face-list failure");
     expect(deleted).toEqual(["maker"]);
+  });
+
+  it("disposes partial loft setup after builder construction fails", () => {
+    const deleted: string[] = [];
+    class Progress {
+      delete() {
+        deleted.push("progress");
+      }
+    }
+    class FailingLoftBuilder {
+      constructor() {
+        throw new Error("Injected loft builder failure.");
+      }
+    }
+    const oc = {
+      Message_ProgressRange_1: Progress,
+      BRepOffsetAPI_ThruSections: FailingLoftBuilder
+    } as unknown as OpenCascadeInstance;
+    const section = {
+      sketchPlane: "XY" as const,
+      profile: {
+        kind: "rectangle" as const,
+        center: [0, 0] as const,
+        width: 2,
+        height: 1
+      }
+    };
+
+    expect(() => makeLoftShape(oc, { sections: [section, section] })).toThrow(
+      "Injected loft builder failure"
+    );
+    expect(deleted).toEqual(["progress"]);
   });
 
   it.each([
