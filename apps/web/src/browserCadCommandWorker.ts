@@ -51,6 +51,7 @@ interface PendingRequest {
 export class BrowserCadCommandWorker implements CadCommandWorker {
   readonly #transport: CadCommandWorkerTransport;
   readonly #pendingRequests = new Map<string, PendingRequest>();
+  #disposed = false;
   readonly #handleMessage = (
     event: WorkerMessageEvent<CadCommandWorkerMessage>
   ) => {
@@ -89,6 +90,12 @@ export class BrowserCadCommandWorker implements CadCommandWorker {
   }
 
   execute(request: CadWorkerRequest): Promise<CadWorkerResponse> {
+    if (this.#disposed) {
+      return Promise.reject(
+        new Error("CAD command worker has already been disposed.")
+      );
+    }
+
     if (this.#pendingRequests.has(request.id)) {
       return Promise.reject(
         new Error(`Duplicate CAD command worker request id: ${request.id}.`)
@@ -111,6 +118,8 @@ export class BrowserCadCommandWorker implements CadCommandWorker {
   }
 
   dispose(): void {
+    if (this.#disposed) return;
+    this.#disposed = true;
     this.#transport.removeEventListener("message", this.#handleMessage);
     this.#transport.removeEventListener("error", this.#handleError);
     this.#transport.terminate();

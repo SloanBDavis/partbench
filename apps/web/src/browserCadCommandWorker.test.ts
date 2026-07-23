@@ -28,6 +28,7 @@ type ErrorListener = (event: WorkerErrorEvent) => void;
 
 class FakeWorkerTransport implements CadCommandWorkerTransport {
   readonly requests: CadWorkerRequest[] = [];
+  terminationCount = 0;
   readonly #handler: (request: CadWorkerRequest) => Promise<CadWorkerResponse>;
   readonly #messageListeners = new Set<MessageListener>();
   readonly #errorListeners = new Set<ErrorListener>();
@@ -75,6 +76,7 @@ class FakeWorkerTransport implements CadCommandWorkerTransport {
   }
 
   terminate(): void {
+    this.terminationCount += 1;
     this.#messageListeners.clear();
     this.#errorListeners.clear();
   }
@@ -259,6 +261,31 @@ describe("BrowserCadCommandWorker", () => {
       id: request.id
     });
     expect(transport.requests).toEqual([request]);
+  });
+
+  it("rejects use after dispose and only terminates once", async () => {
+    const transport = new FakeWorkerTransport(async (request) => ({
+      id: request.id,
+      response: {
+        ok: true,
+        mode: request.batch.mode,
+        semanticDiff: { created: [], modified: [], deleted: [] },
+        createdIds: [],
+        modifiedIds: [],
+        deletedIds: [],
+        warnings: []
+      }
+    }));
+    const worker = new BrowserCadCommandWorker(transport);
+
+    worker.dispose();
+    worker.dispose();
+
+    await expect(
+      worker.execute(createTestRequest("worker_req_disposed"))
+    ).rejects.toThrow("CAD command worker has already been disposed.");
+    expect(transport.requests).toHaveLength(0);
+    expect(transport.terminationCount).toBe(1);
   });
 
   it("keeps cad-core authoritative after browser worker validation", async () => {
