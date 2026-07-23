@@ -172,6 +172,9 @@ async function runGeometryWorkerSmoke(): Promise<void> {
     }
 
     const primary = meshResults[0];
+    if (!primary) {
+      throw new Error("Geometry worker smoke produced no mesh results.");
+    }
     const result = {
       ok: true,
       vertexCount: primary.vertexCount,
