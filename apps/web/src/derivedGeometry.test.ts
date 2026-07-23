@@ -4284,6 +4284,30 @@ describe("derivedGeometry", () => {
     expect(snapshots.at(-1)?.meshes).toEqual([]);
   });
 
+  it("rejects malformed generated edge IDs before requesting geometry", () => {
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile([
+      {
+        ...createEdgeFinishSource("body_malformed_edge", "chamfer"),
+        edgeStableId: "generated:edge::start:uMin"
+      }
+    ]);
+
+    expect(runtime.inputs).toEqual([]);
+    expect(getDerivedGeometryStatusLabel(snapshots.at(-1)?.entries[0])).toBe(
+      "Edge finish display currently supports generated rectangle edge references only."
+    );
+    expect(snapshots.at(-1)?.meshes).toEqual([]);
+  });
+
   it("keeps stale named-reference edge finishes unsupported when the name is unavailable", () => {
     const engine = createExtrudedRectangleEngine();
 
