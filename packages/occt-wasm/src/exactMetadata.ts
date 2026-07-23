@@ -701,43 +701,48 @@ export function readExactTopologySnapshot(
   shape: TopoDS_Shape,
   sourceKind: OcctExactTopologySourceKind
 ): OcctExactTopologySnapshot {
-  const solidIndex = createTopologyShapeIndex(
-    oc,
-    shape,
-    "solid",
-    "TopAbs_SOLID",
-    sourceKind
-  );
-  const faceIndex = createTopologyShapeIndex(
-    oc,
-    shape,
-    "face",
-    "TopAbs_FACE",
-    sourceKind
-  );
-  const wireIndex = createTopologyShapeIndex(
-    oc,
-    shape,
-    "wire",
-    "TopAbs_WIRE",
-    sourceKind
-  );
-  const edgeIndex = createTopologyShapeIndex(
-    oc,
-    shape,
-    "edge",
-    "TopAbs_EDGE",
-    sourceKind
-  );
-  const vertexIndex = createTopologyShapeIndex(
-    oc,
-    shape,
-    "vertex",
-    "TopAbs_VERTEX",
-    sourceKind
-  );
+  let solidIndex: TopologyShapeIndex | undefined;
+  let faceIndex: TopologyShapeIndex | undefined;
+  let wireIndex: TopologyShapeIndex | undefined;
+  let edgeIndex: TopologyShapeIndex | undefined;
+  let vertexIndex: TopologyShapeIndex | undefined;
 
   try {
+    solidIndex = createTopologyShapeIndex(
+      oc,
+      shape,
+      "solid",
+      "TopAbs_SOLID",
+      sourceKind
+    );
+    faceIndex = createTopologyShapeIndex(
+      oc,
+      shape,
+      "face",
+      "TopAbs_FACE",
+      sourceKind
+    );
+    wireIndex = createTopologyShapeIndex(
+      oc,
+      shape,
+      "wire",
+      "TopAbs_WIRE",
+      sourceKind
+    );
+    edgeIndex = createTopologyShapeIndex(
+      oc,
+      shape,
+      "edge",
+      "TopAbs_EDGE",
+      sourceKind
+    );
+    vertexIndex = createTopologyShapeIndex(
+      oc,
+      shape,
+      "vertex",
+      "TopAbs_VERTEX",
+      sourceKind
+    );
     const bodyEntity = createTopologyEntity({
       oc,
       kind: "body",
@@ -842,11 +847,11 @@ export function readExactTopologySnapshot(
       ]
     };
   } finally {
-    solidIndex.delete();
-    faceIndex.delete();
-    wireIndex.delete();
-    edgeIndex.delete();
-    vertexIndex.delete();
+    vertexIndex?.delete();
+    edgeIndex?.delete();
+    wireIndex?.delete();
+    faceIndex?.delete();
+    solidIndex?.delete();
   }
 }
 
