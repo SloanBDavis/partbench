@@ -30,7 +30,6 @@ import {
 import {
   evaluateSketch,
   type SketchSolverDocument,
-  type SketchSolverEvaluation,
   type SketchSolverSketch
 } from "./sketchSolver";
 import {
@@ -68,7 +67,6 @@ export function createSketchProfileValidityFromSource({
 
   return createSketchProfileValidity(
     sketch,
-    evaluation,
     mapEvaluationStatus(evaluation.status),
     solverProbe
   );
@@ -96,7 +94,6 @@ export function createSketchSolverStatusResponse({
   );
   const profileValidity = createSketchProfileValidity(
     sketch,
-    evaluation,
     status,
     solverProbe
   );
@@ -450,7 +447,6 @@ function createSolverEngineSummary(
 
 function createSketchProfileValidity(
   sketch: SketchSolverSketch,
-  evaluation: SketchSolverEvaluation,
   status: CadSketchSolverStatus,
   solverProbe: SketchSolverPackageProbe
 ): CadSketchProfileValiditySummary {

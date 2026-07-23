@@ -45,7 +45,7 @@ describe("V18 Sketch mode draft model", () => {
 
   it("creates local entity drafts without mutating the source snapshot", () => {
     const source = sketches[0]!.entities[0]!;
-    const draft = createEntityDraft("rectangle", true);
+    const draft = createEntityDraft(true);
     const changed = { ...draft, width: 12 };
 
     expect(changed).toMatchObject({ construction: true, width: 12 });

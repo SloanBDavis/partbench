@@ -250,7 +250,7 @@ export function SketchModeDock(props: SketchModeDockProps) {
       ? {
           mode: "create",
           kind: requestedEntityKind,
-          form: createEntityDraft(requestedEntityKind, false)
+          form: createEntityDraft(false)
         }
       : undefined
   );
@@ -633,7 +633,7 @@ function GeometrySection({
                 onDraftChange({
                   mode: "create",
                   kind: tool.kind,
-                  form: createEntityDraft(tool.kind, constructionForNew)
+                  form: createEntityDraft(constructionForNew)
                 })
               }
             >

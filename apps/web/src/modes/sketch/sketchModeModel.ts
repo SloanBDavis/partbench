@@ -52,10 +52,7 @@ export function resolveSelectedSketchEntity(
   );
 }
 
-export function createEntityDraft(
-  kind: SketchCreateEntityKind,
-  construction: boolean
-): SketchEntityForm {
+export function createEntityDraft(construction: boolean): SketchEntityForm {
   return { ...defaultSketchEntityForm, construction };
 }
 

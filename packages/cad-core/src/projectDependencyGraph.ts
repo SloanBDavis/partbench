@@ -660,7 +660,7 @@ function createAllReferenceHealthEntries(
     entries.push(...generatedEntries);
 
     if (generatedEntries.length === 0) {
-      entries.push(createUnsupportedBodyReferenceHealth(options, body));
+      entries.push(createUnsupportedBodyReferenceHealth(body));
     }
   }
 
@@ -773,7 +773,6 @@ function createGeneratedReferenceHealth(
 }
 
 function createUnsupportedBodyReferenceHealth(
-  options: CreateProjectDependencyGraphOptions,
   body: CadBodySnapshot
 ): CadReferenceHealthEntry {
   const status = unsupportedBodyReferenceStatus(body);
