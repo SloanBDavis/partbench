@@ -113,6 +113,33 @@ class ThrowingTerminationTransport extends FakeGeometryWorkerTransport {
   }
 }
 
+class PartialSetupFailureTransport implements GeometryWorkerTransport {
+  messageListenerRemoved = false;
+  terminated = false;
+
+  postMessage(): void {}
+
+  addEventListener(type: "message", listener: MessageListener): void;
+  addEventListener(type: "error", listener: ErrorListener): void;
+  addEventListener(type: "message" | "error"): void {
+    if (type === "error") {
+      throw new Error("Injected listener setup failure.");
+    }
+  }
+
+  removeEventListener(type: "message", listener: MessageListener): void;
+  removeEventListener(type: "error", listener: ErrorListener): void;
+  removeEventListener(type: "message" | "error"): void {
+    if (type === "message") {
+      this.messageListenerRemoved = true;
+    }
+  }
+
+  terminate(): void {
+    this.terminated = true;
+  }
+}
+
 function createPrimitiveTessellationTransport(): FakeGeometryWorkerTransport {
   return new FakeGeometryWorkerTransport(async (request) =>
     createPrimitiveTessellationMessage(request)
@@ -166,6 +193,16 @@ function getPrimitiveForOp(op: GeometryWorkerRequest["payload"]["op"]) {
 }
 
 describe("BrowserGeometryWorker", () => {
+  it("cleans up partial listener setup when construction fails", () => {
+    const transport = new PartialSetupFailureTransport();
+
+    expect(() => new BrowserGeometryWorker(transport)).toThrow(
+      "Injected listener setup failure."
+    );
+    expect(transport.messageListenerRemoved).toBe(true);
+    expect(transport.terminated).toBe(true);
+  });
+
   it("sends geometry requests through a worker-like transport asynchronously", async () => {
     const positions = new Float32Array([0, 0, 0]);
     const indices = new Uint32Array();

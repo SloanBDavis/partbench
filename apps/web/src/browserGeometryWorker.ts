@@ -135,7 +135,17 @@ export class BrowserGeometryWorker implements GeometryWorker {
   constructor(transport = createBrowserGeometryWorkerTransport()) {
     this.#transport = transport;
     this.#transport.addEventListener("message", this.#handleMessage);
-    this.#transport.addEventListener("error", this.#handleError);
+    try {
+      this.#transport.addEventListener("error", this.#handleError);
+    } catch (error) {
+      try {
+        this.#transport.removeEventListener("message", this.#handleMessage);
+        this.#transport.terminate();
+      } catch {
+        // Preserve the listener setup failure.
+      }
+      throw error;
+    }
   }
 
   execute<TPayload extends GeometryWorkerRequest["payload"]>(
