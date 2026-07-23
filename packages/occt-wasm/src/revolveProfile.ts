@@ -285,38 +285,62 @@ function makeRectangleProfileFace(
   const uMax = profile.center[0] + profile.width / 2;
   const vMin = profile.center[1] - profile.height / 2;
   const vMax = profile.center[1] + profile.height / 2;
-  const points = [
-    createPoint(oc, mapFramePoint(frame, uMin, vMin)),
-    createPoint(oc, mapFramePoint(frame, uMax, vMin)),
-    createPoint(oc, mapFramePoint(frame, uMax, vMax)),
-    createPoint(oc, mapFramePoint(frame, uMin, vMax))
-  ] as const;
-  const polygon = new oc.BRepBuilderAPI_MakePolygon_4(
-    points[0],
-    points[1],
-    points[2],
-    points[3],
-    true
-  );
-  const wire = polygon.Wire();
-  const faceMaker = new oc.BRepBuilderAPI_MakeFace_15(wire, true);
-  const face = faceMaker.Face();
+  const points: ReturnType<typeof createPoint>[] = [];
+  let polygon:
+    | InstanceType<OpenCascadeInstance["BRepBuilderAPI_MakePolygon_4"]>
+    | undefined;
+  let wire: TopoDS_Wire | undefined;
+  let faceMaker:
+    | InstanceType<OpenCascadeInstance["BRepBuilderAPI_MakeFace_15"]>
+    | undefined;
+  let face: TopoDS_Face | undefined;
 
-  if (!polygon.IsDone() || !faceMaker.IsDone()) {
-    throw new Error("Open CASCADE failed to create a rectangle revolve face.");
-  }
-
-  return {
-    face,
-    wire,
-    delete: () => {
-      face.delete();
-      faceMaker.delete();
-      wire.delete();
-      polygon.delete();
-      points.forEach((point) => point.delete());
+  try {
+    points.push(createPoint(oc, mapFramePoint(frame, uMin, vMin)));
+    points.push(createPoint(oc, mapFramePoint(frame, uMax, vMin)));
+    points.push(createPoint(oc, mapFramePoint(frame, uMax, vMax)));
+    points.push(createPoint(oc, mapFramePoint(frame, uMin, vMax)));
+    const [first, second, third, fourth] = points;
+    if (!first || !second || !third || !fourth) {
+      throw new Error("Open CASCADE rectangle profile points are incomplete.");
     }
-  };
+    polygon = new oc.BRepBuilderAPI_MakePolygon_4(
+      first,
+      second,
+      third,
+      fourth,
+      true
+    );
+    wire = polygon.Wire();
+    faceMaker = new oc.BRepBuilderAPI_MakeFace_15(wire, true);
+    face = faceMaker.Face();
+
+    if (!polygon.IsDone() || !faceMaker.IsDone()) {
+      throw new Error(
+        "Open CASCADE failed to create a rectangle revolve face."
+      );
+    }
+
+    const handles = { face, faceMaker, polygon, wire };
+    return {
+      face: handles.face,
+      wire: handles.wire,
+      delete: () => {
+        handles.face.delete();
+        handles.faceMaker.delete();
+        handles.wire.delete();
+        handles.polygon.delete();
+        points.forEach((point) => point.delete());
+      }
+    };
+  } catch (error) {
+    face?.delete();
+    faceMaker?.delete();
+    wire?.delete();
+    polygon?.delete();
+    points.forEach((point) => point.delete());
+    throw error;
+  }
 }
 
 function makeCircleProfileFace(
