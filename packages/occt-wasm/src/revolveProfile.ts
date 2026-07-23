@@ -289,7 +289,7 @@ function makeRectangleProfileFace(
     createPoint(oc, mapFramePoint(frame, uMax, vMin)),
     createPoint(oc, mapFramePoint(frame, uMax, vMax)),
     createPoint(oc, mapFramePoint(frame, uMin, vMax))
-  ];
+  ] as const;
   const polygon = new oc.BRepBuilderAPI_MakePolygon_4(
     points[0],
     points[1],
