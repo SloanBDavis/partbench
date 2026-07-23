@@ -903,6 +903,7 @@ function createTopologyShapeIndex(
       }
     }
 
+    let disposed = false;
     return {
       entries,
       map: shapeMap,
@@ -912,6 +913,8 @@ function createTopologyShapeIndex(
         return index > 0 ? entries[index - 1] : undefined;
       },
       delete: () => {
+        if (disposed) return;
+        disposed = true;
         for (const entry of entries) {
           entry.shape.delete();
         }
