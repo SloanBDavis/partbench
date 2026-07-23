@@ -2603,14 +2603,40 @@ function solveLinearSystem(
   rhs: readonly number[]
 ): readonly number[] | undefined {
   const size = rhs.length;
-  const augmented = matrix.map((row, index) => [...row, rhs[index]]);
+  if (
+    matrix.length !== size ||
+    matrix.some(
+      (row) =>
+        row.length !== size || row.some((value) => !Number.isFinite(value))
+    ) ||
+    rhs.some((value) => !Number.isFinite(value))
+  ) {
+    return undefined;
+  }
+  const augmented: number[][] = [];
+  for (let rowIndex = 0; rowIndex < size; rowIndex += 1) {
+    const row = matrix[rowIndex];
+    const rhsValue = rhs[rowIndex];
+    if (!row || rhsValue === undefined) {
+      return undefined;
+    }
+    augmented.push([...row, rhsValue]);
+  }
 
   for (let pivot = 0; pivot < size; pivot += 1) {
+    const initialPivotValue = augmented[pivot]?.[pivot];
+    if (initialPivotValue === undefined) {
+      return undefined;
+    }
     let pivotRow = pivot;
-    let pivotAbs = Math.abs(augmented[pivot][pivot]);
+    let pivotAbs = Math.abs(initialPivotValue);
 
     for (let row = pivot + 1; row < size; row += 1) {
-      const candidateAbs = Math.abs(augmented[row][pivot]);
+      const candidateValue = augmented[row]?.[pivot];
+      if (candidateValue === undefined) {
+        return undefined;
+      }
+      const candidateAbs = Math.abs(candidateValue);
       if (candidateAbs > pivotAbs) {
         pivotAbs = candidateAbs;
         pivotRow = row;
@@ -2622,28 +2648,57 @@ function solveLinearSystem(
     }
 
     if (pivotRow !== pivot) {
-      const temp = augmented[pivot];
-      augmented[pivot] = augmented[pivotRow];
-      augmented[pivotRow] = temp;
+      const currentRow = augmented[pivot];
+      const replacementRow = augmented[pivotRow];
+      if (!currentRow || !replacementRow) {
+        return undefined;
+      }
+      augmented[pivot] = replacementRow;
+      augmented[pivotRow] = currentRow;
     }
 
-    const pivotValue = augmented[pivot][pivot];
+    const normalizedPivotRow = augmented[pivot];
+    const pivotValue = normalizedPivotRow?.[pivot];
+    if (!normalizedPivotRow || pivotValue === undefined) {
+      return undefined;
+    }
     for (let col = pivot; col <= size; col += 1) {
-      augmented[pivot][col] /= pivotValue;
+      const value = normalizedPivotRow[col];
+      if (value === undefined) {
+        return undefined;
+      }
+      normalizedPivotRow[col] = value / pivotValue;
     }
 
     for (let row = 0; row < size; row += 1) {
       if (row === pivot) {
         continue;
       }
-      const factor = augmented[row][pivot];
+      const targetRow = augmented[row];
+      const factor = targetRow?.[pivot];
+      if (!targetRow || factor === undefined) {
+        return undefined;
+      }
       for (let col = pivot; col <= size; col += 1) {
-        augmented[row][col] -= factor * augmented[pivot][col];
+        const targetValue = targetRow[col];
+        const pivotValueAtColumn = normalizedPivotRow[col];
+        if (targetValue === undefined || pivotValueAtColumn === undefined) {
+          return undefined;
+        }
+        targetRow[col] = targetValue - factor * pivotValueAtColumn;
       }
     }
   }
 
-  return augmented.map((row) => row[size]);
+  const solution: number[] = [];
+  for (const row of augmented) {
+    const value = row[size];
+    if (value === undefined || !Number.isFinite(value)) {
+      return undefined;
+    }
+    solution.push(value);
+  }
+  return solution;
 }
 
 function classifySolveStatus({
