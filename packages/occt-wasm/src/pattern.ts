@@ -291,32 +291,26 @@ export function makeLinearPatternShape(
         continue;
       }
 
+      const accumulatedShape = previousShape;
+      if (!accumulatedShape) {
+        translatedShape.delete();
+        throw {
+          code: "EMPTY_RESULT",
+          message:
+            "Open CASCADE linear pattern lost its accumulated result shape."
+        } satisfies GeometryKernelLikeError;
+      }
+
       try {
-        const range = new oc.Message_ProgressRange_1();
-
-        try {
-          const fuse = new oc.BRepAlgoAPI_Fuse_3(
-            previousShape!,
-            translatedShape,
-            range
-          );
-
-          if (fuse.HasErrors()) {
-            fuse.delete();
-            throw {
-              code: "PATTERN_GEOMETRY_FAILED",
-              message: `Open CASCADE linear pattern BRepAlgoAPI_Fuse failed at instance ${i}.`
-            } satisfies GeometryKernelLikeError;
-          }
-
-          const fusedShape = copyShape(oc, fuse.Shape());
-          fuse.delete();
-          previousShape!.delete();
-          translatedShape.delete();
-          previousShape = fusedShape;
-        } finally {
-          range.delete();
-        }
+        const fusedShape = fusePatternShapes(
+          oc,
+          accumulatedShape,
+          translatedShape,
+          `Open CASCADE linear pattern BRepAlgoAPI_Fuse failed at instance ${i}.`
+        );
+        accumulatedShape.delete();
+        translatedShape.delete();
+        previousShape = fusedShape;
       } catch (error) {
         translatedShape.delete();
         throw error;
@@ -369,32 +363,26 @@ export function makeCircularPatternShape(
         continue;
       }
 
+      const accumulatedShape = previousShape;
+      if (!accumulatedShape) {
+        rotatedShape.delete();
+        throw {
+          code: "EMPTY_RESULT",
+          message:
+            "Open CASCADE circular pattern lost its accumulated result shape."
+        } satisfies GeometryKernelLikeError;
+      }
+
       try {
-        const range = new oc.Message_ProgressRange_1();
-
-        try {
-          const fuse = new oc.BRepAlgoAPI_Fuse_3(
-            previousShape!,
-            rotatedShape,
-            range
-          );
-
-          if (fuse.HasErrors()) {
-            fuse.delete();
-            throw {
-              code: "PATTERN_GEOMETRY_FAILED",
-              message: `Open CASCADE circular pattern BRepAlgoAPI_Fuse failed at instance ${i}.`
-            } satisfies GeometryKernelLikeError;
-          }
-
-          const fusedShape = copyShape(oc, fuse.Shape());
-          fuse.delete();
-          previousShape!.delete();
-          rotatedShape.delete();
-          previousShape = fusedShape;
-        } finally {
-          range.delete();
-        }
+        const fusedShape = fusePatternShapes(
+          oc,
+          accumulatedShape,
+          rotatedShape,
+          `Open CASCADE circular pattern BRepAlgoAPI_Fuse failed at instance ${i}.`
+        );
+        accumulatedShape.delete();
+        rotatedShape.delete();
+        previousShape = fusedShape;
       } catch (error) {
         rotatedShape.delete();
         throw error;
@@ -413,6 +401,30 @@ export function makeCircularPatternShape(
     return finalShape;
   } finally {
     previousShape?.delete();
+  }
+}
+
+function fusePatternShapes(
+  oc: OpenCascadeInstance,
+  accumulatedShape: TopoDS_Shape,
+  instanceShape: TopoDS_Shape,
+  failureMessage: string
+): TopoDS_Shape {
+  const range = new oc.Message_ProgressRange_1();
+  let fuse: InstanceType<OpenCascadeInstance["BRepAlgoAPI_Fuse_3"]> | undefined;
+
+  try {
+    fuse = new oc.BRepAlgoAPI_Fuse_3(accumulatedShape, instanceShape, range);
+    if (fuse.HasErrors()) {
+      throw {
+        code: "PATTERN_GEOMETRY_FAILED",
+        message: failureMessage
+      } satisfies GeometryKernelLikeError;
+    }
+    return copyBuilderShape(oc, fuse);
+  } finally {
+    fuse?.delete();
+    range.delete();
   }
 }
 
@@ -436,7 +448,7 @@ function applyTranslation(
         } satisfies GeometryKernelLikeError;
       }
 
-      return copyShape(oc, transform.Shape());
+      return copyBuilderShape(oc, transform);
     } finally {
       transform.delete();
     }
@@ -478,7 +490,7 @@ function applyRotation(
         } satisfies GeometryKernelLikeError;
       }
 
-      return copyShape(oc, transform.Shape());
+      return copyBuilderShape(oc, transform);
     } finally {
       transform.delete();
     }
@@ -487,6 +499,19 @@ function applyRotation(
     ax1.delete();
     dir.delete();
     origin.delete();
+  }
+}
+
+function copyBuilderShape(
+  oc: OpenCascadeInstance,
+  builder: { Shape(): TopoDS_Shape }
+): TopoDS_Shape {
+  const shape = builder.Shape();
+
+  try {
+    return copyShape(oc, shape);
+  } finally {
+    shape.delete();
   }
 }
 
