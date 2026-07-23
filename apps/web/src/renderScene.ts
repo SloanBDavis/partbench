@@ -508,13 +508,7 @@ function createSketchRectangleEdges(
     [center[0] - halfWidth, center[1] + halfHeight]
   ] as const;
 
-  return corners.map((corner, index) => ({
-    start: mapSketchPointToDisplayFrame(frame, corner),
-    end: mapSketchPointToDisplayFrame(
-      frame,
-      corners[(index + 1) % corners.length]
-    )
-  }));
+  return createClosedSketchPolylineEdges(frame, corners);
 }
 
 function createSketchCircleEdges(
@@ -532,13 +526,24 @@ function createSketchCircleEdges(
     ] as const;
   });
 
-  return points.map((point, index) => ({
-    start: mapSketchPointToDisplayFrame(frame, point),
-    end: mapSketchPointToDisplayFrame(
-      frame,
-      points[(index + 1) % points.length]
-    )
-  }));
+  return createClosedSketchPolylineEdges(frame, points);
+}
+
+function createClosedSketchPolylineEdges(
+  frame: SketchDisplayFrame,
+  points: readonly (readonly [number, number])[]
+): readonly RenderEdgeSegment[] {
+  const edges: RenderEdgeSegment[] = [];
+  for (let index = 0; index < points.length; index += 1) {
+    const start = points[index];
+    const end = points[(index + 1) % points.length];
+    if (!start || !end) continue;
+    edges.push({
+      start: mapSketchPointToDisplayFrame(frame, start),
+      end: mapSketchPointToDisplayFrame(frame, end)
+    });
+  }
+  return edges;
 }
 
 export function createSketchArcDisplayEdges(
