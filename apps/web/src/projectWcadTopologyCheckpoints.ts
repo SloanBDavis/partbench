@@ -1185,6 +1185,7 @@ function createNormalizedCheckpointSignature(
 }
 
 const TOPOLOGY_ANCHOR_PROOF_AXES = ["x", "y", "z"] as const;
+const TOPOLOGY_ANCHOR_PROOF_AXIS_INDICES = [0, 1, 2] as const;
 const TOPOLOGY_ANCHOR_PROOF_BOUNDS_TOLERANCE = 1e-9;
 const TOPOLOGY_ANCHOR_PROOF_NORMAL_TOLERANCE = 1e-6;
 
@@ -1218,21 +1219,23 @@ function findAxisAlignedPlaneForTopologyAnchorProof(
   entity: CadBodyExactTopologyEntityDescriptor,
   bounds: NonNullable<CadBodyExactTopologyEntityDescriptor["bounds"]>
 ): { readonly axis: "x" | "y" | "z"; readonly coordinate: number } | undefined {
-  const degenerateAxes = [0, 1, 2].filter(
+  const degenerateAxes = TOPOLOGY_ANCHOR_PROOF_AXIS_INDICES.filter(
     (index) =>
       Math.abs(bounds.max[index] - bounds.min[index]) <=
       TOPOLOGY_ANCHOR_PROOF_BOUNDS_TOLERANCE
   );
+  const [axisIndex] = degenerateAxes;
 
-  if (degenerateAxes.length !== 1) {
+  if (degenerateAxes.length !== 1 || axisIndex === undefined) {
     return findAxisAlignedPlaneFromNormal(entity, bounds);
   }
 
-  const axisIndex = degenerateAxes[0]!;
+  const axis = TOPOLOGY_ANCHOR_PROOF_AXES[axisIndex];
+  const coordinate = bounds.min[axisIndex];
 
   return {
-    axis: TOPOLOGY_ANCHOR_PROOF_AXES[axisIndex],
-    coordinate: bounds.min[axisIndex]
+    axis,
+    coordinate
   };
 }
 
@@ -1250,7 +1253,7 @@ function findAxisAlignedPlaneFromNormal(
     return undefined;
   }
 
-  const axisIndex = [0, 1, 2].find((index) =>
+  const axisIndex = TOPOLOGY_ANCHOR_PROOF_AXIS_INDICES.find((index) =>
     normal.every((component, componentIndex) => {
       const magnitude = Math.abs(component);
 
@@ -1264,9 +1267,13 @@ function findAxisAlignedPlaneFromNormal(
     return undefined;
   }
 
+  const axis = TOPOLOGY_ANCHOR_PROOF_AXES[axisIndex];
+  const min = bounds.min[axisIndex];
+  const max = bounds.max[axisIndex];
+
   return {
-    axis: TOPOLOGY_ANCHOR_PROOF_AXES[axisIndex],
-    coordinate: (bounds.min[axisIndex] + bounds.max[axisIndex]) / 2
+    axis,
+    coordinate: (min + max) / 2
   };
 }
 
