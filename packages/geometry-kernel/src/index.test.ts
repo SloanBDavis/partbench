@@ -9,11 +9,14 @@ import {
   executeGeometryKernelRequestWithMeshFactory,
   MAX_BOOLEAN_EXTRUDE_RECIPE_DEPTH,
   type BooleanExtrudeSource,
+  type ExactRevolveMetadataSource,
   type GeometryKernelExactTopologyCheckpointPayload,
   type GeometryKernelImportedBodyCheckpointPayload,
   type GeometryKernelImportedBodyPayload,
   type GeometryKernelMeshFactories,
-  type GeometryKernelTopologyEntityDescriptor
+  type GeometryKernelTopologyEntityDescriptor,
+  type ResolvedPlanarWireProfile,
+  type RevolveGeometryAxis
 } from "./kernel";
 
 const OCCT_WASM_TEST_TIMEOUT_MS = 120_000;
@@ -254,13 +257,17 @@ function createImportedBodyPayloadFixture(
     topologySnapshot,
     signaturePayload: checkpointPayloadBase.signaturePayload
   };
+  const bodyEntity = checkpointPayload.topologySnapshot.entities[0];
+  if (!bodyEntity?.bounds) {
+    throw new Error("Imported body fixture requires one bounded body entity.");
+  }
 
   return {
     sourceFormat: "step",
     sourceFileName,
     bodyName: sourceFileName.replace(/\.(step|stp)$/i, ""),
     shapeType: "solid",
-    bounds: checkpointPayload.topologySnapshot.entities[0].bounds!,
+    bounds: bodyEntity.bounds,
     solidCount: checkpointPayload.topologySnapshot.entityCounts.solidCount,
     faceCount: checkpointPayload.topologySnapshot.entityCounts.faceCount,
     edgeCount: checkpointPayload.topologySnapshot.entityCounts.edgeCount,
@@ -475,6 +482,9 @@ describe("geometry-kernel facade", () => {
       }
 
       const body = response.bodies[0];
+      if (!body) {
+        throw new Error("Expected one imported STEP body.");
+      }
       const brepText = new TextDecoder().decode(
         body.checkpointPayload.brepBytes
       );
@@ -858,7 +868,11 @@ describe("geometry-kernel facade", () => {
       // whole copy to negative X, proving the reflection actually happened.
       const xs: number[] = [];
       for (let i = 0; i < response.mesh.positions.length; i += 3) {
-        xs.push(response.mesh.positions[i]);
+        const x = response.mesh.positions[i];
+        if (x === undefined) {
+          throw new Error("Expected complete mirrored mesh positions.");
+        }
+        xs.push(x);
       }
       expect(Math.max(...xs)).toBeLessThanOrEqual(1e-6);
     },
@@ -906,7 +920,11 @@ describe("geometry-kernel facade", () => {
       // [-3, -1]), so the result straddles the YZ plane.
       const xs: number[] = [];
       for (let i = 0; i < response.mesh.positions.length; i += 3) {
-        xs.push(response.mesh.positions[i]);
+        const x = response.mesh.positions[i];
+        if (x === undefined) {
+          throw new Error("Expected complete mirrored mesh positions.");
+        }
+        xs.push(x);
       }
       expect(Math.max(...xs)).toBeGreaterThan(0.5);
       expect(Math.min(...xs)).toBeLessThan(-0.5);
@@ -1188,6 +1206,17 @@ describe("geometry-kernel facade", () => {
     });
   });
 
+  const [bottomLine, rightArc, ...remainingWireSegments] =
+    mixedWireProfile.segments;
+  if (
+    !bottomLine ||
+    bottomLine.kind !== "line" ||
+    !rightArc ||
+    rightArc.kind !== "arc"
+  ) {
+    throw new Error("Mixed wire fixture requires its leading line and arc.");
+  }
+
   it.each([
     [
       "gap",
@@ -1198,8 +1227,9 @@ describe("geometry-kernel facade", () => {
       {
         ...mixedWireProfile,
         segments: [
-          { ...mixedWireProfile.segments[0], end: [-2, -1] as const },
-          ...mixedWireProfile.segments.slice(1)
+          { ...bottomLine, end: [-2, -1] as const },
+          rightArc,
+          ...remainingWireSegments
         ]
       }
     ],
@@ -1208,9 +1238,9 @@ describe("geometry-kernel facade", () => {
       {
         ...mixedWireProfile,
         segments: [
-          mixedWireProfile.segments[0],
-          { ...mixedWireProfile.segments[1], sweepAngleDegrees: 360 },
-          ...mixedWireProfile.segments.slice(2)
+          bottomLine,
+          { ...rightArc, sweepAngleDegrees: 360 },
+          ...remainingWireSegments
         ]
       }
     ],
@@ -1219,9 +1249,9 @@ describe("geometry-kernel facade", () => {
       {
         ...mixedWireProfile,
         segments: [
-          mixedWireProfile.segments[0],
-          { ...mixedWireProfile.segments[1], radius: Number.NaN },
-          ...mixedWireProfile.segments.slice(2)
+          bottomLine,
+          { ...rightArc, radius: Number.NaN },
+          ...remainingWireSegments
         ]
       }
     ]
@@ -5305,15 +5335,15 @@ describe("geometry-kernel facade", () => {
       ],
       sourceIdentity: "circle-wire",
       geometryPolicy: mixedWireProfile.geometryPolicy
-    };
+    } satisfies ResolvedPlanarWireProfile;
     const reversedCircleWire = {
       ...circleWire,
       sourceIdentity: "reversed-circle-wire",
-      segments: [
-        { ...circleWire.segments[0], sweepAngleDegrees: -180 },
-        { ...circleWire.segments[1], sweepAngleDegrees: -180 }
-      ]
-    };
+      segments: circleWire.segments.map((segment) => ({
+        ...segment,
+        sweepAngleDegrees: -180
+      }))
+    } satisfies ResolvedPlanarWireProfile;
     const scaledCircleWire = {
       ...circleWire,
       sourceIdentity: "scaled-circle-wire",
@@ -5321,7 +5351,7 @@ describe("geometry-kernel facade", () => {
         ...segment,
         radius: 1_000_000
       }))
-    };
+    } satisfies ResolvedPlanarWireProfile;
     const endpointTouchTriangle = {
       kind: "wire" as const,
       frame: {
@@ -5352,7 +5382,7 @@ describe("geometry-kernel facade", () => {
       ],
       sourceIdentity: "endpoint-touch-triangle",
       geometryPolicy: mixedWireProfile.geometryPolicy
-    };
+    } satisfies ResolvedPlanarWireProfile;
     const oppositeVertexDiamond = {
       kind: "wire" as const,
       frame: mixedWireProfile.frame,
@@ -5385,8 +5415,12 @@ describe("geometry-kernel facade", () => {
       ],
       sourceIdentity: "opposite-vertex-diamond",
       geometryPolicy: mixedWireProfile.geometryPolicy
-    };
-    const cases = [
+    } satisfies ResolvedPlanarWireProfile;
+    const cases: readonly {
+      readonly label: string;
+      readonly profile: ResolvedPlanarWireProfile;
+      readonly axis: RevolveGeometryAxis;
+    }[] = [
       {
         label: "crosses beyond the finite axis endpoints",
         profile: circleWire,
@@ -5436,7 +5470,7 @@ describe("geometry-kernel facade", () => {
         profile: testCase.profile,
         axis: testCase.axis,
         angleDegrees: 180
-      };
+      } satisfies ExactRevolveMetadataSource;
       const [mesh, exact, step] = await Promise.all([
         executeGeometryKernelRequestWithMeshFactory(factories, {
           ...source,
@@ -5526,11 +5560,8 @@ function getMeshBounds(positions: Float32Array): {
   const points: Array<readonly [number, number, number]> = [];
 
   for (let index = 0; index < positions.length; index += 3) {
-    points.push([
-      cleanNumber(positions[index]),
-      cleanNumber(positions[index + 1]),
-      cleanNumber(positions[index + 2])
-    ]);
+    const [x, y, z] = readTestPositionTuple(positions, index);
+    points.push([cleanNumber(x), cleanNumber(y), cleanNumber(z)]);
   }
 
   return {
@@ -5558,7 +5589,7 @@ function expectBooleanBounds(
   },
   exactAxes: readonly number[]
 ): void {
-  for (let index = 0; index < 3; index += 1) {
+  for (const index of [0, 1, 2] as const) {
     if (exactAxes.includes(index)) {
       expect(actual.min[index]).toBeCloseTo(expected.min[index], 6);
       expect(actual.max[index]).toBeCloseTo(expected.max[index], 6);
@@ -5573,6 +5604,19 @@ function expectBooleanBounds(
       );
     }
   }
+}
+
+function readTestPositionTuple(
+  positions: Float32Array,
+  index: number
+): readonly [number, number, number] {
+  const x = positions[index];
+  const y = positions[index + 1];
+  const z = positions[index + 2];
+  if (x === undefined || y === undefined || z === undefined) {
+    throw new Error("Expected complete XYZ mesh positions.");
+  }
+  return [x, y, z];
 }
 
 function cleanNumber(value: number): number {
