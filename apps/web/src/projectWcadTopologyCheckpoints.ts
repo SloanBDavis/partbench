@@ -968,8 +968,9 @@ function chooseOnlySnapshotEntity(
       readonly status: TopologyAnchorCreationPlanQueryResponse["status"];
       readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
     } {
-  if (candidates.length === 1) {
-    return { ok: true, entity: candidates[0] };
+  const [candidate] = candidates;
+  if (candidates.length === 1 && candidate) {
+    return { ok: true, entity: candidate };
   }
 
   return {
