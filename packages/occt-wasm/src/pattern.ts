@@ -244,7 +244,12 @@ export function withOcctPatternSeedShape<T>(
     );
 
     try {
-      return readShape(shapeBuilder.Shape());
+      const shape = shapeBuilder.Shape();
+      try {
+        return readShape(shape);
+      } finally {
+        shape.delete();
+      }
     } finally {
       shapeBuilder.delete();
     }
