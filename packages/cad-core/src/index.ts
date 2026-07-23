@@ -9096,7 +9096,9 @@ function isCadTopologyEntityBounds(value: unknown): boolean {
   return (
     min.every(Number.isFinite) &&
     max.every(Number.isFinite) &&
-    min.every((component, index) => component <= max[index])
+    min[0] <= max[0] &&
+    min[1] <= max[1] &&
+    min[2] <= max[2]
   );
 }
 
