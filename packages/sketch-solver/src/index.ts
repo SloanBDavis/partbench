@@ -2744,19 +2744,48 @@ function analyzeResidualSystem(
     residuals,
     settings.finiteDifferenceStep
   );
+  const augmented = appendMatrixColumn(jacobian, residuals);
+  const jacobianRank = matrixRank(jacobian);
   return {
-    jacobianRank: matrixRank(jacobian),
-    augmentedRank: matrixRank(
-      jacobian.map((row, index) => [...row, residuals[index]])
-    )
+    jacobianRank,
+    augmentedRank: augmented ? matrixRank(augmented) : jacobianRank
   };
 }
 
+function appendMatrixColumn(
+  matrix: readonly (readonly number[])[],
+  column: readonly number[]
+): number[][] | undefined {
+  if (matrix.length !== column.length) {
+    return undefined;
+  }
+  const augmented: number[][] = [];
+  for (let index = 0; index < matrix.length; index += 1) {
+    const row = matrix[index];
+    const value = column[index];
+    if (!row || value === undefined) {
+      return undefined;
+    }
+    augmented.push([...row, value]);
+  }
+  return augmented;
+}
+
 function matrixRank(matrix: readonly (readonly number[])[]): number {
-  if (matrix.length === 0 || (matrix[0]?.length ?? 0) === 0) return 0;
+  const firstRow = matrix[0];
+  if (!firstRow || firstRow.length === 0) return 0;
+  const columnCount = firstRow.length;
+  if (
+    matrix.some(
+      (row) =>
+        row.length !== columnCount ||
+        row.some((value) => !Number.isFinite(value))
+    )
+  ) {
+    return 0;
+  }
   const reduced = matrix.map((row) => [...row]);
   const rowCount = reduced.length;
-  const columnCount = reduced[0].length;
   const scale = reduced.reduce(
     (maximum, row) =>
       row.reduce(
@@ -2769,10 +2798,18 @@ function matrixRank(matrix: readonly (readonly number[])[]): number {
   let rank = 0;
 
   for (let column = 0; column < columnCount && rank < rowCount; column += 1) {
+    const initialPivot = reduced[rank]?.[column];
+    if (initialPivot === undefined) {
+      return rank;
+    }
     let pivotRow = rank;
-    let pivotMagnitude = Math.abs(reduced[pivotRow][column]);
+    let pivotMagnitude = Math.abs(initialPivot);
     for (let row = rank + 1; row < rowCount; row += 1) {
-      const magnitude = Math.abs(reduced[row][column]);
+      const candidate = reduced[row]?.[column];
+      if (candidate === undefined) {
+        return rank;
+      }
+      const magnitude = Math.abs(candidate);
       if (magnitude > pivotMagnitude) {
         pivotMagnitude = magnitude;
         pivotRow = row;
@@ -2780,16 +2817,39 @@ function matrixRank(matrix: readonly (readonly number[])[]): number {
     }
     if (pivotMagnitude <= threshold) continue;
 
-    [reduced[rank], reduced[pivotRow]] = [reduced[pivotRow], reduced[rank]];
-    const pivot = reduced[rank][column];
+    const rankRow = reduced[rank];
+    const selectedPivotRow = reduced[pivotRow];
+    if (!rankRow || !selectedPivotRow) {
+      return rank;
+    }
+    reduced[rank] = selectedPivotRow;
+    reduced[pivotRow] = rankRow;
+    const normalizedRow = reduced[rank];
+    const pivot = normalizedRow?.[column];
+    if (!normalizedRow || pivot === undefined) {
+      return rank;
+    }
     for (let nextColumn = column; nextColumn < columnCount; nextColumn += 1) {
-      reduced[rank][nextColumn] /= pivot;
+      const value = normalizedRow[nextColumn];
+      if (value === undefined) {
+        return rank;
+      }
+      normalizedRow[nextColumn] = value / pivot;
     }
     for (let row = rank + 1; row < rowCount; row += 1) {
-      const factor = reduced[row][column];
+      const targetRow = reduced[row];
+      const factor = targetRow?.[column];
+      if (!targetRow || factor === undefined) {
+        return rank;
+      }
       if (Math.abs(factor) <= threshold) continue;
       for (let nextColumn = column; nextColumn < columnCount; nextColumn += 1) {
-        reduced[row][nextColumn] -= factor * reduced[rank][nextColumn];
+        const targetValue = targetRow[nextColumn];
+        const pivotValue = normalizedRow[nextColumn];
+        if (targetValue === undefined || pivotValue === undefined) {
+          return rank;
+        }
+        targetRow[nextColumn] = targetValue - factor * pivotValue;
       }
     }
     rank += 1;
