@@ -270,6 +270,7 @@ function bytesToBase64(bytes: Uint8Array): string {
 
   for (let index = 0; index < bytes.length; index += 3) {
     const first = bytes[index];
+    if (first === undefined) break;
     const second = bytes[index + 1];
     const third = bytes[index + 2];
     const triplet = (first << 16) | ((second ?? 0) << 8) | (third ?? 0);
