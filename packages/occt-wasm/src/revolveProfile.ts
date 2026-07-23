@@ -322,10 +322,13 @@ function makeRectangleProfileFace(
     }
 
     const handles = { face, faceMaker, polygon, wire };
+    let disposed = false;
     return {
       face: handles.face,
       wire: handles.wire,
       delete: () => {
+        if (disposed) return;
+        disposed = true;
         handles.face.delete();
         handles.faceMaker.delete();
         handles.wire.delete();
@@ -393,10 +396,13 @@ function makeCircleProfileFace(
       wire,
       wireMaker
     };
+    let disposed = false;
     return {
       face: handles.face,
       wire: handles.wire,
       delete: () => {
+        if (disposed) return;
+        disposed = true;
         handles.face.delete();
         handles.faceMaker.delete();
         handles.wire.delete();
