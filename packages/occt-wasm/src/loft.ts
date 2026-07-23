@@ -84,9 +84,16 @@ export function makeLoftShape(
   }
 
   const profiles: ProfileFaceHandle[] = [];
-  const range = new oc.Message_ProgressRange_1();
-  const loft = new oc.BRepOffsetAPI_ThruSections(true, false, 1e-6);
+  let range:
+    | InstanceType<OpenCascadeInstance["Message_ProgressRange_1"]>
+    | undefined;
+  let loft:
+    | InstanceType<OpenCascadeInstance["BRepOffsetAPI_ThruSections"]>
+    | undefined;
+
   try {
+    range = new oc.Message_ProgressRange_1();
+    loft = new oc.BRepOffsetAPI_ThruSections(true, false, 1e-6);
     for (const section of input.sections) {
       const profile = makeProfileFace(
         oc,
@@ -105,18 +112,19 @@ export function makeLoftShape(
       };
     }
     const shape = loft.Shape();
+    const handles = { loft, range, shape };
     return {
-      shape,
+      shape: handles.shape,
       delete: () => {
-        shape.delete();
-        loft.delete();
-        range.delete();
+        handles.shape.delete();
+        handles.loft.delete();
+        handles.range.delete();
         profiles.forEach((profile) => profile.delete());
       }
     };
   } catch (error) {
-    loft.delete();
-    range.delete();
+    loft?.delete();
+    range?.delete();
     profiles.forEach((profile) => profile.delete());
     throw error;
   }
