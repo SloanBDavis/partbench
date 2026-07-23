@@ -1321,6 +1321,9 @@ function topologicallySortParameters(
 
   for (let index = 0; index < queue.length; index += 1) {
     const parameterId = queue[index];
+    if (parameterId === undefined) {
+      break;
+    }
     order.push(parameterId);
 
     for (const dependent of dependents.get(parameterId) ?? []) {
