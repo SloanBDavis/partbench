@@ -15,25 +15,24 @@ import { createSketchModelingSelectionContext } from "./sketchModelingSelectionC
 
 describe("viewportSelectionDisplay", () => {
   it("carries a sketch entity pick through display, highlight, and inspector context", () => {
+    const arcEntity = {
+      id: "arc:entity",
+      kind: "arc",
+      center: [0, 0],
+      radius: 2,
+      startAngleDegrees: 350,
+      sweepAngleDegrees: 30,
+      construction: false
+    } as const;
     const sketch: SketchSnapshot = {
       id: "sketch:source",
       name: "Arc sketch",
       plane: "XY",
-      entities: [
-        {
-          id: "arc:entity",
-          kind: "arc",
-          center: [0, 0],
-          radius: 2,
-          startAngleDegrees: 350,
-          sweepAngleDegrees: 30,
-          construction: false
-        }
-      ]
+      entities: [arcEntity]
     };
     const renderTargetId = createSketchEntitySelectionId(
       sketch.id,
-      sketch.entities[0].id
+      arcEntity.id
     );
     const pickIntent = resolveViewportPickIntent({
       pickedRenderId: renderTargetId,
@@ -63,14 +62,14 @@ describe("viewportSelectionDisplay", () => {
     expect(pickIntent).toMatchObject({
       kind: "sketchEntity",
       sketchId: sketch.id,
-      entityId: sketch.entities[0].id,
+      entityId: arcEntity.id,
       selectedId: renderTargetId
     });
     expect(display).toMatchObject({
       selectionKind: "sketchEntity",
       renderTargetId,
       sketchId: sketch.id,
-      entityId: sketch.entities[0].id
+      entityId: arcEntity.id
     });
     expect(visualState).toMatchObject({
       selectedRenderTargetId: renderTargetId,
@@ -85,7 +84,7 @@ describe("viewportSelectionDisplay", () => {
     expect(inspectorContext).toMatchObject({
       selectionKind: "sketchEntity",
       sketch: { id: sketch.id },
-      entity: { id: sketch.entities[0].id, kind: "arc" }
+      entity: { id: arcEntity.id, kind: "arc" }
     });
   });
 
