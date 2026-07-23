@@ -244,6 +244,7 @@ export function ViewportCanvas({
     });
 
     const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return;
       const { height, width } = entry.contentRect;
       resizeFrameRef.current?.schedule({
         width: Math.max(width, 320),
