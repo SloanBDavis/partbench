@@ -60,6 +60,7 @@ describe("renderScene", () => {
         ]
       ])
     );
+    const renderedMesh = requireItem(scene.meshes, 0, "box mesh");
 
     expect(scene.primitives).toEqual([]);
     expect(scene.meshes).toEqual([
@@ -68,7 +69,7 @@ describe("renderScene", () => {
         edgeSegments: createMeshDisplayEdges(box)
       }
     ]);
-    expect(scene.meshes[0].edgeSegments).toHaveLength(12);
+    expect(renderedMesh.edgeSegments).toHaveLength(12);
   });
 
   it("keeps renderable IDs stable for primitive and mesh selection", () => {
@@ -96,11 +97,12 @@ describe("renderScene", () => {
         ]
       ])
     );
+    const renderedMesh = requireItem(scene.meshes, 0, "selected box mesh");
 
     expect(scene.meshes.map((renderable) => renderable.id)).toEqual([
       "selected_box"
     ]);
-    expect(scene.meshes[0].edgeSegments).toHaveLength(12);
+    expect(renderedMesh.edgeSegments).toHaveLength(12);
     expect(scene.primitives.map((renderable) => renderable.id)).toEqual([
       "selected_cylinder"
     ]);
@@ -130,10 +132,11 @@ describe("renderScene", () => {
         ]
       ])
     );
+    const renderedMesh = requireItem(scene.meshes, 0, "cylinder mesh");
 
     expect(scene.primitives).toEqual([]);
-    expect(scene.meshes[0].edgeSegments).toHaveLength(68);
-    expect(scene.meshes[0].edgeSegments?.slice(-4)).toEqual([
+    expect(renderedMesh.edgeSegments).toHaveLength(68);
+    expect(renderedMesh.edgeSegments?.slice(-4)).toEqual([
       {
         start: [1, 0, 1],
         end: [1, 0, -1]
@@ -177,10 +180,11 @@ describe("renderScene", () => {
         ]
       ])
     );
+    const renderedMesh = requireItem(scene.meshes, 0, "sphere mesh");
 
     expect(scene.primitives).toEqual([]);
-    expect(scene.meshes[0].edgeSegments).toHaveLength(96);
-    expect(scene.meshes[0].edgeSegments?.[0]).toEqual({
+    expect(renderedMesh.edgeSegments).toHaveLength(96);
+    expect(renderedMesh.edgeSegments?.[0]).toEqual({
       start: [1, 0, 0],
       end: [0.980785280403, 0.195090322016, 0]
     });
@@ -226,10 +230,12 @@ describe("renderScene", () => {
         ]
       ])
     );
+    const coneMesh = requireItem(scene.meshes, 0, "cone mesh");
+    const torusMesh = requireItem(scene.meshes, 1, "torus mesh");
 
     expect(scene.primitives).toEqual([]);
-    expect(scene.meshes[0].edgeSegments?.length).toBeGreaterThan(32);
-    expect(scene.meshes[1].edgeSegments?.length).toBeGreaterThan(96);
+    expect(coneMesh.edgeSegments?.length).toBeGreaterThan(32);
+    expect(torusMesh.edgeSegments?.length).toBeGreaterThan(96);
   });
 
   it("keeps primitive fallback when derived geometry is unavailable", () => {
@@ -336,19 +342,20 @@ describe("renderScene", () => {
       }
     };
     const scene = createRenderSceneInputs([], new Map(), [source]);
+    const renderedMesh = requireItem(scene.meshes, 0, "attached extrude mesh");
 
     expect(scene.primitives).toEqual([]);
     expect(scene.meshes).toHaveLength(1);
-    expect(scene.meshes[0]).toMatchObject({
+    expect(renderedMesh).toMatchObject({
       id: "body_attached",
       kind: "mesh",
       indices: [],
       source: "extrude-fallback"
     });
 
-    const xValues = collectEdgeCoordinate(scene.meshes[0].edgeSegments, 0);
-    const yValues = collectEdgeCoordinate(scene.meshes[0].edgeSegments, 1);
-    const zValues = collectEdgeCoordinate(scene.meshes[0].edgeSegments, 2);
+    const xValues = collectEdgeCoordinate(renderedMesh.edgeSegments, 0);
+    const yValues = collectEdgeCoordinate(renderedMesh.edgeSegments, 1);
+    const zValues = collectEdgeCoordinate(renderedMesh.edgeSegments, 2);
 
     expect(Math.min(...xValues)).toBe(10);
     expect(Math.max(...xValues)).toBe(14);
@@ -699,9 +706,10 @@ describe("renderScene", () => {
       ]
     };
     const scene = createRenderSceneInputs([], new Map(), [], [sketch]);
+    const renderedMesh = requireItem(scene.meshes, 0, "rectangle sketch mesh");
 
     expect(scene.meshes).toHaveLength(1);
-    expect(scene.meshes[0]).toMatchObject({
+    expect(renderedMesh).toMatchObject({
       id: createSketchEntitySelectionId("sketch_1", "rect_1"),
       parentId: createSketchSelectionId("sketch_1"),
       kind: "mesh",
@@ -712,7 +720,7 @@ describe("renderScene", () => {
       source: "sketch",
       label: "Base sketch: rect_1"
     });
-    expect(scene.meshes[0].edgeSegments).toEqual([
+    expect(renderedMesh.edgeSegments).toEqual([
       {
         start: [-1, -1, 0],
         end: [3, -1, 0]
@@ -1258,6 +1266,14 @@ function createEdgeFinishSource(id: string): DerivedEdgeFinishGeometrySource {
     edgeStableId: "generated:edge:body_target:start:uMin",
     distance: 0.25
   };
+}
+
+function requireItem<T>(items: readonly T[], index: number, label: string): T {
+  const item = items[index];
+  if (!item) {
+    throw new Error(`Expected ${label} at index ${index}.`);
+  }
+  return item;
 }
 
 function collectEdgeCoordinate(
