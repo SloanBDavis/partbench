@@ -115,12 +115,22 @@ export function makeShellShape(
   targetShape: TopoDS_Shape,
   input: Pick<OcctShellInput, "target" | "wallThickness" | "openFaceStableIds">
 ): TopoDS_Shape {
-  const maker = new oc.BRepOffsetAPI_MakeThickSolid();
-  const closingFaces = new oc.TopTools_ListOfShape_1();
-  const range = new oc.Message_ProgressRange_1();
+  let maker:
+    | InstanceType<OpenCascadeInstance["BRepOffsetAPI_MakeThickSolid"]>
+    | undefined;
+  let closingFaces:
+    | InstanceType<OpenCascadeInstance["TopTools_ListOfShape_1"]>
+    | undefined;
+  let range:
+    | InstanceType<OpenCascadeInstance["Message_ProgressRange_1"]>
+    | undefined;
   const selectedFaces: TopoDS_Face[] = [];
 
   try {
+    maker = new oc.BRepOffsetAPI_MakeThickSolid();
+    closingFaces = new oc.TopTools_ListOfShape_1();
+    range = new oc.Message_ProgressRange_1();
+
     for (const stableId of input.openFaceStableIds) {
       const face = findOpenFace(oc, targetShape, input.target, stableId);
       selectedFaces.push(face);
@@ -158,9 +168,9 @@ export function makeShellShape(
     for (const face of selectedFaces) {
       face.delete();
     }
-    range.delete();
-    closingFaces.delete();
-    maker.delete();
+    range?.delete();
+    closingFaces?.delete();
+    maker?.delete();
   }
 }
 
