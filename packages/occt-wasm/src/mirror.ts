@@ -126,21 +126,21 @@ function applyMirror(
   shape: TopoDS_Shape,
   plane: OcctMirrorPlaneFrame
 ): TopoDS_Shape {
-  const origin = new oc.gp_Pnt_3(
-    plane.point[0],
-    plane.point[1],
-    plane.point[2]
-  );
-  const normalDirection = plane.normal;
-  const dir = new oc.gp_Dir_4(
-    normalDirection[0],
-    normalDirection[1],
-    normalDirection[2]
-  );
-  const ax2 = new oc.gp_Ax2_3(origin, dir);
-  const trsf = new oc.gp_Trsf_1();
+  let origin: InstanceType<typeof oc.gp_Pnt_3> | undefined;
+  let dir: InstanceType<typeof oc.gp_Dir_4> | undefined;
+  let ax2: InstanceType<typeof oc.gp_Ax2_3> | undefined;
+  let trsf: InstanceType<typeof oc.gp_Trsf_1> | undefined;
 
   try {
+    origin = new oc.gp_Pnt_3(plane.point[0], plane.point[1], plane.point[2]);
+    const normalDirection = plane.normal;
+    dir = new oc.gp_Dir_4(
+      normalDirection[0],
+      normalDirection[1],
+      normalDirection[2]
+    );
+    ax2 = new oc.gp_Ax2_3(origin, dir);
+    trsf = new oc.gp_Trsf_1();
     trsf.SetMirror_3(ax2);
     const transform = new oc.BRepBuilderAPI_Transform_2(shape, trsf, true);
 
@@ -157,10 +157,10 @@ function applyMirror(
       transform.delete();
     }
   } finally {
-    trsf.delete();
-    ax2.delete();
-    dir.delete();
-    origin.delete();
+    trsf?.delete();
+    ax2?.delete();
+    dir?.delete();
+    origin?.delete();
   }
 }
 
