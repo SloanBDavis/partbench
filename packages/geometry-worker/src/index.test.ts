@@ -2195,6 +2195,9 @@ describe("geometry-worker", () => {
     }
 
     const body = importResponse.response.bodies[0];
+    if (!body) {
+      throw new Error("Expected one imported STEP body.");
+    }
 
     expect(body).toMatchObject({
       sourceFormat: "step",
