@@ -1381,9 +1381,10 @@ function resolveShellOpenFaceStableId(
         face.bodyId === feature.targetBodyId &&
         face.role === anchor.sourceSemanticRole
     );
+    const [match] = matches;
 
-    if (matches.length === 1) {
-      return { stableId: matches[0].stableId, error: "" };
+    if (matches.length === 1 && match) {
+      return { stableId: match.stableId, error: "" };
     }
 
     return {
