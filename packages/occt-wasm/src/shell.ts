@@ -452,7 +452,13 @@ function copyShape(oc: OpenCascadeInstance, shape: TopoDS_Shape): TopoDS_Shape {
 }
 
 function copyFace(oc: OpenCascadeInstance, face: TopoDS_Face): TopoDS_Face {
-  return oc.TopoDS.Face_1(copyShape(oc, face));
+  const shape = copyShape(oc, face);
+
+  try {
+    return oc.TopoDS.Face_1(shape);
+  } finally {
+    shape.delete();
+  }
 }
 
 function getNormalRange(
