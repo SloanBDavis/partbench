@@ -152,7 +152,11 @@ function transformPoint(point: gp_Pnt, location: TopLoc_Location): gp_Pnt {
     return point;
   }
 
-  const transformed = point.Transformed(location.Transformation());
-  point.delete();
-  return transformed;
+  const transformation = location.Transformation();
+  try {
+    return point.Transformed(transformation);
+  } finally {
+    transformation.delete();
+    point.delete();
+  }
 }
