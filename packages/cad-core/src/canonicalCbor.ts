@@ -80,7 +80,11 @@ function encodeValue(value: JsonValue, bytes: number[]): void {
 
   keys.forEach((key) => {
     encodeValue(key, bytes);
-    encodeValue(objectValue[key], bytes);
+    const entry = objectValue[key];
+    if (entry === undefined) {
+      throw new TypeError("WCAD source payload must be JSON-compatible.");
+    }
+    encodeValue(entry, bytes);
   });
 }
 
@@ -250,10 +254,16 @@ class CborReader {
   }
 
   #readArray(length: number): unknown[] {
-    return Array.from({ length }, () => this.readValue());
+    this.#assertCollectionCanFit(length, 1);
+    const value: unknown[] = [];
+    for (let index = 0; index < length; index += 1) {
+      value.push(this.readValue());
+    }
+    return value;
   }
 
   #readMap(length: number): Record<string, unknown> {
+    this.#assertCollectionCanFit(length, 2);
     const value: Record<string, unknown> = {};
 
     for (let index = 0; index < length; index += 1) {
@@ -291,27 +301,19 @@ class CborReader {
   }
 
   #readUint8(): number {
-    this.#assertAvailable(1);
-    const value = this.bytes[this.#offset];
+    const value = this.#readDataView(1).getUint8(0);
     this.#offset += 1;
     return value;
   }
 
   #readUint16(): number {
-    this.#assertAvailable(2);
-    const value =
-      (this.bytes[this.#offset] << 8) | this.bytes[this.#offset + 1];
+    const value = this.#readDataView(2).getUint16(0, false);
     this.#offset += 2;
     return value;
   }
 
   #readUint32(): number {
-    this.#assertAvailable(4);
-    const value =
-      this.bytes[this.#offset] * 0x1000000 +
-      ((this.bytes[this.#offset + 1] << 16) |
-        (this.bytes[this.#offset + 2] << 8) |
-        this.bytes[this.#offset + 3]);
+    const value = this.#readDataView(4).getUint32(0, false);
     this.#offset += 4;
     return value;
   }
@@ -331,14 +333,28 @@ class CborReader {
   }
 
   #readFloat64(): number {
-    this.#assertAvailable(8);
-    const value = new DataView(
-      this.bytes.buffer,
-      this.bytes.byteOffset + this.#offset,
-      8
-    ).getFloat64(0, false);
+    const value = this.#readDataView(8).getFloat64(0, false);
     this.#offset += 8;
     return value;
+  }
+
+  #readDataView(length: number): DataView {
+    this.#assertAvailable(length);
+    return new DataView(
+      this.bytes.buffer,
+      this.bytes.byteOffset + this.#offset,
+      length
+    );
+  }
+
+  #assertCollectionCanFit(
+    itemCount: number,
+    minimumBytesPerItem: number
+  ): void {
+    const remainingBytes = this.bytes.byteLength - this.#offset;
+    if (itemCount > Math.floor(remainingBytes / minimumBytesPerItem)) {
+      throw new CanonicalCborDecodeError("CBOR payload ended unexpectedly.");
+    }
   }
 
   #assertAvailable(length: number): void {
