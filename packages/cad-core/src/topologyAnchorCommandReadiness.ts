@@ -22,6 +22,8 @@ const DERIVED_BOUNDARY_NOTE =
   "Caller-supplied exact topology snapshots are used only as checkpoint evidence; checkpoint-scoped entity ids, renderer ids, mesh ids, OCCT ids, GPU ids, selection-buffer ids, OPFS paths, file handles, viewport state, and pixel ids are not returned as public stable CAD references.";
 
 const AXES = ["x", "y", "z"] as const;
+const AXIS_INDICES = [0, 1, 2] as const;
+type AxisIndex = (typeof AXIS_INDICES)[number];
 const BOUNDS_TOLERANCE = 1e-9;
 
 export function createTopologyAnchorCommandReadinessResponse(args: {
@@ -560,7 +562,10 @@ function findAxisAlignedPlane(bounds: {
     return undefined;
   }
 
-  const axisIndex = degenerateAxes[0]!;
+  const axisIndex = degenerateAxes[0];
+  if (axisIndex === undefined) {
+    return undefined;
+  }
   return {
     axis: AXES[axisIndex],
     coordinate: bounds.min[axisIndex]
@@ -577,7 +582,9 @@ function findAxisAlignedLine(bounds: {
     return undefined;
   }
 
-  const axisIndex = [0, 1, 2].find((index) => !degenerateAxes.includes(index));
+  const axisIndex = AXIS_INDICES.find(
+    (index) => !degenerateAxes.includes(index)
+  );
 
   if (axisIndex === undefined) {
     return undefined;
@@ -605,8 +612,8 @@ function isPointBounds(bounds: {
 function getDegenerateAxes(bounds: {
   readonly min: readonly [number, number, number];
   readonly max: readonly [number, number, number];
-}): number[] {
-  return [0, 1, 2].filter(
+}): AxisIndex[] {
+  return AXIS_INDICES.filter(
     (index) =>
       Math.abs(bounds.max[index] - bounds.min[index]) <= BOUNDS_TOLERANCE
   );
