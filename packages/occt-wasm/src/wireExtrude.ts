@@ -628,25 +628,42 @@ function buildGeneratedReferences(
       diagnostic: `The analyzed wire traversal could not prove ${!sourceEdgeOrderProven ? "source segment order" : "oriented join correspondence"}.`
     };
   }
-  const capShapes: TopoDS_Shape[] = [];
+  const firstSegment = profile.segments[0];
+  if (!firstSegment) {
+    return {
+      status: "unavailable",
+      sourceIdentity: profile.sourceIdentity,
+      faces: [],
+      edges: [],
+      diagnostic: "The composite profile does not contain a source segment."
+    };
+  }
+
+  let firstCap: TopoDS_Shape | undefined;
+  let lastCap: TopoDS_Shape | undefined;
   let capsProven = false;
   try {
-    capShapes.push(prism.FirstShape_1());
-    capShapes.push(prism.LastShape_1());
+    firstCap = prism.FirstShape_1();
+    lastCap = prism.LastShape_1();
     capsProven =
-      capShapes.every((shape) =>
-        isShapeKind(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE)
-      ) && !capShapes[0].IsSame(capShapes[1]);
+      isShapeKind(firstCap, oc.TopAbs_ShapeEnum.TopAbs_FACE) &&
+      isShapeKind(lastCap, oc.TopAbs_ShapeEnum.TopAbs_FACE) &&
+      !firstCap.IsSame(lastCap);
   } finally {
-    capShapes.forEach((shape) => shape.delete());
+    firstCap?.delete();
+    lastCap?.delete();
   }
   const sidesProven = edges.every((edge, index) => {
+    const segment = profile.segments[index];
+    if (!segment) {
+      return false;
+    }
     const generated = prism.Generated(edge);
     try {
       return listContainsOneExpectedFace(
         oc,
         generated,
-        profile.segments[index].kind === "line" ? "plane" : "cylinder"
+        segment.kind === "line" ? "plane" : "cylinder"
       );
     } finally {
       generated.delete();
@@ -736,14 +753,17 @@ function buildGeneratedReferences(
           evidence: "kernel-builder" as const
         }
       ]),
-      ...profile.segments.map((segment, index) => ({
-        role: "longitudinal" as const,
-        adjacentSourceEntityIds: [
-          segment.sourceEntityId,
-          profile.segments[(index + 1) % profile.segments.length].sourceEntityId
-        ] as const,
-        evidence: "kernel-builder" as const
-      }))
+      ...profile.segments.map((segment, index) => {
+        const nextSegment = profile.segments[index + 1] ?? firstSegment;
+        return {
+          role: "longitudinal" as const,
+          adjacentSourceEntityIds: [
+            segment.sourceEntityId,
+            nextSegment.sourceEntityId
+          ] as const,
+          evidence: "kernel-builder" as const
+        };
+      })
     ]
   };
 }
@@ -922,13 +942,20 @@ function mapPoint(
   point: readonly [number, number],
   normalDistance: number
 ): readonly [number, number, number] {
-  return [0, 1, 2].map(
-    (axis) =>
-      frame.origin[axis] +
-      frame.uAxis[axis] * point[0] +
-      frame.vAxis[axis] * point[1] +
-      normal[axis] * normalDistance
-  ) as unknown as readonly [number, number, number];
+  return [
+    frame.origin[0] +
+      frame.uAxis[0] * point[0] +
+      frame.vAxis[0] * point[1] +
+      normal[0] * normalDistance,
+    frame.origin[1] +
+      frame.uAxis[1] * point[0] +
+      frame.vAxis[1] * point[1] +
+      normal[1] * normalDistance,
+    frame.origin[2] +
+      frame.uAxis[2] * point[0] +
+      frame.vAxis[2] * point[1] +
+      normal[2] * normalDistance
+  ];
 }
 
 function cross(
