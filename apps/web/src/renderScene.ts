@@ -583,10 +583,10 @@ export function createSketchArcDisplayEdges(
 
   const orderedFractions = fractions
     .sort((left, right) => left - right)
-    .filter(
-      (fraction, index, sorted) =>
-        index === 0 || Math.abs(fraction - sorted[index - 1]) > 1e-12
-    );
+    .filter((fraction, index, sorted) => {
+      const previous = sorted[index - 1];
+      return previous === undefined || Math.abs(fraction - previous) > 1e-12;
+    });
   const points = orderedFractions.map((fraction) => {
     const angleRadians =
       ((startAngleDegrees + sweepAngleDegrees * fraction) * Math.PI) / 180;
@@ -597,10 +597,17 @@ export function createSketchArcDisplayEdges(
     ] as const;
   });
 
-  return points.slice(0, -1).map((point, index) => ({
-    start: mapSketchPointToDisplayFrame(frame, point),
-    end: mapSketchPointToDisplayFrame(frame, points[index + 1])
-  }));
+  const edges: RenderEdgeSegment[] = [];
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index];
+    const end = points[index + 1];
+    if (!start || !end) continue;
+    edges.push({
+      start: mapSketchPointToDisplayFrame(frame, start),
+      end: mapSketchPointToDisplayFrame(frame, end)
+    });
+  }
+  return edges;
 }
 
 function positiveModulo(value: number, modulus: number): number {
