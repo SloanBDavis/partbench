@@ -241,6 +241,8 @@ function createRectangleFacePolygon(
     case "side:circular":
       return undefined;
   }
+
+  return undefined;
 }
 
 function createCircleFacePolygon(

@@ -358,6 +358,8 @@ function createRectangleFaceCenter(
     case "side:circular":
       return undefined;
   }
+
+  return undefined;
 }
 
 function createCircleFaceCenter(
@@ -378,6 +380,8 @@ function createCircleFaceCenter(
     case "side:vMax":
       return undefined;
   }
+
+  return undefined;
 }
 
 function createSourceMeasurementFrameNormal(
