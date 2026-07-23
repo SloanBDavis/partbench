@@ -303,9 +303,12 @@ function findRectangleEdge(
       }
 
       if (edgeMatchesExpectedEndpoints(oc, edge, expected, tolerance)) {
+        let disposed = false;
         return {
           edge,
           delete: () => {
+            if (disposed) return;
+            disposed = true;
             edge.delete();
           }
         };
