@@ -61,7 +61,11 @@ export function chooseVisibleRibbonGroupIds(
   availableWidth: number,
   moreWidth = 68
 ): ReadonlySet<string> {
-  const visible = new Set(groups.map((group) => group.id));
+  const visible = new Set<string>();
+  for (let index = 0; index < groups.length; index += 1) {
+    const group = groups[index];
+    if (group) visible.add(group.id);
+  }
   const total = () =>
     groups.reduce(
       (sum, group) =>
@@ -72,7 +76,7 @@ export function chooseVisibleRibbonGroupIds(
   if (total() <= availableWidth) return visible;
   for (let index = groups.length - 1; index >= 0; index -= 1) {
     const group = groups[index];
-    if (group.protectedFromOverflow) continue;
+    if (!group || group.protectedFromOverflow) continue;
     visible.delete(group.id);
     if (total() + moreWidth <= availableWidth) break;
   }
