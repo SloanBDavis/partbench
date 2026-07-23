@@ -136,6 +136,7 @@ export function ModeRibbon({
             ? (currentIndex + 1) % elements.length
             : (currentIndex - 1 + elements.length) % elements.length;
     const next = elements[nextIndex];
+    if (!next) return;
     setRovingId(next.dataset.ribbonRovingId ?? `mode-${mode}`);
     next.focus();
   };
