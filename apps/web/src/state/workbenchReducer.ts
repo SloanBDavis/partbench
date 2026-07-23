@@ -316,9 +316,9 @@ function sameEditor(
 }
 
 function formatMode(mode: WorkbenchMode): string {
-  return mode[0].toUpperCase() + mode.slice(1);
+  return mode.charAt(0).toUpperCase() + mode.slice(1);
 }
 
 function formatProjectPage(page: ProjectPageId): string {
-  return page[0].toUpperCase() + page.slice(1);
+  return page.charAt(0).toUpperCase() + page.slice(1);
 }
