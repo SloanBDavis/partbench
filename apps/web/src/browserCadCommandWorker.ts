@@ -120,12 +120,12 @@ export class BrowserCadCommandWorker implements CadCommandWorker {
   dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;
-    this.#transport.removeEventListener("message", this.#handleMessage);
-    this.#transport.removeEventListener("error", this.#handleError);
-    this.#transport.terminate();
     this.#handleError({
       message: "CAD command worker was disposed before completing a request."
     });
+    this.#transport.removeEventListener("message", this.#handleMessage);
+    this.#transport.removeEventListener("error", this.#handleError);
+    this.#transport.terminate();
   }
 }
 

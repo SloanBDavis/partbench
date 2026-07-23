@@ -122,6 +122,13 @@ class ThrowingWorkerTransport extends FakeWorkerTransport {
   }
 }
 
+class ThrowingTerminationTransport extends FakeWorkerTransport {
+  override terminate(): void {
+    super.terminate();
+    throw new Error("Injected terminate failure.");
+  }
+}
+
 describe("BrowserCadCommandWorker", () => {
   it("sends requests through a worker-like transport asynchronously", async () => {
     const transport = new FakeWorkerTransport(async (request) => ({
@@ -285,6 +292,20 @@ describe("BrowserCadCommandWorker", () => {
       worker.execute(createTestRequest("worker_req_disposed"))
     ).rejects.toThrow("CAD command worker has already been disposed.");
     expect(transport.requests).toHaveLength(0);
+    expect(transport.terminationCount).toBe(1);
+  });
+
+  it("rejects pending work before transport cleanup can fail", async () => {
+    const transport = new ThrowingTerminationTransport(
+      () => new Promise<CadWorkerResponse>(() => undefined)
+    );
+    const worker = new BrowserCadCommandWorker(transport);
+    const pending = worker.execute(createTestRequest("worker_req_cleanup"));
+
+    expect(() => worker.dispose()).toThrow("Injected terminate failure.");
+    await expect(pending).rejects.toThrow(
+      "CAD command worker was disposed before completing a request."
+    );
     expect(transport.terminationCount).toBe(1);
   });
 
