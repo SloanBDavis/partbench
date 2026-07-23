@@ -775,12 +775,18 @@ function getBounds(positions: Float32Array): {
   ];
 
   for (let index = 0; index < positions.length; index += 3) {
-    min[0] = Math.min(min[0], positions[index]);
-    min[1] = Math.min(min[1], positions[index + 1]);
-    min[2] = Math.min(min[2], positions[index + 2]);
-    max[0] = Math.max(max[0], positions[index]);
-    max[1] = Math.max(max[1], positions[index + 1]);
-    max[2] = Math.max(max[2], positions[index + 2]);
+    const x = positions[index];
+    const y = positions[index + 1];
+    const z = positions[index + 2];
+    if (x === undefined || y === undefined || z === undefined) {
+      throw new Error("GLB position buffer must contain complete 3D points.");
+    }
+    min[0] = Math.min(min[0], x);
+    min[1] = Math.min(min[1], y);
+    min[2] = Math.min(min[2], z);
+    max[0] = Math.max(max[0], x);
+    max[1] = Math.max(max[1], y);
+    max[2] = Math.max(max[2], z);
   }
 
   return { min, max };
