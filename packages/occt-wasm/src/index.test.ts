@@ -51,6 +51,7 @@ import {
   withOcctPatternSeedShape
 } from "./pattern";
 import { makeMirrorShape } from "./mirror";
+import { makeShellShape } from "./shell";
 import {
   createOcctStepExportWithShapeFactory,
   type OcctStepExportShapeFactory
@@ -709,6 +710,43 @@ describe("occt-wasm", () => {
       })
     ).toThrow("Injected mirror transform builder failure");
     expect(deleted).toEqual(["transform", "axis", "direction", "origin"]);
+  });
+
+  it("disposes partial shell setup after face-list construction fails", () => {
+    const deleted: string[] = [];
+    class ThickSolidMaker {
+      delete() {
+        deleted.push("maker");
+      }
+    }
+    class FailingFaceList {
+      constructor() {
+        throw new Error("Injected shell face-list failure.");
+      }
+    }
+    const oc = {
+      BRepOffsetAPI_MakeThickSolid: ThickSolidMaker,
+      TopTools_ListOfShape_1: FailingFaceList
+    } as unknown as OpenCascadeInstance;
+
+    expect(() =>
+      makeShellShape(oc, {} as never, {
+        target: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 2,
+            height: 1
+          },
+          depth: 1
+        },
+        wallThickness: 0.1,
+        openFaceStableIds: []
+      })
+    ).toThrow("Injected shell face-list failure");
+    expect(deleted).toEqual(["maker"]);
   });
 
   it.each([
