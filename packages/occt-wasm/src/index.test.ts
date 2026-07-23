@@ -44,6 +44,7 @@ import {
   type OcctGeneratedReferences,
   type OcctWireExtrudeShapeBuild
 } from "./wireExtrude";
+import { readTriangulatedShape } from "./readTriangulatedShape";
 import {
   createOcctStepExportWithShapeFactory,
   type OcctStepExportShapeFactory
@@ -559,6 +560,75 @@ describe("occt-wasm", () => {
       expect(deleted).toEqual(["shape", `${primitive}-builder`]);
     }
   );
+
+  it("disposes empty face triangulation wrappers", () => {
+    const deleted: string[] = [];
+    class CurrentShape {
+      delete() {
+        deleted.push("current-shape");
+      }
+    }
+    class Face {
+      delete() {
+        deleted.push("face");
+      }
+    }
+    class Explorer {
+      #more = true;
+      More() {
+        return this.#more;
+      }
+      Current() {
+        return new CurrentShape();
+      }
+      Next() {
+        this.#more = false;
+      }
+      delete() {
+        deleted.push("explorer");
+      }
+    }
+    class Location {
+      delete() {
+        deleted.push("location");
+      }
+    }
+    class TriangulationHandle {
+      IsNull() {
+        return true;
+      }
+      delete() {
+        deleted.push("triangulation-handle");
+      }
+    }
+    const oc = {
+      TopAbs_ShapeEnum: {
+        TopAbs_FACE: "face",
+        TopAbs_SHAPE: "shape"
+      },
+      TopExp_Explorer_2: Explorer,
+      TopoDS: {
+        Face_1: () => new Face()
+      },
+      TopLoc_Location_1: Location,
+      BRep_Tool: {
+        Triangulation: () => new TriangulationHandle()
+      }
+    } as unknown as OpenCascadeInstance;
+
+    expect(readTriangulatedShape(oc, {} as never, "box")).toMatchObject({
+      faceCount: 0,
+      vertexCount: 0,
+      triangleCount: 0
+    });
+    expect(deleted).toEqual([
+      "current-shape",
+      "triangulation-handle",
+      "location",
+      "face",
+      "explorer"
+    ]);
+  });
 
   it("disposes every allocated wrapper when an exact edge builder fails", () => {
     const deleted: string[] = [];
