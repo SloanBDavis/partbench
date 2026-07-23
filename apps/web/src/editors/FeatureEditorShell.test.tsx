@@ -6,10 +6,8 @@ import {
   FeatureEditorShell,
   PreviewToggle
 } from "./FeatureEditorShell";
-import {
-  SelectionCollectorRow,
-  formatAcceptedKinds
-} from "./SelectionCollectorRow";
+import { SelectionCollectorRow } from "./SelectionCollectorRow";
+import { formatAcceptedKinds } from "./selectionCollectorFormatting";
 
 describe("FeatureEditorShell", () => {
   it("renders labeled sticky commit controls and a collapsed advanced section", () => {

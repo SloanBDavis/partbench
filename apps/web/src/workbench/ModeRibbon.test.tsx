@@ -5,11 +5,11 @@ import {
   projectUiActions,
   type UiActionContext
 } from "../actions/actionRegistry";
+import { ModeRibbon } from "./ModeRibbon";
 import {
-  ModeRibbon,
   chooseVisibleRibbonGroupIds,
   projectRibbonGroups
-} from "./ModeRibbon";
+} from "./modeRibbonModel";
 
 describe("V18 mode ribbon", () => {
   it("projects ordered, labeled mode groups and leaves header actions in the header", () => {

@@ -5,6 +5,7 @@ import {
   type KeyboardEvent,
   type PointerEvent
 } from "react";
+import { getKeyboardDockResizeValue } from "./workbenchLayout";
 
 export interface DockDividerProps {
   readonly side: "left" | "right";
@@ -13,27 +14,6 @@ export interface DockDividerProps {
   readonly max: number;
   readonly onResize: (width: number) => void;
   readonly label?: string;
-}
-
-export function getKeyboardDockResizeValue(
-  value: number,
-  key: string,
-  shiftKey: boolean,
-  min: number,
-  max: number
-): number | undefined {
-  const step = shiftKey ? 32 : 8;
-  const next =
-    key === "ArrowLeft"
-      ? value - step
-      : key === "ArrowRight"
-        ? value + step
-        : key === "Home"
-          ? min
-          : key === "End"
-            ? max
-            : undefined;
-  return next === undefined ? undefined : Math.min(max, Math.max(min, next));
 }
 
 /** Pointer and keyboard resizer for one inline dock. */

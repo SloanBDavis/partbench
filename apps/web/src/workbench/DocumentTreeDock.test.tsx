@@ -1,16 +1,13 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import {
-  collectVisibleRowIds,
-  DocumentTreeDock,
-  toggleTreeExpansion
-} from "./DocumentTreeDock";
+import { DocumentTreeDock } from "./DocumentTreeDock";
 import type {
   DocumentTreeGroup,
   DocumentTreeProjection,
   DocumentTreeRow
 } from "./documentTreeProjection";
+import { collectVisibleRowIds, toggleTreeExpansion } from "./documentTreeState";
 
 describe("DocumentTreeDock", () => {
   it("renders compact accessible rows without legacy tabs", () => {

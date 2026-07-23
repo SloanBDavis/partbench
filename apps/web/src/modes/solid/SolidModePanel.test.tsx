@@ -6,9 +6,10 @@ import type {
   FeatureExtrudeForm,
   FeatureLoftForm
 } from "../../cadCommands";
-import { SolidModePanel, validateSolidDraft } from "./SolidModePanel";
+import { SolidModePanel } from "./SolidModePanel";
 import { createPrimitiveDraft } from "./solidEditorDefaults";
 import { applySolidDraftOnce, cancelSolidDraft } from "./solidEditorSession";
+import { validateSolidDraft } from "./solidDraftValidation";
 import {
   createSolidEditorSubmission,
   type SolidEditorRequest

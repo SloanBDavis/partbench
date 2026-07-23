@@ -13,14 +13,16 @@ import { createInitialProjectOpfsCacheStatus } from "../../projectOpfsCache";
 import { createProjectStorageCapabilityStatus } from "../../projectStorageCapabilities";
 import type { ProjectPageId } from "../../workbench/types";
 import {
-  createParameterEditForm,
-  getCreateParameterIssue,
-  getEditParameterIssue,
-  getParameterExpressionStatus,
   ProjectWorkspace,
   type ProjectWorkspaceProps
 } from "./ProjectWorkspace";
 import { formatProjectHealthSummary } from "./projectHealthSummary";
+import {
+  createParameterEditForm,
+  getCreateParameterIssue,
+  getEditParameterIssue,
+  getParameterExpressionStatus
+} from "./projectParameterForms";
 
 const summary: ProjectJsonSummary = {
   schemaVersion: "web-cad.project.v21",

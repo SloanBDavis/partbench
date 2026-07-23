@@ -2,12 +2,11 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { WORKBENCH_LAYOUT } from "../styles/tokens";
-import { getKeyboardDockResizeValue } from "./DockDivider";
+import { WorkbenchShell, type WorkbenchShellProps } from "./WorkbenchShell";
 import {
-  WorkbenchShell,
-  resolveWorkbenchLayout,
-  type WorkbenchShellProps
-} from "./WorkbenchShell";
+  getKeyboardDockResizeValue,
+  resolveWorkbenchLayout
+} from "./workbenchLayout";
 
 describe("V18 workbench responsive shell", () => {
   it("uses the exact inline and drawer breakpoints without changing preferences", () => {

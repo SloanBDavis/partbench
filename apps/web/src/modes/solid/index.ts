@@ -1,4 +1,5 @@
-export { SolidModePanel, validateSolidDraft } from "./SolidModePanel";
+export { SolidModePanel } from "./SolidModePanel";
+export { validateSolidDraft } from "./solidDraftValidation";
 export type { SolidModePanelProps } from "./SolidModePanel";
 export { applySolidDraftOnce, cancelSolidDraft } from "./solidEditorSession";
 export type { SolidApplyGate } from "./solidEditorSession";
