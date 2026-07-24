@@ -62,8 +62,12 @@ describe("evaluateSketchResidualsAtInitialState", () => {
     expect(result).toMatchObject({
       version: SKETCH_SOLVER_MODEL_VERSION,
       status: "evaluated",
+      solveStatus: "failed",
       blocked: false,
       iterations: 0,
+      variableCount: 8,
+      residualCount: 6,
+      maxResidual: 1,
       diagnosticCount: 0,
       diagnostics: []
     });
@@ -74,6 +78,7 @@ describe("evaluateSketchResidualsAtInitialState", () => {
         family: "horizontal",
         residuals: [0],
         maxResidual: 0,
+        satisfactionTolerance: 1e-7,
         satisfied: true
       },
       {
@@ -82,6 +87,7 @@ describe("evaluateSketchResidualsAtInitialState", () => {
         family: "coincident",
         residuals: [0, -1],
         maxResidual: 1,
+        satisfactionTolerance: 1e-7,
         satisfied: false
       },
       {
@@ -90,6 +96,7 @@ describe("evaluateSketchResidualsAtInitialState", () => {
         family: "vertical",
         residuals: [0],
         maxResidual: 0,
+        satisfactionTolerance: 1e-7,
         satisfied: true
       },
       {
@@ -98,6 +105,7 @@ describe("evaluateSketchResidualsAtInitialState", () => {
         family: "pointDistance",
         residuals: [0],
         maxResidual: 0,
+        satisfactionTolerance: 1e-7,
         satisfied: true
       },
       {
@@ -106,6 +114,7 @@ describe("evaluateSketchResidualsAtInitialState", () => {
         family: "lineLength",
         residuals: [-1],
         maxResidual: 1,
+        satisfactionTolerance: 1e-7,
         satisfied: false
       }
     ]);
@@ -136,6 +145,7 @@ describe("evaluateSketchResidualsAtInitialState", () => {
         family: "fixedPoint",
         residuals: [5, 6],
         maxResidual: 6,
+        satisfactionTolerance: 1e-7,
         satisfied: false
       }
     ]);
@@ -180,6 +190,90 @@ describe("evaluateSketchResidualsAtInitialState", () => {
         sourceId: "within",
         maxResidual: 0.00005,
         satisfied: true
+      })
+    ]);
+  });
+
+  it("uses the angular policy for normalized angular residual families", () => {
+    const pointAtDegrees = (degrees: number): readonly [number, number] => {
+      const radians = (degrees * Math.PI) / 180;
+      return [Math.cos(radians), Math.sin(radians)];
+    };
+    const result = evaluateSketchResidualsAtInitialState({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      settings: { tolerance: 1e-7, angularToleranceDegrees: 0.1 },
+      points: [
+        { id: "origin", initial: [0, 0] },
+        { id: "x", initial: [1, 0] },
+        { id: "within", initial: pointAtDegrees(60.05) },
+        { id: "outside", initial: pointAtDegrees(60.2) }
+      ],
+      constraints: [
+        {
+          id: "within",
+          kind: "angle",
+          primaryStartPointId: "origin",
+          primaryEndPointId: "x",
+          secondaryStartPointId: "origin",
+          secondaryEndPointId: "within",
+          angleDegrees: 60
+        },
+        {
+          id: "outside",
+          kind: "angle",
+          primaryStartPointId: "origin",
+          primaryEndPointId: "x",
+          secondaryStartPointId: "origin",
+          secondaryEndPointId: "outside",
+          angleDegrees: 60
+        }
+      ]
+    });
+
+    expect(result.records).toEqual([
+      expect.objectContaining({
+        sourceId: "outside",
+        satisfied: false
+      }),
+      expect.objectContaining({
+        sourceId: "within",
+        satisfied: true
+      })
+    ]);
+    expect(result.records[0]?.satisfactionTolerance).toBeGreaterThan(1e-7);
+  });
+
+  it("blocks non-finite residual outputs with structured diagnostics", () => {
+    const result = evaluateSketchResidualsAtInitialState({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "a", initial: [1e308, 1e308] },
+        { id: "b", initial: [-1e308, -1e308] }
+      ],
+      dimensions: [
+        {
+          id: "overflow",
+          kind: "pointDistance",
+          pointAId: "a",
+          pointBId: "b",
+          value: 1
+        }
+      ]
+    });
+
+    expect(result).toMatchObject({
+      status: "blocked",
+      solveStatus: "failed",
+      blocked: true,
+      iterations: 0,
+      records: []
+    });
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({
+        code: "SKETCH_SOLVER_INVALID_VALUE",
+        sourceType: "dimension",
+        sourceId: "overflow",
+        received: "Infinity"
       })
     ]);
   });

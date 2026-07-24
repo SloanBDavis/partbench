@@ -190,6 +190,31 @@ flowchart TD
   output IDs into committed history. Curve mutation, readiness, UI, and
   adapter actions remain disabled until B3-B7 and Gate B pass.
 
+### 2026-07-24 — Slice B planning and consequence foundations
+
+- B3 pure planners are implemented for trim, extend, split, and derived
+  rectangle explode. They preserve signed-arc direction, canonical cyclic
+  intervals, exact endpoint provenance, deterministic tie rejection, and
+  finite non-degenerate materialized geometry.
+- B4 now enumerates every legacy and V22 solver-record target, applies the
+  frozen endpoint-provenance retarget matrix, detects all direct
+  topology-backed feature consumers, and derives the complete
+  per-record `SketchCurveEditImpact`.
+- Consequence evaluation uses exact authored post-edit coordinates with zero
+  solve iterations. Structurally invalid records are excluded before the
+  first residual pass, residual-invalid records before the second, and
+  unsupported normalized V22 families return a typed block until Slice D
+  supplies exact solver mappings.
+- Two independent adversarial reviews were resolved. They found directional
+  arc unwrap errors beyond 180 degrees, circle-trim seam ambiguity,
+  non-deterministic extend ties, derived-rectangle overflow/collapse, a free
+  solve hidden in evaluation evidence, fabricated residuals for unmapped V22
+  records, family-insensitive residual tolerance, non-finite residual
+  handling, and incomplete V17 geometry validation.
+- B5 remains the next boundary: readiness, command application, exact delete
+  list enforcement, ID materialization, semantic diffs, replay, undo, and
+  redo must all use these pure planning and consequence APIs.
+
 ## Completion audit
 
 Release completion requires affirmative evidence for each numbered Must item

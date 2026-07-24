@@ -237,6 +237,61 @@ describe("V19 analytic curve-edit geometry", () => {
     });
   });
 
+  it("classifies external and internal circle tangencies at the shared tolerance", () => {
+    const outer = resolve(circle("outer", [0, 0], 2));
+    for (const [label, candidate] of [
+      ["external-exact", circle("external-exact", [3, 0], 1)],
+      ["external-near", circle("external-near", [3 + tolerance / 2, 0], 1)],
+      ["internal-exact", circle("internal-exact", [1, 0], 1)],
+      ["internal-near", circle("internal-near", [1 - tolerance / 2, 0], 1)]
+    ] as const) {
+      expect(
+        intersectFiniteSketchCurves(outer, resolve(candidate)),
+        label
+      ).toMatchObject({
+        status: "ready",
+        points: [{ kind: "tangent" }]
+      });
+    }
+    expect(
+      intersectFiniteSketchCurves(
+        outer,
+        resolve(circle("external-miss", [3 + tolerance * 1.01, 0], 1))
+      )
+    ).toEqual({ status: "ready", diagnostics: [], points: [] });
+    expect(
+      intersectFiniteSketchCurves(
+        outer,
+        resolve(circle("internal-miss", [1 - tolerance * 1.01, 0], 1))
+      )
+    ).toEqual({ status: "ready", diagnostics: [], points: [] });
+  });
+
+  it("preserves operand-specific parameters when curve operands are swapped", () => {
+    const diameter = resolve(line("diameter", [-2, 0], [2, 0]));
+    const unit = resolve(circle("unit", [0, 0], 1));
+    const forward = intersectFiniteSketchCurves(diameter, unit);
+    const swapped = intersectFiniteSketchCurves(unit, diameter);
+    expect(forward.status).toBe("ready");
+    expect(swapped.status).toBe("ready");
+    if (forward.status !== "ready" || swapped.status !== "ready") return;
+    const byX = (
+      values: typeof forward.points | typeof swapped.points
+    ): typeof forward.points =>
+      [...values].sort((left, right) => left.point[0] - right.point[0]);
+    const orderedForward = byX(forward.points);
+    const orderedSwapped = byX(swapped.points);
+    expect(orderedSwapped.map((value) => value.point)).toEqual(
+      orderedForward.map((value) => value.point)
+    );
+    expect(orderedSwapped.map((value) => value.leftParameter)).toEqual(
+      orderedForward.map((value) => value.rightParameter)
+    );
+    expect(orderedSwapped.map((value) => value.rightParameter)).toEqual(
+      orderedForward.map((value) => value.leftParameter)
+    );
+  });
+
   it("filters intersections to minor, major, and clockwise finite arcs", () => {
     const vertical = resolve(line("vertical", [0, -2], [0, 2]));
     const minor = intersectFiniteSketchCurves(
@@ -270,6 +325,20 @@ describe("V19 analytic curve-edit geometry", () => {
       ]);
       expect(clockwise.points.map((value) => value.point[1])).toEqual([-1, 1]);
     }
+  });
+
+  it("clips arc intersections at both sides of the cyclic seam", () => {
+    const seamArc = resolve(arc("seam", [0, 0], 1, 350, 20));
+    const horizontal = resolve(line("horizontal", [-2, 0], [2, 0]));
+    const result = intersectFiniteSketchCurves(seamArc, horizontal);
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") return;
+    expect(result.points).toHaveLength(1);
+    expect(result.points[0]).toMatchObject({
+      point: [1, 0],
+      leftParameter: 10,
+      leftLocation: "interior"
+    });
   });
 
   it("refuses coincident arc intervals but preserves distinct endpoint contacts", () => {

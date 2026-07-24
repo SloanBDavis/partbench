@@ -287,6 +287,66 @@ export {
   type SketchSolverIdentityRecordCollection
 } from "./sketchCurveEditIdentity";
 export {
+  collectSketchCurveEditFeatureDependencies,
+  type SketchCurveEditFeatureDependency
+} from "./sketchCurveEditDependencies";
+export {
+  createSketchCurveEditEvaluationEvidence,
+  getSketchCurveEditResidualRecord,
+  type SketchCurveEditEvaluationDiagnostic,
+  type SketchCurveEditEvaluationEvidence
+} from "./sketchCurveEditEvaluation";
+export {
+  planSketchExplodeRectangle,
+  planSketchExtend,
+  planSketchSplit,
+  planSketchTrim,
+  type PlanSketchExplodeRectangleInput,
+  type PlanSketchExtendInput,
+  type PlanSketchSplitInput,
+  type PlanSketchTrimInput,
+  type PlannedSketchCurvePiece,
+  type PlannedSketchEntityId,
+  type SketchCurveEditPlan,
+  type SketchCurveEditPlanDiagnostic,
+  type SketchCurveEditPlanDiagnosticCode,
+  type SketchCurveEditPlanResult,
+  type SketchCurveEditReplacementPlan,
+  type SketchCurveEndpointProvenance,
+  type SketchCurveSourceInterval
+} from "./sketchCurveEditPlans";
+export {
+  compareSketchCurveEditRecordIds,
+  createSketchPointTargetProvenanceKey,
+  getSketchConstraintPointTargetProvenanceKeys,
+  getSketchConstraintTargetEntityIds,
+  getSketchDimensionPointTargetProvenanceKeys,
+  getSketchDimensionTargetEntityIds,
+  retargetSketchCurveEditConstraint,
+  retargetSketchCurveEditDimension,
+  sortUniqueSketchCurveEditRecordIds,
+  type SketchCurveEditConstraintTargetResult,
+  type SketchCurveEditDimensionTargetResult,
+  type SketchCurveEditRecordTargetContext,
+  type SketchCurveEditStructuralDisposition,
+  type SketchCurveEditStructuralReason,
+  type SketchEndpointProvenance,
+  type SketchPointTargetProvenanceKey
+} from "./sketchCurveEditRecordTargets";
+export {
+  createSketchCurveEditImpact,
+  finalizeSketchCurveEditImpactForApply,
+  type FinalizeSketchCurveEditImpactResult,
+  type MaterializedSketchCurveEditPlan,
+  type SketchCurveEditDeleteListMismatch,
+  type SketchCurveEditDependencyBlocked,
+  type SketchCurveEditImpactInput,
+  type SketchCurveEditImpactReady,
+  type SketchCurveEditImpactResult,
+  type SketchCurveEditPlanBlocked,
+  type SketchCurveEditResidualBlocked
+} from "./sketchCurveEditImpact";
+export {
   canonicalizeSketchArcDefinition,
   createCanonicalSketchArcEntity,
   getSketchArcPoint,
@@ -379,6 +439,7 @@ import {
   createSketchProfileCandidatesResponse,
   createSketchProfileReadinessResponse
 } from "./sketchProfilePathQueries";
+import { createSketchCurveEditEvaluationEvidence } from "./sketchCurveEditEvaluation";
 import { createSketchSolverStatusResponse } from "./sketchSolverStatus";
 import {
   applySketchSolveResultToCadEntities,
@@ -3433,6 +3494,79 @@ export class CadEngine {
   }
 
   #runOperations(ops: readonly CadOp[]): OperationRunResult {
+    assertSketchCurveEditBatchShape(ops);
+    const curveEdit = ops.find(isSketchCurveEditOp);
+    if (curveEdit) {
+      const validation = validateV19CadOp(curveEdit);
+      if (!validation.ok) {
+        const issue = validation.issues[0];
+        throwValidationError({
+          code: "INVALID_OPERATION",
+          message:
+            issue?.message ?? "Curve-edit operation failed V19 validation.",
+          op: curveEdit.op,
+          path: issue?.path ?? "$.ops[0]",
+          expected: "valid V19 curve-edit operation",
+          received: curveEdit.op
+        });
+      }
+
+      const sourceIdentity = createCadProjectSourceIdentity(
+        exportCadProject(this)
+      );
+      const sketch = this.#document.sketches.get(curveEdit.sketchId);
+      if (!sketch) {
+        throwValidationError({
+          code: "SKETCH_NOT_FOUND",
+          message: `Sketch does not exist: ${curveEdit.sketchId}`,
+          op: curveEdit.op,
+          sketchId: curveEdit.sketchId,
+          path: "$.ops[0].sketchId",
+          expected: "existing sketch",
+          received: curveEdit.sketchId
+        });
+      }
+      const evidence = createSketchCurveEditEvaluationEvidence({
+        sourceIdentity,
+        document: this.#document,
+        sketch
+      });
+      if (
+        curveEdit.precondition.expectedSourceRevision !==
+        evidence.sourceRevision
+      ) {
+        throwValidationError({
+          code: "SKETCH_EDIT_SOURCE_REVISION_STALE",
+          message:
+            "Curve-edit source revision does not match the current authoritative project.",
+          op: curveEdit.op,
+          sketchId: curveEdit.sketchId,
+          path: "$.ops[0].precondition.expectedSourceRevision",
+          expected: evidence.sourceRevision,
+          received: curveEdit.precondition.expectedSourceRevision
+        });
+      }
+      if (
+        curveEdit.precondition.expectedSolverEvaluationIdentity !==
+          evidence.solverEvaluationIdentity ||
+        evidence.blocked
+      ) {
+        throwValidationError({
+          code: "SKETCH_EDIT_SOLVER_STATE_BLOCKED",
+          message:
+            evidence.diagnostics[0]?.message ??
+            "Curve-edit solver evidence is stale or blocked by the current sketch state.",
+          op: curveEdit.op,
+          sketchId: curveEdit.sketchId,
+          path: "$.ops[0].precondition.expectedSolverEvaluationIdentity",
+          expected:
+            evidence.solverEvaluationIdentity ??
+            "complete supported authored-state solver evidence",
+          received: curveEdit.precondition.expectedSolverEvaluationIdentity
+        });
+      }
+    }
+
     return runOperations(
       ops,
       this.#document,
@@ -24278,17 +24412,7 @@ function runOperations(
     });
   }
 
-  const curveEditCount = ops.filter(isSketchCurveEditOp).length;
-  if (curveEditCount > 0 && (curveEditCount !== 1 || ops.length !== 1)) {
-    throwValidationError({
-      code: "SKETCH_EDIT_BATCH_MULTIPLE_UNSUPPORTED",
-      message:
-        "A curve-edit batch must contain exactly one curve-edit operation and no other operations.",
-      path: "$.ops",
-      expected: "one curve-edit operation",
-      received: `${ops.length} operations (${curveEditCount} curve edits)`
-    });
-  }
+  assertSketchCurveEditBatchShape(ops);
 
   const state: MutableDocumentState = {
     objects: new Map(document.objects),
@@ -24444,6 +24568,20 @@ function runOperations(
       inferNextBodyNumber(resultDocument)
     )
   };
+}
+
+function assertSketchCurveEditBatchShape(ops: readonly CadOp[]): void {
+  const curveEditCount = ops.filter(isSketchCurveEditOp).length;
+  if (curveEditCount > 0 && (curveEditCount !== 1 || ops.length !== 1)) {
+    throwValidationError({
+      code: "SKETCH_EDIT_BATCH_MULTIPLE_UNSUPPORTED",
+      message:
+        "A curve-edit batch must contain exactly one curve-edit operation and no other operations.",
+      path: "$.ops",
+      expected: "one curve-edit operation",
+      received: `${ops.length} operations (${curveEditCount} curve edits)`
+    });
+  }
 }
 
 function isSketchCurveEditOp(op: CadOp): op is Extract<

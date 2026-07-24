@@ -500,6 +500,30 @@ describe("V19 curve-edit identities", () => {
       createEvidence({
         evaluatedEntities: [
           {
+            id: "circle_below_policy",
+            kind: "circle",
+            center: [0, 0],
+            radius: 1e-8,
+            construction: false
+          }
+        ]
+      }),
+      createEvidence({
+        evaluatedEntities: [
+          {
+            id: "arc_below_policy",
+            kind: "arc",
+            center: [0, 0],
+            radius: 1,
+            startAngleDegrees: 0,
+            sweepAngleDegrees: 0.05,
+            construction: false
+          }
+        ]
+      }),
+      createEvidence({
+        evaluatedEntities: [
+          {
             id: "arc_bad",
             kind: "arc",
             center: [0, 0],

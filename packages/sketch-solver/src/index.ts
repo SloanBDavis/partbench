@@ -429,6 +429,7 @@ export type SketchInitialResidualRecord =
       readonly family: SketchSolveConstraintKind;
       readonly residuals: readonly number[];
       readonly maxResidual: number;
+      readonly satisfactionTolerance: number;
       readonly satisfied: boolean;
     }
   | {
@@ -437,6 +438,7 @@ export type SketchInitialResidualRecord =
       readonly family: SketchSolveDimensionKind;
       readonly residuals: readonly number[];
       readonly maxResidual: number;
+      readonly satisfactionTolerance: number;
       readonly satisfied: boolean;
     };
 
@@ -449,8 +451,17 @@ export type SketchInitialResidualRecord =
 export interface SketchInitialResidualEvaluation {
   readonly version: SketchSolverModelVersion;
   readonly status: SketchInitialResidualEvaluationStatus;
+  /** Solver classification at the authored state; no iteration is performed. */
+  readonly solveStatus: SketchSolveStatus;
   readonly blocked: boolean;
   readonly iterations: 0;
+  readonly variableCount: number;
+  readonly residualCount: number;
+  readonly independentResidualCount: number;
+  readonly augmentedResidualRank: number;
+  readonly degreesOfFreedomEstimate: number;
+  readonly maxResidual: number;
+  readonly rmsResidual: number;
   readonly settings: SketchSolveSettings;
   readonly records: readonly SketchInitialResidualRecord[];
   readonly diagnosticCount: number;
@@ -481,6 +492,7 @@ interface ConstraintResidualBlock {
   readonly sourceType: "constraint";
   readonly sourceId: string;
   readonly constraintKind: SketchSolveConstraintKind;
+  readonly satisfactionTolerance: number;
   readonly evaluator: ResidualEvaluator;
 }
 
@@ -488,6 +500,7 @@ interface DimensionResidualBlock {
   readonly sourceType: "dimension";
   readonly sourceId: string;
   readonly dimensionKind: SketchSolveDimensionKind;
+  readonly satisfactionTolerance: number;
   readonly evaluator: ResidualEvaluator;
 }
 
@@ -580,41 +593,109 @@ export function evaluateSketchResidualsAtInitialState(
     return createInitialResidualEvaluation({
       settings,
       status: unsupported ? "unsupported" : "blocked",
+      solveStatus: unsupported ? "unsupported" : "failed",
+      variableCount: stateAccess.variables.length,
+      residualCount: 0,
+      independentResidualCount: 0,
+      augmentedResidualRank: 0,
+      maxResidual: 0,
+      rmsResidual: 0,
       diagnostics,
       records: []
     });
   }
 
-  const records = [...createResidualBlocks(model, stateAccess, settings)]
-    .sort(compareResidualBlocks)
-    .map((block): SketchInitialResidualRecord => {
-      const residuals = block
-        .evaluator(initialState)
-        .map((residual) => (Object.is(residual, -0) ? 0 : residual));
-      const maxResidual = getMaxResidual(residuals);
-      const shared = {
-        sourceId: block.sourceId,
-        residuals,
-        maxResidual,
-        satisfied: maxResidual <= settings.tolerance
-      };
-
-      return block.sourceType === "constraint"
-        ? {
-            sourceType: "constraint",
-            family: block.constraintKind,
-            ...shared
-          }
-        : {
-            sourceType: "dimension",
-            family: block.dimensionKind,
-            ...shared
-          };
+  const residualBlocks = [
+    ...createResidualBlocks(model, stateAccess, settings)
+  ].sort(compareResidualBlocks);
+  const residualDiagnostics: SketchSolveDiagnostic[] = [];
+  const records = residualBlocks.map((block): SketchInitialResidualRecord => {
+    const residuals = block.evaluator(initialState).map((residual) => {
+      const normalized = Object.is(residual, -0) ? 0 : residual;
+      if (!Number.isFinite(normalized)) {
+        residualDiagnostics.push({
+          code: "SKETCH_SOLVER_INVALID_VALUE",
+          severity: "blocker",
+          message:
+            "Authored-state residual evaluation produced a non-finite value.",
+          sourceType: block.sourceType,
+          sourceId: block.sourceId,
+          ...(block.sourceType === "constraint"
+            ? { constraintKind: block.constraintKind }
+            : { dimensionKind: block.dimensionKind }),
+          expected: "finite residual",
+          received: String(normalized)
+        });
+      }
+      return normalized;
     });
+    const maxResidual = getMaxResidual(residuals);
+    const shared = {
+      sourceId: block.sourceId,
+      residuals,
+      maxResidual,
+      satisfactionTolerance: block.satisfactionTolerance,
+      satisfied: maxResidual <= block.satisfactionTolerance
+    };
+
+    return block.sourceType === "constraint"
+      ? {
+          sourceType: "constraint",
+          family: block.constraintKind,
+          ...shared
+        }
+      : {
+          sourceType: "dimension",
+          family: block.dimensionKind,
+          ...shared
+        };
+  });
+  if (residualDiagnostics.length > 0) {
+    return createInitialResidualEvaluation({
+      settings,
+      status: "blocked",
+      solveStatus: "failed",
+      variableCount: stateAccess.variables.length,
+      residualCount: 0,
+      independentResidualCount: 0,
+      augmentedResidualRank: 0,
+      maxResidual: 0,
+      rmsResidual: 0,
+      diagnostics: [...diagnostics, ...residualDiagnostics],
+      records: []
+    });
+  }
+  const residuals = getResiduals(residualBlocks, initialState);
+  const maxResidual = getMaxResidual(residuals);
+  const analysis = analyzeResidualSystem(
+    initialState,
+    residualBlocks,
+    residuals,
+    settings
+  );
+  const solveStatus =
+    stateAccess.variables.length === 0 && residuals.length === 0
+      ? "not-run"
+      : residuals.length === 0
+        ? "under-defined"
+        : classifySolveStatus({
+            converged: records.every((record) => record.satisfied),
+            variableCount: stateAccess.variables.length,
+            residualCount: residuals.length,
+            jacobianRank: analysis.jacobianRank,
+            augmentedRank: analysis.augmentedRank
+          });
 
   return createInitialResidualEvaluation({
     settings,
     status: "evaluated",
+    solveStatus,
+    variableCount: stateAccess.variables.length,
+    residualCount: residuals.length,
+    independentResidualCount: analysis.jacobianRank,
+    augmentedResidualRank: analysis.augmentedRank,
+    maxResidual: cleanNumber(maxResidual),
+    rmsResidual: cleanNumber(getRmsResidual(residuals)),
     diagnostics,
     records
   });
@@ -623,19 +704,44 @@ export function evaluateSketchResidualsAtInitialState(
 function createInitialResidualEvaluation({
   settings,
   status,
+  solveStatus,
+  variableCount,
+  residualCount,
+  independentResidualCount,
+  augmentedResidualRank,
+  maxResidual,
+  rmsResidual,
   diagnostics,
   records
 }: {
   readonly settings: SketchSolveSettings;
   readonly status: SketchInitialResidualEvaluationStatus;
+  readonly solveStatus: SketchSolveStatus;
+  readonly variableCount: number;
+  readonly residualCount: number;
+  readonly independentResidualCount: number;
+  readonly augmentedResidualRank: number;
+  readonly maxResidual: number;
+  readonly rmsResidual: number;
   readonly diagnostics: readonly SketchSolveDiagnostic[];
   readonly records: readonly SketchInitialResidualRecord[];
 }): SketchInitialResidualEvaluation {
   return {
     version: SKETCH_SOLVER_MODEL_VERSION,
     status,
+    solveStatus,
     blocked: status !== "evaluated",
     iterations: 0,
+    variableCount,
+    residualCount,
+    independentResidualCount,
+    augmentedResidualRank,
+    degreesOfFreedomEstimate: Math.max(
+      0,
+      variableCount - independentResidualCount
+    ),
+    maxResidual,
+    rmsResidual,
     settings,
     records,
     diagnosticCount: diagnostics.length,
@@ -828,11 +934,7 @@ export function solveSketch(model: SketchSolveModel): SketchSolveResult {
         expected: `augmented rank ${analysis.jacobianRank}`,
         received: `augmented rank ${analysis.augmentedRank}; max residual ${cleanNumber(solve.maxResidual)}`
       },
-      ...createConflictEvidenceDiagnostics(
-        residualBlocks,
-        solve.state,
-        settings.tolerance
-      )
+      ...createConflictEvidenceDiagnostics(residualBlocks, solve.state)
     );
   }
 
@@ -862,12 +964,11 @@ export function solveSketch(model: SketchSolveModel): SketchSolveResult {
 
 function createConflictEvidenceDiagnostics(
   residualBlocks: readonly ResidualBlock[],
-  state: readonly number[],
-  tolerance: number
+  state: readonly number[]
 ): readonly SketchSolveDiagnostic[] {
   return residualBlocks.flatMap((block) => {
     const maxResidual = getMaxResidual(block.evaluator(state));
-    if (maxResidual <= tolerance) return [];
+    if (maxResidual <= block.satisfactionTolerance) return [];
     return [
       {
         code: "SKETCH_SOLVER_CONFLICTING" as const,
@@ -878,7 +979,7 @@ function createConflictEvidenceDiagnostics(
         ...(block.sourceType === "constraint"
           ? { constraintKind: block.constraintKind }
           : { dimensionKind: block.dimensionKind }),
-        expected: `block max residual <= ${tolerance}`,
+        expected: `block max residual <= ${block.satisfactionTolerance}`,
         received: String(cleanNumber(maxResidual))
       }
     ];
@@ -2027,6 +2128,10 @@ function createResidualBlocks(
       sourceType: "constraint",
       sourceId: constraint.id,
       constraintKind: constraint.kind,
+      satisfactionTolerance: getConstraintResidualTolerance(
+        constraint,
+        settings
+      ),
       evaluator: createConstraintResidual(constraint, stateAccess, settings)
     });
   }
@@ -2036,11 +2141,37 @@ function createResidualBlocks(
       sourceType: "dimension",
       sourceId: dimension.id,
       dimensionKind: dimension.kind,
+      satisfactionTolerance:
+        dimension.kind === "arcSweep"
+          ? settings.angularToleranceDegrees
+          : settings.tolerance,
       evaluator: createDimensionResidual(dimension, stateAccess)
     });
   }
 
   return blocks;
+}
+
+function getConstraintResidualTolerance(
+  constraint: Exclude<SketchSolveConstraint, SketchSolveDeferredConstraint>,
+  settings: SketchSolveSettings
+): number {
+  const angularToleranceRadians =
+    (settings.angularToleranceDegrees * Math.PI) / 180;
+  if (constraint.kind === "parallel" || constraint.kind === "perpendicular") {
+    return Math.sin(angularToleranceRadians);
+  }
+  if (constraint.kind === "angle") {
+    const targetRadians = (constraint.angleDegrees * Math.PI) / 180;
+    const targetCosine = Math.cos(targetRadians);
+    return Math.max(
+      Math.abs(
+        Math.cos(targetRadians - angularToleranceRadians) - targetCosine
+      ),
+      Math.abs(Math.cos(targetRadians + angularToleranceRadians) - targetCosine)
+    );
+  }
+  return settings.tolerance;
 }
 
 function compareResidualBlocks(left: ResidualBlock, right: ResidualBlock) {

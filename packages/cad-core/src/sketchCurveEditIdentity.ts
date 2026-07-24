@@ -9,6 +9,7 @@ import type {
 } from "@web-cad/cad-protocol";
 import { encodeCanonicalCbor } from "./canonicalCbor";
 import { normalizeSketchArcStartAngleDegrees } from "./sketchArcMath";
+import { SKETCH_GEOMETRY_POLICY } from "./sketchGeometryPolicy";
 import { cleanSketchNumber } from "./sketchNumber";
 import { SHA256_HEX_PATTERN, sha256Hex } from "./sha256";
 
@@ -278,14 +279,28 @@ function canonicalizeEvaluatedEntity(
         point: normalizeVec2(entity.point, `Evaluated point ${entity.id}`),
         construction: entity.construction
       };
-    case "line":
+    case "line": {
+      const start = normalizeVec2(
+        entity.start,
+        `Evaluated line ${entity.id} start`
+      );
+      const end = normalizeVec2(entity.end, `Evaluated line ${entity.id} end`);
+      if (
+        Math.hypot(end[0] - start[0], end[1] - start[1]) <=
+        SKETCH_GEOMETRY_POLICY.linearTolerance
+      ) {
+        throw new TypeError(
+          `Evaluated line ${entity.id} length must exceed the sketch linear tolerance.`
+        );
+      }
       return {
         id: entity.id,
         kind: entity.kind,
-        start: normalizeVec2(entity.start, `Evaluated line ${entity.id} start`),
-        end: normalizeVec2(entity.end, `Evaluated line ${entity.id} end`),
+        start,
+        end,
         construction: entity.construction
       };
+    }
     case "rectangle":
       return {
         id: entity.id,
@@ -294,11 +309,11 @@ function canonicalizeEvaluatedEntity(
           entity.center,
           `Evaluated rectangle ${entity.id} center`
         ),
-        width: normalizePositiveNumber(
+        width: normalizeSketchLength(
           entity.width,
           `Evaluated rectangle ${entity.id} width`
         ),
-        height: normalizePositiveNumber(
+        height: normalizeSketchLength(
           entity.height,
           `Evaluated rectangle ${entity.id} height`
         ),
@@ -312,7 +327,7 @@ function canonicalizeEvaluatedEntity(
           entity.center,
           `Evaluated circle ${entity.id} center`
         ),
-        radius: normalizePositiveNumber(
+        radius: normalizeSketchLength(
           entity.radius,
           `Evaluated circle ${entity.id} radius`
         ),
@@ -329,9 +344,14 @@ function canonicalizeEvaluatedEntity(
         entity.sweepAngleDegrees,
         `Evaluated arc ${entity.id} sweep angle`
       );
-      if (sweepAngleDegrees === 0 || Math.abs(sweepAngleDegrees) >= 360) {
+      if (
+        Math.abs(sweepAngleDegrees) <
+          SKETCH_GEOMETRY_POLICY.angularToleranceDegrees ||
+        Math.abs(sweepAngleDegrees) >
+          360 - SKETCH_GEOMETRY_POLICY.angularToleranceDegrees
+      ) {
         throw new TypeError(
-          `Evaluated arc ${entity.id} sweep angle must be non-zero and less than 360 degrees in magnitude.`
+          `Evaluated arc ${entity.id} sweep angle must satisfy the complete V17 angular domain.`
         );
       }
       return {
@@ -341,7 +361,7 @@ function canonicalizeEvaluatedEntity(
           entity.center,
           `Evaluated arc ${entity.id} center`
         ),
-        radius: normalizePositiveNumber(
+        radius: normalizeSketchLength(
           entity.radius,
           `Evaluated arc ${entity.id} radius`
         ),
@@ -409,10 +429,10 @@ function normalizeVec2(
   ];
 }
 
-function normalizePositiveNumber(value: number, label: string): number {
+function normalizeSketchLength(value: number, label: string): number {
   const normalized = normalizeFiniteNumber(value, label);
-  if (normalized <= 0) {
-    throw new TypeError(`${label} must be positive.`);
+  if (normalized <= SKETCH_GEOMETRY_POLICY.linearTolerance) {
+    throw new TypeError(`${label} must exceed the sketch linear tolerance.`);
   }
   return normalized;
 }
