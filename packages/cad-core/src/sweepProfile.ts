@@ -2,7 +2,7 @@ import type {
   CadBatchValidationErrorCode,
   CadExactExportSweepBodySource,
   FeatureId,
-  FeatureInputReferenceSemanticDiff,
+  FeatureInputReferenceSemanticDiffCurrent,
   PartId,
   SketchEntityProfileRef,
   SketchPathDiagnosticCode,
@@ -262,7 +262,7 @@ export function createPathInputReference(
   featureId: FeatureId,
   after: SketchPathRef,
   before?: SketchPathRef
-): FeatureInputReferenceSemanticDiff {
+): FeatureInputReferenceSemanticDiffCurrent {
   const entityIds = (value: SketchPathRef): readonly string[] =>
     value.kind === "entity"
       ? [value.entityId]

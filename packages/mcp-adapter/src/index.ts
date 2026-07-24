@@ -63,6 +63,9 @@ export type CadMcpToolName =
   | "cad.body_imported_body_status"
   | "cad.project_extents"
   | "cad.sketch_get"
+  | "cad.sketch_curve_edit_readiness"
+  | "cad.sketch_profile_region_candidates"
+  | "cad.sketch_profile_region_validate"
   | "cad.sketch_edit_readiness"
   | "cad.sketch_solver_status"
   | "cad.sketch_evaluation"
@@ -287,6 +290,30 @@ export class CadMcpServer {
 
     if (request.name === "cad.sketch_get") {
       return this.#callSketchGet(request);
+    }
+
+    if (request.name === "cad.sketch_curve_edit_readiness") {
+      return this.#callV19SketchQuery(
+        request,
+        "sketch.curveEditReadiness",
+        "cad.sketch_curve_edit_readiness expects arguments shaped as { proposal: SketchCurveEditProposal }."
+      );
+    }
+
+    if (request.name === "cad.sketch_profile_region_candidates") {
+      return this.#callV19SketchQuery(
+        request,
+        "sketch.profileRegionCandidates",
+        "cad.sketch_profile_region_candidates expects a sketchId and optional bounded entityIds, limit, afterCandidateKey, and sourceRevision."
+      );
+    }
+
+    if (request.name === "cad.sketch_profile_region_validate") {
+      return this.#callV19SketchQuery(
+        request,
+        "sketch.profileRegionValidate",
+        "cad.sketch_profile_region_validate expects arguments shaped as { profile: SketchRegionsProfileRef }."
+      );
     }
 
     if (request.name === "cad.sketch_edit_readiness") {
@@ -1198,6 +1225,45 @@ export class CadMcpServer {
     return createToolResult(request.name, response, !response.ok);
   }
 
+  #callV19SketchQuery(
+    request: CadMcpToolCallRequest,
+    query:
+      | "sketch.curveEditReadiness"
+      | "sketch.profileRegionCandidates"
+      | "sketch.profileRegionValidate",
+    invalidArgumentsMessage: string
+  ): CadMcpToolCallResult {
+    if (!isRecord(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        invalidArgumentsMessage
+      );
+    }
+
+    try {
+      const response = this.#adapter.query(
+        parseCadOpsAgentQueryRequest({
+          requestId: request.requestId ?? this.#createRequestId(),
+          adapterVersion: ADAPTER_VERSION,
+          query: {
+            version: "cadops.v1",
+            query: {
+              ...request.arguments,
+              query
+            }
+          }
+        })
+      );
+
+      return createToolResult(request.name, response, !response.ok);
+    } catch {
+      return createInvalidArgumentsResult(
+        request.name,
+        invalidArgumentsMessage
+      );
+    }
+  }
+
   #callSketchEditReadiness(
     request: CadMcpToolCallRequest
   ): CadMcpToolCallResult {
@@ -1597,6 +1663,171 @@ export function createCadMcpServer(
 ): CadMcpServer {
   return new CadMcpServer(options);
 }
+
+const V19_VEC2_SCHEMA = {
+  type: "array",
+  minItems: 2,
+  maxItems: 2,
+  items: { type: "number" }
+} as const;
+
+const V19_ID_ARRAY_SCHEMA = {
+  type: "array",
+  minItems: 1,
+  uniqueItems: true,
+  items: { type: "string", minLength: 1 }
+} as const;
+
+const V19_ORIENTED_SEGMENT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["entityId", "orientation"],
+  properties: {
+    entityId: { type: "string", minLength: 1 },
+    orientation: { enum: ["forward", "reverse"] }
+  }
+} as const;
+
+const V19_LOOP_REF_SCHEMA = {
+  oneOf: [
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "entityId"],
+      properties: {
+        kind: { const: "entity" },
+        entityId: { type: "string", minLength: 1 }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "segments"],
+      properties: {
+        kind: { const: "wire" },
+        segments: {
+          type: "array",
+          minItems: 2,
+          maxItems: 4_096,
+          items: V19_ORIENTED_SEGMENT_SCHEMA
+        }
+      }
+    }
+  ]
+} as const;
+
+const V19_CURVE_EDIT_PROPOSAL_SCHEMA = {
+  oneOf: [
+    {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "kind",
+        "sketchId",
+        "entityId",
+        "boundaryEntityIds",
+        "pickPoint"
+      ],
+      properties: {
+        kind: { const: "trim" },
+        sketchId: { type: "string", minLength: 1 },
+        entityId: { type: "string", minLength: 1 },
+        boundaryEntityIds: {
+          ...V19_ID_ARRAY_SCHEMA,
+          maxItems: 256
+        },
+        pickPoint: V19_VEC2_SCHEMA
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "kind",
+        "sketchId",
+        "entityId",
+        "endpoint",
+        "boundaryEntityIds"
+      ],
+      properties: {
+        kind: { const: "extend" },
+        sketchId: { type: "string", minLength: 1 },
+        entityId: { type: "string", minLength: 1 },
+        endpoint: { enum: ["start", "end"] },
+        boundaryEntityIds: {
+          ...V19_ID_ARRAY_SCHEMA,
+          maxItems: 256
+        }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "sketchId", "entityId", "splitPoints"],
+      properties: {
+        kind: { const: "split" },
+        sketchId: { type: "string", minLength: 1 },
+        entityId: { type: "string", minLength: 1 },
+        splitPoints: {
+          type: "array",
+          minItems: 1,
+          maxItems: 1_024,
+          items: V19_VEC2_SCHEMA
+        }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "sketchId", "entityId"],
+      properties: {
+        kind: { const: "explodeRectangle" },
+        sketchId: { type: "string", minLength: 1 },
+        entityId: { type: "string", minLength: 1 }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "sketchId", "source", "distance", "side"],
+      properties: {
+        kind: { const: "offset" },
+        sketchId: { type: "string", minLength: 1 },
+        source: {
+          oneOf: [
+            {
+              type: "object",
+              additionalProperties: false,
+              required: ["kind", "entityId"],
+              properties: {
+                kind: { const: "entity" },
+                entityId: { type: "string", minLength: 1 }
+              }
+            },
+            {
+              type: "object",
+              additionalProperties: false,
+              required: ["kind", "segments", "closed"],
+              properties: {
+                kind: { const: "chain" },
+                segments: {
+                  type: "array",
+                  minItems: 1,
+                  maxItems: 1_024,
+                  items: V19_ORIENTED_SEGMENT_SCHEMA
+                },
+                closed: { type: "boolean" }
+              }
+            }
+          ]
+        },
+        distance: { type: "number", exclusiveMinimum: 0 },
+        side: { enum: ["left", "right", "inward", "outward"] },
+        referencePoint: V19_VEC2_SCHEMA
+      }
+    }
+  ]
+} as const;
 
 const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
@@ -2219,6 +2450,103 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
     }
   },
   {
+    name: "cad.sketch_curve_edit_readiness",
+    description:
+      "Prepares one typed V19 trim, extend, split, explode-rectangle, or non-associative offset proposal and returns source revision, exact deletion impact, dependency consequences, and a derived preview. Offset results are ordinary source entities, not an associative offset feature.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["proposal"],
+      properties: {
+        proposal: {
+          ...V19_CURVE_EDIT_PROPOSAL_SCHEMA,
+          description:
+            "A typed source-space SketchCurveEditProposal. Screenshots, pixel coordinates, opaque candidate tokens, scripts, filesystem paths, and raw OCCT selectors are not accepted."
+        }
+      }
+    }
+  },
+  {
+    name: "cad.sketch_profile_region_candidates",
+    description:
+      "Returns a bounded, revision-bound page of derived V19 whole-loop material-region candidates. Candidate records are derived discovery evidence and do not become feature source until an explicit regions profile is submitted.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["sketchId"],
+      properties: {
+        sketchId: {
+          type: "string",
+          description: "Source sketch ID to inspect."
+        },
+        entityIds: {
+          type: "array",
+          uniqueItems: true,
+          items: { type: "string" },
+          description:
+            "Optional source entity subset; selection pixels and opaque candidate tokens are not accepted."
+        },
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: 100,
+          description: "Maximum candidate summaries in this page."
+        },
+        afterCandidateKey: {
+          type: "string",
+          description:
+            "Canonical key from the preceding page; requires sourceRevision."
+        },
+        sourceRevision: {
+          type: "string",
+          pattern: "^partbench-source-v1:[0-9a-f]{64}$",
+          description:
+            "Revision identity returned with the preceding page; requires afterCandidateKey."
+        }
+      }
+    }
+  },
+  {
+    name: "cad.sketch_profile_region_validate",
+    description:
+      "Validates an explicit V19 regions profile made from typed source entity/wire loop references and returns normalized loop ordering, areas, complexity, and diagnostics. It never substitutes a derived candidate or raw geometry selector.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["profile"],
+      properties: {
+        profile: {
+          type: "object",
+          additionalProperties: false,
+          required: ["kind", "sketchId", "regions"],
+          properties: {
+            kind: { const: "regions" },
+            sketchId: { type: "string" },
+            regions: {
+              type: "array",
+              minItems: 1,
+              maxItems: 256,
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["outer", "holes"],
+                properties: {
+                  outer: V19_LOOP_REF_SCHEMA,
+                  holes: {
+                    type: "array",
+                    maxItems: 511,
+                    items: V19_LOOP_REF_SCHEMA
+                  }
+                },
+                description: "One explicit material region."
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  {
     name: "cad.sketch_edit_readiness",
     description:
       "Returns V10 F1 sketch edit readiness, sketch health, rebuild impact, body lifecycle, and reference-effect diagnostics for one supported source-backed sketch edit proposal.",
@@ -2601,7 +2929,17 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
         },
         actor: {
           type: "object",
-          description: "Optional actor metadata for the committed transaction."
+          additionalProperties: false,
+          description: "Optional actor metadata for the committed transaction.",
+          required: ["type"],
+          properties: {
+            type: {
+              type: "string",
+              enum: ["human", "agent", "script", "system"]
+            },
+            id: { type: "string" },
+            name: { type: "string" }
+          }
         },
         allowCommit: {
           type: "boolean",
@@ -2665,9 +3003,30 @@ function isBatchToolArguments(value: unknown): value is {
 } {
   return (
     isRecord(value) &&
+    Object.keys(value).every((key) =>
+      ["batch", "actor", "allowCommit", "projectHandoff"].includes(key)
+    ) &&
     value.batch !== undefined &&
+    (value.actor === undefined || isCadActorMetadata(value.actor)) &&
+    (value.allowCommit === undefined ||
+      typeof value.allowCommit === "boolean") &&
     (value.projectHandoff === undefined ||
       isProjectHandoffToolArguments(value.projectHandoff))
+  );
+}
+
+function isCadActorMetadata(value: unknown): value is CadActorMetadata {
+  return (
+    isRecord(value) &&
+    Object.keys(value).every((key) => ["type", "id", "name"].includes(key)) &&
+    (value.type === "human" ||
+      value.type === "agent" ||
+      value.type === "script" ||
+      value.type === "system") &&
+    (value.id === undefined ||
+      (typeof value.id === "string" && value.id !== "")) &&
+    (value.name === undefined ||
+      (typeof value.name === "string" && value.name !== ""))
   );
 }
 

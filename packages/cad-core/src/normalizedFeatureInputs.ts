@@ -1,21 +1,21 @@
 import type {
-  ExtrudeFeatureV21,
   FeatureExtrudeProfileKind,
   FeatureSnapshot,
   FeatureSnapshotV21,
-  LoftFeatureV21,
+  FeatureSnapshotV22,
+  LoftFeatureV22,
   OrientedSketchSegmentRef,
-  ProfileConsumerFeatureV21,
-  RevolveFeatureV21,
+  ProfileConsumerFeatureV22,
   SketchEntityId,
   SketchEntityProfileRef,
   SketchId,
+  SketchLoopRef,
   SketchPathRef,
-  SketchProfileRef,
-  SweepFeatureV21
+  SketchProfileRefV22
 } from "@web-cad/cad-protocol";
+import { cloneSketchProfileRefV22 } from "./v22SourceShapes";
 
-export type NormalizedFeature = FeatureSnapshotV21;
+export type NormalizedFeature = FeatureSnapshotV22;
 
 export interface NormalizedSketchEntityRef {
   readonly sketchId: SketchId;
@@ -23,14 +23,14 @@ export interface NormalizedSketchEntityRef {
   readonly orientation?: "forward" | "reverse";
 }
 
-export type NormalizedEntityProfileConsumerFeature =
-  | ExtrudeFeatureV21
-  | RevolveFeatureV21
-  | SweepFeatureV21;
+export type NormalizedEntityProfileConsumerFeature = Exclude<
+  ProfileConsumerFeatureV22,
+  LoftFeatureV22
+>;
 
 export type NormalizedSingleProfileConsumerFeature = Exclude<
-  ProfileConsumerFeatureV21,
-  LoftFeatureV21
+  ProfileConsumerFeatureV22,
+  LoftFeatureV22
 >;
 
 export type SketchEntitySourceReference = Pick<
@@ -45,11 +45,9 @@ function cloneSegments(
 }
 
 export function cloneSketchProfileRef(
-  profile: SketchProfileRef
-): SketchProfileRef {
-  return profile.kind === "entity"
-    ? { ...profile }
-    : { ...profile, segments: cloneSegments(profile.segments) };
+  profile: SketchProfileRefV22
+): SketchProfileRefV22 {
+  return cloneSketchProfileRefV22(profile);
 }
 
 export function cloneSketchPathRef(path: SketchPathRef): SketchPathRef {
@@ -58,16 +56,16 @@ export function cloneSketchPathRef(path: SketchPathRef): SketchPathRef {
     : { ...path, segments: cloneSegments(path.segments) };
 }
 
-/** Converts every V1-V20 profile consumer to the sole normalized in-memory form. */
+/** Converts legacy consumers and deep-clones normalized V21/V22 inputs. */
 export function normalizeFeatureInputs(
-  feature: FeatureSnapshot | FeatureSnapshotV21
+  feature: FeatureSnapshot | FeatureSnapshotV21 | FeatureSnapshotV22
 ): NormalizedFeature {
   const stored = feature as unknown as Record<string, unknown>;
   if (feature.kind === "extrude" || feature.kind === "revolve") {
     if (stored.profile && typeof stored.profile === "object") {
       return {
         ...feature,
-        profile: cloneSketchProfileRef(stored.profile as SketchProfileRef)
+        profile: cloneSketchProfileRef(stored.profile as SketchProfileRefV22)
       } as NormalizedFeature;
     }
     const { sketchId, entityId, profileKind: _profileKind, ...base } = stored;
@@ -123,18 +121,38 @@ export function normalizeFeatureInputs(
               }
         })
       )
-    } as LoftFeatureV21;
+    } as LoftFeatureV22;
   }
   return structuredClone(feature) as NormalizedFeature;
 }
 
 export function getProfileEntityRefs(
-  profile: SketchProfileRef
+  profile: SketchProfileRefV22
 ): readonly NormalizedSketchEntityRef[] {
-  return profile.kind === "entity"
-    ? [{ sketchId: profile.sketchId, entityId: profile.entityId }]
-    : profile.segments.map((segment) => ({
-        sketchId: profile.sketchId,
+  if (profile.kind === "entity") {
+    return [{ sketchId: profile.sketchId, entityId: profile.entityId }];
+  }
+  if (profile.kind === "wire") {
+    return profile.segments.map((segment) => ({
+      sketchId: profile.sketchId,
+      entityId: segment.entityId,
+      orientation: segment.orientation
+    }));
+  }
+  return profile.regions.flatMap((region) => [
+    ...getLoopEntityRefs(profile.sketchId, region.outer),
+    ...region.holes.flatMap((hole) => getLoopEntityRefs(profile.sketchId, hole))
+  ]);
+}
+
+function getLoopEntityRefs(
+  sketchId: SketchId,
+  loop: SketchLoopRef
+): readonly NormalizedSketchEntityRef[] {
+  return loop.kind === "entity"
+    ? [{ sketchId, entityId: loop.entityId }]
+    : loop.segments.map((segment) => ({
+        sketchId,
         entityId: segment.entityId,
         orientation: segment.orientation
       }));
@@ -159,7 +177,7 @@ export function getPathEntityRefs(
 }
 
 export function getProfileConsumerRefs(
-  feature: ProfileConsumerFeatureV21
+  feature: ProfileConsumerFeatureV22
 ): readonly NormalizedSketchEntityRef[] {
   if (feature.kind === "loft") {
     return feature.sections.flatMap((section) =>
@@ -173,14 +191,14 @@ export function getProfileConsumerRefs(
 }
 
 export function getSingleEntityProfile(
-  feature: Exclude<ProfileConsumerFeatureV21, LoftFeatureV21>
+  feature: Exclude<ProfileConsumerFeatureV22, LoftFeatureV22>
 ): SketchEntityProfileRef | undefined {
   return feature.profile.kind === "entity" ? feature.profile : undefined;
 }
 
 export function getFeatureProfileRef(
   feature: NormalizedSingleProfileConsumerFeature
-): SketchProfileRef {
+): SketchProfileRefV22 {
   return feature.profile;
 }
 
@@ -192,18 +210,18 @@ export function getFeatureEntityProfileRef(
   return getSingleEntityProfile(feature);
 }
 
-export function getProfileSketchId(profile: SketchProfileRef): SketchId {
+export function getProfileSketchId(profile: SketchProfileRefV22): SketchId {
   return profile.sketchId;
 }
 
 export function getProfileEntityIds(
-  profile: SketchProfileRef
+  profile: SketchProfileRefV22
 ): readonly SketchEntityId[] {
   return getProfileEntityRefs(profile).map((reference) => reference.entityId);
 }
 
 export function getProfileEntityReferences(
-  profile: SketchProfileRef
+  profile: SketchProfileRefV22
 ): readonly SketchEntitySourceReference[] {
   return getProfileEntityRefs(profile).map(({ sketchId, entityId }) => ({
     sketchId,
@@ -248,7 +266,7 @@ export function getSupportedEntityProfileKind(
 }
 
 export function getLoftSectionProfiles(
-  feature: LoftFeatureV21
+  feature: LoftFeatureV22
 ): readonly SketchEntityProfileRef[] {
   return feature.sections.map((section) => section.profile);
 }

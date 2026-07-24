@@ -4,7 +4,7 @@ import type {
   CadOperationSummary,
   CadSemanticDiffSummary,
   CadSketchConstraintRef,
-  CadSketchDimensionRef,
+  CadSketchDimensionRefCurrent,
   CadFeatureRef,
   CadSketchEntityRef,
   CadTransactionAuditMetadata,
@@ -18,7 +18,8 @@ import type {
   SemanticDiff,
   SketchEntityId,
   SketchEntityKind,
-  SketchProfileRef,
+  SketchProfileRefV22,
+  SketchDimensionTargetV22,
   SketchSemanticDiff,
   SketchId,
   TransactionId,
@@ -477,15 +478,39 @@ function createOperationSummaries(
           )
         });
 
+      case "sketch.trim":
+      case "sketch.extend":
+      case "sketch.split":
+      case "sketch.explodeRectangle":
+      case "sketch.offset":
+        return createSketchOperationSummary({
+          op: op.op,
+          label: `${formatCurveEditOperation(op.op)} in ${op.sketchId}`,
+          sketchId: op.sketchId,
+          ...("entityId" in op ? { sketchEntityId: op.entityId } : {})
+        });
+
+      case "sketch.addSlot":
+      case "sketch.addRoundedRectangle":
+        return createSketchOperationSummary({
+          op: op.op,
+          label: `${op.op === "sketch.addSlot" ? "Add slot" : "Add rounded rectangle"} to ${op.sketchId}`,
+          sketchId: op.sketchId
+        });
+
       case "sketch.dimension.create": {
         const dimensionId = op.id ?? createdSketchDimensionRef?.id;
+        const sketchEntityId =
+          "entityId" in op && op.entityId
+            ? op.entityId
+            : getPrimaryDimensionTargetEntityId(op.target);
 
         return createSketchDimensionOperationSummary({
           op: op.op,
-          label: `Create sketch dimension ${dimensionId ?? "with generated ID"} on ${op.sketchId}/${op.entityId}`,
+          label: `Create sketch dimension ${dimensionId ?? "with generated ID"} on ${op.sketchId}${sketchEntityId ? `/${sketchEntityId}` : ""}`,
           sketchDimensionId: dimensionId,
           sketchId: op.sketchId,
-          sketchEntityId: op.entityId
+          sketchEntityId
         });
       }
 
@@ -519,7 +544,9 @@ function createOperationSummaries(
               ? op.primaryTarget.entityId
               : op.kind === "midpoint"
                 ? op.lineEntityId
-                : op.kind === "parallel" || op.kind === "perpendicular"
+                : op.kind === "parallel" ||
+                    op.kind === "perpendicular" ||
+                    op.kind === "equalLength"
                   ? op.secondaryLineEntityId
                   : op.kind === "tangent" || op.kind === "symmetry"
                     ? op.primaryTarget.entityId
@@ -533,7 +560,9 @@ function createOperationSummaries(
               ? `${op.sketchId}/${op.primaryTarget.entityId}.${op.primaryTarget.role} = ${op.secondaryTarget.entityId}.${op.secondaryTarget.role}`
               : op.kind === "midpoint"
                 ? `${op.sketchId}/${op.lineEntityId} midpoint -> ${op.target.entityId}.${op.target.role}`
-                : op.kind === "parallel" || op.kind === "perpendicular"
+                : op.kind === "parallel" ||
+                    op.kind === "perpendicular" ||
+                    op.kind === "equalLength"
                   ? `${op.sketchId}/${op.primaryLineEntityId} ${op.kind} -> ${op.secondaryLineEntityId}`
                   : op.kind === "tangent"
                     ? `${op.sketchId}/${op.primaryTarget.entityId} ${op.kind} -> ${op.secondaryTarget.entityId}`
@@ -551,6 +580,13 @@ function createOperationSummaries(
           sketchEntityId: targetEntityId
         });
       }
+
+      case "sketch.constraint.update":
+        return createSketchConstraintOperationSummary({
+          op: op.op,
+          label: `Update ${op.definition.kind} sketch constraint ${op.id}`,
+          sketchConstraintId: op.id
+        });
 
       case "sketch.constraint.rename":
         return createSketchConstraintOperationSummary({
@@ -572,14 +608,23 @@ function createOperationSummaries(
         const operationMode = op.operationMode ?? "newBody";
         const operationLabel =
           operationMode === "newBody" ? "new body" : operationMode;
+        const profile: SketchProfileRefV22 =
+          "profile" in op && op.profile
+            ? op.profile
+            : {
+                kind: "entity",
+                sketchId: op.sketchId,
+                entityId: op.entityId
+              };
 
         return createFeatureOperationSummary({
           op: op.op,
-          label: `Create ${operationLabel} extrude feature ${featureId ?? "with generated ID"} from ${op.sketchId}/${op.entityId}${
+          label: `Create ${operationLabel} extrude feature ${featureId ?? "with generated ID"} from ${formatProfileRefLabel(profile)}${
             bodyId ? ` -> body ${bodyId}` : ""
           }`,
-          sketchId: op.sketchId,
-          sketchEntityId: op.entityId,
+          sketchId: profile.sketchId,
+          sketchEntityId:
+            profile.kind === "entity" ? profile.entityId : undefined,
           featureId,
           bodyId,
           targetBodyId: op.targetBodyId,
@@ -592,18 +637,15 @@ function createOperationSummaries(
         const featureId = op.id ?? createdFeatureRef?.id;
         const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
         const operationMode = op.operationMode ?? "newBody";
-        const profile: SketchProfileRef =
+        const profile: SketchProfileRefV22 =
           "profile" in op && op.profile
-            ? (op.profile as SketchProfileRef)
+            ? op.profile
             : {
                 kind: "entity" as const,
                 sketchId: op.sketchId,
                 entityId: op.entityId
               };
-        const profileLabel =
-          profile.kind === "entity"
-            ? `${profile.sketchId}/${profile.entityId}`
-            : `${profile.sketchId}/wire(${profile.segments.map((segment) => segment.entityId).join(",")})`;
+        const profileLabel = formatProfileRefLabel(profile);
 
         return createFeatureOperationSummary({
           op: op.op,
@@ -1114,6 +1156,61 @@ function formatUnitUpdateModeLabel(
   return mode === "preservePhysicalSize" ? "convert size" : "relabel values";
 }
 
+function formatCurveEditOperation(
+  op:
+    | "sketch.trim"
+    | "sketch.extend"
+    | "sketch.split"
+    | "sketch.explodeRectangle"
+    | "sketch.offset"
+): string {
+  switch (op) {
+    case "sketch.trim":
+      return "Trim curve";
+    case "sketch.extend":
+      return "Extend curve";
+    case "sketch.split":
+      return "Split curve";
+    case "sketch.explodeRectangle":
+      return "Explode rectangle";
+    case "sketch.offset":
+      return "Offset sketch geometry";
+  }
+}
+
+function getPrimaryDimensionTargetEntityId(
+  target:
+    | Extract<CadOp, { readonly op: "sketch.dimension.create" }>["target"]
+    | undefined
+): SketchEntityId | undefined {
+  if (!target || !("kind" in target)) {
+    return undefined;
+  }
+  const normalized = target as SketchDimensionTargetV22;
+  switch (normalized.kind) {
+    case "entityScalar":
+      return normalized.entityId;
+    case "pointPair":
+      return normalized.primary.entityId;
+    case "pointLineDistance":
+      return normalized.point.entityId;
+    case "lineAngle":
+      return normalized.primaryLineEntityId;
+  }
+}
+
+function formatProfileRefLabel(profile: SketchProfileRefV22): string {
+  if (profile.kind === "entity") {
+    return `${profile.sketchId}/${profile.entityId}`;
+  }
+  if (profile.kind === "wire") {
+    return `${profile.sketchId}/wire(${profile.segments
+      .map((segment) => segment.entityId)
+      .join(",")})`;
+  }
+  return `${profile.sketchId}/regions(${profile.regions.length})`;
+}
+
 function formatExtrudeUpdateLabel(
   op: Extract<CadOp, { readonly op: "feature.updateExtrude" }>
 ): string {
@@ -1342,6 +1439,12 @@ function createSemanticDiffSummary(diff: SemanticDiff): CadSemanticDiffSummary {
           )
         }
       : {}),
+    ...(diff.sketches?.curveEdits
+      ? { curveEdits: [...diff.sketches.curveEdits] }
+      : {}),
+    ...(diff.sketches?.convenienceOperations
+      ? { convenienceOperations: [...diff.sketches.convenienceOperations] }
+      : {}),
     ...(diff.document
       ? {
           document: {
@@ -1395,13 +1498,13 @@ function cloneParameterSemanticDiff(
 }
 
 function cloneSketchDimensionSemanticDiff(diff: {
-  readonly created?: readonly CadSketchDimensionRef[];
-  readonly modified?: readonly CadSketchDimensionRef[];
-  readonly deleted?: readonly CadSketchDimensionRef[];
+  readonly created?: readonly CadSketchDimensionRefCurrent[];
+  readonly modified?: readonly CadSketchDimensionRefCurrent[];
+  readonly deleted?: readonly CadSketchDimensionRefCurrent[];
 }): {
-  readonly created?: readonly CadSketchDimensionRef[];
-  readonly modified?: readonly CadSketchDimensionRef[];
-  readonly deleted?: readonly CadSketchDimensionRef[];
+  readonly created?: readonly CadSketchDimensionRefCurrent[];
+  readonly modified?: readonly CadSketchDimensionRefCurrent[];
+  readonly deleted?: readonly CadSketchDimensionRefCurrent[];
 } {
   return {
     ...(diff.created ? { created: [...diff.created] } : {}),
@@ -1440,7 +1543,11 @@ function cloneSketchSemanticDiff(diff: SketchSemanticDiff): SketchSemanticDiff {
     ...(diff.entitiesDeleted
       ? { entitiesDeleted: [...diff.entitiesDeleted] }
       : {}),
-    ...(diff.entityChanges ? { entityChanges: [...diff.entityChanges] } : {})
+    ...(diff.entityChanges ? { entityChanges: [...diff.entityChanges] } : {}),
+    ...(diff.curveEdits ? { curveEdits: [...diff.curveEdits] } : {}),
+    ...(diff.convenienceOperations
+      ? { convenienceOperations: [...diff.convenienceOperations] }
+      : {})
   };
 }
 
@@ -1461,6 +1568,9 @@ function cloneFeatureSemanticDiff(
       : {}),
     ...(diff.lifecycleEffects
       ? { lifecycleEffects: [...diff.lifecycleEffects] }
+      : {}),
+    ...(diff.inputReferences
+      ? { inputReferences: [...diff.inputReferences] }
       : {})
   };
 }

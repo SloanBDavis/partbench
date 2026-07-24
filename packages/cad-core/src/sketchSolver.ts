@@ -10,10 +10,14 @@ import type {
   SketchConstraintKind,
   SketchConstraintSnapshot,
   SketchDimensionEntry,
+  SketchDimensionEntryCurrent,
+  SketchDimensionEntryV22,
   SketchDimensionId,
   SketchDimensionIssue,
   SketchDimensionSnapshot,
+  SketchDimensionSnapshotV22,
   SketchDimensionTarget,
+  SketchDimensionTargetV22,
   SketchEntityId,
   SketchEntitySnapshot,
   SketchEvaluationIssue,
@@ -22,6 +26,13 @@ import type {
   SketchPointTarget,
   Vec2
 } from "@web-cad/cad-protocol";
+import {
+  downconvertSketchDimensionSnapshotV22,
+  getSketchDimensionTargetEntityIdsV22,
+  isSketchDimensionSnapshotV22,
+  normalizeSketchDimensionSnapshotV22,
+  type SketchDimensionSnapshotCurrent
+} from "./v22SourceShapes";
 import {
   createCanonicalSketchArcEntity,
   getSketchArcPoint
@@ -47,7 +58,7 @@ export interface SketchSolverDocument {
   readonly parameters: ReadonlyMap<ParameterId, SketchSolverParameter>;
   readonly sketchDimensions: ReadonlyMap<
     SketchDimensionId,
-    SketchDimensionSnapshot
+    SketchDimensionSnapshotCurrent
   >;
   readonly sketchConstraints: ReadonlyMap<
     SketchConstraintId,
@@ -55,7 +66,7 @@ export interface SketchSolverDocument {
   >;
 }
 
-export type SketchSolverStatus = SketchDimensionEntry["status"];
+export type SketchSolverStatus = SketchDimensionEntryCurrent["status"];
 
 export interface SketchSolverApplyIssue {
   readonly kind: "dimension" | "constraint";
@@ -114,7 +125,7 @@ export interface SketchSolverEvaluation {
   readonly plane: SketchPlane;
   readonly status: SketchSolverStatus;
   readonly drivenEntityIds: readonly SketchEntityId[];
-  readonly dimensions: readonly SketchDimensionEntry[];
+  readonly dimensions: readonly SketchDimensionEntryCurrent[];
   readonly constraints: readonly SketchConstraintEntry[];
   readonly issues: readonly SketchEvaluationIssue[];
   readonly evaluatedGeometry: EvaluatedSketchGeometry;
@@ -124,6 +135,29 @@ export interface SketchSolverApplyContext {
   readonly document: SketchSolverDocument;
   readonly sketchId: SketchId;
   readonly entities: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>;
+}
+
+export function createLegacySketchSolverDocumentProjection(
+  document: SketchSolverDocument
+): SketchSolverDocument & {
+  readonly sketchDimensions: ReadonlyMap<
+    SketchDimensionId,
+    SketchDimensionSnapshot
+  >;
+} {
+  const sketchDimensions = new Map<
+    SketchDimensionId,
+    SketchDimensionSnapshot
+  >();
+  for (const dimension of document.sketchDimensions.values()) {
+    const legacy = isSketchDimensionSnapshotV22(dimension)
+      ? downconvertSketchDimensionSnapshotV22(dimension)
+      : dimension;
+    if (legacy) {
+      sketchDimensions.set(legacy.id, legacy);
+    }
+  }
+  return { ...document, sketchDimensions };
 }
 
 export function evaluateSketch(
@@ -141,7 +175,10 @@ export function evaluateSketch(
     .map((constraint) =>
       evaluateSketchConstraint(document, constraint, evaluatedGeometry.entities)
     );
-  const solverProbe = runSketchSolverPackageProbe(document, sketch);
+  const solverProbe = runSketchSolverPackageProbe(
+    createLegacySketchSolverDocumentProjection(document),
+    sketch
+  );
   const unsupportedConstraintIds = new Set(
     solverProbe.diagnostics
       .filter(
@@ -168,7 +205,11 @@ export function evaluateSketch(
   const allIssues = [...issues, ...completenessIssues];
   const drivenEntityIds = [
     ...new Set([
-      ...dimensions.map((dimension) => dimension.entityId),
+      ...dimensions.flatMap((dimension) =>
+        "sourceShape" in dimension
+          ? getSketchDimensionTargetEntityIdsV22(dimension.target)
+          : [dimension.entityId]
+      ),
       ...constraints.flatMap(getSketchConstraintDrivenEntityIds)
     ])
   ];
@@ -325,6 +366,29 @@ export function createSketchEvaluationQueryResponse(
 
 export function evaluateSketchDimension(
   document: SketchSolverDocument,
+  dimension: SketchDimensionSnapshotCurrent,
+  evaluatedEntities?: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>,
+  options: { readonly checkConsistency?: boolean } = {}
+): SketchDimensionEntryCurrent {
+  const normalized = normalizeSketchDimensionSnapshotV22(dimension);
+  const legacy = downconvertSketchDimensionSnapshotV22(normalized);
+  return legacy
+    ? evaluateLegacySketchDimension(
+        document,
+        legacy,
+        evaluatedEntities,
+        options
+      )
+    : evaluateV22SketchDimension(
+        document,
+        normalized,
+        evaluatedEntities,
+        options
+      );
+}
+
+function evaluateLegacySketchDimension(
+  document: SketchSolverDocument,
   dimension: SketchDimensionSnapshot,
   evaluatedEntities?: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>,
   options: { readonly checkConsistency?: boolean } = {}
@@ -465,6 +529,389 @@ export function evaluateSketchDimension(
     ...(effectiveValue !== undefined
       ? { effectiveValue: cleanSketchNumber(effectiveValue) }
       : {})
+  };
+}
+
+function evaluateV22SketchDimension(
+  document: SketchSolverDocument,
+  dimension: SketchDimensionSnapshotV22,
+  evaluatedEntities?: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>,
+  options: { readonly checkConsistency?: boolean } = {}
+): SketchDimensionEntryV22 {
+  const issues: SketchDimensionIssue[] = [];
+  const sketch = document.sketches.get(dimension.sketchId);
+  const entities = evaluatedEntities ?? sketch?.entities;
+  const parameter =
+    dimension.valueSource.type === "parameter"
+      ? document.parameters.get(dimension.valueSource.parameterId)
+      : undefined;
+  const effectiveValue =
+    dimension.valueSource.type === "literal"
+      ? dimension.valueSource.value
+      : parameter?.value;
+
+  if (!sketch) {
+    issues.push({
+      code: "SKETCH_NOT_FOUND",
+      message: `Sketch does not exist: ${dimension.sketchId}`,
+      sketchId: dimension.sketchId,
+      sketchDimensionId: dimension.id
+    });
+  }
+
+  if (dimension.valueSource.type === "parameter" && !parameter) {
+    issues.push({
+      code: "PARAMETER_NOT_FOUND",
+      message: `Parameter does not exist: ${dimension.valueSource.parameterId}`,
+      parameterId: dimension.valueSource.parameterId,
+      sketchDimensionId: dimension.id
+    });
+  }
+
+  if (
+    dimension.target.kind === "lineAngle" &&
+    dimension.valueSource.type === "parameter"
+  ) {
+    issues.push({
+      code: "SKETCH_DIMENSION_TARGET_UNSUPPORTED",
+      message: "Line-angle dimensions require a literal value source.",
+      parameterId: dimension.valueSource.parameterId,
+      sketchId: dimension.sketchId,
+      sketchDimensionId: dimension.id,
+      expected: "literal value source",
+      received: "parameter"
+    });
+  }
+
+  for (const entityId of getSketchDimensionTargetEntityIdsV22(
+    dimension.target
+  )) {
+    if (entities?.has(entityId)) {
+      continue;
+    }
+    issues.push({
+      code: "SKETCH_ENTITY_NOT_FOUND",
+      message: `Sketch entity does not exist: ${entityId}`,
+      sketchId: dimension.sketchId,
+      sketchEntityId: entityId,
+      sketchDimensionId: dimension.id
+    });
+  }
+
+  if (
+    effectiveValue !== undefined &&
+    !isValidV22DimensionValue(dimension.target, effectiveValue)
+  ) {
+    issues.push({
+      code:
+        dimension.target.kind === "lineAngle"
+          ? "SKETCH_DIMENSION_ANGLE_SENSE_INVALID"
+          : "SKETCH_DIMENSION_DISTANCE_INVALID",
+      message: "V22 dimension effective value is outside its target domain.",
+      sketchId: dimension.sketchId,
+      sketchDimensionId: dimension.id,
+      expected: getV22DimensionValueDomainLabel(dimension.target),
+      received: describeReceived(effectiveValue)
+    });
+  }
+
+  if (
+    entities &&
+    options.checkConsistency !== false &&
+    issues.length === 0 &&
+    effectiveValue !== undefined
+  ) {
+    const measured = measureV22DimensionTarget(dimension.target, entities);
+    if (!measured.ok) {
+      issues.push({
+        code: measured.code,
+        message: measured.message,
+        sketchId: dimension.sketchId,
+        sketchEntityId: measured.sketchEntityId,
+        sketchDimensionId: dimension.id,
+        expected: measured.expected,
+        received: measured.received
+      });
+    } else if (!numbersEqual(measured.value, effectiveValue)) {
+      issues.push({
+        code: "INCONSISTENT_CONSTRAINT",
+        message: "Sketch dimension target does not match its evaluated value.",
+        sketchId: dimension.sketchId,
+        sketchDimensionId: dimension.id,
+        expected: String(cleanSketchNumber(effectiveValue)),
+        received: String(cleanSketchNumber(measured.value))
+      });
+    }
+  }
+
+  return {
+    ...normalizeSketchDimensionSnapshotV22(dimension),
+    sourceShape: "v22",
+    status: getSketchEvaluationStatus(issues),
+    issues,
+    ...(effectiveValue !== undefined
+      ? { effectiveValue: cleanSketchNumber(effectiveValue) }
+      : {})
+  };
+}
+
+function isValidV22DimensionValue(
+  target: SketchDimensionTargetV22,
+  value: number
+): boolean {
+  if (!Number.isFinite(value)) {
+    return false;
+  }
+  if (target.kind === "lineAngle") {
+    return (
+      value > SKETCH_GEOMETRY_POLICY.angularToleranceDegrees &&
+      value < 180 - SKETCH_GEOMETRY_POLICY.angularToleranceDegrees
+    );
+  }
+  if (target.kind === "entityScalar" && target.role === "sweep") {
+    return isValidArcDimensionValue("sweep", value);
+  }
+  const minimum =
+    target.kind === "entityScalar" && target.role === "diameter"
+      ? 2 * SKETCH_GEOMETRY_POLICY.linearTolerance
+      : SKETCH_GEOMETRY_POLICY.linearTolerance;
+  return value > minimum;
+}
+
+function getV22DimensionValueDomainLabel(
+  target: SketchDimensionTargetV22
+): string {
+  if (target.kind === "lineAngle") {
+    return `${SKETCH_GEOMETRY_POLICY.angularToleranceDegrees} < angle < ${
+      180 - SKETCH_GEOMETRY_POLICY.angularToleranceDegrees
+    }`;
+  }
+  if (target.kind === "entityScalar" && target.role === "sweep") {
+    return `${SKETCH_GEOMETRY_POLICY.angularToleranceDegrees} <= sweep <= ${
+      360 - SKETCH_GEOMETRY_POLICY.angularToleranceDegrees
+    }`;
+  }
+  const minimum =
+    target.kind === "entityScalar" && target.role === "diameter"
+      ? 2 * SKETCH_GEOMETRY_POLICY.linearTolerance
+      : SKETCH_GEOMETRY_POLICY.linearTolerance;
+  return `>${minimum}`;
+}
+
+type V22MeasurementResult =
+  | { readonly ok: true; readonly value: number }
+  | {
+      readonly ok: false;
+      readonly code:
+        | "SKETCH_DIMENSION_TARGET_UNSUPPORTED"
+        | "SKETCH_DIMENSION_ANGLE_SENSE_INVALID"
+        | "SKETCH_DIMENSION_DISTANCE_INVALID";
+      readonly message: string;
+      readonly sketchEntityId?: SketchEntityId;
+      readonly expected?: string;
+      readonly received?: string;
+    };
+
+function measureV22DimensionTarget(
+  target: SketchDimensionTargetV22,
+  entities: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>
+): V22MeasurementResult {
+  if (target.kind === "entityScalar") {
+    const entity = entities.get(target.entityId);
+    if (!entity || entity.kind !== target.entityKind) {
+      return unsupportedV22Measurement(
+        target.entityId,
+        target.entityKind,
+        entity?.kind
+      );
+    }
+    if (entity.kind === "circle" || entity.kind === "arc") {
+      if (target.role === "diameter") {
+        return { ok: true, value: cleanSketchNumber(entity.radius * 2) };
+      }
+      if (target.role === "radius") {
+        return { ok: true, value: cleanSketchNumber(entity.radius) };
+      }
+      if (entity.kind === "arc" && target.role === "sweep") {
+        return {
+          ok: true,
+          value: cleanSketchNumber(Math.abs(entity.sweepAngleDegrees))
+        };
+      }
+    }
+    if (entity.kind === "line" && target.role === "length") {
+      return { ok: true, value: getLineLength(entity) };
+    }
+    if (
+      entity.kind === "rectangle" &&
+      (target.role === "width" || target.role === "height")
+    ) {
+      return { ok: true, value: cleanSketchNumber(entity[target.role]) };
+    }
+    return unsupportedV22Measurement(
+      target.entityId,
+      `${target.entityKind}.${target.role}`,
+      entity.kind
+    );
+  }
+
+  if (target.kind === "pointPair") {
+    const primary = resolveV22PointCoordinate(target.primary, entities);
+    const secondary = resolveV22PointCoordinate(target.secondary, entities);
+    if (!primary.ok) return primary;
+    if (!secondary.ok) return secondary;
+    const dx = secondary.value[0] - primary.value[0];
+    const dy = secondary.value[1] - primary.value[1];
+    if (target.measurement === "distance") {
+      return { ok: true, value: cleanSketchNumber(Math.hypot(dx, dy)) };
+    }
+    const component = target.measurement === "horizontal" ? dx : dy;
+    return {
+      ok: true,
+      value: cleanSketchNumber(
+        target.direction === "positive" ? component : -component
+      )
+    };
+  }
+
+  if (target.kind === "pointLineDistance") {
+    const point = resolveV22PointCoordinate(target.point, entities);
+    if (!point.ok) return point;
+    const line = entities.get(target.lineEntityId);
+    if (!line || line.kind !== "line") {
+      return unsupportedV22Measurement(target.lineEntityId, "line", line?.kind);
+    }
+    const length = getLineLength(line);
+    if (length <= SKETCH_GEOMETRY_POLICY.linearTolerance) {
+      return {
+        ok: false,
+        code: "SKETCH_DIMENSION_DISTANCE_INVALID",
+        message: "Point-line distance requires a non-zero line direction.",
+        sketchEntityId: line.id,
+        expected: "non-zero line",
+        received: "zero-length line"
+      };
+    }
+    const ux = (line.end[0] - line.start[0]) / length;
+    const uy = (line.end[1] - line.start[1]) / length;
+    const signed =
+      ux * (point.value[1] - line.start[1]) -
+      uy * (point.value[0] - line.start[0]);
+    return {
+      ok: true,
+      value: cleanSketchNumber(target.side === "left" ? signed : -signed)
+    };
+  }
+
+  const primary = entities.get(target.primaryLineEntityId);
+  const secondary = entities.get(target.secondaryLineEntityId);
+  if (!primary || primary.kind !== "line") {
+    return unsupportedV22Measurement(
+      target.primaryLineEntityId,
+      "line",
+      primary?.kind
+    );
+  }
+  if (!secondary || secondary.kind !== "line") {
+    return unsupportedV22Measurement(
+      target.secondaryLineEntityId,
+      "line",
+      secondary?.kind
+    );
+  }
+  const primaryLength = getLineLength(primary);
+  const secondaryLength = getLineLength(secondary);
+  if (
+    primaryLength <= SKETCH_GEOMETRY_POLICY.linearTolerance ||
+    secondaryLength <= SKETCH_GEOMETRY_POLICY.linearTolerance
+  ) {
+    return {
+      ok: false,
+      code: "SKETCH_DIMENSION_ANGLE_SENSE_INVALID",
+      message: "Line-angle dimensions require two non-zero lines.",
+      expected: "two non-zero line directions",
+      received: "zero-length line"
+    };
+  }
+  const primaryDirection: Vec2 = [
+    (primary.end[0] - primary.start[0]) / primaryLength,
+    (primary.end[1] - primary.start[1]) / primaryLength
+  ];
+  const secondaryDirection: Vec2 = [
+    (secondary.end[0] - secondary.start[0]) / secondaryLength,
+    (secondary.end[1] - secondary.start[1]) / secondaryLength
+  ];
+  const signedAngle =
+    (Math.atan2(
+      primaryDirection[0] * secondaryDirection[1] -
+        primaryDirection[1] * secondaryDirection[0],
+      primaryDirection[0] * secondaryDirection[0] +
+        primaryDirection[1] * secondaryDirection[1]
+    ) *
+      180) /
+    Math.PI;
+  const sensed =
+    target.sense === "counterclockwise" ? signedAngle : -signedAngle;
+  if (
+    sensed <= SKETCH_GEOMETRY_POLICY.angularToleranceDegrees ||
+    sensed >= 180 - SKETCH_GEOMETRY_POLICY.angularToleranceDegrees
+  ) {
+    return {
+      ok: false,
+      code: "SKETCH_DIMENSION_ANGLE_SENSE_INVALID",
+      message: "Line-angle target crossed its stored sense branch.",
+      expected: `${SKETCH_GEOMETRY_POLICY.angularToleranceDegrees} < angle < ${
+        180 - SKETCH_GEOMETRY_POLICY.angularToleranceDegrees
+      }`,
+      received: String(cleanSketchNumber(sensed))
+    };
+  }
+  return { ok: true, value: cleanSketchNumber(sensed) };
+}
+
+function resolveV22PointCoordinate(
+  target: Extract<
+    SketchDimensionTargetV22,
+    { readonly kind: "pointPair" }
+  >["primary"],
+  entities: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>
+):
+  | { readonly ok: true; readonly value: Vec2 }
+  | Extract<V22MeasurementResult, { readonly ok: false }> {
+  const entity = entities.get(target.entityId);
+  const storedTarget: SketchPointTarget =
+    target.entityKind === "arc"
+      ? target
+      : { entityId: target.entityId, role: target.role };
+  if (
+    !entity ||
+    entity.kind !== target.entityKind ||
+    !isSketchPointTargetSupported(entity, storedTarget)
+  ) {
+    return unsupportedV22Measurement(
+      target.entityId,
+      `${target.entityKind}.${target.role}`,
+      entity?.kind
+    );
+  }
+  return {
+    ok: true,
+    value: getSketchPointTargetCoordinate(entity, storedTarget)
+  };
+}
+
+function unsupportedV22Measurement(
+  entityId: SketchEntityId,
+  expected: string,
+  received: string | undefined
+): Extract<V22MeasurementResult, { readonly ok: false }> {
+  return {
+    ok: false,
+    code: "SKETCH_DIMENSION_TARGET_UNSUPPORTED",
+    message: "V22 dimension target does not match its referenced entity.",
+    sketchEntityId: entityId,
+    expected,
+    received: received ?? "missing"
   };
 }
 
@@ -1393,7 +1840,13 @@ export function evaluateSketchGeometry(
       continue;
     }
 
-    const entity = entities.get(dimension.entityId);
+    const legacyDimension = isSketchDimensionSnapshotV22(dimension)
+      ? downconvertSketchDimensionSnapshotV22(dimension)
+      : dimension;
+    if (!legacyDimension) {
+      continue;
+    }
+    const entity = entities.get(legacyDimension.entityId);
     const entry = evaluateSketchDimension(document, dimension, undefined, {
       checkConsistency: false
     });
@@ -1409,7 +1862,7 @@ export function evaluateSketchGeometry(
 
     const result = applySketchDimensionValue(
       entity,
-      dimension,
+      legacyDimension,
       entry.effectiveValue
     );
 
@@ -2452,13 +2905,20 @@ function getLineLengthDimension(
     return override;
   }
 
-  return [...context.document.sketchDimensions.values()].find(
-    (dimension) =>
-      dimension.sketchId === context.sketchId &&
-      dimension.entityId === entityId &&
-      dimension.target.entityKind === "line" &&
-      dimension.target.role === "length"
-  );
+  for (const dimension of context.document.sketchDimensions.values()) {
+    const legacy = isSketchDimensionSnapshotV22(dimension)
+      ? downconvertSketchDimensionSnapshotV22(dimension)
+      : dimension;
+    if (
+      legacy?.sketchId === context.sketchId &&
+      legacy.entityId === entityId &&
+      legacy.target.entityKind === "line" &&
+      legacy.target.role === "length"
+    ) {
+      return legacy;
+    }
+  }
+  return undefined;
 }
 
 function getLineOrientationConstraint(

@@ -23031,9 +23031,7 @@ describe("cad-core", () => {
         bodyId: "body_rect_1",
         sketchId: "sketch_1",
         entityId: "rect_1",
-        depth: 3,
-        side: "positive",
-        operationMode: "newBody"
+        depth: 3
       },
       {
         op: "feature.delete",
@@ -24215,7 +24213,7 @@ describe("cad-core", () => {
     });
   });
 
-  it("normalizes legacy extrude transaction history defaults during import", () => {
+  it("normalizes live legacy extrudes while retaining original transaction shapes", () => {
     const engine = createRectangleExtrudeEngine();
     const project = parseCadProjectJson(exportCadProjectJson(engine));
     const legacyProject = {
@@ -24275,15 +24273,15 @@ describe("cad-core", () => {
       side: "positive",
       operationMode: "newBody"
     });
-    expect(restored.getTransactions()[0]?.ops).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          op: "feature.extrude",
-          side: "positive",
-          operationMode: "newBody"
-        })
-      ])
-    );
+    const savedExtrude = restored
+      .getTransactions()[0]
+      ?.ops.find((op) => op.op === "feature.extrude");
+    expect(savedExtrude).toMatchObject({
+      op: "feature.extrude",
+      depth: 3
+    });
+    expect(savedExtrude).not.toHaveProperty("side");
+    expect(savedExtrude).not.toHaveProperty("operationMode");
   });
 
   it("rejects sketch entity kind changes without mutating dependent features", () => {
@@ -25759,17 +25757,17 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           dimensionId: "dim_w",
           status: "healthy",
           effectiveValue: 6,
-          targetRef: expect.objectContaining({
-            type: "dimension",
-            sketchId: "sketch_1",
-            dimensionId: "dim_w",
-            entityId: "rect_1"
-          })
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          diagnosticCount: 0,
+          diagnostics: []
         }),
         expect.objectContaining({
           dimensionId: "dim_h",
           status: "healthy",
-          effectiveValue: 5
+          effectiveValue: 5,
+          diagnosticCount: 0,
+          diagnostics: []
         })
       ]),
       constraintCount: 1,
@@ -27179,7 +27177,11 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         expect.objectContaining({
           dimensionId: "dim_missing_entity",
           status: "missing-target",
-          supported: false
+          diagnostics: [
+            expect.objectContaining({
+              code: "SKETCH_SOLVER_MISSING_TARGET"
+            })
+          ]
         })
       ],
       profileValidity: {

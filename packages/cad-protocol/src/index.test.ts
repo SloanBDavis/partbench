@@ -2651,7 +2651,10 @@ describe("cad-protocol", () => {
             sketchId: "sketch_1",
             dimensionId: "dim_w",
             entityId: "rect_1",
-            dimensionTarget: { entityKind: "rectangle", role: "width" }
+            dimensionTarget: {
+              entityKind: "rectangle",
+              role: "width"
+            }
           },
           diagnosticCount: 0,
           diagnostics: []

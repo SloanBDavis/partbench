@@ -1,5 +1,7 @@
 import { CadEngine, type CadProject } from "@web-cad/cad-core";
 import {
+  validateV19CadOp,
+  validateV19SketchQueryRequest,
   validateSketchProfilePathQueryRequest,
   WCAD_SOURCE_IDENTITY_ALGORITHM
 } from "@web-cad/cad-protocol";
@@ -64,10 +66,13 @@ import type {
   TopologyAnchorCreationPlanQueryResponse,
   TopologyAnchorRepairPlanQueryResponse,
   TopologyMatchSnapshotsQueryResponse,
+  SketchCurveEditReadinessQueryResponse,
   SketchEditReadinessQueryResponse,
   SketchPathCandidatesQueryResponse,
   SketchPathReadinessQueryResponse,
   SketchProfileCandidatesQueryResponse,
+  SketchProfileRegionCandidatesQueryResponse,
+  SketchProfileRegionValidateQueryResponse,
   SketchProfileReadinessQueryResponse,
   SketchSolverStatusQueryResponse,
   CadProjectSummaryExportSummary,
@@ -92,7 +97,7 @@ import type {
   NamedGeneratedReferenceSnapshot,
   ParameterId,
   SketchSnapshot,
-  SketchDimensionEntry,
+  SketchDimensionEntryCurrent,
   SketchConstraintEntry,
   SketchEvaluationIssue,
   SketchDimensionStatus,
@@ -413,6 +418,9 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentSketchProfileReadinessQueryResponse
   | CadOpsAgentSketchPathCandidatesQueryResponse
   | CadOpsAgentSketchPathReadinessQueryResponse
+  | CadOpsAgentSketchCurveEditReadinessQueryResponse
+  | CadOpsAgentSketchProfileRegionCandidatesQueryResponse
+  | CadOpsAgentSketchProfileRegionValidateQueryResponse
   | CadOpsAgentSketchEditReadinessQueryResponse
   | CadOpsAgentSketchSolverStatusQueryResponse
   | CadOpsAgentSketchEvaluationQueryResponse
@@ -822,6 +830,30 @@ export interface CadOpsAgentSketchSolverStatusQueryResponse extends Omit<
   readonly adapterVersion: AgentAdapterVersion;
 }
 
+export type CadOpsAgentSketchCurveEditReadinessQueryResponse =
+  SketchCurveEditReadinessQueryResponse & {
+    readonly requestId: string;
+    readonly adapterVersion: AgentAdapterVersion;
+  };
+
+export interface CadOpsAgentSketchProfileRegionCandidatesQueryResponse extends Omit<
+  SketchProfileRegionCandidatesQueryResponse,
+  "ok"
+> {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+}
+
+export interface CadOpsAgentSketchProfileRegionValidateQueryResponse extends Omit<
+  SketchProfileRegionValidateQueryResponse,
+  "ok"
+> {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+}
+
 export interface CadOpsAgentSketchEvaluationQueryResponse {
   readonly ok: true;
   readonly requestId: string;
@@ -835,7 +867,7 @@ export interface CadOpsAgentSketchEvaluationQueryResponse {
   readonly drivenEntityCount: number;
   readonly drivenEntityIds: readonly SketchEntityId[];
   readonly dimensionCount: number;
-  readonly dimensions: readonly SketchDimensionEntry[];
+  readonly dimensions: readonly SketchDimensionEntryCurrent[];
   readonly constraintCount: number;
   readonly constraints: readonly SketchConstraintEntry[];
   readonly issueCount: number;
@@ -850,7 +882,7 @@ export interface CadOpsAgentSketchDimensionsQueryResponse {
   readonly query: "sketch.dimensions";
   readonly sketchId: string;
   readonly dimensionCount: number;
-  readonly dimensions: readonly SketchDimensionEntry[];
+  readonly dimensions: readonly SketchDimensionEntryCurrent[];
 }
 
 export interface CadOpsAgentSketchDimensionGetQueryResponse {
@@ -859,7 +891,7 @@ export interface CadOpsAgentSketchDimensionGetQueryResponse {
   readonly adapterVersion: AgentAdapterVersion;
   readonly cadOpsVersion: CadOpsVersion;
   readonly query: "sketch.dimension.get";
-  readonly dimension: SketchDimensionEntry;
+  readonly dimension: SketchDimensionEntryCurrent;
 }
 
 export interface CadOpsAgentBodyGeneratedReferencesQueryResponse {
@@ -2007,18 +2039,72 @@ function createOperationReview(
         construction: op.construction
       };
 
-    case "sketch.dimension.create":
+    case "sketch.trim":
+    case "sketch.extend":
+    case "sketch.split":
+    case "sketch.explodeRectangle":
+    case "sketch.offset": {
+      const sourceEntityId =
+        op.op === "sketch.offset"
+          ? op.source.kind === "entity"
+            ? op.source.entityId
+            : undefined
+          : op.entityId;
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "modify",
+          `${op.op.slice("sketch.".length)} sketch geometry in ${op.sketchId}`
+        ),
+        sketchId: op.sketchId,
+        ...(sourceEntityId ? { sketchEntityId: sourceEntityId } : {})
+      };
+    }
+
+    case "sketch.addSlot":
       return {
         ...operationReviewBase(
           index,
           op,
           "create",
-          `Create sketch dimension ${op.id ?? op.name} on ${op.sketchId}/${op.entityId}`
+          `Add slot geometry to ${op.sketchId}`
+        ),
+        sketchId: op.sketchId,
+        construction: op.construction ?? false
+      };
+
+    case "sketch.addRoundedRectangle":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Add rounded-rectangle geometry to ${op.sketchId}`
+        ),
+        sketchId: op.sketchId,
+        construction: op.construction ?? false
+      };
+
+    case "sketch.dimension.create": {
+      const targetEntityId =
+        "entityId" in op
+          ? op.entityId
+          : op.target.kind === "entityScalar"
+            ? op.target.entityId
+            : undefined;
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create sketch dimension ${op.id ?? op.name} on ${op.sketchId}`
         ),
         ...(op.id ? { sketchDimensionId: op.id } : {}),
         sketchId: op.sketchId,
-        sketchEntityId: op.entityId
+        ...(targetEntityId ? { sketchEntityId: targetEntityId } : {})
       };
+    }
 
     case "sketch.dimension.update":
       return {
@@ -2065,6 +2151,17 @@ function createOperationReview(
         sketchId: op.sketchId
       };
 
+    case "sketch.constraint.update":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "modify",
+          `Update ${op.definition.kind} sketch constraint ${op.id}`
+        ),
+        sketchConstraintId: op.id
+      };
+
     case "sketch.constraint.rename":
       return {
         ...operationReviewBase(
@@ -2096,9 +2193,11 @@ function createOperationReview(
       const sourceLabel =
         profile?.kind === "wire"
           ? `${profile.sketchId} composite wire`
-          : profile
-            ? `${profile.sketchId}/${profile.entityId}`
-            : `${op.sketchId}/${op.entityId}`;
+          : profile?.kind === "regions"
+            ? `${profile.sketchId} explicit regions (${profile.regions.length})`
+            : profile
+              ? `${profile.sketchId}/${profile.entityId}`
+              : `${op.sketchId}/${op.entityId}`;
 
       return {
         ...operationReviewBase(
@@ -2129,9 +2228,11 @@ function createOperationReview(
       const sourceLabel =
         profile?.kind === "wire"
           ? `${profile.sketchId} composite wire`
-          : profile
-            ? `${profile.sketchId}/${profile.entityId}`
-            : `${op.sketchId}/${op.entityId}`;
+          : profile?.kind === "regions"
+            ? `${profile.sketchId} explicit region`
+            : profile
+              ? `${profile.sketchId}/${profile.entityId}`
+              : `${op.sketchId}/${op.entityId}`;
 
       return {
         ...operationReviewBase(
@@ -2279,11 +2380,15 @@ function createOperationReview(
       const edits = [
         ...(profile?.kind === "wire"
           ? [`profile ${profile.sketchId} composite wire`]
-          : profile
-            ? [`profile ${profile.sketchId}/${profile.entityId}`]
-            : sketchId && sketchEntityId
-              ? [`profile ${sketchId}/${sketchEntityId}`]
-              : []),
+          : profile?.kind === "regions"
+            ? [
+                `profile ${profile.sketchId} explicit regions (${profile.regions.length})`
+              ]
+            : profile
+              ? [`profile ${profile.sketchId}/${profile.entityId}`]
+              : sketchId && sketchEntityId
+                ? [`profile ${sketchId}/${sketchEntityId}`]
+                : []),
         ...(op.depth !== undefined ? [`depth ${op.depth}`] : []),
         ...(op.side !== undefined ? [`side ${op.side}`] : [])
       ];
@@ -2311,11 +2416,13 @@ function createOperationReview(
       const edits = [
         ...(profile?.kind === "wire"
           ? [`profile ${profile.sketchId} composite wire`]
-          : profile
-            ? [`profile ${profile.sketchId}/${profile.entityId}`]
-            : sketchId && sketchEntityId
-              ? [`profile ${sketchId}/${sketchEntityId}`]
-              : []),
+          : profile?.kind === "regions"
+            ? [`profile ${profile.sketchId} explicit region`]
+            : profile
+              ? [`profile ${profile.sketchId}/${profile.entityId}`]
+              : sketchId && sketchEntityId
+                ? [`profile ${sketchId}/${sketchEntityId}`]
+                : []),
         ...(op.angleDegrees !== undefined ? [`angle ${op.angleDegrees}`] : [])
       ];
 
@@ -3163,7 +3270,10 @@ function toAgentQueryResponse(
     response.query === "sketch.profileCandidates" ||
     response.query === "sketch.profileReadiness" ||
     response.query === "sketch.pathCandidates" ||
-    response.query === "sketch.pathReadiness"
+    response.query === "sketch.pathReadiness" ||
+    response.query === "sketch.curveEditReadiness" ||
+    response.query === "sketch.profileRegionCandidates" ||
+    response.query === "sketch.profileRegionValidate"
   ) {
     return {
       ...response,
@@ -3791,6 +3901,11 @@ function isCadActorMetadataShape(value: unknown): value is CadActorMetadata {
 }
 
 function isCadQueryRequest(value: unknown): value is CadQueryRequest {
+  const v19Validation = validateV19SketchQueryRequest(value);
+  if (v19Validation.ok) {
+    return true;
+  }
+
   return (
     isRecord(value) &&
     value.version === "cadops.v1" &&
@@ -4607,6 +4722,14 @@ function isCadOp(value: unknown): value is CadOp {
     return false;
   }
 
+  const v19Validation = validateV19CadOp(value);
+  if (v19Validation.ok) {
+    return true;
+  }
+  if (isV19OperationAttempt(value)) {
+    return false;
+  }
+
   if (value.op === "project.importStep") {
     return isProjectImportStepOp(value);
   }
@@ -4905,6 +5028,25 @@ function isCadOp(value: unknown): value is CadOp {
         typeof value.primaryLineEntityId === "string" &&
         typeof value.secondaryLineEntityId === "string"
       );
+    }
+
+    if (value.kind === "tangent") {
+      return isSupportedTangentTargetPair(
+        value.primaryTarget,
+        value.secondaryTarget
+      );
+    }
+
+    if (value.kind === "concentric" || value.kind === "equalRadius") {
+      const normalized =
+        isRadiusCurveConstraintTarget(value.primaryTarget) &&
+        isRadiusCurveConstraintTarget(value.secondaryTarget) &&
+        value.primaryTarget.entityId !== value.secondaryTarget.entityId;
+      const legacy =
+        typeof value.primaryCircleEntityId === "string" &&
+        typeof value.secondaryCircleEntityId === "string" &&
+        value.primaryCircleEntityId !== value.secondaryCircleEntityId;
+      return normalized !== legacy;
     }
 
     return typeof value.entityId === "string";
@@ -5277,6 +5419,61 @@ function isCadOp(value: unknown): value is CadOp {
   return false;
 }
 
+function isV19OperationAttempt(value: Record<string, unknown>): boolean {
+  if (
+    value.op === "sketch.trim" ||
+    value.op === "sketch.extend" ||
+    value.op === "sketch.split" ||
+    value.op === "sketch.explodeRectangle" ||
+    value.op === "sketch.offset" ||
+    value.op === "sketch.addSlot" ||
+    value.op === "sketch.addRoundedRectangle" ||
+    value.op === "sketch.constraint.update"
+  ) {
+    return true;
+  }
+
+  if (value.op === "sketch.constraint.create") {
+    if (value.kind === "equalLength") return true;
+    if (
+      value.kind === "fixed" ||
+      value.kind === "midpoint" ||
+      value.kind === "coincident" ||
+      value.kind === "symmetry"
+    ) {
+      const targets =
+        value.kind === "coincident" || value.kind === "symmetry"
+          ? [value.primaryTarget, value.secondaryTarget]
+          : [value.target];
+      return targets.some(
+        (target) => isRecord(target) && "entityKind" in target
+      );
+    }
+  }
+
+  if (value.op === "sketch.dimension.create") {
+    return (
+      !("entityId" in value) ||
+      (isRecord(value.target) && typeof value.target.kind === "string")
+    );
+  }
+
+  if (value.op === "sketch.dimension.update") {
+    return "target" in value;
+  }
+
+  if (
+    value.op === "feature.extrude" ||
+    value.op === "feature.revolve" ||
+    value.op === "feature.updateExtrude" ||
+    value.op === "feature.updateRevolve"
+  ) {
+    return "profile" in value && !isSketchProfileRef(value.profile);
+  }
+
+  return false;
+}
+
 function isProjectImportStepOp(value: Record<string, unknown>): boolean {
   return (
     typeof value.sourceFileName === "string" &&
@@ -5538,7 +5735,10 @@ function isSketchConstraintKind(value: unknown): value is SketchConstraintKind {
     value === "coincident" ||
     value === "midpoint" ||
     value === "parallel" ||
-    value === "perpendicular"
+    value === "perpendicular" ||
+    value === "tangent" ||
+    value === "concentric" ||
+    value === "equalRadius"
   );
 }
 
@@ -5550,6 +5750,49 @@ function isSketchPointTarget(value: unknown): value is SketchPointTarget {
       value.role === "start" ||
       value.role === "end" ||
       value.role === "center")
+  );
+}
+
+function isCurveConstraintTarget(
+  value: unknown
+): value is { readonly entityId: string; readonly entityKind: string } {
+  return (
+    isRecord(value) &&
+    typeof value.entityId === "string" &&
+    (value.entityKind === "line" ||
+      value.entityKind === "circle" ||
+      value.entityKind === "arc")
+  );
+}
+
+function isRadiusCurveConstraintTarget(
+  value: unknown
+): value is { readonly entityId: string; readonly entityKind: string } {
+  return (
+    isCurveConstraintTarget(value) &&
+    (value.entityKind === "circle" || value.entityKind === "arc")
+  );
+}
+
+function isSupportedTangentTargetPair(
+  primary: unknown,
+  secondary: unknown
+): boolean {
+  if (
+    !isCurveConstraintTarget(primary) ||
+    !isCurveConstraintTarget(secondary) ||
+    primary.entityId === secondary.entityId
+  ) {
+    return false;
+  }
+  return (
+    (primary.entityKind === "line" &&
+      (secondary.entityKind === "circle" || secondary.entityKind === "arc")) ||
+    (secondary.entityKind === "line" &&
+      (primary.entityKind === "circle" || primary.entityKind === "arc")) ||
+    (primary.entityKind === "circle" && secondary.entityKind === "arc") ||
+    (primary.entityKind === "arc" &&
+      (secondary.entityKind === "circle" || secondary.entityKind === "arc"))
   );
 }
 

@@ -32,7 +32,8 @@ export type WcadDocumentSchemaVersion =
   | "web-cad.project.v18"
   | "web-cad.project.v19"
   | "web-cad.project.v20"
-  | "web-cad.project.v21";
+  | "web-cad.project.v21"
+  | "web-cad.project.v22";
 export type CadTopologyIdentityContractVersion =
   "partbench.topology-identity.v1";
 export type CadTopologyIdentityProjectSchemaVersion = "web-cad.project.v18";
@@ -40,6 +41,7 @@ export type CadTopologyIdentityPackageVersion = "partbench.wcad.v2";
 export type CadV15ProjectSchemaVersion = "web-cad.project.v19";
 export type CadV16ProjectSchemaVersion = "web-cad.project.v20";
 export type CadV17ProjectSchemaVersion = "web-cad.project.v21";
+export type CadV19ProjectSchemaVersion = "web-cad.project.v22";
 export type WcadPackageEntryRole =
   | "manifest"
   | "document"
@@ -85,10 +87,34 @@ export const CAD_V16_PROJECT_SCHEMA_VERSION: CadV16ProjectSchemaVersion =
   "web-cad.project.v20";
 export const CAD_V17_PROJECT_SCHEMA_VERSION: CadV17ProjectSchemaVersion =
   "web-cad.project.v21";
+export const CAD_V19_PROJECT_SCHEMA_VERSION: CadV19ProjectSchemaVersion =
+  "web-cad.project.v22";
+
+export const CAD_V19_SKETCH_GEOMETRY_POLICY = {
+  linearTolerance: 1e-7,
+  angularToleranceDegrees: 0.1,
+  minimumProfileArea: 1e-12
+} as const;
+
+export const CAD_V19_RESOURCE_LIMITS = {
+  maxSketchEntitiesPerEditedSketch: 4_096,
+  maxBoundaryEntityIdsPerCurveEdit: 256,
+  maxSplitPointsPerCommand: 1_024,
+  maxOffsetSourceSegments: 1_024,
+  maxRegionsPerProfile: 256,
+  maxLoopsPerProfile: 512,
+  maxSegmentReferencesPerProfile: 4_096,
+  maxDiscoveredCandidateRegions: 512,
+  maxCandidatePairEdgeVisits: 250_000,
+  maxSubmittedProfilePredicateVisits: 100_000,
+  maxRegionCandidatesPerPage: 100
+} as const;
 
 export type CadProjectSchemaDiagnosticCode =
   | "SCHEMA_UPGRADED_TO_V21"
-  | "SCHEMA_V21_SOURCE_INVALID";
+  | "SCHEMA_V21_SOURCE_INVALID"
+  | "SCHEMA_UPGRADED_TO_V22"
+  | "SCHEMA_V22_SOURCE_INVALID";
 
 export interface CadProjectSchemaDiagnostic {
   readonly code: CadProjectSchemaDiagnosticCode;
@@ -208,6 +234,37 @@ export interface SketchWireProfileRef {
 
 export type SketchProfileRef = SketchEntityProfileRef | SketchWireProfileRef;
 
+export interface SketchEntityLoopRef {
+  readonly kind: "entity";
+  readonly entityId: SketchEntityId;
+}
+
+export interface SketchWireLoopRef {
+  readonly kind: "wire";
+  readonly segments: readonly OrientedSketchSegmentRef[];
+}
+
+export type SketchLoopRef = SketchEntityLoopRef | SketchWireLoopRef;
+
+export interface SketchProfileRegionRef {
+  readonly outer: SketchLoopRef;
+  readonly holes: readonly SketchLoopRef[];
+}
+
+export interface SketchRegionsProfileRef {
+  readonly kind: "regions";
+  readonly sketchId: SketchId;
+  readonly regions: readonly [
+    SketchProfileRegionRef,
+    ...SketchProfileRegionRef[]
+  ];
+}
+
+export type SketchProfileRefV22 =
+  | SketchEntityProfileRef
+  | SketchWireProfileRef
+  | SketchRegionsProfileRef;
+
 export interface SketchEntityPathRef {
   readonly kind: "entity";
   readonly sketchId: SketchId;
@@ -271,6 +328,35 @@ export type SketchPointTarget = SketchLegacyPointTarget | SketchArcPointTarget;
 
 export type SketchPointTargetV21 = SketchPointTarget;
 
+export type SketchPointTargetV22 =
+  | {
+      readonly entityId: SketchEntityId;
+      readonly entityKind: "point";
+      readonly role: "position";
+    }
+  | {
+      readonly entityId: SketchEntityId;
+      readonly entityKind: "line";
+      readonly role: "start" | "end";
+    }
+  | {
+      readonly entityId: SketchEntityId;
+      readonly entityKind: "rectangle" | "circle";
+      readonly role: "center";
+    }
+  | {
+      readonly entityId: SketchEntityId;
+      readonly entityKind: "arc";
+      readonly role: "center" | "start" | "end";
+    };
+
+export type SketchMidpointTargetV22 =
+  | Extract<SketchPointTargetV22, { readonly entityKind: "point" }>
+  | Extract<
+      SketchPointTargetV22,
+      { readonly entityKind: "rectangle" | "circle" }
+    >;
+
 export type SketchCurveConstraintTargetKind = "line" | "circle" | "arc";
 
 export interface SketchLineCurveConstraintTarget {
@@ -310,7 +396,10 @@ export type SketchDimensionIssueCode =
   | "UNSUPPORTED_TARGET"
   | "INVALID_VALUE"
   | "INCONSISTENT_CONSTRAINT"
-  | "SKETCH_ARC_DIMENSION_INVALID";
+  | "SKETCH_ARC_DIMENSION_INVALID"
+  | "SKETCH_DIMENSION_TARGET_UNSUPPORTED"
+  | "SKETCH_DIMENSION_ANGLE_SENSE_INVALID"
+  | "SKETCH_DIMENSION_DISTANCE_INVALID";
 
 export type SketchConstraintIssueCode =
   | "SKETCH_NOT_FOUND"
@@ -332,6 +421,71 @@ export type SketchDimensionTarget =
   | SketchArcDimensionTarget;
 
 export type SketchDimensionTargetV21 = SketchDimensionTarget;
+
+export type SketchEntityScalarDimensionTargetV22 =
+  | {
+      readonly kind: "entityScalar";
+      readonly entityId: SketchEntityId;
+      readonly entityKind: "rectangle";
+      readonly role: "width" | "height";
+    }
+  | {
+      readonly kind: "entityScalar";
+      readonly entityId: SketchEntityId;
+      readonly entityKind: "line";
+      readonly role: "length";
+    }
+  | {
+      readonly kind: "entityScalar";
+      readonly entityId: SketchEntityId;
+      readonly entityKind: "circle";
+      readonly role: "radius" | "diameter";
+    }
+  | {
+      readonly kind: "entityScalar";
+      readonly entityId: SketchEntityId;
+      readonly entityKind: "arc";
+      readonly role: "radius" | "diameter" | "sweep";
+    };
+
+export interface SketchEuclideanPointPairDimensionTargetV22 {
+  readonly kind: "pointPair";
+  readonly primary: SketchPointTargetV22;
+  readonly secondary: SketchPointTargetV22;
+  readonly measurement: "distance";
+}
+
+export interface SketchDirectedPointPairDimensionTargetV22 {
+  readonly kind: "pointPair";
+  readonly primary: SketchPointTargetV22;
+  readonly secondary: SketchPointTargetV22;
+  readonly measurement: "horizontal" | "vertical";
+  readonly direction: "positive" | "negative";
+}
+
+export type SketchPointPairDimensionTargetV22 =
+  | SketchEuclideanPointPairDimensionTargetV22
+  | SketchDirectedPointPairDimensionTargetV22;
+
+export interface SketchPointLineDimensionTargetV22 {
+  readonly kind: "pointLineDistance";
+  readonly point: SketchPointTargetV22;
+  readonly lineEntityId: SketchEntityId;
+  readonly side: "left" | "right";
+}
+
+export interface SketchLineAngleDimensionTargetV22 {
+  readonly kind: "lineAngle";
+  readonly primaryLineEntityId: SketchEntityId;
+  readonly secondaryLineEntityId: SketchEntityId;
+  readonly sense: "clockwise" | "counterclockwise";
+}
+
+export type SketchDimensionTargetV22 =
+  | SketchEntityScalarDimensionTargetV22
+  | SketchPointPairDimensionTargetV22
+  | SketchPointLineDimensionTargetV22
+  | SketchLineAngleDimensionTargetV22;
 
 export interface SketchRectangleDimensionTarget {
   readonly entityKind: "rectangle";
@@ -400,11 +554,15 @@ export type CadOp =
   | SketchUpdateEntityOp
   | SketchDeleteEntityOp
   | SketchSetEntityConstructionOp
-  | SketchDimensionCreateOp
-  | SketchDimensionUpdateOp
+  | SketchCurveEditOp
+  | SketchAddSlotOp
+  | SketchAddRoundedRectangleOp
+  | SketchDimensionCreateCommandInput
+  | SketchDimensionUpdateCommandInput
   | SketchDimensionRenameOp
   | SketchDimensionDeleteOp
   | SketchConstraintCreateOp
+  | SketchConstraintUpdateOpV19
   | SketchConstraintRenameOp
   | SketchConstraintDeleteOp
   | FeatureExtrudeCommandInput
@@ -436,6 +594,31 @@ export type CadOp =
   | TopologyCheckpointCreateOp
   | TopologyAnchorCreateOp
   | TopologyAnchorRepairOp;
+
+export type CadV19Op =
+  | SketchCurveEditOp
+  | SketchAddSlotOp
+  | SketchAddRoundedRectangleOp
+  | SketchDimensionCreateOpV22
+  | SketchDimensionUpdateOpV22
+  | SketchEqualLengthConstraintCreateOp
+  | SketchNormalizedPointConstraintCreateOpV19
+  | SketchConstraintUpdateOpV19
+  | (Omit<FeatureExtrudeOpV22, "profile"> & {
+      readonly profile: SketchRegionsProfileRef;
+    })
+  | (Omit<FeatureRevolveOpV22, "profile"> & {
+      readonly profile: SketchRegionsProfileRef;
+    })
+  | (FeatureUpdateExtrudeOpV22 & {
+      readonly profile: SketchRegionsProfileRef;
+    })
+  | (Omit<FeatureUpdateRevolveOp, "angleDegrees"> & {
+      readonly angleDegrees?: number;
+      readonly profile: SketchRegionsProfileRef;
+      readonly sketchId?: never;
+      readonly entityId?: never;
+    });
 
 export interface DocumentUpdateUnitsOp {
   readonly op: "document.updateUnits";
@@ -724,6 +907,231 @@ export interface SketchSetEntityConstructionOp {
   readonly construction: boolean;
 }
 
+export interface SketchCurveEditPrecondition {
+  readonly expectedSourceRevision: string;
+  readonly expectedSolverEvaluationIdentity: string;
+}
+
+export interface SketchTrimOp {
+  readonly op: "sketch.trim";
+  readonly sketchId: SketchId;
+  readonly precondition: SketchCurveEditPrecondition;
+  readonly entityId: SketchEntityId;
+  readonly boundaryEntityIds: readonly SketchEntityId[];
+  readonly pickPoint: Vec2;
+  readonly createdEntityIds?: readonly SketchEntityId[];
+  readonly deleteConstraintIds?: readonly SketchConstraintId[];
+  readonly deleteDimensionIds?: readonly SketchDimensionId[];
+}
+
+export interface SketchExtendOp {
+  readonly op: "sketch.extend";
+  readonly sketchId: SketchId;
+  readonly precondition: SketchCurveEditPrecondition;
+  readonly entityId: SketchEntityId;
+  readonly endpoint: "start" | "end";
+  readonly boundaryEntityIds: readonly SketchEntityId[];
+  readonly deleteConstraintIds?: readonly SketchConstraintId[];
+  readonly deleteDimensionIds?: readonly SketchDimensionId[];
+}
+
+export interface SketchSplitOp {
+  readonly op: "sketch.split";
+  readonly sketchId: SketchId;
+  readonly precondition: SketchCurveEditPrecondition;
+  readonly entityId: SketchEntityId;
+  readonly splitPoints: readonly Vec2[];
+  readonly createdEntityIds?: readonly SketchEntityId[];
+  readonly deleteConstraintIds?: readonly SketchConstraintId[];
+  readonly deleteDimensionIds?: readonly SketchDimensionId[];
+}
+
+export interface SketchExplodeRectangleOp {
+  readonly op: "sketch.explodeRectangle";
+  readonly sketchId: SketchId;
+  readonly precondition: SketchCurveEditPrecondition;
+  readonly entityId: SketchEntityId;
+  readonly lineEntityIds?: readonly [
+    SketchEntityId,
+    SketchEntityId,
+    SketchEntityId,
+    SketchEntityId
+  ];
+  readonly deleteConstraintIds?: readonly SketchConstraintId[];
+  readonly deleteDimensionIds?: readonly SketchDimensionId[];
+}
+
+export type SketchOffsetSource =
+  | {
+      readonly kind: "entity";
+      readonly entityId: SketchEntityId;
+    }
+  | {
+      readonly kind: "chain";
+      readonly segments: readonly OrientedSketchSegmentRef[];
+      readonly closed: boolean;
+    };
+
+export interface SketchOffsetOp {
+  readonly op: "sketch.offset";
+  readonly sketchId: SketchId;
+  readonly precondition: SketchCurveEditPrecondition;
+  readonly source: SketchOffsetSource;
+  readonly distance: number;
+  readonly side: "left" | "right" | "inward" | "outward";
+  readonly referencePoint?: Vec2;
+  readonly createdEntityIds?: readonly SketchEntityId[];
+}
+
+export type SketchCurveEditOp =
+  | SketchTrimOp
+  | SketchExtendOp
+  | SketchSplitOp
+  | SketchExplodeRectangleOp
+  | SketchOffsetOp;
+
+export type SketchCurveEditProposal =
+  | (Omit<
+      SketchTrimOp,
+      | "op"
+      | "precondition"
+      | "createdEntityIds"
+      | "deleteConstraintIds"
+      | "deleteDimensionIds"
+    > & { readonly kind: "trim" })
+  | (Omit<
+      SketchExtendOp,
+      "op" | "precondition" | "deleteConstraintIds" | "deleteDimensionIds"
+    > & { readonly kind: "extend" })
+  | (Omit<
+      SketchSplitOp,
+      | "op"
+      | "precondition"
+      | "createdEntityIds"
+      | "deleteConstraintIds"
+      | "deleteDimensionIds"
+    > & { readonly kind: "split" })
+  | (Omit<
+      SketchExplodeRectangleOp,
+      | "op"
+      | "precondition"
+      | "lineEntityIds"
+      | "deleteConstraintIds"
+      | "deleteDimensionIds"
+    > & { readonly kind: "explodeRectangle" })
+  | (Omit<SketchOffsetOp, "op" | "precondition" | "createdEntityIds"> & {
+      readonly kind: "offset";
+    });
+
+export type PreparedSketchCurveEditOp =
+  | (Omit<
+      SketchTrimOp,
+      "createdEntityIds" | "deleteConstraintIds" | "deleteDimensionIds"
+    > & {
+      readonly createdEntityIds: readonly SketchEntityId[];
+      readonly deleteConstraintIds: readonly SketchConstraintId[];
+      readonly deleteDimensionIds: readonly SketchDimensionId[];
+    })
+  | (Omit<SketchExtendOp, "deleteConstraintIds" | "deleteDimensionIds"> & {
+      readonly deleteConstraintIds: readonly SketchConstraintId[];
+      readonly deleteDimensionIds: readonly SketchDimensionId[];
+    })
+  | (Omit<
+      SketchSplitOp,
+      "createdEntityIds" | "deleteConstraintIds" | "deleteDimensionIds"
+    > & {
+      readonly createdEntityIds: readonly SketchEntityId[];
+      readonly deleteConstraintIds: readonly SketchConstraintId[];
+      readonly deleteDimensionIds: readonly SketchDimensionId[];
+    })
+  | (Omit<
+      SketchExplodeRectangleOp,
+      "lineEntityIds" | "deleteConstraintIds" | "deleteDimensionIds"
+    > & {
+      readonly lineEntityIds: readonly [
+        SketchEntityId,
+        SketchEntityId,
+        SketchEntityId,
+        SketchEntityId
+      ];
+      readonly deleteConstraintIds: readonly SketchConstraintId[];
+      readonly deleteDimensionIds: readonly SketchDimensionId[];
+    })
+  | (Omit<SketchOffsetOp, "createdEntityIds"> & {
+      readonly createdEntityIds: readonly SketchEntityId[];
+    });
+
+export interface SketchAddSlotOp {
+  readonly op: "sketch.addSlot";
+  readonly sketchId: SketchId;
+  readonly centerlineStart: Vec2;
+  readonly centerlineEnd: Vec2;
+  readonly radius: number;
+  readonly construction?: boolean;
+  readonly entityIds?: readonly [
+    SketchEntityId,
+    SketchEntityId,
+    SketchEntityId,
+    SketchEntityId
+  ];
+  readonly constraintIds?: readonly [
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId
+  ];
+}
+
+export interface SketchAddRoundedRectangleOp {
+  readonly op: "sketch.addRoundedRectangle";
+  readonly sketchId: SketchId;
+  readonly center: Vec2;
+  readonly width: number;
+  readonly height: number;
+  readonly cornerRadius: number;
+  readonly construction?: boolean;
+  readonly entityIds?: readonly [
+    SketchEntityId,
+    SketchEntityId,
+    SketchEntityId,
+    SketchEntityId,
+    SketchEntityId,
+    SketchEntityId,
+    SketchEntityId,
+    SketchEntityId
+  ];
+  readonly constraintIds?: readonly [
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId,
+    SketchConstraintId
+  ];
+}
+
 export interface SketchDimensionCreateOp {
   readonly op: "sketch.dimension.create";
   readonly id?: SketchDimensionId;
@@ -735,12 +1143,39 @@ export interface SketchDimensionCreateOp {
   readonly parameterId?: ParameterId;
 }
 
+export interface SketchDimensionCreateOpV22 {
+  readonly op: "sketch.dimension.create";
+  readonly id?: SketchDimensionId;
+  readonly name: string;
+  readonly sketchId: SketchId;
+  readonly target: SketchDimensionTargetV22;
+  readonly value?: number;
+  readonly parameterId?: ParameterId;
+  readonly entityId?: never;
+}
+
+export type SketchDimensionCreateCommandInput =
+  | SketchDimensionCreateOp
+  | SketchDimensionCreateOpV22;
+
 export interface SketchDimensionUpdateOp {
   readonly op: "sketch.dimension.update";
   readonly id: SketchDimensionId;
   readonly value?: number;
   readonly parameterId?: ParameterId;
 }
+
+export interface SketchDimensionUpdateOpV22 {
+  readonly op: "sketch.dimension.update";
+  readonly id: SketchDimensionId;
+  readonly target?: SketchDimensionTargetV22;
+  readonly value?: number;
+  readonly parameterId?: ParameterId;
+}
+
+export type SketchDimensionUpdateCommandInput =
+  | SketchDimensionUpdateOp
+  | SketchDimensionUpdateOpV22;
 
 export interface SketchDimensionRenameOp {
   readonly op: "sketch.dimension.rename";
@@ -760,6 +1195,7 @@ export type SketchConstraintCreateOp =
   | SketchMidpointConstraintCreateOp
   | SketchParallelConstraintCreateOp
   | SketchPerpendicularConstraintCreateOp
+  | SketchEqualLengthConstraintCreateOp
   | SketchTangentConstraintCreateOp
   | SketchConcentricConstraintCreateOp
   | SketchEqualRadiusConstraintCreateOp
@@ -780,7 +1216,7 @@ export interface SketchFixedConstraintCreateOp {
   readonly name: string;
   readonly sketchId: SketchId;
   readonly kind: "fixed";
-  readonly target: SketchPointTarget;
+  readonly target: SketchPointTarget | SketchPointTargetV22;
   readonly coordinate?: Vec2;
 }
 
@@ -790,8 +1226,8 @@ export interface SketchCoincidentConstraintCreateOp {
   readonly name: string;
   readonly sketchId: SketchId;
   readonly kind: "coincident";
-  readonly primaryTarget: SketchPointTarget;
-  readonly secondaryTarget: SketchPointTarget;
+  readonly primaryTarget: SketchPointTarget | SketchPointTargetV22;
+  readonly secondaryTarget: SketchPointTarget | SketchPointTargetV22;
 }
 
 export interface SketchMidpointConstraintCreateOp {
@@ -801,7 +1237,7 @@ export interface SketchMidpointConstraintCreateOp {
   readonly sketchId: SketchId;
   readonly kind: "midpoint";
   readonly lineEntityId: SketchEntityId;
-  readonly target: SketchLegacyPointTarget;
+  readonly target: SketchLegacyPointTarget | SketchMidpointTargetV22;
 }
 
 export interface SketchParallelConstraintCreateOp {
@@ -820,6 +1256,16 @@ export interface SketchPerpendicularConstraintCreateOp {
   readonly name: string;
   readonly sketchId: SketchId;
   readonly kind: "perpendicular";
+  readonly primaryLineEntityId: SketchEntityId;
+  readonly secondaryLineEntityId: SketchEntityId;
+}
+
+export interface SketchEqualLengthConstraintCreateOp {
+  readonly op: "sketch.constraint.create";
+  readonly id?: SketchConstraintId;
+  readonly name: string;
+  readonly sketchId: SketchId;
+  readonly kind: "equalLength";
   readonly primaryLineEntityId: SketchEntityId;
   readonly secondaryLineEntityId: SketchEntityId;
 }
@@ -886,9 +1332,81 @@ export type SketchEqualRadiusConstraintCreateOp =
 
 export interface SketchSymmetryConstraintCreateOp extends SketchNamedConstraintCreateOpBase {
   readonly kind: "symmetry";
-  readonly primaryTarget: SketchPointTarget;
-  readonly secondaryTarget: SketchPointTarget;
+  readonly primaryTarget: SketchPointTarget | SketchPointTargetV22;
+  readonly secondaryTarget: SketchPointTarget | SketchPointTargetV22;
   readonly symmetryLineEntityId: SketchEntityId;
+}
+
+export type SketchNormalizedPointConstraintCreateOpV19 =
+  | (Omit<SketchFixedConstraintCreateOp, "target"> & {
+      readonly target: SketchPointTargetV22;
+    })
+  | (Omit<
+      SketchCoincidentConstraintCreateOp,
+      "primaryTarget" | "secondaryTarget"
+    > & {
+      readonly primaryTarget: SketchPointTargetV22;
+      readonly secondaryTarget: SketchPointTargetV22;
+    })
+  | (Omit<SketchMidpointConstraintCreateOp, "target"> & {
+      readonly target: SketchMidpointTargetV22;
+    })
+  | (Omit<
+      SketchSymmetryConstraintCreateOp,
+      "primaryTarget" | "secondaryTarget"
+    > & {
+      readonly primaryTarget: SketchPointTargetV22;
+      readonly secondaryTarget: SketchPointTargetV22;
+    });
+
+export interface SketchConstraintUpdateOpV19 {
+  readonly op: "sketch.constraint.update";
+  readonly id: SketchConstraintId;
+  readonly definition:
+    | {
+        readonly kind: "horizontal" | "vertical";
+        readonly entityId: SketchEntityId;
+      }
+    | {
+        readonly kind: "fixed";
+        readonly target: SketchPointTargetV22;
+        readonly coordinate: Vec2;
+      }
+    | {
+        readonly kind: "coincident";
+        readonly primaryTarget: SketchPointTargetV22;
+        readonly secondaryTarget: SketchPointTargetV22;
+      }
+    | {
+        readonly kind: "midpoint";
+        readonly lineEntityId: SketchEntityId;
+        readonly target: SketchMidpointTargetV22;
+      }
+    | {
+        readonly kind: "parallel" | "perpendicular" | "equalLength";
+        readonly primaryLineEntityId: SketchEntityId;
+        readonly secondaryLineEntityId: SketchEntityId;
+      }
+    | ({
+        readonly kind: "tangent";
+      } & SketchTangentConstraintTargetPair)
+    | {
+        readonly kind: "concentric" | "equalRadius";
+        readonly primaryTarget: SketchRadiusCurveTarget;
+        readonly secondaryTarget: SketchRadiusCurveTarget;
+      }
+    | {
+        readonly kind: "symmetry";
+        readonly primaryTarget: SketchPointTargetV22;
+        readonly secondaryTarget: SketchPointTargetV22;
+        readonly symmetryLineEntityId: SketchEntityId;
+      }
+    | {
+        readonly kind: "angle";
+        readonly primaryLineEntityId: SketchEntityId;
+        readonly secondaryLineEntityId: SketchEntityId;
+        readonly angleDegrees: number;
+      };
 }
 
 export interface SketchConstraintRenameOp {
@@ -925,9 +1443,17 @@ export interface FeatureExtrudeOpV21 extends Omit<
   readonly entityId?: never;
 }
 
+export interface FeatureExtrudeOpV22 extends Omit<
+  FeatureExtrudeOpV21,
+  "profile"
+> {
+  readonly profile: SketchProfileRefV22;
+}
+
 export type FeatureExtrudeCommandInput =
   | (FeatureExtrudeOp & { readonly profile?: never })
-  | FeatureExtrudeOpV21;
+  | FeatureExtrudeOpV21
+  | FeatureExtrudeOpV22;
 
 export interface FeatureRevolveOp {
   readonly op: "feature.revolve";
@@ -953,9 +1479,17 @@ export interface FeatureRevolveOpV21 extends Omit<
   readonly targetBodyId?: never;
 }
 
+export interface FeatureRevolveOpV22 extends Omit<
+  FeatureRevolveOpV21,
+  "profile"
+> {
+  readonly profile: SketchProfileRefV22;
+}
+
 export type FeatureRevolveCommandInput =
   | (FeatureRevolveOp & { readonly profile?: never })
-  | FeatureRevolveOpV21;
+  | FeatureRevolveOpV21
+  | FeatureRevolveOpV22;
 
 export interface FeatureHoleOp {
   readonly op: "feature.hole";
@@ -1159,6 +1693,12 @@ export interface FeatureUpdateExtrudeOpV21 extends FeatureUpdateExtrudeOp {
   readonly entityId?: never;
 }
 
+export interface FeatureUpdateExtrudeOpV22 extends FeatureUpdateExtrudeOp {
+  readonly profile?: SketchProfileRefV22;
+  readonly sketchId?: never;
+  readonly entityId?: never;
+}
+
 export type FeatureUpdateExtrudeCommandInput =
   | (FeatureUpdateExtrudeOp & {
       readonly profile?: never;
@@ -1170,7 +1710,8 @@ export type FeatureUpdateExtrudeCommandInput =
       readonly sketchId: SketchId;
       readonly entityId: SketchEntityId;
     })
-  | (FeatureUpdateExtrudeOpV21 & { readonly profile: SketchProfileRef });
+  | (FeatureUpdateExtrudeOpV21 & { readonly profile: SketchProfileRef })
+  | (FeatureUpdateExtrudeOpV22 & { readonly profile: SketchRegionsProfileRef });
 
 export interface FeatureUpdateRevolveOp {
   readonly op: "feature.updateRevolve";
@@ -1193,6 +1734,12 @@ export type FeatureUpdateRevolveCommandInput =
   | (Omit<FeatureUpdateRevolveOp, "angleDegrees"> & {
       readonly angleDegrees?: number;
       readonly profile: SketchProfileRef;
+      readonly sketchId?: never;
+      readonly entityId?: never;
+    })
+  | (Omit<FeatureUpdateRevolveOp, "angleDegrees"> & {
+      readonly angleDegrees?: number;
+      readonly profile: SketchRegionsProfileRef;
       readonly sketchId?: never;
       readonly entityId?: never;
     });
@@ -1474,7 +2021,7 @@ export type CadExtrudeFeatureRef = CadExtrudeFeatureRefBase &
         readonly profile?: never;
       }
     | {
-        readonly profile: SketchWireProfileRef;
+        readonly profile: SketchWireProfileRef | SketchRegionsProfileRef;
         readonly entityId?: never;
         readonly profileKind?: never;
       }
@@ -1499,7 +2046,7 @@ export type CadRevolveFeatureRef = CadRevolveFeatureRefBase &
         readonly profile?: never;
       }
     | {
-        readonly profile: SketchWireProfileRef;
+        readonly profile: SketchWireProfileRef | SketchRegionsProfileRef;
         readonly entityId?: never;
         readonly profileKind?: never;
       }
@@ -1649,6 +2196,20 @@ export interface CadSketchDimensionRef {
   readonly parameterId?: ParameterId;
 }
 
+export interface CadSketchDimensionRefV22 {
+  readonly sourceShape: "v22";
+  readonly id: SketchDimensionId;
+  readonly name: string;
+  readonly sketchId: SketchId;
+  readonly target: SketchDimensionTargetV22;
+  readonly parameterId?: ParameterId;
+  readonly entityId?: never;
+}
+
+export type CadSketchDimensionRefCurrent =
+  | CadSketchDimensionRef
+  | CadSketchDimensionRefV22;
+
 export interface CadSketchConstraintRef {
   readonly id: SketchConstraintId;
   readonly name: string;
@@ -1686,6 +2247,8 @@ export interface SketchSemanticDiff {
   readonly entitiesModified?: readonly CadSketchEntityRef[];
   readonly entitiesDeleted?: readonly CadSketchEntityRef[];
   readonly entityChanges?: readonly SketchEntitySemanticDiff[];
+  readonly curveEdits?: readonly SketchCurveEditSemanticDiff[];
+  readonly convenienceOperations?: readonly SketchConvenienceSemanticDiff[];
 }
 
 export interface FeatureSemanticDiff {
@@ -1697,7 +2260,7 @@ export interface FeatureSemanticDiff {
   readonly bodiesDeleted?: readonly CadBodyRef[];
   readonly referenceEffects?: readonly CadFeatureReferenceChangeSummary[];
   readonly lifecycleEffects?: readonly CadBodyLifecycleEffectSummary[];
-  readonly inputReferences?: readonly FeatureInputReferenceSemanticDiff[];
+  readonly inputReferences?: readonly FeatureInputReferenceSemanticDiffCurrent[];
 }
 
 export interface SketchEntitySemanticDiff {
@@ -1710,7 +2273,7 @@ export interface SketchEntitySemanticDiff {
   readonly constructionAfter?: boolean;
 }
 
-export interface FeatureInputReferenceSemanticDiff {
+export interface FeatureInputReferenceSemanticDiffLegacy {
   readonly featureId: FeatureId;
   readonly inputKind: "profile" | "path";
   readonly before?: SketchProfileRef | SketchPathRef;
@@ -1718,6 +2281,78 @@ export interface FeatureInputReferenceSemanticDiff {
   readonly profileOrientationNormalized?: boolean;
   readonly affectedSketchIds: readonly SketchId[];
   readonly affectedEntityIds: readonly SketchEntityId[];
+}
+
+export type FeatureInputReferenceSemanticDiffV22 =
+  | {
+      readonly featureId: FeatureId;
+      readonly inputKind: "profile";
+      readonly before?: SketchProfileRefV22;
+      readonly after: SketchProfileRefV22;
+      readonly normalization?: {
+        readonly outerOrientationsChanged: readonly string[];
+        readonly holeOrientationsChanged: readonly string[];
+        readonly cyclicStartsChanged: readonly string[];
+        readonly holeOrderChanged: boolean;
+        readonly regionOrderChanged: boolean;
+      };
+      readonly affectedSketchIds: readonly SketchId[];
+      readonly affectedEntityIds: readonly SketchEntityId[];
+    }
+  | {
+      readonly featureId: FeatureId;
+      readonly inputKind: "path";
+      readonly before?: SketchPathRef;
+      readonly after: SketchPathRef;
+      readonly affectedSketchIds: readonly SketchId[];
+      readonly affectedEntityIds: readonly SketchEntityId[];
+    };
+
+export type FeatureInputReferenceSemanticDiff =
+  FeatureInputReferenceSemanticDiffV22;
+
+export type FeatureInputReferenceSemanticDiffCurrent =
+  FeatureInputReferenceSemanticDiff;
+
+export interface SketchEntityReplacement {
+  readonly sourceEntityId: SketchEntityId;
+  readonly disposition: "modified" | "deleted";
+  readonly resultEntityIds: readonly SketchEntityId[];
+  readonly preservedResultEntityId?: SketchEntityId;
+}
+
+export interface SketchCurveEditImpact {
+  readonly sketchId: SketchId;
+  readonly operation:
+    | "trim"
+    | "extend"
+    | "split"
+    | "explodeRectangle"
+    | "offset";
+  readonly replacements: readonly SketchEntityReplacement[];
+  readonly requiredDeleteConstraintIds: readonly SketchConstraintId[];
+  readonly requiredDeleteDimensionIds: readonly SketchDimensionId[];
+  readonly affectedFeatureIds: readonly FeatureId[];
+  readonly postEditSolverStatus: CadSketchSolverStatus;
+}
+
+export interface SketchCurveEditSemanticDiff extends SketchCurveEditImpact {
+  readonly opIndex: number;
+  readonly createdEntityIds: readonly SketchEntityId[];
+  readonly modifiedEntityIds: readonly SketchEntityId[];
+  readonly deletedEntityIds: readonly SketchEntityId[];
+  readonly retargetedConstraintIds: readonly SketchConstraintId[];
+  readonly deletedConstraintIds: readonly SketchConstraintId[];
+  readonly retargetedDimensionIds: readonly SketchDimensionId[];
+  readonly deletedDimensionIds: readonly SketchDimensionId[];
+}
+
+export interface SketchConvenienceSemanticDiff {
+  readonly opIndex: number;
+  readonly sketchId: SketchId;
+  readonly operation: "slot" | "roundedRectangle";
+  readonly createdEntityIds: readonly SketchEntityId[];
+  readonly createdConstraintIds: readonly SketchConstraintId[];
 }
 
 export interface ReferenceSemanticDiff {
@@ -1741,9 +2376,9 @@ export interface ParameterSemanticDiff {
 }
 
 export interface SketchDimensionSemanticDiff {
-  readonly created?: readonly CadSketchDimensionRef[];
-  readonly modified?: readonly CadSketchDimensionRef[];
-  readonly deleted?: readonly CadSketchDimensionRef[];
+  readonly created?: readonly CadSketchDimensionRefCurrent[];
+  readonly modified?: readonly CadSketchDimensionRefCurrent[];
+  readonly deleted?: readonly CadSketchDimensionRefCurrent[];
 }
 
 export interface SketchConstraintSemanticDiff {
@@ -1832,6 +2467,34 @@ export type CadBatchValidationErrorCode =
   | "SKETCH_ARC_SOLVE_BRANCH_INVALID"
   | "SKETCH_ARC_DIMENSION_INVALID"
   | "SKETCH_ENTITY_CONSTRUCTION_INVALID"
+  | "SKETCH_EDIT_TARGET_UNSUPPORTED"
+  | "SKETCH_EDIT_BOUNDARY_MISSING"
+  | "SKETCH_EDIT_INTERSECTION_MISSING"
+  | "SKETCH_EDIT_INTERSECTION_AMBIGUOUS"
+  | "SKETCH_EDIT_PICK_OFF_CURVE"
+  | "SKETCH_EDIT_ZERO_LENGTH_RESULT"
+  | "SKETCH_EDIT_SOLVER_STATE_BLOCKED"
+  | "SKETCH_EDIT_SOURCE_REVISION_STALE"
+  | "SKETCH_EDIT_BATCH_MULTIPLE_UNSUPPORTED"
+  | "SKETCH_EDIT_DEPENDENCY_CONFLICT"
+  | "SKETCH_EDIT_DELETE_LIST_MISMATCH"
+  | "SKETCH_OFFSET_SIDE_AMBIGUOUS"
+  | "SKETCH_OFFSET_RADIUS_COLLAPSED"
+  | "SKETCH_OFFSET_JOIN_UNSUPPORTED"
+  | "SKETCH_OFFSET_SELF_INTERSECTION"
+  | "SKETCH_REGION_LOOP_OPEN"
+  | "SKETCH_REGION_LOOP_INTERSECTION"
+  | "SKETCH_REGION_BOUNDARY_TOUCHING"
+  | "SKETCH_REGION_HOLE_OUTSIDE"
+  | "SKETCH_REGION_HOLES_OVERLAP"
+  | "SKETCH_REGION_MATERIAL_OVERLAP"
+  | "SKETCH_REGION_NESTING_UNSUPPORTED"
+  | "SKETCH_REGION_COMPLEXITY_LIMIT"
+  | "SKETCH_REGION_CONSUMER_UNSUPPORTED"
+  | "SKETCH_REGION_RESULT_NOT_SINGLE_SOLID"
+  | "SKETCH_DIMENSION_TARGET_UNSUPPORTED"
+  | "SKETCH_DIMENSION_ANGLE_SENSE_INVALID"
+  | "SKETCH_DIMENSION_DISTANCE_INVALID"
   | "SKETCH_PROFILE_EMPTY"
   | "SKETCH_PROFILE_ENTITY_MISSING"
   | "SKETCH_PROFILE_ENTITY_UNSUPPORTED"
@@ -1961,6 +2624,7 @@ export interface CadBatchValidationError {
   readonly path?: string;
   readonly expected?: string;
   readonly received?: string;
+  readonly curveEditImpact?: SketchCurveEditImpact;
 }
 
 export type CadBatchValidationResult =
@@ -2077,6 +2741,9 @@ export type CadQueryKind =
   | "sketch.profileReadiness"
   | "sketch.pathCandidates"
   | "sketch.pathReadiness"
+  | "sketch.curveEditReadiness"
+  | "sketch.profileRegionCandidates"
+  | "sketch.profileRegionValidate"
   | "sketch.editReadiness"
   | "sketch.solverStatus"
   | "sketch.evaluation"
@@ -2128,6 +2795,9 @@ export type CadQuery =
   | SketchProfileReadinessQuery
   | SketchPathCandidatesQuery
   | SketchPathReadinessQuery
+  | SketchCurveEditReadinessQuery
+  | SketchProfileRegionCandidatesQuery
+  | SketchProfileRegionValidateQuery
   | SketchEditReadinessQuery
   | SketchSolverStatusQuery
   | SketchEvaluationQuery
@@ -2341,7 +3011,7 @@ export type SketchProfileConsumerIntent =
 
 export interface SketchProfileReadinessQuery {
   readonly query: "sketch.profileReadiness";
-  readonly profile: SketchProfileRef;
+  readonly profile: SketchProfileRefV22;
   readonly consumer: SketchProfileConsumerIntent;
 }
 
@@ -2354,6 +3024,25 @@ export interface SketchPathReadinessQuery {
   readonly query: "sketch.pathReadiness";
   readonly path: SketchPathRef;
   readonly sweepProfile?: SketchEntityProfileRef;
+}
+
+export interface SketchCurveEditReadinessQuery {
+  readonly query: "sketch.curveEditReadiness";
+  readonly proposal: SketchCurveEditProposal;
+}
+
+export interface SketchProfileRegionCandidatesQuery {
+  readonly query: "sketch.profileRegionCandidates";
+  readonly sketchId: SketchId;
+  readonly entityIds?: readonly SketchEntityId[];
+  readonly limit?: number;
+  readonly afterCandidateKey?: string;
+  readonly sourceRevision?: string;
+}
+
+export interface SketchProfileRegionValidateQuery {
+  readonly query: "sketch.profileRegionValidate";
+  readonly profile: SketchRegionsProfileRef;
 }
 
 export type SketchProfilePathQuery =
@@ -2606,6 +3295,14 @@ export interface SketchDimensionSnapshotV20 extends Omit<
   "target"
 > {
   readonly target: SketchDimensionTargetV20;
+}
+
+export interface SketchDimensionSnapshotV22 {
+  readonly id: SketchDimensionId;
+  readonly name: string;
+  readonly sketchId: SketchId;
+  readonly target: SketchDimensionTargetV22;
+  readonly valueSource: SketchDimensionValueSource;
 }
 
 export type SketchConstraintSnapshotV20 =
@@ -2866,6 +3563,17 @@ export interface SketchDimensionEntry extends SketchDimensionSnapshot {
   readonly effectiveValue?: number;
 }
 
+export interface SketchDimensionEntryV22 extends SketchDimensionSnapshotV22 {
+  readonly sourceShape: "v22";
+  readonly status: SketchDimensionStatus;
+  readonly issues: readonly SketchDimensionIssue[];
+  readonly effectiveValue?: number;
+}
+
+export type SketchDimensionEntryCurrent =
+  | SketchDimensionEntry
+  | SketchDimensionEntryV22;
+
 export type SketchConstraintEntry = SketchConstraintSnapshot & {
   readonly status: SketchDimensionStatus;
   readonly issues: readonly SketchConstraintIssue[];
@@ -3085,6 +3793,14 @@ export interface RevolveFeatureV21 {
   readonly bodyId: BodyId;
 }
 
+export type ExtrudeFeatureV22 = Omit<ExtrudeFeatureV21, "profile"> & {
+  readonly profile: SketchProfileRefV22;
+};
+
+export type RevolveFeatureV22 = Omit<RevolveFeatureV21, "profile"> & {
+  readonly profile: SketchProfileRefV22;
+};
+
 export interface SweepFeatureV21 {
   readonly id: FeatureId;
   readonly kind: "sweep";
@@ -3093,6 +3809,8 @@ export interface SweepFeatureV21 {
   readonly path: SketchPathRef;
   readonly bodyId: BodyId;
 }
+
+export type SweepFeatureV22 = SweepFeatureV21;
 
 export interface LoftSectionV21 {
   readonly profile: SketchEntityProfileRef;
@@ -3109,11 +3827,19 @@ export interface LoftFeatureV21 {
   readonly bodyId: BodyId;
 }
 
+export type LoftFeatureV22 = LoftFeatureV21;
+
 export type ProfileConsumerFeatureV21 =
   | ExtrudeFeatureV21
   | RevolveFeatureV21
   | SweepFeatureV21
   | LoftFeatureV21;
+
+export type ProfileConsumerFeatureV22 =
+  | ExtrudeFeatureV22
+  | RevolveFeatureV22
+  | SweepFeatureV22
+  | LoftFeatureV22;
 
 export type FeatureSnapshotV21 =
   | ExtrudeFeatureV21
@@ -3128,6 +3854,20 @@ export type FeatureSnapshotV21 =
   | ShellFeatureSnapshot
   | SweepFeatureV21
   | LoftFeatureV21;
+
+export type FeatureSnapshotV22 =
+  | ExtrudeFeatureV22
+  | RevolveFeatureV22
+  | HoleFeatureSnapshot
+  | ChamferFeatureSnapshot
+  | FilletFeatureSnapshot
+  | ImportedBodyFeatureSnapshot
+  | LinearPatternFeatureSnapshot
+  | CircularPatternFeatureSnapshot
+  | MirrorFeatureSnapshot
+  | ShellFeatureSnapshot
+  | SweepFeatureV22
+  | LoftFeatureV22;
 
 export interface ShellFeatureSnapshot {
   readonly id: FeatureId;
@@ -3731,18 +4471,28 @@ export type CadFeatureEditDiagnosticCode =
   | "FEATURE_REBUILD_DEFERRED"
   | "REFERENCE_HEALTH_DEFERRED"
   | "AMBIGUOUS_RESULT_TOPOLOGY"
-  | "CONSUMED_REFERENCE_NOT_COMMAND_READY";
+  | "CONSUMED_REFERENCE_NOT_COMMAND_READY"
+  | "SKETCH_REGION_LOOP_OPEN"
+  | "SKETCH_REGION_LOOP_INTERSECTION"
+  | "SKETCH_REGION_BOUNDARY_TOUCHING"
+  | "SKETCH_REGION_HOLE_OUTSIDE"
+  | "SKETCH_REGION_HOLES_OVERLAP"
+  | "SKETCH_REGION_MATERIAL_OVERLAP"
+  | "SKETCH_REGION_NESTING_UNSUPPORTED"
+  | "SKETCH_REGION_COMPLEXITY_LIMIT"
+  | "SKETCH_REGION_CONSUMER_UNSUPPORTED"
+  | "SKETCH_REGION_RESULT_NOT_SINGLE_SOLID";
 
 export interface CadFeatureExtrudeEditProposal {
   readonly kind: "extrude";
-  readonly profile?: SketchProfileRef;
+  readonly profile?: SketchProfileRefV22;
   readonly depth?: number;
   readonly side?: FeatureExtrudeSide;
 }
 
 export interface CadFeatureRevolveEditProposal {
   readonly kind: "revolve";
-  readonly profile?: SketchProfileRef;
+  readonly profile?: SketchProfileRefV22;
   readonly angleDegrees?: number;
 }
 
@@ -3997,13 +4747,41 @@ export type CadSketchEditDiagnosticCode =
   | "SKETCH_EDIT_CONSUMED_DOWNSTREAM"
   | "SKETCH_EDIT_AMBIGUOUS_DOWNSTREAM"
   | "SKETCH_EDIT_REPAIR_NEEDED_DOWNSTREAM"
-  | "SKETCH_EDIT_SCHEMA_MIGRATION_NEEDED";
+  | "SKETCH_EDIT_SCHEMA_MIGRATION_NEEDED"
+  | "SKETCH_EDIT_TARGET_UNSUPPORTED"
+  | "SKETCH_EDIT_BOUNDARY_MISSING"
+  | "SKETCH_EDIT_INTERSECTION_MISSING"
+  | "SKETCH_EDIT_INTERSECTION_AMBIGUOUS"
+  | "SKETCH_EDIT_PICK_OFF_CURVE"
+  | "SKETCH_EDIT_ZERO_LENGTH_RESULT"
+  | "SKETCH_EDIT_SOLVER_STATE_BLOCKED"
+  | "SKETCH_EDIT_SOURCE_REVISION_STALE"
+  | "SKETCH_EDIT_BATCH_MULTIPLE_UNSUPPORTED"
+  | "SKETCH_EDIT_DEPENDENCY_CONFLICT"
+  | "SKETCH_EDIT_DELETE_LIST_MISMATCH"
+  | "SKETCH_OFFSET_SIDE_AMBIGUOUS"
+  | "SKETCH_OFFSET_RADIUS_COLLAPSED"
+  | "SKETCH_OFFSET_JOIN_UNSUPPORTED"
+  | "SKETCH_OFFSET_SELF_INTERSECTION"
+  | "SKETCH_REGION_LOOP_OPEN"
+  | "SKETCH_REGION_LOOP_INTERSECTION"
+  | "SKETCH_REGION_BOUNDARY_TOUCHING"
+  | "SKETCH_REGION_HOLE_OUTSIDE"
+  | "SKETCH_REGION_HOLES_OVERLAP"
+  | "SKETCH_REGION_MATERIAL_OVERLAP"
+  | "SKETCH_REGION_NESTING_UNSUPPORTED"
+  | "SKETCH_REGION_COMPLEXITY_LIMIT"
+  | "SKETCH_REGION_CONSUMER_UNSUPPORTED"
+  | "SKETCH_REGION_RESULT_NOT_SINGLE_SOLID"
+  | "SKETCH_DIMENSION_TARGET_UNSUPPORTED"
+  | "SKETCH_DIMENSION_ANGLE_SENSE_INVALID"
+  | "SKETCH_DIMENSION_DISTANCE_INVALID";
 
 export interface CadSketchEntityDimensionEditProposal {
   readonly editKind: "entity.dimension.update";
   readonly sketchId: SketchId;
   readonly entityId: SketchEntityId;
-  readonly target: SketchDimensionTarget;
+  readonly target: SketchDimensionTarget | SketchDimensionTargetV22;
   readonly value: number;
 }
 
@@ -4095,6 +4873,7 @@ export interface CadSketchEditDiagnostic {
   readonly fieldPath?: string;
   readonly expected?: string;
   readonly received?: string;
+  readonly recoveryAction?: string;
 }
 
 export interface CadSketchEditEvaluationSummary {
@@ -4105,7 +4884,7 @@ export interface CadSketchEditEvaluationSummary {
   readonly drivenEntityCount: number;
   readonly drivenEntityIds: readonly SketchEntityId[];
   readonly dimensionCount: number;
-  readonly dimensions: readonly SketchDimensionEntry[];
+  readonly dimensions: readonly SketchDimensionEntryCurrent[];
   readonly constraintCount: number;
   readonly constraints: readonly SketchConstraintEntry[];
   readonly issueCount: number;
@@ -4220,7 +4999,10 @@ export type CadSketchSolverDiagnosticCode =
   | "SKETCH_SOLVER_PROFILE_VALID"
   | "SKETCH_TANGENCY_OUTSIDE_ARC"
   | "SKETCH_ARC_SOLVE_BRANCH_INVALID"
-  | "SKETCH_ARC_DIMENSION_INVALID";
+  | "SKETCH_ARC_DIMENSION_INVALID"
+  | "SKETCH_DIMENSION_TARGET_UNSUPPORTED"
+  | "SKETCH_DIMENSION_ANGLE_SENSE_INVALID"
+  | "SKETCH_DIMENSION_DISTANCE_INVALID";
 
 export type CadSketchSolverSourceRecordKind =
   | "advancedConstraint"
@@ -4322,6 +5104,25 @@ export interface CadSketchSolverDimensionSummary {
   readonly diagnosticCount: number;
   readonly diagnostics: readonly CadSketchSolverDiagnostic[];
 }
+
+export interface CadSketchSolverDimensionSummaryV22 {
+  readonly sourceShape: "v22";
+  readonly dimensionId: SketchDimensionId;
+  readonly sketchId: SketchId;
+  readonly target: SketchDimensionTargetV22;
+  readonly valueSource: SketchDimensionValueSource;
+  readonly effectiveValue?: number;
+  readonly status: SketchDimensionStatus;
+  readonly supported: boolean;
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadSketchSolverDiagnostic[];
+  readonly entityId?: never;
+  readonly targetRef?: never;
+}
+
+export type CadSketchSolverDimensionSummaryCurrent =
+  | CadSketchSolverDimensionSummary
+  | CadSketchSolverDimensionSummaryV22;
 
 export interface CadSketchSolverConstraintSummary {
   readonly constraintId: SketchConstraintId;
@@ -5981,12 +6782,10 @@ export interface CadAttachedSketchHealth {
   readonly issues: readonly CadDependencyHealthIssue[];
 }
 
-export interface CadSketchDimensionHealth {
+interface CadSketchDimensionHealthBase {
   readonly dimensionId: SketchDimensionId;
   readonly dimensionName: string;
   readonly sketchId: SketchId;
-  readonly entityId: SketchEntityId;
-  readonly target: SketchDimensionTarget;
   readonly valueSource: SketchDimensionValueSource;
   readonly status: CadDependencyHealthStatus;
   readonly affectedFeatureIds: readonly FeatureId[];
@@ -5995,6 +6794,22 @@ export interface CadSketchDimensionHealth {
   readonly parameterId?: ParameterId;
   readonly issues: readonly CadDependencyHealthIssue[];
 }
+
+export interface CadSketchDimensionHealthLegacy extends CadSketchDimensionHealthBase {
+  readonly entityId: SketchEntityId;
+  readonly target: SketchDimensionTarget;
+  readonly sourceShape?: never;
+}
+
+export interface CadSketchDimensionHealthV22 extends CadSketchDimensionHealthBase {
+  readonly sourceShape: "v22";
+  readonly target: SketchDimensionTargetV22;
+  readonly entityId?: never;
+}
+
+export type CadSketchDimensionHealth =
+  | CadSketchDimensionHealthLegacy
+  | CadSketchDimensionHealthV22;
 
 export interface CadSketchConstraintHealth {
   readonly constraintId: SketchConstraintId;
@@ -6096,6 +6911,8 @@ export interface CadSemanticDiffSummary {
   readonly parameters?: ParameterSemanticDiff;
   readonly sketchDimensions?: SketchDimensionSemanticDiff;
   readonly sketchConstraints?: SketchConstraintSemanticDiff;
+  readonly curveEdits?: readonly SketchCurveEditSemanticDiff[];
+  readonly convenienceOperations?: readonly SketchConvenienceSemanticDiff[];
 }
 
 export interface CadTransactionHistoryEntry {
@@ -7039,6 +7856,16 @@ export type SketchProfileDiagnosticCode =
   | "SKETCH_PROFILE_INNER_LOOP_UNSUPPORTED"
   | "SKETCH_PROFILE_ORIENTATION_NORMALIZED"
   | "SKETCH_PROFILE_CONSUMER_UNSUPPORTED"
+  | "SKETCH_REGION_LOOP_OPEN"
+  | "SKETCH_REGION_LOOP_INTERSECTION"
+  | "SKETCH_REGION_BOUNDARY_TOUCHING"
+  | "SKETCH_REGION_HOLE_OUTSIDE"
+  | "SKETCH_REGION_HOLES_OVERLAP"
+  | "SKETCH_REGION_MATERIAL_OVERLAP"
+  | "SKETCH_REGION_NESTING_UNSUPPORTED"
+  | "SKETCH_REGION_COMPLEXITY_LIMIT"
+  | "SKETCH_REGION_CONSUMER_UNSUPPORTED"
+  | "SKETCH_REGION_RESULT_NOT_SINGLE_SOLID"
   | "BODY_NOT_FOUND"
   | "UNSUPPORTED_BODY_REFERENCES"
   | "TOPOLOGY_ANCHOR_NOT_FOUND"
@@ -7252,7 +8079,7 @@ interface SketchProfileReadinessQueryResponseBase {
   readonly ok: true;
   readonly query: "sketch.profileReadiness";
   readonly cadOpsVersion: CadOpsVersion;
-  readonly requestedProfile: SketchProfileRef;
+  readonly requestedProfile: SketchProfileRefV22;
   readonly consumer: SketchProfileConsumerIntent;
   readonly consumerCompatibility: SketchConsumerCompatibility;
   readonly targetCompatibility: SketchProfileTargetCompatibility;
@@ -7266,7 +8093,7 @@ interface SketchProfileReadinessQueryResponseBase {
 
 export interface SketchProfileReadinessReadyQueryResponse extends SketchProfileReadinessQueryResponseBase {
   readonly status: "ready";
-  readonly normalizedProfile: SketchProfileRef;
+  readonly normalizedProfile: SketchProfileRefV22;
   readonly orientation: "counterclockwise";
   readonly orientationNormalized: boolean;
   readonly area: number;
@@ -7277,7 +8104,7 @@ export interface SketchProfileReadinessReadyQueryResponse extends SketchProfileR
 
 export interface SketchProfileReadinessBlockedQueryResponse extends SketchProfileReadinessQueryResponseBase {
   readonly status: "blocked";
-  readonly normalizedProfile?: SketchProfileRef;
+  readonly normalizedProfile?: SketchProfileRefV22;
   readonly orientation?: "clockwise" | "counterclockwise";
   readonly orientationNormalized: boolean;
   readonly area?: number;
@@ -7368,6 +8195,130 @@ export type SketchProfilePathQueryResponse =
   | SketchPathCandidatesQueryResponse
   | SketchPathReadinessQueryResponse;
 
+export interface SketchCurveEditIntersectionPreview {
+  readonly boundaryEntityId: SketchEntityId;
+  readonly point: Vec2;
+  readonly targetParameter: number;
+}
+
+export interface SketchCurveEditPreview {
+  readonly intersections: readonly SketchCurveEditIntersectionPreview[];
+  readonly projectedSplitParameters: readonly number[];
+  readonly resultEntityCount: number;
+  readonly resultEntities: readonly SketchEntitySnapshot[];
+}
+
+interface SketchCurveEditReadinessQueryResponseBase {
+  readonly ok: true;
+  readonly query: "sketch.curveEditReadiness";
+  readonly cadOpsVersion: CadOpsVersion;
+}
+
+export interface SketchCurveEditReadinessReadyResponse extends SketchCurveEditReadinessQueryResponseBase {
+  readonly status: "ready";
+  readonly preparedOperation: PreparedSketchCurveEditOp;
+  readonly impact: SketchCurveEditImpact;
+  readonly preview: SketchCurveEditPreview;
+  readonly diagnostics: readonly [];
+}
+
+export interface SketchCurveEditReadinessBlockedResponse extends SketchCurveEditReadinessQueryResponseBase {
+  readonly status: "blocked";
+  readonly impact?: SketchCurveEditImpact;
+  readonly preview?: SketchCurveEditPreview;
+  readonly diagnostics: readonly CadSketchEditDiagnostic[];
+}
+
+export type SketchCurveEditReadinessQueryResponse =
+  | SketchCurveEditReadinessReadyResponse
+  | SketchCurveEditReadinessBlockedResponse;
+
+export type SketchRegionDiagnosticCode =
+  | "SKETCH_REGION_LOOP_OPEN"
+  | "SKETCH_REGION_LOOP_INTERSECTION"
+  | "SKETCH_REGION_BOUNDARY_TOUCHING"
+  | "SKETCH_REGION_HOLE_OUTSIDE"
+  | "SKETCH_REGION_HOLES_OVERLAP"
+  | "SKETCH_REGION_MATERIAL_OVERLAP"
+  | "SKETCH_REGION_NESTING_UNSUPPORTED"
+  | "SKETCH_REGION_COMPLEXITY_LIMIT"
+  | "SKETCH_REGION_CONSUMER_UNSUPPORTED"
+  | "SKETCH_REGION_RESULT_NOT_SINGLE_SOLID";
+
+export interface SketchRegionDiagnostic {
+  readonly code: SketchRegionDiagnosticCode;
+  readonly severity: CadFeatureEditDiagnosticSeverity;
+  readonly message: string;
+  readonly sketchId?: SketchId;
+  readonly entityId?: SketchEntityId;
+  readonly featureId?: FeatureId;
+  readonly regionKey?: string;
+  readonly loopKey?: string;
+  readonly expected?: string;
+  readonly received?: string;
+  readonly recoveryAction?: string;
+}
+
+export interface SketchProfileRegionCandidate {
+  readonly candidateKey: string;
+  readonly region: SketchProfileRegionRef;
+  readonly outerLoopKey: string;
+  readonly holeLoopKeys: readonly string[];
+  readonly outerEntityIds: readonly SketchEntityId[];
+  readonly holeEntityIds: readonly (readonly SketchEntityId[])[];
+  readonly signedArea: number;
+  readonly materialArea: number;
+  readonly containmentDepth: number;
+  readonly status: "valid" | "invalid";
+  readonly diagnostics: readonly SketchRegionDiagnostic[];
+}
+
+export interface SketchProfileRegionCandidatesQueryResponse {
+  readonly ok: true;
+  readonly query: "sketch.profileRegionCandidates";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly sketchId: SketchId;
+  readonly status: "ready" | "blocked";
+  readonly sourceRevision: string;
+  readonly sourceFingerprint: string;
+  readonly candidateCount: number;
+  readonly candidates: readonly SketchProfileRegionCandidate[];
+  readonly hasMore: boolean;
+  readonly nextAfterCandidateKey?: string;
+  readonly complexity: SketchProfileRegionComplexity;
+  readonly diagnostics: readonly SketchRegionDiagnostic[];
+}
+
+export interface SketchProfileRegionLoopSummary {
+  readonly loopKey: string;
+  readonly role: "outer" | "hole";
+  readonly regionIndex: number;
+  readonly entityIds: readonly SketchEntityId[];
+  readonly signedArea: number;
+  readonly absoluteArea: number;
+  readonly containmentDepth: number;
+}
+
+export interface SketchProfileRegionComplexity {
+  readonly regionCount: number;
+  readonly loopCount: number;
+  readonly segmentReferenceCount: number;
+  readonly predicateVisitCount: number;
+}
+
+export interface SketchProfileRegionValidateQueryResponse {
+  readonly ok: true;
+  readonly query: "sketch.profileRegionValidate";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly status: "ready" | "blocked";
+  readonly requestedProfile: SketchRegionsProfileRef;
+  readonly normalizedProfile?: SketchRegionsProfileRef;
+  readonly loopSummaries: readonly SketchProfileRegionLoopSummary[];
+  readonly materialAreas: readonly number[];
+  readonly complexity: SketchProfileRegionComplexity;
+  readonly diagnostics: readonly SketchRegionDiagnostic[];
+}
+
 export type CadQueryResponse =
   | ParameterListQueryResponse
   | ParameterGetQueryResponse
@@ -7399,6 +8350,9 @@ export type CadQueryResponse =
   | SketchProfileReadinessQueryResponse
   | SketchPathCandidatesQueryResponse
   | SketchPathReadinessQueryResponse
+  | SketchCurveEditReadinessQueryResponse
+  | SketchProfileRegionCandidatesQueryResponse
+  | SketchProfileRegionValidateQueryResponse
   | SketchEditReadinessQueryResponse
   | SketchSolverStatusQueryResponse
   | SketchEvaluationQueryResponse
@@ -8078,7 +9032,7 @@ export interface SketchSolverStatusQueryResponse {
   readonly entityCount: number;
   readonly entities: readonly CadSketchSolverEntitySummary[];
   readonly dimensionCount: number;
-  readonly dimensions: readonly CadSketchSolverDimensionSummary[];
+  readonly dimensions: readonly CadSketchSolverDimensionSummaryCurrent[];
   readonly constraintCount: number;
   readonly constraints: readonly CadSketchSolverConstraintSummary[];
   readonly deferredConstraintCount: number;
@@ -8104,7 +9058,7 @@ export interface SketchEvaluationQueryResponse {
   readonly drivenEntityCount: number;
   readonly drivenEntityIds: readonly SketchEntityId[];
   readonly dimensionCount: number;
-  readonly dimensions: readonly SketchDimensionEntry[];
+  readonly dimensions: readonly SketchDimensionEntryCurrent[];
   readonly constraintCount: number;
   readonly constraints: readonly SketchConstraintEntry[];
   readonly issueCount: number;
@@ -8117,14 +9071,14 @@ export interface SketchDimensionsQueryResponse {
   readonly cadOpsVersion: CadOpsVersion;
   readonly sketchId: SketchId;
   readonly dimensionCount: number;
-  readonly dimensions: readonly SketchDimensionEntry[];
+  readonly dimensions: readonly SketchDimensionEntryCurrent[];
 }
 
 export interface SketchDimensionGetQueryResponse {
   readonly ok: true;
   readonly query: "sketch.dimension.get";
   readonly cadOpsVersion: CadOpsVersion;
-  readonly dimension: SketchDimensionEntry;
+  readonly dimension: SketchDimensionEntryCurrent;
 }
 
 export interface BodyGeneratedReferencesQueryResponse {
@@ -8501,9 +9455,17 @@ function validateIdArray(
     });
     return;
   }
-  value.forEach((id, index) =>
-    validateNonEmptyString(id, `${path}[${index}]`, issues)
-  );
+  for (let index = 0; index < value.length; index += 1) {
+    if (!(index in value)) {
+      issues.push({
+        code: "INVALID_VALUE",
+        path: `${path}[${index}]`,
+        message: "Sparse arrays are not allowed."
+      });
+      continue;
+    }
+    validateNonEmptyString(value[index], `${path}[${index}]`, issues);
+  }
 }
 
 function validateOrientedSegments(
@@ -8515,7 +9477,16 @@ function validateOrientedSegments(
     issues.push({ code: "INVALID_TYPE", path, message: "Expected an array." });
     return;
   }
-  value.forEach((segment, index) => {
+  for (let index = 0; index < value.length; index += 1) {
+    if (!(index in value)) {
+      issues.push({
+        code: "INVALID_VALUE",
+        path: `${path}[${index}]`,
+        message: "Sparse arrays are not allowed."
+      });
+      continue;
+    }
+    const segment = value[index];
     const segmentPath = `${path}[${index}]`;
     if (
       !validateExactRecord(
@@ -8526,7 +9497,7 @@ function validateOrientedSegments(
         issues
       )
     ) {
-      return;
+      continue;
     }
     validateNonEmptyString(segment.entityId, `${segmentPath}.entityId`, issues);
     if (
@@ -8539,7 +9510,30 @@ function validateOrientedSegments(
         message: "Expected 'forward' or 'reverse'."
       });
     }
-  });
+  }
+}
+
+function validateDistinctOrientedSegmentEntityIds(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  if (!Array.isArray(value)) return;
+  const entityIds = new Set<string>();
+  for (let index = 0; index < value.length; index += 1) {
+    const segment = value[index];
+    if (!isUnknownRecord(segment) || typeof segment.entityId !== "string") {
+      continue;
+    }
+    if (entityIds.has(segment.entityId)) {
+      issues.push({
+        code: "INVALID_VALUE",
+        path: `${path}[${index}].entityId`,
+        message: "An oriented segment list cannot repeat an entity ID."
+      });
+    }
+    entityIds.add(segment.entityId);
+  }
 }
 
 function validateProfileRef(
@@ -8584,6 +9578,26 @@ function validateProfileRef(
       return;
     validateNonEmptyString(value.sketchId, `${path}.sketchId`, issues);
     validateOrientedSegments(value.segments, `${path}.segments`, issues);
+    validateDistinctOrientedSegmentEntityIds(
+      value.segments,
+      `${path}.segments`,
+      issues
+    );
+    return;
+  }
+  if (!entityOnly && value.kind === "regions") {
+    if (
+      !validateExactRecord(
+        value,
+        path,
+        ["kind", "sketchId", "regions"],
+        [],
+        issues
+      )
+    )
+      return;
+    validateNonEmptyString(value.sketchId, `${path}.sketchId`, issues);
+    validateRegions(value.regions, `${path}.regions`, issues);
     return;
   }
   issues.push({
@@ -8591,8 +9605,164 @@ function validateProfileRef(
     path: `${path}.kind`,
     message: entityOnly
       ? "Expected an entity profile reference."
-      : "Expected profile kind 'entity' or 'wire'."
+      : "Expected profile kind 'entity', 'wire', or 'regions'."
   });
+}
+
+function validateSketchLoopRef(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): number {
+  if (!isUnknownRecord(value)) {
+    issues.push({
+      code: "INVALID_TYPE",
+      path,
+      message: "Expected a sketch loop reference."
+    });
+    return 0;
+  }
+  if (value.kind === "entity") {
+    if (!validateExactRecord(value, path, ["kind", "entityId"], [], issues)) {
+      return 0;
+    }
+    validateNonEmptyString(value.entityId, `${path}.entityId`, issues);
+    return 1;
+  }
+  if (value.kind === "wire") {
+    if (!validateExactRecord(value, path, ["kind", "segments"], [], issues)) {
+      return 0;
+    }
+    validateOrientedSegments(value.segments, `${path}.segments`, issues);
+    if (Array.isArray(value.segments) && value.segments.length < 2) {
+      issues.push({
+        code: "INVALID_VALUE",
+        path: `${path}.segments`,
+        message: "A wire loop requires at least two segments."
+      });
+    }
+    return Array.isArray(value.segments) ? value.segments.length : 0;
+  }
+  issues.push({
+    code: "INVALID_VALUE",
+    path: `${path}.kind`,
+    message: "Expected loop kind 'entity' or 'wire'."
+  });
+  return 0;
+}
+
+function validateRegions(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  if (!Array.isArray(value) || value.length === 0) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path,
+      message: "Expected at least one profile region."
+    });
+    return;
+  }
+  if (value.length > CAD_V19_RESOURCE_LIMITS.maxRegionsPerProfile) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path,
+      message: "The regions profile exceeds the V19 region limit."
+    });
+  }
+  let loopCount = 0;
+  let segmentReferenceCount = 0;
+  const entityIds = new Set<string>();
+  for (let regionIndex = 0; regionIndex < value.length; regionIndex += 1) {
+    if (!(regionIndex in value)) {
+      issues.push({
+        code: "INVALID_VALUE",
+        path: `${path}[${regionIndex}]`,
+        message: "Sparse arrays are not allowed."
+      });
+      continue;
+    }
+    const region = value[regionIndex];
+    const regionPath = `${path}[${regionIndex}]`;
+    if (
+      !validateExactRecord(region, regionPath, ["outer", "holes"], [], issues)
+    ) {
+      continue;
+    }
+    loopCount += 1;
+    segmentReferenceCount += validateSketchLoopRef(
+      region.outer,
+      `${regionPath}.outer`,
+      issues
+    );
+    if (!Array.isArray(region.holes)) {
+      issues.push({
+        code: "INVALID_TYPE",
+        path: `${regionPath}.holes`,
+        message: "Expected a hole-loop array."
+      });
+      continue;
+    }
+    loopCount += region.holes.length;
+    for (let holeIndex = 0; holeIndex < region.holes.length; holeIndex += 1) {
+      if (!(holeIndex in region.holes)) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: `${regionPath}.holes[${holeIndex}]`,
+          message: "Sparse arrays are not allowed."
+        });
+        continue;
+      }
+      const hole = region.holes[holeIndex];
+      segmentReferenceCount += validateSketchLoopRef(
+        hole,
+        `${regionPath}.holes[${holeIndex}]`,
+        issues
+      );
+    }
+    const loops = [region.outer, ...region.holes];
+    loops.forEach((loop, loopIndex) => {
+      if (!isUnknownRecord(loop)) return;
+      const ids =
+        loop.kind === "entity"
+          ? [loop.entityId]
+          : loop.kind === "wire" && Array.isArray(loop.segments)
+            ? loop.segments
+                .filter(isUnknownRecord)
+                .map((segment) => segment.entityId)
+            : [];
+      ids.forEach((entityId) => {
+        if (typeof entityId !== "string") return;
+        if (entityIds.has(entityId)) {
+          issues.push({
+            code: "INVALID_VALUE",
+            path: `${regionPath}.${loopIndex === 0 ? "outer" : `holes[${loopIndex - 1}]`}`,
+            message:
+              "An entity ID may appear in at most one loop in a regions profile."
+          });
+        }
+        entityIds.add(entityId);
+      });
+    });
+  }
+  if (loopCount > CAD_V19_RESOURCE_LIMITS.maxLoopsPerProfile) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path,
+      message: "The regions profile exceeds the V19 loop limit."
+    });
+  }
+  if (
+    segmentReferenceCount >
+    CAD_V19_RESOURCE_LIMITS.maxSegmentReferencesPerProfile
+  ) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path,
+      message: "The regions profile exceeds the V19 segment-reference limit."
+    });
+  }
 }
 
 function validatePathRef(
@@ -9482,6 +10652,13 @@ function sameProfileRef(left: unknown, right: unknown): boolean {
   if (left.kind === "entity") return left.entityId === right.entityId;
   if (left.kind === "wire")
     return sameOrientedSegments(left.segments, right.segments);
+  if (
+    left.kind === "regions" &&
+    Array.isArray(left.regions) &&
+    Array.isArray(right.regions)
+  ) {
+    return JSON.stringify(left.regions) === JSON.stringify(right.regions);
+  }
   return false;
 }
 
@@ -10398,6 +11575,1817 @@ export function validateSketchProfilePathQueryResponse(
   }
   return issues.length === 0
     ? { ok: true, value: value as unknown as SketchProfilePathQueryResponse }
+    : { ok: false, issues };
+}
+
+export type CadV19ProtocolValidationIssue = SketchProfilePathValidationIssue;
+export type CadV19ProtocolValidationResult<T> =
+  SketchProfilePathValidationResult<T>;
+
+function validateVec2(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  if (!Array.isArray(value) || value.length !== 2) {
+    issues.push({
+      code: "INVALID_TYPE",
+      path,
+      message: "Expected a two-element point."
+    });
+    return;
+  }
+  validateFiniteNumber(value[0], `${path}[0]`, issues);
+  validateFiniteNumber(value[1], `${path}[1]`, issues);
+}
+
+function validateUniqueIdArray(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[],
+  options: {
+    readonly exactLength?: number;
+    readonly minLength?: number;
+    readonly maxLength?: number;
+  } = {}
+): void {
+  validateIdArray(value, path, issues);
+  if (!Array.isArray(value)) return;
+  if (options.minLength !== undefined && value.length < options.minLength) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path,
+      message: `Expected at least ${options.minLength} IDs.`
+    });
+  }
+  if (
+    options.exactLength !== undefined &&
+    value.length !== options.exactLength
+  ) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path,
+      message: `Expected exactly ${options.exactLength} IDs.`
+    });
+  }
+  if (options.maxLength !== undefined && value.length > options.maxLength) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path,
+      message: `Expected at most ${options.maxLength} IDs.`
+    });
+  }
+  const ids = value.filter((id): id is string => typeof id === "string");
+  if (new Set(ids).size !== ids.length) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path,
+      message: "Duplicate IDs are not allowed."
+    });
+  }
+}
+
+function pointTargetV22Key(value: unknown): string | undefined {
+  if (!isUnknownRecord(value)) return undefined;
+  if (
+    typeof value.entityId !== "string" ||
+    typeof value.entityKind !== "string" ||
+    typeof value.role !== "string"
+  ) {
+    return undefined;
+  }
+  return `${value.entityKind}\u0000${value.entityId}\u0000${value.role}`;
+}
+
+function validateCurveConstraintTarget(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): value is UnknownRecord {
+  if (
+    !validateExactRecord(value, path, ["entityId", "entityKind"], [], issues)
+  ) {
+    return false;
+  }
+  validateNonEmptyString(value.entityId, `${path}.entityId`, issues);
+  validateEnum(
+    value.entityKind,
+    ["line", "circle", "arc"],
+    `${path}.entityKind`,
+    issues
+  );
+  return true;
+}
+
+function validateRadiusCurveTarget(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): value is UnknownRecord {
+  if (!validateCurveConstraintTarget(value, path, issues)) return false;
+  if (value.entityKind !== "circle" && value.entityKind !== "arc") {
+    issues.push({
+      code: "INVALID_VALUE",
+      path: `${path}.entityKind`,
+      message: "Expected a circle or arc target."
+    });
+    return false;
+  }
+  return true;
+}
+
+function validatePointTargetV22(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  if (
+    !validateExactRecord(
+      value,
+      path,
+      ["entityId", "entityKind", "role"],
+      [],
+      issues
+    )
+  )
+    return;
+  validateNonEmptyString(value.entityId, `${path}.entityId`, issues);
+  const valid =
+    (value.entityKind === "point" && value.role === "position") ||
+    (value.entityKind === "line" &&
+      (value.role === "start" || value.role === "end")) ||
+    ((value.entityKind === "rectangle" || value.entityKind === "circle") &&
+      value.role === "center") ||
+    (value.entityKind === "arc" &&
+      (value.role === "center" ||
+        value.role === "start" ||
+        value.role === "end"));
+  if (!valid) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path,
+      message: "The point target role does not match its entity kind."
+    });
+  }
+}
+
+export function isSketchPointTargetV22(
+  value: unknown
+): value is SketchPointTargetV22 {
+  const issues: SketchProfilePathValidationIssue[] = [];
+  validatePointTargetV22(value, "$", issues);
+  return issues.length === 0;
+}
+
+function validateDimensionTargetV22(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  if (!isUnknownRecord(value)) {
+    issues.push({
+      code: "INVALID_TYPE",
+      path,
+      message: "Expected a normalized V22 dimension target."
+    });
+    return;
+  }
+  switch (value.kind) {
+    case "entityScalar": {
+      if (
+        !validateExactRecord(
+          value,
+          path,
+          ["kind", "entityId", "entityKind", "role"],
+          [],
+          issues
+        )
+      )
+        return;
+      validateNonEmptyString(value.entityId, `${path}.entityId`, issues);
+      const valid =
+        (value.entityKind === "rectangle" &&
+          (value.role === "width" || value.role === "height")) ||
+        (value.entityKind === "line" && value.role === "length") ||
+        (value.entityKind === "circle" &&
+          (value.role === "radius" || value.role === "diameter")) ||
+        (value.entityKind === "arc" &&
+          (value.role === "radius" ||
+            value.role === "diameter" ||
+            value.role === "sweep"));
+      if (!valid) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path,
+          message: "The scalar target role does not match its entity kind."
+        });
+      }
+      break;
+    }
+    case "pointPair": {
+      const directed =
+        value.measurement === "horizontal" || value.measurement === "vertical";
+      if (
+        !validateExactRecord(
+          value,
+          path,
+          ["kind", "primary", "secondary", "measurement"],
+          directed ? ["direction"] : [],
+          issues
+        )
+      )
+        return;
+      validatePointTargetV22(value.primary, `${path}.primary`, issues);
+      validatePointTargetV22(value.secondary, `${path}.secondary`, issues);
+      if (
+        pointTargetV22Key(value.primary) !== undefined &&
+        pointTargetV22Key(value.primary) === pointTargetV22Key(value.secondary)
+      ) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path,
+          message: "A point-pair dimension requires two distinct targets."
+        });
+      }
+      if (
+        value.measurement !== "distance" &&
+        value.measurement !== "horizontal" &&
+        value.measurement !== "vertical"
+      ) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: `${path}.measurement`,
+          message: "Invalid point-pair measurement."
+        });
+      }
+      if (
+        directed &&
+        value.direction !== "positive" &&
+        value.direction !== "negative"
+      ) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: `${path}.direction`,
+          message: "Directed point-pair dimensions require a direction."
+        });
+      }
+      if (value.measurement === "distance" && "direction" in value) {
+        issues.push({
+          code: "UNKNOWN_FIELD",
+          path: `${path}.direction`,
+          message: "Euclidean distance does not carry a direction."
+        });
+      }
+      break;
+    }
+    case "pointLineDistance":
+      if (
+        !validateExactRecord(
+          value,
+          path,
+          ["kind", "point", "lineEntityId", "side"],
+          [],
+          issues
+        )
+      )
+        return;
+      validatePointTargetV22(value.point, `${path}.point`, issues);
+      validateNonEmptyString(
+        value.lineEntityId,
+        `${path}.lineEntityId`,
+        issues
+      );
+      if (
+        isUnknownRecord(value.point) &&
+        value.point.entityKind === "line" &&
+        value.point.entityId === value.lineEntityId
+      ) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path,
+          message:
+            "A line endpoint cannot be measured to the support of its owning line."
+        });
+      }
+      validateEnum(value.side, ["left", "right"], `${path}.side`, issues);
+      break;
+    case "lineAngle":
+      if (
+        !validateExactRecord(
+          value,
+          path,
+          ["kind", "primaryLineEntityId", "secondaryLineEntityId", "sense"],
+          [],
+          issues
+        )
+      )
+        return;
+      validateNonEmptyString(
+        value.primaryLineEntityId,
+        `${path}.primaryLineEntityId`,
+        issues
+      );
+      validateNonEmptyString(
+        value.secondaryLineEntityId,
+        `${path}.secondaryLineEntityId`,
+        issues
+      );
+      if (
+        typeof value.primaryLineEntityId === "string" &&
+        value.primaryLineEntityId === value.secondaryLineEntityId
+      ) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path,
+          message: "A line-angle dimension requires two distinct lines."
+        });
+      }
+      validateEnum(
+        value.sense,
+        ["clockwise", "counterclockwise"],
+        `${path}.sense`,
+        issues
+      );
+      break;
+    default:
+      issues.push({
+        code: "INVALID_VALUE",
+        path: `${path}.kind`,
+        message: "Unknown normalized V22 dimension target kind."
+      });
+  }
+}
+
+export function isSketchDimensionTargetV22(
+  value: unknown
+): value is SketchDimensionTargetV22 {
+  const issues: SketchProfilePathValidationIssue[] = [];
+  validateDimensionTargetV22(value, "$", issues);
+  return issues.length === 0;
+}
+
+export function isSketchRegionsProfileRef(
+  value: unknown
+): value is SketchRegionsProfileRef {
+  const issues: SketchProfilePathValidationIssue[] = [];
+  if (
+    !validateExactRecord(
+      value,
+      "$",
+      ["kind", "sketchId", "regions"],
+      [],
+      issues
+    )
+  ) {
+    return false;
+  }
+  if (value.kind !== "regions") {
+    issues.push({
+      code: "INVALID_VALUE",
+      path: "$.kind",
+      message: "Expected a regions profile."
+    });
+  }
+  validateNonEmptyString(value.sketchId, "$.sketchId", issues);
+  validateRegions(value.regions, "$.regions", issues);
+  return issues.length === 0;
+}
+
+function validateCurveEditPrecondition(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  if (
+    !validateExactRecord(
+      value,
+      path,
+      ["expectedSourceRevision", "expectedSolverEvaluationIdentity"],
+      [],
+      issues
+    )
+  )
+    return;
+  if (
+    typeof value.expectedSourceRevision !== "string" ||
+    !/^partbench-source-v1:[0-9a-f]{64}$/.test(value.expectedSourceRevision)
+  ) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path: `${path}.expectedSourceRevision`,
+      message: "Invalid V19 source revision identity."
+    });
+  }
+  if (
+    typeof value.expectedSolverEvaluationIdentity !== "string" ||
+    (value.expectedSolverEvaluationIdentity !== "none" &&
+      !/^partbench-sketch-solver-evaluation-v1:[0-9a-f]{64}$/.test(
+        value.expectedSolverEvaluationIdentity
+      ))
+  ) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path: `${path}.expectedSolverEvaluationIdentity`,
+      message: "Invalid V19 solver evaluation identity."
+    });
+  }
+}
+
+function validateCurveEditOperation(
+  value: UnknownRecord,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  const commonRequired = ["op", "sketchId", "precondition", "entityId"];
+  const deletionFields = ["deleteConstraintIds", "deleteDimensionIds"];
+  switch (value.op) {
+    case "sketch.trim":
+      validateExactRecord(
+        value,
+        path,
+        [...commonRequired, "boundaryEntityIds", "pickPoint"],
+        ["createdEntityIds", ...deletionFields],
+        issues
+      );
+      validateUniqueIdArray(
+        value.boundaryEntityIds,
+        `${path}.boundaryEntityIds`,
+        issues,
+        {
+          minLength: 1,
+          maxLength: CAD_V19_RESOURCE_LIMITS.maxBoundaryEntityIdsPerCurveEdit
+        }
+      );
+      validateVec2(value.pickPoint, `${path}.pickPoint`, issues);
+      break;
+    case "sketch.extend":
+      validateExactRecord(
+        value,
+        path,
+        [...commonRequired, "endpoint", "boundaryEntityIds"],
+        deletionFields,
+        issues
+      );
+      validateEnum(
+        value.endpoint,
+        ["start", "end"],
+        `${path}.endpoint`,
+        issues
+      );
+      validateUniqueIdArray(
+        value.boundaryEntityIds,
+        `${path}.boundaryEntityIds`,
+        issues,
+        {
+          minLength: 1,
+          maxLength: CAD_V19_RESOURCE_LIMITS.maxBoundaryEntityIdsPerCurveEdit
+        }
+      );
+      break;
+    case "sketch.split":
+      validateExactRecord(
+        value,
+        path,
+        [...commonRequired, "splitPoints"],
+        ["createdEntityIds", ...deletionFields],
+        issues
+      );
+      if (!Array.isArray(value.splitPoints)) {
+        issues.push({
+          code: "INVALID_TYPE",
+          path: `${path}.splitPoints`,
+          message: "Expected a split-point array."
+        });
+      } else {
+        if (value.splitPoints.length === 0) {
+          issues.push({
+            code: "INVALID_VALUE",
+            path: `${path}.splitPoints`,
+            message: "A split command requires at least one split point."
+          });
+        }
+        if (
+          value.splitPoints.length >
+          CAD_V19_RESOURCE_LIMITS.maxSplitPointsPerCommand
+        ) {
+          issues.push({
+            code: "INVALID_VALUE",
+            path: `${path}.splitPoints`,
+            message: "The split point limit was exceeded."
+          });
+        }
+        for (let index = 0; index < value.splitPoints.length; index += 1) {
+          if (!(index in value.splitPoints)) {
+            issues.push({
+              code: "INVALID_VALUE",
+              path: `${path}.splitPoints[${index}]`,
+              message: "Sparse arrays are not allowed."
+            });
+            continue;
+          }
+          validateVec2(
+            value.splitPoints[index],
+            `${path}.splitPoints[${index}]`,
+            issues
+          );
+        }
+      }
+      break;
+    case "sketch.explodeRectangle":
+      validateExactRecord(
+        value,
+        path,
+        commonRequired,
+        ["lineEntityIds", ...deletionFields],
+        issues
+      );
+      if ("lineEntityIds" in value) {
+        validateUniqueIdArray(
+          value.lineEntityIds,
+          `${path}.lineEntityIds`,
+          issues,
+          { exactLength: 4 }
+        );
+      }
+      break;
+    default:
+      return;
+  }
+  validateNonEmptyString(value.sketchId, `${path}.sketchId`, issues);
+  validateNonEmptyString(value.entityId, `${path}.entityId`, issues);
+  if (
+    Array.isArray(value.boundaryEntityIds) &&
+    typeof value.entityId === "string" &&
+    value.boundaryEntityIds.includes(value.entityId)
+  ) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path: `${path}.boundaryEntityIds`,
+      message: "The edited entity cannot be its own boundary."
+    });
+  }
+  validateCurveEditPrecondition(
+    value.precondition,
+    `${path}.precondition`,
+    issues
+  );
+  for (const field of [
+    "createdEntityIds",
+    "deleteConstraintIds",
+    "deleteDimensionIds"
+  ]) {
+    if (field in value) {
+      validateUniqueIdArray(value[field], `${path}.${field}`, issues);
+    }
+  }
+}
+
+function validateOffsetOperation(
+  value: UnknownRecord,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  if (
+    !validateExactRecord(
+      value,
+      path,
+      ["op", "sketchId", "precondition", "source", "distance", "side"],
+      ["referencePoint", "createdEntityIds"],
+      issues
+    )
+  )
+    return;
+  validateNonEmptyString(value.sketchId, `${path}.sketchId`, issues);
+  validateCurveEditPrecondition(
+    value.precondition,
+    `${path}.precondition`,
+    issues
+  );
+  validatePositiveNumber(value.distance, `${path}.distance`, issues);
+  validateEnum(
+    value.side,
+    ["left", "right", "inward", "outward"],
+    `${path}.side`,
+    issues
+  );
+  if (!isUnknownRecord(value.source)) {
+    issues.push({
+      code: "INVALID_TYPE",
+      path: `${path}.source`,
+      message: "Expected an offset source."
+    });
+  } else if (value.source.kind === "entity") {
+    if (
+      validateExactRecord(
+        value.source,
+        `${path}.source`,
+        ["kind", "entityId"],
+        [],
+        issues
+      )
+    ) {
+      validateNonEmptyString(
+        value.source.entityId,
+        `${path}.source.entityId`,
+        issues
+      );
+    }
+  } else if (value.source.kind === "chain") {
+    if (
+      validateExactRecord(
+        value.source,
+        `${path}.source`,
+        ["kind", "segments", "closed"],
+        [],
+        issues
+      )
+    ) {
+      validateOrientedSegments(
+        value.source.segments,
+        `${path}.source.segments`,
+        issues
+      );
+      validateDistinctOrientedSegmentEntityIds(
+        value.source.segments,
+        `${path}.source.segments`,
+        issues
+      );
+      if (
+        Array.isArray(value.source.segments) &&
+        value.source.segments.length === 0
+      ) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: `${path}.source.segments`,
+          message: "An offset chain requires at least one segment."
+        });
+      }
+      if (
+        Array.isArray(value.source.segments) &&
+        value.source.segments.length >
+          CAD_V19_RESOURCE_LIMITS.maxOffsetSourceSegments
+      ) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: `${path}.source.segments`,
+          message: "The offset source-segment limit was exceeded."
+        });
+      }
+      validateBoolean(value.source.closed, `${path}.source.closed`, issues);
+    }
+  } else {
+    issues.push({
+      code: "INVALID_VALUE",
+      path: `${path}.source.kind`,
+      message: "Invalid offset source kind."
+    });
+  }
+  if ("referencePoint" in value) {
+    validateVec2(value.referencePoint, `${path}.referencePoint`, issues);
+  }
+  if ("createdEntityIds" in value) {
+    const expectedLength =
+      isUnknownRecord(value.source) &&
+      value.source.kind === "chain" &&
+      Array.isArray(value.source.segments)
+        ? value.source.segments.length
+        : 1;
+    validateUniqueIdArray(
+      value.createdEntityIds,
+      `${path}.createdEntityIds`,
+      issues,
+      { exactLength: expectedLength }
+    );
+  }
+}
+
+function validateV19DimensionLiteral(
+  target: unknown,
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  if (!validateFiniteNumber(value, path, issues) || !isUnknownRecord(target)) {
+    return;
+  }
+  const linearTolerance = CAD_V19_SKETCH_GEOMETRY_POLICY.linearTolerance;
+  const angularTolerance =
+    CAD_V19_SKETCH_GEOMETRY_POLICY.angularToleranceDegrees;
+  let minimumExclusive: number | undefined;
+  if (target.kind === "entityScalar") {
+    if (target.role === "diameter") {
+      minimumExclusive = 2 * linearTolerance;
+    } else if (
+      target.role === "width" ||
+      target.role === "height" ||
+      target.role === "length" ||
+      target.role === "radius"
+    ) {
+      minimumExclusive = linearTolerance;
+    } else if (
+      target.role === "sweep" &&
+      (Math.abs(value) < angularTolerance ||
+        Math.abs(value) > 360 - angularTolerance)
+    ) {
+      issues.push({
+        code: "INVALID_VALUE",
+        path,
+        message:
+          "An arc-sweep dimension must remain inside the signed V17 sweep domain."
+      });
+    }
+  } else if (
+    target.kind === "pointPair" ||
+    target.kind === "pointLineDistance"
+  ) {
+    minimumExclusive = linearTolerance;
+  } else if (
+    target.kind === "lineAngle" &&
+    (value <= angularTolerance || value >= 180 - angularTolerance)
+  ) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path,
+      message:
+        "A line-angle dimension must remain strictly inside its 0/180-degree branch."
+    });
+  }
+  if (minimumExclusive !== undefined && value <= minimumExclusive) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path,
+      message: `The dimension value must be greater than ${minimumExclusive}.`
+    });
+  }
+}
+
+function validateDistinctIds(
+  primary: unknown,
+  secondary: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  if (
+    typeof primary === "string" &&
+    primary.length > 0 &&
+    primary === secondary
+  ) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path,
+      message: "The two constraint targets must be distinct."
+    });
+  }
+}
+
+function validateV19ConstraintDefinition(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  if (!isUnknownRecord(value)) {
+    issues.push({
+      code: "INVALID_TYPE",
+      path,
+      message: "Expected a structural constraint definition."
+    });
+    return;
+  }
+  switch (value.kind) {
+    case "horizontal":
+    case "vertical":
+      if (validateExactRecord(value, path, ["kind", "entityId"], [], issues)) {
+        validateNonEmptyString(value.entityId, `${path}.entityId`, issues);
+      }
+      return;
+    case "fixed":
+      if (
+        validateExactRecord(
+          value,
+          path,
+          ["kind", "target", "coordinate"],
+          [],
+          issues
+        )
+      ) {
+        validatePointTargetV22(value.target, `${path}.target`, issues);
+        validateVec2(value.coordinate, `${path}.coordinate`, issues);
+      }
+      return;
+    case "coincident":
+      if (
+        validateExactRecord(
+          value,
+          path,
+          ["kind", "primaryTarget", "secondaryTarget"],
+          [],
+          issues
+        )
+      ) {
+        validatePointTargetV22(
+          value.primaryTarget,
+          `${path}.primaryTarget`,
+          issues
+        );
+        validatePointTargetV22(
+          value.secondaryTarget,
+          `${path}.secondaryTarget`,
+          issues
+        );
+        validateDistinctIds(
+          pointTargetV22Key(value.primaryTarget),
+          pointTargetV22Key(value.secondaryTarget),
+          path,
+          issues
+        );
+      }
+      return;
+    case "midpoint":
+      if (
+        validateExactRecord(
+          value,
+          path,
+          ["kind", "lineEntityId", "target"],
+          [],
+          issues
+        )
+      ) {
+        validateNonEmptyString(
+          value.lineEntityId,
+          `${path}.lineEntityId`,
+          issues
+        );
+        validatePointTargetV22(value.target, `${path}.target`, issues);
+        if (
+          isUnknownRecord(value.target) &&
+          value.target.entityKind !== "point" &&
+          value.target.entityKind !== "rectangle" &&
+          value.target.entityKind !== "circle"
+        ) {
+          issues.push({
+            code: "INVALID_VALUE",
+            path: `${path}.target`,
+            message:
+              "A midpoint target must be a point, rectangle center, or circle center."
+          });
+        }
+      }
+      return;
+    case "parallel":
+    case "perpendicular":
+    case "equalLength":
+    case "angle": {
+      const angle = value.kind === "angle";
+      if (
+        validateExactRecord(
+          value,
+          path,
+          [
+            "kind",
+            "primaryLineEntityId",
+            "secondaryLineEntityId",
+            ...(angle ? ["angleDegrees"] : [])
+          ],
+          [],
+          issues
+        )
+      ) {
+        validateNonEmptyString(
+          value.primaryLineEntityId,
+          `${path}.primaryLineEntityId`,
+          issues
+        );
+        validateNonEmptyString(
+          value.secondaryLineEntityId,
+          `${path}.secondaryLineEntityId`,
+          issues
+        );
+        validateDistinctIds(
+          value.primaryLineEntityId,
+          value.secondaryLineEntityId,
+          path,
+          issues
+        );
+        if (angle) {
+          validateFiniteNumber(
+            value.angleDegrees,
+            `${path}.angleDegrees`,
+            issues
+          );
+        }
+      }
+      return;
+    }
+    case "tangent":
+      if (
+        validateExactRecord(
+          value,
+          path,
+          ["kind", "primaryTarget", "secondaryTarget"],
+          [],
+          issues
+        )
+      ) {
+        const primaryTarget = value.primaryTarget;
+        const secondaryTarget = value.secondaryTarget;
+        const primaryValid = validateCurveConstraintTarget(
+          primaryTarget,
+          `${path}.primaryTarget`,
+          issues
+        );
+        const secondaryValid = validateCurveConstraintTarget(
+          secondaryTarget,
+          `${path}.secondaryTarget`,
+          issues
+        );
+        if (primaryValid && secondaryValid) {
+          const primaryKind = primaryTarget.entityKind;
+          const secondaryKind = secondaryTarget.entityKind;
+          const supported =
+            (primaryKind === "line" &&
+              (secondaryKind === "circle" || secondaryKind === "arc")) ||
+            (secondaryKind === "line" &&
+              (primaryKind === "circle" || primaryKind === "arc")) ||
+            (primaryKind === "circle" && secondaryKind === "arc") ||
+            (primaryKind === "arc" &&
+              (secondaryKind === "circle" || secondaryKind === "arc"));
+          if (!supported) {
+            issues.push({
+              code: "INVALID_VALUE",
+              path,
+              message:
+                "Tangent updates support only line-circle, line-arc, circle-arc, or arc-arc pairs."
+            });
+          }
+          validateDistinctIds(
+            primaryTarget.entityId,
+            secondaryTarget.entityId,
+            path,
+            issues
+          );
+        }
+      }
+      return;
+    case "concentric":
+    case "equalRadius":
+      if (
+        validateExactRecord(
+          value,
+          path,
+          ["kind", "primaryTarget", "secondaryTarget"],
+          [],
+          issues
+        )
+      ) {
+        const primaryTarget = value.primaryTarget;
+        const secondaryTarget = value.secondaryTarget;
+        const primaryValid = validateRadiusCurveTarget(
+          primaryTarget,
+          `${path}.primaryTarget`,
+          issues
+        );
+        const secondaryValid = validateRadiusCurveTarget(
+          secondaryTarget,
+          `${path}.secondaryTarget`,
+          issues
+        );
+        if (primaryValid && secondaryValid) {
+          validateDistinctIds(
+            primaryTarget.entityId,
+            secondaryTarget.entityId,
+            path,
+            issues
+          );
+        }
+      }
+      return;
+    case "symmetry":
+      if (
+        validateExactRecord(
+          value,
+          path,
+          ["kind", "primaryTarget", "secondaryTarget", "symmetryLineEntityId"],
+          [],
+          issues
+        )
+      ) {
+        const primaryTarget = value.primaryTarget;
+        const secondaryTarget = value.secondaryTarget;
+        validatePointTargetV22(primaryTarget, `${path}.primaryTarget`, issues);
+        validatePointTargetV22(
+          secondaryTarget,
+          `${path}.secondaryTarget`,
+          issues
+        );
+        validateDistinctIds(
+          pointTargetV22Key(primaryTarget),
+          pointTargetV22Key(secondaryTarget),
+          path,
+          issues
+        );
+        validateNonEmptyString(
+          value.symmetryLineEntityId,
+          `${path}.symmetryLineEntityId`,
+          issues
+        );
+      }
+      return;
+    default:
+      issues.push({
+        code: "INVALID_VALUE",
+        path: `${path}.kind`,
+        message: "Unknown structural constraint definition kind."
+      });
+  }
+}
+
+function validateV19NormalizedPointConstraintCreate(
+  value: UnknownRecord,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  const commonRequired = ["op", "name", "sketchId", "kind"];
+  const commonOptional = ["id"];
+  switch (value.kind) {
+    case "fixed":
+      if (
+        validateExactRecord(
+          value,
+          path,
+          [...commonRequired, "target"],
+          [...commonOptional, "coordinate"],
+          issues
+        )
+      ) {
+        validatePointTargetV22(value.target, `${path}.target`, issues);
+        if ("coordinate" in value) {
+          validateVec2(value.coordinate, `${path}.coordinate`, issues);
+        }
+      }
+      break;
+    case "coincident":
+      if (
+        validateExactRecord(
+          value,
+          path,
+          [...commonRequired, "primaryTarget", "secondaryTarget"],
+          commonOptional,
+          issues
+        )
+      ) {
+        validatePointTargetV22(
+          value.primaryTarget,
+          `${path}.primaryTarget`,
+          issues
+        );
+        validatePointTargetV22(
+          value.secondaryTarget,
+          `${path}.secondaryTarget`,
+          issues
+        );
+        validateDistinctIds(
+          pointTargetV22Key(value.primaryTarget),
+          pointTargetV22Key(value.secondaryTarget),
+          path,
+          issues
+        );
+      }
+      break;
+    case "midpoint":
+      if (
+        validateExactRecord(
+          value,
+          path,
+          [...commonRequired, "lineEntityId", "target"],
+          commonOptional,
+          issues
+        )
+      ) {
+        validateNonEmptyString(
+          value.lineEntityId,
+          `${path}.lineEntityId`,
+          issues
+        );
+        validatePointTargetV22(value.target, `${path}.target`, issues);
+        if (
+          isUnknownRecord(value.target) &&
+          value.target.entityKind !== "point" &&
+          value.target.entityKind !== "rectangle" &&
+          value.target.entityKind !== "circle"
+        ) {
+          issues.push({
+            code: "INVALID_VALUE",
+            path: `${path}.target`,
+            message:
+              "A midpoint target must be a point, rectangle center, or circle center."
+          });
+        }
+      }
+      break;
+    case "symmetry":
+      if (
+        validateExactRecord(
+          value,
+          path,
+          [
+            ...commonRequired,
+            "primaryTarget",
+            "secondaryTarget",
+            "symmetryLineEntityId"
+          ],
+          commonOptional,
+          issues
+        )
+      ) {
+        validatePointTargetV22(
+          value.primaryTarget,
+          `${path}.primaryTarget`,
+          issues
+        );
+        validatePointTargetV22(
+          value.secondaryTarget,
+          `${path}.secondaryTarget`,
+          issues
+        );
+        validateDistinctIds(
+          pointTargetV22Key(value.primaryTarget),
+          pointTargetV22Key(value.secondaryTarget),
+          path,
+          issues
+        );
+        validateNonEmptyString(
+          value.symmetryLineEntityId,
+          `${path}.symmetryLineEntityId`,
+          issues
+        );
+      }
+      break;
+    default:
+      issues.push({
+        code: "INVALID_VALUE",
+        path: `${path}.kind`,
+        message: "Expected a normalized V19 point-target constraint kind."
+      });
+  }
+  validateNonEmptyString(value.name, `${path}.name`, issues);
+  validateNonEmptyString(value.sketchId, `${path}.sketchId`, issues);
+  if ("id" in value) validateNonEmptyString(value.id, `${path}.id`, issues);
+}
+
+function isNormalizedPointConstraintCreateAttempt(
+  value: UnknownRecord
+): boolean {
+  if (
+    value.op !== "sketch.constraint.create" ||
+    (value.kind !== "fixed" &&
+      value.kind !== "coincident" &&
+      value.kind !== "midpoint" &&
+      value.kind !== "symmetry")
+  ) {
+    return false;
+  }
+  const targets =
+    value.kind === "coincident" || value.kind === "symmetry"
+      ? [value.primaryTarget, value.secondaryTarget]
+      : [value.target];
+  return targets.some(
+    (target) => isUnknownRecord(target) && "entityKind" in target
+  );
+}
+
+function validateRegionProfileForFeature(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): number | undefined {
+  const before = issues.length;
+  validateProfileRef(value, path, issues);
+  if (!isUnknownRecord(value) || value.kind !== "regions") {
+    issues.push({
+      code: "INVALID_VALUE",
+      path: `${path}.kind`,
+      message: "A V19-only feature operation requires a regions profile."
+    });
+    return undefined;
+  }
+  return issues.length === before && Array.isArray(value.regions)
+    ? value.regions.length
+    : undefined;
+}
+
+function validateRevolveAxis(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  if (
+    !validateExactRecord(
+      value,
+      path,
+      ["type", "sketchId", "entityId"],
+      [],
+      issues
+    )
+  ) {
+    return;
+  }
+  if (value.type !== "sketchLine") {
+    issues.push({
+      code: "INVALID_VALUE",
+      path: `${path}.type`,
+      message: "A revolve axis must be a sketch line."
+    });
+  }
+  validateNonEmptyString(value.sketchId, `${path}.sketchId`, issues);
+  validateNonEmptyString(value.entityId, `${path}.entityId`, issues);
+}
+
+function validateV19FeatureOp(
+  value: UnknownRecord,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  const createExtrude = value.op === "feature.extrude";
+  const createRevolve = value.op === "feature.revolve";
+  const updateExtrude = value.op === "feature.updateExtrude";
+  if (createExtrude) {
+    if (
+      !validateExactRecord(
+        value,
+        path,
+        ["op", "profile", "depth"],
+        [
+          "id",
+          "bodyId",
+          "targetBodyId",
+          "targetTopologyAnchorId",
+          "name",
+          "side",
+          "operationMode"
+        ],
+        issues
+      )
+    ) {
+      return;
+    }
+  } else if (createRevolve) {
+    if (
+      !validateExactRecord(
+        value,
+        path,
+        ["op", "profile", "axis", "angleDegrees", "operationMode"],
+        ["id", "bodyId", "name"],
+        issues
+      )
+    ) {
+      return;
+    }
+  } else if (updateExtrude) {
+    if (
+      !validateExactRecord(
+        value,
+        path,
+        ["op", "id", "profile"],
+        ["depth", "side"],
+        issues
+      )
+    ) {
+      return;
+    }
+  } else if (
+    !validateExactRecord(
+      value,
+      path,
+      ["op", "id", "profile"],
+      ["angleDegrees"],
+      issues
+    )
+  ) {
+    return;
+  }
+
+  if ("id" in value) validateNonEmptyString(value.id, `${path}.id`, issues);
+  if ("bodyId" in value) {
+    validateNonEmptyString(value.bodyId, `${path}.bodyId`, issues);
+  }
+  if ("name" in value)
+    validateNonEmptyString(value.name, `${path}.name`, issues);
+  if ("depth" in value) {
+    validatePositiveNumber(value.depth, `${path}.depth`, issues);
+  }
+  if ("side" in value) {
+    validateEnum(
+      value.side,
+      ["positive", "negative", "symmetric"],
+      `${path}.side`,
+      issues
+    );
+  }
+  if ("angleDegrees" in value) {
+    validateFiniteNumber(value.angleDegrees, `${path}.angleDegrees`, issues);
+  }
+
+  const regionCount = validateRegionProfileForFeature(
+    value.profile,
+    `${path}.profile`,
+    issues
+  );
+  if (createRevolve) {
+    validateRevolveAxis(value.axis, `${path}.axis`, issues);
+    if (value.operationMode !== "newBody") {
+      issues.push({
+        code: "INVALID_VALUE",
+        path: `${path}.operationMode`,
+        message: "Region revolve supports newBody only."
+      });
+    }
+    if (regionCount !== undefined && regionCount !== 1) {
+      issues.push({
+        code: "INVALID_VALUE",
+        path: `${path}.profile.regions`,
+        message: "Region revolve accepts exactly one region."
+      });
+    }
+    return;
+  }
+  if (value.op === "feature.updateRevolve") {
+    if (regionCount !== undefined && regionCount !== 1) {
+      issues.push({
+        code: "INVALID_VALUE",
+        path: `${path}.profile.regions`,
+        message: "Region revolve accepts exactly one region."
+      });
+    }
+    return;
+  }
+  if (!createExtrude) return;
+
+  const operationMode =
+    value.operationMode === undefined ? "newBody" : value.operationMode;
+  validateEnum(
+    operationMode,
+    ["newBody", "add", "cut"],
+    `${path}.operationMode`,
+    issues
+  );
+  if (operationMode === "newBody") {
+    if (regionCount !== undefined && regionCount !== 1) {
+      issues.push({
+        code: "INVALID_VALUE",
+        path: `${path}.profile.regions`,
+        message: "A new-body region extrude accepts exactly one region."
+      });
+    }
+    if ("targetBodyId" in value || "targetTopologyAnchorId" in value) {
+      issues.push({
+        code: "UNKNOWN_FIELD",
+        path,
+        message: "A new-body extrude cannot carry a target body."
+      });
+    }
+  } else {
+    const hasBody = "targetBodyId" in value;
+    const hasAnchor = "targetTopologyAnchorId" in value;
+    if (hasBody === hasAnchor) {
+      issues.push({
+        code: "INVALID_VALUE",
+        path,
+        message:
+          "A region add/cut extrude requires exactly one target body or topology anchor."
+      });
+    }
+    if (hasBody) {
+      validateNonEmptyString(
+        value.targetBodyId,
+        `${path}.targetBodyId`,
+        issues
+      );
+    }
+    if (hasAnchor) {
+      validateNonEmptyString(
+        value.targetTopologyAnchorId,
+        `${path}.targetTopologyAnchorId`,
+        issues
+      );
+    }
+  }
+}
+
+export function validateV19CadOp(
+  value: unknown
+): CadV19ProtocolValidationResult<CadV19Op> {
+  const issues: SketchProfilePathValidationIssue[] = [];
+  if (!isUnknownRecord(value) || typeof value.op !== "string") {
+    return {
+      ok: false,
+      issues: [
+        {
+          code: "INVALID_TYPE",
+          path: "$",
+          message: "Expected a V19 CADOps operation."
+        }
+      ]
+    };
+  }
+  if (
+    value.op === "sketch.trim" ||
+    value.op === "sketch.extend" ||
+    value.op === "sketch.split" ||
+    value.op === "sketch.explodeRectangle"
+  ) {
+    validateCurveEditOperation(value, "$", issues);
+  } else if (value.op === "sketch.offset") {
+    validateOffsetOperation(value, "$", issues);
+  } else if (
+    value.op === "sketch.addSlot" ||
+    value.op === "sketch.addRoundedRectangle"
+  ) {
+    const rounded = value.op === "sketch.addRoundedRectangle";
+    validateExactRecord(
+      value,
+      "$",
+      rounded
+        ? ["op", "sketchId", "center", "width", "height", "cornerRadius"]
+        : ["op", "sketchId", "centerlineStart", "centerlineEnd", "radius"],
+      ["construction", "entityIds", "constraintIds"],
+      issues
+    );
+    validateNonEmptyString(value.sketchId, "$.sketchId", issues);
+    if (rounded) {
+      validateVec2(value.center, "$.center", issues);
+      validatePositiveNumber(value.width, "$.width", issues);
+      validatePositiveNumber(value.height, "$.height", issues);
+      validatePositiveNumber(value.cornerRadius, "$.cornerRadius", issues);
+      if (
+        typeof value.width === "number" &&
+        typeof value.height === "number" &&
+        typeof value.cornerRadius === "number" &&
+        value.cornerRadius * 2 >= Math.min(value.width, value.height)
+      ) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: "$.cornerRadius",
+          message:
+            "A rounded-rectangle corner radius must be smaller than half its width and height."
+        });
+      }
+    } else {
+      validateVec2(value.centerlineStart, "$.centerlineStart", issues);
+      validateVec2(value.centerlineEnd, "$.centerlineEnd", issues);
+      validatePositiveNumber(value.radius, "$.radius", issues);
+      if (
+        Array.isArray(value.centerlineStart) &&
+        Array.isArray(value.centerlineEnd) &&
+        value.centerlineStart.length === 2 &&
+        value.centerlineEnd.length === 2 &&
+        value.centerlineStart[0] === value.centerlineEnd[0] &&
+        value.centerlineStart[1] === value.centerlineEnd[1]
+      ) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: "$.centerlineEnd",
+          message: "A slot centerline must have positive length."
+        });
+      }
+    }
+    if ("construction" in value) {
+      validateBoolean(value.construction, "$.construction", issues);
+    }
+    if ("entityIds" in value) {
+      validateUniqueIdArray(value.entityIds, "$.entityIds", issues, {
+        exactLength: rounded ? 8 : 4
+      });
+    }
+    if ("constraintIds" in value) {
+      validateUniqueIdArray(value.constraintIds, "$.constraintIds", issues, {
+        exactLength: rounded ? 23 : 9
+      });
+    }
+  } else if (
+    value.op === "sketch.dimension.create" ||
+    value.op === "sketch.dimension.update"
+  ) {
+    const create = value.op === "sketch.dimension.create";
+    validateExactRecord(
+      value,
+      "$",
+      create ? ["op", "name", "sketchId", "target"] : ["op", "id"],
+      create
+        ? ["id", "value", "parameterId"]
+        : ["target", "value", "parameterId"],
+      issues
+    );
+    if (create) {
+      validateNonEmptyString(value.name, "$.name", issues);
+      validateNonEmptyString(value.sketchId, "$.sketchId", issues);
+    } else {
+      validateNonEmptyString(value.id, "$.id", issues);
+    }
+    if ("target" in value) {
+      validateDimensionTargetV22(value.target, "$.target", issues);
+      if (
+        isUnknownRecord(value.target) &&
+        value.target.kind === "lineAngle" &&
+        "parameterId" in value
+      ) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: "$.parameterId",
+          message: "Line-angle dimensions accept literal values only."
+        });
+      }
+    }
+    if ("value" in value) {
+      validateV19DimensionLiteral(value.target, value.value, "$.value", issues);
+    }
+    if ("parameterId" in value) {
+      validateNonEmptyString(value.parameterId, "$.parameterId", issues);
+    }
+    if ("value" in value && "parameterId" in value) {
+      issues.push({
+        code: "INVALID_VALUE",
+        path: "$",
+        message: "A dimension command accepts exactly one value source."
+      });
+    }
+    if (!("value" in value) && !("parameterId" in value)) {
+      issues.push({
+        code: "MISSING_FIELD",
+        path: "$",
+        message: "A dimension command requires exactly one value source."
+      });
+    }
+    if ("entityId" in value) {
+      issues.push({
+        code: "UNKNOWN_FIELD",
+        path: "$.entityId",
+        message: "A normalized V22 dimension cannot carry entityId."
+      });
+    }
+  } else if (value.op === "sketch.constraint.update") {
+    if (
+      validateExactRecord(value, "$", ["op", "id", "definition"], [], issues)
+    ) {
+      validateNonEmptyString(value.id, "$.id", issues);
+      validateV19ConstraintDefinition(value.definition, "$.definition", issues);
+    }
+  } else if (isNormalizedPointConstraintCreateAttempt(value)) {
+    validateV19NormalizedPointConstraintCreate(value, "$", issues);
+  } else if (
+    value.op === "sketch.constraint.create" &&
+    value.kind === "equalLength"
+  ) {
+    if (
+      validateExactRecord(
+        value,
+        "$",
+        [
+          "op",
+          "name",
+          "sketchId",
+          "kind",
+          "primaryLineEntityId",
+          "secondaryLineEntityId"
+        ],
+        ["id"],
+        issues
+      )
+    ) {
+      validateNonEmptyString(value.name, "$.name", issues);
+      validateNonEmptyString(value.sketchId, "$.sketchId", issues);
+      validateNonEmptyString(
+        value.primaryLineEntityId,
+        "$.primaryLineEntityId",
+        issues
+      );
+      validateNonEmptyString(
+        value.secondaryLineEntityId,
+        "$.secondaryLineEntityId",
+        issues
+      );
+      validateDistinctIds(
+        value.primaryLineEntityId,
+        value.secondaryLineEntityId,
+        "$",
+        issues
+      );
+    }
+  } else if (
+    value.op === "feature.extrude" ||
+    value.op === "feature.revolve" ||
+    value.op === "feature.updateExtrude" ||
+    value.op === "feature.updateRevolve"
+  ) {
+    validateV19FeatureOp(value, "$", issues);
+  } else {
+    issues.push({
+      code: "INVALID_VALUE",
+      path: "$.op",
+      message: "Expected a V19 operation kind."
+    });
+  }
+  return issues.length === 0
+    ? { ok: true, value: value as unknown as CadV19Op }
+    : { ok: false, issues };
+}
+
+function validateCurveEditProposal(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  if (!isUnknownRecord(value) || typeof value.kind !== "string") {
+    issues.push({
+      code: "INVALID_TYPE",
+      path,
+      message: "Expected a curve-edit proposal."
+    });
+    return;
+  }
+  const op =
+    value.kind === "trim"
+      ? "sketch.trim"
+      : value.kind === "extend"
+        ? "sketch.extend"
+        : value.kind === "split"
+          ? "sketch.split"
+          : value.kind === "explodeRectangle"
+            ? "sketch.explodeRectangle"
+            : value.kind === "offset"
+              ? "sketch.offset"
+              : undefined;
+  if (!op) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path: `${path}.kind`,
+      message: "Unknown curve-edit proposal kind."
+    });
+    return;
+  }
+  const synthetic: UnknownRecord = { ...value, op };
+  delete synthetic.kind;
+  synthetic.precondition = {
+    expectedSourceRevision: `partbench-source-v1:${"0".repeat(64)}`,
+    expectedSolverEvaluationIdentity: "none"
+  };
+  const result = validateV19CadOp(synthetic);
+  if (!result.ok) {
+    issues.push(
+      ...result.issues.map((issue) => ({
+        ...issue,
+        path:
+          issue.path === "$.precondition"
+            ? path
+            : issue.path.replace(/^\$/, path)
+      }))
+    );
+  }
+}
+
+export function validateV19SketchQueryRequest(
+  value: unknown
+): CadV19ProtocolValidationResult<
+  Omit<CadQueryRequest, "query"> & {
+    readonly query:
+      | SketchCurveEditReadinessQuery
+      | SketchProfileRegionCandidatesQuery
+      | SketchProfileRegionValidateQuery;
+  }
+> {
+  const issues: SketchProfilePathValidationIssue[] = [];
+  if (!validateExactRecord(value, "$", ["version", "query"], [], issues)) {
+    return { ok: false, issues };
+  }
+  if (value.version !== "cadops.v1") {
+    issues.push({
+      code: "INVALID_VALUE",
+      path: "$.version",
+      message: "Unsupported CADOps version."
+    });
+  }
+  if (!isUnknownRecord(value.query)) {
+    issues.push({
+      code: "INVALID_TYPE",
+      path: "$.query",
+      message: "Expected a V19 sketch query."
+    });
+  } else if (value.query.query === "sketch.curveEditReadiness") {
+    if (
+      validateExactRecord(
+        value.query,
+        "$.query",
+        ["query", "proposal"],
+        [],
+        issues
+      )
+    ) {
+      validateCurveEditProposal(
+        value.query.proposal,
+        "$.query.proposal",
+        issues
+      );
+    }
+  } else if (value.query.query === "sketch.profileRegionCandidates") {
+    if (
+      validateExactRecord(
+        value.query,
+        "$.query",
+        ["query", "sketchId"],
+        ["entityIds", "limit", "afterCandidateKey", "sourceRevision"],
+        issues
+      )
+    ) {
+      validateNonEmptyString(value.query.sketchId, "$.query.sketchId", issues);
+      if ("entityIds" in value.query) {
+        validateUniqueIdArray(
+          value.query.entityIds,
+          "$.query.entityIds",
+          issues,
+          {
+            maxLength: CAD_V19_RESOURCE_LIMITS.maxSketchEntitiesPerEditedSketch
+          }
+        );
+      }
+      if ("limit" in value.query) {
+        if (
+          !validateNonNegativeInteger(
+            value.query.limit,
+            "$.query.limit",
+            issues
+          ) ||
+          value.query.limit < 1 ||
+          value.query.limit > CAD_V19_RESOURCE_LIMITS.maxRegionCandidatesPerPage
+        ) {
+          issues.push({
+            code: "INVALID_VALUE",
+            path: "$.query.limit",
+            message: "Candidate page limit must be from 1 through 100."
+          });
+        }
+      }
+      const hasAfter = "afterCandidateKey" in value.query;
+      const hasRevision = "sourceRevision" in value.query;
+      if (hasAfter !== hasRevision) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: "$.query",
+          message:
+            "Later candidate pages require both afterCandidateKey and sourceRevision."
+        });
+      }
+      if (hasAfter) {
+        validateNonEmptyString(
+          value.query.afterCandidateKey,
+          "$.query.afterCandidateKey",
+          issues
+        );
+        if (
+          typeof value.query.sourceRevision !== "string" ||
+          !/^partbench-source-v1:[0-9a-f]{64}$/.test(value.query.sourceRevision)
+        ) {
+          issues.push({
+            code: "INVALID_VALUE",
+            path: "$.query.sourceRevision",
+            message: "Invalid revision-bound candidate cursor."
+          });
+        }
+      }
+    }
+  } else if (value.query.query === "sketch.profileRegionValidate") {
+    if (
+      validateExactRecord(
+        value.query,
+        "$.query",
+        ["query", "profile"],
+        [],
+        issues
+      )
+    ) {
+      if (!isSketchRegionsProfileRef(value.query.profile)) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: "$.query.profile",
+          message: "Invalid explicit regions profile."
+        });
+      }
+    }
+  } else {
+    issues.push({
+      code: "INVALID_VALUE",
+      path: "$.query.query",
+      message: "Expected a V19 sketch query kind."
+    });
+  }
+  return issues.length === 0
+    ? {
+        ok: true,
+        value: value as unknown as Omit<CadQueryRequest, "query"> & {
+          readonly query:
+            | SketchCurveEditReadinessQuery
+            | SketchProfileRegionCandidatesQuery
+            | SketchProfileRegionValidateQuery;
+        }
+      }
     : { ok: false, issues };
 }
 

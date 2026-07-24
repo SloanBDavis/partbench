@@ -24,15 +24,19 @@ import type {
   SketchConstraintEntry,
   SketchConstraintId,
   SketchConstraintSnapshot,
-  SketchDimensionEntry,
+  SketchDimensionEntryCurrent,
   SketchDimensionId,
   SketchDimensionSnapshot,
+  SketchDimensionTarget,
+  SketchDimensionTargetV22,
   SketchDimensionValueSource,
   SketchEntityId,
   SketchEntitySnapshot,
   SketchId,
+  SketchLegacyPointTarget,
   SketchPlane,
   SketchPointTarget,
+  SketchPointTargetV22,
   Vec2
 } from "@web-cad/cad-protocol";
 
@@ -49,6 +53,11 @@ import {
   type SketchSolverParameter,
   type SketchSolverSketch
 } from "./sketchSolver";
+import {
+  downconvertSketchDimensionSnapshotV22,
+  isSketchDimensionSnapshotV22,
+  type SketchDimensionSnapshotCurrent
+} from "./v22SourceShapes";
 
 const SOURCE_BOUNDARY_NOTE =
   "Sketch edit readiness is derived from authoritative sketch source, dimensions, constraints, feature dependencies, reference health, and rebuild-plan lifecycle state.";
@@ -70,7 +79,7 @@ export interface SketchEditReadinessDocument extends SketchSolverDocument {
   readonly parameters: ReadonlyMap<ParameterId, SketchSolverParameter>;
   readonly sketchDimensions: ReadonlyMap<
     SketchDimensionId,
-    SketchDimensionSnapshot
+    SketchDimensionSnapshotCurrent
   >;
   readonly sketchConstraints: ReadonlyMap<
     SketchConstraintId,
@@ -395,6 +404,20 @@ function simulateSketchEdit(
             sketchEntityId: edit.entityId,
             expected: "existing sketch entity",
             received: edit.entityId
+          })
+        );
+      } else if (!dimension) {
+        diagnostics.push(
+          createDiagnostic({
+            code: "SKETCH_EDIT_UNSUPPORTED",
+            severity: "blocker",
+            message:
+              "Normalized V22 dimension targets require the V19 dimension solver slice.",
+            sketchId: edit.sketchId,
+            sketchEntityId: edit.entityId,
+            fieldPath: "target",
+            expected: "V21-representable entity scalar target",
+            received: formatSketchDimensionTarget(edit.target)
           })
         );
       } else {
@@ -742,13 +765,17 @@ function createVirtualDimension(
     CadSketchEditProposal,
     { readonly editKind: "entity.dimension.update" }
   >
-): SketchDimensionSnapshot {
+): SketchDimensionSnapshot | undefined {
+  const target = toLegacyDimensionTarget(edit.target);
+  if (!target) {
+    return undefined;
+  }
   return {
     id: "__sketch_edit_readiness_dimension__",
     name: "Sketch edit readiness dimension",
     sketchId: edit.sketchId,
     entityId: edit.entityId,
-    target: edit.target,
+    target,
     valueSource: { type: "literal", value: edit.value }
   };
 }
@@ -905,6 +932,7 @@ function createConstraintSnapshot(
   }
 
   if (edit.kind === "fixed") {
+    const target = toStoredPointTarget(edit.target);
     const entity = sketch.entities.get(edit.target.entityId);
 
     if (!entity) {
@@ -920,25 +948,28 @@ function createConstraintSnapshot(
       sketchId: edit.sketchId,
       entityId: edit.target.entityId,
       kind: "fixed",
-      target: edit.target,
+      target,
       coordinate:
-        edit.coordinate ?? getSketchPointTargetCoordinate(entity, edit.target)
+        edit.coordinate ?? getSketchPointTargetCoordinate(entity, target)
     };
   }
 
   if (edit.kind === "coincident") {
+    const primaryTarget = toStoredPointTarget(edit.primaryTarget);
+    const secondaryTarget = toStoredPointTarget(edit.secondaryTarget);
     return {
       id,
       name: edit.name,
       sketchId: edit.sketchId,
       entityId: edit.primaryTarget.entityId,
       kind: "coincident",
-      primaryTarget: edit.primaryTarget,
-      secondaryTarget: edit.secondaryTarget
+      primaryTarget,
+      secondaryTarget
     };
   }
 
   if (edit.kind === "midpoint") {
+    const target = toStoredMidpointTarget(edit.target);
     return {
       id,
       name: edit.name,
@@ -946,7 +977,7 @@ function createConstraintSnapshot(
       entityId: edit.lineEntityId,
       kind: "midpoint",
       lineEntityId: edit.lineEntityId,
-      target: edit.target
+      target
     };
   }
 
@@ -1081,7 +1112,7 @@ function collectEvaluationDiagnostics(
 }
 
 function createDimensionDiagnostics(
-  dimension: SketchDimensionEntry
+  dimension: SketchDimensionEntryCurrent
 ): readonly CadSketchEditDiagnostic[] {
   return dimension.issues.map((issue) =>
     createDiagnostic({
@@ -1668,9 +1699,54 @@ function hasExistingDimensionTarget(
 }
 
 function formatSketchDimensionTarget(
-  target: SketchDimensionSnapshot["target"]
+  target: SketchDimensionSnapshot["target"] | SketchDimensionTargetV22
 ): string {
-  return `${target.entityKind}.${target.role}`;
+  return "kind" in target
+    ? target.kind === "entityScalar"
+      ? `${target.entityKind}.${target.role}`
+      : target.kind
+    : `${target.entityKind}.${target.role}`;
+}
+
+function toLegacyDimensionTarget(
+  target: SketchDimensionTarget | SketchDimensionTargetV22
+): SketchDimensionTarget | undefined {
+  if (!("kind" in target)) {
+    return target;
+  }
+  if (target.kind !== "entityScalar" || target.role === "diameter") {
+    return undefined;
+  }
+  return {
+    entityKind: target.entityKind,
+    role: target.role
+  } as SketchDimensionTarget;
+}
+
+function toStoredPointTarget(
+  target: SketchPointTarget | SketchPointTargetV22
+): SketchPointTarget {
+  if (target.entityKind === "arc") {
+    return target;
+  }
+  return {
+    entityId: target.entityId,
+    role: target.role
+  } as SketchPointTarget;
+}
+
+function toStoredMidpointTarget(
+  target:
+    | SketchLegacyPointTarget
+    | Extract<
+        SketchPointTargetV22,
+        { readonly entityKind: "point" | "rectangle" | "circle" }
+      >
+): SketchLegacyPointTarget {
+  return {
+    entityId: target.entityId,
+    role: target.role
+  };
 }
 
 function cloneSketchDocument(
@@ -1684,7 +1760,14 @@ function cloneSketchDocument(
       ])
     ),
     parameters: document.parameters,
-    sketchDimensions: new Map(document.sketchDimensions),
+    sketchDimensions: new Map(
+      [...document.sketchDimensions.values()].flatMap((dimension) => {
+        const legacy = isSketchDimensionSnapshotV22(dimension)
+          ? downconvertSketchDimensionSnapshotV22(dimension)
+          : dimension;
+        return legacy ? [[legacy.id, legacy] as const] : [];
+      })
+    ),
     sketchConstraints: new Map(document.sketchConstraints)
   };
 }

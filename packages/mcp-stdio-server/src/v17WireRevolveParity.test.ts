@@ -165,9 +165,20 @@ describe("V17 composite wire revolve stdio parity", () => {
                 ],
                 inputReferences: [
                   expect.objectContaining({
+                    featureId: "stdio_wire_revolve",
+                    inputKind: "profile",
                     after: normalizedProfile,
+                    affectedSketchIds: ["stdio_revolve_sketch"],
                     affectedEntityIds: ["arc", "diameter"],
-                    profileOrientationNormalized: true
+                    normalization: {
+                      outerOrientationsChanged: [
+                        '["wire",["arc","reverse"],["diameter","reverse"]]'
+                      ],
+                      holeOrientationsChanged: [],
+                      cyclicStartsChanged: [],
+                      holeOrderChanged: false,
+                      regionOrderChanged: false
+                    }
                   })
                 ]
               }
@@ -239,14 +250,25 @@ describe("V17 composite wire revolve stdio parity", () => {
                 ],
                 inputReferences: [
                   expect.objectContaining({
+                    featureId: "stdio_wire_revolve",
+                    inputKind: "profile",
                     after: normalizedRetargetProfile,
+                    affectedSketchIds: ["stdio_revolve_sketch"],
                     affectedEntityIds: [
                       "arc",
                       "diameter",
                       "retarget_arc",
                       "retarget_diameter"
                     ],
-                    profileOrientationNormalized: true
+                    normalization: {
+                      outerOrientationsChanged: [
+                        '["wire",["retarget_arc","reverse"],["retarget_diameter","reverse"]]'
+                      ],
+                      holeOrientationsChanged: [],
+                      cyclicStartsChanged: [],
+                      holeOrderChanged: false,
+                      regionOrderChanged: false
+                    }
                   })
                 ]
               }

@@ -2,7 +2,7 @@ import type {
   CadBatchValidationErrorCode,
   CadExactExportResolvedWireProfile,
   FeatureId,
-  FeatureInputReferenceSemanticDiff,
+  FeatureInputReferenceSemanticDiffCurrent,
   SketchProfileDiagnosticCode,
   SketchProfileRef,
   SketchWireProfileRef,
@@ -12,6 +12,7 @@ import type {
 } from "@web-cad/cad-protocol";
 
 import type { CadDocument } from "./index";
+import { getSketchLoopCanonicalKey } from "./v22SourceShapes";
 import {
   createSketchProfileReadinessResponse,
   type SketchProfileReadinessDocument
@@ -199,6 +200,16 @@ function mapProfileDiagnosticToBatchError(
     case "SKETCH_PROFILE_MULTIPLE_REGIONS_UNSUPPORTED":
     case "SKETCH_PROFILE_INNER_LOOP_UNSUPPORTED":
     case "SKETCH_PROFILE_CONSUMER_UNSUPPORTED":
+    case "SKETCH_REGION_LOOP_OPEN":
+    case "SKETCH_REGION_LOOP_INTERSECTION":
+    case "SKETCH_REGION_BOUNDARY_TOUCHING":
+    case "SKETCH_REGION_HOLE_OUTSIDE":
+    case "SKETCH_REGION_HOLES_OVERLAP":
+    case "SKETCH_REGION_MATERIAL_OVERLAP":
+    case "SKETCH_REGION_NESTING_UNSUPPORTED":
+    case "SKETCH_REGION_COMPLEXITY_LIMIT":
+    case "SKETCH_REGION_CONSUMER_UNSUPPORTED":
+    case "SKETCH_REGION_RESULT_NOT_SINGLE_SOLID":
     case "BODY_NOT_FOUND":
     case "UNSUPPORTED_BODY_REFERENCES":
     case "TOPOLOGY_ANCHOR_NOT_FOUND":
@@ -223,7 +234,7 @@ export function createProfileInputReference(
   after: SketchProfileRef,
   orientationNormalized: boolean,
   before?: SketchProfileRef
-): FeatureInputReferenceSemanticDiff {
+): FeatureInputReferenceSemanticDiffCurrent {
   const affectedSketchIds = [
     ...new Set([...(before ? [before.sketchId] : []), after.sketchId])
   ];
@@ -238,7 +249,22 @@ export function createProfileInputReference(
     inputKind: "profile",
     ...(before ? { before } : {}),
     after,
-    ...(orientationNormalized ? { profileOrientationNormalized: true } : {}),
+    ...(orientationNormalized && after.kind === "wire"
+      ? {
+          normalization: {
+            outerOrientationsChanged: [
+              getSketchLoopCanonicalKey({
+                kind: "wire",
+                segments: after.segments
+              })
+            ],
+            holeOrientationsChanged: [],
+            cyclicStartsChanged: [],
+            holeOrderChanged: false,
+            regionOrderChanged: false
+          }
+        }
+      : {}),
     affectedSketchIds,
     affectedEntityIds
   };

@@ -37,7 +37,6 @@ import type {
   SketchConstraintSnapshot,
   SketchDimensionIssue,
   SketchDimensionId,
-  SketchDimensionSnapshot,
   SketchEntityId,
   SketchEntitySnapshot,
   SketchId,
@@ -81,6 +80,12 @@ import {
   evaluateSketchConstraint,
   evaluateSketchDimension
 } from "./sketchSolver";
+import {
+  downconvertSketchDimensionSnapshotV22,
+  getSketchDimensionTargetEntityIdsV22,
+  normalizeSketchDimensionSnapshotV22,
+  type SketchDimensionSnapshotCurrent
+} from "./v22SourceShapes";
 
 export interface ProjectHealthOptions {
   readonly document: ProjectHealthDocument;
@@ -99,7 +104,7 @@ export interface ProjectHealthDocument extends GeneratedReferencesDocument {
   readonly parameters: ReadonlyMap<ParameterId, CadParameterSnapshot>;
   readonly sketchDimensions: ReadonlyMap<
     SketchDimensionId,
-    SketchDimensionSnapshot
+    SketchDimensionSnapshotCurrent
   >;
   readonly sketchConstraints: ReadonlyMap<
     SketchConstraintId,
@@ -1594,8 +1599,10 @@ function createAttachedSketchHealth(
 
 function createSketchDimensionHealth(
   document: ProjectHealthDocument,
-  dimension: SketchDimensionSnapshot
+  dimension: SketchDimensionSnapshotCurrent
 ): CadSketchDimensionHealth {
+  const normalized = normalizeSketchDimensionSnapshotV22(dimension);
+  const legacy = downconvertSketchDimensionSnapshotV22(normalized);
   const entry = evaluateSketchDimension(document, dimension);
   const issues = entry.issues.map(createIssueFromSketchDimensionIssue);
   const parameterId =
@@ -1603,28 +1610,46 @@ function createSketchDimensionHealth(
       ? dimension.valueSource.parameterId
       : undefined;
 
-  const affected = collectSketchDimensionAffectedFeatures(
-    document,
-    dimension.sketchId,
-    dimension.entityId
-  );
+  const targetEntityIds = legacy
+    ? [legacy.entityId]
+    : getSketchDimensionTargetEntityIdsV22(normalized.target);
+  const affectedFeatureIds = new Set<FeatureId>();
+  const affectedBodyIds = new Set<BodyId>();
+  for (const entityId of targetEntityIds) {
+    const affected = collectSketchDimensionAffectedFeatures(
+      document,
+      dimension.sketchId,
+      entityId
+    );
+    affected.featureIds.forEach((id) => affectedFeatureIds.add(id));
+    affected.bodyIds.forEach((id) => affectedBodyIds.add(id));
+  }
 
-  return {
+  const common = {
     dimensionId: dimension.id,
     dimensionName: dimension.name,
     sketchId: dimension.sketchId,
-    entityId: dimension.entityId,
-    target: dimension.target,
     valueSource: dimension.valueSource,
     status: statusFromIssues(issues),
-    affectedFeatureIds: affected.featureIds,
-    affectedBodyIds: affected.bodyIds,
+    affectedFeatureIds: [...affectedFeatureIds],
+    affectedBodyIds: [...affectedBodyIds],
     ...(entry.effectiveValue !== undefined
       ? { effectiveValue: entry.effectiveValue }
       : {}),
     ...(parameterId ? { parameterId } : {}),
     issues
   };
+  return legacy
+    ? {
+        ...common,
+        entityId: legacy.entityId,
+        target: legacy.target
+      }
+    : {
+        ...common,
+        sourceShape: "v22",
+        target: normalized.target
+      };
 }
 
 function createSketchEvaluationHealth(
@@ -2158,10 +2183,13 @@ function mapSketchDimensionIssueCode(
       return code;
 
     case "UNSUPPORTED_TARGET":
+    case "SKETCH_DIMENSION_TARGET_UNSUPPORTED":
       return "UNSUPPORTED_SKETCH_DIMENSION_TARGET";
 
     case "INVALID_VALUE":
     case "SKETCH_ARC_DIMENSION_INVALID":
+    case "SKETCH_DIMENSION_ANGLE_SENSE_INVALID":
+    case "SKETCH_DIMENSION_DISTANCE_INVALID":
       return "INVALID_SKETCH_DIMENSION_VALUE";
 
     case "INCONSISTENT_CONSTRAINT":

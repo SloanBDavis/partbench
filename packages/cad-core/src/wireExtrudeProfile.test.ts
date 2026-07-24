@@ -7,7 +7,7 @@ import type {
 } from "@web-cad/cad-protocol";
 
 import {
-  CAD_PROJECT_FORMAT_VERSION_V21,
+  CAD_PROJECT_FORMAT_VERSION_V22,
   CadEngine,
   exportCadProject,
   exportCadProjectJson,
@@ -120,7 +120,15 @@ describe("V17 composite wire extrude newBody", () => {
         featureId: "feature_wire",
         inputKind: "profile",
         after: counterclockwiseProfile,
-        profileOrientationNormalized: true,
+        normalization: {
+          outerOrientationsChanged: [
+            '["wire",["line_a","forward"],["line_b","forward"],["line_c","forward"],["line_d","forward"]]'
+          ],
+          holeOrientationsChanged: [],
+          cyclicStartsChanged: [],
+          holeOrderChanged: false,
+          regionOrderChanged: false
+        },
         affectedSketchIds: ["sketch_wire"],
         affectedEntityIds: ["line_a", "line_b", "line_c", "line_d"]
       }
@@ -228,7 +236,11 @@ describe("V17 composite wire extrude newBody", () => {
             {
               before: counterclockwiseProfile,
               after: counterclockwiseProfile,
-              profileOrientationNormalized: true
+              normalization: {
+                outerOrientationsChanged: [
+                  '["wire",["line_a","forward"],["line_b","forward"],["line_c","forward"],["line_d","forward"]]'
+                ]
+              }
             }
           ]
         }
@@ -248,7 +260,7 @@ describe("V17 composite wire extrude newBody", () => {
     });
 
     const project = exportCadProject(engine);
-    expect(project.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V21);
+    expect(project.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V22);
     const reopened = importCadProjectJson(exportCadProjectJson(engine));
     expect(reopened.createSnapshot()).toEqual(engine.createSnapshot());
     expect(reopened.getTransactions()).toEqual(engine.getTransactions());
@@ -386,7 +398,11 @@ describe("V17 composite wire extrude newBody", () => {
             {
               before: entityProfile,
               after: counterclockwiseProfile,
-              profileOrientationNormalized: true,
+              normalization: {
+                outerOrientationsChanged: [
+                  '["wire",["line_a","forward"],["line_b","forward"],["line_c","forward"],["line_d","forward"]]'
+                ]
+              },
               affectedSketchIds: ["sketch_wire"],
               affectedEntityIds: [
                 "rectangle",

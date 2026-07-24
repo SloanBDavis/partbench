@@ -206,7 +206,11 @@ describe("V17 composite wire revolve core", () => {
             expect.objectContaining({
               featureId: "feature_revolve",
               inputKind: "profile",
-              profileOrientationNormalized: true,
+              normalization: expect.objectContaining({
+                outerOrientationsChanged: [
+                  '["wire",["arc","reverse"],["diameter","reverse"]]'
+                ]
+              }),
               affectedEntityIds: ["arc", "diameter"]
             })
           ]
@@ -1075,7 +1079,11 @@ describe("V17 composite wire revolve core", () => {
             expect.objectContaining({
               featureId: "feature_revolve",
               inputKind: "profile",
-              profileOrientationNormalized: true,
+              normalization: expect.objectContaining({
+                outerOrientationsChanged: [
+                  '["wire",["arc_retarget","reverse"],["diameter_retarget","reverse"]]'
+                ]
+              }),
               affectedEntityIds: [
                 "arc",
                 "diameter",
@@ -1103,7 +1111,11 @@ describe("V17 composite wire revolve core", () => {
             expect.objectContaining({
               featureId: "feature_revolve",
               inputKind: "profile",
-              profileOrientationNormalized: true,
+              normalization: expect.objectContaining({
+                outerOrientationsChanged: [
+                  '["wire",["arc_retarget","reverse"],["diameter_retarget","reverse"]]'
+                ]
+              }),
               affectedEntityIds: [
                 "arc",
                 "diameter",

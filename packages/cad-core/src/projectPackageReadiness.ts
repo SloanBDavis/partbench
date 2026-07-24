@@ -62,12 +62,18 @@ const SUPPORTED_DOCUMENT_SCHEMAS = [
   "web-cad.project.v16",
   "web-cad.project.v17",
   "web-cad.project.v18",
-  "web-cad.project.v19"
+  "web-cad.project.v19",
+  "web-cad.project.v20",
+  "web-cad.project.v21",
+  "web-cad.project.v22"
 ] satisfies readonly WcadDocumentSchemaVersion[];
 
 const SUPPORTED_WCAD_V2_DOCUMENT_SCHEMAS = [
   "web-cad.project.v18",
-  "web-cad.project.v19"
+  "web-cad.project.v19",
+  "web-cad.project.v20",
+  "web-cad.project.v21",
+  "web-cad.project.v22"
 ] satisfies readonly WcadDocumentSchemaVersion[];
 
 const SUPPORTED_CACHE_ARTIFACT_KINDS = [
@@ -249,6 +255,12 @@ function describeSupportedDocumentSchema(
       return "The current project source uses web-cad.project.v18 because topology identity source records are present.";
     case "web-cad.project.v19":
       return "The current project source uses web-cad.project.v19 because V15 source records are present.";
+    case "web-cad.project.v20":
+      return "The current project source uses web-cad.project.v20 because V16 source records are present.";
+    case "web-cad.project.v21":
+      return "The current project source uses web-cad.project.v21 because V17 source records are present.";
+    case "web-cad.project.v22":
+      return "The current project source uses web-cad.project.v22 because V19 source, history, or redo records are present.";
     default:
       return canRepresentCurrentSource
         ? "The current project source can be represented without web-cad.project.v17."

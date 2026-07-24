@@ -54,7 +54,8 @@ export function createSketchModelingSelectionContext({
         sketch,
         entity,
         dimensions:
-          evaluation?.dimensions ?? sketchDimensionsBySketchId.get(sketch.id),
+          filterLegacyDimensions(evaluation?.dimensions) ??
+          sketchDimensionsBySketchId.get(sketch.id),
         constraints: evaluation?.constraints,
         solverStatus
       };
@@ -83,7 +84,7 @@ export function createSketchModelingSelectionContext({
             sketch,
             entity,
             dimensions:
-              evaluation?.dimensions ??
+              filterLegacyDimensions(evaluation?.dimensions) ??
               sketchDimensionsBySketchId.get(sketch.id),
             constraints: evaluation?.constraints,
             solverStatus
@@ -112,4 +113,13 @@ export function createSketchModelingSelectionContext({
         solverStatus: sketchSolverStatusesBySketchId.get(focusedSketch.id)
       }
     : undefined;
+}
+
+function filterLegacyDimensions(
+  dimensions: SketchEvaluationQueryResponse["dimensions"] | undefined
+): readonly SketchDimensionEntry[] | undefined {
+  return dimensions?.filter(
+    (dimension): dimension is SketchDimensionEntry =>
+      !("sourceShape" in dimension)
+  );
 }

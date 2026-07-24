@@ -1,6 +1,9 @@
 import {
   CAD_TOPOLOGY_IDENTITY_CONTRACT_VERSION,
   CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION,
+  isSketchDimensionTargetV22,
+  isSketchRegionsProfileRef,
+  validateV19CadOp,
   validateSketchProfilePathQueryRequest,
   WCAD_COMMANDS_ENTRY_PATH,
   WCAD_DOCUMENT_ENTRY_PATH,
@@ -82,6 +85,7 @@ import type {
   CadSketchEntityRef,
   CadSketchConstraintRef,
   CadSketchDimensionRef,
+  CadSketchDimensionRefCurrent,
   CadSketchRef,
   CadTransactionStatus,
   CadTopologyAnchorCommandProof,
@@ -120,6 +124,7 @@ import type {
   SketchCurveConstraintTargetV21,
   SketchRadiusCurveTarget,
   SketchDimensionTargetV21,
+  SketchDimensionTargetV22,
   SketchSemanticDiff,
   SketchSnapshot,
   SphereDimensions,
@@ -134,6 +139,7 @@ import type {
   CadTopologyRepairSourceRecord,
   ExtrudeFeatureSnapshot,
   FeatureSnapshot,
+  FeatureSnapshotV22,
   HoleFeatureSnapshot,
   FeatureExtrudeOperationMode,
   FeatureHoleDepthMode,
@@ -146,7 +152,7 @@ import type {
   FeatureRevolveProfileKind,
   FeatureShellOpenFaceRef,
   FeatureSemanticDiff,
-  FeatureInputReferenceSemanticDiff,
+  FeatureInputReferenceSemanticDiffCurrent,
   NamedGeneratedReferenceEntry,
   NamedGeneratedReferenceSnapshot,
   NamedReferenceName,
@@ -173,6 +179,17 @@ import type {
   Vec2,
   Vec3
 } from "@web-cad/cad-protocol";
+import {
+  downconvertSketchDimensionSnapshotV22,
+  getSketchDimensionTargetEntityIdsV22,
+  getSketchDimensionTargetKeyV22,
+  getSketchLoopCanonicalKey,
+  isSketchDimensionSnapshotV22,
+  normalizeSketchDimensionSnapshotV22,
+  normalizeSketchRegionsProfileRef,
+  sketchDimensionRequiresV22,
+  type SketchDimensionSnapshotCurrent
+} from "./v22SourceShapes";
 
 import {
   CanonicalCborDecodeError,
@@ -192,6 +209,7 @@ import {
   validateSketchPathRefSource,
   validateSketchProfileRefSource
 } from "./v21SourceValidation";
+import { validateV22RegionSource } from "./v22RegionSourceValidation";
 export {
   cloneSketchPathRef,
   cloneSketchProfileRef,
@@ -298,6 +316,7 @@ import { createProjectHealth } from "./projectHealth";
 import {
   applySketchConstraintValue,
   applySketchDimensionValue,
+  createLegacySketchSolverDocumentProjection,
   createSketchEvaluationQueryResponse,
   evaluateSketchDimension,
   getLineLength,
@@ -682,7 +701,11 @@ export interface Sketch {
 
 export type CadParameter = CadParameterSnapshot;
 
-export type SketchDimension = SketchDimensionSnapshot;
+/**
+ * Canonical live dimension storage. Legacy entity-local snapshots are accepted
+ * at API/load boundaries, then normalized by createCadDocument.
+ */
+export type SketchDimension = SketchDimensionSnapshotCurrent;
 
 export type SketchConstraint = SketchConstraintSnapshot;
 
@@ -851,9 +874,9 @@ export interface CadDocumentSnapshot {
   readonly objects: readonly SceneObject[];
   readonly sketches: readonly SketchSnapshot[];
   readonly parameters: readonly CadParameterSnapshot[];
-  readonly sketchDimensions: readonly SketchDimensionSnapshot[];
+  readonly sketchDimensions: readonly SketchDimensionSnapshotCurrent[];
   readonly sketchConstraints: readonly SketchConstraintSnapshot[];
-  readonly features: readonly FeatureSnapshot[];
+  readonly features: readonly FeatureSnapshotCurrent[];
   readonly namedReferences: readonly NamedGeneratedReferenceSnapshot[];
   readonly topologyIdentity?: CadTopologyIdentitySourceSnapshot;
   readonly nextObjectNumber: number;
@@ -865,6 +888,8 @@ export interface CadDocumentSnapshot {
   readonly nextFeatureNumber: number;
   readonly nextBodyNumber: number;
 }
+
+type FeatureSnapshotCurrent = FeatureSnapshot | FeatureSnapshotV22;
 
 export interface CadWorkerRequest {
   readonly id: string;
@@ -949,6 +974,7 @@ export const CAD_PROJECT_FORMAT_VERSION_V18 = "web-cad.project.v18";
 export const CAD_PROJECT_FORMAT_VERSION_V19 = "web-cad.project.v19";
 export const CAD_PROJECT_FORMAT_VERSION_V20 = "web-cad.project.v20";
 export const CAD_PROJECT_FORMAT_VERSION_V21 = "web-cad.project.v21";
+export const CAD_PROJECT_FORMAT_VERSION_V22 = "web-cad.project.v22";
 export const CURRENT_CAD_PROJECT_FORMAT_VERSION =
   CAD_PROJECT_FORMAT_VERSION_V16;
 
@@ -974,6 +1000,7 @@ export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V19
   | typeof CAD_PROJECT_FORMAT_VERSION_V20
   | typeof CAD_PROJECT_FORMAT_VERSION_V21
+  | typeof CAD_PROJECT_FORMAT_VERSION_V22
   | typeof CURRENT_CAD_PROJECT_FORMAT_VERSION;
 
 const SUPPORTED_CAD_PROJECT_FORMAT_VERSIONS = new Set<string>([
@@ -997,18 +1024,28 @@ const SUPPORTED_CAD_PROJECT_FORMAT_VERSIONS = new Set<string>([
   CAD_PROJECT_FORMAT_VERSION_V18,
   CAD_PROJECT_FORMAT_VERSION_V19,
   CAD_PROJECT_FORMAT_VERSION_V20,
-  CAD_PROJECT_FORMAT_VERSION_V21
+  CAD_PROJECT_FORMAT_VERSION_V21,
+  CAD_PROJECT_FORMAT_VERSION_V22
 ]);
 
-function getCadProjectFormatVersionForDocument(
-  document: CadDocument | CadDocumentSnapshot
+export function getCadProjectFormatVersionForDocument(
+  document: CadDocument | CadDocumentSnapshot,
+  history: readonly Transaction[] = [],
+  redoStack: readonly Transaction[] = []
 ):
   | typeof CAD_PROJECT_FORMAT_VERSION_V16
   | typeof CAD_PROJECT_FORMAT_VERSION_V17
   | typeof CAD_PROJECT_FORMAT_VERSION_V18
   | typeof CAD_PROJECT_FORMAT_VERSION_V19
   | typeof CAD_PROJECT_FORMAT_VERSION_V20
-  | typeof CAD_PROJECT_FORMAT_VERSION_V21 {
+  | typeof CAD_PROJECT_FORMAT_VERSION_V21
+  | typeof CAD_PROJECT_FORMAT_VERSION_V22 {
+  if (
+    documentHasV22SourceRecords(document) ||
+    [...history, ...redoStack].some(transactionRequiresV22)
+  ) {
+    return CAD_PROJECT_FORMAT_VERSION_V22;
+  }
   if (documentHasV21SourceRecords(document)) {
     return CAD_PROJECT_FORMAT_VERSION_V21;
   }
@@ -1034,6 +1071,160 @@ function getCadProjectFormatVersionForDocument(
   )
     ? CAD_PROJECT_FORMAT_VERSION_V17
     : CAD_PROJECT_FORMAT_VERSION_V16;
+}
+
+function documentHasV22SourceRecords(
+  document: CadDocument | CadDocumentSnapshot
+): boolean {
+  const dimensions = Array.isArray(document.sketchDimensions)
+    ? document.sketchDimensions
+    : [...document.sketchDimensions.values()];
+  if (
+    dimensions.some(
+      (dimension) =>
+        isSketchDimensionSnapshotV22(dimension) &&
+        sketchDimensionRequiresV22(dimension)
+    )
+  ) {
+    return true;
+  }
+
+  const features = Array.isArray(document.features)
+    ? document.features
+    : [...document.features.values()];
+  return features.some((feature) => {
+    if (feature.kind !== "extrude" && feature.kind !== "revolve") {
+      return false;
+    }
+    const profile = (feature as unknown as Record<string, unknown>).profile;
+    return isRecord(profile) && profile.kind === "regions";
+  });
+}
+
+function transactionRequiresV22(transaction: Transaction): boolean {
+  return (
+    transaction.ops.some(cadOpRequiresV22) ||
+    semanticDiffRequiresV22(transaction.diff)
+  );
+}
+
+function cadOpRequiresV22(op: CadOp): boolean {
+  const stored = op as unknown as Record<string, unknown>;
+  if (
+    op.op === "sketch.trim" ||
+    op.op === "sketch.extend" ||
+    op.op === "sketch.split" ||
+    op.op === "sketch.explodeRectangle" ||
+    op.op === "sketch.offset" ||
+    op.op === "sketch.addSlot" ||
+    op.op === "sketch.addRoundedRectangle" ||
+    op.op === "sketch.constraint.update"
+  ) {
+    return true;
+  }
+  if (
+    op.op === "sketch.dimension.create" &&
+    isRecord(stored.target) &&
+    typeof stored.target.kind === "string"
+  ) {
+    return true;
+  }
+  if (
+    op.op === "sketch.dimension.update" &&
+    isRecord(stored.target) &&
+    typeof stored.target.kind === "string"
+  ) {
+    return true;
+  }
+  if (op.op === "sketch.constraint.create" && stored.kind === "equalLength") {
+    return true;
+  }
+  if (op.op === "sketch.constraint.create") {
+    if (stored.kind === "fixed" || stored.kind === "midpoint") {
+      return normalizedPointTargetRequiresV22(stored.target);
+    }
+    if (stored.kind === "coincident" || stored.kind === "symmetry") {
+      return (
+        normalizedPointTargetRequiresV22(stored.primaryTarget) ||
+        normalizedPointTargetRequiresV22(stored.secondaryTarget)
+      );
+    }
+  }
+  if (
+    (op.op === "feature.extrude" ||
+      op.op === "feature.revolve" ||
+      op.op === "feature.updateExtrude" ||
+      op.op === "feature.updateRevolve") &&
+    isRecord(stored.profile) &&
+    stored.profile.kind === "regions"
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function normalizedPointTargetRequiresV22(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    (value.entityKind === "point" ||
+      value.entityKind === "line" ||
+      value.entityKind === "rectangle" ||
+      value.entityKind === "circle")
+  );
+}
+
+function semanticDiffRequiresV22(diff: SemanticDiff): boolean {
+  const sketches = diff.sketches as unknown as
+    | Record<string, unknown>
+    | undefined;
+  if (
+    sketches &&
+    (Object.prototype.hasOwnProperty.call(sketches, "curveEdits") ||
+      Object.prototype.hasOwnProperty.call(sketches, "convenienceOperations"))
+  ) {
+    return true;
+  }
+
+  const dimensionChanges = diff.sketchDimensions;
+  if (
+    dimensionChanges &&
+    ["created", "modified", "deleted"].some((field) => {
+      const refs = (dimensionChanges as unknown as Record<string, unknown>)[
+        field
+      ];
+      return (
+        Array.isArray(refs) &&
+        refs.some((ref) => isRecord(ref) && ref.sourceShape === "v22")
+      );
+    })
+  ) {
+    return true;
+  }
+
+  const featureRefs = [
+    ...(diff.features?.created ?? []),
+    ...(diff.features?.modified ?? []),
+    ...(diff.features?.deleted ?? [])
+  ];
+  if (
+    featureRefs.some((reference) => {
+      const stored = reference as unknown as Record<string, unknown>;
+      return isRecord(stored.profile) && stored.profile.kind === "regions";
+    })
+  ) {
+    return true;
+  }
+
+  return (
+    diff.features?.inputReferences?.some((reference) => {
+      const stored = reference as unknown as Record<string, unknown>;
+      return (
+        Object.prototype.hasOwnProperty.call(stored, "normalization") ||
+        (isRecord(stored.before) && stored.before.kind === "regions") ||
+        (isRecord(stored.after) && stored.after.kind === "regions")
+      );
+    }) === true
+  );
 }
 
 function documentHasV21SourceRecords(
@@ -1178,14 +1369,16 @@ function isSupportedWcadDocumentSchema(
   | typeof CAD_PROJECT_FORMAT_VERSION_V18
   | typeof CAD_PROJECT_FORMAT_VERSION_V19
   | typeof CAD_PROJECT_FORMAT_VERSION_V20
-  | typeof CAD_PROJECT_FORMAT_VERSION_V21 {
+  | typeof CAD_PROJECT_FORMAT_VERSION_V21
+  | typeof CAD_PROJECT_FORMAT_VERSION_V22 {
   return (
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V16 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V17 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V20 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V21
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V21 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V22
   );
 }
 
@@ -1220,7 +1413,8 @@ export type CadProjectImportErrorCode =
   | "INVALID_TRANSFORM"
   | "INVALID_TRANSACTION"
   | "INVALID_TRANSACTION_HISTORY"
-  | "SCHEMA_V21_SOURCE_INVALID";
+  | "SCHEMA_V21_SOURCE_INVALID"
+  | "SCHEMA_V22_SOURCE_INVALID";
 
 export interface CadProjectImportIssue {
   readonly code: CadProjectImportErrorCode;
@@ -1286,12 +1480,16 @@ export interface WcadPackageExportResult {
 }
 
 export interface CadSchemaMigrationDiagnostic {
-  readonly code: "SCHEMA_UPGRADED_TO_V20" | "SCHEMA_UPGRADED_TO_V21";
+  readonly code:
+    | "SCHEMA_UPGRADED_TO_V20"
+    | "SCHEMA_UPGRADED_TO_V21"
+    | "SCHEMA_UPGRADED_TO_V22";
   readonly severity: "info";
   readonly message: string;
   readonly schemaVersion:
     | typeof CAD_PROJECT_FORMAT_VERSION_V20
-    | typeof CAD_PROJECT_FORMAT_VERSION_V21;
+    | typeof CAD_PROJECT_FORMAT_VERSION_V21
+    | typeof CAD_PROJECT_FORMAT_VERSION_V22;
 }
 
 export type WcadPackageReadResult =
@@ -1360,7 +1558,7 @@ export function createCadDocument(
   sketches: Iterable<readonly [SketchId, Sketch]> = [],
   parameters: Iterable<readonly [ParameterId, CadParameter]> = [],
   sketchDimensions: Iterable<
-    readonly [SketchDimensionId, SketchDimension]
+    readonly [SketchDimensionId, SketchDimensionSnapshotCurrent]
   > = [],
   sketchConstraints: Iterable<
     readonly [SketchConstraintId, SketchConstraint]
@@ -1375,7 +1573,12 @@ export function createCadDocument(
     objects: new Map(objects),
     sketches: new Map(sketches),
     parameters: new Map(parameters),
-    sketchDimensions: new Map(sketchDimensions),
+    sketchDimensions: new Map(
+      [...sketchDimensions].map(([id, dimension]) => [
+        id,
+        normalizeSketchDimensionSnapshotV22(dimension)
+      ])
+    ),
     sketchConstraints: new Map(sketchConstraints),
     features: new Map(features),
     namedReferences: new Map(namedReferences),
@@ -1815,7 +2018,9 @@ export class CadEngine {
         return createProjectTopologyIdentityReadiness({
           cadOpsVersion: request.version,
           documentSchemaVersion: getCadProjectFormatVersionForDocument(
-            this.#document
+            this.#document,
+            this.#history.map((entry) => entry.transaction),
+            this.#redoStack.map((entry) => entry.transaction)
           ),
           features: structure.features,
           bodies: structure.bodies,
@@ -1937,7 +2142,9 @@ export class CadEngine {
           this.#history.map((entry) => entry.transaction)
         );
         const documentSchemaVersion = getCadProjectFormatVersionForDocument(
-          this.#document
+          this.#document,
+          this.#history.map((entry) => entry.transaction),
+          this.#redoStack.map((entry) => entry.transaction)
         );
 
         return createProjectExactExport({
@@ -1956,7 +2163,9 @@ export class CadEngine {
         return createProjectPackageReadiness({
           cadOpsVersion: request.version,
           documentSchemaVersion: getCadProjectFormatVersionForDocument(
-            this.#document
+            this.#document,
+            this.#history.map((entry) => entry.transaction),
+            this.#redoStack.map((entry) => entry.transaction)
           ),
           units: this.#document.units
         });
@@ -2232,7 +2441,9 @@ export class CadEngine {
           document: this.#document,
           sketch,
           currentProjectSchemaVersion: getCadProjectFormatVersionForDocument(
-            this.#document
+            this.#document,
+            this.#history.map((entry) => entry.transaction),
+            this.#redoStack.map((entry) => entry.transaction)
           )
         });
       }
@@ -3366,12 +3577,18 @@ function attachImportedStepExecutionMetadata(
 
 export function exportCadProject(engine: CadEngine): CadProject {
   const snapshot = engine.createSnapshot();
-  const schemaVersion = getCadProjectFormatVersionForDocument(snapshot);
+  const history = engine.getTransactions();
+  const redoStack = engine.getRedoStack();
+  const schemaVersion = getCadProjectFormatVersionForDocument(
+    snapshot,
+    history,
+    redoStack
+  );
   return {
     schemaVersion,
     document: serializeCadDocumentForSchema(snapshot, schemaVersion),
-    history: engine.getTransactions(),
-    redoStack: engine.getRedoStack()
+    history,
+    redoStack
   };
 }
 
@@ -3379,7 +3596,9 @@ function serializeCadDocumentForSchema(
   document: CadDocumentSnapshot,
   schemaVersion: CadProjectFormatVersion
 ): CadDocumentSnapshot {
-  const useV21 = schemaVersion === CAD_PROJECT_FORMAT_VERSION_V21;
+  const useV22 = schemaVersion === CAD_PROJECT_FORMAT_VERSION_V22;
+  const useV21SourceShape =
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V21 || useV22;
   const entityKindById = new Map<string, SketchEntityKind>();
   for (const sketch of document.sketches) {
     for (const entity of sketch.entities) {
@@ -3394,18 +3613,42 @@ function serializeCadDocumentForSchema(
     sketches: document.sketches.map((sketch) => ({
       ...sketch,
       entities: sketch.entities.map((entity) =>
-        serializeSketchEntityForSchema(entity, useV21)
+        serializeSketchEntityForSchema(entity, useV21SourceShape)
       )
     })) as unknown as readonly SketchSnapshot[],
     sketchConstraints: document.sketchConstraints.map((constraint) =>
-      serializeSketchConstraintForSchema(constraint, useV21)
+      serializeSketchConstraintForSchema(constraint, useV21SourceShape)
+    ),
+    sketchDimensions: document.sketchDimensions.map((dimension) =>
+      serializeSketchDimensionForSchema(dimension, useV22)
     ),
     features: document.features.map((feature) =>
-      useV21
-        ? serializeFeatureForV21(feature)
-        : serializeFeatureForLegacySchema(feature, entityKindById)
-    ) as readonly FeatureSnapshot[]
+      useV22
+        ? serializeFeatureForV22(feature)
+        : useV21SourceShape
+          ? serializeFeatureForV21(feature)
+          : serializeFeatureForLegacySchema(feature, entityKindById)
+    ) as readonly FeatureSnapshotCurrent[]
   };
+}
+
+function serializeSketchDimensionForSchema(
+  dimension: SketchDimensionSnapshotCurrent,
+  useV22: boolean
+): SketchDimensionSnapshotCurrent {
+  if (useV22) {
+    return normalizeSketchDimensionSnapshotV22(dimension);
+  }
+  if (!isSketchDimensionSnapshotV22(dimension)) {
+    return cloneSketchDimensionSnapshot(dimension);
+  }
+  const lowered = downconvertSketchDimensionSnapshotV22(dimension);
+  if (!lowered) {
+    throw new Error(
+      "V22-only sketch dimensions cannot be exported to a lower schema."
+    );
+  }
+  return lowered;
 }
 
 function serializeSketchEntityForSchema(
@@ -3464,14 +3707,32 @@ function serializeSketchConstraintForSchema(
   return cloneSketchConstraintSnapshot(constraint);
 }
 
-function serializeFeatureForV21(feature: FeatureSnapshot): FeatureSnapshot {
+function serializeFeatureForV22(
+  feature: FeatureSnapshotCurrent
+): FeatureSnapshotCurrent {
+  if (feature.kind !== "extrude" && feature.kind !== "revolve") {
+    return cloneJsonSource(feature);
+  }
+  const stored = feature as unknown as Record<string, unknown>;
+  if (!isSketchRegionsProfileRef(stored.profile)) {
+    return cloneJsonSource(feature);
+  }
+  return {
+    ...cloneJsonSource(stored),
+    profile: normalizeSketchRegionsProfileRef(stored.profile)
+  } as unknown as FeatureSnapshotV22;
+}
+
+function serializeFeatureForV21(
+  feature: FeatureSnapshotCurrent
+): FeatureSnapshotCurrent {
   return cloneJsonSource(feature);
 }
 
 function serializeFeatureForLegacySchema(
-  feature: FeatureSnapshot,
+  feature: FeatureSnapshotCurrent,
   entityKindById: ReadonlyMap<string, SketchEntityKind>
-): FeatureSnapshot {
+): FeatureSnapshotCurrent {
   const stored = feature as unknown as Record<string, unknown>;
   if (feature.kind === "extrude" || feature.kind === "revolve") {
     if (!isRecord(stored.profile)) {
@@ -3540,15 +3801,23 @@ export function createCadProjectSourceIdentity(
       createWcadPackageIssue(
         "WCAD_UNSUPPORTED_DOCUMENT_SCHEMA",
         "error",
-        "WCAD source identity only supports V16 through V21 project schemas.",
+        "WCAD source identity only supports V16 through V22 project schemas.",
         "$.schemaVersion",
-        `${CAD_PROJECT_FORMAT_VERSION_V16}, ${CAD_PROJECT_FORMAT_VERSION_V17}, ${CAD_PROJECT_FORMAT_VERSION_V18}, ${CAD_PROJECT_FORMAT_VERSION_V19}, ${CAD_PROJECT_FORMAT_VERSION_V20}, or ${CAD_PROJECT_FORMAT_VERSION_V21}`,
+        `${CAD_PROJECT_FORMAT_VERSION_V16}, ${CAD_PROJECT_FORMAT_VERSION_V17}, ${CAD_PROJECT_FORMAT_VERSION_V18}, ${CAD_PROJECT_FORMAT_VERSION_V19}, ${CAD_PROJECT_FORMAT_VERSION_V20}, ${CAD_PROJECT_FORMAT_VERSION_V21}, or ${CAD_PROJECT_FORMAT_VERSION_V22}`,
         project.schemaVersion
       )
     ]);
   }
 
   return createWcadSourceIdentitySync({
+    packageVersion:
+      project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18 ||
+      project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19 ||
+      project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V20 ||
+      project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V21 ||
+      project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V22
+        ? CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION
+        : WCAD_PACKAGE_VERSION,
     documentSchemaVersion: project.schemaVersion,
     units: project.document.units,
     documentBytes: encodeCanonicalCbor(project.document),
@@ -3605,6 +3874,7 @@ export async function exportCadProjectToWcad(
     project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19 ||
     project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V20 ||
     project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V21 ||
+    project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V22 ||
     (options.topologyCheckpoints?.length ?? 0) > 0
   ) {
     return exportCadProjectToWcadV2(project, options);
@@ -3694,15 +3964,16 @@ async function exportCadProjectToWcadV2(
     project.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V18 &&
     project.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V19 &&
     project.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V20 &&
-    project.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V21
+    project.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V21 &&
+    project.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V22
   ) {
     throw new WcadPackageImportError([
       createWcadPackageIssue(
         "WCAD_UNSUPPORTED_DOCUMENT_SCHEMA",
         "error",
-        "WCAD v2 writer requires web-cad.project.v18, v19, v20, or v21 source.",
+        "WCAD v2 writer requires web-cad.project.v18, v19, v20, v21, or v22 source.",
         "$.schemaVersion",
-        `${CAD_PROJECT_FORMAT_VERSION_V18}, ${CAD_PROJECT_FORMAT_VERSION_V19}, ${CAD_PROJECT_FORMAT_VERSION_V20}, or ${CAD_PROJECT_FORMAT_VERSION_V21}`,
+        `${CAD_PROJECT_FORMAT_VERSION_V18}, ${CAD_PROJECT_FORMAT_VERSION_V19}, ${CAD_PROJECT_FORMAT_VERSION_V20}, ${CAD_PROJECT_FORMAT_VERSION_V21}, or ${CAD_PROJECT_FORMAT_VERSION_V22}`,
         project.schemaVersion
       )
     ]);
@@ -3853,31 +4124,43 @@ async function exportCadProjectToWcadV2(
     documentBytes,
     commandsBytes,
     checkpointPayloads,
-    ...(project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V21
+    ...(project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V22
       ? {
           diagnostics: [
             {
-              code: "SCHEMA_UPGRADED_TO_V21" as const,
+              code: "SCHEMA_UPGRADED_TO_V22" as const,
               severity: "info" as const,
               message:
-                "Arc, construction, profile, and path source records require the normalized V21 source shape.",
-              schemaVersion: CAD_PROJECT_FORMAT_VERSION_V21
+                "Region, normalized dimension, or retained V19 transaction source requires the V22 source shape.",
+              schemaVersion: CAD_PROJECT_FORMAT_VERSION_V22
             }
           ]
         }
-      : project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V20
+      : project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V21
         ? {
             diagnostics: [
               {
-                code: "SCHEMA_UPGRADED_TO_V20" as const,
+                code: "SCHEMA_UPGRADED_TO_V21" as const,
                 severity: "info" as const,
                 message:
-                  "Pattern and mirror source records were saved in the durable V20 union-and-instance shape.",
-                schemaVersion: CAD_PROJECT_FORMAT_VERSION_V20
+                  "Arc, construction, profile, and path source records require the normalized V21 source shape.",
+                schemaVersion: CAD_PROJECT_FORMAT_VERSION_V21
               }
             ]
           }
-        : {})
+        : project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V20
+          ? {
+              diagnostics: [
+                {
+                  code: "SCHEMA_UPGRADED_TO_V20" as const,
+                  severity: "info" as const,
+                  message:
+                    "Pattern and mirror source records were saved in the durable V20 union-and-instance shape.",
+                  schemaVersion: CAD_PROJECT_FORMAT_VERSION_V20
+                }
+              ]
+            }
+          : {})
   };
 }
 
@@ -5263,12 +5546,14 @@ function isSupportedWcadV2DocumentSchema(
   | typeof CAD_PROJECT_FORMAT_VERSION_V18
   | typeof CAD_PROJECT_FORMAT_VERSION_V19
   | typeof CAD_PROJECT_FORMAT_VERSION_V20
-  | typeof CAD_PROJECT_FORMAT_VERSION_V21 {
+  | typeof CAD_PROJECT_FORMAT_VERSION_V21
+  | typeof CAD_PROJECT_FORMAT_VERSION_V22 {
   return (
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V20 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V21
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V21 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V22
   );
 }
 
@@ -5371,7 +5656,7 @@ type MutableFeatureSemanticDiff = {
   bodiesDeleted: CadBodyRef[];
   referenceEffects: CadFeatureReferenceChangeSummary[];
   lifecycleEffects: CadBodyLifecycleEffectSummary[];
-  inputReferences: FeatureInputReferenceSemanticDiff[];
+  inputReferences: FeatureInputReferenceSemanticDiffCurrent[];
 };
 
 type MutableReferenceSemanticDiff = {
@@ -5390,9 +5675,9 @@ type MutableParameterSemanticDiff = {
 };
 
 type MutableSketchDimensionSemanticDiff = {
-  created: CadSketchDimensionRef[];
-  modified: CadSketchDimensionRef[];
-  deleted: CadSketchDimensionRef[];
+  created: CadSketchDimensionRefCurrent[];
+  modified: CadSketchDimensionRefCurrent[];
+  deleted: CadSketchDimensionRefCurrent[];
 };
 
 type MutableSketchConstraintSemanticDiff = {
@@ -6112,6 +6397,31 @@ function applyOperation(
         op.entityId,
         opIndex
       );
+      const relationalDimension = [...state.sketchDimensions.values()].find(
+        (dimension) => {
+          const normalized = normalizeSketchDimensionSnapshotV22(dimension);
+          return (
+            normalized.sketchId === op.sketchId &&
+            sketchDimensionRequiresV22(normalized) &&
+            getSketchDimensionTargetEntityIdsV22(normalized.target).includes(
+              op.entityId
+            )
+          );
+        }
+      );
+      if (relationalDimension) {
+        throwValidationError({
+          code: "INVALID_SKETCH_DIMENSION",
+          message: `Sketch entity cannot be deleted because it is referenced by dimension ${relationalDimension.id}.`,
+          opIndex,
+          sketchId: op.sketchId,
+          sketchEntityId: op.entityId,
+          sketchDimensionId: relationalDimension.id,
+          path: operationPath(opIndex, "entityId"),
+          expected: "entity not referenced by a V22-only dimension",
+          received: op.entityId
+        });
+      }
       const entities = new Map(sketch.entities);
       entities.delete(op.entityId);
       state.sketches.set(sketch.id, { ...sketch, entities });
@@ -6122,9 +6432,11 @@ function applyOperation(
       );
 
       for (const dimension of state.sketchDimensions.values()) {
+        const normalized = normalizeSketchDimensionSnapshotV22(dimension);
         if (
-          dimension.sketchId !== op.sketchId ||
-          dimension.entityId !== op.entityId
+          normalized.sketchId !== op.sketchId ||
+          normalized.target.kind !== "entityScalar" ||
+          normalized.target.entityId !== op.entityId
         ) {
           continue;
         }
@@ -6150,14 +6462,27 @@ function applyOperation(
     }
 
     case "sketch.dimension.create": {
+      if (op.entityId === undefined || "kind" in op.target) {
+        throwValidationError({
+          code: "INVALID_SKETCH_DIMENSION",
+          message:
+            "Normalized V22 dimension commands are not implemented in this storage slice.",
+          opIndex,
+          path: operationPath(opIndex)
+        });
+      }
       const target = validateSketchDimensionTarget(state, op, opIndex);
       const valueSource = createSketchDimensionValueSource(op, opIndex);
       const dimension: SketchDimension = {
         id: op.id ?? createSketchDimensionId(),
         name: normalizeSketchDimensionName(op.name, opIndex, op.id),
         sketchId: op.sketchId,
-        entityId: op.entityId,
-        target,
+        target: {
+          kind: "entityScalar",
+          entityId: op.entityId,
+          entityKind: target.entityKind,
+          role: target.role
+        } as SketchDimensionTargetV22,
         valueSource
       };
 
@@ -6213,10 +6538,11 @@ function applyOperation(
     }
 
     case "sketch.constraint.create": {
+      const storedOp = normalizeV22ConstraintCreateOpForStorage(op);
       const constraint = createSketchConstraintFromOp(
         state,
-        op,
-        op.id ?? createSketchConstraintId(),
+        storedOp,
+        storedOp.id ?? createSketchConstraintId(),
         opIndex
       );
 
@@ -7258,6 +7584,38 @@ function validateBatchEnvelope(batch: CadBatch): void {
     });
     return;
   }
+}
+
+function normalizeV22ConstraintCreateOpForStorage(
+  op: Extract<CadOp, { readonly op: "sketch.constraint.create" }>
+): Extract<CadOp, { readonly op: "sketch.constraint.create" }> {
+  if (op.kind === "fixed" || op.kind === "midpoint") {
+    return {
+      ...op,
+      target: toStoredConstraintPointTarget(op.target)
+    } as Extract<CadOp, { readonly op: "sketch.constraint.create" }>;
+  }
+  if (op.kind === "coincident" || op.kind === "symmetry") {
+    return {
+      ...op,
+      primaryTarget: toStoredConstraintPointTarget(op.primaryTarget),
+      secondaryTarget: toStoredConstraintPointTarget(op.secondaryTarget)
+    } as Extract<CadOp, { readonly op: "sketch.constraint.create" }>;
+  }
+  return op;
+}
+
+function toStoredConstraintPointTarget<T>(target: T): T {
+  if (
+    !isRecord(target) ||
+    target.entityKind === undefined ||
+    target.entityKind === "arc"
+  ) {
+    return target;
+  }
+  const { entityKind: _entityKind, ...stored } = target;
+  void _entityKind;
+  return stored as T;
 }
 
 function getBatchResponseMode(batch: CadBatch): CadBatch["mode"] {
@@ -9442,12 +9800,21 @@ function assertSketchDimensionTargetAvailable(
   dimension: SketchDimension,
   opIndex: number
 ): void {
-  const conflicting = [...dimensions.values()].find(
-    (existing) =>
+  const conflicting = [...dimensions.values()].find((existing) => {
+    const normalizedExisting = normalizeSketchDimensionSnapshotV22(existing);
+    const normalizedDimension = normalizeSketchDimensionSnapshotV22(dimension);
+    return (
       existing.id !== dimension.id &&
-      getSketchDimensionTargetKey(existing) ===
-        getSketchDimensionTargetKey(dimension)
-  );
+      getSketchDimensionTargetKeyV22(
+        normalizedExisting.sketchId,
+        normalizedExisting.target
+      ) ===
+        getSketchDimensionTargetKeyV22(
+          normalizedDimension.sketchId,
+          normalizedDimension.target
+        )
+    );
+  });
 
   if (!conflicting) {
     return;
@@ -9458,7 +9825,9 @@ function assertSketchDimensionTargetAvailable(
     message: `Sketch dimension target is already driven by ${conflicting.id}.`,
     opIndex,
     sketchId: dimension.sketchId,
-    sketchEntityId: dimension.entityId,
+    sketchEntityId: getSketchDimensionTargetEntityIdsV22(
+      normalizeSketchDimensionSnapshotV22(dimension).target
+    )[0],
     sketchDimensionId: dimension.id,
     path: operationPath(opIndex, "target"),
     expected: "undriven sketch dimension target",
@@ -9556,7 +9925,10 @@ function createSketchDimensionValueSource(
   return {
     type: "literal",
     value:
-      "target" in op && op.target.entityKind === "arc"
+      "target" in op &&
+      op.target !== undefined &&
+      !("kind" in op.target) &&
+      op.target.entityKind === "arc"
         ? validateArcDimensionValue(op.value, op.target.role, opIndex, "value")
         : validatePositiveDimensionValue(op.value, opIndex, "value")
   };
@@ -9619,6 +9991,15 @@ function validateSketchDimensionTarget(
   opIndex: number
 ): SketchDimensionTarget {
   const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+  if (op.entityId === undefined || "kind" in op.target) {
+    throwValidationError({
+      code: "INVALID_SKETCH_DIMENSION",
+      message:
+        "Normalized V22 dimension commands are not implemented in this storage slice.",
+      opIndex,
+      path: operationPath(opIndex)
+    });
+  }
   const entity = sketch.entities.get(op.entityId);
 
   if (!entity) {
@@ -9647,17 +10028,40 @@ function applySketchDimensionToEntity(
   diff: MutableSemanticDiff,
   opIndex: number
 ): void {
+  const normalizedDimension = normalizeSketchDimensionSnapshotV22(dimension);
+  const legacyDimension =
+    downconvertSketchDimensionSnapshotV22(normalizedDimension);
+  if (!legacyDimension) {
+    throwValidationError({
+      code: "INVALID_SKETCH_DIMENSION",
+      message:
+        "This V22 dimension target requires the V19 numerical dimension slice.",
+      opIndex,
+      sketchId: dimension.sketchId,
+      sketchEntityId: getSketchDimensionTargetEntityIdsV22(
+        normalizedDimension.target
+      )[0],
+      sketchDimensionId: dimension.id,
+      path: operationPath(opIndex, "target"),
+      expected: "losslessly legacy-compatible entityScalar target",
+      received: normalizedDimension.target.kind
+    });
+  }
   const value = resolveSketchDimensionValueOrThrow(state, dimension, opIndex);
   const sketch = getSketchOrThrow(state.sketches, dimension.sketchId, opIndex);
-  const existing = sketch.entities.get(dimension.entityId);
+  const existing = sketch.entities.get(legacyDimension.entityId);
 
   if (!existing) {
-    throwSketchEntityNotFound(dimension.sketchId, dimension.entityId, opIndex);
+    throwSketchEntityNotFound(
+      dimension.sketchId,
+      legacyDimension.entityId,
+      opIndex
+    );
   }
 
   const result = applySketchDimensionValue(
     existing,
-    dimension,
+    legacyDimension,
     value,
     createSketchSolverApplyContext(state, sketch)
   );
@@ -9721,11 +10125,21 @@ function assertSketchDimensionTargetsStillValid(
   opIndex: number
 ): void {
   for (const dimension of dimensions.values()) {
-    if (dimension.sketchId !== sketchId || dimension.entityId !== entity.id) {
+    const normalized = normalizeSketchDimensionSnapshotV22(dimension);
+    if (
+      normalized.sketchId !== sketchId ||
+      !getSketchDimensionTargetEntityIdsV22(normalized.target).includes(
+        entity.id
+      )
+    ) {
       continue;
     }
 
-    if (isSupportedSketchDimensionTarget(dimension.target, entity)) {
+    if (
+      normalized.target.kind !== "entityScalar" ||
+      (normalized.target.entityId === entity.id &&
+        normalized.target.entityKind === entity.kind)
+    ) {
       continue;
     }
 
@@ -9753,14 +10167,24 @@ function syncDimensionsForSketchEntityUpdate(
   opIndex: number
 ): void {
   for (const dimension of state.sketchDimensions.values()) {
-    if (dimension.sketchId !== sketchId || dimension.entityId !== after.id) {
+    const legacyDimension = downconvertSketchDimensionSnapshotV22(
+      normalizeSketchDimensionSnapshotV22(dimension)
+    );
+    if (
+      !legacyDimension ||
+      dimension.sketchId !== sketchId ||
+      legacyDimension.entityId !== after.id
+    ) {
       continue;
     }
 
-    const nextValueResult = getSketchDimensionTargetValue(after, dimension);
+    const nextValueResult = getSketchDimensionTargetValue(
+      after,
+      legacyDimension
+    );
     const previousValueResult = getSketchDimensionTargetValue(
       before,
-      dimension
+      legacyDimension
     );
 
     if (!nextValueResult.ok) {
@@ -10317,7 +10741,10 @@ function createMidpointSketchConstraintFromOp(
     entityId: op.lineEntityId,
     kind: "midpoint",
     lineEntityId: op.lineEntityId,
-    target: target as typeof op.target
+    target: {
+      entityId: target.entityId,
+      role: target.role
+    }
   };
 }
 
@@ -11540,7 +11967,10 @@ function applyNumericalSketchConstraint(
   propagation: SketchConstraintPropagationContext
 ): void {
   const sketch = getSketchOrThrow(state.sketches, constraint.sketchId, opIndex);
-  const probe = runSketchSolverPackageProbe(state, sketch);
+  const probe = runSketchSolverPackageProbe(
+    createLegacySketchSolverDocumentProjection(state),
+    sketch
+  );
   const exactFailure = probe.diagnostics.find(
     (diagnostic) =>
       diagnostic.code === "SKETCH_TANGENCY_OUTSIDE_ARC" ||
@@ -11838,13 +12268,21 @@ function applySketchLineEntityEvaluation(
     ...sketch,
     entities: new Map(sketch.entities).set(entity.id, entity)
   };
-  const dimension = [...state.sketchDimensions.values()].find(
-    (candidate) =>
-      candidate.sketchId === sketch.id &&
-      candidate.entityId === entity.id &&
-      candidate.target.entityKind === "line" &&
-      candidate.target.role === "length"
-  );
+  let dimension: SketchDimensionSnapshot | undefined;
+  for (const candidate of state.sketchDimensions.values()) {
+    const legacy = downconvertSketchDimensionSnapshotV22(
+      normalizeSketchDimensionSnapshotV22(candidate)
+    );
+    if (
+      legacy?.sketchId === sketch.id &&
+      legacy.entityId === entity.id &&
+      legacy.target.entityKind === "line" &&
+      legacy.target.role === "length"
+    ) {
+      dimension = legacy;
+      break;
+    }
+  }
 
   if (dimension) {
     const value = resolveSketchDimensionValueOrThrow(state, dimension, opIndex);
@@ -20547,15 +20985,31 @@ function parameterRef(parameter: CadParameter): CadParameterRef {
   };
 }
 
-function sketchDimensionRef(dimension: SketchDimension): CadSketchDimensionRef {
+function sketchDimensionRef(
+  dimension: SketchDimension
+): CadSketchDimensionRefCurrent {
+  const normalized = normalizeSketchDimensionSnapshotV22(dimension);
+  const legacy = downconvertSketchDimensionSnapshotV22(normalized);
+  if (legacy) {
+    return {
+      id: legacy.id,
+      name: legacy.name,
+      sketchId: legacy.sketchId,
+      entityId: legacy.entityId,
+      target: { ...legacy.target },
+      ...(legacy.valueSource.type === "parameter"
+        ? { parameterId: legacy.valueSource.parameterId }
+        : {})
+    };
+  }
   return {
-    id: dimension.id,
-    name: dimension.name,
-    sketchId: dimension.sketchId,
-    entityId: dimension.entityId,
-    target: dimension.target,
-    ...(dimension.valueSource.type === "parameter"
-      ? { parameterId: dimension.valueSource.parameterId }
+    sourceShape: "v22",
+    id: normalized.id,
+    name: normalized.name,
+    sketchId: normalized.sketchId,
+    target: cloneJsonSource(normalized.target),
+    ...(normalized.valueSource.type === "parameter"
+      ? { parameterId: normalized.valueSource.parameterId }
       : {})
   };
 }
@@ -20830,7 +21284,7 @@ function pushFeatureLifecycleEffects(
 
 function pushFeatureInputReference(
   diff: MutableSemanticDiff,
-  inputReference: FeatureInputReferenceSemanticDiff
+  inputReference: FeatureInputReferenceSemanticDiffCurrent
 ): void {
   ensureFeatureDiff(diff).inputReferences.push(inputReference);
 }
@@ -20990,21 +21444,21 @@ function ensureParameterDiff(
 
 function pushSketchDimensionCreated(
   diff: MutableSemanticDiff,
-  ref: CadSketchDimensionRef
+  ref: CadSketchDimensionRefCurrent
 ): void {
   ensureSketchDimensionDiff(diff).created.push(ref);
 }
 
 function pushSketchDimensionModified(
   diff: MutableSemanticDiff,
-  ref: CadSketchDimensionRef
+  ref: CadSketchDimensionRefCurrent
 ): void {
   ensureSketchDimensionDiff(diff).modified.push(ref);
 }
 
 function pushSketchDimensionDeleted(
   diff: MutableSemanticDiff,
-  ref: CadSketchDimensionRef
+  ref: CadSketchDimensionRefCurrent
 ): void {
   ensureSketchDimensionDiff(diff).deleted.push(ref);
 }
@@ -21114,15 +21568,19 @@ function scaleDocumentLengthValues(
   }
 
   for (const dimension of state.sketchDimensions.values()) {
-    if (dimension.valueSource.type !== "literal") {
+    const normalized = normalizeSketchDimensionSnapshotV22(dimension);
+    if (
+      normalized.valueSource.type !== "literal" ||
+      isAngularSketchDimensionTarget(normalized.target)
+    ) {
       continue;
     }
 
     const scaled: SketchDimension = {
-      ...dimension,
+      ...normalized,
       valueSource: {
         type: "literal",
-        value: scaleLength(dimension.valueSource.value, scaleFactor)
+        value: scaleLength(normalized.valueSource.value, scaleFactor)
       }
     };
     state.sketchDimensions.set(dimension.id, scaled);
@@ -21150,6 +21608,17 @@ function scaleDocumentLengthValues(
       pushBodyModified(diff, bodyRef(scaled));
     }
   }
+}
+
+function isAngularSketchDimensionTarget(
+  target: SketchDimensionTargetV22
+): boolean {
+  return (
+    target.kind === "lineAngle" ||
+    (target.kind === "entityScalar" &&
+      target.entityKind === "arc" &&
+      target.role === "sweep")
+  );
 }
 
 function scaleSceneObjectLengthValues(
@@ -21344,7 +21813,10 @@ export function createCadDocumentFromSnapshot(
     ),
     snapshot.sketchDimensions.map(
       (dimension) =>
-        [dimension.id, cloneSketchDimensionSnapshot(dimension)] as const
+        [
+          dimension.id,
+          cloneSketchDimensionSnapshot(dimension) as unknown as SketchDimension
+        ] as const
     ),
     snapshot.sketchConstraints.map(
       (constraint) =>
@@ -21457,7 +21929,16 @@ function cloneParameterSnapshot(parameter: CadParameterSnapshot): CadParameter {
 
 function cloneSketchDimensionSnapshot(
   dimension: SketchDimensionSnapshot
-): SketchDimension {
+): SketchDimensionSnapshot;
+function cloneSketchDimensionSnapshot(
+  dimension: SketchDimensionSnapshotCurrent
+): SketchDimensionSnapshotCurrent;
+function cloneSketchDimensionSnapshot(
+  dimension: SketchDimensionSnapshotCurrent
+): SketchDimensionSnapshotCurrent {
+  if (isSketchDimensionSnapshotV22(dimension)) {
+    return normalizeSketchDimensionSnapshotV22(dimension);
+  }
   return {
     id: dimension.id,
     name: dimension.name,
@@ -21642,7 +22123,7 @@ function createFeatureSnapshot(feature: Feature): FeatureSnapshot {
   return cloneJsonSource(feature) as unknown as FeatureSnapshot;
 }
 
-function createFeatureFromSnapshot(snapshot: FeatureSnapshot): Feature {
+function createFeatureFromSnapshot(snapshot: FeatureSnapshotCurrent): Feature {
   if (
     snapshot.kind === "extrude" ||
     snapshot.kind === "revolve" ||
@@ -23858,7 +24339,7 @@ function runOperations(
 
   return {
     document: resultDocument,
-    diff,
+    diff: diff as unknown as SemanticDiff,
     nextObjectNumber: Math.max(
       nextObjectNumber,
       inferNextObjectNumber(resultDocument)
@@ -24256,7 +24737,7 @@ function uniqueParameterIds(
 }
 
 function uniqueSketchDimensionIds(
-  dimensions: readonly CadSketchDimensionRef[]
+  dimensions: readonly CadSketchDimensionRefCurrent[]
 ): readonly SketchDimensionId[] {
   return [...new Set(dimensions.map((dimension) => dimension.id))];
 }
@@ -24622,9 +25103,11 @@ function createProjectState(project: CadProject): {
   const normalizedProject: CadProject = {
     ...project,
     document:
-      project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V21
-        ? normalizeCadDocumentV21Source(project.document)
-        : project.document
+      project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V22
+        ? normalizeCadDocumentV22Source(project.document)
+        : project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V21
+          ? normalizeCadDocumentV21Source(project.document)
+          : project.document
   };
   const parameterExpressionImport = normalizeImportedParameterExpressions(
     normalizedProject.document
@@ -24803,8 +25286,12 @@ function createTransactionEntries(
 
   for (const transaction of transactions) {
     const before = cloneDocument(document);
+    const replayTransaction: Transaction = {
+      ...transaction,
+      ops: transaction.ops.map(normalizeCadOpSnapshot)
+    };
     const run = runOperations(
-      materializeGeneratedObjectIds(transaction),
+      materializeGeneratedObjectIds(replayTransaction),
       document,
       nextObjectNumber,
       nextSketchNumber,
@@ -24825,7 +25312,12 @@ function createTransactionEntries(
     nextFeatureNumber = run.nextFeatureNumber;
     nextBodyNumber = run.nextBodyNumber;
 
-    if (!stableJsonEqual(transaction.diff, run.diff)) {
+    if (
+      !stableJsonEqual(
+        canonicalizeSemanticDiffForReplay(transaction.diff),
+        canonicalizeSemanticDiffForReplay(run.diff)
+      )
+    ) {
       throw new Error(
         `Saved transaction diff does not match replayed operations for ${transaction.id}.`
       );
@@ -25262,6 +25754,31 @@ function assertValidCadProject(value: unknown): asserts value is CadProject {
 }
 
 function normalizeCadProject(value: CadProject): CadProject {
+  if (value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V22) {
+    return {
+      ...value,
+      schemaVersion: CAD_PROJECT_FORMAT_VERSION_V22,
+      document: {
+        ...normalizeCadDocumentV22Source(value.document),
+        parameters: value.document.parameters.map(cloneParameterSnapshot),
+        namedReferences: value.document.namedReferences.map(
+          cloneNamedReferenceSnapshot
+        ),
+        ...(value.document.topologyIdentity
+          ? {
+              topologyIdentity: cloneTopologyIdentitySourceSnapshot(
+                value.document.topologyIdentity
+              )
+            }
+          : {})
+      },
+      // V22 history and redo are authoritative source. Preserve their original
+      // command and semantic-diff shapes rather than migrating them in place.
+      history: value.history.map(cloneJsonSource),
+      redoStack: value.redoStack.map(cloneJsonSource)
+    };
+  }
+
   if (
     value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18 ||
     value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19 ||
@@ -25583,6 +26100,19 @@ function normalizeCadProject(value: CadProject): CadProject {
   };
 }
 
+function normalizeCadDocumentV22Source(
+  document: CadDocumentSnapshot
+): CadDocumentSnapshot {
+  const v21 = normalizeCadDocumentV21Source(document);
+  return {
+    ...v21,
+    sketchDimensions: document.sketchDimensions.map((dimension) =>
+      normalizeSketchDimensionSnapshotV22(dimension)
+    ),
+    features: document.features.map(cloneJsonSource)
+  };
+}
+
 function normalizeCadDocumentV21Source(
   document: CadDocumentSnapshot
 ): CadDocumentSnapshot {
@@ -25627,7 +26157,13 @@ function normalizeSketchConstraintV21Source(
   } as unknown as SketchConstraintSnapshot;
 }
 
-function normalizeFeatureSnapshot(feature: FeatureSnapshot): FeatureSnapshot {
+function normalizeFeatureSnapshot(feature: FeatureSnapshot): FeatureSnapshot;
+function normalizeFeatureSnapshot(
+  feature: FeatureSnapshotCurrent
+): FeatureSnapshotCurrent;
+function normalizeFeatureSnapshot(
+  feature: FeatureSnapshotCurrent
+): FeatureSnapshotCurrent {
   if (feature.kind === "sweep" || feature.kind === "loft") {
     return cloneJsonSource(feature);
   }
@@ -25635,7 +26171,7 @@ function normalizeFeatureSnapshot(feature: FeatureSnapshot): FeatureSnapshot {
     return {
       ...feature,
       operationMode: feature.operationMode ?? "newBody"
-    };
+    } as FeatureSnapshotCurrent;
   }
 
   if (feature.kind === "hole") {
@@ -25722,11 +26258,7 @@ function normalizeFeatureSnapshot(feature: FeatureSnapshot): FeatureSnapshot {
 }
 
 function normalizeTransactionSnapshot(transaction: Transaction): Transaction {
-  return {
-    ...transaction,
-    ops: transaction.ops.map(normalizeCadOpSnapshot),
-    diff: normalizeSemanticDiffSnapshot(transaction.diff)
-  };
+  return cloneJsonSource(transaction);
 }
 
 function normalizeCadOpSnapshot(op: CadOp): CadOp {
@@ -25768,31 +26300,150 @@ function normalizeCadOpSnapshot(op: CadOp): CadOp {
   return op;
 }
 
-function normalizeSemanticDiffSnapshot(diff: SemanticDiff): SemanticDiff {
-  if (!diff.features) {
-    return diff;
-  }
+export function canonicalizeSemanticDiffForReplay(
+  diff: SemanticDiff
+): SemanticDiff {
+  const cloned = cloneJsonSource(diff);
+  const canonicalizeDimensionRefs = (
+    refs: readonly CadSketchDimensionRefCurrent[] | undefined
+  ): readonly CadSketchDimensionRefCurrent[] | undefined =>
+    refs?.map(canonicalizeSketchDimensionRefForReplay);
 
   return {
-    ...diff,
-    features: {
-      ...diff.features,
-      ...(diff.features.created
-        ? {
-            created: diff.features.created.map(normalizeFeatureRefSnapshot)
+    ...cloned,
+    ...(cloned.features
+      ? {
+          features: {
+            ...cloned.features,
+            ...(cloned.features.created
+              ? {
+                  created: cloned.features.created.map(
+                    normalizeFeatureRefSnapshot
+                  )
+                }
+              : {}),
+            ...(cloned.features.modified
+              ? {
+                  modified: cloned.features.modified.map(
+                    normalizeFeatureRefSnapshot
+                  )
+                }
+              : {}),
+            ...(cloned.features.deleted
+              ? {
+                  deleted: cloned.features.deleted.map(
+                    normalizeFeatureRefSnapshot
+                  )
+                }
+              : {}),
+            ...(cloned.features.inputReferences
+              ? {
+                  inputReferences: cloned.features.inputReferences.map(
+                    canonicalizeFeatureInputReferenceForReplay
+                  )
+                }
+              : {})
           }
-        : {}),
-      ...(diff.features.modified
-        ? {
-            modified: diff.features.modified.map(normalizeFeatureRefSnapshot)
+        }
+      : {}),
+    ...(cloned.sketchDimensions
+      ? {
+          sketchDimensions: {
+            ...cloned.sketchDimensions,
+            ...(cloned.sketchDimensions.created
+              ? {
+                  created: canonicalizeDimensionRefs(
+                    cloned.sketchDimensions.created
+                  )
+                }
+              : {}),
+            ...(cloned.sketchDimensions.modified
+              ? {
+                  modified: canonicalizeDimensionRefs(
+                    cloned.sketchDimensions.modified
+                  )
+                }
+              : {}),
+            ...(cloned.sketchDimensions.deleted
+              ? {
+                  deleted: canonicalizeDimensionRefs(
+                    cloned.sketchDimensions.deleted
+                  )
+                }
+              : {})
           }
-        : {}),
-      ...(diff.features.deleted
-        ? {
-            deleted: diff.features.deleted.map(normalizeFeatureRefSnapshot)
+        }
+      : {})
+  };
+}
+
+function canonicalizeFeatureInputReferenceForReplay(
+  reference: FeatureInputReferenceSemanticDiffCurrent
+): FeatureInputReferenceSemanticDiffCurrent {
+  const stored = cloneJsonSource(reference) as unknown as Record<
+    string,
+    unknown
+  >;
+  if (
+    !Object.prototype.hasOwnProperty.call(
+      stored,
+      "profileOrientationNormalized"
+    )
+  ) {
+    return stored as unknown as FeatureInputReferenceSemanticDiffCurrent;
+  }
+  const normalized = stored.profileOrientationNormalized === true;
+  delete stored.profileOrientationNormalized;
+  if (
+    normalized &&
+    stored.inputKind === "profile" &&
+    isRecord(stored.after) &&
+    stored.after.kind === "wire" &&
+    Array.isArray(stored.after.segments)
+  ) {
+    stored.normalization = {
+      outerOrientationsChanged: [
+        getSketchLoopCanonicalKey(
+          stored.after as unknown as {
+            readonly kind: "wire";
+            readonly segments: readonly {
+              readonly entityId: string;
+              readonly orientation: "forward" | "reverse";
+            }[];
           }
-        : {})
-    }
+        )
+      ],
+      holeOrientationsChanged: [],
+      cyclicStartsChanged: [],
+      holeOrderChanged: false,
+      regionOrderChanged: false
+    };
+  }
+  return stored as unknown as FeatureInputReferenceSemanticDiffCurrent;
+}
+
+function canonicalizeSketchDimensionRefForReplay(
+  ref: CadSketchDimensionRefCurrent
+): CadSketchDimensionRefCurrent {
+  const stored = ref as unknown as Record<string, unknown>;
+  if (stored.sourceShape === "v22") {
+    return cloneJsonSource(ref);
+  }
+  const legacy = ref as CadSketchDimensionRef;
+  return {
+    sourceShape: "v22",
+    id: legacy.id,
+    name: legacy.name,
+    sketchId: legacy.sketchId,
+    target: {
+      kind: "entityScalar",
+      entityId: legacy.entityId,
+      entityKind: legacy.target.entityKind,
+      role: legacy.target.role
+    } as SketchDimensionTargetV22,
+    ...(legacy.parameterId !== undefined
+      ? { parameterId: legacy.parameterId }
+      : {})
   };
 }
 
@@ -25955,14 +26606,16 @@ function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
     "$.history",
     issues,
     "committed",
-    seenTransactionIds
+    seenTransactionIds,
+    value.schemaVersion
   );
   validateTransactionArray(
     value.redoStack,
     "$.redoStack",
     issues,
     "undone",
-    seenTransactionIds
+    seenTransactionIds,
+    value.schemaVersion
   );
 
   return issues;
@@ -26057,8 +26710,10 @@ function validateCadDocumentSnapshot(
 
   const isV17Schema = schemaVersion === CAD_PROJECT_FORMAT_VERSION_V17;
   const isV18Schema = schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18;
-  const isV21Schema = schemaVersion === CAD_PROJECT_FORMAT_VERSION_V21;
-  // V20 and V21 are strict source-shape extensions of V19 and inherit its gates.
+  const isV22Schema = schemaVersion === CAD_PROJECT_FORMAT_VERSION_V22;
+  const isV21Schema =
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V21 || isV22Schema;
+  // V20 through V22 are strict source-shape extensions of V19 and inherit its gates.
   const isV20Schema = schemaVersion === CAD_PROJECT_FORMAT_VERSION_V20;
   const isV20OrLaterSchema = isV20Schema || isV21Schema;
   const isV19Schema =
@@ -26456,7 +27111,8 @@ function validateCadDocumentSnapshot(
             sketchEntityRefs,
             seenParameterIds,
             parameterValues,
-            isV21Schema
+            isV21Schema,
+            isV22Schema
           )
         );
       }
@@ -26562,7 +27218,8 @@ function validateCadDocumentSnapshot(
           allowsPatternFeatures,
           allowsImportedBodyFeatures,
           isV20OrLaterSchema,
-          isV21Schema
+          isV21Schema,
+          isV22Schema
         );
         maxGeneratedFeatureNumber = Math.max(
           maxGeneratedFeatureNumber,
@@ -27027,7 +27684,8 @@ function validateSketchDimensionSnapshot(
   sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>,
   seenParameterIds: ReadonlySet<string>,
   parameterValues: ReadonlyMap<ParameterId, number>,
-  isV21Schema: boolean
+  isV21Schema: boolean,
+  isV22Schema: boolean
 ): number {
   let maxGeneratedSketchDimensionNumber = 0;
   let entityRef: SketchEntityImportRef | undefined;
@@ -27041,6 +27699,16 @@ function validateSketchDimensionSnapshot(
       "Sketch dimension must be an object."
     );
     return maxGeneratedSketchDimensionNumber;
+  }
+
+  if (isV22Schema) {
+    validateV21ExactObjectKeys(
+      value,
+      ["id", "name", "sketchId", "target", "valueSource"],
+      path,
+      issues,
+      "V22 sketch dimension"
+    );
   }
 
   if (typeof value.id !== "string" || value.id.length === 0) {
@@ -27085,6 +27753,19 @@ function validateSketchDimensionSnapshot(
       `${path}.sketchId`,
       "Sketch dimension sketchId must reference an existing sketch."
     );
+  }
+
+  if (isV22Schema) {
+    validateSketchDimensionV22Source(
+      value,
+      path,
+      issues,
+      seenSketchDimensionTargets,
+      sketchEntityRefs,
+      seenParameterIds,
+      parameterValues
+    );
+    return maxGeneratedSketchDimensionNumber;
   }
 
   if (typeof value.entityId !== "string" || value.entityId.length === 0) {
@@ -27178,6 +27859,189 @@ function validateSketchDimensionSnapshot(
   }
 
   return maxGeneratedSketchDimensionNumber;
+}
+
+function validateSketchDimensionV22Source(
+  value: Record<string, unknown>,
+  path: string,
+  issues: CadProjectImportIssue[],
+  seenSketchDimensionTargets: Set<string>,
+  sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>,
+  seenParameterIds: ReadonlySet<string>,
+  parameterValues: ReadonlyMap<ParameterId, number>
+): void {
+  if (!isSketchDimensionTargetV22(value.target)) {
+    addProjectIssue(
+      issues,
+      "SCHEMA_V22_SOURCE_INVALID",
+      `${path}.target`,
+      "V22 sketch dimensions require one exact normalized target shape."
+    );
+    validateSketchDimensionValueSourceSnapshot(
+      value.valueSource,
+      `${path}.valueSource`,
+      seenParameterIds,
+      parameterValues,
+      issues
+    );
+    return;
+  }
+
+  const sketchId =
+    typeof value.sketchId === "string" ? value.sketchId : undefined;
+  const target = value.target;
+  const expectedKindById = new Map<SketchEntityId, SketchEntityKindV21>();
+  const addPointTarget = (point: {
+    readonly entityId: SketchEntityId;
+    readonly entityKind: SketchEntityKindV21;
+  }): void => {
+    expectedKindById.set(point.entityId, point.entityKind);
+  };
+  switch (target.kind) {
+    case "entityScalar":
+      expectedKindById.set(target.entityId, target.entityKind);
+      break;
+    case "pointPair":
+      addPointTarget(target.primary);
+      addPointTarget(target.secondary);
+      break;
+    case "pointLineDistance":
+      addPointTarget(target.point);
+      expectedKindById.set(target.lineEntityId, "line");
+      break;
+    case "lineAngle":
+      expectedKindById.set(target.primaryLineEntityId, "line");
+      expectedKindById.set(target.secondaryLineEntityId, "line");
+      break;
+  }
+
+  for (const entityId of getSketchDimensionTargetEntityIdsV22(target)) {
+    const entityRef = sketchEntityRefs.get(entityId);
+    if (!entityRef) {
+      addProjectIssue(
+        issues,
+        "SCHEMA_V22_SOURCE_INVALID",
+        `${path}.target`,
+        `V22 sketch dimension target references missing entity ${entityId}.`
+      );
+      continue;
+    }
+    if (sketchId !== undefined && entityRef.sketchId !== sketchId) {
+      addProjectIssue(
+        issues,
+        "SCHEMA_V22_SOURCE_INVALID",
+        `${path}.target`,
+        `V22 sketch dimension target ${entityId} belongs to another sketch.`
+      );
+    }
+    const expectedKind = expectedKindById.get(entityId);
+    if (expectedKind !== undefined && entityRef.kind !== expectedKind) {
+      addProjectIssue(
+        issues,
+        "SCHEMA_V22_SOURCE_INVALID",
+        `${path}.target`,
+        `V22 sketch dimension target ${entityId} declares ${expectedKind} but resolves to ${entityRef.kind}.`
+      );
+    }
+  }
+
+  if (sketchId !== undefined) {
+    const targetKey = getSketchDimensionTargetKeyV22(sketchId, target);
+    if (seenSketchDimensionTargets.has(targetKey)) {
+      addProjectIssue(
+        issues,
+        "SCHEMA_V22_SOURCE_INVALID",
+        `${path}.target`,
+        "V22 sketch dimension target is already driven by another dimension."
+      );
+    } else {
+      seenSketchDimensionTargets.add(targetKey);
+    }
+  }
+
+  const effectiveValue = validateSketchDimensionValueSourceSnapshot(
+    value.valueSource,
+    `${path}.valueSource`,
+    seenParameterIds,
+    parameterValues,
+    issues
+  );
+  if (
+    target.kind === "lineAngle" &&
+    isRecord(value.valueSource) &&
+    value.valueSource.type === "parameter"
+  ) {
+    addProjectIssue(
+      issues,
+      "SCHEMA_V22_SOURCE_INVALID",
+      `${path}.valueSource`,
+      "V22 line-angle dimensions require a literal value source."
+    );
+  }
+  if (
+    effectiveValue !== undefined &&
+    !isValidV22DimensionEffectiveValue(target, effectiveValue)
+  ) {
+    addProjectIssue(
+      issues,
+      "SCHEMA_V22_SOURCE_INVALID",
+      `${path}.valueSource`,
+      "V22 dimension effective value is outside the target family's required domain."
+    );
+  }
+  if (effectiveValue === undefined || target.kind !== "entityScalar") {
+    return;
+  }
+
+  const entityRef = sketchEntityRefs.get(target.entityId);
+  if (!entityRef) return;
+  const legacyTarget = {
+    entityKind: target.entityKind,
+    role: target.role === "diameter" ? "radius" : target.role
+  } as SketchDimensionTarget;
+  const storedValue = getImportedSketchDimensionTargetValue(
+    entityRef.entity,
+    legacyTarget
+  );
+  const expectedValue =
+    storedValue !== undefined && target.role === "diameter"
+      ? storedValue * 2
+      : storedValue;
+  if (
+    expectedValue !== undefined &&
+    cleanMeasurementNumber(expectedValue) !==
+      cleanMeasurementNumber(effectiveValue)
+  ) {
+    addProjectIssue(
+      issues,
+      "SCHEMA_V22_SOURCE_INVALID",
+      `${path}.valueSource`,
+      "V22 sketch dimension effective value must match the saved target entity value."
+    );
+  }
+}
+
+function isValidV22DimensionEffectiveValue(
+  target: SketchDimensionTargetV22,
+  value: number
+): boolean {
+  if (!Number.isFinite(value)) return false;
+  const linearTolerance = SKETCH_GEOMETRY_POLICY.linearTolerance;
+  const angularTolerance = SKETCH_GEOMETRY_POLICY.angularToleranceDegrees;
+  if (target.kind === "entityScalar") {
+    if (target.role === "diameter") return value > 2 * linearTolerance;
+    if (target.role === "sweep") {
+      const magnitude = Math.abs(value);
+      return (
+        magnitude >= angularTolerance && magnitude <= 360 - angularTolerance
+      );
+    }
+    return value > linearTolerance;
+  }
+  if (target.kind === "lineAngle") {
+    return value > angularTolerance && value < 180 - angularTolerance;
+  }
+  return value > linearTolerance;
 }
 
 function validateSketchDimensionTargetShape(
@@ -30286,7 +31150,8 @@ function validateFeatureSnapshot(
   allowsPatternFeatures: boolean,
   allowsImportedBodyFeatures: boolean,
   isV20OrLaterSchema: boolean,
-  isV21Schema: boolean
+  isV21Schema: boolean,
+  isV22Schema: boolean
 ): {
   readonly maxGeneratedFeatureNumber: number;
   readonly maxGeneratedBodyNumber: number;
@@ -30351,7 +31216,8 @@ function validateFeatureSnapshot(
       issues,
       seenBodyIds,
       seenSketchIds,
-      sketchEntityRefs
+      sketchEntityRefs,
+      isV22Schema
     );
     if (typeof value.bodyId === "string") {
       maxGeneratedBodyNumber = parseBodyNumber(value.bodyId);
@@ -30765,7 +31631,8 @@ function validateV21ProfileConsumerFeatureSnapshot(
   issues: CadProjectImportIssue[],
   seenBodyIds: Set<string>,
   seenSketchIds: ReadonlySet<string>,
-  sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>
+  sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>,
+  isV22Schema = false
 ): void {
   const allowedKeysByKind: Record<string, readonly string[]> = {
     extrude: [
@@ -30874,7 +31741,8 @@ function validateV21ProfileConsumerFeatureSnapshot(
     issues,
     seenSketchIds,
     sketchEntityRefs,
-    value.kind === "extrude" || value.kind === "revolve"
+    value.kind === "extrude" || value.kind === "revolve",
+    isV22Schema
   );
 
   if (value.kind === "sweep") {
@@ -30939,7 +31807,8 @@ function validateV21ProfileRef(
   issues: CadProjectImportIssue[],
   seenSketchIds: ReadonlySet<string>,
   sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>,
-  allowWire: boolean
+  allowWire: boolean,
+  allowRegions = false
 ): SketchId | undefined {
   if (!isRecord(value)) {
     addProjectIssue(
@@ -30950,12 +31819,18 @@ function validateV21ProfileRef(
     );
     return undefined;
   }
-  if (value.kind !== "entity" && value.kind !== "wire") {
+  if (
+    value.kind !== "entity" &&
+    value.kind !== "wire" &&
+    !(allowRegions && value.kind === "regions")
+  ) {
     addProjectIssue(
       issues,
       "SCHEMA_V21_SOURCE_INVALID",
       `${path}.kind`,
-      "V21 profile kind must be entity or wire."
+      allowRegions
+        ? "V22 profile kind must be entity, wire, or regions."
+        : "V21 profile kind must be entity or wire."
     );
     return undefined;
   }
@@ -30968,6 +31843,16 @@ function validateV21ProfileRef(
       `${path}.sketchId`,
       "V21 profile sketchId must reference an existing sketch."
     );
+  }
+  if (value.kind === "regions") {
+    validateV22RegionsProfileRef(
+      value,
+      path,
+      sketchId,
+      issues,
+      sketchEntityRefs
+    );
+    return sketchId;
   }
   if (value.kind === "entity") {
     validateV21ExactObjectKeys(
@@ -31013,6 +31898,65 @@ function validateV21ProfileRef(
     false
   );
   return sketchId;
+}
+
+function validateV22RegionsProfileRef(
+  value: unknown,
+  path: string,
+  sketchId: SketchId | undefined,
+  issues: CadProjectImportIssue[],
+  sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>
+): void {
+  if (!isSketchRegionsProfileRef(value)) {
+    addProjectIssue(
+      issues,
+      "SCHEMA_V22_SOURCE_INVALID",
+      path,
+      "V22 regions profile must use the exact bounded regions source shape."
+    );
+    return;
+  }
+
+  const sketchEntities = new Map<SketchEntityId, SketchEntitySnapshot>();
+  if (sketchId !== undefined) {
+    for (const [entityId, entityRef] of sketchEntityRefs) {
+      if (entityRef.sketchId === sketchId && isSketchEntity(entityRef.entity)) {
+        sketchEntities.set(entityId, entityRef.entity);
+      }
+    }
+  }
+
+  const validation = validateV22RegionSource(value, sketchEntities);
+  if (!validation.ok) {
+    for (const issue of validation.issues) {
+      const issuePath =
+        issue.regionIndex === undefined
+          ? path
+          : `${path}.regions[${issue.regionIndex}]${
+              issue.loopRole === "hole" && issue.holeIndex !== undefined
+                ? `.holes[${issue.holeIndex}]`
+                : issue.loopRole === "outer"
+                  ? ".outer"
+                  : ""
+            }`;
+      addProjectIssue(
+        issues,
+        "SCHEMA_V22_SOURCE_INVALID",
+        issuePath,
+        `${issue.code}: ${issue.message}`
+      );
+    }
+    return;
+  }
+
+  if (!stableJsonEqual(validation.normalizedProfile, value)) {
+    addProjectIssue(
+      issues,
+      "SCHEMA_V22_SOURCE_INVALID",
+      path,
+      "V22 regions profile winding, loop starts, hole order, and region order must be canonical."
+    );
+  }
 }
 
 function validateV21ExactObjectKeys(
@@ -32720,7 +33664,8 @@ function validateTransactionArray(
   path: string,
   issues: CadProjectImportIssue[],
   expectedStatus?: CadTransactionStatus,
-  seenTransactionIds?: Set<TransactionId>
+  seenTransactionIds?: Set<TransactionId>,
+  schemaVersion?: unknown
 ): void {
   if (!Array.isArray(value)) {
     addProjectIssue(
@@ -32738,7 +33683,8 @@ function validateTransactionArray(
       `${path}[${index}]`,
       issues,
       expectedStatus,
-      seenTransactionIds
+      seenTransactionIds,
+      schemaVersion
     );
   }
 }
@@ -32748,7 +33694,8 @@ function validateTransactionShape(
   path: string,
   issues: CadProjectImportIssue[],
   expectedStatus?: CadTransactionStatus,
-  seenTransactionIds?: Set<TransactionId>
+  seenTransactionIds?: Set<TransactionId>,
+  schemaVersion?: unknown
 ): void {
   if (!isRecord(value)) {
     addProjectIssue(
@@ -32794,6 +33741,16 @@ function validateTransactionShape(
           `${path}.ops[${index}]`,
           "Transaction operation must be a valid CADOps command."
         );
+      } else if (
+        schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V22 &&
+        cadOpRequiresV22(op)
+      ) {
+        addProjectIssue(
+          issues,
+          "SCHEMA_V22_SOURCE_INVALID",
+          `${path}.ops[${index}]`,
+          "V19-only transaction operations require web-cad.project.v22."
+        );
       }
     }
   }
@@ -32828,6 +33785,16 @@ function validateTransactionShape(
       "INVALID_TRANSACTION",
       `${path}.diff`,
       "Transaction diff must be a valid semantic diff."
+    );
+  } else if (
+    schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V22 &&
+    semanticDiffRequiresV22(value.diff)
+  ) {
+    addProjectIssue(
+      issues,
+      "SCHEMA_V22_SOURCE_INVALID",
+      `${path}.diff`,
+      "V19-only transaction semantic diffs require web-cad.project.v22."
     );
   }
 }
@@ -33165,6 +34132,10 @@ function isSketchAddEntityOp(op: CadOp): op is Extract<
 function isCadOp(value: unknown): value is CadOp {
   if (!isRecord(value)) {
     return false;
+  }
+
+  if (validateV19CadOp(value).ok) {
+    return true;
   }
 
   if (value.op === "project.importStep") {
@@ -34010,7 +34981,54 @@ function isSketchSemanticDiff(value: unknown): value is SketchSemanticDiff {
         value.entitiesDeleted.every(isCadSketchEntityRef))) &&
     (value.entityChanges === undefined ||
       (Array.isArray(value.entityChanges) &&
-        value.entityChanges.every(isSketchEntitySemanticDiff)))
+        value.entityChanges.every(isSketchEntitySemanticDiff))) &&
+    (value.curveEdits === undefined ||
+      (Array.isArray(value.curveEdits) &&
+        value.curveEdits.every(isSketchCurveEditSemanticDiffShape))) &&
+    (value.convenienceOperations === undefined ||
+      (Array.isArray(value.convenienceOperations) &&
+        value.convenienceOperations.every(
+          isSketchConvenienceSemanticDiffShape
+        )))
+  );
+}
+
+function isSketchCurveEditSemanticDiffShape(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    Number.isInteger(value.opIndex) &&
+    typeof value.sketchId === "string" &&
+    (value.operation === "trim" ||
+      value.operation === "extend" ||
+      value.operation === "split" ||
+      value.operation === "explodeRectangle" ||
+      value.operation === "offset") &&
+    [
+      "replacements",
+      "requiredDeleteConstraintIds",
+      "requiredDeleteDimensionIds",
+      "affectedFeatureIds",
+      "createdEntityIds",
+      "modifiedEntityIds",
+      "deletedEntityIds",
+      "retargetedConstraintIds",
+      "deletedConstraintIds",
+      "retargetedDimensionIds",
+      "deletedDimensionIds"
+    ].every((field) => Array.isArray(value[field]))
+  );
+}
+
+function isSketchConvenienceSemanticDiffShape(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    Number.isInteger(value.opIndex) &&
+    typeof value.sketchId === "string" &&
+    (value.operation === "slot" || value.operation === "roundedRectangle") &&
+    Array.isArray(value.createdEntityIds) &&
+    value.createdEntityIds.every((id) => typeof id === "string") &&
+    Array.isArray(value.createdConstraintIds) &&
+    value.createdConstraintIds.every((id) => typeof id === "string")
   );
 }
 
@@ -34063,9 +35081,7 @@ function isFeatureSemanticDiff(value: unknown): value is FeatureSemanticDiff {
   );
 }
 
-function isFeatureInputReferenceSemanticDiff(
-  value: unknown
-): value is FeatureInputReferenceSemanticDiff {
+function isFeatureInputReferenceSemanticDiff(value: unknown): boolean {
   if (
     !isRecord(value) ||
     typeof value.featureId !== "string" ||
@@ -34075,7 +35091,11 @@ function isFeatureInputReferenceSemanticDiff(
     !Array.isArray(value.affectedEntityIds) ||
     !value.affectedEntityIds.every((id) => typeof id === "string") ||
     (value.profileOrientationNormalized !== undefined &&
-      typeof value.profileOrientationNormalized !== "boolean")
+      typeof value.profileOrientationNormalized !== "boolean") ||
+    (value.normalization !== undefined &&
+      !isFeatureInputNormalizationDiff(value.normalization)) ||
+    (value.profileOrientationNormalized !== undefined &&
+      value.normalization !== undefined)
   ) {
     return false;
   }
@@ -34089,6 +35109,23 @@ function isFeatureInputReferenceSemanticDiff(
   return (
     isReference(value.after) &&
     (value.before === undefined || isReference(value.before))
+  );
+}
+
+function isFeatureInputNormalizationDiff(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    Object.keys(value).length === 5 &&
+    Array.isArray(value.outerOrientationsChanged) &&
+    value.outerOrientationsChanged.every(
+      (entry) => typeof entry === "string"
+    ) &&
+    Array.isArray(value.holeOrientationsChanged) &&
+    value.holeOrientationsChanged.every((entry) => typeof entry === "string") &&
+    Array.isArray(value.cyclicStartsChanged) &&
+    value.cyclicStartsChanged.every((entry) => typeof entry === "string") &&
+    typeof value.holeOrderChanged === "boolean" &&
+    typeof value.regionOrderChanged === "boolean"
   );
 }
 
@@ -34252,13 +35289,13 @@ function isSketchDimensionSemanticDiff(
     isRecord(value) &&
     (value.created === undefined ||
       (Array.isArray(value.created) &&
-        value.created.every(isCadSketchDimensionRef))) &&
+        value.created.every(isCadSketchDimensionRefCurrent))) &&
     (value.modified === undefined ||
       (Array.isArray(value.modified) &&
-        value.modified.every(isCadSketchDimensionRef))) &&
+        value.modified.every(isCadSketchDimensionRefCurrent))) &&
     (value.deleted === undefined ||
       (Array.isArray(value.deleted) &&
-        value.deleted.every(isCadSketchDimensionRef)))
+        value.deleted.every(isCadSketchDimensionRefCurrent)))
   );
 }
 
@@ -34591,6 +35628,24 @@ function isCadSketchDimensionRef(
     typeof value.sketchId === "string" &&
     typeof value.entityId === "string" &&
     isSketchDimensionTarget(value.target) &&
+    (value.parameterId === undefined || typeof value.parameterId === "string")
+  );
+}
+
+function isCadSketchDimensionRefCurrent(
+  value: unknown
+): value is CadSketchDimensionRefCurrent {
+  if (isCadSketchDimensionRef(value)) {
+    return true;
+  }
+  return (
+    isRecord(value) &&
+    value.sourceShape === "v22" &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.sketchId === "string" &&
+    value.entityId === undefined &&
+    isSketchDimensionTargetV22(value.target) &&
     (value.parameterId === undefined || typeof value.parameterId === "string")
   );
 }

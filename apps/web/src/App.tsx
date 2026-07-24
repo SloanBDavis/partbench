@@ -1014,7 +1014,10 @@ function readSketchDimensionsBySketchId(
     dimensionsBySketchId.set(
       sketch.id,
       response.ok && response.query === "sketch.dimensions"
-        ? response.dimensions
+        ? response.dimensions.filter(
+            (dimension): dimension is SketchDimensionEntry =>
+              !("sourceShape" in dimension)
+          )
         : []
     );
   }

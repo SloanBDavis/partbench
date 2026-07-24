@@ -145,6 +145,30 @@ flowchart TD
   all non-worker UI JavaScript 550 KiB gzip; command worker 256 KiB gzip;
   geometry worker 120 KiB gzip; OCCT WASM 13,808,536 gzip bytes.
 
+## Progress ledger
+
+### 2026-07-24 — Gate A implementation accepted
+
+- A1-A4 are implemented: strict protocol guards, V22 minimum-schema storage,
+  canonical replay/history/redo, normalized in-memory dimensions, canonical
+  region-source import validation, public legacy/V22 projections, and
+  agent/MCP/stdio parity.
+- Two independent adversarial passes were resolved. They found strict-union
+  holes, legacy/V22 replay mismatches, omitted relational-dimension health,
+  untyped MCP inputs, delimiter-colliding/locale-sensitive loop keys, and
+  non-finite derived rectangle geometry.
+- `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm format:check`, `pnpm build`,
+  and `pnpm check:v19-bundle` pass. The bundle result is within every frozen
+  V19 cap: 394,650-byte critical UI JavaScript gzip, 7,080-byte critical CSS
+  gzip, 475,110-byte all-UI JavaScript gzip, 211,565-byte command worker gzip,
+  83,272-byte geometry worker gzip, and 13,808,536-byte OCCT WASM gzip.
+- `pnpm smoke:v19-performance` is wired and was invoked, but remains an honest
+  non-green release proof: this environment has no Chromium-compatible
+  browser, and the representative V19 near-limit workload remains deferred
+  until the real Slice E query/cache/cancellation surfaces exist. This is an
+  explicit H/I release blocker, not evidence for advertising a V19 product
+  row during Slices B-D.
+
 ## Completion audit
 
 Release completion requires affirmative evidence for each numbered Must item
@@ -177,4 +201,3 @@ pnpm smoke:v19-profile-regions-workflow
 pnpm smoke:v19-storage-migration-workflow
 pnpm smoke:v19-browser-workflow
 ```
-

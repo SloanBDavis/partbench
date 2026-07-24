@@ -26,7 +26,7 @@ import type {
   NamedReferenceName,
   SketchEntityId,
   SketchId,
-  SketchProfileRef,
+  SketchProfileRefV22,
   SketchPathRef,
   FeatureEditabilityQueryResponse
 } from "@web-cad/cad-protocol";
@@ -1660,9 +1660,26 @@ function createExtrudeDryRunDiagnostics(
 
 function createExtrudeProfileProposalDiagnostics(
   feature: Extract<CadFeatureSummary, { readonly kind: "extrude" }>,
-  profile: SketchProfileRef,
+  profile: SketchProfileRefV22,
   document: CreateFeatureEditabilityResponseOptions["document"]
 ): readonly CadFeatureEditDiagnostic[] {
+  if (profile.kind === "regions") {
+    return [
+      createDiagnostic({
+        code: "FEATURE_EDIT_INVALID_PROPOSAL",
+        severity: "blocker",
+        message:
+          "Region profile editing remains blocked until the V19 region validation and extrude geometry slices are available.",
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        sketchId: profile.sketchId,
+        fieldPath: "profile",
+        expected: "validated V19 region extrude support",
+        received: "regions"
+      })
+    ];
+  }
+
   if (
     feature.operationMode !== "newBody" &&
     feature.profile?.kind === "wire" &&
@@ -1765,7 +1782,22 @@ function createRevolveDryRunDiagnostics(
 
   if (proposedEdit.kind === "revolve" && proposedEdit.profile) {
     const profile = proposedEdit.profile;
-    if (profile.kind === "wire") {
+    if (profile.kind === "regions") {
+      diagnostics.push(
+        createDiagnostic({
+          code: "FEATURE_EDIT_INVALID_PROPOSAL",
+          severity: "blocker",
+          message:
+            "Region profile editing remains blocked until the V19 region validation and revolve geometry slices are available.",
+          featureId: feature.id,
+          bodyId: feature.bodyId,
+          sketchId: profile.sketchId,
+          fieldPath: "profile",
+          expected: "validated V19 region revolve support",
+          received: "regions"
+        })
+      );
+    } else if (profile.kind === "wire") {
       const resolution = resolveWireRevolveProfile(
         document,
         profile,

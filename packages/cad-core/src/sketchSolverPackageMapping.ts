@@ -30,10 +30,18 @@ import type {
 import { SKETCH_GEOMETRY_POLICY } from "./sketchGeometryPolicy";
 import { createCanonicalSketchArcEntity } from "./sketchArcMath";
 import { cleanSketchNumber } from "./sketchNumber";
+import {
+  downconvertSketchDimensionSnapshotV22,
+  normalizeSketchDimensionSnapshotV22,
+  type SketchDimensionSnapshotCurrent
+} from "./v22SourceShapes";
 
 export interface SketchSolverPackageDocument {
   readonly parameters: ReadonlyMap<string, { readonly value: number }>;
-  readonly sketchDimensions: ReadonlyMap<string, SketchDimensionSnapshot>;
+  readonly sketchDimensions: ReadonlyMap<
+    string,
+    SketchDimensionSnapshotCurrent
+  >;
   readonly sketchConstraints: ReadonlyMap<string, SketchConstraintSnapshot>;
 }
 
@@ -175,10 +183,27 @@ export function createSketchSolveModelFromCadSource(
     if (dimension.sketchId !== sketch.id) {
       continue;
     }
+    const normalizedDimension = normalizeSketchDimensionSnapshotV22(dimension);
+    const legacyDimension =
+      downconvertSketchDimensionSnapshotV22(normalizedDimension);
+    if (!legacyDimension) {
+      diagnostics.push(
+        createMappingDiagnostic({
+          code: "SKETCH_SOLVER_UNSUPPORTED_ENTITY",
+          message:
+            "This V22 dimension remains source-backed until the V19 normalized dimension solver slice.",
+          sketchId: dimension.sketchId,
+          sketchDimensionId: dimension.id,
+          expected: "losslessly legacy-compatible entityScalar dimension",
+          received: normalizedDimension.target.kind
+        })
+      );
+      continue;
+    }
 
     const mapped = mapDimensionToSketchSolveDimension({
       document,
-      dimension,
+      dimension: legacyDimension,
       sketch,
       pointTargetIds,
       scalarIds,

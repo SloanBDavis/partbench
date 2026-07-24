@@ -10,7 +10,7 @@ import {
   type CadSketchSolverDeferredConstraintSummary,
   type CadSketchSolverDiagnostic,
   type CadSketchSolverDiagnosticCode,
-  type CadSketchSolverDimensionSummary,
+  type CadSketchSolverDimensionSummaryCurrent,
   type CadSketchSolverEntitySummary,
   type CadSketchSolverReadinessStatus,
   type CadSketchSolverSourceContract,
@@ -19,6 +19,8 @@ import {
   type SketchConstraintEntry,
   type SketchConstraintIssue,
   type SketchDimensionEntry,
+  type SketchDimensionEntryCurrent,
+  type SketchDimensionEntryV22,
   type SketchDimensionIssue,
   type SketchEntitySnapshot,
   type SketchEvaluationIssue,
@@ -211,32 +213,48 @@ function createEntitySummary(
 }
 
 function createDimensionSummary(
-  dimension: SketchDimensionEntry
-): CadSketchSolverDimensionSummary {
+  dimension: SketchDimensionEntryCurrent
+): CadSketchSolverDimensionSummaryCurrent {
   const diagnostics = dimension.issues.map((issue) =>
     createDiagnosticFromDimensionIssue(dimension.sketchId, issue)
   );
-  return {
+  const common = {
     dimensionId: dimension.id,
     sketchId: dimension.sketchId,
-    entityId: dimension.entityId,
-    target: dimension.target,
     valueSource: dimension.valueSource,
     ...(dimension.effectiveValue !== undefined
       ? { effectiveValue: dimension.effectiveValue }
       : {}),
     status: dimension.status,
     supported: dimension.status === "healthy",
+    diagnosticCount: diagnostics.length,
+    diagnostics
+  };
+  if (isV22DimensionEntry(dimension)) {
+    return {
+      ...common,
+      sourceShape: "v22",
+      target: dimension.target
+    };
+  }
+  return {
+    ...common,
+    entityId: dimension.entityId,
+    target: dimension.target,
     targetRef: {
       type: "dimension",
       sketchId: dimension.sketchId,
       dimensionId: dimension.id,
       entityId: dimension.entityId,
       dimensionTarget: dimension.target
-    },
-    diagnosticCount: diagnostics.length,
-    diagnostics
+    }
   };
+}
+
+function isV22DimensionEntry(
+  dimension: SketchDimensionEntryCurrent
+): dimension is SketchDimensionEntryV22 {
+  return "sourceShape" in dimension && dimension.sourceShape === "v22";
 }
 
 function createConstraintSummary(
@@ -1069,11 +1087,14 @@ function mapIssueCode(
     case "PARAMETER_NOT_FOUND":
       return "SKETCH_SOLVER_MISSING_TARGET";
     case "UNSUPPORTED_TARGET":
+    case "SKETCH_DIMENSION_TARGET_UNSUPPORTED":
       return "SKETCH_SOLVER_UNSUPPORTED_ENTITY";
     case "INCONSISTENT_CONSTRAINT":
     case "CONFLICTING_CONSTRAINT":
       return "SKETCH_SOLVER_CONFLICTING";
     case "INVALID_VALUE":
+    case "SKETCH_DIMENSION_ANGLE_SENSE_INVALID":
+    case "SKETCH_DIMENSION_DISTANCE_INVALID":
       return "SKETCH_SOLVER_FAILED";
     case "SKETCH_ARC_DIMENSION_INVALID":
       return "SKETCH_ARC_DIMENSION_INVALID";
@@ -1099,7 +1120,11 @@ function mapIssueSeverity(
     case "SKETCH_ARC_SOLVE_BRANCH_INVALID":
       return "blocker";
     case "UNSUPPORTED_TARGET":
+    case "SKETCH_DIMENSION_TARGET_UNSUPPORTED":
       return "warning";
+    case "SKETCH_DIMENSION_ANGLE_SENSE_INVALID":
+    case "SKETCH_DIMENSION_DISTANCE_INVALID":
+      return "blocker";
   }
 }
 

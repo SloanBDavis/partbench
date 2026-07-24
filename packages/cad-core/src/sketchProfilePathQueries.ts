@@ -24,6 +24,7 @@ import type {
   SketchProfileReadinessQueryResponse,
   SketchProfileTargetCompatibility,
   SketchProfileRef,
+  SketchProfileRefV22,
   SketchWireProfileRef,
   SketchProfileRejectedComponent,
   SketchReferenceDependencies,
@@ -1139,19 +1140,24 @@ function pointInsideWire(
 }
 
 function createConsumerCompatibility(
-  profile: SketchProfileRef,
+  profile: SketchProfileRefV22,
   consumer: SketchProfileConsumerIntent
 ): SketchProfileReadinessQueryResponse["consumerCompatibility"] {
   const supported =
-    profile.kind === "entity" ||
-    consumer.featureKind === "extrude" ||
-    consumer.featureKind === "revolve";
+    profile.kind === "regions"
+      ? consumer.featureKind === "extrude" ||
+        (consumer.featureKind === "revolve" && profile.regions.length === 1)
+      : profile.kind === "entity" ||
+        consumer.featureKind === "extrude" ||
+        consumer.featureKind === "revolve";
   const diagnostics = supported
     ? []
     : [
         profileDiagnostic(
           "SKETCH_PROFILE_CONSUMER_UNSUPPORTED",
-          `Wire profiles are not supported by feature.${consumer.featureKind} in V17.`
+          profile.kind === "regions"
+            ? `Region profiles are not supported by feature.${consumer.featureKind} for this V19 consumer row.`
+            : `Wire profiles are not supported by feature.${consumer.featureKind} in V17.`
         )
       ];
   return {
@@ -1464,6 +1470,45 @@ export function createSketchProfileReadinessResponse(
     query.consumer
   );
   const targetDiagnostics = targetCompatibility.diagnostics;
+
+  if (query.profile.kind === "regions") {
+    const diagnostics = [
+      profileDiagnostic(
+        "SKETCH_PROFILE_CONSUMER_UNSUPPORTED",
+        "Region profile readiness remains blocked until the V19 analytic region-validation slice is available.",
+        { sketchId: sketch.id }
+      ),
+      ...consumerCompatibility.diagnostics,
+      ...targetDiagnostics
+    ];
+    const orderedEntityIds = query.profile.regions.flatMap((region) =>
+      [region.outer, ...region.holes].flatMap((loop) =>
+        loop.kind === "entity"
+          ? [loop.entityId]
+          : loop.segments.map((segment) => segment.entityId)
+      )
+    );
+    return {
+      ok: true,
+      query: "sketch.profileReadiness",
+      cadOpsVersion,
+      status: "blocked",
+      requestedProfile: query.profile,
+      orientationNormalized: false,
+      consumer: query.consumer,
+      consumerCompatibility,
+      targetCompatibility,
+      dependencies: {
+        sketchIds: [sketch.id],
+        orderedEntityIds
+      },
+      joinCount: 0,
+      joins: [],
+      intersectionStatus: "not-evaluated",
+      diagnosticCount: diagnostics.length,
+      diagnostics
+    };
+  }
 
   if (query.profile.kind === "entity") {
     const entity = sketch.entities.get(query.profile.entityId);
