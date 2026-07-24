@@ -215,6 +215,35 @@ flowchart TD
   list enforcement, ID materialization, semantic diffs, replay, undo, and
   redo must all use these pure planning and consequence APIs.
 
+### 2026-07-24 — Slice B core command boundary
+
+- B5 is implemented for trim, extend, split, and rectangle explode.
+  `sketch.curveEditReadiness` returns revision-bound prepared operations,
+  canonical previews, complete consequence evidence, exact deletion lists, and
+  prospective output IDs. Offset remains an explicit typed blocker until
+  Slice C.
+- Direct dry-run/commit rechecks source revision before solver identity and
+  before allocation or planning. Curve-edit batches remain one-operation-only;
+  successful direct calls materialize every output ID and deletion array into
+  history.
+- Apply clones the sketch entity map, mutates only the planned target/results,
+  explicitly retargets or deletes solver records, and emits both ordinary
+  entity/record diffs and the complete curve-edit semantic diff. Dry-run and
+  commit produce identical semantic evidence.
+- Canonical replay requires materialized curve-edit history, skips historical
+  optimistic checks, normalizes nested legacy/V22 dimension impact refs, and
+  preserves exact IDs through JSON import, undo, and redo. The async command
+  worker now receives the complete authoritative project so history/redo-based
+  source identities remain identical off the main thread.
+- Post-implementation adversarial review found and resolved document-wide
+  output-ID collisions, lost worker history/redo authority, invalid evaluated
+  geometry escaping as an exception, duplicate deletion lists being rejected
+  before impact evidence, incomplete multi-feature dependency diagnostics,
+  extend-hit preview omission, and dry-run warning wording.
+- Focused B5/persistence/evaluation tests, the full protocol/core suites, core
+  typecheck/lint/format checks, and the inherited web worker suite pass. B6 and
+  B7 are the next parallel boundary before Gate B.
+
 ## Completion audit
 
 Release completion requires affirmative evidence for each numbered Must item

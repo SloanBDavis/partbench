@@ -150,4 +150,66 @@ describe("V19 curve-edit evaluation evidence", () => {
       ])
     );
   });
+
+  it("blocks malformed evaluated geometry instead of throwing from identity construction", () => {
+    const baseSketch = lineSketch();
+    const sketch: Sketch = {
+      ...baseSketch,
+      entities: new Map([
+        ...baseSketch.entities,
+        [
+          "degenerate",
+          {
+            id: "degenerate",
+            kind: "line" as const,
+            start: [2, 2] as const,
+            end: [2, 2] as const,
+            construction: false
+          }
+        ]
+      ])
+    };
+    const dimension: SketchDimension = {
+      id: "skdim_1",
+      name: "Length",
+      sketchId: sketch.id,
+      target: {
+        kind: "entityScalar",
+        entityId: "line_1",
+        entityKind: "line",
+        role: "length"
+      },
+      valueSource: { type: "literal", value: 10 }
+    };
+    const document = createCadDocument(
+      [],
+      "mm",
+      [[sketch.id, sketch]],
+      [],
+      [[dimension.id, dimension]]
+    );
+
+    expect(() =>
+      createSketchCurveEditEvaluationEvidence({
+        sourceIdentity,
+        document,
+        sketch
+      })
+    ).not.toThrow();
+    const evidence = createSketchCurveEditEvaluationEvidence({
+      sourceIdentity,
+      document,
+      sketch
+    });
+    expect(evidence).toMatchObject({
+      blocked: true,
+      solverStatus: "failed",
+      diagnostics: [
+        expect.objectContaining({
+          code: "SKETCH_EDIT_SOLVER_IDENTITY_EVIDENCE_INVALID"
+        })
+      ]
+    });
+    expect(evidence.solverEvaluationIdentity).toBeUndefined();
+  });
 });

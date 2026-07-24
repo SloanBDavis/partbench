@@ -12170,7 +12170,15 @@ function validateCurveEditOperation(
     "deleteDimensionIds"
   ]) {
     if (field in value) {
-      validateUniqueIdArray(value[field], `${path}.${field}`, issues);
+      if (field === "createdEntityIds") {
+        validateUniqueIdArray(value[field], `${path}.${field}`, issues);
+      } else {
+        // Duplicate deletion IDs are structurally valid input so cad-core can
+        // classify them as an exact-list mismatch and return the complete
+        // curve-edit impact. They must not be rejected before analytic
+        // planning erases that recovery evidence.
+        validateIdArray(value[field], `${path}.${field}`, issues);
+      }
     }
   }
 }

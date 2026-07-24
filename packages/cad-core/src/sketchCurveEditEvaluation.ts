@@ -239,15 +239,38 @@ export function createSketchCurveEditEvaluationEvidence({
     residuals
   );
   const solverStatus = mapSolveStatus(authoredResidualEvaluation.solveStatus);
-  const solverEvaluationIdentity = createSketchSolverEvaluationIdentity({
-    sourceRevision,
-    sketchId: sketch.id,
-    solverStatus,
-    solverRecordCount,
-    evaluatedEntities: evaluatedGeometry.entities,
-    orderedConstraintResiduals: constraintResiduals,
-    orderedDimensionResiduals: dimensionResiduals
-  });
+  let solverEvaluationIdentity: SketchSolverEvaluationIdentity;
+  try {
+    solverEvaluationIdentity = createSketchSolverEvaluationIdentity({
+      sourceRevision,
+      sketchId: sketch.id,
+      solverStatus,
+      solverRecordCount,
+      evaluatedEntities: evaluatedGeometry.entities,
+      orderedConstraintResiduals: constraintResiduals,
+      orderedDimensionResiduals: dimensionResiduals
+    });
+  } catch (error) {
+    return {
+      sourceRevision,
+      solverStatus: "failed",
+      evaluatedEntities: evaluatedGeometry.entities,
+      constraintResiduals,
+      dimensionResiduals,
+      authoredResidualEvaluation,
+      diagnostics: [
+        ...diagnostics,
+        {
+          code: "SKETCH_EDIT_SOLVER_IDENTITY_EVIDENCE_INVALID",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Solver evaluation identity evidence is invalid."
+        }
+      ],
+      blocked: true
+    };
+  }
   const blocked = !(
     solverStatus === "fully-defined" ||
     solverStatus === "under-defined" ||

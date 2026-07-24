@@ -127,7 +127,7 @@ describe("V19 protocol contract", () => {
     ).toBe(true);
   });
 
-  it("validates exact curve-edit identities, finite points, and unique lists", () => {
+  it("validates exact curve-edit identities, finite points, and list policy", () => {
     const valid: CadOp = {
       op: "sketch.trim",
       sketchId: "sketch_1",
@@ -143,6 +143,13 @@ describe("V19 protocol contract", () => {
       deleteDimensionIds: []
     };
     expect(validateV19CadOp(valid).ok).toBe(true);
+    expect(
+      validateV19CadOp({
+        ...valid,
+        deleteConstraintIds: ["constraint_1", "constraint_1"],
+        deleteDimensionIds: ["dimension_1", "dimension_1"]
+      }).ok
+    ).toBe(true);
 
     expect(
       validateV19CadOp({
