@@ -417,6 +417,46 @@ export interface SketchSolveResult {
   readonly diagnostics: readonly SketchSolveDiagnostic[];
 }
 
+export type SketchInitialResidualEvaluationStatus =
+  | "evaluated"
+  | "blocked"
+  | "unsupported";
+
+export type SketchInitialResidualRecord =
+  | {
+      readonly sourceType: "constraint";
+      readonly sourceId: SketchSolverConstraintId;
+      readonly family: SketchSolveConstraintKind;
+      readonly residuals: readonly number[];
+      readonly maxResidual: number;
+      readonly satisfied: boolean;
+    }
+  | {
+      readonly sourceType: "dimension";
+      readonly sourceId: SketchSolverDimensionId;
+      readonly family: SketchSolveDimensionKind;
+      readonly residuals: readonly number[];
+      readonly maxResidual: number;
+      readonly satisfied: boolean;
+    };
+
+/**
+ * Residual evidence evaluated directly at the model's authored initial state.
+ *
+ * This is intentionally distinct from `solveSketch`: no iteration, Jacobian,
+ * rank analysis, or solved-state projection is performed.
+ */
+export interface SketchInitialResidualEvaluation {
+  readonly version: SketchSolverModelVersion;
+  readonly status: SketchInitialResidualEvaluationStatus;
+  readonly blocked: boolean;
+  readonly iterations: 0;
+  readonly settings: SketchSolveSettings;
+  readonly records: readonly SketchInitialResidualRecord[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly SketchSolveDiagnostic[];
+}
+
 interface SolverVariable {
   readonly id: string;
   readonly kind: "pointX" | "pointY" | "scalar";
@@ -510,6 +550,96 @@ export function getSketchSolverCapabilities(): {
       "arcSweep"
     ],
     deferredConstraintKinds: [...DEFERRED_CONSTRAINT_KINDS]
+  };
+}
+
+/**
+ * Evaluate every supported constraint and dimension residual against the
+ * authored geometry without allowing the solver to move that geometry.
+ */
+export function evaluateSketchResidualsAtInitialState(
+  model: SketchSolveModel
+): SketchInitialResidualEvaluation {
+  const settings = createDefaultSketchSolveSettings(model.settings);
+  const stateAccess = createStateAccess(model);
+  const initialState = stateAccess.variables.map(
+    (variable) => variable.initial
+  );
+  const diagnostics = [
+    ...validateModel(model, settings, stateAccess),
+    ...validateResidualSourceIds(model)
+  ];
+  const unsupported = diagnostics.some(
+    (diagnostic) => diagnostic.code === "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT"
+  );
+  const blocked =
+    unsupported ||
+    diagnostics.some((diagnostic) => diagnostic.severity === "blocker");
+
+  if (blocked) {
+    return createInitialResidualEvaluation({
+      settings,
+      status: unsupported ? "unsupported" : "blocked",
+      diagnostics,
+      records: []
+    });
+  }
+
+  const records = [...createResidualBlocks(model, stateAccess, settings)]
+    .sort(compareResidualBlocks)
+    .map((block): SketchInitialResidualRecord => {
+      const residuals = block
+        .evaluator(initialState)
+        .map((residual) => (Object.is(residual, -0) ? 0 : residual));
+      const maxResidual = getMaxResidual(residuals);
+      const shared = {
+        sourceId: block.sourceId,
+        residuals,
+        maxResidual,
+        satisfied: maxResidual <= settings.tolerance
+      };
+
+      return block.sourceType === "constraint"
+        ? {
+            sourceType: "constraint",
+            family: block.constraintKind,
+            ...shared
+          }
+        : {
+            sourceType: "dimension",
+            family: block.dimensionKind,
+            ...shared
+          };
+    });
+
+  return createInitialResidualEvaluation({
+    settings,
+    status: "evaluated",
+    diagnostics,
+    records
+  });
+}
+
+function createInitialResidualEvaluation({
+  settings,
+  status,
+  diagnostics,
+  records
+}: {
+  readonly settings: SketchSolveSettings;
+  readonly status: SketchInitialResidualEvaluationStatus;
+  readonly diagnostics: readonly SketchSolveDiagnostic[];
+  readonly records: readonly SketchInitialResidualRecord[];
+}): SketchInitialResidualEvaluation {
+  return {
+    version: SKETCH_SOLVER_MODEL_VERSION,
+    status,
+    blocked: status !== "evaluated",
+    iterations: 0,
+    settings,
+    records,
+    diagnosticCount: diagnostics.length,
+    diagnostics
   };
 }
 
@@ -858,6 +988,46 @@ function validateModel(
 
   for (const dimension of model.dimensions ?? []) {
     validateDimension(dimension, settings, stateAccess, diagnostics);
+  }
+
+  return diagnostics;
+}
+
+function validateResidualSourceIds(
+  model: SketchSolveModel
+): readonly SketchSolveDiagnostic[] {
+  const diagnostics: SketchSolveDiagnostic[] = [];
+  const sources = [
+    {
+      sourceType: "constraint" as const,
+      values: model.constraints ?? []
+    },
+    {
+      sourceType: "dimension" as const,
+      values: model.dimensions ?? []
+    }
+  ];
+
+  for (const { sourceType, values } of sources) {
+    const counts = new Map<string, number>();
+    for (const source of values) {
+      counts.set(source.id, (counts.get(source.id) ?? 0) + 1);
+    }
+
+    for (const [sourceId, count] of [...counts].sort(([left], [right]) =>
+      compareCodeUnits(left, right)
+    )) {
+      if (count < 2) continue;
+      diagnostics.push({
+        code: "SKETCH_SOLVER_INVALID_VALUE",
+        severity: "blocker",
+        message: `Duplicate ${sourceType} residual source id: ${sourceId}`,
+        sourceType,
+        sourceId,
+        expected: `unique ${sourceType} id`,
+        received: `${count} records with id ${sourceId}`
+      });
+    }
   }
 
   return diagnostics;
@@ -1871,6 +2041,17 @@ function createResidualBlocks(
   }
 
   return blocks;
+}
+
+function compareResidualBlocks(left: ResidualBlock, right: ResidualBlock) {
+  if (left.sourceType !== right.sourceType) {
+    return left.sourceType === "constraint" ? -1 : 1;
+  }
+  return compareCodeUnits(left.sourceId, right.sourceId);
+}
+
+function compareCodeUnits(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function createConstraintResidual(
