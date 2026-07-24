@@ -2321,6 +2321,39 @@ export interface SketchEntityReplacement {
   readonly preservedResultEntityId?: SketchEntityId;
 }
 
+export type SketchCurveEditRecordDisposition =
+  | "preserved"
+  | "retargeted"
+  | "invalid"
+  | "deleted-by-request"
+  | "unaffected";
+
+export interface SketchCurveEditConstraintImpact {
+  readonly id: SketchConstraintId;
+  readonly disposition: SketchCurveEditRecordDisposition;
+  readonly before: CadSketchConstraintRef;
+  /**
+   * Present only when the record survives the edit. Retargeted records must
+   * expose their exact normalized post-edit target through this reference.
+   */
+  readonly after?: CadSketchConstraintRef;
+  readonly residualFamily?: string;
+  readonly residual?: number;
+}
+
+export interface SketchCurveEditDimensionImpact {
+  readonly id: SketchDimensionId;
+  readonly disposition: SketchCurveEditRecordDisposition;
+  readonly before: CadSketchDimensionRefCurrent;
+  /**
+   * Present only when the record survives the edit. Retargeted records must
+   * expose their exact normalized post-edit target through this reference.
+   */
+  readonly after?: CadSketchDimensionRefCurrent;
+  readonly residualFamily?: string;
+  readonly residual?: number;
+}
+
 export interface SketchCurveEditImpact {
   readonly sketchId: SketchId;
   readonly operation:
@@ -2330,6 +2363,8 @@ export interface SketchCurveEditImpact {
     | "explodeRectangle"
     | "offset";
   readonly replacements: readonly SketchEntityReplacement[];
+  readonly constraintImpacts: readonly SketchCurveEditConstraintImpact[];
+  readonly dimensionImpacts: readonly SketchCurveEditDimensionImpact[];
   readonly requiredDeleteConstraintIds: readonly SketchConstraintId[];
   readonly requiredDeleteDimensionIds: readonly SketchDimensionId[];
   readonly affectedFeatureIds: readonly FeatureId[];

@@ -169,6 +169,27 @@ flowchart TD
   explicit H/I release blocker, not evidence for advertising a V19 product
   row during Slices B-D.
 
+### 2026-07-24 — Slice B analytic and identity foundations
+
+- B1 finite curve geometry is implemented as a pure cad-core module: line,
+  circle, and signed-arc resolution; finite and support intersections;
+  projection; canonical parameters; tolerance collapse; arc clipping; and
+  deterministic diagnostics. Its focused suite passes 12 cases.
+- B2 source-revision and solver-evaluation identities are implemented over the
+  existing WCAD source digest and canonical CBOR. The identity suite passes 9
+  cases, including a fixed hash vector, unordered-input equivalence, numeric
+  normalization, malformed evidence, and the exact `none` policy.
+- The B4 contract audit found that aggregate invalid-ID lists were
+  insufficient Decision 6 evidence. `SketchCurveEditImpact` now requires
+  per-constraint and per-dimension dispositions with before/after references
+  and optional normalized residual evidence. The same audit froze the
+  endpoint-provenance retarget matrix and identified residual-at-authored-state
+  evaluation as a prerequisite to B4/B5.
+- The command runner now rejects mixed or multi-edit curve batches before
+  planning and has an explicit applied-operation channel for materializing
+  output IDs into committed history. Curve mutation, readiness, UI, and
+  adapter actions remain disabled until B3-B7 and Gate B pass.
+
 ## Completion audit
 
 Release completion requires affirmative evidence for each numbered Must item

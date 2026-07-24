@@ -4,6 +4,7 @@ import {
   isSketchDimensionTargetV22,
   isSketchRegionsProfileRef,
   validateV19CadOp,
+  validateV19SketchQueryRequest,
   validateSketchProfilePathQueryRequest,
   WCAD_COMMANDS_ENTRY_PATH,
   WCAD_DOCUMENT_ENTRY_PATH,
@@ -240,6 +241,51 @@ export {
   SKETCH_GEOMETRY_POLICY,
   type SketchGeometryPolicy
 } from "./sketchGeometryPolicy";
+export {
+  collapseSketchCurveParameters,
+  getSketchCurveSupportParameter,
+  intersectFiniteSketchCurves,
+  intersectSketchCurveInfiniteSupports,
+  intersectSketchCurveSupportWithFiniteCurve,
+  projectPointToFiniteSketchCurve,
+  resolveSketchCurveEditEntity,
+  unwrapSketchCurveParameterNear,
+  type ResolvedSketchCurve,
+  type ResolvedSketchCurveArc,
+  type ResolvedSketchCurveCircle,
+  type ResolvedSketchCurveLine,
+  type SketchCurveEditEntity,
+  type SketchCurveGeometryDiagnostic,
+  type SketchCurveGeometryDiagnosticCode,
+  type SketchCurveIntersectionPoint,
+  type SketchCurveIntersectionResult,
+  type SketchCurveParameterCollapseResult,
+  type SketchCurvePointLocation,
+  type SketchCurveProjection,
+  type SketchCurveProjectionResult,
+  type SketchCurveResolution
+} from "./sketchCurveEditGeometry";
+export {
+  NO_SKETCH_SOLVER_EVALUATION_IDENTITY,
+  SKETCH_CURVE_EDIT_SOURCE_REVISION_ALGORITHM,
+  SKETCH_SOLVER_EVALUATION_IDENTITY_ALGORITHM,
+  createCanonicalSketchSolverEvaluationPayload,
+  createSketchCurveEditSourceRevision,
+  createSketchSolverEvaluationIdentity,
+  isHashedSketchSolverEvaluationIdentity,
+  isSketchCurveEditSourceRevision,
+  isSketchSolverEvaluationIdentity,
+  normalizeSketchSolverResidualFamily,
+  type CanonicalSketchSolverEvaluationPayload,
+  type CanonicalSketchSolverResidualEvidence,
+  type HashedSketchSolverEvaluationIdentity,
+  type SketchCurveEditSourceRevision,
+  type SketchSolverConstraintResidualEvidence,
+  type SketchSolverDimensionResidualEvidence,
+  type SketchSolverEvaluationIdentity,
+  type SketchSolverEvaluationIdentityEvidence,
+  type SketchSolverIdentityRecordCollection
+} from "./sketchCurveEditIdentity";
 export {
   canonicalizeSketchArcDefinition,
   createCanonicalSketchArcEntity,
@@ -1525,6 +1571,12 @@ interface TransactionEntry {
 interface OperationRunResult {
   readonly document: CadDocument;
   readonly diff: SemanticDiff;
+  /**
+   * Exact operations applied by the runner. V19 curve-edit execution may
+   * materialize omitted output IDs before mutation so committed history never
+   * depends on allocator state during replay.
+   */
+  readonly appliedOps: readonly CadOp[];
   readonly nextObjectNumber: number;
   readonly nextSketchNumber: number;
   readonly nextSketchEntityNumber: number;
@@ -1711,7 +1763,7 @@ export class CadEngine {
 
     const transaction: Transaction = {
       id: this.#createTransactionId(),
-      ops: [...ops],
+      ops: [...run.appliedOps],
       status: "committed",
       diff: run.diff,
       ...(actor ? { actor } : {}),
@@ -8167,6 +8219,7 @@ function isCadQueryKind(value: string): value is CadQueryKind {
     case "sketch.profileReadiness":
     case "sketch.pathCandidates":
     case "sketch.pathReadiness":
+    case "sketch.curveEditReadiness":
     case "sketch.editReadiness":
     case "sketch.solverStatus":
     case "sketch.evaluation":
@@ -8476,6 +8529,11 @@ function isCadQuery(value: unknown): boolean {
     case "sketch.pathCandidates":
     case "sketch.pathReadiness":
       return validateSketchProfilePathQueryRequest({
+        version: "cadops.v1",
+        query: value
+      }).ok;
+    case "sketch.curveEditReadiness":
+      return validateV19SketchQueryRequest({
         version: "cadops.v1",
         query: value
       }).ok;
@@ -24220,6 +24278,18 @@ function runOperations(
     });
   }
 
+  const curveEditCount = ops.filter(isSketchCurveEditOp).length;
+  if (curveEditCount > 0 && (curveEditCount !== 1 || ops.length !== 1)) {
+    throwValidationError({
+      code: "SKETCH_EDIT_BATCH_MULTIPLE_UNSUPPORTED",
+      message:
+        "A curve-edit batch must contain exactly one curve-edit operation and no other operations.",
+      path: "$.ops",
+      expected: "one curve-edit operation",
+      received: `${ops.length} operations (${curveEditCount} curve edits)`
+    });
+  }
+
   const state: MutableDocumentState = {
     objects: new Map(document.objects),
     sketches: new Map(document.sketches),
@@ -24340,6 +24410,7 @@ function runOperations(
   return {
     document: resultDocument,
     diff: diff as unknown as SemanticDiff,
+    appliedOps: [...ops],
     nextObjectNumber: Math.max(
       nextObjectNumber,
       inferNextObjectNumber(resultDocument)
@@ -24373,6 +24444,26 @@ function runOperations(
       inferNextBodyNumber(resultDocument)
     )
   };
+}
+
+function isSketchCurveEditOp(op: CadOp): op is Extract<
+  CadOp,
+  {
+    readonly op:
+      | "sketch.trim"
+      | "sketch.extend"
+      | "sketch.split"
+      | "sketch.explodeRectangle"
+      | "sketch.offset";
+  }
+> {
+  return (
+    op.op === "sketch.trim" ||
+    op.op === "sketch.extend" ||
+    op.op === "sketch.split" ||
+    op.op === "sketch.explodeRectangle" ||
+    op.op === "sketch.offset"
+  );
 }
 
 function createObjectId(
@@ -34997,25 +35088,122 @@ function isSketchCurveEditSemanticDiffShape(value: unknown): boolean {
   return (
     isRecord(value) &&
     Number.isInteger(value.opIndex) &&
+    (value.opIndex as number) >= 0 &&
     typeof value.sketchId === "string" &&
     (value.operation === "trim" ||
       value.operation === "extend" ||
       value.operation === "split" ||
       value.operation === "explodeRectangle" ||
       value.operation === "offset") &&
-    [
-      "replacements",
-      "requiredDeleteConstraintIds",
-      "requiredDeleteDimensionIds",
-      "affectedFeatureIds",
-      "createdEntityIds",
-      "modifiedEntityIds",
-      "deletedEntityIds",
-      "retargetedConstraintIds",
-      "deletedConstraintIds",
-      "retargetedDimensionIds",
-      "deletedDimensionIds"
-    ].every((field) => Array.isArray(value[field]))
+    Array.isArray(value.replacements) &&
+    value.replacements.every(isSketchEntityReplacementShape) &&
+    Array.isArray(value.constraintImpacts) &&
+    value.constraintImpacts.every(isSketchCurveEditConstraintImpactShape) &&
+    Array.isArray(value.dimensionImpacts) &&
+    value.dimensionImpacts.every(isSketchCurveEditDimensionImpactShape) &&
+    isUniqueStringArray(value.requiredDeleteConstraintIds) &&
+    isUniqueStringArray(value.requiredDeleteDimensionIds) &&
+    isUniqueStringArray(value.affectedFeatureIds) &&
+    isCadSketchSolverStatusShape(value.postEditSolverStatus) &&
+    isUniqueStringArray(value.createdEntityIds) &&
+    isUniqueStringArray(value.modifiedEntityIds) &&
+    isUniqueStringArray(value.deletedEntityIds) &&
+    isUniqueStringArray(value.retargetedConstraintIds) &&
+    isUniqueStringArray(value.deletedConstraintIds) &&
+    isUniqueStringArray(value.retargetedDimensionIds) &&
+    isUniqueStringArray(value.deletedDimensionIds)
+  );
+}
+
+function isSketchEntityReplacementShape(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.sourceEntityId === "string" &&
+    (value.disposition === "modified" || value.disposition === "deleted") &&
+    isUniqueStringArray(value.resultEntityIds) &&
+    (value.preservedResultEntityId === undefined ||
+      (typeof value.preservedResultEntityId === "string" &&
+        value.resultEntityIds.includes(value.preservedResultEntityId))) &&
+    (value.disposition === "modified"
+      ? value.preservedResultEntityId !== undefined
+      : value.preservedResultEntityId === undefined)
+  );
+}
+
+function isSketchCurveEditRecordDispositionShape(
+  value: unknown
+): value is
+  | "preserved"
+  | "retargeted"
+  | "invalid"
+  | "deleted-by-request"
+  | "unaffected" {
+  return (
+    value === "preserved" ||
+    value === "retargeted" ||
+    value === "invalid" ||
+    value === "deleted-by-request" ||
+    value === "unaffected"
+  );
+}
+
+function isSketchCurveEditRecordImpactCommonShape(
+  value: Record<string, unknown>
+): boolean {
+  if (
+    typeof value.id !== "string" ||
+    !isSketchCurveEditRecordDispositionShape(value.disposition) ||
+    (value.residualFamily !== undefined &&
+      (typeof value.residualFamily !== "string" ||
+        value.residualFamily.length === 0)) ||
+    (value.residual !== undefined &&
+      (typeof value.residual !== "number" || !Number.isFinite(value.residual)))
+  ) {
+    return false;
+  }
+  const survives =
+    value.disposition === "preserved" || value.disposition === "retargeted";
+  return survives ? value.after !== undefined : value.after === undefined;
+}
+
+function isSketchCurveEditConstraintImpactShape(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isSketchCurveEditRecordImpactCommonShape(value) &&
+    isCadSketchConstraintRef(value.before) &&
+    (value.after === undefined || isCadSketchConstraintRef(value.after))
+  );
+}
+
+function isSketchCurveEditDimensionImpactShape(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isSketchCurveEditRecordImpactCommonShape(value) &&
+    isCadSketchDimensionRefCurrent(value.before) &&
+    (value.after === undefined || isCadSketchDimensionRefCurrent(value.after))
+  );
+}
+
+function isCadSketchSolverStatusShape(value: unknown): boolean {
+  return (
+    value === "not-run" ||
+    value === "solved" ||
+    value === "fully-defined" ||
+    value === "under-defined" ||
+    value === "over-defined" ||
+    value === "conflicting" ||
+    value === "redundant" ||
+    value === "failed" ||
+    value === "unsupported" ||
+    value === "missing-target"
+  );
+}
+
+function isUniqueStringArray(value: unknown): value is readonly string[] {
+  return (
+    Array.isArray(value) &&
+    value.every((entry) => typeof entry === "string") &&
+    new Set(value).size === value.length
   );
 }
 
