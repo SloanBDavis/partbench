@@ -514,7 +514,10 @@ snapshot. The focused lifecycle suite records this honestly as an expected
 failure. Resolving it without losing durable audit/undo semantics requires
 either an approved serialized history-baseline amendment to the frozen V22
 shape or an explicit product-contract limitation for edits to historyless
-imported snapshots. Slice E remains blocked on that decision.
+imported snapshots. The exact pending contract, D6 sub-DAG, and proof matrix
+are recorded in
+[`docs/v19-history-baseline-amendment.md`](./v19-history-baseline-amendment.md).
+Slice E remains blocked on that decision.
 
 ## Completion audit
 
