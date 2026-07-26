@@ -1,4 +1,4 @@
-import type { CadTransactionHistoryEntry } from "@web-cad/cad-core";
+import type { CadProject, CadTransactionHistoryEntry } from "@web-cad/cad-core";
 import type {
   CadParameterSnapshot,
   DocumentUnits,
@@ -9,9 +9,11 @@ import type {
   ProjectParameterEvaluationQueryResponse,
   ProjectTopologyIdentityReadinessQueryResponse
 } from "@web-cad/cad-protocol";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { ParameterCreateForm, ParameterEditForm } from "../../cadCommands";
-import type {
+import {
+  createProjectJsonWorkflowState,
+  type ProjectJsonDraftSource,
   ProjectJsonSummary,
   ProjectJsonWorkflowState
 } from "../../projectJson";
@@ -58,7 +60,8 @@ export interface ProjectWorkspaceProps {
   readonly disabled: boolean;
   readonly documentName: string;
   readonly units: DocumentUnits;
-  readonly summary: ProjectJsonSummary;
+  readonly currentProject: CadProject;
+  readonly summary?: ProjectJsonSummary;
   readonly projectFile?: ProjectFileWorkflowState;
   readonly storageCapabilities: ProjectStorageCapabilityStatus;
   readonly health?: ProjectHealthQueryResponse;
@@ -67,7 +70,8 @@ export interface ProjectWorkspaceProps {
   readonly exportReadiness?: ProjectExportReadinessQueryResponse;
   readonly visualizationExport?: ProjectVisualizationExportDisplayStatus;
   readonly jsonDraft: string;
-  readonly jsonWorkflow: ProjectJsonWorkflowState;
+  readonly jsonDraftSource: ProjectJsonDraftSource;
+  readonly jsonWorkflow?: ProjectJsonWorkflowState;
   readonly opfsCacheStatus: ProjectOpfsCacheStatus;
   readonly parameters: readonly CadParameterSnapshot[];
   readonly parameterEvaluation?: ProjectParameterEvaluationQueryResponse;
@@ -110,9 +114,11 @@ export interface ProjectWorkspaceProps {
 
 type ProjectWorkspacePropsWithFile = Omit<
   ProjectWorkspaceProps,
-  "projectFile"
+  "jsonWorkflow" | "projectFile" | "summary"
 > & {
+  readonly jsonWorkflow: ProjectJsonWorkflowState;
   readonly projectFile: ProjectFileWorkflowState;
+  readonly summary: ProjectJsonSummary;
 };
 
 export function ProjectWorkspace({
@@ -120,7 +126,8 @@ export function ProjectWorkspace({
   disabled,
   documentName,
   units,
-  summary,
+  currentProject,
+  summary: suppliedSummary,
   projectFile = createInitialProjectFileWorkflowState(),
   storageCapabilities,
   health,
@@ -129,7 +136,8 @@ export function ProjectWorkspace({
   exportReadiness,
   visualizationExport,
   jsonDraft,
-  jsonWorkflow,
+  jsonDraftSource,
+  jsonWorkflow: suppliedJsonWorkflow,
   opfsCacheStatus,
   parameters,
   parameterEvaluation,
@@ -163,6 +171,18 @@ export function ProjectWorkspace({
   onUndo,
   onRedo
 }: ProjectWorkspaceProps) {
+  const jsonWorkflow = useMemo(
+    () =>
+      suppliedJsonWorkflow ??
+      createProjectJsonWorkflowState({
+        currentProject,
+        draftJson: jsonDraft,
+        draftSource: jsonDraftSource
+      }),
+    [currentProject, jsonDraft, jsonDraftSource, suppliedJsonWorkflow]
+  );
+  const summary = suppliedSummary ?? jsonWorkflow.current.summary;
+
   return (
     <section
       className="pb-project-mode-workspace"

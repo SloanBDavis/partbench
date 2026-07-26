@@ -1551,7 +1551,7 @@ function createAgentWorkflowReview(
 ): CadOpsAgentWorkflowReview {
   const warnings = options.response?.warnings ?? [];
   const blockers = createReviewBlockers(request, options);
-  const hints = createReviewHints(request, warnings);
+  const hints = createReviewHints(request, warnings, options.response);
 
   return {
     requestedMode: request.batch.mode,
@@ -1561,9 +1561,16 @@ function createAgentWorkflowReview(
       options.response,
       request.batch.ops
     ),
-    operations: request.batch.ops.map((op, index) =>
-      createOperationReview(index, op)
-    ),
+    operations: request.batch.ops.map((op, index) => {
+      const review = createOperationReview(index, op);
+      return isResponseDerivedDestructiveCurveEdit(
+        request.batch.ops,
+        index,
+        options.response
+      )
+        ? { ...review, destructive: true as const }
+        : review;
+    }),
     audit: createReviewAuditSummary(request),
     commitGate: createCommitGateSummary(request),
     hints,
@@ -1757,12 +1764,21 @@ function createReviewBlockers(
 
 function createReviewHints(
   request: CadOpsAgentRequest,
-  warnings: readonly string[]
+  warnings: readonly string[],
+  response?: CadBatchResponse
 ): readonly CadOpsAgentReviewNotice[] {
   const hints: CadOpsAgentReviewNotice[] = [];
   const destructiveOps = request.batch.ops
     .map((op, index) => ({ op, index }))
-    .filter(({ op }) => isDestructiveOperation(op));
+    .filter(
+      ({ op, index }) =>
+        isDestructiveOperation(op) ||
+        isResponseDerivedDestructiveCurveEdit(
+          request.batch.ops,
+          index,
+          response
+        )
+    );
   const firstDestructiveOp = destructiveOps[0];
 
   if (firstDestructiveOp) {
@@ -2788,8 +2804,33 @@ function isDestructiveOperation(op: CadOp): boolean {
     op.op === "sketch.deleteEntity" ||
     op.op === "sketch.dimension.delete" ||
     op.op === "sketch.constraint.delete" ||
+    op.op === "sketch.explodeRectangle" ||
+    ((op.op === "sketch.trim" ||
+      op.op === "sketch.extend" ||
+      op.op === "sketch.split") &&
+      ((op.deleteConstraintIds?.length ?? 0) > 0 ||
+        (op.deleteDimensionIds?.length ?? 0) > 0)) ||
     op.op === "feature.delete" ||
     op.op === "reference.deleteName"
+  );
+}
+
+function isResponseDerivedDestructiveCurveEdit(
+  ops: readonly CadOp[],
+  opIndex: number,
+  response: CadBatchResponse | undefined
+): boolean {
+  const op = ops[opIndex];
+  return (
+    ops.length === 1 &&
+    op !== undefined &&
+    (op.op === "sketch.trim" ||
+      op.op === "sketch.extend" ||
+      op.op === "sketch.split" ||
+      op.op === "sketch.explodeRectangle") &&
+    ((response?.deletedSketchEntityIds?.length ?? 0) > 0 ||
+      (response?.deletedSketchConstraintIds?.length ?? 0) > 0 ||
+      (response?.deletedSketchDimensionIds?.length ?? 0) > 0)
   );
 }
 
@@ -3837,6 +3878,9 @@ function isCadOpsAgentV8ExactExportRequest(
 function isCadBatch(value: unknown): value is CadBatch {
   return (
     isRecord(value) &&
+    Object.keys(value).every((key) =>
+      ["version", "mode", "ops", "actor", "audit"].includes(key)
+    ) &&
     value.version === "cadops.v1" &&
     (value.mode === "dryRun" || value.mode === "commit") &&
     Array.isArray(value.ops) &&
@@ -3883,18 +3927,30 @@ function isCadTransactionAuditMetadataShape(
 ): value is CadTransactionAuditMetadata {
   return (
     isRecord(value) &&
+    Object.keys(value).every((key) =>
+      ["source", "requestId", "toolName", "intent", "operationCount"].includes(
+        key
+      )
+    ) &&
     (value.source === undefined || typeof value.source === "string") &&
     (value.requestId === undefined || typeof value.requestId === "string") &&
     (value.toolName === undefined || typeof value.toolName === "string") &&
     (value.intent === "dryRun" || value.intent === "commit") &&
-    typeof value.operationCount === "number"
+    typeof value.operationCount === "number" &&
+    Number.isFinite(value.operationCount) &&
+    Number.isInteger(value.operationCount) &&
+    value.operationCount >= 0
   );
 }
 
 function isCadActorMetadataShape(value: unknown): value is CadActorMetadata {
   return (
     isRecord(value) &&
-    typeof value.type === "string" &&
+    Object.keys(value).every((key) => ["type", "id", "name"].includes(key)) &&
+    (value.type === "human" ||
+      value.type === "agent" ||
+      value.type === "script" ||
+      value.type === "system") &&
     (value.id === undefined || typeof value.id === "string") &&
     (value.name === undefined || typeof value.name === "string")
   );

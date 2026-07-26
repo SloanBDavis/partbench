@@ -1,3 +1,4 @@
+import type { CadProject } from "@web-cad/cad-core";
 import type {
   CadParameterSnapshot,
   ProjectParameterEvaluationQueryResponse
@@ -72,6 +73,22 @@ const jsonWorkflow: ProjectJsonWorkflowState = {
     validationIssues: []
   }
 };
+const currentProject = {
+  schemaVersion: "web-cad.project.v21",
+  document: {
+    schemaVersion: "web-cad.document.v1",
+    id: "project-workspace-test",
+    name: "Project workspace test",
+    units: "mm",
+    objects: [],
+    sketches: [],
+    features: [],
+    namedReferences: [],
+    parameters: []
+  },
+  history: [],
+  redoStack: []
+} as unknown as CadProject;
 
 describe("ProjectWorkspace", () => {
   it("renders a human-readable overview and both supported unit update methods", () => {
@@ -213,9 +230,11 @@ function renderPage(
     disabled: false,
     documentName: "bracket.wcad",
     units: "mm",
+    currentProject,
     summary,
     storageCapabilities: createProjectStorageCapabilityStatus(),
     jsonDraft: "",
+    jsonDraftSource: { kind: "empty" },
     jsonWorkflow,
     opfsCacheStatus: createInitialProjectOpfsCacheStatus(false),
     parameters,

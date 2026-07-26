@@ -112,6 +112,12 @@ export interface SketchCurveEditReplacementPlan {
   readonly preservedResultEntityId?: SketchEntityId;
 }
 
+export interface SketchCurveEditIntersectionEvidence {
+  readonly boundaryEntityId: SketchEntityId;
+  readonly point: Vec2;
+  readonly targetParameter: number;
+}
+
 export interface SketchCurveEditPlan {
   readonly operation: "trim" | "extend" | "split" | "explodeRectangle";
   readonly sourceEntityId: SketchEntityId;
@@ -119,6 +125,14 @@ export interface SketchCurveEditPlan {
   readonly requiredCreatedEntityIdCount: number;
   readonly pieces: readonly PlannedSketchCurvePiece[];
   readonly replacement: SketchCurveEditReplacementPlan;
+  /**
+   * Complete normalized finite intersection evidence used by readiness
+   * previews. Trim retains every eligible target/boundary partition hit and
+   * extend retains the nearest command-selectable outward hit for each exact
+   * boundary ID at the selected endpoint. It is preview-only evidence and does
+   * not change the selected edit result.
+   */
+  readonly previewIntersections?: readonly SketchCurveEditIntersectionEvidence[];
   /**
    * Present when all created IDs were supplied, or when the plan creates no
    * entities. Readiness can first inspect requiredCreatedEntityIdCount without
@@ -143,6 +157,11 @@ export type SketchCurveEditPlanResult =
   | {
       readonly status: "blocked";
       readonly diagnostics: readonly SketchCurveEditPlanDiagnostic[];
+      /**
+       * Complete evidence when planning reached deterministic intersections
+       * before a later readiness condition blocked materialization.
+       */
+      readonly previewIntersections?: readonly SketchCurveEditIntersectionEvidence[];
     };
 
 interface PlanContext {
@@ -167,6 +186,10 @@ interface IntervalDraft {
 
 function canonicalZero(value: number): number {
   return Object.is(value, -0) ? 0 : value;
+}
+
+function compareEntityIds(left: SketchEntityId, right: SketchEntityId): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function point(x: number, y: number): Vec2 {
@@ -238,11 +261,13 @@ function diagnostic(
 function blocked(
   value:
     | SketchCurveEditPlanDiagnostic
-    | readonly SketchCurveEditPlanDiagnostic[]
+    | readonly SketchCurveEditPlanDiagnostic[],
+  previewIntersections?: readonly SketchCurveEditIntersectionEvidence[]
 ): SketchCurveEditPlanResult {
   return {
     status: "blocked",
-    diagnostics: Array.isArray(value) ? value : [value]
+    diagnostics: Array.isArray(value) ? value : [value],
+    ...(previewIntersections === undefined ? {} : { previewIntersections })
   };
 }
 
@@ -455,7 +480,8 @@ function materializePlan(
     readonly shape: PlannedCurveShape;
     readonly interval: IntervalDraft;
   }[],
-  requiredCreatedEntityIdCount: number
+  requiredCreatedEntityIdCount: number,
+  previewIntersections?: readonly SketchCurveEditIntersectionEvidence[]
 ): SketchCurveEditPlan {
   const pieces = drafts.map<PlannedSketchCurvePiece>((draft) => ({
     id: draft.id,
@@ -536,6 +562,7 @@ function materializePlan(
     requiredCreatedEntityIdCount,
     pieces,
     replacement,
+    ...(previewIntersections === undefined ? {} : { previewIntersections }),
     materialized
   };
 }
@@ -619,6 +646,38 @@ function boundaryAtParameter(
   )?.boundaryEntityId;
 }
 
+function createNormalizedIntersectionEvidence(
+  target: ResolvedSketchCurve,
+  candidates: readonly {
+    readonly parameter: number;
+    readonly boundaryEntityId: SketchEntityId;
+  }[],
+  normalizedParameters: readonly number[],
+  policy: SketchGeometryPolicy
+): readonly SketchCurveEditIntersectionEvidence[] {
+  return normalizedParameters.flatMap((targetParameter) => {
+    const normalizedPoint = pointAtSourceParameter(target, targetParameter);
+    const boundaryEntityIds = [
+      ...new Set(
+        candidates
+          .filter(
+            (candidate) =>
+              distance(
+                normalizedPoint,
+                pointAtSourceParameter(target, candidate.parameter)
+              ) <= policy.linearTolerance
+          )
+          .map((candidate) => candidate.boundaryEntityId)
+      )
+    ].sort(compareEntityIds);
+    return boundaryEntityIds.map((boundaryEntityId) => ({
+      boundaryEntityId,
+      point: normalizedPoint,
+      targetParameter: canonicalZero(targetParameter)
+    }));
+  });
+}
+
 function collectFiniteBoundaryParameters(
   target: ResolvedSketchCurve,
   boundaries: readonly ResolvedSketchCurve[],
@@ -630,6 +689,7 @@ function collectFiniteBoundaryParameters(
         readonly parameter: number;
         readonly boundaryEntityId: SketchEntityId;
       }[];
+      readonly intersections: readonly SketchCurveEditIntersectionEvidence[];
     }
   | { readonly status: "blocked"; readonly result: SketchCurveEditPlanResult } {
   const candidates: {
@@ -688,14 +748,25 @@ function collectFiniteBoundaryParameters(
       )
     };
   }
+  const intersections = createNormalizedIntersectionEvidence(
+    target,
+    candidates,
+    collapsed.parameters,
+    policy
+  );
   return {
     status: "ready",
     parameters: collapsed.parameters.map((parameter) => ({
       parameter,
       boundaryEntityId:
-        boundaryAtParameter(parameter, candidates, target, policy) ??
-        boundaries[0]!.entityId
-    }))
+        intersections.find(
+          (intersection) => intersection.targetParameter === parameter
+        )?.boundaryEntityId ??
+        [...boundaries]
+          .map((boundary) => boundary.entityId)
+          .sort(compareEntityIds)[0]!
+    })),
+    intersections
   };
 }
 
@@ -745,7 +816,8 @@ export function planSketchTrim(
           : "Trim requires at least one distinct interior finite boundary intersection.",
         `>=${requiredIntersectionCount}`,
         String(intersectionParameters.parameters.length)
-      )
+      ),
+      intersectionParameters.intersections
     );
   }
   const projection = projectPointToFiniteSketchCurve(
@@ -763,7 +835,8 @@ export function planSketchTrim(
         undefined,
         undefined,
         projection.diagnostics
-      )
+      ),
+      intersectionParameters.intersections
     );
   }
   if (projection.projection.distance > policy.linearTolerance) {
@@ -775,7 +848,8 @@ export function planSketchTrim(
         "The submitted model-space trim pick is farther from the target than the shared linear tolerance.",
         `<=${policy.linearTolerance}`,
         String(projection.projection.distance)
-      )
+      ),
+      intersectionParameters.intersections
     );
   }
   if (
@@ -793,7 +867,8 @@ export function planSketchTrim(
         [input.entityId],
         "pickPoint",
         "The trim pick lies on a partition intersection within tolerance."
-      )
+      ),
+      intersectionParameters.intersections
     );
   }
 
@@ -824,7 +899,8 @@ export function planSketchTrim(
           [input.entityId],
           "pickPoint",
           "Circle trim would create an arc outside the complete V17 sweep domain."
-        )
+        ),
+        intersectionParameters.intersections
       );
     }
     const idValidation = validateCreatedIds(
@@ -833,7 +909,14 @@ export function planSketchTrim(
       1,
       input.createdEntityIds
     );
-    if (idValidation) return idValidation;
+    if (idValidation) {
+      return idValidation.status === "blocked"
+        ? {
+            ...idValidation,
+            previewIntersections: intersectionParameters.intersections
+          }
+        : idValidation;
+    }
     const source = target.source as SketchCircleEntitySnapshot;
     const draft = {
       id: createdId(0, input.createdEntityIds),
@@ -869,7 +952,14 @@ export function planSketchTrim(
     };
     return {
       status: "ready",
-      plan: materializePlan("trim", input.entityId, "deleted", [draft], 1),
+      plan: materializePlan(
+        "trim",
+        input.entityId,
+        "deleted",
+        [draft],
+        1,
+        intersectionParameters.intersections
+      ),
       diagnostics: []
     };
   }
@@ -895,7 +985,8 @@ export function planSketchTrim(
         [input.entityId],
         "pickPoint",
         "The trim pick does not select one unique target interval."
-      )
+      ),
+      intersectionParameters.intersections
     );
   }
   const retained = partitions
@@ -919,7 +1010,8 @@ export function planSketchTrim(
         [input.entityId],
         "boundaryEntityIds",
         "Trim would retain no valid pieces or a zero/domain-invalid piece."
-      )
+      ),
+      intersectionParameters.intersections
     );
   }
   const requiredCreatedEntityIdCount = Math.max(0, retained.length - 1);
@@ -929,7 +1021,14 @@ export function planSketchTrim(
     requiredCreatedEntityIdCount,
     input.createdEntityIds
   );
-  if (idValidation) return idValidation;
+  if (idValidation) {
+    return idValidation.status === "blocked"
+      ? {
+          ...idValidation,
+          previewIntersections: intersectionParameters.intersections
+        }
+      : idValidation;
+  }
   const source = target.source as SketchLineEntitySnapshot | SketchArcEntity;
   let createdIndex = 0;
   const drafts = retained.map(({ startParameter, endParameter }, index) => ({
@@ -974,7 +1073,8 @@ export function planSketchTrim(
       input.entityId,
       "modified",
       drafts,
-      requiredCreatedEntityIdCount
+      requiredCreatedEntityIdCount,
+      intersectionParameters.intersections
     ),
     diagnostics: []
   };
@@ -1240,6 +1340,37 @@ interface ExtensionCandidate {
   readonly boundaryEntityId: SketchEntityId;
 }
 
+function createExtensionIntersectionEvidence(
+  target: ResolvedSketchCurveLine | ResolvedSketchCurveArc,
+  endpoint: "start" | "end",
+  candidates: readonly ExtensionCandidate[],
+  policy: SketchGeometryPolicy
+): readonly SketchCurveEditIntersectionEvidence[] {
+  const maximum = sourceMaximum(target);
+  const nearestByBoundaryId = new Map<
+    SketchEntityId,
+    SketchCurveEditIntersectionEvidence
+  >();
+  for (const candidate of candidates) {
+    if (
+      validateInterval(
+        target,
+        endpoint === "start" ? candidate.sourceParameter : 0,
+        endpoint === "end" ? candidate.sourceParameter : maximum,
+        policy
+      )
+    ) {
+      if (nearestByBoundaryId.has(candidate.boundaryEntityId)) continue;
+      nearestByBoundaryId.set(candidate.boundaryEntityId, {
+        boundaryEntityId: candidate.boundaryEntityId,
+        point: pointAtSourceParameter(target, candidate.sourceParameter),
+        targetParameter: canonicalZero(candidate.sourceParameter)
+      });
+    }
+  }
+  return [...nearestByBoundaryId.values()];
+}
+
 /** Plan the closest unambiguous outward extension to explicit finite geometry. */
 export function planSketchExtend(
   entities: readonly SketchEntitySnapshot[],
@@ -1343,6 +1474,12 @@ export function planSketchExtend(
       )
     );
   }
+  const previewIntersections = createExtensionIntersectionEvidence(
+    targetCurve,
+    input.endpoint,
+    candidates,
+    policy
+  );
   if (
     candidates[1] &&
     Math.abs(candidates[1].extensionDistance - selected.extensionDistance) <=
@@ -1358,7 +1495,8 @@ export function planSketchExtend(
         ],
         "boundaryEntityIds",
         "Two distinct boundary intersections are equally close on the selected outward ray."
-      )
+      ),
+      previewIntersections
     );
   }
   const startParameter =
@@ -1374,7 +1512,8 @@ export function planSketchExtend(
         targetCurve.kind === "arc"
           ? "Extend would produce an arc at or beyond the V17 full-circle bound."
           : "Extend would not increase the target by more than the shared linear tolerance."
-      )
+      ),
+      previewIntersections
     );
   }
   const source = target.source as SketchLineEntitySnapshot | SketchArcEntity;
@@ -1402,7 +1541,14 @@ export function planSketchExtend(
   };
   return {
     status: "ready",
-    plan: materializePlan("extend", input.entityId, "modified", [draft], 0),
+    plan: materializePlan(
+      "extend",
+      input.entityId,
+      "modified",
+      [draft],
+      0,
+      previewIntersections
+    ),
     diagnostics: []
   };
 }

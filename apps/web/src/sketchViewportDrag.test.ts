@@ -2,13 +2,16 @@ import type {
   SketchEntitySnapshot,
   SketchSnapshot
 } from "@web-cad/cad-protocol";
-import { createDefaultCamera } from "@web-cad/renderer";
+import { createDefaultCamera, projectPoint } from "@web-cad/renderer";
 import { describe, expect, it } from "vitest";
 import {
   applySketchViewportDrag,
+  createSketchViewportProjectionBasis,
   createSketchViewportDragHandles,
-  mapViewportDeltaToSketchDelta
+  mapViewportDeltaToSketchDelta,
+  mapViewportPointToSketchPoint
 } from "./sketchViewportDrag";
+import { createDefaultSketchDisplayFrame } from "./sketchDisplayFrames";
 
 describe("sketchViewportDrag", () => {
   const camera = createDefaultCamera();
@@ -109,6 +112,27 @@ describe("sketchViewportDrag", () => {
         { x: 40, y: -30 }
       )
     ).toEqual([2, 3]);
+  });
+
+  it("round-trips a perspective-projected point exactly onto the sketch plane", () => {
+    const frame = createDefaultSketchDisplayFrame("XY");
+    const basis = createSketchViewportProjectionBasis({
+      camera,
+      displayFrame: frame,
+      size
+    });
+    const projected = projectPoint([0.5, 4, 0], camera, size);
+
+    expect(basis).toBeDefined();
+    expect(projected).toBeDefined();
+    expect(
+      basis &&
+        projected &&
+        mapViewportPointToSketchPoint(basis, {
+          x: projected.x,
+          y: projected.y
+        })
+    ).toEqual([0.5, 4]);
   });
 
   it("returns no sketch delta when the projection basis is singular", () => {

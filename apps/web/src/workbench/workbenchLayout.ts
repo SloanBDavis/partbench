@@ -127,3 +127,15 @@ export function getKeyboardDockResizeValue(
             : undefined;
   return next === undefined ? undefined : Math.min(max, Math.max(min, next));
 }
+
+export function findDrawerInitialFocus(
+  container: ParentNode | null
+): HTMLElement | null {
+  if (!container) return null;
+  return (
+    container.querySelector<HTMLElement>("[data-drawer-initial-focus]") ??
+    container.querySelector<HTMLElement>(
+      "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
+    )
+  );
+}

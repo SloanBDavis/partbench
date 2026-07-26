@@ -205,6 +205,54 @@ describe("V19 pure curve-edit plans", () => {
     });
   });
 
+  it("retains every boundary identity when circle intersections collapse across the seam", () => {
+    const radialBoundary = (id: string, degrees: number) => {
+      const radians = (degrees * Math.PI) / 180;
+      const direction = [Math.cos(radians), Math.sin(radians)] as const;
+      return line(
+        id,
+        [-20 * direction[0], -20 * direction[1]],
+        [20 * direction[0], 20 * direction[1]]
+      );
+    };
+    const plan = ready(
+      planSketchTrim(
+        [
+          circle("target", [0, 0], 10),
+          radialBoundary("z-boundary", -0.01),
+          radialBoundary("a-boundary", 0.01)
+        ],
+        {
+          entityId: "target",
+          boundaryEntityIds: ["z-boundary", "a-boundary"],
+          pickPoint: [0, 10],
+          createdEntityIds: ["retained-arc"]
+        },
+        {
+          linearTolerance: 0.01,
+          angularToleranceDegrees: 0.1,
+          minimumProfileArea: 1e-12
+        }
+      )
+    );
+
+    expect(
+      plan.previewIntersections?.map(
+        ({ boundaryEntityId, targetParameter }) => ({
+          boundaryEntityId,
+          targetParameter
+        })
+      )
+    ).toEqual([
+      { boundaryEntityId: "a-boundary", targetParameter: 0 },
+      { boundaryEntityId: "z-boundary", targetParameter: 0 },
+      { boundaryEntityId: "a-boundary", targetParameter: 179.99 },
+      { boundaryEntityId: "z-boundary", targetParameter: 179.99 }
+    ]);
+    expect(plan.previewIntersections?.[0]?.point).toEqual([10, 0]);
+    expect(plan.previewIntersections?.[1]?.point).toEqual([10, 0]);
+  });
+
   it("rejects off-curve and intersection trim picks and overlapping supports", () => {
     const base = [
       line("target", [0, 0], [10, 0]),

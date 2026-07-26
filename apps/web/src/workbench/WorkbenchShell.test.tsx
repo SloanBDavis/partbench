@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { WORKBENCH_LAYOUT } from "../styles/tokens";
 import { WorkbenchShell, type WorkbenchShellProps } from "./WorkbenchShell";
 import {
+  findDrawerInitialFocus,
   getKeyboardDockResizeValue,
   resolveWorkbenchLayout
 } from "./workbenchLayout";
@@ -103,6 +104,21 @@ describe("V18 workbench responsive shell", () => {
     expect(markup).toContain('aria-modal="true"');
     expect(markup).toContain('role="dialog"');
     expect(markup).toContain('class="pb-drawer-scrim"');
+  });
+
+  it("prioritizes an explicit drawer focus target over earlier fallback controls", () => {
+    const preferred = {} as HTMLElement;
+    const fallback = {} as HTMLElement;
+    const querySelector = vi
+      .fn()
+      .mockReturnValueOnce(preferred)
+      .mockReturnValueOnce(fallback);
+
+    expect(
+      findDrawerInitialFocus({ querySelector } as unknown as ParentNode)
+    ).toBe(preferred);
+    expect(querySelector).toHaveBeenCalledOnce();
+    expect(querySelector).toHaveBeenCalledWith("[data-drawer-initial-focus]");
   });
 });
 

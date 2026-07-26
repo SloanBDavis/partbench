@@ -26,6 +26,16 @@ describe("V18 mode ribbon", () => {
       label: "Finish",
       protectedFromOverflow: true
     });
+    expect(
+      projectRibbonGroups("sketch", projected).map((group) => group.label)
+    ).toEqual([
+      "Create",
+      "Modify",
+      "State",
+      "Constraint",
+      "Dimension",
+      "Finish"
+    ]);
   });
 
   it("moves whole trailing groups into overflow and keeps Finish visible", () => {

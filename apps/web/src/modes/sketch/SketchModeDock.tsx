@@ -4,6 +4,9 @@ import type {
   SketchConstraintEntry,
   SketchDimensionEntry,
   SketchDimensionTarget,
+  PreparedSketchCurveEditOp,
+  SketchCurveEditProposal,
+  SketchCurveEditReadinessQueryResponse,
   SketchEvaluationQueryResponse,
   SketchPathCandidatesQueryResponse,
   SketchPlane,
@@ -53,6 +56,14 @@ import {
 import type { CadFeatureSummary } from "@web-cad/cad-protocol";
 import type { UiActionId } from "../../actions/actionRegistry";
 import {
+  SketchCurveEditPanel,
+  type SketchCurveEditSessionControl
+} from "./SketchCurveEditPanel";
+import type {
+  SketchCurveEditKind,
+  SketchCurveEditViewportChoice
+} from "./sketchCurveEditModel";
+import {
   DEFAULT_SKETCH_CONSTRAINT_FORM,
   constraintToRenameDraft,
   createDimensionDraft,
@@ -89,8 +100,12 @@ export interface SketchModeDockProps {
   >;
   readonly activeSketchId?: string;
   readonly selectedEntityId?: string;
+  readonly curveEditSourceAuthorityKey: string | number;
   readonly arcToolActiveSketchId?: string;
   readonly initialActionId?: UiActionId;
+  readonly curveEditViewportChoice?: SketchCurveEditViewportChoice;
+  readonly curveEditViewportHoverChoice?: SketchCurveEditViewportChoice;
+  readonly curveEditKeyboardSuspended?: boolean;
   readonly onSelectSketch: (sketchId: string) => void;
   readonly onSelectEntity: (sketchId: string, entityId: string) => void;
   readonly onCreateSketch: (form: SketchCreateForm) => void;
@@ -111,6 +126,20 @@ export interface SketchModeDockProps {
   ) => void;
   readonly onStartThreePointArcTool: (sketchId: string) => void;
   readonly onCancelGesture: () => void;
+  readonly onReadCurveEditReadiness: (
+    proposal: SketchCurveEditProposal
+  ) => SketchCurveEditReadinessQueryResponse;
+  readonly onApplyCurveEdit: (
+    operation: PreparedSketchCurveEditOp
+  ) => boolean | Promise<boolean>;
+  readonly onCancelCurveEdit: (restoreFocus?: boolean) => void;
+  readonly onRequestCurveEditEscape?: (dirty: boolean) => void;
+  readonly onCurveEditChoiceRejected?: (message: string) => void;
+  readonly onClearCurveEditHoverPreview?: () => void;
+  readonly onCurveEditDirtyChange?: (dirty: boolean) => void;
+  readonly onCurveEditSessionControlChange?: (
+    control: SketchCurveEditSessionControl | undefined
+  ) => void;
   readonly onCreateDimension: (
     sketchId: string,
     entityId: string,
@@ -189,8 +218,12 @@ export function SketchModeDock(props: SketchModeDockProps) {
     pathCandidatesBySketchId,
     activeSketchId,
     selectedEntityId,
+    curveEditSourceAuthorityKey,
     arcToolActiveSketchId,
     initialActionId,
+    curveEditViewportChoice,
+    curveEditViewportHoverChoice,
+    curveEditKeyboardSuspended,
     onSelectSketch,
     onSelectEntity,
     onCreateSketch,
@@ -200,6 +233,14 @@ export function SketchModeDock(props: SketchModeDockProps) {
     onSetEntityConstruction,
     onStartThreePointArcTool,
     onCancelGesture,
+    onReadCurveEditReadiness,
+    onApplyCurveEdit,
+    onCancelCurveEdit,
+    onRequestCurveEditEscape,
+    onCurveEditChoiceRejected,
+    onClearCurveEditHoverPreview,
+    onCurveEditDirtyChange,
+    onCurveEditSessionControlChange,
     onCreateDimension,
     onApplyDimensionEdit,
     onDeleteDimension,
@@ -241,6 +282,7 @@ export function SketchModeDock(props: SketchModeDockProps) {
     entityDimensions
   ).find((option) => option.target.role === requestedDimensionRole);
   const requestedConstraintKind = getRequestedConstraintKind(initialActionId);
+  const requestedCurveEditKind = getRequestedCurveEditKind(initialActionId);
   const [section, setSection] = useState<DockSection>(() =>
     requestedDimension || requestedConstraintKind ? "constraints" : "geometry"
   );
@@ -401,9 +443,32 @@ export function SketchModeDock(props: SketchModeDockProps) {
       </nav>
 
       <div className="pb-sketch-dock__scroll">
-        {section === "geometry" ? (
-          <GeometrySection
+        {requestedCurveEditKind ? (
+          <SketchCurveEditPanel
             disabled={disabled}
+            kind={requestedCurveEditKind}
+            sketch={activeSketch}
+            selectedEntityId={selectedEntityId}
+            sourceAuthorityKey={curveEditSourceAuthorityKey}
+            viewportChoice={curveEditViewportChoice}
+            viewportHoverChoice={curveEditViewportHoverChoice}
+            keyboardSuspended={curveEditKeyboardSuspended}
+            readReadiness={onReadCurveEditReadiness}
+            onSelectEntity={(entityId) =>
+              onSelectEntity(activeSketch.id, entityId)
+            }
+            onApply={onApplyCurveEdit}
+            onCancel={onCancelCurveEdit}
+            onRequestEscape={onRequestCurveEditEscape}
+            onChoiceRejected={onCurveEditChoiceRejected}
+            onClearHoverPreview={onClearCurveEditHoverPreview}
+            onDirtyChange={onCurveEditDirtyChange}
+            onSessionControlChange={onCurveEditSessionControlChange}
+          />
+        ) : null}
+        {!requestedCurveEditKind && section === "geometry" ? (
+          <GeometrySection
+            disabled={disabled || requestedCurveEditKind !== undefined}
             sketch={activeSketch}
             selectedEntity={selectedEntity}
             dimensions={entityDimensions}
@@ -427,9 +492,9 @@ export function SketchModeDock(props: SketchModeDockProps) {
             onCancelArc={onCancelGesture}
           />
         ) : null}
-        {section === "constraints" ? (
+        {!requestedCurveEditKind && section === "constraints" ? (
           <IntentSection
-            disabled={disabled}
+            disabled={disabled || requestedCurveEditKind !== undefined}
             sketch={activeSketch}
             entity={selectedEntity}
             parameters={parameters}
@@ -448,7 +513,7 @@ export function SketchModeDock(props: SketchModeDockProps) {
             onDeleteConstraint={onDeleteConstraint}
           />
         ) : null}
-        {section === "status" ? (
+        {!requestedCurveEditKind && section === "status" ? (
           <StatusSection
             evaluation={evaluation}
             solverStatus={solverStatus}
@@ -471,6 +536,23 @@ export function SketchModeDock(props: SketchModeDockProps) {
       </footer>
     </aside>
   );
+}
+
+function getRequestedCurveEditKind(
+  actionId: UiActionId | undefined
+): SketchCurveEditKind | undefined {
+  switch (actionId) {
+    case "sketch.trim":
+      return "trim";
+    case "sketch.extend":
+      return "extend";
+    case "sketch.split":
+      return "split";
+    case "sketch.explode-rectangle":
+      return "explodeRectangle";
+    default:
+      return undefined;
+  }
 }
 
 function getRequestedEntityKind(

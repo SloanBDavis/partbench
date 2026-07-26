@@ -6,10 +6,12 @@ import type {
   Vec2
 } from "@web-cad/cad-protocol";
 import {
+  createViewportRay,
   projectPoint,
   type RenderCamera,
   type ViewportPoint,
-  type ViewportSize
+  type ViewportSize,
+  type Vec3
 } from "@web-cad/renderer";
 import {
   createDefaultSketchDisplayFrame,
@@ -40,6 +42,11 @@ export interface SketchViewportProjectionBasis {
   readonly origin: ViewportPoint;
   readonly uVector: ViewportPoint;
   readonly vVector: ViewportPoint;
+  readonly perspective?: {
+    readonly camera: RenderCamera;
+    readonly displayFrame: SketchDisplayFrame;
+    readonly size: ViewportSize;
+  };
 }
 
 export function createSketchViewportDragHandles({
@@ -101,7 +108,8 @@ export function createSketchViewportProjectionBasis({
   return {
     origin,
     uVector: { x: uPoint.x - origin.x, y: uPoint.y - origin.y },
-    vVector: { x: vPoint.x - origin.x, y: vPoint.y - origin.y }
+    vVector: { x: vPoint.x - origin.x, y: vPoint.y - origin.y },
+    perspective: { camera, displayFrame, size }
   };
 }
 
@@ -126,10 +134,70 @@ export function mapViewportPointToSketchPoint(
   basis: SketchViewportProjectionBasis,
   point: ViewportPoint
 ): Vec2 | undefined {
+  if (basis.perspective) {
+    return intersectViewportRayWithSketchFrame(
+      basis.perspective.camera,
+      basis.perspective.displayFrame,
+      basis.perspective.size,
+      point
+    );
+  }
   return mapViewportDeltaToSketchDelta(basis, {
     x: point.x - basis.origin.x,
     y: point.y - basis.origin.y
   });
+}
+
+function intersectViewportRayWithSketchFrame(
+  camera: RenderCamera,
+  frame: SketchDisplayFrame,
+  size: ViewportSize,
+  point: ViewportPoint
+): Vec2 | undefined {
+  const ray = createViewportRay(camera, size, point);
+  const normal = crossVec3(frame.uAxis, frame.vAxis);
+  const denominator = dotVec3(ray.direction, normal);
+  if (Math.abs(denominator) < 1e-12) return undefined;
+  const distance =
+    dotVec3(subtractVec3(frame.origin, ray.origin), normal) / denominator;
+  if (!Number.isFinite(distance) || distance < 0) return undefined;
+  const intersection = addVec3(ray.origin, scaleVec3(ray.direction, distance));
+  const relative = subtractVec3(intersection, frame.origin);
+  const uu = dotVec3(frame.uAxis, frame.uAxis);
+  const uv = dotVec3(frame.uAxis, frame.vAxis);
+  const vv = dotVec3(frame.vAxis, frame.vAxis);
+  const ru = dotVec3(relative, frame.uAxis);
+  const rv = dotVec3(relative, frame.vAxis);
+  const determinant = uu * vv - uv * uv;
+  if (Math.abs(determinant) < 1e-12) return undefined;
+  return cleanVec2([
+    (ru * vv - rv * uv) / determinant,
+    (rv * uu - ru * uv) / determinant
+  ]);
+}
+
+function addVec3(left: Vec3, right: Vec3): Vec3 {
+  return [left[0] + right[0], left[1] + right[1], left[2] + right[2]];
+}
+
+function subtractVec3(left: Vec3, right: Vec3): Vec3 {
+  return [left[0] - right[0], left[1] - right[1], left[2] - right[2]];
+}
+
+function scaleVec3(vector: Vec3, scale: number): Vec3 {
+  return [vector[0] * scale, vector[1] * scale, vector[2] * scale];
+}
+
+function dotVec3(left: Vec3, right: Vec3): number {
+  return left[0] * right[0] + left[1] * right[1] + left[2] * right[2];
+}
+
+function crossVec3(left: Vec3, right: Vec3): Vec3 {
+  return [
+    left[1] * right[2] - left[2] * right[1],
+    left[2] * right[0] - left[0] * right[2],
+    left[0] * right[1] - left[1] * right[0]
+  ];
 }
 
 export function applySketchViewportDrag(

@@ -132,6 +132,16 @@ describe("V18 UI action registry", () => {
       invokeUiAction(needsSelection, collectorContext)
     ).resolves.toEqual({ status: "started" });
     expect(runAction).toHaveBeenCalledWith("solid.revolve");
+
+    const curveTargetCollector = find(
+      projectUiActions(collectorContext),
+      "sketch.trim"
+    );
+    expect(curveTargetCollector.availability.status).toBe("needs-selection");
+    await expect(
+      invokeUiAction(curveTargetCollector, collectorContext)
+    ).resolves.toEqual({ status: "started" });
+    expect(runAction).toHaveBeenCalledWith("sketch.trim");
   });
 });
 
@@ -176,7 +186,11 @@ describe("V18 command search", () => {
       "solid.hole",
       "solid.fillet",
       "solid.chamfer",
-      "solid.shell"
+      "solid.shell",
+      "sketch.trim",
+      "sketch.extend",
+      "sketch.split",
+      "sketch.explode-rectangle"
     ]);
     expect(searchUiActions(actions, "ctrl/cmd+k")).toEqual([]);
     expect(searchUiActions(actions, "ctrl/cmd+z")[0]?.definition.id).toBe(

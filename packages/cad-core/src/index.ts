@@ -314,6 +314,7 @@ export {
   type PlanSketchTrimInput,
   type PlannedSketchCurvePiece,
   type PlannedSketchEntityId,
+  type SketchCurveEditIntersectionEvidence,
   type SketchCurveEditPlan,
   type SketchCurveEditPlanDiagnostic,
   type SketchCurveEditPlanDiagnosticCode,
@@ -453,6 +454,7 @@ import {
   planSketchExtend,
   planSketchSplit,
   planSketchTrim,
+  type SketchCurveEditIntersectionEvidence,
   type SketchCurveEditPlanDiagnostic,
   type SketchCurveEditPlanResult
 } from "./sketchCurveEditPlans";
@@ -24446,6 +24448,7 @@ type CurveEditPreparationResult =
   | {
       readonly status: "blocked";
       readonly diagnostics: readonly CadSketchEditDiagnostic[];
+      readonly previewIntersections?: readonly SketchCurveEditIntersectionEvidence[];
     };
 
 function normalizeSketchCurveEditRequest(
@@ -24643,7 +24646,7 @@ function mapCurveEditPlanDiagnostic(
 function createCurveEditPreview(
   plan: MaterializedSketchCurveEditPlan
 ): SketchCurveEditPreview {
-  const intersections = plan.pieces.flatMap((piece, pieceIndex) => {
+  const endpointIntersections = plan.pieces.flatMap((piece, pieceIndex) => {
     const entity = plan.materialized.entities[pieceIndex];
     if (!entity) return [];
     return (["start", "end"] as const).flatMap((role) => {
@@ -24672,18 +24675,9 @@ function createCurveEditPreview(
       ];
     });
   });
-  const uniqueIntersections = [
-    ...new Map(
-      intersections.map((entry) => [
-        `${entry.boundaryEntityId}:${entry.targetParameter}`,
-        entry
-      ])
-    ).values()
-  ].sort(
-    (left, right) =>
-      left.targetParameter - right.targetParameter ||
-      (left.boundaryEntityId < right.boundaryEntityId ? -1 : 1)
-  );
+  const intersections = plan.previewIntersections ?? endpointIntersections;
+  const uniqueIntersections =
+    normalizeCurveEditPreviewIntersections(intersections);
   const projectedSplitParameters = [
     ...new Set(
       plan.pieces.flatMap((piece) =>
@@ -24699,6 +24693,44 @@ function createCurveEditPreview(
     projectedSplitParameters,
     resultEntityCount: plan.resultEntityCount,
     resultEntities: plan.materialized.entities.map(cloneSketchEntity)
+  };
+}
+
+function normalizeCurveEditPreviewIntersections(
+  intersections: readonly SketchCurveEditIntersectionEvidence[]
+): SketchCurveEditPreview["intersections"] {
+  const uniqueIntersections = [
+    ...new Map(
+      intersections.map((entry) => [
+        `${entry.boundaryEntityId}:${entry.targetParameter}`,
+        entry
+      ])
+    ).values()
+  ].sort(
+    (left, right) =>
+      left.targetParameter - right.targetParameter ||
+      (left.boundaryEntityId < right.boundaryEntityId
+        ? -1
+        : left.boundaryEntityId > right.boundaryEntityId
+          ? 1
+          : 0)
+  );
+  return uniqueIntersections;
+}
+
+/**
+ * A blocked preview exposes candidate evidence only. Zero result entities means
+ * that no unique materialized result was selected, not that the edit deletes
+ * the target without replacement.
+ */
+function createBlockedCurveEditPreview(
+  intersections: readonly SketchCurveEditIntersectionEvidence[]
+): SketchCurveEditPreview {
+  return {
+    intersections: normalizeCurveEditPreviewIntersections(intersections),
+    projectedSplitParameters: [],
+    resultEntityCount: 0,
+    resultEntities: []
   };
 }
 
@@ -24754,7 +24786,10 @@ function prepareSketchCurveEdit({
       status: "blocked",
       diagnostics: initialPlan.diagnostics.map((diagnostic) =>
         mapCurveEditPlanDiagnostic(normalized.sketchId, diagnostic)
-      )
+      ),
+      ...(initialPlan.previewIntersections === undefined
+        ? {}
+        : { previewIntersections: initialPlan.previewIntersections })
     };
   }
   const materializedInput = materializeNormalizedSketchCurveEditIds(
@@ -24770,6 +24805,10 @@ function prepareSketchCurveEdit({
     materializedResult.status === "blocked" ||
     materializedResult.plan.materialized === undefined
   ) {
+    const previewIntersections =
+      materializedResult.status === "blocked"
+        ? materializedResult.previewIntersections
+        : initialPlan.plan.previewIntersections;
     return {
       status: "blocked",
       diagnostics:
@@ -24787,7 +24826,8 @@ function prepareSketchCurveEdit({
                 recoveryAction:
                   "Refresh readiness and use its complete prepared operation."
               }
-            ]
+            ],
+      ...(previewIntersections === undefined ? {} : { previewIntersections })
     };
   }
   const plan = materializedResult.plan as MaterializedSketchCurveEditPlan;
@@ -24811,7 +24851,10 @@ function prepareSketchCurveEdit({
           featureId: dependency.featureId,
           recoveryAction:
             "Delete or explicitly retarget every dependent feature before retrying the curve edit."
-        }))
+        })),
+        ...(plan.previewIntersections === undefined
+          ? {}
+          : { previewIntersections: plan.previewIntersections })
       };
     }
     const diagnostic: CadSketchEditDiagnostic = {
@@ -24826,7 +24869,13 @@ function prepareSketchCurveEdit({
       recoveryAction:
         "Refresh readiness after repairing the reported sketch state."
     };
-    return { status: "blocked", diagnostics: [diagnostic] };
+    return {
+      status: "blocked",
+      diagnostics: [diagnostic],
+      ...(plan.previewIntersections === undefined
+        ? {}
+        : { previewIntersections: plan.previewIntersections })
+    };
   }
   return {
     status: "ready",
@@ -24972,7 +25021,14 @@ function createSketchCurveEditReadinessResponse({
       query: "sketch.curveEditReadiness",
       cadOpsVersion,
       status: "blocked",
-      diagnostics: prepared.diagnostics
+      diagnostics: prepared.diagnostics,
+      ...(prepared.previewIntersections === undefined
+        ? {}
+        : {
+            preview: createBlockedCurveEditPreview(
+              prepared.previewIntersections
+            )
+          })
     };
   }
   return {

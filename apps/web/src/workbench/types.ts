@@ -19,6 +19,7 @@ export type FeatureEditorKind =
   | "transform"
   | "sketch-create"
   | "sketch-edit"
+  | "sketch-curve-edit"
   | "extrude"
   | "revolve"
   | "sweep"
@@ -65,6 +66,15 @@ export type WorkbenchNavigationIntent =
       readonly mode: WorkbenchMode;
       /** Defaults to true because navigation may make the current draft stale. */
       readonly closesEditor?: boolean;
+    }
+  | {
+      /**
+       * A semantic tree selection that changes the sketch supplying an editor.
+       * App applies the selection only after the dirty-editor guard resolves.
+       */
+      readonly kind: "sketch-selection";
+      readonly sketchId: string;
+      readonly entityId?: string;
     };
 
 export interface WorkbenchUiState {

@@ -211,6 +211,8 @@ export function describeNavigationIntent(
             : "redoing the next change";
     case "command-search-action":
       return "running the selected command";
+    case "sketch-selection":
+      return "opening another sketch";
   }
 }
 
@@ -234,6 +236,11 @@ function navigationChangesWorkbench(
       return true;
     case "command-search-action":
       return intent.mode !== state.mode || intent.actionId !== state.activeTool;
+    case "sketch-selection":
+      return (
+        state.mode !== "sketch" ||
+        state.activeEditor?.sourceId !== intent.sketchId
+      );
   }
 }
 
@@ -303,6 +310,15 @@ function applyNavigationIntent(
           intent.mode === "project"
             ? (state.projectPage ?? "overview")
             : state.projectPage,
+        commandSearchOpen: false
+      };
+    case "sketch-selection":
+      return {
+        ...base,
+        mode: "sketch",
+        activeTool: undefined,
+        activeEditor: undefined,
+        activeEditorDirty: false,
         commandSearchOpen: false
       };
   }

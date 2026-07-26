@@ -12,6 +12,7 @@ import { WORKBENCH_LAYOUT } from "../styles/tokens";
 import type { WorkbenchMode } from "./types";
 import { DockDivider } from "./DockDivider";
 import {
+  findDrawerInitialFocus,
   resolveWorkbenchLayout,
   type DockLayoutState,
   type DockSide
@@ -275,9 +276,7 @@ function DockRegion({
       !wasVisibleRef.current
     ) {
       requestAnimationFrameSafe(() => {
-        const initial = regionRef.current?.querySelector<HTMLElement>(
-          "[data-drawer-initial-focus], button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
-        );
+        const initial = findDrawerInitialFocus(regionRef.current);
         (initial ?? regionRef.current)?.focus();
       });
     }

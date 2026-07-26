@@ -35,6 +35,7 @@ import type {
   DocumentUnitUpdateMode,
   FeatureHoleDepthMode,
   FeatureHoleDirection,
+  ProjectExportReadinessQueryResponse,
   ProjectHealthQueryResponse,
   ProjectImportReadinessQueryResponse,
   ProjectParameterEvaluationQueryResponse,
@@ -54,6 +55,9 @@ import type {
   SketchSnapshot,
   SketchPathRef,
   SketchProfileRef,
+  PreparedSketchCurveEditOp,
+  SketchCurveEditProposal,
+  SketchCurveEditReadinessQueryResponse,
   Vec2
 } from "@web-cad/cad-protocol";
 import { createDerivedGeometryRuntime } from "@web-cad/derived-geometry-runtime";
@@ -62,6 +66,7 @@ import {
   useCallback,
   useEffect,
   lazy,
+  useLayoutEffect,
   useMemo,
   useReducer,
   useRef,
@@ -166,11 +171,11 @@ import { LazyCadCommandWorker } from "./lazyCadCommandWorker";
 import {
   invokeUiAction,
   projectUiActions,
+  type UiActionAvailability,
   type UiActionAvailabilityProjection,
   type UiActionContext,
   type UiActionId
 } from "./actions/actionRegistry";
-import { CommandSearchDialog } from "./actions/CommandSearchDialog";
 import {
   markPartbenchPerformance,
   PARTBENCH_PERFORMANCE_MARKS
@@ -179,6 +184,7 @@ import { GlobalHeader } from "./workbench/GlobalHeader";
 import { ModeRibbon } from "./workbench/ModeRibbon";
 import { StatusBar } from "./workbench/StatusBar";
 import { WorkbenchShell } from "./workbench/WorkbenchShell";
+import type { WorkbenchNavigationIntent } from "./workbench/types";
 import type {
   InspectHealthProjection,
   InspectMeasurementsProjection,
@@ -203,8 +209,23 @@ import {
   loadWorkbenchUiPreferences,
   saveWorkbenchUiPreferences
 } from "./state/uiPreferences";
-import { SketchArcToolOverlay } from "./components/SketchArcToolOverlay";
-import { SketchViewportDragOverlay } from "./components/SketchViewportDragOverlay";
+import type { SketchCurveEditSessionControl } from "./modes/sketch/SketchCurveEditPanel";
+import { projectSketchCurveEditViewportPoint } from "./modes/sketch/sketchCurveEditViewportProjection";
+import {
+  getCurveEditDiscardFocusTarget,
+  shouldRestoreResolvedCurveEditNavigationFocus
+} from "./modes/sketch/curveEditNavigationGuardModel";
+import type { SketchCurveEditViewportChoice } from "./modes/sketch/sketchCurveEditModel";
+import { SketchCurveEditHoverScheduler } from "./modes/sketch/sketchCurveEditHoverScheduler";
+import {
+  getActiveCurveEditInvocationAction,
+  getCurveEditSketchSelectionAction,
+  getSketchCurveEditOwnershipPolicy
+} from "./modes/sketch/sketchCurveEditOwnership";
+import {
+  querySketchCurveEditReadiness,
+  submitPreparedSketchCurveEdit
+} from "./modes/sketch/sketchCurveEditWorkflow";
 import { DocumentTreeDock } from "./workbench/DocumentTreeDock";
 import {
   createDocumentTreeProjection,
@@ -235,9 +256,9 @@ import {
   DERIVED_MESH_CACHE_ARTIFACT_VERSION,
   type DerivedMeshCacheContext
 } from "./derivedMeshOpfsCache";
-import {
-  createVisualizationMeshExportArtifact,
-  createVisualizationMeshExportStatus
+import type {
+  VisualizationMeshExportResult,
+  VisualizationMeshExportStatus
 } from "./visualizationMeshExport";
 import {
   createBodyTopologyDerivedExactMetadataSnapshot,
@@ -338,13 +359,7 @@ import {
   deriveModelingActions,
   type ModelingSelectionContext
 } from "./modelingActions";
-import {
-  createProjectJsonDraftSourceForEditorValue,
-  createProjectJsonPreview,
-  createProjectJsonWorkflowState,
-  formatProjectJsonSummary,
-  type ProjectJsonDraftSource
-} from "./projectJson";
+import type { ProjectJsonDraftSource } from "./projectJson";
 import { createProjectStorageCapabilityStatus } from "./projectStorageCapabilities";
 import {
   createInitialProjectFileWorkflowState,
@@ -368,17 +383,15 @@ import {
   type WcadFileHandleLike,
   type WcadFilePickerTargetLike
 } from "./projectWcadWorkflow";
-import {
+import { isProjectWcadTopologyCheckpointPayloadError } from "./projectWcadTopologyCheckpointErrors";
+import type {
   createProjectTopologyAnchorCreationPlanForGeneratedReference,
-  createProjectTopologyAnchorRepairPlanForGeneratedReference,
-  exportProjectWcadWithTopologyCheckpoints,
-  isProjectWcadTopologyCheckpointPayloadError
+  createProjectTopologyAnchorRepairPlanForGeneratedReference
 } from "./projectWcadTopologyCheckpoints";
 import {
   createProjectStepImportPayloadStore,
   createProjectStepImportResolver
 } from "./projectStepImportResolver";
-import { createSketchOnFaceCommandPlan } from "./sketchOnFacePromotion";
 import {
   createTopologyRepairCandidatePreview,
   createTopologyRepairPreviewKey,
@@ -424,8 +437,85 @@ const SketchModeDock = lazy(() =>
     default: module.SketchModeDock
   }))
 );
+const CommandSearchDialog = lazy(() =>
+  import("./actions/CommandSearchDialog").then((module) => ({
+    default: module.CommandSearchDialog
+  }))
+);
+const CurveEditNavigationGuard = lazy(() =>
+  import("./modes/sketch").then((module) => ({
+    default: module.CurveEditNavigationGuard
+  }))
+);
+const SketchViewportDragOverlay = lazy(() =>
+  import("./modes/sketch").then((module) => ({
+    default: module.SketchViewportDragOverlay
+  }))
+);
+const SketchArcToolOverlay = lazy(() =>
+  import("./modes/sketch").then((module) => ({
+    default: module.SketchArcToolOverlay
+  }))
+);
+
+function CommandSearchLoadingFallback({
+  onRequestClose
+}: {
+  readonly onRequestClose: () => void;
+}) {
+  return (
+    <div className="pb-modal-loading-backdrop">
+      <div
+        className="pb-modal-loading"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Loading command search"
+        aria-busy="true"
+        tabIndex={-1}
+        autoFocus
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            onRequestClose();
+          } else if (event.key === "Tab") {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        }}
+      >
+        <span role="status" aria-live="polite">
+          Loading command search…
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function SketchOverlayLoadingFallback() {
+  return (
+    <div
+      className="sketch-overlay-loading"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      Loading sketch controls…
+    </div>
+  );
+}
 
 const engine = new CadEngine();
+
+function readSketchCurveEditReadiness(
+  proposal: SketchCurveEditProposal
+): SketchCurveEditReadinessQueryResponse {
+  return querySketchCurveEditReadiness(
+    (request) => engine.executeQuery(request),
+    proposal
+  );
+}
+
 const derivedGeometryEnabled = __PARTBENCH_DERIVED_GEOMETRY_ENABLED__;
 const supportedOpfsCacheArtifactVersions = [
   DERIVED_MESH_CACHE_ARTIFACT_VERSION
@@ -498,6 +588,45 @@ function readProjectStructure(): {
         bodies: response.bodies
       }
     : { parts: [], features: [], bodies: [] };
+}
+
+function isSketchCurveEditUiAction(
+  actionId: string | undefined
+): actionId is
+  | "sketch.trim"
+  | "sketch.extend"
+  | "sketch.split"
+  | "sketch.explode-rectangle" {
+  return (
+    actionId === "sketch.trim" ||
+    actionId === "sketch.extend" ||
+    actionId === "sketch.split" ||
+    actionId === "sketch.explode-rectangle"
+  );
+}
+
+function createCurveEditActionAvailability(
+  sketch: SketchSnapshot | undefined,
+  selectedEntity: SketchEntitySnapshot | undefined,
+  supportedKinds: readonly SketchEntitySnapshot["kind"][],
+  selectionMessage: string
+): UiActionAvailability {
+  if (!sketch) {
+    return {
+      status: "needs-selection",
+      message: "Select or create a sketch first."
+    };
+  }
+  if (selectedEntity && supportedKinds.includes(selectedEntity.kind)) {
+    return { status: "ready" };
+  }
+  if (sketch.entities.some((entity) => supportedKinds.includes(entity.kind))) {
+    return { status: "needs-selection", message: selectionMessage };
+  }
+  return {
+    status: "blocked",
+    message: `This sketch has no eligible ${supportedKinds.join(", ")} geometry.`
+  };
 }
 
 function readBodySourceIdentitySignatures(
@@ -1410,6 +1539,10 @@ export function App() {
   const [document, setDocument] = useState<CadDocument>(() =>
     engine.getDocument()
   );
+  const [
+    curveEditSourceAuthorityRevision,
+    setCurveEditSourceAuthorityRevision
+  ] = useState(0);
   const [selectedId, setSelectedId] = useState<string | undefined>();
   const [selectedGeneratedReference, setSelectedGeneratedReference] = useState<
     SelectedGeneratedReference | undefined
@@ -1437,6 +1570,48 @@ export function App() {
   const [threePointArcTool, setThreePointArcTool] = useState<
     ThreePointArcToolSession | undefined
   >();
+  const [curveEditViewportChoice, setCurveEditViewportChoice] = useState<
+    SketchCurveEditViewportChoice | undefined
+  >();
+  const [curveEditViewportHoverChoice, setCurveEditViewportHoverChoice] =
+    useState<SketchCurveEditViewportChoice | undefined>();
+  const curveEditHoverSchedulerRef = useRef<
+    SketchCurveEditHoverScheduler | undefined
+  >(undefined);
+  curveEditHoverSchedulerRef.current ??= new SketchCurveEditHoverScheduler({
+    publish: (choice) =>
+      setCurveEditViewportHoverChoice((current) => ({
+        sequence: (current?.sequence ?? 0) + 1,
+        ...choice
+      }))
+  });
+  const curveEditSessionControlRef = useRef<
+    SketchCurveEditSessionControl | undefined
+  >(undefined);
+  const commandSearchOpenerRef = useRef<HTMLElement | null>(null);
+  const curveEditOpenerRef = useRef<HTMLElement | null>(null);
+  const curveEditNavigationBypassRef = useRef(false);
+  const curveEditPendingContinuationRef = useRef<(() => void) | undefined>(
+    undefined
+  );
+  const curveEditOwnership = getSketchCurveEditOwnershipPolicy({
+    active: workbenchUi.activeEditor?.kind === "sketch-curve-edit",
+    dirty: workbenchUi.activeEditorDirty
+  });
+  const handleCurveEditDirtyChange = useCallback((dirty: boolean) => {
+    dispatchWorkbench({ type: "set-editor-dirty", dirty });
+  }, []);
+  const handleCurveEditSessionControlChange = useCallback(
+    (control: SketchCurveEditSessionControl | undefined) => {
+      curveEditSessionControlRef.current = control;
+    },
+    []
+  );
+  const clearCurveEditHoverPreview = useCallback(() => {
+    setCurveEditViewportHoverChoice(undefined);
+    curveEditHoverSchedulerRef.current?.clear();
+  }, []);
+  useEffect(() => () => curveEditHoverSchedulerRef.current?.clear(), []);
   const [selectedSketchContext, setSelectedSketchContext] = useState<
     SketchPanelSelectionContext | undefined
   >();
@@ -1579,7 +1754,7 @@ export function App() {
       });
     };
   }, [commandWorker]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       markPartbenchPerformance(PARTBENCH_PERFORMANCE_MARKS.shellReady);
     });
@@ -2129,7 +2304,11 @@ export function App() {
     const register = (
       selection: DocumentTreeSelection,
       capabilities: DocumentTreeRowCapabilities
-    ) => entries.set(documentTreeSelectionKey(selection), capabilities);
+    ) =>
+      entries.set(
+        documentTreeSelectionKey(selection),
+        curveEditOwnership.suppressTreeSourceMutations ? {} : capabilities
+      );
 
     for (const parameter of parameters) {
       register(
@@ -2176,7 +2355,8 @@ export function App() {
     parameters,
     projectStructure.features,
     sceneObjects,
-    sketches
+    sketches,
+    curveEditOwnership.suppressTreeSourceMutations
   ]);
   const documentTreeProjection = useMemo(
     () =>
@@ -3654,31 +3834,64 @@ export function App() {
     () => exportCadProjectForDocument(engine, document),
     [document]
   );
-  const projectJsonWorkflow = useMemo(
-    () =>
-      createProjectJsonWorkflowState({
-        currentProject,
-        draftJson: projectJson,
-        draftSource: projectJsonDraftSource
-      }),
-    [currentProject, projectJson, projectJsonDraftSource]
-  );
-  const currentProjectSummary = projectJsonWorkflow.current.summary;
   const projectStorageCapabilities = useMemo(
     () => createProjectStorageCapabilityStatus(window),
     []
   );
-  const visualizationMeshExportStatus = useMemo(
-    () =>
-      projectExportReadiness
-        ? createVisualizationMeshExportStatus({
+  const [
+    loadedVisualizationMeshExportStatus,
+    setVisualizationMeshExportStatus
+  ] = useState<{
+    readonly exportReadiness: ProjectExportReadinessQueryResponse;
+    readonly derivedGeometry: DerivedGeometrySnapshot;
+    readonly derivedGeometrySources: readonly DerivedGeometrySource[];
+    readonly status: VisualizationMeshExportStatus;
+  }>();
+  const visualizationMeshExportStatus =
+    workbenchUi.mode === "project" &&
+    loadedVisualizationMeshExportStatus &&
+    loadedVisualizationMeshExportStatus.exportReadiness ===
+      projectExportReadiness &&
+    loadedVisualizationMeshExportStatus.derivedGeometry === derivedGeometry &&
+    loadedVisualizationMeshExportStatus.derivedGeometrySources ===
+      derivedGeometrySources
+      ? loadedVisualizationMeshExportStatus.status
+      : undefined;
+  useEffect(() => {
+    let current = true;
+    if (workbenchUi.mode !== "project" || !projectExportReadiness) {
+      return () => {
+        current = false;
+      };
+    }
+
+    void import("./visualizationMeshExport")
+      .then(({ createVisualizationMeshExportStatus }) => {
+        if (!current) return;
+        setVisualizationMeshExportStatus({
+          exportReadiness: projectExportReadiness,
+          derivedGeometry,
+          derivedGeometrySources,
+          status: createVisualizationMeshExportStatus({
             exportReadiness: projectExportReadiness,
             derivedGeometry,
             derivedGeometrySources
           })
-        : undefined,
-    [derivedGeometry, derivedGeometrySources, projectExportReadiness]
-  );
+        });
+      })
+      .catch(() => {
+        if (current) setVisualizationMeshExportStatus(undefined);
+      });
+
+    return () => {
+      current = false;
+    };
+  }, [
+    derivedGeometry,
+    derivedGeometrySources,
+    projectExportReadiness,
+    workbenchUi.mode
+  ]);
   useEffect(() => {
     return () => {
       derivedGeometryServiceRef.current?.dispose();
@@ -3690,8 +3903,9 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (workbenchUi.mode !== "project") return;
     void refreshProjectOpfsCache();
-  }, [refreshProjectOpfsCache]);
+  }, [refreshProjectOpfsCache, workbenchUi.mode]);
 
   useEffect(() => {
     if (!derivedGeometryEnabled) {
@@ -3738,6 +3952,7 @@ export function App() {
     const nextStructure = readProjectStructure();
     reconcileDerivedGeometry(nextDocument, nextStructure);
     setDocument(nextDocument);
+    setCurveEditSourceAuthorityRevision((current) => current + 1);
     setSelectedId(
       nextSelectedId !== null &&
         nextSelectedId &&
@@ -3754,12 +3969,31 @@ export function App() {
     );
   }
 
-  function selectObject(objectId: string | undefined) {
+  function applyObjectSelection(objectId: string | undefined) {
     setSelectedId(objectId);
     setSelectedGeneratedReference(undefined);
     setViewportPickIntent(undefined);
     setViewportHoverPick(undefined);
     dispatchWorkbench({ type: "set-active-tool" });
+  }
+
+  function runAfterCurveEditNavigationGuard(continuation: () => void) {
+    if (curveEditOwnership.guardNavigation) {
+      curveEditPendingContinuationRef.current = continuation;
+      dispatchWorkbench({
+        type: "request-navigation",
+        intent: { kind: "close-editor" }
+      });
+      return;
+    }
+    if (curveEditOwnership.closeBeforeCleanNavigation) {
+      clearCurveEditUi();
+    }
+    continuation();
+  }
+
+  function selectObject(objectId: string | undefined) {
+    runAfterCurveEditNavigationGuard(() => applyObjectSelection(objectId));
   }
 
   function selectViewportPick(pick: ViewportCanvasPick) {
@@ -3816,10 +4050,88 @@ export function App() {
           }
         : undefined
     );
+    if (intent.kind === "sketchEntity") {
+      setFocusedSketchId(intent.sketchId);
+      setSelectedSketchContext({
+        sketchId: intent.sketchId,
+        entityId: intent.entityId
+      });
+    }
+    return intent;
   }
 
   function hoverViewportPick(pick: ViewportCanvasPick | undefined) {
-    setViewportHoverPick(pick);
+    if (
+      !pick ||
+      !isSketchCurveEditUiAction(workbenchUi.activeTool) ||
+      !focusedSketchId
+    ) {
+      setViewportHoverPick(pick);
+      setCurveEditViewportHoverChoice(undefined);
+      curveEditHoverSchedulerRef.current?.clear();
+      return;
+    }
+    setViewportHoverPick((current) =>
+      current?.pickedRenderId === pick.pickedRenderId ? current : pick
+    );
+    const intent = resolveViewportPickIntent({
+      pickedRenderId: pick.pickedRenderId,
+      bodies: projectStructure.bodies,
+      objects: sceneObjects,
+      sketches
+    });
+    if (intent.kind !== "sketchEntity" || intent.sketchId !== focusedSketchId) {
+      setCurveEditViewportHoverChoice(undefined);
+      curveEditHoverSchedulerRef.current?.clear();
+      return;
+    }
+    const rawPoint = mapArcToolPickToSketchPoint(pick, focusedSketchId);
+    const sketch = sketches.find(
+      (candidate) => candidate.id === focusedSketchId
+    );
+    const entity = sketch?.entities.find(
+      (candidate) => candidate.id === intent.entityId
+    );
+    const point =
+      rawPoint && entity
+        ? projectSketchCurveEditViewportPoint(entity, rawPoint)
+        : rawPoint;
+    const hoverChoice = {
+      entityId: intent.entityId,
+      ...(point ? { point } : {})
+    };
+    curveEditHoverSchedulerRef.current?.schedule(hoverChoice);
+  }
+
+  function captureCurveEditViewportPick(pick: ViewportCanvasPick) {
+    if (!focusedSketchId) return;
+    const intent = resolveViewportPickIntent({
+      pickedRenderId: pick.pickedRenderId,
+      bodies: projectStructure.bodies,
+      objects: sceneObjects,
+      sketches
+    });
+    if (intent.kind !== "sketchEntity" || intent.sketchId !== focusedSketchId) {
+      setCommandNotice("Choose geometry in the active sketch.");
+      return;
+    }
+    const rawPoint = mapArcToolPickToSketchPoint(pick, focusedSketchId);
+    const sketch = sketches.find(
+      (candidate) => candidate.id === focusedSketchId
+    );
+    const entity = sketch?.entities.find(
+      (candidate) => candidate.id === intent.entityId
+    );
+    const point =
+      rawPoint && entity
+        ? projectSketchCurveEditViewportPoint(entity, rawPoint)
+        : rawPoint;
+    clearCurveEditHoverPreview();
+    setCurveEditViewportChoice((current) => ({
+      sequence: (current?.sequence ?? 0) + 1,
+      entityId: intent.entityId,
+      ...(point ? { point } : {})
+    }));
   }
 
   function reconcileDerivedGeometry(
@@ -4030,6 +4342,8 @@ export function App() {
     let ops: readonly CadOp[] = [];
 
     try {
+      const { createSketchOnFaceCommandPlan } =
+        await import("./sketchOnFacePromotion");
       const plan = await createSketchOnFaceCommandPlan({
         engine,
         features: currentStructure.features,
@@ -4231,7 +4545,7 @@ export function App() {
     );
   }
 
-  function focusSketch(sketchId: string, entityId?: string) {
+  function applySketchFocus(sketchId: string, entityId?: string) {
     setSelectedId(undefined);
     setSelectedGeneratedReference(undefined);
     setFocusedSketchId(sketchId);
@@ -4243,6 +4557,30 @@ export function App() {
       type: "request-navigation",
       intent: { kind: "mode", mode: "sketch" }
     });
+  }
+
+  function focusSketch(sketchId: string, entityId?: string) {
+    const selectionAction = getCurveEditSketchSelectionAction({
+      curveEditorActive: workbenchUi.activeEditor?.kind === "sketch-curve-edit",
+      dirty: workbenchUi.activeEditorDirty,
+      currentSketchId: focusedSketchId,
+      nextSketchId: sketchId
+    });
+    if (selectionAction === "guard-selection") {
+      dispatchWorkbench({
+        type: "request-navigation",
+        intent: {
+          kind: "sketch-selection",
+          sketchId,
+          ...(entityId ? { entityId } : {})
+        }
+      });
+      return;
+    }
+    if (selectionAction === "close-and-select") {
+      clearCurveEditUi();
+    }
+    applySketchFocus(sketchId, entityId);
   }
 
   async function renameSketch(sketchId: string, name: string) {
@@ -4417,6 +4755,21 @@ export function App() {
         ? { sketchId }
         : current
     );
+  }
+
+  async function applySketchCurveEdit(
+    operation: PreparedSketchCurveEditOp
+  ): Promise<boolean> {
+    const response = await submitPreparedSketchCurveEdit(operation, (ops) =>
+      commitOps(ops, () => null)
+    );
+    if (!response?.ok) return false;
+    setFocusedSketchId(operation.sketchId);
+    setSelectedSketchContext({
+      sketchId: operation.sketchId,
+      ...("entityId" in operation ? { entityId: operation.entityId } : {})
+    });
+    return true;
   }
 
   async function createSketchDimension(
@@ -4662,6 +5015,8 @@ export function App() {
     >;
 
     try {
+      const { createProjectTopologyAnchorCreationPlanForGeneratedReference } =
+        await import("./projectWcadTopologyCheckpoints");
       plan = await createProjectTopologyAnchorCreationPlanForGeneratedReference(
         {
           engine,
@@ -4732,6 +5087,8 @@ export function App() {
     >;
 
     try {
+      const { createProjectTopologyAnchorRepairPlanForGeneratedReference } =
+        await import("./projectWcadTopologyCheckpoints");
       plan = await createProjectTopologyAnchorRepairPlanForGeneratedReference({
         engine,
         features: projectStructure.features,
@@ -4793,6 +5150,8 @@ export function App() {
     setTopologyRepairPreview({ key, pending: true });
 
     try {
+      const { createProjectTopologyAnchorRepairPlanForGeneratedReference } =
+        await import("./projectWcadTopologyCheckpoints");
       const result =
         await createProjectTopologyAnchorRepairPlanForGeneratedReference({
           engine,
@@ -5045,7 +5404,21 @@ export function App() {
     }
   }
 
-  function undo() {
+  function clearCurveEditUi(restoreFocus = false) {
+    setThreePointArcTool(undefined);
+    setCurveEditViewportChoice(undefined);
+    setCurveEditViewportHoverChoice(undefined);
+    curveEditHoverSchedulerRef.current?.clear();
+    curveEditSessionControlRef.current = undefined;
+    dispatchWorkbench({ type: "set-active-tool" });
+    dispatchWorkbench({ type: "set-editor" });
+    if (restoreFocus) {
+      requestAnimationFrame(() => curveEditOpenerRef.current?.focus());
+    }
+  }
+
+  function performUndo() {
+    clearCurveEditUi();
     const result = engine.undo();
     syncDocument();
     if (result) {
@@ -5054,7 +5427,22 @@ export function App() {
     }
   }
 
-  function redo() {
+  function undo() {
+    if (
+      workbenchUi.activeEditor?.kind === "sketch-curve-edit" &&
+      workbenchUi.activeEditorDirty
+    ) {
+      dispatchWorkbench({
+        type: "request-navigation",
+        intent: { kind: "document-action", action: "undo" }
+      });
+      return;
+    }
+    performUndo();
+  }
+
+  function performRedo() {
+    clearCurveEditUi();
     const result = engine.redo();
     syncDocument(result?.transaction.diff.created[0]?.id ?? selectedId);
     if (result) {
@@ -5063,16 +5451,32 @@ export function App() {
     }
   }
 
-  function exportProjectJson() {
+  function redo() {
+    if (
+      workbenchUi.activeEditor?.kind === "sketch-curve-edit" &&
+      workbenchUi.activeEditorDirty
+    ) {
+      dispatchWorkbench({
+        type: "request-navigation",
+        intent: { kind: "document-action", action: "redo" }
+      });
+      return;
+    }
+    performRedo();
+  }
+
+  async function exportProjectJson() {
     setProjectJson(exportCadProjectJson(engine));
     setProjectJsonDraftSource({ kind: "generatedExport" });
+    const { formatProjectJsonSummary, summarizeCadProject } =
+      await import("./projectJson");
     setProjectMessage(
-      `Generated ${formatProjectJsonSummary(currentProjectSummary)}.`
+      `Generated ${formatProjectJsonSummary(summarizeCadProject(currentProject))}.`
     );
     setProjectMessageTone("info");
   }
 
-  function downloadProjectJson() {
+  async function downloadProjectJson() {
     if (!projectStorageCapabilities.jsonDownloadAvailable) {
       setProjectMessage(
         "Project JSON download is unavailable in this browser runtime."
@@ -5096,13 +5500,15 @@ export function App() {
       kind: "downloadedExport",
       fileName: "partbench-project.json"
     });
+    const { formatProjectJsonSummary, summarizeCadProject } =
+      await import("./projectJson");
     setProjectMessage(
-      `Downloaded ${formatProjectJsonSummary(currentProjectSummary)}.`
+      `Downloaded ${formatProjectJsonSummary(summarizeCadProject(currentProject))}.`
     );
     setProjectMessageTone("info");
   }
 
-  function downloadVisualizationMeshExport() {
+  async function downloadVisualizationMeshExport() {
     if (!projectStorageCapabilities.jsonDownloadAvailable) {
       setProjectMessage(
         "Visualization GLB download is unavailable in this browser runtime."
@@ -5117,11 +5523,22 @@ export function App() {
       return;
     }
 
-    const result = createVisualizationMeshExportArtifact({
-      exportReadiness: projectExportReadiness,
-      derivedGeometry,
-      derivedGeometrySources
-    });
+    let result: VisualizationMeshExportResult;
+    try {
+      const { createVisualizationMeshExportArtifact } =
+        await import("./visualizationMeshExport");
+      result = createVisualizationMeshExportArtifact({
+        exportReadiness: projectExportReadiness,
+        derivedGeometry,
+        derivedGeometrySources
+      });
+    } catch {
+      setProjectMessage(
+        "Visualization export tools could not be loaded. Try again."
+      );
+      setProjectMessageTone("error");
+      return;
+    }
 
     if (!result.ok) {
       const diagnostic = result.diagnostics[0];
@@ -5485,6 +5902,8 @@ export function App() {
 
   async function exportProjectWcadForSave(): Promise<WcadPackageExportResult> {
     const timestamp = new Date().toISOString();
+    const { exportProjectWcadWithTopologyCheckpoints } =
+      await import("./projectWcadTopologyCheckpoints");
 
     return exportProjectWcadWithTopologyCheckpoints({
       engine,
@@ -5697,7 +6116,9 @@ export function App() {
     setProjectMessageTone("info");
   }
 
-  function importProjectJson() {
+  async function importProjectJson() {
+    const { createProjectJsonPreview, formatProjectJsonSummary } =
+      await import("./projectJson");
     const preview = createProjectJsonPreview(projectJson);
 
     if (preview.status !== "valid") {
@@ -5736,7 +6157,7 @@ export function App() {
         );
         return;
       case "parameter":
-        openProjectPage("parameters");
+        runAfterCurveEditNavigationGuard(() => openProjectPage("parameters"));
         return;
       case "sketch":
         focusSketch(selection.id);
@@ -5756,20 +6177,40 @@ export function App() {
         selectObject(selection.id);
         return;
       case "named-reference":
-        inspectNamedReference(selection.name);
-        navigateToMode("inspect");
+        runAfterCurveEditNavigationGuard(() => {
+          inspectNamedReference(selection.name);
+          navigateToMode("inspect");
+        });
         return;
     }
   }
 
   function editDocumentTreeItem(selection: DocumentTreeSelection) {
-    selectDocumentTreeItem(selection);
     if (selection.kind === "feature" || selection.kind === "object") {
-      dispatchWorkbench({ type: "set-active-tool", actionId: "solid.edit" });
+      runAfterCurveEditNavigationGuard(() => {
+        if (selection.kind === "feature") {
+          const body = projectStructure.bodies.find(
+            (candidate) => candidate.featureId === selection.id
+          );
+          applyObjectSelection(body?.id);
+        } else {
+          applyObjectSelection(selection.id);
+        }
+        dispatchWorkbench({ type: "set-active-tool", actionId: "solid.edit" });
+      });
+      return;
     }
+    selectDocumentTreeItem(selection);
   }
 
   function renameDocumentTreeItem(selection: DocumentTreeSelection) {
+    if (curveEditOwnership.suppressTreeSourceMutations) {
+      setCommandNotice(
+        "Apply or discard the active sketch edit before renaming model sources."
+      );
+      return;
+    }
+    if (curveEditOwnership.closeBeforeCleanNavigation) clearCurveEditUi();
     if (selection.kind === "sketch") {
       const sketch = sketches.find(
         (candidate) => candidate.id === selection.id
@@ -5791,6 +6232,13 @@ export function App() {
   }
 
   function deleteDocumentTreeItem(selection: DocumentTreeSelection) {
+    if (curveEditOwnership.suppressTreeSourceMutations) {
+      setCommandNotice(
+        "Apply or discard the active sketch edit before deleting model sources."
+      );
+      return;
+    }
+    if (curveEditOwnership.closeBeforeCleanNavigation) clearCurveEditUi();
     const row = documentTreeProjection.rowsById.get(
       documentTreeSelectionKey(selection)
     );
@@ -6136,6 +6584,41 @@ export function App() {
   }
 
   function runWorkbenchAction(actionId: UiActionId): void {
+    const bypassCurveGuard = curveEditNavigationBypassRef.current;
+    curveEditNavigationBypassRef.current = false;
+    const curveInvocation = getActiveCurveEditInvocationAction({
+      curveEditorActive:
+        !bypassCurveGuard &&
+        workbenchUi.activeEditor?.kind === "sketch-curve-edit",
+      dirty: workbenchUi.activeEditorDirty,
+      activeActionId: workbenchUi.activeTool,
+      invokedActionId: actionId
+    });
+    if (curveInvocation === "focus-existing") {
+      curveEditSessionControlRef.current?.focus();
+      return;
+    }
+    if (curveInvocation === "guard-navigation") {
+      dispatchWorkbench({
+        type: "request-navigation",
+        intent: {
+          kind: "command-search-action",
+          actionId,
+          mode: actionId.slice(0, actionId.indexOf(".")) as
+            | "project"
+            | "solid"
+            | "sketch"
+            | "inspect"
+        }
+      });
+      return;
+    }
+    if (
+      !bypassCurveGuard &&
+      workbenchUi.activeEditor?.kind === "sketch-curve-edit"
+    ) {
+      clearCurveEditUi();
+    }
     dispatchWorkbench({ type: "set-active-tool", actionId });
     switch (actionId) {
       case "project.new":
@@ -6379,6 +6862,30 @@ export function App() {
         if (focusedSketchId) startThreePointArcTool(focusedSketchId);
         else setCommandNotice("Select or create a sketch first.");
         return;
+      case "sketch.trim":
+      case "sketch.extend":
+      case "sketch.split":
+      case "sketch.explode-rectangle":
+        curveEditOpenerRef.current =
+          window.document.activeElement instanceof HTMLElement
+            ? window.document.activeElement
+            : null;
+        setThreePointArcTool(undefined);
+        setCurveEditViewportChoice(undefined);
+        setCurveEditViewportHoverChoice(undefined);
+        curveEditHoverSchedulerRef.current?.clear();
+        navigateToMode("sketch");
+        dispatchWorkbench({
+          type: "set-editor",
+          editor: {
+            kind: "sketch-curve-edit",
+            ...(focusedSketchId ? { sourceId: focusedSketchId } : {})
+          }
+        });
+        setCommandNotice(
+          "Collect the exact edit choices, review geometry and constraint consequences, then Apply."
+        );
+        return;
       case "sketch.finish":
         setThreePointArcTool(undefined);
         navigateToMode("solid");
@@ -6399,6 +6906,111 @@ export function App() {
         );
       }
     }
+  }
+
+  function continueCurveEditNavigation(intent: WorkbenchNavigationIntent) {
+    const pendingContinuation =
+      intent.kind === "close-editor"
+        ? curveEditPendingContinuationRef.current
+        : undefined;
+    curveEditPendingContinuationRef.current = undefined;
+    switch (intent.kind) {
+      case "document-action":
+        if (intent.action === "undo") performUndo();
+        else if (intent.action === "redo") performRedo();
+        else {
+          curveEditNavigationBypassRef.current = true;
+          runWorkbenchAction(
+            intent.action === "new" ? "project.new" : "project.open"
+          );
+        }
+        return;
+      case "command-search-action":
+        curveEditNavigationBypassRef.current = true;
+        runWorkbenchAction(intent.actionId as UiActionId);
+        return;
+      case "sketch-selection":
+        applySketchFocus(intent.sketchId, intent.entityId);
+        return;
+      case "close-editor":
+        if (pendingContinuation) pendingContinuation();
+        else dispatchWorkbench({ type: "request-navigation", intent });
+        return;
+      default:
+        dispatchWorkbench({ type: "request-navigation", intent });
+    }
+  }
+
+  async function resolveCurveEditNavigation(
+    resolution: "apply" | "discard" | "stay",
+    navigationTrigger: HTMLElement | null = null
+  ) {
+    const intent = workbenchUi.navigationIntent;
+    if (!intent) return;
+    const navigationFocusTarget =
+      resolution !== "stay"
+        ? getCurveEditDiscardFocusTarget(
+            intent,
+            curveEditOpenerRef.current,
+            navigationTrigger
+          )
+        : null;
+    if (resolution === "stay") {
+      curveEditPendingContinuationRef.current = undefined;
+      dispatchWorkbench({ type: "resolve-navigation", resolution: "stay" });
+      restoreCurveEditFocus();
+      return;
+    }
+    if (resolution === "apply") {
+      let applied = false;
+      try {
+        applied =
+          (await curveEditSessionControlRef.current?.apply({
+            restoreFocusOnSuccess: false
+          })) === true;
+      } catch (error) {
+        setCommandError(
+          error instanceof Error
+            ? error.message
+            : "The sketch edit could not be applied."
+        );
+      }
+      if (!applied) {
+        curveEditPendingContinuationRef.current = undefined;
+        dispatchWorkbench({ type: "navigation-apply-failed" });
+        restoreCurveEditFocus();
+        return;
+      }
+    } else {
+      clearCurveEditUi();
+    }
+    continueCurveEditNavigation(intent);
+    restoreResolvedNavigationFocus(navigationFocusTarget);
+  }
+
+  function restoreCurveEditFocus() {
+    requestAnimationFrame(() => {
+      if (curveEditSessionControlRef.current) {
+        curveEditSessionControlRef.current.focus();
+      } else {
+        curveEditOpenerRef.current?.focus();
+      }
+    });
+  }
+
+  function restoreResolvedNavigationFocus(target: HTMLElement | null) {
+    requestAnimationFrame(() => {
+      const activeElement = window.document.activeElement;
+      const shouldRestore = shouldRestoreResolvedCurveEditNavigationFocus({
+        activeElement:
+          activeElement instanceof HTMLElement ? activeElement : null,
+        body: window.document.body,
+        documentElement: window.document.documentElement
+      });
+      if (shouldRestore && target?.isConnected) {
+        target.focus();
+      }
+    });
   }
 
   const uiActionAvailability = useMemo<UiActionAvailabilityProjection>(() => {
@@ -6494,6 +7106,30 @@ export function App() {
       "sketch.rectangle": sketchReady,
       "sketch.circle": sketchReady,
       "sketch.arc": sketchReady,
+      "sketch.trim": createCurveEditActionAvailability(
+        selectedSketch,
+        selectedEntity,
+        ["line", "arc", "circle"],
+        "Select a supported line, arc, or circle."
+      ),
+      "sketch.extend": createCurveEditActionAvailability(
+        selectedSketch,
+        selectedEntity,
+        ["line", "arc"],
+        "Select a supported line or arc."
+      ),
+      "sketch.split": createCurveEditActionAvailability(
+        selectedSketch,
+        selectedEntity,
+        ["line", "arc", "circle"],
+        "Select a supported line, arc, or circle."
+      ),
+      "sketch.explode-rectangle": createCurveEditActionAvailability(
+        selectedSketch,
+        selectedEntity,
+        ["rectangle"],
+        "Select a rectangle."
+      ),
       "sketch.construction": selectedEntityReady,
       "sketch.delete": selectedEntityReady,
       "sketch.horizontal":
@@ -6583,24 +7219,70 @@ export function App() {
     () => projectUiActions(uiActionContext),
     [uiActionContext]
   );
+  const restoreCommandSearchFocus = useCallback(() => {
+    requestAnimationFrame(() => {
+      const activeElement = window.document.activeElement;
+      if (
+        activeElement &&
+        activeElement !== window.document.body &&
+        activeElement !== window.document.documentElement
+      ) {
+        return;
+      }
+      if (commandSearchOpenerRef.current?.isConnected) {
+        commandSearchOpenerRef.current.focus();
+      }
+    });
+  }, []);
+  const closeCommandSearch = useCallback(() => {
+    dispatchWorkbench({
+      type: "set-command-search-open",
+      open: false
+    });
+  }, []);
+  const openCommandSearch = useCallback(() => {
+    if (!workbenchUi.commandSearchOpen) {
+      commandSearchOpenerRef.current =
+        window.document.activeElement instanceof HTMLElement
+          ? window.document.activeElement
+          : null;
+    }
+    dispatchWorkbench({
+      type: "set-command-search-open",
+      open: true
+    });
+  }, [workbenchUi.commandSearchOpen]);
   useEffect(() => {
     const openSearch = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        dispatchWorkbench({
-          type: "set-command-search-open",
-          open: true
-        });
+        openCommandSearch();
       }
     };
     window.addEventListener("keydown", openSearch);
     return () => window.removeEventListener("keydown", openSearch);
-  }, []);
+  }, [openCommandSearch]);
 
   return (
     <>
+      {workbenchUi.navigationIntent &&
+      workbenchUi.activeEditor?.kind === "sketch-curve-edit" ? (
+        <Suspense fallback={null}>
+          <CurveEditNavigationGuard
+            intent={workbenchUi.navigationIntent}
+            onApply={(navigationTrigger) =>
+              resolveCurveEditNavigation("apply", navigationTrigger)
+            }
+            onDiscard={(navigationTrigger) =>
+              void resolveCurveEditNavigation("discard", navigationTrigger)
+            }
+            onStay={() => void resolveCurveEditNavigation("stay")}
+          />
+        </Suspense>
+      ) : null}
       <WorkbenchShell
         mode={workbenchUi.mode}
+        activeEditor={Boolean(workbenchUi.activeEditor)}
         leftDockWidth={workbenchUi.leftDockWidth}
         rightDockWidth={workbenchUi.rightDockWidth}
         leftDockCollapsed={workbenchUi.leftDockCollapsed}
@@ -6646,12 +7328,7 @@ export function App() {
                     : undefined,
                 run: redo
               }}
-              onOpenCommandSearch={() =>
-                dispatchWorkbench({
-                  type: "set-command-search-open",
-                  open: true
-                })
-              }
+              onOpenCommandSearch={openCommandSearch}
               onOpenHelp={() =>
                 setCommandNotice(
                   "Shortcuts: Ctrl+K search, Ctrl+Z undo, Ctrl+Shift+Z redo, F fit, Escape cancel."
@@ -6721,41 +7398,46 @@ export function App() {
           <ViewportCanvas
             primitives={renderScene.primitives}
             meshes={renderScene.meshes}
-            notifyHoverPointChanges={Boolean(threePointArcTool)}
+            notifyHoverPointChanges={Boolean(
+              threePointArcTool ||
+              isSketchCurveEditUiAction(workbenchUi.activeTool)
+            )}
             selectedId={selectedViewportRenderId}
             visualStates={viewportVisualState.rendererVisualStates}
             status={viewportVisualState.status}
             contextualSurface={
-              <ContextualActionStrip
-                disabled={commandPending}
-                surface={viewportContextualCommandSurface}
-                onInvoke={(action) => {
-                  if (action.route === "name" && action.target) {
-                    const name = window.prompt("Reference name", "");
-                    if (name?.trim()) {
-                      void nameGeneratedReference(name.trim(), action.target);
+              curveEditOwnership.suppressContextSourceMutations ? null : (
+                <ContextualActionStrip
+                  disabled={commandPending}
+                  surface={viewportContextualCommandSurface}
+                  onInvoke={(action) => {
+                    if (action.route === "name" && action.target) {
+                      const name = window.prompt("Reference name", "");
+                      if (name?.trim()) {
+                        void nameGeneratedReference(name.trim(), action.target);
+                      }
+                      return;
                     }
-                    return;
-                  }
-                  if (
-                    action.route === "inspect" ||
-                    action.route === "measure" ||
-                    action.route === "references"
-                  ) {
-                    navigateToMode("inspect");
                     if (
-                      action.route === "measure" &&
-                      viewportTwoTargetMeasurementTarget
+                      action.route === "inspect" ||
+                      action.route === "measure" ||
+                      action.route === "references"
                     ) {
-                      startViewportTwoTargetMeasurement(
+                      navigateToMode("inspect");
+                      if (
+                        action.route === "measure" &&
                         viewportTwoTargetMeasurementTarget
-                      );
+                      ) {
+                        startViewportTwoTargetMeasurement(
+                          viewportTwoTargetMeasurementTarget
+                        );
+                      }
+                      return;
                     }
-                    return;
-                  }
-                  runViewportContextualCommand(action);
-                }}
-              />
+                    runViewportContextualCommand(action);
+                  }}
+                />
+              )
             }
             onHover={(pick) => {
               if (threePointArcTool) {
@@ -6767,6 +7449,11 @@ export function App() {
             onSelect={(pick) => {
               if (threePointArcTool) {
                 void captureThreePointArcToolPick(pick);
+              } else if (
+                isSketchCurveEditUiAction(workbenchUi.activeTool) &&
+                focusedSketchId
+              ) {
+                captureCurveEditViewportPick(pick);
               } else {
                 selectViewportPick(pick);
               }
@@ -6775,31 +7462,37 @@ export function App() {
             sketchOverlay={({ camera, size }) => (
               <>
                 {sketchViewportDragTarget ? (
-                  <SketchViewportDragOverlay
-                    camera={camera}
-                    disabled={commandPending}
-                    displayFrame={getSketchViewportDisplayFrame(
-                      sketchViewportDragTarget.sketch.id
-                    )}
-                    selectedEntityId={sketchViewportDragTarget.entityId}
-                    size={size}
-                    sketch={sketchViewportDragTarget.sketch}
-                    onCommitEntity={(sketchId, entity) =>
-                      void updateSketchEntity(sketchId, entity)
-                    }
-                    onPreviewEntity={previewSketchEntityUpdate}
-                  />
+                  <Suspense fallback={<SketchOverlayLoadingFallback />}>
+                    <SketchViewportDragOverlay
+                      camera={camera}
+                      disabled={commandPending}
+                      displayFrame={getSketchViewportDisplayFrame(
+                        sketchViewportDragTarget.sketch.id
+                      )}
+                      selectedEntityId={sketchViewportDragTarget.entityId}
+                      size={size}
+                      sketch={sketchViewportDragTarget.sketch}
+                      onCommitEntity={(sketchId, entity) =>
+                        void updateSketchEntity(sketchId, entity)
+                      }
+                      onPreviewEntity={previewSketchEntityUpdate}
+                    />
+                  </Suspense>
                 ) : null}
                 {threePointArcTool &&
                 getSketchViewportDisplayFrame(threePointArcTool.sketchId) ? (
-                  <SketchArcToolOverlay
-                    camera={camera}
-                    displayFrame={
-                      getSketchViewportDisplayFrame(threePointArcTool.sketchId)!
-                    }
-                    session={threePointArcTool}
-                    size={size}
-                  />
+                  <Suspense fallback={<SketchOverlayLoadingFallback />}>
+                    <SketchArcToolOverlay
+                      camera={camera}
+                      displayFrame={
+                        getSketchViewportDisplayFrame(
+                          threePointArcTool.sketchId
+                        )!
+                      }
+                      session={threePointArcTool}
+                      size={size}
+                    />
+                  </Suspense>
                 ) : null}
               </>
             )}
@@ -6814,7 +7507,7 @@ export function App() {
               disabled={commandPending}
               documentName={getProjectFileNameLabel(projectFile)}
               units={document.units}
-              summary={currentProjectSummary}
+              currentProject={currentProject}
               projectFile={projectFile}
               storageCapabilities={projectStorageCapabilities}
               health={projectHealth}
@@ -6823,7 +7516,7 @@ export function App() {
               exportReadiness={projectExportReadiness}
               visualizationExport={visualizationMeshExportStatus}
               jsonDraft={projectJson}
-              jsonWorkflow={projectJsonWorkflow}
+              jsonDraftSource={projectJsonDraftSource}
               opfsCacheStatus={projectOpfsCacheStatus}
               parameters={parameters}
               parameterEvaluation={parameterEvaluation}
@@ -6854,7 +7547,9 @@ export function App() {
               onJsonDraftChange={(value) => {
                 setProjectJson(value);
                 setProjectJsonDraftSource(
-                  createProjectJsonDraftSourceForEditorValue(value)
+                  value.trim().length === 0
+                    ? { kind: "empty" }
+                    : { kind: "edited" }
                 );
                 setProjectMessage(undefined);
               }}
@@ -7024,10 +7719,17 @@ export function App() {
                   pathCandidatesBySketchId={pathCandidatesBySketchId}
                   activeSketchId={focusedSketchId}
                   selectedEntityId={selectedSketchContext?.entityId}
+                  curveEditSourceAuthorityKey={curveEditSourceAuthorityRevision}
                   arcToolActiveSketchId={threePointArcTool?.sketchId}
                   initialActionId={
                     workbenchUi.activeTool as UiActionId | undefined
                   }
+                  curveEditViewportChoice={curveEditViewportChoice}
+                  curveEditViewportHoverChoice={curveEditViewportHoverChoice}
+                  curveEditKeyboardSuspended={Boolean(
+                    workbenchUi.navigationIntent &&
+                    workbenchUi.activeEditor?.kind === "sketch-curve-edit"
+                  )}
                   onSelectSketch={focusSketch}
                   onSelectEntity={focusSketch}
                   onCreateSketch={(form) => void createSketch(form)}
@@ -7049,6 +7751,27 @@ export function App() {
                   }
                   onStartThreePointArcTool={startThreePointArcTool}
                   onCancelGesture={() => setThreePointArcTool(undefined)}
+                  onReadCurveEditReadiness={readSketchCurveEditReadiness}
+                  onApplyCurveEdit={applySketchCurveEdit}
+                  onCancelCurveEdit={(restoreFocus) => {
+                    clearCurveEditUi(restoreFocus);
+                  }}
+                  onRequestCurveEditEscape={(dirty) => {
+                    if (dirty) {
+                      dispatchWorkbench({
+                        type: "request-navigation",
+                        intent: { kind: "close-editor" }
+                      });
+                    } else {
+                      clearCurveEditUi(true);
+                    }
+                  }}
+                  onCurveEditChoiceRejected={setCommandNotice}
+                  onClearCurveEditHoverPreview={clearCurveEditHoverPreview}
+                  onCurveEditDirtyChange={handleCurveEditDirtyChange}
+                  onCurveEditSessionControlChange={
+                    handleCurveEditSessionControlChange
+                  }
                   onCreateDimension={(sketchId, entityId, target, form) =>
                     void createSketchDimension(sketchId, entityId, target, form)
                   }
@@ -7165,25 +7888,34 @@ export function App() {
           )
         }
       />
-      <CommandSearchDialog
-        open={workbenchUi.commandSearchOpen}
-        actions={projectedUiActions}
-        actionContext={uiActionContext}
-        currentMode={workbenchUi.mode}
-        onRequestClose={() =>
-          dispatchWorkbench({
-            type: "set-command-search-open",
-            open: false
-          })
-        }
-        onInvocationError={(_action, error) =>
-          setCommandError(
-            error instanceof Error
-              ? error.message
-              : "The command could not be started."
-          )
-        }
-      />
+      {workbenchUi.commandSearchOpen ? (
+        <Suspense
+          fallback={
+            <CommandSearchLoadingFallback
+              onRequestClose={() => {
+                closeCommandSearch();
+                restoreCommandSearchFocus();
+              }}
+            />
+          }
+        >
+          <CommandSearchDialog
+            open
+            actions={projectedUiActions}
+            actionContext={uiActionContext}
+            currentMode={workbenchUi.mode}
+            onRequestClose={closeCommandSearch}
+            restoreFocus={restoreCommandSearchFocus}
+            onInvocationError={(_action, error) =>
+              setCommandError(
+                error instanceof Error
+                  ? error.message
+                  : "The command could not be started."
+              )
+            }
+          />
+        </Suspense>
+      ) : null}
     </>
   );
 }

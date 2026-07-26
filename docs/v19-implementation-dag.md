@@ -244,6 +244,79 @@ flowchart TD
   typecheck/lint/format checks, and the inherited web worker suite pass. B6 and
   B7 are the next parallel boundary before Gate B.
 
+### 2026-07-25 — Gate B implementation and review accepted
+
+- B6 exposes Trim, Extend, Split, and Explode Rectangle through the V18
+  workbench without adding a second command path. The sketch drawer owns the
+  query-backed collectors, exact prepared operation, complete consequence
+  review, Apply/Cancel/Escape behavior, source revision, and keyboard focus.
+  Ctrl/Cmd+Enter applies only a ready exact edit; dirty navigation requires an
+  explicit Apply or Discard decision.
+- B7 carries the same strict proposal, readiness, diagnostic, semantic-diff,
+  and prepared-operation shapes through the agent adapter, MCP adapter, and
+  stdio server. Full adapter suites pass with 101 agent, 80 MCP, and 16 stdio
+  tests.
+- Independent adversarial product and bundle reviews were resolved. Findings
+  included stale visualization-export status, rejected navigation-Apply
+  promises, first-load sketch pointer fall-through, command-search loading
+  focus and accessibility, conflicting arc/curve-edit ownership, source
+  mutation leakage, narrow drawer/footer behavior, and a compile-time
+  narrowing error. The final implementation uses race-guarded lazy imports,
+  reference-keyed export status, focus-safe modal fallbacks, a pointer-blocking
+  sketch fallback, explicit error recovery, and one authoritative curve-edit
+  owner.
+- The final adversarial pass also found missing production-browser pointer
+  proof and incorrect focus restoration around guarded navigation. Trusted
+  pointer testing then exposed and resolved two real collector defects:
+  viewport projection now intersects an exact camera ray with the sketch plane
+  instead of using an affine inverse, and a pointer hit snaps analytically to
+  the explicitly picked finite curve before the readiness query. Stay restores
+  editor focus, while Discard and Apply preserve the requested destination
+  focus instead of restoring a detached curve-editor opener. The targeted
+  re-review found no remaining high- or medium-severity implementation issue.
+  A later named-browser run still exposed an Apply timing race: the mounted
+  guard button was mistaken for destination-owned focus. Resolved navigation
+  now replaces only transient guard/editor focus and preserves meaningful
+  destination focus; the rebuilt 8/8 workflow passes.
+- `pnpm smoke:v19-curve-edit-workflow` passes 10/10 checks. The new
+  `pnpm smoke:v19-browser-workflow` passes 8/8 against the production build:
+  a trusted pointer segment proves query-backed hover and exact Split
+  collection through the real canvas; an independently reset keyboard-only
+  segment proves constrained Trim and finite-boundary Extend with zero pointer
+  inputs; and the workflow verifies V22 fixture import, authored geometry and
+  semantic diffs, single-step undo/redo, and Stay/Discard/Apply destination
+  focus.
+- `pnpm test`, `pnpm typecheck`, `pnpm lint`, and `pnpm format:check` pass.
+  The full test run includes 871 cad-core tests, all protocol, solver,
+  geometry, renderer, adapter, and transport suites, and 74 passing repository
+  script tests with one intentional skip. After the final focus and
+  critical-path cleanup, the complete web suite passes 872 tests and the
+  repository script suite remains 74 passing with one intentional skip.
+- `pnpm check:v19-bundle` passes every immutable cap on the final source:
+  406,664-byte critical UI JavaScript gzip, 6,515-byte critical CSS gzip,
+  511,009-byte all-UI JavaScript gzip, 231,564-byte command worker gzip,
+  83,272-byte geometry worker gzip, and the exact 13,808,536-byte OCCT WASM
+  gzip cap.
+- The inherited V17 non-browser release workflows pass. The shared V17/V18
+  production-browser workflow passes 13/13 with no failures, skips, missing
+  checks, console errors, or page exceptions.
+- `pnpm smoke:v19-performance` confirms the inherited V18 budget on the final
+  build: 1,915.8 ms shell-ready median, 32.5 ms command-search p95, 59 ms
+  warm-action p95, 17.1 ms frame-interval p95, and no long task or eager
+  worker/WASM request. A repeated narrow shell-ready miss identified a
+  redundant passive-effect-to-next-frame measurement boundary; the mark now
+  runs from the layout effect into the frame that paints the committed shell,
+  without changing the V18 cap or deferring shell work. Project-only OPFS
+  inventory now starts on Project-mode entry, and Project JSON validation and
+  summary work lives in the existing lazy Project chunk instead of the empty
+  Solid shell. The command remains intentionally `deferred` only because the
+  representative near-limit region workload requires the real Slice E query,
+  cache, cancellation, and editing surfaces. This remains an H/I blocker and
+  is not a Gate B failure.
+- Gate C has not started. The isolated Gate B commit and push remain pending
+  explicit Git-write reauthorization after the prior approval limit was
+  reached.
+
 ## Completion audit
 
 Release completion requires affirmative evidence for each numbered Must item

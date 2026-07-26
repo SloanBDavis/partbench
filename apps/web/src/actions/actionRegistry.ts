@@ -385,6 +385,46 @@ export const UI_ACTION_METADATA = [
     true
   ),
   action(
+    "sketch.trim",
+    "Trim",
+    "Modify",
+    ["sketch"],
+    ["remove curve interval"],
+    true,
+    undefined,
+    needs("Select a supported line, arc, or circle.")
+  ),
+  action(
+    "sketch.extend",
+    "Extend",
+    "Modify",
+    ["sketch"],
+    ["extend curve to boundary"],
+    true,
+    undefined,
+    needs("Select a supported line or arc.")
+  ),
+  action(
+    "sketch.split",
+    "Split",
+    "Modify",
+    ["sketch"],
+    ["divide curve"],
+    true,
+    undefined,
+    needs("Select a supported line, arc, or circle.")
+  ),
+  action(
+    "sketch.explode-rectangle",
+    "Explode Rectangle",
+    "Modify",
+    ["sketch"],
+    ["rectangle to lines"],
+    true,
+    undefined,
+    needs("Select a rectangle.")
+  ),
+  action(
     "sketch.construction",
     "Construction",
     "State",

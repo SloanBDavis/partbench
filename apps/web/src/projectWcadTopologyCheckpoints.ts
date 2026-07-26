@@ -43,6 +43,12 @@ import {
   createHoleDerivedGeometrySources,
   createRevolveDerivedGeometrySources
 } from "./derivedGeometrySources";
+import { ProjectWcadTopologyCheckpointPayloadError } from "./projectWcadTopologyCheckpointErrors";
+
+export {
+  isProjectWcadTopologyCheckpointPayloadError,
+  ProjectWcadTopologyCheckpointPayloadError
+} from "./projectWcadTopologyCheckpointErrors";
 
 export interface ProjectWcadTopologyCheckpointPayloadInput {
   readonly document: CadDocument;
@@ -114,22 +120,6 @@ export type ProjectTopologyAnchorRepairPlanResult =
       readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
       readonly plan?: TopologyAnchorRepairPlanQueryResponse;
     };
-
-export class ProjectWcadTopologyCheckpointPayloadError extends Error {
-  readonly issues: readonly WcadPackageValidationIssue[];
-
-  constructor(issues: readonly WcadPackageValidationIssue[]) {
-    super(formatCheckpointPayloadIssues(issues));
-    this.name = "ProjectWcadTopologyCheckpointPayloadError";
-    this.issues = issues;
-  }
-}
-
-export function isProjectWcadTopologyCheckpointPayloadError(
-  error: unknown
-): error is ProjectWcadTopologyCheckpointPayloadError {
-  return error instanceof ProjectWcadTopologyCheckpointPayloadError;
-}
 
 export async function createProjectTopologyAnchorCreationPlanForGeneratedReference({
   engine,
@@ -1509,18 +1499,4 @@ function createCheckpointIssue(
     expected: "supported source-backed exact topology checkpoint payload",
     received: checkpointId
   };
-}
-
-function formatCheckpointPayloadIssues(
-  issues: readonly WcadPackageValidationIssue[]
-): string {
-  if (issues.length === 0) {
-    return "Could not save exact topology evidence.";
-  }
-
-  if (issues.length === 1) {
-    return issues[0]?.message ?? "Could not save exact topology evidence.";
-  }
-
-  return `Could not save exact topology evidence because ${issues.length} issues were found.`;
 }

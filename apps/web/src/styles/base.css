@@ -75,6 +75,26 @@ summary:focus-visible,
   border: 0 !important;
 }
 
+.pb-modal-loading-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: start center;
+  padding: min(12vh, 112px) var(--pb-space-16) var(--pb-space-24);
+  background: rgb(22 27 34 / 42%);
+}
+
+.pb-modal-loading {
+  width: min(680px, 100%);
+  padding: var(--pb-space-16);
+  border: 1px solid var(--pb-color-border-strong);
+  border-radius: var(--pb-radius-popover);
+  color: var(--pb-color-text-muted);
+  background: var(--pb-color-surface-elevated);
+  box-shadow: var(--pb-elevation-command-search);
+}
+
 .pb-icon {
   display: block;
   flex: 0 0 auto;

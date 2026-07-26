@@ -12,7 +12,7 @@ const MODE_RIBBON_GROUPS: Readonly<
 > = {
   project: undefined,
   solid: ["Create", "Modify", "Pattern", "Inspect"],
-  sketch: ["Create", "State", "Constraint", "Dimension", "Finish"],
+  sketch: ["Create", "Modify", "State", "Constraint", "Dimension", "Finish"],
   inspect: ["Measure", "Reference", "View", "Health"]
 };
 
@@ -128,6 +128,10 @@ export function getActionIcon(id: UiActionId): IconName {
     rectangle: "rectangle",
     circle: "circle",
     arc: "arc",
+    trim: "edit",
+    extend: "edit",
+    split: "edit",
+    "explode-rectangle": "edit",
     construction: "line",
     horizontal: "constraint",
     vertical: "constraint",

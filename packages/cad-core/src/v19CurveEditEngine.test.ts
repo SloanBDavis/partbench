@@ -120,6 +120,171 @@ describe("V19 curve-edit engine vertical slice", () => {
     });
   });
 
+  it("previews every finite line-trim intersection in source order without changing replay evidence", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Edit", plane: "XY" },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "target",
+        start: [0, 0],
+        end: [12, 0]
+      },
+      ...[
+        ["boundary_9", 9],
+        ["boundary_2", 2],
+        ["boundary_5", 5]
+      ].map(([id, x]) => ({
+        op: "sketch.addLine" as const,
+        sketchId: "sketch_1",
+        id: id as string,
+        start: [x as number, -2] as const,
+        end: [x as number, 2] as const
+      }))
+    ]);
+    const ready = readiness(engine, {
+      kind: "trim",
+      sketchId: "sketch_1",
+      entityId: "target",
+      boundaryEntityIds: ["boundary_9", "boundary_2", "boundary_5"],
+      pickPoint: [7, 0]
+    });
+
+    expect(ready.preview.intersections).toEqual([
+      { boundaryEntityId: "boundary_2", point: [2, 0], targetParameter: 2 },
+      { boundaryEntityId: "boundary_5", point: [5, 0], targetParameter: 5 },
+      { boundaryEntityId: "boundary_9", point: [9, 0], targetParameter: 9 }
+    ]);
+    const dryRun = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [ready.preparedOperation]
+    });
+    expect(dryRun.ok).toBe(true);
+    if (!dryRun.ok) return;
+    const committed = engine.apply(ready.preparedOperation);
+    expect(committed.transaction.diff).toEqual(dryRun.semanticDiff);
+    expect(
+      committed.transaction.diff.sketches?.curveEdits?.[0]
+    ).not.toHaveProperty("previewIntersections");
+    const committedDocument = engine.getDocument();
+    engine.undo();
+    engine.redo();
+    expect(engine.getDocument()).toEqual(committedDocument);
+  });
+
+  it("previews every finite signed-arc trim intersection in authored traversal order", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Edit", plane: "XY" },
+      {
+        op: "sketch.addArc",
+        sketchId: "sketch_1",
+        id: "target",
+        definition: {
+          kind: "centerAngles",
+          center: [0, 0],
+          radius: 10,
+          startAngleDegrees: 0,
+          sweepAngleDegrees: 180
+        }
+      },
+      ...[
+        ["boundary_120", -5],
+        ["boundary_60", 5],
+        ["boundary_90", 0]
+      ].map(([id, x]) => ({
+        op: "sketch.addLine" as const,
+        sketchId: "sketch_1",
+        id: id as string,
+        start: [x as number, 0] as const,
+        end: [x as number, 12] as const
+      }))
+    ]);
+    const ready = readiness(engine, {
+      kind: "trim",
+      sketchId: "sketch_1",
+      entityId: "target",
+      boundaryEntityIds: ["boundary_120", "boundary_60", "boundary_90"],
+      pickPoint: [
+        Math.cos((75 * Math.PI) / 180) * 10,
+        Math.sin((75 * Math.PI) / 180) * 10
+      ]
+    });
+
+    expect(
+      ready.preview.intersections.map(
+        ({ boundaryEntityId, targetParameter }) => ({
+          boundaryEntityId,
+          targetParameter
+        })
+      )
+    ).toEqual([
+      { boundaryEntityId: "boundary_60", targetParameter: 60 },
+      { boundaryEntityId: "boundary_90", targetParameter: 90 },
+      { boundaryEntityId: "boundary_120", targetParameter: 120 }
+    ]);
+    for (const intersection of ready.preview.intersections) {
+      expect(Math.hypot(...intersection.point)).toBeCloseTo(10, 12);
+    }
+  });
+
+  it("previews all circle-trim partitions, including intersections outside the retained arc", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Edit", plane: "XY" },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_1",
+        id: "target",
+        center: [0, 0],
+        radius: 10
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "vertical",
+        start: [0, -12],
+        end: [0, 12]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "horizontal",
+        start: [-12, 0],
+        end: [12, 0]
+      }
+    ]);
+    const ready = readiness(engine, {
+      kind: "trim",
+      sketchId: "sketch_1",
+      entityId: "target",
+      boundaryEntityIds: ["vertical", "horizontal"],
+      pickPoint: [Math.SQRT1_2 * 10, Math.SQRT1_2 * 10]
+    });
+
+    expect(
+      ready.preview.intersections.map(
+        ({ boundaryEntityId, targetParameter }) => ({
+          boundaryEntityId,
+          targetParameter
+        })
+      )
+    ).toEqual([
+      { boundaryEntityId: "horizontal", targetParameter: 0 },
+      { boundaryEntityId: "vertical", targetParameter: 90 },
+      { boundaryEntityId: "horizontal", targetParameter: 180 },
+      { boundaryEntityId: "vertical", targetParameter: 270 }
+    ]);
+    expect(ready.preview.resultEntityCount).toBe(1);
+    expect(ready.preview.resultEntities[0]).toMatchObject({
+      kind: "arc",
+      startAngleDegrees: 90,
+      sweepAngleDegrees: 270
+    });
+  });
+
   it("previews and applies the exact extend boundary hit", () => {
     const engine = new CadEngine();
     engine.applyBatch([
@@ -158,6 +323,196 @@ describe("V19 curve-edit engine vertical slice", () => {
     expect(
       engine.getDocument().sketches.get("sketch_1")?.entities.get("target")
     ).toMatchObject({ kind: "line", start: [0, 0], end: [5, 0] });
+  });
+
+  it("previews the nearest selectable hit per extend boundary while applying the global nearest", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Edit", plane: "XY" },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "target",
+        start: [0, 0],
+        end: [2, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "far",
+        start: [7, -2],
+        end: [7, 2]
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_1",
+        id: "near-ring",
+        center: [4, 0],
+        radius: 1
+      }
+    ]);
+    const ready = readiness(engine, {
+      kind: "extend",
+      sketchId: "sketch_1",
+      entityId: "target",
+      endpoint: "end",
+      boundaryEntityIds: ["far", "near-ring"]
+    });
+
+    expect(ready.preview.intersections).toEqual([
+      {
+        boundaryEntityId: "near-ring",
+        point: [3, 0],
+        targetParameter: 3
+      },
+      { boundaryEntityId: "far", point: [7, 0], targetParameter: 7 }
+    ]);
+    expect(ready.preview.resultEntities).toEqual([
+      {
+        id: "target",
+        kind: "line",
+        start: [0, 0],
+        end: [3, 0],
+        construction: false
+      }
+    ]);
+    engine.apply(ready.preparedOperation);
+    expect(
+      engine.getDocument().sketches.get("sketch_1")?.entities.get("target")
+    ).toMatchObject({ kind: "line", start: [0, 0], end: [3, 0] });
+  });
+
+  it("returns complete trim evidence when every fixed witness is an intersection", () => {
+    const engine = new CadEngine();
+    const witnessXs = [
+      ["boundary_low", 10 * 0.21132486540518713],
+      ["boundary_mid", 5],
+      ["boundary_high", 10 * 0.7886751345948129]
+    ] as const;
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Edit", plane: "XY" },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "target",
+        start: [0, 0],
+        end: [10, 0]
+      },
+      ...witnessXs.map(([id, x]) => ({
+        op: "sketch.addLine" as const,
+        sketchId: "sketch_1",
+        id,
+        start: [x, -2] as const,
+        end: [x, 2] as const
+      }))
+    ]);
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "sketch.curveEditReadiness",
+        proposal: {
+          kind: "trim",
+          sketchId: "sketch_1",
+          entityId: "target",
+          boundaryEntityIds: ["boundary_high", "boundary_low", "boundary_mid"],
+          pickPoint: [5, 0]
+        }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "sketch.curveEditReadiness",
+      status: "blocked",
+      diagnostics: [{ code: "SKETCH_EDIT_INTERSECTION_AMBIGUOUS" }],
+      preview: {
+        intersections: [
+          {
+            boundaryEntityId: "boundary_low",
+            point: [witnessXs[0][1], 0],
+            targetParameter: witnessXs[0][1]
+          },
+          {
+            boundaryEntityId: "boundary_mid",
+            point: [5, 0],
+            targetParameter: 5
+          },
+          {
+            boundaryEntityId: "boundary_high",
+            point: [witnessXs[2][1], 0],
+            targetParameter: witnessXs[2][1]
+          }
+        ],
+        projectedSplitParameters: [],
+        resultEntityCount: 0,
+        resultEntities: []
+      }
+    });
+  });
+
+  it("returns command-selectable per-boundary evidence for tied nearest extensions", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Edit", plane: "XY" },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "target",
+        start: [0, 0],
+        end: [2, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "boundary_z",
+        start: [5, -2],
+        end: [5, 2]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "boundary_a",
+        start: [5, -3],
+        end: [5, 3]
+      }
+    ]);
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "sketch.curveEditReadiness",
+        proposal: {
+          kind: "extend",
+          sketchId: "sketch_1",
+          entityId: "target",
+          endpoint: "end",
+          boundaryEntityIds: ["boundary_z", "boundary_a"]
+        }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "sketch.curveEditReadiness",
+      status: "blocked",
+      diagnostics: [{ code: "SKETCH_EDIT_INTERSECTION_AMBIGUOUS" }],
+      preview: {
+        intersections: [
+          {
+            boundaryEntityId: "boundary_a",
+            point: [5, 0],
+            targetParameter: 5
+          },
+          {
+            boundaryEntityId: "boundary_z",
+            point: [5, 0],
+            targetParameter: 5
+          }
+        ],
+        projectedSplitParameters: [],
+        resultEntityCount: 0,
+        resultEntities: []
+      }
+    });
   });
 
   it("checks stale source before solver identity and does not consume IDs", () => {

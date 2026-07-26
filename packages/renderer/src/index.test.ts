@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createRenderVisualStateMap,
   createDefaultCamera,
+  createViewportRay,
   orbitCamera,
   panCamera,
   pickPrimitive,
@@ -31,6 +32,24 @@ describe("renderer", () => {
     expect(projected?.y).toBeGreaterThan(0);
     expect(projected?.y).toBeLessThan(600);
     expect(projected?.depth).toBeGreaterThan(0);
+  });
+
+  it("creates a viewport ray through a projected world point", () => {
+    const camera = createDefaultCamera();
+    const size = { width: 800, height: 600 };
+    const worldPoint = [0.5, 4, 0] as const;
+    const projected = projectPoint(worldPoint, camera, size);
+
+    expect(projected).toBeDefined();
+    if (!projected) return;
+    const ray = createViewportRay(camera, size, projected);
+    const zDistance = -ray.origin[2] / ray.direction[2];
+    const intersection = ray.origin.map(
+      (value, index) => value + ray.direction[index]! * zDistance
+    );
+    expect(intersection[0]).toBeCloseTo(worldPoint[0], 12);
+    expect(intersection[1]).toBeCloseTo(worldPoint[1], 12);
+    expect(intersection[2]).toBeCloseTo(worldPoint[2], 12);
   });
 
   it("updates orbit, pan, and zoom camera state", () => {

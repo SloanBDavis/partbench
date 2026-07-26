@@ -98,6 +98,11 @@ export interface RenderCamera {
   readonly distance: number;
 }
 
+export interface ViewportRay {
+  readonly origin: Vec3;
+  readonly direction: Vec3;
+}
+
 export interface ViewportSize {
   readonly width: number;
   readonly height: number;
@@ -225,6 +230,28 @@ export function projectPoint(
     x: size.width / 2 + (viewPoint[0] * FOCAL_LENGTH) / depth,
     y: size.height / 2 - (viewPoint[1] * FOCAL_LENGTH) / depth,
     depth
+  };
+}
+
+export function createViewportRay(
+  camera: RenderCamera,
+  size: ViewportSize,
+  point: ViewportPoint
+): ViewportRay {
+  const origin = getCameraPosition(camera);
+  const forward = normalizeVec3(subtractVec3(camera.target, origin));
+  const right = getCameraRight(camera);
+  const up = getCameraUp(camera);
+  const horizontal = (point.x - size.width / 2) / FOCAL_LENGTH;
+  const vertical = (size.height / 2 - point.y) / FOCAL_LENGTH;
+  return {
+    origin,
+    direction: normalizeVec3(
+      addVec3(
+        forward,
+        addVec3(scaleVec3(right, horizontal), scaleVec3(up, vertical))
+      )
+    )
   };
 }
 

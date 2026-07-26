@@ -1,4 +1,7 @@
-import type { SketchSnapshot } from "@web-cad/cad-protocol";
+import type {
+  SketchCurveEditReadinessQueryResponse,
+  SketchSnapshot
+} from "@web-cad/cad-protocol";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
@@ -76,6 +79,24 @@ describe("V18 Sketch mode dock", () => {
     expect(widthMarkup).toContain('value="Width"');
     expect(widthMarkup).toContain("Value source");
   });
+
+  it("opens the V19 Modify collector only for a registry-owned curve action", () => {
+    const trimMarkup = renderToStaticMarkup(
+      createElement(
+        SketchModeDock,
+        props({
+          initialActionId: "sketch.trim",
+          selectedEntityId: undefined
+        })
+      )
+    );
+
+    expect(trimMarkup).toContain('aria-label="Trim sketch geometry"');
+    expect(trimMarkup).toContain("Choose the curve to edit");
+    expect(trimMarkup).toContain("Choose target…");
+    expect(trimMarkup).toContain("Complete the edit choices");
+    expect(trimMarkup).not.toContain("Offset");
+  });
 });
 
 function props(
@@ -107,6 +128,7 @@ function props(
     solverStatusesBySketchId: new Map(),
     activeSketchId: "sketch-a",
     selectedEntityId: "rect-a",
+    curveEditSourceAuthorityKey: 1,
     onSelectSketch: vi.fn(),
     onSelectEntity: vi.fn(),
     onCreateSketch: vi.fn(),
@@ -116,6 +138,17 @@ function props(
     onSetEntityConstruction: vi.fn(),
     onStartThreePointArcTool: vi.fn(),
     onCancelGesture: vi.fn(),
+    onReadCurveEditReadiness: vi.fn(
+      (): SketchCurveEditReadinessQueryResponse => ({
+        ok: true,
+        query: "sketch.curveEditReadiness",
+        cadOpsVersion: "cadops.v1",
+        status: "blocked",
+        diagnostics: []
+      })
+    ),
+    onApplyCurveEdit: vi.fn(),
+    onCancelCurveEdit: vi.fn(),
     onCreateDimension: vi.fn(),
     onApplyDimensionEdit: vi.fn(),
     onDeleteDimension: vi.fn(),

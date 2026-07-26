@@ -140,6 +140,18 @@
   pointer-events: none;
 }
 
+.sketch-overlay-loading {
+  position: absolute;
+  z-index: 37;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--pb-color-text-muted);
+  background: rgb(22 27 34 / 18%);
+  cursor: wait;
+  pointer-events: auto;
+}
+
 .sketch-arc-tool-layer,
 .sketch-arc-tool-overlay {
   z-index: 36;

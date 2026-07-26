@@ -1233,7 +1233,10 @@ export class CadMcpServer {
       | "sketch.profileRegionValidate",
     invalidArgumentsMessage: string
   ): CadMcpToolCallResult {
-    if (!isRecord(request.arguments)) {
+    if (
+      !isRecord(request.arguments) ||
+      Object.prototype.hasOwnProperty.call(request.arguments, "query")
+    ) {
       return createInvalidArgumentsResult(
         request.name,
         invalidArgumentsMessage
@@ -1668,7 +1671,9 @@ const V19_VEC2_SCHEMA = {
   type: "array",
   minItems: 2,
   maxItems: 2,
-  items: { type: "number" }
+  items: { type: "number" },
+  description:
+    "A finite [x, y] point in sketch model space. Pixel, viewport, screenshot, and device coordinates are not accepted."
 } as const;
 
 const V19_ID_ARRAY_SCHEMA = {
@@ -2452,7 +2457,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.sketch_curve_edit_readiness",
     description:
-      "Prepares one typed V19 trim, extend, split, explode-rectangle, or non-associative offset proposal and returns source revision, exact deletion impact, dependency consequences, and a derived preview. Offset results are ordinary source entities, not an associative offset feature.",
+      "Call this before a V19 curve edit. It prepares one typed trim, extend, split, explode-rectangle, or non-associative offset proposal and returns either full blocker diagnostics or a preparedOperation with current source/solver preconditions, generated IDs, exact constraint/dimension deletion lists, dependency impact, and a model-space preview. Submit that preparedOperation as the only operation in cad.batch. Offset results are ordinary source entities, not an associative offset feature.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -2461,7 +2466,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
         proposal: {
           ...V19_CURVE_EDIT_PROPOSAL_SCHEMA,
           description:
-            "A typed source-space SketchCurveEditProposal. Screenshots, pixel coordinates, opaque candidate tokens, scripts, filesystem paths, and raw OCCT selectors are not accepted."
+            "A typed model-space SketchCurveEditProposal. pickPoint and splitPoints are model coordinates. Screenshots, pixel/viewport coordinates, opaque candidate tokens, scripts, filesystem paths, and raw OCCT selectors are not accepted."
         }
       }
     }
@@ -2917,7 +2922,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.batch",
     description:
-      "Runs a structured CADOps batch in dry-run or commit mode and returns the CADOps response with semantic diff, agent review, and audit summary.",
+      "Runs a structured CADOps batch in dry-run or commit mode and returns the CADOps response with semantic diff, agent review, and audit summary. For trim, extend, split, or explodeRectangle, call cad.sketch_curve_edit_readiness first and prefer its preparedOperation. A curve-edit batch must contain exactly that one curve-edit operation and no other operations. Direct curve-edit operations are accepted with current source/solver preconditions; any supplied deleteConstraintIds and deleteDimensionIds must exactly match the returned impact or the batch fails with the complete impact.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -2925,7 +2930,55 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
       properties: {
         batch: {
           type: "object",
-          description: "A CadBatch with version, mode, and ops fields."
+          additionalProperties: false,
+          description:
+            "A CadBatch with version, mode, and ops fields. Curve-edit points are model-space coordinates; never send pixels, screenshots, viewport positions, or opaque selection tokens.",
+          required: ["version", "mode", "ops"],
+          properties: {
+            version: { const: "cadops.v1" },
+            mode: { enum: ["dryRun", "commit"] },
+            ops: {
+              type: "array",
+              description:
+                "Structured CADOps. A trim/extend/split/explodeRectangle batch has exactly one item. Prepared curve edits include generated output IDs plus exact deleteConstraintIds/deleteDimensionIds from readiness.",
+              items: {
+                type: "object",
+                description:
+                  "A typed CadOp; pixel coordinates, screenshots, opaque candidate tokens, scripts, paths, and raw geometry selectors are not operation inputs."
+              }
+            },
+            actor: {
+              type: "object",
+              additionalProperties: false,
+              description:
+                "Optional transaction actor metadata carried by the CadBatch.",
+              required: ["type"],
+              properties: {
+                type: {
+                  enum: ["human", "agent", "script", "system"]
+                },
+                id: { type: "string" },
+                name: { type: "string" }
+              }
+            },
+            audit: {
+              type: "object",
+              additionalProperties: false,
+              description:
+                "Optional transaction audit metadata carried by the CadBatch.",
+              required: ["intent", "operationCount"],
+              properties: {
+                source: { type: "string" },
+                requestId: { type: "string" },
+                toolName: { type: "string" },
+                intent: { enum: ["dryRun", "commit"] },
+                operationCount: {
+                  type: "integer",
+                  minimum: 0
+                }
+              }
+            }
+          }
         },
         actor: {
           type: "object",

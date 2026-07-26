@@ -153,4 +153,32 @@ describe("workbenchReducer", () => {
     expect(prompt.message).toContain("switching to Sketch mode");
     expect(prompt.message).not.toMatch(/CADOps|schema|featureId/);
   });
+
+  it("queues a cross-sketch semantic selection before replacing a dirty curve editor", () => {
+    const state = createInitialWorkbenchUiState({
+      mode: "sketch",
+      activeTool: "sketch.trim",
+      activeEditor: {
+        kind: "sketch-curve-edit",
+        sourceId: "sketch-a"
+      },
+      activeEditorDirty: true
+    });
+    const intent = {
+      kind: "sketch-selection",
+      sketchId: "sketch-b",
+      entityId: "line-b"
+    } as const;
+    const queued = workbenchReducer(state, {
+      type: "request-navigation",
+      intent
+    });
+
+    expect(queued.activeEditor).toEqual(state.activeEditor);
+    expect(queued.activeEditorDirty).toBe(true);
+    expect(queued.navigationIntent).toEqual(intent);
+    expect(getDirtyNavigationPrompt(intent).message).toContain(
+      "opening another sketch"
+    );
+  });
 });

@@ -374,6 +374,10 @@ const ACTION_AUDIT_BY_ID = {
     "E",
     { editor: "SketchWorkspace" }
   ),
+  "sketch.trim": curveEditAudit("Trim"),
+  "sketch.extend": curveEditAudit("Extend"),
+  "sketch.split": curveEditAudit("Split"),
+  "sketch.explode-rectangle": curveEditAudit("Explode Rectangle"),
   "sketch.construction": audit(
     "SketchPanel",
     "setSketchEntityConstruction",
@@ -977,8 +981,6 @@ export const V18_CAPABILITY_MANIFEST: readonly V18CapabilityManifestRow[] = [
 ];
 
 export const V18_FORBIDDEN_IMAGE_ONLY_CAPABILITY_IDS = [
-  "sketch.trim",
-  "sketch.extend",
   "sketch.offset",
   "sketch.mirror",
   "sketch.pattern",
@@ -1084,6 +1086,22 @@ function sketchEntityAudit(label: string, builder: string): ActionAuditDetail {
     "sketchEntityForms.test.ts",
     "E",
     { editor: `${label}Tool` }
+  );
+}
+
+function curveEditAudit(label: string): ActionAuditDetail {
+  return audit(
+    "V19 Sketch Modify",
+    "SketchCurveEditPanel / applySketchCurveEdit",
+    "sketch.curveEditReadiness + current semantic selection",
+    cadops("query-prepared SketchCurveEditOp"),
+    "modes/sketch/SketchCurveEditPanel.test.tsx",
+    "B",
+    {
+      source: "v18-contract",
+      v18Owner: "SketchMode",
+      editor: `${label.replace(/\s+/g, "")}Tool`
+    }
   );
 }
 
