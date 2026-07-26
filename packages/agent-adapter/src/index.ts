@@ -2058,20 +2058,28 @@ function createOperationReview(
     case "sketch.trim":
     case "sketch.extend":
     case "sketch.split":
-    case "sketch.explodeRectangle":
-    case "sketch.offset": {
-      const sourceEntityId =
-        op.op === "sketch.offset"
-          ? op.source.kind === "entity"
-            ? op.source.entityId
-            : undefined
-          : op.entityId;
+    case "sketch.explodeRectangle": {
       return {
         ...operationReviewBase(
           index,
           op,
           "modify",
           `${op.op.slice("sketch.".length)} sketch geometry in ${op.sketchId}`
+        ),
+        sketchId: op.sketchId,
+        sketchEntityId: op.entityId
+      };
+    }
+
+    case "sketch.offset": {
+      const sourceEntityId =
+        op.source.kind === "entity" ? op.source.entityId : undefined;
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create independent ${op.side} offset geometry in ${op.sketchId}`
         ),
         sketchId: op.sketchId,
         ...(sourceEntityId ? { sketchEntityId: sourceEntityId } : {})

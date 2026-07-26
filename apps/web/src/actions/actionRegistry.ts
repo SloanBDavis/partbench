@@ -376,6 +376,15 @@ export const UI_ACTION_METADATA = [
     true
   ),
   action("sketch.circle", "Circle", "Create", ["sketch"], ["add circle"], true),
+  action("sketch.slot", "Slot", "Create", ["sketch"], ["add slot"], true),
+  action(
+    "sketch.rounded-rectangle",
+    "Rounded Rectangle",
+    "Create",
+    ["sketch"],
+    ["add rounded rectangle"],
+    true
+  ),
   action(
     "sketch.arc",
     "Three-point Arc",
@@ -423,6 +432,16 @@ export const UI_ACTION_METADATA = [
     true,
     undefined,
     needs("Select a rectangle.")
+  ),
+  action(
+    "sketch.offset",
+    "Offset",
+    "Modify",
+    ["sketch"],
+    ["offset curve", "parallel curve"],
+    true,
+    undefined,
+    needs("Select a supported line, arc, circle, rectangle, or line/arc chain.")
   ),
   action(
     "sketch.construction",

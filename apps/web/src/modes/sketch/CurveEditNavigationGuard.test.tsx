@@ -119,6 +119,29 @@ describe("V19 curve-edit dirty navigation guard", () => {
       })
     ).toBe(true);
   });
+
+  it.each([
+    "Offset sketch geometry",
+    "Create Slot",
+    "Create Rounded Rectangle"
+  ])("treats the V19 %s panel as transient focus", (label) => {
+    const body = focusElement(false);
+    const documentElement = focusElement(false);
+    const panelControl = {
+      isConnected: true,
+      closest: vi.fn((selector: string) =>
+        selector.includes(`[aria-label="${label}"]`) ? {} : null
+      )
+    };
+
+    expect(
+      shouldRestoreResolvedCurveEditNavigationFocus({
+        activeElement: panelControl,
+        body,
+        documentElement
+      })
+    ).toBe(true);
+  });
 });
 
 function focusElement(transient: boolean) {

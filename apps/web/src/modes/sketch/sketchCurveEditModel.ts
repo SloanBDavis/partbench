@@ -1,26 +1,32 @@
-import type {
-  CadSketchEditDiagnostic,
-  PreparedSketchCurveEditOp,
-  SketchCurveEditImpact,
-  SketchCurveEditPreview,
-  SketchCurveEditProposal,
-  SketchCurveEditReadinessQueryResponse,
-  SketchEntitySnapshot,
-  SketchSnapshot,
-  Vec2
+import {
+  CAD_V19_SKETCH_GEOMETRY_POLICY,
+  type CadSketchEditDiagnostic,
+  type OrientedSketchSegmentRef,
+  type PreparedSketchCurveEditOp,
+  type SketchCurveEditImpact,
+  type SketchCurveEditPreview,
+  type SketchCurveEditProposal,
+  type SketchCurveEditReadinessQueryResponse,
+  type SketchEntitySnapshot,
+  type SketchSnapshot,
+  type Vec2
 } from "@web-cad/cad-protocol";
 
 export type SketchCurveEditKind =
   | "trim"
   | "extend"
   | "split"
-  | "explodeRectangle";
+  | "explodeRectangle"
+  | "offset";
 
 export type SketchCurveEditCollector =
   | "target"
   | "boundaries"
   | "pick"
-  | "splitPoints";
+  | "splitPoints"
+  | "chain"
+  | "side"
+  | "witness";
 
 export interface SketchCurveEditDraft {
   readonly kind: SketchCurveEditKind;
@@ -31,6 +37,13 @@ export interface SketchCurveEditDraft {
   readonly splitPoints: readonly Vec2[];
   readonly pendingSplitPoint: Vec2;
   readonly collector: SketchCurveEditCollector;
+  readonly offsetSourceMode: "entity" | "chain";
+  readonly offsetSegments: readonly OrientedSketchSegmentRef[];
+  readonly offsetClosed: boolean;
+  readonly offsetDistance: number;
+  readonly offsetSide?: "left" | "right" | "inward" | "outward";
+  readonly offsetUseReferencePoint: boolean;
+  readonly offsetReferencePoint?: Vec2;
 }
 
 export interface SketchCurveEditViewportChoice {
@@ -98,7 +111,9 @@ export function createSketchCurveEditDraft(
         ? "target"
         : kind === "split"
           ? "splitPoints"
-          : "boundaries";
+          : kind === "offset"
+            ? "side"
+            : "boundaries";
 
   return {
     kind,
@@ -107,7 +122,12 @@ export function createSketchCurveEditDraft(
     endpoint: undefined,
     splitPoints: [],
     pendingSplitPoint: target ? getSketchEntityWitnessPoint(target) : [0, 0],
-    collector
+    collector,
+    offsetSourceMode: "entity",
+    offsetSegments: [],
+    offsetClosed: false,
+    offsetDistance: 1,
+    offsetUseReferencePoint: false
   };
 }
 
@@ -123,6 +143,13 @@ export function isEligibleCurveEditTarget(
       return entity.kind === "line" || entity.kind === "arc";
     case "explodeRectangle":
       return entity.kind === "rectangle";
+    case "offset":
+      return (
+        entity.kind === "line" ||
+        entity.kind === "arc" ||
+        entity.kind === "circle" ||
+        entity.kind === "rectangle"
+      );
   }
 }
 
@@ -137,7 +164,12 @@ export function buildSketchCurveEditProposal(
   sketchId: string,
   draft: SketchCurveEditDraft
 ): SketchCurveEditProposal | undefined {
-  if (!draft.targetEntityId) return undefined;
+  if (
+    !draft.targetEntityId &&
+    !(draft.kind === "offset" && draft.offsetSourceMode === "chain")
+  ) {
+    return undefined;
+  }
   switch (draft.kind) {
     case "trim":
       return draft.boundaryEntityIds.length > 0 && draft.pickPoint
@@ -174,6 +206,40 @@ export function buildSketchCurveEditProposal(
         sketchId,
         entityId: draft.targetEntityId
       };
+    case "offset": {
+      if (
+        !(Number.isFinite(draft.offsetDistance) && draft.offsetDistance > 0) ||
+        draft.offsetSide === undefined
+      ) {
+        return undefined;
+      }
+      const source =
+        draft.offsetSourceMode === "entity"
+          ? draft.targetEntityId
+            ? ({
+                kind: "entity",
+                entityId: draft.targetEntityId
+              } as const)
+            : undefined
+          : draft.offsetSegments.length > 0
+            ? ({
+                kind: "chain",
+                segments: draft.offsetSegments,
+                closed: draft.offsetClosed
+              } as const)
+            : undefined;
+      if (!source) return undefined;
+      return {
+        kind: "offset",
+        sketchId,
+        source,
+        distance: draft.offsetDistance,
+        side: draft.offsetSide,
+        ...(draft.offsetUseReferencePoint && draft.offsetReferencePoint
+          ? { referencePoint: draft.offsetReferencePoint }
+          : {})
+      };
+    }
   }
 }
 
@@ -188,7 +254,16 @@ export function hasCollectedSketchCurveEditChoices(
     draft.pickPoint !== undefined ||
     draft.splitPoints.length > 0 ||
     draft.pendingSplitPoint[0] !== initialDraft.pendingSplitPoint[0] ||
-    draft.pendingSplitPoint[1] !== initialDraft.pendingSplitPoint[1]
+    draft.pendingSplitPoint[1] !== initialDraft.pendingSplitPoint[1] ||
+    draft.offsetSourceMode !== initialDraft.offsetSourceMode ||
+    draft.offsetSegments.length > 0 ||
+    draft.offsetClosed !== initialDraft.offsetClosed ||
+    draft.offsetDistance !== initialDraft.offsetDistance ||
+    draft.offsetSide !== initialDraft.offsetSide ||
+    draft.offsetUseReferencePoint !== initialDraft.offsetUseReferencePoint ||
+    draft.offsetReferencePoint?.[0] !==
+      initialDraft.offsetReferencePoint?.[0] ||
+    draft.offsetReferencePoint?.[1] !== initialDraft.offsetReferencePoint?.[1]
   );
 }
 
@@ -215,7 +290,9 @@ export function applySketchCurveEditViewportChoice(
           ? "target"
           : draft.kind === "split"
             ? "splitPoints"
-            : "boundaries"
+            : draft.kind === "offset"
+              ? "side"
+              : "boundaries"
     };
   }
   if (draft.collector === "boundaries" && choice.entityId) {
@@ -241,6 +318,35 @@ export function applySketchCurveEditViewportChoice(
       ...draft,
       splitPoints: appendUniquePoint(draft.splitPoints, choice.point),
       pendingSplitPoint: choice.point
+    };
+  }
+  if (draft.collector === "chain" && choice.entityId) {
+    const entity = sketch.entities.find(
+      (candidate) => candidate.id === choice.entityId
+    );
+    if (!entity || (entity.kind !== "line" && entity.kind !== "arc")) {
+      return draft;
+    }
+    const selected = draft.offsetSegments.some(
+      (segment) => segment.entityId === entity.id
+    );
+    return {
+      ...draft,
+      offsetSegments: selected
+        ? draft.offsetSegments.filter(
+            (segment) => segment.entityId !== entity.id
+          )
+        : [
+            ...draft.offsetSegments,
+            { entityId: entity.id, orientation: "forward" }
+          ]
+    };
+  }
+  if (draft.collector === "witness" && choice.point) {
+    return {
+      ...draft,
+      offsetUseReferencePoint: true,
+      offsetReferencePoint: choice.point
     };
   }
   return draft;
@@ -332,6 +438,20 @@ export function getNextCurveEditCollector(
       return draft.collector === "target" ? "splitPoints" : "target";
     case "explodeRectangle":
       return "target";
+    case "offset":
+      return draft.collector === "target"
+        ? "side"
+        : draft.collector === "chain"
+          ? "side"
+          : draft.collector === "side"
+            ? draft.offsetUseReferencePoint
+              ? "witness"
+              : draft.offsetSourceMode === "chain"
+                ? "chain"
+                : "target"
+            : draft.offsetSourceMode === "chain"
+              ? "chain"
+              : "target";
   }
 }
 
@@ -345,7 +465,217 @@ export function getSketchCurveEditKindLabel(kind: SketchCurveEditKind): string {
       return "Split";
     case "explodeRectangle":
       return "Explode Rectangle";
+    case "offset":
+      return "Offset";
   }
+}
+
+export function getSketchOffsetSideChoices(
+  draft: SketchCurveEditDraft,
+  sketch: SketchSnapshot
+): readonly {
+  readonly side: "left" | "right" | "inward" | "outward";
+  readonly witnessPoint?: Vec2;
+}[] {
+  const closed =
+    draft.offsetSourceMode === "chain"
+      ? draft.offsetClosed
+      : sketch.entities.find((entity) => entity.id === draft.targetEntityId)
+          ?.kind === "circle" ||
+        sketch.entities.find((entity) => entity.id === draft.targetEntityId)
+          ?.kind === "rectangle";
+  const sides = closed
+    ? (["inward", "outward"] as const)
+    : (["left", "right"] as const);
+  return sides.map((side) => ({
+    side,
+    witnessPoint: createSketchOffsetWitnessPoint(draft, sketch, side)
+  }));
+}
+
+export function createSketchOffsetWitnessPoint(
+  draft: SketchCurveEditDraft,
+  sketch: SketchSnapshot,
+  side: "left" | "right" | "inward" | "outward"
+): Vec2 | undefined {
+  const sourceEntity =
+    draft.offsetSourceMode === "entity"
+      ? sketch.entities.find((entity) => entity.id === draft.targetEntityId)
+      : sketch.entities.find(
+          (entity) => entity.id === draft.offsetSegments[0]?.entityId
+        );
+  if (!sourceEntity) return undefined;
+  const distance = Math.max(draft.offsetDistance, 1e-6);
+  const lateralSide = resolveSketchOffsetLateralSide(draft, sketch, side);
+  if (sourceEntity.kind === "line") {
+    const orientation =
+      draft.offsetSourceMode === "chain"
+        ? (draft.offsetSegments[0]?.orientation ?? "forward")
+        : "forward";
+    const start =
+      orientation === "forward" ? sourceEntity.start : sourceEntity.end;
+    const end =
+      orientation === "forward" ? sourceEntity.end : sourceEntity.start;
+    const dx = end[0] - start[0];
+    const dy = end[1] - start[1];
+    const length = Math.hypot(dx, dy);
+    if (!(length > 0)) return undefined;
+    if (!lateralSide) return undefined;
+    const sign = lateralSide === "left" ? 1 : -1;
+    return [
+      (start[0] + end[0]) / 2 - (dy / length) * distance * sign,
+      (start[1] + end[1]) / 2 + (dx / length) * distance * sign
+    ];
+  }
+  if (sourceEntity.kind === "arc") {
+    if (!lateralSide) return undefined;
+    const authoredSign = Math.sign(sourceEntity.sweepAngleDegrees) || 1;
+    const orientationSign =
+      draft.offsetSourceMode === "chain" &&
+      draft.offsetSegments[0]?.orientation === "reverse"
+        ? -1
+        : 1;
+    const angle =
+      ((sourceEntity.startAngleDegrees + sourceEntity.sweepAngleDegrees / 2) *
+        Math.PI) /
+      180;
+    const tangentSign = authoredSign * orientationSign;
+    const radialSign =
+      (lateralSide === "left" ? -tangentSign : tangentSign) *
+      (sourceEntity.radius > distance ? 1 : 0.5);
+    const radius = Math.max(
+      sourceEntity.radius + radialSign * distance,
+      sourceEntity.radius * 0.5
+    );
+    return [
+      sourceEntity.center[0] + radius * Math.cos(angle),
+      sourceEntity.center[1] + radius * Math.sin(angle)
+    ];
+  }
+  if (sourceEntity.kind === "circle") {
+    const radius =
+      side === "inward"
+        ? sourceEntity.radius * 0.5
+        : sourceEntity.radius + distance;
+    return [sourceEntity.center[0] + radius, sourceEntity.center[1]];
+  }
+  if (sourceEntity.kind === "rectangle") {
+    return side === "inward"
+      ? [
+          sourceEntity.center[0] + sourceEntity.width * 0.173,
+          sourceEntity.center[1] + sourceEntity.height * 0.127
+        ]
+      : [
+          sourceEntity.center[0] + sourceEntity.width / 2 + distance,
+          sourceEntity.center[1] + sourceEntity.height * 0.137
+        ];
+  }
+  return undefined;
+}
+
+function resolveSketchOffsetLateralSide(
+  draft: SketchCurveEditDraft,
+  sketch: SketchSnapshot,
+  side: "left" | "right" | "inward" | "outward"
+): "left" | "right" | undefined {
+  if (side === "left" || side === "right") return side;
+  if (draft.offsetSourceMode !== "chain" || !draft.offsetClosed) {
+    return undefined;
+  }
+  const winding = getOrientedChainWinding(draft.offsetSegments, sketch);
+  if (winding === undefined) return undefined;
+  const interiorSide = winding > 0 ? "left" : "right";
+  if (side === "inward") return interiorSide;
+  return interiorSide === "left" ? "right" : "left";
+}
+
+function getOrientedChainWinding(
+  segments: readonly OrientedSketchSegmentRef[],
+  sketch: SketchSnapshot
+): number | undefined {
+  const firstSegment = segments[0];
+  const firstEntity = firstSegment
+    ? sketch.entities.find(
+        (candidate) => candidate.id === firstSegment.entityId
+      )
+    : undefined;
+  if (
+    !firstSegment ||
+    !firstEntity ||
+    (firstEntity.kind !== "line" && firstEntity.kind !== "arc")
+  ) {
+    return undefined;
+  }
+  const anchor =
+    firstEntity.kind === "line"
+      ? firstSegment.orientation === "forward"
+        ? firstEntity.start
+        : firstEntity.end
+      : getOrientedArcStartPoint(firstEntity, firstSegment.orientation);
+  let twiceSignedArea = 0;
+  let compensation = 0;
+  const accumulate = (term: number): void => {
+    const corrected = term - compensation;
+    const next = twiceSignedArea + corrected;
+    compensation = next - twiceSignedArea - corrected;
+    twiceSignedArea = next;
+  };
+  for (const segment of segments) {
+    const entity = sketch.entities.find(
+      (candidate) => candidate.id === segment.entityId
+    );
+    if (!entity || (entity.kind !== "line" && entity.kind !== "arc")) {
+      return undefined;
+    }
+    if (entity.kind === "line") {
+      const start =
+        segment.orientation === "forward" ? entity.start : entity.end;
+      const end = segment.orientation === "forward" ? entity.end : entity.start;
+      const localStart: Vec2 = [start[0] - anchor[0], start[1] - anchor[1]];
+      const localEnd: Vec2 = [end[0] - anchor[0], end[1] - anchor[1]];
+      accumulate(localStart[0] * localEnd[1] - localEnd[0] * localStart[1]);
+      continue;
+    }
+    const authoredStart = (entity.startAngleDegrees * Math.PI) / 180;
+    const authoredSweep = (entity.sweepAngleDegrees * Math.PI) / 180;
+    const startAngle =
+      segment.orientation === "forward"
+        ? authoredStart
+        : authoredStart + authoredSweep;
+    const sweep =
+      segment.orientation === "forward" ? authoredSweep : -authoredSweep;
+    const endAngle = startAngle + sweep;
+    const localCenter: Vec2 = [
+      entity.center[0] - anchor[0],
+      entity.center[1] - anchor[1]
+    ];
+    accumulate(
+      entity.radius *
+        (localCenter[0] * (Math.sin(endAngle) - Math.sin(startAngle)) +
+          localCenter[1] * (Math.cos(startAngle) - Math.cos(endAngle))) +
+        entity.radius * entity.radius * sweep
+    );
+  }
+  const signedArea = twiceSignedArea / 2;
+  return Number.isFinite(signedArea) &&
+    Math.abs(signedArea) > CAD_V19_SKETCH_GEOMETRY_POLICY.minimumProfileArea
+    ? Math.sign(signedArea)
+    : undefined;
+}
+
+function getOrientedArcStartPoint(
+  arc: Extract<SketchEntitySnapshot, { readonly kind: "arc" }>,
+  orientation: OrientedSketchSegmentRef["orientation"]
+): Vec2 {
+  const angleDegrees =
+    orientation === "forward"
+      ? arc.startAngleDegrees
+      : arc.startAngleDegrees + arc.sweepAngleDegrees;
+  const angle = (angleDegrees * Math.PI) / 180;
+  return [
+    arc.center[0] + arc.radius * Math.cos(angle),
+    arc.center[1] + arc.radius * Math.sin(angle)
+  ];
 }
 
 export function getSketchEntitySemanticLabel(
@@ -581,6 +911,14 @@ export function formatCurveEditDiagnostic(
       return "One or more affected constraints must be removed before this edit can apply.";
     case "SKETCH_EDIT_DEPENDENCY_CONFLICT":
       return "A downstream feature still depends on geometry this edit would remove.";
+    case "SKETCH_OFFSET_SIDE_AMBIGUOUS":
+      return "The reference witness does not identify one unambiguous side of the submitted source.";
+    case "SKETCH_OFFSET_RADIUS_COLLAPSED":
+      return "This distance would collapse or reverse a circle or arc radius.";
+    case "SKETCH_OFFSET_JOIN_UNSUPPORTED":
+      return "The selected chain has no supported exact analytic join at this distance and side.";
+    case "SKETCH_OFFSET_SELF_INTERSECTION":
+      return "This offset would cross or overlap itself. Choose another distance or side.";
     default:
       return "This edit is not ready. Review the highlighted choices and try again.";
   }

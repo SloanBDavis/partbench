@@ -14,6 +14,7 @@ import type {
   DerivedGeometryMetrics
 } from "./derivedGeometryRuntime";
 import type { DerivedGeometryMeshCache } from "./derivedGeometry";
+import { DERIVED_MESH_CACHE_ARTIFACT_VERSION } from "./derivedMeshOpfsCacheVersions";
 import {
   createProjectOpfsCacheDiagnostic,
   createProjectOpfsCacheIndex,
@@ -31,7 +32,7 @@ import {
   type ProjectOpfsCacheTargetLike
 } from "./projectOpfsCache";
 
-export const DERIVED_MESH_CACHE_ARTIFACT_VERSION = "partbench-derived-mesh.v1";
+export { DERIVED_MESH_CACHE_ARTIFACT_VERSION };
 export const DERIVED_MESH_CACHE_KERNEL_VERSION = "partbench-occt-display.v1";
 export const DERIVED_MESH_CACHE_WORKER_VERSION = "geometry-worker.v1";
 export const DERIVED_MESH_CACHE_SETTINGS_KEY = "display-tessellation.v1";

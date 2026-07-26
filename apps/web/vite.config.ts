@@ -1,6 +1,30 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig, loadEnv } from "vite";
+import { minify } from "terser";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 import { resolveDerivedGeometryFlags } from "./src/derivedGeometryFlags";
+
+function minifyCriticalEntry(): Plugin {
+  return {
+    name: "partbench-minify-critical-entry",
+    async renderChunk(code, chunk) {
+      if (!chunk.isEntry || !chunk.facadeModuleId?.match(/[/\\]index\.html$/)) {
+        return null;
+      }
+
+      const result = await minify(code, {
+        compress: { passes: 2 },
+        mangle: true,
+        module: true,
+        format: { comments: false }
+      });
+      if (!result.code) {
+        throw new Error("Terser did not emit the critical application entry.");
+      }
+
+      return { code: result.code, map: null };
+    }
+  };
+}
 
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, ".", "VITE_");
@@ -12,6 +36,13 @@ export default defineConfig(({ command, mode }) => {
         .pathname;
 
   return {
+    build: {
+      rollupOptions: {
+        output: {
+          plugins: [minifyCriticalEntry()]
+        }
+      }
+    },
     define: {
       __PARTBENCH_DERIVED_GEOMETRY_ENABLED__: JSON.stringify(
         derivedGeometryFlags.enabled

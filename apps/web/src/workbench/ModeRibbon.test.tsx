@@ -81,6 +81,7 @@ describe("V18 mode ribbon", () => {
     expect(markup).toContain('aria-disabled="true"');
     expect(markup).toContain('aria-busy="true"');
     expect(markup).toContain('disabled=""');
+    expect(markup).toContain('data-action-id="solid.extrude"');
     expect(markup).toContain(">Extrude<");
   });
 

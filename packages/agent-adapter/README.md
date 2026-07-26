@@ -194,6 +194,23 @@ of the existing `cad-core` transaction model:
 }
 ```
 
+V19 curve edits use `sketch.curveEditReadiness` before mutation. Offset
+proposals name either one source entity or an ordered oriented line/arc chain in
+model space. A ready response returns the exact `sketch.offset` operation,
+including source/solver preconditions and ordered output IDs; submit that
+prepared operation unchanged as the only operation in a dry-run or commit
+batch. Offset output is independent ordinary sketch geometry, not an
+associative feature or constraint.
+
+`sketch.addSlot` and `sketch.addRoundedRectangle` use the same batch envelope
+and accept their exact ordered caller-supplied entity and constraint ID arrays.
+The adapter returns the core semantic diff, generated IDs, actor, audit,
+request, and transaction metadata without translating the operation into
+another mutation path. Read solver health and diagnostics through the separate
+`sketch.solverStatus` query. Curve-edit inputs are typed source refs and finite
+model-space points; screenshots, pixel coordinates, opaque tokens, scripts, and
+filesystem paths are not accepted as substitutes.
+
 V8 package/export inspection can be consumed either through the raw read-only
 queries (`project.packageReadiness`, `project.exportReadiness`, and
 `project.exportExact`) or through the compact `inspectV8ProjectSurface` helper.

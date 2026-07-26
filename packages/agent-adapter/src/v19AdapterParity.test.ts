@@ -134,6 +134,36 @@ describe("V19 agent adapter parity", () => {
         }
       })
     ).toThrow("Invalid CADOps agent adapter query request.");
+
+    for (const source of [
+      "/tmp/offset-source.json",
+      { kind: "file", path: "/tmp/offset-source.json" },
+      {
+        kind: "entity",
+        entityId: "line_1",
+        screenshot: "data:image/png;base64,opaque"
+      }
+    ]) {
+      expect(() =>
+        parseCadOpsAgentQueryRequest({
+          requestId: "bad_offset_source",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          query: {
+            version: "cadops.v1",
+            query: {
+              query: "sketch.curveEditReadiness",
+              proposal: {
+                kind: "offset",
+                sketchId: "sketch_1",
+                source,
+                distance: 1,
+                side: "left"
+              }
+            }
+          }
+        })
+      ).toThrow("Invalid CADOps agent adapter query request.");
+    }
   });
 
   it("rejects unknown nested CadBatch envelope fields", () => {
@@ -810,6 +840,433 @@ describe("V19 agent adapter parity", () => {
         commitGate: { permissionProvided: true, blocked: false }
       }
     });
+  });
+
+  it("carries a typed non-associative offset from readiness through exact dry-run and commit evidence", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "sketch_offset",
+        name: "Offset parity",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_offset",
+        id: "line_source",
+        start: [0, 0],
+        end: [4, 0]
+      }
+    ]);
+    const adapter = new CadOpsAgentAdapter(engine);
+    const readiness = adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: "agent_offset_readiness",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "sketch.curveEditReadiness",
+            proposal: {
+              kind: "offset",
+              sketchId: "sketch_offset",
+              source: { kind: "entity", entityId: "line_source" },
+              distance: 1,
+              side: "left"
+            }
+          }
+        }
+      })
+    );
+    expect(readiness).toMatchObject({
+      ok: true,
+      requestId: "agent_offset_readiness",
+      query: "sketch.curveEditReadiness",
+      status: "ready",
+      preparedOperation: {
+        op: "sketch.offset",
+        sketchId: "sketch_offset",
+        source: { kind: "entity", entityId: "line_source" },
+        distance: 1,
+        side: "left",
+        createdEntityIds: ["skent_1"]
+      },
+      impact: {
+        operation: "offset",
+        replacements: [],
+        constraintImpacts: [],
+        dimensionImpacts: [],
+        requiredDeleteConstraintIds: [],
+        requiredDeleteDimensionIds: [],
+        affectedFeatureIds: []
+      },
+      preview: {
+        intersections: [],
+        projectedSplitParameters: [],
+        resultEntities: [
+          {
+            id: "skent_1",
+            kind: "line",
+            start: [0, 1],
+            end: [4, 1],
+            construction: false
+          }
+        ]
+      },
+      diagnostics: []
+    });
+    if (
+      !readiness.ok ||
+      readiness.query !== "sketch.curveEditReadiness" ||
+      readiness.status !== "ready" ||
+      readiness.preparedOperation.op !== "sketch.offset"
+    ) {
+      throw new Error(`Expected ready offset: ${JSON.stringify(readiness)}`);
+    }
+
+    const dryRun = adapter.execute(
+      parseCadOpsAgentRequest({
+        requestId: "agent_offset_dry_run",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        actor: {
+          type: "agent",
+          id: "offset-agent",
+          name: "Offset Agent"
+        },
+        source: { source: "v19-parity", toolName: "offset-workflow" },
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: [readiness.preparedOperation]
+        }
+      })
+    );
+    expect(dryRun).toMatchObject({
+      ok: true,
+      requestId: "agent_offset_dry_run",
+      mode: "dryRun",
+      createdSketchEntityIds: ["skent_1"],
+      semanticDiff: {
+        sketches: {
+          entitiesCreated: [{ sketchId: "sketch_offset", id: "skent_1" }],
+          curveEdits: [
+            {
+              operation: "offset",
+              replacements: [],
+              constraintImpacts: [],
+              dimensionImpacts: [],
+              requiredDeleteConstraintIds: [],
+              requiredDeleteDimensionIds: [],
+              createdEntityIds: ["skent_1"],
+              modifiedEntityIds: [],
+              deletedEntityIds: []
+            }
+          ]
+        }
+      },
+      review: {
+        operations: [
+          {
+            op: "sketch.offset",
+            intent: "create",
+            sketchId: "sketch_offset",
+            sketchEntityId: "line_source"
+          }
+        ],
+        audit: {
+          source: "v19-parity",
+          requestId: "agent_offset_dry_run",
+          toolName: "offset-workflow",
+          intent: "dryRun",
+          operationCount: 1,
+          actor: {
+            type: "agent",
+            id: "offset-agent",
+            name: "Offset Agent"
+          }
+        }
+      }
+    });
+    expect(dryRun.modifiedSketchEntityIds ?? []).toEqual([]);
+    expect(dryRun.deletedSketchEntityIds ?? []).toEqual([]);
+    expect(
+      dryRun.review.hints.some((hint) => hint.code === "DESTRUCTIVE_DELETE")
+    ).toBe(false);
+
+    const commit = adapter.execute(
+      parseCadOpsAgentRequest({
+        requestId: "agent_offset_commit",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        actor: {
+          type: "agent",
+          id: "offset-agent",
+          name: "Offset Agent"
+        },
+        source: { source: "v19-parity", toolName: "offset-workflow" },
+        permissions: { allowCommit: true },
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [readiness.preparedOperation]
+        }
+      })
+    );
+    expect(commit).toMatchObject({
+      ok: true,
+      requestId: "agent_offset_commit",
+      mode: "commit",
+      transactionId: expect.any(String),
+      actor: {
+        type: "agent",
+        id: "offset-agent",
+        name: "Offset Agent"
+      },
+      audit: {
+        source: "v19-parity",
+        requestId: "agent_offset_commit",
+        toolName: "offset-workflow",
+        intent: "commit",
+        operationCount: 1
+      }
+    });
+    if (!commit.ok) throw new Error(JSON.stringify(commit.error));
+    expect(commit.semanticDiff).toEqual(dryRun.ok && dryRun.semanticDiff);
+    expect(
+      engine
+        .getDocument()
+        .sketches.get("sketch_offset")
+        ?.entities.get("line_source")
+    ).toMatchObject({ start: [0, 0], end: [4, 0] });
+    expect(
+      engine
+        .getDocument()
+        .sketches.get("sketch_offset")
+        ?.entities.get("skent_1")
+    ).not.toHaveProperty("source");
+
+    const history = adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: "agent_offset_history",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        query: {
+          version: "cadops.v1",
+          query: { query: "transaction.history" }
+        }
+      })
+    );
+    expect(history).toMatchObject({
+      ok: true,
+      requestId: "agent_offset_history",
+      query: "transaction.history"
+    });
+    if (!history.ok || history.query !== "transaction.history") {
+      throw new Error("Expected offset transaction history.");
+    }
+    expect(history.transactions).toContainEqual(
+      expect.objectContaining({
+        id: commit.transactionId,
+        status: "committed",
+        actor: expect.objectContaining({ id: "offset-agent" }),
+        audit: expect.objectContaining({
+          source: "v19-parity",
+          requestId: "agent_offset_commit",
+          toolName: "offset-workflow"
+        }),
+        ops: [
+          expect.objectContaining({
+            op: "sketch.offset",
+            sketchId: "sketch_offset"
+          })
+        ]
+      })
+    );
+
+    const blocked = adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: "agent_offset_blocked",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "sketch.curveEditReadiness",
+            proposal: {
+              kind: "offset",
+              sketchId: "sketch_offset",
+              source: { kind: "entity", entityId: "line_source" },
+              distance: 1,
+              side: "left",
+              referencePoint: [2, -1]
+            }
+          }
+        }
+      })
+    );
+    expect(blocked).toMatchObject({
+      ok: true,
+      requestId: "agent_offset_blocked",
+      status: "blocked",
+      diagnostics: [{ code: "SKETCH_OFFSET_SIDE_AMBIGUOUS" }]
+    });
+  });
+
+  it("preserves caller-supplied slot and rounded-rectangle identities through dry-run, commit, solver, and history", () => {
+    const engine = new CadEngine();
+    engine.apply({
+      op: "sketch.create",
+      id: "sketch_convenience",
+      name: "Convenience parity",
+      plane: "XY"
+    });
+    const adapter = new CadOpsAgentAdapter(engine);
+    const slotEntityIds = [
+      "slot_side_positive",
+      "slot_end_cap",
+      "slot_side_negative",
+      "slot_start_cap"
+    ] as const;
+    const slotConstraintIds = Array.from(
+      { length: 9 },
+      (_, index) => `slot_constraint_${index + 1}`
+    );
+    const roundedEntityIds = [
+      "rounded_bottom",
+      "rounded_bottom_right",
+      "rounded_right",
+      "rounded_top_right",
+      "rounded_top",
+      "rounded_top_left",
+      "rounded_left",
+      "rounded_bottom_left"
+    ] as const;
+    const roundedConstraintIds = Array.from(
+      { length: 23 },
+      (_, index) => `rounded_constraint_${index + 1}`
+    );
+    const operations = [
+      {
+        op: "sketch.addSlot",
+        sketchId: "sketch_convenience",
+        centerlineStart: [0, 0],
+        centerlineEnd: [10, 0],
+        radius: 2,
+        entityIds: slotEntityIds,
+        constraintIds: slotConstraintIds
+      },
+      {
+        op: "sketch.addRoundedRectangle",
+        sketchId: "sketch_convenience",
+        center: [20, 0],
+        width: 12,
+        height: 8,
+        cornerRadius: 2,
+        entityIds: roundedEntityIds,
+        constraintIds: roundedConstraintIds
+      }
+    ] as const;
+    const dryRun = adapter.execute(
+      parseCadOpsAgentRequest({
+        requestId: "agent_convenience_dry_run",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        source: { source: "v19-parity", toolName: "cad.batch" },
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: operations
+        }
+      })
+    );
+    expect(dryRun).toMatchObject({
+      ok: true,
+      createdSketchEntityIds: [...slotEntityIds, ...roundedEntityIds],
+      createdSketchConstraintIds: [
+        ...slotConstraintIds,
+        ...roundedConstraintIds
+      ],
+      semanticDiff: {
+        sketches: {
+          convenienceOperations: [
+            {
+              opIndex: 0,
+              operation: "slot",
+              createdEntityIds: slotEntityIds,
+              createdConstraintIds: slotConstraintIds
+            },
+            {
+              opIndex: 1,
+              operation: "roundedRectangle",
+              createdEntityIds: roundedEntityIds,
+              createdConstraintIds: roundedConstraintIds
+            }
+          ]
+        }
+      }
+    });
+
+    const commit = adapter.execute(
+      parseCadOpsAgentRequest({
+        requestId: "agent_convenience_commit",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        actor: { type: "script", id: "convenience-script" },
+        source: { source: "v19-parity", toolName: "cad.batch" },
+        permissions: { allowCommit: true },
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: operations
+        }
+      })
+    );
+    expect(commit).toMatchObject({
+      ok: true,
+      transactionId: expect.any(String),
+      actor: { type: "script", id: "convenience-script" },
+      audit: {
+        source: "v19-parity",
+        requestId: "agent_convenience_commit",
+        toolName: "cad.batch",
+        operationCount: 2
+      }
+    });
+    if (!commit.ok || !dryRun.ok) {
+      throw new Error("Expected successful convenience parity batches.");
+    }
+    expect(commit.semanticDiff).toEqual(dryRun.semanticDiff);
+
+    const solver = adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: "agent_convenience_solver",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "sketch.solverStatus",
+            sketchId: "sketch_convenience"
+          }
+        }
+      })
+    );
+    expect(solver).toMatchObject({
+      ok: true,
+      requestId: "agent_convenience_solver",
+      query: "sketch.solverStatus"
+    });
+    if (!solver.ok || solver.query !== "sketch.solverStatus") {
+      throw new Error("Expected solver status.");
+    }
+    expect(["fully-defined", "under-defined"]).toContain(solver.status);
+    expect(engine.getTransactions().at(-1)?.ops).toMatchObject([
+      {
+        op: "sketch.addSlot",
+        entityIds: slotEntityIds,
+        constraintIds: slotConstraintIds
+      },
+      {
+        op: "sketch.addRoundedRectangle",
+        entityIds: roundedEntityIds,
+        constraintIds: roundedConstraintIds
+      }
+    ]);
   });
 
   it("preserves exact curve-edit impact errors and marks explicit record deletion destructive", () => {

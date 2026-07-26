@@ -97,6 +97,31 @@ describe("V18 Sketch mode dock", () => {
     expect(trimMarkup).toContain("Complete the edit choices");
     expect(trimMarkup).not.toContain("Offset");
   });
+
+  it("opens the V19 Offset and convenience command editors from registry actions", () => {
+    const offset = renderToStaticMarkup(
+      createElement(
+        SketchModeDock,
+        props({
+          initialActionId: "sketch.offset",
+          selectedEntityId: undefined
+        })
+      )
+    );
+    const slot = renderToStaticMarkup(
+      createElement(SketchModeDock, props({ initialActionId: "sketch.slot" }))
+    );
+    const rounded = renderToStaticMarkup(
+      createElement(
+        SketchModeDock,
+        props({ initialActionId: "sketch.rounded-rectangle" })
+      )
+    );
+
+    expect(offset).toContain('aria-label="Offset sketch geometry"');
+    expect(slot).toContain('aria-label="Create Slot"');
+    expect(rounded).toContain('aria-label="Create Rounded Rectangle"');
+  });
 });
 
 function props(
@@ -148,6 +173,7 @@ function props(
       })
     ),
     onApplyCurveEdit: vi.fn(),
+    onApplySketchConvenience: vi.fn(),
     onCancelCurveEdit: vi.fn(),
     onCreateDimension: vi.fn(),
     onApplyDimensionEdit: vi.fn(),

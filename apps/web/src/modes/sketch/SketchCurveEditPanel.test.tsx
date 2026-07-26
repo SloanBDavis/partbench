@@ -161,6 +161,26 @@ describe("V19 Sketch Modify editor", () => {
     }
   });
 
+  it("renders the query-backed Offset entity/chain, side, and witness collectors", () => {
+    const markup = render(
+      props({
+        kind: "offset",
+        selectedEntityId: "line-target"
+      })
+    );
+
+    expect(markup).toContain('aria-label="Offset sketch geometry"');
+    expect(markup).toContain("Individual entity");
+    expect(markup).toContain("Ordered chain");
+    expect(markup).toContain("Source entity");
+    expect(markup).toContain("Distance");
+    expect(markup).toContain("Left");
+    expect(markup).toContain("Right");
+    expect(markup).toContain("Witness (5, 1)");
+    expect(markup).toContain("Use model-space witness evidence");
+    expect(markup).toContain("Apply Offset");
+  });
+
   it("clears hover evidence before committing a toggle draft change", () => {
     const order: string[] = [];
     commitSketchCurveEditDraftChange(

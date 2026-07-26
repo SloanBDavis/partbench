@@ -16,12 +16,14 @@ import {
   formatCurveEditDiagnostic,
   getCurveEditKeyboardCommand,
   getSketchCurveEditEscapeAction,
+  getSketchOffsetSideChoices,
   getSketchEntityDiscoveryWitnessPoints,
   getSketchEntitySemanticLabel,
   hasCollectedSketchCurveEditChoices,
   projectSketchCurveEditReadiness,
   summarizeCurveEditImpact
 } from "./sketchCurveEditModel";
+import type { SketchCurveEditDraft } from "./sketchCurveEditModel";
 import {
   createSketchCurveEditHoverSemanticKey,
   shouldPublishSketchCurveEditHover
@@ -170,6 +172,189 @@ describe("V19 sketch curve-edit draft model", () => {
     ).toBe(true);
   });
 
+  it("builds an explicit individual offset with deterministic model-space side evidence", () => {
+    const sketch = createSketch();
+    const initial = createSketchCurveEditDraft("offset", sketch, "line-target");
+    const left = getSketchOffsetSideChoices(initial, sketch)[0]!;
+    const draft = {
+      ...initial,
+      offsetSide: left.side,
+      offsetUseReferencePoint: true,
+      offsetReferencePoint: left.witnessPoint
+    };
+
+    expect(left).toEqual({ side: "left", witnessPoint: [5, 1] });
+    expect(buildSketchCurveEditProposal(sketch.id, draft)).toEqual({
+      kind: "offset",
+      sketchId: "sketch-a",
+      source: { kind: "entity", entityId: "line-target" },
+      distance: 1,
+      side: "left",
+      referencePoint: [5, 1]
+    });
+  });
+
+  it("collects an ordered oriented offset chain and exact viewport witness", () => {
+    const sketch = createSketch();
+    let draft: SketchCurveEditDraft = {
+      ...createSketchCurveEditDraft("offset", sketch),
+      offsetSourceMode: "chain" as const,
+      collector: "chain" as const
+    };
+    draft = applySketchCurveEditViewportChoice(
+      draft,
+      { sequence: 1, entityId: "line-target" },
+      sketch
+    );
+    draft = applySketchCurveEditViewportChoice(
+      draft,
+      { sequence: 2, entityId: "line-boundary" },
+      sketch
+    );
+    draft = {
+      ...draft,
+      offsetSegments: [
+        draft.offsetSegments[0]!,
+        { ...draft.offsetSegments[1]!, orientation: "reverse" as const }
+      ],
+      offsetSide: "right",
+      offsetUseReferencePoint: true,
+      collector: "witness"
+    };
+    draft = applySketchCurveEditViewportChoice(
+      draft,
+      { sequence: 3, point: [4.25, 2.5] },
+      sketch
+    );
+
+    expect(buildSketchCurveEditProposal(sketch.id, draft)).toEqual({
+      kind: "offset",
+      sketchId: "sketch-a",
+      source: {
+        kind: "chain",
+        segments: [
+          { entityId: "line-target", orientation: "forward" },
+          { entityId: "line-boundary", orientation: "reverse" }
+        ],
+        closed: false
+      },
+      distance: 1,
+      side: "right",
+      referencePoint: [4.25, 2.5]
+    });
+  });
+
+  it("keeps closed-chain inward and outward witnesses correct across winding reversal", () => {
+    const sketch: SketchSnapshot = {
+      id: "closed-sketch",
+      name: "Closed chain",
+      plane: "XY",
+      entities: [
+        line("bottom", [-2, -2], [2, -2]),
+        line("right", [2, -2], [2, 2]),
+        line("top", [2, 2], [-2, 2]),
+        line("left", [-2, 2], [-2, -2])
+      ]
+    };
+    const base = {
+      ...createSketchCurveEditDraft("offset", sketch),
+      offsetSourceMode: "chain" as const,
+      offsetClosed: true
+    };
+    const counterClockwise: SketchCurveEditDraft = {
+      ...base,
+      offsetSegments: ["bottom", "right", "top", "left"].map((entityId) => ({
+        entityId,
+        orientation: "forward" as const
+      }))
+    };
+    const clockwise: SketchCurveEditDraft = {
+      ...base,
+      offsetSegments: ["bottom", "left", "top", "right"].map((entityId) => ({
+        entityId,
+        orientation: "reverse" as const
+      }))
+    };
+
+    for (const draft of [counterClockwise, clockwise]) {
+      expect(getSketchOffsetSideChoices(draft, sketch)).toEqual([
+        { side: "inward", witnessPoint: [0, -1] },
+        { side: "outward", witnessPoint: [0, -3] }
+      ]);
+    }
+  });
+
+  it("keeps translated closed-line-chain winding representable", () => {
+    const origin = 1e16;
+    const sketch: SketchSnapshot = {
+      id: "translated-closed-sketch",
+      name: "Translated closed chain",
+      plane: "XY",
+      entities: [
+        line("bottom", [origin, origin], [origin + 4, origin]),
+        line("right", [origin + 4, origin], [origin + 4, origin + 4]),
+        line("top", [origin + 4, origin + 4], [origin, origin + 4]),
+        line("left", [origin, origin + 4], [origin, origin])
+      ]
+    };
+    const draft: SketchCurveEditDraft = {
+      ...createSketchCurveEditDraft("offset", sketch),
+      offsetSourceMode: "chain",
+      offsetClosed: true,
+      offsetDistance: 2,
+      offsetSegments: ["bottom", "right", "top", "left"].map((entityId) => ({
+        entityId,
+        orientation: "forward" as const
+      }))
+    };
+
+    expect(getSketchOffsetSideChoices(draft, sketch)).toEqual([
+      {
+        side: "inward",
+        witnessPoint: [origin + 2, origin + 2]
+      },
+      {
+        side: "outward",
+        witnessPoint: [origin + 2, origin - 2]
+      }
+    ]);
+  });
+
+  it("keeps inward arc-chain witnesses correct for reversed traversal", () => {
+    const sketch: SketchSnapshot = {
+      id: "closed-arc-sketch",
+      name: "Closed arc chain",
+      plane: "XY",
+      entities: [arc("upper", 0, 180), arc("lower", 180, 180)]
+    };
+    const forward: SketchCurveEditDraft = {
+      ...createSketchCurveEditDraft("offset", sketch),
+      offsetSourceMode: "chain",
+      offsetClosed: true,
+      offsetSegments: ["upper", "lower"].map((entityId) => ({
+        entityId,
+        orientation: "forward" as const
+      }))
+    };
+    const reverse: SketchCurveEditDraft = {
+      ...forward,
+      offsetSegments: ["lower", "upper"].map((entityId) => ({
+        entityId,
+        orientation: "reverse" as const
+      }))
+    };
+
+    const forwardInward = getSketchOffsetSideChoices(forward, sketch)[0];
+    expect(forwardInward?.side).toBe("inward");
+    expect(forwardInward?.witnessPoint?.[0]).toBeCloseTo(0);
+    expect(forwardInward?.witnessPoint?.[1]).toBeCloseTo(1);
+
+    const reverseInward = getSketchOffsetSideChoices(reverse, sketch)[0];
+    expect(reverseInward?.side).toBe("inward");
+    expect(reverseInward?.witnessPoint?.[0]).toBeCloseTo(0);
+    expect(reverseInward?.witnessPoint?.[1]).toBeCloseTo(-1);
+  });
+
   it("supports keyboard-complete apply/cancel and collector progression", () => {
     expect(getCurveEditKeyboardCommand({ key: "Escape" })).toBe("cancel");
     expect(getCurveEditKeyboardCommand({ key: "Enter", ctrlKey: true })).toBe(
@@ -246,6 +431,16 @@ describe("V19 sketch curve-edit draft model", () => {
       })
     ).toBe(
       "One or more edit choices are invalid. Review the highlighted inputs."
+    );
+    expect(
+      formatCurveEditDiagnostic({
+        code: "SKETCH_OFFSET_SELF_INTERSECTION",
+        severity: "blocker",
+        message: "raw segment pair 2:7",
+        sketchId: sketch.id
+      })
+    ).toBe(
+      "This offset would cross or overlap itself. Choose another distance or side."
     );
   });
 
@@ -732,5 +927,35 @@ function createSketch(): SketchSnapshot {
         construction: false
       }
     ]
+  };
+}
+
+function line(
+  id: string,
+  start: readonly [number, number],
+  end: readonly [number, number]
+): SketchSnapshot["entities"][number] {
+  return {
+    id,
+    kind: "line",
+    start,
+    end,
+    construction: false
+  };
+}
+
+function arc(
+  id: string,
+  startAngleDegrees: number,
+  sweepAngleDegrees: number
+): SketchSnapshot["entities"][number] {
+  return {
+    id,
+    kind: "arc",
+    center: [0, 0],
+    radius: 2,
+    startAngleDegrees,
+    sweepAngleDegrees,
+    construction: false
   };
 }

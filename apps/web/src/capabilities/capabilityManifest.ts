@@ -365,6 +365,11 @@ const ACTION_AUDIT_BY_ID = {
     "buildAddSketchRectangleOp"
   ),
   "sketch.circle": sketchEntityAudit("Circle", "buildAddSketchCircleOp"),
+  "sketch.slot": sketchConvenienceAudit("Slot", "buildAddSketchSlotOp"),
+  "sketch.rounded-rectangle": sketchConvenienceAudit(
+    "Rounded Rectangle",
+    "buildAddSketchRoundedRectangleOp"
+  ),
   "sketch.arc": audit(
     "SketchPanel / SketchArcToolOverlay",
     "startThreePointArcTool / captureThreePointArcToolPick",
@@ -378,6 +383,7 @@ const ACTION_AUDIT_BY_ID = {
   "sketch.extend": curveEditAudit("Extend"),
   "sketch.split": curveEditAudit("Split"),
   "sketch.explode-rectangle": curveEditAudit("Explode Rectangle"),
+  "sketch.offset": curveEditAudit("Offset"),
   "sketch.construction": audit(
     "SketchPanel",
     "setSketchEntityConstruction",
@@ -981,7 +987,6 @@ export const V18_CAPABILITY_MANIFEST: readonly V18CapabilityManifestRow[] = [
 ];
 
 export const V18_FORBIDDEN_IMAGE_ONLY_CAPABILITY_IDS = [
-  "sketch.offset",
   "sketch.mirror",
   "sketch.pattern",
   "sketch.snap-toggle",
@@ -1097,6 +1102,25 @@ function curveEditAudit(label: string): ActionAuditDetail {
     cadops("query-prepared SketchCurveEditOp"),
     "modes/sketch/SketchCurveEditPanel.test.tsx",
     "B",
+    {
+      source: "v18-contract",
+      v18Owner: "SketchMode",
+      editor: `${label.replace(/\s+/g, "")}Tool`
+    }
+  );
+}
+
+function sketchConvenienceAudit(
+  label: string,
+  builder: string
+): ActionAuditDetail {
+  return audit(
+    "V19 Sketch Create",
+    "SketchConveniencePanel / applySketchConvenience",
+    "active sketch + exact local input validation",
+    cadops(builder),
+    "modes/sketch/SketchConveniencePanel.test.tsx",
+    "C",
     {
       source: "v18-contract",
       v18Owner: "SketchMode",

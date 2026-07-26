@@ -340,6 +340,7 @@ function RibbonActionButton({
       aria-busy={action.pending || undefined}
       aria-pressed={active || undefined}
       data-availability={action.availability.status}
+      data-action-id={action.definition.id}
       aria-keyshortcuts={action.definition.shortcut}
       title={reason ?? action.definition.shortcut ?? action.definition.label}
       tabIndex={menuItem ? undefined : tabIndex}

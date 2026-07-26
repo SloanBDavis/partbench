@@ -1834,6 +1834,158 @@ const V19_CURVE_EDIT_PROPOSAL_SCHEMA = {
   ]
 } as const;
 
+const V19_CURVE_EDIT_PRECONDITION_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["expectedSourceRevision", "expectedSolverEvaluationIdentity"],
+  properties: {
+    expectedSourceRevision: {
+      type: "string",
+      pattern: "^partbench-source-v1:[0-9a-f]{64}$"
+    },
+    expectedSolverEvaluationIdentity: {
+      oneOf: [
+        { const: "none" },
+        {
+          type: "string",
+          pattern: "^partbench-sketch-solver-evaluation-v1:[0-9a-f]{64}$"
+        }
+      ]
+    }
+  }
+} as const;
+
+const V19_OFFSET_SOURCE_SCHEMA = {
+  oneOf: [
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "entityId"],
+      properties: {
+        kind: { const: "entity" },
+        entityId: { type: "string", minLength: 1 }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "segments", "closed"],
+      properties: {
+        kind: { const: "chain" },
+        segments: {
+          type: "array",
+          minItems: 1,
+          maxItems: 1_024,
+          items: V19_ORIENTED_SEGMENT_SCHEMA
+        },
+        closed: { type: "boolean" }
+      }
+    }
+  ]
+} as const;
+
+const V19_BATCH_OP_SCHEMA = {
+  oneOf: [
+    {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "op",
+        "sketchId",
+        "precondition",
+        "source",
+        "distance",
+        "side"
+      ],
+      properties: {
+        op: { const: "sketch.offset" },
+        sketchId: { type: "string", minLength: 1 },
+        precondition: V19_CURVE_EDIT_PRECONDITION_SCHEMA,
+        source: V19_OFFSET_SOURCE_SCHEMA,
+        distance: { type: "number", exclusiveMinimum: 0 },
+        side: { enum: ["left", "right", "inward", "outward"] },
+        referencePoint: V19_VEC2_SCHEMA,
+        createdEntityIds: {
+          ...V19_ID_ARRAY_SCHEMA,
+          maxItems: 1_024
+        }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "op",
+        "sketchId",
+        "centerlineStart",
+        "centerlineEnd",
+        "radius"
+      ],
+      properties: {
+        op: { const: "sketch.addSlot" },
+        sketchId: { type: "string", minLength: 1 },
+        centerlineStart: V19_VEC2_SCHEMA,
+        centerlineEnd: V19_VEC2_SCHEMA,
+        radius: { type: "number", exclusiveMinimum: 0 },
+        construction: { type: "boolean" },
+        entityIds: {
+          ...V19_ID_ARRAY_SCHEMA,
+          minItems: 4,
+          maxItems: 4
+        },
+        constraintIds: {
+          ...V19_ID_ARRAY_SCHEMA,
+          minItems: 9,
+          maxItems: 9
+        }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["op", "sketchId", "center", "width", "height", "cornerRadius"],
+      properties: {
+        op: { const: "sketch.addRoundedRectangle" },
+        sketchId: { type: "string", minLength: 1 },
+        center: V19_VEC2_SCHEMA,
+        width: { type: "number", exclusiveMinimum: 0 },
+        height: { type: "number", exclusiveMinimum: 0 },
+        cornerRadius: { type: "number", exclusiveMinimum: 0 },
+        construction: { type: "boolean" },
+        entityIds: {
+          ...V19_ID_ARRAY_SCHEMA,
+          minItems: 8,
+          maxItems: 8
+        },
+        constraintIds: {
+          ...V19_ID_ARRAY_SCHEMA,
+          minItems: 23,
+          maxItems: 23
+        }
+      }
+    },
+    {
+      type: "object",
+      description:
+        "A legacy typed CadOp whose op is not one of the schema-exact V19 Offset/Slot/Rounded Rectangle commands.",
+      required: ["op"],
+      properties: {
+        op: {
+          type: "string",
+          not: {
+            enum: [
+              "sketch.offset",
+              "sketch.addSlot",
+              "sketch.addRoundedRectangle"
+            ]
+          }
+        }
+      },
+      additionalProperties: true
+    }
+  ]
+} as const;
+
 const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.parameter_list",
@@ -2457,7 +2609,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.sketch_curve_edit_readiness",
     description:
-      "Call this before a V19 curve edit. It prepares one typed trim, extend, split, explode-rectangle, or non-associative offset proposal and returns either full blocker diagnostics or a preparedOperation with current source/solver preconditions, generated IDs, exact constraint/dimension deletion lists, dependency impact, and a model-space preview. Submit that preparedOperation as the only operation in cad.batch. Offset results are ordinary source entities, not an associative offset feature.",
+      "Call this before a V19 curve edit. It prepares one typed trim, extend, split, explode-rectangle, or non-associative offset proposal and returns either full blocker diagnostics or a preparedOperation with current source/solver preconditions, generated IDs, exact constraint/dimension deletion lists, dependency impact, and a model-space preview. Submit that preparedOperation as the only operation in cad.batch. Offset results are independent ordinary sketch geometry with no persistent source link or distance constraint. Offset source input must be a typed entity ref or ordered oriented chain; pixels, screenshots, opaque tokens, scripts, and filesystem paths are never source substitutes.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -2922,7 +3074,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.batch",
     description:
-      "Runs a structured CADOps batch in dry-run or commit mode and returns the CADOps response with semantic diff, agent review, and audit summary. For trim, extend, split, or explodeRectangle, call cad.sketch_curve_edit_readiness first and prefer its preparedOperation. A curve-edit batch must contain exactly that one curve-edit operation and no other operations. Direct curve-edit operations are accepted with current source/solver preconditions; any supplied deleteConstraintIds and deleteDimensionIds must exactly match the returned impact or the batch fails with the complete impact.",
+      "Runs a structured CADOps batch in dry-run or commit mode and returns the CADOps response with semantic diff, agent review, and audit summary. For trim, extend, split, explodeRectangle, or non-associative offset, call cad.sketch_curve_edit_readiness first and submit its preparedOperation unchanged. A curve-edit batch must contain exactly that one curve-edit operation and no other operations. Direct curve-edit operations are accepted with current source/solver preconditions; any supplied deleteConstraintIds and deleteDimensionIds must exactly match the returned impact or the batch fails with the complete impact. sketch.addSlot and sketch.addRoundedRectangle accept their exact ordered caller-supplied entityIds and constraintIds through this same batch authority.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -2940,12 +3092,8 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
             ops: {
               type: "array",
               description:
-                "Structured CADOps. A trim/extend/split/explodeRectangle batch has exactly one item. Prepared curve edits include generated output IDs plus exact deleteConstraintIds/deleteDimensionIds from readiness.",
-              items: {
-                type: "object",
-                description:
-                  "A typed CadOp; pixel coordinates, screenshots, opaque candidate tokens, scripts, paths, and raw geometry selectors are not operation inputs."
-              }
+                "Structured CADOps. A trim/extend/split/explodeRectangle/offset batch has exactly one item. Prepared curve edits include generated output IDs plus exact deleteConstraintIds/deleteDimensionIds from readiness. Offset source refs are typed entity or ordered-chain records, never screen evidence or opaque tokens. Slot and rounded-rectangle operations may carry exact ordered entityIds and constraintIds.",
+              items: V19_BATCH_OP_SCHEMA
             },
             actor: {
               type: "object",

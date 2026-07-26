@@ -4,8 +4,9 @@ import { register } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
-  createV19GateBBrowserWorkflowResult,
-  formatV19GateBBrowserWorkflowSummary
+  createV19BrowserWorkflowResult,
+  formatV19BrowserWorkflowSummary,
+  V19_GATE_C_BROWSER_ACTION_IDS
 } from "./v19-browser-workflow.mjs";
 import {
   connectToBrowser,
@@ -30,7 +31,7 @@ const timeoutMs = Number(
 if (args.has("--help")) {
   console.log(`Usage: node scripts/smoke-v19-browser-workflow.mjs [--json]
 
-Runs the focused V19 Gate B curve-edit workflow against the built production
+Runs the focused V19 Gate B+C sketch-edit workflow against the built production
 App UI using trusted Chromium pointer and keyboard input.`);
   process.exit(0);
 }
@@ -43,11 +44,11 @@ if (!browserExecutable) {
   );
 }
 
-const fixtureProjectJson = await createGateBFixtureProjectJson();
+const fixtureProjectJson = await createV19FixtureProjectJson();
 const profileDirectory = join(
   repositoryRoot,
   ".metrics",
-  `chrome-profile-v19-gate-b-${process.pid}-${Date.now()}`
+  `chrome-profile-v19-gate-b-c-${process.pid}-${Date.now()}`
 );
 let appServer;
 let browserProcess;
@@ -81,7 +82,7 @@ try {
   );
   browserClient = (await connectToBrowser(remoteDebuggingPort)).client;
 
-  const result = await runGateBBrowserWorkflow({
+  const result = await runV19BrowserWorkflow({
     appUrl,
     client: browserClient,
     fixtureProjectJson,
@@ -90,7 +91,7 @@ try {
   console.log(
     args.has("--json")
       ? JSON.stringify(result, null, 2)
-      : formatV19GateBBrowserWorkflowSummary(result)
+      : formatV19BrowserWorkflowSummary(result)
   );
   process.exitCode = result.ok ? 0 : 1;
 } finally {
@@ -111,7 +112,7 @@ async function assertProductionBuildExists() {
   }
 }
 
-async function createGateBFixtureProjectJson() {
+async function createV19FixtureProjectJson() {
   register(loaderUrl, import.meta.url);
   const cadCore = await import(
     pathToFileURL(resolve(repositoryRoot, "packages/cad-core/src/index.ts"))
@@ -164,6 +165,20 @@ async function createGateBFixtureProjectJson() {
         end: [5, 5]
       },
       {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "offset_pointer",
+        start: [-5, -4],
+        end: [-1, -4]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "offset_keyboard",
+        start: [1, -4],
+        end: [5, -4]
+      },
+      {
         op: "sketch.constraint.create",
         id: "trim_horizontal",
         name: "Trim target horizontal",
@@ -184,13 +199,13 @@ async function createGateBFixtureProjectJson() {
   });
   if (!response.ok) {
     throw new Error(
-      `Could not create V19 Gate B fixture: ${response.error.code}`
+      `Could not create V19 Gate B+C fixture: ${response.error.code}`
     );
   }
   return cadCore.exportCadProjectJson(engine);
 }
 
-async function runGateBBrowserWorkflow({
+async function runV19BrowserWorkflow({
   appUrl,
   client,
   fixtureProjectJson,
@@ -333,7 +348,7 @@ async function runGateBBrowserWorkflow({
       `(() => {
         const text = document.body.textContent;
         return text.includes('Imported 0 object(s), 1 sketch(es)') &&
-          text.includes('5 sketch entity(ies)');
+          text.includes('7 sketch entity(ies)');
       })()`,
       "fixture import"
     );
@@ -649,11 +664,493 @@ async function runGateBBrowserWorkflow({
         applyFocusedDestination: true
       }
     });
+
+    await browser.selectMode("Sketch");
+    await browser.activate({ kind: "sketchEntity", text: "offset_pointer" });
+    const expectedGateCActions = V19_GATE_C_BROWSER_ACTION_IDS.map((id) => ({
+      id,
+      label:
+        id === "sketch.offset"
+          ? "Offset"
+          : id === "sketch.slot"
+            ? "Slot"
+            : "Rounded Rectangle"
+    }));
+    const gateCActions = await browser.evaluate(`(() => {
+      const visible = (element) =>
+        element instanceof HTMLElement &&
+        element.getClientRects().length > 0 &&
+        getComputedStyle(element).visibility !== "hidden";
+      return ${JSON.stringify(expectedGateCActions)}.map(({ id, label }) => {
+        const buttons = [...document.querySelectorAll(
+          ".pb-mode-ribbon__contents button.pb-ribbon-action"
+        )].filter((candidate) =>
+          visible(candidate) && candidate.dataset.actionId === id
+        );
+        const button = buttons[0];
+        return {
+          id,
+          label,
+          matchCount: buttons.length,
+          renderedLabel: button?.textContent.trim(),
+          visible: Boolean(button),
+          enabled: Boolean(button && !button.disabled)
+        };
+      });
+    })()`);
+    checks.push({
+      id: "v19-gate-c-actions",
+      passed: gateCActions.every(
+        (action) =>
+          action.matchCount === 1 &&
+          action.visible &&
+          action.enabled &&
+          action.renderedLabel === action.label
+      ),
+      evidence: gateCActions
+    });
+
+    await browser.evaluate(`(() => {
+      window.__partbenchV19InputAudit.pointerInputs = 0;
+      window.__partbenchV19InputAudit.pointerEvents = [];
+      window.__partbenchV19InputAudit.keydowns = [];
+    })()`);
+    await browser.activate({ kind: "ribbonAction", text: "Offset" });
+    await browser.waitFor(
+      `Boolean(document.querySelector('[aria-label="Offset sketch geometry"]'))`,
+      "Offset editor for pointer witness"
+    );
+    await browser.activate({
+      kind: "curveChoice",
+      scope: '[aria-label="Offset sketch geometry"]',
+      text: "Left"
+    });
+    await browser.activate({
+      kind: "labelControl",
+      scope: '[aria-label="Offset sketch geometry"]',
+      text: "Use model-space witness evidence",
+      key: " "
+    });
+    await browser.clickViewportWorldPoint([-3, -3, 0]);
+    await browser.waitFor(
+      `(() => {
+        const editor = document.querySelector('[aria-label="Offset sketch geometry"]');
+        const apply = [...(editor?.querySelectorAll('button') ?? [])]
+          .find((button) => button.textContent.trim() === 'Apply Offset');
+        const text = editor?.textContent ?? '';
+        return text.includes('Ready to apply') &&
+          text.includes('Witness (-3, -3)') &&
+          Boolean(apply && !apply.disabled);
+      })()`,
+      "query-backed pointer Offset readiness"
+    );
+    const pointerOffsetAudit = await browser.evaluate(
+      `window.__partbenchV19InputAudit`
+    );
+    await browser.activate({
+      kind: "editorButton",
+      scope: '[aria-label="Offset sketch geometry"]',
+      text: "Apply Offset"
+    });
+    await browser.waitFor(
+      `!document.querySelector('[aria-label="Offset sketch geometry"]')`,
+      "pointer Offset Apply"
+    );
+
+    await browser.activate({ kind: "sketchEntity", text: "offset_keyboard" });
+    await browser.activate({ kind: "ribbonAction", text: "Offset" });
+    await browser.waitFor(
+      `Boolean(document.querySelector('[aria-label="Offset sketch geometry"]'))`,
+      "Offset editor for keyboard collector"
+    );
+    await browser.evaluate(`(() => {
+      window.__partbenchV19InputAudit.pointerInputs = 0;
+      window.__partbenchV19InputAudit.pointerEvents = [];
+      window.__partbenchV19InputAudit.keydowns = [];
+    })()`);
+    await browser.activate({
+      kind: "curveChoice",
+      scope: '[aria-label="Offset sketch geometry"]',
+      text: "Right"
+    });
+    await browser.waitFor(
+      `(() => {
+        const editor = document.querySelector('[aria-label="Offset sketch geometry"]');
+        const witness = [...(editor?.querySelectorAll('input') ?? [])]
+          .find((input) =>
+            input.closest('label')?.textContent.includes('Use model-space witness evidence')
+          );
+        const apply = [...(editor?.querySelectorAll('button') ?? [])]
+          .find((button) => button.textContent.trim() === 'Apply Offset');
+        return editor?.textContent.includes('Ready to apply') &&
+          witness?.checked === false &&
+          Boolean(apply && !apply.disabled);
+      })()`,
+      "keyboard-complete Offset readiness"
+    );
+    await browser.sendKey("Enter", { ctrlKey: true });
+    await browser.waitFor(
+      `!document.querySelector('[aria-label="Offset sketch geometry"]')`,
+      "keyboard Offset Apply"
+    );
+    const keyboardOffsetAudit = await browser.evaluate(
+      `window.__partbenchV19InputAudit`
+    );
+
+    await browser.selectMode("Project");
+    await browser.activate({ kind: "ribbonAction", text: "Project Files" });
+    await browser.waitFor(
+      `Boolean(document.querySelector('.pb-project-mode-workspace textarea'))`,
+      "Project Files before Gate C cancellation checks"
+    );
+    const beforeCancellation = await prepareAndReadProject(
+      browser,
+      "sketch.offset"
+    );
+    await browser.selectMode("Sketch");
+
+    await browser.activate({ kind: "ribbonAction", text: "Slot" });
+    await browser.waitFor(
+      `Boolean(document.querySelector('[aria-label="Create Slot"]'))`,
+      "Slot editor for Cancel"
+    );
+    await browser.activate({
+      kind: "labelControl",
+      scope: '[aria-label="Create Slot"]',
+      text: "Construction",
+      key: " "
+    });
+    await browser.activate({
+      kind: "editorButton",
+      scope: '[aria-label="Create Slot"]',
+      text: "Cancel"
+    });
+    await browser.waitFor(
+      `(() => {
+        const active = document.activeElement;
+        return !document.querySelector('[aria-label="Create Slot"]') &&
+          active instanceof HTMLElement &&
+          active.textContent.trim() === 'Slot';
+      })()`,
+      "Slot Cancel and opener focus"
+    );
+    const cancelRestoredFocus = true;
+
+    await browser.selectMode("Project");
+    await browser.activate({ kind: "ribbonAction", text: "Project Files" });
+    await browser.waitFor(
+      `Boolean(document.querySelector('.pb-project-mode-workspace textarea'))`,
+      "Project Files after Slot Cancel"
+    );
+    const afterSlotCancel = await prepareAndReadProject(
+      browser,
+      "sketch.offset"
+    );
+    const slotCancelStatePreserved = sameProjectMutationState(
+      beforeCancellation,
+      afterSlotCancel
+    );
+    await browser.selectMode("Sketch");
+
+    await browser.activate({
+      kind: "ribbonAction",
+      text: "Rounded Rectangle"
+    });
+    await browser.waitFor(
+      `Boolean(document.querySelector('[aria-label="Create Rounded Rectangle"]'))`,
+      "Rounded Rectangle editor for Escape"
+    );
+    await browser.activate({
+      kind: "labelControl",
+      scope: '[aria-label="Create Rounded Rectangle"]',
+      text: "Construction",
+      key: " "
+    });
+    await browser.sendKey("Escape");
+    await browser.waitFor(
+      `Boolean(document.querySelector('[role="dialog"][aria-labelledby="curve-edit-navigation-title"]'))`,
+      "dirty Rounded Rectangle Escape guard"
+    );
+    await browser.activate({ kind: "dialogButton", text: "Discard" });
+    await browser.waitFor(
+      `(() => {
+        const active = document.activeElement;
+        return !document.querySelector('[aria-label="Create Rounded Rectangle"]') &&
+          !document.querySelector('[role="dialog"][aria-labelledby="curve-edit-navigation-title"]') &&
+          active instanceof HTMLElement &&
+          active.textContent.trim() === 'Rounded Rectangle';
+      })()`,
+      "Rounded Rectangle Escape and opener focus"
+    );
+    const escapeRestoredFocus = true;
+
+    await browser.selectMode("Project");
+    await browser.activate({ kind: "ribbonAction", text: "Project Files" });
+    await browser.waitFor(
+      `Boolean(document.querySelector('.pb-project-mode-workspace textarea'))`,
+      "Project Files after Gate C cancellation checks"
+    );
+    const afterCancellation = await prepareAndReadProject(
+      browser,
+      "sketch.offset"
+    );
+    const roundedEscapeStatePreserved = sameProjectMutationState(
+      afterSlotCancel,
+      afterCancellation
+    );
+    const cancellationStatePreserved =
+      slotCancelStatePreserved && roundedEscapeStatePreserved;
+    await browser.selectMode("Sketch");
+
+    await browser.activate({ kind: "ribbonAction", text: "Slot" });
+    await browser.waitFor(
+      `Boolean(document.querySelector('[aria-label="Create Slot"]'))`,
+      "Slot editor for Apply"
+    );
+    const slotAccessibility = await browser.evaluate(
+      `(${inspectEditorAccessibility.toString()})({
+        ariaLabel: "Create Slot",
+        fieldLabels: [
+          "Start X",
+          "Start Y",
+          "End X",
+          "End Y",
+          "Radius",
+          "Construction"
+        ],
+        buttonLabels: ["Apply Slot", "Cancel"]
+      })`
+    );
+    await browser.replaceLabelControlValue(
+      '[aria-label="Create Slot"]',
+      "Start X",
+      -3
+    );
+    await browser.replaceLabelControlValue(
+      '[aria-label="Create Slot"]',
+      "Start Y",
+      1
+    );
+    await browser.replaceLabelControlValue(
+      '[aria-label="Create Slot"]',
+      "End X",
+      5
+    );
+    await browser.replaceLabelControlValue(
+      '[aria-label="Create Slot"]',
+      "End Y",
+      1
+    );
+    await browser.replaceLabelControlValue(
+      '[aria-label="Create Slot"]',
+      "Radius",
+      1.5
+    );
+    await browser.sendKey("Enter", { ctrlKey: true });
+    await browser.waitFor(
+      `!document.querySelector('[aria-label="Create Slot"]')`,
+      "Slot Apply"
+    );
+
+    await browser.activate({
+      kind: "ribbonAction",
+      text: "Rounded Rectangle"
+    });
+    await browser.waitFor(
+      `Boolean(document.querySelector('[aria-label="Create Rounded Rectangle"]'))`,
+      "Rounded Rectangle editor for Apply"
+    );
+    const roundedAccessibility = await browser.evaluate(
+      `(${inspectEditorAccessibility.toString()})({
+        ariaLabel: "Create Rounded Rectangle",
+        fieldLabels: [
+          "Center X",
+          "Center Y",
+          "Width",
+          "Height",
+          "Corner radius",
+          "Construction"
+        ],
+        buttonLabels: ["Apply Rounded Rectangle", "Cancel"]
+      })`
+    );
+    await browser.replaceLabelControlValue(
+      '[aria-label="Create Rounded Rectangle"]',
+      "Center X",
+      4
+    );
+    await browser.replaceLabelControlValue(
+      '[aria-label="Create Rounded Rectangle"]',
+      "Center Y",
+      3
+    );
+    await browser.replaceLabelControlValue(
+      '[aria-label="Create Rounded Rectangle"]',
+      "Width",
+      12
+    );
+    await browser.replaceLabelControlValue(
+      '[aria-label="Create Rounded Rectangle"]',
+      "Height",
+      10
+    );
+    await browser.replaceLabelControlValue(
+      '[aria-label="Create Rounded Rectangle"]',
+      "Corner radius",
+      2
+    );
+    await browser.sendKey("Enter", { ctrlKey: true });
+    await browser.waitFor(
+      `!document.querySelector('[aria-label="Create Rounded Rectangle"]')`,
+      "Rounded Rectangle Apply"
+    );
+
+    await browser.selectMode("Project");
+    await browser.activate({ kind: "ribbonAction", text: "Project Files" });
+    await browser.waitFor(
+      `Boolean(document.querySelector('.pb-project-mode-workspace textarea'))`,
+      "Project Files after Gate C edits"
+    );
+    const afterGateC = await prepareAndReadProject(
+      browser,
+      "sketch.addRoundedRectangle"
+    );
+    const gateCEvidence = inspectGateCState(afterGateC);
+    const occtAuthorityAssetRequests = await browser.evaluate(
+      `performance.getEntriesByType("resource")
+        .map((entry) => entry.name)
+        .filter((name) =>
+          /geometryTessellation\\.worker|opencascade\\.full.*\\.wasm/.test(name)
+        )`
+    );
+
+    checks.push({
+      id: "v19-gate-c-pointer-offset",
+      passed:
+        gateCEvidence.pointerOffset.ok &&
+        pointerOffsetAudit.pointerInputs >= 2 &&
+        pointerOffsetAudit.pointerEvents.some(
+          (event) =>
+            event.type === "pointerdown" &&
+            event.trusted &&
+            event.target === "3D scene viewport"
+        ) &&
+        pointerOffsetAudit.pointerEvents.every((event) => event.trusted),
+      evidence: {
+        ...gateCEvidence.pointerOffset,
+        pointerInputs: pointerOffsetAudit.pointerInputs,
+        pointerEventTypes: pointerOffsetAudit.pointerEvents.map(
+          (event) => event.type
+        )
+      }
+    });
+    const gateCTrustedKeys = keyboardOffsetAudit.keydowns.filter(
+      (event) => event.trusted
+    );
+    checks.push({
+      id: "v19-gate-c-keyboard-offset",
+      passed:
+        gateCEvidence.keyboardOffset.ok &&
+        keyboardOffsetAudit.pointerInputs === 0 &&
+        gateCTrustedKeys.length === keyboardOffsetAudit.keydowns.length &&
+        gateCTrustedKeys.some(
+          (event) => event.key === "Enter" && event.ctrlKey
+        ),
+      evidence: {
+        ...gateCEvidence.keyboardOffset,
+        pointerInputs: keyboardOffsetAudit.pointerInputs,
+        trustedKeydownCount: gateCTrustedKeys.length
+      }
+    });
+    checks.push({
+      id: "v19-gate-c-convenience-source",
+      passed: gateCEvidence.convenience.ok,
+      evidence: gateCEvidence.convenience
+    });
+    checks.push({
+      id: "v19-gate-c-cancel-escape",
+      passed:
+        gateCEvidence.cancelEscape.ok &&
+        cancellationStatePreserved &&
+        cancelRestoredFocus &&
+        escapeRestoredFocus,
+      evidence: {
+        ...gateCEvidence.cancelEscape,
+        documentHistoryAndRedoPreserved: cancellationStatePreserved,
+        slotCancelStatePreserved,
+        roundedEscapeStatePreserved,
+        cancelRestoredFocus,
+        escapeRestoredFocus
+      }
+    });
+    checks.push({
+      id: "v19-gate-c-focus-accessibility",
+      passed:
+        slotAccessibility.ok &&
+        roundedAccessibility.ok &&
+        cancelRestoredFocus &&
+        escapeRestoredFocus,
+      evidence: {
+        slot: slotAccessibility,
+        roundedRectangle: roundedAccessibility,
+        cancelRestoredFocus,
+        escapeRestoredFocus
+      }
+    });
+    checks.push({
+      id: "v19-gate-c-analytic-authority",
+      passed:
+        gateCEvidence.analyticAuthority.ok &&
+        occtAuthorityAssetRequests.length === 0,
+      evidence: {
+        ...gateCEvidence.analyticAuthority,
+        occtAuthorityAssetRequests
+      }
+    });
+
+    await browser.activate({ kind: "ariaLabel", text: "Undo" });
+    const gateCAfterUndo = await prepareAndReadProject(
+      browser,
+      "sketch.addSlot"
+    );
+    await browser.activate({ kind: "ariaLabel", text: "Redo" });
+    const gateCAfterRedo = await prepareAndReadProject(
+      browser,
+      "sketch.addRoundedRectangle"
+    );
+    const roundedEntityIds = gateCEvidence.convenience.roundedEntityIds;
+    const slotEntityIds = gateCEvidence.convenience.slotEntityIds;
+    const undoSketch = gateCAfterUndo.document.sketches.find(
+      (sketch) => sketch.id === "sketch_1"
+    );
+    const undoEntityIds = new Set(
+      undoSketch?.entities.map((entity) => entity.id) ?? []
+    );
+    const gateCUndoRedoPassed =
+      roundedEntityIds.every((id) => !undoEntityIds.has(id)) &&
+      slotEntityIds.every((id) => undoEntityIds.has(id)) &&
+      JSON.stringify(gateCAfterRedo.document) ===
+        JSON.stringify(afterGateC.document);
+    checks.push({
+      id: "v19-gate-c-single-step-undo-redo",
+      passed: gateCUndoRedoPassed,
+      evidence: {
+        roundedRemovedByOneUndo: roundedEntityIds.every(
+          (id) => !undoEntityIds.has(id)
+        ),
+        slotPreservedByOneUndo: slotEntityIds.every((id) =>
+          undoEntityIds.has(id)
+        ),
+        redoRestoredDocument:
+          JSON.stringify(gateCAfterRedo.document) ===
+          JSON.stringify(afterGateC.document)
+      }
+    });
   } catch (error) {
     exceptions.push(error instanceof Error ? error.message : String(error));
   }
 
-  return createV19GateBBrowserWorkflowResult({
+  return createV19BrowserWorkflowResult({
     checks,
     consoleErrors: [...new Set(consoleErrors)],
     exceptions: [...new Set(exceptions)]
@@ -884,6 +1381,16 @@ function createBrowserKeyboardDriver(client, sessionId, workflowTimeoutMs) {
     focus,
     hoverViewportWorldPoint,
     insertText: (text) => client.send("Input.insertText", { text }, sessionId),
+    async replaceLabelControlValue(scope, label, value) {
+      await focus({ kind: "labelControl", scope, text: label });
+      await sendKey("a", { ctrlKey: true });
+      await client.send("Input.insertText", { text: String(value) }, sessionId);
+      await waitFor(
+        `document.activeElement instanceof HTMLInputElement &&
+          document.activeElement.value === ${JSON.stringify(String(value))}`,
+        `${label} value ${value}`
+      );
+    },
     async requestMode(mode) {
       await focusMode(mode);
       await sendKey("Enter");
@@ -940,6 +1447,12 @@ function focusSemanticElement(locator) {
     element = [
       ...document.querySelectorAll(".pb-project-mode-workspace button")
     ].find(
+      (candidate) =>
+        visible(candidate) &&
+        normalize(candidate.textContent) === normalize(locator.text)
+    );
+  } else if (locator.kind === "editorButton") {
+    element = [...scope.querySelectorAll("button")].find(
       (candidate) =>
         visible(candidate) &&
         normalize(candidate.textContent) === normalize(locator.text)
@@ -1024,6 +1537,44 @@ function focusSemanticElement(locator) {
   };
 }
 
+function inspectEditorAccessibility({ ariaLabel, fieldLabels, buttonLabels }) {
+  const normalize = (value) => (value ?? "").replace(/\s+/g, " ").trim();
+  const editor = [...document.querySelectorAll("[aria-label]")].find(
+    (candidate) => candidate.getAttribute("aria-label") === ariaLabel
+  );
+  if (!(editor instanceof HTMLElement)) {
+    return { ok: false, missingEditor: ariaLabel };
+  }
+  const labels = [...editor.querySelectorAll("label")];
+  const missingFields = fieldLabels.filter(
+    (expected) =>
+      !labels.some((label) => {
+        const control = label.querySelector("input, select, textarea");
+        return (
+          control instanceof HTMLElement &&
+          normalize(label.textContent) === expected
+        );
+      })
+  );
+  const buttons = [...editor.querySelectorAll("button")];
+  const missingButtons = buttonLabels.filter(
+    (expected) =>
+      !buttons.some(
+        (button) =>
+          normalize(button.textContent) === expected && !button.disabled
+      )
+  );
+  return {
+    ok:
+      editor.contains(document.activeElement) &&
+      missingFields.length === 0 &&
+      missingButtons.length === 0,
+    editorContainsFocus: editor.contains(document.activeElement),
+    missingFields,
+    missingButtons
+  };
+}
+
 function projectDefaultCameraPoint(point, size) {
   const focalLength = 700;
   const camera = {
@@ -1090,14 +1641,18 @@ function getKeyDefinition(key) {
         keyCode: 13,
         text: "\r"
       };
+    case "Escape":
+      return { key: "Escape", code: "Escape", keyCode: 27 };
     case " ":
       return { key: " ", code: "Space", keyCode: 32, text: " " };
+    case "a":
+      return { key: "a", code: "KeyA", keyCode: 65, text: "a" };
     default:
       throw new Error(`Unsupported smoke key ${key}`);
   }
 }
 
-async function prepareAndReadProject(browser, expectedExtendEnd) {
+async function prepareAndReadProject(browser, expectedState) {
   const detailsOpen = await browser.evaluate(
     `Boolean([...document.querySelectorAll('.pb-project-mode-workspace details')]
       .find((details) => details.querySelector(':scope > summary')?.textContent.trim() === 'Advanced Interchange')?.open)`
@@ -1110,26 +1665,466 @@ async function prepareAndReadProject(browser, expectedExtendEnd) {
   }
   await browser.activate({ kind: "workspaceButton", text: "Prepare JSON" });
   let project;
+  const expectedStateExpression = Array.isArray(expectedState)
+    ? `(() => {
+        const sketch = project.document.sketches.find((item) => item.id === 'sketch_1');
+        const target = sketch?.entities.find((item) => item.id === 'extend_target');
+        return JSON.stringify(target?.end) === ${JSON.stringify(
+          JSON.stringify(expectedState)
+        )};
+      })()`
+    : `project.history?.at(-1)?.ops?.at(-1)?.op === ${JSON.stringify(
+        expectedState
+      )}`;
+  const expectedStateLabel = Array.isArray(expectedState)
+    ? `Extend end ${expectedState.join(", ")}`
+    : `history tail ${expectedState}`;
   await browser.waitFor(
     `(() => {
       try {
         const value = document.querySelector('.pb-project-mode-workspace textarea')?.value;
         const project = JSON.parse(value);
-        const sketch = project.document.sketches.find((item) => item.id === 'sketch_1');
-        const target = sketch?.entities.find((item) => item.id === 'extend_target');
-        return JSON.stringify(target?.end) === ${JSON.stringify(
-          JSON.stringify(expectedExtendEnd)
-        )};
+        return ${expectedStateExpression};
       } catch {
         return false;
       }
     })()`,
-    `exported project with Extend end ${expectedExtendEnd.join(", ")}`
+    `exported project with ${expectedStateLabel}`
   );
   project = await browser.evaluate(
     `JSON.parse(document.querySelector('.pb-project-mode-workspace textarea').value)`
   );
   return project;
+}
+
+function inspectGateCState(project) {
+  const sketch = project.document.sketches.find(
+    (candidate) => candidate.id === "sketch_1"
+  );
+  const entities = sketch?.entities ?? [];
+  const constraints = project.document.sketchConstraints ?? [];
+  const transactions = project.history ?? [];
+  const offsetTransactions = transactions.filter(
+    (transaction) => transaction.ops[0]?.op === "sketch.offset"
+  );
+  const pointerTransaction = offsetTransactions.find((transaction) => {
+    const operation = transaction.ops[0];
+    return (
+      operation?.source?.kind === "entity" &&
+      operation.source.entityId === "offset_pointer"
+    );
+  });
+  const keyboardTransaction = offsetTransactions.find((transaction) => {
+    const operation = transaction.ops[0];
+    return (
+      operation?.source?.kind === "entity" &&
+      operation.source.entityId === "offset_keyboard"
+    );
+  });
+  const pointerOperation = pointerTransaction?.ops[0];
+  const keyboardOperation = keyboardTransaction?.ops[0];
+  const pointerOutputId = pointerOperation?.createdEntityIds?.[0];
+  const keyboardOutputId = keyboardOperation?.createdEntityIds?.[0];
+  const pointerOutput = entities.find(
+    (entity) => entity.id === pointerOutputId
+  );
+  const keyboardOutput = entities.find(
+    (entity) => entity.id === keyboardOutputId
+  );
+  const pointerDiff = pointerTransaction?.diff?.sketches?.curveEdits?.[0];
+  const keyboardDiff = keyboardTransaction?.diff?.sketches?.curveEdits?.[0];
+
+  const slotTransactions = transactions.filter(
+    (transaction) => transaction.ops[0]?.op === "sketch.addSlot"
+  );
+  const roundedTransactions = transactions.filter(
+    (transaction) => transaction.ops[0]?.op === "sketch.addRoundedRectangle"
+  );
+  const slotTransaction = slotTransactions[0];
+  const roundedTransaction = roundedTransactions[0];
+  const slotOperation = slotTransaction?.ops[0];
+  const roundedOperation = roundedTransaction?.ops[0];
+  const slotEntityIds = slotOperation?.entityIds ?? [];
+  const roundedEntityIds = roundedOperation?.entityIds ?? [];
+  const slotConstraintIds = slotOperation?.constraintIds ?? [];
+  const roundedConstraintIds = roundedOperation?.constraintIds ?? [];
+  const entityById = new Map(entities.map((entity) => [entity.id, entity]));
+  const constraintById = new Map(
+    constraints.map((constraint) => [constraint.id, constraint])
+  );
+  const constraintIds = new Set(constraintById.keys());
+  const slotKinds = slotEntityIds.map((id) => entityById.get(id)?.kind);
+  const roundedKinds = roundedEntityIds.map((id) => entityById.get(id)?.kind);
+  const slotConstraintKinds = slotConstraintIds.map(
+    (id) => constraintById.get(id)?.kind
+  );
+  const roundedConstraintKinds = roundedConstraintIds.map(
+    (id) => constraintById.get(id)?.kind
+  );
+  const slotGeometry = slotEntityIds.map((id) =>
+    sketchEntityGeometrySignature(entityById.get(id))
+  );
+  const roundedGeometry = roundedEntityIds.map((id) =>
+    sketchEntityGeometrySignature(entityById.get(id))
+  );
+  const slotInputsOk =
+    pointsEqual(slotOperation?.centerlineStart, [-3, 1]) &&
+    pointsEqual(slotOperation?.centerlineEnd, [5, 1]) &&
+    slotOperation?.radius === 1.5 &&
+    slotOperation?.construction === false;
+  const roundedInputsOk =
+    pointsEqual(roundedOperation?.center, [4, 3]) &&
+    roundedOperation?.width === 12 &&
+    roundedOperation?.height === 10 &&
+    roundedOperation?.cornerRadius === 2 &&
+    roundedOperation?.construction === false;
+  const slotGeometryOk =
+    JSON.stringify(slotGeometry) ===
+    JSON.stringify([
+      {
+        kind: "line",
+        start: [-3, 2.5],
+        end: [5, 2.5],
+        construction: false
+      },
+      {
+        kind: "arc",
+        center: [5, 1],
+        radius: 1.5,
+        startAngleDegrees: 90,
+        sweepAngleDegrees: -180,
+        construction: false
+      },
+      {
+        kind: "line",
+        start: [5, -0.5],
+        end: [-3, -0.5],
+        construction: false
+      },
+      {
+        kind: "arc",
+        center: [-3, 1],
+        radius: 1.5,
+        startAngleDegrees: 270,
+        sweepAngleDegrees: -180,
+        construction: false
+      }
+    ]);
+  const roundedGeometryOk =
+    JSON.stringify(roundedGeometry) ===
+    JSON.stringify([
+      {
+        kind: "line",
+        start: [0, 8],
+        end: [8, 8],
+        construction: false
+      },
+      {
+        kind: "arc",
+        center: [8, 6],
+        radius: 2,
+        startAngleDegrees: 90,
+        sweepAngleDegrees: -90,
+        construction: false
+      },
+      {
+        kind: "line",
+        start: [10, 6],
+        end: [10, 0],
+        construction: false
+      },
+      {
+        kind: "arc",
+        center: [8, 0],
+        radius: 2,
+        startAngleDegrees: 0,
+        sweepAngleDegrees: -90,
+        construction: false
+      },
+      {
+        kind: "line",
+        start: [8, -2],
+        end: [0, -2],
+        construction: false
+      },
+      {
+        kind: "arc",
+        center: [0, 0],
+        radius: 2,
+        startAngleDegrees: 270,
+        sweepAngleDegrees: -90,
+        construction: false
+      },
+      {
+        kind: "line",
+        start: [-2, 0],
+        end: [-2, 6],
+        construction: false
+      },
+      {
+        kind: "arc",
+        center: [0, 6],
+        radius: 2,
+        startAngleDegrees: 180,
+        sweepAngleDegrees: -90,
+        construction: false
+      }
+    ]);
+  const slotConstraintKindsOk = pointsEqual(slotConstraintKinds, [
+    "coincident",
+    "coincident",
+    "coincident",
+    "coincident",
+    "tangent",
+    "tangent",
+    "tangent",
+    "tangent",
+    "equalRadius"
+  ]);
+  const roundedConstraintKindsOk = pointsEqual(roundedConstraintKinds, [
+    "coincident",
+    "coincident",
+    "coincident",
+    "coincident",
+    "coincident",
+    "coincident",
+    "coincident",
+    "coincident",
+    "tangent",
+    "tangent",
+    "tangent",
+    "tangent",
+    "tangent",
+    "tangent",
+    "tangent",
+    "tangent",
+    "equalRadius",
+    "equalRadius",
+    "equalRadius",
+    "horizontal",
+    "horizontal",
+    "vertical",
+    "vertical"
+  ]);
+  const slotConvenienceDiff =
+    slotTransaction?.diff?.sketches?.convenienceOperations?.[0];
+  const roundedConvenienceDiff =
+    roundedTransaction?.diff?.sketches?.convenienceOperations?.[0];
+  const slotCreatedDiffIds =
+    slotTransaction?.diff?.sketches?.entitiesCreated?.map(({ id }) => id) ?? [];
+  const roundedCreatedDiffIds =
+    roundedTransaction?.diff?.sketches?.entitiesCreated?.map(({ id }) => id) ??
+    [];
+  const slotCreatedConstraintDiffIds =
+    slotTransaction?.diff?.sketchConstraints?.created?.map(({ id }) => id) ??
+    [];
+  const roundedCreatedConstraintDiffIds =
+    roundedTransaction?.diff?.sketchConstraints?.created?.map(({ id }) => id) ??
+    [];
+  const convenienceOk =
+    slotTransactions.length === 1 &&
+    roundedTransactions.length === 1 &&
+    slotTransaction?.ops?.length === 1 &&
+    roundedTransaction?.ops?.length === 1 &&
+    slotInputsOk &&
+    roundedInputsOk &&
+    slotGeometryOk &&
+    roundedGeometryOk &&
+    slotConstraintKindsOk &&
+    roundedConstraintKindsOk &&
+    slotEntityIds.length === 4 &&
+    slotConstraintIds.length === 9 &&
+    roundedEntityIds.length === 8 &&
+    roundedConstraintIds.length === 23 &&
+    pointsEqual(slotKinds, ["line", "arc", "line", "arc"]) &&
+    pointsEqual(roundedKinds, [
+      "line",
+      "arc",
+      "line",
+      "arc",
+      "line",
+      "arc",
+      "line",
+      "arc"
+    ]) &&
+    slotConstraintIds.every((id) => constraintIds.has(id)) &&
+    roundedConstraintIds.every((id) => constraintIds.has(id)) &&
+    pointsEqual(slotCreatedDiffIds, slotEntityIds) &&
+    pointsEqual(roundedCreatedDiffIds, roundedEntityIds) &&
+    pointsEqual(slotCreatedConstraintDiffIds, slotConstraintIds) &&
+    pointsEqual(roundedCreatedConstraintDiffIds, roundedConstraintIds) &&
+    slotConvenienceDiff?.operation === "slot" &&
+    pointsEqual(slotConvenienceDiff.createdEntityIds, slotEntityIds) &&
+    pointsEqual(slotConvenienceDiff.createdConstraintIds, slotConstraintIds) &&
+    roundedConvenienceDiff?.operation === "roundedRectangle" &&
+    pointsEqual(roundedConvenienceDiff.createdEntityIds, roundedEntityIds) &&
+    pointsEqual(
+      roundedConvenienceDiff.createdConstraintIds,
+      roundedConstraintIds
+    );
+
+  const pointerOffsetOk =
+    offsetTransactions.length === 2 &&
+    pointerTransaction?.ops?.length === 1 &&
+    pointerOperation?.createdEntityIds?.length === 1 &&
+    pointerOperation?.distance === 1 &&
+    pointerOperation.side === "left" &&
+    pointsNear(pointerOperation.referencePoint, [-3, -3]) &&
+    pointerOutput?.kind === "line" &&
+    pointsEqual(pointerOutput.start, [-5, -3]) &&
+    pointsEqual(pointerOutput.end, [-1, -3]) &&
+    pointerDiff?.operation === "offset" &&
+    pointsEqual(pointerDiff.createdEntityIds, [pointerOutputId]) &&
+    pointsEqual(
+      pointerTransaction?.diff?.sketches?.entitiesCreated?.map(({ id }) => id),
+      [pointerOutputId]
+    );
+  const keyboardOffsetOk =
+    offsetTransactions.length === 2 &&
+    keyboardTransaction?.ops?.length === 1 &&
+    keyboardOperation?.createdEntityIds?.length === 1 &&
+    keyboardOperation?.distance === 1 &&
+    keyboardOperation.side === "right" &&
+    !Object.hasOwn(keyboardOperation, "referencePoint") &&
+    keyboardOutput?.kind === "line" &&
+    pointsEqual(keyboardOutput.start, [1, -5]) &&
+    pointsEqual(keyboardOutput.end, [5, -5]) &&
+    keyboardDiff?.operation === "offset" &&
+    pointsEqual(keyboardDiff.createdEntityIds, [keyboardOutputId]) &&
+    pointsEqual(
+      keyboardTransaction?.diff?.sketches?.entitiesCreated?.map(({ id }) => id),
+      [keyboardOutputId]
+    );
+
+  const offsetOutputIds = [pointerOutputId, keyboardOutputId].filter(Boolean);
+  const constraintSource = JSON.stringify(constraints);
+  const offsetOutputsAreOrdinary = [pointerOutput, keyboardOutput].every(
+    (entity) =>
+      entity?.kind === "line" &&
+      pointsEqual(Object.keys(entity).sort(), [
+        "construction",
+        "end",
+        "id",
+        "kind",
+        "start"
+      ])
+  );
+  const offsetDiffsAreAdditive = [pointerDiff, keyboardDiff].every(
+    (diff) =>
+      diff?.operation === "offset" &&
+      diff.replacements?.length === 0 &&
+      diff.constraintImpacts?.length === 0 &&
+      diff.dimensionImpacts?.length === 0 &&
+      diff.modifiedEntityIds?.length === 0 &&
+      diff.deletedEntityIds?.length === 0 &&
+      diff.deletedConstraintIds?.length === 0 &&
+      diff.deletedDimensionIds?.length === 0
+  );
+  const analyticAuthorityOk =
+    offsetOutputsAreOrdinary &&
+    offsetDiffsAreAdditive &&
+    pointsEqual(getLine(project, "offset_pointer")?.start, [-5, -4]) &&
+    pointsEqual(getLine(project, "offset_pointer")?.end, [-1, -4]) &&
+    pointsEqual(getLine(project, "offset_keyboard")?.start, [1, -4]) &&
+    pointsEqual(getLine(project, "offset_keyboard")?.end, [5, -4]) &&
+    offsetOutputIds.every((id) => !constraintSource.includes(`"${id}"`)) &&
+    entities.every((entity) =>
+      ["point", "line", "rectangle", "circle", "arc"].includes(entity.kind)
+    );
+
+  return {
+    pointerOffset: {
+      ok: pointerOffsetOk,
+      side: pointerOperation?.side,
+      distance: pointerOperation?.distance,
+      referencePoint: pointerOperation?.referencePoint,
+      outputId: pointerOutputId,
+      outputStart: pointerOutput?.start,
+      outputEnd: pointerOutput?.end,
+      offsetTransactionCount: offsetTransactions.length,
+      operationCount: pointerTransaction?.ops?.length,
+      topLevelCreatedEntityIds:
+        pointerTransaction?.diff?.sketches?.entitiesCreated?.map(({ id }) => id)
+    },
+    keyboardOffset: {
+      ok: keyboardOffsetOk,
+      side: keyboardOperation?.side,
+      distance: keyboardOperation?.distance,
+      hasReferencePoint: Object.hasOwn(
+        keyboardOperation ?? {},
+        "referencePoint"
+      ),
+      outputId: keyboardOutputId,
+      outputStart: keyboardOutput?.start,
+      outputEnd: keyboardOutput?.end,
+      offsetTransactionCount: offsetTransactions.length,
+      operationCount: keyboardTransaction?.ops?.length,
+      topLevelCreatedEntityIds:
+        keyboardTransaction?.diff?.sketches?.entitiesCreated?.map(
+          ({ id }) => id
+        )
+    },
+    convenience: {
+      ok: convenienceOk,
+      slotEntityIds,
+      slotConstraintIds,
+      slotKinds,
+      roundedEntityIds,
+      roundedConstraintIds,
+      roundedKinds,
+      slotInputs: {
+        centerlineStart: slotOperation?.centerlineStart,
+        centerlineEnd: slotOperation?.centerlineEnd,
+        radius: slotOperation?.radius,
+        construction: slotOperation?.construction
+      },
+      roundedInputs: {
+        center: roundedOperation?.center,
+        width: roundedOperation?.width,
+        height: roundedOperation?.height,
+        cornerRadius: roundedOperation?.cornerRadius,
+        construction: roundedOperation?.construction
+      },
+      slotGeometry,
+      roundedGeometry,
+      slotConstraintKinds,
+      roundedConstraintKinds,
+      slotOperationCount: slotTransaction?.ops?.length,
+      roundedOperationCount: roundedTransaction?.ops?.length,
+      slotDiffCardinality: {
+        entities: slotConvenienceDiff?.createdEntityIds?.length,
+        constraints: slotConvenienceDiff?.createdConstraintIds?.length
+      },
+      roundedDiffCardinality: {
+        entities: roundedConvenienceDiff?.createdEntityIds?.length,
+        constraints: roundedConvenienceDiff?.createdConstraintIds?.length
+      }
+    },
+    cancelEscape: {
+      ok:
+        slotTransactions.length === 1 &&
+        roundedTransactions.length === 1 &&
+        slotOperation?.construction !== true &&
+        roundedOperation?.construction !== true,
+      committedSlotTransactions: slotTransactions.length,
+      committedRoundedRectangleTransactions: roundedTransactions.length,
+      appliedSlotConstruction: slotOperation?.construction ?? false,
+      appliedRoundedRectangleConstruction:
+        roundedOperation?.construction ?? false
+    },
+    analyticAuthority: {
+      ok: analyticAuthorityOk,
+      offsetOutputsAreOrdinary,
+      offsetDiffsAreAdditive,
+      offsetOutputsHaveNoConstraints: offsetOutputIds.every(
+        (id) => !constraintSource.includes(`"${id}"`)
+      ),
+      sourceKinds: [...new Set(entities.map((entity) => entity.kind))],
+      sourceEntitiesRetained:
+        Boolean(getLine(project, "offset_pointer")) &&
+        Boolean(getLine(project, "offset_keyboard"))
+    }
+  };
 }
 
 function inspectAuthoredState(project) {
@@ -1222,6 +2217,54 @@ function pointsEqual(left, right) {
     Array.isArray(left) &&
     left.length === right.length &&
     left.every((value, index) => value === right[index])
+  );
+}
+
+function pointsNear(left, right, tolerance = 1e-6) {
+  return (
+    Array.isArray(left) &&
+    left.length === right.length &&
+    left.every(
+      (value, index) =>
+        typeof value === "number" && Math.abs(value - right[index]) <= tolerance
+    )
+  );
+}
+
+function sketchEntityGeometrySignature(entity) {
+  if (entity?.kind === "line") {
+    return {
+      kind: "line",
+      start: entity.start,
+      end: entity.end,
+      construction: entity.construction
+    };
+  }
+  if (entity?.kind === "arc") {
+    return {
+      kind: "arc",
+      center: entity.center,
+      radius: entity.radius,
+      startAngleDegrees: entity.startAngleDegrees,
+      sweepAngleDegrees: entity.sweepAngleDegrees,
+      construction: entity.construction
+    };
+  }
+  return undefined;
+}
+
+function sameProjectMutationState(left, right) {
+  return (
+    JSON.stringify({
+      document: left.document,
+      history: left.history,
+      redoStack: left.redoStack
+    }) ===
+    JSON.stringify({
+      document: right.document,
+      history: right.history,
+      redoStack: right.redoStack
+    })
   );
 }
 

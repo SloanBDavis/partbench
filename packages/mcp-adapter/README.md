@@ -22,6 +22,9 @@ It exposes these MCP-style tools:
 - `cad.body_topology`
 - `cad.project_extents`
 - `cad.sketch_get`
+- `cad.sketch_curve_edit_readiness`
+- `cad.sketch_profile_region_candidates`
+- `cad.sketch_profile_region_validate`
 - `cad.sketch_evaluation`
 - `cad.sketch_dimensions`
 - `cad.sketch_dimension_get`
@@ -180,6 +183,21 @@ Call `cad.transaction_history`:
   }
 }
 ```
+
+For V19 offset, call `cad.sketch_curve_edit_readiness` with a typed source
+entity or ordered oriented chain, then submit its exact `preparedOperation` as
+the only operation in `cad.batch`. Offset is non-associative: it creates
+independent ordinary sketch entities and stores no persistent source link or
+distance constraint. The MCP boundary accepts model-space typed refs, not
+pixels, screenshots, opaque candidate tokens, scripts, raw selectors, or
+filesystem paths.
+
+V19 `sketch.addSlot` and `sketch.addRoundedRectangle` commands go directly
+through `cad.batch` and may include the exact ordered caller-supplied
+`entityIds` and `constraintIds`. The responses preserve ordinary semantic
+diffs, actor/audit/request metadata, and commit transaction identity from the
+shared adapter/core path. Read solver health and diagnostics through the
+separate `cad.sketch_solver_status` tool.
 
 Call `cad.v8_project_surface` to inspect the V8 package/export surface in one
 compact response:

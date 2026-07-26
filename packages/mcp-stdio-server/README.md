@@ -23,6 +23,9 @@ Only these existing tools are exposed:
 - `cad.body_topology`
 - `cad.project_extents`
 - `cad.sketch_get`
+- `cad.sketch_curve_edit_readiness`
+- `cad.sketch_profile_region_candidates`
+- `cad.sketch_profile_region_validate`
 - `cad.sketch_evaluation`
 - `cad.sketch_dimensions`
 - `cad.sketch_dimension_get`
@@ -103,6 +106,15 @@ the in-memory document.
 The server keeps an in-memory `cad-core` document for the lifetime of the
 process through the existing adapter stack. Restarting the process resets that
 document.
+
+V19 offset follows the same JSON-RPC path: request
+`cad.sketch_curve_edit_readiness` with a typed source entity or ordered oriented
+chain, then submit the returned operation unchanged through `cad.batch`.
+Offsets create independent ordinary geometry and are not associative. Pixels,
+screenshots, opaque tokens, scripts, and filesystem paths are not accepted as
+source substitutes. Caller-supplied ordered IDs for `sketch.addSlot` and
+`sketch.addRoundedRectangle` also pass through `cad.batch` without a
+transport-specific mutation.
 
 `cad.project_summary` returns document units and object names when present.
 `cad.project_features` returns read-only primitive-derived feature summaries

@@ -12,7 +12,9 @@ import type {
   SketchPlane,
   SketchSolverStatusQueryResponse,
   SketchEntitySnapshot,
-  SketchSnapshot
+  SketchSnapshot,
+  SketchAddRoundedRectangleOp,
+  SketchAddSlotOp
 } from "@web-cad/cad-protocol";
 import type {
   SketchConstraintForm,
@@ -59,6 +61,8 @@ import {
   SketchCurveEditPanel,
   type SketchCurveEditSessionControl
 } from "./SketchCurveEditPanel";
+import { SketchConveniencePanel } from "./SketchConveniencePanel";
+import type { SketchConvenienceKind } from "./sketchConvenienceModel";
 import type {
   SketchCurveEditKind,
   SketchCurveEditViewportChoice
@@ -131,6 +135,9 @@ export interface SketchModeDockProps {
   ) => SketchCurveEditReadinessQueryResponse;
   readonly onApplyCurveEdit: (
     operation: PreparedSketchCurveEditOp
+  ) => boolean | Promise<boolean>;
+  readonly onApplySketchConvenience: (
+    operation: SketchAddSlotOp | SketchAddRoundedRectangleOp
   ) => boolean | Promise<boolean>;
   readonly onCancelCurveEdit: (restoreFocus?: boolean) => void;
   readonly onRequestCurveEditEscape?: (dirty: boolean) => void;
@@ -235,6 +242,7 @@ export function SketchModeDock(props: SketchModeDockProps) {
     onCancelGesture,
     onReadCurveEditReadiness,
     onApplyCurveEdit,
+    onApplySketchConvenience,
     onCancelCurveEdit,
     onRequestCurveEditEscape,
     onCurveEditChoiceRejected,
@@ -283,6 +291,7 @@ export function SketchModeDock(props: SketchModeDockProps) {
   ).find((option) => option.target.role === requestedDimensionRole);
   const requestedConstraintKind = getRequestedConstraintKind(initialActionId);
   const requestedCurveEditKind = getRequestedCurveEditKind(initialActionId);
+  const requestedConvenienceKind = getRequestedConvenienceKind(initialActionId);
   const [section, setSection] = useState<DockSection>(() =>
     requestedDimension || requestedConstraintKind ? "constraints" : "geometry"
   );
@@ -466,7 +475,22 @@ export function SketchModeDock(props: SketchModeDockProps) {
             onSessionControlChange={onCurveEditSessionControlChange}
           />
         ) : null}
-        {!requestedCurveEditKind && section === "geometry" ? (
+        {requestedConvenienceKind ? (
+          <SketchConveniencePanel
+            disabled={disabled}
+            kind={requestedConvenienceKind}
+            sketchId={activeSketch.id}
+            keyboardSuspended={curveEditKeyboardSuspended}
+            onApply={onApplySketchConvenience}
+            onCancel={onCancelCurveEdit}
+            onRequestEscape={onRequestCurveEditEscape}
+            onDirtyChange={onCurveEditDirtyChange}
+            onSessionControlChange={onCurveEditSessionControlChange}
+          />
+        ) : null}
+        {!requestedCurveEditKind &&
+        !requestedConvenienceKind &&
+        section === "geometry" ? (
           <GeometrySection
             disabled={disabled || requestedCurveEditKind !== undefined}
             sketch={activeSketch}
@@ -492,7 +516,9 @@ export function SketchModeDock(props: SketchModeDockProps) {
             onCancelArc={onCancelGesture}
           />
         ) : null}
-        {!requestedCurveEditKind && section === "constraints" ? (
+        {!requestedCurveEditKind &&
+        !requestedConvenienceKind &&
+        section === "constraints" ? (
           <IntentSection
             disabled={disabled || requestedCurveEditKind !== undefined}
             sketch={activeSketch}
@@ -513,7 +539,9 @@ export function SketchModeDock(props: SketchModeDockProps) {
             onDeleteConstraint={onDeleteConstraint}
           />
         ) : null}
-        {!requestedCurveEditKind && section === "status" ? (
+        {!requestedCurveEditKind &&
+        !requestedConvenienceKind &&
+        section === "status" ? (
           <StatusSection
             evaluation={evaluation}
             solverStatus={solverStatus}
@@ -550,6 +578,21 @@ function getRequestedCurveEditKind(
       return "split";
     case "sketch.explode-rectangle":
       return "explodeRectangle";
+    case "sketch.offset":
+      return "offset";
+    default:
+      return undefined;
+  }
+}
+
+function getRequestedConvenienceKind(
+  actionId: UiActionId | undefined
+): SketchConvenienceKind | undefined {
+  switch (actionId) {
+    case "sketch.slot":
+      return "slot";
+    case "sketch.rounded-rectangle":
+      return "roundedRectangle";
     default:
       return undefined;
   }

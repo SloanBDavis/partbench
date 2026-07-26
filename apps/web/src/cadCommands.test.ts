@@ -17,6 +17,8 @@ import {
   buildAddSketchLineOp,
   buildAddSketchPointOp,
   buildAddSketchRectangleOp,
+  buildAddSketchRoundedRectangleOp,
+  buildAddSketchSlotOp,
   buildFeatureDeleteOp,
   buildFeatureChamferOp,
   buildFeatureCircularPatternOp,
@@ -586,6 +588,38 @@ describe("cad command builders", () => {
       id: "entity_1",
       center: [1, 2],
       radius: 7,
+      construction: false
+    });
+    expect(
+      buildAddSketchSlotOp("sketch_1", {
+        centerlineStart: [1, 2],
+        centerlineEnd: [8, 2],
+        radius: 1.5,
+        construction: true
+      })
+    ).toEqual({
+      op: "sketch.addSlot",
+      sketchId: "sketch_1",
+      centerlineStart: [1, 2],
+      centerlineEnd: [8, 2],
+      radius: 1.5,
+      construction: true
+    });
+    expect(
+      buildAddSketchRoundedRectangleOp("sketch_1", {
+        center: [1, 2],
+        width: 10,
+        height: 8,
+        cornerRadius: 2,
+        construction: false
+      })
+    ).toEqual({
+      op: "sketch.addRoundedRectangle",
+      sketchId: "sketch_1",
+      center: [1, 2],
+      width: 10,
+      height: 8,
+      cornerRadius: 2,
       construction: false
     });
     expect(buildDeleteSketchEntityOp("sketch_1", "entity_1")).toEqual({

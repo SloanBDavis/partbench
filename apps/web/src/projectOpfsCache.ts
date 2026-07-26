@@ -4,8 +4,12 @@ import type {
   WcadPackageCacheArtifactKind,
   WcadSourceIdentity
 } from "@web-cad/cad-protocol";
+import { PROJECT_OPFS_CACHE_INDEX_VERSION } from "./projectOpfsCacheInitial";
 
-export const PROJECT_OPFS_CACHE_INDEX_VERSION = "partbench.opfs-cache.v1";
+export {
+  createInitialProjectOpfsCacheStatus,
+  PROJECT_OPFS_CACHE_INDEX_VERSION
+} from "./projectOpfsCacheInitial";
 export const PROJECT_OPFS_CACHE_ROOT_NAME = "partbench-v8-cache";
 export const PROJECT_OPFS_CACHE_INDEX_FILE_NAME = "cache-index.json";
 
@@ -183,25 +187,6 @@ export function createProjectOpfsCacheIndex(
     entries,
     updatedAt
   };
-}
-
-export function createInitialProjectOpfsCacheStatus(
-  opfsApiDetected: boolean
-): ProjectOpfsCacheStatus {
-  return opfsApiDetected
-    ? createProjectOpfsCacheStatus({
-        state: "empty",
-        available: true,
-        lastResult: "OPFS cache status has not been read yet."
-      })
-    : createProjectOpfsCacheStatus({
-        state: "unavailable",
-        available: false,
-        diagnostics: [
-          createProjectOpfsCacheDiagnostic("OPFS_UNAVAILABLE", "info")
-        ],
-        lastResult: "OPFS is unavailable in this browser."
-      });
 }
 
 export async function readProjectOpfsCacheStatus(

@@ -244,6 +244,13 @@
   font-size: 10px;
 }
 
+.pb-curve-edit__chain-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(88px, 0.45fr);
+  align-items: center;
+  gap: var(--pb-space-6);
+}
+
 .pb-curve-edit__point-list {
   display: grid;
   gap: var(--pb-space-4);

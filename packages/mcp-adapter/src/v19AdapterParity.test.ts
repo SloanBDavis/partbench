@@ -36,6 +36,24 @@ function requireReadyCurveEdit(
   return response as ReadyCurveEditResponse;
 }
 
+type SuccessfulBatchResponse = Extract<
+  CadMcpToolCallResult["structuredContent"],
+  {
+    readonly ok: true;
+    readonly mode: "dryRun" | "commit";
+  }
+>;
+
+function requireSuccessfulBatch(
+  result: CadMcpToolCallResult
+): SuccessfulBatchResponse {
+  const response = result.structuredContent;
+  if (!response.ok || !("mode" in response) || !("semanticDiff" in response)) {
+    throw new Error(`Expected successful batch: ${JSON.stringify(response)}`);
+  }
+  return response as SuccessfulBatchResponse;
+}
+
 function createTrimServer(): CadMcpServer {
   const adapter = createCadOpsAgentAdapter();
   adapter.getEngine().applyBatch([
@@ -85,6 +103,18 @@ describe("V19 MCP adapter parity", () => {
         ?.description
     ).toContain("exact constraint/dimension deletion lists");
     expect(
+      tools.find((tool) => tool.name === "cad.sketch_curve_edit_readiness")
+        ?.description
+    ).toContain("no persistent source link");
+    expect(
+      tools.find((tool) => tool.name === "cad.sketch_curve_edit_readiness")
+        ?.description
+    ).toContain("typed entity ref");
+    expect(
+      tools.find((tool) => tool.name === "cad.sketch_curve_edit_readiness")
+        ?.description
+    ).toContain("filesystem paths");
+    expect(
       tools.find((tool) => tool.name === "cad.sketch_profile_region_candidates")
         ?.description
     ).toContain("derived");
@@ -113,6 +143,9 @@ describe("V19 MCP adapter parity", () => {
     expect(batchTool?.description).toContain(
       "exactly that one curve-edit operation"
     );
+    expect(batchTool?.description).toContain("non-associative offset");
+    expect(batchTool?.description).toContain("sketch.addSlot");
+    expect(batchTool?.description).toContain("sketch.addRoundedRectangle");
     expect(batchTool?.inputSchema).toMatchObject({
       properties: {
         batch: {
@@ -120,6 +153,104 @@ describe("V19 MCP adapter parity", () => {
           required: ["version", "mode", "ops"]
         }
       }
+    });
+    type BatchOpSchema = {
+      readonly properties?: {
+        readonly op?: { readonly const?: string };
+      };
+      readonly [key: string]: unknown;
+    };
+    const batchOpSchemas = (
+      batchTool?.inputSchema as {
+        properties?: {
+          batch?: {
+            properties?: {
+              ops?: { items?: { oneOf?: readonly BatchOpSchema[] } };
+            };
+          };
+        };
+      }
+    ).properties?.batch?.properties?.ops?.items?.oneOf;
+    expect(batchOpSchemas).toHaveLength(4);
+    const batchOpSchema = (op: string) =>
+      batchOpSchemas?.find((schema) => schema.properties?.op?.const === op);
+    const offsetOpSchema = batchOpSchema("sketch.offset");
+    const slotOpSchema = batchOpSchema("sketch.addSlot");
+    const roundedOpSchema = batchOpSchema("sketch.addRoundedRectangle");
+    expect(offsetOpSchema).toMatchObject({
+      additionalProperties: false,
+      required: [
+        "op",
+        "sketchId",
+        "precondition",
+        "source",
+        "distance",
+        "side"
+      ],
+      properties: {
+        precondition: {
+          additionalProperties: false,
+          required: [
+            "expectedSourceRevision",
+            "expectedSolverEvaluationIdentity"
+          ],
+          properties: {
+            expectedSourceRevision: {
+              pattern: "^partbench-source-v1:[0-9a-f]{64}$"
+            },
+            expectedSolverEvaluationIdentity: {
+              oneOf: [
+                { const: "none" },
+                {
+                  pattern:
+                    "^partbench-sketch-solver-evaluation-v1:[0-9a-f]{64}$"
+                }
+              ]
+            }
+          }
+        },
+        source: {
+          oneOf: expect.arrayContaining([
+            expect.objectContaining({
+              additionalProperties: false,
+              required: ["kind", "entityId"]
+            }),
+            expect.objectContaining({
+              additionalProperties: false,
+              required: ["kind", "segments", "closed"]
+            })
+          ])
+        }
+      }
+    });
+    expect(slotOpSchema).toMatchObject({
+      additionalProperties: false,
+      properties: {
+        entityIds: { minItems: 4, maxItems: 4, uniqueItems: true },
+        constraintIds: { minItems: 9, maxItems: 9, uniqueItems: true }
+      }
+    });
+    expect(roundedOpSchema).toMatchObject({
+      additionalProperties: false,
+      properties: {
+        entityIds: { minItems: 8, maxItems: 8, uniqueItems: true },
+        constraintIds: { minItems: 23, maxItems: 23, uniqueItems: true }
+      }
+    });
+    expect(batchOpSchemas?.[3]).toMatchObject({
+      required: ["op"],
+      properties: {
+        op: {
+          not: {
+            enum: [
+              "sketch.offset",
+              "sketch.addSlot",
+              "sketch.addRoundedRectangle"
+            ]
+          }
+        }
+      },
+      additionalProperties: true
     });
     expect(JSON.stringify(batchTool?.inputSchema)).toContain("opaque");
     const regionSchema = tools.find(
@@ -232,6 +363,397 @@ describe("V19 MCP adapter parity", () => {
         }
       }
     });
+  });
+
+  it("runs typed offset readiness through exact non-associative dry-run, commit, diagnostics, and history", () => {
+    const adapter = createCadOpsAgentAdapter();
+    adapter.getEngine().applyBatch([
+      {
+        op: "sketch.create",
+        id: "sketch_offset",
+        name: "Offset parity",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_offset",
+        id: "line_source",
+        start: [0, 0],
+        end: [4, 0]
+      }
+    ]);
+    const server = createCadMcpServer({ adapter });
+    const readiness = requireReadyCurveEdit(
+      server.callTool({
+        name: "cad.sketch_curve_edit_readiness",
+        requestId: "mcp_offset_readiness",
+        arguments: {
+          proposal: {
+            kind: "offset",
+            sketchId: "sketch_offset",
+            source: { kind: "entity", entityId: "line_source" },
+            distance: 1,
+            side: "left"
+          }
+        }
+      })
+    );
+    expect(readiness).toMatchObject({
+      requestId: "mcp_offset_readiness",
+      status: "ready",
+      preparedOperation: {
+        op: "sketch.offset",
+        source: { kind: "entity", entityId: "line_source" },
+        createdEntityIds: ["skent_1"]
+      },
+      impact: {
+        operation: "offset",
+        replacements: [],
+        constraintImpacts: [],
+        dimensionImpacts: [],
+        requiredDeleteConstraintIds: [],
+        requiredDeleteDimensionIds: [],
+        affectedFeatureIds: []
+      },
+      preview: {
+        resultEntities: [
+          {
+            id: "skent_1",
+            kind: "line",
+            start: [0, 1],
+            end: [4, 1],
+            construction: false
+          }
+        ]
+      },
+      diagnostics: []
+    });
+    if (readiness.preparedOperation.op !== "sketch.offset") {
+      throw new Error("Expected prepared offset.");
+    }
+
+    const dryRun = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_offset_dry_run",
+      arguments: {
+        actor: {
+          type: "agent",
+          id: "mcp-offset-agent",
+          name: "MCP Offset Agent"
+        },
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: [readiness.preparedOperation]
+        }
+      }
+    });
+    expect(dryRun).toMatchObject({
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_offset_dry_run",
+        mode: "dryRun",
+        createdSketchEntityIds: ["skent_1"],
+        semanticDiff: {
+          sketches: {
+            curveEdits: [
+              {
+                operation: "offset",
+                replacements: [],
+                constraintImpacts: [],
+                dimensionImpacts: [],
+                createdEntityIds: ["skent_1"],
+                modifiedEntityIds: [],
+                deletedEntityIds: []
+              }
+            ]
+          }
+        },
+        review: {
+          operations: [
+            {
+              op: "sketch.offset",
+              intent: "create",
+              sketchId: "sketch_offset",
+              sketchEntityId: "line_source"
+            }
+          ],
+          audit: {
+            source: "mcp",
+            requestId: "mcp_offset_dry_run",
+            toolName: "cad.batch",
+            intent: "dryRun",
+            operationCount: 1,
+            actor: {
+              type: "agent",
+              id: "mcp-offset-agent",
+              name: "MCP Offset Agent"
+            }
+          }
+        }
+      }
+    });
+
+    const commit = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_offset_commit",
+      arguments: {
+        allowCommit: true,
+        actor: {
+          type: "agent",
+          id: "mcp-offset-agent",
+          name: "MCP Offset Agent"
+        },
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [readiness.preparedOperation]
+        }
+      }
+    });
+    expect(commit).toMatchObject({
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_offset_commit",
+        mode: "commit",
+        transactionId: expect.any(String),
+        actor: {
+          type: "agent",
+          id: "mcp-offset-agent",
+          name: "MCP Offset Agent"
+        },
+        audit: {
+          source: "mcp",
+          requestId: "mcp_offset_commit",
+          toolName: "cad.batch",
+          intent: "commit",
+          operationCount: 1
+        }
+      }
+    });
+    const dryRunContent = requireSuccessfulBatch(dryRun);
+    const commitContent = requireSuccessfulBatch(commit);
+    expect(commitContent.semanticDiff).toEqual(dryRunContent.semanticDiff);
+    expect(
+      adapter
+        .getEngine()
+        .getDocument()
+        .sketches.get("sketch_offset")
+        ?.entities.get("line_source")
+    ).toMatchObject({ start: [0, 0], end: [4, 0] });
+    expect(
+      adapter
+        .getEngine()
+        .getDocument()
+        .sketches.get("sketch_offset")
+        ?.entities.get("skent_1")
+    ).not.toHaveProperty("source");
+
+    expect(
+      server.callTool({
+        name: "cad.transaction_history",
+        requestId: "mcp_offset_history"
+      })
+    ).toMatchObject({
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_offset_history",
+        query: "transaction.history",
+        transactions: expect.arrayContaining([
+          expect.objectContaining({
+            id: commitContent.transactionId,
+            status: "committed",
+            actor: expect.objectContaining({ id: "mcp-offset-agent" }),
+            audit: expect.objectContaining({
+              source: "mcp",
+              requestId: "mcp_offset_commit",
+              toolName: "cad.batch"
+            })
+          })
+        ])
+      }
+    });
+
+    expect(
+      server.callTool({
+        name: "cad.sketch_curve_edit_readiness",
+        requestId: "mcp_offset_blocked",
+        arguments: {
+          proposal: {
+            kind: "offset",
+            sketchId: "sketch_offset",
+            source: { kind: "entity", entityId: "line_source" },
+            distance: 1,
+            side: "left",
+            referencePoint: [2, -1]
+          }
+        }
+      })
+    ).toMatchObject({
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_offset_blocked",
+        status: "blocked",
+        diagnostics: [{ code: "SKETCH_OFFSET_SIDE_AMBIGUOUS" }]
+      }
+    });
+  });
+
+  it("preserves supplied convenience IDs and exact semantic diffs through the sole batch authority", () => {
+    const adapter = createCadOpsAgentAdapter();
+    adapter.getEngine().apply({
+      op: "sketch.create",
+      id: "sketch_convenience",
+      name: "Convenience parity",
+      plane: "XY"
+    });
+    const server = createCadMcpServer({ adapter });
+    const slotEntityIds = [
+      "slot_side_positive",
+      "slot_end_cap",
+      "slot_side_negative",
+      "slot_start_cap"
+    ] as const;
+    const slotConstraintIds = Array.from(
+      { length: 9 },
+      (_, index) => `slot_constraint_${index + 1}`
+    );
+    const roundedEntityIds = [
+      "rounded_bottom",
+      "rounded_bottom_right",
+      "rounded_right",
+      "rounded_top_right",
+      "rounded_top",
+      "rounded_top_left",
+      "rounded_left",
+      "rounded_bottom_left"
+    ] as const;
+    const roundedConstraintIds = Array.from(
+      { length: 23 },
+      (_, index) => `rounded_constraint_${index + 1}`
+    );
+    const ops = [
+      {
+        op: "sketch.addSlot",
+        sketchId: "sketch_convenience",
+        centerlineStart: [0, 0],
+        centerlineEnd: [10, 0],
+        radius: 2,
+        entityIds: slotEntityIds,
+        constraintIds: slotConstraintIds
+      },
+      {
+        op: "sketch.addRoundedRectangle",
+        sketchId: "sketch_convenience",
+        center: [20, 0],
+        width: 12,
+        height: 8,
+        cornerRadius: 2,
+        entityIds: roundedEntityIds,
+        constraintIds: roundedConstraintIds
+      }
+    ] as const;
+    const dryRun = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_convenience_dry_run",
+      arguments: {
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops
+        }
+      }
+    });
+    expect(dryRun).toMatchObject({
+      isError: false,
+      structuredContent: {
+        ok: true,
+        createdSketchEntityIds: [...slotEntityIds, ...roundedEntityIds],
+        createdSketchConstraintIds: [
+          ...slotConstraintIds,
+          ...roundedConstraintIds
+        ],
+        semanticDiff: {
+          sketches: {
+            convenienceOperations: [
+              {
+                opIndex: 0,
+                operation: "slot",
+                createdEntityIds: slotEntityIds,
+                createdConstraintIds: slotConstraintIds
+              },
+              {
+                opIndex: 1,
+                operation: "roundedRectangle",
+                createdEntityIds: roundedEntityIds,
+                createdConstraintIds: roundedConstraintIds
+              }
+            ]
+          }
+        }
+      }
+    });
+    const commit = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_convenience_commit",
+      arguments: {
+        allowCommit: true,
+        actor: { type: "script", id: "mcp-convenience-script" },
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops
+        }
+      }
+    });
+    expect(commit).toMatchObject({
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_convenience_commit",
+        transactionId: expect.any(String),
+        actor: { type: "script", id: "mcp-convenience-script" },
+        audit: {
+          source: "mcp",
+          requestId: "mcp_convenience_commit",
+          toolName: "cad.batch",
+          operationCount: 2
+        }
+      }
+    });
+    const dryRunContent = requireSuccessfulBatch(dryRun);
+    const commitContent = requireSuccessfulBatch(commit);
+    expect(commitContent.semanticDiff).toEqual(dryRunContent.semanticDiff);
+    expect(
+      server.callTool({
+        name: "cad.sketch_solver_status",
+        requestId: "mcp_convenience_solver",
+        arguments: { sketchId: "sketch_convenience" }
+      })
+    ).toMatchObject({
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_convenience_solver",
+        query: "sketch.solverStatus"
+      }
+    });
+    expect(adapter.getEngine().getTransactions().at(-1)?.ops).toMatchObject([
+      {
+        op: "sketch.addSlot",
+        entityIds: slotEntityIds,
+        constraintIds: slotConstraintIds
+      },
+      {
+        op: "sketch.addRoundedRectangle",
+        entityIds: roundedEntityIds,
+        constraintIds: roundedConstraintIds
+      }
+    ]);
   });
 
   it("reports explode-rectangle source deletion as destructive", () => {
@@ -536,6 +1058,37 @@ describe("V19 MCP adapter parity", () => {
         error: { code: "INVALID_ARGUMENTS" }
       }
     });
+
+    for (const source of [
+      "/tmp/offset-source.json",
+      { kind: "file", path: "/tmp/offset-source.json" },
+      {
+        kind: "entity",
+        entityId: "line_1",
+        screenshot: "data:image/png;base64,opaque"
+      }
+    ]) {
+      expect(
+        server.callTool({
+          name: "cad.sketch_curve_edit_readiness",
+          arguments: {
+            proposal: {
+              kind: "offset",
+              sketchId: "sketch_1",
+              source,
+              distance: 1,
+              side: "left"
+            }
+          }
+        })
+      ).toMatchObject({
+        isError: true,
+        structuredContent: {
+          ok: false,
+          error: { code: "INVALID_ARGUMENTS" }
+        }
+      });
+    }
 
     const malformedBatch = server.callTool({
       name: "cad.batch",

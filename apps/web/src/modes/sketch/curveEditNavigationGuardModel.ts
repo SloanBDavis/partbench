@@ -5,7 +5,10 @@ const CURVE_EDIT_TRANSIENT_FOCUS_SELECTOR = [
   '[aria-label="Trim sketch geometry"]',
   '[aria-label="Extend sketch geometry"]',
   '[aria-label="Split sketch geometry"]',
-  '[aria-label="Explode rectangle sketch geometry"]'
+  '[aria-label="Explode rectangle sketch geometry"]',
+  '[aria-label="Offset sketch geometry"]',
+  '[aria-label="Create Slot"]',
+  '[aria-label="Create Rounded Rectangle"]'
 ].join(", ");
 
 interface CurveEditNavigationFocusElement {

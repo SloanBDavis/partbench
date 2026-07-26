@@ -32,6 +32,7 @@ import {
   formatCurveEditDiagnostic,
   getCurveEditKeyboardCommand,
   getNextCurveEditCollector,
+  getSketchOffsetSideChoices,
   getSketchCurveEditKindLabel,
   getSketchEntityDiscoveryWitnessPoints,
   getSketchEntitySemanticLabel,
@@ -155,7 +156,11 @@ export function SketchCurveEditPanel(props: SketchCurveEditPanelProps) {
   );
   const readiness = readinessProjection.displayReadiness;
   const target = sketch.entities.find(
-    (entity) => entity.id === draft.targetEntityId
+    (entity) =>
+      entity.id ===
+      (draft.kind === "offset" && draft.offsetSourceMode === "chain"
+        ? draft.offsetSegments[0]?.entityId
+        : draft.targetEntityId)
   );
   const targetOptions = sketch.entities.filter((entity) =>
     isEligibleCurveEditTarget(kind, entity)
@@ -228,7 +233,12 @@ export function SketchCurveEditPanel(props: SketchCurveEditPanelProps) {
   ]);
   const canApply =
     readinessProjection.applyOperation !== undefined && !disabled && !applying;
-  const focusTarget = target === undefined;
+  const focusTarget =
+    kind === "offset"
+      ? draft.offsetSourceMode === "entity"
+        ? draft.targetEntityId.length === 0
+        : draft.offsetSegments.length === 0
+      : target === undefined;
   const focusBoundary =
     target !== undefined &&
     (kind === "trim" || kind === "extend") &&
@@ -245,12 +255,19 @@ export function SketchCurveEditPanel(props: SketchCurveEditPanelProps) {
     draft.endpoint === undefined;
   const focusSplitPoint =
     target !== undefined && kind === "split" && draft.splitPoints.length === 0;
+  const focusOffsetSide = kind === "offset" && draft.offsetSide === undefined;
+  const focusOffsetWitness =
+    kind === "offset" &&
+    draft.offsetUseReferencePoint &&
+    draft.offsetReferencePoint === undefined;
   const focusApply =
     !focusTarget &&
     !focusBoundary &&
     !focusTrimPoint &&
     !focusExtendEndpoint &&
-    !focusSplitPoint;
+    !focusSplitPoint &&
+    !focusOffsetSide &&
+    !focusOffsetWitness;
   const focusReviewTarget = focusTarget || (focusApply && !canApply);
 
   async function apply(
@@ -343,7 +360,7 @@ export function SketchCurveEditPanel(props: SketchCurveEditPanelProps) {
         dirty,
         canApply,
         onApply: () => void applyRef.current(),
-        onCancel,
+        onCancel: () => onCancel(true),
         onDirtyEscape: () =>
           onRequestEscape ? onRequestEscape(true) : onCancel()
       });
@@ -415,7 +432,7 @@ export function SketchCurveEditPanel(props: SketchCurveEditPanelProps) {
           role="group"
           aria-label="Viewport collector"
         >
-          {getCollectors(kind).map((collector) => (
+          {getCollectors(draft).map((collector) => (
             <button
               key={collector}
               type="button"
@@ -429,23 +446,216 @@ export function SketchCurveEditPanel(props: SketchCurveEditPanelProps) {
           ))}
         </div>
 
-        <label className="pb-sketch-field">
-          <span>Target</span>
-          <select
-            data-drawer-initial-focus={focusReviewTarget ? "" : undefined}
-            className="pb-field"
-            value={draft.targetEntityId}
-            disabled={disabled}
-            onChange={(event) => chooseTarget(event.currentTarget.value)}
-          >
-            <option value="">Choose target…</option>
-            {targetOptions.map((entity) => (
-              <option key={entity.id} value={entity.id}>
-                {getSketchEntitySemanticLabel(entity, sketch)}
-              </option>
+        {kind === "offset" ? (
+          <fieldset className="pb-curve-edit__choices">
+            <legend>Source type</legend>
+            {(["entity", "chain"] as const).map((sourceMode) => (
+              <label key={sourceMode} className="pb-sketch-check">
+                <input
+                  type="radio"
+                  name="offset-source-mode"
+                  checked={draft.offsetSourceMode === sourceMode}
+                  disabled={disabled}
+                  onChange={() =>
+                    changeDraft({
+                      ...draft,
+                      offsetSourceMode: sourceMode,
+                      collector: sourceMode === "entity" ? "target" : "chain",
+                      offsetSide: undefined,
+                      offsetReferencePoint: undefined
+                    })
+                  }
+                />
+                {sourceMode === "entity"
+                  ? "Individual entity"
+                  : "Ordered chain"}
+              </label>
             ))}
-          </select>
-        </label>
+          </fieldset>
+        ) : null}
+
+        {kind !== "offset" || draft.offsetSourceMode === "entity" ? (
+          <label className="pb-sketch-field">
+            <span>{kind === "offset" ? "Source entity" : "Target"}</span>
+            <select
+              data-drawer-initial-focus={focusReviewTarget ? "" : undefined}
+              className="pb-field"
+              value={draft.targetEntityId}
+              disabled={disabled}
+              onChange={(event) => chooseTarget(event.currentTarget.value)}
+            >
+              <option value="">Choose target…</option>
+              {targetOptions.map((entity) => (
+                <option key={entity.id} value={entity.id}>
+                  {getSketchEntitySemanticLabel(entity, sketch)}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
+        {kind === "offset" && draft.offsetSourceMode === "chain" ? (
+          <fieldset className="pb-curve-edit__choices">
+            <legend>Ordered chain source</legend>
+            <p>
+              Select segments in traversal order. Each selected row exposes its
+              exact orientation.
+            </p>
+            {sketch.entities
+              .filter(
+                (entity) => entity.kind === "line" || entity.kind === "arc"
+              )
+              .map((entity) => {
+                const selectedIndex = draft.offsetSegments.findIndex(
+                  (segment) => segment.entityId === entity.id
+                );
+                const selectedSegment = draft.offsetSegments[selectedIndex];
+                return (
+                  <div key={entity.id} className="pb-curve-edit__chain-row">
+                    <label className="pb-sketch-check">
+                      <input
+                        type="checkbox"
+                        checked={selectedIndex >= 0}
+                        disabled={disabled}
+                        onChange={() =>
+                          changeDraft((current) =>
+                            applySketchCurveEditViewportChoice(
+                              { ...current, collector: "chain" },
+                              { sequence: -1, entityId: entity.id },
+                              sketch
+                            )
+                          )
+                        }
+                      />
+                      {selectedIndex >= 0 ? `${selectedIndex + 1}. ` : ""}
+                      {getSketchEntitySemanticLabel(entity, sketch)}
+                    </label>
+                    {selectedSegment ? (
+                      <select
+                        className="pb-field"
+                        aria-label={`Orientation for ${getSketchEntitySemanticLabel(entity, sketch)}`}
+                        value={selectedSegment.orientation}
+                        disabled={disabled}
+                        onChange={(event) =>
+                          changeDraft({
+                            ...draft,
+                            offsetSegments: draft.offsetSegments.map(
+                              (segment) =>
+                                segment.entityId === entity.id
+                                  ? {
+                                      ...segment,
+                                      orientation: event.currentTarget.value as
+                                        | "forward"
+                                        | "reverse"
+                                    }
+                                  : segment
+                            )
+                          })
+                        }
+                      >
+                        <option value="forward">Forward</option>
+                        <option value="reverse">Reverse</option>
+                      </select>
+                    ) : null}
+                  </div>
+                );
+              })}
+            <label className="pb-sketch-check">
+              <input
+                type="checkbox"
+                checked={draft.offsetClosed}
+                disabled={disabled}
+                onChange={(event) =>
+                  changeDraft({
+                    ...draft,
+                    offsetClosed: event.currentTarget.checked,
+                    offsetSide: undefined,
+                    offsetReferencePoint: undefined
+                  })
+                }
+              />
+              Closed loop
+            </label>
+          </fieldset>
+        ) : null}
+
+        {kind === "offset" ? (
+          <>
+            <NumberField
+              label="Distance"
+              value={draft.offsetDistance}
+              disabled={disabled}
+              onChange={(offsetDistance) =>
+                changeDraft({
+                  ...draft,
+                  offsetDistance,
+                  offsetReferencePoint: undefined
+                })
+              }
+            />
+            <fieldset className="pb-curve-edit__choices">
+              <legend>Side</legend>
+              {getSketchOffsetSideChoices(draft, sketch).map(
+                ({ side, witnessPoint }, index) => (
+                  <button
+                    key={side}
+                    type="button"
+                    className="pb-curve-edit__choice-row"
+                    aria-pressed={draft.offsetSide === side}
+                    disabled={disabled}
+                    data-drawer-initial-focus={
+                      focusOffsetSide && index === 0 ? "" : undefined
+                    }
+                    onClick={() =>
+                      changeDraft({
+                        ...draft,
+                        offsetSide: side,
+                        collector: draft.offsetUseReferencePoint
+                          ? "witness"
+                          : "side",
+                        offsetReferencePoint: witnessPoint
+                      })
+                    }
+                  >
+                    <span>
+                      {side[0]!.toLocaleUpperCase()}
+                      {side.slice(1)}
+                    </span>
+                    {witnessPoint ? (
+                      <small>Witness {formatPoint(witnessPoint)}</small>
+                    ) : null}
+                  </button>
+                )
+              )}
+            </fieldset>
+            <label className="pb-sketch-check pb-sketch-check--boxed">
+              <input
+                type="checkbox"
+                checked={draft.offsetUseReferencePoint}
+                disabled={disabled}
+                onChange={(event) =>
+                  changeDraft({
+                    ...draft,
+                    offsetUseReferencePoint: event.currentTarget.checked,
+                    collector: event.currentTarget.checked ? "witness" : "side"
+                  })
+                }
+              />
+              Use model-space witness evidence
+            </label>
+            {draft.offsetUseReferencePoint ? (
+              <PointFields
+                legend="Reference witness"
+                point={draft.offsetReferencePoint ?? [0, 0]}
+                disabled={disabled}
+                initialFocus={focusOffsetWitness}
+                onChange={(offsetReferencePoint) =>
+                  changeDraft({ ...draft, offsetReferencePoint })
+                }
+              />
+            ) : null}
+          </>
+        ) : null}
 
         {kind === "trim" || kind === "extend" ? (
           <fieldset className="pb-curve-edit__choices">
@@ -614,7 +824,7 @@ export function SketchCurveEditPanel(props: SketchCurveEditPanelProps) {
             type="button"
             className="pb-button"
             disabled={applying}
-            onClick={() => onCancel()}
+            onClick={() => onCancel(true)}
           >
             Cancel
           </button>
@@ -1068,9 +1278,9 @@ function ImpactRecords({
 }
 
 function getCollectors(
-  kind: SketchCurveEditKind
+  draft: SketchCurveEditDraft
 ): readonly SketchCurveEditDraft["collector"][] {
-  switch (kind) {
+  switch (draft.kind) {
     case "trim":
       return ["target", "boundaries", "pick"];
     case "extend":
@@ -1079,6 +1289,12 @@ function getCollectors(
       return ["target", "splitPoints"];
     case "explodeRectangle":
       return ["target"];
+    case "offset":
+      return [
+        draft.offsetSourceMode === "entity" ? "target" : "chain",
+        "side",
+        ...(draft.offsetUseReferencePoint ? (["witness"] as const) : [])
+      ];
   }
 }
 
@@ -1092,6 +1308,12 @@ function getCollectorGuidance(draft: SketchCurveEditDraft): string {
       return "Choose the interval to remove in the viewport or enter its point below.";
     case "splitPoints":
       return "Choose split points in the viewport or enter exact coordinates below.";
+    case "chain":
+      return "Choose line or arc segments in exact traversal order.";
+    case "side":
+      return "Choose the explicit offset side. The preview is evaluated in model space.";
+    case "witness":
+      return "Choose a model-space reference witness in the viewport or enter exact coordinates.";
   }
 }
 
@@ -1105,6 +1327,12 @@ function formatCollector(collector: SketchCurveEditDraft["collector"]): string {
       return "Collect removal point";
     case "splitPoints":
       return "Collect split points";
+    case "chain":
+      return "Collect chain";
+    case "side":
+      return "Choose side";
+    case "witness":
+      return "Collect witness";
   }
 }
 

@@ -73,6 +73,8 @@ import type {
   SketchAddLineOp,
   SketchAddPointOp,
   SketchAddRectangleOp,
+  SketchAddRoundedRectangleOp,
+  SketchAddSlotOp,
   SketchCreateOnFaceOp,
   SketchCreateOp,
   SketchDeleteEntityOp,
@@ -209,6 +211,21 @@ export interface SketchThreePointArcForm {
   readonly start: Vec2;
   readonly pointOnArc: Vec2;
   readonly end: Vec2;
+}
+
+export interface SketchSlotForm {
+  readonly centerlineStart: Vec2;
+  readonly centerlineEnd: Vec2;
+  readonly radius: number;
+  readonly construction: boolean;
+}
+
+export interface SketchRoundedRectangleForm {
+  readonly center: Vec2;
+  readonly width: number;
+  readonly height: number;
+  readonly cornerRadius: number;
+  readonly construction: boolean;
 }
 
 export interface FeatureExtrudeForm {
@@ -789,6 +806,35 @@ export function buildAddSketchThreePointArcOp(
       pointOnArc: form.pointOnArc,
       end: form.end
     }
+  };
+}
+
+export function buildAddSketchSlotOp(
+  sketchId: SketchId,
+  form: SketchSlotForm
+): SketchAddSlotOp {
+  return {
+    op: "sketch.addSlot",
+    sketchId,
+    centerlineStart: form.centerlineStart,
+    centerlineEnd: form.centerlineEnd,
+    radius: form.radius,
+    construction: form.construction
+  };
+}
+
+export function buildAddSketchRoundedRectangleOp(
+  sketchId: SketchId,
+  form: SketchRoundedRectangleForm
+): SketchAddRoundedRectangleOp {
+  return {
+    op: "sketch.addRoundedRectangle",
+    sketchId,
+    center: form.center,
+    width: form.width,
+    height: form.height,
+    cornerRadius: form.cornerRadius,
+    construction: form.construction
   };
 }
 

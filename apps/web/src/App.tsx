@@ -56,6 +56,8 @@ import type {
   SketchPathRef,
   SketchProfileRef,
   PreparedSketchCurveEditOp,
+  SketchAddRoundedRectangleOp,
+  SketchAddSlotOp,
   SketchCurveEditProposal,
   SketchCurveEditReadinessQueryResponse,
   Vec2
@@ -252,10 +254,10 @@ import {
 } from "./derivedGeometry";
 import { createBodyGeneratedReferenceEvidence } from "./derivedGeneratedReferences";
 import {
-  createDerivedMeshOpfsCache,
+  createLazyDerivedMeshOpfsCache,
   DERIVED_MESH_CACHE_ARTIFACT_VERSION,
   type DerivedMeshCacheContext
-} from "./derivedMeshOpfsCache";
+} from "./derivedMeshOpfsCacheLazy";
 import type {
   VisualizationMeshExportResult,
   VisualizationMeshExportStatus
@@ -388,27 +390,24 @@ import type {
   createProjectTopologyAnchorCreationPlanForGeneratedReference,
   createProjectTopologyAnchorRepairPlanForGeneratedReference
 } from "./projectWcadTopologyCheckpoints";
-import {
-  createProjectStepImportPayloadStore,
-  createProjectStepImportResolver
-} from "./projectStepImportResolver";
+import { createProjectStepImportPayloadStore } from "./projectStepImportPayloadStore";
 import {
   createTopologyRepairCandidatePreview,
   createTopologyRepairPreviewKey,
   type TopologyRepairCandidatePreviewState
 } from "./topologyRepairCandidatesUi";
+import type { ProjectOpfsCacheTargetLike } from "./projectOpfsCache";
+import { createInitialProjectOpfsCacheStatus } from "./projectOpfsCacheInitial";
 import {
-  clearProjectOpfsCache as clearProjectOpfsCacheStorage,
-  createInitialProjectOpfsCacheStatus,
-  readProjectOpfsCacheStatus,
-  type ProjectOpfsCacheTargetLike
-} from "./projectOpfsCache";
+  clearLazyProjectOpfsCache,
+  readLazyProjectOpfsCacheStatus
+} from "./projectOpfsCacheLazy";
+import type { SketchPanelSelectionContext } from "./sketchPanelUi";
+import { createSketchModelingSelectionContext } from "./sketchModelingSelectionContext";
 import {
   formatSketchSolverStatus,
-  getParameterDimensionUsageCount,
-  type SketchPanelSelectionContext
-} from "./sketchPanelUi";
-import { createSketchModelingSelectionContext } from "./sketchModelingSelectionContext";
+  getParameterDimensionUsageCount
+} from "./sketchStatusSummary";
 import {
   createNamedReferenceHealthByName,
   formatNamedReferenceRepairBatchError,
@@ -596,12 +595,14 @@ function isSketchCurveEditUiAction(
   | "sketch.trim"
   | "sketch.extend"
   | "sketch.split"
-  | "sketch.explode-rectangle" {
+  | "sketch.explode-rectangle"
+  | "sketch.offset" {
   return (
     actionId === "sketch.trim" ||
     actionId === "sketch.extend" ||
     actionId === "sketch.split" ||
-    actionId === "sketch.explode-rectangle"
+    actionId === "sketch.explode-rectangle" ||
+    actionId === "sketch.offset"
   );
 }
 
@@ -1674,7 +1675,7 @@ export function App() {
   derivedMeshCacheContextRef.current = derivedMeshCacheContext;
   const refreshProjectOpfsCache = useCallback(
     async (announce = false) => {
-      const status = await readProjectOpfsCacheStatus(
+      const status = await readLazyProjectOpfsCacheStatus(
         typeof window !== "undefined"
           ? (window as unknown as ProjectOpfsCacheTargetLike)
           : {},
@@ -1699,7 +1700,7 @@ export function App() {
     [derivedMeshCacheContext?.sourceIdentity]
   );
   const clearProjectOpfsCache = useCallback(async () => {
-    const status = await clearProjectOpfsCacheStorage(
+    const status = await clearLazyProjectOpfsCache(
       typeof window !== "undefined"
         ? (window as unknown as ProjectOpfsCacheTargetLike)
         : {}
@@ -1734,10 +1735,16 @@ export function App() {
   const commandExecutor = useMemo(
     () =>
       new AsyncCadCommandExecutor(engine, commandWorker, {
-        stepImportResolver: createProjectStepImportResolver({
-          getRuntime: getDerivedGeometryRuntime,
-          payloadStore: stepImportPayloadStoreRef.current
-        })
+        stepImportResolver: {
+          async resolveProjectImportStep(input) {
+            const { createProjectStepImportResolver } =
+              await import("./projectStepImportResolver");
+            return createProjectStepImportResolver({
+              getRuntime: getDerivedGeometryRuntime,
+              payloadStore: stepImportPayloadStoreRef.current
+            }).resolveProjectImportStep(input);
+          }
+        }
       }),
     [commandWorker, getDerivedGeometryRuntime]
   );
@@ -1793,7 +1800,7 @@ export function App() {
           });
           setDerivedGeometry(snapshot);
         },
-        meshCache: createDerivedMeshOpfsCache({
+        meshCache: createLazyDerivedMeshOpfsCache({
           target:
             typeof window !== "undefined"
               ? (window as unknown as ProjectOpfsCacheTargetLike)
@@ -4080,7 +4087,11 @@ export function App() {
       objects: sceneObjects,
       sketches
     });
-    if (intent.kind !== "sketchEntity" || intent.sketchId !== focusedSketchId) {
+    const offsetActive = workbenchUi.activeTool === "sketch.offset";
+    if (
+      !offsetActive &&
+      (intent.kind !== "sketchEntity" || intent.sketchId !== focusedSketchId)
+    ) {
       setCurveEditViewportHoverChoice(undefined);
       curveEditHoverSchedulerRef.current?.clear();
       return;
@@ -4089,15 +4100,16 @@ export function App() {
     const sketch = sketches.find(
       (candidate) => candidate.id === focusedSketchId
     );
-    const entity = sketch?.entities.find(
-      (candidate) => candidate.id === intent.entityId
-    );
+    const entity =
+      intent.kind === "sketchEntity"
+        ? sketch?.entities.find((candidate) => candidate.id === intent.entityId)
+        : undefined;
     const point =
-      rawPoint && entity
+      !offsetActive && rawPoint && entity
         ? projectSketchCurveEditViewportPoint(entity, rawPoint)
         : rawPoint;
     const hoverChoice = {
-      entityId: intent.entityId,
+      ...(intent.kind === "sketchEntity" ? { entityId: intent.entityId } : {}),
       ...(point ? { point } : {})
     };
     curveEditHoverSchedulerRef.current?.schedule(hoverChoice);
@@ -4111,7 +4123,11 @@ export function App() {
       objects: sceneObjects,
       sketches
     });
-    if (intent.kind !== "sketchEntity" || intent.sketchId !== focusedSketchId) {
+    const offsetActive = workbenchUi.activeTool === "sketch.offset";
+    if (
+      !offsetActive &&
+      (intent.kind !== "sketchEntity" || intent.sketchId !== focusedSketchId)
+    ) {
       setCommandNotice("Choose geometry in the active sketch.");
       return;
     }
@@ -4119,17 +4135,22 @@ export function App() {
     const sketch = sketches.find(
       (candidate) => candidate.id === focusedSketchId
     );
-    const entity = sketch?.entities.find(
-      (candidate) => candidate.id === intent.entityId
-    );
+    const entity =
+      intent.kind === "sketchEntity"
+        ? sketch?.entities.find((candidate) => candidate.id === intent.entityId)
+        : undefined;
     const point =
-      rawPoint && entity
+      !offsetActive && rawPoint && entity
         ? projectSketchCurveEditViewportPoint(entity, rawPoint)
         : rawPoint;
+    if (!point && intent.kind !== "sketchEntity") {
+      setCommandNotice("Choose a point on the active sketch plane.");
+      return;
+    }
     clearCurveEditHoverPreview();
     setCurveEditViewportChoice((current) => ({
       sequence: (current?.sequence ?? 0) + 1,
-      entityId: intent.entityId,
+      ...(intent.kind === "sketchEntity" ? { entityId: intent.entityId } : {}),
       ...(point ? { point } : {})
     }));
   }
@@ -4765,9 +4786,29 @@ export function App() {
     );
     if (!response?.ok) return false;
     setFocusedSketchId(operation.sketchId);
+    const entityId =
+      operation.op === "sketch.offset"
+        ? operation.createdEntityIds[0]
+        : "entityId" in operation
+          ? operation.entityId
+          : undefined;
     setSelectedSketchContext({
       sketchId: operation.sketchId,
-      ...("entityId" in operation ? { entityId: operation.entityId } : {})
+      ...(entityId ? { entityId } : {})
+    });
+    return true;
+  }
+
+  async function applySketchConvenience(
+    operation: SketchAddSlotOp | SketchAddRoundedRectangleOp
+  ): Promise<boolean> {
+    const response = await commitOps([operation], () => null);
+    if (!response?.ok) return false;
+    setFocusedSketchId(operation.sketchId);
+    const entityId = response.createdSketchEntityIds?.[0];
+    setSelectedSketchContext({
+      sketchId: operation.sketchId,
+      ...(entityId ? { entityId } : {})
     });
     return true;
   }
@@ -6866,6 +6907,9 @@ export function App() {
       case "sketch.extend":
       case "sketch.split":
       case "sketch.explode-rectangle":
+      case "sketch.offset":
+      case "sketch.slot":
+      case "sketch.rounded-rectangle":
         curveEditOpenerRef.current =
           window.document.activeElement instanceof HTMLElement
             ? window.document.activeElement
@@ -6985,7 +7029,7 @@ export function App() {
       clearCurveEditUi();
     }
     continueCurveEditNavigation(intent);
-    restoreResolvedNavigationFocus(navigationFocusTarget);
+    restoreResolvedNavigationFocus(navigationFocusTarget, intent);
   }
 
   function restoreCurveEditFocus() {
@@ -6998,18 +7042,38 @@ export function App() {
     });
   }
 
-  function restoreResolvedNavigationFocus(target: HTMLElement | null) {
-    requestAnimationFrame(() => {
+  function restoreResolvedNavigationFocus(
+    target: HTMLElement | null,
+    intent: WorkbenchNavigationIntent
+  ) {
+    const restore = () => {
       const activeElement = window.document.activeElement;
+      const resolvedTarget =
+        intent.kind === "mode"
+          ? [
+              ...window.document.querySelectorAll<HTMLElement>(
+                '[aria-label="Workbench mode"] button[aria-selected="true"]'
+              )
+            ].find(
+              (candidate) =>
+                candidate.textContent?.trim().toLowerCase() === intent.mode
+            )
+          : target?.isConnected === true
+            ? target
+            : undefined;
       const shouldRestore = shouldRestoreResolvedCurveEditNavigationFocus({
         activeElement:
           activeElement instanceof HTMLElement ? activeElement : null,
         body: window.document.body,
         documentElement: window.document.documentElement
       });
-      if (shouldRestore && target?.isConnected) {
-        target.focus();
+      if (shouldRestore && resolvedTarget?.isConnected) {
+        resolvedTarget.focus();
       }
+    };
+    requestAnimationFrame(() => {
+      restore();
+      requestAnimationFrame(restore);
     });
   }
 
@@ -7106,6 +7170,8 @@ export function App() {
       "sketch.rectangle": sketchReady,
       "sketch.circle": sketchReady,
       "sketch.arc": sketchReady,
+      "sketch.slot": sketchReady,
+      "sketch.rounded-rectangle": sketchReady,
       "sketch.trim": createCurveEditActionAvailability(
         selectedSketch,
         selectedEntity,
@@ -7129,6 +7195,12 @@ export function App() {
         selectedEntity,
         ["rectangle"],
         "Select a rectangle."
+      ),
+      "sketch.offset": createCurveEditActionAvailability(
+        selectedSketch,
+        selectedEntity,
+        ["line", "arc", "circle", "rectangle"],
+        "Select a supported source, or open Offset to collect an ordered chain."
       ),
       "sketch.construction": selectedEntityReady,
       "sketch.delete": selectedEntityReady,
@@ -7753,6 +7825,7 @@ export function App() {
                   onCancelGesture={() => setThreePointArcTool(undefined)}
                   onReadCurveEditReadiness={readSketchCurveEditReadiness}
                   onApplyCurveEdit={applySketchCurveEdit}
+                  onApplySketchConvenience={applySketchConvenience}
                   onCancelCurveEdit={(restoreFocus) => {
                     clearCurveEditUi(restoreFocus);
                   }}

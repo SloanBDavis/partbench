@@ -370,6 +370,64 @@ flowchart TD
 - C4 UI, capability advertisement, agent/MCP execution, keyboard behavior, and
   browser proof remain gated on this accepted core API.
 
+### 2026-07-26 — Gate C implementation and review accepted
+
+- C4 exposes Offset, Slot, and Rounded Rectangle through one V18 action owner
+  each. Offset supports query-backed individual and oriented-chain selection,
+  exact distance/side/witness submission, pointer and keyboard collection, and
+  ordinary non-associative output. Slot and Rounded Rectangle compile only to
+  `sketch.addSlot` and `sketch.addRoundedRectangle`; their committed source is
+  the exact ordinary 4-entity/9-constraint and 8-entity/23-constraint result.
+- All three editors preserve the shared Apply/Cancel/Escape and dirty
+  navigation contract. Labels are semantic rather than raw IDs, cancel and
+  discard preserve document/history/redo state, destination focus is restored
+  after guarded navigation, and each committed operation is one-step
+  undo/redo.
+- Agent, MCP, and stdio parity is complete for the three Gate C operations.
+  Batch schemas have exact offset/slot/rounded-rectangle branches, closed
+  additional properties, exact lowercase source/solver identity patterns, and
+  an explicit non-V19 legacy branch. Public results retain additive offset
+  intent, ordinary output IDs, convenience cardinality, and
+  non-associativity.
+- Three independent adversarial reviews were resolved. Product review found
+  winding-blind and then translation-sensitive closed-chain witness logic;
+  the UI now mirrors the core's oriented, locally anchored, compensated
+  signed-area policy, including reversed arcs and the shared minimum-area
+  threshold. Adapter review found an under-constrained MCP batch schema and
+  solver-identity documentation drift. Browser review found weak action,
+  authored-source, cancel/escape, and focus proof. The final re-review also
+  found two lazy OPFS rejection paths; module-load/action failures now produce
+  visible structured status, while single-flight mesh-cache loading resets
+  after rejection and retries. Every re-review is PASS.
+- Production cache and STEP-only code now loads behind retry-safe boundaries.
+  The critical-entry build uses a second Terser pass only after normal esbuild
+  minification; Terser is a BSD-2-Clause dev-only build dependency and adds no
+  runtime code. Lazy chunks and both workers remain included in their frozen
+  aggregate budgets, so no artifact was reclassified to pass.
+- The complete web suite passes 891 tests after the final lazy-load rejection
+  coverage. Full agent/MCP/stdio suites pass 103/82/18 tests; focused product,
+  MCP-schema, browser-contract, cache, and workflow suites pass. Workspace
+  typecheck, repository lint, formatting, and diff checks are green.
+- Canonical `pnpm check:v19-bundle` passes every immutable cap on the final
+  source: 404,758-byte critical UI JavaScript gzip, 6,515-byte critical CSS
+  gzip, 519,657-byte all-UI JavaScript gzip, 242,636-byte command worker gzip,
+  83,272-byte geometry worker gzip, and the exact 13,808,536-byte OCCT WASM
+  gzip cap.
+- `smoke:v19-browser-workflow` v2 passes 16/16 against that exact production
+  build. It preserves all eight Gate B proofs and adds unique rendered action
+  ownership, trusted-pointer and keyboard-only offsets, exact non-default
+  convenience inputs and authored geometry/constraint signatures, independent
+  Cancel/Escape state snapshots, analytic authority, focus/accessibility, and
+  one-step undo/redo.
+- The inherited V18 performance gate passes on the final build with a
+  1,890.1 ms shell-ready median, 48.3 ms command-search p95, 56.4 ms warm-action
+  p95, 17 ms frame-interval p95, no long task, and no eager worker/WASM
+  request. The V19 near-limit region workload remains intentionally deferred
+  until Slice E supplies the real region query/cache/cancellation surfaces;
+  this remains an H/I release blocker, not a Gate C blocker.
+- Gate C is accepted. D1 normalized dimension targets are the next normative
+  implementation boundary.
+
 ## Completion audit
 
 Release completion requires affirmative evidence for each numbered Must item
