@@ -213,6 +213,16 @@ describe("V19 protocol contract", () => {
         createdEntityIds: ["created_1"]
       }).ok
     ).toBe(false);
+    expect(
+      validateV19CadOp({
+        op: "sketch.offset",
+        sketchId: "sketch_1",
+        precondition,
+        source: { kind: "entity", entityId: "line_1" },
+        distance: CAD_V19_SKETCH_GEOMETRY_POLICY.linearTolerance / 1_000,
+        side: "left"
+      }).ok
+    ).toBe(true);
 
     const sparseBoundaries = new Array<string>(1);
     expect(
@@ -252,6 +262,48 @@ describe("V19 protocol contract", () => {
         constraintIds: Array.from({ length: 23 }, (_, index) => `c_${index}`)
       }).ok
     ).toBe(true);
+  });
+
+  it("rejects convenience geometry at or below the shared tolerance", () => {
+    const tolerance = CAD_V19_SKETCH_GEOMETRY_POLICY.linearTolerance;
+    expect(
+      validateV19CadOp({
+        op: "sketch.addSlot",
+        sketchId: "sketch_1",
+        centerlineStart: [0, 0],
+        centerlineEnd: [tolerance, 0],
+        radius: 2
+      }).ok
+    ).toBe(false);
+    expect(
+      validateV19CadOp({
+        op: "sketch.addSlot",
+        sketchId: "sketch_1",
+        centerlineStart: [0, 0],
+        centerlineEnd: [10, 0],
+        radius: tolerance
+      }).ok
+    ).toBe(false);
+    expect(
+      validateV19CadOp({
+        op: "sketch.addRoundedRectangle",
+        sketchId: "sketch_1",
+        center: [0, 0],
+        width: 10,
+        height: 6,
+        cornerRadius: tolerance
+      }).ok
+    ).toBe(false);
+    expect(
+      validateV19CadOp({
+        op: "sketch.addRoundedRectangle",
+        sketchId: "sketch_1",
+        center: [0, 0],
+        width: 10,
+        height: 6,
+        cornerRadius: (6 - tolerance / 2) / 2
+      }).ok
+    ).toBe(false);
   });
 
   it("keeps normalized storage snapshots distinct from public V22 entries", () => {

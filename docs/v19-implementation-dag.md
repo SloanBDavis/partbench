@@ -313,9 +313,62 @@ flowchart TD
   representative near-limit region workload requires the real Slice E query,
   cache, cancellation, and editing surfaces. This remains an H/I blocker and
   is not a Gate B failure.
-- Gate C has not started. The isolated Gate B commit and push remain pending
-  explicit Git-write reauthorization after the prior approval limit was
-  reached.
+- Gate B is committed and pushed on `main` at `b62bf59`.
+
+### 2026-07-26 — Gate C pure-policy APIs accepted
+
+- C1 and C3 were implemented in parallel and then frozen only after an
+  independent adversarial review. The final focused policy suites pass 40/40
+  offset tests and 28/28 slot/rounded-rectangle tests.
+- Offset review found and resolved translated-loop signed-area cancellation,
+  exact `0.1`/`359.9` degree arc-boundary drift, post-reconstruction output
+  gaps, a small-radius reversal hidden by an over-broad angular tolerance,
+  the incorrect rejection of positive sub-tolerance distances, and malformed
+  caller IDs. The final policy uses anchored compensated area, a narrow
+  floating reconstruction epsilon, explicit open/closed endpoint ownership,
+  ordinary unconstrained output shapes, and no associative identity.
+- Convenience review found and resolved finite-cancellation slot side collapse
+  and large-coordinate line/arc join representability gaps. Both planners now
+  validate derived spans and every canonical cyclic join before exposing exact
+  4-entity/9-constraint and 8-entity/23-constraint plans.
+- Protocol guards now enforce the same geometry tolerance boundary, while
+  imported convenience semantic diffs require non-negative operation indexes,
+  unique IDs, and exact cardinality. Focused protocol and adapter projections
+  pass 13/13 and 14/14 respectively.
+- C3 core execution materializes every omitted ID before history storage,
+  stages all analytic entities before validating/storing the exact ordinary
+  constraints, and checks production solver health without making solved
+  coordinates source authority. Dry-run/commit, supplied IDs, actor/audit,
+  rollback/counter isolation, one-step undo/redo, JSON/canonical-CBOR `.wcad`,
+  and strict history/redo replay pass. An adversarial review found that the
+  first implementation retained caller-owned point and ID arrays; committed
+  operations now defensively snapshot them, and the mutation/export/replay
+  regression is green. The focused C3 core+policy row passes 37/37, the full
+  cad-core run passes 947 tests, and typecheck passes.
+- C2 now runs offset through a distinct additive core path: sources and solver
+  records remain untouched, ordinary unconstrained entities are created in
+  submitted traversal order, impact replacement/record/delete/feature sets
+  remain empty, and history snapshots retain every materialized output ID.
+  Readiness, dry-run/commit parity, global collisions, stale-before-allocation,
+  defensive input snapshots, one-step undo/redo, JSON/canonical-CBOR `.wcad`,
+  and strict history/redo replay pass.
+- Replacement edits and offset share one exact authored-residual evaluator
+  with zero free-solve iterations. No-record offset reports `not-run`; an
+  eligible over-defined source is classified against the complete post state,
+  where the new unconstrained output correctly makes it under-defined.
+  The batch-error union now includes `SKETCH_EDIT_INVALID_PROPOSAL`, removing
+  the temporary runtime-code cast used by collision diagnostics.
+- Independent C2 adversarial review found and resolved a finite
+  representability defect: at coordinates/radii near `1e16`, a positive
+  `0.1` offset could round back to unchanged line, circle, arc, rectangle, or
+  chain geometry. Publication now requires a finite, non-zero, correct-sign
+  analytic support/span delta within a narrow intent-relative roundoff bound;
+  representable positive `1e-8` offsets remain supported. The final pure
+  offset suite passes 44/44, the reviewer rerun passes 65/65, the expanded
+  C1-C3 focused gate passes 121/121, and the full cad-core suite passes
+  966/966 with typecheck, lint, format, and diff checks green.
+- C4 UI, capability advertisement, agent/MCP execution, keyboard behavior, and
+  browser proof remain gated on this accepted core API.
 
 ## Completion audit
 

@@ -177,6 +177,8 @@ import type {
   SketchCurveEditPreview,
   SketchCurveEditProposal,
   SketchCurveEditSemanticDiff,
+  SketchConvenienceSemanticDiff,
+  SketchOffsetOp,
   PreparedSketchCurveEditOp,
   Transform,
   Mat4,
@@ -324,6 +326,41 @@ export {
   type SketchCurveSourceInterval
 } from "./sketchCurveEditPlans";
 export {
+  ROUNDED_RECTANGLE_CONSTRAINT_ROLES,
+  ROUNDED_RECTANGLE_ENTITY_ROLES,
+  SLOT_CONSTRAINT_ROLES,
+  SLOT_ENTITY_ROLES,
+  planSketchRoundedRectangle,
+  planSketchSlot,
+  type MaterializedSketchConveniencePlan,
+  type PlannedSketchConvenienceEntity,
+  type SketchConveniencePlan,
+  type SketchConveniencePlanDiagnostic,
+  type SketchConveniencePlanDiagnosticCode,
+  type SketchConveniencePlanOptions,
+  type SketchConveniencePlanResult,
+  type SketchRoundedRectangleConstraintRole,
+  type SketchRoundedRectangleEntityRole,
+  type SketchRoundedRectanglePlan,
+  type SketchSlotConstraintRole,
+  type SketchSlotEntityRole,
+  type SketchSlotPlan
+} from "./sketchConveniencePlans";
+export {
+  MAX_OFFSET_EDITED_SKETCH_ENTITIES,
+  MAX_SKETCH_OFFSET_MITER_FACTOR,
+  MAX_SKETCH_OFFSET_SOURCE_SEGMENTS,
+  planSketchOffset,
+  type PlannedSketchOffsetShape,
+  type SketchOffsetDiagnostic,
+  type SketchOffsetDiagnosticCode,
+  type SketchOffsetPlan,
+  type SketchOffsetPlanInput,
+  type SketchOffsetPlanResult,
+  type SketchOffsetSide,
+  type SketchOffsetSource
+} from "./sketchOffsetPolicy";
+export {
   compareSketchCurveEditRecordIds,
   createSketchPointTargetProvenanceKey,
   getSketchConstraintPointTargetProvenanceKeys,
@@ -343,7 +380,11 @@ export {
 } from "./sketchCurveEditRecordTargets";
 export {
   createSketchCurveEditImpact,
+  evaluateExactSketchAuthoredResidualState,
   finalizeSketchCurveEditImpactForApply,
+  type ExactSketchAuthoredResidualStateBlocked,
+  type ExactSketchAuthoredResidualStateReady,
+  type ExactSketchAuthoredResidualStateResult,
   type FinalizeSketchCurveEditImpactResult,
   type MaterializedSketchCurveEditPlan,
   type SketchCurveEditDeleteListMismatch,
@@ -432,6 +473,7 @@ import {
   applySketchDimensionValue,
   createLegacySketchSolverDocumentProjection,
   createSketchEvaluationQueryResponse,
+  evaluateSketch,
   evaluateSketchGeometry,
   evaluateSketchDimension,
   getLineLength,
@@ -459,7 +501,19 @@ import {
   type SketchCurveEditPlanResult
 } from "./sketchCurveEditPlans";
 import {
+  planSketchRoundedRectangle,
+  planSketchSlot,
+  type SketchConveniencePlan,
+  type SketchConveniencePlanDiagnostic
+} from "./sketchConveniencePlans";
+import {
+  planSketchOffset,
+  type SketchOffsetDiagnostic,
+  type SketchOffsetPlan
+} from "./sketchOffsetPolicy";
+import {
   createSketchCurveEditImpact,
+  evaluateExactSketchAuthoredResidualState,
   finalizeSketchCurveEditImpactForApply,
   type MaterializedSketchCurveEditPlan,
   type SketchCurveEditImpactReady
@@ -5884,6 +5938,7 @@ type MutableSketchSemanticDiff = {
   entitiesDeleted: CadSketchEntityRef[];
   entityChanges: SketchEntitySemanticDiff[];
   curveEdits?: SketchCurveEditSemanticDiff[];
+  convenienceOperations?: SketchConvenienceSemanticDiff[];
 };
 
 type MutableFeatureSemanticDiff = {
@@ -7906,6 +7961,8 @@ function isCadOperationKind(value: string): boolean {
     case "sketch.split":
     case "sketch.explodeRectangle":
     case "sketch.offset":
+    case "sketch.addSlot":
+    case "sketch.addRoundedRectangle":
     case "sketch.dimension.create":
     case "sketch.dimension.update":
     case "sketch.dimension.rename":
@@ -21387,6 +21444,15 @@ function pushSketchCurveEdit(
   sketchDiff.curveEdits.push(change);
 }
 
+function pushSketchConvenienceOperation(
+  diff: MutableSemanticDiff,
+  change: SketchConvenienceSemanticDiff
+): void {
+  const sketchDiff = ensureSketchDiff(diff);
+  sketchDiff.convenienceOperations ??= [];
+  sketchDiff.convenienceOperations.push(change);
+}
+
 function createCurveEditWarnings(diff: SemanticDiff): readonly string[] {
   return (diff.sketches?.curveEdits ?? []).flatMap((edit) =>
     edit.postEditSolverStatus === "over-defined" ||
@@ -24436,13 +24502,26 @@ type NormalizedSketchCurveEditRequest =
   | {
       readonly operation: "offset";
       readonly sketchId: SketchId;
+      readonly source: SketchOffsetOp["source"];
+      readonly distance: number;
+      readonly side: SketchOffsetOp["side"];
+      readonly referencePoint?: Vec2;
+      readonly createdEntityIds?: readonly SketchEntityId[];
     };
 
 type CurveEditPreparationResult =
   | {
       readonly status: "ready";
+      readonly mode: "replacement";
       readonly plan: MaterializedSketchCurveEditPlan;
       readonly impactResult: SketchCurveEditImpactReady;
+      readonly preview: SketchCurveEditPreview;
+    }
+  | {
+      readonly status: "ready";
+      readonly mode: "offset";
+      readonly plan: MaterializedSketchOffsetPlan;
+      readonly impact: SketchCurveEditImpact;
       readonly preview: SketchCurveEditPreview;
     }
   | {
@@ -24450,6 +24529,10 @@ type CurveEditPreparationResult =
       readonly diagnostics: readonly CadSketchEditDiagnostic[];
       readonly previewIntersections?: readonly SketchCurveEditIntersectionEvidence[];
     };
+
+type MaterializedSketchOffsetPlan = SketchOffsetPlan & {
+  readonly materialized: NonNullable<SketchOffsetPlan["materialized"]>;
+};
 
 function normalizeSketchCurveEditRequest(
   edit: SketchCurveEditProposal | SketchCurveEditOp
@@ -24516,11 +24599,35 @@ function normalizeSketchCurveEditRequest(
           : {})
       };
     }
-    default:
+    case "offset": {
+      const value = edit as Extract<
+        SketchCurveEditProposal | SketchCurveEditOp,
+        { readonly kind: "offset" } | { readonly op: "sketch.offset" }
+      >;
       return {
         operation: "offset",
-        sketchId: edit.sketchId
+        sketchId: value.sketchId,
+        source:
+          value.source.kind === "entity"
+            ? { ...value.source }
+            : {
+                ...value.source,
+                segments: value.source.segments.map((segment) => ({
+                  ...segment
+                }))
+              },
+        distance: value.distance,
+        side: value.side,
+        ...(value.referencePoint
+          ? { referencePoint: [...value.referencePoint] }
+          : {}),
+        ...("createdEntityIds" in value && value.createdEntityIds !== undefined
+          ? { createdEntityIds: [...value.createdEntityIds] }
+          : {})
       };
+    }
+    default:
+      throw new Error(`Unsupported sketch curve-edit operation: ${operation}`);
   }
 }
 
@@ -24734,6 +24841,251 @@ function createBlockedCurveEditPreview(
   };
 }
 
+function mapSketchOffsetDiagnostic(
+  sketchId: SketchId,
+  diagnostic: SketchOffsetDiagnostic
+): CadSketchEditDiagnostic {
+  const sideCodes = new Set<SketchOffsetDiagnostic["code"]>([
+    "SKETCH_OFFSET_REFERENCE_PROJECTION_AMBIGUOUS",
+    "SKETCH_OFFSET_REFERENCE_POINT_ON_SOURCE",
+    "SKETCH_OFFSET_REFERENCE_SIDE_MISMATCH"
+  ]);
+  const selfIntersectionCodes = new Set<SketchOffsetDiagnostic["code"]>([
+    "SKETCH_OFFSET_CHAIN_OVERLAP",
+    "SKETCH_OFFSET_CHAIN_SELF_INTERSECTION",
+    "SKETCH_OFFSET_OUTPUT_SELF_INTERSECTION"
+  ]);
+  const outputIdCodes = new Set<SketchOffsetDiagnostic["code"]>([
+    "SKETCH_OFFSET_OUTPUT_ID_COUNT_MISMATCH",
+    "SKETCH_OFFSET_OUTPUT_ID_DUPLICATE",
+    "SKETCH_OFFSET_OUTPUT_ID_CONFLICT"
+  ]);
+  const code: CadSketchEditDiagnostic["code"] =
+    diagnostic.code === "SKETCH_OFFSET_SOURCE_MISSING"
+      ? "SKETCH_EDIT_MISSING_ENTITY"
+      : sideCodes.has(diagnostic.code)
+        ? "SKETCH_OFFSET_SIDE_AMBIGUOUS"
+        : diagnostic.code === "SKETCH_OFFSET_COLLAPSE"
+          ? "SKETCH_OFFSET_RADIUS_COLLAPSED"
+          : selfIntersectionCodes.has(diagnostic.code)
+            ? "SKETCH_OFFSET_SELF_INTERSECTION"
+            : outputIdCodes.has(diagnostic.code)
+              ? "SKETCH_EDIT_INVALID_PROPOSAL"
+              : "SKETCH_OFFSET_JOIN_UNSUPPORTED";
+  return {
+    code,
+    severity: "blocker",
+    message: diagnostic.message,
+    sketchId,
+    ...(diagnostic.entityIds[0]
+      ? { sketchEntityId: diagnostic.entityIds[0] }
+      : {}),
+    fieldPath: diagnostic.path,
+    ...(diagnostic.expected ? { expected: diagnostic.expected } : {}),
+    ...(diagnostic.received ? { received: diagnostic.received } : {}),
+    recoveryAction:
+      "Repair the exact analytic offset input, then refresh curve-edit readiness."
+  };
+}
+
+function evaluateSketchOffsetPostState({
+  document,
+  sketch,
+  evaluatedEntities,
+  plan
+}: {
+  readonly document: CadDocument | MutableDocumentState;
+  readonly sketch: Sketch;
+  readonly evaluatedEntities: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>;
+  readonly plan: MaterializedSketchOffsetPlan;
+}):
+  | {
+      readonly status: "ready";
+      readonly postEditSolverStatus: SketchCurveEditImpact["postEditSolverStatus"];
+    }
+  | {
+      readonly status: "blocked";
+      readonly diagnostic: CadSketchEditDiagnostic;
+    } {
+  const postEntities = new Map(evaluatedEntities);
+  for (const entity of plan.materialized.entities) {
+    postEntities.set(entity.id, cloneSketchEntity(entity));
+  }
+  const postSketch = { ...sketch, entities: postEntities };
+  const postSketches = new Map(document.sketches);
+  postSketches.set(sketch.id, postSketch);
+  const solverDocument: SketchSolverDocument = {
+    sketches: postSketches,
+    parameters: document.parameters,
+    sketchDimensions: document.sketchDimensions,
+    sketchConstraints: document.sketchConstraints
+  };
+  const exact = evaluateExactSketchAuthoredResidualState({
+    document: solverDocument,
+    sketch: postSketch
+  });
+  const unsatisfied =
+    exact.status === "ready"
+      ? exact.evaluation.records.find((record) => !record.satisfied)
+      : undefined;
+  if (
+    exact.status === "blocked" ||
+    unsatisfied !== undefined ||
+    (exact.solverStatus !== "not-run" &&
+      exact.solverStatus !== "solved" &&
+      exact.solverStatus !== "fully-defined" &&
+      exact.solverStatus !== "under-defined" &&
+      exact.solverStatus !== "over-defined" &&
+      exact.solverStatus !== "redundant")
+  ) {
+    return {
+      status: "blocked",
+      diagnostic: {
+        code: "SKETCH_EDIT_SOLVER_STATE_BLOCKED",
+        severity: "blocker",
+        message:
+          exact.status === "blocked"
+            ? exact.message
+            : unsatisfied
+              ? `Surviving ${unsatisfied.sourceType} '${unsatisfied.sourceId}' is not satisfied at the exact post-offset authored state.`
+              : `Offset output produced blocked solver status '${exact.solverStatus}'.`,
+        sketchId: sketch.id,
+        recoveryAction:
+          "Repair the current sketch solver state, then refresh offset readiness."
+      }
+    };
+  }
+  return {
+    status: "ready",
+    postEditSolverStatus: exact.solverStatus
+  };
+}
+
+function prepareSketchOffset({
+  document,
+  sketch,
+  evaluatedEntities,
+  edit,
+  createSketchEntityId
+}: {
+  readonly document: CadDocument | MutableDocumentState;
+  readonly sketch: Sketch;
+  readonly evaluatedEntities: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>;
+  readonly edit: Extract<
+    NormalizedSketchCurveEditRequest,
+    { readonly operation: "offset" }
+  >;
+  readonly createSketchEntityId: () => SketchEntityId;
+}): CurveEditPreparationResult {
+  const collidingOutputId = edit.createdEntityIds?.find((entityId) =>
+    hasSketchEntityId(document.sketches, entityId)
+  );
+  if (collidingOutputId !== undefined) {
+    return {
+      status: "blocked",
+      diagnostics: [
+        {
+          code: "SKETCH_EDIT_INVALID_PROPOSAL",
+          severity: "blocker",
+          message: `Offset output entity ID already exists in the document: ${collidingOutputId}.`,
+          sketchId: edit.sketchId,
+          sketchEntityId: collidingOutputId,
+          fieldPath: "createdEntityIds",
+          expected: "document-wide unused sketch entity ID",
+          received: collidingOutputId,
+          recoveryAction:
+            "Refresh readiness or provide output IDs unused by every sketch."
+        }
+      ]
+    };
+  }
+
+  const entities = [...evaluatedEntities.values()].map(cloneSketchEntity);
+  const input = {
+    entities,
+    source: edit.source,
+    distance: edit.distance,
+    side: edit.side,
+    ...(edit.referencePoint ? { referencePoint: edit.referencePoint } : {})
+  };
+  const initial = planSketchOffset(input);
+  if (initial.status === "blocked") {
+    return {
+      status: "blocked",
+      diagnostics: initial.diagnostics.map((diagnostic) =>
+        mapSketchOffsetDiagnostic(edit.sketchId, diagnostic)
+      )
+    };
+  }
+  const createdEntityIds =
+    edit.createdEntityIds ??
+    Array.from(
+      { length: initial.plan.requiredCreatedEntityIdCount },
+      createSketchEntityId
+    );
+  const materialized = planSketchOffset({
+    ...input,
+    createdEntityIds
+  });
+  if (
+    materialized.status === "blocked" ||
+    materialized.plan.materialized === undefined
+  ) {
+    return {
+      status: "blocked",
+      diagnostics:
+        materialized.status === "blocked"
+          ? materialized.diagnostics.map((diagnostic) =>
+              mapSketchOffsetDiagnostic(edit.sketchId, diagnostic)
+            )
+          : [
+              {
+                code: "SKETCH_EDIT_INVALID_PROPOSAL",
+                severity: "blocker",
+                message:
+                  "The analytic offset did not materialize every required output ID.",
+                sketchId: edit.sketchId,
+                recoveryAction:
+                  "Refresh readiness and use its complete prepared operation."
+              }
+            ]
+    };
+  }
+  const plan = materialized.plan as MaterializedSketchOffsetPlan;
+  const solver = evaluateSketchOffsetPostState({
+    document,
+    sketch,
+    evaluatedEntities,
+    plan
+  });
+  if (solver.status === "blocked") {
+    return { status: "blocked", diagnostics: [solver.diagnostic] };
+  }
+  const impact: SketchCurveEditImpact = {
+    sketchId: edit.sketchId,
+    operation: "offset",
+    replacements: [],
+    constraintImpacts: [],
+    dimensionImpacts: [],
+    requiredDeleteConstraintIds: [],
+    requiredDeleteDimensionIds: [],
+    affectedFeatureIds: [],
+    postEditSolverStatus: solver.postEditSolverStatus
+  };
+  return {
+    status: "ready",
+    mode: "offset",
+    plan,
+    impact,
+    preview: {
+      intersections: [],
+      projectedSplitParameters: [],
+      resultEntityCount: plan.resultEntityCount,
+      resultEntities: plan.materialized.entities.map(cloneSketchEntity)
+    }
+  };
+}
+
 function prepareSketchCurveEdit({
   document,
   sketch,
@@ -24748,6 +25100,15 @@ function prepareSketchCurveEdit({
   readonly createSketchEntityId: () => SketchEntityId;
 }): CurveEditPreparationResult {
   const normalized = normalizeSketchCurveEditRequest(edit);
+  if (normalized.operation === "offset") {
+    return prepareSketchOffset({
+      document,
+      sketch,
+      evaluatedEntities,
+      edit: normalized,
+      createSketchEntityId
+    });
+  }
   const suppliedOutputIds =
     normalized.operation === "trim" || normalized.operation === "split"
       ? normalized.createdEntityIds
@@ -24879,6 +25240,7 @@ function prepareSketchCurveEdit({
   }
   return {
     status: "ready",
+    mode: "replacement",
     plan,
     impactResult,
     preview: createCurveEditPreview(plan)
@@ -24886,7 +25248,7 @@ function prepareSketchCurveEdit({
 }
 
 function createPreparedSketchCurveEditOperation(
-  proposal: SketchCurveEditProposal,
+  proposal: Exclude<SketchCurveEditProposal, { readonly kind: "offset" }>,
   precondition: PreparedSketchCurveEditOp["precondition"],
   plan: MaterializedSketchCurveEditPlan,
   impact: SketchCurveEditImpact
@@ -24936,20 +25298,37 @@ function createPreparedSketchCurveEditOperation(
           (entity) => entity.id
         ) as [SketchEntityId, SketchEntityId, SketchEntityId, SketchEntityId]
       };
-    case "offset":
-      return {
-        op: "sketch.offset",
-        sketchId: proposal.sketchId,
-        precondition,
-        source: proposal.source,
-        distance: proposal.distance,
-        side: proposal.side,
-        ...(proposal.referencePoint
-          ? { referencePoint: proposal.referencePoint }
-          : {}),
-        createdEntityIds: []
-      };
   }
+}
+
+function cloneSketchOffsetSource(
+  source: SketchOffsetOp["source"]
+): SketchOffsetOp["source"] {
+  return source.kind === "entity"
+    ? { ...source }
+    : {
+        ...source,
+        segments: source.segments.map((segment) => ({ ...segment }))
+      };
+}
+
+function createPreparedSketchOffsetOperation(
+  proposal: Extract<SketchCurveEditProposal, { readonly kind: "offset" }>,
+  precondition: PreparedSketchCurveEditOp["precondition"],
+  plan: MaterializedSketchOffsetPlan
+): Extract<PreparedSketchCurveEditOp, { readonly op: "sketch.offset" }> {
+  return {
+    op: "sketch.offset",
+    sketchId: proposal.sketchId,
+    precondition: { ...precondition },
+    source: cloneSketchOffsetSource(proposal.source),
+    distance: proposal.distance,
+    side: proposal.side,
+    ...(proposal.referencePoint
+      ? { referencePoint: [...proposal.referencePoint] }
+      : {}),
+    createdEntityIds: plan.materialized.entities.map((entity) => entity.id)
+  };
 }
 
 function createSketchCurveEditReadinessResponse({
@@ -25036,16 +25415,37 @@ function createSketchCurveEditReadinessResponse({
     query: "sketch.curveEditReadiness",
     cadOpsVersion,
     status: "ready",
-    preparedOperation: createPreparedSketchCurveEditOperation(
-      proposal,
-      {
-        expectedSourceRevision: evidence.sourceRevision,
-        expectedSolverEvaluationIdentity: evidence.solverEvaluationIdentity
-      },
-      prepared.plan,
-      prepared.impactResult.impact
-    ),
-    impact: prepared.impactResult.impact,
+    preparedOperation:
+      prepared.mode === "offset"
+        ? createPreparedSketchOffsetOperation(
+            proposal as Extract<
+              SketchCurveEditProposal,
+              { readonly kind: "offset" }
+            >,
+            {
+              expectedSourceRevision: evidence.sourceRevision,
+              expectedSolverEvaluationIdentity:
+                evidence.solverEvaluationIdentity
+            },
+            prepared.plan
+          )
+        : createPreparedSketchCurveEditOperation(
+            proposal as Exclude<
+              SketchCurveEditProposal,
+              { readonly kind: "offset" }
+            >,
+            {
+              expectedSourceRevision: evidence.sourceRevision,
+              expectedSolverEvaluationIdentity:
+                evidence.solverEvaluationIdentity
+            },
+            prepared.plan,
+            prepared.impactResult.impact
+          ),
+    impact:
+      prepared.mode === "offset"
+        ? prepared.impact
+        : prepared.impactResult.impact,
     preview: prepared.preview,
     diagnostics: []
   };
@@ -25121,13 +25521,11 @@ function addVec3(left: Vec3, right: Vec3): Vec3 {
 }
 
 function createMaterializedSketchCurveEditOperation(
-  op: SketchCurveEditOp,
+  op: Exclude<SketchCurveEditOp, { readonly op: "sketch.offset" }>,
   plan: MaterializedSketchCurveEditPlan
 ): PreparedSketchCurveEditOp {
-  const deleteConstraintIds =
-    op.op === "sketch.offset" ? undefined : (op.deleteConstraintIds ?? []);
-  const deleteDimensionIds =
-    op.op === "sketch.offset" ? undefined : (op.deleteDimensionIds ?? []);
+  const deleteConstraintIds = op.deleteConstraintIds ?? [];
+  const deleteDimensionIds = op.deleteDimensionIds ?? [];
   switch (op.op) {
     case "sketch.trim":
       return {
@@ -25162,9 +25560,20 @@ function createMaterializedSketchCurveEditOperation(
         deleteConstraintIds: deleteConstraintIds!,
         deleteDimensionIds: deleteDimensionIds!
       };
-    case "sketch.offset":
-      return { ...op, createdEntityIds: [] };
   }
+}
+
+function createMaterializedSketchOffsetOperation(
+  op: SketchOffsetOp,
+  plan: MaterializedSketchOffsetPlan
+): Extract<PreparedSketchCurveEditOp, { readonly op: "sketch.offset" }> {
+  return {
+    ...op,
+    precondition: { ...op.precondition },
+    source: cloneSketchOffsetSource(op.source),
+    ...(op.referencePoint ? { referencePoint: [...op.referencePoint] } : {}),
+    createdEntityIds: plan.materialized.entities.map((entity) => entity.id)
+  };
 }
 
 function assertReplayedCurveEditIsMaterialized(
@@ -25210,9 +25619,15 @@ function throwCurveEditPreparationFailure(
       case "SKETCH_EDIT_PICK_OFF_CURVE":
       case "SKETCH_EDIT_ZERO_LENGTH_RESULT":
       case "SKETCH_EDIT_SOLVER_STATE_BLOCKED":
+      case "SKETCH_OFFSET_SIDE_AMBIGUOUS":
+      case "SKETCH_OFFSET_RADIUS_COLLAPSED":
+      case "SKETCH_OFFSET_JOIN_UNSUPPORTED":
+      case "SKETCH_OFFSET_SELF_INTERSECTION":
         return diagnostic.code;
       case "SKETCH_EDIT_INVALID_PROPOSAL":
-        return "INVALID_OPERATION";
+        return op.op === "sketch.offset"
+          ? "SKETCH_EDIT_INVALID_PROPOSAL"
+          : "INVALID_OPERATION";
       default:
         return "SKETCH_EDIT_TARGET_UNSUPPORTED";
     }
@@ -25231,6 +25646,61 @@ function throwCurveEditPreparationFailure(
     path: operationPath(opIndex),
     ...(diagnostic?.expected ? { expected: diagnostic.expected } : {}),
     ...(diagnostic?.received ? { received: diagnostic.received } : {})
+  });
+}
+
+function applyPreparedSketchOffset(
+  op: Extract<PreparedSketchCurveEditOp, { readonly op: "sketch.offset" }>,
+  plan: MaterializedSketchOffsetPlan,
+  impact: SketchCurveEditImpact,
+  state: MutableDocumentState,
+  diff: MutableSemanticDiff,
+  opIndex: number
+): void {
+  const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+  const collidingEntityId = plan.materialized.entities.find((entity) =>
+    hasSketchEntityId(state.sketches, entity.id)
+  )?.id;
+  if (collidingEntityId !== undefined) {
+    throwValidationError({
+      code: "SKETCH_ENTITY_ALREADY_EXISTS",
+      message: `Offset output entity already exists in the document: ${collidingEntityId}.`,
+      opIndex,
+      op: op.op,
+      sketchId: op.sketchId,
+      sketchEntityId: collidingEntityId,
+      path: operationPath(opIndex, "createdEntityIds"),
+      expected: "document-wide unused sketch entity ID",
+      received: collidingEntityId
+    });
+  }
+
+  const afterEntities = new Map(sketch.entities);
+  for (const entity of plan.materialized.entities) {
+    afterEntities.set(entity.id, cloneSketchEntity(entity));
+  }
+  const postSketch = { ...sketch, entities: afterEntities };
+  state.sketches.set(sketch.id, postSketch);
+
+  const createdEntityIds: SketchEntityId[] = [];
+  for (const entity of plan.materialized.entities) {
+    createdEntityIds.push(entity.id);
+    pushSketchEntityCreated(diff, sketchEntityRef(sketch.id, entity));
+    pushSketchEntityChange(
+      diff,
+      createSketchEntityAddedDiff(sketch.id, entity)
+    );
+  }
+  pushSketchCurveEdit(diff, {
+    ...impact,
+    opIndex,
+    createdEntityIds,
+    modifiedEntityIds: [],
+    deletedEntityIds: [],
+    retargetedConstraintIds: [],
+    deletedConstraintIds: [],
+    retargetedDimensionIds: [],
+    deletedDimensionIds: []
   });
 }
 
@@ -25377,6 +25847,226 @@ function applyPreparedSketchCurveEdit(
   });
 }
 
+type SketchConvenienceOp = Extract<
+  CadOp,
+  {
+    readonly op: "sketch.addSlot" | "sketch.addRoundedRectangle";
+  }
+>;
+
+function isSketchConvenienceOp(op: CadOp): op is SketchConvenienceOp {
+  return op.op === "sketch.addSlot" || op.op === "sketch.addRoundedRectangle";
+}
+
+function collectOccupiedSketchEntityIds(
+  sketches: ReadonlyMap<SketchId, Sketch>
+): ReadonlySet<SketchEntityId> {
+  return new Set(
+    [...sketches.values()].flatMap((sketch) => [...sketch.entities.keys()])
+  );
+}
+
+function planSketchConvenienceOperation(
+  op: SketchConvenienceOp,
+  state: MutableDocumentState
+):
+  | {
+      readonly status: "ready";
+      readonly plan: SketchConveniencePlan;
+    }
+  | {
+      readonly status: "blocked";
+      readonly diagnostics: readonly SketchConveniencePlanDiagnostic[];
+    } {
+  const options = {
+    occupiedEntityIds: collectOccupiedSketchEntityIds(state.sketches),
+    occupiedConstraintIds: new Set(state.sketchConstraints.keys())
+  };
+  return op.op === "sketch.addSlot"
+    ? planSketchSlot(op, options)
+    : planSketchRoundedRectangle(op, options);
+}
+
+function throwSketchConveniencePlanningFailure(
+  op: SketchConvenienceOp,
+  diagnostic: SketchConveniencePlanDiagnostic | undefined,
+  opIndex: number
+): never {
+  throwValidationError({
+    code:
+      diagnostic?.code === "SKETCH_CONVENIENCE_GEOMETRY_INVALID"
+        ? "INVALID_SKETCH_ENTITY"
+        : "INVALID_OPERATION",
+    message:
+      diagnostic?.message ??
+      "Sketch convenience operation could not be planned.",
+    opIndex,
+    op: op.op,
+    sketchId: op.sketchId,
+    path: operationPath(opIndex, diagnostic?.path),
+    expected: diagnostic?.expected,
+    received: diagnostic?.received
+  });
+}
+
+function assertV19SketchConvenienceOp(
+  op: SketchConvenienceOp,
+  opIndex: number
+): void {
+  const validation = validateV19CadOp(op);
+  if (validation.ok) return;
+  const issue = validation.issues[0];
+  const field =
+    issue?.path === "$"
+      ? undefined
+      : issue?.path?.startsWith("$.")
+        ? issue.path.slice(2)
+        : issue?.path;
+  throwValidationError({
+    code: "INVALID_OPERATION",
+    message:
+      issue?.message ?? "Sketch convenience operation failed V19 validation.",
+    opIndex,
+    op: op.op,
+    sketchId: op.sketchId,
+    path: operationPath(opIndex, field),
+    expected: "valid V19 sketch convenience operation",
+    received: op.op
+  });
+}
+
+function assertReplayedSketchConvenienceIsMaterialized(
+  op: SketchConvenienceOp,
+  opIndex: number
+): void {
+  const expectedEntityCount = op.op === "sketch.addSlot" ? 4 : 8;
+  const expectedConstraintCount = op.op === "sketch.addSlot" ? 9 : 23;
+  if (
+    op.entityIds?.length === expectedEntityCount &&
+    op.constraintIds?.length === expectedConstraintCount
+  ) {
+    return;
+  }
+  throwValidationError({
+    code: "INVALID_OPERATION",
+    message:
+      "Saved sketch convenience operations must contain their complete materialized entityIds and constraintIds tuples.",
+    opIndex,
+    op: op.op,
+    sketchId: op.sketchId,
+    path: operationPath(
+      opIndex,
+      op.entityIds?.length === expectedEntityCount
+        ? "constraintIds"
+        : "entityIds"
+    ),
+    expected: `${expectedEntityCount} entity ids and ${expectedConstraintCount} constraint ids`,
+    received: `${op.entityIds?.length ?? 0} entity ids and ${
+      op.constraintIds?.length ?? 0
+    } constraint ids`
+  });
+}
+
+function createMaterializedSketchConvenienceOperation(
+  op: SketchConvenienceOp,
+  entityIds: readonly SketchEntityId[],
+  constraintIds: readonly SketchConstraintId[]
+): SketchConvenienceOp {
+  if (op.op === "sketch.addSlot") {
+    return {
+      ...op,
+      centerlineStart: [...op.centerlineStart],
+      centerlineEnd: [...op.centerlineEnd],
+      entityIds: [...entityIds],
+      constraintIds: [...constraintIds]
+    } as unknown as SketchConvenienceOp;
+  }
+  return {
+    ...op,
+    center: [...op.center],
+    entityIds: [...entityIds],
+    constraintIds: [...constraintIds]
+  } as unknown as SketchConvenienceOp;
+}
+
+function applyMaterializedSketchConvenienceOperation(
+  op: SketchConvenienceOp,
+  plan: SketchConveniencePlan,
+  state: MutableDocumentState,
+  diff: MutableSemanticDiff,
+  opIndex: number
+): void {
+  if (!plan.materialized) {
+    throw new Error(
+      "A sketch convenience plan must be materialized before application."
+    );
+  }
+
+  for (const entity of plan.materialized.entities) {
+    const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+    addSketchEntity(
+      state.sketches,
+      sketch,
+      cloneSketchEntity(entity),
+      diff,
+      opIndex
+    );
+  }
+
+  for (const constraintOp of plan.materialized.constraintOps) {
+    const storedOp = normalizeV22ConstraintCreateOpForStorage(constraintOp);
+    const constraint = createSketchConstraintFromOp(
+      state,
+      storedOp,
+      storedOp.id!,
+      opIndex
+    );
+    addSketchConstraint(state.sketchConstraints, constraint, diff, opIndex);
+  }
+
+  const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+  const solverDocument = createSketchSolverDocumentFromState(state);
+  const evaluation = evaluateSketch(solverDocument, sketch);
+  const probe = runSketchSolverPackageProbe(
+    createLegacySketchSolverDocumentProjection(solverDocument),
+    sketch
+  );
+  const numericalStatus = probe.result?.status ?? "not-run";
+  if (
+    (evaluation.status !== "healthy" &&
+      evaluation.status !== "under-defined") ||
+    (numericalStatus !== "converged" && numericalStatus !== "under-defined")
+  ) {
+    const issue = evaluation.issues[0];
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message:
+        issue?.message ??
+        `Sketch convenience operation produced blocked solver status: ${numericalStatus}.`,
+      opIndex,
+      op: op.op,
+      sketchId: op.sketchId,
+      sketchConstraintId:
+        issue && "sketchConstraintId" in issue
+          ? issue.sketchConstraintId
+          : undefined,
+      sketchEntityId:
+        issue && "sketchEntityId" in issue ? issue.sketchEntityId : undefined,
+      path: operationPath(opIndex),
+      expected: "healthy or under-defined sketch solver result",
+      received: `${evaluation.status}/${numericalStatus}`
+    });
+  }
+
+  pushSketchConvenienceOperation(diff, {
+    opIndex,
+    sketchId: op.sketchId,
+    operation: plan.operation,
+    createdEntityIds: [...op.entityIds!],
+    createdConstraintIds: [...op.constraintIds!]
+  });
+}
+
 function runOperations(
   ops: readonly CadOp[],
   document: CadDocument,
@@ -25485,6 +26175,58 @@ function runOperations(
         nextBodyNumber = result.nextBodyNumber;
         return result.id;
       };
+      if (isSketchConvenienceOp(op)) {
+        assertV19SketchConvenienceOp(op, opIndex);
+        getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+        const initialPlanning = planSketchConvenienceOperation(op, state);
+        if (initialPlanning.status === "blocked") {
+          throwSketchConveniencePlanningFailure(
+            op,
+            initialPlanning.diagnostics[0],
+            opIndex
+          );
+        }
+        if (requireMaterializedCurveEditHistory) {
+          assertReplayedSketchConvenienceIsMaterialized(op, opIndex);
+        }
+        const entityIds =
+          op.entityIds ??
+          Array.from(
+            { length: initialPlanning.plan.requiredEntityIdCount },
+            allocateSketchEntityId
+          );
+        const constraintIds =
+          op.constraintIds ??
+          Array.from(
+            { length: initialPlanning.plan.requiredConstraintIdCount },
+            allocateSketchConstraintId
+          );
+        const appliedOp = createMaterializedSketchConvenienceOperation(
+          op,
+          entityIds,
+          constraintIds
+        );
+        const materializedPlanning = planSketchConvenienceOperation(
+          appliedOp,
+          state
+        );
+        if (materializedPlanning.status === "blocked") {
+          throwSketchConveniencePlanningFailure(
+            appliedOp,
+            materializedPlanning.diagnostics[0],
+            opIndex
+          );
+        }
+        applyMaterializedSketchConvenienceOperation(
+          appliedOp,
+          materializedPlanning.plan,
+          state,
+          diff,
+          opIndex
+        );
+        appliedOps.push(appliedOp);
+        continue;
+      }
       if (isSketchCurveEditOp(op)) {
         if (requireMaterializedCurveEditHistory) {
           assertReplayedCurveEditIsMaterialized(op, opIndex);
@@ -25508,19 +26250,45 @@ function runOperations(
             opIndex
           );
         }
-        const appliedOp = createMaterializedSketchCurveEditOperation(
-          op,
-          preparation.plan
-        );
-        applyPreparedSketchCurveEdit(
-          appliedOp,
-          preparation.plan,
-          preparation.impactResult,
-          state,
-          diff,
-          opIndex
-        );
-        appliedOps.push(appliedOp);
+        if (preparation.mode === "offset") {
+          if (op.op !== "sketch.offset") {
+            throw new Error(
+              "Offset preparation returned for a non-offset curve edit."
+            );
+          }
+          const appliedOp = createMaterializedSketchOffsetOperation(
+            op,
+            preparation.plan
+          );
+          applyPreparedSketchOffset(
+            appliedOp,
+            preparation.plan,
+            preparation.impact,
+            state,
+            diff,
+            opIndex
+          );
+          appliedOps.push(appliedOp);
+        } else {
+          if (op.op === "sketch.offset") {
+            throw new Error(
+              "Replacement preparation returned for a sketch offset."
+            );
+          }
+          const appliedOp = createMaterializedSketchCurveEditOperation(
+            op,
+            preparation.plan
+          );
+          applyPreparedSketchCurveEdit(
+            appliedOp,
+            preparation.plan,
+            preparation.impactResult,
+            state,
+            diff,
+            opIndex
+          );
+          appliedOps.push(appliedOp);
+        }
         continue;
       }
       applyOperation(
@@ -36408,15 +37176,22 @@ function isUniqueStringArray(value: unknown): value is readonly string[] {
 }
 
 function isSketchConvenienceSemanticDiffShape(value: unknown): boolean {
+  if (
+    !isRecord(value) ||
+    !Number.isInteger(value.opIndex) ||
+    (value.opIndex as number) < 0 ||
+    typeof value.sketchId !== "string" ||
+    (value.operation !== "slot" && value.operation !== "roundedRectangle")
+  ) {
+    return false;
+  }
+  const expectedEntityCount = value.operation === "slot" ? 4 : 8;
+  const expectedConstraintCount = value.operation === "slot" ? 9 : 23;
   return (
-    isRecord(value) &&
-    Number.isInteger(value.opIndex) &&
-    typeof value.sketchId === "string" &&
-    (value.operation === "slot" || value.operation === "roundedRectangle") &&
-    Array.isArray(value.createdEntityIds) &&
-    value.createdEntityIds.every((id) => typeof id === "string") &&
-    Array.isArray(value.createdConstraintIds) &&
-    value.createdConstraintIds.every((id) => typeof id === "string")
+    isUniqueStringArray(value.createdEntityIds) &&
+    value.createdEntityIds.length === expectedEntityCount &&
+    isUniqueStringArray(value.createdConstraintIds) &&
+    value.createdConstraintIds.length === expectedConstraintCount
   );
 }
 

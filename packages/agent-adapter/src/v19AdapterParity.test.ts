@@ -1102,7 +1102,10 @@ describe("V19 agent adapter parity", () => {
               sketchId: "sketch_1",
               operation: "slot",
               createdEntityIds: ["slot_1", "slot_2", "slot_3", "slot_4"],
-              createdConstraintIds: ["slot_c1"]
+              createdConstraintIds: Array.from(
+                { length: 9 },
+                (_, index) => `slot_c${index + 1}`
+              )
             }
           ]
         },

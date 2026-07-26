@@ -145,6 +145,7 @@ interface StructuralRecords {
 
 interface ResidualEvaluationReady {
   readonly status: "ready";
+  readonly solverStatus: CadSketchSolverStatus;
   readonly build: SketchSolverPackageModelBuild;
   readonly evaluation: SketchInitialResidualEvaluation;
 }
@@ -152,6 +153,28 @@ interface ResidualEvaluationReady {
 type ResidualEvaluationResult =
   | ResidualEvaluationReady
   | SketchCurveEditResidualBlocked;
+
+export interface ExactSketchAuthoredResidualStateReady {
+  readonly status: "ready";
+  readonly solverStatus: CadSketchSolverStatus;
+  readonly build: SketchSolverPackageModelBuild;
+  readonly evaluation: SketchInitialResidualEvaluation;
+}
+
+export interface ExactSketchAuthoredResidualStateBlocked {
+  readonly status: "blocked";
+  readonly message: string;
+  readonly build: SketchSolverPackageModelBuild;
+  readonly evaluation: SketchInitialResidualEvaluation;
+  readonly expectedConstraintIds: readonly SketchConstraintId[];
+  readonly mappedConstraintIds: readonly SketchConstraintId[];
+  readonly expectedDimensionIds: readonly SketchDimensionId[];
+  readonly mappedDimensionIds: readonly SketchDimensionId[];
+}
+
+export type ExactSketchAuthoredResidualStateResult =
+  | ExactSketchAuthoredResidualStateReady
+  | ExactSketchAuthoredResidualStateBlocked;
 
 /**
  * Classify every persisted solver record against one already-materialized
@@ -357,10 +380,7 @@ export function createSketchCurveEditImpact(
   const requiredDeleteDimensionIds = sortUniqueSketchCurveEditRecordIds([
     ...invalidDimensionIds
   ]);
-  const postEditSolverStatus =
-    finalResiduals.evaluation.records.length === 0
-      ? "not-run"
-      : mapPostEditSolverStatus(finalResiduals.evaluation);
+  const postEditSolverStatus = finalResiduals.solverStatus;
   if (
     postEditSolverStatus === "conflicting" ||
     postEditSolverStatus === "failed" ||
@@ -659,6 +679,34 @@ function evaluateExactResiduals({
   readonly sketch: SketchSolverSketch;
   readonly plan: MaterializedSketchCurveEditPlan;
 }): ResidualEvaluationResult {
+  const result = evaluateExactSketchAuthoredResidualState({
+    document,
+    sketch
+  });
+  if (result.status === "ready") return result;
+  return residualBlocked({
+    plan,
+    message: result.message,
+    build: result.build,
+    evaluation: result.evaluation,
+    expectedConstraintIds: result.expectedConstraintIds,
+    expectedDimensionIds: result.expectedDimensionIds
+  });
+}
+
+/**
+ * Classify one exact authored sketch state without allowing a free solve.
+ * Every authoritative solver record must map to exactly one residual record.
+ * This is shared by replacement curve edits and additive offset so their
+ * post-edit status policy cannot diverge.
+ */
+export function evaluateExactSketchAuthoredResidualState({
+  document,
+  sketch
+}: {
+  readonly document: SketchSolverDocument;
+  readonly sketch: SketchSolverSketch;
+}): ExactSketchAuthoredResidualStateResult {
   const build = createSketchSolveModelFromCadSource(document, sketch);
   const evaluation = evaluateSketchResidualsAtInitialState(build.model);
   const expectedConstraintIds = expectedRecordIds(
@@ -692,17 +740,27 @@ function evaluateExactResiduals({
     !sameOrderedIds(mappedDimensionIds, evaluatedDimensionIds) ||
     evaluation.status !== "evaluated"
   ) {
-    return residualBlocked({
-      plan,
+    return {
+      status: "blocked",
       message:
         "Post-edit solver records were unsupported, unmapped, duplicated, or blocked; exact residual evidence is required.",
       build,
       evaluation,
       expectedConstraintIds,
-      expectedDimensionIds
-    });
+      mappedConstraintIds,
+      expectedDimensionIds,
+      mappedDimensionIds
+    };
   }
-  return { status: "ready", build, evaluation };
+  return {
+    status: "ready",
+    solverStatus:
+      evaluation.records.length === 0
+        ? "not-run"
+        : mapPostEditSolverStatus(evaluation),
+    build,
+    evaluation
+  };
 }
 
 function expectedRecordIds<

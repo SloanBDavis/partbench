@@ -2502,6 +2502,7 @@ export type CadBatchValidationErrorCode =
   | "SKETCH_ARC_SOLVE_BRANCH_INVALID"
   | "SKETCH_ARC_DIMENSION_INVALID"
   | "SKETCH_ENTITY_CONSTRUCTION_INVALID"
+  | "SKETCH_EDIT_INVALID_PROPOSAL"
   | "SKETCH_EDIT_TARGET_UNSUPPORTED"
   | "SKETCH_EDIT_BOUNDARY_MISSING"
   | "SKETCH_EDIT_INTERSECTION_MISSING"
@@ -13044,6 +13045,7 @@ export function validateV19CadOp(
     value.op === "sketch.addRoundedRectangle"
   ) {
     const rounded = value.op === "sketch.addRoundedRectangle";
+    const linearTolerance = CAD_V19_SKETCH_GEOMETRY_POLICY.linearTolerance;
     validateExactRecord(
       value,
       "$",
@@ -13062,32 +13064,56 @@ export function validateV19CadOp(
       if (
         typeof value.width === "number" &&
         typeof value.height === "number" &&
-        typeof value.cornerRadius === "number" &&
-        value.cornerRadius * 2 >= Math.min(value.width, value.height)
+        typeof value.cornerRadius === "number"
       ) {
-        issues.push({
-          code: "INVALID_VALUE",
-          path: "$.cornerRadius",
-          message:
-            "A rounded-rectangle corner radius must be smaller than half its width and height."
-        });
+        if (value.cornerRadius <= linearTolerance) {
+          issues.push({
+            code: "INVALID_VALUE",
+            path: "$.cornerRadius",
+            message: `A rounded-rectangle corner radius must be greater than ${linearTolerance}.`
+          });
+        }
+        if (
+          value.width - 2 * value.cornerRadius <= linearTolerance ||
+          value.height - 2 * value.cornerRadius <= linearTolerance
+        ) {
+          issues.push({
+            code: "INVALID_VALUE",
+            path: "$.cornerRadius",
+            message:
+              "A rounded rectangle must leave every straight span above the shared linear tolerance."
+          });
+        }
       }
     } else {
       validateVec2(value.centerlineStart, "$.centerlineStart", issues);
       validateVec2(value.centerlineEnd, "$.centerlineEnd", issues);
       validatePositiveNumber(value.radius, "$.radius", issues);
+      if (typeof value.radius === "number" && value.radius <= linearTolerance) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: "$.radius",
+          message: `A slot radius must be greater than ${linearTolerance}.`
+        });
+      }
       if (
         Array.isArray(value.centerlineStart) &&
         Array.isArray(value.centerlineEnd) &&
         value.centerlineStart.length === 2 &&
         value.centerlineEnd.length === 2 &&
-        value.centerlineStart[0] === value.centerlineEnd[0] &&
-        value.centerlineStart[1] === value.centerlineEnd[1]
+        typeof value.centerlineStart[0] === "number" &&
+        typeof value.centerlineStart[1] === "number" &&
+        typeof value.centerlineEnd[0] === "number" &&
+        typeof value.centerlineEnd[1] === "number" &&
+        Math.hypot(
+          value.centerlineEnd[0] - value.centerlineStart[0],
+          value.centerlineEnd[1] - value.centerlineStart[1]
+        ) <= linearTolerance
       ) {
         issues.push({
           code: "INVALID_VALUE",
           path: "$.centerlineEnd",
-          message: "A slot centerline must have positive length."
+          message: `A slot centerline must be longer than ${linearTolerance}.`
         });
       }
     }
