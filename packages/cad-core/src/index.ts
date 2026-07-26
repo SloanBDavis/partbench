@@ -169,6 +169,7 @@ import type {
   SketchConstraintSnapshotV20,
   SketchDimensionId,
   SketchDimensionSnapshot,
+  SketchDimensionSnapshotV22,
   SketchDimensionTarget,
   SketchDimensionValueSource,
   SketchDimensionSemanticDiff,
@@ -190,6 +191,7 @@ import type {
   Vec3
 } from "@web-cad/cad-protocol";
 import {
+  cloneSketchDimensionTargetV22,
   downconvertSketchDimensionSnapshotV22,
   getSketchDimensionTargetEntityIdsV22,
   getSketchDimensionTargetKeyV22,
@@ -471,7 +473,6 @@ import { createProjectHealth } from "./projectHealth";
 import {
   applySketchConstraintValue,
   applySketchDimensionValue,
-  createLegacySketchSolverDocumentProjection,
   createSketchEvaluationQueryResponse,
   evaluateSketch,
   evaluateSketchGeometry,
@@ -523,6 +524,7 @@ import {
   applySketchSolveResultToCadEntities,
   runSketchSolverPackageProbe
 } from "./sketchSolverPackageMapping";
+import { planSketchConstraintUpdate } from "./sketchConstraintUpdate";
 import {
   createSketchProfileHealthEntries,
   createSketchProfileLifecycleEffects
@@ -6756,27 +6758,48 @@ function applyOperation(
     }
 
     case "sketch.dimension.create": {
-      if (op.entityId === undefined || "kind" in op.target) {
+      if (op.entityId !== undefined && "kind" in op.target) {
         throwValidationError({
-          code: "INVALID_SKETCH_DIMENSION",
+          code: "COMMAND_INPUT_AMBIGUOUS",
           message:
-            "Normalized V22 dimension commands are not implemented in this storage slice.",
+            "Sketch dimension create cannot mix legacy entityId with a normalized V22 target.",
           opIndex,
-          path: operationPath(opIndex)
+          sketchId: op.sketchId,
+          sketchEntityId: op.entityId,
+          path: operationPath(opIndex),
+          expected: "legacy entityId/target or normalized target",
+          received: "mixed legacy and normalized target fields"
         });
       }
-      const target = validateSketchDimensionTarget(state, op, opIndex);
-      const valueSource = createSketchDimensionValueSource(op, opIndex);
+      const normalizedTarget =
+        op.entityId === undefined && "kind" in op.target
+          ? validateSketchDimensionTargetV22(
+              state,
+              op.sketchId,
+              op.target,
+              opIndex
+            )
+          : undefined;
+      const target = normalizedTarget
+        ? undefined
+        : validateSketchDimensionTarget(state, op, opIndex);
+      const valueSource = createSketchDimensionValueSource(
+        op,
+        opIndex,
+        normalizedTarget
+      );
       const dimension: SketchDimension = {
         id: op.id ?? createSketchDimensionId(),
         name: normalizeSketchDimensionName(op.name, opIndex, op.id),
         sketchId: op.sketchId,
-        target: {
-          kind: "entityScalar",
-          entityId: op.entityId,
-          entityKind: target.entityKind,
-          role: target.role
-        } as SketchDimensionTargetV22,
+        target:
+          normalizedTarget ??
+          ({
+            kind: "entityScalar",
+            entityId: op.entityId,
+            entityKind: target!.entityKind,
+            role: target!.role
+          } as SketchDimensionTargetV22),
         valueSource
       };
 
@@ -6791,12 +6814,37 @@ function applyOperation(
         op.id,
         opIndex
       );
-      const valueSource = createSketchDimensionValueSource(op, opIndex);
+      const requestedTarget = "target" in op ? op.target : undefined;
+      const target =
+        requestedTarget === undefined
+          ? normalizeSketchDimensionSnapshotV22(existing).target
+          : validateSketchDimensionTargetV22(
+              state,
+              existing.sketchId,
+              requestedTarget,
+              opIndex
+            );
+      const valueSource = createSketchDimensionValueSource(
+        op,
+        opIndex,
+        requestedTarget !== undefined ||
+          sketchDimensionRequiresV22(
+            normalizeSketchDimensionSnapshotV22(existing)
+          )
+          ? target
+          : undefined
+      );
       const updated: SketchDimension = {
         ...existing,
+        target,
         valueSource
       };
 
+      assertSketchDimensionTargetAvailable(
+        state.sketchDimensions,
+        updated,
+        opIndex
+      );
       state.sketchDimensions.set(op.id, updated);
       pushSketchDimensionModified(diff, sketchDimensionRef(updated));
       applySketchDimensionToEntity(state, updated, diff, opIndex);
@@ -6842,6 +6890,42 @@ function applyOperation(
 
       addSketchConstraint(state.sketchConstraints, constraint, diff, opIndex);
       applySketchConstraintToEntity(state, constraint, diff, opIndex);
+      return;
+    }
+
+    case "sketch.constraint.update": {
+      const existing = getSketchConstraintOrThrow(
+        state.sketchConstraints,
+        op.id,
+        opIndex
+      );
+      const sketch = getSketchOrThrow(
+        state.sketches,
+        existing.sketchId,
+        opIndex
+      );
+      const planned = planSketchConstraintUpdate(existing, op, [
+        ...sketch.entities.values()
+      ]);
+      if (!planned.ok) {
+        throwValidationError({
+          code: "INVALID_SKETCH_CONSTRAINT",
+          message: planned.issue.message,
+          opIndex,
+          sketchId: existing.sketchId,
+          sketchConstraintId: existing.id,
+          path: operationPath(opIndex, planned.issue.path.replace(/^\$\./, "")),
+          expected: planned.issue.expected,
+          received: planned.issue.received
+        });
+      }
+      const updated = planned.constraint;
+      const remaining = new Map(state.sketchConstraints);
+      remaining.delete(existing.id);
+      assertSketchConstraintAvailable(remaining, updated, opIndex);
+      state.sketchConstraints.set(updated.id, updated);
+      pushSketchConstraintModified(diff, sketchConstraintRef(updated));
+      applySketchConstraintToEntity(state, updated, diff, opIndex);
       return;
     }
 
@@ -7968,6 +8052,7 @@ function isCadOperationKind(value: string): boolean {
     case "sketch.dimension.rename":
     case "sketch.dimension.delete":
     case "sketch.constraint.create":
+    case "sketch.constraint.update":
     case "sketch.constraint.rename":
     case "sketch.constraint.delete":
     case "feature.extrude":
@@ -10204,7 +10289,8 @@ function createSketchDimensionValueSource(
       readonly op: "sketch.dimension.create" | "sketch.dimension.update";
     }
   >,
-  opIndex: number
+  opIndex: number,
+  normalizedTarget?: SketchDimensionTargetV22
 ): SketchDimensionValueSource {
   const hasLiteral = op.value !== undefined;
   const hasParameter = op.parameterId !== undefined;
@@ -10223,6 +10309,17 @@ function createSketchDimensionValueSource(
   }
 
   if (hasParameter) {
+    if (normalizedTarget?.kind === "lineAngle") {
+      throwValidationError({
+        code: "SKETCH_DIMENSION_TARGET_UNSUPPORTED",
+        message: "Line-angle dimensions require a literal value source.",
+        opIndex,
+        sketchDimensionId: "id" in op ? op.id : undefined,
+        path: operationPath(opIndex, "parameterId"),
+        expected: "literal value source",
+        received: "parameter"
+      });
+    }
     return {
       type: "parameter",
       parameterId: op.parameterId
@@ -10232,12 +10329,24 @@ function createSketchDimensionValueSource(
   return {
     type: "literal",
     value:
-      "target" in op &&
-      op.target !== undefined &&
-      !("kind" in op.target) &&
-      op.target.entityKind === "arc"
-        ? validateArcDimensionValue(op.value, op.target.role, opIndex, "value")
-        : validatePositiveDimensionValue(op.value, opIndex, "value")
+      normalizedTarget !== undefined
+        ? validateV22DimensionValue(
+            op.value,
+            normalizedTarget,
+            opIndex,
+            "value"
+          )
+        : "target" in op &&
+            op.target !== undefined &&
+            !("kind" in op.target) &&
+            op.target.entityKind === "arc"
+          ? validateArcDimensionValue(
+              op.value,
+              op.target.role,
+              opIndex,
+              "value"
+            )
+          : validatePositiveDimensionValue(op.value, opIndex, "value")
   };
 }
 
@@ -10292,6 +10401,58 @@ function validatePositiveDimensionValue(
   return cleanMeasurementNumber(value);
 }
 
+function validateV22DimensionValue(
+  value: unknown,
+  target: SketchDimensionTargetV22,
+  opIndex: number,
+  field: string
+): number {
+  const valid =
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    (target.kind === "lineAngle"
+      ? value > SKETCH_GEOMETRY_POLICY.angularToleranceDegrees &&
+        value < 180 - SKETCH_GEOMETRY_POLICY.angularToleranceDegrees
+      : target.kind === "entityScalar" && target.role === "sweep"
+        ? value >= SKETCH_GEOMETRY_POLICY.angularToleranceDegrees &&
+          value <= 360 - SKETCH_GEOMETRY_POLICY.angularToleranceDegrees
+        : value >
+          (target.kind === "entityScalar" && target.role === "diameter"
+            ? 2 * SKETCH_GEOMETRY_POLICY.linearTolerance
+            : SKETCH_GEOMETRY_POLICY.linearTolerance));
+
+  if (!valid) {
+    const angular = isAngularSketchDimensionTarget(target);
+    throwValidationError({
+      code:
+        target.kind === "lineAngle"
+          ? "SKETCH_DIMENSION_ANGLE_SENSE_INVALID"
+          : angular
+            ? "SKETCH_ARC_DIMENSION_INVALID"
+            : "SKETCH_DIMENSION_DISTANCE_INVALID",
+      message: "Sketch dimension value is outside the target family domain.",
+      opIndex,
+      path: operationPath(opIndex, field),
+      expected:
+        target.kind === "lineAngle"
+          ? `${SKETCH_GEOMETRY_POLICY.angularToleranceDegrees} < angle < ${
+              180 - SKETCH_GEOMETRY_POLICY.angularToleranceDegrees
+            }`
+          : target.kind === "entityScalar" && target.role === "sweep"
+            ? `${SKETCH_GEOMETRY_POLICY.angularToleranceDegrees} <= sweep <= ${
+                360 - SKETCH_GEOMETRY_POLICY.angularToleranceDegrees
+              }`
+            : `>${
+                target.kind === "entityScalar" && target.role === "diameter"
+                  ? 2 * SKETCH_GEOMETRY_POLICY.linearTolerance
+                  : SKETCH_GEOMETRY_POLICY.linearTolerance
+              }`,
+      received: describeReceived(value)
+    });
+  }
+  return cleanMeasurementNumber(value);
+}
+
 function validateSketchDimensionTarget(
   state: MutableDocumentState,
   op: Extract<CadOp, { readonly op: "sketch.dimension.create" }>,
@@ -10329,6 +10490,181 @@ function validateSketchDimensionTarget(
   return op.target;
 }
 
+function validateSketchDimensionTargetV22(
+  state: MutableDocumentState,
+  sketchId: SketchId,
+  target: SketchDimensionTargetV22,
+  opIndex: number
+): SketchDimensionTargetV22 {
+  if (!isSketchDimensionTargetV22(target)) {
+    throwValidationError({
+      code: "INVALID_SKETCH_DIMENSION",
+      message: "Sketch dimension target must use one exact normalized shape.",
+      opIndex,
+      sketchId,
+      path: operationPath(opIndex, "target"),
+      expected: "normalized V22 sketch dimension target",
+      received: describeReceived(target)
+    });
+  }
+
+  const sketch = getSketchOrThrow(state.sketches, sketchId, opIndex);
+  const requireEntity = (
+    entityId: SketchEntityId,
+    entityKind: SketchEntityKindV21,
+    field: string
+  ): SketchEntity => {
+    const entity = sketch.entities.get(entityId);
+    if (!entity) {
+      throwSketchEntityNotFound(sketchId, entityId, opIndex);
+    }
+    if (entity.kind !== entityKind) {
+      throwValidationError({
+        code: "SKETCH_DIMENSION_TARGET_UNSUPPORTED",
+        message: `Sketch dimension target declares ${entityKind}, but ${entityId} resolves to ${entity.kind}.`,
+        opIndex,
+        sketchId,
+        sketchEntityId: entityId,
+        path: operationPath(opIndex, field),
+        expected: entityKind,
+        received: entity.kind
+      });
+    }
+    return entity;
+  };
+  const requirePointTarget = (
+    point: Extract<
+      SketchDimensionTargetV22,
+      { readonly kind: "pointPair" }
+    >["primary"],
+    field: string
+  ): SketchEntity => {
+    const entity = requireEntity(point.entityId, point.entityKind, field);
+    const storedTarget: SketchPointTarget =
+      point.entityKind === "arc"
+        ? point
+        : { entityId: point.entityId, role: point.role };
+    if (!isSketchPointTargetSupported(entity, storedTarget)) {
+      throwValidationError({
+        code: "SKETCH_DIMENSION_TARGET_UNSUPPORTED",
+        message:
+          "Sketch dimension point target is not supported by its entity.",
+        opIndex,
+        sketchId,
+        sketchEntityId: point.entityId,
+        path: operationPath(opIndex, field),
+        expected: `supported ${entity.kind} point target`,
+        received: point.role
+      });
+    }
+    return entity;
+  };
+  const assertNonZeroLine = (entity: SketchEntity, field: string): void => {
+    if (
+      entity.kind === "line" &&
+      getLineLength(entity) <= SKETCH_GEOMETRY_POLICY.linearTolerance
+    ) {
+      throwValidationError({
+        code: "SKETCH_DIMENSION_DISTANCE_INVALID",
+        message: "Sketch dimension requires a non-zero line direction.",
+        opIndex,
+        sketchId,
+        sketchEntityId: entity.id,
+        path: operationPath(opIndex, field),
+        expected: `line length > ${SKETCH_GEOMETRY_POLICY.linearTolerance}`,
+        received: String(getLineLength(entity))
+      });
+    }
+  };
+
+  if (target.kind === "entityScalar") {
+    const entity = requireEntity(
+      target.entityId,
+      target.entityKind,
+      "target.entityId"
+    );
+    if (target.entityKind === "line") {
+      assertNonZeroLine(entity, "target.entityId");
+    }
+    return cloneSketchDimensionTargetV22(target);
+  }
+
+  if (target.kind === "pointPair") {
+    requirePointTarget(target.primary, "target.primary");
+    requirePointTarget(target.secondary, "target.secondary");
+    if (
+      target.primary.entityId === target.secondary.entityId &&
+      target.primary.entityKind === target.secondary.entityKind &&
+      target.primary.role === target.secondary.role
+    ) {
+      throwValidationError({
+        code: "SKETCH_DIMENSION_DISTANCE_INVALID",
+        message: "Point-pair dimension targets must be distinct.",
+        opIndex,
+        sketchId,
+        sketchEntityId: target.primary.entityId,
+        path: operationPath(opIndex, "target.secondary"),
+        expected: "distinct normalized point targets",
+        received: "same point target"
+      });
+    }
+    return cloneSketchDimensionTargetV22(target);
+  }
+
+  if (target.kind === "pointLineDistance") {
+    requirePointTarget(target.point, "target.point");
+    const line = requireEntity(
+      target.lineEntityId,
+      "line",
+      "target.lineEntityId"
+    );
+    assertNonZeroLine(line, "target.lineEntityId");
+    if (
+      target.point.entityKind === "line" &&
+      target.point.entityId === target.lineEntityId
+    ) {
+      throwValidationError({
+        code: "SKETCH_DIMENSION_DISTANCE_INVALID",
+        message:
+          "Point-line distance cannot target an endpoint of its owning line.",
+        opIndex,
+        sketchId,
+        sketchEntityId: target.lineEntityId,
+        path: operationPath(opIndex, "target.point"),
+        expected: "point target not owned by the support line",
+        received: `${target.point.entityId}.${target.point.role}`
+      });
+    }
+    return cloneSketchDimensionTargetV22(target);
+  }
+
+  if (target.primaryLineEntityId === target.secondaryLineEntityId) {
+    throwValidationError({
+      code: "SKETCH_DIMENSION_ANGLE_SENSE_INVALID",
+      message: "Line-angle dimension targets must be distinct.",
+      opIndex,
+      sketchId,
+      sketchEntityId: target.primaryLineEntityId,
+      path: operationPath(opIndex, "target.secondaryLineEntityId"),
+      expected: "two distinct line entity ids",
+      received: target.primaryLineEntityId
+    });
+  }
+  const primary = requireEntity(
+    target.primaryLineEntityId,
+    "line",
+    "target.primaryLineEntityId"
+  );
+  const secondary = requireEntity(
+    target.secondaryLineEntityId,
+    "line",
+    "target.secondaryLineEntityId"
+  );
+  assertNonZeroLine(primary, "target.primaryLineEntityId");
+  assertNonZeroLine(secondary, "target.secondaryLineEntityId");
+  return cloneSketchDimensionTargetV22(target);
+}
+
 function applySketchDimensionToEntity(
   state: MutableDocumentState,
   dimension: SketchDimension,
@@ -10336,25 +10672,34 @@ function applySketchDimensionToEntity(
   opIndex: number
 ): void {
   const normalizedDimension = normalizeSketchDimensionSnapshotV22(dimension);
+  const normalizedTarget = normalizedDimension.target;
   const legacyDimension =
-    downconvertSketchDimensionSnapshotV22(normalizedDimension);
+    normalizedTarget.kind === "entityScalar"
+      ? ({
+          id: normalizedDimension.id,
+          name: normalizedDimension.name,
+          sketchId: normalizedDimension.sketchId,
+          entityId: normalizedTarget.entityId,
+          target: {
+            entityKind: normalizedTarget.entityKind,
+            role:
+              normalizedTarget.role === "diameter"
+                ? "radius"
+                : normalizedTarget.role
+          },
+          valueSource: normalizedDimension.valueSource
+        } as SketchDimensionSnapshot)
+      : downconvertSketchDimensionSnapshotV22(normalizedDimension);
   if (!legacyDimension) {
-    throwValidationError({
-      code: "INVALID_SKETCH_DIMENSION",
-      message:
-        "This V22 dimension target requires the V19 numerical dimension slice.",
-      opIndex,
-      sketchId: dimension.sketchId,
-      sketchEntityId: getSketchDimensionTargetEntityIdsV22(
-        normalizedDimension.target
-      )[0],
-      sketchDimensionId: dimension.id,
-      path: operationPath(opIndex, "target"),
-      expected: "losslessly legacy-compatible entityScalar target",
-      received: normalizedDimension.target.kind
-    });
+    applyNumericalSketchDimension(state, normalizedDimension, diff, opIndex);
+    return;
   }
-  const value = resolveSketchDimensionValueOrThrow(state, dimension, opIndex);
+  const value =
+    resolveSketchDimensionValueOrThrow(state, dimension, opIndex) /
+    (normalizedTarget.kind === "entityScalar" &&
+    normalizedTarget.role === "diameter"
+      ? 2
+      : 1);
   const sketch = getSketchOrThrow(state.sketches, dimension.sketchId, opIndex);
   const existing = sketch.entities.get(legacyDimension.entityId);
 
@@ -10388,6 +10733,91 @@ function applySketchDimensionToEntity(
   updateSketchEntityAndDependents(state, sketch, entity, diff, opIndex);
 }
 
+function applyNumericalSketchDimension(
+  state: MutableDocumentState,
+  dimension: SketchDimensionSnapshotV22,
+  diff: MutableSemanticDiff,
+  opIndex: number
+): void {
+  resolveSketchDimensionValueOrThrow(state, dimension, opIndex);
+  const sketch = getSketchOrThrow(state.sketches, dimension.sketchId, opIndex);
+  const solverDocument = createSketchSolverDocumentFromState(state);
+  const probe = runSketchSolverPackageProbe(solverDocument, sketch);
+  const targetDiagnostic = probe.diagnostics.find(
+    (diagnostic) =>
+      diagnostic.sketchDimensionId === dimension.id &&
+      (diagnostic.code === "SKETCH_DIMENSION_ANGLE_SENSE_INVALID" ||
+        diagnostic.code === "SKETCH_DIMENSION_DISTANCE_INVALID" ||
+        diagnostic.code === "SKETCH_DIMENSION_TARGET_UNSUPPORTED" ||
+        diagnostic.severity === "blocker")
+  );
+  if (targetDiagnostic) {
+    const errorCode =
+      targetDiagnostic.code === "SKETCH_DIMENSION_ANGLE_SENSE_INVALID" ||
+      targetDiagnostic.code === "SKETCH_DIMENSION_DISTANCE_INVALID" ||
+      targetDiagnostic.code === "SKETCH_DIMENSION_TARGET_UNSUPPORTED"
+        ? targetDiagnostic.code
+        : "INVALID_SKETCH_DIMENSION";
+    throwValidationError({
+      code: errorCode,
+      message: targetDiagnostic.message,
+      opIndex,
+      sketchId: dimension.sketchId,
+      sketchEntityId: targetDiagnostic.sketchEntityId,
+      sketchDimensionId: dimension.id,
+      path: operationPath(opIndex, "target"),
+      expected: targetDiagnostic.expected,
+      received: targetDiagnostic.received
+    });
+  }
+  if (
+    !probe.result ||
+    probe.result.status === "failed" ||
+    probe.result.status === "unsupported" ||
+    probe.result.status === "not-run"
+  ) {
+    throwValidationError({
+      code: "INVALID_SKETCH_DIMENSION",
+      message: "Sketch dimension could not produce a valid numerical solve.",
+      opIndex,
+      sketchId: dimension.sketchId,
+      sketchDimensionId: dimension.id,
+      path: operationPath(opIndex, "target"),
+      expected: "converged, under-defined, or diagnosable conflicting solve",
+      received: probe.result?.status ?? "not-run"
+    });
+  }
+  if (probe.result.status === "conflicting") {
+    return;
+  }
+
+  const solvedEntities = applySketchSolveResultToCadEntities(
+    sketch,
+    probe.result
+  );
+  for (const [entityId, solvedEntity] of solvedEntities) {
+    const currentSketch = getSketchOrThrow(
+      state.sketches,
+      dimension.sketchId,
+      opIndex
+    );
+    const existing = currentSketch.entities.get(entityId);
+    if (
+      !existing ||
+      JSON.stringify(existing) === JSON.stringify(solvedEntity)
+    ) {
+      continue;
+    }
+    updateSketchEntityAndDependents(
+      state,
+      currentSketch,
+      solvedEntity,
+      diff,
+      opIndex
+    );
+  }
+}
+
 function reevaluateParameterDimensions(
   state: MutableDocumentState,
   parameterId: ParameterId,
@@ -10409,20 +10839,39 @@ function resolveSketchDimensionValueOrThrow(
   dimension: SketchDimension,
   opIndex: number
 ): number {
+  const normalized = normalizeSketchDimensionSnapshotV22(dimension);
   if (dimension.valueSource.type === "literal") {
-    return validatePositiveDimensionValue(
+    return validateV22DimensionValue(
       dimension.valueSource.value,
+      normalized.target,
       opIndex,
       "value"
     );
   }
 
+  if (normalized.target.kind === "lineAngle") {
+    throwValidationError({
+      code: "SKETCH_DIMENSION_TARGET_UNSUPPORTED",
+      message: "Line-angle dimensions require a literal value source.",
+      opIndex,
+      sketchId: dimension.sketchId,
+      sketchDimensionId: dimension.id,
+      path: operationPath(opIndex, "parameterId"),
+      expected: "literal value source",
+      received: "parameter"
+    });
+  }
   const parameter = getParameterOrThrow(
     state.parameters,
     dimension.valueSource.parameterId,
     opIndex
   );
-  return validatePositiveDimensionValue(parameter.value, opIndex, "value");
+  return validateV22DimensionValue(
+    parameter.value,
+    normalized.target,
+    opIndex,
+    "value"
+  );
 }
 
 function assertSketchDimensionTargetsStillValid(
@@ -10648,9 +11097,56 @@ function assertSketchConstraintAvailable(
       isLinePairSketchConstraint(candidate) &&
       isLinePairSketchConstraint(constraint)
     ) {
+      const samePair = unorderedIdPairEqual(
+        candidate.primaryLineEntityId,
+        candidate.secondaryLineEntityId,
+        constraint.primaryLineEntityId,
+        constraint.secondaryLineEntityId
+      );
+      if (
+        candidate.kind === "equalLength" ||
+        constraint.kind === "equalLength"
+      ) {
+        return (
+          candidate.kind === "equalLength" &&
+          constraint.kind === "equalLength" &&
+          samePair
+        );
+      }
+      return samePair;
+    }
+
+    if (candidate.kind === "tangent" && constraint.kind === "tangent") {
+      return unorderedIdPairEqual(
+        candidate.primaryTarget.entityId,
+        candidate.secondaryTarget.entityId,
+        constraint.primaryTarget.entityId,
+        constraint.secondaryTarget.entityId
+      );
+    }
+
+    if (
+      (candidate.kind === "concentric" || candidate.kind === "equalRadius") &&
+      candidate.kind === constraint.kind &&
+      (constraint.kind === "concentric" || constraint.kind === "equalRadius")
+    ) {
+      return unorderedIdPairEqual(
+        candidate.primaryTarget.entityId,
+        candidate.secondaryTarget.entityId,
+        constraint.primaryTarget.entityId,
+        constraint.secondaryTarget.entityId
+      );
+    }
+
+    if (candidate.kind === "symmetry" && constraint.kind === "symmetry") {
       return (
-        candidate.primaryLineEntityId === constraint.primaryLineEntityId &&
-        candidate.secondaryLineEntityId === constraint.secondaryLineEntityId
+        candidate.symmetryLineEntityId === constraint.symmetryLineEntityId &&
+        unorderedPointTargetPairEqual(
+          candidate.primaryTarget,
+          candidate.secondaryTarget,
+          constraint.primaryTarget,
+          constraint.secondaryTarget
+        )
       );
     }
 
@@ -10682,9 +11178,12 @@ function assertSketchConstraintAvailable(
             sketchPointTargetsEqual(existing.target, constraint.target)
           : isLinePairSketchConstraint(constraint)
             ? isLinePairSketchConstraint(existing) &&
-              existing.primaryLineEntityId === constraint.primaryLineEntityId &&
-              existing.secondaryLineEntityId ===
+              unorderedIdPairEqual(
+                existing.primaryLineEntityId,
+                existing.secondaryLineEntityId,
+                constraint.primaryLineEntityId,
                 constraint.secondaryLineEntityId
+              )
             : true);
 
   throwValidationError({
@@ -10730,6 +11229,32 @@ function assertSketchConstraintAvailable(
               : "undriven line orientation",
     received: existing.kind
   });
+}
+
+function unorderedIdPairEqual(
+  leftPrimary: string,
+  leftSecondary: string,
+  rightPrimary: string,
+  rightSecondary: string
+): boolean {
+  return (
+    (leftPrimary === rightPrimary && leftSecondary === rightSecondary) ||
+    (leftPrimary === rightSecondary && leftSecondary === rightPrimary)
+  );
+}
+
+function unorderedPointTargetPairEqual(
+  leftPrimary: SketchPointTarget,
+  leftSecondary: SketchPointTarget,
+  rightPrimary: SketchPointTarget,
+  rightSecondary: SketchPointTarget
+): boolean {
+  return (
+    (sketchPointTargetsEqual(leftPrimary, rightPrimary) &&
+      sketchPointTargetsEqual(leftSecondary, rightSecondary)) ||
+    (sketchPointTargetsEqual(leftPrimary, rightSecondary) &&
+      sketchPointTargetsEqual(leftSecondary, rightPrimary))
+  );
 }
 
 function getSketchConstraintOrThrow(
@@ -10792,7 +11317,11 @@ function createSketchConstraintFromOp(
     return createMidpointSketchConstraintFromOp(state, op, id, opIndex);
   }
 
-  if (op.kind === "parallel" || op.kind === "perpendicular") {
+  if (
+    op.kind === "parallel" ||
+    op.kind === "perpendicular" ||
+    op.kind === "equalLength"
+  ) {
     return createLinePairSketchConstraintFromOp(state, op, id, opIndex);
   }
 
@@ -10818,7 +11347,7 @@ function createSketchConstraintFromOp(
     opIndex,
     path: operationPath(opIndex, "kind"),
     expected:
-      "horizontal, vertical, fixed, coincident, midpoint, parallel, perpendicular, tangent, concentric, equalRadius, or symmetry",
+      "horizontal, vertical, fixed, coincident, midpoint, parallel, perpendicular, tangent, concentric, equalLength, equalRadius, or symmetry",
     received: describeReceived((op as { readonly kind?: unknown }).kind)
   });
 }
@@ -11061,14 +11590,18 @@ function createLinePairSketchConstraintFromOp(
     CadOp,
     {
       readonly op: "sketch.constraint.create";
-      readonly kind: "parallel" | "perpendicular";
+      readonly kind: "parallel" | "perpendicular" | "equalLength";
     }
   >,
   id: SketchConstraintId,
   opIndex: number
 ): SketchConstraint {
-  const label = op.kind === "parallel" ? "Parallel" : "Perpendicular";
-  const relation = op.kind === "parallel" ? "parallel" : "perpendicular";
+  const label =
+    op.kind === "parallel"
+      ? "Parallel"
+      : op.kind === "perpendicular"
+        ? "Perpendicular"
+        : "Equal length";
   const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
   const primaryLine = sketch.entities.get(op.primaryLineEntityId);
   const secondaryLine = sketch.entities.get(op.secondaryLineEntityId);
@@ -11140,7 +11673,7 @@ function createLinePairSketchConstraintFromOp(
     name: normalizeSketchConstraintName(op.name, opIndex, op.id),
     sketchId: op.sketchId,
     entityId: op.secondaryLineEntityId,
-    kind: relation,
+    kind: op.kind,
     primaryLineEntityId: op.primaryLineEntityId,
     secondaryLineEntityId: op.secondaryLineEntityId
   };
@@ -12142,9 +12675,13 @@ function isLinePairSketchConstraint(
   constraint: SketchConstraint
 ): constraint is Extract<
   SketchConstraint,
-  { readonly kind: "parallel" | "perpendicular" }
+  { readonly kind: "parallel" | "perpendicular" | "equalLength" }
 > {
-  return constraint.kind === "parallel" || constraint.kind === "perpendicular";
+  return (
+    constraint.kind === "parallel" ||
+    constraint.kind === "perpendicular" ||
+    constraint.kind === "equalLength"
+  );
 }
 
 function isSketchPointTargetRole(
@@ -12251,7 +12788,9 @@ function requiresNumericalSketchConstraintApplication(
   if (
     constraint.kind === "tangent" ||
     constraint.kind === "concentric" ||
+    constraint.kind === "equalLength" ||
     constraint.kind === "equalRadius" ||
+    constraint.kind === "angle" ||
     constraint.kind === "symmetry"
   ) {
     return true;
@@ -12275,7 +12814,7 @@ function applyNumericalSketchConstraint(
 ): void {
   const sketch = getSketchOrThrow(state.sketches, constraint.sketchId, opIndex);
   const probe = runSketchSolverPackageProbe(
-    createLegacySketchSolverDocumentProjection(state),
+    createSketchSolverDocumentFromState(state),
     sketch
   );
   const exactFailure = probe.diagnostics.find(
@@ -12944,7 +13483,7 @@ function applyDependentSketchConstraints(
     }
 
     if (
-      isLinePairSketchConstraint(constraint) &&
+      (constraint.kind === "parallel" || constraint.kind === "perpendicular") &&
       (constraint.primaryLineEntityId === entityId ||
         constraint.secondaryLineEntityId === entityId)
     ) {
@@ -26027,10 +26566,7 @@ function applyMaterializedSketchConvenienceOperation(
   const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
   const solverDocument = createSketchSolverDocumentFromState(state);
   const evaluation = evaluateSketch(solverDocument, sketch);
-  const probe = runSketchSolverPackageProbe(
-    createLegacySketchSolverDocumentProjection(solverDocument),
-    sketch
-  );
+  const probe = runSketchSolverPackageProbe(solverDocument, sketch);
   const numericalStatus = probe.result?.status ?? "not-run";
   if (
     (evaluation.status !== "healthy" &&
@@ -29950,6 +30486,7 @@ function validateSketchDimensionV22Source(
     typeof value.sketchId === "string" ? value.sketchId : undefined;
   const target = value.target;
   const expectedKindById = new Map<SketchEntityId, SketchEntityKindV21>();
+  const directionLineIds = new Set<SketchEntityId>();
   const addPointTarget = (point: {
     readonly entityId: SketchEntityId;
     readonly entityKind: SketchEntityKindV21;
@@ -29959,18 +30496,30 @@ function validateSketchDimensionV22Source(
   switch (target.kind) {
     case "entityScalar":
       expectedKindById.set(target.entityId, target.entityKind);
+      if (target.entityKind === "line") {
+        directionLineIds.add(target.entityId);
+      }
       break;
     case "pointPair":
       addPointTarget(target.primary);
       addPointTarget(target.secondary);
+      if (target.primary.entityKind === "line") {
+        directionLineIds.add(target.primary.entityId);
+      }
+      if (target.secondary.entityKind === "line") {
+        directionLineIds.add(target.secondary.entityId);
+      }
       break;
     case "pointLineDistance":
       addPointTarget(target.point);
       expectedKindById.set(target.lineEntityId, "line");
+      directionLineIds.add(target.lineEntityId);
       break;
     case "lineAngle":
       expectedKindById.set(target.primaryLineEntityId, "line");
       expectedKindById.set(target.secondaryLineEntityId, "line");
+      directionLineIds.add(target.primaryLineEntityId);
+      directionLineIds.add(target.secondaryLineEntityId);
       break;
   }
 
@@ -30000,6 +30549,27 @@ function validateSketchDimensionV22Source(
         "SCHEMA_V22_SOURCE_INVALID",
         `${path}.target`,
         `V22 sketch dimension target ${entityId} declares ${expectedKind} but resolves to ${entityRef.kind}.`
+      );
+    }
+    if (
+      directionLineIds.has(entityId) &&
+      entityRef.kind === "line" &&
+      isRecord(entityRef.entity) &&
+      isVec2(entityRef.entity.start) &&
+      isVec2(entityRef.entity.end) &&
+      getLineLength({
+        id: entityId,
+        kind: "line",
+        start: entityRef.entity.start,
+        end: entityRef.entity.end,
+        construction: false
+      }) <= SKETCH_GEOMETRY_POLICY.linearTolerance
+    ) {
+      addProjectIssue(
+        issues,
+        "SCHEMA_V22_SOURCE_INVALID",
+        `${path}.target`,
+        `V22 sketch dimension target ${entityId} requires a non-zero line direction.`
       );
     }
   }
@@ -31901,6 +32471,18 @@ function validateSketchDimensionValueSourceSnapshot(
 
   if (value.type === "literal") {
     if (
+      Object.keys(value).length !== 2 ||
+      !Object.prototype.hasOwnProperty.call(value, "value")
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_DIMENSION",
+        path,
+        "Literal sketch dimension valueSource must contain exactly type and value."
+      );
+      return undefined;
+    }
+    if (
       typeof value.value !== "number" ||
       !isPositiveFiniteNumber(value.value)
     ) {
@@ -31916,6 +32498,18 @@ function validateSketchDimensionValueSourceSnapshot(
   }
 
   if (value.type === "parameter") {
+    if (
+      Object.keys(value).length !== 2 ||
+      !Object.prototype.hasOwnProperty.call(value, "parameterId")
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_DIMENSION",
+        path,
+        "Parameter sketch dimension valueSource must contain exactly type and parameterId."
+      );
+      return undefined;
+    }
     if (
       typeof value.parameterId !== "string" ||
       value.parameterId.length === 0
@@ -36493,6 +37087,10 @@ function isCadOp(value: unknown): value is CadOp {
       return false;
     }
 
+    if (value.kind === "horizontal" || value.kind === "vertical") {
+      return typeof value.entityId === "string";
+    }
+
     if (value.kind === "fixed") {
       return (
         isSketchPointTarget(value.target) &&
@@ -36514,14 +37112,43 @@ function isCadOp(value: unknown): value is CadOp {
       );
     }
 
-    if (value.kind === "parallel" || value.kind === "perpendicular") {
+    if (
+      value.kind === "parallel" ||
+      value.kind === "perpendicular" ||
+      value.kind === "equalLength"
+    ) {
       return (
         typeof value.primaryLineEntityId === "string" &&
         typeof value.secondaryLineEntityId === "string"
       );
     }
 
-    return typeof value.entityId === "string";
+    if (value.kind === "tangent") {
+      return (
+        isSketchCurveConstraintTargetInput(value.primaryTarget) &&
+        isSketchCurveConstraintTargetInput(value.secondaryTarget)
+      );
+    }
+
+    if (value.kind === "concentric" || value.kind === "equalRadius") {
+      const normalized =
+        isSketchRadiusCurveTargetInput(value.primaryTarget) &&
+        isSketchRadiusCurveTargetInput(value.secondaryTarget);
+      const legacy =
+        typeof value.primaryCircleEntityId === "string" &&
+        typeof value.secondaryCircleEntityId === "string";
+      return normalized !== legacy && (normalized || legacy);
+    }
+
+    if (value.kind === "symmetry") {
+      return (
+        isSketchPointTarget(value.primaryTarget) &&
+        isSketchPointTarget(value.secondaryTarget) &&
+        typeof value.symmetryLineEntityId === "string"
+      );
+    }
+
+    return false;
   }
 
   if (value.op === "sketch.constraint.rename") {
@@ -38167,6 +38794,28 @@ function isSketchPointTarget(value: unknown): value is SketchPointTarget {
     isRecord(value) &&
     typeof value.entityId === "string" &&
     isSketchPointTargetRole(value.role)
+  );
+}
+
+function isSketchCurveConstraintTargetInput(
+  value: unknown
+): value is SketchCurveConstraintTargetV21 {
+  return (
+    isRecord(value) &&
+    typeof value.entityId === "string" &&
+    (value.entityKind === "line" ||
+      value.entityKind === "circle" ||
+      value.entityKind === "arc")
+  );
+}
+
+function isSketchRadiusCurveTargetInput(
+  value: unknown
+): value is SketchRadiusCurveTarget {
+  return (
+    isRecord(value) &&
+    typeof value.entityId === "string" &&
+    (value.entityKind === "circle" || value.entityKind === "arc")
   );
 }
 

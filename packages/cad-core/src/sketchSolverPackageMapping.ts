@@ -20,18 +20,18 @@ import type {
   CadSketchSolverDiagnosticCode,
   SketchConstraintSnapshot,
   SketchCurveConstraintTarget,
-  SketchDimensionSnapshot,
+  SketchDimensionSnapshotV22,
   SketchEntityId,
   SketchEntitySnapshot,
   SketchId,
   SketchPointTarget,
+  SketchPointTargetV22,
   SketchPlane
 } from "@web-cad/cad-protocol";
 import { SKETCH_GEOMETRY_POLICY } from "./sketchGeometryPolicy";
 import { createCanonicalSketchArcEntity } from "./sketchArcMath";
 import { cleanSketchNumber } from "./sketchNumber";
 import {
-  downconvertSketchDimensionSnapshotV22,
   normalizeSketchDimensionSnapshotV22,
   type SketchDimensionSnapshotCurrent
 } from "./v22SourceShapes";
@@ -184,26 +184,10 @@ export function createSketchSolveModelFromCadSource(
       continue;
     }
     const normalizedDimension = normalizeSketchDimensionSnapshotV22(dimension);
-    const legacyDimension =
-      downconvertSketchDimensionSnapshotV22(normalizedDimension);
-    if (!legacyDimension) {
-      diagnostics.push(
-        createMappingDiagnostic({
-          code: "SKETCH_SOLVER_UNSUPPORTED_ENTITY",
-          message:
-            "This V22 dimension remains source-backed until the V19 normalized dimension solver slice.",
-          sketchId: dimension.sketchId,
-          sketchDimensionId: dimension.id,
-          expected: "losslessly legacy-compatible entityScalar dimension",
-          received: normalizedDimension.target.kind
-        })
-      );
-      continue;
-    }
 
     const mapped = mapDimensionToSketchSolveDimension({
       document,
-      dimension: legacyDimension,
+      dimension: normalizedDimension,
       sketch,
       pointTargetIds,
       scalarIds,
@@ -869,7 +853,7 @@ function mapDimensionToSketchSolveDimension({
   arcIds
 }: {
   readonly document: SketchSolverPackageDocument;
-  readonly dimension: SketchDimensionSnapshot;
+  readonly dimension: SketchDimensionSnapshotV22;
   readonly sketch: SketchSolverPackageSketch;
   readonly pointTargetIds: ReadonlyMap<string, string>;
   readonly scalarIds: ReadonlyMap<SketchEntityId, string>;
@@ -882,6 +866,7 @@ function mapDimensionToSketchSolveDimension({
     dimension.valueSource.type === "literal"
       ? dimension.valueSource.value
       : document.parameters.get(dimension.valueSource.parameterId)?.value;
+  const primaryEntityId = getPrimaryDimensionEntityId(dimension);
 
   if (effectiveValue === undefined) {
     return {
@@ -892,7 +877,7 @@ function mapDimensionToSketchSolveDimension({
             "Driving dimension value cannot be evaluated for the numerical solver model.",
           sketchId: dimension.sketchId,
           sketchDimensionId: dimension.id,
-          sketchEntityId: dimension.entityId,
+          sketchEntityId: primaryEntityId,
           expected: "literal or resolved parameter value",
           received: "missing value"
         })
@@ -900,150 +885,428 @@ function mapDimensionToSketchSolveDimension({
     };
   }
 
-  if (
-    dimension.target.entityKind === "line" &&
-    dimension.target.role === "length"
-  ) {
-    const entity = sketch.entities.get(dimension.entityId);
+  if (!Number.isFinite(effectiveValue)) {
+    return {
+      diagnostics: [
+        createMappingDiagnostic({
+          code: "SKETCH_SOLVER_FAILED",
+          message:
+            "Driving dimension value must be finite before it enters the numerical solver model.",
+          sketchId: dimension.sketchId,
+          sketchDimensionId: dimension.id,
+          sketchEntityId: primaryEntityId,
+          expected: "finite effective value",
+          received: String(effectiveValue)
+        })
+      ]
+    };
+  }
 
-    if (!entity || entity.kind !== "line") {
+  if (dimension.target.kind === "entityScalar") {
+    const target = dimension.target;
+    const entity = sketch.entities.get(target.entityId);
+    if (!entity || entity.kind !== target.entityKind) {
       return {
         diagnostics: [
           createMappingDiagnostic({
             code: "SKETCH_SOLVER_MISSING_TARGET",
             message:
-              "Line length dimension target cannot be mapped to a solver line.",
+              "Scalar dimension target does not match its declared sketch entity kind.",
             sketchId: dimension.sketchId,
             sketchDimensionId: dimension.id,
-            sketchEntityId: dimension.entityId,
-            expected: "line entity",
+            sketchEntityId: target.entityId,
+            expected: `${target.entityKind}.${target.role}`,
             received: entity?.kind ?? "missing"
           })
         ]
       };
     }
 
-    const startPointId = pointIdForTarget(pointTargetIds, {
-      entityId: entity.id,
-      role: "start"
-    });
-    const endPointId = pointIdForTarget(pointTargetIds, {
-      entityId: entity.id,
-      role: "end"
-    });
-
-    if (!startPointId || !endPointId) {
+    if (target.entityKind === "rectangle") {
       return {
         diagnostics: [
           createMappingDiagnostic({
-            code: "SKETCH_SOLVER_MISSING_TARGET",
+            code: "SKETCH_SOLVER_UNSUPPORTED_ENTITY",
             message:
-              "Line length dimension endpoints cannot be mapped to solver points.",
+              "Rectangle width and height dimensions retain their source-backed direct-update behavior and do not add a numerical residual.",
             sketchId: dimension.sketchId,
             sketchDimensionId: dimension.id,
-            sketchEntityId: dimension.entityId,
-            expected: "line start and end solver points",
-            received: "missing endpoint"
+            sketchEntityId: target.entityId,
+            expected: "cad-core direct rectangle dimension update",
+            received: `rectangle.${target.role}`
           })
         ]
       };
     }
 
-    return {
-      dimension: {
-        id: dimension.id,
-        kind: "lineLength",
-        startPointId,
-        endPointId,
-        value: cleanSketchNumber(effectiveValue)
-      },
-      diagnostics: []
-    };
-  }
-
-  if (
-    dimension.target.entityKind === "circle" &&
-    dimension.target.role === "radius"
-  ) {
-    const radiusId = scalarIds.get(dimension.entityId);
-
-    if (!radiusId) {
+    if (target.entityKind === "line") {
+      const lineTarget = mapDimensionLineTarget({
+        dimension,
+        sketch,
+        pointTargetIds,
+        entityId: target.entityId,
+        label: "Line length dimension"
+      });
+      if (!lineTarget.target) {
+        return { diagnostics: lineTarget.diagnostics };
+      }
       return {
-        diagnostics: [
-          createMappingDiagnostic({
-            code: "SKETCH_SOLVER_MISSING_TARGET",
-            message:
+        dimension: {
+          id: dimension.id,
+          kind: "lineLength",
+          startPointId: lineTarget.target.startPointId,
+          endPointId: lineTarget.target.endPointId,
+          value: cleanSketchNumber(effectiveValue)
+        },
+        diagnostics: []
+      };
+    }
+
+    const solverValue =
+      target.role === "diameter" ? effectiveValue / 2 : effectiveValue;
+    if (target.entityKind === "circle") {
+      const radiusId = scalarIds.get(target.entityId);
+      if (!radiusId) {
+        return {
+          diagnostics: [
+            createDimensionTargetDiagnostic(
+              dimension,
+              target.entityId,
               "Circle radius dimension target cannot be mapped to a solver scalar.",
-            sketchId: dimension.sketchId,
-            sketchDimensionId: dimension.id,
-            sketchEntityId: dimension.entityId,
-            expected: "circle radius scalar",
-            received: "missing scalar"
-          })
-        ]
+              "circle radius scalar",
+              "missing scalar"
+            )
+          ]
+        };
+      }
+      return {
+        dimension: {
+          id: dimension.id,
+          kind: "circleRadius",
+          radiusId,
+          value: cleanSketchNumber(solverValue)
+        },
+        diagnostics: []
       };
     }
 
-    return {
-      dimension: {
-        id: dimension.id,
-        kind: "circleRadius",
-        radiusId,
-        value: cleanSketchNumber(effectiveValue)
-      },
-      diagnostics: []
-    };
-  }
-
-  if (dimension.target.entityKind === "arc") {
-    if (!arcIds.has(dimension.entityId)) {
+    if (!arcIds.has(target.entityId)) {
       return {
         diagnostics: [
-          createMappingDiagnostic({
-            code: "SKETCH_SOLVER_MISSING_TARGET",
-            message:
-              "Arc dimension target cannot be mapped to a solver arc variable.",
-            sketchId: dimension.sketchId,
-            sketchDimensionId: dimension.id,
-            sketchEntityId: dimension.entityId,
-            expected: "arc solver variable",
-            received: "missing arc"
-          })
+          createDimensionTargetDiagnostic(
+            dimension,
+            target.entityId,
+            "Arc dimension target cannot be mapped to a solver arc variable.",
+            "arc solver variable",
+            "missing arc"
+          )
         ]
       };
     }
-
     return {
       dimension: {
         id: dimension.id,
-        kind: dimension.target.role === "radius" ? "arcRadius" : "arcSweep",
-        arcId: dimension.entityId,
-        value: cleanSketchNumber(effectiveValue)
+        kind: target.role === "sweep" ? "arcSweep" : "arcRadius",
+        arcId: target.entityId,
+        value: cleanSketchNumber(solverValue)
       },
       diagnostics: []
     };
   }
 
+  if (dimension.target.kind === "pointPair") {
+    const primary = mapDimensionPointTarget({
+      dimension,
+      sketch,
+      pointTargetIds,
+      arcIds,
+      target: dimension.target.primary,
+      label: "Primary point-pair"
+    });
+    const secondary = mapDimensionPointTarget({
+      dimension,
+      sketch,
+      pointTargetIds,
+      arcIds,
+      target: dimension.target.secondary,
+      label: "Secondary point-pair"
+    });
+    const diagnostics = [...primary.diagnostics, ...secondary.diagnostics];
+    if (!primary.target || !secondary.target) {
+      return { diagnostics };
+    }
+    if (dimension.target.measurement === "distance") {
+      return {
+        dimension: {
+          id: dimension.id,
+          kind: "pointDistance",
+          primaryTarget: primary.target,
+          secondaryTarget: secondary.target,
+          value: cleanSketchNumber(effectiveValue)
+        },
+        diagnostics
+      };
+    }
+    return {
+      dimension: {
+        id: dimension.id,
+        kind: "pointComponent",
+        primaryTarget: primary.target,
+        secondaryTarget: secondary.target,
+        axis: dimension.target.measurement,
+        value: cleanSketchNumber(
+          dimension.target.direction === "positive"
+            ? effectiveValue
+            : -effectiveValue
+        )
+      },
+      diagnostics
+    };
+  }
+
+  if (dimension.target.kind === "pointLineDistance") {
+    const point = mapDimensionPointTarget({
+      dimension,
+      sketch,
+      pointTargetIds,
+      arcIds,
+      target: dimension.target.point,
+      label: "Point-line distance point"
+    });
+    const line = mapDimensionLineTarget({
+      dimension,
+      sketch,
+      pointTargetIds,
+      entityId: dimension.target.lineEntityId,
+      label: "Point-line distance support"
+    });
+    const diagnostics = [...point.diagnostics, ...line.diagnostics];
+    if (!point.target || !line.target) {
+      return { diagnostics };
+    }
+    return {
+      dimension: {
+        id: dimension.id,
+        kind: "pointLineDistance",
+        pointTarget: point.target,
+        lineTarget: line.target,
+        side: dimension.target.side,
+        value: cleanSketchNumber(effectiveValue)
+      },
+      diagnostics
+    };
+  }
+
+  const primaryLine = mapDimensionLineTarget({
+    dimension,
+    sketch,
+    pointTargetIds,
+    entityId: dimension.target.primaryLineEntityId,
+    label: "Primary line-angle"
+  });
+  const secondaryLine = mapDimensionLineTarget({
+    dimension,
+    sketch,
+    pointTargetIds,
+    entityId: dimension.target.secondaryLineEntityId,
+    label: "Secondary line-angle"
+  });
+  const diagnostics = [
+    ...primaryLine.diagnostics,
+    ...secondaryLine.diagnostics
+  ];
+  if (!primaryLine.target || !secondaryLine.target) {
+    return { diagnostics };
+  }
   return {
-    diagnostics: [
-      createMappingDiagnostic({
-        code: "SKETCH_SOLVER_UNSUPPORTED_ENTITY",
-        message:
-          "This driving dimension remains source-backed but is not mapped to the numerical solver package in D1.",
-        sketchId: dimension.sketchId,
-        sketchDimensionId: dimension.id,
-        sketchEntityId: dimension.entityId,
-        expected:
-          "line.length, circle.radius, arc.radius, or arc.sweep dimension",
-        received: `${dimension.target.entityKind}.${dimension.target.role}`
-      })
-    ]
+    dimension: {
+      id: dimension.id,
+      kind: "lineAngle",
+      primaryLineTarget: primaryLine.target,
+      secondaryLineTarget: secondaryLine.target,
+      sense: dimension.target.sense,
+      value: cleanSketchNumber(effectiveValue)
+    },
+    diagnostics
   };
+}
+
+function getPrimaryDimensionEntityId(
+  dimension: SketchDimensionSnapshotV22
+): SketchEntityId {
+  switch (dimension.target.kind) {
+    case "entityScalar":
+      return dimension.target.entityId;
+    case "pointPair":
+      return dimension.target.primary.entityId;
+    case "pointLineDistance":
+      return dimension.target.point.entityId;
+    case "lineAngle":
+      return dimension.target.primaryLineEntityId;
+  }
+}
+
+function createDimensionTargetDiagnostic(
+  dimension: SketchDimensionSnapshotV22,
+  entityId: SketchEntityId,
+  message: string,
+  expected: string,
+  received: string
+): CadSketchSolverDiagnostic {
+  return createMappingDiagnostic({
+    code: "SKETCH_SOLVER_MISSING_TARGET",
+    message,
+    sketchId: dimension.sketchId,
+    sketchDimensionId: dimension.id,
+    sketchEntityId: entityId,
+    expected,
+    received
+  });
+}
+
+function mapDimensionPointTarget({
+  dimension,
+  sketch,
+  pointTargetIds,
+  arcIds,
+  target,
+  label
+}: {
+  readonly dimension: SketchDimensionSnapshotV22;
+  readonly sketch: SketchSolverPackageSketch;
+  readonly pointTargetIds: ReadonlyMap<string, string>;
+  readonly arcIds: ReadonlySet<SketchEntityId>;
+  readonly target: SketchPointTargetV22;
+  readonly label: string;
+}): {
+  readonly target?: SketchSolverPointTarget;
+  readonly diagnostics: readonly CadSketchSolverDiagnostic[];
+} {
+  const entity = sketch.entities.get(target.entityId);
+  if (!entity || entity.kind !== target.entityKind) {
+    return {
+      diagnostics: [
+        createDimensionTargetDiagnostic(
+          dimension,
+          target.entityId,
+          `${label} target does not match its declared sketch entity kind.`,
+          `${target.entityKind}.${target.role}`,
+          entity?.kind ?? "missing"
+        )
+      ]
+    };
+  }
+  if (
+    entity.kind === "line" &&
+    getLineLength(entity) <= SKETCH_GEOMETRY_POLICY.linearTolerance
+  ) {
+    return {
+      diagnostics: [
+        createDimensionTargetDiagnostic(
+          dimension,
+          target.entityId,
+          `${label} target cannot use an endpoint from a zero-length line.`,
+          `line longer than ${SKETCH_GEOMETRY_POLICY.linearTolerance}`,
+          "zero-length line"
+        )
+      ]
+    };
+  }
+  const mapped = mapPointTarget(pointTargetIds, arcIds, target);
+  return mapped
+    ? { target: mapped, diagnostics: [] }
+    : {
+        diagnostics: [
+          createDimensionTargetDiagnostic(
+            dimension,
+            target.entityId,
+            `${label} target cannot be mapped to a solver point target.`,
+            `${target.entityKind}.${target.role} solver point`,
+            "missing point target"
+          )
+        ]
+      };
+}
+
+function mapDimensionLineTarget({
+  dimension,
+  sketch,
+  pointTargetIds,
+  entityId,
+  label
+}: {
+  readonly dimension: SketchDimensionSnapshotV22;
+  readonly sketch: SketchSolverPackageSketch;
+  readonly pointTargetIds: ReadonlyMap<string, string>;
+  readonly entityId: SketchEntityId;
+  readonly label: string;
+}): {
+  readonly target?: Extract<SketchSolverCurveTarget, { readonly kind: "line" }>;
+  readonly diagnostics: readonly CadSketchSolverDiagnostic[];
+} {
+  const entity = sketch.entities.get(entityId);
+  if (!entity || entity.kind !== "line") {
+    return {
+      diagnostics: [
+        createDimensionTargetDiagnostic(
+          dimension,
+          entityId,
+          `${label} target cannot be mapped to a solver line.`,
+          "line entity",
+          entity?.kind ?? "missing"
+        )
+      ]
+    };
+  }
+  const length = getLineLength(entity);
+  if (length <= SKETCH_GEOMETRY_POLICY.linearTolerance) {
+    return {
+      diagnostics: [
+        createDimensionTargetDiagnostic(
+          dimension,
+          entityId,
+          `${label} target cannot use a zero-length line.`,
+          `line longer than ${SKETCH_GEOMETRY_POLICY.linearTolerance}`,
+          String(cleanSketchNumber(length))
+        )
+      ]
+    };
+  }
+  const startPointId = pointIdForTarget(pointTargetIds, {
+    entityId,
+    role: "start"
+  });
+  const endPointId = pointIdForTarget(pointTargetIds, {
+    entityId,
+    role: "end"
+  });
+  return startPointId && endPointId
+    ? {
+        target: { kind: "line", startPointId, endPointId },
+        diagnostics: []
+      }
+    : {
+        diagnostics: [
+          createDimensionTargetDiagnostic(
+            dimension,
+            entityId,
+            `${label} endpoints cannot be mapped to solver points.`,
+            "line start and end solver points",
+            "missing endpoint"
+          )
+        ]
+      };
+}
+
+function getLineLength(
+  line: Extract<SketchEntitySnapshot, { readonly kind: "line" }>
+): number {
+  return Math.hypot(line.end[0] - line.start[0], line.end[1] - line.start[1]);
 }
 
 function pointIdForTarget(
   pointTargetIds: ReadonlyMap<string, string>,
-  target: SketchPointTarget
+  target: Pick<SketchPointTargetV22, "entityId" | "role">
 ): string | undefined {
   return pointTargetIds.get(createPointTargetKey(target.entityId, target.role));
 }
@@ -1051,7 +1314,7 @@ function pointIdForTarget(
 function mapPointTarget(
   pointTargetIds: ReadonlyMap<string, string>,
   arcIds: ReadonlySet<SketchEntityId>,
-  target: SketchPointTarget
+  target: SketchPointTarget | SketchPointTargetV22
 ): SketchSolverPointTarget | undefined {
   if (target.entityKind === "arc") {
     return arcIds.has(target.entityId)
@@ -1253,6 +1516,10 @@ function mapSketchSolveDiagnosticCode(
       return "SKETCH_ARC_SOLVE_BRANCH_INVALID";
     case "SKETCH_ARC_DIMENSION_INVALID":
       return "SKETCH_ARC_DIMENSION_INVALID";
+    case "SKETCH_DIMENSION_DISTANCE_INVALID":
+      return "SKETCH_DIMENSION_DISTANCE_INVALID";
+    case "SKETCH_DIMENSION_ANGLE_SENSE_INVALID":
+      return "SKETCH_DIMENSION_ANGLE_SENSE_INVALID";
     case "SKETCH_SOLVER_INVALID_VALUE":
     case "SKETCH_SOLVER_NON_CONVERGENCE":
       return "SKETCH_SOLVER_FAILED";

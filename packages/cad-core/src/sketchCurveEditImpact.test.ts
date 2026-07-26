@@ -594,7 +594,7 @@ describe("V19 curve-edit consequence engine", () => {
     }
   });
 
-  it("blocks normalized dimension families until every persisted record maps to one exact zero-solve residual", () => {
+  it("accepts normalized dimension families when every persisted record maps to one exact zero-solve residual", () => {
     const entities = [
       line("line_source", [0, 0], [10, 0]),
       line("boundary", [20, -5], [20, 5]),
@@ -644,13 +644,7 @@ describe("V19 curve-edit consequence engine", () => {
         plan
       })
     );
-    expect(result).toMatchObject({
-      status: "blocked",
-      code: "SKETCH_EDIT_SOLVER_STATE_BLOCKED",
-      reason: "residual-evaluation",
-      expectedDimensionIds: ["normalized_distance"],
-      mappedDimensionIds: []
-    });
+    expect(result).toMatchObject({ status: "ready" });
   });
 
   it("requires exact deletion sets and turns only requested invalid rows into deleted-by-request evidence", () => {

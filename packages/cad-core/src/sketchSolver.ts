@@ -175,10 +175,7 @@ export function evaluateSketch(
     .map((constraint) =>
       evaluateSketchConstraint(document, constraint, evaluatedGeometry.entities)
     );
-  const solverProbe = runSketchSolverPackageProbe(
-    createLegacySketchSolverDocumentProjection(document),
-    sketch
-  );
+  const solverProbe = runSketchSolverPackageProbe(document, sketch);
   const unsupportedConstraintIds = new Set(
     solverProbe.diagnostics
       .filter(
@@ -632,7 +629,9 @@ function evaluateV22SketchDimension(
         expected: measured.expected,
         received: measured.received
       });
-    } else if (!numbersEqual(measured.value, effectiveValue)) {
+    } else if (
+      !v22DimensionValuesEqual(dimension.target, measured.value, effectiveValue)
+    ) {
       issues.push({
         code: "INCONSISTENT_CONSTRAINT",
         message: "Sketch dimension target does not match its evaluated value.",
@@ -653,6 +652,19 @@ function evaluateV22SketchDimension(
       ? { effectiveValue: cleanSketchNumber(effectiveValue) }
       : {})
   };
+}
+
+function v22DimensionValuesEqual(
+  target: SketchDimensionTargetV22,
+  measured: number,
+  expected: number
+): boolean {
+  const tolerance =
+    target.kind === "lineAngle" ||
+    (target.kind === "entityScalar" && target.role === "sweep")
+      ? SKETCH_GEOMETRY_POLICY.angularToleranceDegrees
+      : SKETCH_GEOMETRY_POLICY.linearTolerance;
+  return Math.abs(measured - expected) <= tolerance;
 }
 
 function isValidV22DimensionValue(

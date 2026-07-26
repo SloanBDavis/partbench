@@ -125,6 +125,99 @@ function emptyTransaction(overrides: Partial<Transaction>): Transaction {
 }
 
 describe("V19 minimum-triggered V22 storage", () => {
+  it("rejects mixed or extended V22 dimension value-source shapes", () => {
+    const mixed = createV22DimensionProject("radius");
+    const dimension = mixed.document.sketchDimensions[0]!;
+    const malformed = {
+      ...mixed,
+      document: {
+        ...mixed.document,
+        sketchDimensions: [
+          {
+            ...dimension,
+            valueSource: {
+              type: "literal",
+              value: 2,
+              parameterId: "parameter_1"
+            }
+          }
+        ]
+      }
+    } as unknown as CadProject;
+
+    expect(() => importCadProject(malformed)).toThrow(
+      /valueSource must contain exactly type and value/
+    );
+  });
+
+  it.each(["pointPair", "pointLineDistance", "lineAngle"] as const)(
+    "rejects V22 %s targets that reference a zero-length line",
+    (kind) => {
+      const base = createTwoLineProject();
+      const zeroLineProject = {
+        ...base,
+        schemaVersion: CAD_PROJECT_FORMAT_VERSION_V22,
+        document: {
+          ...base.document,
+          sketches: base.document.sketches.map((sketch) => ({
+            ...sketch,
+            entities: sketch.entities.map((entity) =>
+              entity.id === "line_1" && entity.kind === "line"
+                ? { ...entity, end: entity.start }
+                : entity
+            )
+          })),
+          sketchDimensions: [
+            {
+              id: "skdim_zero",
+              name: "Zero direction",
+              sketchId: "sketch_1",
+              target:
+                kind === "pointPair"
+                  ? {
+                      kind,
+                      primary: {
+                        entityId: "line_1",
+                        entityKind: "line",
+                        role: "start"
+                      },
+                      secondary: {
+                        entityId: "line_2",
+                        entityKind: "line",
+                        role: "start"
+                      },
+                      measurement: "distance"
+                    }
+                  : kind === "pointLineDistance"
+                    ? {
+                        kind,
+                        point: {
+                          entityId: "line_2",
+                          entityKind: "line",
+                          role: "start"
+                        },
+                        lineEntityId: "line_1",
+                        side: "left"
+                      }
+                    : {
+                        kind,
+                        primaryLineEntityId: "line_1",
+                        secondaryLineEntityId: "line_2",
+                        sense: "counterclockwise"
+                      },
+              valueSource: { type: "literal", value: 1 }
+            }
+          ],
+          nextSketchDimensionNumber: 2
+        }
+      } as CadProject;
+
+      expect(() => importCadProject(zeroLineProject)).toThrow(
+        /requires a non-zero line direction/
+      );
+    }
+  );
+
   it("selects V22 from live dimensions and retained history or redo", () => {
     const diameter = createV22DimensionProject("diameter");
     expect(getCadProjectFormatVersionForDocument(diameter.document)).toBe(

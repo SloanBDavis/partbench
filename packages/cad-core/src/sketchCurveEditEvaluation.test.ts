@@ -99,7 +99,7 @@ describe("V19 curve-edit evaluation evidence", () => {
     ]);
   });
 
-  it("blocks rather than fabricating residuals for unmapped V22 records", () => {
+  it("maps normalized V22 records into exact residual evidence", () => {
     const sketch = lineSketch();
     const dimension: SketchDimension = {
       id: "skdim_pair",
@@ -136,19 +136,78 @@ describe("V19 curve-edit evaluation evidence", () => {
     });
 
     expect(evidence).toMatchObject({
-      blocked: true,
-      solverStatus: "failed",
+      blocked: false,
+      solverStatus: "under-defined",
       constraintResiduals: [],
-      dimensionResiduals: []
+      dimensionResiduals: [
+        {
+          id: "skdim_pair",
+          family: "pointDistance",
+          status: "healthy",
+          residual: 0
+        }
+      ]
     });
-    expect(evidence.solverEvaluationIdentity).toBeUndefined();
-    expect(evidence.diagnostics).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          code: "SKETCH_EDIT_SOLVER_RECORD_MAPPING_INCOMPLETE"
-        })
-      ])
+    expect(evidence.solverEvaluationIdentity).toMatch(
+      /^partbench-sketch-solver-evaluation-v1:[0-9a-f]{64}$/
     );
+  });
+
+  it("records rectangle dimensions as direct source-backed evidence", () => {
+    const sketch: Sketch = {
+      ...lineSketch(),
+      entities: new Map([
+        [
+          "rectangle_1",
+          {
+            id: "rectangle_1",
+            kind: "rectangle",
+            center: [0, 0],
+            width: 4,
+            height: 2,
+            construction: false
+          }
+        ]
+      ])
+    };
+    const dimension: SketchDimension = {
+      id: "skdim_width",
+      name: "Width",
+      sketchId: sketch.id,
+      target: {
+        kind: "entityScalar",
+        entityId: "rectangle_1",
+        entityKind: "rectangle",
+        role: "width"
+      },
+      valueSource: { type: "literal", value: 4 }
+    };
+    const document = createCadDocument(
+      [],
+      "mm",
+      [[sketch.id, sketch]],
+      [],
+      [[dimension.id, dimension]]
+    );
+
+    const evidence = createSketchCurveEditEvaluationEvidence({
+      sourceIdentity,
+      document,
+      sketch
+    });
+
+    expect(evidence).toMatchObject({
+      blocked: false,
+      solverStatus: "under-defined",
+      dimensionResiduals: [
+        {
+          id: "skdim_width",
+          family: "rectangleWidth",
+          status: "healthy",
+          residual: 0
+        }
+      ]
+    });
   });
 
   it("blocks malformed evaluated geometry instead of throwing from identity construction", () => {

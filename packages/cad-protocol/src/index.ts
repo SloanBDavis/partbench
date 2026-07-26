@@ -9321,7 +9321,8 @@ export type SketchProfilePathValidationIssueCode =
   | "MISSING_FIELD"
   | "UNKNOWN_FIELD"
   | "INVALID_VALUE"
-  | "COUNT_MISMATCH";
+  | "COUNT_MISMATCH"
+  | "COMMAND_INPUT_AMBIGUOUS";
 
 export interface SketchProfilePathValidationIssue {
   readonly code: SketchProfilePathValidationIssueCode;
@@ -12328,14 +12329,13 @@ function validateV19DimensionLiteral(
       minimumExclusive = linearTolerance;
     } else if (
       target.role === "sweep" &&
-      (Math.abs(value) < angularTolerance ||
-        Math.abs(value) > 360 - angularTolerance)
+      (value < angularTolerance || value > 360 - angularTolerance)
     ) {
       issues.push({
         code: "INVALID_VALUE",
         path,
         message:
-          "An arc-sweep dimension must remain inside the signed V17 sweep domain."
+          "An arc-sweep dimension must use a positive magnitude inside the V17 sweep domain."
       });
     }
   } else if (
@@ -13131,10 +13131,20 @@ export function validateV19CadOp(
       });
     }
   } else if (
-    value.op === "sketch.dimension.create" ||
-    value.op === "sketch.dimension.update"
+    value.op === "sketch.dimension.update" ||
+    (value.op === "sketch.dimension.create" &&
+      isUnknownRecord(value.target) &&
+      typeof value.target.kind === "string")
   ) {
     const create = value.op === "sketch.dimension.create";
+    if (create && "entityId" in value) {
+      issues.push({
+        code: "COMMAND_INPUT_AMBIGUOUS",
+        path: "$",
+        message:
+          "A dimension command cannot mix legacy entityId with a normalized V22 target."
+      });
+    }
     validateExactRecord(
       value,
       "$",
@@ -13182,13 +13192,6 @@ export function validateV19CadOp(
         code: "MISSING_FIELD",
         path: "$",
         message: "A dimension command requires exactly one value source."
-      });
-    }
-    if ("entityId" in value) {
-      issues.push({
-        code: "UNKNOWN_FIELD",
-        path: "$.entityId",
-        message: "A normalized V22 dimension cannot carry entityId."
       });
     }
   } else if (value.op === "sketch.constraint.update") {

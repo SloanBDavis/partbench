@@ -41,7 +41,9 @@ export type SketchSolveDiagnosticCode =
   | "SKETCH_SOLVER_NOT_RUN"
   | "SKETCH_TANGENCY_OUTSIDE_ARC"
   | "SKETCH_ARC_SOLVE_BRANCH_INVALID"
-  | "SKETCH_ARC_DIMENSION_INVALID";
+  | "SKETCH_ARC_DIMENSION_INVALID"
+  | "SKETCH_DIMENSION_DISTANCE_INVALID"
+  | "SKETCH_DIMENSION_ANGLE_SENSE_INVALID";
 
 export type SketchSolveConstraintKind =
   | "fixedPoint"
@@ -63,6 +65,9 @@ export type SketchSolveDeferredConstraintKind = never;
 
 export type SketchSolveDimensionKind =
   | "pointDistance"
+  | "pointComponent"
+  | "pointLineDistance"
+  | "lineAngle"
   | "lineLength"
   | "circleRadius"
   | "arcRadius"
@@ -300,6 +305,10 @@ export interface SketchSolveDeferredConstraint {
 
 export type SketchSolveDimension =
   | SketchSolvePointDistanceDimension
+  | SketchSolvePointTargetDistanceDimension
+  | SketchSolvePointComponentDimension
+  | SketchSolvePointLineDistanceDimension
+  | SketchSolveLineAngleDimension
   | SketchSolveLineLengthDimension
   | SketchSolveCircleRadiusDimension
   | SketchSolveArcRadiusDimension
@@ -310,6 +319,47 @@ export interface SketchSolvePointDistanceDimension {
   readonly kind: "pointDistance";
   readonly pointAId: SketchSolverPointId;
   readonly pointBId: SketchSolverPointId;
+  readonly value: number;
+}
+
+export interface SketchSolvePointTargetDistanceDimension {
+  readonly id: SketchSolverDimensionId;
+  readonly kind: "pointDistance";
+  readonly primaryTarget: SketchSolvePointTarget;
+  readonly secondaryTarget: SketchSolvePointTarget;
+  readonly value: number;
+}
+
+/**
+ * Ordered horizontal/vertical point-pair distance.
+ *
+ * `value` is the signed expected secondary-minus-primary component. Cad-core
+ * maps the persisted positive magnitude plus direction into this signed value.
+ */
+export interface SketchSolvePointComponentDimension {
+  readonly id: SketchSolverDimensionId;
+  readonly kind: "pointComponent";
+  readonly primaryTarget: SketchSolvePointTarget;
+  readonly secondaryTarget: SketchSolvePointTarget;
+  readonly axis: "horizontal" | "vertical";
+  readonly value: number;
+}
+
+export interface SketchSolvePointLineDistanceDimension {
+  readonly id: SketchSolverDimensionId;
+  readonly kind: "pointLineDistance";
+  readonly pointTarget: SketchSolvePointTarget;
+  readonly lineTarget: SketchSolveLineCurveTarget;
+  readonly side: "left" | "right";
+  readonly value: number;
+}
+
+export interface SketchSolveLineAngleDimension {
+  readonly id: SketchSolverDimensionId;
+  readonly kind: "lineAngle";
+  readonly primaryLineTarget: SketchSolveLineCurveTarget;
+  readonly secondaryLineTarget: SketchSolveLineCurveTarget;
+  readonly sense: "clockwise" | "counterclockwise";
   readonly value: number;
 }
 
@@ -557,6 +607,9 @@ export function getSketchSolverCapabilities(): {
     ],
     supportedDimensionKinds: [
       "pointDistance",
+      "pointComponent",
+      "pointLineDistance",
+      "lineAngle",
       "lineLength",
       "circleRadius",
       "arcRadius",
@@ -789,7 +842,9 @@ export function solveSketch(model: SketchSolveModel): SketchSolveResult {
     });
   }
 
-  const residualBlocks = createResidualBlocks(model, stateAccess, settings);
+  const residualBlocks = [
+    ...createResidualBlocks(model, stateAccess, settings)
+  ].sort(compareResidualBlocks);
   const residualCount = getResiduals(residualBlocks, initialState).length;
 
   if (stateAccess.variables.length === 0) {
@@ -841,27 +896,52 @@ export function solveSketch(model: SketchSolveModel): SketchSolveResult {
     });
   }
 
+  let rejectedDimensionBranchDiagnostics: readonly SketchSolveDiagnostic[] = [];
   const solve = runDampedSolve(
     initialState,
     residualBlocks,
     settings,
-    (candidate) =>
-      arcStateStaysWithinAuthoredBranch(model, stateAccess, candidate, settings)
+    (candidate) => {
+      if (
+        !arcStateStaysWithinAuthoredBranch(
+          model,
+          stateAccess,
+          candidate,
+          settings
+        )
+      ) {
+        rejectedDimensionBranchDiagnostics = [];
+        return false;
+      }
+      const branchDiagnostics = validateV19DimensionStateBranches(
+        model,
+        settings,
+        stateAccess,
+        candidate
+      );
+      if (branchDiagnostics.length > 0) {
+        rejectedDimensionBranchDiagnostics = branchDiagnostics;
+        return false;
+      }
+      return true;
+    }
   );
   const solvedStateDiagnostics = [
     ...validateSolvedState(model, settings, stateAccess, solve.state),
     ...(!solve.converged && solve.stateGuardConstrained
-      ? [
-          {
-            code: "SKETCH_ARC_SOLVE_BRANCH_INVALID" as const,
-            severity: "blocker" as const,
-            message:
-              "Arc solve cannot satisfy the residual system without leaving the authored radius/sweep branch.",
-            sourceType: "model" as const,
-            expected: "positive radius and authored bounded sweep sign",
-            received: "iteration step crossed an authored arc bound"
-          }
-        ]
+      ? rejectedDimensionBranchDiagnostics.length > 0
+        ? rejectedDimensionBranchDiagnostics
+        : [
+            {
+              code: "SKETCH_ARC_SOLVE_BRANCH_INVALID" as const,
+              severity: "blocker" as const,
+              message:
+                "Arc solve cannot satisfy the residual system without leaving the authored radius/sweep branch.",
+              sourceType: "model" as const,
+              expected: "positive radius and authored bounded sweep sign",
+              received: "iteration step crossed an authored arc bound"
+            }
+          ]
       : [])
   ];
   if (solvedStateDiagnostics.length > 0) {
@@ -1704,7 +1784,7 @@ function validateLinePairConstraint(
 
 function validateDerivedPointTarget(
   target: SketchSolvePointTarget,
-  source: SketchSolveConstraint,
+  source: SketchSolveConstraint | SketchSolveDimension,
   stateAccess: SolverStateAccess,
   diagnostics: SketchSolveDiagnostic[]
 ): void {
@@ -1714,6 +1794,38 @@ function validateDerivedPointTarget(
   }
   if (!stateAccess.arcIndex.has(target.arcId)) {
     diagnostics.push(missingTargetDiagnostic(source, target.arcId));
+  }
+}
+
+function validateDimensionLineTarget(
+  target: SketchSolveLineCurveTarget,
+  dimension:
+    | SketchSolvePointLineDistanceDimension
+    | SketchSolveLineAngleDimension,
+  settings: SketchSolveSettings,
+  stateAccess: SolverStateAccess,
+  diagnostics: SketchSolveDiagnostic[],
+  label: string
+): void {
+  validatePointTarget(target.startPointId, dimension, stateAccess, diagnostics);
+  validatePointTarget(target.endPointId, dimension, stateAccess, diagnostics);
+  const start = readInitialPoint(stateAccess, target.startPointId);
+  const end = readInitialPoint(stateAccess, target.endPointId);
+  if (start && end && distance(start, end) <= settings.tolerance) {
+    diagnostics.push({
+      code:
+        dimension.kind === "lineAngle"
+          ? "SKETCH_DIMENSION_ANGLE_SENSE_INVALID"
+          : "SKETCH_DIMENSION_DISTANCE_INVALID",
+      severity: "blocker",
+      message: `${label} must have non-zero length.`,
+      sourceType: "dimension",
+      sourceId: dimension.id,
+      dimensionKind: dimension.kind,
+      targetId: `${target.startPointId}:${target.endPointId}`,
+      expected: `line length > ${settings.tolerance}`,
+      received: "zero-length line"
+    });
   }
 }
 
@@ -1898,6 +2010,131 @@ function validateDimension(
   stateAccess: SolverStateAccess,
   diagnostics: SketchSolveDiagnostic[]
 ): void {
+  if (dimension.kind === "pointDistance" && "primaryTarget" in dimension) {
+    validateDerivedPointTarget(
+      dimension.primaryTarget,
+      dimension,
+      stateAccess,
+      diagnostics
+    );
+    validateDerivedPointTarget(
+      dimension.secondaryTarget,
+      dimension,
+      stateAccess,
+      diagnostics
+    );
+    validateLinearDimensionMagnitude(dimension, settings, diagnostics);
+    return;
+  }
+
+  if (dimension.kind === "pointComponent") {
+    validateDerivedPointTarget(
+      dimension.primaryTarget,
+      dimension,
+      stateAccess,
+      diagnostics
+    );
+    validateDerivedPointTarget(
+      dimension.secondaryTarget,
+      dimension,
+      stateAccess,
+      diagnostics
+    );
+    if (
+      !Number.isFinite(dimension.value) ||
+      Math.abs(dimension.value) <= settings.tolerance
+    ) {
+      diagnostics.push({
+        code: "SKETCH_DIMENSION_DISTANCE_INVALID",
+        severity: "blocker",
+        message:
+          "Directed point-pair distance must have a finite signed component outside the linear tolerance.",
+        sourceType: "dimension",
+        sourceId: dimension.id,
+        dimensionKind: dimension.kind,
+        expected: `abs(value) > ${settings.tolerance}`,
+        received: describeReceived(dimension.value)
+      });
+    }
+    validateInitialDimensionBranch(
+      dimension,
+      settings,
+      stateAccess,
+      diagnostics
+    );
+    return;
+  }
+
+  if (dimension.kind === "pointLineDistance") {
+    validateDerivedPointTarget(
+      dimension.pointTarget,
+      dimension,
+      stateAccess,
+      diagnostics
+    );
+    validateDimensionLineTarget(
+      dimension.lineTarget,
+      dimension,
+      settings,
+      stateAccess,
+      diagnostics,
+      "Point-line distance target line"
+    );
+    validateLinearDimensionMagnitude(dimension, settings, diagnostics);
+    validateInitialDimensionBranch(
+      dimension,
+      settings,
+      stateAccess,
+      diagnostics
+    );
+    return;
+  }
+
+  if (dimension.kind === "lineAngle") {
+    validateDimensionLineTarget(
+      dimension.primaryLineTarget,
+      dimension,
+      settings,
+      stateAccess,
+      diagnostics,
+      "Line-angle primary line"
+    );
+    validateDimensionLineTarget(
+      dimension.secondaryLineTarget,
+      dimension,
+      settings,
+      stateAccess,
+      diagnostics,
+      "Line-angle secondary line"
+    );
+    if (
+      !Number.isFinite(dimension.value) ||
+      dimension.value <= settings.angularToleranceDegrees ||
+      dimension.value >= 180 - settings.angularToleranceDegrees
+    ) {
+      diagnostics.push({
+        code: "SKETCH_DIMENSION_ANGLE_SENSE_INVALID",
+        severity: "blocker",
+        message:
+          "Line-angle value must remain strictly inside its stored 0/180-degree sense branch.",
+        sourceType: "dimension",
+        sourceId: dimension.id,
+        dimensionKind: dimension.kind,
+        expected: `${settings.angularToleranceDegrees} < value < ${
+          180 - settings.angularToleranceDegrees
+        }`,
+        received: describeReceived(dimension.value)
+      });
+    }
+    validateInitialDimensionBranch(
+      dimension,
+      settings,
+      stateAccess,
+      diagnostics
+    );
+    return;
+  }
+
   if (dimension.kind === "arcRadius" || dimension.kind === "arcSweep") {
     if (!stateAccess.arcIndex.has(dimension.arcId)) {
       diagnostics.push(missingTargetDiagnostic(dimension, dimension.arcId));
@@ -1981,6 +2218,148 @@ function validateDimension(
     stateAccess,
     diagnostics
   );
+}
+
+function validateLinearDimensionMagnitude(
+  dimension:
+    | SketchSolvePointTargetDistanceDimension
+    | SketchSolvePointLineDistanceDimension,
+  settings: SketchSolveSettings,
+  diagnostics: SketchSolveDiagnostic[]
+): void {
+  if (
+    !Number.isFinite(dimension.value) ||
+    dimension.value <= settings.tolerance
+  ) {
+    diagnostics.push({
+      code: "SKETCH_DIMENSION_DISTANCE_INVALID",
+      severity: "blocker",
+      message:
+        "Normalized linear dimension value must exceed the linear tolerance.",
+      sourceType: "dimension",
+      sourceId: dimension.id,
+      dimensionKind: dimension.kind,
+      expected: `value > ${settings.tolerance}`,
+      received: describeReceived(dimension.value)
+    });
+  }
+}
+
+type SketchSolveBranchedDimension =
+  | SketchSolvePointComponentDimension
+  | SketchSolvePointLineDistanceDimension
+  | SketchSolveLineAngleDimension;
+
+function validateInitialDimensionBranch(
+  dimension: SketchSolveBranchedDimension,
+  settings: SketchSolveSettings,
+  stateAccess: SolverStateAccess,
+  diagnostics: SketchSolveDiagnostic[]
+): void {
+  const diagnostic = validateDimensionStateBranch(
+    dimension,
+    settings,
+    stateAccess,
+    stateAccess.variables.map((variable) => variable.initial)
+  );
+  if (diagnostic) diagnostics.push(diagnostic);
+}
+
+function validateDimensionStateBranch(
+  dimension: SketchSolveBranchedDimension,
+  settings: SketchSolveSettings,
+  stateAccess: SolverStateAccess,
+  state: readonly number[]
+): SketchSolveDiagnostic | undefined {
+  if (dimension.kind === "pointComponent") {
+    const primary = readPointTarget(
+      state,
+      stateAccess,
+      dimension.primaryTarget
+    );
+    const secondary = readPointTarget(
+      state,
+      stateAccess,
+      dimension.secondaryTarget
+    );
+    const axisIndex = dimension.axis === "horizontal" ? 0 : 1;
+    const component = secondary[axisIndex] - primary[axisIndex];
+    if (!Number.isFinite(component)) return undefined;
+    if (Math.sign(dimension.value) * component <= settings.tolerance) {
+      return {
+        code: "SKETCH_DIMENSION_DISTANCE_INVALID",
+        severity: "blocker",
+        message:
+          "Directed point-pair geometry crossed its stored positive/negative direction branch.",
+        sourceType: "dimension",
+        sourceId: dimension.id,
+        dimensionKind: dimension.kind,
+        expected:
+          dimension.value < 0
+            ? `ordered component < -${settings.tolerance}`
+            : `ordered component > ${settings.tolerance}`,
+        received: describeReceived(component)
+      };
+    }
+    return undefined;
+  }
+
+  if (dimension.kind === "pointLineDistance") {
+    const point = readPointTarget(state, stateAccess, dimension.pointTarget);
+    const direction = readLineTargetDirection(
+      state,
+      stateAccess,
+      dimension.lineTarget
+    );
+    if (!direction || !isFiniteVec2(point)) return undefined;
+    const lineStart = readPoint(
+      state,
+      stateAccess,
+      dimension.lineTarget.startPointId
+    );
+    const signedDistance = cross(direction, [
+      point[0] - lineStart[0],
+      point[1] - lineStart[1]
+    ]);
+    const sensedDistance =
+      dimension.side === "left" ? signedDistance : -signedDistance;
+    if (sensedDistance <= settings.tolerance) {
+      return {
+        code: "SKETCH_DIMENSION_DISTANCE_INVALID",
+        severity: "blocker",
+        message:
+          "Point-line geometry crossed its stored left/right side branch.",
+        sourceType: "dimension",
+        sourceId: dimension.id,
+        dimensionKind: dimension.kind,
+        expected: `${dimension.side} signed distance > ${settings.tolerance}`,
+        received: describeReceived(sensedDistance)
+      };
+    }
+    return undefined;
+  }
+
+  const sensedAngle = getSensedLineAngleDegrees(state, stateAccess, dimension);
+  if (!Number.isFinite(sensedAngle)) return undefined;
+  if (
+    sensedAngle <= settings.angularToleranceDegrees ||
+    sensedAngle >= 180 - settings.angularToleranceDegrees
+  ) {
+    return {
+      code: "SKETCH_DIMENSION_ANGLE_SENSE_INVALID",
+      severity: "blocker",
+      message:
+        "Line-angle geometry crossed its stored clockwise/counterclockwise sense branch.",
+      sourceType: "dimension",
+      sourceId: dimension.id,
+      dimensionKind: dimension.kind,
+      expected: `${settings.angularToleranceDegrees} < sensed angle < ${
+        180 - settings.angularToleranceDegrees
+      }`,
+      received: describeReceived(sensedAngle)
+    };
+  }
+  return undefined;
 }
 
 function validatePointTarget(
@@ -2142,7 +2521,7 @@ function createResidualBlocks(
       sourceId: dimension.id,
       dimensionKind: dimension.kind,
       satisfactionTolerance:
-        dimension.kind === "arcSweep"
+        dimension.kind === "arcSweep" || dimension.kind === "lineAngle"
           ? settings.angularToleranceDegrees
           : settings.tolerance,
       evaluator: createDimensionResidual(dimension, stateAccess)
@@ -2642,10 +3021,61 @@ function createDimensionResidual(
 
   if (dimension.kind === "pointDistance") {
     return (state) => {
-      const pointA = readPoint(state, stateAccess, dimension.pointAId);
-      const pointB = readPoint(state, stateAccess, dimension.pointBId);
+      const pointA =
+        "primaryTarget" in dimension
+          ? readPointTarget(state, stateAccess, dimension.primaryTarget)
+          : readPoint(state, stateAccess, dimension.pointAId);
+      const pointB =
+        "primaryTarget" in dimension
+          ? readPointTarget(state, stateAccess, dimension.secondaryTarget)
+          : readPoint(state, stateAccess, dimension.pointBId);
       return [distance(pointA, pointB) - dimension.value];
     };
+  }
+
+  if (dimension.kind === "pointComponent") {
+    return (state) => {
+      const primary = readPointTarget(
+        state,
+        stateAccess,
+        dimension.primaryTarget
+      );
+      const secondary = readPointTarget(
+        state,
+        stateAccess,
+        dimension.secondaryTarget
+      );
+      const axisIndex = dimension.axis === "horizontal" ? 0 : 1;
+      return [secondary[axisIndex] - primary[axisIndex] - dimension.value];
+    };
+  }
+
+  if (dimension.kind === "pointLineDistance") {
+    const sideSign = dimension.side === "left" ? 1 : -1;
+    return (state) => {
+      const point = readPointTarget(state, stateAccess, dimension.pointTarget);
+      const direction = readLineTargetDirection(
+        state,
+        stateAccess,
+        dimension.lineTarget
+      );
+      const lineStart = readPoint(
+        state,
+        stateAccess,
+        dimension.lineTarget.startPointId
+      );
+      if (!direction) return [Number.NaN];
+      return [
+        cross(direction, [point[0] - lineStart[0], point[1] - lineStart[1]]) -
+          sideSign * dimension.value
+      ];
+    };
+  }
+
+  if (dimension.kind === "lineAngle") {
+    return (state) => [
+      getSensedLineAngleDegrees(state, stateAccess, dimension) - dimension.value
+    ];
   }
 
   return (state) => {
@@ -2673,7 +3103,7 @@ function runDampedSolve(
   let maxResidual = getMaxResidual(residuals);
   let stateGuardConstrained = false;
 
-  if (maxResidual <= settings.tolerance) {
+  if (areResidualBlocksSatisfied(residualBlocks, state, settings)) {
     return {
       state,
       iterations: 0,
@@ -2746,7 +3176,7 @@ function runDampedSolve(
     residuals = getResiduals(residualBlocks, state);
     maxResidual = getMaxResidual(residuals);
 
-    if (maxResidual <= settings.tolerance) {
+    if (areResidualBlocksSatisfied(residualBlocks, state, settings)) {
       return {
         state,
         iterations: iteration,
@@ -2766,6 +3196,20 @@ function runDampedSolve(
     residuals,
     maxResidual
   };
+}
+
+function areResidualBlocksSatisfied(
+  residualBlocks: readonly ResidualBlock[],
+  state: readonly number[],
+  settings: SketchSolveSettings
+): boolean {
+  return residualBlocks.every(
+    (block) =>
+      getMaxResidual(block.evaluator(state)) <=
+      (block.sourceType === "dimension" && block.dimensionKind === "lineAngle"
+        ? block.satisfactionTolerance
+        : settings.tolerance)
+  );
 }
 
 function createCandidateState(
@@ -3223,7 +3667,35 @@ function validateSolvedState(
       ...validateTangencyContact(constraint, stateAccess, state, settings)
     );
   }
+  diagnostics.push(
+    ...validateV19DimensionStateBranches(model, settings, stateAccess, state)
+  );
   return diagnostics;
+}
+
+function validateV19DimensionStateBranches(
+  model: SketchSolveModel,
+  settings: SketchSolveSettings,
+  stateAccess: SolverStateAccess,
+  state: readonly number[]
+): readonly SketchSolveDiagnostic[] {
+  return [...(model.dimensions ?? [])]
+    .filter(
+      (dimension): dimension is SketchSolveBranchedDimension =>
+        dimension.kind === "pointComponent" ||
+        dimension.kind === "pointLineDistance" ||
+        dimension.kind === "lineAngle"
+    )
+    .sort((left, right) => compareCodeUnits(left.id, right.id))
+    .flatMap((dimension) => {
+      const diagnostic = validateDimensionStateBranch(
+        dimension,
+        settings,
+        stateAccess,
+        state
+      );
+      return diagnostic ? [diagnostic] : [];
+    });
 }
 
 function validateTangencyContact(
@@ -3626,6 +4098,10 @@ function cross(a: SketchSolverVec2, b: SketchSolverVec2): number {
   return a[0] * b[1] - a[1] * b[0];
 }
 
+function dot(a: SketchSolverVec2, b: SketchSolverVec2): number {
+  return a[0] * b[0] + a[1] * b[1];
+}
+
 function readInitialPoint(
   stateAccess: SolverStateAccess,
   pointId: SketchSolverPointId
@@ -3668,6 +4144,43 @@ function readLineDirection(
   }
 
   return [dx / length, dy / length];
+}
+
+function readLineTargetDirection(
+  state: readonly number[],
+  stateAccess: SolverStateAccess,
+  target: SketchSolveLineCurveTarget
+): SketchSolverVec2 | undefined {
+  return readLineDirection(
+    state,
+    stateAccess,
+    target.startPointId,
+    target.endPointId
+  );
+}
+
+function getSensedLineAngleDegrees(
+  state: readonly number[],
+  stateAccess: SolverStateAccess,
+  dimension: SketchSolveLineAngleDimension
+): number {
+  const primary = readLineTargetDirection(
+    state,
+    stateAccess,
+    dimension.primaryLineTarget
+  );
+  const secondary = readLineTargetDirection(
+    state,
+    stateAccess,
+    dimension.secondaryLineTarget
+  );
+  if (!primary || !secondary) return Number.NaN;
+  const signed =
+    (Math.atan2(cross(primary, secondary), dot(primary, secondary)) * 180) /
+    Math.PI;
+  return normalizeDegrees(
+    dimension.sense === "counterclockwise" ? signed : -signed
+  );
 }
 
 function readScalar(
@@ -3766,6 +4279,9 @@ function isDimensionSource(
 ): source is SketchSolveDimension {
   return (
     source.kind === "pointDistance" ||
+    source.kind === "pointComponent" ||
+    source.kind === "pointLineDistance" ||
+    source.kind === "lineAngle" ||
     source.kind === "lineLength" ||
     source.kind === "circleRadius" ||
     source.kind === "arcRadius" ||

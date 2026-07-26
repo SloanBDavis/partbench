@@ -158,6 +158,40 @@ describe("V19 protocol contract", () => {
         pickPoint: [Number.NaN, 2]
       }).ok
     ).toBe(false);
+    const mixed = validateV19CadOp({
+      op: "sketch.dimension.create",
+      name: "Mixed",
+      sketchId: "sketch_1",
+      entityId: "line_1",
+      target: {
+        kind: "entityScalar",
+        entityId: "line_1",
+        entityKind: "line",
+        role: "length"
+      },
+      value: 1
+    });
+    expect(mixed.ok).toBe(false);
+    if (!mixed.ok) {
+      expect(mixed.issues[0]).toMatchObject({
+        code: "COMMAND_INPUT_AMBIGUOUS",
+        path: "$"
+      });
+    }
+    expect(
+      validateV19CadOp({
+        op: "sketch.dimension.create",
+        name: "Negative sweep magnitude",
+        sketchId: "sketch_1",
+        target: {
+          kind: "entityScalar",
+          entityId: "arc_1",
+          entityKind: "arc",
+          role: "sweep"
+        },
+        value: -90
+      }).ok
+    ).toBe(false);
     expect(
       validateV19CadOp({
         ...valid,

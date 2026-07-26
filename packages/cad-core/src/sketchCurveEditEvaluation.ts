@@ -26,6 +26,8 @@ import {
   type SketchSolverSketch
 } from "./sketchSolver";
 import { createSketchSolveModelFromCadSource } from "./sketchSolverPackageMapping";
+import { SKETCH_GEOMETRY_POLICY } from "./sketchGeometryPolicy";
+import { normalizeSketchDimensionSnapshotV22 } from "./v22SourceShapes";
 
 export interface SketchCurveEditEvaluationDiagnostic {
   readonly code: string;
@@ -141,6 +143,53 @@ export function createSketchCurveEditEvaluationEvidence({
     .filter((dimension) => dimension.sketchId === sketch.id)
     .map((dimension) => dimension.id)
     .sort(compareCodeUnits);
+  const directDimensionResiduals: SketchSolverDimensionResidualEvidence[] = [
+    ...document.sketchDimensions.values()
+  ]
+    .filter((dimension) => dimension.sketchId === sketch.id)
+    .flatMap((dimension) => {
+      const normalized = normalizeSketchDimensionSnapshotV22(dimension);
+      if (
+        normalized.target.kind !== "entityScalar" ||
+        normalized.target.entityKind !== "rectangle"
+      ) {
+        return [];
+      }
+      const entity = evaluatedGeometry.entities.get(normalized.target.entityId);
+      const effectiveValue =
+        normalized.valueSource.type === "literal"
+          ? normalized.valueSource.value
+          : document.parameters.get(normalized.valueSource.parameterId)?.value;
+      const measured =
+        entity?.kind === "rectangle"
+          ? entity[normalized.target.role]
+          : undefined;
+      const residual =
+        effectiveValue === undefined || measured === undefined
+          ? Number.MAX_VALUE
+          : Math.abs(measured - effectiveValue);
+      return [
+        {
+          id: normalized.id,
+          family:
+            normalized.target.role === "width"
+              ? "rectangleWidth"
+              : "rectangleHeight",
+          status:
+            residual <= SKETCH_GEOMETRY_POLICY.linearTolerance
+              ? "healthy"
+              : "inconsistent",
+          residual
+        } satisfies SketchSolverDimensionResidualEvidence
+      ];
+    })
+    .sort((left, right) => compareCodeUnits(left.id, right.id));
+  const directDimensionIds = new Set(
+    directDimensionResiduals.map((residual) => residual.id)
+  );
+  const numericalDimensionIds = dimensionIds.filter(
+    (id) => !directDimensionIds.has(id)
+  );
   const solverRecordCount = constraintIds.length + dimensionIds.length;
 
   if (solverRecordCount === 0) {
@@ -165,7 +214,7 @@ export function createSketchCurveEditEvaluationEvidence({
     .sort(compareCodeUnits);
   const mappingComplete =
     arraysEqual(constraintIds, mappedConstraintIds) &&
-    arraysEqual(dimensionIds, mappedDimensionIds);
+    arraysEqual(numericalDimensionIds, mappedDimensionIds);
   const authoredResidualEvaluation = evaluateSketchResidualsAtInitialState(
     build.model
   );
@@ -207,9 +256,9 @@ export function createSketchCurveEditEvaluationEvidence({
     ])
   );
   const residualMappingComplete =
-    residuals.size === solverRecordCount &&
+    residuals.size === constraintIds.length + numericalDimensionIds.length &&
     constraintIds.every((id) => residuals.has(`constraint:${id}`)) &&
-    dimensionIds.every((id) => residuals.has(`dimension:${id}`));
+    numericalDimensionIds.every((id) => residuals.has(`dimension:${id}`));
   if (!residualMappingComplete) {
     return {
       sourceRevision,
@@ -234,10 +283,10 @@ export function createSketchCurveEditEvaluationEvidence({
     constraintIds,
     residuals
   );
-  const dimensionResiduals = createDimensionResidualEvidence(
-    dimensionIds,
-    residuals
-  );
+  const dimensionResiduals = [
+    ...createDimensionResidualEvidence(numericalDimensionIds, residuals),
+    ...directDimensionResiduals
+  ].sort((left, right) => compareCodeUnits(left.id, right.id));
   const solverStatus = mapSolveStatus(authoredResidualEvaluation.solveStatus);
   let solverEvaluationIdentity: SketchSolverEvaluationIdentity;
   try {

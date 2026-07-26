@@ -428,6 +428,37 @@ flowchart TD
 - Gate C is accepted. D1 normalized dimension targets are the next normative
   implementation boundary.
 
+### 2026-07-26 — Slice D normalized-dimension and constraint core checkpoint
+
+- D1-D4 core execution is implemented. Normalized V22 scalar, point-pair,
+  point-line, and line-angle dimensions now create, retarget, solve, query,
+  diff, scale, export/import, replay, undo, and redo through the command
+  engine. Rectangle width/height remain direct source updates; radius and
+  diameter share one solver variable with exact 2x command/storage behavior.
+- The numerical solver and CAD mapper implement Euclidean distance, directed
+  horizontal/vertical components, signed infinite-support point-line distance,
+  and clockwise/counterclockwise authored line-angle branches. Family
+  tolerances, zero-length diagnostics, arc branch preservation, deterministic
+  conflict evidence, and direct rectangle curve-edit evidence are covered by
+  focused and inherited tests.
+- Decision 14 structural planning and command execution are live.
+  `equalLength` create and every typed `sketch.constraint.update` definition
+  preserve kind/name/sketch ownership and normalize point inputs to the
+  existing V21 storage shapes. Equal-length is independent of directional
+  pairs, unordered duplicates are deterministic, advanced symmetric duplicate
+  checks are enforced, and legacy angle remains update-only.
+- Three adversarial passes found and resolved legacy-history rejection,
+  mixed-input ambiguity, non-exact imported value sources, zero-length import
+  holes, signed-sweep protocol drift, angular convergence drift, rectangle
+  curve-edit blocking, equal-length propagation, pair-family conflation, and
+  inaccurate update paths. Solver re-review is PASS; storage and constraint
+  re-reviews report only remaining release-proof breadth assigned to D5.
+- Full solver, protocol, and cad-core suites pass 85, 81, and 1,020 tests.
+  D5 remains open: every Decision 14 row still needs command/product/adapter
+  lifecycle proof, the complete normalized literal/parameter unit matrix, the
+  named dimensions/constraints smoke workflow, and browser-accessible UI
+  coverage before Gate D can be accepted.
+
 ## Completion audit
 
 Release completion requires affirmative evidence for each numbered Must item

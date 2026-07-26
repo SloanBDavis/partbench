@@ -113,6 +113,9 @@ describe("sketch-solver", () => {
       ],
       supportedDimensionKinds: [
         "pointDistance",
+        "pointComponent",
+        "pointLineDistance",
+        "lineAngle",
         "lineLength",
         "circleRadius",
         "arcRadius",
