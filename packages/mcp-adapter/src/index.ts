@@ -1884,6 +1884,495 @@ const V19_OFFSET_SOURCE_SCHEMA = {
   ]
 } as const;
 
+const V19_NON_EMPTY_ID_SCHEMA = {
+  type: "string",
+  minLength: 1
+} as const;
+
+const V19_POINT_TARGET_SCHEMA = {
+  oneOf: [
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["entityId", "entityKind", "role"],
+      properties: {
+        entityId: V19_NON_EMPTY_ID_SCHEMA,
+        entityKind: { const: "point" },
+        role: { const: "position" }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["entityId", "entityKind", "role"],
+      properties: {
+        entityId: V19_NON_EMPTY_ID_SCHEMA,
+        entityKind: { const: "line" },
+        role: { enum: ["start", "end"] }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["entityId", "entityKind", "role"],
+      properties: {
+        entityId: V19_NON_EMPTY_ID_SCHEMA,
+        entityKind: { enum: ["rectangle", "circle"] },
+        role: { const: "center" }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["entityId", "entityKind", "role"],
+      properties: {
+        entityId: V19_NON_EMPTY_ID_SCHEMA,
+        entityKind: { const: "arc" },
+        role: { enum: ["center", "start", "end"] }
+      }
+    }
+  ]
+} as const;
+
+const V19_MIDPOINT_TARGET_SCHEMA = {
+  oneOf: [V19_POINT_TARGET_SCHEMA.oneOf[0], V19_POINT_TARGET_SCHEMA.oneOf[2]]
+} as const;
+
+const V19_CURVE_TARGET_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["entityId", "entityKind"],
+  properties: {
+    entityId: V19_NON_EMPTY_ID_SCHEMA,
+    entityKind: { enum: ["line", "circle", "arc"] }
+  }
+} as const;
+
+const V19_LINE_CURVE_TARGET_SCHEMA = {
+  ...V19_CURVE_TARGET_SCHEMA,
+  properties: {
+    entityId: V19_NON_EMPTY_ID_SCHEMA,
+    entityKind: { const: "line" }
+  }
+} as const;
+
+const V19_CIRCLE_CURVE_TARGET_SCHEMA = {
+  ...V19_CURVE_TARGET_SCHEMA,
+  properties: {
+    entityId: V19_NON_EMPTY_ID_SCHEMA,
+    entityKind: { const: "circle" }
+  }
+} as const;
+
+const V19_ARC_CURVE_TARGET_SCHEMA = {
+  ...V19_CURVE_TARGET_SCHEMA,
+  properties: {
+    entityId: V19_NON_EMPTY_ID_SCHEMA,
+    entityKind: { const: "arc" }
+  }
+} as const;
+
+const V19_TANGENT_TARGET_PAIR_SCHEMA = {
+  oneOf: [
+    {
+      properties: {
+        primaryTarget: V19_LINE_CURVE_TARGET_SCHEMA,
+        secondaryTarget: {
+          oneOf: [V19_CIRCLE_CURVE_TARGET_SCHEMA, V19_ARC_CURVE_TARGET_SCHEMA]
+        }
+      }
+    },
+    {
+      properties: {
+        primaryTarget: V19_CIRCLE_CURVE_TARGET_SCHEMA,
+        secondaryTarget: {
+          oneOf: [V19_LINE_CURVE_TARGET_SCHEMA, V19_ARC_CURVE_TARGET_SCHEMA]
+        }
+      }
+    },
+    {
+      properties: {
+        primaryTarget: V19_ARC_CURVE_TARGET_SCHEMA,
+        secondaryTarget: {
+          oneOf: [
+            V19_LINE_CURVE_TARGET_SCHEMA,
+            V19_CIRCLE_CURVE_TARGET_SCHEMA,
+            V19_ARC_CURVE_TARGET_SCHEMA
+          ]
+        }
+      }
+    }
+  ]
+} as const;
+
+const V19_RADIUS_CURVE_TARGET_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["entityId", "entityKind"],
+  properties: {
+    entityId: V19_NON_EMPTY_ID_SCHEMA,
+    entityKind: { enum: ["circle", "arc"] }
+  }
+} as const;
+
+const V19_DIMENSION_TARGET_SCHEMA = {
+  oneOf: [
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "entityId", "entityKind", "role"],
+      properties: {
+        kind: { const: "entityScalar" },
+        entityId: V19_NON_EMPTY_ID_SCHEMA,
+        entityKind: { const: "rectangle" },
+        role: { enum: ["width", "height"] }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "entityId", "entityKind", "role"],
+      properties: {
+        kind: { const: "entityScalar" },
+        entityId: V19_NON_EMPTY_ID_SCHEMA,
+        entityKind: { const: "line" },
+        role: { const: "length" }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "entityId", "entityKind", "role"],
+      properties: {
+        kind: { const: "entityScalar" },
+        entityId: V19_NON_EMPTY_ID_SCHEMA,
+        entityKind: { const: "circle" },
+        role: { enum: ["radius", "diameter"] }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "entityId", "entityKind", "role"],
+      properties: {
+        kind: { const: "entityScalar" },
+        entityId: V19_NON_EMPTY_ID_SCHEMA,
+        entityKind: { const: "arc" },
+        role: { enum: ["radius", "diameter", "sweep"] }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "primary", "secondary", "measurement"],
+      properties: {
+        kind: { const: "pointPair" },
+        primary: V19_POINT_TARGET_SCHEMA,
+        secondary: V19_POINT_TARGET_SCHEMA,
+        measurement: { const: "distance" }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "primary", "secondary", "measurement", "direction"],
+      properties: {
+        kind: { const: "pointPair" },
+        primary: V19_POINT_TARGET_SCHEMA,
+        secondary: V19_POINT_TARGET_SCHEMA,
+        measurement: { enum: ["horizontal", "vertical"] },
+        direction: { enum: ["positive", "negative"] }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "point", "lineEntityId", "side"],
+      properties: {
+        kind: { const: "pointLineDistance" },
+        point: V19_POINT_TARGET_SCHEMA,
+        lineEntityId: V19_NON_EMPTY_ID_SCHEMA,
+        side: { enum: ["left", "right"] }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "kind",
+        "primaryLineEntityId",
+        "secondaryLineEntityId",
+        "sense"
+      ],
+      properties: {
+        kind: { const: "lineAngle" },
+        primaryLineEntityId: V19_NON_EMPTY_ID_SCHEMA,
+        secondaryLineEntityId: V19_NON_EMPTY_ID_SCHEMA,
+        sense: { enum: ["clockwise", "counterclockwise"] }
+      }
+    }
+  ]
+} as const;
+
+const V19_EXACTLY_ONE_DIMENSION_VALUE_SOURCE_SCHEMA = {
+  oneOf: [
+    {
+      required: ["value"],
+      not: { required: ["parameterId"] }
+    },
+    {
+      required: ["parameterId"],
+      not: { required: ["value"] }
+    }
+  ]
+} as const;
+
+const V19_CONSTRAINT_CREATE_COMMON_PROPERTIES = {
+  op: { const: "sketch.constraint.create" },
+  id: V19_NON_EMPTY_ID_SCHEMA,
+  name: V19_NON_EMPTY_ID_SCHEMA,
+  sketchId: V19_NON_EMPTY_ID_SCHEMA
+} as const;
+
+const V19_CONSTRAINT_CREATE_SCHEMA = {
+  oneOf: [
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["op", "name", "sketchId", "kind", "entityId"],
+      properties: {
+        ...V19_CONSTRAINT_CREATE_COMMON_PROPERTIES,
+        kind: { enum: ["horizontal", "vertical"] },
+        entityId: V19_NON_EMPTY_ID_SCHEMA
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["op", "name", "sketchId", "kind", "target"],
+      properties: {
+        ...V19_CONSTRAINT_CREATE_COMMON_PROPERTIES,
+        kind: { const: "fixed" },
+        target: V19_POINT_TARGET_SCHEMA,
+        coordinate: V19_VEC2_SCHEMA
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "op",
+        "name",
+        "sketchId",
+        "kind",
+        "primaryTarget",
+        "secondaryTarget"
+      ],
+      properties: {
+        ...V19_CONSTRAINT_CREATE_COMMON_PROPERTIES,
+        kind: { const: "coincident" },
+        primaryTarget: V19_POINT_TARGET_SCHEMA,
+        secondaryTarget: V19_POINT_TARGET_SCHEMA
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["op", "name", "sketchId", "kind", "lineEntityId", "target"],
+      properties: {
+        ...V19_CONSTRAINT_CREATE_COMMON_PROPERTIES,
+        kind: { const: "midpoint" },
+        lineEntityId: V19_NON_EMPTY_ID_SCHEMA,
+        target: V19_MIDPOINT_TARGET_SCHEMA
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "op",
+        "name",
+        "sketchId",
+        "kind",
+        "primaryLineEntityId",
+        "secondaryLineEntityId"
+      ],
+      properties: {
+        ...V19_CONSTRAINT_CREATE_COMMON_PROPERTIES,
+        kind: { enum: ["parallel", "perpendicular", "equalLength"] },
+        primaryLineEntityId: V19_NON_EMPTY_ID_SCHEMA,
+        secondaryLineEntityId: V19_NON_EMPTY_ID_SCHEMA
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "op",
+        "name",
+        "sketchId",
+        "kind",
+        "primaryTarget",
+        "secondaryTarget"
+      ],
+      properties: {
+        ...V19_CONSTRAINT_CREATE_COMMON_PROPERTIES,
+        kind: { const: "tangent" },
+        primaryTarget: V19_CURVE_TARGET_SCHEMA,
+        secondaryTarget: V19_CURVE_TARGET_SCHEMA
+      },
+      allOf: [V19_TANGENT_TARGET_PAIR_SCHEMA]
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "op",
+        "name",
+        "sketchId",
+        "kind",
+        "primaryTarget",
+        "secondaryTarget"
+      ],
+      properties: {
+        ...V19_CONSTRAINT_CREATE_COMMON_PROPERTIES,
+        kind: { enum: ["concentric", "equalRadius"] },
+        primaryTarget: V19_RADIUS_CURVE_TARGET_SCHEMA,
+        secondaryTarget: V19_RADIUS_CURVE_TARGET_SCHEMA
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "op",
+        "name",
+        "sketchId",
+        "kind",
+        "primaryTarget",
+        "secondaryTarget",
+        "symmetryLineEntityId"
+      ],
+      properties: {
+        ...V19_CONSTRAINT_CREATE_COMMON_PROPERTIES,
+        kind: { const: "symmetry" },
+        primaryTarget: V19_POINT_TARGET_SCHEMA,
+        secondaryTarget: V19_POINT_TARGET_SCHEMA,
+        symmetryLineEntityId: V19_NON_EMPTY_ID_SCHEMA
+      }
+    }
+  ]
+} as const;
+
+const V19_CONSTRAINT_DEFINITION_SCHEMA = {
+  oneOf: [
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "entityId"],
+      properties: {
+        kind: { enum: ["horizontal", "vertical"] },
+        entityId: V19_NON_EMPTY_ID_SCHEMA
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "target", "coordinate"],
+      properties: {
+        kind: { const: "fixed" },
+        target: V19_POINT_TARGET_SCHEMA,
+        coordinate: V19_VEC2_SCHEMA
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "primaryTarget", "secondaryTarget"],
+      properties: {
+        kind: { const: "coincident" },
+        primaryTarget: V19_POINT_TARGET_SCHEMA,
+        secondaryTarget: V19_POINT_TARGET_SCHEMA
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "lineEntityId", "target"],
+      properties: {
+        kind: { const: "midpoint" },
+        lineEntityId: V19_NON_EMPTY_ID_SCHEMA,
+        target: V19_MIDPOINT_TARGET_SCHEMA
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "primaryLineEntityId", "secondaryLineEntityId"],
+      properties: {
+        kind: {
+          enum: ["parallel", "perpendicular", "equalLength"]
+        },
+        primaryLineEntityId: V19_NON_EMPTY_ID_SCHEMA,
+        secondaryLineEntityId: V19_NON_EMPTY_ID_SCHEMA
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "primaryTarget", "secondaryTarget"],
+      properties: {
+        kind: { const: "tangent" },
+        primaryTarget: V19_CURVE_TARGET_SCHEMA,
+        secondaryTarget: V19_CURVE_TARGET_SCHEMA
+      },
+      allOf: [V19_TANGENT_TARGET_PAIR_SCHEMA]
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "primaryTarget", "secondaryTarget"],
+      properties: {
+        kind: { enum: ["concentric", "equalRadius"] },
+        primaryTarget: V19_RADIUS_CURVE_TARGET_SCHEMA,
+        secondaryTarget: V19_RADIUS_CURVE_TARGET_SCHEMA
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "kind",
+        "primaryTarget",
+        "secondaryTarget",
+        "symmetryLineEntityId"
+      ],
+      properties: {
+        kind: { const: "symmetry" },
+        primaryTarget: V19_POINT_TARGET_SCHEMA,
+        secondaryTarget: V19_POINT_TARGET_SCHEMA,
+        symmetryLineEntityId: V19_NON_EMPTY_ID_SCHEMA
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "kind",
+        "primaryLineEntityId",
+        "secondaryLineEntityId",
+        "angleDegrees"
+      ],
+      properties: {
+        kind: { const: "angle" },
+        primaryLineEntityId: V19_NON_EMPTY_ID_SCHEMA,
+        secondaryLineEntityId: V19_NON_EMPTY_ID_SCHEMA,
+        angleDegrees: { type: "number" }
+      }
+    }
+  ]
+} as const;
+
 const V19_BATCH_OP_SCHEMA = {
   oneOf: [
     {
@@ -1966,8 +2455,119 @@ const V19_BATCH_OP_SCHEMA = {
     },
     {
       type: "object",
+      additionalProperties: false,
+      required: ["op", "name", "sketchId", "target"],
+      properties: {
+        op: { const: "sketch.dimension.create" },
+        id: V19_NON_EMPTY_ID_SCHEMA,
+        name: V19_NON_EMPTY_ID_SCHEMA,
+        sketchId: V19_NON_EMPTY_ID_SCHEMA,
+        target: V19_DIMENSION_TARGET_SCHEMA,
+        value: { type: "number" },
+        parameterId: V19_NON_EMPTY_ID_SCHEMA
+      },
+      ...V19_EXACTLY_ONE_DIMENSION_VALUE_SOURCE_SCHEMA,
+      allOf: [
+        {
+          if: {
+            properties: {
+              target: {
+                properties: { kind: { const: "lineAngle" } },
+                required: ["kind"]
+              }
+            },
+            required: ["target"]
+          },
+          then: {
+            required: ["value"],
+            not: { required: ["parameterId"] }
+          }
+        }
+      ]
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["op", "id"],
+      properties: {
+        op: { const: "sketch.dimension.update" },
+        id: V19_NON_EMPTY_ID_SCHEMA,
+        target: V19_DIMENSION_TARGET_SCHEMA,
+        value: { type: "number" },
+        parameterId: V19_NON_EMPTY_ID_SCHEMA
+      },
+      ...V19_EXACTLY_ONE_DIMENSION_VALUE_SOURCE_SCHEMA,
+      allOf: [
+        {
+          if: {
+            properties: {
+              target: {
+                properties: { kind: { const: "lineAngle" } },
+                required: ["kind"]
+              }
+            },
+            required: ["target"]
+          },
+          then: {
+            required: ["value"],
+            not: { required: ["parameterId"] }
+          }
+        }
+      ]
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["op", "id", "name"],
+      properties: {
+        op: { const: "sketch.dimension.rename" },
+        id: V19_NON_EMPTY_ID_SCHEMA,
+        name: V19_NON_EMPTY_ID_SCHEMA
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["op", "id"],
+      properties: {
+        op: { const: "sketch.dimension.delete" },
+        id: V19_NON_EMPTY_ID_SCHEMA
+      }
+    },
+    V19_CONSTRAINT_CREATE_SCHEMA,
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["op", "id", "definition"],
+      properties: {
+        op: { const: "sketch.constraint.update" },
+        id: V19_NON_EMPTY_ID_SCHEMA,
+        definition: V19_CONSTRAINT_DEFINITION_SCHEMA
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["op", "id", "name"],
+      properties: {
+        op: { const: "sketch.constraint.rename" },
+        id: V19_NON_EMPTY_ID_SCHEMA,
+        name: V19_NON_EMPTY_ID_SCHEMA
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["op", "id"],
+      properties: {
+        op: { const: "sketch.constraint.delete" },
+        id: V19_NON_EMPTY_ID_SCHEMA
+      }
+    },
+    {
+      type: "object",
       description:
-        "A legacy typed CadOp whose op is not one of the schema-exact V19 Offset/Slot/Rounded Rectangle commands.",
+        "A legacy typed CadOp whose op is not one of the schema-exact V19 sketch commands.",
       required: ["op"],
       properties: {
         op: {
@@ -1976,7 +2576,15 @@ const V19_BATCH_OP_SCHEMA = {
             enum: [
               "sketch.offset",
               "sketch.addSlot",
-              "sketch.addRoundedRectangle"
+              "sketch.addRoundedRectangle",
+              "sketch.dimension.create",
+              "sketch.dimension.update",
+              "sketch.dimension.rename",
+              "sketch.dimension.delete",
+              "sketch.constraint.create",
+              "sketch.constraint.update",
+              "sketch.constraint.rename",
+              "sketch.constraint.delete"
             ]
           }
         }
@@ -3074,7 +3682,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.batch",
     description:
-      "Runs a structured CADOps batch in dry-run or commit mode and returns the CADOps response with semantic diff, agent review, and audit summary. For trim, extend, split, explodeRectangle, or non-associative offset, call cad.sketch_curve_edit_readiness first and submit its preparedOperation unchanged. A curve-edit batch must contain exactly that one curve-edit operation and no other operations. Direct curve-edit operations are accepted with current source/solver preconditions; any supplied deleteConstraintIds and deleteDimensionIds must exactly match the returned impact or the batch fails with the complete impact. sketch.addSlot and sketch.addRoundedRectangle accept their exact ordered caller-supplied entityIds and constraintIds through this same batch authority.",
+      "Runs a structured CADOps batch in dry-run or commit mode and returns the CADOps response with semantic diff, agent review, and audit summary. For trim, extend, split, explodeRectangle, or non-associative offset, call cad.sketch_curve_edit_readiness first and submit its preparedOperation unchanged. A curve-edit batch must contain exactly that one curve-edit operation and no other operations. Direct curve-edit operations are accepted with current source/solver preconditions; any supplied deleteConstraintIds and deleteDimensionIds must exactly match the returned impact or the batch fails with the complete impact. sketch.addSlot and sketch.addRoundedRectangle accept their exact ordered caller-supplied entityIds and constraintIds through this same batch authority. V19 dimension create/update uses normalized V22 targets with exactly one literal or parameter value source; lineAngle targets are literal-only. Constraint create/update uses the exact Decision 14 target matrix, structural update cannot change kind, and legacy angle supports update/rename/delete but not new create.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -3092,7 +3700,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
             ops: {
               type: "array",
               description:
-                "Structured CADOps. A trim/extend/split/explodeRectangle/offset batch has exactly one item. Prepared curve edits include generated output IDs plus exact deleteConstraintIds/deleteDimensionIds from readiness. Offset source refs are typed entity or ordered-chain records, never screen evidence or opaque tokens. Slot and rounded-rectangle operations may carry exact ordered entityIds and constraintIds.",
+                "Structured CADOps. A trim/extend/split/explodeRectangle/offset batch has exactly one item. Prepared curve edits include generated output IDs plus exact deleteConstraintIds/deleteDimensionIds from readiness. Offset source refs are typed entity or ordered-chain records, never screen evidence or opaque tokens. Slot and rounded-rectangle operations may carry exact ordered entityIds and constraintIds. Normalized dimensions use entityScalar, pointPair, pointLineDistance, or lineAngle targets; lineAngle rejects parameterId. Structural constraint updates retain the stored kind, and legacy angle has no create form.",
               items: V19_BATCH_OP_SCHEMA
             },
             actor: {

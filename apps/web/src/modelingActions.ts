@@ -10,7 +10,7 @@ import type {
   NamedGeneratedReferenceEntry,
   SelectionReferenceCandidatesQueryResponse,
   SketchConstraintEntry,
-  SketchDimensionEntry,
+  SketchDimensionEntryCurrent,
   SketchEntityId,
   SketchEntityKind,
   SketchEntitySnapshot,
@@ -37,8 +37,11 @@ import {
   type GeneratedReferenceSelectionState
 } from "./generatedReferenceSelection";
 import {
-  createAvailableSketchConstraintKindOptions,
-  createAvailableSketchDimensionTargetOptions,
+  UI_ACTION_METADATA,
+  type UiActionAvailabilityProjection,
+  type UiActionId
+} from "./actions/actionRegistry";
+import {
   createHoleTargetBodyOptions,
   createRevolveAxisOptions,
   getHoleTargetGuidance,
@@ -46,9 +49,7 @@ import {
   getRevolveOperationStatus,
   isExtrudableSketchEntity,
   type BooleanTargetBodyOption,
-  type RevolveAxisOption,
-  type SketchConstraintKindOption,
-  type SketchDimensionTargetOption
+  type RevolveAxisOption
 } from "./sketchPanelUi";
 import type { CreatableSketchEntityKind } from "./cadCommands";
 
@@ -91,7 +92,8 @@ export type ModelingActionId =
   | "reference.name"
   | "feature.chamfer"
   | "feature.fillet"
-  | "feature.shell";
+  | "feature.shell"
+  | UiActionId;
 
 export type ModelingActionKind = "command" | "editor" | "query" | "selection";
 
@@ -107,8 +109,6 @@ export interface ModelingActionTargetMetadata {
   readonly addEntityKind?: CreatableSketchEntityKind;
   readonly sketchEntityId?: SketchEntityId;
   readonly sketchEntityKind?: SketchEntityKind;
-  readonly dimensionTargets?: readonly SketchDimensionTargetOption[];
-  readonly constraintKinds?: readonly SketchConstraintKindOption[];
   readonly revolveAxes?: readonly RevolveAxisOption[];
   readonly holeTargets?: readonly BooleanTargetBodyOption[];
   readonly holeTargetGuidance?: string;
@@ -164,7 +164,7 @@ export type ModelingSelectionContext =
       readonly selectionKind: "sketchEntity";
       readonly sketch: SketchSnapshot;
       readonly entity: SketchEntitySnapshot;
-      readonly dimensions?: readonly SketchDimensionEntry[];
+      readonly dimensions?: readonly SketchDimensionEntryCurrent[];
       readonly constraints?: readonly SketchConstraintEntry[];
       readonly solverStatus?: SketchSolverStatusQueryResponse;
     }
@@ -199,6 +199,7 @@ export interface ModelingActionState {
     string,
     TopologyCommandTargetReadinessQueryResponse
   >;
+  readonly sketchIntentActionAvailability?: UiActionAvailabilityProjection;
 }
 
 export function deriveModelingActions(
@@ -277,9 +278,10 @@ function createSketchEntityActions(
     | "preferredBodyId"
     | "topologyAnchors"
     | "holeTargetReadinessByTopologyAnchorId"
+    | "sketchIntentActionAvailability"
   >
 ): readonly ModelingActionDescriptor[] {
-  const { constraints = [], dimensions = [], entity, sketch } = context;
+  const { entity, sketch } = context;
   const selection: ModelingActionSelectionMetadata = {
     context: "sketchEntity",
     sketchId: sketch.id,
@@ -287,15 +289,24 @@ function createSketchEntityActions(
     entityKind: entity.kind
   };
   const entityTarget = createSketchEntityTarget(sketch, entity);
-  const dimensionTargets = createAvailableSketchDimensionTargetOptions(
-    entity,
-    dimensions
+  const dimensionActions = createSketchIntentModelingActions(
+    "Dimension",
+    state.sketchIntentActionAvailability,
+    entityTarget,
+    selection
   );
-  const constraintKinds = createAvailableSketchConstraintKindOptions(
-    entity,
-    constraints,
-    sketch.entities
+  const constraintActions = createSketchIntentModelingActions(
+    "Constraint",
+    state.sketchIntentActionAvailability,
+    entityTarget,
+    selection
   );
+  const dimensionsAvailable =
+    dimensionActions.length === 0 ||
+    dimensionActions.some((action) => action.available);
+  const constraintsAvailable =
+    constraintActions.length === 0 ||
+    constraintActions.some((action) => action.available);
   const actions: ModelingActionDescriptor[] = [
     {
       id: "sketch.entity.edit",
@@ -311,15 +322,9 @@ function createSketchEntityActions(
       label: "Add dimension",
       kind: "command",
       category: "sketchEntity",
-      available: dimensionTargets.length > 0,
-      reason:
-        dimensionTargets.length > 0
-          ? undefined
-          : "No available dimension targets for selected entity.",
-      target: {
-        ...entityTarget,
-        dimensionTargets
-      },
+      available: dimensionsAvailable,
+      reason: dimensionsAvailable ? undefined : dimensionActions[0]?.reason,
+      target: entityTarget,
       selection
     },
     {
@@ -327,17 +332,13 @@ function createSketchEntityActions(
       label: "Add constraint",
       kind: "command",
       category: "sketchEntity",
-      available: constraintKinds.length > 0,
-      reason:
-        constraintKinds.length > 0
-          ? undefined
-          : "No available constraints for selected entity.",
-      target: {
-        ...entityTarget,
-        constraintKinds
-      },
+      available: constraintsAvailable,
+      reason: constraintsAvailable ? undefined : constraintActions[0]?.reason,
+      target: entityTarget,
       selection
-    }
+    },
+    ...dimensionActions,
+    ...constraintActions
   ];
 
   if (entity.kind === "line") {
@@ -355,6 +356,33 @@ function createSketchEntityActions(
   }
 
   return actions;
+}
+
+function createSketchIntentModelingActions(
+  group: "Dimension" | "Constraint",
+  projection: UiActionAvailabilityProjection | undefined,
+  target: ModelingActionTargetMetadata,
+  selection: ModelingActionSelectionMetadata
+): readonly ModelingActionDescriptor[] {
+  return UI_ACTION_METADATA.flatMap((action) => {
+    if (action.group !== group) return [];
+    const availability = projection?.[action.id];
+    if (!availability) return [];
+    return [
+      {
+        id: action.id,
+        label: action.label,
+        kind: "editor" as const,
+        category: "sketchEntity" as const,
+        available: availability.status === "ready",
+        ...(availability.status === "ready"
+          ? {}
+          : { reason: availability.message }),
+        target,
+        selection
+      }
+    ];
+  });
 }
 
 function createSketchEntityTarget(

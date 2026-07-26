@@ -1,5 +1,5 @@
 import type {
-  SketchDimensionEntry,
+  SketchDimensionEntryCurrent,
   SketchEvaluationQueryResponse,
   SketchSnapshot,
   SketchSolverStatusQueryResponse
@@ -25,7 +25,7 @@ export function createSketchModelingSelectionContext({
   readonly selectedSketchContext?: SketchPanelSelectionContext;
   readonly sketchDimensionsBySketchId: ReadonlyMap<
     string,
-    readonly SketchDimensionEntry[]
+    readonly SketchDimensionEntryCurrent[]
   >;
   readonly sketchEvaluationsBySketchId: ReadonlyMap<
     string,
@@ -54,8 +54,7 @@ export function createSketchModelingSelectionContext({
         sketch,
         entity,
         dimensions:
-          filterLegacyDimensions(evaluation?.dimensions) ??
-          sketchDimensionsBySketchId.get(sketch.id),
+          evaluation?.dimensions ?? sketchDimensionsBySketchId.get(sketch.id),
         constraints: evaluation?.constraints,
         solverStatus
       };
@@ -84,7 +83,7 @@ export function createSketchModelingSelectionContext({
             sketch,
             entity,
             dimensions:
-              filterLegacyDimensions(evaluation?.dimensions) ??
+              evaluation?.dimensions ??
               sketchDimensionsBySketchId.get(sketch.id),
             constraints: evaluation?.constraints,
             solverStatus
@@ -113,13 +112,4 @@ export function createSketchModelingSelectionContext({
         solverStatus: sketchSolverStatusesBySketchId.get(focusedSketch.id)
       }
     : undefined;
-}
-
-function filterLegacyDimensions(
-  dimensions: SketchEvaluationQueryResponse["dimensions"] | undefined
-): readonly SketchDimensionEntry[] | undefined {
-  return dimensions?.filter(
-    (dimension): dimension is SketchDimensionEntry =>
-      !("sourceShape" in dimension)
-  );
 }

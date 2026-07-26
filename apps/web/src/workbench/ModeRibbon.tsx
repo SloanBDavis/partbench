@@ -348,7 +348,10 @@ function RibbonActionButton({
       onFocus={onFocus}
       onClick={invoke}
     >
-      <Icon name={getActionIcon(action.definition.id)} size={20} />
+      <Icon
+        name={getActionIcon(action.definition.id, action.definition.group)}
+        size={20}
+      />
       <span>{action.definition.label}</span>
     </button>
   );

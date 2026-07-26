@@ -42,3 +42,18 @@ export function getCurveEditSketchSelectionAction(input: {
   }
   return input.dirty ? "guard-selection" : "close-and-select";
 }
+
+export function getSketchEditorActionNotice(
+  kind: "curve" | "intent",
+  actionId?: string
+): string {
+  if (kind === "intent") {
+    const tool = actionId
+      ?.slice(actionId.indexOf(".") + 1)
+      .replaceAll("-", " ");
+    return `${
+      tool ? `Set up ${tool}: choose` : "Choose"
+    } targets and values, review measurement and solver state, then Apply.`;
+  }
+  return "Collect the exact edit choices, review geometry and constraint consequences, then Apply.";
+}

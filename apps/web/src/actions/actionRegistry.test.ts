@@ -31,6 +31,43 @@ describe("V18 UI action registry", () => {
     }
   });
 
+  it("registers the complete creatable sketch intent matrix", () => {
+    const ids = UI_ACTION_REGISTRY.map((action) => action.id);
+    const intentIds = [
+      "horizontal",
+      "vertical",
+      "fixed",
+      "coincident",
+      "midpoint",
+      "parallel",
+      "perpendicular",
+      "tangent",
+      "concentric",
+      "equal-length",
+      "equal-radius",
+      "symmetry",
+      "rectangle-width",
+      "rectangle-height",
+      "line-length",
+      "radius",
+      "diameter",
+      "arc-sweep",
+      "point-distance",
+      "horizontal-distance",
+      "vertical-distance",
+      "point-line-distance",
+      "line-angle"
+    ].map((id) => `sketch.${id}`);
+    expect(ids).toEqual(expect.arrayContaining(intentIds));
+    expect(
+      ids.filter((id) =>
+        UI_ACTION_REGISTRY.find((action) => action.id === id)?.group.match(
+          /Constraint|Dimension/
+        )
+      )
+    ).toHaveLength(23);
+  });
+
   it("reads availability only from the assembled projection", () => {
     const context = createContext({
       availability: {

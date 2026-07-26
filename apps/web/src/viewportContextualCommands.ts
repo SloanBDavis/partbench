@@ -57,7 +57,8 @@ export type ViewportContextualCommandActionId =
   | "reference.repairName"
   | "reference.name"
   | "sketch.createSideHole"
-  | "sketch.createOnFace";
+  | "sketch.createOnFace"
+  | ModelingActionId;
 
 export type ViewportContextualCommandActionRoute =
   | "command"
@@ -443,6 +444,17 @@ function createActionsFromModeling(
           })
         ];
       default:
+        if (
+          action.category === "sketchEntity" &&
+          action.kind === "editor" &&
+          action.id !== "sketch.entity.edit"
+        )
+          return [
+            createActionFromModeling(action, {
+              label: action.label,
+              route: "modeling"
+            })
+          ];
         return [];
     }
   });
@@ -778,6 +790,8 @@ function getActionRank(id: ViewportContextualCommandActionId): number {
     case "feature.selectReference":
     case "body.references.inspect":
       return 7;
+    default:
+      return 8;
   }
 }
 

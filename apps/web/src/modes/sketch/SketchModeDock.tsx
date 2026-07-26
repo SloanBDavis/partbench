@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type {
+  CadOp,
   CadParameterSnapshot,
   SketchConstraintEntry,
-  SketchDimensionEntry,
-  SketchDimensionTarget,
+  SketchDimensionEntryCurrent,
   PreparedSketchCurveEditOp,
   SketchCurveEditProposal,
   SketchCurveEditReadinessQueryResponse,
@@ -16,65 +16,53 @@ import type {
   SketchAddRoundedRectangleOp,
   SketchAddSlotOp
 } from "@web-cad/cad-protocol";
-import type {
-  SketchConstraintForm,
-  SketchCreateForm,
-  SketchDimensionForm,
-  SketchEntityForm
-} from "../../cadCommands";
+import type { SketchCreateForm, SketchEntityForm } from "../../cadCommands";
 import {
   entityToSketchEntityForm,
   getSketchEntityFormLabels,
   sketchEntityFormToEntity,
   validateSketchEntityForm
 } from "../../sketchEntityForms";
-import { createSketchConstraintInferenceCandidates } from "../../sketchConstraintInference";
 import {
-  createAvailableCoincidentPointTargetOptions,
-  createAvailableFixedPointTargetOptions,
-  createAvailableMidpointTargetOptions,
-  createAvailableParallelLineTargetOptions,
-  createAvailableSketchConstraintKindOptions,
-  createAvailableSketchDimensionTargetOptions,
   createSketchEntityIntentSummary,
-  createSketchPointTargetOptionsForEntity,
-  formatSketchConstraintStatus,
-  formatSketchDimensionEffectiveValue,
-  formatSketchDimensionStatus,
-  formatSketchDimensionValueSource,
   formatSketchEvaluationStatus,
   formatSketchProfileValidity,
   formatSketchSolverStatus,
-  getSketchConstraintKindLabel,
-  getSketchDimensionTargetLabel,
   getSketchEntityKindLabel,
-  getSketchSolverStatusDisplay,
-  type SketchLineTargetOption
+  getSketchSolverStatusDisplay
 } from "../../sketchPanelUi";
 import {
   formatSketchEntityUsageLabel,
   getSketchEntityExtrudeUsages
 } from "../../sketchEntityUsage";
 import type { CadFeatureSummary } from "@web-cad/cad-protocol";
-import type { UiActionId } from "../../actions/actionRegistry";
+import type {
+  UiActionAvailabilityProjection,
+  UiActionId
+} from "../../actions/actionRegistry";
 import {
   SketchCurveEditPanel,
   type SketchCurveEditSessionControl
 } from "./SketchCurveEditPanel";
 import { SketchConveniencePanel } from "./SketchConveniencePanel";
+import { SketchIntentEditor } from "./SketchIntentEditor";
+import type {
+  SketchConstraintCreateKindV19,
+  SketchDimensionFamilyV19
+} from "./sketchIntentEditorModel";
+import {
+  dimensionEntryToDraftV19,
+  dimensionTargetEntityIdsV19,
+  getConstraintCreationAvailabilityV19,
+  getDimensionCreationAvailabilityV19
+} from "./sketchIntentEditorModel";
 import type { SketchConvenienceKind } from "./sketchConvenienceModel";
 import type {
   SketchCurveEditKind,
   SketchCurveEditViewportChoice
 } from "./sketchCurveEditModel";
 import {
-  DEFAULT_SKETCH_CONSTRAINT_FORM,
-  constraintToRenameDraft,
-  createDimensionDraft,
   createEntityDraft,
-  dimensionTargetKey,
-  dimensionToDraft,
-  isLinePairConstraintKind,
   resolveActiveSketch,
   resolveSelectedSketchEntity,
   type SketchCreateEntityKind
@@ -88,8 +76,9 @@ export interface SketchModeDockProps {
   readonly features?: readonly CadFeatureSummary[];
   readonly dimensionsBySketchId: ReadonlyMap<
     string,
-    readonly SketchDimensionEntry[]
+    readonly SketchDimensionEntryCurrent[]
   >;
+  readonly units?: string;
   readonly evaluationsBySketchId: ReadonlyMap<
     string,
     SketchEvaluationQueryResponse
@@ -147,56 +136,25 @@ export interface SketchModeDockProps {
   readonly onCurveEditSessionControlChange?: (
     control: SketchCurveEditSessionControl | undefined
   ) => void;
-  readonly onCreateDimension: (
-    sketchId: string,
-    entityId: string,
-    target: SketchDimensionTarget,
-    form: SketchDimensionForm
+  readonly onApplySketchIntentOps: (
+    ops: readonly CadOp[]
+  ) => boolean | Promise<boolean>;
+  readonly onIntentActionAvailabilityChange?: (
+    availability: UiActionAvailabilityProjection
   ) => void;
-  readonly onApplyDimensionEdit: (
-    dimension: SketchDimensionEntry,
-    form: SketchDimensionForm
-  ) => void;
-  readonly onDeleteDimension: (dimensionId: string) => void;
-  readonly onCreateConstraint: (
-    sketchId: string,
-    entityId: string,
-    form: SketchConstraintForm
-  ) => void;
-  readonly onApplyConstraintEdit: (
-    constraint: SketchConstraintEntry,
-    form: SketchConstraintForm
-  ) => void;
-  readonly onDeleteConstraint: (constraintId: string) => void;
   readonly onFinish: () => void;
 }
 
 type DockSection = "geometry" | "constraints" | "status";
+
+const EMPTY_DIMENSIONS: readonly SketchDimensionEntryCurrent[] = [];
+const EMPTY_CONSTRAINTS: readonly SketchConstraintEntry[] = [];
 type EntityDraft = {
   readonly mode: "create" | "edit";
   readonly kind: SketchEntitySnapshot["kind"];
   readonly entityId?: string;
   readonly form: SketchEntityForm;
 };
-type DimensionDraft =
-  | {
-      readonly mode: "create";
-      readonly target: SketchDimensionTarget;
-      readonly form: SketchDimensionForm;
-    }
-  | {
-      readonly mode: "edit";
-      readonly dimensionId: string;
-      readonly form: SketchDimensionForm;
-    };
-type ConstraintDraft =
-  | { readonly mode: "create"; readonly form: SketchConstraintForm }
-  | {
-      readonly mode: "rename";
-      readonly constraintId: string;
-      readonly form: SketchConstraintForm;
-    };
-
 const DEFAULT_CREATE_SKETCH: SketchCreateForm = {
   id: "",
   name: "Sketch 1",
@@ -213,11 +171,70 @@ const ENTITY_TOOLS: readonly {
   { kind: "circle", label: "Circle" }
 ];
 
+const DIMENSION_ACTION_FAMILIES = [
+  ["sketch.rectangle-width", "rectangleWidth"],
+  ["sketch.rectangle-height", "rectangleHeight"],
+  ["sketch.line-length", "lineLength"],
+  ["sketch.radius", "radius"],
+  ["sketch.diameter", "diameter"],
+  ["sketch.arc-sweep", "arcSweep"],
+  ["sketch.point-distance", "pointDistance"],
+  ["sketch.horizontal-distance", "horizontalDistance"],
+  ["sketch.vertical-distance", "verticalDistance"],
+  ["sketch.point-line-distance", "pointLineDistance"],
+  ["sketch.line-angle", "lineAngle"]
+] as const;
+
+const CONSTRAINT_ACTION_KINDS = [
+  ["sketch.horizontal", "horizontal"],
+  ["sketch.vertical", "vertical"],
+  ["sketch.fixed", "fixed"],
+  ["sketch.coincident", "coincident"],
+  ["sketch.midpoint", "midpoint"],
+  ["sketch.parallel", "parallel"],
+  ["sketch.perpendicular", "perpendicular"],
+  ["sketch.tangent", "tangent"],
+  ["sketch.concentric", "concentric"],
+  ["sketch.equal-length", "equalLength"],
+  ["sketch.equal-radius", "equalRadius"],
+  ["sketch.symmetry", "symmetry"]
+] as const;
+
+export function createSketchIntentAvailabilityProjectionV19(
+  sketch: SketchSnapshot | undefined,
+  selectedEntityId: string | undefined,
+  dimensions: readonly SketchDimensionEntryCurrent[],
+  constraints: readonly SketchConstraintEntry[]
+): UiActionAvailabilityProjection {
+  if (!sketch) return {};
+  return Object.fromEntries([
+    ...DIMENSION_ACTION_FAMILIES.map(([actionId, family]) => [
+      actionId,
+      getDimensionCreationAvailabilityV19(
+        family,
+        sketch.entities,
+        selectedEntityId,
+        dimensions
+      )
+    ]),
+    ...CONSTRAINT_ACTION_KINDS.map(([actionId, kind]) => [
+      actionId,
+      getConstraintCreationAvailabilityV19(
+        kind,
+        sketch.entities,
+        selectedEntityId,
+        constraints
+      )
+    ])
+  ]) as UiActionAvailabilityProjection;
+}
+
 export function SketchModeDock(props: SketchModeDockProps) {
   const {
     disabled,
     sketches,
     parameters,
+    units = "mm",
     features = [],
     dimensionsBySketchId,
     evaluationsBySketchId,
@@ -249,12 +266,8 @@ export function SketchModeDock(props: SketchModeDockProps) {
     onClearCurveEditHoverPreview,
     onCurveEditDirtyChange,
     onCurveEditSessionControlChange,
-    onCreateDimension,
-    onApplyDimensionEdit,
-    onDeleteDimension,
-    onCreateConstraint,
-    onApplyConstraintEdit,
-    onDeleteConstraint,
+    onApplySketchIntentOps,
+    onIntentActionAvailabilityChange,
     onFinish
   } = props;
   const activeSketch = resolveActiveSketch(sketches, activeSketchId);
@@ -263,12 +276,12 @@ export function SketchModeDock(props: SketchModeDockProps) {
     selectedEntityId
   );
   const dimensions = activeSketch
-    ? (dimensionsBySketchId.get(activeSketch.id) ?? [])
-    : [];
+    ? (dimensionsBySketchId.get(activeSketch.id) ?? EMPTY_DIMENSIONS)
+    : EMPTY_DIMENSIONS;
   const evaluation = activeSketch
     ? evaluationsBySketchId.get(activeSketch.id)
     : undefined;
-  const constraints = evaluation?.constraints ?? [];
+  const constraints = evaluation?.constraints ?? EMPTY_CONSTRAINTS;
   const solverStatus = activeSketch
     ? solverStatusesBySketchId.get(activeSketch.id)
     : undefined;
@@ -276,7 +289,11 @@ export function SketchModeDock(props: SketchModeDockProps) {
     ? pathCandidatesBySketchId?.get(activeSketch.id)
     : undefined;
   const entityDimensions = selectedEntity
-    ? dimensions.filter((item) => item.entityId === selectedEntity.id)
+    ? dimensions.filter((item) =>
+        dimensionTargetEntityIdsV19(
+          dimensionEntryToDraftV19(item).target
+        ).includes(selectedEntity.id)
+      )
     : [];
   const entityConstraints = selectedEntity
     ? constraints.filter((item) =>
@@ -284,16 +301,33 @@ export function SketchModeDock(props: SketchModeDockProps) {
       )
     : [];
   const requestedEntityKind = getRequestedEntityKind(initialActionId);
-  const requestedDimensionRole = getRequestedDimensionRole(initialActionId);
-  const requestedDimension = createAvailableSketchDimensionTargetOptions(
-    selectedEntity,
-    entityDimensions
-  ).find((option) => option.target.role === requestedDimensionRole);
+  const requestedDimension = getRequestedDimensionFamily(initialActionId);
   const requestedConstraintKind = getRequestedConstraintKind(initialActionId);
   const requestedCurveEditKind = getRequestedCurveEditKind(initialActionId);
   const requestedConvenienceKind = getRequestedConvenienceKind(initialActionId);
+  useEffect(() => {
+    onIntentActionAvailabilityChange?.(
+      createSketchIntentAvailabilityProjectionV19(
+        activeSketch,
+        selectedEntityId,
+        dimensions,
+        constraints
+      )
+    );
+    return () => onIntentActionAvailabilityChange?.({});
+  }, [
+    activeSketch,
+    constraints,
+    dimensions,
+    onIntentActionAvailabilityChange,
+    selectedEntityId
+  ]);
   const [section, setSection] = useState<DockSection>(() =>
     requestedDimension || requestedConstraintKind ? "constraints" : "geometry"
+  );
+  const [intentSessionActive, setIntentSessionActive] = useState(
+    () =>
+      requestedDimension !== undefined || requestedConstraintKind !== undefined
   );
   const [constructionForNew, setConstructionForNew] = useState(false);
   const [entityDraft, setEntityDraft] = useState<EntityDraft | undefined>(() =>
@@ -302,34 +336,6 @@ export function SketchModeDock(props: SketchModeDockProps) {
           mode: "create",
           kind: requestedEntityKind,
           form: createEntityDraft(false)
-        }
-      : undefined
-  );
-  const [dimensionDraft, setDimensionDraft] = useState<
-    DimensionDraft | undefined
-  >(() =>
-    requestedDimension
-      ? {
-          mode: "create",
-          ...createDimensionDraft(
-            requestedDimension.label,
-            requestedDimension.target,
-            requestedDimension.currentValue
-          )
-        }
-      : undefined
-  );
-  const [constraintDraft, setConstraintDraft] = useState<
-    ConstraintDraft | undefined
-  >(() =>
-    requestedConstraintKind
-      ? {
-          mode: "create",
-          form: {
-            ...DEFAULT_SKETCH_CONSTRAINT_FORM,
-            name: getSketchConstraintKindLabel(requestedConstraintKind),
-            kind: requestedConstraintKind
-          }
         }
       : undefined
   );
@@ -342,8 +348,6 @@ export function SketchModeDock(props: SketchModeDockProps) {
       if (event.key !== "Escape") return;
       if (arcToolActiveSketchId) onCancelGesture();
       setEntityDraft(undefined);
-      setDimensionDraft(undefined);
-      setConstraintDraft(undefined);
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -440,7 +444,13 @@ export function SketchModeDock(props: SketchModeDockProps) {
             key={item}
             type="button"
             aria-current={section === item ? "page" : undefined}
-            onClick={() => setSection(item)}
+            disabled={
+              !canNavigateSketchDockSectionV19(item, intentSessionActive)
+            }
+            onClick={() => {
+              if (canNavigateSketchDockSectionV19(item, intentSessionActive))
+                setSection(item);
+            }}
           >
             {item === "geometry"
               ? "Geometry"
@@ -519,24 +529,23 @@ export function SketchModeDock(props: SketchModeDockProps) {
         {!requestedCurveEditKind &&
         !requestedConvenienceKind &&
         section === "constraints" ? (
-          <IntentSection
+          <SketchIntentEditor
             disabled={disabled || requestedCurveEditKind !== undefined}
             sketch={activeSketch}
-            entity={selectedEntity}
+            selectedEntityId={selectedEntity?.id}
             parameters={parameters}
-            dimensions={entityDimensions}
-            constraints={entityConstraints}
-            allConstraints={constraints}
-            dimensionDraft={dimensionDraft}
-            constraintDraft={constraintDraft}
-            onDimensionDraftChange={setDimensionDraft}
-            onConstraintDraftChange={setConstraintDraft}
-            onCreateDimension={onCreateDimension}
-            onApplyDimensionEdit={onApplyDimensionEdit}
-            onDeleteDimension={onDeleteDimension}
-            onCreateConstraint={onCreateConstraint}
-            onApplyConstraintEdit={onApplyConstraintEdit}
-            onDeleteConstraint={onDeleteConstraint}
+            dimensions={dimensions}
+            constraints={constraints}
+            units={units}
+            initialDimensionFamily={requestedDimension}
+            initialConstraintKind={requestedConstraintKind}
+            keyboardSuspended={curveEditKeyboardSuspended}
+            onApplyOps={onApplySketchIntentOps}
+            onCancel={onCancelCurveEdit}
+            onRequestEscape={onRequestCurveEditEscape}
+            onDirtyChange={onCurveEditDirtyChange}
+            onSessionActiveChange={setIntentSessionActive}
+            onSessionControlChange={onCurveEditSessionControlChange}
           />
         ) : null}
         {!requestedCurveEditKind &&
@@ -564,6 +573,13 @@ export function SketchModeDock(props: SketchModeDockProps) {
       </footer>
     </aside>
   );
+}
+
+export function canNavigateSketchDockSectionV19(
+  section: DockSection,
+  intentSessionActive: boolean
+): boolean {
+  return !intentSessionActive || section === "constraints";
 }
 
 function getRequestedCurveEditKind(
@@ -615,28 +631,40 @@ function getRequestedEntityKind(
   }
 }
 
-function getRequestedDimensionRole(
+export function getRequestedDimensionFamily(
   actionId: UiActionId | undefined
-): SketchDimensionTarget["role"] | undefined {
+): SketchDimensionFamilyV19 | undefined {
   switch (actionId) {
     case "sketch.rectangle-width":
-      return "width";
+      return "rectangleWidth";
     case "sketch.rectangle-height":
-      return "height";
+      return "rectangleHeight";
     case "sketch.line-length":
-      return "length";
+      return "lineLength";
     case "sketch.radius":
       return "radius";
+    case "sketch.diameter":
+      return "diameter";
     case "sketch.arc-sweep":
-      return "sweep";
+      return "arcSweep";
+    case "sketch.point-distance":
+      return "pointDistance";
+    case "sketch.horizontal-distance":
+      return "horizontalDistance";
+    case "sketch.vertical-distance":
+      return "verticalDistance";
+    case "sketch.point-line-distance":
+      return "pointLineDistance";
+    case "sketch.line-angle":
+      return "lineAngle";
     default:
       return undefined;
   }
 }
 
-function getRequestedConstraintKind(
+export function getRequestedConstraintKind(
   actionId: UiActionId | undefined
-): SketchConstraintForm["kind"] | undefined {
+): SketchConstraintCreateKindV19 | undefined {
   switch (actionId) {
     case "sketch.horizontal":
       return "horizontal";
@@ -652,6 +680,16 @@ function getRequestedConstraintKind(
       return "parallel";
     case "sketch.perpendicular":
       return "perpendicular";
+    case "sketch.tangent":
+      return "tangent";
+    case "sketch.concentric":
+      return "concentric";
+    case "sketch.equal-length":
+      return "equalLength";
+    case "sketch.equal-radius":
+      return "equalRadius";
+    case "sketch.symmetry":
+      return "symmetry";
     default:
       return undefined;
   }
@@ -680,7 +718,7 @@ function GeometrySection({
   readonly disabled: boolean;
   readonly sketch: SketchSnapshot;
   readonly selectedEntity: SketchEntitySnapshot | undefined;
-  readonly dimensions: readonly SketchDimensionEntry[];
+  readonly dimensions: readonly SketchDimensionEntryCurrent[];
   readonly constraints: readonly SketchConstraintEntry[];
   readonly features: readonly CadFeatureSummary[];
   readonly arcActive: boolean;
@@ -969,740 +1007,6 @@ function EntityDraftForm({
   );
 }
 
-function IntentSection({
-  disabled,
-  sketch,
-  entity,
-  parameters,
-  dimensions,
-  constraints,
-  allConstraints,
-  dimensionDraft,
-  constraintDraft,
-  onDimensionDraftChange,
-  onConstraintDraftChange,
-  onCreateDimension,
-  onApplyDimensionEdit,
-  onDeleteDimension,
-  onCreateConstraint,
-  onApplyConstraintEdit,
-  onDeleteConstraint
-}: {
-  readonly disabled: boolean;
-  readonly sketch: SketchSnapshot;
-  readonly entity: SketchEntitySnapshot | undefined;
-  readonly parameters: readonly CadParameterSnapshot[];
-  readonly dimensions: readonly SketchDimensionEntry[];
-  readonly constraints: readonly SketchConstraintEntry[];
-  readonly allConstraints: readonly SketchConstraintEntry[];
-  readonly dimensionDraft: DimensionDraft | undefined;
-  readonly constraintDraft: ConstraintDraft | undefined;
-  readonly onDimensionDraftChange: (draft: DimensionDraft | undefined) => void;
-  readonly onConstraintDraftChange: (
-    draft: ConstraintDraft | undefined
-  ) => void;
-  readonly onCreateDimension: SketchModeDockProps["onCreateDimension"];
-  readonly onApplyDimensionEdit: SketchModeDockProps["onApplyDimensionEdit"];
-  readonly onDeleteDimension: (id: string) => void;
-  readonly onCreateConstraint: SketchModeDockProps["onCreateConstraint"];
-  readonly onApplyConstraintEdit: SketchModeDockProps["onApplyConstraintEdit"];
-  readonly onDeleteConstraint: (id: string) => void;
-}) {
-  if (!entity) {
-    return (
-      <p className="pb-sketch-empty">
-        Select a sketch entity to inspect its dimensions and constraints.
-      </p>
-    );
-  }
-  return (
-    <div className="pb-sketch-stack">
-      <DimensionSection
-        disabled={disabled}
-        sketch={sketch}
-        entity={entity}
-        parameters={parameters}
-        dimensions={dimensions}
-        draft={dimensionDraft}
-        onDraftChange={onDimensionDraftChange}
-        onCreate={onCreateDimension}
-        onApply={onApplyDimensionEdit}
-        onDelete={onDeleteDimension}
-      />
-      <ConstraintSection
-        disabled={disabled}
-        sketch={sketch}
-        entity={entity}
-        constraints={constraints}
-        allConstraints={allConstraints}
-        draft={constraintDraft}
-        onDraftChange={onConstraintDraftChange}
-        onCreate={onCreateConstraint}
-        onApply={onApplyConstraintEdit}
-        onDelete={onDeleteConstraint}
-      />
-    </div>
-  );
-}
-
-function DimensionSection({
-  disabled,
-  sketch,
-  entity,
-  parameters,
-  dimensions,
-  draft,
-  onDraftChange,
-  onCreate,
-  onApply,
-  onDelete
-}: {
-  readonly disabled: boolean;
-  readonly sketch: SketchSnapshot;
-  readonly entity: SketchEntitySnapshot;
-  readonly parameters: readonly CadParameterSnapshot[];
-  readonly dimensions: readonly SketchDimensionEntry[];
-  readonly draft: DimensionDraft | undefined;
-  readonly onDraftChange: (draft: DimensionDraft | undefined) => void;
-  readonly onCreate: SketchModeDockProps["onCreateDimension"];
-  readonly onApply: SketchModeDockProps["onApplyDimensionEdit"];
-  readonly onDelete: (id: string) => void;
-}) {
-  const available = createAvailableSketchDimensionTargetOptions(
-    entity,
-    dimensions
-  );
-  const editedDimension =
-    draft?.mode === "edit"
-      ? dimensions.find((item) => item.id === draft.dimensionId)
-      : undefined;
-  const effectiveDraftForm = draft
-    ? {
-        ...draft.form,
-        parameterId:
-          draft.form.valueSourceType === "parameter"
-            ? draft.form.parameterId || parameters[0]?.id || ""
-            : draft.form.parameterId
-      }
-    : undefined;
-  function submit() {
-    if (!draft || !effectiveDraftForm) return;
-    if (draft.mode === "create")
-      onCreate(sketch.id, entity.id, draft.target, effectiveDraftForm);
-    else if (editedDimension) onApply(editedDimension, effectiveDraftForm);
-    onDraftChange(undefined);
-  }
-  return (
-    <section className="pb-sketch-section" aria-labelledby="dimensions-heading">
-      <div className="pb-sketch-section__heading">
-        <h3 id="dimensions-heading">Dimensions</h3>
-        <span>{dimensions.length}</span>
-      </div>
-      <div className="pb-sketch-records">
-        {dimensions.map((dimension) => (
-          <article key={dimension.id}>
-            <div>
-              <strong>
-                {dimension.name} ·{" "}
-                {getSketchDimensionTargetLabel(dimension.target)}
-              </strong>
-              <small>
-                {formatSketchDimensionValueSource(dimension, parameters)} ·{" "}
-                {formatSketchDimensionEffectiveValue(dimension)}
-              </small>
-            </div>
-            <p>{formatSketchDimensionStatus(dimension)}</p>
-            <div className="pb-sketch-record-actions">
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() =>
-                  onDraftChange({
-                    mode: "edit",
-                    dimensionId: dimension.id,
-                    form: dimensionToDraft(dimension)
-                  })
-                }
-              >
-                Edit
-              </button>
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => onDelete(dimension.id)}
-              >
-                Delete
-              </button>
-            </div>
-          </article>
-        ))}
-      </div>
-      {!draft && available.length > 0 ? (
-        <div className="pb-sketch-actions">
-          {available.map((option) => (
-            <button
-              key={dimensionTargetKey(option.target)}
-              type="button"
-              className="pb-button pb-button--dense"
-              disabled={disabled}
-              onClick={() =>
-                onDraftChange({
-                  mode: "create",
-                  ...createDimensionDraft(
-                    option.label,
-                    option.target,
-                    option.currentValue
-                  )
-                })
-              }
-            >
-              Add {option.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
-      {draft ? (
-        <div className="pb-sketch-draft">
-          <TextField
-            label="Name"
-            value={effectiveDraftForm?.name ?? ""}
-            disabled={disabled}
-            onChange={(name) =>
-              onDimensionDraftChange(onDraftChange, draft, {
-                ...draft.form,
-                name
-              })
-            }
-          />
-          <label className="pb-sketch-field">
-            <span>Value source</span>
-            <select
-              className="pb-field"
-              value={effectiveDraftForm?.valueSourceType}
-              disabled={disabled}
-              onChange={(event) =>
-                onDimensionDraftChange(onDraftChange, draft, {
-                  ...draft.form,
-                  valueSourceType: event.currentTarget
-                    .value as SketchDimensionForm["valueSourceType"]
-                })
-              }
-            >
-              <option value="literal">Literal</option>
-              <option value="parameter" disabled={parameters.length === 0}>
-                Parameter
-              </option>
-            </select>
-          </label>
-          {effectiveDraftForm?.valueSourceType === "literal" ? (
-            <NumberField
-              label="Value"
-              value={effectiveDraftForm.value}
-              disabled={disabled}
-              onChange={(value) =>
-                onDimensionDraftChange(onDraftChange, draft, {
-                  ...draft.form,
-                  value
-                })
-              }
-            />
-          ) : (
-            <label className="pb-sketch-field">
-              <span>Parameter</span>
-              <select
-                className="pb-field"
-                value={effectiveDraftForm?.parameterId ?? ""}
-                disabled={disabled || parameters.length === 0}
-                onChange={(event) =>
-                  onDimensionDraftChange(onDraftChange, draft, {
-                    ...draft.form,
-                    parameterId: event.currentTarget.value
-                  })
-                }
-              >
-                {parameters.map((parameter) => (
-                  <option key={parameter.id} value={parameter.id}>
-                    {parameter.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          <DraftButtons
-            disabled={
-              disabled ||
-              (draft.form.valueSourceType === "parameter" &&
-                parameters.length === 0)
-            }
-            applyLabel="Apply"
-            onApply={submit}
-            onCancel={() => onDraftChange(undefined)}
-          />
-        </div>
-      ) : null}
-      {dimensions.length === 0 && available.length === 0 ? (
-        <p className="pb-sketch-empty">
-          This entity has no supported dimension targets.
-        </p>
-      ) : null}
-    </section>
-  );
-}
-
-function ConstraintSection({
-  disabled,
-  sketch,
-  entity,
-  constraints,
-  allConstraints,
-  draft,
-  onDraftChange,
-  onCreate,
-  onApply,
-  onDelete
-}: {
-  readonly disabled: boolean;
-  readonly sketch: SketchSnapshot;
-  readonly entity: SketchEntitySnapshot;
-  readonly constraints: readonly SketchConstraintEntry[];
-  readonly allConstraints: readonly SketchConstraintEntry[];
-  readonly draft: ConstraintDraft | undefined;
-  readonly onDraftChange: (draft: ConstraintDraft | undefined) => void;
-  readonly onCreate: SketchModeDockProps["onCreateConstraint"];
-  readonly onApply: SketchModeDockProps["onApplyConstraintEdit"];
-  readonly onDelete: (id: string) => void;
-}) {
-  const availableKinds = createAvailableSketchConstraintKindOptions(
-    entity,
-    allConstraints,
-    sketch.entities
-  );
-  const inference = createSketchConstraintInferenceCandidates({
-    entity,
-    sketchEntities: sketch.entities,
-    constraints: allConstraints
-  });
-  const editedConstraint =
-    draft?.mode === "rename"
-      ? constraints.find((item) => item.id === draft.constraintId)
-      : undefined;
-  const effective = useMemo(
-    () =>
-      draft?.mode === "create"
-        ? createEffectiveConstraintForm(
-            draft.form,
-            entity,
-            sketch.entities,
-            allConstraints
-          )
-        : draft?.form,
-    [draft, entity, sketch.entities, allConstraints]
-  );
-  function submit() {
-    if (!draft || !effective) return;
-    if (draft.mode === "create") onCreate(sketch.id, entity.id, effective);
-    else if (editedConstraint) onApply(editedConstraint, effective);
-    onDraftChange(undefined);
-  }
-  return (
-    <section
-      className="pb-sketch-section"
-      aria-labelledby="constraints-heading"
-    >
-      <div className="pb-sketch-section__heading">
-        <h3 id="constraints-heading">Constraints</h3>
-        <span>{constraints.length}</span>
-      </div>
-      <div className="pb-sketch-records">
-        {constraints.map((constraint) => (
-          <article key={constraint.id}>
-            <div>
-              <strong>
-                {constraint.name} ·{" "}
-                {getSketchConstraintKindLabel(constraint.kind)}
-              </strong>
-              <small>{formatSketchConstraintStatus(constraint)}</small>
-            </div>
-            <div className="pb-sketch-record-actions">
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() =>
-                  onDraftChange({
-                    mode: "rename",
-                    constraintId: constraint.id,
-                    form: constraintToRenameDraft(constraint)
-                  })
-                }
-              >
-                Rename
-              </button>
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => onDelete(constraint.id)}
-              >
-                Delete
-              </button>
-            </div>
-          </article>
-        ))}
-      </div>
-      {!draft && availableKinds.length > 0 ? (
-        <button
-          type="button"
-          className="pb-button"
-          disabled={disabled}
-          onClick={() =>
-            onDraftChange({
-              mode: "create",
-              form: {
-                ...DEFAULT_SKETCH_CONSTRAINT_FORM,
-                kind: availableKinds[0]!.kind,
-                name: availableKinds[0]!.label
-              }
-            })
-          }
-        >
-          Add constraint
-        </button>
-      ) : null}
-      {!draft && inference.length > 0 ? (
-        <div
-          className="pb-sketch-inference"
-          aria-label="Constraint inference candidates"
-        >
-          <p>Conservative suggestions</p>
-          {inference.map((candidate) => (
-            <button
-              key={candidate.id}
-              type="button"
-              disabled={disabled}
-              onClick={() => onCreate(sketch.id, entity.id, candidate.form)}
-            >
-              <strong>{candidate.label}</strong>
-              <span>{candidate.detail}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
-      {draft ? (
-        <div className="pb-sketch-draft">
-          {draft.mode === "create" ? (
-            <label className="pb-sketch-field">
-              <span>Constraint</span>
-              <select
-                className="pb-field"
-                value={effective?.kind}
-                disabled={disabled}
-                onChange={(event) => {
-                  const kind = event.currentTarget
-                    .value as SketchConstraintForm["kind"];
-                  onDraftChange({
-                    ...draft,
-                    form: {
-                      ...draft.form,
-                      kind,
-                      name: getSketchConstraintKindLabel(kind)
-                    }
-                  });
-                }}
-              >
-                {availableKinds.map((option) => (
-                  <option key={option.kind} value={option.kind}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <p className="pb-sketch-callout">
-              Loaded constraint structure is read-only in V18. Its name can
-              still be changed.
-            </p>
-          )}
-          <TextField
-            label="Name"
-            value={draft.form.name}
-            disabled={disabled}
-            onChange={(name) =>
-              onDraftChange({ ...draft, form: { ...draft.form, name } })
-            }
-          />
-          {draft.mode === "create" && effective ? (
-            <ConstraintTargetFields
-              disabled={disabled}
-              form={effective}
-              entity={entity}
-              entities={sketch.entities}
-              constraints={allConstraints}
-              onChange={(form) => onDraftChange({ ...draft, form })}
-            />
-          ) : null}
-          <DraftButtons
-            disabled={
-              disabled ||
-              (draft.mode === "rename"
-                ? draft.form.name.trim().length === 0
-                : !constraintDraftIsSubmittable(
-                    effective,
-                    entity,
-                    sketch.entities,
-                    allConstraints
-                  ))
-            }
-            applyLabel={draft.mode === "rename" ? "Apply name" : "Apply"}
-            onApply={submit}
-            onCancel={() => onDraftChange(undefined)}
-          />
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-function ConstraintTargetFields({
-  disabled,
-  form,
-  entity,
-  entities,
-  constraints,
-  onChange
-}: {
-  readonly disabled: boolean;
-  readonly form: SketchConstraintForm;
-  readonly entity: SketchEntitySnapshot;
-  readonly entities: readonly SketchEntitySnapshot[];
-  readonly constraints: readonly SketchConstraintEntry[];
-  readonly onChange: (form: SketchConstraintForm) => void;
-}) {
-  const primary =
-    form.kind === "fixed"
-      ? createAvailableFixedPointTargetOptions(entity, constraints)
-      : createSketchPointTargetOptionsForEntity(entity);
-  const selectedPrimary =
-    primary.find((item) => item.target.role === form.targetRole) ?? primary[0];
-  const secondary =
-    form.kind === "midpoint"
-      ? createAvailableMidpointTargetOptions(entity, entities, constraints)
-      : createAvailableCoincidentPointTargetOptions(
-          selectedPrimary?.target,
-          entities,
-          constraints
-        );
-  const lines: readonly SketchLineTargetOption[] =
-    createAvailableParallelLineTargetOptions(entity, entities, constraints);
-  if (form.kind === "horizontal" || form.kind === "vertical") return null;
-  if (form.kind === "parallel" || form.kind === "perpendicular") {
-    return (
-      <label className="pb-sketch-field">
-        <span>Other line</span>
-        <select
-          className="pb-field"
-          value={form.secondaryEntityId || lines[0]?.entityId || ""}
-          disabled={disabled || lines.length === 0}
-          onChange={(event) =>
-            onChange({ ...form, secondaryEntityId: event.currentTarget.value })
-          }
-        >
-          {lines.map((item) => (
-            <option key={item.entityId} value={item.entityId}>
-              {item.label}
-            </option>
-          ))}
-        </select>
-      </label>
-    );
-  }
-  return (
-    <div className="pb-sketch-field-grid">
-      <label className="pb-sketch-field">
-        <span>{form.kind === "midpoint" ? "Line endpoint" : "Point"}</span>
-        <select
-          className="pb-field"
-          value={form.targetRole}
-          disabled={disabled || primary.length === 0}
-          onChange={(event) =>
-            onChange({
-              ...form,
-              targetRole: event.currentTarget
-                .value as SketchConstraintForm["targetRole"]
-            })
-          }
-        >
-          {primary.map((item) => (
-            <option
-              key={`${item.target.entityId}:${item.target.role}`}
-              value={item.target.role}
-            >
-              {item.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      {form.kind === "fixed" ? (
-        <label className="pb-sketch-field">
-          <span>Position</span>
-          <select
-            className="pb-field"
-            value={form.coordinateMode}
-            disabled={disabled}
-            onChange={(event) =>
-              onChange({
-                ...form,
-                coordinateMode: event.currentTarget
-                  .value as SketchConstraintForm["coordinateMode"]
-              })
-            }
-          >
-            <option value="current">Current point</option>
-            <option value="custom">Custom coordinate</option>
-          </select>
-        </label>
-      ) : form.kind === "coincident" || form.kind === "midpoint" ? (
-        <label className="pb-sketch-field">
-          <span>
-            {form.kind === "midpoint" ? "Point at midpoint" : "Coincident with"}
-          </span>
-          <select
-            className="pb-field"
-            value={`${form.secondaryEntityId}:${form.secondaryTargetRole}`}
-            disabled={disabled || secondary.length === 0}
-            onChange={(event) => {
-              const item = secondary.find(
-                (option) =>
-                  `${option.target.entityId}:${option.target.role}` ===
-                  event.currentTarget.value
-              );
-              if (item)
-                onChange({
-                  ...form,
-                  secondaryEntityId: item.target.entityId,
-                  secondaryTargetRole: item.target.role
-                });
-            }}
-          >
-            {secondary.map((item) => (
-              <option
-                key={`${item.target.entityId}:${item.target.role}`}
-                value={`${item.target.entityId}:${item.target.role}`}
-              >
-                {item.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : null}
-      {form.kind === "fixed" && form.coordinateMode === "custom" ? (
-        <>
-          <NumberField
-            label="X"
-            value={form.coordinateX}
-            disabled={disabled}
-            onChange={(coordinateX) => onChange({ ...form, coordinateX })}
-          />
-          <NumberField
-            label="Y"
-            value={form.coordinateY}
-            disabled={disabled}
-            onChange={(coordinateY) => onChange({ ...form, coordinateY })}
-          />
-        </>
-      ) : null}
-    </div>
-  );
-}
-
-function createEffectiveConstraintForm(
-  form: SketchConstraintForm,
-  entity: SketchEntitySnapshot,
-  entities: readonly SketchEntitySnapshot[],
-  constraints: readonly SketchConstraintEntry[]
-): SketchConstraintForm {
-  const primary =
-    form.kind === "fixed"
-      ? createAvailableFixedPointTargetOptions(entity, constraints)
-      : createSketchPointTargetOptionsForEntity(entity);
-  const selectedPrimary =
-    primary.find((item) => item.target.role === form.targetRole) ?? primary[0];
-  const secondary =
-    form.kind === "midpoint"
-      ? createAvailableMidpointTargetOptions(entity, entities, constraints)
-      : createAvailableCoincidentPointTargetOptions(
-          selectedPrimary?.target,
-          entities,
-          constraints
-        );
-  const selectedSecondary =
-    secondary.find(
-      (item) =>
-        item.target.entityId === form.secondaryEntityId &&
-        item.target.role === form.secondaryTargetRole
-    ) ?? secondary[0];
-  const lines = createAvailableParallelLineTargetOptions(
-    entity,
-    entities,
-    constraints
-  );
-  const selectedLine =
-    lines.find((item) => item.entityId === form.secondaryEntityId) ?? lines[0];
-  return {
-    ...form,
-    targetRole: selectedPrimary?.target.role ?? form.targetRole,
-    coordinateX:
-      form.coordinateMode === "current"
-        ? (selectedPrimary?.coordinate?.[0] ?? form.coordinateX)
-        : form.coordinateX,
-    coordinateY:
-      form.coordinateMode === "current"
-        ? (selectedPrimary?.coordinate?.[1] ?? form.coordinateY)
-        : form.coordinateY,
-    secondaryEntityId: isLinePairConstraintKind(form.kind)
-      ? (selectedLine?.entityId ?? "")
-      : (selectedSecondary?.target.entityId ?? ""),
-    secondaryTargetRole:
-      selectedSecondary?.target.role ?? form.secondaryTargetRole
-  };
-}
-
-function constraintDraftIsSubmittable(
-  form: SketchConstraintForm | undefined,
-  entity: SketchEntitySnapshot,
-  entities: readonly SketchEntitySnapshot[],
-  constraints: readonly SketchConstraintEntry[]
-): boolean {
-  if (!form || form.name.trim().length === 0) return false;
-  if (form.kind === "horizontal" || form.kind === "vertical")
-    return entity.kind === "line";
-  if (form.kind === "parallel" || form.kind === "perpendicular")
-    return (
-      createAvailableParallelLineTargetOptions(entity, entities, constraints)
-        .length > 0
-    );
-  if (form.kind === "fixed")
-    return (
-      createAvailableFixedPointTargetOptions(entity, constraints).length > 0
-    );
-  const primaryOptions = createSketchPointTargetOptionsForEntity(entity);
-  const primary =
-    primaryOptions.find((item) => item.target.role === form.targetRole)
-      ?.target ?? primaryOptions[0]?.target;
-  if (form.kind === "coincident")
-    return (
-      createAvailableCoincidentPointTargetOptions(
-        primary,
-        entities,
-        constraints
-      ).length > 0
-    );
-  if (form.kind === "midpoint")
-    return (
-      createAvailableMidpointTargetOptions(entity, entities, constraints)
-        .length > 0
-    );
-  return false;
-}
-
 function StatusSection({
   evaluation,
   solverStatus,
@@ -1882,14 +1186,6 @@ function DraftButtons({
       </button>
     </div>
   );
-}
-
-function onDimensionDraftChange(
-  setDraft: (draft: DimensionDraft | undefined) => void,
-  draft: DimensionDraft,
-  form: SketchDimensionForm
-) {
-  setDraft({ ...draft, form });
 }
 
 function constraintIncludesEntity(

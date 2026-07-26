@@ -102,7 +102,6 @@ import type {
   SketchEvaluationIssue,
   SketchDimensionStatus,
   SketchConstraintId,
-  SketchConstraintKind,
   SketchDimensionId,
   SketchEntityId,
   SketchPointTarget,
@@ -3828,6 +3827,11 @@ function createV8BoundarySummary(): CadOpsAgentV8ProjectSurfaceBoundarySummary {
 function isCadOpsAgentRequest(value: unknown): value is CadOpsAgentRequest {
   return (
     isRecord(value) &&
+    hasExactKeys(
+      value,
+      ["requestId", "adapterVersion", "batch"],
+      ["actor", "permissions", "source", "projectHandoff"]
+    ) &&
     value.requestId !== "" &&
     typeof value.requestId === "string" &&
     value.adapterVersion === "web-cad.agent-adapter.v1" &&
@@ -3846,6 +3850,7 @@ function isCadOpsAgentQueryRequest(
 ): value is CadOpsAgentQueryRequest {
   return (
     isRecord(value) &&
+    hasExactKeys(value, ["requestId", "adapterVersion", "query"]) &&
     value.requestId !== "" &&
     typeof value.requestId === "string" &&
     value.adapterVersion === "web-cad.agent-adapter.v1" &&
@@ -3858,6 +3863,7 @@ function isCadOpsAgentV8ProjectSurfaceRequest(
 ): value is CadOpsAgentV8ProjectSurfaceRequest {
   return (
     isRecord(value) &&
+    hasExactKeys(value, ["requestId", "adapterVersion"], ["exactExport"]) &&
     value.requestId !== "" &&
     typeof value.requestId === "string" &&
     value.adapterVersion === "web-cad.agent-adapter.v1" &&
@@ -3904,6 +3910,7 @@ function isCadOpsAgentPermissionPolicy(
 ): value is CadOpsAgentPermissionPolicy {
   return (
     isRecord(value) &&
+    hasExactKeys(value, [], ["allowCommit"]) &&
     (value.allowCommit === undefined || typeof value.allowCommit === "boolean")
   );
 }
@@ -3924,9 +3931,11 @@ function isCadOpsAgentRequestSource(
 ): value is CadOpsAgentRequestSource {
   return (
     isRecord(value) &&
+    hasExactKeys(value, ["source"], ["toolName"]) &&
     typeof value.source === "string" &&
     value.source !== "" &&
-    (value.toolName === undefined || typeof value.toolName === "string")
+    (value.toolName === undefined ||
+      (typeof value.toolName === "string" && value.toolName !== ""))
   );
 }
 
@@ -5035,93 +5044,54 @@ function isCadOp(value: unknown): value is CadOp {
 
   if (value.op === "sketch.dimension.create") {
     return (
+      hasExactKeys(
+        value,
+        ["op", "name", "sketchId", "entityId", "target"],
+        ["id", "value", "parameterId"]
+      ) &&
       isOptionalString(value.id) &&
-      typeof value.name === "string" &&
-      typeof value.sketchId === "string" &&
-      typeof value.entityId === "string" &&
+      isNonEmptyString(value.name) &&
+      isNonEmptyString(value.sketchId) &&
+      isNonEmptyString(value.entityId) &&
       isSketchDimensionTarget(value.target) &&
       isSketchDimensionValueInput(value)
     );
   }
 
   if (value.op === "sketch.dimension.update") {
-    return typeof value.id === "string" && isSketchDimensionValueInput(value);
+    return (
+      hasExactKeys(value, ["op", "id"], ["value", "parameterId"]) &&
+      isNonEmptyString(value.id) &&
+      isSketchDimensionValueInput(value)
+    );
   }
 
   if (value.op === "sketch.dimension.rename") {
-    return typeof value.id === "string" && typeof value.name === "string";
+    return (
+      hasExactKeys(value, ["op", "id", "name"]) &&
+      isNonEmptyString(value.id) &&
+      isNonEmptyString(value.name)
+    );
   }
 
   if (value.op === "sketch.dimension.delete") {
-    return typeof value.id === "string";
+    return hasExactKeys(value, ["op", "id"]) && isNonEmptyString(value.id);
   }
 
   if (value.op === "sketch.constraint.create") {
-    if (
-      !isOptionalString(value.id) ||
-      typeof value.name !== "string" ||
-      typeof value.sketchId !== "string" ||
-      !isSketchConstraintKind(value.kind)
-    ) {
-      return false;
-    }
-
-    if (value.kind === "fixed") {
-      return (
-        isSketchPointTarget(value.target) &&
-        (value.coordinate === undefined || isVec2(value.coordinate))
-      );
-    }
-
-    if (value.kind === "coincident") {
-      return (
-        isSketchPointTarget(value.primaryTarget) &&
-        isSketchPointTarget(value.secondaryTarget)
-      );
-    }
-
-    if (value.kind === "midpoint") {
-      return (
-        typeof value.lineEntityId === "string" &&
-        isSketchPointTarget(value.target)
-      );
-    }
-
-    if (value.kind === "parallel" || value.kind === "perpendicular") {
-      return (
-        typeof value.primaryLineEntityId === "string" &&
-        typeof value.secondaryLineEntityId === "string"
-      );
-    }
-
-    if (value.kind === "tangent") {
-      return isSupportedTangentTargetPair(
-        value.primaryTarget,
-        value.secondaryTarget
-      );
-    }
-
-    if (value.kind === "concentric" || value.kind === "equalRadius") {
-      const normalized =
-        isRadiusCurveConstraintTarget(value.primaryTarget) &&
-        isRadiusCurveConstraintTarget(value.secondaryTarget) &&
-        value.primaryTarget.entityId !== value.secondaryTarget.entityId;
-      const legacy =
-        typeof value.primaryCircleEntityId === "string" &&
-        typeof value.secondaryCircleEntityId === "string" &&
-        value.primaryCircleEntityId !== value.secondaryCircleEntityId;
-      return normalized !== legacy;
-    }
-
-    return typeof value.entityId === "string";
+    return isDecision14ConstraintCreateOp(value);
   }
 
   if (value.op === "sketch.constraint.rename") {
-    return typeof value.id === "string" && typeof value.name === "string";
+    return (
+      hasExactKeys(value, ["op", "id", "name"]) &&
+      isNonEmptyString(value.id) &&
+      isNonEmptyString(value.name)
+    );
   }
 
   if (value.op === "sketch.constraint.delete") {
-    return typeof value.id === "string";
+    return hasExactKeys(value, ["op", "id"]) && isNonEmptyString(value.id);
   }
 
   if (value.op === "feature.extrude") {
@@ -5769,6 +5739,7 @@ function isOptionalBoolean(value: unknown): value is boolean | undefined {
 function isSketchDimensionTarget(value: unknown): boolean {
   return (
     isRecord(value) &&
+    hasExactKeys(value, ["entityKind", "role"]) &&
     ((value.entityKind === "rectangle" &&
       (value.role === "width" || value.role === "height")) ||
       (value.entityKind === "circle" && value.role === "radius") ||
@@ -5791,29 +5762,177 @@ function isSketchDimensionValueInput(value: Record<string, unknown>): boolean {
     : typeof value.parameterId === "string";
 }
 
-function isSketchConstraintKind(value: unknown): value is SketchConstraintKind {
-  return (
-    value === "horizontal" ||
-    value === "vertical" ||
-    value === "fixed" ||
-    value === "coincident" ||
-    value === "midpoint" ||
-    value === "parallel" ||
-    value === "perpendicular" ||
-    value === "tangent" ||
-    value === "concentric" ||
-    value === "equalRadius"
-  );
+function isDecision14ConstraintCreateOp(
+  value: Record<string, unknown>
+): boolean {
+  const commonValid =
+    isOptionalString(value.id) &&
+    isNonEmptyString(value.name) &&
+    isNonEmptyString(value.sketchId);
+  if (!commonValid) return false;
+
+  if (value.kind === "horizontal" || value.kind === "vertical") {
+    return (
+      hasExactKeys(
+        value,
+        ["op", "name", "sketchId", "kind", "entityId"],
+        ["id"]
+      ) && isNonEmptyString(value.entityId)
+    );
+  }
+
+  if (value.kind === "fixed") {
+    return (
+      hasExactKeys(
+        value,
+        ["op", "name", "sketchId", "kind", "target"],
+        ["id", "coordinate"]
+      ) &&
+      isSketchPointTarget(value.target) &&
+      (value.coordinate === undefined || isVec2(value.coordinate))
+    );
+  }
+
+  if (value.kind === "coincident") {
+    return (
+      hasExactKeys(
+        value,
+        ["op", "name", "sketchId", "kind", "primaryTarget", "secondaryTarget"],
+        ["id"]
+      ) &&
+      isSketchPointTarget(value.primaryTarget) &&
+      isSketchPointTarget(value.secondaryTarget)
+    );
+  }
+
+  if (value.kind === "midpoint") {
+    return (
+      hasExactKeys(
+        value,
+        ["op", "name", "sketchId", "kind", "lineEntityId", "target"],
+        ["id"]
+      ) &&
+      isNonEmptyString(value.lineEntityId) &&
+      isSketchPointTarget(value.target)
+    );
+  }
+
+  if (
+    value.kind === "parallel" ||
+    value.kind === "perpendicular" ||
+    value.kind === "equalLength"
+  ) {
+    return (
+      hasExactKeys(
+        value,
+        [
+          "op",
+          "name",
+          "sketchId",
+          "kind",
+          "primaryLineEntityId",
+          "secondaryLineEntityId"
+        ],
+        ["id"]
+      ) &&
+      isDistinctNonEmptyStrings(
+        value.primaryLineEntityId,
+        value.secondaryLineEntityId
+      )
+    );
+  }
+
+  if (value.kind === "tangent") {
+    return (
+      hasExactKeys(
+        value,
+        ["op", "name", "sketchId", "kind", "primaryTarget", "secondaryTarget"],
+        ["id"]
+      ) &&
+      isSupportedTangentTargetPair(value.primaryTarget, value.secondaryTarget)
+    );
+  }
+
+  if (value.kind === "concentric" || value.kind === "equalRadius") {
+    const normalized =
+      hasExactKeys(
+        value,
+        ["op", "name", "sketchId", "kind", "primaryTarget", "secondaryTarget"],
+        ["id"]
+      ) &&
+      isRadiusCurveConstraintTarget(value.primaryTarget) &&
+      isRadiusCurveConstraintTarget(value.secondaryTarget) &&
+      value.primaryTarget.entityId !== value.secondaryTarget.entityId;
+    const legacy =
+      hasExactKeys(
+        value,
+        [
+          "op",
+          "name",
+          "sketchId",
+          "kind",
+          "primaryCircleEntityId",
+          "secondaryCircleEntityId"
+        ],
+        ["id"]
+      ) &&
+      isDistinctNonEmptyStrings(
+        value.primaryCircleEntityId,
+        value.secondaryCircleEntityId
+      );
+    return normalized !== legacy;
+  }
+
+  if (value.kind === "symmetry") {
+    return (
+      hasExactKeys(
+        value,
+        [
+          "op",
+          "name",
+          "sketchId",
+          "kind",
+          "primaryTarget",
+          "secondaryTarget",
+          "symmetryLineEntityId"
+        ],
+        ["id"]
+      ) &&
+      isSketchPointTarget(value.primaryTarget) &&
+      isSketchPointTarget(value.secondaryTarget) &&
+      isNonEmptyString(value.symmetryLineEntityId)
+    );
+  }
+
+  return false;
 }
 
 function isSketchPointTarget(value: unknown): value is SketchPointTarget {
-  return (
-    isRecord(value) &&
-    typeof value.entityId === "string" &&
-    (value.role === "position" ||
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["entityId", "role"], ["entityKind"]) ||
+    !isNonEmptyString(value.entityId)
+  ) {
+    return false;
+  }
+  if (value.entityKind === undefined) {
+    return (
+      value.role === "position" ||
       value.role === "start" ||
       value.role === "end" ||
-      value.role === "center")
+      value.role === "center"
+    );
+  }
+  if (value.entityKind === "point") return value.role === "position";
+  if (value.entityKind === "line") {
+    return value.role === "start" || value.role === "end";
+  }
+  if (value.entityKind === "rectangle" || value.entityKind === "circle") {
+    return value.role === "center";
+  }
+  return (
+    value.entityKind === "arc" &&
+    (value.role === "center" || value.role === "start" || value.role === "end")
   );
 }
 
@@ -5822,7 +5941,8 @@ function isCurveConstraintTarget(
 ): value is { readonly entityId: string; readonly entityKind: string } {
   return (
     isRecord(value) &&
-    typeof value.entityId === "string" &&
+    hasExactKeys(value, ["entityId", "entityKind"]) &&
+    isNonEmptyString(value.entityId) &&
     (value.entityKind === "line" ||
       value.entityKind === "circle" ||
       value.entityKind === "arc")
@@ -5857,6 +5977,33 @@ function isSupportedTangentTargetPair(
     (primary.entityKind === "circle" && secondary.entityKind === "arc") ||
     (primary.entityKind === "arc" &&
       (secondary.entityKind === "circle" || secondary.entityKind === "arc"))
+  );
+}
+
+function isDistinctNonEmptyStrings(
+  primary: unknown,
+  secondary: unknown
+): boolean {
+  return (
+    isNonEmptyString(primary) &&
+    isNonEmptyString(secondary) &&
+    primary !== secondary
+  );
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+function hasExactKeys(
+  value: Record<string, unknown>,
+  required: readonly string[],
+  optional: readonly string[] = []
+): boolean {
+  const allowed = new Set([...required, ...optional]);
+  return (
+    required.every((key) => key in value) &&
+    Object.keys(value).every((key) => allowed.has(key))
   );
 }
 

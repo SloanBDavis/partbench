@@ -13,6 +13,7 @@
     "smoke:v18-performance": "node scripts/smoke-v18-performance.mjs",
     "smoke:v19-performance": "node scripts/smoke-v19-performance.mjs",
     "smoke:v19-curve-edit-workflow": "node scripts/smoke-v19-curve-edit-workflow.mjs",
+    "smoke:v19-dimensions-constraints-workflow": "node scripts/smoke-v19-dimensions-constraints-workflow.mjs",
     "smoke:v19-browser-workflow": "VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build && node scripts/smoke-v19-browser-workflow.mjs",
     "smoke:v18-geometry-reliability": "VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build && node scripts/smoke-v18-geometry-reliability.mjs",
     "capture:v18-visuals": "node scripts/capture-v18-visual-artifacts.mjs",

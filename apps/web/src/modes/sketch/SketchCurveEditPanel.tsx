@@ -78,6 +78,8 @@ export interface SketchCurveEditSessionControl {
     readonly restoreFocusOnSuccess?: boolean;
   }) => Promise<boolean>;
   readonly focus: () => void;
+  readonly getReturnFocusTarget?: () => HTMLElement | null;
+  readonly closeLocalDraft?: () => void;
 }
 
 export function SketchCurveEditPanel(props: SketchCurveEditPanelProps) {

@@ -1,6 +1,6 @@
 import type {
   CadSketchSolverStatus,
-  SketchDimensionEntry,
+  SketchDimensionEntryCurrent,
   SketchSolverStatusQueryResponse
 } from "@web-cad/cad-protocol";
 
@@ -78,7 +78,7 @@ export function getSketchSolverStatusLabel(
 
 export function getParameterDimensionUsageCount(
   parameterId: string,
-  dimensions: readonly SketchDimensionEntry[]
+  dimensions: readonly SketchDimensionEntryCurrent[]
 ): number {
   return dimensions.filter(
     (dimension) =>

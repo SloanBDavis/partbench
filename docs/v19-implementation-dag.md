@@ -459,6 +459,63 @@ flowchart TD
   named dimensions/constraints smoke workflow, and browser-accessible UI
   coverage before Gate D can be accepted.
 
+### 2026-07-26 — Slice D product and parity checkpoint
+
+- D5 implementation is complete across the browser, agent adapter, MCP
+  adapter, stdio server, and named workflow. The sketch workbench now owns all
+  11 Decision 13 dimension families and all 12 creatable Decision 14
+  constraint families through the shared action registry. Legacy `angle`
+  remains compatibility update/rename/delete-only and is not exposed as a
+  second create path.
+- The browser editor uses normalized targets, literal/eligible-parameter value
+  sources, exact geometric measurements, exhaustive conflict-aware target
+  enumeration, signed analytic arc endpoints, positive authored sweep
+  magnitudes, and exact direction/side/sense defaults. The same 23-row
+  availability projection feeds ribbon, command search, inspector, and
+  viewport contextual actions.
+- Drafts follow the V18 editor contract: one active session, awaited Apply,
+  rejected-draft retention, Ctrl/Cmd+Enter, dirty navigation guard,
+  Apply/Discard/Stay, stable direct-panel and action-opener focus restoration,
+  inspector-tab ownership, actionable blocked states, human diagnostics,
+  structural target summaries, and associated validation copy. Local
+  validation does not claim a solver preflight that has not run.
+- Agent, MCP, and stdio runtime guards are exact and closed. They cover the
+  literal and eligible parameter target matrices, both branch directions,
+  Decision 14 create/update/rename/delete lifecycles, normalized V22
+  projections, and strict rejection of unknown, screenshot, filesystem-path,
+  and opaque-token fields. Their full suites pass 108, 85, and 21 tests.
+- `pnpm smoke:v19-dimensions-constraints-workflow` passes 8/8 checks across 17
+  literal targets, 15 eligible parameter targets, unit modes, radius/diameter
+  behavior, branch choices, deterministic conflict rollback, replay,
+  undo/redo, and constraint lifecycle diffs.
+- Two independent product reviews were resolved. The reviews found incomplete
+  action ownership, draft/navigation bypasses, first-candidate availability,
+  fabricated relational defaults, raw diagnostic leakage, missing target
+  summaries, arc endpoint and clockwise-sweep errors, contextual projection
+  drift, silent draft replacement, inspector-tab unmounts, and direct-panel
+  focus loss. The final read-only re-review is PASS with no remaining blocker
+  or major and independently passes 86 focused tests plus web typecheck.
+- The exact final source passes the complete repository test command: cad-core
+  reports 1,039 passing tests plus the one intentional historyless-import
+  expected-fail; web reports 915; repository scripts report 79 passing with
+  one skip; all other package suites pass. Workspace typecheck, lint,
+  formatting, and diff checks are green.
+- A fresh production build and immutable metrics pass with 409,163-byte
+  critical UI JavaScript gzip, 6,515-byte critical CSS gzip, 532,108-byte
+  all-UI JavaScript gzip, 248,244-byte command worker gzip, 83,272-byte
+  geometry worker gzip, and the exact 13,808,536-byte OCCT WASM cap.
+
+Gate D is not yet accepted. A valid historyless V21 snapshot can retain a
+legacy `angle`, accept its V19 compatibility update, and export V22 history
+containing only that update. Reimport must replay from an empty document and
+therefore cannot reconstruct the pre-update legacy record; the same baseline
+problem exists for ordinary edits to any non-empty historyless imported
+snapshot. The focused lifecycle suite records this honestly as an expected
+failure. Resolving it without losing durable audit/undo semantics requires
+either an approved serialized history-baseline amendment to the frozen V22
+shape or an explicit product-contract limitation for edits to historyless
+imported snapshots. Slice E remains blocked on that decision.
+
 ## Completion audit
 
 Release completion requires affirmative evidence for each numbered Must item

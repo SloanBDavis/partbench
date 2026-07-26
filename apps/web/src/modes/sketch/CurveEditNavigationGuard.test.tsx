@@ -74,6 +74,7 @@ describe("V19 curve-edit dirty navigation guard", () => {
   it("routes close-editor Discard to the tool opener and other navigation to its trigger", () => {
     const opener = { id: "tool-opener" };
     const navigationTrigger = { id: "tree-row" };
+    const directEditorOpener = { id: "direct-editor-opener" };
 
     expect(
       getCurveEditDiscardFocusTarget(
@@ -89,6 +90,14 @@ describe("V19 curve-edit dirty navigation guard", () => {
         navigationTrigger
       )
     ).toBe(navigationTrigger);
+    expect(
+      getCurveEditDiscardFocusTarget(
+        { kind: "close-editor" },
+        null,
+        navigationTrigger,
+        directEditorOpener
+      )
+    ).toBe(directEditorOpener);
   });
 
   it("replaces transient editor focus but preserves meaningful destination focus", () => {

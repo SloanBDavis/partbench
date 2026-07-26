@@ -31,6 +31,42 @@ type PrimitiveExtrudeFeatureSummary = Extract<
 >;
 
 describe("viewport contextual commands", () => {
+  it("surfaces and routes exact V19 sketch intent rows from modeling projection", () => {
+    const exactIntent: ModelingActionDescriptor = {
+      id: "sketch.arc-sweep",
+      label: "Arc Sweep",
+      kind: "editor",
+      category: "sketchEntity",
+      available: true
+    };
+    const surface = createViewportContextualCommandSurface({
+      modelingActions: [exactIntent],
+      selectionDisplay: createSelectionDisplay({
+        selectionKind: "sketchEntity"
+      }),
+      selectedGeneratedReferenceState: { status: "none" }
+    });
+
+    expect(surface.actions).toEqual([
+      expect.objectContaining({
+        id: "sketch.arc-sweep",
+        label: "Arc Sweep",
+        route: "modeling",
+        modelingActionId: "sketch.arc-sweep",
+        disabled: false
+      })
+    ]);
+    const onContinueInModeling = vi.fn();
+    expect(
+      runViewportContextualCommandAction({
+        action: surface.actions[0]!,
+        selectedGeneratedReferenceState: { status: "none" },
+        onContinueInModeling
+      })
+    ).toBe(true);
+    expect(onContinueInModeling).toHaveBeenCalledWith(surface.actions[0]);
+  });
+
   it("derives compact body actions from modeling readiness", () => {
     const face = createFace();
     const actions = deriveModelingActions({

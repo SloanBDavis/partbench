@@ -171,12 +171,15 @@ describe("V19 MCP adapter parity", () => {
         };
       }
     ).properties?.batch?.properties?.ops?.items?.oneOf;
-    expect(batchOpSchemas).toHaveLength(4);
+    expect(batchOpSchemas).toHaveLength(12);
     const batchOpSchema = (op: string) =>
       batchOpSchemas?.find((schema) => schema.properties?.op?.const === op);
     const offsetOpSchema = batchOpSchema("sketch.offset");
     const slotOpSchema = batchOpSchema("sketch.addSlot");
     const roundedOpSchema = batchOpSchema("sketch.addRoundedRectangle");
+    const dimensionCreateSchema = batchOpSchema("sketch.dimension.create");
+    const dimensionUpdateSchema = batchOpSchema("sketch.dimension.update");
+    const constraintUpdateSchema = batchOpSchema("sketch.constraint.update");
     expect(offsetOpSchema).toMatchObject({
       additionalProperties: false,
       required: [
@@ -237,7 +240,27 @@ describe("V19 MCP adapter parity", () => {
         constraintIds: { minItems: 23, maxItems: 23, uniqueItems: true }
       }
     });
-    expect(batchOpSchemas?.[3]).toMatchObject({
+    expect(dimensionCreateSchema).toMatchObject({
+      additionalProperties: false,
+      required: ["op", "name", "sketchId", "target"],
+      oneOf: expect.any(Array),
+      properties: {
+        target: { oneOf: expect.any(Array) }
+      }
+    });
+    expect(dimensionUpdateSchema).toMatchObject({
+      additionalProperties: false,
+      required: ["op", "id"],
+      oneOf: expect.any(Array)
+    });
+    expect(constraintUpdateSchema).toMatchObject({
+      additionalProperties: false,
+      required: ["op", "id", "definition"],
+      properties: {
+        definition: { oneOf: expect.any(Array) }
+      }
+    });
+    expect(batchOpSchemas?.[11]).toMatchObject({
       required: ["op"],
       properties: {
         op: {
@@ -245,7 +268,15 @@ describe("V19 MCP adapter parity", () => {
             enum: [
               "sketch.offset",
               "sketch.addSlot",
-              "sketch.addRoundedRectangle"
+              "sketch.addRoundedRectangle",
+              "sketch.dimension.create",
+              "sketch.dimension.update",
+              "sketch.dimension.rename",
+              "sketch.dimension.delete",
+              "sketch.constraint.create",
+              "sketch.constraint.update",
+              "sketch.constraint.rename",
+              "sketch.constraint.delete"
             ]
           }
         }

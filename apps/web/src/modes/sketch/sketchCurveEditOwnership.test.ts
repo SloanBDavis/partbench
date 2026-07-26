@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { getSketchCurveEditOwnershipPolicy } from "./sketchCurveEditOwnership";
+import {
+  getSketchCurveEditOwnershipPolicy,
+  getSketchEditorActionNotice
+} from "./sketchCurveEditOwnership";
 
 describe("V19 curve-edit UI ownership", () => {
   it("guards navigation and suppresses parallel source mutations while dirty", () => {
@@ -11,6 +14,20 @@ describe("V19 curve-edit UI ownership", () => {
       suppressTreeSourceMutations: true,
       suppressContextSourceMutations: true
     });
+  });
+
+  it("uses intent-specific review copy for the shared editor ownership path", () => {
+    expect(getSketchEditorActionNotice("intent")).toBe(
+      "Choose targets and values, review measurement and solver state, then Apply."
+    );
+    expect(getSketchEditorActionNotice("curve")).toContain(
+      "geometry and constraint consequences"
+    );
+    expect(
+      getSketchEditorActionNotice("intent", "sketch.point-line-distance")
+    ).toBe(
+      "Set up point line distance: choose targets and values, review measurement and solver state, then Apply."
+    );
   });
 
   it("preserves clean navigation after closing the clean editor", () => {

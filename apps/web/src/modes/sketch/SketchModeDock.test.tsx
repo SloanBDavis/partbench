@@ -5,7 +5,13 @@ import type {
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { SketchModeDock, type SketchModeDockProps } from "./SketchModeDock";
+import {
+  SketchModeDock,
+  canNavigateSketchDockSectionV19,
+  getRequestedConstraintKind,
+  getRequestedDimensionFamily,
+  type SketchModeDockProps
+} from "./SketchModeDock";
 
 describe("V18 Sketch mode dock", () => {
   it("renders the supported precision tool set and truthful Finish semantics", () => {
@@ -78,6 +84,115 @@ describe("V18 Sketch mode dock", () => {
     expect(lineMarkup).toContain("Draft");
     expect(widthMarkup).toContain('value="Width"');
     expect(widthMarkup).toContain("Value source");
+  });
+
+  it("keeps active and blocked exact intent tools mounted until explicit close", () => {
+    const emptySketch: SketchSnapshot = {
+      id: "sketch-empty",
+      name: "Empty",
+      plane: "XY",
+      entities: []
+    };
+    const markup = renderToStaticMarkup(
+      createElement(
+        SketchModeDock,
+        props({
+          sketches: [emptySketch],
+          activeSketchId: emptySketch.id,
+          selectedEntityId: undefined,
+          initialActionId: "sketch.line-angle"
+        })
+      )
+    );
+
+    expect(markup).toContain('aria-label="Line angle unavailable"');
+    expect(markup).toContain(
+      '<button type="button" disabled="">Geometry</button>'
+    );
+    expect(markup).toContain(
+      '<button type="button" disabled="">Status</button>'
+    );
+    expect(canNavigateSketchDockSectionV19("constraints", true)).toBe(true);
+    expect(canNavigateSketchDockSectionV19("geometry", true)).toBe(false);
+  });
+
+  it("maps all registry-owned dimension and constraint actions to collectors", () => {
+    expect(
+      [
+        "rectangleWidth",
+        "rectangleHeight",
+        "lineLength",
+        "radius",
+        "diameter",
+        "arcSweep",
+        "pointDistance",
+        "horizontalDistance",
+        "verticalDistance",
+        "pointLineDistance",
+        "lineAngle"
+      ].map((_, index) =>
+        getRequestedDimensionFamily(
+          [
+            "sketch.rectangle-width",
+            "sketch.rectangle-height",
+            "sketch.line-length",
+            "sketch.radius",
+            "sketch.diameter",
+            "sketch.arc-sweep",
+            "sketch.point-distance",
+            "sketch.horizontal-distance",
+            "sketch.vertical-distance",
+            "sketch.point-line-distance",
+            "sketch.line-angle"
+          ][index] as Parameters<typeof getRequestedDimensionFamily>[0]
+        )
+      )
+    ).toEqual([
+      "rectangleWidth",
+      "rectangleHeight",
+      "lineLength",
+      "radius",
+      "diameter",
+      "arcSweep",
+      "pointDistance",
+      "horizontalDistance",
+      "verticalDistance",
+      "pointLineDistance",
+      "lineAngle"
+    ]);
+    expect(
+      [
+        "sketch.horizontal",
+        "sketch.vertical",
+        "sketch.fixed",
+        "sketch.coincident",
+        "sketch.midpoint",
+        "sketch.parallel",
+        "sketch.perpendicular",
+        "sketch.tangent",
+        "sketch.concentric",
+        "sketch.equal-length",
+        "sketch.equal-radius",
+        "sketch.symmetry"
+      ].map((id) =>
+        getRequestedConstraintKind(
+          id as Parameters<typeof getRequestedConstraintKind>[0]
+        )
+      )
+    ).toEqual([
+      "horizontal",
+      "vertical",
+      "fixed",
+      "coincident",
+      "midpoint",
+      "parallel",
+      "perpendicular",
+      "tangent",
+      "concentric",
+      "equalLength",
+      "equalRadius",
+      "symmetry"
+    ]);
   });
 
   it("opens the V19 Modify collector only for a registry-owned curve action", () => {
@@ -175,12 +290,7 @@ function props(
     onApplyCurveEdit: vi.fn(),
     onApplySketchConvenience: vi.fn(),
     onCancelCurveEdit: vi.fn(),
-    onCreateDimension: vi.fn(),
-    onApplyDimensionEdit: vi.fn(),
-    onDeleteDimension: vi.fn(),
-    onCreateConstraint: vi.fn(),
-    onApplyConstraintEdit: vi.fn(),
-    onDeleteConstraint: vi.fn(),
+    onApplySketchIntentOps: vi.fn(() => true),
     onFinish: vi.fn(),
     ...overrides
   };

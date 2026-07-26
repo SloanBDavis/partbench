@@ -52,11 +52,12 @@ export function handleCurveEditNavigationGuardEscape(
 export function getCurveEditDiscardFocusTarget<T>(
   intent: WorkbenchNavigationIntent,
   curveEditOpener: T | null,
-  navigationTrigger: T | null
+  navigationTrigger: T | null,
+  editorReturnFocusTarget: T | null = null
 ): T | null {
   return intent.kind === "close-editor"
-    ? curveEditOpener
-    : (navigationTrigger ?? curveEditOpener);
+    ? (curveEditOpener ?? editorReturnFocusTarget)
+    : (navigationTrigger ?? curveEditOpener ?? editorReturnFocusTarget);
 }
 
 export function shouldRestoreResolvedCurveEditNavigationFocus({

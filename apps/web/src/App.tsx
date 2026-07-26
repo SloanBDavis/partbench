@@ -43,9 +43,7 @@ import type {
   ReferenceHealthQueryResponse,
   SelectionReferenceCandidatesQueryResponse,
   TopologyCommandTargetReadinessQueryResponse,
-  SketchDimensionEntry,
-  SketchDimensionTarget,
-  SketchConstraintEntry,
+  SketchDimensionEntryCurrent,
   SketchEvaluationQueryResponse,
   SketchSolverStatusQueryResponse,
   SketchPathCandidatesQueryResponse,
@@ -86,13 +84,9 @@ import {
   buildCreateSketchOp,
   buildCreateConeOp,
   buildCreateParameterOp,
-  buildCreateSketchConstraintOp,
   buildCreateSphereOp,
-  buildCreateSketchDimensionOp,
   buildCreateTorusOp,
-  buildDeleteSketchConstraintOp,
   buildDeleteParameterOp,
-  buildDeleteSketchDimensionOp,
   buildDeleteNamedReferenceOp,
   buildDeleteObjectOp,
   buildDeleteSketchEntityOp,
@@ -128,8 +122,6 @@ import {
   buildRepairNamedReferenceToTopologyAnchorOp,
   buildRenameObjectOp,
   buildRenameSketchOp,
-  buildSketchConstraintEditOps,
-  buildSketchDimensionEditOps,
   buildUpdateSketchEntityOp,
   buildSetSketchEntityConstructionOp,
   buildUpdateBoxDimensionsOp,
@@ -159,9 +151,7 @@ import {
   type FeatureLoftForm,
   type ParameterCreateForm,
   type ParameterEditForm,
-  type SketchConstraintForm,
   type PrimitiveCommandForm,
-  type SketchDimensionForm,
   type SketchCreateOnFaceForm,
   type SketchCreateForm,
   type SketchEntityForm,
@@ -222,6 +212,7 @@ import { SketchCurveEditHoverScheduler } from "./modes/sketch/sketchCurveEditHov
 import {
   getActiveCurveEditInvocationAction,
   getCurveEditSketchSelectionAction,
+  getSketchEditorActionNotice,
   getSketchCurveEditOwnershipPolicy
 } from "./modes/sketch/sketchCurveEditOwnership";
 import {
@@ -1129,10 +1120,10 @@ function stripSketchOnFaceTopologyAnchor(
 
 function readSketchDimensionsBySketchId(
   sketches: readonly { readonly id: string }[]
-): ReadonlyMap<string, readonly SketchDimensionEntry[]> {
+): ReadonlyMap<string, readonly SketchDimensionEntryCurrent[]> {
   const dimensionsBySketchId = new Map<
     string,
-    readonly SketchDimensionEntry[]
+    readonly SketchDimensionEntryCurrent[]
   >();
 
   for (const sketch of sketches) {
@@ -1144,10 +1135,7 @@ function readSketchDimensionsBySketchId(
     dimensionsBySketchId.set(
       sketch.id,
       response.ok && response.query === "sketch.dimensions"
-        ? response.dimensions.filter(
-            (dimension): dimension is SketchDimensionEntry =>
-              !("sourceShape" in dimension)
-          )
+        ? response.dimensions
         : []
     );
   }
@@ -1431,7 +1419,7 @@ function createModelingSelectionContext({
   readonly selectedSketchContext?: SketchPanelSelectionContext;
   readonly sketchDimensionsBySketchId: ReadonlyMap<
     string,
-    readonly SketchDimensionEntry[]
+    readonly SketchDimensionEntryCurrent[]
   >;
   readonly sketchEvaluationsBySketchId: ReadonlyMap<
     string,
@@ -1567,6 +1555,8 @@ export function App() {
   const [commandError, setCommandError] = useState<string | undefined>();
   const [commandNotice, setCommandNotice] = useState<string | undefined>();
   const [commandPending, setCommandPending] = useState(false);
+  const [sketchIntentActionAvailability, setSketchIntentActionAvailability] =
+    useState<UiActionAvailabilityProjection>({});
   const [focusedSketchId, setFocusedSketchId] = useState<string | undefined>();
   const [threePointArcTool, setThreePointArcTool] = useState<
     ThreePointArcToolSession | undefined
@@ -1605,8 +1595,17 @@ export function App() {
   const handleCurveEditSessionControlChange = useCallback(
     (control: SketchCurveEditSessionControl | undefined) => {
       curveEditSessionControlRef.current = control;
+      if (control) {
+        dispatchWorkbench({
+          type: "set-editor",
+          editor: {
+            kind: "sketch-curve-edit",
+            ...(focusedSketchId ? { sourceId: focusedSketchId } : {})
+          }
+        });
+      }
     },
-    []
+    [focusedSketchId]
   );
   const clearCurveEditHoverPreview = useCallback(() => {
     setCurveEditViewportHoverChoice(undefined);
@@ -2513,7 +2512,8 @@ export function App() {
         features: projectStructure.features,
         preferredBodyId: preferredHoleBodyId,
         topologyAnchors: document.topologyIdentity?.anchors,
-        holeTargetReadinessByTopologyAnchorId
+        holeTargetReadinessByTopologyAnchorId,
+        sketchIntentActionAvailability
       }),
     [
       document.topologyIdentity?.anchors,
@@ -2521,7 +2521,8 @@ export function App() {
       modelingSelectionContext,
       preferredHoleBodyId,
       projectStructure.bodies,
-      projectStructure.features
+      projectStructure.features,
+      sketchIntentActionAvailability
     ]
   );
   const solidBodyChoices = useMemo<readonly SolidChoice<string>[]>(
@@ -4813,67 +4814,10 @@ export function App() {
     return true;
   }
 
-  async function createSketchDimension(
-    sketchId: string,
-    entityId: string,
-    target: SketchDimensionTarget,
-    form: SketchDimensionForm
-  ) {
-    await commitOps(
-      [buildCreateSketchDimensionOp(sketchId, entityId, target, form)],
-      () => selectedId
-    );
-  }
-
-  async function applySketchDimensionEdit(
-    dimension: SketchDimensionEntry,
-    form: SketchDimensionForm
-  ) {
-    const ops = buildSketchDimensionEditOps(dimension, form);
-
-    if (ops.length === 0) {
-      return;
-    }
-
-    await commitOps(ops, () => selectedId);
-  }
-
-  async function deleteSketchDimension(dimensionId: string) {
-    await commitOps(
-      [buildDeleteSketchDimensionOp(dimensionId)],
-      () => selectedId
-    );
-  }
-
-  async function createSketchConstraint(
-    sketchId: string,
-    entityId: string,
-    form: SketchConstraintForm
-  ) {
-    await commitOps(
-      [buildCreateSketchConstraintOp(sketchId, entityId, form)],
-      () => selectedId
-    );
-  }
-
-  async function applySketchConstraintEdit(
-    constraint: SketchConstraintEntry,
-    form: SketchConstraintForm
-  ) {
-    const ops = buildSketchConstraintEditOps(constraint, form);
-
-    if (ops.length === 0) {
-      return;
-    }
-
-    await commitOps(ops, () => selectedId);
-  }
-
-  async function deleteSketchConstraint(constraintId: string) {
-    await commitOps(
-      [buildDeleteSketchConstraintOp(constraintId)],
-      () => selectedId
-    );
+  async function applySketchIntentOps(ops: readonly CadOp[]): Promise<boolean> {
+    if (ops.length === 0) return true;
+    const response = await commitOps(ops, () => selectedId);
+    return response?.ok === true;
   }
 
   async function extrudeSketchEntity(
@@ -5316,6 +5260,11 @@ export function App() {
       selectionReferenceCandidates: selectedSelectionReferenceCandidates,
       selectedGeneratedReferenceState,
       onContinueInModeling: (modelingAction) => {
+        const modeledActionId = modelingAction.modelingActionId;
+        if (modeledActionId?.startsWith("sketch.")) {
+          runWorkbenchAction(modeledActionId as UiActionId);
+          return;
+        }
         const actionId =
           modelingAction.id === "feature.chamfer"
             ? "solid.chamfer"
@@ -5446,15 +5395,21 @@ export function App() {
   }
 
   function clearCurveEditUi(restoreFocus = false) {
+    const opener =
+      curveEditOpenerRef.current ??
+      curveEditSessionControlRef.current?.getReturnFocusTarget?.() ??
+      null;
     setThreePointArcTool(undefined);
     setCurveEditViewportChoice(undefined);
     setCurveEditViewportHoverChoice(undefined);
     curveEditHoverSchedulerRef.current?.clear();
+    curveEditSessionControlRef.current?.closeLocalDraft?.();
     curveEditSessionControlRef.current = undefined;
     dispatchWorkbench({ type: "set-active-tool" });
     dispatchWorkbench({ type: "set-editor" });
+    curveEditOpenerRef.current = null;
     if (restoreFocus) {
-      requestAnimationFrame(() => curveEditOpenerRef.current?.focus());
+      requestAnimationFrame(() => opener?.focus());
     }
   }
 
@@ -6910,6 +6865,29 @@ export function App() {
       case "sketch.offset":
       case "sketch.slot":
       case "sketch.rounded-rectangle":
+      case "sketch.horizontal":
+      case "sketch.vertical":
+      case "sketch.fixed":
+      case "sketch.coincident":
+      case "sketch.midpoint":
+      case "sketch.parallel":
+      case "sketch.perpendicular":
+      case "sketch.tangent":
+      case "sketch.concentric":
+      case "sketch.equal-length":
+      case "sketch.equal-radius":
+      case "sketch.symmetry":
+      case "sketch.rectangle-width":
+      case "sketch.rectangle-height":
+      case "sketch.line-length":
+      case "sketch.radius":
+      case "sketch.diameter":
+      case "sketch.arc-sweep":
+      case "sketch.point-distance":
+      case "sketch.horizontal-distance":
+      case "sketch.vertical-distance":
+      case "sketch.point-line-distance":
+      case "sketch.line-angle":
         curveEditOpenerRef.current =
           window.document.activeElement instanceof HTMLElement
             ? window.document.activeElement
@@ -6927,7 +6905,14 @@ export function App() {
           }
         });
         setCommandNotice(
-          "Collect the exact edit choices, review geometry and constraint consequences, then Apply."
+          getSketchEditorActionNotice(
+            isSketchCurveEditUiAction(actionId) ||
+              actionId === "sketch.slot" ||
+              actionId === "sketch.rounded-rectangle"
+              ? "curve"
+              : "intent",
+            actionId
+          )
         );
         return;
       case "sketch.finish":
@@ -6991,12 +6976,15 @@ export function App() {
   ) {
     const intent = workbenchUi.navigationIntent;
     if (!intent) return;
+    const editorReturnFocusTarget =
+      curveEditSessionControlRef.current?.getReturnFocusTarget?.() ?? null;
     const navigationFocusTarget =
       resolution !== "stay"
         ? getCurveEditDiscardFocusTarget(
             intent,
             curveEditOpenerRef.current,
-            navigationTrigger
+            navigationTrigger,
+            editorReturnFocusTarget
           )
         : null;
     if (resolution === "stay") {
@@ -7204,41 +7192,7 @@ export function App() {
       ),
       "sketch.construction": selectedEntityReady,
       "sketch.delete": selectedEntityReady,
-      "sketch.horizontal":
-        selectedEntity?.kind === "line"
-          ? ready
-          : needs("Select an eligible line."),
-      "sketch.vertical":
-        selectedEntity?.kind === "line"
-          ? ready
-          : needs("Select an eligible line."),
-      "sketch.fixed": selectedEntityReady,
-      "sketch.coincident": selectedEntityReady,
-      "sketch.midpoint": selectedEntityReady,
-      "sketch.parallel":
-        selectedEntity?.kind === "line"
-          ? ready
-          : needs("Select an eligible line."),
-      "sketch.perpendicular":
-        selectedEntity?.kind === "line"
-          ? ready
-          : needs("Select an eligible line."),
-      "sketch.rectangle-width":
-        selectedEntity?.kind === "rectangle"
-          ? ready
-          : needs("Select a rectangle."),
-      "sketch.rectangle-height":
-        selectedEntity?.kind === "rectangle"
-          ? ready
-          : needs("Select a rectangle."),
-      "sketch.line-length":
-        selectedEntity?.kind === "line" ? ready : needs("Select a line."),
-      "sketch.radius":
-        selectedEntity?.kind === "circle" || selectedEntity?.kind === "arc"
-          ? ready
-          : needs("Select a circle or arc."),
-      "sketch.arc-sweep":
-        selectedEntity?.kind === "arc" ? ready : needs("Select an arc."),
+      ...sketchIntentActionAvailability,
       "inspect.mass-properties": selectedBody ? ready : needs("Select a body."),
       "inspect.name-reference":
         selectedGeneratedReferenceState.status === "selected"
@@ -7268,6 +7222,7 @@ export function App() {
     selectedSketchContext,
     selectedSolidBodyId,
     selectedViewportRenderId,
+    sketchIntentActionAvailability,
     sketches,
     solidAxisChoices.length,
     solidEdgeChoices.length,
@@ -7784,6 +7739,7 @@ export function App() {
                   disabled={commandPending}
                   sketches={sketches}
                   parameters={parameters}
+                  units={document.units}
                   features={projectStructure.features}
                   dimensionsBySketchId={sketchDimensionsBySketchId}
                   evaluationsBySketchId={sketchEvaluationsBySketchId}
@@ -7845,23 +7801,9 @@ export function App() {
                   onCurveEditSessionControlChange={
                     handleCurveEditSessionControlChange
                   }
-                  onCreateDimension={(sketchId, entityId, target, form) =>
-                    void createSketchDimension(sketchId, entityId, target, form)
-                  }
-                  onApplyDimensionEdit={(dimension, form) =>
-                    void applySketchDimensionEdit(dimension, form)
-                  }
-                  onDeleteDimension={(dimensionId) =>
-                    void deleteSketchDimension(dimensionId)
-                  }
-                  onCreateConstraint={(sketchId, entityId, form) =>
-                    void createSketchConstraint(sketchId, entityId, form)
-                  }
-                  onApplyConstraintEdit={(constraint, form) =>
-                    void applySketchConstraintEdit(constraint, form)
-                  }
-                  onDeleteConstraint={(constraintId) =>
-                    void deleteSketchConstraint(constraintId)
+                  onApplySketchIntentOps={applySketchIntentOps}
+                  onIntentActionAvailabilityChange={
+                    setSketchIntentActionAvailability
                   }
                   onFinish={() => {
                     setThreePointArcTool(undefined);

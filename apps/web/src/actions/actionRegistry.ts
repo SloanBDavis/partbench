@@ -25,6 +25,45 @@ interface UiActionMetadata {
 
 const READY = { status: "ready" } as const;
 
+const SKETCH_INTENT_ACTION_METADATA = (
+  [
+    ["horizontal", "Horizontal", "Constraint"],
+    ["vertical", "Vertical", "Constraint"],
+    ["fixed", "Fixed", "Constraint"],
+    ["coincident", "Coincident", "Constraint"],
+    ["midpoint", "Midpoint", "Constraint"],
+    ["parallel", "Parallel", "Constraint"],
+    ["perpendicular", "Perpendicular", "Constraint"],
+    ["tangent", "Tangent", "Constraint"],
+    ["concentric", "Concentric", "Constraint"],
+    ["equal-length", "Equal Length", "Constraint"],
+    ["equal-radius", "Equal Radius", "Constraint"],
+    ["symmetry", "Symmetry", "Constraint"],
+    ["rectangle-width", "Rectangle Width", "Dimension"],
+    ["rectangle-height", "Rectangle Height", "Dimension"],
+    ["line-length", "Line Length", "Dimension"],
+    ["radius", "Radius", "Dimension"],
+    ["diameter", "Diameter", "Dimension"],
+    ["arc-sweep", "Arc Sweep", "Dimension"],
+    ["point-distance", "Point Distance", "Dimension"],
+    ["horizontal-distance", "Horizontal Distance", "Dimension"],
+    ["vertical-distance", "Vertical Distance", "Dimension"],
+    ["point-line-distance", "Point to Line", "Dimension"],
+    ["line-angle", "Line Angle", "Dimension"]
+  ] as const
+).map(([id, label, group]) =>
+  action(
+    `sketch.${id}`,
+    label,
+    group,
+    ["sketch"],
+    [],
+    true,
+    undefined,
+    needs("Open Sketch mode.")
+  )
+);
+
 /**
  * Stable V18 action order. Ribbon groups, contextual actions, menus, and
  * command search filter this list; none owns CAD behavior.
@@ -463,126 +502,7 @@ export const UI_ACTION_METADATA = [
     "Delete/Backspace",
     needs("Select a sketch entity, dimension, or constraint.")
   ),
-  action(
-    "sketch.horizontal",
-    "Horizontal",
-    "Constraint",
-    ["sketch"],
-    ["horizontal constraint"],
-    true,
-    undefined,
-    needs("Select an eligible line.")
-  ),
-  action(
-    "sketch.vertical",
-    "Vertical",
-    "Constraint",
-    ["sketch"],
-    ["vertical constraint"],
-    true,
-    undefined,
-    needs("Select an eligible line.")
-  ),
-  action(
-    "sketch.fixed",
-    "Fixed",
-    "Constraint",
-    ["sketch"],
-    ["fix constraint"],
-    true,
-    undefined,
-    needs("Select an eligible sketch entity.")
-  ),
-  action(
-    "sketch.coincident",
-    "Coincident",
-    "Constraint",
-    ["sketch"],
-    ["join points"],
-    true,
-    undefined,
-    needs("Select an eligible entity and endpoint.")
-  ),
-  action(
-    "sketch.midpoint",
-    "Midpoint",
-    "Constraint",
-    ["sketch"],
-    ["center point"],
-    true,
-    undefined,
-    needs("Select an eligible point and line.")
-  ),
-  action(
-    "sketch.parallel",
-    "Parallel",
-    "Constraint",
-    ["sketch"],
-    ["parallel lines"],
-    true,
-    undefined,
-    needs("Select eligible lines.")
-  ),
-  action(
-    "sketch.perpendicular",
-    "Perpendicular",
-    "Constraint",
-    ["sketch"],
-    ["right angle"],
-    true,
-    undefined,
-    needs("Select eligible lines.")
-  ),
-  action(
-    "sketch.rectangle-width",
-    "Rectangle Width",
-    "Dimension",
-    ["sketch"],
-    ["width dimension"],
-    true,
-    undefined,
-    needs("Select a rectangle.")
-  ),
-  action(
-    "sketch.rectangle-height",
-    "Rectangle Height",
-    "Dimension",
-    ["sketch"],
-    ["height dimension"],
-    true,
-    undefined,
-    needs("Select a rectangle.")
-  ),
-  action(
-    "sketch.line-length",
-    "Line Length",
-    "Dimension",
-    ["sketch"],
-    ["length dimension"],
-    true,
-    undefined,
-    needs("Select a line.")
-  ),
-  action(
-    "sketch.radius",
-    "Radius",
-    "Dimension",
-    ["sketch"],
-    ["circle radius", "arc radius"],
-    true,
-    undefined,
-    needs("Select a circle or arc.")
-  ),
-  action(
-    "sketch.arc-sweep",
-    "Arc Sweep",
-    "Dimension",
-    ["sketch"],
-    ["sweep angle"],
-    true,
-    undefined,
-    needs("Select an arc.")
-  ),
+  ...SKETCH_INTENT_ACTION_METADATA,
   action(
     "sketch.finish",
     "Finish Sketch",

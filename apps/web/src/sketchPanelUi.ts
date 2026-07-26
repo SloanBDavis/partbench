@@ -10,6 +10,7 @@ import type {
   SketchConstraintEntry,
   SketchConstraintKind,
   SketchDimensionEntry,
+  SketchDimensionEntryCurrent,
   SketchDimensionStatus,
   SketchDimensionTarget,
   SketchSolverStatusQueryResponse,
@@ -279,12 +280,27 @@ export function createSketchEntityListItems(
 
 export function createSketchEntityIntentSummary(
   entityId: SketchEntityId,
-  dimensions: readonly SketchDimensionEntry[],
+  dimensions: readonly SketchDimensionEntryCurrent[],
   constraints: readonly SketchConstraintEntry[]
 ): SketchEntityIntentSummary {
-  const dimensionCount = dimensions.filter(
-    (dimension) => dimension.entityId === entityId
-  ).length;
+  const dimensionCount = dimensions.filter((dimension) => {
+    if (!("sourceShape" in dimension)) return dimension.entityId === entityId;
+    const target = dimension.target;
+    if (target.kind === "entityScalar") return target.entityId === entityId;
+    if (target.kind === "pointPair")
+      return (
+        target.primary.entityId === entityId ||
+        target.secondary.entityId === entityId
+      );
+    if (target.kind === "pointLineDistance")
+      return (
+        target.point.entityId === entityId || target.lineEntityId === entityId
+      );
+    return (
+      target.primaryLineEntityId === entityId ||
+      target.secondaryLineEntityId === entityId
+    );
+  }).length;
   const constraintCount = constraints.filter((constraint) =>
     isSketchConstraintRelatedToEntity(constraint, entityId)
   ).length;
@@ -480,15 +496,24 @@ export function createSketchDimensionTargetOptions(
 
 export function createAvailableSketchDimensionTargetOptions(
   entity: SketchEntitySnapshot | undefined,
-  dimensions: readonly SketchDimensionEntry[]
+  dimensions: readonly SketchDimensionEntryCurrent[]
 ): readonly SketchDimensionTargetOption[] {
   return createSketchDimensionTargetOptions(entity).filter(
     (option) =>
-      !dimensions.some(
-        (dimension) =>
+      !dimensions.some((dimension) => {
+        if ("sourceShape" in dimension) {
+          return (
+            dimension.target.kind === "entityScalar" &&
+            dimension.target.entityId === entity?.id &&
+            dimension.target.entityKind === option.target.entityKind &&
+            dimension.target.role === option.target.role
+          );
+        }
+        return (
           dimension.entityId === entity?.id &&
           sketchDimensionTargetsEqual(dimension.target, option.target)
-      )
+        );
+      })
   );
 }
 

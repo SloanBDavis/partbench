@@ -9,6 +9,7 @@ import type {
   SketchSnapshot
 } from "@web-cad/cad-protocol";
 import { describe, expect, it } from "vitest";
+import { UI_ACTION_METADATA } from "./actions/actionRegistry";
 import {
   deriveModelingActions,
   type ModelingActionDescriptor,
@@ -93,7 +94,7 @@ describe("modeling action helpers", () => {
     });
   });
 
-  it("limits existing arc actions to property editing in Slice B", () => {
+  it("keeps generic intent collectors available until exact projection loads", () => {
     const arc: SketchSnapshot["entities"][number] = {
       id: "arc_1",
       kind: "arc",
@@ -118,13 +119,75 @@ describe("modeling action helpers", () => {
       target: { sketchEntityKind: "arc" }
     });
     expect(actionById(actions, "sketch.dimension.add")).toMatchObject({
-      available: false,
-      target: { dimensionTargets: [] }
+      available: true,
+      target: { sketchEntityId: "arc_1" }
     });
     expect(actionById(actions, "sketch.constraint.add")).toMatchObject({
-      available: false,
-      target: { constraintKinds: [] }
+      available: true,
+      target: { sketchEntityId: "arc_1" }
     });
+  });
+
+  it("projects advanced dimension and constraint rows from the shared exact availability", () => {
+    const entity: SketchSnapshot["entities"][number] = {
+      id: "arc_1",
+      kind: "arc",
+      construction: false,
+      center: [0, 0],
+      radius: 2,
+      startAngleDegrees: 0,
+      sweepAngleDegrees: 90
+    };
+    const sketch = createSketch("sketch_1", { entities: [entity] });
+    const intentMetadata = UI_ACTION_METADATA.filter(
+      ({ group }) => group === "Dimension" || group === "Constraint"
+    );
+    const actions = deriveModelingActions({
+      context: { selectionKind: "sketchEntity", sketch, entity },
+      sketchIntentActionAvailability: {
+        ...Object.fromEntries(
+          intentMetadata.map(({ id, group }) => [
+            id,
+            group === "Dimension"
+              ? { status: "ready" as const }
+              : {
+                  status: "blocked" as const,
+                  message: "No eligible constraint target."
+                }
+          ])
+        ),
+        "sketch.arc-sweep": { status: "ready" },
+        "sketch.point-line-distance": {
+          status: "needs-selection",
+          message: "Choose a point and line."
+        },
+        "sketch.symmetry": {
+          status: "blocked",
+          message: "Every eligible symmetry relation already exists."
+        }
+      }
+    });
+
+    expect(
+      intentMetadata.every(({ id }) =>
+        actions.some((action) => action.id === id)
+      )
+    ).toBe(true);
+    expect(actionById(actions, "sketch.arc-sweep")).toMatchObject({
+      label: "Arc Sweep",
+      available: true
+    });
+    expect(actionById(actions, "sketch.point-line-distance")).toMatchObject({
+      label: "Point to Line",
+      available: false,
+      reason: "Choose a point and line."
+    });
+    expect(actionById(actions, "sketch.symmetry")).toMatchObject({
+      available: false,
+      reason: "Every eligible symmetry relation already exists."
+    });
+    expect(actionById(actions, "sketch.dimension.add").available).toBe(true);
+    expect(actionById(actions, "sketch.constraint.add").available).toBe(false);
   });
 
   it("enables circle hole and revolve actions when eligible targets exist", () => {

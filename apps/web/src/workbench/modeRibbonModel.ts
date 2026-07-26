@@ -83,7 +83,7 @@ export function chooseVisibleRibbonGroupIds(
   return visible;
 }
 
-export function getActionIcon(id: UiActionId): IconName {
+export function getActionIcon(id: UiActionId, group?: string): IconName {
   const suffix = id.slice(id.indexOf(".") + 1);
   const exact: Partial<Record<string, IconName>> = {
     new: "file",
@@ -133,18 +133,6 @@ export function getActionIcon(id: UiActionId): IconName {
     split: "edit",
     "explode-rectangle": "edit",
     construction: "line",
-    horizontal: "constraint",
-    vertical: "constraint",
-    fixed: "constraint",
-    coincident: "constraint",
-    midpoint: "constraint",
-    parallel: "constraint",
-    perpendicular: "constraint",
-    "rectangle-width": "dimension",
-    "rectangle-height": "dimension",
-    "line-length": "dimension",
-    radius: "dimension",
-    "arc-sweep": "dimension",
     finish: "success",
     measure: "measure",
     "measure-between": "measure",
@@ -159,7 +147,14 @@ export function getActionIcon(id: UiActionId): IconName {
     isometric: "isometric",
     health: "success"
   };
-  return exact[suffix] ?? "more";
+  return (
+    exact[suffix] ??
+    (group === "Constraint"
+      ? "constraint"
+      : group === "Dimension"
+        ? "dimension"
+        : "more")
+  );
 }
 
 function slug(value: string): string {
