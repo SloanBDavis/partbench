@@ -34537,7 +34537,10 @@ function validateV22RegionsProfileRef(
     }
   }
 
-  const validation = validateV22RegionSource(value, sketchEntities);
+  const validation = validateV22RegionSource(value, {
+    id: sketchId ?? "",
+    entities: sketchEntities
+  });
   if (!validation.ok) {
     for (const issue of validation.issues) {
       const issuePath =

@@ -1,9 +1,12 @@
 import {
   CAD_V19_RESOURCE_LIMITS,
+  type CadOpsVersion,
   type OrientedSketchSegmentRef,
   type SketchEntitySnapshot,
   type SketchLoopRef,
+  type SketchProfileRegionValidateQueryResponse,
   type SketchProfileRegionRef,
+  type SketchRegionDiagnostic,
   type SketchRegionsProfileRef,
   type Vec2
 } from "@web-cad/cad-protocol";
@@ -51,6 +54,7 @@ interface ResolvedLoop {
 export type V22RegionSourceIssueCode =
   | "SKETCH_REGION_COMPLEXITY_LIMIT"
   | "SKETCH_REGION_PROFILE_EMPTY"
+  | "SKETCH_REGION_SKETCH_MISMATCH"
   | "SKETCH_REGION_ENTITY_MISSING"
   | "SKETCH_REGION_ENTITY_UNSUPPORTED"
   | "SKETCH_REGION_CONSTRUCTION_ENTITY"
@@ -78,6 +82,11 @@ export interface V22RegionSourceIssue {
   readonly received?: string;
 }
 
+export interface V22RegionSourceSketch {
+  readonly id: string;
+  readonly entities: ReadonlyMap<string, SketchEntitySnapshot>;
+}
+
 export interface V22RegionSourceComplexity {
   readonly sketchEntityCount: number;
   readonly regionCount: number;
@@ -89,6 +98,9 @@ export interface V22RegionSourceComplexity {
 export interface V22RegionSourceNormalization {
   readonly orientationChanged: boolean;
   readonly cyclicStartChanged: boolean;
+  readonly outerOrientationsChanged: readonly string[];
+  readonly holeOrientationsChanged: readonly string[];
+  readonly cyclicStartsChanged: readonly string[];
   readonly holeOrderChanged: boolean;
   readonly regionOrderChanged: boolean;
 }
@@ -100,6 +112,7 @@ export interface V22RegionSourceLoopSummary {
   readonly entityIds: readonly string[];
   readonly signedArea: number;
   readonly absoluteArea: number;
+  readonly containmentDepth: number;
 }
 
 export type V22RegionSourceValidationResult =
@@ -164,20 +177,23 @@ function flipOrientation(
   return orientation === "forward" ? "reverse" : "forward";
 }
 
-function tupleKey(reference: OrientedSketchSegmentRef): string {
-  return JSON.stringify([reference.entityId, reference.orientation]);
-}
-
 function compareReferenceSequences(
   left: readonly OrientedSketchSegmentRef[],
   right: readonly OrientedSketchSegmentRef[]
 ): number {
   for (let index = 0; index < left.length; index += 1) {
-    const comparison = compareSketchCanonicalKeys(
-      tupleKey(left[index]!),
-      tupleKey(right[index]!)
+    const leftReference = left[index]!;
+    const rightReference = right[index]!;
+    const entityComparison = compareSketchCanonicalKeys(
+      leftReference.entityId,
+      rightReference.entityId
     );
-    if (comparison !== 0) return comparison;
+    if (entityComparison !== 0) return entityComparison;
+    const orientationComparison = compareSketchCanonicalKeys(
+      leftReference.orientation,
+      rightReference.orientation
+    );
+    if (orientationComparison !== 0) return orientationComparison;
   }
   return left.length - right.length;
 }
@@ -1054,6 +1070,31 @@ function complexitySnapshot(
   return { ...complexity };
 }
 
+function sortedKeys(keys: ReadonlySet<string>): readonly string[] {
+  return [...keys].sort(compareSketchCanonicalKeys);
+}
+
+function createContainmentDepths(
+  loops: readonly ResolvedLoop[],
+  budget: PredicateBudget
+): ReadonlyMap<string, number> {
+  return new Map(
+    loops.map((loop) => [
+      loop.key,
+      loops.reduce(
+        (depth, candidateContainer) =>
+          candidateContainer === loop
+            ? depth
+            : depth +
+              (pointInsideLoop(loop.boundarySample, candidateContainer, budget)
+                ? 1
+                : 0),
+        0
+      )
+    ])
+  );
+}
+
 /**
  * Validate and deterministically normalize authoritative V22 material-region
  * source. The function is pure and bounded; it never consults derived meshes
@@ -1061,9 +1102,10 @@ function complexitySnapshot(
  */
 export function validateV22RegionSource(
   profile: SketchRegionsProfileRef,
-  entities: ReadonlyMap<string, SketchEntitySnapshot>,
+  sketch: V22RegionSourceSketch,
   policy: SketchGeometryPolicy = SKETCH_GEOMETRY_POLICY
 ): V22RegionSourceValidationResult {
+  const { entities } = sketch;
   const complexity: MutableComplexity = {
     sketchEntityCount: entities.size,
     regionCount: profile.regions.length,
@@ -1085,6 +1127,18 @@ export function validateV22RegionSource(
     predicateVisitCount: 0
   };
   const issues: V22RegionSourceIssue[] = [];
+  if (profile.sketchId !== sketch.id) {
+    issues.push(
+      issue(
+        "SKETCH_REGION_SKETCH_MISMATCH",
+        "Every submitted region loop must resolve from the profile sketch.",
+        {
+          expected: profile.sketchId,
+          received: sketch.id
+        }
+      )
+    );
+  }
   if (profile.regions.length === 0) {
     issues.push(
       issue(
@@ -1143,6 +1197,9 @@ export function validateV22RegionSource(
   let cyclicStartChanged = false;
   let holeOrderChanged = false;
   let regionOrderChanged = false;
+  const outerOrientationsChanged = new Set<string>();
+  const holeOrientationsChanged = new Set<string>();
+  const cyclicStartsChanged = new Set<string>();
   const resolvedRegions: {
     readonly sourceIndex: number;
     readonly outer: ResolvedLoop;
@@ -1163,6 +1220,12 @@ export function validateV22RegionSource(
       );
       orientationChanged ||= outerResult.orientationChanged;
       cyclicStartChanged ||= outerResult.cyclicStartChanged;
+      if (outerResult.loop && outerResult.orientationChanged) {
+        outerOrientationsChanged.add(outerResult.loop.key);
+      }
+      if (outerResult.loop && outerResult.cyclicStartChanged) {
+        cyclicStartsChanged.add(outerResult.loop.key);
+      }
       const holes: ResolvedLoop[] = [];
       for (const [holeIndex, hole] of region.holes.entries()) {
         const holeResult = resolveLoop(
@@ -1177,6 +1240,12 @@ export function validateV22RegionSource(
         );
         orientationChanged ||= holeResult.orientationChanged;
         cyclicStartChanged ||= holeResult.cyclicStartChanged;
+        if (holeResult.loop && holeResult.orientationChanged) {
+          holeOrientationsChanged.add(holeResult.loop.key);
+        }
+        if (holeResult.loop && holeResult.cyclicStartChanged) {
+          cyclicStartsChanged.add(holeResult.loop.key);
+        }
         if (holeResult.loop) holes.push(holeResult.loop);
       }
       if (outerResult.loop && holes.length === region.holes.length) {
@@ -1199,8 +1268,20 @@ export function validateV22RegionSource(
       };
     }
 
-    const materialAreas: number[] = [];
-    for (const region of resolvedRegions) {
+    const validationRegions = resolvedRegions
+      .map((region) => ({
+        ...region,
+        holes: [...region.holes].sort((left, right) =>
+          compareSketchCanonicalKeys(left.key, right.key)
+        )
+      }))
+      .sort((left, right) =>
+        compareSketchCanonicalKeys(left.outer.key, right.outer.key)
+      );
+    const materialAreas: number[] = Array.from({
+      length: resolvedRegions.length
+    });
+    for (const region of validationRegions) {
       for (const hole of region.holes) {
         const separation = loopBoundaryDistance(
           region.outer,
@@ -1288,7 +1369,7 @@ export function validateV22RegionSource(
       const materialArea =
         region.outer.absoluteArea -
         region.holes.reduce((sum, hole) => sum + hole.absoluteArea, 0);
-      materialAreas.push(materialArea);
+      materialAreas[region.sourceIndex] = materialArea;
       if (
         !Number.isFinite(materialArea) ||
         materialArea < policy.minimumProfileArea
@@ -1310,16 +1391,16 @@ export function validateV22RegionSource(
 
     for (
       let leftIndex = 0;
-      leftIndex < resolvedRegions.length;
+      leftIndex < validationRegions.length;
       leftIndex += 1
     ) {
       for (
         let rightIndex = leftIndex + 1;
-        rightIndex < resolvedRegions.length;
+        rightIndex < validationRegions.length;
         rightIndex += 1
       ) {
-        const left = resolvedRegions[leftIndex]!;
-        const right = resolvedRegions[rightIndex]!;
+        const left = validationRegions[leftIndex]!;
+        const right = validationRegions[rightIndex]!;
         const leftLoops = [left.outer, ...left.holes];
         const rightLoops = [right.outer, ...right.holes];
         let boundariesTouch = false;
@@ -1428,6 +1509,10 @@ export function validateV22RegionSource(
     const normalizedMaterialAreas = normalizedRegions.map(
       (region) => materialAreas[region.sourceIndex]!
     );
+    const containmentDepths = createContainmentDepths(
+      normalizedRegions.flatMap((region) => [region.outer, ...region.holes]),
+      budget
+    );
     const loopSummaries = normalizedRegions.flatMap((region, regionIndex) => [
       {
         loopKey: region.outer.key,
@@ -1435,7 +1520,8 @@ export function validateV22RegionSource(
         regionIndex,
         entityIds: region.outer.entityIds,
         signedArea: region.outer.absoluteArea,
-        absoluteArea: region.outer.absoluteArea
+        absoluteArea: region.outer.absoluteArea,
+        containmentDepth: containmentDepths.get(region.outer.key) ?? 0
       },
       ...region.holes.map((hole) => ({
         loopKey: hole.key,
@@ -1443,7 +1529,8 @@ export function validateV22RegionSource(
         regionIndex,
         entityIds: hole.entityIds,
         signedArea: -hole.absoluteArea,
-        absoluteArea: hole.absoluteArea
+        absoluteArea: hole.absoluteArea,
+        containmentDepth: containmentDepths.get(hole.key) ?? 0
       }))
     ]);
     return {
@@ -1454,6 +1541,9 @@ export function validateV22RegionSource(
       normalization: {
         orientationChanged,
         cyclicStartChanged,
+        outerOrientationsChanged: sortedKeys(outerOrientationsChanged),
+        holeOrientationsChanged: sortedKeys(holeOrientationsChanged),
+        cyclicStartsChanged: sortedKeys(cyclicStartsChanged),
         holeOrderChanged,
         regionOrderChanged
       },
@@ -1478,4 +1568,75 @@ export function validateV22RegionSource(
       ]
     };
   }
+}
+
+function toPublicComplexity(
+  complexity: V22RegionSourceComplexity
+): SketchProfileRegionValidateQueryResponse["complexity"] {
+  return {
+    regionCount: complexity.regionCount,
+    loopCount: complexity.loopCount,
+    segmentReferenceCount: complexity.segmentReferenceCount,
+    predicateVisitCount: complexity.predicateVisitCount
+  };
+}
+
+function toPublicDiagnostic(
+  profile: SketchRegionsProfileRef,
+  issue: V22RegionSourceIssue
+): SketchRegionDiagnostic {
+  return {
+    code: issue.code,
+    severity: "blocker",
+    message: issue.message,
+    sketchId: profile.sketchId,
+    ...(issue.entityId === undefined ? {} : { entityId: issue.entityId }),
+    ...(issue.loopKey === undefined ? {} : { loopKey: issue.loopKey }),
+    ...(issue.expected === undefined ? {} : { expected: issue.expected }),
+    ...(issue.received === undefined ? {} : { received: issue.received }),
+    recoveryAction:
+      issue.code === "SKETCH_REGION_COMPLEXITY_LIMIT"
+        ? "Reduce the submitted region source before retrying validation."
+        : "Repair the referenced sketch geometry or submit a different exact region profile."
+  };
+}
+
+/**
+ * Materialize the public, side-effect-free E1 validation query response.
+ * Query dispatch is wired separately so discovery and feature mutation do not
+ * become accidental prerequisites of explicit source validation.
+ */
+export function createSketchProfileRegionValidateResponse(
+  profile: SketchRegionsProfileRef,
+  sketch: V22RegionSourceSketch,
+  cadOpsVersion: CadOpsVersion
+): SketchProfileRegionValidateQueryResponse {
+  const result = validateV22RegionSource(profile, sketch);
+  if (!result.ok) {
+    return {
+      ok: true,
+      query: "sketch.profileRegionValidate",
+      cadOpsVersion,
+      status: "blocked",
+      requestedProfile: profile,
+      loopSummaries: [],
+      materialAreas: [],
+      complexity: toPublicComplexity(result.complexity),
+      diagnostics: result.issues.map((issue) =>
+        toPublicDiagnostic(profile, issue)
+      )
+    };
+  }
+  return {
+    ok: true,
+    query: "sketch.profileRegionValidate",
+    cadOpsVersion,
+    status: "ready",
+    requestedProfile: profile,
+    normalizedProfile: result.normalizedProfile,
+    loopSummaries: result.loopSummaries,
+    materialAreas: result.materialAreas,
+    complexity: toPublicComplexity(result.complexity),
+    diagnostics: []
+  };
 }

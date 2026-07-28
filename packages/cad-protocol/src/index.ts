@@ -6653,6 +6653,12 @@ export type CadDependencyHealthIssueCode =
   | "UNSUPPORTED_BODY_REFERENCES"
   | "COMPOSITE_REVOLVE_PROFILE_UNSUPPORTED"
   | "COMPOSITE_REVOLVE_AXIS_INTERSECTION"
+  | "SKETCH_REGION_LOOP_OPEN"
+  | "SKETCH_REGION_LOOP_INTERSECTION"
+  | "SKETCH_REGION_BOUNDARY_TOUCHING"
+  | "SKETCH_REGION_CONTAINMENT_INVALID"
+  | "SKETCH_REGION_MATERIAL_OVERLAP"
+  | "SKETCH_REGION_COMPLEXITY_LIMIT"
   | "GENERATED_REFERENCE_CORRESPONDENCE_UNPROVEN"
   | "STALE_BODY_TOPOLOGY"
   | "INVALID_EXACT_GEOMETRY_RESULT"
@@ -7999,6 +8005,11 @@ export interface SketchProfileCandidate {
   readonly candidateIndex: number;
   readonly sortKey: string;
   readonly profile: SketchProfileRef;
+  /**
+   * Display-only correlation to the equivalent no-hole region candidate.
+   * The key is never accepted as authored profile or command authority.
+   */
+  readonly regionCandidateKey?: string;
   readonly orientation: "counterclockwise";
   readonly area: number;
   readonly signedArea: number;
@@ -8272,8 +8283,15 @@ export type SketchCurveEditReadinessQueryResponse =
   | SketchCurveEditReadinessBlockedResponse;
 
 export type SketchRegionDiagnosticCode =
+  | "SKETCH_REGION_PROFILE_EMPTY"
+  | "SKETCH_REGION_SKETCH_MISMATCH"
+  | "SKETCH_REGION_ENTITY_MISSING"
+  | "SKETCH_REGION_ENTITY_UNSUPPORTED"
+  | "SKETCH_REGION_CONSTRUCTION_ENTITY"
+  | "SKETCH_REGION_ENTITY_REPEATED"
   | "SKETCH_REGION_LOOP_OPEN"
   | "SKETCH_REGION_LOOP_INTERSECTION"
+  | "SKETCH_REGION_LOOP_AREA_TOO_SMALL"
   | "SKETCH_REGION_BOUNDARY_TOUCHING"
   | "SKETCH_REGION_HOLE_OUTSIDE"
   | "SKETCH_REGION_HOLES_OVERLAP"
@@ -9666,7 +9684,7 @@ function validateSketchLoopRef(
       return 0;
     }
     validateNonEmptyString(value.entityId, `${path}.entityId`, issues);
-    return 1;
+    return 0;
   }
   if (value.kind === "wire") {
     if (!validateExactRecord(value, path, ["kind", "segments"], [], issues)) {

@@ -155,6 +155,25 @@ flowchart TD
   all non-worker UI JavaScript 550 KiB gzip; command worker 256 KiB gzip;
   geometry worker 120 KiB gzip; OCCT WASM 13,808,536 gzip bytes.
 
+## Frozen Slice E API clarifications
+
+- Region query identities are relevant-sketch identities. The fingerprint
+  hashes the canonical discovery-relevant sketch projection; the revision
+  hashes that fingerprint plus the normalized optional entity narrowing.
+- Candidate keys are canonical JSON
+  `["region", containmentDepth, outerLoopKey, holeLoopKeys]` display/paging
+  cursors. They are never persisted or accepted by a mutation.
+- Normalization string arrays contain duplicate-free, code-unit-sorted
+  post-normalization loop keys.
+- Public region diagnostics include empty, sketch-ownership mismatch, missing,
+  unsupported, construction, repeated, and area-too-small source failures.
+  Dependency health has distinct region open, intersection, boundary,
+  containment, material-overlap, and complexity codes.
+- Only whole-loop-backed cells may be candidates. Components that cannot
+  truthfully form an exact region ref remain response diagnostics.
+- E4 is a discovery/validation/selection surface. Region feature mutations and
+  geometry stay disabled until their complete F/G vertical rows pass.
+
 ## Progress ledger
 
 ### 2026-07-24 — Gate A implementation accepted
@@ -563,6 +582,31 @@ history baseline.
   exact 13,808,536-byte OCCT WASM cap.
 - Gate D is accepted. E1 is the next unblocked node; no Slice E implementation
   is claimed by this checkpoint.
+
+### 2026-07-28 — Slice E1 region-policy checkpoint accepted
+
+- The Slice E API clarifications are frozen: relevant-sketch fingerprint,
+  narrowing-bound revision, canonical display-only candidate keys, public
+  source/health diagnostics, post-normalization loop-key evidence, and the
+  E/F/G capability boundary.
+- Explicit region validation is a pure, bounded cad-core API with scoped
+  sketch ownership. It returns exact public validation responses, canonical
+  outer/hole winding and cyclic starts, deterministic hole/region order,
+  per-loop normalization evidence, material areas, complexity, and
+  containment depths.
+- Entity loops do not count as wire segment references. Canonical tuple
+  comparison uses raw code-unit field ordering even for escaped IDs, and
+  analytic relation work uses canonical region/hole order so predicate-budget
+  behavior is input-order independent.
+- An independent adversarial review found and resolved escaped-ID ordering,
+  ownership, complexity-accounting, and order-dependent predicate issues. Its
+  final verdict is PASS.
+- The reviewer independently passes 1,066 cad-core tests, 83 protocol tests,
+  both package typechecks, and diff checks. Focused storage/validator/protocol
+  integration tests pass 49/49.
+- E1 is accepted. E2 whole-loop discovery, containment cells, identities,
+  limits, and pagination is the next unblocked node. Gate E is not yet
+  accepted.
 
 ## Completion audit
 

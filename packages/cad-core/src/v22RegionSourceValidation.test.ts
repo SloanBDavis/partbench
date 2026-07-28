@@ -9,7 +9,11 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { SKETCH_GEOMETRY_POLICY } from "./sketchGeometryPolicy";
-import { validateV22RegionSource } from "./v22RegionSourceValidation";
+import {
+  createSketchProfileRegionValidateResponse,
+  validateV22RegionSource,
+  type V22RegionSourceSketch
+} from "./v22RegionSourceValidation";
 
 function rectangle(
   id: string,
@@ -57,8 +61,11 @@ function line(
 
 function entities(
   ...values: readonly SketchEntitySnapshot[]
-): ReadonlyMap<string, SketchEntitySnapshot> {
-  return new Map(values.map((value) => [value.id, value]));
+): V22RegionSourceSketch {
+  return {
+    id: "sketch",
+    entities: new Map(values.map((value) => [value.id, value]))
+  };
 }
 
 function entityLoop(entityId: string): SketchLoopRef {
@@ -120,6 +127,20 @@ describe("validateV22RegionSource", () => {
     ]);
     expect(result.normalization.holeOrderChanged).toBe(true);
     expect(result.materialAreas[0]).toBeCloseTo(400 - 2 * Math.PI);
+
+    const canonicalOrder = validateV22RegionSource(
+      profile({
+        outer: entityLoop("outer"),
+        holes: [entityLoop("a-hole"), entityLoop("z-hole")]
+      }),
+      source
+    );
+    expect(canonicalOrder.ok).toBe(true);
+    if (!canonicalOrder.ok) return;
+    expect(result.normalizedProfile).toEqual(canonicalOrder.normalizedProfile);
+    expect(result.complexity.predicateVisitCount).toBe(
+      canonicalOrder.complexity.predicateVisitCount
+    );
   });
 
   it("normalizes a reversed wire outer and its cyclic start deterministically", () => {
@@ -149,12 +170,38 @@ describe("validateV22RegionSource", () => {
     );
     expect(result.normalization).toMatchObject({
       orientationChanged: true,
-      cyclicStartChanged: true
+      cyclicStartChanged: true,
+      outerOrientationsChanged: [result.loopSummaries[0]!.loopKey],
+      holeOrientationsChanged: [],
+      cyclicStartsChanged: [result.loopSummaries[0]!.loopKey]
     });
     expect(result.loopSummaries[0]).toMatchObject({
       signedArea: 16,
-      absoluteArea: 16
+      absoluteArea: 16,
+      containmentDepth: 0
     });
+  });
+
+  it("orders canonical cyclic starts by raw tuple fields for escaped IDs", () => {
+    const source = entities(
+      line('"', [-2, -2], [2, -2]),
+      line("A", [2, -2], [2, 2]),
+      line("b", [2, 2], [-2, 2]),
+      line("c", [-2, 2], [-2, -2])
+    );
+    const result = validateV22RegionSource(
+      profile({
+        outer: wireLoop(["A"], ["b"], ["c"], ['"']),
+        holes: []
+      }),
+      source
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.normalizedProfile.regions[0].outer).toEqual(
+      wireLoop(['"'], ["A"], ["b"], ["c"])
+    );
   });
 
   it("accepts a closed analytic arc wire without polygonizing it", () => {
@@ -324,6 +371,85 @@ describe("validateV22RegionSource", () => {
       source
     );
     expect(disjoint.ok).toBe(true);
+    if (!disjoint.ok) return;
+    const depthByLoopKey = new Map(
+      disjoint.loopSummaries.map((summary) => [
+        summary.loopKey,
+        summary.containmentDepth
+      ])
+    );
+    expect(depthByLoopKey).toEqual(
+      new Map([
+        [JSON.stringify(["entity", "outer-a"]), 0],
+        [JSON.stringify(["entity", "hole-a"]), 1],
+        [JSON.stringify(["entity", "island"]), 2]
+      ])
+    );
+  });
+
+  it("materializes exact public validation diagnostics without mutation", () => {
+    const requested = profile({
+      outer: entityLoop("missing"),
+      holes: []
+    });
+    const before = structuredClone(requested);
+    const response = createSketchProfileRegionValidateResponse(
+      requested,
+      entities(),
+      "cadops.v1"
+    );
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "sketch.profileRegionValidate",
+      cadOpsVersion: "cadops.v1",
+      status: "blocked",
+      requestedProfile: before,
+      loopSummaries: [],
+      materialAreas: [],
+      diagnostics: [
+        {
+          code: "SKETCH_REGION_ENTITY_MISSING",
+          severity: "blocker",
+          sketchId: "sketch",
+          entityId: "missing"
+        }
+      ]
+    });
+    expect(requested).toEqual(before);
+  });
+
+  it("rejects a profile evaluated against a different sketch scope", () => {
+    const requested = profile({
+      outer: entityLoop("outer"),
+      holes: []
+    });
+    const result = validateV22RegionSource(requested, {
+      id: "other-sketch",
+      entities: new Map([["outer", rectangle("outer", [0, 0], 10, 10)]])
+    });
+
+    expect(issueCodes(result)).toContain("SKETCH_REGION_SKETCH_MISMATCH");
+    expect(result.complexity.predicateVisitCount).toBe(0);
+  });
+
+  it("reports entity loops as loops, not wire segment references", () => {
+    const requested = profile({
+      outer: entityLoop("outer"),
+      holes: [entityLoop("hole")]
+    });
+    const response = createSketchProfileRegionValidateResponse(
+      requested,
+      entities(circle("outer", [0, 0], 10), circle("hole", [0, 0], 2)),
+      "cadops.v1"
+    );
+
+    expect(response.status).toBe("ready");
+    expect(response.complexity).toMatchObject({
+      regionCount: 1,
+      loopCount: 2,
+      segmentReferenceCount: 0
+    });
   });
 
   it("rejects repeated members, construction source, and too little material area", () => {
@@ -393,6 +519,9 @@ describe("validateV22RegionSource", () => {
     expect(reordered.ok).toBe(true);
     if (!forward.ok || !reordered.ok) return;
     expect(forward.normalizedProfile).toEqual(reordered.normalizedProfile);
+    expect(forward.complexity.predicateVisitCount).toBe(
+      reordered.complexity.predicateVisitCount
+    );
     expect(forward.normalization.regionOrderChanged).toBe(true);
     expect(reordered.normalization.regionOrderChanged).toBe(false);
   });
@@ -411,7 +540,7 @@ describe("validateV22RegionSource", () => {
         sketchId: "sketch",
         regions: [firstOverLimitRegion, ...remainingOverLimitRegions]
       },
-      new Map()
+      entities()
     );
     expect(issueCodes(structural)).toEqual(["SKETCH_REGION_COMPLEXITY_LIMIT"]);
     expect(structural.complexity.predicateVisitCount).toBe(0);
@@ -467,7 +596,7 @@ describe("validateV22RegionSource", () => {
       )
     });
     expect(
-      issueCodes(validateV22RegionSource(atLoopLimit, new Map()))
+      issueCodes(validateV22RegionSource(atLoopLimit, entities()))
     ).not.toContain("SKETCH_REGION_COMPLEXITY_LIMIT");
     expect(
       issueCodes(
@@ -478,7 +607,7 @@ describe("validateV22RegionSource", () => {
               entityLoop(`hole_${index}`)
             )
           }),
-          new Map()
+          entities()
         )
       )
     ).toContain("SKETCH_REGION_COMPLEXITY_LIMIT");
@@ -498,7 +627,7 @@ describe("validateV22RegionSource", () => {
             outer: { kind: "wire", segments },
             holes: []
           }),
-          new Map()
+          entities()
         )
       )
     ).not.toContain("SKETCH_REGION_COMPLEXITY_LIMIT");
@@ -518,7 +647,7 @@ describe("validateV22RegionSource", () => {
             },
             holes: []
           }),
-          new Map()
+          entities()
         )
       )
     ).toContain("SKETCH_REGION_COMPLEXITY_LIMIT");

@@ -6,12 +6,15 @@ import {
   CAD_V19_SKETCH_GEOMETRY_POLICY,
   type CadFeatureRef,
   type CadOp,
+  type CadDependencyHealthIssueCode,
   type CadSketchDimensionHealth,
   type CadV19Op,
   type FeatureInputReferenceSemanticDiffCurrent,
   type SketchConstraintUpdateOpV19,
   type SketchDimensionSnapshotV22,
   type SketchMidpointTargetV22,
+  type SketchProfileCandidate,
+  type SketchRegionDiagnosticCode,
   type SketchRegionsProfileRef,
   isSketchDimensionTargetV22,
   isSketchPointTargetV22,
@@ -65,6 +68,67 @@ describe("V19 protocol contract", () => {
       maxSubmittedProfilePredicateVisits: 100_000,
       maxRegionCandidatesPerPage: 100
     });
+  });
+
+  it("freezes Slice E correlation and diagnostic vocabulary", () => {
+    const candidate = {
+      status: "ready",
+      regionCandidateKey: JSON.stringify([
+        "region",
+        0,
+        JSON.stringify(["entity", "circle_outer"]),
+        []
+      ])
+    } as Pick<SketchProfileCandidate, "status" | "regionCandidateKey">;
+    const regionCodes = [
+      "SKETCH_REGION_PROFILE_EMPTY",
+      "SKETCH_REGION_SKETCH_MISMATCH",
+      "SKETCH_REGION_ENTITY_MISSING",
+      "SKETCH_REGION_ENTITY_UNSUPPORTED",
+      "SKETCH_REGION_CONSTRUCTION_ENTITY",
+      "SKETCH_REGION_ENTITY_REPEATED",
+      "SKETCH_REGION_LOOP_AREA_TOO_SMALL"
+    ] satisfies readonly SketchRegionDiagnosticCode[];
+    const dependencyCodes = [
+      "SKETCH_REGION_LOOP_OPEN",
+      "SKETCH_REGION_LOOP_INTERSECTION",
+      "SKETCH_REGION_BOUNDARY_TOUCHING",
+      "SKETCH_REGION_CONTAINMENT_INVALID",
+      "SKETCH_REGION_MATERIAL_OVERLAP",
+      "SKETCH_REGION_COMPLEXITY_LIMIT"
+    ] satisfies readonly CadDependencyHealthIssueCode[];
+
+    expect(candidate.regionCandidateKey).toContain('"region"');
+    expect(regionCodes).toHaveLength(7);
+    expect(dependencyCodes).toHaveLength(6);
+  });
+
+  it("does not count entity loops against the wire-reference limit", () => {
+    const holes = Array.from(
+      { length: CAD_V19_RESOURCE_LIMITS.maxLoopsPerProfile - 1 },
+      (_, index) => ({
+        kind: "entity" as const,
+        entityId: `hole_${index}`
+      })
+    );
+    expect(
+      validateV19SketchQueryRequest({
+        version: "cadops.v1",
+        query: {
+          query: "sketch.profileRegionValidate",
+          profile: {
+            kind: "regions",
+            sketchId: "sketch_1",
+            regions: [
+              {
+                outer: { kind: "entity", entityId: "outer" },
+                holes
+              }
+            ]
+          }
+        }
+      }).ok
+    ).toBe(true);
   });
 
   it("accepts explicit region source and rejects duplicate loop membership", () => {
