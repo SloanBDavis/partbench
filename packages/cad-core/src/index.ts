@@ -120,6 +120,7 @@ import type {
   SketchAttachmentSnapshot,
   SketchEntityProfileRef,
   SketchProfileRef,
+  SketchProfileRefV22,
   SketchPlane,
   SketchPointTarget,
   SketchPointTargetV21,
@@ -215,13 +216,20 @@ import {
   getSketchArcPoint,
   type SketchArcValidationIssue
 } from "./sketchArcMath";
-import { normalizeFeatureInputs } from "./normalizedFeatureInputs";
+import {
+  getProfileEntityIds,
+  normalizeFeatureInputs
+} from "./normalizedFeatureInputs";
 import {
   validateProfileInputSource,
   validateSketchPathRefSource,
   validateSketchProfileRefSource
 } from "./v21SourceValidation";
-import { validateV22RegionSource } from "./v22RegionSourceValidation";
+import {
+  createSketchProfileRegionValidateResponse,
+  validateV22RegionSource
+} from "./v22RegionSourceValidation";
+import { createSketchProfileRegionCandidatesResponse } from "./v19RegionDiscovery";
 export {
   cloneSketchPathRef,
   cloneSketchProfileRef,
@@ -2718,6 +2726,50 @@ export class CadEngine {
             return result.id;
           }
         });
+      }
+
+      case "sketch.profileRegionCandidates": {
+        const sketch = this.#document.sketches.get(request.query.sketchId);
+        if (!sketch) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: {
+              code: "SKETCH_NOT_FOUND",
+              message: `Sketch does not exist: ${request.query.sketchId}`,
+              sketchId: request.query.sketchId
+            }
+          };
+        }
+        return createSketchProfileRegionCandidatesResponse(
+          sketch,
+          request.query,
+          request.version
+        );
+      }
+
+      case "sketch.profileRegionValidate": {
+        const sketch = this.#document.sketches.get(
+          request.query.profile.sketchId
+        );
+        if (!sketch) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: {
+              code: "SKETCH_NOT_FOUND",
+              message: `Sketch does not exist: ${request.query.profile.sketchId}`,
+              sketchId: request.query.profile.sketchId
+            }
+          };
+        }
+        return createSketchProfileRegionValidateResponse(
+          request.query.profile,
+          sketch,
+          request.version
+        );
       }
 
       case "sketch.editReadiness": {
@@ -6644,6 +6696,21 @@ function applyOperation(
     }
 
     case "feature.extrude": {
+      if (
+        isSketchRegionsProfileRef(
+          (op as unknown as Record<string, unknown>).profile
+        )
+      ) {
+        throwValidationError({
+          code: "UNSUPPORTED_FEATURE_OPERATION",
+          message:
+            "Region feature.extrude remains disabled until the V19 region extrude geometry slice is accepted.",
+          opIndex,
+          path: operationPath(opIndex, "profile"),
+          expected: "entity or wire profile",
+          received: "regions"
+        });
+      }
       const depth = validateExtrudeDepth(op.depth, opIndex);
       const side = validateExtrudeSide(op.side, opIndex);
       const operationMode = parseExtrudeOperationMode(
@@ -6740,6 +6807,21 @@ function applyOperation(
     }
 
     case "feature.revolve": {
+      if (
+        isSketchRegionsProfileRef(
+          (op as unknown as Record<string, unknown>).profile
+        )
+      ) {
+        throwValidationError({
+          code: "UNSUPPORTED_FEATURE_OPERATION",
+          message:
+            "Region feature.revolve remains disabled until the V19 region revolve geometry slice is accepted.",
+          opIndex,
+          path: operationPath(opIndex, "profile"),
+          expected: "entity or wire profile",
+          received: "regions"
+        });
+      }
       const requestedProfile = resolveRevolveCommandInputProfile(op, opIndex);
       let profile = requestedProfile;
       let profileOrientationNormalized = false;
@@ -8240,6 +8322,8 @@ function isCadQueryKind(value: string): value is CadQueryKind {
     case "sketch.pathCandidates":
     case "sketch.pathReadiness":
     case "sketch.curveEditReadiness":
+    case "sketch.profileRegionCandidates":
+    case "sketch.profileRegionValidate":
     case "sketch.editReadiness":
     case "sketch.solverStatus":
     case "sketch.evaluation":
@@ -8553,6 +8637,8 @@ function isCadQuery(value: unknown): boolean {
         query: value
       }).ok;
     case "sketch.curveEditReadiness":
+    case "sketch.profileRegionCandidates":
+    case "sketch.profileRegionValidate":
       return validateV19SketchQueryRequest({
         version: "cadops.v1",
         query: value
@@ -12918,7 +13004,7 @@ function updateSketchEntityAndDependents(
     if (feature.kind !== "extrude") {
       continue;
     }
-    if (feature.profile.kind === "wire") {
+    if (getStoredFeatureProfile(feature).kind !== "entity") {
       continue;
     }
 
@@ -12949,10 +13035,15 @@ function updateSketchEntityAndDependents(
     }
 
     if (feature.kind === "extrude") {
+      const profile = getStoredFeatureProfile(feature);
+      if (profile.kind === "regions") {
+        downstreamFeatures.push(feature);
+        continue;
+      }
       assertSupportedExtrudeOperation(
         { ...state, features: nextFeatures },
         feature.operationMode,
-        feature.profile.kind === "wire"
+        profile.kind === "wire"
           ? "wire"
           : getFeatureProfileKindOrThrow(state, feature, opIndex, true),
         feature.targetBodyId,
@@ -13088,7 +13179,7 @@ function updateDependentFeatureForSketchEntity(
   }
 
   if (feature.kind === "revolve") {
-    if (feature.profile.kind === "wire") {
+    if (getStoredFeatureProfile(feature).kind !== "entity") {
       return feature;
     }
     assertRevolvableProfile(entity, opIndex, sketchId, entity.id, true);
@@ -13096,7 +13187,7 @@ function updateDependentFeatureForSketchEntity(
   }
 
   if (feature.kind === "extrude") {
-    if (feature.profile.kind === "wire") {
+    if (getStoredFeatureProfile(feature).kind !== "entity") {
       return feature;
     }
     assertExtrudableProfile(entity, opIndex, sketchId, entity.id, true);
@@ -13380,17 +13471,14 @@ function addFeature(
 function getFeatureEntityProfile(
   feature: ExtrudeFeature | RevolveFeature | SweepFeature
 ): SketchEntityProfileRef | undefined {
-  return feature.profile.kind === "entity" ? feature.profile : undefined;
+  const profile = getStoredFeatureProfile(feature);
+  return profile.kind === "entity" ? profile : undefined;
 }
 
-function getFeaturePrimaryProfileEntityRef(
+function getStoredFeatureProfile(
   feature: ExtrudeFeature | RevolveFeature | SweepFeature
-): { readonly sketchId: SketchId; readonly entityId: SketchEntityId } {
-  if (feature.profile.kind === "entity") return feature.profile;
-  return {
-    sketchId: feature.profile.sketchId,
-    entityId: feature.profile.segments[0]!.entityId
-  };
+): SketchProfileRefV22 {
+  return feature.profile as SketchProfileRefV22;
 }
 
 function getFeatureProfileKindOrThrow(
@@ -13578,6 +13666,24 @@ function updateExtrudeFeature(
       path: operationPath(opIndex, "id"),
       expected: "authored extrude feature id",
       received: feature.kind
+    });
+  }
+
+  if (
+    getStoredFeatureProfile(feature).kind === "regions" ||
+    isSketchRegionsProfileRef(
+      (op as unknown as Record<string, unknown>).profile
+    )
+  ) {
+    throwValidationError({
+      code: "FEATURE_NOT_EDITABLE",
+      message: `Region feature ${featureId} cannot be edited until the V19 region extrude geometry slice is accepted.`,
+      opIndex,
+      featureId,
+      bodyId: feature.bodyId,
+      path: operationPath(opIndex, "profile"),
+      expected: "entity or wire extrude feature",
+      received: "regions"
     });
   }
 
@@ -13934,6 +14040,24 @@ function updateRevolveFeature(
     "feature.updateRevolve",
     opIndex
   );
+
+  if (
+    getStoredFeatureProfile(feature).kind === "regions" ||
+    isSketchRegionsProfileRef(
+      (op as unknown as Record<string, unknown>).profile
+    )
+  ) {
+    throwValidationError({
+      code: "FEATURE_NOT_EDITABLE",
+      message: `Region feature ${feature.id} cannot be edited until the V19 region revolve geometry slice is accepted.`,
+      opIndex,
+      featureId: feature.id,
+      bodyId: feature.bodyId,
+      path: operationPath(opIndex, "profile"),
+      expected: "entity or wire revolve feature",
+      received: "regions"
+    });
+  }
 
   if (feature.operationMode !== "newBody") {
     throwValidationError({
@@ -17230,12 +17354,8 @@ function findFeaturesBySketchEntity(
 
     if (
       (feature.kind === "extrude" || feature.kind === "revolve") &&
-      feature.profile.sketchId === sketchId &&
-      (feature.profile.kind === "entity"
-        ? feature.profile.entityId === entityId
-        : feature.profile.segments.some(
-            (segment) => segment.entityId === entityId
-          ))
+      getStoredFeatureProfile(feature).sketchId === sketchId &&
+      getProfileEntityIds(getStoredFeatureProfile(feature)).includes(entityId)
     ) {
       return true;
     }
@@ -23798,27 +23918,27 @@ function createFeatureSummary(
   }
 
   if (feature.kind === "revolve") {
-    if (feature.profile.kind === "wire") {
+    const profile = getStoredFeatureProfile(feature);
+    if (profile.kind !== "entity") {
       return {
         id: feature.id,
         kind: "revolve",
         partId: DEFAULT_PART_ID,
         bodyId: feature.bodyId,
         name: feature.name,
-        sketchId: feature.profile.sketchId,
-        profile: structuredClone(feature.profile),
+        sketchId: profile.sketchId,
+        profile: structuredClone(profile),
         axis: feature.axis,
         angleDegrees: feature.angleDegrees,
         operationMode: feature.operationMode,
         source: {
           type: "sketchEntityWithAxis",
-          sketchId: feature.profile.sketchId,
-          profile: structuredClone(feature.profile),
+          sketchId: profile.sketchId,
+          profile: structuredClone(profile),
           axis: feature.axis
         }
       };
     }
-    const profile = feature.profile;
     return {
       id: feature.id,
       kind: "revolve",
@@ -23845,15 +23965,16 @@ function createFeatureSummary(
     };
   }
 
-  if (feature.profile.kind === "wire") {
+  const profile = getStoredFeatureProfile(feature);
+  if (profile.kind !== "entity") {
     return {
       id: feature.id,
       kind: "extrude",
       partId: DEFAULT_PART_ID,
       bodyId: feature.bodyId,
       name: feature.name,
-      sketchId: feature.profile.sketchId,
-      profile: structuredClone(feature.profile),
+      sketchId: profile.sketchId,
+      profile: structuredClone(profile),
       depth: feature.depth,
       side: feature.side,
       operationMode: feature.operationMode,
@@ -23863,8 +23984,8 @@ function createFeatureSummary(
         : {}),
       source: {
         type: "sketchEntity",
-        sketchId: feature.profile.sketchId,
-        profile: structuredClone(feature.profile),
+        sketchId: profile.sketchId,
+        profile: structuredClone(profile),
         ...(feature.targetTopologyAnchorId
           ? { targetTopologyAnchorId: feature.targetTopologyAnchorId }
           : {})
@@ -23872,7 +23993,6 @@ function createFeatureSummary(
     };
   }
 
-  const profile = getFeaturePrimaryProfileEntityRef(feature);
   return {
     id: feature.id,
     kind: "extrude",
@@ -24120,7 +24240,8 @@ function createFeatureBodySnapshot(
   }
 
   if (feature.kind === "revolve") {
-    if (feature.profile.kind === "wire") {
+    const profile = getStoredFeatureProfile(feature);
+    if (profile.kind !== "entity") {
       return {
         id: feature.bodyId,
         kind: "solid",
@@ -24131,13 +24252,12 @@ function createFeatureBodySnapshot(
         source: {
           type: "sketchRevolveFeature",
           featureId: feature.id,
-          sketchId: feature.profile.sketchId,
-          profile: structuredClone(feature.profile),
+          sketchId: profile.sketchId,
+          profile: structuredClone(profile),
           axis: feature.axis
         }
       };
     }
-    const profile = feature.profile;
     return {
       id: feature.bodyId,
       kind: "solid",
@@ -24161,7 +24281,8 @@ function createFeatureBodySnapshot(
     };
   }
 
-  if (feature.profile.kind === "wire") {
+  const profile = getStoredFeatureProfile(feature);
+  if (profile.kind !== "entity") {
     return {
       id: feature.bodyId,
       kind: "solid",
@@ -24172,13 +24293,12 @@ function createFeatureBodySnapshot(
       source: {
         type: "sketchExtrudeFeature",
         featureId: feature.id,
-        sketchId: feature.profile.sketchId,
-        profile: structuredClone(feature.profile)
+        sketchId: profile.sketchId,
+        profile: structuredClone(profile)
       }
     };
   }
 
-  const profile = getFeaturePrimaryProfileEntityRef(feature);
   return {
     id: feature.bodyId,
     kind: "solid",
@@ -29093,7 +29213,14 @@ function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
     value.document,
     "$.document",
     issues,
-    value.schemaVersion
+    value.schemaVersion,
+    {
+      allowRetainedRegionGeometryDrift:
+        value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V22 &&
+        value.historyBaseline !== undefined &&
+        ((Array.isArray(value.history) && value.history.length > 0) ||
+          (Array.isArray(value.redoStack) && value.redoStack.length > 0))
+    }
   );
 
   if (value.historyBaseline !== undefined) {
@@ -29178,7 +29305,10 @@ function validateCadDocumentSnapshot(
   value: unknown,
   path: string,
   issues: CadProjectImportIssue[],
-  schemaVersion: unknown
+  schemaVersion: unknown,
+  options: {
+    readonly allowRetainedRegionGeometryDrift?: boolean;
+  } = {}
 ): void {
   if (!isRecord(value)) {
     addProjectIssue(
@@ -29772,7 +29902,8 @@ function validateCadDocumentSnapshot(
           allowsImportedBodyFeatures,
           isV20OrLaterSchema,
           isV21Schema,
-          isV22Schema
+          isV22Schema,
+          options.allowRetainedRegionGeometryDrift === true
         );
         maxGeneratedFeatureNumber = Math.max(
           maxGeneratedFeatureNumber,
@@ -33762,7 +33893,8 @@ function validateFeatureSnapshot(
   allowsImportedBodyFeatures: boolean,
   isV20OrLaterSchema: boolean,
   isV21Schema: boolean,
-  isV22Schema: boolean
+  isV22Schema: boolean,
+  allowRetainedRegionGeometryDrift = false
 ): {
   readonly maxGeneratedFeatureNumber: number;
   readonly maxGeneratedBodyNumber: number;
@@ -33828,7 +33960,8 @@ function validateFeatureSnapshot(
       seenBodyIds,
       seenSketchIds,
       sketchEntityRefs,
-      isV22Schema
+      isV22Schema,
+      allowRetainedRegionGeometryDrift
     );
     if (typeof value.bodyId === "string") {
       maxGeneratedBodyNumber = parseBodyNumber(value.bodyId);
@@ -34243,7 +34376,8 @@ function validateV21ProfileConsumerFeatureSnapshot(
   seenBodyIds: Set<string>,
   seenSketchIds: ReadonlySet<string>,
   sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>,
-  isV22Schema = false
+  isV22Schema = false,
+  allowRetainedRegionGeometryDrift = false
 ): void {
   const allowedKeysByKind: Record<string, readonly string[]> = {
     extrude: [
@@ -34353,7 +34487,8 @@ function validateV21ProfileConsumerFeatureSnapshot(
     seenSketchIds,
     sketchEntityRefs,
     value.kind === "extrude" || value.kind === "revolve",
-    isV22Schema
+    isV22Schema,
+    allowRetainedRegionGeometryDrift
   );
 
   if (value.kind === "sweep") {
@@ -34419,7 +34554,8 @@ function validateV21ProfileRef(
   seenSketchIds: ReadonlySet<string>,
   sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>,
   allowWire: boolean,
-  allowRegions = false
+  allowRegions = false,
+  allowRetainedRegionGeometryDrift = false
 ): SketchId | undefined {
   if (!isRecord(value)) {
     addProjectIssue(
@@ -34461,7 +34597,8 @@ function validateV21ProfileRef(
       path,
       sketchId,
       issues,
-      sketchEntityRefs
+      sketchEntityRefs,
+      allowRetainedRegionGeometryDrift
     );
     return sketchId;
   }
@@ -34516,7 +34653,8 @@ function validateV22RegionsProfileRef(
   path: string,
   sketchId: SketchId | undefined,
   issues: CadProjectImportIssue[],
-  sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>
+  sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>,
+  allowRetainedRegionGeometryDrift: boolean
 ): void {
   if (!isSketchRegionsProfileRef(value)) {
     addProjectIssue(
@@ -34542,7 +34680,29 @@ function validateV22RegionsProfileRef(
     entities: sketchEntities
   });
   if (!validation.ok) {
-    for (const issue of validation.issues) {
+    const structuralNormalization = normalizeSketchRegionsProfileRef(value);
+    if (!stableJsonEqual(structuralNormalization, value)) {
+      addProjectIssue(
+        issues,
+        "SCHEMA_V22_SOURCE_INVALID",
+        path,
+        "V22 regions profile loop starts, hole order, and region order must remain canonical."
+      );
+    }
+    const sourceIntegrityCodes = new Set([
+      "SKETCH_REGION_COMPLEXITY_LIMIT",
+      "SKETCH_REGION_PROFILE_EMPTY",
+      "SKETCH_REGION_SKETCH_MISMATCH",
+      "SKETCH_REGION_ENTITY_MISSING",
+      "SKETCH_REGION_ENTITY_UNSUPPORTED",
+      "SKETCH_REGION_CONSTRUCTION_ENTITY",
+      "SKETCH_REGION_ENTITY_REPEATED"
+    ]);
+    for (const issue of validation.issues.filter(
+      (candidate) =>
+        !allowRetainedRegionGeometryDrift ||
+        sourceIntegrityCodes.has(candidate.code)
+    )) {
       const issuePath =
         issue.regionIndex === undefined
           ? path
@@ -34563,7 +34723,10 @@ function validateV22RegionsProfileRef(
     return;
   }
 
-  if (!stableJsonEqual(validation.normalizedProfile, value)) {
+  if (
+    !allowRetainedRegionGeometryDrift &&
+    !stableJsonEqual(validation.normalizedProfile, value)
+  ) {
     addProjectIssue(
       issues,
       "SCHEMA_V22_SOURCE_INVALID",

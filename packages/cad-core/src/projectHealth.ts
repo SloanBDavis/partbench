@@ -41,7 +41,8 @@ import type {
   SketchEntitySnapshot,
   SketchId,
   SketchPlane,
-  CadTopologyIdentitySourceSnapshot
+  CadTopologyIdentitySourceSnapshot,
+  SketchProfileRefV22
 } from "@web-cad/cad-protocol";
 
 import { createBodyTopology } from "./bodyTopology";
@@ -86,6 +87,10 @@ import {
   normalizeSketchDimensionSnapshotV22,
   type SketchDimensionSnapshotCurrent
 } from "./v22SourceShapes";
+import {
+  validateV22RegionSource,
+  type V22RegionSourceIssue
+} from "./v22RegionSourceValidation";
 
 export interface ProjectHealthOptions {
   readonly document: ProjectHealthDocument;
@@ -312,21 +317,160 @@ export function createProjectHealth(
   };
 }
 
+function createRegionDependencyHealthIssue(
+  feature: {
+    readonly id: FeatureId;
+    readonly bodyId: BodyId;
+  },
+  sketchId: SketchId,
+  issue: V22RegionSourceIssue
+): CadDependencyHealthIssue {
+  const code =
+    issue.code === "SKETCH_REGION_ENTITY_MISSING"
+      ? "SKETCH_ENTITY_NOT_FOUND"
+      : issue.code === "SKETCH_REGION_LOOP_OPEN"
+        ? "SKETCH_REGION_LOOP_OPEN"
+        : issue.code === "SKETCH_REGION_LOOP_INTERSECTION"
+          ? "SKETCH_REGION_LOOP_INTERSECTION"
+          : issue.code === "SKETCH_REGION_BOUNDARY_TOUCHING"
+            ? "SKETCH_REGION_BOUNDARY_TOUCHING"
+            : issue.code === "SKETCH_REGION_MATERIAL_OVERLAP"
+              ? "SKETCH_REGION_MATERIAL_OVERLAP"
+              : issue.code === "SKETCH_REGION_COMPLEXITY_LIMIT"
+                ? "SKETCH_REGION_COMPLEXITY_LIMIT"
+                : issue.code === "SKETCH_REGION_HOLE_OUTSIDE" ||
+                    issue.code === "SKETCH_REGION_HOLES_OVERLAP" ||
+                    issue.code === "SKETCH_REGION_NESTING_UNSUPPORTED"
+                  ? "SKETCH_REGION_CONTAINMENT_INVALID"
+                  : "PROFILE_KIND_MISMATCH";
+  return {
+    code,
+    message: issue.message,
+    featureId: feature.id,
+    bodyId: feature.bodyId,
+    sketchId,
+    ...(issue.entityId === undefined ? {} : { sketchEntityId: issue.entityId }),
+    ...(issue.expected === undefined ? {} : { expected: issue.expected }),
+    ...(issue.received === undefined ? {} : { received: issue.received })
+  };
+}
+
+function createRegionGeometryDeferredHealthIssue(
+  feature: {
+    readonly id: FeatureId;
+    readonly kind: "extrude" | "revolve";
+    readonly bodyId: BodyId;
+  },
+  sketchId: SketchId
+): CadDependencyHealthIssue {
+  return {
+    code: "UNSUPPORTED_BODY_REFERENCES",
+    message: `Region ${feature.kind} source is analytically inspectable, but exact geometry and rebuild support remain deferred to the V19 region ${feature.kind} slice.`,
+    featureId: feature.id,
+    bodyId: feature.bodyId,
+    sketchId,
+    expected: `accepted V19 region ${feature.kind} geometry support`,
+    received: "region source only"
+  };
+}
+
+function appendRevolveAxisHealthIssues(
+  issues: CadDependencyHealthIssue[],
+  feature: ProjectHealthRevolveFeature,
+  sketch: ProjectHealthSketch,
+  profileSketchId: SketchId
+): void {
+  const axisEntity = sketch.entities.get(feature.axis.entityId);
+  if (feature.axis.sketchId !== profileSketchId) {
+    issues.push({
+      code: "UNSUPPORTED_BODY_REFERENCES",
+      message: `Revolve feature ${feature.id} axis must reference the same sketch.`,
+      featureId: feature.id,
+      bodyId: feature.bodyId,
+      sketchId: profileSketchId,
+      sketchEntityId: feature.axis.entityId,
+      expected: profileSketchId,
+      received: feature.axis.sketchId
+    });
+  } else if (!axisEntity) {
+    issues.push({
+      code: "SKETCH_ENTITY_NOT_FOUND",
+      message: `Revolve axis line does not exist for feature ${feature.id}: ${feature.axis.entityId}`,
+      featureId: feature.id,
+      bodyId: feature.bodyId,
+      sketchId: profileSketchId,
+      sketchEntityId: feature.axis.entityId
+    });
+  } else if (
+    axisEntity.kind !== "line" ||
+    Math.hypot(
+      axisEntity.end[0] - axisEntity.start[0],
+      axisEntity.end[1] - axisEntity.start[1]
+    ) <= 0
+  ) {
+    issues.push({
+      code: "UNSUPPORTED_BODY_REFERENCES",
+      message: `Revolve axis entity ${feature.axis.entityId} must be a non-zero line for feature ${feature.id}.`,
+      featureId: feature.id,
+      bodyId: feature.bodyId,
+      sketchId: profileSketchId,
+      sketchEntityId: feature.axis.entityId,
+      expected: "non-zero line",
+      received: axisEntity.kind
+    });
+  }
+}
+
 function createAuthoredExtrudeHealth(
   document: ProjectHealthDocument,
   feature: GeneratedReferencesExtrudeFeature,
   options: ProjectHealthOptions
 ): CadAuthoredExtrudeHealth {
   const issues: CadDependencyHealthIssue[] = [];
+  const authoredProfile = feature.profile as SketchProfileRefV22;
   const profile = getFeatureEntityProfileRef(feature);
-  const sketch = profile ? document.sketches.get(profile.sketchId) : undefined;
+  const sketch = document.sketches.get(authoredProfile.sketchId);
   const entity = sketch?.entities.get(profile?.entityId ?? "");
-  const profileKind = getSupportedEntityProfileKind(entity) ?? "rectangle";
+  const profileKind =
+    authoredProfile.kind === "regions"
+      ? ("regions" as const)
+      : authoredProfile.kind === "wire"
+        ? ("wire" as const)
+        : (getSupportedEntityProfileKind(entity) ?? "rectangle");
 
-  if (feature.profile.kind === "wire") {
+  if (authoredProfile.kind === "regions") {
+    if (!sketch) {
+      issues.push({
+        code: "SKETCH_NOT_FOUND",
+        message: `Source sketch does not exist for feature ${feature.id}: ${authoredProfile.sketchId}`,
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        sketchId: authoredProfile.sketchId
+      });
+    } else {
+      const validation = validateV22RegionSource(authoredProfile, sketch);
+      if (!validation.ok) {
+        issues.push(
+          ...validation.issues.map((issue) =>
+            createRegionDependencyHealthIssue(
+              feature,
+              authoredProfile.sketchId,
+              issue
+            )
+          )
+        );
+      }
+      issues.push(
+        createRegionGeometryDeferredHealthIssue(
+          feature,
+          authoredProfile.sketchId
+        )
+      );
+    }
+  } else if (authoredProfile.kind === "wire") {
     const resolution = resolveWireExtrudeProfile(
       document,
-      feature.profile,
+      authoredProfile,
       feature.operationMode,
       {
         targetBodyId: feature.targetBodyId,
@@ -340,58 +484,49 @@ function createAuthoredExtrudeHealth(
         message: resolution.message,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        sketchId: resolution.sketchId ?? feature.profile.sketchId,
+        sketchId: resolution.sketchId ?? authoredProfile.sketchId,
         ...(resolution.sketchEntityId
           ? { sketchEntityId: resolution.sketchEntityId }
           : {})
       });
     }
-  } else if (!profile) {
-    issues.push({
-      code: "UNSUPPORTED_BODY_REFERENCES",
-      message: `Feature ${feature.id} uses a composite profile that is not exposed by the V16 health response.`,
-      featureId: feature.id,
-      bodyId: feature.bodyId,
-      expected: "single rectangle or circle profile entity",
-      received: feature.profile.kind
-    });
   } else if (!sketch) {
     issues.push({
       code: "SKETCH_NOT_FOUND",
-      message: `Source sketch does not exist for feature ${feature.id}: ${profile.sketchId}`,
+      message: `Source sketch does not exist for feature ${feature.id}: ${authoredProfile.sketchId}`,
       featureId: feature.id,
       bodyId: feature.bodyId,
-      sketchId: profile.sketchId
+      sketchId: authoredProfile.sketchId
     });
   } else {
     if (!entity) {
       issues.push({
         code: "SKETCH_ENTITY_NOT_FOUND",
-        message: `Source sketch entity does not exist for feature ${feature.id}: ${profile.entityId}`,
+        message: `Source sketch entity does not exist for feature ${feature.id}: ${authoredProfile.entityId}`,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        sketchId: profile.sketchId,
-        sketchEntityId: profile.entityId
+        sketchId: authoredProfile.sketchId,
+        sketchEntityId: authoredProfile.entityId
       });
     } else if (!getSupportedEntityProfileKind(entity)) {
       issues.push({
         code: "PROFILE_KIND_MISMATCH",
-        message: `Source sketch entity ${profile.entityId} is ${entity.kind}, but feature ${feature.id} expects a rectangle or circle.`,
+        message: `Source sketch entity ${authoredProfile.entityId} is ${entity.kind}, but feature ${feature.id} expects a rectangle or circle.`,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        sketchId: profile.sketchId,
-        sketchEntityId: profile.entityId,
+        sketchId: authoredProfile.sketchId,
+        sketchEntityId: authoredProfile.entityId,
         expected: "rectangle or circle",
         received: entity.kind
       });
     } else if (entity.construction) {
       issues.push({
         code: "PROFILE_KIND_MISMATCH",
-        message: `Source sketch entity ${profile.entityId} is construction geometry and cannot remain a solid profile for feature ${feature.id}.`,
+        message: `Source sketch entity ${authoredProfile.entityId} is construction geometry and cannot remain a solid profile for feature ${feature.id}.`,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        sketchId: profile.sketchId,
-        sketchEntityId: profile.entityId,
+        sketchId: authoredProfile.sketchId,
+        sketchEntityId: authoredProfile.entityId,
         expected: "non-construction rectangle or circle",
         received: "construction geometry"
       });
@@ -482,14 +617,14 @@ function createAuthoredExtrudeHealth(
   return {
     featureId: feature.id,
     bodyId: feature.bodyId,
-    sketchId: profile?.sketchId ?? feature.profile.sketchId,
+    sketchId: authoredProfile.sketchId,
     ...(profile ? { entityId: profile.entityId } : {}),
-    ...(feature.profile.kind === "wire"
+    ...(authoredProfile.kind !== "entity"
       ? {
-          sourceEntityIds: feature.profile.segments.map(
-            (segment) => segment.entityId
+          sourceEntityIds: getProfileEntityReferences(authoredProfile).map(
+            (reference) => reference.entityId
           ),
-          profileKind: "wire" as const
+          profileKind
         }
       : { profileKind }),
     operationMode: feature.operationMode,
@@ -519,18 +654,56 @@ function createAuthoredRevolveHealth(
   options: ProjectHealthOptions
 ): CadAuthoredRevolveHealth {
   const issues: CadDependencyHealthIssue[] = [];
+  const authoredProfile = feature.profile as SketchProfileRefV22;
   const profile = getFeatureEntityProfileRef(feature);
-  const sketch = document.sketches.get(feature.profile.sketchId);
+  const sketch = document.sketches.get(authoredProfile.sketchId);
   const entity = sketch?.entities.get(profile?.entityId ?? "");
   const profileKind =
-    feature.profile.kind === "wire"
-      ? ("wire" as const)
-      : (getSupportedEntityProfileKind(entity) ?? "rectangle");
+    authoredProfile.kind === "regions"
+      ? ("regions" as const)
+      : authoredProfile.kind === "wire"
+        ? ("wire" as const)
+        : (getSupportedEntityProfileKind(entity) ?? "rectangle");
 
-  if (feature.profile.kind === "wire") {
+  if (authoredProfile.kind === "regions") {
+    if (!sketch) {
+      issues.push({
+        code: "SKETCH_NOT_FOUND",
+        message: `Source sketch does not exist for revolve feature ${feature.id}: ${authoredProfile.sketchId}`,
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        sketchId: authoredProfile.sketchId
+      });
+    } else {
+      const validation = validateV22RegionSource(authoredProfile, sketch);
+      if (!validation.ok) {
+        issues.push(
+          ...validation.issues.map((issue) =>
+            createRegionDependencyHealthIssue(
+              feature,
+              authoredProfile.sketchId,
+              issue
+            )
+          )
+        );
+      }
+      issues.push(
+        createRegionGeometryDeferredHealthIssue(
+          feature,
+          authoredProfile.sketchId
+        )
+      );
+      appendRevolveAxisHealthIssues(
+        issues,
+        feature,
+        sketch,
+        authoredProfile.sketchId
+      );
+    }
+  } else if (authoredProfile.kind === "wire") {
     const resolution = resolveWireRevolveProfile(
       document,
-      feature.profile,
+      authoredProfile,
       feature.axis
     );
     if (!resolution.ok) {
@@ -561,7 +734,7 @@ function createAuthoredRevolveHealth(
         message: `Composite wire revolve ${feature.id} source frame could not be resolved.`,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        sketchId: feature.profile.sketchId,
+        sketchId: authoredProfile.sketchId,
         expected: "owner-part-aware resolved profile and axis recipe",
         received: "unresolved source frame"
       });
@@ -569,40 +742,40 @@ function createAuthoredRevolveHealth(
   } else if (!sketch) {
     issues.push({
       code: "SKETCH_NOT_FOUND",
-      message: `Source sketch does not exist for revolve feature ${feature.id}: ${feature.profile.sketchId}`,
+      message: `Source sketch does not exist for revolve feature ${feature.id}: ${authoredProfile.sketchId}`,
       featureId: feature.id,
       bodyId: feature.bodyId,
-      sketchId: feature.profile.sketchId
+      sketchId: authoredProfile.sketchId
     });
   } else {
     if (!entity) {
       issues.push({
         code: "SKETCH_ENTITY_NOT_FOUND",
-        message: `Source sketch entity does not exist for revolve feature ${feature.id}: ${feature.profile.entityId}`,
+        message: `Source sketch entity does not exist for revolve feature ${feature.id}: ${profile!.entityId}`,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        sketchId: feature.profile.sketchId,
-        sketchEntityId: feature.profile.entityId
+        sketchId: profile!.sketchId,
+        sketchEntityId: profile!.entityId
       });
     } else if (!getSupportedEntityProfileKind(entity)) {
       issues.push({
         code: "PROFILE_KIND_MISMATCH",
-        message: `Source sketch entity ${feature.profile.entityId} is ${entity.kind}, but revolve feature ${feature.id} expects a rectangle or circle.`,
+        message: `Source sketch entity ${profile!.entityId} is ${entity.kind}, but revolve feature ${feature.id} expects a rectangle or circle.`,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        sketchId: feature.profile.sketchId,
-        sketchEntityId: feature.profile.entityId,
+        sketchId: profile!.sketchId,
+        sketchEntityId: profile!.entityId,
         expected: "rectangle or circle",
         received: entity.kind
       });
     } else if (entity.construction) {
       issues.push({
         code: "PROFILE_KIND_MISMATCH",
-        message: `Source sketch entity ${feature.profile.entityId} is construction geometry and cannot remain a solid profile for revolve feature ${feature.id}.`,
+        message: `Source sketch entity ${profile!.entityId} is construction geometry and cannot remain a solid profile for revolve feature ${feature.id}.`,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        sketchId: feature.profile.sketchId,
-        sketchEntityId: feature.profile.entityId,
+        sketchId: profile!.sketchId,
+        sketchEntityId: profile!.entityId,
         expected: "non-construction rectangle or circle",
         received: "construction geometry"
       });
@@ -610,15 +783,15 @@ function createAuthoredRevolveHealth(
 
     const axisEntity = sketch.entities.get(feature.axis.entityId);
 
-    if (feature.axis.sketchId !== feature.profile.sketchId) {
+    if (feature.axis.sketchId !== profile!.sketchId) {
       issues.push({
         code: "UNSUPPORTED_BODY_REFERENCES",
         message: `Revolve feature ${feature.id} axis must reference the same sketch.`,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        sketchId: feature.profile.sketchId,
+        sketchId: profile!.sketchId,
         sketchEntityId: feature.axis.entityId,
-        expected: feature.profile.sketchId,
+        expected: profile!.sketchId,
         received: feature.axis.sketchId
       });
     } else if (!axisEntity) {
@@ -627,7 +800,7 @@ function createAuthoredRevolveHealth(
         message: `Revolve axis line does not exist for feature ${feature.id}: ${feature.axis.entityId}`,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        sketchId: feature.profile.sketchId,
+        sketchId: profile!.sketchId,
         sketchEntityId: feature.axis.entityId
       });
     } else if (axisEntity.kind !== "line") {
@@ -636,7 +809,7 @@ function createAuthoredRevolveHealth(
         message: `Revolve axis entity ${feature.axis.entityId} is ${axisEntity.kind}, but feature ${feature.id} expects a line.`,
         featureId: feature.id,
         bodyId: feature.bodyId,
-        sketchId: feature.profile.sketchId,
+        sketchId: profile!.sketchId,
         sketchEntityId: feature.axis.entityId,
         expected: "line",
         received: axisEntity.kind
@@ -657,7 +830,7 @@ function createAuthoredRevolveHealth(
   });
   const topologySnapshot = topology.ok ? topology.topology : undefined;
   if (
-    feature.profile.kind === "wire" &&
+    authoredProfile.kind === "wire" &&
     topologySnapshot?.status !== "healthy"
   ) {
     const topologyIssue = topologySnapshot?.issues.at(-1);
@@ -688,11 +861,11 @@ function createAuthoredRevolveHealth(
   return {
     featureId: feature.id,
     bodyId: feature.bodyId,
-    sketchId: profile?.sketchId ?? feature.profile.sketchId,
+    sketchId: authoredProfile.sketchId,
     ...(profile
       ? { entityId: profile.entityId }
       : {
-          sourceEntityIds: getProfileEntityReferences(feature.profile).map(
+          sourceEntityIds: getProfileEntityReferences(authoredProfile).map(
             (reference) => reference.entityId
           )
         }),

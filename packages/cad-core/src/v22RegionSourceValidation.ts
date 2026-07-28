@@ -114,6 +114,7 @@ export interface V22RegionSourceLoopSummary {
   readonly signedArea: number;
   readonly absoluteArea: number;
   readonly containmentDepth: number;
+  readonly bounds: SketchBounds2d;
 }
 
 export type V22RegionSourceValidationResult =
@@ -1593,7 +1594,8 @@ export function validateV22RegionSource(
         entityIds: region.outer.entityIds,
         signedArea: region.outer.absoluteArea,
         absoluteArea: region.outer.absoluteArea,
-        containmentDepth: containmentDepths.get(region.outer.key) ?? 0
+        containmentDepth: containmentDepths.get(region.outer.key) ?? 0,
+        bounds: loopBounds(region.outer, policy)
       },
       ...region.holes.map((hole) => ({
         loopKey: hole.key,
@@ -1602,7 +1604,8 @@ export function validateV22RegionSource(
         entityIds: hole.entityIds,
         signedArea: -hole.absoluteArea,
         absoluteArea: hole.absoluteArea,
-        containmentDepth: containmentDepths.get(hole.key) ?? 0
+        containmentDepth: containmentDepths.get(hole.key) ?? 0,
+        bounds: loopBounds(hole, policy)
       }))
     ]);
     return {
@@ -2069,7 +2072,12 @@ export function createSketchProfileRegionValidateResponse(
     status: "ready",
     requestedProfile: profile,
     normalizedProfile: result.normalizedProfile,
-    loopSummaries: result.loopSummaries,
+    loopSummaries: result.loopSummaries.map(
+      ({ bounds: _bounds, ...summary }) => {
+        void _bounds;
+        return summary;
+      }
+    ),
     materialAreas: result.materialAreas,
     complexity: toPublicComplexity(result.complexity),
     diagnostics: []

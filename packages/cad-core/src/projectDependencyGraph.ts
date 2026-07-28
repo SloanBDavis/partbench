@@ -34,6 +34,7 @@ import {
   type GeneratedReferencesFeature,
   type GeneratedReferencesSketch
 } from "./generatedReferences";
+import { getProfileEntityReferences } from "./normalizedFeatureInputs";
 import {
   findSketchProfileHealthEntry,
   type SketchProfileHealthEntry
@@ -532,24 +533,33 @@ function addFeatureSourceEdges(
     return;
   }
 
-  if (feature.kind === "extrude" && feature.profile?.kind === "wire") {
+  if (
+    feature.kind === "extrude" &&
+    (feature.profile?.kind === "wire" || feature.profile?.kind === "regions")
+  ) {
     addEdge(edges, {
       kind: "sources",
       from: sketchNodeId(feature.profile.sketchId),
       to: featureNodeId(feature.id),
-      label: "composite profile sketch source",
+      label:
+        feature.profile.kind === "regions"
+          ? "region profile sketch source"
+          : "composite profile sketch source",
       sourceFeatureId: feature.id,
       sketchId: feature.profile.sketchId
     });
-    for (const segment of feature.profile.segments) {
+    for (const reference of getProfileEntityReferences(feature.profile)) {
       addEdge(edges, {
         kind: "sources",
-        from: sketchEntityNodeId(feature.profile.sketchId, segment.entityId),
+        from: sketchEntityNodeId(reference.sketchId, reference.entityId),
         to: featureNodeId(feature.id),
-        label: "ordered composite profile source",
+        label:
+          feature.profile.kind === "regions"
+            ? "ordered region profile source"
+            : "ordered composite profile source",
         sourceFeatureId: feature.id,
-        sketchId: feature.profile.sketchId,
-        sketchEntityId: segment.entityId
+        sketchId: reference.sketchId,
+        sketchEntityId: reference.entityId
       });
     }
     if (feature.targetTopologyAnchorId) {
@@ -586,17 +596,20 @@ function addFeatureSourceEdges(
 
   if (
     (feature.kind === "extrude" || feature.kind === "revolve") &&
-    feature.profile?.kind === "wire"
+    (feature.profile?.kind === "wire" || feature.profile?.kind === "regions")
   ) {
-    for (const segment of feature.profile.segments) {
+    for (const reference of getProfileEntityReferences(feature.profile)) {
       addEdge(edges, {
         kind: "sources",
-        from: sketchEntityNodeId(feature.profile.sketchId, segment.entityId),
+        from: sketchEntityNodeId(reference.sketchId, reference.entityId),
         to: featureNodeId(feature.id),
-        label: "profile source",
+        label:
+          feature.profile.kind === "regions"
+            ? "region profile source"
+            : "profile source",
         sourceFeatureId: feature.id,
-        sketchId: feature.profile.sketchId,
-        sketchEntityId: segment.entityId
+        sketchId: reference.sketchId,
+        sketchEntityId: reference.entityId
       });
     }
   }
@@ -1515,6 +1528,14 @@ function bodyStatusFromSnapshot(
     return referenceStatusFromProfileHealth(profileHealth);
   }
 
+  if (
+    (body.source.type === "sketchExtrudeFeature" ||
+      body.source.type === "sketchRevolveFeature") &&
+    body.source.profile?.kind === "regions"
+  ) {
+    return "unsupported";
+  }
+
   if (body.source.type === "sketchExtrudeFeature") {
     return "active";
   }
@@ -1541,6 +1562,13 @@ function featureStatus(
 
   if (profileHealth && profileHealth.status !== "ready") {
     return referenceStatusFromProfileHealth(profileHealth);
+  }
+
+  if (
+    (feature.kind === "extrude" || feature.kind === "revolve") &&
+    feature.profile?.kind === "regions"
+  ) {
+    return "unsupported";
   }
 
   if (feature.kind === "extrude") {

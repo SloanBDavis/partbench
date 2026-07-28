@@ -15,6 +15,7 @@ import type {
   PartId,
   Vec2
 } from "@web-cad/cad-protocol";
+import { isSketchRegionsProfileRef } from "@web-cad/cad-protocol";
 
 import {
   createBodyGeneratedReferences,
@@ -24,6 +25,7 @@ import {
 import { createBodyMeasurements } from "./bodyMeasurements";
 import {
   getFeatureEntityProfileRef,
+  getProfileEntityReferences,
   getSupportedEntityProfileKind
 } from "./normalizedFeatureInputs";
 import { sha256Hex } from "./sha256";
@@ -160,7 +162,9 @@ function createAuthoredFeatureTopology(
       bodyId,
       units,
       ownerPartId,
-      feature
+      feature,
+      nextVisitedBodyIds,
+      nextResultNodeCount
     );
   }
 
@@ -193,7 +197,9 @@ function createAuthoredFeatureTopology(
       bodyId,
       units,
       ownerPartId,
-      feature
+      feature,
+      nextVisitedBodyIds,
+      nextResultNodeCount
     );
   }
 
@@ -1119,41 +1125,58 @@ function createUnsupportedAuthoredFeatureTopology(
   bodyId: BodyId,
   units: DocumentUnits,
   ownerPartId: PartId,
-  feature: GeneratedReferencesFeature
+  feature: GeneratedReferencesFeature,
+  visitedBodyIds: ReadonlySet<BodyId>,
+  traversedResultNodeCount: number
 ): CadBodyTopologySnapshot {
   const sourceKind = createAuthoredFeatureTopologySourceKind(feature);
   const sourceIdentityInput: Omit<CadBodyTopologySourceIdentity, "signature"> =
-    feature.kind === "revolve"
-      ? createRevolveSourceIdentityInput(
+    feature.kind === "extrude" &&
+    isSketchRegionsProfileRef(
+      (feature as unknown as Record<string, unknown>).profile
+    )
+      ? createRegionFeatureSourceIdentityInput(
           document,
           bodyId,
           units,
           ownerPartId,
-          feature
+          feature,
+          visitedBodyIds,
+          traversedResultNodeCount
         )
-      : feature.kind === "sweep"
-        ? createSweepSourceIdentityInput(
+      : feature.kind === "revolve"
+        ? createRevolveSourceIdentityInput(
             document,
             bodyId,
             units,
             ownerPartId,
-            feature
+            feature,
+            visitedBodyIds,
+            traversedResultNodeCount
           )
-        : feature.kind === "hole"
-          ? createHoleSourceIdentityInput(document, bodyId, units, feature)
-          : feature.kind === "chamfer"
-            ? createChamferSourceIdentityInput(bodyId, units, feature)
-            : feature.kind === "fillet"
-              ? createFilletSourceIdentityInput(bodyId, units, feature)
-              : {
-                  bodyId,
-                  sourceKind,
-                  units,
-                  featureId: feature.id,
-                  featureSourceSignature: sha256Hex(
-                    new TextEncoder().encode(JSON.stringify(feature))
-                  )
-                };
+        : feature.kind === "sweep"
+          ? createSweepSourceIdentityInput(
+              document,
+              bodyId,
+              units,
+              ownerPartId,
+              feature
+            )
+          : feature.kind === "hole"
+            ? createHoleSourceIdentityInput(document, bodyId, units, feature)
+            : feature.kind === "chamfer"
+              ? createChamferSourceIdentityInput(bodyId, units, feature)
+              : feature.kind === "fillet"
+                ? createFilletSourceIdentityInput(bodyId, units, feature)
+                : {
+                    bodyId,
+                    sourceKind,
+                    units,
+                    featureId: feature.id,
+                    featureSourceSignature: sha256Hex(
+                      new TextEncoder().encode(JSON.stringify(feature))
+                    )
+                  };
   const sourceIdentity: CadBodyTopologySourceIdentity = {
     ...sourceIdentityInput,
     signature: createTopologySourceSignature(sourceIdentityInput)
@@ -1173,7 +1196,9 @@ function createUnsupportedAuthoredFeatureTopology(
               ? "Semantic topology references are not derived for authored edge-finishing result bodies yet."
               : feature.kind === "sweep"
                 ? "Curved sweep topology awaits matching kernel-derived exact metadata; source identity is resolved from the profile, ordered path geometry, and both sketch frames."
-                : "Semantic topology references are not derived for authored revolve bodies yet.",
+                : feature.kind === "extrude"
+                  ? "Region extrude topology awaits the V19 region extrude geometry slice; source identity includes canonical region refs, referenced sketch geometry, and the resolved sketch frame."
+                  : "Semantic topology references are not derived for authored revolve bodies yet.",
         bodyId,
         featureId: feature.id
       }
@@ -1338,8 +1363,28 @@ function createRevolveSourceIdentityInput(
   bodyId: BodyId,
   units: DocumentUnits,
   ownerPartId: PartId,
-  feature: Extract<GeneratedReferencesFeature, { kind: "revolve" }>
+  feature: Extract<GeneratedReferencesFeature, { kind: "revolve" }>,
+  visitedBodyIds: ReadonlySet<BodyId>,
+  traversedResultNodeCount: number
 ): Omit<CadBodyTopologySourceIdentity, "signature"> {
+  const storedProfile = (feature as unknown as Record<string, unknown>).profile;
+  if (isSketchRegionsProfileRef(storedProfile)) {
+    return {
+      ...createRegionFeatureSourceIdentityInput(
+        document,
+        bodyId,
+        units,
+        ownerPartId,
+        feature,
+        visitedBodyIds,
+        traversedResultNodeCount
+      ),
+      sourceKind: "authoredRevolve",
+      revolveAxis: feature.axis,
+      revolveAxisSignature: createRevolveAxisSignature(document, feature),
+      revolveAngleDegrees: feature.angleDegrees
+    };
+  }
   if (feature.profile.kind === "wire") {
     const sketch = document.sketches.get(feature.profile.sketchId);
     const profileEntities = feature.profile.segments.map((segment) => ({
@@ -1396,6 +1441,72 @@ function createRevolveSourceIdentityInput(
     revolveAxis: feature.axis,
     revolveAxisSignature: createRevolveAxisSignature(document, feature),
     revolveAngleDegrees: feature.angleDegrees
+  };
+}
+
+function createRegionFeatureSourceIdentityInput(
+  document: GeneratedReferencesDocument,
+  bodyId: BodyId,
+  units: DocumentUnits,
+  ownerPartId: PartId,
+  feature: Extract<GeneratedReferencesFeature, { kind: "extrude" | "revolve" }>,
+  visitedBodyIds: ReadonlySet<BodyId>,
+  traversedResultNodeCount: number
+): Omit<CadBodyTopologySourceIdentity, "signature"> {
+  const profile = (feature as unknown as Record<string, unknown>).profile;
+  if (!isSketchRegionsProfileRef(profile)) {
+    throw new Error("Expected a regions profile source.");
+  }
+  const sketch = document.sketches.get(profile.sketchId);
+  const sourceReferences = getProfileEntityReferences(profile);
+  const profileEntities = sourceReferences.map((reference) => ({
+    entityId: reference.entityId,
+    geometry: sketch?.entities.get(reference.entityId) ?? null
+  }));
+  const resolvedFrame = sketch
+    ? createSourceMeasurementFrame(document, sketch, ownerPartId)
+    : undefined;
+  const targetLineage =
+    feature.kind === "extrude" && feature.operationMode !== "newBody"
+      ? createCompositeTargetLineage(
+          document,
+          feature.targetBodyId,
+          feature.targetTopologyAnchorId,
+          units,
+          ownerPartId,
+          visitedBodyIds,
+          traversedResultNodeCount
+        )
+      : undefined;
+  return {
+    bodyId,
+    sourceKind:
+      feature.kind === "extrude" ? "authoredExtrude" : "authoredRevolve",
+    units,
+    featureId: feature.id,
+    operationMode: feature.operationMode,
+    sourceSketchId: profile.sketchId,
+    sourceSketchEntityIds: sourceReferences.map(
+      (reference) => reference.entityId
+    ),
+    ...(feature.kind === "extrude"
+      ? {
+          targetBodyId: feature.targetBodyId,
+          targetTopologyAnchorId: feature.targetTopologyAnchorId,
+          side: feature.side,
+          depth: feature.depth
+        }
+      : {}),
+    featureSourceSignature: sha256Hex(
+      new TextEncoder().encode(
+        JSON.stringify({
+          profile,
+          profileEntities,
+          resolvedFrame: resolvedFrame ?? null,
+          targetLineage: targetLineage ?? null
+        })
+      )
+    )
   };
 }
 

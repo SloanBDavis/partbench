@@ -436,6 +436,21 @@ function createExtrudeEditabilityResponse(
   blockingDiagnostics.push(
     ...createProfileBlockingDiagnostics(options, feature.id)
   );
+  if (feature.profile?.kind === "regions") {
+    blockingDiagnostics.push(
+      createDiagnostic({
+        code: "FEATURE_EDIT_UNSUPPORTED",
+        severity: "blocker",
+        message:
+          "Region extrude source is inspectable, but feature.updateExtrude remains disabled until the V19 region extrude geometry slice is accepted.",
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        sketchId: feature.profile.sketchId,
+        expected: "accepted V19 region extrude geometry support",
+        received: "region source only"
+      })
+    );
+  }
 
   if (body?.consumedByFeatureId && !scopedRebuildConsumer) {
     blockingDiagnostics.push(
@@ -658,6 +673,21 @@ function createRevolveEditabilityResponse(
   blockingDiagnostics.push(
     ...createProfileBlockingDiagnostics(options, feature.id)
   );
+  if (feature.profile?.kind === "regions") {
+    blockingDiagnostics.push(
+      createDiagnostic({
+        code: "FEATURE_EDIT_UNSUPPORTED",
+        severity: "blocker",
+        message:
+          "Region revolve source is inspectable, but feature.updateRevolve remains disabled until the V19 region revolve geometry slice is accepted.",
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        sketchId: feature.profile.sketchId,
+        expected: "accepted V19 region revolve geometry support",
+        received: "region source only"
+      })
+    );
+  }
 
   if (feature.operationMode !== "newBody") {
     blockingDiagnostics.push(

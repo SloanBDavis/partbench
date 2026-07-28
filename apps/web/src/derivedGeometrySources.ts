@@ -892,6 +892,13 @@ function createExtrudeSourceForFeature(
     );
   }
 
+  if (feature.profile?.kind === "regions") {
+    return createUnavailableExtrudeSource(
+      feature.bodyId,
+      `Region extrude feature ${feature.id} awaits the V19 region extrude geometry slice.`
+    );
+  }
+
   const entity = sketch.entities.find(
     (candidate) => candidate.id === feature.entityId
   );
@@ -944,8 +951,9 @@ function createExtrudeSourceForFeature(
 
 function createWireExtrudeSource(
   feature: Extract<CadFeatureSummary, { kind: "extrude" }>,
-  profile: NonNullable<
-    Extract<CadFeatureSummary, { kind: "extrude" }>["profile"]
+  profile: Extract<
+    NonNullable<Extract<CadFeatureSummary, { kind: "extrude" }>["profile"]>,
+    { kind: "wire" }
   >,
   sketch: SketchSnapshot,
   generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>
@@ -1089,6 +1097,10 @@ function createRevolveSourceForFeature(
         ? { placementError: placementState.placementError }
         : {})
     };
+  }
+
+  if (feature.profile?.kind === "regions") {
+    return undefined;
   }
 
   if (!entity || !axis || axis.kind !== "line") {

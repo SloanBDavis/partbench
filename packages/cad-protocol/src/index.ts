@@ -4184,7 +4184,10 @@ interface CadExtrudeFeatureSourceBase {
 export type CadExtrudeFeatureSource = CadExtrudeFeatureSourceBase &
   (
     | { readonly entityId: SketchEntityId; readonly profile?: never }
-    | { readonly profile: SketchWireProfileRef; readonly entityId?: never }
+    | {
+        readonly profile: SketchWireProfileRef | SketchRegionsProfileRef;
+        readonly entityId?: never;
+      }
   );
 
 interface CadExtrudeFeatureSummaryBase {
@@ -4210,7 +4213,7 @@ export type CadExtrudeFeatureSummary = CadExtrudeFeatureSummaryBase &
         readonly profile?: never;
       }
     | {
-        readonly profile: SketchWireProfileRef;
+        readonly profile: SketchWireProfileRef | SketchRegionsProfileRef;
         readonly entityId?: never;
         readonly profileKind?: never;
       }
@@ -4225,7 +4228,10 @@ interface CadRevolveFeatureSourceBase {
 export type CadRevolveFeatureSource = CadRevolveFeatureSourceBase &
   (
     | { readonly entityId: SketchEntityId; readonly profile?: never }
-    | { readonly profile: SketchWireProfileRef; readonly entityId?: never }
+    | {
+        readonly profile: SketchWireProfileRef | SketchRegionsProfileRef;
+        readonly entityId?: never;
+      }
   );
 
 interface CadRevolveFeatureSummaryBase {
@@ -4250,7 +4256,7 @@ export type CadRevolveFeatureSummary = CadRevolveFeatureSummaryBase &
         readonly profile?: never;
       }
     | {
-        readonly profile: SketchWireProfileRef;
+        readonly profile: SketchWireProfileRef | SketchRegionsProfileRef;
         readonly entityId?: never;
         readonly profileKind?: never;
       }
@@ -5463,7 +5469,7 @@ export type CadSketchExtrudeBodySource = CadSketchExtrudeBodySourceBase &
         readonly profile?: never;
       }
     | {
-        readonly profile: SketchWireProfileRef;
+        readonly profile: SketchWireProfileRef | SketchRegionsProfileRef;
         readonly entityId?: never;
         readonly profileKind?: never;
       }
@@ -5484,7 +5490,7 @@ export type CadSketchRevolveBodySource = CadSketchRevolveBodySourceBase &
         readonly profile?: never;
       }
     | {
-        readonly profile: SketchWireProfileRef;
+        readonly profile: SketchWireProfileRef | SketchRegionsProfileRef;
         readonly entityId?: never;
         readonly profileKind?: never;
       }
@@ -6696,7 +6702,7 @@ export interface CadAuthoredExtrudeHealth {
   readonly sketchId: SketchId;
   readonly entityId?: SketchEntityId;
   readonly sourceEntityIds?: readonly SketchEntityId[];
-  readonly profileKind: CadGeneratedReferenceProfileKind;
+  readonly profileKind: CadGeneratedReferenceProfileKind | "regions";
   readonly operationMode: FeatureExtrudeOperationMode;
   readonly targetBodyId?: BodyId;
   readonly targetTopologyAnchorId?: string;
@@ -6716,7 +6722,7 @@ export interface CadAuthoredRevolveHealth {
   readonly sketchId: SketchId;
   readonly entityId?: SketchEntityId;
   readonly sourceEntityIds?: readonly SketchEntityId[];
-  readonly profileKind: CadGeneratedReferenceProfileKind;
+  readonly profileKind: CadGeneratedReferenceProfileKind | "regions";
   readonly axis: FeatureRevolveAxis;
   readonly angleDegrees: number;
   readonly operationMode: FeatureRevolveOperationMode;
@@ -10325,6 +10331,16 @@ const PROFILE_DIAGNOSTIC_CODES: ReadonlySet<string> = new Set([
   "SKETCH_PROFILE_INNER_LOOP_UNSUPPORTED",
   "SKETCH_PROFILE_ORIENTATION_NORMALIZED",
   "SKETCH_PROFILE_CONSUMER_UNSUPPORTED",
+  "SKETCH_REGION_LOOP_OPEN",
+  "SKETCH_REGION_LOOP_INTERSECTION",
+  "SKETCH_REGION_BOUNDARY_TOUCHING",
+  "SKETCH_REGION_HOLE_OUTSIDE",
+  "SKETCH_REGION_HOLES_OVERLAP",
+  "SKETCH_REGION_MATERIAL_OVERLAP",
+  "SKETCH_REGION_NESTING_UNSUPPORTED",
+  "SKETCH_REGION_COMPLEXITY_LIMIT",
+  "SKETCH_REGION_CONSUMER_UNSUPPORTED",
+  "SKETCH_REGION_RESULT_NOT_SINGLE_SOLID",
   "BODY_NOT_FOUND",
   "UNSUPPORTED_BODY_REFERENCES",
   "TOPOLOGY_ANCHOR_NOT_FOUND",
@@ -10908,7 +10924,7 @@ export function validateSketchProfilePathQueryResponse(
               "diagnosticCount",
               "diagnostics"
             ],
-            [],
+            ["regionCandidateKey"],
             issues
           )
         ) {
@@ -10937,6 +10953,13 @@ export function validateSketchProfilePathQueryResponse(
             });
           }
           validateNonEmptyString(candidate.sortKey, `${path}.sortKey`, issues);
+          if (candidate.regionCandidateKey !== undefined) {
+            validateNonEmptyString(
+              candidate.regionCandidateKey,
+              `${path}.regionCandidateKey`,
+              issues
+            );
+          }
           validateEnum(
             candidate.orientation,
             ["counterclockwise"],

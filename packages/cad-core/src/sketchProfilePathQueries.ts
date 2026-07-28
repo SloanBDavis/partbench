@@ -65,6 +65,12 @@ import {
   resolveActiveTopologyAnchorBodyTargetId,
   resolveActiveTopologyAnchorTargetSource
 } from "./topologyAnchorTargetResolution";
+import { createSketchProfileRegionCandidateCorrelations } from "./v19RegionDiscovery";
+import { getSketchLoopCanonicalKey } from "./v22SourceShapes";
+import {
+  validateV22RegionSource,
+  type V22RegionSourceIssue
+} from "./v22RegionSourceValidation";
 
 interface ResolvedWire {
   readonly segments: readonly ResolvedSketchSegment[];
@@ -1064,9 +1070,27 @@ export function createSketchProfileCandidatesResponse(
   rejectedComponents.sort((left, right) =>
     left.sortKey.localeCompare(right.sortKey)
   );
+  const regionCandidateKeys =
+    createSketchProfileRegionCandidateCorrelations(sketch);
   const indexedCandidates = candidates.map((candidate, candidateIndex) => ({
     ...candidate,
-    candidateIndex
+    candidateIndex,
+    ...(() => {
+      const loop =
+        candidate.profile.kind === "entity"
+          ? {
+              kind: "entity" as const,
+              entityId: candidate.profile.entityId
+            }
+          : {
+              kind: "wire" as const,
+              segments: candidate.profile.segments
+            };
+      const regionCandidateKey = regionCandidateKeys.get(
+        getSketchLoopCanonicalKey(loop)
+      );
+      return regionCandidateKey === undefined ? {} : { regionCandidateKey };
+    })()
   }));
   const indexedRejectedComponents = rejectedComponents.map(
     (component, componentIndex) => ({ ...component, componentIndex })
@@ -1145,8 +1169,11 @@ function createConsumerCompatibility(
 ): SketchProfileReadinessQueryResponse["consumerCompatibility"] {
   const supported =
     profile.kind === "regions"
-      ? consumer.featureKind === "extrude" ||
-        (consumer.featureKind === "revolve" && profile.regions.length === 1)
+      ? consumer.featureKind === "extrude"
+        ? consumer.operationMode === "newBody"
+          ? profile.regions.length === 1
+          : profile.regions.length >= 1
+        : consumer.featureKind === "revolve" && profile.regions.length === 1
       : profile.kind === "entity" ||
         consumer.featureKind === "extrude" ||
         consumer.featureKind === "revolve";
@@ -1154,7 +1181,9 @@ function createConsumerCompatibility(
     ? []
     : [
         profileDiagnostic(
-          "SKETCH_PROFILE_CONSUMER_UNSUPPORTED",
+          profile.kind === "regions"
+            ? "SKETCH_REGION_CONSUMER_UNSUPPORTED"
+            : "SKETCH_PROFILE_CONSUMER_UNSUPPORTED",
           profile.kind === "regions"
             ? `Region profiles are not supported by feature.${consumer.featureKind} for this V19 consumer row.`
             : `Wire profiles are not supported by feature.${consumer.featureKind} in V17.`
@@ -1166,6 +1195,57 @@ function createConsumerCompatibility(
     operationMode: consumer.operationMode,
     diagnosticCount: diagnostics.length,
     diagnostics
+  };
+}
+
+function regionIssueDiagnostic(
+  sketchId: string,
+  issue: V22RegionSourceIssue
+): SketchProfileDiagnostic {
+  const code =
+    issue.code === "SKETCH_REGION_PROFILE_EMPTY"
+      ? "SKETCH_PROFILE_EMPTY"
+      : issue.code === "SKETCH_REGION_ENTITY_MISSING" ||
+          issue.code === "SKETCH_REGION_SKETCH_MISMATCH"
+        ? "SKETCH_PROFILE_ENTITY_MISSING"
+        : issue.code === "SKETCH_REGION_ENTITY_UNSUPPORTED"
+          ? "SKETCH_PROFILE_ENTITY_UNSUPPORTED"
+          : issue.code === "SKETCH_REGION_CONSTRUCTION_ENTITY"
+            ? "SKETCH_PROFILE_CONSTRUCTION_ENTITY"
+            : issue.code === "SKETCH_REGION_ENTITY_REPEATED"
+              ? "SKETCH_PROFILE_ENTITY_REPEATED"
+              : issue.code === "SKETCH_REGION_LOOP_AREA_TOO_SMALL"
+                ? "SKETCH_PROFILE_AREA_TOO_SMALL"
+                : issue.code;
+  return {
+    code,
+    severity: "blocker",
+    message: issue.message,
+    sketchId,
+    ...(issue.entityId === undefined ? {} : { entityId: issue.entityId }),
+    ...(issue.expected === undefined ? {} : { expected: issue.expected }),
+    ...(issue.received === undefined ? {} : { received: issue.received })
+  };
+}
+
+function mergeRegionOuterBounds(
+  validation: Extract<
+    ReturnType<typeof validateV22RegionSource>,
+    { readonly ok: true }
+  >
+): SketchBounds2d {
+  const bounds = validation.loopSummaries
+    .filter((summary) => summary.role === "outer")
+    .map((summary) => summary.bounds);
+  return {
+    min: [
+      Math.min(...bounds.map((value) => value.min[0])),
+      Math.min(...bounds.map((value) => value.min[1]))
+    ],
+    max: [
+      Math.max(...bounds.map((value) => value.max[0])),
+      Math.max(...bounds.map((value) => value.max[1]))
+    ]
   };
 }
 
@@ -1472,29 +1552,35 @@ export function createSketchProfileReadinessResponse(
   const targetDiagnostics = targetCompatibility.diagnostics;
 
   if (query.profile.kind === "regions") {
+    const validation = validateV22RegionSource(query.profile, sketch);
     const diagnostics = [
-      profileDiagnostic(
-        "SKETCH_PROFILE_CONSUMER_UNSUPPORTED",
-        "Region profile readiness remains blocked until the V19 analytic region-validation slice is available.",
-        { sketchId: sketch.id }
-      ),
+      ...(validation.ok
+        ? []
+        : validation.issues.map((issue) =>
+            regionIssueDiagnostic(sketch.id, issue)
+          )),
       ...consumerCompatibility.diagnostics,
       ...targetDiagnostics
     ];
-    const orderedEntityIds = query.profile.regions.flatMap((region) =>
-      [region.outer, ...region.holes].flatMap((loop) =>
-        loop.kind === "entity"
-          ? [loop.entityId]
-          : loop.segments.map((segment) => segment.entityId)
-      )
-    );
-    return {
-      ok: true,
-      query: "sketch.profileReadiness",
+    const orderedEntityIds = validation.ok
+      ? validation.loopSummaries.flatMap((summary) => summary.entityIds)
+      : query.profile.regions.flatMap((region) =>
+          [region.outer, ...region.holes].flatMap((loop) =>
+            loop.kind === "entity"
+              ? [loop.entityId]
+              : loop.segments.map((segment) => segment.entityId)
+          )
+        );
+    const ready =
+      validation.ok &&
+      consumerCompatibility.status === "ready" &&
+      (targetCompatibility.status === "not-applicable" ||
+        targetCompatibility.status === "ready");
+    const responseBase = {
+      ok: true as const,
+      query: "sketch.profileReadiness" as const,
       cadOpsVersion,
-      status: "blocked",
       requestedProfile: query.profile,
-      orientationNormalized: false,
       consumer: query.consumer,
       consumerCompatibility,
       targetCompatibility,
@@ -1503,10 +1589,56 @@ export function createSketchProfileReadinessResponse(
         orderedEntityIds
       },
       joinCount: 0,
-      joins: [],
-      intersectionStatus: "not-evaluated",
+      joins: [] as const,
       diagnosticCount: diagnostics.length,
       diagnostics
+    };
+    if (ready) {
+      const orientationNormalized =
+        validation.normalization.orientationChanged ||
+        validation.normalization.cyclicStartChanged ||
+        validation.normalization.holeOrderChanged ||
+        validation.normalization.regionOrderChanged;
+      const area = validation.materialAreas.reduce(
+        (sum, materialArea) => sum + materialArea,
+        0
+      );
+      return {
+        ...responseBase,
+        status: "ready",
+        normalizedProfile: validation.normalizedProfile,
+        orientation: "counterclockwise",
+        orientationNormalized,
+        area,
+        signedArea: area,
+        bounds: mergeRegionOuterBounds(validation),
+        intersectionStatus: "clear"
+      };
+    }
+    return {
+      ...responseBase,
+      status: "blocked",
+      ...(validation.ok
+        ? {
+            normalizedProfile: validation.normalizedProfile,
+            orientation: "counterclockwise" as const,
+            orientationNormalized:
+              validation.normalization.orientationChanged ||
+              validation.normalization.cyclicStartChanged ||
+              validation.normalization.holeOrderChanged ||
+              validation.normalization.regionOrderChanged,
+            area: validation.materialAreas.reduce(
+              (sum, materialArea) => sum + materialArea,
+              0
+            ),
+            signedArea: validation.materialAreas.reduce(
+              (sum, materialArea) => sum + materialArea,
+              0
+            ),
+            bounds: mergeRegionOuterBounds(validation)
+          }
+        : { orientationNormalized: false }),
+      intersectionStatus: validation.ok ? "clear" : "not-evaluated"
     };
   }
 

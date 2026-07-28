@@ -11,6 +11,7 @@ import type {
 import { createSketchProfileValidityFromSource } from "./sketchSolverStatus";
 import type { SketchSolverDocument, SketchSolverSketch } from "./sketchSolver";
 import { createSketchProfileReadinessResponse } from "./sketchProfilePathQueries";
+import { getProfileEntityReferences } from "./normalizedFeatureInputs";
 import type { CadDocument } from "./index";
 
 export type SketchProfileHealthStatus =
@@ -27,6 +28,7 @@ export interface SketchProfileHealthEntry {
   readonly status: SketchProfileHealthStatus;
   readonly featureKind: CadFeatureSummary["kind"];
   readonly profileValidityStatus?: string;
+  readonly diagnosticCode?: CadFeatureEditDiagnostic["code"];
   readonly message: string;
   readonly expected: string;
   readonly received: string;
@@ -85,7 +87,7 @@ export function createFeatureProfileEditDiagnostic(
   entry: SketchProfileHealthEntry
 ): CadFeatureEditDiagnostic {
   return {
-    code: "FEATURE_EDIT_UNSUPPORTED",
+    code: entry.diagnosticCode ?? "FEATURE_EDIT_UNSUPPORTED",
     severity: "blocker",
     message: entry.message,
     featureId: entry.featureId,
@@ -101,17 +103,27 @@ function createFeatureProfileHealthEntry(
   document: SketchProfileHealthDocument,
   feature: CadFeatureSummary
 ): readonly SketchProfileHealthEntry[] {
-  if (feature.kind === "extrude" && feature.profile?.kind === "wire") {
+  if (
+    (feature.kind === "extrude" && feature.profile?.kind === "wire") ||
+    ((feature.kind === "extrude" || feature.kind === "revolve") &&
+      feature.profile?.kind === "regions")
+  ) {
+    const sourceEntityIds = getProfileEntityReferences(feature.profile).map(
+      (reference) => reference.entityId
+    );
     const source = {
       sketchId: feature.profile.sketchId,
-      sketchEntityId: feature.profile.segments[0]!.entityId
+      sketchEntityId: sourceEntityIds[0] ?? ""
     };
     if (!document.sketches.has(source.sketchId)) {
       return [
         createEntry(feature, source, {
           status: "missing",
           message: `Feature ${feature.id} source sketch is missing: ${source.sketchId}.`,
-          expected: "feature-ready composite wire profile",
+          expected:
+            feature.profile.kind === "regions"
+              ? "feature-ready region profile"
+              : "feature-ready composite wire profile",
           received: "missing sketch"
         })
       ];
@@ -121,7 +133,24 @@ function createFeatureProfileHealthEntry(
       {
         query: "sketch.profileReadiness",
         profile: feature.profile,
-        consumer: { featureKind: "extrude", operationMode: "newBody" }
+        consumer:
+          feature.profile.kind === "wire"
+            ? { featureKind: "extrude", operationMode: "newBody" }
+            : feature.kind === "extrude"
+              ? feature.operationMode === "newBody"
+                ? { featureKind: "extrude", operationMode: "newBody" }
+                : feature.targetTopologyAnchorId
+                  ? {
+                      featureKind: "extrude",
+                      operationMode: feature.operationMode,
+                      targetTopologyAnchorId: feature.targetTopologyAnchorId
+                    }
+                  : {
+                      featureKind: "extrude",
+                      operationMode: feature.operationMode,
+                      targetBodyId: feature.targetBodyId!
+                    }
+              : { featureKind: "revolve", operationMode: "newBody" }
       },
       "cadops.v1"
     );
@@ -129,21 +158,35 @@ function createFeatureProfileHealthEntry(
       (candidate) => candidate.severity === "blocker"
     );
     return [
-      createEntry(feature, source, {
-        status: readiness.status === "ready" ? "ready" : "stale",
-        profileValidityStatus:
-          readiness.status === "ready" ? "valid" : "invalid",
-        message:
-          readiness.status === "ready"
-            ? `Feature ${feature.id} composite wire profile is feature-ready.`
-            : (diagnostic?.message ??
-              `Feature ${feature.id} composite wire profile is not feature-ready.`),
-        expected: "feature-ready composite wire profile",
-        received:
-          readiness.status === "ready"
-            ? "feature-ready"
-            : (diagnostic?.code ?? "blocked")
-      })
+      createEntry(
+        feature,
+        {
+          ...source,
+          sketchEntityId: diagnostic?.entityId ?? source.sketchEntityId
+        },
+        {
+          status: readiness.status === "ready" ? "ready" : "stale",
+          profileValidityStatus:
+            readiness.status === "ready" ? "valid" : "invalid",
+          diagnosticCode:
+            feature.profile.kind === "regions"
+              ? getRegionFeatureEditDiagnosticCode(diagnostic?.code)
+              : undefined,
+          message:
+            readiness.status === "ready"
+              ? `Feature ${feature.id} ${feature.profile.kind === "regions" ? "region" : "composite wire"} profile is feature-ready.`
+              : (diagnostic?.message ??
+                `Feature ${feature.id} ${feature.profile.kind === "regions" ? "region" : "composite wire"} profile is not feature-ready.`),
+          expected:
+            feature.profile.kind === "regions"
+              ? "feature-ready region profile"
+              : "feature-ready composite wire profile",
+          received:
+            readiness.status === "ready"
+              ? "feature-ready"
+              : (diagnostic?.code ?? "blocked")
+        }
+      )
     ];
   }
   return getFeatureProfileSources(feature).flatMap((source) =>
@@ -284,6 +327,7 @@ function createEntry(
   values: {
     readonly status: SketchProfileHealthStatus;
     readonly profileValidityStatus?: string;
+    readonly diagnosticCode?: CadFeatureEditDiagnostic["code"];
     readonly message: string;
     readonly expected: string;
     readonly received: string;
@@ -297,4 +341,24 @@ function createEntry(
     sketchEntityId: source.sketchEntityId,
     ...values
   };
+}
+
+function getRegionFeatureEditDiagnosticCode(
+  code: string | undefined
+): CadFeatureEditDiagnostic["code"] | undefined {
+  switch (code) {
+    case "SKETCH_REGION_LOOP_OPEN":
+    case "SKETCH_REGION_LOOP_INTERSECTION":
+    case "SKETCH_REGION_BOUNDARY_TOUCHING":
+    case "SKETCH_REGION_HOLE_OUTSIDE":
+    case "SKETCH_REGION_HOLES_OVERLAP":
+    case "SKETCH_REGION_MATERIAL_OVERLAP":
+    case "SKETCH_REGION_NESTING_UNSUPPORTED":
+    case "SKETCH_REGION_COMPLEXITY_LIMIT":
+    case "SKETCH_REGION_CONSUMER_UNSUPPORTED":
+    case "SKETCH_REGION_RESULT_NOT_SINGLE_SOLID":
+      return code;
+    default:
+      return undefined;
+  }
 }

@@ -637,6 +637,40 @@ history baseline.
   execution, cancellation, relevant-revision cache behavior, and no-persistence
   proof remain required before E2 and Gate E are complete.
 
+### 2026-07-28 — Slice E3 core query and health checkpoint accepted
+
+- The engine now dispatches the exact region candidate and validation queries
+  through the pure E1/E2 policy. Strict runtime guards cover their full request
+  and response envelopes, including every region readiness diagnostic.
+- V17 profile candidates retain their existing shape and gain deterministic
+  links to matching region candidates. Region readiness enforces the bounded
+  extrude/revolve consumer matrix while sweep, loft, and all region feature
+  mutations remain disabled until their complete F/G geometry rows pass.
+- Feature, body, summary, dependency-graph, rebuild, reference-health,
+  project-health, editability, package/export-readiness, topology, and mass
+  projections understand exact region source without treating derived
+  candidates as authored data.
+- Retained-ID sketch edits preserve the authored region refs and expose exact
+  open/intersection/boundary/containment diagnostics. Undo and redo restore or
+  reapply readiness, while import accepts geometric drift only when a strict
+  V22 history baseline and replayable retained history prove its provenance;
+  standalone malformed or noncanonical sources still fail import.
+- Deferred region topology identities include the canonical region refs,
+  referenced sketch geometry, resolved sketch frame, revolve-axis evidence,
+  and bounded add/cut target lineage. Matching old exact metadata becomes stale
+  after a retained source or target edit.
+- An independent adversarial review found and resolved direct-command boundary
+  bypasses, stale topology identity, target-lineage omission, overclaimed
+  geometry health, imprecise editability diagnostics, incomplete protocol
+  guards, legacy dependency labels, and a global import-validation relaxation.
+  Its final verdict is PASS.
+- The complete cad-core suite passes 51 files and 1,087 tests; cad-protocol
+  passes 4 files and 83 tests. Both package typechecks, Prettier, and
+  `git diff --check` pass.
+- This accepts the E3 core checkpoint. Browser command-worker cancellation and
+  relevant-revision cache/no-persistence proof remain open E2 work; E4 browser
+  selection and adapter parity plus Gate E remain unaccepted.
+
 ## Completion audit
 
 Release completion requires affirmative evidence for each numbered Must item

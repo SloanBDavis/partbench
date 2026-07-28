@@ -1018,3 +1018,27 @@ export function createRegionCandidateKeyForSimpleProfile(
 ): string {
   return JSON.stringify(["region", 0, getSketchLoopCanonicalKey(profile), []]);
 }
+
+/**
+ * Internal V17 compatibility projection. It returns display correlation only;
+ * candidate keys never become mutation authority.
+ */
+export function createSketchProfileRegionCandidateCorrelations(
+  sketch: V22RegionSourceSketch
+): ReadonlyMap<string, string> {
+  const response = createSketchProfileRegionCandidatesResponse(
+    sketch,
+    {
+      query: "sketch.profileRegionCandidates",
+      sketchId: sketch.id,
+      limit: CAD_V19_RESOURCE_LIMITS.maxDiscoveredCandidateRegions
+    },
+    "cadops.v1"
+  );
+  return new Map(
+    response.candidates.map((candidate) => [
+      candidate.outerLoopKey,
+      candidate.candidateKey
+    ])
+  );
+}
