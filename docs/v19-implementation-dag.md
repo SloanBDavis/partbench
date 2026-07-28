@@ -159,7 +159,9 @@ flowchart TD
 
 - Region query identities are relevant-sketch identities. The fingerprint
   hashes the canonical discovery-relevant sketch projection; the revision
-  hashes that fingerprint plus the normalized optional entity narrowing.
+  hashes canonical CBOR
+  `[sourceFingerprint, normalizedEntityIds]`, distinguishing omitted `null`
+  from explicit empty `[]` narrowing.
 - Candidate keys are canonical JSON
   `["region", containmentDepth, outerLoopKey, holeLoopKeys]` display/paging
   cursors. They are never persisted or accepted by a mutation.
@@ -607,6 +609,33 @@ history baseline.
 - E1 is accepted. E2 whole-loop discovery, containment cells, identities,
   limits, and pagination is the next unblocked node. Gate E is not yet
   accepted.
+
+### 2026-07-28 — Slice E2 analytic discovery checkpoint accepted
+
+- The pure E2 engine discovers only complete rectangle/circle entities and
+  degree-two whole line/arc components. Open, branched, unsupported, and
+  construction-narrowed inputs remain structured response diagnostics; no
+  partial curve or virtual intersection becomes a candidate ref.
+- A deterministic endpoint sweep and analytic loop-pair sweep share the frozen
+  250,000-visit budget. One containment-tree node produces one material cell
+  with direct children as holes at every depth. The complete result is capped
+  at 512 before paging and never leaks partial success.
+- Relevant-sketch fingerprints, narrowing-bound revisions, role-specific
+  canonical loop refs, exact display-only candidate keys, canonical
+  depth/area/key ordering, page cursors, stale revisions, and unknown cursors
+  are implemented and tested.
+- Analytic boundary separation includes interior line/arc stationary points
+  and symmetric arc/circle and arc/arc extrema so near-tolerance contact is
+  not reduced to endpoint sampling.
+- An independent adversarial review found and resolved mixed missing
+  narrowing, false repeated-ID diagnostics, invalid-cursor counts,
+  construction-exclusion behavior, and analytic closest-distance gaps. Its
+  final verdict is PASS.
+- Focused discovery/validation/protocol tests pass 42/42; the complete
+  cad-core suite passes 50 files and 1,075 tests, and cad-core typecheck passes.
+- This accepts the E2 pure analytic checkpoint only. Browser command-worker
+  execution, cancellation, relevant-revision cache behavior, and no-persistence
+  proof remain required before E2 and Gate E are complete.
 
 ## Completion audit
 

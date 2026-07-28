@@ -304,6 +304,50 @@ describe("validateV22RegionSource", () => {
     expect(issueCodes(containingOuter)).toContain("SKETCH_REGION_HOLE_OUTSIDE");
   });
 
+  it("measures interior line-arc clearance rather than only endpoints", () => {
+    const createSource = (gap: number) =>
+      entities(
+        rectangle("outer", [0, 0], 20, 10),
+        {
+          id: "upper",
+          kind: "arc",
+          center: [0, 0],
+          radius: 5 - gap,
+          startAngleDegrees: 0,
+          sweepAngleDegrees: 180,
+          construction: false
+        },
+        {
+          id: "lower",
+          kind: "arc",
+          center: [0, 0],
+          radius: 5 - gap,
+          startAngleDegrees: 180,
+          sweepAngleDegrees: 180,
+          construction: false
+        }
+      );
+    const submitted = profile({
+      outer: entityLoop("outer"),
+      holes: [wireLoop(["upper"], ["lower"])]
+    });
+
+    expect(
+      issueCodes(
+        validateV22RegionSource(
+          submitted,
+          createSource(SKETCH_GEOMETRY_POLICY.linearTolerance / 2)
+        )
+      )
+    ).toContain("SKETCH_REGION_BOUNDARY_TOUCHING");
+    expect(
+      validateV22RegionSource(
+        submitted,
+        createSource(SKETCH_GEOMETRY_POLICY.linearTolerance * 2)
+      ).ok
+    ).toBe(true);
+  });
+
   it("rejects overlapping, touching, and nested sibling holes", () => {
     const source = entities(
       rectangle("outer", [0, 0], 30, 30),

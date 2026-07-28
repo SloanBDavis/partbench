@@ -3,6 +3,7 @@ import {
   type CadOpsVersion,
   type OrientedSketchSegmentRef,
   type SketchEntitySnapshot,
+  type SketchBounds2d,
   type SketchLoopRef,
   type SketchProfileRegionValidateQueryResponse,
   type SketchProfileRegionRef,
@@ -142,14 +143,14 @@ interface MutableComplexity {
 class PredicateBudgetExceeded extends Error {}
 
 class PredicateBudget {
-  constructor(private readonly complexity: MutableComplexity) {}
+  constructor(
+    private readonly complexity: MutableComplexity,
+    private readonly maximum: number = CAD_V19_RESOURCE_LIMITS.maxSubmittedProfilePredicateVisits
+  ) {}
 
   visit(count = 1): void {
     this.complexity.predicateVisitCount += count;
-    if (
-      this.complexity.predicateVisitCount >
-      CAD_V19_RESOURCE_LIMITS.maxSubmittedProfilePredicateVisits
-    ) {
+    if (this.complexity.predicateVisitCount > this.maximum) {
       throw new PredicateBudgetExceeded();
     }
   }
@@ -852,6 +853,33 @@ function primitiveDistance(
       pointOnPrimitiveDistance(point, left, policy)
     )
   ];
+  const addLineArcStationaryDistances = (
+    line: ResolvedSketchLineSegment,
+    arc: ResolvedSketchArcSegment
+  ): void => {
+    const vector = subtract(line.end, line.start);
+    const lengthSquared = dot(vector, vector);
+    const length = Math.sqrt(lengthSquared);
+    const normalAngle = Math.atan2(vector[1], vector[0]) + Math.PI / 2;
+    for (const angle of [normalAngle, normalAngle + Math.PI]) {
+      if (!arcContainsAngle(arc, angle, policy)) continue;
+      const point: Vec2 = [
+        arc.center[0] + arc.radius * Math.cos(angle),
+        arc.center[1] + arc.radius * Math.sin(angle)
+      ];
+      const parameter =
+        dot(subtract(point, line.start), vector) / lengthSquared;
+      if (parameter < 0 || parameter > 1) continue;
+      endpointDistances.push(
+        Math.abs(cross(vector, subtract(point, line.start))) / length
+      );
+    }
+  };
+  if (left.kind === "line" && right.kind === "arc") {
+    addLineArcStationaryDistances(left, right);
+  } else if (left.kind === "arc" && right.kind === "line") {
+    addLineArcStationaryDistances(right, left);
+  }
   if (left.kind === "circle") {
     if (right.kind === "circle") {
       const centers = distance(left.center, right.center);
@@ -867,6 +895,22 @@ function primitiveDistance(
           pointOnPrimitiveDistance(left.center, right, policy) - left.radius
         )
       );
+      if (right.kind === "arc") {
+        const angle = Math.atan2(
+          left.center[1] - right.center[1],
+          left.center[0] - right.center[0]
+        );
+        for (const candidateAngle of [angle, angle + Math.PI]) {
+          if (!arcContainsAngle(right, candidateAngle, policy)) continue;
+          const point: Vec2 = [
+            right.center[0] + right.radius * Math.cos(candidateAngle),
+            right.center[1] + right.radius * Math.sin(candidateAngle)
+          ];
+          endpointDistances.push(
+            Math.abs(distance(point, left.center) - left.radius)
+          );
+        }
+      }
     }
   } else if (right.kind === "circle") {
     endpointDistances.push(
@@ -874,6 +918,22 @@ function primitiveDistance(
         pointOnPrimitiveDistance(right.center, left, policy) - right.radius
       )
     );
+    if (left.kind === "arc") {
+      const angle = Math.atan2(
+        right.center[1] - left.center[1],
+        right.center[0] - left.center[0]
+      );
+      for (const candidateAngle of [angle, angle + Math.PI]) {
+        if (!arcContainsAngle(left, candidateAngle, policy)) continue;
+        const point: Vec2 = [
+          left.center[0] + left.radius * Math.cos(candidateAngle),
+          left.center[1] + left.radius * Math.sin(candidateAngle)
+        ];
+        endpointDistances.push(
+          Math.abs(distance(point, right.center) - right.radius)
+        );
+      }
+    }
   } else if (left.kind === "arc" && right.kind === "arc") {
     const angle = Math.atan2(
       right.center[1] - left.center[1],
@@ -886,6 +946,18 @@ function primitiveDistance(
         left.center[1] + left.radius * Math.sin(leftAngle)
       ];
       endpointDistances.push(pointOnPrimitiveDistance(point, right, policy));
+    }
+    const reverseAngle = Math.atan2(
+      left.center[1] - right.center[1],
+      left.center[0] - right.center[0]
+    );
+    for (const rightAngle of [reverseAngle, reverseAngle + Math.PI]) {
+      if (!arcContainsAngle(right, rightAngle, policy)) continue;
+      const point: Vec2 = [
+        right.center[0] + right.radius * Math.cos(rightAngle),
+        right.center[1] + right.radius * Math.sin(rightAngle)
+      ];
+      endpointDistances.push(pointOnPrimitiveDistance(point, left, policy));
     }
   }
   return Math.min(...endpointDistances);
@@ -1562,6 +1634,369 @@ export function validateV22RegionSource(
           "Submitted region validation exceeded the analytic predicate-visit limit.",
           {
             expected: `<= ${CAD_V19_RESOURCE_LIMITS.maxSubmittedProfilePredicateVisits}`,
+            received: String(complexity.predicateVisitCount)
+          }
+        )
+      ]
+    };
+  }
+}
+
+export interface V22RegionDiscoveryAnalyzedLoop {
+  readonly outer: SketchLoopRef;
+  readonly hole: SketchLoopRef;
+  readonly outerLoopKey: string;
+  readonly holeLoopKey: string;
+  readonly entityIds: readonly string[];
+  readonly signedArea: number;
+  readonly absoluteArea: number;
+  readonly bounds: SketchBounds2d;
+  readonly containmentDepth: number;
+  readonly parentIndex?: number;
+  readonly directChildIndexes: readonly number[];
+}
+
+export interface V22RegionDiscoveryBoundaryConflict {
+  readonly leftLoopIndex: number;
+  readonly rightLoopIndex: number;
+  readonly separation: number;
+}
+
+export type V22RegionDiscoveryAnalysisResult =
+  | {
+      readonly ok: true;
+      readonly loops: readonly V22RegionDiscoveryAnalyzedLoop[];
+      readonly boundaryConflicts: readonly V22RegionDiscoveryBoundaryConflict[];
+      readonly complexity: V22RegionSourceComplexity;
+      readonly issues: readonly [];
+    }
+  | {
+      readonly ok: false;
+      readonly loops: readonly [];
+      readonly boundaryConflicts: readonly [];
+      readonly complexity: V22RegionSourceComplexity;
+      readonly issues: readonly V22RegionSourceIssue[];
+    };
+
+function mergePointBounds(points: readonly Vec2[]): SketchBounds2d {
+  return {
+    min: [
+      Math.min(...points.map((point) => point[0])),
+      Math.min(...points.map((point) => point[1]))
+    ],
+    max: [
+      Math.max(...points.map((point) => point[0])),
+      Math.max(...points.map((point) => point[1]))
+    ]
+  };
+}
+
+function primitiveBounds(
+  primitive: BoundaryPrimitive,
+  policy: SketchGeometryPolicy
+): SketchBounds2d {
+  if (primitive.kind === "circle") {
+    return {
+      min: [
+        primitive.center[0] - primitive.radius,
+        primitive.center[1] - primitive.radius
+      ],
+      max: [
+        primitive.center[0] + primitive.radius,
+        primitive.center[1] + primitive.radius
+      ]
+    };
+  }
+  if (primitive.kind === "line") {
+    return mergePointBounds([primitive.start, primitive.end]);
+  }
+  const points: Vec2[] = [primitive.start, primitive.end];
+  for (const angle of [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]) {
+    if (!arcContainsAngle(primitive, angle, policy)) continue;
+    points.push([
+      primitive.center[0] + primitive.radius * Math.cos(angle),
+      primitive.center[1] + primitive.radius * Math.sin(angle)
+    ]);
+  }
+  return mergePointBounds(points);
+}
+
+function loopBounds(
+  loop: ResolvedLoop,
+  policy: SketchGeometryPolicy
+): SketchBounds2d {
+  const bounds = loop.primitives.map((primitive) =>
+    primitiveBounds(primitive, policy)
+  );
+  return {
+    min: [
+      Math.min(...bounds.map((value) => value.min[0])),
+      Math.min(...bounds.map((value) => value.min[1]))
+    ],
+    max: [
+      Math.max(...bounds.map((value) => value.max[0])),
+      Math.max(...bounds.map((value) => value.max[1]))
+    ]
+  };
+}
+
+function boundsCouldContain(
+  outer: SketchBounds2d,
+  inner: SketchBounds2d,
+  policy: SketchGeometryPolicy
+): boolean {
+  return (
+    outer.min[0] <= inner.min[0] - policy.linearTolerance &&
+    outer.min[1] <= inner.min[1] - policy.linearTolerance &&
+    outer.max[0] >= inner.max[0] + policy.linearTolerance &&
+    outer.max[1] >= inner.max[1] + policy.linearTolerance
+  );
+}
+
+function boundsOverlapWithTolerance(
+  left: SketchBounds2d,
+  right: SketchBounds2d,
+  policy: SketchGeometryPolicy
+): boolean {
+  return !(
+    left.max[0] < right.min[0] - policy.linearTolerance ||
+    right.max[0] < left.min[0] - policy.linearTolerance ||
+    left.max[1] < right.min[1] - policy.linearTolerance ||
+    right.max[1] < left.min[1] - policy.linearTolerance
+  );
+}
+
+function createHoleLoop(loop: ResolvedLoop): SketchLoopRef {
+  if (loop.normalized.kind === "entity") return loop.normalized;
+  return canonicalizeWire(loop.normalized.segments, loop.absoluteArea, "hole")
+    .loop;
+}
+
+function containmentDepth(
+  index: number,
+  parents: readonly (number | undefined)[],
+  memo: Map<number, number>
+): number {
+  const existing = memo.get(index);
+  if (existing !== undefined) return existing;
+  const parent = parents[index];
+  const depth =
+    parent === undefined ? 0 : containmentDepth(parent, parents, memo) + 1;
+  memo.set(index, depth);
+  return depth;
+}
+
+/**
+ * Resolve individually complete loops and build their strict containment tree
+ * with one shared E2 analytic budget. The sweep bounds are only a deterministic
+ * pair generator; boundary and containment authority remains analytic.
+ */
+export function analyzeV22RegionDiscoveryLoops(
+  sketch: V22RegionSourceSketch,
+  sourceLoops: readonly SketchLoopRef[],
+  initialPredicateVisitCount = 0,
+  policy: SketchGeometryPolicy = SKETCH_GEOMETRY_POLICY
+): V22RegionDiscoveryAnalysisResult {
+  const complexity: MutableComplexity = {
+    sketchEntityCount: sketch.entities.size,
+    regionCount: sourceLoops.length,
+    loopCount: sourceLoops.length,
+    segmentReferenceCount: sourceLoops.reduce(
+      (count, loop) =>
+        count + (loop.kind === "wire" ? loop.segments.length : 0),
+      0
+    ),
+    predicateVisitCount: initialPredicateVisitCount
+  };
+  const issues: V22RegionSourceIssue[] = [];
+  const limitChecks = [
+    {
+      received: sketch.entities.size,
+      maximum: CAD_V19_RESOURCE_LIMITS.maxSketchEntitiesPerEditedSketch,
+      label: "sketch entities"
+    },
+    {
+      received: sourceLoops.length,
+      maximum: CAD_V19_RESOURCE_LIMITS.maxDiscoveredCandidateRegions,
+      label: "candidate regions"
+    },
+    {
+      received: complexity.segmentReferenceCount,
+      maximum: CAD_V19_RESOURCE_LIMITS.maxSegmentReferencesPerProfile,
+      label: "segment references"
+    },
+    {
+      received: initialPredicateVisitCount,
+      maximum: CAD_V19_RESOURCE_LIMITS.maxCandidatePairEdgeVisits,
+      label: "candidate pair/edge visits"
+    }
+  ];
+  for (const check of limitChecks) {
+    if (check.received <= check.maximum) continue;
+    issues.push(
+      issue(
+        "SKETCH_REGION_COMPLEXITY_LIMIT",
+        `Region discovery exceeds the V19 ${check.label} limit.`,
+        {
+          expected: `<= ${check.maximum}`,
+          received: String(check.received)
+        }
+      )
+    );
+  }
+  if (issues.length > 0) {
+    return {
+      ok: false,
+      loops: [],
+      boundaryConflicts: [],
+      complexity: complexitySnapshot(complexity),
+      issues
+    };
+  }
+
+  const budget = new PredicateBudget(
+    complexity,
+    CAD_V19_RESOURCE_LIMITS.maxCandidatePairEdgeVisits
+  );
+  const globallySeen = new Set<string>();
+  const resolved: ResolvedLoop[] = [];
+  try {
+    for (const [loopIndex, loop] of sourceLoops.entries()) {
+      const result = resolveLoop(
+        loop,
+        "outer",
+        sketch.entities,
+        globallySeen,
+        issues,
+        { regionIndex: loopIndex },
+        policy,
+        budget
+      );
+      if (result.loop) resolved.push(result.loop);
+    }
+    if (issues.length > 0 || resolved.length !== sourceLoops.length) {
+      return {
+        ok: false,
+        loops: [],
+        boundaryConflicts: [],
+        complexity: complexitySnapshot(complexity),
+        issues
+      };
+    }
+
+    const bounds = resolved.map((loop) => loopBounds(loop, policy));
+    const containers = resolved.map(() => [] as number[]);
+    const boundaryConflicts: V22RegionDiscoveryBoundaryConflict[] = [];
+    const sweepOrder = resolved
+      .map((loop, index) => ({ index, loop, bounds: bounds[index]! }))
+      .sort(
+        (left, right) =>
+          left.bounds.min[0] - right.bounds.min[0] ||
+          left.bounds.min[1] - right.bounds.min[1] ||
+          compareSketchCanonicalKeys(left.loop.key, right.loop.key)
+      );
+    let active: typeof sweepOrder = [];
+    for (const current of sweepOrder) {
+      active = active.filter(
+        (candidate) =>
+          candidate.bounds.max[0] >=
+          current.bounds.min[0] - policy.linearTolerance
+      );
+      for (const candidate of active) {
+        budget.visit();
+        if (
+          !boundsOverlapWithTolerance(current.bounds, candidate.bounds, policy)
+        ) {
+          continue;
+        }
+        const separation = loopBoundaryDistance(
+          current.loop,
+          candidate.loop,
+          budget,
+          policy
+        );
+        if (separation <= policy.linearTolerance) {
+          boundaryConflicts.push({
+            leftLoopIndex: candidate.index,
+            rightLoopIndex: current.index,
+            separation
+          });
+          continue;
+        }
+        if (
+          boundsCouldContain(candidate.bounds, current.bounds, policy) &&
+          pointInsideLoop(current.loop.boundarySample, candidate.loop, budget)
+        ) {
+          containers[current.index]!.push(candidate.index);
+        } else if (
+          boundsCouldContain(current.bounds, candidate.bounds, policy) &&
+          pointInsideLoop(candidate.loop.boundarySample, current.loop, budget)
+        ) {
+          containers[candidate.index]!.push(current.index);
+        }
+      }
+      active.push(current);
+    }
+
+    const parents = containers.map((candidateContainers) =>
+      candidateContainers.length === 0
+        ? undefined
+        : [...candidateContainers].sort(
+            (left, right) =>
+              resolved[left]!.absoluteArea - resolved[right]!.absoluteArea ||
+              compareSketchCanonicalKeys(
+                resolved[left]!.key,
+                resolved[right]!.key
+              )
+          )[0]
+    );
+    const children = resolved.map(() => [] as number[]);
+    parents.forEach((parent, child) => {
+      if (parent !== undefined) children[parent]!.push(child);
+    });
+    for (const childIndexes of children) {
+      childIndexes.sort((left, right) =>
+        compareSketchCanonicalKeys(resolved[left]!.key, resolved[right]!.key)
+      );
+    }
+    const depthMemo = new Map<number, number>();
+    return {
+      ok: true,
+      loops: resolved.map((loop, index) => {
+        const hole = createHoleLoop(loop);
+        return {
+          outer: loop.normalized,
+          hole,
+          outerLoopKey: loop.key,
+          holeLoopKey: getSketchLoopCanonicalKey(hole),
+          entityIds: loop.entityIds,
+          signedArea: loop.absoluteArea,
+          absoluteArea: loop.absoluteArea,
+          bounds: bounds[index]!,
+          containmentDepth: containmentDepth(index, parents, depthMemo),
+          ...(parents[index] === undefined
+            ? {}
+            : { parentIndex: parents[index] }),
+          directChildIndexes: children[index]!
+        };
+      }),
+      boundaryConflicts,
+      complexity: complexitySnapshot(complexity),
+      issues: []
+    };
+  } catch (error) {
+    if (!(error instanceof PredicateBudgetExceeded)) throw error;
+    return {
+      ok: false,
+      loops: [],
+      boundaryConflicts: [],
+      complexity: complexitySnapshot(complexity),
+      issues: [
+        issue(
+          "SKETCH_REGION_COMPLEXITY_LIMIT",
+          "Region discovery exceeded the analytic pair/edge-visit limit.",
+          {
+            expected: `<= ${CAD_V19_RESOURCE_LIMITS.maxCandidatePairEdgeVisits}`,
             received: String(complexity.predicateVisitCount)
           }
         )

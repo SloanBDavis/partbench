@@ -87,7 +87,9 @@ describe("V19 protocol contract", () => {
       "SKETCH_REGION_ENTITY_UNSUPPORTED",
       "SKETCH_REGION_CONSTRUCTION_ENTITY",
       "SKETCH_REGION_ENTITY_REPEATED",
-      "SKETCH_REGION_LOOP_AREA_TOO_SMALL"
+      "SKETCH_REGION_LOOP_AREA_TOO_SMALL",
+      "SKETCH_REGION_SOURCE_REVISION_STALE",
+      "SKETCH_REGION_CURSOR_INVALID"
     ] satisfies readonly SketchRegionDiagnosticCode[];
     const dependencyCodes = [
       "SKETCH_REGION_LOOP_OPEN",
@@ -99,7 +101,7 @@ describe("V19 protocol contract", () => {
     ] satisfies readonly CadDependencyHealthIssueCode[];
 
     expect(candidate.regionCandidateKey).toContain('"region"');
-    expect(regionCodes).toHaveLength(7);
+    expect(regionCodes).toHaveLength(9);
     expect(dependencyCodes).toHaveLength(6);
   });
 
