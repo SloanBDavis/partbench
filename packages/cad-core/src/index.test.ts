@@ -42,6 +42,7 @@ import {
   CAD_PROJECT_FORMAT_VERSION_V17,
   CAD_PROJECT_FORMAT_VERSION_V18,
   CAD_PROJECT_FORMAT_VERSION_V19,
+  CAD_PROJECT_FORMAT_VERSION_V22,
   CAD_PROJECT_FORMAT_VERSION_V8,
   CAD_PROJECT_FORMAT_VERSION_V9,
   CURRENT_CAD_PROJECT_FORMAT_VERSION,
@@ -33593,6 +33594,146 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     ).toEqual(Array.from(checkpointPayload.signatureBytes));
   });
 
+  it("unions matching current and baseline checkpoint authority in WCAD v2 and rejects conflicts", async () => {
+    const { project, checkpointPayload } = createV18CheckpointFixture();
+    const engine = importCadProject({
+      ...project,
+      history: [],
+      redoStack: []
+    });
+    engine.apply({
+      op: "document.updateUnits",
+      units: "cm"
+    });
+    engine.apply({
+      op: "feature.delete",
+      id: "feat_rect_1"
+    });
+    const saved = exportCadProject(engine);
+
+    expect(saved.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V22);
+    expect(saved.document.features).toEqual([]);
+    expect(saved.document.topologyIdentity?.checkpoints).toEqual([]);
+    expect(saved.history.at(-1)?.diff.references).toMatchObject({
+      topologyCheckpointsDeleted: [
+        expect.objectContaining({ checkpointId: "checkpoint_1" })
+      ]
+    });
+    expect(saved.historyBaseline?.topologyIdentity?.checkpoints).toHaveLength(
+      1
+    );
+    const exported = await exportCadProjectToWcad(saved, {
+      topologyCheckpoints: [{ ...checkpointPayload, units: "mm" }]
+    });
+    expect(exported.checkpointPayloads).toHaveLength(1);
+    const read = await readCadProjectWcad(exported.bytes);
+    if (!read.ok) {
+      throw new Error(
+        `Expected checkpointed V22 WCAD source to import: ${JSON.stringify(read.issues)}`
+      );
+    }
+    expect(read.ok).toBe(true);
+    expect(read.project).toEqual(saved);
+    const restored = importCadProject(read.project);
+    restored.undo();
+    expect(restored.getDocument().features.has("feat_rect_1")).toBe(true);
+    expect(restored.getDocument().topologyIdentity?.checkpoints).toHaveLength(
+      1
+    );
+    restored.undo();
+    expect(restored.createSnapshot()).toEqual(saved.historyBaseline);
+    const exportedCheckpoint = exported.checkpointPayloads?.[0];
+    if (
+      exported.manifest.packageVersion !== "partbench.wcad.v2" ||
+      !exportedCheckpoint
+    ) {
+      throw new Error("Expected one V22 checkpoint package payload.");
+    }
+    const mismatchedManifest = {
+      ...structuredClone(exported.manifest),
+      topologyIdentity: {
+        ...exported.manifest.topologyIdentity,
+        checkpoints: exported.manifest.topologyIdentity.checkpoints.map(
+          (checkpoint, index) =>
+            index === 0
+              ? { ...checkpoint, bodyId: "body_manifest_mismatch" }
+              : checkpoint
+        )
+      }
+    };
+    const mismatchedRead = await readCadProjectWcad(
+      writeZipStore([
+        {
+          path: "manifest.json",
+          bytes: new TextEncoder().encode(
+            `${JSON.stringify(mismatchedManifest, null, 2)}\n`
+          )
+        },
+        { path: "document.cbor", bytes: exported.documentBytes },
+        { path: "commands.cbor", bytes: exported.commandsBytes },
+        {
+          path: exportedCheckpoint.manifestEntry.brep.path,
+          bytes: exportedCheckpoint.brepBytes
+        },
+        {
+          path: exportedCheckpoint.manifestEntry.topology.path,
+          bytes: exportedCheckpoint.topologyBytes
+        },
+        {
+          path: exportedCheckpoint.manifestEntry.signature.path,
+          bytes: exportedCheckpoint.signatureBytes
+        }
+      ])
+    );
+    expect(mismatchedRead).toMatchObject({
+      ok: false,
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          code: "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
+          path: "$.topologyIdentity.checkpoints"
+        })
+      ])
+    });
+
+    engine.apply({
+      op: "feature.extrude",
+      id: "feat_rect_1",
+      bodyId: "body_rect_1",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      depth: 3
+    });
+    engine.apply({
+      op: "topology.checkpoint.create",
+      checkpointId: "checkpoint_1",
+      bodyId: "body_rect_1",
+      sourceFeatureId: "feat_rect_1",
+      sourceIdentity: {
+        algorithm: "partbench-source-v1",
+        sha256:
+          "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      status: "active"
+    });
+    const conflictingProject = exportCadProject(engine);
+    expect(exportCadProject(importCadProject(conflictingProject))).toEqual(
+      conflictingProject
+    );
+
+    await expect(
+      exportCadProjectToWcad(conflictingProject, {
+        topologyCheckpoints: [{ ...checkpointPayload, units: "mm" }]
+      })
+    ).rejects.toMatchObject({
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          code: "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
+          path: "$.historyBaseline.topologyIdentity.checkpoints"
+        })
+      ])
+    });
+  });
+
   it("blocks WCAD v2 writes when V18 source checkpoint records have no payload bytes", async () => {
     const { project } = createV18CheckpointFixture();
 
@@ -36448,7 +36589,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     });
 
     const exportedProject = parseCadProjectJson(exportCadProjectJson(engine));
-    expect(exportedProject.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V18);
+    expect(exportedProject.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V22);
+    expect(exportedProject.historyBaseline).toBeDefined();
     expect(exportedProject.document.namedReferences).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -39579,8 +39721,9 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       ])
     );
     expect(exportCadProject(engine).schemaVersion).toBe(
-      CAD_PROJECT_FORMAT_VERSION_V18
+      CAD_PROJECT_FORMAT_VERSION_V22
     );
+    expect(exportCadProject(engine).historyBaseline).toBeDefined();
 
     engine.undo();
     expect(engine.getDocument().topologyIdentity?.anchors).toEqual([]);

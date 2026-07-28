@@ -1224,7 +1224,8 @@ const SUPPORTED_CAD_PROJECT_FORMAT_VERSIONS = new Set<string>([
 export function getCadProjectFormatVersionForDocument(
   document: CadDocument | CadDocumentSnapshot,
   history: readonly Transaction[] = [],
-  redoStack: readonly Transaction[] = []
+  redoStack: readonly Transaction[] = [],
+  historyBaseline?: CadDocumentSnapshot
 ):
   | typeof CAD_PROJECT_FORMAT_VERSION_V16
   | typeof CAD_PROJECT_FORMAT_VERSION_V17
@@ -1234,6 +1235,7 @@ export function getCadProjectFormatVersionForDocument(
   | typeof CAD_PROJECT_FORMAT_VERSION_V21
   | typeof CAD_PROJECT_FORMAT_VERSION_V22 {
   if (
+    historyBaseline !== undefined ||
     documentHasV22SourceRecords(document) ||
     [...history, ...redoStack].some(transactionRequiresV22)
   ) {
@@ -1404,6 +1406,13 @@ function semanticDiffRequiresV22(diff: SemanticDiff): boolean {
       const stored = reference as unknown as Record<string, unknown>;
       return isRecord(stored.profile) && stored.profile.kind === "regions";
     })
+  ) {
+    return true;
+  }
+
+  if (
+    (diff.references?.topologyCheckpointsDeleted?.length ?? 0) > 0 ||
+    (diff.references?.topologyAnchorsDeleted?.length ?? 0) > 0
   ) {
     return true;
   }
@@ -1628,6 +1637,11 @@ export class CadProjectImportError extends Error {
 export interface CadProject {
   readonly schemaVersion: CadProjectFormatVersion;
   readonly document: CadDocumentSnapshot;
+  /**
+   * Exact authoritative state immediately before the chronologically earliest
+   * retained transaction. V22-only.
+   */
+  readonly historyBaseline?: CadDocumentSnapshot;
   readonly history: readonly Transaction[];
   readonly redoStack: readonly Transaction[];
 }
@@ -1713,6 +1727,34 @@ interface TransactionEntry {
   transaction: Transaction;
   before: CadDocument;
   after: CadDocument;
+  beforeCounters: CadDocumentIdCounters;
+  afterCounters: CadDocumentIdCounters;
+}
+
+interface CadDocumentIdCounters {
+  readonly nextObjectNumber: number;
+  readonly nextSketchNumber: number;
+  readonly nextSketchEntityNumber: number;
+  readonly nextParameterNumber: number;
+  readonly nextSketchDimensionNumber: number;
+  readonly nextSketchConstraintNumber: number;
+  readonly nextFeatureNumber: number;
+  readonly nextBodyNumber: number;
+}
+
+function getCadDocumentSnapshotIdCounters(
+  snapshot: CadDocumentSnapshot
+): CadDocumentIdCounters {
+  return {
+    nextObjectNumber: snapshot.nextObjectNumber,
+    nextSketchNumber: snapshot.nextSketchNumber,
+    nextSketchEntityNumber: snapshot.nextSketchEntityNumber,
+    nextParameterNumber: snapshot.nextParameterNumber,
+    nextSketchDimensionNumber: snapshot.nextSketchDimensionNumber,
+    nextSketchConstraintNumber: snapshot.nextSketchConstraintNumber,
+    nextFeatureNumber: snapshot.nextFeatureNumber,
+    nextBodyNumber: snapshot.nextBodyNumber
+  };
 }
 
 interface OperationRunResult {
@@ -1795,6 +1837,8 @@ export class CadEngine {
   #document: CadDocument;
   #history: TransactionEntry[] = [];
   #redoStack: TransactionEntry[] = [];
+  #historyBaseline?: CadDocumentSnapshot;
+  #historyBaselineRequired = false;
   #nextObjectNumber = 1;
   #nextSketchNumber = 1;
   #nextSketchEntityNumber = 1;
@@ -1830,6 +1874,11 @@ export class CadEngine {
       options.nextFeatureNumber ?? inferNextFeatureNumber(document);
     this.#nextBodyNumber =
       options.nextBodyNumber ?? inferNextBodyNumber(document);
+
+    const initialSnapshot = this.createSnapshot();
+    if (!isCanonicalEmptyHistorySeedSnapshot(initialSnapshot)) {
+      this.#historyBaseline = cloneJsonSource(initialSnapshot);
+    }
   }
 
   getDocument(): CadDocument {
@@ -1844,6 +1893,27 @@ export class CadEngine {
     return this.#redoStack.map((entry) => entry.transaction);
   }
 
+  getHistoryBaseline(): CadDocumentSnapshot | undefined {
+    if (
+      !this.#historyBaseline ||
+      (this.#history.length === 0 && this.#redoStack.length === 0)
+    ) {
+      return undefined;
+    }
+
+    if (
+      !this.#historyBaselineRequired &&
+      isCanonicalImplicitHistorySeedSnapshot(
+        this.#historyBaseline,
+        this.#history.map((entry) => entry.transaction)
+      )
+    ) {
+      return undefined;
+    }
+
+    return cloneJsonSource(this.#historyBaseline);
+  }
+
   exportProject(): CadProject {
     return exportCadProject(this);
   }
@@ -1856,6 +1926,11 @@ export class CadEngine {
     this.#document = state.document;
     this.#history = state.history;
     this.#redoStack = state.redoStack;
+    this.#historyBaseline = state.historyBaseline
+      ? cloneJsonSource(state.historyBaseline)
+      : undefined;
+    this.#historyBaselineRequired =
+      normalizedProject.historyBaseline !== undefined;
     this.#parameterExpressionImportDiagnostics =
       state.parameterExpressionDiagnostics;
     this.#nextObjectNumber = normalizedProject.document.nextObjectNumber;
@@ -1895,6 +1970,30 @@ export class CadEngine {
     );
   }
 
+  #getDocumentIdCounters(): CadDocumentIdCounters {
+    return {
+      nextObjectNumber: this.#nextObjectNumber,
+      nextSketchNumber: this.#nextSketchNumber,
+      nextSketchEntityNumber: this.#nextSketchEntityNumber,
+      nextParameterNumber: this.#nextParameterNumber,
+      nextSketchDimensionNumber: this.#nextSketchDimensionNumber,
+      nextSketchConstraintNumber: this.#nextSketchConstraintNumber,
+      nextFeatureNumber: this.#nextFeatureNumber,
+      nextBodyNumber: this.#nextBodyNumber
+    };
+  }
+
+  #setDocumentIdCounters(counters: CadDocumentIdCounters): void {
+    this.#nextObjectNumber = counters.nextObjectNumber;
+    this.#nextSketchNumber = counters.nextSketchNumber;
+    this.#nextSketchEntityNumber = counters.nextSketchEntityNumber;
+    this.#nextParameterNumber = counters.nextParameterNumber;
+    this.#nextSketchDimensionNumber = counters.nextSketchDimensionNumber;
+    this.#nextSketchConstraintNumber = counters.nextSketchConstraintNumber;
+    this.#nextFeatureNumber = counters.nextFeatureNumber;
+    this.#nextBodyNumber = counters.nextBodyNumber;
+  }
+
   apply(op: CadOp, options: CadExecutionOptions = {}): ApplyResult {
     return this.applyBatch([op], options);
   }
@@ -1906,6 +2005,8 @@ export class CadEngine {
     const actor = normalizeActorMetadata(options.actor);
     const audit = normalizeAuditMetadata(options.audit, "commit", ops.length);
     const before = cloneDocument(this.#document);
+    const beforeCounters = this.#getDocumentIdCounters();
+    const branchedFromRedo = this.#redoStack.length > 0;
     const run = this.#runOperations(ops);
 
     const transaction: Transaction = {
@@ -1920,7 +2021,18 @@ export class CadEngine {
     const entry: TransactionEntry = {
       transaction,
       before,
-      after: cloneDocument(run.document)
+      after: cloneDocument(run.document),
+      beforeCounters,
+      afterCounters: {
+        nextObjectNumber: run.nextObjectNumber,
+        nextSketchNumber: run.nextSketchNumber,
+        nextSketchEntityNumber: run.nextSketchEntityNumber,
+        nextParameterNumber: run.nextParameterNumber,
+        nextSketchDimensionNumber: run.nextSketchDimensionNumber,
+        nextSketchConstraintNumber: run.nextSketchConstraintNumber,
+        nextFeatureNumber: run.nextFeatureNumber,
+        nextBodyNumber: run.nextBodyNumber
+      }
     };
 
     this.#document = run.document;
@@ -1935,6 +2047,17 @@ export class CadEngine {
     this.#nextBodyNumber = run.nextBodyNumber;
     this.#history.push(entry);
     this.#redoStack = [];
+    if (this.#historyBaseline) {
+      const requiredForCurrentLineage = !isCanonicalImplicitHistorySeedSnapshot(
+        this.#historyBaseline,
+        this.#history.map((candidate) => candidate.transaction)
+      );
+      if (requiredForCurrentLineage) {
+        this.#historyBaselineRequired = true;
+      } else if (branchedFromRedo) {
+        this.#historyBaselineRequired = false;
+      }
+    }
 
     return {
       transaction,
@@ -3565,6 +3688,7 @@ export class CadEngine {
     };
 
     this.#document = cloneDocument(entry.before);
+    this.#setDocumentIdCounters(entry.beforeCounters);
     this.#redoStack.push(entry);
 
     return {
@@ -3586,6 +3710,7 @@ export class CadEngine {
     };
 
     this.#document = cloneDocument(entry.after);
+    this.#setDocumentIdCounters(entry.afterCounters);
     this.#history.push(entry);
 
     return {
@@ -3873,14 +3998,22 @@ export function exportCadProject(engine: CadEngine): CadProject {
   const snapshot = engine.createSnapshot();
   const history = engine.getTransactions();
   const redoStack = engine.getRedoStack();
+  const historyBaseline = engine.getHistoryBaseline();
   const schemaVersion = getCadProjectFormatVersionForDocument(
     snapshot,
     history,
-    redoStack
+    redoStack,
+    historyBaseline
   );
   return {
     schemaVersion,
     document: serializeCadDocumentForSchema(snapshot, schemaVersion),
+    ...(historyBaseline
+      ? {
+          historyBaseline:
+            createCanonicalV22HistoryBaselineSnapshot(historyBaseline)
+        }
+      : {}),
     history,
     redoStack
   };
@@ -3924,6 +4057,26 @@ function serializeCadDocumentForSchema(
           : serializeFeatureForLegacySchema(feature, entityKindById)
     ) as readonly FeatureSnapshotCurrent[]
   };
+}
+
+function createCanonicalV22HistoryBaselineSnapshot(
+  document: CadDocumentSnapshot
+): CadDocumentSnapshot {
+  const normalizedDocument = createCadDocumentFromSnapshot(document);
+  return serializeCadDocumentForSchema(
+    createCadDocumentSnapshot(
+      normalizedDocument,
+      document.nextObjectNumber,
+      document.nextSketchNumber,
+      document.nextSketchEntityNumber,
+      document.nextParameterNumber,
+      document.nextSketchDimensionNumber,
+      document.nextSketchConstraintNumber,
+      document.nextFeatureNumber,
+      document.nextBodyNumber
+    ),
+    CAD_PROJECT_FORMAT_VERSION_V22
+  );
 }
 
 function serializeSketchDimensionForSchema(
@@ -4087,6 +4240,24 @@ function cloneJsonSource<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+interface CadProjectCommandsSource {
+  readonly historyBaseline?: CadDocumentSnapshot;
+  readonly history: readonly Transaction[];
+  readonly redoStack: readonly Transaction[];
+}
+
+function createCadProjectCommandsSource(
+  project: CadProject
+): CadProjectCommandsSource {
+  return {
+    ...(project.historyBaseline
+      ? { historyBaseline: project.historyBaseline }
+      : {}),
+    history: project.history,
+    redoStack: project.redoStack
+  };
+}
+
 export function createCadProjectSourceIdentity(
   project: CadProject
 ): WcadSourceIdentity {
@@ -4115,10 +4286,7 @@ export function createCadProjectSourceIdentity(
     documentSchemaVersion: project.schemaVersion,
     units: project.document.units,
     documentBytes: encodeCanonicalCbor(project.document),
-    commandsBytes: encodeCanonicalCbor({
-      history: project.history,
-      redoStack: project.redoStack
-    })
+    commandsBytes: encodeCanonicalCbor(createCadProjectCommandsSource(project))
   });
 }
 
@@ -4163,6 +4331,11 @@ export async function exportCadProjectToWcad(
   project: CadProject,
   options: ExportCadProjectWcadOptions = {}
 ): Promise<WcadPackageExportResult> {
+  if (project.historyBaseline !== undefined) {
+    assertValidCadProject(project);
+    createProjectState(normalizeCadProject(project));
+  }
+
   if (
     project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18 ||
     project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19 ||
@@ -4195,10 +4368,9 @@ async function exportCadProjectToWcadV1(
   }
 
   const documentBytes = encodeCanonicalCbor(project.document);
-  const commandsBytes = encodeCanonicalCbor({
-    history: project.history,
-    redoStack: project.redoStack
-  });
+  const commandsBytes = encodeCanonicalCbor(
+    createCadProjectCommandsSource(project)
+  );
   const [documentEntry, commandsEntry, sourceIdentity] = await Promise.all([
     createWcadPackageEntryMetadata({
       path: WCAD_DOCUMENT_ENTRY_PATH,
@@ -4273,18 +4445,38 @@ async function exportCadProjectToWcadV2(
     ]);
   }
 
-  const topologyIdentityIssues = project.document.topologyIdentity
-    ? validateTopologyIdentitySourceSnapshot(project.document.topologyIdentity)
-    : [];
+  const topologyIdentitySources = [
+    {
+      path: "$.document.topologyIdentity",
+      snapshot: project.document.topologyIdentity
+    },
+    {
+      path: "$.historyBaseline.topologyIdentity",
+      snapshot: project.historyBaseline?.topologyIdentity
+    }
+  ].filter(
+    (
+      source
+    ): source is {
+      readonly path: string;
+      readonly snapshot: NonNullable<CadDocumentSnapshot["topologyIdentity"]>;
+    } => source.snapshot !== undefined
+  );
+  const topologyIdentityIssues = topologyIdentitySources.flatMap((source) =>
+    validateTopologyIdentitySourceSnapshot(source.snapshot).map((issue) => ({
+      sourcePath: source.path,
+      issue
+    }))
+  );
 
-  if (topologyIdentityIssues.some((issue) => issue.severity === "error")) {
+  if (topologyIdentityIssues.some(({ issue }) => issue.severity === "error")) {
     throw new WcadPackageImportError(
-      topologyIdentityIssues.map((issue) =>
+      topologyIdentityIssues.map(({ sourcePath, issue }) =>
         createWcadPackageIssue(
           "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
           "error",
           `Topology identity source block is invalid: ${issue.message}`,
-          "$.document.topologyIdentity",
+          sourcePath,
           issue.expected,
           issue.received
         )
@@ -4292,13 +4484,20 @@ async function exportCadProjectToWcadV2(
     );
   }
 
-  validateWcadV2CheckpointPayloadInputs(project, checkpointInputs);
+  const checkpointValidationIssues = (
+    await import("./wcadHistoryBaselineCheckpoints")
+  ).validateWcadV2CheckpointPayloadInputsForProject(project, checkpointInputs, {
+    stringify: stableJsonStringify,
+    isCadBodyExactTopologySnapshot
+  });
+  if (checkpointValidationIssues.length > 0) {
+    throw new WcadPackageImportError(checkpointValidationIssues);
+  }
 
   const documentBytes = encodeCanonicalCbor(project.document);
-  const commandsBytes = encodeCanonicalCbor({
-    history: project.history,
-    redoStack: project.redoStack
-  });
+  const commandsBytes = encodeCanonicalCbor(
+    createCadProjectCommandsSource(project)
+  );
   const checkpointPayloadsWithoutIdentity =
     await createWcadV2CheckpointPayloadsWithoutIdentity(
       checkpointInputs,
@@ -4637,6 +4836,9 @@ export async function readCadProjectWcad(
   const candidateProject = {
     schemaVersion: manifestValue.document.schemaVersion,
     document: documentPayload,
+    ...(commandsPayload.historyBaseline !== undefined
+      ? { historyBaseline: commandsPayload.historyBaseline }
+      : {}),
     history: commandsPayload.history,
     redoStack: commandsPayload.redoStack
   };
@@ -4819,16 +5021,27 @@ async function readCadProjectWcadV2(
   const candidateProject = {
     schemaVersion: manifestValue.document.schemaVersion,
     document: documentPayload,
+    ...(commandsPayload.historyBaseline !== undefined
+      ? { historyBaseline: commandsPayload.historyBaseline }
+      : {}),
     history: commandsPayload.history,
     redoStack: commandsPayload.redoStack
   };
 
   try {
     const project = parseCadProject(candidateProject);
-    validateWcadV2CheckpointPayloadSourceLinks(
-      project,
-      checkpointPayloadReadSet.decodedByCheckpointId,
-      issues
+    issues.push(
+      ...(
+        await import("./wcadHistoryBaselineCheckpoints")
+      ).validateWcadV2CheckpointPayloadSourceLinksForProject(
+        project,
+        checkpointPayloadReadSet.decodedByCheckpointId,
+        checkpointPayloadReadSet.payloads,
+        {
+          stringify: stableJsonStringify,
+          isCadBodyExactTopologySnapshot
+        }
+      )
     );
 
     if (hasError(issues)) {
@@ -4893,176 +5106,6 @@ interface WcadV2CheckpointPayloadReadSet {
     string,
     DecodedWcadV2CheckpointPayload
   >;
-}
-
-function validateWcadV2CheckpointPayloadInputs(
-  project: CadProject,
-  checkpointInputs: readonly WcadTopologyCheckpointPayloadInput[]
-): void {
-  const sourceCheckpointIds = new Set(
-    project.document.topologyIdentity?.checkpoints.map(
-      (checkpoint) => checkpoint.checkpointId
-    ) ?? []
-  );
-  const sourceCheckpointsById = new Map(
-    project.document.topologyIdentity?.checkpoints.map((checkpoint) => [
-      checkpoint.checkpointId,
-      checkpoint
-    ]) ?? []
-  );
-  const inputCheckpointIds = new Set<string>();
-  const issues: WcadPackageValidationIssue[] = [];
-
-  for (const input of checkpointInputs) {
-    let paths: ReturnType<typeof createWcadV2CheckpointEntryPaths> | undefined;
-
-    try {
-      paths = createWcadV2CheckpointEntryPaths(input.checkpointId);
-    } catch {
-      issues.push(
-        createWcadPackageIssue(
-          "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
-          "error",
-          "WCAD v2 checkpoint payload input has an invalid checkpoint id.",
-          "$.topologyCheckpoints.checkpointId",
-          "package-safe checkpoint id",
-          input.checkpointId
-        )
-      );
-      continue;
-    }
-
-    if (inputCheckpointIds.has(input.checkpointId)) {
-      issues.push(
-        createWcadPackageIssue(
-          "WCAD_DUPLICATE_ENTRY",
-          "error",
-          "WCAD v2 checkpoint payload input duplicates a checkpoint id.",
-          "$.topologyCheckpoints",
-          undefined,
-          input.checkpointId
-        )
-      );
-    }
-
-    inputCheckpointIds.add(input.checkpointId);
-
-    if (!sourceCheckpointIds.has(input.checkpointId)) {
-      issues.push(
-        createWcadPackageIssue(
-          "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
-          "error",
-          "WCAD v2 checkpoint payload input has no matching topologyIdentity source checkpoint record.",
-          "$.topologyCheckpoints",
-          "source checkpoint record",
-          input.checkpointId
-        )
-      );
-    } else {
-      const sourceCheckpoint = sourceCheckpointsById.get(input.checkpointId);
-
-      if (sourceCheckpoint) {
-        validateSourceCheckpointPaths(sourceCheckpoint, paths, issues);
-      }
-    }
-
-    const topologySnapshot = validateCheckpointTopologyPayload(
-      input.topologyBytes,
-      paths.topology,
-      issues
-    );
-    const signaturePayload = validateCheckpointSignaturePayload(
-      input.signatureBytes,
-      paths.signature,
-      issues
-    );
-
-    validateCheckpointPayloadConsistency(
-      {
-        checkpointId: input.checkpointId,
-        topologySnapshot,
-        signaturePayload,
-        anchors:
-          project.document.topologyIdentity?.anchors.filter(
-            (anchor) => anchor.checkpointId === input.checkpointId
-          ) ?? []
-      },
-      issues,
-      { topology: paths.topology, signature: paths.signature }
-    );
-  }
-
-  for (const checkpointId of sourceCheckpointIds) {
-    if (!inputCheckpointIds.has(checkpointId)) {
-      issues.push(
-        createWcadPackageIssue(
-          "WCAD_MISSING_CHECKPOINT_ENTRY",
-          "error",
-          "WCAD v2 writer requires payload bytes for every topologyIdentity source checkpoint record.",
-          "$.document.topologyIdentity.checkpoints",
-          checkpointId,
-          "missing"
-        )
-      );
-    }
-  }
-
-  if (issues.length > 0) {
-    throw new WcadPackageImportError(issues);
-  }
-}
-
-function validateSourceCheckpointPaths(
-  checkpoint: NonNullable<
-    CadDocumentSnapshot["topologyIdentity"]
-  >["checkpoints"][number],
-  paths: ReturnType<typeof createWcadV2CheckpointEntryPaths>,
-  issues: WcadPackageValidationIssue[]
-): void {
-  if (checkpoint.brepEntryPath !== paths.brep) {
-    issues.push(
-      createWcadPackageIssue(
-        "WCAD_INVALID_PACKAGE_PATH",
-        "error",
-        "Topology checkpoint source record B-rep path must match its checkpoint id.",
-        "$.document.topologyIdentity.checkpoints.brepEntryPath",
-        paths.brep,
-        checkpoint.brepEntryPath,
-        checkpoint.brepEntryPath,
-        "checkpoint-brep"
-      )
-    );
-  }
-
-  if (checkpoint.topologyEntryPath !== paths.topology) {
-    issues.push(
-      createWcadPackageIssue(
-        "WCAD_INVALID_PACKAGE_PATH",
-        "error",
-        "Topology checkpoint source record topology path must match its checkpoint id.",
-        "$.document.topologyIdentity.checkpoints.topologyEntryPath",
-        paths.topology,
-        checkpoint.topologyEntryPath,
-        checkpoint.topologyEntryPath,
-        "checkpoint-topology"
-      )
-    );
-  }
-
-  if (checkpoint.signatureEntryPath !== paths.signature) {
-    issues.push(
-      createWcadPackageIssue(
-        "WCAD_INVALID_PACKAGE_PATH",
-        "error",
-        "Topology checkpoint source record signature path must match its checkpoint id.",
-        "$.document.topologyIdentity.checkpoints.signatureEntryPath",
-        paths.signature,
-        checkpoint.signatureEntryPath,
-        checkpoint.signatureEntryPath,
-        "checkpoint-signature"
-      )
-    );
-  }
 }
 
 async function createWcadV2CheckpointPayloadsWithoutIdentity(
@@ -5131,6 +5174,7 @@ async function readWcadV2CheckpointPayloads(
     string,
     DecodedWcadV2CheckpointPayload
   >();
+  const checkpointValidation = await import("./wcadHistoryBaselineCheckpoints");
 
   for (const checkpoint of manifest.topologyIdentity.checkpoints) {
     const brepBytes = await readRequiredWcadV2CheckpointBytes(
@@ -5153,22 +5197,23 @@ async function readWcadV2CheckpointPayloads(
     );
 
     const topologySnapshot = topologyBytes
-      ? validateCheckpointTopologyPayload(
+      ? checkpointValidation.validateCheckpointTopologyPayload(
           topologyBytes,
           checkpoint.topology.path,
-          issues
+          issues,
+          isCadBodyExactTopologySnapshot
         )
       : undefined;
 
     const signaturePayload = signatureBytes
-      ? validateCheckpointSignaturePayload(
+      ? checkpointValidation.validateCheckpointSignaturePayload(
           signatureBytes,
           checkpoint.signature.path,
           issues
         )
       : undefined;
 
-    validateCheckpointPayloadConsistency(
+    checkpointValidation.validateCheckpointPayloadConsistency(
       {
         checkpointId: checkpoint.checkpointId,
         topologySnapshot,
@@ -5242,367 +5287,6 @@ async function readRequiredWcadV2CheckpointBytes(
   );
 
   return bytes;
-}
-
-function validateCheckpointTopologyPayload(
-  bytes: Uint8Array,
-  entryPath: string,
-  issues: WcadPackageValidationIssue[]
-): CadBodyExactTopologySnapshot | undefined {
-  const payload = decodeCheckpointCborPayload(
-    bytes,
-    entryPath,
-    "checkpoint-topology",
-    issues
-  );
-
-  if (payload === undefined) {
-    return undefined;
-  }
-
-  if (!isCadBodyExactTopologySnapshot(payload)) {
-    issues.push(
-      createWcadPackageIssue(
-        "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
-        "error",
-        "topology.cbor must contain a compatible exact topology snapshot with valid entity descriptors.",
-        "$",
-        "compatible exact topology snapshot",
-        "invalid",
-        entryPath,
-        "checkpoint-topology"
-      )
-    );
-    return undefined;
-  }
-
-  return payload;
-}
-
-function validateCheckpointSignaturePayload(
-  bytes: Uint8Array,
-  entryPath: string,
-  issues: WcadPackageValidationIssue[]
-): WcadTopologyCheckpointSignaturePayload | undefined {
-  const payload = decodeCheckpointCborPayload(
-    bytes,
-    entryPath,
-    "checkpoint-signature",
-    issues
-  );
-
-  if (payload === undefined) {
-    return undefined;
-  }
-
-  if (!isWcadTopologyCheckpointSignaturePayload(payload)) {
-    issues.push(
-      createWcadPackageIssue(
-        "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
-        "error",
-        "signature.cbor must contain a checkpoint signature payload matching the V13 package contract.",
-        "$",
-        "checkpoint signature payload",
-        "invalid",
-        entryPath,
-        "checkpoint-signature"
-      )
-    );
-    return undefined;
-  }
-
-  return payload;
-}
-
-function decodeCheckpointCborPayload(
-  bytes: Uint8Array,
-  entryPath: string,
-  entryRole: Extract<
-    WcadPackageEntryRole,
-    "checkpoint-topology" | "checkpoint-signature"
-  >,
-  issues: WcadPackageValidationIssue[]
-): unknown | undefined {
-  try {
-    return decodeCanonicalCbor(bytes);
-  } catch (error) {
-    issues.push(
-      createWcadPackageIssue(
-        "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
-        "error",
-        error instanceof Error
-          ? `${entryPath} could not be decoded: ${error.message}`
-          : `${entryPath} could not be decoded.`,
-        "$",
-        "canonical CBOR checkpoint payload",
-        error instanceof CanonicalCborDecodeError ? error.message : "invalid",
-        entryPath,
-        entryRole
-      )
-    );
-    return undefined;
-  }
-}
-
-function validateCheckpointPayloadConsistency(
-  input: {
-    readonly checkpointId: string;
-    readonly topologySnapshot?: CadBodyExactTopologySnapshot;
-    readonly signaturePayload?: WcadTopologyCheckpointSignaturePayload;
-    readonly anchors: readonly CadTopologyAnchorSourceRecord[];
-  },
-  issues: WcadPackageValidationIssue[],
-  entryPaths: {
-    readonly topology: string;
-    readonly signature: string;
-  }
-): void {
-  const { topologySnapshot, signaturePayload } = input;
-
-  if (!topologySnapshot || !signaturePayload) {
-    return;
-  }
-
-  if (signaturePayload.checkpointId !== input.checkpointId) {
-    issues.push(
-      createWcadPackageIssue(
-        "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
-        "error",
-        "Checkpoint signature payload checkpointId must match the checkpoint entry.",
-        "$.checkpointId",
-        input.checkpointId,
-        signaturePayload.checkpointId,
-        entryPaths.signature,
-        "checkpoint-signature"
-      )
-    );
-  }
-
-  if (signaturePayload.signature !== topologySnapshot.signature) {
-    issues.push(
-      createWcadPackageIssue(
-        "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
-        "error",
-        "Checkpoint signature payload must match topology.cbor snapshot signature.",
-        "$.signature",
-        topologySnapshot.signature,
-        signaturePayload.signature,
-        entryPaths.signature,
-        "checkpoint-signature"
-      )
-    );
-  }
-
-  if (signaturePayload.entityCount !== topologySnapshot.entityCount) {
-    issues.push(
-      createWcadPackageIssue(
-        "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
-        "error",
-        "Checkpoint signature payload entityCount must match topology.cbor.",
-        "$.entityCount",
-        topologySnapshot.entityCount,
-        signaturePayload.entityCount,
-        entryPaths.signature,
-        "checkpoint-signature"
-      )
-    );
-  }
-
-  if (signaturePayload.entities) {
-    validateCheckpointSignatureEntities(
-      topologySnapshot,
-      signaturePayload,
-      issues,
-      entryPaths.signature
-    );
-  }
-
-  validateCheckpointAnchorPayloadEntities(
-    input.anchors,
-    topologySnapshot,
-    issues,
-    entryPaths.topology
-  );
-}
-
-function validateWcadV2CheckpointPayloadSourceLinks(
-  project: CadProject,
-  decodedByCheckpointId: ReadonlyMap<string, DecodedWcadV2CheckpointPayload>,
-  issues: WcadPackageValidationIssue[]
-): void {
-  const topologyIdentity = project.document.topologyIdentity;
-
-  if (!topologyIdentity) {
-    return;
-  }
-
-  for (const checkpoint of topologyIdentity.checkpoints) {
-    const decoded = decodedByCheckpointId.get(checkpoint.checkpointId);
-
-    validateCheckpointPayloadConsistency(
-      {
-        checkpointId: checkpoint.checkpointId,
-        topologySnapshot: decoded?.topologySnapshot,
-        signaturePayload: decoded?.signaturePayload,
-        anchors: topologyIdentity.anchors.filter(
-          (anchor) => anchor.checkpointId === checkpoint.checkpointId
-        )
-      },
-      issues,
-      {
-        topology: checkpoint.topologyEntryPath,
-        signature: checkpoint.signatureEntryPath
-      }
-    );
-  }
-}
-
-function validateCheckpointSignatureEntities(
-  topologySnapshot: CadBodyExactTopologySnapshot,
-  signaturePayload: WcadTopologyCheckpointSignaturePayload,
-  issues: WcadPackageValidationIssue[],
-  entryPath: string
-): void {
-  const topologyEntitiesById = new Map(
-    topologySnapshot.entities.map((entity) => [entity.localId, entity])
-  );
-
-  for (const entity of signaturePayload.entities ?? []) {
-    const topologyEntity = topologyEntitiesById.get(entity.localId);
-
-    if (!topologyEntity) {
-      issues.push(
-        createWcadPackageIssue(
-          "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
-          "error",
-          "Checkpoint signature payload entity must exist in topology.cbor.",
-          "$.entities",
-          "topology entity localId",
-          entity.localId,
-          entryPath,
-          "checkpoint-signature"
-        )
-      );
-      continue;
-    }
-
-    if (
-      topologyEntity.kind !== entity.kind ||
-      topologyEntity.signature !== entity.signature
-    ) {
-      issues.push(
-        createWcadPackageIssue(
-          "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
-          "error",
-          "Checkpoint signature payload entity kind/signature must match topology.cbor.",
-          "$.entities",
-          `${topologyEntity.kind}:${topologyEntity.signature}`,
-          `${entity.kind}:${entity.signature}`,
-          entryPath,
-          "checkpoint-signature"
-        )
-      );
-    }
-  }
-}
-
-function validateCheckpointAnchorPayloadEntities(
-  anchors: readonly CadTopologyAnchorSourceRecord[],
-  topologySnapshot: CadBodyExactTopologySnapshot,
-  issues: WcadPackageValidationIssue[],
-  entryPath: string
-): void {
-  const topologyEntitiesById = new Map(
-    topologySnapshot.entities.map((entity) => [entity.localId, entity])
-  );
-
-  for (const anchor of anchors) {
-    const topologyEntity = topologyEntitiesById.get(anchor.checkpointEntityId);
-
-    if (!topologyEntity) {
-      issues.push(
-        createWcadPackageIssue(
-          "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
-          "error",
-          "Topology anchor source record points to a checkpoint entity missing from topology.cbor.",
-          "$.document.topologyIdentity.anchors.checkpointEntityId",
-          "checkpoint topology entity",
-          anchor.checkpointEntityId,
-          entryPath,
-          "checkpoint-topology"
-        )
-      );
-      continue;
-    }
-
-    if (topologyEntity.kind !== anchor.entityKind) {
-      issues.push(
-        createWcadPackageIssue(
-          "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
-          "error",
-          "Topology anchor source record entityKind must match topology.cbor entity kind.",
-          "$.document.topologyIdentity.anchors.entityKind",
-          topologyEntity.kind,
-          anchor.entityKind,
-          entryPath,
-          "checkpoint-topology"
-        )
-      );
-    }
-  }
-}
-
-function isWcadTopologyCheckpointSignaturePayload(
-  value: unknown
-): value is WcadTopologyCheckpointSignaturePayload {
-  if (
-    !isRecord(value) ||
-    typeof value.checkpointId !== "string" ||
-    value.checkpointId.trim().length === 0 ||
-    value.signatureAlgorithm !== "partbench-derived-topology-snapshot-v1" ||
-    typeof value.signature !== "string" ||
-    value.signature.trim().length === 0 ||
-    !isNonNegativeInteger(value.entityCount)
-  ) {
-    return false;
-  }
-
-  if (value.entities !== undefined) {
-    if (
-      !Array.isArray(value.entities) ||
-      value.entities.length !== value.entityCount ||
-      !value.entities.every(isWcadTopologyCheckpointSignatureEntity)
-    ) {
-      return false;
-    }
-
-    const ids = new Set<string>();
-
-    for (const entity of value.entities) {
-      if (ids.has(entity.localId)) {
-        return false;
-      }
-
-      ids.add(entity.localId);
-    }
-  }
-
-  return true;
-}
-
-function isWcadTopologyCheckpointSignatureEntity(
-  value: unknown
-): value is NonNullable<
-  WcadTopologyCheckpointSignaturePayload["entities"]
->[number] {
-  return (
-    isRecord(value) &&
-    typeof value.localId === "string" &&
-    value.localId.trim().length > 0 &&
-    isCadBodyExactTopologyEntityKind(value.kind) &&
-    typeof value.signature === "string" &&
-    value.signature.trim().length > 0
-  );
 }
 
 function getCheckpointIdFromPayloadPath(path: string): string {
@@ -5960,7 +5644,9 @@ type MutableReferenceSemanticDiff = {
   namedRepaired: CadNamedReferenceRepairRef[];
   namedDeleted: CadNamedReferenceRef[];
   topologyCheckpointsCreated: CadTopologyCheckpointRef[];
+  topologyCheckpointsDeleted?: CadTopologyCheckpointRef[];
   topologyAnchorsCreated: CadTopologyAnchorRef[];
+  topologyAnchorsDeleted?: CadTopologyAnchorRef[];
   topologyAnchorsRepaired: CadTopologyAnchorRepairRef[];
 };
 
@@ -13791,6 +13477,63 @@ function deleteFeature(
   state.features.delete(featureId);
   pushFeatureDeleted(diff, featureRef(state, feature));
   pushBodyDeleted(diff, bodyRef(feature));
+  removeDeletedFeatureTopologyIdentity(state, feature, diff);
+}
+
+function removeDeletedFeatureTopologyIdentity(
+  state: MutableDocumentState,
+  feature: Feature,
+  diff: MutableSemanticDiff
+): void {
+  const topologyIdentity = state.topologyIdentity;
+  if (!topologyIdentity) {
+    return;
+  }
+
+  const deletedCheckpoints = topologyIdentity.checkpoints.filter(
+    (checkpoint) =>
+      checkpoint.bodyId === feature.bodyId ||
+      checkpoint.sourceFeatureId === feature.id
+  );
+  const deletedCheckpointIds = new Set(
+    deletedCheckpoints.map((checkpoint) => checkpoint.checkpointId)
+  );
+  const deletedAnchors = topologyIdentity.anchors.filter(
+    (anchor) =>
+      anchor.bodyId === feature.bodyId ||
+      anchor.sourceFeatureId === feature.id ||
+      deletedCheckpointIds.has(anchor.checkpointId)
+  );
+  if (deletedCheckpoints.length === 0 && deletedAnchors.length === 0) {
+    return;
+  }
+
+  const deletedAnchorIds = new Set(
+    deletedAnchors.map((anchor) => anchor.anchorId)
+  );
+
+  for (const checkpoint of deletedCheckpoints) {
+    pushTopologyCheckpointDeleted(diff, checkpoint);
+  }
+  for (const anchor of deletedAnchors) {
+    pushTopologyAnchorDeleted(diff, anchor);
+  }
+
+  state.topologyIdentity = {
+    ...topologyIdentity,
+    checkpoints: topologyIdentity.checkpoints.filter(
+      (checkpoint) => !deletedCheckpointIds.has(checkpoint.checkpointId)
+    ),
+    anchors: topologyIdentity.anchors.filter(
+      (anchor) => !deletedAnchorIds.has(anchor.anchorId)
+    ),
+    repairs: topologyIdentity.repairs.filter(
+      (repair) =>
+        !deletedAnchorIds.has(repair.anchorId) &&
+        !deletedCheckpointIds.has(repair.previousCheckpointId) &&
+        !deletedCheckpointIds.has(repair.replacementCheckpointId)
+    )
+  };
 }
 
 function updateExtrudeFeature(
@@ -21695,7 +21438,7 @@ function featureRef(
   }
 
   if (feature.kind === "revolve") {
-    if (feature.profile.kind === "wire") {
+    if (feature.profile.kind !== "entity") {
       return {
         id: feature.id,
         kind: "revolve",
@@ -21738,7 +21481,7 @@ function featureRef(
     };
   }
 
-  if (feature.profile.kind === "wire") {
+  if (feature.profile.kind !== "entity") {
     return {
       id: feature.id,
       kind: "extrude",
@@ -22216,6 +21959,15 @@ function pushTopologyCheckpointCreated(
   );
 }
 
+function pushTopologyCheckpointDeleted(
+  diff: MutableSemanticDiff,
+  checkpoint: CadTopologyCheckpointSourceRecord
+): void {
+  const references = ensureReferenceDiff(diff);
+  references.topologyCheckpointsDeleted ??= [];
+  references.topologyCheckpointsDeleted.push(topologyCheckpointRef(checkpoint));
+}
+
 function pushTopologyAnchorCreated(
   diff: MutableSemanticDiff,
   anchor: CadTopologyAnchorSourceRecord
@@ -22223,6 +21975,15 @@ function pushTopologyAnchorCreated(
   ensureReferenceDiff(diff).topologyAnchorsCreated.push(
     topologyAnchorRef(anchor)
   );
+}
+
+function pushTopologyAnchorDeleted(
+  diff: MutableSemanticDiff,
+  anchor: CadTopologyAnchorSourceRecord
+): void {
+  const references = ensureReferenceDiff(diff);
+  references.topologyAnchorsDeleted ??= [];
+  references.topologyAnchorsDeleted.push(topologyAnchorRef(anchor));
 }
 
 function pushTopologyAnchorRepaired(
@@ -27664,6 +27425,7 @@ function createProjectState(project: CadProject): {
   readonly document: CadDocument;
   readonly history: TransactionEntry[];
   readonly redoStack: TransactionEntry[];
+  readonly historyBaseline?: CadDocumentSnapshot;
   readonly parameterExpressionDiagnostics: readonly CadParameterExpressionDiagnostic[];
 } {
   const normalizedProject: CadProject = {
@@ -27673,7 +27435,14 @@ function createProjectState(project: CadProject): {
         ? normalizeCadDocumentV22Source(project.document)
         : project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V21
           ? normalizeCadDocumentV21Source(project.document)
-          : project.document
+          : project.document,
+    ...(project.historyBaseline
+      ? {
+          historyBaseline: createCanonicalV22HistoryBaselineSnapshot(
+            project.historyBaseline
+          )
+        }
+      : {})
   };
   const parameterExpressionImport = normalizeImportedParameterExpressions(
     normalizedProject.document
@@ -27686,16 +27455,28 @@ function createProjectState(project: CadProject): {
   let historyState: {
     readonly document: CadDocument;
     readonly entries: TransactionEntry[];
+    readonly counters: CadDocumentIdCounters;
   };
   let redoEntriesInApplyOrder: {
     readonly document: CadDocument;
     readonly entries: TransactionEntry[];
+    readonly counters: CadDocumentIdCounters;
   };
+  const replayInitialSnapshot =
+    createHistoryReplayInitialSnapshot(projectForReplay);
 
   try {
     historyState = createTransactionEntries(
       projectForReplay.history,
-      createHistoryReplayInitialDocument(projectForReplay)
+      createCadDocumentFromSnapshot(replayInitialSnapshot),
+      replayInitialSnapshot.nextObjectNumber,
+      replayInitialSnapshot.nextSketchNumber,
+      replayInitialSnapshot.nextSketchEntityNumber,
+      replayInitialSnapshot.nextParameterNumber,
+      replayInitialSnapshot.nextSketchDimensionNumber,
+      replayInitialSnapshot.nextSketchConstraintNumber,
+      replayInitialSnapshot.nextFeatureNumber,
+      replayInitialSnapshot.nextBodyNumber
     );
   } catch (error) {
     throwProjectTransactionHistoryError("$.history", error);
@@ -27705,7 +27486,11 @@ function createProjectState(project: CadProject): {
     projectForReplay.history.length > 0 ||
     projectForReplay.redoStack.length > 0
   ) {
-    assertProjectDocumentMatchesReplay(projectForReplay, historyState.document);
+    assertProjectDocumentMatchesReplay(
+      projectForReplay,
+      historyState.document,
+      historyState.counters
+    );
   }
 
   try {
@@ -27729,6 +27514,25 @@ function createProjectState(project: CadProject): {
     document: createCadDocumentFromSnapshot(projectForReplay.document),
     history: historyState.entries,
     redoStack: [...redoEntriesInApplyOrder.entries].reverse(),
+    ...(projectForReplay.historyBaseline
+      ? {
+          historyBaseline: cloneJsonSource(projectForReplay.historyBaseline)
+        }
+      : projectForReplay.history.length === 0 &&
+          projectForReplay.redoStack.length === 0 &&
+          !isCanonicalEmptyHistorySeedSnapshot(projectForReplay.document)
+        ? {
+            historyBaseline: createCanonicalV22HistoryBaselineSnapshot(
+              projectForReplay.document
+            )
+          }
+        : !isCanonicalEmptyHistorySeedSnapshot(replayInitialSnapshot)
+          ? {
+              historyBaseline: createCanonicalV22HistoryBaselineSnapshot(
+                replayInitialSnapshot
+              )
+            }
+          : {}),
     parameterExpressionDiagnostics: parameterExpressionImport.diagnostics
   };
 }
@@ -27787,6 +27591,17 @@ function normalizeImportedParameterExpressions(document: CadDocumentSnapshot): {
   };
 }
 
+function createHistoryReplayInitialSnapshot(
+  project: CadProject
+): CadDocumentSnapshot {
+  if (project.historyBaseline) {
+    return cloneJsonSource(project.historyBaseline);
+  }
+
+  const document = createHistoryReplayInitialDocument(project);
+  return createCadDocumentSnapshot(document);
+}
+
 function createHistoryReplayInitialDocument(project: CadProject): CadDocument {
   if (
     project.document.topologyIdentity === undefined ||
@@ -27808,15 +27623,54 @@ function createHistoryReplayInitialDocument(project: CadProject): CadDocument {
   );
 }
 
+function isCanonicalImplicitHistorySeedSnapshot(
+  snapshot: CadDocumentSnapshot,
+  history: readonly Transaction[]
+): boolean {
+  const project: CadProject = {
+    schemaVersion: CAD_PROJECT_FORMAT_VERSION_V22,
+    document: snapshot,
+    history,
+    redoStack: []
+  };
+  const implicitDocument = createHistoryReplayInitialDocument(project);
+  const implicitSnapshot = createCadDocumentSnapshot(implicitDocument);
+  return stableJsonEqual(
+    serializeCadDocumentForSchema(snapshot, CAD_PROJECT_FORMAT_VERSION_V22),
+    serializeCadDocumentForSchema(
+      implicitSnapshot,
+      CAD_PROJECT_FORMAT_VERSION_V22
+    )
+  );
+}
+
+function isCanonicalEmptyHistorySeedSnapshot(
+  snapshot: CadDocumentSnapshot
+): boolean {
+  return stableJsonEqual(
+    serializeCadDocumentForSchema(snapshot, CAD_PROJECT_FORMAT_VERSION_V22),
+    serializeCadDocumentForSchema(
+      createCadDocumentSnapshot(createCadDocument()),
+      CAD_PROJECT_FORMAT_VERSION_V22
+    )
+  );
+}
+
 function transactionHasTopologyIdentityMutation(
   transaction: Transaction
 ): boolean {
-  return transaction.ops.some(
-    (op) =>
-      op.op === "topology.checkpoint.create" ||
-      op.op === "topology.anchor.create" ||
-      op.op === "topology.anchor.repair" ||
-      (op.op === "project.importStep" && (op.resolvedBodies?.length ?? 0) > 0)
+  return (
+    Array.isArray(transaction.ops) &&
+    transaction.ops.some(
+      (op) =>
+        isRecord(op) &&
+        (op.op === "topology.checkpoint.create" ||
+          op.op === "topology.anchor.create" ||
+          op.op === "topology.anchor.repair" ||
+          (op.op === "project.importStep" &&
+            Array.isArray(op.resolvedBodies) &&
+            op.resolvedBodies.length > 0))
+    )
   );
 }
 
@@ -27838,6 +27692,7 @@ function createTransactionEntries(
 ): {
   readonly document: CadDocument;
   readonly entries: TransactionEntry[];
+  readonly counters: CadDocumentIdCounters;
 } {
   let document = cloneDocument(initialDocument);
   let nextObjectNumber = initialObjectNumber;
@@ -27852,6 +27707,16 @@ function createTransactionEntries(
 
   for (const transaction of transactions) {
     const before = cloneDocument(document);
+    const beforeCounters: CadDocumentIdCounters = {
+      nextObjectNumber,
+      nextSketchNumber,
+      nextSketchEntityNumber,
+      nextParameterNumber,
+      nextSketchDimensionNumber,
+      nextSketchConstraintNumber,
+      nextFeatureNumber,
+      nextBodyNumber
+    };
     const replayTransaction: Transaction = {
       ...transaction,
       ops: transaction.ops.map(normalizeCadOpSnapshot)
@@ -27893,30 +27758,59 @@ function createTransactionEntries(
     entries.push({
       transaction: { ...transaction },
       before,
-      after: cloneDocument(document)
+      after: cloneDocument(document),
+      beforeCounters,
+      afterCounters: {
+        nextObjectNumber,
+        nextSketchNumber,
+        nextSketchEntityNumber,
+        nextParameterNumber,
+        nextSketchDimensionNumber,
+        nextSketchConstraintNumber,
+        nextFeatureNumber,
+        nextBodyNumber
+      }
     });
   }
 
   return {
     document,
-    entries
+    entries,
+    counters: {
+      nextObjectNumber,
+      nextSketchNumber,
+      nextSketchEntityNumber,
+      nextParameterNumber,
+      nextSketchDimensionNumber,
+      nextSketchConstraintNumber,
+      nextFeatureNumber,
+      nextBodyNumber
+    }
   };
 }
 
 function assertProjectDocumentMatchesReplay(
   project: CadProject,
-  replayedDocument: CadDocument
+  replayedDocument: CadDocument,
+  replayedCounters: CadDocumentIdCounters
 ): void {
   const projectDocument = createCadDocumentFromSnapshot(project.document);
 
-  if (cadDocumentsEqual(projectDocument, replayedDocument)) {
+  if (
+    cadDocumentsEqual(projectDocument, replayedDocument) &&
+    (!project.historyBaseline ||
+      stableJsonEqual(
+        getCadDocumentSnapshotIdCounters(project.document),
+        replayedCounters
+      ))
+  ) {
     return;
   }
 
   throw new CadProjectImportError([
     {
       code: "INVALID_TRANSACTION_HISTORY",
-      path: "$.history",
+      path: project.historyBaseline ? "$.document" : "$.history",
       message:
         "Project document does not match replayed committed transaction history."
     }
@@ -28339,6 +28233,13 @@ function normalizeCadProject(value: CadProject): CadProject {
             }
           : {})
       },
+      ...(value.historyBaseline
+        ? {
+            historyBaseline: createCanonicalV22HistoryBaselineSnapshot(
+              value.historyBaseline
+            )
+          }
+        : {}),
       // V22 history and redo are authoritative source. Preserve their original
       // command and semantic-diff shapes rather than migrating them in place.
       history: value.history.map(cloneJsonSource),
@@ -29194,6 +29095,63 @@ function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
     issues,
     value.schemaVersion
   );
+
+  if (value.historyBaseline !== undefined) {
+    const baselineIssueStart = issues.length;
+    validateCadDocumentSnapshot(
+      value.historyBaseline,
+      "$.historyBaseline",
+      issues,
+      CAD_PROJECT_FORMAT_VERSION_V22
+    );
+
+    if (value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V22) {
+      addProjectIssue(
+        issues,
+        "SCHEMA_V22_SOURCE_INVALID",
+        "$.historyBaseline",
+        "Project historyBaseline is only valid in web-cad.project.v22."
+      );
+    }
+
+    const retainedTransactionCount =
+      (Array.isArray(value.history) ? value.history.length : 0) +
+      (Array.isArray(value.redoStack) ? value.redoStack.length : 0);
+    if (retainedTransactionCount === 0) {
+      addProjectIssue(
+        issues,
+        "INVALID_TRANSACTION_HISTORY",
+        "$.historyBaseline",
+        "Project historyBaseline requires at least one retained history or redo transaction."
+      );
+    }
+
+    if (
+      issues.length === baselineIssueStart &&
+      value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V22 &&
+      retainedTransactionCount > 0 &&
+      isCanonicalImplicitHistorySeedSnapshot(
+        value.historyBaseline as unknown as CadDocumentSnapshot,
+        [
+          ...(Array.isArray(value.history)
+            ? (value.history as unknown as readonly Transaction[])
+            : []),
+          ...(Array.isArray(value.redoStack)
+            ? [
+                ...(value.redoStack as unknown as readonly Transaction[])
+              ].reverse()
+            : [])
+        ]
+      )
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_TRANSACTION_HISTORY",
+        "$.historyBaseline",
+        "Project historyBaseline must be omitted when it equals the canonical implicit replay seed."
+      );
+    }
+  }
 
   const seenTransactionIds = new Set<TransactionId>();
   validateTransactionArray(
@@ -38047,9 +38005,15 @@ function isReferenceSemanticDiff(
     (value.topologyCheckpointsCreated === undefined ||
       (Array.isArray(value.topologyCheckpointsCreated) &&
         value.topologyCheckpointsCreated.every(isCadTopologyCheckpointRef))) &&
+    (value.topologyCheckpointsDeleted === undefined ||
+      (Array.isArray(value.topologyCheckpointsDeleted) &&
+        value.topologyCheckpointsDeleted.every(isCadTopologyCheckpointRef))) &&
     (value.topologyAnchorsCreated === undefined ||
       (Array.isArray(value.topologyAnchorsCreated) &&
         value.topologyAnchorsCreated.every(isCadTopologyAnchorRef))) &&
+    (value.topologyAnchorsDeleted === undefined ||
+      (Array.isArray(value.topologyAnchorsDeleted) &&
+        value.topologyAnchorsDeleted.every(isCadTopologyAnchorRef))) &&
     (value.topologyAnchorsRepaired === undefined ||
       (Array.isArray(value.topologyAnchorsRepaired) &&
         value.topologyAnchorsRepaired.every(isCadTopologyAnchorRepairRef)))
@@ -38257,12 +38221,16 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
   }
 
   if (value.kind === "extrude" && value.profile !== undefined) {
-    const profile = validateSketchProfileRefSource(value.profile);
+    const legacyProfile = validateSketchProfileRefSource(value.profile);
+    const profile = isSketchRegionsProfileRef(value.profile)
+      ? value.profile
+      : legacyProfile.ok && legacyProfile.value.kind === "wire"
+        ? legacyProfile.value
+        : undefined;
     return (
-      profile.ok &&
-      profile.value.kind === "wire" &&
+      profile !== undefined &&
       typeof value.sketchId === "string" &&
-      value.sketchId === profile.value.sketchId &&
+      value.sketchId === profile.sketchId &&
       typeof value.depth === "number" &&
       isPositiveFiniteNumber(value.depth) &&
       isExtrudeSide(value.side) &&
@@ -38279,12 +38247,16 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
   }
 
   if (value.kind === "revolve" && value.profile !== undefined) {
-    const profile = validateSketchProfileRefSource(value.profile);
+    const legacyProfile = validateSketchProfileRefSource(value.profile);
+    const profile = isSketchRegionsProfileRef(value.profile)
+      ? value.profile
+      : legacyProfile.ok && legacyProfile.value.kind === "wire"
+        ? legacyProfile.value
+        : undefined;
     return (
-      profile.ok &&
-      profile.value.kind === "wire" &&
+      profile !== undefined &&
       typeof value.sketchId === "string" &&
-      value.sketchId === profile.value.sketchId &&
+      value.sketchId === profile.sketchId &&
       value.entityId === undefined &&
       value.profileKind === undefined &&
       isFeatureRevolveAxis(value.axis) &&

@@ -1,6 +1,6 @@
 import type {
   CadDocument,
-  CadEngine,
+  CadDocumentSnapshot,
   CadFeatureSummary,
   ExportCadProjectWcadOptions,
   SketchSnapshot,
@@ -8,6 +8,8 @@ import type {
   WcadTopologyCheckpointPayloadInput
 } from "@web-cad/cad-core";
 import {
+  CadEngine,
+  createCadDocumentFromSnapshot,
   encodeWcadCanonicalCbor,
   exportCadProjectWcad
 } from "@web-cad/cad-core";
@@ -52,6 +54,7 @@ export {
 
 export interface ProjectWcadTopologyCheckpointPayloadInput {
   readonly document: CadDocument;
+  readonly historyBaseline?: CadDocumentSnapshot;
   readonly features: readonly CadFeatureSummary[];
   readonly sketches: readonly SketchSnapshot[];
   readonly generatedFacesByKey?: ReadonlyMap<string, CadGeneratedFaceReference>;
@@ -64,7 +67,10 @@ export interface ProjectWcadTopologyCheckpointPayloadInput {
 
 export interface ProjectWcadTopologyCheckpointExportInput
   extends
-    Omit<ProjectWcadTopologyCheckpointPayloadInput, "document">,
+    Omit<
+      ProjectWcadTopologyCheckpointPayloadInput,
+      "document" | "historyBaseline"
+    >,
     Pick<
       ExportCadProjectWcadOptions,
       "createdAt" | "modifiedAt" | "appVersion"
@@ -575,6 +581,7 @@ export async function createProjectTopologyAnchorRepairPlanForGeneratedReference
 
 export async function createProjectWcadTopologyCheckpointPayloadInputs({
   document,
+  historyBaseline,
   features,
   sketches,
   generatedFacesByKey = new Map(),
@@ -583,28 +590,56 @@ export async function createProjectWcadTopologyCheckpointPayloadInputs({
 }: ProjectWcadTopologyCheckpointPayloadInput): Promise<
   readonly WcadTopologyCheckpointPayloadInput[]
 > {
-  const checkpoints = document.topologyIdentity?.checkpoints ?? [];
+  const contexts: readonly ProjectWcadTopologyCheckpointDocumentContext[] = [
+    {
+      document,
+      features,
+      sketches
+    },
+    ...(historyBaseline
+      ? [createCheckpointDocumentContextFromSnapshot(historyBaseline)]
+      : [])
+  ];
+  const issues: WcadPackageValidationIssue[] = [];
+  const checkpointSources = collectCheckpointSources(contexts, issues);
 
-  if (checkpoints.length === 0) {
+  if (issues.length > 0) {
+    throw new ProjectWcadTopologyCheckpointPayloadError(issues);
+  }
+
+  if (checkpointSources.length === 0) {
     return [];
   }
 
-  const sourcesByBodyId = createCheckpointExactSourcesByBodyId(
-    features,
-    sketches,
-    generatedFacesByKey,
-    document.namedReferences
+  const sourcesByContext = contexts.map((context) =>
+    createCheckpointExactSourcesByBodyId(
+      context.features,
+      context.sketches,
+      generatedFacesByKey,
+      context.document.namedReferences
+    )
   );
   const importedPayloadsByCheckpointId = new Map(
     importedCheckpointPayloads.map((payload) => [payload.checkpointId, payload])
   );
-  const issues: WcadPackageValidationIssue[] = [];
   const payloads: WcadTopologyCheckpointPayloadInput[] = [];
 
-  for (const checkpoint of checkpoints) {
-    const source = sourcesByBodyId.get(checkpoint.bodyId);
+  for (const checkpointSource of checkpointSources) {
+    const { checkpoint } = checkpointSource;
+    const sourceContextIndex = checkpointSource.contextIndexes.find(
+      (contextIndex) =>
+        sourcesByContext[contextIndex]?.has(checkpoint.bodyId) === true
+    );
+    const source =
+      sourceContextIndex === undefined
+        ? undefined
+        : sourcesByContext[sourceContextIndex]?.get(checkpoint.bodyId);
+    const sourceDocument =
+      sourceContextIndex === undefined
+        ? undefined
+        : contexts[sourceContextIndex]?.document;
 
-    if (!source) {
+    if (!source || !sourceDocument) {
       const importedPayload = importedPayloadsByCheckpointId.get(
         checkpoint.checkpointId
       );
@@ -657,10 +692,12 @@ export async function createProjectWcadTopologyCheckpointPayloadInputs({
         checkpointId: checkpoint.checkpointId,
         topologySnapshot,
         signaturePayload: result.checkpointPayload.signaturePayload,
-        anchors:
-          document.topologyIdentity?.anchors.filter(
-            (anchor) => anchor.checkpointId === checkpoint.checkpointId
-          ) ?? [],
+        anchors: checkpointSource.contextIndexes.flatMap(
+          (contextIndex) =>
+            contexts[contextIndex]?.document.topologyIdentity?.anchors.filter(
+              (anchor) => anchor.checkpointId === checkpoint.checkpointId
+            ) ?? []
+        ),
         source
       });
 
@@ -670,7 +707,7 @@ export async function createProjectWcadTopologyCheckpointPayloadInputs({
         ...(checkpoint.sourceFeatureId
           ? { sourceFeatureId: checkpoint.sourceFeatureId }
           : {}),
-        units: document.units,
+        units: sourceDocument.units,
         kernel: {
           boundary: "geometry-kernel",
           snapshotAlgorithm: "partbench-derived-topology-snapshot-v1"
@@ -705,6 +742,139 @@ export async function createProjectWcadTopologyCheckpointPayloadInputs({
   }
 
   return payloads;
+}
+
+interface ProjectWcadTopologyCheckpointDocumentContext {
+  readonly document: CadDocument;
+  readonly features: readonly CadFeatureSummary[];
+  readonly sketches: readonly SketchSnapshot[];
+}
+
+interface ProjectWcadTopologyCheckpointSource {
+  readonly checkpoint: NonNullable<
+    CadDocument["topologyIdentity"]
+  >["checkpoints"][number];
+  readonly contextIndexes: readonly number[];
+}
+
+function createCheckpointDocumentContextFromSnapshot(
+  snapshot: CadDocumentSnapshot
+): ProjectWcadTopologyCheckpointDocumentContext {
+  const document = createCadDocumentFromSnapshot(snapshot);
+  const engine = new CadEngine(document, {
+    nextObjectNumber: snapshot.nextObjectNumber,
+    nextSketchNumber: snapshot.nextSketchNumber,
+    nextSketchEntityNumber: snapshot.nextSketchEntityNumber,
+    nextParameterNumber: snapshot.nextParameterNumber,
+    nextSketchDimensionNumber: snapshot.nextSketchDimensionNumber,
+    nextSketchConstraintNumber: snapshot.nextSketchConstraintNumber,
+    nextFeatureNumber: snapshot.nextFeatureNumber,
+    nextBodyNumber: snapshot.nextBodyNumber
+  });
+  const structure = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.structure" }
+  });
+
+  if (!structure.ok || structure.query !== "project.structure") {
+    throw new Error(
+      structure.ok
+        ? `Expected project.structure response; received ${structure.query}.`
+        : structure.error.message
+    );
+  }
+
+  return {
+    document,
+    features: structure.features,
+    sketches: snapshot.sketches
+  };
+}
+
+function collectCheckpointSources(
+  contexts: readonly ProjectWcadTopologyCheckpointDocumentContext[],
+  issues: WcadPackageValidationIssue[]
+): readonly ProjectWcadTopologyCheckpointSource[] {
+  const sourcesByCheckpointId = new Map<
+    string,
+    {
+      checkpoint: ProjectWcadTopologyCheckpointSource["checkpoint"];
+      contextIndexes: number[];
+    }
+  >();
+
+  contexts.forEach((context, contextIndex) => {
+    for (const checkpoint of context.document.topologyIdentity?.checkpoints ??
+      []) {
+      const existing = sourcesByCheckpointId.get(checkpoint.checkpointId);
+
+      if (!existing) {
+        sourcesByCheckpointId.set(checkpoint.checkpointId, {
+          checkpoint,
+          contextIndexes: [contextIndex]
+        });
+        continue;
+      }
+
+      if (!checkpointSourceMetadataMatches(existing.checkpoint, checkpoint)) {
+        issues.push(
+          createCheckpointSourceConflictIssue(existing.checkpoint, checkpoint)
+        );
+        continue;
+      }
+
+      existing.contextIndexes.push(contextIndex);
+    }
+  });
+
+  return [...sourcesByCheckpointId.values()];
+}
+
+function checkpointSourceMetadataMatches(
+  left: ProjectWcadTopologyCheckpointSource["checkpoint"],
+  right: ProjectWcadTopologyCheckpointSource["checkpoint"]
+): boolean {
+  return (
+    left.bodyId === right.bodyId &&
+    left.sourceFeatureId === right.sourceFeatureId &&
+    left.sourceIdentity.algorithm === right.sourceIdentity.algorithm &&
+    left.sourceIdentity.sha256 === right.sourceIdentity.sha256 &&
+    left.packageVersion === right.packageVersion &&
+    left.projectSchemaVersion === right.projectSchemaVersion &&
+    left.brepEntryPath === right.brepEntryPath &&
+    left.topologyEntryPath === right.topologyEntryPath &&
+    left.signatureEntryPath === right.signatureEntryPath
+  );
+}
+
+function createCheckpointSourceConflictIssue(
+  current: ProjectWcadTopologyCheckpointSource["checkpoint"],
+  baseline: ProjectWcadTopologyCheckpointSource["checkpoint"]
+): WcadPackageValidationIssue {
+  return {
+    code: "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
+    severity: "error",
+    message: `Topology checkpoint ${current.checkpointId} has conflicting current-document and history-baseline source metadata.`,
+    entryPath: current.brepEntryPath,
+    entryRole: "checkpoint-brep",
+    expected: describeCheckpointSourceMetadata(current),
+    received: describeCheckpointSourceMetadata(baseline)
+  };
+}
+
+function describeCheckpointSourceMetadata(
+  checkpoint: ProjectWcadTopologyCheckpointSource["checkpoint"]
+): string {
+  return JSON.stringify({
+    bodyId: checkpoint.bodyId,
+    sourceFeatureId: checkpoint.sourceFeatureId ?? null,
+    sourceIdentity: checkpoint.sourceIdentity,
+    packageVersion: checkpoint.packageVersion,
+    projectSchemaVersion: checkpoint.projectSchemaVersion,
+    brepEntryPath: checkpoint.brepEntryPath,
+    topologyEntryPath: checkpoint.topologyEntryPath,
+    signatureEntryPath: checkpoint.signatureEntryPath
+  });
 }
 
 function normalizeCheckpointPayloadForSourceAnchors({
@@ -1394,9 +1564,11 @@ export async function exportProjectWcadWithTopologyCheckpoints({
   modifiedAt,
   appVersion
 }: ProjectWcadTopologyCheckpointExportInput): Promise<WcadPackageExportResult> {
+  const project = engine.exportProject();
   const topologyCheckpoints =
     await createProjectWcadTopologyCheckpointPayloadInputs({
       document: engine.getDocument(),
+      historyBaseline: project.historyBaseline,
       features,
       sketches,
       generatedFacesByKey,

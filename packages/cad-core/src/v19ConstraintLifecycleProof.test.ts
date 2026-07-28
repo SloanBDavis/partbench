@@ -848,13 +848,10 @@ describe("Decision 14 command lifecycle proof", () => {
     ).toMatchObject({ ok: false });
   });
 
-  it.fails(
-    "round-trips a compatibility update applied to a retained legacy angle",
-    () => {
-      const engine = createLegacyAngleEngine();
-      engine.apply(legacyAngleUpdate);
-      const saved = exportCadProject(engine);
-      expect(exportCadProject(importCadProject(saved))).toEqual(saved);
-    }
-  );
+  it("round-trips a compatibility update applied to a retained legacy angle", () => {
+    const engine = createLegacyAngleEngine();
+    engine.apply(legacyAngleUpdate);
+    const saved = exportCadProject(engine);
+    expect(exportCadProject(importCadProject(saved))).toEqual(saved);
+  });
 });

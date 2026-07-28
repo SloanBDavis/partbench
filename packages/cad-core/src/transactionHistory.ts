@@ -1478,8 +1478,14 @@ function cloneReferenceSemanticDiff(
     ...(diff.topologyCheckpointsCreated
       ? { topologyCheckpointsCreated: [...diff.topologyCheckpointsCreated] }
       : {}),
+    ...(diff.topologyCheckpointsDeleted
+      ? { topologyCheckpointsDeleted: [...diff.topologyCheckpointsDeleted] }
+      : {}),
     ...(diff.topologyAnchorsCreated
       ? { topologyAnchorsCreated: [...diff.topologyAnchorsCreated] }
+      : {}),
+    ...(diff.topologyAnchorsDeleted
+      ? { topologyAnchorsDeleted: [...diff.topologyAnchorsDeleted] }
       : {}),
     ...(diff.topologyAnchorsRepaired
       ? { topologyAnchorsRepaired: [...diff.topologyAnchorsRepaired] }

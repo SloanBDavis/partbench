@@ -1,10 +1,13 @@
-# V19 History Baseline Amendment Proposal
+# V19 History Baseline Amendment
 
-Status: **pending explicit approval**
+Status: **implemented; D6 and Gate D accepted**
 
-This proposal resolves the remaining Gate D blocker recorded in
-[`docs/v19-implementation-dag.md`](./v19-implementation-dag.md). It does not
-amend the normative [`docs/v19.md`](./v19.md) contract until approved.
+Approved on 2026-07-28, this amendment resolves the remaining Gate D blocker
+recorded in
+[`docs/v19-implementation-dag.md`](./v19-implementation-dag.md). Its serialized
+contract and invariants are now normative in [`docs/v19.md`](./v19.md).
+The implementation and required proof matrix were completed and independently
+accepted at Gate D on 2026-07-28.
 
 ## Problem
 
@@ -26,7 +29,7 @@ Dropping history, replaying on the final document, fabricating create
 transactions, or hiding state in audit metadata would lose or falsify durable
 audit, undo/redo, source identity, or canonical replay.
 
-## Recommended serialized contract
+## Approved serialized contract
 
 Add one optional V22-only project field:
 
@@ -85,7 +88,9 @@ The implementation must enforce:
 6. It supersedes the empty/topology-only replay seed when present.
 7. Undoing all transactions restores it exactly; redo order remains unchanged.
 8. Branching after partial or complete undo clears redo but retains the same
-   baseline.
+   non-implicit baseline. An activated topology-only seed returns to the
+   canonical implicit/omitted form when branching discards every topology
+   mutation that made the explicit seed necessary.
 9. Export omits a pending baseline until the first transaction is retained.
 10. Export omits it for histories whose true origin is the existing canonical
     empty/topology-only seed.
@@ -104,9 +109,10 @@ Cad-core retains a defensively cloned private pending baseline.
   pending baseline without changing its immediate unedited export.
 - Loading an explicit V22 baseline preserves it.
 - Loading a replay-complete legacy project without a baseline keeps the
-  existing implicit replay origin.
-- Export includes the pending baseline only after history or redo contains a
-  transaction.
+  existing implicit replay origin as a private pending topology seed when one
+  exists, so a later topology mutation can activate it before replay loses the
+  pre-mutation source.
+- Export includes the pending baseline only when retained lineage requires it.
 - Import replays history from the baseline document and its exact counters,
   validates the current document, and then validates redo in reverse storage
   order as today.
@@ -165,21 +171,28 @@ baseline after its live source was deleted. The writer and reader must:
 - preserve existing JSON diagnostics when binary checkpoint bytes cannot be
   carried.
 
+`feature.delete` cascades checkpoint and anchor records owned by the removed
+feature/body, prunes dependent repair records, and emits
+`topologyCheckpointsDeleted` and `topologyAnchorsDeleted` semantic references.
+Those V22 diff fields make the baseline-only checkpoint case replay-valid
+without adding a new topology-delete command.
+
 ## Implementation DAG
 
 ```mermaid
 flowchart TD
-  D60[D6.0 Approve normative amendment] --> D61[D6.1 Types, V22 trigger, validators]
-  D61 --> D62[D6.2 Engine baseline lifecycle and replay]
-  D61 --> D63[D6.3 Shared JSON/CBOR/WCAD commands source]
-  D62 --> D64[D6.4 Undo, redo, branching, migration corpus]
-  D63 --> D65[D6.5 Checkpoint payload union and identities]
-  D64 --> D66[D6.6 Named workflow and expected-fail conversion]
+  D60[D6.0 Approve normative amendment — complete] --> D61[D6.1 Types, V22 trigger, validators — complete]
+  D61 --> D62[D6.2 Engine baseline lifecycle and replay — complete]
+  D61 --> D63[D6.3 Shared JSON/CBOR/WCAD commands source — complete]
+  D62 --> D64[D6.4 Undo, redo, branching, migration corpus — complete]
+  D63 --> D65[D6.5 Checkpoint payload union and identities — complete]
+  D64 --> D66[D6.6 Named workflow and expected-fail conversion — complete]
   D65 --> D66
-  D66 --> GD{Gate D re-review}
+  D66 --> GD{Gate D re-review — accepted}
 ```
 
-No Slice E node begins before the Gate D re-review accepts D6.
+Slice E was blocked until this Gate D acceptance. It is now the next unblocked
+slice; this amendment does not claim any Slice E implementation.
 
 ## Required proof matrix
 
@@ -203,6 +216,32 @@ No Slice E node begins before the Gate D re-review accepts D6.
 12. Cover baseline-only checkpoints, shared matching checkpoints, conflicting
     duplicate IDs, missing/corrupt payloads, and undo restoration.
 13. Prove caller/exported-snapshot mutation cannot mutate engine authority.
+
+## Acceptance evidence
+
+- D6.1-D6.6 are implemented. The retained legacy-angle expected failure is a
+  passing lifecycle proof, and the named
+  `pnpm smoke:v19-history-baseline-workflow` command passes 8/8 checks across
+  JSON and WCAD CBOR round-trips.
+- The exact accepted source passes the complete workspace test command:
+  cad-protocol 81, OCCT/WASM 100, renderer 17, sketch solver 85, cad-core
+  1,062, geometry kernel 85, agent adapter 108, geometry worker 53, MCP adapter
+  85, renderer mesh bridge 13, web 919, stdio server 21, and repository scripts
+  81 passing with one intentional script skip.
+- Workspace typecheck, formatting, diff checks, and lint at the error level
+  pass. Lint retains eight known React fast-refresh warnings in the existing
+  sketch editor/dock modules.
+- Both Gate D named workflows pass 8/8. The dimensions/constraints workflow
+  covers 17 literal and 15 eligible parameter targets.
+- The canonical V19 production bundle audit passes with 409,482-byte critical
+  JavaScript gzip, 6,515-byte critical CSS gzip, 535,611-byte all-UI JavaScript
+  gzip, 249,489-byte command worker gzip, 83,272-byte geometry worker gzip, and
+  the exact 13,808,536-byte OCCT WASM cap. WCAD checkpoint validation is
+  deferred behind the already-asynchronous package boundary without weakening
+  writer or reader validation.
+- Independent adversarial storage and final Gate D reviews both returned PASS
+  after exact-counter, baseline-only checkpoint, duplicate-authority,
+  feature-deletion, and lower-schema writer blockers were resolved.
 
 ## Rejected alternatives
 

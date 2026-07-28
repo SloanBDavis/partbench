@@ -61,7 +61,15 @@ flowchart TD
   D2 --> D5[D5 D UI, parity, diagnostics]
   D3 --> D5
   D4 --> D5
-  D5 --> GD{Gate D}
+  D5 --> D60[D6.0 Approve history-baseline amendment]
+  D60 --> D61[D6.1 Types, V22 trigger, validators]
+  D61 --> D62[D6.2 Engine lifecycle and replay]
+  D61 --> D63[D6.3 JSON, CBOR, WCAD commands source]
+  D62 --> D64[D6.4 Undo, redo, branch, migration corpus]
+  D63 --> D65[D6.5 Checkpoint union and identities]
+  D64 --> D66[D6.6 Named workflow and expected-fail conversion]
+  D65 --> D66
+  D66 --> GD{Gate D}
 
   GD --> E1[E1 Loop validation and canonicalization]
   E1 --> E2[E2 Containment discovery, limits, paging, cache]
@@ -109,7 +117,9 @@ flowchart TD
 | C1-C4 | Gate B and prior C node | Pure-policy owner; core owner; web/adapter owners after API freeze | Every offset row and rejection, non-associative round-trip, slot 4 entities/9 constraints, rounded rectangle 8 entities/23 constraints, atomic rollback and one-step undo/redo |
 | Gate C | C1-C4 | Independent correctness and product reviewers | Offset join/miter/reversal/self-intersection review, convenience cardinality/health proof, browser and parity proof |
 | D1-D5 | Gate C and prior D node | Solver owner; storage/projection owner; serialized core owner; web/adapter owners after API freeze | Every Decision 13 target/value/unit/residual/branch row and Decision 14 constraint CRUD/update row, including legacy-angle compatibility |
-| Gate D | D1-D5 | Independent solver/storage/product reviewers | Determinism, rank/conflict/domain, compatibility projections, round-trip/replay, UI/agent/MCP coverage, `smoke:v19-dimensions-constraints-workflow` |
+| D6.0 | D1-D5 | Root/documentation | Explicit approval of the authoritative history-baseline amendment and synchronization into `docs/v19.md` |
+| D6.1-D6.6 | D6.0 and prior D6 node; D6.2/D6.3 and D6.4/D6.5 are parallel-safe after their shared prerequisite | Protocol/core storage owner for serialized hotspots; independent migration/checkpoint owners only after API freeze | Exact optional top-level and `commands.cbor` field, V22 trigger and validation, pending-baseline lifecycle, replay/undo/redo/branching, JSON/CBOR/WCAD identities, live/baseline checkpoint union, migration corpus, named workflow, and conversion of the retained expected failure |
+| Gate D | D1-D6 | Independent solver/storage/product reviewers | Determinism, rank/conflict/domain, compatibility projections, baseline-backed round-trip/replay/undo/redo, UI/agent/MCP coverage, complete D6 proof matrix, `smoke:v19-dimensions-constraints-workflow` |
 | E1-E4 | Gate D and prior E node | Region-policy owner; discovery owner; serialized core owner; web/adapter owners after API freeze | Exact canonical region refs, all loop/containment/material rules, bounded whole-loop discovery, cancellation/cache/pagination, no persistent candidates, UI/keyboard and parity |
 | Gate E | E1-E4 | Independent analytic/product reviewers | Adversarial nesting/touch/overlap/order/complexity review, focused tests, cache invalidation, keyboard region selection |
 | F1-F5 | Gate E and prior F node | Shared face builder owner; extrude owner; topology/metadata owner; web/adapter owner | Real OCCT new body then add/cut, canonical sequential tools, positive-volume and one-solid checks, void-aware exact metadata, roles, checkpoints, STEP |
@@ -511,13 +521,48 @@ containing only that update. Reimport must replay from an empty document and
 therefore cannot reconstruct the pre-update legacy record; the same baseline
 problem exists for ordinary edits to any non-empty historyless imported
 snapshot. The focused lifecycle suite records this honestly as an expected
-failure. Resolving it without losing durable audit/undo semantics requires
-either an approved serialized history-baseline amendment to the frozen V22
-shape or an explicit product-contract limitation for edits to historyless
-imported snapshots. The exact pending contract, D6 sub-DAG, and proof matrix
-are recorded in
-[`docs/v19-history-baseline-amendment.md`](./v19-history-baseline-amendment.md).
-Slice E remains blocked on that decision.
+failure. The only sound choices were a serialized history-baseline amendment
+to the frozen V22 shape or an explicit product-contract limitation for edits
+to historyless imported snapshots; the approved D6 contract below selects the
+history baseline.
+
+### 2026-07-28 — D6 history-baseline implementation and Gate D accepted
+
+- The serialized history-baseline amendment is approved and incorporated into
+  the normative V19 contract. D6.0-D6.6 are complete.
+- `historyBaseline` is an optional top-level V22 source and lives beside
+  `history` and `redoStack` in the existing `.wcad` `commands.cbor` entry. It
+  is authoritative lineage, participates in canonical bytes/hashes/source
+  identity, and is a V22 minimum-schema trigger.
+- The approved lifecycle, replay invariants, live/baseline topology-checkpoint
+  union, D6.1-D6.6 graph, and required proof matrix are recorded in
+  [`docs/v19-history-baseline-amendment.md`](./v19-history-baseline-amendment.md).
+- Engine import/export now preserves the exact pre-history V22 snapshot and all
+  eight counters across committed, partial-undo, all-undone, redo, and branch
+  states while untouched baseline-free projects retain their existing bytes,
+  identities, and minimum schemas.
+- JSON and both WCAD package versions share one canonical commands projection.
+  WCAD v2 unions live and baseline checkpoint authority, requires every
+  payload, coalesces matching metadata and anchors, rejects conflicts, and
+  restores baseline-only feature/profile/checkpoint state through undo.
+  `feature.delete` removes owned checkpoint/anchor authority and dependent
+  repairs with V22 deletion references so replay remains exact.
+- The retained expected failure is converted to passing coverage.
+  `pnpm smoke:v19-history-baseline-workflow` and
+  `pnpm smoke:v19-dimensions-constraints-workflow` each pass 8/8.
+- Two independent adversarial reviews accepted the exact storage and Gate D
+  contracts after counter, checkpoint-union, writer-refusal, deletion, and
+  source-link blockers were resolved.
+- The complete exact-source workspace test command passes: cad-core 1,062,
+  web 919, repository scripts 81 with one intentional skip, and every other
+  package suite green. Workspace typecheck, formatting, diff checks, and lint
+  at the error level pass.
+- The canonical production audit passes with 409,482-byte critical JavaScript
+  gzip, 6,515-byte critical CSS gzip, 535,611-byte all-UI JavaScript gzip,
+  249,489-byte command worker gzip, 83,272-byte geometry worker gzip, and the
+  exact 13,808,536-byte OCCT WASM cap.
+- Gate D is accepted. E1 is the next unblocked node; no Slice E implementation
+  is claimed by this checkpoint.
 
 ## Completion audit
 

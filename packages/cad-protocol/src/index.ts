@@ -2395,7 +2395,9 @@ export interface ReferenceSemanticDiff {
   readonly namedRepaired?: readonly CadNamedReferenceRepairRef[];
   readonly namedDeleted?: readonly CadNamedReferenceRef[];
   readonly topologyCheckpointsCreated?: readonly CadTopologyCheckpointRef[];
+  readonly topologyCheckpointsDeleted?: readonly CadTopologyCheckpointRef[];
   readonly topologyAnchorsCreated?: readonly CadTopologyAnchorRef[];
+  readonly topologyAnchorsDeleted?: readonly CadTopologyAnchorRef[];
   readonly topologyAnchorsRepaired?: readonly CadTopologyAnchorRepairRef[];
 }
 

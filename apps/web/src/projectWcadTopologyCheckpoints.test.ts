@@ -21,6 +21,258 @@ import {
 } from "./projectWcadTopologyCheckpoints";
 
 describe("projectWcadTopologyCheckpoints", () => {
+  it("collects a checkpoint payload that exists only in the history baseline", async () => {
+    const baselineEngine = createRectangleCheckpointEngine();
+    const historyBaseline = baselineEngine.exportProject().document;
+    const currentEngine = new CadEngine();
+    const runtime = createCheckpointRuntime();
+
+    const payloads = await createProjectWcadTopologyCheckpointPayloadInputs({
+      document: currentEngine.getDocument(),
+      historyBaseline,
+      features: readProjectStructure(currentEngine).features,
+      sketches: readSketches(currentEngine),
+      runtime
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]).toMatchObject({
+      checkpointId: "checkpoint_rect_1",
+      bodyId: "body_rect_1",
+      sourceFeatureId: "feat_rect_1",
+      units: "mm"
+    });
+    expect(runtime.exactTopologyCheckpointPayload).toHaveBeenCalledTimes(1);
+    expect(runtime.exactTopologyCheckpointPayload).toHaveBeenCalledWith(
+      expect.objectContaining({
+        checkpointId: "checkpoint_rect_1",
+        bodyId: "body_rect_1",
+        source: expect.objectContaining({
+          kind: "extrude",
+          depth: 3
+        })
+      })
+    );
+  });
+
+  it("round-trips baseline-only exact checkpoint geometry and restores it on undo", async () => {
+    const sourceEngine = createRectangleCheckpointEngine();
+    sourceEngine.apply({
+      op: "document.updateUnits",
+      units: "cm"
+    });
+    const sourceProject = sourceEngine.exportProject();
+    const engine = CadEngine.fromProject({
+      ...sourceProject,
+      history: [],
+      redoStack: []
+    });
+
+    engine.apply({ op: "feature.delete", id: "feat_rect_1" });
+
+    expect(engine.getDocument().features.has("feat_rect_1")).toBe(false);
+    expect(engine.getDocument().topologyIdentity?.checkpoints).toEqual([]);
+    expect(engine.getDocument().topologyIdentity?.anchors).toEqual([]);
+    expect(engine.getTransactions().at(-1)?.diff.references).toMatchObject({
+      topologyCheckpointsDeleted: [
+        expect.objectContaining({ checkpointId: "checkpoint_rect_1" })
+      ],
+      topologyAnchorsDeleted: [
+        expect.objectContaining({ anchorId: "anchor_rect_1_end_face" })
+      ]
+    });
+    expect(engine.exportProject().historyBaseline).toMatchObject({
+      units: "cm",
+      features: [
+        expect.objectContaining({
+          id: "feat_rect_1",
+          bodyId: "body_rect_1",
+          depth: 3
+        })
+      ],
+      topologyIdentity: {
+        anchors: [
+          expect.objectContaining({
+            anchorId: "anchor_rect_1_end_face",
+            checkpointId: "checkpoint_rect_1",
+            sourceFeatureId: "feat_rect_1"
+          })
+        ]
+      }
+    });
+
+    const runtime = createCheckpointRuntime();
+    const exported = await exportProjectWcadWithTopologyCheckpoints({
+      engine,
+      features: readProjectStructure(engine).features,
+      sketches: readSketches(engine),
+      runtime
+    });
+    const read = await readCadProjectWcad(exported.bytes);
+
+    expect(runtime.exactTopologyCheckpointPayload).toHaveBeenCalledTimes(1);
+    expect(runtime.exactTopologyCheckpointPayload).toHaveBeenCalledWith(
+      expect.objectContaining({
+        checkpointId: "checkpoint_rect_1",
+        bodyId: "body_rect_1",
+        source: expect.objectContaining({
+          kind: "extrude",
+          depth: 3
+        })
+      })
+    );
+    expect(exported.manifest.packageVersion).toBe("partbench.wcad.v2");
+    expect(exported.checkpointPayloads).toHaveLength(1);
+    expect(exported.checkpointPayloads?.[0]).toMatchObject({
+      checkpointId: "checkpoint_rect_1",
+      bodyId: "body_rect_1",
+      sourceFeatureId: "feat_rect_1",
+      manifestEntry: {
+        units: "cm"
+      }
+    });
+    expect(read.ok).toBe(true);
+    if (!read.ok) {
+      throw new Error(read.issues[0]?.message);
+    }
+
+    expect(read.checkpointPayloads).toHaveLength(1);
+    expect(read.checkpointPayloads?.[0]).toMatchObject({
+      checkpointId: "checkpoint_rect_1",
+      bodyId: "body_rect_1",
+      sourceFeatureId: "feat_rect_1",
+      manifestEntry: {
+        units: "cm"
+      }
+    });
+    expect(read.project.document.features).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "feat_rect_1"
+        })
+      ])
+    );
+    expect(read.project.historyBaseline).toMatchObject({
+      units: "cm",
+      features: [
+        expect.objectContaining({
+          id: "feat_rect_1",
+          bodyId: "body_rect_1",
+          depth: 3
+        })
+      ],
+      topologyIdentity: {
+        anchors: [
+          expect.objectContaining({
+            anchorId: "anchor_rect_1_end_face",
+            checkpointId: "checkpoint_rect_1",
+            sourceFeatureId: "feat_rect_1"
+          })
+        ]
+      }
+    });
+
+    const opened = await importCadProjectWcad(exported.bytes);
+    expect(opened.getDocument().features.has("feat_rect_1")).toBe(false);
+
+    opened.undo();
+
+    expect(opened.exportProject().document).toEqual(
+      read.project.historyBaseline
+    );
+    expect(opened.getDocument().features.get("feat_rect_1")).toMatchObject({
+      id: "feat_rect_1",
+      bodyId: "body_rect_1",
+      kind: "extrude",
+      depth: 3,
+      profile: {
+        kind: "entity",
+        sketchId: "sketch_rect_1",
+        entityId: "rect_1"
+      }
+    });
+    expect(opened.getDocument().topologyIdentity?.anchors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          anchorId: "anchor_rect_1_end_face",
+          checkpointId: "checkpoint_rect_1",
+          sourceFeatureId: "feat_rect_1"
+        })
+      ])
+    );
+  });
+
+  it("coalesces matching current and history-baseline checkpoint records", async () => {
+    const engine = createRectangleCheckpointEngine();
+    const runtime = createCheckpointRuntime();
+    const structure = readProjectStructure(engine);
+
+    const payloads = await createProjectWcadTopologyCheckpointPayloadInputs({
+      document: engine.getDocument(),
+      historyBaseline: engine.exportProject().document,
+      features: structure.features,
+      sketches: readSketches(engine),
+      runtime
+    });
+
+    expect(payloads.map((payload) => payload.checkpointId)).toEqual([
+      "checkpoint_rect_1"
+    ]);
+    expect(runtime.exactTopologyCheckpointPayload).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects conflicting duplicate checkpoint metadata across the current document and history baseline", async () => {
+    const engine = createRectangleCheckpointEngine();
+    const currentProject = engine.exportProject();
+    const currentTopologyIdentity = currentProject.document.topologyIdentity;
+    const currentCheckpoint = currentTopologyIdentity?.checkpoints[0];
+
+    if (!currentTopologyIdentity || !currentCheckpoint) {
+      throw new Error("Expected rectangle checkpoint source.");
+    }
+
+    const historyBaseline = {
+      ...currentProject.document,
+      topologyIdentity: {
+        ...currentTopologyIdentity,
+        checkpoints: [
+          {
+            ...currentCheckpoint,
+            bodyId: "body_conflicting_baseline"
+          }
+        ]
+      }
+    };
+    const runtime = createCheckpointRuntime();
+
+    await expect(
+      createProjectWcadTopologyCheckpointPayloadInputs({
+        document: engine.getDocument(),
+        historyBaseline,
+        features: readProjectStructure(engine).features,
+        sketches: readSketches(engine),
+        runtime
+      })
+    ).rejects.toSatisfy((error: unknown) => {
+      expect(isProjectWcadTopologyCheckpointPayloadError(error)).toBe(true);
+      if (!isProjectWcadTopologyCheckpointPayloadError(error)) {
+        return false;
+      }
+      expect(error.issues).toEqual([
+        expect.objectContaining({
+          code: "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
+          message: expect.stringContaining(
+            "conflicting current-document and history-baseline source metadata"
+          ),
+          entryPath: "checkpoints/checkpoint_rect_1.brep",
+          received: expect.stringContaining("body_conflicting_baseline")
+        })
+      ]);
+      return true;
+    });
+    expect(runtime.exactTopologyCheckpointPayload).not.toHaveBeenCalled();
+  });
+
   it("creates WCAD v2 checkpoint payload inputs from supported source-backed checkpoints", async () => {
     const engine = createRectangleCheckpointEngine();
     const runtime = createCheckpointRuntime();
