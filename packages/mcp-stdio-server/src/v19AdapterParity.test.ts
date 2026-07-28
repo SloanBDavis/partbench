@@ -32,56 +32,219 @@ function callTool(
 }
 
 describe("V19 stdio adapter parity", () => {
-  it("carries V19 query identity and strict validation over JSON-RPC", () => {
+  it("carries compact region pages and explicit validation over JSON-RPC", () => {
     const session = createMcpStdioSession();
-    const valid = session.handleMessage(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: "v19-region-query",
-        method: "tools/call",
-        params: {
-          name: "cad.sketch_profile_region_candidates",
-          arguments: {
-            sketchId: "sketch_1",
-            entityIds: ["circle_1"],
-            limit: 20
-          }
+    expect(
+      callTool(session, "v19-region-setup", "cad.batch", {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_regions",
+              name: "Regions",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_regions",
+              id: "outer",
+              center: [0, 0],
+              width: 20,
+              height: 20
+            },
+            {
+              op: "sketch.addCircle",
+              sketchId: "sketch_regions",
+              id: "hole",
+              center: [0, 0],
+              radius: 4
+            },
+            {
+              op: "sketch.addCircle",
+              sketchId: "sketch_regions",
+              id: "island",
+              center: [0, 0],
+              radius: 1
+            },
+            {
+              op: "sketch.addCircle",
+              sketchId: "sketch_regions",
+              id: "other",
+              center: [30, 0],
+              radius: 2
+            }
+          ]
         }
       })
-    );
-    const invalid = session.handleMessage(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: "v19-bad-region-query",
-        method: "tools/call",
-        params: {
-          name: "cad.sketch_profile_region_candidates",
-          arguments: {
-            sketchId: "sketch_1",
-            limit: 1000,
-            screenshot: "data:image/png;base64,opaque"
-          }
-        }
-      })
-    );
+    ).toMatchObject({
+      result: {
+        isError: false,
+        structuredContent: { ok: true, mode: "commit" }
+      }
+    });
 
-    expect(valid).toMatchObject({
+    const first = callTool(
+      session,
+      "v19-region-page-1",
+      "cad.sketch_profile_region_candidates",
+      {
+        sketchId: "sketch_regions",
+        limit: 1
+      }
+    );
+    expect(first).toMatchObject({
       jsonrpc: "2.0",
-      id: "v19-region-query",
+      id: "v19-region-page-1",
       result: {
         toolName: "cad.sketch_profile_region_candidates",
-        isError: true,
+        isError: false,
         structuredContent: {
-          ok: false,
-          error: { code: "UNKNOWN_QUERY" }
+          ok: true,
+          query: "sketch.profileRegionCandidates",
+          sketchId: "sketch_regions",
+          status: "ready",
+          hasMore: true,
+          candidates: [
+            expect.objectContaining({ candidateKey: expect.any(String) })
+          ]
         }
       }
     });
-    expect(invalid).toMatchObject({
-      jsonrpc: "2.0",
-      id: "v19-bad-region-query",
+    const firstPage = first.result.structuredContent as {
+      readonly sourceRevision: string;
+      readonly candidateCount: number;
+      readonly candidates: readonly {
+        readonly candidateKey: string;
+        readonly region: unknown;
+      }[];
+      readonly nextAfterCandidateKey: string;
+    };
+    expect(firstPage.candidates).toHaveLength(1);
+    expect(firstPage.candidateCount).toBeGreaterThan(
+      firstPage.candidates.length
+    );
+
+    const second = callTool(
+      session,
+      "v19-region-page-2",
+      "cad.sketch_profile_region_candidates",
+      {
+        sketchId: "sketch_regions",
+        limit: 1,
+        afterCandidateKey: firstPage.nextAfterCandidateKey,
+        sourceRevision: firstPage.sourceRevision
+      }
+    );
+    expect(second).toMatchObject({
       result: {
-        toolName: "cad.sketch_profile_region_candidates",
+        isError: false,
+        structuredContent: {
+          ok: true,
+          query: "sketch.profileRegionCandidates",
+          sourceRevision: firstPage.sourceRevision,
+          candidates: [
+            expect.objectContaining({ candidateKey: expect.any(String) })
+          ]
+        }
+      }
+    });
+    const secondPage = second.result.structuredContent as {
+      readonly candidates: readonly { readonly candidateKey: string }[];
+    };
+    expect(secondPage.candidates).toHaveLength(1);
+    expect(secondPage.candidates[0]?.candidateKey).not.toBe(
+      firstPage.candidates[0]?.candidateKey
+    );
+
+    const profile = {
+      kind: "regions",
+      sketchId: "sketch_regions",
+      regions: [firstPage.candidates[0]?.region]
+    };
+    expect(
+      callTool(
+        session,
+        "v19-region-validate",
+        "cad.sketch_profile_region_validate",
+        { profile }
+      )
+    ).toMatchObject({
+      result: {
+        toolName: "cad.sketch_profile_region_validate",
+        isError: false,
+        structuredContent: {
+          ok: true,
+          query: "sketch.profileRegionValidate",
+          status: "ready",
+          requestedProfile: profile,
+          normalizedProfile: profile,
+          diagnostics: []
+        }
+      }
+    });
+  });
+
+  it("rejects non-model-space region inputs over JSON-RPC", () => {
+    const session = createMcpStdioSession();
+    for (const extra of [
+      { candidateToken: "opaque-mutation-token" },
+      { screenshot: "data:image/png;base64,opaque" },
+      { pixelX: 320 },
+      { script: "selectRegions()" },
+      { path: "/tmp/regions.json" },
+      { limit: 101 },
+      { sourceRevision: `partbench-source-v1:${"3".repeat(64)}` }
+    ]) {
+      expect(
+        callTool(
+          session,
+          `v19-bad-region-${Object.keys(extra)[0]}`,
+          "cad.sketch_profile_region_candidates",
+          {
+            sketchId: "sketch_regions",
+            ...extra
+          }
+        )
+      ).toMatchObject({
+        result: {
+          toolName: "cad.sketch_profile_region_candidates",
+          isError: true,
+          structuredContent: {
+            ok: false,
+            error: { code: "INVALID_ARGUMENTS" }
+          }
+        }
+      });
+    }
+
+    expect(
+      callTool(
+        session,
+        "v19-bad-region-profile",
+        "cad.sketch_profile_region_validate",
+        {
+          profile: {
+            kind: "regions",
+            sketchId: "sketch_regions",
+            regions: [
+              {
+                outer: {
+                  kind: "entity",
+                  entityId: "outer",
+                  candidateKey: "derived-candidate"
+                },
+                holes: []
+              }
+            ]
+          }
+        }
+      )
+    ).toMatchObject({
+      result: {
+        toolName: "cad.sketch_profile_region_validate",
         isError: true,
         structuredContent: {
           ok: false,

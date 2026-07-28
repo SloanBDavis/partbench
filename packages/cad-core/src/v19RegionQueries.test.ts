@@ -457,6 +457,14 @@ describe("V19 region query dispatch", () => {
         screenshot: "pixels"
       }
     } as never);
+    const unknownEnvelopeField = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "sketch.profileRegionCandidates",
+        sketchId: "sketch_1"
+      },
+      screenshot: "pixels"
+    } as never);
     const unpairedCursor = engine.executeQuery({
       version: "cadops.v1",
       query: {
@@ -467,6 +475,11 @@ describe("V19 region query dispatch", () => {
     } as never);
 
     expect(unknownField).toMatchObject({
+      ok: false,
+      query: "sketch.profileRegionCandidates",
+      error: { code: "INVALID_QUERY" }
+    });
+    expect(unknownEnvelopeField).toMatchObject({
       ok: false,
       query: "sketch.profileRegionCandidates",
       error: { code: "INVALID_QUERY" }
@@ -828,6 +841,7 @@ describe("V19 region query dispatch", () => {
       historyBaseline: _historyBaseline,
       ...savedWithoutHistoryBaseline
     } = saved;
+    expect(_historyBaseline).toBeDefined();
     expect(() =>
       importCadProject({
         ...savedWithoutHistoryBaseline,

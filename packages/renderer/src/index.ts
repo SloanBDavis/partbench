@@ -147,6 +147,7 @@ export interface RenderSceneOptions {
   readonly meshes?: readonly RenderTriangleMesh[];
   readonly camera: RenderCamera;
   readonly size: ViewportSize;
+  readonly preserveDrawingBuffer?: boolean;
   readonly selectedId?: string;
   readonly hoveredId?: string;
   readonly visualStates?: readonly RenderVisualStateInput[];
@@ -302,10 +303,11 @@ export function renderCanvasScene(
   options: RenderSceneOptions
 ): void {
   const { camera, primitives, size } = options;
-  const meshes = options.meshes ?? [];
   const visualStates = createRenderVisualStateMap(options);
-  context.clearRect(0, 0, size.width, size.height);
-  drawGrid(context, camera, size);
+  if (!options.preserveDrawingBuffer) {
+    context.clearRect(0, 0, size.width, size.height);
+    drawGrid(context, camera, size);
+  }
 
   const sorted = primitives
     .map((primitive) => ({
@@ -320,11 +322,13 @@ export function renderCanvasScene(
     drawPrimitive(context, primitive, camera, size, createEmptyVisualStyle());
   }
 
-  for (const mesh of meshes.filter(
-    (mesh) => !hasMeshVisualState(mesh, visualStates)
-  )) {
-    drawTriangleMesh(context, mesh, camera, size, createEmptyVisualStyle());
-  }
+  const meshes = options.meshes ?? [];
+  drawUnstyledMeshes(
+    context,
+    meshes.filter((mesh) => !hasMeshVisualState(mesh, visualStates)),
+    camera,
+    size
+  );
 
   for (const { primitive } of sorted.filter((entry) =>
     visualStates.has(entry.primitive.id)
@@ -349,6 +353,92 @@ export function renderCanvasScene(
       getMeshVisualStyle(mesh, visualStates)
     );
   }
+}
+
+function drawUnstyledMeshes(
+  context: CanvasRenderingContext2D,
+  meshes: readonly RenderTriangleMesh[],
+  camera: RenderCamera,
+  size: ViewportSize
+): void {
+  let sketchBatch: RenderTriangleMesh[] = [];
+  let sketchBatchLineStyle: RenderTriangleMesh["lineStyle"];
+  const flushSketchBatch = () => {
+    if (sketchBatch.length === 0) return;
+    drawSketchEdgeMeshBatch(
+      context,
+      sketchBatch,
+      camera,
+      size,
+      sketchBatchLineStyle
+    );
+    sketchBatch = [];
+    sketchBatchLineStyle = undefined;
+  };
+
+  for (const mesh of meshes) {
+    if (!isBatchableSketchEdgeMesh(mesh)) {
+      flushSketchBatch();
+      drawTriangleMesh(context, mesh, camera, size, createEmptyVisualStyle());
+      continue;
+    }
+
+    if (sketchBatch.length > 0 && mesh.lineStyle !== sketchBatchLineStyle) {
+      flushSketchBatch();
+    }
+    sketchBatchLineStyle = mesh.lineStyle;
+    sketchBatch.push(mesh);
+  }
+  flushSketchBatch();
+}
+
+function isBatchableSketchEdgeMesh(mesh: RenderTriangleMesh): boolean {
+  return (
+    mesh.source === "sketch" &&
+    mesh.vertices.length === 0 &&
+    mesh.indices.length === 0 &&
+    (mesh.edgeSegments?.length ?? 0) > 0
+  );
+}
+
+function drawSketchEdgeMeshBatch(
+  context: CanvasRenderingContext2D,
+  meshes: readonly RenderTriangleMesh[],
+  camera: RenderCamera,
+  size: ViewportSize,
+  lineStyle: RenderTriangleMesh["lineStyle"]
+): void {
+  let hasProjectedSegment = false;
+
+  context.save();
+  context.lineJoin = "round";
+  context.lineCap = "round";
+  if (lineStyle === "construction") context.setLineDash([5, 4]);
+  context.strokeStyle = lineStyle === "construction" ? "#6f7c86" : "#235f86";
+  context.lineWidth = 2;
+  context.beginPath();
+
+  for (const mesh of meshes) {
+    for (const edge of mesh.edgeSegments ?? []) {
+      const projectedStart = projectPoint(
+        transformPoint(edge.start, mesh.transform),
+        camera,
+        size
+      );
+      const projectedEnd = projectPoint(
+        transformPoint(edge.end, mesh.transform),
+        camera,
+        size
+      );
+      if (!projectedStart || !projectedEnd) continue;
+      context.moveTo(projectedStart.x, projectedStart.y);
+      context.lineTo(projectedEnd.x, projectedEnd.y);
+      hasProjectedSegment = true;
+    }
+  }
+
+  if (hasProjectedSegment) context.stroke();
+  context.restore();
 }
 
 function hasMeshVisualState(
@@ -875,15 +965,31 @@ function strokeMeshEdgeSegments(
   camera: RenderCamera,
   size: ViewportSize
 ): void {
+  let hasProjectedSegment = false;
+  context.beginPath();
+
   for (const edge of edgeSegments) {
-    strokeProjectedLine(
-      context,
-      camera,
-      size,
+    const projectedStart = projectPoint(
       transformPoint(edge.start, mesh.transform),
-      transformPoint(edge.end, mesh.transform)
+      camera,
+      size
     );
+    const projectedEnd = projectPoint(
+      transformPoint(edge.end, mesh.transform),
+      camera,
+      size
+    );
+
+    if (!projectedStart || !projectedEnd) {
+      continue;
+    }
+
+    context.moveTo(projectedStart.x, projectedStart.y);
+    context.lineTo(projectedEnd.x, projectedEnd.y);
+    hasProjectedSegment = true;
   }
+
+  if (hasProjectedSegment) context.stroke();
 }
 
 function createProjectedMeshOutline(

@@ -593,6 +593,50 @@ describe("V19 curve-edit engine vertical slice", () => {
     ).toEqual(fresh.preparedOperation);
   });
 
+  it("accepts worker source evidence only for the matching authority epoch", () => {
+    const engine = lineEngine();
+    const ready = readiness(engine, {
+      kind: "split",
+      sketchId: "sketch_1",
+      entityId: "target",
+      splitPoints: [[5, 0]]
+    });
+    const sourceRevision =
+      ready.preparedOperation.precondition.expectedSourceRevision;
+    const solverEvaluationIdentity =
+      ready.preparedOperation.precondition.expectedSolverEvaluationIdentity;
+    const authorityEpoch = engine.getSourceAuthorityEpoch();
+
+    expect(
+      engine.acceptTrustedQueryCurveEditEvidence(
+        sourceRevision,
+        solverEvaluationIdentity,
+        authorityEpoch
+      )
+    ).toBe(true);
+    expect(() =>
+      engine.acceptTrustedQuerySourceRevision(
+        "not-a-source-revision",
+        authorityEpoch
+      )
+    ).toThrow(TypeError);
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "authority_epoch_box",
+      dimensions: { width: 1, height: 1, depth: 1 }
+    });
+
+    expect(engine.getSourceAuthorityEpoch()).toBe(authorityEpoch + 1);
+    expect(
+      engine.acceptTrustedQueryCurveEditEvidence(
+        sourceRevision,
+        solverEvaluationIdentity,
+        authorityEpoch
+      )
+    ).toBe(false);
+  });
+
   it("preserves history-sensitive source identity through the command worker", async () => {
     const engine = lineEngine();
     const ready = readiness(engine, {

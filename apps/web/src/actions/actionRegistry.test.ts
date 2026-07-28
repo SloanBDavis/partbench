@@ -228,7 +228,8 @@ describe("V18 command search", () => {
       "sketch.extend",
       "sketch.split",
       "sketch.explode-rectangle",
-      "sketch.offset"
+      "sketch.offset",
+      "sketch.regions"
     ]);
     expect(searchUiActions(actions, "ctrl/cmd+k")).toEqual([]);
     expect(searchUiActions(actions, "ctrl/cmd+z")[0]?.definition.id).toBe(

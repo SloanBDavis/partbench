@@ -9,6 +9,22 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./browser": {
+      "types": "./src/browser.ts",
+      "default": "./src/browser.ts"
+    },
+    "./full": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./region-policy": {
+      "types": "./src/regionPolicy.ts",
+      "default": "./src/regionPolicy.ts"
+    },
+    "./region-source-validation-policy": {
+      "types": "./src/regionSourceValidationPolicy.ts",
+      "default": "./src/regionSourceValidationPolicy.ts"
     }
   },
   "dependencies": {

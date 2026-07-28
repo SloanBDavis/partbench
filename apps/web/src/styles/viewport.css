@@ -131,7 +131,9 @@
 
 .sketch-drag-overlay,
 .sketch-arc-tool-layer,
-.sketch-arc-tool-overlay {
+.sketch-arc-tool-overlay,
+.sketch-region-layer,
+.sketch-region-overlay {
   position: absolute;
   z-index: 35;
   inset: 0;
@@ -155,6 +157,33 @@
 .sketch-arc-tool-layer,
 .sketch-arc-tool-overlay {
   z-index: 36;
+}
+
+.sketch-region-layer,
+.sketch-region-overlay {
+  z-index: 34;
+}
+
+.sketch-region-cell {
+  fill: color-mix(in srgb, var(--pb-color-accent) 16%, transparent);
+  stroke: color-mix(in srgb, var(--pb-color-accent) 72%, transparent);
+  stroke-width: 1.25;
+  cursor: pointer;
+  pointer-events: auto;
+  transition:
+    fill 100ms ease,
+    stroke-width 100ms ease;
+}
+
+.sketch-region-cell-hovered {
+  fill: color-mix(in srgb, var(--pb-color-accent) 25%, transparent);
+  stroke-width: 2;
+}
+
+.sketch-region-cell-selected {
+  fill: color-mix(in srgb, var(--pb-color-success) 26%, transparent);
+  stroke: var(--pb-color-success);
+  stroke-width: 2.5;
 }
 
 .sketch-arc-tool-prompt {

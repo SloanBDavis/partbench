@@ -3234,7 +3234,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.sketch_profile_region_candidates",
     description:
-      "Returns a bounded, revision-bound page of derived V19 whole-loop material-region candidates. Candidate records are derived discovery evidence and do not become feature source until an explicit regions profile is submitted.",
+      "Returns a bounded, revision-bound page of derived V19 whole-loop material-region candidates. Candidate records and candidate keys are discovery evidence only: they grant no mutation authority and do not become feature source until an explicit regions profile is submitted. The query accepts typed sketch/entity IDs only; screenshots, pixels, opaque mutation tokens, raw OCCT selectors, scripts, and filesystem paths are never source substitutes.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -3242,14 +3242,16 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
       properties: {
         sketchId: {
           type: "string",
+          minLength: 1,
           description: "Source sketch ID to inspect."
         },
         entityIds: {
           type: "array",
+          maxItems: 4_096,
           uniqueItems: true,
-          items: { type: "string" },
+          items: { type: "string", minLength: 1 },
           description:
-            "Optional source entity subset; selection pixels and opaque candidate tokens are not accepted."
+            "Optional source entity subset. Screenshots, selection pixels, opaque tokens, raw geometry selectors, scripts, and filesystem paths are not accepted."
         },
         limit: {
           type: "integer",
@@ -3259,8 +3261,9 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
         },
         afterCandidateKey: {
           type: "string",
+          minLength: 1,
           description:
-            "Canonical key from the preceding page; requires sourceRevision."
+            "Canonical display/paging key from the preceding page; requires sourceRevision and never authorizes a mutation."
         },
         sourceRevision: {
           type: "string",
@@ -3274,7 +3277,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.sketch_profile_region_validate",
     description:
-      "Validates an explicit V19 regions profile made from typed source entity/wire loop references and returns normalized loop ordering, areas, complexity, and diagnostics. It never substitutes a derived candidate or raw geometry selector.",
+      "Validates an explicit V19 regions profile made from typed source entity/wire loop references and returns normalized loop ordering, areas, complexity, and diagnostics. Derived candidates and candidate keys are never accepted as mutation authority; screenshots, pixels, opaque tokens, raw OCCT selectors, scripts, and filesystem paths are never source substitutes.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -3286,7 +3289,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
           required: ["kind", "sketchId", "regions"],
           properties: {
             kind: { const: "regions" },
-            sketchId: { type: "string" },
+            sketchId: { type: "string", minLength: 1 },
             regions: {
               type: "array",
               minItems: 1,

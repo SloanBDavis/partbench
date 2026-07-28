@@ -8,6 +8,7 @@ export const V19_NEAR_LIMIT_PROOF_VERSION =
   "partbench.v19-near-limit-performance.v1";
 export const V19_NEAR_LIMIT_WORKLOAD_MODULE =
   "v19-near-limit-performance-workload.mjs";
+export const V19_NEAR_LIMIT_EXPECTED_CANDIDATE_COUNT = 512;
 
 export const V19_NEAR_LIMIT_DEFERRED = Object.freeze({
   status: "deferred",
@@ -61,6 +62,53 @@ export function auditV19NearLimitProof(proof, expectedBuildHash) {
     "region cancellation",
     proof.regionDiscovery?.cancellationObserved
   );
+  checkEqual(
+    failures,
+    "near-limit candidate limit",
+    proof.regionDiscovery?.candidateLimit,
+    V19_NEAR_LIMIT_EXPECTED_CANDIDATE_COUNT
+  );
+  checkEqual(
+    failures,
+    "near-limit candidate count",
+    proof.regionDiscovery?.candidateCount,
+    V19_NEAR_LIMIT_EXPECTED_CANDIDATE_COUNT
+  );
+  checkEqual(
+    failures,
+    "loaded near-limit candidate count",
+    proof.regionDiscovery?.loadedCandidateCount,
+    V19_NEAR_LIMIT_EXPECTED_CANDIDATE_COUNT
+  );
+  checkEqual(
+    failures,
+    "candidate count evidence source",
+    proof.regionDiscovery?.candidateCountSource,
+    "worker-query-response"
+  );
+  checkEqual(
+    failures,
+    "near-limit page count",
+    proof.regionDiscovery?.pageCount,
+    6
+  );
+  checkMinimum(
+    failures,
+    "physically cancelled query workers",
+    proof.regionDiscovery?.cancelledQueryWorkerCount,
+    1
+  );
+  checkMinimum(
+    failures,
+    "physical cancellation delay",
+    proof.regionDiscovery?.cancellationDelayMs,
+    Number.EPSILON
+  );
+  checkDistinctSourceRevisions(
+    failures,
+    proof.regionDiscovery?.initialSourceRevision,
+    proof.regionDiscovery?.revisedSourceRevision
+  );
   checkBoolean(failures, "curve edit completion", proof.curveEdit?.completed);
   checkBoolean(
     failures,
@@ -72,10 +120,48 @@ export function auditV19NearLimitProof(proof, expectedBuildHash) {
     "curve edit Apply revalidation",
     proof.curveEdit?.applyRevalidationObserved
   );
+  checkEqual(
+    failures,
+    "curve edit Apply command",
+    proof.curveEdit?.applyCommandOp,
+    "sketch.split"
+  );
+  checkBoolean(
+    failures,
+    "revision-bound curve edit Apply",
+    proof.curveEdit?.revisionBoundApply
+  );
+  checkBoolean(
+    failures,
+    "curve edit command response",
+    proof.curveEdit?.commandResponseOk
+  );
   checkBoolean(
     failures,
     "next-animation-frame pointer feedback",
     proof.interaction?.pointerFeedbackByNextAnimationFrame
+  );
+  checkBoolean(
+    failures,
+    "trusted pointer feedback event",
+    proof.interaction?.trustedPointerFeedbackEvent
+  );
+  checkMaximum(
+    failures,
+    "trusted pointer feedback latency",
+    proof.interaction?.pointerFeedbackFrameLatencyMs,
+    34
+  );
+  checkBoolean(
+    failures,
+    "long-task observer support",
+    proof.interaction?.longTaskObserverSupported
+  );
+  checkMinimum(
+    failures,
+    "near-limit frame samples",
+    proof.interaction?.frameSampleCount,
+    60
   );
   checkMaximum(
     failures,
@@ -245,6 +331,29 @@ function checkMaximum(failures, label, actual, maximum) {
     failures.push(`${label}: expected a finite measurement`);
   } else if (actual > maximum) {
     failures.push(`${label}: ${actual}ms exceeds ${maximum}ms`);
+  }
+}
+
+function checkMinimum(failures, label, actual, minimum) {
+  if (!Number.isFinite(actual)) {
+    failures.push(`${label}: expected a finite measurement`);
+  } else if (actual < minimum) {
+    failures.push(`${label}: ${actual} is below ${minimum}`);
+  }
+}
+
+function checkDistinctSourceRevisions(failures, initial, revised) {
+  const pattern = /^partbench-source-v1:[0-9a-f]{64}$/;
+  if (
+    typeof initial !== "string" ||
+    typeof revised !== "string" ||
+    !pattern.test(initial) ||
+    !pattern.test(revised) ||
+    initial === revised
+  ) {
+    failures.push(
+      "region source revisions: expected two distinct canonical source revisions"
+    );
   }
 }
 

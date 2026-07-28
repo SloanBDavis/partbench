@@ -2,14 +2,12 @@ import {
   createCadOpsAgentAdapter,
   type CadOpsAgentQueryResponse
 } from "@web-cad/agent-adapter";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   createCadMcpServer,
   type CadMcpToolCallResult,
   type CadMcpServer
 } from "./index";
-
-const SOURCE_REVISION = `partbench-source-v1:${"2".repeat(64)}`;
 
 type ReadyCurveEditResponse = Extract<
   CadOpsAgentQueryResponse,
@@ -83,6 +81,43 @@ function createTrimServer(): CadMcpServer {
   return createCadMcpServer({ adapter });
 }
 
+function createRegionServer(): CadMcpServer {
+  const adapter = createCadOpsAgentAdapter();
+  adapter.getEngine().applyBatch([
+    { op: "sketch.create", id: "sketch_regions", name: "Regions", plane: "XY" },
+    {
+      op: "sketch.addRectangle",
+      sketchId: "sketch_regions",
+      id: "outer",
+      center: [0, 0],
+      width: 20,
+      height: 20
+    },
+    {
+      op: "sketch.addCircle",
+      sketchId: "sketch_regions",
+      id: "hole",
+      center: [0, 0],
+      radius: 4
+    },
+    {
+      op: "sketch.addCircle",
+      sketchId: "sketch_regions",
+      id: "island",
+      center: [0, 0],
+      radius: 1
+    },
+    {
+      op: "sketch.addCircle",
+      sketchId: "sketch_regions",
+      id: "other",
+      center: [30, 0],
+      radius: 2
+    }
+  ]);
+  return createCadMcpServer({ adapter });
+}
+
 describe("V19 MCP adapter parity", () => {
   it("publishes typed curve and region discovery tools with boundary notes", () => {
     const tools = createCadMcpServer().listTools().tools;
@@ -118,6 +153,14 @@ describe("V19 MCP adapter parity", () => {
       tools.find((tool) => tool.name === "cad.sketch_profile_region_candidates")
         ?.description
     ).toContain("derived");
+    expect(
+      tools.find((tool) => tool.name === "cad.sketch_profile_region_candidates")
+        ?.description
+    ).toContain("no mutation authority");
+    expect(
+      tools.find((tool) => tool.name === "cad.sketch_profile_region_candidates")
+        ?.description
+    ).toContain("filesystem paths");
     const curveSchema = tools.find(
       (tool) => tool.name === "cad.sketch_curve_edit_readiness"
     )?.inputSchema;
@@ -287,6 +330,23 @@ describe("V19 MCP adapter parity", () => {
     const regionSchema = tools.find(
       (tool) => tool.name === "cad.sketch_profile_region_validate"
     )?.inputSchema;
+    const regionCandidatesSchema = tools.find(
+      (tool) => tool.name === "cad.sketch_profile_region_candidates"
+    )?.inputSchema;
+    expect(regionCandidatesSchema).toMatchObject({
+      additionalProperties: false,
+      required: ["sketchId"],
+      properties: {
+        sketchId: { minLength: 1 },
+        entityIds: {
+          maxItems: 4_096,
+          uniqueItems: true,
+          items: { minLength: 1 }
+        },
+        limit: { minimum: 1, maximum: 100 },
+        afterCandidateKey: { minLength: 1 }
+      }
+    });
     expect(regionSchema).toMatchObject({
       properties: {
         profile: {
@@ -302,6 +362,14 @@ describe("V19 MCP adapter parity", () => {
         }
       }
     });
+    expect(
+      tools.find((tool) => tool.name === "cad.sketch_profile_region_validate")
+        ?.description
+    ).toContain("candidate keys");
+    expect(
+      tools.find((tool) => tool.name === "cad.sketch_profile_region_validate")
+        ?.description
+    ).toContain("filesystem paths");
   });
 
   it("preserves full readiness evidence and curve-edit batch audit metadata", () => {
@@ -985,71 +1053,106 @@ describe("V19 MCP adapter parity", () => {
     });
   }, 20_000);
 
-  it("passes valid V19 query shapes through with the original query identity", () => {
-    const adapter = createCadOpsAgentAdapter();
-    vi.spyOn(adapter, "query").mockImplementation((request) => ({
-      ok: false,
-      requestId: request.requestId,
-      adapterVersion: request.adapterVersion,
-      cadOpsVersion: "cadops.v1",
-      query: request.query.query.query,
-      error: {
-        code: "UNKNOWN_QUERY",
-        message: "Slice-specific query implementation is not installed."
+  it("returns compact revision-bound pages and validates explicit region refs", () => {
+    const server = createRegionServer();
+    const firstResult = server.callTool({
+      name: "cad.sketch_profile_region_candidates",
+      requestId: "mcp_region_page_1",
+      arguments: {
+        sketchId: "sketch_regions",
+        limit: 1
       }
-    }));
-    const server = createCadMcpServer({ adapter });
-    const calls = [
-      {
-        name: "cad.sketch_curve_edit_readiness",
-        arguments: {
-          proposal: {
-            kind: "split",
-            sketchId: "sketch_1",
-            entityId: "line_1",
-            splitPoints: [[5, 0]]
-          }
-        },
-        query: "sketch.curveEditReadiness"
-      },
-      {
-        name: "cad.sketch_profile_region_candidates",
-        arguments: {
-          sketchId: "sketch_1",
-          limit: 10,
-          afterCandidateKey: "candidate_1",
-          sourceRevision: SOURCE_REVISION
-        },
-        query: "sketch.profileRegionCandidates"
-      },
-      {
-        name: "cad.sketch_profile_region_validate",
-        arguments: {
-          profile: {
-            kind: "regions",
-            sketchId: "sketch_1",
-            regions: [
-              {
-                outer: { kind: "entity", entityId: "circle_outer" },
-                holes: []
-              }
-            ]
-          }
-        },
-        query: "sketch.profileRegionValidate"
+    });
+    expect(firstResult).toMatchObject({
+      toolName: "cad.sketch_profile_region_candidates",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_region_page_1",
+        query: "sketch.profileRegionCandidates",
+        sketchId: "sketch_regions",
+        status: "ready",
+        hasMore: true,
+        candidates: [
+          expect.objectContaining({ candidateKey: expect.any(String) })
+        ]
       }
-    ] as const;
-
-    for (const call of calls) {
-      const result = server.callTool({
-        name: call.name,
-        arguments: call.arguments,
-        requestId: `request_${call.query}`
-      });
-      expect(result.structuredContent).toMatchObject({
-        query: call.query
-      });
+    });
+    const first = firstResult.structuredContent;
+    if (
+      !first.ok ||
+      !("query" in first) ||
+      first.query !== "sketch.profileRegionCandidates" ||
+      first.candidates[0] === undefined ||
+      first.nextAfterCandidateKey === undefined
+    ) {
+      throw new Error(`Expected a first region page: ${JSON.stringify(first)}`);
     }
+    expect(first.candidates).toHaveLength(1);
+    expect(first.candidateCount).toBeGreaterThan(first.candidates.length);
+
+    const secondResult = server.callTool({
+      name: "cad.sketch_profile_region_candidates",
+      requestId: "mcp_region_page_2",
+      arguments: {
+        sketchId: "sketch_regions",
+        limit: 1,
+        afterCandidateKey: first.nextAfterCandidateKey,
+        sourceRevision: first.sourceRevision
+      }
+    });
+    expect(secondResult).toMatchObject({
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_region_page_2",
+        query: "sketch.profileRegionCandidates",
+        candidates: [
+          expect.objectContaining({ candidateKey: expect.any(String) })
+        ]
+      }
+    });
+    const second = secondResult.structuredContent;
+    if (
+      !second.ok ||
+      !("query" in second) ||
+      second.query !== "sketch.profileRegionCandidates" ||
+      second.candidates[0] === undefined
+    ) {
+      throw new Error(
+        `Expected a second region page: ${JSON.stringify(second)}`
+      );
+    }
+    expect(second.candidates).toHaveLength(1);
+    expect(second.sourceRevision).toBe(first.sourceRevision);
+    expect(second.candidates[0].candidateKey).not.toBe(
+      first.candidates[0].candidateKey
+    );
+
+    const profile = {
+      kind: "regions",
+      sketchId: "sketch_regions",
+      regions: [first.candidates[0].region]
+    } as const;
+    expect(
+      server.callTool({
+        name: "cad.sketch_profile_region_validate",
+        requestId: "mcp_region_validate",
+        arguments: { profile }
+      })
+    ).toMatchObject({
+      toolName: "cad.sketch_profile_region_validate",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_region_validate",
+        query: "sketch.profileRegionValidate",
+        status: "ready",
+        requestedProfile: profile,
+        normalizedProfile: profile,
+        diagnostics: []
+      }
+    });
   });
 
   it("rejects malformed V19 query and mutation shapes as invalid arguments", () => {
@@ -1062,6 +1165,60 @@ describe("V19 MCP adapter parity", () => {
       }
     });
     expect(malformedQuery).toMatchObject({
+      isError: true,
+      structuredContent: {
+        ok: false,
+        error: { code: "INVALID_ARGUMENTS" }
+      }
+    });
+
+    for (const extra of [
+      { candidateToken: "opaque-mutation-token" },
+      { screenshot: "data:image/png;base64,opaque" },
+      { pixelX: 320 },
+      { script: "selectRegions()" },
+      { path: "/tmp/regions.json" },
+      { limit: 101 },
+      { sourceRevision: `partbench-source-v1:${"3".repeat(64)}` }
+    ]) {
+      expect(
+        server.callTool({
+          name: "cad.sketch_profile_region_candidates",
+          arguments: {
+            sketchId: "sketch_1",
+            ...extra
+          }
+        })
+      ).toMatchObject({
+        isError: true,
+        structuredContent: {
+          ok: false,
+          error: { code: "INVALID_ARGUMENTS" }
+        }
+      });
+    }
+
+    expect(
+      server.callTool({
+        name: "cad.sketch_profile_region_validate",
+        arguments: {
+          profile: {
+            kind: "regions",
+            sketchId: "sketch_1",
+            regions: [
+              {
+                outer: {
+                  kind: "entity",
+                  entityId: "outer",
+                  candidateKey: "derived-candidate"
+                },
+                holes: []
+              }
+            ]
+          }
+        }
+      })
+    ).toMatchObject({
       isError: true,
       structuredContent: {
         ok: false,

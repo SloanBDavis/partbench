@@ -65,12 +65,12 @@ import {
   resolveActiveTopologyAnchorBodyTargetId,
   resolveActiveTopologyAnchorTargetSource
 } from "./topologyAnchorTargetResolution";
-import { createSketchProfileRegionCandidateCorrelations } from "./v19RegionDiscovery";
-import { getSketchLoopCanonicalKey } from "./v22SourceShapes";
 import {
-  validateV22RegionSource,
-  type V22RegionSourceIssue
-} from "./v22RegionSourceValidation";
+  createRegisteredRegionCandidateCorrelations,
+  validateRegisteredV22RegionSource
+} from "./v19RegionPolicyRegistry";
+import { getSketchLoopCanonicalKey } from "./v22SourceShapes";
+import type { V22RegionSourceIssue } from "./v22RegionSourceValidation";
 
 interface ResolvedWire {
   readonly segments: readonly ResolvedSketchSegment[];
@@ -1071,7 +1071,7 @@ export function createSketchProfileCandidatesResponse(
     left.sortKey.localeCompare(right.sortKey)
   );
   const regionCandidateKeys =
-    createSketchProfileRegionCandidateCorrelations(sketch);
+    createRegisteredRegionCandidateCorrelations(sketch);
   const indexedCandidates = candidates.map((candidate, candidateIndex) => ({
     ...candidate,
     candidateIndex,
@@ -1230,7 +1230,7 @@ function regionIssueDiagnostic(
 
 function mergeRegionOuterBounds(
   validation: Extract<
-    ReturnType<typeof validateV22RegionSource>,
+    ReturnType<typeof validateRegisteredV22RegionSource>,
     { readonly ok: true }
   >
 ): SketchBounds2d {
@@ -1552,7 +1552,7 @@ export function createSketchProfileReadinessResponse(
   const targetDiagnostics = targetCompatibility.diagnostics;
 
   if (query.profile.kind === "regions") {
-    const validation = validateV22RegionSource(query.profile, sketch);
+    const validation = validateRegisteredV22RegionSource(query.profile, sketch);
     const diagnostics = [
       ...(validation.ok
         ? []

@@ -1,0 +1,665 @@
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent
+} from "react";
+import type {
+  SketchProfileRegionCandidate,
+  SketchProfileRegionCandidatesQuery,
+  SketchProfileRegionValidateQueryResponse,
+  SketchRegionsProfileRef,
+  SketchSnapshot
+} from "@web-cad/cad-protocol";
+import type {
+  SketchRegionCandidatesQueryResult,
+  SketchRegionValidateQueryResult
+} from "../../sketchRegionQueryClient";
+import { LiveRegion } from "../../ui/LiveRegion";
+import type { SketchCurveEditSessionControl } from "./SketchCurveEditPanel";
+import {
+  SKETCH_REGION_CONSUMER_OPTIONS,
+  createSketchEntitySemanticNames,
+  createSelectedSketchRegionsProfile,
+  formatSketchRegionCandidateName,
+  isSketchRegionSelectionCountReady,
+  type SketchRegionConsumerIntent
+} from "./sketchRegionSelectionModel";
+
+const PAGE_LIMIT = 100;
+const CANDIDATE_WINDOW_SIZE = 12;
+const AREA_FORMATTER = new Intl.NumberFormat(undefined, {
+  maximumFractionDigits: 4
+});
+
+export interface SketchRegionSelectionPanelProps {
+  readonly disabled: boolean;
+  readonly sketch: SketchSnapshot;
+  readonly sourceAuthorityKey: string | number;
+  readonly candidates: readonly SketchProfileRegionCandidate[];
+  readonly selectedCandidateKeys: readonly string[];
+  readonly hoveredCandidateKey?: string;
+  readonly consumer: SketchRegionConsumerIntent;
+  readonly keyboardSuspended?: boolean;
+  readonly queryCandidates: (
+    query: SketchProfileRegionCandidatesQuery,
+    signal: AbortSignal
+  ) => Promise<SketchRegionCandidatesQueryResult>;
+  readonly validateProfile: (
+    profile: SketchRegionsProfileRef,
+    signal: AbortSignal
+  ) => Promise<SketchRegionValidateQueryResult>;
+  readonly onCandidatesChange: (
+    candidates: readonly SketchProfileRegionCandidate[]
+  ) => void;
+  readonly onToggleCandidate: (candidateKey: string) => void;
+  readonly onHoverCandidate: (candidateKey: string | undefined) => void;
+  readonly onConsumerChange: (consumer: SketchRegionConsumerIntent) => void;
+  readonly onApplyReady: (
+    profile: SketchRegionsProfileRef,
+    response: SketchProfileRegionValidateQueryResponse
+  ) => void;
+  readonly onCancel: (restoreFocus?: boolean) => void;
+  readonly onRequestEscape?: (dirty: boolean) => void;
+  readonly onDirtyChange?: (dirty: boolean) => void;
+  readonly onSessionControlChange?: (
+    control: SketchCurveEditSessionControl | undefined
+  ) => void;
+}
+
+interface RegionPageState {
+  readonly status: "loading" | "ready" | "blocked" | "failed";
+  readonly candidateCount: number;
+  readonly hasMore: boolean;
+  readonly nextAfterCandidateKey?: string;
+  readonly sourceRevision?: string;
+  readonly diagnostics: readonly string[];
+}
+
+const INITIAL_PAGE_STATE: RegionPageState = {
+  status: "loading",
+  candidateCount: 0,
+  hasMore: false,
+  diagnostics: []
+};
+
+export function SketchRegionSelectionPanel(
+  props: SketchRegionSelectionPanelProps
+) {
+  const {
+    disabled,
+    sketch,
+    sourceAuthorityKey,
+    candidates,
+    selectedCandidateKeys,
+    hoveredCandidateKey,
+    consumer,
+    keyboardSuspended = false,
+    queryCandidates,
+    validateProfile,
+    onCandidatesChange,
+    onToggleCandidate,
+    onHoverCandidate,
+    onConsumerChange,
+    onApplyReady,
+    onCancel,
+    onRequestEscape,
+    onDirtyChange,
+    onSessionControlChange
+  } = props;
+  const [page, setPage] = useState<RegionPageState>(INITIAL_PAGE_STATE);
+  const [applying, setApplying] = useState(false);
+  const [validationMessages, setValidationMessages] = useState<
+    readonly string[]
+  >([]);
+  const [candidateWindow, setCandidateWindow] = useState(() => ({
+    authorityKey: sourceAuthorityKey,
+    start: 0
+  }));
+  const maximumCandidateWindowStart = Math.max(
+    0,
+    Math.floor((candidates.length - 1) / CANDIDATE_WINDOW_SIZE) *
+      CANDIDATE_WINDOW_SIZE
+  );
+  const candidateWindowStart =
+    candidateWindow.authorityKey === sourceAuthorityKey
+      ? Math.min(candidateWindow.start, maximumCandidateWindowStart)
+      : 0;
+  function updateCandidateWindowStart(update: (current: number) => number) {
+    setCandidateWindow({
+      authorityKey: sourceAuthorityKey,
+      start: update(candidateWindowStart)
+    });
+  }
+  const formRef = useRef<HTMLFormElement>(null);
+  const queryAbortRef = useRef<AbortController | undefined>(undefined);
+  const validationAbortRef = useRef<AbortController | undefined>(undefined);
+  const applyRef = useRef<
+    (options?: { readonly restoreFocusOnSuccess?: boolean }) => Promise<boolean>
+  >(async () => false);
+  const dirty =
+    selectedCandidateKeys.length > 0 || consumer !== "extrude-new-body";
+  const selectionCountReady = isSketchRegionSelectionCountReady(
+    selectedCandidateKeys.length,
+    consumer
+  );
+  const canApply =
+    page.status === "ready" && selectionCountReady && !disabled && !applying;
+  const entityNames = useMemo(
+    () => createSketchEntitySemanticNames(sketch),
+    [sketch]
+  );
+  const visibleCandidates = useMemo(
+    () =>
+      candidates.slice(
+        candidateWindowStart,
+        candidateWindowStart + CANDIDATE_WINDOW_SIZE
+      ),
+    [candidateWindowStart, candidates]
+  );
+  const candidateNames = useMemo(
+    () =>
+      new Map(
+        visibleCandidates.map((candidate) => [
+          candidate.candidateKey,
+          formatSketchRegionCandidateName(candidate, entityNames)
+        ])
+      ),
+    [entityNames, visibleCandidates]
+  );
+  const selectedKeys = useMemo(
+    () => new Set(selectedCandidateKeys),
+    [selectedCandidateKeys]
+  );
+
+  const readPage = useCallback(
+    async (
+      cursor:
+        | {
+            readonly afterCandidateKey: string;
+            readonly sourceRevision: string;
+          }
+        | undefined
+    ) => {
+      queryAbortRef.current?.abort();
+      const abortController = new AbortController();
+      queryAbortRef.current = abortController;
+      setPage((current) => ({
+        ...current,
+        status: "loading",
+        diagnostics: []
+      }));
+      try {
+        const response = await queryCandidates(
+          {
+            query: "sketch.profileRegionCandidates",
+            sketchId: sketch.id,
+            limit: PAGE_LIMIT,
+            ...(cursor ?? {})
+          },
+          abortController.signal
+        );
+        if (abortController.signal.aborted) return;
+        if (!response.ok) {
+          setPage({
+            status: "failed",
+            candidateCount: 0,
+            hasMore: false,
+            diagnostics: [response.error.message]
+          });
+          if (!cursor) onCandidatesChange([]);
+          return;
+        }
+        const merged = cursor
+          ? mergeCandidatePages(candidates, response.candidates)
+          : response.candidates;
+        onCandidatesChange(merged);
+        setPage({
+          status: response.status,
+          candidateCount: response.candidateCount,
+          hasMore: response.hasMore,
+          ...(response.nextAfterCandidateKey
+            ? { nextAfterCandidateKey: response.nextAfterCandidateKey }
+            : {}),
+          sourceRevision: response.sourceRevision,
+          diagnostics: response.diagnostics.map(
+            (diagnostic) => diagnostic.message
+          )
+        });
+      } catch (error) {
+        if (abortController.signal.aborted) return;
+        setPage({
+          status: "failed",
+          candidateCount: 0,
+          hasMore: false,
+          diagnostics: [
+            error instanceof Error
+              ? error.message
+              : "Region discovery could not be evaluated."
+          ]
+        });
+        if (!cursor) onCandidatesChange([]);
+      }
+    },
+    [candidates, onCandidatesChange, queryCandidates, sketch.id]
+  );
+
+  useEffect(() => {
+    void sourceAuthorityKey;
+    onCandidatesChange([]);
+    onHoverCandidate(undefined);
+    const timeout = window.setTimeout(() => void readPage(undefined), 0);
+    return () => {
+      window.clearTimeout(timeout);
+      queryAbortRef.current?.abort();
+    };
+    // Candidate changes are outputs of this effect, not discovery inputs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sketch.id, sourceAuthorityKey]);
+
+  async function apply(
+    options: { readonly restoreFocusOnSuccess?: boolean } = {}
+  ): Promise<boolean> {
+    if (!canApply) return false;
+    const profile = createSelectedSketchRegionsProfile(
+      sketch.id,
+      candidates,
+      selectedCandidateKeys
+    );
+    if (!profile) {
+      setValidationMessages([
+        "Select a complete valid set of whole-loop material regions."
+      ]);
+      return false;
+    }
+
+    validationAbortRef.current?.abort();
+    const abortController = new AbortController();
+    validationAbortRef.current = abortController;
+    setApplying(true);
+    setValidationMessages([]);
+    try {
+      const response = await validateProfile(profile, abortController.signal);
+      if (abortController.signal.aborted) return false;
+      if (!response.ok) {
+        setValidationMessages([response.error.message]);
+        return false;
+      }
+      if (response.status !== "ready" || !response.normalizedProfile) {
+        setValidationMessages(
+          response.diagnostics.map((diagnostic) => diagnostic.message)
+        );
+        return false;
+      }
+      onApplyReady(response.normalizedProfile, response);
+      onCancel(options.restoreFocusOnSuccess ?? true);
+      return true;
+    } catch (error) {
+      if (abortController.signal.aborted) return false;
+      setValidationMessages([
+        error instanceof Error
+          ? error.message
+          : "The selected regions could not be validated."
+      ]);
+      return false;
+    } finally {
+      if (!abortController.signal.aborted) setApplying(false);
+    }
+  }
+  useEffect(() => {
+    applyRef.current = apply;
+  });
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+
+  useEffect(() => {
+    onSessionControlChange?.({
+      apply: (options) => applyRef.current(options),
+      focus: () => focusRegionInitialControl(formRef.current)
+    });
+    return () => onSessionControlChange?.(undefined);
+  }, [onSessionControlChange]);
+
+  useEffect(() => {
+    focusRegionInitialControl(formRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (keyboardSuspended) return undefined;
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key === "Enter" &&
+        canApply
+      ) {
+        event.preventDefault();
+        void applyRef.current();
+        return;
+      }
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      if (dirty && onRequestEscape) onRequestEscape(true);
+      else onCancel(true);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [canApply, dirty, keyboardSuspended, onCancel, onRequestEscape]);
+
+  useEffect(
+    () => () => {
+      queryAbortRef.current?.abort();
+      validationAbortRef.current?.abort();
+      onHoverCandidate(undefined);
+    },
+    [onHoverCandidate]
+  );
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    void apply();
+  }
+
+  return (
+    <form
+      ref={formRef}
+      className="pb-sketch-section pb-region-select"
+      aria-label="Select sketch material regions"
+      onSubmit={submit}
+    >
+      <div className="pb-region-select__scroll">
+        <div className="pb-sketch-section__heading">
+          <div>
+            <p className="pb-sketch-eyebrow">Profile</p>
+            <h3>Material regions</h3>
+          </div>
+          <span>{page.status}</span>
+        </div>
+
+        <p className="pb-region-select__guidance">
+          Select exact whole-loop cells. Candidate shading is derived; Apply
+          revalidates the explicit loop references without creating a feature.
+        </p>
+
+        <label className="pb-sketch-field">
+          <span>Prospective consumer</span>
+          <select
+            className="pb-field"
+            data-drawer-initial-focus=""
+            value={consumer}
+            disabled={disabled}
+            onChange={(event) =>
+              onConsumerChange(
+                event.currentTarget.value as SketchRegionConsumerIntent
+              )
+            }
+          >
+            {SKETCH_REGION_CONSUMER_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label} · {option.countLabel}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="pb-region-select__summary" role="status">
+          <strong>{selectedCandidateKeys.length} selected</strong>
+          <span>
+            {SKETCH_REGION_CONSUMER_OPTIONS.find(
+              (option) => option.value === consumer
+            )?.countLabel ?? "Exactly 1 region"}
+          </span>
+        </div>
+
+        <fieldset
+          className="pb-region-select__candidates"
+          data-loaded-candidate-count={candidates.length}
+        >
+          <legend>Whole-loop material cells</legend>
+          {page.status === "loading" && candidates.length === 0 ? (
+            <p>Discovering bounded cells…</p>
+          ) : null}
+          {page.status !== "loading" && candidates.length === 0 ? (
+            <p>No valid whole-loop material cells were discovered.</p>
+          ) : null}
+          {visibleCandidates.map((candidate, index) => (
+            <RegionCandidateRow
+              key={candidate.candidateKey}
+              candidate={candidate}
+              index={candidateWindowStart + index}
+              names={candidateNames.get(candidate.candidateKey)!}
+              selected={selectedKeys.has(candidate.candidateKey)}
+              hovered={hoveredCandidateKey === candidate.candidateKey}
+              disabled={disabled}
+              onToggleCandidate={onToggleCandidate}
+              onHoverCandidate={onHoverCandidate}
+            />
+          ))}
+        </fieldset>
+
+        {candidates.length > CANDIDATE_WINDOW_SIZE ? (
+          <div
+            className="pb-region-select__window"
+            aria-label="Loaded candidate rows"
+          >
+            <button
+              type="button"
+              className="pb-button"
+              disabled={candidateWindowStart === 0}
+              onClick={() =>
+                updateCandidateWindowStart((current) =>
+                  Math.max(0, current - CANDIDATE_WINDOW_SIZE)
+                )
+              }
+            >
+              Previous rows
+            </button>
+            <span>
+              {candidateWindowStart + 1}–
+              {Math.min(
+                candidateWindowStart + CANDIDATE_WINDOW_SIZE,
+                candidates.length
+              )}{" "}
+              of {candidates.length}
+            </span>
+            <button
+              type="button"
+              className="pb-button"
+              disabled={
+                candidateWindowStart + CANDIDATE_WINDOW_SIZE >=
+                candidates.length
+              }
+              onClick={() =>
+                updateCandidateWindowStart((current) =>
+                  Math.min(
+                    Math.max(
+                      0,
+                      Math.floor(
+                        (candidates.length - 1) / CANDIDATE_WINDOW_SIZE
+                      ) * CANDIDATE_WINDOW_SIZE
+                    ),
+                    current + CANDIDATE_WINDOW_SIZE
+                  )
+                )
+              }
+            >
+              Next rows
+            </button>
+          </div>
+        ) : null}
+
+        {page.hasMore && page.nextAfterCandidateKey && page.sourceRevision ? (
+          <button
+            type="button"
+            className="pb-button"
+            disabled={disabled || page.status === "loading"}
+            onClick={() =>
+              void readPage({
+                afterCandidateKey: page.nextAfterCandidateKey!,
+                sourceRevision: page.sourceRevision!
+              })
+            }
+          >
+            {page.status === "loading" ? "Loading…" : "Load next page"}
+          </button>
+        ) : null}
+
+        {[...page.diagnostics, ...validationMessages].length > 0 ? (
+          <div className="pb-region-select__diagnostics" role="alert">
+            <strong>Region diagnostics</strong>
+            <ul>
+              {[...page.diagnostics, ...validationMessages].map(
+                (message, index) => (
+                  <li key={`${index}:${message}`}>{message}</li>
+                )
+              )}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="pb-curve-edit__footer">
+        <p className="pb-curve-edit__shortcut">
+          Ctrl/Cmd+Enter validates · Escape cancels
+        </p>
+        <div>
+          <button
+            type="button"
+            className="pb-button"
+            disabled={applying}
+            onClick={() => onCancel(true)}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="pb-button pb-button--primary"
+            disabled={!canApply}
+          >
+            {applying ? "Validating…" : "Validate selection"}
+          </button>
+        </div>
+      </div>
+      <LiveRegion urgency={validationMessages.length ? "assertive" : "polite"}>
+        {validationMessages[0] ??
+          (canApply
+            ? "Selected regions are ready for exact validation."
+            : `${selectedCandidateKeys.length} regions selected.`)}
+      </LiveRegion>
+    </form>
+  );
+}
+
+const RegionCandidateRow = memo(function RegionCandidateRow({
+  candidate,
+  index,
+  names,
+  selected,
+  hovered,
+  disabled,
+  onToggleCandidate,
+  onHoverCandidate
+}: {
+  readonly candidate: SketchProfileRegionCandidate;
+  readonly index: number;
+  readonly names: {
+    readonly outer: string;
+    readonly holes: readonly string[];
+  };
+  readonly selected: boolean;
+  readonly hovered: boolean;
+  readonly disabled: boolean;
+  readonly onToggleCandidate: (candidateKey: string) => void;
+  readonly onHoverCandidate: (candidateKey: string | undefined) => void;
+}) {
+  const blocked = candidate.status !== "valid";
+  const rowRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const row = rowRef.current;
+    if (!row) return undefined;
+    const findOverlayCell = () =>
+      [
+        ...document.querySelectorAll<SVGPathElement>(".sketch-region-cell")
+      ].find((cell) => cell.dataset.candidateKey === candidate.candidateKey);
+    const publishHover = () => {
+      row.dataset.hovered = "true";
+      findOverlayCell()?.classList.add("sketch-region-cell-hovered");
+      onHoverCandidate(candidate.candidateKey);
+    };
+    const clearHover = () => {
+      delete row.dataset.hovered;
+      findOverlayCell()?.classList.remove("sketch-region-cell-hovered");
+      onHoverCandidate(undefined);
+    };
+    row.addEventListener("pointermove", publishHover);
+    row.addEventListener("pointerleave", clearHover);
+    return () => {
+      row.removeEventListener("pointermove", publishHover);
+      row.removeEventListener("pointerleave", clearHover);
+    };
+  }, [candidate.candidateKey, onHoverCandidate]);
+
+  return (
+    <button
+      ref={rowRef}
+      type="button"
+      className="pb-region-select__candidate"
+      aria-pressed={selected}
+      data-candidate-key={candidate.candidateKey}
+      data-hovered={hovered || undefined}
+      disabled={disabled || blocked}
+      onClick={() => onToggleCandidate(candidate.candidateKey)}
+      onFocus={() => onHoverCandidate(candidate.candidateKey)}
+      onBlur={() => onHoverCandidate(undefined)}
+      onPointerEnter={() => onHoverCandidate(candidate.candidateKey)}
+      onPointerMove={() => onHoverCandidate(candidate.candidateKey)}
+      onPointerLeave={() => onHoverCandidate(undefined)}
+    >
+      <span className="pb-region-select__candidate-title">
+        <strong>Region {index + 1}</strong>
+        <span>{formatArea(candidate.materialArea)}²</span>
+      </span>
+      <span>Outer · {names.outer}</span>
+      <small>
+        {names.holes.length
+          ? `Holes · ${names.holes.join(" | ")}`
+          : "No inner voids"}
+      </small>
+      {candidate.diagnostics[0] ? (
+        <small className="pb-region-select__candidate-error">
+          {candidate.diagnostics[0].message}
+        </small>
+      ) : null}
+    </button>
+  );
+});
+
+function mergeCandidatePages(
+  current: readonly SketchProfileRegionCandidate[],
+  incoming: readonly SketchProfileRegionCandidate[]
+): readonly SketchProfileRegionCandidate[] {
+  const byKey = new Map(
+    current.map((candidate) => [candidate.candidateKey, candidate])
+  );
+  for (const candidate of incoming)
+    byKey.set(candidate.candidateKey, candidate);
+  return [...byKey.values()];
+}
+
+function focusRegionInitialControl(form: HTMLFormElement | null): void {
+  requestAnimationFrame(() => {
+    form
+      ?.querySelector<HTMLElement>(
+        "[data-drawer-initial-focus], button:not([disabled]), select:not([disabled])"
+      )
+      ?.focus();
+  });
+}
+
+function formatArea(area: number): string {
+  return AREA_FORMATTER.format(area);
+}

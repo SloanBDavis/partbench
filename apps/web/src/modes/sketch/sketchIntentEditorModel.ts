@@ -286,6 +286,7 @@ export function getDimensionCreationAvailabilityV19(
   const feasibility = getSketchDimensionFamilyFeasibility(family, entities);
   if (!feasibility.available)
     return { status: "needs-selection", message: feasibility.message };
+  if (dimensions.length === 0) return { status: "ready" };
   return createDefaultDimensionDraftV19(
     entities,
     preferredEntityId,
@@ -699,6 +700,7 @@ export function getConstraintCreationAvailabilityV19(
   const feasibility = getSketchConstraintKindFeasibility(kind, entities);
   if (!feasibility.available)
     return { status: "needs-selection", message: feasibility.message };
+  if (constraints.length === 0) return { status: "ready" };
   return createDefaultConstraintDraftV19(
     entities,
     preferredEntityId,

@@ -34,6 +34,12 @@ export default defineConfig(({ command, mode }) => {
         .pathname
     : new URL("./src/derivedGeometryRuntime.disabled.ts", import.meta.url)
         .pathname;
+  const cadCoreRuntime = new URL(
+    mode === "test"
+      ? "../../packages/cad-core/src/index.ts"
+      : "../../packages/cad-core/src/browser.ts",
+    import.meta.url
+  ).pathname;
 
   return {
     build: {
@@ -49,9 +55,16 @@ export default defineConfig(({ command, mode }) => {
       )
     },
     resolve: {
-      alias: {
-        "@web-cad/derived-geometry-runtime": derivedGeometryRuntime
-      }
+      alias: [
+        {
+          find: /^@web-cad\/cad-core$/,
+          replacement: cadCoreRuntime
+        },
+        {
+          find: "@web-cad/derived-geometry-runtime",
+          replacement: derivedGeometryRuntime
+        }
+      ]
     },
     plugins: [react()]
   };

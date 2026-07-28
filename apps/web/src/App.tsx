@@ -9,6 +9,7 @@ import {
   type CadBodyTopologySnapshot,
   type CadAsyncBatchResponse,
   type CadDocument,
+  type CadProject,
   type CadFeatureSummary,
   type CadPartSnapshot,
   type CadTransactionHistoryEntry,
@@ -24,6 +25,7 @@ import type {
   CadBatchResponse,
   CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
+  CadQueryRequest,
   CadSelectionReferenceOperation,
   CadSelectionReferenceInput,
   CadParameterSnapshot,
@@ -57,13 +59,18 @@ import type {
   SketchAddRoundedRectangleOp,
   SketchAddSlotOp,
   SketchCurveEditProposal,
-  SketchCurveEditReadinessQueryResponse,
+  SketchProfileRegionCandidate,
+  SketchProfileRegionCandidatesQuery,
+  SketchProfileRegionValidateQueryResponse,
+  SketchRegionsProfileRef,
   Vec2
 } from "@web-cad/cad-protocol";
 import { createDerivedGeometryRuntime } from "@web-cad/derived-geometry-runtime";
 import { emitGeometryDiagnosticEvent } from "./geometryDiagnosticEvents";
 import {
+  startTransition,
   useCallback,
+  useDeferredValue,
   useEffect,
   lazy,
   useLayoutEffect,
@@ -71,8 +78,15 @@ import {
   useReducer,
   useRef,
   Suspense,
-  useState
+  useState,
+  type ReactNode
 } from "react";
+import {
+  EMPTY_PROGRESSIVE_SKETCH_ANALYSIS,
+  ProgressiveSketchAnalysisContext,
+  useProgressiveSketchAnalysis,
+  type ProgressiveSketchAnalysis
+} from "./progressiveSketchAnalysisContext";
 import {
   buildBatch,
   buildAddSketchArcOp,
@@ -174,7 +188,7 @@ import {
 } from "./workbench/performanceMarks";
 import { GlobalHeader } from "./workbench/GlobalHeader";
 import { ModeRibbon } from "./workbench/ModeRibbon";
-import { StatusBar } from "./workbench/StatusBar";
+import { StatusBar, type SketchStatus } from "./workbench/StatusBar";
 import { WorkbenchShell } from "./workbench/WorkbenchShell";
 import type { WorkbenchNavigationIntent } from "./workbench/types";
 import type {
@@ -210,29 +224,40 @@ import {
 import type { SketchCurveEditViewportChoice } from "./modes/sketch/sketchCurveEditModel";
 import { SketchCurveEditHoverScheduler } from "./modes/sketch/sketchCurveEditHoverScheduler";
 import {
+  normalizeSketchRegionSelectionForConsumer,
+  updateSketchRegionSelection,
+  type SketchRegionConsumerIntent
+} from "./modes/sketch/sketchRegionSelectionModel";
+import {
+  type SketchRegionQueryClient,
+  type SketchRegionCandidatesQueryResult,
+  type SketchRegionValidateQueryResult
+} from "./sketchRegionQueryClient";
+import type { SketchCurveEditQueryClient } from "./sketchCurveEditQueryClient";
+import {
   getActiveCurveEditInvocationAction,
   getCurveEditSketchSelectionAction,
   getSketchEditorActionNotice,
   getSketchCurveEditOwnershipPolicy
 } from "./modes/sketch/sketchCurveEditOwnership";
+import { submitPreparedSketchCurveEdit } from "./modes/sketch/sketchCurveEditWorkflow";
 import {
-  querySketchCurveEditReadiness,
-  submitPreparedSketchCurveEdit
-} from "./modes/sketch/sketchCurveEditWorkflow";
-import { DocumentTreeDock } from "./workbench/DocumentTreeDock";
+  DocumentTreeDock,
+  type DocumentTreeDockProps
+} from "./workbench/DocumentTreeDock";
 import {
   createDocumentTreeProjection,
   documentTreeSelectionKey,
+  type CreateDocumentTreeProjectionInput,
   type DocumentTreeRowCapabilities,
   type DocumentTreeSelection
 } from "./workbench/documentTreeProjection";
 import { ContextualActionStrip } from "./workbench/ContextualActionStrip";
+import type { ViewportCanvasPick } from "./components/ViewportCanvas";
 import {
   VIEWPORT_COMMAND_EVENT,
-  ViewportCanvas,
-  type ViewportCanvasPick,
   type ViewportCommand
-} from "./components/ViewportCanvas";
+} from "./components/viewportCanvasContract";
 import type {
   DerivedGeometryRuntime,
   DerivedGeometryRuntimeWorkSnapshot
@@ -447,6 +472,16 @@ const SketchArcToolOverlay = lazy(() =>
     default: module.SketchArcToolOverlay
   }))
 );
+const SketchRegionOverlay = lazy(() =>
+  import("./modes/sketch").then((module) => ({
+    default: module.SketchRegionOverlay
+  }))
+);
+const ViewportCanvas = lazy(() =>
+  import("./components/ViewportCanvas").then((module) => ({
+    default: module.ViewportCanvas
+  }))
+);
 
 function CommandSearchLoadingFallback({
   onRequestClose
@@ -496,14 +531,14 @@ function SketchOverlayLoadingFallback() {
 }
 
 const engine = new CadEngine();
+let cadV19RegionSourceValidationPolicyLoad: Promise<void> | undefined;
 
-function readSketchCurveEditReadiness(
-  proposal: SketchCurveEditProposal
-): SketchCurveEditReadinessQueryResponse {
-  return querySketchCurveEditReadiness(
-    (request) => engine.executeQuery(request),
-    proposal
-  );
+function ensureCadV19RegionSourceValidationPolicy(): Promise<void> {
+  cadV19RegionSourceValidationPolicyLoad ??=
+    import("@web-cad/cad-core/region-source-validation-policy").then(
+      () => undefined
+    );
+  return cadV19RegionSourceValidationPolicyLoad;
 }
 
 const derivedGeometryEnabled = __PARTBENCH_DERIVED_GEOMETRY_ENABLED__;
@@ -1184,6 +1219,301 @@ function readSketchSolverStatusesBySketchId(
   return statusesBySketchId;
 }
 
+function readSketchPathCandidatesBySketchId(
+  sketches: readonly { readonly id: string }[]
+): ReadonlyMap<string, SketchPathCandidatesQueryResponse> {
+  const responses = new Map<string, SketchPathCandidatesQueryResponse>();
+
+  for (const sketch of sketches) {
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "sketch.pathCandidates", sketchId: sketch.id }
+    });
+    if (response.ok && response.query === "sketch.pathCandidates") {
+      responses.set(sketch.id, response);
+    }
+  }
+
+  return responses;
+}
+
+function ProgressiveSketchAnalysisProvider({
+  active,
+  authorityEpoch,
+  eager,
+  project,
+  projectCacheKey,
+  sketches,
+  children
+}: {
+  readonly active: boolean;
+  readonly authorityEpoch: number;
+  readonly eager: ProgressiveSketchAnalysis;
+  readonly project: CadProject;
+  readonly projectCacheKey: string;
+  readonly sketches: readonly SketchSnapshot[];
+  readonly children: ReactNode;
+}) {
+  const nextRequestNumber = useRef(1);
+  const [evaluations, setEvaluations] = useState<{
+    readonly authorityEpoch: number;
+    readonly values: ProgressiveSketchAnalysis["evaluationsBySketchId"];
+  }>(() => ({
+    authorityEpoch,
+    values: EMPTY_PROGRESSIVE_SKETCH_ANALYSIS.evaluationsBySketchId
+  }));
+  const [solverStatuses, setSolverStatuses] = useState<{
+    readonly authorityEpoch: number;
+    readonly values: ProgressiveSketchAnalysis["solverStatusesBySketchId"];
+  }>(() => ({
+    authorityEpoch,
+    values: EMPTY_PROGRESSIVE_SKETCH_ANALYSIS.solverStatusesBySketchId
+  }));
+  const [pathCandidates, setPathCandidates] = useState<{
+    readonly authorityEpoch: number;
+    readonly values: ProgressiveSketchAnalysis["pathCandidatesBySketchId"];
+  }>(() => ({
+    authorityEpoch,
+    values: EMPTY_PROGRESSIVE_SKETCH_ANALYSIS.pathCandidatesBySketchId
+  }));
+
+  useEffect(() => {
+    if (!active) return undefined;
+    let cancelled = false;
+    const publishIfCurrent = <T,>(
+      values: T,
+      publish: (state: {
+        readonly authorityEpoch: number;
+        readonly values: T;
+      }) => void
+    ) => {
+      if (!cancelled && engine.getSourceAuthorityEpoch() === authorityEpoch) {
+        startTransition(() => publish({ authorityEpoch, values }));
+      }
+    };
+    const execute = async () => {
+      const { getSharedBrowserCadQueryWorker } =
+        await import("./browserCadQueryWorker");
+      const worker = getSharedBrowserCadQueryWorker();
+      const query = async (request: CadQueryRequest) =>
+        worker.executeQuery({
+          kind: "cad-worker.query",
+          id: `sketch_analysis_${nextRequestNumber.current++}`,
+          project,
+          projectCacheKey,
+          request
+        });
+
+      const nextEvaluations = new Map<string, SketchEvaluationQueryResponse>();
+      for (const sketch of sketches) {
+        const response = await query({
+          version: "cadops.v1",
+          query: { query: "sketch.evaluation", sketchId: sketch.id }
+        });
+        if (response.ok && response.query === "sketch.evaluation") {
+          nextEvaluations.set(sketch.id, response);
+        }
+      }
+      publishIfCurrent(nextEvaluations, setEvaluations);
+
+      const nextSolverStatuses = new Map<
+        string,
+        SketchSolverStatusQueryResponse
+      >();
+      for (const sketch of sketches) {
+        const response = await query({
+          version: "cadops.v1",
+          query: { query: "sketch.solverStatus", sketchId: sketch.id }
+        });
+        if (response.ok && response.query === "sketch.solverStatus") {
+          nextSolverStatuses.set(sketch.id, response);
+        }
+      }
+      publishIfCurrent(nextSolverStatuses, setSolverStatuses);
+
+      const nextPathCandidates = new Map<
+        string,
+        SketchPathCandidatesQueryResponse
+      >();
+      for (const sketch of sketches) {
+        const response = await query({
+          version: "cadops.v1",
+          query: { query: "sketch.pathCandidates", sketchId: sketch.id }
+        });
+        if (response.ok && response.query === "sketch.pathCandidates") {
+          nextPathCandidates.set(sketch.id, response);
+        }
+      }
+      publishIfCurrent(nextPathCandidates, setPathCandidates);
+    };
+    void execute().catch(() => {
+      // Region and curve-edit callers surface actionable worker failures.
+      // Background status analysis remains unavailable until the next source
+      // revision instead of disrupting authoritative editing.
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [active, authorityEpoch, project, projectCacheKey, sketches]);
+
+  const value = useMemo<ProgressiveSketchAnalysis>(() => {
+    if (!active) return eager;
+    return {
+      evaluationsBySketchId:
+        evaluations.authorityEpoch === authorityEpoch
+          ? evaluations.values
+          : EMPTY_PROGRESSIVE_SKETCH_ANALYSIS.evaluationsBySketchId,
+      solverStatusesBySketchId:
+        solverStatuses.authorityEpoch === authorityEpoch
+          ? solverStatuses.values
+          : EMPTY_PROGRESSIVE_SKETCH_ANALYSIS.solverStatusesBySketchId,
+      pathCandidatesBySketchId:
+        pathCandidates.authorityEpoch === authorityEpoch
+          ? pathCandidates.values
+          : EMPTY_PROGRESSIVE_SKETCH_ANALYSIS.pathCandidatesBySketchId
+    };
+  }, [
+    active,
+    authorityEpoch,
+    eager,
+    evaluations,
+    pathCandidates,
+    solverStatuses
+  ]);
+
+  return (
+    <ProgressiveSketchAnalysisContext.Provider value={value}>
+      {children}
+    </ProgressiveSketchAnalysisContext.Provider>
+  );
+}
+
+function SketchStatusBarWithAnalysis({
+  focusedSketchId,
+  ...props
+}: Omit<SketchStatus, "mode" | "solver"> & {
+  readonly focusedSketchId?: string;
+}) {
+  const analysis = useProgressiveSketchAnalysis();
+  return (
+    <StatusBar
+      {...props}
+      mode="sketch"
+      solver={formatSketchSolverStatus(
+        focusedSketchId
+          ? analysis.solverStatusesBySketchId.get(focusedSketchId)
+          : undefined
+      )}
+    />
+  );
+}
+
+function ProgressiveDocumentTreeDock({
+  suppressSourceMutations,
+  ...props
+}: Omit<DocumentTreeDockProps, "projection"> &
+  Omit<CreateDocumentTreeProjectionInput, "capabilitiesBySelectionKey"> & {
+    readonly suppressSourceMutations: boolean;
+  }) {
+  const source = useMemo<CreateDocumentTreeProjectionInput>(
+    () => ({
+      parts: props.parts,
+      parameters: props.parameters,
+      sketches: props.sketches,
+      features: props.features,
+      bodies: props.bodies,
+      objects: props.objects,
+      namedReferences: props.namedReferences,
+      health: props.health
+    }),
+    [
+      props.bodies,
+      props.features,
+      props.health,
+      props.namedReferences,
+      props.objects,
+      props.parameters,
+      props.parts,
+      props.sketches
+    ]
+  );
+  const deferredSource = useDeferredValue(source);
+  const capabilitiesBySelectionKey = useMemo(() => {
+    const entries = new Map<string, DocumentTreeRowCapabilities>();
+    const register = (
+      selection: DocumentTreeSelection,
+      capabilities: DocumentTreeRowCapabilities
+    ) =>
+      entries.set(
+        documentTreeSelectionKey(selection),
+        suppressSourceMutations ? {} : capabilities
+      );
+
+    for (const parameter of deferredSource.parameters) {
+      register(
+        { kind: "parameter", id: parameter.id },
+        { canEdit: true, canDelete: true }
+      );
+    }
+    for (const sketch of deferredSource.sketches) {
+      register(
+        { kind: "sketch", id: sketch.id },
+        { canRename: true, canEdit: true, canDelete: true }
+      );
+      for (const entity of sketch.entities) {
+        register(
+          { kind: "sketch-entity", sketchId: sketch.id, id: entity.id },
+          { canEdit: true, canDelete: true }
+        );
+      }
+    }
+    for (const feature of deferredSource.features) {
+      register(
+        { kind: "feature", id: feature.id },
+        {
+          canEdit: feature.kind !== "importedBody",
+          canDelete: feature.kind !== "primitive"
+        }
+      );
+    }
+    for (const object of deferredSource.objects) {
+      register(
+        { kind: "object", id: object.id },
+        { canRename: true, canEdit: true, canDelete: true }
+      );
+    }
+    for (const reference of deferredSource.namedReferences) {
+      register(
+        { kind: "named-reference", name: reference.name },
+        { canEdit: true, canDelete: true }
+      );
+    }
+    return entries;
+  }, [deferredSource, suppressSourceMutations]);
+  const projection = useMemo(
+    () =>
+      createDocumentTreeProjection({
+        ...deferredSource,
+        capabilitiesBySelectionKey
+      }),
+    [capabilitiesBySelectionKey, deferredSource]
+  );
+
+  return (
+    <DocumentTreeDock
+      projection={projection}
+      selectedKey={props.selectedKey}
+      editingKey={props.editingKey}
+      initialExpandedIds={props.initialExpandedIds}
+      onSelect={props.onSelect}
+      onToggleVisibility={props.onToggleVisibility}
+      onRename={props.onRename}
+      onEdit={props.onEdit}
+      onDelete={props.onDelete}
+    />
+  );
+}
+
 function readBodyMeasurements(bodyId: string | undefined): {
   readonly measurements?: BodyMeasurementsSnapshot;
   readonly error?: string;
@@ -1528,6 +1858,30 @@ export function App() {
   const [document, setDocument] = useState<CadDocument>(() =>
     engine.getDocument()
   );
+  const documentPublicationResolversRef = useRef(
+    new Map<CadDocument, Set<() => void>>()
+  );
+  useEffect(() => {
+    const resolvers = [
+      ...(documentPublicationResolversRef.current.get(document) ?? [])
+    ];
+    documentPublicationResolversRef.current.delete(document);
+    for (const resolve of resolvers) resolve();
+  }, [document]);
+  useEffect(
+    () => () => {
+      const resolvers = [
+        ...documentPublicationResolversRef.current.values()
+      ].flatMap((entries) => [...entries]);
+      documentPublicationResolversRef.current.clear();
+      for (const resolve of resolvers) resolve();
+    },
+    []
+  );
+  const currentProject = useMemo(
+    () => exportCadProjectForDocument(engine, document),
+    [document]
+  );
   const [
     curveEditSourceAuthorityRevision,
     setCurveEditSourceAuthorityRevision
@@ -1566,6 +1920,26 @@ export function App() {
   >();
   const [curveEditViewportHoverChoice, setCurveEditViewportHoverChoice] =
     useState<SketchCurveEditViewportChoice | undefined>();
+  const [regionCandidates, setRegionCandidates] = useState<
+    readonly SketchProfileRegionCandidate[]
+  >([]);
+  const [selectedRegionCandidateKeys, setSelectedRegionCandidateKeys] =
+    useState<readonly string[]>([]);
+  const [hoveredRegionCandidateKey, setHoveredRegionCandidateKey] = useState<
+    string | undefined
+  >();
+  const [regionConsumer, setRegionConsumer] =
+    useState<SketchRegionConsumerIntent>("extrude-new-body");
+  const regionSelectionStateRef = useRef({
+    candidates: regionCandidates,
+    selectedCandidateKeys: selectedRegionCandidateKeys,
+    consumer: regionConsumer
+  });
+  regionSelectionStateRef.current = {
+    candidates: regionCandidates,
+    selectedCandidateKeys: selectedRegionCandidateKeys,
+    consumer: regionConsumer
+  };
   const curveEditHoverSchedulerRef = useRef<
     SketchCurveEditHoverScheduler | undefined
   >(undefined);
@@ -1731,6 +2105,61 @@ export function App() {
     return runtime.subscribeModelWork(update);
   }, [getDerivedGeometryRuntime]);
   const commandWorker = useMemo(() => new LazyCadCommandWorker(), []);
+  const sketchCurveEditQueryClientLoadRef = useRef<
+    Promise<SketchCurveEditQueryClient> | undefined
+  >(undefined);
+  const getSketchCurveEditQueryClient = useCallback(async () => {
+    sketchCurveEditQueryClientLoadRef.current ??=
+      import("./sketchCurveEditQueryClient")
+        .then(
+          ({ SketchCurveEditQueryClient: CurveEditQueryClient }) =>
+            new CurveEditQueryClient()
+        )
+        .catch((error: unknown) => {
+          sketchCurveEditQueryClientLoadRef.current = undefined;
+          throw error;
+        });
+    return sketchCurveEditQueryClientLoadRef.current;
+  }, []);
+  const sketchRegionQueryClientRef = useRef<
+    SketchRegionQueryClient | undefined
+  >(undefined);
+  const sketchRegionQueryClientLoadRef = useRef<
+    Promise<SketchRegionQueryClient> | undefined
+  >(undefined);
+  const sketchRegionQueryClientDisposedRef = useRef(false);
+  const getSketchRegionQueryClient = useCallback(async () => {
+    if (sketchRegionQueryClientRef.current) {
+      return sketchRegionQueryClientRef.current;
+    }
+    if (!sketchRegionQueryClientLoadRef.current) {
+      const load = import("./sketchRegionQueryClient")
+        .then(({ SketchRegionQueryClient: RegionQueryClient }) => {
+          const client = new RegionQueryClient();
+          if (sketchRegionQueryClientDisposedRef.current) {
+            client.clearCache();
+          } else {
+            sketchRegionQueryClientRef.current = client;
+          }
+          return client;
+        })
+        .catch((error: unknown) => {
+          sketchRegionQueryClientLoadRef.current = undefined;
+          throw error;
+        });
+      sketchRegionQueryClientLoadRef.current = load;
+    }
+    return sketchRegionQueryClientLoadRef.current;
+  }, []);
+  useEffect(() => {
+    sketchRegionQueryClientDisposedRef.current = false;
+    return () => {
+      sketchRegionQueryClientDisposedRef.current = true;
+      sketchRegionQueryClientRef.current?.clearCache();
+      sketchRegionQueryClientRef.current = undefined;
+      sketchRegionQueryClientLoadRef.current = undefined;
+    };
+  }, []);
   const commandExecutor = useMemo(
     () =>
       new AsyncCadCommandExecutor(engine, commandWorker, {
@@ -1746,6 +2175,132 @@ export function App() {
         }
       }),
     [commandWorker, getDerivedGeometryRuntime]
+  );
+  const readSketchCurveEditReadinessAsync = useCallback(
+    async (proposal: SketchCurveEditProposal, signal: AbortSignal) => {
+      const client = await getSketchCurveEditQueryClient();
+      const sourceAuthorityEpoch = engine.getSourceAuthorityEpoch();
+      const readiness = await client.queryReadiness(currentProject, proposal, {
+        signal,
+        projectCacheKey: String(curveEditSourceAuthorityRevision)
+      });
+      if (readiness.status === "ready") {
+        engine.acceptTrustedQueryCurveEditEvidence(
+          readiness.preparedOperation.precondition.expectedSourceRevision,
+          readiness.preparedOperation.precondition
+            .expectedSolverEvaluationIdentity,
+          sourceAuthorityEpoch
+        );
+      }
+      return readiness;
+    },
+    [
+      currentProject,
+      curveEditSourceAuthorityRevision,
+      getSketchCurveEditQueryClient
+    ]
+  );
+  const querySketchRegionCandidates = useCallback(
+    async (
+      query: SketchProfileRegionCandidatesQuery,
+      signal: AbortSignal
+    ): Promise<SketchRegionCandidatesQueryResult> => {
+      const sketchRegionQueryClient = await getSketchRegionQueryClient();
+      return sketchRegionQueryClient.queryCandidates(
+        currentProject,
+        { version: "cadops.v1", query },
+        {
+          signal,
+          projectCacheKey: String(curveEditSourceAuthorityRevision)
+        }
+      );
+    },
+    [
+      currentProject,
+      curveEditSourceAuthorityRevision,
+      getSketchRegionQueryClient
+    ]
+  );
+  const validateSketchRegionProfile = useCallback(
+    async (
+      profile: SketchRegionsProfileRef,
+      signal: AbortSignal
+    ): Promise<SketchRegionValidateQueryResult> => {
+      const sketchRegionQueryClient = await getSketchRegionQueryClient();
+      return sketchRegionQueryClient.validateProfile(
+        currentProject,
+        {
+          version: "cadops.v1",
+          query: { query: "sketch.profileRegionValidate", profile }
+        },
+        {
+          signal,
+          projectCacheKey: String(curveEditSourceAuthorityRevision)
+        }
+      );
+    },
+    [
+      currentProject,
+      curveEditSourceAuthorityRevision,
+      getSketchRegionQueryClient
+    ]
+  );
+  const toggleRegionCandidate = useCallback((candidateKey: string) => {
+    const current = regionSelectionStateRef.current;
+    const update = updateSketchRegionSelection(
+      current.candidates,
+      current.selectedCandidateKeys,
+      candidateKey,
+      current.consumer
+    );
+    if (!update.ok && update.message) setCommandNotice(update.message);
+    regionSelectionStateRef.current = {
+      ...current,
+      selectedCandidateKeys: update.selectedCandidateKeys
+    };
+    setSelectedRegionCandidateKeys(update.selectedCandidateKeys);
+  }, []);
+  const changeRegionConsumer = useCallback(
+    (consumer: SketchRegionConsumerIntent) => {
+      setRegionConsumer(consumer);
+      setSelectedRegionCandidateKeys((current) =>
+        normalizeSketchRegionSelectionForConsumer(current, consumer)
+      );
+    },
+    []
+  );
+  const changeRegionCandidates = useCallback(
+    (candidates: readonly SketchProfileRegionCandidate[]) => {
+      const keys = new Set(
+        candidates.map((candidate) => candidate.candidateKey)
+      );
+      setRegionCandidates(candidates);
+      setSelectedRegionCandidateKeys((current) =>
+        current.filter((candidateKey) => keys.has(candidateKey))
+      );
+      setHoveredRegionCandidateKey((current) =>
+        current && keys.has(current) ? current : undefined
+      );
+    },
+    []
+  );
+  const acceptValidatedRegionSelection = useCallback(
+    (
+      profile: SketchRegionsProfileRef,
+      response: SketchProfileRegionValidateQueryResponse
+    ) => {
+      setCommandError(undefined);
+      setCommandNotice(
+        `${profile.regions.length} ${
+          profile.regions.length === 1
+            ? "material region is"
+            : "material regions are"
+        } valid and ready for a future feature command. No feature was created. ${response.materialAreas.length} material-area ${
+          response.materialAreas.length === 1 ? "result was" : "results were"
+        } verified.`
+      );
+    },
+    []
   );
   const commandWorkerLifecycleRef = useRef(0);
   useEffect(() => {
@@ -1855,8 +2410,15 @@ export function App() {
       })),
     [document]
   );
+  const progressiveSketchAnalysis =
+    sketches.reduce(
+      (entityCount, sketch) => entityCount + sketch.entities.length,
+      0
+    ) > 128;
+  const sketchAnalysisAuthorityEpoch = engine.getSourceAuthorityEpoch();
   const profileCandidatesBySketchId = useMemo(() => {
     const responses = new Map<string, SketchProfileCandidatesQueryResponse>();
+    if (workbenchUi.mode !== "solid") return responses;
     for (const sketch of sketches) {
       const response = engine.executeQuery({
         version: "cadops.v1",
@@ -1867,20 +2429,15 @@ export function App() {
       }
     }
     return responses;
-  }, [sketches]);
-  const pathCandidatesBySketchId = useMemo(() => {
-    const responses = new Map<string, SketchPathCandidatesQueryResponse>();
-    for (const sketch of sketches) {
-      const response = engine.executeQuery({
-        version: "cadops.v1",
-        query: { query: "sketch.pathCandidates", sketchId: sketch.id }
-      });
-      if (response.ok && response.query === "sketch.pathCandidates") {
-        responses.set(sketch.id, response);
-      }
-    }
-    return responses;
-  }, [sketches]);
+  }, [sketches, workbenchUi.mode]);
+  const eagerPathCandidatesBySketchId = useMemo(
+    () =>
+      progressiveSketchAnalysis
+        ? new Map<string, SketchPathCandidatesQueryResponse>()
+        : readSketchPathCandidatesBySketchId(sketches),
+    [progressiveSketchAnalysis, sketches]
+  );
+  const pathCandidatesBySketchId = eagerPathCandidatesBySketchId;
   const projectStructure = useMemo(
     () => readEngineStateForDocument(document, readProjectStructure),
     [document]
@@ -2291,102 +2848,36 @@ export function App() {
       ),
     [parameters, sketchDimensionsBySketchId]
   );
-  const sketchEvaluationsBySketchId = useMemo(
+  const eagerSketchEvaluationsBySketchId = useMemo(
     () =>
-      readEngineStateForDocument(document, () =>
-        readSketchEvaluationsBySketchId(sketches)
-      ),
-    [document, sketches]
+      progressiveSketchAnalysis
+        ? new Map<string, SketchEvaluationQueryResponse>()
+        : readEngineStateForDocument(document, () =>
+            readSketchEvaluationsBySketchId(sketches)
+          ),
+    [document, progressiveSketchAnalysis, sketches]
   );
-  const sketchSolverStatusesBySketchId = useMemo(
+  const sketchEvaluationsBySketchId = eagerSketchEvaluationsBySketchId;
+  const eagerSketchSolverStatusesBySketchId = useMemo(
     () =>
-      readEngineStateForDocument(document, () =>
-        readSketchSolverStatusesBySketchId(sketches)
-      ),
-    [document, sketches]
+      progressiveSketchAnalysis
+        ? new Map<string, SketchSolverStatusQueryResponse>()
+        : readEngineStateForDocument(document, () =>
+            readSketchSolverStatusesBySketchId(sketches)
+          ),
+    [document, progressiveSketchAnalysis, sketches]
   );
-  const documentTreeCapabilities = useMemo(() => {
-    const entries = new Map<string, DocumentTreeRowCapabilities>();
-    const register = (
-      selection: DocumentTreeSelection,
-      capabilities: DocumentTreeRowCapabilities
-    ) =>
-      entries.set(
-        documentTreeSelectionKey(selection),
-        curveEditOwnership.suppressTreeSourceMutations ? {} : capabilities
-      );
-
-    for (const parameter of parameters) {
-      register(
-        { kind: "parameter", id: parameter.id },
-        { canEdit: true, canDelete: true }
-      );
-    }
-    for (const sketch of sketches) {
-      register(
-        { kind: "sketch", id: sketch.id },
-        { canRename: true, canEdit: true, canDelete: true }
-      );
-      for (const entity of sketch.entities) {
-        register(
-          { kind: "sketch-entity", sketchId: sketch.id, id: entity.id },
-          { canEdit: true, canDelete: true }
-        );
-      }
-    }
-    for (const feature of projectStructure.features) {
-      register(
-        { kind: "feature", id: feature.id },
-        {
-          canEdit: feature.kind !== "importedBody",
-          canDelete: feature.kind !== "primitive"
-        }
-      );
-    }
-    for (const object of sceneObjects) {
-      register(
-        { kind: "object", id: object.id },
-        { canRename: true, canEdit: true, canDelete: true }
-      );
-    }
-    for (const reference of namedReferences) {
-      register(
-        { kind: "named-reference", name: reference.name },
-        { canEdit: true, canDelete: true }
-      );
-    }
-    return entries;
-  }, [
-    namedReferences,
-    parameters,
-    projectStructure.features,
-    sceneObjects,
-    sketches,
-    curveEditOwnership.suppressTreeSourceMutations
-  ]);
-  const documentTreeProjection = useMemo(
-    () =>
-      createDocumentTreeProjection({
-        parts: projectStructure.parts,
-        parameters,
-        sketches,
-        features: projectStructure.features,
-        bodies: projectStructure.bodies,
-        objects: sceneObjects,
-        namedReferences,
-        health: projectHealth,
-        capabilitiesBySelectionKey: documentTreeCapabilities
-      }),
+  const sketchSolverStatusesBySketchId = eagerSketchSolverStatusesBySketchId;
+  const eagerSketchAnalysis = useMemo<ProgressiveSketchAnalysis>(
+    () => ({
+      evaluationsBySketchId: sketchEvaluationsBySketchId,
+      solverStatusesBySketchId: sketchSolverStatusesBySketchId,
+      pathCandidatesBySketchId
+    }),
     [
-      documentTreeCapabilities,
-      namedReferences,
-      parameters,
-      projectHealth,
-      projectStructure.bodies,
-      projectStructure.features,
-      projectStructure.parts,
-      sceneObjects,
-      sketches
+      pathCandidatesBySketchId,
+      sketchEvaluationsBySketchId,
+      sketchSolverStatusesBySketchId
     ]
   );
   const selectedDocumentTreeKey = selectedNamedReferenceName
@@ -3284,6 +3775,18 @@ export function App() {
           sketch: modelingSelectionContext.sketch
         }
       : undefined;
+  const regionOverlaySketch =
+    workbenchUi.activeTool === "sketch.regions"
+      ? (sketches.find((sketch) => sketch.id === focusedSketchId) ??
+        sketches[0])
+      : undefined;
+  const regionOverlayDisplayFrame = useMemo(() => {
+    if (!regionOverlaySketch) return undefined;
+    return (
+      sketchDisplayState.frames.get(regionOverlaySketch.id) ??
+      createDefaultSketchDisplayFrame(regionOverlaySketch.plane)
+    );
+  }, [regionOverlaySketch, sketchDisplayState.frames]);
   const selectedMeasurements = useMemo<
     ObjectMeasurementsSnapshot | undefined
   >(() => {
@@ -3838,10 +4341,6 @@ export function App() {
       sketches
     ]
   );
-  const currentProject = useMemo(
-    () => exportCadProjectForDocument(engine, document),
-    [document]
-  );
   const projectStorageCapabilities = useMemo(
     () => createProjectStorageCapabilityStatus(window),
     []
@@ -3955,26 +4454,34 @@ export function App() {
 
   function syncDocument(
     nextSelectedId: string | null | undefined = selectedId
-  ) {
+  ): Promise<void> {
     const nextDocument = engine.getDocument();
     const nextStructure = readProjectStructure();
     reconcileDerivedGeometry(nextDocument, nextStructure);
-    setDocument(nextDocument);
-    setCurveEditSourceAuthorityRevision((current) => current + 1);
-    setSelectedId(
-      nextSelectedId !== null &&
-        nextSelectedId &&
-        (nextDocument.objects.has(nextSelectedId) ||
-          nextStructure.bodies.some((body) => body.id === nextSelectedId))
-        ? nextSelectedId
-        : undefined
-    );
-    setSelectedGeneratedReference((current) =>
-      reconcileSelectedGeneratedReferenceBody(current, nextStructure.bodies)
-    );
-    setViewportTwoTargetMeasurementSession((current) =>
-      updateViewportTwoTargetMeasurementSession(current, { type: "clear" })
-    );
+    return new Promise((resolve) => {
+      const resolvers =
+        documentPublicationResolversRef.current.get(nextDocument) ?? new Set();
+      resolvers.add(resolve);
+      documentPublicationResolversRef.current.set(nextDocument, resolvers);
+      startTransition(() => {
+        setDocument(nextDocument);
+        setCurveEditSourceAuthorityRevision((current) => current + 1);
+        setSelectedId(
+          nextSelectedId !== null &&
+            nextSelectedId &&
+            (nextDocument.objects.has(nextSelectedId) ||
+              nextStructure.bodies.some((body) => body.id === nextSelectedId))
+            ? nextSelectedId
+            : undefined
+        );
+        setSelectedGeneratedReference((current) =>
+          reconcileSelectedGeneratedReferenceBody(current, nextStructure.bodies)
+        );
+        setViewportTwoTargetMeasurementSession((current) =>
+          updateViewportTwoTargetMeasurementSession(current, { type: "clear" })
+        );
+      });
+    });
   }
 
   function applyObjectSelection(objectId: string | undefined) {
@@ -4204,7 +4711,7 @@ export function App() {
         phase: "command-committed",
         timestamp: performance.now()
       });
-      syncDocument(getNextSelectedId(response));
+      await syncDocument(getNextSelectedId(response));
       successfulCommitCountRef.current += 1;
       setWcadTopologyCheckpointPayloadCache((current) =>
         mergeWcadTopologyCheckpointPayloadInputCache(
@@ -5402,6 +5909,10 @@ export function App() {
     setThreePointArcTool(undefined);
     setCurveEditViewportChoice(undefined);
     setCurveEditViewportHoverChoice(undefined);
+    setRegionCandidates([]);
+    setSelectedRegionCandidateKeys([]);
+    setHoveredRegionCandidateKey(undefined);
+    setRegionConsumer("extrude-new-body");
     curveEditHoverSchedulerRef.current?.clear();
     curveEditSessionControlRef.current?.closeLocalDraft?.();
     curveEditSessionControlRef.current = undefined;
@@ -5416,7 +5927,7 @@ export function App() {
   function performUndo() {
     clearCurveEditUi();
     const result = engine.undo();
-    syncDocument();
+    void syncDocument();
     if (result) {
       setProjectFile((current) => markProjectFileDirty(current));
       setCommandNotice("Undo applied.");
@@ -5440,7 +5951,7 @@ export function App() {
   function performRedo() {
     clearCurveEditUi();
     const result = engine.redo();
-    syncDocument(result?.transaction.diff.created[0]?.id ?? selectedId);
+    void syncDocument(result?.transaction.diff.created[0]?.id ?? selectedId);
     if (result) {
       setProjectFile((current) => markProjectFileDirty(current));
       setCommandNotice("Redo applied.");
@@ -5772,7 +6283,7 @@ export function App() {
         return;
       }
 
-      syncDocument(createdBodyIds[0]);
+      await syncDocument(createdBodyIds[0]);
       setWcadTopologyCheckpointPayloadCache((current) =>
         mergeWcadTopologyCheckpointPayloadInputCache(
           current,
@@ -5856,6 +6367,7 @@ export function App() {
     mode: "wcadHandle" | "uploadedFallback",
     handle?: WcadFileHandleLike
   ) {
+    await ensureCadV19RegionSourceValidationPolicy();
     const result = await readCadProjectWcad(bytes);
 
     setProjectFile((current) =>
@@ -5884,7 +6396,7 @@ export function App() {
     setProjectJsonDraftSource({ kind: "empty" });
     setProjectMessage(`Opened ${fileName}.`);
     setProjectMessageTone("info");
-    syncDocument(undefined);
+    await syncDocument(undefined);
   }
 
   async function saveProjectWcad() {
@@ -6102,7 +6614,7 @@ export function App() {
     setSelectedSketchContext(undefined);
     setProjectMessage("Created a new project.");
     setProjectMessageTone("info");
-    syncDocument(undefined);
+    void syncDocument(undefined);
   }
 
   function loadProjectJsonDraft(projectJsonText: string, fileName: string) {
@@ -6113,6 +6625,7 @@ export function App() {
   }
 
   async function importProjectJson() {
+    await ensureCadV19RegionSourceValidationPolicy();
     const { createProjectJsonPreview, formatProjectJsonSummary } =
       await import("./projectJson");
     const preview = createProjectJsonPreview(projectJson);
@@ -6142,7 +6655,7 @@ export function App() {
     setSelectedGeneratedReference(undefined);
     setProjectMessage(`Imported ${formatProjectJsonSummary(preview.summary)}.`);
     setProjectMessageTone("info");
-    syncDocument(undefined);
+    await syncDocument(undefined);
   }
 
   function selectDocumentTreeItem(selection: DocumentTreeSelection) {
@@ -6235,9 +6748,16 @@ export function App() {
       return;
     }
     if (curveEditOwnership.closeBeforeCleanNavigation) clearCurveEditUi();
-    const row = documentTreeProjection.rowsById.get(
-      documentTreeSelectionKey(selection)
-    );
+    const row = createDocumentTreeProjection({
+      parts: projectStructure.parts,
+      parameters,
+      sketches,
+      features: projectStructure.features,
+      bodies: projectStructure.bodies,
+      objects: sceneObjects,
+      namedReferences,
+      health: projectHealth
+    }).rowsById.get(documentTreeSelectionKey(selection));
     if (!window.confirm(`Delete ${row?.label ?? "this item"}?`)) return;
 
     switch (selection.kind) {
@@ -6863,6 +7383,7 @@ export function App() {
       case "sketch.split":
       case "sketch.explode-rectangle":
       case "sketch.offset":
+      case "sketch.regions":
       case "sketch.slot":
       case "sketch.rounded-rectangle":
       case "sketch.horizontal":
@@ -6895,6 +7416,10 @@ export function App() {
         setThreePointArcTool(undefined);
         setCurveEditViewportChoice(undefined);
         setCurveEditViewportHoverChoice(undefined);
+        setRegionCandidates([]);
+        setSelectedRegionCandidateKeys([]);
+        setHoveredRegionCandidateKey(undefined);
+        setRegionConsumer("extrude-new-body");
         curveEditHoverSchedulerRef.current?.clear();
         navigateToMode("sketch");
         dispatchWorkbench({
@@ -6905,14 +7430,16 @@ export function App() {
           }
         });
         setCommandNotice(
-          getSketchEditorActionNotice(
-            isSketchCurveEditUiAction(actionId) ||
-              actionId === "sketch.slot" ||
-              actionId === "sketch.rounded-rectangle"
-              ? "curve"
-              : "intent",
-            actionId
-          )
+          actionId === "sketch.regions"
+            ? "Discover exact whole-loop material cells, choose a prospective consumer, and validate the explicit selection. No feature is created yet."
+            : getSketchEditorActionNotice(
+                isSketchCurveEditUiAction(actionId) ||
+                  actionId === "sketch.slot" ||
+                  actionId === "sketch.rounded-rectangle"
+                  ? "curve"
+                  : "intent",
+                actionId
+              )
         );
         return;
       case "sketch.finish":
@@ -7077,6 +7604,9 @@ export function App() {
           (candidate) => candidate.id === selectedSketchContext.sketchId
         )
       : undefined;
+    const focusedSketch = focusedSketchId
+      ? sketches.find((candidate) => candidate.id === focusedSketchId)
+      : undefined;
     const selectedEntity = selectedSketch?.entities.find(
       (candidate) => candidate.id === selectedSketchContext?.entityId
     );
@@ -7190,6 +7720,22 @@ export function App() {
         ["line", "arc", "circle", "rectangle"],
         "Select a supported source, or open Offset to collect an ordered chain."
       ),
+      "sketch.regions": focusedSketch
+        ? focusedSketch.entities.some(
+            (entity) =>
+              !entity.construction &&
+              (entity.kind === "rectangle" ||
+                entity.kind === "circle" ||
+                entity.kind === "line" ||
+                entity.kind === "arc")
+          )
+          ? ready
+          : {
+              status: "blocked",
+              message:
+                "This sketch has no eligible non-construction profile geometry."
+            }
+        : needs("Select or create a sketch first."),
       "sketch.construction": selectedEntityReady,
       "sketch.delete": selectedEntityReady,
       ...sketchIntentActionAvailability,
@@ -7291,646 +7837,715 @@ export function App() {
   }, [openCommandSearch]);
 
   return (
-    <>
-      {workbenchUi.navigationIntent &&
-      workbenchUi.activeEditor?.kind === "sketch-curve-edit" ? (
-        <Suspense fallback={null}>
-          <CurveEditNavigationGuard
-            intent={workbenchUi.navigationIntent}
-            onApply={(navigationTrigger) =>
-              resolveCurveEditNavigation("apply", navigationTrigger)
-            }
-            onDiscard={(navigationTrigger) =>
-              void resolveCurveEditNavigation("discard", navigationTrigger)
-            }
-            onStay={() => void resolveCurveEditNavigation("stay")}
-          />
-        </Suspense>
-      ) : null}
-      <WorkbenchShell
-        mode={workbenchUi.mode}
-        activeEditor={Boolean(workbenchUi.activeEditor)}
-        leftDockWidth={workbenchUi.leftDockWidth}
-        rightDockWidth={workbenchUi.rightDockWidth}
-        leftDockCollapsed={workbenchUi.leftDockCollapsed}
-        rightDockCollapsed={workbenchUi.rightDockCollapsed}
-        projectDetailsOpen={false}
-        onDockCollapsedChange={(side, collapsed) =>
-          dispatchWorkbench({
-            type: "set-dock-collapsed",
-            side,
-            collapsed
-          })
-        }
-        onDockWidthChange={(side, width) =>
-          dispatchWorkbench({ type: "set-dock-width", side, width })
-        }
-        header={
-          <>
-            <GlobalHeader
-              documentName={getProjectFileNameLabel(projectFile)}
-              saveState={
-                projectFile.dirty || projectFile.mode === "unsaved"
-                  ? "unsaved"
-                  : projectFile.mode === "wcadHandle" && projectFileHandle
-                    ? "saved-local"
-                    : "saved-browser"
+    <ProgressiveSketchAnalysisProvider
+      active={progressiveSketchAnalysis}
+      authorityEpoch={sketchAnalysisAuthorityEpoch}
+      eager={eagerSketchAnalysis}
+      project={currentProject}
+      projectCacheKey={String(curveEditSourceAuthorityRevision)}
+      sketches={sketches}
+    >
+      <>
+        {workbenchUi.navigationIntent &&
+        workbenchUi.activeEditor?.kind === "sketch-curve-edit" ? (
+          <Suspense fallback={null}>
+            <CurveEditNavigationGuard
+              intent={workbenchUi.navigationIntent}
+              onApply={(navigationTrigger) =>
+                resolveCurveEditNavigation("apply", navigationTrigger)
               }
-              undo={{
-                available:
-                  !commandPending && engine.getTransactions().length > 0,
-                pending: commandPending,
-                unavailableReason:
-                  engine.getTransactions().length === 0
-                    ? "There is nothing to undo."
-                    : undefined,
-                run: undo
-              }}
-              redo={{
-                available: !commandPending && engine.getRedoStack().length > 0,
-                pending: commandPending,
-                unavailableReason:
-                  engine.getRedoStack().length === 0
-                    ? "There is nothing to redo."
-                    : undefined,
-                run: redo
-              }}
-              onOpenCommandSearch={openCommandSearch}
-              onOpenHelp={() =>
-                setCommandNotice(
-                  "Shortcuts: Ctrl+K search, Ctrl+Z undo, Ctrl+Shift+Z redo, F fit, Escape cancel."
-                )
+              onDiscard={(navigationTrigger) =>
+                void resolveCurveEditNavigation("discard", navigationTrigger)
               }
-              pendingLabel={commandPending ? "Updating model" : undefined}
-            />
-          </>
-        }
-        ribbon={
-          <ModeRibbon
-            mode={workbenchUi.mode}
-            actions={projectedUiActions}
-            activeActionId={workbenchUi.activeTool}
-            onModeChange={navigateToMode}
-            onInvokeAction={(action) =>
-              void invokeUiAction(action, uiActionContext)
-            }
-            onExplainUnavailable={(_action, availability) =>
-              setCommandNotice(availability.message)
-            }
-          />
-        }
-        leftDock={
-          workbenchUi.mode === "project" ? (
-            <nav className="pb-project-navigation" aria-label="Project pages">
-              {(
-                [
-                  ["overview", "Overview"],
-                  ["files", "Files"],
-                  ["parameters", "Parameters"],
-                  ["history", "History"],
-                  ["export", "Export"]
-                ] as const
-              ).map(([page, label]) => (
-                <button
-                  key={page}
-                  type="button"
-                  aria-current={
-                    (workbenchUi.projectPage ?? "overview") === page
-                      ? "page"
-                      : undefined
-                  }
-                  onClick={() => openProjectPage(page)}
-                >
-                  {label}
-                </button>
-              ))}
-            </nav>
-          ) : (
-            <DocumentTreeDock
-              projection={documentTreeProjection}
-              selectedKey={selectedDocumentTreeKey}
-              editingKey={
-                workbenchUi.activeEditor?.sourceId
-                  ? `feature:${workbenchUi.activeEditor.sourceId}`
-                  : undefined
-              }
-              onSelect={selectDocumentTreeItem}
-              onRename={renameDocumentTreeItem}
-              onEdit={editDocumentTreeItem}
-              onDelete={deleteDocumentTreeItem}
-            />
-          )
-        }
-        viewport={
-          <ViewportCanvas
-            primitives={renderScene.primitives}
-            meshes={renderScene.meshes}
-            notifyHoverPointChanges={Boolean(
-              threePointArcTool ||
-              isSketchCurveEditUiAction(workbenchUi.activeTool)
-            )}
-            selectedId={selectedViewportRenderId}
-            visualStates={viewportVisualState.rendererVisualStates}
-            status={viewportVisualState.status}
-            contextualSurface={
-              curveEditOwnership.suppressContextSourceMutations ? null : (
-                <ContextualActionStrip
-                  disabled={commandPending}
-                  surface={viewportContextualCommandSurface}
-                  onInvoke={(action) => {
-                    if (action.route === "name" && action.target) {
-                      const name = window.prompt("Reference name", "");
-                      if (name?.trim()) {
-                        void nameGeneratedReference(name.trim(), action.target);
-                      }
-                      return;
-                    }
-                    if (
-                      action.route === "inspect" ||
-                      action.route === "measure" ||
-                      action.route === "references"
-                    ) {
-                      navigateToMode("inspect");
-                      if (
-                        action.route === "measure" &&
-                        viewportTwoTargetMeasurementTarget
-                      ) {
-                        startViewportTwoTargetMeasurement(
-                          viewportTwoTargetMeasurementTarget
-                        );
-                      }
-                      return;
-                    }
-                    runViewportContextualCommand(action);
-                  }}
-                />
-              )
-            }
-            onHover={(pick) => {
-              if (threePointArcTool) {
-                hoverThreePointArcTool(pick);
-              } else {
-                hoverViewportPick(pick);
-              }
-            }}
-            onSelect={(pick) => {
-              if (threePointArcTool) {
-                void captureThreePointArcToolPick(pick);
-              } else if (
-                isSketchCurveEditUiAction(workbenchUi.activeTool) &&
-                focusedSketchId
-              ) {
-                captureCurveEditViewportPick(pick);
-              } else {
-                selectViewportPick(pick);
-              }
-            }}
-            onCancelTransientState={clearViewportTransientState}
-            sketchOverlay={({ camera, size }) => (
-              <>
-                {sketchViewportDragTarget ? (
-                  <Suspense fallback={<SketchOverlayLoadingFallback />}>
-                    <SketchViewportDragOverlay
-                      camera={camera}
-                      disabled={commandPending}
-                      displayFrame={getSketchViewportDisplayFrame(
-                        sketchViewportDragTarget.sketch.id
-                      )}
-                      selectedEntityId={sketchViewportDragTarget.entityId}
-                      size={size}
-                      sketch={sketchViewportDragTarget.sketch}
-                      onCommitEntity={(sketchId, entity) =>
-                        void updateSketchEntity(sketchId, entity)
-                      }
-                      onPreviewEntity={previewSketchEntityUpdate}
-                    />
-                  </Suspense>
-                ) : null}
-                {threePointArcTool &&
-                getSketchViewportDisplayFrame(threePointArcTool.sketchId) ? (
-                  <Suspense fallback={<SketchOverlayLoadingFallback />}>
-                    <SketchArcToolOverlay
-                      camera={camera}
-                      displayFrame={
-                        getSketchViewportDisplayFrame(
-                          threePointArcTool.sketchId
-                        )!
-                      }
-                      session={threePointArcTool}
-                      size={size}
-                    />
-                  </Suspense>
-                ) : null}
-              </>
-            )}
-          />
-        }
-        projectWorkspace={
-          <Suspense
-            fallback={<p className="panel-loading">Loading project…</p>}
-          >
-            <ProjectWorkspace
-              page={workbenchUi.projectPage ?? "overview"}
-              disabled={commandPending}
-              documentName={getProjectFileNameLabel(projectFile)}
-              units={document.units}
-              currentProject={currentProject}
-              projectFile={projectFile}
-              storageCapabilities={projectStorageCapabilities}
-              health={projectHealth}
-              topologyIdentityReadiness={projectTopologyIdentityReadiness}
-              importReadiness={projectImportReadiness}
-              exportReadiness={projectExportReadiness}
-              visualizationExport={visualizationMeshExportStatus}
-              jsonDraft={projectJson}
-              jsonDraftSource={projectJsonDraftSource}
-              opfsCacheStatus={projectOpfsCacheStatus}
-              parameters={parameters}
-              parameterEvaluation={parameterEvaluation}
-              parameterUsageCounts={parameterUsageCounts}
-              transactions={transactionHistory}
-              canUndo={engine.getTransactions().length > 0}
-              canRedo={engine.getRedoStack().length > 0}
-              message={projectMessage}
-              messageTone={projectMessageTone}
-              onNew={createNewProject}
-              onOpenWcad={openProjectWcad}
-              onOpenStep={openProjectStepImport}
-              onOpenWcadFileLoaded={(bytes, fileName) =>
-                void importProjectWcadBytes(bytes, fileName, "uploadedFallback")
-              }
-              onStepFileLoaded={(bytes, fileName) =>
-                void importProjectStepBytes(bytes, fileName)
-              }
-              onJsonFileLoaded={loadProjectJsonDraft}
-              onFileError={(message) => {
-                setProjectMessage(message);
-                setProjectMessageTone("error");
-              }}
-              onSave={() => void saveProjectWcad()}
-              onSaveAs={() => void saveProjectWcadAs()}
-              onPrepareJson={exportProjectJson}
-              onDownloadJson={downloadProjectJson}
-              onJsonDraftChange={(value) => {
-                setProjectJson(value);
-                setProjectJsonDraftSource(
-                  value.trim().length === 0
-                    ? { kind: "empty" }
-                    : { kind: "edited" }
-                );
-                setProjectMessage(undefined);
-              }}
-              onImportJson={importProjectJson}
-              onRefreshOpfsCache={() => void refreshProjectOpfsCache(true)}
-              onClearOpfsCache={() => void clearProjectOpfsCache()}
-              onDownloadStep={() => void downloadExactStepExport()}
-              onDownloadVisualization={downloadVisualizationMeshExport}
-              onUpdateUnits={(units, mode) =>
-                void updateDocumentUnits(units, mode)
-              }
-              onCreateParameter={(form) => void createParameter(form)}
-              onEditParameter={(parameter, form) =>
-                void applyParameterEdit(parameter, form)
-              }
-              onDeleteParameter={(parameterId) =>
-                void deleteParameter(parameterId)
-              }
-              onUndo={undo}
-              onRedo={redo}
+              onStay={() => void resolveCurveEditNavigation("stay")}
             />
           </Suspense>
-        }
-        rightDock={
-          <div className="right-rail" aria-label="Project and modeling tools">
-            {workbenchUi.mode === "solid" ? (
-              <Suspense
-                fallback={
-                  <p className="panel-loading">Loading modeling tools…</p>
+        ) : null}
+        <WorkbenchShell
+          mode={workbenchUi.mode}
+          activeEditor={Boolean(workbenchUi.activeEditor)}
+          leftDockWidth={workbenchUi.leftDockWidth}
+          rightDockWidth={workbenchUi.rightDockWidth}
+          leftDockCollapsed={workbenchUi.leftDockCollapsed}
+          rightDockCollapsed={workbenchUi.rightDockCollapsed}
+          projectDetailsOpen={false}
+          onDockCollapsedChange={(side, collapsed) =>
+            dispatchWorkbench({
+              type: "set-dock-collapsed",
+              side,
+              collapsed
+            })
+          }
+          onDockWidthChange={(side, width) =>
+            dispatchWorkbench({ type: "set-dock-width", side, width })
+          }
+          header={
+            <>
+              <GlobalHeader
+                documentName={getProjectFileNameLabel(projectFile)}
+                saveState={
+                  projectFile.dirty || projectFile.mode === "unsaved"
+                    ? "unsaved"
+                    : projectFile.mode === "wcadHandle" && projectFileHandle
+                      ? "saved-local"
+                      : "saved-browser"
                 }
-              >
-                <SolidModePanel
-                  activeEditor={solidEditorRequest}
-                  onApply={applySolidEditorSubmission}
-                  onCancel={() =>
-                    dispatchWorkbench({ type: "set-active-tool" })
-                  }
-                  onDelete={
-                    selectedObject
-                      ? () => void deleteSelectedObject()
-                      : selectedFeature
-                        ? () => void deleteAuthoredFeature(selectedFeature.id)
+                undo={{
+                  available:
+                    !commandPending && engine.getTransactions().length > 0,
+                  pending: commandPending,
+                  unavailableReason:
+                    engine.getTransactions().length === 0
+                      ? "There is nothing to undo."
+                      : undefined,
+                  run: undo
+                }}
+                redo={{
+                  available:
+                    !commandPending && engine.getRedoStack().length > 0,
+                  pending: commandPending,
+                  unavailableReason:
+                    engine.getRedoStack().length === 0
+                      ? "There is nothing to redo."
+                      : undefined,
+                  run: redo
+                }}
+                onOpenCommandSearch={openCommandSearch}
+                onOpenHelp={() =>
+                  setCommandNotice(
+                    "Shortcuts: Ctrl+K search, Ctrl+Z undo, Ctrl+Shift+Z redo, F fit, Escape cancel."
+                  )
+                }
+                pendingLabel={commandPending ? "Updating model" : undefined}
+              />
+            </>
+          }
+          ribbon={
+            <ModeRibbon
+              mode={workbenchUi.mode}
+              actions={projectedUiActions}
+              activeActionId={workbenchUi.activeTool}
+              onModeChange={navigateToMode}
+              onInvokeAction={(action) =>
+                void invokeUiAction(action, uiActionContext)
+              }
+              onExplainUnavailable={(_action, availability) =>
+                setCommandNotice(availability.message)
+              }
+            />
+          }
+          leftDock={
+            workbenchUi.mode === "project" ? (
+              <nav className="pb-project-navigation" aria-label="Project pages">
+                {(
+                  [
+                    ["overview", "Overview"],
+                    ["files", "Files"],
+                    ["parameters", "Parameters"],
+                    ["history", "History"],
+                    ["export", "Export"]
+                  ] as const
+                ).map(([page, label]) => (
+                  <button
+                    key={page}
+                    type="button"
+                    aria-current={
+                      (workbenchUi.projectPage ?? "overview") === page
+                        ? "page"
                         : undefined
-                  }
-                  onCollect={(request) =>
-                    setCommandNotice(
-                      `Select ${request.acceptedKinds.join(" or ")} in the viewport or model tree.`
-                    )
-                  }
-                />
-              </Suspense>
-            ) : null}
-
-            {workbenchUi.mode === "inspect" ? (
-              <Suspense
-                fallback={<p className="panel-loading">Loading inspection…</p>}
-              >
-                <InspectPanel
-                  selection={inspectSelection}
-                  measurements={inspectMeasurements}
-                  massProperties={inspectMassProperties}
-                  reference={inspectReference}
-                  health={inspectHealth}
-                  onMeasureSelection={
-                    viewportTwoTargetMeasurementTarget
-                      ? () =>
-                          startViewportTwoTargetMeasurement(
-                            viewportTwoTargetMeasurementTarget
-                          )
-                      : undefined
-                  }
-                  onBeginTwoTargetMeasurement={
-                    viewportTwoTargetMeasurementTarget
-                      ? () =>
-                          startViewportTwoTargetMeasurement(
-                            viewportTwoTargetMeasurementTarget
-                          )
-                      : undefined
-                  }
-                  onClearTwoTargetMeasurement={
-                    viewportTwoTargetMeasurementSessionActive
-                      ? clearViewportTwoTargetMeasurement
-                      : undefined
-                  }
-                  onNameReference={
-                    selectedGeneratedReferenceState.status === "selected"
-                      ? () => {
-                          const name = window.prompt(
-                            "Reference name",
-                            inspectReference?.name ?? ""
-                          );
+                    }
+                    onClick={() => openProjectPage(page)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </nav>
+            ) : (
+              <ProgressiveDocumentTreeDock
+                parts={projectStructure.parts}
+                parameters={parameters}
+                sketches={sketches}
+                features={projectStructure.features}
+                bodies={projectStructure.bodies}
+                objects={sceneObjects}
+                namedReferences={namedReferences}
+                health={projectHealth}
+                suppressSourceMutations={
+                  curveEditOwnership.suppressTreeSourceMutations
+                }
+                selectedKey={selectedDocumentTreeKey}
+                editingKey={
+                  workbenchUi.activeEditor?.sourceId
+                    ? `feature:${workbenchUi.activeEditor.sourceId}`
+                    : undefined
+                }
+                onSelect={selectDocumentTreeItem}
+                onRename={renameDocumentTreeItem}
+                onEdit={editDocumentTreeItem}
+                onDelete={deleteDocumentTreeItem}
+              />
+            )
+          }
+          viewport={
+            <Suspense
+              fallback={<p className="panel-loading">Loading viewport…</p>}
+            >
+              <ViewportCanvas
+                primitives={renderScene.primitives}
+                meshes={renderScene.meshes}
+                notifyHoverPointChanges={Boolean(
+                  threePointArcTool ||
+                  isSketchCurveEditUiAction(workbenchUi.activeTool)
+                )}
+                selectedId={selectedViewportRenderId}
+                suspendHoverPicking={
+                  workbenchUi.activeTool === "sketch.regions"
+                }
+                visualStates={viewportVisualState.rendererVisualStates}
+                status={viewportVisualState.status}
+                contextualSurface={
+                  curveEditOwnership.suppressContextSourceMutations ? null : (
+                    <ContextualActionStrip
+                      disabled={commandPending}
+                      surface={viewportContextualCommandSurface}
+                      onInvoke={(action) => {
+                        if (action.route === "name" && action.target) {
+                          const name = window.prompt("Reference name", "");
                           if (name?.trim()) {
                             void nameGeneratedReference(
                               name.trim(),
-                              selectedGeneratedReferenceState.selection
+                              action.target
                             );
                           }
+                          return;
                         }
-                      : undefined
-                  }
-                  onRepairReference={
-                    selectedNamedReferenceName &&
-                    selectedGeneratedReferenceState.status === "selected"
-                      ? () =>
-                          void repairNamedReference(
-                            selectedNamedReferenceName,
-                            selectedGeneratedReferenceState.selection
-                          )
-                      : undefined
-                  }
-                  onSaveStableReference={
-                    selectedGeneratedReferenceState.status === "selected" &&
-                    !selectedGeneratedReferenceState.selection.topologyAnchorId
-                      ? () =>
-                          void createStableTopologyReference(
-                            selectedGeneratedReferenceState.selection
-                          )
-                      : undefined
-                  }
-                  onPreviewStableRepair={
-                    selectedGeneratedReferenceState.status === "selected" &&
-                    selectedGeneratedReferenceState.selection.topologyAnchorId
-                      ? () =>
-                          void previewStableTopologyRepair(
-                            selectedGeneratedReferenceState.selection
-                          )
-                      : undefined
-                  }
-                  onRepairStableReference={
-                    selectedGeneratedReferenceState.status === "selected" &&
-                    topologyRepairPreview?.preview?.rows.some(
-                      (row) => row.repairable
-                    )
-                      ? () => {
-                          const candidate =
-                            topologyRepairPreview.preview?.rows.find(
-                              (row) => row.repairable
-                            );
-                          if (candidate) {
-                            void repairStableTopologyReference(
-                              selectedGeneratedReferenceState.selection,
-                              candidate.candidateId
+                        if (
+                          action.route === "inspect" ||
+                          action.route === "measure" ||
+                          action.route === "references"
+                        ) {
+                          navigateToMode("inspect");
+                          if (
+                            action.route === "measure" &&
+                            viewportTwoTargetMeasurementTarget
+                          ) {
+                            startViewportTwoTargetMeasurement(
+                              viewportTwoTargetMeasurementTarget
                             );
                           }
+                          return;
                         }
-                      : undefined
-                  }
-                />
-              </Suspense>
-            ) : null}
-
-            {workbenchUi.mode === "sketch" ? (
-              <Suspense
-                fallback={
-                  <p className="panel-loading">Loading sketch tools…</p>
+                        runViewportContextualCommand(action);
+                      }}
+                    />
+                  )
                 }
-              >
-                <SketchModeDock
-                  key={`${focusedSketchId ?? "sketch-mode"}:${workbenchUi.activeTool ?? ""}`}
-                  disabled={commandPending}
-                  sketches={sketches}
-                  parameters={parameters}
-                  units={document.units}
-                  features={projectStructure.features}
-                  dimensionsBySketchId={sketchDimensionsBySketchId}
-                  evaluationsBySketchId={sketchEvaluationsBySketchId}
-                  solverStatusesBySketchId={sketchSolverStatusesBySketchId}
-                  pathCandidatesBySketchId={pathCandidatesBySketchId}
-                  activeSketchId={focusedSketchId}
-                  selectedEntityId={selectedSketchContext?.entityId}
-                  curveEditSourceAuthorityKey={curveEditSourceAuthorityRevision}
-                  arcToolActiveSketchId={threePointArcTool?.sketchId}
-                  initialActionId={
-                    workbenchUi.activeTool as UiActionId | undefined
+                onHover={(pick) => {
+                  if (threePointArcTool) {
+                    hoverThreePointArcTool(pick);
+                  } else {
+                    hoverViewportPick(pick);
                   }
-                  curveEditViewportChoice={curveEditViewportChoice}
-                  curveEditViewportHoverChoice={curveEditViewportHoverChoice}
-                  curveEditKeyboardSuspended={Boolean(
-                    workbenchUi.navigationIntent &&
-                    workbenchUi.activeEditor?.kind === "sketch-curve-edit"
-                  )}
-                  onSelectSketch={focusSketch}
-                  onSelectEntity={focusSketch}
-                  onCreateSketch={(form) => void createSketch(form)}
-                  onAddEntity={(sketchId, kind, form) =>
-                    void addSketchEntity(sketchId, kind, form)
+                }}
+                onSelect={(pick) => {
+                  if (threePointArcTool) {
+                    void captureThreePointArcToolPick(pick);
+                  } else if (
+                    isSketchCurveEditUiAction(workbenchUi.activeTool) &&
+                    focusedSketchId
+                  ) {
+                    captureCurveEditViewportPick(pick);
+                  } else {
+                    selectViewportPick(pick);
                   }
-                  onUpdateEntity={(sketchId, entity) =>
-                    void updateSketchEntity(sketchId, entity)
+                }}
+                onCancelTransientState={clearViewportTransientState}
+                sketchOverlay={({ camera, size }) => (
+                  <>
+                    {regionOverlaySketch && regionOverlayDisplayFrame ? (
+                      <Suspense fallback={<SketchOverlayLoadingFallback />}>
+                        <SketchRegionOverlay
+                          camera={camera}
+                          candidates={regionCandidates}
+                          displayFrame={regionOverlayDisplayFrame}
+                          hoveredCandidateKey={hoveredRegionCandidateKey}
+                          selectedCandidateKeys={selectedRegionCandidateKeys}
+                          size={size}
+                          sketch={regionOverlaySketch}
+                          onHoverCandidate={setHoveredRegionCandidateKey}
+                          onSelectCandidate={toggleRegionCandidate}
+                        />
+                      </Suspense>
+                    ) : null}
+                    {sketchViewportDragTarget &&
+                    workbenchUi.activeTool !== "sketch.regions" ? (
+                      <Suspense fallback={<SketchOverlayLoadingFallback />}>
+                        <SketchViewportDragOverlay
+                          camera={camera}
+                          disabled={commandPending}
+                          displayFrame={getSketchViewportDisplayFrame(
+                            sketchViewportDragTarget.sketch.id
+                          )}
+                          selectedEntityId={sketchViewportDragTarget.entityId}
+                          size={size}
+                          sketch={sketchViewportDragTarget.sketch}
+                          onCommitEntity={(sketchId, entity) =>
+                            void updateSketchEntity(sketchId, entity)
+                          }
+                          onPreviewEntity={previewSketchEntityUpdate}
+                        />
+                      </Suspense>
+                    ) : null}
+                    {threePointArcTool &&
+                    getSketchViewportDisplayFrame(
+                      threePointArcTool.sketchId
+                    ) ? (
+                      <Suspense fallback={<SketchOverlayLoadingFallback />}>
+                        <SketchArcToolOverlay
+                          camera={camera}
+                          displayFrame={
+                            getSketchViewportDisplayFrame(
+                              threePointArcTool.sketchId
+                            )!
+                          }
+                          session={threePointArcTool}
+                          size={size}
+                        />
+                      </Suspense>
+                    ) : null}
+                  </>
+                )}
+              />
+            </Suspense>
+          }
+          projectWorkspace={
+            <Suspense
+              fallback={<p className="panel-loading">Loading project…</p>}
+            >
+              <ProjectWorkspace
+                page={workbenchUi.projectPage ?? "overview"}
+                disabled={commandPending}
+                documentName={getProjectFileNameLabel(projectFile)}
+                units={document.units}
+                currentProject={currentProject}
+                projectFile={projectFile}
+                storageCapabilities={projectStorageCapabilities}
+                health={projectHealth}
+                topologyIdentityReadiness={projectTopologyIdentityReadiness}
+                importReadiness={projectImportReadiness}
+                exportReadiness={projectExportReadiness}
+                visualizationExport={visualizationMeshExportStatus}
+                jsonDraft={projectJson}
+                jsonDraftSource={projectJsonDraftSource}
+                opfsCacheStatus={projectOpfsCacheStatus}
+                parameters={parameters}
+                parameterEvaluation={parameterEvaluation}
+                parameterUsageCounts={parameterUsageCounts}
+                transactions={transactionHistory}
+                canUndo={engine.getTransactions().length > 0}
+                canRedo={engine.getRedoStack().length > 0}
+                message={projectMessage}
+                messageTone={projectMessageTone}
+                onNew={createNewProject}
+                onOpenWcad={openProjectWcad}
+                onOpenStep={openProjectStepImport}
+                onOpenWcadFileLoaded={(bytes, fileName) =>
+                  void importProjectWcadBytes(
+                    bytes,
+                    fileName,
+                    "uploadedFallback"
+                  )
+                }
+                onStepFileLoaded={(bytes, fileName) =>
+                  void importProjectStepBytes(bytes, fileName)
+                }
+                onJsonFileLoaded={loadProjectJsonDraft}
+                onFileError={(message) => {
+                  setProjectMessage(message);
+                  setProjectMessageTone("error");
+                }}
+                onSave={() => void saveProjectWcad()}
+                onSaveAs={() => void saveProjectWcadAs()}
+                onPrepareJson={exportProjectJson}
+                onDownloadJson={downloadProjectJson}
+                onJsonDraftChange={(value) => {
+                  setProjectJson(value);
+                  setProjectJsonDraftSource(
+                    value.trim().length === 0
+                      ? { kind: "empty" }
+                      : { kind: "edited" }
+                  );
+                  setProjectMessage(undefined);
+                }}
+                onImportJson={importProjectJson}
+                onRefreshOpfsCache={() => void refreshProjectOpfsCache(true)}
+                onClearOpfsCache={() => void clearProjectOpfsCache()}
+                onDownloadStep={() => void downloadExactStepExport()}
+                onDownloadVisualization={downloadVisualizationMeshExport}
+                onUpdateUnits={(units, mode) =>
+                  void updateDocumentUnits(units, mode)
+                }
+                onCreateParameter={(form) => void createParameter(form)}
+                onEditParameter={(parameter, form) =>
+                  void applyParameterEdit(parameter, form)
+                }
+                onDeleteParameter={(parameterId) =>
+                  void deleteParameter(parameterId)
+                }
+                onUndo={undo}
+                onRedo={redo}
+              />
+            </Suspense>
+          }
+          rightDock={
+            <div className="right-rail" aria-label="Project and modeling tools">
+              {workbenchUi.mode === "solid" ? (
+                <Suspense
+                  fallback={
+                    <p className="panel-loading">Loading modeling tools…</p>
                   }
-                  onDeleteEntity={(sketchId, entityId) =>
-                    void deleteSketchEntity(sketchId, entityId)
+                >
+                  <SolidModePanel
+                    activeEditor={solidEditorRequest}
+                    onApply={applySolidEditorSubmission}
+                    onCancel={() =>
+                      dispatchWorkbench({ type: "set-active-tool" })
+                    }
+                    onDelete={
+                      selectedObject
+                        ? () => void deleteSelectedObject()
+                        : selectedFeature
+                          ? () => void deleteAuthoredFeature(selectedFeature.id)
+                          : undefined
+                    }
+                    onCollect={(request) =>
+                      setCommandNotice(
+                        `Select ${request.acceptedKinds.join(" or ")} in the viewport or model tree.`
+                      )
+                    }
+                  />
+                </Suspense>
+              ) : null}
+
+              {workbenchUi.mode === "inspect" ? (
+                <Suspense
+                  fallback={
+                    <p className="panel-loading">Loading inspection…</p>
                   }
-                  onSetEntityConstruction={(sketchId, entityId, construction) =>
-                    void setSketchEntityConstruction(
+                >
+                  <InspectPanel
+                    selection={inspectSelection}
+                    measurements={inspectMeasurements}
+                    massProperties={inspectMassProperties}
+                    reference={inspectReference}
+                    health={inspectHealth}
+                    onMeasureSelection={
+                      viewportTwoTargetMeasurementTarget
+                        ? () =>
+                            startViewportTwoTargetMeasurement(
+                              viewportTwoTargetMeasurementTarget
+                            )
+                        : undefined
+                    }
+                    onBeginTwoTargetMeasurement={
+                      viewportTwoTargetMeasurementTarget
+                        ? () =>
+                            startViewportTwoTargetMeasurement(
+                              viewportTwoTargetMeasurementTarget
+                            )
+                        : undefined
+                    }
+                    onClearTwoTargetMeasurement={
+                      viewportTwoTargetMeasurementSessionActive
+                        ? clearViewportTwoTargetMeasurement
+                        : undefined
+                    }
+                    onNameReference={
+                      selectedGeneratedReferenceState.status === "selected"
+                        ? () => {
+                            const name = window.prompt(
+                              "Reference name",
+                              inspectReference?.name ?? ""
+                            );
+                            if (name?.trim()) {
+                              void nameGeneratedReference(
+                                name.trim(),
+                                selectedGeneratedReferenceState.selection
+                              );
+                            }
+                          }
+                        : undefined
+                    }
+                    onRepairReference={
+                      selectedNamedReferenceName &&
+                      selectedGeneratedReferenceState.status === "selected"
+                        ? () =>
+                            void repairNamedReference(
+                              selectedNamedReferenceName,
+                              selectedGeneratedReferenceState.selection
+                            )
+                        : undefined
+                    }
+                    onSaveStableReference={
+                      selectedGeneratedReferenceState.status === "selected" &&
+                      !selectedGeneratedReferenceState.selection
+                        .topologyAnchorId
+                        ? () =>
+                            void createStableTopologyReference(
+                              selectedGeneratedReferenceState.selection
+                            )
+                        : undefined
+                    }
+                    onPreviewStableRepair={
+                      selectedGeneratedReferenceState.status === "selected" &&
+                      selectedGeneratedReferenceState.selection.topologyAnchorId
+                        ? () =>
+                            void previewStableTopologyRepair(
+                              selectedGeneratedReferenceState.selection
+                            )
+                        : undefined
+                    }
+                    onRepairStableReference={
+                      selectedGeneratedReferenceState.status === "selected" &&
+                      topologyRepairPreview?.preview?.rows.some(
+                        (row) => row.repairable
+                      )
+                        ? () => {
+                            const candidate =
+                              topologyRepairPreview.preview?.rows.find(
+                                (row) => row.repairable
+                              );
+                            if (candidate) {
+                              void repairStableTopologyReference(
+                                selectedGeneratedReferenceState.selection,
+                                candidate.candidateId
+                              );
+                            }
+                          }
+                        : undefined
+                    }
+                  />
+                </Suspense>
+              ) : null}
+
+              {workbenchUi.mode === "sketch" ? (
+                <Suspense
+                  fallback={
+                    <p className="panel-loading">Loading sketch tools…</p>
+                  }
+                >
+                  <SketchModeDock
+                    key={`${focusedSketchId ?? "sketch-mode"}:${workbenchUi.activeTool ?? ""}`}
+                    disabled={commandPending}
+                    sketches={sketches}
+                    parameters={parameters}
+                    units={document.units}
+                    features={projectStructure.features}
+                    dimensionsBySketchId={sketchDimensionsBySketchId}
+                    evaluationsBySketchId={sketchEvaluationsBySketchId}
+                    solverStatusesBySketchId={sketchSolverStatusesBySketchId}
+                    pathCandidatesBySketchId={pathCandidatesBySketchId}
+                    activeSketchId={focusedSketchId}
+                    selectedEntityId={selectedSketchContext?.entityId}
+                    curveEditSourceAuthorityKey={
+                      curveEditSourceAuthorityRevision
+                    }
+                    arcToolActiveSketchId={threePointArcTool?.sketchId}
+                    initialActionId={
+                      workbenchUi.activeTool as UiActionId | undefined
+                    }
+                    curveEditViewportChoice={curveEditViewportChoice}
+                    curveEditViewportHoverChoice={curveEditViewportHoverChoice}
+                    curveEditKeyboardSuspended={Boolean(
+                      workbenchUi.navigationIntent &&
+                      workbenchUi.activeEditor?.kind === "sketch-curve-edit"
+                    )}
+                    regionCandidates={regionCandidates}
+                    selectedRegionCandidateKeys={selectedRegionCandidateKeys}
+                    hoveredRegionCandidateKey={hoveredRegionCandidateKey}
+                    regionConsumer={regionConsumer}
+                    onSelectSketch={focusSketch}
+                    onSelectEntity={focusSketch}
+                    onCreateSketch={(form) => void createSketch(form)}
+                    onAddEntity={(sketchId, kind, form) =>
+                      void addSketchEntity(sketchId, kind, form)
+                    }
+                    onUpdateEntity={(sketchId, entity) =>
+                      void updateSketchEntity(sketchId, entity)
+                    }
+                    onDeleteEntity={(sketchId, entityId) =>
+                      void deleteSketchEntity(sketchId, entityId)
+                    }
+                    onSetEntityConstruction={(
                       sketchId,
                       entityId,
                       construction
-                    )
-                  }
-                  onStartThreePointArcTool={startThreePointArcTool}
-                  onCancelGesture={() => setThreePointArcTool(undefined)}
-                  onReadCurveEditReadiness={readSketchCurveEditReadiness}
-                  onApplyCurveEdit={applySketchCurveEdit}
-                  onApplySketchConvenience={applySketchConvenience}
-                  onCancelCurveEdit={(restoreFocus) => {
-                    clearCurveEditUi(restoreFocus);
-                  }}
-                  onRequestCurveEditEscape={(dirty) => {
-                    if (dirty) {
-                      dispatchWorkbench({
-                        type: "request-navigation",
-                        intent: { kind: "close-editor" }
-                      });
-                    } else {
-                      clearCurveEditUi(true);
+                    ) =>
+                      void setSketchEntityConstruction(
+                        sketchId,
+                        entityId,
+                        construction
+                      )
                     }
-                  }}
-                  onCurveEditChoiceRejected={setCommandNotice}
-                  onClearCurveEditHoverPreview={clearCurveEditHoverPreview}
-                  onCurveEditDirtyChange={handleCurveEditDirtyChange}
-                  onCurveEditSessionControlChange={
-                    handleCurveEditSessionControlChange
-                  }
-                  onApplySketchIntentOps={applySketchIntentOps}
-                  onIntentActionAvailabilityChange={
-                    setSketchIntentActionAvailability
-                  }
-                  onFinish={() => {
-                    setThreePointArcTool(undefined);
-                    navigateToMode("solid");
-                  }}
-                />
-              </Suspense>
-            ) : null}
-          </div>
-        }
-        statusBar={
-          workbenchUi.mode === "project" ? (
-            <StatusBar
-              mode="project"
-              fileState={getProjectFileNameLabel(projectFile)}
-              saveState={getProjectFileDirtyLabel(projectFile)}
-              readiness={
-                commandError ?? commandNotice ?? "Review export readiness"
-              }
-              pendingLabel={commandPending ? "Updating model" : undefined}
-              modelWorkControl={modelWorkControl}
-            />
-          ) : workbenchUi.mode === "sketch" ? (
-            <StatusBar
-              mode="sketch"
-              instruction={
-                commandError ??
-                commandNotice ??
-                (threePointArcTool
-                  ? "Place the next arc point"
-                  : focusedSketchId
-                    ? "Sketch tools are ready"
-                    : "Select or create a sketch")
-              }
-              zoom="Viewport"
-              units={document.units}
-              solver={formatSketchSolverStatus(
-                focusedSketchId
-                  ? sketchSolverStatusesBySketchId.get(focusedSketchId)
-                  : undefined
-              )}
-              pendingLabel={commandPending ? "Updating sketch" : undefined}
-              modelWorkControl={modelWorkControl}
-            />
-          ) : workbenchUi.mode === "inspect" ? (
-            <StatusBar
-              mode="inspect"
-              instruction={
-                commandError ??
-                commandNotice ??
-                (viewportTwoTargetMeasurementSessionActive
-                  ? "Select the second measurement target"
-                  : "Select geometry to inspect")
-              }
-              selectionFilter={workbenchUi.selectionFilter}
-              onSelectionFilterChange={(filter) =>
-                dispatchWorkbench({
-                  type: "set-selection-filter",
-                  filter
-                })
-              }
-              zoom="Viewport"
-              units={document.units}
-              pendingLabel={commandPending ? "Updating model" : undefined}
-              modelWorkControl={modelWorkControl}
-            />
-          ) : (
-            <StatusBar
-              mode="solid"
-              instruction={
-                commandError ??
-                commandNotice ??
-                (selectedGeneratedReference
-                  ? "Reference selected"
-                  : selectedBody
-                    ? "Body selected"
-                    : selectedObject
-                      ? "Object selected"
-                      : "Select geometry or choose a modeling tool")
-              }
-              selectionFilter={workbenchUi.selectionFilter}
-              onSelectionFilterChange={(filter) =>
-                dispatchWorkbench({
-                  type: "set-selection-filter",
-                  filter
-                })
-              }
-              zoom="Viewport"
-              units={document.units}
-              rebuildState={modelingResultState}
-              modelSourceIds={derivedGeometry.entries.map(
-                (entry) => entry.sourceId ?? entry.objectId
-              )}
-              pendingLabel={commandPending ? "Updating model" : undefined}
-              modelWorkControl={modelWorkControl}
-            />
-          )
-        }
-      />
-      {workbenchUi.commandSearchOpen ? (
-        <Suspense
-          fallback={
-            <CommandSearchLoadingFallback
-              onRequestClose={() => {
-                closeCommandSearch();
-                restoreCommandSearchFocus();
-              }}
-            />
+                    onStartThreePointArcTool={startThreePointArcTool}
+                    onCancelGesture={() => setThreePointArcTool(undefined)}
+                    onReadCurveEditReadinessAsync={
+                      readSketchCurveEditReadinessAsync
+                    }
+                    onApplyCurveEdit={applySketchCurveEdit}
+                    onApplySketchConvenience={applySketchConvenience}
+                    onQueryRegionCandidates={querySketchRegionCandidates}
+                    onValidateRegionProfile={validateSketchRegionProfile}
+                    onRegionCandidatesChange={changeRegionCandidates}
+                    onToggleRegionCandidate={toggleRegionCandidate}
+                    onHoverRegionCandidate={setHoveredRegionCandidateKey}
+                    onRegionConsumerChange={changeRegionConsumer}
+                    onApplyRegionSelectionReady={acceptValidatedRegionSelection}
+                    onCancelCurveEdit={(restoreFocus) => {
+                      clearCurveEditUi(restoreFocus);
+                    }}
+                    onRequestCurveEditEscape={(dirty) => {
+                      if (dirty) {
+                        dispatchWorkbench({
+                          type: "request-navigation",
+                          intent: { kind: "close-editor" }
+                        });
+                      } else {
+                        clearCurveEditUi(true);
+                      }
+                    }}
+                    onCurveEditChoiceRejected={setCommandNotice}
+                    onClearCurveEditHoverPreview={clearCurveEditHoverPreview}
+                    onCurveEditDirtyChange={handleCurveEditDirtyChange}
+                    onCurveEditSessionControlChange={
+                      handleCurveEditSessionControlChange
+                    }
+                    onApplySketchIntentOps={applySketchIntentOps}
+                    onIntentActionAvailabilityChange={
+                      setSketchIntentActionAvailability
+                    }
+                    onFinish={() => {
+                      setThreePointArcTool(undefined);
+                      navigateToMode("solid");
+                    }}
+                  />
+                </Suspense>
+              ) : null}
+            </div>
           }
-        >
-          <CommandSearchDialog
-            open
-            actions={projectedUiActions}
-            actionContext={uiActionContext}
-            currentMode={workbenchUi.mode}
-            onRequestClose={closeCommandSearch}
-            restoreFocus={restoreCommandSearchFocus}
-            onInvocationError={(_action, error) =>
-              setCommandError(
-                error instanceof Error
-                  ? error.message
-                  : "The command could not be started."
-              )
+          statusBar={
+            workbenchUi.mode === "project" ? (
+              <StatusBar
+                mode="project"
+                fileState={getProjectFileNameLabel(projectFile)}
+                saveState={getProjectFileDirtyLabel(projectFile)}
+                readiness={
+                  commandError ?? commandNotice ?? "Review export readiness"
+                }
+                pendingLabel={commandPending ? "Updating model" : undefined}
+                modelWorkControl={modelWorkControl}
+              />
+            ) : workbenchUi.mode === "sketch" ? (
+              <SketchStatusBarWithAnalysis
+                focusedSketchId={focusedSketchId}
+                instruction={
+                  commandError ??
+                  commandNotice ??
+                  (threePointArcTool
+                    ? "Place the next arc point"
+                    : focusedSketchId
+                      ? "Sketch tools are ready"
+                      : "Select or create a sketch")
+                }
+                zoom="Viewport"
+                units={document.units}
+                pendingLabel={commandPending ? "Updating sketch" : undefined}
+                modelWorkControl={modelWorkControl}
+              />
+            ) : workbenchUi.mode === "inspect" ? (
+              <StatusBar
+                mode="inspect"
+                instruction={
+                  commandError ??
+                  commandNotice ??
+                  (viewportTwoTargetMeasurementSessionActive
+                    ? "Select the second measurement target"
+                    : "Select geometry to inspect")
+                }
+                selectionFilter={workbenchUi.selectionFilter}
+                onSelectionFilterChange={(filter) =>
+                  dispatchWorkbench({
+                    type: "set-selection-filter",
+                    filter
+                  })
+                }
+                zoom="Viewport"
+                units={document.units}
+                pendingLabel={commandPending ? "Updating model" : undefined}
+                modelWorkControl={modelWorkControl}
+              />
+            ) : (
+              <StatusBar
+                mode="solid"
+                instruction={
+                  commandError ??
+                  commandNotice ??
+                  (selectedGeneratedReference
+                    ? "Reference selected"
+                    : selectedBody
+                      ? "Body selected"
+                      : selectedObject
+                        ? "Object selected"
+                        : "Select geometry or choose a modeling tool")
+                }
+                selectionFilter={workbenchUi.selectionFilter}
+                onSelectionFilterChange={(filter) =>
+                  dispatchWorkbench({
+                    type: "set-selection-filter",
+                    filter
+                  })
+                }
+                zoom="Viewport"
+                units={document.units}
+                rebuildState={modelingResultState}
+                modelSourceIds={derivedGeometry.entries.map(
+                  (entry) => entry.sourceId ?? entry.objectId
+                )}
+                pendingLabel={commandPending ? "Updating model" : undefined}
+                modelWorkControl={modelWorkControl}
+              />
+            )
+          }
+        />
+        {workbenchUi.commandSearchOpen ? (
+          <Suspense
+            fallback={
+              <CommandSearchLoadingFallback
+                onRequestClose={() => {
+                  closeCommandSearch();
+                  restoreCommandSearchFocus();
+                }}
+              />
             }
-          />
-        </Suspense>
-      ) : null}
-    </>
+          >
+            <CommandSearchDialog
+              open
+              actions={projectedUiActions}
+              actionContext={uiActionContext}
+              currentMode={workbenchUi.mode}
+              onRequestClose={closeCommandSearch}
+              restoreFocus={restoreCommandSearchFocus}
+              onInvocationError={(_action, error) =>
+                setCommandError(
+                  error instanceof Error
+                    ? error.message
+                    : "The command could not be started."
+                )
+              }
+            />
+          </Suspense>
+        ) : null}
+      </>
+    </ProgressiveSketchAnalysisProvider>
   );
 }

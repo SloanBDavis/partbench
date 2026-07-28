@@ -3494,6 +3494,9 @@ function analyzeResidualSystem(
   readonly jacobianRank: number;
   readonly augmentedRank: number;
 } {
+  if (residuals.length === 0) {
+    return { jacobianRank: 0, augmentedRank: 0 };
+  }
   const jacobian = finiteDifferenceJacobian(
     state,
     residualBlocks,

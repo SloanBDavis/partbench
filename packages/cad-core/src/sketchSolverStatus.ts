@@ -34,10 +34,7 @@ import {
   type SketchSolverDocument,
   type SketchSolverSketch
 } from "./sketchSolver";
-import {
-  runSketchSolverPackageProbe,
-  type SketchSolverPackageProbe
-} from "./sketchSolverPackageMapping";
+import { type SketchSolverPackageProbe } from "./sketchSolverPackageMapping";
 
 const SOURCE_BOUNDARY_NOTE =
   "V11 sketch solver status is derived from authoritative sketch entities, dimensions, constraints, profile source, and current project schema metadata.";
@@ -65,12 +62,11 @@ export function createSketchProfileValidityFromSource({
   sketch
 }: CreateSketchProfileValidityFromSourceOptions): CadSketchProfileValiditySummary {
   const evaluation = evaluateSketch(document, sketch);
-  const solverProbe = runSketchSolverPackageProbe(document, sketch);
 
   return createSketchProfileValidity(
     sketch,
     mapEvaluationStatus(evaluation.status),
-    solverProbe
+    evaluation.solverProbe
   );
 }
 
@@ -84,7 +80,7 @@ export function createSketchSolverStatusResponse({
   { readonly ok: true; readonly query: "sketch.solverStatus" }
 > {
   const evaluation = evaluateSketch(document, sketch);
-  const solverProbe = runSketchSolverPackageProbe(document, sketch);
+  const solverProbe = evaluation.solverProbe;
   const status = mapEvaluationStatus(evaluation.status);
   const entities = [...sketch.entities.values()].map((entity) =>
     createEntitySummary(sketch.id, entity)

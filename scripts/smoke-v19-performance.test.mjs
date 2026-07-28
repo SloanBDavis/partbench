@@ -35,15 +35,31 @@ function validNearLimitProof(overrides = {}) {
       completed: true,
       candidateSetComplete: true,
       revisionInvalidationObserved: true,
-      cancellationObserved: true
+      cancellationObserved: true,
+      candidateLimit: 512,
+      candidateCount: 512,
+      loadedCandidateCount: 512,
+      candidateCountSource: "worker-query-response",
+      pageCount: 6,
+      cancelledQueryWorkerCount: 1,
+      cancellationDelayMs: 16,
+      initialSourceRevision: `partbench-source-v1:${"1".repeat(64)}`,
+      revisedSourceRevision: `partbench-source-v1:${"2".repeat(64)}`
     },
     curveEdit: {
       completed: true,
       previewObserved: true,
-      applyRevalidationObserved: true
+      applyRevalidationObserved: true,
+      applyCommandOp: "sketch.split",
+      revisionBoundApply: true,
+      commandResponseOk: true
     },
     interaction: {
       pointerFeedbackByNextAnimationFrame: true,
+      trustedPointerFeedbackEvent: true,
+      pointerFeedbackFrameLatencyMs: 34,
+      longTaskObserverSupported: true,
+      frameSampleCount: 120,
       frameIntervalP95Ms: 34,
       maxLongTaskMs: 50
     },
@@ -92,10 +108,15 @@ describe("V19 performance smoke gate", () => {
       execution: "unit-test",
       regionDiscovery: {
         ...validNearLimitProof().regionDiscovery,
-        cancellationObserved: false
+        cancellationObserved: false,
+        cancelledQueryWorkerCount: 0
       },
       interaction: {
         pointerFeedbackByNextAnimationFrame: false,
+        trustedPointerFeedbackEvent: false,
+        pointerFeedbackFrameLatencyMs: 35,
+        longTaskObserverSupported: false,
+        frameSampleCount: 0,
         frameIntervalP95Ms: 35,
         maxLongTaskMs: 51
       },
@@ -106,11 +127,44 @@ describe("V19 performance smoke gate", () => {
       expect.stringContaining("proof build hash"),
       expect.stringContaining("proof execution"),
       expect.stringContaining("region cancellation"),
+      expect.stringContaining("physically cancelled query workers"),
       expect.stringContaining("next-animation-frame pointer feedback"),
+      expect.stringContaining("trusted pointer feedback event"),
+      expect.stringContaining("trusted pointer feedback latency"),
+      expect.stringContaining("long-task observer support"),
+      expect.stringContaining("near-limit frame samples"),
       expect.stringContaining("near-limit frame interval p95"),
       expect.stringContaining("near-limit long task"),
       expect.stringContaining("near-limit OCCT WASM requests")
     ]);
+  });
+
+  it("rejects boolean-only evidence without observed query and Apply details", () => {
+    const proof = validNearLimitProof({
+      regionDiscovery: {
+        completed: true,
+        candidateSetComplete: true,
+        revisionInvalidationObserved: true,
+        cancellationObserved: true
+      },
+      curveEdit: {
+        completed: true,
+        previewObserved: true,
+        applyRevalidationObserved: true
+      }
+    });
+
+    expect(auditV19NearLimitProof(proof, buildHash)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("near-limit candidate limit"),
+        expect.stringContaining("candidate count evidence source"),
+        expect.stringContaining("physically cancelled query workers"),
+        expect.stringContaining("region source revisions"),
+        expect.stringContaining("curve edit Apply command"),
+        expect.stringContaining("revision-bound curve edit Apply"),
+        expect.stringContaining("curve edit command response")
+      ])
+    );
   });
 
   it("never masks a failed inherited V18 performance gate", () => {

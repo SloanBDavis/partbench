@@ -2,6 +2,7 @@ import {
   AsyncCadCommandExecutor,
   CadEngine,
   MockCadCommandWorker,
+  exportCadProject,
   type CadWorkerRequest,
   type CadWorkerResponse
 } from "@web-cad/cad-core";
@@ -11,6 +12,13 @@ import {
   type CadCommandWorkerMessage,
   type CadCommandWorkerTransport
 } from "./browserCadCommandWorker";
+import {
+  BrowserCadQueryWorker,
+  RecoverableBrowserCadQueryWorker,
+  type CadQueryWorkerMessage,
+  type CadQueryWorkerRequest,
+  type CadQueryWorkerTransport
+} from "./browserCadQueryWorker";
 
 interface WorkerMessageEvent<T> {
   readonly data: T;
@@ -23,6 +31,9 @@ interface WorkerErrorEvent {
 
 type MessageListener = (
   event: WorkerMessageEvent<CadCommandWorkerMessage>
+) => void;
+type QueryMessageListener = (
+  event: WorkerMessageEvent<CadQueryWorkerMessage>
 ) => void;
 type ErrorListener = (event: WorkerErrorEvent) => void;
 
@@ -161,6 +172,55 @@ class PartialSetupFailureTransport implements CadCommandWorkerTransport {
   }
 }
 
+class ControllableQueryTransport implements CadQueryWorkerTransport {
+  readonly requests: CadQueryWorkerRequest[] = [];
+  terminationCount = 0;
+  readonly #messageListeners = new Set<QueryMessageListener>();
+  readonly #errorListeners = new Set<ErrorListener>();
+
+  postMessage(message: CadQueryWorkerRequest): void {
+    this.requests.push(message);
+  }
+
+  addEventListener(type: "message", listener: QueryMessageListener): void;
+  addEventListener(type: "error", listener: ErrorListener): void;
+  addEventListener(
+    type: "message" | "error",
+    listener: QueryMessageListener | ErrorListener
+  ): void {
+    if (type === "message") {
+      this.#messageListeners.add(listener as QueryMessageListener);
+    } else {
+      this.#errorListeners.add(listener as ErrorListener);
+    }
+  }
+
+  removeEventListener(type: "message", listener: QueryMessageListener): void;
+  removeEventListener(type: "error", listener: ErrorListener): void;
+  removeEventListener(
+    type: "message" | "error",
+    listener: QueryMessageListener | ErrorListener
+  ): void {
+    if (type === "message") {
+      this.#messageListeners.delete(listener as QueryMessageListener);
+    } else {
+      this.#errorListeners.delete(listener as ErrorListener);
+    }
+  }
+
+  terminate(): void {
+    this.terminationCount += 1;
+    this.#messageListeners.clear();
+    this.#errorListeners.clear();
+  }
+
+  emitMessage(message: CadQueryWorkerMessage): void {
+    for (const listener of this.#messageListeners) {
+      listener({ data: message });
+    }
+  }
+}
+
 describe("BrowserCadCommandWorker", () => {
   it("cleans up partial listener setup when construction fails", () => {
     const transport = new PartialSetupFailureTransport();
@@ -235,6 +295,180 @@ describe("BrowserCadCommandWorker", () => {
     expect(response.id).toBe("worker_req_1");
     expect(response.response.ok).toBe(true);
     expect(isSettled).toBe(true);
+  });
+
+  it("returns exact read-only query responses over the command-worker transport", async () => {
+    const engine = new CadEngine();
+    const project = exportCadProject(engine);
+    const request = {
+      kind: "cad-worker.query",
+      id: "region_query_exact",
+      project,
+      request: {
+        version: "cadops.v1",
+        query: {
+          query: "sketch.profileRegionCandidates",
+          sketchId: "missing_sketch"
+        }
+      }
+    } as const;
+    const expected = CadEngine.fromProject(project).executeQuery(
+      request.request
+    );
+    const transport = new ControllableQueryTransport();
+    const worker = new BrowserCadQueryWorker(transport);
+    const pending = worker.executeQuery(request);
+
+    expect(transport.requests).toEqual([request]);
+    transport.emitMessage({ id: request.id, queryResponse: expected });
+
+    await expect(pending).resolves.toEqual(expected);
+    worker.dispose();
+  });
+
+  it("posts a cached project once per query-worker revision", async () => {
+    const transport = new ControllableQueryTransport();
+    const worker = new BrowserCadQueryWorker(transport);
+    const project = exportCadProject(new CadEngine());
+    const expected = CadEngine.fromProject(project).executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "sketch.profileRegionCandidates",
+        sketchId: "missing_sketch"
+      }
+    });
+    const request = (id: string): CadQueryWorkerRequest => ({
+      kind: "cad-worker.query",
+      id,
+      project,
+      projectCacheKey: "revision-1",
+      request: {
+        version: "cadops.v1",
+        query: {
+          query: "sketch.profileRegionCandidates",
+          sketchId: "missing_sketch"
+        }
+      }
+    });
+
+    const first = worker.executeQuery(request("first"));
+    transport.emitMessage({ id: "first", queryResponse: expected });
+    await first;
+    const second = worker.executeQuery(request("second"));
+
+    expect(transport.requests[0]?.project).toBe(project);
+    expect(transport.requests[1]?.project).toBeUndefined();
+    transport.emitMessage({ id: "second", queryResponse: expected });
+    await second;
+    worker.dispose();
+  });
+
+  it("physically terminates an executing query worker on cancellation", async () => {
+    const transport = new ControllableQueryTransport();
+    const worker = new BrowserCadQueryWorker(transport);
+    const controller = new AbortController();
+    const engine = new CadEngine();
+    const pending = worker.executeQuery(
+      {
+        kind: "cad-worker.query",
+        id: "region_query_cancel",
+        project: exportCadProject(engine),
+        request: {
+          version: "cadops.v1",
+          query: {
+            query: "sketch.profileRegionCandidates",
+            sketchId: "sketch_1"
+          }
+        }
+      },
+      { signal: controller.signal }
+    );
+
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({
+      name: "AbortError",
+      message: "CAD command worker query was cancelled."
+    });
+    expect(transport.terminationCount).toBe(1);
+    await expect(
+      worker.executeQuery({
+        kind: "cad-worker.query",
+        id: "after_query_cancel",
+        project: exportCadProject(engine),
+        request: {
+          version: "cadops.v1",
+          query: {
+            query: "sketch.profileRegionCandidates",
+            sketchId: "sketch_1"
+          }
+        }
+      })
+    ).rejects.toThrow("CAD command worker has already been disposed.");
+  });
+
+  it("reuses successful query transports and replaces an aborted transport", async () => {
+    const transports: ControllableQueryTransport[] = [];
+    const worker = new RecoverableBrowserCadQueryWorker(() => {
+      const transport = new ControllableQueryTransport();
+      transports.push(transport);
+      return new BrowserCadQueryWorker(transport);
+    });
+    const project = exportCadProject(new CadEngine());
+    const request = (id: string): CadQueryWorkerRequest => ({
+      kind: "cad-worker.query",
+      id,
+      project,
+      request: {
+        version: "cadops.v1",
+        query: {
+          query: "sketch.profileRegionCandidates",
+          sketchId: "missing_sketch"
+        }
+      }
+    });
+    const expected = CadEngine.fromProject(project).executeQuery(
+      request("expected").request
+    );
+
+    const first = worker.executeQuery(request("first"));
+    transports[0]?.emitMessage({ id: "first", queryResponse: expected });
+    await first;
+    const second = worker.executeQuery(request("second"));
+    transports[0]?.emitMessage({ id: "second", queryResponse: expected });
+    await second;
+    expect(transports).toHaveLength(1);
+
+    const controller = new AbortController();
+    const cancelled = worker.executeQuery(request("cancelled"), {
+      signal: controller.signal
+    });
+    controller.abort();
+    await expect(cancelled).rejects.toMatchObject({ name: "AbortError" });
+    expect(transports[0]?.terminationCount).toBe(1);
+
+    const recovered = worker.executeQuery(request("recovered"));
+    transports[1]?.emitMessage({ id: "recovered", queryResponse: expected });
+    await recovered;
+    expect(transports).toHaveLength(2);
+    worker.dispose();
+  });
+
+  it("keeps mutation and cancellable-query public transports disjoint", () => {
+    const commandWorker = new BrowserCadCommandWorker(
+      new FakeWorkerTransport(
+        () => new Promise<CadWorkerResponse>(() => undefined)
+      )
+    );
+    const queryWorker = new BrowserCadQueryWorker(
+      new ControllableQueryTransport()
+    );
+
+    expect("executeQuery" in commandWorker).toBe(false);
+    expect("execute" in queryWorker).toBe(false);
+
+    commandWorker.dispose();
+    queryWorker.dispose();
   });
 
   it("rejects duplicate in-flight request ids without losing the first request", async () => {

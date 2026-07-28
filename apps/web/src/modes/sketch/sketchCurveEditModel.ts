@@ -801,6 +801,74 @@ export function createSketchTrimIntervalChoices(
   });
 }
 
+export function discoverSketchTrimIntervalChoices(input: {
+  readonly sketch: SketchSnapshot;
+  readonly target: Extract<
+    SketchEntitySnapshot,
+    { readonly kind: "line" | "arc" | "circle" }
+  >;
+  readonly boundaryEntityIds: readonly string[];
+  readonly readReadiness: (
+    proposal: SketchCurveEditProposal
+  ) => SketchCurveEditReadinessQueryResponse;
+}): readonly SketchTrimIntervalChoice[] {
+  for (const pickPoint of getSketchEntityDiscoveryWitnessPoints(input.target)) {
+    const preview = input.readReadiness({
+      kind: "trim",
+      sketchId: input.sketch.id,
+      entityId: input.target.id,
+      boundaryEntityIds: input.boundaryEntityIds,
+      pickPoint
+    }).preview;
+    if (preview && preview.intersections.length > 0) {
+      return createSketchTrimIntervalChoices(
+        input.target,
+        preview,
+        input.sketch
+      );
+    }
+  }
+  return [];
+}
+
+export async function discoverSketchTrimIntervalChoicesAsync(input: {
+  readonly sketch: SketchSnapshot;
+  readonly target: Extract<
+    SketchEntitySnapshot,
+    { readonly kind: "line" | "arc" | "circle" }
+  >;
+  readonly boundaryEntityIds: readonly string[];
+  readonly signal: AbortSignal;
+  readonly readReadiness: (
+    proposal: SketchCurveEditProposal,
+    signal: AbortSignal
+  ) => Promise<SketchCurveEditReadinessQueryResponse>;
+}): Promise<readonly SketchTrimIntervalChoice[]> {
+  for (const pickPoint of getSketchEntityDiscoveryWitnessPoints(input.target)) {
+    throwIfCurveEditReadinessAborted(input.signal);
+    const preview = (
+      await input.readReadiness(
+        {
+          kind: "trim",
+          sketchId: input.sketch.id,
+          entityId: input.target.id,
+          boundaryEntityIds: input.boundaryEntityIds,
+          pickPoint
+        },
+        input.signal
+      )
+    ).preview;
+    if (preview && preview.intersections.length > 0) {
+      return createSketchTrimIntervalChoices(
+        input.target,
+        preview,
+        input.sketch
+      );
+    }
+  }
+  return [];
+}
+
 export function createSketchExtendHitChoices(
   endpoint: "start" | "end",
   preview: SketchCurveEditPreview,
@@ -876,6 +944,46 @@ export function discoverSketchExtendHitChoices(input: {
         )
       : [];
   });
+}
+
+export async function discoverSketchExtendHitChoicesAsync(input: {
+  readonly sketch: SketchSnapshot;
+  readonly target: Extract<
+    SketchEntitySnapshot,
+    { readonly kind: "line" | "arc" }
+  >;
+  readonly boundaryEntityIds: readonly string[];
+  readonly signal: AbortSignal;
+  readonly readReadiness: (
+    proposal: SketchCurveEditProposal,
+    signal: AbortSignal
+  ) => Promise<SketchCurveEditReadinessQueryResponse>;
+}): Promise<readonly SketchExtendHitChoice[]> {
+  const choices: SketchExtendHitChoice[] = [];
+  for (const endpoint of ["start", "end"] as const) {
+    throwIfCurveEditReadinessAborted(input.signal);
+    const readiness = await input.readReadiness(
+      {
+        kind: "extend",
+        sketchId: input.sketch.id,
+        entityId: input.target.id,
+        endpoint,
+        boundaryEntityIds: input.boundaryEntityIds
+      },
+      input.signal
+    );
+    if (readiness.preview) {
+      choices.push(
+        ...createSketchExtendHitChoices(
+          endpoint,
+          readiness.preview,
+          input.sketch,
+          input.target
+        )
+      );
+    }
+  }
+  return choices;
 }
 
 export function formatCurveEditDiagnostic(
@@ -1069,6 +1177,13 @@ function normalizeCurveParameter(
   if (!cyclic) return Math.min(domainEnd, Math.max(0, parameter));
   const normalized = ((parameter % domainEnd) + domainEnd) % domainEnd;
   return Object.is(normalized, -0) ? 0 : normalized;
+}
+
+function throwIfCurveEditReadinessAborted(signal: AbortSignal): void {
+  if (!signal.aborted) return;
+  const error = new Error("Curve-edit readiness discovery was cancelled.");
+  error.name = "AbortError";
+  throw error;
 }
 
 function formatChoiceNumber(value: number): string {

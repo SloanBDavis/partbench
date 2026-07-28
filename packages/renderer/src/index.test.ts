@@ -384,6 +384,84 @@ describe("renderer", () => {
     });
   });
 
+  it("batches consecutive sketch meshes into one canvas stroke", () => {
+    const recorder = createRecordingCanvasContext();
+    const transform = {
+      translation: [0, 0, 0] as const,
+      rotation: [0, 0, 0] as const,
+      scale: [1, 1, 1] as const
+    };
+
+    renderCanvasScene(recorder.context, {
+      camera: createDefaultCamera(),
+      size: { width: 800, height: 600 },
+      primitives: [],
+      meshes: [
+        {
+          id: "sketch:sketch_1:entity:circle_1",
+          kind: "mesh",
+          vertices: [],
+          indices: [],
+          transform,
+          source: "sketch",
+          edgeSegments: [
+            { start: [0, 0, 0], end: [1, 0, 0] },
+            { start: [1, 0, 0], end: [1, 1, 0] },
+            { start: [1, 1, 0], end: [0, 1, 0] }
+          ]
+        },
+        {
+          id: "sketch:sketch_1:entity:circle_2",
+          kind: "mesh",
+          vertices: [],
+          indices: [],
+          transform,
+          source: "sketch",
+          edgeSegments: [
+            { start: [2, 0, 0], end: [3, 0, 0] },
+            { start: [3, 0, 0], end: [3, 1, 0] },
+            { start: [3, 1, 0], end: [2, 1, 0] }
+          ]
+        }
+      ]
+    });
+
+    const semanticStrokes = recorder.strokes.filter(
+      (stroke) => stroke.strokeStyle === "#235f86"
+    );
+    expect(semanticStrokes).toHaveLength(1);
+    expect(semanticStrokes[0]?.points).toHaveLength(12);
+  });
+
+  it("renders a progressive mesh layer without clearing or redrawing the grid", () => {
+    const recorder = createRecordingCanvasContext();
+
+    renderCanvasScene(recorder.context, {
+      camera: createDefaultCamera(),
+      size: { width: 800, height: 600 },
+      primitives: [],
+      preserveDrawingBuffer: true,
+      meshes: [
+        {
+          id: "sketch:sketch_1:entity:line_1",
+          kind: "mesh",
+          vertices: [],
+          indices: [],
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          },
+          source: "sketch",
+          edgeSegments: [{ start: [0, 0, 0], end: [1, 0, 0] }]
+        }
+      ]
+    });
+
+    expect(recorder.strokes).toHaveLength(1);
+    expect(recorder.strokes[0]?.strokeStyle).toBe("#235f86");
+  });
+
   it("applies sketch-level visual state to child entity meshes", () => {
     const recorder = createRecordingCanvasContext();
 

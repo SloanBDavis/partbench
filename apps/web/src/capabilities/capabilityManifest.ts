@@ -384,6 +384,21 @@ const ACTION_AUDIT_BY_ID = {
   "sketch.split": curveEditAudit("Split"),
   "sketch.explode-rectangle": curveEditAudit("Explode Rectangle"),
   "sketch.offset": curveEditAudit("Offset"),
+  "sketch.regions": audit(
+    "V19 Sketch Profile",
+    "SketchRegionSelectionPanel / SketchRegionOverlay",
+    "sketch.profileRegionCandidates + sketch.profileRegionValidate",
+    uiOnly(
+      "select and validate explicit whole-loop region refs without creating a feature"
+    ),
+    "modes/sketch/SketchRegionSelectionPanel.test.tsx",
+    "E",
+    {
+      source: "v18-contract",
+      v18Owner: "SketchMode",
+      editor: "MaterialRegionCollector"
+    }
+  ),
   "sketch.construction": audit(
     "SketchPanel",
     "setSketchEntityConstruction",

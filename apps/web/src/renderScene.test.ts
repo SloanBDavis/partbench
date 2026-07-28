@@ -797,6 +797,46 @@ describe("renderScene", () => {
     );
   });
 
+  it("bounds display-only curve tessellation for large sketches", () => {
+    const circle = (id: string) => ({
+      id,
+      kind: "circle" as const,
+      center: [0, 0] as const,
+      radius: 2,
+      construction: false
+    });
+    const normal = createSketchDisplayMeshes([
+      {
+        id: "normal",
+        name: "Normal",
+        plane: "XY",
+        entities: [circle("circle_1")]
+      }
+    ]);
+    const largeSketch: SketchSnapshot = {
+      id: "large",
+      name: "Large",
+      plane: "XY",
+      entities: Array.from({ length: 33 }, (_, index) =>
+        circle(`circle_${index + 1}`)
+      )
+    };
+    const large = createSketchDisplayMeshes([largeSketch]);
+
+    expect(normal[0]?.edgeSegments).toHaveLength(48);
+    expect(large[0]?.edgeSegments).toHaveLength(16);
+    expect(large).toHaveLength(33);
+    expect(createSketchDisplayMeshes([largeSketch])[0]).toBe(large[0]);
+    expect(
+      createSketchDisplayMeshes([
+        {
+          ...largeSketch,
+          entities: largeSketch.entities.map((entity) => ({ ...entity }))
+        }
+      ])[0]
+    ).toBe(large[0]);
+  });
+
   it("marks construction arcs as visible selectable construction display", () => {
     const meshes = createSketchDisplayMeshes([
       {

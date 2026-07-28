@@ -671,6 +671,45 @@ history baseline.
   relevant-revision cache/no-persistence proof remain open E2 work; E4 browser
   selection and adapter parity plus Gate E remain unaccepted.
 
+### 2026-07-28 — Slice E4 and Gate E accepted
+
+- The production Material Regions action is now owned by the shared V18 action
+  registry and opens one exact region-selection workflow. The browser presents
+  deterministic paginated candidates, even-odd material shading, pointer and
+  keyboard selection, explicit outer/hole membership, consumer-count
+  readiness, validation-only Apply, and mutation-free Cancel/Escape behavior.
+- Exact discovery and validation run through one recoverable shared browser
+  query worker. Requests carry the relevant-sketch fingerprint and narrowing
+  revision; cache keys exclude unrelated document state, invalidation follows
+  relevant source/solver changes, stale responses cannot publish, and
+  cancellation yields before a superseded result can be consumed. Region
+  candidates remain derived query output and are never persisted.
+- Large-sketch evaluation, health, curve-readiness, path, region, canvas, and
+  entity-row work is progressive. The 512-candidate proof traverses six pages,
+  proves revision invalidation and cancellation, and keeps pointer-to-feedback,
+  frame, and long-task measurements within the frozen V19 budgets.
+- The agent adapter, MCP adapter, and stdio MCP server expose the same bounded
+  candidate and validation queries with the same response guards and no extra
+  mutation authority. Renderer material-region overlays consume only explicit
+  validated loop geometry; no query path loads OCCT.
+- Command commits now prepare and validate a batch once, and private undo/redo
+  roots share immutable document maps. Browser document publication waits for
+  the exact committed revision before dependent query work continues, avoiding
+  stale-region reads without weakening public document-copy isolation.
+- Adversarial workflow repair covered off-window keyboard collection, shared
+  worker lifecycle expectations, complete worker-response audit history,
+  focused-sketch fallback, and exact committed-revision publication.
+- The complete cad-core suite passes 52 files and 1,089 tests, and the complete
+  web suite passes 116 files and 956 tests. Focused workflow-script tests pass
+  18/18. The browser workflow passes all 24 Gate B/C/E checks. The named
+  `smoke:v19-performance` proof passes with 512 candidates, six pages,
+  cancellation and revision invalidation, 14.4 ms pointer feedback, 17.2 ms
+  frame p95, no long task, no OCCT, and all bundle/worker budgets green
+  (critical JavaScript 408,288/409,600 gzip bytes).
+- This accepts Slice E4 and Gate E. Region extrude and revolve remain disabled:
+  Gates F and G still require their complete real-OCCT geometry, metadata,
+  topology, STEP, UI, adapter, storage, and named-workflow proof.
+
 ## Completion audit
 
 Release completion requires affirmative evidence for each numbered Must item

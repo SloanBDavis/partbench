@@ -31,8 +31,9 @@ const timeoutMs = Number(
 if (args.has("--help")) {
   console.log(`Usage: node scripts/smoke-v19-browser-workflow.mjs [--json]
 
-Runs the focused V19 Gate B+C sketch-edit workflow against the built production
-App UI using trusted Chromium pointer and keyboard input.`);
+Runs the focused V19 Gate B+C+E sketch-edit and material-region workflow
+against the built production App UI using trusted Chromium pointer and keyboard
+input. Gate E validates exact region references but does not create a feature.`);
   process.exit(0);
 }
 
@@ -48,7 +49,7 @@ const fixtureProjectJson = await createV19FixtureProjectJson();
 const profileDirectory = join(
   repositoryRoot,
   ".metrics",
-  `chrome-profile-v19-gate-b-c-${process.pid}-${Date.now()}`
+  `chrome-profile-v19-gate-b-c-e-${process.pid}-${Date.now()}`
 );
 let appServer;
 let browserProcess;
@@ -194,6 +195,28 @@ async function createV19FixtureProjectJson() {
         entityId: "trim_target",
         target: { entityKind: "line", role: "length" },
         value: 10
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "region_outer",
+        center: [20, 0],
+        width: 10,
+        height: 8
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_1",
+        id: "region_hole",
+        center: [20, 0],
+        radius: 2
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_1",
+        id: "region_solid",
+        center: [32, 0],
+        radius: 3
       }
     ]
   });
@@ -265,8 +288,32 @@ async function runV19BrowserWorkflow({
           window.__partbenchV19InputAudit = {
             pointerInputs: 0,
             pointerEvents: [],
-            keydowns: []
+            keydowns: [],
+            workers: [],
+            workerTerminations: []
           };
+          const NativeWorker = window.Worker;
+          function AuditedWorker(url, options) {
+            const normalizedUrl = String(url);
+            const worker = new NativeWorker(url, options);
+            const workerIndex =
+              window.__partbenchV19InputAudit.workers.push({
+                url: normalizedUrl,
+                type: options?.type ?? "classic"
+              }) - 1;
+            const terminate = worker.terminate.bind(worker);
+            worker.terminate = () => {
+              window.__partbenchV19InputAudit.workerTerminations.push({
+                workerIndex,
+                url: normalizedUrl
+              });
+              return terminate();
+            };
+            return worker;
+          }
+          Object.setPrototypeOf(AuditedWorker, NativeWorker);
+          AuditedWorker.prototype = NativeWorker.prototype;
+          window.Worker = AuditedWorker;
           for (const type of ["pointermove", "pointerdown", "mousedown", "touchstart"]) {
             window.addEventListener(type, (event) => {
               if (type !== "pointermove") {
@@ -348,7 +395,7 @@ async function runV19BrowserWorkflow({
       `(() => {
         const text = document.body.textContent;
         return text.includes('Imported 0 object(s), 1 sketch(es)') &&
-          text.includes('7 sketch entity(ies)');
+          text.includes('10 sketch entity(ies)');
       })()`,
       "fixture import"
     );
@@ -1146,6 +1193,342 @@ async function runV19BrowserWorkflow({
           JSON.stringify(afterGateC.document)
       }
     });
+
+    await browser.selectMode("Sketch");
+    await browser.activate({
+      kind: "treeRow",
+      text: "V19 Gate B curve edits"
+    });
+    await browser.waitFor(
+      `document.querySelector('[aria-label="Sketch editor"]')?.textContent.includes('V19 Gate B curve edits')`,
+      "focused Gate E sketch"
+    );
+    await browser.activate({
+      kind: "editorButton",
+      scope: '[aria-label="Viewport fit and zoom"]',
+      text: "Fit all"
+    });
+    await browser.evaluate(
+      `new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve))
+      )`
+    );
+    const gateEAction = await browser.evaluate(`(() => {
+      const visible = (element) =>
+        element instanceof HTMLElement &&
+        element.getClientRects().length > 0 &&
+        getComputedStyle(element).visibility !== "hidden";
+      const matches = [...document.querySelectorAll(
+        ".pb-mode-ribbon__contents button.pb-ribbon-action"
+      )].filter((candidate) =>
+        visible(candidate) && candidate.dataset.actionId === "sketch.regions"
+      );
+      return {
+        matchCount: matches.length,
+        label: matches[0]?.textContent.trim(),
+        enabled: Boolean(matches[0] && !matches[0].disabled)
+      };
+    })()`);
+    checks.push({
+      id: "v19-gate-e-production-action",
+      passed:
+        gateEAction.matchCount === 1 &&
+        gateEAction.label === "Material Regions" &&
+        gateEAction.enabled,
+      evidence: gateEAction
+    });
+
+    await browser.evaluate(`(() => {
+      window.__partbenchV19InputAudit.pointerInputs = 0;
+      window.__partbenchV19InputAudit.pointerEvents = [];
+      window.__partbenchV19InputAudit.keydowns = [];
+      window.__partbenchV19InputAudit.workers = [];
+      window.__partbenchV19InputAudit.workerTerminations = [];
+    })()`);
+    await browser.activate({
+      kind: "ribbonAction",
+      text: "Material Regions"
+    });
+    await waitForGateERegionCandidates(browser);
+    const gateECandidates = await readGateERegionUi(browser);
+    checks.push({
+      id: "v19-gate-e-exact-candidates",
+      passed:
+        gateECandidates.status === "ready" &&
+        gateECandidates.candidateCount >= 3 &&
+        gateECandidates.holeCandidateIndex >= 0 &&
+        gateECandidates.solidCandidateIndex >= 0 &&
+        gateECandidates.holeCandidateKey?.includes('"region"') &&
+        gateECandidates.solidCandidateKey?.includes('"region"') &&
+        gateECandidates.holeRowText.includes("Outer · Rectangle 1") &&
+        gateECandidates.holeRowText.includes("Holes · Circle 1") &&
+        gateECandidates.solidRowText.includes("Outer · Circle 2") &&
+        gateECandidates.solidRowText.includes("No inner voids"),
+      evidence: {
+        status: gateECandidates.status,
+        candidateCount: gateECandidates.candidateCount,
+        holeCandidateIndex: gateECandidates.holeCandidateIndex,
+        solidCandidateIndex: gateECandidates.solidCandidateIndex,
+        holeCandidateKey: gateECandidates.holeCandidateKey,
+        solidCandidateKey: gateECandidates.solidCandidateKey,
+        holeRowText: gateECandidates.holeRowText,
+        solidRowText: gateECandidates.solidRowText
+      }
+    });
+    checks.push({
+      id: "v19-gate-e-even-odd-surface",
+      passed:
+        gateECandidates.overlayPresent &&
+        gateECandidates.holePathFillRule === "evenodd" &&
+        gateECandidates.holePathSubpathCount >= 2,
+      evidence: {
+        overlayPresent: gateECandidates.overlayPresent,
+        holePathFillRule: gateECandidates.holePathFillRule,
+        holePathSubpathCount: gateECandidates.holePathSubpathCount
+      }
+    });
+
+    await browser.clickElement(
+      `path[aria-label="Material region ${
+        gateECandidates.holeCandidateIndex + 1
+      }"]`
+    );
+    await browser.waitFor(
+      `(() => {
+        const rows = [...document.querySelectorAll(".pb-region-select__candidate")];
+        return rows[${gateECandidates.holeCandidateIndex}]?.getAttribute("aria-pressed") === "true" &&
+          document.querySelector(".pb-region-select__summary strong")?.textContent.trim() === "1 selected";
+      })()`,
+      "trusted pointer region selection"
+    );
+    await browser.focus({
+      kind: "labelControl",
+      scope: '[aria-label="Select sketch material regions"]',
+      text: "Prospective consumer"
+    });
+    await browser.sendKey("ArrowDown");
+    await browser.waitFor(
+      `(() => {
+        const panel = document.querySelector('[aria-label="Select sketch material regions"]');
+        const select = panel?.querySelector("select");
+        return select?.value === "extrude-add-cut" &&
+          panel?.textContent.includes("1–256 disjoint regions");
+      })()`,
+      "multi-region prospective consumer"
+    );
+    await browser.activate({
+      kind: "regionCandidate",
+      text: "Outer · Circle 2"
+    });
+    await browser.waitFor(
+      `(() => {
+        const panel = document.querySelector('[aria-label="Select sketch material regions"]');
+        const apply = [...(panel?.querySelectorAll("button") ?? [])]
+          .find((button) => button.textContent.trim() === "Validate selection");
+        return panel?.querySelector(".pb-region-select__summary strong")
+            ?.textContent.trim() === "2 selected" &&
+          panel.textContent.includes("1–256 disjoint regions") &&
+          Boolean(apply && !apply.disabled);
+      })()`,
+      "keyboard multi-region selection and count policy"
+    );
+    const gateESelectionAudit = await browser.evaluate(
+      `window.__partbenchV19InputAudit`
+    );
+    const gateETrustedKeys = gateESelectionAudit.keydowns.filter(
+      (event) => event.trusted
+    );
+    checks.push({
+      id: "v19-gate-e-pointer-keyboard-selection",
+      passed:
+        gateESelectionAudit.pointerInputs >= 2 &&
+        gateESelectionAudit.pointerEvents.some(
+          (event) =>
+            event.type === "pointerdown" &&
+            event.trusted &&
+            event.target ===
+              `Material region ${gateECandidates.holeCandidateIndex + 1}`
+        ) &&
+        gateESelectionAudit.pointerEvents.every((event) => event.trusted) &&
+        gateETrustedKeys.length === gateESelectionAudit.keydowns.length &&
+        gateETrustedKeys.some((event) => event.key === "ArrowDown") &&
+        gateETrustedKeys.some((event) => event.key === "Enter"),
+      evidence: {
+        pointerInputs: gateESelectionAudit.pointerInputs,
+        pointerEventTypes: gateESelectionAudit.pointerEvents.map(
+          (event) => event.type
+        ),
+        pointerTargets: gateESelectionAudit.pointerEvents.map(
+          (event) => event.target
+        ),
+        trustedKeydownCount: gateETrustedKeys.length,
+        trustedKeys: gateETrustedKeys.map((event) => event.key)
+      }
+    });
+    const gateEConsumerEvidence = await browser.evaluate(`(() => {
+      const panel = document.querySelector(
+        '[aria-label="Select sketch material regions"]'
+      );
+      const select = panel?.querySelector("select");
+      const summary = panel?.querySelector(".pb-region-select__summary");
+      const apply = [...(panel?.querySelectorAll("button") ?? [])]
+        .find((button) => button.textContent.trim() === "Validate selection");
+      return {
+        consumer: select?.value,
+        summary: summary?.textContent.replace(/\\s+/g, " ").trim(),
+        selectedCount: [...(panel?.querySelectorAll(
+          '.pb-region-select__candidate[aria-pressed="true"]'
+        ) ?? [])].length,
+        validationEnabled: Boolean(apply && !apply.disabled)
+      };
+    })()`);
+    checks.push({
+      id: "v19-gate-e-consumer-count-policy",
+      passed:
+        gateEConsumerEvidence.consumer === "extrude-add-cut" &&
+        gateEConsumerEvidence.selectedCount === 2 &&
+        gateEConsumerEvidence.summary?.includes("2 selected") &&
+        gateEConsumerEvidence.summary?.includes("1–256 disjoint regions") &&
+        gateEConsumerEvidence.validationEnabled,
+      evidence: gateEConsumerEvidence
+    });
+
+    await browser.sendKey("Enter", { ctrlKey: true });
+    await browser.waitFor(
+      `!document.querySelector('[aria-label="Select sketch material regions"]') &&
+        document.body.textContent.includes("No feature was created.")`,
+      "exact region validation-only Apply"
+    );
+    const gateEValidationNotice = await browser.evaluate(
+      `document.body.textContent.includes("2 material regions are valid and ready for a future feature command. No feature was created.")`
+    );
+    await browser.selectMode("Project");
+    await browser.activate({ kind: "ribbonAction", text: "Project Files" });
+    await browser.waitFor(
+      `Boolean(document.querySelector('.pb-project-mode-workspace textarea'))`,
+      "Project Files after Gate E validation"
+    );
+    const gateEAfterValidation = await prepareAndReadProject(
+      browser,
+      "sketch.addRoundedRectangle"
+    );
+    const gateEValidationMutation = compareProjectSourceState(
+      gateCAfterRedo,
+      gateEAfterValidation
+    );
+    checks.push({
+      id: "v19-gate-e-exact-validation-no-feature",
+      passed:
+        gateEValidationNotice &&
+        gateEValidationMutation.unchanged &&
+        gateEValidationMutation.beforeFeatureCount ===
+          gateEValidationMutation.afterFeatureCount,
+      evidence: {
+        explicitNoFeatureNotice: gateEValidationNotice,
+        ...gateEValidationMutation
+      }
+    });
+
+    await openGateEMaterialRegions(browser);
+    await browser.activate({
+      kind: "regionCandidate",
+      text: "Outer · Rectangle 1"
+    });
+    await browser.activate({
+      kind: "editorButton",
+      scope: '[aria-label="Select sketch material regions"]',
+      text: "Cancel"
+    });
+    await browser.waitFor(
+      `!document.querySelector('[aria-label="Select sketch material regions"]')`,
+      "Gate E Cancel"
+    );
+    await browser.selectMode("Project");
+    await browser.activate({ kind: "ribbonAction", text: "Project Files" });
+    await browser.waitFor(
+      `Boolean(document.querySelector('.pb-project-mode-workspace textarea'))`,
+      "Project Files after Gate E Cancel"
+    );
+    const gateEAfterCancel = await prepareAndReadProject(
+      browser,
+      "sketch.addRoundedRectangle"
+    );
+    const gateECancelMutation = compareProjectSourceState(
+      gateCAfterRedo,
+      gateEAfterCancel
+    );
+
+    await openGateEMaterialRegions(browser);
+    await browser.activate({
+      kind: "regionCandidate",
+      text: "Outer · Circle 2"
+    });
+    await browser.sendKey("Escape");
+    await browser.waitFor(
+      `Boolean(document.querySelector('[role="dialog"][aria-labelledby="curve-edit-navigation-title"]'))`,
+      "Gate E dirty Escape guard"
+    );
+    await browser.activate({ kind: "dialogButton", text: "Discard" });
+    await browser.waitFor(
+      `!document.querySelector('[aria-label="Select sketch material regions"]') &&
+        !document.querySelector('[role="dialog"][aria-labelledby="curve-edit-navigation-title"]')`,
+      "Gate E Escape discard"
+    );
+    await browser.selectMode("Project");
+    await browser.activate({ kind: "ribbonAction", text: "Project Files" });
+    await browser.waitFor(
+      `Boolean(document.querySelector('.pb-project-mode-workspace textarea'))`,
+      "Project Files after Gate E Escape"
+    );
+    const gateEAfterEscape = await prepareAndReadProject(
+      browser,
+      "sketch.addRoundedRectangle"
+    );
+    const gateEEscapeMutation = compareProjectSourceState(
+      gateCAfterRedo,
+      gateEAfterEscape
+    );
+    checks.push({
+      id: "v19-gate-e-cancel-escape-no-mutation",
+      passed: gateECancelMutation.unchanged && gateEEscapeMutation.unchanged,
+      evidence: {
+        cancel: gateECancelMutation,
+        escapeOpenedDirtyGuard: true,
+        escapeDiscardedSelection: true,
+        escape: gateEEscapeMutation
+      }
+    });
+
+    const gateEAuthorityEvidence = await browser.evaluate(`(() => {
+      const resources = performance.getEntriesByType("resource")
+        .map((entry) => entry.name);
+      const audit = window.__partbenchV19InputAudit;
+      return {
+        queryWorkers: audit.workers.filter((worker) =>
+          /cadCommand\\.worker/i.test(worker.url)
+        ),
+        queryWorkerTerminations: audit.workerTerminations.filter((worker) =>
+          /cadCommand\\.worker/i.test(worker.url)
+        ),
+        occtAuthorityAssetRequests: resources.filter((name) =>
+          /geometryTessellation\\.worker|opencascade\\.full.*\\.wasm/.test(name)
+        )
+      };
+    })()`);
+    checks.push({
+      id: "v19-gate-e-query-worker-occt-deferral",
+      passed:
+        gateEAuthorityEvidence.queryWorkers.length === 1 &&
+        gateEAuthorityEvidence.queryWorkerTerminations.length === 0 &&
+        gateEAuthorityEvidence.occtAuthorityAssetRequests.length === 0,
+      evidence: {
+        ...gateEAuthorityEvidence,
+        expectedQueryWorkerCount: 1,
+        expectedQueryWorkerTerminationCount: 0,
+        candidateReopeningsServedFromCache:
+          gateEAuthorityEvidence.queryWorkers.length === 1
+      }
+    });
   } catch (error) {
     exceptions.push(error instanceof Error ? error.message : String(error));
   }
@@ -1155,6 +1538,124 @@ async function runV19BrowserWorkflow({
     consoleErrors: [...new Set(consoleErrors)],
     exceptions: [...new Set(exceptions)]
   });
+}
+
+async function openGateEMaterialRegions(browser) {
+  await browser.selectMode("Sketch");
+  await browser.activate({
+    kind: "treeRow",
+    text: "V19 Gate B curve edits"
+  });
+  await browser.waitFor(
+    `document.querySelector('[aria-label="Sketch editor"]')?.textContent.includes('V19 Gate B curve edits')`,
+    "focused Gate E sketch"
+  );
+  await browser.activate({
+    kind: "ribbonAction",
+    text: "Material Regions"
+  });
+  await waitForGateERegionCandidates(browser);
+}
+
+async function waitForGateERegionCandidates(browser) {
+  await browser.waitFor(
+    `(() => {
+      const panel = document.querySelector(
+        '[aria-label="Select sketch material regions"]'
+      );
+      return panel?.querySelector(".pb-sketch-section__heading > span")
+          ?.textContent.trim() === "ready" &&
+        panel.querySelectorAll(".pb-region-select__candidate").length >= 3 &&
+        Boolean(document.querySelector(
+          '[data-testid="v19-sketch-region-overlay"]'
+        ));
+    })()`,
+    "exact Gate E material-region candidates"
+  );
+}
+
+async function readGateERegionUi(browser) {
+  return browser.evaluate(`(() => {
+    const panel = document.querySelector(
+      '[aria-label="Select sketch material regions"]'
+    );
+    const rows = [...(panel?.querySelectorAll(
+      ".pb-region-select__candidate"
+    ) ?? [])];
+    const rowText = rows.map((row) =>
+      row.textContent.replace(/\\s+/g, " ").trim()
+    );
+    const holeCandidateIndex = rowText.findIndex((text) =>
+      text.includes("Outer · Rectangle 1") &&
+      text.includes("Holes · Circle 1")
+    );
+    const solidCandidateIndex = rowText.findIndex((text) =>
+      text.includes("Outer · Circle 2") &&
+      text.includes("No inner voids")
+    );
+    const overlay = document.querySelector(
+      '[data-testid="v19-sketch-region-overlay"]'
+    );
+    const holePath =
+      holeCandidateIndex >= 0
+        ? overlay?.querySelector(
+            \`path[aria-label="Material region \${holeCandidateIndex + 1}"]\`
+          )
+        : undefined;
+    const solidPath =
+      solidCandidateIndex >= 0
+        ? overlay?.querySelector(
+            \`path[aria-label="Material region \${solidCandidateIndex + 1}"]\`
+          )
+        : undefined;
+    const pathData = holePath?.getAttribute("d") ?? "";
+    return {
+      status: panel?.querySelector(".pb-sketch-section__heading > span")
+        ?.textContent.trim(),
+      candidateCount: rows.length,
+      holeCandidateIndex,
+      solidCandidateIndex,
+      holeRowText: rowText[holeCandidateIndex] ?? "",
+      solidRowText: rowText[solidCandidateIndex] ?? "",
+      overlayPresent: Boolean(overlay),
+      holeCandidateKey:
+        holePath?.getAttribute("data-candidate-key") ??
+        rows[holeCandidateIndex]?.getAttribute("data-candidate-key"),
+      solidCandidateKey:
+        solidPath?.getAttribute("data-candidate-key") ??
+        rows[solidCandidateIndex]?.getAttribute("data-candidate-key"),
+      holePathFillRule:
+        holePath?.getAttribute("fill-rule") ??
+        (holePath ? getComputedStyle(holePath).fillRule : undefined),
+      holePathSubpathCount: (pathData.match(/M/g) ?? []).length
+    };
+  })()`);
+}
+
+function compareProjectSourceState(before, after) {
+  const beforeSource = {
+    document: before.document,
+    historyBaseline: before.historyBaseline,
+    history: before.history,
+    redoStack: before.redoStack
+  };
+  const afterSource = {
+    document: after.document,
+    historyBaseline: after.historyBaseline,
+    history: after.history,
+    redoStack: after.redoStack
+  };
+  return {
+    unchanged: JSON.stringify(afterSource) === JSON.stringify(beforeSource),
+    documentUnchanged:
+      JSON.stringify(after.document) === JSON.stringify(before.document),
+    historyUnchanged:
+      JSON.stringify(after.history) === JSON.stringify(before.history),
+    redoUnchanged:
+      JSON.stringify(after.redoStack) === JSON.stringify(before.redoStack),
+    beforeFeatureCount: before.document.features?.length ?? 0,
+    afterFeatureCount: after.document.features?.length ?? 0
+  };
 }
 
 function createBrowserKeyboardDriver(client, sessionId, workflowTimeoutMs) {
@@ -1236,9 +1737,54 @@ function createBrowserKeyboardDriver(client, sessionId, workflowTimeoutMs) {
   }
 
   async function focus(locator) {
-    const result = await evaluate(
-      `(${focusSemanticElement.toString()})(${JSON.stringify(locator)})`
-    );
+    const tryFocus = () =>
+      evaluate(
+        `(${focusSemanticElement.toString()})(${JSON.stringify(locator)})`
+      );
+    let result = await tryFocus();
+    if (!result?.ok && locator.kind === "sketchEntity") {
+      const focusPager = (label) =>
+        evaluate(`(() => {
+          const button = [...(document.querySelector(
+            '[aria-label="Sketch entity rows"]'
+          )?.querySelectorAll("button") ?? [])].find(
+            (candidate) => candidate.textContent.trim() === ${JSON.stringify(
+              label
+            )}
+          );
+          if (!(button instanceof HTMLButtonElement) || button.disabled) {
+            return false;
+          }
+          button.focus();
+          return document.activeElement === button;
+        })()`);
+      const advancePage = async (label) => {
+        if (!(await focusPager(label))) return false;
+        await sendKey("Enter");
+        await evaluate(
+          `new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve))
+          )`
+        );
+        return true;
+      };
+
+      for (
+        let page = 0;
+        page < 64 && (await advancePage("Previous"));
+        page += 1
+      ) {
+        // Normalize the window to its first page before searching forward.
+      }
+      result = await tryFocus();
+      for (
+        let page = 0;
+        page < 64 && !result?.ok && (await advancePage("Next"));
+        page += 1
+      ) {
+        result = await tryFocus();
+      }
+    }
     if (!result?.ok) {
       throw new Error(result?.message ?? `Could not focus ${locator.kind}.`);
     }
@@ -1375,7 +1921,137 @@ function createBrowserKeyboardDriver(client, sessionId, workflowTimeoutMs) {
     );
   }
 
+  async function clickElement(selector, index = 0) {
+    const point = await evaluate(`(() => {
+      const element = document.querySelectorAll(${JSON.stringify(selector)})[
+        ${JSON.stringify(index)}
+      ];
+      if (!(element instanceof Element)) return undefined;
+      if (
+        typeof SVGGeometryElement !== "undefined" &&
+        element instanceof SVGGeometryElement
+      ) {
+        const box = element.getBBox();
+        const svg = element.ownerSVGElement;
+        if (svg) {
+          const svgRect = svg.getBoundingClientRect();
+          const viewBox = svg.viewBox.baseVal;
+          const scaleX = svgRect.width / viewBox.width;
+          const scaleY = svgRect.height / viewBox.height;
+          let firstFillFailure;
+          for (let row = 1; row < 10; row += 1) {
+            for (let column = 1; column < 10; column += 1) {
+              const local = svg.createSVGPoint();
+              local.x = box.x + (box.width * column) / 10;
+              local.y = box.y + (box.height * row) / 10;
+              if (!element.isPointInFill(local)) continue;
+              const client = {
+                x: svgRect.left + (local.x - viewBox.x) * scaleX,
+                y: svgRect.top + (local.y - viewBox.y) * scaleY
+              };
+              if (
+                document.elementFromPoint(client.x, client.y) === element
+              ) {
+                return { x: client.x, y: client.y };
+              }
+              firstFillFailure ??= {
+                x: client.x,
+                y: client.y,
+                box: {
+                  x: box.x,
+                  y: box.y,
+                  width: box.width,
+                  height: box.height
+                },
+                svgRect: {
+                  left: svgRect.left,
+                  top: svgRect.top,
+                  width: svgRect.width,
+                  height: svgRect.height
+                },
+                viewBox: {
+                  x: viewBox.x,
+                  y: viewBox.y,
+                  width: viewBox.width,
+                  height: viewBox.height
+                },
+                stack: document
+                  .elementsFromPoint(client.x, client.y)
+                  .slice(0, 5)
+                  .map((candidate) => ({
+                    tag: candidate.tagName,
+                    className: candidate.getAttribute("class"),
+                    ariaLabel: candidate.getAttribute("aria-label"),
+                    pointerEvents: getComputedStyle(candidate).pointerEvents
+                  })),
+                elementPointerEvents: getComputedStyle(element).pointerEvents,
+                svgPointerEvents: getComputedStyle(svg).pointerEvents,
+                layerPointerEvents:
+                  element.closest(".sketch-region-layer")
+                    ? getComputedStyle(
+                        element.closest(".sketch-region-layer")
+                      ).pointerEvents
+                    : undefined
+              };
+            }
+          }
+          if (firstFillFailure) {
+            return { svgHitFailure: firstFillFailure };
+          }
+        }
+      }
+      const rect = element.getBoundingClientRect();
+      return {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2
+      };
+    })()`);
+    if (point?.svgHitFailure) {
+      throw new Error(
+        `Could not resolve a hittable SVG point for ${selector}[${index}]: ${JSON.stringify(
+          point.svgHitFailure
+        )}`
+      );
+    }
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+      throw new Error(
+        `Could not resolve visible element ${selector}[${index}].`
+      );
+    }
+    const { x, y } = point;
+    await client.send(
+      "Input.dispatchMouseEvent",
+      { type: "mouseMoved", x, y },
+      sessionId
+    );
+    await client.send(
+      "Input.dispatchMouseEvent",
+      {
+        type: "mousePressed",
+        x,
+        y,
+        button: "left",
+        buttons: 1,
+        clickCount: 1
+      },
+      sessionId
+    );
+    await client.send(
+      "Input.dispatchMouseEvent",
+      {
+        type: "mouseReleased",
+        x,
+        y,
+        button: "left",
+        buttons: 0,
+        clickCount: 1
+      },
+      sessionId
+    );
+  }
+
   return {
+    clickElement,
     clickViewportWorldPoint,
     evaluate,
     focus,
@@ -1473,7 +2149,10 @@ function focusSemanticElement(locator) {
     const label = [...scope.querySelectorAll("label")].find(
       (candidate) =>
         visible(candidate) &&
-        normalize(candidate.textContent) === normalize(locator.text)
+        normalize(
+          candidate.querySelector(":scope > span")?.textContent ??
+            candidate.textContent
+        ) === normalize(locator.text)
     );
     element = label?.querySelector("input, select, textarea");
   } else if (locator.kind === "treeRow") {
@@ -1502,6 +2181,14 @@ function focusSemanticElement(locator) {
   } else if (locator.kind === "curveChoice") {
     element = [
       ...scope.querySelectorAll("button.pb-curve-edit__choice-row")
+    ].find(
+      (candidate) =>
+        visible(candidate) &&
+        normalize(candidate.textContent).includes(normalize(locator.text))
+    );
+  } else if (locator.kind === "regionCandidate") {
+    element = [
+      ...scope.querySelectorAll("button.pb-region-select__candidate")
     ].find(
       (candidate) =>
         visible(candidate) &&
@@ -1634,6 +2321,8 @@ function getKeyDefinition(key) {
       return { key: "Home", code: "Home", keyCode: 36 };
     case "ArrowRight":
       return { key: "ArrowRight", code: "ArrowRight", keyCode: 39 };
+    case "ArrowDown":
+      return { key: "ArrowDown", code: "ArrowDown", keyCode: 40 };
     case "Enter":
       return {
         key: "Enter",

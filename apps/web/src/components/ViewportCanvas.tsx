@@ -21,7 +21,6 @@ import {
 } from "react";
 import {
   applyViewportCameraAction,
-  getRenderObjectBounds,
   VIEWPORT_STANDARD_VIEWS,
   type ViewportStandardViewId
 } from "../viewportCamera";
@@ -33,6 +32,13 @@ import {
   shouldNotifyViewportHover,
   type AnimationFrameCoalescer
 } from "./animationFrameCoalescer";
+import {
+  VIEWPORT_COMMAND_EVENT,
+  type ViewportCommand
+} from "./viewportCanvasContract";
+
+export { VIEWPORT_COMMAND_EVENT } from "./viewportCanvasContract";
+export type { ViewportCommand } from "./viewportCanvasContract";
 
 export interface ViewportCanvasPick {
   readonly camera: RenderCamera;
@@ -47,12 +53,6 @@ export interface ViewportCanvasStatus {
   readonly tone: "idle" | "ready" | "warning" | "blocked" | "failed";
 }
 
-export const VIEWPORT_COMMAND_EVENT = "partbench:viewport-command";
-export type ViewportCommand =
-  | "fit-all"
-  | "fit-selection"
-  | ViewportStandardViewId;
-
 export function ViewportCanvas({
   contextualSurface,
   meshes,
@@ -64,6 +64,7 @@ export function ViewportCanvas({
   selectedId,
   sketchOverlay,
   status,
+  suspendHoverPicking = false,
   visualStates
 }: {
   readonly contextualSurface?: ReactNode;
@@ -80,6 +81,7 @@ export function ViewportCanvas({
     readonly size: ViewportSize;
   }) => ReactNode;
   readonly status?: ViewportCanvasStatus;
+  readonly suspendHoverPicking?: boolean;
   readonly visualStates?: readonly RenderVisualStateInput[];
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -92,6 +94,16 @@ export function ViewportCanvas({
   const cameraRef = useRef(camera);
   const sizeRef = useRef(size);
   const hoveredIdRef = useRef<string | undefined>(undefined);
+  const stableVisualStatesRef = useRef(visualStates);
+
+  if (
+    JSON.stringify(stableVisualStatesRef.current) !==
+    JSON.stringify(visualStates)
+  ) {
+    stableVisualStatesRef.current = visualStates;
+  }
+
+  const stableVisualStates = stableVisualStatesRef.current;
   const hoverFrameRef = useRef<
     AnimationFrameCoalescer<ViewportPoint> | undefined
   >(undefined);
@@ -117,17 +129,25 @@ export function ViewportCanvas({
     notifyHoverPointChanges,
     onHover,
     onSelect,
-    primitives
+    primitives,
+    suspendHoverPicking
   });
   latestInputsRef.current = {
     meshes,
     notifyHoverPointChanges,
     onHover,
     onSelect,
-    primitives
+    primitives,
+    suspendHoverPicking
   };
   const canFitSelected = Boolean(
-    selectedId && getRenderObjectBounds(selectedId, primitives, meshes ?? [])
+    selectedId &&
+    (primitives.some((primitive) => primitive.id === selectedId) ||
+      meshes?.some(
+        (mesh) =>
+          (mesh.id === selectedId || mesh.parentId === selectedId) &&
+          (mesh.vertices.length > 0 || (mesh.edgeSegments?.length ?? 0) > 0)
+      ))
   );
   const frameClassName = [
     "viewport-frame",
@@ -284,16 +304,49 @@ export function ViewportCanvas({
     }
 
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
-    renderCanvasScene(context, {
+    const renderOptions = {
       primitives,
       camera,
-      hoveredId: visualStates ? undefined : hoveredId,
+      hoveredId: stableVisualStates ? undefined : hoveredId,
       meshes,
       size,
       selectedId,
-      visualStates
-    });
-  }, [camera, hoveredId, meshes, primitives, selectedId, size, visualStates]);
+      visualStates: stableVisualStates
+    };
+    const sceneMeshes = meshes ?? [];
+    const progressiveSketchScene =
+      primitives.length === 0 &&
+      sceneMeshes.length > 32 &&
+      sceneMeshes.every((mesh) => mesh.source === "sketch");
+
+    if (!progressiveSketchScene) {
+      renderCanvasScene(context, renderOptions);
+      return undefined;
+    }
+
+    renderCanvasScene(context, { ...renderOptions, meshes: [] });
+    let cancelled = false;
+    let cancelPaint: (() => void) | undefined;
+    void import("./progressiveSketchCanvas").then(
+      ({ paintProgressiveSketchCanvas }) => {
+        if (!cancelled) {
+          cancelPaint = paintProgressiveSketchCanvas(context, renderOptions);
+        }
+      }
+    );
+    return () => {
+      cancelled = true;
+      cancelPaint?.();
+    };
+  }, [
+    camera,
+    hoveredId,
+    meshes,
+    primitives,
+    selectedId,
+    size,
+    stableVisualStates
+  ]);
 
   function fitView() {
     updateCamera(
@@ -486,7 +539,9 @@ export function ViewportCanvas({
             const pointer = pointerRef.current;
 
             if (!pointer) {
-              hoverFrameRef.current?.schedule(getEventViewportPoint(event));
+              if (!suspendHoverPicking) {
+                hoverFrameRef.current?.schedule(getEventViewportPoint(event));
+              }
               return;
             }
 

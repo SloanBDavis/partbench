@@ -39,7 +39,10 @@ import {
 } from "./sketchArcMath";
 import { SKETCH_GEOMETRY_POLICY } from "./sketchGeometryPolicy";
 import { cleanSketchNumber } from "./sketchNumber";
-import { runSketchSolverPackageProbe } from "./sketchSolverPackageMapping";
+import {
+  runSketchSolverPackageProbe,
+  type SketchSolverPackageProbe
+} from "./sketchSolverPackageMapping";
 
 export interface SketchSolverSketch {
   readonly id: SketchId;
@@ -129,6 +132,8 @@ export interface SketchSolverEvaluation {
   readonly constraints: readonly SketchConstraintEntry[];
   readonly issues: readonly SketchEvaluationIssue[];
   readonly evaluatedGeometry: EvaluatedSketchGeometry;
+  /** Reuse the exact package probe produced while deriving this evaluation. */
+  readonly solverProbe: SketchSolverPackageProbe;
 }
 
 export interface SketchSolverApplyContext {
@@ -220,7 +225,8 @@ export function evaluateSketch(
     dimensions,
     constraints,
     issues: allIssues,
-    evaluatedGeometry
+    evaluatedGeometry,
+    solverProbe
   };
 }
 

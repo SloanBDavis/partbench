@@ -13,6 +13,8 @@ import {
   createSketchExtendHitChoices,
   createSketchTrimIntervalChoices,
   discoverSketchExtendHitChoices,
+  discoverSketchExtendHitChoicesAsync,
+  discoverSketchTrimIntervalChoicesAsync,
   formatCurveEditDiagnostic,
   getCurveEditKeyboardCommand,
   getSketchCurveEditEscapeAction,
@@ -854,6 +856,85 @@ describe("V19 sketch curve-edit draft model", () => {
       [-2, 0],
       [12, 0]
     ]);
+  });
+
+  it("discovers trim choices asynchronously with the caller's cancellation signal", async () => {
+    const sketch = createSketch();
+    const controller = new AbortController();
+    const readReadiness = vi.fn(
+      async (proposal: SketchCurveEditProposal, signal: AbortSignal) => {
+        void proposal;
+        void signal;
+        return {
+          ok: true as const,
+          query: "sketch.curveEditReadiness" as const,
+          cadOpsVersion: "cadops.v1" as const,
+          status: "blocked" as const,
+          diagnostics: [],
+          preview: {
+            intersections: [
+              {
+                boundaryEntityId: "line-boundary",
+                point: [5, 0] as const,
+                targetParameter: 5
+              }
+            ],
+            projectedSplitParameters: [],
+            resultEntityCount: 1,
+            resultEntities: []
+          }
+        };
+      }
+    );
+
+    const choices = await discoverSketchTrimIntervalChoicesAsync({
+      sketch,
+      target: sketch.entities[0] as Extract<
+        SketchSnapshot["entities"][number],
+        { readonly kind: "line" }
+      >,
+      boundaryEntityIds: ["line-boundary"],
+      readReadiness,
+      signal: controller.signal
+    });
+
+    expect(choices).toHaveLength(2);
+    expect(readReadiness).toHaveBeenCalledTimes(1);
+    expect(readReadiness.mock.calls[0]?.[1]).toBe(controller.signal);
+  });
+
+  it("stops asynchronous extend discovery after cancellation", async () => {
+    const sketch = createSketch();
+    const controller = new AbortController();
+    const readReadiness = vi.fn(
+      async (proposal: SketchCurveEditProposal, signal: AbortSignal) => {
+        void proposal;
+        void signal;
+        controller.abort();
+        return {
+          ok: true as const,
+          query: "sketch.curveEditReadiness" as const,
+          cadOpsVersion: "cadops.v1" as const,
+          status: "blocked" as const,
+          diagnostics: []
+        };
+      }
+    );
+
+    await expect(
+      discoverSketchExtendHitChoicesAsync({
+        sketch,
+        target: sketch.entities[0] as Extract<
+          SketchSnapshot["entities"][number],
+          { readonly kind: "line" }
+        >,
+        boundaryEntityIds: ["line-boundary"],
+        readReadiness,
+        signal: controller.signal
+      })
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(readReadiness).toHaveBeenCalledTimes(1);
+    expect(readReadiness.mock.calls[0]?.[1]).toBe(controller.signal);
   });
 
   it("bounds hover publication by semantic quantization and time", () => {

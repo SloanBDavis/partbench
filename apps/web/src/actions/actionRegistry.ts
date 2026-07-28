@@ -483,6 +483,16 @@ export const UI_ACTION_METADATA = [
     needs("Select a supported line, arc, circle, rectangle, or line/arc chain.")
   ),
   action(
+    "sketch.regions",
+    "Material Regions",
+    "Modify",
+    ["sketch"],
+    ["profile cells", "select region", "holes"],
+    false,
+    undefined,
+    needs("Open a sketch containing closed profile geometry.")
+  ),
+  action(
     "sketch.construction",
     "Construction",
     "State",

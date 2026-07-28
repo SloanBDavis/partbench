@@ -7,6 +7,10 @@ import type {
   PreparedSketchCurveEditOp,
   SketchCurveEditProposal,
   SketchCurveEditReadinessQueryResponse,
+  SketchProfileRegionCandidate,
+  SketchProfileRegionCandidatesQuery,
+  SketchProfileRegionValidateQueryResponse,
+  SketchRegionsProfileRef,
   SketchEvaluationQueryResponse,
   SketchPathCandidatesQueryResponse,
   SketchPlane,
@@ -16,6 +20,10 @@ import type {
   SketchAddRoundedRectangleOp,
   SketchAddSlotOp
 } from "@web-cad/cad-protocol";
+import type {
+  SketchRegionCandidatesQueryResult,
+  SketchRegionValidateQueryResult
+} from "../../sketchRegionQueryClient";
 import type { SketchCreateForm, SketchEntityForm } from "../../cadCommands";
 import {
   entityToSketchEntityForm,
@@ -42,10 +50,12 @@ import type {
 } from "../../actions/actionRegistry";
 import {
   SketchCurveEditPanel,
+  type SketchCurveEditAsyncReadinessReader,
   type SketchCurveEditSessionControl
 } from "./SketchCurveEditPanel";
 import { SketchConveniencePanel } from "./SketchConveniencePanel";
 import { SketchIntentEditor } from "./SketchIntentEditor";
+import { SketchRegionSelectionPanel } from "./SketchRegionSelectionPanel";
 import type {
   SketchConstraintCreateKindV19,
   SketchDimensionFamilyV19
@@ -61,6 +71,8 @@ import type {
   SketchCurveEditKind,
   SketchCurveEditViewportChoice
 } from "./sketchCurveEditModel";
+import type { SketchRegionConsumerIntent } from "./sketchRegionSelectionModel";
+import { useProgressiveSketchAnalysis } from "../../progressiveSketchAnalysisContext";
 import {
   createEntityDraft,
   resolveActiveSketch,
@@ -68,6 +80,8 @@ import {
   type SketchCreateEntityKind
 } from "./sketchModeModel";
 import "./sketchMode.css";
+
+const ENTITY_WINDOW_SIZE = 12;
 
 export interface SketchModeDockProps {
   readonly disabled: boolean;
@@ -99,6 +113,10 @@ export interface SketchModeDockProps {
   readonly curveEditViewportChoice?: SketchCurveEditViewportChoice;
   readonly curveEditViewportHoverChoice?: SketchCurveEditViewportChoice;
   readonly curveEditKeyboardSuspended?: boolean;
+  readonly regionCandidates?: readonly SketchProfileRegionCandidate[];
+  readonly selectedRegionCandidateKeys?: readonly string[];
+  readonly hoveredRegionCandidateKey?: string;
+  readonly regionConsumer?: SketchRegionConsumerIntent;
   readonly onSelectSketch: (sketchId: string) => void;
   readonly onSelectEntity: (sketchId: string, entityId: string) => void;
   readonly onCreateSketch: (form: SketchCreateForm) => void;
@@ -119,15 +137,36 @@ export interface SketchModeDockProps {
   ) => void;
   readonly onStartThreePointArcTool: (sketchId: string) => void;
   readonly onCancelGesture: () => void;
-  readonly onReadCurveEditReadiness: (
+  readonly onReadCurveEditReadiness?: (
     proposal: SketchCurveEditProposal
   ) => SketchCurveEditReadinessQueryResponse;
+  readonly onReadCurveEditReadinessAsync?: SketchCurveEditAsyncReadinessReader;
   readonly onApplyCurveEdit: (
     operation: PreparedSketchCurveEditOp
   ) => boolean | Promise<boolean>;
   readonly onApplySketchConvenience: (
     operation: SketchAddSlotOp | SketchAddRoundedRectangleOp
   ) => boolean | Promise<boolean>;
+  readonly onQueryRegionCandidates?: (
+    query: SketchProfileRegionCandidatesQuery,
+    signal: AbortSignal
+  ) => Promise<SketchRegionCandidatesQueryResult>;
+  readonly onValidateRegionProfile?: (
+    profile: SketchRegionsProfileRef,
+    signal: AbortSignal
+  ) => Promise<SketchRegionValidateQueryResult>;
+  readonly onRegionCandidatesChange?: (
+    candidates: readonly SketchProfileRegionCandidate[]
+  ) => void;
+  readonly onToggleRegionCandidate?: (candidateKey: string) => void;
+  readonly onHoverRegionCandidate?: (candidateKey: string | undefined) => void;
+  readonly onRegionConsumerChange?: (
+    consumer: SketchRegionConsumerIntent
+  ) => void;
+  readonly onApplyRegionSelectionReady?: (
+    profile: SketchRegionsProfileRef,
+    response: SketchProfileRegionValidateQueryResponse
+  ) => void;
   readonly onCancelCurveEdit: (restoreFocus?: boolean) => void;
   readonly onRequestCurveEditEscape?: (dirty: boolean) => void;
   readonly onCurveEditChoiceRejected?: (message: string) => void;
@@ -248,6 +287,10 @@ export function SketchModeDock(props: SketchModeDockProps) {
     curveEditViewportChoice,
     curveEditViewportHoverChoice,
     curveEditKeyboardSuspended,
+    regionCandidates = [],
+    selectedRegionCandidateKeys = [],
+    hoveredRegionCandidateKey,
+    regionConsumer = "extrude-new-body",
     onSelectSketch,
     onSelectEntity,
     onCreateSketch,
@@ -258,8 +301,16 @@ export function SketchModeDock(props: SketchModeDockProps) {
     onStartThreePointArcTool,
     onCancelGesture,
     onReadCurveEditReadiness,
+    onReadCurveEditReadinessAsync,
     onApplyCurveEdit,
     onApplySketchConvenience,
+    onQueryRegionCandidates,
+    onValidateRegionProfile,
+    onRegionCandidatesChange,
+    onToggleRegionCandidate,
+    onHoverRegionCandidate,
+    onRegionConsumerChange,
+    onApplyRegionSelectionReady,
     onCancelCurveEdit,
     onRequestCurveEditEscape,
     onCurveEditChoiceRejected,
@@ -305,6 +356,7 @@ export function SketchModeDock(props: SketchModeDockProps) {
   const requestedConstraintKind = getRequestedConstraintKind(initialActionId);
   const requestedCurveEditKind = getRequestedCurveEditKind(initialActionId);
   const requestedConvenienceKind = getRequestedConvenienceKind(initialActionId);
+  const requestedRegionSelection = initialActionId === "sketch.regions";
   useEffect(() => {
     onIntentActionAvailabilityChange?.(
       createSketchIntentAvailabilityProjectionV19(
@@ -462,6 +514,36 @@ export function SketchModeDock(props: SketchModeDockProps) {
       </nav>
 
       <div className="pb-sketch-dock__scroll">
+        {requestedRegionSelection &&
+        onQueryRegionCandidates &&
+        onValidateRegionProfile &&
+        onRegionCandidatesChange &&
+        onToggleRegionCandidate &&
+        onHoverRegionCandidate &&
+        onRegionConsumerChange &&
+        onApplyRegionSelectionReady ? (
+          <SketchRegionSelectionPanel
+            disabled={disabled}
+            sketch={activeSketch}
+            sourceAuthorityKey={curveEditSourceAuthorityKey}
+            candidates={regionCandidates}
+            selectedCandidateKeys={selectedRegionCandidateKeys}
+            hoveredCandidateKey={hoveredRegionCandidateKey}
+            consumer={regionConsumer}
+            keyboardSuspended={curveEditKeyboardSuspended}
+            queryCandidates={onQueryRegionCandidates}
+            validateProfile={onValidateRegionProfile}
+            onCandidatesChange={onRegionCandidatesChange}
+            onToggleCandidate={onToggleRegionCandidate}
+            onHoverCandidate={onHoverRegionCandidate}
+            onConsumerChange={onRegionConsumerChange}
+            onApplyReady={onApplyRegionSelectionReady}
+            onCancel={onCancelCurveEdit}
+            onRequestEscape={onRequestCurveEditEscape}
+            onDirtyChange={onCurveEditDirtyChange}
+            onSessionControlChange={onCurveEditSessionControlChange}
+          />
+        ) : null}
         {requestedCurveEditKind ? (
           <SketchCurveEditPanel
             disabled={disabled}
@@ -473,6 +555,7 @@ export function SketchModeDock(props: SketchModeDockProps) {
             viewportHoverChoice={curveEditViewportHoverChoice}
             keyboardSuspended={curveEditKeyboardSuspended}
             readReadiness={onReadCurveEditReadiness}
+            readReadinessAsync={onReadCurveEditReadinessAsync}
             onSelectEntity={(entityId) =>
               onSelectEntity(activeSketch.id, entityId)
             }
@@ -498,7 +581,8 @@ export function SketchModeDock(props: SketchModeDockProps) {
             onSessionControlChange={onCurveEditSessionControlChange}
           />
         ) : null}
-        {!requestedCurveEditKind &&
+        {!requestedRegionSelection &&
+        !requestedCurveEditKind &&
         !requestedConvenienceKind &&
         section === "geometry" ? (
           <GeometrySection
@@ -526,7 +610,8 @@ export function SketchModeDock(props: SketchModeDockProps) {
             onCancelArc={onCancelGesture}
           />
         ) : null}
-        {!requestedCurveEditKind &&
+        {!requestedRegionSelection &&
+        !requestedCurveEditKind &&
         !requestedConvenienceKind &&
         section === "constraints" ? (
           <SketchIntentEditor
@@ -548,13 +633,15 @@ export function SketchModeDock(props: SketchModeDockProps) {
             onSessionControlChange={onCurveEditSessionControlChange}
           />
         ) : null}
-        {!requestedCurveEditKind &&
+        {!requestedRegionSelection &&
+        !requestedCurveEditKind &&
         !requestedConvenienceKind &&
         section === "status" ? (
-          <StatusSection
-            evaluation={evaluation}
-            solverStatus={solverStatus}
-            pathCandidates={pathCandidates}
+          <ProgressiveStatusSection
+            sketchId={activeSketch.id}
+            fallbackEvaluation={evaluation}
+            fallbackSolverStatus={solverStatus}
+            fallbackPathCandidates={pathCandidates}
           />
         ) : null}
       </div>
@@ -740,6 +827,35 @@ function GeometrySection({
   const validation = draft
     ? validateSketchEntityForm(draft.kind, draft.form)
     : undefined;
+  const selectedEntityIndex = selectedEntity
+    ? sketch.entities.findIndex((entity) => entity.id === selectedEntity.id)
+    : -1;
+  const selectedEntityWindowStart =
+    selectedEntityIndex >= 0
+      ? Math.floor(selectedEntityIndex / ENTITY_WINDOW_SIZE) *
+        ENTITY_WINDOW_SIZE
+      : 0;
+  const entityWindowAuthorityKey = `${sketch.id}\u0000${
+    selectedEntity?.id ?? ""
+  }`;
+  const [entityWindow, setEntityWindow] = useState(() => ({
+    authorityKey: entityWindowAuthorityKey,
+    start: selectedEntityWindowStart
+  }));
+  const entityWindowStart =
+    entityWindow.authorityKey === entityWindowAuthorityKey
+      ? entityWindow.start
+      : selectedEntityWindowStart;
+  function updateEntityWindowStart(update: (current: number) => number) {
+    setEntityWindow({
+      authorityKey: entityWindowAuthorityKey,
+      start: update(entityWindowStart)
+    });
+  }
+  const visibleEntities = sketch.entities.slice(
+    entityWindowStart,
+    entityWindowStart + ENTITY_WINDOW_SIZE
+  );
   const intent = selectedEntity
     ? createSketchEntityIntentSummary(
         selectedEntity.id,
@@ -851,8 +967,9 @@ function GeometrySection({
             className="pb-sketch-list"
             role="listbox"
             aria-label="Sketch entities"
+            data-total-entity-count={sketch.entities.length}
           >
-            {sketch.entities.map((entity) => (
+            {visibleEntities.map((entity) => (
               <button
                 key={entity.id}
                 type="button"
@@ -869,6 +986,52 @@ function GeometrySection({
             ))}
           </div>
         )}
+        {sketch.entities.length > ENTITY_WINDOW_SIZE ? (
+          <div
+            className="pb-sketch-list-window"
+            aria-label="Sketch entity rows"
+          >
+            <button
+              type="button"
+              className="pb-button"
+              disabled={entityWindowStart === 0}
+              onClick={() =>
+                updateEntityWindowStart((current) =>
+                  Math.max(0, current - ENTITY_WINDOW_SIZE)
+                )
+              }
+            >
+              Previous
+            </button>
+            <span>
+              {entityWindowStart + 1}–
+              {Math.min(
+                entityWindowStart + ENTITY_WINDOW_SIZE,
+                sketch.entities.length
+              )}{" "}
+              of {sketch.entities.length}
+            </span>
+            <button
+              type="button"
+              className="pb-button"
+              disabled={
+                entityWindowStart + ENTITY_WINDOW_SIZE >= sketch.entities.length
+              }
+              onClick={() =>
+                updateEntityWindowStart((current) =>
+                  Math.min(
+                    Math.floor(
+                      (sketch.entities.length - 1) / ENTITY_WINDOW_SIZE
+                    ) * ENTITY_WINDOW_SIZE,
+                    current + ENTITY_WINDOW_SIZE
+                  )
+                )
+              }
+            >
+              Next
+            </button>
+          </div>
+        ) : null}
       </section>
 
       {selectedEntity ? (
@@ -1004,6 +1167,36 @@ function EntityDraftForm({
         onCancel={onCancel}
       />
     </section>
+  );
+}
+
+function ProgressiveStatusSection({
+  sketchId,
+  fallbackEvaluation,
+  fallbackSolverStatus,
+  fallbackPathCandidates
+}: {
+  readonly sketchId: string;
+  readonly fallbackEvaluation: SketchEvaluationQueryResponse | undefined;
+  readonly fallbackSolverStatus: SketchSolverStatusQueryResponse | undefined;
+  readonly fallbackPathCandidates:
+    | SketchPathCandidatesQueryResponse
+    | undefined;
+}) {
+  const analysis = useProgressiveSketchAnalysis();
+  return (
+    <StatusSection
+      evaluation={
+        analysis.evaluationsBySketchId.get(sketchId) ?? fallbackEvaluation
+      }
+      solverStatus={
+        analysis.solverStatusesBySketchId.get(sketchId) ?? fallbackSolverStatus
+      }
+      pathCandidates={
+        analysis.pathCandidatesBySketchId.get(sketchId) ??
+        fallbackPathCandidates
+      }
+    />
   );
 }
 

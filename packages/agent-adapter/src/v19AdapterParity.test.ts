@@ -52,6 +52,43 @@ function createTrimEngine(): CadEngine {
   return engine;
 }
 
+function createRegionEngine(): CadEngine {
+  const engine = new CadEngine();
+  engine.applyBatch([
+    { op: "sketch.create", id: "sketch_regions", name: "Regions", plane: "XY" },
+    {
+      op: "sketch.addRectangle",
+      sketchId: "sketch_regions",
+      id: "outer",
+      center: [0, 0],
+      width: 20,
+      height: 20
+    },
+    {
+      op: "sketch.addCircle",
+      sketchId: "sketch_regions",
+      id: "hole",
+      center: [0, 0],
+      radius: 4
+    },
+    {
+      op: "sketch.addCircle",
+      sketchId: "sketch_regions",
+      id: "island",
+      center: [0, 0],
+      radius: 1
+    },
+    {
+      op: "sketch.addCircle",
+      sketchId: "sketch_regions",
+      id: "other",
+      center: [30, 0],
+      radius: 2
+    }
+  ]);
+  return engine;
+}
+
 describe("V19 agent adapter parity", () => {
   it("accepts each strictly validated V19 sketch query", () => {
     const requests = [
@@ -158,6 +195,173 @@ describe("V19 agent adapter parity", () => {
                 source,
                 distance: 1,
                 side: "left"
+              }
+            }
+          }
+        })
+      ).toThrow("Invalid CADOps agent adapter query request.");
+    }
+  });
+
+  it("returns compact revision-bound region pages and validates explicit refs", () => {
+    const adapter = new CadOpsAgentAdapter(createRegionEngine());
+    const first = adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: "region_page_1",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "sketch.profileRegionCandidates",
+            sketchId: "sketch_regions",
+            limit: 1
+          }
+        }
+      })
+    );
+
+    expect(first).toMatchObject({
+      ok: true,
+      requestId: "region_page_1",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: "sketch.profileRegionCandidates",
+      sketchId: "sketch_regions",
+      status: "ready",
+      hasMore: true,
+      candidates: [
+        expect.objectContaining({ candidateKey: expect.any(String) })
+      ]
+    });
+    if (
+      !first.ok ||
+      first.query !== "sketch.profileRegionCandidates" ||
+      first.candidates[0] === undefined ||
+      first.nextAfterCandidateKey === undefined
+    ) {
+      throw new Error(`Expected a first region page: ${JSON.stringify(first)}`);
+    }
+    expect(first.candidates).toHaveLength(1);
+    expect(first.candidateCount).toBeGreaterThan(first.candidates.length);
+
+    const second = adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: "region_page_2",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "sketch.profileRegionCandidates",
+            sketchId: "sketch_regions",
+            limit: 1,
+            afterCandidateKey: first.nextAfterCandidateKey,
+            sourceRevision: first.sourceRevision
+          }
+        }
+      })
+    );
+    expect(second).toMatchObject({
+      ok: true,
+      requestId: "region_page_2",
+      query: "sketch.profileRegionCandidates",
+      candidates: [
+        expect.objectContaining({ candidateKey: expect.any(String) })
+      ]
+    });
+    if (
+      !second.ok ||
+      second.query !== "sketch.profileRegionCandidates" ||
+      second.candidates[0] === undefined
+    ) {
+      throw new Error(
+        `Expected a second region page: ${JSON.stringify(second)}`
+      );
+    }
+    expect(second.candidates).toHaveLength(1);
+    expect(second.sourceRevision).toBe(first.sourceRevision);
+    expect(second.candidates[0].candidateKey).not.toBe(
+      first.candidates[0].candidateKey
+    );
+
+    const profile = {
+      kind: "regions",
+      sketchId: "sketch_regions",
+      regions: [first.candidates[0].region]
+    } as const;
+    const validation = adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: "region_validate",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "sketch.profileRegionValidate",
+            profile
+          }
+        }
+      })
+    );
+    expect(validation).toMatchObject({
+      ok: true,
+      requestId: "region_validate",
+      query: "sketch.profileRegionValidate",
+      status: "ready",
+      requestedProfile: profile,
+      normalizedProfile: profile,
+      diagnostics: []
+    });
+  });
+
+  it("rejects candidate mutation tokens and non-model-space region inputs", () => {
+    for (const extra of [
+      { candidateToken: "opaque-mutation-token" },
+      { screenshot: "data:image/png;base64,opaque" },
+      { pixelX: 320 },
+      { script: "selectRegions()" },
+      { path: "/tmp/regions.json" },
+      { limit: 101 },
+      { sourceRevision: `partbench-source-v1:${"3".repeat(64)}` }
+    ]) {
+      expect(() =>
+        parseCadOpsAgentQueryRequest({
+          requestId: "bad_region_discovery_input",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          query: {
+            version: "cadops.v1",
+            query: {
+              query: "sketch.profileRegionCandidates",
+              sketchId: "sketch_regions",
+              ...extra
+            }
+          }
+        })
+      ).toThrow("Invalid CADOps agent adapter query request.");
+    }
+
+    for (const outer of [
+      {
+        kind: "entity",
+        entityId: "outer",
+        candidateKey: "derived-candidate"
+      },
+      {
+        kind: "entity",
+        entityId: "outer",
+        screenshot: "data:image/png;base64,opaque"
+      },
+      { kind: "file", path: "/tmp/regions.json" }
+    ]) {
+      expect(() =>
+        parseCadOpsAgentQueryRequest({
+          requestId: "bad_region_profile_input",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          query: {
+            version: "cadops.v1",
+            query: {
+              query: "sketch.profileRegionValidate",
+              profile: {
+                kind: "regions",
+                sketchId: "sketch_regions",
+                regions: [{ outer, holes: [] }]
               }
             }
           }

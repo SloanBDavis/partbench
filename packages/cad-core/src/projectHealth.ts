@@ -87,10 +87,8 @@ import {
   normalizeSketchDimensionSnapshotV22,
   type SketchDimensionSnapshotCurrent
 } from "./v22SourceShapes";
-import {
-  validateV22RegionSource,
-  type V22RegionSourceIssue
-} from "./v22RegionSourceValidation";
+import { validateRegisteredV22RegionSource } from "./v19RegionPolicyRegistry";
+import type { V22RegionSourceIssue } from "./v22RegionSourceValidation";
 
 export interface ProjectHealthOptions {
   readonly document: ProjectHealthDocument;
@@ -448,7 +446,10 @@ function createAuthoredExtrudeHealth(
         sketchId: authoredProfile.sketchId
       });
     } else {
-      const validation = validateV22RegionSource(authoredProfile, sketch);
+      const validation = validateRegisteredV22RegionSource(
+        authoredProfile,
+        sketch
+      );
       if (!validation.ok) {
         issues.push(
           ...validation.issues.map((issue) =>
@@ -675,7 +676,10 @@ function createAuthoredRevolveHealth(
         sketchId: authoredProfile.sketchId
       });
     } else {
-      const validation = validateV22RegionSource(authoredProfile, sketch);
+      const validation = validateRegisteredV22RegionSource(
+        authoredProfile,
+        sketch
+      );
       if (!validation.ok) {
         issues.push(
           ...validation.issues.map((issue) =>

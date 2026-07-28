@@ -40,6 +40,20 @@ export interface RenderSceneInputs {
   readonly meshes: readonly RenderTriangleMesh[];
 }
 
+const sketchEntityDisplayMeshCache = new WeakMap<
+  SketchEntitySnapshot,
+  { readonly key: string; readonly mesh: RenderTriangleMesh }
+>();
+const sketchEntityDisplayMeshSemanticCache = new Map<
+  string,
+  RenderTriangleMesh
+>();
+const SKETCH_ENTITY_DISPLAY_MESH_SEMANTIC_CACHE_LIMIT = 4_096;
+const circleUnitPointsBySegmentCount = new Map<
+  number,
+  readonly (readonly [number, number])[]
+>();
+
 export function createRenderSceneInputs(
   objects: readonly SceneObject[],
   derivedGeometryBySourceId: ReadonlyMap<string, DerivedGeometryEntry>,
@@ -117,6 +131,18 @@ export function createSketchDisplayMeshes(
     const displayFrame =
       sketchDisplayFrames.get(sketch.id) ??
       createDefaultSketchDisplayFrame(sketch.plane);
+    // Keep the normal single-profile display smooth while bounding derived
+    // canvas work for near-limit sketches. This changes only visualization
+    // tessellation; authored curves and all query/edit calculations remain
+    // exact analytic geometry.
+    const maximumCurveSegmentAngleDegrees =
+      sketch.entities.length > 32 ? 22.5 : 7.5;
+    const displayCacheKey = JSON.stringify([
+      sketch.id,
+      sketch.name,
+      displayFrame,
+      maximumCurveSegmentAngleDegrees
+    ]);
 
     if (sketch.entities.length === 0) {
       return [
@@ -129,15 +155,47 @@ export function createSketchDisplayMeshes(
       ];
     }
 
-    return sketch.entities.map((entity) =>
-      createSketchDisplayMesh(
+    return sketch.entities.map((entity) => {
+      const cached = sketchEntityDisplayMeshCache.get(entity);
+      if (cached?.key === displayCacheKey) return cached.mesh;
+      const semanticCacheKey = `${displayCacheKey}:${JSON.stringify(entity)}`;
+      const semanticCached =
+        sketchEntityDisplayMeshSemanticCache.get(semanticCacheKey);
+      if (semanticCached) {
+        sketchEntityDisplayMeshCache.set(entity, {
+          key: displayCacheKey,
+          mesh: semanticCached
+        });
+        return semanticCached;
+      }
+      const mesh = createSketchDisplayMesh(
         createSketchEntitySelectionId(sketch.id, entity.id),
         `${sketch.name}: ${entity.id}`,
-        createSketchEntityDisplayEdges(displayFrame, entity),
+        createSketchEntityDisplayEdges(
+          displayFrame,
+          entity,
+          maximumCurveSegmentAngleDegrees
+        ),
         entity.construction,
         createSketchSelectionId(sketch.id)
-      )
-    );
+      );
+      sketchEntityDisplayMeshCache.set(entity, {
+        key: displayCacheKey,
+        mesh
+      });
+      sketchEntityDisplayMeshSemanticCache.set(semanticCacheKey, mesh);
+      while (
+        sketchEntityDisplayMeshSemanticCache.size >
+        SKETCH_ENTITY_DISPLAY_MESH_SEMANTIC_CACHE_LIMIT
+      ) {
+        const oldestKey = sketchEntityDisplayMeshSemanticCache
+          .keys()
+          .next().value;
+        if (oldestKey === undefined) break;
+        sketchEntityDisplayMeshSemanticCache.delete(oldestKey);
+      }
+      return mesh;
+    });
   });
 }
 
@@ -422,7 +480,8 @@ function toExtrudeFallbackMesh(
 
 function createSketchEntityDisplayEdges(
   frame: SketchDisplayFrame,
-  entity: SketchEntitySnapshot
+  entity: SketchEntitySnapshot,
+  maximumCurveSegmentAngleDegrees: number
 ): readonly RenderEdgeSegment[] {
   switch (entity.kind) {
     case "point":
@@ -442,14 +501,20 @@ function createSketchEntityDisplayEdges(
         entity.height
       );
     case "circle":
-      return createSketchCircleEdges(frame, entity.center, entity.radius);
+      return createSketchCircleEdges(
+        frame,
+        entity.center,
+        entity.radius,
+        maximumCurveSegmentAngleDegrees
+      );
     case "arc":
       return createSketchArcDisplayEdges(
         frame,
         entity.center,
         entity.radius,
         entity.startAngleDegrees,
-        entity.sweepAngleDegrees
+        entity.sweepAngleDegrees,
+        maximumCurveSegmentAngleDegrees
       );
   }
 }
@@ -514,15 +579,22 @@ function createSketchRectangleEdges(
 function createSketchCircleEdges(
   frame: SketchDisplayFrame,
   center: readonly [number, number],
-  radius: number
+  radius: number,
+  maximumSegmentAngleDegrees = 7.5
 ): readonly RenderEdgeSegment[] {
-  const segmentCount = 48;
-  const points = Array.from({ length: segmentCount }, (_, index) => {
-    const angle = (index / segmentCount) * Math.PI * 2;
-
+  const segmentCount = Math.ceil(360 / maximumSegmentAngleDegrees);
+  let unitPoints = circleUnitPointsBySegmentCount.get(segmentCount);
+  if (!unitPoints) {
+    unitPoints = Array.from({ length: segmentCount }, (_, index) => {
+      const angle = (index / segmentCount) * Math.PI * 2;
+      return [Math.cos(angle), Math.sin(angle)] as const;
+    });
+    circleUnitPointsBySegmentCount.set(segmentCount, unitPoints);
+  }
+  const points = unitPoints.map(([x, y]) => {
     return [
-      cleanRenderNumber(center[0] + Math.cos(angle) * radius),
-      cleanRenderNumber(center[1] + Math.sin(angle) * radius)
+      cleanRenderNumber(center[0] + x * radius),
+      cleanRenderNumber(center[1] + y * radius)
     ] as const;
   });
 
@@ -533,15 +605,15 @@ function createClosedSketchPolylineEdges(
   frame: SketchDisplayFrame,
   points: readonly (readonly [number, number])[]
 ): readonly RenderEdgeSegment[] {
+  const displayPoints = points.map((point) =>
+    mapSketchPointToDisplayFrame(frame, point)
+  );
   const edges: RenderEdgeSegment[] = [];
-  for (let index = 0; index < points.length; index += 1) {
-    const start = points[index];
-    const end = points[(index + 1) % points.length];
+  for (let index = 0; index < displayPoints.length; index += 1) {
+    const start = displayPoints[index];
+    const end = displayPoints[(index + 1) % displayPoints.length];
     if (!start || !end) continue;
-    edges.push({
-      start: mapSketchPointToDisplayFrame(frame, start),
-      end: mapSketchPointToDisplayFrame(frame, end)
-    });
+    edges.push({ start, end });
   }
   return edges;
 }
@@ -551,13 +623,13 @@ export function createSketchArcDisplayEdges(
   center: readonly [number, number],
   radius: number,
   startAngleDegrees: number,
-  sweepAngleDegrees: number
+  sweepAngleDegrees: number,
+  maximumSegmentAngleDegrees = 7.5
 ): readonly RenderEdgeSegment[] {
   if (sweepAngleDegrees === 0) {
     return [];
   }
 
-  const maximumSegmentAngleDegrees = 7.5;
   const segmentCount = Math.max(
     1,
     Math.ceil(Math.abs(sweepAngleDegrees) / maximumSegmentAngleDegrees)

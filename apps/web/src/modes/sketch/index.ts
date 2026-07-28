@@ -1,6 +1,7 @@
 export { SketchModeDock, type SketchModeDockProps } from "./SketchModeDock";
 export { CurveEditNavigationGuard } from "./CurveEditNavigationGuard";
 export { SketchArcToolOverlay } from "../../components/SketchArcToolOverlay";
+export { SketchRegionOverlay } from "../../components/SketchRegionOverlay";
 export { SketchViewportDragOverlay } from "../../components/SketchViewportDragOverlay";
 export {
   DEFAULT_SKETCH_CONSTRAINT_FORM,

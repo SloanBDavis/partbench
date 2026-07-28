@@ -161,6 +161,138 @@
   background: #f7f9fc;
 }
 
+.pb-region-select {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr) auto;
+  padding: 0;
+  background: #f7f9fc;
+}
+
+.pb-region-select__scroll {
+  display: grid;
+  min-height: 0;
+  align-content: start;
+  gap: var(--pb-space-10);
+  overflow: auto;
+  padding: var(--pb-space-12);
+  overscroll-behavior: contain;
+}
+
+.pb-region-select__guidance,
+.pb-region-select__candidates > p {
+  margin: 0;
+  color: var(--pb-color-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.pb-region-select__summary,
+.pb-region-select__candidate-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pb-space-8);
+}
+
+.pb-region-select__summary {
+  padding: var(--pb-space-8);
+  border: 1px solid var(--pb-color-border);
+  border-radius: var(--pb-radius-control);
+  background: var(--pb-color-surface-elevated);
+  font-size: 11px;
+}
+
+.pb-region-select__summary span {
+  color: var(--pb-color-text-muted);
+}
+
+.pb-region-select__candidates {
+  display: grid;
+  min-width: 0;
+  gap: var(--pb-space-6);
+  margin: 0;
+  padding: var(--pb-space-8);
+  border: 1px solid var(--pb-color-border);
+  border-radius: var(--pb-radius-control);
+  background: var(--pb-color-surface-elevated);
+}
+
+.pb-region-select__candidates legend {
+  padding-inline: var(--pb-space-4);
+  color: var(--pb-color-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.pb-region-select__candidate {
+  display: grid;
+  contain: layout paint style;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 62px;
+  gap: 3px;
+  min-height: 62px;
+  padding: var(--pb-space-8);
+  border: 1px solid var(--pb-color-border);
+  border-radius: var(--pb-radius-control);
+  color: var(--pb-color-text);
+  background: var(--pb-color-background);
+  cursor: pointer;
+  text-align: start;
+}
+
+.pb-region-select__candidate[aria-pressed="true"] {
+  border-color: var(--pb-color-success);
+  box-shadow: inset 3px 0 0 var(--pb-color-success);
+  background: var(--pb-color-success-surface);
+}
+
+.pb-region-select__candidate[data-hovered] {
+  border-color: var(--pb-color-accent);
+}
+
+.pb-region-select__candidate span,
+.pb-region-select__candidate small {
+  overflow-wrap: anywhere;
+}
+
+.pb-region-select__candidate-title > span,
+.pb-region-select__candidate small {
+  color: var(--pb-color-text-muted);
+  font-size: 10px;
+}
+
+.pb-region-select__candidate-title > span {
+  font-family: var(--pb-font-numeric);
+}
+
+.pb-region-select__candidate-error {
+  color: var(--pb-color-danger) !important;
+}
+
+.pb-region-select__window {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pb-space-6);
+  color: var(--pb-color-text-muted);
+  font-size: 10px;
+}
+
+.pb-region-select__diagnostics {
+  padding: var(--pb-space-8);
+  border-inline-start: 3px solid var(--pb-color-danger);
+  color: var(--pb-color-text);
+  background: var(--pb-color-danger-surface);
+  font-size: 11px;
+}
+
+.pb-region-select__diagnostics ul {
+  margin: var(--pb-space-4) 0 0;
+  padding-inline-start: 18px;
+}
+
 .pb-curve-edit__scroll {
   display: grid;
   min-height: 0;
@@ -169,6 +301,15 @@
   overflow: auto;
   padding: var(--pb-space-12);
   overscroll-behavior: contain;
+}
+
+.pb-curve-edit__target-window {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pb-space-6);
+  color: var(--pb-color-text-muted);
+  font-size: 10px;
 }
 
 .pb-curve-edit .pb-sketch-section__heading {
@@ -387,6 +528,9 @@
 
 .pb-sketch-list button {
   display: flex;
+  contain: layout paint style;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 44px;
   min-height: 44px;
   align-items: center;
   justify-content: space-between;
@@ -419,6 +563,15 @@
   font-size: 11px;
   font-style: normal;
   text-overflow: ellipsis;
+}
+
+.pb-sketch-list-window {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pb-space-6);
+  color: var(--pb-color-text-muted);
+  font-size: 10px;
 }
 
 .pb-sketch-field,

@@ -27,14 +27,15 @@ import {
   createSketchCurveEditDraft,
   createSketchCurveEditPreviewDraft,
   createSketchCurveEditReadinessAuthorityKey,
-  createSketchTrimIntervalChoices,
   discoverSketchExtendHitChoices,
+  discoverSketchExtendHitChoicesAsync,
+  discoverSketchTrimIntervalChoices,
+  discoverSketchTrimIntervalChoicesAsync,
   formatCurveEditDiagnostic,
   getCurveEditKeyboardCommand,
   getNextCurveEditCollector,
   getSketchOffsetSideChoices,
   getSketchCurveEditKindLabel,
-  getSketchEntityDiscoveryWitnessPoints,
   getSketchEntitySemanticLabel,
   handleSketchCurveEditWindowShortcut,
   hasCollectedSketchCurveEditChoices,
@@ -44,8 +45,17 @@ import {
   summarizeCurveEditImpact,
   type SketchCurveEditDraft,
   type SketchCurveEditKind,
-  type SketchCurveEditViewportChoice
+  type SketchCurveEditViewportChoice,
+  type SketchExtendHitChoice,
+  type SketchTrimIntervalChoice
 } from "./sketchCurveEditModel";
+
+const CURVE_TARGET_WINDOW_SIZE = 12;
+
+export type SketchCurveEditAsyncReadinessReader = (
+  proposal: SketchCurveEditProposal,
+  signal: AbortSignal
+) => Promise<SketchCurveEditReadinessQueryResponse>;
 
 export interface SketchCurveEditPanelProps {
   readonly disabled: boolean;
@@ -56,9 +66,10 @@ export interface SketchCurveEditPanelProps {
   readonly viewportChoice?: SketchCurveEditViewportChoice;
   readonly viewportHoverChoice?: SketchCurveEditViewportChoice;
   readonly keyboardSuspended?: boolean;
-  readonly readReadiness: (
+  readonly readReadiness?: (
     proposal: SketchCurveEditProposal
   ) => SketchCurveEditReadinessQueryResponse;
+  readonly readReadinessAsync?: SketchCurveEditAsyncReadinessReader;
   readonly onSelectEntity?: (entityId: string) => void;
   readonly onApply: (
     operation: PreparedSketchCurveEditOp
@@ -93,6 +104,7 @@ export function SketchCurveEditPanel(props: SketchCurveEditPanelProps) {
     viewportHoverChoice,
     keyboardSuspended = false,
     readReadiness,
+    readReadinessAsync,
     onSelectEntity,
     onApply,
     onCancel,
@@ -129,10 +141,13 @@ export function SketchCurveEditPanel(props: SketchCurveEditPanelProps) {
     () => buildSketchCurveEditProposal(sketch.id, draft),
     [draft, sketch.id]
   );
-  const committedReadiness = useMemo(() => {
-    void readinessAuthorityKey;
-    return committedProposal ? readReadiness(committedProposal) : undefined;
-  }, [committedProposal, readReadiness, readinessAuthorityKey]);
+  const committedReadinessResult = useCurveEditReadinessQuery(
+    committedProposal,
+    readinessAuthorityKey,
+    readReadiness,
+    readReadinessAsync
+  );
+  const committedReadiness = committedReadinessResult.readiness;
   const previewDraft = useMemo(
     () => createSketchCurveEditPreviewDraft(draft, viewportHoverChoice, sketch),
     [draft, sketch, viewportHoverChoice]
@@ -141,17 +156,13 @@ export function SketchCurveEditPanel(props: SketchCurveEditPanelProps) {
     () => buildSketchCurveEditProposal(sketch.id, previewDraft),
     [previewDraft, sketch.id]
   );
-  const hoverReadiness = useMemo(() => {
-    void readinessAuthorityKey;
-    return viewportHoverChoice && hoverProposal
-      ? readReadiness(hoverProposal)
-      : undefined;
-  }, [
-    hoverProposal,
-    readReadiness,
+  const hoverReadinessResult = useCurveEditReadinessQuery(
+    viewportHoverChoice ? hoverProposal : undefined,
     readinessAuthorityKey,
-    viewportHoverChoice
-  ]);
+    readReadiness,
+    readReadinessAsync
+  );
+  const hoverReadiness = hoverReadinessResult.readiness;
   const readinessProjection = useMemo(
     () => projectSketchCurveEditReadiness(committedReadiness, hoverReadiness),
     [committedReadiness, hoverReadiness]
@@ -164,14 +175,50 @@ export function SketchCurveEditPanel(props: SketchCurveEditPanelProps) {
         ? draft.offsetSegments[0]?.entityId
         : draft.targetEntityId)
   );
-  const targetOptions = sketch.entities.filter((entity) =>
-    isEligibleCurveEditTarget(kind, entity)
+  const targetOptions = useMemo(
+    () =>
+      sketch.entities.filter((entity) =>
+        isEligibleCurveEditTarget(kind, entity)
+      ),
+    [kind, sketch.entities]
   );
-  const boundaryOptions = sketch.entities.filter((entity) =>
-    isEligibleCurveEditBoundary(draft.targetEntityId, entity)
+  const selectedTargetIndex = targetOptions.findIndex(
+    (entity) => entity.id === draft.targetEntityId
   );
-  const trimIntervalChoices = useMemo(() => {
-    void readinessAuthorityKey;
+  const selectedTargetWindowStart =
+    selectedTargetIndex < 0
+      ? 0
+      : Math.floor(selectedTargetIndex / CURVE_TARGET_WINDOW_SIZE) *
+        CURVE_TARGET_WINDOW_SIZE;
+  const targetWindowAuthorityKey = `${sketch.id}\u0000${kind}\u0000${
+    draft.targetEntityId
+  }\u0000${targetOptions.map((entity) => entity.id).join("\u0001")}`;
+  const [targetWindow, setTargetWindow] = useState(() => ({
+    authorityKey: targetWindowAuthorityKey,
+    start: selectedTargetWindowStart
+  }));
+  const targetWindowStart =
+    targetWindow.authorityKey === targetWindowAuthorityKey
+      ? targetWindow.start
+      : selectedTargetWindowStart;
+  function updateTargetWindowStart(update: (current: number) => number) {
+    setTargetWindow({
+      authorityKey: targetWindowAuthorityKey,
+      start: update(targetWindowStart)
+    });
+  }
+  const visibleTargetOptions = targetOptions.slice(
+    targetWindowStart,
+    targetWindowStart + CURVE_TARGET_WINDOW_SIZE
+  );
+  const boundaryOptions = useMemo(
+    () =>
+      sketch.entities.filter((entity) =>
+        isEligibleCurveEditBoundary(draft.targetEntityId, entity)
+      ),
+    [draft.targetEntityId, sketch.entities]
+  );
+  const trimChoiceRequest = useMemo(() => {
     if (
       kind !== "trim" ||
       !target ||
@@ -180,59 +227,48 @@ export function SketchCurveEditPanel(props: SketchCurveEditPanelProps) {
         target.kind !== "circle") ||
       draft.boundaryEntityIds.length === 0
     ) {
-      return [];
+      return undefined;
     }
-    let preview: SketchCurveEditPreview | undefined;
-    for (const pickPoint of getSketchEntityDiscoveryWitnessPoints(target)) {
-      const candidatePreview = getReadinessPreview(
-        readReadiness({
-          kind: "trim",
-          sketchId: sketch.id,
-          entityId: target.id,
-          boundaryEntityIds: draft.boundaryEntityIds,
-          pickPoint
-        })
-      );
-      if (candidatePreview && candidatePreview.intersections.length > 0) {
-        preview = candidatePreview;
-        break;
-      }
-    }
-    return preview
-      ? createSketchTrimIntervalChoices(target, preview, sketch)
-      : [];
-  }, [
-    draft.boundaryEntityIds,
-    kind,
-    readReadiness,
+    return {
+      sketch,
+      target,
+      boundaryEntityIds: draft.boundaryEntityIds
+    };
+  }, [draft.boundaryEntityIds, kind, sketch, target]);
+  const trimChoiceResult = useSketchTrimIntervalChoices(
+    trimChoiceRequest,
     readinessAuthorityKey,
-    sketch,
-    target
-  ]);
-  const extendHitChoices = useMemo(() => {
-    void readinessAuthorityKey;
+    readReadiness,
+    readReadinessAsync
+  );
+  const trimIntervalChoices = trimChoiceResult.choices;
+  const extendChoiceRequest = useMemo(() => {
     if (
       kind !== "extend" ||
       !target ||
       (target.kind !== "line" && target.kind !== "arc") ||
       draft.boundaryEntityIds.length === 0
     ) {
-      return [];
+      return undefined;
     }
-    return discoverSketchExtendHitChoices({
+    return {
       sketch,
       target,
-      boundaryEntityIds: draft.boundaryEntityIds,
-      readReadiness
-    });
-  }, [
-    draft.boundaryEntityIds,
-    kind,
-    readReadiness,
+      boundaryEntityIds: draft.boundaryEntityIds
+    };
+  }, [draft.boundaryEntityIds, kind, sketch, target]);
+  const extendChoiceResult = useSketchExtendHitChoices(
+    extendChoiceRequest,
     readinessAuthorityKey,
-    sketch,
-    target
-  ]);
+    readReadiness,
+    readReadinessAsync
+  );
+  const extendHitChoices = extendChoiceResult.choices;
+  const readinessError =
+    committedReadinessResult.error ??
+    hoverReadinessResult.error ??
+    trimChoiceResult.error ??
+    extendChoiceResult.error;
   const canApply =
     readinessProjection.applyOperation !== undefined && !disabled && !applying;
   const focusTarget =
@@ -487,13 +523,61 @@ export function SketchCurveEditPanel(props: SketchCurveEditPanelProps) {
               onChange={(event) => chooseTarget(event.currentTarget.value)}
             >
               <option value="">Choose target…</option>
-              {targetOptions.map((entity) => (
+              {visibleTargetOptions.map((entity) => (
                 <option key={entity.id} value={entity.id}>
                   {getSketchEntitySemanticLabel(entity, sketch)}
                 </option>
               ))}
             </select>
           </label>
+        ) : null}
+        {(kind !== "offset" || draft.offsetSourceMode === "entity") &&
+        targetOptions.length > CURVE_TARGET_WINDOW_SIZE ? (
+          <div
+            className="pb-curve-edit__target-window"
+            aria-label="Curve edit target rows"
+          >
+            <button
+              type="button"
+              className="pb-button"
+              disabled={targetWindowStart === 0}
+              onClick={() =>
+                updateTargetWindowStart((current) =>
+                  Math.max(0, current - CURVE_TARGET_WINDOW_SIZE)
+                )
+              }
+            >
+              Previous targets
+            </button>
+            <span>
+              {targetWindowStart + 1}–
+              {Math.min(
+                targetWindowStart + CURVE_TARGET_WINDOW_SIZE,
+                targetOptions.length
+              )}{" "}
+              of {targetOptions.length}
+            </span>
+            <button
+              type="button"
+              className="pb-button"
+              disabled={
+                targetWindowStart + CURVE_TARGET_WINDOW_SIZE >=
+                targetOptions.length
+              }
+              onClick={() =>
+                updateTargetWindowStart((current) =>
+                  Math.min(
+                    Math.floor(
+                      (targetOptions.length - 1) / CURVE_TARGET_WINDOW_SIZE
+                    ) * CURVE_TARGET_WINDOW_SIZE,
+                    current + CURVE_TARGET_WINDOW_SIZE
+                  )
+                )
+              }
+            >
+              Next targets
+            </button>
+          </div>
         ) : null}
 
         {kind === "offset" && draft.offsetSourceMode === "chain" ? (
@@ -807,6 +891,11 @@ export function SketchCurveEditPanel(props: SketchCurveEditPanelProps) {
           </p>
         ) : null}
 
+        {readinessError ? (
+          <p className="pb-curve-edit__readiness" role="alert">
+            Curve-edit preview is temporarily unavailable. {readinessError}
+          </p>
+        ) : null}
         <CurveEditReadiness readiness={readiness} sketch={sketch} />
       </div>
 
@@ -1512,10 +1601,241 @@ function formatResultEntity(entity: SketchEntitySnapshot): string {
   }
 }
 
-function getReadinessPreview(
-  readiness: SketchCurveEditReadinessQueryResponse
-): SketchCurveEditPreview | undefined {
-  return readiness.preview;
+interface CurveEditReadinessResult {
+  readonly readiness?: SketchCurveEditReadinessQueryResponse;
+  readonly error?: string;
+}
+
+interface CurveEditAsyncReadinessState {
+  readonly proposal: SketchCurveEditProposal;
+  readonly authorityKey: string | number;
+  readonly readiness?: SketchCurveEditReadinessQueryResponse;
+  readonly error?: string;
+}
+
+function useCurveEditReadinessQuery(
+  proposal: SketchCurveEditProposal | undefined,
+  authorityKey: string | number,
+  readReadiness:
+    | ((
+        proposal: SketchCurveEditProposal
+      ) => SketchCurveEditReadinessQueryResponse)
+    | undefined,
+  readReadinessAsync: SketchCurveEditAsyncReadinessReader | undefined
+): CurveEditReadinessResult {
+  const synchronousReadiness = useMemo(() => {
+    void authorityKey;
+    if (readReadinessAsync || !readReadiness || !proposal) return undefined;
+    return readReadiness(proposal);
+  }, [authorityKey, proposal, readReadiness, readReadinessAsync]);
+  const [asyncState, setAsyncState] = useState<
+    CurveEditAsyncReadinessState | undefined
+  >(undefined);
+
+  useEffect(() => {
+    if (!readReadinessAsync || !proposal) return undefined;
+    const controller = new AbortController();
+    void readReadinessAsync(proposal, controller.signal).then(
+      (readiness) => {
+        if (!controller.signal.aborted) {
+          setAsyncState({ proposal, authorityKey, readiness });
+        }
+      },
+      (error: unknown) => {
+        if (!controller.signal.aborted && !isAbortError(error)) {
+          setAsyncState({
+            proposal,
+            authorityKey,
+            error: formatReadinessError(error)
+          });
+        }
+      }
+    );
+    return () => controller.abort();
+  }, [authorityKey, proposal, readReadinessAsync]);
+
+  if (!readReadinessAsync) {
+    return { readiness: synchronousReadiness };
+  }
+  if (
+    !asyncState ||
+    asyncState.proposal !== proposal ||
+    asyncState.authorityKey !== authorityKey
+  ) {
+    return {};
+  }
+  return {
+    readiness: asyncState.readiness,
+    error: asyncState.error
+  };
+}
+
+interface SketchTrimChoiceRequest {
+  readonly sketch: SketchSnapshot;
+  readonly target: Extract<
+    SketchEntitySnapshot,
+    { readonly kind: "line" | "arc" | "circle" }
+  >;
+  readonly boundaryEntityIds: readonly string[];
+}
+
+interface SketchTrimAsyncChoiceState {
+  readonly request: SketchTrimChoiceRequest;
+  readonly authorityKey: string | number;
+  readonly choices: readonly SketchTrimIntervalChoice[];
+  readonly error?: string;
+}
+
+function useSketchTrimIntervalChoices(
+  request: SketchTrimChoiceRequest | undefined,
+  authorityKey: string | number,
+  readReadiness:
+    | ((
+        proposal: SketchCurveEditProposal
+      ) => SketchCurveEditReadinessQueryResponse)
+    | undefined,
+  readReadinessAsync: SketchCurveEditAsyncReadinessReader | undefined
+): {
+  readonly choices: readonly SketchTrimIntervalChoice[];
+  readonly error?: string;
+} {
+  const synchronousChoices = useMemo(() => {
+    void authorityKey;
+    if (readReadinessAsync || !readReadiness || !request) return [];
+    return discoverSketchTrimIntervalChoices({
+      ...request,
+      readReadiness
+    });
+  }, [authorityKey, readReadiness, readReadinessAsync, request]);
+  const [asyncState, setAsyncState] = useState<
+    SketchTrimAsyncChoiceState | undefined
+  >(undefined);
+
+  useEffect(() => {
+    if (!readReadinessAsync || !request) return undefined;
+    const controller = new AbortController();
+    void discoverSketchTrimIntervalChoicesAsync({
+      ...request,
+      readReadiness: readReadinessAsync,
+      signal: controller.signal
+    }).then(
+      (choices) => {
+        if (!controller.signal.aborted) {
+          setAsyncState({ request, authorityKey, choices });
+        }
+      },
+      (error: unknown) => {
+        if (!controller.signal.aborted && !isAbortError(error)) {
+          setAsyncState({
+            request,
+            authorityKey,
+            choices: [],
+            error: formatReadinessError(error)
+          });
+        }
+      }
+    );
+    return () => controller.abort();
+  }, [authorityKey, readReadinessAsync, request]);
+
+  if (!readReadinessAsync) return { choices: synchronousChoices };
+  if (
+    !asyncState ||
+    asyncState.request !== request ||
+    asyncState.authorityKey !== authorityKey
+  ) {
+    return { choices: [] };
+  }
+  return { choices: asyncState.choices, error: asyncState.error };
+}
+
+interface SketchExtendChoiceRequest {
+  readonly sketch: SketchSnapshot;
+  readonly target: Extract<
+    SketchEntitySnapshot,
+    { readonly kind: "line" | "arc" }
+  >;
+  readonly boundaryEntityIds: readonly string[];
+}
+
+interface SketchExtendAsyncChoiceState {
+  readonly request: SketchExtendChoiceRequest;
+  readonly authorityKey: string | number;
+  readonly choices: readonly SketchExtendHitChoice[];
+  readonly error?: string;
+}
+
+function useSketchExtendHitChoices(
+  request: SketchExtendChoiceRequest | undefined,
+  authorityKey: string | number,
+  readReadiness:
+    | ((
+        proposal: SketchCurveEditProposal
+      ) => SketchCurveEditReadinessQueryResponse)
+    | undefined,
+  readReadinessAsync: SketchCurveEditAsyncReadinessReader | undefined
+): {
+  readonly choices: readonly SketchExtendHitChoice[];
+  readonly error?: string;
+} {
+  const synchronousChoices = useMemo(() => {
+    void authorityKey;
+    if (readReadinessAsync || !readReadiness || !request) return [];
+    return discoverSketchExtendHitChoices({
+      ...request,
+      readReadiness
+    });
+  }, [authorityKey, readReadiness, readReadinessAsync, request]);
+  const [asyncState, setAsyncState] = useState<
+    SketchExtendAsyncChoiceState | undefined
+  >(undefined);
+
+  useEffect(() => {
+    if (!readReadinessAsync || !request) return undefined;
+    const controller = new AbortController();
+    void discoverSketchExtendHitChoicesAsync({
+      ...request,
+      readReadiness: readReadinessAsync,
+      signal: controller.signal
+    }).then(
+      (choices) => {
+        if (!controller.signal.aborted) {
+          setAsyncState({ request, authorityKey, choices });
+        }
+      },
+      (error: unknown) => {
+        if (!controller.signal.aborted && !isAbortError(error)) {
+          setAsyncState({
+            request,
+            authorityKey,
+            choices: [],
+            error: formatReadinessError(error)
+          });
+        }
+      }
+    );
+    return () => controller.abort();
+  }, [authorityKey, readReadinessAsync, request]);
+
+  if (!readReadinessAsync) return { choices: synchronousChoices };
+  if (
+    !asyncState ||
+    asyncState.request !== request ||
+    asyncState.authorityKey !== authorityKey
+  ) {
+    return { choices: [] };
+  }
+  return { choices: asyncState.choices, error: asyncState.error };
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+function formatReadinessError(error: unknown): string {
+  return error instanceof Error
+    ? error.message
+    : "The query worker failed unexpectedly.";
 }
 
 function focusCurveEditInitialControl(editor: HTMLFormElement | null): void {
