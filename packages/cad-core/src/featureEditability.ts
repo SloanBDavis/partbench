@@ -45,6 +45,7 @@ import { resolveWireExtrudeProfile } from "./wireExtrudeProfile";
 import { resolveWireRevolveProfile } from "./wireRevolveProfile";
 import { resolveSweep } from "./sweepProfile";
 import type { CadDocument } from "./index";
+import { validateRegisteredV22RegionSource } from "./v19RegionPolicyRegistry";
 
 const SOURCE_BOUNDARY_NOTE =
   "Feature editability is derived from authoritative document source features and semantic generated/named references.";
@@ -436,22 +437,6 @@ function createExtrudeEditabilityResponse(
   blockingDiagnostics.push(
     ...createProfileBlockingDiagnostics(options, feature.id)
   );
-  if (feature.profile?.kind === "regions") {
-    blockingDiagnostics.push(
-      createDiagnostic({
-        code: "FEATURE_EDIT_UNSUPPORTED",
-        severity: "blocker",
-        message:
-          "Region extrude source is inspectable, but feature.updateExtrude remains disabled until the V19 region extrude geometry slice is accepted.",
-        featureId: feature.id,
-        bodyId: feature.bodyId,
-        sketchId: feature.profile.sketchId,
-        expected: "accepted V19 region extrude geometry support",
-        received: "region source only"
-      })
-    );
-  }
-
   if (body?.consumedByFeatureId && !scopedRebuildConsumer) {
     blockingDiagnostics.push(
       createDiagnostic({
@@ -471,9 +456,10 @@ function createExtrudeEditabilityResponse(
     );
   }
 
-  const isCompositeBoolean =
-    feature.operationMode !== "newBody" && feature.profile?.kind === "wire";
-  if (feature.operationMode !== "newBody" && !isCompositeBoolean) {
+  const isSupportedProfileBoolean =
+    feature.operationMode !== "newBody" &&
+    (feature.profile?.kind === "wire" || feature.profile?.kind === "regions");
+  if (feature.operationMode !== "newBody" && !isSupportedProfileBoolean) {
     blockingDiagnostics.push(
       createDiagnostic({
         code: "AMBIGUOUS_RESULT_TOPOLOGY",
@@ -483,7 +469,7 @@ function createExtrudeEditabilityResponse(
         featureId: feature.id,
         bodyId: feature.bodyId,
         targetBodyId: feature.targetBodyId,
-        expected: "newBody or composite wire boolean extrude",
+        expected: "newBody, composite wire, or region boolean extrude",
         received: feature.operationMode
       })
     );
@@ -1694,18 +1680,81 @@ function createExtrudeProfileProposalDiagnostics(
   document: CreateFeatureEditabilityResponseOptions["document"]
 ): readonly CadFeatureEditDiagnostic[] {
   if (profile.kind === "regions") {
+    if (feature.profile?.kind !== "regions") {
+      return [
+        createDiagnostic({
+          code: "FEATURE_EDIT_INVALID_PROPOSAL",
+          severity: "blocker",
+          message:
+            "Extrude profile edits cannot cross from an entity or wire source to a region source.",
+          featureId: feature.id,
+          bodyId: feature.bodyId,
+          sketchId: profile.sketchId,
+          fieldPath: "profile",
+          expected: feature.profile?.kind ?? "current profile family",
+          received: "regions"
+        })
+      ];
+    }
+    const sketch = document.sketches.get(profile.sketchId);
+    const validation = sketch
+      ? validateRegisteredV22RegionSource(profile, {
+          id: sketch.id,
+          entities: sketch.entities
+        })
+      : undefined;
+    if (!validation?.ok) {
+      const issue = validation?.issues[0];
+      return [
+        createDiagnostic({
+          code: "FEATURE_EDIT_INVALID_PROPOSAL",
+          severity: "blocker",
+          message:
+            issue?.message ??
+            "Region profile edit must resolve to a current valid sketch source.",
+          featureId: feature.id,
+          bodyId: feature.bodyId,
+          sketchId: profile.sketchId,
+          fieldPath: "profile",
+          expected: "current valid canonical region profile",
+          received: issue?.code ?? "missing sketch"
+        })
+      ];
+    }
+    if (
+      feature.operationMode === "newBody" &&
+      validation.normalizedProfile.regions.length !== 1
+    ) {
+      return [
+        createDiagnostic({
+          code: "FEATURE_EDIT_INVALID_PROPOSAL",
+          severity: "blocker",
+          message: "Region new-body extrude requires exactly one region.",
+          featureId: feature.id,
+          bodyId: feature.bodyId,
+          sketchId: profile.sketchId,
+          fieldPath: "profile",
+          expected: "exactly one region",
+          received: `${validation.normalizedProfile.regions.length} regions`
+        })
+      ];
+    }
+    return [];
+  }
+
+  if (feature.profile?.kind === "regions") {
     return [
       createDiagnostic({
         code: "FEATURE_EDIT_INVALID_PROPOSAL",
         severity: "blocker",
         message:
-          "Region profile editing remains blocked until the V19 region validation and extrude geometry slices are available.",
+          "Region extrude profiles can be retargeted only to another validated region profile.",
         featureId: feature.id,
         bodyId: feature.bodyId,
         sketchId: profile.sketchId,
         fieldPath: "profile",
-        expected: "validated V19 region extrude support",
-        received: "regions"
+        expected: "region profile",
+        received: profile.kind
       })
     ];
   }

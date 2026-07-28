@@ -13,7 +13,9 @@ import {
 } from "@web-cad/cad-core";
 import type {
   CadGeneratedFaceReference,
-  FeatureShellOpenFaceRef
+  FeatureShellOpenFaceRef,
+  SketchLoopRef,
+  SketchRegionsProfileRef
 } from "@web-cad/cad-protocol";
 import {
   createPrimitiveDerivedGeometrySource,
@@ -705,6 +707,63 @@ function createBooleanSourceForFeature(
         nextVisitedFeatureIds
       )
     : undefined;
+  if (feature.profile?.kind === "regions") {
+    const regionProfile = feature.profile;
+    const operationMode = feature.operationMode;
+    const sketch = sketches.find(
+      (candidate) => candidate.id === feature.sketchId
+    );
+    const tools = sketch
+      ? regionProfile.regions.map((region, regionIndex) =>
+          createRegionNewBodyExtrudeSource(
+            {
+              id: feature.id,
+              bodyId: `${feature.bodyId}:region:${regionIndex}`,
+              depth: feature.depth,
+              side: feature.side
+            },
+            {
+              kind: "regions",
+              sketchId: regionProfile.sketchId,
+              regions: [region]
+            },
+            sketch,
+            generatedFacesByKey
+          )
+        )
+      : [];
+    if (!target || tools.length !== regionProfile.regions.length) {
+      return {
+        id: feature.bodyId,
+        kind: "extrudeBoolean",
+        operation: operationMode,
+        target: target ?? createUnavailableExtrudeSource(feature.bodyId),
+        tool: createUnavailableExtrudeSource(feature.bodyId),
+        placementError: `${feature.operationMode === "add" ? "Add" : "Cut"} feature ${feature.id} cannot be displayed because its target or exact region tools are unavailable.`
+      };
+    }
+    return tools.reduce<
+      DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource
+    >(
+      (currentTarget, tool, regionIndex) => ({
+        id:
+          regionIndex === tools.length - 1
+            ? feature.bodyId
+            : `${feature.bodyId}:region-result:${regionIndex}`,
+        kind: "extrudeBoolean",
+        operation: operationMode,
+        materialPolicy: "regionPositiveVolumeSingleSolid",
+        target: currentTarget,
+        tool,
+        ...(currentTarget.placementError
+          ? { placementError: currentTarget.placementError }
+          : tool.placementError
+            ? { placementError: tool.placementError }
+            : {})
+      }),
+      target
+    );
+  }
   const tool = createExtrudeSourceForFeature(
     feature,
     sketches,
@@ -874,7 +933,10 @@ function createExtrudeSourceForFeature(
   feature: Extract<CadFeatureSummary, { kind: "extrude" }>,
   sketches: readonly SketchSnapshot[],
   generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>
-): DerivedExtrudeGeometrySource | undefined {
+):
+  | DerivedExtrudeGeometrySource
+  | DerivedBooleanExtrudeGeometrySource
+  | undefined {
   const sketch = sketches.find(
     (candidate) => candidate.id === feature.sketchId
   );
@@ -893,10 +955,17 @@ function createExtrudeSourceForFeature(
   }
 
   if (feature.profile?.kind === "regions") {
-    return createUnavailableExtrudeSource(
-      feature.bodyId,
-      `Region extrude feature ${feature.id} awaits the V19 region extrude geometry slice.`
-    );
+    return feature.operationMode === "newBody"
+      ? createRegionNewBodyExtrudeSource(
+          feature,
+          feature.profile,
+          sketch,
+          generatedFacesByKey
+        )
+      : createUnavailableExtrudeSource(
+          feature.bodyId,
+          `Region ${feature.operationMode} feature ${feature.id} awaits the V19 sequential region boolean slice.`
+        );
   }
 
   const entity = sketch.entities.find(
@@ -947,6 +1016,144 @@ function createExtrudeSourceForFeature(
   }
 
   return undefined;
+}
+
+function createRegionNewBodyExtrudeSource(
+  feature: Pick<
+    Extract<CadFeatureSummary, { kind: "extrude" }>,
+    "id" | "bodyId" | "depth" | "side"
+  >,
+  profile: SketchRegionsProfileRef,
+  sketch: SketchSnapshot,
+  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>
+): DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource {
+  const region = profile.regions[0];
+  if (!region || profile.regions.length !== 1) {
+    return createUnavailableExtrudeSource(
+      feature.bodyId,
+      `Region new-body extrude feature ${feature.id} requires exactly one material region.`
+    );
+  }
+  const outer = createRegionLoopExtrudeSource(
+    feature,
+    region.outer,
+    sketch,
+    generatedFacesByKey,
+    `${feature.bodyId}:outer`
+  );
+  if (!outer) {
+    return createUnavailableExtrudeSource(
+      feature.bodyId,
+      `Region extrude feature ${feature.id} cannot resolve its outer loop.`
+    );
+  }
+
+  let result:
+    | DerivedExtrudeGeometrySource
+    | DerivedBooleanExtrudeGeometrySource = outer;
+  for (const [holeIndex, hole] of region.holes.entries()) {
+    const tool = createRegionLoopExtrudeSource(
+      feature,
+      hole,
+      sketch,
+      generatedFacesByKey,
+      `${feature.bodyId}:hole:${holeIndex}`
+    );
+    if (!tool) {
+      return createUnavailableExtrudeSource(
+        feature.bodyId,
+        `Region extrude feature ${feature.id} cannot resolve hole loop ${holeIndex + 1}.`
+      );
+    }
+    result = {
+      id:
+        holeIndex === region.holes.length - 1
+          ? feature.bodyId
+          : `${feature.bodyId}:void:${holeIndex}`,
+      kind: "extrudeBoolean",
+      operation: "cut",
+      materialPolicy: "regionPositiveVolumeSingleSolid",
+      target: result,
+      tool,
+      ...(result.placementError
+        ? { placementError: result.placementError }
+        : tool.placementError
+          ? { placementError: tool.placementError }
+          : {})
+    };
+  }
+
+  return region.holes.length === 0 ? { ...outer, id: feature.bodyId } : result;
+}
+
+function createRegionLoopExtrudeSource(
+  feature: Pick<
+    Extract<CadFeatureSummary, { kind: "extrude" }>,
+    "depth" | "side"
+  >,
+  loop: SketchLoopRef,
+  sketch: SketchSnapshot,
+  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
+  id: string
+): DerivedExtrudeGeometrySource | undefined {
+  const placement = createAttachedSketchFeaturePlacement(
+    sketch,
+    generatedFacesByKey,
+    "extrude"
+  );
+  if (loop.kind === "entity") {
+    const entity = sketch.entities.find(
+      (candidate) => candidate.id === loop.entityId
+    );
+    if (!entity || (entity.kind !== "rectangle" && entity.kind !== "circle")) {
+      return undefined;
+    }
+    return {
+      id,
+      kind: "extrude",
+      sketchPlane: sketch.plane,
+      profile:
+        entity.kind === "rectangle"
+          ? {
+              kind: "rectangle",
+              center: entity.center,
+              width: entity.width,
+              height: entity.height
+            }
+          : {
+              kind: "circle",
+              center: entity.center,
+              radius: entity.radius
+            },
+      depth: feature.depth,
+      side: feature.side,
+      ...placement
+    };
+  }
+
+  const frame =
+    placement.placementFrame ?? createDefaultSketchDisplayFrame(sketch.plane);
+  const resolvedProfile = createResolvedWireExtrudeRecipe(
+    {
+      kind: "wire",
+      sketchId: sketch.id,
+      segments: loop.segments
+    },
+    new Map(sketch.entities.map((entity) => [entity.id, entity])),
+    frame
+  );
+  if (!resolvedProfile) return undefined;
+  return {
+    id,
+    kind: "extrude",
+    sketchPlane: sketch.plane,
+    profile: resolvedProfile,
+    depth: feature.depth,
+    side: feature.side,
+    ...(placement.placementError
+      ? { placementError: placement.placementError }
+      : {})
+  };
 }
 
 function createWireExtrudeSource(
@@ -1418,7 +1625,10 @@ function createBooleanPlacementError(
     | DerivedExtrudeGeometrySource
     | DerivedBooleanExtrudeGeometrySource
     | undefined,
-  tool: DerivedExtrudeGeometrySource | undefined
+  tool:
+    | DerivedExtrudeGeometrySource
+    | DerivedBooleanExtrudeGeometrySource
+    | undefined
 ): { readonly placementError?: string } {
   if (!target || !tool) {
     const operation = feature.operationMode === "add" ? "Add" : "Cut";

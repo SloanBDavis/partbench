@@ -215,6 +215,7 @@ export interface RevolveGeometryAxis {
 
 export type BooleanExtrudeSource =
   | BooleanExtrudePrimitiveSource
+  | BooleanExtrudeWireSource
   | BooleanExtrudeResultSource;
 
 export interface BooleanExtrudeWireSource {
@@ -225,9 +226,7 @@ export interface BooleanExtrudeWireSource {
   readonly placementFrame?: never;
 }
 
-export type BooleanExtrudeToolSource =
-  | BooleanExtrudePrimitiveSource
-  | BooleanExtrudeWireSource;
+export type BooleanExtrudeToolSource = BooleanExtrudeSource;
 
 export interface BooleanExtrudePrimitiveSource {
   readonly sketchPlane: GeometryKernelSketchPlane;
@@ -244,6 +243,7 @@ export type BooleanExtrudeResultSource =
 export interface BooleanExtrudeAddResultSource {
   readonly kind: "booleanExtrudes";
   readonly operation: "add";
+  readonly materialPolicy?: "regionPositiveVolumeSingleSolid";
   readonly target: BooleanExtrudeSource;
   readonly tool: BooleanExtrudeToolSource;
 }
@@ -251,6 +251,7 @@ export interface BooleanExtrudeAddResultSource {
 export interface BooleanExtrudeCutResultSource {
   readonly kind: "booleanExtrudes";
   readonly operation: "cut";
+  readonly materialPolicy?: "regionPositiveVolumeSingleSolid";
   readonly target: BooleanExtrudeSource;
   readonly tool: BooleanExtrudeToolSource;
 }
@@ -332,6 +333,7 @@ interface BooleanExtrudesRequestBase {
   readonly id: string;
   readonly version: GeometryKernelVersion;
   readonly op: "geometry.booleanExtrudes";
+  readonly materialPolicy?: "regionPositiveVolumeSingleSolid";
   readonly target: BooleanExtrudeSource;
   readonly tessellation?: TessellationOptions;
 }
@@ -901,6 +903,7 @@ export type GeometryKernelErrorCode =
   | "INVALID_PLACEMENT"
   | "SWEEP_CURVED_PATH_UNSUPPORTED"
   | "SWEEP_CURVED_GEOMETRY_FAILED"
+  | "SKETCH_REGION_RESULT_NOT_SINGLE_SOLID"
   | "KERNEL_FAILURE"
   | "EMPTY_RESULT"
   | "INVALID_RESULT"
@@ -1720,7 +1723,10 @@ function validateRequest(
       };
     }
   } else if (request.op === "geometry.booleanExtrudes") {
-    if (!isBooleanOperation(request.operation)) {
+    if (
+      !isBooleanOperation(request.operation) ||
+      !isBooleanMaterialPolicy(request.materialPolicy)
+    ) {
       return {
         code: "INVALID_DIMENSIONS",
         message: "Boolean extrude requests require operation add or cut."
@@ -1964,6 +1970,9 @@ function createMesh(
       return request.operation === "cut"
         ? factories.createBooleanExtrudeMesh({
             operation: "cut",
+            ...(request.materialPolicy
+              ? { materialPolicy: request.materialPolicy }
+              : {}),
             target: request.target,
             tool: request.tool,
             linearDeflection: request.tessellation?.linearDeflection,
@@ -1971,6 +1980,9 @@ function createMesh(
           })
         : factories.createBooleanExtrudeMesh({
             operation: "add",
+            ...(request.materialPolicy
+              ? { materialPolicy: request.materialPolicy }
+              : {}),
             target: request.target,
             tool: request.tool,
             linearDeflection: request.tessellation?.linearDeflection,
@@ -2553,6 +2565,7 @@ function isGeometryKernelErrorCode(
     value === "INVALID_PLACEMENT" ||
     value === "SWEEP_CURVED_PATH_UNSUPPORTED" ||
     value === "SWEEP_CURVED_GEOMETRY_FAILED" ||
+    value === "SKETCH_REGION_RESULT_NOT_SINGLE_SOLID" ||
     value === "KERNEL_FAILURE" ||
     value === "EMPTY_RESULT" ||
     value === "INVALID_RESULT" ||
@@ -2580,6 +2593,12 @@ function isBooleanOperation(
   value: unknown
 ): value is GeometryKernelBooleanOperation {
   return value === "add" || value === "cut";
+}
+
+function isBooleanMaterialPolicy(
+  value: unknown
+): value is "regionPositiveVolumeSingleSolid" | undefined {
+  return value === undefined || value === "regionPositiveVolumeSingleSolid";
 }
 
 function isHoleDepthMode(value: unknown): value is GeometryKernelHoleDepthMode {
@@ -2944,19 +2963,20 @@ function isValidBooleanExtrudeWireSource(
 
 function isValidBooleanExtrudeToolSource(
   operation: GeometryKernelBooleanOperation,
-  source: BooleanExtrudeToolSource
-): boolean {
-  if (!isRecord(source) || !isRecord(source.profile)) return false;
-  if (isBooleanExtrudeWireSource(source)) {
-    return (
-      isBooleanOperation(operation) && isValidBooleanExtrudeWireSource(source)
-    );
+  source: BooleanExtrudeToolSource,
+  context: BooleanExtrudeValidationContext = {
+    visited: new WeakSet<object>(),
+    depth: 0
   }
-  return isValidBooleanExtrudePrimitiveSource(source);
+): boolean {
+  return (
+    isBooleanOperation(operation) &&
+    isValidBooleanExtrudeSource(source, context)
+  );
 }
 
 function isBooleanExtrudeWireSource(
-  source: BooleanExtrudeToolSource
+  source: BooleanExtrudeSource
 ): source is BooleanExtrudeWireSource {
   return (
     isRecord(source) &&
@@ -3133,16 +3153,22 @@ function isValidBooleanExtrudeSource(
     context.visited.add(source);
     return (
       isBooleanOperation(source.operation) &&
+      isBooleanMaterialPolicy(source.materialPolicy) &&
       isValidBooleanExtrudeSource(source.target, {
         visited: context.visited,
         depth: context.depth + 1
       }) &&
-      isValidBooleanExtrudeToolSource(source.operation, source.tool) &&
+      isValidBooleanExtrudeToolSource(source.operation, source.tool, {
+        visited: context.visited,
+        depth: context.depth + 1
+      }) &&
       isSupportedBooleanExtrudeSourcePair(source)
     );
   }
 
-  return isValidBooleanExtrudePrimitiveSource(source);
+  return isBooleanExtrudeWireSource(source)
+    ? isValidBooleanExtrudeWireSource(source)
+    : isValidBooleanExtrudePrimitiveSource(source);
 }
 
 function isValidHoleToolSource(source: HoleToolSource): boolean {
@@ -4025,7 +4051,9 @@ function isSupportedBooleanExtrudeProfileKinds(
 ): boolean {
   return (
     (operation === "add" || operation === "cut") &&
-    (targetProfile === "rectangle" || targetProfile === "circle")
+    (targetProfile === "rectangle" ||
+      targetProfile === "circle" ||
+      targetProfile === "wire")
   );
 }
 
@@ -4055,11 +4083,18 @@ function getEdgeFinishReferenceSource(
   }
 
   if (!isBooleanExtrudeResultSource(source)) {
-    return source.profile.kind === "rectangle" ? source : undefined;
+    return source.profile.kind === "rectangle"
+      ? (source as BooleanExtrudePrimitiveSource)
+      : undefined;
   }
 
   if (source.operation !== "cut") return undefined;
-  if (isBooleanExtrudeWireSource(source.tool)) return undefined;
+  if (
+    isBooleanExtrudeResultSource(source.tool) ||
+    isBooleanExtrudeWireSource(source.tool)
+  ) {
+    return undefined;
+  }
   if (
     role.startsWith("longitudinal:") &&
     source.tool.profile.kind === "rectangle"

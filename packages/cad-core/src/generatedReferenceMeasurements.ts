@@ -11,6 +11,7 @@ import type {
   CadQueryError,
   DocumentUnits,
   GeneratedReferenceMeasurement,
+  FeatureExtrudeProfileKind,
   PartId,
   SketchPlane,
   Vec2,
@@ -100,6 +101,7 @@ export function createGeneratedReferenceMeasurements(
 
   if (
     validation.reference.geometricSignature.profileKind === "wire" ||
+    validation.reference.geometricSignature.profileKind === "regions" ||
     validation.reference.sourceSketchEntityId === undefined
   ) {
     return {
@@ -120,7 +122,8 @@ export function createGeneratedReferenceMeasurements(
     sourceFeatureId: validation.reference.sourceFeatureId,
     sourceSketchId: validation.reference.sourceSketchId,
     sourceSketchEntityId: validation.reference.sourceSketchEntityId,
-    profileKind: validation.reference.geometricSignature.profileKind,
+    profileKind: validation.reference.geometricSignature
+      .profileKind as FeatureExtrudeProfileKind,
     units: options.units,
     measurementModel: "sourceAnalytic" as const
   };

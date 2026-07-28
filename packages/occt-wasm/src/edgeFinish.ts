@@ -459,7 +459,9 @@ function getEdgeFinishReferenceSource(
   }
 
   if (!isOcctBooleanExtrudeResultSource(source)) {
-    return source.profile.kind === "rectangle" ? source : undefined;
+    return source.profile.kind === "rectangle"
+      ? (source as OcctBooleanExtrudePrimitiveSource)
+      : undefined;
   }
 
   if (source.operation !== "cut") return undefined;
@@ -477,7 +479,9 @@ function getEdgeFinishReferenceSource(
 function isPrimitiveBooleanExtrudeTool(
   source: OcctBooleanExtrudeResultSource["tool"]
 ): source is OcctBooleanExtrudePrimitiveSource {
-  return source.profile.kind !== "wire";
+  return (
+    !isOcctBooleanExtrudeResultSource(source) && source.profile.kind !== "wire"
+  );
 }
 
 function isOcctBooleanExtrudeResultSource(

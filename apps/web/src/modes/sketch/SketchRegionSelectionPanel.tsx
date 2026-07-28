@@ -43,6 +43,10 @@ export interface SketchRegionSelectionPanelProps {
   readonly selectedCandidateKeys: readonly string[];
   readonly hoveredCandidateKey?: string;
   readonly consumer: SketchRegionConsumerIntent;
+  readonly targetBodies?: readonly {
+    readonly id: string;
+    readonly label: string;
+  }[];
   readonly keyboardSuspended?: boolean;
   readonly queryCandidates: (
     query: SketchProfileRegionCandidatesQuery,
@@ -60,14 +64,23 @@ export interface SketchRegionSelectionPanelProps {
   readonly onConsumerChange: (consumer: SketchRegionConsumerIntent) => void;
   readonly onApplyReady: (
     profile: SketchRegionsProfileRef,
-    response: SketchProfileRegionValidateQueryResponse
-  ) => void;
+    response: SketchProfileRegionValidateQueryResponse,
+    featureDraft: SketchRegionFeatureDraft
+  ) => boolean | Promise<boolean>;
   readonly onCancel: (restoreFocus?: boolean) => void;
   readonly onRequestEscape?: (dirty: boolean) => void;
   readonly onDirtyChange?: (dirty: boolean) => void;
   readonly onSessionControlChange?: (
     control: SketchCurveEditSessionControl | undefined
   ) => void;
+}
+
+export interface SketchRegionFeatureDraft {
+  readonly consumer: SketchRegionConsumerIntent;
+  readonly operationMode: "newBody" | "add" | "cut";
+  readonly targetBodyId?: string;
+  readonly depth: number;
+  readonly side: "positive" | "negative" | "symmetric";
 }
 
 interface RegionPageState {
@@ -97,6 +110,7 @@ export function SketchRegionSelectionPanel(
     selectedCandidateKeys,
     hoveredCandidateKey,
     consumer,
+    targetBodies = [],
     keyboardSuspended = false,
     queryCandidates,
     validateProfile,
@@ -112,6 +126,12 @@ export function SketchRegionSelectionPanel(
   } = props;
   const [page, setPage] = useState<RegionPageState>(INITIAL_PAGE_STATE);
   const [applying, setApplying] = useState(false);
+  const [operationMode, setOperationMode] = useState<"add" | "cut">("add");
+  const [targetBodyId, setTargetBodyId] = useState("");
+  const [depth, setDepth] = useState(10);
+  const [side, setSide] = useState<"positive" | "negative" | "symmetric">(
+    "positive"
+  );
   const [validationMessages, setValidationMessages] = useState<
     readonly string[]
   >([]);
@@ -140,14 +160,33 @@ export function SketchRegionSelectionPanel(
   const applyRef = useRef<
     (options?: { readonly restoreFocusOnSuccess?: boolean }) => Promise<boolean>
   >(async () => false);
+  const effectiveTargetBodyId = targetBodies.some(
+    (target) => target.id === targetBodyId
+  )
+    ? targetBodyId
+    : "";
   const dirty =
-    selectedCandidateKeys.length > 0 || consumer !== "extrude-new-body";
+    selectedCandidateKeys.length > 0 ||
+    consumer !== "extrude-new-body" ||
+    operationMode !== "add" ||
+    effectiveTargetBodyId !== "" ||
+    depth !== 10 ||
+    side !== "positive";
   const selectionCountReady = isSketchRegionSelectionCountReady(
     selectedCandidateKeys.length,
     consumer
   );
+  const extrudeInputReady =
+    consumer === "revolve-new-body" ||
+    (Number.isFinite(depth) &&
+      depth > 0 &&
+      (consumer !== "extrude-add-cut" || effectiveTargetBodyId.length > 0));
   const canApply =
-    page.status === "ready" && selectionCountReady && !disabled && !applying;
+    page.status === "ready" &&
+    selectionCountReady &&
+    extrudeInputReady &&
+    !disabled &&
+    !applying;
   const entityNames = useMemo(
     () => createSketchEntitySemanticNames(sketch),
     [sketch]
@@ -294,7 +333,26 @@ export function SketchRegionSelectionPanel(
         );
         return false;
       }
-      onApplyReady(response.normalizedProfile, response);
+      const committed = await onApplyReady(
+        response.normalizedProfile,
+        response,
+        {
+          consumer,
+          operationMode:
+            consumer === "extrude-new-body" ? "newBody" : operationMode,
+          ...(consumer === "extrude-add-cut" && effectiveTargetBodyId
+            ? { targetBodyId: effectiveTargetBodyId }
+            : {}),
+          depth,
+          side
+        }
+      );
+      if (!committed) {
+        setValidationMessages([
+          "The exact region selection is valid, but the feature command did not commit."
+        ]);
+        return false;
+      }
       onCancel(options.restoreFocusOnSuccess ?? true);
       return true;
     } catch (error) {
@@ -382,7 +440,8 @@ export function SketchRegionSelectionPanel(
 
         <p className="pb-region-select__guidance">
           Select exact whole-loop cells. Candidate shading is derived; Apply
-          revalidates the explicit loop references without creating a feature.
+          revalidates the explicit loop references and submits the same typed
+          feature command used by every caller.
         </p>
 
         <label className="pb-sketch-field">
@@ -405,6 +464,82 @@ export function SketchRegionSelectionPanel(
             ))}
           </select>
         </label>
+
+        {consumer === "extrude-add-cut" ? (
+          <>
+            <label className="pb-sketch-field">
+              <span>Operation</span>
+              <select
+                className="pb-field"
+                value={operationMode}
+                disabled={disabled}
+                onChange={(event) =>
+                  setOperationMode(event.currentTarget.value as "add" | "cut")
+                }
+              >
+                <option value="add">Add</option>
+                <option value="cut">Cut</option>
+              </select>
+            </label>
+            <label className="pb-sketch-field">
+              <span>Target body</span>
+              <select
+                className="pb-field"
+                value={effectiveTargetBodyId}
+                required
+                disabled={disabled}
+                onChange={(event) => setTargetBodyId(event.currentTarget.value)}
+              >
+                <option value="">Choose a target body</option>
+                {targetBodies.map((target) => (
+                  <option key={target.id} value={target.id}>
+                    {target.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        ) : null}
+
+        {consumer !== "revolve-new-body" ? (
+          <>
+            <label className="pb-sketch-field">
+              <span>Depth</span>
+              <input
+                className="pb-field"
+                name="region-extrude-depth"
+                type="number"
+                min="0.000001"
+                step="0.1"
+                value={depth}
+                disabled={disabled}
+                onChange={(event) =>
+                  setDepth(event.currentTarget.valueAsNumber)
+                }
+              />
+            </label>
+            <label className="pb-sketch-field">
+              <span>Side</span>
+              <select
+                className="pb-field"
+                value={side}
+                disabled={disabled}
+                onChange={(event) =>
+                  setSide(
+                    event.currentTarget.value as
+                      | "positive"
+                      | "negative"
+                      | "symmetric"
+                  )
+                }
+              >
+                <option value="positive">Positive</option>
+                <option value="negative">Negative</option>
+                <option value="symmetric">Symmetric</option>
+              </select>
+            </label>
+          </>
+        ) : null}
 
         <div className="pb-region-select__summary" role="status">
           <strong>{selectedCandidateKeys.length} selected</strong>
@@ -524,7 +659,7 @@ export function SketchRegionSelectionPanel(
 
       <div className="pb-curve-edit__footer">
         <p className="pb-curve-edit__shortcut">
-          Ctrl/Cmd+Enter validates · Escape cancels
+          Ctrl/Cmd+Enter applies · Escape cancels
         </p>
         <div>
           <button
@@ -540,14 +675,18 @@ export function SketchRegionSelectionPanel(
             className="pb-button pb-button--primary"
             disabled={!canApply}
           >
-            {applying ? "Validating…" : "Validate selection"}
+            {applying
+              ? "Applying…"
+              : consumer === "revolve-new-body"
+                ? "Validate selection"
+                : "Create extrude"}
           </button>
         </div>
       </div>
       <LiveRegion urgency={validationMessages.length ? "assertive" : "polite"}>
         {validationMessages[0] ??
           (canApply
-            ? "Selected regions are ready for exact validation."
+            ? "Selected regions are ready to apply."
             : `${selectedCandidateKeys.length} regions selected.`)}
       </LiveRegion>
     </form>

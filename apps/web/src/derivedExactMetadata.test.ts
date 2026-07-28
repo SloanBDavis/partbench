@@ -2253,7 +2253,10 @@ function getExactRuntimePrimitiveTarget(
     return undefined;
   }
 
-  return "profile" in input.source.target ? input.source.target : undefined;
+  return "profile" in input.source.target &&
+    input.source.target.profile.kind !== "wire"
+    ? (input.source.target as DerivedGeometryBooleanExtrudePrimitiveInputSource)
+    : undefined;
 }
 
 function createRuntime(

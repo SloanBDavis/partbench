@@ -633,7 +633,11 @@ function readCompositeBooleanSource(
     (candidate): candidate is DerivedBooleanExtrudeGeometrySource =>
       candidate.id === bodyId && candidate.kind === "extrudeBoolean"
   );
-  if (!source || source.tool.profile.kind !== "wire") {
+  if (
+    !source ||
+    source.tool.kind !== "extrude" ||
+    source.tool.profile.kind !== "wire"
+  ) {
     throw new Error(`Expected a composite wire boolean source for ${bodyId}.`);
   }
   return source;

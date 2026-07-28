@@ -508,6 +508,100 @@ describe("projectExactStepExport", () => {
     });
     expect(request.payload.bodies[0]).not.toHaveProperty("placementFrame");
   });
+
+  it("passes a region extrude recipe to STEP with its strict material policy", async () => {
+    const source: CadExactExportBodySource = {
+      bodyId: "body_region_plate",
+      bodyName: "Region plate",
+      sourceKind: "authoredExtrude",
+      featureId: "feature_region_plate",
+      sourceSketchId: "sketch_region_plate",
+      sourceSketchEntityIds: ["outer", "hole"],
+      kind: "regionExtrude",
+      regions: {
+        kind: "regions",
+        sketchId: "sketch_region_plate",
+        regions: [
+          {
+            outer: { kind: "entity", entityId: "outer" },
+            holes: [{ kind: "entity", entityId: "hole" }]
+          }
+        ]
+      },
+      sketchPlane: "XY",
+      depth: 5,
+      side: "positive",
+      solidPolicy: "positiveVolumeSingleSolid",
+      recipe: {
+        kind: "booleanExtrudes",
+        operation: "cut",
+        materialPolicy: "regionPositiveVolumeSingleSolid",
+        target: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 20,
+            height: 20
+          },
+          depth: 5,
+          side: "positive"
+        },
+        tool: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 4
+          },
+          depth: 5,
+          side: "positive"
+        }
+      }
+    };
+    let request: GeometryWorkerRequest | undefined;
+    const bytes = new TextEncoder().encode("ISO-10303-21;");
+
+    await executeProjectExactStepExport({
+      exactExport: createExactExportResponse(source),
+      worker: createWorker(
+        {
+          ok: true,
+          id: "project-export-step:payload",
+          op: "geometry.exportStep",
+          artifact: {
+            format: "step",
+            schema: "AP242DIS",
+            units: "mm",
+            bodyCount: 1,
+            byteLength: bytes.byteLength,
+            bytes
+          },
+          warnings: []
+        },
+        (candidate) => {
+          request = candidate;
+        }
+      )
+    });
+
+    expect(request).toBeDefined();
+    if (!request || request.payload.op !== "geometry.exportStep") return;
+    if (!("kind" in source.recipe)) {
+      throw new Error("Expected a region boolean STEP recipe.");
+    }
+    expect(request.payload.bodies[0]).toEqual({
+      bodyId: "body_region_plate",
+      bodyName: "Region plate",
+      kind: "booleanExtrudes",
+      operation: "cut",
+      materialPolicy: "regionPositiveVolumeSingleSolid",
+      target: source.recipe.target,
+      tool: source.recipe.tool
+    });
+    expect(request.payload.bodies[0]).not.toHaveProperty("profile");
+    expect(request.payload.bodies[0]).not.toHaveProperty("solidPolicy");
+  });
 });
 
 function createStepWireProfile(prefix: "add" | "cut") {

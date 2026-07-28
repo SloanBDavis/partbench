@@ -31,9 +31,10 @@ const timeoutMs = Number(
 if (args.has("--help")) {
   console.log(`Usage: node scripts/smoke-v19-browser-workflow.mjs [--json]
 
-Runs the focused V19 Gate B+C+E sketch-edit and material-region workflow
+Runs the focused V19 Gate B+C+E+F sketch-edit and material-region workflow
 against the built production App UI using trusted Chromium pointer and keyboard
-input. Gate E validates exact region references but does not create a feature.`);
+input. Gate E validates exact region references; Gate F creates an exact region
+extrude through the shared command layer.`);
   process.exit(0);
 }
 
@@ -49,7 +50,7 @@ const fixtureProjectJson = await createV19FixtureProjectJson();
 const profileDirectory = join(
   repositoryRoot,
   ".metrics",
-  `chrome-profile-v19-gate-b-c-e-${process.pid}-${Date.now()}`
+  `chrome-profile-v19-gate-b-c-e-f-${process.pid}-${Date.now()}`
 );
 let appServer;
 let browserProcess;
@@ -87,6 +88,7 @@ try {
     appUrl,
     client: browserClient,
     fixtureProjectJson,
+    readServerMetrics: () => appServer.getMetrics(),
     timeoutMs
   });
   console.log(
@@ -232,6 +234,7 @@ async function runV19BrowserWorkflow({
   appUrl,
   client,
   fixtureProjectJson,
+  readServerMetrics,
   timeoutMs: workflowTimeoutMs
 }) {
   const checks = [];
@@ -290,7 +293,9 @@ async function runV19BrowserWorkflow({
             pointerEvents: [],
             keydowns: [],
             workers: [],
-            workerTerminations: []
+            workerTerminations: [],
+            workerMessages: [],
+            workerErrors: []
           };
           const NativeWorker = window.Worker;
           function AuditedWorker(url, options) {
@@ -302,6 +307,25 @@ async function runV19BrowserWorkflow({
                 type: options?.type ?? "classic"
               }) - 1;
             const terminate = worker.terminate.bind(worker);
+            worker.addEventListener("message", (event) => {
+              const data = event.data;
+              window.__partbenchV19InputAudit.workerMessages.push({
+                workerIndex,
+                url: normalizedUrl,
+                id: data?.id,
+                ok: data?.response?.ok ?? data?.ok,
+                error: data?.response?.error ?? data?.error,
+                keys:
+                  data && typeof data === "object" ? Object.keys(data) : []
+              });
+            });
+            worker.addEventListener("error", (event) => {
+              window.__partbenchV19InputAudit.workerErrors.push({
+                workerIndex,
+                url: normalizedUrl,
+                message: event.message
+              });
+            });
             worker.terminate = () => {
               window.__partbenchV19InputAudit.workerTerminations.push({
                 workerIndex,
@@ -1244,6 +1268,8 @@ async function runV19BrowserWorkflow({
       window.__partbenchV19InputAudit.keydowns = [];
       window.__partbenchV19InputAudit.workers = [];
       window.__partbenchV19InputAudit.workerTerminations = [];
+      window.__partbenchV19InputAudit.workerMessages = [];
+      window.__partbenchV19InputAudit.workerErrors = [];
     })()`);
     await browser.activate({
       kind: "ribbonAction",
@@ -1324,13 +1350,14 @@ async function runV19BrowserWorkflow({
       `(() => {
         const panel = document.querySelector('[aria-label="Select sketch material regions"]');
         const apply = [...(panel?.querySelectorAll("button") ?? [])]
-          .find((button) => button.textContent.trim() === "Validate selection");
+          .find((button) => button.textContent.trim() === "Create extrude");
         return panel?.querySelector(".pb-region-select__summary strong")
             ?.textContent.trim() === "2 selected" &&
           panel.textContent.includes("1–256 disjoint regions") &&
-          Boolean(apply && !apply.disabled);
+          panel.textContent.includes("Target body") &&
+          Boolean(apply?.disabled);
       })()`,
-      "keyboard multi-region selection and count policy"
+      "keyboard multi-region selection and target policy"
     );
     const gateESelectionAudit = await browser.evaluate(
       `window.__partbenchV19InputAudit`
@@ -1372,14 +1399,15 @@ async function runV19BrowserWorkflow({
       const select = panel?.querySelector("select");
       const summary = panel?.querySelector(".pb-region-select__summary");
       const apply = [...(panel?.querySelectorAll("button") ?? [])]
-        .find((button) => button.textContent.trim() === "Validate selection");
+        .find((button) => button.textContent.trim() === "Create extrude");
       return {
         consumer: select?.value,
         summary: summary?.textContent.replace(/\\s+/g, " ").trim(),
         selectedCount: [...(panel?.querySelectorAll(
           '.pb-region-select__candidate[aria-pressed="true"]'
         ) ?? [])].length,
-        validationEnabled: Boolean(apply && !apply.disabled)
+        featureCommandEnabled: Boolean(apply && !apply.disabled),
+        targetPromptPresent: panel?.textContent.includes("Target body")
       };
     })()`);
     checks.push({
@@ -1389,18 +1417,42 @@ async function runV19BrowserWorkflow({
         gateEConsumerEvidence.selectedCount === 2 &&
         gateEConsumerEvidence.summary?.includes("2 selected") &&
         gateEConsumerEvidence.summary?.includes("1–256 disjoint regions") &&
-        gateEConsumerEvidence.validationEnabled,
+        gateEConsumerEvidence.targetPromptPresent &&
+        !gateEConsumerEvidence.featureCommandEnabled,
       evidence: gateEConsumerEvidence
     });
 
+    await browser.focus({
+      kind: "labelControl",
+      scope: '[aria-label="Select sketch material regions"]',
+      text: "Prospective consumer"
+    });
+    await browser.sendKey("ArrowDown");
+    await browser.activate({
+      kind: "regionCandidate",
+      text: "Outer · Circle 2"
+    });
+    await browser.waitFor(
+      `(() => {
+        const panel = document.querySelector('[aria-label="Select sketch material regions"]');
+        const select = panel?.querySelector("select");
+        const apply = [...(panel?.querySelectorAll("button") ?? [])]
+          .find((button) => button.textContent.trim() === "Validate selection");
+        return select?.value === "revolve-new-body" &&
+          panel?.querySelector(".pb-region-select__summary strong")
+            ?.textContent.trim() === "1 selected" &&
+          Boolean(apply && !apply.disabled);
+      })()`,
+      "one-region validation-only revolve selection"
+    );
     await browser.sendKey("Enter", { ctrlKey: true });
     await browser.waitFor(
       `!document.querySelector('[aria-label="Select sketch material regions"]') &&
-        document.body.textContent.includes("No feature was created.")`,
+        document.body.textContent.includes("Region revolve remains unavailable until Gate G")`,
       "exact region validation-only Apply"
     );
     const gateEValidationNotice = await browser.evaluate(
-      `document.body.textContent.includes("2 material regions are valid and ready for a future feature command. No feature was created.")`
+      `document.body.textContent.includes("One material region is valid for revolve. Region revolve remains unavailable until Gate G; no feature was created.")`
     );
     await browser.selectMode("Project");
     await browser.activate({ kind: "ribbonAction", text: "Project Files" });
@@ -1527,6 +1579,169 @@ async function runV19BrowserWorkflow({
         expectedQueryWorkerTerminationCount: 0,
         candidateReopeningsServedFromCache:
           gateEAuthorityEvidence.queryWorkers.length === 1
+      }
+    });
+
+    await browser.evaluate(`(() => {
+      window.__partbenchV19InputAudit.pointerInputs = 0;
+      window.__partbenchV19InputAudit.pointerEvents = [];
+      window.__partbenchV19InputAudit.keydowns = [];
+      window.__partbenchV19InputAudit.workers = [];
+      window.__partbenchV19InputAudit.workerTerminations = [];
+    })()`);
+    await openGateEMaterialRegions(browser);
+    await browser.activate({
+      kind: "regionCandidate",
+      text: "Outer · Rectangle 1"
+    });
+    await browser.focus({
+      kind: "labelControl",
+      scope: '[aria-label="Select sketch material regions"]',
+      text: "Prospective consumer"
+    });
+    await browser.sendKey("ArrowUp");
+    await browser.sendKey("ArrowUp");
+    await browser.waitFor(
+      `(() => {
+        const panel = document.querySelector('[aria-label="Select sketch material regions"]');
+        const select = panel?.querySelector("select");
+        const apply = [...(panel?.querySelectorAll("button") ?? [])]
+          .find((button) => button.textContent.trim() === "Create extrude");
+        return select?.value === "extrude-new-body" &&
+          panel?.textContent.includes("Depth") &&
+          panel.textContent.includes("Side") &&
+          panel.querySelector(".pb-region-select__summary strong")
+            ?.textContent.trim() === "1 selected" &&
+          Boolean(apply && !apply.disabled);
+      })()`,
+      "Gate F region extrude command readiness"
+    );
+    await browser.sendKey("Enter", { ctrlKey: true });
+    await browser.waitFor(
+      `!document.querySelector('[aria-label="Select sketch material regions"]') &&
+        document.body.textContent.includes("1 material region created an exact newBody extrude.")`,
+      "Gate F region extrude Apply"
+    );
+    await browser.waitFor(
+      `window.__partbenchV19InputAudit.workerMessages.some((message) =>
+        /geometryTessellation\\.worker/i.test(message.url) &&
+        /^occt_mesh_/.test(message.id ?? "") &&
+        message.ok === true
+      )`,
+      "Gate F real exact display geometry"
+    );
+    const gateFInputAudit = await browser.evaluate(
+      `window.__partbenchV19InputAudit`
+    );
+    const gateFTrustedKeys = gateFInputAudit.keydowns.filter(
+      (event) => event.trusted
+    );
+    checks.push({
+      id: "v19-gate-f-keyboard-region-extrude",
+      passed:
+        gateFInputAudit.pointerInputs === 0 &&
+        gateFTrustedKeys.length === gateFInputAudit.keydowns.length &&
+        gateFTrustedKeys.filter((event) => event.key === "ArrowUp").length ===
+          2 &&
+        gateFTrustedKeys.some(
+          (event) => event.key === "Enter" && event.ctrlKey
+        ),
+      evidence: {
+        pointerInputs: gateFInputAudit.pointerInputs,
+        trustedKeys: gateFTrustedKeys.map((event) => event.key),
+        controlEnter: gateFTrustedKeys.some(
+          (event) => event.key === "Enter" && event.ctrlKey
+        )
+      }
+    });
+
+    const gateFBrowserGeometryEvidence = await browser.evaluate(`(() => {
+      return {
+        geometryWorkers: window.__partbenchV19InputAudit.workers.filter(
+          (worker) => /geometryTessellation\\.worker/i.test(worker.url)
+        ),
+        exactMeshResponses:
+          window.__partbenchV19InputAudit.workerMessages.filter((message) =>
+            /geometryTessellation\\.worker/i.test(message.url) &&
+            /^occt_mesh_/.test(message.id ?? "") &&
+            message.ok === true
+          ),
+        workerErrors:
+          window.__partbenchV19InputAudit.workerErrors.filter((error) =>
+            /geometryTessellation\\.worker/i.test(error.url)
+          )
+      };
+    })()`);
+    const gateFGeometryEvidence = {
+      ...gateFBrowserGeometryEvidence,
+      server: readServerMetrics()
+    };
+    checks.push({
+      id: "v19-gate-f-exact-display",
+      passed:
+        gateFGeometryEvidence.geometryWorkers.length === 1 &&
+        gateFGeometryEvidence.exactMeshResponses.length >= 1 &&
+        gateFGeometryEvidence.workerErrors.length === 0 &&
+        gateFGeometryEvidence.server.occtWasmServedBytes > 0,
+      evidence: gateFGeometryEvidence
+    });
+
+    await browser.selectMode("Project");
+    await browser.activate({ kind: "ribbonAction", text: "Project Files" });
+    await browser.waitFor(
+      `Boolean(document.querySelector('.pb-project-mode-workspace textarea'))`,
+      "Project Files after Gate F feature"
+    );
+    const gateFAfterCreate = await prepareAndReadProject(
+      browser,
+      "feature.extrude"
+    );
+    const gateFFeatureEvidence = inspectGateFFeatureState(
+      gateEAfterEscape,
+      gateFAfterCreate
+    );
+    checks.push({
+      id: "v19-gate-f-authored-feature",
+      passed: gateFFeatureEvidence.authoredFeature,
+      evidence: gateFFeatureEvidence
+    });
+    checks.push({
+      id: "v19-gate-f-command-boundary",
+      passed: gateFFeatureEvidence.commandBoundary,
+      evidence: gateFFeatureEvidence
+    });
+
+    await browser.activate({ kind: "ariaLabel", text: "Undo" });
+    const gateFAfterUndo = await prepareAndReadProject(
+      browser,
+      "sketch.addRoundedRectangle"
+    );
+    await browser.activate({ kind: "ariaLabel", text: "Redo" });
+    const gateFAfterRedo = await prepareAndReadProject(
+      browser,
+      "feature.extrude"
+    );
+    const gateFUndoRedoPassed =
+      !gateFAfterUndo.document.features?.some(
+        (feature) => feature.id === gateFFeatureEvidence.featureId
+      ) &&
+      JSON.stringify(gateFAfterRedo.document) ===
+        JSON.stringify(gateFAfterCreate.document);
+    checks.push({
+      id: "v19-gate-f-single-step-undo-redo",
+      passed: gateFUndoRedoPassed,
+      evidence: {
+        featureRemovedByUndo: !gateFAfterUndo.document.features?.some(
+          (feature) => feature.id === gateFFeatureEvidence.featureId
+        ),
+        redoRestoredDocument:
+          JSON.stringify(gateFAfterRedo.document) ===
+          JSON.stringify(gateFAfterCreate.document),
+        bodyIdRestoredByRedo: gateFAfterRedo.document.features?.some(
+          (feature) =>
+            feature.id === gateFFeatureEvidence.featureId &&
+            feature.bodyId === gateFFeatureEvidence.bodyId
+        )
       }
     });
   } catch (error) {
@@ -2323,6 +2538,8 @@ function getKeyDefinition(key) {
       return { key: "ArrowRight", code: "ArrowRight", keyCode: 39 };
     case "ArrowDown":
       return { key: "ArrowDown", code: "ArrowDown", keyCode: 40 };
+    case "ArrowUp":
+      return { key: "ArrowUp", code: "ArrowUp", keyCode: 38 };
     case "Enter":
       return {
         key: "Enter",
@@ -2813,6 +3030,54 @@ function inspectGateCState(project) {
         Boolean(getLine(project, "offset_pointer")) &&
         Boolean(getLine(project, "offset_keyboard"))
     }
+  };
+}
+
+function inspectGateFFeatureState(before, after) {
+  const beforeFeatureCount = before.document.features?.length ?? 0;
+  const feature = after.document.features?.find(
+    (candidate) =>
+      candidate.kind === "extrude" && candidate.profile?.kind === "regions"
+  );
+  const transaction = after.history?.at(-1);
+  const operation = transaction?.ops?.[0];
+  const inputReference = transaction?.diff?.features?.inputReferences?.[0];
+  const region = feature?.profile?.regions?.[0];
+  const authoredFeature =
+    Boolean(feature?.bodyId) &&
+    feature.operationMode === "newBody" &&
+    feature.depth === 10 &&
+    feature.side === "positive" &&
+    feature.profile.regions.length === 1 &&
+    region?.outer?.kind === "entity" &&
+    region.outer.entityId === "region_outer" &&
+    region.holes?.length === 1 &&
+    region.holes[0]?.kind === "entity" &&
+    region.holes[0].entityId === "region_hole" &&
+    (after.document.features?.length ?? 0) === beforeFeatureCount + 1;
+  const commandBoundary =
+    transaction?.ops?.length === 1 &&
+    operation?.op === "feature.extrude" &&
+    operation.profile?.kind === "regions" &&
+    inputReference?.inputKind === "profile" &&
+    inputReference.after?.kind === "regions" &&
+    inputReference.affectedEntityIds?.includes("region_outer") &&
+    inputReference.affectedEntityIds?.includes("region_hole");
+
+  return {
+    authoredFeature,
+    commandBoundary,
+    beforeFeatureCount,
+    afterFeatureCount: after.document.features?.length ?? 0,
+    featureId: feature?.id,
+    bodyId: feature?.bodyId,
+    operationMode: feature?.operationMode,
+    depth: feature?.depth,
+    side: feature?.side,
+    profile: feature?.profile,
+    transactionOp: operation?.op,
+    semanticInputKind: inputReference?.after?.kind,
+    affectedEntityIds: inputReference?.affectedEntityIds
   };
 }
 

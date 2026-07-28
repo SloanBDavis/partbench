@@ -561,6 +561,7 @@ export function createRevolveProfileWorkerRequest(input: {
 type ExtrudeBooleanWorkerRequestInputBase = {
   readonly id: string;
   readonly payloadId?: string;
+  readonly materialPolicy?: "regionPositiveVolumeSingleSolid";
   readonly target: BooleanExtrudeSource;
   readonly linearDeflection?: number;
   readonly angularDeflection?: number;
@@ -592,6 +593,7 @@ export function createExtrudeBooleanWorkerRequest(
     id: input.payloadId ?? `${input.id}:payload`,
     version: "geometry-kernel.v1" as const,
     op: "geometry.booleanExtrudes" as const,
+    ...(input.materialPolicy ? { materialPolicy: input.materialPolicy } : {}),
     target: input.target,
     ...(tessellation ? { tessellation } : {})
   };

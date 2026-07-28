@@ -4,7 +4,7 @@ import type {
   FeatureId,
   FeatureInputReferenceSemanticDiffCurrent,
   SketchProfileDiagnosticCode,
-  SketchProfileRef,
+  SketchProfileRefV22,
   SketchWireProfileRef,
   PartId,
   SketchEntityId,
@@ -223,17 +223,31 @@ function mapProfileDiagnosticToBatchError(
   }
 }
 
-function profileEntityIds(profile: SketchProfileRef): readonly string[] {
-  return profile.kind === "entity"
-    ? [profile.entityId]
-    : profile.segments.map((segment) => segment.entityId);
+function profileEntityIds(profile: SketchProfileRefV22): readonly string[] {
+  if (profile.kind === "entity") return [profile.entityId];
+  if (profile.kind === "wire") {
+    return profile.segments.map((segment) => segment.entityId);
+  }
+  return profile.regions.flatMap((region) =>
+    [region.outer, ...region.holes].flatMap((loop) =>
+      loop.kind === "entity"
+        ? [loop.entityId]
+        : loop.segments.map((segment) => segment.entityId)
+    )
+  );
 }
 
 export function createProfileInputReference(
   featureId: FeatureId,
-  after: SketchProfileRef,
+  after: SketchProfileRefV22,
   orientationNormalized: boolean,
-  before?: SketchProfileRef
+  before?: SketchProfileRefV22,
+  regionNormalization?: NonNullable<
+    Extract<
+      FeatureInputReferenceSemanticDiffCurrent,
+      { readonly inputKind: "profile" }
+    >["normalization"]
+  >
 ): FeatureInputReferenceSemanticDiffCurrent {
   const affectedSketchIds = [
     ...new Set([...(before ? [before.sketchId] : []), after.sketchId])
@@ -249,22 +263,24 @@ export function createProfileInputReference(
     inputKind: "profile",
     ...(before ? { before } : {}),
     after,
-    ...(orientationNormalized && after.kind === "wire"
-      ? {
-          normalization: {
-            outerOrientationsChanged: [
-              getSketchLoopCanonicalKey({
-                kind: "wire",
-                segments: after.segments
-              })
-            ],
-            holeOrientationsChanged: [],
-            cyclicStartsChanged: [],
-            holeOrderChanged: false,
-            regionOrderChanged: false
+    ...(after.kind === "regions" && regionNormalization
+      ? { normalization: regionNormalization }
+      : orientationNormalized && after.kind === "wire"
+        ? {
+            normalization: {
+              outerOrientationsChanged: [
+                getSketchLoopCanonicalKey({
+                  kind: "wire",
+                  segments: after.segments
+                })
+              ],
+              holeOrientationsChanged: [],
+              cyclicStartsChanged: [],
+              holeOrderChanged: false,
+              regionOrderChanged: false
+            }
           }
-        }
-      : {}),
+        : {}),
     affectedSketchIds,
     affectedEntityIds
   };

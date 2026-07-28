@@ -612,8 +612,6 @@ export {
   validateWcadManifestV2Contract
 } from "./topologyIdentitySourceContract";
 
-export * from "./releaseSamples";
-
 export type {
   CadActorMetadata,
   BoxDimensions,
@@ -6865,21 +6863,6 @@ function applyOperation(
     }
 
     case "feature.extrude": {
-      if (
-        isSketchRegionsProfileRef(
-          (op as unknown as Record<string, unknown>).profile
-        )
-      ) {
-        throwValidationError({
-          code: "UNSUPPORTED_FEATURE_OPERATION",
-          message:
-            "Region feature.extrude remains disabled until the V19 region extrude geometry slice is accepted.",
-          opIndex,
-          path: operationPath(opIndex, "profile"),
-          expected: "entity or wire profile",
-          received: "regions"
-        });
-      }
       const depth = validateExtrudeDepth(op.depth, opIndex);
       const side = validateExtrudeSide(op.side, opIndex);
       const operationMode = parseExtrudeOperationMode(
@@ -6897,8 +6880,30 @@ function applyOperation(
       let profile = requestedProfile;
       let profileKind: FeatureExtrudeProfileKind | undefined;
       let profileOrientationNormalized = false;
+      let regionNormalization: ProfileInputNormalization | undefined;
 
-      if (requestedProfile.kind === "wire") {
+      if (requestedProfile.kind === "regions") {
+        const resolution = resolveRegionExtrudeProfile(
+          state,
+          requestedProfile,
+          operationMode,
+          target
+        );
+        if (!resolution.ok) {
+          throwValidationError({
+            code: resolution.code,
+            message: resolution.message,
+            opIndex,
+            sketchId: resolution.sketchId,
+            sketchEntityId: resolution.sketchEntityId,
+            path: operationPath(opIndex, "profile"),
+            expected: `feature-ready exact regions profile for ${operationMode} extrude`,
+            received: requestedProfile.kind
+          });
+        }
+        profile = resolution.profile;
+        regionNormalization = resolution.normalization;
+      } else if (requestedProfile.kind === "wire") {
         const resolution = resolveWireExtrudeProfile(
           state,
           requestedProfile,
@@ -6943,12 +6948,12 @@ function applyOperation(
       assertSupportedExtrudeOperation(
         state,
         operationMode,
-        profileKind ?? "wire",
+        profile.kind === "regions" ? "regions" : (profileKind ?? "wire"),
         target.targetBodyId,
         target.targetTopologyAnchorId,
         opIndex
       );
-      const feature: ExtrudeFeature = {
+      const feature = {
         id: op.id ?? createFeatureId(),
         kind: "extrude",
         name: normalizeOptionalFeatureName(op.name, opIndex, op.id),
@@ -6959,16 +6964,18 @@ function applyOperation(
         targetBodyId: target.targetBodyId,
         targetTopologyAnchorId: target.targetTopologyAnchorId,
         bodyId: op.bodyId ?? createBodyId()
-      };
+      } as ExtrudeFeature;
 
       addFeature(state, feature, diff, opIndex);
-      if (profile.kind === "wire") {
+      if (profile.kind !== "entity") {
         pushFeatureInputReference(
           diff,
           createProfileInputReference(
             feature.id,
             profile,
-            profileOrientationNormalized
+            profileOrientationNormalized,
+            undefined,
+            regionNormalization
           )
         );
       }
@@ -13866,26 +13873,10 @@ function updateExtrudeFeature(
     });
   }
 
-  if (
-    getStoredFeatureProfile(feature).kind === "regions" ||
-    isSketchRegionsProfileRef(
-      (op as unknown as Record<string, unknown>).profile
-    )
-  ) {
-    throwValidationError({
-      code: "FEATURE_NOT_EDITABLE",
-      message: `Region feature ${featureId} cannot be edited until the V19 region extrude geometry slice is accepted.`,
-      opIndex,
-      featureId,
-      bodyId: feature.bodyId,
-      path: operationPath(opIndex, "profile"),
-      expected: "entity or wire extrude feature",
-      received: "regions"
-    });
-  }
-
+  const storedProfileKind = getStoredFeatureProfile(feature).kind;
   const isCompositeBoolean =
-    feature.operationMode !== "newBody" && feature.profile.kind === "wire";
+    feature.operationMode !== "newBody" &&
+    (storedProfileKind === "wire" || storedProfileKind === "regions");
   if (feature.operationMode !== "newBody" && !isCompositeBoolean) {
     throwValidationError({
       code: "FEATURE_NOT_EDITABLE",
@@ -13926,24 +13917,68 @@ function updateExtrudeFeature(
 
   let profile = requestedProfile ?? feature.profile;
   let profileOrientationNormalized = false;
+  let regionNormalization: ProfileInputNormalization | undefined;
   if (
-    isCompositeBoolean &&
-    requestedProfile?.kind !== undefined &&
-    requestedProfile.kind !== "wire"
+    storedProfileKind === "regions" &&
+    requestedProfile !== undefined &&
+    requestedProfile.kind !== "regions"
   ) {
     throwValidationError({
       code: "UNSUPPORTED_FEATURE_OPERATION",
       message:
-        "Composite wire boolean extrudes cannot be changed to an entity profile until primitive boolean editing is enabled as a complete vertical slice.",
+        "Region extrude features can be retargeted only to another exact regions profile.",
       opIndex,
       featureId,
       bodyId: feature.bodyId,
       path: operationPath(opIndex, "profile"),
-      expected: "composite wire profile",
+      expected: "regions profile",
       received: requestedProfile.kind
     });
   }
-  if (profile.kind === "wire") {
+  if (
+    isCompositeBoolean &&
+    requestedProfile?.kind !== undefined &&
+    requestedProfile.kind !== storedProfileKind
+  ) {
+    throwValidationError({
+      code: "UNSUPPORTED_FEATURE_OPERATION",
+      message:
+        "Boolean extrudes cannot change their authored profile family during a source edit.",
+      opIndex,
+      featureId,
+      bodyId: feature.bodyId,
+      path: operationPath(opIndex, "profile"),
+      expected: `${storedProfileKind} profile`,
+      received: requestedProfile.kind
+    });
+  }
+  if (profile.kind === "regions") {
+    const resolution = resolveRegionExtrudeProfile(
+      state,
+      profile,
+      feature.operationMode,
+      {
+        targetBodyId: feature.targetBodyId,
+        targetTopologyAnchorId: feature.targetTopologyAnchorId,
+        ignoreFeatureId: feature.id
+      }
+    );
+    if (!resolution.ok) {
+      throwValidationError({
+        code: resolution.code,
+        message: resolution.message,
+        opIndex,
+        featureId,
+        sketchId: resolution.sketchId,
+        sketchEntityId: resolution.sketchEntityId,
+        path: operationPath(opIndex, "profile"),
+        expected: `feature-ready exact regions profile for ${feature.operationMode} extrude`,
+        received: profile.kind
+      });
+    }
+    profile = resolution.profile;
+    regionNormalization = resolution.normalization;
+  } else if (profile.kind === "wire") {
     const resolution = resolveWireExtrudeProfile(
       state,
       profile,
@@ -13991,7 +14026,7 @@ function updateExtrudeFeature(
     );
   }
 
-  const updated: ExtrudeFeature = {
+  const updated = {
     ...feature,
     profile,
     depth:
@@ -14002,14 +14037,17 @@ function updateExtrudeFeature(
       op.side === undefined
         ? feature.side
         : validateExtrudeSide(op.side, opIndex)
-  };
+  } as ExtrudeFeature;
+  const updatedProfile = getStoredFeatureProfile(updated);
 
   assertSupportedExtrudeOperation(
     state,
     updated.operationMode,
-    updated.profile.kind === "wire"
-      ? "wire"
-      : getFeatureProfileKindOrThrow(state, updated, opIndex),
+    updatedProfile.kind === "regions"
+      ? "regions"
+      : updatedProfile.kind === "wire"
+        ? "wire"
+        : getFeatureProfileKindOrThrow(state, updated, opIndex),
     updated.targetBodyId,
     updated.targetTopologyAnchorId,
     opIndex,
@@ -14026,7 +14064,8 @@ function updateExtrudeFeature(
         updated.id,
         profile,
         profileOrientationNormalized,
-        feature.profile
+        feature.profile,
+        regionNormalization
       )
     );
   }
@@ -17414,22 +17453,24 @@ function isSupportedHoleTargetProfileKind(
 }
 
 function isSupportedAddToolProfileKind(
-  profileKind: FeatureExtrudeProfileKind | "wire"
+  profileKind: FeatureExtrudeProfileKind | "wire" | "regions"
 ): boolean {
   return (
     profileKind === "rectangle" ||
     profileKind === "circle" ||
-    profileKind === "wire"
+    profileKind === "wire" ||
+    profileKind === "regions"
   );
 }
 
 function isSupportedCutToolProfileKind(
-  profileKind: FeatureExtrudeProfileKind | "wire"
+  profileKind: FeatureExtrudeProfileKind | "wire" | "regions"
 ): boolean {
   return (
     profileKind === "rectangle" ||
     profileKind === "circle" ||
-    profileKind === "wire"
+    profileKind === "wire" ||
+    profileKind === "regions"
   );
 }
 
@@ -18904,12 +18945,206 @@ function validateExtrudeDepth(value: number, opIndex?: number): number {
   });
 }
 
+type ProfileInputNormalization = NonNullable<
+  Extract<
+    FeatureInputReferenceSemanticDiffCurrent,
+    { readonly inputKind: "profile" }
+  >["normalization"]
+>;
+
+type RegionExtrudeProfileResolution =
+  | {
+      readonly ok: true;
+      readonly profile: Extract<
+        SketchProfileRefV22,
+        { readonly kind: "regions" }
+      >;
+      readonly normalization: ProfileInputNormalization;
+    }
+  | {
+      readonly ok: false;
+      readonly code: CadBatchValidationError["code"];
+      readonly message: string;
+      readonly sketchId?: string;
+      readonly sketchEntityId?: string;
+    };
+
+function resolveRegionExtrudeProfile(
+  document: MutableDocumentState,
+  profile: Extract<SketchProfileRefV22, { readonly kind: "regions" }>,
+  operationMode: FeatureExtrudeOperationMode,
+  target?: {
+    readonly targetBodyId?: string;
+    readonly targetTopologyAnchorId?: string;
+    readonly ignoreFeatureId?: string;
+  }
+): RegionExtrudeProfileResolution {
+  const sketch = document.sketches.get(profile.sketchId);
+  if (!sketch) {
+    return {
+      ok: false,
+      code: "SKETCH_NOT_FOUND",
+      message: `Sketch does not exist: ${profile.sketchId}`,
+      sketchId: profile.sketchId
+    };
+  }
+
+  const validation = validateRegisteredV22RegionSource(profile, sketch);
+  if (!validation.ok) {
+    const issue = validation.issues[0];
+    return {
+      ok: false,
+      code: mapRegionSourceIssueToBatchError(issue?.code),
+      message: issue?.message ?? "Exact regions profile is not feature-ready.",
+      sketchId: profile.sketchId,
+      ...(issue?.entityId ? { sketchEntityId: issue.entityId } : {})
+    };
+  }
+  if (
+    operationMode === "newBody" &&
+    validation.normalizedProfile.regions.length !== 1
+  ) {
+    return {
+      ok: false,
+      code: "SKETCH_REGION_CONSUMER_UNSUPPORTED",
+      message: "A new-body region extrude accepts exactly one region.",
+      sketchId: profile.sketchId
+    };
+  }
+
+  const readinessDocument = {
+    ...document,
+    features: new Map(document.features)
+  };
+  if (target?.ignoreFeatureId) {
+    readinessDocument.features.delete(target.ignoreFeatureId);
+  }
+  const consumer =
+    operationMode === "newBody"
+      ? {
+          featureKind: "extrude" as const,
+          operationMode: "newBody" as const
+        }
+      : {
+          featureKind: "extrude" as const,
+          operationMode,
+          ...(target?.targetTopologyAnchorId
+            ? { targetTopologyAnchorId: target.targetTopologyAnchorId }
+            : target?.targetBodyId
+              ? { targetBodyId: target.targetBodyId }
+              : {})
+        };
+  const readiness = createSketchProfileReadinessResponse(
+    readinessDocument,
+    {
+      query: "sketch.profileReadiness",
+      profile: validation.normalizedProfile,
+      consumer
+    },
+    "cadops.v1"
+  );
+  if (
+    readiness.status !== "ready" ||
+    readiness.normalizedProfile.kind !== "regions"
+  ) {
+    const diagnostic = readiness.diagnostics.find(
+      (candidate) => candidate.severity === "blocker"
+    );
+    return {
+      ok: false,
+      code: mapRegionReadinessDiagnosticToBatchError(diagnostic?.code),
+      message:
+        diagnostic?.message ?? "Exact regions profile is not feature-ready.",
+      sketchId: diagnostic?.sketchId ?? profile.sketchId,
+      ...(diagnostic?.entityId ? { sketchEntityId: diagnostic.entityId } : {})
+    };
+  }
+
+  return {
+    ok: true,
+    profile: validation.normalizedProfile,
+    normalization: {
+      outerOrientationsChanged:
+        validation.normalization.outerOrientationsChanged,
+      holeOrientationsChanged: validation.normalization.holeOrientationsChanged,
+      cyclicStartsChanged: validation.normalization.cyclicStartsChanged,
+      holeOrderChanged: validation.normalization.holeOrderChanged,
+      regionOrderChanged: validation.normalization.regionOrderChanged
+    }
+  };
+}
+
+function mapRegionSourceIssueToBatchError(
+  code:
+    | import("./v22RegionSourceValidation").V22RegionSourceIssueCode
+    | undefined
+): CadBatchValidationError["code"] {
+  switch (code) {
+    case "SKETCH_REGION_PROFILE_EMPTY":
+      return "SKETCH_PROFILE_EMPTY";
+    case "SKETCH_REGION_SKETCH_MISMATCH":
+      return "SCHEMA_V21_SOURCE_INVALID";
+    case "SKETCH_REGION_ENTITY_MISSING":
+      return "SKETCH_PROFILE_ENTITY_MISSING";
+    case "SKETCH_REGION_ENTITY_UNSUPPORTED":
+      return "SKETCH_PROFILE_ENTITY_UNSUPPORTED";
+    case "SKETCH_REGION_CONSTRUCTION_ENTITY":
+      return "SKETCH_PROFILE_CONSTRUCTION_ENTITY";
+    case "SKETCH_REGION_ENTITY_REPEATED":
+      return "SKETCH_PROFILE_ENTITY_REPEATED";
+    case "SKETCH_REGION_LOOP_AREA_TOO_SMALL":
+      return "SKETCH_PROFILE_AREA_TOO_SMALL";
+    case "SKETCH_REGION_LOOP_OPEN":
+    case "SKETCH_REGION_LOOP_INTERSECTION":
+    case "SKETCH_REGION_BOUNDARY_TOUCHING":
+    case "SKETCH_REGION_HOLE_OUTSIDE":
+    case "SKETCH_REGION_HOLES_OVERLAP":
+    case "SKETCH_REGION_MATERIAL_OVERLAP":
+    case "SKETCH_REGION_NESTING_UNSUPPORTED":
+    case "SKETCH_REGION_COMPLEXITY_LIMIT":
+      return code;
+    case undefined:
+      return "SKETCH_REGION_CONSUMER_UNSUPPORTED";
+  }
+}
+
+function mapRegionReadinessDiagnosticToBatchError(
+  code: import("@web-cad/cad-protocol").SketchProfileDiagnosticCode | undefined
+): CadBatchValidationError["code"] {
+  switch (code) {
+    case "SKETCH_PROFILE_ORIENTATION_NORMALIZED":
+    case undefined:
+      return "SKETCH_REGION_CONSUMER_UNSUPPORTED";
+    default:
+      return code;
+  }
+}
+
 function resolveExtrudeCommandInputProfile(
   op: Extract<CadOp, { readonly op: "feature.extrude" }>,
   opIndex?: number
-): SketchProfileRef {
+): SketchProfileRefV22 {
+  const raw = op as unknown as Record<string, unknown>;
+  if (isSketchRegionsProfileRef(raw.profile)) {
+    if (
+      Object.hasOwn(raw, "sketchId") ||
+      Object.hasOwn(raw, "entityId") ||
+      Object.hasOwn(raw, "profileKind")
+    ) {
+      throwValidationError({
+        code: "COMMAND_INPUT_AMBIGUOUS",
+        message:
+          "Provide either a regions profile or legacy sketch/entity fields, never both.",
+        opIndex,
+        path: operationPath(opIndex, "profile"),
+        expected: "one normalized regions profile",
+        received: describeReceived(op)
+      });
+    }
+    return raw.profile;
+  }
   const resolution = validateProfileInputSource(
-    op as unknown as Record<string, unknown>,
+    raw,
     operationPath(opIndex, "profile")
   );
   if (!resolution.ok || !resolution.value) {
@@ -18929,9 +19164,28 @@ function resolveExtrudeCommandInputProfile(
 function resolveUpdateExtrudeCommandInputProfile(
   op: Extract<CadOp, { readonly op: "feature.updateExtrude" }>,
   opIndex?: number
-): SketchProfileRef | undefined {
+): SketchProfileRefV22 | undefined {
+  const raw = op as unknown as Record<string, unknown>;
+  if (isSketchRegionsProfileRef(raw.profile)) {
+    if (
+      Object.hasOwn(raw, "sketchId") ||
+      Object.hasOwn(raw, "entityId") ||
+      Object.hasOwn(raw, "profileKind")
+    ) {
+      throwValidationError({
+        code: "COMMAND_INPUT_AMBIGUOUS",
+        message:
+          "Provide either a regions profile or legacy sketch/entity fields, never both.",
+        opIndex,
+        path: operationPath(opIndex, "profile"),
+        expected: "one normalized regions profile",
+        received: describeReceived(op)
+      });
+    }
+    return raw.profile;
+  }
   const resolution = validateProfileInputSource(
-    op as unknown as Record<string, unknown>,
+    raw,
     operationPath(opIndex, "profile"),
     true
   );
@@ -19177,7 +19431,7 @@ function validateExtrudeTargetBodyId(
 function assertSupportedExtrudeOperation(
   state: MutableDocumentState,
   operationMode: FeatureExtrudeOperationMode,
-  profileKind: FeatureExtrudeProfileKind | "wire",
+  profileKind: FeatureExtrudeProfileKind | "wire" | "regions",
   targetBodyId: BodyId | undefined,
   targetTopologyAnchorId?: string,
   opIndex?: number,
@@ -24971,7 +25225,8 @@ function createKernelDerivedBodyExtent(
           }
         : {}),
       ...(topology.sourceIdentity.profileKind &&
-      topology.sourceIdentity.profileKind !== "wire"
+      topology.sourceIdentity.profileKind !== "wire" &&
+      topology.sourceIdentity.profileKind !== "regions"
         ? { profileKind: topology.sourceIdentity.profileKind }
         : {}),
       ...(exactMetadata.surfaceArea !== undefined

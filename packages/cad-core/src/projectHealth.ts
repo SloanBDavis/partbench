@@ -461,12 +461,6 @@ function createAuthoredExtrudeHealth(
           )
         );
       }
-      issues.push(
-        createRegionGeometryDeferredHealthIssue(
-          feature,
-          authoredProfile.sketchId
-        )
-      );
     }
   } else if (authoredProfile.kind === "wire") {
     const resolution = resolveWireExtrudeProfile(
@@ -2477,12 +2471,13 @@ function isSupportedAddTargetProfileKind(
 }
 
 function isSupportedBooleanToolProfileKind(
-  profileKind: FeatureExtrudeProfileKind | "wire"
+  profileKind: FeatureExtrudeProfileKind | "wire" | "regions"
 ): boolean {
   return (
     profileKind === "rectangle" ||
     profileKind === "circle" ||
-    profileKind === "wire"
+    profileKind === "wire" ||
+    profileKind === "regions"
   );
 }
 
@@ -2491,9 +2486,10 @@ function isSupportedBooleanTarget(
   targetFeature: ProjectHealthFeature,
   document: ProjectHealthDocument
 ): boolean {
+  const authoredProfile = feature.profile as SketchProfileRefV22;
   const toolProfileKind =
-    feature.profile.kind === "wire"
-      ? "wire"
+    authoredProfile.kind === "wire" || authoredProfile.kind === "regions"
+      ? authoredProfile.kind
       : getProjectHealthProfileKind(document, feature);
   if (
     !toolProfileKind ||
@@ -2679,10 +2675,10 @@ function getUnsupportedBooleanFeatureMessage(
   operationMode: FeatureExtrudeOperationMode
 ): string {
   if (operationMode === "add") {
-    return "Add features currently require a rectangle, circle, or composite wire profile and an active rectangle source or topology-backed result target body.";
+    return "Add features currently require a rectangle, circle, composite wire, or explicit region profile and an active rectangle source or topology-backed result target body.";
   }
 
-  return "Cut features currently require a rectangle, circle, or composite wire profile and an active rectangle, circle, or topology-backed result target body.";
+  return "Cut features currently require a rectangle, circle, composite wire, or explicit region profile and an active rectangle, circle, or topology-backed result target body.";
 }
 
 function statusFromIssues(

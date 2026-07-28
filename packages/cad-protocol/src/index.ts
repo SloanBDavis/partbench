@@ -5957,7 +5957,11 @@ export type CadGeneratedExtrudeFaceRole =
   | "side:vMin"
   | "side:vMax"
   | "side:circular"
-  | `side:segment:${SketchEntityId}`;
+  | `side:segment:${SketchEntityId}`
+  | `region:${string}.startCap`
+  | `region:${string}.endCap`
+  | `region:${string}.outer.side:${string}`
+  | `region:${string}.hole:${string}.side:${string}`;
 
 export type CadGeneratedHoleFaceRole = "holeWall";
 
@@ -5982,7 +5986,13 @@ export type CadGeneratedExtrudeEdgeRole =
   | "end:circular"
   | `start:segment:${SketchEntityId}`
   | `end:segment:${SketchEntityId}`
-  | `longitudinal:join:${SketchEntityId}:${SketchEntityId}`;
+  | `longitudinal:join:${SketchEntityId}:${SketchEntityId}`
+  | `region:${string}.outer.startBoundary:${string}`
+  | `region:${string}.outer.endBoundary:${string}`
+  | `region:${string}.hole:${string}.startBoundary:${string}`
+  | `region:${string}.hole:${string}.endBoundary:${string}`
+  | `region:${string}.outer.longitudinal:${string}:${string}`
+  | `region:${string}.hole:${string}.longitudinal:${string}:${string}`;
 
 export type CadGeneratedHoleEdgeRole = "startRim";
 
@@ -6002,7 +6012,11 @@ export type CadGeneratedExtrudeVertexRole =
   | "end:uMax:vMin"
   | "end:uMax:vMax"
   | `start:join:${SketchEntityId}:${SketchEntityId}`
-  | `end:join:${SketchEntityId}:${SketchEntityId}`;
+  | `end:join:${SketchEntityId}:${SketchEntityId}`
+  | `region:${string}.outer.startJoin:${string}:${string}`
+  | `region:${string}.outer.endJoin:${string}:${string}`
+  | `region:${string}.hole:${string}.startJoin:${string}:${string}`
+  | `region:${string}.hole:${string}.endJoin:${string}:${string}`;
 
 export type CadGeneratedSurfaceType = "plane" | "cylinder";
 export type CadGeneratedCurveType = "line" | "circle";
@@ -6041,7 +6055,8 @@ export type CadGeneratedReferenceProfileSignature =
 
 export type CadGeneratedReferenceProfileKind =
   | FeatureExtrudeProfileKind
-  | "wire";
+  | "wire"
+  | "regions";
 
 export type CadBodyGeneratedReferenceFaceEvidence =
   | {
@@ -7339,7 +7354,7 @@ export interface CadBooleanResultTopologySourceInputs {
   readonly toolSketchId?: SketchId;
   readonly toolSketchEntityId?: SketchEntityId;
   readonly toolSketchEntityIds?: readonly SketchEntityId[];
-  readonly toolProfileKind?: FeatureExtrudeProfileKind | "wire";
+  readonly toolProfileKind?: FeatureExtrudeProfileKind | "wire" | "regions";
 }
 
 export interface CadBooleanResultTopologyReadiness {
@@ -7702,25 +7717,36 @@ export interface CadExactExportWireExtrudeSource {
 
 export type CadExactExportBooleanSource =
   | CadExactExportPrimitiveExtrudeSource
+  | CadExactExportWireExtrudeSource
   | CadExactExportBooleanResultSource;
 
 export type CadExactExportBooleanResultSource =
   | {
       readonly kind: "booleanExtrudes";
       readonly operation: "add";
+      readonly materialPolicy?: "regionPositiveVolumeSingleSolid";
       readonly target: CadExactExportBooleanSource;
-      readonly tool:
-        | CadExactExportPrimitiveExtrudeSource
-        | CadExactExportWireExtrudeSource;
+      readonly tool: CadExactExportBooleanSource;
     }
   | {
       readonly kind: "booleanExtrudes";
       readonly operation: "cut";
+      readonly materialPolicy?: "regionPositiveVolumeSingleSolid";
       readonly target: CadExactExportBooleanSource;
-      readonly tool:
-        | CadExactExportPrimitiveExtrudeSource
-        | CadExactExportWireExtrudeSource;
+      readonly tool: CadExactExportBooleanSource;
     };
+
+export interface CadExactExportRegionExtrudeBodySource extends CadExactExportExtrudeBodySourceBase {
+  readonly kind: "regionExtrude";
+  readonly sourceSketchEntityId?: never;
+  readonly sourceSketchEntityIds: readonly SketchEntityId[];
+  readonly regions: SketchRegionsProfileRef;
+  readonly recipe: CadExactExportBooleanSource;
+  readonly targetBodyId?: BodyId;
+  readonly targetTopologyAnchorId?: string;
+  readonly exactResultSourceIdentitySignature?: string;
+  readonly solidPolicy: "positiveVolumeSingleSolid";
+}
 
 export type CadExactExportExtrudeBodySource =
   | (CadExactExportExtrudeBodySourceBase & {
@@ -7822,6 +7848,7 @@ export interface CadExactExportSweepBodySource {
 
 export type CadExactExportBodySource =
   | CadExactExportExtrudeBodySource
+  | CadExactExportRegionExtrudeBodySource
   | CadExactExportRevolveBodySource
   | CadExactExportSweepBodySource;
 

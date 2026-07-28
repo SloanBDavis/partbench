@@ -14,7 +14,7 @@ export function createBooleanExtrudeRuntimeSource(
 ): DerivedGeometryBooleanExtrudeInputSource {
   return source.kind === "extrudeBoolean"
     ? createBooleanExtrudeResultRuntimeSource(source)
-    : createPrimitiveBooleanExtrudeRuntimeSource(source);
+    : createBaseBooleanExtrudeRuntimeSource(source);
 }
 
 export function createBooleanExtrudeResultRuntimeSource(
@@ -31,6 +31,9 @@ export function createBooleanExtrudeResultRuntimeSource(
     return {
       kind: "booleanExtrudes",
       operation: "cut",
+      ...(source.materialPolicy
+        ? { materialPolicy: source.materialPolicy }
+        : {}),
       target,
       tool: createBooleanExtrudeToolRuntimeSource(source.tool)
     };
@@ -39,6 +42,7 @@ export function createBooleanExtrudeResultRuntimeSource(
   return {
     kind: "booleanExtrudes",
     operation: "add",
+    ...(source.materialPolicy ? { materialPolicy: source.materialPolicy } : {}),
     target,
     tool: createBooleanExtrudeToolRuntimeSource(source.tool)
   };
@@ -50,8 +54,9 @@ export function getBooleanExtrudeRuntimeSourceError(
   if (source.target.kind === "extrudeBoolean") {
     const targetError = getBooleanExtrudeRuntimeSourceError(source.target);
     if (targetError) return targetError;
-  } else if (source.target.profile.kind === "wire") {
-    return "Boolean result targets must resolve to a supported primitive or topology-backed result body, not a composite new-body wire extrude.";
+  }
+  if (source.tool.kind === "extrudeBoolean") {
+    return getBooleanExtrudeRuntimeSourceError(source.tool);
   }
 
   return undefined;
@@ -75,13 +80,28 @@ export function createPrimitiveBooleanExtrudeRuntimeSource(
   };
 }
 
-function createBooleanExtrudeToolRuntimeSource(
+function createBaseBooleanExtrudeRuntimeSource(
   source: DerivedExtrudeGeometrySource
+): DerivedGeometryBooleanExtrudeInputSource {
+  return source.profile.kind === "wire"
+    ? createWireBooleanExtrudeRuntimeSource(source)
+    : createPrimitiveBooleanExtrudeRuntimeSource(source);
+}
+
+function createBooleanExtrudeToolRuntimeSource(
+  source: DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource
 ): DerivedGeometryBooleanExtrudeToolInputSource {
+  return source.kind === "extrudeBoolean"
+    ? createBooleanExtrudeResultRuntimeSource(source)
+    : createBaseBooleanExtrudeRuntimeSource(source);
+}
+
+function createWireBooleanExtrudeRuntimeSource(
+  source: DerivedExtrudeGeometrySource
+): DerivedGeometryBooleanExtrudeInputSource {
   if (source.profile.kind !== "wire") {
     return createPrimitiveBooleanExtrudeRuntimeSource(source);
   }
-
   return {
     sketchPlane: source.sketchPlane,
     profile: source.profile,

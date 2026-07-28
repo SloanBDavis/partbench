@@ -811,9 +811,18 @@ function createExactPatternSeedRuntimeSource(
   source: DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource
 ): DerivedGeometryPatternSeedSource {
   const runtimeSource = createBooleanExtrudeRuntimeSource(source);
-  return "profile" in runtimeSource
-    ? { kind: "extrude", ...runtimeSource }
-    : runtimeSource;
+  if ("profile" in runtimeSource) {
+    if (runtimeSource.profile.kind === "wire") {
+      throw new Error(
+        "Resolved wire roots are not supported as standalone pattern seeds."
+      );
+    }
+    return {
+      kind: "extrude",
+      ...runtimeSource
+    } as DerivedGeometryPatternSeedSource;
+  }
+  return runtimeSource;
 }
 
 function createCadExactMetadata(
@@ -1067,6 +1076,7 @@ function getExactMetadataEdgeFinishProfileSource(
   if (
     target.operation === "cut" &&
     role.startsWith("longitudinal:") &&
+    target.tool.kind === "extrude" &&
     target.tool.profile.kind === "rectangle"
   ) {
     return target.tool;

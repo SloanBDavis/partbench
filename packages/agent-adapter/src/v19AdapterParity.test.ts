@@ -311,6 +311,78 @@ describe("V19 agent adapter parity", () => {
     });
   });
 
+  it("commits the same explicit region extrude command through the agent boundary", () => {
+    const engine = createRegionEngine();
+    const adapter = new CadOpsAgentAdapter(engine);
+    const response = adapter.execute(
+      parseCadOpsAgentRequest({
+        requestId: "region_extrude_commit",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        permissions: { allowCommit: true },
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "feature.extrude",
+              id: "feature_region_agent",
+              bodyId: "body_region_agent",
+              profile: {
+                kind: "regions",
+                sketchId: "sketch_regions",
+                regions: [
+                  {
+                    outer: { kind: "entity", entityId: "outer" },
+                    holes: [{ kind: "entity", entityId: "hole" }]
+                  }
+                ]
+              },
+              operationMode: "newBody",
+              depth: 5,
+              side: "symmetric"
+            }
+          ]
+        }
+      })
+    );
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "region_extrude_commit",
+      mode: "commit",
+      createdFeatureIds: ["feature_region_agent"],
+      createdBodyIds: ["body_region_agent"],
+      review: {
+        operations: [
+          expect.objectContaining({
+            op: "feature.extrude",
+            featureId: "feature_region_agent",
+            bodyId: "body_region_agent",
+            operationMode: "newBody",
+            sketchId: "sketch_regions",
+            label: expect.stringContaining("explicit regions (1)")
+          })
+        ]
+      }
+    });
+    expect(engine.getDocument().features.get("feature_region_agent")).toEqual(
+      expect.objectContaining({
+        profile: {
+          kind: "regions",
+          sketchId: "sketch_regions",
+          regions: [
+            {
+              outer: { kind: "entity", entityId: "outer" },
+              holes: [{ kind: "entity", entityId: "hole" }]
+            }
+          ]
+        },
+        depth: 5,
+        side: "symmetric"
+      })
+    );
+  });
+
   it("rejects candidate mutation tokens and non-model-space region inputs", () => {
     for (const extra of [
       { candidateToken: "opaque-mutation-token" },

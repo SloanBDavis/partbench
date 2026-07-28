@@ -319,7 +319,7 @@ describe("V17 composite add web integration", () => {
     expect(snapshot.entries[0]).not.toHaveProperty("metadata");
   });
 
-  it("routes a committed composite wire cut and still rejects wire targets", async () => {
+  it("routes committed composite wire cuts and recursive wire-root targets", async () => {
     const add = resolveAddSource();
     const cut = {
       ...add,
@@ -353,9 +353,16 @@ describe("V17 composite add web integration", () => {
       target: cut.tool,
       tool: cut.target.kind === "extrude" ? cut.target : cut.target.tool
     } satisfies DerivedBooleanExtrudeGeometrySource;
-    expect(() => createBooleanExtrudeResultRuntimeSource(wireTarget)).toThrow(
-      "composite new-body wire extrude"
-    );
+    expect(createBooleanExtrudeResultRuntimeSource(wireTarget)).toMatchObject({
+      kind: "booleanExtrudes",
+      operation: "cut",
+      target: expect.objectContaining({
+        profile: expect.objectContaining({ kind: "wire" })
+      }),
+      tool: expect.objectContaining({
+        profile: expect.objectContaining({ kind: "rectangle" })
+      })
+    });
   });
 });
 
@@ -372,7 +379,7 @@ function resolveAddSource(
   if (!source || source.kind !== "extrudeBoolean") {
     throw new Error("Expected one active composite add result source.");
   }
-  if (source.tool.profile.kind !== "wire") {
+  if (source.tool.kind !== "extrude" || source.tool.profile.kind !== "wire") {
     throw new Error("Expected a composite wire add tool.");
   }
   return source;
@@ -544,6 +551,7 @@ function resolveAddCutChainSource(): DerivedBooleanExtrudeGeometrySource {
     source.operation !== "cut" ||
     source.target.kind !== "extrudeBoolean" ||
     source.target.operation !== "add" ||
+    source.tool.kind !== "extrude" ||
     source.tool.profile.kind !== "wire"
   ) {
     throw new Error("Expected one active recursive add-to-cut wire result.");
@@ -696,6 +704,9 @@ function editAddToolDepth(
   source: DerivedBooleanExtrudeGeometrySource,
   depth: number
 ): DerivedBooleanExtrudeGeometrySource {
+  if (source.tool.kind !== "extrude") {
+    throw new Error("Expected extrude add tool fixture.");
+  }
   return { ...source, tool: { ...source.tool, depth } };
 }
 

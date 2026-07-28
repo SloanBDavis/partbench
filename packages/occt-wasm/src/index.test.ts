@@ -3120,6 +3120,163 @@ describe("occt-wasm", () => {
     OCCT_WASM_TEST_TIMEOUT_MS
   );
 
+  it(
+    "rebuilds a region-with-hole boolean tool through mesh, metadata, topology, checkpoint, and STEP",
+    async () => {
+      const regionTool = {
+        kind: "booleanExtrudes" as const,
+        operation: "cut" as const,
+        materialPolicy: "regionPositiveVolumeSingleSolid" as const,
+        target: {
+          sketchPlane: "XY" as const,
+          profile: {
+            kind: "rectangle" as const,
+            center: [3, 0] as const,
+            width: 6,
+            height: 6
+          },
+          depth: 4
+        },
+        tool: {
+          sketchPlane: "XY" as const,
+          profile: {
+            kind: "circle" as const,
+            center: [3, 0] as const,
+            radius: 1
+          },
+          depth: 4
+        }
+      };
+      const source = {
+        kind: "booleanExtrudes" as const,
+        operation: "add" as const,
+        materialPolicy: "regionPositiveVolumeSingleSolid" as const,
+        target: {
+          sketchPlane: "XY" as const,
+          profile: {
+            kind: "rectangle" as const,
+            center: [0, 0] as const,
+            width: 4,
+            height: 4
+          },
+          depth: 4
+        },
+        tool: regionTool
+      };
+      const [mesh, metadata, topology, checkpoint, step] = await Promise.all([
+        createOcctBooleanExtrudeMesh(source),
+        createOcctExactBodyMetadata({ source }),
+        createOcctExactTopologySnapshot({ source }),
+        createOcctExactTopologyCheckpointPayload({
+          checkpointId: "checkpoint_region_tool",
+          bodyId: "body_region_tool",
+          source
+        }),
+        createOcctStepExport({
+          units: "mm",
+          bodies: [{ ...source, bodyId: "body_region_tool" }]
+        })
+      ]);
+
+      expect(mesh.primitive).toBe("boolean");
+      expect(metadata.volume).toBeCloseTo(
+        4 * 4 * 4 + 6 * 6 * 4 - 2 * 4 * 4 - Math.PI * 4,
+        4
+      );
+      expect(metadata.topologyCounts.solidCount).toBe(1);
+      expect(metadata.topologyCounts.faceCount).toBe(
+        topology.entityCounts.faceCount
+      );
+      expect(checkpoint.topologySnapshot.signature).toBe(topology.signature);
+      expect(checkpoint.brepByteLength).toBeGreaterThan(1000);
+      expect(step.bodyCount).toBe(1);
+      expect(step.byteLength).toBeGreaterThan(1000);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "enforces positive-volume and one-solid policy only for region boolean recipes",
+    async () => {
+      const target = {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "rectangle" as const,
+          center: [0, 0] as const,
+          width: 4,
+          height: 4
+        },
+        depth: 4
+      };
+      const disjointTool = {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "circle" as const,
+          center: [20, 0] as const,
+          radius: 1
+        },
+        depth: 4
+      };
+      const splitTool = {
+        sketchPlane: "XY" as const,
+        profile: slotWireProfile,
+        depth: 4
+      };
+      const completeRemovalTool = {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "rectangle" as const,
+          center: [0, 0] as const,
+          width: 4,
+          height: 4
+        },
+        depth: 4
+      };
+      const materialPolicy = "regionPositiveVolumeSingleSolid" as const;
+
+      for (const input of [
+        {
+          operation: "add" as const,
+          materialPolicy,
+          target,
+          tool: disjointTool
+        },
+        {
+          operation: "cut" as const,
+          materialPolicy,
+          target,
+          tool: disjointTool
+        },
+        {
+          operation: "cut" as const,
+          materialPolicy,
+          target,
+          tool: splitTool
+        },
+        {
+          operation: "cut" as const,
+          materialPolicy,
+          target,
+          tool: completeRemovalTool
+        }
+      ]) {
+        await expect(createOcctBooleanExtrudeMesh(input)).rejects.toMatchObject(
+          {
+            code: "SKETCH_REGION_RESULT_NOT_SINGLE_SOLID"
+          }
+        );
+      }
+
+      const legacyNoOp = await createOcctBooleanExtrudeMesh({
+        operation: "cut",
+        target,
+        tool: disjointTool
+      });
+      expect(legacyNoOp.primitive).toBe("boolean");
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
   it("rejects cyclic and over-deep direct OCCT boolean recipes before allocation", () => {
     const cyclic = {
       kind: "booleanExtrudes" as const,

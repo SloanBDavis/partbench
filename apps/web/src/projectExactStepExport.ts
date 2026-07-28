@@ -120,6 +120,14 @@ function mapExactExportSourceToWorkerBody(
     };
   }
 
+  if ("kind" in source && source.kind === "regionExtrude") {
+    return {
+      bodyId: source.bodyId,
+      ...(source.bodyName ? { bodyName: source.bodyName } : {}),
+      ...mapExactExportBooleanSource(source.recipe)
+    };
+  }
+
   if (isCadExactExportBooleanBodySource(source)) {
     return {
       bodyId: source.bodyId,
@@ -159,6 +167,9 @@ function mapExactExportBooleanResultSource(
     return {
       kind: "booleanExtrudes",
       operation: "cut",
+      ...(source.materialPolicy
+        ? { materialPolicy: source.materialPolicy }
+        : {}),
       target,
       tool: mapExactExportBooleanTool(source.tool)
     };
@@ -167,6 +178,7 @@ function mapExactExportBooleanResultSource(
   return {
     kind: "booleanExtrudes",
     operation: "add",
+    ...(source.materialPolicy ? { materialPolicy: source.materialPolicy } : {}),
     target,
     tool: mapExactExportBooleanTool(source.tool)
   };
@@ -175,14 +187,9 @@ function mapExactExportBooleanResultSource(
 function mapExactExportBooleanSource(
   source: CadExactExportBooleanSource
 ): BooleanExtrudeSource {
-  return isCadExactExportBooleanResultSource(source)
-    ? mapExactExportBooleanResultSource(source)
-    : mapExactExportPrimitiveSource(source);
-}
-
-function mapExactExportBooleanTool(
-  source: CadExactExportPrimitiveExtrudeSource | CadExactExportWireExtrudeSource
-): BooleanExtrudeToolSource {
+  if (isCadExactExportBooleanResultSource(source)) {
+    return mapExactExportBooleanResultSource(source);
+  }
   if (isCadExactExportWireSource(source)) {
     const profile: ResolvedPlanarWireProfile = source.profile;
     return {
@@ -192,8 +199,13 @@ function mapExactExportBooleanTool(
       side: source.side
     };
   }
-
   return mapExactExportPrimitiveSource(source);
+}
+
+function mapExactExportBooleanTool(
+  source: CadExactExportBooleanSource
+): BooleanExtrudeToolSource {
+  return mapExactExportBooleanSource(source);
 }
 
 function mapExactExportPrimitiveSource(

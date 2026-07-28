@@ -710,6 +710,45 @@ history baseline.
   Gates F and G still require their complete real-OCCT geometry, metadata,
   topology, STEP, UI, adapter, storage, and named-workflow proof.
 
+### 2026-07-28 — Slice F region extrude and Gate F accepted
+
+- `feature.extrude` now accepts exact V22 `regions` profiles for the approved
+  rows: one-region `newBody`, followed by canonical multi-region `add` and
+  `cut`. New-body rejects multiple material regions, while add/cut require
+  their existing target-body or topology-anchor contracts.
+- The browser geometry recipe builds exact entity or resolved-wire faces,
+  subtracts every canonical hole, and applies multi-region boolean tools in
+  canonical order. Real OCCT execution enforces one resulting solid and a
+  positive material-volume effect at every region step, with structured
+  `SKETCH_REGION_RESULT_NOT_SINGLE_SOLID` failures rather than accepting
+  disconnected or ineffective results.
+- Region result bodies now carry stable source-semantic face/edge references,
+  exact metadata and mass properties, topology identities and health,
+  checkpoint payloads, recursive boolean source evidence, and exact STEP
+  export. The proof covers a rounded plate with a slot void, a four-hole
+  flange, and a topology-anchor-backed two-region cut.
+- The Material Regions collector owns depth, side, operation mode, and target
+  body inputs and commits through the shared `feature.extrude` command. Agent
+  and MCP guards expose the same exact profile envelope and do not add a
+  separate geometry path. Region revolve remains validation-only until Gate G.
+- Exact region policy and source-recipe construction stay out of the empty
+  browser graph. The validation registry loads before a region commit or V22
+  project import, while exact source construction loads only after an
+  authoritative document contains model sources. Release-sample fixtures are
+  excluded from the browser entry without changing the default cad-core API.
+- `pnpm smoke:v19-profile-regions-workflow` passes its 5/5 real-geometry
+  checks. The production browser workflow passes all 29 Gate B/C/E/F checks,
+  including trusted keyboard creation, authored V22 source and semantic diff,
+  successful `occt_mesh` worker output with independently observed OCCT WASM
+  bytes, and single-step undo/redo.
+- The immutable bundle audit passes with 407,933-byte critical JavaScript
+  gzip, 6,608-byte critical CSS gzip, 559,164-byte all-UI JavaScript gzip,
+  261,366-byte command worker gzip, 83,773-byte geometry worker gzip, and the
+  exact 13,808,536-byte OCCT WASM cap.
+- Gate F is accepted. G1 region revolve is the next unblocked node; no region
+  revolve, Gate H audit, Gate I release proof, or completed V19 release is
+  claimed by this checkpoint.
+
 ## Completion audit
 
 Release completion requires affirmative evidence for each numbered Must item

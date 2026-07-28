@@ -168,6 +168,22 @@ function createAuthoredFeatureTopology(
     );
   }
 
+  if (
+    isSketchRegionsProfileRef(
+      (feature as unknown as { readonly profile?: unknown }).profile
+    )
+  ) {
+    return createRegionExtrudeTopology(
+      document,
+      bodyId,
+      units,
+      ownerPartId,
+      feature,
+      nextVisitedBodyIds,
+      nextResultNodeCount
+    );
+  }
+
   if (feature.profile.kind === "wire") {
     return createCompositeExtrudeTopology(
       document,
@@ -494,6 +510,113 @@ function createCompositeExtrudeTopology(
   };
 }
 
+function createRegionExtrudeTopology(
+  document: GeneratedReferencesDocument,
+  bodyId: BodyId,
+  units: DocumentUnits,
+  ownerPartId: PartId,
+  storedFeature: Extract<GeneratedReferencesFeature, { kind: "extrude" }>,
+  visitedBodyIds: ReadonlySet<BodyId>,
+  traversedResultNodeCount: number
+): CadBodyTopologySnapshot {
+  const profile = (
+    storedFeature as unknown as {
+      readonly profile: import("@web-cad/cad-protocol").SketchRegionsProfileRef;
+    }
+  ).profile;
+  const sourceIdentityInput = {
+    ...createRegionFeatureSourceIdentityInput(
+      document,
+      bodyId,
+      units,
+      ownerPartId,
+      storedFeature,
+      visitedBodyIds,
+      traversedResultNodeCount
+    ),
+    profileKind: "regions" as const
+  };
+  const sourceIdentity: CadBodyTopologySourceIdentity = {
+    ...sourceIdentityInput,
+    signature: createTopologySourceSignature(sourceIdentityInput)
+  };
+  const references = createBodyGeneratedReferences(
+    document,
+    bodyId,
+    ownerPartId
+  );
+  if (storedFeature.operationMode === "newBody" && references) {
+    return {
+      bodyId,
+      units,
+      status: "healthy",
+      sourceKind: "authoredExtrude",
+      sourceIdentity,
+      topologyModel: "semantic-source",
+      topologyAvailable: true,
+      exactGeometryAvailable: false,
+      exactMeasurementsAvailable: false,
+      measurementConfidence: "none",
+      faceCount: references.faces.length,
+      edgeCount: references.edges.length,
+      vertexCount: references.vertices.length,
+      issues: []
+    };
+  }
+  const targetLineage = createCompositeTargetLineage(
+    document,
+    storedFeature.targetBodyId,
+    storedFeature.targetTopologyAnchorId,
+    units,
+    ownerPartId,
+    visitedBodyIds,
+    traversedResultNodeCount
+  );
+  const topology = createUnsupportedTopologySnapshot({
+    bodyId,
+    units,
+    sourceIdentity,
+    status: targetLineage.targetTraversalLimitExceeded
+      ? "unsupported"
+      : storedFeature.operationMode === "newBody"
+        ? "stale"
+        : "ambiguous",
+    issues: [
+      ...(targetLineage.targetTraversalLimitExceeded
+        ? [createBooleanTargetLineageLimitIssue(bodyId, storedFeature.id)]
+        : []),
+      {
+        code:
+          storedFeature.operationMode === "newBody"
+            ? "STALE_BODY_TOPOLOGY"
+            : "AMBIGUOUS_BODY_TOPOLOGY",
+        message:
+          storedFeature.operationMode === "newBody"
+            ? "Region extrude source topology is stale because its canonical loop references cannot be resolved."
+            : "Region boolean topology retains checkpoint-backed target lineage while split, merged, and intersection roles remain intentionally ambiguous.",
+        bodyId,
+        featureId: storedFeature.id
+      }
+    ]
+  });
+  if (storedFeature.operationMode === "newBody") return topology;
+  return {
+    ...topology,
+    booleanTopology: createBooleanResultTopologyReadiness({
+      bodyId,
+      feature: storedFeature,
+      profileRef: {
+        sketchId: profile.sketchId,
+        entityIds: getProfileEntityReferences(profile).map(
+          (reference) => reference.entityId
+        )
+      },
+      profileKind: "regions",
+      derivedExactValidationStatus: "notProvided"
+    })
+  };
+}
+
 function createCompositeTargetLineage(
   document: GeneratedReferencesDocument,
   targetBodyId: BodyId | undefined,
@@ -583,7 +706,7 @@ function createBooleanResultTopologyReadiness(input: {
     readonly entityId?: string;
     readonly entityIds?: readonly string[];
   };
-  readonly profileKind: "rectangle" | "circle" | "wire";
+  readonly profileKind: "rectangle" | "circle" | "wire" | "regions";
   readonly derivedExactValidationStatus: CadBooleanResultTopologyDerivedExactValidationStatus;
 }): CadBooleanResultTopologyReadiness {
   const operationMode = input.feature.operationMode === "add" ? "add" : "cut";
@@ -728,7 +851,7 @@ function createBooleanExactValidationDiagnostic(
 function createBooleanRoleReadiness(input: {
   readonly bodyId: BodyId;
   readonly operationMode: "add" | "cut";
-  readonly profileKind: FeatureExtrudeProfileKind | "wire";
+  readonly profileKind: FeatureExtrudeProfileKind | "wire" | "regions";
 }): readonly CadBooleanResultTopologyRoleReadiness[] {
   const common: CadBooleanResultTopologyRoleReadiness[] = [
     {
@@ -847,7 +970,7 @@ function createBooleanRoleReadiness(input: {
 
 function createAddedWallFaceRoleReadiness(
   bodyId: BodyId,
-  profileKind: FeatureExtrudeProfileKind | "wire"
+  profileKind: FeatureExtrudeProfileKind | "wire" | "regions"
 ): readonly CadBooleanResultTopologyRoleReadiness[] {
   if (profileKind === "rectangle") {
     return ["side:uMin", "side:uMax", "side:vMin", "side:vMax"].map(
@@ -886,7 +1009,7 @@ function createAddedWallFaceRoleReadiness(
 
 function createAddedCapFaceRoleReadiness(
   bodyId: BodyId,
-  profileKind: FeatureExtrudeProfileKind | "wire"
+  profileKind: FeatureExtrudeProfileKind | "wire" | "regions"
 ): readonly CadBooleanResultTopologyRoleReadiness[] {
   if (profileKind === "rectangle") {
     return [
@@ -924,7 +1047,7 @@ function createAddedCapFaceRoleReadiness(
 
 function createCutWallFaceRoleReadiness(
   bodyId: BodyId,
-  profileKind: FeatureExtrudeProfileKind | "wire"
+  profileKind: FeatureExtrudeProfileKind | "wire" | "regions"
 ): readonly CadBooleanResultTopologyRoleReadiness[] {
   if (profileKind === "rectangle") {
     return ["side:uMin", "side:uMax", "side:vMin", "side:vMax"].map(
@@ -982,7 +1105,7 @@ function createCommandReadyBooleanFaceRole(input: {
 
 function createCutWallProfileEdgeRoleReadiness(
   bodyId: BodyId,
-  profileKind: FeatureExtrudeProfileKind | "wire"
+  profileKind: FeatureExtrudeProfileKind | "wire" | "regions"
 ): readonly CadBooleanResultTopologyRoleReadiness[] {
   if (profileKind === "rectangle") {
     return [
@@ -1016,7 +1139,7 @@ function createCutWallProfileEdgeRoleReadiness(
 
 function createCutStartRimEdgeRoleReadiness(
   bodyId: BodyId,
-  profileKind: FeatureExtrudeProfileKind | "wire"
+  profileKind: FeatureExtrudeProfileKind | "wire" | "regions"
 ): readonly CadBooleanResultTopologyRoleReadiness[] {
   if (profileKind === "circle") {
     return [
@@ -1043,7 +1166,7 @@ function createCutStartRimEdgeRoleReadiness(
 
 function createCutTerminalRimEdgeRoleReadiness(
   bodyId: BodyId,
-  profileKind: FeatureExtrudeProfileKind | "wire"
+  profileKind: FeatureExtrudeProfileKind | "wire" | "regions"
 ): readonly CadBooleanResultTopologyRoleReadiness[] {
   if (profileKind === "circle") {
     return [
@@ -1093,7 +1216,7 @@ function createCommandReadyBooleanEdgeRole(input: {
 
 function createAddProfileEdgeRoleReadiness(
   bodyId: BodyId,
-  profileKind: FeatureExtrudeProfileKind | "wire"
+  profileKind: FeatureExtrudeProfileKind | "wire" | "regions"
 ): readonly CadBooleanResultTopologyRoleReadiness[] {
   if (profileKind === "rectangle") {
     return ["end:uMin", "end:uMax", "end:vMin", "end:vMax"].map((sourceRole) =>
@@ -1489,6 +1612,7 @@ function createRegionFeatureSourceIdentityInput(
     sourceSketchEntityIds: sourceReferences.map(
       (reference) => reference.entityId
     ),
+    profileKind: "regions",
     ...(feature.kind === "extrude"
       ? {
           targetBodyId: feature.targetBodyId,
@@ -1694,6 +1818,23 @@ function applyDerivedExactMetadata(
       wireOperationMode === "cut"
         ? topologyCounts !== undefined && topologyCounts.solidCount > 0
         : topologyCounts?.solidCount === 1;
+    const regionSolidCountIsValid = topologyCounts?.solidCount === 1;
+    if (
+      topology.sourceIdentity.profileKind === "regions" &&
+      !regionSolidCountIsValid
+    ) {
+      return applyDerivedExactMetadataIssue(topology, {
+        code: "INVALID_EXACT_GEOMETRY_RESULT",
+        status: "kernel-failed",
+        message:
+          "Region extrude exact metadata must prove exactly one connected solid.",
+        expected: "solidCount=1",
+        received:
+          topologyCounts === undefined
+            ? "topologyCounts missing"
+            : `solidCount=${topologyCounts.solidCount}`
+      });
+    }
     if (
       topology.sourceIdentity.profileKind === "wire" &&
       !wireSolidCountIsValid
@@ -1714,6 +1855,8 @@ function applyDerivedExactMetadata(
     }
     const exactTopologyReady =
       isSweep ||
+      (topology.sourceIdentity.profileKind === "regions" &&
+        regionSolidCountIsValid) ||
       (topology.sourceIdentity.profileKind === "wire" && wireSolidCountIsValid);
 
     return {

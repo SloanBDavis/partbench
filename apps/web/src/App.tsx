@@ -65,6 +65,7 @@ import type {
   SketchRegionsProfileRef,
   Vec2
 } from "@web-cad/cad-protocol";
+import type { SketchRegionFeatureDraft } from "./modes/sketch/SketchRegionSelectionPanel";
 import { createDerivedGeometryRuntime } from "@web-cad/derived-geometry-runtime";
 import { emitGeometryDiagnosticEvent } from "./geometryDiagnosticEvents";
 import {
@@ -295,11 +296,6 @@ import {
   readProjectExactStepExport,
   readProjectExportReadiness
 } from "./projectExactExportQueries";
-import {
-  createAuthoredFeatureDerivedGeometrySources,
-  createDerivedGeometrySourcesFromDocument
-} from "./derivedGeometrySources";
-import { preflightHoleGeometryCommand } from "./holeGeometryPreflight";
 import {
   createBodyMeasurementRows,
   formatArea,
@@ -542,6 +538,21 @@ function ensureCadV19RegionSourceValidationPolicy(): Promise<void> {
 }
 
 const derivedGeometryEnabled = __PARTBENCH_DERIVED_GEOMETRY_ENABLED__;
+
+type DerivedGeometrySourceBuilders = Pick<
+  typeof import("./derivedGeometrySources"),
+  | "createAuthoredFeatureDerivedGeometrySources"
+  | "createDerivedGeometrySourcesFromDocument"
+>;
+
+let derivedGeometrySourceBuildersPromise:
+  | Promise<DerivedGeometrySourceBuilders>
+  | undefined;
+
+function loadDerivedGeometrySourceBuilders(): Promise<DerivedGeometrySourceBuilders> {
+  derivedGeometrySourceBuildersPromise ??= import("./derivedGeometrySources");
+  return derivedGeometrySourceBuildersPromise;
+}
 const supportedOpfsCacheArtifactVersions = [
   DERIVED_MESH_CACHE_ARTIFACT_VERSION
 ] as const;
@@ -1858,6 +1869,20 @@ export function App() {
   const [document, setDocument] = useState<CadDocument>(() =>
     engine.getDocument()
   );
+  const derivedGeometrySourceBuildersRef = useRef<
+    DerivedGeometrySourceBuilders | undefined
+  >(undefined);
+  const [derivedGeometrySourceBuilders, setDerivedGeometrySourceBuilders] =
+    useState<DerivedGeometrySourceBuilders | undefined>(undefined);
+  const getDerivedGeometrySourceBuilders =
+    useCallback(async (): Promise<DerivedGeometrySourceBuilders> => {
+      const builders =
+        derivedGeometrySourceBuildersRef.current ??
+        (await loadDerivedGeometrySourceBuilders());
+      derivedGeometrySourceBuildersRef.current = builders;
+      setDerivedGeometrySourceBuilders((current) => current ?? builders);
+      return builders;
+    }, []);
   const documentPublicationResolversRef = useRef(
     new Map<CadDocument, Set<() => void>>()
   );
@@ -2284,24 +2309,42 @@ export function App() {
     },
     []
   );
-  const acceptValidatedRegionSelection = useCallback(
-    (
-      profile: SketchRegionsProfileRef,
-      response: SketchProfileRegionValidateQueryResponse
-    ) => {
-      setCommandError(undefined);
+  async function acceptValidatedRegionSelection(
+    profile: SketchRegionsProfileRef,
+    response: SketchProfileRegionValidateQueryResponse,
+    featureDraft: SketchRegionFeatureDraft
+  ): Promise<boolean> {
+    setCommandError(undefined);
+    if (featureDraft.consumer === "revolve-new-body") {
       setCommandNotice(
-        `${profile.regions.length} ${
-          profile.regions.length === 1
-            ? "material region is"
-            : "material regions are"
-        } valid and ready for a future feature command. No feature was created. ${response.materialAreas.length} material-area ${
-          response.materialAreas.length === 1 ? "result was" : "results were"
-        } verified.`
+        `One material region is valid for revolve. Region revolve remains unavailable until Gate G; no feature was created. ${response.materialAreas.length} material area was verified.`
       );
-    },
-    []
-  );
+      return true;
+    }
+    await ensureCadV19RegionSourceValidationPolicy();
+    const result = await commitOps(
+      [
+        {
+          op: "feature.extrude",
+          profile,
+          operationMode: featureDraft.operationMode,
+          ...(featureDraft.targetBodyId
+            ? { targetBodyId: featureDraft.targetBodyId }
+            : {}),
+          depth: featureDraft.depth,
+          side: featureDraft.side
+        }
+      ],
+      (commandResponse) => commandResponse.createdBodyIds?.[0] ?? selectedId
+    );
+    if (!result?.ok) return false;
+    setCommandNotice(
+      `${profile.regions.length} ${
+        profile.regions.length === 1 ? "material region" : "material regions"
+      } created an exact ${featureDraft.operationMode} extrude.`
+    );
+    return true;
+  }
   const commandWorkerLifecycleRef = useRef(0);
   useEffect(() => {
     const lifecycle = commandWorkerLifecycleRef.current + 1;
@@ -2477,17 +2520,20 @@ export function App() {
   );
   const featureGeometrySources = useMemo(
     () =>
-      createAuthoredFeatureDerivedGeometrySources(
-        projectStructure.features,
-        sketches,
-        sourcePlacementFacesByKey,
-        document.namedReferences,
-        document.topologyIdentity,
-        document,
-        bodySourceIdentitySignatures
-      ),
+      derivedGeometrySourceBuilders
+        ? derivedGeometrySourceBuilders.createAuthoredFeatureDerivedGeometrySources(
+            projectStructure.features,
+            sketches,
+            sourcePlacementFacesByKey,
+            document.namedReferences,
+            document.topologyIdentity,
+            document,
+            bodySourceIdentitySignatures
+          )
+        : [],
     [
       bodySourceIdentitySignatures,
+      derivedGeometrySourceBuilders,
       document,
       projectStructure.features,
       sourcePlacementFacesByKey,
@@ -2524,14 +2570,17 @@ export function App() {
   );
   const derivedGeometrySources = useMemo<readonly DerivedGeometrySource[]>(
     () =>
-      createDerivedGeometrySourcesFromDocument(
-        document,
-        projectStructure.features,
-        sourcePlacementFacesByKey,
-        bodySourceIdentitySignatures
-      ),
+      derivedGeometrySourceBuilders
+        ? derivedGeometrySourceBuilders.createDerivedGeometrySourcesFromDocument(
+            document,
+            projectStructure.features,
+            sourcePlacementFacesByKey,
+            bodySourceIdentitySignatures
+          )
+        : [],
     [
       bodySourceIdentitySignatures,
+      derivedGeometrySourceBuilders,
       document,
       projectStructure.features,
       sourcePlacementFacesByKey
@@ -4415,6 +4464,16 @@ export function App() {
   }, [refreshProjectOpfsCache, workbenchUi.mode]);
 
   useEffect(() => {
+    if (
+      !derivedGeometryEnabled ||
+      (document.objects.size === 0 && projectStructure.features.length === 0)
+    ) {
+      return;
+    }
+    void getDerivedGeometrySourceBuilders();
+  }, [document, getDerivedGeometrySourceBuilders, projectStructure.features]);
+
+  useEffect(() => {
     if (!derivedGeometryEnabled) {
       return;
     }
@@ -4452,12 +4511,11 @@ export function App() {
     getDerivedGeometryService
   ]);
 
-  function syncDocument(
+  async function syncDocument(
     nextSelectedId: string | null | undefined = selectedId
   ): Promise<void> {
     const nextDocument = engine.getDocument();
     const nextStructure = readProjectStructure();
-    reconcileDerivedGeometry(nextDocument, nextStructure);
     return new Promise((resolve) => {
       const resolvers =
         documentPublicationResolversRef.current.get(nextDocument) ?? new Set();
@@ -4661,32 +4719,6 @@ export function App() {
       ...(intent.kind === "sketchEntity" ? { entityId: intent.entityId } : {}),
       ...(point ? { point } : {})
     }));
-  }
-
-  function reconcileDerivedGeometry(
-    nextDocument: CadDocument,
-    nextStructure = readProjectStructure()
-  ) {
-    if (!derivedGeometryEnabled) {
-      return;
-    }
-
-    const nextSketchExtrudeBodies = nextStructure.bodies.filter(
-      (body) => body.source.type === "sketchExtrudeFeature"
-    );
-    const nextGeneratedFacesByKey = readGeneratedFaceReferencesByKey(
-      nextSketchExtrudeBodies
-    );
-
-    const nextDerivedGeometrySources = createDerivedGeometrySourcesFromDocument(
-      nextDocument,
-      nextStructure.features,
-      nextGeneratedFacesByKey,
-      readBodySourceIdentitySignatures(
-        nextStructure.bodies.map((body) => body.id)
-      )
-    );
-    getDerivedGeometryService().reconcile(nextDerivedGeometrySources);
   }
 
   async function commitOps(
@@ -5362,6 +5394,8 @@ export function App() {
       setCommandNotice(undefined);
 
       try {
+        const { preflightHoleGeometryCommand } =
+          await import("./holeGeometryPreflight");
         const preflight = await preflightHoleGeometryCommand({
           engine,
           ops: [op],
@@ -7431,7 +7465,7 @@ export function App() {
         });
         setCommandNotice(
           actionId === "sketch.regions"
-            ? "Discover exact whole-loop material cells, choose a prospective consumer, and validate the explicit selection. No feature is created yet."
+            ? "Discover exact whole-loop material cells, choose an extrude operation, and apply the explicit region profile through the command layer."
             : getSketchEditorActionNotice(
                 isSketchCurveEditUiAction(actionId) ||
                   actionId === "sketch.slot" ||
@@ -8364,6 +8398,12 @@ export function App() {
                     selectedRegionCandidateKeys={selectedRegionCandidateKeys}
                     hoveredRegionCandidateKey={hoveredRegionCandidateKey}
                     regionConsumer={regionConsumer}
+                    regionTargetBodies={projectStructure.bodies
+                      .filter((body) => !body.consumedByFeatureId)
+                      .map((body) => ({
+                        id: body.id,
+                        label: body.name ?? body.id
+                      }))}
                     onSelectSketch={focusSketch}
                     onSelectEntity={focusSketch}
                     onCreateSketch={(form) => void createSketch(form)}

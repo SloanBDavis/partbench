@@ -105,6 +105,7 @@ export interface DerivedGeometryExtrudePlacementFrame {
 
 export type DerivedGeometryBooleanExtrudeInputSource =
   | DerivedGeometryBooleanExtrudePrimitiveInputSource
+  | DerivedGeometryBooleanExtrudeWireInputSource
   | DerivedGeometryBooleanExtrudeResultInputSource;
 
 export interface DerivedGeometryBooleanExtrudeWireInputSource {
@@ -116,8 +117,7 @@ export interface DerivedGeometryBooleanExtrudeWireInputSource {
 }
 
 export type DerivedGeometryBooleanExtrudeToolInputSource =
-  | DerivedGeometryBooleanExtrudePrimitiveInputSource
-  | DerivedGeometryBooleanExtrudeWireInputSource;
+  DerivedGeometryBooleanExtrudeInputSource;
 
 export interface DerivedGeometryBooleanExtrudePrimitiveInputSource {
   readonly sketchPlane: "XY" | "XZ" | "YZ";
@@ -134,6 +134,7 @@ export type DerivedGeometryBooleanExtrudeResultInputSource =
 export interface DerivedGeometryBooleanExtrudeAddResultInputSource {
   readonly kind: "booleanExtrudes";
   readonly operation: "add";
+  readonly materialPolicy?: "regionPositiveVolumeSingleSolid";
   readonly target: DerivedGeometryBooleanExtrudeInputSource;
   readonly tool: DerivedGeometryBooleanExtrudeToolInputSource;
 }
@@ -141,12 +142,14 @@ export interface DerivedGeometryBooleanExtrudeAddResultInputSource {
 export interface DerivedGeometryBooleanExtrudeCutResultInputSource {
   readonly kind: "booleanExtrudes";
   readonly operation: "cut";
+  readonly materialPolicy?: "regionPositiveVolumeSingleSolid";
   readonly target: DerivedGeometryBooleanExtrudeInputSource;
   readonly tool: DerivedGeometryBooleanExtrudeToolInputSource;
 }
 
 interface DerivedGeometryBooleanExtrudeInputBase {
   readonly id: string;
+  readonly materialPolicy?: "regionPositiveVolumeSingleSolid";
   readonly target: DerivedGeometryBooleanExtrudeInputSource;
 }
 

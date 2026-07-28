@@ -543,12 +543,8 @@ describe("V19 region query dispatch", () => {
           featureId: "feature_region",
           profileKind: "regions",
           sourceEntityIds: ["outer", "hole"],
-          status: "unsupported",
-          issues: [
-            expect.objectContaining({
-              code: "UNSUPPORTED_BODY_REFERENCES"
-            })
-          ]
+          status: "healthy",
+          issues: []
         }
       ]
     });
@@ -563,7 +559,7 @@ describe("V19 region query dispatch", () => {
     expect(editability).toMatchObject({
       ok: true,
       query: "feature.editability",
-      status: "blocked"
+      status: "editable"
     });
 
     for (const query of [
@@ -729,9 +725,6 @@ describe("V19 region query dispatch", () => {
       diagnostics: expect.arrayContaining([
         expect.objectContaining({
           code: "SKETCH_REGION_HOLE_OUTSIDE"
-        }),
-        expect.objectContaining({
-          code: "FEATURE_EDIT_UNSUPPORTED"
         })
       ])
     });
@@ -747,12 +740,8 @@ describe("V19 region query dispatch", () => {
       authoredExtrudes: [
         {
           featureId: "feature_region",
-          status: "unsupported",
-          issues: [
-            expect.objectContaining({
-              code: "UNSUPPORTED_BODY_REFERENCES"
-            })
-          ]
+          status: "healthy",
+          issues: []
         }
       ]
     });
@@ -986,7 +975,245 @@ describe("V19 region query dispatch", () => {
     );
   });
 
-  it("keeps region feature create and update commands disabled until geometry slices", () => {
+  it("commits normalized region extrude source with semantic diff and undo/redo", () => {
+    const profile: SketchRegionsProfileRef = {
+      kind: "regions",
+      sketchId: "sketch_1",
+      regions: [
+        {
+          outer: { kind: "entity", entityId: "outer" },
+          holes: [{ kind: "entity", entityId: "hole" }]
+        }
+      ]
+    };
+    const createEngine = createRegionEngine();
+    const result = createEngine.applyBatch([
+      {
+        op: "feature.extrude",
+        id: "region_extrude",
+        bodyId: "region_body",
+        profile,
+        operationMode: "newBody",
+        depth: 5,
+        side: "positive"
+      }
+    ]);
+    expect(result.transaction.diff.features?.created).toEqual([
+      expect.objectContaining({
+        id: "region_extrude",
+        profile
+      })
+    ]);
+    expect(result.transaction.diff.features?.inputReferences).toEqual([
+      expect.objectContaining({
+        featureId: "region_extrude",
+        inputKind: "profile",
+        after: profile,
+        normalization: {
+          outerOrientationsChanged: [],
+          holeOrientationsChanged: [],
+          cyclicStartsChanged: [],
+          holeOrderChanged: false,
+          regionOrderChanged: false
+        },
+        affectedSketchIds: ["sketch_1"],
+        affectedEntityIds: ["outer", "hole"]
+      })
+    ]);
+    expect(exportCadProject(createEngine).document.features[0]).toMatchObject({
+      id: "region_extrude",
+      profile,
+      operationMode: "newBody",
+      depth: 5,
+      side: "positive",
+      bodyId: "region_body"
+    });
+
+    createEngine.undo();
+    expect(exportCadProject(createEngine).document.features).toHaveLength(0);
+    createEngine.redo();
+    expect(exportCadProject(createEngine).document.features[0]).toMatchObject({
+      id: "region_extrude",
+      profile
+    });
+
+    createEngine.applyBatch([
+      {
+        op: "feature.updateExtrude",
+        id: "region_extrude",
+        depth: 6,
+        side: "symmetric"
+      }
+    ]);
+    expect(exportCadProject(createEngine).document.features[0]).toMatchObject({
+      id: "region_extrude",
+      profile,
+      depth: 6,
+      side: "symmetric"
+    });
+  });
+
+  it("publishes stable region roles, one-solid topology policy, and the recursive STEP recipe", () => {
+    const engine = createImportedRegionFeatureEngine();
+    const references = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.generatedReferences",
+        bodyId: "body_region"
+      }
+    });
+    expect(references.ok).toBe(true);
+    expect(references.query).toBe("body.generatedReferences");
+    if (!references.ok || references.query !== "body.generatedReferences") {
+      return;
+    }
+    expect(references.body.profileKind).toBe("regions");
+    expect(references.faces).toHaveLength(7);
+    expect(references.edges).toHaveLength(14);
+    expect(references.vertices).toHaveLength(8);
+    expect(references.faces.map((face) => face.role)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(".startCap"),
+        expect.stringContaining(".endCap"),
+        expect.stringContaining(".outer.side:outer:uMin"),
+        expect.stringContaining(".hole:"),
+        expect.stringContaining(".side:hole:closedBoundary")
+      ])
+    );
+    expect(references.edges.map((edge) => edge.role)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(".outer.startBoundary:outer:uMin"),
+        expect.stringContaining(".outer.longitudinal:"),
+        expect.stringContaining(".hole:"),
+        expect.stringContaining(".endBoundary:hole:closedBoundary")
+      ])
+    );
+
+    const topology = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.topology", bodyId: "body_region" }
+    });
+    expect(topology).toMatchObject({
+      ok: true,
+      topology: {
+        status: "healthy",
+        sourceIdentity: { profileKind: "regions" },
+        topologyModel: "semantic-source",
+        faceCount: 7,
+        edgeCount: 14,
+        vertexCount: 8
+      }
+    });
+    const exactExport = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "project.exportExact",
+        format: "step",
+        bodyIds: ["body_region"]
+      }
+    });
+    expect(exactExport).toMatchObject({
+      ok: true,
+      status: "supported",
+      exportableBodyCount: 1,
+      exportSources: [
+        {
+          bodyId: "body_region",
+          kind: "regionExtrude",
+          solidPolicy: "positiveVolumeSingleSolid",
+          recipe: {
+            kind: "booleanExtrudes",
+            operation: "cut",
+            materialPolicy: "regionPositiveVolumeSingleSolid",
+            target: { profile: { kind: "rectangle" } },
+            tool: { profile: { kind: "circle" } }
+          }
+        }
+      ]
+    });
+  });
+
+  it("enforces the bounded region extrude consumer matrix at commit", () => {
+    const engine = createRegionEngine();
+    const oneRegion: SketchRegionsProfileRef = {
+      kind: "regions",
+      sketchId: "sketch_1",
+      regions: [
+        {
+          outer: { kind: "entity", entityId: "outer" },
+          holes: [{ kind: "entity", entityId: "hole" }]
+        }
+      ]
+    };
+    const multipleRegions: SketchRegionsProfileRef = {
+      kind: "regions",
+      sketchId: "sketch_1",
+      regions: [
+        oneRegion.regions[0],
+        {
+          outer: { kind: "entity", entityId: "other" },
+          holes: []
+        }
+      ]
+    };
+
+    expect(() =>
+      engine.applyBatch([
+        {
+          op: "feature.extrude",
+          id: "invalid_multi_new",
+          profile: multipleRegions,
+          operationMode: "newBody",
+          depth: 5,
+          side: "positive"
+        }
+      ])
+    ).toThrow(/exactly one region/);
+
+    engine.applyBatch([
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "target_profile",
+        center: [0, 0],
+        width: 10,
+        height: 10
+      },
+      {
+        op: "feature.extrude",
+        id: "target_feature",
+        bodyId: "target_body",
+        sketchId: "sketch_1",
+        entityId: "target_profile",
+        operationMode: "newBody",
+        depth: 5,
+        side: "positive"
+      }
+    ]);
+    engine.applyBatch([
+      {
+        op: "feature.extrude",
+        id: "region_add",
+        bodyId: "region_add_body",
+        profile: multipleRegions,
+        operationMode: "add",
+        targetBodyId: "target_body",
+        depth: 5,
+        side: "positive"
+      }
+    ]);
+    expect(exportCadProject(engine).document.features.at(-1)).toMatchObject({
+      id: "region_add",
+      profile: {
+        ...multipleRegions,
+        regions: [multipleRegions.regions[1], multipleRegions.regions[0]]
+      },
+      operationMode: "add",
+      targetBodyId: "target_body"
+    });
+  });
+
+  it("keeps region revolve disabled while region extrude updates are enabled", () => {
     const profile: SketchRegionsProfileRef = {
       kind: "regions",
       sketchId: "sketch_1",
@@ -1011,18 +1238,6 @@ describe("V19 region query dispatch", () => {
     expect(() =>
       createEngine.applyBatch([
         {
-          op: "feature.extrude",
-          id: "blocked_extrude",
-          profile,
-          operationMode: "newBody",
-          depth: 5,
-          side: "positive"
-        }
-      ])
-    ).toThrow(/Region feature\.extrude remains disabled/);
-    expect(() =>
-      createEngine.applyBatch([
-        {
           op: "feature.revolve",
           id: "blocked_revolve",
           profile,
@@ -1038,15 +1253,18 @@ describe("V19 region query dispatch", () => {
     ).toThrow(/Region feature\.revolve remains disabled/);
 
     const extrude = createImportedRegionFeatureEngine();
-    expect(() =>
-      extrude.applyBatch([
-        {
-          op: "feature.updateExtrude",
-          id: "feature_region",
-          depth: 6
-        }
-      ])
-    ).toThrow(/cannot be edited.*region extrude geometry slice/);
+    extrude.applyBatch([
+      {
+        op: "feature.updateExtrude",
+        id: "feature_region",
+        depth: 6
+      }
+    ]);
+    expect(exportCadProject(extrude).document.features[0]).toMatchObject({
+      id: "feature_region",
+      profile,
+      depth: 6
+    });
 
     const revolve = createImportedRegionFeatureEngine("revolve");
     expect(() =>

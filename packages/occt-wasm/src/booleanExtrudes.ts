@@ -33,15 +33,14 @@ export type OcctExtrudeProfile =
 
 export type OcctBooleanExtrudeSource =
   | OcctBooleanExtrudePrimitiveSource
+  | OcctBooleanExtrudeWireSource
   | OcctBooleanExtrudeResultSource;
 
 export type OcctBooleanExtrudeWireSource = OcctWireExtrudeSource & {
   readonly placementFrame?: never;
 };
 
-export type OcctBooleanExtrudeToolSource =
-  | OcctBooleanExtrudePrimitiveSource
-  | OcctBooleanExtrudeWireSource;
+export type OcctBooleanExtrudeToolSource = OcctBooleanExtrudeSource;
 
 export interface OcctBooleanExtrudePrimitiveSource {
   readonly sketchPlane: OcctSketchPlane;
@@ -58,6 +57,7 @@ export type OcctBooleanExtrudeResultSource =
 export interface OcctBooleanExtrudeAddResultSource {
   readonly kind: "booleanExtrudes";
   readonly operation: "add";
+  readonly materialPolicy?: "regionPositiveVolumeSingleSolid";
   readonly target: OcctBooleanExtrudeSource;
   readonly tool: OcctBooleanExtrudeToolSource;
 }
@@ -65,6 +65,7 @@ export interface OcctBooleanExtrudeAddResultSource {
 export interface OcctBooleanExtrudeCutResultSource {
   readonly kind: "booleanExtrudes";
   readonly operation: "cut";
+  readonly materialPolicy?: "regionPositiveVolumeSingleSolid";
   readonly target: OcctBooleanExtrudeSource;
   readonly tool: OcctBooleanExtrudeToolSource;
 }
@@ -77,6 +78,7 @@ export interface OcctBooleanExtrudePlacementFrame {
 
 interface OcctBooleanExtrudeInputBase {
   readonly target: OcctBooleanExtrudeSource;
+  readonly materialPolicy?: "regionPositiveVolumeSingleSolid";
   readonly linearDeflection?: number;
   readonly angularDeflection?: number;
 }
@@ -117,6 +119,15 @@ export interface OcctBooleanExtrudeShapeFactories {
 interface OcctBooleanExtrudeBuildContext {
   readonly visited: WeakSet<object>;
   readonly depth: number;
+}
+
+class OcctRegionResultError extends Error {
+  readonly code = "SKETCH_REGION_RESULT_NOT_SINGLE_SOLID";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "OcctRegionResultError";
+  }
 }
 
 export async function createOcctBooleanExtrudeMeshWithLoader(
@@ -166,9 +177,13 @@ export function createOcctBooleanExtrudeMeshWithShapeFactories(
     range = new oc.Message_ProgressRange_1();
     let target: TopoDS_Shape | undefined;
     let tool: TopoDS_Shape | undefined;
+    let targetVolume: number | undefined;
     try {
       target = targetShape.Shape();
       tool = toolShape.Shape();
+      if (input.materialPolicy === "regionPositiveVolumeSingleSolid") {
+        targetVolume = readShapeVolume(oc, target);
+      }
       booleanOperation =
         input.operation === "add"
           ? new oc.BRepAlgoAPI_Fuse_3(target, tool, range)
@@ -187,7 +202,23 @@ export function createOcctBooleanExtrudeMeshWithShapeFactories(
 
     try {
       resultShape = booleanOperation.Shape();
-      assertValidBooleanResult(oc, resultShape, input.operation);
+      assertValidBooleanResult(
+        oc,
+        resultShape,
+        input.operation,
+        input.materialPolicy
+      );
+      if (
+        input.materialPolicy === "regionPositiveVolumeSingleSolid" &&
+        targetVolume !== undefined
+      ) {
+        assertPositiveRegionMaterialChange(
+          oc,
+          resultShape,
+          input.operation,
+          targetVolume
+        );
+      }
       mesh = new oc.BRepMesh_IncrementalMesh_2(
         resultShape,
         linearDeflection,
@@ -215,8 +246,11 @@ export function createOcctBooleanExtrudeMeshWithShapeFactories(
 }
 
 function assertSupportedBooleanInput(input: OcctBooleanExtrudeInput): void {
-  const tool = input.tool as OcctBooleanExtrudeToolSource;
-  if (tool.profile.kind === "wire" && tool.placementFrame !== undefined) {
+  if (
+    !isOcctBooleanExtrudeResultSource(input.tool) &&
+    input.tool.profile.kind === "wire" &&
+    input.tool.placementFrame !== undefined
+  ) {
     throw new Error(
       "Composite wire boolean tools use their resolved profile frame and cannot also provide placementFrame."
     );
@@ -261,6 +295,10 @@ function assertBooleanExtrudeRecipeWithinLimit(
     visited: context.visited,
     depth: context.depth + 1
   });
+  assertBooleanExtrudeRecipeWithinLimit(source.tool, {
+    visited: context.visited,
+    depth: context.depth + 1
+  });
 }
 
 function makeBooleanExtrudeShapeWithContext(
@@ -281,22 +319,28 @@ function makeBooleanExtrudeShapeWithContext(
     return makeBooleanExtrudeResultShape(oc, source, context);
   }
 
-  return makePrimitiveBooleanExtrudeShape(oc, source);
+  return isOcctBooleanExtrudeWireSource(source)
+    ? makeWireExtrudeShape(oc, source)
+    : makePrimitiveBooleanExtrudeShape(oc, source);
 }
 
 export function makeBooleanExtrudeToolShape(
   oc: OpenCascadeInstance,
   source: OcctBooleanExtrudeToolSource
 ): OcctBooleanExtrudeShapeBuilder {
-  return isOcctBooleanExtrudeWireSource(source)
-    ? makeWireExtrudeShape(oc, source)
-    : makePrimitiveBooleanExtrudeShape(oc, source);
+  return isOcctBooleanExtrudeResultSource(source)
+    ? makeBooleanExtrudeShape(oc, source)
+    : isOcctBooleanExtrudeWireSource(source)
+      ? makeWireExtrudeShape(oc, source)
+      : makePrimitiveBooleanExtrudeShape(oc, source);
 }
 
 function isOcctBooleanExtrudeWireSource(
-  source: OcctBooleanExtrudeToolSource
+  source: OcctBooleanExtrudeSource
 ): source is OcctBooleanExtrudeWireSource {
-  return source.profile.kind === "wire";
+  return (
+    !isOcctBooleanExtrudeResultSource(source) && source.profile.kind === "wire"
+  );
 }
 
 function isOcctBooleanExtrudeResultSource(
@@ -347,9 +391,13 @@ function makeBooleanExtrudeResultShape(
     range = new oc.Message_ProgressRange_1();
     let target: TopoDS_Shape | undefined;
     let tool: TopoDS_Shape | undefined;
+    let targetVolume: number | undefined;
     try {
       target = targetShape.Shape();
       tool = toolShape.Shape();
+      if (source.materialPolicy === "regionPositiveVolumeSingleSolid") {
+        targetVolume = readShapeVolume(oc, target);
+      }
       operation =
         source.operation === "add"
           ? new oc.BRepAlgoAPI_Fuse_3(target, tool, range)
@@ -363,7 +411,23 @@ function makeBooleanExtrudeResultShape(
 
     const result = operation.Shape();
     try {
-      assertValidBooleanResult(oc, result, source.operation);
+      assertValidBooleanResult(
+        oc,
+        result,
+        source.operation,
+        source.materialPolicy
+      );
+      if (
+        source.materialPolicy === "regionPositiveVolumeSingleSolid" &&
+        targetVolume !== undefined
+      ) {
+        assertPositiveRegionMaterialChange(
+          oc,
+          result,
+          source.operation,
+          targetVolume
+        );
+      }
     } finally {
       result.delete();
     }
@@ -396,14 +460,25 @@ function assertBooleanBuilderCompleted(
 function assertValidBooleanResult(
   oc: OpenCascadeInstance,
   shape: TopoDS_Shape,
-  operation: OcctBooleanOperation
+  operation: OcctBooleanOperation,
+  materialPolicy?: "regionPositiveVolumeSingleSolid"
 ): void {
   if (shape.IsNull()) {
+    if (materialPolicy === "regionPositiveVolumeSingleSolid") {
+      throw new OcctRegionResultError(
+        `Region ${operation} returned a null or completely removed result.`
+      );
+    }
     throw new Error(`Open CASCADE boolean ${operation} returned a null shape.`);
   }
   const analyzer = new oc.BRepCheck_Analyzer(shape, true, false);
   try {
     if (!analyzer.IsValid_2()) {
+      if (materialPolicy === "regionPositiveVolumeSingleSolid") {
+        throw new OcctRegionResultError(
+          `Region ${operation} returned an invalid result shape.`
+        );
+      }
       throw new Error(
         `Open CASCADE boolean ${operation} returned an invalid shape.`
       );
@@ -411,8 +486,44 @@ function assertValidBooleanResult(
   } finally {
     analyzer.delete();
   }
-  if (operation === "add") {
+  if (materialPolicy === "regionPositiveVolumeSingleSolid") {
+    const solidCount = countSolids(oc, shape);
+    if (solidCount !== 1) {
+      throw new OcctRegionResultError(
+        `Region ${operation} must return exactly one connected solid; received ${solidCount}.`
+      );
+    }
+  } else if (operation === "add") {
     assertBooleanAddSolidCount(countSolids(oc, shape));
+  }
+}
+
+function assertPositiveRegionMaterialChange(
+  oc: OpenCascadeInstance,
+  result: TopoDS_Shape,
+  operation: OcctBooleanOperation,
+  targetVolume: number
+): void {
+  const resultVolume = readShapeVolume(oc, result);
+  const materialChange =
+    operation === "add"
+      ? resultVolume - targetVolume
+      : targetVolume - resultVolume;
+  const tolerance = Math.max(1e-9, targetVolume * 1e-12);
+  if (!Number.isFinite(materialChange) || materialChange <= tolerance) {
+    throw new OcctRegionResultError(
+      `Region ${operation} must change the current solid by positive volume; received ${materialChange}.`
+    );
+  }
+}
+
+function readShapeVolume(oc: OpenCascadeInstance, shape: TopoDS_Shape): number {
+  const properties = new oc.GProp_GProps_1();
+  try {
+    oc.BRepGProp.VolumeProperties_1(shape, properties, true, false, false);
+    return Math.abs(properties.Mass());
+  } finally {
+    properties.delete();
   }
 }
 

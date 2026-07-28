@@ -3,15 +3,18 @@ import {
   createV19GateBBrowserWorkflowResult,
   createV19GateCBrowserWorkflowResult,
   createV19GateEBrowserWorkflowResult,
+  createV19GateFBrowserWorkflowResult,
   createV19BrowserWorkflowResult,
   formatV19GateBBrowserWorkflowSummary,
   formatV19GateCBrowserWorkflowSummary,
   formatV19GateEBrowserWorkflowSummary,
+  formatV19GateFBrowserWorkflowSummary,
   formatV19BrowserWorkflowSummary,
   V19_GATE_B_BROWSER_REQUIRED_CHECK_IDS,
   V19_GATE_C_BROWSER_ACTION_IDS,
   V19_GATE_C_BROWSER_REQUIRED_CHECK_IDS,
   V19_GATE_E_BROWSER_REQUIRED_CHECK_IDS,
+  V19_GATE_F_BROWSER_REQUIRED_CHECK_IDS,
   V19_BROWSER_REQUIRED_CHECK_IDS
 } from "./v19-browser-workflow.mjs";
 
@@ -61,7 +64,8 @@ describe("V19 combined browser workflow result", () => {
     expect(V19_BROWSER_REQUIRED_CHECK_IDS).toEqual([
       ...V19_GATE_B_BROWSER_REQUIRED_CHECK_IDS,
       ...V19_GATE_C_BROWSER_REQUIRED_CHECK_IDS,
-      ...V19_GATE_E_BROWSER_REQUIRED_CHECK_IDS
+      ...V19_GATE_E_BROWSER_REQUIRED_CHECK_IDS,
+      ...V19_GATE_F_BROWSER_REQUIRED_CHECK_IDS
     ]);
 
     const result = createV19BrowserWorkflowResult({
@@ -72,9 +76,9 @@ describe("V19 combined browser workflow result", () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(result.workflowVersion).toBe("partbench.v19-browser-workflow.v3");
+    expect(result.workflowVersion).toBe("partbench.v19-browser-workflow.v4");
     expect(formatV19BrowserWorkflowSummary(result)).toContain(
-      "24/24 checks passed"
+      "29/29 checks passed"
     );
   });
 });
@@ -195,5 +199,34 @@ describe("V19 Gate E browser workflow result", () => {
         failure.startsWith("Missing required check:")
       )
     ).toBe(true);
+  });
+});
+
+describe("V19 Gate F browser workflow result", () => {
+  it("freezes the region-to-feature command, exact display, and undo/redo proof", () => {
+    expect(V19_GATE_F_BROWSER_REQUIRED_CHECK_IDS).toEqual([
+      "v19-gate-f-keyboard-region-extrude",
+      "v19-gate-f-authored-feature",
+      "v19-gate-f-command-boundary",
+      "v19-gate-f-exact-display",
+      "v19-gate-f-single-step-undo-redo"
+    ]);
+  });
+
+  it("accepts one passing result for every stable required check", () => {
+    const result = createV19GateFBrowserWorkflowResult({
+      checks: V19_GATE_F_BROWSER_REQUIRED_CHECK_IDS.map((id) => ({
+        id,
+        passed: true
+      }))
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.workflowVersion).toBe(
+      "partbench.v19-gate-f-browser-workflow.v1"
+    );
+    expect(formatV19GateFBrowserWorkflowSummary(result)).toContain(
+      "5/5 checks passed"
+    );
   });
 });

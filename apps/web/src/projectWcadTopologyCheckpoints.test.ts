@@ -826,6 +826,41 @@ describe("projectWcadTopologyCheckpoints", () => {
     });
   });
 
+  it("routes a region-with-hole exact recipe into checkpoint generation", async () => {
+    const engine = createRegionCheckpointEngine();
+    const runtime = createCheckpointRuntime();
+    const payloads = await createProjectWcadTopologyCheckpointPayloadInputs({
+      document: engine.getDocument(),
+      features: readProjectStructure(engine).features,
+      sketches: readSketches(engine),
+      runtime
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(runtime.exactTopologyCheckpointPayload).toHaveBeenCalledWith(
+      expect.objectContaining({
+        checkpointId: "checkpoint_region_1",
+        bodyId: "body_region_1",
+        source: {
+          kind: "booleanExtrudes",
+          operation: "cut",
+          materialPolicy: "regionPositiveVolumeSingleSolid",
+          target: expect.objectContaining({
+            profile: expect.objectContaining({ kind: "rectangle" })
+          }),
+          tool: expect.objectContaining({
+            profile: expect.objectContaining({ kind: "circle" })
+          })
+        }
+      })
+    );
+    expect(payloads[0]).toMatchObject({
+      checkpointId: "checkpoint_region_1",
+      bodyId: "body_region_1",
+      sourceFeatureId: "feature_region_1"
+    });
+  });
+
   it("returns structured diagnostics and does not mutate when selected reference evidence is ambiguous", async () => {
     const engine = createRectangleExtrudeEngine();
     const runtime = createCheckpointRuntime({
@@ -1327,6 +1362,66 @@ function createRectangleCheckpointEngine(): CadEngine {
       sourceFeatureId: "feat_rect_1",
       sourceSemanticRole: "end cap",
       signatureHash: "checkpoint_rect_1_end_face_signature"
+    }
+  ]);
+
+  return engine;
+}
+
+function createRegionCheckpointEngine(): CadEngine {
+  const engine = new CadEngine();
+
+  engine.applyBatch([
+    {
+      op: "sketch.create",
+      id: "sketch_region_1",
+      name: "Region sketch",
+      plane: "XY"
+    },
+    {
+      op: "sketch.addRectangle",
+      sketchId: "sketch_region_1",
+      id: "region_outer",
+      center: [0, 0],
+      width: 20,
+      height: 12
+    },
+    {
+      op: "sketch.addCircle",
+      sketchId: "sketch_region_1",
+      id: "region_hole",
+      center: [0, 0],
+      radius: 2
+    },
+    {
+      op: "feature.extrude",
+      id: "feature_region_1",
+      bodyId: "body_region_1",
+      profile: {
+        kind: "regions",
+        sketchId: "sketch_region_1",
+        regions: [
+          {
+            outer: { kind: "entity", entityId: "region_outer" },
+            holes: [{ kind: "entity", entityId: "region_hole" }]
+          }
+        ]
+      },
+      operationMode: "newBody",
+      depth: 3,
+      side: "positive"
+    },
+    {
+      op: "topology.checkpoint.create",
+      checkpointId: "checkpoint_region_1",
+      bodyId: "body_region_1",
+      sourceFeatureId: "feature_region_1",
+      sourceIdentity: {
+        algorithm: "partbench-source-v1",
+        sha256:
+          "1919191919191919191919191919191919191919191919191919191919191919"
+      },
+      status: "active"
     }
   ]);
 

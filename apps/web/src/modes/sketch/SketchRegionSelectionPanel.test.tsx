@@ -11,7 +11,7 @@ import {
 } from "./SketchRegionSelectionPanel";
 
 describe("V19 material region collector", () => {
-  it("renders a keyboard-complete paginated selection-only editor", () => {
+  it("renders a keyboard-complete paginated region-to-extrude editor", () => {
     const markup = render();
 
     expect(markup).toContain('aria-label="Select sketch material regions"');
@@ -23,11 +23,12 @@ describe("V19 material region collector", () => {
     expect(markup).toContain("Region 1");
     expect(markup).toContain("Circle 1");
     expect(markup).toContain("Holes · Circle 2");
-    expect(markup).toContain("Validate selection");
-    expect(markup).toContain("Ctrl/Cmd+Enter validates");
+    expect(markup).toContain("Depth");
+    expect(markup).toContain("Side");
+    expect(markup).toContain("Create extrude");
+    expect(markup).toContain("Ctrl/Cmd+Enter applies");
     expect(markup).toContain("Escape cancels");
-    expect(markup).toContain("without creating a feature");
-    expect(markup).not.toContain("Create feature");
+    expect(markup).toContain("submits the same typed");
     expect(markup).not.toContain("candidate_outer</button>");
   });
 

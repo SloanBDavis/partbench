@@ -1,4 +1,7 @@
-import { WCAD_SOURCE_IDENTITY_ALGORITHM } from "@web-cad/cad-protocol";
+import {
+  WCAD_SOURCE_IDENTITY_ALGORITHM,
+  isSketchRegionsProfileRef
+} from "@web-cad/cad-protocol";
 import type {
   CadBodySnapshot,
   CadBodyDerivedExactMetadataSnapshot,
@@ -23,6 +26,8 @@ import type {
   ProjectExactExportQueryResponse,
   ProjectExportReadinessQueryResponse,
   PartId,
+  SketchLoopRef,
+  SketchRegionsProfileRef,
   WcadSourceIdentity,
   WcadDocumentSchemaVersion
 } from "@web-cad/cad-protocol";
@@ -35,16 +40,19 @@ import type {
 } from "./index";
 import {
   getFeatureEntityProfileRef,
+  getProfileEntityReferences,
   getSupportedEntityProfileKind
 } from "./normalizedFeatureInputs";
 import { createSourceMeasurementFrame } from "./sourceMeasurementGeometry";
 import {
   createResolvedWireExtrudeProfile,
+  createResolvedWireExtrudeRecipe,
   resolveWireExtrudeProfile
 } from "./wireExtrudeProfile";
 import { createBodyTopology } from "./bodyTopology";
 import { createResolvedWireRevolveProfile } from "./wireRevolveProfile";
 import { createResolvedSweepSource } from "./sweepProfile";
+import { validateRegisteredV22RegionSource } from "./v19RegionPolicyRegistry";
 
 interface ProjectExportReadinessInput {
   readonly document: CadDocument;
@@ -544,6 +552,57 @@ function classifyBodySource(
       return createUnresolvedBodySourceReadiness(body, sourceKind);
     }
 
+    const regionProfile = getRegionExtrudeProfile(feature);
+    if (regionProfile) {
+      const recipe = createExactRegionExtrudeRecipe(
+        document,
+        feature,
+        body.partId,
+        new Set()
+      );
+      if (!recipe) {
+        return createUnresolvedBodySourceReadiness(body, sourceKind);
+      }
+      const currentExactResult =
+        feature.operationMode === "newBody" ||
+        hasCurrentReadyExactResultEvidence(
+          document,
+          body,
+          derivedExactMetadata
+        );
+      return currentExactResult
+        ? {
+            sourceKind,
+            sourceStatus: "supported",
+            diagnostics: [
+              createBodyDiagnostic(
+                "EXPORT_BODY_SOURCE_SUPPORTED",
+                "supported",
+                `Region extrude ${feature.operationMode} body ${body.id} has a canonical exact STEP recipe${feature.operationMode === "newBody" ? "" : " and current exact result evidence"}.`,
+                body,
+                sourceKind
+              )
+            ]
+          }
+        : {
+            sourceKind,
+            sourceStatus: "deferred",
+            diagnostics: [
+              createBodyDiagnostic(
+                "EXPORT_RESULT_BODY_DEFERRED",
+                "deferred",
+                `Region extrude ${feature.operationMode} body ${body.id} requires current exact one-solid result evidence before STEP export.`,
+                body,
+                sourceKind,
+                {
+                  expected: "current exact region result evidence",
+                  received: "missing or stale exact result"
+                }
+              )
+            ]
+          };
+    }
+
     if (
       feature.operationMode !== "newBody" &&
       feature.profile.kind === "wire" &&
@@ -954,6 +1013,56 @@ function createExactExportBodySource(
 
   if (feature.kind !== "extrude") return undefined;
 
+  const regionProfile = getRegionExtrudeProfile(feature);
+  if (regionProfile) {
+    if (
+      feature.operationMode !== "newBody" &&
+      (!derivedExactMetadata ||
+        !hasCurrentReadyExactResultEvidence(
+          document,
+          { id: body.bodyId, partId: body.partId },
+          derivedExactMetadata
+        ))
+    ) {
+      return undefined;
+    }
+    const sketch = document.sketches.get(regionProfile.sketchId);
+    const recipe = createExactRegionExtrudeRecipe(
+      document,
+      feature,
+      body.partId,
+      new Set()
+    );
+    if (!sketch || !recipe) return undefined;
+    return {
+      bodyId: body.bodyId,
+      ...(body.bodyName ? { bodyName: body.bodyName } : {}),
+      sourceKind: "authoredExtrude",
+      kind: "regionExtrude",
+      featureId: feature.id,
+      sourceSketchId: regionProfile.sketchId,
+      sourceSketchEntityIds: getProfileEntityReferences(regionProfile).map(
+        (reference) => reference.entityId
+      ),
+      sketchPlane: sketch.plane,
+      depth: feature.depth,
+      side: feature.side,
+      regions: regionProfile,
+      recipe,
+      ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {}),
+      ...(feature.targetTopologyAnchorId
+        ? { targetTopologyAnchorId: feature.targetTopologyAnchorId }
+        : {}),
+      ...(derivedExactMetadata
+        ? {
+            exactResultSourceIdentitySignature:
+              derivedExactMetadata.sourceIdentitySignature
+          }
+        : {}),
+      solidPolicy: "positiveVolumeSingleSolid"
+    };
+  }
+
   if (feature.operationMode !== "newBody" && feature.profile.kind === "wire") {
     if (
       !derivedExactMetadata ||
@@ -1153,6 +1262,14 @@ function createExactBooleanSource(
   visitedFeatureIds: ReadonlySet<string>
 ): CadExactExportBooleanSource | undefined {
   if (visitedFeatureIds.has(feature.id)) return undefined;
+  if (getRegionExtrudeProfile(feature)) {
+    return createExactRegionExtrudeRecipe(
+      document,
+      feature,
+      ownerPartId,
+      visitedFeatureIds
+    );
+  }
   if (feature.operationMode !== "newBody" && feature.profile.kind === "wire") {
     const resolution = resolveWireExtrudeProfile(
       document,
@@ -1170,7 +1287,7 @@ function createExactBooleanSource(
   const tool = createExactExtrudeToolSource(document, feature, ownerPartId);
   if (!tool) return undefined;
   if (feature.operationMode === "newBody") {
-    return isExactWireExtrudeSource(tool) ? undefined : tool;
+    return tool;
   }
   if (!feature.targetBodyId) return undefined;
   const targetFeature = [...document.features.values()].find(
@@ -1191,16 +1308,177 @@ function createExactBooleanSource(
   return { kind: "booleanExtrudes", operation: "add", target, tool };
 }
 
+function getRegionExtrudeProfile(
+  feature: ExtrudeFeature
+): SketchRegionsProfileRef | undefined {
+  const profile = (feature as unknown as { readonly profile?: unknown })
+    .profile;
+  return isSketchRegionsProfileRef(profile) ? profile : undefined;
+}
+
+function createExactRegionExtrudeRecipe(
+  document: CadDocument,
+  feature: ExtrudeFeature,
+  ownerPartId: PartId,
+  visitedFeatureIds: ReadonlySet<string>
+): CadExactExportBooleanSource | undefined {
+  if (visitedFeatureIds.has(feature.id)) return undefined;
+  const profile = getRegionExtrudeProfile(feature);
+  const sketch = profile ? document.sketches.get(profile.sketchId) : undefined;
+  if (!profile || !sketch) return undefined;
+  const validation = validateRegisteredV22RegionSource(profile, {
+    id: sketch.id,
+    entities: sketch.entities
+  });
+  if (!validation.ok) return undefined;
+  const regionTools = validation.normalizedProfile.regions.map((region) =>
+    createExactRegionMaterialSource(
+      document,
+      validation.normalizedProfile.sketchId,
+      region.outer,
+      region.holes,
+      feature,
+      ownerPartId
+    )
+  );
+  if (regionTools.some((tool) => tool === undefined)) return undefined;
+  const tools = regionTools as readonly CadExactExportBooleanSource[];
+  if (feature.operationMode === "newBody") {
+    return tools.length === 1 ? tools[0] : undefined;
+  }
+  if (!feature.targetBodyId) return undefined;
+  const targetFeature = [...document.features.values()].find(
+    (candidate): candidate is ExtrudeFeature =>
+      candidate.kind === "extrude" && candidate.bodyId === feature.targetBodyId
+  );
+  if (!targetFeature) return undefined;
+  const visited = new Set(visitedFeatureIds).add(feature.id);
+  const target = createExactBooleanSource(
+    document,
+    targetFeature,
+    ownerPartId,
+    visited
+  );
+  if (!target) return undefined;
+  return tools.reduce<CadExactExportBooleanSource>(
+    (currentTarget, tool) => ({
+      kind: "booleanExtrudes",
+      operation: feature.operationMode === "add" ? "add" : "cut",
+      materialPolicy: "regionPositiveVolumeSingleSolid",
+      target: currentTarget,
+      tool
+    }),
+    target
+  );
+}
+
+function createExactRegionMaterialSource(
+  document: CadDocument,
+  sketchId: string,
+  outer: SketchLoopRef,
+  holes: readonly SketchLoopRef[],
+  feature: ExtrudeFeature,
+  ownerPartId: PartId
+): CadExactExportBooleanSource | undefined {
+  const outerSource = createExactRegionLoopSource(
+    document,
+    sketchId,
+    outer,
+    feature,
+    ownerPartId
+  );
+  if (!outerSource) return undefined;
+  let result: CadExactExportBooleanSource = outerSource;
+  for (const hole of holes) {
+    const holeSource = createExactRegionLoopSource(
+      document,
+      sketchId,
+      hole,
+      feature,
+      ownerPartId
+    );
+    if (!holeSource) return undefined;
+    result = {
+      kind: "booleanExtrudes",
+      operation: "cut",
+      materialPolicy: "regionPositiveVolumeSingleSolid",
+      target: result,
+      tool: holeSource
+    };
+  }
+  return result;
+}
+
+function createExactRegionLoopSource(
+  document: CadDocument,
+  sketchId: string,
+  loop: SketchLoopRef,
+  feature: ExtrudeFeature,
+  ownerPartId: PartId
+):
+  | CadExactExportPrimitiveExtrudeSource
+  | CadExactExportWireExtrudeSource
+  | undefined {
+  const sketch = document.sketches.get(sketchId);
+  if (!sketch) return undefined;
+  if (loop.kind === "wire") {
+    const frame = createSourceMeasurementFrame(document, sketch, ownerPartId);
+    if (!frame) return undefined;
+    const profile = createResolvedWireExtrudeRecipe(
+      { kind: "wire", sketchId, segments: loop.segments },
+      sketch.entities,
+      {
+        origin: frame.origin,
+        uAxis: frame.uAxis,
+        vAxis: frame.vAxis
+      }
+    );
+    return profile
+      ? {
+          sketchPlane: sketch.plane,
+          profile,
+          depth: feature.depth,
+          side: feature.side
+        }
+      : undefined;
+  }
+  const entity = sketch.entities.get(loop.entityId);
+  if (!entity || !isExactExportExtrudeEntity(entity)) return undefined;
+  const frame = createSourceMeasurementFrame(document, sketch, ownerPartId);
+  if (!frame) return undefined;
+  return {
+    sketchPlane: sketch.plane,
+    profile:
+      entity.kind === "rectangle"
+        ? {
+            kind: "rectangle",
+            center: entity.center,
+            width: entity.width,
+            height: entity.height
+          }
+        : {
+            kind: "circle",
+            center: entity.center,
+            radius: entity.radius
+          },
+    depth: feature.depth,
+    side: feature.side,
+    ...(sketch.attachment
+      ? {
+          placementFrame: {
+            origin: frame.origin,
+            uAxis: frame.uAxis,
+            vAxis: frame.vAxis
+          }
+        }
+      : {})
+  };
+}
+
 function isExactBooleanResultSource(
   source: CadExactExportBooleanSource
 ): source is CadExactExportBooleanResultSource {
   return "kind" in source && source.kind === "booleanExtrudes";
-}
-
-function isExactWireExtrudeSource(
-  source: CadExactExportPrimitiveExtrudeSource | CadExactExportWireExtrudeSource
-): source is CadExactExportWireExtrudeSource {
-  return source.profile.kind === "wire";
 }
 
 function createExactExtrudeToolSource(

@@ -93,10 +93,13 @@ export interface DerivedBooleanExtrudeGeometrySource extends DerivedAuthoredGeom
   readonly id: string;
   readonly kind: "extrudeBoolean";
   readonly operation: "add" | "cut";
+  readonly materialPolicy?: "regionPositiveVolumeSingleSolid";
   readonly target:
     | DerivedExtrudeGeometrySource
     | DerivedBooleanExtrudeGeometrySource;
-  readonly tool: DerivedExtrudeGeometrySource;
+  readonly tool:
+    | DerivedExtrudeGeometrySource
+    | DerivedBooleanExtrudeGeometrySource;
   readonly placementError?: string;
 }
 
@@ -821,6 +824,9 @@ function deriveSourceMesh(
           {
             id: source.id,
             operation: "cut",
+            ...(runtimeSource.materialPolicy
+              ? { materialPolicy: runtimeSource.materialPolicy }
+              : {}),
             target: runtimeSource.target,
             tool: runtimeSource.tool
           },
@@ -830,6 +836,9 @@ function deriveSourceMesh(
           {
             id: source.id,
             operation: "add",
+            ...(runtimeSource.materialPolicy
+              ? { materialPolicy: runtimeSource.materialPolicy }
+              : {}),
             target: runtimeSource.target,
             tool: runtimeSource.tool
           },
@@ -1364,6 +1373,7 @@ function getEdgeFinishProfileSource(
   if (
     target.operation === "cut" &&
     role.startsWith("longitudinal:") &&
+    target.tool.kind === "extrude" &&
     target.tool.profile.kind === "rectangle"
   ) {
     return target.tool;

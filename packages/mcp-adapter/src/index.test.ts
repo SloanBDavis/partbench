@@ -6942,3 +6942,109 @@ describe("mcp-adapter V3 parameter and dimension pass-through", () => {
     });
   });
 });
+
+describe("mcp-adapter V19 region feature parity", () => {
+  it("commits an explicit region extrude through cad.batch", () => {
+    const server = new CadMcpServer();
+    const commit = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_region_extrude",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "mcp_region_sketch",
+              name: "Region plate",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "mcp_region_sketch",
+              id: "mcp_region_outer",
+              center: [0, 0],
+              width: 20,
+              height: 12
+            },
+            {
+              op: "sketch.addCircle",
+              sketchId: "mcp_region_sketch",
+              id: "mcp_region_hole",
+              center: [0, 0],
+              radius: 2
+            },
+            {
+              op: "feature.extrude",
+              id: "mcp_region_feature",
+              bodyId: "mcp_region_body",
+              profile: {
+                kind: "regions",
+                sketchId: "mcp_region_sketch",
+                regions: [
+                  {
+                    outer: {
+                      kind: "entity",
+                      entityId: "mcp_region_outer"
+                    },
+                    holes: [
+                      {
+                        kind: "entity",
+                        entityId: "mcp_region_hole"
+                      }
+                    ]
+                  }
+                ]
+              },
+              operationMode: "newBody",
+              depth: 5,
+              side: "positive"
+            }
+          ]
+        }
+      }
+    });
+
+    expect(commit).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_region_extrude",
+        createdFeatureIds: ["mcp_region_feature"],
+        createdBodyIds: ["mcp_region_body"],
+        review: {
+          operations: expect.arrayContaining([
+            expect.objectContaining({
+              op: "feature.extrude",
+              featureId: "mcp_region_feature",
+              bodyId: "mcp_region_body",
+              label: expect.stringContaining("explicit regions (1)")
+            })
+          ])
+        }
+      }
+    });
+    expect(
+      server.callTool({
+        name: "cad.project_structure",
+        requestId: "mcp_req_region_structure"
+      })
+    ).toMatchObject({
+      toolName: "cad.project_structure",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        features: [
+          expect.objectContaining({
+            id: "mcp_region_feature",
+            bodyId: "mcp_region_body",
+            profile: expect.objectContaining({ kind: "regions" })
+          })
+        ]
+      }
+    });
+  });
+});

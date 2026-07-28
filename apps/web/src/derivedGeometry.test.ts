@@ -4455,6 +4455,9 @@ describe("derivedGeometry", () => {
       target: createExtrudeSource("body_rect_1"),
       tool: createExtrudeSource("body_add_1")
     };
+    if (initialSource.tool.kind !== "extrude") {
+      throw new Error("Expected primitive add tool fixture.");
+    }
     const editedSource: DerivedBooleanExtrudeGeometrySource = {
       ...initialSource,
       target: {
@@ -4530,10 +4533,14 @@ describe("derivedGeometry", () => {
       target: createExtrudeSource("body_rect_1"),
       tool: createExtrudeSource("body_add_1")
     };
+    if (initialSource.tool.kind !== "extrude") {
+      throw new Error("Expected primitive add tool fixture.");
+    }
+    const initialTool = initialSource.tool;
     const editedSource: DerivedBooleanExtrudeGeometrySource = {
       ...initialSource,
       tool: {
-        ...initialSource.tool,
+        ...initialTool,
         profile: {
           kind: "rectangle",
           center: [0, 0],
@@ -5818,7 +5825,9 @@ function getRuntimePrimitiveTarget(
     return undefined;
   }
 
-  return "profile" in input.target ? input.target : undefined;
+  return "profile" in input.target && input.target.profile.kind !== "wire"
+    ? (input.target as DerivedGeometryBooleanExtrudePrimitiveInputSource)
+    : undefined;
 }
 
 function createRuntime(

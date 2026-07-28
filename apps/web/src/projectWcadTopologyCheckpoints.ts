@@ -1201,7 +1201,9 @@ function findStableBooleanExtrudeFaceEntity(
   candidates: readonly CadBodyExactTopologyEntityDescriptor[],
   source: DerivedBooleanExtrudeGeometrySource
 ): CadBodyExactTopologyEntityDescriptor | undefined {
-  return findStableExtrudeFaceEntity(stableId, candidates, source.tool);
+  return source.tool.kind === "extrude"
+    ? findStableExtrudeFaceEntity(stableId, candidates, source.tool)
+    : findStableBooleanExtrudeFaceEntity(stableId, candidates, source.tool);
 }
 
 function findStableExtrudeFaceEntity(

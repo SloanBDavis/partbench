@@ -55,7 +55,10 @@ import {
 } from "./SketchCurveEditPanel";
 import { SketchConveniencePanel } from "./SketchConveniencePanel";
 import { SketchIntentEditor } from "./SketchIntentEditor";
-import { SketchRegionSelectionPanel } from "./SketchRegionSelectionPanel";
+import {
+  SketchRegionSelectionPanel,
+  type SketchRegionFeatureDraft
+} from "./SketchRegionSelectionPanel";
 import type {
   SketchConstraintCreateKindV19,
   SketchDimensionFamilyV19
@@ -117,6 +120,10 @@ export interface SketchModeDockProps {
   readonly selectedRegionCandidateKeys?: readonly string[];
   readonly hoveredRegionCandidateKey?: string;
   readonly regionConsumer?: SketchRegionConsumerIntent;
+  readonly regionTargetBodies?: readonly {
+    readonly id: string;
+    readonly label: string;
+  }[];
   readonly onSelectSketch: (sketchId: string) => void;
   readonly onSelectEntity: (sketchId: string, entityId: string) => void;
   readonly onCreateSketch: (form: SketchCreateForm) => void;
@@ -165,8 +172,9 @@ export interface SketchModeDockProps {
   ) => void;
   readonly onApplyRegionSelectionReady?: (
     profile: SketchRegionsProfileRef,
-    response: SketchProfileRegionValidateQueryResponse
-  ) => void;
+    response: SketchProfileRegionValidateQueryResponse,
+    featureDraft: SketchRegionFeatureDraft
+  ) => boolean | Promise<boolean>;
   readonly onCancelCurveEdit: (restoreFocus?: boolean) => void;
   readonly onRequestCurveEditEscape?: (dirty: boolean) => void;
   readonly onCurveEditChoiceRejected?: (message: string) => void;
@@ -291,6 +299,7 @@ export function SketchModeDock(props: SketchModeDockProps) {
     selectedRegionCandidateKeys = [],
     hoveredRegionCandidateKey,
     regionConsumer = "extrude-new-body",
+    regionTargetBodies = [],
     onSelectSketch,
     onSelectEntity,
     onCreateSketch,
@@ -530,6 +539,7 @@ export function SketchModeDock(props: SketchModeDockProps) {
             selectedCandidateKeys={selectedRegionCandidateKeys}
             hoveredCandidateKey={hoveredRegionCandidateKey}
             consumer={regionConsumer}
+            targetBodies={regionTargetBodies}
             keyboardSuspended={curveEditKeyboardSuspended}
             queryCandidates={onQueryRegionCandidates}
             validateProfile={onValidateRegionProfile}

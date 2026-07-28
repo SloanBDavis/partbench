@@ -385,6 +385,9 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
               id: requestId,
               payloadId: `${requestId}:kernel`,
               operation: "cut",
+              ...(input.materialPolicy
+                ? { materialPolicy: input.materialPolicy }
+                : {}),
               target: input.target,
               tool: input.tool,
               linearDeflection: 0.25,
@@ -394,6 +397,9 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
               id: requestId,
               payloadId: `${requestId}:kernel`,
               operation: "add",
+              ...(input.materialPolicy
+                ? { materialPolicy: input.materialPolicy }
+                : {}),
               target: input.target,
               tool: input.tool,
               linearDeflection: 0.25,
