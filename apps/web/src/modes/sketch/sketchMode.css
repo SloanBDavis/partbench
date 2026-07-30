@@ -242,6 +242,15 @@
   text-align: start;
 }
 
+.pb-region-select__candidate-wrap {
+  display: grid;
+  gap: var(--pb-space-4);
+}
+
+.pb-region-select__candidate-wrap > .pb-region-select__candidate {
+  width: 100%;
+}
+
 .pb-region-select__candidate[aria-pressed="true"] {
   border-color: var(--pb-color-success);
   box-shadow: inset 3px 0 0 var(--pb-color-success);

@@ -18,6 +18,12 @@ import type {
   SketchRegionCandidatesQueryResult,
   SketchRegionValidateQueryResult
 } from "../../sketchRegionQueryClient";
+import { TechnicalDetails } from "../../diagnostics/TechnicalDetails";
+import {
+  formatUserDiagnostic,
+  translateUserDiagnostic,
+  type StructuredDiagnosticInput
+} from "../../diagnostics/userDiagnostic";
 import { LiveRegion } from "../../ui/LiveRegion";
 import type { SketchCurveEditSessionControl } from "./SketchCurveEditPanel";
 import {
@@ -102,7 +108,7 @@ interface RegionPageState {
   readonly hasMore: boolean;
   readonly nextAfterCandidateKey?: string;
   readonly sourceRevision?: string;
-  readonly diagnostics: readonly string[];
+  readonly diagnostics: readonly StructuredDiagnosticInput[];
 }
 
 const INITIAL_PAGE_STATE: RegionPageState = {
@@ -148,7 +154,7 @@ export function SketchRegionSelectionPanel(
   const [axisEntityId, setAxisEntityId] = useState("");
   const [angleDegrees, setAngleDegrees] = useState(360);
   const [validationMessages, setValidationMessages] = useState<
-    readonly string[]
+    readonly StructuredDiagnosticInput[]
   >([]);
   const [candidateWindow, setCandidateWindow] = useState(() => ({
     authorityKey: sourceAuthorityKey,
@@ -295,7 +301,7 @@ export function SketchRegionSelectionPanel(
             status: "failed",
             candidateCount: 0,
             hasMore: false,
-            diagnostics: [response.error.message]
+            diagnostics: [withTechnicalContext(response.error)]
           });
           if (!cursor) onCandidatesChange([]);
           return;
@@ -312,9 +318,7 @@ export function SketchRegionSelectionPanel(
             ? { nextAfterCandidateKey: response.nextAfterCandidateKey }
             : {}),
           sourceRevision: response.sourceRevision,
-          diagnostics: response.diagnostics.map(
-            (diagnostic) => diagnostic.message
-          )
+          diagnostics: response.diagnostics.map(withTechnicalContext)
         });
       } catch (error) {
         if (abortController.signal.aborted) return;
@@ -323,9 +327,11 @@ export function SketchRegionSelectionPanel(
           candidateCount: 0,
           hasMore: false,
           diagnostics: [
-            error instanceof Error
-              ? error.message
-              : "Region discovery could not be evaluated."
+            {
+              severity: "error",
+              message: "Region discovery could not be evaluated.",
+              detail: error
+            }
           ]
         });
         if (!cursor) onCandidatesChange([]);
@@ -358,7 +364,9 @@ export function SketchRegionSelectionPanel(
     );
     if (!profile) {
       setValidationMessages([
-        "Select a complete valid set of whole-loop material regions."
+        {
+          message: "Select a complete valid set of whole-loop material regions."
+        }
       ]);
       return false;
     }
@@ -372,13 +380,11 @@ export function SketchRegionSelectionPanel(
       const response = await validateProfile(profile, abortController.signal);
       if (abortController.signal.aborted) return false;
       if (!response.ok) {
-        setValidationMessages([response.error.message]);
+        setValidationMessages([withTechnicalContext(response.error)]);
         return false;
       }
       if (response.status !== "ready" || !response.normalizedProfile) {
-        setValidationMessages(
-          response.diagnostics.map((diagnostic) => diagnostic.message)
-        );
+        setValidationMessages(response.diagnostics.map(withTechnicalContext));
         return false;
       }
       const featureDraft: SketchRegionFeatureDraft =
@@ -410,7 +416,10 @@ export function SketchRegionSelectionPanel(
       );
       if (!committed) {
         setValidationMessages([
-          "The exact region selection is valid, but the feature command did not commit."
+          {
+            message:
+              "The exact region selection is valid, but the feature command did not commit."
+          }
         ]);
         return false;
       }
@@ -419,9 +428,11 @@ export function SketchRegionSelectionPanel(
     } catch (error) {
       if (abortController.signal.aborted) return false;
       setValidationMessages([
-        error instanceof Error
-          ? error.message
-          : "The selected regions could not be validated."
+        {
+          severity: "error",
+          message: "The selected regions could not be validated.",
+          detail: error
+        }
       ]);
       return false;
     } finally {
@@ -746,8 +757,15 @@ export function SketchRegionSelectionPanel(
             <strong>Region diagnostics</strong>
             <ul>
               {[...page.diagnostics, ...validationMessages].map(
-                (message, index) => (
-                  <li key={`${index}:${message}`}>{message}</li>
+                (diagnostic, index) => (
+                  <li key={`${index}:${diagnostic.code ?? "message"}`}>
+                    {formatRegionDiagnostic(diagnostic)}
+                    {diagnostic.code ||
+                    diagnostic.detail !== undefined ||
+                    diagnostic.context ? (
+                      <TechnicalDetails diagnostic={diagnostic} />
+                    ) : null}
+                  </li>
                 )
               )}
             </ul>
@@ -782,7 +800,9 @@ export function SketchRegionSelectionPanel(
         </div>
       </div>
       <LiveRegion urgency={validationMessages.length ? "assertive" : "polite"}>
-        {validationMessages[0] ??
+        {(validationMessages[0]
+          ? formatRegionDiagnostic(validationMessages[0])
+          : undefined) ??
           (canApply
             ? "Selected regions are ready to apply."
             : `${selectedCandidateKeys.length} regions selected.`)}
@@ -840,38 +860,44 @@ const RegionCandidateRow = memo(function RegionCandidateRow({
     };
   }, [candidate.candidateKey, onHoverCandidate]);
 
+  const diagnostic = candidate.diagnostics[0];
   return (
-    <button
-      ref={rowRef}
-      type="button"
-      className="pb-region-select__candidate"
-      aria-pressed={selected}
-      data-candidate-key={candidate.candidateKey}
-      data-hovered={hovered || undefined}
-      disabled={disabled || blocked}
-      onClick={() => onToggleCandidate(candidate.candidateKey)}
-      onFocus={() => onHoverCandidate(candidate.candidateKey)}
-      onBlur={() => onHoverCandidate(undefined)}
-      onPointerEnter={() => onHoverCandidate(candidate.candidateKey)}
-      onPointerMove={() => onHoverCandidate(candidate.candidateKey)}
-      onPointerLeave={() => onHoverCandidate(undefined)}
-    >
-      <span className="pb-region-select__candidate-title">
-        <strong>Region {index + 1}</strong>
-        <span>{formatArea(candidate.materialArea)}²</span>
-      </span>
-      <span>Outer · {names.outer}</span>
-      <small>
-        {names.holes.length
-          ? `Holes · ${names.holes.join(" | ")}`
-          : "No inner voids"}
-      </small>
-      {candidate.diagnostics[0] ? (
-        <small className="pb-region-select__candidate-error">
-          {candidate.diagnostics[0].message}
+    <div className="pb-region-select__candidate-wrap">
+      <button
+        ref={rowRef}
+        type="button"
+        className="pb-region-select__candidate"
+        aria-pressed={selected}
+        data-candidate-key={candidate.candidateKey}
+        data-hovered={hovered || undefined}
+        disabled={disabled || blocked}
+        onClick={() => onToggleCandidate(candidate.candidateKey)}
+        onFocus={() => onHoverCandidate(candidate.candidateKey)}
+        onBlur={() => onHoverCandidate(undefined)}
+        onPointerEnter={() => onHoverCandidate(candidate.candidateKey)}
+        onPointerMove={() => onHoverCandidate(candidate.candidateKey)}
+        onPointerLeave={() => onHoverCandidate(undefined)}
+      >
+        <span className="pb-region-select__candidate-title">
+          <strong>Region {index + 1}</strong>
+          <span>{formatArea(candidate.materialArea)}²</span>
+        </span>
+        <span>Outer · {names.outer}</span>
+        <small>
+          {names.holes.length
+            ? `Holes · ${names.holes.join(" | ")}`
+            : "No inner voids"}
         </small>
+        {diagnostic ? (
+          <small className="pb-region-select__candidate-error">
+            {formatRegionDiagnostic(diagnostic)}
+          </small>
+        ) : null}
+      </button>
+      {diagnostic ? (
+        <TechnicalDetails diagnostic={withTechnicalContext(diagnostic)} />
       ) : null}
-    </button>
+    </div>
   );
 });
 
@@ -899,4 +925,19 @@ function focusRegionInitialControl(form: HTMLFormElement | null): void {
 
 function formatArea(area: number): string {
   return AREA_FORMATTER.format(area);
+}
+
+function formatRegionDiagnostic(diagnostic: StructuredDiagnosticInput): string {
+  return formatUserDiagnostic(translateUserDiagnostic(diagnostic));
+}
+
+function withTechnicalContext<T extends StructuredDiagnosticInput>(
+  diagnostic: T
+): StructuredDiagnosticInput {
+  return {
+    ...diagnostic,
+    context:
+      diagnostic.context ??
+      (diagnostic as unknown as Readonly<Record<string, unknown>>)
+  };
 }

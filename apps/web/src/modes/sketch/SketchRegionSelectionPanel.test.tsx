@@ -40,15 +40,21 @@ describe("V19 material region collector", () => {
         {
           code: "SKETCH_REGION_BOUNDARY_TOUCHING",
           severity: "blocker",
-          message: "The inner loop touches the outer boundary."
+          message:
+            "Entity entity_id_private touches canonical loop loop_key_private."
         }
       ]
     };
     const markup = render({ candidates: [invalid] });
 
-    expect(markup).toContain("The inner loop touches the outer boundary.");
+    expect(markup).toContain("Region boundaries touch.");
+    expect(markup).toContain("Move or resize the touching geometry.");
     expect(markup).toContain("disabled");
-    expect(markup).not.toContain("SKETCH_REGION_BOUNDARY_TOUCHING");
+    expect(markup).toContain("SKETCH_REGION_BOUNDARY_TOUCHING");
+    expect(markup).toContain("entity_id_private");
+    expect(markup.indexOf("entity_id_private")).toBeGreaterThan(
+      markup.indexOf("<details")
+    );
   });
 
   it("renders the one-region new-body revolve fields without extrude controls", () => {

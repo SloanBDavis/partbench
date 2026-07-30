@@ -56,6 +56,17 @@ describe("userDiagnostic", () => {
     expect(visible).not.toContain("generated:secret");
   });
 
+  it("keeps safe uncoded recovery copy", () => {
+    expect(
+      formatUserDiagnostic(
+        translateUserDiagnostic({
+          severity: "error",
+          message: "Select one complete material region."
+        })
+      )
+    ).toContain("Select one complete material region.");
+  });
+
   it("keeps structured evidence in explicit technical details", async () => {
     const model = createTechnicalDetails({
       code: "INTERNAL_CODE",
