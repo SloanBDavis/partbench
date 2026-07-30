@@ -675,9 +675,11 @@ async function runV19BrowserWorkflow({
       evidence: authoredEvidence
     });
 
-    await browser.activate({ kind: "ariaLabel", text: "Undo" });
+    await browser.focus({ kind: "ariaLabel", text: "Undo" });
+    await browser.sendKey("z", { ctrlKey: true });
     const afterUndo = await prepareAndReadProject(browser, [2, 4]);
-    await browser.activate({ kind: "ariaLabel", text: "Redo" });
+    await browser.focus({ kind: "ariaLabel", text: "Redo" });
+    await browser.sendKey("z", { ctrlKey: true, shiftKey: true });
     const afterRedo = await prepareAndReadProject(browser, [5, 4]);
     const undoRedoPassed =
       hasLineEnd(afterUndo, "extend_target", [2, 4]) &&
@@ -703,9 +705,19 @@ async function runV19BrowserWorkflow({
     const controlEnterCount = trustedKeydowns.filter(
       (event) => event.key === "Enter" && event.ctrlKey
     ).length;
+    const controlUndoCount = trustedKeydowns.filter(
+      (event) =>
+        event.key.toLowerCase() === "z" && event.ctrlKey && !event.shiftKey
+    ).length;
+    const controlRedoCount = trustedKeydowns.filter(
+      (event) =>
+        event.key.toLowerCase() === "z" && event.ctrlKey && event.shiftKey
+    ).length;
     const keyboardOnlyPassed =
       inputAudit.pointerInputs === 0 &&
       controlEnterCount === 2 &&
+      controlUndoCount >= 1 &&
+      controlRedoCount >= 1 &&
       trustedKeydowns.filter((event) => event.key === " ").length >= 3 &&
       trustedKeydowns.length === inputAudit.keydowns.length;
     checks.push({
@@ -714,7 +726,9 @@ async function runV19BrowserWorkflow({
       evidence: {
         pointerInputs: inputAudit.pointerInputs,
         trustedKeydownCount: trustedKeydowns.length,
-        controlEnterCount
+        controlEnterCount,
+        controlUndoCount,
+        controlRedoCount
       }
     });
 
@@ -2831,6 +2845,8 @@ function getKeyDefinition(key) {
       return { key: " ", code: "Space", keyCode: 32, text: " " };
     case "a":
       return { key: "a", code: "KeyA", keyCode: 65, text: "a" };
+    case "z":
+      return { key: "z", code: "KeyZ", keyCode: 90, text: "z" };
     default:
       throw new Error(`Unsupported smoke key ${key}`);
   }

@@ -341,7 +341,7 @@ function RibbonActionButton({
       aria-pressed={active || undefined}
       data-availability={action.availability.status}
       data-action-id={action.definition.id}
-      aria-keyshortcuts={action.definition.shortcut}
+      aria-keyshortcuts={formatAriaKeyShortcuts(action.definition.shortcut)}
       title={reason ?? action.definition.shortcut ?? action.definition.label}
       tabIndex={menuItem ? undefined : tabIndex}
       data-ribbon-roving-id={rovingId}
@@ -359,6 +359,19 @@ function RibbonActionButton({
 
 function format(mode: WorkbenchMode): string {
   return mode.charAt(0).toUpperCase() + mode.slice(1);
+}
+
+function formatAriaKeyShortcuts(shortcut: string | undefined) {
+  switch (shortcut) {
+    case "Ctrl/Cmd+Z":
+      return "Control+Z Meta+Z";
+    case "Ctrl/Cmd+Shift+Z":
+      return "Control+Shift+Z Meta+Shift+Z";
+    case "Delete/Backspace":
+      return "Delete Backspace";
+    default:
+      return shortcut;
+  }
 }
 
 function escapeSelector(value: string): string {

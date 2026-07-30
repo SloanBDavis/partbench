@@ -23,6 +23,10 @@ describe("V18 global header and mode status", () => {
     expect(markup).toContain("All changes saved locally");
     expect(markup).toContain('aria-label="Search commands"');
     expect(markup).toContain('aria-keyshortcuts="Control+K Meta+K"');
+    expect(markup).toContain('aria-keyshortcuts="Control+Z Meta+Z"');
+    expect(markup).toContain(
+      'aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z"'
+    );
     expect(markup).toContain('aria-label="Help and keyboard shortcuts"');
     expect(markup).not.toContain("millimeter");
   });

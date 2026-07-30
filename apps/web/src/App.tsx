@@ -359,7 +359,10 @@ import { resolveViewportHoverIntent } from "./viewportHoverIntent";
 import { createViewportSelectionDisplay } from "./viewportSelectionDisplay";
 import { createViewportVisualStateModel } from "./viewportVisualState";
 import { createViewportMeasurementOverlay } from "./viewportMeasurementOverlay";
-import { shouldCancelViewportTransientState } from "./viewportKeyboard";
+import {
+  getHistoryKeyboardCommand,
+  shouldCancelViewportTransientState
+} from "./viewportKeyboard";
 import {
   clearViewportTwoTargetMeasurementSecondTargetOnSelectionChange,
   createViewportTwoTargetMeasurementTarget,
@@ -7843,6 +7846,19 @@ export function App() {
     () => projectUiActions(uiActionContext),
     [uiActionContext]
   );
+  useEffect(() => {
+    const handleHistoryShortcut = (event: KeyboardEvent) => {
+      const command = getHistoryKeyboardCommand(event);
+      if (!command) return;
+      event.preventDefault();
+      const action = projectedUiActions.find(
+        (candidate) => candidate.definition.id === `project.${command}`
+      );
+      if (action) void invokeUiAction(action, uiActionContext);
+    };
+    window.addEventListener("keydown", handleHistoryShortcut);
+    return () => window.removeEventListener("keydown", handleHistoryShortcut);
+  }, [projectedUiActions, uiActionContext]);
   const restoreCommandSearchFocus = useCallback(() => {
     requestAnimationFrame(() => {
       const activeElement = window.document.activeElement;

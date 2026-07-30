@@ -78,6 +78,7 @@ export function GlobalHeader({
           pending={undo.pending}
           disabled={!undo.available && !undo.unavailableReason}
           unavailableReason={undo.unavailableReason}
+          aria-keyshortcuts="Control+Z Meta+Z"
           onClick={undo.run}
         />
         <IconButton
@@ -87,6 +88,7 @@ export function GlobalHeader({
           pending={redo.pending}
           disabled={!redo.available && !redo.unavailableReason}
           unavailableReason={redo.unavailableReason}
+          aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z"
           onClick={redo.run}
         />
       </div>

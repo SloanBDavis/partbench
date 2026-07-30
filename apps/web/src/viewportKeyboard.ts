@@ -4,6 +4,13 @@ export interface ViewportKeyboardEventLike {
   readonly target?: EventTarget | null;
 }
 
+export interface HistoryKeyboardEventLike extends ViewportKeyboardEventLike {
+  readonly altKey?: boolean;
+  readonly ctrlKey?: boolean;
+  readonly metaKey?: boolean;
+  readonly shiftKey?: boolean;
+}
+
 interface KeyboardTargetLike {
   readonly tagName?: unknown;
   readonly isContentEditable?: unknown;
@@ -24,6 +31,21 @@ export function shouldCancelViewportTransientState(
     !event.defaultPrevented &&
     !isEditableKeyboardTarget(event.target)
   );
+}
+
+export function getHistoryKeyboardCommand(
+  event: HistoryKeyboardEventLike
+): "undo" | "redo" | undefined {
+  if (
+    event.defaultPrevented ||
+    event.altKey ||
+    (!event.ctrlKey && !event.metaKey) ||
+    event.key.toLowerCase() !== "z" ||
+    isEditableKeyboardTarget(event.target)
+  ) {
+    return undefined;
+  }
+  return event.shiftKey ? "redo" : "undo";
 }
 
 export function isEditableKeyboardTarget(

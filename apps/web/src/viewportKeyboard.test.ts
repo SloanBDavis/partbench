@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getHistoryKeyboardCommand,
   isEditableKeyboardTarget,
   shouldCancelViewportTransientState
 } from "./viewportKeyboard";
@@ -59,6 +60,31 @@ describe("viewport keyboard ergonomics", () => {
         target: createTarget("span", {}, true)
       })
     ).toBe(false);
+  });
+
+  it("routes global undo and redo without hijacking form fields", () => {
+    expect(
+      getHistoryKeyboardCommand({
+        key: "z",
+        ctrlKey: true,
+        target: createTarget("div")
+      })
+    ).toBe("undo");
+    expect(
+      getHistoryKeyboardCommand({
+        key: "Z",
+        metaKey: true,
+        shiftKey: true,
+        target: createTarget("div")
+      })
+    ).toBe("redo");
+    expect(
+      getHistoryKeyboardCommand({
+        key: "z",
+        ctrlKey: true,
+        target: createTarget("input")
+      })
+    ).toBeUndefined();
   });
 });
 

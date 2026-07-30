@@ -109,6 +109,20 @@ describe("V18 mode ribbon", () => {
       /aria-disabled="true"[^>]*data-availability="blocked"[^>]*title="Profile is open\."/
     );
   });
+
+  it("uses valid ARIA tokens for alternative shortcut keys", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ModeRibbon, {
+        mode: "sketch",
+        actions: projectUiActions(context()),
+        onModeChange: vi.fn(),
+        onInvokeAction: vi.fn()
+      })
+    );
+
+    expect(markup).toContain('aria-keyshortcuts="Delete Backspace"');
+    expect(markup).not.toContain('aria-keyshortcuts="Delete/Backspace"');
+  });
 });
 
 function context(overrides: Partial<UiActionContext> = {}): UiActionContext {
