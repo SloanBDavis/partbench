@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createNearLimitCircleDefinitions,
   deriveV19NearLimitProof,
+  measureCancellationDelay,
   V19_NEAR_LIMIT_CANDIDATE_COUNT,
   V19_NEAR_LIMIT_PROOF_VERSION
 } from "./v19-near-limit-performance-workload.mjs";
@@ -45,6 +46,7 @@ function completeBrowserEvidence(overrides = {}) {
       frameSampleCount: 120
     },
     workers: { cancelledQueryWorkerCount: 1, cancellationDelayMs: 16 },
+    workerUrls: ["http://127.0.0.1/assets/cadCommand.worker-example.js"],
     occtWasmRequests: [],
     failures: [],
     ...overrides
@@ -70,6 +72,18 @@ describe("V19 near-limit production-browser workload", () => {
         );
       })
     ).toBe(true);
+  });
+
+  it("measures cancellation from the request, not the earlier query post", () => {
+    expect(
+      measureCancellationDelay([
+        {
+          queryPostedAt: 5,
+          cancellationRequestedAt: 20,
+          terminatedAt: 25
+        }
+      ])
+    ).toBe(5);
   });
 
   it("derives a passing proof only from complete observed browser evidence", () => {
@@ -103,12 +117,15 @@ describe("V19 near-limit production-browser workload", () => {
         frameIntervalP95Ms: 20,
         maxLongTaskMs: 0
       },
-      workerDeferral: { occtWasmRequestCount: 0 },
+      workerDeferral: {
+        geometryWorkerRequestCount: 0,
+        occtWasmRequestCount: 0
+      },
       failures: []
     });
   });
 
-  it("fails closed for partial pages, response-before-termination, stale cache, or OCCT", () => {
+  it("fails closed for partial pages, response-before-termination, stale cache, or deferred workers", () => {
     const evidence = completeBrowserEvidence({
       regionDiscovery: {
         ...completeBrowserEvidence().regionDiscovery,
@@ -117,6 +134,9 @@ describe("V19 near-limit production-browser workload", () => {
         revisedQueryWorkerCount: 7
       },
       workers: { cancelledQueryWorkerCount: 0 },
+      workerUrls: [
+        "http://127.0.0.1/assets/geometryTessellation.worker-example.js"
+      ],
       occtWasmRequests: ["http://127.0.0.1/opencascade.full.wasm"]
     });
     const proof = deriveV19NearLimitProof({
@@ -131,12 +151,14 @@ describe("V19 near-limit production-browser workload", () => {
       cancellationObserved: false
     });
     expect(proof.workerDeferral.occtWasmRequestCount).toBe(1);
+    expect(proof.workerDeferral.geometryWorkerRequestCount).toBe(1);
     expect(proof.failures).toEqual(
       expect.arrayContaining([
         expect.stringContaining("complete 512-candidate set"),
         expect.stringContaining("revision invalidation"),
         expect.stringContaining("terminated before its response"),
-        expect.stringContaining("OCCT WASM")
+        expect.stringContaining("OCCT WASM"),
+        expect.stringContaining("geometry worker")
       ])
     );
   });

@@ -153,12 +153,25 @@ export function createNearLimitCircleDefinitions(
   });
 }
 
+export function measureCancellationDelay(cancelledWorkers) {
+  return cancelledWorkers.length
+    ? Math.min(
+        ...cancelledWorkers.map(
+          (worker) => worker.terminatedAt - worker.cancellationRequestedAt
+        )
+      )
+    : undefined;
+}
+
 export function deriveV19NearLimitProof({ buildHash, browserEvidence }) {
   const discovery = browserEvidence.regionDiscovery ?? {};
   const curveEdit = browserEvidence.curveEdit ?? {};
   const interaction = browserEvidence.interaction ?? {};
   const workers = browserEvidence.workers ?? {};
   const occtWasmRequests = browserEvidence.occtWasmRequests ?? [];
+  const geometryWorkerRequests = (browserEvidence.workerUrls ?? []).filter(
+    (url) => url.includes("geometryTessellation.worker-")
+  );
   const regionDiscovery = {
     completed:
       discovery.status === "ready" &&
@@ -218,6 +231,8 @@ export function deriveV19NearLimitProof({ buildHash, browserEvidence }) {
     frameSampleCount: interaction.frameSampleCount
   };
   const workerDeferral = {
+    geometryWorkerRequestCount: geometryWorkerRequests.length,
+    geometryWorkerRequests,
     occtWasmRequestCount: occtWasmRequests.length,
     occtWasmRequests
   };
@@ -268,6 +283,8 @@ export function deriveV19NearLimitProof({ buildHash, browserEvidence }) {
     failures.push("maximum long task exceeded 50ms");
   if (workerDeferral.occtWasmRequestCount !== 0)
     failures.push("the analytic workload requested OCCT WASM");
+  if (workerDeferral.geometryWorkerRequestCount !== 0)
+    failures.push("the analytic workload started the geometry worker");
   failures.push(...(browserEvidence.failures ?? []));
 
   return {
@@ -449,6 +466,7 @@ async function measureProductionWorkload({
   let curveEdit = {};
   let interaction = {};
   let workers = {};
+  let workerUrls = [];
   try {
     await browser.waitFor(
       `performance.getEntriesByName("partbench:shell-ready").length > 0`,
@@ -604,17 +622,9 @@ async function measureProductionWorkload({
     );
     workers = {
       cancelledQueryWorkerCount: cancelledWorkers.length,
-      cancellationDelayMs:
-        cancelledWorkers.length > 0
-          ? Math.min(
-              ...cancelledWorkers.map(
-                (worker) =>
-                  worker.terminatedAt -
-                  (worker.cancellationQueryPostedAt ?? worker.queryPostedAt)
-              )
-            )
-          : undefined
+      cancellationDelayMs: measureCancellationDelay(cancelledWorkers)
     };
+    workerUrls = finalAudit.workers.map((worker) => worker.url);
     interaction = {
       ...interaction,
       maxLongTaskMs: Math.max(0, ...finalAudit.longTasks),
@@ -635,6 +645,7 @@ async function measureProductionWorkload({
       curveEdit,
       interaction,
       workers,
+      workerUrls,
       occtWasmRequests: [...occtWasmRequests],
       failures
     }
@@ -682,9 +693,7 @@ function createBrowserAuditBootstrap() {
           url: String(url),
           queryPosted: false,
           queryPostCount: 0,
-          queryPostedAt: undefined,
           queryResponseCountAtPost: 0,
-          cancellationQueryPostedAt: undefined,
           cancellationResponseCountAtPost: undefined,
           queryResponse: undefined,
           queryResponses: [],
@@ -724,7 +733,6 @@ function createBrowserAuditBootstrap() {
         if (message?.kind === "cad-worker.query") {
           record.queryPosted = true;
           record.queryPostCount += 1;
-          record.queryPostedAt = performance.now();
           record.queryResponseCountAtPost = record.responseCount;
         } else if (Array.isArray(message?.batch?.ops)) {
           record.commandOps.push(...message.batch.ops.map((operation) => ({
@@ -743,7 +751,6 @@ function createBrowserAuditBootstrap() {
           audit.cancelNextRegionQuery
         ) {
           audit.cancelNextRegionQuery = false;
-          record.cancellationQueryPostedAt = performance.now();
           record.cancellationResponseCountAtPost = record.responseCount;
           requestAnimationFrame(() => {
             record.cancellationRequested = true;

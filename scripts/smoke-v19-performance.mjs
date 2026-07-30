@@ -10,13 +10,6 @@ export const V19_NEAR_LIMIT_WORKLOAD_MODULE =
   "v19-near-limit-performance-workload.mjs";
 export const V19_NEAR_LIMIT_EXPECTED_CANDIDATE_COUNT = 512;
 
-export const V19_NEAR_LIMIT_DEFERRED = Object.freeze({
-  status: "deferred",
-  requiredSlice: "E",
-  reason:
-    "The representative near-limit region discovery/edit workload requires the real Slice E region query, cache, cancellation, and edit surfaces. V19 release performance proof remains incomplete until that production-browser workload exists."
-});
-
 export function auditV19NearLimitProof(proof, expectedBuildHash) {
   const failures = [];
   if (!isRecord(proof)) {
@@ -181,6 +174,12 @@ export function auditV19NearLimitProof(proof, expectedBuildHash) {
     proof.workerDeferral?.occtWasmRequestCount,
     0
   );
+  checkEqual(
+    failures,
+    "near-limit geometry worker requests",
+    proof.workerDeferral?.geometryWorkerRequestCount,
+    0
+  );
   return failures;
 }
 
@@ -190,9 +189,9 @@ export function createV19PerformanceReport(inheritedV18, nearLimit) {
     failures.push("the inherited V18 performance gate did not pass");
   }
 
-  if (nearLimit?.status === "deferred") {
+  if (nearLimit?.status === "failed") {
     failures.push(
-      `the V19 near-limit workload is deferred until Slice ${nearLimit.requiredSlice}`
+      nearLimit.reason ?? "the V19 near-limit workload did not produce proof"
     );
   } else {
     failures.push(
@@ -200,18 +199,10 @@ export function createV19PerformanceReport(inheritedV18, nearLimit) {
     );
   }
 
-  const status =
-    failures.length === 0
-      ? "passed"
-      : nearLimit?.status === "deferred" &&
-          isRecord(inheritedV18) &&
-          inheritedV18.ok === true
-        ? "deferred"
-        : "failed";
   return {
     version: V19_PERFORMANCE_REPORT_VERSION,
     ok: failures.length === 0,
-    status,
+    status: failures.length === 0 ? "passed" : "failed",
     buildHash: inheritedV18?.buildHash,
     inheritedV18,
     nearLimit,
@@ -251,7 +242,12 @@ async function loadNearLimitProof(repositoryRoot, inheritedV18) {
   const exists = await stat(modulePath)
     .then((entry) => entry.isFile())
     .catch(() => false);
-  if (!exists) return V19_NEAR_LIMIT_DEFERRED;
+  if (!exists) {
+    return {
+      status: "failed",
+      reason: `${V19_NEAR_LIMIT_WORKLOAD_MODULE} is missing.`
+    };
+  }
 
   const workload = await import(
     `${pathToFileURL(modulePath).href}?build=${encodeURIComponent(
@@ -279,12 +275,13 @@ async function run() {
     const nearLimit = await loadNearLimitProof(repositoryRoot, inheritedV18);
     report = createV19PerformanceReport(inheritedV18, nearLimit);
   } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
     report = {
       version: V19_PERFORMANCE_REPORT_VERSION,
       ok: false,
       status: "failed",
-      nearLimit: V19_NEAR_LIMIT_DEFERRED,
-      failures: [error instanceof Error ? error.message : String(error)]
+      nearLimit: { status: "failed", reason },
+      failures: [reason]
     };
   }
 

@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   auditV19NearLimitProof,
   createV19PerformanceReport,
-  V19_NEAR_LIMIT_DEFERRED,
   V19_NEAR_LIMIT_PROOF_VERSION
 } from "./smoke-v19-performance.mjs";
 
@@ -64,6 +63,7 @@ function validNearLimitProof(overrides = {}) {
       maxLongTaskMs: 50
     },
     workerDeferral: {
+      geometryWorkerRequestCount: 0,
       occtWasmRequestCount: 0
     },
     ...overrides
@@ -71,24 +71,21 @@ function validNearLimitProof(overrides = {}) {
 }
 
 describe("V19 performance smoke gate", () => {
-  it("reports the pre-Slice-E near-limit workload as deferred and not green", () => {
-    const report = createV19PerformanceReport(
-      inheritedV18(),
-      V19_NEAR_LIMIT_DEFERRED
-    );
+  it("fails when the near-limit workload cannot produce proof", () => {
+    const report = createV19PerformanceReport(inheritedV18(), {
+      status: "failed",
+      reason: "near-limit workload is missing"
+    });
 
     expect(report).toMatchObject({
       ok: false,
-      status: "deferred",
+      status: "failed",
       buildHash,
       nearLimit: {
-        status: "deferred",
-        requiredSlice: "E"
+        status: "failed"
       }
     });
-    expect(report.failures).toEqual([
-      expect.stringContaining("deferred until Slice E")
-    ]);
+    expect(report.failures).toEqual(["near-limit workload is missing"]);
   });
 
   it("passes only with inherited V18 proof and complete live near-limit proof", () => {
@@ -120,7 +117,10 @@ describe("V19 performance smoke gate", () => {
         frameIntervalP95Ms: 35,
         maxLongTaskMs: 51
       },
-      workerDeferral: { occtWasmRequestCount: 1 }
+      workerDeferral: {
+        geometryWorkerRequestCount: 1,
+        occtWasmRequestCount: 1
+      }
     });
 
     expect(auditV19NearLimitProof(proof, buildHash)).toEqual([
@@ -135,7 +135,8 @@ describe("V19 performance smoke gate", () => {
       expect.stringContaining("near-limit frame samples"),
       expect.stringContaining("near-limit frame interval p95"),
       expect.stringContaining("near-limit long task"),
-      expect.stringContaining("near-limit OCCT WASM requests")
+      expect.stringContaining("near-limit OCCT WASM requests"),
+      expect.stringContaining("near-limit geometry worker requests")
     ]);
   });
 
