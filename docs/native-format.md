@@ -25,9 +25,12 @@ source records for imported STEP bodies, patterns, mirror, shell, and parameter
 expressions, and V20 added V16 sweep/loft records, resolved pattern/mirror
 reference unions, and durable pattern-instance Mat4 records. Schema V21 added
 product V17 arc entities, construction flags, ordered profile/path references,
-and normalized feature inputs. Current exports use the lowest schema that can
-represent all source truth, through `web-cad.project.v21`; V21 is selected only
-when a documented V17 trigger is present. The loader accepts V1 through V21
+and normalized feature inputs. Schema V22 added product V19 normalized
+dimension targets, exact region profiles, retained V19 history/diff shapes,
+and the optional authoritative history baseline. Current exports use the lowest
+schema that can represent all source truth, through `web-cad.project.v22`;
+V21/V22 are selected only when their documented triggers are present. The
+loader accepts V1 through V22
 through explicit validation and migration. The
 `web-cad.project.*` names are retained as compatibility schema identifiers
 after the Partbench product rename; changing them would require a deliberate
@@ -44,12 +47,10 @@ for new source records that cannot be represented by V18: `ImportedBodyFeature`,
 `LinearPatternFeature`, `CircularPatternFeature`, `MirrorFeature`,
 `ShellFeature`, and `CadParameter.expression`. See `docs/v15.md` for the V15
 storage contract. V16 introduced `web-cad.project.v20`; see `docs/v16.md`.
-Product V17 introduced `web-cad.project.v21`; see `docs/v17.md`. This
+Product V17 introduced `web-cad.project.v21`; see `docs/v17.md`. Product V19
+introduced `web-cad.project.v22`; see `docs/v19.md`. This
 document continues to define the project-format and source/derived rules that
 storage, solver, and topology-backed downstream modeling work must preserve.
-The reviewed product V19 proposal in `docs/v19.md` plans
-`web-cad.project.v22`, but V22 is not implemented and is not part of the
-current loader/export matrix.
 
 V16 expression-language features (degree-first trigonometry, comparisons,
 ternary expressions, and `if`) remain text in the existing
@@ -88,6 +89,8 @@ schemaVersion: web-cad.project.v20  (V16 sweep/loft, resolved pattern/mirror
                                       refs, pattern instance Mat4 records)
 schemaVersion: web-cad.project.v21  (V17 arcs, construction, ordered profile/
                                       path refs, normalized feature inputs)
+schemaVersion: web-cad.project.v22  (V19 normalized dimensions, exact regions,
+                                      retained history/diffs, history baseline)
 ```
 
 It is produced by:
@@ -180,13 +183,14 @@ stable result topology is not persisted and does not require
 The current exported JSON shape is:
 
 ```ts
-ProjectV16ThroughV21 {
+ProjectV16ThroughV22 {
   schemaVersion: "web-cad.project.v16"
                | "web-cad.project.v17"
                | "web-cad.project.v18"
                | "web-cad.project.v19"
                | "web-cad.project.v20"
                | "web-cad.project.v21"
+               | "web-cad.project.v22"
   document: {
     units: "mm" | "cm" | "m" | "in"
     objects: SceneObject[]
@@ -206,6 +210,7 @@ ProjectV16ThroughV21 {
     nextSketchDimensionNumber: number
     nextSketchConstraintNumber: number
   }
+  historyBaseline?: DocumentSnapshot
   history: Transaction[]
   redoStack: Transaction[]
 }
@@ -822,7 +827,7 @@ the generated body is rebuilt as derived geometry. Primitive-derived
 compatibility features are not deletable through `feature.delete` or editable
 through `feature.updateExtrude`.
 
-## Project Schema V2–V21 Storage Decisions
+## Project Schema V2–V22 Storage Decisions
 
 The derived V2 part/feature/body bridge did not require a format change because
 it is rebuilt from scene objects. Sketches are different: they are authored CAD
@@ -1077,8 +1082,8 @@ summaries include the source sketch/entity, profile kind, same-sketch axis line,
 angle, operation mode, and authored body ID. Hole, chamfer, and fillet summaries
 include their target-consuming source inputs and authored result body IDs.
 
-The `project.structure` query returns the current V2–V21 compatibility bridge,
-including normalized V21 arc, construction, profile, and path sources:
+The `project.structure` query returns the current V2–V22 compatibility bridge,
+including normalized V21 arc/profile/path and V22 dimension/region sources:
 
 - one derived default part, `part:default`;
 - one primitive feature per scene object, `feature:<objectId>`;
@@ -1306,7 +1311,7 @@ entity IDs, raw OCCT handles, or exact B-rep payloads.
 
 Do not introduce another format version just because query shapes changed. A
 new project format is justified when the saved source-of-truth model gains data
-that cannot be faithfully represented by the current `web-cad.project.v21`
+that cannot be faithfully represented by the current `web-cad.project.v22`
 document shape.
 
 V6 introduced `web-cad.project.v14` when `feature.revolve` added the first
@@ -1323,13 +1328,13 @@ became persisted source-of-truth data. Query-derived boolean topology readiness,
 generated-reference candidates, derived exact signatures, and V12 release-smoke
 metadata do not justify another schema version by themselves.
 
-Potential post-V21 triggers:
+Potential post-V22 triggers:
 
 - explicit authored parts with names/origins beyond the derived default part;
 - future source-of-truth solver state, expression records, or constraint
-  families beyond the V21 arc/constraint model;
+  families beyond the V22 dimension/constraint model;
 - additional feature records that require new persisted inputs beyond the
-  feature families represented through V21;
+  feature families represented through V22;
 - body definitions or exact geometry checkpoints that are source of truth or
   required rebuild inputs;
 - persisted durable topological references beyond the current semantic named
@@ -1337,7 +1342,7 @@ Potential post-V21 triggers:
   explicit topology anchor records, manual topology repair records, sketches,
   and features;
 - assembly definitions, instances, mates, or material overrides;
-- project-level materials or named views not represented by V21;
+- project-level materials or named views not represented by V22;
   or
 - a command-log representation that cannot be preserved with current transaction
   history.
@@ -1362,9 +1367,11 @@ and pattern/mirror direction/plane ref unions — see `docs/v16.md`. Product V17
 introduced **`web-cad.project.v21`** for its new source shapes: `SketchArcEntity`,
 explicit construction state, `SketchProfileRef`, `SketchPathRef`, and normalized
 profile/path fields on consuming features. V21 keeps `partbench.wcad.v2` and
-explicitly migrates V20 inputs; see `docs/v17.md`. Any schema after V21
-must include a migration from every older accepted version, not silent shape
-guessing.
+explicitly migrates V20 inputs; see `docs/v17.md`. Product V19 introduced
+**`web-cad.project.v22`** for normalized dimension targets, exact region
+profiles, retained V19 history/diffs, and the optional history baseline; see
+`docs/v19.md`. Any schema after V22 must include a migration from every older
+accepted version, not silent shape guessing.
 
 V3 Phase A introduced `web-cad.project.v7` when parameters and sketch dimensions
 became persisted source-of-truth data. V3 Phase B introduced
@@ -1389,8 +1396,8 @@ such as `sketch.evaluation`, dependency health, generated-reference labels,
 derived measurements, and renderer display frames should remain rebuildable
 query/cache data and should not trigger a format version by themselves.
 
-Future slices after product V17 should introduce another project format only if
-they add persisted source-of-truth data that cannot be represented by V21.
+Future slices after product V19 should introduce another project format only if
+they add persisted source-of-truth data that cannot be represented by V22.
 Solver/evaluator status, reference-candidate
 status, export-readiness status, boolean topology readiness, generated
 boolean-reference query results, release-smoke metadata, and exact-kernel query
@@ -1644,7 +1651,7 @@ V18 source block contains topology identity settings, checkpoint metadata,
 topology anchor records, and explicit repair records. At V13 completion,
 ordinary projects still exported as schema V16 or schema V17 until topology
 identity source records were actually present. Current exports follow the
-minimum-schema rules through V21 and the completed V17 trigger matrix.
+minimum-schema rules through V22 and the completed V17/V19 trigger matrices.
 
 Do not confuse the V13 release with `web-cad.project.v13`; that schema
 identifier already means persisted perpendicular-line sketch constraints from
@@ -1815,19 +1822,20 @@ The completed storage behavior is exercised by
 `pnpm smoke:v17-storage-migration-workflow` and the other five named
 `pnpm smoke:v17-*` release workflows listed in `docs/v17.md`.
 
-## Proposed Product V19 Sketch Editing and Region Storage Decision
+## Product V19 Sketch Editing and Region Storage Decision
 
-This section records a reviewed proposal, not implemented behavior.
-`docs/v19.md` is normative for the full proposed contract. Product V19 plans
-minimum-triggered `web-cad.project.v22`; product and project version numbers
+This section records implemented behavior. `docs/v19.md` is normative for the
+full contract. Product V19 uses minimum-triggered `web-cad.project.v22`;
+product and project version numbers
 remain independent.
 
-V22 is planned only when authoritative source/history/redo contains at least
+V22 is emitted only when authoritative source/history/redo contains at least
 one:
 
 - `SketchRegionsProfileRef`;
-- normalized diameter dimension target;
+- normalized `entityScalar` diameter dimension target;
 - point-pair, point-to-line-distance, or line-angle dimension target;
+- an explicit top-level `historyBaseline`;
 - V19-only command or semantic-diff shape retained in history or redo; or
 - future trigger added by an explicitly approved V19 amendment.
 
@@ -1840,14 +1848,15 @@ hashes, JSON, history replay, package validation, and minimum-schema export.
 Lowering is refused while any trigger remains in the live document, history,
 or redo stack.
 
-The proposal retains `partbench.wcad.v2`; it adds no package entry or new
+The release retains `partbench.wcad.v2`; it adds no package entry or new
 checkpoint-payload path. Candidate regions, intersection graphs, edit
 previews, solver evaluations, label positions, region-fill tessellation,
 meshes, exact metadata, and OCCT handles remain derived.
 
-Until V19 implementation lands, the loader accepts V1 through V21, exports at
-the lowest sufficient schema through V21, and every current-format statement
-elsewhere in this document remains unchanged.
+The loader accepts V1 through V22 and exports the lowest sufficient schema
+through V22. `pnpm smoke:v19-storage-migration-workflow` proves inherited
+storage compatibility plus JSON/canonical-CBOR/`.wcad` history-baseline
+round-trips.
 
 ## V8 Native Package Direction
 
@@ -1861,9 +1870,11 @@ previously deferred, and V9 keeps that storage direction unchanged:
   directory-compatible internal layout;
 - required authoritative package entries: `manifest.json`, `document.cbor`,
   and `commands.cbor`;
-- current implemented document schemas run through `web-cad.project.v21`, with
+- current implemented document schemas run through `web-cad.project.v22`, with
   the lowest sufficient schema emitted for a project;
 - `web-cad.project.v21` is emitted only for the completed V17 trigger matrix;
+  projects without those triggers retain their lowest sufficient older schema;
+- `web-cad.project.v22` is emitted only for the completed V19 trigger matrix;
   projects without those triggers retain their lowest sufficient older schema;
 - JSON remains explicit debug/interchange, not the primary native package
   encoding;
@@ -1988,7 +1999,7 @@ Likely rebuildable cache files are:
 - geometry diagnostics
 
 The current JSON format is the source-of-truth interchange/debug format for the
-current document model through `web-cad.project.v21`. It is not the final
+current document model through `web-cad.project.v22`. It is not the final
 storage backend and
 does not imply OPFS or File System Access API behavior. V18 topology identity
 source records can appear in JSON, but authoritative B-rep checkpoint payloads

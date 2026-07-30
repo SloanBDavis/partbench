@@ -19,9 +19,9 @@ The current implementation source of truth is:
 - `docs/v16.md` — completed V16 sweep, loft, pattern depth, expression extensions, and mass properties release record
 - `docs/v17.md` — completed V17 composite sketch profiles, arcs, and curved sweep paths release record
 - `docs/v18.md` — completed V18 frontend-only Precision CAD UI overhaul release record
-- `docs/v19.md` — reviewed proposed V19 production sketching and multi-region profiles specification; not implemented
+- `docs/v19.md` — completed V19 production sketching and multi-region profiles release record
 
-Do not attempt to build the entire architecture at once. Implement only the milestone requested by the user. V17 is complete; follow `docs/v16.md` and `docs/v17.md` as compatibility and support-matrix records. Do not weaken a completed V17 Must row or expand beyond its documented matrix without an explicitly approved later milestone.
+Do not attempt to build the entire architecture at once. Implement only the milestone requested by the user. V19 is complete; follow `docs/v16.md` through `docs/v19.md` as compatibility and support-matrix records. Do not weaken a completed Must row or expand beyond its documented matrix without an explicitly approved later milestone.
 The six `pnpm smoke:v17-*` commands recorded in `docs/v17.md` are the named V17 release workflows; V21 remains minimum-triggered rather than the default for every save.
 
 V18 is complete. Follow `docs/v18.md` as its UI compatibility and performance
@@ -30,12 +30,14 @@ production changes stay in `apps/web`, and maintenance must not add commands,
 queries, source records, geometry/renderer contracts, schemas, file formats, or
 adapter behavior without an explicitly approved later milestone.
 
-V19 is proposed, not implemented. `docs/v19.md` defines the reviewed planning
-boundary for a future production-sketching and multi-region-profiles release.
-Do not claim its commands, queries, consumer rows, named scripts, or planned
-`web-cad.project.v22` schema as current behavior. V21 remains the latest
-implemented project schema until an explicitly requested V19 implementation
-slice lands with its complete vertical proof.
+V19 is complete. Follow `docs/v19.md` and
+`docs/v19-implementation-dag.md` as the binding capability, compatibility,
+performance, and non-goal records. V19 adds deterministic sketch editing,
+command-backed dimension/constraint breadth, explicit whole-loop material
+regions, and the documented exact region extrude/revolve matrix. Project
+schema `web-cad.project.v22` is minimum-triggered; `.wcad` remains
+`partbench.wcad.v2`. The eight named `pnpm` V19 release commands in
+`docs/v19.md` are the release-level integration proof.
 
 ## Core Architectural Rules
 

@@ -1,6 +1,6 @@
 # V19 Implementation DAG
 
-Status: **active implementation tracker**
+Status: **completed implementation record**
 
 The normative product contract remains [`docs/v19.md`](./v19.md). This file
 records implementation order, parallel ownership boundaries, review gates, and
@@ -786,6 +786,59 @@ history baseline.
 - Gate G is accepted. Gate H cross-cutting audit is the next unblocked node;
   no Gate H audit, Gate I release proof, or completed V19 release is claimed
   by this checkpoint.
+
+### 2026-07-30 — Gate H cross-cutting product audit accepted
+
+- Retained region-backed extrude/revolve features expose only valid exact-region
+  retarget choices. Upstream region breakage immediately evicts stale derived
+  geometry, reports product-safe diagnostics, preserves authored source, and
+  requires an explicit feature edit rather than automatic candidate
+  substitution.
+- Trusted Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z route through the shared projected
+  history actions. Region and curve editors retain keyboard, focus, Escape,
+  Apply/Cancel, narrow-layout, and visible-copy contracts; raw IDs/codes stay
+  in Technical Details.
+- The shared query worker is disposed on page exit and recovered transports
+  terminate on disposal. Curve-preview worker failures no longer expose raw
+  thrown messages. The 512-candidate performance proof audits both query and
+  geometry workers and measures cancellation from the actual request.
+- The production V19 browser workflow passes 36/36 Gate B/C/E/F/G/H checks,
+  including the 760 px region editor and exact retained-region retarget with
+  body identity preserved.
+- `check:v19-bundle` passes at 408,912/409,600 bytes critical UI JavaScript
+  gzip, 6,608/20,480 CSS, 562,892/563,200 all-UI JavaScript, 256,936/262,144
+  command worker, 84,769/122,880 geometry worker, and the exact 13,808,536-byte
+  OCCT WASM cap.
+- `smoke:v19-performance` passes with a 1,952 ms inherited shell median,
+  512/512 candidates over six pages, revision invalidation, 7.4 ms physical
+  cancellation, 18.9 ms trusted pointer feedback, 17.3 ms frame p95, a 50 ms
+  maximum long task, and no analytic-workload geometry-worker or OCCT request.
+
+### 2026-07-30 — Gate I release proof and V19 release accepted
+
+- All eight mandatory V19 command names exist. The release-samples command
+  reuses the three binding non-browser workflows; the storage-migration command
+  composes inherited V17 migration compatibility with the V19 authoritative
+  history-baseline JSON/canonical-CBOR/`.wcad` proof.
+- V19 curve edit passes 10/10 checks; dimensions/constraints pass 8/8 across
+  17 literal and 15 parameter targets; the real-OCCT profile/region workflow
+  passes its nine normative scenarios; storage passes 13 inherited migration
+  checks plus 8 V19 baseline checks; the production browser passes 36/36.
+- Inherited V17 release samples pass 3 samples/12 checks. Arc-profile,
+  composite-feature, and curved-sweep real-geometry workflows pass, and the
+  shared V17/V18 production browser compatibility gate passes 13/13 including
+  its narrow viewport.
+- The bundle wrapper now builds only the artifacts it audits, and the root
+  build uses a bounded Node heap to avoid host OOM without changing product
+  output. The performance cancellation fixture cancels in the posting task,
+  before a fast worker can race the requested cancellation.
+- `AGENTS.md`, `README.md`, `docs/architecture.md`,
+  `docs/implementation-plan.md`, `docs/native-format.md`, this DAG, and the
+  normative V19 record now agree on completed scope, minimum-triggered
+  `web-cad.project.v22`, retained `partbench.wcad.v2`, named commands, derived
+  data, limitations, and non-goals.
+- The final full workspace test, typecheck, lint, format, and bounded build
+  commands pass. No V19 non-goal is partially advertised as supported.
 
 ## Completion audit
 

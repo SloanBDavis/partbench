@@ -156,9 +156,12 @@ Current project JSON/`.wcad` exports use the lowest schema required by source
 truth: `web-cad.project.v16` for ordinary current features, `v17` when advanced
 sketch constraints are present, `v18` when topology identity records are
 present, and `v19` when V15 imported-body / pattern / mirror / shell /
-expression records are present, and `v20` for V16 sweep/loft and expanded
-pattern/reference source records. V1 through V20 remain importable through
-explicit migrations. Derived meshes, solver status, exact metadata, topology
+expression records are present, `v20` for V16 sweep/loft and expanded
+pattern/reference source records, `v21` for V17 arc/composite-profile source,
+and `v22` for V19 normalized dimensions, exact regions, retained V19
+history/diffs, or an authoritative history baseline. V1 through V22 remain
+importable through explicit migrations. Derived region candidates, meshes,
+solver status, exact metadata, topology
 snapshots, and geometry status are never saved as source-of-truth data;
 checkpoint payload bytes for topology identity are preserved in `.wcad` v2, not
 in JSON.
@@ -177,7 +180,7 @@ protocol/package migration.
   boolean/pattern/mirror/shell results, STEP import/export, and derived exact
   metadata where available.
 - Topology-backed commandability is limited to the verified support matrices in
-  the V12–V16 release records. Unsupported or low-confidence topology remains
+  the V12–V19 release records. Unsupported or low-confidence topology remains
   structured diagnostic output rather than silent retargeting.
 - Parameter expressions support pure degree-first trigonometry, comparisons,
   ternaries, and `if`; scripting and general boolean operators are deferred.
@@ -185,8 +188,10 @@ protocol/package migration.
   collaboration, production MCP auth, natural-language command parsing, IGES,
   and proprietary CAD import are not implemented unless scoped into a later
   release.
-- V15/V16 workflow smokes exercise cad-core command/query and async geometry
-  paths; they are not launched-browser UI automation scripts.
+- V19 supports its documented analytic sketch-edit, dimension/constraint, and
+  exact region extrude/revolve matrix. Splines, associative offset features,
+  composite sweep/loft regions, assemblies, drawings, and production WebGPU
+  remain out of scope.
 
 See `docs/implementation-plan.md` for the full current capabilities and
 limitations list.

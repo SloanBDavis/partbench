@@ -15,7 +15,7 @@ The current implementation source of truth is:
 - `docs/v16.md` — completed V16 release record
 - `docs/v17.md` — completed composite sketch profiles, arcs, and curved sweep paths release record
 - `docs/v18.md` — completed frontend-only Precision CAD UI overhaul release record
-- `docs/v19.md` — reviewed proposed production sketching and multi-region profiles specification; not implemented
+- `docs/v19.md` — completed production sketching and multi-region profiles release record
 - `AGENTS.md`
 
 When architecture and implementation-plan conflict, follow the implementation plan for the current milestone.
@@ -942,10 +942,11 @@ uses minimum-triggered `web-cad.project.v21` while `.wcad` remains
 `partbench.wcad.v2`; the six named `pnpm smoke:v17-*` workflows provide the
 release-level integration proof.
 V18 is complete as a frontend-only workbench overhaul; its record is
-`docs/v18.md`. V19 is a reviewed but unimplemented production-sketching and
-multi-region-profile proposal in `docs/v19.md`. It must be implemented only
-through its sequential vertical-slice gates; the current architecture remains
-at completed V18 behavior and minimum-triggered `web-cad.project.v21`.
+`docs/v18.md`. V19 is complete for the bounded production-sketching,
+dimension/constraint, and explicit material-region matrix in `docs/v19.md`.
+Its source uses minimum-triggered `web-cad.project.v22`; `.wcad` remains
+`partbench.wcad.v2`. Derived candidates, solver evidence, meshes, and exact
+metadata remain outside authoritative source.
 
 The first implementation should not start with a full CAD UI. It should start with the command engine, WASM kernel bridge, and renderer skeleton.
 

@@ -752,17 +752,15 @@ function createBrowserAuditBootstrap() {
         ) {
           audit.cancelNextRegionQuery = false;
           record.cancellationResponseCountAtPost = record.responseCount;
-          requestAnimationFrame(() => {
-            record.cancellationRequested = true;
-            record.cancellationRequestedAt = performance.now();
-            const panel = document.querySelector(
-              '[aria-label="Select sketch material regions"]'
-            );
-            const cancel = [...(panel?.querySelectorAll("button") ?? [])].find(
-              (button) => button.textContent.trim() === "Cancel"
-            );
-            cancel?.click();
-          });
+          record.cancellationRequested = true;
+          record.cancellationRequestedAt = performance.now();
+          const panel = document.querySelector(
+            '[aria-label="Select sketch material regions"]'
+          );
+          const cancel = [...(panel?.querySelectorAll("button") ?? [])].find(
+            (button) => button.textContent.trim() === "Cancel"
+          );
+          cancel?.click();
         }
       }
       terminate() {

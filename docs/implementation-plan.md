@@ -4,7 +4,7 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the repo state and the
 active implementation roadmap.
 
-Last updated: 2026-07-23.
+Last updated: 2026-07-30.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/v12.md` for the completed
@@ -15,16 +15,16 @@ release record, `docs/v15.md` for the completed V15 STEP import, expanded
 feature families, and parameter expressions release record, `docs/v16.md` for
 the completed V16 sweep, loft, pattern depth, expression extensions, and mass
 properties release record, `docs/v17.md` for the completed V17 composite
-sketch profiles, arcs, and curved sweep paths release record, and `docs/v18.md`
-for the completed frontend-only Precision CAD UI overhaul release record.
-`docs/v19.md` is the reviewed proposed production sketching and multi-region
-profiles specification; it is not implemented. Use `docs/native-format.md` for
-project-format direction, and
+sketch profiles, arcs, and curved sweep paths release record, `docs/v18.md`
+for the completed frontend-only Precision CAD UI overhaul release record, and
+`docs/v19.md` for the completed production sketching and multi-region profiles
+release record. Use `docs/native-format.md` for project-format direction, and
 `docs/occt-wasm-size.md` for OCCT/WASM load-size findings. V7, V8, V9, V10,
 and V11 are completed historical releases whose details are now condensed in
 this plan instead of maintained as separate release documents. V16, V17, and
 V18 are complete; follow their release records for compatibility, support-
-matrix, UI, and performance constraints.
+matrix, UI, and performance constraints. V19 is also complete; its sequential
+gate evidence is in `docs/v19-implementation-dag.md`.
 
 ## Active Rules
 
@@ -156,16 +156,17 @@ These constraints remain active:
     capability, schema, geometry/renderer contract, file format, or adapter
     behavior; and established immutable bundle, runtime-performance, browser,
     responsive, accessibility, and visual-artifact release gates.
-13e. V19 is **proposed and not implemented**. Its reviewed specification is
-    `docs/v19.md`. Its planned center is deterministic production sketch
+13e. V19 is **complete**. Its binding release record is `docs/v19.md` and its
+    gate evidence is `docs/v19-implementation-dag.md`. Its center is deterministic production sketch
     editing, broader command-backed dimensions/constraints, explicit
     whole-loop material regions with holes, and a bounded region
-    extrude/revolve matrix. The proposal reserves minimum-triggered
+    extrude/revolve matrix. The release uses minimum-triggered
     `web-cad.project.v22` for its enumerated source/history/redo shapes while
-    retaining `partbench.wcad.v2`. Until an explicitly requested V19 slice
-    lands with its vertical gate, the current implementation remains V18 with
-    schemas through minimum-triggered V21; no proposed V19 command, query,
-    script, source record, or consumer row is current behavior.
+    retaining `partbench.wcad.v2`. Slices A-I passed their complete protocol,
+    core, solver, geometry, UI, adapter, storage, browser, performance, and
+    release-proof gates. V19 does not add splines, an associative offset
+    feature, general curve arrangements, composite sweep/loft profiles,
+    assemblies, drawings, or production WebGPU.
 14. V8 Tranche A is implemented as a protocol and pure-helper slice only:
     `partbench.wcad.v1` manifest/source-identity types, structured package
     validation diagnostics, `project.packageReadiness`, and thin agent/MCP
@@ -545,7 +546,7 @@ Compatibility identifiers retained during the Partbench rename:
 
 - `@web-cad/*` workspace package names remain stable to avoid broad import and
   lockfile churn.
-- `web-cad.project.v1` through `web-cad.project.v21` remain project-format
+- `web-cad.project.v1` through `web-cad.project.v22` remain project-format
   schema identifiers. Renaming them would be a storage migration.
 - `web-cad.project.v7` is an older saved-project schema version, not the V7
   release. `web-cad.project.v8` is also an older saved-project schema version,
@@ -554,8 +555,10 @@ Compatibility identifiers retained during the Partbench rename:
   V18 for topology identity records, V19 for V15 imported-body / pattern /
   mirror / shell / expression records, and V20 for V16 sweep/loft, resolved
   pattern/mirror references, and pattern instance transforms. V17-only source
-  shapes use V21; projects without a V21 trigger retain the lowest sufficient
-  older schema, as specified by `docs/v17.md` and `docs/native-format.md`.
+  shapes use V21. V19-only region, normalized dimension, retained history/
+  redo, or history-baseline triggers use V22; projects without a V21/V22
+  trigger retain the lowest sufficient older schema, as specified by
+  `docs/v17.md`, `docs/v19.md`, and `docs/native-format.md`.
 - `web-cad.agent-adapter.v1` remains the adapter protocol identifier.
 
 ## Current Scripts
@@ -855,7 +858,7 @@ Current Partbench can:
   supported Extrude, Revolve, Hole, Chamfer, Fillet, Pattern, Mirror, Shell,
   and STEP import operations without offering known-unsupported targets as
   valid;
-- save/load current `web-cad.project.v16` through `web-cad.project.v21` JSON and
+- save/load current `web-cad.project.v16` through `web-cad.project.v22` JSON and
   native `.wcad` packages with migrations from older accepted schemas, while
   the Project panel shows draft source, schema/migration status, structured
   validation issues, replacement/history impact, same-document-source detection
@@ -3227,13 +3230,13 @@ drawings, direct modeling, production WebGPU, collaboration, or format breadth.
 The Must Definition of Done is complete. Stretch or later-release work must not
 weaken this guardrail matrix.
 
-## Proposed V19 Production Sketching and Multi-Region Profiles
+## Completed V19 Production Sketching and Multi-Region Profiles
 
-V19 is a reviewed proposal and is not implemented. Its complete decision,
-support matrix, command/query contracts, migration rules, release gates, and
-non-goals are in `docs/v19.md`.
+V19 is complete. Its decision, support matrix, command/query contracts,
+migration rules, release gates, evidence, and non-goals are in `docs/v19.md`
+and `docs/v19-implementation-dag.md`.
 
-The proposed release center is:
+The release center is:
 
 ```text
 deterministic trim / extend / split / offset
@@ -3243,17 +3246,17 @@ deterministic trim / extend / split / offset
 -> bounded region extrude and revolve
 ```
 
-The plan introduces no spline or general arrangement engine, associative offset
+The release introduces no spline or general arrangement engine, associative offset
 feature, composite sweep/loft profile, assembly, drawing, production WebGPU, or
-new native-package layout. Its planned `web-cad.project.v22` is
+new native-package layout. Its `web-cad.project.v22` is
 minimum-triggered only by the exact source/history/redo shapes listed in
 `docs/v19.md`; `.wcad` remains `partbench.wcad.v2`.
 
-Do not add V19 product affordances or claim its named release scripts until the
-corresponding sequential slice passes its full protocol, cad-core, solver,
-geometry, UI, adapter, storage, and release-proof gate. Current capability and
-format statements elsewhere in this plan continue to stop at completed V18 and
-minimum-triggered V21.
+Slices A-I passed their full protocol, cad-core, solver, geometry, UI, adapter,
+storage, performance, compatibility, and release-proof gates. The eight named
+V19 commands in `docs/v19.md` remain the release integration contract; later
+work must not weaken its support matrix or partially expose a recorded
+non-goal.
 
 ## Definition of Done
 

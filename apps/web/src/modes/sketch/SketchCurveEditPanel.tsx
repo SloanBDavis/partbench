@@ -1646,7 +1646,7 @@ function useCurveEditReadinessQuery(
           setAsyncState({
             proposal,
             authorityKey,
-            error: formatReadinessError(error)
+            error: formatReadinessError()
           });
         }
       }
@@ -1730,7 +1730,7 @@ function useSketchTrimIntervalChoices(
             request,
             authorityKey,
             choices: [],
-            error: formatReadinessError(error)
+            error: formatReadinessError()
           });
         }
       }
@@ -1809,7 +1809,7 @@ function useSketchExtendHitChoices(
             request,
             authorityKey,
             choices: [],
-            error: formatReadinessError(error)
+            error: formatReadinessError()
           });
         }
       }
@@ -1832,7 +1832,7 @@ function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
 
-function formatReadinessError(_error: unknown): string {
+function formatReadinessError(): string {
   return "Retry preview.";
 }
 

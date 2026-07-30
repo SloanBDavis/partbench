@@ -1918,6 +1918,10 @@ async function v7BrowserWorkflowSmoke({
   return { checks, ids, skipped };
 
   async function runV18V17BrowserWorkflowSmoke() {
+    await waitFor(
+      () => Boolean(document.querySelector('[aria-label="3D scene viewport"]')),
+      "V18 viewport"
+    );
     const header = getElementByAriaLabel("Partbench document header");
     const canvas = getElementByAriaLabel("3D scene viewport");
     if (
