@@ -1,4 +1,5 @@
 import type {
+  CadBatchValidationErrorCode,
   CadOpsVersion,
   SketchProfileRegionCandidatesQuery,
   SketchProfileRegionCandidatesQueryResponse,
@@ -6,9 +7,42 @@ import type {
   SketchRegionsProfileRef
 } from "@web-cad/cad-protocol";
 import type {
+  V22RegionSourceIssueCode,
   V22RegionSourceSketch,
   V22RegionSourceValidationResult
 } from "./v22RegionSourceValidation";
+
+export function mapRegionSourceIssueToBatchError(
+  code: V22RegionSourceIssueCode | undefined
+): CadBatchValidationErrorCode {
+  switch (code) {
+    case "SKETCH_REGION_PROFILE_EMPTY":
+      return "SKETCH_PROFILE_EMPTY";
+    case "SKETCH_REGION_SKETCH_MISMATCH":
+      return "SCHEMA_V21_SOURCE_INVALID";
+    case "SKETCH_REGION_ENTITY_MISSING":
+      return "SKETCH_PROFILE_ENTITY_MISSING";
+    case "SKETCH_REGION_ENTITY_UNSUPPORTED":
+      return "SKETCH_PROFILE_ENTITY_UNSUPPORTED";
+    case "SKETCH_REGION_CONSTRUCTION_ENTITY":
+      return "SKETCH_PROFILE_CONSTRUCTION_ENTITY";
+    case "SKETCH_REGION_ENTITY_REPEATED":
+      return "SKETCH_PROFILE_ENTITY_REPEATED";
+    case "SKETCH_REGION_LOOP_AREA_TOO_SMALL":
+      return "SKETCH_PROFILE_AREA_TOO_SMALL";
+    case "SKETCH_REGION_LOOP_OPEN":
+    case "SKETCH_REGION_LOOP_INTERSECTION":
+    case "SKETCH_REGION_BOUNDARY_TOUCHING":
+    case "SKETCH_REGION_HOLE_OUTSIDE":
+    case "SKETCH_REGION_HOLES_OVERLAP":
+    case "SKETCH_REGION_MATERIAL_OVERLAP":
+    case "SKETCH_REGION_NESTING_UNSUPPORTED":
+    case "SKETCH_REGION_COMPLEXITY_LIMIT":
+      return code;
+    case undefined:
+      return "SKETCH_REGION_CONSUMER_UNSUPPORTED";
+  }
+}
 
 export interface CadV19RegionPolicy {
   readonly candidates: (

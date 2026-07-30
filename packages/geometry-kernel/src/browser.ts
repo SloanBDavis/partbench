@@ -120,6 +120,7 @@ import {
   type TessellateTorusRequest,
   type TorusGeometryDimensions,
   type TessellationOptions,
+  type ResolvedPlanarRegionProfile,
   type ResolvedPlanarWireProfile
 } from "./kernel";
 
@@ -212,6 +213,7 @@ export type {
   GeometryKernelGeneratedFaceReference,
   GeometryKernelGeneratedEdgeReference,
   SerializableMeshData,
+  ResolvedPlanarRegionProfile,
   ResolvedPlanarWireProfile,
   SphereGeometryDimensions,
   StepImportRequest,

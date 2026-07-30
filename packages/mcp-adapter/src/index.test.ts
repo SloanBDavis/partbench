@@ -7047,4 +7047,154 @@ describe("mcp-adapter V19 region feature parity", () => {
       }
     });
   });
+
+  it("commits and updates an explicit hollow region revolve through cad.batch", () => {
+    const server = new CadMcpServer();
+    const commit = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_region_revolve",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          audit: {
+            intent: "commit",
+            operationCount: 5,
+            requestId: "mcp_req_region_revolve",
+            toolName: "cad.batch"
+          },
+          ops: [
+            {
+              op: "sketch.create",
+              id: "mcp_revolve_sketch",
+              name: "Hollow revolve",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "mcp_revolve_sketch",
+              id: "mcp_revolve_outer",
+              center: [4, 0],
+              width: 2,
+              height: 4
+            },
+            {
+              op: "sketch.addCircle",
+              sketchId: "mcp_revolve_sketch",
+              id: "mcp_revolve_hole",
+              center: [4, 0],
+              radius: 0.5
+            },
+            {
+              op: "sketch.addLine",
+              sketchId: "mcp_revolve_sketch",
+              id: "mcp_revolve_axis",
+              start: [0, -5],
+              end: [0, 5],
+              construction: true
+            },
+            {
+              op: "feature.revolve",
+              id: "mcp_region_revolve_feature",
+              bodyId: "mcp_region_revolve_body",
+              profile: {
+                kind: "regions",
+                sketchId: "mcp_revolve_sketch",
+                regions: [
+                  {
+                    outer: {
+                      kind: "entity",
+                      entityId: "mcp_revolve_outer"
+                    },
+                    holes: [
+                      {
+                        kind: "entity",
+                        entityId: "mcp_revolve_hole"
+                      }
+                    ]
+                  }
+                ]
+              },
+              axis: {
+                type: "sketchLine",
+                sketchId: "mcp_revolve_sketch",
+                entityId: "mcp_revolve_axis"
+              },
+              angleDegrees: 180,
+              operationMode: "newBody"
+            }
+          ]
+        }
+      }
+    });
+    expect(commit).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        createdFeatureIds: ["mcp_region_revolve_feature"],
+        createdBodyIds: ["mcp_region_revolve_body"],
+        audit: {
+          requestId: "mcp_req_region_revolve",
+          toolName: "cad.batch"
+        },
+        review: {
+          operations: expect.arrayContaining([
+            expect.objectContaining({
+              op: "feature.revolve",
+              featureId: "mcp_region_revolve_feature",
+              bodyId: "mcp_region_revolve_body",
+              operationMode: "newBody"
+            })
+          ])
+        }
+      }
+    });
+
+    expect(
+      server.callTool({
+        name: "cad.batch",
+        requestId: "mcp_req_region_revolve_update",
+        arguments: {
+          allowCommit: true,
+          batch: {
+            version: "cadops.v1",
+            mode: "commit",
+            ops: [
+              {
+                op: "feature.updateRevolve",
+                id: "mcp_region_revolve_feature",
+                angleDegrees: 270
+              }
+            ]
+          }
+        }
+      })
+    ).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        modifiedFeatureIds: ["mcp_region_revolve_feature"]
+      }
+    });
+    expect(
+      server.callTool({
+        name: "cad.project_structure",
+        requestId: "mcp_req_region_revolve_structure"
+      })
+    ).toMatchObject({
+      structuredContent: {
+        ok: true,
+        features: [
+          expect.objectContaining({
+            id: "mcp_region_revolve_feature",
+            profile: expect.objectContaining({ kind: "regions" }),
+            angleDegrees: 270
+          })
+        ]
+      }
+    });
+  });
 });

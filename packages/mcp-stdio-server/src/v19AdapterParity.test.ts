@@ -1023,4 +1023,134 @@ describe("V19 stdio adapter parity", () => {
       });
     }
   });
+
+  it("carries a hollow region revolve create and update over JSON-RPC", () => {
+    const session = createMcpStdioSession();
+    const commit = callTool(session, "v19-region-revolve-commit", "cad.batch", {
+      allowCommit: true,
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        actor: { type: "agent", id: "stdio-gate-g" },
+        audit: {
+          intent: "commit",
+          operationCount: 5,
+          requestId: "v19-region-revolve-commit",
+          toolName: "cad.batch"
+        },
+        ops: [
+          {
+            op: "sketch.create",
+            id: "stdio_revolve_sketch",
+            name: "Hollow revolve",
+            plane: "XY"
+          },
+          {
+            op: "sketch.addRectangle",
+            sketchId: "stdio_revolve_sketch",
+            id: "stdio_revolve_outer",
+            center: [4, 0],
+            width: 2,
+            height: 4
+          },
+          {
+            op: "sketch.addCircle",
+            sketchId: "stdio_revolve_sketch",
+            id: "stdio_revolve_hole",
+            center: [4, 0],
+            radius: 0.5
+          },
+          {
+            op: "sketch.addLine",
+            sketchId: "stdio_revolve_sketch",
+            id: "stdio_revolve_axis",
+            start: [0, -5],
+            end: [0, 5],
+            construction: true
+          },
+          {
+            op: "feature.revolve",
+            id: "stdio_region_revolve_feature",
+            bodyId: "stdio_region_revolve_body",
+            profile: {
+              kind: "regions",
+              sketchId: "stdio_revolve_sketch",
+              regions: [
+                {
+                  outer: {
+                    kind: "entity",
+                    entityId: "stdio_revolve_outer"
+                  },
+                  holes: [
+                    {
+                      kind: "entity",
+                      entityId: "stdio_revolve_hole"
+                    }
+                  ]
+                }
+              ]
+            },
+            axis: {
+              type: "sketchLine",
+              sketchId: "stdio_revolve_sketch",
+              entityId: "stdio_revolve_axis"
+            },
+            angleDegrees: 180,
+            operationMode: "newBody"
+          }
+        ]
+      }
+    });
+    expect(commit).toMatchObject({
+      result: {
+        toolName: "cad.batch",
+        isError: false,
+        structuredContent: {
+          ok: true,
+          actor: { type: "agent", id: "stdio-gate-g" },
+          audit: {
+            requestId: "mcp_jsonrpc_v19-region-revolve-commit",
+            toolName: "cad.batch"
+          },
+          createdFeatureIds: ["stdio_region_revolve_feature"],
+          createdBodyIds: ["stdio_region_revolve_body"],
+          review: {
+            operations: expect.arrayContaining([
+              expect.objectContaining({
+                op: "feature.revolve",
+                featureId: "stdio_region_revolve_feature",
+                bodyId: "stdio_region_revolve_body"
+              })
+            ])
+          }
+        }
+      }
+    });
+
+    expect(
+      callTool(session, "v19-region-revolve-update", "cad.batch", {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "feature.updateRevolve",
+              id: "stdio_region_revolve_feature",
+              angleDegrees: 270
+            }
+          ]
+        }
+      })
+    ).toMatchObject({
+      result: {
+        toolName: "cad.batch",
+        isError: false,
+        structuredContent: {
+          ok: true,
+          modifiedFeatureIds: ["stdio_region_revolve_feature"]
+        }
+      }
+    });
+  });
 });

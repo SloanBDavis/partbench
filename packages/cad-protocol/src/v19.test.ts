@@ -607,6 +607,27 @@ describe("V19 protocol contract", () => {
     ).toBe(false);
     expect(
       validateV19CadOp({
+        op: "feature.revolve",
+        profile: regionsProfile(),
+        axis: {
+          type: "sketchLine",
+          sketchId: "sketch_1",
+          entityId: "axis_1"
+        },
+        angleDegrees: 180,
+        operationMode: "newBody"
+      }).ok
+    ).toBe(true);
+    expect(
+      validateV19CadOp({
+        op: "feature.updateRevolve",
+        id: "feature_1",
+        profile: regionsProfile(),
+        angleDegrees: 360
+      }).ok
+    ).toBe(true);
+    expect(
+      validateV19CadOp({
         op: "feature.sweep",
         profile: regionsProfile()
       }).ok

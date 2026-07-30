@@ -5,6 +5,7 @@ import type {
 } from "@web-cad/cad-core";
 import {
   createResolvedSweepSource,
+  createResolvedRegionRevolveProfile,
   createResolvedWireExtrudeRecipe,
   createResolvedWireRevolveRecipe,
   resolveMirrorPlaneFrame,
@@ -109,7 +110,8 @@ export function createAuthoredFeatureDerivedGeometrySources(
       features,
       sketches,
       generatedFacesByKey,
-      consumedBodyIds
+      consumedBodyIds,
+      referenceDocument
     ),
     ...createSweepDerivedGeometrySources(
       features,
@@ -791,7 +793,8 @@ export function createRevolveDerivedGeometrySources(
     string,
     CadGeneratedFaceReference
   > = new Map(),
-  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features)
+  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features),
+  referenceDocument?: CadDocument
 ): readonly DerivedRevolveGeometrySource[] {
   return features
     .filter(
@@ -800,7 +803,12 @@ export function createRevolveDerivedGeometrySources(
     )
     .filter((feature) => !consumedBodyIds.has(feature.bodyId))
     .map((feature) =>
-      createRevolveSourceForFeature(feature, sketches, generatedFacesByKey)
+      createRevolveSourceForFeature(
+        feature,
+        sketches,
+        generatedFacesByKey,
+        referenceDocument
+      )
     )
     .filter(
       (source): source is DerivedRevolveGeometrySource => source !== undefined
@@ -1252,7 +1260,8 @@ function createHoleToolSourceForFeature(
 function createRevolveSourceForFeature(
   feature: Extract<CadFeatureSummary, { kind: "revolve" }>,
   sketches: readonly SketchSnapshot[],
-  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>
+  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
+  referenceDocument?: CadDocument
 ): DerivedRevolveGeometrySource | undefined {
   const sketch = sketches.find(
     (candidate) => candidate.id === feature.sketchId
@@ -1307,7 +1316,25 @@ function createRevolveSourceForFeature(
   }
 
   if (feature.profile?.kind === "regions") {
-    return undefined;
+    if (!referenceDocument) return undefined;
+    const recipe = createResolvedRegionRevolveProfile(
+      referenceDocument,
+      feature.profile,
+      feature.axis,
+      feature.partId
+    );
+    if (!recipe) return undefined;
+    return {
+      id: feature.bodyId,
+      kind: "revolve",
+      sketchPlane: sketch.plane,
+      profile: recipe.profile,
+      axis: { start: recipe.axis.start, end: recipe.axis.end },
+      angleDegrees: feature.angleDegrees,
+      ...(placementState.placementError
+        ? { placementError: placementState.placementError }
+        : {})
+    };
   }
 
   if (!entity || !axis || axis.kind !== "line") {

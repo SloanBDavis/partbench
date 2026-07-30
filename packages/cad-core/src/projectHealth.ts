@@ -67,6 +67,10 @@ import {
   createResolvedWireRevolveProfile,
   resolveWireRevolveProfile
 } from "./wireRevolveProfile";
+import {
+  createResolvedRegionRevolveProfile,
+  resolveRegionRevolveProfile
+} from "./regionRevolveProfile";
 import type {
   CadDocument,
   LinearPatternFeature,
@@ -353,72 +357,6 @@ function createRegionDependencyHealthIssue(
   };
 }
 
-function createRegionGeometryDeferredHealthIssue(
-  feature: {
-    readonly id: FeatureId;
-    readonly kind: "extrude" | "revolve";
-    readonly bodyId: BodyId;
-  },
-  sketchId: SketchId
-): CadDependencyHealthIssue {
-  return {
-    code: "UNSUPPORTED_BODY_REFERENCES",
-    message: `Region ${feature.kind} source is analytically inspectable, but exact geometry and rebuild support remain deferred to the V19 region ${feature.kind} slice.`,
-    featureId: feature.id,
-    bodyId: feature.bodyId,
-    sketchId,
-    expected: `accepted V19 region ${feature.kind} geometry support`,
-    received: "region source only"
-  };
-}
-
-function appendRevolveAxisHealthIssues(
-  issues: CadDependencyHealthIssue[],
-  feature: ProjectHealthRevolveFeature,
-  sketch: ProjectHealthSketch,
-  profileSketchId: SketchId
-): void {
-  const axisEntity = sketch.entities.get(feature.axis.entityId);
-  if (feature.axis.sketchId !== profileSketchId) {
-    issues.push({
-      code: "UNSUPPORTED_BODY_REFERENCES",
-      message: `Revolve feature ${feature.id} axis must reference the same sketch.`,
-      featureId: feature.id,
-      bodyId: feature.bodyId,
-      sketchId: profileSketchId,
-      sketchEntityId: feature.axis.entityId,
-      expected: profileSketchId,
-      received: feature.axis.sketchId
-    });
-  } else if (!axisEntity) {
-    issues.push({
-      code: "SKETCH_ENTITY_NOT_FOUND",
-      message: `Revolve axis line does not exist for feature ${feature.id}: ${feature.axis.entityId}`,
-      featureId: feature.id,
-      bodyId: feature.bodyId,
-      sketchId: profileSketchId,
-      sketchEntityId: feature.axis.entityId
-    });
-  } else if (
-    axisEntity.kind !== "line" ||
-    Math.hypot(
-      axisEntity.end[0] - axisEntity.start[0],
-      axisEntity.end[1] - axisEntity.start[1]
-    ) <= 0
-  ) {
-    issues.push({
-      code: "UNSUPPORTED_BODY_REFERENCES",
-      message: `Revolve axis entity ${feature.axis.entityId} must be a non-zero line for feature ${feature.id}.`,
-      featureId: feature.id,
-      bodyId: feature.bodyId,
-      sketchId: profileSketchId,
-      sketchEntityId: feature.axis.entityId,
-      expected: "non-zero line",
-      received: axisEntity.kind
-    });
-  }
-}
-
 function createAuthoredExtrudeHealth(
   document: ProjectHealthDocument,
   feature: GeneratedReferencesExtrudeFeature,
@@ -670,33 +608,56 @@ function createAuthoredRevolveHealth(
         sketchId: authoredProfile.sketchId
       });
     } else {
-      const validation = validateRegisteredV22RegionSource(
+      const resolution = resolveRegionRevolveProfile(
+        document,
         authoredProfile,
-        sketch
+        feature.axis
       );
-      if (!validation.ok) {
-        issues.push(
-          ...validation.issues.map((issue) =>
-            createRegionDependencyHealthIssue(
-              feature,
-              authoredProfile.sketchId,
-              issue
-            )
-          )
-        );
-      }
-      issues.push(
-        createRegionGeometryDeferredHealthIssue(
-          feature,
-          authoredProfile.sketchId
+      if (!resolution.ok) {
+        const code =
+          resolution.code === "COMPOSITE_REVOLVE_PROFILE_UNSUPPORTED" ||
+          resolution.code === "COMPOSITE_REVOLVE_AXIS_INTERSECTION" ||
+          resolution.code === "SKETCH_NOT_FOUND" ||
+          resolution.code === "SKETCH_ENTITY_NOT_FOUND" ||
+          resolution.code === "SKETCH_REGION_LOOP_OPEN" ||
+          resolution.code === "SKETCH_REGION_LOOP_INTERSECTION" ||
+          resolution.code === "SKETCH_REGION_BOUNDARY_TOUCHING" ||
+          resolution.code === "SKETCH_REGION_MATERIAL_OVERLAP" ||
+          resolution.code === "SKETCH_REGION_COMPLEXITY_LIMIT"
+            ? resolution.code
+            : resolution.code === "SKETCH_REGION_HOLE_OUTSIDE" ||
+                resolution.code === "SKETCH_REGION_HOLES_OVERLAP" ||
+                resolution.code === "SKETCH_REGION_NESTING_UNSUPPORTED"
+              ? "SKETCH_REGION_CONTAINMENT_INVALID"
+              : "UNSUPPORTED_BODY_REFERENCES";
+        issues.push({
+          code,
+          message: resolution.message,
+          featureId: feature.id,
+          bodyId: feature.bodyId,
+          sketchId: resolution.sketchId,
+          sketchEntityId: resolution.sketchEntityId,
+          expected: "ready region profile and axis",
+          received: resolution.code
+        });
+      } else if (
+        !createResolvedRegionRevolveProfile(
+          document,
+          resolution.profile,
+          feature.axis,
+          options.ownerPartId
         )
-      );
-      appendRevolveAxisHealthIssues(
-        issues,
-        feature,
-        sketch,
-        authoredProfile.sketchId
-      );
+      ) {
+        issues.push({
+          code: "UNSUPPORTED_BODY_REFERENCES",
+          message: `Revolve source frame is unresolved: ${feature.id}.`,
+          featureId: feature.id,
+          bodyId: feature.bodyId,
+          sketchId: authoredProfile.sketchId,
+          expected: "resolved region profile and axis",
+          received: "unresolved source frame"
+        });
+      }
     }
   } else if (authoredProfile.kind === "wire") {
     const resolution = resolveWireRevolveProfile(
@@ -828,7 +789,7 @@ function createAuthoredRevolveHealth(
   });
   const topologySnapshot = topology.ok ? topology.topology : undefined;
   if (
-    authoredProfile.kind === "wire" &&
+    (authoredProfile.kind === "wire" || authoredProfile.kind === "regions") &&
     topologySnapshot?.status !== "healthy"
   ) {
     const topologyIssue = topologySnapshot?.issues.at(-1);
@@ -847,7 +808,7 @@ function createAuthoredRevolveHealth(
       code,
       message:
         topologyIssue?.message ??
-        `Composite wire revolve ${feature.id} requires matching exactly-one-solid topology evidence.`,
+        `${authoredProfile.kind === "regions" ? "Region" : "Composite wire"} revolve ${feature.id} requires matching exactly-one-solid topology evidence.`,
       featureId: feature.id,
       bodyId: feature.bodyId,
       expected: topologySnapshot?.sourceIdentity.signature,

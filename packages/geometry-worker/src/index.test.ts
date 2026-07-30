@@ -695,6 +695,46 @@ describe("geometry-worker", () => {
     expect(JSON.stringify(profile)).toBe(before);
   });
 
+  it("serializes a resolved region revolve without rewriting loop order", () => {
+    const profile = {
+      kind: "region" as const,
+      frame: workerWireProfile.frame,
+      outer: {
+        kind: "rectangle" as const,
+        center: [4, 0] as const,
+        width: 2,
+        height: 4
+      },
+      holes: [
+        {
+          kind: "circle" as const,
+          center: [4, 0] as const,
+          radius: 0.5
+        }
+      ],
+      sourceIdentity: "worker-region-revolve",
+      geometryPolicy: workerWireProfile.geometryPolicy
+    };
+    const before = JSON.stringify(profile);
+    const request = createRevolveProfileWorkerRequest({
+      id: "worker_req_region_revolve",
+      payloadId: "geometry_req_region_revolve",
+      sketchPlane: "XY",
+      profile,
+      axis: { start: [0, -5], end: [0, 5] },
+      angleDegrees: 360
+    });
+
+    expect(request.payload).toMatchObject({
+      id: "geometry_req_region_revolve",
+      op: "geometry.revolveProfile",
+      profile,
+      axis: { start: [0, -5], end: [0, 5] },
+      angleDegrees: 360
+    });
+    expect(JSON.stringify(profile)).toBe(before);
+  });
+
   it("creates typed extrude boolean worker requests for cut and add", () => {
     expect(
       createExtrudeBooleanWorkerRequest({

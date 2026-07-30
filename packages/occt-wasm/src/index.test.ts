@@ -1888,6 +1888,11 @@ describe("occt-wasm", () => {
         assertRevolveSolidResult(shapeType, solid, solidCount)
       ).toThrow("must return exactly one solid");
     }
+    expect(() => assertRevolveSolidResult(solid, solid, 2, true)).toThrowError(
+      expect.objectContaining({
+        code: "SKETCH_REGION_RESULT_NOT_SINGLE_SOLID"
+      })
+    );
   });
 
   it("rejects null, invalid, shell, and multi-solid sweep results", () => {
@@ -3585,6 +3590,165 @@ describe("occt-wasm", () => {
       expect(step.bodyCount).toBe(1);
       expect(step.byteLength).toBeGreaterThan(1000);
       expect(JSON.stringify(source)).toBe(before);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "revolves one exact planar region face with a void through mesh, metadata, topology, checkpoint, and STEP",
+    async () => {
+      const profile = {
+        kind: "region" as const,
+        frame: {
+          origin: [0, 0, 0] as const,
+          uAxis: [1, 0, 0] as const,
+          vAxis: [0, 1, 0] as const
+        },
+        outer: {
+          kind: "rectangle" as const,
+          center: [4, 0] as const,
+          width: 2,
+          height: 4
+        },
+        holes: [
+          {
+            kind: "circle" as const,
+            center: [4, 0] as const,
+            radius: 0.5
+          }
+        ],
+        sourceIdentity: "region-revolve-rectangle-circle-v1",
+        geometryPolicy: {
+          linearTolerance: 1e-7,
+          angularToleranceDegrees: 0.1,
+          minimumProfileArea: 1e-12
+        }
+      };
+      const source = {
+        kind: "revolve" as const,
+        sketchPlane: "XY" as const,
+        profile,
+        axis: { start: [0, -5] as const, end: [0, 5] as const },
+        angleDegrees: 360
+      };
+      const mesh = await createOcctRevolveProfileMesh(source);
+      const partial = await createOcctRevolveProfileMesh({
+        ...source,
+        angleDegrees: 120
+      });
+      const metadata = await createOcctExactBodyMetadata({ source });
+      const topology = await createOcctExactTopologySnapshot({ source });
+      const checkpoint = await createOcctExactTopologyCheckpointPayload({
+        checkpointId: "checkpoint_region_revolve",
+        bodyId: "body_region_revolve",
+        source
+      });
+      const step = await createOcctStepExport({
+        units: "mm",
+        bodies: [{ ...source, bodyId: "body_region_revolve" }]
+      });
+
+      expect(mesh).toMatchObject({ primitive: "revolve" });
+      expect(mesh.vertexCount).toBeGreaterThan(0);
+      expect(mesh.triangleCount).toBeGreaterThan(0);
+      expect(partial).toMatchObject({ primitive: "revolve" });
+      expect(partial.vertexCount).toBeGreaterThan(0);
+      expect(metadata.sourceKind).toBe("revolve");
+      expect(metadata.topologyCounts.solidCount).toBe(1);
+      expect(metadata.volume).toBeCloseTo(64 * Math.PI - 2 * Math.PI ** 2, 5);
+      expect(topology.sourceKind).toBe("revolve");
+      expect(topology.entityCounts.solidCount).toBe(1);
+      expect(checkpoint.sourceKind).toBe("revolve");
+      expect(checkpoint.brepByteLength).toBeGreaterThan(1000);
+      expect(step.bodyCount).toBe(1);
+      expect(step.byteLength).toBeGreaterThan(1000);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "revolves a normalized line/arc wire region with a clockwise wire hole",
+    async () => {
+      const translateX = 7;
+      const outer = {
+        ...slotWireProfile,
+        sourceIdentity: "region-revolve-wire-outer-v1",
+        segments: slotWireProfile.segments.map((segment) =>
+          segment.kind === "line"
+            ? {
+                ...segment,
+                start: [
+                  segment.start[0] + translateX,
+                  segment.start[1]
+                ] as const,
+                end: [segment.end[0] + translateX, segment.end[1]] as const
+              }
+            : {
+                ...segment,
+                center: [
+                  segment.center[0] + translateX,
+                  segment.center[1]
+                ] as const
+              }
+        )
+      };
+      const hole = {
+        kind: "wire" as const,
+        frame: slotWireProfile.frame,
+        closed: true as const,
+        segments: [
+          {
+            kind: "line" as const,
+            sourceEntityId: "hole-left",
+            start: [6.5, -0.5] as const,
+            end: [6.5, 0.5] as const
+          },
+          {
+            kind: "line" as const,
+            sourceEntityId: "hole-top",
+            start: [6.5, 0.5] as const,
+            end: [7.5, 0.5] as const
+          },
+          {
+            kind: "line" as const,
+            sourceEntityId: "hole-right",
+            start: [7.5, 0.5] as const,
+            end: [7.5, -0.5] as const
+          },
+          {
+            kind: "line" as const,
+            sourceEntityId: "hole-bottom",
+            start: [7.5, -0.5] as const,
+            end: [6.5, -0.5] as const
+          }
+        ],
+        sourceIdentity: "region-revolve-wire-hole-clockwise-v1",
+        geometryPolicy: slotWireProfile.geometryPolicy
+      };
+      const source = {
+        kind: "revolve" as const,
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "region" as const,
+          frame: slotWireProfile.frame,
+          outer,
+          holes: [hole],
+          sourceIdentity: "region-revolve-wire-with-wire-hole-v1",
+          geometryPolicy: slotWireProfile.geometryPolicy
+        },
+        axis: { start: [0, -10] as const, end: [0, 10] as const },
+        angleDegrees: 180
+      };
+
+      const mesh = await createOcctRevolveProfileMesh(source);
+      const metadata = await createOcctExactBodyMetadata({ source });
+
+      expect(mesh).toMatchObject({ primitive: "revolve" });
+      expect(mesh.vertexCount).toBeGreaterThan(0);
+      expect(mesh.triangleCount).toBeGreaterThan(0);
+      expect(metadata.sourceKind).toBe("revolve");
+      expect(metadata.topologyCounts.solidCount).toBe(1);
+      expect(metadata.volume).toBeGreaterThan(0);
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );

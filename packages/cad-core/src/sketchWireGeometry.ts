@@ -767,7 +767,14 @@ export function classifySketchSegmentAgainstInfiniteLine(
     ),
     policy
   );
-  if (candidates.length === 0) return "clear";
+  if (candidates.length === 0) {
+    return Math.min(
+      Math.abs(signedDistance(segment.start)),
+      Math.abs(signedDistance(segment.end))
+    ) <= policy.linearTolerance
+      ? "vertex-touch"
+      : "clear";
+  }
   const locations = candidates.map((point) =>
     pointLocation(segment, point, policy)
   );

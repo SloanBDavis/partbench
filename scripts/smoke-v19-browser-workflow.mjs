@@ -31,10 +31,10 @@ const timeoutMs = Number(
 if (args.has("--help")) {
   console.log(`Usage: node scripts/smoke-v19-browser-workflow.mjs [--json]
 
-Runs the focused V19 Gate B+C+E+F sketch-edit and material-region workflow
+Runs the focused V19 Gate B+C+E+F+G sketch-edit and material-region workflow
 against the built production App UI using trusted Chromium pointer and keyboard
-input. Gate E validates exact region references; Gate F creates an exact region
-extrude through the shared command layer.`);
+input. Gate E validates exact region references; Gates F and G create exact
+region extrude/revolve features through the shared command layer.`);
   process.exit(0);
 }
 
@@ -219,6 +219,14 @@ async function createV19FixtureProjectJson() {
         id: "region_solid",
         center: [32, 0],
         radius: 3
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "region_axis",
+        start: [12, -6],
+        end: [12, 6],
+        construction: true
       }
     ]
   });
@@ -294,6 +302,7 @@ async function runV19BrowserWorkflow({
             keydowns: [],
             workers: [],
             workerTerminations: [],
+            workerPosts: [],
             workerMessages: [],
             workerErrors: []
           };
@@ -307,6 +316,23 @@ async function runV19BrowserWorkflow({
                 type: options?.type ?? "classic"
               }) - 1;
             const terminate = worker.terminate.bind(worker);
+            const postMessage = worker.postMessage.bind(worker);
+            worker.postMessage = (message, transfer) => {
+              window.__partbenchV19InputAudit.workerPosts.push({
+                workerIndex,
+                url: normalizedUrl,
+                id: message?.id,
+                kind: message?.kind,
+                op: message?.batch?.ops?.[0]?.op,
+                query: message?.request?.query?.query,
+                geometryOp: message?.payload?.op,
+                payloadId: message?.payload?.id,
+                profileKind: message?.payload?.profile?.kind
+              });
+              return transfer === undefined
+                ? postMessage(message)
+                : postMessage(message, transfer);
+            };
             worker.addEventListener("message", (event) => {
               const data = event.data;
               window.__partbenchV19InputAudit.workerMessages.push({
@@ -419,7 +445,7 @@ async function runV19BrowserWorkflow({
       `(() => {
         const text = document.body.textContent;
         return text.includes('Imported 0 object(s), 1 sketch(es)') &&
-          text.includes('10 sketch entity(ies)');
+          text.includes('11 sketch entity(ies)');
       })()`,
       "fixture import"
     );
@@ -1268,6 +1294,7 @@ async function runV19BrowserWorkflow({
       window.__partbenchV19InputAudit.keydowns = [];
       window.__partbenchV19InputAudit.workers = [];
       window.__partbenchV19InputAudit.workerTerminations = [];
+      window.__partbenchV19InputAudit.workerPosts = [];
       window.__partbenchV19InputAudit.workerMessages = [];
       window.__partbenchV19InputAudit.workerErrors = [];
     })()`);
@@ -1437,49 +1464,58 @@ async function runV19BrowserWorkflow({
         const panel = document.querySelector('[aria-label="Select sketch material regions"]');
         const select = panel?.querySelector("select");
         const apply = [...(panel?.querySelectorAll("button") ?? [])]
-          .find((button) => button.textContent.trim() === "Validate selection");
+          .find((button) => button.textContent.trim() === "Create revolve");
         return select?.value === "revolve-new-body" &&
           panel?.querySelector(".pb-region-select__summary strong")
             ?.textContent.trim() === "1 selected" &&
-          Boolean(apply && !apply.disabled);
+          panel?.textContent.includes("Axis line") &&
+          panel?.textContent.includes("Angle") &&
+          Boolean(apply?.disabled);
       })()`,
-      "one-region validation-only revolve selection"
+      "one-region exact revolve selection"
     );
-    await browser.sendKey("Enter", { ctrlKey: true });
-    await browser.waitFor(
-      `!document.querySelector('[aria-label="Select sketch material regions"]') &&
-        document.body.textContent.includes("Region revolve remains unavailable until Gate G")`,
-      "exact region validation-only Apply"
-    );
-    const gateEValidationNotice = await browser.evaluate(
-      `document.body.textContent.includes("One material region is valid for revolve. Region revolve remains unavailable until Gate G; no feature was created.")`
-    );
-    await browser.selectMode("Project");
-    await browser.activate({ kind: "ribbonAction", text: "Project Files" });
-    await browser.waitFor(
-      `Boolean(document.querySelector('.pb-project-mode-workspace textarea'))`,
-      "Project Files after Gate E validation"
-    );
-    const gateEAfterValidation = await prepareAndReadProject(
-      browser,
-      "sketch.addRoundedRectangle"
-    );
-    const gateEValidationMutation = compareProjectSourceState(
-      gateCAfterRedo,
-      gateEAfterValidation
-    );
+    const gateERevolveSelection = await browser.evaluate(`(() => {
+      const panel = document.querySelector(
+        '[aria-label="Select sketch material regions"]'
+      );
+      const select = panel?.querySelector("select");
+      const axis = [...(panel?.querySelectorAll("label") ?? [])]
+        .find((label) => label.textContent.includes("Axis line"))
+        ?.querySelector("select");
+      const angle = panel?.querySelector(
+        'input[name="region-revolve-angle"]'
+      );
+      const apply = [...(panel?.querySelectorAll("button") ?? [])]
+        .find((button) => button.textContent.trim() === "Create revolve");
+      return {
+        consumer: select?.value,
+        selectedCount: [...(panel?.querySelectorAll(
+          '.pb-region-select__candidate[aria-pressed="true"]'
+        ) ?? [])].length,
+        axisOptionCount: axis?.options.length,
+        angle: angle?.value,
+        applyDisabled: Boolean(apply?.disabled)
+      };
+    })()`);
     checks.push({
-      id: "v19-gate-e-exact-validation-no-feature",
+      id: "v19-gate-e-exact-revolve-selection",
       passed:
-        gateEValidationNotice &&
-        gateEValidationMutation.unchanged &&
-        gateEValidationMutation.beforeFeatureCount ===
-          gateEValidationMutation.afterFeatureCount,
-      evidence: {
-        explicitNoFeatureNotice: gateEValidationNotice,
-        ...gateEValidationMutation
-      }
+        gateERevolveSelection.consumer === "revolve-new-body" &&
+        gateERevolveSelection.selectedCount === 1 &&
+        gateERevolveSelection.axisOptionCount >= 2 &&
+        gateERevolveSelection.angle === "360" &&
+        gateERevolveSelection.applyDisabled,
+      evidence: gateERevolveSelection
     });
+    await browser.activate({
+      kind: "editorButton",
+      scope: '[aria-label="Select sketch material regions"]',
+      text: "Cancel"
+    });
+    await browser.waitFor(
+      `!document.querySelector('[aria-label="Select sketch material regions"]')`,
+      "Gate E exact revolve selection close"
+    );
 
     await openGateEMaterialRegions(browser);
     await browser.activate({
@@ -1744,6 +1780,244 @@ async function runV19BrowserWorkflow({
         )
       }
     });
+
+    await browser.evaluate(`(() => {
+      window.__partbenchV19InputAudit.pointerInputs = 0;
+      window.__partbenchV19InputAudit.pointerEvents = [];
+      window.__partbenchV19InputAudit.keydowns = [];
+      window.__partbenchV19InputAudit.workers = [];
+      window.__partbenchV19InputAudit.workerTerminations = [];
+      window.__partbenchV19InputAudit.workerPosts = [];
+      window.__partbenchV19InputAudit.workerMessages = [];
+      window.__partbenchV19InputAudit.workerErrors = [];
+    })()`);
+    await openGateEMaterialRegions(browser);
+    await browser.activate({
+      kind: "regionCandidate",
+      text: "Outer · Rectangle 1"
+    });
+    await browser.focus({
+      kind: "labelControl",
+      scope: '[aria-label="Select sketch material regions"]',
+      text: "Prospective consumer"
+    });
+    await browser.sendKey("ArrowDown");
+    await browser.sendKey("ArrowDown");
+    await browser.waitFor(
+      `document.querySelector('[aria-label="Select sketch material regions"] select')?.value === "revolve-new-body"`,
+      "Gate G region revolve consumer"
+    );
+    const gateGAxisOptionIndex = await browser.evaluate(`(() => {
+      const panel = document.querySelector(
+        '[aria-label="Select sketch material regions"]'
+      );
+      const label = [...(panel?.querySelectorAll("label") ?? [])]
+        .find((candidate) => candidate.textContent.includes("Axis line"));
+      const select = label?.querySelector("select");
+      return [...(select?.options ?? [])]
+        .findIndex((option) => option.value === "region_axis");
+    })()`);
+    if (gateGAxisOptionIndex < 1) {
+      throw new Error("Gate G region axis option was unavailable.");
+    }
+    await browser.focus({
+      kind: "labelControl",
+      scope: '[aria-label="Select sketch material regions"]',
+      text: "Axis line"
+    });
+    await browser.sendKey("Home");
+    for (let index = 0; index < gateGAxisOptionIndex; index += 1) {
+      await browser.sendKey("ArrowDown");
+    }
+    await browser.waitFor(
+      `(() => {
+        const panel = document.querySelector('[aria-label="Select sketch material regions"]');
+        const labels = [...(panel?.querySelectorAll("label") ?? [])];
+        const axis = labels.find((label) =>
+          label.textContent.includes("Axis line")
+        )?.querySelector("select");
+        const apply = [...(panel?.querySelectorAll("button") ?? [])]
+          .find((button) => button.textContent.trim() === "Create revolve");
+        return axis?.value === "region_axis" &&
+          panel?.querySelector('input[name="region-revolve-angle"]')?.value === "360" &&
+          Boolean(apply && !apply.disabled);
+      })()`,
+      "Gate G region revolve command readiness"
+    );
+    const gateGDiagnosticCountBeforeApply = await browser.evaluate(
+      `document.querySelectorAll(
+        '[aria-label="Select sketch material regions"] .pb-region-select__diagnostics li'
+      ).length`
+    );
+    await browser.sendKey("Enter", { ctrlKey: true });
+    await browser.waitFor(
+      `(() => {
+        const panel = document.querySelector(
+          '[aria-label="Select sketch material regions"]'
+        );
+        return !panel ||
+          panel.querySelectorAll(".pb-region-select__diagnostics li").length >
+            ${gateGDiagnosticCountBeforeApply};
+      })()`,
+      "Gate G region revolve command outcome"
+    );
+    const gateGApplyFailure = await browser.evaluate(`(() => {
+      const panel = document.querySelector(
+        '[aria-label="Select sketch material regions"]'
+      );
+      return [...(panel?.querySelectorAll(
+        ".pb-region-select__diagnostics li"
+      ) ?? [])]
+        .slice(${gateGDiagnosticCountBeforeApply})
+        .map((item) => item.textContent.trim());
+    })()`);
+    if (gateGApplyFailure.length > 0) {
+      throw new Error(
+        `Gate G region revolve failed: ${gateGApplyFailure.join(" | ")}`
+      );
+    }
+    await browser.waitFor(
+      `!document.querySelector('[aria-label="Select sketch material regions"]') &&
+        document.body.textContent.includes("One material region created an exact 360° new-body revolve with 1 validated material area.")`,
+      "Gate G region revolve Apply"
+    );
+    await browser.waitFor(
+      `window.__partbenchV19InputAudit.workerPosts.some((request) =>
+        /geometryTessellation\\.worker/i.test(request.url) &&
+        request.geometryOp === "geometry.revolveProfile" &&
+        request.profileKind === "region" &&
+        window.__partbenchV19InputAudit.workerMessages.some((message) =>
+          message.workerIndex === request.workerIndex &&
+          message.id === request.id &&
+          message.ok === true
+        )
+      )`,
+      "Gate G real exact display geometry"
+    );
+    const gateGInputAudit = await browser.evaluate(
+      `window.__partbenchV19InputAudit`
+    );
+    const gateGTrustedKeys = gateGInputAudit.keydowns.filter(
+      (event) => event.trusted
+    );
+    checks.push({
+      id: "v19-gate-g-keyboard-region-revolve",
+      passed:
+        gateGInputAudit.pointerInputs === 0 &&
+        gateGTrustedKeys.length === gateGInputAudit.keydowns.length &&
+        gateGTrustedKeys.filter((event) => event.key === "ArrowDown").length >=
+          gateGAxisOptionIndex + 2 &&
+        gateGTrustedKeys.some((event) => event.key === "Home") &&
+        gateGTrustedKeys.some(
+          (event) => event.key === "Enter" && event.ctrlKey
+        ),
+      evidence: {
+        pointerInputs: gateGInputAudit.pointerInputs,
+        axisOptionIndex: gateGAxisOptionIndex,
+        trustedKeys: gateGTrustedKeys.map((event) => event.key),
+        keyboardApply: gateGTrustedKeys.some(
+          (event) => event.key === "Enter" && event.ctrlKey
+        )
+      }
+    });
+    const gateGGeometryEvidence = {
+      ...(await browser.evaluate(`(() => ({
+        geometryWorkers: window.__partbenchV19InputAudit.workers.filter(
+          (worker) => /geometryTessellation\\.worker/i.test(worker.url)
+        ),
+        exactRevolveRequests:
+          window.__partbenchV19InputAudit.workerPosts.filter((request) =>
+            /geometryTessellation\\.worker/i.test(request.url) &&
+            request.geometryOp === "geometry.revolveProfile" &&
+            request.profileKind === "region"
+          ),
+        exactMeshResponses:
+          window.__partbenchV19InputAudit.workerMessages.filter((message) => {
+            const request =
+              window.__partbenchV19InputAudit.workerPosts.find((candidate) =>
+                candidate.workerIndex === message.workerIndex &&
+                candidate.id === message.id &&
+                candidate.geometryOp === "geometry.revolveProfile" &&
+                candidate.profileKind === "region"
+              );
+            return Boolean(request && message.ok === true);
+          }),
+        workerErrors:
+          window.__partbenchV19InputAudit.workerErrors.filter((error) =>
+            /geometryTessellation\\.worker/i.test(error.url)
+          )
+      }))()`)),
+      server: readServerMetrics()
+    };
+    checks.push({
+      id: "v19-gate-g-exact-display",
+      passed:
+        gateGGeometryEvidence.geometryWorkers.length <= 1 &&
+        gateGGeometryEvidence.exactRevolveRequests.length >= 1 &&
+        gateGGeometryEvidence.exactMeshResponses.length >= 1 &&
+        gateGGeometryEvidence.workerErrors.length === 0 &&
+        gateGGeometryEvidence.server.occtWasmServedBytes > 0,
+      evidence: gateGGeometryEvidence
+    });
+
+    await browser.selectMode("Project");
+    await browser.activate({ kind: "ribbonAction", text: "Project Files" });
+    await browser.waitFor(
+      `Boolean(document.querySelector('.pb-project-mode-workspace textarea'))`,
+      "Project Files after Gate G feature"
+    );
+    const gateGAfterCreate = await prepareAndReadProject(
+      browser,
+      "feature.revolve"
+    );
+    const gateGFeatureEvidence = inspectGateGFeatureState(
+      gateFAfterRedo,
+      gateGAfterCreate
+    );
+    checks.push({
+      id: "v19-gate-g-authored-feature",
+      passed: gateGFeatureEvidence.authoredFeature,
+      evidence: gateGFeatureEvidence
+    });
+    checks.push({
+      id: "v19-gate-g-command-boundary",
+      passed: gateGFeatureEvidence.commandBoundary,
+      evidence: gateGFeatureEvidence
+    });
+
+    await browser.activate({ kind: "ariaLabel", text: "Undo" });
+    const gateGAfterUndo = await prepareAndReadProject(
+      browser,
+      "feature.extrude"
+    );
+    await browser.activate({ kind: "ariaLabel", text: "Redo" });
+    const gateGAfterRedo = await prepareAndReadProject(
+      browser,
+      "feature.revolve"
+    );
+    const gateGUndoRedoPassed =
+      !gateGAfterUndo.document.features?.some(
+        (feature) => feature.id === gateGFeatureEvidence.featureId
+      ) &&
+      JSON.stringify(gateGAfterRedo.document) ===
+        JSON.stringify(gateGAfterCreate.document);
+    checks.push({
+      id: "v19-gate-g-single-step-undo-redo",
+      passed: gateGUndoRedoPassed,
+      evidence: {
+        featureRemovedByUndo: !gateGAfterUndo.document.features?.some(
+          (feature) => feature.id === gateGFeatureEvidence.featureId
+        ),
+        redoRestoredDocument:
+          JSON.stringify(gateGAfterRedo.document) ===
+          JSON.stringify(gateGAfterCreate.document),
+        bodyIdRestoredByRedo: gateGAfterRedo.document.features?.some(
+          (feature) =>
+            feature.id === gateGFeatureEvidence.featureId &&
+            feature.bodyId === gateGFeatureEvidence.bodyId
+        )
+      }
+    });
   } catch (error) {
     exceptions.push(error instanceof Error ? error.message : String(error));
   }
@@ -1944,6 +2218,10 @@ function createBrowserKeyboardDriver(client, sessionId, workflowTimeoutMs) {
           } : undefined;
         })(),
         pointerEvents: window.__partbenchV19InputAudit?.pointerEvents?.slice(-8)
+        ,
+        workerPosts: window.__partbenchV19InputAudit?.workerPosts?.slice(-8),
+        workerMessages: window.__partbenchV19InputAudit?.workerMessages?.slice(-8),
+        workerErrors: window.__partbenchV19InputAudit?.workerErrors?.slice(-8)
       });
     })()`).catch(() => "");
     throw new Error(
@@ -3074,6 +3352,57 @@ function inspectGateFFeatureState(before, after) {
     operationMode: feature?.operationMode,
     depth: feature?.depth,
     side: feature?.side,
+    profile: feature?.profile,
+    transactionOp: operation?.op,
+    semanticInputKind: inputReference?.after?.kind,
+    affectedEntityIds: inputReference?.affectedEntityIds
+  };
+}
+
+function inspectGateGFeatureState(before, after) {
+  const beforeFeatureCount = before.document.features?.length ?? 0;
+  const feature = after.document.features?.find(
+    (candidate) =>
+      candidate.kind === "revolve" && candidate.profile?.kind === "regions"
+  );
+  const transaction = after.history?.at(-1);
+  const operation = transaction?.ops?.[0];
+  const inputReference = transaction?.diff?.features?.inputReferences?.[0];
+  const region = feature?.profile?.regions?.[0];
+  const authoredFeature =
+    Boolean(feature?.bodyId) &&
+    feature.operationMode === "newBody" &&
+    feature.angleDegrees === 360 &&
+    feature.axis?.type === "sketchLine" &&
+    feature.axis.sketchId === "sketch_1" &&
+    feature.axis.entityId === "region_axis" &&
+    feature.profile.regions.length === 1 &&
+    region?.outer?.kind === "entity" &&
+    region.outer.entityId === "region_outer" &&
+    region.holes?.length === 1 &&
+    region.holes[0]?.kind === "entity" &&
+    region.holes[0].entityId === "region_hole" &&
+    (after.document.features?.length ?? 0) === beforeFeatureCount + 1;
+  const commandBoundary =
+    transaction?.ops?.length === 1 &&
+    operation?.op === "feature.revolve" &&
+    operation.profile?.kind === "regions" &&
+    operation.axis?.entityId === "region_axis" &&
+    inputReference?.inputKind === "profile" &&
+    inputReference.after?.kind === "regions" &&
+    inputReference.affectedEntityIds?.includes("region_outer") &&
+    inputReference.affectedEntityIds?.includes("region_hole");
+
+  return {
+    authoredFeature,
+    commandBoundary,
+    beforeFeatureCount,
+    afterFeatureCount: after.document.features?.length ?? 0,
+    featureId: feature?.id,
+    bodyId: feature?.bodyId,
+    operationMode: feature?.operationMode,
+    angleDegrees: feature?.angleDegrees,
+    axis: feature?.axis,
     profile: feature?.profile,
     transactionOp: operation?.op,
     semanticInputKind: inputReference?.after?.kind,

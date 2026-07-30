@@ -8,9 +8,9 @@ const args = new Set(process.argv.slice(2));
 if (args.has("--help")) {
   console.log(`Usage: node scripts/smoke-v19-profile-regions-workflow.mjs
 
-Runs the V19 rounded-plate, flange, and topology-backed multi-region-cut
-workflow through cad-core, the async geometry worker, real OCCT, exact
-metadata, topology checkpoints, and STEP export.`);
+Runs the V19 rounded-plate, flange, topology-backed multi-region-cut, and
+revolved-hollow workflows through cad-core, the async geometry worker, real
+OCCT, exact metadata, topology checkpoints, and STEP export.`);
 } else {
   const child = spawnSync(
     process.platform === "win32" ? "pnpm.cmd" : "pnpm",

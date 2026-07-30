@@ -43,6 +43,7 @@ import {
 import { createTopologyAnchorReferenceChangesForBody } from "./topologyReferenceHealth";
 import { resolveWireExtrudeProfile } from "./wireExtrudeProfile";
 import { resolveWireRevolveProfile } from "./wireRevolveProfile";
+import { resolveRegionRevolveProfile } from "./regionRevolveProfile";
 import { resolveSweep } from "./sweepProfile";
 import type { CadDocument } from "./index";
 import { validateRegisteredV22RegionSource } from "./v19RegionPolicyRegistry";
@@ -659,22 +660,6 @@ function createRevolveEditabilityResponse(
   blockingDiagnostics.push(
     ...createProfileBlockingDiagnostics(options, feature.id)
   );
-  if (feature.profile?.kind === "regions") {
-    blockingDiagnostics.push(
-      createDiagnostic({
-        code: "FEATURE_EDIT_UNSUPPORTED",
-        severity: "blocker",
-        message:
-          "Region revolve source is inspectable, but feature.updateRevolve remains disabled until the V19 region revolve geometry slice is accepted.",
-        featureId: feature.id,
-        bodyId: feature.bodyId,
-        sketchId: feature.profile.sketchId,
-        expected: "accepted V19 region revolve geometry support",
-        received: "region source only"
-      })
-    );
-  }
-
   if (feature.operationMode !== "newBody") {
     blockingDiagnostics.push(
       createDiagnostic({
@@ -1862,20 +1847,27 @@ function createRevolveDryRunDiagnostics(
   if (proposedEdit.kind === "revolve" && proposedEdit.profile) {
     const profile = proposedEdit.profile;
     if (profile.kind === "regions") {
-      diagnostics.push(
-        createDiagnostic({
-          code: "FEATURE_EDIT_INVALID_PROPOSAL",
-          severity: "blocker",
-          message:
-            "Region profile editing remains blocked until the V19 region validation and revolve geometry slices are available.",
-          featureId: feature.id,
-          bodyId: feature.bodyId,
-          sketchId: profile.sketchId,
-          fieldPath: "profile",
-          expected: "validated V19 region revolve support",
-          received: "regions"
-        })
+      const resolution = resolveRegionRevolveProfile(
+        document,
+        profile,
+        feature.axis
       );
+      if (!resolution.ok) {
+        diagnostics.push(
+          createDiagnostic({
+            code: "FEATURE_EDIT_INVALID_PROPOSAL",
+            severity: "blocker",
+            message: resolution.message,
+            featureId: feature.id,
+            bodyId: feature.bodyId,
+            sketchId: resolution.sketchId,
+            sketchEntityId: resolution.sketchEntityId,
+            fieldPath: "profile",
+            expected: "ready region profile",
+            received: resolution.code
+          })
+        );
+      }
     } else if (profile.kind === "wire") {
       const resolution = resolveWireRevolveProfile(
         document,

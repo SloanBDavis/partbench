@@ -114,6 +114,7 @@ import type {
   SketchEntityUpdateInput,
   ExtrudeFeatureV21,
   RevolveFeatureV21,
+  RevolveFeatureV22,
   SweepFeatureV21,
   LoftFeatureV21,
   SketchId,
@@ -228,6 +229,7 @@ import {
 import {
   createRegisteredRegionCandidatesResponse,
   createRegisteredRegionValidateResponse,
+  mapRegionSourceIssueToBatchError,
   validateRegisteredV22RegionSource
 } from "./v19RegionPolicyRegistry";
 export {
@@ -542,6 +544,7 @@ import {
   resolveWireExtrudeProfile
 } from "./wireExtrudeProfile";
 import { resolveWireRevolveProfile } from "./wireRevolveProfile";
+import { resolveRegionRevolveProfile } from "./regionRevolveProfile";
 import { createPathInputReference, resolveSweep } from "./sweepProfile";
 export {
   createResolvedSingleEntitySweepSource,
@@ -553,6 +556,11 @@ export {
   createResolvedWireRevolveRecipe,
   resolveWireRevolveProfile
 } from "./wireRevolveProfile";
+export {
+  createResolvedRegionRevolveProfile,
+  createResolvedRegionRevolveRecipe,
+  resolveRegionRevolveProfile
+} from "./regionRevolveProfile";
 import {
   createProjectExactExport,
   createProjectExportReadiness
@@ -6983,25 +6991,31 @@ function applyOperation(
     }
 
     case "feature.revolve": {
-      if (
-        isSketchRegionsProfileRef(
-          (op as unknown as Record<string, unknown>).profile
-        )
-      ) {
-        throwValidationError({
-          code: "UNSUPPORTED_FEATURE_OPERATION",
-          message:
-            "Region feature.revolve remains disabled until the V19 region revolve geometry slice is accepted.",
-          opIndex,
-          path: operationPath(opIndex, "profile"),
-          expected: "entity or wire profile",
-          received: "regions"
-        });
-      }
       const requestedProfile = resolveRevolveCommandInputProfile(op, opIndex);
       let profile = requestedProfile;
       let profileOrientationNormalized = false;
-      if (requestedProfile.kind === "wire") {
+      let regionNormalization: ProfileInputNormalization | undefined;
+      if (requestedProfile.kind === "regions") {
+        const resolution = resolveRegionRevolveProfile(
+          state,
+          requestedProfile,
+          op.axis
+        );
+        if (!resolution.ok) {
+          throwValidationError({
+            code: resolution.code,
+            message: resolution.message,
+            opIndex,
+            sketchId: resolution.sketchId,
+            sketchEntityId: resolution.sketchEntityId,
+            path: operationPath(opIndex, "profile"),
+            expected: "one feature-ready canonical region revolve profile",
+            received: requestedProfile.kind
+          });
+        }
+        profile = resolution.profile;
+        regionNormalization = resolution.normalization;
+      } else if (requestedProfile.kind === "wire") {
         const resolution = resolveWireRevolveProfile(
           state,
           requestedProfile,
@@ -7069,7 +7083,7 @@ function applyOperation(
         });
       }
 
-      const feature: RevolveFeature = {
+      const featureV22: RevolveFeatureV22 = {
         id: op.id ?? createFeatureId(),
         kind: "revolve",
         name: normalizeOptionalFeatureName(op.name, opIndex, op.id),
@@ -7079,15 +7093,18 @@ function applyOperation(
         operationMode: "newBody",
         bodyId: op.bodyId ?? createBodyId()
       };
+      const feature = featureV22 as unknown as RevolveFeature;
 
       addFeature(state, feature, diff, opIndex);
-      if (profile.kind === "wire") {
+      if (profile.kind !== "entity") {
         pushFeatureInputReference(
           diff,
           createProfileInputReference(
             feature.id,
             profile,
-            profileOrientationNormalized
+            profileOrientationNormalized,
+            undefined,
+            regionNormalization
           )
         );
       }
@@ -14277,24 +14294,6 @@ function updateRevolveFeature(
     opIndex
   );
 
-  if (
-    getStoredFeatureProfile(feature).kind === "regions" ||
-    isSketchRegionsProfileRef(
-      (op as unknown as Record<string, unknown>).profile
-    )
-  ) {
-    throwValidationError({
-      code: "FEATURE_NOT_EDITABLE",
-      message: `Region feature ${feature.id} cannot be edited until the V19 region revolve geometry slice is accepted.`,
-      opIndex,
-      featureId: feature.id,
-      bodyId: feature.bodyId,
-      path: operationPath(opIndex, "profile"),
-      expected: "entity or wire revolve feature",
-      received: "regions"
-    });
-  }
-
   if (feature.operationMode !== "newBody") {
     throwValidationError({
       code: "FEATURE_NOT_EDITABLE",
@@ -14329,7 +14328,29 @@ function updateRevolveFeature(
   }
   let profile = requestedProfile ?? feature.profile;
   let profileOrientationNormalized = false;
-  if (profile.kind === "wire") {
+  let regionNormalization: ProfileInputNormalization | undefined;
+  if (profile.kind === "regions") {
+    const resolution = resolveRegionRevolveProfile(
+      state,
+      profile,
+      feature.axis
+    );
+    if (!resolution.ok) {
+      throwValidationError({
+        code: resolution.code,
+        message: resolution.message,
+        opIndex,
+        featureId: feature.id,
+        sketchId: resolution.sketchId,
+        sketchEntityId: resolution.sketchEntityId,
+        path: operationPath(opIndex, "profile"),
+        expected: "one feature-ready canonical region revolve profile",
+        received: profile.kind
+      });
+    }
+    profile = resolution.profile;
+    regionNormalization = resolution.normalization;
+  } else if (profile.kind === "wire") {
     const resolution = resolveWireRevolveProfile(state, profile, feature.axis);
     if (!resolution.ok) {
       throwValidationError({
@@ -14361,7 +14382,7 @@ function updateRevolveFeature(
     validateRevolveAxis(state, feature.axis, profile.sketchId, opIndex);
   }
 
-  const updated: RevolveFeature = {
+  const updatedV22: RevolveFeatureV22 = {
     ...feature,
     profile,
     angleDegrees:
@@ -14369,6 +14390,7 @@ function updateRevolveFeature(
         ? feature.angleDegrees
         : validateRevolveAngleDegrees(op.angleDegrees, opIndex)
   };
+  const updated = updatedV22 as unknown as RevolveFeature;
 
   state.features.set(feature.id, updated);
   pushFeatureModified(diff, featureRef(state, updated));
@@ -14377,10 +14399,11 @@ function updateRevolveFeature(
     pushFeatureInputReference(
       diff,
       createProfileInputReference(
-        updated.id,
-        updated.profile,
+        updatedV22.id,
+        updatedV22.profile,
         profileOrientationNormalized,
-        feature.profile
+        getStoredFeatureProfile(feature),
+        regionNormalization
       )
     );
   }
@@ -19074,40 +19097,6 @@ function resolveRegionExtrudeProfile(
   };
 }
 
-function mapRegionSourceIssueToBatchError(
-  code:
-    | import("./v22RegionSourceValidation").V22RegionSourceIssueCode
-    | undefined
-): CadBatchValidationError["code"] {
-  switch (code) {
-    case "SKETCH_REGION_PROFILE_EMPTY":
-      return "SKETCH_PROFILE_EMPTY";
-    case "SKETCH_REGION_SKETCH_MISMATCH":
-      return "SCHEMA_V21_SOURCE_INVALID";
-    case "SKETCH_REGION_ENTITY_MISSING":
-      return "SKETCH_PROFILE_ENTITY_MISSING";
-    case "SKETCH_REGION_ENTITY_UNSUPPORTED":
-      return "SKETCH_PROFILE_ENTITY_UNSUPPORTED";
-    case "SKETCH_REGION_CONSTRUCTION_ENTITY":
-      return "SKETCH_PROFILE_CONSTRUCTION_ENTITY";
-    case "SKETCH_REGION_ENTITY_REPEATED":
-      return "SKETCH_PROFILE_ENTITY_REPEATED";
-    case "SKETCH_REGION_LOOP_AREA_TOO_SMALL":
-      return "SKETCH_PROFILE_AREA_TOO_SMALL";
-    case "SKETCH_REGION_LOOP_OPEN":
-    case "SKETCH_REGION_LOOP_INTERSECTION":
-    case "SKETCH_REGION_BOUNDARY_TOUCHING":
-    case "SKETCH_REGION_HOLE_OUTSIDE":
-    case "SKETCH_REGION_HOLES_OVERLAP":
-    case "SKETCH_REGION_MATERIAL_OVERLAP":
-    case "SKETCH_REGION_NESTING_UNSUPPORTED":
-    case "SKETCH_REGION_COMPLEXITY_LIMIT":
-      return code;
-    case undefined:
-      return "SKETCH_REGION_CONSUMER_UNSUPPORTED";
-  }
-}
-
 function mapRegionReadinessDiagnosticToBatchError(
   code: import("@web-cad/cad-protocol").SketchProfileDiagnosticCode | undefined
 ): CadBatchValidationError["code"] {
@@ -19207,9 +19196,28 @@ function resolveUpdateExtrudeCommandInputProfile(
 function resolveRevolveCommandInputProfile(
   op: Extract<CadOp, { readonly op: "feature.revolve" }>,
   opIndex?: number
-): SketchProfileRef {
+): SketchProfileRefV22 {
+  const raw = op as unknown as Record<string, unknown>;
+  if (isSketchRegionsProfileRef(raw.profile)) {
+    if (
+      Object.hasOwn(raw, "sketchId") ||
+      Object.hasOwn(raw, "entityId") ||
+      Object.hasOwn(raw, "profileKind")
+    ) {
+      throwValidationError({
+        code: "COMMAND_INPUT_AMBIGUOUS",
+        message:
+          "Provide either a regions profile or legacy sketch/entity fields, never both.",
+        opIndex,
+        path: operationPath(opIndex, "profile"),
+        expected: "one normalized regions profile",
+        received: describeReceived(op)
+      });
+    }
+    return raw.profile;
+  }
   const resolution = validateProfileInputSource(
-    op as unknown as Record<string, unknown>,
+    raw,
     operationPath(opIndex, "profile")
   );
   if (!resolution.ok || !resolution.value) {
@@ -19229,9 +19237,28 @@ function resolveRevolveCommandInputProfile(
 function resolveUpdateRevolveCommandInputProfile(
   op: Extract<CadOp, { readonly op: "feature.updateRevolve" }>,
   opIndex?: number
-): SketchProfileRef | undefined {
+): SketchProfileRefV22 | undefined {
+  const raw = op as unknown as Record<string, unknown>;
+  if (isSketchRegionsProfileRef(raw.profile)) {
+    if (
+      Object.hasOwn(raw, "sketchId") ||
+      Object.hasOwn(raw, "entityId") ||
+      Object.hasOwn(raw, "profileKind")
+    ) {
+      throwValidationError({
+        code: "COMMAND_INPUT_AMBIGUOUS",
+        message:
+          "Provide either a regions profile or legacy sketch/entity fields, never both.",
+        opIndex,
+        path: operationPath(opIndex, "profile"),
+        expected: "one normalized regions profile",
+        received: describeReceived(op)
+      });
+    }
+    return raw.profile;
+  }
   const resolution = validateProfileInputSource(
-    op as unknown as Record<string, unknown>,
+    raw,
     operationPath(opIndex, "profile"),
     true
   );
@@ -38469,6 +38496,12 @@ function isFeatureInputReferenceSemanticDiff(value: unknown): boolean {
     return false;
   }
   const isReference = (reference: unknown): boolean => {
+    if (value.inputKind === "profile" && isSketchRegionsProfileRef(reference)) {
+      return stableJsonEqual(
+        reference,
+        normalizeSketchRegionsProfileRef(reference)
+      );
+    }
     const resolution =
       value.inputKind === "profile"
         ? validateSketchProfileRefSource(reference)

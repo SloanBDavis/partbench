@@ -2315,20 +2315,37 @@ export function App() {
     featureDraft: SketchRegionFeatureDraft
   ): Promise<boolean> {
     setCommandError(undefined);
+    await ensureCadV19RegionSourceValidationPolicy();
     if (featureDraft.consumer === "revolve-new-body") {
+      const result = await commitOps(
+        [
+          {
+            op: "feature.revolve",
+            profile,
+            axis: {
+              type: "sketchLine",
+              sketchId: profile.sketchId,
+              entityId: featureDraft.axisEntityId
+            },
+            angleDegrees: featureDraft.angleDegrees,
+            operationMode: "newBody"
+          }
+        ],
+        (commandResponse) => commandResponse.createdBodyIds?.[0] ?? selectedId
+      );
+      if (!result?.ok) return false;
       setCommandNotice(
-        `One material region is valid for revolve. Region revolve remains unavailable until Gate G; no feature was created. ${response.materialAreas.length} material area was verified.`
+        `One material region created an exact ${featureDraft.angleDegrees}° new-body revolve with ${response.materialAreas.length} validated material area.`
       );
       return true;
     }
-    await ensureCadV19RegionSourceValidationPolicy();
     const result = await commitOps(
       [
         {
           op: "feature.extrude",
           profile,
           operationMode: featureDraft.operationMode,
-          ...(featureDraft.targetBodyId
+          ...(featureDraft.consumer === "extrude-add-cut"
             ? { targetBodyId: featureDraft.targetBodyId }
             : {}),
           depth: featureDraft.depth,

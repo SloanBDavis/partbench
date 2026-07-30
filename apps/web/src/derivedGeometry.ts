@@ -6,6 +6,7 @@ import type {
   SphereObject,
   TorusObject
 } from "@web-cad/cad-core";
+import type { ResolvedPlanarRegionProfile } from "@web-cad/geometry-worker";
 import type { RenderTriangleMesh } from "@web-cad/renderer";
 import {
   createBooleanExtrudeResultRuntimeSource,
@@ -109,7 +110,8 @@ export interface DerivedRevolveGeometrySource extends DerivedAuthoredGeometrySou
   readonly sketchPlane: "XY" | "XZ" | "YZ";
   readonly profile:
     | DerivedGeometryPrimitiveExtrudeProfile
-    | DerivedGeometryWireExtrudeProfile;
+    | DerivedGeometryWireExtrudeProfile
+    | ResolvedPlanarRegionProfile;
   readonly axis: {
     readonly start: readonly [number, number];
     readonly end: readonly [number, number];

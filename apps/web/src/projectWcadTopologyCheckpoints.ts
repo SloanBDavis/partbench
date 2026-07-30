@@ -160,7 +160,8 @@ export async function createProjectTopologyAnchorCreationPlanForGeneratedReferen
     features,
     sketches,
     generatedFacesByKey,
-    document.namedReferences
+    document.namedReferences,
+    document
   ).get(target.bodyId);
 
   if (!source) {
@@ -407,7 +408,8 @@ export async function createProjectTopologyAnchorRepairPlanForGeneratedReference
     features,
     sketches,
     generatedFacesByKey,
-    document.namedReferences
+    document.namedReferences,
+    document
   ).get(target.bodyId);
 
   if (!sourceIdentitySignature || !source) {
@@ -616,7 +618,8 @@ export async function createProjectWcadTopologyCheckpointPayloadInputs({
       context.features,
       context.sketches,
       generatedFacesByKey,
-      context.document.namedReferences
+      context.document.namedReferences,
+      context.document
     )
   );
   const importedPayloadsByCheckpointId = new Map(
@@ -1591,7 +1594,8 @@ function createCheckpointExactSourcesByBodyId(
   features: readonly CadFeatureSummary[],
   sketches: readonly SketchSnapshot[],
   generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
-  namedReferences: CadDocument["namedReferences"]
+  namedReferences: CadDocument["namedReferences"],
+  document: CadDocument
 ): ReadonlyMap<string, DerivedExactMetadataSource> {
   const includeConsumedBodies = new Set<string>();
   const sources: readonly DerivedExactMetadataSource[] = [
@@ -1605,7 +1609,8 @@ function createCheckpointExactSourcesByBodyId(
       features,
       sketches,
       generatedFacesByKey,
-      includeConsumedBodies
+      includeConsumedBodies,
+      document
     ),
     ...createHoleDerivedGeometrySources(
       features,

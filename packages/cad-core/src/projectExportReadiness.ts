@@ -51,6 +51,7 @@ import {
 } from "./wireExtrudeProfile";
 import { createBodyTopology } from "./bodyTopology";
 import { createResolvedWireRevolveProfile } from "./wireRevolveProfile";
+import { createResolvedRegionRevolveProfile } from "./regionRevolveProfile";
 import { createResolvedSweepSource } from "./sweepProfile";
 import { validateRegisteredV22RegionSource } from "./v19RegionPolicyRegistry";
 
@@ -699,16 +700,29 @@ function classifyBodySource(
 
   if (body.source.type === "sketchRevolveFeature") {
     const feature = document.features.get(body.featureId);
-    if (feature?.kind === "revolve" && feature.profile.kind === "wire") {
-      if (
-        feature.operationMode !== "newBody" ||
-        !createResolvedWireRevolveProfile(
-          document,
-          feature.profile,
-          feature.axis,
-          body.partId
-        )
-      ) {
+    const authoredProfile =
+      feature?.kind === "revolve"
+        ? (feature.profile as import("@web-cad/cad-protocol").SketchProfileRefV22)
+        : undefined;
+    if (
+      feature?.kind === "revolve" &&
+      (authoredProfile?.kind === "wire" || authoredProfile?.kind === "regions")
+    ) {
+      const resolved =
+        authoredProfile.kind === "wire"
+          ? createResolvedWireRevolveProfile(
+              document,
+              authoredProfile,
+              feature.axis,
+              body.partId
+            )
+          : createResolvedRegionRevolveProfile(
+              document,
+              authoredProfile,
+              feature.axis,
+              body.partId
+            );
+      if (feature.operationMode !== "newBody" || !resolved) {
         return createUnresolvedBodySourceReadiness(body, sourceKind);
       }
       return {
@@ -718,7 +732,7 @@ function classifyBodySource(
           createBodyDiagnostic(
             "EXPORT_BODY_SOURCE_SUPPORTED",
             "supported",
-            `Authored composite wire revolve body ${body.id} has a resolved exact STEP recipe.`,
+            `Authored ${authoredProfile.kind === "regions" ? "region" : "composite wire"} revolve body ${body.id} has a resolved exact STEP recipe.`,
             body,
             sourceKind
           )
@@ -1189,25 +1203,38 @@ function createExactRevolveBodySource(
   body: CadExportBodyReadiness,
   feature: RevolveFeature
 ): CadExactExportBodySource | undefined {
-  if (feature.operationMode !== "newBody" || feature.profile.kind !== "wire") {
+  const profile =
+    feature.profile as import("@web-cad/cad-protocol").SketchProfileRefV22;
+  if (
+    feature.operationMode !== "newBody" ||
+    (profile.kind !== "wire" && profile.kind !== "regions")
+  ) {
     return undefined;
   }
-  const sketch = document.sketches.get(feature.profile.sketchId);
-  const resolved = createResolvedWireRevolveProfile(
-    document,
-    feature.profile,
-    feature.axis,
-    body.partId
-  );
+  const sketch = document.sketches.get(profile.sketchId);
+  const resolved =
+    profile.kind === "wire"
+      ? createResolvedWireRevolveProfile(
+          document,
+          profile,
+          feature.axis,
+          body.partId
+        )
+      : createResolvedRegionRevolveProfile(
+          document,
+          profile,
+          feature.axis,
+          body.partId
+        );
   if (!sketch || !resolved) return undefined;
   return {
     bodyId: body.bodyId,
     ...(body.bodyName ? { bodyName: body.bodyName } : {}),
     sourceKind: "authoredRevolve",
     featureId: feature.id,
-    sourceSketchId: feature.profile.sketchId,
-    sourceSketchEntityIds: feature.profile.segments.map(
-      (segment) => segment.entityId
+    sourceSketchId: profile.sketchId,
+    sourceSketchEntityIds: getProfileEntityReferences(profile).map(
+      (reference) => reference.entityId
     ),
     sketchPlane: sketch.plane,
     profile: resolved.profile,

@@ -661,7 +661,7 @@ export function createExactMetadataRuntimeInput(
   }
 
   if (source.kind === "revolve") {
-    if (source.profile.kind === "wire") {
+    if (source.profile.kind === "wire" || source.profile.kind === "region") {
       return {
         id: source.id,
         source: {

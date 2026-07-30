@@ -4,7 +4,8 @@ import {
   GeometryKernelWorker,
   createExactBodyMetadataWorkerRequest,
   createExactTopologyCheckpointPayloadWorkerRequest,
-  createExtrudeBooleanWorkerRequest
+  createExtrudeBooleanWorkerRequest,
+  createRevolveProfileWorkerRequest
 } from "../packages/geometry-worker/src/index.ts";
 import {
   createCurrentDerivedExactMetadataSnapshots,
@@ -14,26 +15,33 @@ import {
   createDerivedExactMetadataCacheKey,
   createExactMetadataRuntimeInput
 } from "../apps/web/src/derivedExactMetadata.ts";
-import { createExtrudeDerivedGeometrySources } from "../apps/web/src/derivedGeometrySources.ts";
+import {
+  createExtrudeDerivedGeometrySources,
+  createRevolveDerivedGeometrySources
+} from "../apps/web/src/derivedGeometrySources.ts";
 import { executeProjectExactStepExport } from "../apps/web/src/projectExactStepExport.ts";
+import { exportProjectWcadWithTopologyCheckpoints } from "../apps/web/src/projectWcadTopologyCheckpoints.ts";
 import {
   formatV19ProfileRegionsWorkflowSummary,
   runV19ProfileRegionsWorkflow
 } from "./v19-profile-regions-workflow.mjs";
 
 describe("V19 real profile-regions workflow", () => {
-  it("proves rounded plate, flange, and topology-backed multi-region cut", async () => {
+  it("proves region extrude and revolved hollow release scenarios", async () => {
     const result = await runV19ProfileRegionsWorkflow({
       cadCore,
       GeometryKernelWorker,
       createExactBodyMetadataWorkerRequest,
       createExactTopologyCheckpointPayloadWorkerRequest,
       createExtrudeBooleanWorkerRequest,
+      createRevolveProfileWorkerRequest,
       createCurrentDerivedExactMetadataSnapshots,
       createDerivedExactMetadataCacheKey,
       createExactMetadataRuntimeInput,
       createExtrudeDerivedGeometrySources,
+      createRevolveDerivedGeometrySources,
       executeProjectExactStepExport,
+      exportProjectWcadWithTopologyCheckpoints,
       readProjectExactStepExport
     });
 
@@ -41,8 +49,8 @@ describe("V19 real profile-regions workflow", () => {
     expect(result).toMatchObject({
       ok: true,
       realGeometry: true,
-      passedCount: 5,
-      checkCount: 5,
+      passedCount: 9,
+      checkCount: 9,
       failures: []
     });
   }, 180_000);

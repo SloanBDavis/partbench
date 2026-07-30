@@ -5,12 +5,15 @@ export const V19_GATE_C_BROWSER_WORKFLOW_VERSION =
   "partbench.v19-gate-c-browser-workflow.v1";
 
 export const V19_GATE_E_BROWSER_WORKFLOW_VERSION =
-  "partbench.v19-gate-e-browser-workflow.v1";
+  "partbench.v19-gate-e-browser-workflow.v2";
 
 export const V19_GATE_F_BROWSER_WORKFLOW_VERSION =
   "partbench.v19-gate-f-browser-workflow.v1";
 
-export const V19_BROWSER_WORKFLOW_VERSION = "partbench.v19-browser-workflow.v4";
+export const V19_GATE_G_BROWSER_WORKFLOW_VERSION =
+  "partbench.v19-gate-g-browser-workflow.v1";
+
+export const V19_BROWSER_WORKFLOW_VERSION = "partbench.v19-browser-workflow.v5";
 
 export const V19_GATE_C_BROWSER_ACTION_IDS = Object.freeze([
   "sketch.offset",
@@ -46,7 +49,7 @@ export const V19_GATE_E_BROWSER_REQUIRED_CHECK_IDS = Object.freeze([
   "v19-gate-e-even-odd-surface",
   "v19-gate-e-pointer-keyboard-selection",
   "v19-gate-e-consumer-count-policy",
-  "v19-gate-e-exact-validation-no-feature",
+  "v19-gate-e-exact-revolve-selection",
   "v19-gate-e-cancel-escape-no-mutation",
   "v19-gate-e-query-worker-occt-deferral"
 ]);
@@ -59,11 +62,20 @@ export const V19_GATE_F_BROWSER_REQUIRED_CHECK_IDS = Object.freeze([
   "v19-gate-f-single-step-undo-redo"
 ]);
 
+export const V19_GATE_G_BROWSER_REQUIRED_CHECK_IDS = Object.freeze([
+  "v19-gate-g-keyboard-region-revolve",
+  "v19-gate-g-authored-feature",
+  "v19-gate-g-command-boundary",
+  "v19-gate-g-exact-display",
+  "v19-gate-g-single-step-undo-redo"
+]);
+
 export const V19_BROWSER_REQUIRED_CHECK_IDS = Object.freeze([
   ...V19_GATE_B_BROWSER_REQUIRED_CHECK_IDS,
   ...V19_GATE_C_BROWSER_REQUIRED_CHECK_IDS,
   ...V19_GATE_E_BROWSER_REQUIRED_CHECK_IDS,
-  ...V19_GATE_F_BROWSER_REQUIRED_CHECK_IDS
+  ...V19_GATE_F_BROWSER_REQUIRED_CHECK_IDS,
+  ...V19_GATE_G_BROWSER_REQUIRED_CHECK_IDS
 ]);
 
 export function createV19GateBBrowserWorkflowResult({
@@ -162,6 +174,25 @@ export function createV19GateFBrowserWorkflowResult({
   };
 }
 
+export function createV19GateGBrowserWorkflowResult({
+  checks = [],
+  consoleErrors = [],
+  exceptions = [],
+  requiredCheckIds = V19_GATE_G_BROWSER_REQUIRED_CHECK_IDS
+} = {}) {
+  const result = createV19GateBBrowserWorkflowResult({
+    checks,
+    consoleErrors,
+    exceptions,
+    requiredCheckIds
+  });
+
+  return {
+    ...result,
+    workflowVersion: V19_GATE_G_BROWSER_WORKFLOW_VERSION
+  };
+}
+
 export function createV19BrowserWorkflowResult({
   checks = [],
   consoleErrors = [],
@@ -232,9 +263,22 @@ export function formatV19GateFBrowserWorkflowSummary(result) {
   return lines.join("\n");
 }
 
+export function formatV19GateGBrowserWorkflowSummary(result) {
+  const lines = [
+    `V19 Gate G browser workflow: ${result.passedCount}/${result.checkCount} checks passed.`
+  ];
+  for (const check of result.checks) {
+    lines.push(formatCheckSummary(check));
+  }
+  for (const failure of result.failures) {
+    lines.push(`- error ${failure}`);
+  }
+  return lines.join("\n");
+}
+
 export function formatV19BrowserWorkflowSummary(result) {
   const lines = [
-    `V19 Gate B+C+E+F browser workflow: ${result.passedCount}/${result.checkCount} checks passed.`
+    `V19 Gate B+C+E+F+G browser workflow: ${result.passedCount}/${result.checkCount} checks passed.`
   ];
   for (const check of result.checks) {
     lines.push(formatCheckSummary(check));

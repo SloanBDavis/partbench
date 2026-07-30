@@ -26,6 +26,32 @@ function minifyCriticalEntry(): Plugin {
   };
 }
 
+function minifyCadCommandWorker(): Plugin {
+  return {
+    name: "partbench-minify-cad-command-worker",
+    async renderChunk(code, chunk) {
+      if (
+        !chunk.isEntry ||
+        !chunk.facadeModuleId?.match(/[/\\]cadCommand\.worker\.ts$/)
+      ) {
+        return null;
+      }
+
+      const result = await minify(code, {
+        compress: { passes: 1 },
+        mangle: true,
+        module: true,
+        format: { comments: false }
+      });
+      if (!result.code) {
+        throw new Error("Terser did not emit the CAD command worker.");
+      }
+
+      return { code: result.code, map: null };
+    }
+  };
+}
+
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, ".", "VITE_");
   const derivedGeometryFlags = resolveDerivedGeometryFlags({ command, env });
@@ -66,6 +92,13 @@ export default defineConfig(({ command, mode }) => {
         }
       ]
     },
-    plugins: [react()]
+    plugins: [react()],
+    worker: {
+      rollupOptions: {
+        output: {
+          plugins: [minifyCadCommandWorker()]
+        }
+      }
+    }
   };
 });

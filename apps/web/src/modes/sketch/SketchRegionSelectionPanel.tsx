@@ -75,13 +75,26 @@ export interface SketchRegionSelectionPanelProps {
   ) => void;
 }
 
-export interface SketchRegionFeatureDraft {
-  readonly consumer: SketchRegionConsumerIntent;
-  readonly operationMode: "newBody" | "add" | "cut";
-  readonly targetBodyId?: string;
-  readonly depth: number;
-  readonly side: "positive" | "negative" | "symmetric";
-}
+export type SketchRegionFeatureDraft =
+  | {
+      readonly consumer: "extrude-new-body";
+      readonly operationMode: "newBody";
+      readonly depth: number;
+      readonly side: "positive" | "negative" | "symmetric";
+    }
+  | {
+      readonly consumer: "extrude-add-cut";
+      readonly operationMode: "add" | "cut";
+      readonly targetBodyId: string;
+      readonly depth: number;
+      readonly side: "positive" | "negative" | "symmetric";
+    }
+  | {
+      readonly consumer: "revolve-new-body";
+      readonly operationMode: "newBody";
+      readonly axisEntityId: string;
+      readonly angleDegrees: number;
+    };
 
 interface RegionPageState {
   readonly status: "loading" | "ready" | "blocked" | "failed";
@@ -132,6 +145,8 @@ export function SketchRegionSelectionPanel(
   const [side, setSide] = useState<"positive" | "negative" | "symmetric">(
     "positive"
   );
+  const [axisEntityId, setAxisEntityId] = useState("");
+  const [angleDegrees, setAngleDegrees] = useState(360);
   const [validationMessages, setValidationMessages] = useState<
     readonly string[]
   >([]);
@@ -171,20 +186,53 @@ export function SketchRegionSelectionPanel(
     operationMode !== "add" ||
     effectiveTargetBodyId !== "" ||
     depth !== 10 ||
-    side !== "positive";
+    side !== "positive" ||
+    axisEntityId !== "" ||
+    angleDegrees !== 360;
   const selectionCountReady = isSketchRegionSelectionCountReady(
     selectedCandidateKeys.length,
     consumer
   );
-  const extrudeInputReady =
-    consumer === "revolve-new-body" ||
-    (Number.isFinite(depth) &&
-      depth > 0 &&
-      (consumer !== "extrude-add-cut" || effectiveTargetBodyId.length > 0));
+  const selectedBoundaryEntityIds = useMemo(
+    () =>
+      new Set(
+        candidates
+          .filter((candidate) =>
+            selectedCandidateKeys.includes(candidate.candidateKey)
+          )
+          .flatMap((candidate) => [
+            ...candidate.outerEntityIds,
+            ...candidate.holeEntityIds.flat()
+          ])
+      ),
+    [candidates, selectedCandidateKeys]
+  );
+  const axisOptions = useMemo(
+    () =>
+      sketch.entities.filter(
+        (entity) =>
+          entity.kind === "line" && !selectedBoundaryEntityIds.has(entity.id)
+      ),
+    [selectedBoundaryEntityIds, sketch.entities]
+  );
+  const effectiveAxisEntityId = axisOptions.some(
+    (entity) => entity.id === axisEntityId
+  )
+    ? axisEntityId
+    : "";
+  const featureInputReady =
+    consumer === "revolve-new-body"
+      ? effectiveAxisEntityId.length > 0 &&
+        Number.isFinite(angleDegrees) &&
+        angleDegrees > 0 &&
+        angleDegrees <= 360
+      : Number.isFinite(depth) &&
+        depth > 0 &&
+        (consumer !== "extrude-add-cut" || effectiveTargetBodyId.length > 0);
   const canApply =
     page.status === "ready" &&
     selectionCountReady &&
-    extrudeInputReady &&
+    featureInputReady &&
     !disabled &&
     !applying;
   const entityNames = useMemo(
@@ -333,19 +381,32 @@ export function SketchRegionSelectionPanel(
         );
         return false;
       }
+      const featureDraft: SketchRegionFeatureDraft =
+        consumer === "revolve-new-body"
+          ? {
+              consumer,
+              operationMode: "newBody",
+              axisEntityId: effectiveAxisEntityId,
+              angleDegrees
+            }
+          : consumer === "extrude-add-cut"
+            ? {
+                consumer,
+                operationMode,
+                targetBodyId: effectiveTargetBodyId,
+                depth,
+                side
+              }
+            : {
+                consumer,
+                operationMode: "newBody",
+                depth,
+                side
+              };
       const committed = await onApplyReady(
         response.normalizedProfile,
         response,
-        {
-          consumer,
-          operationMode:
-            consumer === "extrude-new-body" ? "newBody" : operationMode,
-          ...(consumer === "extrude-add-cut" && effectiveTargetBodyId
-            ? { targetBodyId: effectiveTargetBodyId }
-            : {}),
-          depth,
-          side
-        }
+        featureDraft
       );
       if (!committed) {
         setValidationMessages([
@@ -539,7 +600,44 @@ export function SketchRegionSelectionPanel(
               </select>
             </label>
           </>
-        ) : null}
+        ) : (
+          <>
+            <label className="pb-sketch-field">
+              <span>Axis line</span>
+              <select
+                className="pb-field"
+                value={effectiveAxisEntityId}
+                required
+                disabled={disabled}
+                onChange={(event) => setAxisEntityId(event.currentTarget.value)}
+              >
+                <option value="">Choose an axis line</option>
+                {axisOptions.map((axis) => (
+                  <option key={axis.id} value={axis.id}>
+                    {entityNames.get(axis.id) ?? "Line"}
+                    {axis.construction ? " · Construction" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="pb-sketch-field">
+              <span>Angle</span>
+              <input
+                className="pb-field"
+                name="region-revolve-angle"
+                type="number"
+                min="0.000001"
+                max="360"
+                step="1"
+                value={angleDegrees}
+                disabled={disabled}
+                onChange={(event) =>
+                  setAngleDegrees(event.currentTarget.valueAsNumber)
+                }
+              />
+            </label>
+          </>
+        )}
 
         <div className="pb-region-select__summary" role="status">
           <strong>{selectedCandidateKeys.length} selected</strong>
@@ -678,7 +776,7 @@ export function SketchRegionSelectionPanel(
             {applying
               ? "Applying…"
               : consumer === "revolve-new-body"
-                ? "Validate selection"
+                ? "Create revolve"
                 : "Create extrude"}
           </button>
         </div>

@@ -749,6 +749,44 @@ history baseline.
   revolve, Gate H audit, Gate I release proof, or completed V19 release is
   claimed by this checkpoint.
 
+### 2026-07-30 — Slice G region revolve and Gate G accepted
+
+- `feature.revolve` and `feature.updateRevolve` now accept one exact V22
+  `regions` profile for the approved new-body row only. The command layer
+  rejects multiple regions, target-body modes, cross-sketch axes, invalid
+  angles, and non-canonical or stale source refs without creating a feature.
+- The exact recipe constructs one OCCT face from the canonical outer wire and
+  every hole, then performs one partial or full revolve. It inherits the V17
+  axis policy: separated axes and outer-vertex contact are accepted, while
+  outer-edge overlap, material crossing, circle-interior tangency, and
+  hole-axis contact within linear tolerance are rejected.
+- Real OCCT proof covers full and partial hollow revolves, one connected valid
+  solid, exact volume and mass properties, display tessellation, exact
+  metadata, topology identity and health, checkpoint payloads, and STEP
+  export from the same retained source recipe.
+- Region-revolve results expose source-semantic body and axis references only;
+  no unproven rich face/edge correspondence was added. Project health,
+  editability, export readiness, storage replay, authoritative semantic diffs,
+  and V22 JSON/canonical-CBOR/`.wcad.v2` round-trips all retain the authored
+  region and axis refs. The `.wcad` proof includes a real generated B-rep
+  checkpoint payload and byte-exact checkpoint recovery.
+- The Material Regions collector owns the axis and angle draft and submits the
+  shared `feature.revolve` command through its documented Ctrl/Cmd+Enter Apply
+  path. Agent, MCP, and stdio parity tests cover create, update, dry-run,
+  commit, audit, and inspection through the same command authority; core owns
+  the rejected consumer and axis matrix.
+- `pnpm smoke:v19-profile-regions-workflow` passes its expanded 9/9
+  real-geometry checks. The production browser workflow passes all 34
+  Gate B/C/E/F/G checks, including trusted keyboard creation, exact worker
+  output, authored feature/diff inspection, and single-step undo/redo.
+- The immutable bundle audit passes with 408,763-byte critical JavaScript
+  gzip, 6,608-byte critical CSS gzip, 560,380-byte all-UI JavaScript gzip,
+  256,936-byte command worker gzip, 84,769-byte geometry worker gzip, and the
+  exact 13,808,536-byte OCCT WASM cap.
+- Gate G is accepted. Gate H cross-cutting audit is the next unblocked node;
+  no Gate H audit, Gate I release proof, or completed V19 release is claimed
+  by this checkpoint.
+
 ## Completion audit
 
 Release completion requires affirmative evidence for each numbered Must item

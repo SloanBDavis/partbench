@@ -487,7 +487,13 @@ export const UI_ACTION_METADATA = [
     "Material Regions",
     "Modify",
     ["sketch"],
-    ["profile cells", "select region", "holes"],
+    [
+      "profile cells",
+      "select region",
+      "holes",
+      "region revolve",
+      "hollow revolve"
+    ],
     false,
     undefined,
     needs("Open a sketch containing closed profile geometry.")

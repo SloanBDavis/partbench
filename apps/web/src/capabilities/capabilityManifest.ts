@@ -388,9 +388,7 @@ const ACTION_AUDIT_BY_ID = {
     "V19 Sketch Profile",
     "SketchRegionSelectionPanel / SketchRegionOverlay",
     "sketch.profileRegionCandidates + sketch.profileRegionValidate",
-    uiOnly(
-      "select and validate explicit whole-loop region refs without creating a feature"
-    ),
+    cadops("sketch.profileRegionValidate → feature.extrude | feature.revolve"),
     "modes/sketch/SketchRegionSelectionPanel.test.tsx",
     "E",
     {

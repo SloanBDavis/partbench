@@ -14,6 +14,7 @@ import type {
   CadGeneratedHoleFaceRole,
   CadGeneratedReference,
   CadGeneratedReferenceEligibleOperation,
+  CadGeneratedReferenceProfileKind,
   CadGeneratedReferenceProfileSignature,
   CadGeneratedReferenceSignature,
   CadGeneratedVertexReference,
@@ -44,6 +45,7 @@ import type {
 } from "@web-cad/cad-protocol";
 import { isSketchRegionsProfileRef } from "@web-cad/cad-protocol";
 import {
+  getProfileEntityReferences,
   getFeatureEntityProfileRef,
   getSupportedEntityProfileKind
 } from "./normalizedFeatureInputs";
@@ -304,7 +306,7 @@ type GeneratedRegionExtrudeFeature = Omit<
 };
 
 function getGeneratedRegionProfile(
-  feature: GeneratedReferencesExtrudeFeature
+  feature: GeneratedReferencesExtrudeFeature | GeneratedReferencesRevolveFeature
 ): SketchRegionsProfileRef | undefined {
   const profile = (feature as unknown as { readonly profile?: unknown })
     .profile;
@@ -1479,20 +1481,42 @@ function createRevolveBodyGeneratedReferences(
     return undefined;
   }
 
-  const source = resolveGeneratedEntityProfile(document, feature);
   const axisSketch = document.sketches.get(feature.axis.sketchId);
   const axisEntity = axisSketch?.entities.get(feature.axis.entityId);
-
-  if (!source || !axisSketch || !axisEntity) {
+  if (!axisSketch || axisEntity?.kind !== "line") {
     return undefined;
   }
 
-  if (axisEntity.kind !== "line") {
+  const regionProfile = getGeneratedRegionProfile(feature);
+  const entitySource = regionProfile
+    ? undefined
+    : resolveGeneratedEntityProfile(document, feature);
+  const sketch = regionProfile
+    ? document.sketches.get(regionProfile.sketchId)
+    : entitySource?.sketch;
+  if (
+    !sketch ||
+    axisSketch.id !== sketch.id ||
+    (!regionProfile && !entitySource) ||
+    (regionProfile && regionProfile.regions.length !== 1)
+  ) {
     return undefined;
   }
-
-  const { profileRef, sketch, entity, profileKind } = source;
-  const profile = createGeneratedReferenceProfileSignature(entity);
+  const profileKind: CadGeneratedReferenceProfileKind = regionProfile
+    ? "regions"
+    : entitySource!.profileKind;
+  const profile = entitySource
+    ? createGeneratedReferenceProfileSignature(entitySource.entity)
+    : undefined;
+  const sourceSketchEntityIds = regionProfile
+    ? [
+        ...new Set(
+          getProfileEntityReferences(regionProfile).map(
+            ({ entityId }) => entityId
+          )
+        )
+      ]
+    : undefined;
   const axisSignature = createRevolveAxisSourceSignature(feature, axisEntity);
   const body: CadGeneratedBodyReference = {
     kind: "body",
@@ -1504,12 +1528,15 @@ function createRevolveBodyGeneratedReferences(
     bodyId: feature.bodyId,
     ownerPartId,
     sourceFeatureId: feature.id,
-    sourceSketchId: profileRef.sketchId,
-    sourceSketchEntityId: profileRef.entityId,
+    sourceSketchId: sketch.id,
+    ...(sourceSketchEntityIds
+      ? { sourceSketchEntityIds }
+      : { sourceSketchEntityId: entitySource!.profileRef.entityId }),
     profileKind,
     geometricSignature: createRevolveGeneratedReferenceSignature(
       feature,
       sketch,
+      profileKind,
       profile,
       axisSignature,
       {
@@ -1528,6 +1555,7 @@ function createRevolveBodyGeneratedReferences(
       createRevolveAxisReference(
         feature,
         sketch,
+        profileKind,
         profile,
         axisSignature,
         axisSketch.plane,
@@ -2414,7 +2442,8 @@ function createGeneratedVertexReference(
 function createRevolveAxisReference(
   feature: GeneratedReferencesRevolveFeature,
   sketch: GeneratedReferencesSketch,
-  profile: CadGeneratedReferenceProfileSignature,
+  profileKind: CadGeneratedReferenceProfileKind,
+  profile: CadGeneratedReferenceProfileSignature | undefined,
   axisSignature: NonNullable<
     CadGeneratedReferenceSignature["revolveAxisSignature"]
   >,
@@ -2438,6 +2467,7 @@ function createRevolveAxisReference(
     geometricSignature: createRevolveGeneratedReferenceSignature(
       feature,
       sketch,
+      profileKind,
       profile,
       axisSignature,
       {
@@ -2614,7 +2644,8 @@ function createGeneratedReferenceSignature(
 function createRevolveGeneratedReferenceSignature(
   feature: GeneratedReferencesRevolveFeature,
   sketch: GeneratedReferencesSketch,
-  profile: CadGeneratedReferenceProfileSignature,
+  profileKind: CadGeneratedReferenceProfileKind,
+  profile: CadGeneratedReferenceProfileSignature | undefined,
   axisSignature: NonNullable<
     CadGeneratedReferenceSignature["revolveAxisSignature"]
   >,
@@ -2622,12 +2653,12 @@ function createRevolveGeneratedReferenceSignature(
 ): CadGeneratedReferenceSignature {
   return {
     sourceKind: "revolve",
-    profileKind: profile.kind,
+    profileKind,
     sketchPlane: sketch.plane,
     revolveAxis: feature.axis,
     revolveAxisSignature: axisSignature,
     revolveAngleDegrees: feature.angleDegrees,
-    profile,
+    ...(profile ? { profile } : {}),
     ...signature
   };
 }

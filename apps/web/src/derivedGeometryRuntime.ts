@@ -7,6 +7,7 @@ import type {
   GeometryWorkerDiagnostics,
   GeometryWorkerRequest,
   GeometryWorkerResponse,
+  ResolvedPlanarRegionProfile,
   ResolvedPlanarWireProfile
 } from "@web-cad/geometry-worker";
 import type { MeshRendererBridgeResult } from "@web-cad/renderer-mesh-bridge";
@@ -88,7 +89,8 @@ export interface DerivedGeometryRevolveInput {
   readonly sketchPlane: "XY" | "XZ" | "YZ";
   readonly profile:
     | DerivedGeometryPrimitiveExtrudeProfile
-    | DerivedGeometryWireExtrudeProfile;
+    | DerivedGeometryWireExtrudeProfile
+    | ResolvedPlanarRegionProfile;
   readonly axis: {
     readonly start: readonly [number, number];
     readonly end: readonly [number, number];
@@ -309,7 +311,9 @@ export interface DerivedExactMetadataInput {
     | {
         readonly kind: "revolve";
         readonly sketchPlane: "XY" | "XZ" | "YZ";
-        readonly profile: DerivedGeometryWireExtrudeProfile;
+        readonly profile:
+          | DerivedGeometryWireExtrudeProfile
+          | ResolvedPlanarRegionProfile;
         readonly axis: DerivedGeometryRevolveInput["axis"];
         readonly angleDegrees: number;
         readonly placementFrame?: never;

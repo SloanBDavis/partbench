@@ -36,7 +36,20 @@ export type OcctPrimitiveRevolveProfile =
 
 export type OcctRevolveProfile =
   | OcctPrimitiveRevolveProfile
-  | OcctResolvedPlanarWireProfile;
+  | OcctResolvedPlanarWireProfile
+  | OcctResolvedPlanarRegionProfile;
+
+export interface OcctResolvedPlanarRegionProfile {
+  readonly kind: "region";
+  readonly frame: OcctResolvedPlanarWireProfile["frame"];
+  readonly outer: OcctPrimitiveRevolveProfile | OcctResolvedPlanarWireProfile;
+  readonly holes: readonly (
+    | OcctPrimitiveRevolveProfile
+    | OcctResolvedPlanarWireProfile
+  )[];
+  readonly sourceIdentity: string;
+  readonly geometryPolicy: OcctResolvedPlanarWireProfile["geometryPolicy"];
+}
 
 export interface OcctRevolveAxis {
   readonly start: readonly [number, number];
@@ -76,6 +89,11 @@ export interface RevolveShapeHandle {
   readonly shape: TopoDS_Shape;
   Shape(): TopoDS_Shape;
   readonly delete: () => void;
+}
+
+interface RegionRevolveKernelError {
+  readonly code: "SKETCH_REGION_RESULT_NOT_SINGLE_SOLID";
+  readonly message: string;
 }
 
 export async function createOcctRevolveProfileMeshWithLoader(
@@ -129,7 +147,9 @@ export function makeRevolveProfileShape(
   const frame =
     input.profile.kind === "wire"
       ? getResolvedWireFrame(input.profile)
-      : getSketchFrame(input.sketchPlane, input.placementFrame);
+      : input.profile.kind === "region"
+        ? getResolvedRegionFrame(input.profile)
+        : getSketchFrame(input.sketchPlane, input.placementFrame);
   const angleRadians = (input.angleDegrees * Math.PI) / 180;
   let profileFace:
     | { readonly face: TopoDS_Face; readonly delete: () => void }
@@ -145,7 +165,9 @@ export function makeRevolveProfileShape(
     profileFace =
       input.profile.kind === "wire"
         ? makeResolvedPlanarWireFace(oc, input.profile)
-        : makeProfileFace(oc, frame, input.profile);
+        : input.profile.kind === "region"
+          ? makeResolvedPlanarRegionFace(oc, input.profile)
+          : makeProfileFace(oc, frame, input.profile);
     revolveAxis = createRevolveAxis(oc, frame, input.axis);
     range = new oc.Message_ProgressRange_1();
     revolve =
@@ -183,7 +205,8 @@ export function makeRevolveProfileShape(
       assertRevolveSolidResult(
         shape.ShapeType(),
         oc.TopAbs_ShapeEnum.TopAbs_SOLID,
-        countSubshapes(oc, shape, oc.TopAbs_ShapeEnum.TopAbs_SOLID)
+        countSubshapes(oc, shape, oc.TopAbs_ShapeEnum.TopAbs_SOLID),
+        input.profile.kind === "region"
       );
     } catch (error) {
       shape.delete();
@@ -256,9 +279,16 @@ function assertRevolveProfileBindings(oc: OpenCascadeInstance): void {
 export function assertRevolveSolidResult(
   shapeType: unknown,
   solidShapeType: unknown,
-  solidCount: number
+  solidCount: number,
+  regionProfile = false
 ): void {
   if (shapeType !== solidShapeType || solidCount !== 1) {
+    if (regionProfile) {
+      throw {
+        code: "SKETCH_REGION_RESULT_NOT_SINGLE_SOLID",
+        message: `Open CASCADE region revolve must return exactly one solid; received ${solidCount}.`
+      } satisfies RegionRevolveKernelError;
+    }
     throw new Error("Open CASCADE revolve must return exactly one solid.");
   }
 }
@@ -274,6 +304,105 @@ export function makeProfileFace(
     case "circle":
       return makeCircleProfileFace(oc, frame, profile);
   }
+}
+
+function getResolvedRegionFrame(
+  profile: OcctResolvedPlanarRegionProfile
+): SketchFrame {
+  return {
+    origin: profile.frame.origin,
+    uAxis: profile.frame.uAxis,
+    vAxis: profile.frame.vAxis,
+    normalAxis: normalizeVec3(
+      crossVec3(profile.frame.uAxis, profile.frame.vAxis)
+    )
+  };
+}
+
+function makeResolvedPlanarRegionFace(
+  oc: OpenCascadeInstance,
+  profile: OcctResolvedPlanarRegionProfile
+): ProfileFaceHandle {
+  const frame = getResolvedRegionFrame(profile);
+  const outer = makeRegionLoopFaceForRegion(oc, frame, profile.outer);
+  const holes: ProfileFaceHandle[] = [];
+  let faceMaker:
+    | InstanceType<OpenCascadeInstance["BRepBuilderAPI_MakeFace_15"]>
+    | undefined;
+  let face: TopoDS_Face | undefined;
+
+  try {
+    faceMaker = new oc.BRepBuilderAPI_MakeFace_15(outer.wire, true);
+    for (const holeProfile of profile.holes) {
+      const hole = makeRegionLoopFaceForRegion(oc, frame, holeProfile);
+      holes.push(hole);
+      if (holeProfile.kind !== "wire") {
+        hole.wire.Reverse();
+      }
+      faceMaker.Add(hole.wire);
+    }
+    if (!faceMaker.IsDone()) {
+      throw new Error(
+        "Open CASCADE failed to build a planar region face containing its holes."
+      );
+    }
+    face = faceMaker.Face();
+    const analyzer = new oc.BRepCheck_Analyzer(face, true, false);
+    try {
+      if (!analyzer.IsValid_2()) {
+        throw new Error(
+          "Open CASCADE rejected the planar region face containing its holes."
+        );
+      }
+    } finally {
+      analyzer.delete();
+    }
+
+    const handles = { face, faceMaker, outer, holes };
+    let disposed = false;
+    return {
+      face: handles.face,
+      wire: handles.outer.wire,
+      delete: () => {
+        if (disposed) return;
+        disposed = true;
+        handles.face.delete();
+        handles.faceMaker.delete();
+        handles.holes.forEach((hole) => hole.delete());
+        handles.outer.delete();
+      }
+    };
+  } catch (error) {
+    face?.delete();
+    faceMaker?.delete();
+    holes.forEach((hole) => hole.delete());
+    outer.delete();
+    throw error;
+  }
+}
+
+function makeRegionLoopFaceForRegion(
+  oc: OpenCascadeInstance,
+  frame: SketchFrame,
+  profile: OcctPrimitiveRevolveProfile | OcctResolvedPlanarWireProfile
+): ProfileFaceHandle {
+  return makeRegionLoopFace(oc, frame, profile);
+}
+
+function makeRegionLoopFace(
+  oc: OpenCascadeInstance,
+  frame: SketchFrame,
+  profile: OcctPrimitiveRevolveProfile | OcctResolvedPlanarWireProfile
+): ProfileFaceHandle {
+  if (profile.kind !== "wire") {
+    return makeProfileFace(oc, frame, profile);
+  }
+  const build = makeResolvedPlanarWireFace(oc, profile);
+  return {
+    face: build.face,
+    wire: build.wire,
+    delete: () => build.delete()
+  };
 }
 
 function makeRectangleProfileFace(

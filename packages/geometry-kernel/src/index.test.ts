@@ -15,6 +15,7 @@ import {
   type GeometryKernelImportedBodyPayload,
   type GeometryKernelMeshFactories,
   type GeometryKernelTopologyEntityDescriptor,
+  type ResolvedPlanarRegionProfile,
   type ResolvedPlanarWireProfile,
   type RevolveGeometryAxis
 } from "./kernel";
@@ -5246,7 +5247,7 @@ describe("geometry-kernel facade", () => {
       error: {
         code: "INVALID_DIMENSIONS",
         message:
-          "Revolve profile requests require a supported sketch plane, valid rectangle, circle, or resolved wire profile, a non-zero finite axis (longer than the shared linear tolerance for resolved wires), wire contact limited to profile vertices with the wire entirely on one side, and a positive finite angle no greater than 360 degrees."
+          "Revolve profile requests require a supported sketch plane, valid rectangle, circle, resolved wire, or one-region profile, a non-zero finite axis longer than the shared tolerance, one-sided material with only outer vertex contact, holes strictly separated from the axis, and a positive finite angle no greater than 360 degrees."
       },
       warnings: []
     });
@@ -5257,10 +5258,93 @@ describe("geometry-kernel facade", () => {
       error: {
         code: "INVALID_DIMENSIONS",
         message:
-          "Revolve profile requests require a supported sketch plane, valid rectangle, circle, or resolved wire profile, a non-zero finite axis (longer than the shared linear tolerance for resolved wires), wire contact limited to profile vertices with the wire entirely on one side, and a positive finite angle no greater than 360 degrees."
+          "Revolve profile requests require a supported sketch plane, valid rectangle, circle, resolved wire, or one-region profile, a non-zero finite axis longer than the shared tolerance, one-sided material with only outer vertex contact, holes strictly separated from the axis, and a positive finite angle no greater than 360 degrees."
       },
       warnings: []
     });
+  });
+
+  it("accepts one-sided region revolve recipes and rejects holes within axis tolerance", async () => {
+    let revolveCalls = 0;
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory,
+      createRevolveProfileMesh: async () => {
+        revolveCalls += 1;
+        return {
+          primitive: "revolve",
+          positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+          indices: new Uint32Array([0, 1, 2]),
+          vertexCount: 3,
+          triangleCount: 1,
+          faceCount: 1
+        };
+      }
+    };
+    const profile = {
+      kind: "region" as const,
+      frame: mixedWireProfile.frame,
+      outer: {
+        kind: "rectangle" as const,
+        center: [4, 0] as const,
+        width: 2,
+        height: 4
+      },
+      holes: [
+        {
+          kind: "circle" as const,
+          center: [4, 0] as const,
+          radius: 0.5
+        }
+      ],
+      sourceIdentity: "valid-region-revolve",
+      geometryPolicy: mixedWireProfile.geometryPolicy
+    } satisfies ResolvedPlanarRegionProfile;
+    const request = {
+      id: "region-revolve-valid",
+      version: "geometry-kernel.v1" as const,
+      op: "geometry.revolveProfile" as const,
+      sketchPlane: "XY" as const,
+      profile,
+      axis: { start: [0, -5] as const, end: [0, 5] as const },
+      angleDegrees: 360
+    };
+    const valid = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      request
+    );
+    const invalid = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        ...request,
+        id: "region-revolve-hole-touch",
+        profile: {
+          ...profile,
+          sourceIdentity: "invalid-region-revolve-hole-touch",
+          holes: [
+            {
+              kind: "circle",
+              center: [0.5, 0] as const,
+              radius: 0.5
+            }
+          ]
+        }
+      }
+    );
+
+    expect(valid.ok).toBe(true);
+    expect(invalid).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_DIMENSIONS" }
+    });
+    expect(revolveCalls).toBe(1);
   });
 
   it("uses one tolerance-aware infinite-axis classifier for wire mesh, exact, and STEP recipes", async () => {

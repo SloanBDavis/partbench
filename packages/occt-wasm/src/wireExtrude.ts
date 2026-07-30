@@ -3,7 +3,8 @@ import type {
   TopoDS_Edge,
   TopoDS_Face,
   TopoDS_Shape,
-  TopoDS_Vertex
+  TopoDS_Vertex,
+  TopoDS_Wire
 } from "opencascade.js";
 import {
   readTriangulatedShape,
@@ -98,6 +99,7 @@ export interface OcctWireExtrudeShapeBuild {
 
 export interface OcctResolvedPlanarWireFaceBuild {
   readonly face: TopoDS_Face;
+  readonly wire: TopoDS_Wire;
   readonly sourceEdges: readonly TopoDS_Edge[];
   readonly sourceVertices: readonly TopoDS_Vertex[];
   readonly sourceEdgeOrderProven: boolean;
@@ -484,8 +486,6 @@ export function makeResolvedPlanarWireFace(
     }
 
     faceBuilder = new oc.BRepBuilderAPI_MakeFace_15(wireShape, true);
-    wireShape.delete();
-    wireShape = undefined;
     if (!faceBuilder.IsDone()) {
       throw new Error(
         "Open CASCADE failed to build a planar face from the composite wire."
@@ -504,6 +504,7 @@ export function makeResolvedPlanarWireFace(
     let disposed = false;
     return {
       face: faceShape,
+      wire: wireShape,
       sourceEdges: generatedEdges,
       sourceVertices: generatedVertices,
       sourceEdgeOrderProven,

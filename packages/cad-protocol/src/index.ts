@@ -7684,6 +7684,29 @@ export interface CadExactExportResolvedWireProfile {
   };
 }
 
+export type CadExactExportResolvedRegionLoop =
+  | {
+      readonly kind: "rectangle";
+      readonly center: Vec2;
+      readonly width: number;
+      readonly height: number;
+    }
+  | {
+      readonly kind: "circle";
+      readonly center: Vec2;
+      readonly radius: number;
+    }
+  | CadExactExportResolvedWireProfile;
+
+export interface CadExactExportResolvedRegionProfile {
+  readonly kind: "region";
+  readonly frame: CadExactExportResolvedWireProfile["frame"];
+  readonly outer: CadExactExportResolvedRegionLoop;
+  readonly holes: readonly CadExactExportResolvedRegionLoop[];
+  readonly sourceIdentity: string;
+  readonly geometryPolicy: CadExactExportResolvedWireProfile["geometryPolicy"];
+}
+
 export interface CadExactExportPrimitiveExtrudeSource {
   readonly sketchPlane: SketchPlane;
   readonly profile:
@@ -7794,7 +7817,9 @@ export interface CadExactExportRevolveBodySource {
   readonly sourceSketchId: SketchId;
   readonly sourceSketchEntityIds: readonly SketchEntityId[];
   readonly sketchPlane: SketchPlane;
-  readonly profile: CadExactExportResolvedWireProfile;
+  readonly profile:
+    | CadExactExportResolvedWireProfile
+    | CadExactExportResolvedRegionProfile;
   readonly axis: {
     readonly sourceEntityId: SketchEntityId;
     readonly start: Vec2;

@@ -206,7 +206,18 @@ export type ExtrudeGeometryProfile =
   | PrimitiveExtrudeGeometryProfile
   | ResolvedPlanarWireProfile;
 
-export type RevolveGeometryProfile = ExtrudeGeometryProfile;
+export interface ResolvedPlanarRegionProfile {
+  readonly kind: "region";
+  readonly frame: ResolvedPlaneFrame;
+  readonly outer: ExtrudeGeometryProfile;
+  readonly holes: readonly ExtrudeGeometryProfile[];
+  readonly sourceIdentity: string;
+  readonly geometryPolicy: ResolvedSketchGeometryPolicy;
+}
+
+export type RevolveGeometryProfile =
+  | ExtrudeGeometryProfile
+  | ResolvedPlanarRegionProfile;
 
 export interface RevolveGeometryAxis {
   readonly start: readonly [number, number];
@@ -1719,7 +1730,7 @@ function validateRequest(
       return {
         code: "INVALID_DIMENSIONS",
         message:
-          "Revolve profile requests require a supported sketch plane, valid rectangle, circle, or resolved wire profile, a non-zero finite axis (longer than the shared linear tolerance for resolved wires), wire contact limited to profile vertices with the wire entirely on one side, and a positive finite angle no greater than 360 degrees."
+          "Revolve profile requests require a supported sketch plane, valid rectangle, circle, resolved wire, or one-region profile, a non-zero finite axis longer than the shared tolerance, one-sided material with only outer vertex contact, holes strictly separated from the axis, and a positive finite angle no greater than 360 degrees."
       };
     }
   } else if (request.op === "geometry.booleanExtrudes") {
@@ -2713,6 +2724,201 @@ function isValidResolvedPlanarWireProfile(
   });
 }
 
+function isValidResolvedPlanarRegionProfile(
+  profile: ResolvedPlanarRegionProfile,
+  axis: RevolveGeometryAxis
+): boolean {
+  const tolerance = profile.geometryPolicy?.linearTolerance;
+  if (
+    typeof profile.sourceIdentity !== "string" ||
+    profile.sourceIdentity.trim().length === 0 ||
+    tolerance !== 1e-7 ||
+    profile.geometryPolicy.angularToleranceDegrees !== 0.1 ||
+    profile.geometryPolicy.minimumProfileArea !== 1e-12 ||
+    !isVec3(profile.frame?.origin) ||
+    !isUnitVec3(profile.frame.uAxis) ||
+    !isUnitVec3(profile.frame.vAxis) ||
+    Math.abs(dotVec3(profile.frame.uAxis, profile.frame.vAxis)) > 1e-12 ||
+    !isRecord(profile.outer) ||
+    !Array.isArray(profile.holes) ||
+    !isValidRegionLoop(profile.outer, profile.frame) ||
+    !profile.holes.every(
+      (hole) =>
+        isRecord(hole) &&
+        isValidRegionLoop(
+          hole as unknown as ExtrudeGeometryProfile,
+          profile.frame
+        )
+    )
+  ) {
+    return false;
+  }
+
+  const outerRange = getRevolveLoopAxisRange(profile.outer, axis);
+  if (
+    !outerRange ||
+    (outerRange.minimum < -tolerance && outerRange.maximum > tolerance) ||
+    !outerLoopHasOnlyPermittedAxisContact(profile.outer, axis, outerRange)
+  ) {
+    return false;
+  }
+  const outerSide =
+    outerRange.maximum > tolerance
+      ? "positive"
+      : outerRange.minimum < -tolerance
+        ? "negative"
+        : undefined;
+  if (!outerSide) return false;
+
+  return profile.holes.every((hole) => {
+    const range = getRevolveLoopAxisRange(hole, axis);
+    return Boolean(
+      range &&
+      (outerSide === "positive"
+        ? range.minimum > tolerance
+        : range.maximum < -tolerance)
+    );
+  });
+}
+
+function isValidRegionLoop(
+  loop: ExtrudeGeometryProfile,
+  frame: ResolvedPlaneFrame
+): boolean {
+  return loop.kind === "wire"
+    ? isValidResolvedPlanarWireProfile(loop) &&
+        sameResolvedPlaneFrame(loop.frame, frame)
+    : isValidPrimitiveExtrudeProfile(loop);
+}
+
+function sameResolvedPlaneFrame(
+  left: ResolvedPlaneFrame,
+  right: ResolvedPlaneFrame
+): boolean {
+  return (
+    left.origin.every((value, index) => value === right.origin[index]) &&
+    left.uAxis.every((value, index) => value === right.uAxis[index]) &&
+    left.vAxis.every((value, index) => value === right.vAxis[index])
+  );
+}
+
+function outerLoopHasOnlyPermittedAxisContact(
+  loop: ExtrudeGeometryProfile,
+  axis: RevolveGeometryAxis,
+  range: { readonly minimum: number; readonly maximum: number }
+): boolean {
+  const tolerance =
+    loop.kind === "wire" ? loop.geometryPolicy.linearTolerance : 1e-7;
+  if (loop.kind === "wire") {
+    return !resolvedWireTouchesAxisAwayFromVertices(loop, axis);
+  }
+  if (loop.kind === "circle") {
+    return range.minimum > tolerance || range.maximum < -tolerance;
+  }
+
+  const [cx, cy] = loop.center;
+  const halfWidth = loop.width / 2;
+  const halfHeight = loop.height / 2;
+  const corners: readonly (readonly [number, number])[] = [
+    [cx - halfWidth, cy - halfHeight],
+    [cx + halfWidth, cy - halfHeight],
+    [cx + halfWidth, cy + halfHeight],
+    [cx - halfWidth, cy + halfHeight]
+  ];
+  const distances = corners.map((point) => signedAxisDistance(point, axis));
+  return distances.every(
+    (distance, index) =>
+      Math.abs(distance) > tolerance ||
+      (Math.abs(distances[(index + 1) % distances.length] ?? Infinity) >
+        tolerance &&
+        Math.abs(
+          distances[(index + distances.length - 1) % distances.length] ??
+            Infinity
+        ) > tolerance)
+  );
+}
+
+function getRevolveLoopAxisRange(
+  loop: ExtrudeGeometryProfile,
+  axis: RevolveGeometryAxis
+): { readonly minimum: number; readonly maximum: number } | undefined {
+  if (loop.kind === "circle") {
+    const center = signedAxisDistance(loop.center, axis);
+    return { minimum: center - loop.radius, maximum: center + loop.radius };
+  }
+  if (loop.kind === "rectangle") {
+    const halfWidth = loop.width / 2;
+    const halfHeight = loop.height / 2;
+    return rangeOfAxisDistances(
+      [
+        [loop.center[0] - halfWidth, loop.center[1] - halfHeight],
+        [loop.center[0] + halfWidth, loop.center[1] - halfHeight],
+        [loop.center[0] + halfWidth, loop.center[1] + halfHeight],
+        [loop.center[0] - halfWidth, loop.center[1] + halfHeight]
+      ],
+      axis
+    );
+  }
+
+  const points: Array<readonly [number, number]> = [];
+  const axisDx = axis.end[0] - axis.start[0];
+  const axisDy = axis.end[1] - axis.start[1];
+  const extremumAngleDegrees = (Math.atan2(axisDx, -axisDy) * 180) / Math.PI;
+  for (const segment of loop.segments) {
+    const endpoints =
+      segment.kind === "line"
+        ? { start: segment.start, end: segment.end }
+        : getArcEndpoints(segment);
+    points.push(endpoints.start, endpoints.end);
+    if (segment.kind === "arc") {
+      for (const angleDegrees of [
+        extremumAngleDegrees,
+        extremumAngleDegrees + 180
+      ]) {
+        const radians = (angleDegrees * Math.PI) / 180;
+        const point: readonly [number, number] = [
+          segment.center[0] + segment.radius * Math.cos(radians),
+          segment.center[1] + segment.radius * Math.sin(radians)
+        ];
+        if (
+          pointIsOnDirectedArc(
+            point,
+            segment,
+            loop.geometryPolicy.angularToleranceDegrees * (Math.PI / 180)
+          )
+        ) {
+          points.push(point);
+        }
+      }
+    }
+  }
+  return rangeOfAxisDistances(points, axis);
+}
+
+function rangeOfAxisDistances(
+  points: readonly (readonly [number, number])[],
+  axis: RevolveGeometryAxis
+): { readonly minimum: number; readonly maximum: number } | undefined {
+  if (points.length === 0) return undefined;
+  const distances = points.map((point) => signedAxisDistance(point, axis));
+  return {
+    minimum: Math.min(...distances),
+    maximum: Math.max(...distances)
+  };
+}
+
+function signedAxisDistance(
+  point: readonly [number, number],
+  axis: RevolveGeometryAxis
+): number {
+  const dx = axis.end[0] - axis.start[0];
+  const dy = axis.end[1] - axis.start[1];
+  const length = Math.hypot(dx, dy);
+  return (
+    (dx * (point[1] - axis.start[1]) - dy * (point[0] - axis.start[0])) / length
+  );
+}
+
 function getArcEndpoints(segment: ResolvedArcSegment2d): {
   readonly start: readonly [number, number];
   readonly end: readonly [number, number];
@@ -2778,6 +2984,14 @@ function isValidRevolveRecipe(source: {
     source.angleDegrees > 360
   ) {
     return false;
+  }
+  if (source.profile.kind === "region") {
+    return (
+      source.placementFrame === undefined &&
+      revolveAxisLength(source.axis) >
+        source.profile.geometryPolicy.linearTolerance &&
+      isValidResolvedPlanarRegionProfile(source.profile, source.axis)
+    );
   }
   if (source.profile.kind !== "wire") {
     return (

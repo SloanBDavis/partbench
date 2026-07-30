@@ -383,6 +383,139 @@ describe("V19 agent adapter parity", () => {
     );
   });
 
+  it("preserves region revolve dry-run, commit, update, audit, and review parity", () => {
+    const engine = createRegionEngine();
+    engine.apply({
+      op: "sketch.addLine",
+      sketchId: "sketch_regions",
+      id: "revolve_axis",
+      start: [-12, -10],
+      end: [-12, 10],
+      construction: true
+    });
+    const adapter = new CadOpsAgentAdapter(engine);
+    const createOp = {
+      op: "feature.revolve" as const,
+      id: "feature_region_revolve_agent",
+      bodyId: "body_region_revolve_agent",
+      profile: {
+        kind: "regions" as const,
+        sketchId: "sketch_regions",
+        regions: [
+          {
+            outer: { kind: "entity" as const, entityId: "outer" },
+            holes: [{ kind: "entity" as const, entityId: "hole" }]
+          }
+        ]
+      },
+      axis: {
+        type: "sketchLine" as const,
+        sketchId: "sketch_regions",
+        entityId: "revolve_axis"
+      },
+      angleDegrees: 180,
+      operationMode: "newBody" as const
+    };
+    const execute = (mode: "dryRun" | "commit") =>
+      adapter.execute(
+        parseCadOpsAgentRequest({
+          requestId: `region_revolve_${mode}`,
+          adapterVersion: "web-cad.agent-adapter.v1",
+          permissions: { allowCommit: true },
+          batch: {
+            version: "cadops.v1",
+            mode,
+            actor: { type: "agent", id: "gate-g-agent" },
+            audit: {
+              intent: mode,
+              operationCount: 1,
+              requestId: `region_revolve_${mode}`,
+              source: "v19-region-revolve-parity",
+              toolName: "cad.batch"
+            },
+            ops: [createOp]
+          }
+        })
+      );
+    const dryRun = execute("dryRun");
+    const commit = execute("commit");
+
+    expect(dryRun).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      review: {
+        operations: [
+          expect.objectContaining({
+            op: "feature.revolve",
+            featureId: "feature_region_revolve_agent",
+            bodyId: "body_region_revolve_agent",
+            operationMode: "newBody",
+            label: expect.stringContaining("explicit region")
+          })
+        ]
+      }
+    });
+    expect(commit).toMatchObject({
+      ok: true,
+      mode: "commit",
+      actor: { type: "agent", id: "gate-g-agent" },
+      audit: {
+        requestId: "region_revolve_commit",
+        source: "agent-adapter"
+      },
+      createdFeatureIds: ["feature_region_revolve_agent"],
+      createdBodyIds: ["body_region_revolve_agent"]
+    });
+    if (!dryRun.ok || !commit.ok) return;
+    expect(dryRun.semanticDiff).toEqual(commit.semanticDiff);
+
+    const update = adapter.execute(
+      parseCadOpsAgentRequest({
+        requestId: "region_revolve_update",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        permissions: { allowCommit: true },
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          audit: {
+            intent: "commit",
+            operationCount: 1,
+            requestId: "region_revolve_update",
+            toolName: "cad.batch"
+          },
+          ops: [
+            {
+              op: "feature.updateRevolve",
+              id: "feature_region_revolve_agent",
+              angleDegrees: 270
+            }
+          ]
+        }
+      })
+    );
+    expect(update).toMatchObject({
+      ok: true,
+      mode: "commit",
+      modifiedFeatureIds: ["feature_region_revolve_agent"],
+      review: {
+        operations: [
+          expect.objectContaining({
+            op: "feature.updateRevolve",
+            featureId: "feature_region_revolve_agent",
+            label: expect.stringContaining("270")
+          })
+        ]
+      }
+    });
+    expect(
+      engine.getDocument().features.get("feature_region_revolve_agent")
+    ).toMatchObject({
+      profile: createOp.profile,
+      angleDegrees: 270,
+      operationMode: "newBody"
+    });
+  });
+
   it("rejects candidate mutation tokens and non-model-space region inputs", () => {
     for (const extra of [
       { candidateToken: "opaque-mutation-token" },

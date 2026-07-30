@@ -66,6 +66,7 @@ export type {
   GeometryKernelStepImportDiagnostic,
   GeometryKernelStepImportResult,
   StepImportRequest,
+  ResolvedPlanarRegionProfile,
   ResolvedPlanarWireProfile,
   GeometryKernelGeneratedReferences
 } from "@web-cad/geometry-kernel";

@@ -1321,7 +1321,12 @@ function createUnsupportedAuthoredFeatureTopology(
                 ? "Curved sweep topology awaits matching kernel-derived exact metadata; source identity is resolved from the profile, ordered path geometry, and both sketch frames."
                 : feature.kind === "extrude"
                   ? "Region extrude topology awaits the V19 region extrude geometry slice; source identity includes canonical region refs, referenced sketch geometry, and the resolved sketch frame."
-                  : "Semantic topology references are not derived for authored revolve bodies yet.",
+                  : feature.kind === "revolve" &&
+                      isSketchRegionsProfileRef(
+                        (feature as unknown as Record<string, unknown>).profile
+                      )
+                    ? "Region revolve topology awaits matching exact metadata from its canonical region, sketch frame, and axis."
+                    : "Semantic topology references are not derived for authored revolve bodies yet.",
         bodyId,
         featureId: feature.id
       }
@@ -1826,8 +1831,7 @@ function applyDerivedExactMetadata(
       return applyDerivedExactMetadataIssue(topology, {
         code: "INVALID_EXACT_GEOMETRY_RESULT",
         status: "kernel-failed",
-        message:
-          "Region extrude exact metadata must prove exactly one connected solid.",
+        message: `${topology.sourceKind === "authoredRevolve" ? "Region revolve" : "Region extrude"} exact metadata must prove exactly one connected solid.`,
         expected: "solidCount=1",
         received:
           topologyCounts === undefined

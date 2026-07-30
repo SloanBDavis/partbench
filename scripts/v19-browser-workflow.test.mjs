@@ -4,17 +4,20 @@ import {
   createV19GateCBrowserWorkflowResult,
   createV19GateEBrowserWorkflowResult,
   createV19GateFBrowserWorkflowResult,
+  createV19GateGBrowserWorkflowResult,
   createV19BrowserWorkflowResult,
   formatV19GateBBrowserWorkflowSummary,
   formatV19GateCBrowserWorkflowSummary,
   formatV19GateEBrowserWorkflowSummary,
   formatV19GateFBrowserWorkflowSummary,
+  formatV19GateGBrowserWorkflowSummary,
   formatV19BrowserWorkflowSummary,
   V19_GATE_B_BROWSER_REQUIRED_CHECK_IDS,
   V19_GATE_C_BROWSER_ACTION_IDS,
   V19_GATE_C_BROWSER_REQUIRED_CHECK_IDS,
   V19_GATE_E_BROWSER_REQUIRED_CHECK_IDS,
   V19_GATE_F_BROWSER_REQUIRED_CHECK_IDS,
+  V19_GATE_G_BROWSER_REQUIRED_CHECK_IDS,
   V19_BROWSER_REQUIRED_CHECK_IDS
 } from "./v19-browser-workflow.mjs";
 
@@ -65,7 +68,8 @@ describe("V19 combined browser workflow result", () => {
       ...V19_GATE_B_BROWSER_REQUIRED_CHECK_IDS,
       ...V19_GATE_C_BROWSER_REQUIRED_CHECK_IDS,
       ...V19_GATE_E_BROWSER_REQUIRED_CHECK_IDS,
-      ...V19_GATE_F_BROWSER_REQUIRED_CHECK_IDS
+      ...V19_GATE_F_BROWSER_REQUIRED_CHECK_IDS,
+      ...V19_GATE_G_BROWSER_REQUIRED_CHECK_IDS
     ]);
 
     const result = createV19BrowserWorkflowResult({
@@ -76,9 +80,9 @@ describe("V19 combined browser workflow result", () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(result.workflowVersion).toBe("partbench.v19-browser-workflow.v4");
+    expect(result.workflowVersion).toBe("partbench.v19-browser-workflow.v5");
     expect(formatV19BrowserWorkflowSummary(result)).toContain(
-      "29/29 checks passed"
+      "34/34 checks passed"
     );
   });
 });
@@ -148,13 +152,13 @@ describe("V19 Gate E browser workflow result", () => {
       "v19-gate-e-even-odd-surface",
       "v19-gate-e-pointer-keyboard-selection",
       "v19-gate-e-consumer-count-policy",
-      "v19-gate-e-exact-validation-no-feature",
+      "v19-gate-e-exact-revolve-selection",
       "v19-gate-e-cancel-escape-no-mutation",
       "v19-gate-e-query-worker-occt-deferral"
     ]);
     expect(
       V19_GATE_E_BROWSER_REQUIRED_CHECK_IDS.some((id) =>
-        /extrude|revolve|feature-created/.test(id)
+        /extrude|feature-created/.test(id)
       )
     ).toBe(false);
   });
@@ -169,7 +173,7 @@ describe("V19 Gate E browser workflow result", () => {
 
     expect(result.ok).toBe(true);
     expect(result.workflowVersion).toBe(
-      "partbench.v19-gate-e-browser-workflow.v1"
+      "partbench.v19-gate-e-browser-workflow.v2"
     );
     expect(result.passedCount).toBe(result.checkCount);
     expect(formatV19GateEBrowserWorkflowSummary(result)).toContain(
@@ -226,6 +230,31 @@ describe("V19 Gate F browser workflow result", () => {
       "partbench.v19-gate-f-browser-workflow.v1"
     );
     expect(formatV19GateFBrowserWorkflowSummary(result)).toContain(
+      "5/5 checks passed"
+    );
+  });
+});
+
+describe("V19 Gate G browser workflow result", () => {
+  it("freezes the region-revolve command, exact display, and undo/redo proof", () => {
+    expect(V19_GATE_G_BROWSER_REQUIRED_CHECK_IDS).toEqual([
+      "v19-gate-g-keyboard-region-revolve",
+      "v19-gate-g-authored-feature",
+      "v19-gate-g-command-boundary",
+      "v19-gate-g-exact-display",
+      "v19-gate-g-single-step-undo-redo"
+    ]);
+    const result = createV19GateGBrowserWorkflowResult({
+      checks: V19_GATE_G_BROWSER_REQUIRED_CHECK_IDS.map((id) => ({
+        id,
+        passed: true
+      }))
+    });
+    expect(result.ok).toBe(true);
+    expect(result.workflowVersion).toBe(
+      "partbench.v19-gate-g-browser-workflow.v1"
+    );
+    expect(formatV19GateGBrowserWorkflowSummary(result)).toContain(
       "5/5 checks passed"
     );
   });

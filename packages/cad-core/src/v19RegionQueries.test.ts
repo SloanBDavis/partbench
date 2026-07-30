@@ -1028,6 +1028,8 @@ describe("V19 region query dispatch", () => {
       side: "positive",
       bodyId: "region_body"
     });
+    const savedWithRegionExtrude = exportCadProject(createEngine);
+    expect(() => importCadProject(savedWithRegionExtrude)).not.toThrow();
 
     createEngine.undo();
     expect(exportCadProject(createEngine).document.features).toHaveLength(0);
@@ -1213,7 +1215,7 @@ describe("V19 region query dispatch", () => {
     });
   });
 
-  it("keeps region revolve disabled while region extrude updates are enabled", () => {
+  it("creates and updates one-region new-body revolves through the V22 profile field", () => {
     const profile: SketchRegionsProfileRef = {
       kind: "regions",
       sketchId: "sketch_1",
@@ -1235,22 +1237,37 @@ describe("V19 region query dispatch", () => {
       }
     ]);
 
-    expect(() =>
-      createEngine.applyBatch([
-        {
-          op: "feature.revolve",
-          id: "blocked_revolve",
-          profile,
-          axis: {
-            type: "sketchLine",
-            sketchId: "sketch_1",
-            entityId: "axis"
-          },
-          angleDegrees: 180,
-          operationMode: "newBody"
-        }
-      ])
-    ).toThrow(/Region feature\.revolve remains disabled/);
+    const created = createEngine.applyBatch([
+      {
+        op: "feature.revolve",
+        id: "region_revolve",
+        bodyId: "region_revolve_body",
+        profile,
+        axis: {
+          type: "sketchLine",
+          sketchId: "sketch_1",
+          entityId: "axis"
+        },
+        angleDegrees: 180,
+        operationMode: "newBody"
+      }
+    ]);
+    expect(created.transaction.diff.features?.inputReferences).toEqual([
+      expect.objectContaining({
+        featureId: "region_revolve",
+        inputKind: "profile",
+        after: profile
+      })
+    ]);
+    expect(
+      exportCadProject(createEngine).document.features.at(-1)
+    ).toMatchObject({
+      id: "region_revolve",
+      bodyId: "region_revolve_body",
+      profile,
+      angleDegrees: 180,
+      operationMode: "newBody"
+    });
 
     const extrude = createImportedRegionFeatureEngine();
     extrude.applyBatch([
@@ -1267,14 +1284,17 @@ describe("V19 region query dispatch", () => {
     });
 
     const revolve = createImportedRegionFeatureEngine("revolve");
-    expect(() =>
-      revolve.applyBatch([
-        {
-          op: "feature.updateRevolve",
-          id: "feature_region",
-          angleDegrees: 270
-        }
-      ])
-    ).toThrow(/cannot be edited.*region revolve geometry slice/);
+    revolve.applyBatch([
+      {
+        op: "feature.updateRevolve",
+        id: "feature_region",
+        angleDegrees: 270
+      }
+    ]);
+    expect(exportCadProject(revolve).document.features[0]).toMatchObject({
+      id: "feature_region",
+      profile,
+      angleDegrees: 270
+    });
   });
 });

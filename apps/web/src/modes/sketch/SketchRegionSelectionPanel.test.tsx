@@ -50,6 +50,20 @@ describe("V19 material region collector", () => {
     expect(markup).toContain("disabled");
     expect(markup).not.toContain("SKETCH_REGION_BOUNDARY_TOUCHING");
   });
+
+  it("renders the one-region new-body revolve fields without extrude controls", () => {
+    const markup = render({ consumer: "revolve-new-body" });
+
+    expect(markup).toContain("Axis line");
+    expect(markup).toContain("Construction");
+    expect(markup).toContain("Angle");
+    expect(markup).toContain('max="360"');
+    expect(markup).toContain("Create revolve");
+    expect(markup).not.toContain("<span>Depth</span>");
+    expect(markup).not.toContain("<span>Side</span>");
+    expect(markup).not.toContain("<span>Operation</span>");
+    expect(markup).not.toContain("<span>Target body</span>");
+  });
 });
 
 const sketch: SketchSnapshot = {
@@ -70,6 +84,13 @@ const sketch: SketchSnapshot = {
       center: [0, 0],
       radius: 2,
       construction: false
+    },
+    {
+      id: "axis",
+      kind: "line",
+      start: [-15, -10],
+      end: [-15, 10],
+      construction: true
     }
   ]
 };
