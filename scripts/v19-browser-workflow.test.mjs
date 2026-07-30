@@ -18,6 +18,7 @@ import {
   V19_GATE_E_BROWSER_REQUIRED_CHECK_IDS,
   V19_GATE_F_BROWSER_REQUIRED_CHECK_IDS,
   V19_GATE_G_BROWSER_REQUIRED_CHECK_IDS,
+  V19_GATE_H_BROWSER_REQUIRED_CHECK_IDS,
   V19_BROWSER_REQUIRED_CHECK_IDS
 } from "./v19-browser-workflow.mjs";
 
@@ -69,7 +70,8 @@ describe("V19 combined browser workflow result", () => {
       ...V19_GATE_C_BROWSER_REQUIRED_CHECK_IDS,
       ...V19_GATE_E_BROWSER_REQUIRED_CHECK_IDS,
       ...V19_GATE_F_BROWSER_REQUIRED_CHECK_IDS,
-      ...V19_GATE_G_BROWSER_REQUIRED_CHECK_IDS
+      ...V19_GATE_G_BROWSER_REQUIRED_CHECK_IDS,
+      ...V19_GATE_H_BROWSER_REQUIRED_CHECK_IDS
     ]);
 
     const result = createV19BrowserWorkflowResult({
@@ -80,9 +82,9 @@ describe("V19 combined browser workflow result", () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(result.workflowVersion).toBe("partbench.v19-browser-workflow.v5");
+    expect(result.workflowVersion).toBe("partbench.v19-browser-workflow.v6");
     expect(formatV19BrowserWorkflowSummary(result)).toContain(
-      "34/34 checks passed"
+      "36/36 checks passed"
     );
   });
 });

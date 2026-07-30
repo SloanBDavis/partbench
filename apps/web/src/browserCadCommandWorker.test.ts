@@ -452,6 +452,7 @@ describe("BrowserCadCommandWorker", () => {
     await recovered;
     expect(transports).toHaveLength(2);
     worker.dispose();
+    expect(transports[1]?.terminationCount).toBe(1);
   });
 
   it("keeps mutation and cancellable-query public transports disjoint", () => {

@@ -1832,10 +1832,8 @@ function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
 
-function formatReadinessError(error: unknown): string {
-  return error instanceof Error
-    ? error.message
-    : "The query worker failed unexpectedly.";
+function formatReadinessError(_error: unknown): string {
+  return "Retry preview.";
 }
 
 function focusCurveEditInitialControl(editor: HTMLFormElement | null): void {

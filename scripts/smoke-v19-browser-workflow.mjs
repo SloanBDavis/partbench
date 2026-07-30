@@ -31,10 +31,11 @@ const timeoutMs = Number(
 if (args.has("--help")) {
   console.log(`Usage: node scripts/smoke-v19-browser-workflow.mjs [--json]
 
-Runs the focused V19 Gate B+C+E+F+G sketch-edit and material-region workflow
+Runs the focused V19 Gate B+C+E+F+G+H sketch-edit and material-region workflow
 against the built production App UI using trusted Chromium pointer and keyboard
 input. Gate E validates exact region references; Gates F and G create exact
-region extrude/revolve features through the shared command layer.`);
+region extrude/revolve features through the shared command layer; Gate H audits
+the narrow editor and retained-region retargeting.`);
   process.exit(0);
 }
 
@@ -382,6 +383,7 @@ async function runV19BrowserWorkflow({
               key: event.key,
               ctrlKey: event.ctrlKey,
               metaKey: event.metaKey,
+              shiftKey: event.shiftKey,
               trusted: event.isTrusted,
               target: event.target?.getAttribute?.("aria-label") ??
                 event.target?.textContent?.trim?.().slice(0, 80) ??
@@ -1532,6 +1534,69 @@ async function runV19BrowserWorkflow({
     );
 
     await openGateEMaterialRegions(browser);
+    await client.send(
+      "Emulation.setDeviceMetricsOverride",
+      {
+        width: 760,
+        height: 900,
+        deviceScaleFactor: 1,
+        mobile: false
+      },
+      sessionId
+    );
+    await browser.evaluate(
+      `new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve))
+      )`
+    );
+    await browser.evaluate(`new Promise((resolve) => {
+      document.querySelector(
+        '[aria-label="Select sketch material regions"] .pb-curve-edit__footer'
+      )?.scrollIntoView({ block: "end" });
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    })`);
+    const responsiveRegionEditor = await browser.evaluate(`(() => {
+      const panel = document.querySelector(
+        '[aria-label="Select sketch material regions"]'
+      );
+      const panelRect = panel?.getBoundingClientRect();
+      const footerRect = panel
+        ?.querySelector(".pb-curve-edit__footer")
+        ?.getBoundingClientRect();
+      return {
+        viewportWidth: innerWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        panelLeft: panelRect?.left,
+        panelRight: panelRect?.right,
+        panelWidth: panelRect?.width,
+        footerBottom: footerRect?.bottom,
+        candidateVisible: Boolean(
+          panel?.querySelector(".pb-region-select__candidate")
+        )
+      };
+    })()`);
+    checks.push({
+      id: "v19-gate-h-responsive-region-editor",
+      passed:
+        responsiveRegionEditor.viewportWidth === 760 &&
+        responsiveRegionEditor.documentWidth <= 760 &&
+        responsiveRegionEditor.panelLeft >= 0 &&
+        responsiveRegionEditor.panelRight <= 760 &&
+        responsiveRegionEditor.panelWidth >= 300 &&
+        responsiveRegionEditor.footerBottom <= 900 &&
+        responsiveRegionEditor.candidateVisible,
+      evidence: responsiveRegionEditor
+    });
+    await client.send(
+      "Emulation.setDeviceMetricsOverride",
+      {
+        width: 2400,
+        height: 1200,
+        deviceScaleFactor: 1,
+        mobile: false
+      },
+      sessionId
+    );
     await browser.activate({
       kind: "regionCandidate",
       text: "Outer · Rectangle 1"
@@ -1669,7 +1734,7 @@ async function runV19BrowserWorkflow({
     await browser.sendKey("Enter", { ctrlKey: true });
     await browser.waitFor(
       `!document.querySelector('[aria-label="Select sketch material regions"]') &&
-        document.body.textContent.includes("1 material region created an exact newBody extrude.")`,
+        document.body.textContent.includes("Created a newBody extrude.")`,
       "Gate F region extrude Apply"
     );
     await browser.waitFor(
@@ -1892,7 +1957,7 @@ async function runV19BrowserWorkflow({
     }
     await browser.waitFor(
       `!document.querySelector('[aria-label="Select sketch material regions"]') &&
-        document.body.textContent.includes("One material region created an exact 360° new-body revolve with 1 validated material area.")`,
+        document.body.textContent.includes("Created a 360° revolve.")`,
       "Gate G region revolve Apply"
     );
     await browser.waitFor(
@@ -2030,6 +2095,111 @@ async function runV19BrowserWorkflow({
             feature.id === gateGFeatureEvidence.featureId &&
             feature.bodyId === gateGFeatureEvidence.bodyId
         )
+      }
+    });
+
+    await browser.selectMode("Solid");
+    await browser.activate({ kind: "treeRow", text: "Extrude 1" });
+    await browser.activate({
+      kind: "ariaLabel",
+      text: "Actions for Extrude 1"
+    });
+    await browser.activate({
+      kind: "editorButton",
+      scope: '[role="menu"][aria-label="Actions for Extrude 1"]',
+      text: "Edit"
+    });
+    await browser.waitFor(
+      `(() => {
+        const editor = document.querySelector(".pb-feature-editor");
+        const profile = [...(editor?.querySelectorAll("select") ?? [])].find(
+          (select) => [...select.options].some(
+            (option) => option.textContent.trim() === "Current regions"
+          )
+        );
+        return editor?.textContent.includes("Edit Extrude") &&
+          profile?.selectedOptions[0]?.textContent.trim() === "Current regions" &&
+          [...profile.options].some((option) =>
+            option.textContent.trim().startsWith("Alternative ")
+          );
+      })()`,
+      "retained-region extrude editor"
+    );
+    await browser.focus({
+      kind: "labelControl",
+      scope: ".pb-feature-editor",
+      text: "Choose profile"
+    });
+    await browser.sendKey("ArrowDown");
+    await browser.waitFor(
+      `(() => {
+        const editor = document.querySelector(".pb-feature-editor");
+        const profile = [...(editor?.querySelectorAll("select") ?? [])].find(
+          (select) => [...select.options].some(
+            (option) => option.textContent.trim() === "Current regions"
+          )
+        );
+        const apply = [...(editor?.querySelectorAll("button") ?? [])].find(
+          (button) => button.textContent.trim() === "Apply"
+        );
+        return profile?.value &&
+          profile.selectedOptions[0]?.textContent.trim()
+            .startsWith("Alternative ") &&
+          editor?.textContent.includes("Unsaved changes") &&
+          Boolean(apply && !apply.disabled);
+      })()`,
+      "explicit replacement profile"
+    );
+    await browser.activate({
+      kind: "editorButton",
+      scope: ".pb-feature-editor",
+      text: "Apply"
+    });
+    await browser.waitFor(
+      `!document.querySelector(".pb-feature-editor")`,
+      "retained-region extrude retarget"
+    );
+    await browser.selectMode("Project");
+    await browser.activate({ kind: "ribbonAction", text: "Project Files" });
+    await browser.waitFor(
+      `Boolean(document.querySelector('.pb-project-mode-workspace textarea'))`,
+      "Project Files after region retarget"
+    );
+    const gateHAfterRetarget = await prepareAndReadProject(
+      browser,
+      "feature.updateExtrude"
+    );
+    const retargetedFeature = gateHAfterRetarget.document.features?.find(
+      (feature) => feature.id === gateFFeatureEvidence.featureId
+    );
+    const retargetTransaction = gateHAfterRetarget.history?.at(-1);
+    const retargetOperation = retargetTransaction?.ops?.[0];
+    const retargetReference =
+      retargetTransaction?.diff?.features?.inputReferences?.[0];
+    const sourceChanged =
+      JSON.stringify(retargetedFeature?.profile) !==
+      JSON.stringify(gateFFeatureEvidence.profile);
+    checks.push({
+      id: "v19-gate-h-region-feature-retarget",
+      passed:
+        retargetedFeature?.bodyId === gateFFeatureEvidence.bodyId &&
+        retargetedFeature?.profile?.kind === "regions" &&
+        sourceChanged &&
+        retargetOperation?.op === "feature.updateExtrude" &&
+        retargetOperation.profile?.kind === "regions" &&
+        retargetReference?.before?.kind === "regions" &&
+        retargetReference?.after?.kind === "regions" &&
+        JSON.stringify(retargetReference.before) !==
+          JSON.stringify(retargetReference.after),
+      evidence: {
+        featureId: retargetedFeature?.id,
+        bodyIdRetained:
+          retargetedFeature?.bodyId === gateFFeatureEvidence.bodyId,
+        retargetedProfileKind: retargetedFeature?.profile?.kind,
+        sourceChanged,
+        transactionOp: retargetOperation?.op,
+        beforeKind: retargetReference?.before?.kind,
+        afterKind: retargetReference?.after?.kind
       }
     });
   } catch (error) {

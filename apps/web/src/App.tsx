@@ -2315,7 +2315,7 @@ export function App() {
   );
   async function acceptValidatedRegionSelection(
     profile: SketchRegionsProfileRef,
-    response: SketchProfileRegionValidateQueryResponse,
+    _response: SketchProfileRegionValidateQueryResponse,
     featureDraft: SketchRegionFeatureDraft
   ): Promise<boolean> {
     setCommandError(undefined);
@@ -2338,9 +2338,7 @@ export function App() {
         (commandResponse) => commandResponse.createdBodyIds?.[0] ?? selectedId
       );
       if (!result?.ok) return false;
-      setCommandNotice(
-        `One material region created an exact ${featureDraft.angleDegrees}° new-body revolve with ${response.materialAreas.length} validated material area.`
-      );
+      setCommandNotice(`Created a ${featureDraft.angleDegrees}° revolve.`);
       return true;
     }
     const result = await commitOps(
@@ -2359,11 +2357,7 @@ export function App() {
       (commandResponse) => commandResponse.createdBodyIds?.[0] ?? selectedId
     );
     if (!result?.ok) return false;
-    setCommandNotice(
-      `${profile.regions.length} ${
-        profile.regions.length === 1 ? "material region" : "material regions"
-      } created an exact ${featureDraft.operationMode} extrude.`
-    );
+    setCommandNotice(`Created a ${featureDraft.operationMode} extrude.`);
     return true;
   }
   const commandWorkerLifecycleRef = useRef(0);
@@ -2657,9 +2651,7 @@ export function App() {
     runtime.cancelModelWork("Model work was cancelled by the user.");
     derivedGeometryServiceRef.current?.cancelPending();
     derivedExactMetadataServiceRef.current?.cancelPending();
-    setCommandNotice(
-      "Model work cancelled. Retry derived results and re-invoke any cancelled import, export, checkpoint, or preflight operation."
-    );
+    setCommandNotice("Model work cancelled. Retry or restart the operation.");
   }
 
   function retryModelResults() {
@@ -2677,7 +2669,7 @@ export function App() {
     setCommandError(undefined);
     setCommandNotice(
       modelWorkSnapshot.cancelledUserKinds.length > 0
-        ? `Retrying derived results. Re-invoke cancelled ${formatCancelledUserKinds(modelWorkSnapshot.cancelledUserKinds)}.`
+        ? `Retrying results. Restart ${formatCancelledUserKinds(modelWorkSnapshot.cancelledUserKinds)}.`
         : "Retrying current model results."
     );
   }
@@ -2686,7 +2678,7 @@ export function App() {
     getDerivedGeometryRuntime().resumeModelWork();
     setCommandError(undefined);
     setCommandNotice(
-      `Model worker resumed. Re-invoke cancelled ${formatCancelledUserKinds(modelWorkSnapshot.cancelledUserKinds)}.`
+      `Model worker resumed. Restart ${formatCancelledUserKinds(modelWorkSnapshot.cancelledUserKinds)}.`
     );
   }
 
@@ -2766,6 +2758,33 @@ export function App() {
         (feature) => feature.id === selectedBody.featureId
       )
     : undefined;
+  useEffect(() => {
+    setRegionCandidates([]);
+    const profile =
+      workbenchUi.activeTool === "solid.edit" &&
+      (selectedFeature?.kind === "extrude" ||
+        selectedFeature?.kind === "revolve") &&
+      selectedFeature.profile?.kind === "regions"
+        ? selectedFeature.profile
+        : undefined;
+    if (!profile) return;
+
+    const abortController = new AbortController();
+    void querySketchRegionCandidates(
+      {
+        query: "sketch.profileRegionCandidates",
+        sketchId: profile.sketchId
+      },
+      abortController.signal
+    )
+      .then((response) => {
+        if (!abortController.signal.aborted && response.ok) {
+          setRegionCandidates(response.candidates);
+        }
+      })
+      .catch(() => {});
+    return () => abortController.abort();
+  }, [querySketchRegionCandidates, selectedFeature, workbenchUi.activeTool]);
   const selectedBodyGeneratedReferences = useMemo(
     () =>
       readEngineStateForDocument(document, () =>
@@ -3255,7 +3274,26 @@ export function App() {
               label: "Current regions",
               kind: "profile"
             },
-            ...solidProfileChoices
+            ...regionCandidates
+              .filter(
+                (candidate) =>
+                  candidate.status === "valid" &&
+                  !profile.regions.some(
+                    (region) =>
+                      JSON.stringify(region) ===
+                      JSON.stringify(candidate.region)
+                  )
+              )
+              .map((candidate, index) => ({
+                key: `${featureId}:${candidate.candidateKey}`,
+                value: {
+                  kind: "regions" as const,
+                  sketchId: profile.sketchId,
+                  regions: [candidate.region] as const
+                },
+                label: `Alternative ${index + 1}`,
+                kind: "profile"
+              }))
           ]
         : solidProfileChoices;
     if (
@@ -3694,7 +3732,7 @@ export function App() {
         blockedReason:
           sections.length >= 2
             ? undefined
-            : "Loft needs at least two profiles on parallel planes. Select a planar body face and choose Create sketch to add an offset section."
+            : "Choose at least two profiles on parallel planes."
       } as SolidEditorRequest;
     }
     if (actionId === "solid.hole") {
@@ -3851,6 +3889,7 @@ export function App() {
     solidDirectionChoices,
     solidEdgeChoices,
     solidFaceChoices,
+    regionCandidates,
     solidPathChoices,
     solidPlaneChoices,
     solidProfileChoices,
@@ -7284,27 +7323,19 @@ export function App() {
         return;
       case "solid.extrude":
         navigateToMode("solid");
-        setCommandNotice(
-          "Choose a closed sketch profile, review the operation, then apply."
-        );
+        setCommandNotice("Choose a closed sketch profile.");
         return;
       case "solid.revolve":
         navigateToMode("solid");
-        setCommandNotice(
-          "Choose a closed profile and a sketch line axis, then apply. Construction lines are listed as axes."
-        );
+        setCommandNotice("Choose a closed profile and axis.");
         return;
       case "solid.sweep":
         navigateToMode("solid");
-        setCommandNotice(
-          "Choose a profile and path direction, review the path preview, then apply."
-        );
+        setCommandNotice("Choose a profile and path.");
         return;
       case "solid.loft":
         navigateToMode("solid");
-        setCommandNotice(
-          "Loft needs at least two ordered profiles on parallel planes. Create the next section on a parallel planar body face."
-        );
+        setCommandNotice("Choose ordered profiles on parallel planes.");
         return;
       case "solid.hole":
         navigateToMode("solid");
@@ -7332,9 +7363,7 @@ export function App() {
       case "solid.mirror":
         navigateToMode("solid");
         dispatchWorkbench({ type: "set-selection-filter", filter: "body" });
-        setCommandNotice(
-          "This operation repeats the selected result body. Choose a seed body and review the placement."
-        );
+        setCommandNotice("Choose a seed body.");
         return;
       case "solid.measure":
       case "inspect.measure":
@@ -7504,7 +7533,7 @@ export function App() {
         });
         setCommandNotice(
           actionId === "sketch.regions"
-            ? "Discover exact whole-loop material cells, choose an extrude operation, and apply the explicit region profile through the command layer."
+            ? "Choose material regions and an operation."
             : getSketchEditorActionNotice(
                 isSketchCurveEditUiAction(actionId) ||
                   actionId === "sketch.slot" ||
@@ -7711,9 +7740,7 @@ export function App() {
         solidProfileChoices.filter((choice) => choice.value.kind === "entity")
           .length >= 2
           ? ready
-          : needs(
-              "Select at least two profiles on parallel planes. Create a sketch on a parallel planar body face to add an offset section."
-            ),
+          : needs("Select at least two profiles on parallel planes."),
       "solid.transform": selectedObject
         ? ready
         : needs("Select an editable source object."),

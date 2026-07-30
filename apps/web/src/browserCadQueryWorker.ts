@@ -307,8 +307,16 @@ export class RecoverableBrowserCadQueryWorker implements CadQueryWorker {
 let sharedBrowserCadQueryWorker: RecoverableBrowserCadQueryWorker | undefined;
 
 export function getSharedBrowserCadQueryWorker(): CadQueryWorker {
-  return (sharedBrowserCadQueryWorker ??=
-    new RecoverableBrowserCadQueryWorker());
+  if (!sharedBrowserCadQueryWorker) {
+    sharedBrowserCadQueryWorker = new RecoverableBrowserCadQueryWorker();
+    window.addEventListener("pagehide", disposeSharedBrowserCadQueryWorker);
+  }
+  return sharedBrowserCadQueryWorker;
+}
+
+function disposeSharedBrowserCadQueryWorker(): void {
+  sharedBrowserCadQueryWorker?.dispose();
+  sharedBrowserCadQueryWorker = undefined;
 }
 
 function createBrowserCadQueryWorkerTransport(): CadQueryWorkerTransport {
