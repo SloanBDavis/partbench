@@ -301,21 +301,21 @@ const ACTION_AUDIT_BY_ID = {
     "createLinearPattern",
     "body/feature selection",
     "buildFeatureLinearPatternOp",
-    "patternPanelUi.test.ts"
+    "cadCommands.test.ts"
   ),
   "solid.circular-pattern": featureAudit(
     "Circular Pattern",
     "createCircularPattern",
     "body/feature selection",
     "buildFeatureCircularPatternOp",
-    "patternPanelUi.test.ts"
+    "cadCommands.test.ts"
   ),
   "solid.mirror": featureAudit(
     "Mirror",
     "createMirror",
     "body/feature selection",
     "buildFeatureMirrorOp",
-    "mirrorPanelUi.test.ts"
+    "cadCommands.test.ts"
   ),
   "solid.edit": audit(
     "StructurePanel / Inspector / CompositeFeatureEditor",
@@ -474,7 +474,7 @@ const ACTION_AUDIT_BY_ID = {
     "nameGeneratedReference",
     "selection.referenceCandidates",
     cadops("buildNameGeneratedReferenceOp"),
-    "viewportReferenceActions.test.ts",
+    "cadCommands.test.ts",
     "F",
     { editor: "NamedReferenceEditor" }
   ),
@@ -563,7 +563,7 @@ const NON_REGISTRY_CAPABILITIES = [
     "PrimitiveEditor",
     "ui:local draft validation",
     uiOnly("edit local draft until Apply"),
-    "featureFormDefaults.test.ts",
+    "modes/solid/SolidModePanel.test.tsx",
     "D"
   ),
   nonAction(
@@ -879,7 +879,7 @@ const NON_REGISTRY_CAPABILITIES = [
     "NamedReferenceEditor",
     "selected named reference",
     cadops("buildDeleteNamedReferenceOp"),
-    "viewportReferenceActions.test.ts",
+    "cadCommands.test.ts",
     "F"
   ),
   nonAction(

@@ -27,6 +27,7 @@ import {
   buildFeatureFilletOp,
   buildFeatureHoleOp,
   buildFeatureLinearPatternOp,
+  buildFeatureMirrorOp,
   buildFeatureRevolveOp,
   buildFeatureCompositeRevolveOp,
   buildFeatureSweepOp,
@@ -644,7 +645,7 @@ describe("cad command builders", () => {
     });
   });
 
-  it("builds V15 pattern feature commands", () => {
+  it("builds V15 pattern and mirror feature commands", () => {
     expect(
       buildFeatureLinearPatternOp({
         id: " feat_linear ",
@@ -712,6 +713,25 @@ describe("cad command builders", () => {
       rotationAxis: { kind: "globalAxis", axis: "x" },
       totalAngleDegrees: 180,
       instanceCount: 3
+    });
+
+    expect(
+      buildFeatureMirrorOp({
+        id: " feat_mirror ",
+        bodyId: " body_mirror ",
+        seedBodyId: "body_seed",
+        name: " Mirrored body ",
+        plane: { kind: "standardPlane", plane: "YZ", offset: 0 },
+        includeOriginal: true
+      })
+    ).toEqual({
+      op: "feature.mirror",
+      id: "feat_mirror",
+      bodyId: "body_mirror",
+      seedBodyId: "body_seed",
+      name: "Mirrored body",
+      plane: { kind: "standardPlane", plane: "YZ", offset: 0 },
+      includeOriginal: true
     });
   });
 
