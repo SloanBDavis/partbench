@@ -954,8 +954,8 @@ async function measureRegionInteraction(browser) {
     while (performance.now() < deadline) {
       canvas.dispatchEvent(new PointerEvent("pointermove", {
         bubbles: true,
-        clientX: 200 + Math.random() * 300,
-        clientY: 150 + Math.random() * 250
+        clientX: 200 + (intervals.length * 53) % 300,
+        clientY: 150 + (intervals.length * 97) % 250
       }));
       await new Promise((resolve) => requestAnimationFrame(resolve));
       const now = performance.now();

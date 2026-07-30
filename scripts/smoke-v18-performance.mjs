@@ -205,8 +205,8 @@ async function measureInteractions() {
         while (performance.now() < frameDeadline) {
           canvas.dispatchEvent(new PointerEvent("pointermove", {
             bubbles: true,
-            clientX: 200 + Math.random() * 300,
-            clientY: 150 + Math.random() * 250
+            clientX: 200 + (frameIntervals.length * 53) % 300,
+            clientY: 150 + (frameIntervals.length * 97) % 250
           }));
           await nextFrame();
           const now = performance.now();
