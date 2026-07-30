@@ -2,6 +2,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -339,17 +340,19 @@ export function SketchRegionSelectionPanel(
     },
     [candidates, onCandidatesChange, queryCandidates, sketch.id]
   );
+  const refreshCandidates = useEffectEvent(() => {
+    onCandidatesChange([]);
+    onHoverCandidate(undefined);
+    void readPage(undefined);
+  });
 
   useEffect(() => {
     void sourceAuthorityKey;
-    onCandidatesChange([]);
-    onHoverCandidate(undefined);
-    const timeout = window.setTimeout(() => void readPage(undefined), 0);
+    const timeout = window.setTimeout(refreshCandidates, 0);
     return () => {
       window.clearTimeout(timeout);
       queryAbortRef.current?.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sketch.id, sourceAuthorityKey]);
 
   async function apply(
