@@ -12,6 +12,8 @@ import type {
   SketchSnapshot
 } from "@web-cad/cad-protocol";
 import {
+  applySketchIntentSessionV19,
+  closeSketchIntentSessionV19,
   constraintEntryToDraftV19,
   constraintDefinitionEntityIdsV19,
   constraintDefinitionSummaryV19,
@@ -32,10 +34,12 @@ import {
   dimensionTargetSummaryV19,
   dimensionTargetToFamilyV19,
   entityLabelV19,
+  focusSketchIntentEditorV19,
   getConstraintCreationAvailabilityV19,
   getDimensionCreationAvailabilityV19,
   measureDimensionTargetV19,
   pointTargetKeyV19,
+  registerSketchIntentSessionV19,
   validateConstraintDraftV19,
   validateDimensionDraftV19,
   type SketchConstraintCreateKindV19,
@@ -1753,40 +1757,4 @@ function DraftFooter({
       </div>
     </>
   );
-}
-
-export async function applySketchIntentSessionV19(
-  ops: readonly CadOp[],
-  onApplyOps: (ops: readonly CadOp[]) => boolean | Promise<boolean>,
-  onSuccess: () => void
-): Promise<boolean> {
-  if (!(await onApplyOps(ops))) return false;
-  onSuccess();
-  return true;
-}
-
-export function focusSketchIntentEditorV19(
-  target: { focus(): void } | null | undefined
-): void {
-  target?.focus();
-}
-
-export function closeSketchIntentSessionV19(
-  closeLocalDraft: () => void,
-  onCloseOwner: ((restoreFocus?: boolean) => void) | undefined,
-  restoreFocus: boolean
-): void {
-  closeLocalDraft();
-  onCloseOwner?.(restoreFocus);
-}
-
-export function registerSketchIntentSessionV19(
-  active: boolean,
-  onSessionControlChange:
-    | ((control: SketchCurveEditSessionControl | undefined) => void)
-    | undefined,
-  control: SketchCurveEditSessionControl
-): (() => void) | undefined {
-  onSessionControlChange?.(active ? control : undefined);
-  return active ? () => onSessionControlChange?.(undefined) : undefined;
 }

@@ -6,13 +6,13 @@ import type {
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { SketchIntentEditor } from "./SketchIntentEditor";
 import {
-  SketchIntentEditor,
   applySketchIntentSessionV19,
   closeSketchIntentSessionV19,
   focusSketchIntentEditorV19,
   registerSketchIntentSessionV19
-} from "./SketchIntentEditor";
+} from "./sketchIntentEditorModel";
 
 describe("V19 sketch right editor", () => {
   it("renders evaluated/status/conflict detail without exposing raw codes as primary copy", () => {

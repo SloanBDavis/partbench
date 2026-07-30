@@ -5,13 +5,12 @@ import type {
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { SketchModeDock, type SketchModeDockProps } from "./SketchModeDock";
 import {
-  SketchModeDock,
-  canNavigateSketchDockSectionV19,
   getRequestedConstraintKind,
-  getRequestedDimensionFamily,
-  type SketchModeDockProps
-} from "./SketchModeDock";
+  getRequestedDimensionFamily
+} from "./sketchIntentEditorModel";
+import { canNavigateSketchDockSectionV19 } from "./sketchModeModel";
 
 describe("V18 Sketch mode dock", () => {
   it("renders the supported precision tool set and truthful Finish semantics", () => {

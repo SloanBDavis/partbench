@@ -121,3 +121,10 @@ export function isLinePairConstraintKind(
 ): kind is "parallel" | "perpendicular" {
   return kind === "parallel" || kind === "perpendicular";
 }
+
+export function canNavigateSketchDockSectionV19(
+  section: "geometry" | "constraints" | "status",
+  intentSessionActive: boolean
+): boolean {
+  return !intentSessionActive || section === "constraints";
+}

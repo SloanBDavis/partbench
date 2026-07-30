@@ -59,13 +59,13 @@ import {
   SketchRegionSelectionPanel,
   type SketchRegionFeatureDraft
 } from "./SketchRegionSelectionPanel";
-import type {
-  SketchConstraintCreateKindV19,
-  SketchDimensionFamilyV19
-} from "./sketchIntentEditorModel";
 import {
+  CONSTRAINT_ACTION_KINDS,
+  DIMENSION_ACTION_FAMILIES,
   dimensionEntryToDraftV19,
   dimensionTargetEntityIdsV19,
+  getRequestedConstraintKind,
+  getRequestedDimensionFamily,
   getConstraintCreationAvailabilityV19,
   getDimensionCreationAvailabilityV19
 } from "./sketchIntentEditorModel";
@@ -77,6 +77,7 @@ import type {
 import type { SketchRegionConsumerIntent } from "./sketchRegionSelectionModel";
 import { useProgressiveSketchAnalysis } from "../../progressiveSketchAnalysisContext";
 import {
+  canNavigateSketchDockSectionV19,
   createEntityDraft,
   resolveActiveSketch,
   resolveSelectedSketchEntity,
@@ -218,36 +219,7 @@ const ENTITY_TOOLS: readonly {
   { kind: "circle", label: "Circle" }
 ];
 
-const DIMENSION_ACTION_FAMILIES = [
-  ["sketch.rectangle-width", "rectangleWidth"],
-  ["sketch.rectangle-height", "rectangleHeight"],
-  ["sketch.line-length", "lineLength"],
-  ["sketch.radius", "radius"],
-  ["sketch.diameter", "diameter"],
-  ["sketch.arc-sweep", "arcSweep"],
-  ["sketch.point-distance", "pointDistance"],
-  ["sketch.horizontal-distance", "horizontalDistance"],
-  ["sketch.vertical-distance", "verticalDistance"],
-  ["sketch.point-line-distance", "pointLineDistance"],
-  ["sketch.line-angle", "lineAngle"]
-] as const;
-
-const CONSTRAINT_ACTION_KINDS = [
-  ["sketch.horizontal", "horizontal"],
-  ["sketch.vertical", "vertical"],
-  ["sketch.fixed", "fixed"],
-  ["sketch.coincident", "coincident"],
-  ["sketch.midpoint", "midpoint"],
-  ["sketch.parallel", "parallel"],
-  ["sketch.perpendicular", "perpendicular"],
-  ["sketch.tangent", "tangent"],
-  ["sketch.concentric", "concentric"],
-  ["sketch.equal-length", "equalLength"],
-  ["sketch.equal-radius", "equalRadius"],
-  ["sketch.symmetry", "symmetry"]
-] as const;
-
-export function createSketchIntentAvailabilityProjectionV19(
+function createSketchIntentAvailabilityProjectionV19(
   sketch: SketchSnapshot | undefined,
   selectedEntityId: string | undefined,
   dimensions: readonly SketchDimensionEntryCurrent[],
@@ -672,13 +644,6 @@ export function SketchModeDock(props: SketchModeDockProps) {
   );
 }
 
-export function canNavigateSketchDockSectionV19(
-  section: DockSection,
-  intentSessionActive: boolean
-): boolean {
-  return !intentSessionActive || section === "constraints";
-}
-
 function getRequestedCurveEditKind(
   actionId: UiActionId | undefined
 ): SketchCurveEditKind | undefined {
@@ -723,70 +688,6 @@ function getRequestedEntityKind(
       return "rectangle";
     case "sketch.circle":
       return "circle";
-    default:
-      return undefined;
-  }
-}
-
-export function getRequestedDimensionFamily(
-  actionId: UiActionId | undefined
-): SketchDimensionFamilyV19 | undefined {
-  switch (actionId) {
-    case "sketch.rectangle-width":
-      return "rectangleWidth";
-    case "sketch.rectangle-height":
-      return "rectangleHeight";
-    case "sketch.line-length":
-      return "lineLength";
-    case "sketch.radius":
-      return "radius";
-    case "sketch.diameter":
-      return "diameter";
-    case "sketch.arc-sweep":
-      return "arcSweep";
-    case "sketch.point-distance":
-      return "pointDistance";
-    case "sketch.horizontal-distance":
-      return "horizontalDistance";
-    case "sketch.vertical-distance":
-      return "verticalDistance";
-    case "sketch.point-line-distance":
-      return "pointLineDistance";
-    case "sketch.line-angle":
-      return "lineAngle";
-    default:
-      return undefined;
-  }
-}
-
-export function getRequestedConstraintKind(
-  actionId: UiActionId | undefined
-): SketchConstraintCreateKindV19 | undefined {
-  switch (actionId) {
-    case "sketch.horizontal":
-      return "horizontal";
-    case "sketch.vertical":
-      return "vertical";
-    case "sketch.fixed":
-      return "fixed";
-    case "sketch.coincident":
-      return "coincident";
-    case "sketch.midpoint":
-      return "midpoint";
-    case "sketch.parallel":
-      return "parallel";
-    case "sketch.perpendicular":
-      return "perpendicular";
-    case "sketch.tangent":
-      return "tangent";
-    case "sketch.concentric":
-      return "concentric";
-    case "sketch.equal-length":
-      return "equalLength";
-    case "sketch.equal-radius":
-      return "equalRadius";
-    case "sketch.symmetry":
-      return "symmetry";
     default:
       return undefined;
   }

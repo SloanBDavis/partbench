@@ -1,4 +1,5 @@
 import type {
+  CadOp,
   CadParameterSnapshot,
   SketchConstraintEntry,
   SketchConstraintKind,
@@ -12,6 +13,7 @@ import type {
   SketchRadiusCurveTarget
 } from "@web-cad/cad-protocol";
 import { CAD_V19_SKETCH_GEOMETRY_POLICY } from "@web-cad/cad-protocol";
+import type { UiActionId } from "../../actions/actionRegistry";
 import {
   getSketchConstraintKindFeasibility,
   getSketchDimensionFamilyFeasibility
@@ -36,6 +38,81 @@ export type SketchConstraintCreateKindV19 = Exclude<
   SketchConstraintKind,
   "angle"
 >;
+
+export const DIMENSION_ACTION_FAMILIES = [
+  ["sketch.rectangle-width", "rectangleWidth"],
+  ["sketch.rectangle-height", "rectangleHeight"],
+  ["sketch.line-length", "lineLength"],
+  ["sketch.radius", "radius"],
+  ["sketch.diameter", "diameter"],
+  ["sketch.arc-sweep", "arcSweep"],
+  ["sketch.point-distance", "pointDistance"],
+  ["sketch.horizontal-distance", "horizontalDistance"],
+  ["sketch.vertical-distance", "verticalDistance"],
+  ["sketch.point-line-distance", "pointLineDistance"],
+  ["sketch.line-angle", "lineAngle"]
+] as const;
+
+export const CONSTRAINT_ACTION_KINDS = [
+  ["sketch.horizontal", "horizontal"],
+  ["sketch.vertical", "vertical"],
+  ["sketch.fixed", "fixed"],
+  ["sketch.coincident", "coincident"],
+  ["sketch.midpoint", "midpoint"],
+  ["sketch.parallel", "parallel"],
+  ["sketch.perpendicular", "perpendicular"],
+  ["sketch.tangent", "tangent"],
+  ["sketch.concentric", "concentric"],
+  ["sketch.equal-length", "equalLength"],
+  ["sketch.equal-radius", "equalRadius"],
+  ["sketch.symmetry", "symmetry"]
+] as const;
+
+export function getRequestedDimensionFamily(
+  actionId: UiActionId | undefined
+): SketchDimensionFamilyV19 | undefined {
+  return DIMENSION_ACTION_FAMILIES.find(([id]) => id === actionId)?.[1];
+}
+
+export function getRequestedConstraintKind(
+  actionId: UiActionId | undefined
+): SketchConstraintCreateKindV19 | undefined {
+  return CONSTRAINT_ACTION_KINDS.find(([id]) => id === actionId)?.[1];
+}
+
+export async function applySketchIntentSessionV19(
+  ops: readonly CadOp[],
+  onApplyOps: (ops: readonly CadOp[]) => boolean | Promise<boolean>,
+  onSuccess: () => void
+): Promise<boolean> {
+  if (!(await onApplyOps(ops))) return false;
+  onSuccess();
+  return true;
+}
+
+export function focusSketchIntentEditorV19(
+  target: { focus(): void } | null | undefined
+): void {
+  target?.focus();
+}
+
+export function closeSketchIntentSessionV19(
+  closeLocalDraft: () => void,
+  onCloseOwner: ((restoreFocus?: boolean) => void) | undefined,
+  restoreFocus: boolean
+): void {
+  closeLocalDraft();
+  onCloseOwner?.(restoreFocus);
+}
+
+export function registerSketchIntentSessionV19<T>(
+  active: boolean,
+  onSessionControlChange: ((control: T | undefined) => void) | undefined,
+  control: T
+): (() => void) | undefined {
+  onSessionControlChange?.(active ? control : undefined);
+  return active ? () => onSessionControlChange?.(undefined) : undefined;
+}
 
 export interface SketchDimensionDraftV19 {
   readonly id: string;
