@@ -190,7 +190,7 @@ function writeBrepCheckpointBytes(
     try {
       getOcctFs(oc).unlink(filename);
     } catch {
-      // The file may not exist if shape serialization failed before writing.
+      // The file may not exist.
     }
 
     progress.delete();

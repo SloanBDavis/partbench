@@ -4,7 +4,6 @@ export interface UiActionSearchResult extends ProjectedUiAction {
   readonly match: "exact-label" | "label-prefix" | "alias-prefix" | "other";
 }
 
-/** Case-insensitive substring and token-prefix search with deterministic order. */
 export function searchUiActions(
   actions: readonly ProjectedUiAction[],
   query: string,

@@ -10,11 +10,6 @@ import {
   type CadQueryWorker
 } from "./browserCadQueryWorker";
 
-/**
- * Runs curve-edit readiness away from the browser main thread. Each request
- * gets a dedicated worker so an AbortSignal can terminate synchronous
- * analytic work that has already begun.
- */
 export class SketchCurveEditQueryClient {
   readonly #worker: CadQueryWorker;
   #nextRequestNumber = 1;

@@ -91,7 +91,6 @@ export function makeMirrorShape(
     return mirroredShape;
   }
 
-  // includeOriginal === true: fuse seed + mirrored
   try {
     const range = new oc.Message_ProgressRange_1();
     let fuse:

@@ -43,7 +43,7 @@ export function parseSmokePageError(text) {
       return result.error;
     }
   } catch {
-    // Fall through to the text-shaped error below.
+    // Fall through to the text-shaped error.
   }
 
   return {

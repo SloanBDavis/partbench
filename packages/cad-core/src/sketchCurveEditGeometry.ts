@@ -74,10 +74,6 @@ export type SketchCurvePointLocation = "start" | "end" | "interior";
 
 export interface SketchCurveIntersectionPoint {
   readonly point: Vec2;
-  /**
-   * Lines use authored distance from start, circles use polar degrees in
-   * [0, 360), and arcs use positive authored-traversal degrees from start.
-   */
   readonly leftParameter: number;
   readonly rightParameter: number;
   readonly kind: "crossing" | "tangent";
@@ -225,7 +221,6 @@ function blockedResolution(
   };
 }
 
-/** Resolve an existing editable source curve under the frozen sketch policy. */
 export function resolveSketchCurveEditEntity(
   entity: SketchCurveEditEntity,
   policy: SketchGeometryPolicy = SKETCH_GEOMETRY_POLICY
@@ -385,10 +380,6 @@ function parameterTolerance(
       );
 }
 
-/**
- * Return the canonical support parameter for a point. The caller is
- * responsible for first proving the point lies on the analytic support.
- */
 export function getSketchCurveSupportParameter(
   curve: ResolvedSketchCurve,
   supportPoint: Vec2
@@ -412,11 +403,6 @@ export function getSketchCurveSupportParameter(
   );
 }
 
-/**
- * Select the equivalent unwrapped circular/arc parameter nearest a reference.
- * Exact half-turn ties choose the lower parameter for deterministic extend
- * planning.
- */
 export function unwrapSketchCurveParameterNear(
   curve: ResolvedSketchCurveCircle | ResolvedSketchCurveArc,
   canonicalParameter: number,
@@ -873,7 +859,6 @@ function intersectWithFiniteFlags(
   return { status: "ready", points, diagnostics: [] };
 }
 
-/** Intersect two finite authored curves, including signed/major arc clipping. */
 export function intersectFiniteSketchCurves(
   left: ResolvedSketchCurve,
   right: ResolvedSketchCurve,
@@ -882,7 +867,6 @@ export function intersectFiniteSketchCurves(
   return intersectWithFiniteFlags(left, right, true, true, policy);
 }
 
-/** Intersect two infinite line/circle supports without finite arc clipping. */
 export function intersectSketchCurveInfiniteSupports(
   left: ResolvedSketchCurve,
   right: ResolvedSketchCurve,
@@ -891,11 +875,6 @@ export function intersectSketchCurveInfiniteSupports(
   return intersectWithFiniteFlags(left, right, false, false, policy);
 }
 
-/**
- * Intersect an infinite target support with one finite authored boundary.
- * This is the analytic primitive used before extend applies its outward-ray
- * parameter test.
- */
 export function intersectSketchCurveSupportWithFiniteCurve(
   targetSupport: ResolvedSketchCurve,
   finiteBoundary: ResolvedSketchCurve,
@@ -927,7 +906,6 @@ function ambiguousProjection(
   };
 }
 
-/** Project a finite model-space point onto a finite authored curve. */
 export function projectPointToFiniteSketchCurve(
   curve: ResolvedSketchCurve,
   queryPoint: Vec2,
@@ -1054,10 +1032,6 @@ export function projectPointToFiniteSketchCurve(
   };
 }
 
-/**
- * Canonicalize, sort, and tolerance-collapse finite parameters. Circle
- * duplicates collapse cyclically across the 360 -> 0 seam.
- */
 export function collapseSketchCurveParameters(
   curve: ResolvedSketchCurve,
   values: readonly number[],

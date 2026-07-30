@@ -34,7 +34,6 @@ export type WireExtrudeProfileResolution =
       readonly sketchEntityId?: string;
     };
 
-/** Resolves the enabled V17 composite-profile extrude rows. */
 export function resolveWireExtrudeProfile(
   document: SketchProfileReadinessDocument,
   profile: SketchWireProfileRef,
@@ -103,7 +102,6 @@ export function resolveWireExtrudeProfile(
   };
 }
 
-/** Resolves the normalized authoritative wire into the shared exact/display recipe. */
 export function createResolvedWireExtrudeProfile(
   document: CadDocument,
   profile: SketchWireProfileRef,
@@ -123,7 +121,6 @@ export function createResolvedWireExtrudeProfile(
   });
 }
 
-/** Pure normalized traversal mapping shared by display, exact metadata, and STEP. */
 export function createResolvedWireExtrudeRecipe(
   profile: SketchWireProfileRef,
   entities: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>,

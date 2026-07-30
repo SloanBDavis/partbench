@@ -651,7 +651,7 @@ describe("V19 V22 authoritative history baseline", () => {
     restored.undo();
     expect(restored.getDocument().topologyIdentity?.anchors).toEqual([]);
     while (restored.undo()) {
-      // Restore the exact implicit topology-only lineage seed.
+      // Restore the exact baseline.
     }
     expect(restored.createSnapshot()).toEqual(baseline);
     const allUndone = exportCadProject(restored);

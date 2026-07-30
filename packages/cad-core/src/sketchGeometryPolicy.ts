@@ -1,4 +1,3 @@
-/** Shared V17 sketch geometry thresholds owned by the command engine. */
 export interface SketchGeometryPolicy {
   readonly linearTolerance: number;
   readonly angularToleranceDegrees: number;

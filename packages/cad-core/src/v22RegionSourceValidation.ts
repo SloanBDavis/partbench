@@ -1168,11 +1168,6 @@ function createContainmentDepths(
   );
 }
 
-/**
- * Validate and deterministically normalize authoritative V22 material-region
- * source. The function is pure and bounded; it never consults derived meshes
- * or OCCT.
- */
 export function validateV22RegionSource(
   profile: SketchRegionsProfileRef,
   sketch: V22RegionSourceSketch,
@@ -1789,11 +1784,6 @@ function containmentDepth(
   return depth;
 }
 
-/**
- * Resolve individually complete loops and build their strict containment tree
- * with one shared E2 analytic budget. The sweep bounds are only a deterministic
- * pair generator; boundary and containment authority remains analytic.
- */
 export function analyzeV22RegionDiscoveryLoops(
   sketch: V22RegionSourceSketch,
   sourceLoops: readonly SketchLoopRef[],
@@ -2039,11 +2029,6 @@ function toPublicDiagnostic(
   };
 }
 
-/**
- * Materialize the public, side-effect-free E1 validation query response.
- * Query dispatch is wired separately so discovery and feature mutation do not
- * become accidental prerequisites of explicit source validation.
- */
 export function createSketchProfileRegionValidateResponse(
   profile: SketchRegionsProfileRef,
   sketch: V22RegionSourceSketch,

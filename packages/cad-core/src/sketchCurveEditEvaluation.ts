@@ -114,12 +114,6 @@ function createDimensionResidualEvidence(
   });
 }
 
-/**
- * Produces revision-bound solver evidence without a free numerical solve.
- * Every authoritative record must map to exactly one existing solver residual
- * block; unsupported V22 forms remain explicitly blocked until their solver
- * family lands.
- */
 export function createSketchCurveEditEvaluationEvidence({
   sourceIdentity,
   document,

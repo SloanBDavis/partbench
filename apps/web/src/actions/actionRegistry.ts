@@ -64,10 +64,6 @@ const SKETCH_INTENT_ACTION_METADATA = (
   )
 );
 
-/**
- * Stable V18 action order. Ribbon groups, contextual actions, menus, and
- * command search filter this list; none owns CAD behavior.
- */
 export const UI_ACTION_METADATA = [
   action("project.new", "New", "File", ["project"], ["new project"], true),
   action(
@@ -642,7 +638,6 @@ export type UiActionAvailabilityProjection = Readonly<
 >;
 
 export interface UiActionContext {
-  /** Precomputed from commands/queries before presentation renders. */
   readonly availability: UiActionAvailabilityProjection;
   readonly pending: boolean;
   readonly runAction: (id: UiActionId) => void | Promise<void>;

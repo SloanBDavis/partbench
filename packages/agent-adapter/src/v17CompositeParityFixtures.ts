@@ -28,7 +28,6 @@ export interface V17AdapterCompositeParityFixture {
   readonly mixedLoft: Readonly<Record<string, unknown>>;
 }
 
-/** Shared JSON fixtures for agent, MCP, and stdio V17 command parity tests. */
 export function createV17AdapterCompositeParityFixture(
   prefix: string
 ): V17AdapterCompositeParityFixture {

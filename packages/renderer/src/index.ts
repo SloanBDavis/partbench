@@ -76,16 +76,13 @@ export interface RenderEdgeSegment {
 
 export interface RenderTriangleMesh {
   readonly id: string;
-  /** Optional renderer-only group used for aggregate visual state and bounds. */
   readonly parentId?: string;
   readonly kind: "mesh";
   readonly vertices: readonly Vec3[];
   readonly indices: readonly number[];
   readonly transform: RenderTransform;
   readonly edgeSegments?: readonly RenderEdgeSegment[];
-  /** Use derived display edges as the pick target instead of the mesh bounds. */
   readonly pickMode?: "bounds" | "edgeSegments";
-  /** Renderer-only line vocabulary; never source geometry or CAD intent. */
   readonly lineStyle?: "solid" | "construction";
   readonly source?: string;
   readonly label?: string;

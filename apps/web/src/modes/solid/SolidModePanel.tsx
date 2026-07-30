@@ -60,10 +60,6 @@ export interface SolidModePanelProps {
   readonly onCollect?: (request: SolidCollectorRequest) => void;
 }
 
-/**
- * The sole Solid right-dock job. It owns only draft/collector UI state and
- * delegates every source mutation through injected callbacks.
- */
 export function SolidModePanel({
   activeEditor,
   onApply,

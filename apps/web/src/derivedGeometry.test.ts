@@ -1324,7 +1324,6 @@ describe("derivedGeometry", () => {
         source.kind === "linearPattern"
     );
 
-    // Patterns consume the seed: only the fused pattern result is displayable.
     expect(sources.map((source) => source.id)).toEqual([
       "body_linear_pattern_1"
     ]);
@@ -1658,8 +1657,6 @@ describe("derivedGeometry", () => {
       getProjectStructureFeatures(engine)
     );
 
-    // includeOriginal=false: the seed body keeps its own display source and
-    // the mirror result renders as an independent reflected copy.
     expect(sources.map((source) => source.id)).toEqual([
       "body_rect_1",
       "body_mirror_1"
@@ -1711,8 +1708,6 @@ describe("derivedGeometry", () => {
       getProjectStructureFeatures(engine)
     );
 
-    // includeOriginal=true: the union result subsumes the seed, so only the
-    // mirror source renders — no overlapping seed mesh.
     expect(sources.map((source) => source.id)).toEqual(["body_mirror_1"]);
     expect(sources[0]).toMatchObject({
       id: "body_mirror_1",

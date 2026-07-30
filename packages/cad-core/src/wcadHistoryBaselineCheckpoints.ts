@@ -180,7 +180,7 @@ export function validateWcadV2CheckpointPayloadSourceLinksForProject(
       paths = createWcadV2CheckpointEntryPaths(checkpointId);
       validateSourceCheckpointPaths(checkpoint, paths, issues, source.path);
     } catch {
-      // Source-shape validation reports invalid checkpoint IDs separately.
+      // Source validation reports invalid checkpoint IDs.
     }
 
     if (

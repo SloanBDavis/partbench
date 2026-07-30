@@ -349,7 +349,6 @@ export function SketchRegionSelectionPanel(
       window.clearTimeout(timeout);
       queryAbortRef.current?.abort();
     };
-    // Candidate changes are outputs of this effect, not discovery inputs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sketch.id, sourceAuthorityKey]);
 

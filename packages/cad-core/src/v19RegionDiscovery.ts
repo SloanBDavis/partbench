@@ -1019,10 +1019,6 @@ export function createRegionCandidateKeyForSimpleProfile(
   return JSON.stringify(["region", 0, getSketchLoopCanonicalKey(profile), []]);
 }
 
-/**
- * Internal V17 compatibility projection. It returns display correlation only;
- * candidate keys never become mutation authority.
- */
 export function createSketchProfileRegionCandidateCorrelations(
   sketch: V22RegionSourceSketch
 ): ReadonlyMap<string, string> {

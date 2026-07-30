@@ -97,9 +97,7 @@ export interface SketchOffsetDiagnostic {
 
 export interface SketchOffsetPlan {
   readonly operation: "offset";
-  /** Offset is command sugar: no source relationship is retained. */
   readonly associative: false;
-  /** Decision 7 deliberately creates no constraints. */
   readonly constraints: readonly [];
   readonly sourceEntityIds: readonly SketchEntityId[];
   readonly side: SketchOffsetSide;
@@ -108,10 +106,6 @@ export interface SketchOffsetPlan {
   readonly closed: boolean;
   readonly resultEntityCount: number;
   readonly requiredCreatedEntityIdCount: number;
-  /**
-   * ID-independent analytic result in exact submitted traversal order.
-   * Supplying output IDs cannot change this geometry.
-   */
   readonly outputShapes: readonly PlannedSketchOffsetShape[];
   readonly materialized?: {
     readonly entities: readonly (
@@ -1590,10 +1584,6 @@ function makeIndividualShape(
   return { shape, curves: [curve] };
 }
 
-/**
- * Plan Decision 7 offset geometry without mutating source or consulting
- * tessellation/OCCT. The returned shapes are ordinary independent entities.
- */
 export function planSketchOffset(
   input: SketchOffsetPlanInput,
   policy: SketchGeometryPolicy = SKETCH_GEOMETRY_POLICY

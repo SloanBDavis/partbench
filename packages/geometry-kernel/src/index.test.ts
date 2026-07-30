@@ -854,7 +854,6 @@ describe("geometry-kernel facade", () => {
         throw new Error(response.error.message);
       }
 
-      // includeOriginal=false yields the mirrored copy alone: still one prism.
       expect(response.mesh.faceCount).toBe(6);
       expect(response.mesh.positions).toBeInstanceOf(Float32Array);
       expect(response.mesh.indices).toBeInstanceOf(Uint32Array);
@@ -865,8 +864,6 @@ describe("geometry-kernel facade", () => {
         response.mesh.triangleCount * 3
       );
 
-      // The seed spans x in [1, 3]; reflecting across YZ (x -> -x) moves the
-      // whole copy to negative X, proving the reflection actually happened.
       const xs: number[] = [];
       for (let i = 0; i < response.mesh.positions.length; i += 3) {
         const x = response.mesh.positions[i];
@@ -917,8 +914,6 @@ describe("geometry-kernel facade", () => {
         response.mesh.vertexCount * 3
       );
 
-      // The union keeps the seed (x in [1, 3]) and its reflection (x in
-      // [-3, -1]), so the result straddles the YZ plane.
       const xs: number[] = [];
       for (let i = 0; i < response.mesh.positions.length; i += 3) {
         const x = response.mesh.positions[i];

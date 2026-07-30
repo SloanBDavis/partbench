@@ -476,7 +476,7 @@ async function markEntryStatus(
       )
     );
   } catch {
-    // Corrupt-cache status is best-effort and must not block regeneration.
+    // Best-effort cache status must not block regeneration.
   }
 }
 

@@ -190,7 +190,6 @@ export interface IconProps extends Omit<
   "children" | "name"
 > {
   readonly name: IconName;
-  /** Makes the icon semantic. Omit when a surrounding control supplies text. */
   readonly label?: string;
   readonly size?: 16 | 20 | 24 | number;
 }

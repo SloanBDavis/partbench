@@ -42,10 +42,6 @@ export interface SketchCurveEditHoverSchedulerOptions {
   readonly intervalMs?: number;
 }
 
-/**
- * Publishes immediately when the bound allows and always trails the latest
- * semantic hover when raw pointer movement stops inside the interval.
- */
 export class SketchCurveEditHoverScheduler {
   readonly #publish: (choice: SketchCurveEditHoverChoice) => void;
   readonly #now: () => number;
@@ -75,8 +71,6 @@ export class SketchCurveEditHoverScheduler {
     const key = createSketchCurveEditHoverSemanticKey(choice);
     if (key === this.#pending?.key) return;
     if (key === this.#publishedKey) {
-      // The pointer returned to the displayed semantic hover. A previously
-      // queued different hover is no longer the latest and must not flash.
       this.#cancelPending();
       return;
     }

@@ -126,7 +126,6 @@ const COPY_BY_CODE: Readonly<Record<string, DiagnosticCopy>> = {
   }
 };
 
-/** Internal vocabulary prohibited from default visible and accessible copy. */
 export const INTERNAL_TEXT_PATTERNS: readonly RegExp[] = [
   /\bCADOps\b/i,
   /\b(?:schema|checkpoint)\s*(?:version|id|hash)?\b/i,

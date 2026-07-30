@@ -56,7 +56,6 @@ export function cloneSketchPathRef(path: SketchPathRef): SketchPathRef {
     : { ...path, segments: cloneSegments(path.segments) };
 }
 
-/** Converts legacy consumers and deep-clones normalized V21/V22 inputs. */
 export function normalizeFeatureInputs(
   feature: FeatureSnapshot | FeatureSnapshotV21 | FeatureSnapshotV22
 ): NormalizedFeature {

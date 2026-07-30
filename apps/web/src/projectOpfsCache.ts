@@ -357,7 +357,7 @@ export async function writeAndCloseProjectOpfsWritable(
     try {
       await writable.abort?.();
     } catch {
-      // Preserve the original OPFS write or close failure.
+      // Preserve the original write or close failure.
     }
     throw error;
   }

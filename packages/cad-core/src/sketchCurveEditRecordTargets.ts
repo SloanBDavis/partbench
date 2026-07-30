@@ -30,11 +30,6 @@ export type SketchCurveEditStructuralReason =
   | "target-kind-changed"
   | "target-missing";
 
-/**
- * Collision-free key for authored point provenance. Entity kind is
- * intentionally not part of the key: a point target's authored identity is
- * the source entity ID and role, while kind continuity is checked separately.
- */
 export type SketchPointTargetProvenanceKey = string;
 
 type SketchPointTargetInput = SketchPointTarget | SketchPointTargetV22;
@@ -45,12 +40,6 @@ export interface SketchEndpointProvenance {
   readonly role: "start" | "end";
 }
 
-/**
- * Structural target evidence for one analytic edit plan.
- *
- * Endpoint provenance must be authored by the geometry planner. This utility
- * never derives continuation from coordinates, distances, or proximity.
- */
 export interface SketchCurveEditRecordTargetContext {
   readonly replacements: readonly SketchEntityReplacement[];
   readonly endpointProvenance: ReadonlyMap<
@@ -602,10 +591,6 @@ function retargetSafePointTarget(
   };
 }
 
-/**
- * Structural exactness check for point targets on record families that V19
- * does not permit to retarget (midpoint and symmetry).
- */
 function exactPointTarget(
   target: SketchPointTarget,
   context: TargetContext

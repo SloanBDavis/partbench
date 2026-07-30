@@ -23,15 +23,11 @@ import { LiveRegion } from "../ui/LiveRegion";
 import "./commandSearchDialog.css";
 
 export interface CommandSearchDialogProps {
-  /** Controlled by the workbench shortcut/router state (Ctrl/Cmd+K). */
   readonly open: boolean;
-  /** The shared, already projected action list for the current document state. */
   readonly actions: readonly ProjectedUiAction[];
-  /** The same memoized context used to produce `actions`. */
   readonly actionContext: UiActionContext;
   readonly currentMode?: WorkbenchMode;
   readonly onRequestClose: () => void;
-  /** Overrides the built-in opener restoration when a shell owns focus routing. */
   readonly restoreFocus?: () => void;
   readonly onInitialFocus?: (input: HTMLInputElement) => void;
   readonly onActionInvoked?: (

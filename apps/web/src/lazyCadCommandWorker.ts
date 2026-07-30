@@ -11,11 +11,6 @@ export type DisposableCadCommandWorker = CadCommandWorker & {
 
 export type CadCommandWorkerFactory = () => DisposableCadCommandWorker;
 
-/**
- * Keeps the command worker out of the empty-shell request graph. The first
- * command or explicit query creates the real browser worker; unmount/HMR
- * disposal is still explicit and idempotent.
- */
 export class LazyCadCommandWorker implements CadCommandWorker {
   readonly #createWorker: CadCommandWorkerFactory;
   #worker: DisposableCadCommandWorker | undefined;

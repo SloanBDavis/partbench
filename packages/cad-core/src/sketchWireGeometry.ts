@@ -64,7 +64,6 @@ export interface SketchSegmentIntersectionPoint {
 }
 
 export interface SketchSegmentIntersection {
-  /** True when the segments share a finite interval, not merely one point. */
   readonly overlap: boolean;
   readonly points: readonly SketchSegmentIntersectionPoint[];
 }
@@ -132,7 +131,6 @@ function resolutionIssue(
   return { ok: false, issue: { entityId, code, message } };
 }
 
-/** Resolve authored line/arc source into an oriented, finite analytic segment. */
 export function resolveOrientedSketchSegment(
   entity: SketchWireEntity,
   orientation: SketchSegmentOrientation,
@@ -660,7 +658,6 @@ function arcArcIntersection(
   };
 }
 
-/** Analytic finite-segment intersections. Overlap never masquerades as points. */
 export function intersectSketchSegments(
   left: ResolvedSketchSegment,
   right: ResolvedSketchSegment,
@@ -686,7 +683,6 @@ export function intersectSketchSegments(
   };
 }
 
-/** Classify one analytic segment against an infinite line under shared policy. */
 export function classifySketchSegmentAgainstInfiniteLine(
   segment: ResolvedSketchSegment,
   lineStart: Vec2,
@@ -784,7 +780,6 @@ export function classifySketchSegmentAgainstInfiniteLine(
   return halfChord <= policy.linearTolerance ? "interior-touch" : "crossing";
 }
 
-/** Classify the complete analytic wire support by side of an infinite line. */
 export function classifySketchWireAgainstInfiniteLine(
   segments: readonly ResolvedSketchSegment[],
   lineStart: Vec2,

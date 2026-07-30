@@ -176,12 +176,6 @@ export type ExactSketchAuthoredResidualStateResult =
   | ExactSketchAuthoredResidualStateReady
   | ExactSketchAuthoredResidualStateBlocked;
 
-/**
- * Classify every persisted solver record against one already-materialized
- * analytic curve edit. Geometry is never solved or adjusted here: both
- * residual passes use the exact authored post-plan coordinates with zero
- * iterations.
- */
 export function createSketchCurveEditImpact(
   input: SketchCurveEditImpactInput
 ): SketchCurveEditImpactResult {
@@ -436,10 +430,6 @@ export function createSketchCurveEditImpact(
   };
 }
 
-/**
- * Validate the command's explicit deletion lists and convert exactly those
- * readiness `invalid` rows to transaction evidence `deleted-by-request`.
- */
 export function finalizeSketchCurveEditImpactForApply(
   impact: SketchCurveEditImpact,
   deleteConstraintIds: readonly SketchConstraintId[],
@@ -694,12 +684,6 @@ function evaluateExactResiduals({
   });
 }
 
-/**
- * Classify one exact authored sketch state without allowing a free solve.
- * Every authoritative solver record must map to exactly one residual record.
- * This is shared by replacement curve edits and additive offset so their
- * post-edit status policy cannot diverge.
- */
 export function evaluateExactSketchAuthoredResidualState({
   document,
   sketch

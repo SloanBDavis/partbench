@@ -11,7 +11,6 @@ export type CommandSearchNavigationKey =
   | "Home"
   | "End";
 
-/** Deterministic result navigation shared by keyboard UI and focused tests. */
 export function getNextCommandSearchResultIndex(
   currentIndex: number,
   resultCount: number,
@@ -28,7 +27,6 @@ export function getNextCommandSearchResultIndex(
     : (currentIndex - 1 + resultCount) % resultCount;
 }
 
-/** Uses the registry guard so presentation can never bypass pending/readiness. */
 export function invokeCommandSearchAction(
   action: ProjectedUiAction,
   context: UiActionContext

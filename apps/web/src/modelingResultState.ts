@@ -18,11 +18,6 @@ export interface ModelingResultStateInput {
     readonly pendingCount: number;
     readonly cancelledCount?: number;
   };
-  /**
-   * Current exact-result sources and their app-local derived states. These are
-   * optional while callers migrate, but a positive source count without a
-   * snapshot is still treated as pending rather than ready.
-   */
   readonly derivedExactSourceCount?: number;
   readonly derivedExactMetadata?: {
     readonly entries: readonly {
@@ -40,11 +35,6 @@ export interface ModelingResultStateInput {
   readonly projectHealthStatus: CadDependencyHealthStatus;
 }
 
-/**
- * One compact result state for the Solid status bar. Command idleness alone is
- * not success: an authored result is ready only after its display derivation
- * and dependency health have also been considered.
- */
 export function createModelingResultState({
   commandPending,
   commandFailed,

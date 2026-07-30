@@ -1005,8 +1005,6 @@ export function createSketchProfileCandidatesResponse(
     });
   }
 
-  // Nested loops are not candidates in V17. Bounds containment is only a fast
-  // prefilter; the analytic point-in-wire test below is authoritative.
   const nested = new Set<string>();
   for (const inner of readyWireCandidates) {
     for (const outer of readyWireCandidates) {
@@ -1119,7 +1117,6 @@ function pointInsideWire(
   point: Vec2,
   segments: readonly ResolvedSketchSegment[]
 ): boolean {
-  // Exact winding-angle integration for analytic line and circular-arc pieces.
   let winding = 0;
   for (const segment of segments) {
     if (segment.kind === "line") {
@@ -1153,8 +1150,6 @@ function pointInsideWire(
       startVector[0] * endVector[1] - startVector[1] * endVector[0],
       startVector[0] * endVector[0] + startVector[1] * endVector[1]
     );
-    // If the query point lies inside the supporting circle, polar angle follows
-    // the authored arc sweep; otherwise the principal endpoint delta is exact.
     winding +=
       Math.hypot(...centerOffset) < segment.radius
         ? segment.sweepAngleRadians

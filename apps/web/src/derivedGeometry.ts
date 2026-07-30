@@ -574,7 +574,7 @@ export class DerivedGeometryService {
         result
       });
     } catch {
-      // Cache writes are rebuildable app state and must not affect rendering.
+      // Rebuildable cache failures must not affect rendering.
     }
   }
 

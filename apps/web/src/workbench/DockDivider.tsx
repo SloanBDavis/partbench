@@ -16,7 +16,6 @@ export interface DockDividerProps {
   readonly label?: string;
 }
 
-/** Pointer and keyboard resizer for one inline dock. */
 export function DockDivider({
   side,
   value,

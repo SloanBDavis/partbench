@@ -25,7 +25,6 @@ export interface WorkbenchLayoutResolution {
   readonly activeDrawer?: DockSide;
 }
 
-/** Pure responsive policy. It never rewrites persisted collapse preferences. */
 export function resolveWorkbenchLayout({
   viewportWidth,
   leftDockWidth,

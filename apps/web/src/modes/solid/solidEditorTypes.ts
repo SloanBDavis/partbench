@@ -86,7 +86,6 @@ export type SolidEditorSubmission = {
 }[SolidEditorKind];
 
 export interface SolidChoice<Value> {
-  /** Exact source/query-returned value. It is never reconstructed from label text. */
   readonly value: Value;
   readonly key: string;
   readonly label: string;
@@ -125,7 +124,6 @@ export interface SolidEditorChoices {
 export interface SolidEditorRequest<
   Kind extends SolidEditorKind = SolidEditorKind
 > {
-  /** Changes whenever the parent intentionally opens a fresh editor session. */
   readonly key: string;
   readonly kind: Kind;
   readonly title: string;

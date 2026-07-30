@@ -69,7 +69,6 @@ export function ViewportCanvas({
 }: {
   readonly contextualSurface?: ReactNode;
   readonly meshes?: readonly RenderTriangleMesh[];
-  /** Allows active point-authoring tools to receive one pointer sample per frame. */
   readonly notifyHoverPointChanges?: boolean;
   readonly onHover?: (pick: ViewportCanvasPick | undefined) => void;
   readonly onSelect: (pick: ViewportCanvasPick) => void;
@@ -669,7 +668,7 @@ function setCanvasPointerCapture(
   try {
     canvas.setPointerCapture(pointerId);
   } catch {
-    // Synthetic smoke-test events are not always capturable; real pointer input is.
+    // Synthetic events may not support pointer capture.
   }
 }
 
@@ -682,6 +681,6 @@ function releaseCanvasPointerCapture(
       canvas.releasePointerCapture(pointerId);
     }
   } catch {
-    // Ignore non-capturable synthetic events.
+    // Synthetic events may not support pointer capture.
   }
 }

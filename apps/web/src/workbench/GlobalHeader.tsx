@@ -27,7 +27,6 @@ const SAVE_STATE_LABELS: Readonly<
   unsaved: "Unsaved changes"
 };
 
-/** Quiet, document-global header. Mode-specific controls belong in the ribbon. */
 export function GlobalHeader({
   documentName,
   saveState,

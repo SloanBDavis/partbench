@@ -195,7 +195,7 @@ export function createOcctStepExportWithShapeFactory(
     try {
       getOcctFs(oc).unlink(filename);
     } catch {
-      // The file may not exist if transfer failed before writing.
+      // The file may not exist.
     }
 
     for (const shape of shapes) {

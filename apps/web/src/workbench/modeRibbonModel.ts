@@ -51,10 +51,6 @@ export function projectRibbonGroups(
   }));
 }
 
-/**
- * Keeps a stable prefix and every protected group. Groups leave from the
- * trailing edge and never split between the ribbon and More menu.
- */
 export function chooseVisibleRibbonGroupIds(
   groups: readonly RibbonGroupProjection[],
   widths: Readonly<Record<string, number>>,

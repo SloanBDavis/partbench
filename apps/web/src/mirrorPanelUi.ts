@@ -28,15 +28,6 @@ export type MirrorPanelState =
       readonly reason: string;
     };
 
-/**
- * Classifies the selected body for the Mirror workbench card.
- *
- * - A mirror result body opens the edit form for its mirror feature.
- * - An active authored feature body is offered as the mirror seed.
- * - Primitive-derived and consumed bodies are ineligible seeds, matching the
- *   cad-core feature.mirror validation (MIRROR_SEED_BODY_UNSUPPORTED /
- *   MIRROR_SEED_BODY_CONSUMED).
- */
 export function getMirrorPanelState(
   body: CadBodySnapshot,
   feature: CadFeatureSummary | undefined

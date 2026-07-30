@@ -60,13 +60,6 @@ type CurveTargetResult<Target extends SketchCurveConstraintTarget> =
       readonly issue: SketchConstraintUpdateIssue;
     };
 
-/**
- * Pure structural planner for Decision 14 constraint updates.
- *
- * The planner deliberately does not solve geometry or inspect other constraints.
- * It validates and normalizes the updated record so the command engine can run
- * its ordinary duplicate/conflict and numerical-solver checks atomically.
- */
 export function planSketchConstraintUpdate(
   existing: SketchConstraintSnapshot,
   operation: SketchConstraintUpdateOpV19,

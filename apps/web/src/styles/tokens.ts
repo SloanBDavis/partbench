@@ -1,4 +1,3 @@
-/** Numeric layout tokens shared by reducers, preferences, and CSS. */
 export const WORKBENCH_LAYOUT = {
   leftDock: { default: 282, min: 220, max: 380 },
   rightDock: { default: 350, min: 300, max: 460 },

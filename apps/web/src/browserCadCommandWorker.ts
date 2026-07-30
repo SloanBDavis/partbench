@@ -49,10 +49,6 @@ interface PendingRequest {
   readonly reject: (error: Error) => void;
 }
 
-/**
- * Mutation-only browser command worker. Cancellable read-only queries use a
- * distinct worker class and transport so termination cannot reject mutations.
- */
 export class BrowserCadCommandWorker implements CadCommandWorker {
   readonly #transport: CadCommandWorkerTransport;
   readonly #pendingRequests = new Map<string, PendingRequest>();

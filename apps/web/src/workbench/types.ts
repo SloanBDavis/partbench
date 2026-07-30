@@ -1,4 +1,3 @@
-/** Top-level workbench modes. Feature editing is a Solid-mode substate. */
 export type WorkbenchMode = "project" | "solid" | "sketch" | "inspect";
 
 export type SelectionFilter = "body" | "face" | "edge";
@@ -10,10 +9,6 @@ export type ProjectPageId =
   | "history"
   | "export";
 
-/**
- * Frontend editor identities. They select existing UI flows; they are never
- * serialized into a CAD document or submitted as command identities.
- */
 export type FeatureEditorKind =
   | "primitive"
   | "transform"
@@ -39,7 +34,6 @@ export interface ActiveEditorIdentity {
   readonly sourceId?: string;
 }
 
-/** A UI-only request that may need to pass through the dirty-draft guard. */
 export type WorkbenchNavigationIntent =
   | {
       readonly kind: "mode";
@@ -64,14 +58,9 @@ export type WorkbenchNavigationIntent =
       readonly kind: "command-search-action";
       readonly actionId: string;
       readonly mode: WorkbenchMode;
-      /** Defaults to true because navigation may make the current draft stale. */
       readonly closesEditor?: boolean;
     }
   | {
-      /**
-       * A semantic tree selection that changes the sketch supplying an editor.
-       * App applies the selection only after the dirty-editor guard resolves.
-       */
       readonly kind: "sketch-selection";
       readonly sketchId: string;
       readonly entityId?: string;

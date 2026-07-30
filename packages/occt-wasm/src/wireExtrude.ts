@@ -834,9 +834,6 @@ function listContainsOneExpectedFace(
       } else if (surfaceType === oc.GeomAbs_SurfaceType.GeomAbs_Cylinder) {
         return true;
       }
-      // Canonicalization is deliberately disabled so complementary circular
-      // edges retain distinct side faces. Builder correspondence has already
-      // mapped this extrusion surface to the exact line/circle source support.
       return surfaceType === oc.GeomAbs_SurfaceType.GeomAbs_SurfaceOfExtrusion;
     } finally {
       surface.delete();

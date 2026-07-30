@@ -29,7 +29,6 @@ export type SweepResolution =
       readonly sketchEntityId?: string;
     };
 
-/** Validates the complete V17 sweep profile/path support matrix. */
 export function resolveSweep(
   document: CadDocument,
   profile: SketchEntityProfileRef,
@@ -147,7 +146,6 @@ export function resolveSweep(
   return { ok: true, profile, path, pathKinds };
 }
 
-/** Resolves authoritative profile/path geometry and both sketch frames. */
 export function createResolvedSweepSource(
   document: CadDocument,
   feature: SweepFeatureV21,
@@ -252,10 +250,8 @@ export function createResolvedSweepSource(
   };
 }
 
-/** @deprecated Compatibility alias retained for callers outside cad-core. */
 export const resolveSingleEntitySweep = resolveSweep;
 
-/** @deprecated Compatibility alias retained for callers outside cad-core. */
 export const createResolvedSingleEntitySweepSource = createResolvedSweepSource;
 
 export function createPathInputReference(

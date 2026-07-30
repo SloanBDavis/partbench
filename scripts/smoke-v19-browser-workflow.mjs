@@ -2451,7 +2451,7 @@ function createBrowserKeyboardDriver(client, sessionId, workflowTimeoutMs) {
         page < 64 && (await advancePage("Previous"));
         page += 1
       ) {
-        // Normalize the window to its first page before searching forward.
+        // Normalize to the first page.
       }
       result = await tryFocus();
       for (

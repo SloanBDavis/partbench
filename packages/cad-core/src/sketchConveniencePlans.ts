@@ -104,11 +104,6 @@ type MaterializedSketchConstraintCreateOp =
 
 export interface MaterializedSketchConveniencePlan {
   readonly entities: readonly SketchEntitySnapshot[];
-  /**
-   * Ordinary constraint-create operations in Decision 8 order. The command
-   * engine can pass these through its existing constraint validation/storage
-   * path after staging the planned entities in the same transaction.
-   */
   readonly constraintOps: readonly MaterializedSketchConstraintCreateOp[];
 }
 
@@ -123,10 +118,6 @@ interface SketchConveniencePlanBase<
   readonly entityDrafts: readonly PlannedSketchConvenienceEntity<EntityRole>[];
   readonly requiredEntityIdCount: number;
   readonly requiredConstraintIdCount: number;
-  /**
-   * Present only when both complete caller/allocator-provided ID tuples were
-   * supplied. No IDs are synthesized or retained as hidden composite identity.
-   */
   readonly materialized?: MaterializedSketchConveniencePlan;
 }
 
@@ -172,10 +163,6 @@ export type SketchConveniencePlanResult<Plan extends SketchConveniencePlan> =
 
 export interface SketchConveniencePlanOptions {
   readonly policy?: SketchGeometryPolicy;
-  /**
-   * Optional current-document occupancy lets the pure planner reject caller
-   * IDs before mutation. The command engine remains authoritative for races.
-   */
   readonly occupiedEntityIds?: ReadonlySet<SketchEntityId>;
   readonly occupiedConstraintIds?: ReadonlySet<SketchConstraintId>;
 }
@@ -723,7 +710,6 @@ function validateCommonIds(
   );
 }
 
-/** Plan Decision 8 slot sugar without allocating IDs or mutating source. */
 export function planSketchSlot(
   op: SketchAddSlotOp,
   options: SketchConveniencePlanOptions = {}
@@ -898,7 +884,6 @@ export function planSketchSlot(
   };
 }
 
-/** Plan Decision 8 rounded-rectangle sugar without allocating IDs or mutation. */
 export function planSketchRoundedRectangle(
   op: SketchAddRoundedRectangleOp,
   options: SketchConveniencePlanOptions = {}

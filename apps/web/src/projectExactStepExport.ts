@@ -109,7 +109,6 @@ function mapExactExportSourceToWorkerBody(
       ...(source.bodyName ? { bodyName: source.bodyName } : {}),
       kind: "sweep",
       profile: {
-        // placementFrame is authoritative; XY is the canonical local basis.
         sketchPlane: "XY",
         profile: source.profile,
         placementFrame: source.profileFrame

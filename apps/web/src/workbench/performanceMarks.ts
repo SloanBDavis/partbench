@@ -17,7 +17,6 @@ export interface PerformanceMarkTarget {
   clearMarks?(name: string): void;
 }
 
-/** Records one current sample instead of accumulating unbounded marks. */
 export function markPartbenchPerformance(
   name: PartbenchPerformanceMark,
   target: PerformanceMarkTarget | null | undefined = getPerformanceTarget()

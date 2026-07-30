@@ -5,10 +5,6 @@ export interface SolidApplyGate {
   pending: boolean;
 }
 
-/**
- * Synchronous gate around an asynchronous mutation callback. This prevents
- * double activation before React has rendered the pending state.
- */
 export async function applySolidDraftOnce(
   gate: SolidApplyGate,
   submission: SolidEditorSubmission,

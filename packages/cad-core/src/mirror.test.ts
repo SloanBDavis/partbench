@@ -14,12 +14,6 @@ import {
   type CadProject
 } from "./index";
 
-// Slice F — Mirror feature. Lifecycle contract (see docs/v15.md Slice F):
-// the mirror seed body is consumed only when includeOriginal is true (the
-// result union subsumes the seed, mirroring the linear/circular pattern
-// family). When includeOriginal is false the result is the mirrored copy
-// alone and the seed body survives as an independent active body.
-
 function createSeedEngine(): CadEngine {
   const engine = new CadEngine();
 
@@ -122,7 +116,6 @@ describe("feature.mirror", () => {
     const seed = bodyById(structure, "body_seed");
     const mirror = bodyById(structure, "body_mirror");
 
-    // Seed survives: no consuming feature marks it consumed.
     expect(seed).toBeDefined();
     expect(seed).not.toHaveProperty("consumedByFeatureId");
     expect(mirror).toMatchObject({
@@ -156,7 +149,6 @@ describe("feature.mirror", () => {
     const seed = bodyById(structure, "body_seed");
     const mirror = bodyById(structure, "body_mirror");
 
-    // Result union subsumes the seed, so the seed is consumed by the mirror.
     expect(seed).toMatchObject({ consumedByFeatureId: "feat_mirror" });
     expect(mirror).toMatchObject({
       id: "body_mirror",
@@ -224,7 +216,6 @@ describe("feature.mirror", () => {
       { op: "feature.updateMirror", id: "feat_mirror", includeOriginal: false }
     ]);
 
-    // Toggling includeOriginal back off releases the seed: it is active again.
     expect(bodyById(readStructure(engine), "body_seed")).not.toHaveProperty(
       "consumedByFeatureId"
     );
@@ -439,8 +430,6 @@ describe("feature.mirror", () => {
     const project = exportCadProject(engine);
     expect(project.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V20);
 
-    // V19 documents carry a topology identity source contract; the mirror
-    // itself creates no checkpoints, so supply an empty identity for re-import.
     const importable = {
       ...project,
       document: {

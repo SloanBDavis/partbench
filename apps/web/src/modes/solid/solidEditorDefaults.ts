@@ -18,7 +18,6 @@ const BASE_PRIMITIVE: PrimitiveCommandForm = {
   translationZ: 0
 };
 
-/** Defaults seed a visible draft only; opening an editor never submits them. */
 export function createPrimitiveDraft(
   kind: PrimitiveEditorKind
 ): PrimitiveCommandForm {

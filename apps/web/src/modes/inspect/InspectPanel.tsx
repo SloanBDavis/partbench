@@ -10,7 +10,6 @@ export type InspectTone = "neutral" | "success" | "warning" | "danger";
 
 export interface InspectValueRow {
   readonly label: string;
-  /** A formatted, human-readable value, including its unit when applicable. */
   readonly value: string;
 }
 
@@ -39,7 +38,6 @@ export interface InspectMetricProjection {
   readonly title: string;
   readonly status: "loading" | "ready" | "blocked";
   readonly rows?: readonly InspectValueRow[];
-  /** User-facing confidence such as “Exact result” or “From authored values”. */
   readonly confidence?: string;
   readonly message?: string;
 }
@@ -116,10 +114,6 @@ export interface InspectPanelProps {
   readonly onRepairStableReference?: () => void;
 }
 
-/**
- * Focused V18 Inspect dock. All values are supplied as human-readable,
- * query-derived projections; this component never infers CAD eligibility.
- */
 export function InspectPanel({
   selection,
   measurements,

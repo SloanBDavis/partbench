@@ -13,7 +13,6 @@ export interface ButtonProps extends Omit<
   readonly tone?: "neutral" | "primary" | "danger";
   readonly density?: "standard" | "dense";
   readonly pending?: boolean;
-  /** Focusable blocked state. Activation is handled but never forwarded. */
   readonly unavailableReason?: string;
   readonly children: ReactNode;
 }

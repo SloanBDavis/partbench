@@ -29,7 +29,6 @@ export type SketchSolverEvaluationIdentity =
 
 export interface SketchSolverConstraintResidualEvidence {
   readonly id: SketchConstraintId;
-  /** A stable solver family name, canonicalized to lowercase kebab case. */
   readonly family: string;
   readonly status: SketchDimensionStatus;
   readonly residual: number;
@@ -37,7 +36,6 @@ export interface SketchSolverConstraintResidualEvidence {
 
 export interface SketchSolverDimensionResidualEvidence {
   readonly id: SketchDimensionId;
-  /** A stable solver family name, canonicalized to lowercase kebab case. */
   readonly family: string;
   readonly status: SketchDimensionStatus;
   readonly residual: number;
@@ -51,7 +49,6 @@ export interface SketchSolverEvaluationIdentityEvidence {
   readonly sourceRevision: SketchCurveEditSourceRevision;
   readonly sketchId: SketchId;
   readonly solverStatus: CadSketchSolverStatus;
-  /** Authoritative constraint plus dimension record count for this sketch. */
   readonly solverRecordCount: number;
   readonly evaluatedEntities: SketchSolverIdentityRecordCollection<SketchEntitySnapshot>;
   readonly orderedConstraintResiduals: SketchSolverIdentityRecordCollection<SketchSolverConstraintResidualEvidence>;
@@ -125,11 +122,6 @@ export function isSketchSolverEvaluationIdentity(
   );
 }
 
-/**
- * Formats the command precondition from the authoritative project source
- * identity. The digest must already have been computed by the WCAD
- * canonical-CBOR source-identity algorithm.
- */
 export function createSketchCurveEditSourceRevision(
   sourceIdentity: Pick<WcadSourceIdentity, "algorithm" | "sha256">
 ): SketchCurveEditSourceRevision {

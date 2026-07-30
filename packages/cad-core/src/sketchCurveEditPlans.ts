@@ -58,16 +58,7 @@ export interface SketchCurveEditPlanDiagnostic {
 }
 
 export interface SketchCurveEndpointProvenance {
-  /**
-   * Authored traversal parameter on the source curve. Line parameters are
-   * distances from start, arc parameters are positive traversal degrees, and
-   * circle parameters are canonical polar degrees.
-   */
   readonly sourceParameter: number;
-  /**
-   * Present only when the result endpoint owns the continuing authored
-   * endpoint intent. Extend deliberately assigns this to the moved endpoint.
-   */
   readonly sourceEndpoint?: "start" | "end";
   readonly cause:
     | "source-endpoint"
@@ -125,19 +116,7 @@ export interface SketchCurveEditPlan {
   readonly requiredCreatedEntityIdCount: number;
   readonly pieces: readonly PlannedSketchCurvePiece[];
   readonly replacement: SketchCurveEditReplacementPlan;
-  /**
-   * Complete normalized finite intersection evidence used by readiness
-   * previews. Trim retains every eligible target/boundary partition hit and
-   * extend retains the nearest command-selectable outward hit for each exact
-   * boundary ID at the selected endpoint. It is preview-only evidence and does
-   * not change the selected edit result.
-   */
   readonly previewIntersections?: readonly SketchCurveEditIntersectionEvidence[];
-  /**
-   * Present when all created IDs were supplied, or when the plan creates no
-   * entities. Readiness can first inspect requiredCreatedEntityIdCount without
-   * consuming an allocator and then re-plan with the exact prospective IDs.
-   */
   readonly materialized?: {
     readonly entities: readonly (
       | SketchLineEntitySnapshot
@@ -157,10 +136,6 @@ export type SketchCurveEditPlanResult =
   | {
       readonly status: "blocked";
       readonly diagnostics: readonly SketchCurveEditPlanDiagnostic[];
-      /**
-       * Complete evidence when planning reached deterministic intersections
-       * before a later readiness condition blocked materialization.
-       */
       readonly previewIntersections?: readonly SketchCurveEditIntersectionEvidence[];
     };
 
@@ -777,7 +752,6 @@ export interface PlanSketchTrimInput {
   readonly createdEntityIds?: readonly SketchEntityId[];
 }
 
-/** Plan an exact finite-boundary trim without allocating source IDs. */
 export function planSketchTrim(
   entities: readonly SketchEntitySnapshot[],
   input: PlanSketchTrimInput,
@@ -1086,7 +1060,6 @@ export interface PlanSketchSplitInput {
   readonly createdEntityIds?: readonly SketchEntityId[];
 }
 
-/** Plan an exact explicit-point split without allocating source IDs. */
 export function planSketchSplit(
   entities: readonly SketchEntitySnapshot[],
   input: PlanSketchSplitInput,
@@ -1371,7 +1344,6 @@ function createExtensionIntersectionEvidence(
   return [...nearestByBoundaryId.values()];
 }
 
-/** Plan the closest unambiguous outward extension to explicit finite geometry. */
 export function planSketchExtend(
   entities: readonly SketchEntitySnapshot[],
   input: PlanSketchExtendInput,
@@ -1563,7 +1535,6 @@ export interface PlanSketchExplodeRectangleInput {
   ];
 }
 
-/** Plan the exact vMin, uMax, vMax, uMin counterclockwise rectangle boundary. */
 export function planSketchExplodeRectangle(
   entities: readonly SketchEntitySnapshot[],
   input: PlanSketchExplodeRectangleInput,

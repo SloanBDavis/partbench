@@ -4,11 +4,6 @@ export interface AnimationFrameCoalescer<T> {
   readonly schedule: (value: T) => void;
 }
 
-/**
- * Keeps only the newest value scheduled before the next animation frame.
- * `flush` is useful at interaction boundaries where the final sampled value
- * must be applied before a pointer-up commit.
- */
 export function createAnimationFrameCoalescer<T>({
   cancelFrame,
   onFrame,

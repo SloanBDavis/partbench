@@ -5,11 +5,6 @@ import { runCleanupActions } from "./runCleanupActions";
 export interface CadQueryWorkerRequest {
   readonly kind: "cad-worker.query";
   readonly id: string;
-  /**
-   * Required when the worker does not already hold `projectCacheKey`.
-   * BrowserCadQueryWorker elides it from follow-up requests for the same
-   * revision to avoid repeatedly structured-cloning a large project.
-   */
   readonly project?: CadProject;
   readonly projectCacheKey?: string;
   readonly request: CadQueryRequest;
@@ -83,11 +78,6 @@ export interface DisposableCadQueryWorker extends CadQueryWorker {
 
 export type DisposableCadQueryWorkerFactory = () => DisposableCadQueryWorker;
 
-/**
- * Query-only browser worker. CAD queries are bounded synchronous work once
- * they begin, so AbortSignal cancellation physically terminates this transport
- * without sharing mutation state.
- */
 export class BrowserCadQueryWorker implements CadQueryWorker {
   readonly #transport: CadQueryWorkerTransport;
   readonly #pendingQueries = new Map<string, PendingQuery>();
@@ -237,11 +227,6 @@ export class BrowserCadQueryWorker implements CadQueryWorker {
   }
 }
 
-/**
- * Gives every expensive browser query a dedicated transport. Cancelling one
- * query can therefore terminate its worker without disrupting command
- * mutation state or another in-flight query.
- */
 export class CancellableBrowserCadQueryWorker implements CadQueryWorker {
   readonly #createWorker: DisposableCadQueryWorkerFactory;
 
@@ -265,12 +250,6 @@ export class CancellableBrowserCadQueryWorker implements CadQueryWorker {
   }
 }
 
-/**
- * Reuses one query-only transport after successful requests. An abort still
- * physically terminates that transport; the next request gets a fresh worker.
- * Region and curve-edit clients share this instance so paging and follow-up
- * readiness checks do not repeatedly parse the command worker bundle.
- */
 export class RecoverableBrowserCadQueryWorker implements CadQueryWorker {
   readonly #createWorker: DisposableCadQueryWorkerFactory;
   #worker?: DisposableCadQueryWorker;

@@ -103,9 +103,6 @@ export function createRenderSceneInputs(
       continue;
     }
 
-    // Only primitive-profile extrudes have an honest local fallback while
-    // tessellation is pending. Wire profiles and the other derived feature
-    // families wait for their exact worker mesh.
     if (source.kind !== "extrude" || source.profile.kind === "wire") {
       continue;
     }
@@ -131,10 +128,6 @@ export function createSketchDisplayMeshes(
     const displayFrame =
       sketchDisplayFrames.get(sketch.id) ??
       createDefaultSketchDisplayFrame(sketch.plane);
-    // Keep the normal single-profile display smooth while bounding derived
-    // canvas work for near-limit sketches. This changes only visualization
-    // tessellation; authored curves and all query/edit calculations remain
-    // exact analytic geometry.
     const maximumCurveSegmentAngleDegrees =
       sketch.entities.length > 32 ? 22.5 : 7.5;
     const displayCacheKey = JSON.stringify([
@@ -639,9 +632,6 @@ export function createSketchArcDisplayEdges(
     (_, index) => index / segmentCount
   );
 
-  // Include support-circle extrema only when they lie on the finite authored
-  // interval. This keeps derived bounds exact without turning the support
-  // circle into the source or pick target.
   for (const cardinalAngle of [0, 90, 180, 270]) {
     const directedAngle =
       sweepAngleDegrees > 0

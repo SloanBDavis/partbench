@@ -236,7 +236,6 @@ export interface DerivedGeometrySweepInput {
 
 export type DerivedGeometrySweepPathSegment =
   | {
-      /** V16-compatible single-line recipe. */
       readonly start: readonly [number, number, number];
       readonly end: readonly [number, number, number];
       readonly kind?: never;

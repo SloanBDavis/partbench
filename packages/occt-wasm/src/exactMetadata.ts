@@ -585,7 +585,7 @@ function withImportedBrepShape<T>(
     try {
       oc.FS.unlink(fileName);
     } catch {
-      // The file may not exist if setup failed before writing.
+      // The file may not exist.
     }
   }
 }

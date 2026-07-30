@@ -264,7 +264,7 @@ export function createOcctStepImportWithInstance(
     try {
       getOcctFs(oc).unlink(filename);
     } catch {
-      // The file may not exist if STEP reader setup failed before writing.
+      // The file may not exist.
     }
 
     reader?.delete();
@@ -357,7 +357,7 @@ function writeBrepCheckpointBytes(
     try {
       getOcctFs(oc).unlink(filename);
     } catch {
-      // The file may not exist if shape serialization failed before writing.
+      // The file may not exist.
     }
 
     progress.delete();

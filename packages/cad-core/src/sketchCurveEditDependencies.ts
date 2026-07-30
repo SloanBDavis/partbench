@@ -24,11 +24,6 @@ function compareCodeUnits(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-/**
- * Collects every direct persisted feature reference to the submitted sketch
- * entities. This intentionally covers normalized entity, wire, and region
- * profiles plus sweep paths, loft sections, revolve axes, and hole centers.
- */
 export function collectSketchCurveEditFeatureDependencies(
   features: Iterable<FeatureSnapshot | FeatureSnapshotV21 | FeatureSnapshotV22>,
   sketchId: SketchId,

@@ -1,6 +1,5 @@
 import { useId, type ReactElement, type ReactNode } from "react";
 
-/** Focus/hover tooltip primitive. The trigger receives the relationship ID. */
 export function Tooltip({
   children,
   content

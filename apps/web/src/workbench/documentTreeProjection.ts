@@ -33,7 +33,6 @@ export type DocumentTreeSelection =
   | { readonly kind: "named-reference"; readonly name: string };
 
 export interface DocumentTreeRowCapabilities {
-  /** UI-local display state. Only provide this for an inventoried display operation. */
   readonly visible?: boolean;
   readonly canRename?: boolean;
   readonly canEdit?: boolean;
@@ -84,9 +83,7 @@ export interface CreateDocumentTreeProjectionInput {
   readonly bodies: readonly CadBodySnapshot[];
   readonly objects: readonly CadObjectSnapshot[];
   readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
-  /** One query-backed health snapshot for the whole projection; rows issue no queries. */
   readonly health?: ProjectHealthQueryResponse;
-  /** Keyed by {@link documentTreeSelectionKey}. */
   readonly capabilitiesBySelectionKey?: ReadonlyMap<
     string,
     DocumentTreeRowCapabilities
@@ -524,9 +521,6 @@ function createHealth(
   status: CadDependencyHealthStatus | undefined,
   issues: readonly string[]
 ): DocumentTreeHealth | undefined {
-  // Normal sketch freedom is design information, not a failed model result.
-  // Sketch mode and Project health retain the detailed solver/readiness view;
-  // the history tree reserves alarm badges for actionable failures.
   if (!status || status === "healthy" || status === "under-defined") {
     return undefined;
   }

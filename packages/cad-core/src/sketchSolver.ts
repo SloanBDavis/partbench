@@ -132,7 +132,6 @@ export interface SketchSolverEvaluation {
   readonly constraints: readonly SketchConstraintEntry[];
   readonly issues: readonly SketchEvaluationIssue[];
   readonly evaluatedGeometry: EvaluatedSketchGeometry;
-  /** Reuse the exact package probe produced while deriving this evaluation. */
   readonly solverProbe: SketchSolverPackageProbe;
 }
 

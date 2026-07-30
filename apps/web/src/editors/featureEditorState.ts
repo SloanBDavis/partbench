@@ -31,9 +31,7 @@ export type FeatureEditorValidation =
     };
 
 export interface FeatureEditorState<Draft> {
-  /** The last source-backed value. It changes only after a successful apply. */
   readonly committed: Draft;
-  /** UI-local values submitted only by an explicit Apply transition. */
   readonly draft: Draft;
   readonly dirty: boolean;
   readonly phase: FeatureEditorPhase;

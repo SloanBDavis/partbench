@@ -26,11 +26,6 @@ export const DEFAULT_WORKBENCH_UI_PREFERENCES: WorkbenchUiPreferences = {
   rightDockCollapsed: false
 };
 
-/**
- * Parses the app-only preference record. Unknown versions and malformed
- * records reset as a unit so a partial/corrupt record never creates a layout
- * that the user cannot recover from.
- */
 export function parseWorkbenchUiPreferences(
   serialized: string | null | undefined
 ): WorkbenchUiPreferences {
@@ -56,7 +51,6 @@ export function parseWorkbenchUiPreferences(
   }
 }
 
-/** Serializes an explicit allowlist; source/session fields cannot leak in. */
 export function serializeWorkbenchUiPreferences(
   preferences: Pick<
     WorkbenchUiPreferences,
@@ -122,7 +116,7 @@ export function resetWorkbenchUiPreferences(
   try {
     storage?.removeItem?.(WORKBENCH_UI_PREFERENCES_KEY);
   } catch {
-    // Preference storage is best-effort and must not prevent app startup.
+    // Preference storage must not prevent startup.
   }
 }
 

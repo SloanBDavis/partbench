@@ -7,10 +7,6 @@ import {
   type SketchDisplayFrame
 } from "./sketchDisplayFrames";
 
-/**
- * Resolves an already traversal-oriented planar path segment into the one
- * world-space recipe shared by display, metadata, checkpoints, and STEP.
- */
 export function mapResolvedSweepPathSegmentToWorld(
   segment: CadExactExportResolvedWireSegment,
   frame: SketchDisplayFrame

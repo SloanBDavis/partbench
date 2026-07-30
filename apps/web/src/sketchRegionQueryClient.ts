@@ -50,10 +50,6 @@ export interface SketchRegionCandidateCacheOptions {
   readonly maxPages?: number;
 }
 
-/**
- * In-memory derived query cache. Values are exact cad-core responses and never
- * enter CadProject source, history, redo, WCAD, JSON, OPFS, or geometry caches.
- */
 export class SketchRegionCandidateCache {
   readonly #maxPages: number;
   readonly #entries = new Map<string, CachedRegionCandidatesPage>();
@@ -69,9 +65,6 @@ export class SketchRegionCandidateCache {
     project: CadProject,
     request: SketchRegionCandidatesQueryRequest
   ): SketchProfileRegionCandidatesQueryResponse | undefined {
-    // Never normalize a malformed runtime envelope into the same cache key as
-    // a valid request. The miss is dispatched so cad-core returns its exact
-    // structured validation error.
     if (!isStrictCacheableCandidatesRequest(request)) {
       return undefined;
     }
@@ -109,8 +102,6 @@ export class SketchRegionCandidateCache {
       currentProjection !== undefined &&
       currentProjection !== projectionKey
     ) {
-      // A newer relevant source was observed while this request was in
-      // flight. Never let its late completion roll the cache back.
       return;
     }
     this.#projectionBySketch.set(sketchId, projectionKey);
@@ -195,11 +186,6 @@ export interface SketchRegionQueryClientOptions {
   readonly cache?: SketchRegionCandidateCache;
 }
 
-/**
- * Executes the authoritative region queries in the browser command worker.
- * Candidate discovery is cached; exact submitted-profile validation is always
- * recomputed from the supplied authoritative project.
- */
 export class SketchRegionQueryClient {
   readonly #worker: CadQueryWorker;
   readonly #cache: SketchRegionCandidateCache;
@@ -286,11 +272,6 @@ export class SketchRegionQueryClient {
   }
 }
 
-/**
- * Equality key for the exact discovery-relevant source projection. It is not a
- * public source fingerprint: cad-core remains the sole producer of the
- * canonical-CBOR sourceFingerprint/sourceRevision returned to callers.
- */
 export function createSketchRegionRelevantProjectionKey(
   project: CadProject,
   sketchId: string

@@ -27,7 +27,6 @@ export interface WorkbenchShellProps {
   readonly leftDockCollapsed: boolean;
   readonly rightDockCollapsed: boolean;
   readonly activeEditor?: boolean;
-  /** Project details are selected; Project otherwise suppresses the right dock. */
   readonly projectDetailsOpen?: boolean;
   readonly openDrawer?: DockSide;
   readonly onOpenDrawerChange?: (side: DockSide | undefined) => void;
@@ -49,7 +48,6 @@ type ShellStyle = CSSProperties & {
   readonly "--pb-current-right-dock-width": string;
 };
 
-/** Stable six-region shell. Every slot remains mounted across mode/layout changes. */
 export function WorkbenchShell({
   mode,
   viewportWidth: viewportWidthProp,

@@ -37,11 +37,9 @@ export interface ModeRibbonProps {
     action: ProjectedUiAction,
     availability: Exclude<UiActionAvailability, { readonly status: "ready" }>
   ) => void;
-  /** Deterministic override used by visual harnesses; normal layout measures itself. */
   readonly availableGroupWidth?: number;
 }
 
-/** Labeled, mode-aware toolbar projected exclusively from the UI action registry. */
 export function ModeRibbon({
   mode,
   actions,

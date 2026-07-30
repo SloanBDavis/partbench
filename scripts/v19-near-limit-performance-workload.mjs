@@ -45,11 +45,6 @@ async function debugBrowserLongTasks(browser, stage) {
   );
 }
 
-/**
- * Runs the mandatory Gate E workload against the exact built production
- * application. The returned booleans are derived from browser evidence; this
- * module has no non-browser fallback.
- */
 export async function runV19NearLimitPerformanceWorkload({
   repositoryRoot,
   buildHash

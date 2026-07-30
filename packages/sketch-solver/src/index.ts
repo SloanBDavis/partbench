@@ -330,12 +330,6 @@ export interface SketchSolvePointTargetDistanceDimension {
   readonly value: number;
 }
 
-/**
- * Ordered horizontal/vertical point-pair distance.
- *
- * `value` is the signed expected secondary-minus-primary component. Cad-core
- * maps the persisted positive magnitude plus direction into this signed value.
- */
 export interface SketchSolvePointComponentDimension {
   readonly id: SketchSolverDimensionId;
   readonly kind: "pointComponent";
@@ -389,7 +383,6 @@ export interface SketchSolveArcSweepDimension {
   readonly id: SketchSolverDimensionId;
   readonly kind: "arcSweep";
   readonly arcId: string;
-  /** Positive magnitude in degrees; the authored arc sign is preserved. */
   readonly value: number;
 }
 
@@ -492,16 +485,9 @@ export type SketchInitialResidualRecord =
       readonly satisfied: boolean;
     };
 
-/**
- * Residual evidence evaluated directly at the model's authored initial state.
- *
- * This is intentionally distinct from `solveSketch`: no iteration, Jacobian,
- * rank analysis, or solved-state projection is performed.
- */
 export interface SketchInitialResidualEvaluation {
   readonly version: SketchSolverModelVersion;
   readonly status: SketchInitialResidualEvaluationStatus;
-  /** Solver classification at the authored state; no iteration is performed. */
   readonly solveStatus: SketchSolveStatus;
   readonly blocked: boolean;
   readonly iterations: 0;
@@ -619,10 +605,6 @@ export function getSketchSolverCapabilities(): {
   };
 }
 
-/**
- * Evaluate every supported constraint and dimension residual against the
- * authored geometry without allowing the solver to move that geometry.
- */
 export function evaluateSketchResidualsAtInitialState(
   model: SketchSolveModel
 ): SketchInitialResidualEvaluation {

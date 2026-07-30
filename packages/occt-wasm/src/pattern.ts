@@ -269,7 +269,6 @@ export function withOcctPatternSeedShape<T>(
     return withOcctHoleResultShape(oc, seed, (shape) => readShape(shape));
   }
 
-  // edgeFinish
   return withOcctEdgeFinishResultShape(oc, seed, (shape) => readShape(shape));
 }
 

@@ -6,10 +6,6 @@ export interface TechnicalDetailsModel {
   readonly copyText: string;
 }
 
-/**
- * Keeps debugging evidence behind an explicit disclosure. The allowlist avoids
- * accidentally copying unrelated objects such as document source or handles.
- */
 export function createTechnicalDetails(
   diagnostic: StructuredDiagnosticInput
 ): TechnicalDetailsModel {

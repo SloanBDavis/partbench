@@ -903,10 +903,6 @@ export interface Sketch {
 
 export type CadParameter = CadParameterSnapshot;
 
-/**
- * Canonical live dimension storage. Legacy entity-local snapshots are accepted
- * at API/load boundaries, then normalized by createCadDocument.
- */
 export type SketchDimension = SketchDimensionSnapshotCurrent;
 
 export type SketchConstraint = SketchConstraintSnapshot;
@@ -1096,17 +1092,7 @@ type FeatureSnapshotCurrent = FeatureSnapshot | FeatureSnapshotV22;
 export interface CadWorkerRequest {
   readonly id: string;
   readonly batch: CadBatch;
-  /**
-   * Legacy document-only worker input. Current executors send the canonical
-   * project instead so browser structured cloning does not duplicate the same
-   * document in both `document` and `project`.
-   */
   readonly document?: CadDocumentSnapshot;
-  /**
-   * Canonical authoritative source for workers that must reproduce
-   * history/redo-sensitive identities. Optional for transport compatibility
-   * with older callers that only exercise document-local commands.
-   */
   readonly project?: CadProject;
 }
 
@@ -1657,10 +1643,6 @@ export class CadProjectImportError extends Error {
 export interface CadProject {
   readonly schemaVersion: CadProjectFormatVersion;
   readonly document: CadDocumentSnapshot;
-  /**
-   * Exact authoritative state immediately before the chronologically earliest
-   * retained transaction. V22-only.
-   */
   readonly historyBaseline?: CadDocumentSnapshot;
   readonly history: readonly Transaction[];
   readonly redoStack: readonly Transaction[];
@@ -1780,11 +1762,6 @@ function getCadDocumentSnapshotIdCounters(
 interface OperationRunResult {
   readonly document: CadDocument;
   readonly diff: SemanticDiff;
-  /**
-   * Exact operations applied by the runner. V19 curve-edit execution may
-   * materialize omitted output IDs before mutation so committed history never
-   * depends on allocator state during replay.
-   */
   readonly appliedOps: readonly CadOp[];
   readonly nextObjectNumber: number;
   readonly nextSketchNumber: number;
@@ -1941,12 +1918,6 @@ export class CadEngine {
     return exportCadProject(this);
   }
 
-  /**
-   * Accepts source-revision evidence returned by Partbench's exact query
-   * worker for this engine state. Every authoritative mutation invalidates
-   * the value; curve-edit Apply reuses it only when it exactly matches the
-   * submitted command precondition.
-   */
   getSourceAuthorityEpoch(): number {
     return this.#sourceAuthorityEpoch;
   }
@@ -2095,10 +2066,6 @@ export class CadEngine {
     audit: CadTransactionAuditMetadata | undefined,
     cloneResultDocument = true
   ): ApplyResult {
-    // Operation runs use persistent maps and replace every modified source
-    // value, so both document roots are immutable history snapshots. Keep
-    // those private roots directly and clone only when a document crosses a
-    // public engine boundary.
     const before = this.#document;
     const beforeCounters = this.#getDocumentIdCounters();
     const branchedFromRedo = this.#redoStack.length > 0;
@@ -4108,13 +4075,8 @@ export class AsyncCadCommandExecutor {
       );
     }
 
-    // Worker message delivery, validation result handling, and authoritative
-    // commit must not collapse into one browser task for large documents.
-    // Yield once while preserving the serialized command queue.
     await delay(0);
     const committed = this.engine.executeBatch(effectiveBatch);
-    // Keep the authoritative engine work and its React consumer update in
-    // separate tasks as well.
     await delay(0);
     return attachImportedStepExecutionMetadata(committed, resolvedImport);
   }
@@ -14249,10 +14211,6 @@ function validateDirectConsumingFeatureForSourceExtrudeRebuild(
   }
 
   if (feature.kind === "mirror") {
-    // A mirror reaches this consuming path only when includeOriginal is true;
-    // re-mirroring the rebuilt seed body imposes no additional source
-    // constraints beyond the seed remaining consumed by this feature, which the
-    // consuming-feature lookup that produced this call already guarantees.
     return;
   }
 
@@ -25725,11 +25683,6 @@ function normalizeCurveEditPreviewIntersections(
   return uniqueIntersections;
 }
 
-/**
- * A blocked preview exposes candidate evidence only. Zero result entities means
- * that no unique materialized result was selected, not that the edit deletes
- * the target without replacement.
- */
 function createBlockedCurveEditPreview(
   intersections: readonly SketchCurveEditIntersectionEvidence[]
 ): SketchCurveEditPreview {
@@ -28843,8 +28796,6 @@ function normalizeCadProject(value: CadProject): CadProject {
             )
           }
         : {}),
-      // V22 history and redo are authoritative source. Preserve their original
-      // command and semantic-diff shapes rather than migrating them in place.
       history: value.history.map(cloneJsonSource),
       redoStack: value.redoStack.map(cloneJsonSource)
     };
@@ -29879,7 +29830,6 @@ function validateCadDocumentSnapshot(
   const isV22Schema = schemaVersion === CAD_PROJECT_FORMAT_VERSION_V22;
   const isV21Schema =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V21 || isV22Schema;
-  // V20 through V22 are strict source-shape extensions of V19 and inherit its gates.
   const isV20Schema = schemaVersion === CAD_PROJECT_FORMAT_VERSION_V20;
   const isV20OrLaterSchema = isV20Schema || isV21Schema;
   const isV19Schema =

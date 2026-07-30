@@ -769,8 +769,6 @@ function readEngineStateForDocument<T>(
   documentSnapshot: CadDocument,
   read: () => T
 ): T {
-  // CadEngine is stable and mutates internally; documentSnapshot invalidates
-  // React memoization after command application.
   void documentSnapshot;
 
   return read();
@@ -1362,9 +1360,7 @@ function ProgressiveSketchAnalysisProvider({
       publishIfCurrent(nextPathCandidates, setPathCandidates);
     };
     void execute().catch(() => {
-      // Region and curve-edit callers surface actionable worker failures.
-      // Background status analysis remains unavailable until the next source
-      // revision instead of disrupting authoritative editing.
+      // Background analysis retries on the next source revision.
     });
     return () => {
       cancelled = true;
@@ -6679,7 +6675,7 @@ export function App() {
           setProjectMessageTone("error");
           return;
         } catch {
-          // Fall through to the original direct-save error below.
+          // Fall through to the original direct-save error.
         }
       }
 
@@ -7695,8 +7691,6 @@ export function App() {
   }
 
   const uiActionAvailability = useMemo<UiActionAvailabilityProjection>(() => {
-    // The command engine is mutable; the document snapshot invalidates undo and
-    // redo availability after command application.
     void document;
     const ready = { status: "ready" } as const;
     const needs = (message: string) =>

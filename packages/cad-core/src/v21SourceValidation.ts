@@ -214,7 +214,6 @@ export function validateSketchPathRefSource(
   );
 }
 
-/** Rejects mixed normalized/legacy profile source and returns a normalized ref. */
 export function validateProfileInputSource(
   value: Record<string, unknown>,
   path = "profile",

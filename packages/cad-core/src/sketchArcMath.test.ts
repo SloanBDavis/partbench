@@ -136,8 +136,6 @@ describe("V17 sketch arc math", () => {
       pointOnArc: [1, 0] as const,
       end: [2, scaleBoundary * (1 + 1e-6)] as const
     };
-    // Immediately outside the linear gate, the frozen policy advances to its
-    // independent angular sweep gate instead of calling the points collinear.
     expect(
       canonicalizeSketchArcDefinition(justOutsideCollinearity)
     ).toMatchObject({

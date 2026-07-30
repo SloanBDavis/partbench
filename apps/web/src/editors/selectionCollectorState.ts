@@ -1,5 +1,4 @@
 export interface SelectionCollectorTarget<Value> {
-  /** Exact source/query-returned value. Presentation never reconstructs it. */
   readonly value: Value;
   readonly label: string;
   readonly kind: string;

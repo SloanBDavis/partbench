@@ -63,10 +63,6 @@ const uiOnly = (effect: string): CapabilityEffect => ({
   effect
 });
 
-/**
- * Audit detail is intentionally explicit. A registry item cannot be added
- * without naming the V17 delegate/effect and its parity evidence here.
- */
 const ACTION_AUDIT_BY_ID = {
   "project.new": audit(
     "App.tsx",

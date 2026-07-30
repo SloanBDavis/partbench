@@ -127,7 +127,6 @@ export interface CadProjectSchemaDiagnostic {
 
 export type Vec2 = readonly [number, number];
 export type Vec3 = readonly [number, number, number];
-/** Row-major document-space rigid transform. Pattern instances never scale. */
 export type Mat4 = readonly [
   number,
   number,
@@ -1498,7 +1497,6 @@ export interface FeatureHoleOp {
   readonly targetBodyId?: BodyId;
   readonly targetTopologyAnchorId?: string;
   readonly name?: string;
-  /** Holes remain circle-entity consumers, not general profile consumers. */
   readonly profile?: never;
   readonly sketchId: SketchId;
   readonly circleEntityId: SketchEntityId;
@@ -1608,7 +1606,6 @@ export interface FeatureLinearPatternOp {
   readonly id?: FeatureId;
   readonly bodyId?: BodyId;
   readonly seedBodyId: BodyId;
-  /** V15 compatibility sugar. At least one of axis or direction is required. */
   readonly axis?: FeaturePatternAxis;
   readonly direction?: PatternDirectionRef;
   readonly spacing: number;
@@ -1621,7 +1618,6 @@ export interface FeatureCircularPatternOp {
   readonly id?: FeatureId;
   readonly bodyId?: BodyId;
   readonly seedBodyId: BodyId;
-  /** V15 compatibility sugar; V20 callers should pass the reference union. */
   readonly rotationAxis?: FeaturePatternAxis | PatternRotationAxisRef;
   readonly totalAngleDegrees: number;
   readonly instanceCount: number;
@@ -1786,7 +1782,6 @@ export interface FeatureMirrorOp {
   readonly id?: FeatureId;
   readonly bodyId?: BodyId;
   readonly seedBodyId: BodyId;
-  /** V15 compatibility sugar. At least one of mirrorPlane or plane is required. */
   readonly mirrorPlane?: FeatureMirrorPlane;
   readonly plane?: MirrorPlaneRef;
   readonly includeOriginal: boolean;
@@ -2332,10 +2327,6 @@ export interface SketchCurveEditConstraintImpact {
   readonly id: SketchConstraintId;
   readonly disposition: SketchCurveEditRecordDisposition;
   readonly before: CadSketchConstraintRef;
-  /**
-   * Present only when the record survives the edit. Retargeted records must
-   * expose their exact normalized post-edit target through this reference.
-   */
   readonly after?: CadSketchConstraintRef;
   readonly residualFamily?: string;
   readonly residual?: number;
@@ -2345,10 +2336,6 @@ export interface SketchCurveEditDimensionImpact {
   readonly id: SketchDimensionId;
   readonly disposition: SketchCurveEditRecordDisposition;
   readonly before: CadSketchDimensionRefCurrent;
-  /**
-   * Present only when the record survives the edit. Retargeted records must
-   * expose their exact normalized post-edit target through this reference.
-   */
   readonly after?: CadSketchDimensionRefCurrent;
   readonly residualFamily?: string;
   readonly residual?: number;
@@ -3295,9 +3282,7 @@ export interface SketchArcEntity {
   readonly kind: "arc";
   readonly center: Vec2;
   readonly radius: number;
-  /** Canonical source range is [0, 360). */
   readonly startAngleDegrees: number;
-  /** Signed source traversal; full circles are represented by circle entities. */
   readonly sweepAngleDegrees: number;
   readonly construction: boolean;
 }
@@ -3532,7 +3517,6 @@ export type SketchConstraintV21 =
   | SketchAngleConstraintSnapshot
   | SketchSymmetryConstraintV21;
 
-/** Canonical live V21 storage and query shape. */
 export type SketchConstraintSnapshot = SketchConstraintV21;
 
 export interface SketchAngleConstraintSnapshot {
@@ -3745,14 +3729,11 @@ export interface LinearPatternFeatureSnapshot {
   readonly kind: "linearPattern";
   readonly name?: string;
   readonly seedBodyId: BodyId;
-  /** Present only in legacy V19 snapshots. */
   readonly axis?: FeaturePatternAxis;
-  /** Required in normalized memory and V20 snapshots. */
   readonly direction?: PatternDirectionRef;
   readonly spacing: number;
   readonly instanceCount: number;
   readonly bodyId: BodyId;
-  /** Required in normalized memory and V20 snapshots. */
   readonly instances?: readonly PatternInstanceRecord[];
 }
 
@@ -3773,9 +3754,7 @@ export interface MirrorFeatureSnapshot {
   readonly kind: "mirror";
   readonly name?: string;
   readonly seedBodyId: BodyId;
-  /** Present only in legacy V19 snapshots. */
   readonly mirrorPlane?: FeatureMirrorPlane;
-  /** Required in normalized memory and V20 snapshots. */
   readonly plane?: MirrorPlaneRef;
   readonly includeOriginal: boolean;
   readonly bodyId: BodyId;
@@ -3795,7 +3774,6 @@ export interface SweepFeatureSnapshot {
 export interface LoftSection {
   readonly sketchId: SketchId;
   readonly entityId: SketchEntityId;
-  /** Normalized V21 command/storage shape is mutually exclusive. */
   readonly profile?: never;
 }
 
@@ -3852,7 +3830,6 @@ export type SweepFeatureV22 = SweepFeatureV21;
 
 export interface LoftSectionV21 {
   readonly profile: SketchEntityProfileRef;
-  /** Legacy V20 command/storage fields are mutually exclusive. */
   readonly sketchId?: never;
   readonly entityId?: never;
 }
@@ -4426,10 +4403,8 @@ export interface CadShellFeatureSummary {
 
 export interface CadSweepFeatureSource {
   readonly type: "sweepFeature";
-  /** Normalized V21 source, including ordered traversal orientation. */
   readonly profile: SketchEntityProfileRef;
   readonly path: SketchPathRef;
-  /** V20-compatible flattened source fields. */
   readonly profileSketchId: SketchId;
   readonly profileEntityId: SketchEntityId;
   readonly pathSketchId: SketchId;
@@ -4438,7 +4413,6 @@ export interface CadSweepFeatureSource {
 
 export interface CadSweepFeatureSummary extends SweepFeatureV21 {
   readonly partId: PartId;
-  /** V20-compatible flattened source fields. */
   readonly profileSketchId: SketchId;
   readonly profileEntityId: SketchEntityId;
   readonly pathSketchId: SketchId;
@@ -4567,7 +4541,6 @@ export interface CadFeatureSweepEditProposal {
   readonly kind: "sweep";
   readonly profile?: SketchEntityProfileRef;
   readonly path?: SketchPathRef;
-  /** V20-compatible proposal fields. */
   readonly profileSketchId?: SketchId;
   readonly profileEntityId?: SketchEntityId;
   readonly pathSketchId?: SketchId;
@@ -4635,9 +4608,7 @@ export interface CadFeatureReferenceChangeSummary {
   readonly checkpointId?: string;
   readonly matchConfidence?: CadTopologyMatchConfidence;
   readonly referenceName?: NamedReferenceName;
-  /** Feature whose source edit or output owns the reported reference effect. */
   readonly sourceFeatureId?: FeatureId;
-  /** Direct downstream feature affected by the source feature, when applicable. */
   readonly targetFeatureId?: FeatureId;
   readonly diagnosticCode?: CadFeatureEditDiagnosticCode;
   readonly message: string;
@@ -4721,9 +4692,7 @@ export interface CadBodyLifecycleSummary {
 
 export interface CadBodyLifecycleEffectSummary {
   readonly bodyId: BodyId;
-  /** Feature that owns the body or lifecycle effect being reported. */
   readonly featureId?: FeatureId;
-  /** Direct consuming/downstream feature affected by a source-body effect. */
   readonly targetFeatureId?: FeatureId;
   readonly primaryState: CadBodyLifecycleState;
   readonly states: readonly CadBodyLifecycleState[];
@@ -5562,10 +5531,8 @@ export interface CadShellBodySource {
 export interface CadSweepBodySource {
   readonly type: "sweepFeature";
   readonly featureId: FeatureId;
-  /** Normalized V21 source, including ordered traversal orientation. */
   readonly profile: SketchEntityProfileRef;
   readonly path: SketchPathRef;
-  /** V20-compatible flattened source fields. */
   readonly profileSketchId: SketchId;
   readonly profileEntityId: SketchEntityId;
   readonly pathSketchId: SketchId;
@@ -7938,7 +7905,6 @@ export interface SketchBounds2d {
 
 export interface SketchReferenceDependencies {
   readonly sketchIds: readonly SketchId[];
-  /** Preserves traversal order; unlike dependency graph sets, this may not be sorted. */
   readonly orderedEntityIds: readonly SketchEntityId[];
 }
 
@@ -8063,10 +8029,6 @@ export interface SketchProfileCandidate {
   readonly candidateIndex: number;
   readonly sortKey: string;
   readonly profile: SketchProfileRef;
-  /**
-   * Display-only correlation to the equivalent no-hole region candidate.
-   * The key is never accepted as authored profile or command authority.
-   */
   readonly regionCandidateKey?: string;
   readonly orientation: "counterclockwise";
   readonly area: number;
@@ -12272,10 +12234,6 @@ function validateCurveEditOperation(
       if (field === "createdEntityIds") {
         validateUniqueIdArray(value[field], `${path}.${field}`, issues);
       } else {
-        // Duplicate deletion IDs are structurally valid input so cad-core can
-        // classify them as an exact-list mismatch and return the complete
-        // curve-edit impact. They must not be rejected before analytic
-        // planning erases that recovery evidence.
         validateIdArray(value[field], `${path}.${field}`, issues);
       }
     }

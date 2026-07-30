@@ -1313,8 +1313,6 @@ describe("agent-adapter", () => {
 
   it("accepts and reviews mirror feature batches from external JSON callers (Slice F pass-through)", () => {
     const adapter = new CadOpsAgentAdapter();
-    // parseCadOpsAgentRequestJson validates every op via isCadOp; a mirror or
-    // updateMirror op that isCadOp rejected would make the whole batch invalid.
     const request = parseCadOpsAgentRequestJson(
       JSON.stringify({
         requestId: "agent_req_mirror",
@@ -1383,8 +1381,6 @@ describe("agent-adapter", () => {
 
   it("accepts and reviews shell feature batches from external JSON callers (Slice G pass-through)", () => {
     const adapter = new CadOpsAgentAdapter();
-    // parseCadOpsAgentRequestJson validates every op via isCadOp; a shell or
-    // updateShell op that isCadOp rejected would make the whole batch invalid.
     const request = parseCadOpsAgentRequestJson(
       JSON.stringify({
         requestId: "agent_req_shell",
