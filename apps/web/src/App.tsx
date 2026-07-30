@@ -62,6 +62,7 @@ import type {
   SketchProfileRegionCandidate,
   SketchProfileRegionCandidatesQuery,
   SketchProfileRegionValidateQueryResponse,
+  SketchProfileRefV22,
   SketchRegionsProfileRef,
   Vec2
 } from "@web-cad/cad-protocol";
@@ -3242,6 +3243,21 @@ export function App() {
   const solidEditorRequest = useMemo<SolidEditorRequest | undefined>(() => {
     const actionId = workbenchUi.activeTool;
     const key = `${actionId ?? "solid"}:${transactionHistory.length}`;
+    const profileChoices = (
+      featureId: string,
+      profile: SketchProfileRefV22 | undefined
+    ) =>
+      profile?.kind === "regions"
+        ? [
+            {
+              key: `${featureId}:r`,
+              value: profile,
+              label: "Current regions",
+              kind: "profile"
+            },
+            ...solidProfileChoices
+          ]
+        : solidProfileChoices;
     if (
       actionId === "solid.box" ||
       actionId === "solid.cylinder" ||
@@ -3321,7 +3337,7 @@ export function App() {
             targetTopologyAnchorId: selectedFeature.targetTopologyAnchorId
           },
           choices: {
-            profiles: solidProfileChoices,
+            profiles: profileChoices(selectedFeature.id, profile),
             targetBodies: solidBodyChoices
           },
           blockedReason: profile
@@ -3357,7 +3373,10 @@ export function App() {
             axisEntityId: selectedFeature.axis.entityId,
             angleDegrees: selectedFeature.angleDegrees
           },
-          choices: { profiles: solidProfileChoices, axes: solidAxisChoices },
+          choices: {
+            profiles: profileChoices(selectedFeature.id, profile),
+            axes: solidAxisChoices
+          },
           blockedReason: profile
             ? undefined
             : "The source profile is unavailable.",

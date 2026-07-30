@@ -67,6 +67,15 @@ describe("userDiagnostic", () => {
     ).toContain("Select one complete material region.");
   });
 
+  it("uses safe repair copy for uncommon region statuses", () => {
+    expect(
+      translateUserDiagnostic({
+        code: "SKETCH_REGION_CURSOR_INVALID",
+        message: "worker cache id=private"
+      }).title
+    ).toBe("Region selection needs repair.");
+  });
+
   it("keeps structured evidence in explicit technical details", async () => {
     const model = createTechnicalDetails({
       code: "INTERNAL_CODE",

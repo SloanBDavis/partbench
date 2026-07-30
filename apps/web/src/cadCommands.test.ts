@@ -267,6 +267,21 @@ describe("cad command builders", () => {
       id: "revolve",
       profile
     });
+    const regions = {
+      kind: "regions" as const,
+      sketchId: "profile",
+      regions: [
+        {
+          outer: { kind: "entity" as const, entityId: "circle" },
+          holes: []
+        }
+      ] as const
+    };
+    expect(buildFeatureUpdateCompositeExtrudeOp("extrude", regions)).toEqual({
+      op: "feature.updateExtrude",
+      id: "extrude",
+      profile: regions
+    });
     expect(
       buildFeatureUpdateCompositeSweepOp("sweep", sweepProfile, path)
     ).toEqual({

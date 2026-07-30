@@ -42,14 +42,6 @@ const COPY_BY_CODE: Readonly<Record<string, DiagnosticCopy>> = {
     description: "More than one supported profile is available.",
     recovery: "Select the profile you want to use."
   },
-  SKETCH_REGION_PROFILE_EMPTY: {
-    title: "No region is selected.",
-    description: "Select at least one complete region."
-  },
-  SKETCH_REGION_SKETCH_MISMATCH: {
-    title: "Regions come from different sketches.",
-    description: "Select regions from one sketch."
-  },
   SKETCH_REGION_LOOP_OPEN: {
     title: "Region loop is open.",
     description: "Connect the open endpoints, then discover regions again."
@@ -101,22 +93,6 @@ const COPY_BY_CODE: Readonly<Record<string, DiagnosticCopy>> = {
   SKETCH_REGION_LOOP_AREA_TOO_SMALL: {
     title: "Region is too small.",
     description: "Increase the region size."
-  },
-  SKETCH_REGION_SOURCE_REVISION_STALE: {
-    title: "Region selection is out of date.",
-    description: "Discover and select the regions again."
-  },
-  SKETCH_REGION_CURSOR_INVALID: {
-    title: "Region results changed.",
-    description: "Restart region discovery."
-  },
-  SKETCH_REGION_CONSUMER_UNSUPPORTED: {
-    title: "This feature cannot use the selected regions.",
-    description: "Choose a compatible operation or region selection."
-  },
-  SKETCH_REGION_RESULT_NOT_SINGLE_SOLID: {
-    title: "The result would not be one solid.",
-    description: "Adjust the regions or choose a new-body operation."
   },
   SKETCH_NOT_FOUND: {
     title: "Sketch is no longer available.",
@@ -204,6 +180,12 @@ export function containsInternalText(value: string): boolean {
 }
 
 function getPatternCopy(code: string): DiagnosticCopy | undefined {
+  if (code.startsWith("SKETCH_REGION_")) {
+    return {
+      title: "Region selection needs repair.",
+      description: "Review the sketch and select valid material regions."
+    };
+  }
   if (code.includes("CONSUMED") && code.includes("BODY")) {
     return consumedTargetCopy();
   }

@@ -5,7 +5,7 @@ import type {
   PatternDirectionRef,
   PatternRotationAxisRef,
   SketchPathRef,
-  SketchProfileRef
+  SketchProfileRefV22
 } from "@web-cad/cad-protocol";
 import type {
   FeatureCircularPatternForm,
@@ -111,7 +111,7 @@ export interface SolidEditorChoices {
   readonly targetBodies?: readonly SolidChoice<string>[];
   readonly seedBodies?: readonly SolidChoice<string>[];
   readonly axes?: readonly SolidChoice<string>[];
-  readonly profiles?: readonly SolidChoice<SketchProfileRef>[];
+  readonly profiles?: readonly SolidChoice<SketchProfileRefV22>[];
   readonly paths?: readonly SolidChoice<SketchPathRef>[];
   readonly sweepPaths?: readonly SolidChoice<SweepPathChoiceValue>[];
   readonly loftSections?: readonly SolidChoice<LoftSection>[];

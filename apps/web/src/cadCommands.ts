@@ -95,6 +95,7 @@ import type {
   SketchEntityKind,
   SketchPathRef,
   SketchProfileRef,
+  SketchProfileRefV22,
   SketchSetEntityConstructionOp,
   SketchId,
   SketchPlane,
@@ -340,11 +341,11 @@ export interface FeatureSweepForm {
 }
 
 export interface FeatureCompositeExtrudeForm extends FeatureExtrudeForm {
-  readonly profile: SketchProfileRef;
+  readonly profile: SketchProfileRefV22;
 }
 
 export interface FeatureCompositeRevolveForm extends FeatureRevolveForm {
-  readonly profile: SketchProfileRef;
+  readonly profile: SketchProfileRefV22;
 }
 
 export interface FeatureCompositeSweepForm extends Omit<
@@ -1289,7 +1290,7 @@ export function buildFeatureUpdateExtrudeOp(
 
 export function buildFeatureUpdateCompositeExtrudeOp(
   id: string,
-  profile: SketchProfileRef,
+  profile: SketchProfileRefV22,
   depth?: number,
   side?: FeatureExtrudeSide
 ): FeatureUpdateExtrudeCommandInput {
@@ -1315,7 +1316,7 @@ export function buildFeatureUpdateRevolveOp(
 
 export function buildFeatureUpdateCompositeRevolveOp(
   id: string,
-  profile: SketchProfileRef,
+  profile: SketchProfileRefV22,
   angleDegrees?: number
 ): FeatureUpdateRevolveCommandInput {
   return {
