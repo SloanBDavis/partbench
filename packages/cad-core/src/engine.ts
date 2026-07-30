@@ -561,6 +561,7 @@ export {
   createResolvedRegionRevolveRecipe,
   resolveRegionRevolveProfile
 } from "./regionRevolveProfile";
+export { validateRegisteredV22RegionSource } from "./v19RegionPolicyRegistry";
 import {
   createProjectExactExport,
   createProjectExportReadiness

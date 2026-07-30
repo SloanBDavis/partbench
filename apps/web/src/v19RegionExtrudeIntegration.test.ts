@@ -2,7 +2,9 @@ import { CadEngine } from "@web-cad/cad-core";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  createEmptyDerivedGeometrySnapshot,
   deriveGeometrySourceMesh,
+  DerivedGeometryService,
   type DerivedBooleanExtrudeGeometrySource
 } from "./derivedGeometry";
 import { createExactMetadataRuntimeInput } from "./derivedExactMetadata";
@@ -179,7 +181,83 @@ describe("V19 region extrude integration", () => {
       });
     }
   );
+
+  it("evicts display geometry when an authored region becomes invalid", async () => {
+    const engine = createRegionExtrudeEngine();
+    const booleanExtrudes = vi.fn(async ({ id }: { readonly id: string }) =>
+      createMeshResult(id)
+    );
+    const invalidateDerivedWork = vi.fn();
+    let snapshot = createEmptyDerivedGeometrySnapshot();
+    const service = new DerivedGeometryService({
+      runtime: {
+        booleanExtrudes,
+        invalidateDerivedWork
+      } as unknown as DerivedGeometryRuntime,
+      onChange(next) {
+        snapshot = next;
+      }
+    });
+
+    service.reconcile(readRegionExtrudeSources(engine));
+    await flushPromises();
+    expect(snapshot.meshes.map((mesh) => mesh.id)).toEqual(["body_region"]);
+
+    engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "hole_a",
+        kind: "circle",
+        center: [20, 0],
+        radius: 4,
+        construction: false
+      }
+    });
+    const blockedSources = readRegionExtrudeSources(engine);
+    expect(blockedSources[0]?.placementError).toContain(
+      "no longer forms one valid material region"
+    );
+    service.reconcile(blockedSources);
+
+    expect(snapshot.meshes).toEqual([]);
+    expect(snapshot.entries).toMatchObject([
+      { objectId: "body_region", status: "unsupported" }
+    ]);
+    expect(booleanExtrudes).toHaveBeenCalledTimes(1);
+    expect(invalidateDerivedWork).toHaveBeenCalledWith(
+      "display",
+      "body_region",
+      expect.any(Number)
+    );
+  });
 });
+
+function readRegionExtrudeSources(engine: CadEngine) {
+  const structure = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.structure" }
+  });
+  if (!structure.ok || structure.query !== "project.structure") {
+    throw new Error("Expected project structure.");
+  }
+  return createExtrudeDerivedGeometrySources(
+    structure.features,
+    [...engine.getDocument().sketches.values()].map((sketch) => ({
+      id: sketch.id,
+      name: sketch.name,
+      plane: sketch.plane,
+      attachment: sketch.attachment,
+      entities: [...sketch.entities.values()]
+    }))
+  );
+}
+
+async function flushPromises(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
 
 function createRegionExtrudeEngine(secondHole = false): CadEngine {
   const engine = new CadEngine();

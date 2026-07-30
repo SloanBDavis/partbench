@@ -10,7 +10,8 @@ import {
   createResolvedWireRevolveRecipe,
   resolveMirrorPlaneFrame,
   resolvePatternDirectionFrame,
-  resolvePatternRotationAxisFrame
+  resolvePatternRotationAxisFrame,
+  validateRegisteredV22RegionSource
 } from "@web-cad/cad-core";
 import type {
   CadGeneratedFaceReference,
@@ -715,26 +716,7 @@ function createBooleanSourceForFeature(
     const sketch = sketches.find(
       (candidate) => candidate.id === feature.sketchId
     );
-    const tools = sketch
-      ? regionProfile.regions.map((region, regionIndex) =>
-          createRegionNewBodyExtrudeSource(
-            {
-              id: feature.id,
-              bodyId: `${feature.bodyId}:region:${regionIndex}`,
-              depth: feature.depth,
-              side: feature.side
-            },
-            {
-              kind: "regions",
-              sketchId: regionProfile.sketchId,
-              regions: [region]
-            },
-            sketch,
-            generatedFacesByKey
-          )
-        )
-      : [];
-    if (!target || tools.length !== regionProfile.regions.length) {
+    if (!target || !sketch) {
       return {
         id: feature.bodyId,
         kind: "extrudeBoolean",
@@ -744,6 +726,34 @@ function createBooleanSourceForFeature(
         placementError: `${feature.operationMode === "add" ? "Add" : "Cut"} feature ${feature.id} cannot be displayed because its target or exact region tools are unavailable.`
       };
     }
+    const validation = validateRegisteredV22RegionSource(regionProfile, {
+      id: sketch.id,
+      entities: new Map(sketch.entities.map((entity) => [entity.id, entity]))
+    });
+    if (!validation.ok) {
+      return {
+        id: feature.bodyId,
+        kind: "extrudeBoolean",
+        operation: operationMode,
+        target,
+        tool: createUnavailableExtrudeSource(feature.bodyId),
+        placementError: `${feature.operationMode === "add" ? "Add" : "Cut"} feature ${feature.id} cannot be displayed because its exact region tools are unavailable.`
+      };
+    }
+    const tools = validation.normalizedProfile.regions.map(
+      (region, regionIndex) =>
+        createRegionMaterialExtrudeSource(
+          {
+            id: feature.id,
+            bodyId: `${feature.bodyId}:region:${regionIndex}`,
+            depth: feature.depth,
+            side: feature.side
+          },
+          region,
+          sketch,
+          generatedFacesByKey
+        )
+    );
     return tools.reduce<
       DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource
     >(
@@ -1035,13 +1045,33 @@ function createRegionNewBodyExtrudeSource(
   sketch: SketchSnapshot,
   generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>
 ): DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource {
-  const region = profile.regions[0];
-  if (!region || profile.regions.length !== 1) {
+  const validation = validateRegisteredV22RegionSource(profile, {
+    id: sketch.id,
+    entities: new Map(sketch.entities.map((entity) => [entity.id, entity]))
+  });
+  if (!validation.ok || validation.normalizedProfile.regions.length !== 1) {
     return createUnavailableExtrudeSource(
       feature.bodyId,
-      `Region new-body extrude feature ${feature.id} requires exactly one material region.`
+      `Region new-body extrude feature ${feature.id} no longer forms one valid material region.`
     );
   }
+  return createRegionMaterialExtrudeSource(
+    feature,
+    validation.normalizedProfile.regions[0],
+    sketch,
+    generatedFacesByKey
+  );
+}
+
+function createRegionMaterialExtrudeSource(
+  feature: Pick<
+    Extract<CadFeatureSummary, { kind: "extrude" }>,
+    "id" | "bodyId" | "depth" | "side"
+  >,
+  region: SketchRegionsProfileRef["regions"][number],
+  sketch: SketchSnapshot,
+  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>
+): DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource {
   const outer = createRegionLoopExtrudeSource(
     feature,
     region.outer,
