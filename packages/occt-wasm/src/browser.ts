@@ -1,3 +1,5 @@
+/// <reference path="./vite-assets.d.ts" />
+
 import ocFullJS from "opencascade.js/dist/opencascade.full.js";
 import ocFullWasmUrl from "opencascade.js/dist/opencascade.full.wasm?url";
 import type { OpenCascadeInstance } from "opencascade.js";
