@@ -6,7 +6,6 @@ import type {
   CadTopologyIdentitySourceSnapshot,
   CurrentSketchConstraintKind,
   FeatureExtrudeOperationMode,
-  FeatureExtrudeSide,
   SketchConstraintEntry,
   SketchConstraintKind,
   SketchDimensionEntry,
@@ -23,7 +22,6 @@ import type {
   SketchId,
   SketchEntitySnapshot,
   SketchPointTarget,
-  SketchPointTargetRole,
   SketchSnapshot,
   TopologyCommandTargetReadinessQueryResponse
 } from "@web-cad/cad-protocol";
@@ -54,22 +52,6 @@ export interface BooleanTargetBodyOption {
 export interface BooleanOperationStatus {
   readonly available: boolean;
   readonly message: string;
-}
-
-export function getExtrudeSideForOperationMode(
-  sketch: SketchSnapshot,
-  operationMode: FeatureExtrudeOperationMode,
-  currentSide: FeatureExtrudeSide
-): FeatureExtrudeSide {
-  if (!sketch.attachment) {
-    return currentSide;
-  }
-
-  if (operationMode === "cut") {
-    return "negative";
-  }
-
-  return currentSide === "negative" ? "positive" : currentSide;
 }
 
 export function getPreferredBooleanTargetBodyId(
@@ -868,20 +850,6 @@ export function isSketchConstraintRelatedToEntity(
   }
 
   return constraint.entityId === entityId;
-}
-
-export function getDefaultSketchPointTargetRole(
-  entity: SketchEntitySnapshot | undefined
-): SketchPointTargetRole {
-  if (entity?.kind === "line") {
-    return "start";
-  }
-
-  if (entity?.kind === "point") {
-    return "position";
-  }
-
-  return "center";
 }
 
 export function sketchPointTargetsEqual(

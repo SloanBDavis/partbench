@@ -12,7 +12,6 @@ import type {
 import {
   constraintEntryToDraftV19,
   dimensionEntryToDraftV19,
-  type SketchConstraintDefinitionV19,
   type SketchConstraintDraftV19,
   type SketchDimensionDraftV19
 } from "./sketchIntentEditorModel";
@@ -185,12 +184,6 @@ export function buildEditConstraintOpsV19(
 
 export function buildDeleteConstraintOpV19(id: string): CadOp {
   return { op: "sketch.constraint.delete", id };
-}
-
-export function constraintDefinitionCanCreateV19(
-  definition: SketchConstraintDefinitionV19
-): boolean {
-  return definition.kind !== "angle";
 }
 
 function dimensionValueInput(

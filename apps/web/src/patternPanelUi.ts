@@ -6,12 +6,6 @@ import type {
   PatternRotationAxisRef
 } from "@web-cad/cad-protocol";
 
-export const PATTERN_AXIS_OPTIONS: readonly FeaturePatternAxis[] = [
-  "x",
-  "y",
-  "z"
-];
-
 export type PatternPanelState =
   | {
       readonly mode: "create";

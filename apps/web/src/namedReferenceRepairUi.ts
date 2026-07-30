@@ -133,31 +133,6 @@ export function createNamedReferenceRepairUiState(input: {
   };
 }
 
-export function formatNamedReferenceRepairHealthStatus(
-  status: CadReferenceHealthStatus
-): string {
-  switch (status) {
-    case "active":
-      return "Active";
-    case "replaced":
-      return "Replaced";
-    case "stale":
-      return "Stale";
-    case "consumed":
-      return "Consumed";
-    case "ambiguous":
-      return "Ambiguous";
-    case "missing":
-      return "Missing";
-    case "unsupported":
-      return "Unsupported";
-    case "repair-needed":
-      return "Repair needed";
-    case "deleted":
-      return "Deleted";
-  }
-}
-
 export function formatNamedReferenceRepairBatchMessage(
   response: CadBatchResponse,
   referenceName: string

@@ -160,21 +160,6 @@ export function createProjectStorageCapabilityStatus(
   };
 }
 
-export function getProjectStorageAvailabilityLabel(
-  availability: ProjectStorageAvailability
-): string {
-  switch (availability) {
-    case "active":
-      return "Active";
-    case "available":
-      return "Available";
-    case "deferred":
-      return "Not ready yet";
-    case "unavailable":
-      return "Unavailable";
-  }
-}
-
 function hasFileText(fileConstructor: unknown): boolean {
   if (typeof fileConstructor !== "function") {
     return false;

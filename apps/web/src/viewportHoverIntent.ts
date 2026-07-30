@@ -18,14 +18,6 @@ import { formatObjectKind, getObjectDisplayName } from "./sceneObjectDisplay";
 import { formatVisibleDiagnosticMessage } from "./viewportVisibleText";
 import { parseSketchRenderId } from "./sketchRenderIds";
 
-export type ViewportHoverKind =
-  | "empty"
-  | "body"
-  | "object"
-  | "sketchEntity"
-  | "unsupported"
-  | "missing";
-
 export type ViewportHoverTone = "idle" | "ready" | "warning" | "blocked";
 
 export interface ViewportHoverDiagnostic {

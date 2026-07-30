@@ -477,14 +477,6 @@ export function validateProjectOpfsCacheIndex(
   };
 }
 
-export function formatProjectOpfsCacheDiagnostic(
-  diagnostic: ProjectOpfsCacheDiagnostic
-): string {
-  return diagnostic.detail
-    ? `${diagnostic.code}: ${diagnostic.message} ${diagnostic.detail}`
-    : `${diagnostic.code}: ${diagnostic.message}`;
-}
-
 export function getProjectOpfsCacheStatusLabel(
   status: ProjectOpfsCacheStatus
 ): string {

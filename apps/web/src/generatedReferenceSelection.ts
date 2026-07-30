@@ -240,24 +240,6 @@ export function getSelectionReferenceOperationStatus(
   };
 }
 
-export function findSelectionReferenceTopologyAnchorIdForOperation(
-  reference: Pick<CadGeneratedReference, "bodyId" | "stableId" | "kind">,
-  operation: CadSelectionReferenceOperation,
-  response: SelectionReferenceCandidatesQueryResponse | undefined
-): string | undefined {
-  const candidate = response?.candidates.find(
-    (entry) =>
-      entry.commandable &&
-      entry.commandOperations.includes(operation) &&
-      entry.target.bodyId === reference.bodyId &&
-      entry.target.stableId === reference.stableId &&
-      entry.target.kind === reference.kind &&
-      entry.target.topologyAnchorId !== undefined
-  );
-
-  return candidate?.target.topologyAnchorId;
-}
-
 export function formatSelectionReferenceOperationLabel(
   operation: CadSelectionReferenceOperation
 ): string {

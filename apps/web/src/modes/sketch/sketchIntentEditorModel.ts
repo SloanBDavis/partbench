@@ -393,18 +393,6 @@ function defaultDimensionNameV19(family: SketchDimensionFamilyV19): string {
   }
 }
 
-export function createDefaultDimensionTargetV19(
-  family: SketchDimensionFamilyV19,
-  entities: readonly SketchEntitySnapshot[],
-  preferredEntityId?: string
-): SketchDimensionTargetV22 | undefined {
-  return createDimensionTargetCandidatesV19(
-    family,
-    entities,
-    preferredEntityId
-  )[0];
-}
-
 export function createDimensionTargetCandidatesV19(
   family: SketchDimensionFamilyV19,
   entities: readonly SketchEntitySnapshot[],
@@ -790,18 +778,6 @@ export function getConstraintCreationAvailabilityV19(
         message:
           "Every eligible target already has this constraint or a conflicting relation. Edit existing intent or add different geometry."
       };
-}
-
-export function createDefaultConstraintDefinitionV19(
-  kind: SketchConstraintCreateKindV19,
-  entities: readonly SketchEntitySnapshot[],
-  preferredEntityId?: string
-): SketchConstraintDefinitionV19 | undefined {
-  return createConstraintDefinitionCandidatesV19(
-    kind,
-    entities,
-    preferredEntityId
-  )[0];
 }
 
 export function createConstraintDefinitionCandidatesV19(

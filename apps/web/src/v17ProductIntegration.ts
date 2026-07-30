@@ -12,7 +12,6 @@ import type {
   SketchProfileCandidate,
   SketchProfileCandidatesQueryResponse,
   SketchProfileDiagnostic,
-  SketchProfileRef,
   SketchSnapshot,
   Vec2
 } from "@web-cad/cad-protocol";
@@ -44,67 +43,6 @@ export function getEligibleProfileCandidates(
   return consumer === "sweep"
     ? candidates.filter((candidate) => candidate.profile.kind === "entity")
     : candidates;
-}
-
-export function findProfileCandidateKey(
-  response: SketchProfileCandidatesQueryResponse | undefined,
-  profile: SketchProfileRef
-): string | undefined {
-  return response?.candidates.find((candidate) =>
-    areSketchRefsEqual(candidate.profile, profile)
-  )?.sortKey;
-}
-
-export function findPathCandidateSelection(
-  response: SketchPathCandidatesQueryResponse | undefined,
-  path: SketchPathRef
-): { readonly key: string; readonly reversed: boolean } | undefined {
-  const exact = response?.candidates.find((candidate) =>
-    areSketchRefsEqual(candidate.path, path)
-  );
-  if (exact) return { key: exact.sortKey, reversed: false };
-  const reversed = response?.candidates.find((candidate) =>
-    areSketchRefsEqual(reverseSketchPath(candidate.path), path)
-  );
-  return reversed ? { key: reversed.sortKey, reversed: true } : undefined;
-}
-
-export function areSketchRefsEqual(
-  left: SketchProfileRef | SketchPathRef,
-  right: SketchProfileRef | SketchPathRef
-): boolean {
-  if (left.kind !== right.kind || left.sketchId !== right.sketchId)
-    return false;
-  if (left.kind === "entity" && right.kind === "entity") {
-    const leftOrientation =
-      "orientation" in left ? left.orientation : undefined;
-    const rightOrientation =
-      "orientation" in right ? right.orientation : undefined;
-    return (
-      left.entityId === right.entityId && leftOrientation === rightOrientation
-    );
-  }
-  if (left.kind === "wire" && right.kind === "wire") {
-    return segmentsEqual(left.segments, right.segments);
-  }
-  if (left.kind === "chain" && right.kind === "chain") {
-    return segmentsEqual(left.segments, right.segments);
-  }
-  return false;
-}
-
-function segmentsEqual(
-  left: readonly OrientedSketchSegmentRef[],
-  right: readonly OrientedSketchSegmentRef[]
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every(
-      (segment, index) =>
-        segment.entityId === right[index]?.entityId &&
-        segment.orientation === right[index]?.orientation
-    )
-  );
 }
 
 function chooseCandidate<T extends { readonly sortKey: string }>(
@@ -145,19 +83,6 @@ function reverseSegment(
     entityId: segment.entityId,
     orientation: segment.orientation === "forward" ? "reverse" : "forward"
   };
-}
-
-export function formatSketchProfileMembership(
-  profile: SketchProfileRef
-): string {
-  return profile.kind === "entity"
-    ? profile.entityId
-    : profile.segments
-        .map(
-          (segment, index) =>
-            `${index + 1}. ${segment.entityId} (${segment.orientation})`
-        )
-        .join(" · ");
 }
 
 export function formatSketchPathMembership(path: SketchPathRef): string {

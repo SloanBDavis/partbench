@@ -698,33 +698,6 @@ export function formatFeatureLine(
   return `${formatExtrudeOperationMode(feature.operationMode)} / ${feature.profileKind} / ${feature.depth} ${units} / ${feature.side}${target}`;
 }
 
-export function formatFeatureSourceLine(
-  feature: AuthoredStructureFeature
-): string {
-  if (feature.kind === "chamfer" || feature.kind === "fillet") {
-    return `Target ${feature.targetBodyId} / ${formatEdgeFeatureReference(
-      feature
-    )}`;
-  }
-
-  if (feature.kind === "mirror") {
-    return `Seed ${feature.seedBodyId} / ${formatMirrorPlaneSource(feature)} plane`;
-  }
-
-  if (feature.kind === "sweep") {
-    return `Profile ${feature.profile.sketchId}/${feature.profile.entityId} / path ${feature.path.sketchId}`;
-  }
-
-  if (feature.kind === "loft") {
-    return `Sections ${feature.sections.map((section) => `${section.sketchId}/${section.entityId}`).join(", ")}`;
-  }
-
-  const entityId =
-    feature.kind === "hole" ? feature.circleEntityId : feature.entityId;
-
-  return `Sketch ${feature.sketchId} / entity ${entityId}`;
-}
-
 function formatMirrorPlaneSource(
   feature: Extract<CadFeatureSummary, { readonly kind: "mirror" }>
 ): string {

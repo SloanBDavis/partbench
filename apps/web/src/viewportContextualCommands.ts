@@ -22,8 +22,7 @@ import {
 } from "./edgeFinishUi";
 import {
   buildSketchOnFaceForm,
-  createSketchOnFaceDefaultName,
-  formatGeneratedReferenceKind
+  createSketchOnFaceDefaultName
 } from "./generatedReferenceUi";
 import {
   formatSelectionReferenceOperationLabel,
@@ -793,12 +792,4 @@ function getActionRank(id: ViewportContextualCommandActionId): number {
     default:
       return 8;
   }
-}
-
-export function formatViewportContextualTarget(
-  reference: CadGeneratedReference | undefined
-): string {
-  return reference
-    ? `${formatGeneratedReferenceKind(reference.kind)}: ${reference.label}`
-    : "Selected reference";
 }

@@ -110,16 +110,6 @@ export function saveWorkbenchUiPreferences(
   }
 }
 
-export function resetWorkbenchUiPreferences(
-  storage: UiPreferencesStorage | undefined = getBrowserStorage()
-): void {
-  try {
-    storage?.removeItem?.(WORKBENCH_UI_PREFERENCES_KEY);
-  } catch {
-    // Preference storage must not prevent startup.
-  }
-}
-
 function isPreferenceRecord(value: unknown): value is {
   readonly version: 1;
   readonly leftDockWidth: number;
