@@ -44,100 +44,79 @@ const COPY_BY_CODE: Readonly<Record<string, DiagnosticCopy>> = {
   },
   SKETCH_REGION_PROFILE_EMPTY: {
     title: "No region is selected.",
-    description: "The feature does not contain a material region.",
-    recovery: "Select at least one complete region."
+    description: "Select at least one complete region."
   },
   SKETCH_REGION_SKETCH_MISMATCH: {
     title: "Regions come from different sketches.",
-    description: "All selected boundaries must belong to the same sketch.",
-    recovery: "Select regions from one sketch."
+    description: "Select regions from one sketch."
   },
   SKETCH_REGION_LOOP_OPEN: {
     title: "Region loop is open.",
-    description: "The selected boundary does not form a closed loop.",
-    recovery: "Connect the open endpoints, then discover regions again."
+    description: "Connect the open endpoints, then discover regions again."
   },
   SKETCH_REGION_LOOP_INTERSECTION: {
     title: "Region boundary intersects itself.",
-    description: "A selected loop crosses itself.",
-    recovery: "Remove the crossing before using this region."
+    description: "Remove the crossing before using this region."
   },
   SKETCH_REGION_BOUNDARY_TOUCHING: {
     title: "Region boundaries touch.",
-    description: "Outer and inner boundaries must remain separated.",
-    recovery: "Move or resize the touching geometry."
+    description: "Move or resize the touching geometry."
   },
   SKETCH_REGION_HOLE_OUTSIDE: {
     title: "A hole is outside its region.",
-    description:
-      "Every inner loop must remain fully inside the outer boundary.",
-    recovery: "Move or resize the inner loop."
+    description: "Move or resize the inner loop."
   },
   SKETCH_REGION_HOLES_OVERLAP: {
     title: "Region holes overlap.",
-    description: "Inner loops must be disjoint.",
-    recovery: "Separate the overlapping loops."
+    description: "Separate the overlapping loops."
   },
   SKETCH_REGION_MATERIAL_OVERLAP: {
     title: "Selected regions overlap.",
-    description: "Material regions used together must be disjoint.",
-    recovery: "Select non-overlapping regions."
+    description: "Select non-overlapping regions."
   },
   SKETCH_REGION_NESTING_UNSUPPORTED: {
     title: "Region nesting is unsupported.",
-    description: "This release supports one outer boundary with inner holes.",
-    recovery: "Split the nested geometry into supported regions."
+    description: "Split nested geometry into separate regions."
   },
   SKETCH_REGION_COMPLEXITY_LIMIT: {
     title: "Region is too complex.",
-    description: "The sketch exceeds the bounded region-analysis limit.",
-    recovery: "Simplify the sketch or narrow the submitted geometry."
+    description: "Simplify the sketch or narrow the selected geometry."
   },
   SKETCH_REGION_ENTITY_MISSING: {
     title: "Region geometry is missing.",
-    description: "A saved boundary no longer exists.",
-    recovery: "Edit the feature and select a current region."
+    description: "Edit the feature and select a current region."
   },
   SKETCH_REGION_ENTITY_UNSUPPORTED: {
     title: "Region geometry is unsupported.",
-    description:
-      "A boundary uses geometry that cannot define a material region.",
-    recovery: "Use rectangles, circles, lines, or circular arcs."
+    description: "Use rectangles, circles, lines, or circular arcs."
   },
   SKETCH_REGION_CONSTRUCTION_ENTITY: {
     title: "Construction geometry cannot bound material.",
-    description: "A selected boundary is marked as construction geometry.",
-    recovery: "Use ordinary sketch geometry for the boundary."
+    description: "Use ordinary sketch geometry for the boundary."
   },
   SKETCH_REGION_ENTITY_REPEATED: {
     title: "Region boundary is repeated.",
-    description: "One curve appears in more than one submitted loop.",
-    recovery: "Use each boundary curve once."
+    description: "Use each boundary curve once."
   },
   SKETCH_REGION_LOOP_AREA_TOO_SMALL: {
     title: "Region is too small.",
-    description: "The bounded area is below modeling tolerance.",
-    recovery: "Increase the region size."
+    description: "Increase the region size."
   },
   SKETCH_REGION_SOURCE_REVISION_STALE: {
     title: "Region selection is out of date.",
-    description: "The sketch changed after these regions were discovered.",
-    recovery: "Discover and select the regions again."
+    description: "Discover and select the regions again."
   },
   SKETCH_REGION_CURSOR_INVALID: {
     title: "Region results changed.",
-    description: "The next page no longer matches the current sketch.",
-    recovery: "Restart region discovery."
+    description: "Restart region discovery."
   },
   SKETCH_REGION_CONSUMER_UNSUPPORTED: {
     title: "This feature cannot use the selected regions.",
-    description: "The requested operation does not support this region set.",
-    recovery: "Choose a compatible operation or region selection."
+    description: "Choose a compatible operation or region selection."
   },
   SKETCH_REGION_RESULT_NOT_SINGLE_SOLID: {
     title: "The result would not be one solid.",
-    description: "This operation requires one connected solid result.",
-    recovery: "Adjust the regions or choose a new-body operation."
+    description: "Adjust the regions or choose a new-body operation."
   },
   SKETCH_NOT_FOUND: {
     title: "Sketch is no longer available.",
