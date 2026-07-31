@@ -1,4 +1,7 @@
-import { createCadMcpServer, type CadMcpExecutionPort } from "@web-cad/mcp-adapter";
+import {
+  createCadMcpServer,
+  type CadMcpExecutionPort
+} from "@web-cad/mcp-adapter";
 import type { CadOpsAgentCurrentSelectionResponse } from "@web-cad/agent-adapter";
 import { describe, expect, it } from "vitest";
 import { createMcpStdioSession } from "./index";
@@ -22,7 +25,9 @@ describe("V20 async stdio", () => {
     const first = session.handleLineAsync(selectionCall("first"));
     const second = session.handleLineAsync(selectionCall("second"));
 
-    pending.get("mcp_jsonrpc_second")?.(selectionResponse("mcp_jsonrpc_second"));
+    pending.get("mcp_jsonrpc_second")?.(
+      selectionResponse("mcp_jsonrpc_second")
+    );
     expect(JSON.parse((await second) ?? "null")).toMatchObject({
       id: "second",
       result: { structuredContent: { requestId: "mcp_jsonrpc_second" } }
@@ -49,7 +54,9 @@ function selectionCall(id: string): string {
   });
 }
 
-function selectionResponse(requestId: string): CadOpsAgentCurrentSelectionResponse {
+function selectionResponse(
+  requestId: string
+): CadOpsAgentCurrentSelectionResponse {
   return {
     ok: true,
     requestId,
