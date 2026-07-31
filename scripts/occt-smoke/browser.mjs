@@ -1,7 +1,8 @@
-import { createReadStream, statSync } from "node:fs";
+import { createReadStream, readdirSync, statSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createServer as createNetServer } from "node:net";
+import { homedir } from "node:os";
 import { extname, join, resolve } from "node:path";
 import {
   parseSmokePageError,
@@ -411,6 +412,7 @@ function getBrowserCandidates() {
   }
 
   return [
+    ...getCachedPlaywrightBrowserCandidates(),
     "google-chrome",
     "google-chrome-stable",
     "chromium",
@@ -418,6 +420,28 @@ function getBrowserCandidates() {
     "microsoft-edge",
     "microsoft-edge-stable"
   ];
+}
+
+function getCachedPlaywrightBrowserCandidates() {
+  const root =
+    process.env.PLAYWRIGHT_BROWSERS_PATH ||
+    join(homedir(), ".cache", "ms-playwright");
+  try {
+    return readdirSync(root)
+      .sort()
+      .reverse()
+      .flatMap((entry) => [
+        join(root, entry, "chrome-linux64", "chrome"),
+        join(
+          root,
+          entry,
+          "chrome-headless-shell-linux64",
+          "chrome-headless-shell"
+        )
+      ]);
+  } catch {
+    return [];
+  }
 }
 
 function findOnPath(command) {
