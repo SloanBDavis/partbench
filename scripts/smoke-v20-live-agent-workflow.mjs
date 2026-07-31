@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { clearTimeout } from "node:timers";
 import { fileURLToPath } from "node:url";
 import {
   connectToBrowser,
@@ -334,7 +335,8 @@ async function runWorkflow(client, mcpClient) {
   await browser.clickElement('[data-tree-select^="feature:"]');
   const selectedObject = content(await mcpClient.callTool("cad.get_selection"));
   assert(
-    selectedObject.selection?.kind === "body" && selectedObject.selection.bodyId,
+    selectedObject.selection?.kind === "body" &&
+      selectedObject.selection.bodyId,
     "semantic body selection"
   );
   const finalIdentity = selectedObject.sourceIdentity;

@@ -27,9 +27,12 @@ export function LocalAgentSessionController({
     response: CadOpsAgentSuccessResponse
   ) => Promise<void>;
 }) {
-  const selectionRef = useRef(selection);
+  const latestRef = useRef({ selection, publishCommit });
   const sessionRef = useRef<LocalAgentSession | null>(null);
-  selectionRef.current = selection;
+
+  useEffect(() => {
+    latestRef.current = { selection, publishCommit };
+  }, [publishCommit, selection]);
 
   useEffect(() => {
     const token = readLocalAgentSessionToken(window.location.hash);
@@ -38,8 +41,8 @@ export function LocalAgentSessionController({
       token,
       engine,
       executor,
-      readSelection: () => selectionRef.current,
-      publishCommit
+      readSelection: () => latestRef.current.selection,
+      publishCommit: (response) => latestRef.current.publishCommit(response)
     });
     sessionRef.current = session;
     const detach = attachLocalAgentSession(session);
@@ -49,7 +52,7 @@ export function LocalAgentSessionController({
       sessionRef.current = null;
       void session.dispose();
     };
-  }, [engine, executor, publishCommit]);
+  }, [engine, executor]);
 
   useEffect(() => {
     sessionRef.current?.refreshSourceIdentity();

@@ -13,7 +13,10 @@ export function useEscapeEditorContributor(input: {
   readonly onRequestDirtyGuard: () => void;
 }): void {
   const latest = useRef(input);
-  latest.current = input;
+
+  useEffect(() => {
+    latest.current = input;
+  }, [input]);
 
   useEffect(() => {
     return registerEscapeEditorContributor({

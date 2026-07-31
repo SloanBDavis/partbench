@@ -19,7 +19,6 @@ import {
   type BodyMeasurementsSnapshot,
   type ObjectMeasurementsSnapshot
 } from "@web-cad/cad-core";
-import type { CadOpsAgentSuccessResponse } from "@web-cad/agent-adapter";
 import type {
   BodyGeneratedReferencesQueryResponse,
   CadBodyGeneratedReferenceEvidenceSnapshot,
@@ -2567,17 +2566,15 @@ export function App() {
       }),
     [commandWorker, getDerivedGeometryRuntime]
   );
-  const publishAgentCommit = useEffectEvent(
-    async (_response: CadOpsAgentSuccessResponse) => {
-      emitGeometryDiagnosticEvent({
-        phase: "command-committed",
-        timestamp: performance.now()
-      });
-      await syncDocument();
-      successfulCommitCountRef.current += 1;
-      setProjectFile((current) => markProjectFileDirty(current));
-    }
-  );
+  async function publishAgentCommit() {
+    emitGeometryDiagnosticEvent({
+      phase: "command-committed",
+      timestamp: performance.now()
+    });
+    await syncDocument();
+    successfulCommitCountRef.current += 1;
+    setProjectFile((current) => markProjectFileDirty(current));
+  }
   const readSketchCurveEditReadinessAsync = useCallback(
     async (proposal: SketchCurveEditProposal, signal: AbortSignal) => {
       const client = await getSketchCurveEditQueryClient();
@@ -8993,8 +8990,7 @@ export function App() {
     solidHoleTargetChoices.length,
     solidPathChoices.length,
     solidProfileChoices,
-    workbenchUi.activeEditor,
-    workbenchUi.activeEditorDirty
+    workbenchUi.activeEditor
   ]);
   const workbenchActionRunnerRef = useRef<(id: UiActionId) => void>(
     () => undefined

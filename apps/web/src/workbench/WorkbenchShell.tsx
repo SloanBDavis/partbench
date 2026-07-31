@@ -106,9 +106,8 @@ export function WorkbenchShell({
       setEditorDrawerDismissed(false);
       setOpenDrawer("right");
     }
-    if (!activeEditor) setEditorDrawerDismissed(false);
     previousEditorRef.current = editorKey;
-  }, [activeEditor, editorKey, measuredWidth, setOpenDrawer]);
+  }, [editorKey, measuredWidth, setOpenDrawer]);
 
   const rightDockSuppressed = mode === "project" && !projectDetailsOpen;
   const layout = resolveWorkbenchLayout({
