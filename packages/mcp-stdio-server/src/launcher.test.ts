@@ -258,6 +258,54 @@ describe("local agent launcher", () => {
         error: { code: "AGENT_COMMIT_REJECTED" }
       });
 
+      const previewFailure = launcher.relay.execute({
+        requestId: "preview-failure",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        batch: { version: "cadops.v1", mode: "commit", ops: [] }
+      });
+      const previewPolled = await post(
+        launcher,
+        `${LOCAL_AGENT_RELAY_PATH}/poll`,
+        { clientId: "owner" }
+      );
+      const previewRelayRequestId = readRelayRequestId(previewPolled.body);
+      const previewResponse = {
+        requestId: "preview-failure",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        cadOpsVersion: "cadops.v1",
+        mode: "dryRun",
+        createdIds: [],
+        modifiedIds: [],
+        deletedIds: [],
+        warnings: [],
+        review: {}
+      };
+      expect(
+        await post(launcher, `${LOCAL_AGENT_RELAY_PATH}/respond`, {
+          clientId: "owner",
+          requestId: previewRelayRequestId,
+          response: {
+            ...previewResponse,
+            ok: true,
+            semanticDiff: {}
+          }
+        })
+      ).toMatchObject({ status: 400 });
+      await post(launcher, `${LOCAL_AGENT_RELAY_PATH}/respond`, {
+        clientId: "owner",
+        requestId: previewRelayRequestId,
+        response: {
+          ...previewResponse,
+          ok: false,
+          error: { code: "INVALID_BATCH", message: "invalid preview" },
+          errors: []
+        }
+      });
+      await expect(previewFailure).resolves.toMatchObject({
+        ok: false,
+        mode: "dryRun"
+      });
+
       const selectionResponse = launcher.relay.getCurrentSelection({
         requestId: "validate-selection"
       } as CadOpsAgentCurrentSelectionRequest);

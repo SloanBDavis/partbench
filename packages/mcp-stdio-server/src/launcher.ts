@@ -659,7 +659,10 @@ function isValidRelayResponse(
   switch (pending.request.method) {
     case "execute":
       return (
-        value.mode === pending.request.request.batch?.mode &&
+        (value.mode === pending.request.request.batch?.mode ||
+          (pending.request.request.batch?.mode === "commit" &&
+            value.ok === false &&
+            value.mode === "dryRun")) &&
         Array.isArray(value.createdIds) &&
         Array.isArray(value.modifiedIds) &&
         Array.isArray(value.deletedIds) &&
