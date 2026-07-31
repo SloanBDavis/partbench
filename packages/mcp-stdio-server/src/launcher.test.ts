@@ -333,6 +333,30 @@ describe("local agent launcher", () => {
     });
     await secondFixture.remove();
   });
+
+  it("disconnects relay ownership when an outstanding browser poll is lost", async () => {
+    const fixture = await createStaticFixture();
+    const launcher = await startLocalAgentLauncherForTest(fixture.root);
+
+    try {
+      await post(launcher, `${LOCAL_AGENT_RELAY_PATH}/connect`, {
+        clientId: "owner"
+      });
+      await abortLongPoll(launcher, { clientId: "owner" });
+
+      await expect(
+        launcher.relay.query({
+          requestId: "after-lost-poll"
+        } as CadOpsAgentQueryRequest)
+      ).resolves.toMatchObject({
+        requestId: "after-lost-poll",
+        error: { code: "AGENT_SESSION_DISCONNECTED" }
+      });
+    } finally {
+      await launcher.close();
+      await fixture.remove();
+    }
+  });
 });
 
 async function createStaticFixture(): Promise<{
@@ -428,6 +452,35 @@ async function post(
     request.on("error", rejectResponse);
     request.end(bytes);
   });
+}
+
+async function abortLongPoll(
+  launcher: LocalAgentLauncher,
+  body: unknown
+): Promise<void> {
+  const bytes = Buffer.from(JSON.stringify(body));
+  await new Promise<void>((resolveClosed, rejectClosed) => {
+    const request = httpRequest({
+      host: "127.0.0.1",
+      port: launcher.port,
+      path: `${LOCAL_AGENT_RELAY_PATH}/poll`,
+      method: "POST",
+      headers: {
+        Host: `127.0.0.1:${launcher.port}`,
+        Origin: launcher.origin,
+        [LOCAL_AGENT_TOKEN_HEADER]: launcher.sessionToken,
+        "Content-Type": "application/json",
+        "Content-Length": bytes.byteLength
+      }
+    });
+    request.on("error", (error: NodeJS.ErrnoException) => {
+      if (error.code !== "ECONNRESET") rejectClosed(error);
+    });
+    request.on("close", resolveClosed);
+    request.end(bytes);
+    setTimeout(() => request.destroy(), 20);
+  });
+  await new Promise((resolve) => setTimeout(resolve, 20));
 }
 
 function readRelayRequestId(body: unknown): string {

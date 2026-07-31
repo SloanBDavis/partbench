@@ -356,6 +356,22 @@ describe("local agent approval", () => {
       expect(fixture.engine.getDocument().objects.has("disconnected-box")).toBe(
         false
       );
+
+      const approveAll = createSession(10);
+      approveAll.session.setApprovalMode("approveAll");
+      const immediate = approveAll.session.execute(
+        createBoxRequest("disconnected-approve-all-box")
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await approveAll.session.dispose();
+      await expect(immediate).resolves.toMatchObject({
+        error: { code: "AGENT_SESSION_DISCONNECTED" }
+      });
+      expect(
+        approveAll.engine
+          .getDocument()
+          .objects.has("disconnected-approve-all-box")
+      ).toBe(false);
     } finally {
       vi.unstubAllGlobals();
     }

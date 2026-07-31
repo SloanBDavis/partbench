@@ -171,10 +171,14 @@ export interface CadMcpExecutionPort {
   ): Promise<CadOpsAgentQueryResponse | CadAgentSessionErrorResponse>;
   inspectV8ProjectSurface(
     request: Parameters<CadOpsAgentAdapter["inspectV8ProjectSurface"]>[0]
-  ): Promise<CadOpsAgentV8ProjectSurfaceResponse | CadAgentSessionErrorResponse>;
+  ): Promise<
+    CadOpsAgentV8ProjectSurfaceResponse | CadAgentSessionErrorResponse
+  >;
   getCurrentSelection(
     request: CadOpsAgentCurrentSelectionRequest
-  ): Promise<CadOpsAgentCurrentSelectionResponse | CadAgentSessionErrorResponse>;
+  ): Promise<
+    CadOpsAgentCurrentSelectionResponse | CadAgentSessionErrorResponse
+  >;
 }
 
 const ADAPTER_VERSION: AgentAdapterVersion = "web-cad.agent-adapter.v1";
@@ -191,7 +195,9 @@ export class CadMcpServer {
 
   constructor(options: CadMcpServerOptions = {}) {
     if (options.adapter && options.executionPort) {
-      throw new Error("CadMcpServer accepts either adapter or executionPort, not both.");
+      throw new Error(
+        "CadMcpServer accepts either adapter or executionPort, not both."
+      );
     }
     this.#executionPort = options.executionPort;
     this.#adapter = options.executionPort
@@ -1688,9 +1694,7 @@ export class CadMcpServer {
     return createToolResult(request.name, response, !response.ok);
   }
 
-  #callCurrentSelection(
-    request: CadMcpToolCallRequest
-  ): CadMcpToolCallResult {
+  #callCurrentSelection(request: CadMcpToolCallRequest): CadMcpToolCallResult {
     if (!isEmptyObjectOrUndefined(request.arguments)) {
       return createInvalidArgumentsResult(
         request.name,
@@ -3949,7 +3953,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
         allowCommit: {
           type: "boolean",
           description:
-            "Must be true to allow a CadBatch with mode=commit. Dry-runs do not require this flag."
+            "Must be true for in-memory commits. Connected V20 sessions accept it for compatibility while the browser approval mode controls commits. Dry-runs do not require it."
         },
         projectHandoff: {
           type: "object",
