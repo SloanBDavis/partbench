@@ -285,11 +285,6 @@ function renderPage(
     transactions: [],
     canUndo: false,
     canRedo: false,
-    agent: {
-      connected: false,
-      approvalMode: "manualApproval",
-      approving: false
-    },
     onNew: () => undefined,
     onOpenWcad: async () => false,
     onOpenStep: async () => false,
@@ -313,9 +308,6 @@ function renderPage(
     onDeleteParameter: () => undefined,
     onUndo: () => undefined,
     onRedo: () => undefined,
-    onAgentApprovalModeChange: () => undefined,
-    onApproveAgentProposal: () => undefined,
-    onRejectAgentProposal: () => undefined,
     ...overrides
   };
 

@@ -3,11 +3,11 @@ import { minify } from "terser";
 import { defineConfig, loadEnv, type Plugin } from "vite";
 import { resolveDerivedGeometryFlags } from "./src/derivedGeometryFlags";
 
-function minifyCriticalEntry(): Plugin {
+function minifyUiJavaScript(): Plugin {
   return {
-    name: "partbench-minify-critical-entry",
+    name: "partbench-minify-ui-javascript",
     async renderChunk(code, chunk) {
-      if (!chunk.isEntry || !chunk.facadeModuleId?.match(/[/\\]index\.html$/)) {
+      if (chunk.isEntry && !chunk.facadeModuleId?.match(/[/\\]index\.html$/)) {
         return null;
       }
 
@@ -18,7 +18,7 @@ function minifyCriticalEntry(): Plugin {
         format: { comments: false }
       });
       if (!result.code) {
-        throw new Error("Terser did not emit the critical application entry.");
+        throw new Error("Terser did not emit a UI JavaScript chunk.");
       }
 
       return { code: result.code, map: null };
@@ -71,7 +71,7 @@ export default defineConfig(({ command, mode }) => {
     build: {
       rollupOptions: {
         output: {
-          plugins: [minifyCriticalEntry()]
+          plugins: [minifyUiJavaScript()]
         }
       }
     },

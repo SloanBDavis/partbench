@@ -334,7 +334,6 @@ import {
   formatVector,
   formatVolume
 } from "./sceneObjectDisplay";
-import { createQuickStartSourceBodyPlan } from "./quickStartBodies";
 import { createRenderSceneInputs } from "./renderScene";
 import { createModelingResultState } from "./modelingResultState";
 import {
@@ -388,18 +387,14 @@ import {
 import { createViewportGeneratedPlanarFaceHitCandidate } from "./viewportGeneratedFacePicking";
 import { createViewportGeneratedEdgeHitCandidate } from "./viewportGeneratedEdgePicking";
 import { resolveViewportHoverIntent } from "./viewportHoverIntent";
-import { createViewportSelectionDisplay } from "./viewportSelectionDisplay";
-import { createViewportVisualStateModel } from "./viewportVisualState";
-import { createViewportMeasurementOverlay } from "./viewportMeasurementOverlay";
+import type { ViewportSelectionDisplay } from "./viewportSelectionDisplay";
+import type { ViewportVisualStateModel } from "./viewportVisualState";
+import type { ViewportMeasurementOverlay } from "./viewportMeasurementOverlay";
 import { getHistoryKeyboardCommand } from "./viewportKeyboard";
-import {
-  clearViewportTwoTargetMeasurementSecondTargetOnSelectionChange,
-  createViewportTwoTargetMeasurementTarget,
-  createViewportTwoTargetMeasurementView,
-  isViewportTwoTargetMeasurementSessionActive,
-  updateViewportTwoTargetMeasurementSession,
-  type ViewportTwoTargetMeasurementSession,
-  type ViewportTwoTargetMeasurementTarget
+import type {
+  ViewportTwoTargetMeasurementSession,
+  ViewportTwoTargetMeasurementTarget,
+  ViewportTwoTargetMeasurementView
 } from "./viewportTwoTargetMeasurement";
 import {
   deriveModelingActions,
@@ -447,11 +442,6 @@ import {
   readLazyProjectOpfsCacheStatus
 } from "./projectOpfsCacheLazy";
 import type { SketchPanelSelectionContext } from "./sketchPanelUi";
-import type {
-  CurrentAgentSelectionInput,
-  LocalAgentSession,
-  LocalAgentSessionSnapshot
-} from "./localAgentSession";
 import { createSketchModelingSelectionContext } from "./sketchModelingSelectionContext";
 import {
   formatSketchSolverStatus,
@@ -478,6 +468,11 @@ const SolidModePanel = lazy(() =>
 const ProjectWorkspace = lazy(() =>
   import("./modes/project/ProjectWorkspace").then((module) => ({
     default: module.ProjectWorkspace
+  }))
+);
+const LocalAgentSessionController = lazy(() =>
+  import("./LocalAgentSessionController").then((module) => ({
+    default: module.LocalAgentSessionController
   }))
 );
 const SketchModeDock = lazy(() =>
@@ -2136,6 +2131,21 @@ function formatCancelledUserKinds(
   return `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
 }
 
+const EMPTY_TWO_TARGET_MEASUREMENT: ViewportTwoTargetMeasurementView = {
+  status: "idle",
+  results: [],
+  diagnostics: [],
+  prompt: "Select a first measurement target."
+};
+
+type ViewportMeasurementRuntime = {
+  readonly createOverlay: typeof import("./viewportMeasurementOverlay").createViewportMeasurementOverlay;
+  readonly createTarget: typeof import("./viewportTwoTargetMeasurement").createViewportTwoTargetMeasurementTarget;
+  readonly createView: typeof import("./viewportTwoTargetMeasurement").createViewportTwoTargetMeasurementView;
+  readonly createSelectionDisplay: typeof import("./viewportSelectionDisplay").createViewportSelectionDisplay;
+  readonly createVisualState: typeof import("./viewportVisualState").createViewportVisualStateModel;
+};
+
 export function App() {
   const [workbenchUi, dispatchWorkbench] = useReducer(
     workbenchReducer,
@@ -2161,6 +2171,31 @@ export function App() {
       queuedCount: 0,
       cancelledUserKinds: []
     });
+  const [viewportMeasurementRuntime, setViewportMeasurementRuntime] =
+    useState<ViewportMeasurementRuntime>();
+  useEffect(() => {
+    let active = true;
+    void Promise.all([
+      import("./viewportMeasurementOverlay"),
+      import("./viewportTwoTargetMeasurement"),
+      import("./viewportSelectionDisplay"),
+      import("./viewportVisualState")
+    ]).then(([overlay, twoTarget, selectionDisplay, visualState]) => {
+      if (active) {
+        setViewportMeasurementRuntime({
+          createOverlay: overlay.createViewportMeasurementOverlay,
+          createTarget: twoTarget.createViewportTwoTargetMeasurementTarget,
+          createView: twoTarget.createViewportTwoTargetMeasurementView,
+          createSelectionDisplay:
+            selectionDisplay.createViewportSelectionDisplay,
+          createVisualState: visualState.createViewportVisualStateModel
+        });
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
   const derivedGeometryServiceRef = useRef<DerivedGeometryService | undefined>(
     undefined
   );
@@ -2178,14 +2213,6 @@ export function App() {
   const [document, setDocument] = useState<CadDocument>(() =>
     engine.getDocument()
   );
-  const localAgentSessionRef = useRef<LocalAgentSession | undefined>(undefined);
-  const currentAgentSelectionRef = useRef<CurrentAgentSelectionInput>({});
-  const [localAgentSession, setLocalAgentSession] =
-    useState<LocalAgentSessionSnapshot>({
-      connected: false,
-      approvalMode: "manualApproval",
-      approving: false
-    });
   const derivedGeometrySourceBuildersRef = useRef<
     DerivedGeometrySourceBuilders | undefined
   >(undefined);
@@ -2551,39 +2578,6 @@ export function App() {
       setProjectFile((current) => markProjectFileDirty(current));
     }
   );
-  useEffect(() => {
-    if (!window.location.hash.startsWith("#agentSession=")) return;
-    let active = true;
-    let unsubscribe: (() => void) | undefined;
-    let session: LocalAgentSession | undefined;
-
-    void import("./localAgentSession").then((module) => {
-      const token = module.readLocalAgentSessionToken(window.location.hash);
-      if (!active || !token) return;
-      session = new module.LocalAgentSession({
-        token,
-        engine,
-        executor: commandExecutor,
-        readSelection: () => currentAgentSelectionRef.current,
-        publishCommit: publishAgentCommit
-      });
-      localAgentSessionRef.current = session;
-      unsubscribe = session.subscribe(setLocalAgentSession);
-      void session.start();
-    });
-
-    return () => {
-      active = false;
-      unsubscribe?.();
-      if (localAgentSessionRef.current === session) {
-        localAgentSessionRef.current = undefined;
-      }
-      void session?.dispose();
-    };
-  }, [commandExecutor]);
-  useEffect(() => {
-    localAgentSessionRef.current?.refreshSourceIdentity();
-  }, [document]);
   const readSketchCurveEditReadinessAsync = useCallback(
     async (proposal: SketchCurveEditProposal, signal: AbortSignal) => {
       const client = await getSketchCurveEditQueryClient();
@@ -3403,7 +3397,7 @@ export function App() {
       selectedTopologyAnchoredGeneratedReference
     ]
   );
-  currentAgentSelectionRef.current = {
+  const currentAgentSelection = {
     ...(selectedNamedReferenceName
       ? { namedReferenceName: selectedNamedReferenceName }
       : {}),
@@ -4741,15 +4735,27 @@ export function App() {
     : selectedObject
       ? derivedGeometryBySourceId.get(selectedObject.id)
       : undefined;
-  const viewportSelectionDisplay = createViewportSelectionDisplay({
-    derivedGeometryEnabled,
-    selectedBody,
-    selectedGeneratedReferenceState,
-    selectedGeometryEntry,
-    selectedObject,
-    selectionReferenceCandidates: selectedSelectionReferenceCandidates,
-    viewportPickIntent
-  });
+  const viewportSelectionDisplay: ViewportSelectionDisplay =
+    viewportMeasurementRuntime?.createSelectionDisplay({
+      derivedGeometryEnabled,
+      selectedBody,
+      selectedGeneratedReferenceState,
+      selectedGeometryEntry,
+      selectedObject,
+      selectionReferenceCandidates: selectedSelectionReferenceCandidates,
+      viewportPickIntent
+    }) ?? {
+      selectionKind: "none",
+      title: "No selection",
+      detail: derivedGeometryEnabled
+        ? "Select an object"
+        : "Primitive fallback mode",
+      tone: "idle",
+      geometryStatus: "none",
+      commandOperations: [],
+      commandOperationLabels: [],
+      diagnostics: []
+    };
   const viewportHoverState = viewportHoverPick
     ? resolveViewportHoverIntent({
         hoveredRenderId: viewportHoverPick.pickedRenderId,
@@ -4759,22 +4765,29 @@ export function App() {
         readReferenceCandidates: readSelectionReferenceCandidates
       })
     : undefined;
-  const viewportVisualState = createViewportVisualStateModel({
-    hoverState: viewportHoverState,
-    selectionDisplay: viewportSelectionDisplay,
-    selectedGeneratedReferenceState
-  });
-  const viewportMeasurementOverlay = createViewportMeasurementOverlay({
-    body: selectedBody,
-    bodyMeasurements: selectedBodyMeasurements.measurements,
-    bodyMeasurementsError: selectedBodyMeasurements.error,
-    namedReferences,
-    selectedGeneratedReferenceState,
-    selectionReferenceCandidates: selectedSelectionReferenceCandidates,
-    units: document.units
-  });
+  const viewportVisualState: ViewportVisualStateModel =
+    viewportMeasurementRuntime?.createVisualState({
+      hoverState: viewportHoverState,
+      selectionDisplay: viewportSelectionDisplay,
+      selectedGeneratedReferenceState
+    }) ?? {
+      rendererVisualStates: [],
+      ...(viewportSelectionDisplay.renderTargetId
+        ? { selectedRenderTargetId: viewportSelectionDisplay.renderTargetId }
+        : {})
+    };
+  const viewportMeasurementOverlay: ViewportMeasurementOverlay | undefined =
+    viewportMeasurementRuntime?.createOverlay({
+      body: selectedBody,
+      bodyMeasurements: selectedBodyMeasurements.measurements,
+      bodyMeasurementsError: selectedBodyMeasurements.error,
+      namedReferences,
+      selectedGeneratedReferenceState,
+      selectionReferenceCandidates: selectedSelectionReferenceCandidates,
+      units: document.units
+    });
   const viewportTwoTargetMeasurementTarget =
-    createViewportTwoTargetMeasurementTarget({
+    viewportMeasurementRuntime?.createTarget({
       bodyMeasurements: selectedBodyMeasurements.measurements,
       generatedReferenceMeasurement:
         selectedGeneratedReferenceState.status === "selected"
@@ -4782,11 +4795,12 @@ export function App() {
           : undefined,
       measurementOverlay: viewportMeasurementOverlay
     });
-  const viewportTwoTargetMeasurement = createViewportTwoTargetMeasurementView({
-    activeTarget: viewportTwoTargetMeasurementTarget,
-    session: viewportTwoTargetMeasurementSession,
-    units: document.units
-  });
+  const viewportTwoTargetMeasurement =
+    viewportMeasurementRuntime?.createView({
+      activeTarget: viewportTwoTargetMeasurementTarget,
+      session: viewportTwoTargetMeasurementSession,
+      units: document.units
+    }) ?? EMPTY_TWO_TARGET_MEASUREMENT;
   const selectedPart = selectedBody
     ? projectStructure.parts.find((part) => part.id === selectedBody.partId)
     : projectStructure.parts[0];
@@ -5202,10 +5216,10 @@ export function App() {
       selectedGeneratedReferenceState,
       selectionReferenceCandidates: selectedSelectionReferenceCandidates
     });
-  const viewportTwoTargetMeasurementSessionActive =
-    isViewportTwoTargetMeasurementSessionActive(
-      viewportTwoTargetMeasurementSession
-    );
+  const viewportTwoTargetMeasurementSessionActive = Boolean(
+    viewportTwoTargetMeasurementSession.firstTarget ||
+    viewportTwoTargetMeasurementSession.secondTarget
+  );
   const viewportGestureActive =
     threePointArcTool !== undefined ||
     viewportHoverPick !== undefined ||
@@ -5225,16 +5239,14 @@ export function App() {
         return { firstTarget: current.firstTarget };
       }
       if (current.firstTarget) {
-        return updateViewportTwoTargetMeasurementSession(current, {
-          type: "clear"
-        });
+        return {};
       }
       return current;
     });
   }, []);
   useEffect(() => {
     setViewportTwoTargetMeasurementSession((current) =>
-      clearViewportTwoTargetMeasurementSecondTargetOnSelectionChange(current)
+      current.secondTarget ? { firstTarget: current.firstTarget } : current
     );
   }, [viewportContextualCommandSurface.selectionKey]);
   const selectedViewportRenderId =
@@ -5416,9 +5428,7 @@ export function App() {
             ? { sketchId: current.sketchId }
             : current;
         });
-        setViewportTwoTargetMeasurementSession((current) =>
-          updateViewportTwoTargetMeasurementSession(current, { type: "clear" })
-        );
+        setViewportTwoTargetMeasurementSession({});
       });
     });
   }
@@ -5651,20 +5661,23 @@ export function App() {
   }
 
   async function createBox(form: PrimitiveCommandForm) {
-    const plan = createQuickStartSourceBodyPlan({
-      document,
-      form,
-      kind: "box"
-    });
-
-    await commitOps(plan.ops, () => plan.bodyId);
+    await createQuickStartBody(form, "box");
   }
 
   async function createCylinder(form: PrimitiveCommandForm) {
+    await createQuickStartBody(form, "cylinder");
+  }
+
+  async function createQuickStartBody(
+    form: PrimitiveCommandForm,
+    kind: "box" | "cylinder"
+  ) {
+    const { createQuickStartSourceBodyPlan } =
+      await import("./quickStartBodies");
     const plan = createQuickStartSourceBodyPlan({
       document,
       form,
-      kind: "cylinder"
+      kind
     });
 
     await commitOps(plan.ops, () => plan.bodyId);
@@ -6737,18 +6750,11 @@ export function App() {
   function startViewportTwoTargetMeasurement(
     target: ViewportTwoTargetMeasurementTarget
   ) {
-    setViewportTwoTargetMeasurementSession((current) =>
-      updateViewportTwoTargetMeasurementSession(current, {
-        type: "start",
-        target
-      })
-    );
+    setViewportTwoTargetMeasurementSession({ firstTarget: target });
   }
 
   function clearViewportTwoTargetMeasurement() {
-    setViewportTwoTargetMeasurementSession((current) =>
-      updateViewportTwoTargetMeasurementSession(current, { type: "clear" })
-    );
+    setViewportTwoTargetMeasurementSession({});
   }
 
   function getFeatureTargetBodyId(
@@ -7311,7 +7317,6 @@ export function App() {
       return;
     }
 
-    localAgentSessionRef.current?.invalidateProposal();
     engine.loadProject(result.project);
     stepImportPayloadStoreRef.current.clear();
     setWcadTopologyCheckpointPayloadCache(
@@ -7528,7 +7533,6 @@ export function App() {
   }
 
   function createNewProject() {
-    localAgentSessionRef.current?.invalidateProposal();
     engine.loadProject(exportCadProject(new CadEngine()));
     stepImportPayloadStoreRef.current.clear();
     setWcadTopologyCheckpointPayloadCache([]);
@@ -7569,7 +7573,6 @@ export function App() {
       return;
     }
 
-    localAgentSessionRef.current?.invalidateProposal();
     engine.loadProject(preview.project);
     stepImportPayloadStoreRef.current.clear();
     setWcadTopologyCheckpointPayloadCache([]);
@@ -9120,6 +9123,17 @@ export function App() {
       sketches={sketches}
     >
       <>
+        {window.location.hash.startsWith("#agentSession=") ? (
+          <Suspense fallback={null}>
+            <LocalAgentSessionController
+              engine={engine}
+              executor={commandExecutor}
+              document={document}
+              selection={currentAgentSelection}
+              publishCommit={publishAgentCommit}
+            />
+          </Suspense>
+        ) : null}
         {workbenchUi.navigationIntent &&
         workbenchUi.activeEditor?.kind === "sketch-curve-edit" ? (
           <Suspense fallback={null}>
@@ -9423,7 +9437,6 @@ export function App() {
                 transactions={transactionHistory}
                 canUndo={engine.getTransactions().length > 0}
                 canRedo={engine.getRedoStack().length > 0}
-                agent={localAgentSession}
                 message={projectMessage}
                 messageTone={projectMessageTone}
                 onNew={createNewProject}
@@ -9474,23 +9487,6 @@ export function App() {
                 }
                 onUndo={undo}
                 onRedo={redo}
-                onAgentApprovalModeChange={(mode) => {
-                  if (
-                    mode === "approveAll" &&
-                    !window.confirm(
-                      "Approve every valid agent commit for this browser session?"
-                    )
-                  ) {
-                    return;
-                  }
-                  localAgentSessionRef.current?.setApprovalMode(mode);
-                }}
-                onApproveAgentProposal={() =>
-                  void localAgentSessionRef.current?.approve()
-                }
-                onRejectAgentProposal={() =>
-                  localAgentSessionRef.current?.reject()
-                }
               />
             </Suspense>
           }

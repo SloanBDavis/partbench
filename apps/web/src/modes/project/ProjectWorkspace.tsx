@@ -1,9 +1,5 @@
 import type { CadProject, CadTransactionHistoryEntry } from "@web-cad/cad-core";
-import type {
-  CadAgentApprovalMode,
-  CadAgentCommitProposal,
-  CadAgentSessionErrorResponse
-} from "@web-cad/agent-adapter";
+import type { CadAgentCommitProposal } from "@web-cad/agent-adapter";
 import type {
   CadParameterSnapshot,
   DocumentUnits,
@@ -33,6 +29,12 @@ import {
   type ProjectVisualizationExportDisplayStatus
 } from "../../projectExportReadiness";
 import type { ProjectStorageCapabilityStatus } from "../../projectStorageCapabilities";
+import {
+  approveLocalAgentProposal,
+  rejectLocalAgentProposal,
+  setLocalAgentApprovalMode,
+  useLocalAgentSession
+} from "../../localAgentSessionStore";
 import { createProjectTopologyIdentityDisplay } from "../../projectTopologyIdentityStatus";
 import {
   createInitialProjectFileWorkflowState,
@@ -99,13 +101,6 @@ export interface ProjectWorkspaceProps {
   readonly transactions: readonly CadTransactionHistoryEntry[];
   readonly canUndo: boolean;
   readonly canRedo: boolean;
-  readonly agent: {
-    readonly connected: boolean;
-    readonly approvalMode: CadAgentApprovalMode;
-    readonly proposal?: CadAgentCommitProposal;
-    readonly approving: boolean;
-    readonly diagnostic?: CadAgentSessionErrorResponse["error"];
-  };
   readonly message?: string;
   readonly messageTone?: "info" | "error";
   /** Surfaces blocked-action reasons when aria-disabled controls are activated. */
@@ -139,9 +134,6 @@ export interface ProjectWorkspaceProps {
   readonly onDeleteParameter: (parameterId: string) => void;
   readonly onUndo: () => void;
   readonly onRedo: () => void;
-  readonly onAgentApprovalModeChange: (mode: CadAgentApprovalMode) => void;
-  readonly onApproveAgentProposal: () => void;
-  readonly onRejectAgentProposal: () => void;
 }
 
 type ProjectWorkspacePropsWithFile = Omit<
@@ -177,7 +169,6 @@ export function ProjectWorkspace({
   transactions,
   canUndo,
   canRedo,
-  agent,
   message,
   messageTone = "info",
   onUnavailableActivate,
@@ -203,10 +194,7 @@ export function ProjectWorkspace({
   onEditParameter,
   onDeleteParameter,
   onUndo,
-  onRedo,
-  onAgentApprovalModeChange,
-  onApproveAgentProposal,
-  onRejectAgentProposal
+  onRedo
 }: ProjectWorkspaceProps) {
   const jsonWorkflow = useMemo(
     () =>
@@ -285,13 +273,7 @@ export function ProjectWorkspace({
           onRedo={onRedo}
         />
       ) : page === "agent" ? (
-        <ProjectAgent
-          disabled={disabled}
-          agent={agent}
-          onApprovalModeChange={onAgentApprovalModeChange}
-          onApprove={onApproveAgentProposal}
-          onReject={onRejectAgentProposal}
-        />
+        <ProjectAgent disabled={disabled} />
       ) : (
         <ProjectExport
           disabled={disabled}
@@ -316,19 +298,8 @@ export function ProjectWorkspace({
   );
 }
 
-function ProjectAgent({
-  disabled,
-  agent,
-  onApprovalModeChange,
-  onApprove,
-  onReject
-}: {
-  readonly disabled: boolean;
-  readonly agent: ProjectWorkspaceProps["agent"];
-  readonly onApprovalModeChange: (mode: CadAgentApprovalMode) => void;
-  readonly onApprove: () => void;
-  readonly onReject: () => void;
-}) {
+function ProjectAgent({ disabled }: { readonly disabled: boolean }) {
+  const agent = useLocalAgentSession();
   const proposalRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
@@ -387,7 +358,7 @@ function ProjectAgent({
                   Boolean(agent.proposal) ||
                   agent.approving
                 }
-                onChange={() => onApprovalModeChange("manualApproval")}
+                onChange={() => setLocalAgentApprovalMode("manualApproval")}
               />
               <span>
                 <strong>Manual approval</strong>
@@ -406,7 +377,15 @@ function ProjectAgent({
                   Boolean(agent.proposal) ||
                   agent.approving
                 }
-                onChange={() => onApprovalModeChange("approveAll")}
+                onChange={() => {
+                  if (
+                    window.confirm(
+                      "Approve every valid agent commit for this browser session?"
+                    )
+                  ) {
+                    setLocalAgentApprovalMode("approveAll");
+                  }
+                }}
               />
               <span>
                 <strong>Approve all</strong>
@@ -476,7 +455,7 @@ function ProjectAgent({
           <div className="pb-project-form-actions">
             <Button
               disabled={disabled || !agent.connected || agent.approving}
-              onClick={onReject}
+              onClick={rejectLocalAgentProposal}
             >
               Reject
             </Button>
@@ -488,7 +467,7 @@ function ProjectAgent({
                 agent.approving ||
                 agent.proposal.review.blockers.length > 0
               }
-              onClick={onApprove}
+              onClick={approveLocalAgentProposal}
             >
               {agent.approving ? "Approving…" : "Approve"}
             </Button>
