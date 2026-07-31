@@ -1,4 +1,10 @@
-import { CadEngine, type CadProject } from "@web-cad/cad-core";
+import {
+  CadEngine,
+  createCadProjectSourceIdentity,
+  exportCadProject,
+  type AsyncCadCommandExecutor,
+  type CadProject
+} from "@web-cad/cad-core";
 import {
   validateV19CadOp,
   validateV19SketchQueryRequest,
@@ -136,6 +142,76 @@ export {
 const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/;
 
 export type AgentAdapterVersion = "web-cad.agent-adapter.v1";
+
+export const CAD_AGENT_APPROVAL_MODES = [
+  "manualApproval",
+  "approveAll"
+] as const;
+
+export type CadAgentApprovalMode = (typeof CAD_AGENT_APPROVAL_MODES)[number];
+
+export const CAD_AGENT_SESSION_DIAGNOSTIC_CODES = [
+  "AGENT_SESSION_NOT_CONNECTED",
+  "AGENT_SESSION_ALREADY_CONNECTED",
+  "AGENT_SESSION_TOKEN_INVALID",
+  "AGENT_SESSION_DISCONNECTED",
+  "AGENT_APPROVAL_BUSY",
+  "AGENT_COMMIT_REJECTED",
+  "AGENT_PROPOSAL_STALE"
+] as const;
+
+export type CadAgentSessionDiagnosticCode =
+  (typeof CAD_AGENT_SESSION_DIAGNOSTIC_CODES)[number];
+
+export type CadCurrentSelection =
+  | { readonly kind: "none" }
+  | { readonly kind: "sketch"; readonly sketchId: string }
+  | {
+      readonly kind: "sketchEntity";
+      readonly sketchId: string;
+      readonly entityId: string;
+    }
+  | { readonly kind: "object"; readonly objectId: string }
+  | { readonly kind: "body"; readonly bodyId: string }
+  | {
+      readonly kind: "generatedReference";
+      readonly bodyId: string;
+      readonly stableId: string;
+      readonly expectedKind?: "body" | "face" | "edge" | "vertex";
+    }
+  | { readonly kind: "namedReference"; readonly name: string };
+
+export interface CadOpsAgentCurrentSelectionRequest {
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+}
+
+export interface CadOpsAgentCurrentSelectionResponse {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly selection: CadCurrentSelection;
+  readonly sourceIdentity: WcadSourceIdentity;
+}
+
+export interface CadAgentSessionErrorResponse {
+  readonly ok: false;
+  readonly requestId: string;
+  readonly error: {
+    readonly code: CadAgentSessionDiagnosticCode;
+    readonly message: string;
+  };
+}
+
+export interface CadAgentCommitProposal {
+  readonly requestId: string;
+  readonly sourceIdentity: WcadSourceIdentity;
+  readonly semanticDiff: SemanticDiff;
+  readonly warnings: readonly string[];
+  readonly actor?: CadActorMetadata;
+  readonly audit?: CadTransactionAuditMetadata;
+  readonly review: CadOpsAgentWorkflowReview;
+}
 
 export interface CadOpsAgentRequest {
   readonly requestId: string;
@@ -1194,6 +1270,14 @@ export class CadOpsAgentAdapter {
     return createV8ProjectSurfaceResponse(request, this.engine);
   }
 
+  getCurrentSelection(
+    request: CadOpsAgentCurrentSelectionRequest
+  ): CadOpsAgentCurrentSelectionResponse {
+    return createCadOpsAgentCurrentSelectionResponse(this.engine, request, {
+      kind: "none"
+    });
+  }
+
   executeJson(json: string): string {
     return JSON.stringify(
       this.execute(parseCadOpsAgentRequestJson(json)),
@@ -1238,6 +1322,45 @@ export function executeCadOpsAgentRequest(
   return new CadOpsAgentAdapter(engine).execute(request);
 }
 
+export async function executeCadOpsAgentRequestAsync(
+  engine: CadEngine,
+  executor: AsyncCadCommandExecutor,
+  request: CadOpsAgentRequest
+): Promise<CadOpsAgentResponse> {
+  const effectiveRequest = applyAgentRequestContext(request);
+  const permissionError = validateAgentPermissions(effectiveRequest);
+
+  if (permissionError) {
+    return createAgentPermissionErrorResponse(
+      effectiveRequest,
+      permissionError
+    );
+  }
+
+  return toAgentResponse(
+    effectiveRequest,
+    await executor.executeBatch(effectiveRequest.batch),
+    engine
+  );
+}
+
+export function createCadOpsAgentCurrentSelectionResponse(
+  engine: CadEngine,
+  request: CadOpsAgentCurrentSelectionRequest,
+  selection: CadCurrentSelection
+): CadOpsAgentCurrentSelectionResponse {
+  const validRequest = parseCadOpsAgentCurrentSelectionRequest(request);
+  const validSelection = parseCadCurrentSelection(selection);
+
+  return {
+    ok: true,
+    requestId: validRequest.requestId,
+    adapterVersion: validRequest.adapterVersion,
+    selection: validSelection,
+    sourceIdentity: createCadProjectSourceIdentity(exportCadProject(engine))
+  };
+}
+
 export function executeCadOpsAgentQueryRequest(
   engine: CadEngine,
   request: CadOpsAgentQueryRequest
@@ -1266,6 +1389,64 @@ export function parseCadOpsAgentV8ProjectSurfaceRequestJson(
   json: string
 ): CadOpsAgentV8ProjectSurfaceRequest {
   return parseCadOpsAgentV8ProjectSurfaceRequest(JSON.parse(json));
+}
+
+export function parseCadAgentApprovalMode(
+  value: unknown
+): CadAgentApprovalMode {
+  if (!isCadAgentApprovalMode(value)) {
+    throw new Error("Invalid CAD agent approval mode.");
+  }
+
+  return value;
+}
+
+export function parseCadAgentSessionDiagnosticCode(
+  value: unknown
+): CadAgentSessionDiagnosticCode {
+  if (!isCadAgentSessionDiagnosticCode(value)) {
+    throw new Error("Invalid CAD agent session diagnostic code.");
+  }
+
+  return value;
+}
+
+export function parseCadCurrentSelection(value: unknown): CadCurrentSelection {
+  if (!isCadCurrentSelection(value)) {
+    throw new Error("Invalid CAD current selection.");
+  }
+
+  return value;
+}
+
+export function parseCadOpsAgentCurrentSelectionRequest(
+  value: unknown
+): CadOpsAgentCurrentSelectionRequest {
+  if (!isCadOpsAgentCurrentSelectionRequest(value)) {
+    throw new Error("Invalid CADOps agent current selection request.");
+  }
+
+  return value;
+}
+
+export function parseCadOpsAgentCurrentSelectionResponse(
+  value: unknown
+): CadOpsAgentCurrentSelectionResponse {
+  if (!isCadOpsAgentCurrentSelectionResponse(value)) {
+    throw new Error("Invalid CADOps agent current selection response.");
+  }
+
+  return value;
+}
+
+export function parseCadAgentSessionErrorResponse(
+  value: unknown
+): CadAgentSessionErrorResponse {
+  if (!isCadAgentSessionErrorResponse(value)) {
+    throw new Error("Invalid CAD agent session error response.");
+  }
+
+  return value;
 }
 
 export function parseCadOpsAgentRequest(value: unknown): CadOpsAgentRequest {
@@ -3822,6 +4003,111 @@ function createV8BoundarySummary(): CadOpsAgentV8ProjectSurfaceBoundarySummary {
     stepBytesReturned: false,
     jsonImportExportPreserved: true
   };
+}
+
+function isCadAgentApprovalMode(value: unknown): value is CadAgentApprovalMode {
+  return value === "manualApproval" || value === "approveAll";
+}
+
+function isCadAgentSessionDiagnosticCode(
+  value: unknown
+): value is CadAgentSessionDiagnosticCode {
+  return CAD_AGENT_SESSION_DIAGNOSTIC_CODES.some((code) => code === value);
+}
+
+function isCadCurrentSelection(value: unknown): value is CadCurrentSelection {
+  if (!isRecord(value) || typeof value.kind !== "string") {
+    return false;
+  }
+
+  switch (value.kind) {
+    case "none":
+      return hasExactKeys(value, ["kind"]);
+    case "sketch":
+      return (
+        hasExactKeys(value, ["kind", "sketchId"]) &&
+        isNonEmptyString(value.sketchId)
+      );
+    case "sketchEntity":
+      return (
+        hasExactKeys(value, ["kind", "sketchId", "entityId"]) &&
+        isNonEmptyString(value.sketchId) &&
+        isNonEmptyString(value.entityId)
+      );
+    case "object":
+      return (
+        hasExactKeys(value, ["kind", "objectId"]) &&
+        isNonEmptyString(value.objectId)
+      );
+    case "body":
+      return (
+        hasExactKeys(value, ["kind", "bodyId"]) &&
+        isNonEmptyString(value.bodyId)
+      );
+    case "generatedReference":
+      return (
+        hasExactKeys(value, ["kind", "bodyId", "stableId"], ["expectedKind"]) &&
+        isNonEmptyString(value.bodyId) &&
+        isNonEmptyString(value.stableId) &&
+        (value.expectedKind === undefined ||
+          value.expectedKind === "body" ||
+          value.expectedKind === "face" ||
+          value.expectedKind === "edge" ||
+          value.expectedKind === "vertex")
+      );
+    case "namedReference":
+      return (
+        hasExactKeys(value, ["kind", "name"]) && isNonEmptyString(value.name)
+      );
+    default:
+      return false;
+  }
+}
+
+function isCadOpsAgentCurrentSelectionRequest(
+  value: unknown
+): value is CadOpsAgentCurrentSelectionRequest {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, ["requestId", "adapterVersion"]) &&
+    isNonEmptyString(value.requestId) &&
+    value.adapterVersion === "web-cad.agent-adapter.v1"
+  );
+}
+
+function isCadOpsAgentCurrentSelectionResponse(
+  value: unknown
+): value is CadOpsAgentCurrentSelectionResponse {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, [
+      "ok",
+      "requestId",
+      "adapterVersion",
+      "selection",
+      "sourceIdentity"
+    ]) &&
+    value.ok === true &&
+    isNonEmptyString(value.requestId) &&
+    value.adapterVersion === "web-cad.agent-adapter.v1" &&
+    isCadCurrentSelection(value.selection) &&
+    isWcadSourceIdentityInput(value.sourceIdentity)
+  );
+}
+
+function isCadAgentSessionErrorResponse(
+  value: unknown
+): value is CadAgentSessionErrorResponse {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, ["ok", "requestId", "error"]) &&
+    value.ok === false &&
+    isNonEmptyString(value.requestId) &&
+    isRecord(value.error) &&
+    hasExactKeys(value.error, ["code", "message"]) &&
+    isCadAgentSessionDiagnosticCode(value.error.code) &&
+    isNonEmptyString(value.error.message)
+  );
 }
 
 function isCadOpsAgentRequest(value: unknown): value is CadOpsAgentRequest {
