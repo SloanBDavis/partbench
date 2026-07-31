@@ -1156,12 +1156,18 @@ async function selectMode(browser, mode) {
 
 async function activateRibbonAction(browser, label) {
   await browser.evaluate(`(() => {
-    [...document.querySelectorAll(
+    const buttons = [...document.querySelectorAll(
       ".pb-mode-ribbon__contents button.pb-ribbon-action"
-    )].find((button) =>
-      button.getClientRects().length > 0 &&
-      button.textContent.trim() === ${JSON.stringify(label)}
-    )?.click();
+    )].filter((button) =>
+      button.textContent.trim().toLocaleLowerCase() ===
+        ${JSON.stringify(label.toLocaleLowerCase())}
+    );
+    const button =
+      buttons.find((candidate) => candidate.getClientRects().length > 0) ??
+      buttons[0];
+    const overflow = button?.closest("details");
+    if (overflow) overflow.open = true;
+    button?.click();
   })()`);
 }
 

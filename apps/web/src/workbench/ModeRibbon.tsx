@@ -4,7 +4,8 @@ import {
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent
+  type KeyboardEvent,
+  type MouseEvent
 } from "react";
 import type {
   ProjectedUiAction,
@@ -321,13 +322,14 @@ function RibbonActionButton({
   const needsSelection = action.availability.status === "needs-selection";
   const reason =
     blocked || needsSelection ? action.availability.message : undefined;
-  const invoke = () => {
+  const invoke = (event: MouseEvent<HTMLButtonElement>) => {
     if (action.pending) return;
     if (blocked) {
       onExplainUnavailable?.(action, action.availability);
       return;
     }
     onInvokeAction(action);
+    event.currentTarget.closest("details")?.removeAttribute("open");
   };
 
   return (
