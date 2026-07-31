@@ -450,7 +450,8 @@ async function handleRelayPost(
       writeSessionHttpError(response, 400, "AGENT_SESSION_TOKEN_INVALID");
       return;
     }
-    const error = relay.validateBrowserClient(body.clientId);
+    const clientId = body.clientId;
+    const error = relay.validateBrowserClient(clientId);
     if (error) {
       writeJson(
         response,
@@ -461,9 +462,9 @@ async function handleRelayPost(
     }
     let completed = false;
     response.on("close", () => {
-      if (!completed) relay.disconnectBrowser(body.clientId);
+      if (!completed) relay.disconnectBrowser(clientId);
     });
-    const nextRequest = await relay.pollBrowser(body.clientId);
+    const nextRequest = await relay.pollBrowser(clientId);
     completed = true;
     writeJson(response, 200, { ok: true, request: nextRequest });
     return;

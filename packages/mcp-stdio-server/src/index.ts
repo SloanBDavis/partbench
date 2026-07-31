@@ -6,6 +6,15 @@ import {
   type McpJsonRpcResponse
 } from "@web-cad/mcp-adapter";
 
+export {
+  LOCAL_AGENT_RELAY_PATH,
+  LOCAL_AGENT_TOKEN_HEADER,
+  LocalAgentRelay,
+  openLocalAgentBrowser,
+  startLocalAgentLauncher,
+  type LocalAgentLauncher
+} from "./launcher.ts";
+
 export interface McpStdioSessionOptions {
   readonly server?: CadMcpServer;
 }
