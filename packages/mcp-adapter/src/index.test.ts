@@ -122,6 +122,7 @@ describe("mcp-adapter", () => {
       "cad.resolve_named_reference",
       "cad.reference_health",
       "cad.selection_reference_candidates",
+      "cad.get_selection",
       "cad.transaction_history",
       "cad.batch"
     ]);
@@ -6469,6 +6470,7 @@ describe("mcp-adapter", () => {
           { name: "cad.resolve_named_reference" },
           { name: "cad.reference_health" },
           { name: "cad.selection_reference_candidates" },
+          { name: "cad.get_selection" },
           { name: "cad.transaction_history" },
           { name: "cad.batch" }
         ]

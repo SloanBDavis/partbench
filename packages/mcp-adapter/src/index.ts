@@ -1,4 +1,7 @@
 import {
+  type CadAgentSessionErrorResponse,
+  type CadOpsAgentCurrentSelectionRequest,
+  type CadOpsAgentCurrentSelectionResponse,
   CadOpsAgentAdapter,
   createCadOpsAgentAdapter,
   parseCadOpsAgentQueryRequest,
@@ -78,6 +81,7 @@ export type CadMcpToolName =
   | "cad.resolve_named_reference"
   | "cad.reference_health"
   | "cad.selection_reference_candidates"
+  | "cad.get_selection"
   | "cad.transaction_history"
   | "cad.batch";
 export type McpJsonRpcId = string | number | null;
@@ -103,6 +107,8 @@ export type CadMcpStructuredContent =
   | CadOpsAgentQueryResponse
   | CadOpsAgentResponse
   | CadOpsAgentV8ProjectSurfaceResponse
+  | CadOpsAgentCurrentSelectionResponse
+  | CadAgentSessionErrorResponse
   | CadMcpToolErrorResponse;
 
 export interface CadMcpToolCallResult {
@@ -148,6 +154,27 @@ export interface McpJsonRpcError {
 
 export interface CadMcpServerOptions {
   readonly adapter?: CadOpsAgentAdapter;
+  readonly executionPort?: CadMcpExecutionPort;
+}
+
+type CadMcpSyncExecutionPort = Pick<
+  CadOpsAgentAdapter,
+  "execute" | "query" | "inspectV8ProjectSurface" | "getCurrentSelection"
+>;
+
+export interface CadMcpExecutionPort {
+  execute(
+    request: Parameters<CadOpsAgentAdapter["execute"]>[0]
+  ): Promise<CadOpsAgentResponse | CadAgentSessionErrorResponse>;
+  query(
+    request: Parameters<CadOpsAgentAdapter["query"]>[0]
+  ): Promise<CadOpsAgentQueryResponse | CadAgentSessionErrorResponse>;
+  inspectV8ProjectSurface(
+    request: Parameters<CadOpsAgentAdapter["inspectV8ProjectSurface"]>[0]
+  ): Promise<CadOpsAgentV8ProjectSurfaceResponse | CadAgentSessionErrorResponse>;
+  getCurrentSelection(
+    request: CadOpsAgentCurrentSelectionRequest
+  ): Promise<CadOpsAgentCurrentSelectionResponse | CadAgentSessionErrorResponse>;
 }
 
 const ADAPTER_VERSION: AgentAdapterVersion = "web-cad.agent-adapter.v1";
@@ -159,10 +186,17 @@ const DEFAULT_MCP_ACTOR: CadActorMetadata = {
 
 export class CadMcpServer {
   #nextRequestNumber = 1;
-  readonly #adapter: CadOpsAgentAdapter;
+  readonly #adapter: CadMcpSyncExecutionPort;
+  readonly #executionPort?: CadMcpExecutionPort;
 
   constructor(options: CadMcpServerOptions = {}) {
-    this.#adapter = options.adapter ?? createCadOpsAgentAdapter();
+    if (options.adapter && options.executionPort) {
+      throw new Error("CadMcpServer accepts either adapter or executionPort, not both.");
+    }
+    this.#executionPort = options.executionPort;
+    this.#adapter = options.executionPort
+      ? new DeferredCadOpsAgentAdapter()
+      : (options.adapter ?? createCadOpsAgentAdapter());
   }
 
   listTools(): { readonly tools: readonly McpToolDefinition[] } {
@@ -364,6 +398,10 @@ export class CadMcpServer {
       return this.#callSelectionReferenceCandidates(request);
     }
 
+    if (request.name === "cad.get_selection") {
+      return this.#callCurrentSelection(request);
+    }
+
     if (request.name === "cad.transaction_history") {
       return this.#callTransactionHistory(request);
     }
@@ -379,6 +417,21 @@ export class CadMcpServer {
         message: `Unknown MCP tool: ${request.name}`
       }
     });
+  }
+
+  async callToolAsync(
+    request: CadMcpToolCallRequest
+  ): Promise<CadMcpToolCallResult> {
+    try {
+      return this.callTool(request);
+    } catch (error) {
+      if (!(error instanceof CadMcpExecutionPortCall) || !this.#executionPort) {
+        throw error;
+      }
+
+      const response = await callExecutionPort(this.#executionPort, error);
+      return createToolResult(request.name, response, !response.ok);
+    }
   }
 
   handleJsonRpc(request: unknown): McpJsonRpcResponse {
@@ -409,6 +462,48 @@ export class CadMcpServer {
         jsonrpc: "2.0",
         id: request.id ?? null,
         result: this.callTool({
+          name: request.params.name,
+          arguments: request.params.arguments,
+          requestId: createRequestIdFromJsonRpcId(request.id)
+        })
+      };
+    }
+
+    return createJsonRpcError(
+      request.id ?? null,
+      -32601,
+      `Unknown JSON-RPC method: ${request.method}`
+    );
+  }
+
+  async handleJsonRpcAsync(request: unknown): Promise<McpJsonRpcResponse> {
+    const id = getJsonRpcId(request);
+
+    if (!isJsonRpcRequest(request)) {
+      return createJsonRpcError(id, -32600, "Invalid JSON-RPC request.");
+    }
+
+    if (request.method === "tools/list") {
+      return {
+        jsonrpc: "2.0",
+        id: request.id ?? null,
+        result: this.listTools()
+      };
+    }
+
+    if (request.method === "tools/call") {
+      if (!isToolCallParams(request.params)) {
+        return createJsonRpcError(
+          request.id ?? null,
+          -32602,
+          "Invalid tools/call params."
+        );
+      }
+
+      return {
+        jsonrpc: "2.0",
+        id: request.id ?? null,
+        result: await this.callToolAsync({
           name: request.params.name,
           arguments: request.params.arguments,
           requestId: createRequestIdFromJsonRpcId(request.id)
@@ -1593,6 +1688,24 @@ export class CadMcpServer {
     return createToolResult(request.name, response, !response.ok);
   }
 
+  #callCurrentSelection(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isEmptyObjectOrUndefined(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.get_selection does not accept arguments."
+      );
+    }
+
+    const response = this.#adapter.getCurrentSelection({
+      requestId: request.requestId ?? this.#createRequestId(),
+      adapterVersion: ADAPTER_VERSION
+    });
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
   #callTransactionHistory(
     request: CadMcpToolCallRequest
   ): CadMcpToolCallResult {
@@ -1650,6 +1763,7 @@ export class CadMcpServer {
 
       return createToolResult(request.name, response, !response.ok);
     } catch (error) {
+      if (error instanceof CadMcpExecutionPortCall) throw error;
       return createInvalidArgumentsResult(request.name, getErrorMessage(error));
     }
   }
@@ -1658,6 +1772,75 @@ export class CadMcpServer {
     const id = `mcp_req_${this.#nextRequestNumber}`;
     this.#nextRequestNumber += 1;
     return id;
+  }
+}
+
+type CadMcpExecutionPortInvocation =
+  | {
+      readonly operation: "execute";
+      readonly request: Parameters<CadOpsAgentAdapter["execute"]>[0];
+    }
+  | {
+      readonly operation: "query";
+      readonly request: Parameters<CadOpsAgentAdapter["query"]>[0];
+    }
+  | {
+      readonly operation: "inspectV8ProjectSurface";
+      readonly request: Parameters<
+        CadOpsAgentAdapter["inspectV8ProjectSurface"]
+      >[0];
+    }
+  | {
+      readonly operation: "getCurrentSelection";
+      readonly request: CadOpsAgentCurrentSelectionRequest;
+    };
+
+class CadMcpExecutionPortCall extends Error {
+  constructor(readonly invocation: CadMcpExecutionPortInvocation) {
+    super(invocation.operation);
+  }
+}
+
+class DeferredCadOpsAgentAdapter implements CadMcpSyncExecutionPort {
+  execute(request: Parameters<CadOpsAgentAdapter["execute"]>[0]): never {
+    throw new CadMcpExecutionPortCall({ operation: "execute", request });
+  }
+
+  query(request: Parameters<CadOpsAgentAdapter["query"]>[0]): never {
+    throw new CadMcpExecutionPortCall({ operation: "query", request });
+  }
+
+  inspectV8ProjectSurface(
+    request: Parameters<CadOpsAgentAdapter["inspectV8ProjectSurface"]>[0]
+  ): never {
+    throw new CadMcpExecutionPortCall({
+      operation: "inspectV8ProjectSurface",
+      request
+    });
+  }
+
+  getCurrentSelection(request: CadOpsAgentCurrentSelectionRequest): never {
+    throw new CadMcpExecutionPortCall({
+      operation: "getCurrentSelection",
+      request
+    });
+  }
+}
+
+function callExecutionPort(
+  port: CadMcpExecutionPort,
+  call: CadMcpExecutionPortCall
+): Promise<CadMcpStructuredContent> {
+  const { invocation } = call;
+  switch (invocation.operation) {
+    case "execute":
+      return port.execute(invocation.request);
+    case "query":
+      return port.query(invocation.request);
+    case "inspectV8ProjectSurface":
+      return port.inspectV8ProjectSurface(invocation.request);
+    case "getCurrentSelection":
+      return port.getCurrentSelection(invocation.request);
   }
 }
 
@@ -3670,6 +3853,16 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
           }
         }
       }
+    }
+  },
+  {
+    name: "cad.get_selection",
+    description:
+      "Returns the current primary semantic browser selection and canonical project source identity. In-memory sessions return no selection.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {}
     }
   },
   {
