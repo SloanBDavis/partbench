@@ -27,6 +27,16 @@ export class McpStdioSession {
     return JSON.stringify(this.handleMessage(trimmed));
   }
 
+  async handleLineAsync(line: string): Promise<string | undefined> {
+    const trimmed = line.trim();
+
+    if (trimmed.length === 0) {
+      return undefined;
+    }
+
+    return JSON.stringify(await this.handleMessageAsync(trimmed));
+  }
+
   handleMessage(message: string): McpJsonRpcResponse {
     let request: unknown;
 
@@ -38,6 +48,22 @@ export class McpStdioSession {
 
     try {
       return this.#server.handleJsonRpc(request);
+    } catch {
+      return createInternalError(readRequestId(request));
+    }
+  }
+
+  async handleMessageAsync(message: string): Promise<McpJsonRpcResponse> {
+    let request: unknown;
+
+    try {
+      request = JSON.parse(message) as unknown;
+    } catch {
+      return createParseError();
+    }
+
+    try {
+      return await this.#server.handleJsonRpcAsync(request);
     } catch {
       return createInternalError(readRequestId(request));
     }

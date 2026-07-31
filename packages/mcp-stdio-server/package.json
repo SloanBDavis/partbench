@@ -18,6 +18,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@web-cad/agent-adapter": "workspace:*",
     "@web-cad/mcp-adapter": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0"
   }
 }
