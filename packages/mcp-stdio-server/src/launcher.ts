@@ -6,7 +6,7 @@ import {
   type IncomingMessage,
   type ServerResponse
 } from "node:http";
-import { extname, relative, resolve, sep } from "node:path";
+import { extname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   parseCadAgentSessionErrorResponse,
@@ -36,14 +36,8 @@ type RelayMethod =
 type RelayRequest =
   | RelayEnvelope<"execute", CadOpsAgentRequest>
   | RelayEnvelope<"query", CadOpsAgentQueryRequest>
-  | RelayEnvelope<
-      "inspectV8ProjectSurface",
-      CadOpsAgentV8ProjectSurfaceRequest
-    >
-  | RelayEnvelope<
-      "getCurrentSelection",
-      CadOpsAgentCurrentSelectionRequest
-    >;
+  | RelayEnvelope<"inspectV8ProjectSurface", CadOpsAgentV8ProjectSurfaceRequest>
+  | RelayEnvelope<"getCurrentSelection", CadOpsAgentCurrentSelectionRequest>;
 
 interface RelayEnvelope<Method extends RelayMethod, Request> {
   readonly requestId: string;
@@ -86,13 +80,17 @@ export class LocalAgentRelay {
 
   inspectV8ProjectSurface(
     request: CadOpsAgentV8ProjectSurfaceRequest
-  ): Promise<CadOpsAgentV8ProjectSurfaceResponse | CadAgentSessionErrorResponse> {
+  ): Promise<
+    CadOpsAgentV8ProjectSurfaceResponse | CadAgentSessionErrorResponse
+  > {
     return this.#enqueue("inspectV8ProjectSurface", request);
   }
 
   getCurrentSelection(
     request: CadOpsAgentCurrentSelectionRequest
-  ): Promise<CadOpsAgentCurrentSelectionResponse | CadAgentSessionErrorResponse> {
+  ): Promise<
+    CadOpsAgentCurrentSelectionResponse | CadAgentSessionErrorResponse
+  > {
     return this.#enqueue("getCurrentSelection", request);
   }
 
@@ -344,9 +342,7 @@ async function startLauncher(staticRoot: string): Promise<LocalAgentLauncher> {
       closed = true;
       relay.close();
       await new Promise<void>((resolveClose, rejectClose) => {
-        server.close((error) =>
-          error ? rejectClose(error) : resolveClose()
-        );
+        server.close((error) => (error ? rejectClose(error) : resolveClose()));
         server.closeAllConnections();
       });
     }
@@ -461,11 +457,13 @@ async function handleRelayPost(
       return;
     }
     let completed = false;
+    response.once("finish", () => {
+      completed = true;
+    });
     response.on("close", () => {
       if (!completed) relay.disconnectBrowser(clientId);
     });
     const nextRequest = await relay.pollBrowser(clientId);
-    completed = true;
     writeJson(response, 200, { ok: true, request: nextRequest });
     return;
   }
@@ -560,7 +558,10 @@ async function serveStaticFile(
 
 function isWithinRoot(root: string, path: string): boolean {
   const child = relative(root, path);
-  return child === "" || (!child.startsWith(`..${sep}`) && child !== "..");
+  return (
+    child === "" ||
+    (!isAbsolute(child) && !child.startsWith(`..${sep}`) && child !== "..")
+  );
 }
 
 function contentType(path: string): string {
@@ -648,13 +649,43 @@ function isValidRelayResponse(
     return parses(() => parseCadOpsAgentCurrentSelectionResponse(value));
   }
 
-  return (
-    value.adapterVersion === "web-cad.agent-adapter.v1" &&
-    (value.ok === true ||
-      (isRecord(value.error) &&
-        typeof value.error.code === "string" &&
-        typeof value.error.message === "string"))
-  );
+  if (
+    value.adapterVersion !== "web-cad.agent-adapter.v1" ||
+    value.cadOpsVersion !== "cadops.v1"
+  ) {
+    return false;
+  }
+
+  switch (pending.request.method) {
+    case "execute":
+      return (
+        value.mode === pending.request.request.batch?.mode &&
+        Array.isArray(value.createdIds) &&
+        Array.isArray(value.modifiedIds) &&
+        Array.isArray(value.deletedIds) &&
+        Array.isArray(value.warnings) &&
+        isRecord(value.review) &&
+        (value.ok
+          ? isRecord(value.semanticDiff)
+          : isRecord(value.error) && Array.isArray(value.errors))
+      );
+    case "query":
+      return (
+        value.query === pending.request.request.query?.query &&
+        (value.ok || isRecord(value.error))
+      );
+    case "inspectV8ProjectSurface":
+      return (
+        value.ok &&
+        value.surface === "v8.agent_mcp_package_export" &&
+        isRecord(value.project) &&
+        isRecord(value.package) &&
+        isRecord(value.cache) &&
+        isRecord(value.exportReadiness) &&
+        isRecord(value.fileWriting) &&
+        isRecord(value.boundaries)
+      );
+  }
 }
 
 function parses(parse: () => unknown): boolean {

@@ -1331,13 +1331,15 @@ export function executeCadOpsAgentRequestAsync(
   engine: CadEngine,
   executor: AsyncCadCommandExecutor,
   request: CadOpsAgentRequest,
-  expectedSourceAuthorityEpoch: number
+  expectedSourceAuthorityEpoch: number,
+  canCommit?: () => boolean
 ): Promise<CadOpsAgentResponse | undefined>;
 export async function executeCadOpsAgentRequestAsync(
   engine: CadEngine,
   executor: AsyncCadCommandExecutor,
   request: CadOpsAgentRequest,
-  expectedSourceAuthorityEpoch?: number
+  expectedSourceAuthorityEpoch?: number,
+  canCommit?: () => boolean
 ): Promise<CadOpsAgentResponse | undefined> {
   const effectiveRequest = applyAgentRequestContext(request);
   const permissionError = validateAgentPermissions(effectiveRequest);
@@ -1354,7 +1356,8 @@ export async function executeCadOpsAgentRequestAsync(
       ? await executor.executeBatch(effectiveRequest.batch)
       : await executor.executeBatchAtSourceAuthorityEpoch(
           effectiveRequest.batch,
-          expectedSourceAuthorityEpoch
+          expectedSourceAuthorityEpoch,
+          canCommit
         );
   return response
     ? toAgentResponse(effectiveRequest, response, engine)

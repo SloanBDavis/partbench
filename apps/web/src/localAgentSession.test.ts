@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   LocalAgentSession,
   createCurrentAgentSelection,
+  createCurrentAgentSelectionForEngine,
   readLocalAgentSessionToken
 } from "./localAgentSession";
 
@@ -65,6 +66,62 @@ describe("local agent selection", () => {
     expect(
       readLocalAgentSessionToken("#agentSession=not/a/token")
     ).toBeUndefined();
+  });
+
+  it("drops deleted sketch and entity IDs from the reported selection", () => {
+    const engine = new CadEngine();
+    engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "sketch.create",
+          id: "sketch-1",
+          name: "Selection sketch",
+          plane: "XY"
+        },
+        {
+          op: "sketch.addLine",
+          sketchId: "sketch-1",
+          id: "line-1",
+          start: [0, 0],
+          end: [1, 0]
+        }
+      ]
+    });
+    const selection = {
+      sketch: { sketchId: "sketch-1", entityId: "line-1" }
+    };
+    expect(createCurrentAgentSelectionForEngine(engine, selection)).toEqual({
+      kind: "sketchEntity",
+      sketchId: "sketch-1",
+      entityId: "line-1"
+    });
+
+    engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "sketch.deleteEntity",
+          sketchId: "sketch-1",
+          entityId: "line-1"
+        }
+      ]
+    });
+    expect(createCurrentAgentSelectionForEngine(engine, selection)).toEqual({
+      kind: "sketch",
+      sketchId: "sketch-1"
+    });
+
+    engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [{ op: "sketch.delete", id: "sketch-1" }]
+    });
+    expect(createCurrentAgentSelectionForEngine(engine, selection)).toEqual({
+      kind: "none"
+    });
   });
 });
 
@@ -130,6 +187,18 @@ describe("local agent approval", () => {
     await pending;
   });
 
+  it("reserves manual approval while the first preview is still running", async () => {
+    const fixture = createSession(10);
+    const pending = fixture.session.execute(createBoxRequest("first-box"));
+
+    await expect(
+      fixture.session.execute(createBoxRequest("second-box"))
+    ).resolves.toMatchObject({ error: { code: "AGENT_APPROVAL_BUSY" } });
+    await waitForProposal(fixture.session);
+    fixture.session.reject();
+    await pending;
+  });
+
   it("settles a proposal stale after a human source change", async () => {
     const fixture = createSession();
     const pending = fixture.session.execute(createBoxRequest("stale-box"));
@@ -180,6 +249,25 @@ describe("local agent approval", () => {
     expect(fixture.engine.getDocument().objects.has("raced-box")).toBe(false);
   });
 
+  it("rejects an approved commit when source changes during worker validation", async () => {
+    const fixture = createSession(10);
+    const pending = fixture.session.execute(
+      createBoxRequest("worker-race-box")
+    );
+    await waitForProposal(fixture.session);
+
+    const approval = fixture.session.approve();
+    fixture.engine.loadProject(fixture.engine.exportProject());
+    await approval;
+
+    await expect(pending).resolves.toMatchObject({
+      error: { code: "AGENT_PROPOSAL_STALE" }
+    });
+    expect(fixture.engine.getDocument().objects.has("worker-race-box")).toBe(
+      false
+    );
+  });
+
   it("approveAll commits immediately but preserves explicit dry-runs", async () => {
     const fixture = createSession();
     expect(fixture.session.setApprovalMode("approveAll")).toBe(true);
@@ -200,13 +288,85 @@ describe("local agent approval", () => {
     expect(fixture.engine.getDocument().objects.has("dry-box")).toBe(false);
     expect(fixture.publishCommit).toHaveBeenCalledTimes(1);
   });
+
+  it("queues concurrent approveAll commits against the current source", async () => {
+    const fixture = createSession(5);
+    fixture.session.setApprovalMode("approveAll");
+
+    await expect(
+      Promise.all([
+        fixture.session.execute(createBoxRequest("concurrent-a")),
+        fixture.session.execute(createBoxRequest("concurrent-b"))
+      ])
+    ).resolves.toEqual([
+      expect.objectContaining({ ok: true, mode: "commit" }),
+      expect.objectContaining({ ok: true, mode: "commit" })
+    ]);
+    expect(fixture.engine.getDocument().objects.size).toBe(2);
+  });
+
+  it("returns validation failures without proposing or committing in either mode", async () => {
+    const request = createBoxRequest("invalid-box");
+    const invalid = {
+      ...request,
+      batch: {
+        ...request.batch,
+        ops: [
+          {
+            op: "scene.createBox" as const,
+            id: "invalid-box",
+            dimensions: { width: 0, height: 1, depth: 1 }
+          }
+        ]
+      }
+    };
+    const manual = createSession();
+    await expect(manual.session.execute(invalid)).resolves.toMatchObject({
+      ok: false
+    });
+    expect(manual.session.getSnapshot().proposal).toBeUndefined();
+
+    const approveAll = createSession();
+    approveAll.session.setApprovalMode("approveAll");
+    await expect(approveAll.session.execute(invalid)).resolves.toMatchObject({
+      ok: false
+    });
+    expect(approveAll.engine.getDocument().objects.size).toBe(0);
+  });
+
+  it("cancels an approval when the browser session ends during validation", async () => {
+    vi.stubGlobal("window", { removeEventListener: vi.fn() });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true }))
+    );
+    try {
+      const fixture = createSession(10);
+      const pending = fixture.session.execute(
+        createBoxRequest("disconnected-box")
+      );
+      await waitForProposal(fixture.session);
+      const approval = fixture.session.approve();
+      await fixture.session.dispose();
+      await approval;
+
+      await expect(pending).resolves.toMatchObject({
+        error: { code: "AGENT_SESSION_DISCONNECTED" }
+      });
+      expect(fixture.engine.getDocument().objects.has("disconnected-box")).toBe(
+        false
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
-function createSession() {
+function createSession(workerDelayMs = 0) {
   const engine = new CadEngine();
   const executor = new AsyncCadCommandExecutor(
     engine,
-    new SnapshotCadCommandWorker()
+    new SnapshotCadCommandWorker({ delayMs: workerDelayMs })
   );
   const publishCommit = vi.fn(async () => undefined);
   const session = new LocalAgentSession({

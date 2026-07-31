@@ -47,9 +47,7 @@ describe("local agent launcher", () => {
         headers: { "content-type": "application/wasm" }
       });
       expect((await get(launcher, "/leak.txt")).status).toBe(404);
-      expect((await get(launcher, "/%2e%2e/outside.txt")).status).not.toBe(
-        200
-      );
+      expect((await get(launcher, "/%2e%2e/outside.txt")).status).not.toBe(200);
       expect((await get(launcher, "/assets")).status).toBe(404);
     } finally {
       await launcher.close();
@@ -103,9 +101,10 @@ describe("local agent launcher", () => {
         status: 403,
         body: { error: { code: "AGENT_SESSION_TOKEN_INVALID" } }
       });
-      expect(await post(launcher, connectPath, { clientId: "owner" })).toEqual(
-        { status: 200, body: { ok: true } }
-      );
+      expect(await post(launcher, connectPath, { clientId: "owner" })).toEqual({
+        status: 200,
+        body: { ok: true }
+      });
       expect(
         await post(launcher, connectPath, { clientId: "second" })
       ).toMatchObject({
@@ -166,11 +165,9 @@ describe("local agent launcher", () => {
       ] as const;
 
       for (const [method, agentRequestId, result] of calls) {
-        const polled = await post(
-          launcher,
-          `${LOCAL_AGENT_RELAY_PATH}/poll`,
-          { clientId: "owner" }
-        );
+        const polled = await post(launcher, `${LOCAL_AGENT_RELAY_PATH}/poll`, {
+          clientId: "owner"
+        });
         expect(polled).toMatchObject({
           status: 200,
           body: { ok: true, request: { method } }
@@ -229,6 +226,19 @@ describe("local agent launcher", () => {
               message: "extra session field"
             },
             extra: true
+          }
+        })
+      ).toMatchObject({ status: 400 });
+      expect(
+        await post(launcher, `${LOCAL_AGENT_RELAY_PATH}/respond`, {
+          clientId: "owner",
+          requestId: invalidRelayRequestId,
+          response: {
+            ok: true,
+            requestId: "validate-response",
+            adapterVersion: "web-cad.agent-adapter.v1",
+            cadOpsVersion: "cadops.v1",
+            query: "project.summary"
           }
         })
       ).toMatchObject({ status: 400 });

@@ -92,6 +92,8 @@ export class LocalAgentSession {
   >();
   #snapshot: LocalAgentSessionSnapshot = disconnectedAgentSessionSnapshot();
   #pending: PendingProposal | undefined;
+  #preparingCommitRequestId: string | undefined;
+  #sessionGeneration = 0;
   #started = false;
   #disposed = false;
 
@@ -130,7 +132,13 @@ export class LocalAgentSession {
 
   setApprovalMode(mode: CadAgentApprovalMode): boolean {
     const validMode = parseCadAgentApprovalMode(mode);
-    if (this.#pending || this.#disposed) return false;
+    if (
+      this.#pending ||
+      this.#preparingCommitRequestId ||
+      this.#disposed ||
+      (this.#started && !this.#snapshot.connected)
+    )
+      return false;
     this.#publish({ ...this.#snapshot, approvalMode: validMode });
     return true;
   }
@@ -194,17 +202,21 @@ export class LocalAgentSession {
       return;
     }
 
+    const sessionGeneration = this.#sessionGeneration;
     const committed = await this.#executeAtSourceAuthorityEpoch(
       pending.request,
-      pending.sourceAuthorityEpoch
+      pending.sourceAuthorityEpoch,
+      sessionGeneration
     );
     if (!committed) {
       this.#settlePending(
-        sessionError(
-          pending.request.requestId,
-          "AGENT_PROPOSAL_STALE",
-          "The project changed after the agent proposal was previewed."
-        )
+        this.#sessionAlive(sessionGeneration)
+          ? sessionError(
+              pending.request.requestId,
+              "AGENT_PROPOSAL_STALE",
+              "The project changed after the agent proposal was previewed."
+            )
+          : this.#disconnected(pending.request.requestId)
       );
       return;
     }
@@ -250,15 +262,25 @@ export class LocalAgentSession {
   async execute(
     request: CadOpsAgentRequest
   ): Promise<CadOpsAgentResponse | CadAgentSessionErrorResponse> {
-    if (this.#disposed) return this.#disconnected(request.requestId);
+    if (this.#disposed || (this.#started && !this.#snapshot.connected))
+      return this.#disconnected(request.requestId);
     if (request.batch.mode === "dryRun")
       return this.#execute(request, "dryRun");
     if (this.#snapshot.approvalMode === "approveAll") {
-      const response = await this.#execute(request, "commit");
-      if (response.ok) await this.options.publishCommit(response);
-      return response;
+      const sessionGeneration = this.#sessionGeneration;
+      while (this.#sessionAlive(sessionGeneration)) {
+        const response = await this.#executeAtSourceAuthorityEpoch(
+          request,
+          this.options.engine.getSourceAuthorityEpoch(),
+          sessionGeneration
+        );
+        if (!response) continue;
+        if (response.ok) await this.options.publishCommit(response);
+        return response;
+      }
+      return this.#disconnected(request.requestId);
     }
-    if (this.#pending) {
+    if (this.#pending || this.#preparingCommitRequestId) {
       return sessionError(
         request.requestId,
         "AGENT_APPROVAL_BUSY",
@@ -266,30 +288,46 @@ export class LocalAgentSession {
       );
     }
 
+    const sessionGeneration = this.#sessionGeneration;
+    this.#preparingCommitRequestId = request.requestId;
     const sourceAuthorityEpoch = this.options.engine.getSourceAuthorityEpoch();
     const sourceIdentity = this.#sourceIdentity();
-    const preview = await this.#execute(request, "dryRun");
-    if (!preview.ok) return preview;
-    if (!sameSourceIdentity(sourceIdentity, this.#sourceIdentity())) {
-      return sessionError(
-        request.requestId,
-        "AGENT_PROPOSAL_STALE",
-        "The project changed while the agent proposal was previewed."
-      );
+    try {
+      const preview = await this.#execute(request, "dryRun");
+      if (!preview.ok) return preview;
+      if (this.#disposed || sessionGeneration !== this.#sessionGeneration) {
+        return this.#disconnected(request.requestId);
+      }
+      if (
+        sourceAuthorityEpoch !==
+          this.options.engine.getSourceAuthorityEpoch() ||
+        !sameSourceIdentity(sourceIdentity, this.#sourceIdentity())
+      ) {
+        return sessionError(
+          request.requestId,
+          "AGENT_PROPOSAL_STALE",
+          "The project changed while the agent proposal was previewed."
+        );
+      }
+      const proposal: CadAgentCommitProposal = {
+        requestId: request.requestId,
+        sourceIdentity,
+        semanticDiff: preview.semanticDiff,
+        warnings: preview.warnings,
+        ...(preview.actor ? { actor: preview.actor } : {}),
+        ...(preview.audit ? { audit: preview.audit } : {}),
+        review: preview.review
+      };
+      this.#preparingCommitRequestId = undefined;
+      return new Promise((resolve) => {
+        this.#pending = { request, proposal, sourceAuthorityEpoch, resolve };
+        this.#publish({ ...this.#snapshot, proposal, approving: false });
+      });
+    } finally {
+      if (this.#preparingCommitRequestId === request.requestId) {
+        this.#preparingCommitRequestId = undefined;
+      }
     }
-    const proposal: CadAgentCommitProposal = {
-      requestId: request.requestId,
-      sourceIdentity,
-      semanticDiff: preview.semanticDiff,
-      warnings: preview.warnings,
-      ...(preview.actor ? { actor: preview.actor } : {}),
-      ...(preview.audit ? { audit: preview.audit } : {}),
-      review: preview.review
-    };
-    return new Promise((resolve) => {
-      this.#pending = { request, proposal, sourceAuthorityEpoch, resolve };
-      this.#publish({ ...this.#snapshot, proposal, approving: false });
-    });
   }
 
   async query(request: unknown): Promise<CadOpsAgentQueryResponse> {
@@ -310,7 +348,10 @@ export class LocalAgentSession {
     return createCadOpsAgentCurrentSelectionResponse(
       this.options.engine,
       parseCadOpsAgentCurrentSelectionRequest(request),
-      createCurrentAgentSelection(this.options.readSelection())
+      createCurrentAgentSelectionForEngine(
+        this.options.engine,
+        this.options.readSelection()
+      )
     );
   }
 
@@ -331,7 +372,8 @@ export class LocalAgentSession {
 
   async #executeAtSourceAuthorityEpoch(
     request: CadOpsAgentRequest,
-    expectedSourceAuthorityEpoch: number
+    expectedSourceAuthorityEpoch: number,
+    sessionGeneration: number
   ): Promise<CadOpsAgentResponse | undefined> {
     return executeCadOpsAgentRequestAsync(
       this.options.engine,
@@ -341,8 +383,13 @@ export class LocalAgentSession {
         batch: { ...request.batch, mode: "commit" },
         permissions: { allowCommit: true }
       },
-      expectedSourceAuthorityEpoch
+      expectedSourceAuthorityEpoch,
+      () => this.#sessionAlive(sessionGeneration)
     );
+  }
+
+  #sessionAlive(sessionGeneration: number): boolean {
+    return !this.#disposed && this.#sessionGeneration === sessionGeneration;
   }
 
   async #poll(): Promise<void> {
@@ -352,7 +399,8 @@ export class LocalAgentSession {
         const request = readRelayRequest(response);
         if (request) void this.#respond(request);
       } catch (error) {
-        if (!this.#disposed) this.#disconnect(readSessionError(error));
+        if (!this.#disposed)
+          this.#disconnect(readSessionError(error), { notifyRelay: true });
         return;
       }
     }
@@ -383,7 +431,7 @@ export class LocalAgentSession {
         response
       });
     } catch (error) {
-      this.#disconnect(readSessionError(error));
+      this.#disconnect(readSessionError(error), { notifyRelay: true });
     }
   }
 
@@ -431,7 +479,13 @@ export class LocalAgentSession {
     });
   }
 
-  #disconnect(error: CadAgentSessionErrorResponse): void {
+  #disconnect(
+    error: CadAgentSessionErrorResponse,
+    options: { readonly notifyRelay?: boolean } = {}
+  ): void {
+    const wasConnected = this.#snapshot.connected;
+    this.#sessionGeneration += 1;
+    this.#preparingCommitRequestId = undefined;
     if (this.#pending) {
       this.#settlePending({
         ...error,
@@ -444,6 +498,14 @@ export class LocalAgentSession {
       approving: false,
       diagnostic: error.error
     });
+    if (options.notifyRelay && wasConnected) {
+      void fetch(`${RELAY_PATH}/disconnect`, {
+        method: "POST",
+        headers: this.#headers(),
+        body: JSON.stringify({ clientId: this.#clientId }),
+        keepalive: true
+      }).catch(() => undefined);
+    }
   }
 
   #disconnected(requestId: string): CadAgentSessionErrorResponse {
@@ -504,6 +566,52 @@ export function createCurrentAgentSelection({
   if (bodyId) return { kind: "body", bodyId };
   if (objectId) return { kind: "object", objectId };
   return { kind: "none" };
+}
+
+export function createCurrentAgentSelectionForEngine(
+  engine: CadEngine,
+  input: CurrentAgentSelectionInput
+): CadCurrentSelection {
+  const document = engine.getDocument();
+  const sketch = input.sketch
+    ? document.sketches.get(input.sketch.sketchId)
+    : undefined;
+  const structure = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.structure" }
+  });
+  const bodyIds = new Set(
+    structure.ok && structure.query === "project.structure"
+      ? structure.bodies.map((body) => body.id)
+      : []
+  );
+
+  return createCurrentAgentSelection({
+    ...(input.namedReferenceName &&
+    document.namedReferences.has(input.namedReferenceName)
+      ? { namedReferenceName: input.namedReferenceName }
+      : {}),
+    ...(input.generatedReference && bodyIds.has(input.generatedReference.bodyId)
+      ? { generatedReference: input.generatedReference }
+      : {}),
+    ...(sketch
+      ? {
+          sketch: {
+            sketchId: sketch.id,
+            ...(input.sketch?.entityId &&
+            sketch.entities.has(input.sketch.entityId)
+              ? { entityId: input.sketch.entityId }
+              : {})
+          }
+        }
+      : {}),
+    ...(input.bodyId && bodyIds.has(input.bodyId)
+      ? { bodyId: input.bodyId }
+      : {}),
+    ...(input.objectId && document.objects.has(input.objectId)
+      ? { objectId: input.objectId }
+      : {})
+  });
 }
 
 function readRelayRequest(value: unknown): RelayRequest | null {

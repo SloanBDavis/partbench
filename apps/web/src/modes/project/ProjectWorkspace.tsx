@@ -330,9 +330,19 @@ function ProjectAgent({
   readonly onReject: () => void;
 }) {
   const proposalRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    if (agent.proposal) proposalRef.current?.focus();
+    if (agent.proposal) {
+      previousFocusRef.current =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+      proposalRef.current?.focus();
+    } else {
+      previousFocusRef.current?.focus();
+      previousFocusRef.current = null;
+    }
   }, [agent.proposal]);
 
   return (
@@ -372,7 +382,10 @@ function ProjectAgent({
                 value="manualApproval"
                 checked={agent.approvalMode === "manualApproval"}
                 disabled={
-                  disabled || Boolean(agent.proposal) || agent.approving
+                  disabled ||
+                  !agent.connected ||
+                  Boolean(agent.proposal) ||
+                  agent.approving
                 }
                 onChange={() => onApprovalModeChange("manualApproval")}
               />
@@ -388,7 +401,10 @@ function ProjectAgent({
                 value="approveAll"
                 checked={agent.approvalMode === "approveAll"}
                 disabled={
-                  disabled || Boolean(agent.proposal) || agent.approving
+                  disabled ||
+                  !agent.connected ||
+                  Boolean(agent.proposal) ||
+                  agent.approving
                 }
                 onChange={() => onApprovalModeChange("approveAll")}
               />
@@ -458,13 +474,17 @@ function ProjectAgent({
             </pre>
           </details>
           <div className="pb-project-form-actions">
-            <Button disabled={disabled || agent.approving} onClick={onReject}>
+            <Button
+              disabled={disabled || !agent.connected || agent.approving}
+              onClick={onReject}
+            >
               Reject
             </Button>
             <Button
               tone="primary"
               disabled={
                 disabled ||
+                !agent.connected ||
                 agent.approving ||
                 agent.proposal.review.blockers.length > 0
               }

@@ -4061,11 +4061,13 @@ export class AsyncCadCommandExecutor {
 
   async executeBatchAtSourceAuthorityEpoch(
     batch: CadBatch,
-    expectedSourceAuthorityEpoch: number
+    expectedSourceAuthorityEpoch: number,
+    canCommit: () => boolean = () => true
   ): Promise<CadAsyncBatchResponse | undefined> {
     const response = this.#queue.then(() =>
+      canCommit() &&
       this.engine.getSourceAuthorityEpoch() === expectedSourceAuthorityEpoch
-        ? this.#executeBatchNow(batch)
+        ? this.#executeBatchNow(batch, expectedSourceAuthorityEpoch, canCommit)
         : undefined
     );
     this.#queue = response.then(
@@ -4075,7 +4077,17 @@ export class AsyncCadCommandExecutor {
     return response;
   }
 
-  async #executeBatchNow(batch: CadBatch): Promise<CadAsyncBatchResponse> {
+  async #executeBatchNow(batch: CadBatch): Promise<CadAsyncBatchResponse>;
+  async #executeBatchNow(
+    batch: CadBatch,
+    expectedSourceAuthorityEpoch: number,
+    canCommit?: () => boolean
+  ): Promise<CadAsyncBatchResponse | undefined>;
+  async #executeBatchNow(
+    batch: CadBatch,
+    expectedSourceAuthorityEpoch?: number,
+    canCommit: () => boolean = () => true
+  ): Promise<CadAsyncBatchResponse | undefined> {
     const resolvedImport = await this.#resolveProjectImportStepOps(batch);
     const effectiveBatch = resolvedImport.batch;
     const workerResponse = await this.worker.execute({
@@ -4091,7 +4103,22 @@ export class AsyncCadCommandExecutor {
       );
     }
 
+    if (
+      !canCommit() ||
+      (expectedSourceAuthorityEpoch !== undefined &&
+        this.engine.getSourceAuthorityEpoch() !== expectedSourceAuthorityEpoch)
+    ) {
+      return undefined;
+    }
+
     await delay(0);
+    if (
+      !canCommit() ||
+      (expectedSourceAuthorityEpoch !== undefined &&
+        this.engine.getSourceAuthorityEpoch() !== expectedSourceAuthorityEpoch)
+    ) {
+      return undefined;
+    }
     const committed = this.engine.executeBatch(effectiveBatch);
     await delay(0);
     return attachImportedStepExecutionMetadata(committed, resolvedImport);

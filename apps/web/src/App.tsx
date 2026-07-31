@@ -5405,6 +5405,17 @@ export function App() {
         setSelectedGeneratedReference((current) =>
           reconcileSelectedGeneratedReferenceBody(current, nextStructure.bodies)
         );
+        setFocusedSketchId((current) =>
+          current && nextDocument.sketches.has(current) ? current : undefined
+        );
+        setSelectedSketchContext((current) => {
+          if (!current) return undefined;
+          const sketch = nextDocument.sketches.get(current.sketchId);
+          if (!sketch) return undefined;
+          return current.entityId && !sketch.entities.has(current.entityId)
+            ? { sketchId: current.sketchId }
+            : current;
+        });
         setViewportTwoTargetMeasurementSession((current) =>
           updateViewportTwoTargetMeasurementSession(current, { type: "clear" })
         );
