@@ -306,6 +306,44 @@ describe("local agent launcher", () => {
         mode: "dryRun"
       });
 
+      const summaryResponse = launcher.relay.query({
+        requestId: "validate-query",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        query: {
+          version: "cadops.v1",
+          query: { query: "project.summary" }
+        }
+      });
+      const summaryPolled = await post(
+        launcher,
+        `${LOCAL_AGENT_RELAY_PATH}/poll`,
+        { clientId: "owner" }
+      );
+      const summaryRelayRequestId = readRelayRequestId(summaryPolled.body);
+      const summaryResult = {
+        ok: true,
+        requestId: "validate-query",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        cadOpsVersion: "cadops.v1",
+        query: "project.summary"
+      };
+      expect(
+        await post(launcher, `${LOCAL_AGENT_RELAY_PATH}/respond`, {
+          clientId: "owner",
+          requestId: summaryRelayRequestId,
+          response: { ...summaryResult, query: "transaction.history" }
+        })
+      ).toMatchObject({ status: 400 });
+      await post(launcher, `${LOCAL_AGENT_RELAY_PATH}/respond`, {
+        clientId: "owner",
+        requestId: summaryRelayRequestId,
+        response: summaryResult
+      });
+      await expect(summaryResponse).resolves.toMatchObject({
+        ok: true,
+        query: "project.summary"
+      });
+
       const selectionResponse = launcher.relay.getCurrentSelection({
         requestId: "validate-selection"
       } as CadOpsAgentCurrentSelectionRequest);

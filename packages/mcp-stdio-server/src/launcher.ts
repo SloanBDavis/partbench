@@ -674,7 +674,7 @@ function isValidRelayResponse(
       );
     case "query":
       return (
-        value.query === pending.request.request.query?.query &&
+        value.query === pending.request.request.query.query.query &&
         (value.ok || isRecord(value.error))
       );
     case "inspectV8ProjectSurface":
