@@ -11,7 +11,8 @@ describe("V19 curve-edit hover scheduler", () => {
     const scheduler = new SketchCurveEditHoverScheduler({
       now: () => now,
       publish: (choice) => published.push(choice),
-      setTimer: (callback, delayMs) => globalThis.setTimeout(callback, delayMs),
+      setTimer: (callback, delayMs) =>
+        globalThis.setTimeout(callback, delayMs) as unknown as number,
       clearTimer: (timerId) => globalThis.clearTimeout(timerId)
     });
 
@@ -37,7 +38,8 @@ describe("V19 curve-edit hover scheduler", () => {
     const scheduler = new SketchCurveEditHoverScheduler({
       now: () => now,
       publish,
-      setTimer: (callback, delayMs) => globalThis.setTimeout(callback, delayMs),
+      setTimer: (callback, delayMs) =>
+        globalThis.setTimeout(callback, delayMs) as unknown as number,
       clearTimer: (timerId) => globalThis.clearTimeout(timerId)
     });
 
@@ -58,7 +60,8 @@ describe("V19 curve-edit hover scheduler", () => {
     const scheduler = new SketchCurveEditHoverScheduler({
       now: () => now,
       publish,
-      setTimer: (callback, delayMs) => globalThis.setTimeout(callback, delayMs),
+      setTimer: (callback, delayMs) =>
+        globalThis.setTimeout(callback, delayMs) as unknown as number,
       clearTimer: (timerId) => globalThis.clearTimeout(timerId)
     });
 

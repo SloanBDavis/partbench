@@ -1322,11 +1322,23 @@ export function executeCadOpsAgentRequest(
   return new CadOpsAgentAdapter(engine).execute(request);
 }
 
-export async function executeCadOpsAgentRequestAsync(
+export function executeCadOpsAgentRequestAsync(
   engine: CadEngine,
   executor: AsyncCadCommandExecutor,
   request: CadOpsAgentRequest
-): Promise<CadOpsAgentResponse> {
+): Promise<CadOpsAgentResponse>;
+export function executeCadOpsAgentRequestAsync(
+  engine: CadEngine,
+  executor: AsyncCadCommandExecutor,
+  request: CadOpsAgentRequest,
+  expectedSourceAuthorityEpoch: number
+): Promise<CadOpsAgentResponse | undefined>;
+export async function executeCadOpsAgentRequestAsync(
+  engine: CadEngine,
+  executor: AsyncCadCommandExecutor,
+  request: CadOpsAgentRequest,
+  expectedSourceAuthorityEpoch?: number
+): Promise<CadOpsAgentResponse | undefined> {
   const effectiveRequest = applyAgentRequestContext(request);
   const permissionError = validateAgentPermissions(effectiveRequest);
 
@@ -1337,11 +1349,16 @@ export async function executeCadOpsAgentRequestAsync(
     );
   }
 
-  return toAgentResponse(
-    effectiveRequest,
-    await executor.executeBatch(effectiveRequest.batch),
-    engine
-  );
+  const response =
+    expectedSourceAuthorityEpoch === undefined
+      ? await executor.executeBatch(effectiveRequest.batch)
+      : await executor.executeBatchAtSourceAuthorityEpoch(
+          effectiveRequest.batch,
+          expectedSourceAuthorityEpoch
+        );
+  return response
+    ? toAgentResponse(effectiveRequest, response, engine)
+    : undefined;
 }
 
 export function createCadOpsAgentCurrentSelectionResponse(

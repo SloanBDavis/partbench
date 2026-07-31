@@ -161,6 +161,7 @@ const ACTION_AUDIT_BY_ID = {
     "G"
   ),
   "project.history": navAudit("HistoryPanel", "open History", "G"),
+  "project.agent": navAudit("Project Agent page", "open Agent", "G"),
   "project.export": navAudit(
     "ProjectJsonPanel export section",
     "open Export",

@@ -11,6 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@web-cad/agent-adapter": "workspace:*",
     "@web-cad/cad-core": "workspace:*",
     "@web-cad/cad-protocol": "workspace:*",
     "@web-cad/geometry-worker": "workspace:*",

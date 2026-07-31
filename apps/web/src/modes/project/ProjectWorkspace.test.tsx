@@ -149,6 +149,17 @@ describe("ProjectWorkspace", () => {
     expect(undoButton).not.toContain('disabled=""');
   });
 
+  it("shows the session-only Agent approval modes without adding chat UI", () => {
+    const markup = renderPage("agent");
+
+    expect(markup).toContain("Local session");
+    expect(markup).toContain("Disconnected");
+    expect(markup).toContain("Manual approval");
+    expect(markup).toContain("Approve all");
+    expect(markup).toContain("No commit awaiting approval");
+    expect(markup).not.toContain("chat");
+  });
+
   it("renders parameter values, expressions, descriptions, and accessible row actions", () => {
     const markup = renderPage("parameters", {
       parameterEvaluation: createEvaluation(),
@@ -274,6 +285,11 @@ function renderPage(
     transactions: [],
     canUndo: false,
     canRedo: false,
+    agent: {
+      connected: false,
+      approvalMode: "manualApproval",
+      approving: false
+    },
     onNew: () => undefined,
     onOpenWcad: async () => false,
     onOpenStep: async () => false,
@@ -297,6 +313,9 @@ function renderPage(
     onDeleteParameter: () => undefined,
     onUndo: () => undefined,
     onRedo: () => undefined,
+    onAgentApprovalModeChange: () => undefined,
+    onApproveAgentProposal: () => undefined,
+    onRejectAgentProposal: () => undefined,
     ...overrides
   };
 

@@ -1,5 +1,10 @@
 import type { CadProject, CadTransactionHistoryEntry } from "@web-cad/cad-core";
 import type {
+  CadAgentApprovalMode,
+  CadAgentCommitProposal,
+  CadAgentSessionErrorResponse
+} from "@web-cad/agent-adapter";
+import type {
   CadParameterSnapshot,
   DocumentUnits,
   DocumentUnitUpdateMode,
@@ -9,7 +14,7 @@ import type {
   ProjectParameterEvaluationQueryResponse,
   ProjectTopologyIdentityReadinessQueryResponse
 } from "@web-cad/cad-protocol";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ParameterCreateForm, ParameterEditForm } from "../../cadCommands";
 import {
   createProjectJsonWorkflowState,
@@ -94,6 +99,13 @@ export interface ProjectWorkspaceProps {
   readonly transactions: readonly CadTransactionHistoryEntry[];
   readonly canUndo: boolean;
   readonly canRedo: boolean;
+  readonly agent: {
+    readonly connected: boolean;
+    readonly approvalMode: CadAgentApprovalMode;
+    readonly proposal?: CadAgentCommitProposal;
+    readonly approving: boolean;
+    readonly diagnostic?: CadAgentSessionErrorResponse["error"];
+  };
   readonly message?: string;
   readonly messageTone?: "info" | "error";
   /** Surfaces blocked-action reasons when aria-disabled controls are activated. */
@@ -127,6 +139,9 @@ export interface ProjectWorkspaceProps {
   readonly onDeleteParameter: (parameterId: string) => void;
   readonly onUndo: () => void;
   readonly onRedo: () => void;
+  readonly onAgentApprovalModeChange: (mode: CadAgentApprovalMode) => void;
+  readonly onApproveAgentProposal: () => void;
+  readonly onRejectAgentProposal: () => void;
 }
 
 type ProjectWorkspacePropsWithFile = Omit<
@@ -162,6 +177,7 @@ export function ProjectWorkspace({
   transactions,
   canUndo,
   canRedo,
+  agent,
   message,
   messageTone = "info",
   onUnavailableActivate,
@@ -187,7 +203,10 @@ export function ProjectWorkspace({
   onEditParameter,
   onDeleteParameter,
   onUndo,
-  onRedo
+  onRedo,
+  onAgentApprovalModeChange,
+  onApproveAgentProposal,
+  onRejectAgentProposal
 }: ProjectWorkspaceProps) {
   const jsonWorkflow = useMemo(
     () =>
@@ -265,6 +284,14 @@ export function ProjectWorkspace({
           onUndo={onUndo}
           onRedo={onRedo}
         />
+      ) : page === "agent" ? (
+        <ProjectAgent
+          disabled={disabled}
+          agent={agent}
+          onApprovalModeChange={onAgentApprovalModeChange}
+          onApprove={onApproveAgentProposal}
+          onReject={onRejectAgentProposal}
+        />
       ) : (
         <ProjectExport
           disabled={disabled}
@@ -287,6 +314,207 @@ export function ProjectWorkspace({
       ) : null}
     </section>
   );
+}
+
+function ProjectAgent({
+  disabled,
+  agent,
+  onApprovalModeChange,
+  onApprove,
+  onReject
+}: {
+  readonly disabled: boolean;
+  readonly agent: ProjectWorkspaceProps["agent"];
+  readonly onApprovalModeChange: (mode: CadAgentApprovalMode) => void;
+  readonly onApprove: () => void;
+  readonly onReject: () => void;
+}) {
+  const proposalRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (agent.proposal) proposalRef.current?.focus();
+  }, [agent.proposal]);
+
+  return (
+    <>
+      <ProjectPageHeading
+        page="agent"
+        eyebrow="Project"
+        title="Agent"
+        detail="Review commands from the authenticated local Partbench agent session."
+      />
+      <div className="pb-project-card-grid">
+        <ProjectCard
+          title="Local session"
+          status={agent.connected ? "Connected" : "Disconnected"}
+        >
+          <p className="pb-project-card-detail">
+            {agent.connected
+              ? "The local relay is connected to this browser tab and its current project."
+              : "Start Partbench from the local MCP server to connect an agent session."}
+          </p>
+          {agent.diagnostic ? (
+            <p
+              className="pb-project-blocked-reason"
+              role={agent.connected ? "status" : "alert"}
+            >
+              {agent.diagnostic.message} ({agent.diagnostic.code})
+            </p>
+          ) : null}
+        </ProjectCard>
+        <ProjectCard title="Approval mode" status="Session only">
+          <fieldset className="pb-project-agent-modes">
+            <legend>Agent commit approval</legend>
+            <label>
+              <input
+                type="radio"
+                name="agent-approval-mode"
+                value="manualApproval"
+                checked={agent.approvalMode === "manualApproval"}
+                disabled={
+                  disabled || Boolean(agent.proposal) || agent.approving
+                }
+                onChange={() => onApprovalModeChange("manualApproval")}
+              />
+              <span>
+                <strong>Manual approval</strong>
+                Review every proposed commit before it changes the project.
+              </span>
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="agent-approval-mode"
+                value="approveAll"
+                checked={agent.approvalMode === "approveAll"}
+                disabled={
+                  disabled || Boolean(agent.proposal) || agent.approving
+                }
+                onChange={() => onApprovalModeChange("approveAll")}
+              />
+              <span>
+                <strong>Approve all</strong>
+                Commit valid agent batches immediately for this session.
+              </span>
+            </label>
+          </fieldset>
+        </ProjectCard>
+      </div>
+      {agent.proposal ? (
+        <div
+          ref={proposalRef}
+          className="pb-project-agent-proposal"
+          tabIndex={-1}
+          aria-labelledby="pb-agent-proposal-heading"
+        >
+          <div className="pb-project-card-heading">
+            <h2 id="pb-agent-proposal-heading">Commit proposal</h2>
+            <span>{agent.proposal.review.operationCount} operations</span>
+          </div>
+          <p className="pb-project-card-detail">
+            {formatAgentEntityChanges(agent.proposal)}
+          </p>
+          <ol className="pb-project-agent-operations">
+            {agent.proposal.review.operations.map((operation) => (
+              <li key={`${operation.index}:${operation.op}`}>
+                <strong>{operation.label}</strong>
+                {operation.destructive ? <span>Destructive</span> : null}
+              </li>
+            ))}
+          </ol>
+          {agent.proposal.warnings.length > 0 ||
+          agent.proposal.review.hints.length > 0 ? (
+            <AgentNoticeList
+              title="Warnings and review notes"
+              notices={[
+                ...agent.proposal.warnings,
+                ...agent.proposal.review.hints.map((notice) => notice.message)
+              ]}
+            />
+          ) : null}
+          {agent.proposal.review.blockers.length > 0 ? (
+            <AgentNoticeList
+              title="Blockers"
+              notices={agent.proposal.review.blockers.map(
+                (notice) => notice.message
+              )}
+            />
+          ) : null}
+          <details className="pb-project-advanced pb-project-advanced--compact">
+            <summary>Technical details</summary>
+            <pre>
+              {JSON.stringify(
+                {
+                  requestId: agent.proposal.requestId,
+                  sourceIdentity: agent.proposal.sourceIdentity,
+                  actor: agent.proposal.actor,
+                  audit: agent.proposal.audit,
+                  reviewAudit: agent.proposal.review.audit,
+                  semanticDiff: agent.proposal.semanticDiff
+                },
+                null,
+                2
+              )}
+            </pre>
+          </details>
+          <div className="pb-project-form-actions">
+            <Button disabled={disabled || agent.approving} onClick={onReject}>
+              Reject
+            </Button>
+            <Button
+              tone="primary"
+              disabled={
+                disabled ||
+                agent.approving ||
+                agent.proposal.review.blockers.length > 0
+              }
+              onClick={onApprove}
+            >
+              {agent.approving ? "Approving…" : "Approve"}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="pb-project-empty-state">
+          <h2>No commit awaiting approval</h2>
+          <p>
+            Agent queries and dry runs remain available while this page is open.
+          </p>
+        </div>
+      )}
+    </>
+  );
+}
+
+function AgentNoticeList({
+  title,
+  notices
+}: {
+  readonly title: string;
+  readonly notices: readonly string[];
+}) {
+  return (
+    <section className="pb-project-agent-notices">
+      <h3>{title}</h3>
+      <ul>
+        {notices.map((notice, index) => (
+          <li key={`${index}:${notice}`}>{notice}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function formatAgentEntityChanges(proposal: CadAgentCommitProposal): string {
+  const counts = Object.values(proposal.review.entityChanges).reduce(
+    (total, count) => ({
+      created: total.created + count.created,
+      modified: total.modified + count.modified,
+      deleted: total.deleted + count.deleted
+    }),
+    { created: 0, modified: 0, deleted: 0 }
+  );
+  return `${counts.created} created, ${counts.modified} modified, ${counts.deleted} deleted.`;
 }
 
 function ProjectOverview({

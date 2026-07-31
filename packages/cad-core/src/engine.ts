@@ -4059,6 +4059,22 @@ export class AsyncCadCommandExecutor {
     return response;
   }
 
+  async executeBatchAtSourceAuthorityEpoch(
+    batch: CadBatch,
+    expectedSourceAuthorityEpoch: number
+  ): Promise<CadAsyncBatchResponse | undefined> {
+    const response = this.#queue.then(() =>
+      this.engine.getSourceAuthorityEpoch() === expectedSourceAuthorityEpoch
+        ? this.#executeBatchNow(batch)
+        : undefined
+    );
+    this.#queue = response.then(
+      () => undefined,
+      () => undefined
+    );
+    return response;
+  }
+
   async #executeBatchNow(batch: CadBatch): Promise<CadAsyncBatchResponse> {
     const resolvedImport = await this.#resolveProjectImportStepOps(batch);
     const effectiveBatch = resolvedImport.batch;

@@ -205,6 +205,14 @@ export const UI_ACTION_METADATA = [
     false
   ),
   action(
+    "project.agent",
+    "Agent",
+    "Navigate",
+    ["project"],
+    ["mcp", "approval", "connected agent"],
+    false
+  ),
+  action(
     "project.export",
     "Export workspace",
     "Navigate",

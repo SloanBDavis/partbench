@@ -7,6 +7,7 @@ export type ProjectPageId =
   | "files"
   | "parameters"
   | "history"
+  | "agent"
   | "export";
 
 export type FeatureEditorKind =

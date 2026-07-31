@@ -19,6 +19,7 @@ import {
   type BodyMeasurementsSnapshot,
   type ObjectMeasurementsSnapshot
 } from "@web-cad/cad-core";
+import type { CadOpsAgentSuccessResponse } from "@web-cad/agent-adapter";
 import type {
   BodyGeneratedReferencesQueryResponse,
   CadBodyGeneratedReferenceEvidenceSnapshot,
@@ -446,6 +447,11 @@ import {
   readLazyProjectOpfsCacheStatus
 } from "./projectOpfsCacheLazy";
 import type { SketchPanelSelectionContext } from "./sketchPanelUi";
+import type {
+  CurrentAgentSelectionInput,
+  LocalAgentSession,
+  LocalAgentSessionSnapshot
+} from "./localAgentSession";
 import { createSketchModelingSelectionContext } from "./sketchModelingSelectionContext";
 import {
   formatSketchSolverStatus,
@@ -2172,6 +2178,14 @@ export function App() {
   const [document, setDocument] = useState<CadDocument>(() =>
     engine.getDocument()
   );
+  const localAgentSessionRef = useRef<LocalAgentSession | undefined>(undefined);
+  const currentAgentSelectionRef = useRef<CurrentAgentSelectionInput>({});
+  const [localAgentSession, setLocalAgentSession] =
+    useState<LocalAgentSessionSnapshot>({
+      connected: false,
+      approvalMode: "manualApproval",
+      approving: false
+    });
   const derivedGeometrySourceBuildersRef = useRef<
     DerivedGeometrySourceBuilders | undefined
   >(undefined);
@@ -2526,6 +2540,50 @@ export function App() {
       }),
     [commandWorker, getDerivedGeometryRuntime]
   );
+  const publishAgentCommit = useEffectEvent(
+    async (_response: CadOpsAgentSuccessResponse) => {
+      emitGeometryDiagnosticEvent({
+        phase: "command-committed",
+        timestamp: performance.now()
+      });
+      await syncDocument();
+      successfulCommitCountRef.current += 1;
+      setProjectFile((current) => markProjectFileDirty(current));
+    }
+  );
+  useEffect(() => {
+    if (!window.location.hash.startsWith("#agentSession=")) return;
+    let active = true;
+    let unsubscribe: (() => void) | undefined;
+    let session: LocalAgentSession | undefined;
+
+    void import("./localAgentSession").then((module) => {
+      const token = module.readLocalAgentSessionToken(window.location.hash);
+      if (!active || !token) return;
+      session = new module.LocalAgentSession({
+        token,
+        engine,
+        executor: commandExecutor,
+        readSelection: () => currentAgentSelectionRef.current,
+        publishCommit: publishAgentCommit
+      });
+      localAgentSessionRef.current = session;
+      unsubscribe = session.subscribe(setLocalAgentSession);
+      void session.start();
+    });
+
+    return () => {
+      active = false;
+      unsubscribe?.();
+      if (localAgentSessionRef.current === session) {
+        localAgentSessionRef.current = undefined;
+      }
+      void session?.dispose();
+    };
+  }, [commandExecutor]);
+  useEffect(() => {
+    localAgentSessionRef.current?.refreshSourceIdentity();
+  }, [document]);
   const readSketchCurveEditReadinessAsync = useCallback(
     async (proposal: SketchCurveEditProposal, signal: AbortSignal) => {
       const client = await getSketchCurveEditQueryClient();
@@ -3345,6 +3403,23 @@ export function App() {
       selectedTopologyAnchoredGeneratedReference
     ]
   );
+  currentAgentSelectionRef.current = {
+    ...(selectedNamedReferenceName
+      ? { namedReferenceName: selectedNamedReferenceName }
+      : {}),
+    ...(selectedGeneratedReferenceState.status === "selected"
+      ? {
+          generatedReference: {
+            bodyId: selectedGeneratedReferenceState.reference.bodyId,
+            stableId: selectedGeneratedReferenceState.reference.stableId,
+            expectedKind: selectedGeneratedReferenceState.reference.kind
+          }
+        }
+      : {}),
+    ...(selectedSketchContext ? { sketch: selectedSketchContext } : {}),
+    ...(selectedBody ? { bodyId: selectedBody.id } : {}),
+    ...(selectedObject ? { objectId: selectedObject.id } : {})
+  };
   const selectedGeneratedReferenceCandidates = useMemo(
     () =>
       readEngineStateForDocument(document, () =>
@@ -7225,6 +7300,7 @@ export function App() {
       return;
     }
 
+    localAgentSessionRef.current?.invalidateProposal();
     engine.loadProject(result.project);
     stepImportPayloadStoreRef.current.clear();
     setWcadTopologyCheckpointPayloadCache(
@@ -7441,6 +7517,7 @@ export function App() {
   }
 
   function createNewProject() {
+    localAgentSessionRef.current?.invalidateProposal();
     engine.loadProject(exportCadProject(new CadEngine()));
     stepImportPayloadStoreRef.current.clear();
     setWcadTopologyCheckpointPayloadCache([]);
@@ -7481,6 +7558,7 @@ export function App() {
       return;
     }
 
+    localAgentSessionRef.current?.invalidateProposal();
     engine.loadProject(preview.project);
     stepImportPayloadStoreRef.current.clear();
     setWcadTopologyCheckpointPayloadCache([]);
@@ -7671,7 +7749,7 @@ export function App() {
   }
 
   function openProjectPage(
-    page: "overview" | "files" | "parameters" | "history" | "export"
+    page: "overview" | "files" | "parameters" | "history" | "agent" | "export"
   ) {
     dispatchWorkbench({
       type: "request-navigation",
@@ -8206,6 +8284,9 @@ export function App() {
         return;
       case "project.history":
         openProjectPage("history");
+        return;
+      case "project.agent":
+        openProjectPage("agent");
         return;
       case "project.export":
         openProjectPage("export");
@@ -9129,6 +9210,7 @@ export function App() {
                     ["files", "Files"],
                     ["parameters", "Parameters"],
                     ["history", "History"],
+                    ["agent", "Agent"],
                     ["export", "Export"]
                   ] as const
                 ).map(([page, label]) => (
@@ -9330,6 +9412,7 @@ export function App() {
                 transactions={transactionHistory}
                 canUndo={engine.getTransactions().length > 0}
                 canRedo={engine.getRedoStack().length > 0}
+                agent={localAgentSession}
                 message={projectMessage}
                 messageTone={projectMessageTone}
                 onNew={createNewProject}
@@ -9380,6 +9463,23 @@ export function App() {
                 }
                 onUndo={undo}
                 onRedo={redo}
+                onAgentApprovalModeChange={(mode) => {
+                  if (
+                    mode === "approveAll" &&
+                    !window.confirm(
+                      "Approve every valid agent commit for this browser session?"
+                    )
+                  ) {
+                    return;
+                  }
+                  localAgentSessionRef.current?.setApprovalMode(mode);
+                }}
+                onApproveAgentProposal={() =>
+                  void localAgentSessionRef.current?.approve()
+                }
+                onRejectAgentProposal={() =>
+                  localAgentSessionRef.current?.reject()
+                }
               />
             </Suspense>
           }
