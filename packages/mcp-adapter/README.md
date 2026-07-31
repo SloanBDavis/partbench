@@ -4,37 +4,11 @@ This package is the MCP tool wrapper over the existing CADOps agent adapter. It
 keeps `@web-cad/agent-adapter` as the internal API boundary and does not define
 CAD operations itself.
 
-It exposes these MCP-style tools:
-
-- `cad.project_summary`
-- `cad.project_features`
-- `cad.project_structure`
-- `cad.project_health`
-- `cad.project_export_readiness`
-- `cad.project_export_exact`
-- `cad.project_package_readiness`
-- `cad.v8_project_surface`
-- `cad.project_sketches`
-- `cad.parameter_list`
-- `cad.parameter_get`
-- `cad.object_measurements`
-- `cad.body_measurements`
-- `cad.body_topology`
-- `cad.project_extents`
-- `cad.sketch_get`
-- `cad.sketch_curve_edit_readiness`
-- `cad.sketch_profile_region_candidates`
-- `cad.sketch_profile_region_validate`
-- `cad.sketch_evaluation`
-- `cad.sketch_dimensions`
-- `cad.sketch_dimension_get`
-- `cad.body_generated_references`
-- `cad.resolve_generated_reference`
-- `cad.generated_reference_measurements`
-- `cad.named_references`
-- `cad.resolve_named_reference`
-- `cad.transaction_history`
-- `cad.batch`
+The authoritative tool inventory is the result of MCP `tools/list`; do not
+duplicate that generated registry in documentation. The current tools cover
+project/feature/sketch inspection, parameters, measurements, topology and
+repair readiness, reference and selection candidates, V19 curve/region
+queries, transaction history, exact export/package readiness, and `cad.batch`.
 
 It does not depend on React, the renderer, OCCT, OPFS, STEP import/export,
 WebGPU, natural-language parsing, or the web app startup path.
@@ -55,6 +29,11 @@ MCP client
 
 The wrapper does not move document authority into MCP. `cad-core` remains the
 only package that owns document mutation.
+
+V20 adds one narrow awaitable execution port for batch, query, V8-surface, and
+current-selection calls. The connected stdio launcher supplies its browser
+relay as that port; existing in-memory callers remain the default. Tool schemas,
+validation, and response shaping are shared in both paths.
 
 ## Local Client Shape
 
@@ -255,9 +234,10 @@ Call `cad.batch` in dry-run mode:
 }
 ```
 
-Commit uses the same `cad.batch` tool with `"mode": "commit"`, but the MCP
-wrapper requires an explicit top-level `"allowCommit": true` argument before it
-will forward a commit to the agent adapter. Dry-runs do not require this flag.
+Commit uses the same `cad.batch` tool with `"mode": "commit"`. The in-memory
+adapter requires an explicit top-level `"allowCommit": true`; the connected V20
+executable accepts the field for compatibility while the browser's session-only
+approval mode controls commit authority. Dry-runs do not require this flag.
 Callers can provide optional actor metadata either inside the batch or as a
 top-level tool argument:
 
@@ -328,15 +308,16 @@ This update example uses explicit IDs and a path copied from a
 }
 ```
 
-Run the same operation in commit mode with `allowCommit: true` only after the
-dry-run is accepted. MCP does not choose the first, largest, or nearest
-candidate and does not reorder the returned segments.
+Run the same operation in commit mode only after the dry-run is accepted. Use
+`allowCommit: true` for the in-memory adapter; the connected V20 executable uses
+the browser's approval mode instead. MCP does not choose the first, largest, or
+nearest candidate and does not reorder the returned segments.
 
 MCP also passes generic audit metadata through the agent adapter: source `mcp`,
 tool name `cad.batch`, request ID, intent, and operation count. The committed
-transaction history exposes this audit metadata. Missing `allowCommit: true`
-returns a structured `COMMIT_NOT_ALLOWED` adapter error and does not mutate the
-document. Batch responses also include an agent review block so a caller can
+transaction history exposes this audit metadata. In-memory calls missing
+`allowCommit: true` return a structured `COMMIT_NOT_ALLOWED` adapter error and
+do not mutate the document. Batch responses also include an agent review block so a caller can
 inspect requested mode, effective intent, operation labels, entity-change
 counts, audit summary, commit-gate state, hints, and blockers before deciding
 whether to re-run a dry-run as an allowed commit.
@@ -426,6 +407,6 @@ current numeric values, while `preservePhysicalSize` scales current dimensions
 and transform translations in `cad-core`.
 
 Measurement responses are read-only derived data from the authoritative
-document, not renderer meshes. Current measurements support boxes, cylinders,
-spheres, cones, and tori and include local bounds, world bounds, and approximate
-volume.
+document, not renderer meshes. `cad.object_measurements` supports boxes,
+cylinders, spheres, cones, and tori; body, generated-reference, topology, and
+mass-property data use their existing dedicated tools.

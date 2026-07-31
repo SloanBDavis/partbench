@@ -11,6 +11,12 @@ It depends on:
 It does not depend on React, the renderer, Open CASCADE, OPFS, STEP import/export,
 WebGPU, or natural-language parsing.
 
+The default adapter still accepts an in-memory `CadEngine` for compatible
+programmatic callers. V20 also exports strict approval/selection/session
+contracts and an async executor helper so the browser can use its current
+`CadEngine` and shared `AsyncCadCommandExecutor`; document authority does not
+move into this package.
+
 ## Boundary
 
 External callers submit mutations with a `CadOpsAgentRequest`:
@@ -125,9 +131,9 @@ Measurement and extent queries use the same read-only query envelope:
 }
 ```
 
-Feature summaries use the same read-only query envelope. The current
-implementation returns primitive-derived features from scene objects and
-authored sketch-extrude features from the source-of-truth document:
+Feature summaries use the same read-only query envelope and return the current
+primitive-derived and supported authored feature summaries from the
+source-of-truth document:
 
 ```json
 {
@@ -140,9 +146,8 @@ authored sketch-extrude features from the source-of-truth document:
 }
 ```
 
-The V2 structure bridge uses the same read-only envelope and returns the
-default part, primitive-derived features/bodies, authored sketch-extrude
-features/bodies, and source mappings for the current model:
+The structure query uses the same read-only envelope and returns the default
+part, current supported features/bodies, and their source mappings:
 
 ```json
 {

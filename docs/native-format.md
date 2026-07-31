@@ -48,7 +48,9 @@ for new source records that cannot be represented by V18: `ImportedBodyFeature`,
 `ShellFeature`, and `CadParameter.expression`. See `docs/v15.md` for the V15
 storage contract. V16 introduced `web-cad.project.v20`; see `docs/v16.md`.
 Product V17 introduced `web-cad.project.v21`; see `docs/v17.md`. Product V19
-introduced `web-cad.project.v22`; see `docs/v19.md`. This
+introduced `web-cad.project.v22`; see `docs/v19.md`. Product V20 adds only a
+connected local agent session and therefore introduces no project schema or
+native-package change; see `docs/v20.md`. This
 document continues to define the project-format and source/derived rules that
 storage, solver, and topology-backed downstream modeling work must preserve.
 
@@ -1396,8 +1398,11 @@ such as `sketch.evaluation`, dependency health, generated-reference labels,
 derived measurements, and renderer display frames should remain rebuildable
 query/cache data and should not trigger a format version by themselves.
 
-Future slices after product V19 should introduce another project format only if
-they add persisted source-of-truth data that cannot be represented by V22.
+Product V20 keeps its token, port, connection, approval mode, pending proposal,
+current selection, and relay request IDs session-only. Agent commits store only
+the ordinary CADOps transaction/audit records already supported by current
+history. A later release should introduce another project format only if it
+adds persisted source-of-truth data that cannot be represented by V22.
 Solver/evaluator status, reference-candidate
 status, export-readiness status, boolean topology readiness, generated
 boolean-reference query results, release-smoke metadata, and exact-kernel query
@@ -1857,6 +1862,18 @@ The loader accepts V1 through V22 and exports the lowest sufficient schema
 through V22. `pnpm smoke:v19-storage-migration-workflow` proves inherited
 storage compatibility plus JSON/canonical-CBOR/`.wcad` history-baseline
 round-trips.
+
+## Product V20 Connected Agent Storage Decision
+
+Product V20 adds no saved source shape. The local session token and port,
+browser connection, approval mode, pending proposal/preview, current semantic
+selection, and relay request IDs remain session-only and do not participate in
+canonical JSON, CBOR, source identity, history, `.wcad`, OPFS, or checkpoint
+payloads.
+
+An approved agent mutation is an ordinary CADOps transaction using the existing
+actor/audit fields. It follows the current lowest-sufficient-schema rules
+through `web-cad.project.v22`; `.wcad` remains `partbench.wcad.v2`.
 
 ## V8 Native Package Direction
 

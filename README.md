@@ -5,7 +5,7 @@ current app has a typed CADOps command layer, in-memory document model,
 viewport, project JSON / `.wcad` serialization, structured agent/MCP adapters,
 and an isolated OCCT/WASM exact-geometry and derived-mesh path.
 
-Completed releases through **V16** cover:
+Completed releases through **V20** cover:
 
 - source-of-truth sketches, parameters with arithmetic expressions, and the
   supported V11 sketch solver
@@ -18,8 +18,17 @@ Completed releases through **V16** cover:
 - linear/circular pattern, mirror, and shell features
 - single-line sweep, parallel face-attached loft, expression language v2, and
   exact body mass-properties queries
+- circular arcs, construction geometry, ordered composite profiles, and curved
+  line/arc sweep paths
+- deterministic trim/extend/split/offset, the documented production
+  dimension/constraint matrix, and explicit material regions with holes
+- region-backed extrude/revolve on the documented exact V19 matrix
+- the Precision CAD Project, Sketch, Solid, and Inspect workbench
 - viewport-native body/face/edge semantic selection with contextual
   Measure/Inspect
+- an authenticated loopback launcher that connects MCP stdio tools to the
+  project open in one browser tab, with current semantic selection and exactly
+  Manual approval or session-only Approve everything
 
 OCCT-derived meshes are display data only. The source of truth remains the typed
 document and transaction history in `cad-core`.
@@ -44,6 +53,17 @@ Run the browser app:
 ```sh
 pnpm dev
 ```
+
+Start the connected local MCP session and production browser app:
+
+```sh
+pnpm --filter @web-cad/mcp-stdio-server start
+```
+
+The command builds the stdio executable, binds an authenticated random-port
+server on `127.0.0.1`, opens the production app, and keeps MCP itself on stdin
+and stdout. New sessions use Manual approval; Approve everything can be enabled
+only from Project → Agent for the current session.
 
 In development and production builds, supported authored features are submitted
 to the derived geometry service by default and tessellated asynchronously in
@@ -128,6 +148,12 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
   parameter expressions release record.
 - `docs/v16.md` - completed V16 sweep, loft, pattern depth, expression
   extensions, and mass properties release record.
+- `docs/v17.md` - completed V17 composite sketch profiles, arcs, and curved
+  sweep paths release record.
+- `docs/v18.md` - completed V18 Precision CAD UI overhaul release record.
+- `docs/v19.md` - completed V19 production sketching and multi-region profiles
+  release record.
+- `docs/v20.md` - completed V20 connected local agent workflow release record.
 - `docs/native-format.md` - current JSON format and native project package
   direction.
 - `docs/occt-wasm-size.md` - OCCT/WASM size findings and recommendations.
@@ -148,7 +174,8 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
 - `packages/sketch-solver` - pure TypeScript 2D sketch solver
 - `packages/agent-adapter` - CADOps adapter for external structured callers
 - `packages/mcp-adapter` - MCP tool wrapper over the structured adapter
-- `packages/mcp-stdio-server` - local stdio JSON-RPC MCP transport
+- `packages/mcp-stdio-server` - local stdio JSON-RPC MCP transport and
+  authenticated production-app launcher/relay
 
 ## Project Format
 
@@ -192,6 +219,10 @@ protocol/package migration.
   exact region extrude/revolve matrix. Splines, associative offset features,
   composite sweep/loft regions, assemblies, drawings, and production WebGPU
   remain out of scope.
+- The connected local agent supports one launcher process, one browser
+  authority, and one pending Manual-approval proposal. It does not provide
+  hosted transport, built-in chat, agent file access, multiple live projects,
+  remembered approval policy, or a third approval mode.
 
 See `docs/implementation-plan.md` for the full current capabilities and
 limitations list.

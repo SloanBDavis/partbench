@@ -4,7 +4,7 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the repo state and the
 active implementation roadmap.
 
-Last updated: 2026-07-30.
+Last updated: 2026-07-31.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/v12.md` for the completed
@@ -16,15 +16,18 @@ feature families, and parameter expressions release record, `docs/v16.md` for
 the completed V16 sweep, loft, pattern depth, expression extensions, and mass
 properties release record, `docs/v17.md` for the completed V17 composite
 sketch profiles, arcs, and curved sweep paths release record, `docs/v18.md`
-for the completed frontend-only Precision CAD UI overhaul release record, and
+for the completed frontend-only Precision CAD UI overhaul release record,
 `docs/v19.md` for the completed production sketching and multi-region profiles
-release record. Use `docs/native-format.md` for project-format direction, and
+release record, and `docs/v20.md` for the completed connected local agent
+workflow release record. Use `docs/native-format.md`
+for project-format direction, and
 `docs/occt-wasm-size.md` for OCCT/WASM load-size findings. V7, V8, V9, V10,
 and V11 are completed historical releases whose details are now condensed in
 this plan instead of maintained as separate release documents. V16, V17, and
 V18 are complete; follow their release records for compatibility, support-
 matrix, UI, and performance constraints. V19 is also complete; its sequential
-gate evidence is in `docs/v19-implementation-dag.md`.
+gate evidence is in `docs/v19-implementation-dag.md`. V20 is complete; its
+three named integration gates are recorded in `docs/v20.md`.
 
 ## Active Rules
 
@@ -167,6 +170,13 @@ These constraints remain active:
     release-proof gates. V19 does not add splines, an associative offset
     feature, general curve arrangements, composite sweep/loft profiles,
     assemblies, drawings, or production WebGPU.
+13f. V20 is **complete**. Its binding release record is `docs/v20.md`. V20
+    connects the existing local MCP stdio process to the
+    browser's current project and command queue, adds a truthful current-
+    selection query, and exposes exactly two browser-session approval modes:
+    Manual approval and Approve everything. It adds no CAD command family,
+    project schema, `.wcad` package version, hosted gateway, chat UI, or
+    production WebGPU work.
 14. V8 Tranche A is implemented as a protocol and pure-helper slice only:
     `partbench.wcad.v1` manifest/source-identity types, structured package
     validation diagnostics, `project.packageReadiness`, and thin agent/MCP
@@ -483,12 +493,14 @@ and focused packages:
   two-target measurement, compact camera/navigation controls, first feature
   tree, Modeling panels for extrude/revolve/hole/edge-finish, pattern/mirror/
   shell, sweep/loft, parameter-expression status, mass properties, and focused
-  UI helpers.
+  UI helpers, plus V19 production sketch editing and explicit material-region
+  selection/workflows.
 - `packages/cad-protocol` - typed CADOps command, batch, query, actor metadata,
   feature editability, dependency/reference-health, generated-reference role
   and signature, named-reference repair diff shape, import/pattern/mirror/
   shell/sweep/loft/expression commands, pattern-instance and mass-properties
-  queries, and validation error shapes.
+  queries, V19 curve-edit/region/dimension/constraint contracts, and validation
+  error shapes.
 - `packages/cad-core` - authoritative in-memory document model, transactions,
   semantic diffs, undo/redo, queries, measurements/extents, source-of-truth
   sketches, document parameters with expression language v2, driving sketch
@@ -502,9 +514,10 @@ and focused packages:
   graph/reference-health queries, topology identity and command-target
   readiness, source-semantic generated references for supported authored hole
   result bodies, explicit named-reference repair, and versioned project JSON/
-  `.wcad` import/export through V20, pattern instance identity, resolved
+  `.wcad` import/export through V22, pattern instance identity, resolved
   pattern/mirror references, and derived-exact-metadata mass-property
-  projection.
+  projection, deterministic V19 sketch edits, normalized dimensions/
+  constraints, and explicit region profiles.
 - `packages/renderer` - renderer-facing primitive and mesh types plus the
   current canvas viewport.
 - `packages/renderer-mesh-bridge` - adapter from serializable geometry-worker
@@ -522,9 +535,12 @@ and focused packages:
   deterministic numerical results.
 - `packages/agent-adapter` - structured adapter over CADOps batch/query APIs,
   including import, pattern/mirror/shell, sweep/loft, expression-v2,
-  pattern-instance, and mass-properties pass-through.
+  pattern-instance, mass-properties, and V19 pass-through.
 - `packages/mcp-adapter` - MCP tool wrapper over the structured adapter.
-- `packages/mcp-stdio-server` - minimal stdio JSON-RPC MCP transport.
+- `packages/mcp-stdio-server` - stdio JSON-RPC MCP transport plus the V20
+  fixed-bundle loopback launcher and authenticated browser relay. Its
+  production executable delegates typed calls to the browser's current engine;
+  the in-memory adapter remains only as the compatible programmatic default.
 - `scripts/smoke-v7-release-samples.mjs` and
   `scripts/v7-release-samples.mjs` - deterministic non-browser V7 release
   sample acceptance smoke over cad-core source/query fixtures.
@@ -593,6 +609,22 @@ pnpm smoke:v17-composite-features-workflow
 pnpm smoke:v17-curved-sweep-workflow
 pnpm smoke:v17-storage-migration-workflow
 pnpm smoke:v17-browser-workflow
+pnpm smoke:v18-browser-workflow
+pnpm smoke:v18-geometry-reliability
+pnpm smoke:v18-performance
+pnpm check:v18-bundle
+pnpm capture:v18-visuals
+pnpm smoke:v19-release-samples
+pnpm smoke:v19-curve-edit-workflow
+pnpm smoke:v19-dimensions-constraints-workflow
+pnpm smoke:v19-profile-regions-workflow
+pnpm smoke:v19-storage-migration-workflow
+pnpm smoke:v19-browser-workflow
+pnpm smoke:v19-performance
+pnpm check:v19-bundle
+pnpm smoke:v20-live-agent-workflow
+pnpm smoke:v20-local-security
+pnpm check:v20-bundle
 pnpm smoke:v7-browser-workflow
 pnpm smoke:v7-browser-workflow:derived
 pnpm smoke:v8-wcad-workflow
@@ -744,18 +776,24 @@ Current Partbench can:
 - add/edit/delete point, line, rectangle, circle, and canonical circular-arc
   sketch entities, and toggle explicit construction state without changing
   entity identity;
+- deterministically trim, extend, split, and create independent offsets for the
+  supported line/circle/arc and explicit line/arc-chain matrix, with command-
+  reported constraint/dimension consequences;
+- create slots and rounded rectangles atomically as ordinary line/arc entities
+  plus the documented minimal constraint sets;
 - create and edit source-of-truth document parameters through CADOps;
 - set pure parameter expressions with arithmetic, comparisons, degree-first
   trigonometry, built-in math functions, ternary/`if` conditionals, dependency
   ordering, domain validation, and circular-reference rejection, then rebuild
   bound sketch dimensions and dependent features;
-- create and edit driving sketch dimensions for rectangle width, rectangle
-  height, circle/arc radius, arc sweep, and line length through CADOps;
-- create, rename, and delete source-of-truth horizontal/vertical line
-  orientation constraints, fixed/coincident/midpoint point constraints, and
-  parallel/perpendicular line constraints through CADOps;
-- preserve V17 advanced sketch constraint source records for tangent,
-  concentric, equal length, equal radius, angle, and symmetry constraints;
+- create and edit normalized driving dimensions for supported rectangle, line,
+  circle, and arc scalars; point-pair distance/horizontal/vertical; point-to-
+  line distance; and line angle through CADOps;
+- create, structurally edit, rename, and delete every constraint in the exact
+  V19 matrix: horizontal, vertical, fixed, coincident, midpoint, parallel,
+  perpendicular, tangent, concentric, equal length, equal radius, and symmetry;
+  legacy angle constraints remain compatible but new angular intent uses a
+  line-angle dimension;
 - query `sketch.solverStatus` through cad-core, agent, and MCP surfaces for
   source-backed sketch entities, constraints, dimensions, profile validity,
   numerical solver diagnostics, under-defined/fully-defined/over-defined/
@@ -765,6 +803,15 @@ Current Partbench can:
   diagnostics, without persisting solver caches or residuals as source;
 - use compact sketch solver/status UI, viewport sketch drag handles, and
   conservative constraint inference while keeping sketch edits command-backed;
+- discover and explicitly select exact whole-loop material regions with one
+  level of holes, then extrude one holed region as a new body, extrude one or
+  more disjoint regions through the documented add/cut matrix, or revolve one
+  holed region as a new body;
+- launch the production app and MCP stdio tools in one authenticated loopback
+  session whose only document authority is the browser's current `CadEngine`;
+- query the current primary semantic browser selection through
+  `cad.get_selection`, and gate agent commits through either default Manual
+  approval or the explicitly confirmed session-only Approve everything mode;
 - create rectangle/circle entity-profile extrudes and supported explicit
   line/arc composite-wire extrudes as new bodies or within the documented
   topology-backed add/cut target matrix;
@@ -871,25 +918,26 @@ Current Partbench can:
 
 ## Current Limitations
 
-The repo now includes completed V7–V18 product surfaces through topology-backed
+The repo now includes completed V7–V19 product surfaces through topology-backed
 single-part modeling, STEP import, expanded feature families, expression
 language v2, arcs, construction geometry, explicit composite profiles, curved
 sweeps, durable pattern identity, mass properties, and the frontend-only
-Precision CAD workbench. V18 does not expand the modeling matrix. It is not yet
-a full CAD system.
+Precision CAD workbench. V19 adds deterministic sketch curve editing, the exact
+documented dimension/constraint matrix, ordinary slot/rounded-rectangle sugar,
+and explicit material regions. It is not yet a full CAD system.
 
 Current limitations:
 
-- Sketch curves remain lines, circles, and canonical circular arcs. Ellipses,
-  splines, trimming, general curve editing, multiple profile regions, inner
-  loops, islands, and open-profile extrusion remain outside the V17 matrix.
-- Sketch dimensions currently drive rectangle width/height, circle/arc radius,
-  arc sweep, line length, and supported solver-backed source edits. Broader
-  dimension families remain deferred.
-- Composite line/arc profiles are supported for extrude (`newBody`, and
-  documented add/cut targets) and revolve (`newBody` only). Composite sweep
-  profiles, composite loft sections, multiple regions, and opportunistic
-  kernel-inferred wires remain unsupported.
+- Sketch curves remain points, lines, rectangles, circles, and canonical
+  circular arcs. Ellipses, splines, a general curve-arrangement engine, nested
+  region islands, and open-profile extrusion remain outside the V19 matrix.
+- V19 dimensions and constraints are limited to the exact enumerated matrices
+  in `docs/v19.md`; typed quantities, user-defined expression functions, and
+  new residual families remain deferred.
+- Legacy entity/wire profiles and explicit material regions are supported only
+  by their documented extrude/revolve matrices. Composite sweep profiles,
+  composite loft sections, and opportunistic kernel-inferred wires remain
+  unsupported.
 - Parameter expressions deliberately remain a pure expression language: no
   statements, loops, strings, user functions, or direct binding to pattern and
   mirror feature fields.
@@ -919,13 +967,18 @@ Current limitations:
   measurement constraints, and selection-buffer mapping are not implemented yet.
 - V15/V16 acceptance smokes primarily prove cad-core command/query and async
   geometry resolver paths. V17 adds named release, arc/profile, composite,
-  curved-sweep, storage-migration, and browser workflow smokes; real OCCT STEP,
-  composite-feature, sweep, loft, and mass-property behavior remains covered at
-  geometry boundary unit/integration layers.
+  curved-sweep, storage-migration, and browser workflow smokes; V18 and V19 add
+  their documented UI, curve-edit, region, storage, performance, and bundle
+  gates. Real OCCT STEP, composite-feature, sweep, loft, and mass-property
+  behavior remains covered at geometry boundary unit/integration layers.
 - `body.measurements` remains source-derived/source-analytic for simple shapes.
   General exact values are available through `body.massProperties` only when
   matching derived exact metadata is injected per query; unavailable or stale
   metadata produces structured diagnostics.
+- The connected local agent is deliberately limited to one loopback launcher,
+  one browser authority, and one pending Manual-approval proposal. It has no
+  hosted transport, multiple live projects, durable approval policy, built-in
+  chat, agent file access, or third approval mode.
 - Circle-target edge finishing breadth, direct edits, general unrestricted
   booleans, production WebGPU, assemblies, hosted collaboration, production MCP
   auth, natural-language command entry, IGES, and proprietary CAD import remain
@@ -937,10 +990,6 @@ Current limitations:
 - OCCT currently uses the full OpenCascade.js WASM in the main path. Custom
   build findings are documented separately and should not block modeling,
   topology, storage, or export work.
-
-The reviewed `docs/v19.md` proposal addresses a bounded subset of these sketch
-editing, dimension/constraint, and profile-region limitations. It is a future
-release contract, not evidence that those limitations have been removed.
 
 ## Completed Milestones
 
@@ -3257,6 +3306,33 @@ storage, performance, compatibility, and release-proof gates. The eight named
 V19 commands in `docs/v19.md` remain the release integration contract; later
 work must not weaken its support matrix or partially expose a recorded
 non-goal.
+
+## Completed V20 Connected Local Agent Workflow
+
+V20 is complete. Its binding release record is `docs/v20.md`.
+
+The release connects the existing MCP stdio process to the
+browser's current `CadEngine` and `AsyncCadCommandExecutor` queue. It reuses the
+existing web bundle, adapter, MCP tool surface, and stdio package; the Node
+process adds only a loopback static server and authenticated same-origin
+request/response relay using platform HTTP and browser `fetch`.
+
+The human policy has exactly two browser-session modes:
+
+- **Manual approval** (default): a valid commit request dry-runs, presents one
+  proposal, and waits for explicit Approve or Reject.
+- **Approve everything**: valid commit requests commit immediately; explicit
+  dry-runs remain dry-runs.
+
+There is no third mode, per-tool policy, remembered permission, risk
+classifier, caller-controlled authority, second synchronized engine, chat UI,
+new CAD capability, or storage migration. V20 also adds one truthful read-only
+`cad.get_selection` projection for the bounded semantic selection kinds listed
+in `docs/v20.md`.
+
+The production entrypoint, browser authority, Approval Matrix, security
+boundary, `.wcad` round-trip, and V19 bundle-cap compatibility are covered by
+the three named V20 release commands recorded in `docs/v20.md`.
 
 ## Definition of Done
 

@@ -2,43 +2,22 @@
 
 This package is the minimal real stdio transport around `@web-cad/mcp-adapter`.
 It does not define CAD tools itself. It reads newline-delimited JSON-RPC messages
-from stdin, passes each decoded message into `CadMcpServer.handleJsonRpc`, and
-writes one JSON-RPC response line to stdout.
+from stdin, awaits each decoded message through `CadMcpServer.handleJsonRpcAsync`,
+and writes responses to stdout with their original request IDs. A proposal-
+waiting call does not block later queries, dry-runs, or `tools/list`.
 
-Only these existing tools are exposed:
+The authoritative tool inventory is the result of MCP `tools/list`; the stdio
+transport exposes exactly the registry owned by `@web-cad/mcp-adapter`.
 
-- `cad.project_summary`
-- `cad.project_features`
-- `cad.project_structure`
-- `cad.project_health`
-- `cad.project_export_readiness`
-- `cad.project_export_exact`
-- `cad.project_package_readiness`
-- `cad.v8_project_surface`
-- `cad.project_sketches`
-- `cad.parameter_list`
-- `cad.parameter_get`
-- `cad.object_measurements`
-- `cad.body_measurements`
-- `cad.body_topology`
-- `cad.project_extents`
-- `cad.sketch_get`
-- `cad.sketch_curve_edit_readiness`
-- `cad.sketch_profile_region_candidates`
-- `cad.sketch_profile_region_validate`
-- `cad.sketch_evaluation`
-- `cad.sketch_dimensions`
-- `cad.sketch_dimension_get`
-- `cad.body_generated_references`
-- `cad.resolve_generated_reference`
-- `cad.generated_reference_measurements`
-- `cad.named_references`
-- `cad.resolve_named_reference`
-- `cad.transaction_history`
-- `cad.batch`
+The Node package does not define React, renderer, OCCT, OPFS, STEP, WebGPU, or
+natural-language behavior. It serves the production app and relays only the
+four typed adapter operations.
 
-The transport does not depend on React, the renderer, OCCT, OPFS, STEP
-import/export, WebGPU, natural-language parsing, or the web app startup path.
+The production executable owns no CAD document. It binds an operating-system-
+selected port on `127.0.0.1`, serves only `apps/web/dist`, opens one tokenized
+URL, and relays MCP adapter calls to the `CadEngine` already used by that browser
+tab. `createMcpStdioSession()` retains its in-memory default for compatible
+tests and programmatic callers.
 
 ## Run Locally
 
@@ -48,10 +27,10 @@ Start the stdio server:
 pnpm --filter @web-cad/mcp-stdio-server start
 ```
 
-The start script uses Node's `--experimental-transform-types` flag so this
-workspace can run TypeScript source packages without adding a runtime loader
-dependency. The compiled `build` output is still checked by CI, but the local
-stdio process should be started through the package script above.
+The start script builds the production web app and a bundled JavaScript stdio
+executable, then opens the authenticated loopback URL. The bundle uses a
+dev-only build tool; V20 adds no production dependency or runtime TypeScript
+loader.
 
 Send one JSON-RPC request per line. For example:
 
@@ -92,19 +71,17 @@ Call `cad.batch`:
 }
 ```
 
-Commit batches require `"allowCommit": true` at the tool-argument level. Dry-run
-batches do not require that flag. This permission check happens in the adapter
-stack and is only an accidental-commit guard; it is not authentication or hosted
-authorization.
+In the connected executable, `allowCommit` remains accepted for compatibility
+but does not control authority. The Project → Agent page owns exactly two
+session-only modes: Manual approval by default and explicitly confirmed Approve
+everything. Caller-requested dry-runs remain dry-runs. The in-memory adapter
+retains its existing `allowCommit` behavior.
 
 `cad.batch` responses include the same structured agent review block as the MCP
 adapter package: requested mode, effective intent, operation labels,
 entity-change counts, audit summary, commit-gate state, hints, and blockers.
-Refused commits include a `COMMIT_NOT_ALLOWED` review blocker and do not mutate
-the in-memory document.
-
-The server keeps an in-memory `cad-core` document for the lifetime of the
-process through the existing adapter stack. Restarting the process resets that
+Manual rejection, busy, stale proposal, token, connection, and disconnect
+outcomes use the bounded V20 session diagnostics and do not mutate the browser
 document.
 
 V19 offset follows the same JSON-RPC path: request
@@ -116,36 +93,7 @@ source substitutes. Caller-supplied ordered IDs for `sketch.addSlot` and
 `sketch.addRoundedRectangle` also pass through `cad.batch` without a
 transport-specific mutation.
 
-`cad.project_summary` returns document units and object names when present.
-`cad.project_features` returns read-only primitive-derived feature summaries
-from current scene objects plus authored sketch-extrude feature summaries.
-`cad.project_structure` returns the default part, primitive-derived
-features/bodies, authored sketch-extrude features/bodies, and source mappings
-for the current model.
-`cad.project_health` returns read-only dependency health for authored extrudes,
-attached sketches, sketch dimensions, sketch constraints, and named references.
-`cad.project_export_readiness`, `cad.project_export_exact`,
-`cad.project_package_readiness`, and `cad.v8_project_surface` expose V8 package,
-cache, exact STEP export, unsupported body diagnostic, and file-writing boundary
-state through the same agent adapter surface. They do not write files or return
-artifact bytes.
-`cad.parameter_list` and `cad.parameter_get` return source-of-truth document
-parameters.
-`cad.project_sketches` and `cad.sketch_get` return source-of-truth sketch
-containers and entities from the authoritative document model.
-`cad.sketch_dimensions`, `cad.sketch_dimension_get`, and
-`cad.sketch_evaluation` return current driving dimensions and derived
-solver/evaluator status for one sketch.
-`cad.named_references` and `cad.resolve_named_reference` inspect
-source-of-truth user/agent names assigned to generated references.
-`cad.object_measurements`, `cad.body_measurements`, `cad.body_topology`,
-`cad.project_extents`, and `cad.generated_reference_measurements` return
-read-only source-derived measurements or derived exact/topology status from the
-authoritative document. Generated-reference measurements use semantic
-body/face/edge/vertex references for authored sketch-extrude bodies, not raw
-kernel, mesh, or renderer indexes. Unit changes go through CADOps:
-`metadataOnly` relabels numeric values, while
-`preservePhysicalSize` scales current dimensions and transform translations in
-`cad-core`.
-`cad.transaction_history` returns read-only summaries of the in-memory
-transaction and redo history, including actor and audit metadata when present.
+Tool schemas and semantics are owned by `@web-cad/mcp-adapter`; CADOps query and
+mutation semantics are owned by the agent adapter and `cad-core`. This package
+only preserves JSON-RPC request IDs, stdio framing, fixed-bundle serving, and
+authenticated request/response relay state.

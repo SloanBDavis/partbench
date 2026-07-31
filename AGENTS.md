@@ -20,6 +20,7 @@ The current implementation source of truth is:
 - `docs/v17.md` — completed V17 composite sketch profiles, arcs, and curved sweep paths release record
 - `docs/v18.md` — completed V18 frontend-only Precision CAD UI overhaul release record
 - `docs/v19.md` — completed V19 production sketching and multi-region profiles release record
+- `docs/v20.md` — completed V20 connected local agent workflow release record
 
 Do not attempt to build the entire architecture at once. Implement only the milestone requested by the user. V19 is complete; follow `docs/v16.md` through `docs/v19.md` as compatibility and support-matrix records. Do not weaken a completed Must row or expand beyond its documented matrix without an explicitly approved later milestone.
 The six `pnpm smoke:v17-*` commands recorded in `docs/v17.md` are the named V17 release workflows; V21 remains minimum-triggered rather than the default for every save.
@@ -39,10 +40,20 @@ schema `web-cad.project.v22` is minimum-triggered; `.wcad` remains
 `partbench.wcad.v2`. The eight named `pnpm` V19 release commands in
 `docs/v19.md` are the release-level integration proof.
 
+V20 is complete. Follow `docs/v20.md` as its binding scope, compatibility, and
+gate record. V20 connects the existing MCP stdio surface to the project open in
+the production browser app through an authenticated loopback launcher/relay.
+It has exactly two human-owned, session-only approval modes:
+`manualApproval` (default) and `approveAll`. Do not add a third approval mode,
+per-tool policy system, built-in chat or natural-language parser, agent file
+access, hosted transport, new CAD capability, project schema, `.wcad` version,
+workspace package, or production dependency without an explicit plan
+amendment.
+
 ## Core Architectural Rules
 
 1. The command protocol is the center of the system.
-2. Human UI, scripts, tests, and future AI/MCP connectors must all use the same command layer.
+2. Human UI, scripts, tests, and AI/MCP connectors must all use the same command layer.
 3. The document model is authoritative. Rendered meshes are derived views/caches.
 4. Do not couple the React UI directly to geometry internals.
 5. Keep renderer, command engine, protocol, storage, and WASM geometry boundaries separate.

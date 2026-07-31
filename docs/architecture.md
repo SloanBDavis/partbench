@@ -16,6 +16,7 @@ The current implementation source of truth is:
 - `docs/v17.md` — completed composite sketch profiles, arcs, and curved sweep paths release record
 - `docs/v18.md` — completed frontend-only Precision CAD UI overhaul release record
 - `docs/v19.md` — completed production sketching and multi-region profiles release record
+- `docs/v20.md` — completed connected local agent workflow release record
 - `AGENTS.md`
 
 When architecture and implementation-plan conflict, follow the implementation plan for the current milestone.
@@ -49,7 +50,7 @@ My recommended stack:
 | WASM threading  | Emscripten pthreads, workers, SharedArrayBuffer                                        | Geometry and tessellation must not block the UI thread. Emscripten supports pthreads via SharedArrayBuffer and Web Workers; SharedArrayBuffer requires secure context plus cross-origin isolation, so the app must be served with the right headers. ([Emscripten][3])                                                                                                                                          |
 | Storage         | OPFS for internal cache; File System Access API for user-visible open/save             | OPFS is good for large private browser-side caches and in-place writes from workers. Chrome’s File System Access API lets web apps read and save directly to user-selected local files and directories. ([MDN Web Docs][4])                                                                                                                                                                                     |
 | AI connector    | MCP adapter plus first-party SDK/CLI                                                   | MCP exposes tools, resources, and prompts, and its standard transports include stdio and Streamable HTTP. Use MCP for agent ecosystems, but keep the real internal API as your own compact CAD command protocol. ([Model Context Protocol][5])                                                                                                                                                                  |
-| Local package   | Small Rust or Go launcher that serves the same static web bundle on localhost          | This gives the “download and it opens in Chrome” experience while still allowing WASM, workers, cross-origin isolation, service workers, and MCP. Localhost is treated as a potentially trustworthy origin by browsers, which is useful for powerful web APIs. ([MDN Web Docs][6])                                                                                                                              |
+| Local package   | Small local launcher serving the same static web bundle on localhost; V20 first reuses the existing Node stdio process | This gives the “download and it opens in Chrome” experience while still allowing WASM, workers, cross-origin isolation, service workers, and MCP. Localhost is treated as a potentially trustworthy origin by browsers, which is useful for powerful web APIs. A native launcher remains a later packaging option, not a V20 prerequisite. ([MDN Web Docs][6])                                                  |
 | Hosted package  | Same static web bundle behind Caddy/Nginx/CDN, plus optional collaboration/MCP gateway | The hosted version should serve the same files with the same headers. No second app.                                                                                                                                                                                                                                                                                                                            |
 
 Open CASCADE is governed by LGPL 2.1 with an additional exception, so it is a practical open-source CAD kernel choice, but the project should still make an explicit license decision early. ([Open CASCADE][7])
@@ -385,7 +386,13 @@ Example response:
 
 Agents should interact through selectors, stable references, measurements, and diffs. They should almost never receive full tessellated meshes.
 
-For local use, the downloaded launcher can expose an MCP stdio or Streamable HTTP endpoint on localhost. The browser app connects to the launcher through WebSocket. For hosted use, the same MCP adapter runs as a server-side gateway. Same protocol, same tools, same command engine.
+For local use, the downloaded launcher can expose MCP on localhost and connect
+the browser to the same command engine. Product V20 keeps MCP on stdio and uses
+an authenticated same-origin request/response relay built on browser `fetch`
+and Node's HTTP standard library. WebSocket or Streamable HTTP remains a later
+scaling/hosting option only when measured concurrency or latency requires it.
+For hosted use, the same MCP adapter can eventually run as a server-side
+gateway. Same protocol, same tools, same command engine.
 
 ## 8. Human UI design
 
@@ -947,6 +954,11 @@ dimension/constraint, and explicit material-region matrix in `docs/v19.md`.
 Its source uses minimum-triggered `web-cad.project.v22`; `.wcad` remains
 `partbench.wcad.v2`. Derived candidates, solver evidence, meshes, and exact
 metadata remain outside authoritative source.
+V20 is complete. Its binding record is `docs/v20.md`: the existing stdio
+package is an authenticated loopback launcher/relay, operates
+on the browser's current `CadEngine`, and exposes exactly Manual approval and
+Approve everything as session-only human choices. V20 adds no CAD feature or
+project-format change.
 
 The first implementation should not start with a full CAD UI. It should start with the command engine, WASM kernel bridge, and renderer skeleton.
 
