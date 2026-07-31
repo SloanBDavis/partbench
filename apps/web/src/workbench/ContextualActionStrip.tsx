@@ -9,11 +9,14 @@ import "./contextualActionStrip.css";
 export function ContextualActionStrip({
   disabled = false,
   surface,
-  onInvoke
+  onInvoke,
+  onExplainUnavailable
 }: {
   readonly disabled?: boolean;
   readonly surface: ViewportContextualCommandSurfaceModel;
   readonly onInvoke: (action: ViewportContextualCommandAction) => void;
+  /** Surfaces the query-derived reason when a blocked strip action is activated. */
+  readonly onExplainUnavailable?: (message: string) => void;
 }) {
   const [transient, setTransient] = useState({
     selectionKey: surface.selectionKey,
@@ -40,6 +43,7 @@ export function ContextualActionStrip({
             action={action}
             disabled={disabled}
             onInvoke={onInvoke}
+            onExplainUnavailable={onExplainUnavailable}
           />
         ))}
         {overflow.length > 0 ? (
@@ -68,6 +72,7 @@ export function ContextualActionStrip({
               action={action}
               disabled={disabled}
               onInvoke={onInvoke}
+              onExplainUnavailable={onExplainUnavailable}
             />
           ))}
         </div>
@@ -76,22 +81,47 @@ export function ContextualActionStrip({
   );
 }
 
+export function activateContextualStripAction(
+  action: ViewportContextualCommandAction,
+  options: {
+    readonly stripDisabled?: boolean;
+    readonly onInvoke: (action: ViewportContextualCommandAction) => void;
+    readonly onExplainUnavailable?: (message: string) => void;
+  }
+): void {
+  if (options.stripDisabled) return;
+  if (action.disabled) {
+    options.onExplainUnavailable?.(
+      action.reason ?? "This action is unavailable."
+    );
+    return;
+  }
+  options.onInvoke(action);
+}
+
 function ContextButton({
   action,
   disabled,
-  onInvoke
+  onInvoke,
+  onExplainUnavailable
 }: {
   readonly action: ViewportContextualCommandAction;
   readonly disabled: boolean;
   readonly onInvoke: (action: ViewportContextualCommandAction) => void;
+  readonly onExplainUnavailable?: (message: string) => void;
 }) {
   return (
     <Button
       density="dense"
       unavailableReason={action.disabled ? action.reason : undefined}
       pending={disabled}
+      onUnavailableActivate={(reason) => onExplainUnavailable?.(reason)}
       onClick={() => {
-        if (!disabled && !action.disabled) onInvoke(action);
+        activateContextualStripAction(action, {
+          stripDisabled: disabled,
+          onInvoke,
+          onExplainUnavailable
+        });
       }}
     >
       {action.label}

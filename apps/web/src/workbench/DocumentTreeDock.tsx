@@ -1,10 +1,12 @@
 import {
+  useEffect,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
   type KeyboardEvent,
-  type MouseEvent as ReactMouseEvent
+  type MouseEvent as ReactMouseEvent,
+  type RefObject
 } from "react";
 import { Icon } from "../ui/Icon";
 import type {
@@ -13,13 +15,31 @@ import type {
   DocumentTreeRow,
   DocumentTreeSelection
 } from "./documentTreeProjection";
-import { collectVisibleRowIds, toggleTreeExpansion } from "./documentTreeState";
+import {
+  collectVisibleRowIds,
+  resolveDocumentTreeEditingKeys,
+  resolveDocumentTreeSelectedKeys,
+  toggleTreeExpansion
+} from "./documentTreeState";
 import "../styles/tree.css";
 
 export interface DocumentTreeDockProps {
   readonly projection: DocumentTreeProjection;
+  /** Single selected row key (backward compatible). */
   readonly selectedKey?: string;
+  /**
+   * Optional additional/override selection keys. A row is selected when its id
+   * is in this list or equals `selectedKey`. Prefer this when App remaps a
+   * feature click to a body selection.
+   */
+  readonly selectedKeys?: readonly string[];
+  /** Single editing row key (backward compatible). */
   readonly editingKey?: string;
+  /**
+   * Optional additional/override editing keys. Use for sketch editors whose
+   * source id is a sketch id rather than a feature id.
+   */
+  readonly editingKeys?: readonly string[];
   readonly initialExpandedIds?: readonly string[];
   readonly onSelect: (selection: DocumentTreeSelection) => void;
   readonly onToggleVisibility?: (
@@ -34,7 +54,9 @@ export interface DocumentTreeDockProps {
 export function DocumentTreeDock({
   projection,
   selectedKey,
+  selectedKeys,
   editingKey,
+  editingKeys,
   initialExpandedIds = ["group:origin", "group:model", "group:references"],
   onSelect,
   onToggleVisibility,
@@ -46,14 +68,66 @@ export function DocumentTreeDock({
     () => new Set(initialExpandedIds)
   );
   const [activeMenuId, setActiveMenuId] = useState<string>();
+  const [clickedRowId, setClickedRowId] = useState<string>();
   const treeRef = useRef<HTMLUListElement>(null);
+  const menuWrapRef = useRef<HTMLDivElement>(null);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const visibleRowIds = useMemo(
     () => collectVisibleRowIds(projection.groups, expandedIds),
     [projection.groups, expandedIds]
   );
+  const resolvedSelectedKeys = useMemo(
+    () =>
+      resolveDocumentTreeSelectedKeys({
+        selectedKey,
+        selectedKeys,
+        clickedRowId,
+        rowsById: projection.rowsById
+      }),
+    [clickedRowId, projection.rowsById, selectedKey, selectedKeys]
+  );
+  const resolvedEditingKeys = useMemo(
+    () =>
+      resolveDocumentTreeEditingKeys({
+        editingKey,
+        editingKeys,
+        rowsById: projection.rowsById
+      }),
+    [editingKey, editingKeys, projection.rowsById]
+  );
+
+  useEffect(() => {
+    if (!activeMenuId || typeof document === "undefined") return;
+
+    const closeIfOutside = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (menuWrapRef.current?.contains(target)) return;
+      setActiveMenuId(undefined);
+    };
+
+    document.addEventListener("pointerdown", closeIfOutside, true);
+    document.addEventListener("focusin", closeIfOutside);
+    return () => {
+      document.removeEventListener("pointerdown", closeIfOutside, true);
+      document.removeEventListener("focusin", closeIfOutside);
+    };
+  }, [activeMenuId]);
 
   function toggleExpanded(id: string, next?: boolean) {
     setExpandedIds((current) => toggleTreeExpansion(current, id, next));
+  }
+
+  function closeMenu(options?: { readonly restoreFocus?: boolean }) {
+    setActiveMenuId(undefined);
+    if (options?.restoreFocus) {
+      const focus = () => menuTriggerRef.current?.focus();
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(focus);
+      } else {
+        focus();
+      }
+    }
   }
 
   function focusRelative(rowId: string, offset: number) {
@@ -130,17 +204,23 @@ export function DocumentTreeDock({
             group={group}
             expanded={expandedIds.has(`group:${group.id}`)}
             expandedIds={expandedIds}
-            selectedKey={selectedKey}
-            editingKey={editingKey}
+            selectedKeys={resolvedSelectedKeys}
+            editingKeys={resolvedEditingKeys}
             activeMenuId={activeMenuId}
+            menuWrapRef={menuWrapRef}
+            menuTriggerRef={menuTriggerRef}
             onToggleGroup={() => toggleExpanded(`group:${group.id}`)}
             onToggleRow={toggleExpanded}
-            onSelect={onSelect}
+            onSelect={(selection, rowId) => {
+              setClickedRowId(rowId);
+              onSelect(selection);
+            }}
             onToggleVisibility={onToggleVisibility}
             onRename={onRename}
             onEdit={onEdit}
             onDelete={onDelete}
             onMenuChange={setActiveMenuId}
+            onCloseMenu={closeMenu}
             onRowKeyDown={handleKeyDown}
           />
         ))}
@@ -149,23 +229,24 @@ export function DocumentTreeDock({
   );
 }
 
-interface TreeGroupProps extends Pick<
-  DocumentTreeDockProps,
-  | "selectedKey"
-  | "editingKey"
-  | "onSelect"
-  | "onToggleVisibility"
-  | "onRename"
-  | "onEdit"
-  | "onDelete"
-> {
+interface TreeGroupProps {
   readonly group: DocumentTreeGroup;
   readonly expanded: boolean;
   readonly expandedIds: ReadonlySet<string>;
+  readonly selectedKeys: ReadonlySet<string>;
+  readonly editingKeys: ReadonlySet<string>;
   readonly activeMenuId?: string;
+  readonly menuWrapRef: RefObject<HTMLDivElement | null>;
+  readonly menuTriggerRef: RefObject<HTMLButtonElement | null>;
   readonly onToggleGroup: () => void;
   readonly onToggleRow: (id: string, next?: boolean) => void;
+  readonly onSelect: (selection: DocumentTreeSelection, rowId: string) => void;
+  readonly onToggleVisibility?: DocumentTreeDockProps["onToggleVisibility"];
+  readonly onRename?: DocumentTreeDockProps["onRename"];
+  readonly onEdit?: DocumentTreeDockProps["onEdit"];
+  readonly onDelete?: DocumentTreeDockProps["onDelete"];
   readonly onMenuChange: (id: string | undefined) => void;
+  readonly onCloseMenu: (options?: { readonly restoreFocus?: boolean }) => void;
   readonly onRowKeyDown: (
     event: KeyboardEvent<HTMLButtonElement>,
     row: DocumentTreeRow,
@@ -177,9 +258,11 @@ function TreeGroup({
   group,
   expanded,
   expandedIds,
-  selectedKey,
-  editingKey,
+  selectedKeys,
+  editingKeys,
   activeMenuId,
+  menuWrapRef,
+  menuTriggerRef,
   onToggleGroup,
   onToggleRow,
   onSelect,
@@ -188,6 +271,7 @@ function TreeGroup({
   onEdit,
   onDelete,
   onMenuChange,
+  onCloseMenu,
   onRowKeyDown
 }: TreeGroupProps) {
   return (
@@ -220,9 +304,11 @@ function TreeGroup({
                 row={row}
                 level={2}
                 expandedIds={expandedIds}
-                selectedKey={selectedKey}
-                editingKey={editingKey}
+                selectedKeys={selectedKeys}
+                editingKeys={editingKeys}
                 activeMenuId={activeMenuId}
+                menuWrapRef={menuWrapRef}
+                menuTriggerRef={menuTriggerRef}
                 onToggleRow={onToggleRow}
                 onSelect={onSelect}
                 onToggleVisibility={onToggleVisibility}
@@ -230,6 +316,7 @@ function TreeGroup({
                 onEdit={onEdit}
                 onDelete={onDelete}
                 onMenuChange={onMenuChange}
+                onCloseMenu={onCloseMenu}
                 onRowKeyDown={onRowKeyDown}
               />
             ))
@@ -258,9 +345,11 @@ function TreeRow({
   level,
   parentId,
   expandedIds,
-  selectedKey,
-  editingKey,
+  selectedKeys,
+  editingKeys,
   activeMenuId,
+  menuWrapRef,
+  menuTriggerRef,
   onToggleRow,
   onSelect,
   onToggleVisibility,
@@ -268,12 +357,14 @@ function TreeRow({
   onEdit,
   onDelete,
   onMenuChange,
+  onCloseMenu,
   onRowKeyDown
 }: TreeRowProps) {
   const hasChildren = row.children.length > 0;
   const expanded = hasChildren && expandedIds.has(row.id);
-  const selected = selectedKey === row.id;
-  const editing = editingKey === row.id;
+  const selected = selectedKeys.has(row.id);
+  const editing = editingKeys.has(row.id);
+  const menuOpen = activeMenuId === row.id;
   const hasMenu =
     (row.capabilities.canRename && onRename) ||
     (row.capabilities.canEdit && onEdit) ||
@@ -319,7 +410,7 @@ function TreeRow({
           aria-level={level}
           aria-selected={selected}
           aria-expanded={hasChildren ? expanded : undefined}
-          onClick={() => onSelect(row.selection)}
+          onClick={() => onSelect(row.selection, row.id)}
           onKeyDown={(event) => onRowKeyDown(event, row, parentId)}
         >
           <Icon name={row.icon} size={16} />
@@ -367,38 +458,54 @@ function TreeRow({
           </button>
         ) : null}
         {hasMenu ? (
-          <div className="pb-tree-row__menu-wrap">
+          <div
+            className="pb-tree-row__menu-wrap"
+            ref={menuOpen ? menuWrapRef : undefined}
+          >
             <button
               type="button"
               className="pb-tree-row__action"
               aria-label={`Actions for ${row.label}`}
               aria-haspopup="menu"
-              aria-expanded={activeMenuId === row.id}
+              aria-expanded={menuOpen}
+              ref={menuOpen ? menuTriggerRef : undefined}
               onClick={(event) => {
                 stopRowEvent(event);
-                onMenuChange(activeMenuId === row.id ? undefined : row.id);
+                onMenuChange(menuOpen ? undefined : row.id);
               }}
             >
               <Icon name="more" size={16} />
             </button>
-            {activeMenuId === row.id ? (
+            {menuOpen ? (
               <div
                 className="pb-tree-menu"
                 role="menu"
                 aria-label={`Actions for ${row.label}`}
+                onKeyDown={(event) => {
+                  if (event.key !== "Escape") return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onCloseMenu({ restoreFocus: true });
+                }}
               >
                 {row.capabilities.canEdit && onEdit ? (
                   <TreeMenuButton
                     label="Edit"
                     icon="edit"
-                    onClick={() => onEdit(row.selection)}
+                    onClick={() => {
+                      onEdit(row.selection);
+                      onCloseMenu();
+                    }}
                   />
                 ) : null}
                 {row.capabilities.canRename && onRename ? (
                   <TreeMenuButton
                     label="Rename"
                     icon="edit"
-                    onClick={() => onRename(row.selection)}
+                    onClick={() => {
+                      onRename(row.selection);
+                      onCloseMenu();
+                    }}
                   />
                 ) : null}
                 {row.capabilities.canDelete && onDelete ? (
@@ -406,7 +513,10 @@ function TreeRow({
                     label="Delete"
                     icon="delete"
                     danger
-                    onClick={() => onDelete(row.selection)}
+                    onClick={() => {
+                      onDelete(row.selection);
+                      onCloseMenu();
+                    }}
                   />
                 ) : null}
               </div>
@@ -423,9 +533,11 @@ function TreeRow({
               level={level + 1}
               parentId={row.id}
               expandedIds={expandedIds}
-              selectedKey={selectedKey}
-              editingKey={editingKey}
+              selectedKeys={selectedKeys}
+              editingKeys={editingKeys}
               activeMenuId={activeMenuId}
+              menuWrapRef={menuWrapRef}
+              menuTriggerRef={menuTriggerRef}
               onToggleRow={onToggleRow}
               onSelect={onSelect}
               onToggleVisibility={onToggleVisibility}
@@ -433,6 +545,7 @@ function TreeRow({
               onEdit={onEdit}
               onDelete={onDelete}
               onMenuChange={onMenuChange}
+              onCloseMenu={onCloseMenu}
               onRowKeyDown={onRowKeyDown}
             />
           ))}

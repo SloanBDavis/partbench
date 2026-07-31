@@ -161,9 +161,11 @@ export function validateSolidDraft(
           "Angle must be within 360° and instances must be a whole number of at least two."
         );
   }
-  return (draft as FeatureMirrorForm).seedBodyId
+  const mirror = draft as FeatureMirrorForm;
+  if (!mirror.seedBodyId) return collecting("Select an authored seed body.");
+  return Number.isFinite(mirror.plane.offset ?? 0)
     ? ready()
-    : collecting("Select an authored seed body.");
+    : blocked("Mirror plane offset must be finite.");
 }
 
 function ready(): FeatureEditorValidation {

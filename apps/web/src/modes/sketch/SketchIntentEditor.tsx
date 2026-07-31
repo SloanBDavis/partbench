@@ -49,7 +49,8 @@ import {
   type SketchDimensionFamilyV19
 } from "./sketchIntentEditorModel";
 import type { SketchCurveEditSessionControl } from "./SketchCurveEditPanel";
-import { handleSketchCurveEditWindowShortcut } from "./sketchCurveEditModel";
+import { useEscapeEditorContributor } from "../../actions/useEscapeEditorContributor";
+import { NumericInput as NativeNumericInput } from "../../ui/NumericInput";
 import {
   buildCreateConstraintOpsV19,
   buildCreateDimensionOpsV19,
@@ -150,6 +151,26 @@ export function SketchIntentEditor({
   const [rejectionMessage, setRejectionMessage] = useState<string>();
   const activeDraft = dimensionSession?.draft ?? constraintSession?.draft;
   const sessionActive = activeDraft !== undefined;
+  const sessionValid = dimensionSession
+    ? validateDimensionDraftV19(
+        dimensionSession.draft,
+        sketch.entities,
+        parameters,
+        dimensions,
+        dimensionSession.mode === "edit"
+          ? dimensionSession.dimension.id
+          : undefined
+      ).valid
+    : constraintSession
+      ? validateConstraintDraftV19(
+          constraintSession.draft,
+          sketch.entities,
+          constraints,
+          constraintSession.mode === "edit"
+            ? constraintSession.constraint.id
+            : undefined
+        ).valid
+      : false;
   const dirty =
     activeDraft !== undefined && JSON.stringify(activeDraft) !== baseline;
   const exactToolBlock = initialDimensionFamily
@@ -206,6 +227,7 @@ export function SketchIntentEditor({
         apply: (options) => applyRef.current(options),
         closeLocalDraft: () => closeDraft(false),
         getReturnFocusTarget: () => restoreFocusRef.current,
+        canApply: sessionValid && !disabled && !applying,
         focus: () =>
           focusSketchIntentEditorV19(
             editorRef.current?.querySelector<HTMLElement>(
@@ -214,36 +236,28 @@ export function SketchIntentEditor({
           )
       }
     );
-  }, [closeDraft, onSessionControlChange, sessionActive]);
-
-  useEffect(() => {
-    if (keyboardSuspended || (!dimensionSession && !constraintSession))
-      return undefined;
-    function onKeyDown(event: KeyboardEvent) {
-      handleSketchCurveEditWindowShortcut({
-        event,
-        suspended: keyboardSuspended,
-        dirty,
-        canApply: !disabled && !applying,
-        onApply: () => void applyRef.current(),
-        onCancel: () => finishSession(true),
-        onDirtyEscape: () =>
-          onRequestEscape ? onRequestEscape(true) : closeDraft()
-      });
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
   }, [
     applying,
     closeDraft,
-    constraintSession,
-    dimensionSession,
-    dirty,
     disabled,
-    keyboardSuspended,
-    finishSession,
-    onRequestEscape
+    onSessionControlChange,
+    sessionActive,
+    sessionValid
   ]);
+
+  useEscapeEditorContributor({
+    id: "sketch-intent-editor",
+    suspended: keyboardSuspended,
+    state:
+      dimensionSession || constraintSession
+        ? dirty
+          ? "dirty"
+          : "clean"
+        : "none",
+    onCancelClean: () => finishSession(true),
+    onRequestDirtyGuard: () =>
+      onRequestEscape ? onRequestEscape(true) : closeDraft()
+  });
 
   async function applyActive(
     options: { readonly restoreFocusOnSuccess?: boolean } = {}
@@ -1709,15 +1723,14 @@ function NumberInput({
   return (
     <label className="pb-sketch-field">
       <span>{label}</span>
-      <input
+      <NativeNumericInput
         className="pb-field pb-numeric"
-        type="number"
         step="0.1"
-        value={Number.isFinite(value) ? value : ""}
+        value={value}
         disabled={disabled}
         aria-describedby={describedBy}
         aria-invalid={invalid || undefined}
-        onChange={(event) => onChange(event.currentTarget.valueAsNumber)}
+        onValueChange={onChange}
       />
     </label>
   );

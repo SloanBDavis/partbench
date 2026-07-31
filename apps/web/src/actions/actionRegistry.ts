@@ -25,6 +25,40 @@ interface UiActionMetadata {
 
 const READY = { status: "ready" } as const;
 
+/** Canonical needs-selection / blocked copy shared by registry defaults and App projection. */
+export const UI_ACTION_AVAILABILITY_MESSAGES = {
+  openSketchMode: "Open Sketch mode.",
+  solidExtrude: "Select a supported sketch profile.",
+  solidRevolve: "Select a supported sketch profile and axis.",
+  solidSweep: "Select a supported profile and path.",
+  solidLoft:
+    "Select at least two profiles on parallel planes. Create a sketch on a parallel planar body face to add an offset section.",
+  solidTransform: "Select an editable source object.",
+  solidHole: "Select a supported circle and target body.",
+  solidFillet: "Select a supported generated edge.",
+  solidChamfer: "Select a supported generated edge.",
+  solidShell: "Select a supported body or face.",
+  solidLinearPattern: "Select a supported body.",
+  solidCircularPattern: "Select a supported body.",
+  solidMirror: "Select a supported body.",
+  solidEdit: "Select an editable feature or object.",
+  solidRename: "Select a renameable object or sketch.",
+  solidDelete: "Select a deletable object or sketch item.",
+  sketchTrim: "Select a supported line, arc, or circle.",
+  sketchExtend: "Select a supported line or arc.",
+  sketchSplit: "Select a supported line, arc, or circle.",
+  sketchExplodeRectangle: "Select a rectangle.",
+  sketchOffset:
+    "Select a supported line, arc, circle, rectangle, or line/arc chain.",
+  sketchRegions: "Open a sketch containing closed profile geometry.",
+  sketchConstruction: "Select a sketch entity.",
+  sketchDelete: "Select a sketch entity, dimension, or constraint.",
+  inspectMassProperties: "Select a body with available exact properties.",
+  inspectNameReference: "Select a supported face or edge.",
+  inspectRepairReference: "Select a named reference and its replacement.",
+  inspectFitSelection: "Select a visible body, face, or edge."
+} as const;
+
 const SKETCH_INTENT_ACTION_METADATA = (
   [
     ["horizontal", "Horizontal", "Constraint"],
@@ -36,20 +70,20 @@ const SKETCH_INTENT_ACTION_METADATA = (
     ["perpendicular", "Perpendicular", "Constraint"],
     ["tangent", "Tangent", "Constraint"],
     ["concentric", "Concentric", "Constraint"],
-    ["equal-length", "Equal Length", "Constraint"],
-    ["equal-radius", "Equal Radius", "Constraint"],
+    ["equal-length", "Equal length", "Constraint"],
+    ["equal-radius", "Equal radius", "Constraint"],
     ["symmetry", "Symmetry", "Constraint"],
-    ["rectangle-width", "Rectangle Width", "Dimension"],
-    ["rectangle-height", "Rectangle Height", "Dimension"],
-    ["line-length", "Line Length", "Dimension"],
+    ["rectangle-width", "Rectangle width", "Dimension"],
+    ["rectangle-height", "Rectangle height", "Dimension"],
+    ["line-length", "Line length", "Dimension"],
     ["radius", "Radius", "Dimension"],
     ["diameter", "Diameter", "Dimension"],
-    ["arc-sweep", "Arc Sweep", "Dimension"],
-    ["point-distance", "Point Distance", "Dimension"],
-    ["horizontal-distance", "Horizontal Distance", "Dimension"],
-    ["vertical-distance", "Vertical Distance", "Dimension"],
-    ["point-line-distance", "Point to Line", "Dimension"],
-    ["line-angle", "Line Angle", "Dimension"]
+    ["arc-sweep", "Arc sweep", "Dimension"],
+    ["point-distance", "Point distance", "Dimension"],
+    ["horizontal-distance", "Horizontal distance", "Dimension"],
+    ["vertical-distance", "Vertical distance", "Dimension"],
+    ["point-line-distance", "Point to line", "Dimension"],
+    ["line-angle", "Line angle", "Dimension"]
   ] as const
 ).map(([id, label, group]) =>
   action(
@@ -60,7 +94,7 @@ const SKETCH_INTENT_ACTION_METADATA = (
     [],
     true,
     undefined,
-    needs("Open Sketch mode.")
+    blocked(UI_ACTION_AVAILABILITY_MESSAGES.openSketchMode)
   )
 );
 
@@ -68,10 +102,10 @@ export const UI_ACTION_METADATA = [
   action("project.new", "New", "File", ["project"], ["new project"], true),
   action(
     "project.open",
-    "Open",
+    "Open .wcad",
     "File",
     ["project"],
-    ["open project", "wcad"],
+    ["open project", "wcad", "open"],
     true
   ),
   action(
@@ -84,7 +118,7 @@ export const UI_ACTION_METADATA = [
   ),
   action(
     "project.save-as",
-    "Save As",
+    "Save as",
     "File",
     ["project"],
     ["download wcad"],
@@ -108,10 +142,10 @@ export const UI_ACTION_METADATA = [
   ),
   action(
     "project.export-json",
-    "Export JSON",
+    "Prepare JSON",
     "Advanced Interchange",
     ["project"],
-    ["generate json"],
+    ["generate json", "export json"],
     false
   ),
   action(
@@ -124,23 +158,23 @@ export const UI_ACTION_METADATA = [
   ),
   action(
     "project.export-step",
-    "Export STEP",
+    "Download STEP",
     "Export",
     ["project"],
-    ["download step"],
+    ["export step"],
     false
   ),
   action(
     "project.export-glb",
-    "Export Visualization GLB",
+    "Download visualization GLB",
     "Export",
     ["project"],
-    ["mesh export", "glb"],
+    ["mesh export", "glb", "export visualization glb"],
     false
   ),
   action(
     "project.overview",
-    "Project Overview",
+    "Project overview",
     "Navigate",
     ["project"],
     ["units", "summary"],
@@ -148,7 +182,7 @@ export const UI_ACTION_METADATA = [
   ),
   action(
     "project.files",
-    "Project Files",
+    "Project files",
     "Navigate",
     ["project"],
     ["file workspace"],
@@ -172,7 +206,7 @@ export const UI_ACTION_METADATA = [
   ),
   action(
     "project.export",
-    "Export Workspace",
+    "Export workspace",
     "Navigate",
     ["project"],
     ["export readiness"],
@@ -180,7 +214,7 @@ export const UI_ACTION_METADATA = [
   ),
   action(
     "project.create-parameter",
-    "Create Parameter",
+    "Create parameter",
     "Parameters",
     ["project"],
     ["add parameter"],
@@ -202,7 +236,42 @@ export const UI_ACTION_METADATA = [
     WORKBENCH_MODES,
     ["repeat"],
     true,
-    "Ctrl/Cmd+Shift+Z"
+    "Ctrl/Cmd+Shift+Z or Ctrl+Y"
+  ),
+  action(
+    "project.command-search",
+    "Command search",
+    "View",
+    WORKBENCH_MODES,
+    ["search commands", "quick open"],
+    false,
+    "Ctrl/Cmd+K"
+  ),
+  action(
+    "project.help",
+    "Help",
+    "View",
+    WORKBENCH_MODES,
+    ["keyboard shortcuts", "shortcuts"],
+    false
+  ),
+  action(
+    "project.cancel",
+    "Cancel",
+    "View",
+    WORKBENCH_MODES,
+    ["escape", "cancellation stack"],
+    false,
+    "Escape"
+  ),
+  action(
+    "project.apply",
+    "Apply",
+    "View",
+    WORKBENCH_MODES,
+    ["commit draft", "apply feature"],
+    true,
+    "Ctrl/Cmd+Enter"
   ),
 
   action("solid.box", "Box", "Create", ["solid"], ["cube", "primitive"], true),
@@ -233,7 +302,7 @@ export const UI_ACTION_METADATA = [
   ),
   action(
     "solid.sketch",
-    "Create Sketch",
+    "Create sketch",
     "Create",
     ["solid"],
     ["create sketch", "draw"],
@@ -247,7 +316,7 @@ export const UI_ACTION_METADATA = [
     ["pull", "profile"],
     true,
     undefined,
-    needs("Select a supported sketch profile.")
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.solidExtrude)
   ),
   action(
     "solid.revolve",
@@ -257,7 +326,7 @@ export const UI_ACTION_METADATA = [
     ["lathe", "spin profile"],
     true,
     undefined,
-    needs("Select a supported sketch profile and axis.")
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.solidRevolve)
   ),
   action(
     "solid.sweep",
@@ -267,7 +336,7 @@ export const UI_ACTION_METADATA = [
     ["profile path"],
     true,
     undefined,
-    needs("Select a supported profile and path.")
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.solidSweep)
   ),
   action(
     "solid.loft",
@@ -277,9 +346,7 @@ export const UI_ACTION_METADATA = [
     ["sections"],
     true,
     undefined,
-    needs(
-      "Select at least two profiles on parallel planes. Create a sketch on a parallel planar body face to add an offset section."
-    )
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.solidLoft)
   ),
   action(
     "solid.transform",
@@ -289,7 +356,7 @@ export const UI_ACTION_METADATA = [
     ["move", "rotate", "scale"],
     true,
     undefined,
-    needs("Select an editable object.")
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.solidTransform)
   ),
   action(
     "solid.hole",
@@ -299,7 +366,7 @@ export const UI_ACTION_METADATA = [
     ["drill"],
     true,
     undefined,
-    needs("Select a supported circle and target body.")
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.solidHole)
   ),
   action(
     "solid.fillet",
@@ -309,7 +376,7 @@ export const UI_ACTION_METADATA = [
     ["round edge"],
     true,
     undefined,
-    needs("Select a supported edge.")
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.solidFillet)
   ),
   action(
     "solid.chamfer",
@@ -319,7 +386,7 @@ export const UI_ACTION_METADATA = [
     ["bevel edge"],
     true,
     undefined,
-    needs("Select a supported edge.")
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.solidChamfer)
   ),
   action(
     "solid.shell",
@@ -329,27 +396,27 @@ export const UI_ACTION_METADATA = [
     ["hollow"],
     true,
     undefined,
-    needs("Select a supported body or face.")
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.solidShell)
   ),
   action(
     "solid.linear-pattern",
-    "Linear Body Pattern",
+    "Linear body pattern",
     "Pattern",
     ["solid"],
     ["array", "repeat"],
     true,
     undefined,
-    needs("Select a supported body.")
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.solidLinearPattern)
   ),
   action(
     "solid.circular-pattern",
-    "Circular Body Pattern",
+    "Circular body pattern",
     "Pattern",
     ["solid"],
     ["radial pattern", "array"],
     true,
     undefined,
-    needs("Select a supported body.")
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.solidCircularPattern)
   ),
   action(
     "solid.mirror",
@@ -359,7 +426,7 @@ export const UI_ACTION_METADATA = [
     ["reflect"],
     true,
     undefined,
-    needs("Select a supported body.")
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.solidMirror)
   ),
   action(
     "solid.edit",
@@ -369,7 +436,7 @@ export const UI_ACTION_METADATA = [
     ["edit feature", "properties"],
     false,
     undefined,
-    needs("Select an editable feature, sketch, or object.")
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.solidEdit)
   ),
   action(
     "solid.rename",
@@ -379,17 +446,17 @@ export const UI_ACTION_METADATA = [
     ["change name"],
     true,
     "F2",
-    needs("Select a renameable item.")
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.solidRename)
   ),
   action(
     "solid.delete",
     "Delete",
     "Selection",
-    ["solid", "sketch"],
+    ["solid"],
     ["remove"],
     true,
     "Delete/Backspace",
-    needs("Select a deletable item.")
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.solidDelete)
   ),
   action(
     "solid.measure",
@@ -422,7 +489,7 @@ export const UI_ACTION_METADATA = [
   ),
   action(
     "sketch.arc",
-    "Three-point Arc",
+    "Three-point arc",
     "Create",
     ["sketch"],
     ["arc", "curve"],
@@ -436,7 +503,7 @@ export const UI_ACTION_METADATA = [
     ["remove curve interval"],
     true,
     undefined,
-    needs("Select a supported line, arc, or circle.")
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.sketchTrim)
   ),
   action(
     "sketch.extend",
@@ -446,7 +513,7 @@ export const UI_ACTION_METADATA = [
     ["extend curve to boundary"],
     true,
     undefined,
-    needs("Select a supported line or arc.")
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.sketchExtend)
   ),
   action(
     "sketch.split",
@@ -456,17 +523,17 @@ export const UI_ACTION_METADATA = [
     ["divide curve"],
     true,
     undefined,
-    needs("Select a supported line, arc, or circle.")
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.sketchSplit)
   ),
   action(
     "sketch.explode-rectangle",
-    "Explode Rectangle",
+    "Explode rectangle",
     "Modify",
     ["sketch"],
     ["rectangle to lines"],
     true,
     undefined,
-    needs("Select a rectangle.")
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.sketchExplodeRectangle)
   ),
   action(
     "sketch.offset",
@@ -476,7 +543,7 @@ export const UI_ACTION_METADATA = [
     ["offset curve", "parallel curve"],
     true,
     undefined,
-    needs("Select a supported line, arc, circle, rectangle, or line/arc chain.")
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.sketchOffset)
   ),
   action(
     "sketch.regions",
@@ -492,7 +559,7 @@ export const UI_ACTION_METADATA = [
     ],
     false,
     undefined,
-    needs("Open a sketch containing closed profile geometry.")
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.sketchRegions)
   ),
   action(
     "sketch.construction",
@@ -502,22 +569,22 @@ export const UI_ACTION_METADATA = [
     ["construction geometry"],
     true,
     undefined,
-    needs("Select a sketch entity.")
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.sketchConstruction)
   ),
   action(
     "sketch.delete",
-    "Delete Sketch Item",
+    "Delete sketch item",
     "State",
     ["sketch"],
-    ["remove entity", "remove constraint"],
+    ["remove entity", "remove constraint", "delete"],
     true,
     "Delete/Backspace",
-    needs("Select a sketch entity, dimension, or constraint.")
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.sketchDelete)
   ),
   ...SKETCH_INTENT_ACTION_METADATA,
   action(
     "sketch.finish",
-    "Finish Sketch",
+    "Finish sketch",
     "Finish",
     ["sketch"],
     ["exit sketch", "done"],
@@ -526,53 +593,53 @@ export const UI_ACTION_METADATA = [
 
   action(
     "inspect.measure",
-    "Measure",
+    "Measure selection",
     "Measure",
     ["inspect"],
-    ["inspect", "size"],
+    ["inspect", "size", "measure"],
     false
   ),
   action(
     "inspect.measure-between",
-    "Measure Between",
+    "Measure between two targets",
     "Measure",
     ["inspect"],
-    ["two target", "distance"],
+    ["two target", "distance", "measure between"],
     false
   ),
   action(
     "inspect.mass-properties",
-    "Mass Properties",
+    "Mass properties",
     "Measure",
     ["inspect"],
     ["volume", "center of mass"],
     false,
     undefined,
-    needs("Select a body with available exact properties.")
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.inspectMassProperties)
   ),
   action(
     "inspect.name-reference",
-    "Name Reference",
+    "Name reference",
     "Reference",
     ["inspect", "solid"],
     ["save reference"],
     true,
     undefined,
-    needs("Select a supported face or edge.")
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.inspectNameReference)
   ),
   action(
     "inspect.repair-reference",
-    "Repair Reference",
+    "Repair reference",
     "Reference",
     ["inspect", "solid"],
     ["replace reference", "stale reference"],
     true,
     undefined,
-    needs("Select a named reference that needs repair.")
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.inspectRepairReference)
   ),
   action(
     "inspect.fit-all",
-    "Fit All",
+    "Fit all",
     "View",
     ["inspect", "solid"],
     ["zoom all"],
@@ -581,49 +648,49 @@ export const UI_ACTION_METADATA = [
   ),
   action(
     "inspect.fit-selection",
-    "Fit Selection",
+    "Fit selected",
     "View",
     ["inspect", "solid"],
-    ["zoom selection"],
+    ["zoom selection", "fit selection"],
     false,
     undefined,
-    needs("Select an item to fit.")
+    needs(UI_ACTION_AVAILABILITY_MESSAGES.inspectFitSelection)
   ),
   action(
     "inspect.top",
-    "Top View",
+    "Top",
     "View",
     ["inspect", "solid", "sketch"],
-    ["camera top"],
+    ["camera top", "top view"],
     false
   ),
   action(
     "inspect.front",
-    "Front View",
+    "Front",
     "View",
     ["inspect", "solid", "sketch"],
-    ["camera front"],
+    ["camera front", "front view"],
     false
   ),
   action(
     "inspect.right",
-    "Right View",
+    "Right",
     "View",
     ["inspect", "solid", "sketch"],
-    ["camera right"],
+    ["camera right", "right view"],
     false
   ),
   action(
     "inspect.isometric",
-    "Isometric View",
+    "Isometric",
     "View",
     ["inspect", "solid"],
-    ["camera iso"],
+    ["camera iso", "isometric view"],
     false
   ),
   action(
     "inspect.health",
-    "Model Health",
+    "Model health",
     "Health",
     ["inspect", "project"],
     ["diagnostics", "reference health"],
@@ -632,6 +699,30 @@ export const UI_ACTION_METADATA = [
 ] as const satisfies readonly UiActionMetadata[];
 
 export type UiActionId = (typeof UI_ACTION_METADATA)[number]["id"];
+
+/**
+ * Actions owned by the global header (or workbench chrome), not the mode ribbon.
+ * `modeRibbonModel` must exclude these from ribbon projection.
+ */
+export const HEADER_OWNED_UI_ACTION_IDS = [
+  "project.undo",
+  "project.redo",
+  "project.command-search",
+  "project.help",
+  "project.cancel",
+  "project.apply"
+] as const satisfies readonly UiActionId[];
+
+/**
+ * When the same expanded shortcut token is declared by more than one action in a
+ * mode, the first listed id wins. F2 on `solid.rename` is an addition beyond the
+ * V18 minimum shortcut set.
+ */
+export const SHORTCUT_MODE_PRECEDENCE: Readonly<
+  Partial<Record<WorkbenchMode, readonly UiActionId[]>>
+> = {
+  sketch: ["sketch.delete"]
+};
 
 export type UiActionAvailabilityProjection = Readonly<
   Partial<Record<UiActionId, UiActionAvailability>>
@@ -720,6 +811,78 @@ export async function invokeUiAction(
   return { status: "started" };
 }
 
+/**
+ * Expand a declared shortcut string into individual tokens the router can bind.
+ * Handles `or` alternatives and `/` dual-key forms (e.g. Delete/Backspace).
+ */
+export function expandShortcutDeclaration(
+  shortcut: string | undefined
+): readonly string[] {
+  if (!shortcut) return [];
+  return shortcut
+    .split(/\s+or\s+/i)
+    .flatMap((part) => {
+      const trimmed = part.trim();
+      if (!trimmed) return [];
+      if (/^[A-Za-z]+\/[A-Za-z]+$/.test(trimmed)) {
+        return trimmed.split("/");
+      }
+      return [trimmed];
+    })
+    .filter(Boolean);
+}
+
+/**
+ * Resolve a keyboard shortcut token to exactly one action for the active mode.
+ * Uses {@link SHORTCUT_MODE_PRECEDENCE} when multiple declarations collide.
+ */
+export function resolveShortcutActionId(
+  shortcutToken: string,
+  mode: WorkbenchMode,
+  registry: readonly UiActionDefinition[] = UI_ACTION_REGISTRY
+): UiActionId | undefined {
+  const normalized = shortcutToken.trim().toLocaleLowerCase();
+  const matches = registry.filter(
+    (action) =>
+      action.modes.includes(mode) &&
+      expandShortcutDeclaration(action.shortcut).some(
+        (token) => token.toLocaleLowerCase() === normalized
+      )
+  );
+  if (matches.length === 0) return undefined;
+  if (matches.length === 1) return matches[0]?.id;
+
+  const precedence = SHORTCUT_MODE_PRECEDENCE[mode] ?? [];
+  for (const id of precedence) {
+    const preferred = matches.find((action) => action.id === id);
+    if (preferred) return preferred.id;
+  }
+  return matches[0]?.id;
+}
+
+/** Build per-mode shortcut → action maps after applying collision precedence. */
+export function getShortcutBindingsByMode(
+  registry: readonly UiActionDefinition[] = UI_ACTION_REGISTRY
+): ReadonlyMap<WorkbenchMode, ReadonlyMap<string, UiActionId>> {
+  const byMode = new Map<WorkbenchMode, Map<string, UiActionId>>();
+  for (const mode of WORKBENCH_MODES) {
+    const bindings = new Map<string, UiActionId>();
+    const tokens = new Set<string>();
+    for (const action of registry) {
+      if (!action.modes.includes(mode) || !action.shortcut) continue;
+      for (const token of expandShortcutDeclaration(action.shortcut)) {
+        tokens.add(token);
+      }
+    }
+    for (const token of tokens) {
+      const id = resolveShortcutActionId(token, mode, registry);
+      if (id) bindings.set(token, id);
+    }
+    byMode.set(mode, bindings);
+  }
+  return byMode;
+}
+
 function action<const Id extends `${WorkbenchMode}.${string}`>(
   id: Id,
   label: string,
@@ -744,4 +907,8 @@ function action<const Id extends `${WorkbenchMode}.${string}`>(
 
 function needs(message: string): UiActionAvailability {
   return { status: "needs-selection", message };
+}
+
+function blocked(message: string): UiActionAvailability {
+  return { status: "blocked", message };
 }

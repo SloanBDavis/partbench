@@ -44,6 +44,8 @@
 .pb-feature-editor__scroll {
   min-height: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
 }
 
 .pb-feature-editor__fields {
@@ -232,6 +234,6 @@
   padding: var(--pb-space-6) var(--pb-space-8);
   border-inline-start: 3px solid var(--pb-color-selection);
   color: var(--pb-color-accent);
-  background: #eef4fc;
+  background: var(--pb-color-accent-surface);
   font-size: 12px;
 }

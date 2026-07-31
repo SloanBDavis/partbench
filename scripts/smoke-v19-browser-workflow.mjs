@@ -365,7 +365,7 @@ async function runV19BrowserWorkflow({
           Object.setPrototypeOf(AuditedWorker, NativeWorker);
           AuditedWorker.prototype = NativeWorker.prototype;
           window.Worker = AuditedWorker;
-          for (const type of ["pointermove", "pointerdown", "mousedown", "touchstart"]) {
+          for (const type of ["pointermove", "pointerdown", "pointerup", "mousedown", "touchstart"]) {
             window.addEventListener(type, (event) => {
               if (type !== "pointermove") {
                 window.__partbenchV19InputAudit.pointerInputs += 1;
@@ -459,6 +459,10 @@ async function runV19BrowserWorkflow({
     });
 
     await browser.selectMode("Sketch");
+    await browser.waitFor(
+      `Boolean(document.querySelector('[data-tree-select="sketch:sketch_1"]'))`,
+      "imported sketch tree row"
+    );
     await browser.activate({
       kind: "treeRow",
       text: "V19 Gate B curve edits"
@@ -473,6 +477,18 @@ async function runV19BrowserWorkflow({
     await browser.waitFor(
       `Boolean(document.querySelector('[aria-label="Split sketch geometry"]'))`,
       "Split editor for viewport collector"
+    );
+    await browser.evaluate(`(() => {
+      document.querySelector('button[title="Reset view"]')?.click();
+      return new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve))
+      );
+    })()`);
+    await browser.hoverViewportWorldPoint([0.5, 4, 0]);
+    await browser.evaluate(
+      `new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve))
+      )`
     );
     await browser.hoverViewportWorldPoint([0.5, 4, 0]);
     await browser.waitFor(
@@ -490,6 +506,24 @@ async function runV19BrowserWorkflow({
           Boolean(apply?.disabled);
       })()`,
       "query-backed trusted viewport hover preview"
+    );
+    await browser.clickViewportWorldPoint([7, 7, 0]);
+    await browser.waitFor(
+      `(() => {
+        const editor = document.querySelector('[aria-label="Split sketch geometry"]');
+        const apply = [...(editor?.querySelectorAll('button') ?? [])]
+          .find((button) => button.textContent.trim() === 'Apply Split');
+        return Boolean(apply?.disabled) &&
+          document.body.textContent.includes('Choose geometry in the active sketch.');
+      })()`,
+      "stale hover rejected after an empty click"
+    );
+    const staleHoverPickRejected = true;
+    await browser.hoverViewportWorldPoint([0.5, 4, 0]);
+    await browser.evaluate(
+      `new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve))
+      )`
     );
     await browser.clickViewportWorldPoint([0.5, 4, 0]);
     await browser.waitFor(
@@ -519,7 +553,8 @@ async function runV19BrowserWorkflow({
         pointerEventTypes: pointerAudit.pointerEvents.map(
           (event) => event.type
         ),
-        allTrusted: pointerAudit.pointerEvents.every((event) => event.trusted)
+        allTrusted: pointerAudit.pointerEvents.every((event) => event.trusted),
+        staleHoverPickRejected
       }
     });
 
@@ -756,7 +791,7 @@ async function runV19BrowserWorkflow({
       `Boolean(document.querySelector('[role="dialog"][aria-labelledby="curve-edit-navigation-title"]'))`,
       "dirty navigation guard for Apply"
     );
-    await browser.activate({ kind: "dialogButton", text: "Apply" });
+    await browser.sendKey("Enter", { ctrlKey: true });
     await browser.waitFor(
       `(() => {
         const selected = document.querySelector(
@@ -979,6 +1014,17 @@ async function runV19BrowserWorkflow({
       text: "Construction",
       key: " "
     });
+    await browser.waitFor(
+      `(() => {
+        const editor = document.querySelector('[aria-label="Create Rounded Rectangle"]');
+        const input = [...(editor?.querySelectorAll('input') ?? [])]
+          .find((candidate) =>
+            candidate.closest('label')?.textContent.includes('Construction')
+          );
+        return input?.checked === true && editor?.dataset.dirty === 'true';
+      })()`,
+      "dirty Rounded Rectangle input"
+    );
     await browser.sendKey("Escape");
     await browser.waitFor(
       `Boolean(document.querySelector('[role="dialog"][aria-labelledby="curve-edit-navigation-title"]'))`,
@@ -1034,10 +1080,23 @@ async function runV19BrowserWorkflow({
         buttonLabels: ["Apply Slot", "Cancel"]
       })`
     );
-    await browser.replaceLabelControlValue(
-      '[aria-label="Create Slot"]',
-      "Start X",
-      -3
+    await browser.focus({
+      kind: "labelControl",
+      scope: '[aria-label="Create Slot"]',
+      text: "Start X"
+    });
+    await browser.sendKey("a", { ctrlKey: true });
+    await browser.insertText("-");
+    await browser.insertText("3");
+    await browser.waitFor(
+      `document.activeElement instanceof HTMLInputElement &&
+        document.activeElement.value === "-3"`,
+      "character-by-character negative Slot input"
+    );
+    const negativeNumberEntry = await browser.evaluate(
+      `document.activeElement instanceof HTMLInputElement
+        ? document.activeElement.value
+        : undefined`
     );
     await browser.replaceLabelControlValue(
       '[aria-label="Create Slot"]',
@@ -1177,8 +1236,11 @@ async function runV19BrowserWorkflow({
     });
     checks.push({
       id: "v19-gate-c-convenience-source",
-      passed: gateCEvidence.convenience.ok,
-      evidence: gateCEvidence.convenience
+      passed: gateCEvidence.convenience.ok && negativeNumberEntry === "-3",
+      evidence: {
+        ...gateCEvidence.convenience,
+        characterByCharacterNegativeInput: negativeNumberEntry
+      }
     });
     checks.push({
       id: "v19-gate-c-cancel-escape",
@@ -1563,6 +1625,13 @@ async function runV19BrowserWorkflow({
       const footerRect = panel
         ?.querySelector(".pb-curve-edit__footer")
         ?.getBoundingClientRect();
+      const close = document.querySelector(
+        '.pb-dock--right .pb-dock__drawer-close'
+      );
+      const closeRect = close?.getBoundingClientRect();
+      const apply = panel
+        ?.querySelector(".pb-curve-edit__footer .pb-button--primary");
+      const applyRect = apply?.getBoundingClientRect();
       return {
         viewportWidth: innerWidth,
         documentWidth: document.documentElement.scrollWidth,
@@ -1570,11 +1639,28 @@ async function runV19BrowserWorkflow({
         panelRight: panelRect?.right,
         panelWidth: panelRect?.width,
         footerBottom: footerRect?.bottom,
+        closeVisible: Boolean(
+          closeRect?.width && closeRect.height && closeRect.right <= innerWidth
+        ),
+        applyTopmost: Boolean(
+          applyRect &&
+          document.elementFromPoint(
+            applyRect.left + applyRect.width / 2,
+            applyRect.top + applyRect.height / 2
+          ) === apply
+        ),
         candidateVisible: Boolean(
           panel?.querySelector(".pb-region-select__candidate")
         )
       };
     })()`);
+    await browser.sendKey("Escape");
+    await browser.waitFor(
+      `document.querySelector('.pb-dock--right')?.hidden === true &&
+        !document.querySelector('.pb-workbench-shell__workspace')?.hasAttribute('inert')`,
+      "dismissed responsive editor drawer"
+    );
+    const responsiveDrawerDismissed = true;
     checks.push({
       id: "v19-gate-h-responsive-region-editor",
       passed:
@@ -1584,8 +1670,11 @@ async function runV19BrowserWorkflow({
         responsiveRegionEditor.panelRight <= 760 &&
         responsiveRegionEditor.panelWidth >= 300 &&
         responsiveRegionEditor.footerBottom <= 900 &&
-        responsiveRegionEditor.candidateVisible,
-      evidence: responsiveRegionEditor
+        responsiveRegionEditor.closeVisible &&
+        responsiveRegionEditor.applyTopmost &&
+        responsiveRegionEditor.candidateVisible &&
+        responsiveDrawerDismissed,
+      evidence: { ...responsiveRegionEditor, responsiveDrawerDismissed }
     });
     await client.send(
       "Emulation.setDeviceMetricsOverride",
@@ -1596,6 +1685,11 @@ async function runV19BrowserWorkflow({
         mobile: false
       },
       sessionId
+    );
+    await browser.waitFor(
+      `document.querySelector('[aria-label="Select sketch material regions"]')
+        ?.getClientRects().length > 0`,
+      "responsive editor restored inline"
     );
     await browser.activate({
       kind: "regionCandidate",
@@ -2768,7 +2862,8 @@ function createBrowserKeyboardDriver(client, sessionId, workflowTimeoutMs) {
 }
 
 function focusSemanticElement(locator) {
-  const normalize = (value) => (value ?? "").replace(/\s+/g, " ").trim();
+  const normalize = (value) =>
+    (value ?? "").replace(/\s+/g, " ").trim().toLocaleLowerCase();
   const visible = (element) =>
     Boolean(
       element &&

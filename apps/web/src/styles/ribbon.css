@@ -2,7 +2,7 @@
   position: relative;
   display: flex;
   width: 100%;
-  height: min(108px, 100%);
+  height: min(var(--pb-ribbon-max-height), 100%);
   min-width: 0;
   overflow: hidden;
   border-block-end: 1px solid var(--pb-color-border);
@@ -29,7 +29,7 @@
 }
 
 .pb-mode-selector__button {
-  display: none;
+  display: inline-flex;
   min-width: var(--pb-control-height);
   min-height: var(--pb-control-height-comfortable);
   align-items: center;
@@ -46,14 +46,8 @@
 }
 
 .pb-mode-selector__button[aria-selected="true"] {
-  display: inline-flex;
   color: var(--pb-color-accent);
-  background: #f2f6fc;
-}
-
-.pb-mode-selector:focus-within .pb-mode-selector__button,
-.pb-mode-selector:hover .pb-mode-selector__button {
-  display: inline-flex;
+  background: var(--pb-color-accent-surface);
 }
 
 .pb-mode-ribbon__groups {
@@ -109,9 +103,9 @@
 
 .pb-ribbon-action:hover:not(:disabled):not([aria-disabled="true"]),
 .pb-ribbon-action[aria-pressed="true"] {
-  border-color: #b7c9e5;
+  border-color: var(--pb-color-accent-border);
   color: var(--pb-color-accent);
-  background: #eef4fc;
+  background: var(--pb-color-accent-surface);
 }
 
 .pb-ribbon-action[aria-disabled="true"] {
@@ -154,11 +148,19 @@
 .pb-ribbon-overflow__menu {
   position: fixed;
   z-index: 100;
-  inset-block-start: 154px;
+  inset-block-start: calc(
+    var(--pb-header-height) + var(--pb-ribbon-max-height)
+  );
   inset-inline-end: var(--pb-space-8);
   display: grid;
   width: min(360px, calc(100vw - 16px));
-  max-height: min(520px, calc(100vh - 204px));
+  max-height: min(
+    520px,
+    calc(
+      100vh - var(--pb-header-height) - var(--pb-ribbon-max-height) -
+        var(--pb-status-height) - var(--pb-space-16)
+    )
+  );
   gap: var(--pb-space-8);
   padding: var(--pb-space-8);
   overflow: auto;
@@ -195,7 +197,7 @@
   inset: 0 auto auto -100000px;
   display: flex;
   width: max-content;
-  height: 108px;
+  height: var(--pb-ribbon-max-height);
   visibility: hidden;
   pointer-events: none;
 }
@@ -219,11 +221,6 @@
 }
 
 @media (max-width: 959px) {
-  .pb-mode-ribbon,
-  .pb-mode-ribbon__measure {
-    height: 76px;
-  }
-
   .pb-ribbon-group {
     grid-template-rows: minmax(0, 1fr) 16px;
     padding-block-start: var(--pb-space-4);
@@ -236,10 +233,6 @@
 
   .pb-ribbon-action {
     height: 52px;
-  }
-
-  .pb-ribbon-overflow__menu {
-    inset-block-start: 124px;
   }
 }
 

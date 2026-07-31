@@ -5,6 +5,7 @@ import {
   type ReactNode,
   cloneElement,
   isValidElement,
+  useEffect,
   useId
 } from "react";
 import { Button } from "../ui/Button";
@@ -13,6 +14,7 @@ import type {
   FeatureEditorPhase,
   FeatureEditorValidation
 } from "./featureEditorState";
+import { setFeatureApplyHandler } from "./featureApplyBridge";
 import "../styles/editor.css";
 
 export interface FeatureEditorShellProps {
@@ -22,6 +24,8 @@ export interface FeatureEditorShellProps {
   readonly dirty: boolean;
   readonly validation: FeatureEditorValidation;
   readonly applyError?: string;
+  /** When true, blocks Apply/Cancel while an external mutation is in flight. */
+  readonly disabled?: boolean;
   readonly children: ReactNode;
   readonly advanced?: ReactNode;
   readonly dangerArea?: ReactNode;
@@ -37,6 +41,7 @@ export function FeatureEditorShell({
   dirty,
   validation,
   applyError,
+  disabled = false,
   children,
   advanced,
   dangerArea,
@@ -46,14 +51,25 @@ export function FeatureEditorShell({
 }: FeatureEditorShellProps) {
   const validationId = useId();
   const applying = phase === "applying";
-  const applyDisabled = applying || !dirty || validation.status !== "ready";
+  const interactionLocked = applying || disabled;
+  const applyDisabled =
+    interactionLocked || !dirty || validation.status !== "ready";
+
+  useEffect(() => {
+    if (applyDisabled) {
+      setFeatureApplyHandler(undefined, false);
+      return () => setFeatureApplyHandler(undefined, false);
+    }
+    setFeatureApplyHandler(onApply, true);
+    return () => setFeatureApplyHandler(undefined, false);
+  }, [applyDisabled, onApply]);
 
   return (
     <section
       className="pb-feature-editor"
       aria-labelledby={`${validationId}-heading`}
       aria-describedby={validationId}
-      aria-busy={applying || undefined}
+      aria-busy={interactionLocked || undefined}
     >
       <header className="pb-feature-editor__header">
         <div>
@@ -90,7 +106,7 @@ export function FeatureEditorShell({
           applyError={applyError}
         />
         <div className="pb-feature-editor__footer-actions">
-          <Button onClick={onCancel} disabled={applying}>
+          <Button onClick={onCancel} disabled={interactionLocked}>
             Cancel
           </Button>
           <Button

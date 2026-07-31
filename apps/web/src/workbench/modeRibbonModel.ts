@@ -1,19 +1,50 @@
-import type { ProjectedUiAction, UiActionId } from "../actions/actionRegistry";
+import {
+  HEADER_OWNED_UI_ACTION_IDS,
+  UI_ACTION_REGISTRY,
+  type ProjectedUiAction,
+  type UiActionId
+} from "../actions/actionRegistry";
 import type { IconName } from "../ui/Icon";
 import type { WorkbenchMode } from "./types";
 
-const HEADER_OWNED_ACTIONS = new Set<UiActionId>([
-  "project.undo",
-  "project.redo"
-]);
+const HEADER_OWNED_ACTIONS = new Set<UiActionId>(HEADER_OWNED_UI_ACTION_IDS);
 
-const MODE_RIBBON_GROUPS: Readonly<
-  Record<WorkbenchMode, readonly string[] | undefined>
+/**
+ * Preferred group order per mode. Groups are included only when the registry
+ * has at least one non-header action for that mode; unknown groups append in
+ * registry encounter order so ribbon and command search cannot drift.
+ */
+const MODE_RIBBON_GROUP_ORDER: Readonly<
+  Record<WorkbenchMode, readonly string[]>
 > = {
-  project: undefined,
-  solid: ["Create", "Modify", "Pattern", "Inspect"],
-  sketch: ["Create", "Modify", "State", "Constraint", "Dimension", "Finish"],
-  inspect: ["Measure", "Reference", "View", "Health"]
+  project: [
+    "File",
+    "Advanced Interchange",
+    "Export",
+    "Navigate",
+    "Parameters",
+    "Health"
+  ],
+  solid: [
+    "Create",
+    "Modify",
+    "Pattern",
+    "Selection",
+    "Inspect",
+    "Reference",
+    "View"
+  ],
+  sketch: [
+    "Create",
+    "Modify",
+    "State",
+    "Constraint",
+    "Dimension",
+    "Selection",
+    "View",
+    "Finish"
+  ],
+  inspect: ["Measure", "Reference", "View", "Selection", "Health"]
 };
 
 export interface RibbonGroupProjection {
@@ -27,14 +58,11 @@ export function projectRibbonGroups(
   mode: WorkbenchMode,
   actions: readonly ProjectedUiAction[]
 ): readonly RibbonGroupProjection[] {
-  const allowedGroups = MODE_RIBBON_GROUPS[mode];
   const groups = new Map<string, ProjectedUiAction[]>();
   for (const action of actions) {
     if (
       HEADER_OWNED_ACTIONS.has(action.definition.id) ||
-      !action.definition.modes.includes(mode) ||
-      (allowedGroups !== undefined &&
-        !allowedGroups.includes(action.definition.group))
+      !action.definition.modes.includes(mode)
     ) {
       continue;
     }
@@ -43,12 +71,46 @@ export function projectRibbonGroups(
     groups.set(action.definition.group, group);
   }
 
-  return [...groups.entries()].map(([label, groupActions]) => ({
-    id: `${mode}-${slug(label)}`,
-    label,
-    actions: groupActions,
-    protectedFromOverflow: label === "Finish" || label === "Commit"
-  }));
+  const preferred = MODE_RIBBON_GROUP_ORDER[mode];
+  const orderedLabels = [
+    ...preferred.filter((label) => groups.has(label)),
+    ...[...groups.keys()].filter((label) => !preferred.includes(label))
+  ];
+
+  return orderedLabels.map((label) => {
+    const groupActions = groups.get(label) ?? [];
+    return {
+      id: `${mode}-${slug(label)}`,
+      label,
+      actions: groupActions,
+      protectedFromOverflow: label === "Finish" || label === "Commit"
+    };
+  });
+}
+
+/** True when every registry action that declares `mode` appears in that mode's ribbon. */
+export function assertRibbonCoversRegistryModes(
+  mode: WorkbenchMode,
+  actions: readonly ProjectedUiAction[] = actionsFromRegistry()
+): readonly UiActionId[] {
+  const projectedIds = new Set(
+    projectRibbonGroups(mode, actions).flatMap((group) =>
+      group.actions.map((action) => action.definition.id)
+    )
+  );
+  const missing: UiActionId[] = [];
+  for (const action of actions) {
+    if (
+      HEADER_OWNED_ACTIONS.has(action.definition.id) ||
+      !action.definition.modes.includes(mode)
+    ) {
+      continue;
+    }
+    if (!projectedIds.has(action.definition.id)) {
+      missing.push(action.definition.id);
+    }
+  }
+  return missing;
 }
 
 export function chooseVisibleRibbonGroupIds(
@@ -151,6 +213,15 @@ export function getActionIcon(id: UiActionId, group?: string): IconName {
         ? "dimension"
         : "more")
   );
+}
+
+function actionsFromRegistry(): readonly ProjectedUiAction[] {
+  return UI_ACTION_REGISTRY.map((definition, registryIndex) => ({
+    definition,
+    availability: { status: "ready" as const },
+    pending: false,
+    registryIndex
+  }));
 }
 
 function slug(value: string): string {

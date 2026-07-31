@@ -128,8 +128,7 @@ export function createSketchDisplayMeshes(
     const displayFrame =
       sketchDisplayFrames.get(sketch.id) ??
       createDefaultSketchDisplayFrame(sketch.plane);
-    const maximumCurveSegmentAngleDegrees =
-      sketch.entities.length > 32 ? 22.5 : 7.5;
+    const maximumCurveSegmentAngleDegrees = 7.5;
     const displayCacheKey = JSON.stringify([
       sketch.id,
       sketch.name,

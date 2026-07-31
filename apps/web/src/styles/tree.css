@@ -33,6 +33,8 @@
   min-block-size: 0;
   overflow: auto;
   padding-block: var(--pb-space-4);
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
 }
 
 .pb-tree-group__heading {
@@ -174,14 +176,14 @@
 
 .pb-tree-menu {
   position: absolute;
-  z-index: 20;
+  z-index: var(--pb-z-viewport-controls);
   inset-block-start: 26px;
   inset-inline-end: 2px;
   display: grid;
   min-inline-size: 132px;
   padding: var(--pb-space-4);
   border: 1px solid var(--pb-color-border);
-  border-radius: 6px;
+  border-radius: var(--pb-radius-popover);
   background: var(--pb-color-surface-elevated);
   box-shadow: var(--pb-elevation-popover);
 }
@@ -193,7 +195,7 @@
   min-block-size: 28px;
   padding-inline: var(--pb-space-8);
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--pb-radius-control);
   background: transparent;
   color: inherit;
   text-align: start;

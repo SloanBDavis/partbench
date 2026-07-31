@@ -384,14 +384,14 @@ function createActionsFromModeling(
       case "body.measureTopology":
         return [
           createActionFromModeling(action, {
-            label: "Measure",
+            label: "Measure selection",
             route: "measure"
           })
         ];
       case "body.references.inspect":
         return [
           createActionFromModeling(action, {
-            label: "Inspect",
+            label: "Inspect references",
             route: "inspect"
           })
         ];
@@ -409,10 +409,17 @@ function createActionsFromModeling(
             route: "command"
           })
         ];
+      case "feature.shell":
+        return [
+          createActionFromModeling(action, {
+            label: "Shell",
+            route: "command"
+          })
+        ];
       case "reference.name":
         return [
           createActionFromModeling(action, {
-            label: "Name",
+            label: "Name reference",
             route: "name"
           })
         ];
@@ -521,7 +528,7 @@ function createActionsFromReferenceOperations(
       actions.push(
         createActionFromOperation(
           operation,
-          "Measure",
+          "Measure selection",
           "measure",
           selectionReferenceCandidates
         )
@@ -532,7 +539,7 @@ function createActionsFromReferenceOperations(
       actions.push(
         createActionFromOperation(
           operation,
-          "Inspect",
+          "Inspect references",
           "inspect",
           selectionReferenceCandidates
         )
@@ -543,7 +550,7 @@ function createActionsFromReferenceOperations(
       actions.push(
         createActionFromOperation(
           operation,
-          "Name",
+          "Name reference",
           "name",
           selectionReferenceCandidates
         )
@@ -589,7 +596,7 @@ function createActionsFromNamedReferenceRepair({
   return [
     {
       id: "reference.repairName",
-      label: "Repair",
+      label: "Repair reference",
       route: "repair",
       disabled: repairState.status !== "ready",
       referenceName: repairState.reference.name,

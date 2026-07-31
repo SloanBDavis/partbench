@@ -138,14 +138,15 @@ describe("ViewportCanvas", () => {
     );
 
     expect(markup).toContain(
-      'class="viewport-frame viewport-frame-with-contextual viewport-frame-with-status"'
+      'class="viewport-frame viewport-frame-with-status"'
     );
+    expect(markup).not.toContain("viewport-frame-with-contextual");
     expect(markup).toContain("Selected body already has a downstream result.");
     expect(markup).not.toContain("feature feat_cut");
     expect(markup).toContain('aria-label="Viewport contextual commands"');
   });
 
-  it("disables fit selected until selected render bounds exist", () => {
+  it("keeps fit selected focusable and explains why when nothing visible is selected", () => {
     const emptyMarkup = renderToStaticMarkup(
       createElement(ViewportCanvas, {
         primitives: [],
@@ -173,15 +174,15 @@ describe("ViewportCanvas", () => {
       })
     );
 
-    expect(emptyMarkup).toMatch(
-      /<button[^>]*disabled=""[^>]*title="Fit selected unavailable"[^>]*>Fit selected/
-    );
-    expect(selectedMarkup).not.toMatch(
-      /<button[^>]*disabled=""[^>]*title="Fit selected object"[^>]*>Fit selected/
+    expect(emptyMarkup).toContain('aria-disabled="true"');
+    expect(emptyMarkup).toContain("Select a visible body, face, or edge.");
+    expect(emptyMarkup).not.toMatch(
+      /<button[^>]*disabled=""[^>]*>Fit selected/
     );
     expect(selectedMarkup).toMatch(
       /<button[^>]*title="Fit selected object"[^>]*>Fit selected/
     );
+    expect(selectedMarkup).not.toContain('aria-disabled="true"');
   });
 
   it("keeps navigation compact while hosting contextual controls separately", () => {

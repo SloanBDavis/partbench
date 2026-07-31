@@ -25,6 +25,10 @@ import type {
   CadBatchResponse,
   CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
+  FeatureShellOpenFaceRef,
+  MirrorPlaneRef,
+  PatternDirectionRef,
+  PatternRotationAxisRef,
   CadQueryRequest,
   CadSelectionReferenceOperation,
   CadSelectionReferenceInput,
@@ -74,6 +78,7 @@ import {
   useCallback,
   useDeferredValue,
   useEffect,
+  useEffectEvent,
   lazy,
   useLayoutEffect,
   useMemo,
@@ -179,11 +184,27 @@ import { LazyCadCommandWorker } from "./lazyCadCommandWorker";
 import {
   invokeUiAction,
   projectUiActions,
+  UI_ACTION_AVAILABILITY_MESSAGES,
   type UiActionAvailability,
   type UiActionAvailabilityProjection,
   type UiActionContext,
   type UiActionId
 } from "./actions/actionRegistry";
+import {
+  formatShortcutHelpNotice,
+  resolveShortcutRouterAction
+} from "./actions/shortcutRouter";
+import {
+  closeTransientPopoversInDocument,
+  hasTransientPopoverInDocument,
+  resolveContributedEscapeEditorState,
+  resolveEscapeRung
+} from "./actions/escapeStackModel";
+import {
+  getFeatureApplyCanApply,
+  subscribeFeatureApplyBridge,
+  tryApplyFeatureDraft
+} from "./editors/featureApplyBridge";
 import {
   markPartbenchPerformance,
   PARTBENCH_PERFORMANCE_MARKS
@@ -204,7 +225,10 @@ import {
   createPrimitiveDraft,
   createSketchDraft,
   createTransformDraft,
+  type EdgeChoiceValue,
   type SolidChoice,
+  type SolidCollectorRequest,
+  type SolidCollectorSelection,
   type SolidEditorRequest,
   type SolidEditorSubmission
 } from "./modes/solid";
@@ -340,9 +364,15 @@ import {
   enrichSelectedGeneratedReferenceWithTopologyAnchor,
   getGeneratedReferenceSelectionState,
   reconcileSelectedGeneratedReferenceBody,
+  getSelectionReferenceCandidateForOperation,
   type GeneratedReferenceSelectionState,
   type SelectedGeneratedReference
 } from "./generatedReferenceSelection";
+import {
+  createAddTargetBodyOptions,
+  createCutTargetBodyOptions,
+  createHoleTargetBodyOptions
+} from "./sketchPanelUi";
 import {
   createViewportContextualCommandSurface,
   runViewportContextualCommandAction,
@@ -360,10 +390,7 @@ import { resolveViewportHoverIntent } from "./viewportHoverIntent";
 import { createViewportSelectionDisplay } from "./viewportSelectionDisplay";
 import { createViewportVisualStateModel } from "./viewportVisualState";
 import { createViewportMeasurementOverlay } from "./viewportMeasurementOverlay";
-import {
-  getHistoryKeyboardCommand,
-  shouldCancelViewportTransientState
-} from "./viewportKeyboard";
+import { getHistoryKeyboardCommand } from "./viewportKeyboard";
 import {
   clearViewportTwoTargetMeasurementSecondTargetOnSelectionChange,
   createViewportTwoTargetMeasurementTarget,
@@ -1091,6 +1118,281 @@ function readNamedReferenceCandidatesByName(
   return candidatesByName;
 }
 
+function getCommandableReferenceCandidate(
+  response: SelectionReferenceCandidatesQueryResponse | undefined,
+  operation: CadSelectionReferenceOperation
+) {
+  const candidate = getSelectionReferenceCandidateForOperation(
+    response,
+    operation
+  );
+  return candidate?.commandable &&
+    candidate.commandOperations.includes(operation)
+    ? candidate
+    : undefined;
+}
+
+function createSolidEdgeChoices(
+  references: BodyGeneratedReferencesQueryResponse | undefined,
+  namedReferences: readonly NamedGeneratedReferenceEntry[],
+  candidatesByStableId: ReadonlyMap<
+    string,
+    SelectionReferenceCandidatesQueryResponse
+  >,
+  candidatesByName: ReadonlyMap<
+    string,
+    SelectionReferenceCandidatesQueryResponse
+  >,
+  operation: "feature.chamfer" | "feature.fillet"
+): readonly SolidChoice<EdgeChoiceValue>[] {
+  const choices: SolidChoice<EdgeChoiceValue>[] = [];
+  for (const edge of references?.edges ?? []) {
+    const candidate = getCommandableReferenceCandidate(
+      candidatesByStableId.get(edge.stableId),
+      operation
+    );
+    if (!candidate || candidate.reference.kind !== "edge") continue;
+    choices.push({
+      key: `${operation}:${candidate.target.topologyAnchorId ? "topology" : "generated"}:${edge.stableId}`,
+      value: {
+        targetBodyId: candidate.target.bodyId,
+        ...(candidate.target.topologyAnchorId
+          ? { topologyAnchorId: candidate.target.topologyAnchorId }
+          : { edgeStableId: candidate.target.stableId })
+      },
+      label: edge.label,
+      kind: candidate.target.topologyAnchorId ? "saved edge" : "edge"
+    });
+  }
+  for (const reference of namedReferences) {
+    const candidate = getCommandableReferenceCandidate(
+      candidatesByName.get(reference.name),
+      operation
+    );
+    if (!candidate || candidate.reference.kind !== "edge") continue;
+    choices.push({
+      key: `${operation}:named:${reference.name}`,
+      value: {
+        targetBodyId: candidate.target.bodyId,
+        namedReference: reference.name
+      },
+      label: reference.name,
+      kind: "named edge"
+    });
+  }
+  return choices;
+}
+
+function createSolidDirectionChoices(
+  references: BodyGeneratedReferencesQueryResponse | undefined,
+  namedReferences: readonly NamedGeneratedReferenceEntry[],
+  candidatesByStableId: ReadonlyMap<
+    string,
+    SelectionReferenceCandidatesQueryResponse
+  >,
+  candidatesByName: ReadonlyMap<
+    string,
+    SelectionReferenceCandidatesQueryResponse
+  >,
+  operation: "feature.linearPatternDirection" | "feature.circularPatternAxis"
+): readonly SolidChoice<PatternDirectionRef>[] {
+  const choices: SolidChoice<PatternDirectionRef>[] = (
+    ["x", "y", "z"] as const
+  ).map((axis) => ({
+    key: `${operation}:axis:${axis}`,
+    value: { kind: "globalAxis", axis },
+    label: `${axis.toUpperCase()} axis`,
+    kind: "global axis"
+  }));
+  for (const edge of references?.edges ?? []) {
+    const candidate = getCommandableReferenceCandidate(
+      candidatesByStableId.get(edge.stableId),
+      operation
+    );
+    if (!candidate || candidate.reference.kind !== "edge") continue;
+    choices.push({
+      key: `${operation}:${candidate.target.topologyAnchorId ? "topology" : "generated"}:${edge.stableId}`,
+      value: candidate.target.topologyAnchorId
+        ? {
+            kind: "topologyAnchor",
+            bodyId: candidate.target.bodyId,
+            anchorId: candidate.target.topologyAnchorId
+          }
+        : {
+            kind: "generatedEdge",
+            bodyId: candidate.target.bodyId,
+            stableId: candidate.target.stableId
+          },
+      label: edge.label,
+      kind: candidate.target.topologyAnchorId ? "saved line edge" : "line edge"
+    });
+  }
+  for (const reference of namedReferences) {
+    const candidate = getCommandableReferenceCandidate(
+      candidatesByName.get(reference.name),
+      operation
+    );
+    if (!candidate || candidate.reference.kind !== "edge") continue;
+    choices.push({
+      key: `${operation}:named:${reference.name}`,
+      value: { kind: "namedReference", name: reference.name },
+      label: reference.name,
+      kind: "named line edge"
+    });
+  }
+  return choices;
+}
+
+function createSolidFaceChoices(
+  references: BodyGeneratedReferencesQueryResponse | undefined,
+  namedReferences: readonly NamedGeneratedReferenceEntry[],
+  candidatesByStableId: ReadonlyMap<
+    string,
+    SelectionReferenceCandidatesQueryResponse
+  >,
+  candidatesByName: ReadonlyMap<
+    string,
+    SelectionReferenceCandidatesQueryResponse
+  >,
+  operation: "feature.shell" | "feature.mirrorPlane"
+): readonly SolidChoice<FeatureShellOpenFaceRef>[] {
+  const choices: SolidChoice<FeatureShellOpenFaceRef>[] = [];
+  for (const face of references?.faces ?? []) {
+    const candidate = getCommandableReferenceCandidate(
+      candidatesByStableId.get(face.stableId),
+      operation
+    );
+    if (!candidate || candidate.reference.kind !== "face") continue;
+    choices.push({
+      key: `${operation}:${candidate.target.topologyAnchorId ? "topology" : "generated"}:${face.stableId}`,
+      value: candidate.target.topologyAnchorId
+        ? {
+            kind: "topologyAnchor",
+            bodyId: candidate.target.bodyId,
+            anchorId: candidate.target.topologyAnchorId
+          }
+        : {
+            kind: "generatedFace",
+            bodyId: candidate.target.bodyId,
+            stableId: candidate.target.stableId
+          },
+      label: face.label,
+      kind: candidate.target.topologyAnchorId ? "saved planar face" : "face",
+      targetBodyId: candidate.target.bodyId
+    });
+  }
+  for (const reference of namedReferences) {
+    const candidate = getCommandableReferenceCandidate(
+      candidatesByName.get(reference.name),
+      operation
+    );
+    if (!candidate || candidate.reference.kind !== "face") continue;
+    choices.push({
+      key: `${operation}:named:${reference.name}`,
+      value: { kind: "namedReference", name: reference.name },
+      label: reference.name,
+      kind: "named planar face",
+      targetBodyId: candidate.target.bodyId
+    });
+  }
+  return choices;
+}
+
+function createSolidMirrorPlaneChoices(
+  faceChoices: readonly SolidChoice<FeatureShellOpenFaceRef>[]
+): readonly SolidChoice<MirrorPlaneRef>[] {
+  return [
+    ...(["XY", "XZ", "YZ"] as const).map((plane) => ({
+      key: `feature.mirrorPlane:plane:${plane}`,
+      value: { kind: "standardPlane" as const, plane },
+      label: `${plane} plane`,
+      kind: "standard plane"
+    })),
+    ...faceChoices.map((choice) => ({
+      ...choice,
+      value: choice.value as MirrorPlaneRef
+    }))
+  ];
+}
+
+function findSelectedEdgeChoice(
+  choices: readonly SolidChoice<EdgeChoiceValue>[],
+  state: GeneratedReferenceSelectionState,
+  selectedName: string | undefined
+): SolidChoice<EdgeChoiceValue> | undefined {
+  if (selectedName) {
+    return choices.find(
+      (choice) => choice.value.namedReference === selectedName
+    );
+  }
+  if (state.status !== "selected" || state.reference.kind !== "edge")
+    return undefined;
+  return choices.find(
+    (choice) =>
+      choice.value.edgeStableId === state.reference.stableId ||
+      (state.selection.topologyAnchorId !== undefined &&
+        choice.value.topologyAnchorId === state.selection.topologyAnchorId)
+  );
+}
+
+function findSelectedDirectionChoice(
+  choices: readonly SolidChoice<PatternDirectionRef>[],
+  state: GeneratedReferenceSelectionState,
+  selectedName: string | undefined
+): SolidChoice<PatternDirectionRef> | undefined {
+  if (selectedName) {
+    return choices.find(
+      (choice) =>
+        choice.value.kind === "namedReference" &&
+        choice.value.name === selectedName
+    );
+  }
+  if (state.status !== "selected" || state.reference.kind !== "edge")
+    return undefined;
+  return choices.find(
+    (choice) =>
+      (choice.value.kind === "generatedEdge" &&
+        choice.value.stableId === state.reference.stableId) ||
+      (choice.value.kind === "topologyAnchor" &&
+        choice.value.anchorId === state.selection.topologyAnchorId)
+  );
+}
+
+function findSelectedFaceChoice<Value extends FeatureShellOpenFaceRef>(
+  choices: readonly SolidChoice<Value>[],
+  state: GeneratedReferenceSelectionState,
+  selectedName: string | undefined
+): SolidChoice<Value> | undefined {
+  if (selectedName) {
+    return choices.find(
+      (choice) =>
+        choice.value.kind === "namedReference" &&
+        choice.value.name === selectedName
+    );
+  }
+  if (state.status !== "selected" || state.reference.kind !== "face")
+    return undefined;
+  return choices.find(
+    (choice) =>
+      (choice.value.kind === "generatedFace" &&
+        choice.value.stableId === state.reference.stableId) ||
+      (choice.value.kind === "topologyAnchor" &&
+        choice.value.anchorId === state.selection.topologyAnchorId)
+  );
+}
+
+function includeCurrentSolidChoice<Value>(
+  choices: readonly SolidChoice<Value>[],
+  choice: SolidChoice<Value>
+): readonly SolidChoice<Value>[] {
+  return choices.some(
+    (candidate) =>
+      JSON.stringify(candidate.value) === JSON.stringify(choice.value)
+  )
+    ? choices
+    : [choice, ...choices];
+}
+
 function readParameters(): readonly CadParameterSnapshot[] {
   const response = engine.executeQuery({
     version: "cadops.v1",
@@ -1505,9 +1807,10 @@ function ProgressiveDocumentTreeDock({
     () =>
       createDocumentTreeProjection({
         ...deferredSource,
+        health: props.health,
         capabilitiesBySelectionKey
       }),
-    [capabilitiesBySelectionKey, deferredSource]
+    [capabilitiesBySelectionKey, deferredSource, props.health]
   );
 
   return (
@@ -1921,6 +2224,14 @@ export function App() {
   const [selectedNamedReferenceName, setSelectedNamedReferenceName] = useState<
     string | undefined
   >();
+  const [solidCollectorRequest, setSolidCollectorRequest] = useState<
+    SolidCollectorRequest | undefined
+  >();
+  const [solidCollectorSelectionOverride, setSolidCollectorSelectionOverride] =
+    useState<SolidCollectorSelection | undefined>();
+  const [activeSolidEditFeatureId, setActiveSolidEditFeatureId] = useState<
+    string | undefined
+  >();
   const [viewportHoverPick, setViewportHoverPick] = useState<
     ViewportCanvasPick | undefined
   >();
@@ -1934,6 +2245,11 @@ export function App() {
   const [commandError, setCommandError] = useState<string | undefined>();
   const [commandNotice, setCommandNotice] = useState<string | undefined>();
   const [commandPending, setCommandPending] = useState(false);
+  const [openDrawer, setOpenDrawer] = useState<"left" | "right" | undefined>();
+  const [featureApplyCanApply, setFeatureApplyCanApply] = useState(() =>
+    getFeatureApplyCanApply()
+  );
+  const [sketchApplyCanApply, setSketchApplyCanApply] = useState(false);
   const [sketchIntentActionAvailability, setSketchIntentActionAvailability] =
     useState<UiActionAvailabilityProjection>({});
   const [focusedSketchId, setFocusedSketchId] = useState<string | undefined>();
@@ -1943,6 +2259,7 @@ export function App() {
   const [curveEditViewportChoice, setCurveEditViewportChoice] = useState<
     SketchCurveEditViewportChoice | undefined
   >();
+  const curveEditViewportChoiceSequenceRef = useRef(0);
   const [curveEditViewportHoverChoice, setCurveEditViewportHoverChoice] =
     useState<SketchCurveEditViewportChoice | undefined>();
   const [regionCandidates, setRegionCandidates] = useState<
@@ -1991,9 +2308,17 @@ export function App() {
   const handleCurveEditDirtyChange = useCallback((dirty: boolean) => {
     dispatchWorkbench({ type: "set-editor-dirty", dirty });
   }, []);
+  useEffect(
+    () =>
+      subscribeFeatureApplyBridge((state) =>
+        setFeatureApplyCanApply(state.canApply)
+      ),
+    []
+  );
   const handleCurveEditSessionControlChange = useCallback(
     (control: SketchCurveEditSessionControl | undefined) => {
       curveEditSessionControlRef.current = control;
+      setSketchApplyCanApply(Boolean(control?.canApply));
       if (control) {
         dispatchWorkbench({
           type: "set-editor",
@@ -2749,6 +3074,14 @@ export function App() {
       ),
     [document]
   );
+  const addTargetReadinessByTopologyAnchorId = useMemo(
+    () =>
+      readTopologyAnchorCommandTargetReadinessByAnchorId(
+        document.topologyIdentity?.anchors,
+        "feature.extrudeAddTarget"
+      ),
+    [document]
+  );
   const selectedFeature = selectedBody
     ? projectStructure.features.find(
         (feature) => feature.id === selectedBody.featureId
@@ -3101,17 +3434,102 @@ export function App() {
       sketchIntentActionAvailability
     ]
   );
-  const solidBodyChoices = useMemo<readonly SolidChoice<string>[]>(
+  const allSolidBodyChoices = useMemo<readonly SolidChoice<string>[]>(
     () =>
-      projectStructure.bodies
-        .filter((body) => body.consumedByFeatureId === undefined)
-        .map((body, index) => ({
-          key: body.id,
-          value: body.id,
-          label: body.name ?? `Body ${index + 1}`,
-          kind: "body"
-        })),
+      projectStructure.bodies.map((body, index) => ({
+        key: body.id,
+        value: body.id,
+        label: body.name ?? `Body ${index + 1}`,
+        kind: "body"
+      })),
     [projectStructure.bodies]
+  );
+  const solidSeedBodyChoices = useMemo<readonly SolidChoice<string>[]>(
+    () =>
+      projectStructure.bodies.flatMap((body, index) => {
+        const feature = projectStructure.features.find(
+          (candidate) => candidate.id === body.featureId
+        );
+        return feature?.kind === "extrude" &&
+          body.consumedByFeatureId === undefined
+          ? [
+              {
+                key: body.id,
+                value: body.id,
+                label: body.name ?? `Body ${index + 1}`,
+                kind: "authored body"
+              }
+            ]
+          : [];
+      }),
+    [projectStructure.bodies, projectStructure.features]
+  );
+  const solidAddTargetChoices = useMemo<readonly SolidChoice<string>[]>(
+    () =>
+      createAddTargetBodyOptions(
+        projectStructure.bodies,
+        projectStructure.features,
+        preferredHoleBodyId,
+        document.topologyIdentity?.anchors,
+        addTargetReadinessByTopologyAnchorId
+      ).map((target) => ({
+        key: target.bodyId,
+        value: target.bodyId,
+        label: target.label,
+        kind: "add target",
+        targetTopologyAnchorId: target.targetTopologyAnchorId
+      })),
+    [
+      addTargetReadinessByTopologyAnchorId,
+      document.topologyIdentity?.anchors,
+      preferredHoleBodyId,
+      projectStructure.bodies,
+      projectStructure.features
+    ]
+  );
+  const solidCutTargetChoices = useMemo<readonly SolidChoice<string>[]>(
+    () =>
+      createCutTargetBodyOptions(
+        projectStructure.bodies,
+        projectStructure.features,
+        preferredHoleBodyId,
+        document.topologyIdentity?.anchors
+      ).map((target) => ({
+        key: target.bodyId,
+        value: target.bodyId,
+        label: target.label,
+        kind: "cut target",
+        targetTopologyAnchorId: target.targetTopologyAnchorId
+      })),
+    [
+      document.topologyIdentity?.anchors,
+      preferredHoleBodyId,
+      projectStructure.bodies,
+      projectStructure.features
+    ]
+  );
+  const solidHoleTargetChoices = useMemo<readonly SolidChoice<string>[]>(
+    () =>
+      createHoleTargetBodyOptions(
+        projectStructure.bodies,
+        projectStructure.features,
+        preferredHoleBodyId,
+        document.topologyIdentity?.anchors,
+        holeTargetReadinessByTopologyAnchorId
+      ).map((target) => ({
+        key: target.bodyId,
+        value: target.bodyId,
+        label: target.label,
+        kind: "hole target",
+        targetTopologyAnchorId: target.targetTopologyAnchorId
+      })),
+    [
+      document.topologyIdentity?.anchors,
+      holeTargetReadinessByTopologyAnchorId,
+      preferredHoleBodyId,
+      projectStructure.bodies,
+      projectStructure.features
+    ]
   );
   const solidProfileChoices = useMemo(
     () =>
@@ -3177,86 +3595,260 @@ export function App() {
       ),
     [sketches]
   );
-  const solidEdgeChoices = useMemo(
+  const solidChamferEdgeChoices = useMemo(
     () =>
-      (selectedBodyGeneratedReferences.references?.edges ?? []).map(
-        (edge, index) => ({
-          key: edge.stableId,
-          value: {
-            targetBodyId: edge.bodyId,
-            edgeStableId: edge.stableId
-          },
-          label: edge.label || `Edge ${index + 1}`,
-          kind: "edge"
-        })
+      createSolidEdgeChoices(
+        selectedBodyGeneratedReferences.references,
+        namedReferences,
+        referenceCandidatesByStableId,
+        namedReferenceCandidatesByName,
+        "feature.chamfer"
       ),
-    [selectedBodyGeneratedReferences.references]
+    [
+      namedReferenceCandidatesByName,
+      namedReferences,
+      referenceCandidatesByStableId,
+      selectedBodyGeneratedReferences.references
+    ]
   );
-  const solidFaceChoices = useMemo(
+  const solidFilletEdgeChoices = useMemo(
     () =>
-      (selectedBodyGeneratedReferences.references?.faces ?? []).map(
-        (face, index) => ({
-          key: face.stableId,
-          value: {
-            kind: "generatedFace" as const,
-            bodyId: face.bodyId,
-            stableId: face.stableId
-          },
-          label: face.label || `Face ${index + 1}`,
-          kind: "face"
-        })
+      createSolidEdgeChoices(
+        selectedBodyGeneratedReferences.references,
+        namedReferences,
+        referenceCandidatesByStableId,
+        namedReferenceCandidatesByName,
+        "feature.fillet"
       ),
-    [selectedBodyGeneratedReferences.references]
+    [
+      namedReferenceCandidatesByName,
+      namedReferences,
+      referenceCandidatesByStableId,
+      selectedBodyGeneratedReferences.references
+    ]
   );
-  const solidDirectionChoices = useMemo(
-    () => [
-      ...(["x", "y", "z"] as const).map((axis) => ({
-        key: `axis:${axis}`,
-        value: { kind: "globalAxis" as const, axis },
-        label: `${axis.toUpperCase()} axis`,
-        kind: "global axis"
-      })),
-      ...(selectedBodyGeneratedReferences.references?.edges ?? []).map(
-        (edge, index) => ({
-          key: `edge:${edge.stableId}`,
-          value: {
-            kind: "generatedEdge" as const,
-            bodyId: edge.bodyId,
-            stableId: edge.stableId
-          },
-          label: edge.label || `Edge ${index + 1}`,
-          kind: "generated edge"
-        })
-      )
-    ],
-    [selectedBodyGeneratedReferences.references]
+  const solidShellFaceChoices = useMemo(
+    () =>
+      createSolidFaceChoices(
+        selectedBodyGeneratedReferences.references,
+        namedReferences,
+        referenceCandidatesByStableId,
+        namedReferenceCandidatesByName,
+        "feature.shell"
+      ),
+    [
+      namedReferenceCandidatesByName,
+      namedReferences,
+      referenceCandidatesByStableId,
+      selectedBodyGeneratedReferences.references
+    ]
+  );
+  const solidLinearDirectionChoices = useMemo(
+    () =>
+      createSolidDirectionChoices(
+        selectedBodyGeneratedReferences.references,
+        namedReferences,
+        referenceCandidatesByStableId,
+        namedReferenceCandidatesByName,
+        "feature.linearPatternDirection"
+      ),
+    [
+      namedReferenceCandidatesByName,
+      namedReferences,
+      referenceCandidatesByStableId,
+      selectedBodyGeneratedReferences.references
+    ]
+  );
+  const solidRotationAxisChoices = useMemo<
+    readonly SolidChoice<PatternRotationAxisRef>[]
+  >(
+    () =>
+      createSolidDirectionChoices(
+        selectedBodyGeneratedReferences.references,
+        namedReferences,
+        referenceCandidatesByStableId,
+        namedReferenceCandidatesByName,
+        "feature.circularPatternAxis"
+      ),
+    [
+      namedReferenceCandidatesByName,
+      namedReferences,
+      referenceCandidatesByStableId,
+      selectedBodyGeneratedReferences.references
+    ]
+  );
+  const solidMirrorFaceChoices = useMemo(
+    () =>
+      createSolidFaceChoices(
+        selectedBodyGeneratedReferences.references,
+        namedReferences,
+        referenceCandidatesByStableId,
+        namedReferenceCandidatesByName,
+        "feature.mirrorPlane"
+      ),
+    [
+      namedReferenceCandidatesByName,
+      namedReferences,
+      referenceCandidatesByStableId,
+      selectedBodyGeneratedReferences.references
+    ]
   );
   const solidPlaneChoices = useMemo(
-    () =>
-      (["XY", "XZ", "YZ"] as const).map((plane) => ({
-        key: `plane:${plane}`,
-        value: { kind: "standardPlane" as const, plane },
-        label: `${plane} plane`,
-        kind: "standard plane"
-      })),
-    []
+    () => createSolidMirrorPlaneChoices(solidMirrorFaceChoices),
+    [solidMirrorFaceChoices]
   );
-  const selectedProfile =
-    (modelingSelectionContext.selectionKind === "sketchEntity"
+  const selectedChamferEdgeChoice = findSelectedEdgeChoice(
+    solidChamferEdgeChoices,
+    selectedGeneratedReferenceState,
+    selectedNamedReferenceName
+  );
+  const selectedFilletEdgeChoice = findSelectedEdgeChoice(
+    solidFilletEdgeChoices,
+    selectedGeneratedReferenceState,
+    selectedNamedReferenceName
+  );
+  const selectedShellFaceChoice = findSelectedFaceChoice(
+    solidShellFaceChoices,
+    selectedGeneratedReferenceState,
+    selectedNamedReferenceName
+  );
+  const selectedLinearDirectionChoice = findSelectedDirectionChoice(
+    solidLinearDirectionChoices,
+    selectedGeneratedReferenceState,
+    selectedNamedReferenceName
+  );
+  const selectedRotationAxisChoice = findSelectedDirectionChoice(
+    solidRotationAxisChoices,
+    selectedGeneratedReferenceState,
+    selectedNamedReferenceName
+  );
+  const selectedMirrorFaceChoice = findSelectedFaceChoice(
+    solidMirrorFaceChoices,
+    selectedGeneratedReferenceState,
+    selectedNamedReferenceName
+  );
+  const selectedProfileChoice =
+    modelingSelectionContext.selectionKind === "sketchEntity"
       ? solidProfileChoices.find(
           (choice) =>
             choice.value.kind === "entity" &&
             choice.value.sketchId === modelingSelectionContext.sketch.id &&
             choice.value.entityId === modelingSelectionContext.entity.id
-        )?.value
-      : undefined) ?? solidProfileChoices[0]?.value;
+        )
+      : undefined;
+  const selectedProfile = selectedProfileChoice?.value;
   const selectedEntityProfile =
     selectedProfile?.kind === "entity" ? selectedProfile : undefined;
-  const selectedPath = solidPathChoices[0]?.value;
-  const selectedSolidBodyId =
-    selectedBody?.id ?? solidBodyChoices[0]?.value ?? "";
+  const selectedPathChoice =
+    modelingSelectionContext.selectionKind === "sketchEntity"
+      ? solidPathChoices.find((choice) => {
+          const path = choice.value;
+          return path.kind === "entity"
+            ? path.sketchId === modelingSelectionContext.sketch.id &&
+                path.entityId === modelingSelectionContext.entity.id
+            : path.sketchId === modelingSelectionContext.sketch.id &&
+                path.segments.some(
+                  (segment) =>
+                    segment.entityId === modelingSelectionContext.entity.id
+                );
+        })
+      : undefined;
+  const selectedPath = selectedPathChoice?.value;
+  const selectedAxisChoice =
+    modelingSelectionContext.selectionKind === "sketchEntity" &&
+    modelingSelectionContext.entity.kind === "line"
+      ? solidAxisChoices.find(
+          (choice) =>
+            choice.key ===
+            `${modelingSelectionContext.sketch.id}:${modelingSelectionContext.entity.id}`
+        )
+      : undefined;
+  const selectedSolidBodyId = selectedBody?.id ?? "";
+  const selectedSeedBodyId =
+    solidSeedBodyChoices.find((choice) => choice.value === selectedBody?.id)
+      ?.value ?? "";
+  const selectedHoleTargetChoice = solidHoleTargetChoices.find(
+    (choice) => choice.value === selectedBody?.id
+  );
+  const solidCollectorSelection = useMemo<
+    SolidCollectorSelection | undefined
+  >(() => {
+    const key = selectedNamedReferenceName
+      ? `named:${selectedNamedReferenceName}`
+      : selectedGeneratedReferenceState.status === "selected"
+        ? `reference:${selectedGeneratedReferenceState.reference.bodyId}:${selectedGeneratedReferenceState.reference.stableId}:${selectedGeneratedReferenceState.selection.topologyAnchorId ?? ""}`
+        : selectedSketchContext?.entityId
+          ? `sketch:${selectedSketchContext.sketchId}:${selectedSketchContext.entityId}`
+          : selectedBody
+            ? `body:${selectedBody.id}`
+            : undefined;
+    if (!key) return undefined;
+    return {
+      key,
+      choiceKeys: {
+        ...(selectedBody
+          ? {
+              targetBody: selectedBody.id,
+              seedBody: selectedBody.id
+            }
+          : {}),
+        ...(selectedProfileChoice
+          ? {
+              profile: selectedProfileChoice.key,
+              sections:
+                selectedProfileChoice.value.kind === "entity"
+                  ? `${selectedProfileChoice.value.sketchId}:${selectedProfileChoice.value.entityId}`
+                  : undefined
+            }
+          : {}),
+        ...(selectedPathChoice ? { path: selectedPathChoice.key } : {}),
+        ...(selectedAxisChoice ? { axis: selectedAxisChoice.key } : {}),
+        ...(workbenchUi.activeTool === "solid.fillet"
+          ? selectedFilletEdgeChoice
+            ? { edge: selectedFilletEdgeChoice.key }
+            : {}
+          : selectedChamferEdgeChoice
+            ? { edge: selectedChamferEdgeChoice.key }
+            : {}),
+        ...(selectedShellFaceChoice
+          ? { openFaces: selectedShellFaceChoice.key }
+          : {}),
+        ...(selectedLinearDirectionChoice
+          ? { direction: selectedLinearDirectionChoice.key }
+          : {}),
+        ...(selectedRotationAxisChoice
+          ? { rotationAxis: selectedRotationAxisChoice.key }
+          : {}),
+        ...(selectedMirrorFaceChoice
+          ? { mirrorPlane: selectedMirrorFaceChoice.key }
+          : {})
+      }
+    };
+  }, [
+    selectedAxisChoice,
+    selectedBody,
+    selectedChamferEdgeChoice,
+    selectedFilletEdgeChoice,
+    selectedGeneratedReferenceState,
+    selectedLinearDirectionChoice,
+    selectedMirrorFaceChoice,
+    selectedNamedReferenceName,
+    selectedPathChoice,
+    selectedProfileChoice,
+    selectedRotationAxisChoice,
+    selectedShellFaceChoice,
+    selectedSketchContext,
+    workbenchUi.activeTool
+  ]);
+  const selectedFeatureBeforeEditor = selectedFeature;
   const solidEditorRequest = useMemo<SolidEditorRequest | undefined>(() => {
     const actionId = workbenchUi.activeTool;
+    const selectedFeature =
+      actionId === "solid.edit" && activeSolidEditFeatureId
+        ? (projectStructure.features.find(
+            (feature) => feature.id === activeSolidEditFeatureId
+          ) ?? selectedFeatureBeforeEditor)
+        : selectedFeatureBeforeEditor;
     const key = `${actionId ?? "solid"}:${transactionHistory.length}`;
     const profileChoices = (
       featureId: string,
@@ -3350,6 +3942,11 @@ export function App() {
                 entityId: selectedFeature.entityId
               }
             : undefined);
+        const currentTargetChoice = selectedFeature.targetBodyId
+          ? allSolidBodyChoices.find(
+              (choice) => choice.value === selectedFeature.targetBodyId
+            )
+          : undefined;
         return {
           key,
           kind: "compositeExtrude",
@@ -3372,7 +3969,18 @@ export function App() {
           },
           choices: {
             profiles: profileChoices(selectedFeature.id, profile),
-            targetBodies: solidBodyChoices
+            addTargetBodies: currentTargetChoice
+              ? includeCurrentSolidChoice(solidAddTargetChoices, {
+                  ...currentTargetChoice,
+                  targetTopologyAnchorId: selectedFeature.targetTopologyAnchorId
+                })
+              : solidAddTargetChoices,
+            cutTargetBodies: currentTargetChoice
+              ? includeCurrentSolidChoice(solidCutTargetChoices, {
+                  ...currentTargetChoice,
+                  targetTopologyAnchorId: selectedFeature.targetTopologyAnchorId
+                })
+              : solidCutTargetChoices
           },
           blockedReason: profile
             ? undefined
@@ -3450,12 +4058,14 @@ export function App() {
             bodyId: selectedFeature.bodyId,
             targetBodyId: selectedFeature.targetBodyId,
             targetTopologyAnchorId: selectedFeature.targetTopologyAnchorId,
+            sketchId: selectedFeature.sketchId,
+            circleEntityId: selectedFeature.circleEntityId,
             name: selectedFeature.name ?? "",
             depthMode: selectedFeature.depthMode,
             depth: selectedFeature.depth ?? 10,
             direction: selectedFeature.direction
           },
-          choices: { targetBodies: solidBodyChoices },
+          choices: { targetBodies: allSolidBodyChoices },
           deletable: true
         } as SolidEditorRequest;
       }
@@ -3482,7 +4092,24 @@ export function App() {
             radius:
               selectedFeature.kind === "fillet" ? selectedFeature.radius : 1
           },
-          choices: { edges: solidEdgeChoices },
+          choices: {
+            edges: includeCurrentSolidChoice(
+              selectedFeature.kind === "fillet"
+                ? solidFilletEdgeChoices
+                : solidChamferEdgeChoices,
+              {
+                key: `current:${selectedFeature.id}`,
+                value: {
+                  targetBodyId: selectedFeature.targetBodyId,
+                  edgeStableId: selectedFeature.edgeStableId,
+                  namedReference: selectedFeature.namedReference,
+                  topologyAnchorId: selectedFeature.topologyAnchorId
+                },
+                label: "Current edge reference",
+                kind: "edge"
+              }
+            )
+          },
           deletable: true
         } as SolidEditorRequest;
       }
@@ -3501,8 +4128,17 @@ export function App() {
             openFaceRefs: selectedFeature.openFaceRefs
           },
           choices: {
-            targetBodies: solidBodyChoices,
-            openFaces: solidFaceChoices
+            targetBodies: allSolidBodyChoices,
+            openFaces: selectedFeature.openFaceRefs.reduce(
+              (choices, reference, index) =>
+                includeCurrentSolidChoice(choices, {
+                  key: `current:${selectedFeature.id}:${index}`,
+                  value: reference,
+                  label: `Current open face ${index + 1}`,
+                  kind: "face"
+                }),
+              solidShellFaceChoices
+            )
           },
           deletable: true
         } as SolidEditorRequest;
@@ -3523,8 +4159,13 @@ export function App() {
             instanceCount: selectedFeature.instanceCount
           },
           choices: {
-            seedBodies: solidBodyChoices,
-            directions: solidDirectionChoices
+            seedBodies: allSolidBodyChoices,
+            directions: includeCurrentSolidChoice(solidLinearDirectionChoices, {
+              key: `current:${selectedFeature.id}`,
+              value: selectedFeature.direction,
+              label: "Current direction",
+              kind: "direction"
+            })
           },
           deletable: true
         } as SolidEditorRequest;
@@ -3545,8 +4186,13 @@ export function App() {
             instanceCount: selectedFeature.instanceCount
           },
           choices: {
-            seedBodies: solidBodyChoices,
-            rotationAxes: solidDirectionChoices
+            seedBodies: allSolidBodyChoices,
+            rotationAxes: includeCurrentSolidChoice(solidRotationAxisChoices, {
+              key: `current:${selectedFeature.id}`,
+              value: selectedFeature.rotationAxis,
+              label: "Current rotation axis",
+              kind: "axis"
+            })
           },
           deletable: true
         } as SolidEditorRequest;
@@ -3566,8 +4212,13 @@ export function App() {
             includeOriginal: selectedFeature.includeOriginal
           },
           choices: {
-            seedBodies: solidBodyChoices,
-            mirrorPlanes: solidPlaneChoices
+            seedBodies: allSolidBodyChoices,
+            mirrorPlanes: includeCurrentSolidChoice(solidPlaneChoices, {
+              key: `current:${selectedFeature.id}`,
+              value: selectedFeature.plane,
+              label: "Current mirror plane",
+              kind: "plane"
+            })
           },
           deletable: true
         } as SolidEditorRequest;
@@ -3630,7 +4281,8 @@ export function App() {
         },
         choices: {
           profiles: solidProfileChoices,
-          targetBodies: solidBodyChoices
+          addTargetBodies: solidAddTargetChoices,
+          cutTargetBodies: solidCutTargetChoices
         },
         blockedReason: selectedProfile
           ? undefined
@@ -3652,7 +4304,14 @@ export function App() {
             sketchId: "",
             entityId: ""
           },
-          axisEntityId: solidAxisChoices[0]?.value ?? "",
+          axisEntityId:
+            solidAxisChoices.find(
+              (choice) =>
+                selectedProfile?.kind === "entity" &&
+                choice.key.startsWith(`${selectedProfile.sketchId}:`)
+            )?.value ??
+            solidAxisChoices[0]?.value ??
+            "",
           angleDegrees: 360
         },
         choices: { profiles: solidProfileChoices, axes: solidAxisChoices },
@@ -3677,12 +4336,13 @@ export function App() {
             sketchId: "",
             entityId: ""
           },
-          path: selectedPath ?? {
-            kind: "entity",
-            sketchId: "",
-            entityId: "",
-            orientation: "forward"
-          }
+          path: selectedPath ??
+            solidPathChoices[0]?.value ?? {
+              kind: "entity",
+              sketchId: "",
+              entityId: "",
+              orientation: "forward"
+            }
         },
         choices: {
           profiles: solidProfileChoices.filter(
@@ -3691,7 +4351,7 @@ export function App() {
           paths: solidPathChoices
         },
         blockedReason:
-          selectedEntityProfile && selectedPath
+          selectedEntityProfile && solidPathChoices.length > 0
             ? undefined
             : "A supported entity profile and tangent path are required."
       } as SolidEditorRequest;
@@ -3710,7 +4370,16 @@ export function App() {
             ]
           : []
       );
-      const sections = sectionChoices.map((choice) => choice.section);
+      const sections =
+        selectedEntityProfile === undefined
+          ? []
+          : sectionChoices
+              .filter(
+                (choice) =>
+                  choice.section.sketchId === selectedEntityProfile.sketchId &&
+                  choice.section.entityId === selectedEntityProfile.entityId
+              )
+              .map((choice) => choice.section);
       return {
         key,
         kind: "loft",
@@ -3726,15 +4395,16 @@ export function App() {
           }))
         },
         blockedReason:
-          sections.length >= 2
+          sectionChoices.length >= 2
             ? undefined
-            : "Choose at least two profiles on parallel planes."
+            : "Create at least two profiles on parallel planes."
       } as SolidEditorRequest;
     }
     if (actionId === "solid.hole") {
       const circleReady =
         modelingSelectionContext.selectionKind === "sketchEntity" &&
         modelingSelectionContext.entity.kind === "circle";
+      const target = selectedHoleTargetChoice ?? solidHoleTargetChoices[0];
       return {
         key,
         kind: "hole",
@@ -3743,20 +4413,38 @@ export function App() {
         initialDraft: {
           id: "",
           bodyId: "",
-          targetBodyId: selectedSolidBodyId,
+          targetBodyId: target?.value ?? "",
+          targetTopologyAnchorId: target?.targetTopologyAnchorId,
+          sketchId: circleReady
+            ? modelingSelectionContext.sketch.id
+            : undefined,
+          circleEntityId: circleReady
+            ? modelingSelectionContext.entity.id
+            : undefined,
           name: "",
           depthMode: "throughAll",
           depth: 10,
           direction: "positive"
         },
-        choices: { targetBodies: solidBodyChoices },
-        blockedReason: circleReady
-          ? undefined
-          : "Select a supported sketch circle."
+        choices: { targetBodies: solidHoleTargetChoices },
+        blockedReason:
+          circleReady && target
+            ? undefined
+            : circleReady
+              ? "Select a supported hole target body."
+              : "Select a supported sketch circle."
       } as SolidEditorRequest;
     }
     if (actionId === "solid.fillet" || actionId === "solid.chamfer") {
-      const edge = solidEdgeChoices[0]?.value;
+      const selectedEdge =
+        actionId === "solid.fillet"
+          ? selectedFilletEdgeChoice
+          : selectedChamferEdgeChoice;
+      const edge = selectedEdge?.value;
+      const edgeChoices =
+        actionId === "solid.fillet"
+          ? solidFilletEdgeChoices
+          : solidChamferEdgeChoices;
       return {
         key,
         kind: actionId === "solid.fillet" ? "fillet" : "chamfer",
@@ -3768,11 +4456,14 @@ export function App() {
           targetBodyId: edge?.targetBodyId ?? selectedSolidBodyId,
           name: "",
           edgeStableId: edge?.edgeStableId,
+          namedReference: edge?.namedReference,
+          topologyAnchorId: edge?.topologyAnchorId,
+          topologyAnchorProof: edge?.topologyAnchorProof,
           distance: 1,
           radius: 1
         },
-        choices: { edges: solidEdgeChoices },
-        blockedReason: edge ? undefined : "Select a supported generated edge."
+        choices: { edges: edgeChoices },
+        blockedReason: edge ? undefined : "Select a supported edge."
       } as SolidEditorRequest;
     }
     if (actionId === "solid.shell") {
@@ -3784,16 +4475,18 @@ export function App() {
         initialDraft: {
           id: "",
           bodyId: "",
-          targetBodyId: selectedSolidBodyId,
+          targetBodyId: selectedSeedBodyId,
           name: "",
           wallThickness: 1,
-          openFaceRefs: []
+          openFaceRefs: selectedShellFaceChoice
+            ? [selectedShellFaceChoice.value]
+            : []
         },
         choices: {
-          targetBodies: solidBodyChoices,
-          openFaces: solidFaceChoices
+          targetBodies: solidSeedBodyChoices,
+          openFaces: solidShellFaceChoices
         },
-        blockedReason: selectedSolidBodyId
+        blockedReason: selectedSeedBodyId
           ? undefined
           : "Select a supported body."
       } as SolidEditorRequest;
@@ -3807,17 +4500,19 @@ export function App() {
         initialDraft: {
           id: "",
           bodyId: "",
-          seedBodyId: selectedSolidBodyId,
+          seedBodyId: selectedSeedBodyId,
           name: "",
-          direction: solidDirectionChoices[0]!.value,
+          direction:
+            selectedLinearDirectionChoice?.value ??
+            solidLinearDirectionChoices[0]!.value,
           spacing: 10,
           instanceCount: 3
         },
         choices: {
-          seedBodies: solidBodyChoices,
-          directions: solidDirectionChoices
+          seedBodies: solidSeedBodyChoices,
+          directions: solidLinearDirectionChoices
         },
-        blockedReason: selectedSolidBodyId
+        blockedReason: selectedSeedBodyId
           ? undefined
           : "Select a supported seed body."
       } as SolidEditorRequest;
@@ -3831,17 +4526,19 @@ export function App() {
         initialDraft: {
           id: "",
           bodyId: "",
-          seedBodyId: selectedSolidBodyId,
+          seedBodyId: selectedSeedBodyId,
           name: "",
-          rotationAxis: solidDirectionChoices[2]!.value,
+          rotationAxis:
+            selectedRotationAxisChoice?.value ??
+            solidRotationAxisChoices[2]!.value,
           totalAngleDegrees: 360,
           instanceCount: 3
         },
         choices: {
-          seedBodies: solidBodyChoices,
-          rotationAxes: solidDirectionChoices
+          seedBodies: solidSeedBodyChoices,
+          rotationAxes: solidRotationAxisChoices
         },
-        blockedReason: selectedSolidBodyId
+        blockedReason: selectedSeedBodyId
           ? undefined
           : "Select a supported seed body."
       } as SolidEditorRequest;
@@ -3855,42 +4552,67 @@ export function App() {
         initialDraft: {
           id: "",
           bodyId: "",
-          seedBodyId: selectedSolidBodyId,
+          seedBodyId: selectedSeedBodyId,
           name: "",
-          plane: solidPlaneChoices[0]!.value,
+          plane: selectedMirrorFaceChoice?.value ?? solidPlaneChoices[0]!.value,
           includeOriginal: true
         },
         choices: {
-          seedBodies: solidBodyChoices,
+          seedBodies: solidSeedBodyChoices,
           mirrorPlanes: solidPlaneChoices
         },
-        blockedReason: selectedSolidBodyId
+        blockedReason: selectedSeedBodyId
           ? undefined
           : "Select a supported seed body."
       } as SolidEditorRequest;
     }
     return undefined;
   }, [
+    allSolidBodyChoices,
+    activeSolidEditFeatureId,
     transactionHistory.length,
     modelingSelectionContext,
     selectedEntityProfile,
-    selectedFeature,
+    selectedFeatureBeforeEditor,
+    selectedFilletEdgeChoice,
+    selectedChamferEdgeChoice,
+    selectedHoleTargetChoice,
+    selectedLinearDirectionChoice,
+    selectedMirrorFaceChoice,
     selectedObject,
     selectedPath,
     selectedProfile,
+    selectedRotationAxisChoice,
+    selectedSeedBodyId,
+    selectedShellFaceChoice,
     selectedSolidBodyId,
     sketches.length,
+    solidAddTargetChoices,
     solidAxisChoices,
-    solidBodyChoices,
-    solidDirectionChoices,
-    solidEdgeChoices,
-    solidFaceChoices,
+    solidChamferEdgeChoices,
+    solidCutTargetChoices,
+    solidFilletEdgeChoices,
+    solidHoleTargetChoices,
+    solidLinearDirectionChoices,
+    solidRotationAxisChoices,
+    solidSeedBodyChoices,
+    solidShellFaceChoices,
     regionCandidates,
     solidPathChoices,
     solidPlaneChoices,
     solidProfileChoices,
+    projectStructure.features,
     workbenchUi.activeTool
   ]);
+  useEffect(() => {
+    if (
+      !solidEditorRequest ||
+      solidCollectorRequest?.editorKey !== solidEditorRequest.key
+    ) {
+      setSolidCollectorRequest(undefined);
+      setSolidCollectorSelectionOverride(undefined);
+    }
+  }, [solidCollectorRequest?.editorKey, solidEditorRequest]);
   const sketchViewportDragTarget =
     modelingSelectionContext.selectionKind === "sketchEntity"
       ? {
@@ -4409,38 +5131,37 @@ export function App() {
     isViewportTwoTargetMeasurementSessionActive(
       viewportTwoTargetMeasurementSession
     );
-  const viewportTransientStateActive =
-    viewportTwoTargetMeasurementSessionActive ||
+  const viewportGestureActive =
     threePointArcTool !== undefined ||
     viewportHoverPick !== undefined ||
     viewportPickIntent !== undefined;
-  const clearViewportTransientState = useCallback(() => {
+  const measurementSecondTargetActive = Boolean(
+    viewportTwoTargetMeasurementSession.firstTarget ||
+    viewportTwoTargetMeasurementSession.secondTarget
+  );
+  const clearViewportGestures = useCallback(() => {
     setViewportHoverPick(undefined);
     setViewportPickIntent(undefined);
     setThreePointArcTool(undefined);
-    setViewportTwoTargetMeasurementSession((current) =>
-      updateViewportTwoTargetMeasurementSession(current, { type: "clear" })
-    );
+  }, []);
+  const clearMeasurementSecondTargetCapture = useCallback(() => {
+    setViewportTwoTargetMeasurementSession((current) => {
+      if (current.secondTarget) {
+        return { firstTarget: current.firstTarget };
+      }
+      if (current.firstTarget) {
+        return updateViewportTwoTargetMeasurementSession(current, {
+          type: "clear"
+        });
+      }
+      return current;
+    });
   }, []);
   useEffect(() => {
     setViewportTwoTargetMeasurementSession((current) =>
       clearViewportTwoTargetMeasurementSecondTargetOnSelectionChange(current)
     );
   }, [viewportContextualCommandSurface.selectionKey]);
-  useEffect(() => {
-    if (!viewportTransientStateActive) {
-      return undefined;
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (shouldCancelViewportTransientState(event)) {
-        clearViewportTransientState();
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [clearViewportTransientState, viewportTransientStateActive]);
   const selectedViewportRenderId =
     viewportVisualState.selectedRenderTargetId ??
     selectedObject?.id ??
@@ -4617,11 +5338,16 @@ export function App() {
   }
 
   function applyObjectSelection(objectId: string | undefined) {
+    setSolidCollectorSelectionOverride(undefined);
     setSelectedId(objectId);
     setSelectedGeneratedReference(undefined);
+    setSelectedNamedReferenceName(undefined);
+    setSelectedSketchContext(undefined);
     setViewportPickIntent(undefined);
     setViewportHoverPick(undefined);
-    dispatchWorkbench({ type: "set-active-tool" });
+    if (!solidCollectorRequest) {
+      dispatchWorkbench({ type: "set-active-tool" });
+    }
   }
 
   function runAfterCurveEditNavigationGuard(continuation: () => void) {
@@ -4644,6 +5370,7 @@ export function App() {
   }
 
   function selectViewportPick(pick: ViewportCanvasPick) {
+    setSolidCollectorSelectionOverride(undefined);
     const pickedBodyId = resolveViewportPickedBodyId({
       pickedRenderId: pick.pickedRenderId,
       bodies: projectStructure.bodies,
@@ -4688,6 +5415,7 @@ export function App() {
 
     setViewportPickIntent(intent);
     setSelectedId(intent.selectedId);
+    setSelectedNamedReferenceName(undefined);
     setSelectedGeneratedReference(
       intent.kind === "generatedReference"
         ? {
@@ -4703,6 +5431,8 @@ export function App() {
         sketchId: intent.sketchId,
         entityId: intent.entityId
       });
+    } else {
+      setSelectedSketchContext(undefined);
     }
     return intent;
   }
@@ -4768,6 +5498,7 @@ export function App() {
       !offsetActive &&
       (intent.kind !== "sketchEntity" || intent.sketchId !== focusedSketchId)
     ) {
+      clearCurveEditHoverPreview();
       setCommandNotice("Choose geometry in the active sketch.");
       return;
     }
@@ -4784,15 +5515,16 @@ export function App() {
         ? projectSketchCurveEditViewportPoint(entity, rawPoint)
         : rawPoint;
     if (!point && intent.kind !== "sketchEntity") {
+      clearCurveEditHoverPreview();
       setCommandNotice("Choose a point on the active sketch plane.");
       return;
     }
     clearCurveEditHoverPreview();
-    setCurveEditViewportChoice((current) => ({
-      sequence: (current?.sequence ?? 0) + 1,
+    setCurveEditViewportChoice({
+      sequence: ++curveEditViewportChoiceSequenceRef.current,
       ...(intent.kind === "sketchEntity" ? { entityId: intent.entityId } : {}),
       ...(point ? { point } : {})
-    }));
+    });
   }
 
   async function commitOps(
@@ -4893,12 +5625,12 @@ export function App() {
     await commitOps([buildUpdateTransformOp(objectId, form)], () => objectId);
   }
 
-  async function deleteSelectedObject() {
-    if (!selectedObject) {
+  async function deleteSelectedObject(objectId = selectedObject?.id) {
+    if (!objectId) {
       return;
     }
 
-    await commitOps([buildDeleteObjectOp(selectedObject.id)], () => undefined);
+    await commitOps([buildDeleteObjectOp(objectId)], () => undefined);
   }
 
   async function createSketch(
@@ -5841,6 +6573,7 @@ export function App() {
 
   function inspectNamedReference(name: string) {
     setSelectedNamedReferenceName(name);
+    setSelectedSketchContext(undefined);
     const response = engine.executeQuery({
       version: "cadops.v1",
       query: { query: "reference.resolveNamed", name }
@@ -6769,6 +7502,15 @@ export function App() {
   function selectDocumentTreeItem(selection: DocumentTreeSelection) {
     switch (selection.kind) {
       case "origin-plane":
+        if (solidCollectorRequest?.collector === "mirrorPlane") {
+          setSolidCollectorSelectionOverride({
+            key: `origin-plane:${selection.plane}`,
+            choiceKeys: {
+              mirrorPlane: `feature.mirrorPlane:plane:${selection.plane}`
+            }
+          });
+          return;
+        }
         setCommandNotice(
           `${selection.plane} plane is available for a new sketch.`
         );
@@ -6777,9 +7519,30 @@ export function App() {
         runAfterCurveEditNavigationGuard(() => openProjectPage("parameters"));
         return;
       case "sketch":
+        if (solidCollectorRequest) {
+          setSolidCollectorSelectionOverride(undefined);
+          setSelectedId(undefined);
+          setSelectedGeneratedReference(undefined);
+          setSelectedNamedReferenceName(undefined);
+          setFocusedSketchId(selection.id);
+          setSelectedSketchContext({ sketchId: selection.id });
+          return;
+        }
         focusSketch(selection.id);
         return;
       case "sketch-entity":
+        if (solidCollectorRequest) {
+          setSolidCollectorSelectionOverride(undefined);
+          setSelectedId(undefined);
+          setSelectedGeneratedReference(undefined);
+          setSelectedNamedReferenceName(undefined);
+          setFocusedSketchId(selection.sketchId);
+          setSelectedSketchContext({
+            sketchId: selection.sketchId,
+            entityId: selection.id
+          });
+          return;
+        }
         focusSketch(selection.sketchId, selection.id);
         return;
       case "feature": {
@@ -6794,6 +7557,11 @@ export function App() {
         selectObject(selection.id);
         return;
       case "named-reference":
+        if (solidCollectorRequest) {
+          setSolidCollectorSelectionOverride(undefined);
+          inspectNamedReference(selection.name);
+          return;
+        }
         runAfterCurveEditNavigationGuard(() => {
           inspectNamedReference(selection.name);
           navigateToMode("inspect");
@@ -6810,8 +7578,10 @@ export function App() {
             (candidate) => candidate.featureId === selection.id
           );
           applyObjectSelection(body?.id);
+          setActiveSolidEditFeatureId(selection.id);
         } else {
           applyObjectSelection(selection.id);
+          setActiveSolidEditFeatureId(undefined);
         }
         dispatchWorkbench({ type: "set-active-tool", actionId: "solid.edit" });
       });
@@ -6922,6 +7692,17 @@ export function App() {
   async function executeSolidEditorSubmission(
     submission: SolidEditorSubmission
   ): Promise<void> {
+    const draftSourceId =
+      "id" in submission.draft ? submission.draft.id : undefined;
+    const selectedFeature =
+      workbenchUi.activeTool === "solid.edit"
+        ? projectStructure.features.find(
+            (feature) =>
+              feature.id === draftSourceId ||
+              (feature.kind === "primitive" &&
+                feature.objectId === draftSourceId)
+          )
+        : undefined;
     if (workbenchUi.activeTool === "solid.edit" && selectedFeature) {
       if (
         selectedFeature.kind === "primitive" &&
@@ -7194,6 +7975,14 @@ export function App() {
         }
         return;
       case "hole":
+        if (submission.draft.sketchId && submission.draft.circleEntityId) {
+          await holeSketchEntity(
+            submission.draft.sketchId,
+            submission.draft.circleEntityId,
+            submission.draft
+          );
+          return;
+        }
         if (
           modelingSelectionContext.selectionKind === "sketchEntity" &&
           modelingSelectionContext.entity.kind === "circle"
@@ -7207,7 +7996,126 @@ export function App() {
     }
   }
 
+  function applyActiveFeatureDraft(): void {
+    if (tryApplyFeatureDraft()) return;
+    if (workbenchUi.activeEditor?.kind === "sketch-curve-edit") {
+      void curveEditSessionControlRef.current?.apply();
+    }
+  }
+
+  function runEscapeCancellationStack(): boolean {
+    if (
+      typeof window !== "undefined" &&
+      window.document.querySelector(
+        '[role="dialog"][aria-labelledby="curve-edit-navigation-title"]'
+      )
+    ) {
+      // Navigation guard owns Escape; do not compete with its stay handler.
+      return false;
+    }
+
+    const contributedEditor = resolveContributedEscapeEditorState();
+    const solidEditorOpen = Boolean(solidEditorRequest);
+    const sketchEditor =
+      workbenchUi.activeEditor?.kind === "sketch-curve-edit"
+        ? workbenchUi.activeEditorDirty
+          ? ("dirty" as const)
+          : ("clean" as const)
+        : ("none" as const);
+    const editorState =
+      contributedEditor.state === "dirty" || sketchEditor === "dirty"
+        ? ("dirty" as const)
+        : contributedEditor.state !== "none"
+          ? contributedEditor.state
+          : sketchEditor !== "none"
+            ? sketchEditor
+            : solidEditorOpen
+              ? ("clean" as const)
+              : ("none" as const);
+
+    // Right drawer forced open by an active solid editor cannot dismiss at step 2.
+    const overlayDrawerCloseable =
+      openDrawer !== undefined && !(openDrawer === "right" && solidEditorOpen);
+
+    const rung = resolveEscapeRung({
+      transientPopover: hasTransientPopoverInDocument(window.document),
+      overlayDrawer: overlayDrawerCloseable,
+      viewportGesture: viewportGestureActive,
+      measurementSecondTarget: measurementSecondTargetActive,
+      commandSearch: workbenchUi.commandSearchOpen,
+      editor: editorState,
+      selection: Boolean(
+        selectedId ||
+        selectedGeneratedReference ||
+        selectedSketchContext ||
+        selectedNamedReferenceName
+      )
+    });
+    if (!rung) return false;
+
+    switch (rung) {
+      case "transient-popover":
+        closeTransientPopoversInDocument(window.document);
+        return true;
+      case "overlay-drawer":
+        setOpenDrawer(undefined);
+        return true;
+      case "viewport-gesture":
+        clearViewportGestures();
+        return true;
+      case "measurement-second-target":
+        clearMeasurementSecondTargetCapture();
+        return true;
+      case "command-search":
+        closeCommandSearch();
+        return true;
+      case "editor": {
+        if (contributedEditor.state === "dirty") {
+          contributedEditor.requestDirtyGuard();
+          return true;
+        }
+        if (sketchEditor === "dirty") {
+          dispatchWorkbench({
+            type: "request-navigation",
+            intent: { kind: "close-editor" }
+          });
+          return true;
+        }
+        if (contributedEditor.state === "clean") {
+          contributedEditor.cancelClean();
+          return true;
+        }
+        if (sketchEditor === "clean") {
+          clearCurveEditUi(true);
+          return true;
+        }
+        if (solidEditorOpen) {
+          dispatchWorkbench({ type: "set-active-tool" });
+          return true;
+        }
+        return false;
+      }
+      case "selection":
+        setSelectedId(undefined);
+        setSelectedGeneratedReference(undefined);
+        setSelectedSketchContext(undefined);
+        setSelectedNamedReferenceName(undefined);
+        return true;
+      default:
+        return false;
+    }
+  }
+
   function runWorkbenchAction(actionId: UiActionId): void {
+    if (actionId === "project.apply") {
+      applyActiveFeatureDraft();
+      return;
+    }
+    if (actionId === "project.cancel") {
+      runEscapeCancellationStack();
+      return;
+    }
+
     const bypassCurveGuard = curveEditNavigationBypassRef.current;
     curveEditNavigationBypassRef.current = false;
     const curveInvocation = getActiveCurveEditInvocationAction({
@@ -7308,6 +8216,12 @@ export function App() {
       case "project.redo":
         redo();
         return;
+      case "project.command-search":
+        openCommandSearch();
+        return;
+      case "project.help":
+        setCommandNotice(formatShortcutHelpNotice());
+        return;
       case "solid.box":
       case "solid.cylinder":
       case "solid.sphere":
@@ -7332,6 +8246,17 @@ export function App() {
       case "solid.loft":
         navigateToMode("solid");
         setCommandNotice("Choose ordered profiles on parallel planes.");
+        return;
+      case "solid.transform":
+        navigateToMode("solid");
+        setCommandNotice("Select an editable source object, then apply.");
+        return;
+      case "solid.edit":
+        setActiveSolidEditFeatureId(selectedFeature?.id);
+        navigateToMode("solid");
+        setCommandNotice(
+          "Select an editable feature or object to open its editor."
+        );
         return;
       case "solid.hole":
         navigateToMode("solid");
@@ -7476,6 +8401,22 @@ export function App() {
         if (focusedSketchId) startThreePointArcTool(focusedSketchId);
         else setCommandNotice("Select or create a sketch first.");
         return;
+      case "sketch.point":
+        navigateToMode("sketch");
+        setCommandNotice("Choose a sketch, then place a point.");
+        return;
+      case "sketch.line":
+        navigateToMode("sketch");
+        setCommandNotice("Choose a sketch, then draw a line.");
+        return;
+      case "sketch.rectangle":
+        navigateToMode("sketch");
+        setCommandNotice("Choose a sketch, then draw a rectangle.");
+        return;
+      case "sketch.circle":
+        navigateToMode("sketch");
+        setCommandNotice("Choose a sketch, then draw a circle.");
+        return;
       case "sketch.trim":
       case "sketch.extend":
       case "sketch.split":
@@ -7546,7 +8487,10 @@ export function App() {
         setCommandNotice("Sketch finished. No model change was created.");
         return;
       default: {
-        const mode = actionId.slice(0, actionId.indexOf("."));
+        // Every registered action has an explicit case above, so this is only a
+        // runtime guard against a registry entry added without a handler.
+        const unhandled: string = actionId;
+        const mode = unhandled.slice(0, unhandled.indexOf("."));
         if (
           mode === "project" ||
           mode === "solid" ||
@@ -7695,6 +8639,8 @@ export function App() {
     const ready = { status: "ready" } as const;
     const needs = (message: string) =>
       ({ status: "needs-selection", message }) as const;
+    const blocked = (message: string) =>
+      ({ status: "blocked", message }) as const;
     const selectedSketch = selectedSketchContext
       ? sketches.find(
           (candidate) => candidate.id === selectedSketchContext.sketchId
@@ -7711,72 +8657,145 @@ export function App() {
       : needs("Select or create a sketch first.");
     const selectedEntityReady = selectedEntity
       ? ready
-      : needs("Select a sketch entity first.");
+      : needs(UI_ACTION_AVAILABILITY_MESSAGES.sketchConstruction);
+    const canOpenWcad =
+      projectStorageCapabilities.fileSystemAccessAvailable ||
+      projectStorageCapabilities.wcadUploadAvailable;
+    const canSave =
+      projectFile.mode === "wcadHandle" ||
+      projectStorageCapabilities.fileSystemAccessAvailable ||
+      projectStorageCapabilities.wcadDownloadAvailable;
+    const canOpenStep =
+      projectStorageCapabilities.fileSystemAccessAvailable ||
+      projectStorageCapabilities.jsonUploadAvailable;
+    const pendingMutationBlock = blocked(
+      "Wait for the current model update to finish before saving or exporting."
+    );
+    const sketchCurveApplyReady = Boolean(
+      workbenchUi.activeEditor?.kind === "sketch-curve-edit" &&
+      sketchApplyCanApply
+    );
+    const applyReady = featureApplyCanApply || sketchCurveApplyReady;
+
     return {
       "project.undo": engine.getTransactions().length
         ? ready
-        : { status: "blocked", message: "There is nothing to undo." },
+        : blocked("There is nothing to undo."),
       "project.redo": engine.getRedoStack().length
         ? ready
-        : { status: "blocked", message: "There is nothing to redo." },
+        : blocked("There is nothing to redo."),
+      "project.command-search": ready,
+      "project.help": ready,
+      "project.cancel": ready,
+      "project.apply": applyReady
+        ? ready
+        : blocked("Open a feature editor with a valid draft to apply."),
+      "project.new": ready,
+      "project.open": canOpenWcad
+        ? ready
+        : blocked(
+            "Open .wcad is unavailable because this browser cannot access local project files."
+          ),
+      "project.save": commandPending
+        ? pendingMutationBlock
+        : canSave
+          ? ready
+          : blocked(
+              "Save is unavailable until a writable .wcad location is available in this browser."
+            ),
+      "project.save-as": commandPending
+        ? pendingMutationBlock
+        : canSave
+          ? ready
+          : blocked(
+              "Save as is unavailable until a writable .wcad download or file handle is available."
+            ),
+      "project.import-step": canOpenStep
+        ? ready
+        : blocked(
+            "Import STEP is unavailable because this browser cannot open local STEP files."
+          ),
+      "project.import-json": projectStorageCapabilities.jsonUploadAvailable
+        ? ready
+        : blocked(
+            "Import JSON is unavailable because this browser cannot open local JSON files."
+          ),
+      "project.export-json": commandPending ? pendingMutationBlock : ready,
+      "project.download-json": commandPending
+        ? pendingMutationBlock
+        : projectStorageCapabilities.jsonDownloadAvailable
+          ? ready
+          : blocked(
+              "Download JSON is unavailable because this browser cannot download files."
+            ),
+      "project.export-step": commandPending
+        ? pendingMutationBlock
+        : projectExportReadiness?.canExportFiles
+          ? ready
+          : blocked(
+              projectExportReadiness
+                ? "Download STEP is unavailable until the model has export-ready exact geometry."
+                : "Project export readiness is unavailable."
+            ),
+      "project.export-glb": commandPending ? pendingMutationBlock : ready,
       "solid.extrude": selectedProfile
         ? ready
-        : needs("Select a supported sketch profile."),
+        : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidExtrude),
       "solid.revolve":
         selectedProfile && solidAxisChoices.length > 0
           ? ready
-          : needs("Select a supported sketch profile and axis."),
+          : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidRevolve),
       "solid.sweep":
-        selectedEntityProfile && selectedPath
+        selectedEntityProfile && solidPathChoices.length > 0
           ? ready
-          : needs("Select a supported profile and path."),
+          : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidSweep),
       "solid.loft":
         solidProfileChoices.filter((choice) => choice.value.kind === "entity")
           .length >= 2
           ? ready
-          : needs("Select at least two profiles on parallel planes."),
+          : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidLoft),
       "solid.transform": selectedObject
         ? ready
-        : needs("Select an editable source object."),
+        : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidTransform),
       "solid.hole":
         modelingSelectionContext.selectionKind === "sketchEntity" &&
         modelingSelectionContext.entity.kind === "circle" &&
-        Boolean(selectedSolidBodyId)
+        solidHoleTargetChoices.length > 0
           ? ready
-          : needs("Select a supported circle and target body."),
-      "solid.fillet":
-        solidEdgeChoices.length > 0
-          ? ready
-          : needs("Select a supported generated edge."),
-      "solid.chamfer":
-        solidEdgeChoices.length > 0
-          ? ready
-          : needs("Select a supported generated edge."),
-      "solid.shell": selectedSolidBodyId
+          : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidHole),
+      "solid.fillet": selectedFilletEdgeChoice
         ? ready
-        : needs("Select a supported body."),
-      "solid.linear-pattern": selectedSolidBodyId
+        : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidFillet),
+      "solid.chamfer": selectedChamferEdgeChoice
         ? ready
-        : needs("Select a supported body."),
-      "solid.circular-pattern": selectedSolidBodyId
+        : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidChamfer),
+      "solid.shell": selectedSeedBodyId
         ? ready
-        : needs("Select a supported body."),
-      "solid.mirror": selectedSolidBodyId
+        : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidShell),
+      "solid.linear-pattern": selectedSeedBodyId
         ? ready
-        : needs("Select a supported body."),
+        : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidLinearPattern),
+      "solid.circular-pattern": selectedSeedBodyId
+        ? ready
+        : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidCircularPattern),
+      "solid.mirror": selectedSeedBodyId
+        ? ready
+        : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidMirror),
       "solid.edit":
         selectedObject ||
         (selectedFeature && selectedFeature.kind !== "importedBody")
           ? ready
-          : needs("Select an editable feature or object."),
+          : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidEdit),
       "solid.rename":
         selectedObject || selectedSketchContext
           ? ready
-          : needs("Select a renameable object or sketch."),
+          : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidRename),
       "solid.delete":
-        selectedObject || selectedSketchContext
+        selectedObject ||
+        selectedSketchContext ||
+        (selectedFeature && selectedFeature.kind !== "primitive")
           ? ready
-          : needs("Select a deletable object or sketch item."),
+          : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidDelete),
       "sketch.point": sketchReady,
       "sketch.line": sketchReady,
       "sketch.rectangle": sketchReady,
@@ -7788,31 +8807,31 @@ export function App() {
         selectedSketch,
         selectedEntity,
         ["line", "arc", "circle"],
-        "Select a supported line, arc, or circle."
+        UI_ACTION_AVAILABILITY_MESSAGES.sketchTrim
       ),
       "sketch.extend": createCurveEditActionAvailability(
         selectedSketch,
         selectedEntity,
         ["line", "arc"],
-        "Select a supported line or arc."
+        UI_ACTION_AVAILABILITY_MESSAGES.sketchExtend
       ),
       "sketch.split": createCurveEditActionAvailability(
         selectedSketch,
         selectedEntity,
         ["line", "arc", "circle"],
-        "Select a supported line, arc, or circle."
+        UI_ACTION_AVAILABILITY_MESSAGES.sketchSplit
       ),
       "sketch.explode-rectangle": createCurveEditActionAvailability(
         selectedSketch,
         selectedEntity,
         ["rectangle"],
-        "Select a rectangle."
+        UI_ACTION_AVAILABILITY_MESSAGES.sketchExplodeRectangle
       ),
       "sketch.offset": createCurveEditActionAvailability(
         selectedSketch,
         selectedEntity,
         ["line", "arc", "circle", "rectangle"],
-        "Select a supported source, or open Offset to collect an ordered chain."
+        UI_ACTION_AVAILABILITY_MESSAGES.sketchOffset
       ),
       "sketch.regions": focusedSketch
         ? focusedSketch.entities.some(
@@ -7829,44 +8848,58 @@ export function App() {
               message:
                 "This sketch has no eligible non-construction profile geometry."
             }
-        : needs("Select or create a sketch first."),
+        : needs(UI_ACTION_AVAILABILITY_MESSAGES.sketchRegions),
       "sketch.construction": selectedEntityReady,
-      "sketch.delete": selectedEntityReady,
+      "sketch.delete": selectedEntity
+        ? ready
+        : needs(UI_ACTION_AVAILABILITY_MESSAGES.sketchDelete),
       ...sketchIntentActionAvailability,
-      "inspect.mass-properties": selectedBody ? ready : needs("Select a body."),
+      "inspect.mass-properties": selectedBody
+        ? ready
+        : needs(UI_ACTION_AVAILABILITY_MESSAGES.inspectMassProperties),
       "inspect.name-reference":
         selectedGeneratedReferenceState.status === "selected"
           ? ready
-          : needs("Select a supported face or edge."),
+          : needs(UI_ACTION_AVAILABILITY_MESSAGES.inspectNameReference),
       "inspect.repair-reference":
         selectedNamedReferenceName &&
         selectedGeneratedReferenceState.status === "selected"
           ? ready
-          : needs("Select a named reference and its replacement."),
+          : needs(UI_ACTION_AVAILABILITY_MESSAGES.inspectRepairReference),
       "inspect.fit-selection": selectedViewportRenderId
         ? ready
-        : needs("Select a visible body, face, or edge.")
+        : needs(UI_ACTION_AVAILABILITY_MESSAGES.inspectFitSelection)
     };
   }, [
+    commandPending,
     document,
+    featureApplyCanApply,
     focusedSketchId,
     modelingSelectionContext,
+    projectExportReadiness,
+    projectFile.mode,
+    projectStorageCapabilities,
     selectedBody,
     selectedEntityProfile,
     selectedFeature,
+    selectedFilletEdgeChoice,
+    selectedChamferEdgeChoice,
     selectedGeneratedReferenceState,
     selectedNamedReferenceName,
     selectedObject,
-    selectedPath,
     selectedProfile,
+    selectedSeedBodyId,
     selectedSketchContext,
-    selectedSolidBodyId,
     selectedViewportRenderId,
+    sketchApplyCanApply,
     sketchIntentActionAvailability,
     sketches,
     solidAxisChoices.length,
-    solidEdgeChoices.length,
-    solidProfileChoices
+    solidHoleTargetChoices.length,
+    solidPathChoices.length,
+    solidProfileChoices,
+    workbenchUi.activeEditor,
+    workbenchUi.activeEditorDirty
   ]);
   const workbenchActionRunnerRef = useRef<(id: UiActionId) => void>(
     () => undefined
@@ -7886,19 +8919,6 @@ export function App() {
     () => projectUiActions(uiActionContext),
     [uiActionContext]
   );
-  useEffect(() => {
-    const handleHistoryShortcut = (event: KeyboardEvent) => {
-      const command = getHistoryKeyboardCommand(event);
-      if (!command) return;
-      event.preventDefault();
-      const action = projectedUiActions.find(
-        (candidate) => candidate.definition.id === `project.${command}`
-      );
-      if (action) void invokeUiAction(action, uiActionContext);
-    };
-    window.addEventListener("keydown", handleHistoryShortcut);
-    return () => window.removeEventListener("keydown", handleHistoryShortcut);
-  }, [projectedUiActions, uiActionContext]);
   const restoreCommandSearchFocus = useCallback(() => {
     requestAnimationFrame(() => {
       const activeElement = window.document.activeElement;
@@ -7932,16 +8952,71 @@ export function App() {
       open: true
     });
   }, [workbenchUi.commandSearchOpen]);
-  useEffect(() => {
-    const openSearch = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        openCommandSearch();
+  const onShortcutKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    {
+      const resolved = resolveShortcutRouterAction(event, workbenchUi.mode);
+      if (!resolved) return;
+
+      const curveNavigationGuard = window.document.querySelector<HTMLElement>(
+        '[role="dialog"][aria-labelledby="curve-edit-navigation-title"]'
+      );
+      if (curveNavigationGuard) {
+        if (resolved.actionId === "project.apply") {
+          event.preventDefault();
+          event.stopPropagation();
+          curveNavigationGuard
+            .querySelector<HTMLButtonElement>("[data-dialog-initial-focus]")
+            ?.click();
+        }
+        // The modal owns every other key while it resolves Apply/Discard/Stay.
+        return;
       }
-    };
-    window.addEventListener("keydown", openSearch);
-    return () => window.removeEventListener("keydown", openSearch);
-  }, [openCommandSearch]);
+
+      if (resolved.actionId === "project.cancel") {
+        if (
+          workbenchUi.activeEditor &&
+          event.target instanceof Element &&
+          event.target.closest(".pb-dock--right.pb-dock--drawer")
+        ) {
+          // Let the drawer's Escape handler dismiss the forced narrow editor.
+          return;
+        }
+        if (!runEscapeCancellationStack()) return;
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
+      // History chords stay on the dedicated helper so Ctrl+Y and editable
+      // suppression stay consistent with existing undo/redo behavior.
+      if (
+        resolved.actionId === "project.undo" ||
+        resolved.actionId === "project.redo"
+      ) {
+        const command = getHistoryKeyboardCommand(event);
+        if (!command) return;
+        event.preventDefault();
+        const action = projectedUiActions.find(
+          (candidate) => candidate.definition.id === `project.${command}`
+        );
+        if (action) void invokeUiAction(action, uiActionContext);
+        return;
+      }
+
+      event.preventDefault();
+      const action = projectedUiActions.find(
+        (candidate) => candidate.definition.id === resolved.actionId
+      );
+      if (action) void invokeUiAction(action, uiActionContext);
+    }
+  });
+  useEffect(() => {
+    // `useEffectEvent` keeps the handler reading current mode, availability, and
+    // Escape-stack state, so the listener binds once instead of on every change.
+    const handleShortcut = (event: KeyboardEvent) => onShortcutKeyDown(event);
+    window.addEventListener("keydown", handleShortcut, true);
+    return () => window.removeEventListener("keydown", handleShortcut, true);
+  }, []);
 
   return (
     <ProgressiveSketchAnalysisProvider
@@ -7970,12 +9045,20 @@ export function App() {
         ) : null}
         <WorkbenchShell
           mode={workbenchUi.mode}
-          activeEditor={Boolean(workbenchUi.activeEditor)}
+          activeEditor={Boolean(workbenchUi.activeEditor || solidEditorRequest)}
+          activeEditorKey={
+            solidEditorRequest?.key ??
+            (workbenchUi.activeEditor
+              ? `${workbenchUi.activeEditor.kind}:${workbenchUi.activeEditor.sourceId ?? workbenchUi.activeTool ?? ""}`
+              : undefined)
+          }
           leftDockWidth={workbenchUi.leftDockWidth}
           rightDockWidth={workbenchUi.rightDockWidth}
           leftDockCollapsed={workbenchUi.leftDockCollapsed}
           rightDockCollapsed={workbenchUi.rightDockCollapsed}
           projectDetailsOpen={false}
+          openDrawer={openDrawer}
+          onOpenDrawerChange={setOpenDrawer}
           onDockCollapsedChange={(side, collapsed) =>
             dispatchWorkbench({
               type: "set-dock-collapsed",
@@ -8018,11 +9101,7 @@ export function App() {
                   run: redo
                 }}
                 onOpenCommandSearch={openCommandSearch}
-                onOpenHelp={() =>
-                  setCommandNotice(
-                    "Shortcuts: Ctrl+K search, Ctrl+Z undo, Ctrl+Shift+Z redo, F fit, Escape cancel."
-                  )
-                }
+                onOpenHelp={() => setCommandNotice(formatShortcutHelpNotice())}
                 pendingLabel={commandPending ? "Updating model" : undefined}
               />
             </>
@@ -8115,6 +9194,7 @@ export function App() {
                     <ContextualActionStrip
                       disabled={commandPending}
                       surface={viewportContextualCommandSurface}
+                      onExplainUnavailable={setCommandNotice}
                       onInvoke={(action) => {
                         if (action.route === "name" && action.target) {
                           const name = window.prompt("Reference name", "");
@@ -8166,7 +9246,6 @@ export function App() {
                     selectViewportPick(pick);
                   }
                 }}
-                onCancelTransientState={clearViewportTransientState}
                 sketchOverlay={({ camera, size }) => (
                   <>
                     {regionOverlaySketch && regionOverlayDisplayFrame ? (
@@ -8314,22 +9393,47 @@ export function App() {
                 >
                   <SolidModePanel
                     activeEditor={solidEditorRequest}
+                    disabled={commandPending}
+                    collectorSelection={
+                      solidCollectorSelectionOverride ?? solidCollectorSelection
+                    }
                     onApply={applySolidEditorSubmission}
                     onCancel={() =>
                       dispatchWorkbench({ type: "set-active-tool" })
                     }
-                    onDelete={
-                      selectedObject
-                        ? () => void deleteSelectedObject()
-                        : selectedFeature
-                          ? () => void deleteAuthoredFeature(selectedFeature.id)
-                          : undefined
-                    }
-                    onCollect={(request) =>
+                    onDelete={(request) => {
+                      const sourceId =
+                        "id" in request.initialDraft
+                          ? request.initialDraft.id
+                          : undefined;
+                      const feature = projectStructure.features.find(
+                        (candidate) => candidate.id === sourceId
+                      );
+                      if (feature) return deleteAuthoredFeature(feature.id);
+                      if (sourceId && document.objects.has(sourceId))
+                        return deleteSelectedObject(sourceId);
+                      return undefined;
+                    }}
+                    onCollect={(request) => {
+                      setSolidCollectorRequest(request);
+                      setSolidCollectorSelectionOverride(undefined);
+                      if (!request) return;
+                      dispatchWorkbench({
+                        type: "set-selection-filter",
+                        filter: request.acceptedKinds.some((kind) =>
+                          kind.includes("edge")
+                        )
+                          ? "edge"
+                          : request.acceptedKinds.some((kind) =>
+                                kind.includes("face")
+                              )
+                            ? "face"
+                            : "body"
+                      });
                       setCommandNotice(
                         `Select ${request.acceptedKinds.join(" or ")} in the viewport or model tree.`
-                      )
-                    }
+                      );
+                    }}
                   />
                 </Suspense>
               ) : null}
@@ -8519,6 +9623,10 @@ export function App() {
                     }}
                     onRequestCurveEditEscape={(dirty) => {
                       if (dirty) {
+                        dispatchWorkbench({
+                          type: "set-editor-dirty",
+                          dirty: true
+                        });
                         dispatchWorkbench({
                           type: "request-navigation",
                           intent: { kind: "close-editor" }

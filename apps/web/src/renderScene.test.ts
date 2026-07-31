@@ -797,7 +797,7 @@ describe("renderScene", () => {
     );
   });
 
-  it("bounds display-only curve tessellation for large sketches", () => {
+  it("keeps display curve fidelity stable as sketches become dense", () => {
     const circle = (id: string) => ({
       id,
       kind: "circle" as const,
@@ -824,7 +824,7 @@ describe("renderScene", () => {
     const large = createSketchDisplayMeshes([largeSketch]);
 
     expect(normal[0]?.edgeSegments).toHaveLength(48);
-    expect(large[0]?.edgeSegments).toHaveLength(16);
+    expect(large[0]?.edgeSegments).toHaveLength(48);
     expect(large).toHaveLength(33);
     expect(createSketchDisplayMeshes([largeSketch])[0]).toBe(large[0]);
     expect(

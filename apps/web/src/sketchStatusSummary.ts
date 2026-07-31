@@ -21,7 +21,8 @@ export function formatSketchSolverStatus(
   if (
     status.status === "solved" ||
     status.status === "fully-defined" ||
-    status.status === "under-defined"
+    status.status === "under-defined" ||
+    status.status === "not-run"
   ) {
     return `${solverText} · ${profileText}`;
   }

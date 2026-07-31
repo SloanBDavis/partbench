@@ -1,7 +1,11 @@
 export { SolidModePanel } from "./SolidModePanel";
 export { validateSolidDraft } from "./solidDraftValidation";
 export type { SolidModePanelProps } from "./SolidModePanel";
-export { applySolidDraftOnce, cancelSolidDraft } from "./solidEditorSession";
+export {
+  applySolidCollectorSelection,
+  applySolidDraftOnce,
+  cancelSolidDraft
+} from "./solidEditorSession";
 export type { SolidApplyGate } from "./solidEditorSession";
 export {
   createPrimitiveDraft,
@@ -13,6 +17,7 @@ export type {
   PrimitiveEditorKind,
   SolidChoice,
   SolidCollectorRequest,
+  SolidCollectorSelection,
   SolidDraft,
   SolidDraftByKind,
   SolidEditorChoices,

@@ -6,12 +6,23 @@
   --pb-color-surface-elevated: #ffffff;
   --pb-color-header: #252a31;
   --pb-color-header-text: #f7f8fa;
+  --pb-color-header-mark: #176da5;
+  --pb-color-header-muted: #dbe2e9;
+  --pb-color-header-pending: #9fc4ff;
+  --pb-color-header-success: #54c276;
+  --pb-color-header-warning: #ffc45b;
+  --pb-color-header-disabled: #79818a;
+  --pb-color-header-search-bg: #20252b;
+  --pb-color-header-search-border: #5b626b;
+  --pb-color-header-search-kbd: #9ea6b0;
   --pb-color-border: #c9ced6;
   --pb-color-border-strong: #aeb5c0;
   --pb-color-text: #252a31;
   --pb-color-text-muted: #626c78;
   --pb-color-accent: #1f5fbf;
   --pb-color-accent-hover: #194f9f;
+  --pb-color-accent-surface: #eef4fc;
+  --pb-color-accent-border: #b7c9e5;
   --pb-color-selection: #2d6fd2;
   --pb-color-success: #287a45;
   --pb-color-success-surface: #e7f3eb;
@@ -63,6 +74,16 @@
   --pb-focus-ring: 0 0 0 2px #ffffff, 0 0 0 4px var(--pb-color-accent);
   --pb-selection-outline: 2px solid var(--pb-color-selection);
 
+  /* Stacking inside the workbench main region (bottom → top). */
+  --pb-z-dock: 2;
+  --pb-z-divider: 4;
+  --pb-z-viewport-overlay: 10;
+  --pb-z-viewport-controls: 20;
+  --pb-z-contextual: 25;
+  --pb-z-dock-toggle: 30;
+  --pb-z-scrim: 35;
+  --pb-z-drawer: 40;
+
   /* Stable shell geometry */
   --pb-left-dock-width: 282px;
   --pb-left-dock-min-width: 220px;
@@ -74,4 +95,10 @@
   --pb-ribbon-max-height: 108px;
   --pb-status-height: 40px;
   --pb-min-inline-viewport-width: 480px;
+}
+
+@media (max-width: 959px) {
+  :root {
+    --pb-ribbon-max-height: 76px;
+  }
 }

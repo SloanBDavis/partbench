@@ -111,6 +111,9 @@ export function workbenchReducer(
         ? { ...state, navigationIntent: undefined }
         : state;
     case "set-editor":
+      if (action.editor && sameEditor(state.activeEditor, action.editor)) {
+        return { ...state, activeEditor: action.editor };
+      }
       return {
         ...state,
         activeEditor: action.editor,

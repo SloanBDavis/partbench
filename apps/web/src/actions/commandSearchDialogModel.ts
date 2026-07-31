@@ -33,3 +33,20 @@ export function invokeCommandSearchAction(
 ): Promise<UiActionInvocationResult> {
   return invokeUiAction(action, context);
 }
+
+/** Announce needs-selection instructions instead of a false "started" success. */
+export function getCommandSearchInvocationAnnouncement(
+  action: ProjectedUiAction,
+  result: UiActionInvocationResult
+): string {
+  if (result.status === "pending") {
+    return `${action.definition.label} is pending.`;
+  }
+  if (result.status === "unavailable") {
+    return result.availability.message;
+  }
+  if (action.availability.status === "needs-selection") {
+    return action.availability.message;
+  }
+  return `${action.definition.label} started.`;
+}

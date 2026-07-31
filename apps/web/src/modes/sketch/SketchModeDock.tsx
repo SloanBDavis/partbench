@@ -25,6 +25,7 @@ import type {
   SketchRegionValidateQueryResult
 } from "../../sketchRegionQueryClient";
 import type { SketchCreateForm, SketchEntityForm } from "../../cadCommands";
+import { useEscapeEditorContributor } from "../../actions/useEscapeEditorContributor";
 import {
   entityToSketchEntityForm,
   getSketchEntityFormLabels,
@@ -76,6 +77,7 @@ import type {
 } from "./sketchCurveEditModel";
 import type { SketchRegionConsumerIntent } from "./sketchRegionSelectionModel";
 import { useProgressiveSketchAnalysis } from "../../progressiveSketchAnalysisContext";
+import { NumericInput } from "../../ui/NumericInput";
 import {
   canNavigateSketchDockSectionV19,
   createEntityDraft,
@@ -197,7 +199,7 @@ type DockSection = "geometry" | "constraints" | "status";
 
 const EMPTY_DIMENSIONS: readonly SketchDimensionEntryCurrent[] = [];
 const EMPTY_CONSTRAINTS: readonly SketchConstraintEntry[] = [];
-type EntityDraft = {
+export type EntityDraft = {
   readonly mode: "create" | "edit";
   readonly kind: SketchEntitySnapshot["kind"];
   readonly entityId?: string;
@@ -376,15 +378,20 @@ export function SketchModeDock(props: SketchModeDockProps) {
     DEFAULT_CREATE_SKETCH
   );
 
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
-      if (arcToolActiveSketchId) onCancelGesture();
-      setEntityDraft(undefined);
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [arcToolActiveSketchId, onCancelGesture]);
+  const curveEditPanelOpen = Boolean(
+    requestedRegionSelection ||
+    requestedCurveEditKind ||
+    requestedConvenienceKind ||
+    intentSessionActive
+  );
+
+  useEscapeEditorContributor({
+    id: "sketch-mode-dock-entity-draft",
+    suspended: Boolean(curveEditKeyboardSuspended) || curveEditPanelOpen,
+    state: entityDraft ? "clean" : "none",
+    onCancelClean: () => setEntityDraft(undefined),
+    onRequestDirtyGuard: () => setEntityDraft(undefined)
+  });
 
   if (!activeSketch) {
     return (
@@ -576,6 +583,7 @@ export function SketchModeDock(props: SketchModeDockProps) {
             features={features}
             arcActive={arcToolActiveSketchId === activeSketch.id}
             constructionForNew={constructionForNew}
+            repeatCreateKind={requestedEntityKind}
             draft={entityDraft}
             onConstructionForNewChange={setConstructionForNew}
             onDraftChange={setEntityDraft}
@@ -702,6 +710,7 @@ function GeometrySection({
   features,
   arcActive,
   constructionForNew,
+  repeatCreateKind,
   draft,
   onConstructionForNewChange,
   onDraftChange,
@@ -721,6 +730,7 @@ function GeometrySection({
   readonly features: readonly CadFeatureSummary[];
   readonly arcActive: boolean;
   readonly constructionForNew: boolean;
+  readonly repeatCreateKind: SketchCreateEntityKind | undefined;
   readonly draft: EntityDraft | undefined;
   readonly onConstructionForNewChange: (value: boolean) => void;
   readonly onDraftChange: (draft: EntityDraft | undefined) => void;
@@ -789,7 +799,9 @@ function GeometrySection({
         sketchEntityFormToEntity(draft.entityId, draft.kind, draft.form)
       );
     }
-    onDraftChange(undefined);
+    onDraftChange(
+      nextEntityDraftAfterApply(draft, repeatCreateKind, constructionForNew)
+    );
   }
 
   return (
@@ -1012,6 +1024,20 @@ function GeometrySection({
       ) : null}
     </div>
   );
+}
+
+export function nextEntityDraftAfterApply(
+  draft: EntityDraft,
+  repeatCreateKind: SketchCreateEntityKind | undefined,
+  construction: boolean
+): EntityDraft | undefined {
+  return draft.mode === "create" && repeatCreateKind === draft.kind
+    ? {
+        mode: "create",
+        kind: draft.kind,
+        form: createEntityDraft(construction)
+      }
+    : undefined;
 }
 
 function EntityDraftForm({
@@ -1252,13 +1278,12 @@ function NumberField({
   return (
     <label className="pb-sketch-field">
       <span>{label}</span>
-      <input
+      <NumericInput
         className="pb-field pb-numeric"
-        type="number"
         step="0.1"
-        value={Number.isFinite(value) ? value : ""}
+        value={value}
         disabled={disabled}
-        onChange={(event) => onChange(event.currentTarget.valueAsNumber)}
+        onValueChange={onChange}
       />
     </label>
   );

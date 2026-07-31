@@ -1,7 +1,4 @@
 import { useId, type ReactNode } from "react";
-import type { UiActionId } from "../../actions/actionRegistry";
-import { TechnicalDetails } from "../../diagnostics/TechnicalDetails";
-import type { TechnicalDetailsModel } from "../../diagnostics/technicalDetails";
 import { Button } from "../../ui/Button";
 import { Icon, type IconName } from "../../ui/Icon";
 import "./inspectPanel.css";
@@ -88,23 +85,15 @@ export interface InspectHealthProjection {
   readonly recovery?: string;
 }
 
-export interface InspectContextAction {
-  readonly id: UiActionId;
-  readonly label: string;
-  readonly icon?: IconName;
-  readonly availability: InspectReadinessProjection;
-}
-
 export interface InspectPanelProps {
   readonly selection?: InspectSelectionProjection;
   readonly measurements?: InspectMeasurementsProjection;
   readonly massProperties?: InspectMetricProjection;
   readonly reference?: InspectReferenceProjection;
   readonly health?: readonly InspectHealthProjection[];
-  readonly actions?: readonly InspectContextAction[];
-  readonly technicalDetails?: TechnicalDetailsModel;
-  readonly onAction?: (actionId: UiActionId) => void;
+  /** Measures the current single selection. Distinct from two-target measure. */
   readonly onMeasureSelection?: () => void;
+  /** Starts the two-target distance/angle workflow. Distinct from selection measure. */
   readonly onBeginTwoTargetMeasurement?: () => void;
   readonly onClearTwoTargetMeasurement?: () => void;
   readonly onNameReference?: () => void;
@@ -120,9 +109,6 @@ export function InspectPanel({
   massProperties,
   reference,
   health = [],
-  actions = [],
-  technicalDetails,
-  onAction,
   onMeasureSelection,
   onBeginTwoTargetMeasurement,
   onClearTwoTargetMeasurement,
@@ -179,6 +165,7 @@ export function InspectPanel({
               className="pb-inspect-panel__wide-action"
               density="dense"
               icon="measure"
+              data-inspect-action="inspect.measure"
               onClick={onMeasureSelection}
             >
               Measure selection
@@ -194,6 +181,7 @@ export function InspectPanel({
             <Button
               className="pb-inspect-panel__wide-action"
               density="dense"
+              data-inspect-action="inspect.measure-between"
               onClick={onBeginTwoTargetMeasurement}
             >
               Measure between two targets
@@ -230,26 +218,6 @@ export function InspectPanel({
             ))}
           </div>
         </PanelSection>
-      ) : null}
-
-      {actions.length > 0 ? (
-        <PanelSection title="Available actions">
-          <div className="pb-inspect-actions">
-            {actions.map((action) => (
-              <ReadinessButton
-                key={action.id}
-                label={action.label}
-                icon={action.icon}
-                readiness={action.availability}
-                onInvoke={() => onAction?.(action.id)}
-              />
-            ))}
-          </div>
-        </PanelSection>
-      ) : null}
-
-      {technicalDetails ? (
-        <TechnicalDetails details={technicalDetails} />
       ) : null}
     </aside>
   );
@@ -343,7 +311,7 @@ function TwoTargetMeasurement({
   return (
     <div className="pb-inspect-two-target" aria-label="Two-target measurement">
       <div className="pb-inspect-two-target__heading">
-        <strong>Measure between</strong>
+        <strong>Measure between two targets</strong>
         <StatusPill
           tone={measurement.status === "blocked" ? "warning" : "neutral"}
         >
@@ -369,7 +337,11 @@ function TwoTargetMeasurement({
       ) : null}
       <div className="pb-inspect-actions">
         {onBegin ? (
-          <Button density="dense" onClick={onBegin}>
+          <Button
+            density="dense"
+            data-inspect-action="inspect.measure-between"
+            onClick={onBegin}
+          >
             {active ? "Start over" : "Start two-target measure"}
           </Button>
         ) : null}

@@ -14,6 +14,8 @@ export interface ButtonProps extends Omit<
   readonly density?: "standard" | "dense";
   readonly pending?: boolean;
   readonly unavailableReason?: string;
+  /** Called when a blocked (aria-disabled) control is activated by click or keyboard. */
+  readonly onUnavailableActivate?: (reason: string) => void;
   readonly children: ReactNode;
 }
 
@@ -23,6 +25,7 @@ export function Button({
   density = "standard",
   pending = false,
   unavailableReason,
+  onUnavailableActivate,
   disabled,
   className,
   children,
@@ -34,6 +37,7 @@ export function Button({
   const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
     if (blocked) {
       event.preventDefault();
+      if (unavailableReason) onUnavailableActivate?.(unavailableReason);
       return;
     }
     onClick?.(event);

@@ -15,6 +15,7 @@ import { createProjectStorageCapabilityStatus } from "../../projectStorageCapabi
 import type { ProjectPageId } from "../../workbench/types";
 import {
   ProjectWorkspace,
+  PROJECT_ACTION_UNAVAILABLE,
   type ProjectWorkspaceProps
 } from "./ProjectWorkspace";
 import { formatProjectHealthSummary } from "./projectHealthSummary";
@@ -108,12 +109,44 @@ describe("ProjectWorkspace", () => {
 
     expect(markup).toContain("Open .wcad");
     expect(markup).toContain("Save</span>");
-    expect(markup).toContain("Save As");
+    expect(markup).toContain("Save as");
     expect(markup).toContain("Import STEP");
     expect(markup).toContain("Advanced Interchange");
     expect(markup).toContain("Import JSON");
     expect(markup).toContain("Project JSON draft");
     expect(markup).toContain("<textarea");
+  });
+
+  it("keeps blocked file actions focusable with actionable reasons", () => {
+    const markup = renderPage("files", {
+      storageCapabilities: createProjectStorageCapabilityStatus({})
+    });
+
+    expect(markup).toContain('aria-disabled="true"');
+    expect(markup).toContain(PROJECT_ACTION_UNAVAILABLE.openWcad);
+    expect(markup).toContain(PROJECT_ACTION_UNAVAILABLE.save);
+    expect(markup).toContain(PROJECT_ACTION_UNAVAILABLE.saveAs);
+    expect(markup).toContain(PROJECT_ACTION_UNAVAILABLE.importStep);
+    expect(markup).toContain(PROJECT_ACTION_UNAVAILABLE.downloadJson);
+    expect(markup).toContain(PROJECT_ACTION_UNAVAILABLE.loadJson);
+    const saveButton = markup.match(
+      /<button[^>]*title="This browser cannot save directly to a file\. Use Save As to download a copy\."[^>]*>/
+    )?.[0];
+    expect(saveButton).toBeDefined();
+    expect(saveButton).not.toContain('disabled=""');
+  });
+
+  it("explains empty history undo and redo without removing them from tab order", () => {
+    const markup = renderPage("history", { canUndo: false, canRedo: false });
+
+    expect(markup).toContain(PROJECT_ACTION_UNAVAILABLE.undo);
+    expect(markup).toContain(PROJECT_ACTION_UNAVAILABLE.redo);
+    expect(markup).toContain('aria-disabled="true"');
+    const undoButton = markup.match(
+      /<button[^>]*title="There is nothing to undo\."[^>]*>/
+    )?.[0];
+    expect(undoButton).toBeDefined();
+    expect(undoButton).not.toContain('disabled=""');
   });
 
   it("renders parameter values, expressions, descriptions, and accessible row actions", () => {

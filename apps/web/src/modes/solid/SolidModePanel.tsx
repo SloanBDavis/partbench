@@ -35,10 +35,12 @@ import type {
 } from "../../editors/featureEditorState";
 import type { SelectionCollectorTarget } from "../../editors/selectionCollectorState";
 import { Button } from "../../ui/Button";
+import { NumericInput } from "../../ui/NumericInput";
 import type {
   EdgeChoiceValue,
   SolidChoice,
   SolidCollectorRequest,
+  SolidCollectorSelection,
   SolidDraft,
   SolidEditorKind,
   SolidEditorRequest,
@@ -46,25 +48,35 @@ import type {
   SweepPathChoiceValue
 } from "./solidEditorTypes";
 import { createSolidEditorSubmission } from "./solidEditorTypes";
-import { applySolidDraftOnce, cancelSolidDraft } from "./solidEditorSession";
+import {
+  advanceDeleteConfirmation,
+  applySolidCollectorSelection,
+  applySolidDraftOnce,
+  cancelSolidDraft
+} from "./solidEditorSession";
 import { validateSolidDraft } from "./solidDraftValidation";
 import "./solidModePanel.css";
 
 export interface SolidModePanelProps {
   readonly activeEditor?: SolidEditorRequest;
+  /** When true, blocks editor fields and commit actions while a mutation is in flight. */
+  readonly disabled?: boolean;
   readonly onApply?: (
     submission: SolidEditorSubmission
   ) => void | Promise<void>;
   readonly onCancel?: () => void;
   readonly onDelete?: (request: SolidEditorRequest) => void | Promise<void>;
-  readonly onCollect?: (request: SolidCollectorRequest) => void;
+  readonly collectorSelection?: SolidCollectorSelection;
+  readonly onCollect?: (request: SolidCollectorRequest | undefined) => void;
 }
 
 export function SolidModePanel({
   activeEditor,
+  disabled = false,
   onApply,
   onCancel,
   onDelete,
+  collectorSelection,
   onCollect
 }: SolidModePanelProps) {
   if (!activeEditor) {
@@ -84,9 +96,11 @@ export function SolidModePanel({
     <SolidDraftEditor
       key={activeEditor.key}
       request={activeEditor}
+      disabled={disabled}
       onApply={onApply}
       onCancel={onCancel}
       onDelete={onDelete}
+      collectorSelection={collectorSelection}
       onCollect={onCollect}
     />
   );
@@ -94,18 +108,23 @@ export function SolidModePanel({
 
 function SolidDraftEditor({
   request,
+  disabled = false,
   onApply,
   onCancel,
   onDelete,
+  collectorSelection,
   onCollect
 }: {
   readonly request: SolidEditorRequest;
+  readonly disabled?: boolean;
   readonly onApply?: SolidModePanelProps["onApply"];
   readonly onCancel?: () => void;
   readonly onDelete?: SolidModePanelProps["onDelete"];
+  readonly collectorSelection?: SolidCollectorSelection;
   readonly onCollect?: SolidModePanelProps["onCollect"];
 }) {
   const [draft, setDraft] = useState<SolidDraft>(request.initialDraft);
+  const [blockedReason] = useState(request.blockedReason);
   const [phase, setPhase] = useState<FeatureEditorPhase>(() =>
     request.blockedReason || !onApply
       ? "blocked"
@@ -116,6 +135,9 @@ function SolidDraftEditor({
   const [applyError, setApplyError] = useState<string>();
   const [collecting, setCollecting] = useState<string>();
   const [deleteArmed, setDeleteArmed] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [appliedCollectorSelectionKey, setAppliedCollectorSelectionKey] =
+    useState<string>();
   const applyingRef = useRef({ pending: false });
   const initialSerialized = useMemo(
     () => stableSerialize(request.initialDraft),
@@ -124,11 +146,44 @@ function SolidDraftEditor({
   const dirty =
     request.mode !== "edit" || stableSerialize(draft) !== initialSerialized;
   const draftValidation = validateSolidDraft(request.kind, draft);
-  const validation: FeatureEditorValidation = request.blockedReason
-    ? { status: "blocked", message: request.blockedReason }
+  const validation: FeatureEditorValidation = blockedReason
+    ? { status: "blocked", message: blockedReason }
     : !onApply
       ? { status: "blocked", message: "This action is not connected." }
       : draftValidation;
+  const interactionLocked = disabled || deleting;
+  const collectorChoiceKey = collecting
+    ? collectorSelection?.choiceKeys[
+        collecting as SolidCollectorRequest["collector"]
+      ]
+    : undefined;
+  const collectorApplicationKey =
+    collecting && collectorChoiceKey && collectorSelection
+      ? `${collecting}:${collectorSelection.key}:${collectorChoiceKey}`
+      : undefined;
+  if (
+    !interactionLocked &&
+    collectorApplicationKey &&
+    collectorApplicationKey !== appliedCollectorSelectionKey
+  ) {
+    setAppliedCollectorSelectionKey(collectorApplicationKey);
+    const next = applySolidCollectorSelection(
+      request.kind,
+      draft,
+      request.choices,
+      collecting as SolidCollectorRequest["collector"],
+      collectorChoiceKey
+    );
+    if (stableSerialize(next) !== stableSerialize(draft)) setDraft(next);
+  }
+
+  // Disarm the danger-area confirmation when the editor switches targets, so a
+  // stale "Confirm delete" can never apply to a different feature.
+  const [armedForKey, setArmedForKey] = useState(request.key);
+  if (armedForKey !== request.key) {
+    setArmedForKey(request.key);
+    setDeleteArmed(false);
+  }
 
   const displayedPhase =
     phase === "applying" || phase === "error"
@@ -136,7 +191,7 @@ function SolidDraftEditor({
       : phaseForValidation(validation);
 
   const changeDraft = (next: SolidDraft) => {
-    if (applyingRef.current.pending) return;
+    if (applyingRef.current.pending || interactionLocked) return;
     setDraft(next);
     setApplyError(undefined);
   };
@@ -145,16 +200,21 @@ function SolidDraftEditor({
     collector: SolidCollectorRequest["collector"],
     acceptedKinds: readonly string[]
   ) => {
+    if (interactionLocked) return;
     const next = collecting === collector ? undefined : collector;
+    setAppliedCollectorSelectionKey(undefined);
     setCollecting(next);
     if (next) {
       onCollect?.({ editorKey: request.key, collector, acceptedKinds });
+    } else {
+      onCollect?.(undefined);
     }
   };
 
   const apply = async () => {
     if (
       applyingRef.current.pending ||
+      interactionLocked ||
       !onApply ||
       !dirty ||
       validation.status !== "ready"
@@ -185,10 +245,24 @@ function SolidDraftEditor({
   };
 
   const cancel = () => {
-    if (applyingRef.current.pending) return;
+    if (applyingRef.current.pending || interactionLocked) return;
     setDraft(cancelSolidDraft(request.initialDraft, onCancel));
     setCollecting(undefined);
+    setAppliedCollectorSelectionKey(undefined);
+    onCollect?.(undefined);
     setApplyError(undefined);
+  };
+
+  const requestDelete = () => {
+    const { nextArmed, shouldDelete } = advanceDeleteConfirmation(deleteArmed, {
+      blocked: interactionLocked || !onDelete
+    });
+    setDeleteArmed(nextArmed);
+    if (!shouldDelete || !onDelete) return;
+    setDeleting(true);
+    void Promise.resolve(onDelete(request)).finally(() => {
+      setDeleting(false);
+    });
   };
 
   return (
@@ -199,6 +273,7 @@ function SolidDraftEditor({
       dirty={dirty}
       validation={validation}
       applyError={applyError}
+      disabled={interactionLocked}
       onApply={() => void apply()}
       onCancel={cancel}
       dangerArea={
@@ -210,13 +285,9 @@ function SolidDraftEditor({
             </div>
             <Button
               tone="danger"
-              onClick={() => {
-                if (!deleteArmed) {
-                  setDeleteArmed(true);
-                  return;
-                }
-                void onDelete(request);
-              }}
+              pending={deleting}
+              disabled={interactionLocked}
+              onClick={requestDelete}
             >
               {deleteArmed ? "Confirm delete" : "Delete"}
             </Button>
@@ -224,13 +295,19 @@ function SolidDraftEditor({
         ) : undefined
       }
     >
-      <SolidDraftFields
-        request={request}
-        draft={draft}
-        collecting={collecting}
-        onCollect={collect}
-        onChange={changeDraft}
-      />
+      <fieldset
+        disabled={interactionLocked}
+        className="pb-solid-draft-fields"
+        style={{ border: "none", margin: 0, padding: 0, minWidth: 0 }}
+      >
+        <SolidDraftFields
+          request={request}
+          draft={draft}
+          collecting={collecting}
+          onCollect={collect}
+          onChange={changeDraft}
+        />
+      </fieldset>
     </FeatureEditorShell>
   );
 }
@@ -281,6 +358,7 @@ function SolidDraftFields({
         <ExtrudeFields
           draft={draft as FeatureExtrudeForm}
           choices={request.choices}
+          lockedReferences={request.mode === "edit"}
           collecting={collecting}
           onCollect={onCollect}
           onChange={onChange}
@@ -291,6 +369,7 @@ function SolidDraftFields({
         <CompositeExtrudeFields
           draft={draft as FeatureCompositeExtrudeForm}
           choices={request.choices}
+          lockedReferences={request.mode === "edit"}
           collecting={collecting}
           onCollect={onCollect}
           onChange={onChange}
@@ -301,6 +380,7 @@ function SolidDraftFields({
         <RevolveFields
           draft={draft as FeatureRevolveForm}
           choices={request.choices}
+          lockedReferences={request.mode === "edit"}
           collecting={collecting}
           onCollect={onCollect}
           onChange={onChange}
@@ -311,6 +391,7 @@ function SolidDraftFields({
         <CompositeRevolveFields
           draft={draft as FeatureCompositeRevolveForm}
           choices={request.choices}
+          lockedReferences={request.mode === "edit"}
           collecting={collecting}
           onCollect={onCollect}
           onChange={onChange}
@@ -351,6 +432,7 @@ function SolidDraftFields({
         <HoleFields
           draft={draft as FeatureHoleForm}
           choices={request.choices?.targetBodies ?? []}
+          lockedTarget={request.mode === "edit"}
           collecting={collecting === "targetBody"}
           onCollect={() => onCollect("targetBody", ["body"])}
           onChange={onChange}
@@ -363,6 +445,7 @@ function SolidDraftFields({
           kind={request.kind}
           draft={draft as FeatureEdgeFinishForm}
           choices={request.choices?.edges ?? []}
+          lockedEdge={request.mode === "edit"}
           collecting={collecting === "edge"}
           onCollect={() => onCollect("edge", ["edge", "named edge"])}
           onChange={onChange}
@@ -374,6 +457,7 @@ function SolidDraftFields({
           draft={draft as FeatureShellForm}
           bodyChoices={request.choices?.targetBodies ?? []}
           faceChoices={request.choices?.openFaces ?? []}
+          lockedTarget={request.mode === "edit"}
           collecting={collecting}
           onCollect={onCollect}
           onChange={onChange}
@@ -385,6 +469,7 @@ function SolidDraftFields({
           draft={draft as FeatureLinearPatternForm}
           seedChoices={request.choices?.seedBodies ?? []}
           directionChoices={request.choices?.directions ?? []}
+          lockedSeed={request.mode === "edit"}
           collecting={collecting}
           onCollect={onCollect}
           onChange={onChange}
@@ -396,6 +481,7 @@ function SolidDraftFields({
           draft={draft as FeatureCircularPatternForm}
           seedChoices={request.choices?.seedBodies ?? []}
           axisChoices={request.choices?.rotationAxes ?? []}
+          lockedSeed={request.mode === "edit"}
           collecting={collecting}
           onCollect={onCollect}
           onChange={onChange}
@@ -407,6 +493,7 @@ function SolidDraftFields({
           draft={draft as FeatureMirrorForm}
           seedChoices={request.choices?.seedBodies ?? []}
           planeChoices={request.choices?.mirrorPlanes ?? []}
+          lockedSeed={request.mode === "edit"}
           collecting={collecting}
           onCollect={onCollect}
           onChange={onChange}
@@ -606,7 +693,7 @@ function FeatureIdentityFields({
   draft,
   onChange
 }: {
-  readonly draft: { readonly name: string };
+  readonly draft: { readonly id?: string; readonly name: string };
   readonly onChange: (name: string) => void;
 }) {
   return (
@@ -614,6 +701,7 @@ function FeatureIdentityFields({
       label="Feature name"
       name="feature-name"
       value={draft.name}
+      disabled={Boolean(draft.id)}
       onChange={onChange}
     />
   );
@@ -622,12 +710,14 @@ function FeatureIdentityFields({
 function ExtrudeFields({
   draft,
   choices,
+  lockedReferences,
   collecting,
   onCollect,
   onChange
 }: {
   readonly draft: FeatureExtrudeForm;
   readonly choices: SolidEditorRequest["choices"];
+  readonly lockedReferences: boolean;
   readonly collecting?: string;
   readonly onCollect: (
     collector: SolidCollectorRequest["collector"],
@@ -636,6 +726,12 @@ function ExtrudeFields({
   readonly onChange: (draft: FeatureExtrudeForm) => void;
 }) {
   const targetRequired = draft.operationMode !== "newBody";
+  const targetChoices =
+    draft.operationMode === "add"
+      ? (choices?.addTargetBodies ?? choices?.targetBodies ?? [])
+      : draft.operationMode === "cut"
+        ? (choices?.cutTargetBodies ?? choices?.targetBodies ?? [])
+        : [];
   return (
     <>
       <FeatureIdentityFields
@@ -646,6 +742,7 @@ function ExtrudeFields({
         label="Operation"
         name="extrude-operation"
         value={draft.operationMode}
+        disabled={lockedReferences}
         options={[
           { value: "newBody", label: "New body" },
           { value: "add", label: "Add" },
@@ -655,8 +752,8 @@ function ExtrudeFields({
           onChange({
             ...draft,
             operationMode: operationMode as FeatureExtrudeForm["operationMode"],
-            targetBodyId:
-              operationMode === "newBody" ? undefined : draft.targetBodyId
+            targetBodyId: undefined,
+            targetTopologyAnchorId: undefined
           })
         }
       />
@@ -664,13 +761,26 @@ function ExtrudeFields({
         <ChoiceCollector
           label="Target body"
           acceptedKinds={["body"]}
-          choices={choices?.targetBodies ?? []}
-          selectedKey={findChoiceKey(choices?.targetBodies, draft.targetBodyId)}
+          choices={targetChoices}
+          selectedKey={findChoiceKey(targetChoices, draft.targetBodyId)}
           collecting={collecting === "targetBody"}
+          disabled={lockedReferences}
           required
           onCollect={() => onCollect("targetBody", ["body"])}
-          onChange={(bodyId) => onChange({ ...draft, targetBodyId: bodyId })}
-          onClear={() => onChange({ ...draft, targetBodyId: undefined })}
+          onChange={(bodyId, choice) =>
+            onChange({
+              ...draft,
+              targetBodyId: bodyId,
+              targetTopologyAnchorId: choice.targetTopologyAnchorId
+            })
+          }
+          onClear={() =>
+            onChange({
+              ...draft,
+              targetBodyId: undefined,
+              targetTopologyAnchorId: undefined
+            })
+          }
         />
       ) : null}
       <NumberField
@@ -700,12 +810,14 @@ function ExtrudeFields({
 function CompositeExtrudeFields({
   draft,
   choices,
+  lockedReferences,
   collecting,
   onCollect,
   onChange
 }: {
   readonly draft: FeatureCompositeExtrudeForm;
   readonly choices: SolidEditorRequest["choices"];
+  readonly lockedReferences: boolean;
   readonly collecting?: string;
   readonly onCollect: (
     collector: SolidCollectorRequest["collector"],
@@ -733,8 +845,15 @@ function CompositeExtrudeFields({
       />
       <ExtrudeParameterFields
         draft={draft}
-        targetChoices={choices?.targetBodies ?? []}
+        targetChoices={
+          draft.operationMode === "add"
+            ? (choices?.addTargetBodies ?? choices?.targetBodies ?? [])
+            : draft.operationMode === "cut"
+              ? (choices?.cutTargetBodies ?? choices?.targetBodies ?? [])
+              : []
+        }
         collecting={collecting === "targetBody"}
+        lockedReferences={lockedReferences}
         onCollect={() => onCollect("targetBody", ["body"])}
         onChange={onChange}
       />
@@ -746,12 +865,14 @@ function ExtrudeParameterFields<Draft extends FeatureExtrudeForm>({
   draft,
   targetChoices,
   collecting,
+  lockedReferences,
   onCollect,
   onChange
 }: {
   readonly draft: Draft;
   readonly targetChoices: readonly SolidChoice<string>[];
   readonly collecting: boolean;
+  readonly lockedReferences: boolean;
   readonly onCollect: () => void;
   readonly onChange: (draft: Draft) => void;
 }) {
@@ -761,6 +882,7 @@ function ExtrudeParameterFields<Draft extends FeatureExtrudeForm>({
         label="Operation"
         name="composite-extrude-operation"
         value={draft.operationMode}
+        disabled={lockedReferences}
         options={[
           { value: "newBody", label: "New body" },
           { value: "add", label: "Add" },
@@ -770,8 +892,8 @@ function ExtrudeParameterFields<Draft extends FeatureExtrudeForm>({
           onChange({
             ...draft,
             operationMode: operationMode as Draft["operationMode"],
-            targetBodyId:
-              operationMode === "newBody" ? undefined : draft.targetBodyId
+            targetBodyId: undefined,
+            targetTopologyAnchorId: undefined
           })
         }
       />
@@ -782,10 +904,23 @@ function ExtrudeParameterFields<Draft extends FeatureExtrudeForm>({
           choices={targetChoices}
           selectedKey={findChoiceKey(targetChoices, draft.targetBodyId)}
           collecting={collecting}
+          disabled={lockedReferences}
           required
           onCollect={onCollect}
-          onChange={(targetBodyId) => onChange({ ...draft, targetBodyId })}
-          onClear={() => onChange({ ...draft, targetBodyId: undefined })}
+          onChange={(targetBodyId, choice) =>
+            onChange({
+              ...draft,
+              targetBodyId,
+              targetTopologyAnchorId: choice.targetTopologyAnchorId
+            })
+          }
+          onClear={() =>
+            onChange({
+              ...draft,
+              targetBodyId: undefined,
+              targetTopologyAnchorId: undefined
+            })
+          }
         />
       ) : null}
       <NumberField
@@ -813,12 +948,14 @@ function ExtrudeParameterFields<Draft extends FeatureExtrudeForm>({
 function RevolveFields({
   draft,
   choices,
+  lockedReferences,
   collecting,
   onCollect,
   onChange
 }: {
   readonly draft: FeatureRevolveForm;
   readonly choices: SolidEditorRequest["choices"];
+  readonly lockedReferences: boolean;
   readonly collecting?: string;
   readonly onCollect: (
     collector: SolidCollectorRequest["collector"],
@@ -838,6 +975,7 @@ function RevolveFields({
         choices={choices?.axes ?? []}
         selectedKey={findChoiceKey(choices?.axes, draft.axisEntityId)}
         collecting={collecting === "axis"}
+        disabled={lockedReferences}
         required
         onCollect={() => onCollect("axis", ["sketch line"])}
         onChange={(axisEntityId) => onChange({ ...draft, axisEntityId })}
@@ -857,12 +995,14 @@ function RevolveFields({
 function CompositeRevolveFields({
   draft,
   choices,
+  lockedReferences,
   collecting,
   onCollect,
   onChange
 }: {
   readonly draft: FeatureCompositeRevolveForm;
   readonly choices: SolidEditorRequest["choices"];
+  readonly lockedReferences: boolean;
   readonly collecting?: string;
   readonly onCollect: (
     collector: SolidCollectorRequest["collector"],
@@ -894,6 +1034,7 @@ function CompositeRevolveFields({
         choices={choices?.axes ?? []}
         selectedKey={findChoiceKey(choices?.axes, draft.axisEntityId)}
         collecting={collecting === "axis"}
+        disabled={lockedReferences}
         required
         onCollect={() => onCollect("axis", ["sketch line"])}
         onChange={(axisEntityId) => onChange({ ...draft, axisEntityId })}
@@ -1076,12 +1217,14 @@ function LoftFields({
 function HoleFields({
   draft,
   choices,
+  lockedTarget,
   collecting,
   onCollect,
   onChange
 }: {
   readonly draft: FeatureHoleForm;
   readonly choices: readonly SolidChoice<string>[];
+  readonly lockedTarget: boolean;
   readonly collecting: boolean;
   readonly onCollect: () => void;
   readonly onChange: (draft: FeatureHoleForm) => void;
@@ -1098,10 +1241,23 @@ function HoleFields({
         choices={choices}
         selectedKey={findChoiceKey(choices, draft.targetBodyId)}
         collecting={collecting}
+        disabled={lockedTarget}
         required
         onCollect={onCollect}
-        onChange={(targetBodyId) => onChange({ ...draft, targetBodyId })}
-        onClear={() => onChange({ ...draft, targetBodyId: "" })}
+        onChange={(targetBodyId, choice) =>
+          onChange({
+            ...draft,
+            targetBodyId,
+            targetTopologyAnchorId: choice.targetTopologyAnchorId
+          })
+        }
+        onClear={() =>
+          onChange({
+            ...draft,
+            targetBodyId: "",
+            targetTopologyAnchorId: undefined
+          })
+        }
       />
       <SelectField
         label="Depth mode"
@@ -1150,6 +1306,7 @@ function EdgeFinishFields({
   kind,
   draft,
   choices,
+  lockedEdge,
   collecting,
   onCollect,
   onChange
@@ -1157,6 +1314,7 @@ function EdgeFinishFields({
   readonly kind: "fillet" | "chamfer";
   readonly draft: FeatureEdgeFinishForm;
   readonly choices: readonly SolidChoice<EdgeChoiceValue>[];
+  readonly lockedEdge: boolean;
   readonly collecting: boolean;
   readonly onCollect: () => void;
   readonly onChange: (draft: FeatureEdgeFinishForm) => void;
@@ -1176,6 +1334,7 @@ function EdgeFinishFields({
         choices={choices}
         selectedKey={selected?.key}
         collecting={collecting}
+        disabled={lockedEdge}
         required
         onCollect={onCollect}
         onChange={(edge) =>
@@ -1220,6 +1379,7 @@ function ShellFields({
   draft,
   bodyChoices,
   faceChoices,
+  lockedTarget,
   collecting,
   onCollect,
   onChange
@@ -1227,6 +1387,7 @@ function ShellFields({
   readonly draft: FeatureShellForm;
   readonly bodyChoices: readonly SolidChoice<string>[];
   readonly faceChoices: readonly SolidChoice<FeatureShellOpenFaceRef>[];
+  readonly lockedTarget: boolean;
   readonly collecting?: string;
   readonly onCollect: (
     collector: SolidCollectorRequest["collector"],
@@ -1249,6 +1410,7 @@ function ShellFields({
         choices={bodyChoices}
         selectedKey={findChoiceKey(bodyChoices, draft.targetBodyId)}
         collecting={collecting === "targetBody"}
+        disabled={lockedTarget}
         required
         onCollect={() => onCollect("targetBody", ["body"])}
         onChange={(targetBodyId) => onChange({ ...draft, targetBodyId })}
@@ -1278,6 +1440,7 @@ function LinearPatternFields({
   draft,
   seedChoices,
   directionChoices,
+  lockedSeed,
   collecting,
   onCollect,
   onChange
@@ -1285,6 +1448,7 @@ function LinearPatternFields({
   readonly draft: FeatureLinearPatternForm;
   readonly seedChoices: readonly SolidChoice<string>[];
   readonly directionChoices: readonly SolidChoice<PatternDirectionRef>[];
+  readonly lockedSeed: boolean;
   readonly collecting?: string;
   readonly onCollect: (
     collector: SolidCollectorRequest["collector"],
@@ -1304,6 +1468,7 @@ function LinearPatternFields({
         choices={seedChoices}
         selectedKey={findChoiceKey(seedChoices, draft.seedBodyId)}
         collecting={collecting === "seedBody"}
+        disabled={lockedSeed}
         required
         onCollect={() => onCollect("seedBody", ["authored body"])}
         onChange={(seedBodyId) => onChange({ ...draft, seedBodyId })}
@@ -1345,6 +1510,7 @@ function CircularPatternFields({
   draft,
   seedChoices,
   axisChoices,
+  lockedSeed,
   collecting,
   onCollect,
   onChange
@@ -1352,6 +1518,7 @@ function CircularPatternFields({
   readonly draft: FeatureCircularPatternForm;
   readonly seedChoices: readonly SolidChoice<string>[];
   readonly axisChoices: readonly SolidChoice<PatternRotationAxisRef>[];
+  readonly lockedSeed: boolean;
   readonly collecting?: string;
   readonly onCollect: (
     collector: SolidCollectorRequest["collector"],
@@ -1371,6 +1538,7 @@ function CircularPatternFields({
         choices={seedChoices}
         selectedKey={findChoiceKey(seedChoices, draft.seedBodyId)}
         collecting={collecting === "seedBody"}
+        disabled={lockedSeed}
         required
         onCollect={() => onCollect("seedBody", ["authored body"])}
         onChange={(seedBodyId) => onChange({ ...draft, seedBodyId })}
@@ -1414,6 +1582,7 @@ function MirrorFields({
   draft,
   seedChoices,
   planeChoices,
+  lockedSeed,
   collecting,
   onCollect,
   onChange
@@ -1421,6 +1590,7 @@ function MirrorFields({
   readonly draft: FeatureMirrorForm;
   readonly seedChoices: readonly SolidChoice<string>[];
   readonly planeChoices: readonly SolidChoice<MirrorPlaneRef>[];
+  readonly lockedSeed: boolean;
   readonly collecting?: string;
   readonly onCollect: (
     collector: SolidCollectorRequest["collector"],
@@ -1440,6 +1610,7 @@ function MirrorFields({
         choices={seedChoices}
         selectedKey={findChoiceKey(seedChoices, draft.seedBodyId)}
         collecting={collecting === "seedBody"}
+        disabled={lockedSeed}
         required
         onCollect={() => onCollect("seedBody", ["authored body"])}
         onChange={(seedBodyId) => onChange({ ...draft, seedBodyId })}
@@ -1449,7 +1620,7 @@ function MirrorFields({
         label="Mirror plane"
         acceptedKinds={["standard plane", "face", "named reference"]}
         choices={planeChoices}
-        selectedKey={findChoiceKey(planeChoices, draft.plane)}
+        selectedKey={findMirrorPlaneChoiceKey(planeChoices, draft.plane)}
         collecting={collecting === "mirrorPlane"}
         required
         onCollect={() =>
@@ -1459,8 +1630,27 @@ function MirrorFields({
             "named reference"
           ])
         }
-        onChange={(plane) => onChange({ ...draft, plane })}
+        onChange={(plane) =>
+          onChange({
+            ...draft,
+            plane: {
+              ...plane,
+              ...(draft.plane.offset !== undefined
+                ? { offset: draft.plane.offset }
+                : {})
+            }
+          })
+        }
         onClear={() => undefined}
+      />
+      <NumberField
+        label="Plane offset"
+        name="mirror-plane-offset"
+        value={draft.plane.offset ?? 0}
+        unit="mm"
+        onChange={(offset) =>
+          onChange({ ...draft, plane: { ...draft.plane, offset } })
+        }
       />
       <label className="pb-editor-toggle">
         <input
@@ -1482,6 +1672,7 @@ function ChoiceCollector<Value>({
   choices,
   selectedKey,
   collecting,
+  disabled = false,
   required,
   onCollect,
   onChange,
@@ -1492,9 +1683,10 @@ function ChoiceCollector<Value>({
   readonly choices: readonly SolidChoice<Value>[];
   readonly selectedKey?: string;
   readonly collecting: boolean;
+  readonly disabled?: boolean;
   readonly required?: boolean;
   readonly onCollect: () => void;
-  readonly onChange: (value: Value) => void;
+  readonly onChange: (value: Value, choice: SolidChoice<Value>) => void;
   readonly onClear: () => void;
 }) {
   const selected = choices.find((choice) => choice.key === selectedKey);
@@ -1508,6 +1700,7 @@ function ChoiceCollector<Value>({
         acceptedKinds={acceptedKinds}
         targets={targets}
         collecting={collecting}
+        disabled={disabled}
         required={required}
         onStartCollecting={onCollect}
         onStopCollecting={onCollect}
@@ -1518,12 +1711,13 @@ function ChoiceCollector<Value>({
         <span className="pb-visually-hidden">Choose {label.toLowerCase()}</span>
         <select
           className="pb-field"
+          disabled={disabled}
           value={selectedKey ?? ""}
           onChange={(event) => {
             const choice = choices.find(
               (candidate) => candidate.key === event.currentTarget.value
             );
-            if (choice) onChange(choice.value);
+            if (choice) onChange(choice.value, choice);
           }}
         >
           <option value="">Choose from eligible targets</option>
@@ -1632,14 +1826,13 @@ function NumberField({
   const id = `solid-${name}`;
   return (
     <EditorFieldRow label={label} htmlFor={id} unit={unit} required>
-      <input
+      <NumericInput
         id={id}
         className="pb-field pb-numeric"
-        type="number"
         value={value}
         min={min}
         step={step}
-        onChange={(event) => onChange(Number(event.currentTarget.value))}
+        onValueChange={onChange}
       />
     </EditorFieldRow>
   );
@@ -1649,11 +1842,13 @@ function TextField({
   label,
   name,
   value,
+  disabled = false,
   onChange
 }: {
   readonly label: string;
   readonly name: string;
   readonly value: string;
+  readonly disabled?: boolean;
   readonly onChange: (value: string) => void;
 }) {
   const id = `solid-${name}`;
@@ -1663,6 +1858,7 @@ function TextField({
         id={id}
         className="pb-field"
         type="text"
+        disabled={disabled}
         value={value}
         onChange={(event) => onChange(event.currentTarget.value)}
       />
@@ -1675,6 +1871,7 @@ function SelectField({
   name,
   value,
   options,
+  disabled = false,
   onChange
 }: {
   readonly label: string;
@@ -1684,6 +1881,7 @@ function SelectField({
     readonly value: string;
     readonly label: string;
   }[];
+  readonly disabled?: boolean;
   readonly onChange: (value: string) => void;
 }) {
   const id = `solid-${name}`;
@@ -1692,6 +1890,7 @@ function SelectField({
       <select
         id={id}
         className="pb-field"
+        disabled={disabled}
         value={value}
         onChange={(event: ChangeEvent<HTMLSelectElement>) =>
           onChange(event.currentTarget.value)
@@ -1724,6 +1923,16 @@ function findChoiceKey<Value>(
     : choices?.find(
         (choice) => stableSerialize(choice.value) === stableSerialize(value)
       )?.key;
+}
+function findMirrorPlaneChoiceKey(
+  choices: readonly SolidChoice<MirrorPlaneRef>[],
+  value: MirrorPlaneRef
+): string | undefined {
+  const valueRef = stableSerialize({ ...value, offset: undefined });
+  return choices.find(
+    (choice) =>
+      stableSerialize({ ...choice.value, offset: undefined }) === valueRef
+  )?.key;
 }
 function edgeChoiceMatches(
   choice: EdgeChoiceValue,

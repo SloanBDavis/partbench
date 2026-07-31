@@ -1,8 +1,6 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { createTechnicalDetails } from "../../diagnostics/technicalDetails";
-import { containsInternalText } from "../../diagnostics/userDiagnostic";
 import { InspectPanel, type InspectPanelProps } from "./InspectPanel";
 
 function render(props: InspectPanelProps): string {
@@ -41,19 +39,28 @@ describe("InspectPanel", () => {
           rows: [{ label: "Volume", value: "46,080 mm³" }]
         }
       },
-      actions: [
-        {
-          id: "solid.transform",
-          label: "Transform",
-          availability: { status: "ready" }
-        }
-      ]
+      onMeasureSelection: () => undefined
     });
 
     expect(markup).toContain("Mounting block");
     expect(markup).toContain("80 × 48 × 12 mm");
     expect(markup).toContain("From authored values");
-    expect(markup).toContain("Transform");
+    expect(markup).toContain("Measure selection");
+    expect(markup).toContain('data-inspect-action="inspect.measure"');
+    expect(markup).not.toContain("Available actions");
+    expect(markup).not.toContain("Technical Details");
+  });
+
+  it("keeps selection measure and two-target measure as distinct entry points", () => {
+    const markup = render({
+      onMeasureSelection: () => undefined,
+      onBeginTwoTargetMeasurement: () => undefined
+    });
+
+    expect(markup).toContain("Measure selection");
+    expect(markup).toContain("Measure between two targets");
+    expect(markup).toContain('data-inspect-action="inspect.measure"');
+    expect(markup).toContain('data-inspect-action="inspect.measure-between"');
   });
 
   it("combines body measurements, two-target results, mass properties, and health", () => {
@@ -117,6 +124,7 @@ describe("InspectPanel", () => {
     expect(markup).toContain("Body health");
     expect(markup).toContain("Healthy");
     expect(markup).toContain("Clear");
+    expect(markup).toContain("Measure between two targets");
   });
 
   it("shows generated and named reference readiness with actionable recovery", () => {
@@ -157,14 +165,7 @@ describe("InspectPanel", () => {
         }
       },
       onNameReference: () => undefined,
-      onRepairReference: () => undefined,
-      technicalDetails: createTechnicalDetails({
-        code: "REFERENCE_STALE",
-        context: {
-          checkpointEntityId: "internal_checkpoint_face_001",
-          stableId: "generated:face:top"
-        }
-      })
+      onRepairReference: () => undefined
     });
 
     expect(markup).toContain("Saved face");
@@ -173,29 +174,15 @@ describe("InspectPanel", () => {
     expect(markup).toContain("Needs repair");
     expect(markup).toContain("Review the suggested compatible targets.");
     expect(markup).toContain("Rename reference");
+    expect(markup).toContain("Repair reference");
     expect(markup).toContain('aria-disabled="true"');
-    expect(markup).toContain("Technical Details");
-    expect(markup).not.toContain("<details open");
+    expect(markup).not.toContain("Technical Details");
   });
 
-  it("keeps internal vocabulary out of default visible and accessible copy", () => {
+  it("uses Name reference when the selection is unnamed", () => {
     const markup = render({
-      selection: {
-        kind: "edge",
-        typeLabel: "Circular edge",
-        name: "Outer rim",
-        owner: { body: "Gearbox mount", feature: "Fillet 1" }
-      },
-      measurements: {
-        generatedReference: {
-          title: "Edge measurement",
-          status: "ready",
-          confidence: "From current geometry",
-          rows: [{ label: "Radius", value: "8.00 mm" }]
-        }
-      },
       reference: {
-        kindLabel: "Circular edge",
+        kindLabel: "Planar face",
         health: {
           scope: "reference",
           label: "Reference health",
@@ -204,20 +191,10 @@ describe("InspectPanel", () => {
         },
         naming: { status: "ready" }
       },
-      technicalDetails: createTechnicalDetails({
-        code: "PRIVATE_DIAGNOSTIC_CODE",
-        context: {
-          stableId: "generated:edge:outer",
-          worker: "geometry-worker"
-        }
-      })
+      onNameReference: () => undefined
     });
-    const defaultSurface = markup.replace(
-      /<details\b[^>]*>[\s\S]*?<\/details>/i,
-      ""
-    );
 
-    expect(containsInternalText(defaultSurface)).toBe(false);
-    expect(defaultSurface).not.toMatch(/\b(?:CADOps|schema|JSON|Vertex)\b/i);
+    expect(markup).toContain("Name reference");
+    expect(markup).not.toContain("Rename reference");
   });
 });

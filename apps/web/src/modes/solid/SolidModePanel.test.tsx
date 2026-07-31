@@ -6,9 +6,21 @@ import type {
   FeatureExtrudeForm,
   FeatureLoftForm
 } from "../../cadCommands";
+import {
+  buildFeatureChamferOp,
+  buildFeatureHoleOp,
+  buildFeatureLinearPatternOp,
+  buildFeatureMirrorOp,
+  buildFeatureShellOp
+} from "../../cadCommands";
 import { SolidModePanel } from "./SolidModePanel";
 import { createPrimitiveDraft } from "./solidEditorDefaults";
-import { applySolidDraftOnce, cancelSolidDraft } from "./solidEditorSession";
+import {
+  advanceDeleteConfirmation,
+  applySolidCollectorSelection,
+  applySolidDraftOnce,
+  cancelSolidDraft
+} from "./solidEditorSession";
 import { validateSolidDraft } from "./solidDraftValidation";
 import {
   createSolidEditorSubmission,
@@ -16,6 +28,42 @@ import {
 } from "./solidEditorTypes";
 
 describe("SolidModePanel", () => {
+  it("locks editor fields and delete while disabled/pending", () => {
+    const request = {
+      key: "extrude-edit",
+      kind: "extrude",
+      mode: "edit",
+      deletable: true,
+      title: "Extrude 1",
+      initialDraft: {
+        id: "feat_1",
+        bodyId: "body_1",
+        name: "Extrude 1",
+        depth: 10,
+        side: "positive",
+        operationMode: "newBody"
+      }
+    } as const satisfies SolidEditorRequest<"extrude">;
+
+    const markup = renderToStaticMarkup(
+      createElement(SolidModePanel, {
+        activeEditor: request,
+        disabled: true,
+        onApply: () => undefined,
+        onDelete: () => undefined
+      })
+    );
+
+    expect(markup).toContain('aria-busy="true"');
+    expect(markup).toContain("pb-solid-draft-fields");
+    expect(markup).toMatch(/<fieldset[^>]*disabled=""/);
+    expect(markup).toContain("Delete");
+    const deleteButton = markup.match(
+      /<button[^>]*class="[^"]*pb-button--danger[^"]*"[^>]*>/
+    )?.[0];
+    expect(deleteButton).toContain('disabled=""');
+  });
+
   it("opens a primitive as an explicit draft and stays inert without an apply callback", () => {
     const request = {
       key: "box-new",
@@ -210,9 +258,72 @@ describe("SolidModePanel", () => {
 
     expect(markup).toContain("Reverse path direction");
   });
+
+  it("locks edit fields the backend cannot update", () => {
+    const markup = renderToStaticMarkup(
+      createElement(SolidModePanel, {
+        activeEditor: {
+          key: "extrude-edit",
+          kind: "compositeExtrude",
+          title: "Edit Extrude",
+          mode: "edit",
+          initialDraft: {
+            id: "extrude-a",
+            bodyId: "body-a",
+            targetBodyId: "body-target",
+            name: "Extrude A",
+            profile: {
+              kind: "entity",
+              sketchId: "sketch-a",
+              entityId: "rectangle-a"
+            },
+            depth: 10,
+            side: "positive",
+            operationMode: "cut"
+          },
+          choices: {
+            profiles: [],
+            cutTargetBodies: [
+              {
+                key: "body-target",
+                value: "body-target",
+                label: "Target",
+                kind: "body"
+              }
+            ]
+          }
+        },
+        onApply: () => undefined
+      })
+    );
+
+    expect(markup).toMatch(/id="solid-feature-name"[^>]*disabled=""/);
+    expect(markup).toMatch(
+      /id="solid-composite-extrude-operation"[^>]*disabled=""/
+    );
+    expect(markup).toMatch(/class="pb-selection-collector"[^>]*disabled=""/);
+    expect(markup).not.toMatch(
+      /id="solid-composite-extrude-depth"[^>]*disabled=""/
+    );
+  });
 });
 
 describe("Solid editor session", () => {
+  it("arms delete on the first click and fires only once on the second", () => {
+    expect(advanceDeleteConfirmation(false)).toEqual({
+      nextArmed: true,
+      shouldDelete: false
+    });
+    expect(advanceDeleteConfirmation(true)).toEqual({
+      nextArmed: false,
+      shouldDelete: true
+    });
+    expect(advanceDeleteConfirmation(true, { blocked: true })).toEqual({
+      nextArmed: true,
+      shouldDelete: false
+    });
+  });
+
   it("submits an eligible draft at most once while apply is pending", async () => {
     let release!: () => void;
     const pending = new Promise<void>((resolve) => {
@@ -271,6 +382,194 @@ describe("Solid editor session", () => {
     ).toEqual({
       status: "collecting",
       message: "Select at least two sections."
+    });
+  });
+
+  it("routes semantic viewport/tree picks into the exact CADOps fields", () => {
+    const chamfer = applySolidCollectorSelection(
+      "chamfer",
+      {
+        id: "",
+        bodyId: "",
+        targetBodyId: "body-a",
+        name: "",
+        edgeStableId: "edge-first",
+        distance: 1,
+        radius: 1
+      },
+      {
+        edges: [
+          {
+            key: "edge-first",
+            value: { targetBodyId: "body-a", edgeStableId: "edge-first" },
+            label: "First edge",
+            kind: "edge"
+          },
+          {
+            key: "edge-selected",
+            value: {
+              targetBodyId: "body-a",
+              edgeStableId: "edge-selected"
+            },
+            label: "Selected edge",
+            kind: "edge"
+          }
+        ]
+      },
+      "edge",
+      "edge-selected"
+    );
+    expect(
+      buildFeatureChamferOp(
+        chamfer as Parameters<typeof buildFeatureChamferOp>[0]
+      )
+    ).toMatchObject({
+      targetBodyId: "body-a",
+      edgeStableId: "edge-selected"
+    });
+
+    const hole = applySolidCollectorSelection(
+      "hole",
+      {
+        id: "",
+        bodyId: "",
+        targetBodyId: "",
+        sketchId: "sketch-source",
+        circleEntityId: "circle-source",
+        name: "",
+        depthMode: "throughAll",
+        depth: 10,
+        direction: "positive"
+      },
+      {
+        targetBodies: [
+          {
+            key: "body-result",
+            value: "body-result",
+            label: "Result body",
+            kind: "hole target",
+            targetTopologyAnchorId: "anchor-body"
+          }
+        ]
+      },
+      "targetBody",
+      "body-result"
+    );
+    const holeForm = hole as Parameters<typeof buildFeatureHoleOp>[2];
+    expect(
+      buildFeatureHoleOp(holeForm.sketchId!, holeForm.circleEntityId!, holeForm)
+    ).toMatchObject({
+      sketchId: "sketch-source",
+      circleEntityId: "circle-source",
+      targetTopologyAnchorId: "anchor-body"
+    });
+
+    const shell = applySolidCollectorSelection(
+      "shell",
+      {
+        id: "",
+        bodyId: "",
+        targetBodyId: "body-a",
+        name: "",
+        wallThickness: 1,
+        openFaceRefs: []
+      },
+      {
+        openFaces: [
+          {
+            key: "saved-face",
+            value: {
+              kind: "topologyAnchor",
+              bodyId: "body-a",
+              anchorId: "face-anchor"
+            },
+            label: "Saved face",
+            kind: "saved planar face"
+          }
+        ]
+      },
+      "openFaces",
+      "saved-face"
+    );
+    expect(
+      buildFeatureShellOp(shell as Parameters<typeof buildFeatureShellOp>[0])
+        .openFaceRefs
+    ).toEqual([
+      {
+        kind: "topologyAnchor",
+        bodyId: "body-a",
+        anchorId: "face-anchor"
+      }
+    ]);
+
+    const pattern = applySolidCollectorSelection(
+      "linearPattern",
+      {
+        id: "",
+        bodyId: "",
+        seedBodyId: "body-a",
+        name: "",
+        direction: { kind: "globalAxis", axis: "x" },
+        spacing: 10,
+        instanceCount: 3
+      },
+      {
+        directions: [
+          {
+            key: "named-axis",
+            value: { kind: "namedReference", name: "Axis A" },
+            label: "Axis A",
+            kind: "named line edge"
+          }
+        ]
+      },
+      "direction",
+      "named-axis"
+    );
+    expect(
+      buildFeatureLinearPatternOp(
+        pattern as Parameters<typeof buildFeatureLinearPatternOp>[0]
+      ).direction
+    ).toEqual({
+      kind: "namedReference",
+      name: "Axis A"
+    });
+
+    const mirror = applySolidCollectorSelection(
+      "mirror",
+      {
+        id: "",
+        bodyId: "",
+        seedBodyId: "body-a",
+        name: "",
+        plane: { kind: "standardPlane", plane: "XY", offset: 4 },
+        includeOriginal: true
+      },
+      {
+        mirrorPlanes: [
+          {
+            key: "selected-face",
+            value: {
+              kind: "generatedFace",
+              bodyId: "body-b",
+              stableId: "face-selected"
+            },
+            label: "Selected face",
+            kind: "face"
+          }
+        ]
+      },
+      "mirrorPlane",
+      "selected-face"
+    );
+    expect(
+      buildFeatureMirrorOp(mirror as Parameters<typeof buildFeatureMirrorOp>[0])
+        .plane
+    ).toEqual({
+      kind: "generatedFace",
+      bodyId: "body-b",
+      stableId: "face-selected",
+      offset: 4
     });
   });
 });

@@ -27,6 +27,7 @@ export interface WorkbenchShellProps {
   readonly leftDockCollapsed: boolean;
   readonly rightDockCollapsed: boolean;
   readonly activeEditor?: boolean;
+  readonly activeEditorKey?: string;
   readonly projectDetailsOpen?: boolean;
   readonly openDrawer?: DockSide;
   readonly onOpenDrawerChange?: (side: DockSide | undefined) => void;
@@ -56,6 +57,7 @@ export function WorkbenchShell({
   leftDockCollapsed,
   rightDockCollapsed,
   activeEditor = false,
+  activeEditorKey,
   projectDetailsOpen = false,
   openDrawer: controlledOpenDrawer,
   onOpenDrawerChange,
@@ -75,9 +77,14 @@ export function WorkbenchShell({
   const [uncontrolledDrawer, setUncontrolledDrawer] = useState<
     DockSide | undefined
   >();
+  const [editorDrawerDismissed, setEditorDrawerDismissed] = useState(false);
   const openDrawer = controlledOpenDrawer ?? uncontrolledDrawer;
-  const previousEditorRef = useRef(activeEditor);
+  const editorKey: string | true | undefined = activeEditor
+    ? (activeEditorKey ?? true)
+    : undefined;
+  const previousEditorRef = useRef(editorKey);
   const drawerOpenerRef = useRef<HTMLElement | null>(null);
+  const rightToggleRef = useRef<HTMLButtonElement>(null);
 
   const setOpenDrawer = useCallback(
     (side: DockSide | undefined, opener?: HTMLElement) => {
@@ -90,14 +97,18 @@ export function WorkbenchShell({
 
   useEffect(() => {
     if (
-      activeEditor &&
-      !previousEditorRef.current &&
-      measuredWidth < WORKBENCH_LAYOUT.inlineDocksBreakpoint
+      shouldOpenEditorDrawer(
+        previousEditorRef.current,
+        editorKey,
+        measuredWidth
+      )
     ) {
+      setEditorDrawerDismissed(false);
       setOpenDrawer("right");
     }
-    previousEditorRef.current = activeEditor;
-  }, [activeEditor, measuredWidth, setOpenDrawer]);
+    if (!activeEditor) setEditorDrawerDismissed(false);
+    previousEditorRef.current = editorKey;
+  }, [activeEditor, editorKey, measuredWidth, setOpenDrawer]);
 
   const rightDockSuppressed = mode === "project" && !projectDetailsOpen;
   const layout = resolveWorkbenchLayout({
@@ -107,22 +118,34 @@ export function WorkbenchShell({
     leftDockCollapsed,
     rightDockCollapsed: rightDockCollapsed || rightDockSuppressed,
     openDrawer,
-    activeEditor
+    activeEditor: activeEditor && !editorDrawerDismissed
   });
   const shellStyle: ShellStyle = {
     "--pb-current-left-dock-width": `${leftDockWidth}px`,
     "--pb-current-right-dock-width": `${rightDockWidth}px`
   };
+  const drawerModal = Boolean(layout.activeDrawer);
+  const leftToggleBlocked = layout.leftDrawerBlockedByEditor;
+  const rightToggleBlocked =
+    layout.rightDrawerForcedByEditor || rightDockSuppressed;
+  const leftToggleTitle = leftToggleBlocked
+    ? "Close the feature editor to open the document tree"
+    : undefined;
+  const rightToggleTitle = layout.rightDrawerForcedByEditor
+    ? "Close the feature editor to dismiss this drawer"
+    : undefined;
 
   const toggleDock = (side: DockSide, opener: HTMLElement) => {
     const state = layout[side];
-    const collapsed = side === "left" ? leftDockCollapsed : rightDockCollapsed;
+    if (side === "left" && leftToggleBlocked) return;
+    if (side === "right" && layout.rightDrawerForcedByEditor) return;
     if (state.placement === "drawer") {
       if (state.visible) {
         setOpenDrawer(undefined);
         opener.focus();
       } else {
-        if (collapsed) onDockCollapsedChange(side, false);
+        // Never write breakpoint/drawer opens into the persisted collapse
+        // preference — openDrawer alone drives drawer visibility.
         setOpenDrawer(side, opener);
       }
       return;
@@ -131,14 +154,22 @@ export function WorkbenchShell({
   };
 
   const closeDrawer = () => {
+    if (layout.activeDrawer === "right" && activeEditor)
+      setEditorDrawerDismissed(true);
     setOpenDrawer(undefined);
-    requestAnimationFrameSafe(() => drawerOpenerRef.current?.focus());
+    requestAnimationFrameSafe(() =>
+      (drawerOpenerRef.current ?? rightToggleRef.current)?.focus()
+    );
   };
 
   return (
     <div className="pb-workbench-shell" style={shellStyle} data-mode={mode}>
-      <div className="pb-workbench-shell__header">{header}</div>
-      <div className="pb-workbench-shell__ribbon">{ribbon}</div>
+      <div className="pb-workbench-shell__header" {...inertProps(drawerModal)}>
+        {header}
+      </div>
+      <div className="pb-workbench-shell__ribbon" {...inertProps(drawerModal)}>
+        {ribbon}
+      </div>
 
       <div className="pb-workbench-shell__main">
         <button
@@ -150,6 +181,10 @@ export function WorkbenchShell({
               : `Open ${leftDockLabel}`
           }
           aria-expanded={layout.left.visible}
+          aria-disabled={leftToggleBlocked || undefined}
+          title={leftToggleTitle}
+          disabled={leftToggleBlocked}
+          {...inertProps(drawerModal)}
           onClick={(event) => toggleDock("left", event.currentTarget)}
         >
           <Icon name={layout.left.visible ? "chevron-down" : "chevron-right"} />
@@ -160,6 +195,7 @@ export function WorkbenchShell({
           side="left"
           label={leftDockLabel}
           state={layout.left}
+          inertOutside={drawerModal && layout.activeDrawer !== "left"}
           onCloseDrawer={closeDrawer}
           restoreFocus={() => drawerOpenerRef.current?.focus()}
         >
@@ -178,6 +214,7 @@ export function WorkbenchShell({
         <main
           className="pb-workbench-shell__workspace"
           aria-label="Workbench workspace"
+          {...inertProps(drawerModal)}
         >
           <section
             className="pb-workbench-shell__viewport"
@@ -210,6 +247,7 @@ export function WorkbenchShell({
           side="right"
           label={rightDockLabel}
           state={layout.right}
+          inertOutside={drawerModal && layout.activeDrawer !== "right"}
           onCloseDrawer={closeDrawer}
           restoreFocus={() => drawerOpenerRef.current?.focus()}
         >
@@ -217,6 +255,7 @@ export function WorkbenchShell({
         </DockRegion>
 
         <button
+          ref={rightToggleRef}
           className="pb-dock-toggle pb-dock-toggle--right"
           type="button"
           aria-label={
@@ -225,7 +264,11 @@ export function WorkbenchShell({
               : `Open ${rightDockLabel}`
           }
           aria-expanded={layout.right.visible}
+          aria-disabled={rightToggleBlocked || undefined}
+          title={rightToggleTitle}
           hidden={rightDockSuppressed}
+          disabled={layout.rightDrawerForcedByEditor}
+          {...inertProps(drawerModal)}
           onClick={(event) => toggleDock("right", event.currentTarget)}
         >
           <Icon
@@ -244,7 +287,9 @@ export function WorkbenchShell({
         ) : null}
       </div>
 
-      <div className="pb-workbench-shell__status">{statusBar}</div>
+      <div className="pb-workbench-shell__status" {...inertProps(drawerModal)}>
+        {statusBar}
+      </div>
     </div>
   );
 }
@@ -253,6 +298,7 @@ function DockRegion({
   side,
   label,
   state,
+  inertOutside = false,
   onCloseDrawer,
   restoreFocus,
   children
@@ -260,6 +306,7 @@ function DockRegion({
   readonly side: DockSide;
   readonly label: string;
   readonly state: DockLayoutState;
+  readonly inertOutside?: boolean;
   readonly onCloseDrawer: () => void;
   readonly restoreFocus: () => void;
   readonly children: ReactNode;
@@ -332,10 +379,25 @@ function DockRegion({
       hidden={!state.visible}
       data-hidden-for-viewport={state.hiddenForViewport || undefined}
       onKeyDown={trapDrawerFocus}
+      {...inertProps(inertOutside)}
     >
+      {drawer && state.visible ? (
+        <button
+          className="pb-dock__drawer-close"
+          type="button"
+          aria-label={`Close ${label}`}
+          onClick={onCloseDrawer}
+        >
+          <Icon name="close" />
+        </button>
+      ) : null}
       {children}
     </aside>
   );
+}
+
+function inertProps(active: boolean): { readonly inert?: true } {
+  return active ? { inert: true } : {};
 }
 
 function useViewportWidth(override: number | undefined): number {
@@ -355,4 +417,16 @@ function requestAnimationFrameSafe(callback: () => void): void {
   if (typeof requestAnimationFrame === "function")
     requestAnimationFrame(callback);
   else callback();
+}
+
+export function shouldOpenEditorDrawer(
+  previousEditorKey: string | true | undefined,
+  editorKey: string | true | undefined,
+  viewportWidth: number
+): boolean {
+  return (
+    editorKey !== undefined &&
+    editorKey !== previousEditorKey &&
+    viewportWidth < WORKBENCH_LAYOUT.inlineDocksBreakpoint
+  );
 }

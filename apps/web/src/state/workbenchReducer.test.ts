@@ -105,6 +105,24 @@ describe("workbenchReducer", () => {
     expect(failed.navigationIntent).toBeUndefined();
   });
 
+  it("preserves dirty navigation when the same editor refreshes its controls", () => {
+    const state = createInitialWorkbenchUiState({
+      activeEditor: { kind: "sketch-curve-edit", sourceId: "sketch-1" },
+      activeEditorDirty: true,
+      navigationIntent: { kind: "mode", mode: "inspect" }
+    });
+
+    expect(
+      workbenchReducer(state, {
+        type: "set-editor",
+        editor: { kind: "sketch-curve-edit", sourceId: "sketch-1" }
+      })
+    ).toMatchObject({
+      activeEditorDirty: true,
+      navigationIntent: { kind: "mode", mode: "inspect" }
+    });
+  });
+
   it("does not guard an action explicitly declared to preserve the editor", () => {
     const state = createInitialWorkbenchUiState({
       activeEditor: { kind: "fillet" },

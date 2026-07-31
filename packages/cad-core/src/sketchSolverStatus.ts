@@ -81,7 +81,10 @@ export function createSketchSolverStatusResponse({
 > {
   const evaluation = evaluateSketch(document, sketch);
   const solverProbe = evaluation.solverProbe;
-  const status = mapEvaluationStatus(evaluation.status);
+  const status =
+    solverProbe.result?.status === "not-run"
+      ? "not-run"
+      : mapEvaluationStatus(evaluation.status);
   const entities = [...sketch.entities.values()].map((entity) =>
     createEntitySummary(sketch.id, entity)
   );

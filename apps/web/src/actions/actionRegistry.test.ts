@@ -195,7 +195,7 @@ describe("V18 command search", () => {
 
     expect(searchUiActions(actions, "measure").map(resultShape)).toEqual([
       ["solid.measure", "exact-label"],
-      ["inspect.measure", "exact-label"],
+      ["inspect.measure", "label-prefix"],
       ["inspect.measure-between", "label-prefix"],
       ["inspect.mass-properties", "other"]
     ]);
@@ -231,7 +231,9 @@ describe("V18 command search", () => {
       "sketch.offset",
       "sketch.regions"
     ]);
-    expect(searchUiActions(actions, "ctrl/cmd+k")).toEqual([]);
+    expect(searchUiActions(actions, "ctrl/cmd+k")[0]?.definition.id).toBe(
+      "project.command-search"
+    );
     expect(searchUiActions(actions, "ctrl/cmd+z")[0]?.definition.id).toBe(
       "project.undo"
     );
@@ -245,22 +247,31 @@ describe("V18 command search", () => {
   });
 
   it("uses current-mode readiness to break equally relevant matches", () => {
+    // Both actions carry the exact alias "distance", so only the current mode
+    // can decide which one ranks first.
     const actions = projectUiActions(createContext()).filter((action) =>
-      ["solid.measure", "inspect.measure"].includes(action.definition.id)
+      ["solid.measure", "inspect.measure-between"].includes(
+        action.definition.id
+      )
     );
 
     expect(
-      searchUiActions(actions, "measure", "inspect").map(
+      searchUiActions(actions, "distance", "inspect").map(
         (result) => result.definition.id
       )
-    ).toEqual(["inspect.measure", "solid.measure"]);
+    ).toEqual(["inspect.measure-between", "solid.measure"]);
+    expect(
+      searchUiActions(actions, "distance", "solid").map(
+        (result) => result.definition.id
+      )
+    ).toEqual(["solid.measure", "inspect.measure-between"]);
     expect(
       searchUiActions(
         projectUiActions(createContext()),
         "create sketch",
         "solid"
       )[0]?.definition
-    ).toMatchObject({ id: "solid.sketch", label: "Create Sketch" });
+    ).toMatchObject({ id: "solid.sketch", label: "Create sketch" });
   });
 });
 

@@ -43,6 +43,7 @@ import {
   formatTransactionStatus
 } from "../../transactionHistoryDisplay";
 import { Button } from "../../ui/Button";
+import { NumericInput } from "../../ui/NumericInput";
 import type { ProjectPageId } from "../../workbench/types";
 import { formatProjectHealthSummary } from "./projectHealthSummary";
 import {
@@ -54,6 +55,20 @@ import {
 import "./projectWorkspace.css";
 
 const EMPTY_PARAMETER_USAGE: Readonly<Record<string, number>> = {};
+
+/** Blocked-state copy for Project file/history/export actions (aria-disabled). */
+export const PROJECT_ACTION_UNAVAILABLE = {
+  openWcad: "This browser cannot open .wcad files.",
+  save: "This browser cannot save directly to a file. Use Save As to download a copy.",
+  saveAs: "This browser cannot download a .wcad project file.",
+  importStep: "This browser cannot import STEP files.",
+  downloadJson: "This browser cannot download JSON files.",
+  loadJson: "This browser cannot load JSON files from disk.",
+  downloadStep: "Exact STEP export is not available for the current model.",
+  downloadGlb: "Visualization export needs ready display geometry.",
+  undo: "There is nothing to undo.",
+  redo: "There is nothing to redo."
+} as const;
 
 export interface ProjectWorkspaceProps {
   readonly page: ProjectPageId;
@@ -81,6 +96,8 @@ export interface ProjectWorkspaceProps {
   readonly canRedo: boolean;
   readonly message?: string;
   readonly messageTone?: "info" | "error";
+  /** Surfaces blocked-action reasons when aria-disabled controls are activated. */
+  readonly onUnavailableActivate?: (reason: string) => void;
   readonly onNew: () => void;
   readonly onOpenWcad: () => Promise<boolean>;
   readonly onOpenStep: () => Promise<boolean>;
@@ -147,6 +164,7 @@ export function ProjectWorkspace({
   canRedo,
   message,
   messageTone = "info",
+  onUnavailableActivate,
   onNew,
   onOpenWcad,
   onOpenStep,
@@ -210,6 +228,7 @@ export function ProjectWorkspace({
           jsonDraft={jsonDraft}
           jsonWorkflow={jsonWorkflow}
           opfsCacheStatus={opfsCacheStatus}
+          onUnavailableActivate={onUnavailableActivate}
           onNew={onNew}
           onOpenWcad={onOpenWcad}
           onOpenStep={onOpenStep}
@@ -242,6 +261,7 @@ export function ProjectWorkspace({
           transactions={transactions}
           canUndo={canUndo}
           canRedo={canRedo}
+          onUnavailableActivate={onUnavailableActivate}
           onUndo={onUndo}
           onRedo={onRedo}
         />
@@ -250,6 +270,7 @@ export function ProjectWorkspace({
           disabled={disabled}
           readiness={exportReadiness}
           visualization={visualizationExport}
+          onUnavailableActivate={onUnavailableActivate}
           onDownloadStep={onDownloadStep}
           onDownloadVisualization={onDownloadVisualization}
         />
@@ -400,6 +421,7 @@ function ProjectFiles({
   projectFile,
   storageCapabilities,
   importReadiness,
+  onUnavailableActivate,
   onNew,
   onOpenWcad,
   onOpenStep,
@@ -424,6 +446,7 @@ function ProjectFiles({
   | "projectFile"
   | "storageCapabilities"
   | "importReadiness"
+  | "onUnavailableActivate"
   | "onNew"
   | "onOpenWcad"
   | "onOpenStep"
@@ -456,6 +479,20 @@ function ProjectFiles({
   const canOpenStep =
     storageCapabilities.fileSystemAccessAvailable ||
     storageCapabilities.jsonUploadAvailable;
+  const openWcadReason = canOpenWcad
+    ? undefined
+    : PROJECT_ACTION_UNAVAILABLE.openWcad;
+  const saveReason = canSave ? undefined : PROJECT_ACTION_UNAVAILABLE.save;
+  const saveAsReason = canSave ? undefined : PROJECT_ACTION_UNAVAILABLE.saveAs;
+  const importStepReason = canOpenStep
+    ? undefined
+    : PROJECT_ACTION_UNAVAILABLE.importStep;
+  const downloadJsonReason = storageCapabilities.jsonDownloadAvailable
+    ? undefined
+    : PROJECT_ACTION_UNAVAILABLE.downloadJson;
+  const loadJsonReason = storageCapabilities.jsonUploadAvailable
+    ? undefined
+    : PROJECT_ACTION_UNAVAILABLE.loadJson;
 
   async function openWcad(): Promise<void> {
     if (storageCapabilities.fileSystemAccessAvailable && (await onOpenWcad())) {
@@ -493,20 +530,29 @@ function ProjectFiles({
               New
             </Button>
             <Button
-              disabled={disabled || !canOpenWcad}
+              disabled={disabled}
+              unavailableReason={openWcadReason}
+              onUnavailableActivate={onUnavailableActivate}
               onClick={() => void openWcad()}
             >
               Open .wcad
             </Button>
             <Button
               tone="primary"
-              disabled={disabled || !canSave}
+              disabled={disabled}
+              unavailableReason={saveReason}
+              onUnavailableActivate={onUnavailableActivate}
               onClick={onSave}
             >
               Save
             </Button>
-            <Button disabled={disabled || !canSave} onClick={onSaveAs}>
-              Save As
+            <Button
+              disabled={disabled}
+              unavailableReason={saveAsReason}
+              onUnavailableActivate={onUnavailableActivate}
+              onClick={onSaveAs}
+            >
+              Save as
             </Button>
           </div>
           <dl className="pb-project-definition-list">
@@ -531,7 +577,9 @@ function ProjectFiles({
             {formatImportDetail(importReadiness)}
           </p>
           <Button
-            disabled={disabled || !canOpenStep}
+            disabled={disabled}
+            unavailableReason={importStepReason}
+            onUnavailableActivate={onUnavailableActivate}
             onClick={() => void openStep()}
           >
             Import STEP
@@ -550,13 +598,17 @@ function ProjectFiles({
               Prepare JSON
             </Button>
             <Button
-              disabled={disabled || !storageCapabilities.jsonDownloadAvailable}
+              disabled={disabled}
+              unavailableReason={downloadJsonReason}
+              onUnavailableActivate={onUnavailableActivate}
               onClick={onDownloadJson}
             >
               Download JSON
             </Button>
             <Button
-              disabled={disabled || !storageCapabilities.jsonUploadAvailable}
+              disabled={disabled}
+              unavailableReason={loadJsonReason}
+              onUnavailableActivate={onUnavailableActivate}
               onClick={() => jsonInput.current?.click()}
             >
               Load JSON
@@ -932,15 +984,12 @@ function ParameterForm({
         </label>
         <label>
           Value
-          <input
+          <NumericInput
             className="pb-field pb-numeric"
-            type="number"
-            value={Number.isFinite(value) ? value : ""}
+            value={value}
             disabled={disabled || expressionDriven}
             required={!expressionDriven}
-            onChange={(event) =>
-              onValueChange(event.currentTarget.valueAsNumber)
-            }
+            onValueChange={onValueChange}
           />
         </label>
         {onExpressionChange ? (
@@ -994,11 +1043,18 @@ function ProjectHistory({
   transactions,
   canUndo,
   canRedo,
+  onUnavailableActivate,
   onUndo,
   onRedo
 }: Pick<
   ProjectWorkspaceProps,
-  "disabled" | "transactions" | "canUndo" | "canRedo" | "onUndo" | "onRedo"
+  | "disabled"
+  | "transactions"
+  | "canUndo"
+  | "canRedo"
+  | "onUnavailableActivate"
+  | "onUndo"
+  | "onRedo"
 >) {
   return (
     <>
@@ -1009,10 +1065,24 @@ function ProjectHistory({
         detail="Review source changes in transaction order."
         actions={
           <>
-            <Button disabled={disabled || !canUndo} onClick={onUndo}>
+            <Button
+              disabled={disabled}
+              unavailableReason={
+                canUndo ? undefined : PROJECT_ACTION_UNAVAILABLE.undo
+              }
+              onUnavailableActivate={onUnavailableActivate}
+              onClick={onUndo}
+            >
               Undo
             </Button>
-            <Button disabled={disabled || !canRedo} onClick={onRedo}>
+            <Button
+              disabled={disabled}
+              unavailableReason={
+                canRedo ? undefined : PROJECT_ACTION_UNAVAILABLE.redo
+              }
+              onUnavailableActivate={onUnavailableActivate}
+              onClick={onRedo}
+            >
               Redo
             </Button>
           </>
@@ -1056,12 +1126,14 @@ function ProjectExport({
   disabled,
   readiness,
   visualization,
+  onUnavailableActivate,
   onDownloadStep,
   onDownloadVisualization
 }: {
   readonly disabled: boolean;
   readonly readiness?: ProjectExportReadinessQueryResponse;
   readonly visualization?: ProjectVisualizationExportDisplayStatus;
+  readonly onUnavailableActivate?: (reason: string) => void;
   readonly onDownloadStep: () => void;
   readonly onDownloadVisualization: () => void;
 }) {
@@ -1070,6 +1142,15 @@ function ProjectExport({
     : undefined;
   const step = display?.formatRows.find((row) => row.id === "step");
   const visualizationRow = display?.formatRows.find((row) => row.id === "glb");
+  const canExportStep = Boolean(readiness?.canExportFiles);
+  const canExportGlb =
+    visualization?.status === "supported" && visualization.available;
+  const downloadStepReason = canExportStep
+    ? undefined
+    : PROJECT_ACTION_UNAVAILABLE.downloadStep;
+  const downloadGlbReason = canExportGlb
+    ? undefined
+    : PROJECT_ACTION_UNAVAILABLE.downloadGlb;
 
   return (
     <>
@@ -1101,7 +1182,9 @@ function ProjectExport({
             ) : null}
             <Button
               tone="primary"
-              disabled={disabled || !readiness?.canExportFiles}
+              disabled={disabled}
+              unavailableReason={downloadStepReason}
+              onUnavailableActivate={onUnavailableActivate}
               onClick={onDownloadStep}
             >
               Download STEP
@@ -1121,11 +1204,9 @@ function ProjectExport({
               </p>
             ) : null}
             <Button
-              disabled={
-                disabled ||
-                visualization?.status !== "supported" ||
-                !visualization.available
-              }
+              disabled={disabled}
+              unavailableReason={downloadGlbReason}
+              onUnavailableActivate={onUnavailableActivate}
               onClick={onDownloadVisualization}
             >
               Download visualization GLB

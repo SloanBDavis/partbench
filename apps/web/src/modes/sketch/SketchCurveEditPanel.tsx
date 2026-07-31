@@ -37,7 +37,6 @@ import {
   getSketchOffsetSideChoices,
   getSketchCurveEditKindLabel,
   getSketchEntitySemanticLabel,
-  handleSketchCurveEditWindowShortcut,
   hasCollectedSketchCurveEditChoices,
   isEligibleCurveEditBoundary,
   isEligibleCurveEditTarget,
@@ -49,6 +48,8 @@ import {
   type SketchExtendHitChoice,
   type SketchTrimIntervalChoice
 } from "./sketchCurveEditModel";
+import { useEscapeEditorContributor } from "../../actions/useEscapeEditorContributor";
+import { NumericInput } from "../../ui/NumericInput";
 
 const CURVE_TARGET_WINDOW_SIZE = 12;
 
@@ -89,6 +90,7 @@ export interface SketchCurveEditSessionControl {
     readonly restoreFocusOnSuccess?: boolean;
   }) => Promise<boolean>;
   readonly focus: () => void;
+  readonly canApply?: boolean;
   readonly getReturnFocusTarget?: () => HTMLElement | null;
   readonly closeLocalDraft?: () => void;
 }
@@ -342,10 +344,11 @@ export function SketchCurveEditPanel(props: SketchCurveEditPanelProps) {
   useEffect(() => {
     onSessionControlChange?.({
       apply: (options) => applyRef.current(options),
-      focus: () => focusCurveEditInitialControl(editorRef.current)
+      focus: () => focusCurveEditInitialControl(editorRef.current),
+      canApply
     });
     return () => onSessionControlChange?.(undefined);
-  }, [onSessionControlChange]);
+  }, [canApply, onSessionControlChange]);
 
   useEffect(() => {
     if (
@@ -389,23 +392,14 @@ export function SketchCurveEditPanel(props: SketchCurveEditPanelProps) {
     });
   }, [changeDraft, onChoiceRejected, selectedEntityId, sketch]);
 
-  useEffect(() => {
-    if (keyboardSuspended) return undefined;
-    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      handleSketchCurveEditWindowShortcut({
-        event,
-        suspended: keyboardSuspended,
-        dirty,
-        canApply,
-        onApply: () => void applyRef.current(),
-        onCancel: () => onCancel(true),
-        onDirtyEscape: () =>
-          onRequestEscape ? onRequestEscape(true) : onCancel()
-      });
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [canApply, dirty, keyboardSuspended, onCancel, onRequestEscape]);
+  useEscapeEditorContributor({
+    id: `sketch-curve-edit:${kind}`,
+    suspended: keyboardSuspended,
+    state: dirty ? "dirty" : "clean",
+    onCancelClean: () => onCancel(true),
+    onRequestDirtyGuard: () =>
+      onRequestEscape ? onRequestEscape(true) : onCancel()
+  });
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -1050,17 +1044,13 @@ function NumberField({
   return (
     <label className="pb-sketch-field">
       <span>{label}</span>
-      <input
+      <NumericInput
         className="pb-field"
-        type="number"
         step="any"
         value={value}
         disabled={disabled}
         data-drawer-initial-focus={initialFocus ? "" : undefined}
-        onChange={(event) => {
-          const next = event.currentTarget.valueAsNumber;
-          if (Number.isFinite(next)) onChange(next);
-        }}
+        onValueChange={onChange}
       />
     </label>
   );

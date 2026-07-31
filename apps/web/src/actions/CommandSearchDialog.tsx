@@ -15,6 +15,7 @@ import type {
 import { searchUiActions } from "./commandSearch";
 import {
   getNextCommandSearchResultIndex,
+  getCommandSearchInvocationAnnouncement,
   invokeCommandSearchAction
 } from "./commandSearchDialogModel";
 import { Icon } from "../ui/Icon";
@@ -130,19 +131,19 @@ function OpenCommandSearchDialog({
       const result = await invokeCommandSearchAction(action, actionContext);
       onActionInvoked?.(action, result);
 
+      const announcement = getCommandSearchInvocationAnnouncement(
+        action,
+        result
+      );
+      setAnnouncement(announcement);
+
       if (result.status === "started") {
-        setAnnouncement(`${action.definition.label} started.`);
         onRequestClose();
       } else if (
         result.status === "unavailable" &&
         result.availability.status === "needs-selection"
       ) {
-        setAnnouncement(result.availability.message);
         onRequestClose();
-      } else if (result.status === "unavailable") {
-        setAnnouncement(result.availability.message);
-      } else {
-        setAnnouncement(`${action.definition.label} is pending.`);
       }
     } catch (error) {
       setAnnouncement(`${action.definition.label} could not be started.`);

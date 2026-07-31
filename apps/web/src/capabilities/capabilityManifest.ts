@@ -191,6 +191,46 @@ const ACTION_AUDIT_BY_ID = {
     "transactionHistoryDisplay.test.ts",
     "B"
   ),
+  "project.command-search": audit(
+    "App header",
+    "openCommandSearch",
+    "always available workbench chrome",
+    uiOnly("open the command search dialog over the shared action registry"),
+    "actions/actionRegistry.test.ts",
+    "H",
+    { source: "v18-contract", v18Owner: "GlobalHeader" }
+  ),
+  "project.help": audit(
+    "App header",
+    "openHelp",
+    "always available workbench chrome",
+    uiOnly("open the keyboard shortcut and help disclosure"),
+    "actions/actionRegistry.test.ts",
+    "H",
+    { source: "v18-contract", v18Owner: "GlobalHeader" }
+  ),
+  "project.cancel": audit(
+    "App keyboard integration",
+    "escape cancellation stack",
+    "ui:escape cancellation stack",
+    uiOnly(
+      "run the deterministic Escape cancellation stack without mutating source"
+    ),
+    "actions/actionRegistry.test.ts",
+    "H",
+    { source: "v18-contract", v18Owner: "WorkbenchShell" }
+  ),
+  "project.apply": audit(
+    "App keyboard integration",
+    "apply the active feature draft",
+    "active editor validity + pending state",
+    uiOnly(
+      "submit the active editor's draft through its existing CADOps apply handler"
+    ),
+    "editors/FeatureEditorShell.test.tsx",
+    "H",
+    { source: "v18-contract", v18Owner: "FeatureEditorShell" }
+  ),
 
   "solid.box": primitiveAudit(
     "Box",

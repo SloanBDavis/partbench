@@ -232,7 +232,7 @@
   padding: var(--pb-space-8) var(--pb-space-12);
   border-inline-start: 3px solid var(--pb-color-accent);
   color: var(--pb-color-text);
-  background: #eef4fc;
+  background: var(--pb-color-accent-surface);
 }
 
 .pb-project-message.is-error,
@@ -258,7 +258,7 @@
 
 .pb-project-parameter-form {
   margin-block-end: var(--pb-space-16);
-  border-color: #9db7dd;
+  border-color: var(--pb-color-accent-border);
 }
 
 .pb-project-form-grid {
@@ -317,7 +317,7 @@
 
 .pb-project-table tbody tr:hover,
 .pb-project-table tbody tr[aria-selected="true"] {
-  background: #eef4fc;
+  background: var(--pb-color-accent-surface);
 }
 
 .pb-project-table-actions {

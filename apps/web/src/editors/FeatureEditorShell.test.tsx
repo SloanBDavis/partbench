@@ -45,6 +45,31 @@ describe("FeatureEditorShell", () => {
     expect(markup).toContain("mm");
   });
 
+  it("blocks Apply and Cancel while an external mutation is pending", () => {
+    const markup = renderToStaticMarkup(
+      createElement(FeatureEditorShell, {
+        title: "Extrude 1",
+        kind: "Extrude",
+        phase: "ready",
+        dirty: true,
+        disabled: true,
+        validation: { status: "ready" },
+        onApply: () => undefined,
+        onCancel: () => undefined,
+        children: createElement("div")
+      })
+    );
+
+    expect(markup).toContain('aria-busy="true"');
+    expect(markup).toMatch(/<button[^>]*>[\s\S]*Cancel[\s\S]*<\/button>/);
+    const cancelButton = markup.match(/<button[^>]*>[\s\S]*?Cancel/)?.[0];
+    expect(cancelButton).toContain('disabled=""');
+    const applyButton = markup.match(
+      /<button[^>]*title="Apply \(Ctrl\/Cmd\+Enter\)"[^>]*>/
+    )?.[0];
+    expect(applyButton).toContain('disabled=""');
+  });
+
   it("blocks Apply while a required selection is missing", () => {
     const markup = renderToStaticMarkup(
       createElement(FeatureEditorShell, {

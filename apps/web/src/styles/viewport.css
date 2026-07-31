@@ -9,6 +9,10 @@
 }
 
 .viewport-frame {
+  --pb-viewport-status-max-height: calc(
+    var(--pb-font-size-caption) * var(--pb-line-height-caption) * 3 +
+      var(--pb-space-12)
+  );
   position: relative;
   width: 100%;
   height: 100%;
@@ -22,7 +26,7 @@
 
 .viewport-head {
   position: absolute;
-  z-index: 20;
+  z-index: var(--pb-z-viewport-controls);
   top: var(--pb-space-8);
   right: var(--pb-space-8);
   display: flex;
@@ -68,7 +72,7 @@
 
 .viewport-contextual-slot {
   position: absolute;
-  z-index: 25;
+  z-index: var(--pb-z-contextual);
   inset: 0;
   pointer-events: none;
 }
@@ -78,18 +82,23 @@
 }
 
 .viewport-frame-with-status .pb-context-strip {
-  bottom: calc(var(--pb-space-16) + 52px);
+  bottom: calc(
+    var(--pb-space-8) + var(--pb-viewport-status-max-height) + var(--pb-space-8)
+  );
 }
 
 .viewport-status {
   position: absolute;
-  z-index: 20;
+  z-index: var(--pb-z-viewport-controls);
   left: var(--pb-space-8);
   bottom: var(--pb-space-8);
   display: grid;
   max-width: min(360px, calc(100% - var(--pb-space-16)));
+  max-height: var(--pb-viewport-status-max-height);
   gap: var(--pb-space-2);
   padding: var(--pb-space-6) var(--pb-space-8);
+  overflow-x: hidden;
+  overflow-y: auto;
   border: 1px solid var(--pb-color-border);
   border-radius: var(--pb-radius-control);
   background: color-mix(
@@ -135,7 +144,7 @@
 .sketch-region-layer,
 .sketch-region-overlay {
   position: absolute;
-  z-index: 35;
+  z-index: calc(var(--pb-z-viewport-overlay) + 1);
   inset: 0;
   width: 100%;
   height: 100%;
@@ -144,24 +153,24 @@
 
 .sketch-overlay-loading {
   position: absolute;
-  z-index: 37;
+  z-index: calc(var(--pb-z-viewport-overlay) + 3);
   inset: 0;
   display: grid;
   place-items: center;
   color: var(--pb-color-text-muted);
   background: rgb(22 27 34 / 18%);
   cursor: wait;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .sketch-arc-tool-layer,
 .sketch-arc-tool-overlay {
-  z-index: 36;
+  z-index: calc(var(--pb-z-viewport-overlay) + 2);
 }
 
 .sketch-region-layer,
 .sketch-region-overlay {
-  z-index: 34;
+  z-index: var(--pb-z-viewport-overlay);
 }
 
 .sketch-region-cell {
@@ -189,11 +198,15 @@
 .sketch-arc-tool-prompt {
   position: absolute;
   z-index: 1;
-  top: 72px;
+  top: auto;
   left: 50%;
+  bottom: calc(
+    var(--pb-space-16) + var(--pb-control-height) + var(--pb-space-8)
+  );
   display: grid;
   gap: var(--pb-space-2);
   min-width: 272px;
+  max-width: calc(100% - var(--pb-space-16));
   padding: var(--pb-space-8) var(--pb-space-12);
   border: 1px solid var(--pb-color-accent);
   border-radius: var(--pb-radius-popover);
@@ -205,6 +218,13 @@
   box-shadow: var(--pb-elevation-popover);
   text-align: center;
   transform: translateX(-50%);
+}
+
+.viewport-frame-with-status .sketch-arc-tool-prompt {
+  bottom: calc(
+    var(--pb-space-8) + var(--pb-viewport-status-max-height) +
+      var(--pb-space-8) + var(--pb-control-height) + var(--pb-space-8)
+  );
 }
 
 .sketch-arc-tool-preview,

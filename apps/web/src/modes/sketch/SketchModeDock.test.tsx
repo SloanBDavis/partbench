@@ -5,7 +5,11 @@ import type {
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { SketchModeDock, type SketchModeDockProps } from "./SketchModeDock";
+import {
+  nextEntityDraftAfterApply,
+  SketchModeDock,
+  type SketchModeDockProps
+} from "./SketchModeDock";
 import {
   getRequestedConstraintKind,
   getRequestedDimensionFamily
@@ -13,6 +17,36 @@ import {
 import { canNavigateSketchDockSectionV19 } from "./sketchModeModel";
 
 describe("V18 Sketch mode dock", () => {
+  it("keeps an active basic creation tool ready after Apply", () => {
+    expect(
+      nextEntityDraftAfterApply(
+        {
+          mode: "create",
+          kind: "circle",
+          form: {
+            id: "",
+            x: 1,
+            y: 2,
+            x2: 0,
+            y2: 0,
+            width: 1,
+            height: 1,
+            radius: 4,
+            startAngleDegrees: 0,
+            sweepAngleDegrees: 90,
+            construction: false
+          }
+        },
+        "circle",
+        true
+      )
+    ).toMatchObject({
+      mode: "create",
+      kind: "circle",
+      form: { construction: true }
+    });
+  });
+
   it("renders the supported precision tool set and truthful Finish semantics", () => {
     const markup = renderToStaticMarkup(
       createElement(

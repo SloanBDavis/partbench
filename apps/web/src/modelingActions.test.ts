@@ -174,11 +174,11 @@ describe("modeling action helpers", () => {
       )
     ).toBe(true);
     expect(actionById(actions, "sketch.arc-sweep")).toMatchObject({
-      label: "Arc Sweep",
+      label: "Arc sweep",
       available: true
     });
     expect(actionById(actions, "sketch.point-line-distance")).toMatchObject({
-      label: "Point to Line",
+      label: "Point to line",
       available: false,
       reason: "Choose a point and line."
     });

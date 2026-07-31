@@ -14,17 +14,20 @@ import {
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
+  useMemo,
   useRef,
   useState,
+  type MouseEvent,
   type PointerEvent,
   type ReactNode
 } from "react";
+import { UI_ACTION_AVAILABILITY_MESSAGES } from "../actions/actionRegistry";
 import {
   applyViewportCameraAction,
   VIEWPORT_STANDARD_VIEWS,
   type ViewportStandardViewId
 } from "../viewportCamera";
-import { shouldCancelViewportTransientState } from "../viewportKeyboard";
 import { formatVisibleDiagnosticMessage } from "../viewportVisibleText";
 import {
   createAnimationFrameCoalescer,
@@ -59,7 +62,7 @@ export function ViewportCanvas({
   notifyHoverPointChanges = false,
   onHover,
   onSelect,
-  onCancelTransientState,
+  onUnavailableActivate,
   primitives,
   selectedId,
   sketchOverlay,
@@ -72,7 +75,8 @@ export function ViewportCanvas({
   readonly notifyHoverPointChanges?: boolean;
   readonly onHover?: (pick: ViewportCanvasPick | undefined) => void;
   readonly onSelect: (pick: ViewportCanvasPick) => void;
-  readonly onCancelTransientState?: () => void;
+  /** Surfaces blocked viewport-action reasons (e.g. Fit selected). */
+  readonly onUnavailableActivate?: (reason: string) => void;
   readonly primitives: readonly RenderPrimitive[];
   readonly selectedId?: string;
   readonly sketchOverlay?: (viewport: {
@@ -93,16 +97,16 @@ export function ViewportCanvas({
   const cameraRef = useRef(camera);
   const sizeRef = useRef(size);
   const hoveredIdRef = useRef<string | undefined>(undefined);
-  const stableVisualStatesRef = useRef(visualStates);
-
-  if (
-    JSON.stringify(stableVisualStatesRef.current) !==
-    JSON.stringify(visualStates)
-  ) {
-    stableVisualStatesRef.current = visualStates;
-  }
-
-  const stableVisualStates = stableVisualStatesRef.current;
+  const visualStatesIdentity = useMemo(
+    () => JSON.stringify(visualStates ?? null),
+    [visualStates]
+  );
+  const stableVisualStates = useMemo(
+    () => visualStates,
+    // Identity key avoids re-rendering when content is unchanged.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- visualStatesIdentity
+    [visualStatesIdentity]
+  );
   const hoverFrameRef = useRef<
     AnimationFrameCoalescer<ViewportPoint> | undefined
   >(undefined);
@@ -148,9 +152,11 @@ export function ViewportCanvas({
           (mesh.vertices.length > 0 || (mesh.edgeSegments?.length ?? 0) > 0)
       ))
   );
+  const fitSelectedUnavailableReason = canFitSelected
+    ? undefined
+    : UI_ACTION_AVAILABILITY_MESSAGES.inspectFitSelection;
   const frameClassName = [
     "viewport-frame",
-    contextualSurface ? "viewport-frame-with-contextual" : undefined,
     status ? "viewport-frame-with-status" : undefined
   ]
     .filter(Boolean)
@@ -323,7 +329,6 @@ export function ViewportCanvas({
       return undefined;
     }
 
-    renderCanvasScene(context, { ...renderOptions, meshes: [] });
     let cancelled = false;
     let cancelPaint: (() => void) | undefined;
     void import("./progressiveSketchCanvas").then(
@@ -416,17 +421,18 @@ export function ViewportCanvas({
     );
   }
 
-  useEffect(() => {
-    function handleViewportCommand(event: Event) {
-      const command = (event as CustomEvent<ViewportCommand>).detail;
-      if (command === "fit-all") fitView();
-      else if (command === "fit-selection") fitSelectedView();
-      else setStandardView(command);
-    }
-    window.addEventListener(VIEWPORT_COMMAND_EVENT, handleViewportCommand);
-    return () =>
-      window.removeEventListener(VIEWPORT_COMMAND_EVENT, handleViewportCommand);
+  const onViewportCommand = useEffectEvent((event: Event) => {
+    const command = (event as CustomEvent<ViewportCommand>).detail;
+    if (command === "fit-all") fitView();
+    else if (command === "fit-selection") fitSelectedView();
+    else setStandardView(command);
   });
+
+  useEffect(() => {
+    window.addEventListener(VIEWPORT_COMMAND_EVENT, onViewportCommand);
+    return () =>
+      window.removeEventListener(VIEWPORT_COMMAND_EVENT, onViewportCommand);
+  }, []);
 
   function getEventViewportPoint(
     event: PointerEvent<HTMLCanvasElement>
@@ -465,13 +471,16 @@ export function ViewportCanvas({
               </button>
               <button
                 type="button"
-                onClick={fitSelectedView}
-                disabled={!canFitSelected}
-                title={
-                  canFitSelected
-                    ? "Fit selected object"
-                    : "Fit selected unavailable"
-                }
+                onClick={(event: MouseEvent<HTMLButtonElement>) => {
+                  if (fitSelectedUnavailableReason) {
+                    event.preventDefault();
+                    onUnavailableActivate?.(fitSelectedUnavailableReason);
+                    return;
+                  }
+                  fitSelectedView();
+                }}
+                aria-disabled={fitSelectedUnavailableReason ? true : undefined}
+                title={fitSelectedUnavailableReason ?? "Fit selected object"}
               >
                 Fit selected
               </button>
@@ -522,7 +531,6 @@ export function ViewportCanvas({
           onPointerDown={(event) => {
             setCanvasPointerCapture(event.currentTarget, event.pointerId);
             hoverFrameRef.current?.cancel();
-            publishViewportHover(undefined);
             pointerRef.current = {
               id: event.pointerId,
               x: event.clientX,
@@ -554,6 +562,9 @@ export function ViewportCanvas({
             };
 
             if (Math.abs(delta.x) + Math.abs(delta.y) > 2) {
+              if (!pointer.moved) {
+                publishViewportHover(undefined);
+              }
               pointerRef.current = {
                 ...pointer,
                 x: event.clientX,
@@ -619,7 +630,8 @@ export function ViewportCanvas({
             }
           }}
           onWheel={(event) => {
-            event.preventDefault();
+            // React registers wheel as a passive root listener, so
+            // preventDefault is a no-op here; the frame is non-scrollable.
             const deltaY =
               event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY;
             updateCamera(
@@ -647,12 +659,6 @@ export function ViewportCanvas({
             if (event.key === "0") {
               event.preventDefault();
               resetView();
-              return;
-            }
-
-            if (shouldCancelViewportTransientState(event)) {
-              event.preventDefault();
-              onCancelTransientState?.();
             }
           }}
         />

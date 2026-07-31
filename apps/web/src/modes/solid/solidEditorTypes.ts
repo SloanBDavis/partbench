@@ -90,6 +90,8 @@ export interface SolidChoice<Value> {
   readonly key: string;
   readonly label: string;
   readonly kind: string;
+  readonly targetTopologyAnchorId?: string;
+  readonly targetBodyId?: string;
 }
 
 export interface SweepPathChoiceValue {
@@ -108,6 +110,8 @@ export interface EdgeChoiceValue {
 export interface SolidEditorChoices {
   readonly bodies?: readonly SolidChoice<string>[];
   readonly targetBodies?: readonly SolidChoice<string>[];
+  readonly addTargetBodies?: readonly SolidChoice<string>[];
+  readonly cutTargetBodies?: readonly SolidChoice<string>[];
   readonly seedBodies?: readonly SolidChoice<string>[];
   readonly axes?: readonly SolidChoice<string>[];
   readonly profiles?: readonly SolidChoice<SketchProfileRefV22>[];
@@ -149,6 +153,13 @@ export interface SolidCollectorRequest {
     | "rotationAxis"
     | "mirrorPlane";
   readonly acceptedKinds: readonly string[];
+}
+
+export interface SolidCollectorSelection {
+  readonly key: string;
+  readonly choiceKeys: Partial<
+    Record<SolidCollectorRequest["collector"], string>
+  >;
 }
 
 export function createSolidEditorSubmission(

@@ -7,6 +7,7 @@ export interface SelectionCollectorRowProps<Value> {
   readonly acceptedKinds: readonly string[];
   readonly targets: readonly SelectionCollectorTarget<Value>[];
   readonly collecting: boolean;
+  readonly disabled?: boolean;
   readonly required?: boolean;
   readonly rejectedReason?: string;
   readonly onStartCollecting: () => void;
@@ -20,6 +21,7 @@ export function SelectionCollectorRow<Value>({
   acceptedKinds,
   targets,
   collecting,
+  disabled = false,
   required = false,
   rejectedReason,
   onStartCollecting,
@@ -28,7 +30,7 @@ export function SelectionCollectorRow<Value>({
   onClear
 }: SelectionCollectorRowProps<Value>) {
   return (
-    <fieldset className="pb-selection-collector">
+    <fieldset className="pb-selection-collector" disabled={disabled}>
       <legend>
         {label}
         {required ? <span aria-hidden="true"> *</span> : null}

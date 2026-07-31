@@ -107,6 +107,33 @@ export function documentTreeSelectionKey(
   }
 }
 
+/**
+ * Preferred editing-row key for an active workbench editor. Sketch editor
+ * kinds use `sketch:` keys; all others use `feature:`.
+ */
+export function documentTreeEditingKeyForEditor(editor: {
+  readonly kind: string;
+  readonly sourceId?: string;
+}): string | undefined {
+  if (!editor.sourceId) return undefined;
+  return editor.kind.startsWith("sketch")
+    ? `sketch:${editor.sourceId}`
+    : `feature:${editor.sourceId}`;
+}
+
+/**
+ * Highlight keys when App selects a body that belongs to a feature — include
+ * both so either wiring (feature or body) can drive selection chrome.
+ */
+export function documentTreeKeysForBodySelection(input: {
+  readonly bodyId: string;
+  readonly featureId?: string;
+}): readonly string[] {
+  const keys = [`body:${input.bodyId}`];
+  if (input.featureId) keys.push(`feature:${input.featureId}`);
+  return keys;
+}
+
 export function createDocumentTreeProjection(
   input: CreateDocumentTreeProjectionInput
 ): DocumentTreeProjection {

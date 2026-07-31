@@ -1,6 +1,7 @@
 .pb-sketch-dock {
   display: grid;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   color: var(--pb-color-text);
   background: var(--pb-color-surface);
@@ -79,9 +80,11 @@
 }
 
 .pb-sketch-dock__scroll {
+  grid-row: 4;
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .pb-sketch-stack {
@@ -100,7 +103,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--pb-space-8);
-  margin-block-end: var(--pb-space-10);
+  margin-block-end: var(--pb-space-8);
 }
 
 .pb-sketch-section__heading h3 {
@@ -148,17 +151,17 @@
   padding: var(--pb-space-8);
   border-inline-start: 3px solid var(--pb-color-accent);
   color: var(--pb-color-text);
-  background: #eef4fc;
+  background: var(--pb-color-accent-surface);
 }
 
 .pb-curve-edit {
   display: grid;
   height: 100%;
   min-height: 0;
-  gap: var(--pb-space-10);
+  gap: var(--pb-space-8);
   grid-template-rows: minmax(0, 1fr) auto;
   padding: 0;
-  background: #f7f9fc;
+  background: var(--pb-color-surface);
 }
 
 .pb-region-select {
@@ -167,17 +170,18 @@
   min-height: 0;
   grid-template-rows: minmax(0, 1fr) auto;
   padding: 0;
-  background: #f7f9fc;
+  background: var(--pb-color-surface);
 }
 
 .pb-region-select__scroll {
   display: grid;
   min-height: 0;
   align-content: start;
-  gap: var(--pb-space-10);
+  gap: var(--pb-space-8);
   overflow: auto;
   padding: var(--pb-space-12);
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .pb-region-select__guidance,
@@ -306,10 +310,11 @@
   display: grid;
   min-height: 0;
   align-content: start;
-  gap: var(--pb-space-10);
+  gap: var(--pb-space-8);
   overflow: auto;
   padding: var(--pb-space-12);
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .pb-curve-edit__target-window {
@@ -348,7 +353,7 @@
 .pb-curve-edit__collector .pb-button[aria-pressed="true"] {
   border-color: var(--pb-color-accent);
   color: var(--pb-color-accent);
-  background: #eef4fc;
+  background: var(--pb-color-accent-surface);
 }
 
 .pb-curve-edit__choices {
@@ -385,7 +390,7 @@
 .pb-curve-edit__choice-row[aria-pressed="true"] {
   border-color: var(--pb-color-accent);
   box-shadow: inset 3px 0 0 var(--pb-color-accent);
-  background: #eef4fc;
+  background: var(--pb-color-accent-surface);
 }
 
 .pb-curve-edit__choice-row small {
@@ -426,20 +431,20 @@
 .pb-curve-edit__readiness {
   display: grid;
   gap: var(--pb-space-8);
-  padding: var(--pb-space-10);
+  padding: var(--pb-space-12);
   border: 1px solid var(--pb-color-border);
   border-radius: var(--pb-radius-control);
   background: var(--pb-color-surface-elevated);
 }
 
 .pb-curve-edit__readiness--ready {
-  border-color: #8dc7a5;
-  background: #edf8f1;
+  border-color: var(--pb-color-success);
+  background: var(--pb-color-success-surface);
 }
 
 .pb-curve-edit__readiness--blocked {
-  border-color: #d6b26e;
-  background: #fff9eb;
+  border-color: var(--pb-color-warning);
+  background: var(--pb-color-warning-surface);
 }
 
 .pb-curve-edit__readiness ul,
@@ -474,9 +479,9 @@
 
 .pb-curve-edit__warning {
   padding: var(--pb-space-6);
-  border-inline-start: 3px solid #a66a00;
-  color: #684400 !important;
-  background: #fff3d5;
+  border-inline-start: 3px solid var(--pb-color-warning);
+  color: var(--pb-color-warning) !important;
+  background: var(--pb-color-warning-surface);
 }
 
 .pb-curve-edit details {
@@ -492,8 +497,7 @@
   gap: var(--pb-space-6);
   padding: var(--pb-space-8) var(--pb-space-12);
   border-block-start: 1px solid var(--pb-color-border);
-  box-shadow: 0 -6px 12px rgb(10 20 35 / 8%);
-  background: #f7f9fc;
+  background: var(--pb-color-surface);
 }
 
 .pb-curve-edit-navigation-guard {
@@ -510,8 +514,8 @@
   width: min(420px, 100%);
   padding: var(--pb-space-16);
   border: 1px solid var(--pb-color-border);
-  border-radius: var(--pb-radius-panel);
-  box-shadow: var(--pb-shadow-panel);
+  border-radius: var(--pb-radius-popover);
+  box-shadow: var(--pb-elevation-popover);
   background: var(--pb-color-surface);
 }
 
@@ -529,8 +533,7 @@
 .pb-sketch-list,
 .pb-sketch-records,
 .pb-sketch-form,
-.pb-sketch-draft,
-.pb-sketch-inference {
+.pb-sketch-draft {
   display: grid;
   gap: var(--pb-space-8);
 }
@@ -555,7 +558,7 @@
 .pb-sketch-list button[aria-selected="true"] {
   border-color: var(--pb-color-accent);
   box-shadow: inset 3px 0 0 var(--pb-color-accent);
-  background: #eef4fc;
+  background: var(--pb-color-accent-surface);
 }
 
 .pb-sketch-list button span,
@@ -601,10 +604,18 @@
 }
 
 .pb-sketch-draft {
-  padding: var(--pb-space-10);
-  border: 1px solid #b7c9e5;
+  padding: var(--pb-space-12);
+  border: 1px solid var(--pb-color-accent-border);
   border-radius: var(--pb-radius-control);
-  background: #f5f8fc;
+  background: var(--pb-color-surface);
+}
+
+.pb-sketch-draft > .pb-sketch-actions {
+  position: sticky;
+  z-index: 1;
+  inset-block-end: 0;
+  padding-block: var(--pb-space-8);
+  background: var(--pb-color-surface);
 }
 
 .pb-sketch-facts {
@@ -647,7 +658,7 @@
 }
 
 .pb-sketch-record-actions button {
-  min-height: 26px;
+  min-height: var(--pb-control-height-dense);
   padding-inline: var(--pb-space-6);
   border: 0;
   color: var(--pb-color-accent);
@@ -657,32 +668,6 @@
   font-weight: 650;
 }
 
-.pb-sketch-inference {
-  margin-block-start: var(--pb-space-10);
-}
-
-.pb-sketch-inference > p {
-  margin: 0;
-  color: var(--pb-color-text-muted);
-  font-size: 11px;
-  font-weight: 650;
-}
-
-.pb-sketch-inference button {
-  display: grid;
-  padding: var(--pb-space-8);
-  border: 1px dashed var(--pb-color-border-strong);
-  border-radius: var(--pb-radius-control);
-  background: var(--pb-color-background);
-  cursor: pointer;
-  text-align: left;
-}
-
-.pb-sketch-inference span {
-  color: var(--pb-color-text-muted);
-  font-size: 11px;
-}
-
 .pb-sketch-health {
   padding: 2px var(--pb-space-6);
   border-radius: 999px;
@@ -690,18 +675,18 @@
 }
 
 .pb-sketch-health--healthy {
-  color: #176b3a;
-  background: #e6f5ec;
+  color: var(--pb-color-success);
+  background: var(--pb-color-success-surface);
 }
 
 .pb-sketch-health--warning {
-  color: #7a5512;
-  background: #fbf1d9;
+  color: var(--pb-color-warning);
+  background: var(--pb-color-warning-surface);
 }
 
 .pb-sketch-health--error {
   color: var(--pb-color-danger);
-  background: #fae9e9;
+  background: var(--pb-color-danger-surface);
 }
 
 .pb-sketch-diagnostics summary {
@@ -717,6 +702,9 @@
 }
 
 .pb-sketch-dock__footer {
+  display: grid;
+  grid-row: 5;
+  align-content: start;
   border-block-start: 1px solid var(--pb-color-border);
   background: var(--pb-color-surface-elevated);
 }

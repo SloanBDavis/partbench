@@ -26,7 +26,9 @@ import {
   type StructuredDiagnosticInput
 } from "../../diagnostics/userDiagnostic";
 import { LiveRegion } from "../../ui/LiveRegion";
+import { NumericInput } from "../../ui/NumericInput";
 import type { SketchCurveEditSessionControl } from "./SketchCurveEditPanel";
+import { useEscapeEditorContributor } from "../../actions/useEscapeEditorContributor";
 import {
   SKETCH_REGION_CONSUMER_OPTIONS,
   createSketchEntitySemanticNames,
@@ -452,35 +454,24 @@ export function SketchRegionSelectionPanel(
   useEffect(() => {
     onSessionControlChange?.({
       apply: (options) => applyRef.current(options),
-      focus: () => focusRegionInitialControl(formRef.current)
+      focus: () => focusRegionInitialControl(formRef.current),
+      canApply
     });
     return () => onSessionControlChange?.(undefined);
-  }, [onSessionControlChange]);
+  }, [canApply, onSessionControlChange]);
 
   useEffect(() => {
     focusRegionInitialControl(formRef.current);
   }, []);
 
-  useEffect(() => {
-    if (keyboardSuspended) return undefined;
-    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (
-        (event.ctrlKey || event.metaKey) &&
-        event.key === "Enter" &&
-        canApply
-      ) {
-        event.preventDefault();
-        void applyRef.current();
-        return;
-      }
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      if (dirty && onRequestEscape) onRequestEscape(true);
-      else onCancel(true);
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [canApply, dirty, keyboardSuspended, onCancel, onRequestEscape]);
+  useEscapeEditorContributor({
+    id: "sketch-region-selection",
+    suspended: keyboardSuspended,
+    state: dirty ? "dirty" : "clean",
+    onCancelClean: () => onCancel(true),
+    onRequestDirtyGuard: () =>
+      onRequestEscape ? onRequestEscape(true) : onCancel(true)
+  });
 
   useEffect(
     () => () => {
@@ -579,17 +570,14 @@ export function SketchRegionSelectionPanel(
           <>
             <label className="pb-sketch-field">
               <span>Depth</span>
-              <input
+              <NumericInput
                 className="pb-field"
                 name="region-extrude-depth"
-                type="number"
                 min="0.000001"
                 step="0.1"
                 value={depth}
                 disabled={disabled}
-                onChange={(event) =>
-                  setDepth(event.currentTarget.valueAsNumber)
-                }
+                onValueChange={setDepth}
               />
             </label>
             <label className="pb-sketch-field">
@@ -635,18 +623,15 @@ export function SketchRegionSelectionPanel(
             </label>
             <label className="pb-sketch-field">
               <span>Angle</span>
-              <input
+              <NumericInput
                 className="pb-field"
                 name="region-revolve-angle"
-                type="number"
                 min="0.000001"
                 max="360"
                 step="1"
                 value={angleDegrees}
                 disabled={disabled}
-                onChange={(event) =>
-                  setAngleDegrees(event.currentTarget.valueAsNumber)
-                }
+                onValueChange={setAngleDegrees}
               />
             </label>
           </>

@@ -40,9 +40,16 @@ export function getHistoryKeyboardCommand(
     event.defaultPrevented ||
     event.altKey ||
     (!event.ctrlKey && !event.metaKey) ||
-    event.key.toLowerCase() !== "z" ||
     isEditableKeyboardTarget(event.target)
   ) {
+    return undefined;
+  }
+
+  const key = event.key.toLowerCase();
+  if (key === "y" && !event.shiftKey) {
+    return "redo";
+  }
+  if (key !== "z") {
     return undefined;
   }
   return event.shiftKey ? "redo" : "undo";

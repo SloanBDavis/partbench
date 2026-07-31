@@ -105,7 +105,9 @@ export function ModeRibbon({
     const current = rootRef.current?.querySelector<HTMLElement>(
       `[data-ribbon-roving-id="${escapeSelector(effectiveRovingId)}"]`
     );
-    if (!current || current.hidden) setRovingId(`mode-${mode}`);
+    if (!current || !isRibbonTargetVisible(current)) {
+      setRovingId(`mode-${mode}`);
+    }
   }, [effectiveRovingId, mode, visibleGroupIds]);
 
   const overflowGroups = groups.filter(
@@ -116,9 +118,9 @@ export function ModeRibbon({
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     const elements = [
       ...(groupsRef.current?.querySelectorAll<HTMLElement>(
-        "[data-ribbon-roving-id]:not([hidden]):not([disabled])"
+        "[data-ribbon-roving-id]:not([disabled])"
       ) ?? [])
-    ];
+    ].filter(isRibbonTargetVisible);
     if (elements.length === 0) return;
     event.preventDefault();
     const currentIndex = Math.max(
@@ -340,7 +342,11 @@ function RibbonActionButton({
       data-availability={action.availability.status}
       data-action-id={action.definition.id}
       aria-keyshortcuts={formatAriaKeyShortcuts(action.definition.shortcut)}
-      title={reason ?? action.definition.shortcut ?? action.definition.label}
+      title={composeActionTooltip(
+        action.definition.label,
+        action.definition.shortcut,
+        reason
+      )}
       tabIndex={menuItem ? undefined : tabIndex}
       data-ribbon-roving-id={rovingId}
       onFocus={onFocus}
@@ -357,6 +363,23 @@ function RibbonActionButton({
 
 function format(mode: WorkbenchMode): string {
   return mode.charAt(0).toUpperCase() + mode.slice(1);
+}
+
+export function composeActionTooltip(
+  label: string,
+  shortcut: string | undefined,
+  reason: string | undefined
+): string {
+  const parts = [label];
+  if (shortcut) parts.push(shortcut);
+  if (reason) parts.push(reason);
+  return parts.join(" — ");
+}
+
+/** Visible to pointer/keyboard: not `hidden`, and not CSS `display: none`. */
+export function isRibbonTargetVisible(element: HTMLElement): boolean {
+  if (element.hidden || element.closest("[hidden]")) return false;
+  return element.getClientRects().length > 0;
 }
 
 function formatAriaKeyShortcuts(shortcut: string | undefined) {

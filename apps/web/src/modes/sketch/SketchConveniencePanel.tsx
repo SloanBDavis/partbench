@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { Vec2 } from "@web-cad/cad-protocol";
 import type { SketchCurveEditSessionControl } from "./SketchCurveEditPanel";
-import { handleSketchCurveEditWindowShortcut } from "./sketchCurveEditModel";
+import { useEscapeEditorContributor } from "../../actions/useEscapeEditorContributor";
+import { NumericInput } from "../../ui/NumericInput";
 import {
   buildSketchConvenienceOp,
   createSketchConvenienceDraft,
@@ -53,6 +54,10 @@ export function SketchConveniencePanel(props: SketchConveniencePanelProps) {
   const operation = buildSketchConvenienceOp(sketchId, draft);
   const canApply = operation !== undefined && !disabled && !applying;
   const dirty = isSketchConvenienceDraftDirty(draft, initialDraft);
+  const changeDraft = (nextDraft: SketchConvenienceDraft) => {
+    setDraft(nextDraft);
+    onDirtyChange?.(isSketchConvenienceDraftDirty(nextDraft, initialDraft));
+  };
 
   async function apply(
     options: { readonly restoreFocusOnSuccess?: boolean } = {}
@@ -78,35 +83,24 @@ export function SketchConveniencePanel(props: SketchConveniencePanelProps) {
       ?.focus();
   }, []);
   useEffect(() => {
-    onDirtyChange?.(dirty);
-  }, [dirty, onDirtyChange]);
-  useEffect(() => {
     onSessionControlChange?.({
       apply: (options) => applyRef.current(options),
       focus: () =>
         formRef.current
           ?.querySelector<HTMLElement>("[data-drawer-initial-focus]")
-          ?.focus()
+          ?.focus(),
+      canApply
     });
     return () => onSessionControlChange?.(undefined);
-  }, [onSessionControlChange]);
-  useEffect(() => {
-    if (keyboardSuspended) return undefined;
-    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      handleSketchCurveEditWindowShortcut({
-        event,
-        suspended: keyboardSuspended,
-        dirty,
-        canApply,
-        onApply: () => void applyRef.current(),
-        onCancel: () => onCancel(true),
-        onDirtyEscape: () =>
-          onRequestEscape ? onRequestEscape(true) : onCancel()
-      });
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [canApply, dirty, keyboardSuspended, onCancel, onRequestEscape]);
+  }, [canApply, onSessionControlChange]);
+  useEscapeEditorContributor({
+    id: `sketch-convenience:${kind}`,
+    suspended: keyboardSuspended,
+    state: dirty ? "dirty" : "clean",
+    onCancelClean: () => onCancel(true),
+    onRequestDirtyGuard: () =>
+      onRequestEscape ? onRequestEscape(true) : onCancel()
+  });
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -118,6 +112,7 @@ export function SketchConveniencePanel(props: SketchConveniencePanelProps) {
       ref={formRef}
       className="pb-sketch-section pb-curve-edit"
       aria-label={`Create ${label}`}
+      data-dirty={dirty}
       onSubmit={submit}
     >
       <div className="pb-curve-edit__scroll">
@@ -133,12 +128,16 @@ export function SketchConveniencePanel(props: SketchConveniencePanelProps) {
           and the documented minimal constraints in one transaction.
         </p>
         {kind === "slot" ? (
-          <SlotFields draft={draft} disabled={disabled} onChange={setDraft} />
+          <SlotFields
+            draft={draft}
+            disabled={disabled}
+            onChange={changeDraft}
+          />
         ) : (
           <RoundedRectangleFields
             draft={draft}
             disabled={disabled}
-            onChange={setDraft}
+            onChange={changeDraft}
           />
         )}
         {validation ? (
@@ -342,17 +341,13 @@ function NumberField({
   return (
     <label className="pb-sketch-field">
       <span>{label}</span>
-      <input
+      <NumericInput
         className="pb-field"
-        type="number"
         step="any"
         value={value}
         disabled={disabled}
         data-drawer-initial-focus={initialFocus ? "" : undefined}
-        onChange={(event) => {
-          const value = event.currentTarget.valueAsNumber;
-          if (Number.isFinite(value)) onChange(value);
-        }}
+        onValueChange={onChange}
       />
     </label>
   );

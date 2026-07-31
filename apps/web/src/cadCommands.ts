@@ -253,6 +253,8 @@ export interface FeatureHoleForm {
   readonly bodyId: string;
   readonly targetBodyId: string;
   readonly targetTopologyAnchorId?: string;
+  readonly sketchId?: string;
+  readonly circleEntityId?: string;
   readonly name: string;
   readonly depthMode: FeatureHoleDepthMode;
   readonly depth: number;

@@ -322,7 +322,7 @@ function createNumericalSketchEvaluationIssues(
       }
     ];
   }
-  if (result.status === "failed" || result.status === "not-run") {
+  if (result.status === "failed") {
     return [
       {
         code: "INVALID_VALUE",

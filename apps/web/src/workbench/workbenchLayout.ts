@@ -23,6 +23,10 @@ export interface WorkbenchLayoutResolution {
   readonly left: DockLayoutState;
   readonly right: DockLayoutState;
   readonly activeDrawer?: DockSide;
+  /** True when activeEditor forces the right drawer open (toggle cannot close it). */
+  readonly rightDrawerForcedByEditor: boolean;
+  /** True when activeEditor blocks opening the left drawer at narrow widths. */
+  readonly leftDrawerBlockedByEditor: boolean;
 }
 
 export function resolveWorkbenchLayout({
@@ -60,14 +64,17 @@ export function resolveWorkbenchLayout({
         placement: "inline",
         visible: showRight,
         hiddenForViewport: !rightDockCollapsed && !showRight
-      }
+      },
+      rightDrawerForcedByEditor: false,
+      leftDrawerBlockedByEditor: false
     };
   }
 
   if (viewportWidth >= WORKBENCH_LAYOUT.rightDrawerBreakpoint) {
     const showLeft = !leftDockCollapsed;
-    const showRight =
-      activeEditor || (openDrawer === "right" && !rightDockCollapsed);
+    // Drawer visibility is driven by openDrawer / activeEditor only — never by
+    // the persisted collapse preference (docs/v18.md breakpoint rule).
+    const showRight = activeEditor || openDrawer === "right";
     return {
       left: {
         placement: "inline",
@@ -79,14 +86,16 @@ export function resolveWorkbenchLayout({
         visible: showRight,
         hiddenForViewport: false
       },
-      activeDrawer: showRight ? "right" : undefined
+      activeDrawer: showRight ? "right" : undefined,
+      rightDrawerForcedByEditor: activeEditor,
+      leftDrawerBlockedByEditor: false
     };
   }
 
   const requestedDrawer =
-    openDrawer === "left" && !leftDockCollapsed
+    openDrawer === "left"
       ? "left"
-      : openDrawer === "right" && (activeEditor || !rightDockCollapsed)
+      : openDrawer === "right"
         ? "right"
         : undefined;
   const activeDrawer = activeEditor ? "right" : requestedDrawer;
@@ -102,7 +111,9 @@ export function resolveWorkbenchLayout({
       visible: activeDrawer === "right",
       hiddenForViewport: false
     },
-    activeDrawer
+    activeDrawer,
+    rightDrawerForcedByEditor: activeEditor,
+    leftDrawerBlockedByEditor: activeEditor
   };
 }
 

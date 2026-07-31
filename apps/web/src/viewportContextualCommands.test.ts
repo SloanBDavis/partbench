@@ -118,6 +118,7 @@ describe("viewport contextual commands", () => {
     expect(surface.actions.map((action) => action.id)).toEqual([
       "sketch.createOnFace",
       "reference.name",
+      "feature.shell",
       "feature.measureReference",
       "feature.selectReference"
     ]);
@@ -192,6 +193,7 @@ describe("viewport contextual commands", () => {
     expect(surface.actions.map((action) => action.id)).toEqual([
       "sketch.createSideHole",
       "reference.name",
+      "feature.shell",
       "feature.measureReference",
       "feature.selectReference"
     ]);
@@ -463,10 +465,12 @@ describe("viewport contextual commands", () => {
 
     expect(surface.actions.map((action) => action.id)).toEqual([
       "sketch.createOnFace",
-      "reference.name"
+      "reference.name",
+      "feature.shell"
     ]);
     expect(surface.actions.every((action) => action.disabled)).toBe(true);
     expect(surface.actions.map((action) => action.reason)).toEqual([
+      "Selected body already has a downstream result.",
       "Selected body already has a downstream result.",
       "Selected body already has a downstream result."
     ]);
@@ -673,6 +677,7 @@ describe("viewport contextual commands", () => {
       "sketch.createOnFace",
       "reference.name",
       "reference.repairName",
+      "feature.shell",
       "feature.measureReference",
       "feature.selectReference"
     ]);

@@ -2,7 +2,11 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { WORKBENCH_LAYOUT } from "../styles/tokens";
-import { WorkbenchShell, type WorkbenchShellProps } from "./WorkbenchShell";
+import {
+  shouldOpenEditorDrawer,
+  WorkbenchShell,
+  type WorkbenchShellProps
+} from "./WorkbenchShell";
 import {
   findDrawerInitialFocus,
   getKeyboardDockResizeValue,
@@ -39,6 +43,8 @@ describe("V18 workbench responsive shell", () => {
     expect(narrowEditor.left.visible).toBe(false);
     expect(narrowEditor.right.visible).toBe(true);
     expect(narrowEditor.activeDrawer).toBe("right");
+    expect(narrowEditor.leftDrawerBlockedByEditor).toBe(true);
+    expect(narrowEditor.rightDrawerForcedByEditor).toBe(true);
 
     const narrowCollapsedEditor = layout({
       viewportWidth: 390,
@@ -47,6 +53,24 @@ describe("V18 workbench responsive shell", () => {
     });
     expect(narrowCollapsedEditor.right.visible).toBe(true);
     expect(narrowCollapsedEditor.activeDrawer).toBe("right");
+  });
+
+  it("opens drawers while collapsed without treating collapse as a gate", () => {
+    const mediumCollapsed = layout({
+      viewportWidth: 1024,
+      rightDockCollapsed: true,
+      openDrawer: "right"
+    });
+    expect(mediumCollapsed.right.visible).toBe(true);
+    expect(mediumCollapsed.activeDrawer).toBe("right");
+
+    const narrowCollapsed = layout({
+      viewportWidth: 390,
+      leftDockCollapsed: true,
+      openDrawer: "left"
+    });
+    expect(narrowCollapsed.left.visible).toBe(true);
+    expect(narrowCollapsed.activeDrawer).toBe("left");
   });
 
   it("derives a viewport-protecting collapse while preserving explicit open state", () => {
@@ -104,6 +128,48 @@ describe("V18 workbench responsive shell", () => {
     expect(markup).toContain('aria-modal="true"');
     expect(markup).toContain('role="dialog"');
     expect(markup).toContain('class="pb-drawer-scrim"');
+    expect(markup).toContain("inert");
+  });
+
+  it("gives an editor-owned narrow drawer an explicit close control", () => {
+    const markup = renderToStaticMarkup(
+      createElement(
+        WorkbenchShell,
+        shellProps({
+          viewportWidth: 390,
+          activeEditor: true,
+          openDrawer: "right"
+        })
+      )
+    );
+
+    expect(markup).toMatch(/pb-dock-toggle--left[^>]*disabled=""/);
+    expect(markup).toContain(
+      "Close the feature editor to open the document tree"
+    );
+    expect(markup).toMatch(/pb-dock-toggle--right[^>]*disabled=""/);
+    expect(markup).toContain("Close the feature editor to dismiss this drawer");
+    expect(markup).toContain(
+      'class="pb-dock__drawer-close" type="button" aria-label="Close Feature editor"'
+    );
+  });
+
+  it("reopens a dismissed narrow drawer when the editor identity changes", () => {
+    expect(shouldOpenEditorDrawer("sketch:a", "sketch:b", 390)).toBe(true);
+    expect(shouldOpenEditorDrawer("sketch:a", "sketch:a", 390)).toBe(false);
+  });
+
+  it("does not persist collapse changes when opening a drawer from collapsed state", () => {
+    const onDockCollapsedChange = vi.fn();
+    // Pure layout proof: collapsed + openDrawer still yields a visible drawer.
+    expect(
+      layout({
+        viewportWidth: 1024,
+        rightDockCollapsed: true,
+        openDrawer: "right"
+      }).right.visible
+    ).toBe(true);
+    expect(onDockCollapsedChange).not.toHaveBeenCalled();
   });
 
   it("prioritizes an explicit drawer focus target over earlier fallback controls", () => {

@@ -80,6 +80,20 @@ describe("viewport keyboard ergonomics", () => {
     ).toBe("redo");
     expect(
       getHistoryKeyboardCommand({
+        key: "y",
+        ctrlKey: true,
+        target: createTarget("div")
+      })
+    ).toBe("redo");
+    expect(
+      getHistoryKeyboardCommand({
+        key: "y",
+        metaKey: true,
+        target: createTarget("div")
+      })
+    ).toBe("redo");
+    expect(
+      getHistoryKeyboardCommand({
         key: "z",
         ctrlKey: true,
         target: createTarget("input")
