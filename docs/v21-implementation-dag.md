@@ -683,6 +683,15 @@ Gate H passes only when the production browser workflow and connected MCP path
 report the same readiness, all UI/accessibility contracts pass, and the V20
 security/approval commands are unchanged and green.
 
+Implementation record:
+
+- H1-H4 completed at `e453329` with the Project/Export all/selected/ordered
+  subset workflow, progress/Cancel/Retry and accessibility behavior, connected
+  bounded exact evidence, read-only MCP plan parity, approved-agent staleness,
+  and unchanged V20 approval and relay security.
+- Gate H passed with the committed
+  [V21 Gate H product and connected-agent evidence](./v21-h-gate.md).
+
 ## Slice I — Release Proof and Adversarial Review
 
 Goal: demonstrate the release claim rather than infer it from unit coverage.
