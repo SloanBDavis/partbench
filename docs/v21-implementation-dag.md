@@ -1,6 +1,6 @@
 # V21 Implementation DAG: Production Single-Part Reliability and Exact Interchange
 
-Status: **Approved for implementation (2026-08-01). Slices A-C are complete; Slice D is next.**
+Status: **Approved for implementation (2026-08-01). Slices A-D are complete; Slice E is next.**
 
 This document turns `docs/v21.md` into a reviewable implementation sequence.
 The release plan is authoritative for scope and semantics. This DAG is
@@ -404,6 +404,15 @@ Gate D passes only when all body matrix fixtures produce internally consistent
 artifacts, all faults are atomic and leak-free, and checkpoint compatibility is
 byte/shape correct.
 
+Implementation record:
+
+- D1-D5 complete at `291ce15653ecf252b6d9a46a4e3222f15d85ff54`
+  with internal identity-bound artifact contracts, same-shape OCCT generation,
+  transferable/hash/limit enforcement, shared checkpoint generation, and
+  atomic cleanup across every injected fault stage.
+- Gate D passed with the committed
+  [V21 Gate D identity-bound exact artifact evidence](./v21-d-gate.md).
+
 ## Slice E — Named AP242 Writer and Browser Execution
 
 Goal: write exact STEP from artifacts without rebuilding feature recipes.
@@ -716,8 +725,8 @@ before explicit plan approval.
 | --- | --- | --- |
 | A | Complete | Baseline, named AP242/unit real-browser capability, exhaustive fixture matrix |
 | B | Complete | Protocol/core plan, validation, health/readiness, adapter tests |
-| C | Not started | Exhaustive current exact resolver and identity/limit tests |
-| D | Not started | Same-shape artifact, checkpoint reuse, real OCCT/fault/cleanup proof |
+| C | Complete | Exhaustive current exact resolver and identity/limit tests |
+| D | Complete | Same-shape artifact, checkpoint reuse, real OCCT/fault/cleanup proof |
 | E | Not started | Artifact-only named/unit STEP, multi-body/stale/cancel, no production base64/recipe path |
 | F | Not started | Cross-consumer exact-result parity table |
 | G | Not started | Rebuild/history/storage/concurrency compatibility |
