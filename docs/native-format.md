@@ -1875,6 +1875,19 @@ An approved agent mutation is an ordinary CADOps transaction using the existing
 actor/audit fields. It follows the current lowest-sufficient-schema rules
 through `web-cad.project.v22`; `.wcad` remains `partbench.wcad.v2`.
 
+## Product V21 Exact Interchange Storage Decision
+
+Product V21 adds no authoritative saved shape. Current exact-body artifacts,
+their B-rep bytes and hashes, export plans, progress, cancellation generations,
+and STEP output bytes are derived session state. JSON and canonical CBOR store
+none of them; `.wcad` remains `partbench.wcad.v2` and preserves only the
+existing explicit topology checkpoint entries.
+
+Opening JSON or `.wcad`, replacing a project, editing, undoing, or redoing
+invalidates the affected artifacts. They rebuild from current authoritative
+source before exact consumers or STEP export run. Product V21 therefore adds no
+schema trigger: the lowest sufficient project schema remains V16 through V22.
+
 ## V8 Native Package Direction
 
 The completed V8 plan chose the first native package direction that was

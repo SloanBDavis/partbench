@@ -5,7 +5,7 @@ current app has a typed CADOps command layer, in-memory document model,
 viewport, project JSON / `.wcad` serialization, structured agent/MCP adapters,
 and an isolated OCCT/WASM exact-geometry and derived-mesh path.
 
-Completed releases through **V20** cover:
+Completed releases through **V21** cover:
 
 - source-of-truth sketches, parameters with arithmetic expressions, and the
   supported V11 sketch solver
@@ -29,6 +29,9 @@ Completed releases through **V20** cover:
 - an authenticated loopback launcher that connects MCP stdio tools to the
   project open in one browser tab, with current semantic selection and exactly
   Manual approval or session-only Approve everything
+- one identity-bound exact-body artifact pipeline for every completed body row,
+  with selected/ordered/all-body named AP242 STEP export and unit-preserving
+  browser round trips
 
 OCCT-derived meshes are display data only. The source of truth remains the typed
 document and transaction history in `cad-core`.
@@ -154,6 +157,8 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
 - `docs/v19.md` - completed V19 production sketching and multi-region profiles
   release record.
 - `docs/v20.md` - completed V20 connected local agent workflow release record.
+- `docs/v21.md` - completed V21 production single-part reliability and exact
+  interchange release record.
 - `docs/native-format.md` - current JSON format and native project package
   direction.
 - `docs/occt-wasm-size.md` - OCCT/WASM size findings and recommendations.
@@ -209,6 +214,9 @@ protocol/package migration.
 - Topology-backed commandability is limited to the verified support matrices in
   the V12–V19 release records. Unsupported or low-confidence topology remains
   structured diagnostic output rather than silent retargeting.
+- STEP interchange preserves exact solids, document units, body names, and
+  explicit export order, but not editable Partbench history, sketches, body
+  IDs, or stable topology IDs.
 - Parameter expressions support pure degree-first trigonometry, comparisons,
   ternaries, and `if`; scripting and general boolean operators are deferred.
   Multi-line curved sweeps, free non-parallel lofts, assemblies, production WebGPU, hosted

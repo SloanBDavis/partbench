@@ -7,6 +7,12 @@ The goal is to make the future geometry worker contract explicit without moving
 document authority out of `cad-core` and without making normal app startup load
 Open CASCADE.
 
+V21 uses this boundary to build one identity-bound exact artifact per planned
+body. A successful artifact carries transferable B-rep bytes plus the matching
+exact metadata, topology checkpoint, signatures, body/project identity, and
+hash. The named AP242 writer consumes only validated artifacts; compatibility
+recipe inputs remain readable but are not used by the production browser path.
+
 ## Boundary
 
 Input:

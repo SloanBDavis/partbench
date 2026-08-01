@@ -17,6 +17,11 @@ contracts and an async executor helper so the browser can use its current
 `CadEngine` and shared `AsyncCadCommandExecutor`; document authority does not
 move into this package.
 
+V21 projects cad-core's exact-export plan and bounded current artifact evidence
+through the existing read/query path. It reports readiness, diagnostics, units,
+names, order, and identities only; it never returns B-rep/STEP bytes, file
+handles, paths, renderer-private IDs, or download authority.
+
 ## Boundary
 
 External callers submit mutations with a `CadOpsAgentRequest`:

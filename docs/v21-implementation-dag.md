@@ -1,6 +1,6 @@
 # V21 Implementation DAG: Production Single-Part Reliability and Exact Interchange
 
-Status: **Approved for implementation (2026-08-01). Slices A-G are complete; Slice H is next.**
+Status: **Complete (2026-08-01).**
 
 This document turns `docs/v21.md` into a reviewable implementation sequence.
 The release plan is authoritative for scope and semantics. This DAG is
@@ -757,6 +757,15 @@ validation, compatibility, adversarial review, documentation, and non-goal
 audits are green. No deferred implementation item may remain behind a ready UI
 claim.
 
+Implementation record:
+
+- I1-I5 completed with the committed exact-interchange corpus and eight named
+  V21 commands, production-browser OCCT round trips, resource/performance and
+  inherited bundle gates, adversarial fault coverage, full V17/V19/V20
+  compatibility, repository validation, and documentation reconciliation.
+- Gate I passed with the committed
+  [V21 Gate I release evidence](./v21-i-gate.md).
+
 ## Gate Ledger
 
 Update this table during implementation. “Not started” is the only valid state
@@ -771,8 +780,8 @@ before explicit plan approval.
 | E | Complete | Artifact-only named/unit STEP, multi-body/stale/cancel, no production base64/recipe path |
 | F | Complete | Cross-consumer exact-result parity table |
 | G | Complete | Rebuild/history/storage/concurrency compatibility |
-| H | Not started | Accessible browser workflow and V20-safe connected agent readiness |
-| I | Not started | Corpus, named commands, performance/bundle, adversarial review, full validation/docs |
+| H | Complete | Accessible browser workflow and V20-safe connected agent readiness |
+| I | Complete | Corpus, named commands, performance/bundle, adversarial review, full validation/docs |
 
 ## Review Checklist
 
@@ -792,4 +801,4 @@ Before accepting any gate, reviewers answer yes to every applicable question:
 - Did the change delete superseded duplication where safe?
 - Is any V21 non-goal partially visible?
 
-End of approved V21 implementation DAG.
+End of completed V21 implementation DAG.

@@ -959,6 +959,14 @@ package is an authenticated loopback launcher/relay, operates
 on the browser's current `CadEngine`, and exposes exactly Manual approval and
 Approve everything as session-only human choices. V20 adds no CAD feature or
 project-format change.
+V21 is complete. Its binding records are `docs/v21.md` and
+`docs/v21-implementation-dag.md`: cad-core plans eligible bodies, one app-owned
+resolver rebuilds their current exact shapes, and the existing worker/kernel/
+OCCT boundary derives identity-bound session artifacts for display evidence,
+topology, metadata, checkpoints, and named AP242 STEP. Browser code alone owns
+file bytes and download; agent/MCP surfaces expose bounded readiness metadata.
+V21 adds no modeling row, authoritative state, schema, package version, cache,
+workspace package, or production dependency.
 
 The first implementation should not start with a full CAD UI. It should start with the command engine, WASM kernel bridge, and renderer skeleton.
 

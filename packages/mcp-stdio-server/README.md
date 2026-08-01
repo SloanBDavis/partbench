@@ -97,3 +97,7 @@ Tool schemas and semantics are owned by `@web-cad/mcp-adapter`; CADOps query and
 mutation semantics are owned by the agent adapter and `cad-core`. This package
 only preserves JSON-RPC request IDs, stdio framing, fixed-bundle serving, and
 authenticated request/response relay state.
+
+V21 readiness metadata traverses that same authenticated relay, but exact
+artifact and STEP bytes stay in the browser. Planning is read-only, creates no
+approval proposal, and leaves V20's two session-only approval modes unchanged.

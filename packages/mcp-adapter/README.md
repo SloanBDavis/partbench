@@ -35,6 +35,11 @@ current-selection calls. The connected stdio launcher supplies its browser
 relay as that port; existing in-memory callers remain the default. Tool schemas,
 validation, and response shaping are shared in both paths.
 
+V21 extends existing project health/readiness results with the exact export plan
+and bounded connected-browser evidence. No STEP/download tool is added: MCP
+receives no artifact bytes, handles, paths, renderer IDs, approval proposal, or
+new permission surface.
+
 ## Local Client Shape
 
 This package provides an in-process JSON-RPC handler for the MCP methods

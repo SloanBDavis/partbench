@@ -21,6 +21,7 @@ The current implementation source of truth is:
 - `docs/v18.md` — completed V18 frontend-only Precision CAD UI overhaul release record
 - `docs/v19.md` — completed V19 production sketching and multi-region profiles release record
 - `docs/v20.md` — completed V20 connected local agent workflow release record
+- `docs/v21.md` — completed V21 production single-part reliability and exact interchange release record
 
 Do not attempt to build the entire architecture at once. Implement only the milestone requested by the user. V19 is complete; follow `docs/v16.md` through `docs/v19.md` as compatibility and support-matrix records. Do not weaken a completed Must row or expand beyond its documented matrix without an explicitly approved later milestone.
 The six `pnpm smoke:v17-*` commands recorded in `docs/v17.md` are the named V17 release workflows; V21 remains minimum-triggered rather than the default for every save.
@@ -49,6 +50,16 @@ per-tool policy system, built-in chat or natural-language parser, agent file
 access, hosted transport, new CAD capability, project schema, `.wcad` version,
 workspace package, or production dependency without an explicit plan
 amendment.
+
+V21 is complete. Follow `docs/v21.md`, `docs/v21-implementation-dag.md`, and
+`docs/v21-i-gate.md` as its binding exact-result, interchange, compatibility,
+performance, and non-goal records. V21 resolves every completed active body row
+through one current exact-body pipeline and adds browser-owned selected,
+ordered multi-body, and all-body named AP242 STEP export. Exact artifacts are
+derived and session-only. Do not persist them, return file bytes through agents
+or MCP, widen a completed modeling matrix, or add a schema, `.wcad` version,
+workspace package, production dependency, export framework, or approval mode
+without an explicitly approved later milestone.
 
 ## Core Architectural Rules
 

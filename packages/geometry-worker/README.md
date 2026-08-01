@@ -26,6 +26,11 @@ caller-owned document data
 undo/redo, and semantic diffs. Meshes returned here are derived view/cache data
 that can be rebuilt from authoritative document state.
 
+V21 also routes exact-artifact build and named AP242 write requests through this
+same worker boundary. Requests are identity-bound and bounded; B-rep/STEP bytes
+are transferred directly, never base64 encoded, and remain browser-session
+derived data rather than document source or worker-owned persistence.
+
 ## Request Shape
 
 ```json

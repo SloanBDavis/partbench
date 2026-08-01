@@ -4,7 +4,7 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the repo state and the
 active implementation roadmap.
 
-Last updated: 2026-07-31.
+Last updated: 2026-08-01.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/v12.md` for the completed
@@ -18,8 +18,9 @@ properties release record, `docs/v17.md` for the completed V17 composite
 sketch profiles, arcs, and curved sweep paths release record, `docs/v18.md`
 for the completed frontend-only Precision CAD UI overhaul release record,
 `docs/v19.md` for the completed production sketching and multi-region profiles
-release record, and `docs/v20.md` for the completed connected local agent
-workflow release record. Use `docs/native-format.md`
+release record, `docs/v20.md` for the completed connected local agent workflow
+release record, and `docs/v21.md` for the completed production single-part
+reliability and exact interchange release record. Use `docs/native-format.md`
 for project-format direction, and
 `docs/occt-wasm-size.md` for OCCT/WASM load-size findings. V7, V8, V9, V10,
 and V11 are completed historical releases whose details are now condensed in
@@ -27,7 +28,9 @@ this plan instead of maintained as separate release documents. V16, V17, and
 V18 are complete; follow their release records for compatibility, support-
 matrix, UI, and performance constraints. V19 is also complete; its sequential
 gate evidence is in `docs/v19-implementation-dag.md`. V20 is complete; its
-three named integration gates are recorded in `docs/v20.md`.
+three named integration gates are recorded in `docs/v20.md`. V21 is complete;
+its sequential and final evidence is in `docs/v21-implementation-dag.md` and
+`docs/v21-i-gate.md`.
 
 ## Active Rules
 
@@ -177,6 +180,14 @@ These constraints remain active:
     Manual approval and Approve everything. It adds no CAD command family,
     project schema, `.wcad` package version, hosted gateway, chat UI, or
     production WebGPU work.
+13g. V21 is **complete**. Its binding release record is `docs/v21.md`, with
+    sequential evidence in `docs/v21-implementation-dag.md` and final proof in
+    `docs/v21-i-gate.md`. V21 makes every completed active body row use one
+    identity-bound current exact-result pipeline and adds browser-owned named
+    AP242 STEP export for selected, explicitly ordered, or all bodies. Exact
+    artifacts remain derived and session-only. The release adds no modeling
+    row, authoritative state, schema, `.wcad` version, cache, workspace
+    package, production dependency, agent file authority, or approval mode.
 14. V8 Tranche A is implemented as a protocol and pure-helper slice only:
     `partbench.wcad.v1` manifest/source-identity types, structured package
     validation diagnostics, `project.packageReadiness`, and thin agent/MCP
@@ -912,19 +923,25 @@ Current Partbench can:
   before import, native `.wcad` project-file state, app-layer save/open
   capability status, STEP import dry-run preview, and JSON interchange/export
   fallback (JSON remains metadata-only for checkpoint payloads);
-- export exact STEP for supported active authored source bodies through the
-  geometry boundary;
+- export selected, explicitly ordered, or all supported active bodies as
+  all-or-nothing named AP242 STEP through one identity-bound exact artifact
+  pipeline, preserving document units and body order;
 - expose current commands and queries through agent/MCP wrappers over CADOps.
 
 ## Current Limitations
 
-The repo now includes completed V7–V19 product surfaces through topology-backed
+The repo now includes completed V7–V21 product surfaces through topology-backed
 single-part modeling, STEP import, expanded feature families, expression
 language v2, arcs, construction geometry, explicit composite profiles, curved
 sweeps, durable pattern identity, mass properties, and the frontend-only
 Precision CAD workbench. V19 adds deterministic sketch curve editing, the exact
 documented dimension/constraint matrix, ordinary slot/rounded-rectangle sugar,
 and explicit material regions. It is not yet a full CAD system.
+
+V21 completes exact-result parity and STEP interchange for the existing body
+matrix; it does not expand that modeling matrix. STEP round trips preserve exact
+solid invariants, units, names, and order, but not editable Partbench history,
+sketches, body IDs, or stable topology IDs.
 
 Current limitations:
 
@@ -3333,6 +3350,26 @@ in `docs/v20.md`.
 The production entrypoint, browser authority, Approval Matrix, security
 boundary, `.wcad` round-trip, and V19 bundle-cap compatibility are covered by
 the three named V20 release commands recorded in `docs/v20.md`.
+
+## Completed V21 Production Single-Part Reliability and Exact Interchange
+
+V21 is complete. Its binding release record is `docs/v21.md`, its sequential
+gate record is `docs/v21-implementation-dag.md`, and final exact/performance/
+compatibility evidence is `docs/v21-i-gate.md`.
+
+The release replaces feature-specific production export recipes with one
+exhaustive current exact-body resolver and identity-bound derived artifact.
+Cad-core remains the eligibility and planning authority; the existing app,
+worker, geometry-kernel, and OCCT boundaries rebuild exact B-rep, metadata,
+topology, checkpoints, and named AP242 STEP. Selected-body, explicitly ordered
+multi-body, and Export-all workflows are deterministic and all-or-nothing.
+
+Artifacts and file bytes remain session-only and browser-owned. Agent/MCP
+surfaces expose bounded readiness metadata only, while V20 retains exactly its
+two approval modes. V21 adds no modeling support row, project schema, `.wcad`
+version, persisted artifact cache, workspace package, production dependency,
+or new file format. The eight named V21 commands in `docs/v21.md` are the
+release integration contract.
 
 ## Definition of Done
 

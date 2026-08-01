@@ -17,6 +17,12 @@ the explicit geometry-worker smoke entrypoint.
 This adapter uses the direct OpenCascade.js wrapper instead of a higher-level
 CAD DSL so the integration risk is visible at the kernel boundary.
 
+V21 adds same-shape exact artifact serialization and named `AP242DIS` STEP
+writing at this existing boundary. The writer applies the document unit before
+transfer, preserves explicit body order and authored names (including duplicate
+and Unicode names), and cleans up virtual files and OCCT handles on success,
+failure, or cancellation.
+
 ## What The Adapter Does
 
 The adapter currently exposes mesh creation for boxes, cylinders, spheres,
