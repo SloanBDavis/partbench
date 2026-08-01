@@ -136,6 +136,91 @@ describe("projectExactStepExport", () => {
     expect(isExactExportPlanCurrent(current.engine, result.plan)).toBe(false);
   });
 
+  it("replans current exact output across edit, undo, and redo", async () => {
+    const initial = createFixture();
+    const initialSignatures = new Map(
+      ["body:a", "body:n", "body:z"].map((bodyId) => [
+        bodyId,
+        getBodySourceIdentitySignature(initial.engine, bodyId)
+      ])
+    );
+    initial.engine.apply({
+      op: "scene.updateBoxDimensions",
+      id: "z",
+      dimensions: { width: 2, height: 2, depth: 3 }
+    });
+    expect(
+      isExactExportPlanCurrent(initial.engine, initial.exactExport.plan!)
+    ).toBe(false);
+    expect(getBodySourceIdentitySignature(initial.engine, "body:a")).toBe(
+      initialSignatures.get("body:a")
+    );
+    expect(getBodySourceIdentitySignature(initial.engine, "body:n")).toBe(
+      initialSignatures.get("body:n")
+    );
+    expect(getBodySourceIdentitySignature(initial.engine, "body:z")).not.toBe(
+      initialSignatures.get("body:z")
+    );
+
+    const edited = createFixtureForEngine(initial.engine);
+    await expect(
+      executeProjectExactStepExport({ ...edited, runtime: createRuntime() })
+    ).resolves.toMatchObject({ bodyCount: 3 });
+
+    initial.engine.undo();
+    expect(
+      isExactExportPlanCurrent(initial.engine, edited.exactExport.plan!)
+    ).toBe(false);
+    await expect(
+      executeProjectExactStepExport({
+        ...createFixtureForEngine(initial.engine),
+        runtime: createRuntime()
+      })
+    ).resolves.toMatchObject({ bodyCount: 3 });
+
+    initial.engine.redo();
+    await expect(
+      executeProjectExactStepExport({
+        ...createFixtureForEngine(initial.engine),
+        runtime: createRuntime()
+      })
+    ).resolves.toMatchObject({ bodyCount: 3 });
+  });
+
+  it("rejects a pending old-project export after project replacement", async () => {
+    const fixture = createFixture();
+    const runtime = createRuntime({
+      onArtifact() {
+        fixture.engine.loadProject(new CadEngine().exportProject());
+      }
+    });
+
+    await expect(
+      executeProjectExactStepExport({ ...fixture, runtime })
+    ).rejects.toMatchObject({ code: "EXPORT_SOURCE_CHANGED" });
+    expect(runtime.writerRequests).toEqual([]);
+    expect(getStructure(fixture.engine).bodies).toEqual([]);
+  });
+
+  it("retains the current source when project replacement validation fails", () => {
+    const fixture = createFixture();
+    const sourceIdentity = createCadProjectSourceIdentity(
+      fixture.engine.exportProject()
+    );
+    const invalidProject = {
+      ...fixture.engine.exportProject(),
+      schemaVersion: "web-cad.project.v999"
+    } as unknown as Parameters<CadEngine["loadProject"]>[0];
+
+    expect(() => fixture.engine.loadProject(invalidProject)).toThrow();
+    expect(
+      createCadProjectSourceIdentity(fixture.engine.exportProject())
+    ).toEqual(sourceIdentity);
+    expect(
+      isExactExportPlanCurrent(fixture.engine, fixture.exactExport.plan!)
+    ).toBe(true);
+  });
+
   it("rejects mismatched artifact evidence before the writer", async () => {
     const fixture = createFixture();
     const runtime = createRuntime({
@@ -273,6 +358,14 @@ function createFixture(): {
       dimensions: { radius: 1, height: 4 }
     }
   ]);
+  return createFixtureForEngine(engine);
+}
+
+function createFixtureForEngine(engine: CadEngine): {
+  readonly engine: CadEngine;
+  readonly exactExport: ProjectExactExportQueryResponse;
+  readonly resolutions: ReturnType<typeof resolveCurrentExactBodies>;
+} {
   const structure = getStructure(engine);
   const signatures = new Map(
     structure.bodies.map((body) => [

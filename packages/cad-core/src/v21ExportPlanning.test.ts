@@ -11,7 +11,9 @@ import type {
 import {
   CadEngine,
   createCadProjectSourceIdentity,
-  exportCadProject
+  exportCadProject,
+  exportCadProjectWcad,
+  importCadProjectWcad
 } from "./index";
 
 function createPrimitiveProject(): CadEngine {
@@ -357,6 +359,81 @@ describe("V21 exact export planning", () => {
     const serialized = JSON.stringify(readiness(createPrimitiveProject()));
     expect(serialized).not.toMatch(
       /bytesBase64|brepBytes|stepBytes|fileHandle|localPath|opfsPath|rendererId|meshId|occtHandle|workerId|cacheId|cacheKey/
+    );
+  });
+
+  it("rebuilds exact readiness after deterministic WCAD open without persisting export state", async () => {
+    const engine = createPrimitiveProject();
+    const projectBefore = exportCadProject(engine);
+    const metadataBefore = ["body:a", "body:n", "body:z"].map((bodyId) =>
+      exactMetadata(engine, bodyId)
+    );
+    const sourceIdentity = createCadProjectSourceIdentity(projectBefore);
+    const readyBefore = exact(engine, {
+      sourceIdentity,
+      derivedExactMetadata: metadataBefore
+    });
+    const first = await exportCadProjectWcad(engine);
+    const second = await exportCadProjectWcad(engine);
+
+    expect([...second.bytes]).toEqual([...first.bytes]);
+    expect(exportCadProject(engine)).toEqual(projectBefore);
+
+    const reopened = await importCadProjectWcad(first.bytes);
+    expect(exportCadProject(reopened)).toEqual(projectBefore);
+    expect(
+      readiness(reopened).currentExactResults?.every(
+        ({ status }) => status === "pending"
+      )
+    ).toBe(true);
+
+    const rebuilt = exact(reopened, {
+      sourceIdentity: createCadProjectSourceIdentity(
+        exportCadProject(reopened)
+      ),
+      derivedExactMetadata: ["body:a", "body:n", "body:z"].map((bodyId) =>
+        exactMetadata(reopened, bodyId)
+      )
+    });
+    expect(rebuilt.plan).toEqual(readyBefore.plan);
+    expect(exportCadProject(reopened)).toEqual(projectBefore);
+    expect(
+      JSON.stringify({ project: projectBefore, manifest: first.manifest })
+    ).not.toMatch(
+      /exactArtifact|exportJob|jobId|cacheKey|fileHandle|blobUrl|rendererId|meshId|occtId/i
+    );
+  });
+
+  it("invalidates only the edited primitive body identity through undo and redo", () => {
+    const engine = createPrimitiveProject();
+    const before = new Map(
+      ["body:a", "body:n", "body:z"].map((bodyId) => [
+        bodyId,
+        exactMetadata(engine, bodyId).sourceIdentitySignature
+      ])
+    );
+
+    engine.apply({
+      op: "scene.updateBoxDimensions",
+      id: "z",
+      dimensions: { width: 2, height: 2, depth: 3 }
+    });
+    const edited = exactMetadata(engine, "body:z").sourceIdentitySignature;
+    expect(edited).not.toBe(before.get("body:z"));
+    expect(exactMetadata(engine, "body:a").sourceIdentitySignature).toBe(
+      before.get("body:a")
+    );
+    expect(exactMetadata(engine, "body:n").sourceIdentitySignature).toBe(
+      before.get("body:n")
+    );
+
+    engine.undo();
+    expect(exactMetadata(engine, "body:z").sourceIdentitySignature).toBe(
+      before.get("body:z")
+    );
+    engine.redo();
+    expect(exactMetadata(engine, "body:z").sourceIdentitySignature).toBe(
+      edited
     );
   });
 });

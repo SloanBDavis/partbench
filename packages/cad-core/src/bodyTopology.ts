@@ -29,6 +29,7 @@ import {
   getSupportedEntityProfileKind
 } from "./normalizedFeatureInputs";
 import { sha256Hex } from "./sha256";
+import { encodeCanonicalCbor } from "./canonicalCbor";
 import { createSourceMeasurementFrame } from "./sourceMeasurementGeometry";
 import { createResolvedSweepSource } from "./sweepProfile";
 import type { CadDocument } from "./index";
@@ -83,6 +84,7 @@ export function createBodyTopology(
 
   if (request.bodyExists(request.bodyId)) {
     const topology = createUnsupportedPrimitiveCompatibilityTopology(
+      request.document,
       request.bodyId,
       request.units
     );
@@ -1686,18 +1688,34 @@ function createRevolveAxisSignature(
 }
 
 function createUnsupportedPrimitiveCompatibilityTopology(
+  document: GeneratedReferencesDocument,
   bodyId: BodyId,
   units: DocumentUnits
 ): CadBodyTopologySnapshot {
-  const sourceIdentity: CadBodyTopologySourceIdentity = {
-    bodyId,
-    sourceKind: "primitiveCompatibility",
-    signature: createTopologySourceSignature({
+  const object = (
+    document as Partial<Pick<CadDocument, "objects">>
+  ).objects?.get(
+    bodyId.startsWith("body:") ? bodyId.slice("body:".length) : ""
+  );
+  const featureSourceSignature = object
+    ? `primitive-source:v1:${sha256Hex(
+        encodeCanonicalCbor({
+          kind: object.kind,
+          dimensions: object.dimensions,
+          transform: object.transform
+        })
+      )}`
+    : undefined;
+  const sourceIdentityInput: Omit<CadBodyTopologySourceIdentity, "signature"> =
+    {
       bodyId,
       sourceKind: "primitiveCompatibility",
-      units
-    }),
-    units
+      units,
+      ...(featureSourceSignature ? { featureSourceSignature } : {})
+    };
+  const sourceIdentity: CadBodyTopologySourceIdentity = {
+    ...sourceIdentityInput,
+    signature: createTopologySourceSignature(sourceIdentityInput)
   };
 
   return createUnsupportedTopologySnapshot({

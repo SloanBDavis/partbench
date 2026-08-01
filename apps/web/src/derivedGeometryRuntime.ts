@@ -284,6 +284,7 @@ export type DerivedExactTopologyCheckpointPayload =
 export interface DerivedExactMetadataInput {
   readonly id: string;
   readonly source:
+    | ExactBodyArtifactRequest["source"]
     | ({ readonly kind: "box" } & Omit<DerivedGeometryBoxInput, "id">)
     | ({ readonly kind: "cylinder" } & Omit<DerivedGeometryCylinderInput, "id">)
     | ({ readonly kind: "sphere" } & Omit<DerivedGeometrySphereInput, "id">)

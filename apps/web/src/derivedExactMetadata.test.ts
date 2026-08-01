@@ -2215,12 +2215,22 @@ function createImportedCheckpointPayload(
 
 function createMetadataResult(
   objectId: string,
-  sourceKind: DerivedExactMetadataResult["metadata"]["sourceKind"],
+  sourceKind: DerivedExactMetadataInput["source"]["kind"],
   volume = 10
 ): DerivedExactMetadataResult {
+  const metadataSourceKind =
+    sourceKind === "checkpointBoolean"
+      ? "booleanExtrudes"
+      : sourceKind === "checkpointHole"
+        ? "hole"
+        : sourceKind === "checkpointEdgeFinish"
+          ? "edgeFinish"
+          : sourceKind === "checkpointBody"
+            ? "importedBody"
+            : sourceKind;
   return {
     metadata: {
-      sourceKind,
+      sourceKind: metadataSourceKind,
       bounds: {
         min: [0, 0, 0],
         max: [1, 2, 3]

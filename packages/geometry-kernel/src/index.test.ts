@@ -5539,6 +5539,55 @@ describe("geometry-kernel facade", () => {
     );
   });
 
+  it("reuses hash-validated checkpoint-backed sources for checkpoint payloads", async () => {
+    const checkpoint = await createSyntheticStepArtifactBody("checkpoint");
+    const source = {
+      kind: "checkpointBody" as const,
+      brepBytes: checkpoint.brepBytes,
+      brepByteLength: checkpoint.brepByteLength,
+      brepSha256: checkpoint.brepSha256,
+      topologySourceKind: "importedBody" as const,
+      topologySignature: "checkpoint-topology"
+    };
+    let calls = 0;
+    const factories: GeometryKernelMeshFactories = {
+      ...createInjectedArtifactFactories(async () =>
+        createExactBodyArtifactPayloadFixture()
+      ),
+      createExactTopologyCheckpointPayload: async (input) => {
+        calls += 1;
+        expect(input.source).toBe(source);
+        return createCheckpointPayloadFixture({
+          checkpointId: input.checkpointId,
+          bodyId: input.bodyId,
+          sourceKind: "importedBody"
+        });
+      }
+    };
+    const request = {
+      id: "geometry_req_checkpoint_backed_checkpoint_payload",
+      version: "geometry-kernel.v1" as const,
+      op: "geometry.exactTopologyCheckpointPayload" as const,
+      checkpointId: "checkpoint_copy",
+      bodyId: "body_copy",
+      source
+    };
+
+    expect(
+      await executeGeometryKernelRequestWithMeshFactory(factories, request)
+    ).toMatchObject({
+      ok: true,
+      checkpointPayload: { sourceKind: "importedBody" }
+    });
+    expect(
+      await executeGeometryKernelRequestWithMeshFactory(factories, {
+        ...request,
+        source: { ...source, brepSha256: "0".repeat(64) }
+      })
+    ).toMatchObject({ ok: false, error: { code: "INVALID_DIMENSIONS" } });
+    expect(calls).toBe(1);
+  });
+
   it("rejects inconsistent exact topology checkpoint payloads from injected factories", async () => {
     const unusedFactory = async () => {
       throw new Error("Unexpected mesh factory call.");

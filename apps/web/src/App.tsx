@@ -7414,6 +7414,7 @@ export function App() {
       return;
     }
 
+    resetModelWorkForProjectReplacement();
     engine.loadProject(result.project);
     stepImportPayloadStoreRef.current.clear();
     setWcadTopologyCheckpointPayloadCache(
@@ -7630,6 +7631,7 @@ export function App() {
   }
 
   function createNewProject() {
+    resetModelWorkForProjectReplacement();
     engine.loadProject(exportCadProject(new CadEngine()));
     stepImportPayloadStoreRef.current.clear();
     setWcadTopologyCheckpointPayloadCache([]);
@@ -7670,6 +7672,7 @@ export function App() {
       return;
     }
 
+    resetModelWorkForProjectReplacement();
     engine.loadProject(preview.project);
     stepImportPayloadStoreRef.current.clear();
     setWcadTopologyCheckpointPayloadCache([]);
@@ -7686,6 +7689,16 @@ export function App() {
     setProjectMessage(`Imported ${formatProjectJsonSummary(preview.summary)}.`);
     setProjectMessageTone("info");
     await syncDocument(undefined);
+  }
+
+  function resetModelWorkForProjectReplacement() {
+    const runtime = derivedGeometryRuntimeRef.current;
+    if (runtime) {
+      runtime.cancelModelWork("Project source was replaced.");
+      runtime.resumeModelWork();
+    }
+    derivedGeometryServiceRef.current?.refresh([]);
+    derivedExactMetadataServiceRef.current?.refresh([]);
   }
 
   function selectDocumentTreeItem(selection: DocumentTreeSelection) {

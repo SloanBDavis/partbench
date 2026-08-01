@@ -766,7 +766,7 @@ export interface ExactTopologyCheckpointPayloadRequest {
   readonly op: "geometry.exactTopologyCheckpointPayload";
   readonly checkpointId: string;
   readonly bodyId: string;
-  readonly source: ExactBodyMetadataSource;
+  readonly source: ExactBodyResultSource;
 }
 
 export interface ExactStepExportArtifactBodyInput {
@@ -1644,7 +1644,8 @@ export async function executeGeometryKernelRequestWithMeshFactory<
     if (
       request.op === "geometry.tessellateExactBody" ||
       request.op === "geometry.exactBodyMetadata" ||
-      request.op === "geometry.exactBodyArtifact"
+      request.op === "geometry.exactBodyArtifact" ||
+      request.op === "geometry.exactTopologyCheckpointPayload"
     ) {
       const checkpointError = await validateExactBodyArtifactCheckpoint(
         request.source
@@ -2184,9 +2185,11 @@ function validateRequest(
       return snapshotSourceError;
     }
   } else if (request.op === "geometry.exactTopologyCheckpointPayload") {
-    const checkpointSourceError = validateExactBodyMetadataSource(
+    const checkpointSourceError = isCheckpointBackedExactBodySource(
       request.source
-    );
+    )
+      ? validateExactBodyArtifactSource(request.source)
+      : validateExactBodyMetadataSource(request.source);
 
     if (checkpointSourceError) {
       return checkpointSourceError;

@@ -5,7 +5,6 @@ import {
   readExactTopologySnapshot,
   withImportedBrepShape,
   withOcctExactBodyShape,
-  type OcctExactBodyMetadataInput,
   type OcctExactBodyMetadataSource,
   type OcctExactTopologySnapshot,
   type OcctExactTopologySourceKind
@@ -46,15 +45,16 @@ export interface OcctTopologyCheckpointSignaturePayload {
   readonly entities: readonly OcctTopologyCheckpointSignatureEntity[];
 }
 
-export interface OcctExactTopologyCheckpointPayloadInput extends OcctExactBodyMetadataInput {
+export interface OcctExactTopologyCheckpointPayloadInput {
   readonly checkpointId: string;
   readonly bodyId: string;
+  readonly source: OcctExactBodyArtifactSource;
 }
 
 export interface OcctExactTopologyCheckpointPayload {
   readonly checkpointId: string;
   readonly bodyId: string;
-  readonly sourceKind: OcctExactBodyMetadataSource["kind"];
+  readonly sourceKind: OcctExactTopologySourceKind;
   readonly brepFormat: "occt-brep";
   readonly brepWriter: "BRepTools.Write_3";
   readonly brepBytes: Uint8Array;
