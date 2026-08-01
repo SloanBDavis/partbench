@@ -67,11 +67,13 @@ export type DerivedGeometrySource =
   | DerivedLoftGeometrySource;
 export type DerivedGeometryInput = DerivedGeometrySource | SceneObject;
 
-export interface DerivedPrimitiveGeometrySource {
-  readonly id: string;
-  readonly kind: SceneObject["kind"];
-  readonly object: SceneObject;
-}
+export type DerivedPrimitiveGeometrySource = {
+  [Kind in SceneObject["kind"]]: DerivedAuthoredGeometrySourceIdentity & {
+    readonly id: string;
+    readonly kind: Kind;
+    readonly object: Extract<SceneObject, { readonly kind: Kind }>;
+  };
+}[SceneObject["kind"]];
 
 export interface DerivedAuthoredGeometrySourceIdentity {
   readonly sourceIdentitySignature?: string;
@@ -667,7 +669,7 @@ export function createPrimitiveDerivedGeometrySource(
     id: object.id,
     kind: object.kind,
     object
-  };
+  } as DerivedPrimitiveGeometrySource;
 }
 
 function toDerivedGeometrySource(

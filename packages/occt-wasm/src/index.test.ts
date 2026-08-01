@@ -4221,6 +4221,96 @@ describe("occt-wasm", () => {
   );
 
   it(
+    "returns centered transformed primitive metadata through Open CASCADE WASM",
+    async () => {
+      const transformedBox = await createOcctExactBodyMetadata({
+        source: {
+          kind: "box",
+          dimensions: { width: 2, height: 3, depth: 4 },
+          transform: {
+            translation: [5, 7, 11],
+            rotation: [0, 0, Math.PI / 2],
+            scale: [2, 1, 0.5]
+          }
+        }
+      });
+      const primitives = await Promise.all([
+        createOcctExactBodyMetadata({
+          source: {
+            kind: "cylinder",
+            dimensions: { radius: 1, height: 2 },
+            transform: {
+              translation: [0, 0, 0],
+              rotation: [0, 0, 0],
+              scale: [1, 1, 1]
+            }
+          }
+        }),
+        createOcctExactBodyMetadata({
+          source: {
+            kind: "sphere",
+            dimensions: { radius: 1 },
+            transform: {
+              translation: [0, 0, 0],
+              rotation: [0, 0, 0],
+              scale: [1, 1, 1]
+            }
+          }
+        }),
+        createOcctExactBodyMetadata({
+          source: {
+            kind: "cone",
+            dimensions: { radius: 1, height: 2 },
+            transform: {
+              translation: [0, 0, 0],
+              rotation: [0, 0, 0],
+              scale: [1, 1, 1]
+            }
+          }
+        }),
+        createOcctExactBodyMetadata({
+          source: {
+            kind: "torus",
+            dimensions: { majorRadius: 3, minorRadius: 1 },
+            transform: {
+              translation: [0, 0, 0],
+              rotation: [0, 0, 0],
+              scale: [1, 1, 1]
+            }
+          }
+        })
+      ]);
+
+      expect(transformedBox).toMatchObject({
+        sourceKind: "box",
+        topologyCounts: { solidCount: 1, faceCount: 6 }
+      });
+      expect(transformedBox.volume).toBeCloseTo(24, 6);
+      expect(transformedBox.centroid[0]).toBeCloseTo(5, 6);
+      expect(transformedBox.centroid[1]).toBeCloseTo(7, 6);
+      expect(transformedBox.centroid[2]).toBeCloseTo(11, 6);
+      const boundSizes = [
+        transformedBox.bounds.max[0] - transformedBox.bounds.min[0],
+        transformedBox.bounds.max[1] - transformedBox.bounds.min[1],
+        transformedBox.bounds.max[2] - transformedBox.bounds.min[2]
+      ];
+      expect(boundSizes[0]).toBeCloseTo(3, 6);
+      expect(boundSizes[1]).toBeCloseTo(4, 6);
+      expect(boundSizes[2]).toBeCloseTo(2, 6);
+      expect(primitives.map((metadata) => metadata.sourceKind)).toEqual([
+        "cylinder",
+        "sphere",
+        "cone",
+        "torus"
+      ]);
+      expect(
+        primitives.map((metadata) => metadata.topologyCounts.solidCount)
+      ).toEqual([1, 1, 1, 1]);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
     "returns exact boolean extrude metadata through Open CASCADE WASM",
     async () => {
       const metadata = await createOcctExactBodyMetadata({

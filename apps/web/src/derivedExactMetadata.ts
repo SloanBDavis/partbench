@@ -2,6 +2,7 @@ import type {
   CadFeatureSummary,
   WcadTopologyCheckpointPayloadInput
 } from "@web-cad/cad-core";
+import { sha256Hex } from "@web-cad/cad-core";
 import type {
   CadAxisAlignedBounds,
   CadBodyDerivedExactMetadataSnapshot,
@@ -26,7 +27,8 @@ import type {
   DerivedLinearPatternGeometrySource,
   DerivedCircularPatternGeometrySource,
   DerivedMirrorGeometrySource,
-  DerivedShellGeometrySource
+  DerivedShellGeometrySource,
+  DerivedPrimitiveGeometrySource
 } from "./derivedGeometry";
 import { createDerivedGeometryCacheKey } from "./derivedGeometry";
 import {
@@ -46,6 +48,7 @@ export type DerivedExactMetadataStatusKind =
   | "error";
 
 export type DerivedExactMetadataSource =
+  | DerivedPrimitiveGeometrySource
   | DerivedExtrudeGeometrySource
   | DerivedBooleanExtrudeGeometrySource
   | DerivedRevolveGeometrySource
@@ -63,6 +66,9 @@ export interface DerivedImportedBodyExactMetadataSource {
   readonly id: string;
   readonly kind: "importedBody";
   readonly checkpointId: string;
+  readonly brepByteLength: number;
+  readonly brepSha256: string;
+  readonly sourceIdentitySignature?: string;
   readonly brepBytes: Uint8Array;
 }
 
@@ -92,10 +98,20 @@ export function createImportedBodyExactMetadataSources(
       .get(feature.bodyId)
       ?.get(feature.checkpointId);
     if (payload) {
+      const brepSha256 = sha256Hex(payload.brepBytes);
+      if (
+        (payload.brepByteLength !== undefined &&
+          payload.brepByteLength !== payload.brepBytes.byteLength) ||
+        (payload.brepSha256 !== undefined && payload.brepSha256 !== brepSha256)
+      ) {
+        continue;
+      }
       sources.push({
         id: feature.bodyId,
         kind: "importedBody",
         checkpointId: feature.checkpointId,
+        brepByteLength: payload.brepBytes.byteLength,
+        brepSha256,
         brepBytes: payload.brepBytes
       });
     }
@@ -126,7 +142,7 @@ export function planExactMetadataRetry(
   const deferred: DerivedExactMetadataSource[] = [];
 
   for (const source of sources) {
-    if (source.kind === "importedBody") {
+    if (source.kind === "importedBody" || "object" in source) {
       immediate.push(source);
       continue;
     }
@@ -488,7 +504,9 @@ export function createDerivedExactMetadataCacheKey(
       sourceKind: source.kind,
       bodyId: source.id,
       checkpointId: source.checkpointId,
-      byteLength: source.brepBytes.byteLength
+      sourceIdentitySignature: source.sourceIdentitySignature,
+      brepByteLength: source.brepByteLength,
+      brepSha256: source.brepSha256
     });
   }
   return JSON.stringify({
@@ -629,6 +647,22 @@ export function createExactMetadataRuntimeInput(
     return {
       id: source.id,
       source: { kind: "importedBody", brepBytes: source.brepBytes }
+    };
+  }
+  if (
+    source.kind === "box" ||
+    source.kind === "cylinder" ||
+    source.kind === "sphere" ||
+    source.kind === "cone" ||
+    source.kind === "torus"
+  ) {
+    return {
+      id: source.id,
+      source: {
+        kind: source.kind,
+        dimensions: source.object.dimensions,
+        transform: source.object.transform
+      } as Parameters<DerivedGeometryRuntime["exactBodyMetadata"]>[0]["source"]
     };
   }
   if (source.kind === "extrude") {
@@ -888,10 +922,15 @@ function createPendingEntry(
   };
 }
 
-export function isExactMetadataSource(
-  source: DerivedExactMetadataCandidate
-): source is DerivedExactMetadataSource {
+export function isExactMetadataSource(source: {
+  readonly kind: string;
+}): source is DerivedExactMetadataSource {
   return (
+    source.kind === "box" ||
+    source.kind === "cylinder" ||
+    source.kind === "sphere" ||
+    source.kind === "cone" ||
+    source.kind === "torus" ||
     source.kind === "extrude" ||
     source.kind === "extrudeBoolean" ||
     source.kind === "revolve" ||
@@ -911,6 +950,15 @@ function getUnsupportedExactMetadataSourceMessage(
   source: DerivedExactMetadataSource
 ): string | undefined {
   if (source.kind === "importedBody") return undefined;
+  if (
+    source.kind === "box" ||
+    source.kind === "cylinder" ||
+    source.kind === "sphere" ||
+    source.kind === "cone" ||
+    source.kind === "torus"
+  ) {
+    return undefined;
+  }
   if (source.kind === "extrude") {
     return source.placementError;
   }

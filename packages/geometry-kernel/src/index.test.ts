@@ -4938,6 +4938,82 @@ describe("geometry-kernel facade", () => {
     });
   });
 
+  it("validates and forwards transformed primitive exact metadata sources", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    let receivedSource: unknown;
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory,
+      createExactBodyMetadata: async (input) => {
+        receivedSource = input.source;
+        return {
+          sourceKind: input.source.kind,
+          bounds: { min: [4, 5, 10], max: [6, 9, 12] },
+          volume: 24,
+          surfaceArea: 52,
+          centroid: [5, 7, 11],
+          topologyCounts: {
+            solidCount: 1,
+            faceCount: 6,
+            edgeCount: 12,
+            vertexCount: 8
+          },
+          measurementSource: "kernel-derived",
+          measurementConfidence: "kernel-derived",
+          diagnostics: []
+        };
+      }
+    };
+    const source = {
+      kind: "box" as const,
+      dimensions: { width: 2, height: 3, depth: 4 },
+      transform: {
+        translation: [5, 7, 11] as const,
+        rotation: [0, 0, 90] as const,
+        scale: [2, 1, 0.5] as const
+      }
+    };
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_transformed_primitive_exact_metadata",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactBodyMetadata",
+        source
+      }
+    );
+
+    expect(response).toMatchObject({
+      ok: true,
+      metadata: { sourceKind: "box", volume: 24 }
+    });
+    expect(receivedSource).toEqual(source);
+
+    const invalid = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_invalid_primitive_exact_metadata",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactBodyMetadata",
+        source: {
+          ...source,
+          transform: { ...source.transform, scale: [1, 0, 1] }
+        }
+      }
+    );
+    expect(invalid).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_DIMENSIONS" }
+    });
+  });
+
   it("returns structured unavailable-binding errors when exact metadata factory is absent", async () => {
     const unusedFactory = async () => {
       throw new Error("Unexpected mesh factory call.");

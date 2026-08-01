@@ -282,6 +282,11 @@ export type DerivedExactTopologyCheckpointPayload =
 export interface DerivedExactMetadataInput {
   readonly id: string;
   readonly source:
+    | ({ readonly kind: "box" } & Omit<DerivedGeometryBoxInput, "id">)
+    | ({ readonly kind: "cylinder" } & Omit<DerivedGeometryCylinderInput, "id">)
+    | ({ readonly kind: "sphere" } & Omit<DerivedGeometrySphereInput, "id">)
+    | ({ readonly kind: "cone" } & Omit<DerivedGeometryConeInput, "id">)
+    | ({ readonly kind: "torus" } & Omit<DerivedGeometryTorusInput, "id">)
     | {
         readonly kind: "extrude";
         readonly sketchPlane: "XY" | "XZ" | "YZ";

@@ -46,6 +46,7 @@ import {
 const TOPOLOGY_EVIDENCE_TOLERANCE = 1e-6;
 
 export type OcctExactBodyMetadataSource =
+  | OcctExactPrimitiveMetadataSource
   | OcctExactExtrudeMetadataSource
   | OcctExactBooleanExtrudesMetadataSource
   | OcctExactRevolveMetadataSource
@@ -58,6 +59,52 @@ export type OcctExactBodyMetadataSource =
   | OcctExactImportedBodyMetadataSource
   | OcctExactHoleMetadataSource
   | OcctExactEdgeFinishMetadataSource;
+
+export type OcctExactPrimitiveMetadataSource =
+  | {
+      readonly kind: "box";
+      readonly dimensions: {
+        readonly width: number;
+        readonly height: number;
+        readonly depth: number;
+      };
+      readonly transform: OcctExactPrimitiveTransform;
+    }
+  | {
+      readonly kind: "cylinder";
+      readonly dimensions: {
+        readonly radius: number;
+        readonly height: number;
+      };
+      readonly transform: OcctExactPrimitiveTransform;
+    }
+  | {
+      readonly kind: "cone";
+      readonly dimensions: {
+        readonly radius: number;
+        readonly height: number;
+      };
+      readonly transform: OcctExactPrimitiveTransform;
+    }
+  | {
+      readonly kind: "sphere";
+      readonly dimensions: { readonly radius: number };
+      readonly transform: OcctExactPrimitiveTransform;
+    }
+  | {
+      readonly kind: "torus";
+      readonly dimensions: {
+        readonly majorRadius: number;
+        readonly minorRadius: number;
+      };
+      readonly transform: OcctExactPrimitiveTransform;
+    };
+
+export interface OcctExactPrimitiveTransform {
+  readonly translation: readonly [number, number, number];
+  readonly rotation: readonly [number, number, number];
+  readonly scale: readonly [number, number, number];
+}
 
 export type OcctExactExtrudeMetadataSource = (
   | OcctBooleanExtrudePrimitiveSource
@@ -429,6 +476,18 @@ export function withOcctExactBodyShape<T>(
 ): T {
   assertExactMetadataBindings(oc);
 
+  if (
+    source.kind === "box" ||
+    source.kind === "cylinder" ||
+    source.kind === "sphere" ||
+    source.kind === "cone" ||
+    source.kind === "torus"
+  ) {
+    return withOcctExactPrimitiveShape(oc, source, (shape) =>
+      readShape(shape, source.kind)
+    );
+  }
+
   if (source.kind === "extrude") {
     const shapeBuilder =
       source.profile.kind === "wire"
@@ -547,6 +606,179 @@ export function withOcctExactBodyShape<T>(
   } finally {
     shape?.delete();
     shapeBuilder.delete();
+  }
+}
+
+function withOcctExactPrimitiveShape<T>(
+  oc: OpenCascadeInstance,
+  source: OcctExactPrimitiveMetadataSource,
+  readShape: (shape: TopoDS_Shape) => T
+): T {
+  assertExactPrimitiveBindings(oc);
+  const builder = createExactPrimitiveBuilder(oc, source);
+  let localShape: TopoDS_Shape | undefined;
+  let matrix: InstanceType<OpenCascadeInstance["gp_Mat_2"]> | undefined;
+  let translation: InstanceType<OpenCascadeInstance["gp_XYZ_2"]> | undefined;
+  let transform: InstanceType<OpenCascadeInstance["gp_GTrsf_3"]> | undefined;
+  let transformed:
+    | InstanceType<OpenCascadeInstance["BRepBuilderAPI_GTransform_2"]>
+    | undefined;
+  let worldShape: TopoDS_Shape | undefined;
+
+  try {
+    localShape = builder.Shape();
+    const affine = createPrimitiveAffine(source);
+    matrix = new oc.gp_Mat_2(...affine.matrix);
+    translation = new oc.gp_XYZ_2(...affine.translation);
+    transform = new oc.gp_GTrsf_3(matrix, translation);
+    transformed = new oc.BRepBuilderAPI_GTransform_2(
+      localShape,
+      transform,
+      true
+    );
+    worldShape = transformed.Shape();
+    if (worldShape.IsNull()) {
+      throw new Error(
+        "Open CASCADE primitive transform returned a null shape."
+      );
+    }
+    return readShape(worldShape);
+  } finally {
+    worldShape?.delete();
+    transformed?.delete();
+    transform?.delete();
+    translation?.delete();
+    matrix?.delete();
+    localShape?.delete();
+    builder.delete();
+  }
+}
+
+interface ExactPrimitiveBuilder {
+  Shape(): TopoDS_Shape;
+  delete(): void;
+}
+
+function createExactPrimitiveBuilder(
+  oc: OpenCascadeInstance,
+  source: OcctExactPrimitiveMetadataSource
+): ExactPrimitiveBuilder {
+  switch (source.kind) {
+    case "box":
+      return new oc.BRepPrimAPI_MakeBox_2(
+        source.dimensions.width,
+        source.dimensions.height,
+        source.dimensions.depth
+      );
+    case "cylinder":
+      return new oc.BRepPrimAPI_MakeCylinder_1(
+        source.dimensions.radius,
+        source.dimensions.height
+      );
+    case "sphere":
+      return new oc.BRepPrimAPI_MakeSphere_1(source.dimensions.radius);
+    case "cone":
+      return new oc.BRepPrimAPI_MakeCone_1(
+        source.dimensions.radius,
+        0,
+        source.dimensions.height
+      );
+    case "torus":
+      return new oc.BRepPrimAPI_MakeTorus_1(
+        source.dimensions.majorRadius,
+        source.dimensions.minorRadius
+      );
+  }
+}
+
+function createPrimitiveAffine(source: OcctExactPrimitiveMetadataSource): {
+  readonly matrix: readonly [
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number
+  ];
+  readonly translation: readonly [number, number, number];
+} {
+  const [rx, ry, rz] = source.transform.rotation;
+  const [scaleX, scaleY, scaleZ] = source.transform.scale;
+  const cosX = Math.cos(rx);
+  const sinX = Math.sin(rx);
+  const cosY = Math.cos(ry);
+  const sinY = Math.sin(ry);
+  const cosZ = Math.cos(rz);
+  const sinZ = Math.sin(rz);
+  const matrix = [
+    cosY * cosZ * scaleX,
+    (sinX * sinY * cosZ - cosX * sinZ) * scaleY,
+    (cosX * sinY * cosZ + sinX * sinZ) * scaleZ,
+    cosY * sinZ * scaleX,
+    (sinX * sinY * sinZ + cosX * cosZ) * scaleY,
+    (cosX * sinY * sinZ - sinX * cosZ) * scaleZ,
+    -sinY * scaleX,
+    sinX * cosY * scaleY,
+    cosX * cosY * scaleZ
+  ] as const;
+  const center = getPrimitiveLocalCenter(source);
+  const [translationX, translationY, translationZ] =
+    source.transform.translation;
+  return {
+    matrix,
+    translation: [
+      translationX -
+        (matrix[0] * center[0] + matrix[1] * center[1] + matrix[2] * center[2]),
+      translationY -
+        (matrix[3] * center[0] + matrix[4] * center[1] + matrix[5] * center[2]),
+      translationZ -
+        (matrix[6] * center[0] + matrix[7] * center[1] + matrix[8] * center[2])
+    ]
+  };
+}
+
+function getPrimitiveLocalCenter(
+  source: OcctExactPrimitiveMetadataSource
+): readonly [number, number, number] {
+  switch (source.kind) {
+    case "box":
+      return [
+        source.dimensions.width / 2,
+        source.dimensions.height / 2,
+        source.dimensions.depth / 2
+      ];
+    case "cylinder":
+    case "cone":
+      return [0, 0, source.dimensions.height / 2];
+    case "sphere":
+    case "torus":
+      return [0, 0, 0];
+  }
+}
+
+function assertExactPrimitiveBindings(oc: OpenCascadeInstance): void {
+  const bindings: readonly [string, unknown][] = [
+    ["BRepPrimAPI_MakeBox_2", oc.BRepPrimAPI_MakeBox_2],
+    ["BRepPrimAPI_MakeCylinder_1", oc.BRepPrimAPI_MakeCylinder_1],
+    ["BRepPrimAPI_MakeSphere_1", oc.BRepPrimAPI_MakeSphere_1],
+    ["BRepPrimAPI_MakeCone_1", oc.BRepPrimAPI_MakeCone_1],
+    ["BRepPrimAPI_MakeTorus_1", oc.BRepPrimAPI_MakeTorus_1],
+    ["gp_Mat_2", oc.gp_Mat_2],
+    ["gp_XYZ_2", oc.gp_XYZ_2],
+    ["gp_GTrsf_3", oc.gp_GTrsf_3],
+    ["BRepBuilderAPI_GTransform_2", oc.BRepBuilderAPI_GTransform_2]
+  ];
+  const missing = bindings
+    .filter(([, value]) => value === undefined || value === null)
+    .map(([name]) => name);
+  if (missing.length > 0) {
+    throw {
+      code: "UNAVAILABLE_BINDING",
+      message: `Open CASCADE exact primitive bindings are unavailable: ${missing.join(", ")}.`
+    } satisfies UnavailableBindingError;
   }
 }
 

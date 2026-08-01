@@ -1,6 +1,7 @@
 import {
   CadEngine,
   exportCadProjectJson,
+  sha256Hex,
   type CadFeatureSummary,
   type WcadTopologyCheckpointPayloadInput
 } from "@web-cad/cad-core";
@@ -50,11 +51,14 @@ describe("derivedExactMetadata", () => {
   it("defers authored exact retries until display settles while imported exact stays independent", () => {
     const pendingDisplay = createExtrudeSource("body_pending");
     const readyDisplay = createExtrudeSource("body_ready");
+    const importedBytes = new Uint8Array([1]);
     const imported = {
       id: "body_imported",
       kind: "importedBody" as const,
       checkpointId: "checkpoint_1",
-      brepBytes: new Uint8Array([1])
+      brepByteLength: importedBytes.byteLength,
+      brepSha256: sha256Hex(importedBytes),
+      brepBytes: importedBytes
     };
 
     const retry = planExactMetadataRetry(
@@ -138,6 +142,8 @@ describe("derivedExactMetadata", () => {
         id: "body_imported",
         kind: "importedBody",
         checkpointId: "checkpoint_imported",
+        brepByteLength: bytes.byteLength,
+        brepSha256: sha256Hex(bytes),
         brepBytes: bytes
       })
     ).toEqual({
@@ -147,11 +153,14 @@ describe("derivedExactMetadata", () => {
   });
 
   it("preserves ready imported checkpoint evidence across unrelated full-list reconciliation", async () => {
+    const importedBytes = new Uint8Array([1, 2, 3]);
     const imported = {
       id: "body_imported",
       kind: "importedBody" as const,
       checkpointId: "checkpoint_imported",
-      brepBytes: new Uint8Array([1, 2, 3])
+      brepByteLength: importedBytes.byteLength,
+      brepSha256: sha256Hex(importedBytes),
+      brepBytes: importedBytes
     };
     const runtime = createRuntime(async (input) =>
       createMetadataResult(input.id, input.source.kind)
@@ -234,6 +243,8 @@ describe("derivedExactMetadata", () => {
         id: bodyId,
         kind: "importedBody",
         checkpointId: newCheckpointId,
+        brepByteLength: newPayload.brepBytes.byteLength,
+        brepSha256: sha256Hex(newPayload.brepBytes),
         brepBytes: newPayload.brepBytes
       }
     ]);
@@ -1393,7 +1404,7 @@ describe("derivedExactMetadata", () => {
     });
   });
 
-  it("marks unsupported sources without requesting exact metadata", () => {
+  it("requests primitive exact metadata while keeping unsupported authored sources blocked", async () => {
     const snapshots: DerivedExactMetadataSnapshot[] = [];
     const runtime = createRuntime(async (input) =>
       createMetadataResult(input.id, input.source.kind)
@@ -1443,10 +1454,29 @@ describe("derivedExactMetadata", () => {
       }
     ]);
 
+    await flushPromises();
     const snapshot =
       snapshots.at(-1) ?? createEmptyDerivedExactMetadataSnapshot();
-    expect(runtime.exactInputs).toEqual([]);
+    expect(runtime.exactInputs).toEqual([
+      {
+        id: "box_1",
+        source: {
+          kind: "box",
+          dimensions: { width: 1, height: 1, depth: 1 },
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          }
+        }
+      }
+    ]);
     expect(snapshot.entries).toMatchObject([
+      {
+        bodyId: "box_1",
+        status: "ready",
+        metadata: { sourceKind: "box" }
+      },
       {
         bodyId: "body_stale_attachment",
         status: "unsupported",
@@ -2154,19 +2184,7 @@ function createImportedCheckpointPayload(
 
 function createMetadataResult(
   objectId: string,
-  sourceKind:
-    | "extrude"
-    | "booleanExtrudes"
-    | "revolve"
-    | "hole"
-    | "edgeFinish"
-    | "sweep"
-    | "loft"
-    | "linearPattern"
-    | "circularPattern"
-    | "mirror"
-    | "shell"
-    | "importedBody",
+  sourceKind: DerivedExactMetadataResult["metadata"]["sourceKind"],
   volume = 10
 ): DerivedExactMetadataResult {
   return {

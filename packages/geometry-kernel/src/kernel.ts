@@ -515,6 +515,7 @@ export interface LoftRequest {
 }
 
 export type ExactBodyMetadataSource =
+  | ExactPrimitiveMetadataSource
   | ExactExtrudeMetadataSource
   | ExactBooleanExtrudesMetadataSource
   | ExactRevolveMetadataSource
@@ -540,6 +541,48 @@ export type ExactExtrudeMetadataSource = (
       readonly side?: GeometryKernelExtrudeSide;
     }
 ) & { readonly kind: "extrude" };
+
+export type ExactPrimitiveMetadataSource =
+  | ExactBoxMetadataSource
+  | ExactCylinderMetadataSource
+  | ExactSphereMetadataSource
+  | ExactConeMetadataSource
+  | ExactTorusMetadataSource;
+
+interface ExactPrimitiveMetadataSourceBase {
+  readonly transform: GeometryKernelTransform;
+}
+
+export interface GeometryKernelTransform {
+  readonly translation: GeometryKernelDirection;
+  readonly rotation: GeometryKernelDirection;
+  readonly scale: GeometryKernelDirection;
+}
+
+export interface ExactBoxMetadataSource extends ExactPrimitiveMetadataSourceBase {
+  readonly kind: "box";
+  readonly dimensions: BoxGeometryDimensions;
+}
+
+export interface ExactCylinderMetadataSource extends ExactPrimitiveMetadataSourceBase {
+  readonly kind: "cylinder";
+  readonly dimensions: CylinderGeometryDimensions;
+}
+
+export interface ExactSphereMetadataSource extends ExactPrimitiveMetadataSourceBase {
+  readonly kind: "sphere";
+  readonly dimensions: SphereGeometryDimensions;
+}
+
+export interface ExactConeMetadataSource extends ExactPrimitiveMetadataSourceBase {
+  readonly kind: "cone";
+  readonly dimensions: ConeGeometryDimensions;
+}
+
+export interface ExactTorusMetadataSource extends ExactPrimitiveMetadataSourceBase {
+  readonly kind: "torus";
+  readonly dimensions: TorusGeometryDimensions;
+}
 
 export type ExactBooleanExtrudesMetadataSource = BooleanExtrudeResultSource;
 
@@ -3648,6 +3691,18 @@ function validateExactBodyMetadataSource(
       : createInvalidExactBodyMetadataSourceError();
   }
 
+  if (
+    source.kind === "box" ||
+    source.kind === "cylinder" ||
+    source.kind === "sphere" ||
+    source.kind === "cone" ||
+    source.kind === "torus"
+  ) {
+    return isValidExactPrimitiveSource(source)
+      ? undefined
+      : createInvalidExactBodyMetadataSourceError();
+  }
+
   if (source.kind === "booleanExtrudes") {
     return isValidBooleanExtrudeSource(source)
       ? undefined
@@ -3763,6 +3818,27 @@ function validateExactBodyMetadataSource(
   return createInvalidExactBodyMetadataSourceError();
 }
 
+function isValidExactPrimitiveSource(
+  source: ExactPrimitiveMetadataSource
+): boolean {
+  const dimensions = Object.values(source.dimensions);
+  return (
+    dimensions.every(isPositiveFiniteNumber) &&
+    isFiniteVec3(source.transform.translation) &&
+    isFiniteVec3(source.transform.rotation) &&
+    isFiniteVec3(source.transform.scale) &&
+    source.transform.scale.every((value) => value !== 0)
+  );
+}
+
+function isFiniteVec3(value: unknown): value is GeometryKernelDirection {
+  return (
+    Array.isArray(value) &&
+    value.length === 3 &&
+    value.every((entry) => typeof entry === "number" && Number.isFinite(entry))
+  );
+}
+
 function isValidExactExtrudeSource(source: {
   readonly sketchPlane: GeometryKernelSketchPlane;
   readonly profile: ExtrudeGeometryProfile;
@@ -3827,6 +3903,11 @@ function isInvalidExactBodyMetadata(
 ): boolean {
   return (
     (metadata.sourceKind !== "extrude" &&
+      metadata.sourceKind !== "box" &&
+      metadata.sourceKind !== "cylinder" &&
+      metadata.sourceKind !== "sphere" &&
+      metadata.sourceKind !== "cone" &&
+      metadata.sourceKind !== "torus" &&
       metadata.sourceKind !== "booleanExtrudes" &&
       metadata.sourceKind !== "revolve" &&
       metadata.sourceKind !== "hole" &&
@@ -4023,6 +4104,11 @@ function isExactTopologySourceKind(
 ): value is ExactTopologySourceKind {
   return (
     value === "extrude" ||
+    value === "box" ||
+    value === "cylinder" ||
+    value === "sphere" ||
+    value === "cone" ||
+    value === "torus" ||
     value === "booleanExtrudes" ||
     value === "revolve" ||
     value === "hole" ||
