@@ -66,9 +66,6 @@ export {
   createCurrentExactEvidence,
   createCurrentExactSources
 } from "./currentExactPipeline";
-export { deriveModelingActions } from "./modelingActions";
-export { createModelingResultState } from "./modelingResultState";
-export { createRenderSceneInputs } from "./renderScene";
 
 export function createDerivedGeometrySourcesFromDocument(
   document: CadDocument,
@@ -79,6 +76,11 @@ export function createDerivedGeometrySourcesFromDocument(
   > = new Map(),
   sourceIdentitySignaturesByBodyId: ReadonlyMap<string, string> = new Map()
 ): readonly DerivedGeometrySource[] {
+  const primitives = [...document.objects.values()].map(
+    createPrimitiveDerivedGeometrySource
+  );
+  if (features.length === 0) return primitives;
+
   const sketches = [...document.sketches.values()].map((sketch) => ({
     id: sketch.id,
     name: sketch.name,
@@ -88,7 +90,7 @@ export function createDerivedGeometrySourcesFromDocument(
   }));
 
   return [
-    ...[...document.objects.values()].map(createPrimitiveDerivedGeometrySource),
+    ...primitives,
     ...createAuthoredFeatureDerivedGeometrySources(
       features,
       sketches,

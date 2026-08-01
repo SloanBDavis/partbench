@@ -133,6 +133,7 @@ export function createSketchDisplayMeshes(
   sketches: readonly SketchSnapshot[],
   sketchDisplayFrames: ReadonlyMap<string, SketchDisplayFrame> = new Map()
 ): readonly RenderTriangleMesh[] {
+  const centeredCircleEdges = new Map<string, readonly RenderEdgeSegment[]>();
   return sketches.flatMap((sketch) => {
     const displayFrame =
       sketchDisplayFrames.get(sketch.id) ??
@@ -169,16 +170,49 @@ export function createSketchDisplayMeshes(
         });
         return semanticCached;
       }
-      const mesh = createSketchDisplayMesh(
-        createSketchEntitySelectionId(sketch.id, entity.id),
-        `${sketch.name}: ${entity.id}`,
-        createSketchEntityDisplayEdges(
+      let edgeSegments: readonly RenderEdgeSegment[];
+      let transform: RenderTransform | undefined;
+      if (entity.kind === "circle") {
+        const key = JSON.stringify([
+          displayFrame,
+          entity.radius,
+          maximumCurveSegmentAngleDegrees
+        ]);
+        edgeSegments =
+          centeredCircleEdges.get(key) ??
+          createSketchCircleEdges(
+            displayFrame,
+            [0, 0],
+            entity.radius,
+            maximumCurveSegmentAngleDegrees
+          );
+        centeredCircleEdges.set(key, edgeSegments);
+        const center = mapSketchPointToDisplayFrame(
+          displayFrame,
+          entity.center
+        );
+        transform = {
+          ...createIdentityTransform(),
+          translation: [
+            center[0] - displayFrame.origin[0],
+            center[1] - displayFrame.origin[1],
+            center[2] - displayFrame.origin[2]
+          ]
+        };
+      } else {
+        edgeSegments = createSketchEntityDisplayEdges(
           displayFrame,
           entity,
           maximumCurveSegmentAngleDegrees
-        ),
+        );
+      }
+      const mesh = createSketchDisplayMesh(
+        createSketchEntitySelectionId(sketch.id, entity.id),
+        `${sketch.name}: ${entity.id}`,
+        edgeSegments,
         entity.construction,
-        createSketchSelectionId(sketch.id)
+        createSketchSelectionId(sketch.id),
+        transform
       );
       sketchEntityDisplayMeshCache.set(entity, {
         key: displayCacheKey,
@@ -205,7 +239,8 @@ function createSketchDisplayMesh(
   label: string,
   edgeSegments: readonly RenderEdgeSegment[],
   construction: boolean,
-  parentId?: string
+  parentId?: string,
+  transform: RenderTransform = createIdentityTransform()
 ): RenderTriangleMesh {
   return {
     id,
@@ -213,7 +248,7 @@ function createSketchDisplayMesh(
     kind: "mesh",
     vertices: [],
     indices: [],
-    transform: createIdentityTransform(),
+    transform,
     edgeSegments,
     pickMode: "edgeSegments",
     lineStyle: construction ? "construction" : "solid",

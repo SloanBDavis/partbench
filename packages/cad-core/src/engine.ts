@@ -2344,15 +2344,18 @@ export class CadEngine {
           this.#history.map((entry) => entry.transaction)
         );
 
-        const currentExactResults = createCurrentExactExportProjection({
-          document: this.#document,
-          bodies: structure.bodies,
-          currentSourceIdentity: createCadProjectSourceIdentity(
-            exportCadProject(this)
-          ),
-          derivedExactMetadata: request.query.derivedExactMetadata,
-          currentExactResults: request.query.currentExactResults
-        }).currentExactResults;
+        const currentExactResults =
+          structure.bodies.length === 0
+            ? []
+            : createCurrentExactExportProjection({
+                document: this.#document,
+                bodies: structure.bodies,
+                currentSourceIdentity: createCadProjectSourceIdentity(
+                  exportCadProject(this)
+                ),
+                derivedExactMetadata: request.query.derivedExactMetadata,
+                currentExactResults: request.query.currentExactResults
+              }).currentExactResults;
 
         return createProjectHealth({
           document: this.#document,
@@ -4117,6 +4120,7 @@ export class AsyncCadCommandExecutor {
   ): Promise<CadAsyncBatchResponse | undefined> {
     const resolvedImport = await this.#resolveProjectImportStepOps(batch);
     const effectiveBatch = resolvedImport.batch;
+    await delay(0);
     const workerResponse = await this.worker.execute({
       id: this.#createRequestId(),
       batch: effectiveBatch,

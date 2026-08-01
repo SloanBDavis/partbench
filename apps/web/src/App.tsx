@@ -565,9 +565,6 @@ type DerivedGeometrySourceBuilders = Pick<
   | "createDerivedGeometrySourcesFromDocument"
   | "createCurrentExactEvidence"
   | "createCurrentExactSources"
-  | "createModelingResultState"
-  | "createRenderSceneInputs"
-  | "deriveModelingActions"
   | "createBodyTopologyDerivedExactMetadataSnapshot"
   | "DerivedExactMetadataService"
   | "formatDerivedExactMetadataEntryStatus"
@@ -583,6 +580,14 @@ let derivedGeometrySourceBuildersPromise:
 function loadDerivedGeometrySourceBuilders(): Promise<DerivedGeometrySourceBuilders> {
   derivedGeometrySourceBuildersPromise ??= import("./derivedGeometrySources");
   return derivedGeometrySourceBuildersPromise;
+}
+
+type ModelingUiRuntime = typeof import("./modelingUiRuntime");
+let modelingUiRuntimePromise: Promise<ModelingUiRuntime> | undefined;
+
+function loadModelingUiRuntime(): Promise<ModelingUiRuntime> {
+  modelingUiRuntimePromise ??= import("./modelingUiRuntime");
+  return modelingUiRuntimePromise;
 }
 const supportedOpfsCacheArtifactVersions = [
   DERIVED_MESH_CACHE_ARTIFACT_VERSION
@@ -2220,6 +2225,13 @@ export function App() {
       setDerivedGeometrySourceBuilders((current) => current ?? builders);
       return builders;
     }, []);
+  const [modelingUiRuntime, setModelingUiRuntime] =
+    useState<ModelingUiRuntime>();
+  const getModelingUiRuntime = useCallback(async () => {
+    const runtime = await loadModelingUiRuntime();
+    setModelingUiRuntime((current) => current ?? runtime);
+    return runtime;
+  }, []);
   const documentPublicationResolversRef = useRef(
     new Map<CadDocument, Set<() => void>>()
   );
@@ -2531,7 +2543,8 @@ export function App() {
     }
     if (!sketchRegionQueryClientLoadRef.current) {
       const load = import("./sketchRegionQueryClient")
-        .then(({ SketchRegionQueryClient: RegionQueryClient }) => {
+        .then(async ({ SketchRegionQueryClient: RegionQueryClient }) => {
+          await new Promise<void>((resolve) => setTimeout(resolve, 0));
           const client = new RegionQueryClient();
           if (sketchRegionQueryClientDisposedRef.current) {
             client.clearCache();
@@ -3126,7 +3139,7 @@ export function App() {
         : undefined;
   const modelingResultState = useMemo(
     () =>
-      derivedGeometrySourceBuilders?.createModelingResultState({
+      modelingUiRuntime?.createModelingResultState({
         commandPending,
         commandFailed: commandError !== undefined,
         derivedGeometryEnabled,
@@ -3142,7 +3155,7 @@ export function App() {
       commandError,
       commandPending,
       derivedGeometry,
-      derivedGeometrySourceBuilders,
+      modelingUiRuntime,
       derivedGeometrySources.length,
       derivedExactMetadata,
       currentExactMetadataSources.length,
@@ -3567,7 +3580,7 @@ export function App() {
   );
   const modelingActions = useMemo(
     () =>
-      derivedGeometrySourceBuilders?.deriveModelingActions({
+      modelingUiRuntime?.deriveModelingActions({
         context: modelingSelectionContext,
         bodies: projectStructure.bodies,
         features: projectStructure.features,
@@ -3577,7 +3590,7 @@ export function App() {
         sketchIntentActionAvailability
       }) ?? INITIAL_MODELING_ACTIONS,
     [
-      derivedGeometrySourceBuilders,
+      modelingUiRuntime,
       document.topologyIdentity?.anchors,
       holeTargetReadinessByTopologyAnchorId,
       modelingSelectionContext,
@@ -5364,7 +5377,7 @@ export function App() {
     selectedId;
   const renderScene = useMemo(
     () =>
-      derivedGeometrySourceBuilders?.createRenderSceneInputs(
+      modelingUiRuntime?.createRenderSceneInputs(
         sceneObjects,
         derivedGeometryBySourceId,
         [...featureGeometrySources, ...currentExactDisplaySources],
@@ -5373,7 +5386,7 @@ export function App() {
       ) ?? { primitives: [], meshes: [] },
     [
       derivedGeometryBySourceId,
-      derivedGeometrySourceBuilders,
+      modelingUiRuntime,
       currentExactDisplaySources,
       featureGeometrySources,
       sceneObjects,
@@ -5455,8 +5468,22 @@ export function App() {
   }, [refreshProjectOpfsCache, workbenchUi.mode]);
 
   useEffect(() => {
+    if (document.objects.size === 0 && projectStructure.features.length === 0) {
+      return;
+    }
     void getDerivedGeometrySourceBuilders();
-  }, [getDerivedGeometrySourceBuilders]);
+  }, [document, getDerivedGeometrySourceBuilders, projectStructure.features]);
+
+  useEffect(() => {
+    if (
+      document.objects.size === 0 &&
+      document.sketches.size === 0 &&
+      projectStructure.features.length === 0
+    ) {
+      return;
+    }
+    void getModelingUiRuntime();
+  }, [document, getModelingUiRuntime, projectStructure.features]);
 
   useEffect(() => {
     if (!derivedGeometryEnabled) {

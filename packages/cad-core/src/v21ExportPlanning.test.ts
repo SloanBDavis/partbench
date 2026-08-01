@@ -111,6 +111,28 @@ function exact(
 }
 
 describe("V21 exact export planning", () => {
+  it("keeps sketch-only health free of exact-body evidence", () => {
+    const engine = new CadEngine();
+    engine.apply({
+      op: "sketch.create",
+      id: "sketch_only",
+      name: "Sketch only",
+      plane: "XY"
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.health" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "project.health",
+      exactBodyCount: 0,
+      currentExactResults: []
+    });
+  });
+
   it.each([
     ["ready", undefined],
     ["pending", "EXPORT_EXACT_SOURCE_UNAVAILABLE"],

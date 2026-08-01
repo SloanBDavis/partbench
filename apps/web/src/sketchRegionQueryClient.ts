@@ -272,10 +272,17 @@ export class SketchRegionQueryClient {
   }
 }
 
+const regionProjectionKeysByProject = new WeakMap<
+  CadProject,
+  Map<string, string>
+>();
+
 export function createSketchRegionRelevantProjectionKey(
   project: CadProject,
   sketchId: string
 ): string {
+  const cached = regionProjectionKeysByProject.get(project)?.get(sketchId);
+  if (cached) return cached;
   const sketch = project.document.sketches.find(
     (candidate) => candidate.id === sketchId
   );
@@ -285,7 +292,12 @@ export function createSketchRegionRelevantProjectionKey(
       (entity): entity is NonNullable<typeof entity> => entity !== undefined
     )
     .sort((left, right) => compareCodeUnits(left.id, right.id));
-  return JSON.stringify({ sketchId, entities });
+  const key = JSON.stringify({ sketchId, entities });
+  const projectKeys =
+    regionProjectionKeysByProject.get(project) ?? new Map<string, string>();
+  projectKeys.set(sketchId, key);
+  regionProjectionKeysByProject.set(project, projectKeys);
+  return key;
 }
 
 function createDiscoveryEntityProjection(entity: SketchEntitySnapshot):

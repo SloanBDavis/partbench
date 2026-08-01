@@ -826,6 +826,7 @@ describe("renderScene", () => {
     expect(normal[0]?.edgeSegments).toHaveLength(48);
     expect(large[0]?.edgeSegments).toHaveLength(48);
     expect(large).toHaveLength(33);
+    expect(large[0]?.edgeSegments).toBe(large[1]?.edgeSegments);
     expect(createSketchDisplayMeshes([largeSketch])[0]).toBe(large[0]);
     expect(
       createSketchDisplayMeshes([
