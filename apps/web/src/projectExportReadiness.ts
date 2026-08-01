@@ -207,6 +207,8 @@ function getBodySourceDetail(body: CadExportBodyReadiness): string {
       return "Revolve bodies are not ready for STEP export yet.";
     case "authoredSweep":
       return "Sweep bodies are not ready for STEP export yet.";
+    case "authoredLoft":
+      return "Loft bodies are not ready for STEP export yet.";
     case "authoredHole":
       return "Hole bodies are not ready for STEP export yet.";
     case "authoredChamfer":
@@ -215,6 +217,10 @@ function getBodySourceDetail(body: CadExportBodyReadiness): string {
       return "Fillet bodies are not ready for STEP export yet.";
     case "authoredShell":
       return "Shell bodies are not ready for STEP export yet.";
+    case "authoredLinearPattern":
+    case "authoredCircularPattern":
+    case "authoredMirror":
+      return "Pattern and mirror bodies are not ready for STEP export yet.";
     case "importedBody":
       return "Imported STEP bodies need checkpoint-backed export support.";
     case "primitiveCompatibility":

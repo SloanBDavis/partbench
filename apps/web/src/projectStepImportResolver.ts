@@ -125,6 +125,8 @@ async function resolveProjectImportStep({
           linearTolerance: 0.001,
           angularToleranceDegrees: 0.01
         },
+        brepByteLength: body.checkpointPayload.brepByteLength,
+        brepSha256: await sha256Hex(body.checkpointPayload.brepBytes),
         brepBytes: body.checkpointPayload.brepBytes,
         topologyBytes: encodeWcadCanonicalCbor(body.topologySnapshot),
         signatureBytes: encodeWcadCanonicalCbor(

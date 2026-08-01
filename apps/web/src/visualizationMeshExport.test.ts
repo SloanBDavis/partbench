@@ -111,7 +111,7 @@ describe("visualizationMeshExport", () => {
         expect.objectContaining({
           bodyId: "body_shell",
           sourceKind: "authoredShell",
-          sourceStatus: "deferred"
+          sourceStatus: "supported"
         })
       ])
     );
@@ -219,9 +219,9 @@ describe("visualizationMeshExport", () => {
 
     expect(primitiveStatus.available).toBe(false);
     expect(primitiveStatus.diagnostics[0]).toMatchObject({
-      code: "VISUALIZATION_EXPORT_SOURCE_UNSUPPORTED",
+      code: "VISUALIZATION_EXPORT_MESH_MISSING",
       status: "unavailable",
-      received: "primitiveCompatibility"
+      received: "missing source"
     });
   });
 

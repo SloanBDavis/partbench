@@ -184,7 +184,7 @@ describe("V17 composite extrude web integration", () => {
       });
       expect(exact).toMatchObject({
         ok: true,
-        status: "supported"
+        status: "deferred"
       });
       if (!exact.ok || exact.query !== "project.exportExact") continue;
       const exactSource = exact.exportSources.find(

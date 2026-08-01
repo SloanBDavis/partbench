@@ -1658,6 +1658,8 @@ export interface WcadTopologyCheckpointPayloadInput {
   readonly kernel: WcadTopologyCheckpointKernelMetadata;
   readonly tolerance: WcadTopologyCheckpointToleranceMetadata;
   readonly brepBytes: Uint8Array;
+  readonly brepByteLength?: number;
+  readonly brepSha256?: string;
   readonly topologyBytes: Uint8Array;
   readonly signatureBytes: Uint8Array;
 }

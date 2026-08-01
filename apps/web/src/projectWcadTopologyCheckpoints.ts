@@ -11,7 +11,8 @@ import {
   CadEngine,
   createCadDocumentFromSnapshot,
   encodeWcadCanonicalCbor,
-  exportCadProjectWcad
+  exportCadProjectWcad,
+  sha256Hex
 } from "@web-cad/cad-core";
 import type {
   CadBodyExactTopologySnapshot,
@@ -719,6 +720,8 @@ export async function createProjectWcadTopologyCheckpointPayloadInputs({
           linearTolerance: 0.001,
           angularToleranceDegrees: 0.01
         },
+        brepByteLength: result.checkpointPayload.brepByteLength,
+        brepSha256: sha256Hex(result.checkpointPayload.brepBytes),
         brepBytes: result.checkpointPayload.brepBytes,
         topologyBytes: encodeWcadCanonicalCbor(
           normalizedPayload.topologySnapshot

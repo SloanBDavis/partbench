@@ -307,15 +307,17 @@ import type {
 import {
   createBodyTopologyDerivedExactMetadataSnapshot,
   createEmptyDerivedExactMetadataSnapshot,
-  createImportedBodyExactMetadataSources,
   DerivedExactMetadataService,
   formatDerivedExactMetadataEntryStatus,
   getCurrentDerivedExactMetadataEntryForBody,
-  isExactMetadataSource,
   planExactMetadataRetry,
   type DerivedExactMetadataSource,
   type DerivedExactMetadataSnapshot
 } from "./derivedExactMetadata";
+import {
+  getReadyRuntimeExactSources,
+  resolveCurrentExactBodies
+} from "./currentExactBodyResolver";
 import {
   createCurrentDerivedExactMetadataSnapshots,
   readProjectExactStepExport,
@@ -601,6 +603,8 @@ function createWcadTopologyCheckpointPayloadInputCache(
       units: payload.manifestEntry.units,
       kernel: payload.manifestEntry.kernel,
       tolerance: payload.manifestEntry.tolerance,
+      brepByteLength: payload.manifestEntry.brep.byteLength,
+      brepSha256: payload.manifestEntry.brep.sha256,
       brepBytes: payload.brepBytes,
       topologyBytes: payload.topologyBytes,
       signatureBytes: payload.signatureBytes
@@ -2971,25 +2975,30 @@ export function App() {
       sourcePlacementFacesByKey
     ]
   );
-  const importedExactMetadataSources = useMemo(() => {
-    return createImportedBodyExactMetadataSources(
+  const currentExactBodyResolutions = useMemo(
+    () =>
+      resolveCurrentExactBodies({
+        document,
+        bodies: projectStructure.bodies,
+        features: projectStructure.features,
+        geometrySources: derivedGeometrySources,
+        checkpointPayloads: wcadTopologyCheckpointPayloadCache,
+        sourceIdentitySignaturesByBodyId: bodySourceIdentitySignatures
+      }),
+    [
+      bodySourceIdentitySignatures,
+      derivedGeometrySources,
+      document,
+      projectStructure.bodies,
       projectStructure.features,
       wcadTopologyCheckpointPayloadCache
-    );
-  }, [projectStructure.features, wcadTopologyCheckpointPayloadCache]);
+    ]
+  );
   const currentExactMetadataSources = useMemo<
     readonly DerivedExactMetadataSource[]
   >(
-    () => [
-      ...derivedGeometrySources.filter(
-        (
-          source
-        ): source is DerivedGeometrySource & DerivedExactMetadataSource =>
-          isExactMetadataSource(source)
-      ),
-      ...importedExactMetadataSources
-    ],
-    [derivedGeometrySources, importedExactMetadataSources]
+    () => getReadyRuntimeExactSources(currentExactBodyResolutions),
+    [currentExactBodyResolutions]
   );
   const projectExportReadiness = useMemo(
     () =>
@@ -5370,7 +5379,7 @@ export function App() {
     }
 
     const stagedExactSources = currentExactMetadataSources.filter((source) => {
-      if (source.kind === "importedBody") return true;
+      if (source.kind === "importedBody" || "object" in source) return true;
       const displayEntry = geometryService
         .getSnapshot()
         .entries.find((entry) => entry.sourceId === source.id);

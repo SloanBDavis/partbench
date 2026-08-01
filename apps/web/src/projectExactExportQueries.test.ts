@@ -24,7 +24,7 @@ describe("project exact export query evidence", () => {
       readAddBodyReadiness(
         readProjectExportReadiness(engine, pending, [source])
       )?.sourceStatus
-    ).toBe("deferred");
+    ).toBe("supported");
     expect(
       readProjectExactStepExport(engine, pending, [source])?.available
     ).toBe(false);
@@ -79,7 +79,7 @@ describe("project exact export query evidence", () => {
       readAddBodyReadiness(
         readProjectExportReadiness(engine, ready, [targetEditedSource])
       )?.sourceStatus
-    ).toBe("deferred");
+    ).toBe("supported");
 
     engine.apply({
       op: "feature.updateExtrude",
@@ -94,7 +94,7 @@ describe("project exact export query evidence", () => {
       readAddBodyReadiness(
         readProjectExportReadiness(engine, ready, [editedSource])
       )?.sourceStatus
-    ).toBe("deferred");
+    ).toBe("supported");
     expect(
       readProjectExactStepExport(engine, ready, [editedSource])?.available
     ).toBe(false);

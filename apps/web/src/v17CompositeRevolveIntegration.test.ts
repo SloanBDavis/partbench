@@ -127,6 +127,27 @@ describe("V17 composite revolve web integration", () => {
       const exactInput = createExactMetadataRuntimeInput(source);
       const displayed = await deriveGeometrySourceMesh(displayRuntime, source);
       const exact = await runtime.exactBodyMetadata(exactInput);
+      const parentSource = createDerivedGeometrySourcesFromDocument(
+        engine.getDocument(),
+        readFeatures(engine),
+        readGeneratedFaces(engine),
+        new Map([
+          [
+            "body_parent",
+            readBodySourceIdentitySignature(engine, "body_parent")
+          ],
+          [source.id, readBodySourceIdentitySignature(engine, source.id)]
+        ])
+      ).find(
+        (candidate) =>
+          candidate.id === "body_parent" && candidate.kind === "extrude"
+      );
+      if (!parentSource || parentSource.kind !== "extrude") {
+        throw new Error("Expected parent exact source.");
+      }
+      const parentExact = await runtime.exactBodyMetadata(
+        createExactMetadataRuntimeInput(parentSource)
+      );
       const checkpointPayloads =
         await createProjectWcadTopologyCheckpointPayloadInputs({
           document: engine.getDocument(),
@@ -143,12 +164,28 @@ describe("V17 composite revolve web integration", () => {
 
       const exactExport = readProjectExactStepExport(
         engine,
-        createEmptyDerivedExactMetadataSnapshot(),
-        [source]
+        {
+          ...readyExactSnapshot(source),
+          entries: [
+            ...readyExactSnapshot(source).entries,
+            {
+              bodyId: parentSource.id,
+              sourceKind: parentSource.kind,
+              cacheKey: createDerivedExactMetadataCacheKey(parentSource),
+              status: "ready",
+              metadata: parentExact.metadata,
+              metrics: parentExact.metrics
+            }
+          ],
+          supportedCount: 2,
+          readyCount: 2
+        },
+        [source, parentSource]
       );
       if (!exactExport) {
         throw new Error("Expected project STEP export input.");
       }
+      expect(exactExport).toMatchObject({ available: true });
       let stepRequest: GeometryWorkerRequest | undefined;
       const kernelWorker = new GeometryKernelWorker();
       const stepWorker: GeometryWorker = {
@@ -551,7 +588,7 @@ describe("V17 composite revolve web integration", () => {
       createCurrentDerivedExactMetadataSnapshots(engine, ready, [edited])
     ).toEqual([]);
     expect(readProjectExactStepExport(engine, ready, [edited])).toMatchObject({
-      available: true,
+      available: false,
       exportSources: expect.arrayContaining([
         expect.objectContaining({
           sourceKind: "authoredRevolve",
