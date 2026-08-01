@@ -832,8 +832,8 @@ describe("V17 composite wire extrude generated references", () => {
     });
     expect(exact).toMatchObject({
       ok: true,
-      status: "supported",
-      exportableBodyCount: 1,
+      status: "deferred",
+      exportableBodyCount: 0,
       exportSources: [
         {
           bodyId: "body_wire",
@@ -922,11 +922,13 @@ describe("V17 composite wire extrude generated references", () => {
       exportableBodyCount: 0,
       exportSources: [],
       bodies: [
-        {
+        expect.objectContaining({
           bodyId: "body_wire",
           sourceStatus: "unavailable",
-          diagnostics: [{ code: "EXPORT_BODY_SOURCE_UNRESOLVED" }]
-        }
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({ code: "EXPORT_BODY_SOURCE_UNRESOLVED" })
+          ])
+        })
       ]
     });
   });
@@ -939,7 +941,7 @@ describe("V17 composite wire extrude generated references", () => {
     });
     expect(exact).toMatchObject({
       ok: true,
-      status: "supported",
+      status: "deferred",
       exportSources: [
         {
           sourceSketchEntityIds: ["line_a", "arc_b", "line_c", "line_d"],

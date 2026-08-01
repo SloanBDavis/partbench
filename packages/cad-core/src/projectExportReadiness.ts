@@ -1,10 +1,16 @@
 import {
+  CAD_EXPORT_SOURCE_KIND_BY_BODY_SOURCE_TYPE,
   WCAD_SOURCE_IDENTITY_ALGORITHM,
   isSketchRegionsProfileRef
 } from "@web-cad/cad-protocol";
 import type {
   CadBodySnapshot,
+  CadBodySource,
   CadBodyDerivedExactMetadataSnapshot,
+  CadCurrentExactResult,
+  CadCurrentExactResultStatus,
+  CadExactExportPlan,
+  CadExactResultDiagnostic,
   CadExactExportBooleanSource,
   CadExactExportBooleanResultSource,
   CadExactExportBodySource,
@@ -34,6 +40,7 @@ import type {
 import type {
   CadDocument,
   ExtrudeFeature,
+  Feature,
   RevolveFeature,
   SweepFeature,
   SketchEntity
@@ -54,6 +61,8 @@ import { createResolvedWireRevolveProfile } from "./wireRevolveProfile";
 import { createResolvedRegionRevolveProfile } from "./regionRevolveProfile";
 import { createResolvedSweepSource } from "./sweepProfile";
 import { validateRegisteredV22RegionSource } from "./v19RegionPolicyRegistry";
+import { encodeCanonicalCbor } from "./canonicalCbor";
+import { sha256Hex } from "./sha256";
 
 interface ProjectExportReadinessInput {
   readonly document: CadDocument;
@@ -61,6 +70,7 @@ interface ProjectExportReadinessInput {
   readonly bodies: readonly CadBodySnapshot[];
   readonly exactStepWriterStatus?: CadExactExportWriterStatus;
   readonly derivedExactMetadata?: readonly CadBodyDerivedExactMetadataSnapshot[];
+  readonly currentSourceIdentity?: WcadSourceIdentity;
 }
 
 interface ProjectExactExportInput extends ProjectExportReadinessInput {
@@ -78,10 +88,34 @@ interface ExportFormatDefinition {
   readonly derivedBoundaryNote: string;
 }
 
-interface BodySourceReadiness {
+interface BodySourceCapability {
   readonly sourceKind: CadExportBodySourceKind;
   readonly sourceStatus: CadExportReadinessStatus;
   readonly diagnostics: readonly CadExportDiagnostic[];
+}
+
+interface BodySourceReadiness extends BodySourceCapability {
+  readonly currentExactResult: CadCurrentExactResult;
+}
+
+export interface CurrentExactExportProjection {
+  readonly plan: CadExactExportPlan;
+  readonly currentExactResults: readonly CadCurrentExactResult[];
+  readonly selectedBodies: readonly CadBodySnapshot[];
+  readonly bodyReadiness: readonly CadExportBodyReadiness[];
+  readonly selectionDiagnostics: readonly CadExportDiagnostic[];
+  readonly globalDiagnostics: readonly CadExportDiagnostic[];
+  readonly executable: boolean;
+}
+
+interface CurrentExactExportProjectionInput {
+  readonly document: CadDocument;
+  readonly bodies: readonly CadBodySnapshot[];
+  readonly currentSourceIdentity: WcadSourceIdentity;
+  readonly bodyIds?: readonly string[];
+  readonly requestedSourceIdentity?: WcadSourceIdentity;
+  readonly exactStepWriterStatus?: CadExactExportWriterStatus;
+  readonly derivedExactMetadata?: readonly CadBodyDerivedExactMetadataSnapshot[];
 }
 
 const SOURCE_BOUNDARY_NOTE =
@@ -117,7 +151,8 @@ export function createProjectExportReadiness({
   cadOpsVersion,
   bodies,
   exactStepWriterStatus = "available",
-  derivedExactMetadata = []
+  derivedExactMetadata = [],
+  currentSourceIdentity
 }: ProjectExportReadinessInput): ProjectExportReadinessQueryResponse {
   const exactMetadataByBodyId = new Map(
     derivedExactMetadata.map((metadata) => [metadata.bodyId, metadata] as const)
@@ -125,17 +160,28 @@ export function createProjectExportReadiness({
   const bodyReadiness = bodies.map((body) =>
     createBodyExportReadiness(
       document,
+      bodies,
       body,
       exactStepWriterStatus,
       exactMetadataByBodyId.get(body.id)
     )
   );
+  const projection = currentSourceIdentity
+    ? createCurrentExactExportProjection({
+        document,
+        bodies,
+        currentSourceIdentity,
+        exactStepWriterStatus,
+        derivedExactMetadata
+      })
+    : undefined;
   const formatReadiness = EXPORT_FORMATS.map((format) =>
     createFormatReadiness(
       document.units,
       format,
       bodyReadiness,
-      exactStepWriterStatus
+      exactStepWriterStatus,
+      projection?.executable ?? false
     )
   );
   const projectDiagnostics =
@@ -156,10 +202,10 @@ export function createProjectExportReadiness({
     ok: true,
     query: "project.exportReadiness",
     cadOpsVersion,
-    status: chooseProjectStatus(bodyReadiness),
-    canExportFiles:
-      exactStepWriterStatus === "available" &&
-      bodyReadiness.some((body) => body.sourceStatus === "supported"),
+    status: projection
+      ? getProjectionReadinessStatus(projection)
+      : chooseProjectStatus(bodyReadiness),
+    canExportFiles: projection?.executable ?? false,
     units: document.units,
     sourceBoundaryNote: SOURCE_BOUNDARY_NOTE,
     derivedBoundaryNote: DERIVED_BOUNDARY_NOTE,
@@ -177,7 +223,13 @@ export function createProjectExportReadiness({
     ).length,
     bodies: bodyReadiness,
     diagnosticCount: diagnostics.length,
-    diagnostics
+    diagnostics,
+    ...(projection
+      ? {
+          plan: projection.plan,
+          currentExactResults: projection.currentExactResults
+        }
+      : {})
   };
 }
 
@@ -195,103 +247,55 @@ export function createProjectExactExport({
       (metadata) => [metadata.bodyId, metadata] as const
     ) ?? []
   );
-  const readiness = createProjectExportReadiness({
+  const projection = createCurrentExactExportProjection({
     document,
-    cadOpsVersion,
     bodies,
+    currentSourceIdentity,
+    bodyIds: query.bodyIds,
+    requestedSourceIdentity: query.sourceIdentity,
     exactStepWriterStatus,
     derivedExactMetadata: [...exactMetadataByBodyId.values()]
   });
-  const bodyById = new Map(
-    readiness.bodies.map((body) => [body.bodyId, body] as const)
-  );
-  const requestedBodyIds = query.bodyIds ?? [];
-  const hasRequestedBodyFilter = requestedBodyIds.length > 0;
-  const selectedBodies = !hasRequestedBodyFilter
-    ? readiness.bodies
-    : requestedBodyIds.flatMap((bodyId) => {
-        const body = bodyById.get(bodyId);
-
-        return body ? [body] : [];
-      });
-  const stepBodies = selectedBodies.map((body) => ({
+  const requestedBodyIds =
+    query.bodyIds && query.bodyIds.length > 0
+      ? query.bodyIds
+      : projection.selectedBodies.map((body) => body.id);
+  const stepBodies = projection.bodyReadiness.map((body) => ({
     ...body,
     formats: body.formats.filter((format) => format.format === "step")
   }));
-  const missingDiagnostics = requestedBodyIds
-    .filter((bodyId) => !bodyById.has(bodyId))
-    .map((bodyId) => createMissingExactBodyDiagnostic(bodyId));
-  const unsupportedDiagnostics = stepBodies
-    .filter((body) => body.sourceStatus !== "supported")
-    .map((body) => createUnsupportedExactBodyDiagnostic(body));
-  const blockingUnsupportedDiagnostics = hasRequestedBodyFilter
-    ? unsupportedDiagnostics
-    : [];
-  const exportSources = stepBodies
-    .filter((body) => body.sourceStatus === "supported")
-    .map((body) =>
-      createExactExportBodySource(
-        document,
-        body,
-        exactMetadataByBodyId.get(body.bodyId)
-      )
-    )
-    .filter(
-      (source): source is CadExactExportBodySource => source !== undefined
-    );
-  const supportedStepBodies = stepBodies.filter(
-    (body) => body.sourceStatus === "supported"
-  );
-  const sourceDiagnostics =
-    exportSources.length === supportedStepBodies.length
-      ? []
-      : supportedStepBodies
-          .filter(
-            (body) =>
-              !exportSources.some((source) => source.bodyId === body.bodyId)
-          )
-          .map((body) => createUnsupportedExactBodyDiagnostic(body));
+  const exportSources =
+    projection.selectionDiagnostics.length === 0 &&
+    projection.globalDiagnostics.length === 0
+      ? stepBodies.flatMap((body, index) => {
+          const status = projection.currentExactResults[index]?.status;
+          if (status !== "ready" && status !== "pending") return [];
+          const source = createExactExportBodySource(
+            document,
+            body,
+            exactMetadataByBodyId.get(body.bodyId)
+          );
+          return source ? [source] : [];
+        })
+      : [];
   const sourceIdentityStatus = getSourceIdentityStatus(
     query.sourceIdentity,
     currentSourceIdentity
   );
-  const sourceIdentityDiagnostics =
-    sourceIdentityStatus === "mismatchedCurrent" && query.sourceIdentity
-      ? [
-          createSourceIdentityMismatchDiagnostic(
-            query.sourceIdentity,
-            currentSourceIdentity
-          )
-        ]
-      : [];
-  const writerUnavailableDiagnostics =
-    exactStepWriterStatus === "unavailable"
-      ? [createStepWriterUnavailableDiagnostic()]
-      : [];
   const diagnostics = [
-    ...writerUnavailableDiagnostics,
-    ...sourceIdentityDiagnostics,
-    ...missingDiagnostics,
-    ...unsupportedDiagnostics,
-    ...sourceDiagnostics,
+    ...projection.globalDiagnostics,
+    ...projection.selectionDiagnostics,
     ...stepBodies.flatMap((body) => body.diagnostics)
   ];
-  const exportableBodyCount =
-    missingDiagnostics.length === 0 &&
-    blockingUnsupportedDiagnostics.length === 0 &&
-    sourceIdentityStatus !== "mismatchedCurrent" &&
-    exactStepWriterStatus === "available"
-      ? exportSources.length
-      : 0;
-  const status: CadExportReadinessStatus =
-    exactStepWriterStatus === "unavailable" ||
-    sourceIdentityStatus === "mismatchedCurrent"
+  const exportableBodyCount = projection.executable ? stepBodies.length : 0;
+  const status: CadExportReadinessStatus = projection.executable
+    ? "supported"
+    : projection.globalDiagnostics.length > 0 ||
+        projection.selectionDiagnostics.length > 0
       ? "unavailable"
-      : exportableBodyCount > 0
-        ? "supported"
-        : stepBodies.every((body) => body.status === "unavailable")
-          ? "unavailable"
-          : "deferred";
+      : stepBodies.some((body) => body.status === "deferred")
+        ? "deferred"
+        : "unavailable";
 
   return {
     ok: true,
@@ -301,8 +305,8 @@ export function createProjectExactExport({
     label: "STEP",
     exportKind: "exact",
     status,
-    available: exportableBodyCount > 0,
-    canExportFile: exportableBodyCount > 0,
+    available: projection.executable,
+    canExportFile: projection.executable,
     writerStatus: exactStepWriterStatus,
     units: document.units,
     fileExtensions: [".step", ".stp"],
@@ -323,16 +327,148 @@ export function createProjectExactExport({
       (body) => body.status === "unavailable"
     ).length,
     exportableBodyCount,
-    exportSources:
-      missingDiagnostics.length === 0 &&
-      blockingUnsupportedDiagnostics.length === 0 &&
-      sourceIdentityStatus !== "mismatchedCurrent" &&
-      exactStepWriterStatus === "available"
-        ? exportSources
-        : [],
+    exportSources,
     bodies: stepBodies,
     diagnosticCount: diagnostics.length,
-    diagnostics
+    diagnostics,
+    plan: projection.plan,
+    currentExactResults: projection.currentExactResults
+  };
+}
+
+export function createCurrentExactExportProjection({
+  document,
+  bodies,
+  currentSourceIdentity,
+  bodyIds = [],
+  requestedSourceIdentity,
+  exactStepWriterStatus = "available",
+  derivedExactMetadata = []
+}: CurrentExactExportProjectionInput): CurrentExactExportProjection {
+  const bodyById = new Map(bodies.map((body) => [body.id, body] as const));
+  const explicit = bodyIds.length > 0;
+  const selectionDiagnostics: CadExportDiagnostic[] = [];
+  const seen = new Set<string>();
+  const selectedBodies = explicit
+    ? bodyIds.flatMap((bodyId) => {
+        if (seen.has(bodyId)) {
+          selectionDiagnostics.push(createDuplicateExactBodyDiagnostic(bodyId));
+          return [];
+        }
+        seen.add(bodyId);
+        const body = bodyById.get(bodyId);
+        if (!body) {
+          selectionDiagnostics.push(createMissingExactBodyDiagnostic(bodyId));
+          return [];
+        }
+        if (body.consumedByFeatureId) {
+          selectionDiagnostics.push(createInactiveExactBodyDiagnostic(body));
+        }
+        return [body];
+      })
+    : bodies
+        .filter((body) => !body.consumedByFeatureId)
+        .sort((left, right) =>
+          left.id < right.id ? -1 : left.id > right.id ? 1 : 0
+        );
+  const metadataByBodyId = new Map(
+    derivedExactMetadata.map((metadata) => [metadata.bodyId, metadata] as const)
+  );
+  const bodyReadiness = selectedBodies.map((body) =>
+    createBodyExportReadiness(
+      document,
+      bodies,
+      body,
+      exactStepWriterStatus,
+      metadataByBodyId.get(body.id)
+    )
+  );
+  const currentExactResults = bodyReadiness.map(
+    (body) =>
+      classifyBodySource(
+        document,
+        bodies,
+        bodyById.get(body.bodyId)!,
+        metadataByBodyId.get(body.bodyId)
+      ).currentExactResult
+  );
+  const planBodies = selectedBodies.map((body, index) => {
+    const current = currentExactResults[index]!;
+    return {
+      bodyId: body.id,
+      bodyName: body.name?.trim() || body.id,
+      partId: body.partId,
+      featureId: body.featureId,
+      sourceType: body.source.type,
+      sourceIdentitySignature: getBodySourceIdentitySignature(
+        document,
+        bodies,
+        body
+      ),
+      status: current.status === "ready" ? "ready" : "blocked",
+      diagnostics: bodyReadiness[index]!.diagnostics
+    } as const;
+  });
+  const orderedBodyIds = planBodies.map((body) => body.bodyId);
+  const plan: CadExactExportPlan = {
+    format: "step",
+    schema: "AP242DIS",
+    units: document.units,
+    sourceIdentity: currentSourceIdentity,
+    orderedBodyIds,
+    allOrNothing: true,
+    planIdentity: sha256Hex(
+      encodeCanonicalCbor({
+        format: "step",
+        schema: "AP242DIS",
+        units: document.units,
+        sourceIdentity: currentSourceIdentity,
+        orderedBodyIds,
+        bodyNames: planBodies.map((body) => body.bodyName),
+        bodySourceIdentitySignatures: planBodies.map(
+          (body) => body.sourceIdentitySignature
+        ),
+        allOrNothing: true
+      })
+    ),
+    bodies: planBodies
+  };
+  const globalDiagnostics = [
+    ...(exactStepWriterStatus === "unavailable"
+      ? [createStepWriterUnavailableDiagnostic()]
+      : []),
+    ...(requestedSourceIdentity &&
+    getSourceIdentityStatus(requestedSourceIdentity, currentSourceIdentity) ===
+      "mismatchedCurrent"
+      ? [
+          createSourceIdentityMismatchDiagnostic(
+            requestedSourceIdentity,
+            currentSourceIdentity
+          )
+        ]
+      : []),
+    ...(planBodies.length === 0
+      ? [
+          createProjectEmptyDiagnostic(
+            "Project has no active bodies to export."
+          )
+        ]
+      : [])
+  ];
+  const executable =
+    selectionDiagnostics.length === 0 &&
+    globalDiagnostics.length === 0 &&
+    planBodies.length > 0 &&
+    planBodies.every((body) => body.status === "ready");
+
+  return {
+    plan,
+    currentExactResults,
+    selectedBodies,
+    bodyReadiness,
+    selectionDiagnostics,
+    globalDiagnostics,
+    executable
   };
 }
 
@@ -340,7 +476,8 @@ function createFormatReadiness(
   units: ProjectExportReadinessQueryResponse["units"],
   format: ExportFormatDefinition,
   bodies: readonly CadExportBodyReadiness[],
-  exactStepWriterStatus: CadExactExportWriterStatus
+  exactStepWriterStatus: CadExactExportWriterStatus,
+  stepExecutable: boolean
 ): CadExportFormatReadiness {
   const viableBodyCount = bodies.filter(
     (body) => body.status !== "unavailable"
@@ -348,10 +485,7 @@ function createFormatReadiness(
   const sourceSupportedBodyCount = bodies.filter(
     (body) => body.sourceStatus === "supported"
   ).length;
-  const stepAvailable =
-    format.format === "step" &&
-    exactStepWriterStatus === "available" &&
-    sourceSupportedBodyCount > 0;
+  const stepAvailable = format.format === "step" && stepExecutable;
   const emptyDiagnostics =
     bodies.length === 0
       ? [
@@ -400,12 +534,18 @@ function createFormatReadiness(
 
 function createBodyExportReadiness(
   document: CadDocument,
+  bodies: readonly CadBodySnapshot[],
   body: CadBodySnapshot,
   exactStepWriterStatus: CadExactExportWriterStatus,
   derivedExactMetadata?: CadBodyDerivedExactMetadataSnapshot
 ): CadExportBodyReadiness {
-  const source = classifyBodySource(document, body, derivedExactMetadata);
-  const status = chooseBodyStatus(source.sourceStatus);
+  const source = classifyBodySource(
+    document,
+    bodies,
+    body,
+    derivedExactMetadata
+  );
+  const status = exactStatusToReadiness(source.currentExactResult.status);
   const formats = EXPORT_FORMATS.map((format) =>
     createBodyFormatReadiness(format, body, source, exactStepWriterStatus)
   );
@@ -462,7 +602,10 @@ function createBodyFormatReadiness(
     };
   }
 
-  if (format.format === "step" && source.sourceStatus === "supported") {
+  if (
+    format.format === "step" &&
+    source.currentExactResult.status === "ready"
+  ) {
     return {
       format: format.format,
       label: format.label,
@@ -478,7 +621,7 @@ function createBodyFormatReadiness(
       format: format.format,
       label: format.label,
       exportKind: format.exportKind,
-      status: "deferred",
+      status: exactStatusToReadiness(source.currentExactResult.status),
       writerStatus: "available",
       diagnostics: source.diagnostics
     };
@@ -499,9 +642,415 @@ function createBodyFormatReadiness(
 
 function classifyBodySource(
   document: CadDocument,
+  bodies: readonly CadBodySnapshot[],
   body: CadBodySnapshot,
   derivedExactMetadata?: CadBodyDerivedExactMetadataSnapshot
 ): BodySourceReadiness {
+  const sourceKind =
+    CAD_EXPORT_SOURCE_KIND_BY_BODY_SOURCE_TYPE[body.source.type];
+  const feature = document.features.get(body.featureId);
+  const sourceRecordAvailable =
+    body.source.type === "primitiveFeature"
+      ? body.objectId !== undefined && document.objects.has(body.objectId)
+      : feature?.bodyId === body.id &&
+        feature.kind === expectedFeatureKind(body.source.type);
+  const importedCheckpointAvailable =
+    body.source.type !== "importedStepBody" ||
+    (feature?.kind === "importedBody" &&
+      document.topologyIdentity?.checkpoints.some(
+        (checkpoint) =>
+          checkpoint.checkpointId === feature.checkpointId &&
+          checkpoint.bodyId === body.id &&
+          checkpoint.status === "active"
+      ) === true);
+  const importedHoleUnsupported =
+    body.source.type === "sketchHoleFeature" &&
+    feature?.kind === "hole" &&
+    [...document.features.values()].some(
+      (candidate) =>
+        candidate.bodyId === feature.targetBodyId &&
+        candidate.kind === "importedBody"
+    );
+
+  if (
+    body.consumedByFeatureId ||
+    !sourceRecordAvailable ||
+    !importedCheckpointAvailable ||
+    importedHoleUnsupported
+  ) {
+    const capability = body.consumedByFeatureId
+      ? classifyLegacyBodySource(document, body, derivedExactMetadata)
+      : createUnresolvedBodySourceReadiness(body, sourceKind);
+    const status: CadCurrentExactResultStatus = importedHoleUnsupported
+      ? "unsupported"
+      : "blocked";
+    const diagnostic = createExactResultDiagnostic(
+      body,
+      status,
+      importedHoleUnsupported
+        ? "EXPORT_BODY_SOURCE_UNSUPPORTED"
+        : "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+      importedHoleUnsupported
+        ? `Hole body ${body.id} targets an imported body, which is outside the completed command matrix.`
+        : !importedCheckpointAvailable
+          ? `Imported body ${body.id} has no active checkpoint source record.`
+          : (capability.diagnostics[0]?.message ??
+            `Body ${body.id} has no current authoritative source record.`)
+    );
+    return {
+      sourceKind,
+      sourceStatus: "unavailable",
+      currentExactResult: {
+        status,
+        bodyId: body.id,
+        sourceType: body.source.type,
+        diagnostics: [diagnostic]
+      },
+      diagnostics: [
+        ...capability.diagnostics,
+        exactDiagnosticToExportDiagnostic(diagnostic, sourceKind)
+      ]
+    };
+  }
+
+  const legacy = classifyLegacyBodySource(document, body, derivedExactMetadata);
+  if (
+    (body.source.type === "sketchExtrudeFeature" ||
+      body.source.type === "sketchRevolveFeature") &&
+    legacy.sourceStatus === "unavailable"
+  ) {
+    const diagnostic = createExactResultDiagnostic(
+      body,
+      "blocked",
+      "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+      legacy.diagnostics[0]?.message ??
+        `Body ${body.id} has unresolved authored source dependencies.`
+    );
+    return {
+      sourceKind,
+      sourceStatus: "unavailable",
+      currentExactResult: {
+        status: "blocked",
+        bodyId: body.id,
+        sourceType: body.source.type,
+        diagnostics: [diagnostic]
+      },
+      diagnostics: [
+        ...legacy.diagnostics,
+        exactDiagnosticToExportDiagnostic(diagnostic, sourceKind)
+      ]
+    };
+  }
+  if (
+    body.source.type === "sketchExtrudeFeature" &&
+    feature?.kind === "extrude" &&
+    feature.operationMode !== "newBody" &&
+    derivedExactMetadata?.status === "ready" &&
+    legacy.sourceStatus !== "supported"
+  ) {
+    const diagnostic = createExactResultDiagnostic(
+      body,
+      "blocked",
+      "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+      legacy.diagnostics[0]?.message ??
+        `Body ${body.id} has unresolved boolean-result dependencies.`
+    );
+    return {
+      sourceKind,
+      sourceStatus: "supported",
+      currentExactResult: {
+        status: "blocked",
+        bodyId: body.id,
+        sourceType: body.source.type,
+        diagnostics: [diagnostic]
+      },
+      diagnostics: [
+        ...legacy.diagnostics,
+        exactDiagnosticToExportDiagnostic(diagnostic, sourceKind)
+      ]
+    };
+  }
+
+  const currentExactResult = createCurrentExactResult(
+    document,
+    bodies,
+    body,
+    derivedExactMetadata
+  );
+  const capability = createBodyDiagnostic(
+    "EXPORT_BODY_SOURCE_SUPPORTED",
+    "supported",
+    `Body ${body.id} has completed ${body.source.type} source semantics.`,
+    body,
+    sourceKind
+  );
+  return {
+    sourceKind,
+    sourceStatus: "supported",
+    currentExactResult,
+    diagnostics: [
+      capability,
+      ...currentExactResult.diagnostics.map((diagnostic) =>
+        exactDiagnosticToExportDiagnostic(diagnostic, sourceKind)
+      )
+    ]
+  };
+}
+
+const FEATURE_KIND_BY_BODY_SOURCE_TYPE = {
+  primitiveFeature: "primitive",
+  sketchExtrudeFeature: "extrude",
+  sketchRevolveFeature: "revolve",
+  sketchHoleFeature: "hole",
+  edgeChamferFeature: "chamfer",
+  edgeFilletFeature: "fillet",
+  linearPatternFeature: "linearPattern",
+  circularPatternFeature: "circularPattern",
+  mirrorFeature: "mirror",
+  shellFeature: "shell",
+  sweepFeature: "sweep",
+  loftFeature: "loft",
+  importedStepBody: "importedBody"
+} as const satisfies Record<
+  CadBodySource["type"],
+  Feature["kind"] | "primitive"
+>;
+
+function expectedFeatureKind(
+  sourceType: CadBodySource["type"]
+): Feature["kind"] | "primitive" {
+  return FEATURE_KIND_BY_BODY_SOURCE_TYPE[sourceType];
+}
+
+function createCurrentExactResult(
+  document: CadDocument,
+  bodies: readonly CadBodySnapshot[],
+  body: CadBodySnapshot,
+  metadata: CadBodyDerivedExactMetadataSnapshot | undefined
+): CadCurrentExactResult {
+  const sourceIdentitySignature = getBodySourceIdentitySignature(
+    document,
+    bodies,
+    body
+  );
+  if (!metadata) {
+    return createBlockedCurrentExactResult(
+      body,
+      "pending",
+      "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+      `Body ${body.id} is source-eligible but has no current exact result evidence.`
+    );
+  }
+  if (metadata.sourceIdentitySignature !== sourceIdentitySignature) {
+    return createBlockedCurrentExactResult(
+      body,
+      "stale",
+      "EXPORT_EXACT_SOURCE_STALE",
+      `Body ${body.id} exact result evidence is stale.`,
+      sourceIdentitySignature,
+      metadata.sourceIdentitySignature
+    );
+  }
+  if (metadata.status === "ready") {
+    if (!metadata.metadata) {
+      return createBlockedCurrentExactResult(
+        body,
+        "failed",
+        "EXPORT_EXACT_ARTIFACT_INVALID",
+        `Body ${body.id} exact result is marked ready without metadata.`
+      );
+    }
+    if (BODY_TOPOLOGY_VALIDATED_SOURCE_TYPES.has(body.source.type)) {
+      const topology = createBodyTopology({
+        document,
+        bodyId: body.id,
+        units: document.units,
+        ownerPartId: body.partId,
+        bodyExists: (bodyId) =>
+          bodies.some((candidate) => candidate.id === bodyId),
+        derivedExactMetadata: metadata
+      });
+      if (
+        !topology.ok ||
+        topology.topology.status !== "healthy" ||
+        !topology.topology.exactGeometryAvailable
+      ) {
+        const topologyStatus = topology.ok
+          ? topology.topology.status
+          : "ambiguous";
+        const issue = topology.ok ? topology.topology.issues.at(-1) : undefined;
+        const status: Exclude<CadCurrentExactResultStatus, "ready"> =
+          topologyStatus === "stale"
+            ? "stale"
+            : topologyStatus === "unsupported"
+              ? "unsupported"
+              : topologyStatus === "kernel-failed"
+                ? "failed"
+                : "blocked";
+        return createBlockedCurrentExactResult(
+          body,
+          status,
+          status === "stale"
+            ? "EXPORT_EXACT_SOURCE_STALE"
+            : status === "failed"
+              ? "EXPORT_EXACT_ARTIFACT_FAILED"
+              : status === "unsupported"
+                ? "EXPORT_BODY_SOURCE_UNSUPPORTED"
+                : "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+          issue?.message ?? `Body ${body.id} exact topology is not current.`,
+          issue?.expected,
+          issue?.received
+        );
+      }
+    }
+    return {
+      status: "ready",
+      bodyId: body.id,
+      sourceType: body.source.type,
+      sourceIdentitySignature,
+      diagnostics: []
+    };
+  }
+  const status: CadCurrentExactResultStatus =
+    metadata.status === "stale"
+      ? "stale"
+      : metadata.status === "unsupported"
+        ? "unsupported"
+        : metadata.status === "kernel-failed"
+          ? "failed"
+          : "blocked";
+  const code: CadExportDiagnostic["code"] =
+    status === "stale"
+      ? "EXPORT_EXACT_SOURCE_STALE"
+      : status === "failed"
+        ? "EXPORT_EXACT_ARTIFACT_FAILED"
+        : status === "unsupported"
+          ? "EXPORT_BODY_SOURCE_UNSUPPORTED"
+          : "EXPORT_EXACT_SOURCE_UNAVAILABLE";
+  return createBlockedCurrentExactResult(
+    body,
+    status,
+    code,
+    metadata.error?.message ??
+      `Body ${body.id} exact result status is ${metadata.status}.`
+  );
+}
+
+const BODY_TOPOLOGY_VALIDATED_SOURCE_TYPES: ReadonlySet<CadBodySource["type"]> =
+  new Set([
+    "sketchExtrudeFeature",
+    "sketchRevolveFeature",
+    "sketchHoleFeature",
+    "edgeChamferFeature",
+    "edgeFilletFeature",
+    "sweepFeature"
+  ]);
+
+function createBlockedCurrentExactResult(
+  body: CadBodySnapshot,
+  status: Exclude<CadCurrentExactResultStatus, "ready">,
+  code: CadExportDiagnostic["code"],
+  message: string,
+  expected?: string,
+  received?: string
+): CadCurrentExactResult {
+  return {
+    status,
+    bodyId: body.id,
+    sourceType: body.source.type,
+    diagnostics: [
+      createExactResultDiagnostic(
+        body,
+        status,
+        code,
+        message,
+        expected,
+        received
+      )
+    ]
+  };
+}
+
+function createExactResultDiagnostic(
+  body: CadBodySnapshot,
+  status: CadCurrentExactResultStatus,
+  code: CadExportDiagnostic["code"],
+  message: string,
+  expected?: string,
+  received?: string
+): CadExactResultDiagnostic {
+  return {
+    code,
+    status,
+    message,
+    bodyId: body.id,
+    sourceType: body.source.type,
+    featureId: body.featureId,
+    ...(expected ? { expected } : {}),
+    ...(received ? { received } : {})
+  };
+}
+
+function exactDiagnosticToExportDiagnostic(
+  diagnostic: CadExactResultDiagnostic,
+  sourceKind: CadExportBodySourceKind
+): CadExportDiagnostic {
+  return {
+    code: diagnostic.code,
+    status:
+      diagnostic.status === "ready"
+        ? "supported"
+        : diagnostic.status === "pending" || diagnostic.status === "stale"
+          ? "deferred"
+          : "unavailable",
+    format: "step",
+    message: diagnostic.message,
+    ...(diagnostic.bodyId ? { bodyId: diagnostic.bodyId } : {}),
+    ...(diagnostic.featureId ? { featureId: diagnostic.featureId } : {}),
+    sourceKind,
+    ...(diagnostic.expected ? { expected: diagnostic.expected } : {}),
+    ...(diagnostic.received ? { received: diagnostic.received } : {})
+  };
+}
+
+function getBodySourceIdentitySignature(
+  document: CadDocument,
+  bodies: readonly CadBodySnapshot[],
+  body: CadBodySnapshot
+): string {
+  const topology = createBodyTopology({
+    document,
+    bodyId: body.id,
+    units: document.units,
+    ownerPartId: body.partId,
+    bodyExists: (bodyId) => bodies.some((candidate) => candidate.id === bodyId)
+  });
+  return topology.ok
+    ? topology.topology.sourceIdentity.signature
+    : sha256Hex(
+        encodeCanonicalCbor({
+          bodyId: body.id,
+          source: body.source,
+          units: document.units
+        })
+      );
+}
+
+function exactStatusToReadiness(
+  status: CadCurrentExactResultStatus
+): CadExportReadinessStatus {
+  return status === "ready"
+    ? "supported"
+    : status === "pending" || status === "stale"
+      ? "deferred"
+      : "unavailable";
+}
+
+function classifyLegacyBodySource(
+  document: CadDocument,
+  body: CadBodySnapshot,
+  derivedExactMetadata?: CadBodyDerivedExactMetadataSnapshot
+): BodySourceCapability {
   const sourceKind = getBodyExportSourceKind(body);
 
   if (body.consumedByFeatureId) {
@@ -819,7 +1368,7 @@ function classifyBodySource(
 function createUnresolvedBodySourceReadiness(
   body: CadBodySnapshot,
   sourceKind: CadExportBodySourceKind
-): BodySourceReadiness {
+): BodySourceCapability {
   return {
     sourceKind,
     sourceStatus: "unavailable",
@@ -842,25 +1391,30 @@ function createUnresolvedBodySourceReadiness(
 function chooseProjectStatus(
   bodies: readonly CadExportBodyReadiness[]
 ): CadExportReadinessStatus {
-  if (bodies.every((body) => body.status === "unavailable")) {
+  if (
+    bodies.length === 0 ||
+    bodies.some((body) => body.status === "unavailable")
+  ) {
     return "unavailable";
   }
 
-  if (bodies.some((body) => body.status === "supported")) {
-    return "supported";
+  if (bodies.some((body) => body.status === "deferred")) {
+    return "deferred";
   }
 
-  return "deferred";
+  return "supported";
 }
 
-function chooseBodyStatus(
-  sourceStatus: CadExportReadinessStatus
+function getProjectionReadinessStatus(
+  projection: CurrentExactExportProjection
 ): CadExportReadinessStatus {
-  if (sourceStatus === "unavailable") {
-    return "unavailable";
-  }
-
-  return sourceStatus;
+  if (projection.executable) return "supported";
+  if (projection.globalDiagnostics.length > 0) return "unavailable";
+  return projection.currentExactResults.some(
+    (result) => result.status === "pending" || result.status === "stale"
+  )
+    ? "deferred"
+    : "unavailable";
 }
 
 function getBodyExportSourceKind(
@@ -996,13 +1550,45 @@ function createStepWriterUnavailableDiagnostic(
 
 function createMissingExactBodyDiagnostic(bodyId: string): CadExportDiagnostic {
   return {
-    code: "EXPORT_BODY_SOURCE_UNRESOLVED",
+    code: "EXPORT_BODY_SELECTION_INVALID",
     status: "unavailable",
     format: "step",
     bodyId,
     message: `Requested body ${bodyId} does not exist in the current authoritative project structure.`,
     expected: "current body id",
     received: "missing body id"
+  };
+}
+
+function createDuplicateExactBodyDiagnostic(
+  bodyId: string
+): CadExportDiagnostic {
+  return {
+    code: "EXPORT_BODY_DUPLICATE",
+    status: "unavailable",
+    format: "step",
+    bodyId,
+    message: `Requested body ${bodyId} appears more than once.`,
+    expected: "unique ordered body ids",
+    received: bodyId
+  };
+}
+
+function createInactiveExactBodyDiagnostic(
+  body: CadBodySnapshot
+): CadExportDiagnostic {
+  return {
+    code: "EXPORT_BODY_NOT_ACTIVE",
+    status: "unavailable",
+    format: "step",
+    bodyId: body.id,
+    bodyName: body.name,
+    bodyKind: body.kind,
+    featureId: body.featureId,
+    consumedByFeatureId: body.consumedByFeatureId,
+    message: `Requested body ${body.id} is consumed and is not an active export body.`,
+    expected: "active body",
+    received: "consumed body"
   };
 }
 
@@ -1570,28 +2156,6 @@ function isExactExportExtrudeEntity(
   entity: SketchEntity
 ): entity is Extract<SketchEntity, { readonly kind: "rectangle" | "circle" }> {
   return entity.kind === "rectangle" || entity.kind === "circle";
-}
-
-function createUnsupportedExactBodyDiagnostic(
-  body: CadExportBodyReadiness
-): CadExportDiagnostic {
-  return {
-    code: "EXPORT_EXACT_BODY_UNSUPPORTED",
-    status: body.sourceStatus,
-    format: "step",
-    bodyId: body.bodyId,
-    ...(body.bodyName ? { bodyName: body.bodyName } : {}),
-    bodyKind: body.bodyKind,
-    featureId: body.featureId,
-    sourceKind: body.sourceKind,
-    ...(body.objectId ? { objectId: body.objectId } : {}),
-    ...(body.consumedByFeatureId
-      ? { consumedByFeatureId: body.consumedByFeatureId }
-      : {}),
-    message: `Body ${body.bodyId} is not in the supported exact STEP source subset for this tranche.`,
-    expected: "supported authored rectangle/circle newBody extrude",
-    received: body.sourceKind
-  };
 }
 
 function createProjectEmptyDiagnostic(message: string): CadExportDiagnostic {

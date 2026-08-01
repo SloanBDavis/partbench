@@ -8711,6 +8711,14 @@ export interface ProjectHealthQueryResponse {
   readonly cadOpsVersion: CadOpsVersion;
   readonly status: CadDependencyHealthStatus;
   readonly issueCount: number;
+  readonly exactBodyCount?: number;
+  readonly exactReadyBodyCount?: number;
+  readonly exactPendingBodyCount?: number;
+  readonly exactStaleBodyCount?: number;
+  readonly exactBlockedBodyCount?: number;
+  readonly exactFailedBodyCount?: number;
+  readonly exactUnsupportedBodyCount?: number;
+  readonly currentExactResults?: readonly CadCurrentExactResult[];
   readonly authoredExtrudeCount: number;
   readonly authoredRevolveCount: number;
   readonly authoredHoleCount: number;

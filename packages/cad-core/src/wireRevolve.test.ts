@@ -419,7 +419,7 @@ describe("V17 composite wire revolve core", () => {
       })
     ).toMatchObject({
       ok: true,
-      available: true,
+      available: false,
       exportSources: [
         expect.objectContaining({
           sourceKind: "authoredRevolve",
@@ -717,7 +717,7 @@ describe("V17 composite wire revolve core", () => {
         })
       ).toMatchObject({
         ok: true,
-        available: true,
+        available: false,
         exportSources: [
           expect.objectContaining({
             sourceKind: "authoredRevolve",

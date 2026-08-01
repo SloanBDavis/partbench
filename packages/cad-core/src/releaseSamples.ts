@@ -268,19 +268,19 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
       commandableReferenceCount: 27
     },
     expectedExportReadiness: {
-      status: "supported",
-      canExportFiles: true,
+      status: "deferred",
+      canExportFiles: false,
       bodyCount: 1,
       sourceSupportedBodyCount: 1,
-      deferredBodyCount: 0,
+      deferredBodyCount: 1,
       unavailableBodyCount: 0,
       formats: [
         {
           format: "step",
-          status: "supported",
-          available: true,
+          status: "deferred",
+          available: false,
           sourceSupportedBodyCount: 1,
-          deferredBodyCount: 0,
+          deferredBodyCount: 1,
           unavailableBodyCount: 0
         },
         {
@@ -288,7 +288,7 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
           status: "deferred",
           available: false,
           sourceSupportedBodyCount: 1,
-          deferredBodyCount: 0,
+          deferredBodyCount: 1,
           unavailableBodyCount: 0
         }
       ]
@@ -445,19 +445,19 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
       commandableReferenceCount: 6
     },
     expectedExportReadiness: {
-      status: "supported",
-      canExportFiles: true,
+      status: "deferred",
+      canExportFiles: false,
       bodyCount: 1,
       sourceSupportedBodyCount: 1,
-      deferredBodyCount: 0,
+      deferredBodyCount: 1,
       unavailableBodyCount: 0,
       formats: [
         {
           format: "step",
-          status: "supported",
-          available: true,
+          status: "deferred",
+          available: false,
           sourceSupportedBodyCount: 1,
-          deferredBodyCount: 0,
+          deferredBodyCount: 1,
           unavailableBodyCount: 0
         },
         {
@@ -465,7 +465,7 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
           status: "deferred",
           available: false,
           sourceSupportedBodyCount: 1,
-          deferredBodyCount: 0,
+          deferredBodyCount: 1,
           unavailableBodyCount: 0
         }
       ]
@@ -603,7 +603,7 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
       status: "deferred",
       canExportFiles: false,
       bodyCount: 2,
-      sourceSupportedBodyCount: 0,
+      sourceSupportedBodyCount: 1,
       deferredBodyCount: 1,
       unavailableBodyCount: 1,
       formats: [
@@ -611,7 +611,7 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
           format: "step",
           status: "deferred",
           available: false,
-          sourceSupportedBodyCount: 0,
+          sourceSupportedBodyCount: 1,
           deferredBodyCount: 1,
           unavailableBodyCount: 1
         },
@@ -619,7 +619,7 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
           format: "glb",
           status: "deferred",
           available: false,
-          sourceSupportedBodyCount: 0,
+          sourceSupportedBodyCount: 1,
           deferredBodyCount: 1,
           unavailableBodyCount: 1
         }
@@ -734,7 +734,7 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
       status: "deferred",
       canExportFiles: false,
       bodyCount: 1,
-      sourceSupportedBodyCount: 0,
+      sourceSupportedBodyCount: 1,
       deferredBodyCount: 1,
       unavailableBodyCount: 0,
       formats: [
@@ -742,7 +742,7 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
           format: "step",
           status: "deferred",
           available: false,
-          sourceSupportedBodyCount: 0,
+          sourceSupportedBodyCount: 1,
           deferredBodyCount: 1,
           unavailableBodyCount: 0
         },
@@ -750,7 +750,7 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
           format: "glb",
           status: "deferred",
           available: false,
-          sourceSupportedBodyCount: 0,
+          sourceSupportedBodyCount: 1,
           deferredBodyCount: 1,
           unavailableBodyCount: 0
         }
@@ -881,7 +881,7 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
       status: "deferred",
       canExportFiles: false,
       bodyCount: 2,
-      sourceSupportedBodyCount: 0,
+      sourceSupportedBodyCount: 1,
       deferredBodyCount: 1,
       unavailableBodyCount: 1,
       formats: [
@@ -889,7 +889,7 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
           format: "step",
           status: "deferred",
           available: false,
-          sourceSupportedBodyCount: 0,
+          sourceSupportedBodyCount: 1,
           deferredBodyCount: 1,
           unavailableBodyCount: 1
         },
@@ -897,7 +897,7 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
           format: "glb",
           status: "deferred",
           available: false,
-          sourceSupportedBodyCount: 0,
+          sourceSupportedBodyCount: 1,
           deferredBodyCount: 1,
           unavailableBodyCount: 1
         }
@@ -1073,7 +1073,7 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
       status: "deferred",
       canExportFiles: false,
       bodyCount: 4,
-      sourceSupportedBodyCount: 0,
+      sourceSupportedBodyCount: 2,
       deferredBodyCount: 2,
       unavailableBodyCount: 2,
       formats: [
@@ -1081,7 +1081,7 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
           format: "step",
           status: "deferred",
           available: false,
-          sourceSupportedBodyCount: 0,
+          sourceSupportedBodyCount: 2,
           deferredBodyCount: 2,
           unavailableBodyCount: 2
         },
@@ -1089,7 +1089,7 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
           format: "glb",
           status: "deferred",
           available: false,
-          sourceSupportedBodyCount: 0,
+          sourceSupportedBodyCount: 2,
           deferredBodyCount: 2,
           unavailableBodyCount: 2
         }

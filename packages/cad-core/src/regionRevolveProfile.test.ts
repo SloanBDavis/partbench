@@ -195,7 +195,7 @@ describe("V19 region revolve command and axis policy", () => {
       })
     ).toMatchObject({
       ok: true,
-      status: "supported",
+      status: "deferred",
       exportSources: [
         {
           bodyId: "body_region_revolve",

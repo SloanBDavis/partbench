@@ -1116,8 +1116,8 @@ describe("V19 region query dispatch", () => {
     });
     expect(exactExport).toMatchObject({
       ok: true,
-      status: "supported",
-      exportableBodyCount: 1,
+      status: "deferred",
+      exportableBodyCount: 0,
       exportSources: [
         {
           bodyId: "body_region",

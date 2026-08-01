@@ -6,6 +6,7 @@ import {
   validateV19CadOp,
   validateV19SketchQueryRequest,
   validateSketchProfilePathQueryRequest,
+  validateProjectExactExportQuery,
   WCAD_COMMANDS_ENTRY_PATH,
   WCAD_DOCUMENT_ENTRY_PATH,
   WCAD_MANIFEST_ENTRY_PATH,
@@ -563,6 +564,7 @@ export {
 } from "./regionRevolveProfile";
 export { validateRegisteredV22RegionSource } from "./v19RegionPolicyRegistry";
 import {
+  createCurrentExactExportProjection,
   createProjectExactExport,
   createProjectExportReadiness
 } from "./projectExportReadiness";
@@ -2287,7 +2289,8 @@ export class CadEngine {
         return createProjectSummary(
           this.#document,
           this.#history.map((entry) => entry.transaction),
-          request.version
+          request.version,
+          createCadProjectSourceIdentity(exportCadProject(this))
         );
       }
 
@@ -2332,12 +2335,22 @@ export class CadEngine {
           this.#history.map((entry) => entry.transaction)
         );
 
+        const currentExactResults = createCurrentExactExportProjection({
+          document: this.#document,
+          bodies: structure.bodies,
+          currentSourceIdentity: createCadProjectSourceIdentity(
+            exportCadProject(this)
+          ),
+          derivedExactMetadata: request.query.derivedExactMetadata
+        }).currentExactResults;
+
         return createProjectHealth({
           document: this.#document,
           cadOpsVersion: request.version,
           ownerPartId: DEFAULT_PART_ID,
           units: this.#document.units,
           derivedExactMetadata: request.query.derivedExactMetadata ?? [],
+          currentExactResults,
           bodyExists: (bodyId) =>
             structure.bodies.some((body) => body.id === bodyId)
         });
@@ -2522,7 +2535,10 @@ export class CadEngine {
           document: this.#document,
           cadOpsVersion: request.version,
           bodies: structure.bodies,
-          derivedExactMetadata: request.query.derivedExactMetadata
+          derivedExactMetadata: request.query.derivedExactMetadata,
+          currentSourceIdentity: createCadProjectSourceIdentity(
+            exportCadProject(this)
+          )
         });
       }
 
@@ -9344,23 +9360,8 @@ function isCadReferenceHealthTarget(value: unknown): boolean {
 }
 
 function isProjectExactExportQuery(value: Record<string, unknown>): boolean {
-  const allowedKeys = [
-    "query",
-    "format",
-    "bodyIds",
-    "sourceIdentity",
-    "derivedExactMetadata"
-  ];
-
   return (
-    value.query === "project.exportExact" &&
-    value.format === "step" &&
-    Object.keys(value).every((key) => allowedKeys.includes(key)) &&
-    (value.bodyIds === undefined ||
-      (Array.isArray(value.bodyIds) &&
-        value.bodyIds.every((bodyId) => typeof bodyId === "string"))) &&
-    (value.sourceIdentity === undefined ||
-      isWcadSourceIdentityInput(value.sourceIdentity)) &&
+    validateProjectExactExportQuery(value).ok &&
     (value.derivedExactMetadata === undefined ||
       (Array.isArray(value.derivedExactMetadata) &&
         hasUniqueDerivedExactMetadataBodyIds(value.derivedExactMetadata)))
@@ -23632,24 +23633,27 @@ const SUMMARY_REFERENCE_KINDS = [
 function createProjectSummary(
   document: CadDocument,
   transactions: readonly Transaction[],
-  cadOpsVersion: ProjectSummaryQueryResponse["cadOpsVersion"]
+  cadOpsVersion: ProjectSummaryQueryResponse["cadOpsVersion"],
+  currentSourceIdentity: WcadSourceIdentity
 ): ProjectSummaryQueryResponse {
   const objects = [...document.objects.values()].map(createCadObjectSnapshot);
   const structure = createProjectStructure(document, transactions);
   const bodyExists = (bodyId: BodyId) =>
     structure.bodies.some((body) => body.id === bodyId);
+  const exportReadiness = createProjectExportReadiness({
+    document,
+    cadOpsVersion,
+    bodies: structure.bodies,
+    currentSourceIdentity
+  });
   const health = createProjectHealth({
     document,
     cadOpsVersion,
     ownerPartId: DEFAULT_PART_ID,
     units: document.units,
     derivedExactMetadata: [],
+    currentExactResults: exportReadiness.currentExactResults,
     bodyExists
-  });
-  const exportReadiness = createProjectExportReadiness({
-    document,
-    cadOpsVersion,
-    bodies: structure.bodies
   });
   const structureSummary: ProjectSummaryQueryResponse["structure"] = {
     partCount: structure.parts.length,

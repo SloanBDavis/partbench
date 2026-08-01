@@ -1863,6 +1863,7 @@ function readProjectExactExport(
       readonly algorithm: "partbench-source-v1";
       readonly sha256: string;
     };
+    readonly derivedExactMetadata?: readonly CadBodyDerivedExactMetadataSnapshot[];
   } = {}
 ): ProjectExactExportQueryResponse {
   const response = engine.executeQuery({
@@ -1873,6 +1874,9 @@ function readProjectExactExport(
       ...(options.bodyIds ? { bodyIds: options.bodyIds } : {}),
       ...(options.sourceIdentity
         ? { sourceIdentity: options.sourceIdentity }
+        : {}),
+      ...(options.derivedExactMetadata
+        ? { derivedExactMetadata: options.derivedExactMetadata }
         : {})
     }
   });
@@ -5708,18 +5712,18 @@ describe("cad-core", () => {
       }
     });
     expect(summary.exportReadiness).toMatchObject({
-      status: "supported",
-      canExportFiles: true,
+      status: "deferred",
+      canExportFiles: false,
       formatCount: 2,
       bodyCount: 1,
       sourceSupportedBodyCount: 1,
-      deferredBodyCount: 0,
+      deferredBodyCount: 1,
       unavailableBodyCount: 0,
       formats: [
         expect.objectContaining({
           format: "step",
-          status: "supported",
-          available: true,
+          status: "deferred",
+          available: false,
           sourceSupportedBodyCount: 1
         }),
         expect.objectContaining({
@@ -5732,7 +5736,7 @@ describe("cad-core", () => {
     });
     expect(summary.workflowHints.map((hint) => hint.code)).toEqual([
       "PROJECT_HEALTH_ISSUES",
-      "EXPORT_READY"
+      "EXPORT_DEFERRED"
     ]);
   });
 
@@ -5764,7 +5768,7 @@ describe("cad-core", () => {
       status: "deferred",
       canExportFiles: false,
       bodyCount: 2,
-      sourceSupportedBodyCount: 0,
+      sourceSupportedBodyCount: 1,
       deferredBodyCount: 1,
       unavailableBodyCount: 1
     });
@@ -41549,7 +41553,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(exportCadProjectJson(engine)).toBe(beforeJson);
   });
 
-  it("reports rectangle and circle newBody extrudes as exact STEP exportable", () => {
+  it("reports source-eligible extrudes as pending without exact evidence", () => {
     const engine = createRectangleExtrudeEngine();
 
     engine.applyBatch([
@@ -41579,18 +41583,18 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     const readiness = readProjectExportReadiness(engine);
 
     expect(readiness).toMatchObject({
-      status: "supported",
-      canExportFiles: true,
+      status: "deferred",
+      canExportFiles: false,
       bodyCount: 2,
       sourceSupportedBodyCount: 2,
-      deferredBodyCount: 0,
+      deferredBodyCount: 2,
       unavailableBodyCount: 0,
       formats: [
         expect.objectContaining({
           format: "step",
           exportKind: "exact",
-          status: "supported",
-          available: true,
+          status: "deferred",
+          available: false,
           writerStatus: "available",
           sourceSupportedBodyCount: 2,
           diagnostics: []
@@ -41606,14 +41610,19 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           bodyId: "body_rect_1",
           sourceKind: "authoredExtrude",
           sourceStatus: "supported",
-          status: "supported",
+          status: "deferred",
           formats: expect.arrayContaining([
             expect.objectContaining({
               format: "step",
               exportKind: "exact",
-              status: "supported",
+              status: "deferred",
               writerStatus: "available",
-              diagnostics: []
+              diagnostics: expect.arrayContaining([
+                expect.objectContaining({
+                  code: "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+                  status: "deferred"
+                })
+              ])
             })
           ]),
           diagnostics: expect.arrayContaining([
@@ -41627,7 +41636,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           bodyId: "body_circle_export",
           sourceKind: "authoredExtrude",
           sourceStatus: "supported",
-          status: "supported",
+          status: "deferred",
           diagnostics: expect.arrayContaining([
             expect.objectContaining({
               code: "EXPORT_BODY_SOURCE_SUPPORTED",
@@ -41644,9 +41653,17 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     const sourceIdentity = createCadProjectSourceIdentity(
       exportCadProject(engine)
     );
+    const derivedExactMetadata = createExactMetadataSnapshot({
+      bodyId: "body_rect_1",
+      sourceIdentitySignature: readBodyTopologySourceSignature(
+        engine,
+        "body_rect_1"
+      )
+    });
     const exactExport = readProjectExactExport(engine, {
       bodyIds: ["body_rect_1"],
-      sourceIdentity
+      sourceIdentity,
+      derivedExactMetadata: [derivedExactMetadata]
     });
 
     expect(exactExport).toMatchObject({
@@ -41795,7 +41812,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     });
   });
 
-  it("returns structured exact STEP diagnostics for missing and unsupported bodies", () => {
+  it("returns structured exact STEP diagnostics for missing and pending bodies", () => {
     const engine = new CadEngine();
 
     engine.apply({
@@ -41813,17 +41830,17 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       status: "unavailable",
       canExportFile: false,
       bodyCount: 1,
-      sourceSupportedBodyCount: 0,
-      unavailableBodyCount: 1,
+      sourceSupportedBodyCount: 1,
+      unavailableBodyCount: 0,
       diagnostics: expect.arrayContaining([
         expect.objectContaining({
-          code: "EXPORT_EXACT_BODY_UNSUPPORTED",
-          status: "unavailable",
+          code: "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+          status: "deferred",
           bodyId: "body:box_exact_export",
           sourceKind: "primitiveCompatibility"
         }),
         expect.objectContaining({
-          code: "EXPORT_BODY_SOURCE_UNRESOLVED",
+          code: "EXPORT_BODY_SELECTION_INVALID",
           status: "unavailable",
           bodyId: "body_missing"
         })
@@ -41837,7 +41854,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
 
     expect(readiness).toMatchObject({
       bodyCount: 2,
-      sourceSupportedBodyCount: 0,
+      sourceSupportedBodyCount: 1,
       deferredBodyCount: 1,
       unavailableBodyCount: 1,
       bodies: expect.arrayContaining([
@@ -41864,17 +41881,13 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         expect.objectContaining({
           bodyId: "body_hole_1",
           sourceKind: "authoredHole",
-          sourceStatus: "deferred",
+          sourceStatus: "supported",
           status: "deferred",
           formats: expect.arrayContaining([
             expect.objectContaining({
               format: "glb",
               status: "deferred",
               diagnostics: expect.arrayContaining([
-                expect.objectContaining({
-                  code: "EXPORT_RESULT_BODY_DEFERRED",
-                  status: "deferred"
-                }),
                 expect.objectContaining({
                   code: "EXPORT_WRITER_NOT_IMPLEMENTED",
                   status: "deferred"
@@ -41884,9 +41897,9 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           ]),
           diagnostics: expect.arrayContaining([
             expect.objectContaining({
-              code: "EXPORT_RESULT_BODY_DEFERRED",
+              code: "EXPORT_EXACT_SOURCE_UNAVAILABLE",
               status: "deferred",
-              received: "sketchHoleFeature"
+              sourceKind: "authoredHole"
             })
           ])
         })
@@ -41894,7 +41907,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     });
   });
 
-  it("reports primitive scene object bodies as unavailable for CAD export readiness", () => {
+  it("reports primitive bodies as source-eligible and exact-pending", () => {
     const engine = new CadEngine();
 
     engine.apply({
@@ -41905,27 +41918,25 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     });
 
     expect(readProjectExportReadiness(engine)).toMatchObject({
-      status: "unavailable",
+      status: "deferred",
       canExportFiles: false,
       bodyCount: 1,
-      sourceSupportedBodyCount: 0,
-      deferredBodyCount: 0,
-      unavailableBodyCount: 1,
+      sourceSupportedBodyCount: 1,
+      deferredBodyCount: 1,
+      unavailableBodyCount: 0,
       bodies: [
         expect.objectContaining({
           bodyId: "body:box_export",
           bodyName: "Reference box",
           sourceKind: "primitiveCompatibility",
-          sourceStatus: "unavailable",
-          status: "unavailable",
+          sourceStatus: "supported",
+          status: "deferred",
           objectId: "box_export",
           primitive: "box",
           diagnostics: expect.arrayContaining([
             expect.objectContaining({
-              code: "EXPORT_PRIMITIVE_SOURCE_UNAVAILABLE",
-              status: "unavailable",
-              objectId: "box_export",
-              expected: "authored CAD body feature"
+              code: "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+              status: "deferred"
             })
           ])
         })

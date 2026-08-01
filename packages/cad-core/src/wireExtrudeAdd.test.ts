@@ -815,7 +815,8 @@ describe("V17 composite wire extrude add", () => {
       expect(readiness.bodies, variant.label).toContainEqual(
         expect.objectContaining({
           bodyId: "body_add",
-          sourceStatus: "deferred"
+          sourceStatus: "supported",
+          status: "unavailable"
         })
       );
       const exact = createProjectExactExport({
@@ -834,13 +835,14 @@ describe("V17 composite wire extrude add", () => {
         )
       });
       expect(exact, variant.label).toMatchObject({
-        status: "deferred",
+        status: "unavailable",
         exportableBodyCount: 0,
         exportSources: [],
         bodies: [
           expect.objectContaining({
             bodyId: "body_add",
-            sourceStatus: "deferred"
+            sourceStatus: "supported",
+            status: "unavailable"
           })
         ]
       });

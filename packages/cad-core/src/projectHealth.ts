@@ -8,6 +8,7 @@ import type {
   CadAuthoredRevolveHealth,
   CadAuthoredShellHealth,
   CadBodyDerivedExactMetadataSnapshot,
+  CadCurrentExactResult,
   CadBodyTopologySnapshot,
   CadDependencyHealthIssue,
   CadDependencyHealthStatus,
@@ -101,6 +102,7 @@ export interface ProjectHealthOptions {
   readonly units: DocumentUnits;
   readonly bodyExists: (bodyId: BodyId) => boolean;
   readonly derivedExactMetadata?: readonly CadBodyDerivedExactMetadataSnapshot[];
+  readonly currentExactResults?: readonly CadCurrentExactResult[];
 }
 
 export interface ProjectHealthDocument extends GeneratedReferencesDocument {
@@ -193,6 +195,7 @@ export interface ProjectHealthImportedBodyFeature {
 export function createProjectHealth(
   options: ProjectHealthOptions
 ): ProjectHealthQueryResponse {
+  const currentExactResults = options.currentExactResults ?? [];
   const authoredFeatures = [...options.document.features.values()];
   const authoredExtrudes = authoredFeatures
     .filter(
@@ -294,6 +297,26 @@ export function createProjectHealth(
       ...namedReferences.map((entry) => entry.status)
     ]),
     issueCount,
+    exactBodyCount: currentExactResults.length,
+    exactReadyBodyCount: currentExactResults.filter(
+      (result) => result.status === "ready"
+    ).length,
+    exactPendingBodyCount: currentExactResults.filter(
+      (result) => result.status === "pending"
+    ).length,
+    exactStaleBodyCount: currentExactResults.filter(
+      (result) => result.status === "stale"
+    ).length,
+    exactBlockedBodyCount: currentExactResults.filter(
+      (result) => result.status === "blocked"
+    ).length,
+    exactFailedBodyCount: currentExactResults.filter(
+      (result) => result.status === "failed"
+    ).length,
+    exactUnsupportedBodyCount: currentExactResults.filter(
+      (result) => result.status === "unsupported"
+    ).length,
+    currentExactResults,
     authoredExtrudeCount: authoredExtrudes.length,
     authoredRevolveCount: authoredRevolves.length,
     authoredHoleCount: authoredHoles.length,
