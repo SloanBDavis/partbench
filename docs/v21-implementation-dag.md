@@ -1,6 +1,6 @@
 # V21 Implementation DAG: Production Single-Part Reliability and Exact Interchange
 
-Status: **Approved for implementation (2026-08-01). Slice A is in progress.**
+Status: **Approved for implementation (2026-08-01). Slice A is complete; Slice B is next.**
 
 This document turns `docs/v21.md` into a reviewable implementation sequence.
 The release plan is authoritative for scope and semantics. This DAG is
@@ -156,7 +156,11 @@ Gate ledger:
   [V21 A1 named STEP capability evidence](./v21-a1-capability.md). The locked
   full OCCT bundle required no binding change and its gzip size stayed exactly
   at the existing cap.
-- A2 pending.
+- A2 complete at `0a81ee33f39301c33388b0fde171da98e22e7fa4` with the committed
+  [V21 A2 exact body matrix evidence](./v21-a2-body-matrix.md).
+- Gate A passed at the A2 commit. The imported-hole completed-matrix
+  intersection is empty, and the V16 extrude-family pattern/mirror/shell matrix
+  remains authoritative over broader validator drift.
 
 ## Slice B — Protocol and Cad-Core Export Planning
 
@@ -685,7 +689,7 @@ before explicit plan approval.
 
 | Gate | Status | Required evidence |
 | --- | --- | --- |
-| A | In progress | Baseline, named AP242/unit real-browser capability, exhaustive fixture matrix |
+| A | Complete | Baseline, named AP242/unit real-browser capability, exhaustive fixture matrix |
 | B | Not started | Protocol/core plan, validation, health/readiness, adapter tests |
 | C | Not started | Exhaustive current exact resolver and identity/limit tests |
 | D | Not started | Same-shape artifact, checkpoint reuse, real OCCT/fault/cleanup proof |
