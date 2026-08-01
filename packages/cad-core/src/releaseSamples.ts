@@ -1,11 +1,13 @@
 import type {
   BodyId,
   CadBatch,
+  CadBodySource,
   CadDependencyHealthStatus,
   CadExportFormatId,
   CadExportReadinessStatus,
   CadFeatureEditabilityStatus,
   CadFeatureReferenceChangeCategory,
+  CadFeatureSummary,
   CadBodyExactTopologySnapshot,
   CadGeneratedEntityKind,
   CadOp,
@@ -4007,6 +4009,837 @@ export function createV15ReleaseSampleBatch(id: V15ReleaseSampleId): CadBatch {
     mode: "commit",
     ops: getV15ReleaseSampleFixture(id).ops.map((op) => ({ ...op }))
   };
+}
+
+export type V21ExactBodyConsumer =
+  | "extrudeAdd"
+  | "extrudeCut"
+  | "hole"
+  | "chamfer"
+  | "fillet"
+  | "linearPattern"
+  | "circularPattern"
+  | "mirror"
+  | "shell"
+  | "sketchOnFace";
+
+export interface V21ExactBodySourcePolicy {
+  readonly featureKind: CadFeatureSummary["kind"];
+  readonly completedRelease: "V12-V14" | "V15" | "V16" | "V17" | "V19";
+  readonly completedConsumers: readonly V21ExactBodyConsumer[];
+  readonly shapePolicy:
+    | "singleSolid"
+    | "singleShapeOneOrMoreSolids"
+    | "checkpointShape";
+  readonly cases: readonly string[];
+}
+
+export const V21_EXACT_BODY_SOURCE_POLICY = {
+  primitiveFeature: {
+    featureKind: "primitive",
+    completedRelease: "V12-V14",
+    completedConsumers: [],
+    shapePolicy: "singleSolid",
+    cases: ["box", "cylinder", "sphere", "cone", "torus"]
+  },
+  sketchExtrudeFeature: {
+    featureKind: "extrude",
+    completedRelease: "V19",
+    completedConsumers: [
+      "extrudeAdd",
+      "extrudeCut",
+      "hole",
+      "chamfer",
+      "fillet",
+      "linearPattern",
+      "circularPattern",
+      "mirror",
+      "shell",
+      "sketchOnFace"
+    ],
+    shapePolicy: "singleSolid",
+    cases: [
+      "entity-newBody",
+      "wire-newBody",
+      "region-newBody",
+      "entity-add-cut",
+      "wire-add-cut",
+      "region-add-cut",
+      "topology-backed-add-cut"
+    ]
+  },
+  sketchRevolveFeature: {
+    featureKind: "revolve",
+    completedRelease: "V19",
+    completedConsumers: [],
+    shapePolicy: "singleSolid",
+    cases: ["entity-newBody", "wire-newBody", "one-region-newBody"]
+  },
+  sketchHoleFeature: {
+    featureKind: "hole",
+    completedRelease: "V12-V14",
+    completedConsumers: [],
+    shapePolicy: "singleSolid",
+    cases: [
+      "blind-positive",
+      "blind-negative",
+      "through-all-positive",
+      "through-all-negative",
+      "supported-topology-result-target"
+    ]
+  },
+  edgeChamferFeature: {
+    featureKind: "chamfer",
+    completedRelease: "V15",
+    completedConsumers: [],
+    shapePolicy: "singleSolid",
+    cases: ["generated-edge", "named-edge", "topology-edge", "imported-edge"]
+  },
+  edgeFilletFeature: {
+    featureKind: "fillet",
+    completedRelease: "V15",
+    completedConsumers: [],
+    shapePolicy: "singleSolid",
+    cases: ["generated-edge", "named-edge", "topology-edge", "imported-edge"]
+  },
+  linearPatternFeature: {
+    featureKind: "linearPattern",
+    completedRelease: "V16",
+    completedConsumers: [],
+    shapePolicy: "singleShapeOneOrMoreSolids",
+    cases: [
+      "extrude-family-global-axis",
+      "extrude-family-generated-line",
+      "extrude-family-named-line",
+      "extrude-family-topology-line"
+    ]
+  },
+  circularPatternFeature: {
+    featureKind: "circularPattern",
+    completedRelease: "V16",
+    completedConsumers: [],
+    shapePolicy: "singleShapeOneOrMoreSolids",
+    cases: [
+      "extrude-family-global-axis",
+      "extrude-family-generated-line",
+      "extrude-family-named-line",
+      "extrude-family-topology-line"
+    ]
+  },
+  mirrorFeature: {
+    featureKind: "mirror",
+    completedRelease: "V16",
+    completedConsumers: [],
+    shapePolicy: "singleShapeOneOrMoreSolids",
+    cases: [
+      "extrude-family-standard-plane",
+      "extrude-family-generated-face",
+      "extrude-family-named-face",
+      "extrude-family-topology-face"
+    ]
+  },
+  shellFeature: {
+    featureKind: "shell",
+    completedRelease: "V16",
+    completedConsumers: [],
+    shapePolicy: "singleSolid",
+    cases: [
+      "extrude-family-closed",
+      "extrude-family-generated-face",
+      "extrude-family-named-face",
+      "extrude-family-topology-face"
+    ]
+  },
+  sweepFeature: {
+    featureKind: "sweep",
+    completedRelease: "V17",
+    completedConsumers: [],
+    shapePolicy: "singleSolid",
+    cases: ["line", "arc", "open-g1-line-arc-chain"]
+  },
+  loftFeature: {
+    featureKind: "loft",
+    completedRelease: "V16",
+    completedConsumers: [],
+    shapePolicy: "singleSolid",
+    cases: ["parallel-separated-rectangle-circle-entities"]
+  },
+  importedStepBody: {
+    featureKind: "importedBody",
+    completedRelease: "V15",
+    completedConsumers: [
+      "extrudeAdd",
+      "extrudeCut",
+      "chamfer",
+      "fillet",
+      "sketchOnFace"
+    ],
+    shapePolicy: "checkpointShape",
+    cases: [
+      "standalone-solid",
+      "supported-compound",
+      "anchored-add",
+      "anchored-cut",
+      "anchored-chamfer",
+      "anchored-fillet"
+    ]
+  }
+} as const satisfies Record<CadBodySource["type"], V21ExactBodySourcePolicy>;
+
+export const V21_EXACT_FEATURE_FAMILY_SOURCE = {
+  primitive: "primitiveFeature",
+  extrude: "sketchExtrudeFeature",
+  revolve: "sketchRevolveFeature",
+  hole: "sketchHoleFeature",
+  chamfer: "edgeChamferFeature",
+  fillet: "edgeFilletFeature",
+  importedBody: "importedStepBody",
+  linearPattern: "linearPatternFeature",
+  circularPattern: "circularPatternFeature",
+  mirror: "mirrorFeature",
+  shell: "shellFeature",
+  sweep: "sweepFeature",
+  loft: "loftFeature"
+} as const satisfies Record<CadFeatureSummary["kind"], CadBodySource["type"]>;
+
+export const V21_EXACT_BODY_LIFECYCLE_POLICY = {
+  activeHealthy: { status: "ready", action: "resolve" },
+  consumed: { status: "blocked", action: "exclude" },
+  pending: { status: "pending", action: "block" },
+  stale: { status: "stale", action: "block" },
+  repairNeeded: { status: "blocked", action: "block" },
+  failed: { status: "failed", action: "block" },
+  missingCheckpoint: { status: "blocked", action: "block" },
+  unsupported: { status: "unsupported", action: "block" }
+} as const;
+
+export const V21_EXACT_ROUND_TRIP_EXPECTATION = {
+  bodyCount: "fixtureExact",
+  solidCount: "fixtureExact",
+  bodyNames: "orderedExact",
+  units: ["mm", "cm", "m", "in"],
+  bounds: "sourceArtifactEquivalent",
+  volume: "sourceArtifactEquivalent",
+  surfaceArea: "sourceArtifactEquivalent",
+  centroid: "sourceArtifactEquivalent",
+  inertia: "sourceArtifactEquivalent",
+  topologyCounts: "sourceArtifactExact",
+  unitDimensionPowers: { length: 1, area: 2, volume: 3, inertia: 5 }
+} as const satisfies {
+  readonly bodyCount: "fixtureExact";
+  readonly solidCount: "fixtureExact";
+  readonly bodyNames: "orderedExact";
+  readonly units: readonly DocumentUnits[];
+  readonly bounds: "sourceArtifactEquivalent";
+  readonly volume: "sourceArtifactEquivalent";
+  readonly surfaceArea: "sourceArtifactEquivalent";
+  readonly centroid: "sourceArtifactEquivalent";
+  readonly inertia: "sourceArtifactEquivalent";
+  readonly topologyCounts: "sourceArtifactExact";
+  readonly unitDimensionPowers: {
+    readonly length: 1;
+    readonly area: 2;
+    readonly volume: 3;
+    readonly inertia: 5;
+  };
+};
+
+export type V21ExactBodyMatrixRowId =
+  | "primitive-matrix"
+  | "entity-extrude-new-body"
+  | "wire-extrude-new-body"
+  | "region-extrude-new-body"
+  | "extrude-add-cut-chain"
+  | "topology-backed-extrude-chain"
+  | "revolve-profile-matrix"
+  | "sweep-path-matrix"
+  | "parallel-loft"
+  | "hole-depth-matrix"
+  | "chamfer"
+  | "fillet"
+  | "linear-pattern"
+  | "circular-pattern"
+  | "mirror"
+  | "shell"
+  | "imported-standalone-compound"
+  | "imported-downstream"
+  | "multi-solid-pattern"
+  | "consumed-body"
+  | "blocked-lifecycle";
+
+export interface V21ExactBodyMatrixRow {
+  readonly id: V21ExactBodyMatrixRowId;
+  readonly sourceTypes: readonly CadBodySource["type"][];
+  readonly cases: readonly string[];
+  readonly expectedArtifact: "required" | "excluded" | "blocked";
+  readonly expectedStep: "required" | "never" | "blocked";
+  readonly expectedBodyCount: number;
+  readonly expectedSolidCount: "one" | "fixtureExact" | "none";
+}
+
+const V21_REQUIRED_BODY_ROW = {
+  expectedArtifact: "required",
+  expectedStep: "required",
+  expectedBodyCount: 1
+} as const;
+
+export const V21_EXACT_BODY_MATRIX_ROWS = [
+  {
+    ...V21_REQUIRED_BODY_ROW,
+    id: "primitive-matrix",
+    sourceTypes: ["primitiveFeature"],
+    cases: V21_EXACT_BODY_SOURCE_POLICY.primitiveFeature.cases,
+    expectedSolidCount: "one"
+  },
+  {
+    ...V21_REQUIRED_BODY_ROW,
+    id: "entity-extrude-new-body",
+    sourceTypes: ["sketchExtrudeFeature"],
+    cases: ["rectangle", "circle"],
+    expectedSolidCount: "one"
+  },
+  {
+    ...V21_REQUIRED_BODY_ROW,
+    id: "wire-extrude-new-body",
+    sourceTypes: ["sketchExtrudeFeature"],
+    cases: ["line-wire", "line-arc-wire"],
+    expectedSolidCount: "one"
+  },
+  {
+    ...V21_REQUIRED_BODY_ROW,
+    id: "region-extrude-new-body",
+    sourceTypes: ["sketchExtrudeFeature"],
+    cases: ["one-region", "region-with-hole"],
+    expectedSolidCount: "one"
+  },
+  {
+    ...V21_REQUIRED_BODY_ROW,
+    id: "extrude-add-cut-chain",
+    sourceTypes: ["sketchExtrudeFeature"],
+    cases: ["entity", "wire", "region", "add", "cut"],
+    expectedSolidCount: "one"
+  },
+  {
+    ...V21_REQUIRED_BODY_ROW,
+    id: "topology-backed-extrude-chain",
+    sourceTypes: ["sketchExtrudeFeature"],
+    cases: ["anchored-add", "anchored-cut"],
+    expectedSolidCount: "one"
+  },
+  {
+    ...V21_REQUIRED_BODY_ROW,
+    id: "revolve-profile-matrix",
+    sourceTypes: ["sketchRevolveFeature"],
+    cases: V21_EXACT_BODY_SOURCE_POLICY.sketchRevolveFeature.cases,
+    expectedSolidCount: "one"
+  },
+  {
+    ...V21_REQUIRED_BODY_ROW,
+    id: "sweep-path-matrix",
+    sourceTypes: ["sweepFeature"],
+    cases: V21_EXACT_BODY_SOURCE_POLICY.sweepFeature.cases,
+    expectedSolidCount: "one"
+  },
+  {
+    ...V21_REQUIRED_BODY_ROW,
+    id: "parallel-loft",
+    sourceTypes: ["loftFeature"],
+    cases: V21_EXACT_BODY_SOURCE_POLICY.loftFeature.cases,
+    expectedSolidCount: "one"
+  },
+  {
+    ...V21_REQUIRED_BODY_ROW,
+    id: "hole-depth-matrix",
+    sourceTypes: ["sketchHoleFeature"],
+    cases: V21_EXACT_BODY_SOURCE_POLICY.sketchHoleFeature.cases,
+    expectedSolidCount: "one"
+  },
+  {
+    ...V21_REQUIRED_BODY_ROW,
+    id: "chamfer",
+    sourceTypes: ["edgeChamferFeature"],
+    cases: V21_EXACT_BODY_SOURCE_POLICY.edgeChamferFeature.cases,
+    expectedSolidCount: "one"
+  },
+  {
+    ...V21_REQUIRED_BODY_ROW,
+    id: "fillet",
+    sourceTypes: ["edgeFilletFeature"],
+    cases: V21_EXACT_BODY_SOURCE_POLICY.edgeFilletFeature.cases,
+    expectedSolidCount: "one"
+  },
+  {
+    ...V21_REQUIRED_BODY_ROW,
+    id: "linear-pattern",
+    sourceTypes: ["linearPatternFeature"],
+    cases: V21_EXACT_BODY_SOURCE_POLICY.linearPatternFeature.cases,
+    expectedSolidCount: "fixtureExact"
+  },
+  {
+    ...V21_REQUIRED_BODY_ROW,
+    id: "circular-pattern",
+    sourceTypes: ["circularPatternFeature"],
+    cases: V21_EXACT_BODY_SOURCE_POLICY.circularPatternFeature.cases,
+    expectedSolidCount: "fixtureExact"
+  },
+  {
+    ...V21_REQUIRED_BODY_ROW,
+    id: "mirror",
+    sourceTypes: ["mirrorFeature"],
+    cases: V21_EXACT_BODY_SOURCE_POLICY.mirrorFeature.cases,
+    expectedSolidCount: "fixtureExact"
+  },
+  {
+    ...V21_REQUIRED_BODY_ROW,
+    id: "shell",
+    sourceTypes: ["shellFeature"],
+    cases: V21_EXACT_BODY_SOURCE_POLICY.shellFeature.cases,
+    expectedSolidCount: "one"
+  },
+  {
+    ...V21_REQUIRED_BODY_ROW,
+    id: "imported-standalone-compound",
+    sourceTypes: ["importedStepBody"],
+    cases: ["standalone-solid", "supported-compound"],
+    expectedSolidCount: "fixtureExact"
+  },
+  {
+    ...V21_REQUIRED_BODY_ROW,
+    id: "imported-downstream",
+    sourceTypes: [
+      "sketchExtrudeFeature",
+      "edgeChamferFeature",
+      "edgeFilletFeature"
+    ],
+    cases: [
+      "anchored-add",
+      "anchored-cut",
+      "anchored-chamfer",
+      "anchored-fillet"
+    ],
+    expectedSolidCount: "one"
+  },
+  {
+    ...V21_REQUIRED_BODY_ROW,
+    id: "multi-solid-pattern",
+    sourceTypes: [
+      "linearPatternFeature",
+      "circularPatternFeature",
+      "mirrorFeature"
+    ],
+    cases: ["linear-compound", "circular-compound", "mirror-compound"],
+    expectedSolidCount: "fixtureExact"
+  },
+  {
+    id: "consumed-body",
+    sourceTypes: Object.keys(
+      V21_EXACT_BODY_SOURCE_POLICY
+    ) as CadBodySource["type"][],
+    cases: ["consumed"],
+    expectedArtifact: "excluded",
+    expectedStep: "never",
+    expectedBodyCount: 0,
+    expectedSolidCount: "none"
+  },
+  {
+    id: "blocked-lifecycle",
+    sourceTypes: Object.keys(
+      V21_EXACT_BODY_SOURCE_POLICY
+    ) as CadBodySource["type"][],
+    cases: [
+      "missing",
+      "pending",
+      "stale",
+      "repair-needed",
+      "failed",
+      "unsupported",
+      "missing-checkpoint"
+    ],
+    expectedArtifact: "blocked",
+    expectedStep: "blocked",
+    expectedBodyCount: 0,
+    expectedSolidCount: "none"
+  }
+] as const satisfies readonly V21ExactBodyMatrixRow[];
+
+export type V21ReleaseSampleId =
+  | "v21-primitive-matrix"
+  | "v21-composite-region-profiles"
+  | "v21-sweep-loft"
+  | "v21-imported-body";
+
+export interface V21ReleaseSampleFixture {
+  readonly id: V21ReleaseSampleId;
+  readonly units: DocumentUnits;
+  readonly expectedSourceTypes: readonly CadBodySource["type"][];
+  readonly expectedActiveBodyIds: readonly BodyId[];
+  readonly ops: readonly CadOp[];
+}
+
+export const V21_RELEASE_SAMPLE_FIXTURES = [
+  {
+    id: "v21-primitive-matrix",
+    units: "mm",
+    expectedSourceTypes: ["primitiveFeature"],
+    expectedActiveBodyIds: [
+      "body:v21_box",
+      "body:v21_cylinder",
+      "body:v21_sphere",
+      "body:v21_cone",
+      "body:v21_torus"
+    ],
+    ops: [
+      {
+        op: "scene.createBox",
+        id: "v21_box",
+        name: "V21 box",
+        dimensions: { width: 2, height: 3, depth: 4 }
+      },
+      {
+        op: "scene.createCylinder",
+        id: "v21_cylinder",
+        name: "V21 cylinder",
+        dimensions: { radius: 1, height: 4 },
+        transform: { translation: [6, 0, 0] }
+      },
+      {
+        op: "scene.createSphere",
+        id: "v21_sphere",
+        name: "V21 sphere",
+        dimensions: { radius: 1.5 },
+        transform: { translation: [12, 0, 0] }
+      },
+      {
+        op: "scene.createCone",
+        id: "v21_cone",
+        name: "V21 cone",
+        dimensions: { radius: 2, height: 5 },
+        transform: { translation: [18, 0, 0] }
+      },
+      {
+        op: "scene.createTorus",
+        id: "v21_torus",
+        name: "V21 torus",
+        dimensions: { majorRadius: 3, minorRadius: 0.75 },
+        transform: { translation: [26, 0, 0] }
+      }
+    ]
+  },
+  {
+    id: "v21-composite-region-profiles",
+    units: "mm",
+    expectedSourceTypes: ["sketchExtrudeFeature", "sketchRevolveFeature"],
+    expectedActiveBodyIds: [
+      "v21_wire_body",
+      "v21_region_body",
+      "v21_revolve_body"
+    ],
+    ops: [
+      {
+        op: "sketch.create",
+        id: "v21_wire_sketch",
+        name: "V21 wire",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "v21_wire_sketch",
+        id: "v21_wire_a",
+        start: [-2, -1],
+        end: [2, -1]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "v21_wire_sketch",
+        id: "v21_wire_b",
+        start: [2, -1],
+        end: [2, 1]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "v21_wire_sketch",
+        id: "v21_wire_c",
+        start: [2, 1],
+        end: [-2, 1]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "v21_wire_sketch",
+        id: "v21_wire_d",
+        start: [-2, 1],
+        end: [-2, -1]
+      },
+      {
+        op: "feature.extrude",
+        id: "v21_wire_feature",
+        bodyId: "v21_wire_body",
+        name: "V21 wire body",
+        profile: {
+          kind: "wire",
+          sketchId: "v21_wire_sketch",
+          segments: [
+            { entityId: "v21_wire_a", orientation: "forward" },
+            { entityId: "v21_wire_b", orientation: "forward" },
+            { entityId: "v21_wire_c", orientation: "forward" },
+            { entityId: "v21_wire_d", orientation: "forward" }
+          ]
+        },
+        operationMode: "newBody",
+        depth: 3,
+        side: "positive"
+      },
+      {
+        op: "sketch.create",
+        id: "v21_region_sketch",
+        name: "V21 region",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v21_region_sketch",
+        id: "v21_region_outer",
+        center: [8, 0],
+        width: 6,
+        height: 6
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "v21_region_sketch",
+        id: "v21_region_hole",
+        center: [8, 0],
+        radius: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "v21_region_feature",
+        bodyId: "v21_region_body",
+        name: "V21 region body",
+        profile: {
+          kind: "regions",
+          sketchId: "v21_region_sketch",
+          regions: [
+            {
+              outer: { kind: "entity", entityId: "v21_region_outer" },
+              holes: [{ kind: "entity", entityId: "v21_region_hole" }]
+            }
+          ]
+        },
+        operationMode: "newBody",
+        depth: 3,
+        side: "positive"
+      },
+      {
+        op: "sketch.create",
+        id: "v21_revolve_sketch",
+        name: "V21 revolve",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v21_revolve_sketch",
+        id: "v21_revolve_profile",
+        center: [3, 0],
+        width: 2,
+        height: 3
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "v21_revolve_sketch",
+        id: "v21_revolve_axis",
+        start: [0, -3],
+        end: [0, 3]
+      },
+      {
+        op: "feature.revolve",
+        id: "v21_revolve_feature",
+        bodyId: "v21_revolve_body",
+        name: "V21 revolve body",
+        profile: {
+          kind: "regions",
+          sketchId: "v21_revolve_sketch",
+          regions: [
+            {
+              outer: { kind: "entity", entityId: "v21_revolve_profile" },
+              holes: []
+            }
+          ]
+        },
+        axis: {
+          type: "sketchLine",
+          sketchId: "v21_revolve_sketch",
+          entityId: "v21_revolve_axis"
+        },
+        angleDegrees: 360,
+        operationMode: "newBody"
+      }
+    ]
+  },
+  {
+    id: "v21-sweep-loft",
+    units: "mm",
+    expectedSourceTypes: [
+      "sketchExtrudeFeature",
+      "sweepFeature",
+      "loftFeature"
+    ],
+    expectedActiveBodyIds: [
+      "v21_sweep_body",
+      "v21_pedestal_body",
+      "v21_loft_body"
+    ],
+    ops: [
+      {
+        op: "sketch.create",
+        id: "v21_sweep_profile_sketch",
+        name: "V21 sweep profile",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "v21_sweep_profile_sketch",
+        id: "v21_sweep_profile",
+        center: [0, 0],
+        radius: 1
+      },
+      {
+        op: "sketch.create",
+        id: "v21_sweep_path_sketch",
+        name: "V21 sweep path",
+        plane: "XZ"
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "v21_sweep_path_sketch",
+        id: "v21_sweep_path",
+        start: [0, 0],
+        end: [0, 8]
+      },
+      {
+        op: "feature.sweep",
+        id: "v21_sweep_feature",
+        bodyId: "v21_sweep_body",
+        name: "V21 sweep body",
+        profile: {
+          kind: "entity",
+          sketchId: "v21_sweep_profile_sketch",
+          entityId: "v21_sweep_profile"
+        },
+        path: {
+          kind: "entity",
+          sketchId: "v21_sweep_path_sketch",
+          entityId: "v21_sweep_path",
+          orientation: "forward"
+        }
+      },
+      {
+        op: "sketch.create",
+        id: "v21_loft_base_sketch",
+        name: "V21 loft base",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v21_loft_base_sketch",
+        id: "v21_loft_base",
+        center: [12, 0],
+        width: 4,
+        height: 3
+      },
+      {
+        op: "feature.extrude",
+        id: "v21_pedestal_feature",
+        bodyId: "v21_pedestal_body",
+        name: "V21 loft pedestal",
+        sketchId: "v21_loft_base_sketch",
+        entityId: "v21_loft_base",
+        depth: 5
+      },
+      {
+        op: "sketch.createOnFace",
+        id: "v21_loft_top_sketch",
+        name: "V21 loft top",
+        bodyId: "v21_pedestal_body",
+        faceStableId: "generated:face:v21_pedestal_body:endCap"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "v21_loft_top_sketch",
+        id: "v21_loft_top",
+        center: [0, 0],
+        radius: 1
+      },
+      {
+        op: "feature.loft",
+        id: "v21_loft_feature",
+        bodyId: "v21_loft_body",
+        name: "V21 loft body",
+        sections: [
+          {
+            profile: {
+              kind: "entity",
+              sketchId: "v21_loft_base_sketch",
+              entityId: "v21_loft_base"
+            }
+          },
+          {
+            profile: {
+              kind: "entity",
+              sketchId: "v21_loft_top_sketch",
+              entityId: "v21_loft_top"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: "v21-imported-body",
+    units: "mm",
+    expectedSourceTypes: ["importedStepBody"],
+    expectedActiveBodyIds: ["v21_imported_body"],
+    ops: [
+      {
+        op: "project.importStep",
+        sourceFileName: "v21-imported.step",
+        sourceFormat: "step",
+        payloadRef: {
+          kind: "transient",
+          payloadId: "v21_imported_payload",
+          byteLength: 2048,
+          sha256:
+            "2121212121212121212121212121212121212121212121212121212121212121"
+        },
+        maxBodyCount: 1,
+        resolvedBodies: [
+          {
+            featureId: "v21_imported_feature",
+            bodyId: "v21_imported_body",
+            checkpointId: "v21_imported_checkpoint",
+            name: "V21 imported body",
+            sourceIdentity: {
+              algorithm: "partbench-source-v1",
+              sha256:
+                "3131313131313131313131313131313131313131313131313131313131313131"
+            },
+            checkpointStatus: "active",
+            healingApplied: false
+          }
+        ]
+      }
+    ]
+  }
+] as const satisfies readonly V21ReleaseSampleFixture[];
+
+export function listV21ReleaseSampleFixtures(): readonly V21ReleaseSampleFixture[] {
+  return V21_RELEASE_SAMPLE_FIXTURES;
+}
+
+export function createV21ReleaseSampleBatch(id: V21ReleaseSampleId): CadBatch {
+  const fixture = V21_RELEASE_SAMPLE_FIXTURES.find(
+    (candidate) => candidate.id === id
+  );
+  if (!fixture) throw new Error(`Unknown V21 release sample fixture: ${id}`);
+  return { version: "cadops.v1", mode: "commit", ops: fixture.ops };
 }
 
 function createV13TopologyMatchSnapshot({

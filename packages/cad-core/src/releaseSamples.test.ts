@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type {
   BodyGeneratedReferencesQueryResponse,
+  CadBodySource,
+  CadFeatureSummary,
   CadReferenceHealthTarget,
   CadSelectionReferenceInput,
   CadSelectionReferenceOperation,
@@ -28,6 +30,7 @@ import {
   createV13ReleaseSampleBatch,
   createV14ReleaseSampleBatch,
   createV15ReleaseSampleBatch,
+  createV21ReleaseSampleBatch,
   createV7ReleaseSampleBatch,
   createV10ReleaseSampleBatch,
   exportCadProjectJson,
@@ -35,12 +38,19 @@ import {
   listV13ReleaseSampleFixtures,
   listV14ReleaseSampleFixtures,
   listV15ReleaseSampleFixtures,
+  listV21ReleaseSampleFixtures,
   listV7ReleaseSampleFixtures,
   listV10ReleaseSampleFixtures,
   parseCadProjectJson,
+  V21_EXACT_BODY_LIFECYCLE_POLICY,
+  V21_EXACT_BODY_MATRIX_ROWS,
+  V21_EXACT_BODY_SOURCE_POLICY,
+  V21_EXACT_FEATURE_FAMILY_SOURCE,
+  V21_EXACT_ROUND_TRIP_EXPECTATION,
   type V13ReleaseSampleFixture,
   type V14ReleaseSampleFixture,
   type V15ReleaseSampleFixture,
+  type V21ReleaseSampleFixture,
   type V7ReleaseSampleFixture,
   type V10ReleaseSampleFixture
 } from "./index";
@@ -841,6 +851,223 @@ describe("V15 release sample fixtures", () => {
   }
 });
 
+describe("V21 exact body source matrix", () => {
+  const sourceTypes = [
+    "primitiveFeature",
+    "sketchExtrudeFeature",
+    "sketchRevolveFeature",
+    "sketchHoleFeature",
+    "edgeChamferFeature",
+    "edgeFilletFeature",
+    "linearPatternFeature",
+    "circularPatternFeature",
+    "mirrorFeature",
+    "shellFeature",
+    "sweepFeature",
+    "loftFeature",
+    "importedStepBody"
+  ] as const satisfies readonly CadBodySource["type"][];
+  const featureKinds = [
+    "primitive",
+    "extrude",
+    "revolve",
+    "hole",
+    "chamfer",
+    "fillet",
+    "importedBody",
+    "linearPattern",
+    "circularPattern",
+    "mirror",
+    "shell",
+    "sweep",
+    "loft"
+  ] as const satisfies readonly CadFeatureSummary["kind"][];
+
+  it("is compile-time and runtime exhaustive over sources and feature families", () => {
+    expect(Object.keys(V21_EXACT_BODY_SOURCE_POLICY)).toEqual(sourceTypes);
+    expect(Object.keys(V21_EXACT_FEATURE_FAMILY_SOURCE)).toEqual(featureKinds);
+    expect(new Set(Object.values(V21_EXACT_FEATURE_FAMILY_SOURCE))).toEqual(
+      new Set(sourceTypes)
+    );
+    for (const policy of Object.values(V21_EXACT_BODY_SOURCE_POLICY)) {
+      expect(policy.cases.length).toBeGreaterThan(0);
+    }
+    expect(V21_EXACT_BODY_MATRIX_ROWS).toHaveLength(21);
+    expect(new Set(V21_EXACT_BODY_MATRIX_ROWS.map(({ id }) => id)).size).toBe(
+      21
+    );
+    const activeRows = V21_EXACT_BODY_MATRIX_ROWS.filter(
+      ({ expectedArtifact }) => expectedArtifact === "required"
+    );
+    expect(
+      new Set(activeRows.flatMap(({ sourceTypes: types }) => types))
+    ).toEqual(new Set(sourceTypes));
+    for (const row of activeRows) {
+      expect(row).toMatchObject({
+        expectedStep: "required",
+        expectedBodyCount: 1
+      });
+      expect(row.cases.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("builds and round-trips the new deterministic source fixtures", () => {
+    expect(listV21ReleaseSampleFixtures().map(({ id }) => id)).toEqual([
+      "v21-primitive-matrix",
+      "v21-composite-region-profiles",
+      "v21-sweep-loft",
+      "v21-imported-body"
+    ]);
+
+    for (const fixture of listV21ReleaseSampleFixtures()) {
+      const dryRunEngine = new CadEngine();
+      const before = exportCadProjectJson(dryRunEngine);
+      expect(
+        dryRunEngine.executeBatch({
+          ...createV21ReleaseSampleBatch(fixture.id),
+          mode: "dryRun"
+        }).ok
+      ).toBe(true);
+      expect(exportCadProjectJson(dryRunEngine)).toBe(before);
+
+      const engine = buildV21SampleEngine(fixture);
+      const restored = importCadProjectJson(exportCadProjectJson(engine));
+      const structure = readProjectStructure(restored);
+      const activeBodies = structure.bodies.filter(
+        ({ consumedByFeatureId }) => consumedByFeatureId === undefined
+      );
+
+      expect(activeBodies.map(({ id }) => id)).toEqual(
+        fixture.expectedActiveBodyIds
+      );
+      expect(new Set(activeBodies.map(({ source }) => source.type))).toEqual(
+        new Set(fixture.expectedSourceTypes)
+      );
+      assertNoRawDerivedIds(exportCadProjectJson(restored));
+    }
+  });
+
+  it("covers every source using new fixtures plus completed release samples", () => {
+    const covered = new Set<CadBodySource["type"]>();
+    const record = (engine: CadEngine) => {
+      for (const body of readProjectStructure(engine).bodies) {
+        covered.add(body.source.type);
+      }
+    };
+
+    for (const fixture of listV21ReleaseSampleFixtures()) {
+      record(buildV21SampleEngine(fixture));
+    }
+    for (const fixture of listV7ReleaseSampleFixtures()) {
+      record(buildSampleEngine(fixture));
+    }
+    for (const fixture of listV15ReleaseSampleFixtures()) {
+      record(buildV15SampleEngine(fixture));
+    }
+
+    expect(covered).toEqual(new Set(sourceTypes));
+  });
+
+  it("freezes lifecycle precedence and exact round-trip invariants", () => {
+    expect(V21_EXACT_BODY_LIFECYCLE_POLICY).toEqual({
+      activeHealthy: { status: "ready", action: "resolve" },
+      consumed: { status: "blocked", action: "exclude" },
+      pending: { status: "pending", action: "block" },
+      stale: { status: "stale", action: "block" },
+      repairNeeded: { status: "blocked", action: "block" },
+      failed: { status: "failed", action: "block" },
+      missingCheckpoint: { status: "blocked", action: "block" },
+      unsupported: { status: "unsupported", action: "block" }
+    });
+    expect(V21_EXACT_ROUND_TRIP_EXPECTATION).toEqual({
+      bodyCount: "fixtureExact",
+      solidCount: "fixtureExact",
+      bodyNames: "orderedExact",
+      units: ["mm", "cm", "m", "in"],
+      bounds: "sourceArtifactEquivalent",
+      volume: "sourceArtifactEquivalent",
+      surfaceArea: "sourceArtifactEquivalent",
+      centroid: "sourceArtifactEquivalent",
+      inertia: "sourceArtifactEquivalent",
+      topologyCounts: "sourceArtifactExact",
+      unitDimensionPowers: { length: 1, area: 2, volume: 3, inertia: 5 }
+    });
+  });
+
+  it("keeps imported holes and broad V16 seed drift outside completed support", () => {
+    expect(
+      V21_EXACT_BODY_SOURCE_POLICY.importedStepBody.completedConsumers
+    ).toEqual([
+      "extrudeAdd",
+      "extrudeCut",
+      "chamfer",
+      "fillet",
+      "sketchOnFace"
+    ]);
+    expect(
+      V21_EXACT_BODY_SOURCE_POLICY.importedStepBody.completedConsumers
+    ).not.toContain("hole");
+
+    for (const sourceType of [
+      "linearPatternFeature",
+      "circularPatternFeature",
+      "mirrorFeature",
+      "shellFeature"
+    ] as const) {
+      expect(
+        V21_EXACT_BODY_SOURCE_POLICY[sourceType].cases.every((entry) =>
+          entry.startsWith("extrude-family")
+        )
+      ).toBe(true);
+    }
+
+    const engine = buildV21SampleEngine(
+      listV21ReleaseSampleFixtures().find(
+        ({ id }) => id === "v21-imported-body"
+      )!
+    );
+    engine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "v21_imported_hole_sketch",
+        name: "Unsupported imported hole",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "v21_imported_hole_sketch",
+        id: "v21_imported_hole_circle",
+        center: [0, 0],
+        radius: 1
+      }
+    ]);
+    const before = exportCadProjectJson(engine);
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "feature.hole",
+            id: "v21_imported_hole",
+            bodyId: "v21_imported_hole_body",
+            targetBodyId: "v21_imported_body",
+            sketchId: "v21_imported_hole_sketch",
+            circleEntityId: "v21_imported_hole_circle",
+            depthMode: "blind",
+            depth: 1,
+            direction: "positive"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "UNSUPPORTED_FEATURE_OPERATION" }
+    });
+    expect(exportCadProjectJson(engine)).toBe(before);
+  });
+});
+
 function buildSampleEngine(fixture: V7ReleaseSampleFixture): CadEngine {
   const engine = new CadEngine();
   const response = engine.executeBatch(createV7ReleaseSampleBatch(fixture.id));
@@ -897,6 +1124,14 @@ function buildV15SampleEngine(fixture: V15ReleaseSampleFixture): CadEngine {
   });
   expect(engine.getTransactions()).toHaveLength(1);
 
+  return engine;
+}
+
+function buildV21SampleEngine(fixture: V21ReleaseSampleFixture): CadEngine {
+  const engine = new CadEngine();
+  const response = engine.executeBatch(createV21ReleaseSampleBatch(fixture.id));
+
+  expect(response).toMatchObject({ ok: true, mode: "commit", warnings: [] });
   return engine;
 }
 
