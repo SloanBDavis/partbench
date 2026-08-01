@@ -152,7 +152,10 @@ Gate ledger:
 
 - A0 complete at `a40d3b7f2ed491a0d8f6aa3c6fe7394fd4dea8bd` with the committed
   [V21 A0 baseline](./v21-a0-baseline.md).
-- A1 pending.
+- A1 complete at `4b333544b75354fc3a2f9b101d55f770604f60b4` with the committed
+  [V21 A1 named STEP capability evidence](./v21-a1-capability.md). The locked
+  full OCCT bundle required no binding change and its gzip size stayed exactly
+  at the existing cap.
 - A2 pending.
 
 ## Slice B — Protocol and Cad-Core Export Planning
