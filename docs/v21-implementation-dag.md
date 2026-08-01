@@ -1,6 +1,6 @@
 # V21 Implementation DAG: Production Single-Part Reliability and Exact Interchange
 
-Status: **Approved for implementation (2026-08-01). Slice A is complete; Slice B is next.**
+Status: **Approved for implementation (2026-08-01). Slices A-B are complete; Slice C is next.**
 
 This document turns `docs/v21.md` into a reviewable implementation sequence.
 The release plan is authoritative for scope and semantics. This DAG is
@@ -234,6 +234,19 @@ Required work:
 Gate B passes only when protocol, cad-core, agent-adapter, MCP-adapter, and
 stdio tests prove every plan/health row, old requests still pass, and no
 geometry or browser implementation is required to evaluate source eligibility.
+
+Gate ledger:
+
+- B1-B2 complete at `7069c53a1f55c0be6e515e04a2ac5cd21d789569` with additive
+  plan/status contracts, exhaustive source classification, bounded validators,
+  and compatibility parsing.
+- B3-B4 complete at `55b1aedceabd32d6592ca4b0a244fe62536e0b68` with deterministic all-or-nothing planning,
+  identity binding, active/consumed selection rules, and shared health/readiness
+  projection.
+- B5 complete at `21d935be9dbbf96c1e810dd93878320bf10ed109` with honest agent/MCP/stdio projections and recursive
+  private-field rejection.
+- Gate B passed with the committed
+  [V21 Gate B exact export planning evidence](./v21-b-gate.md).
 
 ## Slice C — Canonical Current Exact-Body Resolver
 
@@ -690,7 +703,7 @@ before explicit plan approval.
 | Gate | Status | Required evidence |
 | --- | --- | --- |
 | A | Complete | Baseline, named AP242/unit real-browser capability, exhaustive fixture matrix |
-| B | Not started | Protocol/core plan, validation, health/readiness, adapter tests |
+| B | Complete | Protocol/core plan, validation, health/readiness, adapter tests |
 | C | Not started | Exhaustive current exact resolver and identity/limit tests |
 | D | Not started | Same-shape artifact, checkpoint reuse, real OCCT/fault/cleanup proof |
 | E | Not started | Artifact-only named/unit STEP, multi-body/stale/cancel, no production base64/recipe path |
