@@ -21,7 +21,13 @@ import {
   getCurrentExactBodyArtifactShapePolicy,
   type CurrentExactBodyResolution
 } from "./currentExactBodyResolver";
+import type {
+  DerivedExactMetadataSnapshot,
+  DerivedExactMetadataSource
+} from "./derivedExactMetadata";
 import type { DerivedGeometryRuntime } from "./derivedGeometryRuntime";
+import type { CurrentExactResultProjection } from "./currentExactResultProjection";
+import { readProjectExactStepExport } from "./projectExactExportQueries";
 
 export interface ProjectExactStepExportExecutionInput {
   readonly engine: CadEngine;
@@ -64,6 +70,166 @@ export interface ProjectExactStepExportResult {
   readonly bodyCount: number;
   readonly byteLength: number;
   readonly bytes: Uint8Array;
+}
+
+export interface ProjectExactStepExportRunOutcome {
+  readonly job: ProjectExactStepExportJobState;
+  readonly tone: "info" | "error";
+}
+
+export async function runProjectExactStepExport(input: {
+  readonly engine: CadEngine;
+  readonly exactMetadata: DerivedExactMetadataSnapshot;
+  readonly currentSources: readonly DerivedExactMetadataSource[];
+  readonly projections: readonly CurrentExactResultProjection[];
+  readonly resolutions: readonly CurrentExactBodyResolution[];
+  readonly runtime: Pick<
+    DerivedGeometryRuntime,
+    "exactBodyArtifact" | "executeExactStepExport" | "resumeModelWork"
+  >;
+  readonly requestedBodyIds?: readonly string[];
+  readonly downloadAvailable: boolean;
+  readonly onJobChange: (job: ProjectExactStepExportJobState) => void;
+}): Promise<ProjectExactStepExportRunOutcome> {
+  const requestedBodyIds = input.requestedBodyIds
+    ? [...input.requestedBodyIds]
+    : undefined;
+  const finish = (
+    job: ProjectExactStepExportJobState,
+    tone: ProjectExactStepExportRunOutcome["tone"]
+  ) => {
+    input.onJobChange(job);
+    return { job, tone };
+  };
+  const failed = (message: string, totalBodyCount = 0) =>
+    finish(
+      {
+        status: "failed",
+        ...(requestedBodyIds ? { requestedBodyIds } : {}),
+        completedBodyCount: 0,
+        totalBodyCount,
+        message,
+        diagnostics: []
+      },
+      "error"
+    );
+
+  if (requestedBodyIds?.length === 0) {
+    return failed("Choose at least one body for exact STEP export.");
+  }
+  if (!input.downloadAvailable) {
+    return failed(
+      "STEP download is unavailable in this browser runtime.",
+      requestedBodyIds?.length
+    );
+  }
+  const exactExport = readProjectExactStepExport(
+    input.engine,
+    input.exactMetadata,
+    input.currentSources,
+    input.projections,
+    requestedBodyIds
+  );
+  if (!exactExport?.available) {
+    const diagnostic = exactExport?.diagnostics.find(
+      (entry) => entry.status !== "supported"
+    );
+    const message = diagnostic
+      ? `STEP export is not ready: ${diagnostic.message}`
+      : "STEP export needs a supported active authored body.";
+    return finish(
+      {
+        status: "failed",
+        ...(requestedBodyIds ? { requestedBodyIds } : {}),
+        completedBodyCount: 0,
+        totalBodyCount: exactExport?.bodyCount ?? requestedBodyIds?.length ?? 0,
+        message,
+        diagnostics: exactExport?.diagnostics ?? []
+      },
+      "error"
+    );
+  }
+
+  input.runtime.resumeModelWork();
+  let currentJob: ProjectExactStepExportJobState = {
+    status: "running",
+    ...(requestedBodyIds ? { requestedBodyIds } : {}),
+    phase: "building",
+    completedBodyCount: 0,
+    totalBodyCount: exactExport.plan?.bodies.length ?? exactExport.bodyCount,
+    message: "Building exact body artifacts.",
+    diagnostics: []
+  };
+  input.onJobChange(currentJob);
+  try {
+    const result = await executeProjectExactStepExport({
+      engine: input.engine,
+      exactExport,
+      resolutions: input.resolutions,
+      runtime: input.runtime,
+      onProgress: (progress) => {
+        currentJob = {
+          status: "running",
+          ...(requestedBodyIds ? { requestedBodyIds } : {}),
+          ...progress,
+          message:
+            progress.phase === "writing"
+              ? "Writing the named AP242 STEP file."
+              : `Built ${progress.completedBodyCount} of ${progress.totalBodyCount} exact body artifacts.`,
+          diagnostics: []
+        };
+        input.onJobChange(currentJob);
+      }
+    });
+    if (!isExactExportPlanCurrent(input.engine, result.plan)) {
+      throw new ProjectExactStepExportError(
+        "EXPORT_SOURCE_CHANGED",
+        "Project or selected body source identity changed before download."
+      );
+    }
+    downloadProjectExactStepArtifact(result);
+    const message = `Downloaded ${result.fileName}: ${result.bodyCount} exact bod${
+      result.bodyCount === 1 ? "y" : "ies"
+    }, ${result.byteLength} bytes.`;
+    return finish(
+      {
+        status: "complete",
+        ...(requestedBodyIds ? { requestedBodyIds } : {}),
+        phase: "writing",
+        completedBodyCount: result.bodyCount,
+        totalBodyCount: result.bodyCount,
+        message,
+        diagnostics: []
+      },
+      "info"
+    );
+  } catch (error) {
+    const cancelled = isGeometryCancellation(error);
+    const detail =
+      error instanceof Error
+        ? error.message
+        : "The geometry worker did not complete the export.";
+    const code: CadExportDiagnosticCode = cancelled
+      ? "EXPORT_CANCELLED"
+      : error && typeof error === "object" && "code" in error
+        ? (String(error.code) as CadExportDiagnosticCode)
+        : "EXPORT_STEP_TRANSFER_FAILED";
+    const message = cancelled
+      ? "STEP export was cancelled. You can retry the same selection."
+      : `STEP export failed: ${detail}`;
+    return finish(
+      {
+        status: cancelled ? "cancelled" : "failed",
+        ...(requestedBodyIds ? { requestedBodyIds } : {}),
+        ...(currentJob.phase ? { phase: currentJob.phase } : {}),
+        completedBodyCount: currentJob.completedBodyCount,
+        totalBodyCount: currentJob.totalBodyCount,
+        message,
+        diagnostics: [{ code, message: detail }]
+      },
+      cancelled ? "info" : "error"
+    );
+  }
 }
 
 export function downloadProjectExactStepArtifact(

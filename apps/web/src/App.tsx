@@ -21,9 +21,10 @@ import {
 } from "@web-cad/cad-core";
 import type {
   BodyGeneratedReferencesQueryResponse,
+  CadBodyDerivedExactMetadataSnapshot,
   CadBodyGeneratedReferenceEvidenceSnapshot,
   CadBatchResponse,
-  CadExportDiagnosticCode,
+  CadCurrentExactResult,
   CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
   FeatureShellOpenFaceRef,
@@ -305,30 +306,11 @@ import type {
   VisualizationMeshExportResult,
   VisualizationMeshExportStatus
 } from "./visualizationMeshExport";
-import {
-  createBodyTopologyDerivedExactMetadataSnapshot,
-  createEmptyDerivedExactMetadataSnapshot,
+import type {
   DerivedExactMetadataService,
-  formatDerivedExactMetadataEntryStatus,
-  getCurrentDerivedExactMetadataEntryForBody,
-  planExactMetadataRetry,
-  type DerivedExactMetadataSource,
-  type DerivedExactMetadataSnapshot
+  DerivedExactMetadataSource,
+  DerivedExactMetadataSnapshot
 } from "./derivedExactMetadata";
-import {
-  getReadyRuntimeExactSources,
-  resolveCurrentExactBodies
-} from "./currentExactBodyResolver";
-import {
-  createCurrentExactResultProjections,
-  toCadCurrentExactResults,
-  type CurrentExactResultProjection
-} from "./currentExactResultProjection";
-import {
-  createCurrentDerivedExactMetadataSnapshots,
-  readProjectExactStepExport,
-  readProjectExportReadiness
-} from "./projectExactExportQueries";
 import type { ProjectExactStepExportJobState } from "./projectExactStepExport";
 import {
   createBodyMeasurementRows,
@@ -342,8 +324,6 @@ import {
   formatVector,
   formatVolume
 } from "./sceneObjectDisplay";
-import { createRenderSceneInputs } from "./renderScene";
-import { createModelingResultState } from "./modelingResultState";
 import {
   createDefaultSketchDisplayFrame,
   createGeneratedFaceReferenceKey,
@@ -404,9 +384,9 @@ import type {
   ViewportTwoTargetMeasurementTarget,
   ViewportTwoTargetMeasurementView
 } from "./viewportTwoTargetMeasurement";
-import {
-  deriveModelingActions,
-  type ModelingSelectionContext
+import type {
+  ModelingActionDescriptor,
+  ModelingSelectionContext
 } from "./modelingActions";
 import type { ProjectJsonDraftSource } from "./projectJson";
 import { createProjectStorageCapabilityStatus } from "./projectStorageCapabilities";
@@ -583,6 +563,17 @@ type DerivedGeometrySourceBuilders = Pick<
   typeof import("./derivedGeometrySources"),
   | "createAuthoredFeatureDerivedGeometrySources"
   | "createDerivedGeometrySourcesFromDocument"
+  | "createCurrentExactEvidence"
+  | "createCurrentExactSources"
+  | "createModelingResultState"
+  | "createRenderSceneInputs"
+  | "deriveModelingActions"
+  | "createBodyTopologyDerivedExactMetadataSnapshot"
+  | "DerivedExactMetadataService"
+  | "formatDerivedExactMetadataEntryStatus"
+  | "getCurrentDerivedExactMetadataEntryForBody"
+  | "planExactMetadataRetry"
+  | "readProjectExportReadiness"
 >;
 
 let derivedGeometrySourceBuildersPromise:
@@ -596,6 +587,16 @@ function loadDerivedGeometrySourceBuilders(): Promise<DerivedGeometrySourceBuild
 const supportedOpfsCacheArtifactVersions = [
   DERIVED_MESH_CACHE_ARTIFACT_VERSION
 ] as const;
+const INITIAL_MODELING_ACTIONS: readonly ModelingActionDescriptor[] = [
+  {
+    id: "sketch.create",
+    label: "Create sketch",
+    kind: "command",
+    category: "sketch",
+    available: true,
+    selection: { context: "none" }
+  }
+];
 
 function createWcadTopologyCheckpointPayloadInputCache(
   payloads: readonly WcadTopologyCheckpointPayload[] | undefined
@@ -728,24 +729,15 @@ function readBodySourceIdentitySignatures(
 }
 
 function readProjectHealth(
-  exactMetadata: DerivedExactMetadataSnapshot,
-  currentSources: readonly DerivedExactMetadataSource[],
-  projections?: readonly CurrentExactResultProjection[]
+  derivedExactMetadata: readonly CadBodyDerivedExactMetadataSnapshot[],
+  currentExactResults: readonly CadCurrentExactResult[]
 ): ProjectHealthQueryResponse {
-  const derivedExactMetadata = createCurrentDerivedExactMetadataSnapshots(
-    engine,
-    exactMetadata,
-    currentSources,
-    projections
-  );
   const response = engine.executeQuery({
     version: "cadops.v1",
     query: {
       query: "project.health",
       ...(derivedExactMetadata.length > 0 ? { derivedExactMetadata } : {}),
-      ...(projections
-        ? { currentExactResults: toCadCurrentExactResults(projections) }
-        : {})
+      ...(currentExactResults.length > 0 ? { currentExactResults } : {})
     }
   });
 
@@ -1851,7 +1843,8 @@ function readBodyMeasurements(bodyId: string | undefined): {
 function readBodyTopology(
   bodyId: string | undefined,
   exactMetadata: DerivedExactMetadataSnapshot,
-  currentExactMetadataSource: DerivedExactMetadataSource | undefined
+  currentExactMetadataSource: DerivedExactMetadataSource | undefined,
+  exactRuntime: DerivedGeometrySourceBuilders | undefined
 ): {
   readonly topology?: CadBodyTopologySnapshot;
   readonly error?: string;
@@ -1861,23 +1854,25 @@ function readBodyTopology(
     return {};
   }
 
-  const exactMetadataEntry = getCurrentDerivedExactMetadataEntryForBody(
-    exactMetadata,
-    bodyId,
-    currentExactMetadataSource
-  );
+  const exactMetadataEntry =
+    exactRuntime?.getCurrentDerivedExactMetadataEntryForBody(
+      exactMetadata,
+      bodyId,
+      currentExactMetadataSource
+    );
   const exactMetadataStatus =
-    formatDerivedExactMetadataEntryStatus(exactMetadataEntry);
+    exactRuntime?.formatDerivedExactMetadataEntryStatus(exactMetadataEntry);
   const response = engine.executeQuery({
     version: "cadops.v1",
     query: { query: "body.topology", bodyId }
   });
 
   if (response.ok && response.query === "body.topology") {
-    const derivedExactMetadata = createBodyTopologyDerivedExactMetadataSnapshot(
-      exactMetadataEntry,
-      response.topology.sourceIdentity.signature
-    );
+    const derivedExactMetadata =
+      exactRuntime?.createBodyTopologyDerivedExactMetadataSnapshot(
+        exactMetadataEntry,
+        response.topology.sourceIdentity.signature
+      );
 
     if (!derivedExactMetadata) {
       return { topology: response.topology, exactMetadataStatus };
@@ -1911,18 +1906,19 @@ function readBodyMassProperties(
   bodyId: string,
   topology: CadBodyTopologySnapshot | undefined,
   exactMetadata: DerivedExactMetadataSnapshot,
-  currentExactMetadataSource: DerivedExactMetadataSource | undefined
+  currentExactMetadataSource: DerivedExactMetadataSource | undefined,
+  exactRuntime: DerivedGeometrySourceBuilders | undefined
 ): {
   readonly massProperties?: CadMassPropertiesSnapshot;
   readonly error?: string;
 } {
-  const entry = getCurrentDerivedExactMetadataEntryForBody(
+  const entry = exactRuntime?.getCurrentDerivedExactMetadataEntryForBody(
     exactMetadata,
     bodyId,
     currentExactMetadataSource
   );
   const derivedExactMetadata = topology
-    ? createBodyTopologyDerivedExactMetadataSnapshot(
+    ? exactRuntime?.createBodyTopologyDerivedExactMetadataSnapshot(
         entry,
         topology.sourceIdentity.signature
       )
@@ -2483,9 +2479,14 @@ export function App() {
       createEmptyDerivedGeometrySnapshot()
     );
   const [derivedExactMetadata, setDerivedExactMetadata] =
-    useState<DerivedExactMetadataSnapshot>(() =>
-      createEmptyDerivedExactMetadataSnapshot()
-    );
+    useState<DerivedExactMetadataSnapshot>(() => ({
+      entries: [],
+      supportedCount: 0,
+      pendingCount: 0,
+      readyCount: 0,
+      cancelledCount: 0,
+      errorCount: 0
+    }));
   const getDerivedGeometryRuntime = useCallback((): DerivedGeometryRuntime => {
     if (!derivedGeometryRuntimeRef.current) {
       derivedGeometryRuntimeRef.current = createDerivedGeometryRuntime();
@@ -2801,33 +2802,35 @@ export function App() {
 
     return derivedGeometryServiceRef.current;
   }, [getDerivedGeometryRuntime]);
-  const getDerivedExactMetadataService =
-    useCallback((): DerivedExactMetadataService => {
-      if (!derivedExactMetadataServiceRef.current) {
-        derivedExactMetadataServiceRef.current =
-          new DerivedExactMetadataService({
-            runtime: getDerivedGeometryRuntime(),
-            onChange: (snapshot) => {
-              emitGeometryDiagnosticEvent({
-                phase: "exact-snapshot",
-                timestamp: performance.now(),
-                supportedCount: snapshot.supportedCount,
-                pendingCount: snapshot.pendingCount,
-                readyCount: snapshot.readyCount,
-                errorCount: snapshot.errorCount,
-                entries: snapshot.entries.map((entry) => ({
-                  id: entry.bodyId,
-                  cacheKey: entry.cacheKey,
-                  status: entry.status
-                }))
-              });
-              setDerivedExactMetadata(snapshot);
-            }
-          });
-      }
+  const getDerivedExactMetadataService = useCallback(():
+    | DerivedExactMetadataService
+    | undefined => {
+    if (!derivedGeometrySourceBuilders) return undefined;
+    if (!derivedExactMetadataServiceRef.current) {
+      derivedExactMetadataServiceRef.current =
+        new derivedGeometrySourceBuilders.DerivedExactMetadataService({
+          runtime: getDerivedGeometryRuntime(),
+          onChange: (snapshot) => {
+            emitGeometryDiagnosticEvent({
+              phase: "exact-snapshot",
+              timestamp: performance.now(),
+              supportedCount: snapshot.supportedCount,
+              pendingCount: snapshot.pendingCount,
+              readyCount: snapshot.readyCount,
+              errorCount: snapshot.errorCount,
+              entries: snapshot.entries.map((entry) => ({
+                id: entry.bodyId,
+                cacheKey: entry.cacheKey,
+                status: entry.status
+              }))
+            });
+            setDerivedExactMetadata(snapshot);
+          }
+        });
+    }
 
-      return derivedExactMetadataServiceRef.current;
-    }, [getDerivedGeometryRuntime]);
+    return derivedExactMetadataServiceRef.current;
+  }, [derivedGeometrySourceBuilders, getDerivedGeometryRuntime]);
 
   const sceneObjects = useMemo(
     () => [...document.objects.values()],
@@ -2974,92 +2977,63 @@ export function App() {
       sourcePlacementFacesByKey
     ]
   );
-  const currentExactBodyResolutions = useMemo(
+  const currentExactSources = useMemo(
     () =>
-      resolveCurrentExactBodies({
+      derivedGeometrySourceBuilders?.createCurrentExactSources({
         document,
         bodies: projectStructure.bodies,
         features: projectStructure.features,
         geometrySources: baseDerivedGeometrySources,
         checkpointPayloads: wcadTopologyCheckpointPayloadCache,
         sourceIdentitySignaturesByBodyId: bodySourceIdentitySignatures
-      }),
+      }) ?? {
+        resolutions: [],
+        metadataSources: [],
+        displaySources: [],
+        derivedGeometrySources: baseDerivedGeometrySources
+      },
     [
       bodySourceIdentitySignatures,
       baseDerivedGeometrySources,
+      derivedGeometrySourceBuilders,
       document,
       projectStructure.bodies,
       projectStructure.features,
       wcadTopologyCheckpointPayloadCache
     ]
   );
-  const currentExactMetadataSources = useMemo<
-    readonly DerivedExactMetadataSource[]
-  >(
-    () => getReadyRuntimeExactSources(currentExactBodyResolutions),
-    [currentExactBodyResolutions]
-  );
-  const currentExactDisplaySources = useMemo(
+  const currentExactEvidence = useMemo(
     () =>
-      currentExactMetadataSources.filter(
-        (source) => source.kind === "exactBody"
-      ),
-    [currentExactMetadataSources]
-  );
-  const derivedGeometrySources = useMemo<
-    readonly DerivedGeometrySource[]
-  >(() => {
-    const replacedIds = new Set(
-      currentExactDisplaySources.map((source) => source.id)
-    );
-    return [
-      ...baseDerivedGeometrySources.filter(
-        (source) => !replacedIds.has(source.id)
-      ),
-      ...currentExactDisplaySources
-    ];
-  }, [baseDerivedGeometrySources, currentExactDisplaySources]);
-  const currentExactResultProjections = useMemo(
-    () =>
-      createCurrentExactResultProjections({
-        resolutions: currentExactBodyResolutions,
+      derivedGeometrySourceBuilders?.createCurrentExactEvidence({
+        engine,
+        resolutions: currentExactSources.resolutions,
         sourceIdentitySignaturesByBodyId: bodySourceIdentitySignatures,
-        displaySources: derivedGeometrySources,
+        displaySources: currentExactSources.derivedGeometrySources,
         display: derivedGeometry,
-        metadataSources: currentExactMetadataSources,
+        metadataSources: currentExactSources.metadataSources,
         metadata: derivedExactMetadata
-      }),
+      }) ?? {
+        projections: [],
+        agent: { derivedExactMetadata: [], currentExactResults: [] }
+      },
     [
       bodySourceIdentitySignatures,
-      currentExactBodyResolutions,
-      currentExactMetadataSources,
+      currentExactSources,
+      derivedGeometrySourceBuilders,
       derivedExactMetadata,
-      derivedGeometry,
-      derivedGeometrySources
+      derivedGeometry
     ]
   );
-  const currentAgentExactEvidence = useMemo(
-    () => ({
-      derivedExactMetadata: createCurrentDerivedExactMetadataSnapshots(
-        engine,
-        derivedExactMetadata,
-        currentExactMetadataSources,
-        currentExactResultProjections
-      ),
-      currentExactResults: toCadCurrentExactResults(
-        currentExactResultProjections
-      )
-    }),
-    [
-      currentExactMetadataSources,
-      currentExactResultProjections,
-      derivedExactMetadata
-    ]
-  );
+  const currentExactBodyResolutions = currentExactSources.resolutions;
+  const currentExactMetadataSources = currentExactSources.metadataSources;
+  const currentExactDisplaySources = currentExactSources.displaySources;
+  const derivedGeometrySources = currentExactSources.derivedGeometrySources;
+  const currentExactResultProjections = currentExactEvidence.projections;
+  const currentAgentExactEvidence = currentExactEvidence.agent;
   const projectExportReadiness = useMemo(
     () =>
       readEngineStateForDocument(document, () =>
-        readProjectExportReadiness(
+        derivedGeometrySourceBuilders?.readProjectExportReadiness(
           engine,
           derivedExactMetadata,
           currentExactMetadataSources,
@@ -3070,6 +3044,7 @@ export function App() {
       currentExactMetadataSources,
       currentExactResultProjections,
       derivedExactMetadata,
+      derivedGeometrySourceBuilders,
       document
     ]
   );
@@ -3077,17 +3052,11 @@ export function App() {
     () =>
       readEngineStateForDocument(document, () =>
         readProjectHealth(
-          derivedExactMetadata,
-          currentExactMetadataSources,
-          currentExactResultProjections
+          currentAgentExactEvidence.derivedExactMetadata,
+          currentAgentExactEvidence.currentExactResults
         )
       ),
-    [
-      currentExactMetadataSources,
-      currentExactResultProjections,
-      derivedExactMetadata,
-      document
-    ]
+    [currentAgentExactEvidence, document]
   );
   const retryableModelResultCount =
     derivedGeometry.errorCount +
@@ -3110,12 +3079,14 @@ export function App() {
     const geometryService = getDerivedGeometryService();
     const exactService = getDerivedExactMetadataService();
     geometryService.retryCurrent(derivedGeometrySources);
-    const { immediate, deferred } = planExactMetadataRetry(
+    const retryPlan = derivedGeometrySourceBuilders?.planExactMetadataRetry(
       currentExactMetadataSources,
       geometryService.getSnapshot()
     );
-    exactService.deferRetryable(deferred);
-    exactService.retryCurrent(immediate);
+    if (exactService && retryPlan) {
+      exactService.deferRetryable(retryPlan.deferred);
+      exactService.retryCurrent(retryPlan.immediate);
+    }
     setCommandError(undefined);
     setCommandNotice(
       modelWorkSnapshot.cancelledUserKinds.length > 0
@@ -3155,7 +3126,7 @@ export function App() {
         : undefined;
   const modelingResultState = useMemo(
     () =>
-      createModelingResultState({
+      derivedGeometrySourceBuilders?.createModelingResultState({
         commandPending,
         commandFailed: commandError !== undefined,
         derivedGeometryEnabled,
@@ -3165,11 +3136,13 @@ export function App() {
         derivedExactMetadata,
         currentExactResults: currentExactResultProjections,
         projectHealthStatus: projectHealth.status
-      }),
+      }) ??
+      (commandPending ? "Updating" : commandError ? "Update failed" : "Ready"),
     [
       commandError,
       commandPending,
       derivedGeometry,
+      derivedGeometrySourceBuilders,
       derivedGeometrySources.length,
       derivedExactMetadata,
       currentExactMetadataSources.length,
@@ -3298,10 +3271,16 @@ export function App() {
         ? readBodyTopology(
             selectedBody.id,
             derivedExactMetadata,
-            selectedBodyExactMetadataSource
+            selectedBodyExactMetadataSource,
+            derivedGeometrySourceBuilders
           )
         : {},
-    [derivedExactMetadata, selectedBody, selectedBodyExactMetadataSource]
+    [
+      derivedExactMetadata,
+      derivedGeometrySourceBuilders,
+      selectedBody,
+      selectedBodyExactMetadataSource
+    ]
   );
   const selectedBodyMassProperties = useMemo(
     () =>
@@ -3310,7 +3289,8 @@ export function App() {
             selectedBody.id,
             selectedBodyTopology.topology,
             derivedExactMetadata,
-            selectedBodyExactMetadataSource
+            selectedBodyExactMetadataSource,
+            derivedGeometrySourceBuilders
           )
         : selectedBody
           ? {
@@ -3321,6 +3301,7 @@ export function App() {
           : {},
     [
       derivedExactMetadata,
+      derivedGeometrySourceBuilders,
       selectedBody,
       selectedBodyExactResult,
       selectedBodyExactMetadataSource,
@@ -3586,7 +3567,7 @@ export function App() {
   );
   const modelingActions = useMemo(
     () =>
-      deriveModelingActions({
+      derivedGeometrySourceBuilders?.deriveModelingActions({
         context: modelingSelectionContext,
         bodies: projectStructure.bodies,
         features: projectStructure.features,
@@ -3594,8 +3575,9 @@ export function App() {
         topologyAnchors: document.topologyIdentity?.anchors,
         holeTargetReadinessByTopologyAnchorId,
         sketchIntentActionAvailability
-      }),
+      }) ?? INITIAL_MODELING_ACTIONS,
     [
+      derivedGeometrySourceBuilders,
       document.topologyIdentity?.anchors,
       holeTargetReadinessByTopologyAnchorId,
       modelingSelectionContext,
@@ -5382,15 +5364,16 @@ export function App() {
     selectedId;
   const renderScene = useMemo(
     () =>
-      createRenderSceneInputs(
+      derivedGeometrySourceBuilders?.createRenderSceneInputs(
         sceneObjects,
         derivedGeometryBySourceId,
         [...featureGeometrySources, ...currentExactDisplaySources],
         sketches,
         sketchDisplayState.frames
-      ),
+      ) ?? { primitives: [], meshes: [] },
     [
       derivedGeometryBySourceId,
+      derivedGeometrySourceBuilders,
       currentExactDisplaySources,
       featureGeometrySources,
       sceneObjects,
@@ -5472,14 +5455,8 @@ export function App() {
   }, [refreshProjectOpfsCache, workbenchUi.mode]);
 
   useEffect(() => {
-    if (
-      !derivedGeometryEnabled ||
-      (document.objects.size === 0 && projectStructure.features.length === 0)
-    ) {
-      return;
-    }
     void getDerivedGeometrySourceBuilders();
-  }, [document, getDerivedGeometrySourceBuilders, projectStructure.features]);
+  }, [getDerivedGeometrySourceBuilders]);
 
   useEffect(() => {
     if (!derivedGeometryEnabled) {
@@ -5509,7 +5486,7 @@ export function App() {
         displayEntry?.status === "unsupported"
       );
     });
-    getDerivedExactMetadataService().reconcile(stagedExactSources);
+    getDerivedExactMetadataService()?.reconcile(stagedExactSources);
   }, [
     derivedGeometrySources,
     derivedMeshCacheContextKey,
@@ -7137,151 +7114,23 @@ export function App() {
 
   async function downloadExactStepExport(bodyIds?: readonly string[]) {
     if (exactStepExportActiveRef.current) return;
-    const requestedBodyIds = bodyIds ? [...bodyIds] : undefined;
-    if (requestedBodyIds?.length === 0) {
-      const message = "Choose at least one body for exact STEP export.";
-      setExactStepExportJob({
-        status: "failed",
-        requestedBodyIds,
-        completedBodyCount: 0,
-        totalBodyCount: 0,
-        message,
-        diagnostics: []
-      });
-      setProjectMessage(message);
-      setProjectMessageTone("error");
-      return;
-    }
-    if (!projectStorageCapabilities.jsonDownloadAvailable) {
-      const message = "STEP download is unavailable in this browser runtime.";
-      setExactStepExportJob({
-        status: "failed",
-        ...(requestedBodyIds ? { requestedBodyIds } : {}),
-        completedBodyCount: 0,
-        totalBodyCount: requestedBodyIds?.length ?? 0,
-        message,
-        diagnostics: []
-      });
-      setProjectMessage(message);
-      setProjectMessageTone("error");
-      return;
-    }
-
-    const exactExport = readProjectExactStepExport(
-      engine,
-      derivedExactMetadata,
-      currentExactMetadataSources,
-      currentExactResultProjections,
-      requestedBodyIds
-    );
-
-    if (!exactExport?.available) {
-      const diagnostic = exactExport?.diagnostics.find(
-        (entry) => entry.status !== "supported"
-      );
-      const message = diagnostic
-        ? `STEP export is not ready: ${diagnostic.message}`
-        : "STEP export needs a supported active authored body.";
-      setExactStepExportJob({
-        status: "failed",
-        ...(requestedBodyIds ? { requestedBodyIds } : {}),
-        completedBodyCount: 0,
-        totalBodyCount: exactExport?.bodyCount ?? requestedBodyIds?.length ?? 0,
-        message,
-        diagnostics: exactExport?.diagnostics ?? []
-      });
-      setProjectMessage(message);
-      setProjectMessageTone("error");
-      return;
-    }
-
-    const runtime = getDerivedGeometryRuntime();
-    runtime.resumeModelWork();
     exactStepExportActiveRef.current = true;
-    setExactStepExportJob({
-      status: "running",
-      ...(requestedBodyIds ? { requestedBodyIds } : {}),
-      phase: "building",
-      completedBodyCount: 0,
-      totalBodyCount: exactExport.plan?.bodies.length ?? exactExport.bodyCount,
-      message: "Building exact body artifacts.",
-      diagnostics: []
-    });
     try {
-      const {
-        downloadProjectExactStepArtifact,
-        executeProjectExactStepExport,
-        isExactExportPlanCurrent
-      } = await import("./projectExactStepExport");
-      const result = await executeProjectExactStepExport({
+      const { runProjectExactStepExport } =
+        await import("./projectExactStepExport");
+      const outcome = await runProjectExactStepExport({
         engine,
-        exactExport,
+        exactMetadata: derivedExactMetadata,
+        currentSources: currentExactMetadataSources,
+        projections: currentExactResultProjections,
         resolutions: currentExactBodyResolutions,
-        runtime,
-        onProgress: (progress) =>
-          setExactStepExportJob({
-            status: "running",
-            ...(requestedBodyIds ? { requestedBodyIds } : {}),
-            ...progress,
-            message:
-              progress.phase === "writing"
-                ? "Writing the named AP242 STEP file."
-                : `Built ${progress.completedBodyCount} of ${progress.totalBodyCount} exact body artifacts.`,
-            diagnostics: []
-          })
+        runtime: getDerivedGeometryRuntime(),
+        ...(bodyIds ? { requestedBodyIds: bodyIds } : {}),
+        downloadAvailable: projectStorageCapabilities.jsonDownloadAvailable,
+        onJobChange: setExactStepExportJob
       });
-      if (!isExactExportPlanCurrent(engine, result.plan)) {
-        throw Object.assign(
-          new Error(
-            "Project or selected body source identity changed before download."
-          ),
-          { code: "EXPORT_SOURCE_CHANGED" }
-        );
-      }
-      downloadProjectExactStepArtifact(result);
-      const message = `Downloaded ${result.fileName}: ${result.bodyCount} exact bod${
-        result.bodyCount === 1 ? "y" : "ies"
-      }, ${result.byteLength} bytes.`;
-      setExactStepExportJob({
-        status: "complete",
-        ...(requestedBodyIds ? { requestedBodyIds } : {}),
-        phase: "writing",
-        completedBodyCount: result.bodyCount,
-        totalBodyCount: result.bodyCount,
-        message,
-        diagnostics: []
-      });
-      setProjectMessage(message);
-      setProjectMessageTone("info");
-    } catch (error) {
-      const cancelled =
-        error instanceof Error &&
-        (error.name === "GeometryJobGenerationError" ||
-          ("code" in error &&
-            error.code === "GEOMETRY_JOB_GENERATION_CANCELLED"));
-      const detail =
-        error instanceof Error
-          ? error.message
-          : "The geometry worker did not complete the export.";
-      const code: CadExportDiagnosticCode = cancelled
-        ? "EXPORT_CANCELLED"
-        : error && typeof error === "object" && "code" in error
-          ? (String(error.code) as CadExportDiagnosticCode)
-          : "EXPORT_STEP_TRANSFER_FAILED";
-      const message = cancelled
-        ? "STEP export was cancelled. You can retry the same selection."
-        : `STEP export failed: ${detail}`;
-      setExactStepExportJob((current) => ({
-        status: cancelled ? "cancelled" : "failed",
-        ...(requestedBodyIds ? { requestedBodyIds } : {}),
-        ...(current.phase ? { phase: current.phase } : {}),
-        completedBodyCount: current.completedBodyCount,
-        totalBodyCount: current.totalBodyCount,
-        message,
-        diagnostics: [{ code, message: detail }]
-      }));
-      setProjectMessage(message);
-      setProjectMessageTone(cancelled ? "info" : "error");
+      setProjectMessage(outcome.job.message);
+      setProjectMessageTone(outcome.tone);
     } finally {
       exactStepExportActiveRef.current = false;
     }

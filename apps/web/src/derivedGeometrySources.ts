@@ -42,6 +42,33 @@ import {
   type SketchDisplayFrame
 } from "./sketchDisplayFrames";
 import { mapResolvedSweepPathSegmentToWorld } from "./sweepGeometryRecipe";
+export {
+  getReadyRuntimeExactSources,
+  resolveCurrentExactBodies
+} from "./currentExactBodyResolver";
+export {
+  createCurrentExactResultProjections,
+  toCadCurrentExactResults
+} from "./currentExactResultProjection";
+export {
+  createCurrentDerivedExactMetadataSnapshots,
+  readProjectExactStepExport,
+  readProjectExportReadiness
+} from "./projectExactExportQueries";
+export {
+  createBodyTopologyDerivedExactMetadataSnapshot,
+  DerivedExactMetadataService,
+  formatDerivedExactMetadataEntryStatus,
+  getCurrentDerivedExactMetadataEntryForBody,
+  planExactMetadataRetry
+} from "./derivedExactMetadata";
+export {
+  createCurrentExactEvidence,
+  createCurrentExactSources
+} from "./currentExactPipeline";
+export { deriveModelingActions } from "./modelingActions";
+export { createModelingResultState } from "./modelingResultState";
+export { createRenderSceneInputs } from "./renderScene";
 
 export function createDerivedGeometrySourcesFromDocument(
   document: CadDocument,
