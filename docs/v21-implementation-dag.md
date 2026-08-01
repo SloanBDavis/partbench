@@ -1,6 +1,6 @@
 # V21 Implementation DAG: Production Single-Part Reliability and Exact Interchange
 
-Status: **Approved for implementation (2026-08-01). Slices A-E are complete; Slice F is next.**
+Status: **Approved for implementation (2026-08-01). Slices A-F are complete; Slice G is next.**
 
 This document turns `docs/v21.md` into a reviewable implementation sequence.
 The release plan is authoritative for scope and semantics. This DAG is
@@ -552,6 +552,16 @@ Required work:
 Gate F passes only when a table-driven cross-consumer test covers every matrix
 row and every status, with no contradictory current/ready/blocked result.
 
+Implementation record:
+
+- F1 completed at `138940f` with one identity-bound app projection and the
+  binding V21 status precedence.
+- F2-F5 completed at `61a92d2` with one exact-shape display/metadata dispatcher,
+  imported downstream display parity, exact-ready Inspect gating, and shared
+  project summary/health/readiness/export evidence.
+- Gate F passed with the committed
+  [V21 Gate F cross-consumer evidence](./v21-f-gate.md).
+
 ## Slice G — Rebuild, History, Storage, and Concurrency Hardening
 
 Goal: prove exact output remains honest through normal project lifecycle.
@@ -741,7 +751,7 @@ before explicit plan approval.
 | C | Complete | Exhaustive current exact resolver and identity/limit tests |
 | D | Complete | Same-shape artifact, checkpoint reuse, real OCCT/fault/cleanup proof |
 | E | Complete | Artifact-only named/unit STEP, multi-body/stale/cancel, no production base64/recipe path |
-| F | Not started | Cross-consumer exact-result parity table |
+| F | Complete | Cross-consumer exact-result parity table |
 | G | Not started | Rebuild/history/storage/concurrency compatibility |
 | H | Not started | Accessible browser workflow and V20-safe connected agent readiness |
 | I | Not started | Corpus, named commands, performance/bundle, adversarial review, full validation/docs |
