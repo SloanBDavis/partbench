@@ -63,7 +63,11 @@ export function auditV21Performance(record) {
     corpus?.names?.[0],
     corpus?.names?.[1]
   );
-  if (!corpus?.names?.some((name) => /[^\x00-\x7f]/.test(name))) {
+  if (
+    !corpus?.names?.some((name) =>
+      [...name].some((character) => character.codePointAt(0) > 0x7f)
+    )
+  ) {
     failures.push("corpus Unicode name evidence is missing");
   }
 

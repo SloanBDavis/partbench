@@ -376,7 +376,7 @@ async function runWorkflow(client, mcpClient) {
     );
     assert(
       exactPlan.available &&
-      exactPlan.plan?.schema === "AP242DIS" &&
+        exactPlan.plan?.schema === "AP242DIS" &&
         exactPlan.plan?.orderedBodyIds?.[0] === selectedObject.selection.bodyId,
       "connected MCP exact plan must match the selected browser body"
     );

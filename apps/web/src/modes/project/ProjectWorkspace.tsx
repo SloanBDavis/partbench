@@ -283,6 +283,7 @@ export function ProjectWorkspace({
         <ProjectAgent disabled={disabled} />
       ) : (
         <ProjectExport
+          key={exportReadiness?.bodies.map((body) => body.bodyId).join("\0")}
           disabled={disabled}
           readiness={exportReadiness}
           selectedBodyId={selectedBodyId}
@@ -1388,8 +1389,6 @@ function ProjectExport({
   const canExportStep = Boolean(readiness?.canExportFiles);
   const canExportGlb =
     visualization?.status === "supported" && visualization.available;
-  const bodyIdsKey =
-    readiness?.bodies.map((body) => body.bodyId).join("\0") ?? "";
   const [chosenBodyIds, setChosenBodyIds] = useState<readonly string[]>(
     () => readiness?.bodies.map((body) => body.bodyId) ?? []
   );
@@ -1411,14 +1410,6 @@ function ProjectExport({
   const selectedBodyAvailable = Boolean(
     selectedBodyId && bodiesById.has(selectedBodyId)
   );
-
-  useEffect(() => {
-    const bodyIds = bodyIdsKey ? bodyIdsKey.split("\0") : [];
-    setChosenBodyIds((current) => [
-      ...current.filter((bodyId) => bodyIds.includes(bodyId)),
-      ...bodyIds.filter((bodyId) => !current.includes(bodyId))
-    ]);
-  }, [bodyIdsKey]);
 
   useEffect(() => {
     if (previousJobStatus.current === "running" && job.status !== "running") {
