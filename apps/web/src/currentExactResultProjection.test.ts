@@ -7,7 +7,16 @@ import { describe, expect, it } from "vitest";
 
 import type { CurrentExactBodyResolution } from "./currentExactBodyResolver";
 import {
+  createDerivedGeometryCacheKey,
+  type DerivedGeometrySnapshot
+} from "./derivedGeometry";
+import {
+  createDerivedExactMetadataCacheKey,
+  type DerivedExactMetadataSnapshot
+} from "./derivedExactMetadata";
+import {
   createCurrentExactResultProjection,
+  createCurrentExactResultProjections,
   type CurrentExactResultConsumerEvidence
 } from "./currentExactResultProjection";
 
@@ -91,6 +100,62 @@ describe("currentExactResultProjection", () => {
     expect(JSON.stringify(projection)).not.toMatch(
       /rendererId|meshId|pixelId|selectionBufferId|occtId|gpuId/i
     );
+  });
+
+  it("joins primitive display evidence by scene object id", () => {
+    const resolution = readyResolution("primitiveFeature");
+    const objectId = "primitive-object";
+    const displaySource = {
+      id: objectId,
+      kind: "box" as const,
+      object: {
+        id: objectId,
+        kind: "box" as const,
+        dimensions: { width: 1, height: 1, depth: 1 },
+        transform: {
+          translation: [0, 0, 0] as const,
+          rotation: [0, 0, 0] as const,
+          scale: [1, 1, 1] as const
+        }
+      }
+    };
+    const metadataSource = {
+      ...displaySource,
+      id: resolution.bodyId,
+      sourceIdentitySignature: resolution.sourceIdentitySignature
+    };
+    const projection = createCurrentExactResultProjections({
+      resolutions: [{ ...resolution, source: metadataSource }],
+      sourceIdentitySignaturesByBodyId: new Map([
+        [resolution.bodyId, resolution.sourceIdentitySignature]
+      ]),
+      displaySources: [displaySource],
+      display: {
+        entries: [
+          {
+            objectId,
+            sourceId: objectId,
+            objectKind: "box",
+            sourceKind: "box",
+            cacheKey: createDerivedGeometryCacheKey(displaySource),
+            status: "ready"
+          }
+        ]
+      } as unknown as DerivedGeometrySnapshot,
+      metadataSources: [metadataSource],
+      metadata: {
+        entries: [
+          {
+            bodyId: resolution.bodyId,
+            sourceKind: "box",
+            cacheKey: createDerivedExactMetadataCacheKey(metadataSource),
+            status: "ready"
+          }
+        ]
+      } as unknown as DerivedExactMetadataSnapshot
+    })[0];
+
+    expect(projection).toMatchObject({ status: "ready", ready: true });
   });
 
   it("covers every frozen V21 matrix case and bounded status", () => {

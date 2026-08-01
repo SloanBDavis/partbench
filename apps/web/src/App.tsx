@@ -2879,12 +2879,9 @@ export function App() {
   const bodySourceIdentitySignatures = useMemo(
     () =>
       readBodySourceIdentitySignatures(
-        new Set([
-          ...document.objects.keys(),
-          ...[...document.features.values()].map((feature) => feature.bodyId)
-        ])
+        projectStructure.bodies.map((body) => body.id)
       ),
-    [document]
+    [projectStructure.bodies]
   );
   const projectImportReadiness = useMemo(
     () => readEngineStateForDocument(document, readProjectImportReadiness),

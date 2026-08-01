@@ -110,7 +110,11 @@ export function createCurrentExactResultProjections(input: {
   );
 
   return input.resolutions.map((resolution) => {
-    const displaySource = displaySourcesByBodyId.get(resolution.bodyId);
+    const displaySourceId =
+      resolution.status === "ready" && "object" in resolution.source
+        ? resolution.source.object.id
+        : resolution.bodyId;
+    const displaySource = displaySourcesByBodyId.get(displaySourceId);
     const metadataSource = metadataSourcesByBodyId.get(resolution.bodyId);
     const metadataEvidence = projectMetadataEvidence(
       resolution,
@@ -133,7 +137,7 @@ export function createCurrentExactResultProjections(input: {
         projectDisplayEvidence(
           resolution,
           displaySource,
-          displayEntriesByBodyId.get(resolution.bodyId)
+          displayEntriesByBodyId.get(displaySourceId)
         ),
         metadataEvidence,
         { ...metadataEvidence, consumer: "topology" },
