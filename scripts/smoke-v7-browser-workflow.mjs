@@ -2308,7 +2308,8 @@ async function v7BrowserWorkflowSmoke({
       return [...toolbar.querySelectorAll("button.pb-ribbon-action")].find(
         (candidate) =>
           !candidate.closest(".pb-mode-ribbon__measure") &&
-          normalize(candidate.textContent) === normalize(label)
+          normalize(candidate.textContent).toLowerCase() ===
+            normalize(label).toLowerCase()
       );
     }
 
