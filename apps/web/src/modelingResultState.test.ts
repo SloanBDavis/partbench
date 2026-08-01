@@ -193,6 +193,38 @@ describe("modeling result state", () => {
     ).toBe("Ready with design notes");
   });
 
+  it("uses the shared exact-result projection when consumers disagree", () => {
+    const base = {
+      commandPending: false,
+      commandFailed: false,
+      derivedGeometryEnabled: true,
+      derivedSourceCount: 1,
+      derivedGeometry: readyGeometry,
+      derivedExactSourceCount: 1,
+      derivedExactMetadata: readyExactMetadata,
+      projectHealthStatus: "healthy" as const
+    };
+
+    expect(
+      createModelingResultState({
+        ...base,
+        currentExactResults: [{ status: "failed" }]
+      })
+    ).toBe("1 exact result failed");
+    expect(
+      createModelingResultState({
+        ...base,
+        currentExactResults: [{ status: "stale" }]
+      })
+    ).toBe("1 exact result needs attention");
+    expect(
+      createModelingResultState({
+        ...base,
+        currentExactResults: [{ status: "pending" }]
+      })
+    ).toBe("Building exact results");
+  });
+
   it("prioritizes live command state and command failure", () => {
     expect(
       createModelingResultState({

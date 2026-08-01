@@ -319,6 +319,10 @@ import {
   resolveCurrentExactBodies
 } from "./currentExactBodyResolver";
 import {
+  createCurrentExactResultProjections,
+  type CurrentExactResultProjection
+} from "./currentExactResultProjection";
+import {
   createCurrentDerivedExactMetadataSnapshots,
   readProjectExactStepExport,
   readProjectExportReadiness
@@ -722,12 +726,14 @@ function readBodySourceIdentitySignatures(
 
 function readProjectHealth(
   exactMetadata: DerivedExactMetadataSnapshot,
-  currentSources: readonly DerivedExactMetadataSource[]
+  currentSources: readonly DerivedExactMetadataSource[],
+  projections?: readonly CurrentExactResultProjection[]
 ): ProjectHealthQueryResponse {
   const derivedExactMetadata = createCurrentDerivedExactMetadataSnapshots(
     engine,
     exactMetadata,
-    currentSources
+    currentSources,
+    projections
   );
   const response = engine.executeQuery({
     version: "cadops.v1",
@@ -2982,23 +2988,57 @@ export function App() {
     () => getReadyRuntimeExactSources(currentExactBodyResolutions),
     [currentExactBodyResolutions]
   );
+  const currentExactResultProjections = useMemo(
+    () =>
+      createCurrentExactResultProjections({
+        resolutions: currentExactBodyResolutions,
+        sourceIdentitySignaturesByBodyId: bodySourceIdentitySignatures,
+        displaySources: derivedGeometrySources,
+        display: derivedGeometry,
+        metadataSources: currentExactMetadataSources,
+        metadata: derivedExactMetadata
+      }),
+    [
+      bodySourceIdentitySignatures,
+      currentExactBodyResolutions,
+      currentExactMetadataSources,
+      derivedExactMetadata,
+      derivedGeometry,
+      derivedGeometrySources
+    ]
+  );
   const projectExportReadiness = useMemo(
     () =>
       readEngineStateForDocument(document, () =>
         readProjectExportReadiness(
           engine,
           derivedExactMetadata,
-          currentExactMetadataSources
+          currentExactMetadataSources,
+          currentExactResultProjections
         )
       ),
-    [derivedExactMetadata, currentExactMetadataSources, document]
+    [
+      currentExactMetadataSources,
+      currentExactResultProjections,
+      derivedExactMetadata,
+      document
+    ]
   );
   const projectHealth = useMemo(
     () =>
       readEngineStateForDocument(document, () =>
-        readProjectHealth(derivedExactMetadata, currentExactMetadataSources)
+        readProjectHealth(
+          derivedExactMetadata,
+          currentExactMetadataSources,
+          currentExactResultProjections
+        )
       ),
-    [derivedExactMetadata, currentExactMetadataSources, document]
+    [
+      currentExactMetadataSources,
+      currentExactResultProjections,
+      derivedExactMetadata,
+      document
+    ]
   );
   const retryableModelResultCount =
     derivedGeometry.errorCount +
@@ -3074,6 +3114,7 @@ export function App() {
         derivedGeometry,
         derivedExactSourceCount: currentExactMetadataSources.length,
         derivedExactMetadata,
+        currentExactResults: currentExactResultProjections,
         projectHealthStatus: projectHealth.status
       }),
     [
@@ -3083,6 +3124,7 @@ export function App() {
       derivedGeometrySources.length,
       derivedExactMetadata,
       currentExactMetadataSources.length,
+      currentExactResultProjections,
       projectHealth.status
     ]
   );
@@ -3093,6 +3135,11 @@ export function App() {
     ? projectStructure.bodies.find((body) => body.id === selectedId)
     : undefined;
   const selectedBodyId = selectedBody?.id;
+  const selectedBodyExactResult = selectedBodyId
+    ? currentExactResultProjections.find(
+        (projection) => projection.bodyId === selectedBodyId
+      )
+    : undefined;
   const preferredHoleBodyId = selectedBodyId ?? preferredHoleTargetBodyId;
   useEffect(() => {
     if (
@@ -3178,12 +3225,23 @@ export function App() {
   const selectedBodyMeasurements = useMemo(
     () =>
       readEngineStateForDocument(document, () =>
-        selectedBodyId ? readBodyMeasurements(selectedBodyId) : {}
+        selectedBodyId && selectedBodyExactResult?.ready
+          ? readBodyMeasurements(selectedBodyId)
+          : selectedBodyId
+            ? {
+                error:
+                  selectedBodyExactResult?.diagnostics[0]?.message ??
+                  "Current exact body measurements are still building."
+              }
+            : {}
       ),
-    [document, selectedBodyId]
+    [document, selectedBodyExactResult, selectedBodyId]
   );
   const selectedBodyExactMetadataSource = selectedBodyId
-    ? currentExactMetadataSources.find((source) => source.id === selectedBodyId)
+    ? currentExactMetadataSources.find(
+        (source) =>
+          source.id === selectedBodyId && selectedBodyExactResult?.ready
+      )
     : undefined;
   const selectedBodyTopology = useMemo(
     () =>
@@ -3198,17 +3256,24 @@ export function App() {
   );
   const selectedBodyMassProperties = useMemo(
     () =>
-      selectedBody
+      selectedBody && selectedBodyExactResult?.ready
         ? readBodyMassProperties(
             selectedBody.id,
             selectedBodyTopology.topology,
             derivedExactMetadata,
             selectedBodyExactMetadataSource
           )
-        : {},
+        : selectedBody
+          ? {
+              error:
+                selectedBodyExactResult?.diagnostics[0]?.message ??
+                "Current exact mass properties are still building."
+            }
+          : {},
     [
       derivedExactMetadata,
       selectedBody,
+      selectedBodyExactResult,
       selectedBodyExactMetadataSource,
       selectedBodyTopology.topology
     ]
@@ -4857,6 +4922,14 @@ export function App() {
         },
         properties: [
           { label: "Shape", value: "Solid" },
+          ...(selectedBodyExactResult
+            ? [
+                {
+                  label: "Exact result",
+                  value: formatCadKindLabel(selectedBodyExactResult.status)
+                }
+              ]
+            : []),
           ...(selectedBody.primitive
             ? [
                 {
@@ -4892,6 +4965,7 @@ export function App() {
   }, [
     document.units,
     selectedBody,
+    selectedBodyExactResult,
     selectedFeature,
     selectedGeneratedReferenceState,
     selectedNamedReference,
@@ -5063,6 +5137,19 @@ export function App() {
         ? [
             {
               scope: "body" as const,
+              label: "Exact result",
+              statusLabel: formatCadKindLabel(
+                selectedBodyExactResult?.status ?? "pending"
+              ),
+              tone: selectedBodyExactResult?.ready
+                ? ("success" as const)
+                : selectedBodyExactResult?.status === "failed"
+                  ? ("danger" as const)
+                  : ("warning" as const),
+              message: selectedBodyExactResult?.diagnostics[0]?.message
+            },
+            {
+              scope: "body" as const,
               label: "Body topology",
               statusLabel: selectedBodyTopology.topology
                 ? formatBodyTopologyStatus(selectedBodyTopology.topology.status)
@@ -5100,6 +5187,7 @@ export function App() {
       projectHealth.issueCount,
       projectHealth.status,
       selectedBody,
+      selectedBodyExactResult,
       selectedBodyTopology,
       selectedReferenceHealth
     ]
@@ -7009,7 +7097,8 @@ export function App() {
     const exactExport = readProjectExactStepExport(
       engine,
       derivedExactMetadata,
-      currentExactMetadataSources
+      currentExactMetadataSources,
+      currentExactResultProjections
     );
 
     if (!exactExport?.available) {

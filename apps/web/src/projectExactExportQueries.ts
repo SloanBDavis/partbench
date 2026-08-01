@@ -11,16 +11,19 @@ import {
   type DerivedExactMetadataSource,
   type DerivedExactMetadataSnapshot
 } from "./derivedExactMetadata";
+import type { CurrentExactResultProjection } from "./currentExactResultProjection";
 
 export function readProjectExportReadiness(
   engine: CadEngine,
   exactMetadata: DerivedExactMetadataSnapshot,
-  currentSources: readonly DerivedExactMetadataSource[]
+  currentSources: readonly DerivedExactMetadataSource[],
+  projections?: readonly CurrentExactResultProjection[]
 ): ProjectExportReadinessQueryResponse | undefined {
   const derivedExactMetadata = createCurrentDerivedExactMetadataSnapshots(
     engine,
     exactMetadata,
-    currentSources
+    currentSources,
+    projections
   );
   const response = engine.executeQuery({
     version: "cadops.v1",
@@ -38,12 +41,14 @@ export function readProjectExportReadiness(
 export function readProjectExactStepExport(
   engine: CadEngine,
   exactMetadata: DerivedExactMetadataSnapshot,
-  currentSources: readonly DerivedExactMetadataSource[]
+  currentSources: readonly DerivedExactMetadataSource[],
+  projections?: readonly CurrentExactResultProjection[]
 ): ProjectExactExportQueryResponse | undefined {
   const derivedExactMetadata = createCurrentDerivedExactMetadataSnapshots(
     engine,
     exactMetadata,
-    currentSources
+    currentSources,
+    projections
   );
   const response = engine.executeQuery({
     version: "cadops.v1",
@@ -62,15 +67,21 @@ export function readProjectExactStepExport(
 export function createCurrentDerivedExactMetadataSnapshots(
   engine: CadEngine,
   exactMetadata: DerivedExactMetadataSnapshot,
-  currentSources: readonly DerivedExactMetadataSource[]
+  currentSources: readonly DerivedExactMetadataSource[],
+  projections?: readonly CurrentExactResultProjection[]
 ): readonly CadBodyDerivedExactMetadataSnapshot[] {
   if (exactMetadata.entries.length === 0) return [];
   const currentSourcesByBodyId = new Map(
     currentSources.map((source) => [source.id, source] as const)
   );
   const sourceIdentitySignaturesByBodyId = new Map<string, string>();
+  const projectionsByBodyId = new Map(
+    projections?.map((projection) => [projection.bodyId, projection] as const)
+  );
 
   for (const entry of exactMetadata.entries) {
+    const projection = projectionsByBodyId.get(entry.bodyId);
+    if (projection && !projection.ready) continue;
     const currentSource = currentSourcesByBodyId.get(entry.bodyId);
     if (
       !currentSource ||

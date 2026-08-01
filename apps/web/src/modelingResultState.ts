@@ -1,4 +1,5 @@
 import type { CadDependencyHealthStatus } from "@web-cad/cad-protocol";
+import type { CurrentExactResultProjection } from "./currentExactResultProjection";
 
 export interface ModelingResultStateInput {
   readonly commandPending: boolean;
@@ -33,6 +34,10 @@ export interface ModelingResultStateInput {
     readonly cancelledCount?: number;
   };
   readonly projectHealthStatus: CadDependencyHealthStatus;
+  readonly currentExactResults?: readonly Pick<
+    CurrentExactResultProjection,
+    "status"
+  >[];
 }
 
 export function createModelingResultState({
@@ -43,7 +48,8 @@ export function createModelingResultState({
   derivedGeometry,
   derivedExactMetadata,
   derivedExactSourceCount,
-  projectHealthStatus
+  projectHealthStatus,
+  currentExactResults
 }: ModelingResultStateInput): string {
   const exactSourceCount =
     derivedExactSourceCount ?? derivedExactMetadata?.entries.length ?? 0;
@@ -53,6 +59,23 @@ export function createModelingResultState({
 
   if (!derivedGeometryEnabled && derivedSourceCount > 0) {
     return "Fallback display only";
+  }
+
+  if (currentExactResults?.length) {
+    const count = (status: CurrentExactResultProjection["status"]) =>
+      currentExactResults.filter((result) => result.status === status).length;
+    const failed = count("failed");
+    if (failed > 0)
+      return `${failed} exact ${plural(failed, "result", "results")} failed`;
+    const unsupported = count("unsupported");
+    if (unsupported > 0) {
+      return `${unsupported} exact ${plural(unsupported, "result", "results")} unavailable`;
+    }
+    const needsAttention = count("blocked") + count("stale");
+    if (needsAttention > 0) {
+      return `${needsAttention} exact ${plural(needsAttention, "result needs", "results need")} attention`;
+    }
+    if (count("pending") > 0) return "Building exact results";
   }
 
   if (derivedGeometry.errorCount > 0) {
