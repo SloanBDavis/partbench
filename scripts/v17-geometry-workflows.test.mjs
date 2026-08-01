@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import * as cadCore from "../packages/cad-core/src/index.ts";
-import { GeometryKernelWorker } from "../packages/geometry-worker/src/index.ts";
+import {
+  GeometryKernelWorker,
+  createExactBodyArtifactWorkerRequest
+} from "../packages/geometry-worker/src/index.ts";
+import {
+  createCurrentExactBodyArtifactSource,
+  getCurrentExactBodyArtifactShapePolicy,
+  resolveCurrentExactBodies
+} from "../apps/web/src/currentExactBodyResolver.ts";
+import { createDerivedGeometrySourcesFromDocument } from "../apps/web/src/derivedGeometrySources.ts";
+import { createBodyTopologyDerivedExactMetadataSnapshot } from "../apps/web/src/derivedExactMetadata.ts";
 import { executeProjectExactStepExport } from "../apps/web/src/projectExactStepExport.ts";
 import {
   formatV17SmokeSummary,
@@ -17,6 +27,12 @@ describe.skipIf(!supported.includes(workflow))(
       const result = await runV17GeometryWorkflow(workflow, {
         cadCore,
         GeometryKernelWorker,
+        createDerivedGeometrySourcesFromDocument,
+        createExactBodyArtifactWorkerRequest,
+        createCurrentExactBodyArtifactSource,
+        createBodyTopologyDerivedExactMetadataSnapshot,
+        getCurrentExactBodyArtifactShapePolicy,
+        resolveCurrentExactBodies,
         executeProjectExactStepExport
       });
       console.log(formatV17SmokeSummary(result));

@@ -803,11 +803,14 @@ function createBooleanSourceForFeature(
       target
     );
   }
-  const tool = createExtrudeSourceForFeature(
+  const resolvedTool = createExtrudeSourceForFeature(
     feature,
     sketches,
     generatedFacesByKey
   );
+  const tool = resolvedTool
+    ? { ...resolvedTool, id: `${feature.bodyId}:tool` }
+    : undefined;
 
   return {
     id: feature.bodyId,

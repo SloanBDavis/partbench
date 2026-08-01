@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import * as cadCore from "../packages/cad-core/src/index.ts";
 import {
   GeometryKernelWorker,
+  createExactBodyArtifactWorkerRequest,
   createExactBodyMetadataWorkerRequest,
   createExactTopologyCheckpointPayloadWorkerRequest,
   createExtrudeBooleanWorkerRequest,
@@ -20,6 +21,7 @@ import {
   createRevolveDerivedGeometrySources
 } from "../apps/web/src/derivedGeometrySources.ts";
 import { executeProjectExactStepExport } from "../apps/web/src/projectExactStepExport.ts";
+import { resolveCurrentExactBodies } from "../apps/web/src/currentExactBodyResolver.ts";
 import { exportProjectWcadWithTopologyCheckpoints } from "../apps/web/src/projectWcadTopologyCheckpoints.ts";
 import {
   formatV19ProfileRegionsWorkflowSummary,
@@ -31,6 +33,7 @@ describe("V19 real profile-regions workflow", () => {
     const result = await runV19ProfileRegionsWorkflow({
       cadCore,
       GeometryKernelWorker,
+      createExactBodyArtifactWorkerRequest,
       createExactBodyMetadataWorkerRequest,
       createExactTopologyCheckpointPayloadWorkerRequest,
       createExtrudeBooleanWorkerRequest,
@@ -41,6 +44,7 @@ describe("V19 real profile-regions workflow", () => {
       createExtrudeDerivedGeometrySources,
       createRevolveDerivedGeometrySources,
       executeProjectExactStepExport,
+      resolveCurrentExactBodies,
       exportProjectWcadWithTopologyCheckpoints,
       readProjectExactStepExport
     });

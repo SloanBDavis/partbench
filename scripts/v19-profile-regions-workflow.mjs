@@ -28,6 +28,50 @@ function query(engine, value) {
   return response;
 }
 
+async function executeCurrentExactStep(
+  engine,
+  structure,
+  source,
+  exactExport,
+  worker,
+  modules
+) {
+  const plannedBody = exactExport.plan?.bodies[0];
+  invariant(plannedBody, "Expected one current exact STEP plan body.");
+  const resolutions = modules.resolveCurrentExactBodies({
+    document: engine.getDocument(),
+    bodies: structure.bodies,
+    features: structure.features,
+    geometrySources: [source],
+    sourceIdentitySignaturesByBodyId: new Map([
+      [plannedBody.bodyId, plannedBody.sourceIdentitySignature]
+    ])
+  });
+  return modules.executeProjectExactStepExport({
+    engine,
+    exactExport,
+    resolutions,
+    runtime: {
+      async exactBodyArtifact(input) {
+        const response = await worker.execute(
+          modules.createExactBodyArtifactWorkerRequest(input)
+        );
+        if (!response.response.ok) {
+          throw new Error(JSON.stringify(response.response.error));
+        }
+        return {
+          artifact: response.response.artifact,
+          metrics: { objectId: input.bodyId, roundTripMs: 1 },
+          message: "Exact body artifact ready."
+        };
+      },
+      executeExactStepExport(request) {
+        return worker.execute(request);
+      }
+    }
+  });
+}
+
 function sequentialIds(prefix, count) {
   return Array.from({ length: count }, (_, index) => `${prefix}_${index + 1}`);
 }
@@ -436,12 +480,16 @@ async function proveExactRegionBody(engine, bodyId, modules) {
     exactExport?.available && exactExport.exportableBodyCount === 1,
     `${bodyId} exact STEP source was unavailable: ${JSON.stringify(exactExport)}`
   );
-  const step = await modules.executeProjectExactStepExport({
+  const step = await executeCurrentExactStep(
+    engine,
+    structure,
+    source,
     exactExport,
-    worker
-  });
+    worker,
+    modules
+  );
   invariant(
-    step.available && step.artifact?.byteLength > 1_000,
+    step.byteLength > 1_000,
     `${bodyId} real OCCT STEP artifact was unavailable.`
   );
 
@@ -452,7 +500,7 @@ async function proveExactRegionBody(engine, bodyId, modules) {
     topology: topology.topology,
     checkpointPayload: checkpoint.response.checkpointPayload,
     checkpointBytes: checkpoint.response.checkpointPayload.brepBytes.byteLength,
-    stepBytes: step.artifact.byteLength,
+    stepBytes: step.byteLength,
     cadMetadata
   };
 }
@@ -672,12 +720,16 @@ async function proveExactRegionRevolveBody(engine, bodyId, modules) {
     exactExport?.available && exactExport.exportableBodyCount === 1,
     `${bodyId} exact revolve STEP source was unavailable: ${JSON.stringify(exactExport)}`
   );
-  const step = await modules.executeProjectExactStepExport({
+  const step = await executeCurrentExactStep(
+    engine,
+    structure,
+    source,
     exactExport,
-    worker
-  });
+    worker,
+    modules
+  );
   invariant(
-    step.available && step.artifact?.byteLength > 1_000,
+    step.byteLength > 1_000,
     `${bodyId} real OCCT revolve STEP artifact was unavailable.`
   );
 
@@ -687,7 +739,7 @@ async function proveExactRegionRevolveBody(engine, bodyId, modules) {
     metadata: metadata.response.metadata,
     topology: topology.topology,
     checkpointBytes: checkpoint.response.checkpointPayload.brepBytes.byteLength,
-    stepBytes: step.artifact.byteLength,
+    stepBytes: step.byteLength,
     cadMetadata
   };
 }

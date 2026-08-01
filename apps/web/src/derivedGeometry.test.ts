@@ -1303,7 +1303,7 @@ describe("derivedGeometry", () => {
       kind: "extrudeBoolean",
       operation: "cut",
       target: { id: "body_rect_1", profile: { kind: "rectangle" } },
-      tool: { id: "body_cut_1", profile: { kind: "rectangle" } }
+      tool: { id: "body_cut_1:tool", profile: { kind: "rectangle" } }
     });
 
     const snapshots: DerivedGeometrySnapshot[] = [];
@@ -1970,9 +1970,9 @@ describe("derivedGeometry", () => {
         kind: "extrudeBoolean",
         operation: "cut",
         target: { id: "body_rect_1", profile: { kind: "rectangle" } },
-        tool: { id: "body_cut_1", profile: { kind: "rectangle" } }
+        tool: { id: "body_cut_1:tool", profile: { kind: "rectangle" } }
       },
-      tool: { id: "body_cut_2", profile: { kind: "rectangle" } }
+      tool: { id: "body_cut_2:tool", profile: { kind: "rectangle" } }
     });
 
     const snapshots: DerivedGeometrySnapshot[] = [];
@@ -2067,7 +2067,7 @@ describe("derivedGeometry", () => {
       operation: "cut",
       target: { id: "body_rect_1", profile: { kind: "rectangle" } },
       tool: {
-        id: "body_cut_face",
+        id: "body_cut_face:tool",
         profile: { kind: "rectangle" },
         side: "negative",
         placementFrame: {
@@ -2138,7 +2138,7 @@ describe("derivedGeometry", () => {
       kind: "extrudeBoolean",
       operation: "add",
       target: { id: "body_rect_1", profile: { kind: "rectangle" } },
-      tool: { id: "body_add_1", profile: { kind: "rectangle" } }
+      tool: { id: "body_add_1:tool", profile: { kind: "rectangle" } }
     });
 
     const snapshots: DerivedGeometrySnapshot[] = [];
@@ -2992,7 +2992,7 @@ describe("derivedGeometry", () => {
       kind: "extrudeBoolean",
       operation: "cut",
       target: { id: "body_circle_1", profile: { kind: "circle" } },
-      tool: { id: "body_circle_cut", profile: { kind: "rectangle" } }
+      tool: { id: "body_circle_cut:tool", profile: { kind: "rectangle" } }
     });
 
     const snapshots: DerivedGeometrySnapshot[] = [];
@@ -3177,7 +3177,7 @@ describe("derivedGeometry", () => {
         profile: { kind: "circle" }
       },
       tool: {
-        id: "body_circle_cut",
+        id: "body_circle_cut:tool",
         profile: { kind: "rectangle" },
         placementFrame: {
           origin: [0, 0, 4]
@@ -3465,7 +3465,7 @@ describe("derivedGeometry", () => {
         kind: "extrudeBoolean",
         operation: "cut",
         target: { id: "body_rect_1", profile: { kind: "rectangle" } },
-        tool: { id: "body_cut_1", profile: { kind: "rectangle" } }
+        tool: { id: "body_cut_1:tool", profile: { kind: "rectangle" } }
       },
       tool: {
         circle: { kind: "circle", center: [0.5, 0.25], radius: 0.4 },
@@ -3614,7 +3614,7 @@ describe("derivedGeometry", () => {
         kind: "extrudeBoolean",
         operation: "cut",
         target: { id: "body_circle_1", profile: { kind: "circle" } },
-        tool: { id: "body_cut_1", profile: { kind: "rectangle" } }
+        tool: { id: "body_cut_1:tool", profile: { kind: "rectangle" } }
       },
       tool: {
         sketchPlane: "XZ",
@@ -4059,7 +4059,7 @@ describe("derivedGeometry", () => {
         kind: "extrudeBoolean",
         operation: "cut",
         target: { id: "body_rect_1", profile: { kind: "rectangle" } },
-        tool: { id: "body_cut_1", profile: { kind: "rectangle" } }
+        tool: { id: "body_cut_1:tool", profile: { kind: "rectangle" } }
       },
       edgeStableId: "generated:edge:body_cut_1:longitudinal:uMin:vMin",
       distance: 0.1

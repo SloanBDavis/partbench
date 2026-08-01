@@ -284,60 +284,124 @@ function createCurvedSweepEngine(cadCore) {
   return engine;
 }
 
-function readyExactMetadata(engine, bodyId) {
-  const topology = query(engine, { query: "body.topology", bodyId });
-  return {
-    bodyId,
-    sourceIdentitySignature: topology.topology.sourceIdentity.signature,
-    status: "ready",
-    metadata: {
-      source: "kernel-derived",
-      confidence: "kernel-derived",
-      bounds: {
-        min: [-3, -2, 0],
-        max: [3, 2, 5],
-        size: [6, 4, 5],
-        center: [0, 0, 2.5]
-      },
-      volume: 80,
-      surfaceArea: 120,
-      centroid: [0, 0, 2.5],
-      topologyCounts: {
-        solidCount: 1,
-        faceCount: 10,
-        edgeCount: 24,
-        vertexCount: 16
-      },
+async function exactStep(engine, modules, options = {}) {
+  const structure = query(engine, { query: "project.structure" });
+  const selectedBodies = options.bodyIds
+    ? options.bodyIds.map((bodyId) =>
+        structure.bodies.find((body) => body.id === bodyId)
+      )
+    : structure.bodies.filter((body) => !body.consumedByFeatureId);
+  invariant(
+    selectedBodies.every(Boolean),
+    "Exact STEP selection contained an unknown body."
+  );
+  const sourceIdentitySignaturesByBodyId = new Map();
+  const currentExactResults = selectedBodies.map((body) => {
+    const topology = query(engine, { query: "body.topology", bodyId: body.id });
+    sourceIdentitySignaturesByBodyId.set(
+      body.id,
+      topology.topology.sourceIdentity.signature
+    );
+    return {
+      status: "ready",
+      bodyId: body.id,
+      sourceType: body.source.type,
+      sourceIdentitySignature: topology.topology.sourceIdentity.signature,
       diagnostics: []
-    }
-  };
-}
-
-async function exactStep(
-  engine,
-  GeometryKernelWorker,
-  executeProjectExactStepExport,
-  options = {}
-) {
+    };
+  });
+  const resolutions = modules.resolveCurrentExactBodies({
+    document: engine.getDocument(),
+    bodies: structure.bodies,
+    features: structure.features,
+    geometrySources: modules.createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      structure.features,
+      new Map(),
+      sourceIdentitySignaturesByBodyId
+    ),
+    sourceIdentitySignaturesByBodyId
+  });
+  const selectedBodyIds = new Set(selectedBodies.map((body) => body.id));
+  const selectedResolutions = resolutions.filter((resolution) =>
+    selectedBodyIds.has(resolution.bodyId)
+  );
+  invariant(
+    selectedResolutions.every((resolution) => resolution.status === "ready"),
+    `Exact STEP source resolution failed: ${JSON.stringify(selectedResolutions)}`
+  );
+  const worker = new modules.GeometryKernelWorker();
+  const documentSourceIdentity = modules.cadCore.createCadProjectSourceIdentity(
+    modules.cadCore.exportCadProject(engine)
+  );
+  const artifacts = new Map();
+  for (const resolution of selectedResolutions) {
+    const source = modules.createCurrentExactBodyArtifactSource(
+      resolution.source
+    );
+    const response = await worker.execute(
+      modules.createExactBodyArtifactWorkerRequest({
+        id: `v17:${resolution.bodyId}:artifact`,
+        bodyId: resolution.bodyId,
+        sourceType: resolution.sourceType,
+        documentSourceIdentity,
+        bodySourceIdentitySignature: resolution.sourceIdentitySignature,
+        sourceCacheKeySha256: resolution.cacheKeySha256,
+        sourceGraphNodeCount: resolution.sourceGraphNodeCount,
+        units: engine.getDocument().units,
+        shapePolicy: modules.getCurrentExactBodyArtifactShapePolicy(source),
+        source
+      })
+    );
+    invariant(response.response.ok, JSON.stringify(response.response));
+    artifacts.set(resolution.bodyId, response.response.artifact);
+  }
+  const derivedExactMetadata = selectedResolutions.map((resolution) =>
+    modules.createBodyTopologyDerivedExactMetadataSnapshot(
+      {
+        bodyId: resolution.bodyId,
+        status: "ready",
+        metadata: artifacts.get(resolution.bodyId).metadata
+      },
+      resolution.sourceIdentitySignature
+    )
+  );
   const exactExport = query(engine, {
     query: "project.exportExact",
     format: "step",
     ...(options.bodyIds ? { bodyIds: options.bodyIds } : {}),
-    ...(options.derivedExactMetadata
-      ? { derivedExactMetadata: options.derivedExactMetadata }
-      : {})
+    derivedExactMetadata,
+    currentExactResults
   });
-  invariant(exactExport.available, "Exact STEP source was not available.");
-  const result = await executeProjectExactStepExport({
-    exactExport,
-    worker: new GeometryKernelWorker()
-  });
-  invariant(result.available, JSON.stringify(result.diagnostics));
   invariant(
-    result.artifact?.byteLength > 1_000,
+    exactExport.available,
+    `Exact STEP source was not available: ${JSON.stringify(exactExport)}`
+  );
+  invariant(exactExport.plan, "Exact STEP plan was not available.");
+  const result = await modules.executeProjectExactStepExport({
+    engine,
+    exactExport,
+    resolutions,
+    runtime: {
+      async exactBodyArtifact(input) {
+        const artifact = artifacts.get(input.bodyId);
+        invariant(artifact, `Exact artifact ${input.bodyId} was missing.`);
+        return {
+          artifact,
+          metrics: { objectId: input.bodyId, roundTripMs: 1 },
+          message: "Exact body artifact ready."
+        };
+      },
+      executeExactStepExport(request) {
+        return worker.execute(request);
+      }
+    }
+  });
+  invariant(
+    result.byteLength > 1_000,
     "Real OCCT STEP artifact was unexpectedly small."
   );
-  return result.artifact.byteLength;
+  return result.byteLength;
 }
 
 function sampleResult(id, checks, details = {}) {
@@ -390,8 +454,7 @@ export async function runV17ReleaseSamples(cadCore) {
 }
 
 export async function runV17GeometryWorkflow(name, modules) {
-  const { cadCore, GeometryKernelWorker, executeProjectExactStepExport } =
-    modules;
+  const { cadCore } = modules;
   const create = {
     "arcs-profiles": createArcProfileEngine,
     "composite-features": createCompositeEngine,
@@ -480,10 +543,6 @@ export async function runV17GeometryWorkflow(name, modules) {
           "composite_add_body",
           "composite_cut_body",
           "composite_revolve_body"
-        ],
-        derivedExactMetadata: [
-          readyExactMetadata(engine, "composite_add_body"),
-          readyExactMetadata(engine, "composite_cut_body")
         ]
       };
       const structure = query(engine, { query: "project.structure" });
@@ -527,12 +586,7 @@ export async function runV17GeometryWorkflow(name, modules) {
       );
       checkCount += 3;
     }
-    const byteLength = await exactStep(
-      engine,
-      GeometryKernelWorker,
-      executeProjectExactStepExport,
-      exactOptions
-    );
+    const byteLength = await exactStep(engine, modules, exactOptions);
     const before = cadCore.exportCadProjectJson(engine);
     engine.undo();
     engine.redo();
