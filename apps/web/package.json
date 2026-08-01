@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -p tsconfig.json && vite build",
-    "build:geometry-worker": "tsc -p tsconfig.json && vite build --config vite.geometry-worker.config.ts",
+    "build": "tsc -p tsconfig.build.json && vite build",
+    "build:geometry-worker": "tsc -p tsconfig.build.json && vite build --config vite.geometry-worker.config.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

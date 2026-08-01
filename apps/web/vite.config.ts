@@ -1,43 +1,7 @@
 import react from "@vitejs/plugin-react";
-import { createRequire } from "node:module";
-import { Worker } from "node:worker_threads";
-import type { MinifyOptions } from "terser";
+import { minify } from "terser";
 import { defineConfig, loadEnv, type Plugin } from "vite";
 import { resolveDerivedGeometryFlags } from "./src/derivedGeometryFlags";
-
-const terserPath = createRequire(import.meta.url).resolve("terser");
-
-function minifyInWorker(code: string, options: MinifyOptions): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const worker = new Worker(
-      `const { parentPort, workerData } = require("node:worker_threads");
-       require(workerData.terserPath).minify(workerData.code, workerData.options)
-         .then((result) => parentPort.postMessage({ code: result.code }))
-         .catch((error) => parentPort.postMessage({ error: error?.stack ?? String(error) }));`,
-      { eval: true, workerData: { code, options, terserPath } }
-    );
-    worker.once("message", (message: { code?: string; error?: string }) => {
-      settled = true;
-      if (message.error) reject(new Error(message.error));
-      else if (message.code) resolve(message.code);
-      else reject(new Error("Terser did not emit JavaScript."));
-    });
-    worker.once("error", (error) => {
-      settled = true;
-      reject(error);
-    });
-    worker.once("exit", (exitCode) => {
-      if (!settled) {
-        reject(
-          new Error(
-            `Terser worker exited with code ${exitCode} without output.`
-          )
-        );
-      }
-    });
-  });
-}
 
 function minifyUiJavaScript(): Plugin {
   return {
@@ -47,13 +11,17 @@ function minifyUiJavaScript(): Plugin {
         return null;
       }
 
-      const result = await minifyInWorker(code, {
+      const result = await minify(code, {
         compress: { passes: 2 },
         mangle: true,
         module: true,
         format: { comments: false }
       });
-      return { code: result, map: null };
+      if (!result.code) {
+        throw new Error("Terser did not emit a UI JavaScript chunk.");
+      }
+
+      return { code: result.code, map: null };
     }
   };
 }
@@ -69,13 +37,17 @@ function minifyCadCommandWorker(): Plugin {
         return null;
       }
 
-      const result = await minifyInWorker(code, {
+      const result = await minify(code, {
         compress: { passes: 1 },
         mangle: true,
         module: true,
         format: { comments: false }
       });
-      return { code: result, map: null };
+      if (!result.code) {
+        throw new Error("Terser did not emit the CAD command worker.");
+      }
+
+      return { code: result.code, map: null };
     }
   };
 }
