@@ -23,6 +23,7 @@ import {
   createSphereTessellationWorkerRequest,
   createTorusTessellationWorkerRequest,
   getGeometryWorkerExactExportCapabilities,
+  getGeometryWorkerRequestTransferables,
   getGeometryWorkerStepImportCapabilities,
   createWorkerErrorDiagnostics,
   createWorkerSuccessDiagnostics,
@@ -65,6 +66,49 @@ const workerWireProfile = {
   }
 };
 
+async function createWorkerStepArtifactBody(
+  worker: GeometryKernelWorker,
+  bodyId: string
+) {
+  const response = await worker.execute(
+    createExactBodyArtifactWorkerRequest({
+      id: `worker_req_artifact_${bodyId}`,
+      bodyId,
+      sourceType: "primitiveFeature",
+      documentSourceIdentity: {
+        algorithm: "partbench-source-v1",
+        sha256: "a".repeat(64)
+      },
+      bodySourceIdentitySignature: `body-topology-source:v1:${"b".repeat(64)}`,
+      sourceCacheKeySha256: "c".repeat(64),
+      sourceGraphNodeCount: 1,
+      units: "mm",
+      shapePolicy: "singleSolid",
+      source: {
+        kind: "box",
+        dimensions: { width: 2, height: 1, depth: 3 },
+        transform: {
+          translation: [0, 0, 0],
+          rotation: [0, 0, 0],
+          scale: [1, 1, 1]
+        }
+      }
+    })
+  );
+  if (!response.response.ok) {
+    throw new Error(response.response.error.message);
+  }
+  const artifact = response.response.artifact;
+  return {
+    bodyId,
+    bodyName: bodyId,
+    brepFormat: artifact.brepFormat,
+    brepByteLength: artifact.brepByteLength,
+    brepSha256: artifact.brepSha256,
+    brepBytes: artifact.brepBytes
+  } as const;
+}
+
 describe("geometry-worker", () => {
   it("reports STEP exact export writer capability through the worker boundary", () => {
     expect(getGeometryWorkerExactExportCapabilities()).toEqual([
@@ -73,6 +117,7 @@ describe("geometry-worker", () => {
         label: "STEP",
         status: "available",
         writerAvailable: true,
+        namedWriterAvailable: true,
         boundary: "geometry-worker",
         kernelBoundary: "geometry-kernel",
         writerBoundary: "occt-wasm",
@@ -81,21 +126,22 @@ describe("geometry-worker", () => {
     ]);
   });
 
-  it("reports unavailable STEP exact export writer capability through the worker boundary", () => {
+  it("keeps STEP exact export unavailable without named writer bindings through the worker boundary", () => {
     expect(
       getGeometryWorkerExactExportCapabilities([
         {
           format: "step",
           label: "STEP",
           status: "unavailable",
-          writerAvailable: false,
+          writerAvailable: true,
+          namedWriterAvailable: false,
           boundary: "geometry-kernel",
           writerBoundary: "occt-wasm",
           packageName: "opencascade.js",
           packageVersion: "2.0.0-test",
-          checkedBindings: ["STEPControl_Writer_1"],
-          availableBindings: [],
-          missingBindings: ["STEPControl_Writer_1"],
+          checkedBindings: ["STEPControl_Writer_1", "TDataStd_Name.Set_1"],
+          availableBindings: ["STEPControl_Writer_1"],
+          missingBindings: ["TDataStd_Name.Set_1"],
           reason: "Missing test binding."
         }
       ])
@@ -103,10 +149,11 @@ describe("geometry-worker", () => {
       expect.objectContaining({
         format: "step",
         status: "unavailable",
-        writerAvailable: false,
+        writerAvailable: true,
+        namedWriterAvailable: false,
         boundary: "geometry-worker",
         kernelBoundary: "geometry-kernel",
-        missingBindings: ["STEPControl_Writer_1"]
+        missingBindings: ["TDataStd_Name.Set_1"]
       })
     ]);
   });
@@ -169,15 +216,11 @@ describe("geometry-worker", () => {
       bodies: [
         {
           bodyId: "body_step_rect",
-          sketchPlane: "XY",
-          profile: {
-            kind: "rectangle",
-            center: [0, 0],
-            width: 2,
-            height: 1
-          },
-          depth: 3,
-          side: "positive"
+          bodyName: "Rectangle",
+          brepFormat: "occt-brep",
+          brepByteLength: 1,
+          brepSha256: "0".repeat(64),
+          brepBytes: new Uint8Array([1])
         }
       ]
     });
@@ -194,11 +237,15 @@ describe("geometry-worker", () => {
         bodies: [
           expect.objectContaining({
             bodyId: "body_step_rect",
-            depth: 3
+            bodyName: "Rectangle",
+            brepFormat: "occt-brep"
           })
         ]
       }
     });
+    expect(getGeometryWorkerRequestTransferables(request)).toEqual([
+      request.payload.bodies[0]!.brepBytes.buffer
+    ]);
   });
 
   it("creates a typed named STEP probe worker request", () => {
@@ -2218,25 +2265,13 @@ describe("geometry-worker", () => {
 
   it("returns exact STEP bytes through the geometry kernel facade", async () => {
     const worker = createGeometryKernelWorker({ delayMs: 1 });
+    const body = await createWorkerStepArtifactBody(worker, "body_step_rect");
     const response = await worker.execute(
       createExactStepExportWorkerRequest({
         id: "worker_req_step_export_execute",
         payloadId: "geometry_req_step_export_execute",
         units: "mm",
-        bodies: [
-          {
-            bodyId: "body_step_rect",
-            sketchPlane: "XY",
-            profile: {
-              kind: "rectangle",
-              center: [0, 0],
-              width: 2,
-              height: 1
-            },
-            depth: 3,
-            side: "positive"
-          }
-        ]
+        bodies: [body]
       })
     );
 
@@ -2268,25 +2303,16 @@ describe("geometry-worker", () => {
 
   it("imports STEP bytes through the geometry kernel facade", async () => {
     const worker = createGeometryKernelWorker({ delayMs: 1 });
+    const exportBody = await createWorkerStepArtifactBody(
+      worker,
+      "body_step_import_source"
+    );
     const exportResponse = await worker.execute(
       createExactStepExportWorkerRequest({
         id: "worker_req_step_import_source_export",
         payloadId: "geometry_req_step_import_source_export",
         units: "mm",
-        bodies: [
-          {
-            bodyId: "body_step_import_source",
-            sketchPlane: "XY",
-            profile: {
-              kind: "rectangle",
-              center: [0, 0],
-              width: 2,
-              height: 1
-            },
-            depth: 3,
-            side: "positive"
-          }
-        ]
+        bodies: [exportBody]
       })
     );
 

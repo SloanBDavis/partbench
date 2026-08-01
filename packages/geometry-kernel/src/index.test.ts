@@ -13,6 +13,7 @@ import {
   type BooleanExtrudeSource,
   type ExactBodyArtifactRequest,
   type ExactBodyArtifactSource,
+  type GeometryKernelExactBodyArtifact,
   type GeometryKernelExactBodyArtifactPayload,
   type ExactRevolveMetadataSource,
   type GeometryKernelExactTopologyCheckpointPayload,
@@ -55,6 +56,73 @@ function createArtifactRequest(
   };
 }
 
+async function createStepArtifactBody(
+  source: ExactBodyArtifactSource,
+  bodyId: string,
+  sourceGraphNodeCount = 1
+) {
+  const response = await executeGeometryKernelRequest(
+    createArtifactRequest(source, { bodyId, sourceGraphNodeCount })
+  );
+  if (!response.ok) throw new Error(response.error.message);
+  return {
+    bodyId,
+    bodyName: bodyId,
+    brepFormat: response.artifact.brepFormat,
+    brepByteLength: response.artifact.brepByteLength,
+    brepSha256: response.artifact.brepSha256,
+    brepBytes: response.artifact.brepBytes
+  } as const;
+}
+
+async function expectArtifactWritesNamedStep(
+  artifact: GeometryKernelExactBodyArtifact,
+  bodyName: string
+): Promise<void> {
+  const response = await executeGeometryKernelRequest({
+    id: `geometry_req_step_${artifact.bodyId}`,
+    version: "geometry-kernel.v1",
+    op: "geometry.exportStep",
+    units: "mm",
+    bodies: [
+      {
+        bodyId: artifact.bodyId,
+        bodyName,
+        brepFormat: artifact.brepFormat,
+        brepByteLength: artifact.brepByteLength,
+        brepSha256: artifact.brepSha256,
+        brepBytes: artifact.brepBytes
+      }
+    ]
+  });
+  if (!response.ok) throw new Error(response.error.message);
+  expect(response.artifact).toMatchObject({
+    format: "step",
+    schema: "AP242DIS",
+    units: "mm",
+    bodyCount: 1
+  });
+  expect(response.artifact.byteLength).toBeGreaterThan(1_000);
+}
+
+async function createSyntheticStepArtifactBody(
+  bodyId: string,
+  bodyName = bodyId,
+  brepBytes = new TextEncoder().encode(`BRep:${bodyId}`)
+) {
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", brepBytes);
+  return {
+    bodyId,
+    bodyName,
+    brepFormat: "occt-brep" as const,
+    brepByteLength: brepBytes.byteLength,
+    brepSha256: Array.from(new Uint8Array(digest), (byte) =>
+      byte.toString(16).padStart(2, "0")
+    ).join(""),
+    brepBytes
+  };
+}
+
 function createInjectedArtifactFactories(
   createExactBodyArtifact: NonNullable<
     GeometryKernelMeshFactories["createExactBodyArtifact"]
@@ -71,6 +139,25 @@ function createInjectedArtifactFactories(
     createTorusMesh: unused,
     createBooleanExtrudeMesh: unused,
     createExactBodyArtifact
+  };
+}
+
+function createInjectedStepFactories(
+  createExactStepExport: NonNullable<
+    GeometryKernelMeshFactories["createExactStepExport"]
+  >
+): GeometryKernelMeshFactories {
+  const unused = async () => {
+    throw new Error("Unexpected mesh factory call.");
+  };
+  return {
+    createBoxMesh: unused,
+    createCylinderMesh: unused,
+    createSphereMesh: unused,
+    createConeMesh: unused,
+    createTorusMesh: unused,
+    createBooleanExtrudeMesh: unused,
+    createExactStepExport
   };
 }
 
@@ -484,6 +571,7 @@ describe("geometry-kernel facade", () => {
         label: "STEP",
         status: "available",
         writerAvailable: true,
+        namedWriterAvailable: true,
         boundary: "geometry-kernel",
         writerBoundary: "occt-wasm",
         missingBindings: []
@@ -491,22 +579,24 @@ describe("geometry-kernel facade", () => {
     ]);
   });
 
-  it("reports STEP exact export writer capability as unavailable when bindings are absent", () => {
+  it("keeps STEP exact export unavailable without named writer bindings", () => {
     expect(
       getGeometryKernelExactExportCapabilities({
         status: "unavailable",
-        writerAvailable: false,
+        writerAvailable: true,
+        namedWriterAvailable: false,
         packageVersion: "2.0.0-test",
-        checkedBindings: ["STEPControl_Writer_1"],
-        availableBindings: [],
-        missingBindings: ["STEPControl_Writer_1"]
+        checkedBindings: ["STEPControl_Writer_1", "TDataStd_Name.Set_1"],
+        availableBindings: ["STEPControl_Writer_1"],
+        missingBindings: ["TDataStd_Name.Set_1"]
       })
     ).toEqual([
       expect.objectContaining({
         format: "step",
         status: "unavailable",
-        writerAvailable: false,
-        missingBindings: ["STEPControl_Writer_1"]
+        writerAvailable: true,
+        namedWriterAvailable: false,
+        missingBindings: ["TDataStd_Name.Set_1"]
       })
     ]);
   });
@@ -551,28 +641,133 @@ describe("geometry-kernel facade", () => {
     ]);
   });
 
+  it("passes validated artifact bodies to the named STEP writer in plan order", async () => {
+    const bodies = await Promise.all([
+      createSyntheticStepArtifactBody("body-c", "Bracket Ω"),
+      createSyntheticStepArtifactBody("body-a", "Bracket Ω"),
+      createSyntheticStepArtifactBody("body-b", "")
+    ]);
+    let captured: unknown;
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      createInjectedStepFactories(async (input) => {
+        captured = input;
+        return {
+          format: "step",
+          schema: "AP242DIS",
+          units: input.units,
+          bodyCount: input.bodies.length,
+          byteLength: 1,
+          bytes: new Uint8Array([1])
+        };
+      }),
+      {
+        id: "geometry_req_ordered_artifact_step",
+        version: "geometry-kernel.v1",
+        op: "geometry.exportStep",
+        units: "in",
+        bodies
+      }
+    );
+    expect(response.ok).toBe(true);
+    expect(captured).toMatchObject({
+      units: "in",
+      bodies: [
+        { bodyId: "body-c", bodyName: "Bracket Ω" },
+        { bodyId: "body-a", bodyName: "Bracket Ω" },
+        { bodyId: "body-b", bodyName: "" }
+      ]
+    });
+  });
+
+  it("rejects duplicate, corrupt, and over-count STEP artifact inputs before writing", async () => {
+    const body = await createSyntheticStepArtifactBody("body-step-guard");
+    let calls = 0;
+    const factories = createInjectedStepFactories(async () => {
+      calls += 1;
+      throw new Error("Writer must not be called.");
+    });
+    const request = (bodies: readonly (typeof body)[]) =>
+      executeGeometryKernelRequestWithMeshFactory(factories, {
+        id: `geometry_req_step_guard_${bodies.length}`,
+        version: "geometry-kernel.v1",
+        op: "geometry.exportStep",
+        units: "mm",
+        bodies
+      });
+    const corrupt = {
+      ...body,
+      bodyId: "body-step-corrupt",
+      brepSha256: "0".repeat(64)
+    };
+    const overCount = Array.from({ length: 257 }, (_, index) => ({
+      ...body,
+      bodyId: `body-step-${index}`
+    }));
+    const [duplicate, corruptResult, overCountResult] = await Promise.all([
+      request([body, body]),
+      request([corrupt]),
+      request(overCount)
+    ]);
+    for (const response of [duplicate, corruptResult, overCountResult]) {
+      expect(response).toMatchObject({
+        ok: false,
+        error: { code: "INVALID_DIMENSIONS" }
+      });
+      expect(getGeometryResponseTransferables(response)).toEqual([]);
+    }
+    expect(calls).toBe(0);
+  });
+
+  it("rejects inconsistent or oversized STEP writer results atomically", async () => {
+    const body = await createSyntheticStepArtifactBody("body-step-result");
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      createInjectedStepFactories(async () => ({
+        format: "step",
+        schema: "AP242DIS",
+        units: "mm",
+        bodyCount: 1,
+        byteLength: 512 * 1024 * 1024 + 1,
+        bytes: { byteLength: 512 * 1024 * 1024 + 1 } as Uint8Array
+      })),
+      {
+        id: "geometry_req_oversized_step_result",
+        version: "geometry-kernel.v1",
+        op: "geometry.exportStep",
+        units: "mm",
+        bodies: [body]
+      }
+    );
+    expect(response).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_RESULT" }
+    });
+    expect(getGeometryResponseTransferables(response)).toEqual([]);
+  });
+
   it(
     "exports a rectangle extrude as STEP bytes through the isolated OCCT WASM adapter",
     async () => {
+      const exportBody = await createStepArtifactBody(
+        {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 2,
+            height: 1
+          },
+          depth: 3,
+          side: "positive"
+        },
+        "body_step_rect"
+      );
       const response = await executeGeometryKernelRequest({
         id: "geometry_req_step_export",
         version: "geometry-kernel.v1",
         op: "geometry.exportStep",
         units: "mm",
-        bodies: [
-          {
-            bodyId: "body_step_rect",
-            sketchPlane: "XY",
-            profile: {
-              kind: "rectangle",
-              center: [0, 0],
-              width: 2,
-              height: 1
-            },
-            depth: 3,
-            side: "positive"
-          }
-        ]
+        bodies: [exportBody]
       });
 
       expect(response.ok).toBe(true);
@@ -591,7 +786,7 @@ describe("geometry-kernel facade", () => {
   );
 
   it("rejects malformed exact STEP body records without entering OCCT", async () => {
-    const [nullBody, nullProfile] = await Promise.all([
+    const [nullBody, malformedArtifact] = await Promise.all([
       executeGeometryKernelRequest({
         id: "geometry_req_step_export_null_body",
         version: "geometry-kernel.v1",
@@ -600,16 +795,18 @@ describe("geometry-kernel facade", () => {
         bodies: [null]
       } as never),
       executeGeometryKernelRequest({
-        id: "geometry_req_step_export_null_profile",
+        id: "geometry_req_step_export_malformed_artifact",
         version: "geometry-kernel.v1",
         op: "geometry.exportStep",
         units: "mm",
         bodies: [
           {
-            bodyId: "body_step_null_profile",
-            sketchPlane: "XY",
-            profile: null,
-            depth: 3
+            bodyId: "body_step_malformed_artifact",
+            bodyName: "Malformed",
+            brepFormat: "occt-brep",
+            brepByteLength: 1,
+            brepSha256: "0".repeat(64),
+            brepBytes: null
           }
         ]
       } as never)
@@ -619,7 +816,7 @@ describe("geometry-kernel facade", () => {
       ok: false,
       error: { code: "INVALID_DIMENSIONS" }
     });
-    expect(nullProfile).toMatchObject({
+    expect(malformedArtifact).toMatchObject({
       ok: false,
       error: { code: "INVALID_DIMENSIONS" }
     });
@@ -628,25 +825,27 @@ describe("geometry-kernel facade", () => {
   it(
     "imports STEP bytes into transient imported body payloads through the isolated OCCT WASM adapter",
     async () => {
+      const exportBody = await createStepArtifactBody(
+        {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 2,
+            height: 1
+          },
+          depth: 3,
+          side: "positive"
+        },
+        "body_step_import_source"
+      );
       const exportResponse = await executeGeometryKernelRequest({
         id: "geometry_req_step_import_source_export",
         version: "geometry-kernel.v1",
         op: "geometry.exportStep",
         units: "mm",
-        bodies: [
-          {
-            bodyId: "body_step_import_source",
-            sketchPlane: "XY",
-            profile: {
-              kind: "rectangle",
-              center: [0, 0],
-              width: 2,
-              height: 1
-            },
-            depth: 3,
-            side: "positive"
-          }
-        ]
+        bodies: [exportBody]
       });
 
       expect(exportResponse.ok).toBe(true);
@@ -1514,7 +1713,7 @@ describe("geometry-kernel facade", () => {
     ["cut", MAX_BOOLEAN_EXTRUDE_RECIPE_DEPTH - 1, true],
     ["cut", MAX_BOOLEAN_EXTRUDE_RECIPE_DEPTH, false]
   ] as const)(
-    "keeps %s with a target of %i result nodes at the same mesh, exact metadata, and STEP boundary",
+    "keeps %s with a target of %i result nodes at the same mesh and exact metadata boundary",
     async (operation, targetDepth, expectedOk) => {
       const unusedFactory = async () => {
         throw new Error("Unexpected mesh factory call.");
@@ -1548,14 +1747,6 @@ describe("geometry-kernel facade", () => {
           measurementSource: "kernel-derived",
           measurementConfidence: "kernel-derived",
           diagnostics: []
-        }),
-        createExactStepExport: async (input) => ({
-          format: "step",
-          schema: "AP242DIS",
-          units: input.units,
-          bodyCount: input.bodies.length,
-          byteLength: 1,
-          bytes: new Uint8Array([1])
         })
       };
       const target = createNestedBooleanRecipe(targetDepth);
@@ -1599,26 +1790,17 @@ describe("geometry-kernel facade", () => {
               target,
               tool
             };
-      const [mesh, exact, step] = await Promise.all([
+      const [mesh, exact] = await Promise.all([
         executeGeometryKernelRequestWithMeshFactory(factories, meshRequest),
         executeGeometryKernelRequestWithMeshFactory(factories, {
           id: `geometry_req_boundary_${operation}_${targetDepth}_exact`,
           version: "geometry-kernel.v1",
           op: "geometry.exactBodyMetadata",
           source: completeSource
-        }),
-        executeGeometryKernelRequestWithMeshFactory(factories, {
-          id: `geometry_req_boundary_${operation}_${targetDepth}_step`,
-          version: "geometry-kernel.v1",
-          op: "geometry.exportStep",
-          units: "mm",
-          bodies: [
-            { ...completeSource, bodyId: `body_${operation}_${targetDepth}` }
-          ]
         })
       ]);
 
-      for (const response of [mesh, exact, step]) {
+      for (const response of [mesh, exact]) {
         expect(response.ok).toBe(expectedOk);
         if (!expectedOk) {
           expect(response).toMatchObject({
@@ -2156,6 +2338,7 @@ describe("geometry-kernel facade", () => {
             response.artifact.topologySnapshot.generatedReferences?.status
           ).toBe("ready");
         }
+        await expectArtifactWritesNamedStep(response.artifact, entry.label);
       }
     },
     OCCT_WASM_TEST_TIMEOUT_MS
@@ -2217,6 +2400,10 @@ describe("geometry-kernel facade", () => {
       expect(imported.ok).toBe(true);
       if (!imported.ok) throw new Error(imported.error.message);
       expect(imported.artifact.sourceKind).toBe("importedBody");
+      await expectArtifactWritesNamedStep(
+        imported.artifact,
+        "Imported checkpoint Ω"
+      );
       const target = {
         kind: "checkpointBody" as const,
         brepBytes: base.artifact.brepBytes,
@@ -2319,6 +2506,10 @@ describe("geometry-kernel facade", () => {
         if (!response.ok) throw new Error(response.error.message);
         expect(response.artifact.sourceKind).toBe(entry.expectedKind);
         expect(response.artifact.metadata.topologyCounts.solidCount).toBe(1);
+        await expectArtifactWritesNamedStep(
+          response.artifact,
+          `Checkpoint ${entry.expectedKind} Ω`
+        );
       }
     },
     OCCT_WASM_TEST_TIMEOUT_MS
@@ -2683,6 +2874,7 @@ describe("geometry-kernel facade", () => {
           side: "symmetric" as const
         }
       };
+      const stepBody = await createStepArtifactBody(source, "body_wire_add", 3);
       const [mesh, metadata, topology, checkpoint, step] = await Promise.all([
         executeGeometryKernelRequest({
           id: "geometry_req_wire_add",
@@ -2717,7 +2909,7 @@ describe("geometry-kernel facade", () => {
           version: "geometry-kernel.v1",
           op: "geometry.exportStep",
           units: "mm",
-          bodies: [{ ...source, bodyId: "body_wire_add" }]
+          bodies: [stepBody]
         })
       ]);
 
@@ -2773,6 +2965,7 @@ describe("geometry-kernel facade", () => {
           side: "symmetric" as const
         }
       };
+      const stepBody = await createStepArtifactBody(source, "body_wire_cut", 3);
       const [mesh, metadata, topology, checkpoint, step] = await Promise.all([
         executeGeometryKernelRequest({
           id: "geometry_req_wire_cut",
@@ -2807,7 +3000,7 @@ describe("geometry-kernel facade", () => {
           version: "geometry-kernel.v1",
           op: "geometry.exportStep",
           units: "mm",
-          bodies: [{ ...source, bodyId: "body_wire_cut" }]
+          bodies: [stepBody]
         })
       ]);
 
@@ -2953,7 +3146,7 @@ describe("geometry-kernel facade", () => {
     ["cyclic", undefined],
     ["over-deep", MAX_BOOLEAN_EXTRUDE_RECIPE_DEPTH + 1]
   ] as const)(
-    "rejects %s recursive boolean recipes for mesh, exact metadata, and STEP",
+    "rejects %s recursive boolean recipes for mesh and exact metadata",
     async (label, resultDepth) => {
       let source: BooleanExtrudeSource;
       if (resultDepth === undefined) {
@@ -2968,7 +3161,7 @@ describe("geometry-kernel facade", () => {
       } else {
         source = createNestedBooleanRecipe(resultDepth);
       }
-      const [mesh, exact, step] = await Promise.all([
+      const [mesh, exact] = await Promise.all([
         executeGeometryKernelRequest({
           id: `geometry_req_${label}_boolean_mesh`,
           version: "geometry-kernel.v1",
@@ -2985,17 +3178,10 @@ describe("geometry-kernel facade", () => {
             BooleanExtrudeSource,
             { kind: "booleanExtrudes" }
           >
-        }),
-        executeGeometryKernelRequest({
-          id: `geometry_req_${label}_boolean_step`,
-          version: "geometry-kernel.v1",
-          op: "geometry.exportStep",
-          units: "mm",
-          bodies: [{ ...source, bodyId: `body_${label}` }]
-        } as never)
+        })
       ]);
 
-      for (const response of [mesh, exact, step]) {
+      for (const response of [mesh, exact]) {
         expect(response).toMatchObject({
           ok: false,
           error: { code: "INVALID_DIMENSIONS" }
@@ -3310,7 +3496,7 @@ describe("geometry-kernel facade", () => {
     });
   });
 
-  it("passes signed arcs and ordered G1 chains to sweep and exact STEP boundaries", async () => {
+  it("passes signed arcs and ordered G1 chains to the sweep boundary", async () => {
     const unusedFactory = async () => {
       throw new Error("Unexpected mesh factory call.");
     };
@@ -3331,17 +3517,6 @@ describe("geometry-kernel facade", () => {
           vertexCount: 3,
           triangleCount: 1,
           faceCount: 1
-        };
-      },
-      createExactStepExport: async (input) => {
-        captured.push(input);
-        return {
-          format: "step",
-          schema: "AP242DIS",
-          units: input.units,
-          bodyCount: input.bodies.length,
-          byteLength: 1,
-          bytes: new Uint8Array([1])
         };
       }
     };
@@ -3383,7 +3558,7 @@ describe("geometry-kernel facade", () => {
         end: [2, 0, 0] as const
       }
     ];
-    const [mesh, step, chainMesh, chainStep] = await Promise.all([
+    const [mesh, chainMesh] = await Promise.all([
       executeGeometryKernelRequestWithMeshFactory(factories, {
         id: "geometry_req_arc_sweep",
         version: "geometry-kernel.v1",
@@ -3392,40 +3567,17 @@ describe("geometry-kernel facade", () => {
         pathSegments
       }),
       executeGeometryKernelRequestWithMeshFactory(factories, {
-        id: "geometry_req_arc_sweep_step",
-        version: "geometry-kernel.v1",
-        op: "geometry.exportStep",
-        units: "mm",
-        bodies: [{ kind: "sweep", profile, pathSegments, bodyId: "body_arc" }]
-      }),
-      executeGeometryKernelRequestWithMeshFactory(factories, {
         id: "geometry_req_chain_sweep",
         version: "geometry-kernel.v1",
         op: "geometry.sweep",
         profile,
         pathSegments: chainSegments
-      }),
-      executeGeometryKernelRequestWithMeshFactory(factories, {
-        id: "geometry_req_chain_sweep_step",
-        version: "geometry-kernel.v1",
-        op: "geometry.exportStep",
-        units: "mm",
-        bodies: [
-          {
-            kind: "sweep",
-            profile,
-            pathSegments: chainSegments,
-            bodyId: "body_chain"
-          }
-        ]
       })
     ]);
 
     expect(mesh.ok).toBe(true);
-    expect(step.ok).toBe(true);
     expect(chainMesh.ok).toBe(true);
-    expect(chainStep.ok).toBe(true);
-    expect(captured).toHaveLength(4);
+    expect(captured).toHaveLength(2);
   });
 
   it("rejects inconsistent arcs and non-G1 path chains", async () => {
@@ -6449,7 +6601,7 @@ describe("geometry-kernel facade", () => {
         axis: testCase.axis,
         angleDegrees: 180
       } satisfies ExactRevolveMetadataSource;
-      const [mesh, exact, step] = await Promise.all([
+      const [mesh, exact] = await Promise.all([
         executeGeometryKernelRequestWithMeshFactory(factories, {
           ...source,
           id: `wire-axis-${index}-mesh`,
@@ -6461,20 +6613,9 @@ describe("geometry-kernel facade", () => {
           version: "geometry-kernel.v1",
           op: "geometry.exactBodyMetadata",
           source
-        }),
-        executeGeometryKernelRequestWithMeshFactory(factories, {
-          id: `wire-axis-${index}-step`,
-          version: "geometry-kernel.v1",
-          op: "geometry.exportStep",
-          units: "mm",
-          bodies: [{ ...source, bodyId: `body-${index}` }]
         })
       ]);
-      expect([mesh.ok, exact.ok, step.ok], testCase.label).toEqual([
-        false,
-        false,
-        false
-      ]);
+      expect([mesh.ok, exact.ok], testCase.label).toEqual([false, false]);
     }
 
     const snapshot = JSON.stringify(endpointTouchTriangle);
@@ -6506,7 +6647,7 @@ describe("geometry-kernel facade", () => {
       axis: { start: [-1, 0] as const, end: [-1, 1.01e-7] as const },
       angleDegrees: 180
     };
-    const [mesh, exact, step] = await Promise.all([
+    const [mesh, exact] = await Promise.all([
       executeGeometryKernelRequestWithMeshFactory(factories, {
         ...aboveToleranceSource,
         id: "wire-axis-above-tolerance-mesh",
@@ -6518,16 +6659,9 @@ describe("geometry-kernel facade", () => {
         version: "geometry-kernel.v1",
         op: "geometry.exactBodyMetadata",
         source: aboveToleranceSource
-      }),
-      executeGeometryKernelRequestWithMeshFactory(factories, {
-        id: "wire-axis-above-tolerance-step",
-        version: "geometry-kernel.v1",
-        op: "geometry.exportStep",
-        units: "mm",
-        bodies: [{ ...aboveToleranceSource, bodyId: "body-above-tolerance" }]
       })
     ]);
-    expect([mesh.ok, exact.ok, step.ok]).toEqual([true, true, true]);
+    expect([mesh.ok, exact.ok]).toEqual([true, true]);
   });
 });
 

@@ -5,6 +5,7 @@ import {
   type GeometryKernelRequest,
   type GeometryKernelResponse
 } from "@web-cad/geometry-kernel/browser";
+export { assertExactBodyArtifactAggregateWithinLimit } from "@web-cad/geometry-kernel/browser";
 import {
   createKernelFailureResponse,
   createWorkerErrorDiagnostics,
@@ -42,6 +43,7 @@ export {
   createSphereTessellationWorkerRequest,
   createTorusTessellationWorkerRequest,
   getGeometryWorkerStepImportCapabilities,
+  getGeometryWorkerRequestTransferables,
   createWorkerErrorDiagnostics,
   createWorkerSuccessDiagnostics,
   type GeometryWorker,
@@ -56,6 +58,7 @@ export {
   type GeometryWorkerErrorCode,
   type GeometryWorkerErrorDetails,
   type GeometryKernelExactBodyArtifact,
+  type GeometryKernelExactStepExportArtifact,
   type ExactBodyArtifactRequest,
   type ExactBodyArtifactSource,
   type ExactBodyArtifactShapePolicy,

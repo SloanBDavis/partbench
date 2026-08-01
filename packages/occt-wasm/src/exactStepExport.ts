@@ -1,60 +1,23 @@
 import type { OpenCascadeInstance } from "opencascade.js";
-import {
-  makeBooleanExtrudeShape,
-  type OcctBooleanExtrudePrimitiveSource,
-  type OcctBooleanExtrudeResultSource
-} from "./booleanExtrudes";
+import { withImportedBrepShape } from "./exactMetadata";
 import type { OcctLoader } from "./tessellateBox";
-import {
-  makeWireExtrudeShape,
-  type OcctWireExtrudeSource
-} from "./wireExtrude";
-import {
-  makeRevolveProfileShape,
-  type OcctRevolveAxis,
-  type OcctRevolvePlacementFrame,
-  type OcctRevolveProfile,
-  type OcctRevolveSketchPlane
-} from "./revolveProfile";
-import {
-  makeSweepShape,
-  type OcctSweepPathSegment,
-  type OcctSweepProfileSource
-} from "./sweep";
-
-export interface OcctStepExportRevolveSource {
-  readonly kind: "revolve";
-  readonly sketchPlane: OcctRevolveSketchPlane;
-  readonly profile: OcctRevolveProfile;
-  readonly axis: OcctRevolveAxis;
-  readonly angleDegrees: number;
-  readonly placementFrame?: OcctRevolvePlacementFrame;
-}
-
-export interface OcctStepExportSweepSource {
-  readonly kind: "sweep";
-  readonly profile: OcctSweepProfileSource;
-  readonly pathSegments: readonly OcctSweepPathSegment[];
-}
 
 export type OcctStepExportUnit = "mm" | "cm" | "m" | "in";
 export type OcctStepExportSchema = "AP242DIS";
 
-export type OcctStepExportBodySource = (
-  | OcctBooleanExtrudePrimitiveSource
-  | OcctBooleanExtrudeResultSource
-  | OcctWireExtrudeSource
-  | OcctStepExportRevolveSource
-  | OcctStepExportSweepSource
-) & {
+export interface OcctStepExportArtifactBody {
   readonly bodyId: string;
-  readonly bodyName?: string;
-};
+  readonly bodyName: string;
+  readonly brepFormat: "occt-brep";
+  readonly brepByteLength: number;
+  readonly brepSha256: string;
+  readonly brepBytes: Uint8Array;
+}
 
 export interface OcctStepExportInput {
   readonly units: OcctStepExportUnit;
   readonly schema?: OcctStepExportSchema;
-  readonly bodies: readonly OcctStepExportBodySource[];
+  readonly bodies: readonly OcctStepExportArtifactBody[];
 }
 
 export interface OcctStepExportArtifact {
@@ -66,21 +29,12 @@ export interface OcctStepExportArtifact {
   readonly bytes: Uint8Array;
 }
 
-export type OcctStepExportShapeFactory = (
-  oc: OpenCascadeInstance,
-  body: OcctStepExportBodySource
-) => {
-  Shape(): InstanceType<OpenCascadeInstance["TopoDS_Shape"]>;
-  delete(): void;
-};
-
-export type OcctStepWriterCapabilityStatus = "available" | "unavailable";
-
 export interface OcctStepWriterCapability {
   readonly format: "step";
   readonly label: "STEP";
-  readonly status: OcctStepWriterCapabilityStatus;
+  readonly status: "available" | "unavailable";
   readonly writerAvailable: boolean;
+  readonly namedWriterAvailable: boolean;
   readonly boundary: "occt-wasm";
   readonly packageName: "opencascade.js";
   readonly packageVersion: "2.0.0-beta.b5ff984";
@@ -93,96 +47,121 @@ export interface OcctStepWriterCapability {
 const STEP_WRITER_PACKAGE_VERSION = "2.0.0-beta.b5ff984";
 const DEFAULT_STEP_SCHEMA: OcctStepExportSchema = "AP242DIS";
 
-export const OCCT_STEP_WRITER_REQUIRED_BINDINGS = [
+export const OCCT_BASIC_STEP_WRITER_REQUIRED_BINDINGS = [
   "STEPControl_Writer_1",
   "STEPControl_StepModelType.STEPControl_AsIs",
   "IFSelect_ReturnStatus.IFSelect_RetDone",
   "Interface_Static.SetCVal",
   "Message_ProgressRange_1",
   "FS.readFile",
-  "FS.unlink",
-  "BRepPrimAPI_MakeBox_5",
-  "BRepPrimAPI_MakeCylinder_3"
+  "FS.unlink"
+] as const;
+
+export const OCCT_NAMED_STEP_WRITER_REQUIRED_BINDINGS = [
+  "STEPCAFControl_Controller.Init",
+  "STEPCAFControl_Writer_1",
+  "STEPCAFControl_Writer.prototype.SetNameMode",
+  "STEPCAFControl_Writer.prototype.Transfer_1",
+  "STEPCAFControl_Writer.prototype.Write",
+  "TCollection_ExtendedString_2",
+  "TDocStd_Document.prototype.Main",
+  "XCAFApp_Application.GetApplication",
+  "TDocStd_Application.prototype.NewDocument_2",
+  "TDocStd_Application.prototype.Close",
+  "Handle_TDocStd_Document_1",
+  "XCAFDoc_DocumentTool.ShapeTool",
+  "XCAFDoc_ShapeTool.prototype.AddShape",
+  "TDataStd_Name.Set_1",
+  "BRepTools.Read_2",
+  "BRep_Builder",
+  "TopoDS_Shape",
+  "FS.writeFile"
+] as const;
+
+export const OCCT_STEP_WRITER_REQUIRED_BINDINGS = [
+  ...OCCT_BASIC_STEP_WRITER_REQUIRED_BINDINGS,
+  ...OCCT_NAMED_STEP_WRITER_REQUIRED_BINDINGS
 ] as const;
 
 export async function createOcctStepExportWithLoader(
   loadOcct: OcctLoader,
   input: OcctStepExportInput
 ): Promise<OcctStepExportArtifact> {
-  const oc = await loadOcct();
-
-  return createOcctStepExportWithInstance(oc, input);
+  return createOcctStepExportWithInstance(await loadOcct(), input);
 }
 
 export function createOcctStepExportWithInstance(
   oc: OpenCascadeInstance,
   input: OcctStepExportInput
 ): OcctStepExportArtifact {
-  return createOcctStepExportWithShapeFactory(
-    oc,
-    input,
-    createOcctStepExportShape
-  );
-}
-
-export function createOcctStepExportWithShapeFactory(
-  oc: OpenCascadeInstance,
-  input: OcctStepExportInput,
-  createShape: OcctStepExportShapeFactory
-): OcctStepExportArtifact {
   assertStepWriterBindings(oc);
-
   if (input.bodies.length === 0) {
-    throw new Error("STEP export requires at least one exact body source.");
+    throw new Error("STEP export requires at least one exact body artifact.");
   }
 
+  const resources: Array<{ delete(): void }> = [];
+  const own = <T extends { delete(): void }>(resource: T): T => {
+    resources.push(resource);
+    return resource;
+  };
   const schema = input.schema ?? DEFAULT_STEP_SCHEMA;
-  let writer:
-    | InstanceType<OpenCascadeInstance["STEPControl_Writer_1"]>
-    | undefined;
-  let progress:
-    | InstanceType<OpenCascadeInstance["Message_ProgressRange_1"]>
-    | undefined;
-  const shapes: ReturnType<OcctStepExportShapeFactory>[] = [];
   const filename = `/tmp/partbench-step-${Date.now()}-${Math.random()
     .toString(36)
     .slice(2)}.step`;
+  const fs = getOcctFs(oc);
+  const applicationHandle = oc.XCAFApp_Application.GetApplication();
+  const application = applicationHandle.get();
+  const documentHandle = new oc.Handle_TDocStd_Document_1();
+  let documentOpened = false;
 
   try {
-    writer = new oc.STEPControl_Writer_1();
-    progress = new oc.Message_ProgressRange_1();
-    const asIsStepModelType = oc.STEPControl_StepModelType
-      .STEPControl_AsIs as unknown as Parameters<typeof writer.Transfer>[1];
+    const storageFormat = own(
+      new oc.TCollection_ExtendedString_2("BinXCAF", false)
+    );
+    application.NewDocument_2(storageFormat, documentHandle);
+    documentOpened = true;
+    const main = own(documentHandle.get().Main());
+    const shapeToolHandle = own(oc.XCAFDoc_DocumentTool.ShapeTool(main));
+    const shapeTool = shapeToolHandle.get();
 
     for (const body of input.bodies) {
-      shapes.push(createShape(oc, body));
+      withImportedBrepShape(oc, body.brepBytes, (shape) => {
+        const label = own(shapeTool.AddShape(shape, false, false));
+        const bodyName = body.bodyName.trim() || body.bodyId;
+        const name = own(new oc.TCollection_ExtendedString_2(bodyName, true));
+        own(oc.TDataStd_Name.Set_1(label, name));
+      });
     }
 
+    if (!oc.STEPCAFControl_Controller.Init()) {
+      throw new Error("Open CASCADE STEPCAF controller initialization failed.");
+    }
     setStepWriterStatic(oc, "write.step.schema", schema);
     setStepWriterStatic(oc, "write.step.unit", mapStepUnit(input.units));
 
-    for (const shape of shapes) {
-      const exactShape = shape.Shape();
-      let status: ReturnType<typeof writer.Transfer>;
-      try {
-        status = writer.Transfer(exactShape, asIsStepModelType, true, progress);
-      } finally {
-        exactShape.delete();
-      }
-
-      if (status !== oc.IFSelect_ReturnStatus.IFSelect_RetDone) {
-        throw new Error("Open CASCADE STEP transfer did not complete.");
-      }
+    const progress = own(new oc.Message_ProgressRange_1());
+    const writer = own(new oc.STEPCAFControl_Writer_1());
+    writer.SetNameMode(true);
+    const asIsStepModelType = oc.STEPControl_StepModelType
+      .STEPControl_AsIs as unknown as Parameters<typeof writer.Transfer_1>[1];
+    if (
+      !writer.Transfer_1(
+        documentHandle,
+        asIsStepModelType,
+        null as unknown as string,
+        progress
+      )
+    ) {
+      throw new Error("Open CASCADE named STEP transfer did not complete.");
+    }
+    if (writer.Write(filename) !== oc.IFSelect_ReturnStatus.IFSelect_RetDone) {
+      throw new Error("Open CASCADE named STEP write did not complete.");
     }
 
-    const writeStatus = writer.Write(filename);
-
-    if (writeStatus !== oc.IFSelect_ReturnStatus.IFSelect_RetDone) {
-      throw new Error("Open CASCADE STEP write did not complete.");
+    const bytes = fs.readFile(filename);
+    if (bytes.byteLength === 0) {
+      throw new Error("Open CASCADE named STEP write returned empty bytes.");
     }
-
-    const bytes = getOcctFs(oc).readFile(filename);
-
     return {
       format: "step",
       schema,
@@ -192,85 +171,65 @@ export function createOcctStepExportWithShapeFactory(
       bytes
     };
   } finally {
+    for (const resource of resources.reverse()) resource.delete();
+    if (documentOpened) application.Close(documentHandle);
+    documentHandle.delete();
+    applicationHandle.delete();
     try {
-      getOcctFs(oc).unlink(filename);
+      fs.unlink(filename);
     } catch {
-      // The file may not exist.
+      // The write may fail before the file exists.
     }
-
-    for (const shape of shapes) {
-      shape.delete();
-    }
-
-    progress?.delete();
-    writer?.delete();
   }
-}
-
-function createOcctStepExportShape(
-  oc: OpenCascadeInstance,
-  body: OcctStepExportBodySource
-): ReturnType<OcctStepExportShapeFactory> {
-  if ((body as { readonly kind?: unknown }).kind === "revolve") {
-    return makeRevolveProfileShape(oc, body as OcctStepExportRevolveSource);
-  }
-  if ((body as { readonly kind?: unknown }).kind === "sweep") {
-    return makeSweepShape(oc, body as OcctStepExportSweepSource);
-  }
-  if ((body as { readonly kind?: unknown }).kind === "booleanExtrudes") {
-    return makeBooleanExtrudeShape(oc, body as OcctBooleanExtrudeResultSource);
-  }
-  const extrude = body as (
-    | OcctBooleanExtrudePrimitiveSource
-    | OcctWireExtrudeSource
-  ) & { readonly bodyId: string };
-  return extrude.profile.kind === "wire"
-    ? makeWireExtrudeShape(oc, extrude as OcctWireExtrudeSource)
-    : makeBooleanExtrudeShape(oc, extrude as OcctBooleanExtrudePrimitiveSource);
 }
 
 export function getOcctStepWriterCapabilityWithInstance(
   oc: Partial<OpenCascadeInstance>
 ): OcctStepWriterCapability {
   const availableBindings = OCCT_STEP_WRITER_REQUIRED_BINDINGS.filter(
-    (binding) => hasStepWriterBinding(oc, binding)
+    (binding) => hasBinding(oc, binding)
   );
   const missingBindings = OCCT_STEP_WRITER_REQUIRED_BINDINGS.filter(
     (binding) => !availableBindings.includes(binding)
   );
-  const writerAvailable = missingBindings.length === 0;
+  const writerAvailable = OCCT_BASIC_STEP_WRITER_REQUIRED_BINDINGS.every(
+    (binding) => availableBindings.includes(binding)
+  );
+  const namedWriterAvailable = OCCT_NAMED_STEP_WRITER_REQUIRED_BINDINGS.every(
+    (binding) => availableBindings.includes(binding)
+  );
 
   return {
     format: "step",
     label: "STEP",
-    status: writerAvailable ? "available" : "unavailable",
+    status:
+      writerAvailable && namedWriterAvailable ? "available" : "unavailable",
     writerAvailable,
+    namedWriterAvailable,
     boundary: "occt-wasm",
     packageName: "opencascade.js",
     packageVersion: STEP_WRITER_PACKAGE_VERSION,
     checkedBindings: OCCT_STEP_WRITER_REQUIRED_BINDINGS,
     availableBindings,
     missingBindings,
-    reason: writerAvailable
-      ? "The current OpenCascade.js boundary exposes the STEP writer, transfer status, file-system, and supported extrude shape bindings."
-      : "The current OpenCascade.js boundary does not expose every binding required for minimal exact STEP export."
+    reason:
+      writerAvailable && namedWriterAvailable
+        ? "The current OpenCascade.js boundary exposes basic STEP transfer and named XDE AP242 artifact writing."
+        : "The current OpenCascade.js boundary is missing bindings required for basic STEP transfer or named XDE AP242 artifact writing."
   };
 }
 
 export async function getOcctStepWriterCapabilityWithLoader(
   loadOcct: OcctLoader
 ): Promise<OcctStepWriterCapability> {
-  const oc = await loadOcct();
-
-  return getOcctStepWriterCapabilityWithInstance(oc);
+  return getOcctStepWriterCapabilityWithInstance(await loadOcct());
 }
 
 function assertStepWriterBindings(oc: OpenCascadeInstance): void {
   const capability = getOcctStepWriterCapabilityWithInstance(oc);
-
-  if (!capability.writerAvailable) {
+  if (capability.status === "unavailable") {
     throw new Error(
-      `Open CASCADE STEP writer bindings unavailable: ${capability.missingBindings.join(
+      `Open CASCADE named STEP writer bindings unavailable: ${capability.missingBindings.join(
         ", "
       )}.`
     );
@@ -288,78 +247,30 @@ function setStepWriterStatic(
 }
 
 function mapStepUnit(unit: OcctStepExportUnit): string {
-  switch (unit) {
-    case "mm":
-      return "MM";
-    case "cm":
-      return "CM";
-    case "m":
-      return "M";
-    case "in":
-      return "INCH";
-  }
+  return unit === "in" ? "INCH" : unit.toUpperCase();
 }
 
-function hasStepWriterBinding(
-  oc: Partial<OpenCascadeInstance>,
+function hasBinding(
+  root: Partial<OpenCascadeInstance>,
   binding: string
 ): boolean {
-  switch (binding) {
-    case "STEPControl_Writer_1":
-      return typeof oc.STEPControl_Writer_1 === "function";
-    case "STEPControl_StepModelType.STEPControl_AsIs":
-      return Boolean(oc.STEPControl_StepModelType?.STEPControl_AsIs);
-    case "IFSelect_ReturnStatus.IFSelect_RetDone":
-      return Boolean(oc.IFSelect_ReturnStatus?.IFSelect_RetDone);
-    case "Interface_Static.SetCVal":
-      return typeof oc.Interface_Static?.SetCVal === "function";
-    case "Message_ProgressRange_1":
-      return typeof oc.Message_ProgressRange_1 === "function";
-    case "FS.readFile":
-      return typeof getOptionalOcctFs(oc)?.readFile === "function";
-    case "FS.unlink":
-      return typeof getOptionalOcctFs(oc)?.unlink === "function";
-    case "BRepPrimAPI_MakeBox_5":
-      return typeof oc.BRepPrimAPI_MakeBox_5 === "function";
-    case "BRepPrimAPI_MakeCylinder_3":
-      return typeof oc.BRepPrimAPI_MakeCylinder_3 === "function";
-    default:
+  let value: unknown = root;
+  for (const part of binding.split(".")) {
+    if ((typeof value !== "object" && typeof value !== "function") || !value) {
       return false;
+    }
+    value = (value as Record<string, unknown>)[part];
   }
+  return value !== undefined && value !== null;
 }
 
 function getOcctFs(oc: OpenCascadeInstance): {
   readonly readFile: (path: string) => Uint8Array;
   readonly unlink: (path: string) => void;
 } {
-  const fs = getOptionalOcctFs(oc);
-
-  if (!fs) {
-    throw new Error("Open CASCADE virtual file system is unavailable.");
+  const fs = oc.FS;
+  if (!fs?.readFile || !fs.unlink) {
+    throw new Error("Open CASCADE STEP writer file system is unavailable.");
   }
-
-  if (typeof fs.readFile !== "function" || typeof fs.unlink !== "function") {
-    throw new Error("Open CASCADE virtual file system is incomplete.");
-  }
-
-  return {
-    readFile: fs.readFile,
-    unlink: fs.unlink
-  };
-}
-
-function getOptionalOcctFs(oc: Partial<OpenCascadeInstance>):
-  | {
-      readonly readFile?: (path: string) => Uint8Array;
-      readonly unlink?: (path: string) => void;
-    }
-  | undefined {
-  return (
-    oc as Partial<OpenCascadeInstance> & {
-      readonly FS?: {
-        readonly readFile?: (path: string) => Uint8Array;
-        readonly unlink?: (path: string) => void;
-      };
-    }
-  ).FS;
+  return { readFile: fs.readFile, unlink: fs.unlink };
 }

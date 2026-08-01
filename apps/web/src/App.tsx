@@ -814,24 +814,6 @@ function exportCadProjectForDocument(
   );
 }
 
-function base64ToBytes(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-
-  return bytes;
-}
-
-function copyBytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  const copy = new Uint8Array(bytes.byteLength);
-  copy.set(bytes);
-
-  return copy.buffer;
-}
-
 function formatStepImportDryRunPreview(
   fileName: string,
   response: CadAsyncBatchResponse,
@@ -7043,16 +7025,16 @@ export function App() {
       return;
     }
 
-    const { executeProjectExactStepExport } =
+    const { executeProjectExactStepExport, isExactExportPlanCurrent } =
       await import("./projectExactStepExport");
     const runtime = getDerivedGeometryRuntime();
     let result;
     try {
       result = await executeProjectExactStepExport({
+        engine,
         exactExport,
-        worker: {
-          execute: (request) => runtime.executeExactStepExport(request)
-        }
+        resolutions: currentExactBodyResolutions,
+        runtime
       });
     } catch (error) {
       const cancelled =
@@ -7069,35 +7051,40 @@ export function App() {
       return;
     }
 
-    if (!result.artifact) {
-      const diagnostic = result.diagnostics.find(
-        (entry) => entry.status !== "supported"
-      );
+    if (!isExactExportPlanCurrent(engine, result.plan)) {
       setProjectMessage(
-        diagnostic
-          ? `${diagnostic.code}: ${diagnostic.message}`
-          : "STEP export did not produce an artifact."
+        "EXPORT_SOURCE_CHANGED: Project or selected body source identity changed before download."
       );
       setProjectMessageTone("error");
       return;
     }
 
-    const bytes = base64ToBytes(result.artifact.bytesBase64);
-    const blob = new Blob([copyBytesToArrayBuffer(bytes)], {
-      type: result.artifact.mimeType
-    });
-    const url = URL.createObjectURL(blob);
-    const link = window.document.createElement("a");
-    link.href = url;
-    link.download = result.artifact.fileName;
-    window.document.body.append(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+    try {
+      const blob = new Blob([result.bytes as Uint8Array<ArrayBuffer>], {
+        type: result.mimeType
+      });
+      const url = URL.createObjectURL(blob);
+      const link = window.document.createElement("a");
+      try {
+        link.href = url;
+        link.download = result.fileName;
+        window.document.body.append(link);
+        link.click();
+      } finally {
+        link.remove();
+        URL.revokeObjectURL(url);
+      }
+    } catch (error) {
+      setProjectMessage(
+        `STEP download failed: ${error instanceof Error ? error.message : "The browser did not accept the STEP artifact."}`
+      );
+      setProjectMessageTone("error");
+      return;
+    }
     setProjectMessage(
-      `Downloaded ${result.artifact.fileName}: ${result.exportableBodyCount} exact bod${
-        result.exportableBodyCount === 1 ? "y" : "ies"
-      }, ${result.artifact.byteLength} bytes.`
+      `Downloaded ${result.fileName}: ${result.bodyCount} exact bod${
+        result.bodyCount === 1 ? "y" : "ies"
+      }, ${result.byteLength} bytes.`
     );
     setProjectMessageTone("info");
   }

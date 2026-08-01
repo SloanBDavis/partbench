@@ -2,6 +2,7 @@ import {
   createBoxTessellationWorkerRequest,
   createConeTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest,
+  createExactStepExportWorkerRequest,
   createSphereTessellationWorkerRequest,
   createTorusTessellationWorkerRequest,
   type GeometryWorkerRequest
@@ -30,6 +31,7 @@ type ErrorListener = (event: WorkerErrorEvent) => void;
 
 class FakeGeometryWorkerTransport implements GeometryWorkerTransport {
   readonly requests: GeometryWorkerRequest[] = [];
+  readonly transfers: Transferable[][] = [];
   terminationCount = 0;
   throwOnMessageRemoval = false;
   readonly #handler: (
@@ -44,11 +46,16 @@ class FakeGeometryWorkerTransport implements GeometryWorkerTransport {
     this.#handler = handler;
   }
 
-  postMessage(message: GeometryWorkerRequest): void {
-    this.requests.push(message);
+  postMessage(
+    message: GeometryWorkerRequest,
+    transfer: Transferable[] = []
+  ): void {
+    const transmitted = structuredClone(message, { transfer });
+    this.requests.push(transmitted);
+    this.transfers.push(transfer);
 
     queueMicrotask(() => {
-      void this.#postResponse(message);
+      void this.#postResponse(transmitted);
     });
   }
 
@@ -254,6 +261,59 @@ describe("BrowserGeometryWorker", () => {
     expect(response.response.ok).toBe(true);
     expect(response.transferables).toEqual([positions.buffer, indices.buffer]);
     expect(isSettled).toBe(true);
+  });
+
+  it("transfers exact STEP artifact inputs without retaining a duplicate BRep buffer", async () => {
+    const stepBytes = new Uint8Array([7]);
+    const transport = new FakeGeometryWorkerTransport(async (request) => ({
+      id: request.id,
+      version: request.version,
+      kind: request.kind,
+      payloadId: request.payload.id,
+      response: {
+        ok: true,
+        id: request.payload.id,
+        op: "geometry.exportStep",
+        artifact: {
+          format: "step",
+          schema: "AP242DIS",
+          units: "mm",
+          bodyCount: 1,
+          byteLength: stepBytes.byteLength,
+          bytes: stepBytes
+        },
+        warnings: []
+      },
+      transferables: [stepBytes.buffer]
+    }));
+    const worker = new BrowserGeometryWorker(transport);
+    const brepBytes = new Uint8Array([1, 2, 3]);
+    const request = createExactStepExportWorkerRequest({
+      id: "browser_exact_step_transfer",
+      units: "mm",
+      bodies: [
+        {
+          bodyId: "body-transfer",
+          bodyName: "Transferred",
+          brepFormat: "occt-brep",
+          brepByteLength: brepBytes.byteLength,
+          brepSha256: "0".repeat(64),
+          brepBytes
+        }
+      ]
+    });
+    const responsePromise = worker.execute(request);
+
+    expect(brepBytes.byteLength).toBe(0);
+    expect(transport.transfers[0]).toHaveLength(1);
+    const transmitted = transport.requests[0];
+    expect(transmitted?.payload.op).toBe("geometry.exportStep");
+    if (transmitted?.payload.op === "geometry.exportStep") {
+      expect(transmitted.payload.bodies[0]?.brepBytes.byteLength).toBe(3);
+    }
+    await expect(responsePromise).resolves.toMatchObject({
+      response: { ok: true, op: "geometry.exportStep" }
+    });
   });
 
   it("rejects duplicate pending request ids instead of overwriting handlers", async () => {

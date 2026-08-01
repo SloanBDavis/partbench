@@ -179,16 +179,18 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
   async function executeExactBodyArtifactRequest(
     input: DerivedExactBodyArtifactInput,
     request: GeometryWorkerRequest,
-    context?: DerivedGeometryRequestContext
+    context?: DerivedGeometryExecutionContext
   ): Promise<DerivedExactBodyArtifactResult> {
     const roundTripStart = performance.now();
     const response = await scheduler.execute(
-      {
-        intent: "exact",
-        sourceId: context?.sourceId ?? input.id,
-        documentRevision: context?.documentRevision ?? 0,
-        cacheKey: context?.cacheKey ?? request.payload.id
-      },
+      context && "intent" in context
+        ? { intent: "user", userKind: "export" }
+        : {
+            intent: "exact",
+            sourceId: context?.sourceId ?? input.id,
+            documentRevision: context?.documentRevision ?? 0,
+            cacheKey: context?.cacheKey ?? request.payload.id
+          },
       request
     );
     const roundTripMs = performance.now() - roundTripStart;

@@ -120,6 +120,21 @@ export interface GeometryWorkerResponse<
   readonly diagnostics?: GeometryWorkerDiagnostics;
 }
 
+export function getGeometryWorkerRequestTransferables(
+  request: GeometryWorkerRequest
+): readonly ArrayBuffer[] {
+  if (request.payload.op !== "geometry.exportStep") return [];
+  return [
+    ...new Set(
+      request.payload.bodies.flatMap((body) =>
+        body.brepBytes.buffer instanceof ArrayBuffer
+          ? [body.brepBytes.buffer]
+          : []
+      )
+    )
+  ];
+}
+
 export interface GeometryWorkerTimings {
   readonly occtLoadMs?: number;
   readonly tessellationMs?: number;
@@ -173,6 +188,7 @@ export interface GeometryWorkerExactExportCapability {
   readonly label: "STEP";
   readonly status: "available" | "unavailable";
   readonly writerAvailable: boolean;
+  readonly namedWriterAvailable: boolean;
   readonly boundary: "geometry-worker";
   readonly kernelBoundary: "geometry-kernel";
   readonly writerBoundary: "occt-wasm";
@@ -210,8 +226,24 @@ const GEOMETRY_WORKER_STEP_WRITER_CHECKED_BINDINGS = [
   "Message_ProgressRange_1",
   "FS.readFile",
   "FS.unlink",
-  "BRepPrimAPI_MakeBox_5",
-  "BRepPrimAPI_MakeCylinder_3"
+  "STEPCAFControl_Controller.Init",
+  "STEPCAFControl_Writer_1",
+  "STEPCAFControl_Writer.prototype.SetNameMode",
+  "STEPCAFControl_Writer.prototype.Transfer_1",
+  "STEPCAFControl_Writer.prototype.Write",
+  "TCollection_ExtendedString_2",
+  "TDocStd_Document.prototype.Main",
+  "XCAFApp_Application.GetApplication",
+  "TDocStd_Application.prototype.NewDocument_2",
+  "TDocStd_Application.prototype.Close",
+  "Handle_TDocStd_Document_1",
+  "XCAFDoc_DocumentTool.ShapeTool",
+  "XCAFDoc_ShapeTool.prototype.AddShape",
+  "TDataStd_Name.Set_1",
+  "BRepTools.Read_2",
+  "BRep_Builder",
+  "TopoDS_Shape",
+  "FS.writeFile"
 ] as const;
 
 const GEOMETRY_WORKER_STEP_READER_CHECKED_BINDINGS = [
@@ -239,6 +271,7 @@ const DEFAULT_GEOMETRY_WORKER_KERNEL_CAPABILITIES: readonly GeometryKernelExactE
       label: "STEP",
       status: "available",
       writerAvailable: true,
+      namedWriterAvailable: true,
       boundary: "geometry-kernel",
       writerBoundary: "occt-wasm",
       packageName: "opencascade.js",
@@ -280,6 +313,7 @@ export function getGeometryWorkerExactExportCapabilities(
     label: capability.label,
     status: capability.status,
     writerAvailable: capability.writerAvailable,
+    namedWriterAvailable: capability.namedWriterAvailable,
     boundary: "geometry-worker",
     kernelBoundary: capability.boundary,
     writerBoundary: capability.writerBoundary,
@@ -288,9 +322,10 @@ export function getGeometryWorkerExactExportCapabilities(
     checkedBindings: capability.checkedBindings,
     availableBindings: capability.availableBindings,
     missingBindings: capability.missingBindings,
-    reason: capability.writerAvailable
-      ? "The geometry worker can execute minimal exact STEP export through the geometry kernel and isolated OpenCascade.js writer boundary."
-      : "The geometry worker cannot execute exact STEP export until the geometry kernel reports every required writer binding."
+    reason:
+      capability.writerAvailable && capability.namedWriterAvailable
+        ? "The geometry worker can execute artifact-only named AP242 STEP export through the geometry kernel and isolated OpenCascade.js writer boundary."
+        : "The geometry worker cannot execute production STEP export until both basic and named writer bindings are available."
   }));
 }
 

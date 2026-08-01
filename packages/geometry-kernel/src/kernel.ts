@@ -2,6 +2,8 @@ export type GeometryKernelVersion = "geometry-kernel.v1";
 export const MAX_EXACT_BODY_ARTIFACT_BYTES = 128 * 1024 * 1024;
 export const MAX_EXACT_BODY_ARTIFACT_AGGREGATE_BYTES = 512 * 1024 * 1024;
 export const MAX_EXACT_BODY_ARTIFACT_SOURCE_GRAPH_NODES = 4_096;
+export const MAX_EXACT_STEP_EXPORT_BODIES = 256;
+export const MAX_EXACT_STEP_EXPORT_BYTES = 512 * 1024 * 1024;
 export type GeometryKernelExactExportFormat = "step";
 export type GeometryKernelExactExportCapabilityStatus =
   | "available"
@@ -15,6 +17,7 @@ export interface GeometryKernelExactExportCapability {
   readonly label: "STEP";
   readonly status: GeometryKernelExactExportCapabilityStatus;
   readonly writerAvailable: boolean;
+  readonly namedWriterAvailable: boolean;
   readonly boundary: "geometry-kernel";
   readonly writerBoundary: "occt-wasm";
   readonly packageName: "opencascade.js";
@@ -58,6 +61,7 @@ export type GeometryKernelExactExportCapabilityInput = Pick<
   GeometryKernelExactExportCapability,
   | "status"
   | "writerAvailable"
+  | "namedWriterAvailable"
   | "packageVersion"
   | "checkedBindings"
   | "availableBindings"
@@ -752,16 +756,16 @@ export interface ExactTopologyCheckpointPayloadRequest {
   readonly source: ExactBodyMetadataSource;
 }
 
-export type ExactStepExportBodySource = (
-  | BooleanExtrudePrimitiveSource
-  | BooleanExtrudeWireSource
-  | BooleanExtrudeResultSource
-  | ExactRevolveMetadataSource
-  | ExactSweepMetadataSource
-) & {
+export interface ExactStepExportArtifactBodyInput {
   readonly bodyId: string;
-  readonly bodyName?: string;
-};
+  readonly bodyName: string;
+  readonly brepFormat: "occt-brep";
+  readonly brepByteLength: number;
+  readonly brepSha256: string;
+  readonly brepBytes: Uint8Array;
+}
+
+export type ExactStepExportBodySource = ExactStepExportArtifactBodyInput;
 
 export interface ExactStepExportRequest {
   readonly id: string;
@@ -1487,8 +1491,24 @@ const STEP_WRITER_CHECKED_BINDINGS = [
   "Message_ProgressRange_1",
   "FS.readFile",
   "FS.unlink",
-  "BRepPrimAPI_MakeBox_5",
-  "BRepPrimAPI_MakeCylinder_3"
+  "STEPCAFControl_Controller.Init",
+  "STEPCAFControl_Writer_1",
+  "STEPCAFControl_Writer.prototype.SetNameMode",
+  "STEPCAFControl_Writer.prototype.Transfer_1",
+  "STEPCAFControl_Writer.prototype.Write",
+  "TCollection_ExtendedString_2",
+  "TDocStd_Document.prototype.Main",
+  "XCAFApp_Application.GetApplication",
+  "TDocStd_Application.prototype.NewDocument_2",
+  "TDocStd_Application.prototype.Close",
+  "Handle_TDocStd_Document_1",
+  "XCAFDoc_DocumentTool.ShapeTool",
+  "XCAFDoc_ShapeTool.prototype.AddShape",
+  "TDataStd_Name.Set_1",
+  "BRepTools.Read_2",
+  "BRep_Builder",
+  "TopoDS_Shape",
+  "FS.writeFile"
 ] as const;
 
 const STEP_READER_CHECKED_BINDINGS = [
@@ -1513,6 +1533,7 @@ const DEFAULT_STEP_WRITER_CAPABILITY: GeometryKernelExactExportCapabilityInput =
   {
     status: "available",
     writerAvailable: true,
+    namedWriterAvailable: true,
     packageVersion: "2.0.0-beta.b5ff984",
     checkedBindings: STEP_WRITER_CHECKED_BINDINGS,
     availableBindings: STEP_WRITER_CHECKED_BINDINGS,
@@ -1540,6 +1561,7 @@ export function getGeometryKernelExactExportCapabilities(
       label: "STEP",
       status: stepWriterCapability.status,
       writerAvailable: stepWriterCapability.writerAvailable,
+      namedWriterAvailable: stepWriterCapability.namedWriterAvailable,
       boundary: "geometry-kernel",
       writerBoundary: "occt-wasm",
       packageName: "opencascade.js",
@@ -1547,9 +1569,11 @@ export function getGeometryKernelExactExportCapabilities(
       checkedBindings: stepWriterCapability.checkedBindings,
       availableBindings: stepWriterCapability.availableBindings,
       missingBindings: stepWriterCapability.missingBindings,
-      reason: stepWriterCapability.writerAvailable
-        ? "The geometry kernel can route minimal exact STEP export requests to the isolated OpenCascade.js writer boundary."
-        : "The geometry kernel cannot route exact STEP export until the isolated OpenCascade.js writer boundary exposes every required binding."
+      reason:
+        stepWriterCapability.writerAvailable &&
+        stepWriterCapability.namedWriterAvailable
+          ? "The geometry kernel can route artifact-only named AP242 STEP export through the isolated OpenCascade.js writer boundary."
+          : "The geometry kernel cannot route production STEP export until both basic and named writer bindings are available."
     }
   ];
 }
@@ -1623,6 +1647,15 @@ export async function executeGeometryKernelRequestWithMeshFactory<
     }
 
     if (request.op === "geometry.exportStep") {
+      const artifactInputError = await validateExactStepArtifactHashes(
+        request.bodies
+      );
+      if (artifactInputError) {
+        return errorResponse(
+          request,
+          artifactInputError
+        ) as GeometryKernelResponseForRequest<T>;
+      }
       const artifact = await createExactStepExport(factories, request);
 
       if (artifact.byteLength <= 0 || artifact.bytes.byteLength <= 0) {
@@ -1634,7 +1667,11 @@ export async function executeGeometryKernelRequestWithMeshFactory<
 
       if (
         artifact.format !== "step" ||
-        artifact.byteLength !== artifact.bytes.byteLength
+        artifact.schema !== "AP242DIS" ||
+        artifact.units !== request.units ||
+        artifact.bodyCount !== request.bodies.length ||
+        artifact.byteLength !== artifact.bytes.byteLength ||
+        artifact.byteLength > MAX_EXACT_STEP_EXPORT_BYTES
       ) {
         return errorResponse(request, {
           code: "INVALID_RESULT",
@@ -2153,26 +2190,43 @@ function validateRequest(
       };
     }
   } else if (request.op === "geometry.exportStep") {
-    if (!Array.isArray(request.bodies) || request.bodies.length === 0) {
+    if (
+      !isGeometryKernelDocumentUnit(request.units) ||
+      !Array.isArray(request.bodies) ||
+      request.bodies.length === 0 ||
+      request.bodies.length > MAX_EXACT_STEP_EXPORT_BODIES
+    ) {
       return {
         code: "INVALID_DIMENSIONS",
-        message: "STEP export requests require at least one exact body source."
+        message: `STEP export requests require supported units and 1-${MAX_EXACT_STEP_EXPORT_BODIES} exact body artifacts.`
       };
     }
 
+    const bodyIds = new Set<string>();
+    let brepByteLength = 0;
     for (const body of request.bodies) {
       if (
         !isRecord(body) ||
-        typeof body.bodyId !== "string" ||
-        body.bodyId.length === 0 ||
-        !isValidExactStepExportBodySource(body)
+        !isNonEmptyBoundedString(body.bodyId) ||
+        bodyIds.has(body.bodyId) ||
+        typeof body.bodyName !== "string" ||
+        body.bodyName.length > 256 ||
+        body.brepFormat !== "occt-brep" ||
+        !(body.brepBytes instanceof Uint8Array) ||
+        body.brepBytes.byteLength === 0 ||
+        body.brepBytes.byteLength > MAX_EXACT_BODY_ARTIFACT_BYTES ||
+        body.brepByteLength !== body.brepBytes.byteLength ||
+        !isSha256Hex(body.brepSha256) ||
+        brepByteLength > MAX_EXACT_STEP_EXPORT_BYTES - body.brepByteLength
       ) {
         return {
           code: "INVALID_DIMENSIONS",
           message:
-            "STEP export requires an active supported exact extrude or boolean-result source with finite positive dimensions."
+            "STEP export requires unique ordered body ids and valid bounded OCCT BRep artifacts with matching length/hash metadata."
         };
       }
+      bodyIds.add(body.bodyId);
+      brepByteLength += body.brepByteLength;
     }
   } else if (request.op === "geometry.linearPattern") {
     if (!isUnitVec3(request.direction)) {
@@ -4255,27 +4309,18 @@ function isValidExactExtrudeSource(source: {
       );
 }
 
-function isValidExactStepExportBodySource(source: unknown): boolean {
-  if (typeof source !== "object" || source === null) return false;
-  if ((source as { readonly kind?: unknown }).kind === "revolve") {
-    return isValidRevolveRecipe(source as ExactRevolveMetadataSource);
+async function validateExactStepArtifactHashes(
+  bodies: readonly ExactStepExportArtifactBodyInput[]
+): Promise<GeometryKernelError | undefined> {
+  for (const body of bodies) {
+    if ((await sha256Hex(body.brepBytes)) !== body.brepSha256) {
+      return {
+        code: "INVALID_DIMENSIONS",
+        message: `STEP export BRep hash evidence mismatched for body ${body.bodyId}.`
+      };
+    }
   }
-  if ((source as { readonly kind?: unknown }).kind === "sweep") {
-    const sweep = source as ExactSweepMetadataSource;
-    return (
-      isValidSweepProfileSource(sweep.profile) &&
-      isValidSweepPathSegments(sweep.pathSegments)
-    );
-  }
-  if ((source as { readonly kind?: unknown }).kind === "booleanExtrudes") {
-    return (
-      validateExactBodyMetadataSource(source as BooleanExtrudeResultSource) ===
-      undefined
-    );
-  }
-  return isValidExactExtrudeSource(
-    source as BooleanExtrudePrimitiveSource | BooleanExtrudeWireSource
-  );
+  return undefined;
 }
 
 function createInvalidExactBodyMetadataSourceError(): GeometryKernelError {

@@ -1,5 +1,4 @@
 import {
-  V21_EXACT_BODY_SOURCE_POLICY,
   decodeWcadCanonicalCbor,
   sha256Hex,
   type CadDocument,
@@ -29,7 +28,10 @@ import {
   type DerivedImportedBodyExactMetadataSource
 } from "./derivedExactMetadata";
 import { createBooleanExtrudeRuntimeSource } from "./booleanExtrudeRuntimeSource";
-import type { ExactBodyArtifactSource } from "@web-cad/geometry-worker";
+import type {
+  ExactBodyArtifactShapePolicy,
+  ExactBodyArtifactSource
+} from "@web-cad/geometry-worker";
 
 export type CurrentExactBodySource =
   | DerivedExactMetadataSource
@@ -113,24 +115,50 @@ type BodySourceResolver = (
   sourceIdentitySignature: string
 ) => CurrentExactBodySource | CurrentExactBodyResolution;
 
+interface BodySourceResolverDefinition {
+  readonly featureKind: CadFeatureSummary["kind"];
+  readonly resolve: BodySourceResolver;
+}
+
 const BODY_SOURCE_RESOLVERS = {
-  primitiveFeature: resolvePrimitiveSource,
-  sketchExtrudeFeature: resolveExtrudeSource,
-  sketchRevolveFeature: resolveLegacyRuntimeSource,
-  sketchHoleFeature: resolveHoleSource,
-  edgeChamferFeature: resolveEdgeFinishSource,
-  edgeFilletFeature: resolveEdgeFinishSource,
-  linearPatternFeature: resolveLegacyRuntimeSource,
-  circularPatternFeature: resolveLegacyRuntimeSource,
-  mirrorFeature: resolveLegacyRuntimeSource,
-  shellFeature: resolveLegacyRuntimeSource,
-  sweepFeature: resolveLegacyRuntimeSource,
-  loftFeature: resolveLegacyRuntimeSource,
-  importedStepBody: resolveImportedSource
-} satisfies Record<
-  keyof typeof V21_EXACT_BODY_SOURCE_POLICY,
-  BodySourceResolver
->;
+  primitiveFeature: {
+    featureKind: "primitive",
+    resolve: resolvePrimitiveSource
+  },
+  sketchExtrudeFeature: {
+    featureKind: "extrude",
+    resolve: resolveExtrudeSource
+  },
+  sketchRevolveFeature: {
+    featureKind: "revolve",
+    resolve: resolveLegacyRuntimeSource
+  },
+  sketchHoleFeature: { featureKind: "hole", resolve: resolveHoleSource },
+  edgeChamferFeature: {
+    featureKind: "chamfer",
+    resolve: resolveEdgeFinishSource
+  },
+  edgeFilletFeature: {
+    featureKind: "fillet",
+    resolve: resolveEdgeFinishSource
+  },
+  linearPatternFeature: {
+    featureKind: "linearPattern",
+    resolve: resolveLegacyRuntimeSource
+  },
+  circularPatternFeature: {
+    featureKind: "circularPattern",
+    resolve: resolveLegacyRuntimeSource
+  },
+  mirrorFeature: { featureKind: "mirror", resolve: resolveLegacyRuntimeSource },
+  shellFeature: { featureKind: "shell", resolve: resolveLegacyRuntimeSource },
+  sweepFeature: { featureKind: "sweep", resolve: resolveLegacyRuntimeSource },
+  loftFeature: { featureKind: "loft", resolve: resolveLegacyRuntimeSource },
+  importedStepBody: {
+    featureKind: "importedBody",
+    resolve: resolveImportedSource
+  }
+} satisfies Record<CadBodySource["type"], BodySourceResolverDefinition>;
 
 export function resolveCurrentExactBodies(
   input: CurrentExactBodyResolverInput
@@ -208,6 +236,21 @@ export function createCurrentExactBodyArtifactSource(
   return runtimeSource;
 }
 
+export function getCurrentExactBodyArtifactShapePolicy(
+  source: ExactBodyArtifactSource
+): ExactBodyArtifactShapePolicy {
+  switch (source.kind) {
+    case "checkpointBody":
+      return "checkpointShape";
+    case "linearPattern":
+    case "circularPattern":
+    case "mirror":
+      return "singleShapeOneOrMoreSolids";
+    default:
+      return "singleSolid";
+  }
+}
+
 function createCheckpointBodySource(
   source: DerivedImportedBodyExactMetadataSource
 ): Extract<ExactBodyArtifactSource, { readonly kind: "checkpointBody" }> {
@@ -256,17 +299,17 @@ function resolveCurrentExactBody(
   }
 
   const feature = context.featuresById.get(body.featureId);
-  const policy = V21_EXACT_BODY_SOURCE_POLICY[body.source.type];
+  const sourceResolver = BODY_SOURCE_RESOLVERS[body.source.type];
   if (
     !feature ||
     feature.bodyId !== body.id ||
-    feature.kind !== policy.featureKind
+    feature.kind !== sourceResolver.featureKind
   ) {
     return blocked(
       body,
       "blocked",
       "EXPORT_EXACT_SOURCE_UNAVAILABLE",
-      `Body ${body.id} does not match its authoritative ${policy.featureKind} feature.`
+      `Body ${body.id} does not match its authoritative ${sourceResolver.featureKind} feature.`
     );
   }
 
@@ -282,7 +325,7 @@ function resolveCurrentExactBody(
     );
   }
 
-  const resolved = BODY_SOURCE_RESOLVERS[body.source.type](
+  const resolved = sourceResolver.resolve(
     body,
     context,
     sourceIdentitySignature
@@ -563,7 +606,7 @@ function resolveCheckpointLeaf(
   }
   if (
     feature.bodyId !== body.id ||
-    feature.kind !== V21_EXACT_BODY_SOURCE_POLICY[body.source.type].featureKind
+    feature.kind !== BODY_SOURCE_RESOLVERS[body.source.type].featureKind
   ) {
     return {
       ok: false,

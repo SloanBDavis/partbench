@@ -4,7 +4,10 @@ import type {
   GeometryWorkerRequest,
   GeometryWorkerResponse
 } from "@web-cad/geometry-worker";
-import { createWorkerErrorDiagnostics } from "@web-cad/geometry-worker/browser";
+import {
+  createWorkerErrorDiagnostics,
+  getGeometryWorkerRequestTransferables
+} from "@web-cad/geometry-worker/browser";
 import { runCleanupActions } from "./runCleanupActions";
 
 export type GeometryWorkerMessage =
@@ -30,7 +33,7 @@ interface WorkerErrorEvent {
 }
 
 export interface GeometryWorkerTransport {
-  postMessage(message: GeometryWorkerRequest): void;
+  postMessage(message: GeometryWorkerRequest, transfer?: Transferable[]): void;
   addEventListener(
     type: "message",
     listener: (event: WorkerMessageEvent<GeometryWorkerMessage>) => void
@@ -198,7 +201,9 @@ export class BrowserGeometryWorker implements GeometryWorker {
       });
 
       try {
-        this.#transport.postMessage(request);
+        this.#transport.postMessage(request, [
+          ...getGeometryWorkerRequestTransferables(request)
+        ]);
       } catch (error) {
         this.#pendingRequests.delete(request.id);
         reject(

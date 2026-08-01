@@ -3,6 +3,7 @@ import type {
   GeometryKernelRequest,
   GeometryKernelResponse
 } from "@web-cad/geometry-kernel";
+export { assertExactBodyArtifactAggregateWithinLimit } from "@web-cad/geometry-kernel";
 import {
   createKernelFailureResponse,
   createGeometryWorkerResponse,
@@ -37,6 +38,7 @@ export {
   createLoftWorkerRequest,
   getGeometryWorkerExactExportCapabilities,
   getGeometryWorkerStepImportCapabilities,
+  getGeometryWorkerRequestTransferables,
   createWorkerErrorDiagnostics,
   createWorkerSuccessDiagnostics,
   type GeometryWorker,

@@ -1,303 +1,288 @@
-import type {
-  CadExactExportArtifact,
-  CadExactExportBodySource,
-  CadExactExportBooleanResultSource,
-  CadExactExportBooleanSource,
-  CadExactExportPrimitiveExtrudeSource,
-  CadExactExportWireExtrudeSource,
-  CadExportDiagnostic,
-  ProjectExactExportQueryResponse
+import {
+  createCadProjectSourceIdentity,
+  type CadEngine
+} from "@web-cad/cad-core";
+import {
+  validateCadExactExportPlan,
+  type CadExactExportPlan,
+  type CadExportDiagnosticCode,
+  type ProjectExactExportQueryResponse
 } from "@web-cad/cad-protocol";
-import { createExactStepExportWorkerRequest } from "@web-cad/geometry-worker/browser";
-import type {
-  BooleanExtrudePrimitiveSource,
-  BooleanExtrudeResultSource,
-  BooleanExtrudeSource,
-  BooleanExtrudeToolSource,
-  GeometryWorkerResponse,
-  GeometryKernelExactStepExportArtifact,
-  ResolvedPlanarWireProfile
-} from "@web-cad/geometry-worker";
-import { mapResolvedSweepPathSegmentToWorld } from "./sweepGeometryRecipe";
+import {
+  assertExactBodyArtifactAggregateWithinLimit,
+  createExactStepExportWorkerRequest,
+  type GeometryKernelExactBodyArtifact,
+  type GeometryKernelExactStepExportArtifact
+} from "@web-cad/geometry-worker/browser";
 
-type ExactStepExportWorkerBody = Parameters<
-  typeof createExactStepExportWorkerRequest
->[0]["bodies"][number];
-type CadExactExportBooleanBodySource = Extract<
-  CadExactExportBodySource,
-  { readonly kind: "booleanExtrudes" }
->;
+import {
+  createCurrentExactBodyArtifactSource,
+  getCurrentExactBodyArtifactShapePolicy,
+  type CurrentExactBodyResolution
+} from "./currentExactBodyResolver";
+import type { DerivedGeometryRuntime } from "./derivedGeometryRuntime";
 
 export interface ProjectExactStepExportExecutionInput {
+  readonly engine: CadEngine;
   readonly exactExport: ProjectExactExportQueryResponse;
-  readonly worker: {
-    execute(
-      request: ReturnType<typeof createExactStepExportWorkerRequest>
-    ): Promise<
-      GeometryWorkerResponse<
-        ReturnType<typeof createExactStepExportWorkerRequest>["payload"]
-      >
-    >;
-  };
+  readonly resolutions: readonly CurrentExactBodyResolution[];
+  readonly runtime: Pick<
+    DerivedGeometryRuntime,
+    "exactBodyArtifact" | "executeExactStepExport"
+  >;
+}
+
+export interface ProjectExactStepExportResult {
+  readonly format: "step";
+  readonly schema: "AP242DIS";
+  readonly units: CadExactExportPlan["units"];
+  readonly plan: CadExactExportPlan;
+  readonly fileName: "partbench-export.step";
+  readonly mimeType: "model/step";
+  readonly bodyCount: number;
+  readonly byteLength: number;
+  readonly bytes: Uint8Array;
+}
+
+export class ProjectExactStepExportError extends Error {
+  readonly code: CadExportDiagnosticCode;
+
+  constructor(code: CadExportDiagnosticCode, message: string) {
+    super(message);
+    this.name = "ProjectExactStepExportError";
+    this.code = code;
+  }
 }
 
 export async function executeProjectExactStepExport({
+  engine,
   exactExport,
-  worker
-}: ProjectExactStepExportExecutionInput): Promise<ProjectExactExportQueryResponse> {
+  resolutions,
+  runtime
+}: ProjectExactStepExportExecutionInput): Promise<ProjectExactStepExportResult> {
+  const plan = requireReadyPlan(exactExport);
+  assertExactExportPlanCurrent(engine, plan);
+  const resolutionsByBodyId = new Map(
+    resolutions.map((resolution) => [resolution.bodyId, resolution] as const)
+  );
+  if (resolutionsByBodyId.size !== resolutions.length) {
+    throw new ProjectExactStepExportError(
+      "EXPORT_EXACT_ARTIFACT_INVALID",
+      "Exact export body resolution ownership is duplicated."
+    );
+  }
+
+  const artifacts: GeometryKernelExactBodyArtifact[] = [];
+  try {
+    for (const [index, body] of plan.bodies.entries()) {
+      assertExactExportPlanCurrent(engine, plan);
+      const resolution = resolutionsByBodyId.get(body.bodyId);
+      if (
+        !resolution ||
+        resolution.status !== "ready" ||
+        resolution.sourceType !== body.sourceType ||
+        resolution.sourceIdentitySignature !== body.sourceIdentitySignature
+      ) {
+        throw new ProjectExactStepExportError(
+          "EXPORT_SOURCE_CHANGED",
+          `Body ${body.bodyId} no longer matches the exact export plan.`
+        );
+      }
+
+      let result: Awaited<ReturnType<typeof runtime.exactBodyArtifact>>;
+      try {
+        const source = createCurrentExactBodyArtifactSource(resolution.source);
+        result = await runtime.exactBodyArtifact(
+          {
+            id: `exact-export-artifact-${index}`,
+            bodyId: body.bodyId,
+            sourceType: body.sourceType,
+            documentSourceIdentity: plan.sourceIdentity,
+            bodySourceIdentitySignature: body.sourceIdentitySignature,
+            sourceCacheKeySha256: resolution.cacheKeySha256,
+            sourceGraphNodeCount: resolution.sourceGraphNodeCount,
+            units: plan.units,
+            shapePolicy: getCurrentExactBodyArtifactShapePolicy(source),
+            source
+          },
+          { intent: "user" }
+        );
+      } catch (error) {
+        if (isGeometryCancellation(error)) throw error;
+        throw new ProjectExactStepExportError(
+          "EXPORT_EXACT_ARTIFACT_FAILED",
+          `Exact artifact build failed for body ${body.bodyId}: ${getErrorMessage(error)}`
+        );
+      }
+      assertArtifactMatchesPlan(result.artifact, plan, body);
+      artifacts.push(result.artifact);
+      try {
+        assertExactBodyArtifactAggregateWithinLimit(artifacts);
+      } catch {
+        throw new ProjectExactStepExportError(
+          "EXPORT_EXACT_ARTIFACT_LIMIT_EXCEEDED",
+          "Exact export artifacts exceed the 512 MiB aggregate limit."
+        );
+      }
+      assertExactExportPlanCurrent(engine, plan);
+    }
+
+    const request = createExactStepExportWorkerRequest({
+      id: `exact-step-${plan.planIdentity.slice(0, 16)}`,
+      units: plan.units,
+      bodies: artifacts.map((artifact, index) => ({
+        bodyId: plan.bodies[index]!.bodyId,
+        bodyName: plan.bodies[index]!.bodyName,
+        brepFormat: artifact.brepFormat,
+        brepByteLength: artifact.brepByteLength,
+        brepSha256: artifact.brepSha256,
+        brepBytes: artifact.brepBytes
+      }))
+    });
+    let response: Awaited<ReturnType<typeof runtime.executeExactStepExport>>;
+    try {
+      response = await runtime.executeExactStepExport(request);
+    } catch (error) {
+      if (isGeometryCancellation(error)) throw error;
+      throw new ProjectExactStepExportError(
+        "EXPORT_EXACT_WRITER_FAILED",
+        `Named AP242 writer failed: ${getErrorMessage(error)}`
+      );
+    }
+    if (!response.response.ok) {
+      throw new ProjectExactStepExportError(
+        "EXPORT_EXACT_WRITER_FAILED",
+        `Named AP242 writer failed: ${response.response.error.message}`
+      );
+    }
+    const step = response.response.artifact;
+    assertStepArtifactMatchesPlan(step, plan);
+    assertExactExportPlanCurrent(engine, plan);
+
+    return {
+      format: "step",
+      schema: "AP242DIS",
+      units: plan.units,
+      plan,
+      fileName: "partbench-export.step",
+      mimeType: "model/step",
+      bodyCount: step.bodyCount,
+      byteLength: step.byteLength,
+      bytes: step.bytes
+    };
+  } finally {
+    artifacts.length = 0;
+  }
+}
+
+export function isExactExportPlanCurrent(
+  engine: CadEngine,
+  plan: CadExactExportPlan
+): boolean {
+  const sourceIdentity = createCadProjectSourceIdentity(engine.exportProject());
+  if (
+    sourceIdentity.algorithm !== plan.sourceIdentity.algorithm ||
+    sourceIdentity.sha256 !== plan.sourceIdentity.sha256
+  ) {
+    return false;
+  }
+  return plan.bodies.every((body) => {
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.topology", bodyId: body.bodyId }
+    });
+    return (
+      response.ok &&
+      response.query === "body.topology" &&
+      response.topology.sourceIdentity.signature ===
+        body.sourceIdentitySignature
+    );
+  });
+}
+
+function requireReadyPlan(
+  exactExport: ProjectExactExportQueryResponse
+): CadExactExportPlan {
+  const validation = validateCadExactExportPlan(exactExport.plan);
   if (
     exactExport.format !== "step" ||
     !exactExport.available ||
-    exactExport.exportSources.length === 0
+    !validation.ok ||
+    validation.value.bodies.length === 0 ||
+    validation.value.bodies.some((body) => body.status !== "ready")
   ) {
-    return exactExport;
-  }
-
-  const workerResponse = await worker.execute(
-    createExactStepExportWorkerRequest({
-      id: "project-export-step",
-      units: exactExport.units,
-      bodies: exactExport.exportSources.map(mapExactExportSourceToWorkerBody)
-    })
-  );
-
-  if (!workerResponse.response.ok) {
-    const diagnostic = createExactStepExportFailureDiagnostic(
-      workerResponse.response.error.message
+    throw new ProjectExactStepExportError(
+      "EXPORT_EXACT_ARTIFACT_INVALID",
+      "Exact STEP export requires one current all-ready AP242 plan."
     );
-    const diagnostics = [diagnostic, ...exactExport.diagnostics];
-
-    return {
-      ...exactExport,
-      status: "unavailable",
-      available: false,
-      canExportFile: false,
-      exportableBodyCount: 0,
-      diagnosticCount: diagnostics.length,
-      diagnostics
-    };
   }
+  return validation.value;
+}
 
-  const artifact = await createProtocolArtifact(
-    workerResponse.response.artifact
+function assertExactExportPlanCurrent(
+  engine: CadEngine,
+  plan: CadExactExportPlan
+): void {
+  if (!isExactExportPlanCurrent(engine, plan)) {
+    throw new ProjectExactStepExportError(
+      "EXPORT_SOURCE_CHANGED",
+      "Project or selected body source identity changed during exact export."
+    );
+  }
+}
+
+function assertArtifactMatchesPlan(
+  artifact: GeometryKernelExactBodyArtifact,
+  plan: CadExactExportPlan,
+  body: CadExactExportPlan["bodies"][number]
+): void {
+  if (
+    artifact.bodyId !== body.bodyId ||
+    artifact.sourceType !== body.sourceType ||
+    artifact.documentSourceIdentity.algorithm !==
+      plan.sourceIdentity.algorithm ||
+    artifact.documentSourceIdentity.sha256 !== plan.sourceIdentity.sha256 ||
+    artifact.bodySourceIdentitySignature !== body.sourceIdentitySignature ||
+    artifact.units !== plan.units ||
+    artifact.brepFormat !== "occt-brep" ||
+    artifact.brepByteLength !== artifact.brepBytes.byteLength ||
+    artifact.brepByteLength <= 0 ||
+    !/^[0-9a-f]{64}$/.test(artifact.brepSha256)
+  ) {
+    throw new ProjectExactStepExportError(
+      "EXPORT_EXACT_ARTIFACT_INVALID",
+      `Exact artifact evidence mismatched the plan for body ${body.bodyId}.`
+    );
+  }
+}
+
+function assertStepArtifactMatchesPlan(
+  artifact: GeometryKernelExactStepExportArtifact,
+  plan: CadExactExportPlan
+): void {
+  if (
+    artifact.format !== "step" ||
+    artifact.schema !== "AP242DIS" ||
+    artifact.units !== plan.units ||
+    artifact.bodyCount !== plan.bodies.length ||
+    artifact.byteLength !== artifact.bytes.byteLength ||
+    artifact.byteLength <= 0
+  ) {
+    throw new ProjectExactStepExportError(
+      "EXPORT_STEP_ARTIFACT_INVALID",
+      "Named AP242 writer returned an artifact that mismatched the exact export plan."
+    );
+  }
+}
+
+function isGeometryCancellation(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.name === "GeometryJobGenerationError" ||
+      ("code" in error && error.code === "GEOMETRY_JOB_GENERATION_CANCELLED"))
   );
-
-  return {
-    ...exactExport,
-    artifact
-  };
 }
 
-function mapExactExportSourceToWorkerBody(
-  source: CadExactExportBodySource
-): ExactStepExportWorkerBody {
-  if (source.sourceKind === "authoredRevolve") {
-    return {
-      bodyId: source.bodyId,
-      ...(source.bodyName ? { bodyName: source.bodyName } : {}),
-      kind: "revolve",
-      sketchPlane: source.sketchPlane,
-      profile: source.profile,
-      axis: { start: source.axis.start, end: source.axis.end },
-      angleDegrees: source.angleDegrees
-    };
-  }
-
-  if (source.sourceKind === "authoredSweep") {
-    return {
-      bodyId: source.bodyId,
-      ...(source.bodyName ? { bodyName: source.bodyName } : {}),
-      kind: "sweep",
-      profile: {
-        sketchPlane: "XY",
-        profile: source.profile,
-        placementFrame: source.profileFrame
-      },
-      pathSegments: source.path.segments.map((segment) =>
-        mapResolvedSweepPathSegmentToWorld(segment, source.path.frame)
-      )
-    };
-  }
-
-  if ("kind" in source && source.kind === "regionExtrude") {
-    return {
-      bodyId: source.bodyId,
-      ...(source.bodyName ? { bodyName: source.bodyName } : {}),
-      ...mapExactExportBooleanSource(source.recipe)
-    };
-  }
-
-  if (isCadExactExportBooleanBodySource(source)) {
-    return {
-      bodyId: source.bodyId,
-      ...(source.bodyName ? { bodyName: source.bodyName } : {}),
-      ...mapExactExportBooleanResultSource(source)
-    };
-  }
-
-  if (source.profile.kind === "wire") {
-    const profile: ResolvedPlanarWireProfile = source.profile;
-    return {
-      bodyId: source.bodyId,
-      ...(source.bodyName ? { bodyName: source.bodyName } : {}),
-      sketchPlane: source.sketchPlane,
-      profile,
-      depth: source.depth,
-      side: source.side
-    };
-  }
-
-  return {
-    bodyId: source.bodyId,
-    ...(source.bodyName ? { bodyName: source.bodyName } : {}),
-    sketchPlane: source.sketchPlane,
-    profile: source.profile,
-    depth: source.depth,
-    side: source.side,
-    ...(source.placementFrame ? { placementFrame: source.placementFrame } : {})
-  };
-}
-
-function mapExactExportBooleanResultSource(
-  source: CadExactExportBooleanResultSource
-): BooleanExtrudeResultSource {
-  const target = mapExactExportBooleanSource(source.target);
-  if (source.operation === "cut") {
-    return {
-      kind: "booleanExtrudes",
-      operation: "cut",
-      ...(source.materialPolicy
-        ? { materialPolicy: source.materialPolicy }
-        : {}),
-      target,
-      tool: mapExactExportBooleanTool(source.tool)
-    };
-  }
-
-  return {
-    kind: "booleanExtrudes",
-    operation: "add",
-    ...(source.materialPolicy ? { materialPolicy: source.materialPolicy } : {}),
-    target,
-    tool: mapExactExportBooleanTool(source.tool)
-  };
-}
-
-function mapExactExportBooleanSource(
-  source: CadExactExportBooleanSource
-): BooleanExtrudeSource {
-  if (isCadExactExportBooleanResultSource(source)) {
-    return mapExactExportBooleanResultSource(source);
-  }
-  if (isCadExactExportWireSource(source)) {
-    const profile: ResolvedPlanarWireProfile = source.profile;
-    return {
-      sketchPlane: source.sketchPlane,
-      profile,
-      depth: source.depth,
-      side: source.side
-    };
-  }
-  return mapExactExportPrimitiveSource(source);
-}
-
-function mapExactExportBooleanTool(
-  source: CadExactExportBooleanSource
-): BooleanExtrudeToolSource {
-  return mapExactExportBooleanSource(source);
-}
-
-function mapExactExportPrimitiveSource(
-  source: CadExactExportPrimitiveExtrudeSource
-): BooleanExtrudePrimitiveSource {
-  return {
-    sketchPlane: source.sketchPlane,
-    profile: source.profile,
-    depth: source.depth,
-    side: source.side,
-    ...(source.placementFrame ? { placementFrame: source.placementFrame } : {})
-  };
-}
-
-function isCadExactExportBooleanBodySource(
-  source: CadExactExportBodySource
-): source is CadExactExportBooleanBodySource {
-  return "kind" in source && source.kind === "booleanExtrudes";
-}
-
-function isCadExactExportBooleanResultSource(
-  source: CadExactExportBooleanSource
-): source is CadExactExportBooleanResultSource {
-  return "kind" in source && source.kind === "booleanExtrudes";
-}
-
-function isCadExactExportWireSource(
-  source: CadExactExportPrimitiveExtrudeSource | CadExactExportWireExtrudeSource
-): source is CadExactExportWireExtrudeSource {
-  return source.profile.kind === "wire";
-}
-
-async function createProtocolArtifact(
-  artifact: GeometryKernelExactStepExportArtifact
-): Promise<CadExactExportArtifact> {
-  return {
-    format: "step",
-    fileName: "partbench-export.step",
-    mimeType: "model/step",
-    byteLength: artifact.byteLength,
-    sha256: await sha256Hex(artifact.bytes),
-    bytesBase64: bytesToBase64(artifact.bytes)
-  };
-}
-
-function createExactStepExportFailureDiagnostic(
-  message: string
-): CadExportDiagnostic {
-  return {
-    code: "EXPORT_EXACT_WRITER_FAILED",
-    status: "unavailable",
-    format: "step",
-    message: `STEP exact export failed in the geometry boundary: ${message}`,
-    expected: "real STEP bytes from geometry-worker export",
-    received: "geometry boundary failure"
-  };
-}
-
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = await globalThis.crypto.subtle.digest(
-    "SHA-256",
-    copyBytesToArrayBuffer(bytes)
-  );
-
-  return [...new Uint8Array(digest)]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  const alphabet =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  let output = "";
-
-  for (let index = 0; index < bytes.length; index += 3) {
-    const first = bytes[index];
-    if (first === undefined) break;
-    const second = bytes[index + 1];
-    const third = bytes[index + 2];
-    const triplet = (first << 16) | ((second ?? 0) << 8) | (third ?? 0);
-
-    output += alphabet[(triplet >> 18) & 63];
-    output += alphabet[(triplet >> 12) & 63];
-    output += second === undefined ? "=" : alphabet[(triplet >> 6) & 63];
-    output += third === undefined ? "=" : alphabet[triplet & 63];
-  }
-
-  return output;
-}
-
-function copyBytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  const copy = new Uint8Array(bytes.byteLength);
-  copy.set(bytes);
-
-  return copy.buffer;
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

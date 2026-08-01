@@ -1,705 +1,432 @@
-import { describe, expect, it } from "vitest";
+import {
+  CadEngine,
+  createCadProjectSourceIdentity,
+  type CadFeatureSummary
+} from "@web-cad/cad-core";
 import type {
-  CadExactExportBodySource,
+  CadBodyDerivedExactMetadataSnapshot,
+  CadBodySnapshot,
   ProjectExactExportQueryResponse
 } from "@web-cad/cad-protocol";
 import type {
-  GeometryWorker,
+  GeometryKernelExactBodyArtifact,
   GeometryWorkerRequest
 } from "@web-cad/geometry-worker";
-import { executeProjectExactStepExport } from "./projectExactStepExport";
+import { describe, expect, it } from "vitest";
+
+import { resolveCurrentExactBodies } from "./currentExactBodyResolver";
+import { createDerivedGeometrySourcesFromDocument } from "./derivedGeometrySources";
+import type {
+  DerivedExactBodyArtifactInput,
+  DerivedGeometryRuntime
+} from "./derivedGeometryRuntime";
+import {
+  executeProjectExactStepExport,
+  isExactExportPlanCurrent
+} from "./projectExactStepExport";
+
+type ExportRuntime = Pick<
+  DerivedGeometryRuntime,
+  "exactBodyArtifact" | "executeExactStepExport"
+> & {
+  readonly artifactInputs: DerivedExactBodyArtifactInput[];
+  readonly writerRequests: GeometryWorkerRequest[];
+};
 
 describe("projectExactStepExport", () => {
-  it("resolves a cad-core exact export source payload through the geometry worker", async () => {
-    const bytes = new TextEncoder().encode("ISO-10303-21;\nEND-ISO-10303-21;");
+  it("builds artifacts and writes direct STEP bytes in selected plan order", async () => {
+    const fixture = createFixture();
+    const runtime = createRuntime();
     const result = await executeProjectExactStepExport({
-      exactExport: createExactExportResponse(),
-      worker: createWorker({
-        ok: true,
-        id: "project-export-step:payload",
-        op: "geometry.exportStep",
-        artifact: {
-          format: "step",
-          schema: "AP242DIS",
-          units: "mm",
-          bodyCount: 1,
-          byteLength: bytes.byteLength,
-          bytes
-        },
-        warnings: []
-      })
-    });
-
-    expect(result.artifact).toMatchObject({
-      format: "step",
-      fileName: "partbench-export.step",
-      mimeType: "model/step",
-      byteLength: bytes.byteLength,
-      bytesBase64: "SVNPLTEwMzAzLTIxOwpFTkQtSVNPLTEwMzAzLTIxOw=="
-    });
-    expect(result.artifact?.sha256).toHaveLength(64);
-  });
-
-  it("returns a structured diagnostic when the geometry worker fails", async () => {
-    const result = await executeProjectExactStepExport({
-      exactExport: createExactExportResponse(),
-      worker: createWorker({
-        ok: false,
-        id: "project-export-step:payload",
-        op: "geometry.exportStep",
-        error: {
-          code: "KERNEL_FAILURE",
-          message: "writer failed"
-        },
-        warnings: []
-      })
+      ...fixture,
+      runtime
     });
 
     expect(result).toMatchObject({
-      status: "unavailable",
-      available: false,
-      canExportFile: false,
-      exportableBodyCount: 0,
-      diagnostics: [
-        expect.objectContaining({
-          code: "EXPORT_EXACT_WRITER_FAILED",
-          status: "unavailable",
-          format: "step",
-          message:
-            "STEP exact export failed in the geometry boundary: writer failed"
-        })
-      ]
+      format: "step",
+      schema: "AP242DIS",
+      units: "mm",
+      fileName: "partbench-export.step",
+      mimeType: "model/step",
+      bodyCount: 3,
+      byteLength: 3
     });
-    expect(result.artifact).toBeUndefined();
-  });
-
-  it("passes the canonical wire recipe to STEP without a second placement", async () => {
-    const wireSource: CadExactExportBodySource = {
-      bodyId: "body_step_wire",
-      bodyName: "Wire body",
-      sourceKind: "authoredExtrude",
-      featureId: "feat_step_wire",
-      sourceSketchId: "sketch_step_wire",
-      sourceSketchEntityIds: ["line_1", "arc_1"],
-      sketchPlane: "XY",
-      profile: {
-        kind: "wire",
-        frame: {
-          origin: [10, 20, 30],
-          uAxis: [1, 0, 0],
-          vAxis: [0, 1, 0]
-        },
-        closed: true,
-        segments: [
-          {
-            kind: "line",
-            sourceEntityId: "line_1",
-            start: [0, 0],
-            end: [2, 0]
-          },
-          {
-            kind: "arc",
-            sourceEntityId: "arc_1",
-            center: [1, 0],
-            radius: 1,
-            startAngleDegrees: 0,
-            sweepAngleDegrees: 180
-          }
-        ],
-        sourceIdentity: "partbench-wire-extrude-v1:exact-recipe",
-        geometryPolicy: {
-          linearTolerance: 1e-7,
-          angularToleranceDegrees: 0.1,
-          minimumProfileArea: 1e-12
-        }
-      },
-      depth: 3,
-      side: "positive"
-    };
-    let request: GeometryWorkerRequest | undefined;
-    const bytes = new TextEncoder().encode("ISO-10303-21;");
-
-    await executeProjectExactStepExport({
-      exactExport: createExactExportResponse(wireSource),
-      worker: createWorker(
-        {
-          ok: true,
-          id: "project-export-step:payload",
-          op: "geometry.exportStep",
-          artifact: {
-            format: "step",
-            schema: "AP242DIS",
-            units: "mm",
-            bodyCount: 1,
-            byteLength: bytes.byteLength,
-            bytes
-          },
-          warnings: []
-        },
-        (candidate) => {
-          request = candidate;
-        }
-      )
-    });
-
-    expect(request).toBeDefined();
-    if (!request || request.payload.op !== "geometry.exportStep") return;
-    expect(request.payload.bodies[0]).toMatchObject({
-      bodyId: "body_step_wire",
-      bodyName: "Wire body",
-      sketchPlane: "XY",
-      profile: wireSource.profile,
-      depth: 3,
-      side: "positive"
-    });
-    expect(request.payload.bodies[0]).not.toHaveProperty("placementFrame");
-  });
-
-  it("maps an authored wire revolve source to the geometry STEP discriminant", async () => {
-    const profile = createStepWireProfile("add");
-    const revolveSource: CadExactExportBodySource = {
-      bodyId: "body_step_revolve",
-      bodyName: "Composite revolve",
-      sourceKind: "authoredRevolve",
-      featureId: "feature_step_revolve",
-      sourceSketchId: "sketch_step_revolve",
-      sourceSketchEntityIds: ["add_line", "add_arc"],
-      sketchPlane: "XY",
-      profile,
-      axis: {
-        sourceEntityId: "axis",
-        start: [0, -2],
-        end: [0, 2]
-      },
-      angleDegrees: 270,
-      solidPolicy: "exactlyOne"
-    };
-    let request: GeometryWorkerRequest | undefined;
-    const bytes = new TextEncoder().encode("ISO-10303-21;");
-
-    await executeProjectExactStepExport({
-      exactExport: createExactExportResponse(revolveSource),
-      worker: createWorker(
-        {
-          ok: true,
-          id: "project-export-step:payload",
-          op: "geometry.exportStep",
-          artifact: {
-            format: "step",
-            schema: "AP242DIS",
-            units: "mm",
-            bodyCount: 1,
-            byteLength: bytes.byteLength,
-            bytes
-          },
-          warnings: []
-        },
-        (candidate) => {
-          request = candidate;
-        }
-      )
-    });
-
-    expect(request).toBeDefined();
-    if (!request || request.payload.op !== "geometry.exportStep") return;
-    expect(request.payload.bodies[0]).toEqual({
-      bodyId: "body_step_revolve",
-      bodyName: "Composite revolve",
-      kind: "revolve",
-      sketchPlane: "XY",
-      profile,
-      axis: { start: [0, -2], end: [0, 2] },
-      angleDegrees: 270
-    });
-    expect(request.payload.bodies[0]).not.toHaveProperty("placementFrame");
-  });
-
-  it("maps a reversed arc sweep through its attached profile and base path frames", async () => {
-    const sweepSource: CadExactExportBodySource = {
-      bodyId: "body_step_arc_sweep",
-      bodyName: "Attached arc sweep",
-      sourceKind: "authoredSweep",
-      featureId: "feature_step_arc_sweep",
-      profileSketchId: "attached_profile",
-      profileEntityId: "profile_circle",
-      pathSketchId: "base_path",
-      pathEntityIds: ["path_arc"],
-      profileFrame: {
-        origin: [0, 0, 3],
-        uAxis: [1, 0, 0],
-        vAxis: [0, 1, 0]
-      },
-      profile: {
-        kind: "circle",
-        center: [0, 0],
-        radius: 0.25
-      },
-      path: {
-        frame: {
-          origin: [0, 0, 0],
-          uAxis: [1, 0, 0],
-          vAxis: [0, 0, 1]
-        },
-        closed: false,
-        segments: [
-          {
-            kind: "arc",
-            sourceEntityId: "path_arc",
-            center: [-1, 3],
-            radius: 1,
-            startAngleDegrees: 0,
-            sweepAngleDegrees: -90
-          }
-        ],
-        sourceIdentity: "reversed-arc-path"
-      },
-      frameMode: "correctedFrenet",
-      solidPolicy: "exactlyOne"
-    };
-    let request: GeometryWorkerRequest | undefined;
-    const bytes = new TextEncoder().encode("ISO-10303-21;");
-
-    await executeProjectExactStepExport({
-      exactExport: createExactExportResponse(sweepSource),
-      worker: createWorker(
-        {
-          ok: true,
-          id: "project-export-step:payload",
-          op: "geometry.exportStep",
-          artifact: {
-            format: "step",
-            schema: "AP242DIS",
-            units: "mm",
-            bodyCount: 1,
-            byteLength: bytes.byteLength,
-            bytes
-          },
-          warnings: []
-        },
-        (candidate) => {
-          request = candidate;
-        }
-      )
-    });
-
-    expect(request).toBeDefined();
-    if (!request || request.payload.op !== "geometry.exportStep") return;
-    expect(request.payload.bodies[0]).toEqual({
-      bodyId: "body_step_arc_sweep",
-      bodyName: "Attached arc sweep",
-      kind: "sweep",
-      profile: {
-        sketchPlane: "XY",
-        profile: sweepSource.profile,
-        placementFrame: sweepSource.profileFrame
-      },
-      pathSegments: [
-        {
-          kind: "arc",
-          start: [0, 0, 3],
-          end: [-1, 0, 2],
-          center: [-1, 0, 3],
-          normal: [0, -1, 0],
-          sweepAngleDegrees: -90
-        }
-      ]
-    });
-  });
-
-  it("passes one recursive composite add body to STEP without replacing its world frame", async () => {
-    const wireProfile = {
-      kind: "wire" as const,
-      frame: {
-        origin: [5, 0, 0] as const,
-        uAxis: [0, 1, 0] as const,
-        vAxis: [0, 0, 1] as const
-      },
-      closed: true as const,
-      segments: [
-        {
-          kind: "line" as const,
-          sourceEntityId: "add_line",
-          start: [0, -1] as const,
-          end: [0, 1] as const
-        },
-        {
-          kind: "arc" as const,
-          sourceEntityId: "add_arc",
-          center: [0, 0] as const,
-          radius: 1,
-          startAngleDegrees: 90,
-          sweepAngleDegrees: 180
-        }
-      ],
-      sourceIdentity: "partbench-wire-extrude-v1:add-step-recipe",
-      geometryPolicy: {
-        linearTolerance: 1e-7,
-        angularToleranceDegrees: 0.1,
-        minimumProfileArea: 1e-12
-      }
-    };
-    const addSource: CadExactExportBodySource = {
-      bodyId: "body_step_add",
-      bodyName: "Composite add",
-      sourceKind: "authoredExtrude",
-      featureId: "feat_step_add",
-      sourceSketchId: "sketch_step_add",
-      sourceSketchEntityIds: ["add_line", "add_arc"],
-      sketchPlane: "XY",
-      depth: 3,
-      side: "positive",
-      targetBodyId: "body_step_target",
-      exactResultSourceIdentitySignature: "current-add-result-signature",
-      kind: "booleanExtrudes",
-      operation: "add",
-      target: {
-        sketchPlane: "XY",
-        profile: {
-          kind: "rectangle",
-          center: [0, 0],
-          width: 4,
-          height: 4
-        },
-        depth: 3,
-        side: "positive"
-      },
-      tool: {
-        sketchPlane: "XY",
-        profile: wireProfile,
-        depth: 3,
-        side: "positive"
-      }
-    };
-    let request: GeometryWorkerRequest | undefined;
-    const bytes = new TextEncoder().encode("ISO-10303-21;");
-
-    const result = await executeProjectExactStepExport({
-      exactExport: createExactExportResponse(addSource),
-      worker: createWorker(
-        {
-          ok: true,
-          id: "project-export-step:payload",
-          op: "geometry.exportStep",
-          artifact: {
-            format: "step",
-            schema: "AP242DIS",
-            units: "mm",
-            bodyCount: 1,
-            byteLength: bytes.byteLength,
-            bytes
-          },
-          warnings: []
-        },
-        (candidate) => {
-          request = candidate;
-        }
-      )
-    });
-
-    expect(result.artifact).toMatchObject({ byteLength: bytes.byteLength });
-    expect(request).toBeDefined();
-    if (!request || request.payload.op !== "geometry.exportStep") return;
-    expect(request.payload.bodies).toHaveLength(1);
-    expect(request.payload.bodies[0]).toEqual({
-      bodyId: "body_step_add",
-      bodyName: "Composite add",
-      kind: "booleanExtrudes",
-      operation: "add",
-      target: addSource.target,
-      tool: {
-        sketchPlane: "XY",
-        profile: wireProfile,
-        depth: 3,
-        side: "positive"
-      }
-    });
-    expect(request.payload.bodies[0]).not.toHaveProperty("placementFrame");
-    expect(request.payload.bodies[0]).not.toHaveProperty(
-      "exactResultSourceIdentitySignature"
-    );
-  });
-
-  it("passes a recursive add-to-wire-cut body to STEP with the canonical cut tool", async () => {
-    const addWire = createStepWireProfile("add");
-    const cutWire = createStepWireProfile("cut");
-    const addResult = {
-      kind: "booleanExtrudes" as const,
-      operation: "add" as const,
-      target: {
-        sketchPlane: "XY" as const,
-        profile: {
-          kind: "rectangle" as const,
-          center: [0, 0] as const,
-          width: 4,
-          height: 4
-        },
-        depth: 3,
-        side: "positive" as const
-      },
-      tool: {
-        sketchPlane: "XY" as const,
-        profile: addWire,
-        depth: 3,
-        side: "positive" as const
-      }
-    };
-    const source: CadExactExportBodySource = {
-      bodyId: "body_step_cut",
-      bodyName: "Composite cut",
-      sourceKind: "authoredExtrude",
-      featureId: "feat_step_cut",
-      sourceSketchId: "sketch_step_cut",
-      sourceSketchEntityIds: ["cut_line", "cut_arc"],
-      sketchPlane: "XY",
-      depth: 2,
-      side: "negative",
-      targetBodyId: "body_step_add",
-      exactResultSourceIdentitySignature: "current-cut-result-signature",
-      kind: "booleanExtrudes",
-      operation: "cut",
-      target: addResult,
-      tool: {
-        sketchPlane: "XY",
-        profile: cutWire,
-        depth: 2,
-        side: "negative"
-      }
-    };
-    let request: GeometryWorkerRequest | undefined;
-    const bytes = new TextEncoder().encode("ISO-10303-21;");
-
-    await executeProjectExactStepExport({
-      exactExport: createExactExportResponse(source),
-      worker: createWorker(
-        {
-          ok: true,
-          id: "project-export-step:payload",
-          op: "geometry.exportStep",
-          artifact: {
-            format: "step",
-            schema: "AP242DIS",
-            units: "mm",
-            bodyCount: 1,
-            byteLength: bytes.byteLength,
-            bytes
-          },
-          warnings: []
-        },
-        (candidate) => {
-          request = candidate;
-        }
-      )
-    });
-
-    expect(request).toBeDefined();
-    if (!request || request.payload.op !== "geometry.exportStep") return;
-    expect(request.payload.bodies[0]).toEqual({
-      bodyId: "body_step_cut",
-      bodyName: "Composite cut",
-      kind: "booleanExtrudes",
-      operation: "cut",
-      target: addResult,
-      tool: {
-        sketchPlane: "XY",
-        profile: cutWire,
-        depth: 2,
-        side: "negative"
-      }
-    });
-    expect(request.payload.bodies[0]).not.toHaveProperty("placementFrame");
-  });
-
-  it("passes a region extrude recipe to STEP with its strict material policy", async () => {
-    const source: CadExactExportBodySource = {
-      bodyId: "body_region_plate",
-      bodyName: "Region plate",
-      sourceKind: "authoredExtrude",
-      featureId: "feature_region_plate",
-      sourceSketchId: "sketch_region_plate",
-      sourceSketchEntityIds: ["outer", "hole"],
-      kind: "regionExtrude",
-      regions: {
-        kind: "regions",
-        sketchId: "sketch_region_plate",
-        regions: [
-          {
-            outer: { kind: "entity", entityId: "outer" },
-            holes: [{ kind: "entity", entityId: "hole" }]
-          }
-        ]
-      },
-      sketchPlane: "XY",
-      depth: 5,
-      side: "positive",
-      solidPolicy: "positiveVolumeSingleSolid",
-      recipe: {
-        kind: "booleanExtrudes",
-        operation: "cut",
-        materialPolicy: "regionPositiveVolumeSingleSolid",
-        target: {
-          sketchPlane: "XY",
-          profile: {
-            kind: "rectangle",
-            center: [0, 0],
-            width: 20,
-            height: 20
-          },
-          depth: 5,
-          side: "positive"
-        },
-        tool: {
-          sketchPlane: "XY",
-          profile: {
-            kind: "circle",
-            center: [0, 0],
-            radius: 4
-          },
-          depth: 5,
-          side: "positive"
-        }
-      }
-    };
-    let request: GeometryWorkerRequest | undefined;
-    const bytes = new TextEncoder().encode("ISO-10303-21;");
-
-    await executeProjectExactStepExport({
-      exactExport: createExactExportResponse(source),
-      worker: createWorker(
-        {
-          ok: true,
-          id: "project-export-step:payload",
-          op: "geometry.exportStep",
-          artifact: {
-            format: "step",
-            schema: "AP242DIS",
-            units: "mm",
-            bodyCount: 1,
-            byteLength: bytes.byteLength,
-            bytes
-          },
-          warnings: []
-        },
-        (candidate) => {
-          request = candidate;
-        }
-      )
-    });
-
-    expect(request).toBeDefined();
-    if (!request || request.payload.op !== "geometry.exportStep") return;
-    if (!("kind" in source.recipe)) {
-      throw new Error("Expected a region boolean STEP recipe.");
+    expect([...result.bytes]).toEqual([7, 8, 9]);
+    expect(runtime.artifactInputs.map(({ bodyId }) => bodyId)).toEqual([
+      "body:z",
+      "body:n",
+      "body:a"
+    ]);
+    const writer = runtime.writerRequests[0];
+    expect(writer?.payload.op).toBe("geometry.exportStep");
+    if (writer?.payload.op === "geometry.exportStep") {
+      expect(
+        writer.payload.bodies.map(({ bodyId, bodyName }) => ({
+          bodyId,
+          bodyName
+        }))
+      ).toEqual([
+        { bodyId: "body:z", bodyName: "Bracket Ω" },
+        { bodyId: "body:n", bodyName: "body:n" },
+        { bodyId: "body:a", bodyName: "Bracket Ω" }
+      ]);
+      expect(
+        writer.payload.bodies.every(
+          (body) =>
+            body.brepFormat === "occt-brep" &&
+            !("profile" in body) &&
+            !("kind" in body)
+        )
+      ).toBe(true);
     }
-    expect(request.payload.bodies[0]).toEqual({
-      bodyId: "body_region_plate",
-      bodyName: "Region plate",
-      kind: "booleanExtrudes",
-      operation: "cut",
-      materialPolicy: "regionPositiveVolumeSingleSolid",
-      target: source.recipe.target,
-      tool: source.recipe.tool
+  });
+
+  it("rejects source changes before and during artifact construction", async () => {
+    const before = createFixture();
+    before.engine.apply({ op: "scene.renameObject", id: "z", name: "Changed" });
+    await expect(
+      executeProjectExactStepExport({ ...before, runtime: createRuntime() })
+    ).rejects.toMatchObject({ code: "EXPORT_SOURCE_CHANGED" });
+
+    const during = createFixture();
+    const runtime = createRuntime({
+      onArtifact(index) {
+        if (index === 0) {
+          during.engine.apply({
+            op: "scene.renameObject",
+            id: "z",
+            name: "Changed during artifact"
+          });
+        }
+      }
     });
-    expect(request.payload.bodies[0]).not.toHaveProperty("profile");
-    expect(request.payload.bodies[0]).not.toHaveProperty("solidPolicy");
+    await expect(
+      executeProjectExactStepExport({ ...during, runtime })
+    ).rejects.toMatchObject({ code: "EXPORT_SOURCE_CHANGED" });
+    expect(runtime.writerRequests).toEqual([]);
+  });
+
+  it("rejects source changes during STEP writing and immediately before download", async () => {
+    const fixture = createFixture();
+    const runtime = createRuntime({
+      onWriter() {
+        fixture.engine.apply({
+          op: "scene.renameObject",
+          id: "a",
+          name: "Changed during writer"
+        });
+      }
+    });
+    await expect(
+      executeProjectExactStepExport({ ...fixture, runtime })
+    ).rejects.toMatchObject({ code: "EXPORT_SOURCE_CHANGED" });
+
+    const current = createFixture();
+    const result = await executeProjectExactStepExport({
+      ...current,
+      runtime: createRuntime()
+    });
+    expect(isExactExportPlanCurrent(current.engine, result.plan)).toBe(true);
+    current.engine.apply({
+      op: "scene.renameObject",
+      id: "n",
+      name: "Changed before Blob"
+    });
+    expect(isExactExportPlanCurrent(current.engine, result.plan)).toBe(false);
+  });
+
+  it("rejects mismatched artifact evidence before the writer", async () => {
+    const fixture = createFixture();
+    const runtime = createRuntime({
+      mutateArtifact(artifact) {
+        return { ...artifact, bodyId: "wrong-body" };
+      }
+    });
+    await expect(
+      executeProjectExactStepExport({ ...fixture, runtime })
+    ).rejects.toMatchObject({ code: "EXPORT_EXACT_ARTIFACT_INVALID" });
+    expect(runtime.writerRequests).toEqual([]);
+  });
+
+  it("preserves cancellation and structures artifact and writer failures", async () => {
+    const cancelled = createFixture();
+    const cancellation = new Error("Export cancelled.");
+    cancellation.name = "GeometryJobGenerationError";
+    await expect(
+      executeProjectExactStepExport({
+        ...cancelled,
+        runtime: createRuntime({ artifactError: cancellation })
+      })
+    ).rejects.toBe(cancellation);
+
+    const artifactFailure = createFixture();
+    await expect(
+      executeProjectExactStepExport({
+        ...artifactFailure,
+        runtime: createRuntime({ artifactError: new Error("OCCT failed") })
+      })
+    ).rejects.toMatchObject({ code: "EXPORT_EXACT_ARTIFACT_FAILED" });
+
+    const writerFailure = createFixture();
+    await expect(
+      executeProjectExactStepExport({
+        ...writerFailure,
+        runtime: createRuntime({ writerError: "XDE unavailable" })
+      })
+    ).rejects.toMatchObject({ code: "EXPORT_EXACT_WRITER_FAILED" });
+
+    const rejectedWriter = createFixture();
+    await expect(
+      executeProjectExactStepExport({
+        ...rejectedWriter,
+        runtime: createRuntime({ writerReject: new Error("Worker stopped") })
+      })
+    ).rejects.toMatchObject({ code: "EXPORT_EXACT_WRITER_FAILED" });
+  });
+
+  it("rejects invalid writer output and unavailable plans without bytes", async () => {
+    const invalidWriter = createFixture();
+    await expect(
+      executeProjectExactStepExport({
+        ...invalidWriter,
+        runtime: createRuntime({ writerBodyCount: 2 })
+      })
+    ).rejects.toMatchObject({ code: "EXPORT_STEP_ARTIFACT_INVALID" });
+
+    const unavailable = createFixture();
+    await expect(
+      executeProjectExactStepExport({
+        ...unavailable,
+        exactExport: { ...unavailable.exactExport, available: false },
+        runtime: createRuntime()
+      })
+    ).rejects.toMatchObject({ code: "EXPORT_EXACT_ARTIFACT_INVALID" });
   });
 });
 
-function createStepWireProfile(prefix: "add" | "cut") {
-  return {
-    kind: "wire" as const,
-    frame: {
-      origin: [0, 0, 0] as const,
-      uAxis: [1, 0, 0] as const,
-      vAxis: [0, 1, 0] as const
+function createFixture(): {
+  readonly engine: CadEngine;
+  readonly exactExport: ProjectExactExportQueryResponse;
+  readonly resolutions: ReturnType<typeof resolveCurrentExactBodies>;
+} {
+  const engine = new CadEngine();
+  engine.applyBatch([
+    {
+      op: "scene.createBox",
+      id: "z",
+      name: "  Bracket Ω  ",
+      dimensions: { width: 1, height: 2, depth: 3 }
     },
-    closed: true as const,
-    segments: [
-      {
-        kind: "line" as const,
-        sourceEntityId: `${prefix}_line`,
-        start: [0, -1] as const,
-        end: [0, 1] as const
+    {
+      op: "scene.createSphere",
+      id: "a",
+      name: "Bracket Ω",
+      dimensions: { radius: 2 }
+    },
+    {
+      op: "scene.createCylinder",
+      id: "n",
+      dimensions: { radius: 1, height: 4 }
+    }
+  ]);
+  const structure = getStructure(engine);
+  const signatures = new Map(
+    structure.bodies.map((body) => [
+      body.id,
+      getBodySourceIdentitySignature(engine, body.id)
+    ])
+  );
+  const exactExportResponse = engine.executeQuery({
+    version: "cadops.v1",
+    query: {
+      query: "project.exportExact",
+      format: "step",
+      bodyIds: ["body:z", "body:n", "body:a"],
+      sourceIdentity: createCadProjectSourceIdentity(engine.exportProject()),
+      derivedExactMetadata: structure.bodies.map((body) =>
+        createReadyMetadata(body, signatures.get(body.id)!)
+      )
+    }
+  });
+  if (
+    !exactExportResponse.ok ||
+    exactExportResponse.query !== "project.exportExact"
+  ) {
+    throw new Error("Expected a ready exact export plan.");
+  }
+  const geometrySources = createDerivedGeometrySourcesFromDocument(
+    engine.getDocument(),
+    structure.features,
+    new Map(),
+    signatures
+  );
+  return {
+    engine,
+    exactExport: exactExportResponse,
+    resolutions: resolveCurrentExactBodies({
+      document: engine.getDocument(),
+      bodies: structure.bodies,
+      features: structure.features,
+      geometrySources,
+      sourceIdentitySignaturesByBodyId: signatures
+    })
+  };
+}
+
+function getStructure(engine: CadEngine): {
+  readonly bodies: readonly CadBodySnapshot[];
+  readonly features: readonly CadFeatureSummary[];
+} {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.structure" }
+  });
+  if (!response.ok || response.query !== "project.structure") {
+    throw new Error("Expected project structure.");
+  }
+  return response;
+}
+
+function getBodySourceIdentitySignature(
+  engine: CadEngine,
+  bodyId: string
+): string {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "body.topology", bodyId }
+  });
+  if (!response.ok || response.query !== "body.topology") {
+    throw new Error(`Expected topology for ${bodyId}.`);
+  }
+  return response.topology.sourceIdentity.signature;
+}
+
+function createReadyMetadata(
+  body: CadBodySnapshot,
+  sourceIdentitySignature: string
+): CadBodyDerivedExactMetadataSnapshot {
+  return {
+    bodyId: body.id,
+    sourceIdentitySignature,
+    status: "ready",
+    metadata: {
+      source: "kernel-derived",
+      confidence: "kernel-derived",
+      bounds: {
+        min: [0, 0, 0],
+        max: [1, 1, 1],
+        size: [1, 1, 1],
+        center: [0.5, 0.5, 0.5]
       },
-      {
-        kind: "arc" as const,
-        sourceEntityId: `${prefix}_arc`,
-        center: [0, 0] as const,
-        radius: 1,
-        startAngleDegrees: 90,
-        sweepAngleDegrees: 180
-      }
-    ],
-    sourceIdentity: `partbench-wire-extrude-v1:${prefix}-step-recipe`,
-    geometryPolicy: {
-      linearTolerance: 1e-7,
-      angularToleranceDegrees: 0.1,
-      minimumProfileArea: 1e-12
+      volume: 1,
+      surfaceArea: 6,
+      centroid: [0.5, 0.5, 0.5],
+      topologyCounts: {
+        solidCount: 1,
+        faceCount: 6,
+        edgeCount: 12,
+        vertexCount: 8
+      },
+      diagnostics: []
     }
   };
 }
 
-function createExactExportResponse(
-  source: CadExactExportBodySource = {
-    bodyId: "body_step_rect",
-    sourceKind: "authoredExtrude",
-    featureId: "feat_step_rect",
-    sourceSketchId: "sketch_step_rect",
-    sourceSketchEntityId: "rect_step",
-    sketchPlane: "XY",
-    profile: {
-      kind: "rectangle",
-      center: [0, 0],
-      width: 2,
-      height: 1
+function createRuntime(
+  options: {
+    readonly artifactError?: Error;
+    readonly writerError?: string;
+    readonly writerReject?: unknown;
+    readonly writerBodyCount?: number;
+    readonly onArtifact?: (index: number) => void;
+    readonly onWriter?: () => void;
+    readonly mutateArtifact?: (
+      artifact: GeometryKernelExactBodyArtifact
+    ) => GeometryKernelExactBodyArtifact;
+  } = {}
+): ExportRuntime {
+  const artifactInputs: DerivedExactBodyArtifactInput[] = [];
+  const writerRequests: GeometryWorkerRequest[] = [];
+  return {
+    artifactInputs,
+    writerRequests,
+    async exactBodyArtifact(input, context) {
+      expect(context).toEqual({ intent: "user" });
+      const index = artifactInputs.length;
+      artifactInputs.push(input);
+      await Promise.resolve();
+      if (options.artifactError) throw options.artifactError;
+      options.onArtifact?.(index);
+      const brepBytes = new Uint8Array([index + 1]);
+      const artifact = {
+        artifactVersion: "partbench.exact-body-artifact.v1",
+        bodyId: input.bodyId,
+        sourceType: input.sourceType,
+        documentSourceIdentity: input.documentSourceIdentity,
+        bodySourceIdentitySignature: input.bodySourceIdentitySignature,
+        sourceCacheKeySha256: input.sourceCacheKeySha256,
+        sourceGraphNodeCount: input.sourceGraphNodeCount,
+        units: input.units,
+        shapePolicy: input.shapePolicy,
+        sourceKind: input.source.kind,
+        brepFormat: "occt-brep",
+        brepWriter: "BRepTools.Write_3",
+        brepBytes,
+        brepByteLength: brepBytes.byteLength,
+        brepSha256: String(index + 1).repeat(64),
+        metadata: {} as GeometryKernelExactBodyArtifact["metadata"],
+        topologySnapshot:
+          {} as GeometryKernelExactBodyArtifact["topologySnapshot"]
+      } as GeometryKernelExactBodyArtifact;
+      return {
+        artifact: options.mutateArtifact?.(artifact) ?? artifact,
+        metrics: { objectId: input.id, roundTripMs: 1 },
+        message: `Built ${input.bodyId}`
+      };
     },
-    depth: 3,
-    side: "positive"
-  }
-): ProjectExactExportQueryResponse {
-  return {
-    ok: true,
-    query: "project.exportExact",
-    cadOpsVersion: "cadops.v1",
-    format: "step",
-    label: "STEP",
-    exportKind: "exact",
-    status: "supported",
-    available: true,
-    canExportFile: true,
-    writerStatus: "available",
-    units: "mm",
-    fileExtensions: [".step", ".stp"],
-    documentSchemaVersion: "web-cad.project.v16",
-    sourceIdentityAlgorithm: "partbench-source-v1",
-    sourceIdentityStatus: "notProvided",
-    requestedBodyIds: [source.bodyId],
-    bodyCount: 1,
-    sourceSupportedBodyCount: 1,
-    deferredBodyCount: 0,
-    unavailableBodyCount: 0,
-    exportableBodyCount: 1,
-    exportSources: [source],
-    bodies: [],
-    diagnosticCount: 0,
-    diagnostics: []
-  };
-}
-
-function createWorker(
-  response: unknown,
-  onRequest?: (request: GeometryWorkerRequest) => void
-): GeometryWorker {
-  return {
-    async execute(request) {
-      onRequest?.(request);
+    async executeExactStepExport(request) {
+      writerRequests.push(request);
+      await Promise.resolve();
+      options.onWriter?.();
+      if (options.writerReject) throw options.writerReject;
+      if (options.writerError) {
+        return {
+          id: request.id,
+          version: request.version,
+          kind: request.kind,
+          payloadId: request.payload.id,
+          response: {
+            ok: false,
+            id: request.payload.id,
+            op: "geometry.exportStep",
+            error: { code: "KERNEL_FAILURE", message: options.writerError },
+            warnings: []
+          },
+          transferables: []
+        };
+      }
+      const bytes = new Uint8Array([7, 8, 9]);
       return {
         id: request.id,
         version: request.version,
         kind: request.kind,
         payloadId: request.payload.id,
-        response,
-        transferables: []
-      } as Awaited<ReturnType<GeometryWorker["execute"]>>;
+        response: {
+          ok: true,
+          id: request.payload.id,
+          op: "geometry.exportStep",
+          artifact: {
+            format: "step",
+            schema: "AP242DIS",
+            units: request.payload.units,
+            bodyCount: options.writerBodyCount ?? request.payload.bodies.length,
+            byteLength: bytes.byteLength,
+            bytes
+          },
+          warnings: []
+        },
+        transferables: [bytes.buffer]
+      };
     }
   };
 }

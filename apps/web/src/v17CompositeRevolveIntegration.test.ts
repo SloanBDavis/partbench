@@ -7,7 +7,6 @@ import {
 import type { CadGeneratedFaceReference } from "@web-cad/cad-protocol";
 import {
   GeometryKernelWorker,
-  type GeometryWorker,
   type GeometryWorkerRequest
 } from "@web-cad/geometry-worker";
 import { describe, expect, it, vi } from "vitest";
@@ -47,6 +46,7 @@ import {
   readProjectExactStepExport
 } from "./projectExactExportQueries";
 import { executeProjectExactStepExport } from "./projectExactStepExport";
+import { resolveCurrentExactBodies } from "./currentExactBodyResolver";
 import { createProjectWcadTopologyCheckpointPayloadInputs } from "./projectWcadTopologyCheckpoints";
 import { createGeneratedFaceReferenceKey } from "./sketchDisplayFrames";
 
@@ -91,7 +91,7 @@ describe("V17 composite revolve web integration", () => {
     });
   }, 120_000);
 
-  it("keeps one attached world recipe across real display, exact, checkpoint, and project STEP boundaries", async () => {
+  it("keeps one attached world recipe through the exact artifact and artifact-only STEP boundary", async () => {
     const engine = createWireRevolveEngine({ attachedParentDepth: 5 });
     const sourceIdentity = readBodySourceIdentitySignature(
       engine,
@@ -127,18 +127,17 @@ describe("V17 composite revolve web integration", () => {
       const exactInput = createExactMetadataRuntimeInput(source);
       const displayed = await deriveGeometrySourceMesh(displayRuntime, source);
       const exact = await runtime.exactBodyMetadata(exactInput);
-      const parentSource = createDerivedGeometrySourcesFromDocument(
+      const sourceIdentitySignatures = new Map([
+        ["body_parent", readBodySourceIdentitySignature(engine, "body_parent")],
+        [source.id, readBodySourceIdentitySignature(engine, source.id)]
+      ]);
+      const geometrySources = createDerivedGeometrySourcesFromDocument(
         engine.getDocument(),
         readFeatures(engine),
         readGeneratedFaces(engine),
-        new Map([
-          [
-            "body_parent",
-            readBodySourceIdentitySignature(engine, "body_parent")
-          ],
-          [source.id, readBodySourceIdentitySignature(engine, source.id)]
-        ])
-      ).find(
+        sourceIdentitySignatures
+      );
+      const parentSource = geometrySources.find(
         (candidate) =>
           candidate.id === "body_parent" && candidate.kind === "extrude"
       );
@@ -187,16 +186,34 @@ describe("V17 composite revolve web integration", () => {
       }
       expect(exactExport).toMatchObject({ available: true });
       let stepRequest: GeometryWorkerRequest | undefined;
-      const kernelWorker = new GeometryKernelWorker();
-      const stepWorker: GeometryWorker = {
-        execute(request) {
+      let artifactInput:
+        | Parameters<DerivedGeometryRuntime["exactBodyArtifact"]>[0]
+        | undefined;
+      const exportRuntime: Pick<
+        DerivedGeometryRuntime,
+        "exactBodyArtifact" | "executeExactStepExport"
+      > = {
+        exactBodyArtifact(input, context) {
+          artifactInput = input;
+          return runtime.exactBodyArtifact(input, context);
+        },
+        executeExactStepExport(request) {
           stepRequest = request;
-          return kernelWorker.execute(request);
+          return runtime.executeExactStepExport(request);
         }
       };
       const step = await executeProjectExactStepExport({
+        engine,
         exactExport,
-        worker: stepWorker
+        resolutions: resolveCurrentExactBodies({
+          document: engine.getDocument(),
+          bodies: readBodies(engine),
+          features: readFeatures(engine),
+          geometrySources,
+          checkpointPayloads,
+          sourceIdentitySignaturesByBodyId: sourceIdentitySignatures
+        }),
+        runtime: exportRuntime
       });
 
       if (!displayInput) throw new Error("Expected display revolve input.");
@@ -209,14 +226,17 @@ describe("V17 composite revolve web integration", () => {
       if (checkpointInput.source.kind !== "revolve") {
         throw new Error("Expected checkpoint revolve input.");
       }
+      if (artifactInput?.source.kind !== "revolve") {
+        throw new Error("Expected exact artifact revolve input.");
+      }
       if (!stepRequest || stepRequest.payload.op !== "geometry.exportStep") {
         throw new Error("Expected project STEP worker request.");
       }
       const stepBody = stepRequest.payload.bodies.find(
         (body) => body.bodyId === source.id
       );
-      if (!stepBody || !("kind" in stepBody) || stepBody.kind !== "revolve") {
-        throw new Error("Expected project STEP revolve body.");
+      if (!stepBody) {
+        throw new Error("Expected project STEP artifact body.");
       }
       const expectedRecipe = {
         profile: source.profile,
@@ -235,15 +255,23 @@ describe("V17 composite revolve web integration", () => {
       expect(displayInput).toMatchObject(expectedRecipe);
       expect(exactInput.source).toMatchObject(expectedRecipe);
       expect(checkpointInput.source).toMatchObject(expectedRecipe);
-      expect(stepBody).toMatchObject(expectedRecipe);
+      expect(artifactInput.source).toMatchObject(expectedRecipe);
       for (const input of [
         displayInput,
         exactInput.source,
         checkpointInput.source,
-        stepBody
+        artifactInput.source
       ]) {
         expect(input).not.toHaveProperty("placementFrame");
       }
+      expect(stepBody).toMatchObject({
+        bodyId: source.id,
+        brepFormat: "occt-brep",
+        brepByteLength: expect.any(Number),
+        brepSha256: expect.stringMatching(/^[0-9a-f]{64}$/)
+      });
+      expect(stepBody).not.toHaveProperty("kind");
+      expect(stepBody).not.toHaveProperty("profile");
 
       expect(displayed.mesh.vertices.length).toBeGreaterThan(0);
       expect(exact.metadata).toMatchObject({
@@ -258,13 +286,10 @@ describe("V17 composite revolve web integration", () => {
         0
       );
       expect(step).toMatchObject({
-        available: true,
-        artifact: {
-          format: "step",
-          byteLength: expect.any(Number)
-        }
+        format: "step",
+        byteLength: expect.any(Number)
       });
-      expect(step.artifact?.byteLength).toBeGreaterThan(1_000);
+      expect(step.byteLength).toBeGreaterThan(1_000);
     });
   }, 120_000);
 
@@ -899,6 +924,17 @@ function readFeatures(engine: CadEngine) {
     throw new Error("Expected project structure.");
   }
   return response.features;
+}
+
+function readBodies(engine: CadEngine) {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.structure" }
+  });
+  if (!response.ok || response.query !== "project.structure") {
+    throw new Error("Expected project structure.");
+  }
+  return response.bodies;
 }
 
 function readSketches(engine: CadEngine): readonly SketchSnapshot[] {

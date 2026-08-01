@@ -1,4 +1,6 @@
 import type { OpenCascadeInstance } from "opencascade.js";
+import { createOcctExactBodyArtifactWithInstance } from "./exactCheckpointPayload";
+import { createOcctStepExportWithInstance } from "./exactStepExport";
 import type { OcctLoader } from "./tessellateBox";
 
 export type OcctNamedStepProbeUnit = "mm" | "cm" | "m" | "in";
@@ -67,6 +69,7 @@ export const OCCT_NAMED_STEP_PROBE_REQUIRED_BINDINGS = [
   "TCollection_AsciiString.prototype.ToCString",
   "BRepTools.Write_3",
   "BRepTools.Read_2",
+  "BRepCheck_Analyzer",
   "BRep_Builder",
   "TopoDS_Shape",
   "BRepPrimAPI_MakeBox_2",
@@ -148,7 +151,6 @@ function runUnitProbe(
   };
   const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const stepFile = `/tmp/partbench-named-step-${unit}-${token}.step`;
-  const brepFile = `/tmp/partbench-named-step-${unit}-${token}.brep`;
   const fs = getOcctFs(oc);
   const applicationHandle = oc.XCAFApp_Application.GetApplication();
   const application = applicationHandle.get();
@@ -157,72 +159,43 @@ function runUnitProbe(
   >[] = [];
 
   try {
-    const storageFormat = own(
-      new oc.TCollection_ExtendedString_2("BinXCAF", false)
-    );
-    const writeDocumentHandle = new oc.Handle_TDocStd_Document_1();
-    documents.push(writeDocumentHandle);
-    application.NewDocument_2(storageFormat, writeDocumentHandle);
-    const writeMain = own(writeDocumentHandle.get().Main());
-    const writeShapeToolHandle = own(
-      oc.XCAFDoc_DocumentTool.ShapeTool(writeMain)
-    );
-    const writeShapeTool = writeShapeToolHandle.get();
-    const boxBuilder = own(new oc.BRepPrimAPI_MakeBox_2(2, 3, 4));
-    const cylinderBuilder = own(new oc.BRepPrimAPI_MakeCylinder_1(1, 4));
-    const shapes = [own(boxBuilder.Shape()), own(cylinderBuilder.Shape())];
-
-    for (const [index, shape] of shapes.entries()) {
-      const label = own(writeShapeTool.AddShape(shape, false, false));
-      const name = own(
-        new oc.TCollection_ExtendedString_2(EXPECTED_NAMES[index] ?? "", true)
-      );
-      own(oc.TDataStd_Name.Set_1(label, name));
-    }
-
+    const artifacts = [
+      createOcctExactBodyArtifactWithInstance(oc, {
+        source: {
+          kind: "box",
+          dimensions: { width: 2, height: 3, depth: 4 },
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          }
+        }
+      }),
+      createOcctExactBodyArtifactWithInstance(oc, {
+        source: {
+          kind: "cylinder",
+          dimensions: { radius: 1, height: 4 },
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          }
+        }
+      })
+    ];
+    const step = createOcctStepExportWithInstance(oc, {
+      units: unit,
+      bodies: artifacts.map((artifact, index) => ({
+        bodyId: `probe-body-${index + 1}`,
+        bodyName: EXPECTED_NAMES[index] ?? "",
+        brepFormat: artifact.brepFormat,
+        brepByteLength: artifact.brepByteLength,
+        brepSha256: "0".repeat(64),
+        brepBytes: artifact.brepBytes
+      }))
+    });
+    fs.writeFile(stepFile, step.bytes);
     const progress = own(new oc.Message_ProgressRange_1());
-    const brepWritten = oc.BRepTools.Write_3(shapes[0]!, brepFile, progress);
-
-    if (!brepWritten) {
-      throw new Error("Open CASCADE named STEP probe B-rep write failed.");
-    }
-
-    const brepByteLength = fs.readFile(brepFile).byteLength;
-    const brepShape = own(new oc.TopoDS_Shape());
-    const brepBuilder = own(new oc.BRep_Builder());
-
-    if (
-      !oc.BRepTools.Read_2(brepShape, brepFile, brepBuilder, progress) ||
-      brepShape.IsNull()
-    ) {
-      throw new Error("Open CASCADE named STEP probe B-rep read failed.");
-    }
-
-    if (!oc.STEPCAFControl_Controller.Init()) {
-      throw new Error("Open CASCADE STEPCAF controller initialization failed.");
-    }
-    setWriterStatic(oc, "write.step.schema", "AP242DIS");
-    setWriterStatic(oc, "write.step.unit", mapUnit(unit));
-    const writer = own(new oc.STEPCAFControl_Writer_1());
-    writer.SetNameMode(true);
-    const asIsStepModelType = oc.STEPControl_StepModelType
-      .STEPControl_AsIs as unknown as Parameters<typeof writer.Transfer_1>[1];
-    const transferred = writer.Transfer_1(
-      writeDocumentHandle,
-      asIsStepModelType,
-      null as unknown as string,
-      progress
-    );
-
-    if (!transferred) {
-      throw new Error("Open CASCADE named STEP probe transfer failed.");
-    }
-
-    if (writer.Write(stepFile) !== oc.IFSelect_ReturnStatus.IFSelect_RetDone) {
-      throw new Error("Open CASCADE named STEP probe write failed.");
-    }
-
-    const stepByteLength = fs.readFile(stepFile).byteLength;
     const readStorageFormat = own(
       new oc.TCollection_ExtendedString_2("BinXCAF", false)
     );
@@ -334,19 +307,17 @@ function runUnitProbe(
       fileSchemas,
       fileUnits,
       nonNullShapeCount: 2,
-      stepByteLength,
-      brepByteLength
+      stepByteLength: step.byteLength,
+      brepByteLength: artifacts[0]!.brepByteLength
     };
   } finally {
     for (const resource of resources.reverse()) {
       resource.delete();
     }
-    for (const file of [stepFile, brepFile]) {
-      try {
-        fs.unlink(file);
-      } catch {
-        // The probe may fail before creating the file.
-      }
+    try {
+      fs.unlink(stepFile);
+    } catch {
+      // The probe may fail before creating the file.
     }
     for (const document of documents.reverse()) {
       application.Close(document);
@@ -430,20 +401,6 @@ function matchesUnit(
       return /(^|\s)(metre|meter|m)(\s|$)/.test(value);
     case "in":
       return /inch/.test(value);
-  }
-}
-
-function mapUnit(unit: OcctNamedStepProbeUnit): string {
-  return unit === "in" ? "INCH" : unit.toUpperCase();
-}
-
-function setWriterStatic(
-  oc: OpenCascadeInstance,
-  name: string,
-  value: string
-): void {
-  if (!oc.Interface_Static.SetCVal(name, value)) {
-    throw new Error(`Open CASCADE rejected STEP probe option ${name}.`);
   }
 }
 

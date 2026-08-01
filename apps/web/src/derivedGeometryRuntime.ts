@@ -547,7 +547,7 @@ export interface DerivedGeometryRuntime {
   ): Promise<DerivedExactMetadataResult>;
   exactBodyArtifact(
     input: DerivedExactBodyArtifactInput,
-    context?: DerivedGeometryRequestContext
+    context?: DerivedGeometryExecutionContext
   ): Promise<DerivedExactBodyArtifactResult>;
   exactTopologyCheckpointPayload(
     input: DerivedExactTopologyCheckpointPayloadInput

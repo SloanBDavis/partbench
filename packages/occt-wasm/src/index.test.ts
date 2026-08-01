@@ -23,10 +23,12 @@ import {
   createOcctStepImport,
   createOcctStepImportWithInstance,
   createOcctStepExport,
+  createOcctStepExportWithInstance,
   getOcctBrepCheckpointWriterCapability,
   getOcctNamedStepProbeCapabilityWithInstance,
   getOcctStepReaderCapability,
   getOcctStepWriterCapability,
+  getOcctStepWriterCapabilityWithInstance,
   loadOcct,
   runOcctNamedStepProbeWithInstance,
   createOcctTorusMesh,
@@ -59,14 +61,41 @@ import { makeMirrorShape } from "./mirror";
 import { makeShellShape } from "./shell";
 import { makeLoftShape } from "./loft";
 import { withOcctHoleResultShape } from "./hole";
-import {
-  createOcctStepExportWithShapeFactory,
-  type OcctStepExportShapeFactory
-} from "./exactStepExport";
 import { assertRevolveSolidResult, makeProfileFace } from "./revolveProfile";
 import { assertSweepSolidResult } from "./sweep";
 
 const OCCT_WASM_TEST_TIMEOUT_MS = 120_000;
+
+type StepTestSource = Parameters<
+  typeof createOcctExactBodyArtifactWithInstance
+>[1]["source"];
+
+async function createStepFromSources(input: {
+  readonly units: "mm" | "cm" | "m" | "in";
+  readonly bodies: readonly {
+    readonly bodyId: string;
+    readonly bodyName?: string;
+    readonly source: StepTestSource;
+  }[];
+}) {
+  const oc = await loadOcct();
+  return createOcctStepExport({
+    units: input.units,
+    bodies: input.bodies.map((body) => {
+      const artifact = createOcctExactBodyArtifactWithInstance(oc, {
+        source: body.source
+      });
+      return {
+        bodyId: body.bodyId,
+        bodyName: body.bodyName ?? body.bodyId,
+        brepFormat: artifact.brepFormat,
+        brepByteLength: artifact.brepByteLength,
+        brepSha256: "0".repeat(64),
+        brepBytes: artifact.brepBytes
+      };
+    })
+  });
+}
 
 const slotWireProfile = {
   kind: "wire" as const,
@@ -434,9 +463,9 @@ describe("occt-wasm", () => {
           source
         })
       ]);
-      const step = await createOcctStepExport({
+      const step = await createStepFromSources({
         units: "mm",
-        bodies: [{ ...source, bodyId: "body_wire" }]
+        bodies: [{ bodyId: "body_wire", source }]
       });
 
       const expectedMin = [-3, -1, -2] as const;
@@ -1769,86 +1798,6 @@ describe("occt-wasm", () => {
     expect(readDeleted).toEqual(["shape", "build"]);
   });
 
-  it("disposes STEP allocations when progress or a later body build throws", () => {
-    const createOcct = (
-      deleted: string[],
-      Progress: new () => { delete(): void }
-    ) =>
-      ({
-        STEPControl_Writer_1: class {
-          delete() {
-            deleted.push("writer");
-          }
-        },
-        Message_ProgressRange_1: Progress,
-        STEPControl_StepModelType: { STEPControl_AsIs: 1 },
-        IFSelect_ReturnStatus: { IFSelect_RetDone: 1 },
-        Interface_Static: { SetCVal: () => true },
-        FS: { readFile: () => new Uint8Array(), unlink: () => undefined },
-        BRepPrimAPI_MakeBox_5: class {},
-        BRepPrimAPI_MakeCylinder_3: class {}
-      }) as unknown as OpenCascadeInstance;
-    const stepBodies = [
-      {
-        sketchPlane: "XY" as const,
-        profile: slotWireProfile,
-        depth: 1,
-        bodyId: "body-a"
-      },
-      {
-        sketchPlane: "XY" as const,
-        profile: slotWireProfile,
-        depth: 1,
-        bodyId: "body-b"
-      }
-    ];
-    const progressFailureDeleted: string[] = [];
-    class FailingProgress {
-      constructor() {
-        throw new Error("Injected progress failure.");
-      }
-      delete() {}
-    }
-    expect(() =>
-      createOcctStepExportWithShapeFactory(
-        createOcct(progressFailureDeleted, FailingProgress),
-        { units: "mm", bodies: stepBodies },
-        () => {
-          throw new Error("Shape factory must not be called.");
-        }
-      )
-    ).toThrow("Injected progress failure");
-    expect(progressFailureDeleted).toEqual(["writer"]);
-
-    const bodyFailureDeleted: string[] = [];
-    class Progress {
-      delete() {
-        bodyFailureDeleted.push("progress");
-      }
-    }
-    let bodyIndex = 0;
-    expect(() =>
-      createOcctStepExportWithShapeFactory(
-        createOcct(bodyFailureDeleted, Progress),
-        { units: "mm", bodies: stepBodies },
-        () => {
-          if (bodyIndex++ === 1) {
-            throw new Error("Injected second body failure.");
-          }
-          return {
-            Shape() {
-              throw new Error("Shape must not be requested.");
-            },
-            delete() {
-              bodyFailureDeleted.push("shape-builder");
-            }
-          } as ReturnType<OcctStepExportShapeFactory>;
-        }
-      )
-    ).toThrow("Injected second body failure");
-    expect(bodyFailureDeleted).toEqual(["shape-builder", "progress", "writer"]);
-  });
-
   it("rejects composite extrudes unless OCCT returns exactly one solid", () => {
     expect(() => assertWireExtrudeSolidCount(0)).toThrow(
       "must return exactly one solid"
@@ -2029,9 +1978,9 @@ describe("occt-wasm", () => {
           bodyId: "body_arc_sweep",
           source
         }),
-        createOcctStepExport({
+        createStepFromSources({
           units: "mm",
-          bodies: [{ ...source, bodyId: "body_arc_sweep" }]
+          bodies: [{ bodyId: "body_arc_sweep", source }]
         })
       ]);
 
@@ -2232,12 +2181,124 @@ describe("occt-wasm", () => {
         format: "step",
         status: "available",
         writerAvailable: true,
+        namedWriterAvailable: true,
         boundary: "occt-wasm",
         packageName: "opencascade.js"
       });
       expect(capability.missingBindings).toEqual([]);
       expect(capability.availableBindings).toContain("STEPControl_Writer_1");
       expect(capability.availableBindings).toContain("FS.readFile");
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "reports basic and named STEP writer capability separately",
+    async () => {
+      const oc = await loadOcct();
+      const withoutNames = new Proxy(oc, {
+        get(target, candidate) {
+          return candidate === "TDataStd_Name"
+            ? undefined
+            : Reflect.get(target, candidate);
+        }
+      }) as OpenCascadeInstance;
+
+      expect(
+        getOcctStepWriterCapabilityWithInstance(withoutNames)
+      ).toMatchObject({
+        status: "unavailable",
+        writerAvailable: true,
+        namedWriterAvailable: false,
+        missingBindings: ["TDataStd_Name.Set_1"]
+      });
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "cleans named STEP documents and temporary files after controller, transfer, write, and read failures",
+    async () => {
+      const oc = await loadOcct();
+      const files = () => ({
+        root: [...oc.FS.readdir("/")].sort(),
+        tmp: [...oc.FS.readdir("/tmp")].sort()
+      });
+      const artifact = createOcctExactBodyArtifactWithInstance(oc, {
+        source: {
+          kind: "box",
+          dimensions: { width: 2, height: 3, depth: 4 },
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          }
+        }
+      });
+      const input = {
+        units: "mm" as const,
+        bodies: ["first", "second"].map((bodyId) => ({
+          bodyId,
+          bodyName: "Duplicate Ω",
+          brepFormat: artifact.brepFormat,
+          brepByteLength: artifact.brepByteLength,
+          brepSha256: "0".repeat(64),
+          brepBytes: artifact.brepBytes
+        }))
+      };
+      const before = files();
+      const override = (
+        key: keyof OpenCascadeInstance,
+        value: unknown
+      ): OpenCascadeInstance =>
+        new Proxy(oc, {
+          get(target, candidate) {
+            return candidate === key ? value : Reflect.get(target, candidate);
+          }
+        }) as OpenCascadeInstance;
+      const writerFailure = (method: "Transfer_1" | "Write") =>
+        new Proxy(oc.STEPCAFControl_Writer_1, {
+          construct(Target, args) {
+            const writer = Reflect.construct(Target, args) as object;
+            return new Proxy(writer, {
+              get(target, candidate) {
+                if (candidate === method) return () => false;
+                const value = Reflect.get(target, candidate);
+                return typeof value === "function" ? value.bind(target) : value;
+              }
+            });
+          }
+        });
+      const controller = new Proxy(oc.STEPCAFControl_Controller, {
+        get(target, candidate) {
+          return candidate === "Init"
+            ? () => false
+            : Reflect.get(target, candidate);
+        }
+      });
+      const emptyStepFs = new Proxy(oc.FS, {
+        get(target, candidate) {
+          if (candidate === "readFile") return () => new Uint8Array();
+          const value = Reflect.get(target, candidate);
+          return typeof value === "function" ? value.bind(target) : value;
+        }
+      });
+      const failures: readonly [OpenCascadeInstance, RegExp][] = [
+        [override("STEPCAFControl_Controller", controller), /controller/i],
+        [
+          override("STEPCAFControl_Writer_1", writerFailure("Transfer_1")),
+          /transfer/i
+        ],
+        [override("STEPCAFControl_Writer_1", writerFailure("Write")), /write/i],
+        [override("FS", emptyStepFs), /empty bytes/i]
+      ];
+
+      for (const [instance, message] of failures) {
+        expect(() => createOcctStepExportWithInstance(instance, input)).toThrow(
+          message
+        );
+        expect(files()).toEqual(before);
+      }
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );
@@ -2331,20 +2392,23 @@ describe("occt-wasm", () => {
   it(
     "exports a rectangle extrude as real STEP bytes through Open CASCADE WASM",
     async () => {
-      const artifact = await createOcctStepExport({
+      const artifact = await createStepFromSources({
         units: "mm",
         bodies: [
           {
             bodyId: "body_step_rect",
-            sketchPlane: "XY",
-            profile: {
-              kind: "rectangle",
-              center: [0, 0],
-              width: 2,
-              height: 1
-            },
-            depth: 3,
-            side: "positive"
+            source: {
+              kind: "extrude",
+              sketchPlane: "XY",
+              profile: {
+                kind: "rectangle",
+                center: [0, 0],
+                width: 2,
+                height: 1
+              },
+              depth: 3,
+              side: "positive"
+            }
           }
         ]
       });
@@ -2367,20 +2431,23 @@ describe("occt-wasm", () => {
   it(
     "imports real STEP bytes into transient imported body and checkpoint payloads through Open CASCADE WASM",
     async () => {
-      const artifact = await createOcctStepExport({
+      const artifact = await createStepFromSources({
         units: "mm",
         bodies: [
           {
             bodyId: "body_step_import_source",
-            sketchPlane: "XY",
-            profile: {
-              kind: "rectangle",
-              center: [0, 0],
-              width: 2,
-              height: 1
-            },
-            depth: 3,
-            side: "positive"
+            source: {
+              kind: "extrude",
+              sketchPlane: "XY",
+              profile: {
+                kind: "rectangle",
+                center: [0, 0],
+                width: 2,
+                height: 1
+              },
+              depth: 3,
+              side: "positive"
+            }
           }
         ]
       });
@@ -3018,9 +3085,9 @@ describe("occt-wasm", () => {
           source
         })
       ]);
-      const step = await createOcctStepExport({
+      const step = await createStepFromSources({
         units: "mm",
-        bodies: [{ ...source, bodyId: "body_wire_add" }]
+        bodies: [{ bodyId: "body_wire_add", source }]
       });
 
       expect(metadata.sourceKind).toBe("booleanExtrudes");
@@ -3073,9 +3140,9 @@ describe("occt-wasm", () => {
           source
         })
       ]);
-      const step = await createOcctStepExport({
+      const step = await createStepFromSources({
         units: "mm",
-        bodies: [{ ...source, bodyId: "body_wire_cut" }]
+        bodies: [{ bodyId: "body_wire_cut", source }]
       });
 
       expect(metadata.sourceKind).toBe("booleanExtrudes");
@@ -3148,9 +3215,9 @@ describe("occt-wasm", () => {
           source
         })
       ]);
-      const step = await createOcctStepExport({
+      const step = await createStepFromSources({
         units: "mm",
-        bodies: [{ ...source, bodyId: "body_nested_wire_add" }]
+        bodies: [{ bodyId: "body_nested_wire_add", source }]
       });
 
       expect(mesh.primitive).toBe("boolean");
@@ -3221,9 +3288,9 @@ describe("occt-wasm", () => {
             source
           })
         ]);
-      const step = await createOcctStepExport({
+      const step = await createStepFromSources({
         units: "mm",
-        bodies: [{ ...source, bodyId: "body_nested_wire_cut" }]
+        bodies: [{ bodyId: "body_nested_wire_cut", source }]
       });
 
       expect(mesh.primitive).toBe("boolean");
@@ -3362,9 +3429,9 @@ describe("occt-wasm", () => {
           bodyId: "body_region_tool",
           source
         }),
-        createOcctStepExport({
+        createStepFromSources({
           units: "mm",
-          bodies: [{ ...source, bodyId: "body_region_tool" }]
+          bodies: [{ bodyId: "body_region_tool", source }]
         })
       ]);
 
@@ -3744,9 +3811,9 @@ describe("occt-wasm", () => {
         bodyId: "body_wire_revolve",
         source
       });
-      const step = await createOcctStepExport({
+      const step = await createStepFromSources({
         units: "mm",
-        bodies: [{ ...source, bodyId: "body_wire_revolve" }]
+        bodies: [{ bodyId: "body_wire_revolve", source }]
       });
 
       expect(mesh).toMatchObject({ primitive: "revolve" });
@@ -3828,9 +3895,9 @@ describe("occt-wasm", () => {
         bodyId: "body_region_revolve",
         source
       });
-      const step = await createOcctStepExport({
+      const step = await createStepFromSources({
         units: "mm",
-        bodies: [{ ...source, bodyId: "body_region_revolve" }]
+        bodies: [{ bodyId: "body_region_revolve", source }]
       });
 
       expect(mesh).toMatchObject({ primitive: "revolve" });

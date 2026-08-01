@@ -5,6 +5,7 @@ import {
   encodeWcadCanonicalCbor,
   listV21ReleaseSampleFixtures,
   sha256Hex,
+  V21_EXACT_BODY_SOURCE_POLICY,
   type CadDocument,
   type CadFeatureSummary,
   type WcadTopologyCheckpointPayloadInput
@@ -26,6 +27,7 @@ import { createDerivedGeometrySourcesFromDocument } from "./derivedGeometrySourc
 import { createGeneratedFaceReferenceKey } from "./sketchDisplayFrames";
 import {
   createCurrentExactBodyArtifactSource,
+  getCurrentExactBodyArtifactShapePolicy,
   resolveCurrentExactBodies,
   type CurrentExactBodyResolution,
   type CurrentExactBodyResolverInput
@@ -54,9 +56,12 @@ describe("currentExactBodyResolver", () => {
       );
       for (const resolution of active) {
         if (resolution.status === "ready") {
-          expect(() =>
-            createCurrentExactBodyArtifactSource(resolution.source)
-          ).not.toThrow();
+          const source = createCurrentExactBodyArtifactSource(
+            resolution.source
+          );
+          expect(getCurrentExactBodyArtifactShapePolicy(source)).toBe(
+            V21_EXACT_BODY_SOURCE_POLICY[resolution.sourceType].shapePolicy
+          );
         }
       }
     }
@@ -79,6 +84,14 @@ describe("currentExactBodyResolver", () => {
       expect(active.every((resolution) => resolution.status === "ready")).toBe(
         true
       );
+      for (const resolution of active) {
+        if (resolution.status !== "ready") continue;
+        expect(
+          getCurrentExactBodyArtifactShapePolicy(
+            createCurrentExactBodyArtifactSource(resolution.source)
+          )
+        ).toBe(V21_EXACT_BODY_SOURCE_POLICY[resolution.sourceType].shapePolicy);
+      }
     }
   });
 
