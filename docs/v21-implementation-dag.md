@@ -1,6 +1,6 @@
 # V21 Implementation DAG: Production Single-Part Reliability and Exact Interchange
 
-Status: **Approved for implementation (2026-08-01). Slices A-D are complete; Slice E is next.**
+Status: **Approved for implementation (2026-08-01). Slices A-E are complete; Slice F is next.**
 
 This document turns `docs/v21.md` into a reviewable implementation sequence.
 The release plan is authoritative for scope and semantics. This DAG is
@@ -479,6 +479,19 @@ through artifacts, explicit failure/stale/cancel paths create no download, and
 the production browser path contains no STEP base64 conversion or feature
 recipe writer input.
 
+Implementation record:
+
+- E1-E5 complete at `c8d4ee9a7624b4dfb0ed4a0a02d717f5c48f9187`
+  with artifact-only named XDE AP242 writing, four-unit/name/order proof,
+  bounded transferable inputs and outputs, identity-checked browser
+  orchestration, direct bytes-to-Blob download, and atomic cleanup across
+  injected artifact, controller, transfer, write, read, stale, cancellation,
+  worker, and download faults.
+- Direct Blob/download cleanup proof completed at
+  `236535795c03d326b60d76a6a6f8769abbea8010`.
+- Gate E passed with the committed
+  [V21 Gate E named AP242 evidence](./v21-e-gate.md).
+
 ## Slice F — Cross-Consumer Exact-Result Parity
 
 Goal: make every product surface report the same body truth.
@@ -727,7 +740,7 @@ before explicit plan approval.
 | B | Complete | Protocol/core plan, validation, health/readiness, adapter tests |
 | C | Complete | Exhaustive current exact resolver and identity/limit tests |
 | D | Complete | Same-shape artifact, checkpoint reuse, real OCCT/fault/cleanup proof |
-| E | Not started | Artifact-only named/unit STEP, multi-body/stale/cancel, no production base64/recipe path |
+| E | Complete | Artifact-only named/unit STEP, multi-body/stale/cancel, no production base64/recipe path |
 | F | Not started | Cross-consumer exact-result parity table |
 | G | Not started | Rebuild/history/storage/concurrency compatibility |
 | H | Not started | Accessible browser workflow and V20-safe connected agent readiness |
