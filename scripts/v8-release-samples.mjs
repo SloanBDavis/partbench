@@ -31,28 +31,28 @@ export async function runV8ReleaseSampleSmoke(cadCore, options = {}) {
           "wcad-corruption",
           "No release fixtures were provided."
         );
-  const unsupportedExactStep = evaluateUnsupportedExactStep(cadCore);
+  const unavailableExactStep = evaluateUnavailableExactStep(cadCore);
   const failedCount = samples.filter(
     (sample) => sample.status === "fail"
   ).length;
   const packageChecks = summarizePackageChecks(samples, corruptionChecks);
   const exactStepChecks = summarizeExactStepChecks(
     samples,
-    unsupportedExactStep
+    unavailableExactStep
   );
   const boundaryFailures = [];
   const result = {
     ok:
       failedCount === 0 &&
       corruptionChecks.status === "pass" &&
-      unsupportedExactStep.status === "pass",
+      unavailableExactStep.status === "pass",
     sampleCount: samples.length,
     passedCount: samples.length - failedCount,
     failedCount,
     packageChecks,
     exactStepChecks,
     corruptionChecks,
-    unsupportedExactStep,
+    unavailableExactStep,
     samples
   };
 
@@ -78,7 +78,7 @@ export function formatV8ReleaseSampleSmokeSummary(result) {
     `V8 release package/export smoke ${result.ok ? "passed" : "failed"}`,
     `samples: ${result.passedCount} passed, ${result.failedCount} failed, ${result.sampleCount} total`,
     `wcad: ${result.packageChecks.wcadRoundTripCount} package round-trips, ${result.packageChecks.jsonToWcadRoundTripCount} JSON-to-WCAD round-trips, corruption ${result.corruptionChecks.status}`,
-    `step: ${result.exactStepChecks.supportedSampleCount} supported samples, ${result.exactStepChecks.unsupportedSampleCount} unsupported/deferred samples, primitive unsupported ${result.unsupportedExactStep.status}`
+    `step: ${result.exactStepChecks.supportedSampleCount} supported samples, ${result.exactStepChecks.unsupportedSampleCount} unsupported/deferred samples, invalid selection ${result.unavailableExactStep.status}`
   ];
 
   for (const sample of result.samples) {
@@ -106,8 +106,8 @@ export function formatV8ReleaseSampleSmokeSummary(result) {
     lines.push(`- corruption-fail ${failure}`);
   }
 
-  for (const failure of result.unsupportedExactStep.failures) {
-    lines.push(`- step-unsupported-fail ${failure}`);
+  for (const failure of result.unavailableExactStep.failures) {
+    lines.push(`- step-unavailable-fail ${failure}`);
   }
 
   for (const failure of result.boundaryFailures ?? []) {
@@ -460,7 +460,7 @@ async function evaluateWcadCorruptionChecks(cadCore, fixture) {
   return createCheckResult("wcad-corruption", failures, unique(issueCodes));
 }
 
-function evaluateUnsupportedExactStep(cadCore) {
+function evaluateUnavailableExactStep(cadCore) {
   const failures = [];
   const engine = new cadCore.CadEngine();
 
@@ -477,37 +477,31 @@ function evaluateUnsupportedExactStep(cadCore) {
 
   checkEqual(
     failures,
-    "unsupported STEP status",
+    "unavailable STEP status",
     "unavailable",
     response.status
   );
-  checkEqual(failures, "unsupported STEP available", false, response.available);
+  checkEqual(failures, "unavailable STEP available", false, response.available);
   checkEqual(
     failures,
-    "unsupported STEP exportableBodyCount",
+    "unavailable STEP exportableBodyCount",
     0,
     response.exportableBodyCount
   );
   requireDiagnosticCode(
     failures,
-    "unsupported STEP diagnostics",
+    "unavailable STEP diagnostics",
     response.diagnostics,
-    "EXPORT_EXACT_BODY_UNSUPPORTED"
-  );
-  requireDiagnosticCode(
-    failures,
-    "unsupported STEP diagnostics",
-    response.diagnostics,
-    "EXPORT_BODY_SOURCE_UNRESOLVED"
+    "EXPORT_BODY_SELECTION_INVALID"
   );
   checkNoBoundaryLeaks(
     failures,
-    "unsupported project.exportExact response",
+    "unavailable project.exportExact response",
     JSON.stringify(response)
   );
 
   return createCheckResult(
-    "unsupported-exact-step",
+    "unavailable-exact-step",
     failures,
     unique(response.diagnostics.map((diagnostic) => diagnostic.code))
   );
@@ -549,7 +543,7 @@ function summarizePackageChecks(samples, corruptionChecks) {
   };
 }
 
-function summarizeExactStepChecks(samples, unsupportedExactStep) {
+function summarizeExactStepChecks(samples, unavailableExactStep) {
   return {
     supportedSampleCount: samples.filter(
       (sample) => sample.exactStep.status === "supported"
@@ -561,8 +555,8 @@ function summarizeExactStepChecks(samples, unsupportedExactStep) {
       (sum, sample) => sum + sample.exactStep.exportableBodyCount,
       0
     ),
-    unsupportedPrimitiveStatus: unsupportedExactStep.status,
-    unsupportedIssueCodes: unsupportedExactStep.issueCodes
+    unavailableSelectionStatus: unavailableExactStep.status,
+    unavailableIssueCodes: unavailableExactStep.issueCodes
   };
 }
 

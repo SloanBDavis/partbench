@@ -23,20 +23,20 @@ describe("V8 release package/export smoke runner", () => {
         corruptionIssueCodes: ["WCAD_INVALID_PACKAGE", "WCAD_MISSING_MANIFEST"]
       },
       exactStepChecks: {
-        supportedSampleCount: 2,
-        unsupportedSampleCount: 4,
-        exportableBodyCount: 2,
-        unsupportedPrimitiveStatus: "pass",
-        unsupportedIssueCodes: [
-          "EXPORT_BODY_SOURCE_UNRESOLVED",
-          "EXPORT_EXACT_BODY_UNSUPPORTED",
-          "EXPORT_PRIMITIVE_SOURCE_UNAVAILABLE"
+        supportedSampleCount: 0,
+        unsupportedSampleCount: 6,
+        exportableBodyCount: 0,
+        unavailableSelectionStatus: "pass",
+        unavailableIssueCodes: [
+          "EXPORT_BODY_SELECTION_INVALID",
+          "EXPORT_BODY_SOURCE_SUPPORTED",
+          "EXPORT_EXACT_SOURCE_UNAVAILABLE"
         ]
       },
       corruptionChecks: {
         status: "pass"
       },
-      unsupportedExactStep: {
+      unavailableExactStep: {
         status: "pass"
       }
     });
@@ -63,12 +63,15 @@ describe("V8 release package/export smoke runner", () => {
             diagnosticCount: 0
           }),
           exactStep: expect.objectContaining({
-            status: "supported",
-            available: true,
+            status: "deferred",
+            available: false,
             writerStatus: "available",
             sourceSupportedBodyCount: 1,
-            exportableBodyCount: 1,
-            diagnosticCodes: ["EXPORT_BODY_SOURCE_SUPPORTED"]
+            exportableBodyCount: 0,
+            diagnosticCodes: expect.arrayContaining([
+              "EXPORT_BODY_SOURCE_SUPPORTED",
+              "EXPORT_EXACT_SOURCE_UNAVAILABLE"
+            ])
           })
         }),
         expect.objectContaining({
@@ -78,12 +81,11 @@ describe("V8 release package/export smoke runner", () => {
             status: "deferred",
             available: false,
             writerStatus: "available",
-            sourceSupportedBodyCount: 0,
+            sourceSupportedBodyCount: 1,
             exportableBodyCount: 0,
             diagnosticCodes: expect.arrayContaining([
-              "EXPORT_EXACT_BODY_UNSUPPORTED",
-              "EXPORT_BODY_CONSUMED",
-              "EXPORT_RESULT_BODY_DEFERRED"
+              "EXPORT_BODY_SOURCE_SUPPORTED",
+              "EXPORT_EXACT_SOURCE_UNAVAILABLE"
             ])
           })
         })
@@ -99,9 +101,9 @@ describe("V8 release package/export smoke runner", () => {
         "V8 release package/export smoke passed",
         "samples: 6 passed, 0 failed, 6 total",
         "wcad: 6 package round-trips, 6 JSON-to-WCAD round-trips, corruption pass",
-        "step: 2 supported samples, 4 unsupported/deferred samples, primitive unsupported pass",
-        "- pass v7-rectangle-extrude-reference | wcad partbench.wcad.v1/web-cad.project.v16 | json->wcad ok | step supported:1 exportable | exports step:supported:available, glb:deferred:unavailable",
-        "- pass v7-circle-extrude-export | wcad partbench.wcad.v1/web-cad.project.v16 | json->wcad ok | step supported:1 exportable | exports step:supported:available, glb:deferred:unavailable",
+        "step: 0 supported samples, 6 unsupported/deferred samples, invalid selection pass",
+        "- pass v7-rectangle-extrude-reference | wcad partbench.wcad.v1/web-cad.project.v16 | json->wcad ok | step deferred:0 exportable | exports step:deferred:unavailable, glb:deferred:unavailable",
+        "- pass v7-circle-extrude-export | wcad partbench.wcad.v1/web-cad.project.v16 | json->wcad ok | step deferred:0 exportable | exports step:deferred:unavailable, glb:deferred:unavailable",
         "- pass v7-consumed-body-diagnostics | wcad partbench.wcad.v1/web-cad.project.v16 | json->wcad ok | step deferred:0 exportable | exports step:deferred:unavailable, glb:deferred:unavailable",
         "- pass v7-revolve-source-diagnostics | wcad partbench.wcad.v1/web-cad.project.v16 | json->wcad ok | step deferred:0 exportable | exports step:deferred:unavailable, glb:deferred:unavailable",
         "- pass v7-hole-source-diagnostics | wcad partbench.wcad.v1/web-cad.project.v16 | json->wcad ok | step deferred:0 exportable | exports step:deferred:unavailable, glb:deferred:unavailable",
