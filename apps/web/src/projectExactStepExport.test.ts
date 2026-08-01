@@ -12,7 +12,7 @@ import type {
   GeometryKernelExactBodyArtifact,
   GeometryWorkerRequest
 } from "@web-cad/geometry-worker";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { resolveCurrentExactBodies } from "./currentExactBodyResolver";
 import { createDerivedGeometrySourcesFromDocument } from "./derivedGeometrySources";
@@ -21,6 +21,7 @@ import type {
   DerivedGeometryRuntime
 } from "./derivedGeometryRuntime";
 import {
+  downloadProjectExactStepArtifact,
   executeProjectExactStepExport,
   isExactExportPlanCurrent
 } from "./projectExactStepExport";
@@ -201,6 +202,49 @@ describe("projectExactStepExport", () => {
         runtime: createRuntime()
       })
     ).rejects.toMatchObject({ code: "EXPORT_EXACT_ARTIFACT_INVALID" });
+  });
+
+  it("downloads raw STEP bytes and revokes the URL on success or browser failure", async () => {
+    const append = vi.fn();
+    const remove = vi.fn();
+    const click = vi.fn();
+    const blobs: Blob[] = [];
+    const createObjectURL = vi.fn((blob: Blob) => {
+      blobs.push(blob);
+      return "blob:exact-step";
+    });
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", { createObjectURL, revokeObjectURL });
+    vi.stubGlobal("document", {
+      createElement: vi.fn(() => ({ href: "", download: "", click, remove })),
+      body: { append }
+    });
+    const result = {
+      bytes: new Uint8Array([7, 8, 9]),
+      fileName: "partbench-export.step" as const,
+      mimeType: "model/step" as const
+    };
+
+    try {
+      downloadProjectExactStepArtifact(result);
+      expect([...new Uint8Array(await blobs[0]!.arrayBuffer())]).toEqual([
+        7, 8, 9
+      ]);
+      expect(click).toHaveBeenCalledOnce();
+      expect(remove).toHaveBeenCalledOnce();
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:exact-step");
+
+      click.mockImplementationOnce(() => {
+        throw new Error("Browser download failed.");
+      });
+      expect(() => downloadProjectExactStepArtifact(result)).toThrow(
+        "Browser download failed."
+      );
+      expect(remove).toHaveBeenCalledTimes(2);
+      expect(revokeObjectURL).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

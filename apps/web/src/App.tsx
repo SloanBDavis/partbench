@@ -7025,8 +7025,11 @@ export function App() {
       return;
     }
 
-    const { executeProjectExactStepExport, isExactExportPlanCurrent } =
-      await import("./projectExactStepExport");
+    const {
+      downloadProjectExactStepArtifact,
+      executeProjectExactStepExport,
+      isExactExportPlanCurrent
+    } = await import("./projectExactStepExport");
     const runtime = getDerivedGeometryRuntime();
     let result;
     try {
@@ -7060,20 +7063,7 @@ export function App() {
     }
 
     try {
-      const blob = new Blob([result.bytes as Uint8Array<ArrayBuffer>], {
-        type: result.mimeType
-      });
-      const url = URL.createObjectURL(blob);
-      const link = window.document.createElement("a");
-      try {
-        link.href = url;
-        link.download = result.fileName;
-        window.document.body.append(link);
-        link.click();
-      } finally {
-        link.remove();
-        URL.revokeObjectURL(url);
-      }
+      downloadProjectExactStepArtifact(result);
     } catch (error) {
       setProjectMessage(
         `STEP download failed: ${error instanceof Error ? error.message : "The browser did not accept the STEP artifact."}`

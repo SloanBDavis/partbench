@@ -44,6 +44,26 @@ export interface ProjectExactStepExportResult {
   readonly bytes: Uint8Array;
 }
 
+export function downloadProjectExactStepArtifact(
+  result: Pick<ProjectExactStepExportResult, "bytes" | "fileName" | "mimeType">
+): void {
+  const blob = new Blob([result.bytes as Uint8Array<ArrayBuffer>], {
+    type: result.mimeType
+  });
+  const url = URL.createObjectURL(blob);
+  let link: HTMLAnchorElement | undefined;
+  try {
+    link = document.createElement("a");
+    link.href = url;
+    link.download = result.fileName;
+    document.body.append(link);
+    link.click();
+  } finally {
+    link?.remove();
+    URL.revokeObjectURL(url);
+  }
+}
+
 export class ProjectExactStepExportError extends Error {
   readonly code: CadExportDiagnosticCode;
 
