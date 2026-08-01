@@ -12,6 +12,7 @@ import type {
 import { describe, expect, it, vi } from "vitest";
 import {
   CadOpsAgentAdapter,
+  type CadOpsAgentCurrentExactEvidence,
   type CadOpsAgentQueryRequest,
   type CadOpsAgentQueryResponse,
   executeCadOpsAgentQueryRequest,
@@ -3911,6 +3912,123 @@ describe("agent-adapter", () => {
       ]
     });
     expect(response.ok && "artifact" in response).toBe(false);
+  });
+
+  it("injects connected current exact evidence without exposing file authority", () => {
+    const engine = new CadEngine();
+    let evidence: CadOpsAgentCurrentExactEvidence = {
+      derivedExactMetadata: [],
+      currentExactResults: []
+    };
+    const adapter = new CadOpsAgentAdapter(engine, () => evidence);
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_connected_exact",
+      entityId: "rect_connected_exact",
+      featureId: "feat_connected_exact",
+      bodyId: "body_connected_exact"
+    });
+    const topology = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.topology", bodyId: "body_connected_exact" }
+    });
+    if (!topology.ok || topology.query !== "body.topology") {
+      throw new Error("Expected connected exact body topology.");
+    }
+    const sourceIdentitySignature = topology.topology.sourceIdentity.signature;
+    evidence = {
+      derivedExactMetadata: [
+        {
+          bodyId: "body_connected_exact",
+          sourceIdentitySignature,
+          status: "ready",
+          metadata: {
+            source: "kernel-derived",
+            confidence: "kernel-derived",
+            bounds: {
+              min: [0, 0, 0],
+              max: [4, 2, 3],
+              size: [4, 2, 3],
+              center: [2, 1, 1.5]
+            },
+            volume: 24,
+            diagnostics: []
+          }
+        }
+      ],
+      currentExactResults: [
+        {
+          status: "ready",
+          bodyId: "body_connected_exact",
+          sourceType: "sketchExtrudeFeature",
+          sourceIdentitySignature,
+          diagnostics: []
+        }
+      ]
+    };
+
+    const response = adapter.query({
+      requestId: "agent_connected_exact",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: {
+          query: "project.exportExact",
+          format: "step",
+          bodyIds: ["body_connected_exact"]
+        }
+      }
+    });
+    const surface = adapter.inspectV8ProjectSurface({
+      requestId: "agent_connected_surface",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      exactExport: {
+        format: "step",
+        bodyIds: ["body_connected_exact"]
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "project.exportExact",
+      status: "supported",
+      available: true,
+      requestedBodyIds: ["body_connected_exact"],
+      plan: {
+        schema: "AP242DIS",
+        orderedBodyIds: ["body_connected_exact"],
+        allOrNothing: true
+      },
+      currentExactResults: [
+        { bodyId: "body_connected_exact", status: "ready" }
+      ],
+      artifactPolicy: {
+        artifactBytesReturned: false,
+        fileWritesPerformed: false
+      }
+    });
+    expect(surface).toMatchObject({
+      exportReadiness: {
+        status: "supported",
+        plan: { orderedBodyIds: ["body_connected_exact"] }
+      },
+      exactExport: {
+        status: "supported",
+        available: true,
+        plan: { orderedBodyIds: ["body_connected_exact"] }
+      },
+      fileWriting: {
+        defaultBehavior: "readiness-only",
+        adapterWritesUserVisibleFiles: false,
+        mcpWritesUserVisibleFiles: false,
+        artifactBytesReturned: false,
+        localLocationsAccepted: false,
+        browserHandlesAccepted: false,
+        opfsLocationsAccepted: false
+      }
+    });
+    expect(JSON.stringify({ response, surface })).not.toMatch(
+      /"bytes"\s*:|"fileHandle"\s*:|"localPath"\s*:|"opfsPath"\s*:|"occtShape"\s*:|"rendererId"\s*:|"meshId"\s*:|"jobId"\s*:|"cacheKey"\s*:/i
+    );
   });
 
   it("returns V8 package readiness through adapter queries", () => {

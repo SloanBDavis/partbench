@@ -29,6 +29,7 @@ import {
   type ProjectVisualizationExportDisplayStatus
 } from "../../projectExportReadiness";
 import type { ProjectStorageCapabilityStatus } from "../../projectStorageCapabilities";
+import type { ProjectExactStepExportJobState } from "../../projectExactStepExport";
 import {
   approveLocalAgentProposal,
   rejectLocalAgentProposal,
@@ -90,6 +91,8 @@ export interface ProjectWorkspaceProps {
   readonly topologyIdentityReadiness?: ProjectTopologyIdentityReadinessQueryResponse;
   readonly importReadiness?: ProjectImportReadinessQueryResponse;
   readonly exportReadiness?: ProjectExportReadinessQueryResponse;
+  readonly selectedBodyId?: string;
+  readonly exactStepExportJob: ProjectExactStepExportJobState;
   readonly visualizationExport?: ProjectVisualizationExportDisplayStatus;
   readonly jsonDraft: string;
   readonly jsonDraftSource: ProjectJsonDraftSource;
@@ -120,7 +123,8 @@ export interface ProjectWorkspaceProps {
   readonly onImportJson: () => void;
   readonly onRefreshOpfsCache: () => void;
   readonly onClearOpfsCache: () => void;
-  readonly onDownloadStep: () => void;
+  readonly onDownloadStep: (bodyIds?: readonly string[]) => void;
+  readonly onCancelStep: () => void;
   readonly onDownloadVisualization: () => void;
   readonly onUpdateUnits: (
     units: DocumentUnits,
@@ -158,6 +162,8 @@ export function ProjectWorkspace({
   topologyIdentityReadiness,
   importReadiness,
   exportReadiness,
+  selectedBodyId,
+  exactStepExportJob,
   visualizationExport,
   jsonDraft,
   jsonDraftSource,
@@ -188,6 +194,7 @@ export function ProjectWorkspace({
   onRefreshOpfsCache,
   onClearOpfsCache,
   onDownloadStep,
+  onCancelStep,
   onDownloadVisualization,
   onUpdateUnits,
   onCreateParameter,
@@ -278,9 +285,12 @@ export function ProjectWorkspace({
         <ProjectExport
           disabled={disabled}
           readiness={exportReadiness}
+          selectedBodyId={selectedBodyId}
+          job={exactStepExportJob}
           visualization={visualizationExport}
           onUnavailableActivate={onUnavailableActivate}
           onDownloadStep={onDownloadStep}
+          onCancelStep={onCancelStep}
           onDownloadVisualization={onDownloadVisualization}
         />
       )}
@@ -1352,16 +1362,22 @@ function ProjectHistory({
 function ProjectExport({
   disabled,
   readiness,
+  selectedBodyId,
+  job,
   visualization,
   onUnavailableActivate,
   onDownloadStep,
+  onCancelStep,
   onDownloadVisualization
 }: {
   readonly disabled: boolean;
   readonly readiness?: ProjectExportReadinessQueryResponse;
+  readonly selectedBodyId?: string;
+  readonly job: ProjectExactStepExportJobState;
   readonly visualization?: ProjectVisualizationExportDisplayStatus;
   readonly onUnavailableActivate?: (reason: string) => void;
-  readonly onDownloadStep: () => void;
+  readonly onDownloadStep: (bodyIds?: readonly string[]) => void;
+  readonly onCancelStep: () => void;
   readonly onDownloadVisualization: () => void;
 }) {
   const display = readiness
@@ -1372,6 +1388,80 @@ function ProjectExport({
   const canExportStep = Boolean(readiness?.canExportFiles);
   const canExportGlb =
     visualization?.status === "supported" && visualization.available;
+  const bodyIdsKey =
+    readiness?.bodies.map((body) => body.bodyId).join("\0") ?? "";
+  const [chosenBodyIds, setChosenBodyIds] = useState<readonly string[]>(
+    () => readiness?.bodies.map((body) => body.bodyId) ?? []
+  );
+  const actionRowRef = useRef<HTMLDivElement>(null);
+  const previousJobStatus = useRef(job.status);
+  const running = job.status === "running";
+  const bodiesById = new Map(
+    readiness?.bodies.map((body) => [body.bodyId, body] as const)
+  );
+  const orderedBodies = [
+    ...chosenBodyIds.flatMap((bodyId) => {
+      const body = bodiesById.get(bodyId);
+      return body ? [body] : [];
+    }),
+    ...(readiness?.bodies.filter(
+      (body) => !chosenBodyIds.includes(body.bodyId)
+    ) ?? [])
+  ];
+  const selectedBodyAvailable = Boolean(
+    selectedBodyId && bodiesById.has(selectedBodyId)
+  );
+
+  useEffect(() => {
+    const bodyIds = bodyIdsKey ? bodyIdsKey.split("\0") : [];
+    setChosenBodyIds((current) => [
+      ...current.filter((bodyId) => bodyIds.includes(bodyId)),
+      ...bodyIds.filter((bodyId) => !current.includes(bodyId))
+    ]);
+  }, [bodyIdsKey]);
+
+  useEffect(() => {
+    if (previousJobStatus.current === "running" && job.status !== "running") {
+      queueMicrotask(() =>
+        actionRowRef.current
+          ?.querySelector<HTMLButtonElement>("button")
+          ?.focus()
+      );
+    }
+    previousJobStatus.current = job.status;
+  }, [job.status]);
+
+  useEffect(() => {
+    if (!running) return;
+    const cancelOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onCancelStep();
+    };
+    window.addEventListener("keydown", cancelOnEscape);
+    return () => window.removeEventListener("keydown", cancelOnEscape);
+  }, [onCancelStep, running]);
+
+  function toggleChosenBody(bodyId: string) {
+    setChosenBodyIds((current) =>
+      current.includes(bodyId)
+        ? current.filter((candidate) => candidate !== bodyId)
+        : [...current, bodyId]
+    );
+  }
+
+  function moveChosenBody(bodyId: string, offset: -1 | 1) {
+    setChosenBodyIds((current) => {
+      const index = current.indexOf(bodyId);
+      const destination = index + offset;
+      if (index < 0 || destination < 0 || destination >= current.length) {
+        return current;
+      }
+      const next = [...current];
+      [next[index], next[destination]] = [next[destination]!, next[index]!];
+      return next;
+    });
+  }
   const downloadStepReason = canExportStep
     ? undefined
     : PROJECT_ACTION_UNAVAILABLE.downloadStep;
@@ -1401,21 +1491,168 @@ function ProjectExport({
             status={step?.statusLabel ?? display.statusLabel}
           >
             <p className="pb-project-card-detail">
-              {step?.detail ??
-                "Exact STEP export uses supported source bodies."}
+              Named STEP AP242DIS · {readiness?.units} · project body names ·
+              chosen order preserved.
+            </p>
+            <p className="pb-project-card-detail">
+              STEP export is all-or-nothing: every requested body must be ready.
+              Remove blocked bodies from the chooser to re-plan an explicit
+              subset.
             </p>
             {step?.status !== "supported" ? (
               <p className="pb-project-blocked-reason">{step?.limitation}</p>
             ) : null}
-            <Button
-              tone="primary"
-              disabled={disabled}
-              unavailableReason={downloadStepReason}
-              onUnavailableActivate={onUnavailableActivate}
-              onClick={onDownloadStep}
+            <div className="pb-project-action-row" ref={actionRowRef}>
+              <Button
+                tone="primary"
+                disabled={disabled || running}
+                unavailableReason={downloadStepReason}
+                onUnavailableActivate={onUnavailableActivate}
+                onClick={() => onDownloadStep()}
+              >
+                Export all bodies
+              </Button>
+              <Button
+                disabled={disabled || running}
+                unavailableReason={
+                  selectedBodyAvailable
+                    ? undefined
+                    : "Select an active semantic body before exporting it."
+                }
+                onUnavailableActivate={onUnavailableActivate}
+                onClick={() =>
+                  selectedBodyId && onDownloadStep([selectedBodyId])
+                }
+              >
+                Export selected body
+              </Button>
+              <Button
+                disabled={disabled || running}
+                unavailableReason={
+                  chosenBodyIds.length > 0
+                    ? undefined
+                    : "Choose at least one body before exporting the subset."
+                }
+                onUnavailableActivate={onUnavailableActivate}
+                onClick={() => onDownloadStep(chosenBodyIds)}
+              >
+                Export chosen bodies
+              </Button>
+            </div>
+            <fieldset
+              className="pb-project-export-chooser"
+              disabled={disabled || running}
             >
-              Download STEP
-            </Button>
+              <legend>Ordered body chooser</legend>
+              <p>
+                {chosenBodyIds.length === 0
+                  ? "No bodies chosen."
+                  : `${chosenBodyIds.length} chosen: ${chosenBodyIds
+                      .map(
+                        (bodyId) => bodiesById.get(bodyId)?.bodyName ?? bodyId
+                      )
+                      .join(" → ")}`}
+              </p>
+              <ol className="pb-project-export-body-list">
+                {orderedBodies.map((body) => {
+                  const chosenIndex = chosenBodyIds.indexOf(body.bodyId);
+                  const chosen = chosenIndex >= 0;
+                  return (
+                    <li key={body.bodyId}>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={chosen}
+                          onChange={() => toggleChosenBody(body.bodyId)}
+                        />
+                        <span>
+                          {chosen ? `${chosenIndex + 1}. ` : ""}
+                          {body.bodyName ?? body.bodyId}
+                        </span>
+                      </label>
+                      <span>{getExportReadinessStatusLabel(body.status)}</span>
+                      <div className="pb-project-table-actions">
+                        <Button
+                          density="dense"
+                          disabled={!chosen || chosenIndex === 0}
+                          aria-label={`Move ${body.bodyName ?? body.bodyId} earlier`}
+                          onClick={() => moveChosenBody(body.bodyId, -1)}
+                        >
+                          Earlier
+                        </Button>
+                        <Button
+                          density="dense"
+                          disabled={
+                            !chosen || chosenIndex === chosenBodyIds.length - 1
+                          }
+                          aria-label={`Move ${body.bodyName ?? body.bodyId} later`}
+                          onClick={() => moveChosenBody(body.bodyId, 1)}
+                        >
+                          Later
+                        </Button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            </fieldset>
+            {running ? (
+              <div
+                className="pb-project-export-progress"
+                role="status"
+                aria-live="polite"
+              >
+                <progress
+                  max={Math.max(1, job.totalBodyCount)}
+                  value={job.completedBodyCount}
+                />
+                <p>{job.message}</p>
+                <Button tone="danger" onClick={onCancelStep}>
+                  Cancel export
+                </Button>
+              </div>
+            ) : job.status !== "idle" ? (
+              <div
+                className="pb-project-export-result"
+                role={job.status === "failed" ? "alert" : "status"}
+                aria-live={job.status === "failed" ? "assertive" : "polite"}
+              >
+                <p>{job.message}</p>
+                {job.status === "failed" || job.status === "cancelled" ? (
+                  <Button onClick={() => onDownloadStep(job.requestedBodyIds)}>
+                    Retry export
+                  </Button>
+                ) : null}
+                {job.diagnostics.length > 0 ? (
+                  <details>
+                    <summary>Technical diagnostics</summary>
+                    <ul>
+                      {job.diagnostics.map((diagnostic, index) => (
+                        <li
+                          key={`${diagnostic.code}-${diagnostic.bodyId ?? index}`}
+                        >
+                          <code>{diagnostic.code}</code>: {diagnostic.message}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                ) : null}
+              </div>
+            ) : null}
+            {readiness?.diagnostics.length ? (
+              <details className="pb-project-advanced pb-project-advanced--compact">
+                <summary>Readiness diagnostics</summary>
+                <ul>
+                  {readiness?.diagnostics.map((diagnostic, index) => (
+                    <li
+                      key={`${diagnostic.code}-${diagnostic.bodyId ?? index}`}
+                    >
+                      <code>{diagnostic.code}</code>: {diagnostic.message}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
           </ProjectCard>
           <ProjectCard
             title="Visualization GLB"
@@ -1452,6 +1689,21 @@ function ProjectExport({
                   <span>{row.statusLabel}</span>
                 </div>
                 <p>{row.detail}</p>
+                {readiness?.bodies.find((body) => body.bodyId === row.id)
+                  ?.diagnostics.length ? (
+                  <details>
+                    <summary>Technical diagnostics</summary>
+                    <ul>
+                      {readiness?.bodies
+                        .find((body) => body.bodyId === row.id)
+                        ?.diagnostics.map((diagnostic, index) => (
+                          <li key={`${diagnostic.code}-${index}`}>
+                            <code>{diagnostic.code}</code>: {diagnostic.message}
+                          </li>
+                        ))}
+                    </ul>
+                  </details>
+                ) : null}
               </li>
             ))}
           </ul>

@@ -13,6 +13,7 @@ import {
   type CadAgentSessionErrorResponse,
   type CadCurrentSelection,
   type CadOpsAgentCurrentSelectionResponse,
+  type CadOpsAgentCurrentExactEvidence,
   type CadOpsAgentQueryResponse,
   type CadOpsAgentRequest,
   type CadOpsAgentResponse,
@@ -42,6 +43,7 @@ export interface LocalAgentSessionOptions {
   readonly engine: CadEngine;
   readonly executor: AsyncCadCommandExecutor;
   readonly readSelection: () => CurrentAgentSelectionInput;
+  readonly readCurrentExactEvidence?: () => CadOpsAgentCurrentExactEvidence;
   readonly publishCommit: (
     response: CadOpsAgentSuccessResponse
   ) => Promise<void>;
@@ -98,7 +100,10 @@ export class LocalAgentSession {
   #disposed = false;
 
   constructor(readonly options: LocalAgentSessionOptions) {
-    this.#adapter = new CadOpsAgentAdapter(options.engine);
+    this.#adapter = new CadOpsAgentAdapter(
+      options.engine,
+      options.readCurrentExactEvidence
+    );
   }
 
   getSnapshot(): LocalAgentSessionSnapshot {

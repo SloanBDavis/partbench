@@ -48,7 +48,8 @@ export function readProjectExactStepExport(
   engine: CadEngine,
   exactMetadata: DerivedExactMetadataSnapshot,
   currentSources: readonly DerivedExactMetadataSource[],
-  projections?: readonly CurrentExactResultProjection[]
+  projections?: readonly CurrentExactResultProjection[],
+  bodyIds?: readonly string[]
 ): ProjectExactExportQueryResponse | undefined {
   const derivedExactMetadata = createCurrentDerivedExactMetadataSnapshots(
     engine,
@@ -61,6 +62,7 @@ export function readProjectExactStepExport(
     query: {
       query: "project.exportExact",
       format: "step",
+      ...(bodyIds ? { bodyIds } : {}),
       ...(derivedExactMetadata.length > 0 ? { derivedExactMetadata } : {}),
       ...(projections
         ? { currentExactResults: toCadCurrentExactResults(projections) }

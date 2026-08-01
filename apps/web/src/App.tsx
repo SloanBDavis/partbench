@@ -23,6 +23,7 @@ import type {
   BodyGeneratedReferencesQueryResponse,
   CadBodyGeneratedReferenceEvidenceSnapshot,
   CadBatchResponse,
+  CadExportDiagnosticCode,
   CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
   FeatureShellOpenFaceRef,
@@ -328,6 +329,7 @@ import {
   readProjectExactStepExport,
   readProjectExportReadiness
 } from "./projectExactExportQueries";
+import type { ProjectExactStepExportJobState } from "./projectExactStepExport";
 import {
   createBodyMeasurementRows,
   formatArea,
@@ -2401,6 +2403,14 @@ export function App() {
   const [projectMessageTone, setProjectMessageTone] = useState<
     "info" | "error"
   >("info");
+  const [exactStepExportJob, setExactStepExportJob] =
+    useState<ProjectExactStepExportJobState>({
+      status: "idle",
+      completedBodyCount: 0,
+      totalBodyCount: 0,
+      diagnostics: []
+    });
+  const exactStepExportActiveRef = useRef(false);
   const derivedMeshCacheContext = useMemo<
     DerivedMeshCacheContext | undefined
   >(() => {
@@ -3029,6 +3039,24 @@ export function App() {
       derivedExactMetadata,
       derivedGeometry,
       derivedGeometrySources
+    ]
+  );
+  const currentAgentExactEvidence = useMemo(
+    () => ({
+      derivedExactMetadata: createCurrentDerivedExactMetadataSnapshots(
+        engine,
+        derivedExactMetadata,
+        currentExactMetadataSources,
+        currentExactResultProjections
+      ),
+      currentExactResults: toCadCurrentExactResults(
+        currentExactResultProjections
+      )
+    }),
+    [
+      currentExactMetadataSources,
+      currentExactResultProjections,
+      derivedExactMetadata
     ]
   );
   const projectExportReadiness = useMemo(
@@ -7110,11 +7138,34 @@ export function App() {
     setProjectMessageTone("info");
   }
 
-  async function downloadExactStepExport() {
+  async function downloadExactStepExport(bodyIds?: readonly string[]) {
+    if (exactStepExportActiveRef.current) return;
+    const requestedBodyIds = bodyIds ? [...bodyIds] : undefined;
+    if (requestedBodyIds?.length === 0) {
+      const message = "Choose at least one body for exact STEP export.";
+      setExactStepExportJob({
+        status: "failed",
+        requestedBodyIds,
+        completedBodyCount: 0,
+        totalBodyCount: 0,
+        message,
+        diagnostics: []
+      });
+      setProjectMessage(message);
+      setProjectMessageTone("error");
+      return;
+    }
     if (!projectStorageCapabilities.jsonDownloadAvailable) {
-      setProjectMessage(
-        "STEP download is unavailable in this browser runtime."
-      );
+      const message = "STEP download is unavailable in this browser runtime.";
+      setExactStepExportJob({
+        status: "failed",
+        ...(requestedBodyIds ? { requestedBodyIds } : {}),
+        completedBodyCount: 0,
+        totalBodyCount: requestedBodyIds?.length ?? 0,
+        message,
+        diagnostics: []
+      });
+      setProjectMessage(message);
       setProjectMessageTone("error");
       return;
     }
@@ -7123,74 +7174,135 @@ export function App() {
       engine,
       derivedExactMetadata,
       currentExactMetadataSources,
-      currentExactResultProjections
+      currentExactResultProjections,
+      requestedBodyIds
     );
 
     if (!exactExport?.available) {
       const diagnostic = exactExport?.diagnostics.find(
         (entry) => entry.status !== "supported"
       );
-      setProjectMessage(
-        diagnostic
-          ? `${diagnostic.code}: ${diagnostic.message}`
-          : "STEP export needs a supported active authored body."
-      );
+      const message = diagnostic
+        ? `STEP export is not ready: ${diagnostic.message}`
+        : "STEP export needs a supported active authored body.";
+      setExactStepExportJob({
+        status: "failed",
+        ...(requestedBodyIds ? { requestedBodyIds } : {}),
+        completedBodyCount: 0,
+        totalBodyCount: exactExport?.bodyCount ?? requestedBodyIds?.length ?? 0,
+        message,
+        diagnostics: exactExport?.diagnostics ?? []
+      });
+      setProjectMessage(message);
       setProjectMessageTone("error");
       return;
     }
 
-    const {
-      downloadProjectExactStepArtifact,
-      executeProjectExactStepExport,
-      isExactExportPlanCurrent
-    } = await import("./projectExactStepExport");
     const runtime = getDerivedGeometryRuntime();
-    let result;
+    runtime.resumeModelWork();
+    exactStepExportActiveRef.current = true;
+    setExactStepExportJob({
+      status: "running",
+      ...(requestedBodyIds ? { requestedBodyIds } : {}),
+      phase: "building",
+      completedBodyCount: 0,
+      totalBodyCount: exactExport.plan?.bodies.length ?? exactExport.bodyCount,
+      message: "Building exact body artifacts.",
+      diagnostics: []
+    });
     try {
-      result = await executeProjectExactStepExport({
+      const {
+        downloadProjectExactStepArtifact,
+        executeProjectExactStepExport,
+        isExactExportPlanCurrent
+      } = await import("./projectExactStepExport");
+      const result = await executeProjectExactStepExport({
         engine,
         exactExport,
         resolutions: currentExactBodyResolutions,
-        runtime
+        runtime,
+        onProgress: (progress) =>
+          setExactStepExportJob({
+            status: "running",
+            ...(requestedBodyIds ? { requestedBodyIds } : {}),
+            ...progress,
+            message:
+              progress.phase === "writing"
+                ? "Writing the named AP242 STEP file."
+                : `Built ${progress.completedBodyCount} of ${progress.totalBodyCount} exact body artifacts.`,
+            diagnostics: []
+          })
       });
+      if (!isExactExportPlanCurrent(engine, result.plan)) {
+        throw Object.assign(
+          new Error(
+            "Project or selected body source identity changed before download."
+          ),
+          { code: "EXPORT_SOURCE_CHANGED" }
+        );
+      }
+      downloadProjectExactStepArtifact(result);
+      const message = `Downloaded ${result.fileName}: ${result.bodyCount} exact bod${
+        result.bodyCount === 1 ? "y" : "ies"
+      }, ${result.byteLength} bytes.`;
+      setExactStepExportJob({
+        status: "complete",
+        ...(requestedBodyIds ? { requestedBodyIds } : {}),
+        phase: "writing",
+        completedBodyCount: result.bodyCount,
+        totalBodyCount: result.bodyCount,
+        message,
+        diagnostics: []
+      });
+      setProjectMessage(message);
+      setProjectMessageTone("info");
     } catch (error) {
       const cancelled =
         error instanceof Error &&
         (error.name === "GeometryJobGenerationError" ||
           ("code" in error &&
             error.code === "GEOMETRY_JOB_GENERATION_CANCELLED"));
-      setProjectMessage(
-        cancelled
-          ? "STEP export was cancelled. Resume the model worker, then invoke STEP export again."
-          : `STEP export failed: ${error instanceof Error ? error.message : "The geometry worker did not complete the export."}`
-      );
-      setProjectMessageTone("error");
-      return;
+      const detail =
+        error instanceof Error
+          ? error.message
+          : "The geometry worker did not complete the export.";
+      const code: CadExportDiagnosticCode = cancelled
+        ? "EXPORT_CANCELLED"
+        : error && typeof error === "object" && "code" in error
+          ? (String(error.code) as CadExportDiagnosticCode)
+          : "EXPORT_STEP_TRANSFER_FAILED";
+      const message = cancelled
+        ? "STEP export was cancelled. You can retry the same selection."
+        : `STEP export failed: ${detail}`;
+      setExactStepExportJob((current) => ({
+        status: cancelled ? "cancelled" : "failed",
+        ...(requestedBodyIds ? { requestedBodyIds } : {}),
+        ...(current.phase ? { phase: current.phase } : {}),
+        completedBodyCount: current.completedBodyCount,
+        totalBodyCount: current.totalBodyCount,
+        message,
+        diagnostics: [{ code, message: detail }]
+      }));
+      setProjectMessage(message);
+      setProjectMessageTone(cancelled ? "info" : "error");
+    } finally {
+      exactStepExportActiveRef.current = false;
     }
+  }
 
-    if (!isExactExportPlanCurrent(engine, result.plan)) {
-      setProjectMessage(
-        "EXPORT_SOURCE_CHANGED: Project or selected body source identity changed before download."
-      );
-      setProjectMessageTone("error");
-      return;
-    }
-
-    try {
-      downloadProjectExactStepArtifact(result);
-    } catch (error) {
-      setProjectMessage(
-        `STEP download failed: ${error instanceof Error ? error.message : "The browser did not accept the STEP artifact."}`
-      );
-      setProjectMessageTone("error");
-      return;
-    }
-    setProjectMessage(
-      `Downloaded ${result.fileName}: ${result.bodyCount} exact bod${
-        result.bodyCount === 1 ? "y" : "ies"
-      }, ${result.byteLength} bytes.`
+  function cancelExactStepExport() {
+    if (!exactStepExportActiveRef.current) return;
+    getDerivedGeometryRuntime().cancelModelWork(
+      "STEP export was cancelled by the user."
     );
-    setProjectMessageTone("info");
+    setExactStepExportJob((current) => ({
+      ...current,
+      status: "cancelled",
+      message: "STEP export was cancelled. You can retry the same selection.",
+      diagnostics: [
+        { code: "EXPORT_CANCELLED", message: "The user cancelled STEP export." }
+      ]
+    }));
   }
 
   async function openProjectStepImport(): Promise<boolean> {
@@ -7699,6 +7811,14 @@ export function App() {
     }
     derivedGeometryServiceRef.current?.refresh([]);
     derivedExactMetadataServiceRef.current?.refresh([]);
+    if (!exactStepExportActiveRef.current) {
+      setExactStepExportJob({
+        status: "idle",
+        completedBodyCount: 0,
+        totalBodyCount: 0,
+        diagnostics: []
+      });
+    }
   }
 
   function selectDocumentTreeItem(selection: DocumentTreeSelection) {
@@ -9239,6 +9359,7 @@ export function App() {
               executor={commandExecutor}
               document={document}
               selection={currentAgentSelection}
+              currentExactEvidence={currentAgentExactEvidence}
               publishCommit={publishAgentCommit}
             />
           </Suspense>
@@ -9536,6 +9657,8 @@ export function App() {
                 topologyIdentityReadiness={projectTopologyIdentityReadiness}
                 importReadiness={projectImportReadiness}
                 exportReadiness={projectExportReadiness}
+                selectedBodyId={selectedBodyId}
+                exactStepExportJob={exactStepExportJob}
                 visualizationExport={visualizationMeshExportStatus}
                 jsonDraft={projectJson}
                 jsonDraftSource={projectJsonDraftSource}
@@ -9582,7 +9705,10 @@ export function App() {
                 onImportJson={importProjectJson}
                 onRefreshOpfsCache={() => void refreshProjectOpfsCache(true)}
                 onClearOpfsCache={() => void clearProjectOpfsCache()}
-                onDownloadStep={() => void downloadExactStepExport()}
+                onDownloadStep={(bodyIds) =>
+                  void downloadExactStepExport(bodyIds)
+                }
+                onCancelStep={cancelExactStepExport}
                 onDownloadVisualization={downloadVisualizationMeshExport}
                 onUpdateUnits={(units, mode) =>
                   void updateDocumentUnits(units, mode)

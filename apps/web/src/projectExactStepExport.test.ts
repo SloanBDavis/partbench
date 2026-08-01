@@ -38,9 +38,11 @@ describe("projectExactStepExport", () => {
   it("builds artifacts and writes direct STEP bytes in selected plan order", async () => {
     const fixture = createFixture();
     const runtime = createRuntime();
+    const progress = vi.fn();
     const result = await executeProjectExactStepExport({
       ...fixture,
-      runtime
+      runtime,
+      onProgress: progress
     });
 
     expect(result).toMatchObject({
@@ -80,6 +82,28 @@ describe("projectExactStepExport", () => {
         )
       ).toBe(true);
     }
+    expect(progress.mock.calls.map(([entry]) => entry)).toEqual([
+      { phase: "building", completedBodyCount: 0, totalBodyCount: 3 },
+      {
+        phase: "building",
+        completedBodyCount: 1,
+        totalBodyCount: 3,
+        bodyId: "body:z"
+      },
+      {
+        phase: "building",
+        completedBodyCount: 2,
+        totalBodyCount: 3,
+        bodyId: "body:n"
+      },
+      {
+        phase: "building",
+        completedBodyCount: 3,
+        totalBodyCount: 3,
+        bodyId: "body:a"
+      },
+      { phase: "writing", completedBodyCount: 3, totalBodyCount: 3 }
+    ]);
   });
 
   it("rejects source changes before and during artifact construction", async () => {

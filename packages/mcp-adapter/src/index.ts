@@ -3174,7 +3174,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.project_export_readiness",
     description:
-      "Returns read-only export readiness for current source bodies, exact STEP status, and Mesh/GLB visualization status.",
+      "Returns read-only per-body export readiness and the current identity-bound AP242 STEP plan when connected derived evidence is available.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -3184,19 +3184,28 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.project_export_exact",
     description:
-      "Returns an identity-bound exact STEP plan, current per-body readiness, and structured diagnostics. MCP receives no geometry or file bytes.",
+      "Returns an all-or-nothing identity-bound AP242 STEP plan with requested body order, names, units, current per-body readiness, and diagnostics. MCP receives no geometry, file bytes, handles, or file-writing authority.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
       required: ["format"],
       properties: {
-        format: { type: "string", enum: ["step"] },
+        format: {
+          type: "string",
+          enum: ["step"],
+          description:
+            "Plans named STEP AP242DIS output; does not write a file."
+        },
         bodyIds: {
           type: "array",
+          description:
+            "Optional semantic body IDs in the exact requested output order. Omit to plan all active bodies.",
           items: { type: "string" }
         },
         sourceIdentity: {
           type: "object",
+          description:
+            "Optional authoritative project identity guard for stale-plan detection.",
           additionalProperties: false,
           required: ["algorithm", "sha256"],
           properties: {

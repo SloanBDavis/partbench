@@ -3,7 +3,10 @@ import {
   CadEngine,
   SnapshotCadCommandWorker
 } from "@web-cad/cad-core";
-import type { CadOpsAgentRequest } from "@web-cad/agent-adapter";
+import type {
+  CadOpsAgentCurrentExactEvidence,
+  CadOpsAgentRequest
+} from "@web-cad/agent-adapter";
 import { describe, expect, it, vi } from "vitest";
 import {
   LocalAgentSession,
@@ -11,6 +14,7 @@ import {
   createCurrentAgentSelectionForEngine,
   readLocalAgentSessionToken
 } from "./localAgentSession";
+import { isExactExportPlanCurrent } from "./projectExactStepExport";
 
 describe("local agent selection", () => {
   it("uses the documented semantic precedence and excludes axis internals", () => {
@@ -187,6 +191,40 @@ describe("local agent approval", () => {
     await pending;
   });
 
+  it("reads connected exact evidence without creating an approval proposal", async () => {
+    const readCurrentExactEvidence = vi.fn(
+      (): CadOpsAgentCurrentExactEvidence => ({
+        derivedExactMetadata: [],
+        currentExactResults: []
+      })
+    );
+    const fixture = createSession(0, readCurrentExactEvidence);
+
+    await expect(
+      fixture.session.query({
+        requestId: "exact-readiness",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        query: {
+          version: "cadops.v1",
+          query: { query: "project.exportExact", format: "step" }
+        }
+      })
+    ).resolves.toMatchObject({
+      ok: true,
+      query: "project.exportExact",
+      artifactPolicy: {
+        artifactBytesReturned: false,
+        fileWritesPerformed: false
+      }
+    });
+    expect(readCurrentExactEvidence).toHaveBeenCalledTimes(1);
+    expect(fixture.session.getSnapshot().approvalMode).toBe("manualApproval");
+    expect(fixture.session.getSnapshot().proposal).toBeUndefined();
+    expect(fixture.session.setApprovalMode("approveAll")).toBe(true);
+    expect(fixture.session.getSnapshot().approvalMode).toBe("approveAll");
+    expect(fixture.session.getSnapshot().proposal).toBeUndefined();
+  });
+
   it("reserves manual approval while the first preview is still running", async () => {
     const fixture = createSession(10);
     const pending = fixture.session.execute(createBoxRequest("first-box"));
@@ -221,6 +259,79 @@ describe("local agent approval", () => {
       error: { code: "AGENT_PROPOSAL_STALE" }
     });
     expect(fixture.engine.getDocument().objects.has("stale-box")).toBe(false);
+  });
+
+  it("stales an existing exact export plan after an approved agent edit", async () => {
+    const fixture = createSession();
+    fixture.engine.apply({
+      op: "scene.createBox",
+      id: "agent-edit-box",
+      dimensions: { width: 1, height: 2, depth: 3 }
+    });
+    const topology = fixture.engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.topology", bodyId: "body:agent-edit-box" }
+    });
+    if (!topology.ok || topology.query !== "body.topology") {
+      throw new Error("Expected primitive body topology.");
+    }
+    const exactExport = fixture.engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "project.exportExact",
+        format: "step",
+        bodyIds: ["body:agent-edit-box"],
+        derivedExactMetadata: [
+          {
+            bodyId: "body:agent-edit-box",
+            sourceIdentitySignature: topology.topology.sourceIdentity.signature,
+            status: "ready",
+            metadata: {
+              source: "kernel-derived",
+              confidence: "kernel-derived",
+              bounds: {
+                min: [0, 0, 0],
+                max: [1, 2, 3],
+                size: [1, 2, 3],
+                center: [0.5, 1, 1.5]
+              },
+              volume: 6,
+              diagnostics: []
+            }
+          }
+        ]
+      }
+    });
+    if (
+      !exactExport.ok ||
+      exactExport.query !== "project.exportExact" ||
+      !exactExport.plan
+    ) {
+      throw new Error("Expected current exact export plan.");
+    }
+
+    const pending = fixture.session.execute({
+      ...createBoxRequest("unused"),
+      requestId: "request-agent-edit-box",
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "scene.updateBoxDimensions",
+            id: "agent-edit-box",
+            dimensions: { width: 2, height: 2, depth: 3 }
+          }
+        ]
+      }
+    });
+    await waitForProposal(fixture.session);
+    await fixture.session.approve();
+    await expect(pending).resolves.toMatchObject({ ok: true, mode: "commit" });
+
+    expect(isExactExportPlanCurrent(fixture.engine, exactExport.plan)).toBe(
+      false
+    );
   });
 
   it("does not approve behind an already queued human edit", async () => {
@@ -378,7 +489,10 @@ describe("local agent approval", () => {
   });
 });
 
-function createSession(workerDelayMs = 0) {
+function createSession(
+  workerDelayMs = 0,
+  readCurrentExactEvidence?: () => CadOpsAgentCurrentExactEvidence
+) {
   const engine = new CadEngine();
   const executor = new AsyncCadCommandExecutor(
     engine,
@@ -390,6 +504,7 @@ function createSession(workerDelayMs = 0) {
     engine,
     executor,
     readSelection: () => ({}),
+    ...(readCurrentExactEvidence ? { readCurrentExactEvidence } : {}),
     publishCommit
   });
   return { engine, executor, publishCommit, session };

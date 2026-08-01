@@ -1,4 +1,7 @@
-import type { CadOpsAgentSuccessResponse } from "@web-cad/agent-adapter";
+import type {
+  CadOpsAgentCurrentExactEvidence,
+  CadOpsAgentSuccessResponse
+} from "@web-cad/agent-adapter";
 import type {
   AsyncCadCommandExecutor,
   CadDocument,
@@ -17,22 +20,24 @@ export function LocalAgentSessionController({
   executor,
   document,
   selection,
+  currentExactEvidence,
   publishCommit
 }: {
   readonly engine: CadEngine;
   readonly executor: AsyncCadCommandExecutor;
   readonly document: CadDocument;
   readonly selection: CurrentAgentSelectionInput;
+  readonly currentExactEvidence: CadOpsAgentCurrentExactEvidence;
   readonly publishCommit: (
     response: CadOpsAgentSuccessResponse
   ) => Promise<void>;
 }) {
-  const latestRef = useRef({ selection, publishCommit });
+  const latestRef = useRef({ selection, currentExactEvidence, publishCommit });
   const sessionRef = useRef<LocalAgentSession | null>(null);
 
   useEffect(() => {
-    latestRef.current = { selection, publishCommit };
-  }, [publishCommit, selection]);
+    latestRef.current = { selection, currentExactEvidence, publishCommit };
+  }, [currentExactEvidence, publishCommit, selection]);
 
   useEffect(() => {
     const token = readLocalAgentSessionToken(window.location.hash);
@@ -42,6 +47,7 @@ export function LocalAgentSessionController({
       engine,
       executor,
       readSelection: () => latestRef.current.selection,
+      readCurrentExactEvidence: () => latestRef.current.currentExactEvidence,
       publishCommit: (response) => latestRef.current.publishCommit(response)
     });
     sessionRef.current = session;

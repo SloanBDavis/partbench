@@ -5,6 +5,7 @@ import {
 import {
   validateCadExactExportPlan,
   type CadExactExportPlan,
+  type CadExportDiagnostic,
   type CadExportDiagnosticCode,
   type ProjectExactExportQueryResponse
 } from "@web-cad/cad-protocol";
@@ -30,6 +31,27 @@ export interface ProjectExactStepExportExecutionInput {
     DerivedGeometryRuntime,
     "exactBodyArtifact" | "executeExactStepExport"
   >;
+  readonly onProgress?: (progress: ProjectExactStepExportProgress) => void;
+}
+
+export interface ProjectExactStepExportProgress {
+  readonly phase: "building" | "writing";
+  readonly completedBodyCount: number;
+  readonly totalBodyCount: number;
+  readonly bodyId?: string;
+}
+
+export interface ProjectExactStepExportJobState {
+  readonly status: "idle" | "running" | "complete" | "cancelled" | "failed";
+  readonly requestedBodyIds?: readonly string[];
+  readonly phase?: ProjectExactStepExportProgress["phase"];
+  readonly completedBodyCount: number;
+  readonly totalBodyCount: number;
+  readonly message?: string;
+  readonly diagnostics: readonly Pick<
+    CadExportDiagnostic,
+    "code" | "message" | "bodyId"
+  >[];
 }
 
 export interface ProjectExactStepExportResult {
@@ -78,10 +100,16 @@ export async function executeProjectExactStepExport({
   engine,
   exactExport,
   resolutions,
-  runtime
+  runtime,
+  onProgress
 }: ProjectExactStepExportExecutionInput): Promise<ProjectExactStepExportResult> {
   const plan = requireReadyPlan(exactExport);
   assertExactExportPlanCurrent(engine, plan);
+  onProgress?.({
+    phase: "building",
+    completedBodyCount: 0,
+    totalBodyCount: plan.bodies.length
+  });
   const resolutionsByBodyId = new Map(
     resolutions.map((resolution) => [resolution.bodyId, resolution] as const)
   );
@@ -145,8 +173,19 @@ export async function executeProjectExactStepExport({
         );
       }
       assertExactExportPlanCurrent(engine, plan);
+      onProgress?.({
+        phase: "building",
+        completedBodyCount: artifacts.length,
+        totalBodyCount: plan.bodies.length,
+        bodyId: body.bodyId
+      });
     }
 
+    onProgress?.({
+      phase: "writing",
+      completedBodyCount: artifacts.length,
+      totalBodyCount: plan.bodies.length
+    });
     const request = createExactStepExportWorkerRequest({
       id: `exact-step-${plan.planIdentity.slice(0, 16)}`,
       units: plan.units,

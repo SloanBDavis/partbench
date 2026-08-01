@@ -36,6 +36,7 @@ import type {
   BodyTopologyIdentityQueryResponse,
   CadBodyTopologySnapshot,
   CadDependencyHealthStatus,
+  CadCurrentExactResult,
   CadExportBodyReadiness,
   CadExportDiagnostic,
   CadExportFormatReadiness,
@@ -241,6 +242,11 @@ export interface CadOpsAgentQueryRequest {
   readonly requestId: string;
   readonly adapterVersion: AgentAdapterVersion;
   readonly query: CadQueryRequest;
+}
+
+export interface CadOpsAgentCurrentExactEvidence {
+  readonly derivedExactMetadata: readonly CadBodyDerivedExactMetadataSnapshot[];
+  readonly currentExactResults: readonly CadCurrentExactResult[];
 }
 
 export interface CadOpsAgentV8ProjectSurfaceRequest {
@@ -1229,7 +1235,10 @@ export interface CadOpsAgentV8ProjectSurfaceBoundarySummary {
 }
 
 export class CadOpsAgentAdapter {
-  constructor(private readonly engine: CadEngine = new CadEngine()) {}
+  constructor(
+    private readonly engine: CadEngine = new CadEngine(),
+    private readonly readCurrentExactEvidence?: () => CadOpsAgentCurrentExactEvidence
+  ) {}
 
   execute(request: CadOpsAgentRequest): CadOpsAgentResponse {
     const effectiveRequest = applyAgentRequestContext(request);
@@ -1252,14 +1261,23 @@ export class CadOpsAgentAdapter {
   query(request: CadOpsAgentQueryRequest): CadOpsAgentQueryResponse {
     return toAgentQueryResponse(
       request,
-      this.engine.executeQuery(request.query)
+      this.engine.executeQuery(
+        addCurrentExactEvidence(
+          request.query,
+          this.readCurrentExactEvidence?.()
+        )
+      )
     );
   }
 
   inspectV8ProjectSurface(
     request: CadOpsAgentV8ProjectSurfaceRequest
   ): CadOpsAgentV8ProjectSurfaceResponse {
-    return createV8ProjectSurfaceResponse(request, this.engine);
+    return createV8ProjectSurfaceResponse(
+      request,
+      this.engine,
+      this.readCurrentExactEvidence?.()
+    );
   }
 
   getCurrentSelection(
@@ -3734,13 +3752,45 @@ function toAgentQueryResponse(
   };
 }
 
+function addCurrentExactEvidence(
+  request: CadQueryRequest,
+  evidence: CadOpsAgentCurrentExactEvidence | undefined
+): CadQueryRequest {
+  if (!evidence) return request;
+  switch (request.query.query) {
+    case "project.summary":
+    case "project.health":
+    case "project.exportReadiness":
+    case "project.exportExact":
+      return {
+        ...request,
+        query: {
+          ...request.query,
+          derivedExactMetadata: evidence.derivedExactMetadata,
+          currentExactResults: evidence.currentExactResults
+        }
+      };
+    default:
+      return request;
+  }
+}
+
 function createV8ProjectSurfaceResponse(
   request: CadOpsAgentV8ProjectSurfaceRequest,
-  engine: CadEngine
+  engine: CadEngine,
+  evidence?: CadOpsAgentCurrentExactEvidence
 ): CadOpsAgentV8ProjectSurfaceResponse {
   const summary = engine.executeQuery({
     version: "cadops.v1",
-    query: { query: "project.summary" }
+    query: {
+      query: "project.summary",
+      ...(evidence
+        ? {
+            derivedExactMetadata: evidence.derivedExactMetadata,
+            currentExactResults: evidence.currentExactResults
+          }
+        : {})
+    }
   });
   const packageReadiness = engine.executeQuery({
     version: "cadops.v1",
@@ -3748,7 +3798,15 @@ function createV8ProjectSurfaceResponse(
   });
   const exportReadiness = engine.executeQuery({
     version: "cadops.v1",
-    query: { query: "project.exportReadiness" }
+    query: {
+      query: "project.exportReadiness",
+      ...(evidence
+        ? {
+            derivedExactMetadata: evidence.derivedExactMetadata,
+            currentExactResults: evidence.currentExactResults
+          }
+        : {})
+    }
   });
   const exactExport = request.exactExport
     ? engine.executeQuery({
@@ -3761,6 +3819,12 @@ function createV8ProjectSurfaceResponse(
             : {}),
           ...(request.exactExport.sourceIdentity
             ? { sourceIdentity: request.exactExport.sourceIdentity }
+            : {}),
+          ...(evidence
+            ? {
+                derivedExactMetadata: evidence.derivedExactMetadata,
+                currentExactResults: evidence.currentExactResults
+              }
             : {})
         }
       })

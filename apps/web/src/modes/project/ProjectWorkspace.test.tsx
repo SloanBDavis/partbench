@@ -1,6 +1,7 @@
 import type { CadProject } from "@web-cad/cad-core";
 import type {
   CadParameterSnapshot,
+  ProjectExportReadinessQueryResponse,
   ProjectParameterEvaluationQueryResponse
 } from "@web-cad/cad-protocol";
 import { createElement } from "react";
@@ -178,6 +179,58 @@ describe("ProjectWorkspace", () => {
     expect(renderPage("history")).toContain("No changes yet");
     expect(renderPage("export")).toContain("Export readiness unavailable");
   });
+
+  it("renders the ordered, accessible all-or-nothing STEP workflow", () => {
+    const readiness = createExportReadiness();
+    const idle = renderPage("export", {
+      exportReadiness: readiness,
+      selectedBodyId: "body-b"
+    });
+
+    expect(idle).toContain("Named STEP AP242DIS");
+    expect(idle).toContain("all-or-nothing");
+    expect(idle).toContain("Export all bodies");
+    expect(idle).toContain("Export selected body");
+    expect(idle).toContain("Export chosen bodies");
+    expect(idle.match(/type="checkbox"/g)).toHaveLength(2);
+    expect(idle).toContain("Move Body A earlier");
+    expect(idle).toContain("Move Body B later");
+
+    const running = renderPage("export", {
+      exportReadiness: readiness,
+      exactStepExportJob: {
+        status: "running",
+        phase: "building",
+        completedBodyCount: 1,
+        totalBodyCount: 2,
+        message: "Built 1 of 2 exact body artifacts.",
+        diagnostics: []
+      }
+    });
+    expect(running).toContain("<progress");
+    expect(running).toContain('aria-live="polite"');
+    expect(running).toContain("Cancel export");
+
+    const failed = renderPage("export", {
+      exportReadiness: readiness,
+      exactStepExportJob: {
+        status: "failed",
+        completedBodyCount: 1,
+        totalBodyCount: 2,
+        message: "STEP export failed because the project changed.",
+        diagnostics: [
+          {
+            code: "EXPORT_SOURCE_CHANGED",
+            message: "Source identity changed."
+          }
+        ]
+      }
+    });
+    expect(failed).toContain('role="alert"');
+    expect(failed).toContain("Retry export");
+    expect(failed).toContain("Technical diagnostics");
+    expect(failed).toContain("EXPORT_SOURCE_CHANGED");
+  });
 });
 
 describe("project health summary", () => {
@@ -300,7 +353,14 @@ function renderPage(
     onImportJson: () => undefined,
     onRefreshOpfsCache: () => undefined,
     onClearOpfsCache: () => undefined,
+    exactStepExportJob: {
+      status: "idle",
+      completedBodyCount: 0,
+      totalBodyCount: 0,
+      diagnostics: []
+    },
     onDownloadStep: () => undefined,
+    onCancelStep: () => undefined,
     onDownloadVisualization: () => undefined,
     onUpdateUnits: () => undefined,
     onCreateParameter: () => undefined,
@@ -312,6 +372,82 @@ function renderPage(
   };
 
   return renderToStaticMarkup(createElement(ProjectWorkspace, props));
+}
+
+function createExportReadiness(): ProjectExportReadinessQueryResponse {
+  const bodies = [
+    {
+      bodyId: "body-a",
+      bodyName: "Body A",
+      bodyKind: "solid" as const,
+      featureId: "feature-a",
+      partId: "part:default",
+      sourceKind: "authoredExtrude" as const,
+      sourceStatus: "supported" as const,
+      status: "supported" as const,
+      sourceBoundaryNote: "Authoritative project source.",
+      derivedBoundaryNote: "Current exact result evidence.",
+      formats: [],
+      diagnostics: []
+    },
+    {
+      bodyId: "body-b",
+      bodyName: "Body B",
+      bodyKind: "solid" as const,
+      featureId: "feature-b",
+      partId: "part:default",
+      sourceKind: "authoredHole" as const,
+      sourceStatus: "deferred" as const,
+      status: "deferred" as const,
+      sourceBoundaryNote: "Authoritative project source.",
+      derivedBoundaryNote: "Current exact result evidence.",
+      formats: [],
+      diagnostics: [
+        {
+          code: "EXPORT_RESULT_BODY_DEFERRED" as const,
+          status: "deferred" as const,
+          message: "Body B is not ready yet."
+        }
+      ]
+    }
+  ];
+  return {
+    ok: true,
+    query: "project.exportReadiness",
+    cadOpsVersion: "cadops.v1",
+    status: "supported",
+    canExportFiles: true,
+    units: "mm",
+    sourceBoundaryNote: "Authoritative project source.",
+    derivedBoundaryNote: "Current exact result evidence.",
+    formatCount: 1,
+    formats: [
+      {
+        format: "step",
+        label: "STEP",
+        exportKind: "exact",
+        status: "supported",
+        available: true,
+        writerStatus: "available",
+        fileExtensions: [".step", ".stp"],
+        units: "mm",
+        sourceBoundaryNote: "Authoritative project source.",
+        derivedBoundaryNote: "Current exact result evidence.",
+        candidateBodyCount: 2,
+        sourceSupportedBodyCount: 1,
+        deferredBodyCount: 1,
+        unavailableBodyCount: 0,
+        diagnostics: []
+      }
+    ],
+    bodyCount: 2,
+    sourceSupportedBodyCount: 1,
+    deferredBodyCount: 1,
+    unavailableBodyCount: 0,
+    bodies,
+    diagnosticCount: 1,
+    diagnostics: bodies[1]!.diagnostics
+  };
 }
 
 function createEvaluation(): ProjectParameterEvaluationQueryResponse {
