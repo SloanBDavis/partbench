@@ -27,6 +27,7 @@ import {
   type DerivedGeometryRuntime,
   type DerivedExactMetadataInput,
   type DerivedExactMetadataResult,
+  type DerivedExactBodyGeometryInput,
   type DerivedExactBodyArtifactInput,
   type DerivedExactBodyArtifactResult,
   type DerivedExactTopologyCheckpointPayloadInput,
@@ -69,7 +70,8 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
       | DerivedGeometryMirrorInput
       | DerivedGeometryShellInput
       | DerivedGeometrySweepInput
-      | DerivedGeometryLoftInput,
+      | DerivedGeometryLoftInput
+      | DerivedExactBodyGeometryInput,
     request: GeometryWorkerRequest,
     context?: DerivedGeometryExecutionContext
   ): Promise<DerivedGeometryResult> {
@@ -617,6 +619,22 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           id: requestId,
           payloadId: `${requestId}:kernel`,
           source: input.source
+        }),
+        context
+      );
+    },
+    async tessellateExactBody(input: DerivedExactBodyGeometryInput, context) {
+      const { createExactBodyTessellationWorkerRequest } =
+        await import("@web-cad/geometry-worker/browser");
+      const requestId = createRequestId(input.id);
+      return executeTessellationRequest(
+        input,
+        createExactBodyTessellationWorkerRequest({
+          id: requestId,
+          payloadId: `${requestId}:kernel`,
+          source: input.source,
+          linearDeflection: 0.25,
+          angularDeflection: 0.5
         }),
         context
       );

@@ -11,7 +11,9 @@ import {
   createOcctCylinderMeshWithInstance,
   createOcctEdgeFinishMesh,
   createOcctExactBodyMetadata,
+  createOcctExactBodyArtifactMetadataWithInstance,
   createOcctExactBodyArtifactWithInstance,
+  createOcctExactBodyMeshWithInstance,
   createOcctExactTopologyCheckpointPayload,
   createOcctExactTopologySnapshot,
   createOcctRevolveProfileMesh,
@@ -2765,6 +2767,89 @@ describe("occt-wasm", () => {
         );
         expect(files(), stage).toEqual(before);
       }
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "derives matching display and metadata for imported and checkpoint-backed downstream bodies",
+    async () => {
+      const oc = await loadOcct();
+      const checkpoint = await createOcctExactTopologyCheckpointPayload({
+        checkpointId: "checkpoint_exact_result_parity",
+        bodyId: "body_exact_result_parity",
+        source: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [1, 2],
+            width: 4,
+            height: 3
+          },
+          depth: 5
+        }
+      });
+      const checkpointBody = {
+        kind: "checkpointBody" as const,
+        brepBytes: checkpoint.brepBytes,
+        brepByteLength: checkpoint.brepByteLength,
+        brepSha256: "0".repeat(64),
+        topologySourceKind: checkpoint.sourceKind,
+        topologySignature: checkpoint.topologySnapshot.signature
+      };
+      const edge = checkpoint.topologySnapshot.entities.find(
+        (entity) => entity.kind === "edge"
+      );
+      expect(edge).toBeDefined();
+      const sources: readonly StepTestSource[] = [
+        checkpointBody,
+        {
+          kind: "checkpointBoolean",
+          operation: "add",
+          target: checkpointBody,
+          tool: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [3, 2],
+              width: 2,
+              height: 2
+            },
+            depth: 5,
+            side: "positive"
+          }
+        },
+        {
+          kind: "checkpointHole",
+          target: checkpointBody,
+          tool: {
+            sketchPlane: "XY",
+            circle: { kind: "circle", center: [1, 2], radius: 0.5 },
+            depthMode: "throughAll"
+          }
+        },
+        {
+          kind: "checkpointEdgeFinish",
+          operation: "chamfer",
+          target: checkpointBody,
+          checkpointEntityId: edge!.localId,
+          amount: 0.2
+        }
+      ];
+      const filesBefore = [...oc.FS.readdir("/tmp")].sort();
+
+      for (const source of sources) {
+        const mesh = createOcctExactBodyMeshWithInstance(oc, { source });
+        const metadata = createOcctExactBodyArtifactMetadataWithInstance(oc, {
+          source
+        });
+        expect(mesh.triangleCount).toBeGreaterThan(0);
+        expect(mesh.vertexCount).toBeGreaterThan(0);
+        expect(metadata.volume).toBeGreaterThan(0);
+        expect(metadata.topologyCounts.solidCount).toBeGreaterThan(0);
+      }
+      expect([...oc.FS.readdir("/tmp")].sort()).toEqual(filesBefore);
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );

@@ -2873,6 +2873,8 @@ export interface FeatureEditabilityQuery {
 
 export interface ProjectSummaryQuery {
   readonly query: "project.summary";
+  readonly derivedExactMetadata?: readonly CadBodyDerivedExactMetadataSnapshot[];
+  readonly currentExactResults?: readonly CadCurrentExactResult[];
 }
 
 export interface ProjectFeaturesQuery {
@@ -2886,6 +2888,7 @@ export interface ProjectStructureQuery {
 export interface ProjectHealthQuery {
   readonly query: "project.health";
   readonly derivedExactMetadata?: readonly CadBodyDerivedExactMetadataSnapshot[];
+  readonly currentExactResults?: readonly CadCurrentExactResult[];
 }
 
 export interface ProjectDependencyGraphQuery {
@@ -2967,6 +2970,7 @@ export interface TopologyAnchorRepairPlanQuery {
 export interface ProjectExportReadinessQuery {
   readonly query: "project.exportReadiness";
   readonly derivedExactMetadata?: readonly CadBodyDerivedExactMetadataSnapshot[];
+  readonly currentExactResults?: readonly CadCurrentExactResult[];
 }
 
 export interface ProjectExactExportQuery {
@@ -2975,6 +2979,7 @@ export interface ProjectExactExportQuery {
   readonly bodyIds?: readonly BodyId[];
   readonly sourceIdentity?: WcadSourceIdentity;
   readonly derivedExactMetadata?: readonly CadBodyDerivedExactMetadataSnapshot[];
+  readonly currentExactResults?: readonly CadCurrentExactResult[];
 }
 
 export interface ProjectPackageReadinessQuery {
@@ -6554,6 +6559,14 @@ export interface CadProjectSummaryExportSummary {
   readonly deferredBodyCount: number;
   readonly unavailableBodyCount: number;
   readonly diagnosticCount: number;
+  readonly exactBodyCount?: number;
+  readonly exactReadyBodyCount?: number;
+  readonly exactPendingBodyCount?: number;
+  readonly exactStaleBodyCount?: number;
+  readonly exactBlockedBodyCount?: number;
+  readonly exactFailedBodyCount?: number;
+  readonly exactUnsupportedBodyCount?: number;
+  readonly currentExactResults?: readonly CadCurrentExactResult[];
 }
 
 export type CadProjectSummaryWorkflowHintLevel = "info" | "warning" | "blocker";
@@ -12534,7 +12547,12 @@ export function validateProjectExactExportQuery(
       value,
       "$",
       ["query", "format"],
-      ["bodyIds", "sourceIdentity", "derivedExactMetadata"],
+      [
+        "bodyIds",
+        "sourceIdentity",
+        "derivedExactMetadata",
+        "currentExactResults"
+      ],
       issues
     )
   ) {
@@ -12561,6 +12579,12 @@ export function validateProjectExactExportQuery(
         path: "$.derivedExactMetadata",
         message: "Expected a derived exact metadata array."
       });
+    }
+    if ("currentExactResults" in value) {
+      const exactResults = validateCadCurrentExactResults(
+        value.currentExactResults
+      );
+      if (!exactResults.ok) issues.push(...exactResults.issues);
     }
   }
   return issues.length === 0

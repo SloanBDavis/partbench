@@ -1,5 +1,6 @@
 import type {
   CadCurrentExactResultStatus,
+  CadCurrentExactResult,
   CadExactResultDiagnostic
 } from "@web-cad/cad-protocol";
 
@@ -152,6 +153,39 @@ export function createCurrentExactResultProjections(input: {
   });
 }
 
+export function toCadCurrentExactResults(
+  projections: readonly CurrentExactResultProjection[]
+): readonly CadCurrentExactResult[] {
+  return projections.map((projection) => {
+    if (projection.status === "ready" && projection.sourceIdentitySignature) {
+      return {
+        status: "ready",
+        bodyId: projection.bodyId,
+        sourceType: projection.sourceType,
+        sourceIdentitySignature: projection.sourceIdentitySignature,
+        diagnostics: projection.diagnostics
+      };
+    }
+    return {
+      status: projection.status === "ready" ? "blocked" : projection.status,
+      bodyId: projection.bodyId,
+      sourceType: projection.sourceType,
+      diagnostics:
+        projection.status === "ready"
+          ? [
+              {
+                code: "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+                status: "blocked",
+                message: `Exact result for body ${projection.bodyId} has no current source identity.`,
+                bodyId: projection.bodyId,
+                sourceType: projection.sourceType
+              }
+            ]
+          : projection.diagnostics
+    };
+  });
+}
+
 function projectDisplayEvidence(
   resolution: CurrentExactBodyResolution,
   source: DerivedGeometrySource | undefined,
@@ -160,7 +194,7 @@ function projectDisplayEvidence(
   return {
     consumer: "display",
     required: true,
-    status: entry ? mapDerivedStatus(entry.status) : "pending",
+    status: entry ? mapDerivedStatus(entry) : "pending",
     ...(resolution.status === "ready"
       ? { sourceIdentitySignature: resolution.sourceIdentitySignature }
       : {}),
@@ -179,7 +213,7 @@ function projectMetadataEvidence(
   return {
     consumer: "metadata",
     required: true,
-    status: entry ? mapDerivedStatus(entry.status) : "pending",
+    status: entry ? mapDerivedStatus(entry) : "pending",
     ...(resolution.status === "ready"
       ? { sourceIdentitySignature: resolution.sourceIdentitySignature }
       : {}),
@@ -191,9 +225,12 @@ function projectMetadataEvidence(
 }
 
 function mapDerivedStatus(
-  status: DerivedGeometryEntry["status"] | DerivedExactMetadataEntry["status"]
+  entry: DerivedGeometryEntry | DerivedExactMetadataEntry
 ): CadCurrentExactResultStatus {
-  return status === "error" || status === "cancelled" ? "failed" : status;
+  if (entry.status === "error") {
+    return entry.error.code === "UNAVAILABLE_BINDING" ? "blocked" : "failed";
+  }
+  return entry.status === "cancelled" ? "failed" : entry.status;
 }
 
 function projectConsumer(

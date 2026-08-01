@@ -79,6 +79,7 @@ export type GeometryKernelOp =
   | "geometry.booleanExtrudes"
   | "geometry.hole"
   | "geometry.edgeFinish"
+  | "geometry.tessellateExactBody"
   | "geometry.exactBodyMetadata"
   | "geometry.exactBodyArtifact"
   | "geometry.exactTopologySnapshot"
@@ -710,11 +711,23 @@ export type ExactBodyArtifactSource =
   | ExactCheckpointHoleArtifactSource
   | ExactCheckpointEdgeFinishArtifactSource;
 
+export type ExactBodyResultSource =
+  | ExactBodyMetadataSource
+  | ExactBodyArtifactSource;
+
+export interface TessellateExactBodyRequest {
+  readonly id: string;
+  readonly version: GeometryKernelVersion;
+  readonly op: "geometry.tessellateExactBody";
+  readonly source: ExactBodyArtifactSource;
+  readonly tessellation?: TessellationOptions;
+}
+
 export interface ExactBodyMetadataRequest {
   readonly id: string;
   readonly version: GeometryKernelVersion;
   readonly op: "geometry.exactBodyMetadata";
-  readonly source: ExactBodyMetadataSource;
+  readonly source: ExactBodyResultSource;
 }
 
 export type ExactBodyArtifactShapePolicy =
@@ -809,6 +822,7 @@ export type GeometryKernelRequest =
   | ShellRequest
   | SweepRequest
   | LoftRequest
+  | TessellateExactBodyRequest
   | ExactBodyMetadataRequest
   | ExactBodyArtifactRequest
   | ExactTopologySnapshotRequest
@@ -1375,6 +1389,10 @@ export type GeometryKernelExactBodyMetadataFactory = (
   input: Omit<ExactBodyMetadataRequest, "id" | "version" | "op">
 ) => Promise<GeometryKernelExactBodyMetadata>;
 
+export type GeometryKernelExactBodyMeshFactory = (
+  input: Pick<TessellateExactBodyRequest, "source"> & TessellationOptions
+) => Promise<GeometryKernelMeshResult>;
+
 export type GeometryKernelExactBodyArtifactFactory = (
   input: Pick<ExactBodyArtifactRequest, "source">
 ) => Promise<GeometryKernelExactBodyArtifactPayload>;
@@ -1435,6 +1453,7 @@ export interface GeometryKernelMeshFactories {
   readonly createHoleMesh?: GeometryKernelHoleMeshFactory;
   readonly createEdgeFinishMesh?: GeometryKernelEdgeFinishMeshFactory;
   readonly createRevolveProfileMesh?: GeometryKernelRevolveProfileMeshFactory;
+  readonly createExactBodyMesh?: GeometryKernelExactBodyMeshFactory;
   readonly createExactBodyMetadata?: GeometryKernelExactBodyMetadataFactory;
   readonly createExactBodyArtifact?: GeometryKernelExactBodyArtifactFactory;
   readonly createExactTopologySnapshot?: GeometryKernelExactTopologySnapshotFactory;
@@ -1622,6 +1641,22 @@ export async function executeGeometryKernelRequestWithMeshFactory<
   }
 
   try {
+    if (
+      request.op === "geometry.tessellateExactBody" ||
+      request.op === "geometry.exactBodyMetadata" ||
+      request.op === "geometry.exactBodyArtifact"
+    ) {
+      const checkpointError = await validateExactBodyArtifactCheckpoint(
+        request.source
+      );
+      if (checkpointError) {
+        return errorResponse(
+          request,
+          checkpointError
+        ) as GeometryKernelResponseForRequest<T>;
+      }
+    }
+
     if (request.op === "geometry.importStep") {
       const importResult = await createStepImport(factories, request);
 
@@ -1735,15 +1770,6 @@ export async function executeGeometryKernelRequestWithMeshFactory<
     }
 
     if (request.op === "geometry.exactBodyArtifact") {
-      const checkpointError = await validateExactBodyArtifactCheckpoint(
-        request.source
-      );
-      if (checkpointError) {
-        return errorResponse(
-          request,
-          checkpointError
-        ) as GeometryKernelResponseForRequest<T>;
-      }
       const artifact = await createExactBodyArtifact(factories, request);
       if (isInvalidExactBodyArtifact(artifact, request)) {
         return errorResponse(request, {
@@ -2114,8 +2140,15 @@ function validateRequest(
     if (edgeFinishError) {
       return edgeFinishError;
     }
+  } else if (request.op === "geometry.tessellateExactBody") {
+    const sourceError = validateExactBodyArtifactSource(request.source);
+    if (sourceError) return sourceError;
   } else if (request.op === "geometry.exactBodyMetadata") {
-    const metadataSourceError = validateExactBodyMetadataSource(request.source);
+    const metadataSourceError = isCheckpointBackedExactBodySource(
+      request.source
+    )
+      ? validateExactBodyArtifactSource(request.source)
+      : validateExactBodyMetadataSource(request.source);
 
     if (metadataSourceError) {
       return metadataSourceError;
@@ -2389,7 +2422,26 @@ function createMesh(
       return createSweepMesh(factories, request);
     case "geometry.loft":
       return createLoftMesh(factories, request);
+    case "geometry.tessellateExactBody":
+      return createExactBodyMesh(factories, request);
   }
+}
+
+function createExactBodyMesh(
+  factories: GeometryKernelMeshFactories,
+  request: TessellateExactBodyRequest
+): Promise<GeometryKernelMeshResult> {
+  if (!factories.createExactBodyMesh) {
+    return Promise.reject({
+      code: "UNAVAILABLE_BINDING",
+      message: "Exact body display requires an OCCT exact-body mesh factory."
+    } satisfies GeometryKernelError);
+  }
+  return factories.createExactBodyMesh({
+    source: request.source,
+    linearDeflection: request.tessellation?.linearDeflection,
+    angularDeflection: request.tessellation?.angularDeflection
+  });
 }
 
 function createLoftMesh(
@@ -2928,6 +2980,8 @@ function formatPrimitiveLabel(op: GeometryKernelOp): string {
       return "Sweep feature";
     case "geometry.loft":
       return "Loft feature";
+    case "geometry.tessellateExactBody":
+      return "Exact body display";
     case "geometry.exactBodyMetadata":
       return "Exact body metadata";
     case "geometry.exactBodyArtifact":
@@ -4197,7 +4251,7 @@ function validateExactBodyArtifactSource(
 }
 
 async function validateExactBodyArtifactCheckpoint(
-  source: ExactBodyArtifactSource
+  source: ExactBodyResultSource
 ): Promise<GeometryKernelError | undefined> {
   const checkpoint =
     source.kind === "checkpointBody"
@@ -4214,6 +4268,21 @@ async function validateExactBodyArtifactCheckpoint(
         code: "INVALID_DIMENSIONS",
         message: "Exact body artifact checkpoint BRep hash evidence mismatched."
       };
+}
+
+function isCheckpointBackedExactBodySource(
+  source: ExactBodyResultSource
+): source is
+  | ExactCheckpointBodyArtifactSource
+  | ExactCheckpointBooleanArtifactSource
+  | ExactCheckpointHoleArtifactSource
+  | ExactCheckpointEdgeFinishArtifactSource {
+  return (
+    source.kind === "checkpointBody" ||
+    source.kind === "checkpointBoolean" ||
+    source.kind === "checkpointHole" ||
+    source.kind === "checkpointEdgeFinish"
+  );
 }
 
 function countExactBodyArtifactSourceNodes(

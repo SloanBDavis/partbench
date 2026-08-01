@@ -11,7 +11,10 @@ import {
   type DerivedExactMetadataSource,
   type DerivedExactMetadataSnapshot
 } from "./derivedExactMetadata";
-import type { CurrentExactResultProjection } from "./currentExactResultProjection";
+import {
+  toCadCurrentExactResults,
+  type CurrentExactResultProjection
+} from "./currentExactResultProjection";
 
 export function readProjectExportReadiness(
   engine: CadEngine,
@@ -29,7 +32,10 @@ export function readProjectExportReadiness(
     version: "cadops.v1",
     query: {
       query: "project.exportReadiness",
-      ...(derivedExactMetadata.length > 0 ? { derivedExactMetadata } : {})
+      ...(derivedExactMetadata.length > 0 ? { derivedExactMetadata } : {}),
+      ...(projections
+        ? { currentExactResults: toCadCurrentExactResults(projections) }
+        : {})
     }
   });
 
@@ -55,7 +61,10 @@ export function readProjectExactStepExport(
     query: {
       query: "project.exportExact",
       format: "step",
-      ...(derivedExactMetadata.length > 0 ? { derivedExactMetadata } : {})
+      ...(derivedExactMetadata.length > 0 ? { derivedExactMetadata } : {}),
+      ...(projections
+        ? { currentExactResults: toCadCurrentExactResults(projections) }
+        : {})
     }
   });
 

@@ -8,8 +8,9 @@ import {
   createOcctEdgeFinishMesh,
   createOcctHoleMesh,
   createOcctRevolveProfileMesh,
-  createOcctExactBodyMetadata,
+  createOcctExactBodyArtifactMetadataWithInstance,
   createOcctExactBodyArtifactWithLoader,
+  createOcctExactBodyMeshWithLoader,
   createOcctExactTopologySnapshot,
   createOcctExactTopologyCheckpointPayload,
   createOcctStepImport,
@@ -348,7 +349,13 @@ export async function executeGeometryKernelRequest<
       createEdgeFinishMesh: createOcctEdgeFinishMesh,
       createHoleMesh: createOcctHoleMesh,
       createRevolveProfileMesh: createOcctRevolveProfileMesh,
-      createExactBodyMetadata: createOcctExactBodyMetadata,
+      createExactBodyMesh: (input) =>
+        createOcctExactBodyMeshWithLoader(loadOcct, input),
+      createExactBodyMetadata: async (input) =>
+        createOcctExactBodyArtifactMetadataWithInstance(
+          await loadOcct(),
+          input
+        ),
       createExactBodyArtifact: (input) =>
         createOcctExactBodyArtifactWithLoader(loadOcct, input),
       createExactTopologySnapshot: createOcctExactTopologySnapshot,
@@ -370,14 +377,17 @@ export async function executeGeometryKernelRequest<
 }
 
 export type {
+  TessellateExactBodyRequest,
   ExactBodyArtifactRequest,
   ExactBodyArtifactSource,
+  ExactBodyResultSource,
   ExactBodyArtifactShapePolicy,
   ExactCheckpointBodyArtifactSource,
   ExactCheckpointBooleanArtifactSource,
   ExactCheckpointEdgeFinishArtifactSource,
   ExactCheckpointHoleArtifactSource,
   GeometryKernelExactBodyArtifact,
+  GeometryKernelExactBodyMeshFactory,
   GeometryKernelExactBodyArtifactFactory,
   GeometryKernelExactBodyArtifactPayload,
   GeometryKernelExactBodyArtifactSuccessResponse

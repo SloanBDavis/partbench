@@ -31,6 +31,7 @@ import type {
   TessellateExtrudeRequest,
   TessellateSphereRequest,
   TessellateTorusRequest,
+  TessellateExactBodyRequest,
   LinearPatternRequest,
   CircularPatternRequest,
   PatternSeedSource,
@@ -741,6 +742,28 @@ export function createExactBodyMetadataWorkerRequest(input: {
       version: "geometry-kernel.v1",
       op: "geometry.exactBodyMetadata",
       source: input.source
+    }
+  };
+}
+
+export function createExactBodyTessellationWorkerRequest(input: {
+  readonly id: string;
+  readonly payloadId?: string;
+  readonly source: TessellateExactBodyRequest["source"];
+  readonly linearDeflection?: number;
+  readonly angularDeflection?: number;
+}): GeometryWorkerRequest<TessellateExactBodyRequest> {
+  const tessellation = createTessellationOptions(input);
+  return {
+    id: input.id,
+    version: "geometry-worker.v1",
+    kind: "geometry-worker.tessellateFeature",
+    payload: {
+      id: input.payloadId ?? `${input.id}:payload`,
+      version: "geometry-kernel.v1",
+      op: "geometry.tessellateExactBody",
+      source: input.source,
+      ...(tessellation ? { tessellation } : {})
     }
   };
 }

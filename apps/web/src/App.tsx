@@ -320,6 +320,7 @@ import {
 } from "./currentExactBodyResolver";
 import {
   createCurrentExactResultProjections,
+  toCadCurrentExactResults,
   type CurrentExactResultProjection
 } from "./currentExactResultProjection";
 import {
@@ -739,7 +740,10 @@ function readProjectHealth(
     version: "cadops.v1",
     query: {
       query: "project.health",
-      ...(derivedExactMetadata.length > 0 ? { derivedExactMetadata } : {})
+      ...(derivedExactMetadata.length > 0 ? { derivedExactMetadata } : {}),
+      ...(projections
+        ? { currentExactResults: toCadCurrentExactResults(projections) }
+        : {})
     }
   });
 
@@ -2945,7 +2949,7 @@ export function App() {
     () => createSketchDisplayState(sketches, generatedFacesByKey),
     [generatedFacesByKey, sketches]
   );
-  const derivedGeometrySources = useMemo<readonly DerivedGeometrySource[]>(
+  const baseDerivedGeometrySources = useMemo<readonly DerivedGeometrySource[]>(
     () =>
       derivedGeometrySourceBuilders
         ? derivedGeometrySourceBuilders.createDerivedGeometrySourcesFromDocument(
@@ -2969,13 +2973,13 @@ export function App() {
         document,
         bodies: projectStructure.bodies,
         features: projectStructure.features,
-        geometrySources: derivedGeometrySources,
+        geometrySources: baseDerivedGeometrySources,
         checkpointPayloads: wcadTopologyCheckpointPayloadCache,
         sourceIdentitySignaturesByBodyId: bodySourceIdentitySignatures
       }),
     [
       bodySourceIdentitySignatures,
-      derivedGeometrySources,
+      baseDerivedGeometrySources,
       document,
       projectStructure.bodies,
       projectStructure.features,
@@ -2988,6 +2992,26 @@ export function App() {
     () => getReadyRuntimeExactSources(currentExactBodyResolutions),
     [currentExactBodyResolutions]
   );
+  const currentExactDisplaySources = useMemo(
+    () =>
+      currentExactMetadataSources.filter(
+        (source) => source.kind === "exactBody"
+      ),
+    [currentExactMetadataSources]
+  );
+  const derivedGeometrySources = useMemo<
+    readonly DerivedGeometrySource[]
+  >(() => {
+    const replacedIds = new Set(
+      currentExactDisplaySources.map((source) => source.id)
+    );
+    return [
+      ...baseDerivedGeometrySources.filter(
+        (source) => !replacedIds.has(source.id)
+      ),
+      ...currentExactDisplaySources
+    ];
+  }, [baseDerivedGeometrySources, currentExactDisplaySources]);
   const currentExactResultProjections = useMemo(
     () =>
       createCurrentExactResultProjections({
@@ -5336,12 +5360,13 @@ export function App() {
       createRenderSceneInputs(
         sceneObjects,
         derivedGeometryBySourceId,
-        featureGeometrySources,
+        [...featureGeometrySources, ...currentExactDisplaySources],
         sketches,
         sketchDisplayState.frames
       ),
     [
       derivedGeometryBySourceId,
+      currentExactDisplaySources,
       featureGeometrySources,
       sceneObjects,
       sketchDisplayState.frames,

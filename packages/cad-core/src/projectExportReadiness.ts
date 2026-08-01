@@ -70,6 +70,7 @@ interface ProjectExportReadinessInput {
   readonly bodies: readonly CadBodySnapshot[];
   readonly exactStepWriterStatus?: CadExactExportWriterStatus;
   readonly derivedExactMetadata?: readonly CadBodyDerivedExactMetadataSnapshot[];
+  readonly currentExactResults?: readonly CadCurrentExactResult[];
   readonly currentSourceIdentity?: WcadSourceIdentity;
 }
 
@@ -116,6 +117,7 @@ interface CurrentExactExportProjectionInput {
   readonly requestedSourceIdentity?: WcadSourceIdentity;
   readonly exactStepWriterStatus?: CadExactExportWriterStatus;
   readonly derivedExactMetadata?: readonly CadBodyDerivedExactMetadataSnapshot[];
+  readonly currentExactResults?: readonly CadCurrentExactResult[];
 }
 
 const SOURCE_BOUNDARY_NOTE =
@@ -152,6 +154,7 @@ export function createProjectExportReadiness({
   bodies,
   exactStepWriterStatus = "available",
   derivedExactMetadata = [],
+  currentExactResults = [],
   currentSourceIdentity
 }: ProjectExportReadinessInput): ProjectExportReadinessQueryResponse {
   const exactMetadataByBodyId = new Map(
@@ -172,7 +175,8 @@ export function createProjectExportReadiness({
         bodies,
         currentSourceIdentity,
         exactStepWriterStatus,
-        derivedExactMetadata
+        derivedExactMetadata,
+        currentExactResults
       })
     : undefined;
   const formatReadiness = EXPORT_FORMATS.map((format) =>
@@ -195,7 +199,17 @@ export function createProjectExportReadiness({
   const diagnostics = [
     ...projectDiagnostics,
     ...formatReadiness.flatMap((format) => format.diagnostics),
-    ...bodyReadiness.flatMap((body) => body.diagnostics)
+    ...bodyReadiness.flatMap((body) => body.diagnostics),
+    ...(projection?.currentExactResults.flatMap((result) =>
+      result.diagnostics.map((diagnostic) =>
+        exactDiagnosticToExportDiagnostic(
+          diagnostic,
+          getBodyExportSourceKind(
+            bodies.find((body) => body.id === result.bodyId)!
+          )
+        )
+      )
+    ) ?? [])
   ];
 
   return {
@@ -254,7 +268,8 @@ export function createProjectExactExport({
     bodyIds: query.bodyIds,
     requestedSourceIdentity: query.sourceIdentity,
     exactStepWriterStatus,
-    derivedExactMetadata: [...exactMetadataByBodyId.values()]
+    derivedExactMetadata: [...exactMetadataByBodyId.values()],
+    currentExactResults: query.currentExactResults
   });
   const requestedBodyIds =
     query.bodyIds && query.bodyIds.length > 0
@@ -285,7 +300,17 @@ export function createProjectExactExport({
   const diagnostics = [
     ...projection.globalDiagnostics,
     ...projection.selectionDiagnostics,
-    ...stepBodies.flatMap((body) => body.diagnostics)
+    ...stepBodies.flatMap((body) => body.diagnostics),
+    ...projection.currentExactResults.flatMap((result) =>
+      result.diagnostics.map((diagnostic) =>
+        exactDiagnosticToExportDiagnostic(
+          diagnostic,
+          getBodyExportSourceKind(
+            projection.selectedBodies.find((body) => body.id === result.bodyId)!
+          )
+        )
+      )
+    )
   ];
   const exportableBodyCount = projection.executable ? stepBodies.length : 0;
   const status: CadExportReadinessStatus = projection.executable
@@ -343,7 +368,8 @@ export function createCurrentExactExportProjection({
   bodyIds = [],
   requestedSourceIdentity,
   exactStepWriterStatus = "available",
-  derivedExactMetadata = []
+  derivedExactMetadata = [],
+  currentExactResults: suppliedCurrentExactResults = []
 }: CurrentExactExportProjectionInput): CurrentExactExportProjection {
   const bodyById = new Map(bodies.map((body) => [body.id, body] as const));
   const explicit = bodyIds.length > 0;
@@ -383,15 +409,27 @@ export function createCurrentExactExportProjection({
       metadataByBodyId.get(body.id)
     )
   );
-  const currentExactResults = bodyReadiness.map(
-    (body) =>
-      classifyBodySource(
-        document,
-        bodies,
-        bodyById.get(body.bodyId)!,
-        metadataByBodyId.get(body.bodyId)
-      ).currentExactResult
+  const suppliedCurrentByBodyId = new Map(
+    suppliedCurrentExactResults.map(
+      (result) => [result.bodyId, result] as const
+    )
   );
+  const currentExactResults = bodyReadiness.map((body) => {
+    const selectedBody = bodyById.get(body.bodyId)!;
+    const classified = classifyBodySource(
+      document,
+      bodies,
+      selectedBody,
+      metadataByBodyId.get(body.bodyId)
+    ).currentExactResult;
+    return reconcileCurrentExactResult(
+      document,
+      bodies,
+      selectedBody,
+      classified,
+      suppliedCurrentByBodyId.get(body.bodyId)
+    );
+  });
   const planBodies = selectedBodies.map((body, index) => {
     const current = currentExactResults[index]!;
     return {
@@ -1044,6 +1082,41 @@ function exactStatusToReadiness(
     : status === "pending" || status === "stale"
       ? "deferred"
       : "unavailable";
+}
+
+function reconcileCurrentExactResult(
+  document: CadDocument,
+  bodies: readonly CadBodySnapshot[],
+  body: CadBodySnapshot,
+  classified: CadCurrentExactResult,
+  supplied: CadCurrentExactResult | undefined
+): CadCurrentExactResult {
+  if (
+    !supplied ||
+    supplied.sourceType !== body.source.type ||
+    classified.status === "unsupported" ||
+    classified.status === "blocked"
+  ) {
+    return classified;
+  }
+  if (supplied.status !== "ready") return supplied;
+
+  const sourceIdentitySignature = getBodySourceIdentitySignature(
+    document,
+    bodies,
+    body
+  );
+  if (supplied.sourceIdentitySignature !== sourceIdentitySignature) {
+    return createBlockedCurrentExactResult(
+      body,
+      "stale",
+      "EXPORT_EXACT_SOURCE_STALE",
+      `Exact result for body ${body.id} does not match the current body source.`,
+      sourceIdentitySignature,
+      supplied.sourceIdentitySignature
+    );
+  }
+  return classified.status === "ready" ? supplied : classified;
 }
 
 function classifyLegacyBodySource(

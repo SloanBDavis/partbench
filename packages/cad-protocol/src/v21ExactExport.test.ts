@@ -166,7 +166,8 @@ describe("V21 exact export protocol", () => {
       sourceIdentity: {
         algorithm: "partbench-source-v1",
         sha256: SHA256
-      }
+      },
+      currentExactResults: createCurrentExactResults()
     };
 
     expect(validateProjectExactExportQuery(request)).toEqual({
@@ -184,6 +185,7 @@ describe("V21 exact export protocol", () => {
       { ...request, bodyIds: [""] },
       { ...request, bodyIds: ["body_1", 2] },
       { ...request, bodyIds: ["body_1", "body_1"] },
+      { ...request, currentExactResults: [{ status: "ready" }] },
       {
         ...request,
         bodyIds: Array.from(

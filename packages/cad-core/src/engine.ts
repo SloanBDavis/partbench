@@ -7,6 +7,7 @@ import {
   validateV19SketchQueryRequest,
   validateSketchProfilePathQueryRequest,
   validateProjectExactExportQuery,
+  validateCadCurrentExactResults,
   WCAD_COMMANDS_ENTRY_PATH,
   WCAD_DOCUMENT_ENTRY_PATH,
   WCAD_MANIFEST_ENTRY_PATH,
@@ -17,6 +18,7 @@ import {
   type BodyImportedBodyStatusQueryResponse,
   type CadBodyExactTopologyEntityDescriptor,
   type CadBodyExactTopologySnapshot,
+  type CadCurrentExactResult,
   type ProjectImportReadinessQueryResponse,
   type ProjectImportStepResolvedBody,
   type WcadTopologyCheckpointKernelMetadata,
@@ -2295,7 +2297,9 @@ export class CadEngine {
           this.#document,
           this.#history.map((entry) => entry.transaction),
           request.version,
-          createCadProjectSourceIdentity(exportCadProject(this))
+          createCadProjectSourceIdentity(exportCadProject(this)),
+          request.query.derivedExactMetadata,
+          request.query.currentExactResults
         );
       }
 
@@ -2346,7 +2350,8 @@ export class CadEngine {
           currentSourceIdentity: createCadProjectSourceIdentity(
             exportCadProject(this)
           ),
-          derivedExactMetadata: request.query.derivedExactMetadata
+          derivedExactMetadata: request.query.derivedExactMetadata,
+          currentExactResults: request.query.currentExactResults
         }).currentExactResults;
 
         return createProjectHealth({
@@ -2541,6 +2546,7 @@ export class CadEngine {
           cadOpsVersion: request.version,
           bodies: structure.bodies,
           derivedExactMetadata: request.query.derivedExactMetadata,
+          currentExactResults: request.query.currentExactResults,
           currentSourceIdentity: createCadProjectSourceIdentity(
             exportCadProject(this)
           )
@@ -8759,7 +8765,6 @@ function isCadQuery(value: unknown): boolean {
   switch (value.query) {
     case "parameter.list":
     case "project.parameterEvaluation":
-    case "project.summary":
     case "project.features":
     case "project.structure":
     case "project.topologyIdentityReadiness":
@@ -8769,16 +8774,17 @@ function isCadQuery(value: unknown): boolean {
     case "reference.listNamed":
     case "transaction.history":
       return Object.keys(value).length === 1;
+    case "project.summary":
+      return (
+        Object.keys(value).every((key) =>
+          ["query", "derivedExactMetadata", "currentExactResults"].includes(key)
+        ) && isCurrentExactEvidenceQuery(value)
+      );
     case "project.exportReadiness":
       return (
         Object.keys(value).every((key) =>
-          ["query", "derivedExactMetadata"].includes(key)
-        ) &&
-        (value.derivedExactMetadata === undefined ||
-          (Array.isArray(value.derivedExactMetadata) &&
-            value.derivedExactMetadata.every(
-              isCadBodyDerivedExactMetadataSnapshot
-            )))
+          ["query", "derivedExactMetadata", "currentExactResults"].includes(key)
+        ) && isCurrentExactEvidenceQuery(value)
       );
     case "project.dependencyGraph":
     case "project.rebuildPlan":
@@ -8846,12 +8852,9 @@ function isCadQuery(value: unknown): boolean {
       return isProjectExactExportQuery(value);
     case "project.health":
       return (
-        Object.keys(value).length === 1 ||
-        (Object.keys(value).length === 2 &&
-          Array.isArray(value.derivedExactMetadata) &&
-          value.derivedExactMetadata.every((snapshot) =>
-            isCadBodyDerivedExactMetadataSnapshot(snapshot)
-          ))
+        Object.keys(value).every((key) =>
+          ["query", "derivedExactMetadata", "currentExactResults"].includes(key)
+        ) && isCurrentExactEvidenceQuery(value)
       );
     case "project.extents":
       return (
@@ -8979,6 +8982,18 @@ function isCadQuery(value: unknown): boolean {
     default:
       return false;
   }
+}
+
+function isCurrentExactEvidenceQuery(value: Record<string, unknown>): boolean {
+  return (
+    (value.derivedExactMetadata === undefined ||
+      (Array.isArray(value.derivedExactMetadata) &&
+        value.derivedExactMetadata.every(
+          isCadBodyDerivedExactMetadataSnapshot
+        ))) &&
+    (value.currentExactResults === undefined ||
+      validateCadCurrentExactResults(value.currentExactResults).ok)
+  );
 }
 
 function isCadTopologyMatchSnapshotInput(
@@ -23639,7 +23654,9 @@ function createProjectSummary(
   document: CadDocument,
   transactions: readonly Transaction[],
   cadOpsVersion: ProjectSummaryQueryResponse["cadOpsVersion"],
-  currentSourceIdentity: WcadSourceIdentity
+  currentSourceIdentity: WcadSourceIdentity,
+  derivedExactMetadata: readonly CadBodyDerivedExactMetadataSnapshot[] = [],
+  currentExactResults: readonly CadCurrentExactResult[] = []
 ): ProjectSummaryQueryResponse {
   const objects = [...document.objects.values()].map(createCadObjectSnapshot);
   const structure = createProjectStructure(document, transactions);
@@ -23649,14 +23666,16 @@ function createProjectSummary(
     document,
     cadOpsVersion,
     bodies: structure.bodies,
-    currentSourceIdentity
+    currentSourceIdentity,
+    derivedExactMetadata,
+    currentExactResults
   });
   const health = createProjectHealth({
     document,
     cadOpsVersion,
     ownerPartId: DEFAULT_PART_ID,
     units: document.units,
-    derivedExactMetadata: [],
+    derivedExactMetadata,
     currentExactResults: exportReadiness.currentExactResults,
     bodyExists
   });
@@ -23704,7 +23723,15 @@ function createProjectSummary(
     sourceSupportedBodyCount: exportReadiness.sourceSupportedBodyCount,
     deferredBodyCount: exportReadiness.deferredBodyCount,
     unavailableBodyCount: exportReadiness.unavailableBodyCount,
-    diagnosticCount: exportReadiness.diagnosticCount
+    diagnosticCount: exportReadiness.diagnosticCount,
+    exactBodyCount: health.exactBodyCount,
+    exactReadyBodyCount: health.exactReadyBodyCount,
+    exactPendingBodyCount: health.exactPendingBodyCount,
+    exactStaleBodyCount: health.exactStaleBodyCount,
+    exactBlockedBodyCount: health.exactBlockedBodyCount,
+    exactFailedBodyCount: health.exactFailedBodyCount,
+    exactUnsupportedBodyCount: health.exactUnsupportedBodyCount,
+    currentExactResults: exportReadiness.currentExactResults
   };
 
   return {

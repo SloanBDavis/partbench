@@ -152,6 +152,37 @@ describe("derivedExactMetadata", () => {
     });
   });
 
+  it("uses the same checkpoint-backed source for display and exact metadata", () => {
+    const source: DerivedGeometrySource = {
+      id: "body_imported_cut",
+      kind: "exactBody",
+      sourceIdentitySignature: "body-source-current",
+      sourceCacheKeySha256: "a".repeat(64),
+      source: {
+        kind: "checkpointBody",
+        brepBytes: new Uint8Array([1, 2, 3]),
+        brepByteLength: 3,
+        brepSha256: "b".repeat(64),
+        topologySourceKind: "importedBody",
+        topologySignature: "checkpoint-topology"
+      }
+    };
+
+    expect(createExactMetadataRuntimeInput(source)).toEqual({
+      id: source.id,
+      source: source.source
+    });
+    expect(createDerivedExactMetadataCacheKey(source)).toContain(
+      source.sourceCacheKeySha256
+    );
+    expect(createDerivedExactMetadataCacheKey(source)).not.toContain("1,2,3");
+    expect(
+      planExactMetadataRetry([source], {
+        entries: [{ objectId: source.id, sourceId: source.id, status: "ready" }]
+      }).immediate
+    ).toEqual([source]);
+  });
+
   it("preserves ready imported checkpoint evidence across unrelated full-list reconciliation", async () => {
     const importedBytes = new Uint8Array([1, 2, 3]);
     const imported = {

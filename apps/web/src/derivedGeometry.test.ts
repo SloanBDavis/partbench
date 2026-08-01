@@ -41,6 +41,7 @@ import type {
   DerivedGeometrySweepInput,
   DerivedGeometryLoftInput,
   DerivedExactMetadataResult,
+  DerivedExactBodyGeometryInput,
   DerivedGeometryExtrudeInput,
   DerivedGeometryHoleInput,
   DerivedGeometryLinearPatternInput,
@@ -75,7 +76,8 @@ type RuntimeInput =
   | DerivedGeometryMirrorInput
   | DerivedGeometryShellInput
   | DerivedGeometrySweepInput
-  | DerivedGeometryLoftInput;
+  | DerivedGeometryLoftInput
+  | DerivedExactBodyGeometryInput;
 
 describe("derivedGeometry", () => {
   it("creates cache keys that change when object geometry inputs change", () => {
@@ -101,6 +103,37 @@ describe("derivedGeometry", () => {
     expect(createDerivedGeometryCacheKey(object)).not.toBe(
       createDerivedGeometryCacheKey(resizedObject)
     );
+  });
+
+  it("derives checkpoint-backed display from the current exact source identity", async () => {
+    const source: DerivedGeometrySource = {
+      id: "body_imported",
+      kind: "exactBody",
+      sourceIdentitySignature: "body-source-current",
+      sourceCacheKeySha256: "a".repeat(64),
+      source: {
+        kind: "checkpointBody",
+        brepBytes: new Uint8Array([1, 2, 3]),
+        brepByteLength: 3,
+        brepSha256: "b".repeat(64),
+        topologySourceKind: "importedBody",
+        topologySignature: "checkpoint-topology"
+      }
+    };
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    const result = await deriveGeometrySourceMesh(runtime, source);
+
+    expect(result.mesh.id).toBe(source.id);
+    expect(runtime.inputs).toEqual([{ id: source.id, source: source.source }]);
+    expect(createDerivedGeometryCacheKey(source)).not.toBe(
+      createDerivedGeometryCacheKey({
+        ...source,
+        sourceCacheKeySha256: "c".repeat(64)
+      })
+    );
+    expect(createDerivedGeometryCacheKey(source)).not.toContain("1,2,3");
   });
 
   it("marks supported primitives pending then ready", async () => {
@@ -5848,6 +5881,10 @@ function createRuntime(
       return disposeCount;
     },
     tessellateBox(input) {
+      inputs.push(input);
+      return handler(input);
+    },
+    tessellateExactBody(input) {
       inputs.push(input);
       return handler(input);
     },

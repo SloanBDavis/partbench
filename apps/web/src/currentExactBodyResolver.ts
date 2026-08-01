@@ -16,6 +16,7 @@ import {
 import type {
   DerivedBooleanExtrudeGeometrySource,
   DerivedExtrudeGeometrySource,
+  DerivedExactBodyGeometrySource,
   DerivedGeometrySource,
   DerivedHoleGeometrySource,
   DerivedPrimitiveGeometrySource
@@ -194,11 +195,24 @@ export function resolveCurrentExactBodies(
 export function getReadyRuntimeExactSources(
   resolutions: readonly CurrentExactBodyResolution[]
 ): readonly DerivedExactMetadataSource[] {
-  return resolutions.flatMap((resolution) =>
-    resolution.status === "ready" && isExactMetadataSource(resolution.source)
-      ? [resolution.source]
-      : []
-  );
+  return resolutions.flatMap((resolution) => {
+    if (resolution.status !== "ready") return [];
+    if (
+      isExactMetadataSource(resolution.source) &&
+      resolution.source.kind !== "importedBody"
+    ) {
+      return [resolution.source];
+    }
+    return [
+      {
+        id: resolution.bodyId,
+        kind: "exactBody",
+        sourceIdentitySignature: resolution.sourceIdentitySignature,
+        sourceCacheKeySha256: resolution.cacheKeySha256,
+        source: createCurrentExactBodyArtifactSource(resolution.source)
+      } satisfies DerivedExactBodyGeometrySource
+    ];
+  });
 }
 
 export function createCurrentExactBodyArtifactSource(

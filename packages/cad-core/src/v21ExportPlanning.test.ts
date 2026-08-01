@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type {
   BodyId,
   CadBodyDerivedExactMetadataSnapshot,
+  CadCurrentExactResult,
+  CadCurrentExactResultStatus,
   ProjectExactExportQuery,
   ProjectExactExportQueryResponse,
   ProjectExportReadinessQueryResponse
@@ -107,6 +109,96 @@ function exact(
 }
 
 describe("V21 exact export planning", () => {
+  it.each([
+    ["ready", undefined],
+    ["pending", "EXPORT_EXACT_SOURCE_UNAVAILABLE"],
+    ["stale", "EXPORT_EXACT_SOURCE_STALE"],
+    ["blocked", "EXPORT_EXACT_SOURCE_UNAVAILABLE"],
+    ["failed", "EXPORT_EXACT_ARTIFACT_FAILED"],
+    ["unsupported", "EXPORT_BODY_SOURCE_UNSUPPORTED"]
+  ] as const)(
+    "keeps %s current exact evidence identical across summary, health, readiness, and export",
+    (status, diagnosticCode) => {
+      const engine = new CadEngine();
+      engine.apply({
+        op: "scene.createBox",
+        id: "only",
+        dimensions: { width: 1, height: 2, depth: 3 }
+      });
+      const bodyId = "body:only";
+      const metadata = exactMetadata(engine, bodyId);
+      const currentExactResult: CadCurrentExactResult =
+        status === "ready"
+          ? {
+              status,
+              bodyId,
+              sourceType: "primitiveFeature",
+              sourceIdentitySignature: metadata.sourceIdentitySignature,
+              diagnostics: []
+            }
+          : {
+              status,
+              bodyId,
+              sourceType: "primitiveFeature",
+              diagnostics: [
+                {
+                  code: diagnosticCode!,
+                  status,
+                  message: `Exact result for body ${bodyId} is ${status}.`,
+                  bodyId,
+                  sourceType: "primitiveFeature"
+                }
+              ]
+            };
+      const evidence = {
+        derivedExactMetadata: [metadata],
+        currentExactResults: [currentExactResult]
+      };
+      const responses = [
+        engine.executeQuery({
+          version: "cadops.v1",
+          query: { query: "project.summary", ...evidence }
+        }),
+        engine.executeQuery({
+          version: "cadops.v1",
+          query: { query: "project.health", ...evidence }
+        }),
+        engine.executeQuery({
+          version: "cadops.v1",
+          query: { query: "project.exportReadiness", ...evidence }
+        }),
+        engine.executeQuery({
+          version: "cadops.v1",
+          query: { query: "project.exportExact", format: "step", ...evidence }
+        })
+      ];
+      expect(
+        responses.every((response) => response.ok),
+        JSON.stringify(responses)
+      ).toBe(true);
+      const observed = responses.map((response) => {
+        if (!response.ok) return undefined;
+        if (response.query === "project.summary") {
+          return response.exportReadiness.currentExactResults?.[0];
+        }
+        if (
+          response.query === "project.health" ||
+          response.query === "project.exportReadiness" ||
+          response.query === "project.exportExact"
+        ) {
+          return response.currentExactResults?.[0];
+        }
+        return undefined;
+      });
+      expect(observed.map((result) => result?.status)).toEqual(
+        responses.map(() => status satisfies CadCurrentExactResultStatus)
+      );
+      expect(observed.map((result) => result?.diagnostics[0]?.code)).toEqual(
+        responses.map(() => diagnosticCode)
+      );
+    }
+  );
+
   it("orders Export all canonically and binds names and source identity", () => {
     const engine = createPrimitiveProject();
     const first = readiness(engine);

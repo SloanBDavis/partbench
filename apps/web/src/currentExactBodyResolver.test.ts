@@ -28,6 +28,7 @@ import { createGeneratedFaceReferenceKey } from "./sketchDisplayFrames";
 import {
   createCurrentExactBodyArtifactSource,
   getCurrentExactBodyArtifactShapePolicy,
+  getReadyRuntimeExactSources,
   resolveCurrentExactBodies,
   type CurrentExactBodyResolution,
   type CurrentExactBodyResolverInput
@@ -315,6 +316,35 @@ describe("currentExactBodyResolver", () => {
       status: "ready",
       source: { kind: "checkpointHole" }
     });
+  });
+
+  it("projects imported and downstream checkpoint resolutions into one display and metadata source", () => {
+    const resolutions = [
+      resolveImportedDownstream({ kind: "boolean", operation: "cut" }),
+      resolveImportedDownstream({ kind: "hole", authoredTarget: true }),
+      resolveImportedDownstream({ kind: "edgeFinish", operation: "fillet" })
+    ];
+    const sources = getReadyRuntimeExactSources(resolutions);
+
+    expect(sources).toHaveLength(3);
+    expect(sources).toEqual(
+      resolutions.map((resolution) =>
+        expect.objectContaining({
+          id: resolution.bodyId,
+          kind: "exactBody",
+          sourceIdentitySignature:
+            resolution.status === "ready"
+              ? resolution.sourceIdentitySignature
+              : undefined,
+          source: expect.objectContaining({
+            kind:
+              resolution.status === "ready"
+                ? createCurrentExactBodyArtifactSource(resolution.source).kind
+                : undefined
+          })
+        })
+      )
+    );
   });
 });
 

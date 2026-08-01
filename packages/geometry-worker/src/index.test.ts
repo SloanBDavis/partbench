@@ -6,6 +6,7 @@ import {
   createCylinderTessellationWorkerRequest,
   createEdgeFinishWorkerRequest,
   createExactBodyMetadataWorkerRequest,
+  createExactBodyTessellationWorkerRequest,
   createExactBodyArtifactWorkerRequest,
   createExactTopologyCheckpointPayloadWorkerRequest,
   createExactTopologySnapshotWorkerRequest,
@@ -1188,6 +1189,35 @@ describe("geometry-worker", () => {
           depth: 5,
           side: "positive"
         }
+      }
+    });
+  });
+
+  it("creates a typed checkpoint-backed exact body display request", () => {
+    const source = {
+      kind: "checkpointBody" as const,
+      brepBytes: new Uint8Array([1, 2, 3]),
+      brepByteLength: 3,
+      brepSha256: "0".repeat(64),
+      topologySourceKind: "importedBody" as const,
+      topologySignature: "checkpoint-topology"
+    };
+    expect(
+      createExactBodyTessellationWorkerRequest({
+        id: "worker_req_exact_body_display",
+        source,
+        linearDeflection: 0.25
+      })
+    ).toEqual({
+      id: "worker_req_exact_body_display",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.tessellateFeature",
+      payload: {
+        id: "worker_req_exact_body_display:payload",
+        version: "geometry-kernel.v1",
+        op: "geometry.tessellateExactBody",
+        source,
+        tessellation: { linearDeflection: 0.25 }
       }
     });
   });

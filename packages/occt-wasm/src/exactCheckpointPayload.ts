@@ -26,6 +26,11 @@ import {
   type OcctGeneratedReferences,
   type OcctWireExtrudeSource
 } from "./wireExtrude";
+import {
+  readTriangulatedShape,
+  type OcctMeshData,
+  type OcctPrimitiveKind
+} from "./readTriangulatedShape";
 
 export interface OcctTopologyCheckpointSignatureEntity {
   readonly localId: string;
@@ -97,6 +102,11 @@ export type OcctExactBodyArtifactSource =
 
 export interface OcctExactBodyArtifactInput {
   readonly source: OcctExactBodyArtifactSource;
+}
+
+export interface OcctExactBodyMeshInput extends OcctExactBodyArtifactInput {
+  readonly linearDeflection?: number;
+  readonly angularDeflection?: number;
 }
 
 export interface OcctExactBodyArtifact {
@@ -178,44 +188,109 @@ export function createOcctExactBodyArtifactWithInstance(
   input: OcctExactBodyArtifactInput
 ): OcctExactBodyArtifact {
   assertBrepCheckpointWriterBindings(oc);
-
-  if (
-    input.source.kind === "checkpointBody" ||
-    input.source.kind === "checkpointBoolean" ||
-    input.source.kind === "checkpointHole" ||
-    input.source.kind === "checkpointEdgeFinish"
-  ) {
-    return createCheckpointBackedExactBodyArtifact(oc, input.source);
-  }
-
-  if (input.source.kind === "extrude" && input.source.profile.kind === "wire") {
-    const build = makeWireExtrudeShapeWithReferences(
-      oc,
-      input.source as OcctWireExtrudeSource
-    );
-    return withOcctWireExtrudeBuildShape(build, (shape, references) =>
-      createExactBodyArtifact(oc, shape, "extrude", references)
-    );
-  }
-
-  return withOcctExactBodyShape(oc, input.source, (shape, sourceKind) =>
-    createExactBodyArtifact(oc, shape, sourceKind)
+  return withOcctExactBodyArtifactShape(
+    oc,
+    input.source,
+    (shape, sourceKind, generatedReferences) =>
+      createExactBodyArtifact(oc, shape, sourceKind, generatedReferences)
   );
 }
 
-function createCheckpointBackedExactBodyArtifact(
+export async function createOcctExactBodyMeshWithLoader(
+  loadOcct: OcctLoader,
+  input: OcctExactBodyMeshInput
+): Promise<OcctMeshData> {
+  return createOcctExactBodyMeshWithInstance(await loadOcct(), input);
+}
+
+export function createOcctExactBodyMeshWithInstance(
+  oc: OpenCascadeInstance,
+  input: OcctExactBodyMeshInput
+): OcctMeshData {
+  return withOcctExactBodyArtifactShape(
+    oc,
+    input.source,
+    (shape, sourceKind) => {
+      const mesh = new oc.BRepMesh_IncrementalMesh_2(
+        shape,
+        input.linearDeflection ?? 0.25,
+        false,
+        input.angularDeflection ?? 0.5,
+        false
+      );
+      try {
+        if (!mesh.IsDone()) {
+          throw new Error(
+            `Open CASCADE exact-body meshing failed with status ${mesh.GetStatusFlags()}.`
+          );
+        }
+        return readTriangulatedShape(oc, shape, toMeshPrimitive(sourceKind));
+      } finally {
+        mesh.delete();
+      }
+    }
+  );
+}
+
+export function createOcctExactBodyArtifactMetadataWithInstance(
+  oc: OpenCascadeInstance,
+  input: OcctExactBodyArtifactInput
+): ReturnType<typeof readExactBodyMetadata> {
+  return withOcctExactBodyArtifactShape(
+    oc,
+    input.source,
+    (shape, sourceKind, generatedReferences) => ({
+      ...readExactBodyMetadata(oc, shape, sourceKind),
+      ...(generatedReferences ? { generatedReferences } : {})
+    })
+  );
+}
+
+export function withOcctExactBodyArtifactShape<T>(
+  oc: OpenCascadeInstance,
+  source: OcctExactBodyArtifactSource,
+  readResult: (
+    shape: TopoDS_Shape,
+    sourceKind: OcctExactTopologySourceKind,
+    generatedReferences?: OcctGeneratedReferences
+  ) => T
+): T {
+  if (
+    source.kind === "checkpointBody" ||
+    source.kind === "checkpointBoolean" ||
+    source.kind === "checkpointHole" ||
+    source.kind === "checkpointEdgeFinish"
+  ) {
+    return withCheckpointBackedExactBodyShape(oc, source, readResult);
+  }
+
+  if (source.kind === "extrude" && source.profile.kind === "wire") {
+    const build = makeWireExtrudeShapeWithReferences(
+      oc,
+      source as OcctWireExtrudeSource
+    );
+    return withOcctWireExtrudeBuildShape(build, (shape, references) =>
+      readResult(shape, "extrude", references)
+    );
+  }
+
+  return withOcctExactBodyShape(oc, source, readResult);
+}
+
+function withCheckpointBackedExactBodyShape<T>(
   oc: OpenCascadeInstance,
   source:
     | OcctCheckpointBodyArtifactSource
     | OcctCheckpointBooleanArtifactSource
     | OcctCheckpointHoleArtifactSource
-    | OcctCheckpointEdgeFinishArtifactSource
-): OcctExactBodyArtifact {
+    | OcctCheckpointEdgeFinishArtifactSource,
+  readResult: (
+    shape: TopoDS_Shape,
+    sourceKind: OcctExactTopologySourceKind
+  ) => T
+): T {
   const checkpoint = source.kind === "checkpointBody" ? source : source.target;
   return withImportedBrepShape(oc, checkpoint.brepBytes, (target) => {
-    if (source.kind === "checkpointBody") {
-      return createExactBodyArtifact(oc, target, checkpoint.topologySourceKind);
-    }
     const topology = readExactTopologySnapshot(
       oc,
       target,
@@ -227,9 +302,12 @@ function createCheckpointBackedExactBodyArtifact(
         message: "Checkpoint topology signature mismatched its BRep shape."
       };
     }
+    if (source.kind === "checkpointBody") {
+      return readResult(target, checkpoint.topologySourceKind);
+    }
     if (source.kind === "checkpointHole") {
       return withOcctHoleResultOnShape(oc, target, source.tool, (shape) =>
-        createExactBodyArtifact(oc, shape, "hole")
+        readResult(shape, "hole")
       );
     }
     if (source.kind === "checkpointEdgeFinish") {
@@ -241,13 +319,34 @@ function createCheckpointBackedExactBodyArtifact(
           operation: source.operation,
           amount: source.amount
         },
-        (shape) => createExactBodyArtifact(oc, shape, "edgeFinish")
+        (shape) => readResult(shape, "edgeFinish")
       );
     }
     return withCheckpointBooleanResultShape(oc, target, source, (shape) =>
-      createExactBodyArtifact(oc, shape, "booleanExtrudes")
+      readResult(shape, "booleanExtrudes")
     );
   });
+}
+
+function toMeshPrimitive(
+  sourceKind: OcctExactTopologySourceKind
+): OcctPrimitiveKind {
+  switch (sourceKind) {
+    case "box":
+    case "cylinder":
+    case "sphere":
+    case "cone":
+    case "torus":
+    case "extrude":
+    case "revolve":
+    case "hole":
+    case "edgeFinish":
+    case "sweep":
+    case "loft":
+      return sourceKind;
+    default:
+      return "boolean";
+  }
 }
 
 function withCheckpointBooleanResultShape<T>(

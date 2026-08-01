@@ -18,6 +18,7 @@ import {
 import type {
   DerivedBooleanExtrudeGeometrySource,
   DerivedEdgeFinishGeometrySource,
+  DerivedExactBodyGeometrySource,
   DerivedExtrudeGeometrySource,
   DerivedGeometrySource,
   DerivedHoleGeometrySource,
@@ -60,6 +61,7 @@ export type DerivedExactMetadataSource =
   | DerivedCircularPatternGeometrySource
   | DerivedMirrorGeometrySource
   | DerivedShellGeometrySource
+  | DerivedExactBodyGeometrySource
   | DerivedImportedBodyExactMetadataSource;
 
 export interface DerivedImportedBodyExactMetadataSource {
@@ -647,6 +649,9 @@ export function formatDerivedExactMetadataEntryStatus(
 export function createExactMetadataRuntimeInput(
   source: DerivedExactMetadataSource
 ): Parameters<DerivedGeometryRuntime["exactBodyMetadata"]>[0] {
+  if (source.kind === "exactBody") {
+    return { id: source.id, source: source.source };
+  }
   if (source.kind === "importedBody") {
     return {
       id: source.id,
@@ -946,6 +951,7 @@ export function isExactMetadataSource(source: {
     source.kind === "circularPattern" ||
     source.kind === "mirror" ||
     source.kind === "shell" ||
+    source.kind === "exactBody" ||
     source.kind === "importedBody"
   );
 }
@@ -953,6 +959,7 @@ export function isExactMetadataSource(source: {
 function getUnsupportedExactMetadataSourceMessage(
   source: DerivedExactMetadataSource
 ): string | undefined {
+  if (source.kind === "exactBody") return undefined;
   if (source.kind === "importedBody") return undefined;
   if (
     source.kind === "box" ||

@@ -30,6 +30,7 @@ export {
   createSweepWorkerRequest,
   createLoftWorkerRequest,
   createExactBodyMetadataWorkerRequest,
+  createExactBodyTessellationWorkerRequest,
   createExactBodyArtifactWorkerRequest,
   createExactTopologyCheckpointPayloadWorkerRequest,
   createExactTopologySnapshotWorkerRequest,
@@ -230,6 +231,7 @@ function getUnsupportedPrimitiveMessage(
     op !== "geometry.shell" &&
     op !== "geometry.sweep" &&
     op !== "geometry.loft" &&
+    op !== "geometry.tessellateExactBody" &&
     op !== "geometry.exactBodyMetadata" &&
     op !== "geometry.exactBodyArtifact" &&
     op !== "geometry.exactTopologySnapshot" &&

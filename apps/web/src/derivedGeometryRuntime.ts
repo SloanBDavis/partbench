@@ -401,6 +401,11 @@ export interface DerivedExactBodyArtifactInput extends Omit<
   readonly id: string;
 }
 
+export interface DerivedExactBodyGeometryInput {
+  readonly id: string;
+  readonly source: ExactBodyArtifactRequest["source"];
+}
+
 export interface DerivedExactBodyArtifactResult {
   readonly artifact: GeometryKernelExactBodyArtifact;
   readonly metrics: DerivedExactMetadataMetrics;
@@ -477,6 +482,10 @@ export interface DerivedGeometryRuntime {
   executeExactStepExport(
     request: GeometryWorkerRequest<DerivedExactStepExportPayload>
   ): Promise<GeometryWorkerResponse<DerivedExactStepExportPayload>>;
+  tessellateExactBody?(
+    input: DerivedExactBodyGeometryInput,
+    context?: DerivedGeometryRequestContext
+  ): Promise<DerivedGeometryResult>;
   tessellateBox(
     input: DerivedGeometryBoxInput,
     context?: DerivedGeometryRequestContext

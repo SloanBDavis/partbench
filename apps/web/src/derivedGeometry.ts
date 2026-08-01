@@ -6,7 +6,10 @@ import type {
   SphereObject,
   TorusObject
 } from "@web-cad/cad-core";
-import type { ResolvedPlanarRegionProfile } from "@web-cad/geometry-worker";
+import type {
+  ExactBodyArtifactSource,
+  ResolvedPlanarRegionProfile
+} from "@web-cad/geometry-worker";
 import type { RenderTriangleMesh } from "@web-cad/renderer";
 import {
   createBooleanExtrudeResultRuntimeSource,
@@ -50,7 +53,8 @@ export type DerivedGeometrySourceKind =
   | "mirror"
   | "shell"
   | "sweep"
-  | "loft";
+  | "loft"
+  | "exactBody";
 
 export type DerivedGeometrySource =
   | DerivedPrimitiveGeometrySource
@@ -64,7 +68,8 @@ export type DerivedGeometrySource =
   | DerivedMirrorGeometrySource
   | DerivedShellGeometrySource
   | DerivedSweepGeometrySource
-  | DerivedLoftGeometrySource;
+  | DerivedLoftGeometrySource
+  | DerivedExactBodyGeometrySource;
 export type DerivedGeometryInput = DerivedGeometrySource | SceneObject;
 
 export type DerivedPrimitiveGeometrySource = {
@@ -77,6 +82,13 @@ export type DerivedPrimitiveGeometrySource = {
 
 export interface DerivedAuthoredGeometrySourceIdentity {
   readonly sourceIdentitySignature?: string;
+}
+
+export interface DerivedExactBodyGeometrySource extends DerivedAuthoredGeometrySourceIdentity {
+  readonly id: string;
+  readonly kind: "exactBody";
+  readonly sourceCacheKeySha256: string;
+  readonly source: ExactBodyArtifactSource;
 }
 
 export interface DerivedExtrudeGeometrySource extends DerivedAuthoredGeometrySourceIdentity {
@@ -339,7 +351,8 @@ type SupportedDerivedGeometrySource =
   | DerivedMirrorGeometrySource
   | DerivedShellGeometrySource
   | DerivedSweepGeometrySource
-  | DerivedLoftGeometrySource;
+  | DerivedLoftGeometrySource
+  | DerivedExactBodyGeometrySource;
 
 interface ActiveDerivedGeometryRequest {
   readonly sourceId: string;
@@ -687,7 +700,8 @@ function toDerivedGeometrySource(
     input.kind === "mirror" ||
     input.kind === "shell" ||
     input.kind === "sweep" ||
-    input.kind === "loft"
+    input.kind === "loft" ||
+    input.kind === "exactBody"
   ) {
     return input;
   }
@@ -698,6 +712,7 @@ function toDerivedGeometrySource(
 function isSupportedDerivedGeometrySource(
   source: DerivedGeometrySource
 ): boolean {
+  if (source.kind === "exactBody") return true;
   if (source.kind === "extrude") {
     return !source.placementError;
   }
@@ -763,6 +778,10 @@ function deriveSourceMesh(
   source: SupportedDerivedGeometrySource,
   context?: DerivedGeometryExecutionContext
 ): Promise<DerivedGeometryResult> {
+  if (source.kind === "exactBody") {
+    return sourceRuntimeExactBodyMesh(runtime, source, context);
+  }
+
   if (source.kind === "extrude") {
     if (source.placementError) {
       throw new Error(source.placementError);
@@ -1050,6 +1069,21 @@ function deriveSourceMesh(
         context as DerivedGeometryRequestContext | undefined
       );
   }
+}
+
+function sourceRuntimeExactBodyMesh(
+  runtime: DerivedGeometryRuntime,
+  source: DerivedExactBodyGeometrySource,
+  context?: DerivedGeometryExecutionContext
+): Promise<DerivedGeometryResult> {
+  return runtime.tessellateExactBody
+    ? runtime.tessellateExactBody(
+        { id: source.id, source: source.source },
+        context && "intent" in context ? undefined : context
+      )
+    : Promise.reject(
+        new Error("Exact body display is unavailable in this runtime.")
+      );
 }
 
 export function applyExtrudePlacement(
@@ -1403,126 +1437,135 @@ export function createDerivedGeometryCacheKey(
 ): string {
   const source = toDerivedGeometrySource(input);
   const base =
-    source.kind === "extrude"
+    source.kind === "exactBody"
       ? {
           kind: source.kind,
           sourceIdentitySignature: source.sourceIdentitySignature,
-          sketchPlane: source.sketchPlane,
-          profile: source.profile,
-          depth: source.depth,
-          side: source.side,
-          placementFrame: source.placementFrame,
-          placementError: source.placementError
+          sourceCacheKeySha256: source.sourceCacheKeySha256
         }
-      : source.kind === "extrudeBoolean"
+      : source.kind === "extrude"
         ? {
             kind: source.kind,
             sourceIdentitySignature: source.sourceIdentitySignature,
-            operation: source.operation,
-            target: createDerivedGeometryCacheKey(source.target),
-            tool: createDerivedGeometryCacheKey(source.tool),
+            sketchPlane: source.sketchPlane,
+            profile: source.profile,
+            depth: source.depth,
+            side: source.side,
+            placementFrame: source.placementFrame,
             placementError: source.placementError
           }
-        : source.kind === "revolve"
+        : source.kind === "extrudeBoolean"
           ? {
               kind: source.kind,
               sourceIdentitySignature: source.sourceIdentitySignature,
-              sketchPlane: source.sketchPlane,
-              profile: source.profile,
-              axis: source.axis,
-              angleDegrees: source.angleDegrees,
-              placementFrame: source.placementFrame,
+              operation: source.operation,
+              target: createDerivedGeometryCacheKey(source.target),
+              tool: createDerivedGeometryCacheKey(source.tool),
               placementError: source.placementError
             }
-          : source.kind === "hole"
+          : source.kind === "revolve"
             ? {
                 kind: source.kind,
                 sourceIdentitySignature: source.sourceIdentitySignature,
-                target: createDerivedGeometryCacheKey(source.target),
-                tool: source.tool,
+                sketchPlane: source.sketchPlane,
+                profile: source.profile,
+                axis: source.axis,
+                angleDegrees: source.angleDegrees,
+                placementFrame: source.placementFrame,
                 placementError: source.placementError
               }
-            : source.kind === "edgeFinish"
-              ? source.operation === "chamfer"
-                ? {
-                    kind: source.kind,
-                    sourceIdentitySignature: source.sourceIdentitySignature,
-                    operation: source.operation,
-                    target: createDerivedGeometryCacheKey(source.target),
-                    edgeStableId: source.edgeStableId,
-                    distance: source.distance,
-                    placementError: source.placementError
-                  }
-                : {
-                    kind: source.kind,
-                    sourceIdentitySignature: source.sourceIdentitySignature,
-                    operation: source.operation,
-                    target: createDerivedGeometryCacheKey(source.target),
-                    edgeStableId: source.edgeStableId,
-                    radius: source.radius,
-                    placementError: source.placementError
-                  }
-              : source.kind === "linearPattern"
-                ? {
-                    kind: source.kind,
-                    sourceIdentitySignature: source.sourceIdentitySignature,
-                    seed: createDerivedGeometryCacheKey(source.seed),
-                    direction: source.direction,
-                    spacing: source.spacing,
-                    instanceCount: source.instanceCount,
-                    placementError: source.placementError
-                  }
-                : source.kind === "circularPattern"
+            : source.kind === "hole"
+              ? {
+                  kind: source.kind,
+                  sourceIdentitySignature: source.sourceIdentitySignature,
+                  target: createDerivedGeometryCacheKey(source.target),
+                  tool: source.tool,
+                  placementError: source.placementError
+                }
+              : source.kind === "edgeFinish"
+                ? source.operation === "chamfer"
+                  ? {
+                      kind: source.kind,
+                      sourceIdentitySignature: source.sourceIdentitySignature,
+                      operation: source.operation,
+                      target: createDerivedGeometryCacheKey(source.target),
+                      edgeStableId: source.edgeStableId,
+                      distance: source.distance,
+                      placementError: source.placementError
+                    }
+                  : {
+                      kind: source.kind,
+                      sourceIdentitySignature: source.sourceIdentitySignature,
+                      operation: source.operation,
+                      target: createDerivedGeometryCacheKey(source.target),
+                      edgeStableId: source.edgeStableId,
+                      radius: source.radius,
+                      placementError: source.placementError
+                    }
+                : source.kind === "linearPattern"
                   ? {
                       kind: source.kind,
                       sourceIdentitySignature: source.sourceIdentitySignature,
                       seed: createDerivedGeometryCacheKey(source.seed),
-                      axis: source.axis,
-                      totalAngleDegrees: source.totalAngleDegrees,
+                      direction: source.direction,
+                      spacing: source.spacing,
                       instanceCount: source.instanceCount,
                       placementError: source.placementError
                     }
-                  : source.kind === "mirror"
+                  : source.kind === "circularPattern"
                     ? {
                         kind: source.kind,
                         sourceIdentitySignature: source.sourceIdentitySignature,
                         seed: createDerivedGeometryCacheKey(source.seed),
-                        plane: source.plane,
-                        includeOriginal: source.includeOriginal,
+                        axis: source.axis,
+                        totalAngleDegrees: source.totalAngleDegrees,
+                        instanceCount: source.instanceCount,
                         placementError: source.placementError
                       }
-                    : source.kind === "shell"
+                    : source.kind === "mirror"
                       ? {
                           kind: source.kind,
                           sourceIdentitySignature:
                             source.sourceIdentitySignature,
-                          target: createDerivedGeometryCacheKey(source.target),
-                          wallThickness: source.wallThickness,
-                          openFaceStableIds: source.openFaceStableIds,
+                          seed: createDerivedGeometryCacheKey(source.seed),
+                          plane: source.plane,
+                          includeOriginal: source.includeOriginal,
                           placementError: source.placementError
                         }
-                      : source.kind === "sweep"
+                      : source.kind === "shell"
                         ? {
                             kind: source.kind,
                             sourceIdentitySignature:
                               source.sourceIdentitySignature,
-                            profile: source.profile,
-                            pathSegments: source.pathSegments,
+                            target: createDerivedGeometryCacheKey(
+                              source.target
+                            ),
+                            wallThickness: source.wallThickness,
+                            openFaceStableIds: source.openFaceStableIds,
                             placementError: source.placementError
                           }
-                        : source.kind === "loft"
+                        : source.kind === "sweep"
                           ? {
                               kind: source.kind,
                               sourceIdentitySignature:
                                 source.sourceIdentitySignature,
-                              sections: source.sections,
+                              profile: source.profile,
+                              pathSegments: source.pathSegments,
                               placementError: source.placementError
                             }
-                          : {
-                              kind: source.kind,
-                              dimensions: source.object.dimensions,
-                              transform: source.object.transform
-                            };
+                          : source.kind === "loft"
+                            ? {
+                                kind: source.kind,
+                                sourceIdentitySignature:
+                                  source.sourceIdentitySignature,
+                                sections: source.sections,
+                                placementError: source.placementError
+                              }
+                            : {
+                                kind: source.kind,
+                                dimensions: source.object.dimensions,
+                                transform: source.object.transform
+                              };
 
   return JSON.stringify(base);
 }

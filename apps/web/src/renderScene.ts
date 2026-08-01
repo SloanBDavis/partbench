@@ -14,6 +14,7 @@ import type {
   DerivedBooleanExtrudeGeometrySource,
   DerivedCircularPatternGeometrySource,
   DerivedEdgeFinishGeometrySource,
+  DerivedExactBodyGeometrySource,
   DerivedExtrudeGeometrySource,
   DerivedGeometryEntry,
   DerivedHoleGeometrySource,
@@ -69,6 +70,7 @@ export function createRenderSceneInputs(
     | DerivedShellGeometrySource
     | DerivedSweepGeometrySource
     | DerivedLoftGeometrySource
+    | DerivedExactBodyGeometrySource
   )[] = [],
   sketches: readonly SketchSnapshot[] = [],
   sketchDisplayFrames: ReadonlyMap<string, SketchDisplayFrame> = new Map()
@@ -88,6 +90,13 @@ export function createRenderSceneInputs(
   }
 
   for (const source of extrudeSources) {
+    if (source.kind === "exactBody") {
+      const derivedGeometry = derivedGeometryBySourceId.get(source.id);
+      if (derivedGeometry?.status === "ready") {
+        meshes.push(derivedGeometry.mesh);
+      }
+      continue;
+    }
     if (source.placementError) {
       continue;
     }

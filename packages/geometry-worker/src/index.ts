@@ -20,6 +20,7 @@ export {
   createCylinderTessellationWorkerRequest,
   createEdgeFinishWorkerRequest,
   createExactBodyMetadataWorkerRequest,
+  createExactBodyTessellationWorkerRequest,
   createExactBodyArtifactWorkerRequest,
   createExactTopologySnapshotWorkerRequest,
   createExactTopologyCheckpointPayloadWorkerRequest,

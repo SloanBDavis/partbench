@@ -13,8 +13,10 @@ import {
   type BooleanExtrudeSource,
   type ExactBodyArtifactRequest,
   type ExactBodyArtifactSource,
+  type ExactBodyMetadataRequest,
   type GeometryKernelExactBodyArtifact,
   type GeometryKernelExactBodyArtifactPayload,
+  type GeometryKernelExactBodyMetadata,
   type ExactRevolveMetadataSource,
   type GeometryKernelExactTopologyCheckpointPayload,
   type GeometryKernelImportedBodyCheckpointPayload,
@@ -365,6 +367,23 @@ function createCheckpointPayloadFixture(
   };
 }
 
+function getMetadataSourceKind(
+  source: ExactBodyMetadataRequest["source"]
+): GeometryKernelExactBodyMetadata["sourceKind"] {
+  switch (source.kind) {
+    case "checkpointBody":
+      return source.topologySourceKind;
+    case "checkpointBoolean":
+      return "booleanExtrudes";
+    case "checkpointHole":
+      return "hole";
+    case "checkpointEdgeFinish":
+      return "edgeFinish";
+    default:
+      return source.kind;
+  }
+}
+
 function createImportedBodyPayloadFixture(
   input: {
     readonly sourceFileName?: string;
@@ -564,6 +583,62 @@ describe("geometry-kernel facade", () => {
     expect(calls).toBe(1);
     expect(getGeometryResponseTransferables(overLimit)).toEqual([]);
   });
+
+  it("tessellates checkpoint-backed exact bodies only after hash validation", async () => {
+    const checkpoint = await createSyntheticStepArtifactBody("checkpoint");
+    const source = {
+      kind: "checkpointBody" as const,
+      brepBytes: checkpoint.brepBytes,
+      brepByteLength: checkpoint.brepByteLength,
+      brepSha256: checkpoint.brepSha256,
+      topologySourceKind: "importedBody" as const,
+      topologySignature: "checkpoint-topology"
+    };
+    let calls = 0;
+    const factories: GeometryKernelMeshFactories = {
+      ...createInjectedArtifactFactories(async () =>
+        createExactBodyArtifactPayloadFixture()
+      ),
+      createExactBodyMesh: async (input) => {
+        calls += 1;
+        expect(input.source).toBe(source);
+        return {
+          primitive: "boolean",
+          positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+          indices: new Uint32Array([0, 1, 2]),
+          vertexCount: 3,
+          triangleCount: 1,
+          faceCount: 1
+        };
+      }
+    };
+    const request = {
+      id: "geometry_req_exact_body_display",
+      version: "geometry-kernel.v1" as const,
+      op: "geometry.tessellateExactBody" as const,
+      source
+    };
+    const ready = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      request
+    );
+    expect(ready).toMatchObject({ ok: true, mesh: { triangleCount: 1 } });
+    expect(getGeometryResponseTransferables(ready)).toHaveLength(2);
+
+    const corrupt = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        ...request,
+        source: { ...source, brepSha256: "0".repeat(64) }
+      }
+    );
+    expect(corrupt).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_DIMENSIONS" }
+    });
+    expect(calls).toBe(1);
+  });
+
   it("reports STEP exact export writer capability as available", () => {
     expect(getGeometryKernelExactExportCapabilities()).toEqual([
       expect.objectContaining({
@@ -1733,7 +1808,7 @@ describe("geometry-kernel facade", () => {
           faceCount: 1
         }),
         createExactBodyMetadata: async (input) => ({
-          sourceKind: input.source.kind,
+          sourceKind: getMetadataSourceKind(input.source),
           bounds: { min: [0, 0, 0], max: [4, 4, 4] },
           volume: 64,
           surfaceArea: 96,
@@ -5106,7 +5181,7 @@ describe("geometry-kernel facade", () => {
       createTorusMesh: unusedFactory,
       createBooleanExtrudeMesh: unusedFactory,
       createExactBodyMetadata: async (input) => ({
-        sourceKind: input.source.kind,
+        sourceKind: getMetadataSourceKind(input.source),
         bounds: {
           min: [0, 0, 0],
           max: [2, 3, 4]
@@ -5209,7 +5284,7 @@ describe("geometry-kernel facade", () => {
       createTorusMesh: unusedFactory,
       createBooleanExtrudeMesh: unusedFactory,
       createExactTopologySnapshot: async (input) => ({
-        sourceKind: input.source.kind,
+        sourceKind: getMetadataSourceKind(input.source),
         status: "partial",
         entityCounts: {
           bodyCount: 1,
@@ -5333,7 +5408,7 @@ describe("geometry-kernel facade", () => {
       createTorusMesh: unusedFactory,
       createBooleanExtrudeMesh: unusedFactory,
       createExactTopologySnapshot: async (input) => ({
-        sourceKind: input.source.kind,
+        sourceKind: getMetadataSourceKind(input.source),
         status: "partial",
         entityCounts: {
           bodyCount: 0,
@@ -5528,7 +5603,7 @@ describe("geometry-kernel facade", () => {
       createTorusMesh: unusedFactory,
       createBooleanExtrudeMesh: unusedFactory,
       createExactTopologySnapshot: async (input) => ({
-        sourceKind: input.source.kind,
+        sourceKind: getMetadataSourceKind(input.source),
         status: "partial",
         entityCounts: {
           bodyCount: 1,
@@ -5608,7 +5683,7 @@ describe("geometry-kernel facade", () => {
       createTorusMesh: unusedFactory,
       createBooleanExtrudeMesh: unusedFactory,
       createExactBodyMetadata: async (input) => ({
-        sourceKind: input.source.kind,
+        sourceKind: getMetadataSourceKind(input.source),
         bounds: {
           min: [-2.5, -1.5, -2.5],
           max: [2.5, 1.5, 2.5]
@@ -5675,7 +5750,7 @@ describe("geometry-kernel facade", () => {
       createTorusMesh: unusedFactory,
       createBooleanExtrudeMesh: unusedFactory,
       createExactBodyMetadata: async (input) => ({
-        sourceKind: input.source.kind,
+        sourceKind: getMetadataSourceKind(input.source),
         bounds: {
           min: [-3, -2, 0],
           max: [3, 2, 3]
@@ -5753,7 +5828,7 @@ describe("geometry-kernel facade", () => {
       createTorusMesh: unusedFactory,
       createBooleanExtrudeMesh: unusedFactory,
       createExactBodyMetadata: async (input) => ({
-        sourceKind: input.source.kind,
+        sourceKind: getMetadataSourceKind(input.source),
         bounds: {
           min: [-3, -2, 0],
           max: [3, 2, 4]
@@ -5879,7 +5954,7 @@ describe("geometry-kernel facade", () => {
       createExactBodyMetadata: async (input) => {
         receivedSource = input.source;
         return {
-          sourceKind: input.source.kind,
+          sourceKind: getMetadataSourceKind(input.source),
           bounds: { min: [4, 5, 10], max: [6, 9, 12] },
           volume: 24,
           surfaceArea: 52,
@@ -6417,7 +6492,7 @@ describe("geometry-kernel facade", () => {
         };
       },
       createExactBodyMetadata: async (input) => ({
-        sourceKind: input.source.kind,
+        sourceKind: getMetadataSourceKind(input.source),
         bounds: { min: [0, 0, 0], max: [1, 1, 1] },
         volume: 1,
         surfaceArea: 6,
