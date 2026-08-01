@@ -208,7 +208,7 @@ describe("V17 composite wire revolve agent parity", () => {
     });
     expect(exactExport).toMatchObject({
       ok: true,
-      available: true,
+      available: false,
       exportSources: [
         expect.objectContaining({
           sourceKind: "authoredRevolve",

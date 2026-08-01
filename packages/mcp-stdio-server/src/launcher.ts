@@ -637,6 +637,18 @@ function isValidRelayResponse(
   }
 
   if (
+    ((pending.request.method === "query" &&
+      (pending.request.request.query?.query?.query ===
+        "project.exportReadiness" ||
+        pending.request.request.query?.query?.query ===
+          "project.exportExact")) ||
+      pending.request.method === "inspectV8ProjectSurface") &&
+    hasPrivateExportField(value)
+  ) {
+    return false;
+  }
+
+  if (
     value.ok === false &&
     isRecord(value.error) &&
     typeof value.error.code === "string" &&
@@ -689,6 +701,36 @@ function isValidRelayResponse(
         isRecord(value.boundaries)
       );
   }
+}
+
+const PRIVATE_EXPORT_FIELDS = new Set([
+  "artifact",
+  "bytes",
+  "bytesBase64",
+  "brepBytes",
+  "stepBytes",
+  "fileHandle",
+  "localPath",
+  "opfsPath",
+  "rendererId",
+  "meshId",
+  "occtHandle",
+  "workerId",
+  "cacheId",
+  "cacheKey"
+]);
+
+function hasPrivateExportField(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.some(hasPrivateExportField);
+  }
+  if (!isRecord(value)) {
+    return false;
+  }
+  return Object.entries(value).some(
+    ([key, child]) =>
+      PRIVATE_EXPORT_FIELDS.has(key) || hasPrivateExportField(child)
+  );
 }
 
 function parses(parse: () => unknown): boolean {

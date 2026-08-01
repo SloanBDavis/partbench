@@ -3224,16 +3224,16 @@ describe("agent-adapter", () => {
         }
       },
       exportReadiness: {
-        status: "unavailable",
+        status: "deferred",
         canExportFiles: false,
         formatCount: 2,
         bodyCount: 2,
-        unavailableBodyCount: 2
+        unavailableBodyCount: 0
       },
       workflowHints: [
         expect.objectContaining({ code: "NO_AUTHORED_BODY_FEATURES" }),
         expect.objectContaining({ code: "NO_COMMANDABLE_REFERENCES" }),
-        expect.objectContaining({ code: "EXPORT_UNAVAILABLE" })
+        expect.objectContaining({ code: "EXPORT_DEFERRED" })
       ]
     });
   });
@@ -3791,8 +3791,8 @@ describe("agent-adapter", () => {
       adapterVersion: "web-cad.agent-adapter.v1",
       cadOpsVersion: "cadops.v1",
       query: "project.exportReadiness",
-      status: "supported",
-      canExportFiles: true,
+      status: "deferred",
+      canExportFiles: false,
       units: "mm",
       formatCount: 2,
       bodyCount: 1,
@@ -3800,8 +3800,8 @@ describe("agent-adapter", () => {
       formats: expect.arrayContaining([
         expect.objectContaining({
           format: "step",
-          status: "supported",
-          available: true,
+          status: "deferred",
+          available: false,
           writerStatus: "available",
           diagnostics: []
         })
@@ -3811,8 +3811,12 @@ describe("agent-adapter", () => {
           bodyId: "body_export_readiness",
           sourceKind: "authoredExtrude",
           sourceStatus: "supported",
-          status: "supported"
+          status: "deferred"
         })
+      ],
+      plan: { orderedBodyIds: ["body_export_readiness"] },
+      currentExactResults: [
+        { bodyId: "body_export_readiness", status: "pending" }
       ]
     });
   });
@@ -3874,13 +3878,13 @@ describe("agent-adapter", () => {
       cadOpsVersion: "cadops.v1",
       query: "project.exportExact",
       format: "step",
-      status: "supported",
-      available: true,
-      canExportFile: true,
+      status: "deferred",
+      available: false,
+      canExportFile: false,
       writerStatus: "available",
       requestedBodyIds: ["body_exact_export"],
       sourceSupportedBodyCount: 1,
-      exportableBodyCount: 1,
+      exportableBodyCount: 0,
       diagnostics: expect.arrayContaining([
         expect.objectContaining({
           code: "EXPORT_BODY_SOURCE_SUPPORTED",
@@ -3888,6 +3892,8 @@ describe("agent-adapter", () => {
           bodyId: "body_exact_export"
         })
       ]),
+      plan: { orderedBodyIds: ["body_exact_export"] },
+      currentExactResults: [{ bodyId: "body_exact_export", status: "pending" }],
       exportSources: [
         expect.objectContaining({
           bodyId: "body_exact_export",
@@ -4642,30 +4648,20 @@ describe("agent-adapter", () => {
         sourceIdentityIncludesCache: false
       },
       exportReadiness: {
-        status: "supported",
-        canExportFiles: true,
+        status: "deferred",
+        canExportFiles: false,
         bodyCount: 2,
-        sourceSupportedBodyCount: 1,
-        unsupportedBodyCount: 1,
-        unsupportedBodies: [
-          expect.objectContaining({
-            bodyId: "body:surface_box",
-            sourceKind: "primitiveCompatibility",
-            diagnostics: expect.arrayContaining([
-              expect.objectContaining({
-                code: "EXPORT_PRIMITIVE_SOURCE_UNAVAILABLE"
-              })
-            ])
-          })
-        ]
+        sourceSupportedBodyCount: 2,
+        unsupportedBodyCount: 0,
+        unsupportedBodies: []
       },
       exactExport: {
         format: "step",
-        status: "supported",
-        available: true,
-        canExportFile: true,
+        status: "deferred",
+        available: false,
+        canExportFile: false,
         requestedBodyIds: ["body_surface_export"],
-        exportableBodyCount: 1,
+        exportableBodyCount: 0,
         exportSourceCount: 1,
         diagnosticCount: expect.any(Number),
         diagnostics: expect.arrayContaining([

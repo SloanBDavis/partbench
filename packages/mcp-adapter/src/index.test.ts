@@ -485,10 +485,10 @@ describe("mcp-adapter", () => {
         }
       },
       exportReadiness: {
-        status: "unavailable",
+        status: "deferred",
         canExportFiles: false,
         bodyCount: 1,
-        unavailableBodyCount: 1
+        unavailableBodyCount: 0
       }
     });
   });
@@ -1326,16 +1326,16 @@ describe("mcp-adapter", () => {
         ok: true,
         requestId: "mcp_req_export_readiness",
         query: "project.exportReadiness",
-        status: "supported",
-        canExportFiles: true,
+        status: "deferred",
+        canExportFiles: false,
         bodyCount: 1,
         sourceSupportedBodyCount: 1,
         formats: expect.arrayContaining([
           expect.objectContaining({
             format: "step",
             label: "STEP",
-            status: "supported",
-            available: true,
+            status: "deferred",
+            available: false,
             writerStatus: "available"
           }),
           expect.objectContaining({
@@ -1350,7 +1350,7 @@ describe("mcp-adapter", () => {
             bodyId: "body_export_ready",
             sourceKind: "authoredExtrude",
             sourceStatus: "supported",
-            status: "supported"
+            status: "deferred"
           })
         ]
       }
@@ -1413,13 +1413,25 @@ describe("mcp-adapter", () => {
         requestId: "mcp_req_exact_export",
         query: "project.exportExact",
         format: "step",
-        status: "supported",
-        available: true,
-        canExportFile: true,
+        status: "deferred",
+        available: false,
+        canExportFile: false,
         writerStatus: "available",
         requestedBodyIds: ["body_exact_export"],
         sourceSupportedBodyCount: 1,
-        exportableBodyCount: 1,
+        exportableBodyCount: 0,
+        plan: expect.objectContaining({
+          format: "step",
+          schema: "AP242DIS",
+          orderedBodyIds: ["body_exact_export"],
+          allOrNothing: true
+        }),
+        currentExactResults: [
+          expect.objectContaining({
+            bodyId: "body_exact_export",
+            status: "pending"
+          })
+        ],
         diagnostics: expect.arrayContaining([
           expect.objectContaining({
             code: "EXPORT_BODY_SOURCE_SUPPORTED",
@@ -2518,21 +2530,26 @@ describe("mcp-adapter", () => {
           clearMutatesSource: false
         },
         exportReadiness: {
-          status: "supported",
-          canExportFiles: true,
-          unsupportedBodies: [
-            expect.objectContaining({
-              bodyId: "body:mcp_surface_box",
-              sourceKind: "primitiveCompatibility"
-            })
-          ]
+          status: "deferred",
+          canExportFiles: false,
+          unsupportedBodies: []
         },
         exactExport: {
           format: "step",
-          available: true,
-          canExportFile: true,
+          available: false,
+          canExportFile: false,
           requestedBodyIds: ["body_mcp_surface"],
           exportSourceCount: 1,
+          plan: expect.objectContaining({
+            orderedBodyIds: ["body_mcp_surface"],
+            allOrNothing: true
+          }),
+          currentExactResults: [
+            expect.objectContaining({
+              bodyId: "body_mcp_surface",
+              status: "pending"
+            })
+          ],
           artifactPolicy: {
             artifactBytesReturned: false,
             fileWritesPerformed: false,
@@ -6596,6 +6613,19 @@ describe("mcp-adapter", () => {
       })
     ).toMatchObject({
       toolName: "cad.project_import_readiness",
+      isError: true,
+      structuredContent: {
+        ok: false,
+        error: { code: "INVALID_ARGUMENTS" }
+      }
+    });
+    expect(
+      server.callTool({
+        name: "cad.project_export_exact",
+        arguments: { format: "step", bodyIds: ["body_1", "body_1"] }
+      })
+    ).toMatchObject({
+      toolName: "cad.project_export_exact",
       isError: true,
       structuredContent: {
         ok: false,

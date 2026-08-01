@@ -9,6 +9,7 @@ import {
   validateV19CadOp,
   validateV19SketchQueryRequest,
   validateSketchProfilePathQueryRequest,
+  validateProjectExactExportQuery,
   WCAD_SOURCE_IDENTITY_ALGORITHM
 } from "@web-cad/cad-protocol";
 import type {
@@ -700,26 +701,13 @@ export interface CadOpsAgentTopologyAnchorRepairPlanQueryResponse extends Omit<
   readonly adapterVersion: AgentAdapterVersion;
 }
 
-export interface CadOpsAgentProjectExportReadinessQueryResponse {
+export interface CadOpsAgentProjectExportReadinessQueryResponse extends Omit<
+  ProjectExportReadinessQueryResponse,
+  "ok"
+> {
   readonly ok: true;
   readonly requestId: string;
   readonly adapterVersion: AgentAdapterVersion;
-  readonly cadOpsVersion: CadOpsVersion;
-  readonly query: "project.exportReadiness";
-  readonly status: CadExportReadinessStatus;
-  readonly canExportFiles: boolean;
-  readonly units: DocumentUnits;
-  readonly sourceBoundaryNote: string;
-  readonly derivedBoundaryNote: string;
-  readonly formatCount: number;
-  readonly formats: readonly CadExportFormatReadiness[];
-  readonly bodyCount: number;
-  readonly sourceSupportedBodyCount: number;
-  readonly deferredBodyCount: number;
-  readonly unavailableBodyCount: number;
-  readonly bodies: readonly CadExportBodyReadiness[];
-  readonly diagnosticCount: number;
-  readonly diagnostics: readonly CadExportDiagnostic[];
 }
 
 export interface CadOpsAgentProjectExactExportQueryResponse extends Omit<
@@ -1160,6 +1148,8 @@ export interface CadOpsAgentV8ProjectSurfaceExportSummary {
   readonly unsupportedBodies: readonly CadOpsAgentV8ProjectSurfaceUnsupportedBodySummary[];
   readonly diagnosticCount: number;
   readonly diagnostics: readonly CadExportDiagnostic[];
+  readonly plan?: ProjectExportReadinessQueryResponse["plan"];
+  readonly currentExactResults?: ProjectExportReadinessQueryResponse["currentExactResults"];
 }
 
 export interface CadOpsAgentV8ProjectSurfaceFormatSummary {
@@ -1207,6 +1197,8 @@ export interface CadOpsAgentV8ProjectSurfaceExactExportSummary {
   readonly unsupportedBodies: readonly CadOpsAgentV8ProjectSurfaceUnsupportedBodySummary[];
   readonly diagnosticCount: number;
   readonly diagnostics: readonly CadExportDiagnostic[];
+  readonly plan?: ProjectExactExportQueryResponse["plan"];
+  readonly currentExactResults?: ProjectExactExportQueryResponse["currentExactResults"];
   readonly artifactPolicy: CadOpsAgentExportArtifactPolicy;
 }
 
@@ -3338,25 +3330,9 @@ function toAgentQueryResponse(
 
   if (response.query === "project.exportReadiness") {
     return {
-      ok: true,
       requestId: request.requestId,
       adapterVersion: request.adapterVersion,
-      cadOpsVersion: response.cadOpsVersion,
-      query: response.query,
-      status: response.status,
-      canExportFiles: response.canExportFiles,
-      units: response.units,
-      sourceBoundaryNote: response.sourceBoundaryNote,
-      derivedBoundaryNote: response.derivedBoundaryNote,
-      formatCount: response.formatCount,
-      formats: response.formats,
-      bodyCount: response.bodyCount,
-      sourceSupportedBodyCount: response.sourceSupportedBodyCount,
-      deferredBodyCount: response.deferredBodyCount,
-      unavailableBodyCount: response.unavailableBodyCount,
-      bodies: response.bodies,
-      diagnosticCount: response.diagnosticCount,
-      diagnostics: response.diagnostics
+      ...response
     };
   }
 
@@ -3930,7 +3906,11 @@ function createV8ExportSurfaceSummary(
     unsupportedBodyCount: unsupportedBodies.length,
     unsupportedBodies,
     diagnosticCount: response.diagnosticCount,
-    diagnostics: response.diagnostics
+    diagnostics: response.diagnostics,
+    ...(response.plan ? { plan: response.plan } : {}),
+    ...(response.currentExactResults
+      ? { currentExactResults: response.currentExactResults }
+      : {})
   };
 }
 
@@ -3957,6 +3937,10 @@ function createV8ExactExportSurfaceSummary(
     unsupportedBodies,
     diagnosticCount: response.diagnosticCount,
     diagnostics: response.diagnostics,
+    ...(response.plan ? { plan: response.plan } : {}),
+    ...(response.currentExactResults
+      ? { currentExactResults: response.currentExactResults }
+      : {}),
     artifactPolicy: createExportArtifactPolicy()
   };
 }
@@ -4596,8 +4580,7 @@ function isProjectExactExportQuery(value: Record<string, unknown>): boolean {
   const allowedKeys = ["query", "format", "bodyIds", "sourceIdentity"];
 
   return (
-    value.query === "project.exportExact" &&
-    value.format === "step" &&
+    validateProjectExactExportQuery(value).ok &&
     Object.keys(value).every((key) => allowedKeys.includes(key)) &&
     (value.bodyIds === undefined ||
       (Array.isArray(value.bodyIds) &&

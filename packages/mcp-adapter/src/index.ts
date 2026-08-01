@@ -17,7 +17,10 @@ export {
   createV17AdapterCompositeParityFixture,
   type V17AdapterCompositeParityFixture
 } from "@web-cad/agent-adapter";
-import { WCAD_SOURCE_IDENTITY_ALGORITHM } from "@web-cad/cad-protocol";
+import {
+  WCAD_SOURCE_IDENTITY_ALGORITHM,
+  validateProjectExactExportQuery
+} from "@web-cad/cad-protocol";
 import type {
   CadActorMetadata,
   CadBatch,
@@ -3181,7 +3184,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.project_export_exact",
     description:
-      "Returns exact STEP export contract data for supported source bodies, including exportable source payloads and structured diagnostics. File bytes are produced by the app geometry boundary, not MCP.",
+      "Returns an identity-bound exact STEP plan, current per-body readiness, and structured diagnostics. MCP receives no geometry or file bytes.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -4218,15 +4221,13 @@ function isProjectExportExactToolArguments(value: unknown): value is {
 } {
   return (
     isRecord(value) &&
-    value.format === "step" &&
     Object.keys(value).every((key) =>
       ["format", "bodyIds", "sourceIdentity"].includes(key)
     ) &&
-    (value.bodyIds === undefined ||
-      (Array.isArray(value.bodyIds) &&
-        value.bodyIds.every((bodyId) => typeof bodyId === "string"))) &&
-    (value.sourceIdentity === undefined ||
-      isWcadSourceIdentityToolArgument(value.sourceIdentity))
+    validateProjectExactExportQuery({
+      query: "project.exportExact",
+      ...value
+    }).ok
   );
 }
 
@@ -4248,16 +4249,6 @@ function isV8ProjectSurfaceToolArguments(value: unknown): value is
       Object.keys(value).every((key) => key === "exactExport") &&
       (value.exactExport === undefined ||
         isProjectExportExactToolArguments(value.exactExport)))
-  );
-}
-
-function isWcadSourceIdentityToolArgument(value: unknown): boolean {
-  return (
-    isRecord(value) &&
-    Object.keys(value).length === 2 &&
-    value.algorithm === WCAD_SOURCE_IDENTITY_ALGORITHM &&
-    typeof value.sha256 === "string" &&
-    new RegExp(SHA256_HEX_PATTERN).test(value.sha256)
   );
 }
 

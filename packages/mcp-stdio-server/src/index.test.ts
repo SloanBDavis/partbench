@@ -178,7 +178,7 @@ describe("mcp stdio server", () => {
             generatedReferenceCount: 0
           },
           exportReadiness: {
-            status: "unavailable",
+            status: "deferred",
             canExportFiles: false,
             bodyCount: 1
           }

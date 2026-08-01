@@ -12,6 +12,7 @@ import type {
 import {
   LOCAL_AGENT_RELAY_PATH,
   LOCAL_AGENT_TOKEN_HEADER,
+  LocalAgentRelay,
   openLocalAgentBrowser,
   startLocalAgentLauncherForTest,
   type LocalAgentLauncher
@@ -418,6 +419,40 @@ describe("local agent launcher", () => {
       error: { code: "AGENT_SESSION_DISCONNECTED" }
     });
     await secondFixture.remove();
+  });
+
+  it("rejects private fields in export responses", async () => {
+    const relay = new LocalAgentRelay();
+    relay.connectBrowser("owner");
+    const response = relay.query({
+      requestId: "validate-export",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: { query: "project.exportExact", format: "step" }
+      }
+    });
+    const request = await relay.pollBrowser("owner");
+    expect(request).not.toBeNull();
+    const result = {
+      ok: true,
+      requestId: "validate-export",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      cadOpsVersion: "cadops.v1",
+      query: "project.exportExact",
+      plan: { bodies: [] }
+    };
+
+    expect(
+      relay.respondFromBrowser("owner", request!.requestId, {
+        ...result,
+        plan: { bodies: [{ bodyId: "body_1", bytesBase64: "AA==" }] }
+      })
+    ).toBe(false);
+    expect(relay.respondFromBrowser("owner", request!.requestId, result)).toBe(
+      true
+    );
+    await expect(response).resolves.toMatchObject(result);
   });
 
   it("disconnects relay ownership when an outstanding browser poll is lost", async () => {
