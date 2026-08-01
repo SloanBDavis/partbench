@@ -247,6 +247,11 @@ export {
   getGeometryKernelStepImportCapabilities,
   getGeometryResponseTransferables
 };
+export {
+  V21_EXACT_RELEASE_CORPUS,
+  V21_EXACT_RELEASE_PRIMITIVES,
+  type V21ExactReleaseCorpusEntry
+} from "./v21ReleaseCorpus";
 
 export interface BrowserGeometryKernelTimings {
   readonly occtLoadMs: number;

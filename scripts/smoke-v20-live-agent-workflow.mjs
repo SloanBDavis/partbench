@@ -12,8 +12,10 @@ import {
 import { acquireBrowserSmokeLease } from "./v18-geometry-reliability.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const requireV21 = process.env.PARTBENCH_REQUIRE_V21 === "1";
 const timeoutMs = Number(
-  process.env.PARTBENCH_V20_BROWSER_TIMEOUT_MS ?? 45_000
+  process.env.PARTBENCH_V20_BROWSER_TIMEOUT_MS ??
+    (requireV21 ? 120_000 : 45_000)
 );
 const browserExecutable = findBrowserExecutable();
 if (!browserExecutable) {
@@ -101,10 +103,27 @@ async function runWorkflow(client, mcpClient) {
           value: undefined
         });
         window.__partbenchV20Downloads = [];
+        window.__partbenchV21Base64Calls = 0;
+        window.__partbenchV21RevokedUrls = 0;
+        const nativeAtob = window.atob.bind(window);
+        const nativeBtoa = window.btoa.bind(window);
+        window.atob = (...args) => {
+          window.__partbenchV21Base64Calls += 1;
+          return nativeAtob(...args);
+        };
+        window.btoa = (...args) => {
+          window.__partbenchV21Base64Calls += 1;
+          return nativeBtoa(...args);
+        };
         const nativeCreateObjectURL = URL.createObjectURL.bind(URL);
+        const nativeRevokeObjectURL = URL.revokeObjectURL.bind(URL);
         URL.createObjectURL = (value) => {
           if (value instanceof Blob) window.__partbenchV20Downloads.push(value);
           return nativeCreateObjectURL(value);
+        };
+        URL.revokeObjectURL = (value) => {
+          window.__partbenchV21RevokedUrls += 1;
+          return nativeRevokeObjectURL(value);
         };
       `
     },
@@ -343,6 +362,54 @@ async function runWorkflow(client, mcpClient) {
   checks.push("viewport rebuild and semantic body selection");
 
   await browser.clickText('[aria-label="Workbench mode"] button', "Project");
+  if (requireV21) {
+    await browser.clickText('[aria-label="Project pages"] button', "Export");
+    await browser.waitFor(
+      `[...document.querySelectorAll('.pb-project-mode-workspace button')].some((button) => button.textContent.trim() === 'Export all bodies' && !button.disabled && button.getAttribute('aria-disabled') !== 'true')`,
+      "ready V21 selected-body export"
+    );
+    const exactPlan = content(
+      await mcpClient.callTool("cad.project_export_exact", {
+        format: "step",
+        bodyIds: [selectedObject.selection.bodyId]
+      })
+    );
+    assert(
+      exactPlan.available &&
+      exactPlan.plan?.schema === "AP242DIS" &&
+        exactPlan.plan?.orderedBodyIds?.[0] === selectedObject.selection.bodyId,
+      "connected MCP exact plan must match the selected browser body"
+    );
+    await browser.evaluate(`window.__partbenchV20Downloads.length = 0`);
+    await browser.clickText(
+      ".pb-project-mode-workspace button",
+      "Export selected body"
+    );
+    await browser.waitFor(
+      `window.__partbenchV20Downloads.length === 1 && document.body.textContent.includes('Downloaded partbench-export.step')`,
+      "V21 exact STEP download"
+    );
+    const stepDownload = await browser.evaluate(`(async () => {
+      const blob = window.__partbenchV20Downloads[0];
+      const text = new TextDecoder().decode(new Uint8Array(await blob.arrayBuffer()).slice(0, 32));
+      return {
+        type: blob.type,
+        size: blob.size,
+        header: text,
+        base64Calls: window.__partbenchV21Base64Calls,
+        revokedUrls: window.__partbenchV21RevokedUrls
+      };
+    })()`);
+    assert(
+      stepDownload.type === "model/step" &&
+        stepDownload.size > 1_000 &&
+        stepDownload.header.includes("ISO-10303-21") &&
+        stepDownload.base64Calls === 0 &&
+        stepDownload.revokedUrls >= 1,
+      "V21 browser download must be direct STEP Blob bytes with URL cleanup and no base64"
+    );
+    checks.push("V21 selected-body AP242 plan and direct browser download");
+  }
   await browser.clickText('[aria-label="Project pages"] button', "Files");
   await browser.evaluate(`window.__partbenchV20Downloads.length = 0`);
   await browser.clickText(".pb-project-mode-workspace button", "Save as");

@@ -154,7 +154,10 @@ export function createSuccessRecord(input) {
       vertexCount: input.smokeResult.vertexCount,
       triangleCount: input.smokeResult.triangleCount,
       meshes: input.smokeResult.meshes,
-      namedStepProbe: input.smokeResult.namedStepProbe
+      namedStepProbe: input.smokeResult.namedStepProbe,
+      ...(input.smokeResult.v21ExactInterchange
+        ? { v21ExactInterchange: input.smokeResult.v21ExactInterchange }
+        : {})
     }
   };
 }

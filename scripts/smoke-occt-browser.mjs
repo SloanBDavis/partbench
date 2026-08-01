@@ -24,9 +24,17 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const smokeDistDir = join(repoRoot, "apps/web/dist-geometry-worker-smoke");
 const smokeHtmlPath = join(smokeDistDir, "geometry-worker-smoke.html");
 const metricsDir = join(repoRoot, ".metrics");
-const metricsPath = join(metricsDir, "occt-browser.jsonl");
-const smokeTimeoutMs = 60_000;
-const scenarioName = "primitive-and-boolean-meshes";
+const requireV21 = process.env.PARTBENCH_REQUIRE_V21 === "1";
+const metricsPath = join(
+  metricsDir,
+  requireV21 ? "v21-occt-browser.jsonl" : "occt-browser.jsonl"
+);
+const smokeTimeoutMs = Number(
+  process.env.PARTBENCH_SMOKE_TIMEOUT_MS ?? (requireV21 ? 600_000 : 60_000)
+);
+const scenarioName = requireV21
+  ? "v21-exact-interchange"
+  : "primitive-and-boolean-meshes";
 
 await mkdir(metricsDir, { recursive: true });
 const browserExecutable = findBrowserExecutable();
@@ -71,7 +79,7 @@ try {
   });
   assetMetrics = await getAssetMetrics(smokeDistDir);
   appServer = await startStaticServer(smokeDistDir);
-  appUrl = `http://127.0.0.1:${appServer.port}/geometry-worker-smoke.html`;
+  appUrl = `http://127.0.0.1:${appServer.port}/geometry-worker-smoke.html${requireV21 ? "?v21=1" : ""}`;
   remoteDebuggingPort = await getAvailablePort();
   browserProcess = spawn(browserExecutable, [
     "--headless=new",
@@ -108,6 +116,9 @@ try {
   });
 
   assertSmokeResult(record);
+  if (requireV21 && !record.metrics.v21ExactInterchange?.ok) {
+    throw new Error("V21 exact interchange result was missing or failed.");
+  }
   await appendMetrics(record);
   printSummary(record, metricsPath);
 } catch (error) {

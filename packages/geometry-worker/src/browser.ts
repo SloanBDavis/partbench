@@ -6,6 +6,11 @@ import {
   type GeometryKernelResponse
 } from "@web-cad/geometry-kernel/browser";
 export { assertExactBodyArtifactAggregateWithinLimit } from "@web-cad/geometry-kernel/browser";
+export {
+  V21_EXACT_RELEASE_CORPUS,
+  V21_EXACT_RELEASE_PRIMITIVES,
+  type V21ExactReleaseCorpusEntry
+} from "@web-cad/geometry-kernel/browser";
 import {
   createKernelFailureResponse,
   createWorkerErrorDiagnostics,

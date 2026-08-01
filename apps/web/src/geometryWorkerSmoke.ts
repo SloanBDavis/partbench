@@ -14,6 +14,7 @@ import {
   createDerivedGeometryErrorDetails,
   createDerivedGeometryErrorFromWorkerResponse
 } from "./derivedGeometryRuntime";
+import { runV21ExactReleaseBrowserWorkflow } from "./v21ExactReleaseBrowserWorkflow";
 
 const output = document.getElementById("geometry-worker-smoke");
 
@@ -185,6 +186,9 @@ async function runGeometryWorkerSmoke(): Promise<void> {
       throw createDerivedGeometryErrorFromWorkerResponse(probeResponse);
     }
     const namedStepProbe = probeResponse.response.probe;
+    const v21ExactInterchange = new URLSearchParams(location.search).has("v21")
+      ? await runV21ExactReleaseBrowserWorkflow(worker)
+      : undefined;
     const result = {
       ok: true,
       vertexCount: primary.vertexCount,
@@ -193,7 +197,8 @@ async function runGeometryWorkerSmoke(): Promise<void> {
       diagnostics: primary.diagnostics,
       timings: primary.timings,
       meshes: meshResults,
-      namedStepProbe
+      namedStepProbe,
+      ...(v21ExactInterchange ? { v21ExactInterchange } : {})
     };
 
     document.body.dataset.geometryWorkerSmoke = "ok";
