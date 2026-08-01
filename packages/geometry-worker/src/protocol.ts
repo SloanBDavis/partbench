@@ -36,6 +36,7 @@ import type {
   GeometryKernelDirection,
   GeometryKernelAxisFrame,
   MirrorRequest,
+  NamedStepProbeRequest,
   MirrorSeedSource,
   GeometryKernelPlaneFrame,
   ShellRequest,
@@ -60,6 +61,7 @@ export type {
   GeometryKernelTopologyCheckpointSignaturePayload,
   GeometryKernelExactExportFormat,
   GeometryKernelExactStepExportArtifact,
+  GeometryKernelNamedStepProbeResult,
   GeometryKernelImportedBodyCheckpointPayload,
   GeometryKernelImportedBodyPayload,
   GeometryKernelImportedBodyShapeType,
@@ -87,7 +89,8 @@ export type GeometryWorkerRequestKind =
   | "geometry-worker.exactTopologySnapshot"
   | "geometry-worker.exactTopologyCheckpointPayload"
   | "geometry-worker.importStep"
-  | "geometry-worker.exactExport";
+  | "geometry-worker.exactExport"
+  | "geometry-worker.namedStepProbe";
 
 export interface GeometryWorkerRequest<
   TPayload extends GeometryKernelRequest = GeometryKernelRequest
@@ -757,6 +760,22 @@ export function createExactStepExportWorkerRequest(input: {
       op: "geometry.exportStep",
       units: input.units,
       bodies: input.bodies
+    }
+  };
+}
+
+export function createNamedStepProbeWorkerRequest(input: {
+  readonly id: string;
+  readonly payloadId?: string;
+}): GeometryWorkerRequest<NamedStepProbeRequest> {
+  return {
+    id: input.id,
+    version: "geometry-worker.v1",
+    kind: "geometry-worker.namedStepProbe",
+    payload: {
+      id: input.payloadId ?? `${input.id}:payload`,
+      version: "geometry-kernel.v1",
+      op: "geometry.namedStepProbe"
     }
   };
 }

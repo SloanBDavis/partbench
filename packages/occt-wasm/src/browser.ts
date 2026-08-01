@@ -78,6 +78,16 @@ import {
   type OcctStepWriterCapability
 } from "./exactStepExport";
 import {
+  getOcctNamedStepProbeCapabilityWithInstance,
+  getOcctNamedStepProbeCapabilityWithLoader,
+  runOcctNamedStepProbeWithInstance,
+  runOcctNamedStepProbeWithLoader,
+  type OcctNamedStepProbeCapability,
+  type OcctNamedStepProbeResult,
+  type OcctNamedStepProbeUnit,
+  type OcctNamedStepUnitProbeResult
+} from "./namedStepProbe";
+import {
   createOcctExactTopologyCheckpointPayloadWithInstance,
   createOcctExactTopologyCheckpointPayloadWithLoader,
   getOcctBrepCheckpointWriterCapabilityWithInstance,
@@ -167,6 +177,10 @@ export type {
   OcctStepExportSchema,
   OcctStepExportUnit,
   OcctStepWriterCapability,
+  OcctNamedStepProbeCapability,
+  OcctNamedStepProbeResult,
+  OcctNamedStepProbeUnit,
+  OcctNamedStepUnitProbeResult,
   OcctBrepCheckpointWriterCapability,
   OcctExactTopologyCheckpointPayload,
   OcctExactTopologyCheckpointPayloadInput,
@@ -225,6 +239,10 @@ export {
   createOcctStepExportWithLoader,
   getOcctStepWriterCapabilityWithInstance,
   getOcctStepWriterCapabilityWithLoader,
+  getOcctNamedStepProbeCapabilityWithInstance,
+  getOcctNamedStepProbeCapabilityWithLoader,
+  runOcctNamedStepProbeWithInstance,
+  runOcctNamedStepProbeWithLoader,
   createOcctExactTopologyCheckpointPayloadWithInstance,
   createOcctExactTopologyCheckpointPayloadWithLoader,
   getOcctBrepCheckpointWriterCapabilityWithInstance,

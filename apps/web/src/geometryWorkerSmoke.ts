@@ -3,6 +3,7 @@ import {
   createConeTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest,
   createExtrudeBooleanWorkerRequest,
+  createNamedStepProbeWorkerRequest,
   createSphereTessellationWorkerRequest,
   createTorusTessellationWorkerRequest,
   type GeometryWorkerRequest
@@ -175,6 +176,15 @@ async function runGeometryWorkerSmoke(): Promise<void> {
     if (!primary) {
       throw new Error("Geometry worker smoke produced no mesh results.");
     }
+    const probeResponse = await worker.execute(
+      createNamedStepProbeWorkerRequest({
+        id: "browser_occt_named_step_probe"
+      })
+    );
+    if (!probeResponse.response.ok || !("probe" in probeResponse.response)) {
+      throw createDerivedGeometryErrorFromWorkerResponse(probeResponse);
+    }
+    const namedStepProbe = probeResponse.response.probe;
     const result = {
       ok: true,
       vertexCount: primary.vertexCount,
@@ -182,7 +192,8 @@ async function runGeometryWorkerSmoke(): Promise<void> {
       bounds: primary.bounds,
       diagnostics: primary.diagnostics,
       timings: primary.timings,
-      meshes: meshResults
+      meshes: meshResults,
+      namedStepProbe
     };
 
     document.body.dataset.geometryWorkerSmoke = "ok";

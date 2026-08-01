@@ -634,6 +634,55 @@ describe("geometry-kernel facade", () => {
     );
   });
 
+  it("routes named STEP probes through the injected OCCT boundary", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory,
+      createNamedStepProbe: async () => ({
+        ok: true,
+        capability: {
+          status: "available",
+          namedStepAvailable: true,
+          checkedBindings: ["STEPCAFControl_Writer_1"],
+          availableBindings: ["STEPCAFControl_Writer_1"],
+          missingBindings: [],
+          reason: "Test capability."
+        },
+        expectedNames: ["Bracket Ω", "Bracket Ω"],
+        units: []
+      })
+    };
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_named_step_probe",
+        version: "geometry-kernel.v1",
+        op: "geometry.namedStepProbe"
+      }
+    );
+
+    expect(response).toMatchObject({
+      ok: true,
+      id: "geometry_req_named_step_probe",
+      op: "geometry.namedStepProbe",
+      probe: {
+        ok: true,
+        capability: { namedStepAvailable: true, missingBindings: [] },
+        expectedNames: ["Bracket Ω", "Bracket Ω"]
+      },
+      warnings: []
+    });
+    expect(getGeometryResponseTransferables(response)).toEqual([]);
+  });
+
   it("rejects inconsistent imported body payloads from injected STEP import factories", async () => {
     const unusedFactory = async () => {
       throw new Error("Unexpected mesh factory call.");

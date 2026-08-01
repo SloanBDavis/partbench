@@ -20,6 +20,7 @@ import {
   createOcctExactTopologyCheckpointPayloadWithInstance,
   createOcctStepImportWithInstance,
   createOcctStepExportWithInstance,
+  runOcctNamedStepProbeWithInstance,
   createOcctWireExtrudeMeshWithInstance
 } from "@web-cad/occt-wasm/browser";
 import {
@@ -47,6 +48,7 @@ import {
   type ExactTopologySnapshotRequest,
   type ExactStepExportBodySource,
   type ExactStepExportRequest,
+  type NamedStepProbeRequest,
   type GeometryKernelBounds,
   type GeometryKernelBooleanOperation,
   type GeometryKernelDocumentUnit,
@@ -64,6 +66,9 @@ import {
   type GeometryKernelExactStepExportArtifact,
   type GeometryKernelExactStepExportFactory,
   type GeometryKernelExactStepExportSuccessResponse,
+  type GeometryKernelNamedStepProbeResult,
+  type GeometryKernelNamedStepProbeSuccessResponse,
+  type GeometryKernelNamedStepProbeUnitResult,
   type GeometryKernelImportedBodyCheckpointPayload,
   type GeometryKernelImportedBodyPayload,
   type GeometryKernelImportedBodyShapeType,
@@ -150,6 +155,7 @@ export type {
   ExactTopologySnapshotRequest,
   ExactStepExportBodySource,
   ExactStepExportRequest,
+  NamedStepProbeRequest,
   GeometryKernelBounds,
   GeometryKernelBooleanOperation,
   GeometryKernelDocumentUnit,
@@ -167,6 +173,9 @@ export type {
   GeometryKernelExactStepExportArtifact,
   GeometryKernelExactStepExportFactory,
   GeometryKernelExactStepExportSuccessResponse,
+  GeometryKernelNamedStepProbeResult,
+  GeometryKernelNamedStepProbeSuccessResponse,
+  GeometryKernelNamedStepProbeUnitResult,
   GeometryKernelImportedBodyCheckpointPayload,
   GeometryKernelImportedBodyPayload,
   GeometryKernelImportedBodyShapeType,
@@ -282,6 +291,7 @@ export async function executeTimedBrowserGeometryKernelRequest<
         createExactTopologyCheckpointPayloadWithBrowserOcct,
       createStepImport: createStepImportWithBrowserOcct,
       createExactStepExport: createExactStepExportWithBrowserOcct,
+      createNamedStepProbe: createNamedStepProbeWithBrowserOcct,
       createLinearPatternMesh: createLinearPatternMeshWithBrowserOcct,
       createCircularPatternMesh: createCircularPatternMeshWithBrowserOcct,
       createMirrorMesh: createMirrorMeshWithBrowserOcct,
@@ -747,6 +757,31 @@ export async function executeTimedBrowserGeometryKernelRequest<
       throw error;
     } finally {
       tessellationMs = performance.now() - tessellationStart;
+    }
+  }
+
+  async function createNamedStepProbeWithBrowserOcct() {
+    const occtLoadStart = performance.now();
+    let oc: Awaited<ReturnType<typeof loadBrowserOcct>>;
+
+    try {
+      oc = await loadBrowserOcct();
+    } catch (error) {
+      occtLoadMs = performance.now() - occtLoadStart;
+      failureStage = "wasmLoad";
+      throw error;
+    }
+
+    occtLoadMs = performance.now() - occtLoadStart;
+    const probeStart = performance.now();
+
+    try {
+      return runOcctNamedStepProbeWithInstance(oc);
+    } catch (error) {
+      failureStage = "tessellation";
+      throw error;
+    } finally {
+      tessellationMs = performance.now() - probeStart;
     }
   }
 

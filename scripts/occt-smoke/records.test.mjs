@@ -22,6 +22,22 @@ const assetMetrics = {
   geometryWorkerBytes: 234_793,
   smokeBundleBytes: 235_030
 };
+const namedStepProbe = {
+  ok: true,
+  capability: { status: "available", missingBindings: [] },
+  units: ["mm", "cm", "m", "in"].map((unit) => ({
+    unit,
+    bodyCount: 2,
+    nonNullShapeCount: 2,
+    names: ["Bracket Ω", "Bracket Ω"],
+    fileSchemas: [
+      "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF. {1 0 10303 442 1 1 4 }"
+    ],
+    fileUnits: [unit],
+    stepByteLength: 20_000,
+    brepByteLength: 1_000
+  }))
+};
 
 describe("occt smoke records", () => {
   it("creates the structured success record without timing thresholds", () => {
@@ -56,6 +72,7 @@ describe("occt smoke records", () => {
           workerExecutionMs: 1_000_001,
           roundTripMs: 1_000_002
         },
+        namedStepProbe,
         meshes: [
           {
             scenario: "box-2x3x4",
@@ -111,6 +128,7 @@ describe("occt smoke records", () => {
         occtLoadMs: 999_999,
         vertexCount: 24,
         triangleCount: 12,
+        namedStepProbe,
         meshes: [
           {
             scenario: "box-2x3x4",

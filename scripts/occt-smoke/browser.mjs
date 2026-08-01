@@ -372,7 +372,7 @@ async function evaluateSmokeState(client, sessionId) {
       awaitPromise: true,
       returnByValue: true,
       expression: `(() => ({
-        status: document.body.dataset.geometryWorkerSmoke ?? "pending",
+        status: document.body?.dataset.geometryWorkerSmoke ?? "pending",
         text: document.getElementById("geometry-worker-smoke")?.textContent ?? ""
       }))()`
     },

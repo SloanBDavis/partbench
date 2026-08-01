@@ -85,6 +85,37 @@ export function assertSmokeResult(record) {
     }
   }
 
+  const namedStepProbe = metrics.namedStepProbe;
+  if (
+    !namedStepProbe?.ok ||
+    namedStepProbe.capability?.status !== "available" ||
+    namedStepProbe.capability?.missingBindings?.length !== 0
+  ) {
+    throw new Error("Named AP242 STEP probe capability is unavailable.");
+  }
+  if (
+    namedStepProbe.units?.length !== 4 ||
+    namedStepProbe.units.map(({ unit }) => unit).join(",") !== "mm,cm,m,in"
+  ) {
+    throw new Error("Named AP242 STEP probe did not cover mm, cm, m, and in.");
+  }
+  for (const unit of namedStepProbe.units) {
+    if (
+      unit.bodyCount !== 2 ||
+      unit.nonNullShapeCount !== 2 ||
+      unit.names?.length !== 2 ||
+      unit.names[0] !== "Bracket Ω" ||
+      unit.names[1] !== "Bracket Ω" ||
+      unit.fileSchemas?.length !== 1 ||
+      !unit.fileSchemas[0].startsWith("AP242_") ||
+      unit.fileUnits?.length === 0 ||
+      unit.stepByteLength <= 1_000 ||
+      unit.brepByteLength <= 100
+    ) {
+      throw new Error(`Invalid named AP242 STEP ${unit.unit} probe result.`);
+    }
+  }
+
   if (metrics.occtWasmServedEncoding !== "br") {
     throw new Error(
       `Unexpected OCCT WASM served encoding: ${metrics.occtWasmServedEncoding}.`
@@ -122,7 +153,8 @@ export function createSuccessRecord(input) {
       roundTripMs: input.smokeResult.timings.roundTripMs,
       vertexCount: input.smokeResult.vertexCount,
       triangleCount: input.smokeResult.triangleCount,
-      meshes: input.smokeResult.meshes
+      meshes: input.smokeResult.meshes,
+      namedStepProbe: input.smokeResult.namedStepProbe
     }
   };
 }
@@ -177,6 +209,11 @@ export function printSummary(record, metricsPath) {
         .join(", ")}`
     );
   }
+  console.log(
+    `named AP242 STEP: ${metrics.namedStepProbe.units
+      .map((unit) => `${unit.unit} ${formatBytes(unit.stepByteLength)}`)
+      .join(", ")}`
+  );
   console.log(
     `OCCT WASM: ${formatBytes(metrics.occtWasmBytes)} raw, ${formatBytes(
       metrics.occtWasmGzipBytes

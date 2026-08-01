@@ -23,8 +23,11 @@ import {
   createOcctStepImportWithInstance,
   createOcctStepExport,
   getOcctBrepCheckpointWriterCapability,
+  getOcctNamedStepProbeCapabilityWithInstance,
   getOcctStepReaderCapability,
   getOcctStepWriterCapability,
+  loadOcct,
+  runOcctNamedStepProbeWithInstance,
   createOcctTorusMesh,
   createOcctTorusMeshWithInstance,
   createOcctWireExtrudeMesh,
@@ -2234,6 +2237,51 @@ describe("occt-wasm", () => {
       expect(capability.missingBindings).toEqual([]);
       expect(capability.availableBindings).toContain("STEPControl_Writer_1");
       expect(capability.availableBindings).toContain("FS.readFile");
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it("reports every missing named STEP probe binding", () => {
+    const capability = getOcctNamedStepProbeCapabilityWithInstance({});
+
+    expect(capability).toMatchObject({
+      status: "unavailable",
+      namedStepAvailable: false
+    });
+    expect(capability.availableBindings).toEqual([]);
+    expect(capability.missingBindings).toEqual(capability.checkedBindings);
+  });
+
+  it(
+    "round-trips duplicate Unicode XDE names and all units through real OCCT",
+    async () => {
+      const result = runOcctNamedStepProbeWithInstance(await loadOcct());
+
+      expect(result.ok).toBe(true);
+      expect(result.capability).toMatchObject({
+        status: "available",
+        namedStepAvailable: true,
+        missingBindings: []
+      });
+      expect(result.units.map(({ unit }) => unit)).toEqual([
+        "mm",
+        "cm",
+        "m",
+        "in"
+      ]);
+      for (const unit of result.units) {
+        expect(unit).toMatchObject({
+          schema: "AP242DIS",
+          bodyCount: 2,
+          names: result.expectedNames,
+          nonNullShapeCount: 2
+        });
+        expect(unit.fileSchemas).toHaveLength(1);
+        expect(unit.fileSchemas[0]).toMatch(/^AP242_/);
+        expect(unit.stepByteLength).toBeGreaterThan(1_000);
+        expect(unit.brepByteLength).toBeGreaterThan(100);
+        expect(unit.fileUnits.length).toBeGreaterThan(0);
+      }
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );

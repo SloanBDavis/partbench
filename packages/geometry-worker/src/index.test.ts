@@ -9,6 +9,7 @@ import {
   createExactTopologyCheckpointPayloadWorkerRequest,
   createExactTopologySnapshotWorkerRequest,
   createExactStepExportWorkerRequest,
+  createNamedStepProbeWorkerRequest,
   createStepImportWorkerRequest,
   createExtrudeBooleanWorkerRequest,
   createExtrudeTessellationWorkerRequest,
@@ -195,6 +196,21 @@ describe("geometry-worker", () => {
             depth: 3
           })
         ]
+      }
+    });
+  });
+
+  it("creates a typed named STEP probe worker request", () => {
+    expect(
+      createNamedStepProbeWorkerRequest({ id: "worker_req_named_step_probe" })
+    ).toEqual({
+      id: "worker_req_named_step_probe",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.namedStepProbe",
+      payload: {
+        id: "worker_req_named_step_probe:payload",
+        version: "geometry-kernel.v1",
+        op: "geometry.namedStepProbe"
       }
     });
   });

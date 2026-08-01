@@ -77,6 +77,7 @@ export type GeometryKernelOp =
   | "geometry.exactTopologyCheckpointPayload"
   | "geometry.importStep"
   | "geometry.exportStep"
+  | "geometry.namedStepProbe"
   | "geometry.linearPattern"
   | "geometry.circularPattern"
   | "geometry.mirror"
@@ -663,6 +664,12 @@ export interface ExactStepExportRequest {
   readonly bodies: readonly ExactStepExportBodySource[];
 }
 
+export interface NamedStepProbeRequest {
+  readonly id: string;
+  readonly version: GeometryKernelVersion;
+  readonly op: "geometry.namedStepProbe";
+}
+
 export interface StepImportRequest {
   readonly id: string;
   readonly version: GeometryKernelVersion;
@@ -695,7 +702,8 @@ export type GeometryKernelRequest =
   | ExactTopologySnapshotRequest
   | ExactTopologyCheckpointPayloadRequest
   | StepImportRequest
-  | ExactStepExportRequest;
+  | ExactStepExportRequest
+  | NamedStepProbeRequest;
 
 export type GeometryKernelMeshRequest = Exclude<
   GeometryKernelRequest,
@@ -704,6 +712,7 @@ export type GeometryKernelMeshRequest = Exclude<
   | ExactTopologyCheckpointPayloadRequest
   | StepImportRequest
   | ExactStepExportRequest
+  | NamedStepProbeRequest
 >;
 
 export interface SerializableMeshData {
@@ -748,7 +757,8 @@ export type GeometryKernelSuccessResponse =
   | GeometryKernelExactTopologySnapshotSuccessResponse
   | GeometryKernelExactTopologyCheckpointPayloadSuccessResponse
   | GeometryKernelStepImportSuccessResponse
-  | GeometryKernelExactStepExportSuccessResponse;
+  | GeometryKernelExactStepExportSuccessResponse
+  | GeometryKernelNamedStepProbeSuccessResponse;
 
 export interface GeometryKernelMeshSuccessResponse {
   readonly ok: true;
@@ -822,6 +832,40 @@ export interface GeometryKernelExactStepExportSuccessResponse {
   readonly id: string;
   readonly op: "geometry.exportStep";
   readonly artifact: GeometryKernelExactStepExportArtifact;
+  readonly warnings: readonly string[];
+}
+
+export interface GeometryKernelNamedStepProbeUnitResult {
+  readonly unit: GeometryKernelDocumentUnit;
+  readonly schema: "AP242DIS";
+  readonly bodyCount: 2;
+  readonly names: readonly string[];
+  readonly fileSchemas: readonly string[];
+  readonly fileUnits: readonly string[];
+  readonly nonNullShapeCount: 2;
+  readonly stepByteLength: number;
+  readonly brepByteLength: number;
+}
+
+export interface GeometryKernelNamedStepProbeResult {
+  readonly ok: true;
+  readonly capability: {
+    readonly status: "available" | "unavailable";
+    readonly namedStepAvailable: boolean;
+    readonly checkedBindings: readonly string[];
+    readonly availableBindings: readonly string[];
+    readonly missingBindings: readonly string[];
+    readonly reason: string;
+  };
+  readonly expectedNames: readonly [string, string];
+  readonly units: readonly GeometryKernelNamedStepProbeUnitResult[];
+}
+
+export interface GeometryKernelNamedStepProbeSuccessResponse {
+  readonly ok: true;
+  readonly id: string;
+  readonly op: "geometry.namedStepProbe";
+  readonly probe: GeometryKernelNamedStepProbeResult;
   readonly warnings: readonly string[];
 }
 
@@ -1168,6 +1212,9 @@ export type GeometryKernelExactStepExportFactory = (
   input: Omit<ExactStepExportRequest, "id" | "version" | "op">
 ) => Promise<GeometryKernelExactStepExportArtifact>;
 
+export type GeometryKernelNamedStepProbeFactory =
+  () => Promise<GeometryKernelNamedStepProbeResult>;
+
 export type GeometryKernelStepImportFactory = (
   input: Omit<StepImportRequest, "id" | "version" | "op">
 ) => Promise<GeometryKernelStepImportResult>;
@@ -1214,6 +1261,7 @@ export interface GeometryKernelMeshFactories {
   readonly createExactTopologyCheckpointPayload?: GeometryKernelExactTopologyCheckpointPayloadFactory;
   readonly createStepImport?: GeometryKernelStepImportFactory;
   readonly createExactStepExport?: GeometryKernelExactStepExportFactory;
+  readonly createNamedStepProbe?: GeometryKernelNamedStepProbeFactory;
   readonly createLinearPatternMesh?: GeometryKernelLinearPatternMeshFactory;
   readonly createCircularPatternMesh?: GeometryKernelCircularPatternMeshFactory;
   readonly createMirrorMesh?: GeometryKernelMirrorMeshFactory;
@@ -1243,7 +1291,11 @@ export type GeometryKernelResponseForRequest<T extends GeometryKernelRequest> =
             ?
                 | GeometryKernelExactStepExportSuccessResponse
                 | GeometryKernelErrorResponse
-            : GeometryKernelMeshSuccessResponse | GeometryKernelErrorResponse;
+            : T extends NamedStepProbeRequest
+              ?
+                  | GeometryKernelNamedStepProbeSuccessResponse
+                  | GeometryKernelErrorResponse
+              : GeometryKernelMeshSuccessResponse | GeometryKernelErrorResponse;
 
 const STEP_WRITER_CHECKED_BINDINGS = [
   "STEPControl_Writer_1",
@@ -1414,6 +1466,17 @@ export async function executeGeometryKernelRequestWithMeshFactory<
         id: request.id,
         op: request.op,
         artifact,
+        warnings: []
+      } as unknown as GeometryKernelResponseForRequest<T>;
+    }
+
+    if (request.op === "geometry.namedStepProbe") {
+      const probe = await createNamedStepProbe(factories);
+      return {
+        ok: true,
+        id: request.id,
+        op: request.op,
+        probe,
         warnings: []
       } as unknown as GeometryKernelResponseForRequest<T>;
     }
@@ -1913,9 +1976,10 @@ function validateRequest(
       };
     }
   } else if (
-    !isPositiveFiniteNumber(request.dimensions.majorRadius) ||
-    !isPositiveFiniteNumber(request.dimensions.minorRadius) ||
-    request.dimensions.minorRadius >= request.dimensions.majorRadius
+    request.op === "geometry.tessellateTorus" &&
+    (!isPositiveFiniteNumber(request.dimensions.majorRadius) ||
+      !isPositiveFiniteNumber(request.dimensions.minorRadius) ||
+      request.dimensions.minorRadius >= request.dimensions.majorRadius)
   ) {
     return {
       code: "INVALID_DIMENSIONS",
@@ -2303,6 +2367,20 @@ function createExactStepExport(
   });
 }
 
+function createNamedStepProbe(
+  factories: GeometryKernelMeshFactories
+): Promise<GeometryKernelNamedStepProbeResult> {
+  if (!factories.createNamedStepProbe) {
+    return Promise.reject({
+      code: "UNAVAILABLE_BINDING",
+      message:
+        "Named STEP capability probing requires an OCCT XDE factory through the geometry boundary."
+    } satisfies GeometryKernelError);
+  }
+
+  return factories.createNamedStepProbe();
+}
+
 async function createExtrudeMesh(
   factories: GeometryKernelMeshFactories,
   request: TessellateExtrudeRequest
@@ -2512,6 +2590,8 @@ function formatPrimitiveLabel(op: GeometryKernelOp): string {
       return "STEP import";
     case "geometry.exportStep":
       return "STEP export";
+    case "geometry.namedStepProbe":
+      return "Named STEP probe";
   }
 }
 

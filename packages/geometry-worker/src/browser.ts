@@ -32,6 +32,7 @@ export {
   createExactTopologyCheckpointPayloadWorkerRequest,
   createExactTopologySnapshotWorkerRequest,
   createExactStepExportWorkerRequest,
+  createNamedStepProbeWorkerRequest,
   createStepImportWorkerRequest,
   createExtrudeBooleanWorkerRequest,
   createExtrudeTessellationWorkerRequest,
@@ -54,6 +55,7 @@ export {
   type GeometryWorkerErrorCode,
   type GeometryWorkerErrorDetails,
   type GeometryKernelExactTopologyCheckpointPayload,
+  type GeometryKernelNamedStepProbeResult,
   type GeometryKernelImportedBodyCheckpointPayload,
   type GeometryKernelImportedBodyPayload,
   type GeometryKernelImportedBodyShapeType,
@@ -196,7 +198,8 @@ function getUnsupportedPrimitiveMessage(
     kind !== "geometry-worker.exactTopologySnapshot" &&
     kind !== "geometry-worker.exactTopologyCheckpointPayload" &&
     kind !== "geometry-worker.importStep" &&
-    kind !== "geometry-worker.exactExport"
+    kind !== "geometry-worker.exactExport" &&
+    kind !== "geometry-worker.namedStepProbe"
   ) {
     return `Unsupported geometry worker request kind: ${kind}.`;
   }
@@ -222,7 +225,8 @@ function getUnsupportedPrimitiveMessage(
     op !== "geometry.exactTopologySnapshot" &&
     op !== "geometry.exactTopologyCheckpointPayload" &&
     op !== "geometry.importStep" &&
-    op !== "geometry.exportStep"
+    op !== "geometry.exportStep" &&
+    op !== "geometry.namedStepProbe"
   ) {
     return `Unsupported geometry kernel operation: ${op}.`;
   }
