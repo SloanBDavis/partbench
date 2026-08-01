@@ -148,6 +148,13 @@ Gate A passes only when:
 5. no V21 Must row is demoted; and
 6. no implementation beyond capability probes and test fixtures has landed.
 
+Gate ledger:
+
+- A0 complete at `a40d3b7f2ed491a0d8f6aa3c6fe7394fd4dea8bd` with the committed
+  [V21 A0 baseline](./v21-a0-baseline.md).
+- A1 pending.
+- A2 pending.
+
 ## Slice B — Protocol and Cad-Core Export Planning
 
 Goal: make public readiness and planning complete without geometry bytes.
