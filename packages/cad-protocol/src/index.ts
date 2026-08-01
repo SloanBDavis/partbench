@@ -110,6 +110,14 @@ export const CAD_V19_RESOURCE_LIMITS = {
   maxRegionCandidatesPerPage: 100
 } as const;
 
+export const CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS = {
+  maxSelectedBodies: 256,
+  maxSourceGraphNodes: 4_096,
+  maxBrepArtifactBytes: 128 * 1024 * 1024,
+  maxAggregateBrepArtifactBytes: 512 * 1024 * 1024,
+  maxStepArtifactBytes: 512 * 1024 * 1024
+} as const;
+
 export type CadProjectSchemaDiagnosticCode =
   | "SCHEMA_UPGRADED_TO_V21"
   | "SCHEMA_V21_SOURCE_INVALID"
@@ -7568,13 +7576,33 @@ export type CadExportBodySourceKind =
   | "authoredExtrude"
   | "authoredRevolve"
   | "authoredSweep"
+  | "authoredLoft"
   | "authoredHole"
   | "authoredChamfer"
   | "authoredFillet"
+  | "authoredLinearPattern"
+  | "authoredCircularPattern"
+  | "authoredMirror"
   | "authoredShell"
   | "importedBody"
   | "primitiveCompatibility"
   | "unresolvedSource";
+
+export const CAD_EXPORT_SOURCE_KIND_BY_BODY_SOURCE_TYPE = {
+  primitiveFeature: "primitiveCompatibility",
+  sketchExtrudeFeature: "authoredExtrude",
+  sketchRevolveFeature: "authoredRevolve",
+  sketchHoleFeature: "authoredHole",
+  edgeChamferFeature: "authoredChamfer",
+  edgeFilletFeature: "authoredFillet",
+  linearPatternFeature: "authoredLinearPattern",
+  circularPatternFeature: "authoredCircularPattern",
+  mirrorFeature: "authoredMirror",
+  shellFeature: "authoredShell",
+  sweepFeature: "authoredSweep",
+  loftFeature: "authoredLoft",
+  importedStepBody: "importedBody"
+} as const satisfies Record<CadBodySource["type"], CadExportBodySourceKind>;
 
 export type CadExportDiagnosticCode =
   | "EXPORT_WRITER_NOT_IMPLEMENTED"
@@ -7589,7 +7617,21 @@ export type CadExportDiagnosticCode =
   | "EXPORT_BODY_SOURCE_UNRESOLVED"
   | "EXPORT_BODY_SOURCE_UNSUPPORTED"
   | "EXPORT_RESULT_BODY_DEFERRED"
-  | "EXPORT_PRIMITIVE_SOURCE_UNAVAILABLE";
+  | "EXPORT_PRIMITIVE_SOURCE_UNAVAILABLE"
+  | "EXPORT_BODY_SELECTION_INVALID"
+  | "EXPORT_BODY_DUPLICATE"
+  | "EXPORT_BODY_NOT_ACTIVE"
+  | "EXPORT_EXACT_SOURCE_UNAVAILABLE"
+  | "EXPORT_EXACT_SOURCE_STALE"
+  | "EXPORT_EXACT_ARTIFACT_FAILED"
+  | "EXPORT_EXACT_ARTIFACT_INVALID"
+  | "EXPORT_EXACT_ARTIFACT_LIMIT_EXCEEDED"
+  | "EXPORT_SOURCE_CHANGED"
+  | "EXPORT_CANCELLED"
+  | "EXPORT_STEP_NAMED_WRITER_UNAVAILABLE"
+  | "EXPORT_STEP_TRANSFER_FAILED"
+  | "EXPORT_STEP_WRITE_FAILED"
+  | "EXPORT_STEP_ARTIFACT_INVALID";
 
 export interface CadExportDiagnostic {
   readonly code: CadExportDiagnosticCode;
@@ -7605,6 +7647,80 @@ export interface CadExportDiagnostic {
   readonly consumedByFeatureId?: FeatureId;
   readonly expected?: string;
   readonly received?: string;
+}
+
+export type CadCurrentExactResultStatus =
+  | "pending"
+  | "ready"
+  | "stale"
+  | "blocked"
+  | "failed"
+  | "unsupported";
+
+export interface CadExactResultDiagnostic {
+  readonly code: CadExportDiagnosticCode;
+  readonly status: CadCurrentExactResultStatus;
+  readonly message: string;
+  readonly bodyId?: BodyId;
+  readonly sourceType?: CadBodySource["type"];
+  readonly featureId?: FeatureId;
+  readonly expected?: string;
+  readonly received?: string;
+}
+
+/** Public, byte-free evidence for a session-only exact artifact. */
+export interface CadExactArtifactEvidence {
+  readonly bodyId: BodyId;
+  readonly sourceType: CadBodySource["type"];
+  readonly documentSourceIdentity: WcadSourceIdentity;
+  readonly bodySourceIdentitySignature: string;
+  readonly sourceGraphNodeCount: number;
+  readonly brepFormat: "occt-brep";
+  readonly brepByteLength: number;
+  readonly brepSha256: string;
+}
+
+export type CadCurrentExactResult =
+  | {
+      readonly status: "ready";
+      readonly bodyId: BodyId;
+      readonly sourceType: CadBodySource["type"];
+      readonly sourceIdentitySignature: string;
+      readonly artifactEvidence?: CadExactArtifactEvidence;
+      readonly diagnostics: readonly CadExactResultDiagnostic[];
+    }
+  | {
+      readonly status: Exclude<CadCurrentExactResultStatus, "ready">;
+      readonly bodyId: BodyId;
+      readonly sourceType: CadBodySource["type"];
+      readonly diagnostics: readonly CadExactResultDiagnostic[];
+    };
+
+export interface CadExactExportPlan {
+  readonly format: "step";
+  readonly schema: "AP242DIS";
+  readonly units: DocumentUnits;
+  readonly sourceIdentity: WcadSourceIdentity;
+  readonly orderedBodyIds: readonly BodyId[];
+  readonly allOrNothing: true;
+  readonly planIdentity: string;
+  readonly bodies: readonly CadExactExportPlanBody[];
+}
+
+export interface CadExactExportPlanBody {
+  readonly bodyId: BodyId;
+  readonly bodyName: string;
+  readonly partId: PartId;
+  readonly featureId: FeatureId;
+  readonly sourceType: CadBodySource["type"];
+  readonly sourceIdentitySignature: string;
+  readonly status: "ready" | "blocked";
+  readonly diagnostics: readonly CadExportDiagnostic[];
+}
+
+export interface CadExactExportQueryEvidence {
+  readonly plan?: CadExactExportPlan;
+  readonly currentExactResults?: readonly CadCurrentExactResult[];
 }
 
 interface CadExactExportExtrudeBodySourceBase {
@@ -7838,6 +7954,7 @@ export interface CadExactExportSweepBodySource {
   readonly solidPolicy: "exactlyOne";
 }
 
+/** @deprecated V21 production export consumes identity-bound exact artifacts. */
 export type CadExactExportBodySource =
   | CadExactExportExtrudeBodySource
   | CadExactExportRegionExtrudeBodySource
@@ -7871,6 +7988,7 @@ export interface CadExportBodyFormatReadiness {
   readonly diagnostics: readonly CadExportDiagnostic[];
 }
 
+/** @deprecated Compatibility-only base64 artifact shape. */
 export interface CadExactExportArtifact {
   readonly format: CadExactExportFormatId;
   readonly fileName: string;
@@ -8966,6 +9084,8 @@ export interface ProjectExportReadinessQueryResponse {
   readonly bodies: readonly CadExportBodyReadiness[];
   readonly diagnosticCount: number;
   readonly diagnostics: readonly CadExportDiagnostic[];
+  readonly plan?: CadExactExportPlan;
+  readonly currentExactResults?: readonly CadCurrentExactResult[];
 }
 
 export interface ProjectExactExportQueryResponse {
@@ -8991,10 +9111,14 @@ export interface ProjectExactExportQueryResponse {
   readonly deferredBodyCount: number;
   readonly unavailableBodyCount: number;
   readonly exportableBodyCount: number;
+  /** @deprecated V21 production export consumes the exact export plan. */
   readonly exportSources: readonly CadExactExportBodySource[];
   readonly bodies: readonly CadExportBodyReadiness[];
   readonly diagnosticCount: number;
   readonly diagnostics: readonly CadExportDiagnostic[];
+  readonly plan?: CadExactExportPlan;
+  readonly currentExactResults?: readonly CadCurrentExactResult[];
+  /** @deprecated Compatibility-only base64 artifact response. */
   readonly artifact?: CadExactExportArtifact;
 }
 
@@ -11739,6 +11863,701 @@ function validateUniqueIdArray(
       message: "Duplicate IDs are not allowed."
     });
   }
+}
+
+const CAD_BODY_SOURCE_TYPES = Object.keys(
+  CAD_EXPORT_SOURCE_KIND_BY_BODY_SOURCE_TYPE
+) as readonly CadBodySource["type"][];
+
+const CAD_EXPORT_BODY_SOURCE_KINDS = [
+  ...Object.values(CAD_EXPORT_SOURCE_KIND_BY_BODY_SOURCE_TYPE),
+  "unresolvedSource"
+] as readonly CadExportBodySourceKind[];
+
+const CAD_EXPORT_DIAGNOSTIC_CODES: readonly CadExportDiagnosticCode[] = [
+  "EXPORT_WRITER_NOT_IMPLEMENTED",
+  "EXPORT_EXACT_WRITER_UNAVAILABLE",
+  "EXPORT_EXACT_WRITER_FAILED",
+  "EXPORT_EXACT_FORMAT_UNSUPPORTED",
+  "EXPORT_EXACT_BODY_UNSUPPORTED",
+  "EXPORT_SOURCE_IDENTITY_MISMATCH",
+  "EXPORT_PROJECT_EMPTY",
+  "EXPORT_BODY_SOURCE_SUPPORTED",
+  "EXPORT_BODY_CONSUMED",
+  "EXPORT_BODY_SOURCE_UNRESOLVED",
+  "EXPORT_BODY_SOURCE_UNSUPPORTED",
+  "EXPORT_RESULT_BODY_DEFERRED",
+  "EXPORT_PRIMITIVE_SOURCE_UNAVAILABLE",
+  "EXPORT_BODY_SELECTION_INVALID",
+  "EXPORT_BODY_DUPLICATE",
+  "EXPORT_BODY_NOT_ACTIVE",
+  "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+  "EXPORT_EXACT_SOURCE_STALE",
+  "EXPORT_EXACT_ARTIFACT_FAILED",
+  "EXPORT_EXACT_ARTIFACT_INVALID",
+  "EXPORT_EXACT_ARTIFACT_LIMIT_EXCEEDED",
+  "EXPORT_SOURCE_CHANGED",
+  "EXPORT_CANCELLED",
+  "EXPORT_STEP_NAMED_WRITER_UNAVAILABLE",
+  "EXPORT_STEP_TRANSFER_FAILED",
+  "EXPORT_STEP_WRITE_FAILED",
+  "EXPORT_STEP_ARTIFACT_INVALID"
+];
+
+const CAD_CURRENT_EXACT_RESULT_STATUSES: readonly CadCurrentExactResultStatus[] =
+  ["pending", "ready", "stale", "blocked", "failed", "unsupported"];
+
+function validateWcadSourceIdentityEvidence(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): value is UnknownRecord {
+  if (!validateExactRecord(value, path, ["sha256", "algorithm"], [], issues)) {
+    return false;
+  }
+  if (value.algorithm !== WCAD_SOURCE_IDENTITY_ALGORITHM) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path: `${path}.algorithm`,
+      message: `Expected ${WCAD_SOURCE_IDENTITY_ALGORITHM}.`
+    });
+  }
+  if (
+    typeof value.sha256 !== "string" ||
+    !/^[0-9a-f]{64}$/.test(value.sha256)
+  ) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path: `${path}.sha256`,
+      message: "Expected a lowercase SHA-256 digest."
+    });
+  }
+  return true;
+}
+
+function validateBoundedCount(
+  value: unknown,
+  path: string,
+  maximum: number,
+  issues: SketchProfilePathValidationIssue[],
+  positive = false
+): value is number {
+  if (!validateNonNegativeInteger(value, path, issues)) return false;
+  if ((positive && value === 0) || value > maximum) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path,
+      message: `Expected ${positive ? "a positive integer" : "an integer"} no greater than ${maximum}.`
+    });
+    return false;
+  }
+  return true;
+}
+
+function validateCadExportDiagnosticEvidence(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  if (
+    !validateExactRecord(
+      value,
+      path,
+      ["code", "status", "message"],
+      [
+        "format",
+        "bodyId",
+        "bodyName",
+        "bodyKind",
+        "sourceKind",
+        "featureId",
+        "objectId",
+        "consumedByFeatureId",
+        "expected",
+        "received"
+      ],
+      issues
+    )
+  ) {
+    return;
+  }
+  validateEnum(value.code, CAD_EXPORT_DIAGNOSTIC_CODES, `${path}.code`, issues);
+  validateEnum(
+    value.status,
+    ["supported", "deferred", "unavailable"],
+    `${path}.status`,
+    issues
+  );
+  validateNonEmptyString(value.message, `${path}.message`, issues);
+  if ("format" in value) {
+    validateEnum(value.format, ["step", "glb"], `${path}.format`, issues);
+  }
+  for (const field of [
+    "bodyId",
+    "bodyName",
+    "featureId",
+    "objectId",
+    "consumedByFeatureId",
+    "expected",
+    "received"
+  ] as const) {
+    if (field in value) {
+      validateNonEmptyString(value[field], `${path}.${field}`, issues);
+    }
+  }
+  if ("bodyKind" in value) {
+    validateEnum(value.bodyKind, ["solid"], `${path}.bodyKind`, issues);
+  }
+  if ("sourceKind" in value) {
+    validateEnum(
+      value.sourceKind,
+      CAD_EXPORT_BODY_SOURCE_KINDS,
+      `${path}.sourceKind`,
+      issues
+    );
+  }
+}
+
+function validateCadExactResultDiagnostic(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): void {
+  if (
+    !validateExactRecord(
+      value,
+      path,
+      ["code", "status", "message"],
+      ["bodyId", "sourceType", "featureId", "expected", "received"],
+      issues
+    )
+  ) {
+    return;
+  }
+  validateEnum(value.code, CAD_EXPORT_DIAGNOSTIC_CODES, `${path}.code`, issues);
+  validateEnum(
+    value.status,
+    CAD_CURRENT_EXACT_RESULT_STATUSES,
+    `${path}.status`,
+    issues
+  );
+  validateNonEmptyString(value.message, `${path}.message`, issues);
+  for (const field of [
+    "bodyId",
+    "featureId",
+    "expected",
+    "received"
+  ] as const) {
+    if (field in value) {
+      validateNonEmptyString(value[field], `${path}.${field}`, issues);
+    }
+  }
+  if ("sourceType" in value) {
+    validateEnum(
+      value.sourceType,
+      CAD_BODY_SOURCE_TYPES,
+      `${path}.sourceType`,
+      issues
+    );
+  }
+}
+
+function validateCadExactArtifactEvidence(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): value is UnknownRecord {
+  if (
+    !validateExactRecord(
+      value,
+      path,
+      [
+        "bodyId",
+        "sourceType",
+        "documentSourceIdentity",
+        "bodySourceIdentitySignature",
+        "sourceGraphNodeCount",
+        "brepFormat",
+        "brepByteLength",
+        "brepSha256"
+      ],
+      [],
+      issues
+    )
+  ) {
+    return false;
+  }
+  validateNonEmptyString(value.bodyId, `${path}.bodyId`, issues);
+  validateEnum(
+    value.sourceType,
+    CAD_BODY_SOURCE_TYPES,
+    `${path}.sourceType`,
+    issues
+  );
+  validateWcadSourceIdentityEvidence(
+    value.documentSourceIdentity,
+    `${path}.documentSourceIdentity`,
+    issues
+  );
+  validateNonEmptyString(
+    value.bodySourceIdentitySignature,
+    `${path}.bodySourceIdentitySignature`,
+    issues
+  );
+  validateBoundedCount(
+    value.sourceGraphNodeCount,
+    `${path}.sourceGraphNodeCount`,
+    CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxSourceGraphNodes,
+    issues,
+    true
+  );
+  validateEnum(value.brepFormat, ["occt-brep"], `${path}.brepFormat`, issues);
+  validateBoundedCount(
+    value.brepByteLength,
+    `${path}.brepByteLength`,
+    CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxBrepArtifactBytes,
+    issues,
+    true
+  );
+  if (
+    typeof value.brepSha256 !== "string" ||
+    !/^[0-9a-f]{64}$/.test(value.brepSha256)
+  ) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path: `${path}.brepSha256`,
+      message: "Expected a lowercase SHA-256 digest."
+    });
+  }
+  return true;
+}
+
+function validateCadCurrentExactResultValue(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): value is UnknownRecord {
+  if (!isUnknownRecord(value)) {
+    issues.push({ code: "INVALID_TYPE", path, message: "Expected an object." });
+    return false;
+  }
+  const ready = value.status === "ready";
+  if (
+    !validateExactRecord(
+      value,
+      path,
+      ready
+        ? [
+            "status",
+            "bodyId",
+            "sourceType",
+            "sourceIdentitySignature",
+            "diagnostics"
+          ]
+        : ["status", "bodyId", "sourceType", "diagnostics"],
+      ready ? ["artifactEvidence"] : [],
+      issues
+    )
+  ) {
+    return false;
+  }
+  validateEnum(
+    value.status,
+    CAD_CURRENT_EXACT_RESULT_STATUSES,
+    `${path}.status`,
+    issues
+  );
+  validateNonEmptyString(value.bodyId, `${path}.bodyId`, issues);
+  validateEnum(
+    value.sourceType,
+    CAD_BODY_SOURCE_TYPES,
+    `${path}.sourceType`,
+    issues
+  );
+  if (ready) {
+    validateNonEmptyString(
+      value.sourceIdentitySignature,
+      `${path}.sourceIdentitySignature`,
+      issues
+    );
+    if ("artifactEvidence" in value) {
+      const artifact = value.artifactEvidence;
+      if (
+        validateCadExactArtifactEvidence(
+          artifact,
+          `${path}.artifactEvidence`,
+          issues
+        )
+      ) {
+        if (artifact.bodyId !== value.bodyId) {
+          issues.push({
+            code: "INVALID_VALUE",
+            path: `${path}.artifactEvidence.bodyId`,
+            message: "Artifact evidence must identify the result body."
+          });
+        }
+        if (artifact.sourceType !== value.sourceType) {
+          issues.push({
+            code: "INVALID_VALUE",
+            path: `${path}.artifactEvidence.sourceType`,
+            message: "Artifact evidence must identify the result source type."
+          });
+        }
+        if (
+          artifact.bodySourceIdentitySignature !== value.sourceIdentitySignature
+        ) {
+          issues.push({
+            code: "INVALID_VALUE",
+            path: `${path}.artifactEvidence.bodySourceIdentitySignature`,
+            message: "Artifact evidence must match the result source identity."
+          });
+        }
+      }
+    }
+  }
+  if (!Array.isArray(value.diagnostics)) {
+    issues.push({
+      code: "INVALID_TYPE",
+      path: `${path}.diagnostics`,
+      message: "Expected a diagnostic array."
+    });
+  } else {
+    value.diagnostics.forEach((diagnostic, index) => {
+      validateCadExactResultDiagnostic(
+        diagnostic,
+        `${path}.diagnostics[${index}]`,
+        issues
+      );
+      if (isUnknownRecord(diagnostic) && diagnostic.status !== value.status) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: `${path}.diagnostics[${index}].status`,
+          message: "Diagnostic status must match its exact result."
+        });
+      }
+    });
+  }
+  return true;
+}
+
+function validateCadExactExportPlanBody(
+  value: unknown,
+  path: string,
+  issues: SketchProfilePathValidationIssue[]
+): value is UnknownRecord {
+  if (
+    !validateExactRecord(
+      value,
+      path,
+      [
+        "bodyId",
+        "bodyName",
+        "partId",
+        "featureId",
+        "sourceType",
+        "sourceIdentitySignature",
+        "status",
+        "diagnostics"
+      ],
+      [],
+      issues
+    )
+  ) {
+    return false;
+  }
+  for (const field of [
+    "bodyId",
+    "bodyName",
+    "partId",
+    "featureId",
+    "sourceIdentitySignature"
+  ] as const) {
+    validateNonEmptyString(value[field], `${path}.${field}`, issues);
+  }
+  if (
+    typeof value.bodyName === "string" &&
+    value.bodyName.trim() !== value.bodyName
+  ) {
+    issues.push({
+      code: "INVALID_VALUE",
+      path: `${path}.bodyName`,
+      message: "Export plan body names must already be trimmed."
+    });
+  }
+  validateEnum(
+    value.sourceType,
+    CAD_BODY_SOURCE_TYPES,
+    `${path}.sourceType`,
+    issues
+  );
+  validateEnum(value.status, ["ready", "blocked"], `${path}.status`, issues);
+  if (!Array.isArray(value.diagnostics)) {
+    issues.push({
+      code: "INVALID_TYPE",
+      path: `${path}.diagnostics`,
+      message: "Expected a diagnostic array."
+    });
+  } else {
+    value.diagnostics.forEach((diagnostic, index) =>
+      validateCadExportDiagnosticEvidence(
+        diagnostic,
+        `${path}.diagnostics[${index}]`,
+        issues
+      )
+    );
+  }
+  return true;
+}
+
+export type CadExactExportValidationIssue = SketchProfilePathValidationIssue;
+export type CadExactExportValidationResult<T> =
+  SketchProfilePathValidationResult<T>;
+
+export function validateCadExactExportPlan(
+  value: unknown
+): CadExactExportValidationResult<CadExactExportPlan> {
+  const issues: SketchProfilePathValidationIssue[] = [];
+  if (
+    validateExactRecord(
+      value,
+      "$",
+      [
+        "format",
+        "schema",
+        "units",
+        "sourceIdentity",
+        "orderedBodyIds",
+        "allOrNothing",
+        "planIdentity",
+        "bodies"
+      ],
+      [],
+      issues
+    )
+  ) {
+    validateEnum(value.format, ["step"], "$.format", issues);
+    validateEnum(value.schema, ["AP242DIS"], "$.schema", issues);
+    validateEnum(value.units, ["mm", "cm", "m", "in"], "$.units", issues);
+    validateWcadSourceIdentityEvidence(
+      value.sourceIdentity,
+      "$.sourceIdentity",
+      issues
+    );
+    validateUniqueIdArray(value.orderedBodyIds, "$.orderedBodyIds", issues, {
+      maxLength: CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxSelectedBodies
+    });
+    if (value.allOrNothing !== true) {
+      issues.push({
+        code: "INVALID_VALUE",
+        path: "$.allOrNothing",
+        message: "Exact export plans are all-or-nothing."
+      });
+    }
+    if (
+      typeof value.planIdentity !== "string" ||
+      !/^[0-9a-f]{64}$/.test(value.planIdentity)
+    ) {
+      issues.push({
+        code: "INVALID_VALUE",
+        path: "$.planIdentity",
+        message: "Expected a lowercase SHA-256 plan identity."
+      });
+    }
+    if (!Array.isArray(value.bodies)) {
+      issues.push({
+        code: "INVALID_TYPE",
+        path: "$.bodies",
+        message: "Expected an export plan body array."
+      });
+    } else {
+      if (
+        value.bodies.length >
+        CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxSelectedBodies
+      ) {
+        issues.push({
+          code: "INVALID_VALUE",
+          path: "$.bodies",
+          message: `Expected at most ${CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxSelectedBodies} bodies.`
+        });
+      }
+      value.bodies.forEach((body, index) =>
+        validateCadExactExportPlanBody(body, `$.bodies[${index}]`, issues)
+      );
+      if (
+        Array.isArray(value.orderedBodyIds) &&
+        value.bodies.length !== value.orderedBodyIds.length
+      ) {
+        issues.push({
+          code: "COUNT_MISMATCH",
+          path: "$.bodies",
+          message: "Plan bodies must match the ordered body selection."
+        });
+      }
+      const orderedBodyIds = value.orderedBodyIds;
+      if (Array.isArray(orderedBodyIds)) {
+        value.bodies.forEach((body, index) => {
+          if (isUnknownRecord(body) && body.bodyId !== orderedBodyIds[index]) {
+            issues.push({
+              code: "INVALID_VALUE",
+              path: `$.bodies[${index}].bodyId`,
+              message: "Plan body order must match orderedBodyIds."
+            });
+          }
+        });
+      }
+    }
+  }
+  return issues.length === 0
+    ? { ok: true, value: value as CadExactExportPlan }
+    : { ok: false, issues };
+}
+
+export function validateCadCurrentExactResults(
+  value: unknown
+): CadExactExportValidationResult<readonly CadCurrentExactResult[]> {
+  const issues: SketchProfilePathValidationIssue[] = [];
+  if (!Array.isArray(value)) {
+    issues.push({
+      code: "INVALID_TYPE",
+      path: "$",
+      message: "Expected a current exact result array."
+    });
+  } else {
+    if (value.length > CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxSelectedBodies) {
+      issues.push({
+        code: "INVALID_VALUE",
+        path: "$",
+        message: `Expected at most ${CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxSelectedBodies} current exact results.`
+      });
+    }
+    value.forEach((result, index) =>
+      validateCadCurrentExactResultValue(result, `$[${index}]`, issues)
+    );
+    const bodyIds = value
+      .map((result) => (isUnknownRecord(result) ? result.bodyId : undefined))
+      .filter((bodyId): bodyId is string => typeof bodyId === "string");
+    if (new Set(bodyIds).size !== bodyIds.length) {
+      issues.push({
+        code: "INVALID_VALUE",
+        path: "$",
+        message: "Duplicate exact-result body IDs are not allowed."
+      });
+    }
+    const artifacts = value
+      .map((result) =>
+        isUnknownRecord(result) && isUnknownRecord(result.artifactEvidence)
+          ? result.artifactEvidence
+          : undefined
+      )
+      .filter((artifact): artifact is UnknownRecord => artifact !== undefined);
+    const sourceGraphNodeCount = artifacts.reduce(
+      (total, artifact) =>
+        total +
+        (typeof artifact.sourceGraphNodeCount === "number"
+          ? artifact.sourceGraphNodeCount
+          : 0),
+      0
+    );
+    const brepByteLength = artifacts.reduce(
+      (total, artifact) =>
+        total +
+        (typeof artifact.brepByteLength === "number"
+          ? artifact.brepByteLength
+          : 0),
+      0
+    );
+    if (
+      !Number.isSafeInteger(sourceGraphNodeCount) ||
+      sourceGraphNodeCount >
+        CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxSourceGraphNodes
+    ) {
+      issues.push({
+        code: "INVALID_VALUE",
+        path: "$",
+        message: "Exact source graph node count exceeds the export limit."
+      });
+    }
+    if (
+      !Number.isSafeInteger(brepByteLength) ||
+      brepByteLength >
+        CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxAggregateBrepArtifactBytes
+    ) {
+      issues.push({
+        code: "INVALID_VALUE",
+        path: "$",
+        message: "Aggregate B-rep evidence exceeds the export limit."
+      });
+    }
+  }
+  return issues.length === 0
+    ? { ok: true, value: value as readonly CadCurrentExactResult[] }
+    : { ok: false, issues };
+}
+
+export function validateCadExactExportQueryEvidence(
+  value: unknown
+): CadExactExportValidationResult<CadExactExportQueryEvidence> {
+  const issues: SketchProfilePathValidationIssue[] = [];
+  if (
+    validateExactRecord(value, "$", [], ["plan", "currentExactResults"], issues)
+  ) {
+    if ("plan" in value) {
+      const planResult = validateCadExactExportPlan(value.plan);
+      if (!planResult.ok) issues.push(...planResult.issues);
+    }
+    if ("currentExactResults" in value) {
+      const exactResults = validateCadCurrentExactResults(
+        value.currentExactResults
+      );
+      if (!exactResults.ok) issues.push(...exactResults.issues);
+    }
+  }
+  return issues.length === 0
+    ? { ok: true, value: value as CadExactExportQueryEvidence }
+    : { ok: false, issues };
+}
+
+export function validateProjectExactExportQuery(
+  value: unknown
+): CadExactExportValidationResult<ProjectExactExportQuery> {
+  const issues: SketchProfilePathValidationIssue[] = [];
+  if (
+    validateExactRecord(
+      value,
+      "$",
+      ["query", "format"],
+      ["bodyIds", "sourceIdentity", "derivedExactMetadata"],
+      issues
+    )
+  ) {
+    validateEnum(value.query, ["project.exportExact"], "$.query", issues);
+    validateEnum(value.format, ["step"], "$.format", issues);
+    if ("bodyIds" in value) {
+      validateUniqueIdArray(value.bodyIds, "$.bodyIds", issues, {
+        maxLength: CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxSelectedBodies
+      });
+    }
+    if ("sourceIdentity" in value) {
+      validateWcadSourceIdentityEvidence(
+        value.sourceIdentity,
+        "$.sourceIdentity",
+        issues
+      );
+    }
+    if (
+      "derivedExactMetadata" in value &&
+      !Array.isArray(value.derivedExactMetadata)
+    ) {
+      issues.push({
+        code: "INVALID_TYPE",
+        path: "$.derivedExactMetadata",
+        message: "Expected a derived exact metadata array."
+      });
+    }
+  }
+  return issues.length === 0
+    ? { ok: true, value: value as ProjectExactExportQuery }
+    : { ok: false, issues };
 }
 
 function pointTargetV22Key(value: unknown): string | undefined {
