@@ -563,6 +563,7 @@ function createHolePreflightRuntime(
 
   return {
     holeInputs,
+    exactBodyArtifact: unused,
     executeExactStepExport: unused,
     tessellateBox: unused,
     tessellateCylinder: unused,

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   executeGeometryKernelRequest,
   getGeometryKernelExactExportCapabilities,
@@ -6,9 +6,14 @@ import {
   getGeometryResponseTransferables
 } from "./index";
 import {
+  assertExactBodyArtifactAggregateWithinLimit,
   executeGeometryKernelRequestWithMeshFactory,
+  MAX_EXACT_BODY_ARTIFACT_AGGREGATE_BYTES,
   MAX_BOOLEAN_EXTRUDE_RECIPE_DEPTH,
   type BooleanExtrudeSource,
+  type ExactBodyArtifactRequest,
+  type ExactBodyArtifactSource,
+  type GeometryKernelExactBodyArtifactPayload,
   type ExactRevolveMetadataSource,
   type GeometryKernelExactTopologyCheckpointPayload,
   type GeometryKernelImportedBodyCheckpointPayload,
@@ -21,6 +26,53 @@ import {
 } from "./kernel";
 
 const OCCT_WASM_TEST_TIMEOUT_MS = 120_000;
+
+function createArtifactRequest(
+  source: ExactBodyArtifactSource,
+  options: {
+    readonly bodyId?: string;
+    readonly sourceType?: string;
+    readonly sourceGraphNodeCount?: number;
+    readonly shapePolicy?: ExactBodyArtifactRequest["shapePolicy"];
+  } = {}
+): ExactBodyArtifactRequest {
+  return {
+    id: `geometry_req_exact_artifact_${options.bodyId ?? "artifact_body"}`,
+    version: "geometry-kernel.v1",
+    op: "geometry.exactBodyArtifact",
+    bodyId: options.bodyId ?? "artifact_body",
+    sourceType: options.sourceType ?? "primitiveFeature",
+    documentSourceIdentity: {
+      algorithm: "partbench-source-v1",
+      sha256: "a".repeat(64)
+    },
+    bodySourceIdentitySignature: `body-topology-source:v1:${"b".repeat(64)}`,
+    sourceCacheKeySha256: "c".repeat(64),
+    sourceGraphNodeCount: options.sourceGraphNodeCount ?? 1,
+    units: "mm",
+    shapePolicy: options.shapePolicy ?? "singleSolid",
+    source
+  };
+}
+
+function createInjectedArtifactFactories(
+  createExactBodyArtifact: NonNullable<
+    GeometryKernelMeshFactories["createExactBodyArtifact"]
+  >
+): GeometryKernelMeshFactories {
+  const unused = async () => {
+    throw new Error("Unexpected mesh factory call.");
+  };
+  return {
+    createBoxMesh: unused,
+    createCylinderMesh: unused,
+    createSphereMesh: unused,
+    createConeMesh: unused,
+    createTorusMesh: unused,
+    createBooleanExtrudeMesh: unused,
+    createExactBodyArtifact
+  };
+}
 
 const mixedWireProfile = {
   kind: "wire" as const,
@@ -286,7 +338,145 @@ function createImportedBodyPayloadFixture(
   };
 }
 
+function createExactBodyArtifactPayloadFixture(): GeometryKernelExactBodyArtifactPayload {
+  const topologySnapshot = createCheckpointPayloadFixture().topologySnapshot;
+  return {
+    sourceKind: "extrude",
+    brepFormat: "occt-brep",
+    brepWriter: "BRepTools.Write_3",
+    brepBytes: new Uint8Array([1, 2, 3, 4]),
+    brepByteLength: 4,
+    metadata: {
+      sourceKind: "extrude",
+      bounds: { min: [-1, -1.5, 0], max: [1, 1.5, 4] },
+      volume: 24,
+      surfaceArea: 52,
+      centroid: [0, 0, 2],
+      topologyCounts: {
+        solidCount: 1,
+        faceCount: 1,
+        edgeCount: 0,
+        vertexCount: 0
+      },
+      measurementSource: "kernel-derived",
+      measurementConfidence: "kernel-derived",
+      diagnostics: []
+    },
+    topologySnapshot
+  };
+}
+
 describe("geometry-kernel facade", () => {
+  it("enforces the V21 aggregate exact artifact byte cap", () => {
+    expect(
+      assertExactBodyArtifactAggregateWithinLimit([
+        { brepByteLength: 128 * 1024 * 1024 },
+        { brepByteLength: 128 * 1024 * 1024 },
+        { brepByteLength: 128 * 1024 * 1024 },
+        { brepByteLength: 128 * 1024 * 1024 }
+      ])
+    ).toBe(MAX_EXACT_BODY_ARTIFACT_AGGREGATE_BYTES);
+    expect(() =>
+      assertExactBodyArtifactAggregateWithinLimit([
+        { brepByteLength: 128 * 1024 * 1024 },
+        { brepByteLength: 128 * 1024 * 1024 },
+        { brepByteLength: 128 * 1024 * 1024 },
+        { brepByteLength: 128 * 1024 * 1024 },
+        { brepByteLength: 1 }
+      ])
+    ).toThrow();
+  });
+
+  it("keeps exact artifact failures atomic across build, read, write, topology, and hash stages", async () => {
+    const source = {
+      kind: "extrude" as const,
+      sketchPlane: "XY" as const,
+      profile: {
+        kind: "rectangle" as const,
+        center: [0, 0] as const,
+        width: 2,
+        height: 3
+      },
+      depth: 4
+    };
+    for (const stage of ["build", "read", "write", "topology"] as const) {
+      const response = await executeGeometryKernelRequestWithMeshFactory(
+        createInjectedArtifactFactories(async () => {
+          throw new Error(`Injected ${stage} failure.`);
+        }),
+        createArtifactRequest(source, { bodyId: `failed_${stage}` })
+      );
+      expect(response).toMatchObject({
+        ok: false,
+        error: { code: "KERNEL_FAILURE", message: `Injected ${stage} failure.` }
+      });
+      expect("artifact" in response).toBe(false);
+      expect(getGeometryResponseTransferables(response)).toEqual([]);
+    }
+
+    const digest = vi
+      .spyOn(globalThis.crypto.subtle, "digest")
+      .mockRejectedValueOnce(new Error("Injected hash failure."));
+    try {
+      const response = await executeGeometryKernelRequestWithMeshFactory(
+        createInjectedArtifactFactories(async () =>
+          createExactBodyArtifactPayloadFixture()
+        ),
+        createArtifactRequest(source, { bodyId: "failed_hash" })
+      );
+      expect(response).toMatchObject({
+        ok: false,
+        error: { code: "KERNEL_FAILURE", message: "Injected hash failure." }
+      });
+      expect("artifact" in response).toBe(false);
+      expect(getGeometryResponseTransferables(response)).toEqual([]);
+    } finally {
+      digest.mockRestore();
+    }
+  });
+
+  it("rejects invalid artifact results and source graph claims without retaining bytes", async () => {
+    const source = {
+      kind: "extrude" as const,
+      sketchPlane: "XY" as const,
+      profile: {
+        kind: "rectangle" as const,
+        center: [0, 0] as const,
+        width: 2,
+        height: 3
+      },
+      depth: 4
+    };
+    let calls = 0;
+    const factories = createInjectedArtifactFactories(async () => {
+      calls += 1;
+      const payload = createExactBodyArtifactPayloadFixture();
+      return { ...payload, brepByteLength: payload.brepByteLength + 1 };
+    });
+    const invalid = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      createArtifactRequest(source, { bodyId: "invalid_result" })
+    );
+    expect(invalid).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_RESULT" }
+    });
+    expect(getGeometryResponseTransferables(invalid)).toEqual([]);
+
+    const overLimit = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      createArtifactRequest(source, {
+        bodyId: "over_limit_graph",
+        sourceGraphNodeCount: 4_097
+      })
+    );
+    expect(overLimit).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_DIMENSIONS" }
+    });
+    expect(calls).toBe(1);
+    expect(getGeometryResponseTransferables(overLimit)).toEqual([]);
+  });
   it("reports STEP exact export writer capability as available", () => {
     expect(getGeometryKernelExactExportCapabilities()).toEqual([
       expect.objectContaining({
@@ -1546,6 +1736,590 @@ describe("geometry-kernel facade", () => {
       expect(response.metadata.measurementConfidence).toBe("kernel-derived");
       expect(response.metadata.diagnostics).toEqual([]);
       expect(getGeometryResponseTransferables(response)).toEqual([]);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "builds one identity-bound exact artifact from one OCCT shape",
+    async () => {
+      const source = {
+        kind: "box",
+        dimensions: { width: 2, height: 3, depth: 4 },
+        transform: {
+          translation: [1, 2, 3],
+          rotation: [10, 20, 30],
+          scale: [1, 1, 1]
+        }
+      } as const;
+      const response = await executeGeometryKernelRequest(
+        createArtifactRequest(source)
+      );
+
+      expect(response.ok).toBe(true);
+      if (!response.ok) throw new Error(response.error.message);
+      expect(response.artifact).toMatchObject({
+        artifactVersion: "partbench.exact-body-artifact.v1",
+        bodyId: "artifact_body",
+        sourceType: "primitiveFeature",
+        sourceKind: "box",
+        brepFormat: "occt-brep",
+        brepWriter: "BRepTools.Write_3",
+        brepByteLength: response.artifact.brepBytes.byteLength,
+        brepSha256: expect.stringMatching(/^[0-9a-f]{64}$/)
+      });
+      expect(response.artifact.metadata.topologyCounts).toEqual({
+        solidCount: response.artifact.topologySnapshot.entityCounts.solidCount,
+        faceCount: response.artifact.topologySnapshot.entityCounts.faceCount,
+        edgeCount: response.artifact.topologySnapshot.entityCounts.edgeCount,
+        vertexCount: response.artifact.topologySnapshot.entityCounts.vertexCount
+      });
+      expect(getGeometryResponseTransferables(response)).toEqual([
+        response.artifact.brepBytes.buffer
+      ]);
+      const checkpoint = await executeGeometryKernelRequest({
+        id: "geometry_req_shared_artifact_checkpoint",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactTopologyCheckpointPayload",
+        checkpointId: "checkpoint_shared_artifact",
+        bodyId: "artifact_body",
+        source
+      });
+      expect(checkpoint.ok).toBe(true);
+      if (!checkpoint.ok) throw new Error(checkpoint.error.message);
+      expect(checkpoint.checkpointPayload.brepBytes).toEqual(
+        response.artifact.brepBytes
+      );
+      expect(checkpoint.checkpointPayload.topologySnapshot).toEqual(
+        response.artifact.topologySnapshot
+      );
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "materializes every completed authored exact source family as a same-shape artifact",
+    async () => {
+      const rectangle = {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "rectangle" as const,
+          center: [0, 0] as const,
+          width: 4,
+          height: 4
+        },
+        depth: 4,
+        side: "positive" as const
+      };
+      const tool = {
+        ...rectangle,
+        profile: { ...rectangle.profile, center: [1.5, 0] as const, width: 2 }
+      };
+      const patternSeed = { kind: "extrude" as const, ...rectangle };
+      const sweepProfile = {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "circle" as const,
+          center: [0, 0] as const,
+          radius: 0.2
+        }
+      };
+      const entries: readonly {
+        readonly label: string;
+        readonly source: ExactBodyArtifactSource;
+        readonly nodes: number;
+        readonly policy?: ExactBodyArtifactRequest["shapePolicy"];
+      }[] = [
+        ...(
+          [
+            {
+              kind: "box" as const,
+              dimensions: { width: 2, height: 3, depth: 4 }
+            },
+            {
+              kind: "cylinder" as const,
+              dimensions: { radius: 1, height: 4 }
+            },
+            { kind: "sphere" as const, dimensions: { radius: 2 } },
+            {
+              kind: "cone" as const,
+              dimensions: { radius: 2, height: 4 }
+            },
+            {
+              kind: "torus" as const,
+              dimensions: { majorRadius: 3, minorRadius: 1 }
+            }
+          ] as const
+        ).map((primitive) => ({
+          label: primitive.kind,
+          nodes: 1,
+          source: {
+            ...primitive,
+            transform: {
+              translation: [1, 2, 3] as const,
+              rotation: [5, 10, 15] as const,
+              scale: [1, 1, 1] as const
+            }
+          }
+        })),
+        {
+          label: "rectangle extrude",
+          nodes: 1,
+          source: { kind: "extrude", ...rectangle }
+        },
+        {
+          label: "wire extrude",
+          nodes: 1,
+          source: {
+            kind: "extrude",
+            sketchPlane: "XY",
+            profile: mixedWireProfile,
+            depth: 4,
+            side: "positive"
+          }
+        },
+        ...(["add", "cut"] as const).map((operation) => ({
+          label: `boolean ${operation}`,
+          nodes: 3,
+          source: {
+            kind: "booleanExtrudes" as const,
+            operation,
+            target: rectangle,
+            tool
+          }
+        })),
+        {
+          label: "region-with-hole extrude",
+          nodes: 3,
+          source: {
+            kind: "booleanExtrudes",
+            operation: "cut",
+            materialPolicy: "regionPositiveVolumeSingleSolid",
+            target: rectangle,
+            tool: {
+              ...rectangle,
+              profile: { kind: "circle", center: [0, 0], radius: 0.5 }
+            }
+          }
+        },
+        {
+          label: "revolve",
+          nodes: 1,
+          source: {
+            kind: "revolve",
+            sketchPlane: "XY",
+            profile: { kind: "rectangle", center: [2, 0], width: 1, height: 3 },
+            axis: { start: [0, -2], end: [0, 2] },
+            angleDegrees: 360
+          }
+        },
+        {
+          label: "region revolve",
+          nodes: 1,
+          source: {
+            kind: "revolve",
+            sketchPlane: "XY",
+            profile: {
+              kind: "region",
+              frame: mixedWireProfile.frame,
+              outer: {
+                kind: "rectangle",
+                center: [4, 0],
+                width: 2,
+                height: 4
+              },
+              holes: [{ kind: "circle", center: [4, 0], radius: 0.5 }],
+              sourceIdentity: "v21-region-revolve",
+              geometryPolicy: mixedWireProfile.geometryPolicy
+            },
+            axis: { start: [0, -5], end: [0, 5] },
+            angleDegrees: 360
+          }
+        },
+        {
+          label: "blind hole",
+          nodes: 2,
+          source: {
+            kind: "hole",
+            target: rectangle,
+            tool: {
+              sketchPlane: "XY",
+              circle: { kind: "circle", center: [0, 0], radius: 0.5 },
+              depthMode: "blind",
+              depth: 2,
+              direction: "positive"
+            }
+          }
+        },
+        {
+          label: "through negative hole",
+          nodes: 2,
+          source: {
+            kind: "hole",
+            target: { ...rectangle, side: "symmetric" },
+            tool: {
+              sketchPlane: "XY",
+              circle: { kind: "circle", center: [0, 0], radius: 0.5 },
+              depthMode: "throughAll",
+              direction: "negative"
+            }
+          }
+        },
+        {
+          label: "chamfer",
+          nodes: 2,
+          source: {
+            kind: "edgeFinish",
+            operation: "chamfer",
+            target: rectangle,
+            edgeStableId: "generated:edge:body:1:start:uMin",
+            distance: 0.2
+          }
+        },
+        {
+          label: "fillet",
+          nodes: 2,
+          source: {
+            kind: "edgeFinish",
+            operation: "fillet",
+            target: rectangle,
+            edgeStableId: "generated:edge:body:1:longitudinal:uMax:vMax",
+            radius: 0.2
+          }
+        },
+        {
+          label: "linear pattern",
+          nodes: 2,
+          policy: "singleShapeOneOrMoreSolids",
+          source: {
+            kind: "linearPattern",
+            seed: patternSeed,
+            direction: [1, 0, 0],
+            spacing: 6,
+            instanceCount: 3
+          }
+        },
+        {
+          label: "circular pattern",
+          nodes: 2,
+          policy: "singleShapeOneOrMoreSolids",
+          source: {
+            kind: "circularPattern",
+            seed: {
+              ...patternSeed,
+              profile: { ...rectangle.profile, center: [4, 0] }
+            },
+            axis: { origin: [0, 0, 0], direction: [0, 0, 1] },
+            totalAngleDegrees: 360,
+            instanceCount: 4
+          }
+        },
+        {
+          label: "mirror",
+          nodes: 2,
+          source: {
+            kind: "mirror",
+            seed: {
+              ...patternSeed,
+              profile: { ...rectangle.profile, center: [2, 0] }
+            },
+            plane: { point: [0, 0, 0], normal: [1, 0, 0] },
+            includeOriginal: false
+          }
+        },
+        {
+          label: "shell",
+          nodes: 2,
+          source: {
+            kind: "shell",
+            target: patternSeed,
+            wallThickness: 0.2,
+            openFaceStableIds: ["generated:face:body:endCap"]
+          }
+        },
+        {
+          label: "line sweep",
+          nodes: 1,
+          source: {
+            kind: "sweep",
+            profile: sweepProfile,
+            pathSegments: [{ start: [0, 0, 0], end: [0, 0, 5] }]
+          }
+        },
+        {
+          label: "arc sweep",
+          nodes: 1,
+          source: {
+            kind: "sweep",
+            profile: {
+              ...sweepProfile,
+              placementFrame: {
+                origin: [10, 20, 30],
+                uAxis: [1, 0, 0],
+                vAxis: [0, 1, 0]
+              }
+            },
+            pathSegments: [
+              {
+                kind: "arc",
+                start: [10, 20, 30],
+                end: [15, 20, 35],
+                center: [15, 20, 30],
+                normal: [0, 1, 0],
+                sweepAngleDegrees: 90
+              }
+            ]
+          }
+        },
+        {
+          label: "G1 sweep",
+          nodes: 1,
+          source: {
+            kind: "sweep",
+            profile: sweepProfile,
+            pathSegments: [
+              { kind: "line", start: [0, 0, 0], end: [0, 0, 2] },
+              {
+                kind: "arc",
+                start: [0, 0, 2],
+                end: [1, 0, 3],
+                center: [1, 0, 2],
+                normal: [0, -1, 0],
+                sweepAngleDegrees: -90
+              }
+            ]
+          }
+        },
+        {
+          label: "loft",
+          nodes: 1,
+          source: {
+            kind: "loft",
+            sections: [
+              {
+                sketchPlane: "XY",
+                profile: {
+                  kind: "rectangle",
+                  center: [0, 0],
+                  width: 4,
+                  height: 3
+                }
+              },
+              {
+                sketchPlane: "XY",
+                profile: { kind: "circle", center: [0, 0], radius: 1 },
+                placementFrame: {
+                  origin: [0, 0, 5],
+                  uAxis: [1, 0, 0],
+                  vAxis: [0, 1, 0]
+                }
+              }
+            ]
+          }
+        }
+      ];
+
+      for (const [index, entry] of entries.entries()) {
+        const response = await executeGeometryKernelRequest(
+          createArtifactRequest(entry.source, {
+            bodyId: `matrix_${index}`,
+            sourceGraphNodeCount: entry.nodes,
+            shapePolicy: entry.policy
+          })
+        );
+        if (!response.ok)
+          throw new Error(`${entry.label}: ${response.error.message}`);
+        expect(response.ok, entry.label).toBe(true);
+        expect(response.artifact.brepByteLength, entry.label).toBeGreaterThan(
+          1000
+        );
+        expect(
+          response.artifact.metadata.topologyCounts.solidCount,
+          entry.label
+        ).toBeGreaterThan(0);
+        expect(
+          response.artifact.metadata.topologyCounts,
+          entry.label
+        ).toMatchObject({
+          solidCount:
+            response.artifact.topologySnapshot.entityCounts.solidCount,
+          faceCount: response.artifact.topologySnapshot.entityCounts.faceCount,
+          edgeCount: response.artifact.topologySnapshot.entityCounts.edgeCount,
+          vertexCount:
+            response.artifact.topologySnapshot.entityCounts.vertexCount
+        });
+        if (entry.label === "wire extrude") {
+          expect(response.artifact.metadata.generatedReferences?.status).toBe(
+            "ready"
+          );
+          expect(
+            response.artifact.topologySnapshot.generatedReferences?.status
+          ).toBe("ready");
+        }
+      }
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "builds verified checkpoint-backed downstream artifacts from the parsed target shape",
+    async () => {
+      const baseSource = {
+        kind: "extrude" as const,
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "rectangle" as const,
+          center: [0, 0] as const,
+          width: 4,
+          height: 4
+        },
+        depth: 4,
+        side: "positive" as const
+      };
+      const base = await executeGeometryKernelRequest(
+        createArtifactRequest(baseSource, {
+          bodyId: "checkpoint_target",
+          sourceType: "sketchExtrudeFeature"
+        })
+      );
+      expect(base.ok).toBe(true);
+      if (!base.ok) throw new Error(base.error.message);
+      const importedTopology = await executeGeometryKernelRequest({
+        id: "geometry_req_checkpoint_imported_topology",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactTopologySnapshot",
+        source: {
+          kind: "importedBody",
+          brepBytes: base.artifact.brepBytes
+        }
+      });
+      expect(importedTopology.ok).toBe(true);
+      if (!importedTopology.ok) {
+        throw new Error(importedTopology.error.message);
+      }
+      const imported = await executeGeometryKernelRequest(
+        createArtifactRequest(
+          {
+            kind: "checkpointBody",
+            brepBytes: base.artifact.brepBytes,
+            brepByteLength: base.artifact.brepByteLength,
+            brepSha256: base.artifact.brepSha256,
+            topologySourceKind: "importedBody",
+            topologySignature: importedTopology.snapshot.signature
+          },
+          {
+            bodyId: "imported_checkpoint_body",
+            sourceType: "importedStepBody",
+            shapePolicy: "checkpointShape"
+          }
+        )
+      );
+      expect(imported.ok).toBe(true);
+      if (!imported.ok) throw new Error(imported.error.message);
+      expect(imported.artifact.sourceKind).toBe("importedBody");
+      const target = {
+        kind: "checkpointBody" as const,
+        brepBytes: base.artifact.brepBytes,
+        brepByteLength: base.artifact.brepByteLength,
+        brepSha256: base.artifact.brepSha256,
+        topologySourceKind: base.artifact.topologySnapshot.sourceKind,
+        topologySignature: base.artifact.topologySnapshot.signature
+      };
+      const restoredAuthored = await executeGeometryKernelRequest(
+        createArtifactRequest(target, {
+          bodyId: "authored_checkpoint_body",
+          sourceType: "sketchExtrudeFeature",
+          shapePolicy: "checkpointShape"
+        })
+      );
+      expect(restoredAuthored.ok).toBe(true);
+      if (!restoredAuthored.ok) {
+        throw new Error(restoredAuthored.error.message);
+      }
+      expect(restoredAuthored.artifact.sourceKind).toBe("extrude");
+      expect(restoredAuthored.artifact.topologySnapshot.signature).toBe(
+        target.topologySignature
+      );
+      const tool = {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "rectangle" as const,
+          center: [1.5, 0] as const,
+          width: 2,
+          height: 2
+        },
+        depth: 4,
+        side: "positive" as const
+      };
+      const sources: readonly {
+        readonly expectedKind: string;
+        readonly graphNodes: number;
+        readonly source: ExactBodyArtifactSource;
+      }[] = [
+        {
+          expectedKind: "booleanExtrudes",
+          graphNodes: 3,
+          source: { kind: "checkpointBoolean", operation: "add", target, tool }
+        },
+        {
+          expectedKind: "booleanExtrudes",
+          graphNodes: 3,
+          source: {
+            kind: "checkpointBoolean",
+            operation: "cut",
+            target,
+            tool: {
+              ...tool,
+              profile: { ...tool.profile, center: [0, 0] }
+            }
+          }
+        },
+        {
+          expectedKind: "hole",
+          graphNodes: 2,
+          source: {
+            kind: "checkpointHole",
+            target,
+            tool: {
+              sketchPlane: "XY",
+              circle: { kind: "circle", center: [0, 0], radius: 0.5 },
+              depthMode: "blind",
+              depth: 2,
+              direction: "positive"
+            }
+          }
+        },
+        ...(["chamfer", "fillet"] as const).map((operation) => ({
+          expectedKind: "edgeFinish",
+          graphNodes: 2,
+          source: {
+            kind: "checkpointEdgeFinish" as const,
+            operation,
+            target,
+            checkpointEntityId: "snapshot-local:edge:1",
+            amount: 0.1
+          }
+        }))
+      ];
+
+      for (const [index, entry] of sources.entries()) {
+        const response = await executeGeometryKernelRequest(
+          createArtifactRequest(entry.source, {
+            bodyId: `checkpoint_result_${index}`,
+            sourceType:
+              entry.expectedKind === "hole"
+                ? "sketchHoleFeature"
+                : entry.expectedKind === "edgeFinish"
+                  ? "edgeChamferFeature"
+                  : "sketchExtrudeFeature",
+            sourceGraphNodeCount: entry.graphNodes
+          })
+        );
+        expect(response.ok).toBe(true);
+        if (!response.ok) throw new Error(response.error.message);
+        expect(response.artifact.sourceKind).toBe(entry.expectedKind);
+        expect(response.artifact.metadata.topologyCounts.solidCount).toBe(1);
+      }
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );

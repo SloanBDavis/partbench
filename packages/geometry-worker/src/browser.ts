@@ -29,6 +29,7 @@ export {
   createSweepWorkerRequest,
   createLoftWorkerRequest,
   createExactBodyMetadataWorkerRequest,
+  createExactBodyArtifactWorkerRequest,
   createExactTopologyCheckpointPayloadWorkerRequest,
   createExactTopologySnapshotWorkerRequest,
   createExactStepExportWorkerRequest,
@@ -54,6 +55,10 @@ export {
   type GeometryWorkerDiagnostics,
   type GeometryWorkerErrorCode,
   type GeometryWorkerErrorDetails,
+  type GeometryKernelExactBodyArtifact,
+  type ExactBodyArtifactRequest,
+  type ExactBodyArtifactSource,
+  type ExactBodyArtifactShapePolicy,
   type GeometryKernelExactTopologyCheckpointPayload,
   type GeometryKernelNamedStepProbeResult,
   type GeometryKernelImportedBodyCheckpointPayload,
@@ -195,6 +200,7 @@ function getUnsupportedPrimitiveMessage(
     kind !== "geometry-worker.sweepFeature" &&
     kind !== "geometry-worker.loftFeature" &&
     kind !== "geometry-worker.exactMetadata" &&
+    kind !== "geometry-worker.exactBodyArtifact" &&
     kind !== "geometry-worker.exactTopologySnapshot" &&
     kind !== "geometry-worker.exactTopologyCheckpointPayload" &&
     kind !== "geometry-worker.importStep" &&
@@ -222,6 +228,7 @@ function getUnsupportedPrimitiveMessage(
     op !== "geometry.sweep" &&
     op !== "geometry.loft" &&
     op !== "geometry.exactBodyMetadata" &&
+    op !== "geometry.exactBodyArtifact" &&
     op !== "geometry.exactTopologySnapshot" &&
     op !== "geometry.exactTopologyCheckpointPayload" &&
     op !== "geometry.importStep" &&

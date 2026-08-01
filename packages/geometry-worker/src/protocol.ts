@@ -3,6 +3,7 @@ import type {
   BooleanExtrudeToolSource,
   BooleanExtrudesRequest,
   EdgeFinishRequest,
+  ExactBodyArtifactRequest,
   ExactBodyMetadataRequest,
   ExactTopologyCheckpointPayloadRequest,
   ExactTopologySnapshotRequest,
@@ -49,6 +50,9 @@ import type {
 } from "@web-cad/geometry-kernel";
 
 export type {
+  ExactBodyArtifactRequest,
+  ExactBodyArtifactSource,
+  ExactBodyArtifactShapePolicy,
   BooleanExtrudePrimitiveSource,
   BooleanExtrudeResultSource,
   BooleanExtrudeSource,
@@ -56,6 +60,7 @@ export type {
   BooleanExtrudeWireSource,
   BooleanExtrudesRequest,
   GeometryKernelExactBodyMetadata,
+  GeometryKernelExactBodyArtifact,
   GeometryKernelExactTopologySnapshot,
   GeometryKernelExactTopologyCheckpointPayload,
   GeometryKernelTopologyCheckpointSignaturePayload,
@@ -86,6 +91,7 @@ export type GeometryWorkerRequestKind =
   | "geometry-worker.sweepFeature"
   | "geometry-worker.loftFeature"
   | "geometry-worker.exactMetadata"
+  | "geometry-worker.exactBodyArtifact"
   | "geometry-worker.exactTopologySnapshot"
   | "geometry-worker.exactTopologyCheckpointPayload"
   | "geometry-worker.importStep"
@@ -700,6 +706,25 @@ export function createExactBodyMetadataWorkerRequest(input: {
       version: "geometry-kernel.v1",
       op: "geometry.exactBodyMetadata",
       source: input.source
+    }
+  };
+}
+
+export function createExactBodyArtifactWorkerRequest(
+  input: Omit<ExactBodyArtifactRequest, "version" | "op"> & {
+    readonly payloadId?: string;
+  }
+): GeometryWorkerRequest<ExactBodyArtifactRequest> {
+  const { id, payloadId, ...payload } = input;
+  return {
+    id,
+    version: "geometry-worker.v1",
+    kind: "geometry-worker.exactBodyArtifact",
+    payload: {
+      ...payload,
+      id: payloadId ?? `${id}:payload`,
+      version: "geometry-kernel.v1",
+      op: "geometry.exactBodyArtifact"
     }
   };
 }

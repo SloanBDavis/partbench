@@ -1,4 +1,6 @@
 import type {
+  ExactBodyArtifactRequest,
+  GeometryKernelExactBodyArtifact,
   GeometryKernelExactTopologyCheckpointPayload,
   GeometryKernelExactBodyMetadata,
   GeometryKernelImportedBodyPayload,
@@ -392,6 +394,19 @@ export interface DerivedExactMetadataResult {
   readonly message: string;
 }
 
+export interface DerivedExactBodyArtifactInput extends Omit<
+  ExactBodyArtifactRequest,
+  "id" | "version" | "op"
+> {
+  readonly id: string;
+}
+
+export interface DerivedExactBodyArtifactResult {
+  readonly artifact: GeometryKernelExactBodyArtifact;
+  readonly metrics: DerivedExactMetadataMetrics;
+  readonly message: string;
+}
+
 export interface DerivedExactTopologyCheckpointPayloadInput extends DerivedExactMetadataInput {
   readonly checkpointId: string;
   readonly bodyId: string;
@@ -530,6 +545,10 @@ export interface DerivedGeometryRuntime {
     input: DerivedExactMetadataInput,
     context?: DerivedGeometryRequestContext
   ): Promise<DerivedExactMetadataResult>;
+  exactBodyArtifact(
+    input: DerivedExactBodyArtifactInput,
+    context?: DerivedGeometryRequestContext
+  ): Promise<DerivedExactBodyArtifactResult>;
   exactTopologyCheckpointPayload(
     input: DerivedExactTopologyCheckpointPayloadInput
   ): Promise<DerivedExactTopologyCheckpointPayloadResult>;

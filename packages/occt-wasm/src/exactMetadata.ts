@@ -784,7 +784,7 @@ function assertExactPrimitiveBindings(oc: OpenCascadeInstance): void {
 
 let nextImportedBrepReadId = 1;
 
-function withImportedBrepShape<T>(
+export function withImportedBrepShape<T>(
   oc: OpenCascadeInstance,
   bytes: Uint8Array,
   readShape: (shape: TopoDS_Shape) => T
@@ -822,7 +822,7 @@ function withImportedBrepShape<T>(
   }
 }
 
-function readExactBodyMetadata(
+export function readExactBodyMetadata(
   oc: OpenCascadeInstance,
   shape: TopoDS_Shape,
   sourceKind: OcctExactBodyMetadataSource["kind"]

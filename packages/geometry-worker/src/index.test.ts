@@ -6,6 +6,7 @@ import {
   createCylinderTessellationWorkerRequest,
   createEdgeFinishWorkerRequest,
   createExactBodyMetadataWorkerRequest,
+  createExactBodyArtifactWorkerRequest,
   createExactTopologyCheckpointPayloadWorkerRequest,
   createExactTopologySnapshotWorkerRequest,
   createExactStepExportWorkerRequest,
@@ -1144,6 +1145,41 @@ describe("geometry-worker", () => {
     });
   });
 
+  it("creates a typed identity-bound exact body artifact worker request", () => {
+    const request = createExactBodyArtifactWorkerRequest({
+      id: "worker_req_exact_artifact",
+      bodyId: "body_box",
+      sourceType: "primitiveFeature",
+      documentSourceIdentity: {
+        algorithm: "partbench-source-v1",
+        sha256: "a".repeat(64)
+      },
+      bodySourceIdentitySignature: `body-topology-source:v1:${"b".repeat(64)}`,
+      sourceCacheKeySha256: "c".repeat(64),
+      sourceGraphNodeCount: 1,
+      units: "mm",
+      shapePolicy: "singleSolid",
+      source: {
+        kind: "box",
+        dimensions: { width: 2, height: 3, depth: 4 },
+        transform: {
+          translation: [0, 0, 0],
+          rotation: [0, 0, 0],
+          scale: [1, 1, 1]
+        }
+      }
+    });
+    expect(request).toMatchObject({
+      id: "worker_req_exact_artifact",
+      kind: "geometry-worker.exactBodyArtifact",
+      payload: {
+        id: "worker_req_exact_artifact:payload",
+        op: "geometry.exactBodyArtifact",
+        bodyId: "body_box"
+      }
+    });
+  });
+
   it("creates a typed exact topology snapshot worker request", () => {
     expect(
       createExactTopologySnapshotWorkerRequest({
@@ -1939,6 +1975,46 @@ describe("geometry-worker", () => {
     expect(response.response.metadata.volume).toBeCloseTo(60, 6);
     expect(response.response.metadata.surfaceArea).toBeCloseTo(94, 6);
     expect(response.response.metadata.measurementSource).toBe("kernel-derived");
+  }, 120_000);
+
+  it("transfers exact BRep artifact ownership through the worker boundary", async () => {
+    const worker = createGeometryKernelWorker();
+    const response = await worker.execute(
+      createExactBodyArtifactWorkerRequest({
+        id: "worker_req_exact_artifact_execute",
+        bodyId: "body_box",
+        sourceType: "primitiveFeature",
+        documentSourceIdentity: {
+          algorithm: "partbench-source-v1",
+          sha256: "a".repeat(64)
+        },
+        bodySourceIdentitySignature: `body-topology-source:v1:${"b".repeat(64)}`,
+        sourceCacheKeySha256: "c".repeat(64),
+        sourceGraphNodeCount: 1,
+        units: "mm",
+        shapePolicy: "singleSolid",
+        source: {
+          kind: "box",
+          dimensions: { width: 2, height: 3, depth: 4 },
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          }
+        }
+      })
+    );
+    expect(response.response.ok).toBe(true);
+    if (!response.response.ok) throw new Error(response.response.error.message);
+    const byteLength = response.response.artifact.brepByteLength;
+    expect(response.transferables).toEqual([
+      response.response.artifact.brepBytes.buffer
+    ]);
+    const cloned = structuredClone(response.response.artifact.brepBytes, {
+      transfer: [...response.transferables]
+    });
+    expect(response.response.artifact.brepBytes.byteLength).toBe(0);
+    expect(cloned.byteLength).toBe(byteLength);
   }, 120_000);
 
   it("returns exact topology snapshots through the geometry kernel facade", async () => {

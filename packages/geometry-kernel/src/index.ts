@@ -9,6 +9,7 @@ import {
   createOcctHoleMesh,
   createOcctRevolveProfileMesh,
   createOcctExactBodyMetadata,
+  createOcctExactBodyArtifactWithLoader,
   createOcctExactTopologySnapshot,
   createOcctExactTopologyCheckpointPayload,
   createOcctStepImport,
@@ -24,6 +25,7 @@ import {
   createOcctWireExtrudeMesh
 } from "@web-cad/occt-wasm";
 import {
+  assertExactBodyArtifactAggregateWithinLimit,
   executeGeometryKernelRequestWithMeshFactory,
   getGeometryKernelExactExportCapabilities,
   getGeometryKernelStepImportCapabilities,
@@ -323,6 +325,7 @@ export type {
   GeometryKernelSweepMeshFactory
 };
 export {
+  assertExactBodyArtifactAggregateWithinLimit,
   getGeometryKernelExactExportCapabilities,
   getGeometryKernelStepImportCapabilities,
   getGeometryResponseTransferables
@@ -344,6 +347,8 @@ export async function executeGeometryKernelRequest<
       createHoleMesh: createOcctHoleMesh,
       createRevolveProfileMesh: createOcctRevolveProfileMesh,
       createExactBodyMetadata: createOcctExactBodyMetadata,
+      createExactBodyArtifact: (input) =>
+        createOcctExactBodyArtifactWithLoader(loadOcct, input),
       createExactTopologySnapshot: createOcctExactTopologySnapshot,
       createExactTopologyCheckpointPayload:
         createOcctExactTopologyCheckpointPayload,
@@ -361,3 +366,17 @@ export async function executeGeometryKernelRequest<
     request
   );
 }
+
+export type {
+  ExactBodyArtifactRequest,
+  ExactBodyArtifactSource,
+  ExactBodyArtifactShapePolicy,
+  ExactCheckpointBodyArtifactSource,
+  ExactCheckpointBooleanArtifactSource,
+  ExactCheckpointEdgeFinishArtifactSource,
+  ExactCheckpointHoleArtifactSource,
+  GeometryKernelExactBodyArtifact,
+  GeometryKernelExactBodyArtifactFactory,
+  GeometryKernelExactBodyArtifactPayload,
+  GeometryKernelExactBodyArtifactSuccessResponse
+} from "./kernel";

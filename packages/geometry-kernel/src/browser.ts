@@ -16,6 +16,7 @@ import {
   createOcctLoftMeshWithInstance,
   createOcctRevolveProfileMeshWithInstance,
   createOcctExactBodyMetadataWithInstance,
+  createOcctExactBodyArtifactWithInstance,
   createOcctExactTopologySnapshotWithInstance,
   createOcctExactTopologyCheckpointPayloadWithInstance,
   createOcctStepImportWithInstance,
@@ -24,6 +25,7 @@ import {
   createOcctWireExtrudeMeshWithInstance
 } from "@web-cad/occt-wasm/browser";
 import {
+  assertExactBodyArtifactAggregateWithinLimit,
   executeGeometryKernelRequestWithMeshFactory,
   getGeometryKernelStepImportCapabilities,
   getGeometryResponseTransferables,
@@ -39,6 +41,7 @@ import {
   type ConeGeometryDimensions,
   type CylinderGeometryDimensions,
   type ExactBodyMetadataRequest,
+  type ExactBodyArtifactRequest,
   type ExactBodyMetadataSource,
   type ExactBooleanExtrudesMetadataSource,
   type ExactEdgeFinishMetadataSource,
@@ -236,6 +239,7 @@ export type {
   TessellationOptions
 };
 export {
+  assertExactBodyArtifactAggregateWithinLimit,
   getGeometryKernelStepImportCapabilities,
   getGeometryResponseTransferables
 };
@@ -286,6 +290,7 @@ export async function executeTimedBrowserGeometryKernelRequest<
       createHoleMesh: createHoleMeshWithBrowserOcct,
       createRevolveProfileMesh: createRevolveProfileMeshWithBrowserOcct,
       createExactBodyMetadata: createExactBodyMetadataWithBrowserOcct,
+      createExactBodyArtifact: createExactBodyArtifactWithBrowserOcct,
       createExactTopologySnapshot: createExactTopologySnapshotWithBrowserOcct,
       createExactTopologyCheckpointPayload:
         createExactTopologyCheckpointPayloadWithBrowserOcct,
@@ -676,6 +681,33 @@ export async function executeTimedBrowserGeometryKernelRequest<
     }
   }
 
+  async function createExactBodyArtifactWithBrowserOcct(
+    input: Pick<ExactBodyArtifactRequest, "source">
+  ) {
+    const occtLoadStart = performance.now();
+    let oc: Awaited<ReturnType<typeof loadBrowserOcct>>;
+
+    try {
+      oc = await loadBrowserOcct();
+    } catch (error) {
+      occtLoadMs = performance.now() - occtLoadStart;
+      failureStage = "wasmLoad";
+      throw error;
+    }
+
+    occtLoadMs = performance.now() - occtLoadStart;
+    const tessellationStart = performance.now();
+
+    try {
+      return createOcctExactBodyArtifactWithInstance(oc, input);
+    } catch (error) {
+      failureStage = "tessellation";
+      throw error;
+    } finally {
+      tessellationMs = performance.now() - tessellationStart;
+    }
+  }
+
   async function createExactTopologySnapshotWithBrowserOcct(
     input: Omit<ExactTopologySnapshotRequest, "id" | "version" | "op">
   ) {
@@ -842,3 +874,17 @@ export async function executeTimedBrowserGeometryKernelRequest<
     }
   }
 }
+
+export type {
+  ExactBodyArtifactRequest,
+  ExactBodyArtifactSource,
+  ExactBodyArtifactShapePolicy,
+  ExactCheckpointBodyArtifactSource,
+  ExactCheckpointBooleanArtifactSource,
+  ExactCheckpointEdgeFinishArtifactSource,
+  ExactCheckpointHoleArtifactSource,
+  GeometryKernelExactBodyArtifact,
+  GeometryKernelExactBodyArtifactFactory,
+  GeometryKernelExactBodyArtifactPayload,
+  GeometryKernelExactBodyArtifactSuccessResponse
+} from "./kernel";

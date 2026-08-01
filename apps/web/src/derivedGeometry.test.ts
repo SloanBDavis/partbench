@@ -5836,6 +5836,11 @@ function createRuntime(
 
   return {
     inputs,
+    exactBodyArtifact() {
+      throw new Error(
+        "Exact artifacts are not used by derived geometry tests."
+      );
+    },
     executeExactStepExport() {
       throw new Error("STEP export is not used by derived geometry tests.");
     },

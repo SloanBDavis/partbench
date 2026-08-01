@@ -606,7 +606,10 @@ export {
   validateWcadPackageCacheEntries,
   validateWcadPackageEntryBytes
 } from "./projectPackageReadiness";
-export { encodeCanonicalCbor as encodeWcadCanonicalCbor } from "./canonicalCbor";
+export {
+  decodeCanonicalCbor as decodeWcadCanonicalCbor,
+  encodeCanonicalCbor as encodeWcadCanonicalCbor
+} from "./canonicalCbor";
 export {
   evaluateParameterExpressions,
   parseParameterExpression

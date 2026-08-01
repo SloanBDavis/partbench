@@ -1,5 +1,6 @@
 import {
   V21_EXACT_BODY_SOURCE_POLICY,
+  decodeWcadCanonicalCbor,
   sha256Hex,
   type CadDocument,
   type CadFeatureSummary,
@@ -22,10 +23,13 @@ import type {
 } from "./derivedGeometry";
 import {
   createDerivedExactMetadataCacheKey,
+  createExactMetadataRuntimeInput,
   isExactMetadataSource,
   type DerivedExactMetadataSource,
   type DerivedImportedBodyExactMetadataSource
 } from "./derivedExactMetadata";
+import { createBooleanExtrudeRuntimeSource } from "./booleanExtrudeRuntimeSource";
+import type { ExactBodyArtifactSource } from "@web-cad/geometry-worker";
 
 export type CurrentExactBodySource =
   | DerivedExactMetadataSource
@@ -49,14 +53,12 @@ export interface CurrentExactCheckpointEdgeFinishSource {
   readonly kind: "checkpointEdgeFinish";
   readonly operation: "chamfer" | "fillet";
   readonly target: DerivedImportedBodyExactMetadataSource;
-  readonly edgeReference:
-    | { readonly kind: "stableId"; readonly stableId: string }
-    | {
-        readonly kind: "topologyAnchor";
-        readonly anchorId: string;
-        readonly checkpointEntityId: string;
-        readonly stableId?: string;
-      };
+  readonly edgeReference: {
+    readonly kind: "topologyAnchor";
+    readonly anchorId: string;
+    readonly checkpointEntityId: string;
+    readonly stableId?: string;
+  };
   readonly amount: number;
   readonly sourceIdentitySignature: string;
 }
@@ -169,6 +171,59 @@ export function getReadyRuntimeExactSources(
       ? [resolution.source]
       : []
   );
+}
+
+export function createCurrentExactBodyArtifactSource(
+  source: CurrentExactBodySource
+): ExactBodyArtifactSource {
+  if (source.kind === "importedBody") return createCheckpointBodySource(source);
+  if (source.kind === "checkpointBoolean") {
+    return {
+      kind: "checkpointBoolean",
+      operation: source.operation,
+      target: createCheckpointBodySource(source.target),
+      tool: createBooleanExtrudeRuntimeSource(source.tool)
+    };
+  }
+  if (source.kind === "checkpointHole") {
+    return {
+      kind: "checkpointHole",
+      target: createCheckpointBodySource(source.target),
+      tool: source.tool
+    };
+  }
+  if (source.kind === "checkpointEdgeFinish") {
+    return {
+      kind: "checkpointEdgeFinish",
+      operation: source.operation,
+      target: createCheckpointBodySource(source.target),
+      checkpointEntityId: source.edgeReference.checkpointEntityId,
+      amount: source.amount
+    };
+  }
+  const runtimeSource = createExactMetadataRuntimeInput(source).source;
+  if (runtimeSource.kind === "importedBody") {
+    throw new Error("Imported bodies require checkpoint evidence.");
+  }
+  return runtimeSource;
+}
+
+function createCheckpointBodySource(
+  source: DerivedImportedBodyExactMetadataSource
+): Extract<ExactBodyArtifactSource, { readonly kind: "checkpointBody" }> {
+  if (!source.topologySignature) {
+    throw new Error(
+      `Checkpoint ${source.checkpointId} has no topology signature.`
+    );
+  }
+  return {
+    kind: "checkpointBody",
+    brepBytes: source.brepBytes,
+    brepByteLength: source.brepByteLength,
+    brepSha256: source.brepSha256,
+    topologySourceKind: source.topologySourceKind ?? "importedBody",
+    topologySignature: source.topologySignature
+  };
 }
 
 function resolveCurrentExactBody(
@@ -546,11 +601,13 @@ function resolveCheckpointLeaf(
     };
   }
   const actualSha256 = sha256Hex(payload.brepBytes);
+  const topologyEvidence = readCheckpointTopologyEvidence(payload);
   if (
     payload.brepByteLength === undefined ||
     payload.brepSha256 === undefined ||
     payload.brepByteLength !== payload.brepBytes.byteLength ||
-    payload.brepSha256 !== actualSha256
+    payload.brepSha256 !== actualSha256 ||
+    topologyEvidence === undefined
   ) {
     return {
       ok: false,
@@ -567,6 +624,8 @@ function resolveCheckpointLeaf(
       checkpointId: checkpoint.checkpointId,
       brepByteLength: payload.brepByteLength,
       brepSha256: payload.brepSha256,
+      topologySourceKind: topologyEvidence.sourceKind,
+      topologySignature: topologyEvidence.signature,
       brepBytes: payload.brepBytes
     }
   };
@@ -585,25 +644,6 @@ function resolveCheckpointEdgeReference(
       readonly status: "blocked" | "stale" | "unsupported";
       readonly message: string;
     } {
-  if (feature.edgeStableId) {
-    return {
-      ok: true,
-      reference: { kind: "stableId", stableId: feature.edgeStableId }
-    };
-  }
-  if (feature.namedReference) {
-    const named = document.namedReferences.get(feature.namedReference);
-    return named?.kind === "edge" && named.bodyId === feature.targetBodyId
-      ? {
-          ok: true,
-          reference: { kind: "stableId", stableId: named.stableId }
-        }
-      : {
-          ok: false,
-          status: "blocked",
-          message: `Named edge ${feature.namedReference} is not current on ${feature.targetBodyId}.`
-        };
-  }
   if (feature.topologyAnchorId) {
     const anchor = document.topologyIdentity?.anchors.find(
       (candidate) => candidate.anchorId === feature.topologyAnchorId
@@ -637,6 +677,70 @@ function resolveCheckpointEdgeReference(
     status: "unsupported",
     message: `${feature.kind} feature ${feature.id} has no supported edge reference.`
   };
+}
+
+function readCheckpointTopologyEvidence(
+  payload: WcadTopologyCheckpointPayloadInput
+):
+  | {
+      readonly sourceKind: DerivedImportedBodyExactMetadataSource["topologySourceKind"] &
+        string;
+      readonly signature: string;
+    }
+  | undefined {
+  try {
+    const value = decodeWcadCanonicalCbor(payload.signatureBytes);
+    const topology = decodeWcadCanonicalCbor(payload.topologyBytes);
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      !("checkpointId" in value) ||
+      value.checkpointId !== payload.checkpointId ||
+      !("signatureAlgorithm" in value) ||
+      value.signatureAlgorithm !== "partbench-derived-topology-snapshot-v1" ||
+      !("signature" in value) ||
+      typeof value.signature !== "string" ||
+      value.signature.length === 0 ||
+      typeof topology !== "object" ||
+      topology === null ||
+      !("sourceKind" in topology) ||
+      typeof topology.sourceKind !== "string" ||
+      !isCheckpointTopologySourceKind(topology.sourceKind) ||
+      !("signature" in topology) ||
+      topology.signature !== value.signature
+    ) {
+      return undefined;
+    }
+    return { sourceKind: topology.sourceKind, signature: value.signature };
+  } catch {
+    return undefined;
+  }
+}
+
+function isCheckpointTopologySourceKind(
+  value: string
+): value is NonNullable<
+  DerivedImportedBodyExactMetadataSource["topologySourceKind"]
+> {
+  return [
+    "box",
+    "cylinder",
+    "sphere",
+    "cone",
+    "torus",
+    "extrude",
+    "booleanExtrudes",
+    "revolve",
+    "hole",
+    "edgeFinish",
+    "sweep",
+    "loft",
+    "linearPattern",
+    "circularPattern",
+    "mirror",
+    "shell",
+    "importedBody"
+  ].includes(value);
 }
 
 function validateExactSourceGraph(source: CurrentExactBodySource):

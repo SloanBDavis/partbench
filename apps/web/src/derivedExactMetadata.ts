@@ -68,6 +68,8 @@ export interface DerivedImportedBodyExactMetadataSource {
   readonly checkpointId: string;
   readonly brepByteLength: number;
   readonly brepSha256: string;
+  readonly topologySourceKind?: DerivedExactBodyMetadata["sourceKind"];
+  readonly topologySignature?: string;
   readonly sourceIdentitySignature?: string;
   readonly brepBytes: Uint8Array;
 }
@@ -506,7 +508,9 @@ export function createDerivedExactMetadataCacheKey(
       checkpointId: source.checkpointId,
       sourceIdentitySignature: source.sourceIdentitySignature,
       brepByteLength: source.brepByteLength,
-      brepSha256: source.brepSha256
+      brepSha256: source.brepSha256,
+      topologySourceKind: source.topologySourceKind,
+      topologySignature: source.topologySignature
     });
   }
   return JSON.stringify({

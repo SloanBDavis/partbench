@@ -116,6 +116,22 @@ export function withOcctHoleResultShape<T>(
 
   const targetShape = makeBooleanExtrudeShape(oc, input.target);
   let target: TopoDS_Shape | undefined;
+  try {
+    target = targetShape.Shape();
+    return withOcctHoleResultOnShape(oc, target, input.tool, readResult);
+  } finally {
+    target?.delete();
+    targetShape.delete();
+  }
+}
+
+export function withOcctHoleResultOnShape<T>(
+  oc: OpenCascadeInstance,
+  target: TopoDS_Shape,
+  toolSource: OcctHoleToolSource,
+  readResult: (shape: TopoDS_Shape) => T
+): T {
+  assertHoleResultBindings(oc);
   let toolShape: HoleToolShapeHandle | undefined;
   let tool: TopoDS_Shape | undefined;
   let range:
@@ -125,8 +141,7 @@ export function withOcctHoleResultShape<T>(
   let resultShape: TopoDS_Shape | undefined;
 
   try {
-    target = targetShape.Shape();
-    toolShape = makeHoleToolShape(oc, target, input.tool);
+    toolShape = makeHoleToolShape(oc, target, toolSource);
     tool = toolShape.shape.Shape();
     range = new oc.Message_ProgressRange_1();
     cut = new oc.BRepAlgoAPI_Cut_3(target, tool, range);
@@ -143,8 +158,6 @@ export function withOcctHoleResultShape<T>(
     range?.delete();
     tool?.delete();
     toolShape?.delete();
-    target?.delete();
-    targetShape.delete();
   }
 }
 

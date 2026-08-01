@@ -2288,6 +2288,9 @@ function createRuntime(
 
   return {
     exactInputs,
+    exactBodyArtifact() {
+      throw new Error("Exact artifacts are not used by exact metadata tests.");
+    },
     executeExactStepExport() {
       throw new Error("STEP export is not used by exact metadata tests.");
     },

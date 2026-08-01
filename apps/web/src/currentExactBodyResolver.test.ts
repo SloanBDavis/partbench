@@ -2,6 +2,7 @@ import {
   CadEngine,
   createV15ReleaseSampleBatch,
   createV21ReleaseSampleBatch,
+  encodeWcadCanonicalCbor,
   listV21ReleaseSampleFixtures,
   sha256Hex,
   type CadDocument,
@@ -24,6 +25,7 @@ import {
 import { createDerivedGeometrySourcesFromDocument } from "./derivedGeometrySources";
 import { createGeneratedFaceReferenceKey } from "./sketchDisplayFrames";
 import {
+  createCurrentExactBodyArtifactSource,
   resolveCurrentExactBodies,
   type CurrentExactBodyResolution,
   type CurrentExactBodyResolverInput
@@ -50,6 +52,13 @@ describe("currentExactBodyResolver", () => {
       expect(new Set(active.map((resolution) => resolution.bodyId)).size).toBe(
         active.length
       );
+      for (const resolution of active) {
+        if (resolution.status === "ready") {
+          expect(() =>
+            createCurrentExactBodyArtifactSource(resolution.source)
+          ).not.toThrow();
+        }
+      }
     }
 
     for (const fixtureId of [
@@ -119,6 +128,11 @@ describe("currentExactBodyResolver", () => {
     const first = getReady(
       createResolverContext(importedEngine, [firstPayload]).resolutions
     );
+    expect(createCurrentExactBodyArtifactSource(first.source)).toMatchObject({
+      kind: "checkpointBody",
+      topologySourceKind: "importedBody",
+      topologySignature: "v21-imported-topology-signature"
+    });
     const second = getReady(
       createResolverContext(importedEngine, [secondPayload]).resolutions
     );
@@ -241,20 +255,42 @@ describe("currentExactBodyResolver", () => {
 
   it("uses checkpoint targets for completed downstream operations but keeps imported holes blocked", () => {
     for (const operation of ["add", "cut"] as const) {
-      expect(
-        resolveImportedDownstream({ kind: "boolean", operation })
-      ).toMatchObject({
+      const resolution = resolveImportedDownstream({
+        kind: "boolean",
+        operation
+      });
+      expect(resolution).toMatchObject({
         status: "ready",
         source: { kind: "checkpointBoolean", operation }
       });
+      if (resolution.status === "ready") {
+        expect(
+          createCurrentExactBodyArtifactSource(resolution.source)
+        ).toMatchObject({
+          kind: "checkpointBoolean",
+          operation,
+          target: { topologySourceKind: "importedBody" }
+        });
+      }
     }
     for (const operation of ["chamfer", "fillet"] as const) {
-      expect(
-        resolveImportedDownstream({ kind: "edgeFinish", operation })
-      ).toMatchObject({
+      const resolution = resolveImportedDownstream({
+        kind: "edgeFinish",
+        operation
+      });
+      expect(resolution).toMatchObject({
         status: "ready",
         source: { kind: "checkpointEdgeFinish", operation }
       });
+      if (resolution.status === "ready") {
+        expect(
+          createCurrentExactBodyArtifactSource(resolution.source)
+        ).toMatchObject({
+          kind: "checkpointEdgeFinish",
+          operation,
+          checkpointEntityId: "snapshot-local:edge:1"
+        });
+      }
     }
     expect(resolveImportedDownstream({ kind: "hole" })).toMatchObject({
       status: "unsupported",
@@ -348,8 +384,17 @@ function createImportedCheckpointPayload(
     brepByteLength: brepBytes.byteLength,
     brepSha256: sha256Hex(brepBytes),
     brepBytes,
-    topologyBytes: new Uint8Array([4]),
-    signatureBytes: new Uint8Array([5])
+    topologyBytes: encodeWcadCanonicalCbor({
+      sourceKind: "importedBody",
+      signature: "v21-imported-topology-signature"
+    }),
+    signatureBytes: encodeWcadCanonicalCbor({
+      checkpointId: "v21_imported_checkpoint",
+      signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+      signature: "v21-imported-topology-signature",
+      entityCount: 0,
+      entities: []
+    })
   };
 }
 
@@ -518,7 +563,7 @@ function resolveImportedDownstream(
         : {
             kind: input.operation,
             targetBodyId: importedBody.id,
-            edgeStableId: "imported-edge-1",
+            topologyAnchorId: "downstream_edge_anchor",
             ...(input.operation === "chamfer"
               ? { distance: 0.1 }
               : { radius: 0.1 })
@@ -562,6 +607,28 @@ function resolveImportedDownstream(
 
   return resolveCurrentExactBodies({
     ...imported,
+    document:
+      input.kind === "edgeFinish"
+        ? {
+            ...imported.document,
+            topologyIdentity: {
+              ...imported.document.topologyIdentity!,
+              anchors: [
+                ...imported.document.topologyIdentity!.anchors,
+                {
+                  anchorId: "downstream_edge_anchor",
+                  entityKind: "edge",
+                  bodyId: importedBody.id,
+                  checkpointId: "v21_imported_checkpoint",
+                  checkpointEntityId: "snapshot-local:edge:1",
+                  sourceFeatureId: importedBody.featureId,
+                  state: "active",
+                  diagnostics: []
+                }
+              ]
+            }
+          }
+        : imported.document,
     bodies: [{ ...targetBody, consumedByFeatureId: featureId }, baseBody],
     features: [targetFeature, feature],
     geometrySources: [geometrySource],

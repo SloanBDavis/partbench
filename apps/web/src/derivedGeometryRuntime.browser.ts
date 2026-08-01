@@ -27,6 +27,8 @@ import {
   type DerivedGeometryRuntime,
   type DerivedExactMetadataInput,
   type DerivedExactMetadataResult,
+  type DerivedExactBodyArtifactInput,
+  type DerivedExactBodyArtifactResult,
   type DerivedExactTopologyCheckpointPayloadInput,
   type DerivedExactTopologyCheckpointPayloadResult,
   type DerivedStepImportInput,
@@ -171,6 +173,44 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
         roundTripMs
       }),
       message: `Derived exact metadata for ${input.id}.`
+    };
+  }
+
+  async function executeExactBodyArtifactRequest(
+    input: DerivedExactBodyArtifactInput,
+    request: GeometryWorkerRequest,
+    context?: DerivedGeometryRequestContext
+  ): Promise<DerivedExactBodyArtifactResult> {
+    const roundTripStart = performance.now();
+    const response = await scheduler.execute(
+      {
+        intent: "exact",
+        sourceId: context?.sourceId ?? input.id,
+        documentRevision: context?.documentRevision ?? 0,
+        cacheKey: context?.cacheKey ?? request.payload.id
+      },
+      request
+    );
+    const roundTripMs = performance.now() - roundTripStart;
+    if (!response.response.ok) {
+      throw createDerivedGeometryErrorFromWorkerResponse(response);
+    }
+    if (
+      !("artifact" in response.response) ||
+      !("brepBytes" in response.response.artifact)
+    ) {
+      throw new Error(
+        "Geometry worker response does not contain an exact body artifact."
+      );
+    }
+    return {
+      artifact: response.response.artifact,
+      metrics: createDerivedExactMetadataMetrics({
+        objectId: input.id,
+        response,
+        roundTripMs
+      }),
+      message: `Derived exact body artifact for ${input.bodyId}.`
     };
   }
 
@@ -575,6 +615,20 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           id: requestId,
           payloadId: `${requestId}:kernel`,
           source: input.source
+        }),
+        context
+      );
+    },
+    async exactBodyArtifact(input: DerivedExactBodyArtifactInput, context) {
+      const { createExactBodyArtifactWorkerRequest } =
+        await import("@web-cad/geometry-worker/browser");
+      const requestId = createRequestId(input.id);
+      return executeExactBodyArtifactRequest(
+        input,
+        createExactBodyArtifactWorkerRequest({
+          ...input,
+          id: requestId,
+          payloadId: `${requestId}:kernel`
         }),
         context
       );

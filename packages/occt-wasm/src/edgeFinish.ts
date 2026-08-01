@@ -158,48 +158,107 @@ export function withOcctEdgeFinishResultShape<T>(
   const targetShape = makeBooleanExtrudeShape(oc, input.target);
   let target: TopoDS_Shape | undefined;
   let edge: EdgeHandle | undefined;
-  let range:
-    | InstanceType<OpenCascadeInstance["Message_ProgressRange_1"]>
-    | undefined;
+
+  try {
+    target = targetShape.Shape();
+    edge = findRectangleEdge(oc, target, input);
+    return withSelectedEdgeFinishResultShape(
+      oc,
+      target,
+      edge.edge,
+      input.operation,
+      input.operation === "chamfer" ? input.distance : input.radius,
+      readResult
+    );
+  } finally {
+    edge?.delete();
+    target?.delete();
+    targetShape.delete();
+  }
+}
+
+export function withOcctCheckpointEdgeFinishResultShape<T>(
+  oc: OpenCascadeInstance,
+  input: {
+    readonly target: TopoDS_Shape;
+    readonly checkpointEntityId: string;
+    readonly operation: OcctEdgeFinishOperation;
+    readonly amount: number;
+  },
+  readResult: (shape: TopoDS_Shape) => T
+): T {
+  assertEdgeFinishShapeBindings(oc);
+  const match = /^snapshot-local:edge:([1-9][0-9]*)$/.exec(
+    input.checkpointEntityId
+  );
+  if (!match || !Number.isFinite(input.amount) || input.amount <= 0) {
+    throw new Error("Invalid checkpoint edge finish source.");
+  }
+  const index = Number(match[1]);
+  const map = new oc.TopTools_IndexedMapOfShape_1();
+  let shape: TopoDS_Shape | undefined;
+  let edge: TopoDS_Edge | undefined;
+  try {
+    const edgeType = oc.TopAbs_ShapeEnum.TopAbs_EDGE as unknown as Parameters<
+      typeof oc.TopExp.MapShapes_1
+    >[1];
+    oc.TopExp.MapShapes_1(input.target, edgeType, map);
+    if (!Number.isSafeInteger(index) || index > map.Size()) {
+      throw new Error(
+        `Checkpoint edge ${input.checkpointEntityId} is missing.`
+      );
+    }
+    shape = map.FindKey(index);
+    edge = oc.TopoDS.Edge_1(shape);
+    return withSelectedEdgeFinishResultShape(
+      oc,
+      input.target,
+      edge,
+      input.operation,
+      input.amount,
+      readResult
+    );
+  } finally {
+    edge?.delete();
+    shape?.delete();
+    map.delete();
+  }
+}
+
+function withSelectedEdgeFinishResultShape<T>(
+  oc: OpenCascadeInstance,
+  target: TopoDS_Shape,
+  edge: TopoDS_Edge,
+  operation: OcctEdgeFinishOperation,
+  amount: number,
+  readResult: (shape: TopoDS_Shape) => T
+): T {
+  const range = new oc.Message_ProgressRange_1();
   let builder:
     | InstanceType<typeof oc.BRepFilletAPI_MakeChamfer>
     | InstanceType<typeof oc.BRepFilletAPI_MakeFillet>
     | undefined;
   let resultShape: TopoDS_Shape | undefined;
-
   try {
-    target = targetShape.Shape();
-    edge = findRectangleEdge(oc, target, input);
-    range = new oc.Message_ProgressRange_1();
-
-    if (input.operation === "chamfer") {
+    if (operation === "chamfer") {
       builder = new oc.BRepFilletAPI_MakeChamfer(target);
-      builder.Add_2(input.distance, edge.edge);
+      builder.Add_2(amount, edge);
     } else {
       const filletShape = oc.ChFi3d_FilletShape
         .ChFi3d_Rational as ConstructorParameters<
         typeof oc.BRepFilletAPI_MakeFillet
       >[1];
       builder = new oc.BRepFilletAPI_MakeFillet(target, filletShape);
-      builder.Add_2(input.radius, edge.edge);
+      builder.Add_2(amount, edge);
     }
-
     builder.Build(range);
-
-    if (!builder.IsDone()) {
-      throw new Error(`Open CASCADE ${input.operation} failed.`);
-    }
-
+    if (!builder.IsDone()) throw new Error(`Open CASCADE ${operation} failed.`);
     resultShape = builder.Shape();
-
     return readResult(resultShape);
   } finally {
     resultShape?.delete();
     builder?.delete();
-    range?.delete();
-    edge?.delete();
-    target?.delete();
-    targetShape.delete();
+    range.delete();
   }
 }
 
@@ -661,6 +720,8 @@ function assertEdgeFinishShapeBindings(oc: OpenCascadeInstance): void {
     ],
     ["Message_ProgressRange_1", oc.Message_ProgressRange_1],
     ["TopExp_Explorer_2", oc.TopExp_Explorer_2],
+    ["TopExp.MapShapes_1", oc.TopExp?.MapShapes_1],
+    ["TopTools_IndexedMapOfShape_1", oc.TopTools_IndexedMapOfShape_1],
     ["TopAbs_ShapeEnum.TopAbs_EDGE", oc.TopAbs_ShapeEnum?.TopAbs_EDGE],
     ["TopoDS.Edge_1", oc.TopoDS?.Edge_1],
     ["TopExp.FirstVertex", oc.TopExp?.FirstVertex],

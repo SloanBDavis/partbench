@@ -11,6 +11,7 @@ import {
   createOcctCylinderMeshWithInstance,
   createOcctEdgeFinishMesh,
   createOcctExactBodyMetadata,
+  createOcctExactBodyArtifactWithInstance,
   createOcctExactTopologyCheckpointPayload,
   createOcctExactTopologySnapshot,
   createOcctRevolveProfileMesh,
@@ -2561,6 +2562,142 @@ describe("occt-wasm", () => {
       expect(JSON.stringify(checkpointPayload)).not.toMatch(
         /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
       );
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "isolates corrupt checkpoint reads and cleans artifact files across builder, validation, write, metadata, and topology faults",
+    async () => {
+      const oc = await loadOcct();
+      const files = () => ({
+        root: [...oc.FS.readdir("/")].sort(),
+        tmp: [...oc.FS.readdir("/tmp")].sort()
+      });
+      const before = files();
+      expect(() =>
+        createOcctExactBodyArtifactWithInstance(oc, {
+          source: {
+            kind: "checkpointBody",
+            brepBytes: new TextEncoder().encode("corrupt BRep"),
+            brepByteLength: 12,
+            brepSha256: "0".repeat(64),
+            topologySourceKind: "importedBody",
+            topologySignature: "corrupt"
+          }
+        })
+      ).toThrow(/BRep checkpoint/i);
+      expect(files()).toEqual(before);
+
+      const source = {
+        kind: "extrude" as const,
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "rectangle" as const,
+          center: [0, 0] as const,
+          width: 2,
+          height: 3
+        },
+        depth: 4
+      };
+      const override = (
+        key: keyof OpenCascadeInstance,
+        value: unknown
+      ): OpenCascadeInstance =>
+        new Proxy(oc, {
+          get(target, candidate) {
+            return candidate === key ? value : Reflect.get(target, candidate);
+          }
+        }) as OpenCascadeInstance;
+
+      const failures: readonly [string, OpenCascadeInstance][] = [
+        [
+          "builder",
+          override(
+            "BRepPrimAPI_MakeBox_5",
+            class {
+              constructor() {
+                throw new Error("Injected builder failure.");
+              }
+            }
+          )
+        ],
+        [
+          "validation",
+          override(
+            "BRepCheck_Analyzer",
+            class {
+              IsValid_2() {
+                return false;
+              }
+              delete() {}
+            }
+          )
+        ],
+        [
+          "write",
+          override(
+            "BRepTools",
+            new Proxy(oc.BRepTools, {
+              get(target, candidate) {
+                return candidate === "Write_3"
+                  ? () => false
+                  : Reflect.get(target, candidate);
+              }
+            })
+          )
+        ],
+        [
+          "metadata",
+          override(
+            "BRepBndLib",
+            new Proxy(oc.BRepBndLib, {
+              get(target, candidate) {
+                if (candidate === "AddOptimal") {
+                  return () => {
+                    throw new Error("Injected metadata failure.");
+                  };
+                }
+                return Reflect.get(target, candidate);
+              }
+            })
+          )
+        ],
+        [
+          "topology",
+          (() => {
+            let calls = 0;
+            return override(
+              "TopExp",
+              new Proxy(oc.TopExp, {
+                get(target, candidate) {
+                  if (candidate === "MapShapes_1") {
+                    return (
+                      ...args: Parameters<typeof oc.TopExp.MapShapes_1>
+                    ) => {
+                      calls += 1;
+                      if (calls === 5) {
+                        throw new Error("Injected topology failure.");
+                      }
+                      return oc.TopExp.MapShapes_1(...args);
+                    };
+                  }
+                  return Reflect.get(target, candidate);
+                }
+              })
+            );
+          })()
+        ]
+      ];
+
+      for (const [stage, instance] of failures) {
+        expect(() =>
+          createOcctExactBodyArtifactWithInstance(instance, { source })
+        ).toThrow(
+          stage === "validation" ? /not valid/i : new RegExp(stage, "i")
+        );
+        expect(files(), stage).toEqual(before);
+      }
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );
