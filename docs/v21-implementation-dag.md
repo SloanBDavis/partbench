@@ -1,6 +1,6 @@
 # V21 Implementation DAG: Production Single-Part Reliability and Exact Interchange
 
-Status: **Approved for implementation (2026-08-01). Slices A-F are complete; Slice G is next.**
+Status: **Approved for implementation (2026-08-01). Slices A-G are complete; Slice H is next.**
 
 This document turns `docs/v21.md` into a reviewable implementation sequence.
 The release plan is authoritative for scope and semantics. This DAG is
@@ -621,6 +621,15 @@ Gate G passes only when lifecycle/concurrency/storage fault tests are green,
 canonical source bytes are unaffected by export, and V1-V22 plus `.wcad` v2
 round trips remain compatible.
 
+Implementation record:
+
+- G1-G5 completed at `635f331` with deterministic primitive body identities,
+  save/open rebuild proof, edit/undo/redo and replacement staleness, successful
+  replacement generation cancellation/restart, shared checkpoint-backed
+  checkpoint writing, and the inherited storage/concurrency corpus.
+- Gate G passed with the committed
+  [V21 Gate G lifecycle and storage evidence](./v21-g-gate.md).
+
 ## Slice H — Product UI and Connected Agent Parity
 
 Goal: expose the complete result without adding authority or duplicate actions.
@@ -752,7 +761,7 @@ before explicit plan approval.
 | D | Complete | Same-shape artifact, checkpoint reuse, real OCCT/fault/cleanup proof |
 | E | Complete | Artifact-only named/unit STEP, multi-body/stale/cancel, no production base64/recipe path |
 | F | Complete | Cross-consumer exact-result parity table |
-| G | Not started | Rebuild/history/storage/concurrency compatibility |
+| G | Complete | Rebuild/history/storage/concurrency compatibility |
 | H | Not started | Accessible browser workflow and V20-safe connected agent readiness |
 | I | Not started | Corpus, named commands, performance/bundle, adversarial review, full validation/docs |
 
