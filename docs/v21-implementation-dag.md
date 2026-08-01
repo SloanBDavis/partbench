@@ -1,6 +1,6 @@
 # V21 Implementation DAG: Production Single-Part Reliability and Exact Interchange
 
-Status: **Approved for implementation (2026-08-01). Slices A-B are complete; Slice C is next.**
+Status: **Approved for implementation (2026-08-01). Slices A-C are complete; Slice D is next.**
 
 This document turns `docs/v21.md` into a reviewable implementation sequence.
 The release plan is authoritative for scope and semantics. This DAG is
@@ -325,6 +325,18 @@ Required work:
 Gate C passes only when every A2 ready fixture resolves exactly once, every
 blocked fixture stays blocked, no completed modeling row changes eligibility,
 and current display/exact metadata compatibility tests remain green.
+
+Gate ledger:
+
+- C2 complete at `f969670bda3f3cc66f6c2d11d3afeb7f18c6b759` with transformed
+  box/cylinder/sphere/cone/torus exact metadata through the existing
+  geometry-kernel and OCCT/WASM boundary.
+- C1 and C3-C6 complete at `779b2d438b8c912e99327269592503c84f4d3f6b`
+  with the production canonical resolver, exhaustive frozen-policy dispatch,
+  verified checkpoint leaves, iterative graph bounds, and SHA-256 cache
+  identity.
+- Gate C passed with the committed
+  [V21 Gate C canonical exact-body resolver evidence](./v21-c-gate.md).
 
 ## Slice D — Identity-Bound Exact Body Artifacts
 
