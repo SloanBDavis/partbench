@@ -1,4 +1,4 @@
-import type { OpenCascadeInstance } from "opencascade.js";
+import type { OpenCascadeInstance, TopoDS_Shape } from "opencascade.js";
 import { withImportedBrepShape } from "./exactMetadata";
 import type { OcctLoader } from "./tessellateBox";
 
@@ -75,6 +75,9 @@ export const OCCT_NAMED_STEP_WRITER_REQUIRED_BINDINGS = [
   "BRepTools.Read_2",
   "BRep_Builder",
   "TopoDS_Shape",
+  "gp_Pnt_3",
+  "gp_Trsf_1",
+  "BRepBuilderAPI_Transform_2",
   "FS.writeFile"
 ] as const;
 
@@ -126,10 +129,12 @@ export function createOcctStepExportWithInstance(
 
     for (const body of input.bodies) {
       withImportedBrepShape(oc, body.brepBytes, (shape) => {
-        const label = own(shapeTool.AddShape(shape, false, false));
-        const bodyName = body.bodyName.trim() || body.bodyId;
-        const name = own(new oc.TCollection_ExtendedString_2(bodyName, true));
-        own(oc.TDataStd_Name.Set_1(label, name));
+        withDocumentUnitShape(oc, shape, input.units, (unitShape) => {
+          const label = own(shapeTool.AddShape(unitShape, false, false));
+          const bodyName = body.bodyName.trim() || body.bodyId;
+          const name = own(new oc.TCollection_ExtendedString_2(bodyName, true));
+          own(oc.TDataStd_Name.Set_1(label, name));
+        });
       });
     }
 
@@ -248,6 +253,43 @@ function setStepWriterStatic(
 
 function mapStepUnit(unit: OcctStepExportUnit): string {
   return unit === "in" ? "INCH" : unit.toUpperCase();
+}
+
+function withDocumentUnitShape<T>(
+  oc: OpenCascadeInstance,
+  shape: TopoDS_Shape,
+  unit: OcctStepExportUnit,
+  read: (shape: TopoDS_Shape) => T
+): T {
+  const scale =
+    unit === "mm" ? 1 : unit === "cm" ? 10 : unit === "m" ? 1_000 : 25.4;
+  if (scale === 1) return read(shape);
+
+  const origin = new oc.gp_Pnt_3(0, 0, 0);
+  const transform = new oc.gp_Trsf_1();
+  let builder:
+    | InstanceType<OpenCascadeInstance["BRepBuilderAPI_Transform_2"]>
+    | undefined;
+  let scaledShape: TopoDS_Shape | undefined;
+  try {
+    transform.SetScale(origin, scale);
+    builder = new oc.BRepBuilderAPI_Transform_2(shape, transform, true);
+    if (!builder.IsDone()) {
+      throw new Error("Open CASCADE STEP document-unit scaling failed.");
+    }
+    scaledShape = builder.Shape();
+    if (scaledShape.IsNull()) {
+      throw new Error(
+        "Open CASCADE STEP document-unit scaling returned a null shape."
+      );
+    }
+    return read(scaledShape);
+  } finally {
+    scaledShape?.delete();
+    builder?.delete();
+    transform.delete();
+    origin.delete();
+  }
 }
 
 function hasBinding(

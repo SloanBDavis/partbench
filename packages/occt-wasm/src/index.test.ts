@@ -2351,6 +2351,62 @@ describe("occt-wasm", () => {
   );
 
   it(
+    "preserves physical scale for every document unit through STEP re-import",
+    async () => {
+      const scaleToMillimetres = { mm: 1, cm: 10, m: 1_000, in: 25.4 } as const;
+
+      for (const unit of ["mm", "cm", "m", "in"] as const) {
+        const artifact = await createStepFromSources({
+          units: unit,
+          bodies: [
+            {
+              bodyId: `body_step_scale_${unit}`,
+              source: {
+                kind: "box",
+                dimensions: { width: 2, height: 3, depth: 4 },
+                transform: {
+                  translation: [0, 0, 0],
+                  rotation: [0, 0, 0],
+                  scale: [1, 1, 1]
+                }
+              }
+            }
+          ]
+        });
+        const imported = await createOcctStepImport({
+          sourceFileName: `scale-${unit}.step`,
+          bytes: artifact.bytes,
+          maxBodyCount: 1
+        });
+        const body = imported.bodies[0];
+        if (!body) throw new Error(`Expected ${unit} STEP body.`);
+        const metadata = await createOcctExactBodyMetadata({
+          source: {
+            kind: "importedBody",
+            brepBytes: body.checkpointPayload.brepBytes
+          }
+        });
+        const scale = scaleToMillimetres[unit];
+        expect(metadata.volume).toBeCloseTo(24 * scale ** 3, 4);
+        expect(metadata.surfaceArea).toBeCloseTo(52 * scale ** 2, 4);
+        expect(metadata.bounds.max[0] - metadata.bounds.min[0]).toBeCloseTo(
+          2 * scale,
+          5
+        );
+        expect(metadata.bounds.max[1] - metadata.bounds.min[1]).toBeCloseTo(
+          3 * scale,
+          5
+        );
+        expect(metadata.bounds.max[2] - metadata.bounds.min[2]).toBeCloseTo(
+          4 * scale,
+          5
+        );
+      }
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
     "reports BRep checkpoint writer bindings as available through the isolated boundary",
     async () => {
       const capability = await getOcctBrepCheckpointWriterCapability();
