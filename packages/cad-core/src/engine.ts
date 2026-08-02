@@ -19,6 +19,7 @@ import {
   type CadBodyExactTopologyEntityDescriptor,
   type CadBodyExactTopologySnapshot,
   type CadCurrentExactResult,
+  type CadExactDownstreamOperation,
   type ProjectImportReadinessQueryResponse,
   type ProjectImportStepResolvedBody,
   type WcadTopologyCheckpointKernelMetadata,
@@ -266,6 +267,15 @@ export {
   type SketchGeometryPolicy
 } from "./sketchGeometryPolicy";
 export {
+  CAD_DOWNSTREAM_BODY_OPERATIONS,
+  CAD_DOWNSTREAM_BODY_POLICY,
+  createCadDownstreamBodyPolicyProjection,
+  evaluateCadBodyDependencies,
+  type CadBodyDependencyEvaluation,
+  type CadDownstreamBodyPolicyInput,
+  type CadDownstreamBodyPolicyProjection
+} from "./downstreamBodyPolicy";
+export {
   collapseSketchCurveParameters,
   getSketchCurveSupportParameter,
   intersectFiniteSketchCurves,
@@ -455,6 +465,11 @@ import { resolveTopologyAnchorGeneratedReferenceFromSourceRole } from "./topolog
 import { createBodyMeasurements } from "./bodyMeasurements";
 import { createBodyTopology } from "./bodyTopology";
 import { createBodyTopologyIdentity } from "./bodyTopologyIdentity";
+import {
+  createCadDownstreamBodyPolicyProjection,
+  evaluateCadBodyDependencies,
+  type CadDownstreamBodyPolicyProjection
+} from "./downstreamBodyPolicy";
 import { createGeneratedReferenceMeasurements } from "./generatedReferenceMeasurements";
 import {
   resolveMirrorPlaneFrame,
@@ -14456,6 +14471,26 @@ function updateHoleFeature(
   diff: MutableSemanticDiff,
   opIndex?: number
 ): void {
+  if (
+    op.targetBodyId !== undefined ||
+    op.targetTopologyAnchorId !== undefined
+  ) {
+    throwValidationError({
+      code: "UNSUPPORTED_FEATURE_OPERATION",
+      message:
+        "Hole retarget requires current browser exact preflight before commit.",
+      opIndex,
+      featureId: op.id,
+      path: operationPath(
+        opIndex,
+        op.targetBodyId !== undefined
+          ? "targetBodyId"
+          : "targetTopologyAnchorId"
+      ),
+      expected: "current browser exact preflight",
+      received: op.targetBodyId ?? op.targetTopologyAnchorId
+    });
+  }
   const feature = getEditableFeatureForUpdate(
     state,
     op.id,
@@ -14651,10 +14686,10 @@ function updateLinearPatternFeature(
     op.spacing === undefined
       ? feature.spacing
       : validatePatternSpacing(op.spacing, opIndex);
-  const instanceCount =
-    op.instanceCount === undefined
-      ? feature.instanceCount
-      : validatePatternInstanceCount(op.instanceCount, opIndex);
+  const instanceCount = validatePatternInstanceCount(
+    op.instanceCount ?? feature.instanceCount,
+    opIndex
+  );
   const updated: LinearPatternFeature = {
     ...feature,
     direction,
@@ -14719,10 +14754,10 @@ function updateCircularPatternFeature(
     op.totalAngleDegrees === undefined
       ? feature.totalAngleDegrees
       : validateCircularPatternAngle(op.totalAngleDegrees, opIndex);
-  const instanceCount =
-    op.instanceCount === undefined
-      ? feature.instanceCount
-      : validatePatternInstanceCount(op.instanceCount, opIndex);
+  const instanceCount = validatePatternInstanceCount(
+    op.instanceCount ?? feature.instanceCount,
+    opIndex
+  );
   const updated: CircularPatternFeature = {
     ...feature,
     rotationAxis,
@@ -15847,12 +15882,27 @@ function validateShellTargetBodyId(
     feature.bodyId
   );
 
-  if (consumingFeature) {
+  const policy = createCommandDownstreamBodyPolicyProjection(
+    state,
+    feature,
+    consumingFeature,
+    "shellTarget"
+  );
+  if (!policy.sourceEligible) {
+    if (!consumingFeature) {
+      throwCommandDownstreamBodyPolicyError(
+        policy,
+        opIndex,
+        feature.bodyId,
+        "targetBodyId"
+      );
+    }
+    const consumer = consumingFeature;
     throwValidationError({
       code: "SHELL_TARGET_BODY_CONSUMED",
-      message: `feature.shell target body is already consumed by feature ${consumingFeature.id}: ${feature.bodyId}`,
+      message: `feature.shell target body is already consumed by feature ${consumer.id}: ${feature.bodyId}`,
       opIndex,
-      featureId: consumingFeature.id,
+      featureId: consumer.id,
       bodyId: feature.bodyId,
       path: operationPath(opIndex, "targetBodyId"),
       expected: "active authored target body",
@@ -16226,12 +16276,27 @@ function validatePatternSeedBodyId(
     feature.bodyId
   );
 
-  if (consumingFeature) {
+  const policy = createCommandDownstreamBodyPolicyProjection(
+    state,
+    feature,
+    consumingFeature,
+    "patternSeed"
+  );
+  if (!policy.sourceEligible) {
+    if (!consumingFeature) {
+      throwCommandDownstreamBodyPolicyError(
+        policy,
+        opIndex,
+        feature.bodyId,
+        "seedBodyId"
+      );
+    }
+    const consumer = consumingFeature;
     throwValidationError({
       code: "PATTERN_SEED_BODY_CONSUMED",
-      message: `${operation} seed body is already consumed by feature ${consumingFeature.id}: ${feature.bodyId}`,
+      message: `${operation} seed body is already consumed by feature ${consumer.id}: ${feature.bodyId}`,
       opIndex,
-      featureId: consumingFeature.id,
+      featureId: consumer.id,
       bodyId: feature.bodyId,
       path: operationPath(opIndex, "seedBodyId"),
       expected: "active authored seed body",
@@ -16655,18 +16720,23 @@ function validatePatternSpacing(value: number, opIndex?: number): number {
   });
 }
 
+const MAX_PATTERN_COMMAND_INSTANCE_COUNT = 4_096;
+
 function validatePatternInstanceCount(value: number, opIndex?: number): number {
-  if (Number.isInteger(value) && value >= 2) {
+  if (
+    Number.isInteger(value) &&
+    value >= 2 &&
+    value <= MAX_PATTERN_COMMAND_INSTANCE_COUNT
+  ) {
     return value;
   }
 
   throwValidationError({
     code: "PATTERN_INSTANCE_COUNT_INVALID",
-    message:
-      "Pattern instanceCount must be an integer greater than or equal to 2.",
+    message: `Pattern instanceCount must be an integer from 2 through ${MAX_PATTERN_COMMAND_INSTANCE_COUNT}.`,
     opIndex,
     path: operationPath(opIndex, "instanceCount"),
-    expected: "integer >= 2",
+    expected: `integer from 2 through ${MAX_PATTERN_COMMAND_INSTANCE_COUNT}`,
     received: describeReceived(value)
   });
 }
@@ -16873,12 +16943,27 @@ function validateMirrorSeedBodyId(
       feature.bodyId
     );
 
-    if (consumingFeature) {
+    const policy = createCommandDownstreamBodyPolicyProjection(
+      state,
+      feature,
+      consumingFeature,
+      "mirrorSeed"
+    );
+    if (!policy.sourceEligible) {
+      if (!consumingFeature) {
+        throwCommandDownstreamBodyPolicyError(
+          policy,
+          opIndex,
+          feature.bodyId,
+          "seedBodyId"
+        );
+      }
+      const consumer = consumingFeature;
       throwValidationError({
         code: "MIRROR_SEED_BODY_CONSUMED",
-        message: `feature.mirror seed body is already consumed by feature ${consumingFeature.id}: ${feature.bodyId}`,
+        message: `feature.mirror seed body is already consumed by feature ${consumer.id}: ${feature.bodyId}`,
         opIndex,
-        featureId: consumingFeature.id,
+        featureId: consumer.id,
         bodyId: feature.bodyId,
         path: operationPath(opIndex, "seedBodyId"),
         expected: "active authored seed body",
@@ -18113,13 +18198,28 @@ function validateHoleTargetBodyId(
     targetBodyId
   );
 
-  if (consumingFeature) {
+  const policy = createCommandDownstreamBodyPolicyProjection(
+    state,
+    targetFeature,
+    consumingFeature,
+    "holeTarget"
+  );
+  if (!policy.sourceEligible) {
+    if (!consumingFeature) {
+      throwCommandDownstreamBodyPolicyError(
+        policy,
+        opIndex,
+        targetBodyId,
+        "targetBodyId"
+      );
+    }
+    const consumer = consumingFeature;
     throwValidationError({
       code: "UNSUPPORTED_FEATURE_OPERATION",
-      message: `feature.hole target body is already consumed by feature ${consumingFeature.id}: ${targetBodyId}`,
+      message: `feature.hole target body is already consumed by feature ${consumer.id}: ${targetBodyId}`,
       opIndex,
       bodyId: targetBodyId,
-      featureId: consumingFeature.id,
+      featureId: consumer.id,
       path: operationPath(opIndex, "targetBodyId"),
       expected: "active authored target body",
       received: targetBodyId
@@ -18127,6 +18227,45 @@ function validateHoleTargetBodyId(
   }
 
   return targetFeature.bodyId;
+}
+
+function createCommandDownstreamBodyPolicyProjection(
+  state: MutableDocumentState,
+  feature: Feature,
+  consumingFeature: Feature | undefined,
+  operation: CadExactDownstreamOperation
+): CadDownstreamBodyPolicyProjection {
+  const bodies = createProjectStructure(state, []).bodies;
+  const body = bodies.find((candidate) => candidate.id === feature.bodyId)!;
+  const dependency = evaluateCadBodyDependencies(state, bodies, body.id);
+  return createCadDownstreamBodyPolicyProjection({
+    bodyId: body.id,
+    featureId: body.featureId,
+    sourceType: body.source.type,
+    operation,
+    lifecycle: consumingFeature ? "consumed" : "active",
+    dependencyStatus: dependency.status,
+    dependencyCycle: dependency.cycle
+  });
+}
+
+function throwCommandDownstreamBodyPolicyError(
+  policy: CadDownstreamBodyPolicyProjection,
+  opIndex: number | undefined,
+  bodyId: BodyId,
+  field: "seedBodyId" | "targetBodyId"
+): never {
+  const diagnostic = policy.readiness.diagnostics[0]!;
+  throwValidationError({
+    code: "UNSUPPORTED_FEATURE_OPERATION",
+    message: diagnostic.message,
+    opIndex,
+    bodyId,
+    featureId: diagnostic.featureId,
+    path: operationPath(opIndex, field),
+    expected: diagnostic.expected,
+    received: diagnostic.received
+  });
 }
 
 function assertSupportedHoleTarget(
@@ -37840,8 +37979,7 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.id) &&
       isOptionalString(value.bodyId) &&
       isOptionalString(value.name) &&
-      isOptionalString(value.targetBodyId) &&
-      isOptionalString(value.targetTopologyAnchorId) &&
+      hasAtMostOneHoleTargetInput(value) &&
       value.profile === undefined &&
       typeof value.sketchId === "string" &&
       typeof value.circleEntityId === "string" &&
@@ -38011,6 +38149,7 @@ function isCadOp(value: unknown): value is CadOp {
   if (value.op === "feature.updateHole") {
     return (
       typeof value.id === "string" &&
+      hasAtMostOneHoleTargetInput(value) &&
       (value.depthMode === undefined || isHoleDepthMode(value.depthMode)) &&
       (value.depth === undefined ||
         (typeof value.depth === "number" &&
@@ -38018,7 +38157,9 @@ function isCadOp(value: unknown): value is CadOp {
       (value.direction === undefined || isHoleDirection(value.direction)) &&
       (value.depthMode !== undefined ||
         value.depth !== undefined ||
-        value.direction !== undefined)
+        value.direction !== undefined ||
+        value.targetBodyId !== undefined ||
+        value.targetTopologyAnchorId !== undefined)
     );
   }
 
@@ -39693,6 +39834,17 @@ function isRigidMat4(value: unknown): value is Mat4 {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function hasAtMostOneHoleTargetInput(value: Record<string, unknown>): boolean {
+  return (
+    (value.targetBodyId === undefined ||
+      isNonEmptyString(value.targetBodyId)) &&
+    (value.targetTopologyAnchorId === undefined ||
+      isNonEmptyString(value.targetTopologyAnchorId)) &&
+    (value.targetBodyId === undefined ||
+      value.targetTopologyAnchorId === undefined)
+  );
 }
 
 function hasExactlyOneEdgeReferenceInput(

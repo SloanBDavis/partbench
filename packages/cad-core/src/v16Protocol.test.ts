@@ -91,7 +91,105 @@ function createSeedEngine(): CadEngine {
   return engine;
 }
 
+function expectPatternInstanceCount(
+  engine: CadEngine,
+  instanceCount: number
+): void {
+  const feature = engine.getDocument().features.get("feat_pattern");
+  if (
+    !feature ||
+    (feature.kind !== "linearPattern" && feature.kind !== "circularPattern")
+  ) {
+    throw new Error("Expected pattern feature: feat_pattern.");
+  }
+  expect(feature.instanceCount).toBe(instanceCount);
+  expect(feature.instances).toHaveLength(instanceCount);
+}
+
 describe("V16 protocol and V20 persistence", () => {
+  it.each(["linear", "circular"] as const)(
+    "caps %s pattern create and update commands at 4096 instances",
+    (kind) => {
+      const create = (instanceCount: number) =>
+        kind === "linear"
+          ? ({
+              op: "feature.linearPattern",
+              id: "feat_pattern",
+              bodyId: "body_pattern",
+              seedBodyId: "body_seed",
+              direction: { kind: "globalAxis", axis: "x" },
+              spacing: 1,
+              instanceCount
+            } as const)
+          : ({
+              op: "feature.circularPattern",
+              id: "feat_pattern",
+              bodyId: "body_pattern",
+              seedBodyId: "body_seed",
+              rotationAxis: { kind: "globalAxis", axis: "z" },
+              totalAngleDegrees: 360,
+              instanceCount
+            } as const);
+      const update = (instanceCount: number) =>
+        kind === "linear"
+          ? ({
+              op: "feature.updateLinearPattern",
+              id: "feat_pattern",
+              instanceCount
+            } as const)
+          : ({
+              op: "feature.updateCircularPattern",
+              id: "feat_pattern",
+              instanceCount
+            } as const);
+      const createEngine = createSeedEngine();
+      const rejectedCreate = createEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [create(4_097)]
+      });
+      expect(rejectedCreate).toMatchObject({
+        ok: false,
+        error: {
+          code: "PATTERN_INSTANCE_COUNT_INVALID",
+          path: "$.ops[0].instanceCount"
+        }
+      });
+      expect(
+        createEngine.executeBatch({
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [create(4_096)]
+        }).ok
+      ).toBe(true);
+      expectPatternInstanceCount(createEngine, 4_096);
+
+      const updateEngine = createSeedEngine();
+      updateEngine.apply(create(2));
+      const rejectedUpdate = updateEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [update(4_097)]
+      });
+      expect(rejectedUpdate).toMatchObject({
+        ok: false,
+        error: {
+          code: "PATTERN_INSTANCE_COUNT_INVALID",
+          path: "$.ops[0].instanceCount"
+        }
+      });
+      expectPatternInstanceCount(updateEngine, 2);
+      expect(
+        updateEngine.executeBatch({
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [update(4_096)]
+        }).ok
+      ).toBe(true);
+      expectPatternInstanceCount(updateEngine, 4_096);
+    }
+  );
+
   it("normalizes linear pattern sugar and regenerates durable Mat4 instances", () => {
     const engine = createSeedEngine();
     engine.applyBatch([

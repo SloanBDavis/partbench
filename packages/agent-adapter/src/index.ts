@@ -6,6 +6,10 @@ import {
   type CadProject
 } from "@web-cad/cad-core";
 import {
+  CAD_EXPORT_DIAGNOSTIC_CODES,
+  CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS,
+  validateCadExactExportPlan,
+  validateFeatureUpdateHoleOp,
   validateV19CadOp,
   validateV19SketchQueryRequest,
   validateSketchProfilePathQueryRequest,
@@ -37,6 +41,7 @@ import type {
   CadBodyTopologySnapshot,
   CadDependencyHealthStatus,
   CadCurrentExactResult,
+  CadExactExportPlan,
   CadExportBodyReadiness,
   CadExportDiagnostic,
   CadExportFormatReadiness,
@@ -213,6 +218,57 @@ export interface CadAgentCommitProposal {
   readonly actor?: CadActorMetadata;
   readonly audit?: CadTransactionAuditMetadata;
   readonly review: CadOpsAgentWorkflowReview;
+}
+
+export type CadAgentExactExportSelection =
+  | { readonly mode: "all" }
+  | { readonly mode: "readySubset" }
+  | { readonly mode: "bodyIds"; readonly bodyIds: readonly string[] };
+
+export interface CadAgentExactExportRequest {
+  readonly requestId: string;
+  readonly selection: CadAgentExactExportSelection;
+  readonly expectedSourceIdentity?: WcadSourceIdentity;
+}
+
+export interface CadAgentExactExportProposal {
+  readonly requestId: string;
+  readonly sourceIdentity: WcadSourceIdentity;
+  readonly plan: CadExactExportPlan;
+  readonly warnings: readonly string[];
+}
+
+export const CAD_AGENT_EXACT_EXPORT_RESULT_STATUSES = Object.freeze([
+  "downloadRequested",
+  "rejected",
+  "cancelled",
+  "stale",
+  "failed"
+] as const);
+
+const MAX_AGENT_EXACT_EXPORT_ID_LENGTH = 1_024;
+const MAX_AGENT_EXACT_EXPORT_TEXT_LENGTH = 4_096;
+const MAX_AGENT_EXACT_EXPORT_PLAN_JSON_LENGTH = 1_048_576;
+
+export type CadAgentExactExportResultStatus =
+  (typeof CAD_AGENT_EXACT_EXPORT_RESULT_STATUSES)[number];
+
+export type CadAgentExactExportDiagnostic = Pick<
+  CadExportDiagnostic,
+  "code" | "message" | "bodyId" | "expected" | "received"
+>;
+
+export interface CadAgentExactExportResult {
+  readonly requestId: string;
+  readonly status: CadAgentExactExportResultStatus;
+  readonly selectedBodyIds: readonly string[];
+  readonly selectedBodyCount: number;
+  readonly schema: "AP242DIS";
+  readonly units: DocumentUnits;
+  readonly planIdentity?: string;
+  readonly artifactByteLength?: number;
+  readonly artifactSha256?: string;
+  readonly diagnostics: readonly CadAgentExactExportDiagnostic[];
 }
 
 export interface CadOpsAgentRequest {
@@ -1108,6 +1164,8 @@ export interface CadOpsAgentV8ProjectSurfacePackageSummary {
   readonly fileExtension: ProjectPackageReadinessQueryResponse["fileExtension"];
   readonly documentSchemaVersion: ProjectPackageReadinessQueryResponse["documentSchemaVersion"];
   readonly sourceIdentityAlgorithm: ProjectPackageReadinessQueryResponse["sourceIdentityAlgorithm"];
+  readonly portability?: ProjectPackageReadinessQueryResponse["portability"];
+  readonly exactArtifactCache?: ProjectPackageReadinessQueryResponse["exactArtifactCache"];
   readonly canRepresentCurrentSource: boolean;
   readonly requiresProjectSchemaMigration: boolean;
   readonly requiredEntryCount: number;
@@ -1131,6 +1189,7 @@ export interface CadOpsAgentV8ProjectSurfaceCapabilitySummary {
 
 export interface CadOpsAgentV8ProjectSurfaceCacheSummary {
   readonly cachePolicy: "optional-rebuildable";
+  readonly exactArtifactCache?: ProjectPackageReadinessQueryResponse["exactArtifactCache"];
   readonly opfsCapabilityStatus?: ProjectPackageReadinessQueryResponse["capabilities"][number]["status"];
   readonly opfsCapabilityAvailable?: boolean;
   readonly opfsLocationsExposed: false;
@@ -1156,6 +1215,7 @@ export interface CadOpsAgentV8ProjectSurfaceExportSummary {
   readonly diagnostics: readonly CadExportDiagnostic[];
   readonly plan?: ProjectExportReadinessQueryResponse["plan"];
   readonly currentExactResults?: ProjectExportReadinessQueryResponse["currentExactResults"];
+  readonly readySubset?: ProjectExportReadinessQueryResponse["readySubset"];
 }
 
 export interface CadOpsAgentV8ProjectSurfaceFormatSummary {
@@ -1205,6 +1265,7 @@ export interface CadOpsAgentV8ProjectSurfaceExactExportSummary {
   readonly diagnostics: readonly CadExportDiagnostic[];
   readonly plan?: ProjectExactExportQueryResponse["plan"];
   readonly currentExactResults?: ProjectExactExportQueryResponse["currentExactResults"];
+  readonly readySubset?: ProjectExactExportQueryResponse["readySubset"];
   readonly artifactPolicy: CadOpsAgentExportArtifactPolicy;
 }
 
@@ -1428,6 +1489,33 @@ export function parseCadAgentApprovalMode(
     throw new Error("Invalid CAD agent approval mode.");
   }
 
+  return value;
+}
+
+export function parseCadAgentExactExportRequest(
+  value: unknown
+): CadAgentExactExportRequest {
+  if (!isCadAgentExactExportRequest(value)) {
+    throw new Error("Invalid CAD agent exact export request.");
+  }
+  return value;
+}
+
+export function parseCadAgentExactExportProposal(
+  value: unknown
+): CadAgentExactExportProposal {
+  if (!isCadAgentExactExportProposal(value)) {
+    throw new Error("Invalid CAD agent exact export proposal.");
+  }
+  return value;
+}
+
+export function parseCadAgentExactExportResult(
+  value: unknown
+): CadAgentExactExportResult {
+  if (!isCadAgentExactExportResult(value)) {
+    throw new Error("Invalid CAD agent exact export result.");
+  }
   return value;
 }
 
@@ -2679,7 +2767,13 @@ function createOperationReview(
       const edits = [
         ...(op.depthMode !== undefined ? [`depthMode ${op.depthMode}`] : []),
         ...(op.depth !== undefined ? [`depth ${op.depth}`] : []),
-        ...(op.direction !== undefined ? [`direction ${op.direction}`] : [])
+        ...(op.direction !== undefined ? [`direction ${op.direction}`] : []),
+        ...(op.targetBodyId !== undefined
+          ? [`target body ${op.targetBodyId}`]
+          : []),
+        ...(op.targetTopologyAnchorId !== undefined
+          ? [`target topology anchor ${op.targetTopologyAnchorId}`]
+          : [])
       ];
 
       return {
@@ -2691,7 +2785,11 @@ function createOperationReview(
             edits.length > 0 ? ` (${edits.join(", ")})` : ""
           }`
         ),
-        featureId: op.id
+        featureId: op.id,
+        ...(op.targetBodyId ? { targetBodyId: op.targetBodyId } : {}),
+        ...(op.targetTopologyAnchorId
+          ? { targetTopologyAnchorId: op.targetTopologyAnchorId }
+          : {})
       };
     }
 
@@ -3370,6 +3468,10 @@ function toAgentQueryResponse(
       fileExtension: response.fileExtension,
       sourceIdentityAlgorithm: response.sourceIdentityAlgorithm,
       documentSchemaVersion: response.documentSchemaVersion,
+      ...(response.portability ? { portability: response.portability } : {}),
+      ...(response.exactArtifactCache
+        ? { exactArtifactCache: response.exactArtifactCache }
+        : {}),
       canRepresentCurrentSource: response.canRepresentCurrentSource,
       requiresProjectSchemaMigration: response.requiresProjectSchemaMigration,
       ...(response.nextProjectSchemaVersion
@@ -3893,6 +3995,10 @@ function createV8PackageSurfaceSummary(
     fileExtension: response.fileExtension,
     documentSchemaVersion: response.documentSchemaVersion,
     sourceIdentityAlgorithm: response.sourceIdentityAlgorithm,
+    ...(response.portability ? { portability: response.portability } : {}),
+    ...(response.exactArtifactCache
+      ? { exactArtifactCache: response.exactArtifactCache }
+      : {}),
     canRepresentCurrentSource: response.canRepresentCurrentSource,
     requiresProjectSchemaMigration: response.requiresProjectSchemaMigration,
     requiredEntryCount: response.requiredEntryCount,
@@ -3925,6 +4031,9 @@ function createV8CacheSurfaceSummary(
 
   return {
     cachePolicy: "optional-rebuildable",
+    ...(response.exactArtifactCache
+      ? { exactArtifactCache: response.exactArtifactCache }
+      : {}),
     ...(opfsCapability
       ? {
           opfsCapabilityStatus: opfsCapability.status,
@@ -3974,7 +4083,8 @@ function createV8ExportSurfaceSummary(
     ...(response.plan ? { plan: response.plan } : {}),
     ...(response.currentExactResults
       ? { currentExactResults: response.currentExactResults }
-      : {})
+      : {}),
+    ...(response.readySubset ? { readySubset: response.readySubset } : {})
   };
 }
 
@@ -4005,6 +4115,7 @@ function createV8ExactExportSurfaceSummary(
     ...(response.currentExactResults
       ? { currentExactResults: response.currentExactResults }
       : {}),
+    ...(response.readySubset ? { readySubset: response.readySubset } : {}),
     artifactPolicy: createExportArtifactPolicy()
   };
 }
@@ -4081,6 +4192,184 @@ function isCadAgentSessionDiagnosticCode(
   value: unknown
 ): value is CadAgentSessionDiagnosticCode {
   return CAD_AGENT_SESSION_DIAGNOSTIC_CODES.some((code) => code === value);
+}
+
+function isCadAgentExactExportRequest(
+  value: unknown
+): value is CadAgentExactExportRequest {
+  return (
+    isRecord(value) &&
+    hasExactKeys(
+      value,
+      ["requestId", "selection"],
+      ["expectedSourceIdentity"]
+    ) &&
+    isBoundedAgentRequestId(value.requestId) &&
+    isCadAgentExactExportSelection(value.selection) &&
+    (value.expectedSourceIdentity === undefined ||
+      isWcadSourceIdentityInput(value.expectedSourceIdentity))
+  );
+}
+
+function isCadAgentExactExportSelection(
+  value: unknown
+): value is CadAgentExactExportSelection {
+  if (!isRecord(value) || typeof value.mode !== "string") return false;
+  if (value.mode === "all" || value.mode === "readySubset") {
+    return hasExactKeys(value, ["mode"]);
+  }
+  return (
+    value.mode === "bodyIds" &&
+    hasExactKeys(value, ["mode", "bodyIds"]) &&
+    isBoundedUniqueBodyIds(value.bodyIds, true)
+  );
+}
+
+function isCadAgentExactExportProposal(
+  value: unknown
+): value is CadAgentExactExportProposal {
+  if (!isRecord(value)) return false;
+  const plan = validateCadExactExportPlan(value.plan);
+  return (
+    hasExactKeys(value, ["requestId", "sourceIdentity", "plan", "warnings"]) &&
+    isBoundedAgentRequestId(value.requestId) &&
+    isWcadSourceIdentityInput(value.sourceIdentity) &&
+    plan.ok &&
+    plan.value.sourceIdentity.algorithm === value.sourceIdentity.algorithm &&
+    plan.value.sourceIdentity.sha256 === value.sourceIdentity.sha256 &&
+    plan.value.orderedBodyIds.length > 0 &&
+    Array.from(plan.value.orderedBodyIds).every(isBoundedAgentExactExportId) &&
+    plan.value.bodies.length > 0 &&
+    Array.from(plan.value.bodies).every(
+      (body) =>
+        body?.status === "ready" &&
+        Array.from(body.diagnostics).every(
+          (diagnostic) => diagnostic?.status === "supported"
+        )
+    ) &&
+    isBoundedJson(value.plan, MAX_AGENT_EXACT_EXPORT_PLAN_JSON_LENGTH) &&
+    Array.isArray(value.warnings) &&
+    value.warnings.length <=
+      CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxSelectedBodies &&
+    Array.from(value.warnings).every(isBoundedAgentExactExportText)
+  );
+}
+
+function isCadAgentExactExportResult(
+  value: unknown
+): value is CadAgentExactExportResult {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(
+      value,
+      [
+        "requestId",
+        "status",
+        "selectedBodyIds",
+        "selectedBodyCount",
+        "schema",
+        "units",
+        "diagnostics"
+      ],
+      ["planIdentity", "artifactByteLength", "artifactSha256"]
+    ) ||
+    !isBoundedAgentRequestId(value.requestId) ||
+    !CAD_AGENT_EXACT_EXPORT_RESULT_STATUSES.some(
+      (status) => status === value.status
+    ) ||
+    !isBoundedUniqueBodyIds(value.selectedBodyIds) ||
+    value.selectedBodyCount !== value.selectedBodyIds.length ||
+    value.schema !== "AP242DIS" ||
+    !["mm", "cm", "m", "in"].includes(value.units as string) ||
+    (value.planIdentity !== undefined &&
+      (typeof value.planIdentity !== "string" ||
+        !SHA256_HEX_PATTERN.test(value.planIdentity))) ||
+    (value.artifactByteLength !== undefined &&
+      (typeof value.artifactByteLength !== "number" ||
+        !Number.isInteger(value.artifactByteLength) ||
+        value.artifactByteLength <= 0 ||
+        value.artifactByteLength >
+          CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxStepArtifactBytes)) ||
+    (value.artifactSha256 !== undefined &&
+      (typeof value.artifactSha256 !== "string" ||
+        !SHA256_HEX_PATTERN.test(value.artifactSha256))) ||
+    (value.artifactByteLength === undefined) !==
+      (value.artifactSha256 === undefined) ||
+    !Array.isArray(value.diagnostics) ||
+    value.diagnostics.length >
+      CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxSelectedBodies ||
+    !Array.from(value.diagnostics).every(isCadAgentExactExportDiagnostic)
+  ) {
+    return false;
+  }
+
+  return (
+    value.status !== "downloadRequested" ||
+    (value.selectedBodyCount > 0 &&
+      typeof value.planIdentity === "string" &&
+      value.artifactByteLength !== undefined &&
+      typeof value.artifactSha256 === "string")
+  );
+}
+
+function isCadAgentExactExportDiagnostic(
+  value: unknown
+): value is CadAgentExactExportDiagnostic {
+  return (
+    isRecord(value) &&
+    hasExactKeys(
+      value,
+      ["code", "message"],
+      ["bodyId", "expected", "received"]
+    ) &&
+    CAD_EXPORT_DIAGNOSTIC_CODES.some((code) => code === value.code) &&
+    isBoundedAgentExactExportText(value.message) &&
+    (value.bodyId === undefined || isBoundedAgentExactExportId(value.bodyId)) &&
+    (value.expected === undefined ||
+      isBoundedAgentExactExportText(value.expected)) &&
+    (value.received === undefined ||
+      isBoundedAgentExactExportText(value.received))
+  );
+}
+
+function isBoundedAgentRequestId(value: unknown): value is string {
+  return isNonEmptyString(value) && value.length <= 128;
+}
+
+function isBoundedUniqueBodyIds(
+  value: unknown,
+  requireOne = false
+): value is readonly string[] {
+  if (!Array.isArray(value)) return false;
+  const ids = Array.from(value);
+  return (
+    (!requireOne || ids.length > 0) &&
+    ids.length <= CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxSelectedBodies &&
+    ids.every(isBoundedAgentExactExportId) &&
+    new Set(ids).size === ids.length
+  );
+}
+
+function isBoundedAgentExactExportId(value: unknown): value is string {
+  return (
+    isNonEmptyString(value) && value.length <= MAX_AGENT_EXACT_EXPORT_ID_LENGTH
+  );
+}
+
+function isBoundedAgentExactExportText(value: unknown): value is string {
+  return (
+    isNonEmptyString(value) &&
+    value.length <= MAX_AGENT_EXACT_EXPORT_TEXT_LENGTH
+  );
+}
+
+function isBoundedJson(value: unknown, maximumLength: number): boolean {
+  try {
+    const json = JSON.stringify(value);
+    return typeof json === "string" && json.length <= maximumLength;
+  } catch {
+    return false;
+  }
 }
 
 function isCadCurrentSelection(value: unknown): value is CadCurrentSelection {
@@ -4864,10 +5153,12 @@ function isTopologyMatchConfidence(value: unknown): boolean {
   );
 }
 
-function isWcadSourceIdentityInput(value: unknown): boolean {
+function isWcadSourceIdentityInput(
+  value: unknown
+): value is WcadSourceIdentity {
   return (
     isRecord(value) &&
-    Object.keys(value).length === 2 &&
+    hasExactKeys(value, ["algorithm", "sha256"]) &&
     value.algorithm === WCAD_SOURCE_IDENTITY_ALGORITHM &&
     typeof value.sha256 === "string" &&
     SHA256_HEX_PATTERN.test(value.sha256)
@@ -5489,8 +5780,7 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.id) &&
       isOptionalString(value.bodyId) &&
       isOptionalString(value.name) &&
-      isOptionalString(value.targetBodyId) &&
-      isOptionalString(value.targetTopologyAnchorId) &&
+      hasAtMostOneHoleTargetInput(value) &&
       typeof value.sketchId === "string" &&
       typeof value.circleEntityId === "string" &&
       isHoleDepthMode(value.depthMode) &&
@@ -5557,15 +5847,7 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   if (value.op === "feature.updateHole") {
-    return (
-      typeof value.id === "string" &&
-      (value.depthMode === undefined || isHoleDepthMode(value.depthMode)) &&
-      (value.depth === undefined || typeof value.depth === "number") &&
-      (value.direction === undefined || isHoleDirection(value.direction)) &&
-      (value.depthMode !== undefined ||
-        value.depth !== undefined ||
-        value.direction !== undefined)
-    );
+    return validateFeatureUpdateHoleOp(value).ok;
   }
 
   if (value.op === "feature.updateChamfer") {
@@ -6085,6 +6367,17 @@ function isOptionalString(value: unknown): value is string | undefined {
   return value === undefined || typeof value === "string";
 }
 
+function hasAtMostOneHoleTargetInput(value: Record<string, unknown>): boolean {
+  return (
+    (value.targetBodyId === undefined ||
+      isNonEmptyString(value.targetBodyId)) &&
+    (value.targetTopologyAnchorId === undefined ||
+      isNonEmptyString(value.targetTopologyAnchorId)) &&
+    (value.targetBodyId === undefined ||
+      value.targetTopologyAnchorId === undefined)
+  );
+}
+
 function isOptionalBoolean(value: unknown): value is boolean | undefined {
   return value === undefined || typeof value === "boolean";
 }
@@ -6353,10 +6646,14 @@ function hasExactKeys(
   required: readonly string[],
   optional: readonly string[] = []
 ): boolean {
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return false;
   const allowed = new Set([...required, ...optional]);
   return (
-    required.every((key) => key in value) &&
-    Object.keys(value).every((key) => allowed.has(key))
+    required.every((key) => Object.hasOwn(value, key)) &&
+    Reflect.ownKeys(value).every(
+      (key) => typeof key === "string" && allowed.has(key)
+    )
   );
 }
 

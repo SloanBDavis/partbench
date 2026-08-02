@@ -57,6 +57,11 @@ import {
   resolveWireExtrudeProfile
 } from "./wireExtrudeProfile";
 import { createBodyTopology } from "./bodyTopology";
+import {
+  CAD_DOWNSTREAM_BODY_OPERATIONS,
+  createCadDownstreamBodyPolicyProjection,
+  evaluateCadBodyDependencies
+} from "./downstreamBodyPolicy";
 import { createResolvedWireRevolveProfile } from "./wireRevolveProfile";
 import { createResolvedRegionRevolveProfile } from "./regionRevolveProfile";
 import { createResolvedSweepSource } from "./sweepProfile";
@@ -1091,32 +1096,58 @@ function reconcileCurrentExactResult(
   classified: CadCurrentExactResult,
   supplied: CadCurrentExactResult | undefined
 ): CadCurrentExactResult {
+  let result: CadCurrentExactResult;
   if (
     !supplied ||
     supplied.sourceType !== body.source.type ||
     classified.status === "unsupported" ||
     classified.status === "blocked"
   ) {
-    return classified;
-  }
-  if (supplied.status !== "ready") return supplied;
-
-  const sourceIdentitySignature = getBodySourceIdentitySignature(
-    document,
-    bodies,
-    body
-  );
-  if (supplied.sourceIdentitySignature !== sourceIdentitySignature) {
-    return createBlockedCurrentExactResult(
-      body,
-      "stale",
-      "EXPORT_EXACT_SOURCE_STALE",
-      `Exact result for body ${body.id} does not match the current body source.`,
-      sourceIdentitySignature,
-      supplied.sourceIdentitySignature
+    result = classified;
+  } else if (supplied.status !== "ready") {
+    result = supplied;
+  } else {
+    const sourceIdentitySignature = getBodySourceIdentitySignature(
+      document,
+      bodies,
+      body
     );
+    result =
+      supplied.sourceIdentitySignature !== sourceIdentitySignature
+        ? createBlockedCurrentExactResult(
+            body,
+            "stale",
+            "EXPORT_EXACT_SOURCE_STALE",
+            `Exact result for body ${body.id} does not match the current body source.`,
+            sourceIdentitySignature,
+            supplied.sourceIdentitySignature
+          )
+        : classified.status === "ready"
+          ? supplied
+          : classified;
   }
-  return classified.status === "ready" ? supplied : classified;
+
+  const dependency = evaluateCadBodyDependencies(document, bodies, body.id);
+  return {
+    ...result,
+    downstreamReadiness: CAD_DOWNSTREAM_BODY_OPERATIONS.map((operation) => {
+      return createCadDownstreamBodyPolicyProjection({
+        bodyId: body.id,
+        featureId: body.featureId,
+        sourceType: body.source.type,
+        operation,
+        lifecycle: body.consumedByFeatureId ? "consumed" : "active",
+        dependencyStatus: dependency.status,
+        dependencyCycle: dependency.cycle,
+        exactStatus: result.status,
+        shapePolicy:
+          result.status === "ready"
+            ? result.artifactEvidence?.shapePolicy
+            : undefined,
+        diagnostics: result.diagnostics
+      }).readiness;
+    })
+  };
 }
 
 function classifyLegacyBodySource(

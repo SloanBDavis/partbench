@@ -13756,6 +13756,28 @@ describe("cad-core", () => {
       })
     ).toEqual(beforeHoleHealth);
 
+    const retargetWithoutExactPreflight = holeEngine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "feature.updateHole",
+          id: "feat_hole_1",
+          direction: "positive",
+          targetBodyId: "body_future_target"
+        }
+      ]
+    });
+
+    expect(retargetWithoutExactPreflight).toMatchObject({
+      ok: false,
+      error: {
+        code: "UNSUPPORTED_FEATURE_OPERATION",
+        path: "$.ops[0].targetBodyId"
+      }
+    });
+    expect(exportCadProjectJson(holeEngine)).toBe(beforeHoleJson);
+
     const wrongKind = holeEngine.executeBatch({
       version: "cadops.v1",
       mode: "commit",

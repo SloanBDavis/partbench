@@ -17,6 +17,9 @@ import {
   type CadOpsAgentQueryResponse,
   executeCadOpsAgentQueryRequest,
   executeCadOpsAgentRequest,
+  parseCadAgentExactExportProposal,
+  parseCadAgentExactExportRequest,
+  parseCadAgentExactExportResult,
   parseCadOpsAgentQueryRequestJson,
   parseCadOpsAgentRequestJson
 } from "./index";
@@ -2906,6 +2909,49 @@ describe("agent-adapter", () => {
           | undefined
       )?.depth
     ).toBeUndefined();
+  });
+
+  it("accepts one hole retarget input and rejects mixed target fields", () => {
+    expect(
+      parseCadOpsAgentRequestJson(
+        JSON.stringify({
+          requestId: "agent_req_update_hole_target",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          batch: {
+            version: "cadops.v1",
+            mode: "dryRun",
+            ops: [
+              {
+                op: "feature.updateHole",
+                id: "feat_hole",
+                targetBodyId: "body_target"
+              }
+            ]
+          }
+        })
+      ).batch.ops[0]
+    ).toMatchObject({ targetBodyId: "body_target" });
+
+    expect(() =>
+      parseCadOpsAgentRequestJson(
+        JSON.stringify({
+          requestId: "agent_req_update_hole_mixed_target",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          batch: {
+            version: "cadops.v1",
+            mode: "dryRun",
+            ops: [
+              {
+                op: "feature.updateHole",
+                id: "feat_hole",
+                targetBodyId: "body_target",
+                targetTopologyAnchorId: "anchor_target"
+              }
+            ]
+          }
+        })
+      )
+    ).toThrow("Invalid CADOps agent adapter request.");
   });
 
   it("passes sketch.updateEntity profile edits through JSON batch dry-run and commit", () => {
@@ -7303,6 +7349,262 @@ describe("agent-adapter", () => {
         })
       )
     ).toThrow("Invalid CADOps agent adapter query request.");
+  });
+});
+
+describe("V21.1 agent exact export contracts", () => {
+  const sourceIdentity = {
+    algorithm: "partbench-source-v1" as const,
+    sha256: "a".repeat(64)
+  };
+
+  it("accepts bounded selections and rejects duplicates, excess, and authority", () => {
+    const sparseBodyIds = new Array(1);
+    const inheritedIdentity = Object.assign(
+      Object.create({ path: "/tmp/model.step" }) as object,
+      sourceIdentity
+    );
+    const inheritedRequest = Object.assign(
+      Object.create({ path: "/tmp/model.step" }) as object,
+      { requestId: "agent_export_inherited", selection: { mode: "all" } }
+    );
+    expect(
+      parseCadAgentExactExportRequest({
+        requestId: "agent_export_1",
+        selection: { mode: "bodyIds", bodyIds: ["body_a", "body_b"] },
+        expectedSourceIdentity: sourceIdentity
+      }).selection
+    ).toEqual({ mode: "bodyIds", bodyIds: ["body_a", "body_b"] });
+
+    for (const value of [
+      {
+        requestId: "agent_export_duplicate",
+        selection: { mode: "bodyIds", bodyIds: ["body_a", "body_a"] }
+      },
+      {
+        requestId: "agent_export_excess",
+        selection: {
+          mode: "bodyIds",
+          bodyIds: Array.from({ length: 257 }, (_, index) => `body_${index}`)
+        }
+      },
+      {
+        requestId: "agent_export_empty",
+        selection: { mode: "bodyIds", bodyIds: [] }
+      },
+      {
+        requestId: "agent_export_sparse",
+        selection: { mode: "bodyIds", bodyIds: sparseBodyIds }
+      },
+      {
+        requestId: "agent_export_long_body_id",
+        selection: { mode: "bodyIds", bodyIds: ["x".repeat(1_025)] }
+      },
+      {
+        requestId: "agent_export_bad_identity",
+        selection: { mode: "all" },
+        expectedSourceIdentity: { ...sourceIdentity, sha256: "A".repeat(64) }
+      },
+      {
+        requestId: "agent_export_inherited_identity",
+        selection: { mode: "all" },
+        expectedSourceIdentity: inheritedIdentity
+      },
+      {
+        requestId: "agent_export_path",
+        selection: { mode: "all" },
+        path: "/tmp/model.step"
+      },
+      inheritedRequest,
+      { requestId: "x".repeat(129), selection: { mode: "all" } }
+    ]) {
+      expect(() => parseCadAgentExactExportRequest(value)).toThrow(
+        "Invalid CAD agent exact export request."
+      );
+    }
+  });
+
+  it("validates byte-free proposal and truthful download-requested result", () => {
+    const plan = {
+      format: "step" as const,
+      schema: "AP242DIS" as const,
+      units: "mm" as const,
+      sourceIdentity,
+      orderedBodyIds: ["body_a"],
+      allOrNothing: true as const,
+      planIdentity: "b".repeat(64),
+      bodies: [
+        {
+          bodyId: "body_a",
+          bodyName: "Body A",
+          partId: "part_a",
+          featureId: "feature_a",
+          sourceType: "primitiveFeature" as const,
+          sourceIdentitySignature: "source_a",
+          status: "ready" as const,
+          diagnostics: []
+        }
+      ]
+    };
+
+    expect(
+      parseCadAgentExactExportProposal({
+        requestId: "agent_export_1",
+        sourceIdentity,
+        plan,
+        warnings: []
+      }).plan
+    ).toEqual(plan);
+
+    for (const proposal of [
+      {
+        requestId: "agent_export_1",
+        sourceIdentity: { ...sourceIdentity, sha256: "d".repeat(64) },
+        plan,
+        warnings: []
+      },
+      {
+        requestId: "agent_export_1",
+        sourceIdentity,
+        plan: { ...plan, orderedBodyIds: [], bodies: [] },
+        warnings: []
+      },
+      {
+        requestId: "agent_export_1",
+        sourceIdentity,
+        plan: {
+          ...plan,
+          bodies: [{ ...plan.bodies[0], status: "blocked" as const }]
+        },
+        warnings: []
+      },
+      {
+        requestId: "agent_export_1",
+        sourceIdentity,
+        plan: {
+          ...plan,
+          bodies: [
+            {
+              ...plan.bodies[0],
+              diagnostics: [
+                {
+                  code: "EXPORT_EXACT_SOURCE_STALE" as const,
+                  status: "deferred" as const,
+                  message: "The exact source is stale."
+                }
+              ]
+            }
+          ]
+        },
+        warnings: []
+      },
+      {
+        requestId: "agent_export_1",
+        sourceIdentity,
+        plan,
+        warnings: new Array(1)
+      },
+      {
+        requestId: "agent_export_1",
+        sourceIdentity,
+        plan,
+        warnings: ["x".repeat(4_097)]
+      }
+    ]) {
+      expect(() => parseCadAgentExactExportProposal(proposal)).toThrow(
+        "Invalid CAD agent exact export proposal."
+      );
+    }
+
+    const result = {
+      requestId: "agent_export_1",
+      status: "downloadRequested",
+      selectedBodyIds: ["body_a"],
+      selectedBodyCount: 1,
+      schema: "AP242DIS",
+      units: "mm",
+      planIdentity: "b".repeat(64),
+      artifactByteLength: 123,
+      artifactSha256: "c".repeat(64),
+      diagnostics: []
+    };
+    expect(parseCadAgentExactExportResult(result)).toEqual(result);
+
+    const sparseSelectedBodyIds = new Array(1);
+    const sparseDiagnostics = new Array(1);
+
+    for (const value of [
+      { ...result, status: "downloaded" },
+      { ...result, selectedBodyCount: 2 },
+      { ...result, artifactByteLength: undefined },
+      { ...result, artifactSha256: undefined },
+      {
+        ...result,
+        selectedBodyIds: sparseSelectedBodyIds,
+        selectedBodyCount: 1
+      },
+      { ...result, selectedBodyIds: ["x".repeat(1_025)] },
+      { ...result, diagnostics: sparseDiagnostics },
+      { ...result, stepBytes: [1, 2, 3] },
+      {
+        ...result,
+        diagnostics: [{ code: "UNKNOWN", message: "Unknown diagnostic." }]
+      },
+      {
+        ...result,
+        diagnostics: [
+          {
+            code: "EXPORT_CANCELLED",
+            message: "x".repeat(4_097)
+          }
+        ]
+      }
+    ]) {
+      expect(() => parseCadAgentExactExportResult(value)).toThrow(
+        "Invalid CAD agent exact export result."
+      );
+    }
+
+    for (const field of [
+      "filename",
+      "mimeType",
+      "blob",
+      "objectUrl",
+      "fileHandle",
+      "opfsPath",
+      "directory"
+    ]) {
+      expect(() =>
+        parseCadAgentExactExportRequest({
+          requestId: "agent_export_private",
+          selection: { mode: "all" },
+          [field]: "private"
+        })
+      ).toThrow("Invalid CAD agent exact export request.");
+      expect(() =>
+        parseCadAgentExactExportProposal({
+          requestId: "agent_export_private",
+          sourceIdentity,
+          plan,
+          warnings: [],
+          [field]: "private"
+        })
+      ).toThrow("Invalid CAD agent exact export proposal.");
+      expect(() =>
+        parseCadAgentExactExportResult({ ...result, [field]: "private" })
+      ).toThrow("Invalid CAD agent exact export result.");
+    }
+    expect(() =>
+      parseCadAgentExactExportProposal({
+        requestId: "agent_export_private_nested",
+        sourceIdentity,
+        plan: {
+          ...plan,
+          bodies: [{ ...plan.bodies[0], fileHandle: "private" }]
+        },
+        warnings: []
+      })
+    ).toThrow("Invalid CAD agent exact export proposal.");
   });
 });
 

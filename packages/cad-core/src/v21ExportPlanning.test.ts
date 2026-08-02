@@ -158,6 +158,23 @@ describe("V21 exact export planning", () => {
               bodyId,
               sourceType: "primitiveFeature",
               sourceIdentitySignature: metadata.sourceIdentitySignature,
+              downstreamReadiness: (
+                [
+                  "holeTarget",
+                  "patternSeed",
+                  "mirrorSeed",
+                  "shellTarget"
+                ] as const
+              ).map((operation) => ({
+                operation,
+                status: "ready" as const,
+                requiredShapePolicy:
+                  operation === "shellTarget"
+                    ? ("singleSolid" as const)
+                    : ("singleShapeOneOrMoreSolids" as const),
+                shapePolicy: "singleSolid" as const,
+                diagnostics: []
+              })),
               diagnostics: []
             }
           : {
@@ -220,6 +237,14 @@ describe("V21 exact export planning", () => {
       expect(observed.map((result) => result?.diagnostics[0]?.code)).toEqual(
         responses.map(() => diagnosticCode)
       );
+      if (status === "ready") {
+        expect(observed[0]?.downstreamReadiness).toMatchObject([
+          { operation: "holeTarget", status: "pending" },
+          { operation: "patternSeed", status: "pending" },
+          { operation: "mirrorSeed", status: "pending" },
+          { operation: "shellTarget", status: "pending" }
+        ]);
+      }
     }
   );
 
