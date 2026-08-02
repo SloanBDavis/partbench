@@ -1,5 +1,8 @@
 import {
   decodeWcadCanonicalCbor,
+  resolveMirrorPlaneFrame,
+  resolvePatternDirectionFrame,
+  resolvePatternRotationAxisFrame,
   sha256Hex,
   type CadDocument,
   type CadFeatureSummary,
@@ -31,7 +34,8 @@ import {
 import { createBooleanExtrudeRuntimeSource } from "./booleanExtrudeRuntimeSource";
 import type {
   ExactBodyArtifactShapePolicy,
-  ExactBodyArtifactSource
+  ExactBodyArtifactSource,
+  GeometryKernelExactBodyArtifact
 } from "@web-cad/geometry-worker";
 
 export type CurrentExactBodySource =
@@ -83,6 +87,7 @@ export type CurrentExactBodyResolution =
       readonly cacheKeySha256: string;
       readonly sourceGraphNodeCount: number;
       readonly source: CurrentExactBodySource;
+      readonly artifactDependency?: CurrentExactBodyArtifactDependency;
       readonly diagnostics: readonly CadExactResultDiagnostic[];
     }
   | {
@@ -92,11 +97,41 @@ export type CurrentExactBodyResolution =
       readonly diagnostics: readonly CadExactResultDiagnostic[];
     };
 
+export interface CurrentExactBodyArtifactDependency {
+  readonly bodyId: string;
+  readonly sourceType: CadBodySource["type"];
+  readonly sourceIdentitySignature: string;
+  readonly cacheKeySha256: string;
+  readonly sourceGraphNodeCount: number;
+  readonly source: CurrentExactBodySource;
+  readonly artifactDependency?: CurrentExactBodyArtifactDependency;
+}
+
+export type CurrentExactBodyArtifactEvidence = Pick<
+  GeometryKernelExactBodyArtifact,
+  | "artifactVersion"
+  | "bodyId"
+  | "sourceType"
+  | "documentSourceIdentity"
+  | "bodySourceIdentitySignature"
+  | "sourceCacheKeySha256"
+  | "sourceGraphNodeCount"
+  | "units"
+  | "shapePolicy"
+  | "sourceKind"
+  | "brepFormat"
+  | "brepWriter"
+  | "brepBytes"
+  | "brepByteLength"
+  | "brepSha256"
+> & { readonly topologySignature: string };
+
 export interface CurrentExactBodyResolverInput {
   readonly document: CadDocument;
   readonly bodies: readonly CadBodySnapshot[];
   readonly features: readonly CadFeatureSummary[];
   readonly geometrySources: readonly DerivedGeometrySource[];
+  readonly artifactGeometrySources?: readonly DerivedGeometrySource[];
   readonly checkpointPayloads?: readonly WcadTopologyCheckpointPayloadInput[];
   readonly sourceIdentitySignaturesByBodyId: ReadonlyMap<string, string>;
 }
@@ -105,9 +140,14 @@ interface ResolverContext extends CurrentExactBodyResolverInput {
   readonly bodiesById: ReadonlyMap<string, CadBodySnapshot>;
   readonly featuresById: ReadonlyMap<string, CadFeatureSummary>;
   readonly geometrySourcesById: ReadonlyMap<string, DerivedGeometrySource>;
+  readonly artifactGeometrySourcesById: ReadonlyMap<
+    string,
+    DerivedGeometrySource
+  >;
   readonly duplicateBodyIds: ReadonlySet<string>;
   readonly duplicateFeatureBodyIds: ReadonlySet<string>;
   readonly duplicateGeometrySourceIds: ReadonlySet<string>;
+  readonly duplicateArtifactGeometrySourceIds: ReadonlySet<string>;
 }
 
 type BodySourceResolver = (
@@ -177,14 +217,20 @@ export function resolveCurrentExactBodies(
     input.geometrySources,
     (source) => source.id
   );
+  const artifactGeometryIndex = createUniqueIndex(
+    input.artifactGeometrySources ?? input.geometrySources,
+    (source) => source.id
+  );
   const context: ResolverContext = {
     ...input,
     bodiesById: bodyIndex.values,
     featuresById: featureIndex.values,
     geometrySourcesById: geometryIndex.values,
+    artifactGeometrySourcesById: artifactGeometryIndex.values,
     duplicateBodyIds: bodyIndex.duplicates,
     duplicateFeatureBodyIds: featureBodyIndex.duplicates,
-    duplicateGeometrySourceIds: geometryIndex.duplicates
+    duplicateGeometrySourceIds: geometryIndex.duplicates,
+    duplicateArtifactGeometrySourceIds: artifactGeometryIndex.duplicates
   };
 
   return [...input.bodies]
@@ -250,16 +296,201 @@ export function createCurrentExactBodyArtifactSource(
   return runtimeSource;
 }
 
+export function createCurrentExactArtifactOperandSource(
+  source: CurrentExactBodySource,
+  dependencyArtifact?:
+    | GeometryKernelExactBodyArtifact
+    | CurrentExactBodyArtifactEvidence
+): ExactBodyArtifactSource {
+  if (
+    source.kind !== "hole" &&
+    source.kind !== "checkpointHole" &&
+    source.kind !== "linearPattern" &&
+    source.kind !== "circularPattern" &&
+    source.kind !== "mirror" &&
+    source.kind !== "shell"
+  ) {
+    return createCurrentExactBodyArtifactSource(source);
+  }
+  if (source.kind === "shell" && !dependencyArtifact) {
+    return createCurrentExactBodyArtifactSource(source);
+  }
+  if (!dependencyArtifact) {
+    throw new Error(
+      `Exact artifact dependency is unavailable for ${source.kind}.`
+    );
+  }
+  preflightCurrentExactArtifactOperandSource(
+    source,
+    dependencyArtifact.shapePolicy
+  );
+  const leaf = {
+    kind: "bodyArtifact",
+    artifactVersion: dependencyArtifact.artifactVersion,
+    bodyId: dependencyArtifact.bodyId,
+    sourceType: dependencyArtifact.sourceType,
+    documentSourceIdentity: dependencyArtifact.documentSourceIdentity,
+    bodySourceIdentitySignature: dependencyArtifact.bodySourceIdentitySignature,
+    sourceCacheKeySha256: dependencyArtifact.sourceCacheKeySha256,
+    sourceGraphNodeCount: dependencyArtifact.sourceGraphNodeCount,
+    units: dependencyArtifact.units,
+    shapePolicy: dependencyArtifact.shapePolicy,
+    sourceKind: dependencyArtifact.sourceKind,
+    brepFormat: dependencyArtifact.brepFormat,
+    brepWriter: dependencyArtifact.brepWriter,
+    brepBytes: dependencyArtifact.brepBytes,
+    brepByteLength: dependencyArtifact.brepByteLength,
+    brepSha256: dependencyArtifact.brepSha256,
+    topologySignature:
+      "topologySignature" in dependencyArtifact
+        ? dependencyArtifact.topologySignature
+        : dependencyArtifact.topologySnapshot.signature
+  } as const;
+
+  switch (source.kind) {
+    case "hole":
+    case "checkpointHole":
+      return { kind: "artifactHole", target: leaf, tool: source.tool };
+    case "linearPattern":
+      return {
+        kind: "artifactLinearPattern",
+        seed: leaf,
+        direction: source.direction,
+        spacing: source.spacing,
+        instanceCount: source.instanceCount
+      };
+    case "circularPattern":
+      return {
+        kind: "artifactCircularPattern",
+        seed: leaf,
+        axis: source.axis,
+        totalAngleDegrees: source.totalAngleDegrees,
+        instanceCount: source.instanceCount
+      };
+    case "mirror":
+      return {
+        kind: "artifactMirror",
+        seed: leaf,
+        plane: source.plane,
+        includeOriginal: source.includeOriginal
+      };
+    case "shell":
+      if (
+        source.openFaceStableIds.some(
+          (localId) => !/^snapshot-local:face:[1-9][0-9]*$/.test(localId)
+        )
+      ) {
+        throw new Error(
+          "Shell artifact faces require current exact topology-local references."
+        );
+      }
+      return {
+        kind: "artifactShell",
+        target: leaf,
+        wallThickness: source.wallThickness,
+        openFaces: source.openFaceStableIds.map((localId) => ({ localId }))
+      };
+  }
+}
+
+export function preflightCurrentExactArtifactOperandSource(
+  source: CurrentExactBodySource,
+  dependencyShapePolicy?: ExactBodyArtifactShapePolicy
+): ExactBodyArtifactShapePolicy {
+  switch (source.kind) {
+    case "hole":
+    case "checkpointHole":
+      requireArtifactDependency(source.kind, dependencyShapePolicy);
+      if (!isValidHoleTool(source.tool)) {
+        throw new Error(`Exact artifact ${source.kind} tool is invalid.`);
+      }
+      return dependencyShapePolicy!;
+    case "linearPattern":
+      requireArtifactDependency(source.kind, dependencyShapePolicy);
+      if (
+        !isUnitVector(source.direction) ||
+        !isPositiveFinite(source.spacing) ||
+        !isArtifactPatternCount(source.instanceCount)
+      ) {
+        throw new Error(
+          "Exact artifact linear pattern parameters are invalid."
+        );
+      }
+      return "singleShapeOneOrMoreSolids";
+    case "circularPattern":
+      requireArtifactDependency(source.kind, dependencyShapePolicy);
+      if (
+        !isFiniteVector(source.axis.origin) ||
+        !isUnitVector(source.axis.direction) ||
+        !isPositiveFinite(source.totalAngleDegrees) ||
+        source.totalAngleDegrees > 360 ||
+        !isArtifactPatternCount(source.instanceCount)
+      ) {
+        throw new Error(
+          "Exact artifact circular pattern parameters are invalid."
+        );
+      }
+      return "singleShapeOneOrMoreSolids";
+    case "mirror":
+      requireArtifactDependency(source.kind, dependencyShapePolicy);
+      if (
+        !isFiniteVector(source.plane.point) ||
+        !isUnitVector(source.plane.normal)
+      ) {
+        throw new Error("Exact artifact mirror plane is invalid.");
+      }
+      return "singleShapeOneOrMoreSolids";
+    case "shell":
+      if (dependencyShapePolicy === undefined) {
+        return getCurrentExactBodyArtifactShapePolicy(
+          createCurrentExactBodyArtifactSource(source)
+        );
+      }
+      requireArtifactDependency(source.kind, dependencyShapePolicy);
+      if (
+        !isPositiveFinite(source.wallThickness) ||
+        source.openFaceStableIds.length >
+          CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxSourceGraphNodes ||
+        new Set(source.openFaceStableIds).size !==
+          source.openFaceStableIds.length ||
+        source.openFaceStableIds.some(
+          (localId) => !/^snapshot-local:face:[1-9][0-9]*$/.test(localId)
+        )
+      ) {
+        throw new Error("Exact artifact shell parameters are invalid.");
+      }
+      return "singleSolid";
+    default:
+      if (dependencyShapePolicy !== undefined) {
+        throw new Error(
+          `Exact artifact dependency is unexpected for ${source.kind}.`
+        );
+      }
+      return getCurrentExactBodyArtifactShapePolicy(
+        createCurrentExactBodyArtifactSource(source)
+      );
+  }
+}
+
 export function getCurrentExactBodyArtifactShapePolicy(
   source: ExactBodyArtifactSource
 ): ExactBodyArtifactShapePolicy {
   switch (source.kind) {
+    case "bodyArtifact":
+      return source.shapePolicy;
     case "checkpointBody":
-      return "checkpointShape";
+      return "singleShapeOneOrMoreSolids";
+    case "artifactHole":
+      return source.target.shapePolicy;
     case "linearPattern":
     case "circularPattern":
     case "mirror":
+    case "artifactLinearPattern":
+    case "artifactCircularPattern":
+    case "artifactMirror":
       return "singleShapeOneOrMoreSolids";
+    case "artifactShell":
+      return "singleSolid";
     default:
       return "singleSolid";
   }
@@ -346,17 +577,25 @@ function resolveCurrentExactBody(
   );
   if (isResolution(resolved)) return resolved;
 
+  const dependencyBodyId = getArtifactDependencyBodyId(feature, resolved);
+  const operationError = dependencyBodyId
+    ? getArtifactOperationError(feature, resolved, context)
+    : undefined;
   const placementError =
-    "placementError" in resolved ? resolved.placementError : undefined;
-  if (placementError) {
+    !dependencyBodyId && "placementError" in resolved
+      ? resolved.placementError
+      : undefined;
+  if (operationError || placementError) {
     return blocked(
       body,
       "blocked",
       "EXPORT_EXACT_SOURCE_UNAVAILABLE",
-      placementError
+      operationError ?? placementError!
     );
   }
-  const graph = validateExactSourceGraph(resolved);
+  const graph = dependencyBodyId
+    ? { ok: true as const, nodeCount: 2 }
+    : validateExactSourceGraph(resolved);
   if (!graph.ok) {
     return blocked(
       body,
@@ -368,13 +607,30 @@ function resolveCurrentExactBody(
     );
   }
 
+  const artifactDependency = dependencyBodyId
+    ? resolveArtifactDependency(body, dependencyBodyId, context)
+    : undefined;
+  if (artifactDependency && !artifactDependency.ok) {
+    return blocked(
+      body,
+      artifactDependency.status,
+      artifactDependency.code,
+      artifactDependency.message
+    );
+  }
   const cacheKeySha256 = sha256Hex(
     new TextEncoder().encode(
       JSON.stringify({
         bodyId: body.id,
         sourceType: body.source.type,
         sourceIdentitySignature,
-        source: createCurrentExactSourceCacheKey(resolved)
+        source:
+          artifactDependency?.dependency !== undefined
+            ? createArtifactOperationCacheKey(
+                resolved,
+                artifactDependency.dependency
+              )
+            : createCurrentExactSourceCacheKey(resolved)
       })
     )
   );
@@ -386,8 +642,404 @@ function resolveCurrentExactBody(
     cacheKeySha256,
     sourceGraphNodeCount: graph.nodeCount,
     source: resolved,
+    ...(artifactDependency
+      ? { artifactDependency: artifactDependency.dependency }
+      : {}),
     diagnostics: []
   };
+}
+
+function resolveArtifactDependency(
+  body: CadBodySnapshot,
+  dependencyBodyId: string,
+  context: ResolverContext
+):
+  | {
+      readonly ok: true;
+      readonly dependency: CurrentExactBodyArtifactDependency;
+    }
+  | {
+      readonly ok: false;
+      readonly status: Exclude<CadCurrentExactResultStatus, "ready">;
+      readonly code: CadExactResultDiagnostic["code"];
+      readonly message: string;
+    } {
+  const artifactContext: ResolverContext = {
+    ...context,
+    geometrySourcesById: context.artifactGeometrySourcesById,
+    duplicateGeometrySourceIds: context.duplicateArtifactGeometrySourceIds
+  };
+  const pending: {
+    readonly body: CadBodySnapshot;
+    readonly identity: string;
+    readonly source: CurrentExactBodySource;
+    readonly graphNodeCount: number;
+  }[] = [];
+  const visitedBodyIds = new Set([body.id]);
+  let nextBodyId: string | undefined = dependencyBodyId;
+  let consumingFeatureId = context.featuresById.get(body.featureId)!.id;
+
+  while (nextBodyId) {
+    if (visitedBodyIds.has(nextBodyId)) {
+      return artifactDependencyError(
+        "blocked",
+        "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+        "Exact artifact dependency graph is cyclic."
+      );
+    }
+    if (
+      visitedBodyIds.size >=
+      CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxSourceGraphNodes
+    ) {
+      return artifactDependencyError(
+        "blocked",
+        "EXPORT_EXACT_ARTIFACT_LIMIT_EXCEEDED",
+        `Exact artifact dependency graph exceeds ${CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxSourceGraphNodes} bodies.`
+      );
+    }
+    visitedBodyIds.add(nextBodyId);
+
+    const dependencyBody = context.bodiesById.get(nextBodyId);
+    if (!dependencyBody || context.duplicateBodyIds.has(nextBodyId)) {
+      return artifactDependencyError(
+        "blocked",
+        "EXPORT_BODY_DUPLICATE",
+        `Exact artifact dependency body ${nextBodyId} is missing or duplicated.`
+      );
+    }
+    if (
+      dependencyBody.consumedByFeatureId !== undefined &&
+      dependencyBody.consumedByFeatureId !== consumingFeatureId
+    ) {
+      return artifactDependencyError(
+        "blocked",
+        "EXPORT_BODY_NOT_ACTIVE",
+        `Exact artifact dependency body ${nextBodyId} is consumed by a different feature.`
+      );
+    }
+    if (context.duplicateFeatureBodyIds.has(nextBodyId)) {
+      return artifactDependencyError(
+        "blocked",
+        "EXPORT_BODY_DUPLICATE",
+        `Exact artifact dependency body ${nextBodyId} has duplicate feature ownership.`
+      );
+    }
+
+    const feature = context.featuresById.get(dependencyBody.featureId);
+    const identity = context.sourceIdentitySignaturesByBodyId.get(nextBodyId);
+    if (!feature || feature.bodyId !== nextBodyId || !identity) {
+      return artifactDependencyError(
+        identity ? "blocked" : "pending",
+        "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+        `Exact artifact dependency body ${nextBodyId} has no current authoritative feature or source identity.`
+      );
+    }
+    const sourceResolver = BODY_SOURCE_RESOLVERS[dependencyBody.source.type];
+    if (feature.kind !== sourceResolver.featureKind) {
+      return artifactDependencyError(
+        "blocked",
+        "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+        `Exact artifact dependency body ${nextBodyId} does not match its authoritative feature.`
+      );
+    }
+    if (context.duplicateArtifactGeometrySourceIds.has(nextBodyId)) {
+      return artifactDependencyError(
+        "blocked",
+        "EXPORT_BODY_DUPLICATE",
+        `Exact artifact dependency body ${nextBodyId} has duplicate geometry sources.`
+      );
+    }
+
+    const hasCheckpoint =
+      context.document.topologyIdentity?.checkpoints.some(
+        (checkpoint) => checkpoint.bodyId === nextBodyId
+      ) ?? false;
+    const checkpoint: ReturnType<typeof resolveCheckpointLeaf> | undefined =
+      hasCheckpoint ? resolveCheckpointLeaf(nextBodyId, context) : undefined;
+    if (checkpoint && !checkpoint.ok) return checkpoint;
+    const resolved: CurrentExactBodySource | CurrentExactBodyResolution =
+      checkpoint?.ok
+        ? { ...checkpoint.source, sourceIdentitySignature: identity }
+        : sourceResolver.resolve(dependencyBody, artifactContext, identity);
+    if (isResolution(resolved)) {
+      return artifactDependencyError(
+        resolved.status === "ready" ? "blocked" : resolved.status,
+        resolved.diagnostics[0]?.code ?? "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+        resolved.diagnostics[0]?.message ??
+          `Exact artifact dependency body ${nextBodyId} is unavailable.`
+      );
+    }
+
+    const childBodyId: string | undefined = checkpoint?.ok
+      ? undefined
+      : getArtifactDependencyBodyId(feature, resolved);
+    const operationError = childBodyId
+      ? getArtifactOperationError(feature, resolved, context)
+      : undefined;
+    const placementError =
+      !childBodyId && "placementError" in resolved
+        ? resolved.placementError
+        : undefined;
+    if (operationError || placementError) {
+      return artifactDependencyError(
+        "blocked",
+        "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+        operationError ?? placementError!
+      );
+    }
+    const graph = childBodyId
+      ? { ok: true as const, nodeCount: 2 }
+      : validateExactSourceGraph(resolved);
+    if (!graph.ok) {
+      return artifactDependencyError(
+        "blocked",
+        graph.limit
+          ? "EXPORT_EXACT_ARTIFACT_LIMIT_EXCEEDED"
+          : "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+        graph.message
+      );
+    }
+    pending.push({
+      body: dependencyBody,
+      identity,
+      source: resolved,
+      graphNodeCount: graph.nodeCount
+    });
+    consumingFeatureId = feature.id;
+    nextBodyId = childBodyId;
+  }
+
+  let child: CurrentExactBodyArtifactDependency | undefined;
+  while (pending.length > 0) {
+    const node = pending.pop()!;
+    const cacheSource = child
+      ? createArtifactOperationCacheKey(node.source, child)
+      : createCurrentExactSourceCacheKey(node.source);
+    child = {
+      bodyId: node.body.id,
+      sourceType: node.body.source.type,
+      sourceIdentitySignature: node.identity,
+      cacheKeySha256: sha256Hex(
+        new TextEncoder().encode(
+          JSON.stringify({
+            bodyId: node.body.id,
+            sourceType: node.body.source.type,
+            sourceIdentitySignature: node.identity,
+            source: cacheSource
+          })
+        )
+      ),
+      sourceGraphNodeCount: node.graphNodeCount,
+      source: node.source,
+      ...(child ? { artifactDependency: child } : {})
+    };
+  }
+  return { ok: true, dependency: child! };
+}
+
+function createArtifactOperationCacheKey(
+  source: CurrentExactBodySource,
+  child: CurrentExactBodyArtifactDependency
+): string {
+  const dependency = {
+    bodyId: child.bodyId,
+    sourceIdentitySignature: child.sourceIdentitySignature,
+    sourceCacheKeySha256: child.cacheKeySha256
+  };
+  switch (source.kind) {
+    case "hole":
+    case "checkpointHole":
+      return JSON.stringify({
+        kind: "artifactHole",
+        dependency,
+        tool: source.tool
+      });
+    case "linearPattern":
+      return JSON.stringify({
+        kind: "artifactLinearPattern",
+        dependency,
+        direction: source.direction,
+        spacing: source.spacing,
+        instanceCount: source.instanceCount
+      });
+    case "circularPattern":
+      return JSON.stringify({
+        kind: "artifactCircularPattern",
+        dependency,
+        axis: source.axis,
+        totalAngleDegrees: source.totalAngleDegrees,
+        instanceCount: source.instanceCount
+      });
+    case "mirror":
+      return JSON.stringify({
+        kind: "artifactMirror",
+        dependency,
+        plane: source.plane,
+        includeOriginal: source.includeOriginal
+      });
+    case "shell":
+      return JSON.stringify({
+        kind: "artifactShell",
+        dependency,
+        wallThickness: source.wallThickness,
+        openFaceStableIds: source.openFaceStableIds
+      });
+    default:
+      return createCurrentExactSourceCacheKey(source);
+  }
+}
+
+function getArtifactOperationError(
+  feature: CadFeatureSummary,
+  source: CurrentExactBodySource,
+  context: ResolverContext
+): string | undefined {
+  if (feature.kind !== "shell") {
+    try {
+      preflightCurrentExactArtifactOperandSource(source, "singleSolid");
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  switch (feature.kind) {
+    case "hole": {
+      if (source.kind !== "hole" && source.kind !== "checkpointHole") {
+        return `Hole feature ${feature.id} has no current artifact operation source.`;
+      }
+      const sketch = context.document.sketches.get(feature.sketchId);
+      const circle = sketch?.entities.get(feature.circleEntityId);
+      if (!sketch || circle?.kind !== "circle") {
+        return `Hole feature ${feature.id} has no current circle tool source.`;
+      }
+      if (sketch.attachment && !source.tool.placementFrame) {
+        return (
+          ("placementError" in source ? source.placementError : undefined) ??
+          `Hole feature ${feature.id} has no current attachment frame.`
+        );
+      }
+      return undefined;
+    }
+    case "linearPattern": {
+      if (source.kind !== "linearPattern") {
+        return `Linear pattern ${feature.id} has no current artifact operation source.`;
+      }
+      const frame = resolvePatternDirectionFrame(
+        context.document,
+        feature.direction
+      );
+      return frame.ok ? undefined : frame.message;
+    }
+    case "circularPattern": {
+      if (source.kind !== "circularPattern") {
+        return `Circular pattern ${feature.id} has no current artifact operation source.`;
+      }
+      const frame = resolvePatternRotationAxisFrame(
+        context.document,
+        feature.rotationAxis
+      );
+      return frame.ok ? undefined : frame.message;
+    }
+    case "mirror": {
+      if (source.kind !== "mirror") {
+        return `Mirror feature ${feature.id} has no current artifact operation source.`;
+      }
+      const frame = resolveMirrorPlaneFrame(context.document, feature.plane);
+      return frame.ok ? undefined : frame.message;
+    }
+    case "shell":
+      if (source.kind !== "shell") {
+        return `Shell feature ${feature.id} has no current artifact operation source.`;
+      }
+      return feature.openFaceRefs.length > 0 &&
+        source.openFaceStableIds.length === 0
+        ? (source.placementError ??
+            `Shell feature ${feature.id} has no current open-face references.`)
+        : undefined;
+    default:
+      return undefined;
+  }
+}
+
+function artifactDependencyError(
+  status: Exclude<CadCurrentExactResultStatus, "ready">,
+  code: CadExactResultDiagnostic["code"],
+  message: string
+) {
+  return { ok: false as const, status, code, message };
+}
+
+function requireArtifactDependency(
+  sourceKind: string,
+  dependencyShapePolicy: ExactBodyArtifactShapePolicy | undefined
+): void {
+  if (dependencyShapePolicy === undefined) {
+    throw new Error(
+      `Exact artifact dependency is unavailable for ${sourceKind}.`
+    );
+  }
+}
+
+function isPositiveFinite(value: number | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function isFiniteVector(
+  value: readonly number[]
+): value is readonly [number, number, number] {
+  return value.length === 3 && value.every(Number.isFinite);
+}
+
+function isUnitVector(value: readonly number[]): boolean {
+  return (
+    isFiniteVector(value) &&
+    Math.abs(Math.hypot(value[0], value[1], value[2]) - 1) <= 1e-9
+  );
+}
+
+function isArtifactPatternCount(value: number): boolean {
+  return Number.isInteger(value) && value >= 2 && value <= 4_096;
+}
+
+function isValidHoleTool(tool: DerivedHoleGeometrySource["tool"]): boolean {
+  const frame = tool.placementFrame;
+  return (
+    isPositiveFinite(tool.circle.radius) &&
+    tool.circle.center.length === 2 &&
+    tool.circle.center.every(Number.isFinite) &&
+    (tool.depthMode === "blind"
+      ? isPositiveFinite(tool.depth)
+      : tool.depth === undefined) &&
+    (frame === undefined ||
+      (isFiniteVector(frame.origin) &&
+        isFiniteVector(frame.uAxis) &&
+        isFiniteVector(frame.vAxis) &&
+        Math.hypot(...frame.uAxis) > 0 &&
+        Math.hypot(...frame.vAxis) > 0))
+  );
+}
+
+function getArtifactDependencyBodyId(
+  feature: CadFeatureSummary,
+  source: CurrentExactBodySource
+): string | undefined {
+  switch (feature.kind) {
+    case "hole":
+      return feature.targetBodyId;
+    case "shell":
+      return source.kind === "shell" &&
+        source.openFaceStableIds.some(
+          (localId) => !/^snapshot-local:face:[1-9][0-9]*$/.test(localId)
+        )
+        ? undefined
+        : feature.targetBodyId;
+    case "linearPattern":
+    case "circularPattern":
+    case "mirror":
+      return feature.seedBodyId;
+    default:
+      return undefined;
+  }
 }
 
 function resolvePrimitiveSource(

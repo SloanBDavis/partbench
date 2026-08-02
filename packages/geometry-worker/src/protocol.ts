@@ -3,7 +3,9 @@ import type {
   BooleanExtrudeToolSource,
   BooleanExtrudesRequest,
   EdgeFinishRequest,
+  ExactBodyArtifactLeaf,
   ExactBodyArtifactRequest,
+  ExactBodyArtifactSource,
   ExactBodyMetadataRequest,
   ExactTopologyCheckpointPayloadRequest,
   ExactTopologySnapshotRequest,
@@ -51,6 +53,7 @@ import type {
 } from "@web-cad/geometry-kernel";
 
 export type {
+  ExactBodyArtifactLeaf,
   ExactBodyArtifactRequest,
   ExactBodyArtifactSource,
   ExactBodyArtifactShapePolicy,
@@ -124,16 +127,42 @@ export interface GeometryWorkerResponse<
 export function getGeometryWorkerRequestTransferables(
   request: GeometryWorkerRequest
 ): readonly ArrayBuffer[] {
-  if (request.payload.op !== "geometry.exportStep") return [];
-  return [
-    ...new Set(
-      request.payload.bodies.flatMap((body) =>
-        body.brepBytes.buffer instanceof ArrayBuffer
-          ? [body.brepBytes.buffer]
-          : []
+  if (request.payload.op === "geometry.exportStep") {
+    return [
+      ...new Set(
+        request.payload.bodies.flatMap((body) =>
+          body.brepBytes.buffer instanceof ArrayBuffer
+            ? [body.brepBytes.buffer]
+            : []
+        )
       )
-    )
-  ];
+    ];
+  }
+  if (request.payload.op === "geometry.exactBodyArtifact") {
+    const leaf = getExactBodyArtifactSourceLeaf(request.payload.source);
+    return leaf?.brepBytes.buffer instanceof ArrayBuffer
+      ? [leaf.brepBytes.buffer]
+      : [];
+  }
+  return [];
+}
+
+export function getExactBodyArtifactSourceLeaf(
+  source: ExactBodyArtifactSource
+): ExactBodyArtifactLeaf | undefined {
+  switch (source.kind) {
+    case "bodyArtifact":
+      return source;
+    case "artifactHole":
+    case "artifactShell":
+      return source.target;
+    case "artifactLinearPattern":
+    case "artifactCircularPattern":
+    case "artifactMirror":
+      return source.seed;
+    default:
+      return undefined;
+  }
 }
 
 export interface GeometryWorkerTimings {

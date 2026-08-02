@@ -12,6 +12,7 @@ import {
   MAX_BOOLEAN_EXTRUDE_RECIPE_DEPTH,
   type BooleanExtrudeSource,
   type ExactBodyArtifactRequest,
+  type ExactBodyArtifactLeaf,
   type ExactBodyArtifactSource,
   type ExactBodyMetadataRequest,
   type GeometryKernelExactBodyArtifact,
@@ -379,6 +380,18 @@ function getMetadataSourceKind(
       return "hole";
     case "checkpointEdgeFinish":
       return "edgeFinish";
+    case "bodyArtifact":
+      return source.sourceKind;
+    case "artifactHole":
+      return "hole";
+    case "artifactLinearPattern":
+      return "linearPattern";
+    case "artifactCircularPattern":
+      return "circularPattern";
+    case "artifactMirror":
+      return "mirror";
+    case "artifactShell":
+      return "shell";
     default:
       return source.kind;
   }
@@ -468,7 +481,46 @@ function createExactBodyArtifactPayloadFixture(): GeometryKernelExactBodyArtifac
       measurementConfidence: "kernel-derived",
       diagnostics: []
     },
-    topologySnapshot
+    topologySnapshot,
+    displayMesh: {
+      primitive: "extrude",
+      positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      indices: new Uint32Array([0, 1, 2]),
+      vertexCount: 3,
+      triangleCount: 1,
+      faceCount: 1
+    }
+  };
+}
+
+async function createExactBodyArtifactLeafFixture(
+  shapePolicy: ExactBodyArtifactLeaf["shapePolicy"] = "singleSolid"
+): Promise<ExactBodyArtifactLeaf> {
+  const brepBytes = new Uint8Array([1, 2, 3, 4]);
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", brepBytes);
+  return {
+    kind: "bodyArtifact",
+    artifactVersion: "partbench.exact-body-artifact.v1",
+    bodyId: "dependency_body",
+    sourceType: "sketchExtrudeFeature",
+    documentSourceIdentity: {
+      algorithm: "partbench-source-v1",
+      sha256: "d".repeat(64)
+    },
+    bodySourceIdentitySignature: `body-topology-source:v1:${"e".repeat(64)}`,
+    sourceCacheKeySha256: "f".repeat(64),
+    sourceGraphNodeCount: 1,
+    units: "mm",
+    shapePolicy,
+    sourceKind: "extrude",
+    brepFormat: "occt-brep",
+    brepWriter: "BRepTools.Write_3",
+    brepBytes,
+    brepByteLength: brepBytes.byteLength,
+    brepSha256: Array.from(new Uint8Array(digest), (byte) =>
+      byte.toString(16).padStart(2, "0")
+    ).join(""),
+    topologySignature: "fnv1a32:12345678"
   };
 }
 
@@ -569,6 +621,54 @@ describe("geometry-kernel facade", () => {
     });
     expect(getGeometryResponseTransferables(invalid)).toEqual([]);
 
+    for (const [label, displayMesh] of [
+      [
+        "empty",
+        {
+          primitive: "extrude" as const,
+          positions: new Float32Array(),
+          indices: new Uint32Array(),
+          vertexCount: 0,
+          triangleCount: 0,
+          faceCount: 0
+        }
+      ],
+      [
+        "non-finite",
+        {
+          ...createExactBodyArtifactPayloadFixture().displayMesh,
+          positions: new Float32Array([Number.NaN, 0, 0, 1, 0, 0, 0, 1, 0])
+        }
+      ]
+    ] as const) {
+      const response = await executeGeometryKernelRequestWithMeshFactory(
+        createInjectedArtifactFactories(async () => ({
+          ...createExactBodyArtifactPayloadFixture(),
+          displayMesh
+        })),
+        createArtifactRequest(source, { bodyId: `invalid_${label}_mesh` })
+      );
+      expect(response).toMatchObject({
+        ok: false,
+        error: { code: "INVALID_RESULT" }
+      });
+      expect(getGeometryResponseTransferables(response)).toEqual([]);
+    }
+
+    const emptyBrep = await executeGeometryKernelRequestWithMeshFactory(
+      createInjectedArtifactFactories(async () => ({
+        ...createExactBodyArtifactPayloadFixture(),
+        brepBytes: new Uint8Array(),
+        brepByteLength: 0
+      })),
+      createArtifactRequest(source, { bodyId: "invalid_empty_brep" })
+    );
+    expect(emptyBrep).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_RESULT" }
+    });
+    expect(getGeometryResponseTransferables(emptyBrep)).toEqual([]);
+
     const overLimit = await executeGeometryKernelRequestWithMeshFactory(
       factories,
       createArtifactRequest(source, {
@@ -582,6 +682,176 @@ describe("geometry-kernel facade", () => {
     });
     expect(calls).toBe(1);
     expect(getGeometryResponseTransferables(overLimit)).toEqual([]);
+  });
+
+  it("validates one identity-bound leaf for all five artifact downstream sources", async () => {
+    const leaf = await createExactBodyArtifactLeafFixture();
+    const tool = {
+      sketchPlane: "XY" as const,
+      circle: { kind: "circle" as const, center: [0, 0] as const, radius: 0.5 },
+      depthMode: "blind" as const,
+      depth: 2,
+      direction: "positive" as const
+    };
+    const entries = [
+      {
+        kind: "hole",
+        shapePolicy: "singleSolid" as const,
+        source: { kind: "artifactHole" as const, target: leaf, tool }
+      },
+      {
+        kind: "hole",
+        shapePolicy: "singleShapeOneOrMoreSolids" as const,
+        source: {
+          kind: "artifactHole" as const,
+          target: {
+            ...leaf,
+            shapePolicy: "singleShapeOneOrMoreSolids" as const
+          },
+          tool
+        }
+      },
+      {
+        kind: "linearPattern",
+        shapePolicy: "singleShapeOneOrMoreSolids" as const,
+        source: {
+          kind: "artifactLinearPattern" as const,
+          seed: leaf,
+          direction: [1, 0, 0] as const,
+          spacing: 6,
+          instanceCount: 2
+        }
+      },
+      {
+        kind: "circularPattern",
+        shapePolicy: "singleShapeOneOrMoreSolids" as const,
+        source: {
+          kind: "artifactCircularPattern" as const,
+          seed: leaf,
+          axis: { origin: [0, 0, 0] as const, direction: [0, 0, 1] as const },
+          totalAngleDegrees: 180,
+          instanceCount: 2
+        }
+      },
+      {
+        kind: "mirror",
+        shapePolicy: "singleShapeOneOrMoreSolids" as const,
+        source: {
+          kind: "artifactMirror" as const,
+          seed: leaf,
+          plane: { point: [0, 0, 0] as const, normal: [1, 0, 0] as const },
+          includeOriginal: false
+        }
+      },
+      {
+        kind: "shell",
+        shapePolicy: "singleSolid" as const,
+        source: {
+          kind: "artifactShell" as const,
+          target: {
+            ...leaf,
+            shapePolicy: "singleShapeOneOrMoreSolids" as const
+          },
+          wallThickness: 0.2,
+          openFaces: [{ localId: "snapshot-local:face:1" }]
+        }
+      }
+    ] as const;
+
+    for (const entry of entries) {
+      const factory = vi.fn(async ({ source }) => {
+        expect(source).toBe(entry.source);
+        const payload = createExactBodyArtifactPayloadFixture();
+        return {
+          ...payload,
+          sourceKind: entry.kind,
+          metadata: { ...payload.metadata, sourceKind: entry.kind },
+          topologySnapshot: {
+            ...payload.topologySnapshot,
+            sourceKind: entry.kind
+          }
+        };
+      });
+      const response = await executeGeometryKernelRequestWithMeshFactory(
+        createInjectedArtifactFactories(factory),
+        createArtifactRequest(entry.source, {
+          bodyId: `artifact_${entry.kind}`,
+          sourceGraphNodeCount: 2,
+          shapePolicy: entry.shapePolicy
+        })
+      );
+      expect(response).toMatchObject({
+        ok: true,
+        artifact: { sourceKind: entry.kind, shapePolicy: entry.shapePolicy }
+      });
+      expect(factory).toHaveBeenCalledOnce();
+    }
+
+    const rejectedFactory = vi.fn(async () =>
+      createExactBodyArtifactPayloadFixture()
+    );
+    const mismatchedHolePolicy =
+      await executeGeometryKernelRequestWithMeshFactory(
+        createInjectedArtifactFactories(rejectedFactory),
+        createArtifactRequest(
+          {
+            kind: "artifactHole",
+            target: {
+              ...leaf,
+              shapePolicy: "singleShapeOneOrMoreSolids"
+            },
+            tool
+          },
+          { sourceGraphNodeCount: 2, shapePolicy: "singleSolid" }
+        )
+      );
+    expect(mismatchedHolePolicy).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_DIMENSIONS" }
+    });
+    const invalid = await executeGeometryKernelRequestWithMeshFactory(
+      createInjectedArtifactFactories(rejectedFactory),
+      createArtifactRequest(
+        {
+          kind: "artifactLinearPattern",
+          seed: { ...leaf, brepSha256: "0".repeat(64) },
+          direction: [1, 0, 0],
+          spacing: 1,
+          instanceCount: 4_097
+        },
+        {
+          sourceGraphNodeCount: 2,
+          shapePolicy: "singleShapeOneOrMoreSolids"
+        }
+      )
+    );
+    expect(invalid).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_DIMENSIONS" }
+    });
+    const corrupt = await executeGeometryKernelRequestWithMeshFactory(
+      createInjectedArtifactFactories(rejectedFactory),
+      createArtifactRequest(
+        {
+          kind: "artifactMirror",
+          seed: { ...leaf, brepSha256: "0".repeat(64) },
+          plane: { point: [0, 0, 0], normal: [1, 0, 0] },
+          includeOriginal: false
+        },
+        {
+          sourceGraphNodeCount: 2,
+          shapePolicy: "singleShapeOneOrMoreSolids"
+        }
+      )
+    );
+    expect(corrupt).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_DIMENSIONS",
+        message: expect.stringMatching(/hash/i)
+      }
+    });
+    expect(rejectedFactory).not.toHaveBeenCalled();
   });
 
   it("tessellates checkpoint-backed exact bodies only after hash validation", async () => {
@@ -2032,7 +2302,9 @@ describe("geometry-kernel facade", () => {
         vertexCount: response.artifact.topologySnapshot.entityCounts.vertexCount
       });
       expect(getGeometryResponseTransferables(response)).toEqual([
-        response.artifact.brepBytes.buffer
+        response.artifact.brepBytes.buffer,
+        response.artifact.displayMesh.positions.buffer,
+        response.artifact.displayMesh.indices.buffer
       ]);
       const checkpoint = await executeGeometryKernelRequest({
         id: "geometry_req_shared_artifact_checkpoint",
@@ -2274,6 +2546,7 @@ describe("geometry-kernel facade", () => {
         {
           label: "mirror",
           nodes: 2,
+          policy: "singleShapeOneOrMoreSolids",
           source: {
             kind: "mirror",
             seed: {
@@ -2468,7 +2741,7 @@ describe("geometry-kernel facade", () => {
           {
             bodyId: "imported_checkpoint_body",
             sourceType: "importedStepBody",
-            shapePolicy: "checkpointShape"
+            shapePolicy: "singleShapeOneOrMoreSolids"
           }
         )
       );
@@ -2491,7 +2764,7 @@ describe("geometry-kernel facade", () => {
         createArtifactRequest(target, {
           bodyId: "authored_checkpoint_body",
           sourceType: "sketchExtrudeFeature",
-          shapePolicy: "checkpointShape"
+          shapePolicy: "singleShapeOneOrMoreSolids"
         })
       );
       expect(restoredAuthored.ok).toBe(true);

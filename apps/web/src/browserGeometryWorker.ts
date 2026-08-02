@@ -1,4 +1,7 @@
+import { CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS } from "@web-cad/cad-protocol";
 import type {
+  ExactBodyArtifactLeaf,
+  ExactBodyArtifactSource,
   GeometryWorker,
   GeometryWorkerDiagnostics,
   GeometryWorkerRequest,
@@ -6,6 +9,7 @@ import type {
 } from "@web-cad/geometry-worker";
 import {
   createWorkerErrorDiagnostics,
+  getExactBodyArtifactSourceLeaf,
   getGeometryWorkerRequestTransferables
 } from "@web-cad/geometry-worker/browser";
 import { runCleanupActions } from "./runCleanupActions";
@@ -201,8 +205,9 @@ export class BrowserGeometryWorker implements GeometryWorker {
       });
 
       try {
-        this.#transport.postMessage(request, [
-          ...getGeometryWorkerRequestTransferables(request)
+        const transmittedRequest = createTransferOwnedRequest(request);
+        this.#transport.postMessage(transmittedRequest, [
+          ...getGeometryWorkerRequestTransferables(transmittedRequest)
         ]);
       } catch (error) {
         this.#pendingRequests.delete(request.id);
@@ -234,6 +239,48 @@ export class BrowserGeometryWorker implements GeometryWorker {
       () => this.#transport.removeEventListener("error", this.#handleError),
       () => this.#transport.terminate()
     ]);
+  }
+}
+
+function createTransferOwnedRequest<
+  TPayload extends GeometryWorkerRequest["payload"]
+>(request: GeometryWorkerRequest<TPayload>): GeometryWorkerRequest<TPayload> {
+  if (request.payload.op !== "geometry.exactBodyArtifact") return request;
+  const leaf = getExactBodyArtifactSourceLeaf(request.payload.source);
+  if (!leaf) return request;
+  if (
+    leaf.brepByteLength !== leaf.brepBytes.byteLength ||
+    leaf.brepBytes.byteLength >
+      CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxBrepArtifactBytes
+  ) {
+    throw new Error("Exact body artifact leaf bytes exceed transport limits.");
+  }
+  const source = replaceExactBodyArtifactSourceLeaf(request.payload.source, {
+    ...leaf,
+    brepBytes: leaf.brepBytes.slice()
+  });
+  return {
+    ...request,
+    payload: { ...request.payload, source }
+  } as GeometryWorkerRequest<TPayload>;
+}
+
+function replaceExactBodyArtifactSourceLeaf(
+  source: ExactBodyArtifactSource,
+  leaf: ExactBodyArtifactLeaf
+): ExactBodyArtifactSource {
+  switch (source.kind) {
+    case "bodyArtifact":
+      return leaf;
+    case "artifactHole":
+    case "artifactShell":
+      return { ...source, target: leaf };
+    case "artifactLinearPattern":
+    case "artifactCircularPattern":
+    case "artifactMirror":
+      return { ...source, seed: leaf };
+    default:
+      return source;
   }
 }
 

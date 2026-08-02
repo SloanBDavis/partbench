@@ -74,7 +74,8 @@ export function createDerivedGeometrySourcesFromDocument(
     string,
     CadGeneratedFaceReference
   > = new Map(),
-  sourceIdentitySignaturesByBodyId: ReadonlyMap<string, string> = new Map()
+  sourceIdentitySignaturesByBodyId: ReadonlyMap<string, string> = new Map(),
+  includeConsumed = false
 ): readonly DerivedGeometrySource[] {
   const primitives = [...document.objects.values()].map(
     createPrimitiveDerivedGeometrySource
@@ -98,9 +99,18 @@ export function createDerivedGeometrySourcesFromDocument(
       document.namedReferences,
       document.topologyIdentity,
       document,
-      sourceIdentitySignaturesByBodyId
+      sourceIdentitySignaturesByBodyId,
+      includeConsumed
     )
   ];
+}
+
+export function removeConsumedDerivedGeometrySources(
+  sources: readonly DerivedGeometrySource[],
+  features: readonly CadFeatureSummary[]
+): readonly DerivedGeometrySource[] {
+  const consumedBodyIds = createConsumedBodyIds(features);
+  return sources.filter((source) => !consumedBodyIds.has(source.id));
 }
 
 export function createAuthoredFeatureDerivedGeometrySources(
@@ -113,7 +123,8 @@ export function createAuthoredFeatureDerivedGeometrySources(
   namedReferences: CadDocument["namedReferences"] = new Map(),
   topologyIdentity: CadDocument["topologyIdentity"] = undefined,
   referenceDocument?: CadDocument,
-  sourceIdentitySignaturesByBodyId: ReadonlyMap<string, string> = new Map()
+  sourceIdentitySignaturesByBodyId: ReadonlyMap<string, string> = new Map(),
+  includeConsumed = false
 ): readonly (
   | DerivedExtrudeGeometrySource
   | DerivedBooleanExtrudeGeometrySource
@@ -127,7 +138,9 @@ export function createAuthoredFeatureDerivedGeometrySources(
   | DerivedSweepGeometrySource
   | DerivedLoftGeometrySource
 )[] {
-  const consumedBodyIds = createConsumedBodyIds(features);
+  const consumedBodyIds = includeConsumed
+    ? new Set<string>()
+    : createConsumedBodyIds(features);
 
   const sources = [
     ...createExtrudeDerivedGeometrySources(

@@ -25,13 +25,45 @@ import {
   createTorusTessellationWorkerRequest,
   getGeometryWorkerExactExportCapabilities,
   getGeometryWorkerRequestTransferables,
+  getExactBodyArtifactSourceLeaf,
   getGeometryWorkerStepImportCapabilities,
   createWorkerErrorDiagnostics,
   createWorkerSuccessDiagnostics,
   createGeometryKernelWorker
 } from "./index";
-import type { ExtrudeBooleanWorkerRequestInput } from "./index";
+import type {
+  ExactBodyArtifactLeaf,
+  ExactBodyArtifactSource,
+  ExtrudeBooleanWorkerRequestInput
+} from "./index";
 import { GeometryKernelBrowserWorker } from "./browser";
+
+function createArtifactLeafFixture(
+  brepBytes: Uint8Array
+): ExactBodyArtifactLeaf {
+  return {
+    kind: "bodyArtifact",
+    artifactVersion: "partbench.exact-body-artifact.v1",
+    bodyId: "body_seed",
+    sourceType: "primitiveFeature",
+    documentSourceIdentity: {
+      algorithm: "partbench-source-v1",
+      sha256: "a".repeat(64)
+    },
+    bodySourceIdentitySignature: `body-topology-source:v1:${"b".repeat(64)}`,
+    sourceCacheKeySha256: "c".repeat(64),
+    sourceGraphNodeCount: 1,
+    units: "mm",
+    shapePolicy: "singleSolid",
+    sourceKind: "box",
+    brepFormat: "occt-brep",
+    brepWriter: "BRepTools.Write_3",
+    brepBytes,
+    brepByteLength: brepBytes.byteLength,
+    brepSha256: "f".repeat(64),
+    topologySignature: "topology-seed"
+  };
+}
 
 const workerWireProfile = {
   kind: "wire" as const,
@@ -1257,6 +1289,91 @@ describe("geometry-worker", () => {
     });
   });
 
+  it("finds and transfers exact-range artifact leaves for every source branch", () => {
+    const retainedBytes = new Uint8Array([9, 1, 2, 9]);
+    const leaf = createArtifactLeafFixture(
+      new Uint8Array(retainedBytes.buffer, 1, 2)
+    );
+    const sources: readonly {
+      readonly source: ExactBodyArtifactSource;
+      readonly shapePolicy: "singleSolid" | "singleShapeOneOrMoreSolids";
+    }[] = [
+      { source: leaf, shapePolicy: "singleSolid" },
+      {
+        source: {
+          kind: "artifactHole",
+          target: leaf,
+          tool: {
+            sketchPlane: "XY",
+            circle: { kind: "circle", center: [0, 0], radius: 0.5 },
+            depthMode: "throughAll"
+          }
+        },
+        shapePolicy: "singleSolid"
+      },
+      {
+        source: {
+          kind: "artifactLinearPattern",
+          seed: leaf,
+          direction: [1, 0, 0],
+          spacing: 2,
+          instanceCount: 2
+        },
+        shapePolicy: "singleShapeOneOrMoreSolids"
+      },
+      {
+        source: {
+          kind: "artifactCircularPattern",
+          seed: leaf,
+          axis: { origin: [0, 0, 0], direction: [0, 0, 1] },
+          totalAngleDegrees: 180,
+          instanceCount: 2
+        },
+        shapePolicy: "singleShapeOneOrMoreSolids"
+      },
+      {
+        source: {
+          kind: "artifactMirror",
+          seed: leaf,
+          plane: { point: [0, 0, 0], normal: [1, 0, 0] },
+          includeOriginal: true
+        },
+        shapePolicy: "singleShapeOneOrMoreSolids"
+      },
+      {
+        source: {
+          kind: "artifactShell",
+          target: leaf,
+          wallThickness: 0.2,
+          openFaces: [{ localId: "snapshot-local:face:1" }]
+        },
+        shapePolicy: "singleSolid"
+      }
+    ];
+
+    for (const [index, entry] of sources.entries()) {
+      const request = createExactBodyArtifactWorkerRequest({
+        id: `worker_req_artifact_leaf_transfer_${index}`,
+        bodyId: `body_artifact_${index}`,
+        sourceType: "testFeature",
+        documentSourceIdentity: leaf.documentSourceIdentity,
+        bodySourceIdentitySignature: `body-topology-source:v1:${"d".repeat(64)}`,
+        sourceCacheKeySha256: "e".repeat(64),
+        sourceGraphNodeCount: entry.source.kind === "bodyArtifact" ? 1 : 2,
+        units: "mm",
+        shapePolicy: entry.shapePolicy,
+        source: entry.source
+      });
+
+      expect(getExactBodyArtifactSourceLeaf(entry.source)).toBe(leaf);
+      expect(leaf.brepBytes).toHaveLength(2);
+      expect(leaf.brepBytes.byteOffset).toBe(1);
+      expect(getGeometryWorkerRequestTransferables(request)).toEqual([
+        retainedBytes.buffer
+      ]);
+    }
+  });
+
   it("creates a typed exact topology snapshot worker request", () => {
     expect(
       createExactTopologySnapshotWorkerRequest({
@@ -2084,14 +2201,24 @@ describe("geometry-worker", () => {
     expect(response.response.ok).toBe(true);
     if (!response.response.ok) throw new Error(response.response.error.message);
     const byteLength = response.response.artifact.brepByteLength;
+    const positionByteLength =
+      response.response.artifact.displayMesh.positions.byteLength;
+    const indexByteLength =
+      response.response.artifact.displayMesh.indices.byteLength;
     expect(response.transferables).toEqual([
-      response.response.artifact.brepBytes.buffer
+      response.response.artifact.brepBytes.buffer,
+      response.response.artifact.displayMesh.positions.buffer,
+      response.response.artifact.displayMesh.indices.buffer
     ]);
-    const cloned = structuredClone(response.response.artifact.brepBytes, {
+    const cloned = structuredClone(response.response.artifact, {
       transfer: [...response.transferables]
     });
     expect(response.response.artifact.brepBytes.byteLength).toBe(0);
-    expect(cloned.byteLength).toBe(byteLength);
+    expect(response.response.artifact.displayMesh.positions.byteLength).toBe(0);
+    expect(response.response.artifact.displayMesh.indices.byteLength).toBe(0);
+    expect(cloned.brepBytes.byteLength).toBe(byteLength);
+    expect(cloned.displayMesh.positions.byteLength).toBe(positionByteLength);
+    expect(cloned.displayMesh.indices.byteLength).toBe(indexByteLength);
   }, 120_000);
 
   it("returns exact topology snapshots through the geometry kernel facade", async () => {

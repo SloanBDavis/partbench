@@ -563,6 +563,7 @@ type DerivedGeometrySourceBuilders = Pick<
   typeof import("./derivedGeometrySources"),
   | "createAuthoredFeatureDerivedGeometrySources"
   | "createDerivedGeometrySourcesFromDocument"
+  | "removeConsumedDerivedGeometrySources"
   | "createCurrentExactEvidence"
   | "createCurrentExactSources"
   | "createBodyTopologyDerivedExactMetadataSnapshot"
@@ -2972,14 +2973,17 @@ export function App() {
     () => createSketchDisplayState(sketches, generatedFacesByKey),
     [generatedFacesByKey, sketches]
   );
-  const baseDerivedGeometrySources = useMemo<readonly DerivedGeometrySource[]>(
+  const exactArtifactGeometrySources = useMemo<
+    readonly DerivedGeometrySource[]
+  >(
     () =>
       derivedGeometrySourceBuilders
         ? derivedGeometrySourceBuilders.createDerivedGeometrySourcesFromDocument(
             document,
             projectStructure.features,
             sourcePlacementFacesByKey,
-            bodySourceIdentitySignatures
+            bodySourceIdentitySignatures,
+            true
           )
         : [],
     [
@@ -2990,6 +2994,18 @@ export function App() {
       sourcePlacementFacesByKey
     ]
   );
+  const baseDerivedGeometrySources = useMemo<readonly DerivedGeometrySource[]>(
+    () =>
+      derivedGeometrySourceBuilders?.removeConsumedDerivedGeometrySources(
+        exactArtifactGeometrySources,
+        projectStructure.features
+      ) ?? [],
+    [
+      derivedGeometrySourceBuilders,
+      exactArtifactGeometrySources,
+      projectStructure.features
+    ]
+  );
   const currentExactSources = useMemo(
     () =>
       derivedGeometrySourceBuilders?.createCurrentExactSources({
@@ -2997,6 +3013,7 @@ export function App() {
         bodies: projectStructure.bodies,
         features: projectStructure.features,
         geometrySources: baseDerivedGeometrySources,
+        artifactGeometrySources: exactArtifactGeometrySources,
         checkpointPayloads: wcadTopologyCheckpointPayloadCache,
         sourceIdentitySignaturesByBodyId: bodySourceIdentitySignatures
       }) ?? {
@@ -3010,6 +3027,7 @@ export function App() {
       baseDerivedGeometrySources,
       derivedGeometrySourceBuilders,
       document,
+      exactArtifactGeometrySources,
       projectStructure.bodies,
       projectStructure.features,
       wcadTopologyCheckpointPayloadCache

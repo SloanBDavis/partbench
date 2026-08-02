@@ -2,9 +2,13 @@ import {
   createBoxTessellationWorkerRequest,
   createConeTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest,
+  createExactBodyArtifactWorkerRequest,
   createExactStepExportWorkerRequest,
   createSphereTessellationWorkerRequest,
   createTorusTessellationWorkerRequest,
+  getExactBodyArtifactSourceLeaf,
+  type ExactBodyArtifactLeaf,
+  type ExactBodyArtifactSource,
   type GeometryWorkerRequest
 } from "@web-cad/geometry-worker";
 import { describe, expect, it } from "vitest";
@@ -28,6 +32,54 @@ type MessageListener = (
   event: WorkerMessageEvent<GeometryWorkerMessage>
 ) => void;
 type ErrorListener = (event: WorkerErrorEvent) => void;
+
+function createArtifactLeafFixture(
+  brepBytes: Uint8Array
+): ExactBodyArtifactLeaf {
+  return {
+    kind: "bodyArtifact",
+    artifactVersion: "partbench.exact-body-artifact.v1",
+    bodyId: "body_seed",
+    sourceType: "primitiveFeature",
+    documentSourceIdentity: {
+      algorithm: "partbench-source-v1",
+      sha256: "a".repeat(64)
+    },
+    bodySourceIdentitySignature: `body-topology-source:v1:${"b".repeat(64)}`,
+    sourceCacheKeySha256: "c".repeat(64),
+    sourceGraphNodeCount: 1,
+    units: "mm",
+    shapePolicy: "singleSolid",
+    sourceKind: "box",
+    brepFormat: "occt-brep",
+    brepWriter: "BRepTools.Write_3",
+    brepBytes,
+    brepByteLength: brepBytes.byteLength,
+    brepSha256: "f".repeat(64),
+    topologySignature: "topology-seed"
+  };
+}
+
+function createArtifactPatternRequest(id: string, leaf: ExactBodyArtifactLeaf) {
+  return createExactBodyArtifactWorkerRequest({
+    id,
+    bodyId: "body_pattern",
+    sourceType: "linearPatternFeature",
+    documentSourceIdentity: leaf.documentSourceIdentity,
+    bodySourceIdentitySignature: `body-topology-source:v1:${"d".repeat(64)}`,
+    sourceCacheKeySha256: "e".repeat(64),
+    sourceGraphNodeCount: 2,
+    units: "mm",
+    shapePolicy: "singleShapeOneOrMoreSolids",
+    source: {
+      kind: "artifactLinearPattern",
+      seed: leaf,
+      direction: [1, 0, 0],
+      spacing: 2,
+      instanceCount: 2
+    }
+  });
+}
 
 class FakeGeometryWorkerTransport implements GeometryWorkerTransport {
   readonly requests: GeometryWorkerRequest[] = [];
@@ -314,6 +366,163 @@ describe("BrowserGeometryWorker", () => {
     await expect(responsePromise).resolves.toMatchObject({
       response: { ok: true, op: "geometry.exportStep" }
     });
+  });
+
+  it("transfers request-owned artifact leaf copies without detaching retained bytes", async () => {
+    const transport = new FakeGeometryWorkerTransport(
+      async (request) =>
+        ({
+          id: request.id,
+          version: request.version,
+          kind: request.kind,
+          payloadId: request.payload.id,
+          response: {
+            ok: false,
+            id: request.payload.id,
+            op: request.payload.op,
+            error: {
+              code: "KERNEL_FAILURE",
+              message: "Transfer-only fixture."
+            },
+            warnings: []
+          },
+          transferables: []
+        }) as GeometryWorkerMessage
+    );
+    const worker = new BrowserGeometryWorker(transport);
+    const retainedBuffer = new Uint8Array([9, 1, 2, 9]).buffer;
+    const retainedBytes = new Uint8Array(retainedBuffer, 1, 2);
+    const leaf = createArtifactLeafFixture(retainedBytes);
+    const sources: readonly {
+      readonly source: ExactBodyArtifactSource;
+      readonly shapePolicy: "singleSolid" | "singleShapeOneOrMoreSolids";
+    }[] = [
+      { source: leaf, shapePolicy: "singleSolid" },
+      {
+        source: {
+          kind: "artifactHole",
+          target: leaf,
+          tool: {
+            sketchPlane: "XY",
+            circle: { kind: "circle", center: [0, 0], radius: 0.5 },
+            depthMode: "throughAll"
+          }
+        },
+        shapePolicy: "singleSolid"
+      },
+      {
+        source: {
+          kind: "artifactLinearPattern",
+          seed: leaf,
+          direction: [1, 0, 0],
+          spacing: 2,
+          instanceCount: 2
+        },
+        shapePolicy: "singleShapeOneOrMoreSolids"
+      },
+      {
+        source: {
+          kind: "artifactCircularPattern",
+          seed: leaf,
+          axis: { origin: [0, 0, 0], direction: [0, 0, 1] },
+          totalAngleDegrees: 180,
+          instanceCount: 2
+        },
+        shapePolicy: "singleShapeOneOrMoreSolids"
+      },
+      {
+        source: {
+          kind: "artifactMirror",
+          seed: leaf,
+          plane: { point: [0, 0, 0], normal: [1, 0, 0] },
+          includeOriginal: true
+        },
+        shapePolicy: "singleShapeOneOrMoreSolids"
+      },
+      {
+        source: {
+          kind: "artifactShell",
+          target: leaf,
+          wallThickness: 0.2,
+          openFaces: [{ localId: "snapshot-local:face:1" }]
+        },
+        shapePolicy: "singleSolid"
+      }
+    ];
+
+    for (const [index, entry] of sources.entries()) {
+      const responsePromise = worker.execute(
+        createExactBodyArtifactWorkerRequest({
+          id: `browser_artifact_leaf_transfer_${index}`,
+          bodyId: `body_artifact_${index}`,
+          sourceType: "testFeature",
+          documentSourceIdentity: leaf.documentSourceIdentity,
+          bodySourceIdentitySignature: `body-topology-source:v1:${"d".repeat(64)}`,
+          sourceCacheKeySha256: "e".repeat(64),
+          sourceGraphNodeCount: entry.source.kind === "bodyArtifact" ? 1 : 2,
+          units: "mm",
+          shapePolicy: entry.shapePolicy,
+          source: entry.source
+        })
+      );
+
+      expect([...new Uint8Array(retainedBuffer)]).toEqual([9, 1, 2, 9]);
+      expect(retainedBytes.byteLength).toBe(2);
+      expect(transport.transfers[index]).toHaveLength(1);
+      expect(transport.transfers[index]![0]).not.toBe(retainedBuffer);
+      const transmitted = transport.requests[index]!.payload;
+      expect(transmitted.op).toBe("geometry.exactBodyArtifact");
+      if (transmitted.op === "geometry.exactBodyArtifact") {
+        expect(transmitted.source.kind).toBe(entry.source.kind);
+        const transmittedLeaf = getExactBodyArtifactSourceLeaf(
+          transmitted.source
+        );
+        expect([...transmittedLeaf!.brepBytes]).toEqual([1, 2]);
+        expect(transmittedLeaf!.brepBytes.buffer).not.toBe(retainedBuffer);
+      }
+      await expect(responsePromise).resolves.toMatchObject({
+        response: { ok: false, op: "geometry.exactBodyArtifact" }
+      });
+    }
+
+    await expect(
+      worker.execute(
+        createArtifactPatternRequest("browser_invalid_artifact_length", {
+          ...leaf,
+          brepByteLength: leaf.brepByteLength + 1
+        })
+      )
+    ).rejects.toMatchObject({
+      diagnostics: {
+        error: {
+          code: "WORKER_TRANSPORT_FAILED",
+          message: "Exact body artifact leaf bytes exceed transport limits."
+        }
+      }
+    });
+    expect(transport.requests).toHaveLength(sources.length);
+
+    const sharedBuffer = new SharedArrayBuffer(4);
+    new Uint8Array(sharedBuffer).set([9, 3, 4, 9]);
+    const sharedBytes = new Uint8Array(sharedBuffer, 1, 2);
+    await worker.execute(
+      createArtifactPatternRequest(
+        "browser_shared_artifact_leaf_transfer",
+        createArtifactLeafFixture(sharedBytes)
+      )
+    );
+    expect([...new Uint8Array(sharedBuffer)]).toEqual([9, 3, 4, 9]);
+    expect(transport.transfers[sources.length]).toHaveLength(1);
+    const sharedTransmitted = transport.requests[sources.length]!.payload;
+    if (
+      sharedTransmitted.op === "geometry.exactBodyArtifact" &&
+      sharedTransmitted.source.kind === "artifactLinearPattern"
+    ) {
+      expect([...sharedTransmitted.source.seed.brepBytes]).toEqual([3, 4]);
+      expect(sharedTransmitted.source.seed.brepBytes.buffer).toBeInstanceOf(
+        ArrayBuffer
+      );
+    }
   });
 
   it("rejects duplicate pending request ids instead of overwriting handlers", async () => {

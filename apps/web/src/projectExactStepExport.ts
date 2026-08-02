@@ -3,6 +3,7 @@ import {
   type CadEngine
 } from "@web-cad/cad-core";
 import {
+  CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS,
   validateCadExactExportPlan,
   type CadExactExportPlan,
   type CadExportDiagnostic,
@@ -17,8 +18,10 @@ import {
 } from "@web-cad/geometry-worker/browser";
 
 import {
-  createCurrentExactBodyArtifactSource,
-  getCurrentExactBodyArtifactShapePolicy,
+  createCurrentExactArtifactOperandSource,
+  preflightCurrentExactArtifactOperandSource,
+  type CurrentExactBodyArtifactEvidence,
+  type CurrentExactBodyArtifactDependency,
   type CurrentExactBodyResolution
 } from "./currentExactBodyResolver";
 import type {
@@ -35,10 +38,15 @@ export interface ProjectExactStepExportExecutionInput {
   readonly resolutions: readonly CurrentExactBodyResolution[];
   readonly runtime: Pick<
     DerivedGeometryRuntime,
-    "exactBodyArtifact" | "executeExactStepExport"
+    "exactBodyArtifact" | "executeExactStepExport" | "getModelWorkSnapshot"
   >;
   readonly onProgress?: (progress: ProjectExactStepExportProgress) => void;
+  readonly generation?: number;
 }
+
+type CurrentExactArtifactNode =
+  | Extract<CurrentExactBodyResolution, { readonly status: "ready" }>
+  | CurrentExactBodyArtifactDependency;
 
 export interface ProjectExactStepExportProgress {
   readonly phase: "building" | "writing";
@@ -85,7 +93,10 @@ export async function runProjectExactStepExport(input: {
   readonly resolutions: readonly CurrentExactBodyResolution[];
   readonly runtime: Pick<
     DerivedGeometryRuntime,
-    "exactBodyArtifact" | "executeExactStepExport" | "resumeModelWork"
+    | "exactBodyArtifact"
+    | "executeExactStepExport"
+    | "getModelWorkSnapshot"
+    | "resumeModelWork"
   >;
   readonly requestedBodyIds?: readonly string[];
   readonly downloadAvailable: boolean;
@@ -151,6 +162,7 @@ export async function runProjectExactStepExport(input: {
   }
 
   input.runtime.resumeModelWork();
+  const generation = input.runtime.getModelWorkSnapshot().generation;
   let currentJob: ProjectExactStepExportJobState = {
     status: "running",
     ...(requestedBodyIds ? { requestedBodyIds } : {}),
@@ -167,6 +179,7 @@ export async function runProjectExactStepExport(input: {
       exactExport,
       resolutions: input.resolutions,
       runtime: input.runtime,
+      generation,
       onProgress: (progress) => {
         currentJob = {
           status: "running",
@@ -181,6 +194,7 @@ export async function runProjectExactStepExport(input: {
         input.onJobChange(currentJob);
       }
     });
+    assertExactWorkCurrent(input.runtime, generation);
     if (!isExactExportPlanCurrent(input.engine, result.plan)) {
       throw new ProjectExactStepExportError(
         "EXPORT_SOURCE_CHANGED",
@@ -267,10 +281,14 @@ export async function executeProjectExactStepExport({
   exactExport,
   resolutions,
   runtime,
-  onProgress
+  onProgress,
+  generation: expectedGeneration
 }: ProjectExactStepExportExecutionInput): Promise<ProjectExactStepExportResult> {
   const plan = requireReadyPlan(exactExport);
   assertExactExportPlanCurrent(engine, plan);
+  const generation =
+    expectedGeneration ?? runtime.getModelWorkSnapshot().generation;
+  assertExactWorkCurrent(runtime, generation);
   onProgress?.({
     phase: "building",
     completedBodyCount: 0,
@@ -286,9 +304,213 @@ export async function executeProjectExactStepExport({
     );
   }
 
-  const artifacts: GeometryKernelExactBodyArtifact[] = [];
+  const selectedNodes = plan.bodies.map((body) => {
+    const resolution = resolutionsByBodyId.get(body.bodyId);
+    if (
+      !resolution ||
+      resolution.status !== "ready" ||
+      resolution.sourceType !== body.sourceType ||
+      resolution.sourceIdentitySignature !== body.sourceIdentitySignature
+    ) {
+      throw new ProjectExactStepExportError(
+        "EXPORT_SOURCE_CHANGED",
+        `Body ${body.bodyId} no longer matches the exact export plan.`
+      );
+    }
+    return resolution;
+  });
+
+  const artifactKeysByBodyId = new Map<string, string>();
+  const nodesByKey = new Map<string, CurrentExactArtifactNode>();
+  const shapePoliciesByKey = new Map<
+    string,
+    GeometryKernelExactBodyArtifact["shapePolicy"]
+  >();
+  const consumerCounts = new Map<string, number>();
+  const selectedKeys = new Set(selectedNodes.map(createArtifactNodeKey));
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  for (const root of selectedNodes) {
+    const stack: {
+      readonly node: CurrentExactArtifactNode;
+      readonly expanded: boolean;
+    }[] = [{ node: root, expanded: false }];
+    while (stack.length > 0) {
+      const { node, expanded } = stack.pop()!;
+      const key = createArtifactNodeKey(node);
+      if (expanded) {
+        const dependencyPolicy = node.artifactDependency
+          ? shapePoliciesByKey.get(
+              createArtifactNodeKey(node.artifactDependency)
+            )
+          : undefined;
+        try {
+          shapePoliciesByKey.set(
+            key,
+            preflightCurrentExactArtifactOperandSource(
+              node.source,
+              dependencyPolicy
+            )
+          );
+        } catch (error) {
+          throw new ProjectExactStepExportError(
+            "EXPORT_EXACT_ARTIFACT_INVALID",
+            `Exact dependency ${node.bodyId} is invalid: ${getErrorMessage(error)}`
+          );
+        }
+        visiting.delete(key);
+        visited.add(key);
+        continue;
+      }
+
+      const existing = artifactKeysByBodyId.get(node.bodyId);
+      if (existing && existing !== key) {
+        throw new ProjectExactStepExportError(
+          "EXPORT_EXACT_ARTIFACT_INVALID",
+          `Exact dependency ${node.bodyId} has conflicting current identities.`
+        );
+      }
+      if (visiting.has(key)) {
+        throw new ProjectExactStepExportError(
+          "EXPORT_EXACT_ARTIFACT_INVALID",
+          "Exact artifact dependency graph is cyclic."
+        );
+      }
+      if (visited.has(key)) continue;
+      if (!existing) {
+        artifactKeysByBodyId.set(node.bodyId, key);
+        nodesByKey.set(key, node);
+        if (
+          artifactKeysByBodyId.size >
+          CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxSourceGraphNodes
+        ) {
+          throw new ProjectExactStepExportError(
+            "EXPORT_EXACT_ARTIFACT_LIMIT_EXCEEDED",
+            `Exact dependency plan exceeds ${CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxSourceGraphNodes} bodies.`
+          );
+        }
+        if (node.artifactDependency) {
+          const childKey = createArtifactNodeKey(node.artifactDependency);
+          consumerCounts.set(childKey, (consumerCounts.get(childKey) ?? 0) + 1);
+        }
+      }
+      visiting.add(key);
+      stack.push({ node, expanded: true });
+      if (node.artifactDependency) {
+        stack.push({ node: node.artifactDependency, expanded: false });
+      }
+    }
+  }
+  for (const node of nodesByKey.values()) {
+    assertExactWorkCurrent(runtime, generation);
+    assertBodySourceIdentityCurrent(
+      engine,
+      node.bodyId,
+      node.sourceIdentitySignature
+    );
+  }
+  assertExactExportPlanCurrent(engine, plan);
+
+  const artifacts: CurrentExactBodyArtifactEvidence[] = [];
+  const artifactsByKey = new Map<string, CurrentExactBodyArtifactEvidence>();
+  const buildArtifact = async (
+    root: CurrentExactArtifactNode
+  ): Promise<CurrentExactBodyArtifactEvidence> => {
+    const pending: CurrentExactArtifactNode[] = [];
+    for (
+      let node: CurrentExactArtifactNode | undefined = root;
+      node && !artifactsByKey.has(createArtifactNodeKey(node));
+      node = node.artifactDependency
+    ) {
+      pending.push(node);
+    }
+
+    while (pending.length > 0) {
+      const node = pending.pop()!;
+      const key = createArtifactNodeKey(node);
+      const dependencyArtifact = node.artifactDependency
+        ? artifactsByKey.get(createArtifactNodeKey(node.artifactDependency))
+        : undefined;
+      assertExactWorkCurrent(runtime, generation);
+      assertExactExportPlanCurrent(engine, plan);
+      assertBodySourceIdentityCurrent(
+        engine,
+        node.bodyId,
+        node.sourceIdentitySignature
+      );
+      const source = createCurrentExactArtifactOperandSource(
+        node.source,
+        dependencyArtifact
+      );
+      const sourceGraphNodeCount = dependencyArtifact
+        ? 2
+        : node.sourceGraphNodeCount;
+      const shapePolicy = shapePoliciesByKey.get(key);
+      if (!shapePolicy) {
+        throw new ProjectExactStepExportError(
+          "EXPORT_EXACT_ARTIFACT_INVALID",
+          `Exact dependency ${node.bodyId} was not preflighted.`
+        );
+      }
+      const result = await runtime.exactBodyArtifact(
+        {
+          id: `exact-export-artifact-${artifactsByKey.size}`,
+          bodyId: node.bodyId,
+          sourceType: node.sourceType,
+          documentSourceIdentity: plan.sourceIdentity,
+          bodySourceIdentitySignature: node.sourceIdentitySignature,
+          sourceCacheKeySha256: node.cacheKeySha256,
+          sourceGraphNodeCount,
+          units: plan.units,
+          shapePolicy,
+          source
+        },
+        { intent: "user" }
+      );
+      assertArtifactMatchesIdentity(result.artifact, {
+        bodyId: node.bodyId,
+        sourceType: node.sourceType,
+        sourceIdentitySignature: node.sourceIdentitySignature,
+        sourceCacheKeySha256: node.cacheKeySha256,
+        sourceGraphNodeCount,
+        shapePolicy,
+        units: plan.units,
+        documentSourceIdentity: plan.sourceIdentity
+      });
+      assertExactWorkCurrent(runtime, generation);
+      assertExactExportPlanCurrent(engine, plan);
+      assertBodySourceIdentityCurrent(
+        engine,
+        node.bodyId,
+        node.sourceIdentitySignature
+      );
+      const evidence = retainArtifactEvidence(result.artifact);
+      assertArtifactAggregateWithinLimit([
+        ...artifactsByKey.values(),
+        evidence
+      ]);
+      artifactsByKey.set(key, evidence);
+      if (node.artifactDependency) {
+        const childKey = createArtifactNodeKey(node.artifactDependency);
+        const remaining = (consumerCounts.get(childKey) ?? 1) - 1;
+        consumerCounts.set(childKey, remaining);
+        if (remaining === 0 && !selectedKeys.has(childKey)) {
+          artifactsByKey.delete(childKey);
+        }
+      }
+    }
+    const artifact = artifactsByKey.get(createArtifactNodeKey(root));
+    if (!artifact) {
+      throw new ProjectExactStepExportError(
+        "EXPORT_EXACT_ARTIFACT_INVALID",
+        `Exact artifact ${root.bodyId} was released before its consumer.`
+      );
+    }
+    return artifact;
+  };
   try {
-    for (const [index, body] of plan.bodies.entries()) {
+    for (const body of plan.bodies) {
+      assertExactWorkCurrent(runtime, generation);
       assertExactExportPlanCurrent(engine, plan);
       const resolution = resolutionsByBodyId.get(body.bodyId);
       if (
@@ -303,41 +525,22 @@ export async function executeProjectExactStepExport({
         );
       }
 
-      let result: Awaited<ReturnType<typeof runtime.exactBodyArtifact>>;
+      let artifact: CurrentExactBodyArtifactEvidence;
       try {
-        const source = createCurrentExactBodyArtifactSource(resolution.source);
-        result = await runtime.exactBodyArtifact(
-          {
-            id: `exact-export-artifact-${index}`,
-            bodyId: body.bodyId,
-            sourceType: body.sourceType,
-            documentSourceIdentity: plan.sourceIdentity,
-            bodySourceIdentitySignature: body.sourceIdentitySignature,
-            sourceCacheKeySha256: resolution.cacheKeySha256,
-            sourceGraphNodeCount: resolution.sourceGraphNodeCount,
-            units: plan.units,
-            shapePolicy: getCurrentExactBodyArtifactShapePolicy(source),
-            source
-          },
-          { intent: "user" }
-        );
+        artifact = await buildArtifact(resolution);
       } catch (error) {
-        if (isGeometryCancellation(error)) throw error;
+        if (
+          isGeometryCancellation(error) ||
+          error instanceof ProjectExactStepExportError
+        )
+          throw error;
         throw new ProjectExactStepExportError(
           "EXPORT_EXACT_ARTIFACT_FAILED",
           `Exact artifact build failed for body ${body.bodyId}: ${getErrorMessage(error)}`
         );
       }
-      assertArtifactMatchesPlan(result.artifact, plan, body);
-      artifacts.push(result.artifact);
-      try {
-        assertExactBodyArtifactAggregateWithinLimit(artifacts);
-      } catch {
-        throw new ProjectExactStepExportError(
-          "EXPORT_EXACT_ARTIFACT_LIMIT_EXCEEDED",
-          "Exact export artifacts exceed the 512 MiB aggregate limit."
-        );
-      }
+      artifacts.push(artifact);
+      assertExactWorkCurrent(runtime, generation);
       assertExactExportPlanCurrent(engine, plan);
       onProgress?.({
         phase: "building",
@@ -352,6 +555,7 @@ export async function executeProjectExactStepExport({
       completedBodyCount: artifacts.length,
       totalBodyCount: plan.bodies.length
     });
+    assertExactWorkCurrent(runtime, generation);
     const request = createExactStepExportWorkerRequest({
       id: `exact-step-${plan.planIdentity.slice(0, 16)}`,
       units: plan.units,
@@ -382,6 +586,7 @@ export async function executeProjectExactStepExport({
     }
     const step = response.response.artifact;
     assertStepArtifactMatchesPlan(step, plan);
+    assertExactWorkCurrent(runtime, generation);
     assertExactExportPlanCurrent(engine, plan);
 
     return {
@@ -396,6 +601,12 @@ export async function executeProjectExactStepExport({
       bytes: step.bytes
     };
   } finally {
+    artifactsByKey.clear();
+    nodesByKey.clear();
+    shapePoliciesByKey.clear();
+    artifactKeysByBodyId.clear();
+    consumerCounts.clear();
+    selectedKeys.clear();
     artifacts.length = 0;
   }
 }
@@ -456,27 +667,114 @@ function assertExactExportPlanCurrent(
   }
 }
 
-function assertArtifactMatchesPlan(
+function assertArtifactMatchesIdentity(
   artifact: GeometryKernelExactBodyArtifact,
-  plan: CadExactExportPlan,
-  body: CadExactExportPlan["bodies"][number]
+  expected: {
+    readonly bodyId: string;
+    readonly sourceType: string;
+    readonly sourceIdentitySignature: string;
+    readonly sourceCacheKeySha256: string;
+    readonly sourceGraphNodeCount: number;
+    readonly shapePolicy: GeometryKernelExactBodyArtifact["shapePolicy"];
+    readonly units: CadExactExportPlan["units"];
+    readonly documentSourceIdentity: CadExactExportPlan["sourceIdentity"];
+  }
 ): void {
   if (
-    artifact.bodyId !== body.bodyId ||
-    artifact.sourceType !== body.sourceType ||
+    artifact.bodyId !== expected.bodyId ||
+    artifact.sourceType !== expected.sourceType ||
     artifact.documentSourceIdentity.algorithm !==
-      plan.sourceIdentity.algorithm ||
-    artifact.documentSourceIdentity.sha256 !== plan.sourceIdentity.sha256 ||
-    artifact.bodySourceIdentitySignature !== body.sourceIdentitySignature ||
-    artifact.units !== plan.units ||
+      expected.documentSourceIdentity.algorithm ||
+    artifact.documentSourceIdentity.sha256 !==
+      expected.documentSourceIdentity.sha256 ||
+    artifact.bodySourceIdentitySignature !== expected.sourceIdentitySignature ||
+    artifact.sourceCacheKeySha256 !== expected.sourceCacheKeySha256 ||
+    artifact.sourceGraphNodeCount !== expected.sourceGraphNodeCount ||
+    artifact.shapePolicy !== expected.shapePolicy ||
+    artifact.units !== expected.units ||
     artifact.brepFormat !== "occt-brep" ||
     artifact.brepByteLength !== artifact.brepBytes.byteLength ||
     artifact.brepByteLength <= 0 ||
-    !/^[0-9a-f]{64}$/.test(artifact.brepSha256)
+    !/^[0-9a-f]{64}$/.test(artifact.brepSha256) ||
+    !artifact.topologySnapshot.signature
   ) {
     throw new ProjectExactStepExportError(
       "EXPORT_EXACT_ARTIFACT_INVALID",
-      `Exact artifact evidence mismatched the plan for body ${body.bodyId}.`
+      `Exact artifact evidence mismatched the plan for body ${expected.bodyId}.`
+    );
+  }
+}
+
+function createArtifactNodeKey(node: CurrentExactArtifactNode): string {
+  return `${node.bodyId}\u0000${node.sourceIdentitySignature}\u0000${node.cacheKeySha256}`;
+}
+
+function retainArtifactEvidence(
+  artifact: GeometryKernelExactBodyArtifact
+): CurrentExactBodyArtifactEvidence {
+  return {
+    artifactVersion: artifact.artifactVersion,
+    bodyId: artifact.bodyId,
+    sourceType: artifact.sourceType,
+    documentSourceIdentity: artifact.documentSourceIdentity,
+    bodySourceIdentitySignature: artifact.bodySourceIdentitySignature,
+    sourceCacheKeySha256: artifact.sourceCacheKeySha256,
+    sourceGraphNodeCount: artifact.sourceGraphNodeCount,
+    units: artifact.units,
+    shapePolicy: artifact.shapePolicy,
+    sourceKind: artifact.sourceKind,
+    brepFormat: artifact.brepFormat,
+    brepWriter: artifact.brepWriter,
+    brepBytes: artifact.brepBytes,
+    brepByteLength: artifact.brepByteLength,
+    brepSha256: artifact.brepSha256,
+    topologySignature: artifact.topologySnapshot.signature
+  };
+}
+
+function assertArtifactAggregateWithinLimit(
+  artifacts: readonly Pick<GeometryKernelExactBodyArtifact, "brepByteLength">[]
+): void {
+  try {
+    assertExactBodyArtifactAggregateWithinLimit(artifacts);
+  } catch {
+    throw new ProjectExactStepExportError(
+      "EXPORT_EXACT_ARTIFACT_LIMIT_EXCEEDED",
+      "Exact export artifacts exceed the 512 MiB aggregate limit."
+    );
+  }
+}
+
+function assertBodySourceIdentityCurrent(
+  engine: CadEngine,
+  bodyId: string,
+  sourceIdentitySignature: string
+): void {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "body.topology", bodyId }
+  });
+  if (
+    !response.ok ||
+    response.query !== "body.topology" ||
+    response.topology.sourceIdentity.signature !== sourceIdentitySignature
+  ) {
+    throw new ProjectExactStepExportError(
+      "EXPORT_SOURCE_CHANGED",
+      `Body ${bodyId} source identity changed during exact dependency construction.`
+    );
+  }
+}
+
+function assertExactWorkCurrent(
+  runtime: Pick<DerivedGeometryRuntime, "getModelWorkSnapshot">,
+  generation: number
+): void {
+  const snapshot = runtime.getModelWorkSnapshot();
+  if (snapshot.stopped || snapshot.generation !== generation) {
+    throw new ProjectExactStepExportError(
+      "EXPORT_CANCELLED",
+      "Exact dependency construction was cancelled or replaced."
     );
   }
 }
@@ -504,7 +802,9 @@ function isGeometryCancellation(error: unknown): boolean {
   return (
     error instanceof Error &&
     (error.name === "GeometryJobGenerationError" ||
-      ("code" in error && error.code === "GEOMETRY_JOB_GENERATION_CANCELLED"))
+      ("code" in error &&
+        (error.code === "GEOMETRY_JOB_GENERATION_CANCELLED" ||
+          error.code === "EXPORT_CANCELLED")))
   );
 }
 

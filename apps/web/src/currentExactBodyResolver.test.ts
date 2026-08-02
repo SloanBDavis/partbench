@@ -82,9 +82,10 @@ describe("currentExactBodyResolver", () => {
           )?.consumedByFeatureId
       );
       expect(active).not.toHaveLength(0);
-      expect(active.every((resolution) => resolution.status === "ready")).toBe(
-        true
-      );
+      expect(
+        active.every((resolution) => resolution.status === "ready"),
+        `${fixtureId}: ${JSON.stringify(active)}`
+      ).toBe(true);
       for (const resolution of active) {
         if (resolution.status !== "ready") continue;
         expect(
@@ -92,8 +93,101 @@ describe("currentExactBodyResolver", () => {
             createCurrentExactBodyArtifactSource(resolution.source)
           )
         ).toBe(V21_EXACT_BODY_SOURCE_POLICY[resolution.sourceType].shapePolicy);
+        if (
+          resolution.source.kind === "shell" &&
+          resolution.source.openFaceStableIds.some(
+            (stableId) => !stableId.startsWith("snapshot-local:face:")
+          )
+        ) {
+          expect(resolution.artifactDependency).toBeUndefined();
+        } else if (
+          resolution.source.kind === "shell" ||
+          resolution.source.kind === "linearPattern" ||
+          resolution.source.kind === "circularPattern" ||
+          resolution.source.kind === "mirror"
+        ) {
+          expect(resolution.artifactDependency).toMatchObject({
+            bodyId:
+              resolution.source.kind === "shell"
+                ? resolution.source.target.id
+                : resolution.source.seed.id,
+            sourceIdentitySignature: expect.stringMatching(
+              /^body-topology-source:v1:/
+            ),
+            cacheKeySha256: expect.stringMatching(/^[0-9a-f]{64}$/)
+          });
+        }
       }
     }
+  });
+
+  it("accepts an artifact-backed downstream seed while rejecting an invalid operation reference", () => {
+    const engine = new CadEngine();
+    engine.applyBatch(createV15ReleaseSampleBatch("v15-linear-pattern").ops);
+    const context = createResolverContext(engine);
+    const feature = context.input.features.find(
+      (candidate) => candidate.kind === "linearPattern"
+    );
+    const source = feature
+      ? context.input.geometrySources.find(
+          (candidate) =>
+            candidate.id === feature.bodyId &&
+            candidate.kind === "linearPattern"
+        )
+      : undefined;
+    if (
+      !feature ||
+      feature.kind !== "linearPattern" ||
+      !source ||
+      source.kind !== "linearPattern"
+    ) {
+      throw new Error("Expected linear pattern fixture.");
+    }
+    const artifactBacked = {
+      ...source,
+      seed: {
+        ...source.seed,
+        placementError: "Seed is not an embedded extrude-family recipe."
+      },
+      placementError: "Seed is not an embedded extrude-family recipe."
+    };
+
+    expect(
+      resolveWithSource(context.input, feature.bodyId, artifactBacked)
+    ).toMatchObject({
+      status: "ready",
+      artifactDependency: { bodyId: feature.seedBodyId }
+    });
+
+    const invalidFeature = {
+      ...feature,
+      direction: {
+        kind: "generatedEdge" as const,
+        bodyId: feature.seedBodyId,
+        stableId: "missing-edge"
+      },
+      source: {
+        ...feature.source,
+        direction: {
+          kind: "generatedEdge" as const,
+          bodyId: feature.seedBodyId,
+          stableId: "missing-edge"
+        }
+      }
+    };
+    const invalid = resolveCurrentExactBodies({
+      ...context.input,
+      features: context.input.features.map((candidate) =>
+        candidate.id === feature.id ? invalidFeature : candidate
+      ),
+      geometrySources: context.input.geometrySources.map((candidate) =>
+        candidate.id === feature.bodyId ? artifactBacked : candidate
+      )
+    }).find((resolution) => resolution.bodyId === feature.bodyId);
+    expect(invalid).toMatchObject({
+      status: "blocked",
+      diagnostics: [{ message: expect.stringMatching(/direction.*resolves/i) }]
+    });
   });
 
   it("binds primitive fields and checkpoint B-rep evidence into cache identity", () => {
@@ -267,7 +361,7 @@ describe("currentExactBodyResolver", () => {
     });
   });
 
-  it("uses checkpoint targets for completed downstream operations but keeps imported holes blocked", () => {
+  it("uses checkpoint targets for completed downstream operations but keeps imported holes staged", () => {
     for (const operation of ["add", "cut"] as const) {
       const resolution = resolveImportedDownstream({
         kind: "boolean",
@@ -310,9 +404,14 @@ describe("currentExactBodyResolver", () => {
       status: "unsupported",
       diagnostics: [{ code: "EXPORT_BODY_SOURCE_UNSUPPORTED" }]
     });
-    expect(
-      resolveImportedDownstream({ kind: "hole", authoredTarget: true })
-    ).toMatchObject({
+    const authoredHole = resolveImportedDownstream({
+      kind: "hole",
+      authoredTarget: true
+    });
+    if (authoredHole.status !== "ready") {
+      throw new Error(JSON.stringify(authoredHole.diagnostics));
+    }
+    expect(authoredHole).toMatchObject({
       status: "ready",
       source: { kind: "checkpointHole" }
     });
@@ -380,15 +479,23 @@ function createResolverContext(
     }
   }
   const document = engine.getDocument();
+  const geometrySources = createDerivedGeometrySourcesFromDocument(
+    document,
+    structure.features,
+    faces,
+    signatures
+  );
   const input: CurrentExactBodyResolverInput = {
     document,
     bodies: structure.bodies,
     features: structure.features,
-    geometrySources: createDerivedGeometrySourcesFromDocument(
+    geometrySources,
+    artifactGeometrySources: createDerivedGeometrySourcesFromDocument(
       document,
       structure.features,
       faces,
-      signatures
+      signatures,
+      true
     ),
     checkpointPayloads,
     sourceIdentitySignaturesByBodyId: signatures
@@ -671,7 +778,31 @@ function resolveImportedDownstream(
               ]
             }
           }
-        : imported.document,
+        : input.kind === "hole"
+          ? {
+              ...imported.document,
+              sketches: new Map(imported.document.sketches).set(
+                "downstream_sketch",
+                {
+                  id: "downstream_sketch",
+                  name: "Downstream hole sketch",
+                  plane: "XY",
+                  entities: new Map([
+                    [
+                      "downstream_circle",
+                      {
+                        id: "downstream_circle",
+                        kind: "circle" as const,
+                        center: [0, 0] as const,
+                        radius: 0.25,
+                        construction: false
+                      }
+                    ]
+                  ])
+                }
+              )
+            }
+          : imported.document,
     bodies: [{ ...targetBody, consumedByFeatureId: featureId }, baseBody],
     features: [targetFeature, feature],
     geometrySources: [geometrySource],

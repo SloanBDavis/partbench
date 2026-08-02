@@ -388,6 +388,7 @@ export const V21_EXACT_RELEASE_CORPUS = [
       includeOriginal: false
     },
     sourceGraphNodeCount: 2,
+    shapePolicy: "singleShapeOneOrMoreSolids",
     expectedSourceKind: "mirror"
   }),
   entry({

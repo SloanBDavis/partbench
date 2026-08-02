@@ -71,6 +71,34 @@ const OCCT_WASM_TEST_TIMEOUT_MS = 120_000;
 type StepTestSource = Parameters<
   typeof createOcctExactBodyArtifactWithInstance
 >[1]["source"];
+type BodyArtifactTestLeaf = Extract<StepTestSource, { kind: "bodyArtifact" }>;
+
+function createBodyArtifactTestLeaf(
+  artifact: ReturnType<typeof createOcctExactBodyArtifactWithInstance>
+): BodyArtifactTestLeaf {
+  return {
+    kind: "bodyArtifact",
+    artifactVersion: "partbench.exact-body-artifact.v1",
+    bodyId: "artifact_dependency",
+    sourceType: "sketchExtrudeFeature",
+    documentSourceIdentity: {
+      algorithm: "partbench-source-v1",
+      sha256: "a".repeat(64)
+    },
+    bodySourceIdentitySignature: `body-topology-source:v1:${"b".repeat(64)}`,
+    sourceCacheKeySha256: "c".repeat(64),
+    sourceGraphNodeCount: 1,
+    units: "mm",
+    shapePolicy: "singleSolid",
+    sourceKind: artifact.sourceKind,
+    brepFormat: artifact.brepFormat,
+    brepWriter: artifact.brepWriter,
+    brepBytes: artifact.brepBytes,
+    brepByteLength: artifact.brepByteLength,
+    brepSha256: "d".repeat(64),
+    topologySignature: artifact.topologySnapshot.signature
+  };
+}
 
 async function createStepFromSources(input: {
   readonly units: "mm" | "cm" | "m" | "in";
@@ -2812,6 +2840,17 @@ describe("occt-wasm", () => {
               })
             );
           })()
+        ],
+        [
+          "display",
+          override(
+            "BRepMesh_IncrementalMesh_2",
+            class {
+              constructor() {
+                throw new Error("Injected display failure.");
+              }
+            }
+          )
         ]
       ];
 
@@ -2906,6 +2945,333 @@ describe("occt-wasm", () => {
         expect(metadata.topologyCounts.solidCount).toBeGreaterThan(0);
       }
       expect([...oc.FS.readdir("/tmp")].sort()).toEqual(filesBefore);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "parses one verified artifact leaf once for hole, pattern, mirror, and local-face shell results",
+    async () => {
+      const oc = await loadOcct();
+      const seed = createOcctExactBodyArtifactWithInstance(oc, {
+        source: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [4, 0],
+            width: 4,
+            height: 4
+          },
+          depth: 4,
+          side: "positive"
+        }
+      });
+      const leaf = createBodyArtifactTestLeaf(seed);
+      const face = seed.topologySnapshot.entities.find(
+        (entity) => entity.kind === "face"
+      );
+      expect(face).toBeDefined();
+      const sources: readonly {
+        readonly expectedKind:
+          | "hole"
+          | "linearPattern"
+          | "circularPattern"
+          | "mirror"
+          | "shell";
+        readonly source: StepTestSource;
+      }[] = [
+        {
+          expectedKind: "hole",
+          source: {
+            kind: "artifactHole",
+            target: leaf,
+            tool: {
+              sketchPlane: "XY",
+              circle: { kind: "circle", center: [4, 0], radius: 0.5 },
+              depthMode: "blind",
+              depth: 2,
+              direction: "positive"
+            }
+          }
+        },
+        {
+          expectedKind: "linearPattern",
+          source: {
+            kind: "artifactLinearPattern",
+            seed: leaf,
+            direction: [1, 0, 0],
+            spacing: 8,
+            instanceCount: 2
+          }
+        },
+        {
+          expectedKind: "circularPattern",
+          source: {
+            kind: "artifactCircularPattern",
+            seed: leaf,
+            axis: { origin: [0, 0, 0], direction: [0, 0, 1] },
+            totalAngleDegrees: 180,
+            instanceCount: 2
+          }
+        },
+        {
+          expectedKind: "mirror",
+          source: {
+            kind: "artifactMirror",
+            seed: leaf,
+            plane: { point: [0, 0, 0], normal: [1, 0, 0] },
+            includeOriginal: true
+          }
+        },
+        {
+          expectedKind: "shell",
+          source: {
+            kind: "artifactShell",
+            target: {
+              ...leaf,
+              shapePolicy: "singleShapeOneOrMoreSolids"
+            },
+            wallThickness: 0.2,
+            openFaces: [{ localId: face!.localId }]
+          }
+        }
+      ];
+      const files = () => ({
+        root: [...oc.FS.readdir("/")].sort(),
+        tmp: [...oc.FS.readdir("/tmp")].sort()
+      });
+      const meshMeasures = (mesh: typeof seed.displayMesh) => {
+        let surfaceArea = 0;
+        let signedVolume = 0;
+        for (let index = 0; index < mesh.indices.length; index += 3) {
+          const vertices = [0, 1, 2].map((offset) => {
+            const vertexIndex = mesh.indices[index + offset]! * 3;
+            return [
+              mesh.positions[vertexIndex]!,
+              mesh.positions[vertexIndex + 1]!,
+              mesh.positions[vertexIndex + 2]!
+            ] as const;
+          });
+          const [a, b, c] = vertices;
+          const ab = [b![0] - a![0], b![1] - a![1], b![2] - a![2]];
+          const ac = [c![0] - a![0], c![1] - a![1], c![2] - a![2]];
+          const cross = [
+            ab[1]! * ac[2]! - ab[2]! * ac[1]!,
+            ab[2]! * ac[0]! - ab[0]! * ac[2]!,
+            ab[0]! * ac[1]! - ab[1]! * ac[0]!
+          ];
+          surfaceArea += Math.hypot(...cross) / 2;
+          signedVolume +=
+            (a![0] * (b![1] * c![2] - b![2] * c![1]) -
+              a![1] * (b![0] * c![2] - b![2] * c![0]) +
+              a![2] * (b![0] * c![1] - b![1] * c![0])) /
+            6;
+        }
+        return { surfaceArea, volume: Math.abs(signedVolume) };
+      };
+      const filesBefore = files();
+      let multiSolidArtifact:
+        | ReturnType<typeof createOcctExactBodyArtifactWithInstance>
+        | undefined;
+
+      for (const entry of sources) {
+        let reads = 0;
+        const instance = new Proxy(oc, {
+          get(target, candidate) {
+            if (candidate !== "BRepTools")
+              return Reflect.get(target, candidate);
+            return new Proxy(oc.BRepTools, {
+              get(brepTools, method) {
+                if (method !== "Read_2") return Reflect.get(brepTools, method);
+                return (...args: Parameters<typeof oc.BRepTools.Read_2>) => {
+                  reads += 1;
+                  return oc.BRepTools.Read_2(...args);
+                };
+              }
+            });
+          }
+        }) as OpenCascadeInstance;
+        const artifact = createOcctExactBodyArtifactWithInstance(instance, {
+          source: entry.source
+        });
+        expect(reads, entry.expectedKind).toBe(1);
+        expect(artifact.sourceKind).toBe(entry.expectedKind);
+        expect(artifact.brepByteLength).toBe(artifact.brepBytes.byteLength);
+        expect(artifact.metadata.topologyCounts.solidCount).toBe(
+          artifact.topologySnapshot.entityCounts.solidCount
+        );
+        expect(artifact.displayMesh.vertexCount).toBeGreaterThan(0);
+        expect(artifact.displayMesh.triangleCount).toBeGreaterThan(0);
+        const displayBounds = {
+          min: [
+            Number.POSITIVE_INFINITY,
+            Number.POSITIVE_INFINITY,
+            Number.POSITIVE_INFINITY
+          ],
+          max: [
+            Number.NEGATIVE_INFINITY,
+            Number.NEGATIVE_INFINITY,
+            Number.NEGATIVE_INFINITY
+          ]
+        };
+        for (
+          let index = 0;
+          index < artifact.displayMesh.positions.length;
+          index += 1
+        ) {
+          const axis = index % 3;
+          const coordinate = artifact.displayMesh.positions[index]!;
+          displayBounds.min[axis] = Math.min(
+            displayBounds.min[axis]!,
+            coordinate
+          );
+          displayBounds.max[axis] = Math.max(
+            displayBounds.max[axis]!,
+            coordinate
+          );
+        }
+        for (const axis of [0, 1, 2] as const) {
+          expect(displayBounds.min[axis]).toBeCloseTo(
+            artifact.metadata.bounds.min[axis],
+            2
+          );
+          expect(displayBounds.max[axis]).toBeCloseTo(
+            artifact.metadata.bounds.max[axis],
+            2
+          );
+        }
+        const reparsed = createOcctExactBodyArtifactWithInstance(oc, {
+          source: {
+            ...createBodyArtifactTestLeaf(artifact),
+            shapePolicy:
+              artifact.metadata.topologyCounts.solidCount === 1
+                ? "singleSolid"
+                : "singleShapeOneOrMoreSolids"
+          }
+        });
+        expect(reparsed.metadata.topologyCounts).toEqual(
+          artifact.metadata.topologyCounts
+        );
+        expect(reparsed.metadata.volume).toBeCloseTo(
+          artifact.metadata.volume,
+          8
+        );
+        expect(reparsed.metadata.surfaceArea).toBeCloseTo(
+          artifact.metadata.surfaceArea,
+          8
+        );
+        for (const axis of [0, 1, 2] as const) {
+          expect(reparsed.metadata.bounds.min[axis]).toBeCloseTo(
+            artifact.metadata.bounds.min[axis],
+            8
+          );
+          expect(reparsed.metadata.bounds.max[axis]).toBeCloseTo(
+            artifact.metadata.bounds.max[axis],
+            8
+          );
+          expect(reparsed.metadata.centroid[axis]).toBeCloseTo(
+            artifact.metadata.centroid[axis],
+            8
+          );
+        }
+        expect(reparsed.displayMesh).toMatchObject({
+          vertexCount: artifact.displayMesh.vertexCount,
+          triangleCount: artifact.displayMesh.triangleCount,
+          faceCount: artifact.displayMesh.faceCount
+        });
+        const measures = meshMeasures(artifact.displayMesh);
+        const reparsedMeasures = meshMeasures(reparsed.displayMesh);
+        expect(reparsedMeasures.surfaceArea).toBeCloseTo(
+          measures.surfaceArea,
+          4
+        );
+        expect(reparsedMeasures.volume).toBeCloseTo(measures.volume, 4);
+        const positions = [...artifact.displayMesh.positions].sort(
+          (left, right) => left - right
+        );
+        const reparsedPositions = [...reparsed.displayMesh.positions].sort(
+          (left, right) => left - right
+        );
+        expect(reparsedPositions).toHaveLength(positions.length);
+        for (const [index, coordinate] of positions.entries()) {
+          expect(reparsedPositions[index]).toBeCloseTo(coordinate, 5);
+        }
+        expect(reparsed.topologySnapshot.signature).toBe(
+          artifact.topologySnapshot.signature
+        );
+        if (entry.expectedKind === "linearPattern") {
+          multiSolidArtifact = artifact;
+        }
+        expect(files(), entry.expectedKind).toEqual(filesBefore);
+      }
+
+      let nullShapeDeleted = false;
+      let nullCutDeleted = false;
+      const nullResultInstance = new Proxy(oc, {
+        get(target, candidate) {
+          if (candidate !== "BRepAlgoAPI_Cut_3") {
+            return Reflect.get(target, candidate);
+          }
+          return class {
+            HasErrors() {
+              return false;
+            }
+            Shape() {
+              return {
+                IsNull: () => true,
+                delete: () => {
+                  nullShapeDeleted = true;
+                }
+              };
+            }
+            delete() {
+              nullCutDeleted = true;
+            }
+          };
+        }
+      }) as OpenCascadeInstance;
+      expect(() =>
+        createOcctExactBodyArtifactWithInstance(nullResultInstance, {
+          source: sources[0]!.source
+        })
+      ).toThrow(/null shape/i);
+      expect({ nullShapeDeleted, nullCutDeleted }).toEqual({
+        nullShapeDeleted: true,
+        nullCutDeleted: true
+      });
+      expect(files()).toEqual(filesBefore);
+
+      expect(multiSolidArtifact?.metadata.topologyCounts.solidCount).toBe(2);
+      expect(() =>
+        createOcctExactBodyArtifactWithInstance(oc, {
+          source: createBodyArtifactTestLeaf(multiSolidArtifact!)
+        })
+      ).toThrow(/shape policy/i);
+      expect(files()).toEqual(filesBefore);
+      expect(() =>
+        createOcctExactBodyArtifactWithInstance(oc, {
+          source: { ...leaf, brepByteLength: leaf.brepByteLength + 1 }
+        })
+      ).toThrow(/artifact leaf/i);
+      expect(files()).toEqual(filesBefore);
+
+      expect(() =>
+        createOcctExactBodyArtifactWithInstance(oc, {
+          source: {
+            kind: "artifactHole",
+            target: { ...leaf, topologySignature: "fnv1a32:bad00000" },
+            tool: {
+              sketchPlane: "XY",
+              circle: { kind: "circle", center: [4, 0], radius: 0.5 },
+              depthMode: "blind",
+              depth: 2,
+              direction: "positive"
+            }
+          }
+        })
+      ).toThrow(/topology signature/i);
+      expect(files()).toEqual(filesBefore);
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );

@@ -4027,10 +4027,7 @@ export interface V21ExactBodySourcePolicy {
   readonly featureKind: CadFeatureSummary["kind"];
   readonly completedRelease: "V12-V14" | "V15" | "V16" | "V17" | "V19";
   readonly completedConsumers: readonly V21ExactBodyConsumer[];
-  readonly shapePolicy:
-    | "singleSolid"
-    | "singleShapeOneOrMoreSolids"
-    | "checkpointShape";
+  readonly shapePolicy: "singleSolid" | "singleShapeOneOrMoreSolids";
   readonly cases: readonly string[];
 }
 
@@ -4174,7 +4171,7 @@ export const V21_EXACT_BODY_SOURCE_POLICY = {
       "fillet",
       "sketchOnFace"
     ],
-    shapePolicy: "checkpointShape",
+    shapePolicy: "singleShapeOneOrMoreSolids",
     cases: [
       "standalone-solid",
       "supported-compound",

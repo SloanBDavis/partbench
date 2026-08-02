@@ -26,6 +26,10 @@ export interface OcctShellInput {
   readonly angularDeflection?: number;
 }
 
+export interface OcctTopologyFaceRef {
+  readonly localId: string;
+}
+
 interface GeometryKernelLikeError {
   readonly code:
     | "SHELL_GEOMETRY_FAILED"
@@ -115,6 +119,94 @@ export function makeShellShape(
   targetShape: TopoDS_Shape,
   input: Pick<OcctShellInput, "target" | "wallThickness" | "openFaceStableIds">
 ): TopoDS_Shape {
+  const selectedFaces: TopoDS_Face[] = [];
+  try {
+    for (const stableId of input.openFaceStableIds) {
+      selectedFaces.push(findOpenFace(oc, targetShape, input.target, stableId));
+    }
+    return makeShellShapeWithFaces(
+      oc,
+      targetShape,
+      input.wallThickness,
+      selectedFaces
+    );
+  } finally {
+    for (const face of selectedFaces) face.delete();
+  }
+}
+
+export function makeArtifactShellShape(
+  oc: OpenCascadeInstance,
+  targetShape: TopoDS_Shape,
+  input: {
+    readonly wallThickness: number;
+    readonly openFaces: readonly OcctTopologyFaceRef[];
+  }
+): TopoDS_Shape {
+  if (!Array.isArray(input.openFaces) || input.openFaces.length > 4_096) {
+    throw {
+      code: "SHELL_GEOMETRY_FAILED",
+      message: "Artifact shell openFaces must be a bounded face list."
+    } satisfies GeometryKernelLikeError;
+  }
+  const selectedFaces: TopoDS_Face[] = [];
+  const selectedIds = new Set<string>();
+  const map = new oc.TopTools_IndexedMapOfShape_1();
+  let mappedShape: TopoDS_Shape | undefined;
+  try {
+    const faceType = oc.TopAbs_ShapeEnum.TopAbs_FACE as unknown as Parameters<
+      typeof oc.TopExp.MapShapes_1
+    >[1];
+    oc.TopExp.MapShapes_1(targetShape, faceType, map);
+    for (const ref of input.openFaces) {
+      const localId = ref?.localId;
+      const match =
+        typeof localId === "string"
+          ? /^snapshot-local:face:([1-9][0-9]*)$/.exec(localId)
+          : null;
+      const index = match ? Number(match[1]) : Number.NaN;
+      if (
+        !match ||
+        !Number.isSafeInteger(index) ||
+        index > map.Size() ||
+        selectedIds.has(localId as string)
+      ) {
+        throw {
+          code: "SHELL_GEOMETRY_FAILED",
+          message: `Artifact shell face ${String(localId)} is invalid, duplicated, or missing.`
+        } satisfies GeometryKernelLikeError;
+      }
+      selectedIds.add(localId as string);
+      mappedShape = map.FindKey(index);
+      selectedFaces.push(oc.TopoDS.Face_1(mappedShape));
+      mappedShape.delete();
+      mappedShape = undefined;
+    }
+    return makeShellShapeWithFaces(
+      oc,
+      targetShape,
+      input.wallThickness,
+      selectedFaces
+    );
+  } finally {
+    mappedShape?.delete();
+    for (const face of selectedFaces) face.delete();
+    map.delete();
+  }
+}
+
+function makeShellShapeWithFaces(
+  oc: OpenCascadeInstance,
+  targetShape: TopoDS_Shape,
+  wallThickness: number,
+  selectedFaces: readonly TopoDS_Face[]
+): TopoDS_Shape {
+  if (!Number.isFinite(wallThickness) || wallThickness <= 0) {
+    throw {
+      code: "SHELL_GEOMETRY_FAILED",
+      message: "Artifact shell wallThickness must be a positive finite number."
+    } satisfies GeometryKernelLikeError;
+  }
   let maker:
     | InstanceType<OpenCascadeInstance["BRepOffsetAPI_MakeThickSolid"]>
     | undefined;
@@ -124,23 +216,17 @@ export function makeShellShape(
   let range:
     | InstanceType<OpenCascadeInstance["Message_ProgressRange_1"]>
     | undefined;
-  const selectedFaces: TopoDS_Face[] = [];
-
   try {
     maker = new oc.BRepOffsetAPI_MakeThickSolid();
     closingFaces = new oc.TopTools_ListOfShape_1();
     range = new oc.Message_ProgressRange_1();
 
-    for (const stableId of input.openFaceStableIds) {
-      const face = findOpenFace(oc, targetShape, input.target, stableId);
-      selectedFaces.push(face);
-      closingFaces.Append_1(face);
-    }
+    for (const face of selectedFaces) closingFaces.Append_1(face);
 
     maker.MakeThickSolidByJoin(
       targetShape,
       closingFaces,
-      -input.wallThickness,
+      -wallThickness,
       1e-4,
       oc.BRepOffset_Mode.BRepOffset_Skin as BRepOffset_Mode,
       false,
@@ -165,9 +251,6 @@ export function makeShellShape(
       shellShape.delete();
     }
   } finally {
-    for (const face of selectedFaces) {
-      face.delete();
-    }
     range?.delete();
     closingFaces?.delete();
     maker?.delete();

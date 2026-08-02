@@ -16,6 +16,14 @@ import {
 } from "./booleanExtrudes";
 import { withOcctHoleResultOnShape, type OcctHoleToolSource } from "./hole";
 import {
+  makeCircularPatternShape,
+  makeLinearPatternShape,
+  type OcctAxisFrame,
+  type OcctDirection
+} from "./pattern";
+import { makeMirrorShape, type OcctMirrorPlaneFrame } from "./mirror";
+import { makeArtifactShellShape, type OcctTopologyFaceRef } from "./shell";
+import {
   withOcctCheckpointEdgeFinishResultShape,
   type OcctEdgeFinishOperation
 } from "./edgeFinish";
@@ -93,12 +101,84 @@ export interface OcctCheckpointEdgeFinishArtifactSource {
   readonly amount: number;
 }
 
+export type OcctExactBodyArtifactShapePolicy =
+  | "singleSolid"
+  | "singleShapeOneOrMoreSolids";
+
+export interface OcctExactBodyArtifactLeaf {
+  readonly kind: "bodyArtifact";
+  readonly artifactVersion: "partbench.exact-body-artifact.v1";
+  readonly bodyId: string;
+  readonly sourceType: string;
+  readonly documentSourceIdentity: {
+    readonly algorithm: "partbench-source-v1";
+    readonly sha256: string;
+  };
+  readonly bodySourceIdentitySignature: string;
+  readonly sourceCacheKeySha256: string;
+  readonly sourceGraphNodeCount: number;
+  readonly units: "mm" | "cm" | "m" | "in";
+  readonly shapePolicy: OcctExactBodyArtifactShapePolicy;
+  readonly sourceKind: OcctExactTopologySourceKind;
+  readonly brepFormat: "occt-brep";
+  readonly brepWriter: "BRepTools.Write_3";
+  readonly brepBytes: Uint8Array;
+  readonly brepByteLength: number;
+  readonly brepSha256: string;
+  readonly topologySignature: string;
+}
+
+export interface OcctArtifactHoleSource {
+  readonly kind: "artifactHole";
+  readonly target: OcctExactBodyArtifactLeaf;
+  readonly tool: OcctHoleToolSource;
+}
+
+export interface OcctArtifactLinearPatternSource {
+  readonly kind: "artifactLinearPattern";
+  readonly seed: OcctExactBodyArtifactLeaf;
+  readonly direction: OcctDirection;
+  readonly spacing: number;
+  readonly instanceCount: number;
+}
+
+export interface OcctArtifactCircularPatternSource {
+  readonly kind: "artifactCircularPattern";
+  readonly seed: OcctExactBodyArtifactLeaf;
+  readonly axis: OcctAxisFrame;
+  readonly totalAngleDegrees: number;
+  readonly instanceCount: number;
+}
+
+export interface OcctArtifactMirrorSource {
+  readonly kind: "artifactMirror";
+  readonly seed: OcctExactBodyArtifactLeaf;
+  readonly plane: OcctMirrorPlaneFrame;
+  readonly includeOriginal: boolean;
+}
+
+export interface OcctArtifactShellSource {
+  readonly kind: "artifactShell";
+  readonly target: OcctExactBodyArtifactLeaf;
+  readonly wallThickness: number;
+  readonly openFaces: readonly OcctTopologyFaceRef[];
+}
+
+export type OcctArtifactDownstreamSource =
+  | OcctArtifactHoleSource
+  | OcctArtifactLinearPatternSource
+  | OcctArtifactCircularPatternSource
+  | OcctArtifactMirrorSource
+  | OcctArtifactShellSource;
+
 export type OcctExactBodyArtifactSource =
   | OcctExactBodyMetadataSource
   | OcctCheckpointBodyArtifactSource
   | OcctCheckpointBooleanArtifactSource
   | OcctCheckpointHoleArtifactSource
-  | OcctCheckpointEdgeFinishArtifactSource;
+  | OcctCheckpointEdgeFinishArtifactSource
+  | OcctExactBodyArtifactLeaf
+  | OcctArtifactDownstreamSource;
 
 export interface OcctExactBodyArtifactInput {
   readonly source: OcctExactBodyArtifactSource;
@@ -117,6 +197,7 @@ export interface OcctExactBodyArtifact {
   readonly brepByteLength: number;
   readonly metadata: ReturnType<typeof readExactBodyMetadata>;
   readonly topologySnapshot: OcctExactTopologySnapshot;
+  readonly displayMesh: OcctMeshData;
 }
 
 export type OcctBrepCheckpointWriterCapabilityStatus =
@@ -256,6 +337,16 @@ export function withOcctExactBodyArtifactShape<T>(
   ) => T
 ): T {
   if (
+    source.kind === "bodyArtifact" ||
+    source.kind === "artifactHole" ||
+    source.kind === "artifactLinearPattern" ||
+    source.kind === "artifactCircularPattern" ||
+    source.kind === "artifactMirror" ||
+    source.kind === "artifactShell"
+  ) {
+    return withArtifactBackedExactBodyShape(oc, source, readResult);
+  }
+  if (
     source.kind === "checkpointBody" ||
     source.kind === "checkpointBoolean" ||
     source.kind === "checkpointHole" ||
@@ -275,6 +366,214 @@ export function withOcctExactBodyArtifactShape<T>(
   }
 
   return withOcctExactBodyShape(oc, source, readResult);
+}
+
+function withArtifactBackedExactBodyShape<T>(
+  oc: OpenCascadeInstance,
+  source: OcctExactBodyArtifactLeaf | OcctArtifactDownstreamSource,
+  readResult: (
+    shape: TopoDS_Shape,
+    sourceKind: OcctExactTopologySourceKind
+  ) => T
+): T {
+  const leaf =
+    source.kind === "bodyArtifact"
+      ? source
+      : source.kind === "artifactHole" || source.kind === "artifactShell"
+        ? source.target
+        : source.seed;
+  return withVerifiedBodyArtifactShape(oc, leaf, (operand, solidCount) => {
+    if (source.kind === "bodyArtifact") {
+      return readResult(operand, source.sourceKind);
+    }
+    if (source.kind === "artifactHole") {
+      return withOcctHoleResultOnShape(oc, operand, source.tool, (shape) =>
+        readResult(shape, "hole")
+      );
+    }
+    let result: TopoDS_Shape | undefined;
+    try {
+      if (source.kind === "artifactLinearPattern") {
+        assertArtifactPatternInput(source);
+        result = makeLinearPatternShape(oc, operand, source);
+        return readResult(result, "linearPattern");
+      }
+      if (source.kind === "artifactCircularPattern") {
+        assertArtifactPatternInput(source);
+        result = makeCircularPatternShape(oc, operand, source);
+        return readResult(result, "circularPattern");
+      }
+      if (source.kind === "artifactMirror") {
+        assertArtifactMirrorInput(source);
+        result = makeMirrorShape(oc, operand, source);
+        return readResult(result, "mirror");
+      }
+      if (solidCount !== 1) {
+        throw {
+          code: "INVALID_RESULT",
+          message: "Artifact shell requires a single-solid target artifact."
+        };
+      }
+      result = makeArtifactShellShape(oc, operand, source);
+      return readResult(result, "shell");
+    } finally {
+      result?.delete();
+    }
+  });
+}
+
+function withVerifiedBodyArtifactShape<T>(
+  oc: OpenCascadeInstance,
+  leaf: OcctExactBodyArtifactLeaf,
+  readResult: (shape: TopoDS_Shape, solidCount: number) => T
+): T {
+  assertBodyArtifactLeaf(leaf);
+  return withImportedBrepShape(oc, leaf.brepBytes, (shape) => {
+    const topology = readExactTopologySnapshot(oc, shape, leaf.sourceKind);
+    if (topology.signature !== leaf.topologySignature) {
+      throw {
+        code: "INVALID_RESULT",
+        message: "Body artifact topology signature mismatched its BRep shape."
+      };
+    }
+    const solidCount = readExactBodyMetadata(oc, shape, leaf.sourceKind)
+      .topologyCounts.solidCount;
+    if (
+      (leaf.shapePolicy === "singleSolid" && solidCount !== 1) ||
+      (leaf.shapePolicy === "singleShapeOneOrMoreSolids" && solidCount < 1)
+    ) {
+      throw {
+        code: "INVALID_RESULT",
+        message: "Body artifact shape policy mismatched its BRep shape."
+      };
+    }
+    return readResult(shape, solidCount);
+  });
+}
+
+function assertBodyArtifactLeaf(leaf: OcctExactBodyArtifactLeaf): void {
+  if (
+    !leaf ||
+    leaf.kind !== "bodyArtifact" ||
+    leaf.artifactVersion !== "partbench.exact-body-artifact.v1" ||
+    !isBoundedString(leaf.bodyId) ||
+    !isBoundedString(leaf.sourceType) ||
+    leaf.documentSourceIdentity?.algorithm !== "partbench-source-v1" ||
+    !isSha256(leaf.documentSourceIdentity.sha256) ||
+    !isBoundedString(leaf.bodySourceIdentitySignature) ||
+    !isSha256(leaf.sourceCacheKeySha256) ||
+    !Number.isInteger(leaf.sourceGraphNodeCount) ||
+    leaf.sourceGraphNodeCount < 1 ||
+    leaf.sourceGraphNodeCount > 4_096 ||
+    !["mm", "cm", "m", "in"].includes(leaf.units) ||
+    !["singleSolid", "singleShapeOneOrMoreSolids"].includes(leaf.shapePolicy) ||
+    !isExactTopologySourceKind(leaf.sourceKind) ||
+    leaf.brepFormat !== "occt-brep" ||
+    leaf.brepWriter !== "BRepTools.Write_3" ||
+    !(leaf.brepBytes instanceof Uint8Array) ||
+    leaf.brepBytes.byteLength < 1 ||
+    leaf.brepBytes.byteLength > 128 * 1024 * 1024 ||
+    leaf.brepByteLength !== leaf.brepBytes.byteLength ||
+    !isSha256(leaf.brepSha256) ||
+    !isBoundedString(leaf.topologySignature)
+  ) {
+    throw {
+      code: "INVALID_RESULT",
+      message: "Invalid identity-bound exact body artifact leaf."
+    };
+  }
+}
+
+function assertArtifactPatternInput(
+  source: OcctArtifactLinearPatternSource | OcctArtifactCircularPatternSource
+): void {
+  const vector =
+    source.kind === "artifactLinearPattern"
+      ? source.direction
+      : source.axis.direction;
+  const commonValid =
+    Number.isInteger(source.instanceCount) &&
+    source.instanceCount >= 2 &&
+    source.instanceCount <= 4_096 &&
+    isUnitVector(vector);
+  const specificValid =
+    source.kind === "artifactLinearPattern"
+      ? Number.isFinite(source.spacing) && source.spacing > 0
+      : isFiniteVector(source.axis.origin) &&
+        Number.isFinite(source.totalAngleDegrees) &&
+        source.totalAngleDegrees > 0 &&
+        source.totalAngleDegrees <= 360;
+  if (!commonValid || !specificValid) {
+    throw {
+      code: "INVALID_DIMENSIONS",
+      message: "Invalid artifact pattern source."
+    };
+  }
+}
+
+function assertArtifactMirrorInput(source: OcctArtifactMirrorSource): void {
+  if (
+    !isFiniteVector(source.plane.point) ||
+    !isUnitVector(source.plane.normal) ||
+    typeof source.includeOriginal !== "boolean"
+  ) {
+    throw {
+      code: "INVALID_DIMENSIONS",
+      message: "Invalid artifact mirror source."
+    };
+  }
+}
+
+function isFiniteVector(
+  value: unknown
+): value is readonly [number, number, number] {
+  return (
+    Array.isArray(value) &&
+    value.length === 3 &&
+    value.every((entry) => typeof entry === "number" && Number.isFinite(entry))
+  );
+}
+
+function isUnitVector(value: unknown): boolean {
+  return (
+    isFiniteVector(value) &&
+    Math.abs(Math.hypot(value[0], value[1], value[2]) - 1) <= 1e-9
+  );
+}
+
+function isBoundedString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= 256;
+}
+
+function isSha256(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
+}
+
+function isExactTopologySourceKind(
+  value: unknown
+): value is OcctExactTopologySourceKind {
+  return (
+    typeof value === "string" &&
+    [
+      "extrude",
+      "box",
+      "cylinder",
+      "sphere",
+      "cone",
+      "torus",
+      "booleanExtrudes",
+      "revolve",
+      "hole",
+      "edgeFinish",
+      "sweep",
+      "loft",
+      "linearPattern",
+      "circularPattern",
+      "mirror",
+      "shell",
+      "importedBody"
+    ].includes(value)
+  );
 }
 
 function withCheckpointBackedExactBodyShape<T>(
@@ -420,6 +719,24 @@ function createExactBodyArtifact(
     ...readExactTopologySnapshot(oc, shape, sourceKind),
     ...(generatedReferences ? { generatedReferences } : {})
   };
+  const mesher = new oc.BRepMesh_IncrementalMesh_2(
+    shape,
+    0.25,
+    false,
+    0.5,
+    false
+  );
+  let displayMesh: OcctMeshData;
+  try {
+    if (!mesher.IsDone()) {
+      throw new Error(
+        `Open CASCADE exact artifact display meshing failed with status ${mesher.GetStatusFlags()}.`
+      );
+    }
+    displayMesh = readTriangulatedShape(oc, shape, toMeshPrimitive(sourceKind));
+  } finally {
+    mesher.delete();
+  }
 
   return {
     sourceKind,
@@ -428,7 +745,8 @@ function createExactBodyArtifact(
     brepBytes,
     brepByteLength: brepBytes.byteLength,
     metadata,
-    topologySnapshot
+    topologySnapshot,
+    displayMesh
   };
 }
 

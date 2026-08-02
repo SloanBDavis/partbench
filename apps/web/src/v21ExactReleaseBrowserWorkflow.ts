@@ -248,7 +248,7 @@ async function exportAndRoundTrip(input: {
       sourceCacheKeySha256: "f".repeat(64),
       sourceGraphNodeCount: 1,
       units: "mm",
-      shapePolicy: "checkpointShape",
+      shapePolicy: "singleShapeOneOrMoreSolids",
       source: {
         kind: "checkpointBody",
         brepBytes: brepBytes.slice(),
@@ -388,7 +388,9 @@ async function runCheckpointDownstreamMatrix(
         sourceGraphNodeCount: item.graph,
         units: "mm",
         shapePolicy:
-          item.id === "imported-standalone" ? "checkpointShape" : "singleSolid",
+          item.id === "imported-standalone"
+            ? "singleShapeOneOrMoreSolids"
+            : "singleSolid",
         source: {
           ...item.source,
           ...(item.source.kind === "checkpointBody"
@@ -507,7 +509,7 @@ async function runBrowserFaults(
       sourceCacheKeySha256: "9".repeat(64),
       sourceGraphNodeCount: 1,
       units: "mm",
-      shapePolicy: "checkpointShape",
+      shapePolicy: "singleShapeOneOrMoreSolids",
       source: {
         kind: "checkpointBody",
         brepBytes: artifact.brepBytes.slice(),

@@ -2,6 +2,7 @@ export type GeometryKernelVersion = "geometry-kernel.v1";
 export const MAX_EXACT_BODY_ARTIFACT_BYTES = 128 * 1024 * 1024;
 export const MAX_EXACT_BODY_ARTIFACT_AGGREGATE_BYTES = 512 * 1024 * 1024;
 export const MAX_EXACT_BODY_ARTIFACT_SOURCE_GRAPH_NODES = 4_096;
+export const MAX_EXACT_BODY_ARTIFACT_PATTERN_INSTANCES = 4_096;
 export const MAX_EXACT_STEP_EXPORT_BODIES = 256;
 export const MAX_EXACT_STEP_EXPORT_BYTES = 512 * 1024 * 1024;
 export type GeometryKernelExactExportFormat = "step";
@@ -704,12 +705,88 @@ export interface ExactCheckpointEdgeFinishArtifactSource {
   readonly amount: number;
 }
 
+export type ExactBodyArtifactShapePolicy =
+  | "singleSolid"
+  | "singleShapeOneOrMoreSolids";
+
+export interface ExactBodyArtifactLeaf {
+  readonly kind: "bodyArtifact";
+  readonly artifactVersion: "partbench.exact-body-artifact.v1";
+  readonly bodyId: string;
+  readonly sourceType: string;
+  readonly documentSourceIdentity: {
+    readonly algorithm: "partbench-source-v1";
+    readonly sha256: string;
+  };
+  readonly bodySourceIdentitySignature: string;
+  readonly sourceCacheKeySha256: string;
+  readonly sourceGraphNodeCount: number;
+  readonly units: GeometryKernelDocumentUnit;
+  readonly shapePolicy: ExactBodyArtifactShapePolicy;
+  readonly sourceKind: ExactTopologySourceKind;
+  readonly brepFormat: "occt-brep";
+  readonly brepWriter: "BRepTools.Write_3";
+  readonly brepBytes: Uint8Array;
+  readonly brepByteLength: number;
+  readonly brepSha256: string;
+  readonly topologySignature: string;
+}
+
+export interface ExactArtifactHoleSource {
+  readonly kind: "artifactHole";
+  readonly target: ExactBodyArtifactLeaf;
+  readonly tool: HoleToolSource;
+}
+
+export interface ExactArtifactLinearPatternSource {
+  readonly kind: "artifactLinearPattern";
+  readonly seed: ExactBodyArtifactLeaf;
+  readonly direction: GeometryKernelDirection;
+  readonly spacing: number;
+  readonly instanceCount: number;
+}
+
+export interface ExactArtifactCircularPatternSource {
+  readonly kind: "artifactCircularPattern";
+  readonly seed: ExactBodyArtifactLeaf;
+  readonly axis: GeometryKernelAxisFrame;
+  readonly totalAngleDegrees: number;
+  readonly instanceCount: number;
+}
+
+export interface ExactArtifactMirrorSource {
+  readonly kind: "artifactMirror";
+  readonly seed: ExactBodyArtifactLeaf;
+  readonly plane: GeometryKernelPlaneFrame;
+  readonly includeOriginal: boolean;
+}
+
+export interface ExactTopologyFaceRef {
+  readonly localId: string;
+}
+
+export interface ExactArtifactShellSource {
+  readonly kind: "artifactShell";
+  readonly target: ExactBodyArtifactLeaf;
+  readonly wallThickness: number;
+  readonly openFaces: readonly ExactTopologyFaceRef[];
+}
+
+export type ExactArtifactDownstreamSource =
+  | ExactArtifactHoleSource
+  | ExactArtifactLinearPatternSource
+  | ExactArtifactCircularPatternSource
+  | ExactArtifactMirrorSource
+  | ExactArtifactShellSource;
+
 export type ExactBodyArtifactSource =
   | Exclude<ExactBodyMetadataSource, ExactImportedBodyMetadataSource>
   | ExactCheckpointBodyArtifactSource
   | ExactCheckpointBooleanArtifactSource
   | ExactCheckpointHoleArtifactSource
-  | ExactCheckpointEdgeFinishArtifactSource;
+  | ExactCheckpointEdgeFinishArtifactSource
+  | ExactBodyArtifactLeaf
+  | ExactArtifactDownstreamSource;
 
 export type ExactBodyResultSource =
   | ExactBodyMetadataSource
@@ -729,11 +806,6 @@ export interface ExactBodyMetadataRequest {
   readonly op: "geometry.exactBodyMetadata";
   readonly source: ExactBodyResultSource;
 }
-
-export type ExactBodyArtifactShapePolicy =
-  | "singleSolid"
-  | "singleShapeOneOrMoreSolids"
-  | "checkpointShape";
 
 export interface ExactBodyArtifactRequest {
   readonly id: string;
@@ -922,6 +994,7 @@ export interface GeometryKernelExactBodyArtifact {
   readonly brepSha256: string;
   readonly metadata: GeometryKernelExactBodyMetadata;
   readonly topologySnapshot: GeometryKernelExactTopologySnapshot;
+  readonly displayMesh: SerializableMeshData;
 }
 
 export type GeometryKernelExactBodyArtifactPayload = Pick<
@@ -933,6 +1006,7 @@ export type GeometryKernelExactBodyArtifactPayload = Pick<
   | "brepByteLength"
   | "metadata"
   | "topologySnapshot"
+  | "displayMesh"
 >;
 
 export interface GeometryKernelExactBodyArtifactSuccessResponse {
@@ -1647,7 +1721,7 @@ export async function executeGeometryKernelRequestWithMeshFactory<
       request.op === "geometry.exactBodyArtifact" ||
       request.op === "geometry.exactTopologyCheckpointPayload"
     ) {
-      const checkpointError = await validateExactBodyArtifactCheckpoint(
+      const checkpointError = await validateExactBodyArtifactHashes(
         request.source
       );
       if (checkpointError) {
@@ -2016,12 +2090,14 @@ export function getGeometryResponseTransferables(
   }
 
   if ("artifact" in response) {
-    return [
-      ("brepBytes" in response.artifact
-        ? response.artifact.brepBytes
-        : response.artifact.bytes
-      ).buffer as ArrayBuffer
-    ];
+    if ("displayMesh" in response.artifact) {
+      return [
+        response.artifact.brepBytes.buffer as ArrayBuffer,
+        response.artifact.displayMesh.positions.buffer as ArrayBuffer,
+        response.artifact.displayMesh.indices.buffer as ArrayBuffer
+      ];
+    }
+    return [response.artifact.bytes.buffer as ArrayBuffer];
   }
 
   if ("bodies" in response) {
@@ -2145,9 +2221,7 @@ function validateRequest(
     const sourceError = validateExactBodyArtifactSource(request.source);
     if (sourceError) return sourceError;
   } else if (request.op === "geometry.exactBodyMetadata") {
-    const metadataSourceError = isCheckpointBackedExactBodySource(
-      request.source
-    )
+    const metadataSourceError = isArtifactBackedExactBodySource(request.source)
       ? validateExactBodyArtifactSource(request.source)
       : validateExactBodyMetadataSource(request.source);
 
@@ -2170,7 +2244,10 @@ function validateRequest(
       countExactBodyArtifactSourceNodes(request.source) !==
         request.sourceGraphNodeCount ||
       !isGeometryKernelDocumentUnit(request.units) ||
-      !isExactBodyArtifactShapePolicy(request.shapePolicy)
+      !isExactBodyArtifactShapePolicy(request.shapePolicy) ||
+      (getDeclaredExactBodyArtifactShapePolicy(request.source) !== undefined &&
+        request.shapePolicy !==
+          getDeclaredExactBodyArtifactShapePolicy(request.source))
     ) {
       return {
         code: "INVALID_DIMENSIONS",
@@ -2185,7 +2262,7 @@ function validateRequest(
       return snapshotSourceError;
     }
   } else if (request.op === "geometry.exactTopologyCheckpointPayload") {
-    const checkpointSourceError = isCheckpointBackedExactBodySource(
+    const checkpointSourceError = isArtifactBackedExactBodySource(
       request.source
     )
       ? validateExactBodyArtifactSource(request.source)
@@ -3093,11 +3170,7 @@ function isGeometryKernelDocumentUnit(
 function isExactBodyArtifactShapePolicy(
   value: unknown
 ): value is ExactBodyArtifactShapePolicy {
-  return (
-    value === "singleSolid" ||
-    value === "singleShapeOneOrMoreSolids" ||
-    value === "checkpointShape"
-  );
+  return value === "singleSolid" || value === "singleShapeOneOrMoreSolids";
 }
 
 function isPositiveFiniteNumber(value: number): boolean {
@@ -4250,41 +4323,183 @@ function validateExactBodyArtifactSource(
         : createInvalidExactBodyMetadataSourceError())
     );
   }
+  if (source.kind === "bodyArtifact") {
+    return validateExactBodyArtifactLeaf(source);
+  }
+  if (source.kind === "artifactHole") {
+    return (
+      validateExactBodyArtifactLeaf(source.target) ??
+      (isValidHoleToolSource(source.tool)
+        ? undefined
+        : createInvalidExactBodyMetadataSourceError())
+    );
+  }
+  if (source.kind === "artifactLinearPattern") {
+    return (
+      validateExactBodyArtifactLeaf(source.seed) ??
+      (isUnitVec3(source.direction) &&
+      isPositiveFiniteNumber(source.spacing) &&
+      isValidArtifactPatternInstanceCount(source.instanceCount)
+        ? undefined
+        : createInvalidExactBodyMetadataSourceError())
+    );
+  }
+  if (source.kind === "artifactCircularPattern") {
+    return (
+      validateExactBodyArtifactLeaf(source.seed) ??
+      (isVec3(source.axis.origin) &&
+      isUnitVec3(source.axis.direction) &&
+      isPositiveFiniteNumber(source.totalAngleDegrees) &&
+      source.totalAngleDegrees <= 360 &&
+      isValidArtifactPatternInstanceCount(source.instanceCount)
+        ? undefined
+        : createInvalidExactBodyMetadataSourceError())
+    );
+  }
+  if (source.kind === "artifactMirror") {
+    return (
+      validateExactBodyArtifactLeaf(source.seed) ??
+      (isVec3(source.plane.point) &&
+      isUnitVec3(source.plane.normal) &&
+      typeof source.includeOriginal === "boolean"
+        ? undefined
+        : createInvalidExactBodyMetadataSourceError())
+    );
+  }
+  if (source.kind === "artifactShell") {
+    return (
+      validateExactBodyArtifactLeaf(source.target) ??
+      (isPositiveFiniteNumber(source.wallThickness) &&
+      isValidExactTopologyFaceRefs(source.openFaces)
+        ? undefined
+        : createInvalidExactBodyMetadataSourceError())
+    );
+  }
   return validateExactBodyMetadataSource(source);
 }
 
-async function validateExactBodyArtifactCheckpoint(
-  source: ExactBodyResultSource
-): Promise<GeometryKernelError | undefined> {
-  const checkpoint =
-    source.kind === "checkpointBody"
-      ? source
-      : source.kind === "checkpointBoolean" ||
-          source.kind === "checkpointHole" ||
-          source.kind === "checkpointEdgeFinish"
-        ? source.target
-        : undefined;
-  if (!checkpoint) return undefined;
-  return (await sha256Hex(checkpoint.brepBytes)) === checkpoint.brepSha256
+function validateExactBodyArtifactLeaf(
+  source: unknown
+): GeometryKernelError | undefined {
+  if (!isRecord(source)) return createInvalidExactBodyMetadataSourceError();
+  const candidate = source as unknown as ExactBodyArtifactLeaf;
+  return candidate.kind === "bodyArtifact" &&
+    candidate.artifactVersion === "partbench.exact-body-artifact.v1" &&
+    isNonEmptyBoundedString(candidate.bodyId) &&
+    isNonEmptyBoundedString(candidate.sourceType) &&
+    isRecord(candidate.documentSourceIdentity) &&
+    candidate.documentSourceIdentity.algorithm === "partbench-source-v1" &&
+    isSha256Hex(candidate.documentSourceIdentity.sha256) &&
+    isNonEmptyBoundedString(candidate.bodySourceIdentitySignature) &&
+    isSha256Hex(candidate.sourceCacheKeySha256) &&
+    isPositiveInteger(candidate.sourceGraphNodeCount) &&
+    candidate.sourceGraphNodeCount <=
+      MAX_EXACT_BODY_ARTIFACT_SOURCE_GRAPH_NODES &&
+    isGeometryKernelDocumentUnit(candidate.units) &&
+    isExactBodyArtifactShapePolicy(candidate.shapePolicy) &&
+    isExactTopologySourceKind(candidate.sourceKind) &&
+    candidate.brepFormat === "occt-brep" &&
+    candidate.brepWriter === "BRepTools.Write_3" &&
+    candidate.brepBytes instanceof Uint8Array &&
+    candidate.brepBytes.byteLength > 0 &&
+    candidate.brepBytes.byteLength <= MAX_EXACT_BODY_ARTIFACT_BYTES &&
+    candidate.brepByteLength === candidate.brepBytes.byteLength &&
+    isSha256Hex(candidate.brepSha256) &&
+    isNonEmptyBoundedString(candidate.topologySignature)
     ? undefined
-    : {
-        code: "INVALID_DIMENSIONS",
-        message: "Exact body artifact checkpoint BRep hash evidence mismatched."
-      };
+    : createInvalidExactBodyMetadataSourceError();
 }
 
-function isCheckpointBackedExactBodySource(
+function isValidArtifactPatternInstanceCount(value: unknown): boolean {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 2 &&
+    value <= MAX_EXACT_BODY_ARTIFACT_PATTERN_INSTANCES
+  );
+}
+
+function isValidExactTopologyFaceRefs(
+  value: unknown
+): value is readonly ExactTopologyFaceRef[] {
+  if (
+    !Array.isArray(value) ||
+    value.length > MAX_EXACT_BODY_ARTIFACT_SOURCE_GRAPH_NODES
+  ) {
+    return false;
+  }
+  const localIds = new Set<string>();
+  for (const candidate of value) {
+    const localId = isRecord(candidate)
+      ? (candidate as { readonly localId?: unknown }).localId
+      : undefined;
+    if (
+      typeof localId !== "string" ||
+      !/^snapshot-local:face:[1-9][0-9]*$/.test(localId)
+    ) {
+      return false;
+    }
+    if (localIds.has(localId)) return false;
+    localIds.add(localId);
+  }
+  return true;
+}
+
+async function validateExactBodyArtifactHashes(
+  source: ExactBodyResultSource
+): Promise<GeometryKernelError | undefined> {
+  const stack: object[] = [source];
+  const visited = new WeakSet<object>();
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    if (visited.has(current)) continue;
+    visited.add(current);
+    const candidate = current as {
+      readonly kind?: unknown;
+      readonly brepBytes?: unknown;
+      readonly brepSha256?: unknown;
+    };
+    if (
+      candidate.kind === "checkpointBody" ||
+      candidate.kind === "bodyArtifact"
+    ) {
+      if (
+        !(candidate.brepBytes instanceof Uint8Array) ||
+        (await sha256Hex(candidate.brepBytes)) !== candidate.brepSha256
+      ) {
+        return {
+          code: "INVALID_DIMENSIONS",
+          message: "Exact body artifact BRep hash evidence mismatched."
+        };
+      }
+    }
+    for (const child of getExactBodyArtifactSourceChildren(current)) {
+      stack.push(child);
+    }
+  }
+  return undefined;
+}
+
+function isArtifactBackedExactBodySource(
   source: ExactBodyResultSource
 ): source is
   | ExactCheckpointBodyArtifactSource
   | ExactCheckpointBooleanArtifactSource
   | ExactCheckpointHoleArtifactSource
-  | ExactCheckpointEdgeFinishArtifactSource {
+  | ExactCheckpointEdgeFinishArtifactSource
+  | ExactBodyArtifactLeaf
+  | ExactArtifactDownstreamSource {
   return (
     source.kind === "checkpointBody" ||
     source.kind === "checkpointBoolean" ||
     source.kind === "checkpointHole" ||
-    source.kind === "checkpointEdgeFinish"
+    source.kind === "checkpointEdgeFinish" ||
+    source.kind === "bodyArtifact" ||
+    source.kind === "artifactHole" ||
+    source.kind === "artifactLinearPattern" ||
+    source.kind === "artifactCircularPattern" ||
+    source.kind === "artifactMirror" ||
+    source.kind === "artifactShell"
   );
 }
 
@@ -4327,14 +4542,19 @@ function getExactBodyArtifactSourceChildren(source: object): readonly object[] {
     candidate.kind === "edgeFinish" ||
     candidate.kind === "shell" ||
     candidate.kind === "checkpointHole" ||
-    candidate.kind === "checkpointEdgeFinish"
+    candidate.kind === "checkpointEdgeFinish" ||
+    candidate.kind === "artifactHole" ||
+    candidate.kind === "artifactShell"
   ) {
     return isRecord(candidate.target) ? [candidate.target] : [];
   }
   if (
     candidate.kind === "linearPattern" ||
     candidate.kind === "circularPattern" ||
-    candidate.kind === "mirror"
+    candidate.kind === "mirror" ||
+    candidate.kind === "artifactLinearPattern" ||
+    candidate.kind === "artifactCircularPattern" ||
+    candidate.kind === "artifactMirror"
   ) {
     return isRecord(candidate.seed) ? [candidate.seed] : [];
   }
@@ -4500,11 +4720,41 @@ function isInvalidExactBodyArtifact(
       artifact.topologySnapshot.entityCounts.edgeCount ||
     artifact.metadata.topologyCounts.vertexCount !==
       artifact.topologySnapshot.entityCounts.vertexCount ||
+    !artifact.displayMesh ||
+    isEmptyMesh(artifact.displayMesh) ||
+    isInvalidMesh(artifact.displayMesh) ||
     (request.source.kind === "checkpointBody" &&
+      artifact.topologySnapshot.signature !==
+        request.source.topologySignature) ||
+    (request.source.kind === "bodyArtifact" &&
       artifact.topologySnapshot.signature !==
         request.source.topologySignature) ||
     (request.shapePolicy === "singleSolid" ? solidCount !== 1 : solidCount < 1)
   );
+}
+
+function getDeclaredExactBodyArtifactShapePolicy(
+  source: ExactBodyArtifactSource
+): ExactBodyArtifactShapePolicy | undefined {
+  switch (source.kind) {
+    case "bodyArtifact":
+      return source.shapePolicy;
+    case "artifactHole":
+      return source.target.shapePolicy;
+    case "artifactLinearPattern":
+    case "artifactCircularPattern":
+    case "artifactMirror":
+    case "linearPattern":
+    case "circularPattern":
+    case "mirror":
+      return "singleShapeOneOrMoreSolids";
+    case "artifactShell":
+    case "shell":
+    case "hole":
+      return "singleSolid";
+    default:
+      return undefined;
+  }
 }
 
 function getExactBodyArtifactSourceKind(
@@ -4519,6 +4769,18 @@ function getExactBodyArtifactSourceKind(
       return "hole";
     case "checkpointEdgeFinish":
       return "edgeFinish";
+    case "bodyArtifact":
+      return source.sourceKind;
+    case "artifactHole":
+      return "hole";
+    case "artifactLinearPattern":
+      return "linearPattern";
+    case "artifactCircularPattern":
+      return "circularPattern";
+    case "artifactMirror":
+      return "mirror";
+    case "artifactShell":
+      return "shell";
     default:
       return source.kind;
   }

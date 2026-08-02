@@ -1,6 +1,7 @@
 import {
   CadEngine,
   createCadProjectSourceIdentity,
+  createV15ReleaseSampleBatch,
   type CadFeatureSummary
 } from "@web-cad/cad-core";
 import type {
@@ -14,7 +15,10 @@ import type {
 } from "@web-cad/geometry-worker";
 import { describe, expect, it, vi } from "vitest";
 
-import { resolveCurrentExactBodies } from "./currentExactBodyResolver";
+import {
+  resolveCurrentExactBodies,
+  type CurrentExactBodyArtifactDependency
+} from "./currentExactBodyResolver";
 import { createDerivedGeometrySourcesFromDocument } from "./derivedGeometrySources";
 import type {
   DerivedExactBodyArtifactInput,
@@ -28,7 +32,7 @@ import {
 
 type ExportRuntime = Pick<
   DerivedGeometryRuntime,
-  "exactBodyArtifact" | "executeExactStepExport"
+  "exactBodyArtifact" | "executeExactStepExport" | "getModelWorkSnapshot"
 > & {
   readonly artifactInputs: DerivedExactBodyArtifactInput[];
   readonly writerRequests: GeometryWorkerRequest[];
@@ -103,6 +107,171 @@ describe("projectExactStepExport", () => {
         bodyId: "body:a"
       },
       { phase: "writing", completedBodyCount: 3, totalBodyCount: 3 }
+    ]);
+  });
+
+  it("builds a verified artifact leaf before a downstream result", async () => {
+    const engine = new CadEngine();
+    engine.applyBatch(createV15ReleaseSampleBatch("v15-linear-pattern").ops);
+    const structure = getStructure(engine);
+    const pattern = structure.features.find(
+      (feature) => feature.kind === "linearPattern"
+    );
+    if (!pattern) throw new Error("Expected linear pattern fixture.");
+    const fixture = createFixtureForEngine(engine, [pattern.bodyId]);
+    const runtime = createRuntime();
+
+    await executeProjectExactStepExport({ ...fixture, runtime });
+
+    expect(runtime.artifactInputs.map(({ bodyId }) => bodyId)).toEqual([
+      pattern.seedBodyId,
+      pattern.bodyId
+    ]);
+    expect(runtime.artifactInputs[1]?.source).toMatchObject({
+      kind: "artifactLinearPattern",
+      seed: {
+        kind: "bodyArtifact",
+        bodyId: pattern.seedBodyId,
+        brepBytes: new Uint8Array([1])
+      }
+    });
+    expect(runtime.artifactInputs[1]?.sourceGraphNodeCount).toBe(2);
+  });
+
+  it("preserves the completed semantic open-shell path until Slice D resolves artifact faces", async () => {
+    const engine = new CadEngine();
+    engine.applyBatch(createV15ReleaseSampleBatch("v15-shell").ops);
+    const shell = getStructure(engine).features.find(
+      (feature) => feature.kind === "shell"
+    );
+    if (!shell) throw new Error("Expected shell fixture.");
+    const fixture = createFixtureForEngine(engine, [shell.bodyId]);
+    const runtime = createRuntime();
+
+    await executeProjectExactStepExport({ ...fixture, runtime });
+
+    expect(runtime.artifactInputs).toHaveLength(1);
+    expect(runtime.artifactInputs[0]).toMatchObject({
+      bodyId: shell.bodyId,
+      source: {
+        kind: "shell",
+        openFaceStableIds: [`generated:face:${shell.targetBodyId}:endCap`]
+      }
+    });
+  });
+
+  it("preflights cycles and dependency limits before geometry and memoizes sharing", async () => {
+    const patternEngine = new CadEngine();
+    patternEngine.applyBatch(
+      createV15ReleaseSampleBatch("v15-linear-pattern").ops
+    );
+    const patternFeature = getStructure(patternEngine).features.find(
+      (feature) => feature.kind === "linearPattern"
+    );
+    if (!patternFeature) throw new Error("Expected linear pattern fixture.");
+    const patternFixture = createFixtureForEngine(patternEngine, [
+      patternFeature.bodyId
+    ]);
+    const patternResolution = patternFixture.resolutions.find(
+      (resolution) => resolution.bodyId === patternFeature.bodyId
+    );
+    if (
+      patternResolution?.status !== "ready" ||
+      !patternResolution.artifactDependency
+    ) {
+      throw new Error("Expected ready pattern dependency.");
+    }
+    const cycle = patternResolution.artifactDependency;
+    (
+      cycle as CurrentExactBodyArtifactDependency & {
+        artifactDependency: CurrentExactBodyArtifactDependency;
+      }
+    ).artifactDependency = cycle;
+    const cycleRuntime = createRuntime();
+    await expect(
+      executeProjectExactStepExport({
+        ...patternFixture,
+        resolutions: [patternResolution],
+        runtime: cycleRuntime
+      })
+    ).rejects.toMatchObject({ code: "EXPORT_EXACT_ARTIFACT_INVALID" });
+    expect(cycleRuntime.artifactInputs).toEqual([]);
+
+    const limitFixture = createFixtureForEngine(patternEngine, [
+      patternFeature.bodyId
+    ]);
+    const limitResolution = limitFixture.resolutions.find(
+      (resolution) => resolution.bodyId === patternFeature.bodyId
+    );
+    if (
+      limitResolution?.status !== "ready" ||
+      !limitResolution.artifactDependency
+    ) {
+      throw new Error("Expected fresh pattern dependency.");
+    }
+    let overLimitDependency = limitResolution.artifactDependency;
+    for (let index = 0; index < 4_095; index += 1) {
+      overLimitDependency = {
+        ...limitResolution.artifactDependency,
+        bodyId: `limit-body-${index}`,
+        sourceIdentitySignature: `body-topology-source:v1:${index}`,
+        cacheKeySha256: index.toString(16).padStart(64, "0"),
+        artifactDependency: overLimitDependency
+      };
+    }
+    const limitRuntime = createRuntime();
+    await expect(
+      executeProjectExactStepExport({
+        ...limitFixture,
+        resolutions: [
+          { ...limitResolution, artifactDependency: overLimitDependency }
+        ],
+        runtime: limitRuntime
+      })
+    ).rejects.toMatchObject({ code: "EXPORT_EXACT_ARTIFACT_LIMIT_EXCEEDED" });
+    expect(limitRuntime.artifactInputs).toEqual([]);
+
+    const base = createFixture();
+    const sharedFixture = createFixtureForEngine(base.engine, [
+      "body:z",
+      "body:n"
+    ]);
+    const dependency = sharedFixture.resolutions.find(
+      (resolution) => resolution.bodyId === "body:a"
+    );
+    if (dependency?.status !== "ready") {
+      throw new Error("Expected shared dependency fixture.");
+    }
+    const resolutions = sharedFixture.resolutions.map((resolution) => {
+      if (
+        resolution.status !== "ready" ||
+        (resolution.bodyId !== "body:z" && resolution.bodyId !== "body:n")
+      ) {
+        return resolution;
+      }
+      return {
+        ...resolution,
+        source: {
+          ...patternResolution.source,
+          id: resolution.bodyId,
+          sourceIdentitySignature: resolution.sourceIdentitySignature
+        },
+        artifactDependency: dependency
+      };
+    });
+    const sharedRuntime = createRuntime();
+    await executeProjectExactStepExport({
+      ...sharedFixture,
+      resolutions,
+      runtime: sharedRuntime
+    });
+    expect(
+      sharedRuntime.artifactInputs.filter(({ bodyId }) => bodyId === "body:a")
+    ).toHaveLength(1);
+    expect(sharedRuntime.artifactInputs.map(({ bodyId }) => bodyId)).toEqual([
+      "body:a",
+      "body:z",
+      "body:n"
     ]);
   });
 
@@ -385,7 +554,10 @@ function createFixture(): {
   return createFixtureForEngine(engine);
 }
 
-function createFixtureForEngine(engine: CadEngine): {
+function createFixtureForEngine(
+  engine: CadEngine,
+  bodyIds: readonly string[] = ["body:z", "body:n", "body:a"]
+): {
   readonly engine: CadEngine;
   readonly exactExport: ProjectExactExportQueryResponse;
   readonly resolutions: ReturnType<typeof resolveCurrentExactBodies>;
@@ -402,7 +574,7 @@ function createFixtureForEngine(engine: CadEngine): {
     query: {
       query: "project.exportExact",
       format: "step",
-      bodyIds: ["body:z", "body:n", "body:a"],
+      bodyIds,
       sourceIdentity: createCadProjectSourceIdentity(engine.exportProject()),
       derivedExactMetadata: structure.bodies.map((body) =>
         createReadyMetadata(body, signatures.get(body.id)!)
@@ -429,6 +601,13 @@ function createFixtureForEngine(engine: CadEngine): {
       bodies: structure.bodies,
       features: structure.features,
       geometrySources,
+      artifactGeometrySources: createDerivedGeometrySourcesFromDocument(
+        engine.getDocument(),
+        structure.features,
+        new Map(),
+        signatures,
+        true
+      ),
       sourceIdentitySignaturesByBodyId: signatures
     })
   };
@@ -511,6 +690,15 @@ function createRuntime(
   return {
     artifactInputs,
     writerRequests,
+    getModelWorkSnapshot() {
+      return {
+        generation: 1,
+        stopped: false,
+        active: false,
+        queuedCount: 0,
+        cancelledUserKinds: []
+      };
+    },
     async exactBodyArtifact(input, context) {
       expect(context).toEqual({ intent: "user" });
       const index = artifactInputs.length;
@@ -536,8 +724,17 @@ function createRuntime(
         brepByteLength: brepBytes.byteLength,
         brepSha256: String(index + 1).repeat(64),
         metadata: {} as GeometryKernelExactBodyArtifact["metadata"],
-        topologySnapshot:
-          {} as GeometryKernelExactBodyArtifact["topologySnapshot"]
+        topologySnapshot: {
+          signature: `topology:${input.bodyId}`
+        } as GeometryKernelExactBodyArtifact["topologySnapshot"],
+        displayMesh: {
+          primitive: "extrude",
+          positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+          indices: new Uint32Array([0, 1, 2]),
+          vertexCount: 3,
+          triangleCount: 1,
+          faceCount: 1
+        }
       } as GeometryKernelExactBodyArtifact;
       return {
         artifact: options.mutateArtifact?.(artifact) ?? artifact,

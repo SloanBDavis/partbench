@@ -191,7 +191,7 @@ describe("V17 composite revolve web integration", () => {
         | undefined;
       const exportRuntime: Pick<
         DerivedGeometryRuntime,
-        "exactBodyArtifact" | "executeExactStepExport"
+        "exactBodyArtifact" | "executeExactStepExport" | "getModelWorkSnapshot"
       > = {
         exactBodyArtifact(input, context) {
           artifactInput = input;
@@ -200,6 +200,9 @@ describe("V17 composite revolve web integration", () => {
         executeExactStepExport(request) {
           stepRequest = request;
           return runtime.executeExactStepExport(request);
+        },
+        getModelWorkSnapshot() {
+          return runtime.getModelWorkSnapshot();
         }
       };
       const step = await executeProjectExactStepExport({

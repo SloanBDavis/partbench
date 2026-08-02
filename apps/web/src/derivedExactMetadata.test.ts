@@ -2227,7 +2227,19 @@ function createMetadataResult(
           ? "edgeFinish"
           : sourceKind === "checkpointBody"
             ? "importedBody"
-            : sourceKind;
+            : sourceKind === "bodyArtifact"
+              ? "importedBody"
+              : sourceKind === "artifactHole"
+                ? "hole"
+                : sourceKind === "artifactLinearPattern"
+                  ? "linearPattern"
+                  : sourceKind === "artifactCircularPattern"
+                    ? "circularPattern"
+                    : sourceKind === "artifactMirror"
+                      ? "mirror"
+                      : sourceKind === "artifactShell"
+                        ? "shell"
+                        : sourceKind;
   return {
     metadata: {
       sourceKind: metadataSourceKind,
