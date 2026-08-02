@@ -10163,37 +10163,31 @@ describe("cad-core", () => {
         ]
       })
     ).toMatchObject({
-      ok: false,
-      error: {
-        code: "UNSUPPORTED_FEATURE_OPERATION",
-        path: "$.ops[0].targetBodyId"
-      }
+      ok: true,
+      mode: "dryRun"
     });
 
-    const project = parseCadProjectJson(exportCadProjectJson(engine));
-    const projectWithUnsupportedHoleTarget: CadProject = {
-      ...project,
-      document: {
-        ...project.document,
-        features: [
-          ...project.document.features,
+    const universalTargetEngine = importCadProject(exportCadProject(engine));
+    expect(
+      universalTargetEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
           {
-            id: "feat_bad_hole_target",
-            kind: "hole",
+            op: "feature.hole",
+            id: "feat_revolve_hole",
+            bodyId: "body_revolve_hole",
             targetBodyId: "body_revolve_target",
             sketchId: "sketch_hole",
             circleEntityId: "circle_hole",
-            depthMode: "throughAll",
-            direction: "positive",
-            bodyId: "body_bad_hole_target"
+            depthMode: "throughAll"
           }
         ]
-      }
-    };
-
-    expect(() => importCadProject(projectWithUnsupportedHoleTarget)).toThrow(
-      CadProjectImportError
-    );
+      })
+    ).toMatchObject({ ok: true });
+    expect(() =>
+      importCadProject(exportCadProject(universalTargetEngine))
+    ).not.toThrow();
 
     expect(
       engine.executeBatch({
@@ -13756,7 +13750,7 @@ describe("cad-core", () => {
       })
     ).toEqual(beforeHoleHealth);
 
-    const retargetWithoutExactPreflight = holeEngine.executeBatch({
+    const retargetMissingTarget = holeEngine.executeBatch({
       version: "cadops.v1",
       mode: "commit",
       ops: [
@@ -13769,10 +13763,10 @@ describe("cad-core", () => {
       ]
     });
 
-    expect(retargetWithoutExactPreflight).toMatchObject({
+    expect(retargetMissingTarget).toMatchObject({
       ok: false,
       error: {
-        code: "UNSUPPORTED_FEATURE_OPERATION",
+        code: "BODY_NOT_FOUND",
         path: "$.ops[0].targetBodyId"
       }
     });

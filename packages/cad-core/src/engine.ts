@@ -148,7 +148,6 @@ import type {
   ExtrudeFeatureSnapshot,
   FeatureSnapshot,
   FeatureSnapshotV22,
-  HoleFeatureSnapshot,
   FeatureExtrudeOperationMode,
   FeatureHoleDepthMode,
   FeatureHoleDirection,
@@ -7192,12 +7191,6 @@ function applyOperation(
         op.targetTopologyAnchorId,
         opIndex
       );
-      assertSupportedHoleTarget(
-        state,
-        target.targetBodyId,
-        target.targetTopologyAnchorId,
-        opIndex
-      );
       const depthMode = validateHoleDepthMode(op.depthMode, opIndex);
       const depth = validateHoleDepth(depthMode, op.depth, opIndex);
       const direction = validateHoleDirection(op.direction, opIndex);
@@ -13832,10 +13825,10 @@ function deleteFeature(
   state.features.delete(featureId);
   pushFeatureDeleted(diff, featureRef(state, feature));
   pushBodyDeleted(diff, bodyRef(feature));
-  removeDeletedFeatureTopologyIdentity(state, feature, diff);
+  removeFeatureTopologyIdentity(state, feature, diff);
 }
 
-function removeDeletedFeatureTopologyIdentity(
+function removeFeatureTopologyIdentity(
   state: MutableDocumentState,
   feature: Feature,
   diff: MutableSemanticDiff
@@ -14272,12 +14265,7 @@ function validateDirectConsumingFeatureForSourceExtrudeRebuild(
       feature.circleEntityId
     );
     validateHoleSketchAttachment(state, sketch, opIndex);
-    assertSupportedHoleTarget(
-      state,
-      feature.targetBodyId,
-      feature.targetTopologyAnchorId,
-      opIndex
-    );
+    validateExistingHoleTarget(state, feature, opIndex);
     return;
   }
 
@@ -14471,26 +14459,6 @@ function updateHoleFeature(
   diff: MutableSemanticDiff,
   opIndex?: number
 ): void {
-  if (
-    op.targetBodyId !== undefined ||
-    op.targetTopologyAnchorId !== undefined
-  ) {
-    throwValidationError({
-      code: "UNSUPPORTED_FEATURE_OPERATION",
-      message:
-        "Hole retarget requires current browser exact preflight before commit.",
-      opIndex,
-      featureId: op.id,
-      path: operationPath(
-        opIndex,
-        op.targetBodyId !== undefined
-          ? "targetBodyId"
-          : "targetTopologyAnchorId"
-      ),
-      expected: "current browser exact preflight",
-      received: op.targetBodyId ?? op.targetTopologyAnchorId
-    });
-  }
   const feature = getEditableFeatureForUpdate(
     state,
     op.id,
@@ -14528,25 +14496,62 @@ function updateHoleFeature(
     "feature.updateHole",
     opIndex
   );
-  assertSupportedHoleTarget(
-    state,
-    feature.targetBodyId,
-    feature.targetTopologyAnchorId,
-    opIndex
-  );
+  validateExistingHoleTarget(state, feature, opIndex);
+
+  const retargetRequested =
+    op.targetBodyId !== undefined || op.targetTopologyAnchorId !== undefined;
+  const target = retargetRequested
+    ? validateHoleTarget(
+        state,
+        op.targetBodyId,
+        op.targetTopologyAnchorId,
+        opIndex,
+        feature.id
+      )
+    : {
+        targetBodyId: feature.targetBodyId,
+        ...(feature.targetTopologyAnchorId
+          ? { targetTopologyAnchorId: feature.targetTopologyAnchorId }
+          : {})
+      };
+  const targetBodyChanged = target.targetBodyId !== feature.targetBodyId;
+  const targetSelectorChanged =
+    targetBodyChanged ||
+    target.targetTopologyAnchorId !== feature.targetTopologyAnchorId;
+
+  if (targetSelectorChanged && target.targetBodyId === feature.bodyId) {
+    throwValidationError({
+      code: "UNSUPPORTED_FEATURE_OPERATION",
+      message: `Hole feature ${feature.id} cannot target its own result body.`,
+      opIndex,
+      featureId: feature.id,
+      bodyId: target.targetBodyId,
+      path: operationPath(
+        opIndex,
+        op.targetTopologyAnchorId !== undefined
+          ? "targetTopologyAnchorId"
+          : "targetBodyId"
+      ),
+      expected: "active body outside the edited hole result dependency chain",
+      received: target.targetBodyId
+    });
+  }
 
   if (
     op.depthMode === undefined &&
     op.depth === undefined &&
-    op.direction === undefined
+    op.direction === undefined &&
+    !targetSelectorChanged
   ) {
     throwValidationError({
       code: "INVALID_FEATURE",
-      message: "feature.updateHole requires depthMode, depth, or direction.",
+      message:
+        "feature.updateHole requires depthMode, depth, direction, or a target.",
       opIndex,
       featureId: feature.id,
       path: operationPath(opIndex),
-      expected: "depthMode, depth, or direction",
+      expected:
+        "depthMode, depth, direction, targetBodyId, or targetTopologyAnchorId",
       received: "no editable fields"
     });
   }
@@ -14570,23 +14575,59 @@ function updateHoleFeature(
     feature,
     depthMode,
     depth,
-    direction
+    direction,
+    target
   );
 
+  const oldTargetFeature = targetSelectorChanged
+    ? findFeatureByBodyId(state.features, feature.targetBodyId)
+    : undefined;
+  const newTargetFeature = targetBodyChanged
+    ? findFeatureByBodyId(state.features, updated.targetBodyId)
+    : oldTargetFeature;
   state.features.set(feature.id, updated);
   pushFeatureModified(diff, featureRef(state, updated));
+  if (targetBodyChanged && oldTargetFeature) {
+    pushBodyModified(diff, bodyRef(oldTargetFeature));
+  }
+  if (targetBodyChanged && newTargetFeature) {
+    pushBodyModified(diff, bodyRef(newTargetFeature));
+  }
   pushBodyModified(diff, bodyRef(updated));
-  pushFeatureReferenceEffects(
-    diff,
-    createConsumingFeatureEditReferenceEffects(state, updated)
-  );
-  pushFeatureLifecycleEffects(
-    diff,
-    createConsumingFeatureEditLifecycleEffects(
-      updated,
-      "Hole result body was modified and derived geometry rebuild is pending after supported source parameter edit."
-    )
-  );
+  if (targetSelectorChanged) {
+    removeFeatureTopologyIdentity(state, feature, diff);
+    pushFeatureReferenceEffects(
+      diff,
+      createHoleRetargetReferenceEffects(
+        state,
+        feature,
+        updated,
+        targetBodyChanged
+      )
+    );
+    pushFeatureLifecycleEffects(
+      diff,
+      createHoleRetargetLifecycleEffects(
+        feature,
+        updated,
+        oldTargetFeature,
+        newTargetFeature,
+        targetBodyChanged
+      )
+    );
+  } else {
+    pushFeatureReferenceEffects(
+      diff,
+      createConsumingFeatureEditReferenceEffects(state, updated)
+    );
+    pushFeatureLifecycleEffects(
+      diff,
+      createConsumingFeatureEditLifecycleEffects(
+        updated,
+        "Hole result body was modified and derived geometry rebuild is pending after supported source parameter edit."
+      )
+    );
+  }
 }
 
 function updateChamferFeature(
@@ -17001,13 +17042,17 @@ function createUpdatedHoleFeature(
   feature: HoleFeature,
   depthMode: FeatureHoleDepthMode,
   depth: number | undefined,
-  direction: FeatureHoleDirection
+  direction: FeatureHoleDirection,
+  target: Pick<HoleFeature, "targetBodyId" | "targetTopologyAnchorId">
 ): HoleFeature {
   const common = {
     id: feature.id,
     kind: "hole" as const,
     name: feature.name,
-    targetBodyId: feature.targetBodyId,
+    targetBodyId: target.targetBodyId,
+    ...(target.targetTopologyAnchorId
+      ? { targetTopologyAnchorId: target.targetTopologyAnchorId }
+      : {}),
     sketchId: feature.sketchId,
     circleEntityId: feature.circleEntityId,
     depthMode,
@@ -17147,6 +17192,94 @@ function createConsumingFeatureEditReferenceEffects(
     : resultEffects;
 }
 
+function createHoleRetargetReferenceEffects(
+  state: MutableDocumentState,
+  before: HoleFeature,
+  after: HoleFeature,
+  targetBodyChanged: boolean
+): readonly CadFeatureReferenceChangeSummary[] {
+  const oldTargetGenerated = targetBodyChanged
+    ? listGeneratedReferences(
+        createBodyGeneratedReferences(
+          state,
+          before.targetBodyId,
+          DEFAULT_PART_ID
+        )
+      ).map((reference) => ({
+        category: "active" as const,
+        bodyId: before.targetBodyId,
+        stableId: reference.stableId,
+        kind: reference.kind,
+        sourceFeatureId: before.id,
+        targetFeatureId: after.id,
+        message:
+          "Old hole target generated reference was reactivated by the retarget transaction."
+      }))
+    : [];
+  const oldTargetNamed = targetBodyChanged
+    ? [...state.namedReferences.values()]
+        .filter((reference) => reference.bodyId === before.targetBodyId)
+        .map((reference) => ({
+          category: "active" as const,
+          bodyId: reference.bodyId,
+          stableId: reference.stableId,
+          kind: reference.kind,
+          referenceName: reference.name,
+          sourceFeatureId: before.id,
+          targetFeatureId: after.id,
+          message:
+            "Old hole target named reference was reactivated by the retarget transaction."
+        }))
+    : [];
+  const newTargetConsumed = createConsumingFeatureEditReferenceEffects(
+    state,
+    after
+  ).filter((effect) => effect.bodyId === after.targetBodyId);
+  const targetTopology = (state.topologyIdentity?.anchors ?? [])
+    .filter(
+      (anchor) =>
+        anchor.state === "active" &&
+        (anchor.bodyId === before.targetBodyId ||
+          anchor.bodyId === after.targetBodyId)
+    )
+    .map((anchor) => {
+      const reactivated =
+        targetBodyChanged && anchor.bodyId === before.targetBodyId;
+      return {
+        category: reactivated ? ("active" as const) : ("consumed" as const),
+        bodyId: anchor.bodyId,
+        topologyAnchorId: anchor.anchorId,
+        checkpointId: anchor.checkpointId,
+        kind: anchor.entityKind,
+        sourceFeatureId: before.id,
+        targetFeatureId: after.id,
+        ...(reactivated
+          ? {}
+          : {
+              diagnosticCode: "CONSUMED_REFERENCE_NOT_COMMAND_READY" as const
+            }),
+        message: reactivated
+          ? "Old hole target topology anchor was reactivated by the retarget transaction."
+          : "New hole target topology anchor was consumed by the retarget transaction."
+      };
+    });
+
+  return [
+    ...oldTargetGenerated,
+    ...oldTargetNamed,
+    ...newTargetConsumed,
+    ...targetTopology,
+    {
+      category: "repair-needed",
+      bodyId: after.bodyId,
+      sourceFeatureId: after.id,
+      diagnosticCode: "AMBIGUOUS_RESULT_TOPOLOGY",
+      message:
+        "Hole result topology evidence was invalidated by the target replacement and requires a current derived rebuild."
+    }
+  ];
+}
+
 function createEdgeFinishSourceReferenceEffect(
   state: MutableDocumentState,
   feature: ChamferFeature | FilletFeature
@@ -17273,6 +17406,56 @@ function createConsumingFeatureEditLifecycleEffects(
       message: `Target body ${consumedBodyId} remains consumed by edited ${feature.kind} feature ${feature.id}.`
     },
     ...resultEffects
+  ];
+}
+
+function createHoleRetargetLifecycleEffects(
+  before: HoleFeature,
+  after: HoleFeature,
+  oldTargetFeature?: Feature,
+  newTargetFeature?: Feature,
+  targetBodyChanged = true
+): readonly CadBodyLifecycleEffectSummary[] {
+  return [
+    ...(targetBodyChanged
+      ? [
+          {
+            bodyId: before.targetBodyId,
+            ...(oldTargetFeature ? { featureId: oldTargetFeature.id } : {}),
+            targetFeatureId: after.id,
+            primaryState: "active" as const,
+            states: ["active", "source", "replacement"] as const,
+            message: `Old hole target body ${before.targetBodyId} was reactivated by feature ${after.id}.`
+          }
+        ]
+      : []),
+    {
+      bodyId: after.targetBodyId,
+      ...(newTargetFeature ? { featureId: newTargetFeature.id } : {}),
+      targetFeatureId: after.id,
+      primaryState: "consumed",
+      states: ["consumed", "source", "replacement"],
+      diagnosticCode: "REBUILD_TARGET_CONSUMED",
+      message: targetBodyChanged
+        ? `New hole target body ${after.targetBodyId} was consumed by feature ${after.id}.`
+        : `Hole target body ${after.targetBodyId} remains consumed while feature ${after.id} changes its target selector.`
+    },
+    {
+      bodyId: after.bodyId,
+      featureId: after.id,
+      primaryState: "derived-rebuild-pending",
+      states: [
+        "active",
+        "result",
+        "modified",
+        "replacement",
+        "derived-rebuild-pending",
+        "repair-needed"
+      ],
+      diagnosticCode: "REBUILD_DERIVED_PENDING",
+      message:
+        "Hole result body retained its identity while derived geometry and topology evidence were invalidated by retargeting."
+    }
   ];
 }
 
@@ -17579,12 +17762,6 @@ function isSupportedAddTargetProfileKind(
     (hasTopologyAnchorTarget && profileKind === "circle") ||
     profileKind === "importedBody"
   );
-}
-
-function isSupportedHoleTargetProfileKind(
-  profileKind: SupportedBooleanTargetKind
-): boolean {
-  return profileKind === "rectangle" || profileKind === "circle";
 }
 
 function isSupportedAddToolProfileKind(
@@ -18110,7 +18287,8 @@ function validateHoleTarget(
   state: MutableDocumentState,
   targetBodyId: BodyId | undefined,
   targetTopologyAnchorId: string | undefined,
-  opIndex?: number
+  opIndex?: number,
+  ignoreConsumingFeatureId?: FeatureId
 ): {
   readonly targetBodyId: BodyId;
   readonly targetTopologyAnchorId?: string;
@@ -18131,7 +18309,12 @@ function validateHoleTarget(
 
   if (targetTopologyAnchorId === undefined) {
     return {
-      targetBodyId: validateHoleTargetBodyId(state, targetBodyId, opIndex)
+      targetBodyId: validateHoleTargetBodyId(
+        state,
+        targetBodyId,
+        opIndex,
+        ignoreConsumingFeatureId
+      )
     };
   }
 
@@ -18145,7 +18328,12 @@ function validateHoleTarget(
   const activeBodyId = resolveActiveTopologyAnchorBodyTargetId(state, target);
 
   return {
-    targetBodyId: validateHoleTargetBodyId(state, activeBodyId, opIndex),
+    targetBodyId: validateHoleTargetBodyId(
+      state,
+      activeBodyId,
+      opIndex,
+      ignoreConsumingFeatureId
+    ),
     targetTopologyAnchorId: target.topologyAnchorId
   };
 }
@@ -18153,7 +18341,8 @@ function validateHoleTarget(
 function validateHoleTargetBodyId(
   state: MutableDocumentState,
   targetBodyId: BodyId | undefined,
-  opIndex?: number
+  opIndex?: number,
+  ignoreConsumingFeatureId?: FeatureId
 ): BodyId {
   if (typeof targetBodyId !== "string" || targetBodyId.trim().length === 0) {
     throwValidationError({
@@ -18193,19 +18382,21 @@ function validateHoleTargetBodyId(
     });
   }
 
-  const consumingFeature = findConsumingFeatureByTargetBodyId(
+  const consumer = findConsumingFeatureByTargetBodyId(
     state.features,
     targetBodyId
   );
+  const blockingConsumer =
+    consumer?.id === ignoreConsumingFeatureId ? undefined : consumer;
 
   const policy = createCommandDownstreamBodyPolicyProjection(
     state,
     targetFeature,
-    consumingFeature,
+    blockingConsumer,
     "holeTarget"
   );
   if (!policy.sourceEligible) {
-    if (!consumingFeature) {
+    if (!blockingConsumer) {
       throwCommandDownstreamBodyPolicyError(
         policy,
         opIndex,
@@ -18213,13 +18404,12 @@ function validateHoleTargetBodyId(
         "targetBodyId"
       );
     }
-    const consumer = consumingFeature;
     throwValidationError({
       code: "UNSUPPORTED_FEATURE_OPERATION",
-      message: `feature.hole target body is already consumed by feature ${consumer.id}: ${targetBodyId}`,
+      message: `feature.hole target body is already consumed by feature ${blockingConsumer.id}: ${targetBodyId}`,
       opIndex,
       bodyId: targetBodyId,
-      featureId: consumer.id,
+      featureId: blockingConsumer.id,
       path: operationPath(opIndex, "targetBodyId"),
       expected: "active authored target body",
       received: targetBodyId
@@ -18227,6 +18417,38 @@ function validateHoleTargetBodyId(
   }
 
   return targetFeature.bodyId;
+}
+
+function validateExistingHoleTarget(
+  state: MutableDocumentState,
+  feature: HoleFeature,
+  opIndex?: number
+): void {
+  if (feature.targetTopologyAnchorId) {
+    const target = resolveActiveTopologyAnchorTarget(
+      state,
+      feature.targetTopologyAnchorId,
+      "body",
+      opIndex,
+      "targetTopologyAnchorId"
+    );
+    const activeBodyId = resolveActiveTopologyAnchorBodyTargetId(state, target);
+    if (activeBodyId !== feature.targetBodyId) {
+      throwValidationError({
+        code: "INVALID_TOPOLOGY_ANCHOR",
+        message: `Hole target anchor ${feature.targetTopologyAnchorId} does not resolve to body ${feature.targetBodyId}.`,
+        opIndex,
+        featureId: feature.id,
+        bodyId: feature.targetBodyId,
+        topologyAnchorId: feature.targetTopologyAnchorId,
+        path: operationPath(opIndex, "targetTopologyAnchorId"),
+        expected: feature.targetBodyId,
+        received: activeBodyId
+      });
+    }
+  }
+
+  validateHoleTargetBodyId(state, feature.targetBodyId, opIndex, feature.id);
 }
 
 function createCommandDownstreamBodyPolicyProjection(
@@ -18265,53 +18487,6 @@ function throwCommandDownstreamBodyPolicyError(
     path: operationPath(opIndex, field),
     expected: diagnostic.expected,
     received: diagnostic.received
-  });
-}
-
-function assertSupportedHoleTarget(
-  state: MutableDocumentState,
-  targetBodyId: BodyId,
-  targetTopologyAnchorId?: string,
-  opIndex?: number
-): void {
-  const targetFeature = findFeatureByBodyId(state.features, targetBodyId);
-  const targetProfileKind = resolveSupportedBooleanTargetProfileKind(
-    state,
-    targetFeature,
-    targetTopologyAnchorId,
-    targetBodyId
-  );
-
-  if (
-    targetProfileKind &&
-    isSupportedHoleTargetProfileKind(targetProfileKind)
-  ) {
-    return;
-  }
-
-  throwValidationError({
-    code: "UNSUPPORTED_FEATURE_OPERATION",
-    message:
-      "Hole features currently support circular tools cutting one active rectangle, circle, or topology-backed result target body.",
-    opIndex,
-    bodyId: targetBodyId,
-    path: operationPath(opIndex, "targetBodyId"),
-    expected:
-      "active rectangle/circle source or topology-backed result target body",
-    received: describeReceived({
-      targetBodyId,
-      targetTopologyAnchorId,
-      targetProfileKind:
-        targetProfileKind ??
-        (targetFeature?.kind === "extrude"
-          ? getFeatureProfileKindOrThrow(state, targetFeature, opIndex)
-          : undefined),
-      targetFeatureKind: targetFeature?.kind,
-      targetOperationMode:
-        targetFeature?.kind === "extrude"
-          ? targetFeature.operationMode
-          : undefined
-    })
   });
 }
 
@@ -33830,23 +34005,6 @@ function validateFeatureTargetBodyReferences(
     }
 
     if (
-      feature.kind === "hole" &&
-      (!isExtrudeFeatureSnapshot(target) ||
-        !isSupportedImportHoleTargetCombination(
-          featuresByBodyId,
-          feature,
-          target
-        ))
-    ) {
-      addProjectIssue(
-        issues,
-        "INVALID_FEATURE",
-        `${feature.path}.targetBodyId`,
-        "Hole features currently support circular tools cutting one active rectangle, circle, or topology-backed result target body."
-      );
-    }
-
-    if (
       (feature.kind === "chamfer" || feature.kind === "fillet") &&
       !isSupportedImportEdgeFinishTargetCombination(feature, target)
     ) {
@@ -33857,6 +34015,49 @@ function validateFeatureTargetBodyReferences(
         `${formatTargetConsumingFeatureForIssue(feature)} currently supports one stable generated edge on an active rectangle/circle newBody extrude target body, a supported rectangle cut result body, or an imported body topology edge anchor.`
       );
     }
+  }
+
+  validateImportFeatureDependencyCycles(featuresByBodyId, issues);
+}
+
+function validateImportFeatureDependencyCycles(
+  featuresByBodyId: ReadonlyMap<
+    BodyId,
+    ImportFeatureSnapshot & { readonly path: string }
+  >,
+  issues: CadProjectImportIssue[]
+): void {
+  const visited = new Set<BodyId>();
+
+  for (const rootBodyId of featuresByBodyId.keys()) {
+    if (visited.has(rootBodyId)) continue;
+    const chain: BodyId[] = [];
+    const chainIndexByBodyId = new Map<BodyId, number>();
+    let bodyId: BodyId | undefined = rootBodyId;
+
+    while (bodyId && !visited.has(bodyId)) {
+      const cycleIndex = chainIndexByBodyId.get(bodyId);
+      if (cycleIndex !== undefined) {
+        for (const cycleBodyId of chain.slice(cycleIndex)) {
+          const feature = featuresByBodyId.get(cycleBodyId)!;
+          addProjectIssue(
+            issues,
+            "INVALID_FEATURE",
+            `${feature.path}.targetBodyId`,
+            `${formatTargetConsumingFeatureForIssue(feature)} targetBodyId creates a feature dependency cycle.`
+          );
+        }
+        break;
+      }
+
+      const feature = featuresByBodyId.get(bodyId);
+      if (!feature) break;
+      chainIndexByBodyId.set(bodyId, chain.length);
+      chain.push(bodyId);
+      bodyId = getImportFeatureTargetBodyId(feature);
+    }
+
+    for (const visitedBodyId of chain) visited.add(visitedBodyId);
   }
 }
 
@@ -33886,27 +34087,6 @@ function isSupportedImportEdgeFinishTargetCombination(
       target.profileKind !== "wire" &&
       isSupportedCutTargetProfileKind(target.profileKind)) ||
     (operationMode === "cut" && target.profileKind === "rectangle")
-  );
-}
-
-function isSupportedImportHoleTargetCombination(
-  featuresByBodyId: ReadonlyMap<
-    BodyId,
-    ImportFeatureSnapshot & { readonly path: string }
-  >,
-  feature: HoleFeatureSnapshot,
-  target: ImportExtrudeFeatureSnapshot
-): boolean {
-  const targetProfileKind = resolveImportBooleanTargetProfileKind(
-    featuresByBodyId,
-    target,
-    feature.targetTopologyAnchorId,
-    feature.targetBodyId
-  );
-
-  return (
-    targetProfileKind !== undefined &&
-    isSupportedCutTargetProfileKind(targetProfileKind)
   );
 }
 

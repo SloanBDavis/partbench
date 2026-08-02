@@ -70,6 +70,11 @@ describe("V21.1 additive protocol contracts", () => {
       ...historical,
       targetTopologyAnchorId: "anchor-2"
     };
+    const targetOnlyRetarget: FeatureUpdateHoleOp = {
+      op: "feature.updateHole",
+      id: "hole-1",
+      targetBodyId: "body-2"
+    };
     const ambiguousRetarget: FeatureUpdateHoleOp = {
       ...historical,
       targetBodyId: "body-2",
@@ -79,6 +84,7 @@ describe("V21.1 additive protocol contracts", () => {
     expect(validateFeatureUpdateHoleOp(historical).ok).toBe(true);
     expect(validateFeatureUpdateHoleOp(bodyRetarget).ok).toBe(true);
     expect(validateFeatureUpdateHoleOp(anchorRetarget).ok).toBe(true);
+    expect(validateFeatureUpdateHoleOp(targetOnlyRetarget).ok).toBe(true);
     expect(
       validateFeatureUpdateHoleOp({
         op: "feature.updateHole",
@@ -86,6 +92,20 @@ describe("V21.1 additive protocol contracts", () => {
       }).ok
     ).toBe(false);
     expect(validateFeatureUpdateHoleOp(ambiguousRetarget).ok).toBe(false);
+    expect(
+      validateFeatureUpdateHoleOp({
+        op: "feature.updateHole",
+        id: "hole-1",
+        targetBodyId: ""
+      }).ok
+    ).toBe(false);
+    expect(
+      validateFeatureUpdateHoleOp({
+        op: "feature.updateHole",
+        id: "hole-1",
+        targetTopologyAnchorId: ""
+      }).ok
+    ).toBe(false);
     expect(
       validateFeatureUpdateHoleOp({ ...historical, brepBytes: [1, 2, 3] }).ok
     ).toBe(false);

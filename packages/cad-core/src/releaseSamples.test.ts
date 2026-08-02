@@ -994,7 +994,7 @@ describe("V21 exact body source matrix", () => {
     });
   });
 
-  it("keeps imported holes and broad V16 seed drift outside completed support", () => {
+  it("keeps the V21 record frozen while V21.1 admits imported hole source validation", () => {
     expect(
       V21_EXACT_BODY_SOURCE_POLICY.importedStepBody.completedConsumers
     ).toEqual([
@@ -1061,8 +1061,8 @@ describe("V21 exact body source matrix", () => {
         ]
       })
     ).toMatchObject({
-      ok: false,
-      error: { code: "UNSUPPORTED_FEATURE_OPERATION" }
+      ok: true,
+      mode: "dryRun"
     });
     expect(exportCadProjectJson(engine)).toBe(before);
   });
