@@ -49,6 +49,7 @@ import {
   getRevolveOperationStatus,
   isExtrudableSketchEntity,
   type BooleanTargetBodyOption,
+  type HoleTargetExactReadiness,
   type RevolveAxisOption
 } from "./sketchPanelUi";
 import type { CreatableSketchEntityKind } from "./cadCommands";
@@ -199,6 +200,10 @@ export interface ModelingActionState {
     string,
     TopologyCommandTargetReadinessQueryResponse
   >;
+  readonly exactHoleTargetReadinessByBodyId?: ReadonlyMap<
+    string,
+    HoleTargetExactReadiness
+  >;
   readonly sketchIntentActionAvailability?: UiActionAvailabilityProjection;
 }
 
@@ -278,6 +283,7 @@ function createSketchEntityActions(
     | "preferredBodyId"
     | "topologyAnchors"
     | "holeTargetReadinessByTopologyAnchorId"
+    | "exactHoleTargetReadinessByBodyId"
     | "sketchIntentActionAvailability"
   >
 ): readonly ModelingActionDescriptor[] {
@@ -470,6 +476,7 @@ function createHoleAction(
     | "preferredBodyId"
     | "topologyAnchors"
     | "holeTargetReadinessByTopologyAnchorId"
+    | "exactHoleTargetReadinessByBodyId"
   >,
   selection: ModelingActionSelectionMetadata
 ): ModelingActionDescriptor {
@@ -479,7 +486,8 @@ function createHoleAction(
     state.features ?? [],
     state.preferredBodyId,
     state.topologyAnchors,
-    state.holeTargetReadinessByTopologyAnchorId
+    state.holeTargetReadinessByTopologyAnchorId,
+    state.exactHoleTargetReadinessByBodyId
   );
   const status = getHoleOperationStatus(entity, targets, DEFAULT_HOLE_FORM);
   const guidance = getHoleTargetGuidance(targets[0], sketch.plane);
@@ -646,6 +654,7 @@ function createGeneratedReferenceActions(
     | "features"
     | "topologyAnchors"
     | "holeTargetReadinessByTopologyAnchorId"
+    | "exactHoleTargetReadinessByBodyId"
   >
 ): readonly ModelingActionDescriptor[] {
   const selection: ModelingActionSelectionMetadata = {
@@ -707,6 +716,7 @@ function createGeneratedFaceSideHoleAction(
     | "features"
     | "topologyAnchors"
     | "holeTargetReadinessByTopologyAnchorId"
+    | "exactHoleTargetReadinessByBodyId"
   >,
   selection: ModelingActionSelectionMetadata
 ): ModelingActionDescriptor | undefined {
@@ -719,10 +729,11 @@ function createGeneratedFaceSideHoleAction(
     state.features ?? [],
     face.bodyId,
     state.topologyAnchors,
-    state.holeTargetReadinessByTopologyAnchorId
+    state.holeTargetReadinessByTopologyAnchorId,
+    state.exactHoleTargetReadinessByBodyId
   );
   const selectedTarget = targets.find(
-    (target) => target.bodyId === face.bodyId
+    (target) => target.bodyId === face.bodyId && !target.disabled
   );
   const guidance = getHoleTargetGuidance(selectedTarget, "XZ");
 

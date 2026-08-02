@@ -1,5 +1,6 @@
 import type {
   CadBodySnapshot,
+  CadCurrentExactResultStatus,
   CadFeatureSummary,
   CadParameterSnapshot,
   CadSelectionReferenceOperation,
@@ -44,9 +45,17 @@ export interface BooleanTargetBodyOption {
   readonly bodyId: string;
   readonly featureId: string;
   readonly targetTopologyAnchorId?: string;
-  readonly profileKind: "rectangle" | "circle";
+  readonly profileKind?: "rectangle" | "circle";
   readonly label: string;
   readonly detail: string;
+  readonly disabled?: boolean;
+  readonly warning?: string;
+}
+
+export interface HoleTargetExactReadiness {
+  readonly status: CadCurrentExactResultStatus;
+  readonly solidCount?: number;
+  readonly reason?: string;
 }
 
 export interface BooleanOperationStatus {
@@ -67,8 +76,9 @@ export function getPreferredBooleanTargetBodyOption(
   preferredBodyId: string | undefined
 ): BooleanTargetBodyOption | undefined {
   return (
-    targetBodies.find((body) => body.bodyId === preferredBodyId) ??
-    targetBodies[0]
+    targetBodies.find(
+      (body) => body.bodyId === preferredBodyId && !body.disabled
+    ) ?? targetBodies.find((body) => !body.disabled)
   );
 }
 
@@ -1211,8 +1221,18 @@ export function createHoleTargetBodyOptions(
   readinessByTopologyAnchorId?: ReadonlyMap<
     string,
     TopologyCommandTargetReadinessQueryResponse
-  >
+  >,
+  exactReadinessByBodyId?: ReadonlyMap<string, HoleTargetExactReadiness>
 ): readonly BooleanTargetBodyOption[] {
+  if (exactReadinessByBodyId) {
+    return createExactHoleTargetBodyOptions(
+      bodies,
+      features,
+      preferredBodyId,
+      exactReadinessByBodyId
+    );
+  }
+
   return createBooleanTargetBodyOptions(
     bodies,
     features,
@@ -1221,6 +1241,48 @@ export function createHoleTargetBodyOptions(
     topologyAnchors,
     readinessByTopologyAnchorId
   );
+}
+
+function createExactHoleTargetBodyOptions(
+  bodies: readonly CadBodySnapshot[],
+  features: readonly CadFeatureSummary[],
+  preferredBodyId: string | undefined,
+  readinessByBodyId: ReadonlyMap<string, HoleTargetExactReadiness>
+): readonly BooleanTargetBodyOption[] {
+  const options = bodies.map((body, index) => {
+    const readiness = readinessByBodyId.get(body.id);
+    const disabled =
+      (body.consumedByFeatureId !== undefined && body.id !== preferredBodyId) ||
+      readiness?.status !== "ready";
+    const feature = features.find(
+      (candidate) => candidate.id === body.featureId
+    );
+    const profileKind =
+      feature?.kind === "extrude" ? feature.profileKind : undefined;
+    const warning =
+      readiness?.status === "ready" &&
+      readiness.solidCount !== undefined &&
+      readiness.solidCount > 1
+        ? `This body contains ${readiness.solidCount} solids. The hole applies to every intersected solid.`
+        : undefined;
+
+    return {
+      bodyId: body.id,
+      featureId: body.featureId,
+      ...(profileKind ? { profileKind } : {}),
+      label: body.name ?? `Body ${index + 1}`,
+      detail: disabled
+        ? (readiness?.reason ??
+          (body.consumedByFeatureId
+            ? "Already consumed by another feature."
+            : `Exact target is ${readiness?.status ?? "unavailable"}.`))
+        : (warning ?? "Exact-ready body"),
+      ...(disabled ? { disabled: true } : {}),
+      ...(warning ? { warning } : {})
+    };
+  });
+
+  return preferBodyOption(options, preferredBodyId);
 }
 
 function createBooleanTargetBodyOptions(
@@ -1318,10 +1380,14 @@ function createBooleanTargetBodyOptions(
       ];
     });
 
-  if (!preferredBodyId) {
-    return options;
-  }
+  return preferBodyOption(options, preferredBodyId);
+}
 
+function preferBodyOption(
+  options: readonly BooleanTargetBodyOption[],
+  preferredBodyId?: string
+): readonly BooleanTargetBodyOption[] {
+  if (!preferredBodyId) return options;
   return [...options].sort((left, right) => {
     if (left.bodyId === preferredBodyId) {
       return -1;
@@ -1540,7 +1606,8 @@ export function getHoleOperationStatus(
     };
   }
 
-  if (holeTargets.length === 0) {
+  const eligibleTargets = holeTargets.filter((target) => !target.disabled);
+  if (eligibleTargets.length === 0) {
     return {
       available: false,
       message:
@@ -1551,9 +1618,9 @@ export function getHoleOperationStatus(
   return {
     available: true,
     message:
-      holeTargets.length === 1
+      eligibleTargets.length === 1
         ? "1 eligible hole target body."
-        : `${holeTargets.length} eligible hole target bodies.`
+        : `${eligibleTargets.length} eligible hole target bodies.`
   };
 }
 
@@ -1563,6 +1630,10 @@ export function getHoleTargetGuidance(
 ): string | undefined {
   if (!selectedTarget) {
     return undefined;
+  }
+
+  if (selectedTarget.disabled) {
+    return selectedTarget.detail;
   }
 
   if (

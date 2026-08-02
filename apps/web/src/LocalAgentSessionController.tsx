@@ -11,7 +11,8 @@ import { useEffect, useRef } from "react";
 import {
   LocalAgentSession,
   readLocalAgentSessionToken,
-  type CurrentAgentSelectionInput
+  type CurrentAgentSelectionInput,
+  type LocalAgentCommitPreflight
 } from "./localAgentSession";
 import { attachLocalAgentSession } from "./localAgentSessionStore";
 
@@ -21,6 +22,7 @@ export function LocalAgentSessionController({
   document,
   selection,
   currentExactEvidence,
+  preflightCommit,
   publishCommit
 }: {
   readonly engine: CadEngine;
@@ -28,16 +30,27 @@ export function LocalAgentSessionController({
   readonly document: CadDocument;
   readonly selection: CurrentAgentSelectionInput;
   readonly currentExactEvidence: CadOpsAgentCurrentExactEvidence;
+  readonly preflightCommit: LocalAgentCommitPreflight;
   readonly publishCommit: (
     response: CadOpsAgentSuccessResponse
   ) => Promise<void>;
 }) {
-  const latestRef = useRef({ selection, currentExactEvidence, publishCommit });
+  const latestRef = useRef({
+    selection,
+    currentExactEvidence,
+    preflightCommit,
+    publishCommit
+  });
   const sessionRef = useRef<LocalAgentSession | null>(null);
 
   useEffect(() => {
-    latestRef.current = { selection, currentExactEvidence, publishCommit };
-  }, [currentExactEvidence, publishCommit, selection]);
+    latestRef.current = {
+      selection,
+      currentExactEvidence,
+      preflightCommit,
+      publishCommit
+    };
+  }, [currentExactEvidence, preflightCommit, publishCommit, selection]);
 
   useEffect(() => {
     const token = readLocalAgentSessionToken(window.location.hash);
@@ -48,6 +61,8 @@ export function LocalAgentSessionController({
       executor,
       readSelection: () => latestRef.current.selection,
       readCurrentExactEvidence: () => latestRef.current.currentExactEvidence,
+      preflightCommit: (request, sourceAuthorityEpoch) =>
+        latestRef.current.preflightCommit(request, sourceAuthorityEpoch),
       publishCommit: (response) => latestRef.current.publishCommit(response)
     });
     sessionRef.current = session;

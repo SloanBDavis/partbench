@@ -259,6 +259,63 @@ describe("SolidModePanel", () => {
     expect(markup).toContain("Reverse path direction");
   });
 
+  it("keeps hole targets editable and shows disabled exact choices plus multi-solid warnings", () => {
+    const markup = renderToStaticMarkup(
+      createElement(SolidModePanel, {
+        activeEditor: {
+          key: "hole-edit",
+          kind: "hole",
+          mode: "edit",
+          title: "Edit Hole",
+          initialDraft: {
+            id: "feature-hole",
+            bodyId: "body-hole",
+            targetBodyId: "body-multi",
+            name: "Hole",
+            depthMode: "throughAll",
+            depth: 1,
+            direction: "positive"
+          },
+          choices: {
+            targetBodies: [
+              {
+                key: "body-multi",
+                value: "body-multi",
+                label: "Multi-solid target",
+                kind: "body",
+                warning:
+                  "This body contains 3 solids. The hole applies to every intersected solid."
+              },
+              {
+                key: "body-blocked",
+                value: "body-blocked",
+                label: "Unavailable imported body",
+                kind: "body",
+                disabled: true
+              }
+            ]
+          }
+        },
+        onApply: () => undefined
+      })
+    );
+    const targetSelect = markup.match(
+      /<select class="pb-field"[^>]*>[\s\S]*?Multi-solid target[\s\S]*?<\/select>/
+    )?.[0];
+
+    expect(targetSelect).toBeDefined();
+    expect(targetSelect?.match(/^<select[^>]*>/)?.[0]).not.toContain(
+      'disabled=""'
+    );
+    expect(targetSelect).toMatch(
+      /<option[^>]*value="body-blocked"[^>]*disabled=""[^>]*>Unavailable imported body<\/option>/
+    );
+    expect(markup).toContain(
+      "This body contains 3 solids. The hole applies to every intersected solid."
+    );
+    expect(markup).toContain('role="status"');
+  });
+
   it("locks edit fields the backend cannot update", () => {
     const markup = renderToStaticMarkup(
       createElement(SolidModePanel, {
@@ -463,6 +520,25 @@ describe("Solid editor session", () => {
       circleEntityId: "circle-source",
       targetTopologyAnchorId: "anchor-body"
     });
+    expect(
+      applySolidCollectorSelection(
+        "hole",
+        holeForm,
+        {
+          targetBodies: [
+            {
+              key: "blocked-body",
+              value: "blocked-body",
+              label: "Blocked body",
+              kind: "hole target",
+              disabled: true
+            }
+          ]
+        },
+        "targetBody",
+        "blocked-body"
+      )
+    ).toBe(holeForm);
 
     const shell = applySolidCollectorSelection(
       "shell",

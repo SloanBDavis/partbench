@@ -3434,6 +3434,39 @@ describe("occt-wasm", () => {
       });
       expect(files()).toEqual(filesBefore);
 
+      const step = createOcctStepExportWithInstance(oc, {
+        units: "mm",
+        bodies: [
+          {
+            bodyId: "body_universal_hole_roundtrip",
+            bodyName: "Universal hole round trip",
+            brepFormat: partial.brepFormat,
+            brepByteLength: partial.brepByteLength,
+            brepSha256: "0".repeat(64),
+            brepBytes: partial.brepBytes
+          }
+        ]
+      });
+      const imported = createOcctStepImportWithInstance(oc, {
+        sourceFileName: "universal-hole-roundtrip.step",
+        bytes: step.bytes,
+        maxBodyCount: 2
+      });
+      const importedBody = imported.bodies[0];
+      if (!importedBody) throw new Error("Expected round-tripped hole body.");
+      const importedMetadata = createOcctExactBodyArtifactMetadataWithInstance(
+        oc,
+        {
+          source: {
+            kind: "importedBody",
+            brepBytes: importedBody.checkpointPayload.brepBytes
+          }
+        }
+      );
+      expect(importedMetadata.topologyCounts.solidCount).toBe(2);
+      expect(importedMetadata.volume).toBeCloseTo(partial.metadata.volume, 5);
+      expect(files()).toEqual(filesBefore);
+
       for (const [label, radius, message] of [
         ["no-intersection", 1, /positive-volume intersection/i],
         ["tangency", 2.5, /positive-volume intersection|invalid result/i],

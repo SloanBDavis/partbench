@@ -12,7 +12,8 @@ import {
   LocalAgentSession,
   createCurrentAgentSelection,
   createCurrentAgentSelectionForEngine,
-  readLocalAgentSessionToken
+  readLocalAgentSessionToken,
+  type LocalAgentCommitPreflight
 } from "./localAgentSession";
 import { isExactExportPlanCurrent } from "./projectExactStepExport";
 
@@ -163,6 +164,129 @@ describe("local agent approval", () => {
     });
     expect(fixture.engine.getDocument().objects.has("approved-box")).toBe(true);
     expect(fixture.publishCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it("preflights manual and approveAll commits once at their captured source epoch", async () => {
+    const manualPreflight = vi.fn(async () => true);
+    const manual = createSession(0, undefined, manualPreflight);
+    const manualRequest = createBoxRequest("manual-preflight-box");
+    const manualResult = manual.session.execute(manualRequest);
+    await waitForProposal(manual.session);
+
+    await manual.session.approve();
+
+    await expect(manualResult).resolves.toMatchObject({ ok: true });
+    expect(manualPreflight).toHaveBeenCalledTimes(1);
+    expect(manualPreflight).toHaveBeenCalledWith(manualRequest, 0);
+    expect(manual.publishCommit).toHaveBeenCalledTimes(1);
+
+    const approveAllPreflight = vi.fn(async () => true);
+    const approveAll = createSession(0, undefined, approveAllPreflight);
+    approveAll.session.setApprovalMode("approveAll");
+    const approveAllRequest = createBoxRequest("approve-all-preflight-box");
+
+    await expect(
+      approveAll.session.execute(approveAllRequest)
+    ).resolves.toMatchObject({ ok: true });
+    expect(approveAllPreflight).toHaveBeenCalledTimes(1);
+    expect(approveAllPreflight).toHaveBeenCalledWith(approveAllRequest, 0);
+    expect(approveAll.publishCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips commit preflight for dry-runs", async () => {
+    const preflightCommit = vi.fn(async () => true);
+    const fixture = createSession(0, undefined, preflightCommit);
+    const request = createBoxRequest("preflight-dry-run-box");
+
+    await expect(
+      fixture.session.execute({
+        ...request,
+        batch: { ...request.batch, mode: "dryRun" }
+      })
+    ).resolves.toMatchObject({ ok: true, mode: "dryRun" });
+
+    expect(preflightCommit).not.toHaveBeenCalled();
+    expect(fixture.engine.getDocument().objects.size).toBe(0);
+    expect(fixture.publishCommit).not.toHaveBeenCalled();
+  });
+
+  it.each([false, undefined])(
+    "blocks approveAll commit and publication when preflight returns %s",
+    async (preflightResult) => {
+      const preflightCommit = vi.fn(async () => preflightResult);
+      const fixture = createSession(0, undefined, preflightCommit);
+      fixture.session.setApprovalMode("approveAll");
+
+      await expect(
+        fixture.session.execute(createBoxRequest("blocked-preflight-box"))
+      ).resolves.toMatchObject({
+        ok: false,
+        error: { code: "AGENT_COMMIT_REJECTED" }
+      });
+
+      expect(preflightCommit).toHaveBeenCalledTimes(1);
+      expect(fixture.engine.getDocument().objects.size).toBe(0);
+      expect(fixture.publishCommit).not.toHaveBeenCalled();
+    }
+  );
+
+  it("returns the browser exact-preflight diagnostic without calling commit", async () => {
+    const fixture = createSession(
+      0,
+      undefined,
+      vi.fn(async () => ({
+        ok: false as const,
+        message: "Could not apply this hole (HOLE_RESULT_INVALID)."
+      }))
+    );
+    fixture.session.setApprovalMode("approveAll");
+
+    await expect(
+      fixture.session.execute(createBoxRequest("geometry-rejected-box"))
+    ).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: "AGENT_COMMIT_REJECTED",
+        message: "Could not apply this hole (HOLE_RESULT_INVALID)."
+      }
+    });
+    expect(fixture.engine.getDocument().objects.size).toBe(0);
+    expect(fixture.publishCommit).not.toHaveBeenCalled();
+  });
+
+  it("blocks a manual commit when its source changes during preflight", async () => {
+    let resolvePreflight: ((accepted: boolean) => void) | undefined;
+    const preflightCommit = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolvePreflight = resolve;
+        })
+    );
+    const fixture = createSession(0, undefined, preflightCommit);
+    const result = fixture.session.execute(
+      createBoxRequest("stale-preflight-box")
+    );
+    await waitForProposal(fixture.session);
+
+    const approval = fixture.session.approve();
+    await waitForCall(preflightCommit);
+    fixture.engine.apply({
+      op: "scene.createBox",
+      id: "human-preflight-box",
+      dimensions: { width: 1, height: 1, depth: 1 }
+    });
+    resolvePreflight?.(true);
+    await approval;
+
+    await expect(result).resolves.toMatchObject({
+      ok: false,
+      error: { code: "AGENT_PROPOSAL_STALE" }
+    });
+    expect(preflightCommit).toHaveBeenCalledTimes(1);
+    expect(
+      fixture.engine.getDocument().objects.has("stale-preflight-box")
+    ).toBe(false);
+    expect(fixture.publishCommit).not.toHaveBeenCalled();
   });
 
   it("keeps queries and dry-runs available while returning busy to another commit", async () => {
@@ -445,6 +569,44 @@ describe("local agent approval", () => {
     expect(approveAll.engine.getDocument().objects.size).toBe(0);
   });
 
+  it("blocks commit and publication when the session ends during preflight", async () => {
+    vi.stubGlobal("window", { removeEventListener: vi.fn() });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true }))
+    );
+    try {
+      let resolvePreflight: ((accepted: boolean) => void) | undefined;
+      const preflightCommit = vi.fn(
+        () =>
+          new Promise<boolean>((resolve) => {
+            resolvePreflight = resolve;
+          })
+      );
+      const fixture = createSession(0, undefined, preflightCommit);
+      fixture.session.setApprovalMode("approveAll");
+      const result = fixture.session.execute(
+        createBoxRequest("disconnected-preflight-box")
+      );
+      await waitForCall(preflightCommit);
+
+      await fixture.session.dispose();
+      resolvePreflight?.(true);
+
+      await expect(result).resolves.toMatchObject({
+        ok: false,
+        error: { code: "AGENT_SESSION_DISCONNECTED" }
+      });
+      expect(preflightCommit).toHaveBeenCalledTimes(1);
+      expect(
+        fixture.engine.getDocument().objects.has("disconnected-preflight-box")
+      ).toBe(false);
+      expect(fixture.publishCommit).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("cancels an approval when the browser session ends during validation", async () => {
     vi.stubGlobal("window", { removeEventListener: vi.fn() });
     vi.stubGlobal(
@@ -491,7 +653,8 @@ describe("local agent approval", () => {
 
 function createSession(
   workerDelayMs = 0,
-  readCurrentExactEvidence?: () => CadOpsAgentCurrentExactEvidence
+  readCurrentExactEvidence?: () => CadOpsAgentCurrentExactEvidence,
+  preflightCommit?: LocalAgentCommitPreflight
 ) {
   const engine = new CadEngine();
   const executor = new AsyncCadCommandExecutor(
@@ -505,6 +668,7 @@ function createSession(
     executor,
     readSelection: () => ({}),
     ...(readCurrentExactEvidence ? { readCurrentExactEvidence } : {}),
+    preflightCommit: preflightCommit ?? (async () => true),
     publishCommit
   });
   return { engine, executor, publishCommit, session };
@@ -537,4 +701,12 @@ async function waitForProposal(session: LocalAgentSession): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
   throw new Error("Timed out waiting for the manual agent proposal.");
+}
+
+async function waitForCall(mock: { readonly mock: { calls: unknown[] } }) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (mock.mock.calls.length > 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error("Timed out waiting for the commit preflight.");
 }

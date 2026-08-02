@@ -186,7 +186,7 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
     const roundTripStart = performance.now();
     const response = await scheduler.execute(
       context && "intent" in context
-        ? { intent: "user", userKind: "export" }
+        ? { intent: "user", userKind: context.userKind ?? "export" }
         : {
             intent: "exact",
             sourceId: context?.sourceId ?? input.id,

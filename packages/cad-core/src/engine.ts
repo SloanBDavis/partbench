@@ -18357,20 +18357,9 @@ function validateHoleTargetBodyId(
   }
 
   const targetFeature = findFeatureByBodyId(state.features, targetBodyId);
+  const primitiveTarget = isPrimitiveBodyId(state, targetBodyId);
 
-  if (!targetFeature) {
-    if (isPrimitiveBodyId(state, targetBodyId)) {
-      throwValidationError({
-        code: "TARGET_BODY_NOT_SUPPORTED",
-        message: `Primitive-derived body cannot be targeted by feature.hole: ${targetBodyId}`,
-        opIndex,
-        bodyId: targetBodyId,
-        path: operationPath(opIndex, "targetBodyId"),
-        expected: "authored target body id",
-        received: targetBodyId
-      });
-    }
-
+  if (!targetFeature && !primitiveTarget) {
     throwValidationError({
       code: "BODY_NOT_FOUND",
       message: `Target body does not exist: ${targetBodyId}`,
@@ -18391,7 +18380,7 @@ function validateHoleTargetBodyId(
 
   const policy = createCommandDownstreamBodyPolicyProjection(
     state,
-    targetFeature,
+    targetFeature ?? targetBodyId,
     blockingConsumer,
     "holeTarget"
   );
@@ -18416,7 +18405,7 @@ function validateHoleTargetBodyId(
     });
   }
 
-  return targetFeature.bodyId;
+  return targetFeature?.bodyId ?? targetBodyId;
 }
 
 function validateExistingHoleTarget(
@@ -18453,12 +18442,13 @@ function validateExistingHoleTarget(
 
 function createCommandDownstreamBodyPolicyProjection(
   state: MutableDocumentState,
-  feature: Feature,
+  feature: Feature | BodyId,
   consumingFeature: Feature | undefined,
   operation: CadExactDownstreamOperation
 ): CadDownstreamBodyPolicyProjection {
   const bodies = createProjectStructure(state, []).bodies;
-  const body = bodies.find((candidate) => candidate.id === feature.bodyId)!;
+  const bodyId = typeof feature === "string" ? feature : feature.bodyId;
+  const body = bodies.find((candidate) => candidate.id === bodyId)!;
   const dependency = evaluateCadBodyDependencies(state, bodies, body.id);
   return createCadDownstreamBodyPolicyProjection({
     bodyId: body.id,

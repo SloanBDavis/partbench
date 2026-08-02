@@ -472,7 +472,10 @@ export interface DerivedGeometryRequestContext {
 
 export type DerivedGeometryExecutionContext =
   | DerivedGeometryRequestContext
-  | { readonly intent: "user" };
+  | {
+      readonly intent: "user";
+      readonly userKind?: "preflight" | "import" | "export" | "checkpoint";
+    };
 
 type DerivedExactStepExportPayload = Extract<
   GeometryWorkerRequest["payload"],

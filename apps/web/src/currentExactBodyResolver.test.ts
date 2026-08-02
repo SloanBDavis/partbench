@@ -361,7 +361,7 @@ describe("currentExactBodyResolver", () => {
     });
   });
 
-  it("uses checkpoint targets for completed downstream operations but keeps imported holes staged", () => {
+  it("uses checkpoint artifacts for every supported imported downstream operation", () => {
     for (const operation of ["add", "cut"] as const) {
       const resolution = resolveImportedDownstream({
         kind: "boolean",
@@ -400,21 +400,20 @@ describe("currentExactBodyResolver", () => {
         });
       }
     }
-    expect(resolveImportedDownstream({ kind: "hole" })).toMatchObject({
-      status: "unsupported",
-      diagnostics: [{ code: "EXPORT_BODY_SOURCE_UNSUPPORTED" }]
-    });
-    const authoredHole = resolveImportedDownstream({
-      kind: "hole",
-      authoredTarget: true
-    });
-    if (authoredHole.status !== "ready") {
-      throw new Error(JSON.stringify(authoredHole.diagnostics));
+    for (const authoredTarget of [false, true]) {
+      const hole = resolveImportedDownstream({ kind: "hole", authoredTarget });
+      if (hole.status !== "ready") {
+        throw new Error(JSON.stringify(hole.diagnostics));
+      }
+      expect(hole).toMatchObject({
+        status: "ready",
+        source: { kind: "hole" },
+        artifactDependency: {
+          bodyId: "v21_imported_body",
+          source: { kind: "importedBody" }
+        }
+      });
     }
-    expect(authoredHole).toMatchObject({
-      status: "ready",
-      source: { kind: "checkpointHole" }
-    });
   });
 
   it("projects imported and downstream checkpoint resolutions into one display and metadata source", () => {
@@ -426,24 +425,11 @@ describe("currentExactBodyResolver", () => {
     const sources = getReadyRuntimeExactSources(resolutions);
 
     expect(sources).toHaveLength(3);
-    expect(sources).toEqual(
-      resolutions.map((resolution) =>
-        expect.objectContaining({
-          id: resolution.bodyId,
-          kind: "exactBody",
-          sourceIdentitySignature:
-            resolution.status === "ready"
-              ? resolution.sourceIdentitySignature
-              : undefined,
-          source: expect.objectContaining({
-            kind:
-              resolution.status === "ready"
-                ? createCurrentExactBodyArtifactSource(resolution.source).kind
-                : undefined
-          })
-        })
-      )
-    );
+    expect(sources.map((source) => [source.id, source.kind])).toEqual([
+      ["downstream_result", "exactBody"],
+      ["downstream_result", "hole"],
+      ["downstream_result", "exactBody"]
+    ]);
   });
 });
 

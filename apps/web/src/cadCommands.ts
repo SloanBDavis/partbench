@@ -1346,14 +1346,26 @@ export function buildFeatureUpdateHoleOp(
   id: string,
   depthMode?: FeatureHoleDepthMode,
   depth?: number,
-  direction?: FeatureHoleDirection
+  direction?: FeatureHoleDirection,
+  target?: Partial<
+    Pick<FeatureHoleForm, "targetBodyId" | "targetTopologyAnchorId">
+  >
 ): FeatureUpdateHoleOp {
+  const targetBodyId = normalizeOptionalId(target?.targetBodyId ?? "");
+  const targetTopologyAnchorId = normalizeOptionalId(
+    target?.targetTopologyAnchorId ?? ""
+  );
   return {
     op: "feature.updateHole",
     id,
     ...(depthMode ? { depthMode } : {}),
     ...(depth !== undefined ? { depth } : {}),
-    ...(direction ? { direction } : {})
+    ...(direction ? { direction } : {}),
+    ...(targetTopologyAnchorId
+      ? { targetTopologyAnchorId }
+      : targetBodyId
+        ? { targetBodyId }
+        : {})
   };
 }
 

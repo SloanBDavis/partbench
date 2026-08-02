@@ -1185,27 +1185,7 @@ function resolveHoleSource(
   if (feature?.kind !== "hole" || !source || source.kind !== "hole") {
     return resolveLegacyRuntimeSource(body, context, sourceIdentitySignature);
   }
-  if (!source.placementError) return { ...source, sourceIdentitySignature };
-
-  const targetBody = context.bodiesById.get(feature.targetBodyId);
-  if (targetBody?.source.type === "importedStepBody") {
-    return blocked(
-      body,
-      "unsupported",
-      "EXPORT_BODY_SOURCE_UNSUPPORTED",
-      "Imported-body holes are outside the completed V21 exact matrix."
-    );
-  }
-  const target = resolveCheckpointLeaf(feature.targetBodyId, context);
-  return target.ok
-    ? {
-        id: body.id,
-        kind: "checkpointHole",
-        target: target.source,
-        tool: source.tool,
-        sourceIdentitySignature
-      }
-    : blocked(body, target.status, target.code, target.message);
+  return { ...source, sourceIdentitySignature };
 }
 
 function resolveImportedSource(

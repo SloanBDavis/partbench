@@ -1,6 +1,8 @@
 import {
   AsyncCadCommandExecutor,
   CadEngine,
+  createCadDownstreamBodyPolicyProjection,
+  evaluateCadBodyDependencies,
   exportCadProject,
   exportCadProjectJson,
   readCadProjectWcad,
@@ -359,7 +361,8 @@ import {
 import {
   createAddTargetBodyOptions,
   createCutTargetBodyOptions,
-  createHoleTargetBodyOptions
+  createHoleTargetBodyOptions,
+  type HoleTargetExactReadiness
 } from "./sketchPanelUi";
 import {
   createViewportContextualCommandSurface,
@@ -3596,28 +3599,6 @@ export function App() {
       sketches
     ]
   );
-  const modelingActions = useMemo(
-    () =>
-      modelingUiRuntime?.deriveModelingActions({
-        context: modelingSelectionContext,
-        bodies: projectStructure.bodies,
-        features: projectStructure.features,
-        preferredBodyId: preferredHoleBodyId,
-        topologyAnchors: document.topologyIdentity?.anchors,
-        holeTargetReadinessByTopologyAnchorId,
-        sketchIntentActionAvailability
-      }) ?? INITIAL_MODELING_ACTIONS,
-    [
-      modelingUiRuntime,
-      document.topologyIdentity?.anchors,
-      holeTargetReadinessByTopologyAnchorId,
-      modelingSelectionContext,
-      preferredHoleBodyId,
-      projectStructure.bodies,
-      projectStructure.features,
-      sketchIntentActionAvailability
-    ]
-  );
   const allSolidBodyChoices = useMemo<readonly SolidChoice<string>[]>(
     () =>
       projectStructure.bodies.map((body, index) => ({
@@ -3692,6 +3673,78 @@ export function App() {
       projectStructure.features
     ]
   );
+  const exactHoleTargetReadinessByBodyId = useMemo(() => {
+    const resolutionsByBodyId = new Map(
+      currentExactBodyResolutions.map((resolution) => [
+        resolution.bodyId,
+        resolution
+      ])
+    );
+    const metadataByBodyId = new Map(
+      derivedExactMetadata.entries.map((entry) => [entry.bodyId, entry])
+    );
+    return new Map<string, HoleTargetExactReadiness>(
+      projectStructure.bodies.map((body) => {
+        const resolution = resolutionsByBodyId.get(body.id);
+        const metadata = metadataByBodyId.get(body.id);
+        const exactStatus =
+          resolution?.status !== "ready"
+            ? resolution?.status
+            : metadata?.status === "ready"
+              ? "ready"
+              : metadata?.status === "unsupported"
+                ? "unsupported"
+                : metadata?.status === "error"
+                  ? "failed"
+                  : "pending";
+        const solidCount =
+          metadata?.status === "ready"
+            ? metadata.metadata.topologyCounts.solidCount
+            : undefined;
+        const dependencies = evaluateCadBodyDependencies(
+          document,
+          projectStructure.bodies,
+          body.id
+        );
+        const readiness = createCadDownstreamBodyPolicyProjection({
+          bodyId: body.id,
+          featureId: body.featureId,
+          sourceType: body.source.type,
+          operation: "holeTarget",
+          lifecycle:
+            body.consumedByFeatureId === undefined ? "active" : "consumed",
+          dependencyStatus: dependencies.status,
+          dependencyCycle: dependencies.cycle,
+          exactStatus,
+          ...(solidCount === undefined
+            ? {}
+            : {
+                shapePolicy:
+                  solidCount === 1
+                    ? ("singleSolid" as const)
+                    : ("singleShapeOneOrMoreSolids" as const)
+              }),
+          diagnostics:
+            resolution?.status === "ready" ? undefined : resolution?.diagnostics
+        }).readiness;
+        return [
+          body.id,
+          {
+            status: readiness.status,
+            ...(solidCount === undefined ? {} : { solidCount }),
+            ...(readiness.diagnostics[0]
+              ? { reason: readiness.diagnostics[0].message }
+              : {})
+          }
+        ];
+      })
+    );
+  }, [
+    currentExactBodyResolutions,
+    derivedExactMetadata.entries,
+    document,
+    projectStructure.bodies
+  ]);
   const solidHoleTargetChoices = useMemo<readonly SolidChoice<string>[]>(
     () =>
       createHoleTargetBodyOptions(
@@ -3699,20 +3752,49 @@ export function App() {
         projectStructure.features,
         preferredHoleBodyId,
         document.topologyIdentity?.anchors,
-        holeTargetReadinessByTopologyAnchorId
+        holeTargetReadinessByTopologyAnchorId,
+        exactHoleTargetReadinessByBodyId
       ).map((target) => ({
         key: target.bodyId,
         value: target.bodyId,
         label: target.label,
         kind: "hole target",
-        targetTopologyAnchorId: target.targetTopologyAnchorId
+        targetTopologyAnchorId: target.targetTopologyAnchorId,
+        detail: target.detail,
+        ...(target.disabled ? { disabled: true } : {}),
+        ...(target.warning ? { warning: target.warning } : {})
       })),
     [
       document.topologyIdentity?.anchors,
+      exactHoleTargetReadinessByBodyId,
       holeTargetReadinessByTopologyAnchorId,
       preferredHoleBodyId,
       projectStructure.bodies,
       projectStructure.features
+    ]
+  );
+  const modelingActions = useMemo(
+    () =>
+      modelingUiRuntime?.deriveModelingActions({
+        context: modelingSelectionContext,
+        bodies: projectStructure.bodies,
+        features: projectStructure.features,
+        preferredBodyId: preferredHoleBodyId,
+        topologyAnchors: document.topologyIdentity?.anchors,
+        holeTargetReadinessByTopologyAnchorId,
+        exactHoleTargetReadinessByBodyId,
+        sketchIntentActionAvailability
+      }) ?? INITIAL_MODELING_ACTIONS,
+    [
+      modelingUiRuntime,
+      document.topologyIdentity?.anchors,
+      exactHoleTargetReadinessByBodyId,
+      holeTargetReadinessByTopologyAnchorId,
+      modelingSelectionContext,
+      preferredHoleBodyId,
+      projectStructure.bodies,
+      projectStructure.features,
+      sketchIntentActionAvailability
     ]
   );
   const solidProfileChoices = useMemo(
@@ -4232,6 +4314,41 @@ export function App() {
         } as SolidEditorRequest;
       }
       if (selectedFeature.kind === "hole") {
+        const targetBodies = solidHoleTargetChoices.map((choice) => {
+          if (choice.value === selectedFeature.targetBodyId) {
+            return {
+              ...choice,
+              disabled: false,
+              detail: "Current target body."
+            };
+          }
+          if (choice.disabled) return choice;
+          const preview = engine.executeBatch(
+            buildBatch(
+              "dryRun",
+              [
+                buildFeatureUpdateHoleOp(
+                  selectedFeature.id,
+                  selectedFeature.depthMode,
+                  selectedFeature.depth,
+                  selectedFeature.direction,
+                  {
+                    targetBodyId: choice.value,
+                    targetTopologyAnchorId: choice.targetTopologyAnchorId
+                  }
+                )
+              ],
+              WEB_UI_ACTOR
+            )
+          );
+          return preview.ok
+            ? choice
+            : {
+                ...choice,
+                disabled: true,
+                detail: preview.error.message
+              };
+        });
         return {
           key,
           kind: "hole",
@@ -4249,7 +4366,7 @@ export function App() {
             depth: selectedFeature.depth ?? 10,
             direction: selectedFeature.direction
           },
-          choices: { targetBodies: allSolidBodyChoices },
+          choices: { targetBodies },
           deletable: true
         } as SolidEditorRequest;
       }
@@ -4588,7 +4705,11 @@ export function App() {
       const circleReady =
         modelingSelectionContext.selectionKind === "sketchEntity" &&
         modelingSelectionContext.entity.kind === "circle";
-      const target = selectedHoleTargetChoice ?? solidHoleTargetChoices[0];
+      const target =
+        (selectedHoleTargetChoice?.disabled
+          ? undefined
+          : selectedHoleTargetChoice) ??
+        solidHoleTargetChoices.find((choice) => !choice.disabled);
       return {
         key,
         kind: "hole",
@@ -5773,16 +5894,31 @@ export function App() {
 
   async function commitOps(
     ops: readonly CadOp[],
-    getNextSelectedId: (response: CadBatchResponse) => string | null | undefined
+    getNextSelectedId: (
+      response: CadBatchResponse
+    ) => string | null | undefined,
+    expectedSourceAuthorityEpoch?: number
   ): Promise<CadAsyncBatchResponse | undefined> {
     setCommandPending(true);
     setCommandError(undefined);
     setCommandNotice(undefined);
 
     try {
-      const response = await commandExecutor.executeBatch(
-        buildBatch("commit", ops, WEB_UI_ACTOR)
-      );
+      const batch = buildBatch("commit", ops, WEB_UI_ACTOR);
+      const response =
+        expectedSourceAuthorityEpoch === undefined
+          ? await commandExecutor.executeBatch(batch)
+          : await commandExecutor.executeBatchAtSourceAuthorityEpoch(
+              batch,
+              expectedSourceAuthorityEpoch
+            );
+
+      if (!response) {
+        setCommandError(
+          "The project changed after exact preflight. Retry the operation."
+        );
+        return undefined;
+      }
 
       if (!response.ok) {
         setCommandError(response.error.message);
@@ -6434,40 +6570,52 @@ export function App() {
     );
   }
 
+  async function runHoleGeometryPreflight(
+    ops: readonly CadOp[],
+    bodyId?: string,
+    expectedSourceAuthorityEpoch?: number
+  ) {
+    const { preflightHoleGeometryCommand } =
+      await import("./holeGeometryPreflight");
+    return preflightHoleGeometryCommand({
+      engine,
+      ops,
+      bodyId,
+      runtime: getDerivedGeometryRuntime(),
+      checkpointPayloads: wcadTopologyCheckpointPayloadCache,
+      expectedSourceAuthorityEpoch
+    });
+  }
+
+  async function preflightHoleOps(ops: readonly CadOp[], bodyId?: string) {
+    setCommandPending(true);
+    setCommandError(undefined);
+    setCommandNotice(undefined);
+    try {
+      const preflight = await runHoleGeometryPreflight(ops, bodyId);
+      if (!preflight.ok) {
+        setCommandError(preflight.message);
+        return undefined;
+      }
+      return preflight;
+    } finally {
+      setCommandPending(false);
+    }
+  }
+
   async function holeSketchEntity(
     sketchId: string,
     circleEntityId: string,
     form: FeatureHoleForm
   ) {
     const op = buildFeatureHoleOp(sketchId, circleEntityId, form);
-
-    if (derivedGeometryEnabled) {
-      setCommandPending(true);
-      setCommandError(undefined);
-      setCommandNotice(undefined);
-
-      try {
-        const { preflightHoleGeometryCommand } =
-          await import("./holeGeometryPreflight");
-        const preflight = await preflightHoleGeometryCommand({
-          engine,
-          ops: [op],
-          bodyId: op.bodyId,
-          runtime: getDerivedGeometryRuntime()
-        });
-
-        if (!preflight.ok) {
-          setCommandError(preflight.message);
-          return;
-        }
-      } finally {
-        setCommandPending(false);
-      }
-    }
+    const preflight = await preflightHoleOps([op], op.bodyId);
+    if (!preflight) return;
 
     const response = await commitOps(
       [op],
-      (response) => response.createdBodyIds?.[0] ?? selectedId
+      (response) => response.createdBodyIds?.[0] ?? selectedId,
+      preflight.sourceAuthorityEpoch
     );
 
     if (response?.ok) {
@@ -6524,7 +6672,8 @@ export function App() {
     featureId: string,
     depthMode: FeatureHoleDepthMode,
     depth: number | undefined,
-    direction: FeatureHoleDirection
+    direction: FeatureHoleDirection,
+    target?: Pick<FeatureHoleForm, "targetBodyId" | "targetTopologyAnchorId">
   ) {
     const feature = projectStructure.features.find(
       (candidate) => candidate.id === featureId
@@ -6534,10 +6683,16 @@ export function App() {
       return;
     }
 
-    await commitOps(
-      [buildFeatureUpdateHoleOp(feature.id, depthMode, depth, direction)],
-      () => feature.bodyId
+    const op = buildFeatureUpdateHoleOp(
+      feature.id,
+      depthMode,
+      depth,
+      direction,
+      target
     );
+    const preflight = await preflightHoleOps([op], feature.bodyId);
+    if (!preflight) return;
+    await commitOps([op], () => feature.bodyId, preflight.sourceAuthorityEpoch);
   }
 
   async function updateAuthoredChamfer(featureId: string, distance: number) {
@@ -8024,18 +8179,23 @@ export function App() {
         return;
       }
       if (selectedFeature.kind === "hole" && submission.kind === "hole") {
-        if (submission.draft.targetBodyId !== selectedFeature.targetBodyId) {
-          throw new Error(
-            "The V17 command matrix does not support changing a hole target body."
-          );
-        }
+        const targetChanged =
+          submission.draft.targetBodyId !== selectedFeature.targetBodyId ||
+          submission.draft.targetTopologyAnchorId !==
+            selectedFeature.targetTopologyAnchorId;
         await updateAuthoredHole(
           selectedFeature.id,
           submission.draft.depthMode,
           submission.draft.depthMode === "blind"
             ? submission.draft.depth
             : undefined,
-          submission.draft.direction
+          submission.draft.direction,
+          targetChanged
+            ? {
+                targetBodyId: submission.draft.targetBodyId,
+                targetTopologyAnchorId: submission.draft.targetTopologyAnchorId
+              }
+            : undefined
         );
         return;
       }
@@ -8225,6 +8385,11 @@ export function App() {
     ) {
       // Navigation guard owns Escape; do not compete with its stay handler.
       return false;
+    }
+
+    if (commandPending && modelWorkSnapshot.active) {
+      cancelModelWork();
+      return true;
     }
 
     const contributedEditor = resolveContributedEscapeEditorState();
@@ -9251,6 +9416,24 @@ export function App() {
               document={document}
               selection={currentAgentSelection}
               currentExactEvidence={currentAgentExactEvidence}
+              preflightCommit={async (request, sourceAuthorityEpoch) => {
+                if (
+                  !request.batch.ops.some(
+                    (op) =>
+                      op.op === "feature.hole" || op.op === "feature.updateHole"
+                  )
+                ) {
+                  return { ok: true };
+                }
+                const preflight = await runHoleGeometryPreflight(
+                  request.batch.ops,
+                  undefined,
+                  sourceAuthorityEpoch
+                );
+                return preflight.ok
+                  ? { ok: true }
+                  : { ok: false, message: preflight.message };
+              }}
               publishCommit={publishAgentCommit}
             />
           </Suspense>

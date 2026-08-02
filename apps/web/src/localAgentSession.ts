@@ -38,12 +38,23 @@ export interface LocalAgentSessionSnapshot {
   readonly diagnostic?: CadAgentSessionErrorResponse["error"];
 }
 
+export type LocalAgentCommitPreflight = (
+  request: CadOpsAgentRequest,
+  sourceAuthorityEpoch: number
+) => Promise<
+  | { readonly ok: true }
+  | { readonly ok: false; readonly message: string }
+  | boolean
+  | undefined
+>;
+
 export interface LocalAgentSessionOptions {
   readonly token: string;
   readonly engine: CadEngine;
   readonly executor: AsyncCadCommandExecutor;
   readonly readSelection: () => CurrentAgentSelectionInput;
   readonly readCurrentExactEvidence?: () => CadOpsAgentCurrentExactEvidence;
+  readonly preflightCommit: LocalAgentCommitPreflight;
   readonly publishCommit: (
     response: CadOpsAgentSuccessResponse
   ) => Promise<void>;
@@ -95,6 +106,7 @@ export class LocalAgentSession {
   #snapshot: LocalAgentSessionSnapshot = disconnectedAgentSessionSnapshot();
   #pending: PendingProposal | undefined;
   #preparingCommitRequestId: string | undefined;
+  #approveAllQueue: Promise<void> = Promise.resolve();
   #sessionGeneration = 0;
   #started = false;
   #disposed = false;
@@ -273,17 +285,32 @@ export class LocalAgentSession {
       return this.#execute(request, "dryRun");
     if (this.#snapshot.approvalMode === "approveAll") {
       const sessionGeneration = this.#sessionGeneration;
-      while (this.#sessionAlive(sessionGeneration)) {
+      const response = this.#approveAllQueue.then(async () => {
+        if (!this.#sessionAlive(sessionGeneration)) {
+          return this.#disconnected(request.requestId);
+        }
         const response = await this.#executeAtSourceAuthorityEpoch(
           request,
           this.options.engine.getSourceAuthorityEpoch(),
           sessionGeneration
         );
-        if (!response) continue;
+        if (!response) {
+          return this.#sessionAlive(sessionGeneration)
+            ? sessionError(
+                request.requestId,
+                "AGENT_PROPOSAL_STALE",
+                "The project changed while the agent commit was preflighted."
+              )
+            : this.#disconnected(request.requestId);
+        }
         if (response.ok) await this.options.publishCommit(response);
         return response;
-      }
-      return this.#disconnected(request.requestId);
+      });
+      this.#approveAllQueue = response.then(
+        () => undefined,
+        () => undefined
+      );
+      return response;
     }
     if (this.#pending || this.#preparingCommitRequestId) {
       return sessionError(
@@ -379,7 +406,47 @@ export class LocalAgentSession {
     request: CadOpsAgentRequest,
     expectedSourceAuthorityEpoch: number,
     sessionGeneration: number
-  ): Promise<CadOpsAgentResponse | undefined> {
+  ): Promise<CadOpsAgentResponse | CadAgentSessionErrorResponse | undefined> {
+    if (
+      !this.#sessionAlive(sessionGeneration) ||
+      this.options.engine.getSourceAuthorityEpoch() !==
+        expectedSourceAuthorityEpoch
+    ) {
+      return undefined;
+    }
+
+    let preflight: Awaited<ReturnType<LocalAgentCommitPreflight>>;
+    try {
+      preflight = await this.options.preflightCommit(
+        request,
+        expectedSourceAuthorityEpoch
+      );
+    } catch (error) {
+      preflight = {
+        ok: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Exact geometry preflight failed."
+      };
+    }
+    if (
+      !this.#sessionAlive(sessionGeneration) ||
+      this.options.engine.getSourceAuthorityEpoch() !==
+        expectedSourceAuthorityEpoch
+    ) {
+      return undefined;
+    }
+    if (preflight !== true && (preflight === false || !preflight?.ok)) {
+      return sessionError(
+        request.requestId,
+        "AGENT_COMMIT_REJECTED",
+        typeof preflight === "object" && preflight?.message
+          ? preflight.message
+          : "Exact geometry preflight rejected the agent commit."
+      );
+    }
+
     return executeCadOpsAgentRequestAsync(
       this.options.engine,
       this.options.executor,

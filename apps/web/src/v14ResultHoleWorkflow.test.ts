@@ -1,9 +1,11 @@
 import {
   CadEngine,
+  encodeWcadCanonicalCbor,
   exportCadProjectJson,
-  importCadProjectJson
+  importCadProjectJson,
+  sha256Hex,
+  type WcadTopologyCheckpointPayloadInput
 } from "@web-cad/cad-core";
-import type { RenderTriangleMesh } from "@web-cad/renderer";
 import type {
   CadBatchResponse,
   CadOp,
@@ -11,6 +13,7 @@ import type {
   ProjectHealthQueryResponse,
   TopologyAnchorCreationPlanQueryResponse
 } from "@web-cad/cad-protocol";
+import type { GeometryKernelExactBodyArtifact } from "@web-cad/geometry-worker";
 import { describe, expect, it, vi } from "vitest";
 import {
   buildAddSketchCircleOp,
@@ -23,8 +26,7 @@ import { defaultSketchEntityForm } from "./sketchEntityForms";
 import { createSketchOnFaceCommandPlan } from "./sketchOnFacePromotion";
 import { preflightHoleGeometryCommand } from "./holeGeometryPreflight";
 import type {
-  DerivedGeometryHoleInput,
-  DerivedGeometryResult,
+  DerivedExactBodyArtifactInput,
   DerivedGeometryRuntime
 } from "./derivedGeometryRuntime";
 
@@ -206,14 +208,13 @@ describe("V14 result hole workflow", () => {
   it("preflights result-body hole geometry without mutating source", async () => {
     const { engine, holeOp } = createAttachedResultHoleFixture();
     const beforeJson = exportCadProjectJson(engine);
-    const runtime = createHolePreflightRuntime(async (input) =>
-      createGeometryResult(input.id)
-    );
+    const runtime = createHolePreflightRuntime();
     const result = await preflightHoleGeometryCommand({
       engine,
       ops: [holeOp],
       bodyId: "body_result_hole",
-      runtime
+      runtime,
+      checkpointPayloads: createResultCheckpointPayloads()
     });
 
     expect(result).toMatchObject({
@@ -223,30 +224,22 @@ describe("V14 result hole workflow", () => {
         createdBodyIds: ["body_result_hole"]
       }
     });
-    expect(runtime.holeInputs).toEqual([
-      expect.objectContaining({
-        id: "body_result_hole",
-        target: expect.objectContaining({
-          kind: "booleanExtrudes",
-          operation: "cut"
-        }),
-        tool: expect.objectContaining({
+    expect(runtime.artifactInputs.at(-1)).toMatchObject({
+      bodyId: "body_result_hole",
+      shapePolicy: "singleShapeOneOrMoreSolids",
+      source: {
+        kind: "artifactHole",
+        target: { kind: "bodyArtifact", bodyId: "body_circle_cut" },
+        tool: {
           sketchPlane: "XY",
-          circle: {
-            kind: "circle",
-            center: [0, 0],
-            radius: 0.25
-          },
+          circle: { kind: "circle", center: [0, 0], radius: 0.25 },
           depthMode: "throughAll",
-          direction: "positive",
-          placementFrame: expect.objectContaining({
-            origin: expect.any(Array),
-            uAxis: expect.any(Array),
-            vAxis: expect.any(Array)
-          })
-        })
-      })
-    ]);
+          direction: "positive"
+        }
+      }
+    });
+    expect(runtime.artifactInputs).toHaveLength(2);
+    expect(result).toMatchObject({ sourceAuthorityEpoch: expect.any(Number) });
     expect(exportCadProjectJson(engine)).toBe(beforeJson);
     expect(readStructure(engine).features).not.toEqual(
       expect.arrayContaining([
@@ -255,26 +248,110 @@ describe("V14 result hole workflow", () => {
     );
   });
 
+  it("preflights every independent hole result in one agent batch", async () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      {
+        op: "scene.createBox",
+        id: "agent_target_a",
+        dimensions: { width: 4, height: 4, depth: 4 }
+      },
+      {
+        op: "scene.createBox",
+        id: "agent_target_b",
+        dimensions: { width: 4, height: 4, depth: 4 }
+      },
+      {
+        op: "sketch.create",
+        id: "agent_hole_a",
+        name: "Agent hole A",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "agent_hole_a",
+        id: "agent_circle_a",
+        center: [0, 0],
+        radius: 0.25
+      },
+      {
+        op: "sketch.create",
+        id: "agent_hole_b",
+        name: "Agent hole B",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "agent_hole_b",
+        id: "agent_circle_b",
+        center: [0, 0],
+        radius: 0.25
+      }
+    ]);
+    const ops: readonly CadOp[] = [
+      {
+        op: "feature.hole",
+        id: "agent_feature_hole_a",
+        bodyId: "agent_body_hole_a",
+        targetBodyId: "body:agent_target_a",
+        sketchId: "agent_hole_a",
+        circleEntityId: "agent_circle_a",
+        depthMode: "throughAll",
+        direction: "positive"
+      },
+      {
+        op: "feature.hole",
+        id: "agent_feature_hole_b",
+        bodyId: "agent_body_hole_b",
+        targetBodyId: "body:agent_target_b",
+        sketchId: "agent_hole_b",
+        circleEntityId: "agent_circle_b",
+        depthMode: "blind",
+        depth: 2,
+        direction: "negative"
+      }
+    ];
+    const beforeJson = exportCadProjectJson(engine);
+    const runtime = createHolePreflightRuntime();
+
+    const result = await preflightHoleGeometryCommand({ engine, ops, runtime });
+    if (!result.ok) throw new Error(result.message);
+    expect(result).toMatchObject({ ok: true });
+    expect(
+      runtime.artifactInputs
+        .filter((input) => input.source.kind === "artifactHole")
+        .map((input) => input.bodyId)
+    ).toEqual(["agent_body_hole_a", "agent_body_hole_b"]);
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+  });
+
   it("blocks result-body hole commits when geometry preflight fails", async () => {
     const { engine, holeOp } = createAttachedResultHoleFixture();
     const beforeJson = exportCadProjectJson(engine);
-    const runtime = createHolePreflightRuntime(async () => {
-      throw new Error("The selected hole does not cut the target body.");
+    const runtime = createHolePreflightRuntime((input) => {
+      if (input.bodyId !== "body_result_hole") return;
+      throw Object.assign(
+        new Error("Hole tool has no positive-volume intersection."),
+        { code: "EMPTY_RESULT" }
+      );
     });
     const result = await preflightHoleGeometryCommand({
       engine,
       ops: [holeOp],
       bodyId: "body_result_hole",
-      runtime
+      runtime,
+      checkpointPayloads: createResultCheckpointPayloads()
     });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       ok: false,
       reason: "runtime",
-      message:
-        "Could not create this hole on the selected target. The selected hole does not cut the target body."
+      diagnosticCode: "HOLE_TOOL_NO_INTERSECTION",
+      message: expect.stringContaining(
+        "Could not apply this hole (HOLE_TOOL_NO_INTERSECTION)."
+      )
     });
-    expect(runtime.holeInputs).toHaveLength(1);
+    expect(runtime.artifactInputs).toHaveLength(2);
     expect(exportCadProjectJson(engine)).toBe(beforeJson);
     expect(readStructure(engine).features).not.toEqual(
       expect.arrayContaining([
@@ -286,7 +363,8 @@ describe("V14 result hole workflow", () => {
   it("formats result-body hole preflight runtime failures for product surfaces", async () => {
     const { engine, holeOp } = createAttachedResultHoleFixture();
     const beforeJson = exportCadProjectJson(engine);
-    const runtime = createHolePreflightRuntime(async () => {
+    const runtime = createHolePreflightRuntime((input) => {
+      if (input.bodyId !== "body_result_hole") return;
       throw new Error(
         "Geometry worker response does not contain an exact topology checkpoint payload for OCCT-mesh renderer-hit:face-1 checkpoint-local:face-1."
       );
@@ -295,14 +373,14 @@ describe("V14 result hole workflow", () => {
       engine,
       ops: [holeOp],
       bodyId: "body_result_hole",
-      runtime
+      runtime,
+      checkpointPayloads: createResultCheckpointPayloads()
     });
 
     expect(result).toMatchObject({
       ok: false,
       reason: "runtime",
-      message:
-        "Could not create this hole on the selected target. Display geometry evidence is incomplete for display geometry internal render target."
+      diagnosticCode: "EXPORT_EXACT_ARTIFACT_FAILED"
     });
     if (result.ok) {
       throw new Error("Expected hole preflight to fail.");
@@ -311,6 +389,65 @@ describe("V14 result hole workflow", () => {
       /Geometry worker|checkpoint payload|OCCT|renderer-hit|checkpoint-local|mesh/i
     );
     expect(exportCadProjectJson(engine)).toBe(beforeJson);
+    expect(readStructure(engine).features).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "feat_result_hole" })
+      ])
+    );
+  });
+
+  it.each([
+    ["INVALID_RESULT", "HOLE_RESULT_INVALID"],
+    ["GEOMETRY_JOB_GENERATION_CANCELLED", "EXPORT_CANCELLED"]
+  ] as const)(
+    "maps nested runtime diagnostic %s",
+    async (runtimeCode, diagnosticCode) => {
+      const { engine, holeOp } = createAttachedResultHoleFixture();
+      const runtime = createHolePreflightRuntime((input) => {
+        if (input.bodyId !== "body_result_hole") return;
+        throw Object.assign(new Error("Injected exact runtime failure."), {
+          details: { code: runtimeCode }
+        });
+      });
+
+      await expect(
+        preflightHoleGeometryCommand({
+          engine,
+          ops: [holeOp],
+          runtime,
+          checkpointPayloads: createResultCheckpointPayloads()
+        })
+      ).resolves.toMatchObject({
+        ok: false,
+        reason: "runtime",
+        diagnosticCode
+      });
+    }
+  );
+
+  it("rejects a human preflight when source authority changes", async () => {
+    const { engine, holeOp } = createAttachedResultHoleFixture();
+    const runtime = createHolePreflightRuntime((input) => {
+      if (input.bodyId !== "body_result_hole") return;
+      engine.apply({
+        op: "sketch.rename",
+        id: "sketch_result_hole",
+        name: "Changed during preflight"
+      });
+    });
+
+    await expect(
+      preflightHoleGeometryCommand({
+        engine,
+        ops: [holeOp],
+        runtime,
+        checkpointPayloads: createResultCheckpointPayloads()
+      })
+    ).resolves.toMatchObject({
+      ok: false,
+      reason: "source",
+      message: expect.stringContaining("project changed")
+    });
     expect(readStructure(engine).features).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "feat_result_hole" })
@@ -551,19 +688,83 @@ function sourceIdentity(seed: string) {
   };
 }
 
+function createResultCheckpointPayloads(): readonly WcadTopologyCheckpointPayloadInput[] {
+  return [
+    createResultCheckpointPayload(
+      "checkpoint_circle_source",
+      "body_circle",
+      "feat_circle_source",
+      "extrude",
+      1
+    ),
+    createResultCheckpointPayload(
+      "checkpoint_circle_cut",
+      "body_circle_cut",
+      "feat_circle_cut",
+      "booleanExtrudes",
+      2
+    )
+  ];
+}
+
+function createResultCheckpointPayload(
+  checkpointId: string,
+  bodyId: string,
+  sourceFeatureId: string,
+  sourceKind: "extrude" | "booleanExtrudes",
+  marker: number
+): WcadTopologyCheckpointPayloadInput {
+  const brepBytes = new Uint8Array([marker]);
+  return {
+    checkpointId,
+    bodyId,
+    sourceFeatureId,
+    kernel: {
+      boundary: "geometry-kernel",
+      snapshotAlgorithm: "partbench-derived-topology-snapshot-v1"
+    },
+    tolerance: {
+      linearTolerance: 0.001,
+      angularToleranceDegrees: 0.01
+    },
+    brepBytes,
+    brepByteLength: brepBytes.byteLength,
+    brepSha256: sha256Hex(brepBytes),
+    topologyBytes: encodeWcadCanonicalCbor({
+      sourceKind,
+      signature: `topology:${bodyId}`
+    }),
+    signatureBytes: encodeWcadCanonicalCbor({
+      checkpointId,
+      signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+      signature: `topology:${bodyId}`,
+      entityCount: 0,
+      entities: []
+    })
+  };
+}
+
 function createHolePreflightRuntime(
-  handler: (input: DerivedGeometryHoleInput) => Promise<DerivedGeometryResult>
+  onArtifact?: (input: DerivedExactBodyArtifactInput) => void
 ): DerivedGeometryRuntime & {
-  readonly holeInputs: readonly DerivedGeometryHoleInput[];
+  readonly artifactInputs: readonly DerivedExactBodyArtifactInput[];
 } {
-  const holeInputs: DerivedGeometryHoleInput[] = [];
+  const artifactInputs: DerivedExactBodyArtifactInput[] = [];
   const unused = () => {
     throw new Error("Only hole geometry is preflighted by this test runtime.");
   };
 
   return {
-    holeInputs,
-    exactBodyArtifact: unused,
+    artifactInputs,
+    async exactBodyArtifact(input) {
+      artifactInputs.push(input);
+      onArtifact?.(input);
+      return {
+        artifact: createExactBodyArtifact(input, artifactInputs.length),
+        metrics: { objectId: input.id, roundTripMs: 1 },
+        message: `Built ${input.bodyId}`
+      };
+    },
     executeExactStepExport: unused,
     tessellateBox: unused,
     tessellateCylinder: unused,
@@ -583,10 +784,7 @@ function createHolePreflightRuntime(
     exactBodyMetadata: unused,
     exactTopologyCheckpointPayload: unused,
     importStep: unused,
-    hole(input) {
-      holeInputs.push(input);
-      return handler(input);
-    },
+    hole: unused,
     cancelModelWork() {
       return 0;
     },
@@ -609,27 +807,39 @@ function createHolePreflightRuntime(
   };
 }
 
-function createGeometryResult(objectId: string): DerivedGeometryResult {
-  const mesh: RenderTriangleMesh = {
-    id: objectId,
-    kind: "mesh",
-    vertices: [],
-    indices: [],
-    transform: {
-      translation: [0, 0, 0],
-      rotation: [0, 0, 0],
-      scale: [1, 1, 1]
-    }
-  };
-
+function createExactBodyArtifact(
+  input: DerivedExactBodyArtifactInput,
+  index: number
+): GeometryKernelExactBodyArtifact {
+  const brepBytes = new Uint8Array([index]);
   return {
-    mesh,
-    metrics: {
-      objectId,
-      roundTripMs: 1,
-      vertexCount: 0,
-      triangleCount: 0
-    },
-    message: `Displayed derived geometry for ${objectId}.`
+    artifactVersion: "partbench.exact-body-artifact.v1",
+    bodyId: input.bodyId,
+    sourceType: input.sourceType,
+    documentSourceIdentity: input.documentSourceIdentity,
+    bodySourceIdentitySignature: input.bodySourceIdentitySignature,
+    sourceCacheKeySha256: input.sourceCacheKeySha256,
+    sourceGraphNodeCount: input.sourceGraphNodeCount,
+    units: input.units,
+    shapePolicy: input.shapePolicy,
+    sourceKind: input.source
+      .kind as GeometryKernelExactBodyArtifact["sourceKind"],
+    brepFormat: "occt-brep",
+    brepWriter: "BRepTools.Write_3",
+    brepBytes,
+    brepByteLength: brepBytes.byteLength,
+    brepSha256: String(index).repeat(64),
+    metadata: {} as GeometryKernelExactBodyArtifact["metadata"],
+    topologySnapshot: {
+      signature: `topology:${input.bodyId}`
+    } as GeometryKernelExactBodyArtifact["topologySnapshot"],
+    displayMesh: {
+      primitive: "extrude",
+      positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      indices: new Uint32Array([0, 1, 2]),
+      vertexCount: 3,
+      triangleCount: 1,
+      faceCount: 1
+    }
   };
 }

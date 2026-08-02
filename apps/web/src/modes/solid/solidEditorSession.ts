@@ -227,7 +227,7 @@ function findChoice<Value>(
   choices: readonly SolidChoice<Value>[] | undefined,
   key: string
 ): SolidChoice<Value> | undefined {
-  return choices?.find((choice) => choice.key === key);
+  return choices?.find((choice) => choice.key === key && !choice.disabled);
 }
 
 function stableSerialize(value: unknown): string {

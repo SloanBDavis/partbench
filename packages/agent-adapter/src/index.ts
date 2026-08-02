@@ -1312,6 +1312,18 @@ export class CadOpsAgentAdapter {
       );
     }
 
+    const exactPreflightUnavailable = createStandaloneHoleExactPreflightError(
+      this.engine,
+      effectiveRequest.batch
+    );
+    if (exactPreflightUnavailable) {
+      return toAgentResponse(
+        effectiveRequest,
+        exactPreflightUnavailable,
+        this.engine
+      );
+    }
+
     return toAgentResponse(
       effectiveRequest,
       this.engine.executeBatch(effectiveRequest.batch),
@@ -1802,6 +1814,69 @@ function validateAgentPermissions(
     path: "$.permissions.allowCommit",
     expected: "true",
     received: String(request.permissions?.allowCommit ?? false)
+  };
+}
+
+function createStandaloneHoleExactPreflightError(
+  engine: CadEngine,
+  batch: CadBatch
+): CadBatchResponse | undefined {
+  if (batch.mode !== "commit") return undefined;
+  const opIndex = batch.ops.findIndex(
+    (op) => op.op === "feature.hole" || op.op === "feature.updateHole"
+  );
+  const op = batch.ops[opIndex];
+  if (!op || (op.op !== "feature.hole" && op.op !== "feature.updateHole"))
+    return undefined;
+
+  const sourcePreview = engine.executeBatch({
+    ...batch,
+    mode: "dryRun",
+    ...(batch.audit
+      ? { audit: { ...batch.audit, intent: "dryRun" as const } }
+      : {})
+  });
+  if (!sourcePreview.ok) return undefined;
+  return standaloneHoleExactPreflightError(batch, {
+    opIndex,
+    op: op.op,
+    featureId: op.id,
+    bodyId: op.targetBodyId,
+    path: `$.ops[${opIndex}]`
+  });
+}
+
+function standaloneHoleExactPreflightError(
+  batch: CadBatch,
+  input: {
+    readonly opIndex: number;
+    readonly op: "feature.hole" | "feature.updateHole";
+    readonly featureId?: string;
+    readonly bodyId?: string;
+    readonly path: string;
+  }
+): CadBatchResponse {
+  const error: CadBatchValidationError = {
+    code: "UNSUPPORTED_FEATURE_OPERATION",
+    message: `${input.op} requires browser exact preflight for this target; standalone synchronous commits support source-only dry-run.`,
+    opIndex: input.opIndex,
+    op: input.op,
+    ...(input.featureId ? { featureId: input.featureId } : {}),
+    ...(input.bodyId ? { bodyId: input.bodyId } : {}),
+    path: input.path,
+    expected: "connected browser exact preflight or source-only dryRun",
+    received: "standalone synchronous commit"
+  };
+
+  return {
+    ok: false,
+    mode: batch.mode,
+    error,
+    errors: [error],
+    createdIds: [],
+    modifiedIds: [],
+    deletedIds: [],
+    warnings: []
   };
 }
 

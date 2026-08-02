@@ -2130,17 +2130,16 @@ describe("agent-adapter", () => {
     });
   });
 
-  it("passes feature.hole through JSON batch commit", () => {
+  it("keeps feature.hole source-dry-runnable through JSON", () => {
     const adapter = new CadOpsAgentAdapter();
     const response = JSON.parse(
       adapter.executeJson(
         JSON.stringify({
           requestId: "agent_req_json_hole",
           adapterVersion: "web-cad.agent-adapter.v1",
-          permissions: { allowCommit: true },
           batch: {
             version: "cadops.v1",
-            mode: "commit",
+            mode: "dryRun",
             ops: [
               {
                 op: "sketch.create",
@@ -2196,52 +2195,12 @@ describe("agent-adapter", () => {
       readonly createdFeatureIds?: readonly string[];
       readonly createdBodyIds?: readonly string[];
     };
-    const structure = adapter.getEngine().executeQuery({
-      version: "cadops.v1",
-      query: { query: "project.structure" }
-    });
-    const health = adapter.getEngine().executeQuery({
-      version: "cadops.v1",
-      query: { query: "project.health" }
-    });
-
     expect(response).toMatchObject({
       ok: true,
       createdFeatureIds: ["feat_target", "feat_hole"],
       createdBodyIds: ["body_target", "body_hole"]
     });
-    expect(structure).toMatchObject({
-      ok: true,
-      features: expect.arrayContaining([
-        expect.objectContaining({
-          id: "feat_hole",
-          kind: "hole",
-          targetBodyId: "body_target"
-        })
-      ]),
-      bodies: expect.arrayContaining([
-        expect.objectContaining({
-          id: "body_target",
-          consumedByFeatureId: "feat_hole"
-        }),
-        expect.objectContaining({
-          id: "body_hole",
-          source: expect.objectContaining({ type: "sketchHoleFeature" })
-        })
-      ])
-    });
-    expect(health).toMatchObject({
-      ok: true,
-      authoredHoleCount: 1,
-      authoredHoles: [
-        {
-          featureId: "feat_hole",
-          bodyId: "body_hole",
-          targetBodyId: "body_target",
-          status: "healthy"
-        }
-      ]
-    });
+    expect(adapter.getEngine().getDocument().features.size).toBe(0);
   });
 
   it("passes feature.chamfer and feature.fillet through JSON batch commit", () => {
@@ -2890,17 +2849,17 @@ describe("agent-adapter", () => {
     };
 
     expect(commit).toMatchObject({
-      ok: true,
+      ok: false,
       mode: "commit",
-      modifiedFeatureIds: ["feat_hole"],
-      modifiedBodyIds: ["body_hole"]
+      error: { code: "UNSUPPORTED_FEATURE_OPERATION" }
     });
     expect(
       adapter.getEngine().getDocument().features.get("feat_hole")
     ).toMatchObject({
       kind: "hole",
-      depthMode: "throughAll",
-      direction: "positive"
+      depthMode: "blind",
+      depth: 1,
+      direction: "negative"
     });
     expect(
       (
@@ -2908,7 +2867,7 @@ describe("agent-adapter", () => {
           | { readonly depth?: number }
           | undefined
       )?.depth
-    ).toBeUndefined();
+    ).toBe(1);
   });
 
   it("accepts one hole retarget input and rejects mixed target fields", () => {
@@ -2952,6 +2911,177 @@ describe("agent-adapter", () => {
         })
       )
     ).toThrow("Invalid CADOps agent adapter request.");
+  });
+
+  it("keeps widened hole creates source-dry-runnable but blocks standalone commits without exact preflight", () => {
+    const adapter = new CadOpsAgentAdapter();
+    adapter.getEngine().applyBatch([
+      {
+        op: "sketch.create",
+        id: "sketch_widened_hole_target",
+        name: "Widened hole target",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_widened_hole_target",
+        id: "rect_widened_hole_target",
+        center: [2, 0],
+        width: 2,
+        height: 2
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_widened_hole_target",
+        id: "axis_widened_hole_target",
+        start: [0, -2],
+        end: [0, 2],
+        construction: true
+      },
+      {
+        op: "feature.revolve",
+        id: "feat_widened_hole_target",
+        bodyId: "body_widened_hole_target",
+        sketchId: "sketch_widened_hole_target",
+        entityId: "rect_widened_hole_target",
+        axis: {
+          type: "sketchLine",
+          sketchId: "sketch_widened_hole_target",
+          entityId: "axis_widened_hole_target"
+        },
+        angleDegrees: 360
+      },
+      {
+        op: "sketch.create",
+        id: "sketch_widened_hole",
+        name: "Widened hole",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_widened_hole",
+        id: "circle_widened_hole",
+        center: [2, 0],
+        radius: 0.25
+      }
+    ]);
+    const op = {
+      op: "feature.hole" as const,
+      id: "feat_widened_hole",
+      bodyId: "body_widened_hole",
+      targetBodyId: "body_widened_hole_target",
+      sketchId: "sketch_widened_hole",
+      circleEntityId: "circle_widened_hole",
+      depthMode: "throughAll" as const,
+      direction: "positive" as const
+    };
+
+    expect(
+      adapter.execute({
+        requestId: "agent_req_widened_hole_dry_run",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        batch: { version: "cadops.v1", mode: "dryRun", ops: [op] }
+      })
+    ).toMatchObject({ ok: true, mode: "dryRun" });
+
+    expect(
+      adapter.execute({
+        requestId: "agent_req_widened_hole_commit",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        permissions: { allowCommit: true },
+        batch: { version: "cadops.v1", mode: "commit", ops: [op] }
+      })
+    ).toMatchObject({
+      ok: false,
+      mode: "commit",
+      error: {
+        code: "UNSUPPORTED_FEATURE_OPERATION",
+        opIndex: 0,
+        op: "feature.hole"
+      },
+      review: {
+        blockers: [
+          expect.objectContaining({
+            code: "VALIDATION_ERROR",
+            errorCode: "UNSUPPORTED_FEATURE_OPERATION"
+          })
+        ]
+      }
+    });
+    expect(
+      adapter.getEngine().getDocument().features.has("feat_widened_hole")
+    ).toBe(false);
+  });
+
+  it("keeps hole retarget source-dry-runnable but blocks its standalone commit", () => {
+    const adapter = new CadOpsAgentAdapter();
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_retarget_source",
+      entityId: "rect_retarget_source",
+      featureId: "feat_retarget_source",
+      bodyId: "body_retarget_source"
+    });
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_retarget_destination",
+      entityId: "rect_retarget_destination",
+      featureId: "feat_retarget_destination",
+      bodyId: "body_retarget_destination"
+    });
+    adapter.getEngine().applyBatch([
+      {
+        op: "sketch.create",
+        id: "sketch_retarget_hole",
+        name: "Retarget hole",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_retarget_hole",
+        id: "circle_retarget_hole",
+        center: [0, 0],
+        radius: 0.25
+      },
+      {
+        op: "feature.hole",
+        id: "feat_retarget_hole",
+        bodyId: "body_retarget_hole",
+        targetBodyId: "body_retarget_source",
+        sketchId: "sketch_retarget_hole",
+        circleEntityId: "circle_retarget_hole",
+        depthMode: "throughAll",
+        direction: "positive"
+      }
+    ]);
+    const op = {
+      op: "feature.updateHole" as const,
+      id: "feat_retarget_hole",
+      targetBodyId: "body_retarget_destination"
+    };
+
+    expect(
+      adapter.execute({
+        requestId: "agent_req_retarget_hole_dry_run",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        batch: { version: "cadops.v1", mode: "dryRun", ops: [op] }
+      })
+    ).toMatchObject({ ok: true, mode: "dryRun" });
+    expect(
+      adapter.execute({
+        requestId: "agent_req_retarget_hole_commit",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        permissions: { allowCommit: true },
+        batch: { version: "cadops.v1", mode: "commit", ops: [op] }
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "UNSUPPORTED_FEATURE_OPERATION",
+        op: "feature.updateHole"
+      }
+    });
+    expect(
+      adapter.getEngine().getDocument().features.get("feat_retarget_hole")
+    ).toMatchObject({ targetBodyId: "body_retarget_source" });
   });
 
   it("passes sketch.updateEntity profile edits through JSON batch dry-run and commit", () => {
@@ -6143,17 +6273,16 @@ describe("agent-adapter", () => {
     });
   });
 
-  it("passes topology body anchors through extrude add and hole targets", () => {
+  it("dry-runs topology body anchors through extrude add and hole targets", () => {
     const adapter = new CadOpsAgentAdapter();
     const response = JSON.parse(
       adapter.executeJson(
         JSON.stringify({
           requestId: "agent_req_json_anchor_body_add_hole",
           adapterVersion: "web-cad.agent-adapter.v1",
-          permissions: { allowCommit: true },
           batch: {
             version: "cadops.v1",
-            mode: "commit",
+            mode: "dryRun",
             ops: [
               {
                 op: "sketch.create",
@@ -6256,15 +6385,6 @@ describe("agent-adapter", () => {
       readonly createdBodyIds?: readonly string[];
       readonly review?: { readonly operations?: readonly unknown[] };
     };
-    const features = adapter.getEngine().executeQuery({
-      version: "cadops.v1",
-      query: { query: "project.features" }
-    });
-    const health = adapter.getEngine().executeQuery({
-      version: "cadops.v1",
-      query: { query: "project.health" }
-    });
-
     expect(response).toMatchObject({
       ok: true,
       createdFeatureIds: [
@@ -6291,41 +6411,7 @@ describe("agent-adapter", () => {
         ])
       }
     });
-    expect(features).toMatchObject({
-      ok: true,
-      features: expect.arrayContaining([
-        expect.objectContaining({
-          id: "feat_anchor_body_add",
-          kind: "extrude",
-          targetBodyId: "body_anchor_body_add_source",
-          targetTopologyAnchorId: "anchor_body_add_target",
-          operationMode: "add"
-        }),
-        expect.objectContaining({
-          id: "feat_anchor_body_hole",
-          kind: "hole",
-          targetBodyId: "body_anchor_body_add",
-          targetTopologyAnchorId: "anchor_body_add_target"
-        })
-      ])
-    });
-    expect(health).toMatchObject({
-      ok: true,
-      authoredExtrudes: expect.arrayContaining([
-        expect.objectContaining({
-          featureId: "feat_anchor_body_add",
-          status: "healthy",
-          targetTopologyAnchorId: "anchor_body_add_target"
-        })
-      ]),
-      authoredHoles: expect.arrayContaining([
-        expect.objectContaining({
-          featureId: "feat_anchor_body_hole",
-          status: "healthy",
-          targetTopologyAnchorId: "anchor_body_add_target"
-        })
-      ])
-    });
+    expect(adapter.getEngine().getDocument().features.size).toBe(0);
   });
 
   it("returns generated body references through adapter queries", () => {

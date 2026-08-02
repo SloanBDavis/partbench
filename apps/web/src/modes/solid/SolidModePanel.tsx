@@ -432,7 +432,7 @@ function SolidDraftFields({
         <HoleFields
           draft={draft as FeatureHoleForm}
           choices={request.choices?.targetBodies ?? []}
-          lockedTarget={request.mode === "edit"}
+          lockedTarget={false}
           collecting={collecting === "targetBody"}
           onCollect={() => onCollect("targetBody", ["body"])}
           onChange={onChange}
@@ -1717,17 +1717,32 @@ function ChoiceCollector<Value>({
             const choice = choices.find(
               (candidate) => candidate.key === event.currentTarget.value
             );
-            if (choice) onChange(choice.value, choice);
+            if (choice && !choice.disabled) onChange(choice.value, choice);
           }}
         >
           <option value="">Choose from eligible targets</option>
           {choices.map((choice) => (
-            <option key={choice.key} value={choice.key}>
+            <option
+              key={choice.key}
+              value={choice.key}
+              disabled={choice.disabled}
+            >
               {choice.label}
+              {choice.disabled && choice.detail ? ` — ${choice.detail}` : ""}
             </option>
           ))}
         </select>
       </label>
+      {selected?.warning ? (
+        <p className="pb-solid-field-note" role="status">
+          {selected.warning}
+        </p>
+      ) : null}
+      {selected?.disabled && selected.detail ? (
+        <p className="pb-solid-field-note" role="status">
+          {selected.detail}
+        </p>
+      ) : null}
     </div>
   );
 }

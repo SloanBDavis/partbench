@@ -435,6 +435,28 @@ describe("cad command builders", () => {
       id: "feat_hole",
       depthMode: "throughAll"
     });
+    expect(
+      buildFeatureUpdateHoleOp("feat_hole", undefined, undefined, undefined, {
+        targetBodyId: " body_target "
+      })
+    ).toEqual({
+      op: "feature.updateHole",
+      id: "feat_hole",
+      targetBodyId: "body_target"
+    });
+    expect(
+      buildFeatureUpdateHoleOp("feat_hole", "blind", 2.5, "positive", {
+        targetBodyId: "body_resolved_from_anchor",
+        targetTopologyAnchorId: " anchor_target "
+      })
+    ).toEqual({
+      op: "feature.updateHole",
+      id: "feat_hole",
+      depthMode: "blind",
+      depth: 2.5,
+      direction: "positive",
+      targetTopologyAnchorId: "anchor_target"
+    });
     expect(buildFeatureUpdateChamferOp("feat_chamfer", 0.25)).toEqual({
       op: "feature.updateChamfer",
       id: "feat_chamfer",

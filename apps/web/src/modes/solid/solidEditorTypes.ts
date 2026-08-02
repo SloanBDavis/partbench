@@ -92,6 +92,9 @@ export interface SolidChoice<Value> {
   readonly kind: string;
   readonly targetTopologyAnchorId?: string;
   readonly targetBodyId?: string;
+  readonly disabled?: boolean;
+  readonly warning?: string;
+  readonly detail?: string;
 }
 
 export interface SweepPathChoiceValue {

@@ -700,7 +700,7 @@ function createRuntime(
       };
     },
     async exactBodyArtifact(input, context) {
-      expect(context).toEqual({ intent: "user" });
+      expect(context).toEqual({ intent: "user", userKind: "export" });
       const index = artifactInputs.length;
       artifactInputs.push(input);
       await Promise.resolve();

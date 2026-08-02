@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type {
   CadBodySnapshot,
+  CadBodySource,
   CadFeatureSummary,
   CadSelectionReferenceOperation,
   SketchConstraintEntry,
@@ -1554,6 +1555,146 @@ describe("sketch panel UI helpers", () => {
         detail: "Circle result body / cut"
       }
     ]);
+  });
+
+  it("projects exact readiness for every active body family and keeps blocked targets visible", () => {
+    const extrude = createBody("body_extrude", "feature_extrude");
+    const hole: CadBodySnapshot = {
+      id: "body_hole",
+      kind: "solid",
+      partId: "part:default",
+      featureId: "feature_hole",
+      name: "Recursive hole result",
+      source: {
+        type: "sketchHoleFeature",
+        featureId: "feature_hole",
+        targetBodyId: "body_extrude",
+        sketchId: "sketch_hole",
+        circleEntityId: "circle_hole"
+      }
+    };
+    const imported: CadBodySnapshot = {
+      id: "body_imported",
+      kind: "solid",
+      partId: "part:default",
+      featureId: "feature_imported",
+      name: "Imported bracket",
+      source: {
+        type: "importedStepBody",
+        featureId: "feature_imported",
+        sourceFileName: "bracket.step",
+        checkpointId: "checkpoint_imported"
+      }
+    };
+    const consumed = createBody(
+      "body_consumed",
+      "feature_consumed",
+      "feature_other"
+    );
+    const readiness = new Map([
+      ["body_extrude", { status: "ready" as const, solidCount: 1 }],
+      ["body_hole", { status: "ready" as const, solidCount: 3 }],
+      [
+        "body_imported",
+        {
+          status: "failed" as const,
+          reason: "The imported checkpoint payload is unavailable."
+        }
+      ]
+    ]);
+
+    expect(
+      createHoleTargetBodyOptions(
+        [extrude, hole, imported, consumed],
+        [
+          createExtrudeFeature(
+            "feature_extrude",
+            "body_extrude",
+            "rectangle",
+            "newBody"
+          )
+        ],
+        "body_hole",
+        undefined,
+        undefined,
+        readiness
+      )
+    ).toEqual([
+      {
+        bodyId: "body_hole",
+        featureId: "feature_hole",
+        label: "Recursive hole result",
+        detail:
+          "This body contains 3 solids. The hole applies to every intersected solid.",
+        warning:
+          "This body contains 3 solids. The hole applies to every intersected solid."
+      },
+      {
+        bodyId: "body_extrude",
+        featureId: "feature_extrude",
+        profileKind: "rectangle",
+        label: "Body 1",
+        detail: "Exact-ready body"
+      },
+      {
+        bodyId: "body_imported",
+        featureId: "feature_imported",
+        label: "Imported bracket",
+        detail: "The imported checkpoint payload is unavailable.",
+        disabled: true
+      },
+      {
+        bodyId: "body_consumed",
+        featureId: "feature_consumed",
+        label: "Body 4",
+        detail: "Already consumed by another feature.",
+        disabled: true
+      }
+    ]);
+  });
+
+  it("keeps the exact hole chooser source-family agnostic", () => {
+    const sourceTypes: readonly CadBodySource["type"][] = [
+      "primitiveFeature",
+      "sketchExtrudeFeature",
+      "sketchRevolveFeature",
+      "sketchHoleFeature",
+      "edgeChamferFeature",
+      "edgeFilletFeature",
+      "linearPatternFeature",
+      "circularPatternFeature",
+      "mirrorFeature",
+      "shellFeature",
+      "sweepFeature",
+      "loftFeature",
+      "importedStepBody"
+    ];
+    const bodies = sourceTypes.map(
+      (type, index): CadBodySnapshot => ({
+        id: `body_${type}`,
+        kind: "solid",
+        partId: "part:default",
+        featureId: `feature_${index}`,
+        source: { type, featureId: `feature_${index}` } as CadBodySource
+      })
+    );
+    const readiness = new Map(
+      bodies.map((body) => [
+        body.id,
+        { status: "ready" as const, solidCount: 1 }
+      ])
+    );
+
+    expect(
+      createHoleTargetBodyOptions(
+        bodies,
+        [],
+        undefined,
+        undefined,
+        undefined,
+        readiness
+      ).map((option) => option.bodyId)
+    ).toEqual(bodies.map((body) => body.id));
   });
 
   it("preserves topology anchors when building effective hole target forms", () => {
