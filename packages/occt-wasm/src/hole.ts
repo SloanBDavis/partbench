@@ -62,7 +62,11 @@ interface HoleToolShapeHandle {
 }
 
 interface GeometryKernelLikeError {
-  readonly code: "UNAVAILABLE_BINDING" | "INVALID_PLACEMENT" | "EMPTY_RESULT";
+  readonly code:
+    | "UNAVAILABLE_BINDING"
+    | "INVALID_PLACEMENT"
+    | "EMPTY_RESULT"
+    | "INVALID_RESULT";
   readonly message: string;
 }
 
@@ -143,6 +147,7 @@ export function withOcctHoleResultOnShape<T>(
   try {
     toolShape = makeHoleToolShape(oc, target, toolSource);
     tool = toolShape.shape.Shape();
+    const targetVolume = readShapeVolume(oc, target);
     range = new oc.Message_ProgressRange_1();
     cut = new oc.BRepAlgoAPI_Cut_3(target, tool, range);
 
@@ -151,6 +156,7 @@ export function withOcctHoleResultOnShape<T>(
     }
 
     resultShape = cut.Shape();
+    assertValidHoleResult(oc, resultShape, targetVolume);
     return readResult(resultShape);
   } finally {
     resultShape?.delete();
@@ -158,6 +164,63 @@ export function withOcctHoleResultOnShape<T>(
     range?.delete();
     tool?.delete();
     toolShape?.delete();
+  }
+}
+
+function assertValidHoleResult(
+  oc: OpenCascadeInstance,
+  result: TopoDS_Shape,
+  targetVolume: number
+): void {
+  if (result.IsNull()) {
+    throw {
+      code: "EMPTY_RESULT",
+      message: "Open CASCADE hole cut fully removed the target shape."
+    } satisfies GeometryKernelLikeError;
+  }
+  const analyzer = new oc.BRepCheck_Analyzer(result, true, false);
+  try {
+    if (!analyzer.IsValid_2()) {
+      throw {
+        code: "INVALID_RESULT",
+        message: "Open CASCADE hole cut returned an invalid result shape."
+      } satisfies GeometryKernelLikeError;
+    }
+  } finally {
+    analyzer.delete();
+  }
+
+  const resultVolume = readShapeVolume(oc, result);
+  const tolerance = Math.max(1e-9, targetVolume * 1e-12);
+  if (!Number.isFinite(resultVolume) || resultVolume <= tolerance) {
+    throw {
+      code: "EMPTY_RESULT",
+      message: "Open CASCADE hole cut fully removed the target shape."
+    } satisfies GeometryKernelLikeError;
+  }
+  const removedVolume = targetVolume - resultVolume;
+  if (!Number.isFinite(removedVolume) || removedVolume < -tolerance) {
+    throw {
+      code: "INVALID_RESULT",
+      message: "Open CASCADE hole cut returned invalid material volume."
+    } satisfies GeometryKernelLikeError;
+  }
+  if (removedVolume <= tolerance) {
+    throw {
+      code: "EMPTY_RESULT",
+      message:
+        "Hole tool has no positive-volume intersection with the target shape."
+    } satisfies GeometryKernelLikeError;
+  }
+}
+
+function readShapeVolume(oc: OpenCascadeInstance, shape: TopoDS_Shape): number {
+  const properties = new oc.GProp_GProps_1();
+  try {
+    oc.BRepGProp.VolumeProperties_1(shape, properties, true, false, false);
+    return Math.abs(properties.Mass());
+  } finally {
+    properties.delete();
   }
 }
 
@@ -309,6 +372,9 @@ function assertHoleResultBindings(oc: OpenCascadeInstance): void {
   const bindings: readonly [string, unknown][] = [
     ["BRepPrimAPI_MakeCylinder_3", oc.BRepPrimAPI_MakeCylinder_3],
     ["BRepAlgoAPI_Cut_3", oc.BRepAlgoAPI_Cut_3],
+    ["BRepCheck_Analyzer", oc.BRepCheck_Analyzer],
+    ["BRepGProp.VolumeProperties_1", oc.BRepGProp?.VolumeProperties_1],
+    ["GProp_GProps_1", oc.GProp_GProps_1],
     ["Message_ProgressRange_1", oc.Message_ProgressRange_1],
     ["BRepBndLib.AddOptimal", oc.BRepBndLib?.AddOptimal],
     ["Bnd_Box_1", oc.Bnd_Box_1],

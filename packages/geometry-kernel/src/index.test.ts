@@ -809,6 +809,41 @@ describe("geometry-kernel facade", () => {
       ok: false,
       error: { code: "INVALID_DIMENSIONS" }
     });
+    for (const error of [
+      {
+        code: "EMPTY_RESULT" as const,
+        message:
+          "Hole tool has no positive-volume intersection with the target shape."
+      },
+      {
+        code: "INVALID_RESULT" as const,
+        message: "Open CASCADE hole cut returned an invalid result shape."
+      }
+    ]) {
+      const response = await executeGeometryKernelRequestWithMeshFactory(
+        createInjectedArtifactFactories(async () => {
+          throw error;
+        }),
+        createArtifactRequest(
+          {
+            kind: "artifactHole",
+            target: {
+              ...leaf,
+              shapePolicy: "singleShapeOneOrMoreSolids"
+            },
+            tool
+          },
+          {
+            bodyId: `failed_artifact_hole_${error.code}`,
+            sourceGraphNodeCount: 2,
+            shapePolicy: "singleShapeOneOrMoreSolids"
+          }
+        )
+      );
+      expect(response).toMatchObject({ ok: false, error });
+      expect("artifact" in response).toBe(false);
+      expect(getGeometryResponseTransferables(response)).toEqual([]);
+    }
     const invalid = await executeGeometryKernelRequestWithMeshFactory(
       createInjectedArtifactFactories(rejectedFactory),
       createArtifactRequest(
@@ -4404,7 +4439,7 @@ describe("geometry-kernel facade", () => {
           sketchPlane: "XZ",
           circle: {
             kind: "circle",
-            center: [0, 0],
+            center: [0, -4],
             radius: 0.5
           },
           depthMode: "blind",
@@ -4883,7 +4918,7 @@ describe("geometry-kernel facade", () => {
       op: "geometry.hole",
       error: {
         code: "EMPTY_RESULT",
-        message: "The geometry kernel returned an empty or invalid mesh."
+        message: "Open CASCADE hole cut fully removed the target shape."
       },
       warnings: []
     });

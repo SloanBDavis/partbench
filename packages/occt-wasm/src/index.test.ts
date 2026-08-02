@@ -955,6 +955,9 @@ describe("occt-wasm", () => {
       BRepPrimAPI_MakeBox_5: BoxBuilder,
       BRepPrimAPI_MakeCylinder_3: UnusedBinding,
       BRepAlgoAPI_Cut_3: UnusedBinding,
+      BRepCheck_Analyzer: UnusedBinding,
+      BRepGProp: { VolumeProperties_1() {} },
+      GProp_GProps_1: UnusedBinding,
       Message_ProgressRange_1: UnusedBinding,
       BRepBndLib: { AddOptimal() {} },
       Bnd_Box_1: UnusedBinding
@@ -3235,7 +3238,7 @@ describe("occt-wasm", () => {
         createOcctExactBodyArtifactWithInstance(nullResultInstance, {
           source: sources[0]!.source
         })
-      ).toThrow(/null shape/i);
+      ).toThrow(/fully removed/i);
       expect({ nullShapeDeleted, nullCutDeleted }).toEqual({
         nullShapeDeleted: true,
         nullCutDeleted: true
@@ -3271,6 +3274,215 @@ describe("occt-wasm", () => {
           }
         })
       ).toThrow(/topology signature/i);
+      expect(files()).toEqual(filesBefore);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "cuts universal artifact-hole targets in every retained mode with multi-solid atomicity",
+    async () => {
+      const oc = await loadOcct();
+      const files = () => ({
+        root: [...oc.FS.readdir("/")].sort(),
+        tmp: [...oc.FS.readdir("/tmp")].sort()
+      });
+      const filesBefore = files();
+
+      for (const direction of ["positive", "negative"] as const) {
+        const target = createOcctExactBodyArtifactWithInstance(oc, {
+          source: {
+            kind: "extrude",
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 4,
+              height: 4
+            },
+            depth: 4,
+            side: direction
+          }
+        });
+        const leaf = createBodyArtifactTestLeaf(target);
+        for (const depthMode of ["blind", "throughAll"] as const) {
+          const artifact = createOcctExactBodyArtifactWithInstance(oc, {
+            source: {
+              kind: "artifactHole",
+              target: leaf,
+              tool: {
+                sketchPlane: "XY",
+                circle: { kind: "circle", center: [0, 0], radius: 0.5 },
+                depthMode,
+                ...(depthMode === "blind" ? { depth: 2 } : {}),
+                direction
+              }
+            }
+          });
+          const removedDepth = depthMode === "blind" ? 2 : 4;
+          expect(artifact.metadata.volume).toBeCloseTo(
+            target.metadata.volume - Math.PI * 0.5 ** 2 * removedDepth,
+            5
+          );
+          expect(artifact.metadata.topologyCounts.solidCount).toBe(1);
+          expect(artifact.topologySnapshot.entityCounts.solidCount).toBe(1);
+          expect(artifact.displayMesh.triangleCount).toBeGreaterThan(0);
+          expect(files(), `${direction}-${depthMode}`).toEqual(filesBefore);
+        }
+      }
+
+      const seed = createOcctExactBodyArtifactWithInstance(oc, {
+        source: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [-4, 0],
+            width: 3,
+            height: 3
+          },
+          depth: 4,
+          side: "positive"
+        }
+      });
+      const patterned = createOcctExactBodyArtifactWithInstance(oc, {
+        source: {
+          kind: "artifactLinearPattern",
+          seed: createBodyArtifactTestLeaf(seed),
+          direction: [1, 0, 0],
+          spacing: 8,
+          instanceCount: 2
+        }
+      });
+      expect(patterned.metadata.topologyCounts.solidCount).toBe(2);
+      const multiLeaf: BodyArtifactTestLeaf = {
+        ...createBodyArtifactTestLeaf(patterned),
+        shapePolicy: "singleShapeOneOrMoreSolids"
+      };
+      const partial = createOcctExactBodyArtifactWithInstance(oc, {
+        source: {
+          kind: "artifactHole",
+          target: multiLeaf,
+          tool: {
+            sketchPlane: "XY",
+            circle: { kind: "circle", center: [-4, 0], radius: 0.5 },
+            depthMode: "throughAll",
+            direction: "positive"
+          }
+        }
+      });
+      expect(partial.metadata.topologyCounts.solidCount).toBe(2);
+      expect(partial.metadata.volume).toBeCloseTo(
+        patterned.metadata.volume - Math.PI,
+        5
+      );
+      expect(partial.metadata.centroid[0]).toBeGreaterThan(0);
+      expect(files()).toEqual(filesBefore);
+
+      const all = createOcctExactBodyArtifactWithInstance(oc, {
+        source: {
+          kind: "artifactHole",
+          target: multiLeaf,
+          tool: {
+            sketchPlane: "XY",
+            circle: { kind: "circle", center: [0, 0], radius: 3.5 },
+            depthMode: "throughAll",
+            direction: "positive"
+          }
+        }
+      });
+      expect(all.metadata.topologyCounts.solidCount).toBe(2);
+      expect(all.metadata.volume).toBeLessThan(partial.metadata.volume);
+      expect(all.metadata.centroid[0]).toBeCloseTo(0, 6);
+      expect(files()).toEqual(filesBefore);
+
+      const reparsed = createOcctExactBodyArtifactWithInstance(oc, {
+        source: {
+          ...createBodyArtifactTestLeaf(partial),
+          shapePolicy: "singleShapeOneOrMoreSolids"
+        }
+      });
+      expect(reparsed.topologySnapshot.signature).toBe(
+        partial.topologySnapshot.signature
+      );
+      expect(reparsed.metadata.topologyCounts).toEqual(
+        partial.metadata.topologyCounts
+      );
+      expect(reparsed.metadata.volume).toBeCloseTo(partial.metadata.volume, 8);
+      expect(reparsed.metadata.surfaceArea).toBeCloseTo(
+        partial.metadata.surfaceArea,
+        8
+      );
+      for (const axis of [0, 1, 2] as const) {
+        expect(reparsed.metadata.bounds.min[axis]).toBeCloseTo(
+          partial.metadata.bounds.min[axis],
+          8
+        );
+        expect(reparsed.metadata.bounds.max[axis]).toBeCloseTo(
+          partial.metadata.bounds.max[axis],
+          8
+        );
+        expect(reparsed.metadata.centroid[axis]).toBeCloseTo(
+          partial.metadata.centroid[axis],
+          8
+        );
+      }
+      expect(reparsed.displayMesh).toMatchObject({
+        vertexCount: partial.displayMesh.vertexCount,
+        triangleCount: partial.displayMesh.triangleCount,
+        faceCount: partial.displayMesh.faceCount
+      });
+      expect(files()).toEqual(filesBefore);
+
+      for (const [label, radius, message] of [
+        ["no-intersection", 1, /positive-volume intersection/i],
+        ["tangency", 2.5, /positive-volume intersection|invalid result/i],
+        ["full-removal", 10, /fully removed/i]
+      ] as const) {
+        expect(() =>
+          createOcctExactBodyArtifactWithInstance(oc, {
+            source: {
+              kind: "artifactHole",
+              target: multiLeaf,
+              tool: {
+                sketchPlane: "XY",
+                circle: { kind: "circle", center: [0, 0], radius },
+                depthMode: "throughAll",
+                direction: "positive"
+              }
+            }
+          })
+        ).toThrow(message);
+        expect(files(), label).toEqual(filesBefore);
+      }
+
+      const invalidResultInstance = new Proxy(oc, {
+        get(target, candidate) {
+          if (candidate !== "BRepCheck_Analyzer") {
+            return Reflect.get(target, candidate);
+          }
+          return class {
+            IsValid_2() {
+              return false;
+            }
+            delete() {}
+          };
+        }
+      }) as OpenCascadeInstance;
+      expect(() =>
+        createOcctExactBodyArtifactWithInstance(invalidResultInstance, {
+          source: {
+            kind: "artifactHole",
+            target: multiLeaf,
+            tool: {
+              sketchPlane: "XY",
+              circle: { kind: "circle", center: [-4, 0], radius: 0.5 },
+              depthMode: "throughAll",
+              direction: "positive"
+            }
+          }
+        })
+      ).toThrow(/invalid result/i);
       expect(files()).toEqual(filesBefore);
     },
     OCCT_WASM_TEST_TIMEOUT_MS
