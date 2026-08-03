@@ -66,10 +66,12 @@ export function readTriangulatedShape(
         const faceTriangles = readFaceTriangulation(oc, face);
         const vertexOffset = positions.length / 3;
 
-        positions.push(...faceTriangles.positions);
-        indices.push(
-          ...faceTriangles.indices.map((index) => index + vertexOffset)
-        );
+        for (const position of faceTriangles.positions) {
+          positions.push(position);
+        }
+        for (const index of faceTriangles.indices) {
+          indices.push(index + vertexOffset);
+        }
 
         if (faceTriangles.indices.length > 0) {
           faceCount += 1;

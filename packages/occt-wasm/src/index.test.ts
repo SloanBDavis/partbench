@@ -1121,6 +1121,93 @@ describe("occt-wasm", () => {
     ]);
   });
 
+  it("appends a large face without overflowing the call stack", () => {
+    const nodeCount = 50_000;
+    class Shape {
+      delete() {}
+    }
+    class Explorer {
+      #more = true;
+      More() {
+        return this.#more;
+      }
+      Current() {
+        return new Shape();
+      }
+      Next() {
+        this.#more = false;
+      }
+      delete() {}
+    }
+    class Location {
+      IsIdentity() {
+        return true;
+      }
+      delete() {}
+    }
+    class Point {
+      constructor(private readonly value: number) {}
+      X() {
+        return this.value;
+      }
+      Y() {
+        return 0;
+      }
+      Z() {
+        return 0;
+      }
+      delete() {}
+    }
+    class Triangle {
+      Value(index: number) {
+        return index;
+      }
+      delete() {}
+    }
+    class Triangulation {
+      NbNodes() {
+        return nodeCount;
+      }
+      Node(index: number) {
+        return new Point(index);
+      }
+      NbTriangles() {
+        return 1;
+      }
+      Triangle() {
+        return new Triangle();
+      }
+    }
+    class TriangulationHandle {
+      IsNull() {
+        return false;
+      }
+      get() {
+        return new Triangulation();
+      }
+      delete() {}
+    }
+    const oc = {
+      TopAbs_ShapeEnum: {
+        TopAbs_FACE: "face",
+        TopAbs_SHAPE: "shape"
+      },
+      TopExp_Explorer_2: Explorer,
+      TopoDS: {
+        Face_1: () => new Shape()
+      },
+      TopLoc_Location_1: Location,
+      BRep_Tool: {
+        Triangulation: () => new TriangulationHandle()
+      }
+    } as unknown as OpenCascadeInstance;
+
+    expect(readTriangulatedShape(oc, {} as never, "box")).toMatchObject({
+      vertexCount: nodeCount,
+      triangleCount: 1
+    });
+  });
+
   it("disposes mesh point transforms after transformation fails", () => {
     const deleted: string[] = [];
     class CurrentShape {
