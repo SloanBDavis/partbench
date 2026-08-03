@@ -1,4 +1,9 @@
-import type { OpenCascadeInstance, TopoDS_Shape } from "opencascade.js";
+import type {
+  OpenCascadeInstance,
+  TopoDS_Edge,
+  TopoDS_Shape,
+  TopoDS_Vertex
+} from "opencascade.js";
 import type { OcctLoader } from "./tessellateBox";
 import {
   readExactBodyMetadata,
@@ -35,6 +40,7 @@ import {
 } from "./wireExtrude";
 import {
   readTriangulatedShape,
+  readTriangulatedShapeWithFaceRanges,
   type OcctMeshData,
   type OcctPrimitiveKind
 } from "./readTriangulatedShape";
@@ -198,6 +204,25 @@ export interface OcctExactBodyArtifact {
   readonly metadata: ReturnType<typeof readExactBodyMetadata>;
   readonly topologySnapshot: OcctExactTopologySnapshot;
   readonly displayMesh: OcctMeshData;
+  readonly viewportPickMap?: OcctExactViewportPickMapPayload;
+}
+
+export interface OcctExactViewportPickMapEntity {
+  readonly localId: string;
+  readonly entitySignature: string;
+}
+
+export interface OcctExactViewportPickMapPayload {
+  readonly topologySignature: string;
+  readonly meshVertexCount: number;
+  readonly meshTriangleCount: number;
+  readonly faces: readonly OcctExactViewportPickMapEntity[];
+  readonly edges: readonly OcctExactViewportPickMapEntity[];
+  readonly vertices: readonly OcctExactViewportPickMapEntity[];
+  readonly faceTriangleRanges: Uint32Array;
+  readonly edgePointRanges: Uint32Array;
+  readonly edgePoints: Float64Array;
+  readonly vertexPoints: Float64Array;
 }
 
 export type OcctBrepCheckpointWriterCapabilityStatus =
@@ -219,6 +244,8 @@ export interface OcctBrepCheckpointWriterCapability {
 }
 
 const CHECKPOINT_WRITER_PACKAGE_VERSION = "2.0.0-beta.b5ff984";
+const MAX_EXACT_VIEWPORT_PICK_MAP_BYTES = 128 * 1024 * 1024;
+const EXACT_VIEWPORT_PICK_MAP_METADATA_ENTRY_BYTES = 64;
 
 export const OCCT_BREP_CHECKPOINT_WRITER_REQUIRED_BINDINGS = [
   "BRepTools.Write_3",
@@ -738,13 +765,46 @@ function createExactBodyArtifact(
     false
   );
   let displayMesh: OcctMeshData;
+  let viewportPickMap: OcctExactViewportPickMapPayload | undefined;
   try {
     if (!mesher.IsDone()) {
       throw new Error(
         `Open CASCADE exact artifact display meshing failed with status ${mesher.GetStatusFlags()}.`
       );
     }
-    displayMesh = readTriangulatedShape(oc, shape, toMeshPrimitive(sourceKind));
+    let faceTriangleRanges:
+      | ReturnType<
+          typeof readTriangulatedShapeWithFaceRanges
+        >["faceTriangleRanges"]
+      | undefined;
+    try {
+      const triangulated = readTriangulatedShapeWithFaceRanges(
+        oc,
+        shape,
+        toMeshPrimitive(sourceKind)
+      );
+      displayMesh = triangulated.mesh;
+      faceTriangleRanges = triangulated.faceTriangleRanges;
+    } catch {
+      displayMesh = readTriangulatedShape(
+        oc,
+        shape,
+        toMeshPrimitive(sourceKind)
+      );
+    }
+    try {
+      if (faceTriangleRanges) {
+        viewportPickMap = createExactViewportPickMap(
+          oc,
+          shape,
+          topologySnapshot,
+          faceTriangleRanges,
+          displayMesh
+        );
+      }
+    } catch {
+      // Pick evidence is optional derived display data; retain the exact artifact.
+    }
   } finally {
     mesher.delete();
   }
@@ -757,8 +817,301 @@ function createExactBodyArtifact(
     brepByteLength: brepBytes.byteLength,
     metadata,
     topologySnapshot,
-    displayMesh
+    displayMesh,
+    ...(viewportPickMap ? { viewportPickMap } : {})
   };
+}
+
+function createExactViewportPickMap(
+  oc: OpenCascadeInstance,
+  shape: TopoDS_Shape,
+  topologySnapshot: OcctExactTopologySnapshot,
+  faceTriangleRanges: readonly {
+    readonly index: number;
+    readonly firstTriangle: number;
+    readonly triangleCount: number;
+  }[],
+  displayMesh: OcctMeshData
+): OcctExactViewportPickMapPayload | undefined {
+  if (
+    !oc.GCPnts_TangentialDeflection_3 ||
+    !oc.BRepAdaptor_Curve_2 ||
+    !oc.BRep_Tool?.Pnt
+  ) {
+    return undefined;
+  }
+
+  const faces = getTopologyEntities(topologySnapshot, "face");
+  const edges = getTopologyEntities(topologySnapshot, "edge");
+  const vertices = getTopologyEntities(topologySnapshot, "vertex");
+  const budget = createExactViewportPickMapBudget([faces, edges, vertices]);
+  if (
+    !budget ||
+    faceTriangleRanges.length !== faces.length ||
+    !hasCompleteFaceRanges(faceTriangleRanges, displayMesh.triangleCount) ||
+    !budget.reserveProduct(faces.length, 2 * Uint32Array.BYTES_PER_ELEMENT) ||
+    !budget.reserveProduct(edges.length, 2 * Uint32Array.BYTES_PER_ELEMENT) ||
+    !budget.reserveProduct(vertices.length, 3 * Float64Array.BYTES_PER_ELEMENT)
+  ) {
+    return undefined;
+  }
+
+  const faceRanges: number[] = [];
+  const faceEntries: OcctExactViewportPickMapEntity[] = [];
+  for (const range of faceTriangleRanges) {
+    const entity = faces[range.index - 1];
+    if (!entity) return undefined;
+    faceEntries.push({
+      localId: entity.localId,
+      entitySignature: entity.entitySignature
+    });
+    faceRanges.push(range.firstTriangle, range.triangleCount);
+  }
+
+  const edgeResult = readExactEdgePolylines(oc, shape, edges, budget);
+  const vertexResult = readExactVertexPoints(oc, shape, vertices);
+  if (!edgeResult || !vertexResult) return undefined;
+
+  return {
+    topologySignature: topologySnapshot.signature,
+    meshVertexCount: displayMesh.vertexCount,
+    meshTriangleCount: displayMesh.triangleCount,
+    faces: faceEntries,
+    edges: edgeResult.entities,
+    vertices: vertexResult.entities,
+    faceTriangleRanges: Uint32Array.from(faceRanges),
+    edgePointRanges: Uint32Array.from(edgeResult.ranges),
+    edgePoints: Float64Array.from(edgeResult.points),
+    vertexPoints: Float64Array.from(vertexResult.points)
+  };
+}
+
+function createExactViewportPickMapBudget(
+  entityGroups: readonly (readonly OcctExactViewportPickMapEntity[])[]
+):
+  | {
+      readonly reserveProduct: (count: number, bytesPerItem: number) => boolean;
+    }
+  | undefined {
+  let byteLength = 0;
+  for (const entities of entityGroups) {
+    for (const entity of entities) {
+      if (
+        !isBoundedString(entity.localId) ||
+        !isBoundedString(entity.entitySignature)
+      ) {
+        return undefined;
+      }
+      const stringBytes =
+        (entity.localId.length + entity.entitySignature.length) * 2;
+      if (
+        !Number.isSafeInteger(stringBytes) ||
+        byteLength >
+          MAX_EXACT_VIEWPORT_PICK_MAP_BYTES -
+            EXACT_VIEWPORT_PICK_MAP_METADATA_ENTRY_BYTES -
+            stringBytes
+      ) {
+        return undefined;
+      }
+      byteLength += EXACT_VIEWPORT_PICK_MAP_METADATA_ENTRY_BYTES + stringBytes;
+    }
+  }
+  return {
+    reserveProduct: (count, bytesPerItem) => {
+      if (
+        !Number.isSafeInteger(count) ||
+        count < 0 ||
+        !Number.isSafeInteger(bytesPerItem) ||
+        bytesPerItem < 1 ||
+        count >
+          Math.floor(
+            (MAX_EXACT_VIEWPORT_PICK_MAP_BYTES - byteLength) / bytesPerItem
+          )
+      ) {
+        return false;
+      }
+      byteLength += count * bytesPerItem;
+      return true;
+    }
+  };
+}
+
+function getTopologyEntities(
+  topologySnapshot: OcctExactTopologySnapshot,
+  kind: "face" | "edge" | "vertex"
+): readonly OcctExactViewportPickMapEntity[] {
+  return topologySnapshot.entities
+    .filter((entity) => entity.kind === kind)
+    .map((entity) => ({
+      localId: entity.localId,
+      entitySignature: entity.signature
+    }));
+}
+
+function hasCompleteFaceRanges(
+  ranges: readonly {
+    readonly firstTriangle: number;
+    readonly triangleCount: number;
+  }[],
+  triangleCount: number
+): boolean {
+  let nextTriangle = 0;
+  for (const range of ranges) {
+    if (
+      !Number.isSafeInteger(range.firstTriangle) ||
+      !Number.isSafeInteger(range.triangleCount) ||
+      range.firstTriangle !== nextTriangle ||
+      range.triangleCount < 1 ||
+      range.triangleCount > triangleCount - nextTriangle
+    ) {
+      return false;
+    }
+    nextTriangle += range.triangleCount;
+  }
+  return nextTriangle === triangleCount;
+}
+
+function readExactEdgePolylines(
+  oc: OpenCascadeInstance,
+  shape: TopoDS_Shape,
+  entities: readonly OcctExactViewportPickMapEntity[],
+  budget: {
+    readonly reserveProduct: (count: number, bytesPerItem: number) => boolean;
+  }
+):
+  | {
+      readonly entities: readonly OcctExactViewportPickMapEntity[];
+      readonly ranges: readonly number[];
+      readonly points: readonly number[];
+    }
+  | undefined {
+  const map = createIndexedShapeMap(oc, shape, "TopAbs_EDGE");
+  const ranges: number[] = [];
+  const points: number[] = [];
+
+  try {
+    if (map.Size() !== entities.length) return undefined;
+    for (let index = 1; index <= map.Size(); index += 1) {
+      let shapeEntry: TopoDS_Shape | undefined;
+      let edge: TopoDS_Edge | undefined;
+      let curve: InstanceType<typeof oc.BRepAdaptor_Curve_2> | undefined;
+      let sampler:
+        | InstanceType<typeof oc.GCPnts_TangentialDeflection_3>
+        | undefined;
+      try {
+        shapeEntry = map.FindKey(index);
+        edge = oc.TopoDS.Edge_1(shapeEntry);
+        curve = new oc.BRepAdaptor_Curve_2(edge);
+        sampler = new oc.GCPnts_TangentialDeflection_3(
+          curve,
+          curve.FirstParameter(),
+          curve.LastParameter(),
+          0.5,
+          0.25,
+          2,
+          1e-7,
+          1e-7
+        );
+        const pointCount = sampler.NbPoints();
+        if (
+          !Number.isSafeInteger(pointCount) ||
+          pointCount < 2 ||
+          !budget.reserveProduct(pointCount, 3 * Float64Array.BYTES_PER_ELEMENT)
+        ) {
+          return undefined;
+        }
+        const firstPoint = points.length / 3;
+        for (let pointIndex = 1; pointIndex <= pointCount; pointIndex += 1) {
+          const point = sampler.Value(pointIndex);
+          try {
+            if (
+              !Number.isFinite(point.X()) ||
+              !Number.isFinite(point.Y()) ||
+              !Number.isFinite(point.Z())
+            ) {
+              return undefined;
+            }
+            points.push(point.X(), point.Y(), point.Z());
+          } finally {
+            point.delete();
+          }
+        }
+        ranges.push(firstPoint, pointCount);
+      } finally {
+        sampler?.delete();
+        curve?.delete();
+        edge?.delete();
+        shapeEntry?.delete();
+      }
+    }
+    return { entities, ranges, points };
+  } finally {
+    map.delete();
+  }
+}
+
+function readExactVertexPoints(
+  oc: OpenCascadeInstance,
+  shape: TopoDS_Shape,
+  entities: readonly OcctExactViewportPickMapEntity[]
+):
+  | {
+      readonly entities: readonly OcctExactViewportPickMapEntity[];
+      readonly points: readonly number[];
+    }
+  | undefined {
+  const map = createIndexedShapeMap(oc, shape, "TopAbs_VERTEX");
+  const points: number[] = [];
+
+  try {
+    if (map.Size() !== entities.length) return undefined;
+    for (let index = 1; index <= map.Size(); index += 1) {
+      let shapeEntry: TopoDS_Shape | undefined;
+      let vertex: TopoDS_Vertex | undefined;
+      let point: ReturnType<typeof oc.BRep_Tool.Pnt> | undefined;
+      try {
+        shapeEntry = map.FindKey(index);
+        vertex = oc.TopoDS.Vertex_1(shapeEntry);
+        point = oc.BRep_Tool.Pnt(vertex);
+        if (
+          !Number.isFinite(point.X()) ||
+          !Number.isFinite(point.Y()) ||
+          !Number.isFinite(point.Z())
+        ) {
+          return undefined;
+        }
+        points.push(point.X(), point.Y(), point.Z());
+      } finally {
+        point?.delete();
+        vertex?.delete();
+        shapeEntry?.delete();
+      }
+    }
+    return { entities, points };
+  } finally {
+    map.delete();
+  }
+}
+
+function createIndexedShapeMap(
+  oc: OpenCascadeInstance,
+  shape: TopoDS_Shape,
+  shapeTypeKey: "TopAbs_EDGE" | "TopAbs_VERTEX"
+): InstanceType<typeof oc.TopTools_IndexedMapOfShape_1> {
+  const map = new oc.TopTools_IndexedMapOfShape_1();
+  try {
+    oc.TopExp.MapShapes_1(
+      shape,
+      oc.TopAbs_ShapeEnum[shapeTypeKey] as unknown as Parameters<
+        typeof oc.TopExp.MapShapes_1
+      >[1],
+      map
+    );
+    return map;
+  } catch (error) {
+    map.delete();
+    throw error;
+  }
 }
 
 export function getOcctBrepCheckpointWriterCapabilityWithInstance(

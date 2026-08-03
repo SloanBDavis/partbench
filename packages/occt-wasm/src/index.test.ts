@@ -245,6 +245,157 @@ function createNestedOcctBooleanRecipe(
 }
 
 describe("occt-wasm", () => {
+  it(
+    "derives face, edge, and vertex pick evidence from one exact artifact shape",
+    async () => {
+      const oc = await loadOcct();
+      const artifact = createOcctExactBodyArtifactWithInstance(oc, {
+        source: {
+          kind: "box",
+          dimensions: { width: 2, height: 3, depth: 4 },
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          }
+        }
+      });
+      const pickMap = artifact.viewportPickMap;
+      expect(pickMap).toBeDefined();
+      if (!pickMap) throw new Error("Expected same-shape exact pick evidence.");
+
+      for (const [kind, entries] of [
+        ["face", pickMap.faces],
+        ["edge", pickMap.edges],
+        ["vertex", pickMap.vertices]
+      ] as const) {
+        expect(entries).toEqual(
+          artifact.topologySnapshot.entities
+            .filter((entity) => entity.kind === kind)
+            .map((entity) => ({
+              localId: entity.localId,
+              entitySignature: entity.signature
+            }))
+        );
+      }
+      expect(pickMap.meshVertexCount).toBe(artifact.displayMesh.vertexCount);
+      expect(pickMap.meshTriangleCount).toBe(
+        artifact.displayMesh.triangleCount
+      );
+      expect(pickMap.faceTriangleRanges.length).toBe(pickMap.faces.length * 2);
+      expect(pickMap.edgePointRanges.length).toBe(pickMap.edges.length * 2);
+      expect(pickMap.vertexPoints.length).toBe(pickMap.vertices.length * 3);
+      expect(
+        pickMap.faceTriangleRanges
+          .filter((_, index) => index % 2 === 1)
+          .reduce((total, count) => total + count, 0)
+      ).toBe(artifact.displayMesh.triangleCount);
+      expect(
+        [...pickMap.edgePoints, ...pickMap.vertexPoints].every(Number.isFinite)
+      ).toBe(true);
+      expect(Array.from(pickMap.vertexPoints)).toEqual(
+        artifact.topologySnapshot.entities
+          .filter((entity) => entity.kind === "vertex")
+          .flatMap((entity) => entity.point ?? [])
+      );
+
+      const cylinder = createOcctExactBodyArtifactWithInstance(oc, {
+        source: {
+          kind: "cylinder",
+          dimensions: { radius: 1, height: 2 },
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          }
+        }
+      });
+      expect(cylinder.viewportPickMap).toBeDefined();
+      expect(
+        cylinder.viewportPickMap?.edgePointRanges.some(
+          (count, index) => index % 2 === 1 && count > 2
+        )
+      ).toBe(true);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "keeps an exact artifact when optional pick-map bindings are unavailable",
+    async () => {
+      const oc = await loadOcct();
+      const withoutPickSampler = new Proxy(oc, {
+        get(target, candidate) {
+          return candidate === "GCPnts_TangentialDeflection_3"
+            ? undefined
+            : Reflect.get(target, candidate);
+        }
+      }) as OpenCascadeInstance;
+      const artifact = createOcctExactBodyArtifactWithInstance(
+        withoutPickSampler,
+        {
+          source: {
+            kind: "box",
+            dimensions: { width: 2, height: 3, depth: 4 },
+            transform: {
+              translation: [0, 0, 0],
+              rotation: [0, 0, 0],
+              scale: [1, 1, 1]
+            }
+          }
+        }
+      );
+
+      expect(artifact.viewportPickMap).toBeUndefined();
+      expect(artifact.displayMesh.triangleCount).toBeGreaterThan(0);
+      expect(artifact.topologySnapshot.entityCounts.faceCount).toBeGreaterThan(
+        0
+      );
+
+      let faceMapShapesCalls = 0;
+      const faceShapeType = oc.TopAbs_ShapeEnum
+        .TopAbs_FACE as unknown as Parameters<typeof oc.TopExp.MapShapes_1>[1];
+      const topExpWithFaceRangeFailure = new Proxy(oc.TopExp, {
+        get(target, candidate) {
+          if (candidate !== "MapShapes_1")
+            return Reflect.get(target, candidate);
+          return (...args: Parameters<typeof oc.TopExp.MapShapes_1>) => {
+            if (args[1] === faceShapeType) faceMapShapesCalls += 1;
+            if (args[1] === faceShapeType && faceMapShapesCalls === 3) {
+              throw new Error("Injected face-range map failure.");
+            }
+            return target.MapShapes_1(...args);
+          };
+        }
+      });
+      const withFaceRangeFailure = new Proxy(oc, {
+        get(target, candidate) {
+          return candidate === "TopExp"
+            ? topExpWithFaceRangeFailure
+            : Reflect.get(target, candidate);
+        }
+      }) as OpenCascadeInstance;
+      const fallbackArtifact = createOcctExactBodyArtifactWithInstance(
+        withFaceRangeFailure,
+        {
+          source: {
+            kind: "box",
+            dimensions: { width: 2, height: 3, depth: 4 },
+            transform: {
+              translation: [0, 0, 0],
+              rotation: [0, 0, 0],
+              scale: [1, 1, 1]
+            }
+          }
+        }
+      );
+      expect(faceMapShapesCalls).toBe(3);
+      expect(fallbackArtifact.viewportPickMap).toBeUndefined();
+      expect(fallbackArtifact.displayMesh.triangleCount).toBeGreaterThan(0);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
   it.each(["positive", "negative", "symmetric"] as const)(
     "builds an exact mixed line/arc composite %s extrude with proven roles",
     async (side) => {

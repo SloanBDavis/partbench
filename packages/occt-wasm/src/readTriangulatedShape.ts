@@ -30,13 +30,42 @@ export interface OcctMeshData {
   readonly warnings?: readonly string[];
 }
 
+export interface OcctTriangulatedFaceRange {
+  readonly index: number;
+  readonly firstTriangle: number;
+  readonly triangleCount: number;
+}
+
+export interface OcctTriangulatedShapeWithFaceRanges {
+  readonly mesh: OcctMeshData;
+  readonly faceTriangleRanges: readonly OcctTriangulatedFaceRange[];
+}
+
 export function readTriangulatedShape(
   oc: OpenCascadeInstance,
   shape: TopoDS_Shape,
   primitive: OcctPrimitiveKind
 ): OcctMeshData {
+  return readTriangulatedShapeResult(oc, shape, primitive, false).mesh;
+}
+
+export function readTriangulatedShapeWithFaceRanges(
+  oc: OpenCascadeInstance,
+  shape: TopoDS_Shape,
+  primitive: OcctPrimitiveKind
+): OcctTriangulatedShapeWithFaceRanges {
+  return readTriangulatedShapeResult(oc, shape, primitive, true);
+}
+
+function readTriangulatedShapeResult(
+  oc: OpenCascadeInstance,
+  shape: TopoDS_Shape,
+  primitive: OcctPrimitiveKind,
+  includeFaceRanges: boolean
+): OcctTriangulatedShapeWithFaceRanges {
   const positions: number[] = [];
   const indices: number[] = [];
+  const faceTriangleRanges: OcctTriangulatedFaceRange[] = [];
   const faceShapeType = oc.TopAbs_ShapeEnum
     .TopAbs_FACE as unknown as ConstructorParameters<
     typeof oc.TopExp_Explorer_2
@@ -45,18 +74,22 @@ export function readTriangulatedShape(
     .TopAbs_SHAPE as unknown as ConstructorParameters<
     typeof oc.TopExp_Explorer_2
   >[2];
-  const explorer = new oc.TopExp_Explorer_2(
-    shape,
-    faceShapeType,
-    avoidShapeType
-  );
+  let explorer: InstanceType<typeof oc.TopExp_Explorer_2> | undefined;
+  let faceMap: InstanceType<typeof oc.TopTools_IndexedMapOfShape_1> | undefined;
   let faceCount = 0;
 
   try {
+    explorer = new oc.TopExp_Explorer_2(shape, faceShapeType, avoidShapeType);
+    if (includeFaceRanges) {
+      faceMap = new oc.TopTools_IndexedMapOfShape_1();
+      oc.TopExp.MapShapes_1(shape, faceShapeType, faceMap);
+    }
     for (; explorer.More(); explorer.Next()) {
       const current = explorer.Current();
       let face: TopoDS_Face;
+      let faceIndex: number | undefined;
       try {
+        faceIndex = faceMap?.FindIndex(current);
         face = oc.TopoDS.Face_1(current);
       } finally {
         current.delete();
@@ -73,6 +106,15 @@ export function readTriangulatedShape(
           indices.push(index + vertexOffset);
         }
 
+        if (faceIndex !== undefined) {
+          faceTriangleRanges.push({
+            index: faceIndex,
+            firstTriangle:
+              indices.length / 3 - faceTriangles.indices.length / 3,
+            triangleCount: faceTriangles.indices.length / 3
+          });
+        }
+
         if (faceTriangles.indices.length > 0) {
           faceCount += 1;
         }
@@ -81,16 +123,20 @@ export function readTriangulatedShape(
       }
     }
   } finally {
-    explorer.delete();
+    faceMap?.delete();
+    explorer?.delete();
   }
 
   return {
-    primitive,
-    positions: Float32Array.from(positions),
-    indices: Uint32Array.from(indices),
-    faceCount,
-    vertexCount: positions.length / 3,
-    triangleCount: indices.length / 3
+    mesh: {
+      primitive,
+      positions: Float32Array.from(positions),
+      indices: Uint32Array.from(indices),
+      faceCount,
+      vertexCount: positions.length / 3,
+      triangleCount: indices.length / 3
+    },
+    faceTriangleRanges
   };
 }
 
