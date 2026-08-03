@@ -1,5 +1,5 @@
 import { CadEngine } from "@web-cad/cad-core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   createDerivedExactMetadataCacheKey,
@@ -13,9 +13,35 @@ import {
   readProjectExactStepExport,
   readProjectExportReadiness
 } from "./projectExactExportQueries";
+import type { CurrentExactResultProjection } from "./currentExactResultProjection";
 import { planProjectAgentExactExport } from "./projectExactStepExport";
 
 describe("project exact export query evidence", () => {
+  it("reuses current projection identities without repeated topology queries", () => {
+    const engine = createCompositeAddEngine();
+    const source = readCompositeAddSource(engine);
+    const projection = {
+      bodyId: source.id,
+      sourceType: "sketchExtrudeFeature",
+      sourceIdentitySignature: source.sourceIdentitySignature,
+      status: "ready",
+      ready: true,
+      diagnostics: [],
+      consumers: []
+    } satisfies CurrentExactResultProjection;
+    const executeQuery = vi.spyOn(engine, "executeQuery");
+
+    expect(
+      createCurrentDerivedExactMetadataSnapshots(
+        engine,
+        readySnapshot(source),
+        [source],
+        [projection]
+      )
+    ).toHaveLength(1);
+    expect(executeQuery).not.toHaveBeenCalled();
+  });
+
   it("plans all, ready-subset, explicit, and stale-authority agent exports", () => {
     const engine = createCompositeAddEngine();
     const source = readCompositeAddSource(engine);

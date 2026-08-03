@@ -95,12 +95,20 @@ export function createCurrentDerivedExactMetadataSnapshots(
 
   for (const entry of exactMetadata.entries) {
     const projection = projectionsByBodyId.get(entry.bodyId);
-    if (projection && !projection.ready) continue;
     const currentSource = currentSourcesByBodyId.get(entry.bodyId);
     if (
       !currentSource ||
       entry.cacheKey !== createDerivedExactMetadataCacheKey(currentSource)
     ) {
+      continue;
+    }
+    if (projection) {
+      if (projection.ready && projection.sourceIdentitySignature) {
+        sourceIdentitySignaturesByBodyId.set(
+          entry.bodyId,
+          projection.sourceIdentitySignature
+        );
+      }
       continue;
     }
     const response = engine.executeQuery({

@@ -2617,6 +2617,7 @@ export function App() {
         new derivedGeometrySourceBuilders.DerivedExactMetadataService({
           runtime: getDerivedGeometryRuntime(),
           onChange: (snapshot) => {
+            if (snapshot.pendingCount > 0 && snapshot.readyCount > 0) return;
             emitGeometryDiagnosticEvent({
               phase: "exact-snapshot",
               timestamp: performance.now(),

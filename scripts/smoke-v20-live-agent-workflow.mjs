@@ -77,6 +77,9 @@ async function runWorkflow(client, mcpClient) {
   const limitMetrics = requireV21Limit
     ? { operationMs: [], clearMs: 0, coldExportMs: 0, warmExportMs: 0 }
     : undefined;
+  const reportLimitStage = (stage) => {
+    if (limitMetrics) process.stderr.write(`[v21.1-limit] ${stage}\n`);
+  };
   const target = await client.send("Target.createTarget", {
     url: "about:blank"
   });
@@ -352,6 +355,7 @@ async function runWorkflow(client, mcpClient) {
   checks.push("Approve all matrix and unchanged explicit dry-run");
 
   if (limitMetrics) {
+    reportLimitStage("creating 254 additional bodies");
     for (let start = 0; start < 254; start += 16) {
       const started = performance.now();
       const response = content(
@@ -361,6 +365,9 @@ async function runWorkflow(client, mcpClient) {
       );
       limitMetrics.operationMs.push(performance.now() - started);
       assert(response.ok, `near-limit body batch ${start} must commit`);
+      reportLimitStage(
+        `created ${Math.min(256, start + Math.min(16, 254 - start) + 2)} of 256 bodies`
+      );
     }
     const limitSummary = content(
       await mcpClient.callTool("cad.project_summary")
@@ -374,6 +381,7 @@ async function runWorkflow(client, mcpClient) {
   }
 
   await browser.clickText('[aria-label="Workbench mode"] button', "Solid");
+  reportLimitStage("waiting for the 256-body viewport tree");
   await browser.waitFor(
     `document.querySelector('[data-tree-select^="feature:"]') && document.querySelector('[aria-label="3D scene viewport"]')`,
     "rebuilt viewport and object tree"
@@ -390,6 +398,7 @@ async function runWorkflow(client, mcpClient) {
 
   await browser.clickText('[aria-label="Workbench mode"] button', "Project");
   if (requireV21) {
+    reportLimitStage("waiting for exact export readiness");
     await browser.clickText('[aria-label="Project pages"] button', "Export");
     await browser.waitFor(
       `[...document.querySelectorAll('.pb-project-mode-workspace button')].some((button) => button.textContent.trim() === 'Export all bodies' && !button.disabled && button.getAttribute('aria-disabled') !== 'true')`,
@@ -438,6 +447,7 @@ async function runWorkflow(client, mcpClient) {
     checks.push("V21 selected-body AP242 plan and direct browser download");
 
     await browser.clickText('[aria-label="Project pages"] button', "Agent");
+    reportLimitStage("requesting approve-all selected-body export");
     await browser.evaluate(`window.__partbenchV20Downloads.length = 0`);
     const automaticExport = content(
       await mcpClient.callTool("cad.project_request_exact_export", {
@@ -455,19 +465,38 @@ async function runWorkflow(client, mcpClient) {
     );
 
     if (limitMetrics) {
+      reportLimitStage("clearing derived exact data");
       await browser.clickText('[aria-label="Project pages"] button', "Files");
+      reportLimitStage("opened Project Files");
+      await browser.evaluate(
+        `[...document.querySelectorAll('.pb-project-mode-workspace summary')].find((summary) => summary.textContent.trim() === 'Advanced Interchange')?.click()`
+      );
+      await browser.waitFor(
+        `[...document.querySelectorAll('.pb-project-mode-workspace summary')].find((summary) => summary.textContent.trim() === 'Advanced Interchange')?.parentElement?.open`,
+        "open Advanced Interchange details"
+      );
+      await browser.evaluate(
+        `[...document.querySelectorAll('.pb-project-mode-workspace summary')].find((summary) => summary.textContent.trim() === 'Local display cache')?.click()`
+      );
+      await browser.waitFor(
+        `[...document.querySelectorAll('.pb-project-mode-workspace summary')].find((summary) => summary.textContent.trim() === 'Local display cache')?.parentElement?.open`,
+        "open Local display cache details"
+      );
       const clearStarted = performance.now();
       await browser.clickText(
         ".pb-project-mode-workspace button",
         "Clear derived exact data"
       );
+      reportLimitStage("clicked exact data clear");
       await browser.waitFor(
         `document.body.textContent.includes('Derived exact data cleared.')`,
         "derived exact cache clear"
       );
+      reportLimitStage("cleared derived exact data");
       limitMetrics.clearMs = performance.now() - clearStarted;
       await browser.clickText('[aria-label="Project pages"] button', "Agent");
       await browser.evaluate(`window.__partbenchV20Downloads.length = 0`);
+      reportLimitStage("requesting cold 256-body export");
       const coldStarted = performance.now();
       const coldExport = content(
         await mcpClient.callTool("cad.project_request_exact_export", {
@@ -482,6 +511,7 @@ async function runWorkflow(client, mcpClient) {
       );
 
       await browser.clickElement('input[value="manualApproval"]');
+      reportLimitStage("requesting cancellable 256-body export");
       await browser.waitFor(
         `document.querySelector('input[value="manualApproval"]')?.checked`,
         "Manual approval mode"
@@ -513,6 +543,7 @@ async function runWorkflow(client, mcpClient) {
       );
 
       await browser.evaluate(`window.__partbenchV20Downloads.length = 0`);
+      reportLimitStage("requesting warm 256-body retry");
       const warmStarted = performance.now();
       const warmExportCall = mcpClient.callTool(
         "cad.project_request_exact_export",
@@ -554,7 +585,12 @@ async function runWorkflow(client, mcpClient) {
         "Approve & download"
       );
       const manualExport = content(await manualExportCall);
-      assertExactExportResult(manualExport, selectedObject.selection.bodyId);
+      assertExactExportResult(manualExport, undefined, 2);
+      assert(
+        JSON.stringify(manualExport.selectedBodyIds) ===
+          JSON.stringify(["body:approve-all-box", "body:approve-all-cylinder"]),
+        "ready-subset export must preserve canonical active-body order"
+      );
       await browser.waitFor(
         `window.__partbenchV20Downloads.length === 1`,
         "manual exact export download"
@@ -562,6 +598,7 @@ async function runWorkflow(client, mcpClient) {
     }
     checks.push("V21.1 exact export through both approval modes");
   }
+  reportLimitStage("saving and reopening the final .wcad package");
   await browser.clickText('[aria-label="Project pages"] button', "Files");
   await browser.evaluate(`window.__partbenchV20Downloads.length = 0`);
   await browser.clickText(".pb-project-mode-workspace button", "Save as");
@@ -855,7 +892,9 @@ function createBrowserDriver(client, sessionId, workflowTimeoutMs) {
           : `candidates.find((candidate) => candidate.textContent.trim() === ${JSON.stringify(text)})`
       };
       if (!(element instanceof Element)) return undefined;
+      element.scrollIntoView({ block: 'center', inline: 'center' });
       const rect = element.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0 || element.matches(':disabled')) return undefined;
       return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     })()`);
     if (!point) throw new Error(`Could not find ${text ?? selector}.`);
@@ -925,7 +964,7 @@ function assertExactExportResult(result, bodyId, bodyCount = 1) {
       !/bytes|blob|url|handle|path|filename|directory/i.test(
         JSON.stringify(result)
       ),
-    "agent exact export must return bounded download-requested metadata"
+    `agent exact export must return bounded download-requested metadata: ${JSON.stringify(result)}`
   );
 }
 
