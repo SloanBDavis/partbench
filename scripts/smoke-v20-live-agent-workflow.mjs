@@ -14,7 +14,12 @@ import { acquireBrowserSmokeLease } from "./v18-geometry-reliability.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const requireV21Limit = process.env.PARTBENCH_REQUIRE_V21_1_LIMIT === "1";
-const requireV21 = process.env.PARTBENCH_REQUIRE_V21 === "1" || requireV21Limit;
+const requireV21Portability =
+  process.env.PARTBENCH_REQUIRE_V21_1_PORTABILITY === "1";
+const requireV21 =
+  process.env.PARTBENCH_REQUIRE_V21 === "1" ||
+  requireV21Limit ||
+  requireV21Portability;
 const timeoutMs = Number(
   process.env.PARTBENCH_V20_BROWSER_TIMEOUT_MS ??
     (requireV21Limit ? 600_000 : requireV21 ? 120_000 : 45_000)
@@ -75,7 +80,19 @@ async function runWorkflow(client, mcpClient) {
   const checks = [];
   const browserErrors = [];
   const limitMetrics = requireV21Limit
-    ? { operationMs: [], clearMs: 0, coldExportMs: 0, warmExportMs: 0 }
+    ? {
+        operationMs: [],
+        clearMs: 0,
+        coldArtifactMs: [],
+        coldStepMs: [],
+        coldExportMs: 0,
+        warmArtifactMs: [],
+        warmStepMs: [],
+        warmExportMs: 0,
+        workerRestartMs: 0,
+        evictionMs: 0,
+        stepByteLength: 0
+      }
     : undefined;
   const reportLimitStage = (stage) => {
     if (limitMetrics) process.stderr.write(`[v21.1-limit] ${stage}\n`);
@@ -113,6 +130,23 @@ async function runWorkflow(client, mcpClient) {
         window.__partbenchV20Downloads = [];
         window.__partbenchV21Base64Calls = 0;
         window.__partbenchV21RevokedUrls = 0;
+        window.__partbenchV21OpfsCalls = 0;
+        window.__partbenchV21WorkerEvents = [];
+        const storage = navigator.storage;
+        if (storage && typeof storage.getDirectory === "function") {
+          const nativeGetDirectory = storage.getDirectory.bind(storage);
+          Object.defineProperty(storage, "getDirectory", {
+            configurable: true,
+            value: (...args) => {
+              window.__partbenchV21OpfsCalls += 1;
+              return nativeGetDirectory(...args);
+            }
+          });
+        }
+        window.addEventListener("partbench:geometry-diagnostic", (event) => {
+          if (event.detail?.phase !== "worker-job") return;
+          window.__partbenchV21WorkerEvents.push(event.detail.job);
+        });
         const nativeAtob = window.atob.bind(window);
         const nativeBtoa = window.btoa.bind(window);
         window.atob = (...args) => {
@@ -149,6 +183,17 @@ async function runWorkflow(client, mcpClient) {
     `document.querySelector('[aria-label="Partbench document header"]')`,
     "production Partbench shell"
   );
+  const lazyStartup = await browser.evaluate(`({
+    opfsCalls: window.__partbenchV21OpfsCalls,
+    geometryResources: performance.getEntriesByType('resource')
+      .map((entry) => entry.name)
+      .filter((name) => /geometryTessellation|opencascade.*wasm/i.test(name))
+  })`);
+  assert(
+    lazyStartup.opfsCalls === 0 && lazyStartup.geometryResources.length === 0,
+    "empty-project startup must not open OPFS or load OCCT"
+  );
+  checks.push("empty-project startup stays lazy for OPFS and OCCT");
   await browser.clickText('[aria-label="Workbench mode"] button', "Project");
   await browser.clickText('[aria-label="Project pages"] button', "Files");
   await browser.waitFor(
@@ -209,6 +254,10 @@ async function runWorkflow(client, mcpClient) {
     `document.querySelector('.pb-project-agent-proposal')?.textContent.includes('v20-feature')`,
     "manual feature proposal"
   );
+  await browser.waitFor(
+    `document.activeElement?.matches('.pb-project-agent-proposal')`,
+    "manual proposal focus"
+  );
   const pendingSelection = content(
     await mcpClient.callTool("cad.get_selection")
   );
@@ -238,6 +287,10 @@ async function runWorkflow(client, mcpClient) {
   await browser.clickText(".pb-project-agent-proposal button", "Reject");
   const rejected = content(await rejectedCall);
   assert(rejected.error?.code === "AGENT_COMMIT_REJECTED", "manual rejection");
+  await browser.waitFor(
+    `document.activeElement?.matches('input[value="manualApproval"]')`,
+    "focus restoration after rejection"
+  );
   const afterReject = content(await mcpClient.callTool("cad.get_selection"));
   assertIdentity(
     afterReject.sourceIdentity,
@@ -256,6 +309,10 @@ async function runWorkflow(client, mcpClient) {
   await browser.clickText(".pb-project-agent-proposal button", "Approve");
   const approved = content(await approvedCall);
   assert(approved.ok && approved.transactionId, "manual approval commit");
+  await browser.waitFor(
+    `document.activeElement?.matches('input[value="manualApproval"]')`,
+    "focus restoration after approval"
+  );
   const afterApprove = content(await mcpClient.callTool("cad.get_selection"));
   assert(
     afterApprove.sourceIdentity.sha256 !== initialIdentity.sha256,
@@ -393,7 +450,7 @@ async function runWorkflow(client, mcpClient) {
       selectedObject.selection.bodyId,
     "semantic body selection"
   );
-  const finalIdentity = selectedObject.sourceIdentity;
+  let finalIdentity = selectedObject.sourceIdentity;
   checks.push("viewport rebuild and semantic body selection");
 
   await browser.clickText('[aria-label="Workbench mode"] button', "Project");
@@ -424,6 +481,9 @@ async function runWorkflow(client, mcpClient) {
     await browser.waitFor(
       `window.__partbenchV20Downloads.length === 1 && document.body.textContent.includes('Downloaded partbench-export.step')`,
       "V21 exact STEP download"
+    );
+    await browser.evaluate(
+      `window.__partbenchV21SelectedStep = window.__partbenchV20Downloads[0]`
     );
     const stepDownload = await browser.evaluate(`(async () => {
       const blob = window.__partbenchV20Downloads[0];
@@ -496,6 +556,7 @@ async function runWorkflow(client, mcpClient) {
       limitMetrics.clearMs = performance.now() - clearStarted;
       await browser.clickText('[aria-label="Project pages"] button', "Agent");
       await browser.evaluate(`window.__partbenchV20Downloads.length = 0`);
+      await browser.evaluate(`window.__partbenchV21WorkerEvents.length = 0`);
       reportLimitStage("requesting cold 256-body export");
       const coldStarted = performance.now();
       const coldExport = content(
@@ -504,6 +565,12 @@ async function runWorkflow(client, mcpClient) {
         })
       );
       limitMetrics.coldExportMs = performance.now() - coldStarted;
+      limitMetrics.stepByteLength = coldExport.artifactByteLength;
+      recordLimitWorkerMetrics(
+        limitMetrics,
+        "cold",
+        await browser.evaluate(`window.__partbenchV21WorkerEvents.splice(0)`)
+      );
       assertExactExportResult(coldExport, undefined, 256);
       await browser.waitFor(
         `window.__partbenchV20Downloads.length === 1`,
@@ -543,6 +610,7 @@ async function runWorkflow(client, mcpClient) {
       );
 
       await browser.evaluate(`window.__partbenchV20Downloads.length = 0`);
+      await browser.evaluate(`window.__partbenchV21WorkerEvents.length = 0`);
       reportLimitStage("requesting warm 256-body retry");
       const warmStarted = performance.now();
       const warmExportCall = mcpClient.callTool(
@@ -559,10 +627,19 @@ async function runWorkflow(client, mcpClient) {
       );
       const warmExport = content(await warmExportCall);
       limitMetrics.warmExportMs = performance.now() - warmStarted;
+      recordLimitWorkerMetrics(
+        limitMetrics,
+        "warm",
+        await browser.evaluate(`window.__partbenchV21WorkerEvents.splice(0)`)
+      );
       assertExactExportResult(warmExport, undefined, 256);
       await browser.waitFor(
         `window.__partbenchV20Downloads.length === 1`,
         "warm 256-body retry download"
+      );
+      await browser.waitFor(
+        `document.activeElement?.matches('input[value="manualApproval"]')`,
+        "focus restoration after warm exact export"
       );
       checks.push("production 256-body cold, cancel, warm retry workflow");
     } else {
@@ -594,6 +671,10 @@ async function runWorkflow(client, mcpClient) {
       await browser.waitFor(
         `window.__partbenchV20Downloads.length === 1`,
         "manual exact export download"
+      );
+      await browser.waitFor(
+        `document.activeElement?.matches('input[value="manualApproval"]')`,
+        "focus restoration after exact export"
       );
     }
     checks.push("V21.1 exact export through both approval modes");
@@ -647,6 +728,94 @@ async function runWorkflow(client, mcpClient) {
   );
   checks.push(".wcad save/open preserves source and agent audit history");
 
+  const portabilityMetrics = requireV21Portability
+    ? await runPortabilityRecoveryWorkflow(browser, mcpClient, checks)
+    : undefined;
+
+  if (requireV21Limit) {
+    await prepareExactCacheEviction(browser);
+    await browser.clickText('[aria-label="Project pages"] button', "Agent");
+    const dialogAccepted = browser.acceptNextDialog();
+    await browser.clickElement('input[value="approveAll"]');
+    await dialogAccepted;
+    await browser.waitFor(
+      `document.querySelector('input[value="approveAll"]')?.checked`,
+      "Approve all mode before eviction fault"
+    );
+    const updated = content(
+      await mcpClient.callTool("cad.batch", {
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "scene.updateBoxDimensions",
+              id: "v21-1-limit-box-0",
+              dimensions: { width: 1.25, height: 1, depth: 1 }
+            }
+          ]
+        }
+      })
+    );
+    assert(updated.ok, "eviction fault source update must commit");
+    finalIdentity = content(
+      await mcpClient.callTool("cad.get_selection")
+    ).sourceIdentity;
+    await browser.clickText('[aria-label="Project pages"] button', "Export");
+    await browser.waitFor(
+      `[...document.querySelectorAll('.pb-project-mode-workspace button')].some((button) => button.textContent.trim() === 'Export all bodies' && !button.disabled && button.getAttribute('aria-disabled') !== 'true')`,
+      "eviction fault exact readiness"
+    );
+    await browser.clickText('[aria-label="Project pages"] button', "Agent");
+    const evictionStarted = performance.now();
+    const evictionExport = content(
+      await mcpClient.callTool("cad.project_request_exact_export", {
+        selection: {
+          mode: "bodyIds",
+          bodyIds: ["body:v21-1-limit-box-0"]
+        },
+        expectedSourceIdentity: finalIdentity
+      })
+    );
+    assertExactExportResult(evictionExport, "body:v21-1-limit-box-0");
+    const eviction = await readExactCacheEviction(browser);
+    assert(
+      eviction.evicted,
+      "native exact cache fault must evict the deterministic LRU entry"
+    );
+    limitMetrics.evictionMs = performance.now() - evictionStarted;
+    checks.push("native OPFS exact-cache LRU eviction fault");
+  }
+
+  if (requireV21 && !requireV21Limit) {
+    await browser.clickText('[aria-label="Project pages"] button', "Export");
+    await browser.waitFor(
+      `[...document.querySelectorAll('.pb-project-mode-workspace button')].some((button) => button.textContent.trim() === 'Export all bodies' && !button.disabled && button.getAttribute('aria-disabled') !== 'true')`,
+      "disconnect exact readiness"
+    );
+    await browser.clickText('[aria-label="Project pages"] button', "Agent");
+    const disconnectedCall = mcpClient
+      .callTool("cad.project_request_exact_export", {
+        selection: { mode: "readySubset" }
+      })
+      .catch(() => undefined);
+    await browser.waitFor(
+      `document.activeElement?.matches('.pb-project-agent-proposal')`,
+      "disconnect proposal focus"
+    );
+    await mcpClient.close();
+    await disconnectedCall;
+    await browser.waitFor(
+      `document.querySelector('.pb-project-mode-workspace')?.textContent.includes('Disconnected') && !document.querySelector('.pb-project-agent-proposal')`,
+      "disconnected proposal cleanup"
+    );
+    await browser.waitFor(
+      `document.activeElement?.matches('[aria-label="Project pages"] button') && document.activeElement.textContent.trim() === 'Agent'`,
+      "focus restoration after disconnect"
+    );
+    checks.push("disconnect cancels proposal and restores focus");
+  }
+
   assert(
     browserErrors.length === 0,
     `browser exceptions: ${browserErrors.join(" | ")}`
@@ -657,6 +826,7 @@ async function runWorkflow(client, mcpClient) {
     checks,
     sourceIdentity: finalIdentity,
     wcadBytes: wcadBytes.length,
+    ...(portabilityMetrics ? { portability: portabilityMetrics } : {}),
     ...(limitMetrics
       ? {
           limit: {
@@ -664,12 +834,307 @@ async function runWorkflow(client, mcpClient) {
             operationP50Ms: percentile(limitMetrics.operationMs, 0.5),
             operationP95Ms: percentile(limitMetrics.operationMs, 0.95),
             clearMs: limitMetrics.clearMs,
+            coldArtifactP50Ms: percentile(limitMetrics.coldArtifactMs, 0.5),
+            coldArtifactP95Ms: percentile(limitMetrics.coldArtifactMs, 0.95),
+            coldStepP50Ms: percentile(limitMetrics.coldStepMs, 0.5),
+            coldStepP95Ms: percentile(limitMetrics.coldStepMs, 0.95),
             coldExportMs: limitMetrics.coldExportMs,
-            warmExportMs: limitMetrics.warmExportMs
+            warmArtifactP50Ms: percentile(limitMetrics.warmArtifactMs, 0.5),
+            warmArtifactP95Ms: percentile(limitMetrics.warmArtifactMs, 0.95),
+            warmStepP50Ms: percentile(limitMetrics.warmStepMs, 0.5),
+            warmStepP95Ms: percentile(limitMetrics.warmStepMs, 0.95),
+            warmExportMs: limitMetrics.warmExportMs,
+            workerRestartMs: limitMetrics.workerRestartMs,
+            evictionP50Ms: limitMetrics.evictionMs,
+            evictionP95Ms: limitMetrics.evictionMs,
+            stepByteLength: limitMetrics.stepByteLength,
+            wcadByteLength: wcadBytes.length
           }
         }
       : {})
   };
+}
+
+async function runPortabilityRecoveryWorkflow(browser, mcpClient, checks) {
+  const recoveryMs = [];
+  await browser.evaluate(
+    `window.__partbenchV21MismatchWcad = window.__partbenchV20Downloads[0]`
+  );
+
+  await browser.clickText('[aria-label="Project pages"] button', "Files");
+  const dialogAccepted = browser.acceptNextDialog();
+  await uploadCapturedBlob(
+    browser,
+    'input[type="file"][accept*=".step"]',
+    0,
+    "window.__partbenchV21SelectedStep",
+    "v21-1-recovery.step",
+    "model/step"
+  );
+  await dialogAccepted;
+  await browser.waitFor(
+    `document.body.textContent.includes('Imported v21-1-recovery.step: 1 body.')`,
+    "checkpoint-backed STEP import"
+  );
+
+  await browser.clickText('[aria-label="Project pages"] button', "Export");
+  await browser.waitFor(
+    `[...document.querySelectorAll('.pb-project-mode-workspace button')].some((button) => button.textContent.trim() === 'Export all bodies' && !button.disabled && button.getAttribute('aria-disabled') !== 'true')`,
+    "pre-recovery exact export readiness"
+  );
+  await browser.evaluate(`window.__partbenchV20Downloads.length = 0`);
+  await browser.clickText(
+    ".pb-project-mode-workspace button",
+    "Export all bodies"
+  );
+  await browser.waitFor(
+    `window.__partbenchV20Downloads.length === 1`,
+    "pre-recovery exact export"
+  );
+  const expectedStep = await hashCapturedDownload(browser);
+
+  await browser.clickText('[aria-label="Project pages"] button', "Files");
+  await browser.evaluate(`window.__partbenchV20Downloads.length = 0`);
+  await browser.clickText(".pb-project-mode-workspace button", "Save as");
+  await browser.waitFor(
+    `window.__partbenchV20Downloads.length === 1 && document.body.textContent.includes('Downloaded .wcad package')`,
+    "matching recovery package save"
+  );
+  await browser.evaluate(
+    `window.__partbenchV21MatchingWcad = window.__partbenchV20Downloads[0]`
+  );
+
+  await openProjectDetails(browser, "Advanced Interchange");
+  await browser.clickText(".pb-project-mode-workspace button", "Prepare JSON");
+  await browser.waitFor(
+    `document.querySelector('.pb-project-json-editor textarea')?.value.length > 0`,
+    "source-only JSON preparation"
+  );
+  await browser.evaluate(`window.__partbenchV20Downloads.length = 0`);
+  await browser.clickText(
+    ".pb-project-mode-workspace button",
+    "Download source-only JSON"
+  );
+  await browser.waitFor(
+    `window.__partbenchV20Downloads.length === 1`,
+    "source-only JSON download"
+  );
+  await browser.evaluate(
+    `window.__partbenchV21SourceJson = window.__partbenchV20Downloads[0]`
+  );
+  await uploadCapturedBlob(
+    browser,
+    'input[type="file"][accept*="application/json"]',
+    0,
+    "window.__partbenchV21SourceJson",
+    "v21-1-source-only.json",
+    "application/json"
+  );
+  await browser.waitFor(
+    `document.body.textContent.includes('Loaded v21-1-source-only.json for import validation.')`,
+    "source-only JSON load"
+  );
+  await browser.clickText(".pb-project-mode-workspace button", "Import JSON");
+  await browser.waitFor(
+    `document.querySelector('.pb-project-portability')?.textContent.includes('Source-only JSON cannot reopen') && [...document.querySelectorAll('.pb-project-mode-workspace button')].some((button) => button.textContent.trim() === 'Recover payloads from .wcad')`,
+    "missing checkpoint portability state"
+  );
+  const sourceOnlyIdentity = content(
+    await mcpClient.callTool("cad.get_selection")
+  ).sourceIdentity;
+
+  let started = performance.now();
+  await uploadCapturedBlob(
+    browser,
+    'input[type="file"][accept*=".wcad"]',
+    1,
+    "window.__partbenchV21MismatchWcad",
+    "v21-1-mismatch.wcad",
+    "application/vnd.partbench.wcad"
+  );
+  await browser.waitFor(
+    `document.body.textContent.includes('belongs to different project source')`,
+    "mismatched recovery rejection"
+  );
+  recoveryMs.push(performance.now() - started);
+  assertIdentity(
+    content(await mcpClient.callTool("cad.get_selection")).sourceIdentity,
+    sourceOnlyIdentity,
+    "mismatched recovery"
+  );
+  assert(
+    await browser.evaluate(
+      `[...document.querySelectorAll('.pb-project-mode-workspace button')].some((button) => button.textContent.trim() === 'Recover payloads from .wcad')`
+    ),
+    "mismatched recovery must retain the complete missing-payload state"
+  );
+
+  started = performance.now();
+  await uploadCapturedBlob(
+    browser,
+    'input[type="file"][accept*=".wcad"]',
+    1,
+    "window.__partbenchV21MatchingWcad",
+    "v21-1-matching.wcad",
+    "application/vnd.partbench.wcad"
+  );
+  await browser.waitFor(
+    `document.body.textContent.includes('Recovered 1 checkpoint payload from v21-1-matching.wcad.')`,
+    "matching checkpoint recovery"
+  );
+  recoveryMs.push(performance.now() - started);
+  assertIdentity(
+    content(await mcpClient.callTool("cad.get_selection")).sourceIdentity,
+    sourceOnlyIdentity,
+    "matching recovery"
+  );
+
+  await browser.evaluate(`window.__partbenchV20Downloads.length = 0`);
+  await browser.clickText(".pb-project-mode-workspace button", "Save as");
+  await browser.waitFor(
+    `window.__partbenchV20Downloads.length === 1 && document.body.textContent.includes('Downloaded .wcad package')`,
+    "recovered portable package save"
+  );
+  await browser.evaluate(
+    `window.__partbenchV21RecoveredWcad = window.__partbenchV20Downloads[0]`
+  );
+  await uploadCapturedBlob(
+    browser,
+    'input[type="file"][accept*=".wcad"]',
+    0,
+    "window.__partbenchV21RecoveredWcad",
+    "v21-1-recovered.wcad",
+    "application/vnd.partbench.wcad"
+  );
+  await browser.waitFor(
+    `document.body.textContent.includes('Opened v21-1-recovered.wcad.')`,
+    "recovered package reopen"
+  );
+
+  await browser.clickText('[aria-label="Project pages"] button', "Export");
+  await browser.waitFor(
+    `[...document.querySelectorAll('.pb-project-mode-workspace button')].some((button) => button.textContent.trim() === 'Export all bodies' && !button.disabled && button.getAttribute('aria-disabled') !== 'true')`,
+    "recovered exact export readiness"
+  );
+  await browser.evaluate(`window.__partbenchV20Downloads.length = 0`);
+  await browser.clickText(
+    ".pb-project-mode-workspace button",
+    "Export all bodies"
+  );
+  await browser.waitFor(
+    `window.__partbenchV20Downloads.length === 1`,
+    "recovered exact export"
+  );
+  const recoveredStep = await hashCapturedDownload(browser);
+  assert(
+    recoveredStep.dataSha256 === expectedStep.dataSha256,
+    "recovered save/open must reproduce the same exact STEP data section"
+  );
+  assert(
+    (await browser.evaluate(`window.__partbenchV21Base64Calls`)) === 0,
+    "portability and recovery must not use browser base64 conversion"
+  );
+  checks.push(
+    "source-only JSON mismatch/recovery/save-open exact STEP workflow"
+  );
+  return {
+    recoveryP50Ms: percentile(recoveryMs, 0.5),
+    recoveryP95Ms: percentile(recoveryMs, 0.95),
+    stepByteLength: recoveredStep.byteLength
+  };
+}
+
+async function uploadCapturedBlob(
+  browser,
+  selector,
+  index,
+  blobExpression,
+  fileName,
+  type
+) {
+  await browser.evaluate(`(() => {
+    const input = document.querySelectorAll(${JSON.stringify(selector)})[${index}];
+    if (!(input instanceof HTMLInputElement)) throw new Error('Missing file input');
+    const blob = ${blobExpression};
+    if (!(blob instanceof Blob)) throw new Error('Missing captured download');
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([blob], ${JSON.stringify(fileName)}, {
+      type: ${JSON.stringify(type)}
+    }));
+    Object.defineProperty(input, 'files', {
+      configurable: true,
+      value: transfer.files
+    });
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
+}
+
+async function openProjectDetails(browser, label) {
+  await browser.evaluate(
+    `(() => {
+      const summary = [...document.querySelectorAll('.pb-project-mode-workspace summary')]
+        .find((candidate) => candidate.textContent.trim() === ${JSON.stringify(label)});
+      if (summary && !summary.parentElement?.open) summary.click();
+    })()`
+  );
+  await browser.waitFor(
+    `[...document.querySelectorAll('.pb-project-mode-workspace summary')].find((summary) => summary.textContent.trim() === ${JSON.stringify(label)})?.parentElement?.open`,
+    `open ${label} details`
+  );
+}
+
+async function hashCapturedDownload(browser) {
+  return browser.evaluate(`(async () => {
+    const blob = window.__partbenchV20Downloads[0];
+    const bytes = await blob.arrayBuffer();
+    const text = new TextDecoder().decode(bytes);
+    const dataStart = text.indexOf('DATA;');
+    if (dataStart < 0) throw new Error('STEP download has no DATA section');
+    const data = new TextEncoder().encode(text.slice(dataStart));
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', data));
+    return {
+      byteLength: bytes.byteLength,
+      dataSha256: [...digest].map((value) => value.toString(16).padStart(2, '0')).join('')
+    };
+  })()`);
+}
+
+async function prepareExactCacheEviction(browser) {
+  await browser.evaluate(`(async () => {
+    const root = await navigator.storage.getDirectory();
+    const cache = await root.getDirectoryHandle('partbench-exact-artifact-v1');
+    const indexHandle = await cache.getFileHandle('index.json');
+    const index = JSON.parse(await (await indexHandle.getFile()).text());
+    if (index.entries.length < 5) throw new Error('Expected at least five exact cache entries');
+    window.__partbenchV21EvictionEntryCount = index.entries.length;
+    const faulted = index.entries.slice(0, 4);
+    window.__partbenchV21ExpectedEviction = [...faulted]
+      .sort((left, right) => left.cacheKey.localeCompare(right.cacheKey))[0].cacheKey;
+    index.entries = index.entries.map((entry, entryIndex) =>
+      entryIndex < 4
+        ? { ...entry, byteLength: 128 * 1024 * 1024, lastAccess: 0 }
+        : entry
+    );
+    const writable = await indexHandle.createWritable();
+    await writable.write(JSON.stringify(index));
+    await writable.close();
+  })()`);
+}
+
+async function readExactCacheEviction(browser) {
+  return browser.evaluate(`(async () => {
+    const root = await navigator.storage.getDirectory();
+    const cache = await root.getDirectoryHandle('partbench-exact-artifact-v1');
+    const indexHandle = await cache.getFileHandle('index.json');
+    const index = JSON.parse(await (await indexHandle.getFile()).text());
+    return {
+      beforeEntryCount: window.__partbenchV21EvictionEntryCount,
+      afterEntryCount: index.entries.length,
+      evicted: !index.entries.some(
+        (entry) => entry.cacheKey === window.__partbenchV21ExpectedEviction
+      )
+    };
+  })()`);
 }
 
 function featureBatch() {
@@ -971,6 +1436,31 @@ function assertExactExportResult(result, bodyId, bodyCount = 1) {
 function percentile(values, quantile) {
   const sorted = [...values].sort((left, right) => left - right);
   return sorted[Math.ceil(sorted.length * quantile) - 1] ?? 0;
+}
+
+function recordLimitWorkerMetrics(metrics, temperature, events) {
+  const settled = events.filter(
+    (event) => event.phase === "settled" && Number.isFinite(event.executionMs)
+  );
+  metrics[`${temperature}ArtifactMs`].push(
+    ...settled
+      .filter((event) => event.operation === "geometry.exactBodyArtifact")
+      .map((event) => event.executionMs)
+  );
+  metrics[`${temperature}StepMs`].push(
+    ...settled
+      .filter((event) => event.operation === "geometry.exportStep")
+      .map((event) => event.executionMs)
+  );
+  if (temperature === "warm") {
+    metrics.workerRestartMs =
+      events.find(
+        (event) =>
+          event.phase === "started" &&
+          event.operation === "geometry.exactBodyArtifact" &&
+          Number.isFinite(event.queueMs)
+      )?.queueMs ?? 0;
+  }
 }
 
 function assert(condition, message) {

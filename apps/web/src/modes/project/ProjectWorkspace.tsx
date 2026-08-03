@@ -332,19 +332,28 @@ function ProjectAgent({
 }) {
   const agent = useLocalAgentSession();
   const proposalRef = useRef<HTMLDivElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const proposalOpenRef = useRef(false);
 
   useEffect(() => {
-    if (agent.proposal) {
-      previousFocusRef.current =
-        document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : null;
+    const proposalOpen = Boolean(agent.proposal);
+    if (proposalOpen && !proposalOpenRef.current) {
       proposalRef.current?.focus();
-    } else {
-      previousFocusRef.current?.focus();
-      previousFocusRef.current = null;
+    } else if (!proposalOpen && proposalOpenRef.current) {
+      queueMicrotask(() => {
+        const approval = document.querySelector<HTMLInputElement>(
+          `input[name="agent-approval-mode"][value="${agent.approvalMode}"]`
+        );
+        (approval?.disabled
+          ? [
+              ...document.querySelectorAll<HTMLButtonElement>(
+                '[aria-label="Project pages"] button'
+              )
+            ].find((button) => button.textContent.trim() === "Agent")
+          : approval
+        )?.focus();
+      });
     }
+    proposalOpenRef.current = proposalOpen;
   }, [agent.proposal]);
 
   return (
