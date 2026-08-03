@@ -4,7 +4,7 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the repo state and the
 active implementation roadmap.
 
-Last updated: 2026-08-01.
+Last updated: 2026-08-03.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/v12.md` for the completed
@@ -19,9 +19,10 @@ sketch profiles, arcs, and curved sweep paths release record, `docs/v18.md`
 for the completed frontend-only Precision CAD UI overhaul release record,
 `docs/v19.md` for the completed production sketching and multi-region profiles
 release record, `docs/v20.md` for the completed connected local agent workflow
-release record, and `docs/v21.md` for the completed production single-part
-reliability and exact interchange release record. Use `docs/native-format.md`
-for project-format direction, and
+release record, `docs/v21.md` for the completed production single-part
+reliability and exact interchange release record, and `docs/v21.1.md` for the
+completed universal downstream bodies and export completion release record.
+Use `docs/native-format.md` for project-format direction, and
 `docs/occt-wasm-size.md` for OCCT/WASM load-size findings. V7, V8, V9, V10,
 and V11 are completed historical releases whose details are now condensed in
 this plan instead of maintained as separate release documents. V16, V17, and
@@ -30,7 +31,8 @@ matrix, UI, and performance constraints. V19 is also complete; its sequential
 gate evidence is in `docs/v19-implementation-dag.md`. V20 is complete; its
 three named integration gates are recorded in `docs/v20.md`. V21 is complete;
 its sequential and final evidence is in `docs/v21-implementation-dag.md` and
-`docs/v21-i-gate.md`.
+`docs/v21-i-gate.md`. V21.1 is complete; its sequential and final evidence is
+in `docs/v21.1-implementation-dag.md` and `docs/v21.1-g-gate.md`.
 
 ## Active Rules
 
@@ -3370,6 +3372,28 @@ two approval modes. V21 adds no modeling support row, project schema, `.wcad`
 version, persisted artifact cache, workspace package, production dependency,
 or new file format. The eight named V21 commands in `docs/v21.md` are the
 release integration contract.
+
+## Completed V21.1 Universal Downstream Bodies and Export Completion
+
+V21.1 is complete. Its binding release record is `docs/v21.1.md`, its
+sequential gate record is `docs/v21.1-implementation-dag.md`, and final
+browser/performance/compatibility evidence is `docs/v21.1-g-gate.md`.
+
+The release uses V21's verified exact-body artifact as the sole widened operand
+for the existing circular hole, pattern, mirror, and shell matrices. It adds
+transactional hole retargeting, a bounded validated derived-only exact OPFS
+cache, explicit JSON portability and atomic `.wcad` payload recovery, strict
+Export-all plus a reviewed ready-subset action, and one approval-bound
+browser-owned agent STEP-download request. Cad-core remains source/lifecycle
+authority; browser/worker/geometry boundaries own bytes and exact feasibility.
+
+V21.1 retains the lowest sufficient project schema through
+`web-cad.project.v22`, `partbench.wcad.v2`, the two V20 approval modes, all
+fixed bundle caps, and the completed V12-V21 matrices. It adds no new hole
+family, authoritative B-rep source, assembly, drawing, direct-modeling or broad
+format surface, workspace package, production dependency, or agent file/path
+authority. The seven V21.1 commands in `docs/v21.1.md` are the release
+integration contract.
 
 ## Definition of Done
 

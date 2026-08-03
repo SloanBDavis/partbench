@@ -968,6 +968,23 @@ file bytes and download; agent/MCP surfaces expose bounded readiness metadata.
 V21 adds no modeling row, authoritative state, schema, package version, cache,
 workspace package, or production dependency.
 
+V21.1 is complete. Its binding records are `docs/v21.1.md`,
+`docs/v21.1-implementation-dag.md`, and `docs/v21.1-g-gate.md`: every active,
+healthy, exact-ready body can flow through the documented existing hole,
+pattern, mirror, and shell policies by using the verified V21 exact-body
+artifact as the geometry operand. Cad-core owns eligibility and transactional
+hole retargeting; the browser and geometry worker own preflight, bytes, cache,
+recovery, STEP jobs, and downloads.
+
+V21.1 permits one bounded, validated, derived-only exact-artifact OPFS cache;
+it remains subordinate to current source identity and cannot replace
+authoritative `.wcad` checkpoint payloads. JSON remains source-only, matching
+`.wcad` recovery is atomic, strict Export-all remains, and the ready-subset and
+agent export actions produce explicit plans. Agents receive metadata only and
+the browser owns downloads under exactly the two V20 approval modes. V21.1
+adds no schema, `.wcad` version, workspace package, production dependency,
+assembly, drawing, direct-modeling, broad-format, or raw file-authority surface.
+
 The first implementation should not start with a full CAD UI. It should start with the command engine, WASM kernel bridge, and renderer skeleton.
 
 Initial build order:

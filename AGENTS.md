@@ -22,6 +22,7 @@ The current implementation source of truth is:
 - `docs/v19.md` — completed V19 production sketching and multi-region profiles release record
 - `docs/v20.md` — completed V20 connected local agent workflow release record
 - `docs/v21.md` — completed V21 production single-part reliability and exact interchange release record
+- `docs/v21.1.md` — completed V21.1 universal downstream bodies and export completion release record
 
 Do not attempt to build the entire architecture at once. Implement only the milestone requested by the user. V19 is complete; follow `docs/v16.md` through `docs/v19.md` as compatibility and support-matrix records. Do not weaken a completed Must row or expand beyond its documented matrix without an explicitly approved later milestone.
 The six `pnpm smoke:v17-*` commands recorded in `docs/v17.md` are the named V17 release workflows; V21 remains minimum-triggered rather than the default for every save.
@@ -56,10 +57,25 @@ V21 is complete. Follow `docs/v21.md`, `docs/v21-implementation-dag.md`, and
 performance, and non-goal records. V21 resolves every completed active body row
 through one current exact-body pipeline and adds browser-owned selected,
 ordered multi-body, and all-body named AP242 STEP export. Exact artifacts are
-derived and session-only. Do not persist them, return file bytes through agents
-or MCP, widen a completed modeling matrix, or add a schema, `.wcad` version,
-workspace package, production dependency, export framework, or approval mode
-without an explicitly approved later milestone.
+derived. Do not persist them outside V21.1's bounded validated derived-only
+OPFS cache, return file bytes through agents or MCP, widen a completed modeling
+matrix, or add a schema, `.wcad` version, workspace package, production
+dependency, export framework, or approval mode without an explicitly approved
+later milestone.
+
+V21.1 is complete. Follow `docs/v21.1.md`,
+`docs/v21.1-implementation-dag.md`, and `docs/v21.1-g-gate.md` as its binding
+universal downstream-body, derived-cache, portability recovery, ready-subset,
+agent export, compatibility, performance, and non-goal records. V21.1 adds no
+new hole family: totality applies only to the existing circular blind or
+through-all hole across all exact-ready target families. The exact cache is
+derived and cannot replace checkpoint payloads; matching `.wcad` recovery is
+atomic; strict Export-all remains; agent downloads remain browser-owned and
+return no bytes or paths; approval modes remain exactly `manualApproval` and
+`approveAll`. Do not add assemblies, drawings, direct modeling, parametric STEP
+reconstruction, format breadth, raw agent file authority, a schema, `.wcad`
+version, workspace package, or production dependency without an explicitly
+approved later milestone.
 
 ## Core Architectural Rules
 

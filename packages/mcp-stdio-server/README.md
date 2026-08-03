@@ -11,7 +11,7 @@ transport exposes exactly the registry owned by `@web-cad/mcp-adapter`.
 
 The Node package does not define React, renderer, OCCT, OPFS, STEP, WebGPU, or
 natural-language behavior. It serves the production app and relays only the
-four typed adapter operations.
+five typed adapter operations.
 
 The production executable owns no CAD document. It binds an operating-system-
 selected port on `127.0.0.1`, serves only `apps/web/dist`, opens one tokenized
@@ -101,3 +101,10 @@ authenticated request/response relay state.
 V21 readiness metadata traverses that same authenticated relay, but exact
 artifact and STEP bytes stay in the browser. Planning is read-only, creates no
 approval proposal, and leaves V20's two session-only approval modes unchanged.
+
+V21.1 adds the fifth operation, `cad.project_request_exact_export`. It accepts
+an all-body, ready-subset, or bounded explicit-body plan; uses the same Manual
+approval or Approve everything session mode; asks the browser to create the
+download; and returns bounded metadata with `downloadRequested`. The stdio
+process and MCP caller receive no STEP bytes, path, filename, Blob, URL, handle,
+or claim that the browser completed a download.

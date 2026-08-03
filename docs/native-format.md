@@ -1888,6 +1888,26 @@ invalidates the affected artifacts. They rebuild from current authoritative
 source before exact consumers or STEP export run. Product V21 therefore adds no
 schema trigger: the lowest sufficient project schema remains V16 through V22.
 
+## Product V21.1 Derived Cache and Portability Decision
+
+Product V21.1 retains the same authoritative format boundary. Project source
+still uses the lowest sufficient schema through `web-cad.project.v22`, and the
+native package remains `partbench.wcad.v2`. JSON and canonical CBOR contain no
+B-rep, STEP, cache, file-handle, or OPFS bytes.
+
+The browser may persist verified exact-body artifacts only in the private
+`partbench-exact-artifact-v1` OPFS namespace. Entries are derived, bounded to
+128 MiB each and 512 MiB total, keyed to current source/kernel/writer identity,
+and length/hash/B-rep/topology/policy validated before use. Corrupt, stale,
+unavailable, denied, full, or version-mismatched cache state cold-rebuilds and
+never substitutes for an authoritative checkpoint payload.
+
+Source-only JSON explicitly reports checkpoint payload requirements. A user
+may recover missing payloads from one selected `.wcad` v2 package only after
+the entire manifest/checkpoint/body/feature/length/hash/topology/source match
+passes; recovery is all-or-nothing and imports no document source or history.
+The subsequent save/open remains an ordinary portable `.wcad` v2 workflow.
+
 ## V8 Native Package Direction
 
 The completed V8 plan chose the first native package direction that was
@@ -2044,5 +2064,7 @@ elsewhere. Reporting that a browser exposes File System Access or OPFS APIs does
 not make those APIs part of the saved project format. File handles, OPFS
 directories, thumbnails, mesh caches, and export artifacts are not persisted as
 authoritative source data. The current OPFS implementation is limited to cache
-status, diagnostics, an index contract, clear behavior, and the narrow
-`partbench-derived-mesh.v1` visualization mesh artifact cache.
+status, diagnostics, bounded index/clear behavior, the
+`partbench-derived-mesh.v1` visualization mesh cache, and the V21.1
+`partbench-exact-artifact-v1` validated derived exact cache. Neither cache is
+authoritative source or checkpoint recovery data.
