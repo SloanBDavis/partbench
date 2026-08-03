@@ -268,12 +268,22 @@ export function createOcctExactBodyArtifactWithInstance(
   oc: OpenCascadeInstance,
   input: OcctExactBodyArtifactInput
 ): OcctExactBodyArtifact {
-  assertBrepCheckpointWriterBindings(oc);
+  if (input.source.kind !== "bodyArtifact") {
+    assertBrepCheckpointWriterBindings(oc);
+  }
   return withOcctExactBodyArtifactShape(
     oc,
     input.source,
     (shape, sourceKind, generatedReferences) =>
-      createExactBodyArtifact(oc, shape, sourceKind, generatedReferences)
+      createExactBodyArtifact(
+        oc,
+        shape,
+        sourceKind,
+        generatedReferences,
+        input.source.kind === "bodyArtifact"
+          ? input.source.brepBytes
+          : undefined
+      )
   );
 }
 
@@ -689,7 +699,8 @@ function createExactBodyArtifact(
   oc: OpenCascadeInstance,
   shape: TopoDS_Shape,
   sourceKind: OcctExactBodyArtifact["sourceKind"],
-  generatedReferences?: OcctGeneratedReferences
+  generatedReferences?: OcctGeneratedReferences,
+  retainedBrepBytes?: Uint8Array
 ): OcctExactBodyArtifact {
   if (shape.IsNull()) {
     throw new Error(
@@ -710,7 +721,7 @@ function createExactBodyArtifact(
   } finally {
     analyzer.delete();
   }
-  const brepBytes = writeBrepCheckpointBytes(oc, shape);
+  const brepBytes = retainedBrepBytes ?? writeBrepCheckpointBytes(oc, shape);
   const metadata = {
     ...readExactBodyMetadata(oc, shape, sourceKind),
     ...(generatedReferences ? { generatedReferences } : {})

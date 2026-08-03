@@ -3159,6 +3159,7 @@ describe("occt-wasm", () => {
                 : "singleShapeOneOrMoreSolids"
           }
         });
+        expect(reparsed.brepBytes).toBe(artifact.brepBytes);
         expect(reparsed.metadata.topologyCounts).toEqual(
           artifact.metadata.topologyCounts
         );
