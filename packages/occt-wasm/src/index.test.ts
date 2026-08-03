@@ -3077,6 +3077,12 @@ describe("occt-wasm", () => {
       let multiSolidArtifact:
         | ReturnType<typeof createOcctExactBodyArtifactWithInstance>
         | undefined;
+      const builtArtifacts: {
+        readonly kind: (typeof sources)[number]["expectedKind"];
+        readonly artifact: ReturnType<
+          typeof createOcctExactBodyArtifactWithInstance
+        >;
+      }[] = [];
 
       for (const entry of sources) {
         let reads = 0;
@@ -3206,8 +3212,58 @@ describe("occt-wasm", () => {
         if (entry.expectedKind === "linearPattern") {
           multiSolidArtifact = artifact;
         }
+        builtArtifacts.push({ kind: entry.expectedKind, artifact });
         expect(files(), entry.expectedKind).toEqual(filesBefore);
       }
+
+      const step = createOcctStepExportWithInstance(oc, {
+        units: "mm",
+        bodies: builtArtifacts.map(({ kind, artifact }) => ({
+          bodyId: `body_v21_1_${kind}`,
+          bodyName: `V21.1 ${kind}`,
+          brepFormat: artifact.brepFormat,
+          brepByteLength: artifact.brepByteLength,
+          brepSha256: "0".repeat(64),
+          brepBytes: artifact.brepBytes
+        }))
+      });
+      const imported = createOcctStepImportWithInstance(oc, {
+        sourceFileName: "v21-1-downstream-roundtrip.step",
+        bytes: step.bytes,
+        maxBodyCount: builtArtifacts.reduce(
+          (count, { artifact }) =>
+            count + artifact.metadata.topologyCounts.solidCount,
+          0
+        )
+      });
+      expect(imported.bodyCount).toBe(1);
+      const importedBody = imported.bodies[0];
+      if (!importedBody)
+        throw new Error("Expected re-imported downstream body.");
+      const importedMetadata = createOcctExactBodyArtifactMetadataWithInstance(
+        oc,
+        {
+          source: {
+            kind: "importedBody",
+            brepBytes: importedBody.checkpointPayload.brepBytes
+          }
+        }
+      );
+      expect(importedMetadata.topologyCounts.solidCount).toBe(
+        builtArtifacts.reduce(
+          (count, { artifact }) =>
+            count + artifact.metadata.topologyCounts.solidCount,
+          0
+        )
+      );
+      expect(importedMetadata.volume).toBeCloseTo(
+        builtArtifacts.reduce(
+          (volume, { artifact }) => volume + artifact.metadata.volume,
+          0
+        ),
+        5
+      );
+      expect(files()).toEqual(filesBefore);
 
       let nullShapeDeleted = false;
       let nullCutDeleted = false;
