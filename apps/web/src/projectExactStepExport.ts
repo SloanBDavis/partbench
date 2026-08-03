@@ -22,6 +22,7 @@ import {
 import {
   assertExactBodyArtifactAggregateWithinLimit,
   createExactStepExportWorkerRequest,
+  getExactViewportPickMapDowngrade,
   type GeometryKernelExactBodyArtifact,
   type GeometryKernelExactStepExportArtifact
 } from "@web-cad/geometry-worker/browser";
@@ -770,7 +771,9 @@ export async function buildCurrentExactBodyArtifacts({
       units,
       ...(selectedKeys.has(key) ? { documentSourceIdentity } : {})
     });
-    artifactsByKey.set(key, existingArtifact);
+    const evidence = retainArtifactEvidence(existingArtifact);
+    assertArtifactAggregateWithinLimit([...artifactsByKey.values(), evidence]);
+    artifactsByKey.set(key, evidence);
   }
   const buildArtifact = async (
     root: CurrentExactArtifactNode
@@ -1344,25 +1347,17 @@ function resolveCurrentShellArtifactFaceLocalIds(
 function retainArtifactEvidence(
   artifact: GeometryKernelExactBodyArtifact
 ): CurrentExactBodyArtifactEvidence {
+  if (!artifact.viewportPickMap) return artifact;
+  const downgrade = getExactViewportPickMapDowngrade(
+    artifact.viewportPickMap,
+    artifact
+  );
+  if (!downgrade) return artifact;
+  const artifactWithoutPickMap = { ...artifact };
+  delete artifactWithoutPickMap.viewportPickMap;
   return {
-    artifactVersion: artifact.artifactVersion,
-    bodyId: artifact.bodyId,
-    sourceType: artifact.sourceType,
-    documentSourceIdentity: artifact.documentSourceIdentity,
-    bodySourceIdentitySignature: artifact.bodySourceIdentitySignature,
-    sourceCacheKeySha256: artifact.sourceCacheKeySha256,
-    sourceGraphNodeCount: artifact.sourceGraphNodeCount,
-    units: artifact.units,
-    shapePolicy: artifact.shapePolicy,
-    sourceKind: artifact.sourceKind,
-    brepFormat: artifact.brepFormat,
-    brepWriter: artifact.brepWriter,
-    brepBytes: artifact.brepBytes,
-    brepByteLength: artifact.brepByteLength,
-    brepSha256: artifact.brepSha256,
-    topologySnapshot: artifact.topologySnapshot,
-    metadata: artifact.metadata,
-    displayMesh: artifact.displayMesh
+    ...artifactWithoutPickMap,
+    viewportPickMapDowngrade: downgrade
   };
 }
 

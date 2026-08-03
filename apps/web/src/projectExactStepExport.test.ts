@@ -32,6 +32,7 @@ import type {
   ExactArtifactOpfsCache
 } from "./exactArtifactOpfsCache";
 import {
+  buildCurrentExactBodyArtifacts,
   downloadProjectExactStepArtifact,
   executeProjectExactStepExport,
   isExactExportPlanCurrent
@@ -46,6 +47,78 @@ type ExportRuntime = Pick<
 };
 
 describe("projectExactStepExport", () => {
+  it("retains validated exact artifact evidence and rechecks existing maps", async () => {
+    const current = createFixture();
+    const plan = current.exactExport.plan;
+    const resolution = current.resolutions.find(
+      (candidate) => candidate.status === "ready"
+    );
+    if (!plan || resolution?.status !== "ready") {
+      throw new Error("Expected one ready exact artifact fixture.");
+    }
+    let built: GeometryKernelExactBodyArtifact | undefined;
+    const runtime = createRuntime({
+      mutateArtifact: (artifact) => {
+        built = withViewportPickMap(artifact);
+        return built;
+      }
+    });
+
+    const [retained] = await buildCurrentExactBodyArtifacts({
+      engine: current.engine,
+      resolutions: [resolution],
+      runtime,
+      documentSourceIdentity: plan.sourceIdentity,
+      units: plan.units,
+      assertCurrent: () => undefined
+    });
+
+    if (!built?.viewportPickMap) {
+      throw new Error("Expected one built exact artifact with pick evidence.");
+    }
+    expect(retained).toBe(built);
+    expect(retained?.viewportPickMap).toMatchObject({
+      topologySignature: built?.topologySnapshot.signature
+    });
+
+    const [rechecked] = await buildCurrentExactBodyArtifacts({
+      engine: current.engine,
+      resolutions: [resolution],
+      runtime,
+      documentSourceIdentity: plan.sourceIdentity,
+      units: plan.units,
+      assertCurrent: () => undefined,
+      existingArtifacts: [
+        {
+          ...built,
+          viewportPickMap: {
+            ...built.viewportPickMap,
+            topologySignature: "stale-topology"
+          }
+        }
+      ]
+    });
+    expect(rechecked?.viewportPickMap).toBeUndefined();
+    expect(rechecked?.viewportPickMapDowngrade).toEqual({ status: "invalid" });
+
+    const builtWithoutPickMap = { ...built };
+    delete builtWithoutPickMap.viewportPickMap;
+    const resourceLimited = {
+      ...builtWithoutPickMap,
+      viewportPickMapDowngrade: { status: "resource-limited" as const }
+    };
+    const [limited] = await buildCurrentExactBodyArtifacts({
+      engine: current.engine,
+      resolutions: [resolution],
+      runtime,
+      documentSourceIdentity: plan.sourceIdentity,
+      units: plan.units,
+      assertCurrent: () => undefined,
+      existingArtifacts: [resourceLimited]
+    });
+    expect(limited).toBe(resourceLimited);
+  });
+
   it("builds artifacts and writes direct STEP bytes in selected plan order", async () => {
     const fixture = createFixture();
     const runtime = createRuntime();
@@ -1255,6 +1328,37 @@ function createRuntime(
         },
         transferables: [bytes.buffer]
       };
+    }
+  };
+}
+
+function withViewportPickMap(
+  artifact: GeometryKernelExactBodyArtifact
+): GeometryKernelExactBodyArtifact {
+  return {
+    ...artifact,
+    displayMesh: {
+      ...artifact.displayMesh,
+      positions: new Float32Array(),
+      indices: new Uint32Array(),
+      vertexCount: 0,
+      triangleCount: 0,
+      faceCount: 0
+    },
+    viewportPickMap: {
+      version: "partbench.exact-pick-map.v1",
+      bodyId: artifact.bodyId,
+      bodySourceIdentitySignature: artifact.bodySourceIdentitySignature,
+      topologySignature: artifact.topologySnapshot.signature,
+      meshVertexCount: 0,
+      meshTriangleCount: 0,
+      faces: [],
+      edges: [],
+      vertices: [],
+      faceTriangleRanges: new Uint32Array(),
+      edgePointRanges: new Uint32Array(),
+      edgePoints: new Float64Array(),
+      vertexPoints: new Float64Array()
     }
   };
 }

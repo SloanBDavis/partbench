@@ -8,6 +8,7 @@ import {
 import {
   assertExactBodyArtifactAggregateWithinLimit,
   executeGeometryKernelRequestWithMeshFactory,
+  getExactViewportPickMapDowngrade,
   MAX_EXACT_BODY_ARTIFACT_AGGREGATE_BYTES,
   MAX_EXACT_VIEWPORT_PICK_MAP_BYTES,
   MAX_BOOLEAN_EXTRUDE_RECIPE_DEPTH,
@@ -651,6 +652,42 @@ describe("geometry-kernel facade", () => {
     ).toThrow();
   });
 
+  it("enforces the retained exact pick-map aggregate cap without a large allocation", () => {
+    const pickMap = {
+      version: "partbench.exact-pick-map.v1",
+      bodyId: "body_pick",
+      bodySourceIdentitySignature: "source_pick",
+      topologySignature: "topology_pick",
+      meshVertexCount: 0,
+      meshTriangleCount: 0,
+      faces: [],
+      edges: [],
+      vertices: [],
+      faceTriangleRanges: new Uint32Array(),
+      edgePointRanges: new Uint32Array(),
+      edgePoints: new Float64Array(16 * 1024),
+      vertexPoints: new Float64Array()
+    } satisfies GeometryKernelExactViewportPickMap;
+    const retainedCount =
+      Math.floor(
+        MAX_EXACT_BODY_ARTIFACT_AGGREGATE_BYTES / pickMap.edgePoints.byteLength
+      ) + 1;
+    const artifacts = {
+      *[Symbol.iterator]() {
+        for (let index = 0; index < retainedCount; index += 1) {
+          yield { brepByteLength: 1, viewportPickMap: pickMap };
+        }
+      }
+    } as unknown as readonly Pick<
+      GeometryKernelExactBodyArtifact,
+      "brepByteLength" | "viewportPickMap"
+    >[];
+
+    expect(() =>
+      assertExactBodyArtifactAggregateWithinLimit(artifacts)
+    ).toThrow(/pick map/i);
+  });
+
   it("keeps exact artifact failures atomic across build, read, write, topology, and hash stages", async () => {
     const source = {
       kind: "extrude" as const,
@@ -1003,6 +1040,30 @@ describe("geometry-kernel facade", () => {
       transfer: [detached.faceTriangleRanges.buffer]
     });
     expect(isInvalidExactViewportPickMap(detached, artifact)).toBe(true);
+    const oversizedLength =
+      MAX_EXACT_VIEWPORT_PICK_MAP_BYTES / Float64Array.BYTES_PER_ELEMENT + 2;
+    const oversizedPoints = new Float64Array();
+    Object.defineProperties(oversizedPoints, {
+      length: { value: oversizedLength },
+      byteLength: {
+        value: oversizedLength * Float64Array.BYTES_PER_ELEMENT
+      }
+    });
+    Object.defineProperty(oversizedPoints.buffer, "byteLength", {
+      value: oversizedPoints.byteLength
+    });
+    const resourceLimited = {
+      ...cloneExactViewportPickMap(pickMap),
+      edgePoints: oversizedPoints
+    };
+    expect(getExactViewportPickMapDowngrade(resourceLimited, artifact)).toEqual(
+      { status: "resource-limited" }
+    );
+    expect(() =>
+      assertExactBodyArtifactAggregateWithinLimit([
+        { brepByteLength: 1, viewportPickMap: resourceLimited }
+      ])
+    ).toThrow(/pick map/i);
     const aliased = {
       ...pickMap,
       edgePoints: new Float64Array(artifact.displayMesh.positions.buffer)
@@ -2710,10 +2771,17 @@ describe("geometry-kernel facade", () => {
         edgeCount: response.artifact.topologySnapshot.entityCounts.edgeCount,
         vertexCount: response.artifact.topologySnapshot.entityCounts.vertexCount
       });
+      const pickMap = response.artifact.viewportPickMap;
+      expect(pickMap).toBeDefined();
+      if (!pickMap) throw new Error("Expected one OCCT exact pick map.");
       expect(getGeometryResponseTransferables(response)).toEqual([
         response.artifact.brepBytes.buffer,
         response.artifact.displayMesh.positions.buffer,
-        response.artifact.displayMesh.indices.buffer
+        response.artifact.displayMesh.indices.buffer,
+        pickMap.faceTriangleRanges.buffer,
+        pickMap.edgePointRanges.buffer,
+        pickMap.edgePoints.buffer,
+        pickMap.vertexPoints.buffer
       ]);
       const checkpoint = await executeGeometryKernelRequest({
         id: "geometry_req_shared_artifact_checkpoint",

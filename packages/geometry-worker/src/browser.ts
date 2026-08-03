@@ -5,7 +5,11 @@ import {
   type GeometryKernelRequest,
   type GeometryKernelResponse
 } from "@web-cad/geometry-kernel/browser";
-export { assertExactBodyArtifactAggregateWithinLimit } from "@web-cad/geometry-kernel/browser";
+export {
+  assertExactBodyArtifactAggregateWithinLimit,
+  getExactViewportPickMapDowngrade,
+  isInvalidExactViewportPickMap
+} from "@web-cad/geometry-kernel/browser";
 export {
   V21_EXACT_RELEASE_CORPUS,
   V21_EXACT_RELEASE_PRIMITIVES,

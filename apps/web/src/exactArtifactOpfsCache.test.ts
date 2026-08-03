@@ -51,6 +51,54 @@ describe("exact artifact OPFS cache", () => {
     );
   });
 
+  it("persists only BRep identity data and rebuilds private pick evidence", async () => {
+    const target = createMemoryTarget();
+    const cache = createExactArtifactOpfsCache(target);
+    const baseArtifact = await createArtifact(22);
+    const artifact: GeometryKernelExactBodyArtifact = {
+      ...baseArtifact,
+      viewportPickMap: {} as NonNullable<
+        GeometryKernelExactBodyArtifact["viewportPickMap"]
+      >,
+      viewportPickMapDowngrade: { status: "invalid" }
+    };
+
+    await cache.write({ artifact, isCurrent: () => true });
+
+    expect(JSON.stringify(readIndex(target))).not.toMatch(
+      /viewportPickMap|faceTriangleRanges|edgePointRanges|edgePoints|vertexPoints/i
+    );
+    expect([
+      ...target.cacheRoot().directory("artifacts").readOnlyBytes()
+    ]).toEqual([...artifact.brepBytes]);
+
+    const rebuiltPickMap = {} as NonNullable<
+      GeometryKernelExactBodyArtifact["viewportPickMap"]
+    >;
+    const validate = vi.fn(async (candidate: ExactArtifactCacheCandidate) => {
+      expect(candidate).not.toHaveProperty("viewportPickMap");
+      expect(candidate).not.toHaveProperty("viewportPickMapDowngrade");
+      return {
+        ...artifact,
+        brepBytes: candidate.brepBytes,
+        brepByteLength: candidate.brepByteLength,
+        brepSha256: candidate.brepSha256,
+        viewportPickMap: rebuiltPickMap
+      };
+    });
+    const read = await cache.read({
+      identity: artifact,
+      isCurrent: () => true,
+      validate
+    });
+
+    expect(validate).toHaveBeenCalledOnce();
+    expect(read).toMatchObject({ status: "hit" });
+    if (read.status === "hit") {
+      expect(read.artifact.viewportPickMap).toBe(rebuiltPickMap);
+    }
+  });
+
   it("validates B-rep through the caller before returning a warm hit", async () => {
     const target = createMemoryTarget();
     let now = 10;
@@ -483,6 +531,14 @@ class MemoryDirectory implements ProjectOpfsCacheDirectoryHandleLike {
 
   fileCount(): number {
     return this.files.size;
+  }
+
+  readOnlyBytes(): Uint8Array {
+    const entries = [...this.files.values()];
+    if (entries.length !== 1 || !entries[0]) {
+      throw new Error("Expected one artifact file.");
+    }
+    return entries[0].slice();
   }
 }
 

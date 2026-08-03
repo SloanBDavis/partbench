@@ -148,27 +148,7 @@ export interface CurrentExactBodyArtifactDependency {
   readonly artifactDependency?: CurrentExactBodyArtifactDependency;
 }
 
-export type CurrentExactBodyArtifactEvidence = Pick<
-  GeometryKernelExactBodyArtifact,
-  | "artifactVersion"
-  | "bodyId"
-  | "sourceType"
-  | "documentSourceIdentity"
-  | "bodySourceIdentitySignature"
-  | "sourceCacheKeySha256"
-  | "sourceGraphNodeCount"
-  | "units"
-  | "shapePolicy"
-  | "sourceKind"
-  | "brepFormat"
-  | "brepWriter"
-  | "brepBytes"
-  | "brepByteLength"
-  | "brepSha256"
-  | "topologySnapshot"
-  | "metadata"
-  | "displayMesh"
->;
+export type CurrentExactBodyArtifactEvidence = GeometryKernelExactBodyArtifact;
 
 export interface CurrentExactBodyResolverInput {
   readonly document: CadDocument;

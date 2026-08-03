@@ -9,6 +9,7 @@ import {
   getExactBodyArtifactSourceLeaf,
   type ExactBodyArtifactLeaf,
   type ExactBodyArtifactSource,
+  type GeometryKernelExactBodyArtifact,
   type GeometryWorkerRequest
 } from "@web-cad/geometry-worker";
 import { describe, expect, it } from "vitest";
@@ -239,6 +240,149 @@ function createPrimitiveTessellationMessage(
   } as GeometryWorkerMessage;
 }
 
+function createExactBodyArtifactMessage(
+  request: GeometryWorkerRequest,
+  artifact = createExactBodyArtifactFixture()
+): GeometryWorkerMessage & {
+  readonly response: {
+    readonly ok: true;
+    readonly op: "geometry.exactBodyArtifact";
+    readonly artifact: GeometryKernelExactBodyArtifact;
+  };
+  readonly transferables: readonly ArrayBuffer[];
+} {
+  const pickMap = artifact.viewportPickMap;
+  if (!pickMap) throw new Error("Expected exact pick-map fixture.");
+  return {
+    id: request.id,
+    version: request.version,
+    kind: request.kind,
+    payloadId: request.payload.id,
+    response: {
+      ok: true,
+      id: request.payload.id,
+      op: "geometry.exactBodyArtifact",
+      artifact,
+      warnings: []
+    },
+    transferables: [
+      artifact.brepBytes.buffer,
+      artifact.displayMesh.positions.buffer,
+      artifact.displayMesh.indices.buffer,
+      pickMap.faceTriangleRanges.buffer,
+      pickMap.edgePointRanges.buffer,
+      pickMap.edgePoints.buffer,
+      pickMap.vertexPoints.buffer
+    ] as ArrayBuffer[]
+  };
+}
+
+function createExactBodyArtifactFixture(): GeometryKernelExactBodyArtifact {
+  const artifact = createArtifactLeafFixture(new Uint8Array([1, 2, 3]));
+  const topologySignature = "topology:pick";
+  const entities = [
+    {
+      localId: "face:pick",
+      kind: "face" as const,
+      signature: "face:pick",
+      source: "kernel-derived" as const
+    },
+    {
+      localId: "edge:pick",
+      kind: "edge" as const,
+      signature: "edge:pick",
+      source: "kernel-derived" as const
+    },
+    {
+      localId: "vertex:pick",
+      kind: "vertex" as const,
+      signature: "vertex:pick",
+      source: "kernel-derived" as const,
+      point: [0, 0, 0] as const
+    }
+  ];
+  return {
+    ...artifact,
+    metadata: {
+      sourceKind: "box",
+      bounds: { min: [0, 0, 0], max: [1, 1, 0] },
+      volume: 0,
+      surfaceArea: 0.5,
+      centroid: [1 / 3, 1 / 3, 0],
+      topologyCounts: {
+        solidCount: 0,
+        faceCount: 1,
+        edgeCount: 1,
+        vertexCount: 1
+      },
+      measurementSource: "kernel-derived",
+      measurementConfidence: "kernel-derived",
+      diagnostics: []
+    },
+    topologySnapshot: {
+      sourceKind: "box",
+      status: "ready",
+      entityCounts: {
+        bodyCount: 0,
+        solidCount: 0,
+        faceCount: 1,
+        wireCount: 0,
+        edgeCount: 1,
+        vertexCount: 1,
+        loopCount: 0,
+        coedgeCount: 0,
+        axisCount: 0
+      },
+      entityCount: entities.length,
+      entities,
+      unsupportedEntityKinds: [],
+      adjacencyAvailable: false,
+      signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+      signature: topologySignature,
+      source: "kernel-derived",
+      diagnostics: []
+    },
+    displayMesh: {
+      primitive: "box",
+      positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      indices: new Uint32Array([0, 1, 2]),
+      vertexCount: 3,
+      triangleCount: 1,
+      faceCount: 1
+    },
+    viewportPickMap: {
+      version: "partbench.exact-pick-map.v1",
+      bodyId: artifact.bodyId,
+      bodySourceIdentitySignature: artifact.bodySourceIdentitySignature,
+      topologySignature,
+      meshVertexCount: 3,
+      meshTriangleCount: 1,
+      faces: [
+        {
+          localId: entities[0]!.localId,
+          entitySignature: entities[0]!.signature
+        }
+      ],
+      edges: [
+        {
+          localId: entities[1]!.localId,
+          entitySignature: entities[1]!.signature
+        }
+      ],
+      vertices: [
+        {
+          localId: entities[2]!.localId,
+          entitySignature: entities[2]!.signature
+        }
+      ],
+      faceTriangleRanges: new Uint32Array([0, 1]),
+      edgePointRanges: new Uint32Array([0, 2]),
+      edgePoints: new Float64Array([0, 0, 0, 1, 0, 0]),
+      vertexPoints: new Float64Array([0, 0, 0])
+    }
+  } satisfies GeometryKernelExactBodyArtifact;
+}
+
 function getPrimitiveForOp(op: GeometryWorkerRequest["payload"]["op"]) {
   switch (op) {
     case "geometry.tessellateBox":
@@ -257,6 +401,118 @@ function getPrimitiveForOp(op: GeometryWorkerRequest["payload"]["op"]) {
 }
 
 describe("BrowserGeometryWorker", () => {
+  it("retains a valid exact pick map after structured transfer", async () => {
+    const transport = new FakeGeometryWorkerTransport(async (request) => {
+      const response = createExactBodyArtifactMessage(request);
+      return structuredClone(response, {
+        transfer: [...response.transferables]
+      }) as GeometryWorkerMessage;
+    });
+    const worker = new BrowserGeometryWorker(transport);
+    const response = await worker.execute(
+      createArtifactPatternRequest(
+        "browser_pick_map_transfer",
+        createArtifactLeafFixture(new Uint8Array([1]))
+      )
+    );
+
+    if (
+      !response.response.ok ||
+      response.response.op !== "geometry.exactBodyArtifact"
+    ) {
+      throw new Error("Expected an exact body artifact response.");
+    }
+    const { artifact } = response.response;
+    const pickMap = artifact.viewportPickMap;
+    if (!pickMap) throw new Error("Expected transferred exact pick map.");
+    expect(response.transferables).toEqual([
+      artifact.brepBytes.buffer,
+      artifact.displayMesh.positions.buffer,
+      artifact.displayMesh.indices.buffer,
+      pickMap.faceTriangleRanges.buffer,
+      pickMap.edgePointRanges.buffer,
+      pickMap.edgePoints.buffer,
+      pickMap.vertexPoints.buffer
+    ]);
+  });
+
+  it.each([
+    [
+      "corrupt",
+      (artifact: GeometryKernelExactBodyArtifact) => ({
+        ...artifact,
+        viewportPickMap: {
+          ...artifact.viewportPickMap!,
+          topologySignature: "stale-topology"
+        }
+      }),
+      false
+    ],
+    [
+      "detached",
+      (artifact: GeometryKernelExactBodyArtifact) => {
+        structuredClone(artifact.viewportPickMap!.faceTriangleRanges, {
+          transfer: [artifact.viewportPickMap!.faceTriangleRanges.buffer]
+        });
+        return artifact;
+      },
+      false
+    ],
+    [
+      "transfer-list mismatched",
+      (artifact: GeometryKernelExactBodyArtifact) => artifact,
+      true
+    ]
+  ] as const)(
+    "drops only a %s exact pick map on receipt without mutating the message",
+    async (_name, mutate, mismatchTransferList) => {
+      let incoming:
+        | (GeometryWorkerMessage & {
+            readonly response: {
+              readonly artifact: GeometryKernelExactBodyArtifact;
+            };
+            readonly transferables: readonly ArrayBuffer[];
+          })
+        | undefined;
+      const transport = new FakeGeometryWorkerTransport(async (request) => {
+        const artifact = mutate(createExactBodyArtifactFixture());
+        const message = createExactBodyArtifactMessage(request, artifact);
+        incoming = mismatchTransferList
+          ? { ...message, transferables: message.transferables.slice(0, 3) }
+          : message;
+        return incoming;
+      });
+      const worker = new BrowserGeometryWorker(transport);
+      const response = await worker.execute(
+        createArtifactPatternRequest(
+          `browser_pick_map_${_name}`,
+          createArtifactLeafFixture(new Uint8Array([1]))
+        )
+      );
+
+      if (
+        !response.response.ok ||
+        response.response.op !== "geometry.exactBodyArtifact" ||
+        !incoming
+      ) {
+        throw new Error("Expected an exact body artifact response.");
+      }
+      expect(response.response.artifact).toMatchObject({
+        bodyId: incoming.response.artifact.bodyId,
+        viewportPickMapDowngrade: { status: "invalid" }
+      });
+      expect(response.response.artifact.viewportPickMap).toBeUndefined();
+      expect([...response.response.artifact.brepBytes]).toEqual([1, 2, 3]);
+      expect(response.transferables).toEqual([
+        response.response.artifact.brepBytes.buffer,
+        response.response.artifact.displayMesh.positions.buffer,
+        response.response.artifact.displayMesh.indices.buffer
+      ]);
+      expect(incoming.response.artifact.viewportPickMap).toBeDefined();
+      expect(incoming.transferables).toHaveLength(mismatchTransferList ? 3 : 7);
+    }
+  );
+
   it("cleans up partial listener setup when construction fails", () => {
     const transport = new PartialSetupFailureTransport();
 

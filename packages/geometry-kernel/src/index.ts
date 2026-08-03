@@ -31,6 +31,7 @@ import {
   getGeometryKernelExactExportCapabilities,
   getGeometryKernelStepImportCapabilities,
   getGeometryResponseTransferables,
+  getExactViewportPickMapDowngrade,
   isInvalidExactViewportPickMap,
   MAX_EXACT_VIEWPORT_PICK_MAP_BYTES,
   type BooleanExtrudePrimitiveSource,
@@ -334,6 +335,7 @@ export {
   getGeometryKernelExactExportCapabilities,
   getGeometryKernelStepImportCapabilities,
   getGeometryResponseTransferables,
+  getExactViewportPickMapDowngrade,
   isInvalidExactViewportPickMap,
   MAX_EXACT_VIEWPORT_PICK_MAP_BYTES
 };

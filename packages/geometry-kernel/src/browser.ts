@@ -28,6 +28,7 @@ import {
 import {
   assertExactBodyArtifactAggregateWithinLimit,
   executeGeometryKernelRequestWithMeshFactory,
+  getExactViewportPickMapDowngrade,
   getGeometryKernelStepImportCapabilities,
   getGeometryResponseTransferables,
   isInvalidExactViewportPickMap,
@@ -246,6 +247,7 @@ export type {
 };
 export {
   assertExactBodyArtifactAggregateWithinLimit,
+  getExactViewportPickMapDowngrade,
   getGeometryKernelStepImportCapabilities,
   getGeometryResponseTransferables,
   isInvalidExactViewportPickMap,
