@@ -10,6 +10,7 @@ import type {
   CadCurrentExactResult,
   CadCurrentExactResultStatus,
   CadExactExportPlan,
+  CadExactReadySubsetMetadata,
   CadExactResultDiagnostic,
   CadExactExportBooleanSource,
   CadExactExportBooleanResultSource,
@@ -216,6 +217,9 @@ export function createProjectExportReadiness({
       )
     ) ?? [])
   ];
+  const readySubset = projection
+    ? createReadySubsetMetadata(projection.plan)
+    : undefined;
 
   return {
     ok: true,
@@ -246,7 +250,8 @@ export function createProjectExportReadiness({
     ...(projection
       ? {
           plan: projection.plan,
-          currentExactResults: projection.currentExactResults
+          currentExactResults: projection.currentExactResults,
+          ...(readySubset ? { readySubset } : {})
         }
       : {})
   };
@@ -326,6 +331,7 @@ export function createProjectExactExport({
       : stepBodies.some((body) => body.status === "deferred")
         ? "deferred"
         : "unavailable";
+  const readySubset = createReadySubsetMetadata(projection.plan);
 
   return {
     ok: true,
@@ -362,7 +368,8 @@ export function createProjectExactExport({
     diagnosticCount: diagnostics.length,
     diagnostics,
     plan: projection.plan,
-    currentExactResults: projection.currentExactResults
+    currentExactResults: projection.currentExactResults,
+    ...(readySubset ? { readySubset } : {})
   };
 }
 
@@ -437,6 +444,12 @@ export function createCurrentExactExportProjection({
   });
   const planBodies = selectedBodies.map((body, index) => {
     const current = currentExactResults[index]!;
+    const currentDiagnostics = current.diagnostics.map((diagnostic) =>
+      exactDiagnosticToExportDiagnostic(
+        diagnostic,
+        getBodyExportSourceKind(body)
+      )
+    );
     return {
       bodyId: body.id,
       bodyName: body.name?.trim() || body.id,
@@ -449,7 +462,7 @@ export function createCurrentExactExportProjection({
         body
       ),
       status: current.status === "ready" ? "ready" : "blocked",
-      diagnostics: bodyReadiness[index]!.diagnostics
+      diagnostics: [...bodyReadiness[index]!.diagnostics, ...currentDiagnostics]
     } as const;
   });
   const orderedBodyIds = planBodies.map((body) => body.bodyId);
@@ -512,6 +525,27 @@ export function createCurrentExactExportProjection({
     selectionDiagnostics,
     globalDiagnostics,
     executable
+  };
+}
+
+function createReadySubsetMetadata(
+  plan: CadExactExportPlan
+): CadExactReadySubsetMetadata | undefined {
+  const ready = plan.bodies.filter((body) => body.status === "ready");
+  if (ready.length === 0) return undefined;
+
+  const toBody = (body: CadExactExportPlan["bodies"][number]) => ({
+    bodyId: body.bodyId,
+    bodyName: body.bodyName,
+    diagnostics: body.diagnostics
+  });
+  return {
+    orderedBodyIds: ready.map((body) => body.bodyId),
+    includedBodies: ready.map(toBody),
+    excludedBodies: plan.bodies
+      .filter((body) => body.status === "blocked")
+      .map(toBody),
+    allOrNothing: true
   };
 }
 

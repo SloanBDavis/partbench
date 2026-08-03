@@ -87,6 +87,7 @@ import type {
   CadSelectionReferenceIssueCode,
   CadSelectionReferenceOperation,
   CadSelectionReferenceStatus,
+  CadSemanticBodyReference,
   CadSketchEntityRef,
   CadSketchConstraintRef,
   CadSketchDimensionRef,

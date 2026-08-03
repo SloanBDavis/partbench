@@ -303,9 +303,19 @@ describe("V21 exact export planning", () => {
       exportCadProject(engine)
     );
 
-    expect(exact(engine, { derivedExactMetadata: [ready[1]!] })).toMatchObject({
+    const mixed = exact(engine, { derivedExactMetadata: [ready[1]!] });
+    expect(mixed).toMatchObject({
       canExportFile: false,
-      exportableBodyCount: 0
+      exportableBodyCount: 0,
+      readySubset: {
+        orderedBodyIds: ["body:a"],
+        includedBodies: [{ bodyId: "body:a", bodyName: "Bracket Ω" }],
+        excludedBodies: [
+          { bodyId: "body:n", diagnostics: expect.any(Array) },
+          { bodyId: "body:z", diagnostics: expect.any(Array) }
+        ],
+        allOrNothing: true
+      }
     });
     const subset = exact(engine, {
       bodyIds: ["body:z", "body:a"],
