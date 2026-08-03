@@ -12,7 +12,8 @@ import {
   LocalAgentSession,
   readLocalAgentSessionToken,
   type CurrentAgentSelectionInput,
-  type LocalAgentCommitPreflight
+  type LocalAgentCommitPreflight,
+  type LocalAgentSessionOptions
 } from "./localAgentSession";
 import { attachLocalAgentSession } from "./localAgentSessionStore";
 
@@ -23,7 +24,10 @@ export function LocalAgentSessionController({
   selection,
   currentExactEvidence,
   preflightCommit,
-  publishCommit
+  publishCommit,
+  planExactExport,
+  executeExactExport,
+  cancelExactExport
 }: {
   readonly engine: CadEngine;
   readonly executor: AsyncCadCommandExecutor;
@@ -34,12 +38,22 @@ export function LocalAgentSessionController({
   readonly publishCommit: (
     response: CadOpsAgentSuccessResponse
   ) => Promise<void>;
+  readonly planExactExport: NonNullable<
+    LocalAgentSessionOptions["planExactExport"]
+  >;
+  readonly executeExactExport: NonNullable<
+    LocalAgentSessionOptions["executeExactExport"]
+  >;
+  readonly cancelExactExport: () => void;
 }) {
   const latestRef = useRef({
     selection,
     currentExactEvidence,
     preflightCommit,
-    publishCommit
+    publishCommit,
+    planExactExport,
+    executeExactExport,
+    cancelExactExport
   });
   const sessionRef = useRef<LocalAgentSession | null>(null);
 
@@ -48,9 +62,20 @@ export function LocalAgentSessionController({
       selection,
       currentExactEvidence,
       preflightCommit,
-      publishCommit
+      publishCommit,
+      planExactExport,
+      executeExactExport,
+      cancelExactExport
     };
-  }, [currentExactEvidence, preflightCommit, publishCommit, selection]);
+  }, [
+    cancelExactExport,
+    currentExactEvidence,
+    executeExactExport,
+    planExactExport,
+    preflightCommit,
+    publishCommit,
+    selection
+  ]);
 
   useEffect(() => {
     const token = readLocalAgentSessionToken(window.location.hash);
@@ -63,7 +88,11 @@ export function LocalAgentSessionController({
       readCurrentExactEvidence: () => latestRef.current.currentExactEvidence,
       preflightCommit: (request, sourceAuthorityEpoch) =>
         latestRef.current.preflightCommit(request, sourceAuthorityEpoch),
-      publishCommit: (response) => latestRef.current.publishCommit(response)
+      publishCommit: (response) => latestRef.current.publishCommit(response),
+      planExactExport: (request) => latestRef.current.planExactExport(request),
+      executeExactExport: (proposal) =>
+        latestRef.current.executeExactExport(proposal),
+      cancelExactExport: () => latestRef.current.cancelExactExport()
     });
     sessionRef.current = session;
     const detach = attachLocalAgentSession(session);

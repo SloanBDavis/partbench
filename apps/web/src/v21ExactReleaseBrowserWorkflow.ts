@@ -19,7 +19,11 @@ const UNIT_SCALE_TO_MILLIMETRES = {
 type ExactMetadata = GeometryKernelExactBodyArtifact["metadata"];
 
 export async function runV21ExactReleaseBrowserWorkflow(
-  worker: BrowserGeometryWorker
+  worker: BrowserGeometryWorker,
+  options: {
+    readonly nearLimitBodyCount?: number;
+    readonly requireCancelRetry?: boolean;
+  } = {}
 ): Promise<object> {
   const longTasks: number[] = [];
   const observer =
@@ -132,7 +136,10 @@ export async function runV21ExactReleaseBrowserWorkflow(
       worker,
       artifactBuildMs,
       writerMs,
-      stepByteSizes
+      totalExportMs,
+      stepByteSizes,
+      options.nearLimitBodyCount ?? 16,
+      options.requireCancelRetry === true
     );
     const faults = await runBrowserFaults(worker, artifacts[0]!);
     const restartMs = await measureWorkerRestart();
@@ -421,10 +428,11 @@ async function runNearLimitWorkload(
   worker: BrowserGeometryWorker,
   artifactBuildMs: number[],
   writerMs: number[],
-  stepByteSizes: number[]
+  totalExportMs: number[],
+  stepByteSizes: number[],
+  bodyCount: number,
+  requireCancelRetry: boolean
 ): Promise<object> {
-  // ponytail: 16 real bodies keeps this gate deterministic; boundary tests enforce the 64/256-body stress limits.
-  const bodyCount = 16;
   const artifacts: GeometryKernelExactBodyArtifact[] = [];
   for (let index = 0; index < bodyCount; index += 1) {
     const started = performance.now();
@@ -434,8 +442,10 @@ async function runNearLimitWorkload(
         bodyId: `v21-stress-${index}`,
         sourceType: "primitiveFeature",
         documentSourceIdentity: sourceIdentity("4"),
-        bodySourceIdentitySignature: `body-topology-source:v1:${"5".repeat(64)}`,
-        sourceCacheKeySha256: "6".repeat(64),
+        bodySourceIdentitySignature: `body-topology-source:v1:${index
+          .toString(16)
+          .padStart(64, "0")}`,
+        sourceCacheKeySha256: (index + 256).toString(16).padStart(64, "0"),
         sourceGraphNodeCount: 1,
         units: "mm",
         shapePolicy: "singleSolid",
@@ -463,35 +473,63 @@ async function runNearLimitWorkload(
       CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxAggregateBrepArtifactBytes,
     "Near-limit BRep corpus exceeded its aggregate cap."
   );
-  const started = performance.now();
-  const response = await worker.execute(
-    createExactStepExportWorkerRequest({
-      id: "v21-browser-near-limit-export",
-      units: "mm",
-      bodies: artifacts.map((artifact, index) => ({
-        bodyId: artifact.bodyId,
-        bodyName: `Stress ${index}`,
-        brepFormat: artifact.brepFormat,
-        brepByteLength: artifact.brepByteLength,
-        brepSha256: artifact.brepSha256,
-        brepBytes: artifact.brepBytes
-      }))
-    })
-  );
-  writerMs.push(performance.now() - started);
-  if (!response.response.ok) throw new Error(response.response.error.message);
-  stepByteSizes.push(response.response.artifact.byteLength);
+  let cancellation: string | undefined;
+  if (requireCancelRetry) {
+    const cancelWorker = new BrowserGeometryWorker();
+    let markStarted: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      markStarted = () => resolve();
+    });
+    const cancelled = cancelWorker.executeTracked(
+      createExactStepExportWorkerRequest({
+        id: "v21-1-browser-limit-cancel",
+        units: "mm",
+        bodies: artifacts.map((artifact, index) => ({
+          bodyId: artifact.bodyId,
+          bodyName: `Stress ${index}`,
+          brepFormat: artifact.brepFormat,
+          brepByteLength: artifact.brepByteLength,
+          brepSha256: artifact.brepSha256,
+          brepBytes: artifact.brepBytes.slice()
+        }))
+      }),
+      { onStarted: markStarted }
+    );
+    await started;
+    cancelWorker.dispose();
+    try {
+      await cancelled;
+    } catch (error) {
+      cancellation = error instanceof Error ? error.message : String(error);
+    }
+    if (!cancellation) {
+      throw new Error("Cancelled near-limit export unexpectedly completed.");
+    }
+    await nextFrame();
+  }
+  const roundTrip = await exportAndRoundTrip({
+    worker,
+    artifacts,
+    names: artifacts.map((_, index) => `Stress ${index}`),
+    unit: "mm",
+    expectedScale: 1,
+    writerMs,
+    totalExportMs,
+    stepByteSizes
+  });
+  const stepByteLength = (roundTrip as { readonly byteLength: number })
+    .byteLength;
   assert(
-    response.response.artifact.byteLength <=
-      CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxStepArtifactBytes,
+    stepByteLength <= CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxStepArtifactBytes,
     "Near-limit STEP output exceeded its cap."
   );
   artifacts.length = 0;
   return {
     bodyCount,
     aggregateBrepBytes,
-    stepByteLength: response.response.artifact.byteLength,
-    stepSha256: await sha256Hex(response.response.artifact.bytes)
+    stepByteLength,
+    cancellation,
+    retry: roundTrip
   };
 }
 

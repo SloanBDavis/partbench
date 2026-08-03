@@ -209,7 +209,7 @@ function getQueryProvenRepairTarget(
       entry.target.kind === selected.kind
   );
 
-  if (candidate) {
+  if (candidate?.target.type === "generatedReference") {
     return {
       status: "ready",
       target: {

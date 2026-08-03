@@ -7,6 +7,7 @@ import {
   importCadProjectWcad,
   parseCadProjectJson,
   readCadProjectWcad,
+  sha256Hex,
   type CadFeatureSummary,
   type SketchSnapshot,
   type WcadTopologyCheckpointPayloadInput
@@ -1306,6 +1307,14 @@ describe("projectWcadTopologyCheckpoints", () => {
       status: "wcad-required",
       checkpointIds: [checkpointPayload.checkpointId]
     });
+    expect(
+      createProjectPortabilityStatus(jsonProject, [
+        { ...checkpointPayload, brepSha256: "invalid" }
+      ])
+    ).toEqual({
+      status: "payload-missing",
+      checkpointIds: [checkpointPayload.checkpointId]
+    });
 
     const recovered = await recoverProjectCheckpointPayloadsFromWcad({
       currentProject: jsonProject,
@@ -1819,6 +1828,8 @@ function createImportedBodyCheckpointEngine(): {
         angularToleranceDegrees: 0.01
       },
       brepBytes: checkpointPayloadFixture.brepBytes,
+      brepByteLength: checkpointPayloadFixture.brepBytes.byteLength,
+      brepSha256: sha256Hex(checkpointPayloadFixture.brepBytes),
       topologyBytes: encodeWcadCanonicalCbor(
         checkpointPayloadFixture.topologySnapshot
       ),

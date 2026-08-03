@@ -1,4 +1,7 @@
-import { CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS } from "@web-cad/cad-protocol";
+import {
+  CAD_EXPORT_SOURCE_KIND_BY_BODY_SOURCE_TYPE,
+  CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS
+} from "@web-cad/cad-protocol";
 import type {
   BodyId,
   CadBodySnapshot,
@@ -31,21 +34,12 @@ export const CAD_DOWNSTREAM_BODY_OPERATIONS = Object.freeze(
   ) as CadExactDownstreamOperation[]
 );
 
-export const CAD_DOWNSTREAM_BODY_POLICY = {
-  primitiveFeature: DOWNSTREAM_OPERATION_SHAPE_POLICY,
-  sketchExtrudeFeature: DOWNSTREAM_OPERATION_SHAPE_POLICY,
-  sketchRevolveFeature: DOWNSTREAM_OPERATION_SHAPE_POLICY,
-  sketchHoleFeature: DOWNSTREAM_OPERATION_SHAPE_POLICY,
-  edgeChamferFeature: DOWNSTREAM_OPERATION_SHAPE_POLICY,
-  edgeFilletFeature: DOWNSTREAM_OPERATION_SHAPE_POLICY,
-  linearPatternFeature: DOWNSTREAM_OPERATION_SHAPE_POLICY,
-  circularPatternFeature: DOWNSTREAM_OPERATION_SHAPE_POLICY,
-  mirrorFeature: DOWNSTREAM_OPERATION_SHAPE_POLICY,
-  shellFeature: DOWNSTREAM_OPERATION_SHAPE_POLICY,
-  sweepFeature: DOWNSTREAM_OPERATION_SHAPE_POLICY,
-  loftFeature: DOWNSTREAM_OPERATION_SHAPE_POLICY,
-  importedStepBody: DOWNSTREAM_OPERATION_SHAPE_POLICY
-} as const satisfies Record<
+export const CAD_DOWNSTREAM_BODY_POLICY = Object.fromEntries(
+  Object.keys(CAD_EXPORT_SOURCE_KIND_BY_BODY_SOURCE_TYPE).map((sourceType) => [
+    sourceType,
+    DOWNSTREAM_OPERATION_SHAPE_POLICY
+  ])
+) as Record<
   CadBodySource["type"],
   Record<CadExactDownstreamOperation, CadExactBodyShapePolicy>
 >;
@@ -79,53 +73,30 @@ export function evaluateCadBodyDependencies(
   rootBodyId: BodyId
 ): CadBodyDependencyEvaluation {
   const bodyById = new Map(bodies.map((body) => [body.id, body] as const));
-  const states = new Map<BodyId, "visiting" | "visited">();
-  const stack: Array<{
-    readonly bodyId: BodyId;
-    dependencies?: readonly BodyId[];
-    index: number;
-  }> = [{ bodyId: rootBodyId, index: 0 }];
-  let nodeCount = 0;
+  const visited = new Set<BodyId>();
+  let bodyId: BodyId | undefined = rootBodyId;
 
-  while (stack.length > 0) {
-    const frame = stack.at(-1)!;
-    if (!frame.dependencies) {
-      const body = bodyById.get(frame.bodyId);
-      if (!body) return { status: "missing-source", cycle: false };
-      const feature = body.featureId
-        ? document.features.get(body.featureId)
-        : undefined;
-      if (
-        (feature?.kind === "linearPattern" ||
-          feature?.kind === "circularPattern") &&
-        feature.instanceCount > CAD_PATTERN_COMMAND_INSTANCE_LIMIT
-      ) {
-        return { status: "unsupported", cycle: false };
-      }
-      nodeCount += 1;
-      if (
-        nodeCount > CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxSourceGraphNodes
-      ) {
-        return { status: "unsupported", cycle: false };
-      }
-      states.set(frame.bodyId, "visiting");
-      frame.dependencies = getDirectBodyDependencies(document, body);
+  while (bodyId) {
+    if (visited.has(bodyId)) return { status: "missing-source", cycle: true };
+    if (
+      visited.size >= CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxSourceGraphNodes
+    ) {
+      return { status: "unsupported", cycle: false };
     }
-
-    const dependencyId = frame.dependencies[frame.index];
-    if (dependencyId === undefined) {
-      states.set(frame.bodyId, "visited");
-      stack.pop();
-      continue;
+    visited.add(bodyId);
+    const body = bodyById.get(bodyId);
+    if (!body) return { status: "missing-source", cycle: false };
+    const feature = body.featureId
+      ? document.features.get(body.featureId)
+      : undefined;
+    if (
+      (feature?.kind === "linearPattern" ||
+        feature?.kind === "circularPattern") &&
+      feature.instanceCount > CAD_PATTERN_COMMAND_INSTANCE_LIMIT
+    ) {
+      return { status: "unsupported", cycle: false };
     }
-    frame.index += 1;
-    const dependencyState = states.get(dependencyId);
-    if (dependencyState === "visiting") {
-      return { status: "missing-source", cycle: true };
-    }
-    if (dependencyState !== "visited") {
-      stack.push({ bodyId: dependencyId, index: 0 });
-    }
+    bodyId = getDirectBodyDependency(document, body);
   }
 
   return { status: "healthy", cycle: false };
@@ -137,113 +108,79 @@ export function createCadDownstreamBodyPolicyProjection(
   const requiredShapePolicy =
     CAD_DOWNSTREAM_BODY_POLICY[input.sourceType][input.operation];
   const sourceBlocker = createSourceBlocker(input);
+  let sourceEligible = true;
+  let status = input.exactStatus ?? "pending";
+  let diagnostics: readonly CadExactResultDiagnostic[] = [];
+
   if (sourceBlocker) {
-    return {
-      sourceEligible: false,
-      readiness: {
-        operation: input.operation,
-        status: sourceBlocker.status,
+    sourceEligible = false;
+    status = sourceBlocker.status;
+    diagnostics = [sourceBlocker];
+  } else if (status !== "ready") {
+    diagnostics =
+      input.diagnostics?.filter((diagnostic) => diagnostic.status === status) ??
+      [];
+    if (diagnostics.length === 0) {
+      diagnostics = [
+        createDiagnostic(
+          input,
+          status,
+          status === "stale"
+            ? "EXPORT_EXACT_SOURCE_STALE"
+            : status === "failed"
+              ? "EXPORT_EXACT_ARTIFACT_FAILED"
+              : status === "unsupported"
+                ? "EXPORT_BODY_SOURCE_UNSUPPORTED"
+                : "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+          `Body ${input.bodyId} is not exact-ready for ${input.operation}.`
+        )
+      ];
+    }
+  } else if (!input.shapePolicy) {
+    status = "pending";
+    diagnostics = [
+      createDiagnostic(
+        input,
+        status,
+        "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+        `Body ${input.bodyId} has no current exact shape policy.`,
         requiredShapePolicy,
-        ...(input.shapePolicy ? { shapePolicy: input.shapePolicy } : {}),
-        diagnostics: [sourceBlocker]
-      }
-    };
-  }
-
-  const exactStatus = input.exactStatus ?? "pending";
-  if (exactStatus !== "ready") {
-    const diagnostics = input.diagnostics?.filter(
-      (diagnostic) => diagnostic.status === exactStatus
-    );
-    return {
-      sourceEligible: true,
-      readiness: {
-        operation: input.operation,
-        status: exactStatus,
-        requiredShapePolicy,
-        ...(input.shapePolicy ? { shapePolicy: input.shapePolicy } : {}),
-        diagnostics: diagnostics?.length
-          ? diagnostics
-          : [
-              createDiagnostic(
-                input,
-                exactStatus,
-                exactStatus === "stale"
-                  ? "EXPORT_EXACT_SOURCE_STALE"
-                  : exactStatus === "failed"
-                    ? "EXPORT_EXACT_ARTIFACT_FAILED"
-                    : exactStatus === "unsupported"
-                      ? "EXPORT_BODY_SOURCE_UNSUPPORTED"
-                      : "EXPORT_EXACT_SOURCE_UNAVAILABLE",
-                `Body ${input.bodyId} is not exact-ready for ${input.operation}.`
-              )
-            ]
-      }
-    };
-  }
-
-  if (!input.shapePolicy) {
-    return {
-      sourceEligible: true,
-      readiness: {
-        operation: input.operation,
-        status: "pending",
-        requiredShapePolicy,
-        diagnostics: [
-          createDiagnostic(
-            input,
-            "pending",
-            "EXPORT_EXACT_SOURCE_UNAVAILABLE",
-            `Body ${input.bodyId} has no current exact shape policy.`,
-            requiredShapePolicy,
-            "missing shape policy"
-          )
-        ]
-      }
-    };
-  }
-
-  if (
+        "missing shape policy"
+      )
+    ];
+  } else if (
     requiredShapePolicy === "singleSolid" &&
     input.shapePolicy !== "singleSolid"
   ) {
-    return {
-      sourceEligible: true,
-      readiness: {
-        operation: input.operation,
-        status: "unsupported",
+    status = "unsupported";
+    diagnostics = [
+      createDiagnostic(
+        input,
+        status,
+        "SHELL_TARGET_MULTI_SOLID_UNSUPPORTED",
+        `Body ${input.bodyId} is multi-solid and cannot be used as a shell target.`,
         requiredShapePolicy,
-        shapePolicy: input.shapePolicy,
-        diagnostics: [
-          createDiagnostic(
-            input,
-            "unsupported",
-            "SHELL_TARGET_MULTI_SOLID_UNSUPPORTED",
-            `Body ${input.bodyId} is multi-solid and cannot be used as a shell target.`,
-            requiredShapePolicy,
-            input.shapePolicy
-          )
-        ]
-      }
-    };
+        input.shapePolicy
+      )
+    ];
   }
 
   return {
-    sourceEligible: true,
+    sourceEligible,
     readiness: {
       operation: input.operation,
-      status: "ready",
+      status,
       requiredShapePolicy,
-      shapePolicy: input.shapePolicy,
-      diagnostics: []
+      ...(input.shapePolicy ? { shapePolicy: input.shapePolicy } : {}),
+      diagnostics
     }
   };
 }
 
-function getDirectBodyDependencies(
+function getDirectBodyDependency(
   document: Pick<CadDocument, "features">,
   body: CadBodySnapshot
-): readonly BodyId[] {
+): BodyId | undefined {
   const source = body.source;
   switch (source.type) {
     case "primitiveFeature":
@@ -251,22 +188,22 @@ function getDirectBodyDependencies(
     case "sweepFeature":
     case "loftFeature":
     case "importedStepBody":
-      return [];
+      return undefined;
     case "sketchExtrudeFeature": {
       const feature = document.features.get(source.featureId);
       return feature?.kind === "extrude" && feature.targetBodyId
-        ? [feature.targetBodyId]
-        : [];
+        ? feature.targetBodyId
+        : undefined;
     }
     case "sketchHoleFeature":
     case "edgeChamferFeature":
     case "edgeFilletFeature":
     case "shellFeature":
-      return [source.targetBodyId];
+      return source.targetBodyId;
     case "linearPatternFeature":
     case "circularPatternFeature":
     case "mirrorFeature":
-      return [source.seedBodyId];
+      return source.seedBodyId;
     default: {
       const exhaustive: never = source;
       return exhaustive;

@@ -3969,7 +3969,8 @@ function addCurrentExactEvidence(
       const derivedExactMetadata = evidence.derivedExactMetadata.find(
         (entry) => entry.bodyId === bodyId
       );
-      const { derivedExactMetadata: _callerEvidence, ...query } = request.query;
+      const query = { ...request.query };
+      delete query.derivedExactMetadata;
       return derivedExactMetadata
         ? {
             ...request,

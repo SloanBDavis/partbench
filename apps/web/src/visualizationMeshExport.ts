@@ -642,10 +642,9 @@ function isSupportedVisualizationSource(
     source.kind === "revolve" ||
     source.kind === "hole" ||
     source.kind === "edgeFinish" ||
-    source.kind === "linearPattern" ||
-    source.kind === "circularPattern" ||
-    source.kind === "mirror" ||
-    source.kind === "shell"
+    source.kind === "sweep" ||
+    source.kind === "loft" ||
+    source.kind === "exactBody"
   );
 }
 

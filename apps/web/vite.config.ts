@@ -10,13 +10,15 @@ function minifyUiJavaScript(): Plugin {
       if (chunk.isEntry && !chunk.facadeModuleId?.match(/[/\\]index\.html$/)) {
         return null;
       }
+      if (code.trim().length === 0) return null;
 
-      const result = await minify(code, {
-        compress: { passes: 2 },
+      const options = {
+        compress: { passes: chunk.isEntry ? 2 : 3 },
         mangle: true,
         module: true,
         format: { comments: false }
-      });
+      } as const;
+      const result = await minify(code, options);
       if (!result.code) {
         throw new Error("Terser did not emit a UI JavaScript chunk.");
       }
@@ -71,6 +73,26 @@ export default defineConfig(({ command, mode }) => {
     build: {
       rollupOptions: {
         output: {
+          onlyExplicitManualChunks: true,
+          manualChunks(id, { getModuleInfo }) {
+            if (/[/\\]ui[/\\]NumericInput\.tsx(?:\?|$)/.test(id)) {
+              return "deferred-ui";
+            }
+            const seen = new Set<string>();
+            const isEntryDependency = (moduleId: string): boolean => {
+              if (seen.has(moduleId)) return false;
+              seen.add(moduleId);
+              const info = getModuleInfo(moduleId);
+              return Boolean(
+                info?.isEntry ||
+                info?.importers.some((importer) => isEntryDependency(importer))
+              );
+            };
+
+            return /\.[cm]?[jt]sx?(?:\?|$)/.test(id) && !isEntryDependency(id)
+              ? "deferred-ui"
+              : undefined;
+          },
           plugins: [minifyUiJavaScript()]
         }
       }

@@ -67,11 +67,17 @@ export function formatObjectScale(object: SceneObject): string {
 }
 
 export function formatBounds(
-  bounds: CadAxisAlignedBounds,
+  bounds: Pick<CadAxisAlignedBounds, "min" | "max"> &
+    Partial<Pick<CadAxisAlignedBounds, "size" | "center">>,
   units?: string
 ): string {
   const suffix = units ? ` ${units}` : "";
-  return `min ${formatVectorWithSuffix(bounds.min, suffix)}; max ${formatVectorWithSuffix(bounds.max, suffix)}; size ${formatVectorWithSuffix(bounds.size, suffix)}`;
+  const size = bounds.max.map((value, index) => value - bounds.min[index]!) as [
+    number,
+    number,
+    number
+  ];
+  return `min ${formatVectorWithSuffix(bounds.min, suffix)}; max ${formatVectorWithSuffix(bounds.max, suffix)}; size ${formatVectorWithSuffix(size, suffix)}`;
 }
 
 export function formatVolume(value: number, units?: string): string {

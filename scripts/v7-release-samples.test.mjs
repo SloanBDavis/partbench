@@ -53,7 +53,7 @@ describe("V7 release sample smoke runner", () => {
         "- pass v7-consumed-body-diagnostics | V7 consumed body diagnostics sample | health under-defined/1 | 4 selections, 4 candidates, 0 commandable | exports step:deferred:unavailable, glb:deferred:unavailable",
         "- pass v7-revolve-source-diagnostics | V7 revolve source diagnostics sample | health under-defined/1 | 2 selections, 1 candidates, 1 commandable | exports step:deferred:unavailable, glb:deferred:unavailable",
         "- pass v7-hole-source-diagnostics | V7 hole source diagnostics sample | health under-defined/2 | 3 selections, 3 candidates, 1 commandable | exports step:deferred:unavailable, glb:deferred:unavailable",
-        "- pass v7-edge-finish-source-diagnostics | V7 edge-finish source diagnostics sample | health under-defined/2 | 5 selections, 3 candidates, 0 commandable | exports step:deferred:unavailable, glb:deferred:unavailable"
+        "- pass v7-edge-finish-source-diagnostics | V7 edge-finish source diagnostics sample | health under-defined/2 | 5 selections, 5 candidates, 2 commandable | exports step:deferred:unavailable, glb:deferred:unavailable"
       ].join("\n")
     );
   });

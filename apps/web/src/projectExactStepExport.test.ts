@@ -27,6 +27,10 @@ import type {
   DerivedExactBodyArtifactInput,
   DerivedGeometryRuntime
 } from "./derivedGeometryRuntime";
+import type {
+  ExactArtifactCacheCandidate,
+  ExactArtifactOpfsCache
+} from "./exactArtifactOpfsCache";
 import {
   downloadProjectExactStepArtifact,
   executeProjectExactStepExport,
@@ -113,6 +117,60 @@ describe("projectExactStepExport", () => {
     ]);
   });
 
+  it("cold-writes and warm-validates artifacts without rebuilding feature sources", async () => {
+    const fixture = createFixture();
+    const candidates = new Map<string, ExactArtifactCacheCandidate>();
+    const cache: Pick<ExactArtifactOpfsCache, "read" | "write"> = {
+      async read({ identity, validate }) {
+        const candidate = candidates.get(identity.bodySourceIdentitySignature);
+        return candidate
+          ? { status: "hit", artifact: await validate(candidate) }
+          : { status: "miss", reason: "absent" };
+      },
+      async write({ artifact }) {
+        candidates.set(artifact.bodySourceIdentitySignature, {
+          sourceKind: artifact.sourceKind,
+          shapePolicy: artifact.shapePolicy,
+          brepFormat: artifact.brepFormat,
+          brepWriter: artifact.brepWriter,
+          brepBytes: artifact.brepBytes,
+          brepByteLength: artifact.brepByteLength,
+          brepSha256: artifact.brepSha256,
+          topologySignature: artifact.topologySnapshot.signature
+        });
+        return {
+          status: "stored",
+          evictedEntryCount: 0,
+          entryCount: candidates.size,
+          byteLength: [...candidates.values()].reduce(
+            (sum, candidate) => sum + candidate.brepByteLength,
+            0
+          )
+        };
+      }
+    };
+    const cold = createRuntime();
+    await executeProjectExactStepExport({
+      ...fixture,
+      runtime: cold,
+      artifactCache: cache
+    });
+    expect(
+      cold.artifactInputs.every(({ source }) => source.kind !== "bodyArtifact")
+    ).toBe(true);
+
+    const warm = createRuntime();
+    await executeProjectExactStepExport({
+      ...fixture,
+      runtime: warm,
+      artifactCache: cache
+    });
+    expect(warm.artifactInputs).toHaveLength(3);
+    expect(
+      warm.artifactInputs.every(({ source }) => source.kind === "bodyArtifact")
+    ).toBe(true);
+  });
+
   it("builds a verified artifact leaf before a downstream result", async () => {
     const engine = new CadEngine();
     engine.applyBatch(createV15ReleaseSampleBatch("v15-linear-pattern").ops);
@@ -169,7 +227,7 @@ describe("projectExactStepExport", () => {
             {
               localId: "snapshot-local:face:4",
               kind: "face" as const,
-              signature: face.geometrySignature
+              signature: face.geometrySignature!
             }
           ]
         ]
@@ -1047,7 +1105,14 @@ function createRuntime(
       await Promise.resolve();
       if (options.artifactError) throw options.artifactError;
       options.onArtifact?.(index);
-      const brepBytes = new Uint8Array([index + 1]);
+      const sourceKind =
+        input.source.kind === "bodyArtifact"
+          ? input.source.sourceKind
+          : input.source.kind;
+      const brepBytes =
+        input.source.kind === "bodyArtifact"
+          ? input.source.brepBytes
+          : new Uint8Array([index + 1]);
       const topologyEntities =
         options.topologyEntitiesByBodyId?.get(input.bodyId) ?? [];
       const solidCount =
@@ -1080,14 +1145,14 @@ function createRuntime(
         sourceGraphNodeCount: input.sourceGraphNodeCount,
         units: input.units,
         shapePolicy: input.shapePolicy,
-        sourceKind: input.source.kind,
+        sourceKind,
         brepFormat: "occt-brep",
         brepWriter: "BRepTools.Write_3",
         brepBytes,
         brepByteLength: brepBytes.byteLength,
         brepSha256: sha256Hex(brepBytes),
         metadata: {
-          sourceKind: input.source.kind,
+          sourceKind,
           bounds: { min: [0, 0, 0], max: [1, 1, 1] },
           volume: 1,
           surfaceArea: 6,
@@ -1105,7 +1170,7 @@ function createRuntime(
           diagnostics: []
         },
         topologySnapshot: {
-          sourceKind: input.source.kind,
+          sourceKind,
           status: "ready",
           entityCounts: {
             bodyCount: 1,
@@ -1125,7 +1190,10 @@ function createRuntime(
           unsupportedEntityKinds: [],
           adjacencyAvailable: false,
           signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
-          signature: `topology:${input.bodyId}`,
+          signature:
+            input.source.kind === "bodyArtifact"
+              ? input.source.topologySignature
+              : `topology:${input.bodyId}`,
           source: "kernel-derived",
           diagnostics: []
         } as GeometryKernelExactBodyArtifact["topologySnapshot"],

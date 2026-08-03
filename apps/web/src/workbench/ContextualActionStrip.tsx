@@ -1,23 +1,28 @@
 import { useState } from "react";
-import type {
+import {
+  createViewportContextualCommandSurface,
+  type CreateViewportContextualCommandSurfaceInput,
   ViewportContextualCommandAction,
   ViewportContextualCommandSurfaceModel
 } from "../viewportContextualCommands";
 import { Button } from "../ui/Button";
 import "./contextualActionStrip.css";
 
-export function ContextualActionStrip({
-  disabled = false,
-  surface,
-  onInvoke,
-  onExplainUnavailable
-}: {
+type ContextualActionStripProps = {
   readonly disabled?: boolean;
-  readonly surface: ViewportContextualCommandSurfaceModel;
   readonly onInvoke: (action: ViewportContextualCommandAction) => void;
-  /** Surfaces the query-derived reason when a blocked strip action is activated. */
   readonly onExplainUnavailable?: (message: string) => void;
-}) {
+} & (
+  | { readonly surface: ViewportContextualCommandSurfaceModel }
+  | CreateViewportContextualCommandSurfaceInput
+);
+
+export function ContextualActionStrip(props: ContextualActionStripProps) {
+  const { disabled = false, onInvoke, onExplainUnavailable } = props;
+  const surface =
+    "surface" in props
+      ? props.surface
+      : createViewportContextualCommandSurface(props);
   const [transient, setTransient] = useState({
     selectionKey: surface.selectionKey,
     expanded: false

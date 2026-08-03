@@ -13,8 +13,64 @@ import {
   readProjectExactStepExport,
   readProjectExportReadiness
 } from "./projectExactExportQueries";
+import { planProjectAgentExactExport } from "./projectExactStepExport";
 
 describe("project exact export query evidence", () => {
+  it("plans all, ready-subset, explicit, and stale-authority agent exports", () => {
+    const engine = createCompositeAddEngine();
+    const source = readCompositeAddSource(engine);
+    const plan = (
+      selection: Parameters<
+        typeof planProjectAgentExactExport
+      >[0]["request"]["selection"],
+      ready = true,
+      expectedSourceIdentity?: Parameters<
+        typeof planProjectAgentExactExport
+      >[0]["request"]["expectedSourceIdentity"]
+    ) =>
+      planProjectAgentExactExport({
+        request: {
+          requestId: `agent-${selection.mode}`,
+          selection,
+          ...(expectedSourceIdentity ? { expectedSourceIdentity } : {})
+        },
+        engine,
+        exactMetadata: ready ? readySnapshot(source) : pendingSnapshot(source),
+        currentSources: [source],
+        projections: []
+      });
+
+    expect(plan({ mode: "all" })).toMatchObject({
+      status: "proposal",
+      proposal: { plan: { orderedBodyIds: ["body_add"] } }
+    });
+    expect(plan({ mode: "readySubset" })).toMatchObject({
+      status: "proposal",
+      proposal: { plan: { orderedBodyIds: ["body_add"] } }
+    });
+    expect(plan({ mode: "bodyIds", bodyIds: ["body_add"] })).toMatchObject({
+      status: "proposal",
+      proposal: { plan: { orderedBodyIds: ["body_add"] } }
+    });
+    expect(plan({ mode: "readySubset" }, false)).toMatchObject({
+      status: "failed",
+      result: { status: "failed", selectedBodyIds: [] }
+    });
+    expect(
+      plan({ mode: "all" }, true, {
+        algorithm: "partbench-source-v1",
+        sha256: "f".repeat(64)
+      })
+    ).toMatchObject({
+      status: "failed",
+      result: {
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({ code: "EXPORT_SOURCE_IDENTITY_MISMATCH" })
+        ])
+      }
+    });
+  });
+
   it("keeps composite add deferred while pending, enables current evidence, and rejects a stale cache entry", () => {
     const engine = createCompositeAddEngine();
     const source = readCompositeAddSource(engine);

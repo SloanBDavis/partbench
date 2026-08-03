@@ -1,5 +1,8 @@
 import {
+  parseCadAgentExactExportRequest,
   type CadAgentSessionErrorResponse,
+  type CadAgentExactExportRequest,
+  type CadAgentExactExportResult,
   type CadOpsAgentCurrentSelectionRequest,
   type CadOpsAgentCurrentSelectionResponse,
   CadOpsAgentAdapter,
@@ -58,6 +61,7 @@ export type CadMcpToolName =
   | "cad.topology_anchor_repair_plan"
   | "cad.project_export_readiness"
   | "cad.project_export_exact"
+  | "cad.project_request_exact_export"
   | "cad.project_package_readiness"
   | "cad.project_import_readiness"
   | "cad.v8_project_surface"
@@ -111,6 +115,7 @@ export type CadMcpStructuredContent =
   | CadOpsAgentResponse
   | CadOpsAgentV8ProjectSurfaceResponse
   | CadOpsAgentCurrentSelectionResponse
+  | (CadAgentExactExportResult & { readonly ok?: never })
   | CadAgentSessionErrorResponse
   | CadMcpToolErrorResponse;
 
@@ -182,6 +187,9 @@ export interface CadMcpExecutionPort {
   ): Promise<
     CadOpsAgentCurrentSelectionResponse | CadAgentSessionErrorResponse
   >;
+  requestExactExport(
+    request: CadAgentExactExportRequest
+  ): Promise<CadAgentExactExportResult | CadAgentSessionErrorResponse>;
 }
 
 const ADAPTER_VERSION: AgentAdapterVersion = "web-cad.agent-adapter.v1";
@@ -289,6 +297,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.project_export_exact") {
       return this.#callProjectExportExact(request);
+    }
+
+    if (request.name === "cad.project_request_exact_export") {
+      return this.#callProjectRequestExactExport(request);
     }
 
     if (request.name === "cad.project_package_readiness") {
@@ -439,7 +451,13 @@ export class CadMcpServer {
       }
 
       const response = await callExecutionPort(this.#executionPort, error);
-      return createToolResult(request.name, response, !response.ok);
+      return createToolResult(
+        request.name,
+        response,
+        "ok" in response
+          ? !response.ok
+          : response.status !== "downloadRequested"
+      );
     }
   }
 
@@ -1713,6 +1731,34 @@ export class CadMcpServer {
     return createToolResult(request.name, response, !response.ok);
   }
 
+  #callProjectRequestExactExport(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    try {
+      const exactRequest = parseCadAgentExactExportRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        ...(isRecord(request.arguments) ? request.arguments : {})
+      });
+      if (!this.#executionPort) {
+        return createToolResult(request.name, {
+          ok: false,
+          requestId: exactRequest.requestId,
+          error: {
+            code: "AGENT_SESSION_NOT_CONNECTED",
+            message: "No connected browser session can request the download."
+          }
+        });
+      }
+      throw new CadMcpExecutionPortCall({
+        operation: "requestExactExport",
+        request: exactRequest
+      });
+    } catch (error) {
+      if (error instanceof CadMcpExecutionPortCall) throw error;
+      return createInvalidArgumentsResult(request.name, getErrorMessage(error));
+    }
+  }
+
   #callTransactionHistory(
     request: CadMcpToolCallRequest
   ): CadMcpToolCallResult {
@@ -1800,6 +1846,10 @@ type CadMcpExecutionPortInvocation =
   | {
       readonly operation: "getCurrentSelection";
       readonly request: CadOpsAgentCurrentSelectionRequest;
+    }
+  | {
+      readonly operation: "requestExactExport";
+      readonly request: CadAgentExactExportRequest;
     };
 
 class CadMcpExecutionPortCall extends Error {
@@ -1848,6 +1898,8 @@ function callExecutionPort(
       return port.inspectV8ProjectSurface(invocation.request);
     case "getCurrentSelection":
       return port.getCurrentSelection(invocation.request);
+    case "requestExactExport":
+      return port.requestExactExport(invocation.request);
   }
 }
 
@@ -3213,6 +3265,58 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
               type: "string",
               enum: [WCAD_SOURCE_IDENTITY_ALGORITHM]
             },
+            sha256: { type: "string", pattern: SHA256_HEX_PATTERN }
+          }
+        }
+      }
+    }
+  },
+  {
+    name: "cad.project_request_exact_export",
+    description:
+      "Requests one browser-owned named AP242 STEP download through the connected session approval flow. Returns bounded metadata only, never file bytes, paths, URLs, handles, or filenames.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["selection"],
+      properties: {
+        selection: {
+          oneOf: [
+            {
+              type: "object",
+              additionalProperties: false,
+              required: ["mode"],
+              properties: { mode: { const: "all" } }
+            },
+            {
+              type: "object",
+              additionalProperties: false,
+              required: ["mode"],
+              properties: { mode: { const: "readySubset" } }
+            },
+            {
+              type: "object",
+              additionalProperties: false,
+              required: ["mode", "bodyIds"],
+              properties: {
+                mode: { const: "bodyIds" },
+                bodyIds: {
+                  type: "array",
+                  minItems: 1,
+                  maxItems: 256,
+                  uniqueItems: true,
+                  items: { type: "string", minLength: 1, maxLength: 1024 }
+                }
+              }
+            }
+          ]
+        },
+        expectedSourceIdentity: {
+          type: "object",
+          additionalProperties: false,
+          required: ["algorithm", "sha256"],
+          properties: {
+            algorithm: { const: WCAD_SOURCE_IDENTITY_ALGORITHM },
             sha256: { type: "string", pattern: SHA256_HEX_PATTERN }
           }
         }

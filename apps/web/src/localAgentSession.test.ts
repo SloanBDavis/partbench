@@ -1,9 +1,13 @@
 import {
   AsyncCadCommandExecutor,
   CadEngine,
+  createCadProjectSourceIdentity,
   SnapshotCadCommandWorker
 } from "@web-cad/cad-core";
 import type {
+  CadAgentExactExportProposal,
+  CadAgentExactExportRequest,
+  CadAgentExactExportResult,
   CadOpsAgentCurrentExactEvidence,
   CadOpsAgentRequest
 } from "@web-cad/agent-adapter";
@@ -131,14 +135,112 @@ describe("local agent selection", () => {
 });
 
 describe("local agent approval", () => {
+  it("shares the manual proposal slot across commits and browser exports", async () => {
+    const fixture = createExactExportSession();
+    const request = createExactExportRequest("manual-export");
+    const result = fixture.session.requestExactExport(request);
+    await waitForProposal(fixture.session);
+
+    expect(fixture.session.getSnapshot().proposal).toMatchObject({
+      requestId: request.requestId,
+      plan: { orderedBodyIds: ["body-agent-export"] }
+    });
+    await expect(
+      fixture.session.execute(createBoxRequest("busy-while-export-pending"))
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "AGENT_APPROVAL_BUSY" }
+    });
+    await fixture.session.approve();
+    await expect(result).resolves.toMatchObject({
+      status: "downloadRequested",
+      selectedBodyIds: ["body-agent-export"]
+    });
+    expect(fixture.executeExactExport).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects manual exports and executes approveAll without a proposal", async () => {
+    const manual = createExactExportSession();
+    const rejected = manual.session.requestExactExport(
+      createExactExportRequest("rejected-export")
+    );
+    await waitForProposal(manual.session);
+    manual.session.reject();
+    await expect(rejected).resolves.toMatchObject({ status: "rejected" });
+    expect(manual.executeExactExport).not.toHaveBeenCalled();
+
+    const automatic = createExactExportSession();
+    automatic.session.setApprovalMode("approveAll");
+    await expect(
+      automatic.session.requestExactExport(
+        createExactExportRequest("approve-all-export")
+      )
+    ).resolves.toMatchObject({ status: "downloadRequested" });
+    expect(automatic.session.getSnapshot().proposal).toBeUndefined();
+    expect(automatic.executeExactExport).toHaveBeenCalledTimes(1);
+  });
+
+  it("invalidates a stale manual export before browser execution", async () => {
+    const fixture = createExactExportSession();
+    const result = fixture.session.requestExactExport(
+      createExactExportRequest("stale-export")
+    );
+    await waitForProposal(fixture.session);
+    fixture.engine.apply({
+      op: "scene.createBox",
+      id: "human-source-change",
+      dimensions: { width: 1, height: 1, depth: 1 }
+    });
+    fixture.session.refreshSourceIdentity();
+
+    await expect(result).resolves.toMatchObject({
+      ok: false,
+      error: { code: "AGENT_PROPOSAL_STALE" }
+    });
+    expect(fixture.executeExactExport).not.toHaveBeenCalled();
+  });
+
+  it("settles manual and approve-all exports when the browser executor throws", async () => {
+    const manual = createExactExportSession();
+    manual.executeExactExport.mockRejectedValueOnce(new Error("writer fault"));
+    const pending = manual.session.requestExactExport(
+      createExactExportRequest("manual-writer-fault")
+    );
+    await waitForProposal(manual.session);
+    await manual.session.approve();
+    await expect(pending).resolves.toMatchObject({
+      status: "failed",
+      diagnostics: [{ code: "EXPORT_STEP_TRANSFER_FAILED" }]
+    });
+    expect(manual.session.getSnapshot()).toMatchObject({ approving: false });
+    expect(manual.session.getSnapshot().proposal).toBeUndefined();
+
+    const automatic = createExactExportSession();
+    automatic.executeExactExport.mockRejectedValueOnce(
+      new Error("writer fault")
+    );
+    automatic.session.setApprovalMode("approveAll");
+    await expect(
+      automatic.session.requestExactExport(
+        createExactExportRequest("automatic-writer-fault")
+      )
+    ).resolves.toMatchObject({
+      status: "failed",
+      diagnostics: [{ code: "EXPORT_STEP_TRANSFER_FAILED" }]
+    });
+  });
+
   it("previews and rejects a manual commit without mutation", async () => {
     const fixture = createSession();
     const result = fixture.session.execute(createBoxRequest("reject-box"));
     await waitForProposal(fixture.session);
 
     expect(fixture.engine.getDocument().objects.size).toBe(0);
+    const proposal = fixture.session.getSnapshot().proposal;
     expect(
-      fixture.session.getSnapshot().proposal?.review.operations[0]?.label
+      proposal && "review" in proposal
+        ? proposal.review.operations[0]?.label
+        : undefined
     ).toBe("Create box reject-box");
     fixture.session.reject();
 
@@ -672,6 +774,84 @@ function createSession(
     publishCommit
   });
   return { engine, executor, publishCommit, session };
+}
+
+function createExactExportSession() {
+  const engine = new CadEngine();
+  const executor = new AsyncCadCommandExecutor(
+    engine,
+    new SnapshotCadCommandWorker()
+  );
+  const sourceIdentity = createCadProjectSourceIdentity(engine.exportProject());
+  const planExactExport = vi.fn(
+    (
+      request: CadAgentExactExportRequest
+    ): {
+      readonly status: "proposal";
+      readonly proposal: CadAgentExactExportProposal;
+    } => ({
+      status: "proposal",
+      proposal: {
+        requestId: request.requestId,
+        sourceIdentity,
+        warnings: [],
+        plan: {
+          format: "step",
+          schema: "AP242DIS",
+          units: "mm",
+          sourceIdentity,
+          orderedBodyIds: ["body-agent-export"],
+          allOrNothing: true,
+          planIdentity: "b".repeat(64),
+          bodies: [
+            {
+              bodyId: "body-agent-export",
+              bodyName: "Agent export body",
+              partId: "part:default",
+              featureId: "feature-agent-export",
+              sourceType: "primitiveFeature",
+              sourceIdentitySignature: "source-agent-export",
+              status: "ready",
+              diagnostics: []
+            }
+          ]
+        }
+      }
+    })
+  );
+  const executeExactExport = vi.fn(
+    async (
+      proposal: CadAgentExactExportProposal
+    ): Promise<CadAgentExactExportResult> => ({
+      requestId: proposal.requestId,
+      status: "downloadRequested",
+      selectedBodyIds: proposal.plan.orderedBodyIds,
+      selectedBodyCount: proposal.plan.orderedBodyIds.length,
+      schema: "AP242DIS",
+      units: proposal.plan.units,
+      planIdentity: proposal.plan.planIdentity,
+      artifactByteLength: 123,
+      artifactSha256: "c".repeat(64),
+      diagnostics: []
+    })
+  );
+  const session = new LocalAgentSession({
+    token: "a".repeat(43),
+    engine,
+    executor,
+    readSelection: () => ({}),
+    preflightCommit: async () => true,
+    publishCommit: async () => undefined,
+    planExactExport,
+    executeExactExport
+  });
+  return { engine, session, planExactExport, executeExactExport };
+}
+
+function createExactExportRequest(
+  requestId: string
+): CadAgentExactExportRequest {
+  return { requestId, selection: { mode: "all" } };
 }
 
 function createBoxRequest(id: string): CadOpsAgentRequest {

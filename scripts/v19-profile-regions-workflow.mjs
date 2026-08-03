@@ -67,6 +67,9 @@ async function executeCurrentExactStep(
       },
       executeExactStepExport(request) {
         return worker.execute(request);
+      },
+      getModelWorkSnapshot() {
+        return { generation: 0, stopped: false };
       }
     }
   });

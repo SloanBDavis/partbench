@@ -1,4 +1,5 @@
 import type { CadProject } from "@web-cad/cad-core";
+import type { CadAgentExactExportProposal } from "@web-cad/agent-adapter";
 import type {
   CadParameterSnapshot,
   ProjectExportReadinessQueryResponse,
@@ -12,6 +13,11 @@ import type {
   ProjectJsonWorkflowState
 } from "../../projectJson";
 import { createInitialProjectOpfsCacheStatus } from "../../projectOpfsCache";
+import type {
+  LocalAgentSession,
+  LocalAgentSessionSnapshot
+} from "../../localAgentSession";
+import { attachLocalAgentSession } from "../../localAgentSessionStore";
 import { createProjectStorageCapabilityStatus } from "../../projectStorageCapabilities";
 import type { ProjectPageId } from "../../workbench/types";
 import {
@@ -115,6 +121,7 @@ describe("ProjectWorkspace", () => {
     expect(markup).toContain("Advanced Interchange");
     expect(markup).toContain("Import JSON");
     expect(markup).toContain("Project JSON draft");
+    expect(markup).toContain("Clear derived exact data");
     expect(markup).toContain("<textarea");
   });
 
@@ -171,8 +178,39 @@ describe("ProjectWorkspace", () => {
     expect(markup).toContain("Disconnected");
     expect(markup).toContain("Manual approval");
     expect(markup).toContain("Approve all");
-    expect(markup).toContain("No commit awaiting approval");
+    expect(markup).toContain("No proposal awaiting approval");
     expect(markup).not.toContain("chat");
+  });
+
+  it("renders an accessible byte-free exact export approval", () => {
+    const proposal = createAgentExactExportProposal();
+    const snapshot: LocalAgentSessionSnapshot = {
+      connected: true,
+      approvalMode: "manualApproval",
+      approving: false,
+      proposal
+    };
+    const detach = attachLocalAgentSession({
+      subscribe(listener: (value: LocalAgentSessionSnapshot) => void) {
+        listener(snapshot);
+        return () => undefined;
+      }
+    } as unknown as LocalAgentSession);
+
+    try {
+      const markup = renderPage("agent");
+      expect(markup).toContain("Exact export proposal");
+      expect(markup).toContain("Body A");
+      expect(markup).toContain("Body B");
+      expect(markup.indexOf("Body A")).toBeLessThan(markup.indexOf("Body B"));
+      expect(markup).toContain("STEP AP242DIS");
+      expect(markup).toContain("Approve &amp; download");
+      expect(markup).toContain('tabindex="-1"');
+      expect(markup).toContain('aria-labelledby="pb-agent-proposal-heading"');
+      expect(markup).not.toMatch(/stepBytes|fileHandle|opfsPath|objectUrl/);
+    } finally {
+      detach();
+    }
   });
 
   it("renders parameter values, expressions, descriptions, and accessible row actions", () => {
@@ -375,6 +413,7 @@ function renderPage(
     onImportJson: () => undefined,
     onRefreshOpfsCache: () => undefined,
     onClearOpfsCache: () => undefined,
+    onClearExactArtifactCache: () => undefined,
     exactStepExportJob: {
       status: "idle",
       completedBodyCount: 0,
@@ -523,5 +562,37 @@ function createEvaluation(): ProjectParameterEvaluationQueryResponse {
     sourceBoundaryNote: "Source parameters remain authoritative.",
     derivedBoundaryNote: "Evaluation is derived.",
     mutatesSource: false
+  };
+}
+
+function createAgentExactExportProposal(): CadAgentExactExportProposal {
+  const sourceIdentity = {
+    algorithm: "partbench-source-v1" as const,
+    sha256: "a".repeat(64)
+  };
+  const bodies = ["A", "B"].map((suffix) => ({
+    bodyId: `body-${suffix.toLowerCase()}`,
+    bodyName: `Body ${suffix}`,
+    partId: "part:default",
+    featureId: `feature-${suffix.toLowerCase()}`,
+    sourceType: "primitiveFeature" as const,
+    sourceIdentitySignature: `source-${suffix.toLowerCase()}`,
+    status: "ready" as const,
+    diagnostics: []
+  }));
+  return {
+    requestId: "agent-export-ui",
+    sourceIdentity,
+    plan: {
+      format: "step",
+      schema: "AP242DIS",
+      units: "mm",
+      sourceIdentity,
+      orderedBodyIds: bodies.map((body) => body.bodyId),
+      allOrNothing: true,
+      planIdentity: "b".repeat(64),
+      bodies
+    },
+    warnings: ["Local browser download only."]
   };
 }

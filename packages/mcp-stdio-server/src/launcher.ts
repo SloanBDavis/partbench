@@ -9,10 +9,13 @@ import {
 import { extname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  parseCadAgentExactExportResult,
   parseCadAgentSessionErrorResponse,
   parseCadOpsAgentCurrentSelectionResponse
 } from "@web-cad/agent-adapter";
 import type {
+  CadAgentExactExportRequest,
+  CadAgentExactExportResult,
   CadAgentSessionErrorResponse,
   CadOpsAgentCurrentSelectionRequest,
   CadOpsAgentCurrentSelectionResponse,
@@ -31,13 +34,15 @@ type RelayMethod =
   | "execute"
   | "query"
   | "inspectV8ProjectSurface"
-  | "getCurrentSelection";
+  | "getCurrentSelection"
+  | "requestExactExport";
 
 type RelayRequest =
   | RelayEnvelope<"execute", CadOpsAgentRequest>
   | RelayEnvelope<"query", CadOpsAgentQueryRequest>
   | RelayEnvelope<"inspectV8ProjectSurface", CadOpsAgentV8ProjectSurfaceRequest>
-  | RelayEnvelope<"getCurrentSelection", CadOpsAgentCurrentSelectionRequest>;
+  | RelayEnvelope<"getCurrentSelection", CadOpsAgentCurrentSelectionRequest>
+  | RelayEnvelope<"requestExactExport", CadAgentExactExportRequest>;
 
 interface RelayEnvelope<Method extends RelayMethod, Request> {
   readonly requestId: string;
@@ -50,6 +55,7 @@ type RelayResponse =
   | CadOpsAgentQueryResponse
   | CadOpsAgentV8ProjectSurfaceResponse
   | CadOpsAgentCurrentSelectionResponse
+  | CadAgentExactExportResult
   | CadAgentSessionErrorResponse;
 
 interface PendingRelayCall {
@@ -92,6 +98,12 @@ export class LocalAgentRelay {
     CadOpsAgentCurrentSelectionResponse | CadAgentSessionErrorResponse
   > {
     return this.#enqueue("getCurrentSelection", request);
+  }
+
+  requestExactExport(
+    request: CadAgentExactExportRequest
+  ): Promise<CadAgentExactExportResult | CadAgentSessionErrorResponse> {
+    return this.#enqueue("requestExactExport", request);
   }
 
   connectBrowser(clientId: string): CadAgentSessionErrorResponse | undefined {
@@ -165,7 +177,8 @@ export class LocalAgentRelay {
       | CadOpsAgentRequest
       | CadOpsAgentQueryRequest
       | CadOpsAgentV8ProjectSurfaceRequest
-      | CadOpsAgentCurrentSelectionRequest,
+      | CadOpsAgentCurrentSelectionRequest
+      | CadAgentExactExportRequest,
     Response extends RelayResponse
   >(method: RelayMethod, request: Request): Promise<Response> {
     if (this.#closed) {
@@ -630,11 +643,19 @@ function isValidRelayResponse(
 ): value is RelayResponse {
   if (
     !isRecord(value) ||
-    value.requestId !== pending.request.request.requestId ||
-    typeof value.ok !== "boolean"
+    value.requestId !== pending.request.request.requestId
   ) {
     return false;
   }
+
+  if (pending.request.method === "requestExactExport") {
+    if (hasPrivateExportField(value)) return false;
+    return value.ok === false
+      ? parses(() => parseCadAgentSessionErrorResponse(value))
+      : parses(() => parseCadAgentExactExportResult(value));
+  }
+
+  if (typeof value.ok !== "boolean") return false;
 
   if (
     ((pending.request.method === "query" &&

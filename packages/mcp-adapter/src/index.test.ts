@@ -3,7 +3,11 @@ import type {
   CadTopologyMatchResult
 } from "@web-cad/cad-protocol";
 import { describe, expect, it } from "vitest";
-import { CadMcpServer, createCadMcpServer } from "./index";
+import {
+  CadMcpServer,
+  createCadMcpServer,
+  type CadMcpExecutionPort
+} from "./index";
 
 function createTopologyAnchorMatchResult(): CadTopologyMatchResult {
   return {
@@ -96,6 +100,7 @@ describe("mcp-adapter", () => {
       "cad.topology_anchor_repair_plan",
       "cad.project_export_readiness",
       "cad.project_export_exact",
+      "cad.project_request_exact_export",
       "cad.project_package_readiness",
       "cad.project_import_readiness",
       "cad.v8_project_surface",
@@ -166,6 +171,66 @@ describe("mcp-adapter", () => {
         tools.find((tool) => tool.name === "cad.batch")?.inputSchema
       )
     ).toContain('"projectHandoff"');
+  });
+
+  it("routes one byte-free exact export request through the connected port", async () => {
+    const unexpected = async (): Promise<never> => {
+      throw new Error("Unexpected execution-port operation.");
+    };
+    const executionPort: CadMcpExecutionPort = {
+      execute: unexpected,
+      query: unexpected,
+      inspectV8ProjectSurface: unexpected,
+      getCurrentSelection: unexpected,
+      requestExactExport: async (request) => ({
+        requestId: request.requestId,
+        status: "downloadRequested",
+        selectedBodyIds:
+          request.selection.mode === "bodyIds"
+            ? request.selection.bodyIds
+            : ["body_ready"],
+        selectedBodyCount: 1,
+        schema: "AP242DIS",
+        units: "mm",
+        planIdentity: "b".repeat(64),
+        artifactByteLength: 123,
+        artifactSha256: "c".repeat(64),
+        diagnostics: []
+      })
+    };
+    const server = createCadMcpServer({ executionPort });
+
+    await expect(
+      server.callToolAsync({
+        name: "cad.project_request_exact_export",
+        requestId: "mcp_exact_download",
+        arguments: {
+          selection: { mode: "bodyIds", bodyIds: ["body_ready"] },
+          expectedSourceIdentity: {
+            algorithm: "partbench-source-v1",
+            sha256: "a".repeat(64)
+          }
+        }
+      })
+    ).resolves.toMatchObject({
+      toolName: "cad.project_request_exact_export",
+      isError: false,
+      structuredContent: {
+        requestId: "mcp_exact_download",
+        status: "downloadRequested",
+        selectedBodyIds: ["body_ready"]
+      }
+    });
+
+    expect(
+      server.callTool({
+        name: "cad.project_request_exact_export",
+        arguments: { selection: { mode: "all" }, path: "/tmp/model.step" }
+      })
+    ).toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: "INVALID_ARGUMENTS" } }
+    });
   });
 
   it("runs cad.batch dry-run without mutating the document", () => {
@@ -481,7 +546,7 @@ describe("mcp-adapter", () => {
         semanticBodySelectionCount: 1,
         generatedReferenceCount: 0,
         semanticBodySelectionStatusCounts: {
-          unsupported: 1
+          unsupported: 0
         }
       },
       exportReadiness: {
@@ -3149,7 +3214,7 @@ describe("mcp-adapter", () => {
     });
   });
 
-  it("passes feature.hole through cad.batch", () => {
+  it("reports browser exact preflight for standalone feature.hole commits", () => {
     const server = new CadMcpServer();
     const batchResult = server.callTool({
       name: "cad.batch",
@@ -3215,34 +3280,17 @@ describe("mcp-adapter", () => {
 
     expect(batchResult).toMatchObject({
       toolName: "cad.batch",
-      isError: false,
+      isError: true,
       structuredContent: {
-        ok: true,
-        createdFeatureIds: ["feat_target", "feat_hole"],
-        createdBodyIds: ["body_target", "body_hole"]
+        ok: false,
+        error: { code: "UNSUPPORTED_FEATURE_OPERATION" }
       }
     });
     expect(structureResult).toMatchObject({
       structuredContent: {
         ok: true,
-        features: expect.arrayContaining([
-          expect.objectContaining({
-            id: "feat_hole",
-            kind: "hole",
-            targetBodyId: "body_target"
-          })
-        ]),
-        bodies: expect.arrayContaining([
-          expect.objectContaining({
-            id: "body_target",
-            consumedByFeatureId: "feat_hole"
-          }),
-          expect.objectContaining({
-            id: "body_hole",
-            featureId: "feat_hole",
-            source: expect.objectContaining({ type: "sketchHoleFeature" })
-          })
-        ])
+        features: [],
+        bodies: []
       }
     });
   });
@@ -3885,7 +3933,7 @@ describe("mcp-adapter", () => {
     });
   });
 
-  it("passes feature.updateHole through cad.batch dry-run and commit", () => {
+  it("keeps standalone hole create/update failures atomic", () => {
     const server = new CadMcpServer();
 
     seedMcpExtrudeFeature(server, {
@@ -3976,35 +4024,24 @@ describe("mcp-adapter", () => {
 
     expect(dryRun).toMatchObject({
       toolName: "cad.batch",
-      isError: false,
+      isError: true,
       structuredContent: {
-        ok: true,
-        mode: "dryRun",
-        modifiedFeatureIds: ["feat_hole"],
-        modifiedBodyIds: ["body_hole"]
+        ok: false,
+        mode: "dryRun"
       }
     });
     expect(commit).toMatchObject({
       toolName: "cad.batch",
-      isError: false,
+      isError: true,
       structuredContent: {
-        ok: true,
-        mode: "commit",
-        modifiedFeatureIds: ["feat_hole"],
-        modifiedBodyIds: ["body_hole"]
+        ok: false,
+        mode: "commit"
       }
     });
     expect(structure).toMatchObject({
       structuredContent: {
         ok: true,
-        features: expect.arrayContaining([
-          expect.objectContaining({
-            id: "feat_hole",
-            kind: "hole",
-            depthMode: "throughAll",
-            direction: "positive"
-          })
-        ])
+        features: [expect.objectContaining({ id: "feat_hole_target" })]
       }
     });
   });
@@ -4922,7 +4959,7 @@ describe("mcp-adapter", () => {
     });
   });
 
-  it("passes topology body anchors through cad.batch extrude add and hole targets", () => {
+  it("keeps standalone exact downstream anchor batches atomic", () => {
     const server = new CadMcpServer();
     const commit = server.callTool({
       name: "cad.batch",
@@ -5038,52 +5075,17 @@ describe("mcp-adapter", () => {
     });
 
     expect(commit.structuredContent).toMatchObject({
-      ok: true,
-      createdFeatureIds: [
-        "feat_anchor_body_add_source",
-        "feat_anchor_body_add",
-        "feat_anchor_body_hole"
-      ],
-      createdBodyIds: [
-        "body_anchor_body_add_source",
-        "body_anchor_body_add",
-        "body_anchor_body_hole"
-      ]
+      ok: false,
+      error: { code: "UNSUPPORTED_FEATURE_OPERATION" }
     });
     expect(features.structuredContent).toMatchObject({
       ok: true,
-      features: expect.arrayContaining([
-        expect.objectContaining({
-          id: "feat_anchor_body_add",
-          kind: "extrude",
-          targetBodyId: "body_anchor_body_add_source",
-          targetTopologyAnchorId: "anchor_body_add_target",
-          operationMode: "add"
-        }),
-        expect.objectContaining({
-          id: "feat_anchor_body_hole",
-          kind: "hole",
-          targetBodyId: "body_anchor_body_add",
-          targetTopologyAnchorId: "anchor_body_add_target"
-        })
-      ])
+      features: []
     });
     expect(health.structuredContent).toMatchObject({
       ok: true,
-      authoredExtrudes: expect.arrayContaining([
-        expect.objectContaining({
-          featureId: "feat_anchor_body_add",
-          status: "healthy",
-          targetTopologyAnchorId: "anchor_body_add_target"
-        })
-      ]),
-      authoredHoles: expect.arrayContaining([
-        expect.objectContaining({
-          featureId: "feat_anchor_body_hole",
-          status: "healthy",
-          targetTopologyAnchorId: "anchor_body_add_target"
-        })
-      ])
+      authoredExtrudes: [],
+      authoredHoles: []
     });
   });
 
@@ -6461,6 +6463,7 @@ describe("mcp-adapter", () => {
           { name: "cad.topology_anchor_repair_plan" },
           { name: "cad.project_export_readiness" },
           { name: "cad.project_export_exact" },
+          { name: "cad.project_request_exact_export" },
           { name: "cad.project_package_readiness" },
           { name: "cad.project_import_readiness" },
           { name: "cad.v8_project_surface" },

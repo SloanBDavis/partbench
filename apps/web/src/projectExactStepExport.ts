@@ -1,8 +1,14 @@
 import {
   createCadProjectSourceIdentity,
+  exportCadProject,
   sha256Hex,
   type CadEngine
 } from "@web-cad/cad-core";
+import type {
+  CadAgentExactExportProposal,
+  CadAgentExactExportRequest,
+  CadAgentExactExportResult
+} from "@web-cad/agent-adapter";
 import {
   CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS,
   validateCadExactExportPlan,
@@ -33,6 +39,15 @@ import type {
 } from "./derivedExactMetadata";
 import type { DerivedGeometryRuntime } from "./derivedGeometryRuntime";
 import type { CurrentExactResultProjection } from "./currentExactResultProjection";
+import type {
+  CurrentExactProjectionArtifact,
+  CurrentExactProjectionFailure
+} from "./currentExactPipeline";
+import type {
+  ExactArtifactCacheCandidate,
+  ExactArtifactCacheIdentity,
+  ExactArtifactOpfsCache
+} from "./exactArtifactOpfsCache";
 import { readProjectExactStepExport } from "./projectExactExportQueries";
 
 export interface ProjectExactStepExportExecutionInput {
@@ -46,6 +61,7 @@ export interface ProjectExactStepExportExecutionInput {
   readonly onProgress?: (progress: ProjectExactStepExportProgress) => void;
   readonly generation?: number;
   readonly existingArtifacts?: readonly CurrentExactBodyArtifactEvidence[];
+  readonly artifactCache?: Pick<ExactArtifactOpfsCache, "read" | "write">;
 }
 
 type CurrentExactArtifactNode =
@@ -87,6 +103,15 @@ export interface ProjectExactStepExportResult {
 export interface ProjectExactStepExportRunOutcome {
   readonly job: ProjectExactStepExportJobState;
   readonly tone: "info" | "error";
+  readonly artifact?: {
+    readonly selectedBodyIds: readonly string[];
+    readonly selectedBodyCount: number;
+    readonly schema: "AP242DIS";
+    readonly units: CadExactExportPlan["units"];
+    readonly planIdentity: string;
+    readonly byteLength: number;
+    readonly sha256: string;
+  };
 }
 
 export async function runProjectExactStepExport(input: {
@@ -96,6 +121,7 @@ export async function runProjectExactStepExport(input: {
   readonly projections: readonly CurrentExactResultProjection[];
   readonly resolutions: readonly CurrentExactBodyResolution[];
   readonly existingArtifacts?: readonly CurrentExactBodyArtifactEvidence[];
+  readonly artifactCache?: Pick<ExactArtifactOpfsCache, "read" | "write">;
   readonly runtime: Pick<
     DerivedGeometryRuntime,
     | "exactBodyArtifact"
@@ -104,6 +130,8 @@ export async function runProjectExactStepExport(input: {
     | "resumeModelWork"
   >;
   readonly requestedBodyIds?: readonly string[];
+  readonly expectedSourceIdentity?: CadExactExportPlan["sourceIdentity"];
+  readonly expectedPlanIdentity?: string;
   readonly downloadAvailable: boolean;
   readonly onJobChange: (job: ProjectExactStepExportJobState) => void;
 }): Promise<ProjectExactStepExportRunOutcome> {
@@ -112,12 +140,17 @@ export async function runProjectExactStepExport(input: {
     : undefined;
   const finish = (
     job: ProjectExactStepExportJobState,
-    tone: ProjectExactStepExportRunOutcome["tone"]
+    tone: ProjectExactStepExportRunOutcome["tone"],
+    artifact?: ProjectExactStepExportRunOutcome["artifact"]
   ) => {
     input.onJobChange(job);
-    return { job, tone };
+    return { job, tone, ...(artifact ? { artifact } : {}) };
   };
-  const failed = (message: string, totalBodyCount = 0) =>
+  const failed = (
+    message: string,
+    totalBodyCount = 0,
+    code?: CadExportDiagnosticCode
+  ) =>
     finish(
       {
         status: "failed",
@@ -125,18 +158,23 @@ export async function runProjectExactStepExport(input: {
         completedBodyCount: 0,
         totalBodyCount,
         message,
-        diagnostics: []
+        diagnostics: code ? [{ code, message }] : []
       },
       "error"
     );
 
   if (requestedBodyIds?.length === 0) {
-    return failed("Choose at least one body for exact STEP export.");
+    return failed(
+      "Choose at least one body for exact STEP export.",
+      0,
+      "EXPORT_BODY_SELECTION_INVALID"
+    );
   }
   if (!input.downloadAvailable) {
     return failed(
       "STEP download is unavailable in this browser runtime.",
-      requestedBodyIds?.length
+      requestedBodyIds?.length,
+      "EXPORT_STEP_TRANSFER_FAILED"
     );
   }
   const exactExport = readProjectExactStepExport(
@@ -144,7 +182,8 @@ export async function runProjectExactStepExport(input: {
     input.exactMetadata,
     input.currentSources,
     input.projections,
-    requestedBodyIds
+    requestedBodyIds,
+    input.expectedSourceIdentity
   );
   if (!exactExport?.available) {
     const diagnostic = exactExport?.diagnostics.find(
@@ -163,6 +202,16 @@ export async function runProjectExactStepExport(input: {
         diagnostics: exactExport?.diagnostics ?? []
       },
       "error"
+    );
+  }
+  if (
+    input.expectedPlanIdentity &&
+    exactExport.plan?.planIdentity !== input.expectedPlanIdentity
+  ) {
+    return failed(
+      "The approved exact export plan changed before execution.",
+      requestedBodyIds?.length,
+      "EXPORT_SOURCE_CHANGED"
     );
   }
 
@@ -184,6 +233,7 @@ export async function runProjectExactStepExport(input: {
       exactExport,
       resolutions: input.resolutions,
       existingArtifacts: input.existingArtifacts,
+      artifactCache: input.artifactCache,
       runtime: input.runtime,
       generation,
       onProgress: (progress) => {
@@ -221,7 +271,16 @@ export async function runProjectExactStepExport(input: {
         message,
         diagnostics: []
       },
-      "info"
+      "info",
+      {
+        selectedBodyIds: result.plan.orderedBodyIds,
+        selectedBodyCount: result.bodyCount,
+        schema: result.schema,
+        units: result.units,
+        planIdentity: result.plan.planIdentity,
+        byteLength: result.byteLength,
+        sha256: sha256Hex(result.bytes)
+      }
     );
   } catch (error) {
     const cancelled = isGeometryCancellation(error);
@@ -250,6 +309,164 @@ export async function runProjectExactStepExport(input: {
       cancelled ? "info" : "error"
     );
   }
+}
+
+export type ProjectAgentExactExportPlanOutcome =
+  | {
+      readonly status: "proposal";
+      readonly proposal: CadAgentExactExportProposal;
+    }
+  | {
+      readonly status: "failed";
+      readonly result: CadAgentExactExportResult;
+    };
+
+export function planProjectAgentExactExport(input: {
+  readonly request: CadAgentExactExportRequest;
+  readonly engine: CadEngine;
+  readonly exactMetadata: DerivedExactMetadataSnapshot;
+  readonly currentSources: readonly DerivedExactMetadataSource[];
+  readonly projections: readonly CurrentExactResultProjection[];
+}): ProjectAgentExactExportPlanOutcome {
+  const read = (bodyIds?: readonly string[]) =>
+    readProjectExactStepExport(
+      input.engine,
+      input.exactMetadata,
+      input.currentSources,
+      input.projections,
+      bodyIds,
+      input.request.expectedSourceIdentity
+    );
+  const strict =
+    input.request.selection.mode === "readySubset" ? read() : undefined;
+  const bodyIds =
+    input.request.selection.mode === "bodyIds"
+      ? input.request.selection.bodyIds
+      : input.request.selection.mode === "readySubset"
+        ? strict?.readySubset?.orderedBodyIds
+        : undefined;
+  const exact =
+    input.request.selection.mode === "readySubset" && !bodyIds?.length
+      ? strict
+      : read(bodyIds);
+  if (exact?.available && exact.plan) {
+    const warnings =
+      input.request.selection.mode === "readySubset"
+        ? (strict?.readySubset?.excludedBodies ?? []).map((body) =>
+            `${body.bodyName} (${body.bodyId}) excluded: ${
+              body.diagnostics[0]?.message ?? "exact result not ready"
+            }`.slice(0, 4_096)
+          )
+        : [];
+    return {
+      status: "proposal",
+      proposal: {
+        requestId: input.request.requestId,
+        sourceIdentity: exact.plan.sourceIdentity,
+        plan: exact.plan,
+        warnings
+      }
+    };
+  }
+
+  const selectedBodyIds =
+    input.request.selection.mode === "readySubset"
+      ? (bodyIds ?? [])
+      : (bodyIds ?? exact?.plan?.orderedBodyIds ?? []);
+  const diagnostics = (exact?.diagnostics ?? []).map(
+    ({ code, message, bodyId, expected, received }) => ({
+      code,
+      message,
+      ...(bodyId ? { bodyId } : {}),
+      ...(expected ? { expected } : {}),
+      ...(received ? { received } : {})
+    })
+  );
+  if (diagnostics.length === 0) {
+    diagnostics.push({
+      code: "EXPORT_BODY_SELECTION_INVALID",
+      message:
+        input.request.selection.mode === "readySubset"
+          ? "No active exact-ready body is available for the requested subset."
+          : "The requested exact export plan is not ready."
+    });
+  }
+  return {
+    status: "failed",
+    result: {
+      requestId: input.request.requestId,
+      status: "failed",
+      selectedBodyIds,
+      selectedBodyCount: selectedBodyIds.length,
+      schema: "AP242DIS",
+      units: exact?.units ?? strict?.units ?? input.engine.getDocument().units,
+      ...(exact?.plan?.planIdentity
+        ? { planIdentity: exact.plan.planIdentity }
+        : {}),
+      diagnostics
+    }
+  };
+}
+
+export async function runProjectAgentExactExport(input: {
+  readonly proposal: CadAgentExactExportProposal;
+  readonly engine: CadEngine;
+  readonly exactMetadata: DerivedExactMetadataSnapshot;
+  readonly currentSources: readonly DerivedExactMetadataSource[];
+  readonly projections: readonly CurrentExactResultProjection[];
+  readonly resolutions: readonly CurrentExactBodyResolution[];
+  readonly existingArtifacts?: readonly CurrentExactBodyArtifactEvidence[];
+  readonly artifactCache?: Pick<ExactArtifactOpfsCache, "read" | "write">;
+  readonly runtime: Pick<
+    DerivedGeometryRuntime,
+    | "exactBodyArtifact"
+    | "executeExactStepExport"
+    | "getModelWorkSnapshot"
+    | "resumeModelWork"
+  >;
+  readonly downloadAvailable: boolean;
+  readonly onJobChange: (job: ProjectExactStepExportJobState) => void;
+}): Promise<CadAgentExactExportResult> {
+  const outcome = await runProjectExactStepExport({
+    engine: input.engine,
+    exactMetadata: input.exactMetadata,
+    currentSources: input.currentSources,
+    projections: input.projections,
+    resolutions: input.resolutions,
+    existingArtifacts: input.existingArtifacts,
+    artifactCache: input.artifactCache,
+    runtime: input.runtime,
+    requestedBodyIds: input.proposal.plan.orderedBodyIds,
+    expectedSourceIdentity: input.proposal.sourceIdentity,
+    expectedPlanIdentity: input.proposal.plan.planIdentity,
+    downloadAvailable: input.downloadAvailable,
+    onJobChange: input.onJobChange
+  });
+  const artifact = outcome.artifact;
+  return {
+    requestId: input.proposal.requestId,
+    status: artifact
+      ? "downloadRequested"
+      : outcome.job.status === "cancelled"
+        ? "cancelled"
+        : outcome.job.diagnostics.some(
+              (diagnostic) => diagnostic.code === "EXPORT_SOURCE_CHANGED"
+            )
+          ? "stale"
+          : "failed",
+    selectedBodyIds: input.proposal.plan.orderedBodyIds,
+    selectedBodyCount: input.proposal.plan.orderedBodyIds.length,
+    schema: "AP242DIS",
+    units: input.proposal.plan.units,
+    planIdentity: input.proposal.plan.planIdentity,
+    ...(artifact
+      ? {
+          artifactByteLength: artifact.byteLength,
+          artifactSha256: artifact.sha256
+        }
+      : {}),
+    diagnostics: outcome.job.diagnostics
+  };
 }
 
 export function downloadProjectExactStepArtifact(
@@ -299,6 +516,7 @@ export interface CurrentExactBodyArtifactBuildInput {
   readonly assertCurrent: () => void;
   readonly generation?: number;
   readonly existingArtifacts?: readonly CurrentExactBodyArtifactEvidence[];
+  readonly artifactCache?: Pick<ExactArtifactOpfsCache, "read" | "write">;
   readonly executionIntent?: "user" | "exact";
   readonly userKind?: "preflight" | "export";
   readonly requestIdPrefix?: string;
@@ -307,6 +525,109 @@ export interface CurrentExactBodyArtifactBuildInput {
     readonly completedBodyCount: number;
     readonly totalBodyCount: number;
   }) => void;
+}
+
+export async function buildCurrentExactProjectionArtifacts(input: {
+  readonly engine: CadEngine;
+  readonly resolutions: readonly Extract<
+    CurrentExactBodyResolution,
+    { readonly status: "ready" }
+  >[];
+  readonly runtime: Pick<
+    DerivedGeometryRuntime,
+    "exactBodyArtifact" | "getModelWorkSnapshot"
+  >;
+  readonly documentSourceIdentity: CadExactExportPlan["sourceIdentity"];
+  readonly units: CadExactExportPlan["units"];
+  readonly generation: number;
+  readonly sourceAuthorityEpoch: number;
+  readonly existingArtifacts: readonly CurrentExactProjectionArtifact[];
+  readonly artifactCache?: Pick<ExactArtifactOpfsCache, "read" | "write">;
+  readonly isActive: () => boolean;
+  readonly onChange: (state: {
+    readonly retainedArtifacts: readonly CurrentExactProjectionArtifact[];
+    readonly artifacts: readonly CurrentExactProjectionArtifact[];
+    readonly failures: readonly CurrentExactProjectionFailure[];
+  }) => void;
+}): Promise<void> {
+  const assertCurrent = () => {
+    const identity = createCadProjectSourceIdentity(
+      exportCadProject(input.engine)
+    );
+    if (
+      !input.isActive() ||
+      input.engine.getSourceAuthorityEpoch() !== input.sourceAuthorityEpoch ||
+      identity.algorithm !== input.documentSourceIdentity.algorithm ||
+      identity.sha256 !== input.documentSourceIdentity.sha256
+    ) {
+      throw new Error("Current exact artifact source changed during build.");
+    }
+  };
+  const retained = new Map(
+    input.existingArtifacts
+      .filter(
+        (artifact) =>
+          artifact.documentSourceIdentity.algorithm ===
+            input.documentSourceIdentity.algorithm &&
+          artifact.documentSourceIdentity.sha256 ===
+            input.documentSourceIdentity.sha256
+      )
+      .map((artifact) => [artifact.bodyId, artifact] as const)
+  );
+  const artifacts = input.resolutions.flatMap((resolution) => {
+    const artifact = retained.get(resolution.bodyId);
+    return artifact &&
+      artifact.bodySourceIdentitySignature ===
+        resolution.sourceIdentitySignature &&
+      artifact.sourceCacheKeySha256 === resolution.cacheKeySha256
+      ? [artifact]
+      : [];
+  });
+  const failures: CurrentExactProjectionFailure[] = [];
+  const publish = () =>
+    input.onChange({
+      retainedArtifacts: [...retained.values()],
+      artifacts: [...artifacts],
+      failures: [...failures]
+    });
+  publish();
+
+  for (const resolution of input.resolutions) {
+    if (!input.isActive()) return;
+    if (artifacts.some((artifact) => artifact.bodyId === resolution.bodyId)) {
+      continue;
+    }
+    try {
+      const [artifact] = await buildCurrentExactBodyArtifacts({
+        engine: input.engine,
+        resolutions: [resolution],
+        runtime: input.runtime,
+        documentSourceIdentity: input.documentSourceIdentity,
+        units: input.units,
+        assertCurrent,
+        generation: input.generation,
+        existingArtifacts: [...retained.values()],
+        artifactCache: input.artifactCache,
+        executionIntent: "exact",
+        requestIdPrefix: "current-exact-projection"
+      });
+      if (artifact) {
+        retained.set(artifact.bodyId, artifact);
+        assertArtifactAggregateWithinLimit([...retained.values()]);
+        artifacts.push(artifact);
+      }
+    } catch (error) {
+      if (!input.isActive()) return;
+      failures.push({
+        bodyId: resolution.bodyId,
+        sourceType: resolution.sourceType,
+        cacheKeySha256: resolution.cacheKeySha256,
+        status: isGeometryCancellation(error) ? "cancelled" : "error",
+        error
+      });
+    }
+    publish();
+  }
 }
 
 export async function buildCurrentExactBodyArtifacts({
@@ -318,6 +639,7 @@ export async function buildCurrentExactBodyArtifacts({
   assertCurrent,
   generation: expectedGeneration,
   existingArtifacts = [],
+  artifactCache,
   executionIntent = "user",
   userKind = "export",
   requestIdPrefix = "current-exact-artifact",
@@ -498,28 +820,77 @@ export async function buildCurrentExactBodyArtifacts({
           `Exact dependency ${node.bodyId} was not preflighted.`
         );
       }
-      const result = await runtime.exactBodyArtifact(
-        {
-          id: `${requestIdPrefix}-${artifactsByKey.size}`,
-          bodyId: node.bodyId,
-          sourceType: node.sourceType,
-          documentSourceIdentity,
-          bodySourceIdentitySignature: node.sourceIdentitySignature,
-          sourceCacheKeySha256: node.cacheKeySha256,
-          sourceGraphNodeCount,
-          units,
-          shapePolicy,
-          source
-        },
+      const identity: ExactArtifactCacheIdentity = {
+        bodyId: node.bodyId,
+        sourceType: node.sourceType,
+        documentSourceIdentity,
+        bodySourceIdentitySignature: node.sourceIdentitySignature,
+        sourceCacheKeySha256: node.cacheKeySha256,
+        sourceGraphNodeCount,
+        shapePolicy,
+        units
+      };
+      const context =
         executionIntent === "user"
-          ? { intent: "user", userKind }
-          : {
+          ? ({ intent: "user", userKind } as const)
+          : ({
               sourceId: node.bodyId,
               cacheKey: key,
               documentRevision: generation
-            }
-      );
-      assertArtifactMatchesIdentity(result.artifact, {
+            } as const);
+      const isCacheCurrent = () => {
+        try {
+          assertExactWorkCurrent(runtime, generation);
+          assertCurrent();
+          assertBodySourceIdentityCurrent(
+            engine,
+            node.bodyId,
+            node.sourceIdentitySignature
+          );
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      const validateCachedArtifact = async (
+        candidate: ExactArtifactCacheCandidate
+      ): Promise<GeometryKernelExactBodyArtifact> =>
+        (
+          await runtime.exactBodyArtifact(
+            {
+              id: `${requestIdPrefix}-cache-${artifactsByKey.size}`,
+              ...identity,
+              source: {
+                kind: "bodyArtifact",
+                artifactVersion: "partbench.exact-body-artifact.v1",
+                ...identity,
+                ...candidate
+              }
+            },
+            context
+          )
+        ).artifact;
+      const cached = artifactCache
+        ? await artifactCache.read({
+            identity,
+            isCurrent: isCacheCurrent,
+            validate: validateCachedArtifact
+          })
+        : undefined;
+      const built =
+        cached?.status === "hit"
+          ? cached.artifact
+          : (
+              await runtime.exactBodyArtifact(
+                {
+                  id: `${requestIdPrefix}-${artifactsByKey.size}`,
+                  ...identity,
+                  source
+                },
+                context
+              )
+            ).artifact;
+      assertArtifactMatchesIdentity(built, {
         bodyId: node.bodyId,
         sourceType: node.sourceType,
         sourceIdentitySignature: node.sourceIdentitySignature,
@@ -536,7 +907,13 @@ export async function buildCurrentExactBodyArtifacts({
         node.bodyId,
         node.sourceIdentitySignature
       );
-      const evidence = retainArtifactEvidence(result.artifact);
+      if (artifactCache && cached?.status !== "hit") {
+        await artifactCache.write({
+          artifact: built,
+          isCurrent: isCacheCurrent
+        });
+      }
+      const evidence = retainArtifactEvidence(built);
       assertArtifactAggregateWithinLimit([
         ...artifactsByKey.values(),
         evidence
@@ -611,7 +988,8 @@ export async function executeProjectExactStepExport({
   runtime,
   onProgress,
   generation: expectedGeneration,
-  existingArtifacts
+  existingArtifacts,
+  artifactCache
 }: ProjectExactStepExportExecutionInput): Promise<ProjectExactStepExportResult> {
   const plan = requireReadyPlan(exactExport);
   assertExactExportPlanCurrent(engine, plan);
@@ -660,6 +1038,7 @@ export async function executeProjectExactStepExport({
       assertCurrent: () => assertExactExportPlanCurrent(engine, plan),
       generation,
       existingArtifacts,
+      artifactCache,
       requestIdPrefix: "exact-export-artifact",
       onArtifactBuilt: ({ bodyId, completedBodyCount, totalBodyCount }) =>
         onProgress?.({

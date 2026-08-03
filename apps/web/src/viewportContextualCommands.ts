@@ -621,13 +621,18 @@ function createActionFromOperation(
   );
   const target =
     operation === "reference.nameGenerated"
-      ? createActionTargetFromReference(
-          selectionReferenceCandidates
+      ? (() => {
+          const reference = selectionReferenceCandidates
             ? getPrimarySelectionReferenceCandidate(
                 selectionReferenceCandidates
               )?.reference
-            : undefined
-        )
+            : undefined;
+          return createActionTargetFromReference(
+            reference && "geometricSignature" in reference
+              ? reference
+              : undefined
+          );
+        })()
       : undefined;
   const disabled =
     !status.available || (operation === "reference.nameGenerated" && !target);

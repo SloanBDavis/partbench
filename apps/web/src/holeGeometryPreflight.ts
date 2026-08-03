@@ -257,7 +257,7 @@ function resolveProjectedDownstreamBodyIds(
 ): readonly string[] {
   const changedBodyIds = new Set<string>();
   for (const op of ops) {
-    if (!EXACT_DOWNSTREAM_UPDATE_OPS.has(op.op)) continue;
+    if (!EXACT_DOWNSTREAM_UPDATE_OPS.has(op.op) || !("id" in op)) continue;
     const feature = features.find((candidate) => candidate.id === op.id);
     if (feature) changedBodyIds.add(feature.bodyId);
   }
@@ -273,7 +273,7 @@ function resolveProjectedDownstreamBodyIds(
           EXACT_DOWNSTREAM_CREATE_KIND_BY_OP[
             op.op as keyof typeof EXACT_DOWNSTREAM_CREATE_KIND_BY_OP
           ] === feature.kind &&
-          (op.id === undefined || op.id === feature.id)
+          (!("id" in op) || op.id === undefined || op.id === feature.id)
       )
     ) {
       changedBodyIds.add(createdBodyId);

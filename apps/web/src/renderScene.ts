@@ -11,15 +11,9 @@ import type {
   Vec3
 } from "@web-cad/renderer";
 import type {
-  DerivedBooleanExtrudeGeometrySource,
-  DerivedEdgeFinishGeometrySource,
-  DerivedExactBodyGeometrySource,
   DerivedExtrudeGeometrySource,
   DerivedGeometryEntry,
-  DerivedHoleGeometrySource,
-  DerivedRevolveGeometrySource,
-  DerivedSweepGeometrySource,
-  DerivedLoftGeometrySource
+  DerivedGeometrySource
 } from "./derivedGeometry";
 import {
   createDefaultSketchDisplayFrame,
@@ -54,16 +48,7 @@ const circleUnitPointsBySegmentCount = new Map<
 export function createRenderSceneInputs(
   objects: readonly SceneObject[],
   derivedGeometryBySourceId: ReadonlyMap<string, DerivedGeometryEntry>,
-  extrudeSources: readonly (
-    | DerivedExtrudeGeometrySource
-    | DerivedBooleanExtrudeGeometrySource
-    | DerivedRevolveGeometrySource
-    | DerivedHoleGeometrySource
-    | DerivedEdgeFinishGeometrySource
-    | DerivedSweepGeometrySource
-    | DerivedLoftGeometrySource
-    | DerivedExactBodyGeometrySource
-  )[] = [],
+  extrudeSources: readonly DerivedGeometrySource[] = [],
   sketches: readonly SketchSnapshot[] = [],
   sketchDisplayFrames: ReadonlyMap<string, SketchDisplayFrame> = new Map()
 ): RenderSceneInputs {
@@ -82,6 +67,7 @@ export function createRenderSceneInputs(
   }
 
   for (const source of extrudeSources) {
+    if ("object" in source) continue;
     if (source.kind === "exactBody") {
       const derivedGeometry = derivedGeometryBySourceId.get(source.id);
       if (derivedGeometry?.status === "ready") {

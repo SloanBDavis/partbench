@@ -2,7 +2,7 @@ import {
   CadEngine,
   SnapshotCadCommandWorker,
   type CadWorkerRequest
-} from "@web-cad/cad-core/full";
+} from "@web-cad/cad-core/browser";
 import type { CadQueryWorkerRequest } from "./browserCadQueryWorker";
 
 type CadCommandWorkerTransportRequest =

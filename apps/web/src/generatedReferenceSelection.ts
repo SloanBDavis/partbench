@@ -308,7 +308,7 @@ export function createSelectionReferenceCandidateSummary(
       issueMessages[0] ??
       `${candidate.commandOperations.length} available action${candidate.commandOperations.length === 1 ? "" : "s"}`,
     topologyDetail: createSelectionReferenceTopologyDetail(candidate),
-    stableId: candidate.target.stableId,
+    stableId: candidate.reference.stableId,
     commandOperations: candidate.commandOperations,
     issues: issueMessages
   };
@@ -319,7 +319,8 @@ export function createSelectionReferenceTopologyDetail(
 ): string | undefined {
   const usesTopologyAnchor =
     candidate.source === "topologyAnchorSelection" ||
-    candidate.target.topologyAnchorId !== undefined;
+    (candidate.target.type === "generatedReference" &&
+      candidate.target.topologyAnchorId !== undefined);
 
   if (!usesTopologyAnchor || candidate.commandable) {
     return undefined;

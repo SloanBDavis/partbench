@@ -16,6 +16,7 @@ describe("V20 async stdio", () => {
       execute: rejectUnexpected,
       query: rejectUnexpected,
       inspectV8ProjectSurface: rejectUnexpected,
+      requestExactExport: rejectUnexpected,
       getCurrentSelection: ({ requestId }) =>
         new Promise((resolve) => pending.set(requestId, resolve))
     };

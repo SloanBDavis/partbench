@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 import type {
+  CadAgentExactExportRequest,
   CadOpsAgentCurrentSelectionRequest,
   CadOpsAgentQueryRequest,
   CadOpsAgentRequest,
@@ -126,7 +127,7 @@ describe("local agent launcher", () => {
     }
   });
 
-  it("relays only the four typed operations and settles pending calls on disconnect", async () => {
+  it("relays only the five typed operations and settles pending calls on disconnect", async () => {
     const fixture = await createStaticFixture();
     const launcher = await startLocalAgentLauncherForTest(fixture.root);
 
@@ -162,6 +163,14 @@ describe("local agent launcher", () => {
           launcher.relay.getCurrentSelection({
             requestId: "selection"
           } as CadOpsAgentCurrentSelectionRequest)
+        ],
+        [
+          "requestExactExport",
+          "exact-export",
+          launcher.relay.requestExactExport({
+            requestId: "exact-export",
+            selection: { mode: "all" }
+          } as CadAgentExactExportRequest)
         ]
       ] as const;
 
@@ -453,6 +462,39 @@ describe("local agent launcher", () => {
       true
     );
     await expect(response).resolves.toMatchObject(result);
+  });
+
+  it("accepts only bounded metadata from exact-export actions", async () => {
+    const relay = new LocalAgentRelay();
+    relay.connectBrowser("owner");
+    const response = relay.requestExactExport({
+      requestId: "validate-exact-action",
+      selection: { mode: "bodyIds", bodyIds: ["body_1"] }
+    });
+    const request = await relay.pollBrowser("owner");
+    const result = {
+      requestId: "validate-exact-action",
+      status: "downloadRequested" as const,
+      selectedBodyIds: ["body_1"],
+      selectedBodyCount: 1,
+      schema: "AP242DIS" as const,
+      units: "mm" as const,
+      planIdentity: "b".repeat(64),
+      artifactByteLength: 42,
+      artifactSha256: "c".repeat(64),
+      diagnostics: []
+    };
+
+    expect(
+      relay.respondFromBrowser("owner", request!.requestId, {
+        ...result,
+        stepBytes: [1, 2, 3]
+      })
+    ).toBe(false);
+    expect(relay.respondFromBrowser("owner", request!.requestId, result)).toBe(
+      true
+    );
+    await expect(response).resolves.toEqual(result);
   });
 
   it("disconnects relay ownership when an outstanding browser poll is lost", async () => {

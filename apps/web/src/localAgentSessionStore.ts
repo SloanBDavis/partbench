@@ -44,6 +44,10 @@ export function rejectLocalAgentProposal(): void {
   session?.reject();
 }
 
+export function cancelLocalAgentExactExport(): void {
+  session?.cancelExactExport();
+}
+
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);

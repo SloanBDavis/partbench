@@ -261,13 +261,16 @@ function findSelectedTopologyAnchorId(
   const candidate = selectionReferenceCandidates?.candidates.find(
     (entry) =>
       entry.source === "topologyAnchorSelection" &&
+      entry.target.type === "generatedReference" &&
       entry.target.bodyId === reference.bodyId &&
       entry.target.stableId === reference.stableId &&
       entry.target.kind === "edge" &&
       entry.commandable
   );
 
-  return candidate?.target.topologyAnchorId;
+  return candidate?.target.type === "generatedReference"
+    ? candidate.target.topologyAnchorId
+    : undefined;
 }
 
 export function isSupportedRectangleEdgeFinishReference(

@@ -197,7 +197,7 @@ describe("currentExactBodyResolver", () => {
     const secondBodyId = "recursive_pattern_2";
     const firstFeatureId = "recursive_pattern_feature_1";
     const secondFeatureId = "recursive_pattern_feature_2";
-    const direction = { kind: "globalAxis" as const, axis: "X" as const };
+    const direction = { kind: "globalAxis" as const, axis: "x" as const };
     const firstFeature: CadFeatureSummary = {
       id: firstFeatureId,
       kind: "linearPattern",
@@ -219,11 +219,11 @@ describe("currentExactBodyResolver", () => {
       id: secondFeatureId,
       bodyId: secondBodyId,
       seedBodyId: firstBodyId,
-      direction: { kind: "globalAxis", axis: "Y" },
+      direction: { kind: "globalAxis", axis: "y" },
       source: {
         type: "linearPatternFeature",
         seedBodyId: firstBodyId,
-        direction: { kind: "globalAxis", axis: "Y" }
+        direction: { kind: "globalAxis", axis: "y" }
       }
     };
     const firstBody: CadBodySnapshot = {
@@ -251,7 +251,7 @@ describe("currentExactBodyResolver", () => {
         type: "linearPatternFeature",
         featureId: secondFeatureId,
         seedBodyId: firstBodyId,
-        direction: { kind: "globalAxis", axis: "Y" },
+        direction: { kind: "globalAxis", axis: "y" },
         spacing: 2,
         instanceCount: 2,
         instances: []

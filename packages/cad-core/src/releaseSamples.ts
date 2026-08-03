@@ -1051,15 +1051,15 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
       },
       {
         selection: { type: "body", bodyId: CHAMFER_RESULT_BODY_ID },
-        expectedStatus: "ambiguous",
-        expectedCandidateCount: 0,
-        expectedCommandableCount: 0
+        expectedStatus: "resolved",
+        expectedCandidateCount: 1,
+        expectedCommandableCount: 1
       },
       {
         selection: { type: "body", bodyId: FILLET_RESULT_BODY_ID },
-        expectedStatus: "ambiguous",
-        expectedCandidateCount: 0,
-        expectedCommandableCount: 0
+        expectedStatus: "resolved",
+        expectedCandidateCount: 1,
+        expectedCommandableCount: 1
       }
     ],
     expectedReferenceSummary: {

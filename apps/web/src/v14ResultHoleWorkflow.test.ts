@@ -944,6 +944,8 @@ function createExactBodyArtifact(
   index: number
 ): GeometryKernelExactBodyArtifact {
   const brepBytes = new Uint8Array([index]);
+  const sourceKind = input.source
+    .kind as GeometryKernelExactBodyArtifact["sourceKind"];
   const topologyEntities = [
     {
       localId: `body:${input.bodyId}`,
@@ -968,15 +970,14 @@ function createExactBodyArtifact(
     sourceGraphNodeCount: input.sourceGraphNodeCount,
     units: input.units,
     shapePolicy: input.shapePolicy,
-    sourceKind: input.source
-      .kind as GeometryKernelExactBodyArtifact["sourceKind"],
+    sourceKind,
     brepFormat: "occt-brep",
     brepWriter: "BRepTools.Write_3",
     brepBytes,
     brepByteLength: brepBytes.byteLength,
     brepSha256: sha256Hex(brepBytes),
     metadata: {
-      sourceKind: input.source.kind,
+      sourceKind,
       bounds: { min: [0, 0, 0], max: [1, 1, 1] },
       volume: 1,
       surfaceArea: 6,
@@ -992,7 +993,7 @@ function createExactBodyArtifact(
       diagnostics: []
     },
     topologySnapshot: {
-      sourceKind: input.source.kind,
+      sourceKind,
       status: "ready",
       entityCounts: {
         bodyCount: 1,

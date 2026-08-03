@@ -359,14 +359,8 @@ export function createCurrentExactArtifactOperandSource(
     | CurrentExactBodyArtifactEvidence,
   shellOpenFaceLocalIds?: readonly string[]
 ): ExactBodyArtifactSource {
-  if (
-    source.kind !== "hole" &&
-    source.kind !== "checkpointHole" &&
-    source.kind !== "linearPattern" &&
-    source.kind !== "circularPattern" &&
-    source.kind !== "mirror" &&
-    source.kind !== "shell"
-  ) {
+  const operation = createArtifactOperationDescriptor(source);
+  if (!operation) {
     return createCurrentExactBodyArtifactSource(source);
   }
   if (!dependencyArtifact) {
@@ -380,40 +374,20 @@ export function createCurrentExactArtifactOperandSource(
   );
   const leaf = createCurrentExactBodyArtifactLeaf(dependencyArtifact);
 
-  switch (source.kind) {
-    case "hole":
-    case "checkpointHole":
-      return { kind: "artifactHole", target: leaf, tool: source.tool };
-    case "linearPattern":
-      return {
-        kind: "artifactLinearPattern",
-        seed: leaf,
-        direction: source.direction,
-        spacing: source.spacing,
-        instanceCount: source.instanceCount
-      };
-    case "circularPattern":
-      return {
-        kind: "artifactCircularPattern",
-        seed: leaf,
-        axis: source.axis,
-        totalAngleDegrees: source.totalAngleDegrees,
-        instanceCount: source.instanceCount
-      };
-    case "mirror":
-      return {
-        kind: "artifactMirror",
-        seed: leaf,
-        plane: source.plane,
-        includeOriginal: source.includeOriginal
-      };
-    case "shell": {
+  switch (operation.kind) {
+    case "artifactHole":
+      return { ...operation, target: leaf };
+    case "artifactLinearPattern":
+    case "artifactCircularPattern":
+    case "artifactMirror":
+      return { ...operation, seed: leaf };
+    case "artifactShell": {
       const openFaceLocalIds =
         shellOpenFaceLocalIds ??
-        (source.openFaceRefs.length === 0 ? [] : undefined);
+        (operation.openFaceRefs.length === 0 ? [] : undefined);
       if (
         openFaceLocalIds === undefined ||
-        openFaceLocalIds.length !== source.openFaceRefs.length ||
+        openFaceLocalIds.length !== operation.openFaceRefs.length ||
         openFaceLocalIds.some(
           (localId) => !/^snapshot-local:face:[1-9][0-9]*$/.test(localId)
         )
@@ -425,7 +399,7 @@ export function createCurrentExactArtifactOperandSource(
       return {
         kind: "artifactShell",
         target: leaf,
-        wallThickness: source.wallThickness,
+        wallThickness: operation.wallThickness,
         openFaces: openFaceLocalIds.map((localId) => ({ localId }))
       };
     }
@@ -632,7 +606,7 @@ function resolveCurrentExactBody(
   );
   if (isResolution(resolved)) return resolved;
 
-  const dependencyBodyId = getArtifactDependencyBodyId(feature, resolved);
+  const dependencyBodyId = getArtifactDependencyBodyId(feature);
   const operationError = dependencyBodyId
     ? getArtifactOperationError(feature, resolved, context)
     : undefined;
@@ -827,7 +801,7 @@ function resolveArtifactDependency(
 
     const childBodyId: string | undefined = checkpoint?.ok
       ? undefined
-      : getArtifactDependencyBodyId(feature, resolved);
+      : getArtifactDependencyBodyId(feature);
     const operationError = childBodyId
       ? getArtifactOperationError(feature, resolved, context)
       : undefined;
@@ -901,46 +875,48 @@ function createArtifactOperationCacheKey(
     sourceIdentitySignature: child.sourceIdentitySignature,
     sourceCacheKeySha256: child.cacheKeySha256
   };
+  const operation = createArtifactOperationDescriptor(source);
+  if (!operation) return createCurrentExactSourceCacheKey(source);
+  const { kind, ...parameters } = operation;
+  return JSON.stringify({ kind, dependency, ...parameters });
+}
+
+function createArtifactOperationDescriptor(source: CurrentExactBodySource) {
   switch (source.kind) {
     case "hole":
     case "checkpointHole":
-      return JSON.stringify({
+      return {
         kind: "artifactHole",
-        dependency,
         tool: source.tool
-      });
+      } as const;
     case "linearPattern":
-      return JSON.stringify({
+      return {
         kind: "artifactLinearPattern",
-        dependency,
         direction: source.direction,
         spacing: source.spacing,
         instanceCount: source.instanceCount
-      });
+      } as const;
     case "circularPattern":
-      return JSON.stringify({
+      return {
         kind: "artifactCircularPattern",
-        dependency,
         axis: source.axis,
         totalAngleDegrees: source.totalAngleDegrees,
         instanceCount: source.instanceCount
-      });
+      } as const;
     case "mirror":
-      return JSON.stringify({
+      return {
         kind: "artifactMirror",
-        dependency,
         plane: source.plane,
         includeOriginal: source.includeOriginal
-      });
+      } as const;
     case "shell":
-      return JSON.stringify({
+      return {
         kind: "artifactShell",
-        dependency,
         wallThickness: source.wallThickness,
         openFaceRefs: source.openFaceRefs
-      });
+      } as const;
     default:
-      return createCurrentExactSourceCacheKey(source);
+      return undefined;
   }
 }
 
@@ -1069,8 +1045,7 @@ function isValidHoleTool(tool: DerivedHoleGeometrySource["tool"]): boolean {
 }
 
 function getArtifactDependencyBodyId(
-  feature: CadFeatureSummary,
-  source: CurrentExactBodySource
+  feature: CadFeatureSummary
 ): string | undefined {
   switch (feature.kind) {
     case "hole":
@@ -1641,14 +1616,6 @@ function getExactSourceChildren(
   if (source.kind === "hole" || source.kind === "edgeFinish") {
     return [source.target];
   }
-  if (
-    source.kind === "linearPattern" ||
-    source.kind === "circularPattern" ||
-    source.kind === "mirror"
-  ) {
-    return [source.seed];
-  }
-  if (source.kind === "shell") return [source.target];
   if (source.kind === "checkpointBoolean") return [source.target, source.tool];
   if (source.kind === "checkpointHole") return [source.target];
   if (source.kind === "checkpointEdgeFinish") return [source.target];

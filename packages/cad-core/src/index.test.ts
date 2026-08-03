@@ -32555,8 +32555,11 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       topologyIdentity: {
         ...checkpointOnlyDocument.topologyIdentity!,
         anchors: checkpointOnlyDocument.topologyIdentity!.anchors.map(
-          ({ stableId: _stableId, sourceSemanticRole: _role, ...anchor }) =>
-            anchor
+          ({ stableId, sourceSemanticRole, ...anchor }) => {
+            void stableId;
+            void sourceSemanticRole;
+            return anchor;
+          }
         )
       }
     });

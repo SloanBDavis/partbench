@@ -27,17 +27,17 @@ describe("currentExactPipeline", () => {
       entries: [
         {
           objectId: artifact.bodyId,
-          objectKind: "linearPattern",
+          objectKind: "exactBody",
           sourceId: artifact.bodyId,
-          sourceKind: "linearPattern",
+          sourceKind: "exactBody",
           cacheKey: "current-display-key",
           status: "pending"
         },
         {
           objectId: "unsupported_body",
-          objectKind: "shell",
+          objectKind: "exactBody",
           sourceId: "unsupported_body",
-          sourceKind: "shell",
+          sourceKind: "exactBody",
           cacheKey: "unsupported-display-key",
           status: "unsupported",
           message: "Unsupported fixture"
@@ -54,13 +54,13 @@ describe("currentExactPipeline", () => {
       entries: [
         {
           bodyId: artifact.bodyId,
-          sourceKind: "linearPattern",
+          sourceKind: "exactBody",
           cacheKey: "current-metadata-key",
           status: "pending"
         },
         {
           bodyId: "unsupported_body",
-          sourceKind: "shell",
+          sourceKind: "exactBody",
           cacheKey: "unsupported-metadata-key",
           status: "unsupported",
           message: "Unsupported fixture"

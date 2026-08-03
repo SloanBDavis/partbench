@@ -6665,16 +6665,30 @@ export type CadSelectionReferenceCandidateSource =
   | "namedReferenceSelection"
   | "topologyAnchorSelection";
 
-export interface CadSelectionReferenceCandidate {
+interface CadSelectionReferenceCandidateBase {
   readonly source: CadSelectionReferenceCandidateSource;
-  readonly target: CadSelectionReferenceCommandTarget;
-  readonly reference: CadGeneratedReference | CadSemanticBodyReference;
   readonly commandable: boolean;
   readonly commandOperations: readonly CadSelectionReferenceOperation[];
   readonly label: string;
   readonly description?: string;
   readonly issues: readonly CadSelectionReferenceIssue[];
 }
+
+export type CadSelectionReferenceCandidate =
+  | (CadSelectionReferenceCandidateBase & {
+      readonly target: Extract<
+        CadSelectionReferenceCommandTarget,
+        { readonly type: "body" }
+      >;
+      readonly reference: CadSemanticBodyReference;
+    })
+  | (CadSelectionReferenceCandidateBase & {
+      readonly target: Extract<
+        CadSelectionReferenceCommandTarget,
+        { readonly type: "generatedReference" }
+      >;
+      readonly reference: CadGeneratedReference;
+    });
 
 /** Whole-body selection proof for bodies without feature-generated references. */
 export interface CadSemanticBodyReference {
@@ -7522,10 +7536,7 @@ export interface CadBodyExactTopologySnapshot {
   readonly entityCounts: CadBodyExactTopologyEntityCounts;
   readonly entityCount: number;
   readonly entities: readonly CadBodyExactTopologyEntityDescriptor[];
-  readonly unsupportedEntityKinds: readonly (
-    | CadTopologyEntityKind
-    | "solid"
-  )[];
+  readonly unsupportedEntityKinds: readonly (CadTopologyEntityKind | "solid")[];
   readonly adjacencyAvailable: boolean;
   readonly signatureAlgorithm: "partbench-derived-topology-snapshot-v1";
   readonly signature: string;
@@ -12408,7 +12419,7 @@ function validateCadExactDownstreamReadinessEvidence(
     issues.push({
       code: "MISSING_FIELD",
       path,
-      message: "Ready downstream evidence requires current shape policy."
+      message: "Ready downstream evidence requires a shape policy."
     });
   }
   if (
@@ -12422,36 +12433,45 @@ function validateCadExactDownstreamReadinessEvidence(
       message: "A ready shell target must contain exactly one solid."
     });
   }
-  if (!Array.isArray(value.diagnostics)) {
+  validateCadExactResultDiagnostics(
+    value.diagnostics,
+    `${path}.diagnostics`,
+    value.status,
+    issues,
+    CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxSelectedBodies
+  );
+}
+
+function validateCadExactResultDiagnostics(
+  value: unknown,
+  path: string,
+  status: unknown,
+  issues: SketchProfilePathValidationIssue[],
+  maxLength?: number
+): void {
+  if (!Array.isArray(value)) {
     issues.push({
       code: "INVALID_TYPE",
-      path: `${path}.diagnostics`,
+      path,
       message: "Expected a diagnostic array."
     });
     return;
   }
-  if (
-    value.diagnostics.length >
-    CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxSelectedBodies
-  ) {
+  if (maxLength !== undefined && value.length > maxLength) {
     issues.push({
       code: "INVALID_VALUE",
-      path: `${path}.diagnostics`,
-      message: `Expected at most ${CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxSelectedBodies} diagnostics.`
+      path,
+      message: `Expected at most ${maxLength} diagnostics.`
     });
   }
-  validateDenseArray(value.diagnostics, `${path}.diagnostics`, issues);
-  value.diagnostics.forEach((diagnostic, index) => {
-    validateCadExactResultDiagnostic(
-      diagnostic,
-      `${path}.diagnostics[${index}]`,
-      issues
-    );
-    if (isUnknownRecord(diagnostic) && diagnostic.status !== value.status) {
+  validateDenseArray(value, path, issues);
+  value.forEach((diagnostic, index) => {
+    validateCadExactResultDiagnostic(diagnostic, `${path}[${index}]`, issues);
+    if (isUnknownRecord(diagnostic) && diagnostic.status !== status) {
       issues.push({
         code: "INVALID_VALUE",
-        path: `${path}.diagnostics[${index}].status`,
-        message: "Diagnostic status must match downstream readiness."
+        path: `${path}[${index}].status`,
+        message: "Diagnostic status must match its exact result."
       });
     }
   });
@@ -12475,7 +12495,7 @@ function validateCadExactDownstreamReadinessArray(
     issues.push({
       code: "COUNT_MISMATCH",
       path,
-      message: "Downstream readiness must contain all four operation decisions."
+      message: "Expected all four downstream operation decisions."
     });
   }
   validateDenseArray(value, path, issues);
@@ -12494,7 +12514,7 @@ function validateCadExactDownstreamReadinessArray(
         code: "INVALID_VALUE",
         path: `${path}[${index}].status`,
         message:
-          "A non-ready exact result cannot have a ready downstream operation."
+          "A non-ready exact result cannot have ready downstream evidence."
       });
     }
   });
@@ -12505,7 +12525,7 @@ function validateCadExactDownstreamReadinessArray(
     issues.push({
       code: "INVALID_VALUE",
       path,
-      message: "Duplicate downstream operation decisions are not allowed."
+      message: "Downstream operations must be unique."
     });
   }
 }
@@ -12615,36 +12635,18 @@ function validateCadCurrentExactResultValue(
           issues.push({
             code: "INVALID_VALUE",
             path: `${path}.downstreamReadiness[${index}].shapePolicy`,
-            message:
-              "Downstream evidence must match the exact artifact shape policy."
+            message: "Downstream and artifact shape policies must match."
           });
         }
       });
     }
   }
-  if (!Array.isArray(value.diagnostics)) {
-    issues.push({
-      code: "INVALID_TYPE",
-      path: `${path}.diagnostics`,
-      message: "Expected a diagnostic array."
-    });
-  } else {
-    validateDenseArray(value.diagnostics, `${path}.diagnostics`, issues);
-    value.diagnostics.forEach((diagnostic, index) => {
-      validateCadExactResultDiagnostic(
-        diagnostic,
-        `${path}.diagnostics[${index}]`,
-        issues
-      );
-      if (isUnknownRecord(diagnostic) && diagnostic.status !== value.status) {
-        issues.push({
-          code: "INVALID_VALUE",
-          path: `${path}.diagnostics[${index}].status`,
-          message: "Diagnostic status must match its exact result."
-        });
-      }
-    });
-  }
+  validateCadExactResultDiagnostics(
+    value.diagnostics,
+    `${path}.diagnostics`,
+    value.status,
+    issues
+  );
   return true;
 }
 

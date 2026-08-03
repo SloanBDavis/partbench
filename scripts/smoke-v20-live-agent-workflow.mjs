@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { performance } from "node:perf_hooks";
 import { clearTimeout } from "node:timers";
 import { fileURLToPath } from "node:url";
 import {
@@ -12,10 +13,11 @@ import {
 import { acquireBrowserSmokeLease } from "./v18-geometry-reliability.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const requireV21 = process.env.PARTBENCH_REQUIRE_V21 === "1";
+const requireV21Limit = process.env.PARTBENCH_REQUIRE_V21_1_LIMIT === "1";
+const requireV21 = process.env.PARTBENCH_REQUIRE_V21 === "1" || requireV21Limit;
 const timeoutMs = Number(
   process.env.PARTBENCH_V20_BROWSER_TIMEOUT_MS ??
-    (requireV21 ? 120_000 : 45_000)
+    (requireV21Limit ? 600_000 : requireV21 ? 120_000 : 45_000)
 );
 const browserExecutable = findBrowserExecutable();
 if (!browserExecutable) {
@@ -72,6 +74,9 @@ try {
 async function runWorkflow(client, mcpClient) {
   const checks = [];
   const browserErrors = [];
+  const limitMetrics = requireV21Limit
+    ? { operationMs: [], clearMs: 0, coldExportMs: 0, warmExportMs: 0 }
+    : undefined;
   const target = await client.send("Target.createTarget", {
     url: "about:blank"
   });
@@ -346,6 +351,28 @@ async function runWorkflow(client, mcpClient) {
   );
   checks.push("Approve all matrix and unchanged explicit dry-run");
 
+  if (limitMetrics) {
+    for (let start = 0; start < 254; start += 16) {
+      const started = performance.now();
+      const response = content(
+        await mcpClient.callTool("cad.batch", {
+          batch: boxRangeBatch(start, Math.min(16, 254 - start))
+        })
+      );
+      limitMetrics.operationMs.push(performance.now() - started);
+      assert(response.ok, `near-limit body batch ${start} must commit`);
+    }
+    const limitSummary = content(
+      await mcpClient.callTool("cad.project_summary")
+    );
+    assert(
+      limitSummary.objectCount === 256 &&
+        limitSummary.structure.bodyCount === 256,
+      "near-limit project must contain exactly 256 active bodies"
+    );
+    checks.push("exactly 256 active production-app bodies");
+  }
+
   await browser.clickText('[aria-label="Workbench mode"] button', "Solid");
   await browser.waitFor(
     `document.querySelector('[data-tree-select^="feature:"]') && document.querySelector('[aria-label="3D scene viewport"]')`,
@@ -409,6 +436,131 @@ async function runWorkflow(client, mcpClient) {
       "V21 browser download must be direct STEP Blob bytes with URL cleanup and no base64"
     );
     checks.push("V21 selected-body AP242 plan and direct browser download");
+
+    await browser.clickText('[aria-label="Project pages"] button', "Agent");
+    await browser.evaluate(`window.__partbenchV20Downloads.length = 0`);
+    const automaticExport = content(
+      await mcpClient.callTool("cad.project_request_exact_export", {
+        selection: {
+          mode: "bodyIds",
+          bodyIds: [selectedObject.selection.bodyId]
+        },
+        expectedSourceIdentity: finalIdentity
+      })
+    );
+    assertExactExportResult(automaticExport, selectedObject.selection.bodyId);
+    await browser.waitFor(
+      `window.__partbenchV20Downloads.length === 1`,
+      "Approve all exact export download"
+    );
+
+    if (limitMetrics) {
+      await browser.clickText('[aria-label="Project pages"] button', "Files");
+      const clearStarted = performance.now();
+      await browser.clickText(
+        ".pb-project-mode-workspace button",
+        "Clear derived exact data"
+      );
+      await browser.waitFor(
+        `document.body.textContent.includes('Derived exact data cleared.')`,
+        "derived exact cache clear"
+      );
+      limitMetrics.clearMs = performance.now() - clearStarted;
+      await browser.clickText('[aria-label="Project pages"] button', "Agent");
+      await browser.evaluate(`window.__partbenchV20Downloads.length = 0`);
+      const coldStarted = performance.now();
+      const coldExport = content(
+        await mcpClient.callTool("cad.project_request_exact_export", {
+          selection: { mode: "readySubset" }
+        })
+      );
+      limitMetrics.coldExportMs = performance.now() - coldStarted;
+      assertExactExportResult(coldExport, undefined, 256);
+      await browser.waitFor(
+        `window.__partbenchV20Downloads.length === 1`,
+        "cold 256-body exact export download"
+      );
+
+      await browser.clickElement('input[value="manualApproval"]');
+      await browser.waitFor(
+        `document.querySelector('input[value="manualApproval"]')?.checked`,
+        "Manual approval mode"
+      );
+      const cancelledCall = mcpClient.callTool(
+        "cad.project_request_exact_export",
+        { selection: { mode: "readySubset" } }
+      );
+      await browser.waitFor(
+        `document.querySelector('.pb-project-agent-proposal')?.textContent.includes('Exact export proposal')`,
+        "manual 256-body cancellation proposal"
+      );
+      await browser.clickText(
+        ".pb-project-agent-proposal button",
+        "Approve & download"
+      );
+      await browser.waitFor(
+        `[...document.querySelectorAll('.pb-project-agent-proposal button')].some((button) => button.textContent.trim() === 'Cancel export')`,
+        "manual 256-body cancellation control"
+      );
+      await browser.clickText(
+        ".pb-project-agent-proposal button",
+        "Cancel export"
+      );
+      const cancelled = content(await cancelledCall);
+      assert(
+        cancelled.status === "cancelled" && cancelled.selectedBodyCount === 256,
+        "256-body export must report cancellation without a download"
+      );
+
+      await browser.evaluate(`window.__partbenchV20Downloads.length = 0`);
+      const warmStarted = performance.now();
+      const warmExportCall = mcpClient.callTool(
+        "cad.project_request_exact_export",
+        { selection: { mode: "readySubset" } }
+      );
+      await browser.waitFor(
+        `document.querySelector('.pb-project-agent-proposal')?.textContent.includes('Exact export proposal')`,
+        "manual 256-body retry proposal"
+      );
+      await browser.clickText(
+        ".pb-project-agent-proposal button",
+        "Approve & download"
+      );
+      const warmExport = content(await warmExportCall);
+      limitMetrics.warmExportMs = performance.now() - warmStarted;
+      assertExactExportResult(warmExport, undefined, 256);
+      await browser.waitFor(
+        `window.__partbenchV20Downloads.length === 1`,
+        "warm 256-body retry download"
+      );
+      checks.push("production 256-body cold, cancel, warm retry workflow");
+    } else {
+      await browser.clickElement('input[value="manualApproval"]');
+      await browser.waitFor(
+        `document.querySelector('input[value="manualApproval"]')?.checked`,
+        "Manual approval mode"
+      );
+      await browser.evaluate(`window.__partbenchV20Downloads.length = 0`);
+      const manualExportCall = mcpClient.callTool(
+        "cad.project_request_exact_export",
+        { selection: { mode: "readySubset" } }
+      );
+      await browser.waitFor(
+        `document.querySelector('.pb-project-agent-proposal')?.textContent.includes('Exact export proposal')`,
+        "manual exact export proposal"
+      );
+      await browser.clickText(
+        ".pb-project-agent-proposal button",
+        "Approve & download"
+      );
+      const manualExport = content(await manualExportCall);
+      assertExactExportResult(manualExport, selectedObject.selection.bodyId);
+      await browser.waitFor(
+        `window.__partbenchV20Downloads.length === 1`,
+        "manual exact export download"
+      );
+    }
+    checks.push("V21.1 exact export through both approval modes");
   }
   await browser.clickText('[aria-label="Project pages"] button', "Files");
   await browser.evaluate(`window.__partbenchV20Downloads.length = 0`);
@@ -467,7 +619,19 @@ async function runWorkflow(client, mcpClient) {
     ok: true,
     checks,
     sourceIdentity: finalIdentity,
-    wcadBytes: wcadBytes.length
+    wcadBytes: wcadBytes.length,
+    ...(limitMetrics
+      ? {
+          limit: {
+            bodyCount: 256,
+            operationP50Ms: percentile(limitMetrics.operationMs, 0.5),
+            operationP95Ms: percentile(limitMetrics.operationMs, 0.95),
+            clearMs: limitMetrics.clearMs,
+            coldExportMs: limitMetrics.coldExportMs,
+            warmExportMs: limitMetrics.warmExportMs
+          }
+        }
+      : {})
   };
 }
 
@@ -513,6 +677,23 @@ function boxBatch(id, size, mode) {
         dimensions: { width: size, height: size, depth: size }
       }
     ]
+  };
+}
+
+function boxRangeBatch(start, count) {
+  return {
+    version: "cadops.v1",
+    mode: "commit",
+    ops: Array.from({ length: count }, (_, offset) => ({
+      op: "scene.createBox",
+      id: `v21-1-limit-box-${start + offset}`,
+      dimensions: { width: 1, height: 1, depth: 1 },
+      transform: {
+        translation: [(start + offset) * 2, 0, 0],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1]
+      }
+    }))
   };
 }
 
@@ -730,6 +911,27 @@ function assertIdentity(actual, expected, label) {
       actual?.sha256 === expected?.sha256,
     `${label} source identity mismatch`
   );
+}
+
+function assertExactExportResult(result, bodyId, bodyCount = 1) {
+  assert(
+    result.status === "downloadRequested" &&
+      result.selectedBodyCount === bodyCount &&
+      result.selectedBodyIds?.length === bodyCount &&
+      (bodyId === undefined || result.selectedBodyIds?.[0] === bodyId) &&
+      result.schema === "AP242DIS" &&
+      result.artifactByteLength > 0 &&
+      /^[a-f0-9]{64}$/.test(result.artifactSha256 ?? "") &&
+      !/bytes|blob|url|handle|path|filename|directory/i.test(
+        JSON.stringify(result)
+      ),
+    "agent exact export must return bounded download-requested metadata"
+  );
+}
+
+function percentile(values, quantile) {
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted[Math.ceil(sorted.length * quantile) - 1] ?? 0;
 }
 
 function assert(condition, message) {

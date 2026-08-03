@@ -3,6 +3,9 @@ import {
   createCadOpsAgentCurrentSelectionResponse,
   executeCadOpsAgentRequestAsync,
   parseCadAgentApprovalMode,
+  parseCadAgentExactExportRequest,
+  parseCadAgentExactExportProposal,
+  parseCadAgentExactExportResult,
   parseCadAgentSessionErrorResponse,
   parseCadOpsAgentCurrentSelectionRequest,
   parseCadOpsAgentQueryRequest,
@@ -10,6 +13,9 @@ import {
   parseCadOpsAgentV8ProjectSurfaceRequest,
   type CadAgentApprovalMode,
   type CadAgentCommitProposal,
+  type CadAgentExactExportProposal,
+  type CadAgentExactExportRequest,
+  type CadAgentExactExportResult,
   type CadAgentSessionErrorResponse,
   type CadCurrentSelection,
   type CadOpsAgentCurrentSelectionResponse,
@@ -33,7 +39,7 @@ const TOKEN_HEADER = "x-partbench-agent-token";
 export interface LocalAgentSessionSnapshot {
   readonly connected: boolean;
   readonly approvalMode: CadAgentApprovalMode;
-  readonly proposal?: CadAgentCommitProposal;
+  readonly proposal?: CadAgentCommitProposal | CadAgentExactExportProposal;
   readonly approving: boolean;
   readonly diagnostic?: CadAgentSessionErrorResponse["error"];
 }
@@ -58,7 +64,23 @@ export interface LocalAgentSessionOptions {
   readonly publishCommit: (
     response: CadOpsAgentSuccessResponse
   ) => Promise<void>;
+  readonly planExactExport?: (
+    request: CadAgentExactExportRequest
+  ) =>
+    | LocalAgentExactExportPlanOutcome
+    | Promise<LocalAgentExactExportPlanOutcome>;
+  readonly executeExactExport?: (
+    proposal: CadAgentExactExportProposal
+  ) => Promise<CadAgentExactExportResult>;
+  readonly cancelExactExport?: () => void;
 }
+
+type LocalAgentExactExportPlanOutcome =
+  | {
+      readonly status: "proposal";
+      readonly proposal: CadAgentExactExportProposal;
+    }
+  | { readonly status: "failed"; readonly result: CadAgentExactExportResult };
 
 export interface CurrentAgentSelectionInput {
   readonly namedReferenceName?: string;
@@ -77,6 +99,7 @@ type RelayResponse =
   | CadOpsAgentQueryResponse
   | CadOpsAgentV8ProjectSurfaceResponse
   | CadOpsAgentCurrentSelectionResponse
+  | CadAgentExactExportResult
   | CadAgentSessionErrorResponse;
 
 type RelayRequest = {
@@ -85,16 +108,30 @@ type RelayRequest = {
     | "execute"
     | "query"
     | "inspectV8ProjectSurface"
-    | "getCurrentSelection";
+    | "getCurrentSelection"
+    | "requestExactExport";
   readonly request: unknown;
 };
 
-interface PendingProposal {
+interface PendingCommitProposal {
+  readonly kind: "commit";
   readonly request: CadOpsAgentRequest;
   readonly proposal: CadAgentCommitProposal;
   readonly sourceAuthorityEpoch: number;
   resolve(response: CadOpsAgentResponse | CadAgentSessionErrorResponse): void;
 }
+
+interface PendingExactExportProposal {
+  readonly kind: "exactExport";
+  readonly request: CadAgentExactExportRequest;
+  readonly proposal: CadAgentExactExportProposal;
+  readonly sourceAuthorityEpoch: number;
+  resolve(
+    response: CadAgentExactExportResult | CadAgentSessionErrorResponse
+  ): void;
+}
+
+type PendingProposal = PendingCommitProposal | PendingExactExportProposal;
 
 export class LocalAgentSession {
   readonly #adapter: CadOpsAgentAdapter;
@@ -105,7 +142,7 @@ export class LocalAgentSession {
   >();
   #snapshot: LocalAgentSessionSnapshot = disconnectedAgentSessionSnapshot();
   #pending: PendingProposal | undefined;
-  #preparingCommitRequestId: string | undefined;
+  #preparingProposalRequestId: string | undefined;
   #approveAllQueue: Promise<void> = Promise.resolve();
   #sessionGeneration = 0;
   #started = false;
@@ -151,7 +188,7 @@ export class LocalAgentSession {
     const validMode = parseCadAgentApprovalMode(mode);
     if (
       this.#pending ||
-      this.#preparingCommitRequestId ||
+      this.#preparingProposalRequestId ||
       this.#disposed ||
       (this.#started && !this.#snapshot.connected)
     )
@@ -220,6 +257,32 @@ export class LocalAgentSession {
     }
 
     const sessionGeneration = this.#sessionGeneration;
+    if (pending.kind === "exactExport") {
+      let result: CadAgentExactExportResult;
+      try {
+        result = this.options.executeExactExport
+          ? parseCadAgentExactExportResult(
+              await this.options.executeExactExport(pending.proposal)
+            )
+          : createExactExportTerminalResult(
+              pending,
+              "failed",
+              "EXPORT_EXACT_WRITER_UNAVAILABLE",
+              "The browser exact-export executor is unavailable."
+            );
+      } catch {
+        result = createExactExportTerminalResult(
+          pending,
+          "failed",
+          "EXPORT_STEP_TRANSFER_FAILED",
+          "The browser exact-export executor failed."
+        );
+      }
+      if (this.#sessionAlive(sessionGeneration) && this.#pending === pending) {
+        this.#settlePending(result);
+      }
+      return;
+    }
     const committed = await this.#executeAtSourceAuthorityEpoch(
       pending.request,
       pending.sourceAuthorityEpoch,
@@ -248,12 +311,24 @@ export class LocalAgentSession {
     const pending = this.#pending;
     if (!pending || this.#snapshot.approving) return;
     this.#settlePending(
-      sessionError(
-        pending.request.requestId,
-        "AGENT_COMMIT_REJECTED",
-        "The user rejected the agent commit proposal."
-      )
+      pending.kind === "exactExport"
+        ? createExactExportTerminalResult(pending, "rejected")
+        : sessionError(
+            pending.request.requestId,
+            "AGENT_COMMIT_REJECTED",
+            "The user rejected the agent commit proposal."
+          )
     );
+  }
+
+  cancelExactExport(): void {
+    const pending = this.#pending;
+    if (!pending || pending.kind !== "exactExport") return;
+    if (this.#snapshot.approving) {
+      this.options.cancelExactExport?.();
+      return;
+    }
+    this.#settlePending(createExactExportTerminalResult(pending, "cancelled"));
   }
 
   async dispose(): Promise<void> {
@@ -312,7 +387,7 @@ export class LocalAgentSession {
       );
       return response;
     }
-    if (this.#pending || this.#preparingCommitRequestId) {
+    if (this.#pending || this.#preparingProposalRequestId) {
       return sessionError(
         request.requestId,
         "AGENT_APPROVAL_BUSY",
@@ -321,7 +396,7 @@ export class LocalAgentSession {
     }
 
     const sessionGeneration = this.#sessionGeneration;
-    this.#preparingCommitRequestId = request.requestId;
+    this.#preparingProposalRequestId = request.requestId;
     const sourceAuthorityEpoch = this.options.engine.getSourceAuthorityEpoch();
     const sourceIdentity = this.#sourceIdentity();
     try {
@@ -350,14 +425,134 @@ export class LocalAgentSession {
         ...(preview.audit ? { audit: preview.audit } : {}),
         review: preview.review
       };
-      this.#preparingCommitRequestId = undefined;
+      this.#preparingProposalRequestId = undefined;
       return new Promise((resolve) => {
-        this.#pending = { request, proposal, sourceAuthorityEpoch, resolve };
+        this.#pending = {
+          kind: "commit",
+          request,
+          proposal,
+          sourceAuthorityEpoch,
+          resolve
+        };
         this.#publish({ ...this.#snapshot, proposal, approving: false });
       });
     } finally {
-      if (this.#preparingCommitRequestId === request.requestId) {
-        this.#preparingCommitRequestId = undefined;
+      if (this.#preparingProposalRequestId === request.requestId) {
+        this.#preparingProposalRequestId = undefined;
+      }
+    }
+  }
+
+  async requestExactExport(
+    request: unknown
+  ): Promise<CadAgentExactExportResult | CadAgentSessionErrorResponse> {
+    const validRequest = parseCadAgentExactExportRequest(request);
+    if (this.#disposed || (this.#started && !this.#snapshot.connected)) {
+      return this.#disconnected(validRequest.requestId);
+    }
+    const prepare = () =>
+      this.options.planExactExport?.(validRequest) ?? {
+        status: "failed" as const,
+        result: createUnavailableExactExportResult(
+          validRequest,
+          this.options.engine.getDocument().units
+        )
+      };
+
+    if (this.#snapshot.approvalMode === "approveAll") {
+      const sessionGeneration = this.#sessionGeneration;
+      const response = this.#approveAllQueue.then(async () => {
+        try {
+          if (!this.#sessionAlive(sessionGeneration)) {
+            return this.#disconnected(validRequest.requestId);
+          }
+          const planned = await prepare();
+          if (planned.status === "failed") {
+            return parseCadAgentExactExportResult(planned.result);
+          }
+          const proposal = parseCadAgentExactExportProposal(planned.proposal);
+          return this.options.executeExactExport
+            ? parseCadAgentExactExportResult(
+                await this.options.executeExactExport(proposal)
+              )
+            : createUnavailableExactExportResult(
+                validRequest,
+                proposal.plan.units
+              );
+        } catch {
+          return createUnavailableExactExportResult(
+            validRequest,
+            this.options.engine.getDocument().units,
+            "EXPORT_STEP_TRANSFER_FAILED",
+            "The browser exact-export action failed."
+          );
+        }
+      });
+      this.#approveAllQueue = response.then(
+        () => undefined,
+        () => undefined
+      );
+      return response;
+    }
+
+    if (this.#pending || this.#preparingProposalRequestId) {
+      return sessionError(
+        validRequest.requestId,
+        "AGENT_APPROVAL_BUSY",
+        "Another agent commit or export proposal is waiting for approval."
+      );
+    }
+    const sessionGeneration = this.#sessionGeneration;
+    const sourceAuthorityEpoch = this.options.engine.getSourceAuthorityEpoch();
+    const sourceIdentity = this.#sourceIdentity();
+    this.#preparingProposalRequestId = validRequest.requestId;
+    try {
+      let planned: LocalAgentExactExportPlanOutcome;
+      try {
+        planned = await prepare();
+      } catch {
+        return createUnavailableExactExportResult(
+          validRequest,
+          this.options.engine.getDocument().units,
+          "EXPORT_STEP_TRANSFER_FAILED",
+          "The browser exact-export planner failed."
+        );
+      }
+      if (planned.status === "failed") {
+        return parseCadAgentExactExportResult(planned.result);
+      }
+      const proposal = parseCadAgentExactExportProposal(planned.proposal);
+      if (
+        !this.#sessionAlive(sessionGeneration) ||
+        sourceAuthorityEpoch !==
+          this.options.engine.getSourceAuthorityEpoch() ||
+        !sameSourceIdentity(sourceIdentity, this.#sourceIdentity()) ||
+        !sameSourceIdentity(sourceIdentity, proposal.sourceIdentity)
+      ) {
+        return sessionError(
+          validRequest.requestId,
+          "AGENT_PROPOSAL_STALE",
+          "The project changed while the exact export proposal was prepared."
+        );
+      }
+      this.#preparingProposalRequestId = undefined;
+      return new Promise((resolve) => {
+        this.#pending = {
+          kind: "exactExport",
+          request: validRequest,
+          proposal,
+          sourceAuthorityEpoch,
+          resolve
+        };
+        this.#publish({
+          ...this.#snapshot,
+          proposal,
+          approving: false
+        });
+      });
+    } finally {
+      if (this.#preparingProposalRequestId === validRequest.requestId) {
+        this.#preparingProposalRequestId = undefined;
       }
     }
   }
@@ -496,6 +691,9 @@ export class LocalAgentSession {
         case "getCurrentSelection":
           response = await this.getCurrentSelection(relayRequest.request);
           break;
+        case "requestExactExport":
+          response = await this.requestExactExport(relayRequest.request);
+          break;
       }
       await this.#post("respond", {
         clientId: this.#clientId,
@@ -532,16 +730,28 @@ export class LocalAgentSession {
     );
   }
 
-  #settlePending(response: CadOpsAgentResponse | CadAgentSessionErrorResponse) {
+  #settlePending(
+    response:
+      | CadOpsAgentResponse
+      | CadAgentExactExportResult
+      | CadAgentSessionErrorResponse
+  ) {
     const pending = this.#pending;
     if (!pending) return;
     this.#pending = undefined;
-    pending.resolve(response);
+    if (pending.kind === "commit") {
+      pending.resolve(response as CadOpsAgentResponse);
+    } else {
+      pending.resolve(
+        response as CadAgentExactExportResult | CadAgentSessionErrorResponse
+      );
+    }
     this.#publish({
       ...this.#snapshot,
       proposal: undefined,
       approving: false,
-      ...(!response.ok &&
+      ...("ok" in response &&
+      !response.ok &&
       "error" in response &&
       response.error.code.startsWith("AGENT_")
         ? {
@@ -557,8 +767,11 @@ export class LocalAgentSession {
   ): void {
     const wasConnected = this.#snapshot.connected;
     this.#sessionGeneration += 1;
-    this.#preparingCommitRequestId = undefined;
+    this.#preparingProposalRequestId = undefined;
     if (this.#pending) {
+      if (this.#pending.kind === "exactExport" && this.#snapshot.approving) {
+        this.options.cancelExactExport?.();
+      }
       this.#settlePending({
         ...error,
         requestId: this.#pending.request.requestId
@@ -699,7 +912,8 @@ function readRelayRequest(value: unknown): RelayRequest | null {
       "execute",
       "query",
       "inspectV8ProjectSurface",
-      "getCurrentSelection"
+      "getCurrentSelection",
+      "requestExactExport"
     ].includes(String(value.request.method))
   ) {
     throw new Error("Malformed local agent relay request.");
@@ -720,6 +934,51 @@ function readSessionError(value: unknown): CadAgentSessionErrorResponse {
       ? value.message
       : "The local agent session disconnected."
   );
+}
+
+function createUnavailableExactExportResult(
+  request: CadAgentExactExportRequest,
+  units: CadAgentExactExportResult["units"],
+  code: CadAgentExactExportResult["diagnostics"][number]["code"] = "EXPORT_EXACT_WRITER_UNAVAILABLE",
+  message = "The browser exact-export planner is unavailable."
+): CadAgentExactExportResult {
+  const selectedBodyIds =
+    request.selection.mode === "bodyIds" ? request.selection.bodyIds : [];
+  return {
+    requestId: request.requestId,
+    status: "failed",
+    selectedBodyIds,
+    selectedBodyCount: selectedBodyIds.length,
+    schema: "AP242DIS",
+    units,
+    diagnostics: [
+      {
+        code,
+        message
+      }
+    ]
+  };
+}
+
+function createExactExportTerminalResult(
+  pending: PendingExactExportProposal,
+  status: Extract<
+    CadAgentExactExportResult["status"],
+    "rejected" | "cancelled" | "stale" | "failed"
+  >,
+  code?: CadAgentExactExportResult["diagnostics"][number]["code"],
+  message?: string
+): CadAgentExactExportResult {
+  return {
+    requestId: pending.request.requestId,
+    status,
+    selectedBodyIds: pending.proposal.plan.orderedBodyIds,
+    selectedBodyCount: pending.proposal.plan.orderedBodyIds.length,
+    schema: "AP242DIS",
+    units: pending.proposal.plan.units,
+    planIdentity: pending.proposal.plan.planIdentity,
+    diagnostics: code && message ? [{ code, message }] : []
+  };
 }
 
 function sessionError(

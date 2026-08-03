@@ -80,7 +80,6 @@ import type {
   CadRebuildPlanDiagnosticCode,
   CadReferenceHealthStatus,
   CadSelectionReferenceCandidate,
-  CadSelectionReferenceCommandTarget,
   CadSelectionReferenceCandidateSource,
   CadSelectionReferenceInput,
   CadSelectionReferenceIssue,
@@ -15941,65 +15940,14 @@ function validateShellTargetBodyId(
   opIndex?: number,
   ignoreConsumingFeatureId?: FeatureId
 ): BodyId {
-  if (typeof targetBodyId !== "string" || targetBodyId.trim().length === 0) {
-    throwValidationError({
-      code: "SHELL_TARGET_BODY_UNSUPPORTED",
-      message: `${operation} requires targetBodyId.`,
-      opIndex,
-      bodyId: targetBodyId,
-      path: operationPath(opIndex, "targetBodyId"),
-      expected: "existing active source-eligible target body id",
-      received: describeReceived(targetBodyId)
-    });
-  }
-
-  const feature = findFeatureByBodyId(state.features, targetBodyId);
-  if (!feature && !isPrimitiveBodyId(state, targetBodyId)) {
-    throwValidationError({
-      code: "BODY_NOT_FOUND",
-      message: `Target body does not exist: ${targetBodyId}`,
-      opIndex,
-      bodyId: targetBodyId,
-      path: operationPath(opIndex, "targetBodyId"),
-      expected: "existing active source-eligible target body id",
-      received: targetBodyId
-    });
-  }
-
-  const bodyId = feature?.bodyId ?? targetBodyId;
-  const consumer = findConsumingFeatureByTargetBodyId(state.features, bodyId);
-  const consumingFeature =
-    consumer?.id === ignoreConsumingFeatureId ? undefined : consumer;
-
-  const policy = createCommandDownstreamBodyPolicyProjection(
+  return validateCommandDownstreamBodyId(
     state,
-    feature ?? bodyId,
-    consumingFeature,
-    "shellTarget"
+    targetBodyId,
+    "shellTarget",
+    operation,
+    opIndex,
+    ignoreConsumingFeatureId
   );
-  if (!policy.sourceEligible) {
-    if (!consumingFeature) {
-      throwCommandDownstreamBodyPolicyError(
-        policy,
-        opIndex,
-        bodyId,
-        "targetBodyId"
-      );
-    }
-    const consumer = consumingFeature;
-    throwValidationError({
-      code: "SHELL_TARGET_BODY_CONSUMED",
-      message: `${operation} target body is already consumed by feature ${consumer.id}: ${bodyId}`,
-      opIndex,
-      featureId: consumer.id,
-      bodyId,
-      path: operationPath(opIndex, "targetBodyId"),
-      expected: "active source-eligible target body",
-      received: bodyId
-    });
-  }
-
-  return bodyId;
 }
 
 function validateShellWallThickness(value: unknown, opIndex?: number): number {
@@ -16265,65 +16213,14 @@ function validatePatternSeedBodyId(
   opIndex?: number,
   ignoreConsumingFeatureId?: FeatureId
 ): BodyId {
-  if (typeof seedBodyId !== "string" || seedBodyId.trim().length === 0) {
-    throwValidationError({
-      code: "PATTERN_SEED_BODY_UNSUPPORTED",
-      message: `${operation} requires seedBodyId.`,
-      opIndex,
-      bodyId: seedBodyId,
-      path: operationPath(opIndex, "seedBodyId"),
-      expected: "existing active source-eligible seed body id",
-      received: describeReceived(seedBodyId)
-    });
-  }
-
-  const feature = findFeatureByBodyId(state.features, seedBodyId);
-  if (!feature && !isPrimitiveBodyId(state, seedBodyId)) {
-    throwValidationError({
-      code: "BODY_NOT_FOUND",
-      message: `Seed body does not exist: ${seedBodyId}`,
-      opIndex,
-      bodyId: seedBodyId,
-      path: operationPath(opIndex, "seedBodyId"),
-      expected: "existing active source-eligible seed body id",
-      received: seedBodyId
-    });
-  }
-
-  const bodyId = feature?.bodyId ?? seedBodyId;
-  const consumer = findConsumingFeatureByTargetBodyId(state.features, bodyId);
-  const consumingFeature =
-    consumer?.id === ignoreConsumingFeatureId ? undefined : consumer;
-
-  const policy = createCommandDownstreamBodyPolicyProjection(
+  return validateCommandDownstreamBodyId(
     state,
-    feature ?? bodyId,
-    consumingFeature,
-    "patternSeed"
+    seedBodyId,
+    "patternSeed",
+    operation,
+    opIndex,
+    ignoreConsumingFeatureId
   );
-  if (!policy.sourceEligible) {
-    if (!consumingFeature) {
-      throwCommandDownstreamBodyPolicyError(
-        policy,
-        opIndex,
-        bodyId,
-        "seedBodyId"
-      );
-    }
-    const consumer = consumingFeature;
-    throwValidationError({
-      code: "PATTERN_SEED_BODY_CONSUMED",
-      message: `${operation} seed body is already consumed by feature ${consumer.id}: ${bodyId}`,
-      opIndex,
-      featureId: consumer.id,
-      bodyId,
-      path: operationPath(opIndex, "seedBodyId"),
-      expected: "active source-eligible seed body",
-      received: bodyId
-    });
-  }
-
-  return bodyId;
 }
 
 function validatePatternAxis(
@@ -16922,64 +16819,14 @@ function validateMirrorSeedBodyId(
   opIndex?: number,
   ignoreConsumingFeatureId?: FeatureId
 ): BodyId {
-  if (typeof seedBodyId !== "string" || seedBodyId.trim().length === 0) {
-    throwValidationError({
-      code: "MIRROR_SEED_BODY_UNSUPPORTED",
-      message: `${operation} requires seedBodyId.`,
-      opIndex,
-      bodyId: seedBodyId,
-      path: operationPath(opIndex, "seedBodyId"),
-      expected: "existing active source-eligible seed body id",
-      received: describeReceived(seedBodyId)
-    });
-  }
-
-  const feature = findFeatureByBodyId(state.features, seedBodyId);
-
-  if (!feature && !isPrimitiveBodyId(state, seedBodyId)) {
-    throwValidationError({
-      code: "BODY_NOT_FOUND",
-      message: `Seed body does not exist: ${seedBodyId}`,
-      opIndex,
-      bodyId: seedBodyId,
-      path: operationPath(opIndex, "seedBodyId"),
-      expected: "existing active source-eligible seed body id",
-      received: seedBodyId
-    });
-  }
-
-  const bodyId = feature?.bodyId ?? seedBodyId;
-  const consumer = findConsumingFeatureByTargetBodyId(state.features, bodyId);
-  const consumingFeature =
-    consumer?.id === ignoreConsumingFeatureId ? undefined : consumer;
-  const policy = createCommandDownstreamBodyPolicyProjection(
+  return validateCommandDownstreamBodyId(
     state,
-    feature ?? bodyId,
-    consumingFeature,
-    "mirrorSeed"
+    seedBodyId,
+    "mirrorSeed",
+    operation,
+    opIndex,
+    ignoreConsumingFeatureId
   );
-  if (!policy.sourceEligible) {
-    if (!consumingFeature) {
-      throwCommandDownstreamBodyPolicyError(
-        policy,
-        opIndex,
-        bodyId,
-        "seedBodyId"
-      );
-    }
-    throwValidationError({
-      code: "MIRROR_SEED_BODY_CONSUMED",
-      message: `${operation} seed body is already consumed by feature ${consumingFeature.id}: ${bodyId}`,
-      opIndex,
-      featureId: consumingFeature.id,
-      bodyId,
-      path: operationPath(opIndex, "seedBodyId"),
-      expected: "active source-eligible seed body",
-      received: bodyId
-    });
-  }
-
-  return bodyId;
 }
 
 function createUpdatedHoleFeature(
@@ -17058,66 +16905,19 @@ function createConsumingFeatureEditReferenceEffects(
   feature: HoleFeature | ChamferFeature | FilletFeature
 ): readonly CadFeatureReferenceChangeSummary[] {
   if (feature.kind === "hole") {
-    const targetGeneratedReferences = listGeneratedReferences(
-      createBodyGeneratedReferences(
-        state,
-        feature.targetBodyId,
-        DEFAULT_PART_ID
-      )
-    ).map((reference) => ({
-      category: "consumed" as const,
-      bodyId: feature.targetBodyId,
-      stableId: reference.stableId,
-      kind: reference.kind,
-      sourceFeatureId: feature.id,
-      targetFeatureId: feature.id,
-      diagnosticCode: "CONSUMED_REFERENCE_NOT_COMMAND_READY" as const,
-      message:
-        "Target-body generated reference remains consumed by the edited hole feature."
-    }));
-    const targetNamedReferences = [...state.namedReferences.values()]
-      .filter((reference) => reference.bodyId === feature.targetBodyId)
-      .map((reference) => ({
-        category: "consumed" as const,
-        bodyId: reference.bodyId,
-        stableId: reference.stableId,
-        kind: reference.kind,
-        referenceName: reference.name,
-        sourceFeatureId: feature.id,
-        targetFeatureId: feature.id,
-        diagnosticCode: "CONSUMED_REFERENCE_NOT_COMMAND_READY" as const,
-        message:
-          "Target-body named reference remains consumed by the edited hole feature."
-      }));
-    const resultGeneratedReferences = listGeneratedReferences(
-      createBodyGeneratedReferences(state, feature.bodyId, DEFAULT_PART_ID)
-    ).map((reference) => ({
-      category: "active" as const,
-      bodyId: feature.bodyId,
-      stableId: reference.stableId,
-      kind: reference.kind,
-      sourceFeatureId: feature.id,
-      message:
-        "Hole result generated reference remains active after supported source parameter edit."
-    }));
-    const resultNamedReferences = [...state.namedReferences.values()]
-      .filter((reference) => reference.bodyId === feature.bodyId)
-      .map((reference) => ({
-        category: "active" as const,
-        bodyId: reference.bodyId,
-        stableId: reference.stableId,
-        kind: reference.kind,
-        referenceName: reference.name,
-        sourceFeatureId: feature.id,
-        message:
-          "Hole result named reference remains active after supported source parameter edit."
-      }));
-
     return [
-      ...targetGeneratedReferences,
-      ...targetNamedReferences,
-      ...resultGeneratedReferences,
-      ...resultNamedReferences
+      ...createHoleBodyReferenceEffects(
+        state,
+        feature,
+        feature.targetBodyId,
+        "consumed"
+      ),
+      ...createHoleBodyReferenceEffects(
+        state,
+        feature,
+        feature.bodyId,
+        "active"
+      )
     ];
   }
 
@@ -17142,43 +16942,20 @@ function createHoleRetargetReferenceEffects(
   after: HoleFeature,
   targetBodyChanged: boolean
 ): readonly CadFeatureReferenceChangeSummary[] {
-  const oldTargetGenerated = targetBodyChanged
-    ? listGeneratedReferences(
-        createBodyGeneratedReferences(
-          state,
-          before.targetBodyId,
-          DEFAULT_PART_ID
-        )
-      ).map((reference) => ({
-        category: "active" as const,
-        bodyId: before.targetBodyId,
-        stableId: reference.stableId,
-        kind: reference.kind,
-        sourceFeatureId: before.id,
-        targetFeatureId: after.id,
-        message:
-          "Old hole target generated reference was reactivated by the retarget transaction."
-      }))
+  const oldTarget = targetBodyChanged
+    ? createHoleBodyReferenceEffects(
+        state,
+        before,
+        before.targetBodyId,
+        "active"
+      )
     : [];
-  const oldTargetNamed = targetBodyChanged
-    ? [...state.namedReferences.values()]
-        .filter((reference) => reference.bodyId === before.targetBodyId)
-        .map((reference) => ({
-          category: "active" as const,
-          bodyId: reference.bodyId,
-          stableId: reference.stableId,
-          kind: reference.kind,
-          referenceName: reference.name,
-          sourceFeatureId: before.id,
-          targetFeatureId: after.id,
-          message:
-            "Old hole target named reference was reactivated by the retarget transaction."
-        }))
-    : [];
-  const newTargetConsumed = createConsumingFeatureEditReferenceEffects(
+  const newTarget = createHoleBodyReferenceEffects(
     state,
-    after
-  ).filter((effect) => effect.bodyId === after.targetBodyId);
+    after,
+    after.targetBodyId,
+    "consumed"
+  );
   const targetTopology = (state.topologyIdentity?.anchors ?? [])
     .filter(
       (anchor) =>
@@ -17209,9 +16986,8 @@ function createHoleRetargetReferenceEffects(
     });
 
   return [
-    ...oldTargetGenerated,
-    ...oldTargetNamed,
-    ...newTargetConsumed,
+    ...oldTarget,
+    ...newTarget,
     ...targetTopology,
     {
       category: "repair-needed",
@@ -17221,6 +16997,44 @@ function createHoleRetargetReferenceEffects(
       message:
         "Hole result topology evidence was invalidated by the target replacement and requires a current derived rebuild."
     }
+  ];
+}
+
+function createHoleBodyReferenceEffects(
+  state: MutableDocumentState,
+  feature: HoleFeature,
+  bodyId: BodyId,
+  category: "active" | "consumed"
+): readonly CadFeatureReferenceChangeSummary[] {
+  const target = bodyId !== feature.bodyId;
+  const common = {
+    category,
+    bodyId,
+    sourceFeatureId: feature.id,
+    ...(target ? { targetFeatureId: feature.id } : {}),
+    ...(category === "consumed"
+      ? {
+          diagnosticCode: "CONSUMED_REFERENCE_NOT_COMMAND_READY" as const
+        }
+      : {}),
+    message: `Hole ${target ? "target" : "result"} reference is ${category}.`
+  };
+  return [
+    ...listGeneratedReferences(
+      createBodyGeneratedReferences(state, bodyId, DEFAULT_PART_ID)
+    ).map((reference) => ({
+      ...common,
+      stableId: reference.stableId,
+      kind: reference.kind
+    })),
+    ...[...state.namedReferences.values()]
+      .filter((reference) => reference.bodyId === bodyId)
+      .map((reference) => ({
+        ...common,
+        stableId: reference.stableId,
+        kind: reference.kind,
+        referenceName: reference.name
+      }))
   ];
 }
 
@@ -18288,68 +18102,14 @@ function validateHoleTargetBodyId(
   opIndex?: number,
   ignoreConsumingFeatureId?: FeatureId
 ): BodyId {
-  if (typeof targetBodyId !== "string" || targetBodyId.trim().length === 0) {
-    throwValidationError({
-      code: "TARGET_BODY_REQUIRED",
-      message: "feature.hole requires targetBodyId or targetTopologyAnchorId.",
-      opIndex,
-      path: operationPath(opIndex, "targetBodyId"),
-      expected:
-        "existing active authored target body id or topology body anchor id",
-      received: describeReceived(targetBodyId)
-    });
-  }
-
-  const targetFeature = findFeatureByBodyId(state.features, targetBodyId);
-  const primitiveTarget = isPrimitiveBodyId(state, targetBodyId);
-
-  if (!targetFeature && !primitiveTarget) {
-    throwValidationError({
-      code: "BODY_NOT_FOUND",
-      message: `Target body does not exist: ${targetBodyId}`,
-      opIndex,
-      bodyId: targetBodyId,
-      path: operationPath(opIndex, "targetBodyId"),
-      expected: "existing active authored target body id",
-      received: targetBodyId
-    });
-  }
-
-  const consumer = findConsumingFeatureByTargetBodyId(
-    state.features,
-    targetBodyId
-  );
-  const blockingConsumer =
-    consumer?.id === ignoreConsumingFeatureId ? undefined : consumer;
-
-  const policy = createCommandDownstreamBodyPolicyProjection(
+  return validateCommandDownstreamBodyId(
     state,
-    targetFeature ?? targetBodyId,
-    blockingConsumer,
-    "holeTarget"
+    targetBodyId,
+    "holeTarget",
+    "feature.hole",
+    opIndex,
+    ignoreConsumingFeatureId
   );
-  if (!policy.sourceEligible) {
-    if (!blockingConsumer) {
-      throwCommandDownstreamBodyPolicyError(
-        policy,
-        opIndex,
-        targetBodyId,
-        "targetBodyId"
-      );
-    }
-    throwValidationError({
-      code: "UNSUPPORTED_FEATURE_OPERATION",
-      message: `feature.hole target body is already consumed by feature ${blockingConsumer.id}: ${targetBodyId}`,
-      opIndex,
-      bodyId: targetBodyId,
-      featureId: blockingConsumer.id,
-      path: operationPath(opIndex, "targetBodyId"),
-      expected: "active authored target body",
-      received: targetBodyId
-    });
-  }
-
-  return targetFeature?.bodyId ?? targetBodyId;
 }
 
 function validateExistingHoleTarget(
@@ -18382,6 +18142,93 @@ function validateExistingHoleTarget(
   }
 
   validateHoleTargetBodyId(state, feature.targetBodyId, opIndex, feature.id);
+}
+
+function validateCommandDownstreamBodyId(
+  state: MutableDocumentState,
+  requestedBodyId: BodyId | undefined,
+  policyOperation: CadExactDownstreamOperation,
+  operationLabel: string,
+  opIndex?: number,
+  ignoreConsumingFeatureId?: FeatureId
+): BodyId {
+  const seed =
+    policyOperation === "patternSeed" || policyOperation === "mirrorSeed";
+  const field = seed ? "seedBodyId" : "targetBodyId";
+  const bodyLabel = seed ? "Seed" : "Target";
+  const hole = policyOperation === "holeTarget";
+  const expected = hole
+    ? "existing active authored target body id or topology body anchor id"
+    : `existing active source-eligible ${seed ? "seed" : "target"} body id`;
+  if (
+    typeof requestedBodyId !== "string" ||
+    requestedBodyId.trim().length === 0
+  ) {
+    throwValidationError({
+      code: hole
+        ? "TARGET_BODY_REQUIRED"
+        : policyOperation === "shellTarget"
+          ? "SHELL_TARGET_BODY_UNSUPPORTED"
+          : policyOperation === "mirrorSeed"
+            ? "MIRROR_SEED_BODY_UNSUPPORTED"
+            : "PATTERN_SEED_BODY_UNSUPPORTED",
+      message: hole
+        ? "feature.hole requires targetBodyId or targetTopologyAnchorId."
+        : `${operationLabel} requires ${field}.`,
+      opIndex,
+      ...(!hole ? { bodyId: requestedBodyId } : {}),
+      path: operationPath(opIndex, field),
+      expected,
+      received: describeReceived(requestedBodyId)
+    });
+  }
+
+  const feature = findFeatureByBodyId(state.features, requestedBodyId);
+  if (!feature && !isPrimitiveBodyId(state, requestedBodyId)) {
+    throwValidationError({
+      code: "BODY_NOT_FOUND",
+      message: `${bodyLabel} body does not exist: ${requestedBodyId}`,
+      opIndex,
+      bodyId: requestedBodyId,
+      path: operationPath(opIndex, field),
+      expected: hole ? "existing active authored target body id" : expected,
+      received: requestedBodyId
+    });
+  }
+
+  const bodyId = feature?.bodyId ?? requestedBodyId;
+  const consumer = findConsumingFeatureByTargetBodyId(state.features, bodyId);
+  const consumingFeature =
+    consumer?.id === ignoreConsumingFeatureId ? undefined : consumer;
+  const policy = createCommandDownstreamBodyPolicyProjection(
+    state,
+    feature ?? bodyId,
+    consumingFeature,
+    policyOperation
+  );
+  if (policy.sourceEligible) return bodyId;
+  if (!consumingFeature) {
+    throwCommandDownstreamBodyPolicyError(policy, opIndex, bodyId, field);
+  }
+
+  throwValidationError({
+    code: hole
+      ? "UNSUPPORTED_FEATURE_OPERATION"
+      : policyOperation === "shellTarget"
+        ? "SHELL_TARGET_BODY_CONSUMED"
+        : policyOperation === "mirrorSeed"
+          ? "MIRROR_SEED_BODY_CONSUMED"
+          : "PATTERN_SEED_BODY_CONSUMED",
+    message: `${operationLabel} ${bodyLabel.toLowerCase()} body is already consumed by feature ${consumingFeature.id}: ${bodyId}`,
+    opIndex,
+    featureId: consumingFeature.id,
+    bodyId,
+    path: operationPath(opIndex, field),
+    expected: hole
+      ? "active authored target body"
+      : `active source-eligible ${seed ? "seed" : "target"} body`,
+    received: bodyId
+  });
 }
 
 function createCommandDownstreamBodyPolicyProjection(
@@ -21429,35 +21276,38 @@ function createSingleSelectionReferenceCandidate(options: {
     ...operationIssues
   ];
   const commandable = issues.length === 0;
-  const target: CadSelectionReferenceCommandTarget =
-    "geometricSignature" in options.reference
-      ? {
-          type: "generatedReference",
-          bodyId: options.reference.bodyId,
-          stableId: options.reference.stableId,
-          kind: options.reference.kind,
-          ...(options.topologyAnchorId
-            ? { topologyAnchorId: options.topologyAnchorId }
-            : {}),
-          ...(options.checkpointId
-            ? { checkpointId: options.checkpointId }
-            : {}),
-          ...(options.selection.type === "namedReference"
-            ? { referenceName: options.selection.name }
-            : {})
-        }
-      : { type: "body", bodyId: options.reference.bodyId };
   const candidate: CadSelectionReferenceCandidate = {
     source: options.source,
-    target,
-    reference: options.reference,
     commandable,
     commandOperations: baseOperations,
     label: options.reference.label,
     ...(options.reference.description
       ? { description: options.reference.description }
       : {}),
-    issues
+    issues,
+    ...("geometricSignature" in options.reference
+      ? {
+          target: {
+            type: "generatedReference" as const,
+            bodyId: options.reference.bodyId,
+            stableId: options.reference.stableId,
+            kind: options.reference.kind,
+            ...(options.topologyAnchorId
+              ? { topologyAnchorId: options.topologyAnchorId }
+              : {}),
+            ...(options.checkpointId
+              ? { checkpointId: options.checkpointId }
+              : {}),
+            ...(options.selection.type === "namedReference"
+              ? { referenceName: options.selection.name }
+              : {})
+          },
+          reference: options.reference
+        }
+      : {
+          target: { type: "body" as const, bodyId: options.reference.bodyId },
+          reference: options.reference
+        })
   };
 
   return {
@@ -34023,7 +33873,6 @@ function isSupportedImportEdgeFinishTargetCombination(
   }
 
   const operationMode = target.operationMode ?? "newBody";
-
   return (
     (operationMode === "newBody" &&
       target.profileKind !== "wire" &&

@@ -133,6 +133,7 @@ export interface ProjectOpfsCacheFileHandleLike {
 }
 
 export interface ProjectOpfsCacheFileLike {
+  readonly size?: number;
   readonly text: () => Promise<string>;
   readonly arrayBuffer?: () => Promise<ArrayBuffer>;
 }
@@ -147,6 +148,12 @@ export interface ProjectOpfsCacheTargetLike {
   readonly navigator?: {
     readonly storage?: {
       readonly getDirectory?: () => Promise<ProjectOpfsCacheDirectoryHandleLike>;
+    };
+    readonly locks?: {
+      readonly request: <T>(
+        name: string,
+        callback: () => Promise<T>
+      ) => Promise<T>;
     };
   };
 }

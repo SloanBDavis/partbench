@@ -33,6 +33,7 @@ import type { ProjectStorageCapabilityStatus } from "../../projectStorageCapabil
 import type { ProjectExactStepExportJobState } from "../../projectExactStepExport";
 import {
   approveLocalAgentProposal,
+  cancelLocalAgentExactExport,
   rejectLocalAgentProposal,
   setLocalAgentApprovalMode,
   useLocalAgentSession
@@ -129,6 +130,7 @@ export interface ProjectWorkspaceProps {
   readonly onImportJson: () => void;
   readonly onRefreshOpfsCache: () => void;
   readonly onClearOpfsCache: () => void;
+  readonly onClearExactArtifactCache: () => void;
   readonly onDownloadStep: (bodyIds?: readonly string[]) => void;
   readonly onCancelStep: () => void;
   readonly onDownloadVisualization: () => void;
@@ -201,6 +203,7 @@ export function ProjectWorkspace({
   onImportJson,
   onRefreshOpfsCache,
   onClearOpfsCache,
+  onClearExactArtifactCache,
   onDownloadStep,
   onCancelStep,
   onDownloadVisualization,
@@ -268,6 +271,7 @@ export function ProjectWorkspace({
           onImportJson={onImportJson}
           onRefreshOpfsCache={onRefreshOpfsCache}
           onClearOpfsCache={onClearOpfsCache}
+          onClearExactArtifactCache={onClearExactArtifactCache}
         />
       ) : page === "parameters" ? (
         <ProjectParameters
@@ -290,7 +294,7 @@ export function ProjectWorkspace({
           onRedo={onRedo}
         />
       ) : page === "agent" ? (
-        <ProjectAgent disabled={disabled} />
+        <ProjectAgent disabled={disabled} job={exactStepExportJob} />
       ) : (
         <ProjectExport
           key={exportReadiness?.bodies.map((body) => body.bodyId).join("\0")}
@@ -319,7 +323,13 @@ export function ProjectWorkspace({
   );
 }
 
-function ProjectAgent({ disabled }: { readonly disabled: boolean }) {
+function ProjectAgent({
+  disabled,
+  job
+}: {
+  readonly disabled: boolean;
+  readonly job: ProjectExactStepExportJobState;
+}) {
   const agent = useLocalAgentSession();
   const proposalRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -366,7 +376,7 @@ function ProjectAgent({ disabled }: { readonly disabled: boolean }) {
         </ProjectCard>
         <ProjectCard title="Approval mode" status="Session only">
           <fieldset className="pb-project-agent-modes">
-            <legend>Agent commit approval</legend>
+            <legend>Agent commit or export approval</legend>
             <label>
               <input
                 type="radio"
@@ -383,7 +393,7 @@ function ProjectAgent({ disabled }: { readonly disabled: boolean }) {
               />
               <span>
                 <strong>Manual approval</strong>
-                Review every proposed commit before it changes the project.
+                Review every proposed commit or local export download.
               </span>
             </label>
             <label>
@@ -401,7 +411,7 @@ function ProjectAgent({ disabled }: { readonly disabled: boolean }) {
                 onChange={() => {
                   if (
                     window.confirm(
-                      "Approve every valid agent commit for this browser session?"
+                      "Approve every valid agent commit and local export download for this browser session?"
                     )
                   ) {
                     setLocalAgentApprovalMode("approveAll");
@@ -410,7 +420,8 @@ function ProjectAgent({ disabled }: { readonly disabled: boolean }) {
               />
               <span>
                 <strong>Approve all</strong>
-                Commit valid agent batches immediately for this session.
+                Commit valid batches and request valid local downloads
+                immediately for this session.
               </span>
             </label>
           </fieldset>
@@ -423,80 +434,154 @@ function ProjectAgent({ disabled }: { readonly disabled: boolean }) {
           tabIndex={-1}
           aria-labelledby="pb-agent-proposal-heading"
         >
-          <div className="pb-project-card-heading">
-            <h2 id="pb-agent-proposal-heading">Commit proposal</h2>
-            <span>{agent.proposal.review.operationCount} operations</span>
-          </div>
-          <p className="pb-project-card-detail">
-            {formatAgentEntityChanges(agent.proposal)}
-          </p>
-          <ol className="pb-project-agent-operations">
-            {agent.proposal.review.operations.map((operation) => (
-              <li key={`${operation.index}:${operation.op}`}>
-                <strong>{operation.label}</strong>
-                {operation.destructive ? <span>Destructive</span> : null}
-              </li>
-            ))}
-          </ol>
-          {agent.proposal.warnings.length > 0 ||
-          agent.proposal.review.hints.length > 0 ? (
-            <AgentNoticeList
-              title="Warnings and review notes"
-              notices={[
-                ...agent.proposal.warnings,
-                ...agent.proposal.review.hints.map((notice) => notice.message)
-              ]}
-            />
-          ) : null}
-          {agent.proposal.review.blockers.length > 0 ? (
-            <AgentNoticeList
-              title="Blockers"
-              notices={agent.proposal.review.blockers.map(
-                (notice) => notice.message
-              )}
-            />
-          ) : null}
-          <details className="pb-project-advanced pb-project-advanced--compact">
-            <summary>Technical details</summary>
-            <pre>
-              {JSON.stringify(
-                {
-                  requestId: agent.proposal.requestId,
-                  sourceIdentity: agent.proposal.sourceIdentity,
-                  actor: agent.proposal.actor,
-                  audit: agent.proposal.audit,
-                  reviewAudit: agent.proposal.review.audit,
-                  semanticDiff: agent.proposal.semanticDiff
-                },
-                null,
-                2
-              )}
-            </pre>
-          </details>
-          <div className="pb-project-form-actions">
-            <Button
-              disabled={disabled || !agent.connected || agent.approving}
-              onClick={rejectLocalAgentProposal}
-            >
-              Reject
-            </Button>
-            <Button
-              tone="primary"
-              disabled={
-                disabled ||
-                !agent.connected ||
-                agent.approving ||
-                agent.proposal.review.blockers.length > 0
-              }
-              onClick={approveLocalAgentProposal}
-            >
-              {agent.approving ? "Approving…" : "Approve"}
-            </Button>
-          </div>
+          {"plan" in agent.proposal ? (
+            <>
+              <div className="pb-project-card-heading">
+                <h2 id="pb-agent-proposal-heading">Exact export proposal</h2>
+                <span>{agent.proposal.plan.bodies.length} bodies</span>
+              </div>
+              <p className="pb-project-card-detail">
+                Approval writes named STEP AP242DIS in{" "}
+                {agent.proposal.plan.units}, preserves this order and body
+                names, and requests one local browser download atomically.
+              </p>
+              <ol className="pb-project-agent-operations">
+                {agent.proposal.plan.bodies.map((body) => (
+                  <li key={body.bodyId}>
+                    <strong>{body.bodyName}</strong>
+                    <span>{body.bodyId}</span>
+                  </li>
+                ))}
+              </ol>
+              {agent.proposal.warnings.length > 0 ? (
+                <AgentNoticeList
+                  title="Warnings"
+                  notices={agent.proposal.warnings}
+                />
+              ) : null}
+              <details className="pb-project-advanced pb-project-advanced--compact">
+                <summary>Technical details</summary>
+                <pre>
+                  {JSON.stringify(
+                    {
+                      requestId: agent.proposal.requestId,
+                      sourceIdentity: agent.proposal.sourceIdentity,
+                      planIdentity: agent.proposal.plan.planIdentity,
+                      schema: agent.proposal.plan.schema,
+                      units: agent.proposal.plan.units,
+                      orderedBodyIds: agent.proposal.plan.orderedBodyIds
+                    },
+                    null,
+                    2
+                  )}
+                </pre>
+              </details>
+              {agent.approving ? (
+                <div role="status" aria-live="polite">
+                  <p>{job.message ?? "Preparing the local STEP download."}</p>
+                  <Button tone="danger" onClick={cancelLocalAgentExactExport}>
+                    Cancel export
+                  </Button>
+                </div>
+              ) : null}
+              <div className="pb-project-form-actions">
+                <Button
+                  disabled={disabled || !agent.connected || agent.approving}
+                  onClick={rejectLocalAgentProposal}
+                >
+                  Reject
+                </Button>
+                <Button
+                  tone="primary"
+                  disabled={disabled || !agent.connected || agent.approving}
+                  onClick={approveLocalAgentProposal}
+                >
+                  {agent.approving
+                    ? "Requesting download…"
+                    : "Approve & download"}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="pb-project-card-heading">
+                <h2 id="pb-agent-proposal-heading">Commit proposal</h2>
+                <span>{agent.proposal.review.operationCount} operations</span>
+              </div>
+              <p className="pb-project-card-detail">
+                {formatAgentEntityChanges(agent.proposal)}
+              </p>
+              <ol className="pb-project-agent-operations">
+                {agent.proposal.review.operations.map((operation) => (
+                  <li key={`${operation.index}:${operation.op}`}>
+                    <strong>{operation.label}</strong>
+                    {operation.destructive ? <span>Destructive</span> : null}
+                  </li>
+                ))}
+              </ol>
+              {agent.proposal.warnings.length > 0 ||
+              agent.proposal.review.hints.length > 0 ? (
+                <AgentNoticeList
+                  title="Warnings and review notes"
+                  notices={[
+                    ...agent.proposal.warnings,
+                    ...agent.proposal.review.hints.map(
+                      (notice) => notice.message
+                    )
+                  ]}
+                />
+              ) : null}
+              {agent.proposal.review.blockers.length > 0 ? (
+                <AgentNoticeList
+                  title="Blockers"
+                  notices={agent.proposal.review.blockers.map(
+                    (notice) => notice.message
+                  )}
+                />
+              ) : null}
+              <details className="pb-project-advanced pb-project-advanced--compact">
+                <summary>Technical details</summary>
+                <pre>
+                  {JSON.stringify(
+                    {
+                      requestId: agent.proposal.requestId,
+                      sourceIdentity: agent.proposal.sourceIdentity,
+                      actor: agent.proposal.actor,
+                      audit: agent.proposal.audit,
+                      reviewAudit: agent.proposal.review.audit,
+                      semanticDiff: agent.proposal.semanticDiff
+                    },
+                    null,
+                    2
+                  )}
+                </pre>
+              </details>
+              <div className="pb-project-form-actions">
+                <Button
+                  disabled={disabled || !agent.connected || agent.approving}
+                  onClick={rejectLocalAgentProposal}
+                >
+                  Reject
+                </Button>
+                <Button
+                  tone="primary"
+                  disabled={
+                    disabled ||
+                    !agent.connected ||
+                    agent.approving ||
+                    agent.proposal.review.blockers.length > 0
+                  }
+                  onClick={approveLocalAgentProposal}
+                >
+                  {agent.approving ? "Approving…" : "Approve"}
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       ) : (
         <div className="pb-project-empty-state">
-          <h2>No commit awaiting approval</h2>
+          <h2>No proposal awaiting approval</h2>
           <p>
             Agent queries and dry runs remain available while this page is open.
           </p>
@@ -689,7 +774,8 @@ function ProjectFiles({
   onJsonDraftChange,
   onImportJson,
   onRefreshOpfsCache,
-  onClearOpfsCache
+  onClearOpfsCache,
+  onClearExactArtifactCache
 }: Pick<
   ProjectWorkspacePropsWithFile,
   | "disabled"
@@ -717,6 +803,7 @@ function ProjectFiles({
   | "onImportJson"
   | "onRefreshOpfsCache"
   | "onClearOpfsCache"
+  | "onClearExactArtifactCache"
 >) {
   const wcadInput = useRef<HTMLInputElement | null>(null);
   const stepInput = useRef<HTMLInputElement | null>(null);
@@ -952,6 +1039,13 @@ function ProjectFiles({
                   onClick={onClearOpfsCache}
                 >
                   Clear cache
+                </Button>
+                <Button
+                  tone="danger"
+                  disabled={disabled}
+                  onClick={onClearExactArtifactCache}
+                >
+                  Clear derived exact data
                 </Button>
               </div>
             </div>
@@ -1476,8 +1570,8 @@ function ProjectExport({
   );
   const readySubset = readiness?.readySubset;
   const mixedReadySubset =
-    readySubset && readySubset.excludedBodies.length > 0
-      ? readySubset
+    readiness && readySubset && readySubset.excludedBodies.length > 0
+      ? { ...readySubset, units: readiness.units }
       : undefined;
 
   useEffect(() => {
@@ -1619,8 +1713,8 @@ function ProjectExport({
                   Explicit ready subset
                 </h3>
                 <p>
-                  Named STEP AP242DIS · {readiness.units} · names preserved ·
-                  all-or-nothing for the included bodies.
+                  Named STEP AP242DIS · {mixedReadySubset.units} · names
+                  preserved · all-or-nothing for the included bodies.
                 </p>
                 <p>
                   Included in canonical order:{" "}

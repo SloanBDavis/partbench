@@ -186,9 +186,15 @@ async function runGeometryWorkerSmoke(): Promise<void> {
       throw createDerivedGeometryErrorFromWorkerResponse(probeResponse);
     }
     const namedStepProbe = probeResponse.response.probe;
-    const v21ExactInterchange = new URLSearchParams(location.search).has("v21")
-      ? await runV21ExactReleaseBrowserWorkflow(worker)
-      : undefined;
+    const smokeParams = new URLSearchParams(location.search);
+    const requireV21_1 = smokeParams.has("v21_1");
+    const v21ExactInterchange =
+      smokeParams.has("v21") || requireV21_1
+        ? await runV21ExactReleaseBrowserWorkflow(worker, {
+            nearLimitBodyCount: requireV21_1 ? 256 : 16,
+            requireCancelRetry: requireV21_1
+          })
+        : undefined;
     const result = {
       ok: true,
       vertexCount: primary.vertexCount,

@@ -2,7 +2,8 @@ import type { CadEngine } from "@web-cad/cad-core";
 import type {
   CadBodyDerivedExactMetadataSnapshot,
   ProjectExactExportQueryResponse,
-  ProjectExportReadinessQueryResponse
+  ProjectExportReadinessQueryResponse,
+  WcadSourceIdentity
 } from "@web-cad/cad-protocol";
 
 import {
@@ -49,7 +50,8 @@ export function readProjectExactStepExport(
   exactMetadata: DerivedExactMetadataSnapshot,
   currentSources: readonly DerivedExactMetadataSource[],
   projections?: readonly CurrentExactResultProjection[],
-  bodyIds?: readonly string[]
+  bodyIds?: readonly string[],
+  sourceIdentity?: WcadSourceIdentity
 ): ProjectExactExportQueryResponse | undefined {
   const derivedExactMetadata = createCurrentDerivedExactMetadataSnapshots(
     engine,
@@ -63,6 +65,7 @@ export function readProjectExactStepExport(
       query: "project.exportExact",
       format: "step",
       ...(bodyIds ? { bodyIds } : {}),
+      ...(sourceIdentity ? { sourceIdentity } : {}),
       ...(derivedExactMetadata.length > 0 ? { derivedExactMetadata } : {}),
       ...(projections
         ? { currentExactResults: toCadCurrentExactResults(projections) }

@@ -1,4 +1,5 @@
 import type { CadEngine } from "@web-cad/cad-core";
+import type { WcadSourceIdentity } from "@web-cad/cad-protocol";
 import type { GeometryKernelExactBodyArtifact } from "@web-cad/geometry-worker";
 import { createRenderMeshFromSerializableMesh } from "@web-cad/renderer-mesh-bridge";
 
@@ -77,6 +78,13 @@ export function createCurrentExactSources(
 export function projectCurrentExactBodyArtifacts(input: {
   readonly artifacts: readonly CurrentExactProjectionArtifact[];
   readonly failures?: readonly CurrentExactProjectionFailure[];
+  readonly current?: {
+    readonly resolutions: readonly Extract<
+      CurrentExactBodyResolution,
+      { readonly status: "ready" }
+    >[];
+    readonly documentSourceIdentity: WcadSourceIdentity;
+  };
   readonly display: DerivedGeometrySnapshot;
   readonly metadata: DerivedExactMetadataSnapshot;
 }): {
@@ -84,7 +92,37 @@ export function projectCurrentExactBodyArtifacts(input: {
   readonly metadata: DerivedExactMetadataSnapshot;
   readonly artifactSources: readonly DerivedExactBodyGeometrySource[];
 } {
-  if (input.artifacts.length === 0 && !input.failures?.length) {
+  const resolutions = input.current
+    ? new Map(
+        input.current.resolutions.map(
+          (resolution) => [resolution.bodyId, resolution] as const
+        )
+      )
+    : undefined;
+  const artifacts = input.artifacts.filter((artifact) => {
+    if (!resolutions || !input.current) return true;
+    const resolution = resolutions.get(artifact.bodyId);
+    return (
+      resolution?.status === "ready" &&
+      resolution.sourceType === artifact.sourceType &&
+      resolution.sourceIdentitySignature ===
+        artifact.bodySourceIdentitySignature &&
+      resolution.cacheKeySha256 === artifact.sourceCacheKeySha256 &&
+      artifact.documentSourceIdentity.algorithm ===
+        input.current.documentSourceIdentity.algorithm &&
+      artifact.documentSourceIdentity.sha256 ===
+        input.current.documentSourceIdentity.sha256
+    );
+  });
+  const failures = input.failures?.filter((failure) => {
+    if (!resolutions) return true;
+    const resolution = resolutions.get(failure.bodyId);
+    return (
+      resolution?.sourceType === failure.sourceType &&
+      resolution.cacheKeySha256 === failure.cacheKeySha256
+    );
+  });
+  if (artifacts.length === 0 && !failures?.length) {
     return {
       display: input.display,
       metadata: input.metadata,
@@ -93,13 +131,13 @@ export function projectCurrentExactBodyArtifacts(input: {
   }
 
   const artifactsByBodyId = new Map(
-    input.artifacts.map((artifact) => [artifact.bodyId, artifact] as const)
+    artifacts.map((artifact) => [artifact.bodyId, artifact] as const)
   );
   const artifactSources = [...artifactsByBodyId.values()].map(
     createArtifactEvidenceSource
   );
   const failuresByBodyId = new Map(
-    (input.failures ?? [])
+    (failures ?? [])
       .filter((failure) => !artifactsByBodyId.has(failure.bodyId))
       .map((failure) => [failure.bodyId, failure] as const)
   );
@@ -191,8 +229,7 @@ function replaceProjectionEntries<T>(
 }
 
 function createFailureDisplayEntry(
-  failure: CurrentExactProjectionFailure,
-  _existing?: DerivedGeometryEntry
+  failure: CurrentExactProjectionFailure
 ): DerivedGeometryEntry {
   const base = {
     objectId: failure.bodyId,
@@ -215,8 +252,7 @@ function createFailureDisplayEntry(
 }
 
 function createFailureMetadataEntry(
-  failure: CurrentExactProjectionFailure,
-  _existing?: DerivedExactMetadataEntry
+  failure: CurrentExactProjectionFailure
 ): DerivedExactMetadataEntry {
   const base = {
     bodyId: failure.bodyId,
@@ -237,8 +273,7 @@ function createFailureMetadataEntry(
 }
 
 function createArtifactDisplayEntry(
-  artifact: CurrentExactProjectionArtifact,
-  _existing?: DerivedGeometryEntry
+  artifact: CurrentExactProjectionArtifact
 ): DerivedGeometryReadyEntry {
   const bridge = createRenderMeshFromSerializableMesh(artifact.displayMesh, {
     id: artifact.bodyId,
@@ -278,8 +313,7 @@ function createArtifactDisplayEntry(
 }
 
 function createArtifactMetadataEntry(
-  artifact: CurrentExactProjectionArtifact,
-  _existing?: DerivedExactMetadataEntry
+  artifact: CurrentExactProjectionArtifact
 ): DerivedExactMetadataReadyEntry {
   const source = createArtifactEvidenceSource(artifact);
   const generatedReferences =
