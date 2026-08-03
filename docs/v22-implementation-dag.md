@@ -89,7 +89,7 @@ A1 baseline + A2 frozen contracts/fixtures + A3 commandability baseline
 - freeze byte-free current-topology evidence/candidate outcomes: selectable,
   inspect-only, `existingGeneratedMatch`, `existingAnchorMatch`,
   `promotableGeneratedMatch`, blocked, stale, missing, ambiguous, and
-  resource-limited;
+  resource-limited, and unsupported;
 - freeze private pick-map validation: matching body/source/topology/entity
   signatures; finite bounded counts/ranges; non-overlapping face ranges; and
   transfer-only typed data;
@@ -165,14 +165,14 @@ generated stable-ID match. Every unlisted kind/action pair is inspect-only.
 | Body | Extrude add/cut target | `targetBodyId` or the completed body-anchor row | `feature.extrude` |
 | Body | Hole target | `targetBodyId` or existing `targetTopologyAnchorId` | `feature.hole`, `feature.updateHole` |
 | Body | Linear/circular pattern or mirror seed | `seedBodyId` under V21.1 policy | `feature.linearPattern`, `feature.circularPattern`, `feature.mirror` |
-| Body | Shell target | `targetBodyId` under the exact single-solid policy | `feature.shell`, `feature.updateShell` |
+| Body | Shell target | `targetBodyId` under the exact single-solid policy | `feature.shell` |
 | Face | Sketch-on-face | planar generated/named/active-anchor face | `sketch.createOnFace` |
 | Face | Shell open face | generated/named/active-anchor face | `feature.shell`, `feature.updateShell` |
 | Face | Mirror plane | planar generated/named/active-anchor face, optional existing offset | `feature.mirror`, `feature.updateMirror` |
 | Edge | Chamfer/fillet target | eligible generated/named/active-anchor edge | `feature.chamfer`, `feature.fillet` |
-| Edge | Linear-pattern direction/circular-pattern axis | linear generated/named/active-anchor edge or existing global axis | `feature.linearPattern`, `feature.circularPattern` |
-| Body/face/edge | Name existing generated reference | existing generated stable ID only | `reference.nameGenerated` |
-| Vertex | Inspect/measure only | no generic V22 durable form | none |
+| Edge | Linear-pattern direction/circular-pattern axis | linear generated/named/active-anchor edge or existing global axis | `feature.linearPattern`, `feature.updateLinearPattern`, `feature.circularPattern`, `feature.updateCircularPattern` |
+| Body/face/edge/vertex | Name existing generated reference | existing generated stable ID only | `reference.nameGenerated` |
+| Vertex | Inspect/measure only | no generic V22 anchor promotion; arbitrary current exact vertex is inspect-only | none |
 
 Selection and measurement themselves submit no CADOps. Geometry-dependent
 body policies, planar/linear checks, lifecycle, reference health, and every
@@ -421,7 +421,7 @@ consolidation lands; lazy chunking alone is not all-UI budget evidence.
 
 | Gate | Status | Closure evidence |
 | --- | --- | --- |
-| A | Pending | inherited baseline, frozen contracts/matrices/fixtures and measured deletion budget, no production behavior |
+| A | [Passed](./v22-a-gate.md) | inherited baseline, frozen contracts/matrices/fixtures and measured deletion budget, no production behavior |
 | B | Pending | same-shape pick maps, validation, transfer, bounds, cleanup |
 | C | Pending | depth-aware selection, fallback, filter/cycle/keyboard, performance |
 | D | Pending | collector/promotion path and exhaustive no-widening parity |

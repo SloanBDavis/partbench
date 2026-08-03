@@ -88,9 +88,4 @@ artifact grows.
   handle, or new file authority.
 - V22 production behavior is absent at baseline.
 
-Gate A remains open until every requirement in
-[`docs/v22-implementation-dag.md`](./v22-implementation-dag.md#gate-a) passes,
-including test-only contract/rejection, selection, collector, preview/grip,
-measurement, recovery, accessibility, limit, and no-widening fixtures; the
-measured deletion plan; affected typechecks; touched lint/format;
-`git diff --check`; and independent scope review.
+Gate A closure is recorded in [`docs/v22-a-gate.md`](./v22-a-gate.md).
