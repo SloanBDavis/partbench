@@ -2849,12 +2849,14 @@ export function App() {
     }
     return ready;
   }, [currentExactSources.resolutions]);
+  const hasCurrentExactArtifactResolutions =
+    currentExactArtifactResolutions.length > 0;
   const currentProjectSourceIdentity = useMemo(
     () =>
-      currentExactArtifactResolutions[0]
+      hasCurrentExactArtifactResolutions
         ? createCadProjectSourceIdentity(currentProject)
         : undefined,
-    [currentExactArtifactResolutions.length, currentProject]
+    [currentProject, hasCurrentExactArtifactResolutions]
   );
   useEffect(() => {
     let active = true;
