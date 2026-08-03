@@ -340,16 +340,9 @@ function ProjectAgent({
       proposalRef.current?.focus();
     } else if (!proposalOpen && proposalOpenRef.current) {
       queueMicrotask(() => {
-        const approval = document.querySelector<HTMLInputElement>(
-          `input[name="agent-approval-mode"][value="${agent.approvalMode}"]`
-        );
-        (approval?.disabled
-          ? [
-              ...document.querySelectorAll<HTMLButtonElement>(
-                '[aria-label="Project pages"] button'
-              )
-            ].find((button) => button.textContent.trim() === "Agent")
-          : approval
+        (
+          document.querySelector<HTMLInputElement>("input:checked:enabled") ??
+          document.querySelector<HTMLButtonElement>("[aria-current]")
         )?.focus();
       });
     }
