@@ -31,6 +31,8 @@ import {
   getGeometryKernelExactExportCapabilities,
   getGeometryKernelStepImportCapabilities,
   getGeometryResponseTransferables,
+  isInvalidExactViewportPickMap,
+  MAX_EXACT_VIEWPORT_PICK_MAP_BYTES,
   type BooleanExtrudePrimitiveSource,
   type BooleanExtrudeMeshFactoryInput,
   type BooleanExtrudeResultSource,
@@ -331,7 +333,9 @@ export {
   assertExactBodyArtifactAggregateWithinLimit,
   getGeometryKernelExactExportCapabilities,
   getGeometryKernelStepImportCapabilities,
-  getGeometryResponseTransferables
+  getGeometryResponseTransferables,
+  isInvalidExactViewportPickMap,
+  MAX_EXACT_VIEWPORT_PICK_MAP_BYTES
 };
 export {
   V21_EXACT_RELEASE_CORPUS,
@@ -403,5 +407,9 @@ export type {
   GeometryKernelExactBodyMeshFactory,
   GeometryKernelExactBodyArtifactFactory,
   GeometryKernelExactBodyArtifactPayload,
-  GeometryKernelExactBodyArtifactSuccessResponse
+  GeometryKernelExactBodyArtifactSuccessResponse,
+  GeometryKernelExactViewportPickMap,
+  GeometryKernelExactViewportPickMapDowngrade,
+  GeometryKernelExactViewportPickMapEntity,
+  GeometryKernelExactViewportPickMapPayload
 } from "./kernel";

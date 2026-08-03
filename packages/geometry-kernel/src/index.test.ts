@@ -9,7 +9,9 @@ import {
   assertExactBodyArtifactAggregateWithinLimit,
   executeGeometryKernelRequestWithMeshFactory,
   MAX_EXACT_BODY_ARTIFACT_AGGREGATE_BYTES,
+  MAX_EXACT_VIEWPORT_PICK_MAP_BYTES,
   MAX_BOOLEAN_EXTRUDE_RECIPE_DEPTH,
+  isInvalidExactViewportPickMap,
   type BooleanExtrudeSource,
   type ExactBodyArtifactRequest,
   type ExactBodyArtifactLeaf,
@@ -17,6 +19,8 @@ import {
   type ExactBodyMetadataRequest,
   type GeometryKernelExactBodyArtifact,
   type GeometryKernelExactBodyArtifactPayload,
+  type GeometryKernelExactViewportPickMap,
+  type GeometryKernelExactViewportPickMapPayload,
   type GeometryKernelExactBodyMetadata,
   type ExactRevolveMetadataSource,
   type GeometryKernelExactTopologyCheckpointPayload,
@@ -30,6 +34,17 @@ import {
 } from "./kernel";
 
 const OCCT_WASM_TEST_TIMEOUT_MS = 120_000;
+const EXACT_PICK_MAP_SOURCE = {
+  kind: "extrude" as const,
+  sketchPlane: "XY" as const,
+  profile: {
+    kind: "rectangle" as const,
+    center: [0, 0] as const,
+    width: 2,
+    height: 2
+  },
+  depth: 4
+};
 
 function createArtifactRequest(
   source: ExactBodyArtifactSource,
@@ -493,6 +508,97 @@ function createExactBodyArtifactPayloadFixture(): GeometryKernelExactBodyArtifac
   };
 }
 
+function createExactViewportPickMapArtifactPayloadFixture(): GeometryKernelExactBodyArtifactPayload {
+  const artifact = createExactBodyArtifactPayloadFixture();
+  const entities = [
+    ...artifact.topologySnapshot.entities,
+    createTopologyEntityFixture("face", 2),
+    createTopologyEntityFixture("edge", 1),
+    createTopologyEntityFixture("vertex", 1)
+  ];
+  const topologySnapshot = {
+    ...artifact.topologySnapshot,
+    entityCounts: {
+      ...artifact.topologySnapshot.entityCounts,
+      faceCount: 2,
+      edgeCount: 1,
+      vertexCount: 1
+    },
+    entityCount: entities.length,
+    entities
+  };
+  return {
+    ...artifact,
+    metadata: {
+      ...artifact.metadata,
+      topologyCounts: {
+        ...artifact.metadata.topologyCounts,
+        faceCount: 2,
+        edgeCount: 1,
+        vertexCount: 1
+      }
+    },
+    topologySnapshot,
+    displayMesh: {
+      ...artifact.displayMesh,
+      positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0]),
+      indices: new Uint32Array([0, 1, 2, 1, 3, 2]),
+      vertexCount: 4,
+      triangleCount: 2,
+      faceCount: 2
+    }
+  };
+}
+
+function createExactViewportPickMapPayloadFixture(): GeometryKernelExactViewportPickMapPayload {
+  const artifact = createExactViewportPickMapArtifactPayloadFixture();
+  const faces = artifact.topologySnapshot.entities.filter(
+    (entity) => entity.kind === "face"
+  );
+  const edge = artifact.topologySnapshot.entities.find(
+    (entity) => entity.kind === "edge"
+  );
+  const vertex = artifact.topologySnapshot.entities.find(
+    (entity) => entity.kind === "vertex"
+  );
+  if (faces.length !== 2 || !edge || !vertex) {
+    throw new Error(
+      "Pick-map fixture requires exact face, edge, and vertex data."
+    );
+  }
+
+  return {
+    topologySignature: artifact.topologySnapshot.signature,
+    meshVertexCount: artifact.displayMesh.vertexCount,
+    meshTriangleCount: artifact.displayMesh.triangleCount,
+    faces: faces.map((entity) => ({
+      localId: entity.localId,
+      entitySignature: entity.signature
+    })),
+    edges: [{ localId: edge.localId, entitySignature: edge.signature }],
+    vertices: [{ localId: vertex.localId, entitySignature: vertex.signature }],
+    faceTriangleRanges: new Uint32Array([0, 1, 1, 1]),
+    edgePointRanges: new Uint32Array([0, 2]),
+    edgePoints: new Float64Array([0, 0, 0, 1, 0, 0]),
+    vertexPoints: new Float64Array([0, 0, 0])
+  };
+}
+
+function cloneExactViewportPickMap(
+  pickMap: GeometryKernelExactViewportPickMap
+): GeometryKernelExactViewportPickMap {
+  return {
+    ...pickMap,
+    faces: pickMap.faces.map((entry) => ({ ...entry })),
+    edges: pickMap.edges.map((entry) => ({ ...entry })),
+    vertices: pickMap.vertices.map((entry) => ({ ...entry })),
+    faceTriangleRanges: new Uint32Array(pickMap.faceTriangleRanges),
+    edgePointRanges: new Uint32Array(pickMap.edgePointRanges),
+    edgePoints: new Float64Array(pickMap.edgePoints),
+    vertexPoints: new Float64Array(pickMap.vertexPoints)
+  };
+}
+
 async function createExactBodyArtifactLeafFixture(
   shapePolicy: ExactBodyArtifactLeaf["shapePolicy"] = "singleSolid"
 ): Promise<ExactBodyArtifactLeaf> {
@@ -657,7 +763,7 @@ describe("geometry-kernel facade", () => {
 
     const emptyBrep = await executeGeometryKernelRequestWithMeshFactory(
       createInjectedArtifactFactories(async () => ({
-        ...createExactBodyArtifactPayloadFixture(),
+        ...createExactViewportPickMapArtifactPayloadFixture(),
         brepBytes: new Uint8Array(),
         brepByteLength: 0
       })),
@@ -682,6 +788,232 @@ describe("geometry-kernel facade", () => {
     });
     expect(calls).toBe(1);
     expect(getGeometryResponseTransferables(overLimit)).toEqual([]);
+  });
+
+  it("attaches and transfers one validated same-shape viewport pick map", async () => {
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      createInjectedArtifactFactories(async () => ({
+        ...createExactViewportPickMapArtifactPayloadFixture(),
+        viewportPickMap: createExactViewportPickMapPayloadFixture()
+      })),
+      createArtifactRequest(EXACT_PICK_MAP_SOURCE, { bodyId: "pick_map_ready" })
+    );
+
+    expect(response.ok).toBe(true);
+    if (!response.ok) throw new Error(response.error.message);
+    const pickMap = response.artifact.viewportPickMap;
+    expect(pickMap).toMatchObject({
+      version: "partbench.exact-pick-map.v1",
+      bodyId: "pick_map_ready",
+      bodySourceIdentitySignature:
+        response.artifact.bodySourceIdentitySignature,
+      topologySignature: response.artifact.topologySnapshot.signature
+    });
+    if (!pickMap) throw new Error("Expected ready exact viewport pick map.");
+    expect(getGeometryResponseTransferables(response)).toEqual([
+      response.artifact.brepBytes.buffer,
+      response.artifact.displayMesh.positions.buffer,
+      response.artifact.displayMesh.indices.buffer,
+      pickMap.faceTriangleRanges.buffer,
+      pickMap.edgePointRanges.buffer,
+      pickMap.edgePoints.buffer,
+      pickMap.vertexPoints.buffer
+    ]);
+  });
+
+  it("drops corrupt pick maps without dropping the exact artifact", async () => {
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      createInjectedArtifactFactories(async () => ({
+        ...createExactViewportPickMapArtifactPayloadFixture(),
+        viewportPickMap: {
+          ...createExactViewportPickMapPayloadFixture(),
+          topologySignature: "stale-topology"
+        }
+      })),
+      createArtifactRequest(EXACT_PICK_MAP_SOURCE, {
+        bodyId: "pick_map_downgrade"
+      })
+    );
+
+    expect(response).toMatchObject({
+      ok: true,
+      artifact: {
+        bodyId: "pick_map_downgrade",
+        viewportPickMapDowngrade: { status: "invalid" }
+      }
+    });
+    if (!response.ok) throw new Error(response.error.message);
+    expect(response.artifact).not.toHaveProperty("viewportPickMap");
+    expect(getGeometryResponseTransferables(response)).toHaveLength(3);
+  });
+
+  it("rejects pick-map corruption before transfer", async () => {
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      createInjectedArtifactFactories(async () => ({
+        ...createExactViewportPickMapArtifactPayloadFixture(),
+        viewportPickMap: createExactViewportPickMapPayloadFixture()
+      })),
+      createArtifactRequest(EXACT_PICK_MAP_SOURCE, {
+        bodyId: "pick_map_corruption"
+      })
+    );
+    if (!response.ok) {
+      throw new Error("Expected ready pick-map corruption fixture.");
+    }
+    const { artifact } = response;
+    const pickMap = artifact.viewportPickMap;
+    if (!pickMap)
+      throw new Error("Expected ready pick-map corruption fixture.");
+    const body = artifact.topologySnapshot.entities.find(
+      (entity) => entity.kind === "body"
+    );
+    if (!body) throw new Error("Pick-map fixture requires one exact body.");
+
+    const corruptions = [
+      [
+        "identity",
+        (map: GeometryKernelExactViewportPickMap) => ({
+          ...map,
+          bodyId: "stale"
+        })
+      ],
+      [
+        "source identity",
+        (map: GeometryKernelExactViewportPickMap) => ({
+          ...map,
+          bodySourceIdentitySignature: "stale"
+        })
+      ],
+      [
+        "topology",
+        (map: GeometryKernelExactViewportPickMap) => ({
+          ...map,
+          topologySignature: "stale"
+        })
+      ],
+      [
+        "entity",
+        (map: GeometryKernelExactViewportPickMap) => ({
+          ...map,
+          faces: [{ ...map.faces[0]!, entitySignature: "wrong" }, map.faces[1]!]
+        })
+      ],
+      [
+        "kind",
+        (map: GeometryKernelExactViewportPickMap) => ({
+          ...map,
+          faces: [
+            { localId: body.localId, entitySignature: body.signature },
+            map.faces[1]!
+          ]
+        })
+      ],
+      [
+        "count",
+        (map: GeometryKernelExactViewportPickMap) => ({
+          ...map,
+          meshTriangleCount: map.meshTriangleCount + 1
+        })
+      ],
+      [
+        "gap",
+        (map: GeometryKernelExactViewportPickMap) => ({
+          ...map,
+          faceTriangleRanges: new Uint32Array([1, 1, 1, 1])
+        })
+      ],
+      [
+        "overlap",
+        (map: GeometryKernelExactViewportPickMap) => ({
+          ...map,
+          faceTriangleRanges: new Uint32Array([0, 2, 1, 1])
+        })
+      ],
+      [
+        "out-of-range",
+        (map: GeometryKernelExactViewportPickMap) => ({
+          ...map,
+          faceTriangleRanges: new Uint32Array([0, 1, 1, 2])
+        })
+      ],
+      [
+        "edge range",
+        (map: GeometryKernelExactViewportPickMap) => ({
+          ...map,
+          edgePointRanges: new Uint32Array([1, 2])
+        })
+      ],
+      [
+        "NaN",
+        (map: GeometryKernelExactViewportPickMap) => ({
+          ...map,
+          vertexPoints: new Float64Array([Number.NaN, 0, 0])
+        })
+      ],
+      [
+        "wrong typed array",
+        (map: GeometryKernelExactViewportPickMap) => ({
+          ...map,
+          faceTriangleRanges: new Uint16Array([
+            0, 1, 1, 1
+          ]) as unknown as Uint32Array
+        })
+      ],
+      [
+        "unowned",
+        (map: GeometryKernelExactViewportPickMap) => ({
+          ...map,
+          faceTriangleRanges: new Uint32Array(new ArrayBuffer(20), 0, 4)
+        })
+      ],
+      [
+        "shared buffer",
+        (map: GeometryKernelExactViewportPickMap) => ({
+          ...map,
+          faceTriangleRanges: new Uint32Array(map.edgePointRanges.buffer)
+        })
+      ],
+      [
+        "artifact buffer alias",
+        (map: GeometryKernelExactViewportPickMap) => ({
+          ...map,
+          edgePoints: new Float64Array(artifact.displayMesh.positions.buffer)
+        })
+      ],
+      [
+        "unsafe count",
+        (map: GeometryKernelExactViewportPickMap) => ({
+          ...map,
+          meshVertexCount: Number.MAX_SAFE_INTEGER + 1
+        })
+      ]
+    ] as const;
+
+    for (const [, corrupt] of corruptions) {
+      expect(
+        isInvalidExactViewportPickMap(
+          corrupt(cloneExactViewportPickMap(pickMap)),
+          artifact
+        )
+      ).toBe(true);
+    }
+
+    const detached = cloneExactViewportPickMap(pickMap);
+    structuredClone(detached.faceTriangleRanges, {
+      transfer: [detached.faceTriangleRanges.buffer]
+    });
+    expect(isInvalidExactViewportPickMap(detached, artifact)).toBe(true);
+    const aliased = {
+      ...pickMap,
+      edgePoints: new Float64Array(artifact.displayMesh.positions.buffer)
+    };
+    expect(
+      getGeometryResponseTransferables({
+        ...response,
+        artifact: { ...artifact, viewportPickMap: aliased }
+      })
+    ).toHaveLength(3);
+    expect(MAX_EXACT_VIEWPORT_PICK_MAP_BYTES).toBe(128 * 1024 * 1024);
   });
 
   it("validates one identity-bound leaf for all five artifact downstream sources", async () => {

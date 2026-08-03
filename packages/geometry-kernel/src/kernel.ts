@@ -1,6 +1,9 @@
 export type GeometryKernelVersion = "geometry-kernel.v1";
 export const MAX_EXACT_BODY_ARTIFACT_BYTES = 128 * 1024 * 1024;
 export const MAX_EXACT_BODY_ARTIFACT_AGGREGATE_BYTES = 512 * 1024 * 1024;
+export const MAX_EXACT_VIEWPORT_PICK_MAP_BYTES = 128 * 1024 * 1024;
+// Conservative structured-clone bookkeeping paired with each local-id/signature.
+const EXACT_VIEWPORT_PICK_MAP_METADATA_ENTRY_BYTES = 64;
 export const MAX_EXACT_BODY_ARTIFACT_SOURCE_GRAPH_NODES = 4_096;
 export const MAX_EXACT_BODY_ARTIFACT_PATTERN_INSTANCES = 4_096;
 export const MAX_EXACT_STEP_EXPORT_BODIES = 256;
@@ -976,6 +979,39 @@ export interface GeometryKernelExactBodyMetadataSuccessResponse {
   readonly warnings: readonly string[];
 }
 
+export interface GeometryKernelExactViewportPickMapEntity {
+  readonly localId: string;
+  readonly entitySignature: string;
+}
+
+/**
+ * Factory-only same-shape display data. The kernel attaches the body identity
+ * after the surrounding artifact has been constructed.
+ */
+export interface GeometryKernelExactViewportPickMapPayload {
+  readonly topologySignature: string;
+  readonly meshVertexCount: number;
+  readonly meshTriangleCount: number;
+  readonly faces: readonly GeometryKernelExactViewportPickMapEntity[];
+  readonly edges: readonly GeometryKernelExactViewportPickMapEntity[];
+  readonly vertices: readonly GeometryKernelExactViewportPickMapEntity[];
+  readonly faceTriangleRanges: Uint32Array;
+  readonly edgePointRanges: Uint32Array;
+  readonly edgePoints: Float64Array;
+  readonly vertexPoints: Float64Array;
+}
+
+/** Private, transferable evidence pairing one display mesh with exact topology. */
+export interface GeometryKernelExactViewportPickMap extends GeometryKernelExactViewportPickMapPayload {
+  readonly version: "partbench.exact-pick-map.v1";
+  readonly bodyId: string;
+  readonly bodySourceIdentitySignature: string;
+}
+
+export interface GeometryKernelExactViewportPickMapDowngrade {
+  readonly status: "invalid" | "resource-limited";
+}
+
 export interface GeometryKernelExactBodyArtifact {
   readonly artifactVersion: "partbench.exact-body-artifact.v1";
   readonly bodyId: string;
@@ -995,10 +1031,16 @@ export interface GeometryKernelExactBodyArtifact {
   readonly metadata: GeometryKernelExactBodyMetadata;
   readonly topologySnapshot: GeometryKernelExactTopologySnapshot;
   readonly displayMesh: SerializableMeshData;
+  /** Private, derived display evidence. Never persist or expose it as CAD data. */
+  readonly viewportPickMap?: GeometryKernelExactViewportPickMap;
+  readonly viewportPickMapDowngrade?: GeometryKernelExactViewportPickMapDowngrade;
 }
 
 export type GeometryKernelExactBodyArtifactPayload = Pick<
-  GeometryKernelExactBodyArtifact,
+  Omit<
+    GeometryKernelExactBodyArtifact,
+    "viewportPickMap" | "viewportPickMapDowngrade"
+  >,
   | "sourceKind"
   | "brepFormat"
   | "brepWriter"
@@ -1007,7 +1049,9 @@ export type GeometryKernelExactBodyArtifactPayload = Pick<
   | "metadata"
   | "topologySnapshot"
   | "displayMesh"
->;
+> & {
+  readonly viewportPickMap?: GeometryKernelExactViewportPickMapPayload;
+};
 
 export interface GeometryKernelExactBodyArtifactSuccessResponse {
   readonly ok: true;
@@ -2091,11 +2135,24 @@ export function getGeometryResponseTransferables(
 
   if ("artifact" in response) {
     if ("displayMesh" in response.artifact) {
-      return [
+      const transferables = [
         response.artifact.brepBytes.buffer as ArrayBuffer,
         response.artifact.displayMesh.positions.buffer as ArrayBuffer,
         response.artifact.displayMesh.indices.buffer as ArrayBuffer
       ];
+      const pickMap = response.artifact.viewportPickMap;
+      if (
+        pickMap &&
+        !isInvalidExactViewportPickMap(pickMap, response.artifact)
+      ) {
+        transferables.push(
+          pickMap.faceTriangleRanges.buffer as ArrayBuffer,
+          pickMap.edgePointRanges.buffer as ArrayBuffer,
+          pickMap.edgePoints.buffer as ArrayBuffer,
+          pickMap.vertexPoints.buffer as ArrayBuffer
+        );
+      }
+      return transferables;
     }
     return [response.artifact.bytes.buffer as ArrayBuffer];
   }
@@ -2768,7 +2825,8 @@ async function createExactBodyArtifact(
       message: `Exact body artifacts may not exceed ${MAX_EXACT_BODY_ARTIFACT_BYTES} bytes.`
     } satisfies GeometryKernelError;
   }
-  return {
+  const { viewportPickMap, ...artifactPayload } = payload;
+  const artifact: GeometryKernelExactBodyArtifact = {
     artifactVersion: "partbench.exact-body-artifact.v1",
     bodyId: request.bodyId,
     sourceType: request.sourceType,
@@ -2778,9 +2836,18 @@ async function createExactBodyArtifact(
     sourceGraphNodeCount: request.sourceGraphNodeCount,
     units: request.units,
     shapePolicy: request.shapePolicy,
-    ...payload,
+    ...artifactPayload,
     brepSha256: await sha256Hex(payload.brepBytes)
   };
+  const pickMapResult = viewportPickMap
+    ? attachExactViewportPickMap(viewportPickMap, artifact)
+    : undefined;
+
+  return pickMapResult?.pickMap
+    ? { ...artifact, viewportPickMap: pickMapResult.pickMap }
+    : pickMapResult?.downgrade
+      ? { ...artifact, viewportPickMapDowngrade: pickMapResult.downgrade }
+      : artifact;
 }
 
 function createExactTopologySnapshot(
@@ -4692,6 +4759,317 @@ function isInvalidExactBodyMetadata(
   );
 }
 
+function attachExactViewportPickMap(
+  payload: GeometryKernelExactViewportPickMapPayload,
+  artifact: GeometryKernelExactBodyArtifact
+): {
+  readonly pickMap?: GeometryKernelExactViewportPickMap;
+  readonly downgrade?: GeometryKernelExactViewportPickMapDowngrade;
+} {
+  const pickMap: GeometryKernelExactViewportPickMap = {
+    version: "partbench.exact-pick-map.v1",
+    bodyId: artifact.bodyId,
+    bodySourceIdentitySignature: artifact.bodySourceIdentitySignature,
+    ...payload
+  };
+
+  const reason = getExactViewportPickMapDowngradeReason(pickMap, artifact);
+  return reason ? { downgrade: { status: reason } } : { pickMap };
+}
+
+/**
+ * The map is optional derived display data: callers must drop it, rather than
+ * reject the otherwise valid exact artifact, when this returns true.
+ */
+export function isInvalidExactViewportPickMap(
+  pickMap: GeometryKernelExactViewportPickMap,
+  artifact: Pick<
+    GeometryKernelExactBodyArtifact,
+    | "bodyId"
+    | "bodySourceIdentitySignature"
+    | "brepBytes"
+    | "topologySnapshot"
+    | "displayMesh"
+  >
+): boolean {
+  return (
+    getExactViewportPickMapDowngradeReason(pickMap, artifact) !== undefined
+  );
+}
+
+function getExactViewportPickMapDowngradeReason(
+  pickMap: GeometryKernelExactViewportPickMap,
+  artifact: Pick<
+    GeometryKernelExactBodyArtifact,
+    | "bodyId"
+    | "bodySourceIdentitySignature"
+    | "brepBytes"
+    | "topologySnapshot"
+    | "displayMesh"
+  >
+): GeometryKernelExactViewportPickMapDowngrade["status"] | undefined {
+  const mesh = artifact.displayMesh;
+  const snapshot = artifact.topologySnapshot;
+  const faceEntities = snapshot.entities.filter(
+    (entity) => entity.kind === "face"
+  );
+  const edgeEntities = snapshot.entities.filter(
+    (entity) => entity.kind === "edge"
+  );
+  const vertexEntities = snapshot.entities.filter(
+    (entity) => entity.kind === "vertex"
+  );
+
+  if (
+    pickMap.version !== "partbench.exact-pick-map.v1" ||
+    pickMap.bodyId !== artifact.bodyId ||
+    pickMap.bodySourceIdentitySignature !==
+      artifact.bodySourceIdentitySignature ||
+    !isNonEmptyBoundedString(pickMap.topologySignature) ||
+    pickMap.topologySignature !== snapshot.signature ||
+    !isNonNegativeSafeInteger(pickMap.meshVertexCount) ||
+    !isNonNegativeSafeInteger(pickMap.meshTriangleCount) ||
+    pickMap.meshVertexCount !== mesh.vertexCount ||
+    pickMap.meshTriangleCount !== mesh.triangleCount ||
+    !isNonNegativeSafeInteger(mesh.vertexCount) ||
+    !isNonNegativeSafeInteger(mesh.triangleCount) ||
+    faceEntities.length !== snapshot.entityCounts.faceCount ||
+    edgeEntities.length !== snapshot.entityCounts.edgeCount ||
+    vertexEntities.length !== snapshot.entityCounts.vertexCount ||
+    !isOwnedTypedArray(pickMap.faceTriangleRanges, Uint32Array) ||
+    !isOwnedTypedArray(pickMap.edgePointRanges, Uint32Array) ||
+    !isOwnedTypedArray(pickMap.edgePoints, Float64Array) ||
+    !isOwnedTypedArray(pickMap.vertexPoints, Float64Array) ||
+    !hasDistinctPickMapBuffers(
+      [
+        pickMap.faceTriangleRanges,
+        pickMap.edgePointRanges,
+        pickMap.edgePoints,
+        pickMap.vertexPoints
+      ],
+      [artifact.brepBytes.buffer, mesh.positions.buffer, mesh.indices.buffer]
+    )
+  ) {
+    return "invalid";
+  }
+  const byteLength = getExactViewportPickMapByteLength(
+    [
+      pickMap.faceTriangleRanges,
+      pickMap.edgePointRanges,
+      pickMap.edgePoints,
+      pickMap.vertexPoints
+    ],
+    [pickMap.faces, pickMap.edges, pickMap.vertices]
+  );
+  if (byteLength === undefined) return "invalid";
+  if (byteLength > MAX_EXACT_VIEWPORT_PICK_MAP_BYTES) {
+    return "resource-limited";
+  }
+  return !hasExactPickMapEntities(pickMap.faces, faceEntities) ||
+    !hasExactPickMapEntities(pickMap.edges, edgeEntities) ||
+    !hasExactPickMapEntities(pickMap.vertices, vertexEntities) ||
+    !hasUniquePickMapEntityIds(pickMap) ||
+    !hasProductLength(
+      pickMap.faceTriangleRanges.length,
+      pickMap.faces.length,
+      2
+    ) ||
+    !hasProductLength(
+      pickMap.edgePointRanges.length,
+      pickMap.edges.length,
+      2
+    ) ||
+    !hasContiguousRanges(
+      pickMap.faceTriangleRanges,
+      pickMap.meshTriangleCount,
+      1
+    ) ||
+    pickMap.edgePoints.length % 3 !== 0 ||
+    !hasContiguousRanges(
+      pickMap.edgePointRanges,
+      pickMap.edgePoints.length / 3,
+      2
+    ) ||
+    !hasProductLength(
+      pickMap.vertexPoints.length,
+      pickMap.vertices.length,
+      3
+    ) ||
+    !hasOnlyFiniteNumbers(pickMap.edgePoints) ||
+    !hasOnlyFiniteNumbers(pickMap.vertexPoints)
+    ? "invalid"
+    : undefined;
+}
+
+function hasExactPickMapEntities(
+  entries: readonly GeometryKernelExactViewportPickMapEntity[],
+  expected: readonly GeometryKernelTopologyEntityDescriptor[]
+): boolean {
+  if (!Array.isArray(entries) || entries.length !== expected.length) {
+    return false;
+  }
+
+  const expectedById = new Map(
+    expected.map((entity) => [entity.localId, entity.signature])
+  );
+  const seen = new Set<string>();
+  for (const entry of entries) {
+    if (
+      !isRecord(entry) ||
+      !isNonEmptyBoundedString(entry.localId) ||
+      !isNonEmptyBoundedString(entry.entitySignature) ||
+      seen.has(entry.localId) ||
+      expectedById.get(entry.localId) !== entry.entitySignature
+    ) {
+      return false;
+    }
+    seen.add(entry.localId);
+  }
+  return true;
+}
+
+function hasUniquePickMapEntityIds(
+  pickMap: Pick<
+    GeometryKernelExactViewportPickMap,
+    "faces" | "edges" | "vertices"
+  >
+): boolean {
+  const localIds = new Set<string>();
+  for (const entries of [pickMap.faces, pickMap.edges, pickMap.vertices]) {
+    for (const entity of entries) {
+      if (localIds.has(entity.localId)) return false;
+      localIds.add(entity.localId);
+    }
+  }
+  return true;
+}
+
+function hasSafeProduct(left: number, right: number): boolean {
+  return (
+    isNonNegativeSafeInteger(left) &&
+    isNonNegativeSafeInteger(right) &&
+    (left === 0 || left <= Number.MAX_SAFE_INTEGER / right)
+  );
+}
+
+function hasProductLength(
+  actual: number,
+  count: number,
+  factor: number
+): boolean {
+  return hasSafeProduct(count, factor) && actual === count * factor;
+}
+
+function hasContiguousRanges(
+  ranges: Uint32Array,
+  total: number,
+  minimumCount: number
+): boolean {
+  if (!isNonNegativeSafeInteger(total) || ranges.length % 2 !== 0) {
+    return false;
+  }
+
+  let next = 0;
+  for (let index = 0; index < ranges.length; index += 2) {
+    const first = ranges[index];
+    const count = ranges[index + 1];
+    if (
+      first !== next ||
+      count === undefined ||
+      count < minimumCount ||
+      count > total - next
+    ) {
+      return false;
+    }
+    next += count;
+  }
+  return next === total;
+}
+
+function hasOnlyFiniteNumbers(values: Float64Array): boolean {
+  for (const value of values) {
+    if (!Number.isFinite(value)) return false;
+  }
+  return true;
+}
+
+function isOwnedTypedArray(
+  value: unknown,
+  constructor: Uint32ArrayConstructor | Float64ArrayConstructor
+): value is Uint32Array | Float64Array {
+  const array =
+    constructor === Uint32Array
+      ? value instanceof Uint32Array
+        ? value
+        : undefined
+      : value instanceof Float64Array
+        ? value
+        : undefined;
+  return (
+    array !== undefined &&
+    array.buffer instanceof ArrayBuffer &&
+    array.byteOffset === 0 &&
+    Number.isSafeInteger(array.length) &&
+    Number.isSafeInteger(array.byteLength) &&
+    array.byteLength === array.buffer.byteLength &&
+    array.byteLength === array.length * array.BYTES_PER_ELEMENT
+  );
+}
+
+function hasDistinctPickMapBuffers(
+  arrays: readonly (Uint32Array | Float64Array)[],
+  artifactBuffers: readonly ArrayBufferLike[]
+): boolean {
+  const buffers = new Set(artifactBuffers);
+  for (const array of arrays) {
+    if (buffers.has(array.buffer)) return false;
+    buffers.add(array.buffer);
+  }
+  return true;
+}
+
+function getExactViewportPickMapByteLength(
+  arrays: readonly (Uint32Array | Float64Array)[],
+  entityGroups: readonly (readonly GeometryKernelExactViewportPickMapEntity[])[]
+): number | undefined {
+  let byteLength = 0;
+  for (const array of arrays) {
+    if (
+      !Number.isSafeInteger(array.byteLength) ||
+      array.byteLength < 0 ||
+      byteLength > Number.MAX_SAFE_INTEGER - array.byteLength
+    ) {
+      return undefined;
+    }
+    byteLength += array.byteLength;
+  }
+  for (const entries of entityGroups) {
+    if (!Array.isArray(entries)) return undefined;
+    for (const entry of entries) {
+      if (
+        !isRecord(entry) ||
+        !isNonEmptyBoundedString(entry.localId) ||
+        !isNonEmptyBoundedString(entry.entitySignature)
+      ) {
+        return undefined;
+      }
+      const stringBytes =
+        (entry.localId.length + entry.entitySignature.length) * 2;
+      if (
+        !Number.isSafeInteger(stringBytes) ||
+        byteLength >
+          Number.MAX_SAFE_INTEGER -
+            EXACT_VIEWPORT_PICK_MAP_METADATA_ENTRY_BYTES -
+            stringBytes
+      ) {
+        return undefined;
+      }
+      byteLength += EXACT_VIEWPORT_PICK_MAP_METADATA_ENTRY_BYTES + stringBytes;
+    }
+  }
+  return byteLength;
+}
+
 function isInvalidExactBodyArtifact(
   artifact: GeometryKernelExactBodyArtifact,
   request: ExactBodyArtifactRequest
@@ -5399,6 +5777,10 @@ function isNonNegativeFinite(value: number): boolean {
 
 function isNonNegativeInteger(value: number): boolean {
   return Number.isInteger(value) && value >= 0;
+}
+
+function isNonNegativeSafeInteger(value: number): boolean {
+  return Number.isSafeInteger(value) && value >= 0;
 }
 
 function isPositiveInteger(value: number): boolean {
