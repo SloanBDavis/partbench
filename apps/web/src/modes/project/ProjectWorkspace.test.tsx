@@ -192,6 +192,12 @@ describe("ProjectWorkspace", () => {
     expect(idle).toContain("Export all bodies");
     expect(idle).toContain("Export selected body");
     expect(idle).toContain("Export chosen bodies");
+    expect(idle).toContain("Export 1 ready body");
+    expect(idle).toContain("Explicit ready subset");
+    expect(idle).toContain("Body A (body-a)");
+    expect(idle).toContain("Excluded Body B (body-b)");
+    expect(idle).toContain("Body B is not ready yet.");
+    expect(idle).toContain("Choose a different ordered subset");
     expect(idle.match(/type="checkbox"/g)).toHaveLength(2);
     expect(idle).toContain("Move Body A earlier");
     expect(idle).toContain("Move Body B later");
@@ -446,7 +452,21 @@ function createExportReadiness(): ProjectExportReadinessQueryResponse {
     unavailableBodyCount: 0,
     bodies,
     diagnosticCount: 1,
-    diagnostics: bodies[1]!.diagnostics
+    diagnostics: bodies[1]!.diagnostics,
+    readySubset: {
+      orderedBodyIds: ["body-a"],
+      includedBodies: [
+        { bodyId: "body-a", bodyName: "Body A", diagnostics: [] }
+      ],
+      excludedBodies: [
+        {
+          bodyId: "body-b",
+          bodyName: "Body B",
+          diagnostics: bodies[1]!.diagnostics
+        }
+      ],
+      allOrNothing: true
+    }
   };
 }
 

@@ -1410,6 +1410,11 @@ function ProjectExport({
   const selectedBodyAvailable = Boolean(
     selectedBodyId && bodiesById.has(selectedBodyId)
   );
+  const readySubset = readiness?.readySubset;
+  const mixedReadySubset =
+    readySubset && readySubset.excludedBodies.length > 0
+      ? readySubset
+      : undefined;
 
   useEffect(() => {
     if (previousJobStatus.current === "running" && job.status !== "running") {
@@ -1529,8 +1534,52 @@ function ProjectExport({
               >
                 Export chosen bodies
               </Button>
+              {mixedReadySubset ? (
+                <Button
+                  disabled={disabled || running}
+                  onClick={() =>
+                    onDownloadStep(mixedReadySubset.orderedBodyIds)
+                  }
+                >
+                  Export {mixedReadySubset.includedBodies.length} ready bod
+                  {mixedReadySubset.includedBodies.length === 1 ? "y" : "ies"}
+                </Button>
+              ) : null}
             </div>
+            {mixedReadySubset ? (
+              <section
+                className="pb-project-export-subset-review"
+                aria-labelledby="pb-project-ready-subset-heading"
+              >
+                <h3 id="pb-project-ready-subset-heading">
+                  Explicit ready subset
+                </h3>
+                <p>
+                  Named STEP AP242DIS · {readiness.units} · names preserved ·
+                  all-or-nothing for the included bodies.
+                </p>
+                <p>
+                  Included in canonical order:{" "}
+                  {mixedReadySubset.includedBodies
+                    .map((body) => `${body.bodyName} (${body.bodyId})`)
+                    .join(" → ")}
+                </p>
+                <ul>
+                  {mixedReadySubset.excludedBodies.map((body) => (
+                    <li key={body.bodyId}>
+                      Excluded {body.bodyName} ({body.bodyId}):{" "}
+                      {body.diagnostics[0]?.message ??
+                        "The current exact result is not ready."}
+                    </li>
+                  ))}
+                </ul>
+                <a href="#pb-project-ordered-body-chooser">
+                  Choose a different ordered subset
+                </a>
+              </section>
+            ) : null}
             <fieldset
+              id="pb-project-ordered-body-chooser"
               className="pb-project-export-chooser"
               disabled={disabled || running}
             >
