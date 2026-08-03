@@ -16,7 +16,6 @@ import {
   type CadFeatureSummary,
   type CadPartSnapshot,
   type CadTransactionHistoryEntry,
-  type WcadTopologyCheckpointPayload,
   type WcadTopologyCheckpointPayloadInput,
   type WcadPackageExportResult,
   type BodyMeasurementsSnapshot,
@@ -410,8 +409,10 @@ import {
   createJsonFallbackProjectFileState,
   createProjectFileCancelledState,
   createProjectFileFailureState,
+  createProjectPortabilityStatus,
   createProjectFileStateFromExport,
   createProjectFileStateFromRead,
+  createWcadTopologyCheckpointPayloadInputCache,
   DEFAULT_WCAD_PROJECT_FILE_NAME,
   ensureWcadFileExtension,
   getProjectFileDirtyLabel,
@@ -420,6 +421,7 @@ import {
   pickWcadOpenFile,
   pickWcadSaveFile,
   readBytesFromWcadFile,
+  recoverProjectCheckpointPayloadsFromWcad,
   WCAD_MIME_TYPE,
   writeBytesToWcadHandle,
   markProjectFileDirty,
@@ -619,28 +621,6 @@ const INITIAL_MODELING_ACTIONS: readonly ModelingActionDescriptor[] = [
     selection: { context: "none" }
   }
 ];
-
-function createWcadTopologyCheckpointPayloadInputCache(
-  payloads: readonly WcadTopologyCheckpointPayload[] | undefined
-): readonly WcadTopologyCheckpointPayloadInput[] {
-  return (
-    payloads?.map((payload) => ({
-      checkpointId: payload.checkpointId,
-      bodyId: payload.bodyId,
-      ...(payload.sourceFeatureId
-        ? { sourceFeatureId: payload.sourceFeatureId }
-        : {}),
-      units: payload.manifestEntry.units,
-      kernel: payload.manifestEntry.kernel,
-      tolerance: payload.manifestEntry.tolerance,
-      brepByteLength: payload.manifestEntry.brep.byteLength,
-      brepSha256: payload.manifestEntry.brep.sha256,
-      brepBytes: payload.brepBytes,
-      topologyBytes: payload.topologyBytes,
-      signatureBytes: payload.signatureBytes
-    })) ?? []
-  );
-}
 
 function mergeWcadTopologyCheckpointPayloadInputCache(
   current: readonly WcadTopologyCheckpointPayloadInput[],
@@ -2509,6 +2489,14 @@ export function App() {
     wcadTopologyCheckpointPayloadCache,
     setWcadTopologyCheckpointPayloadCache
   ] = useState<readonly WcadTopologyCheckpointPayloadInput[]>([]);
+  const projectPortability = useMemo(
+    () =>
+      createProjectPortabilityStatus(
+        currentProject,
+        wcadTopologyCheckpointPayloadCache
+      ),
+    [currentProject, wcadTopologyCheckpointPayloadCache]
+  );
   const [projectFileHandle, setProjectFileHandle] = useState<
     WcadFileHandleLike | undefined
   >();
@@ -8078,6 +8066,47 @@ export function App() {
     await syncDocument(undefined);
   }
 
+  async function recoverProjectWcadPayloads(
+    bytes: Uint8Array,
+    fileName: string
+  ): Promise<void> {
+    setCommandPending(true);
+    try {
+      const recovery = await recoverProjectCheckpointPayloadsFromWcad({
+        currentProject,
+        currentCheckpointPayloads: wcadTopologyCheckpointPayloadCache,
+        wcadBytes: bytes
+      });
+      if (recovery.result.status === "recovered") {
+        setWcadTopologyCheckpointPayloadCache(recovery.checkpointPayloads);
+        setProjectMessage(
+          `Recovered ${recovery.result.recoveredCheckpointIds.length} checkpoint payload${
+            recovery.result.recoveredCheckpointIds.length === 1 ? "" : "s"
+          } from ${fileName}. Save .wcad to make the project portable again.`
+        );
+        setProjectMessageTone("info");
+        return;
+      }
+      setProjectMessage(
+        recovery.result.diagnostics
+          .map(
+            (diagnostic) => `${diagnostic.checkpointId}: ${diagnostic.message}`
+          )
+          .join(" ")
+      );
+      setProjectMessageTone("error");
+    } catch (error) {
+      setProjectMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not recover checkpoint payloads."
+      );
+      setProjectMessageTone("error");
+    } finally {
+      setCommandPending(false);
+    }
+  }
+
   async function saveProjectWcad() {
     if (projectFileHandle && projectFile.mode === "wcadHandle") {
       await saveProjectWcadToHandle(projectFileHandle, "save");
@@ -10234,6 +10263,7 @@ export function App() {
                 jsonDraft={projectJson}
                 jsonDraftSource={projectJsonDraftSource}
                 opfsCacheStatus={projectOpfsCacheStatus}
+                portability={projectPortability}
                 parameters={parameters}
                 parameterEvaluation={parameterEvaluation}
                 parameterUsageCounts={parameterUsageCounts}
@@ -10256,6 +10286,9 @@ export function App() {
                   void importProjectStepBytes(bytes, fileName)
                 }
                 onJsonFileLoaded={loadProjectJsonDraft}
+                onRecoverWcadFileLoaded={(bytes, fileName) =>
+                  void recoverProjectWcadPayloads(bytes, fileName)
+                }
                 onFileError={(message) => {
                   setProjectMessage(message);
                   setProjectMessageTone("error");

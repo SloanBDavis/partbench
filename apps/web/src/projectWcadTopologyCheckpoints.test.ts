@@ -2,8 +2,10 @@ import {
   CadEngine,
   createV13ReleaseSampleBatch,
   encodeWcadCanonicalCbor,
+  exportCadProjectJson,
   exportCadProjectWcad,
   importCadProjectWcad,
+  parseCadProjectJson,
   readCadProjectWcad,
   type CadFeatureSummary,
   type SketchSnapshot,
@@ -19,6 +21,10 @@ import {
   exportProjectWcadWithTopologyCheckpoints,
   isProjectWcadTopologyCheckpointPayloadError
 } from "./projectWcadTopologyCheckpoints";
+import {
+  createProjectPortabilityStatus,
+  recoverProjectCheckpointPayloadsFromWcad
+} from "./projectWcadWorkflow";
 
 describe("projectWcadTopologyCheckpoints", () => {
   it("collects a checkpoint payload that exists only in the history baseline", async () => {
@@ -1277,6 +1283,93 @@ describe("projectWcadTopologyCheckpoints", () => {
       });
       return true;
     });
+  });
+
+  it("projects JSON portability and atomically recovers matching checkpoint payloads", async () => {
+    expect(
+      createProjectPortabilityStatus(new CadEngine().exportProject(), [])
+    ).toEqual({ status: "portable-json" });
+
+    const { engine, checkpointPayload } = createImportedBodyCheckpointEngine();
+    const sourcePackage = await exportCadProjectWcad(engine, {
+      topologyCheckpoints: [checkpointPayload]
+    });
+    const jsonProject = parseCadProjectJson(exportCadProjectJson(engine));
+
+    expect(createProjectPortabilityStatus(jsonProject, [])).toEqual({
+      status: "payload-missing",
+      checkpointIds: [checkpointPayload.checkpointId]
+    });
+    expect(
+      createProjectPortabilityStatus(jsonProject, [checkpointPayload])
+    ).toEqual({
+      status: "wcad-required",
+      checkpointIds: [checkpointPayload.checkpointId]
+    });
+
+    const recovered = await recoverProjectCheckpointPayloadsFromWcad({
+      currentProject: jsonProject,
+      currentCheckpointPayloads: [],
+      wcadBytes: sourcePackage.bytes
+    });
+
+    expect(recovered.result).toMatchObject({
+      status: "recovered",
+      requestedCheckpointIds: [checkpointPayload.checkpointId],
+      recoveredCheckpointIds: [checkpointPayload.checkpointId],
+      diagnostics: []
+    });
+    expect(recovered.checkpointPayloads).toHaveLength(1);
+
+    const saved = await exportCadProjectWcad(
+      CadEngine.fromProject(jsonProject),
+      { topologyCheckpoints: recovered.checkpointPayloads }
+    );
+    const reopened = await readCadProjectWcad(saved.bytes);
+    expect(reopened.ok).toBe(true);
+    expect(
+      reopened.ok
+        ? reopened.checkpointPayloads?.map((payload) => payload.checkpointId)
+        : []
+    ).toEqual([checkpointPayload.checkpointId]);
+  });
+
+  it("rejects a different .wcad project without importing any checkpoint payload", async () => {
+    const { engine, checkpointPayload } = createImportedBodyCheckpointEngine();
+    const currentProject = parseCadProjectJson(exportCadProjectJson(engine));
+    const differentEngine = CadEngine.fromProject(currentProject);
+    differentEngine.apply({
+      op: "parameter.create",
+      id: "parameter_recovery_mismatch",
+      name: "RecoveryMismatch",
+      value: 1
+    });
+    const differentPackage = await exportCadProjectWcad(differentEngine, {
+      topologyCheckpoints: [checkpointPayload]
+    });
+    const currentCheckpointPayloads: readonly WcadTopologyCheckpointPayloadInput[] =
+      [];
+
+    const rejected = await recoverProjectCheckpointPayloadsFromWcad({
+      currentProject,
+      currentCheckpointPayloads,
+      wcadBytes: differentPackage.bytes
+    });
+
+    expect(rejected.result).toMatchObject({
+      status: "rejected",
+      requestedCheckpointIds: [checkpointPayload.checkpointId],
+      recoveredCheckpointIds: [],
+      diagnostics: [
+        {
+          code: "CHECKPOINT_PAYLOAD_RECOVERY_MISMATCH",
+          checkpointId: checkpointPayload.checkpointId,
+          message: expect.stringContaining("different project source")
+        }
+      ]
+    });
+    expect(rejected.checkpointPayloads).toBe(currentCheckpointPayloads);
+    expect(currentProject.document.parameters).toEqual([]);
   });
 });
 

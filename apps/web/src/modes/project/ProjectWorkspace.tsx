@@ -8,6 +8,7 @@ import type {
   ProjectHealthQueryResponse,
   ProjectImportReadinessQueryResponse,
   ProjectParameterEvaluationQueryResponse,
+  ProjectPortabilityStatus,
   ProjectTopologyIdentityReadinessQueryResponse
 } from "@web-cad/cad-protocol";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -98,6 +99,7 @@ export interface ProjectWorkspaceProps {
   readonly jsonDraftSource: ProjectJsonDraftSource;
   readonly jsonWorkflow?: ProjectJsonWorkflowState;
   readonly opfsCacheStatus: ProjectOpfsCacheStatus;
+  readonly portability: ProjectPortabilityStatus;
   readonly parameters: readonly CadParameterSnapshot[];
   readonly parameterEvaluation?: ProjectParameterEvaluationQueryResponse;
   readonly parameterUsageCounts?: Readonly<Record<string, number>>;
@@ -114,6 +116,10 @@ export interface ProjectWorkspaceProps {
   readonly onOpenWcadFileLoaded: (bytes: Uint8Array, fileName: string) => void;
   readonly onStepFileLoaded: (bytes: Uint8Array, fileName: string) => void;
   readonly onJsonFileLoaded: (text: string, fileName: string) => void;
+  readonly onRecoverWcadFileLoaded: (
+    bytes: Uint8Array,
+    fileName: string
+  ) => void;
   readonly onFileError: (message: string) => void;
   readonly onSave: () => void;
   readonly onSaveAs: () => void;
@@ -169,6 +175,7 @@ export function ProjectWorkspace({
   jsonDraftSource,
   jsonWorkflow: suppliedJsonWorkflow,
   opfsCacheStatus,
+  portability,
   parameters,
   parameterEvaluation,
   parameterUsageCounts = EMPTY_PARAMETER_USAGE,
@@ -184,6 +191,7 @@ export function ProjectWorkspace({
   onOpenWcadFileLoaded,
   onStepFileLoaded,
   onJsonFileLoaded,
+  onRecoverWcadFileLoaded,
   onFileError,
   onSave,
   onSaveAs,
@@ -242,6 +250,7 @@ export function ProjectWorkspace({
           jsonDraft={jsonDraft}
           jsonWorkflow={jsonWorkflow}
           opfsCacheStatus={opfsCacheStatus}
+          portability={portability}
           onUnavailableActivate={onUnavailableActivate}
           onNew={onNew}
           onOpenWcad={onOpenWcad}
@@ -249,6 +258,7 @@ export function ProjectWorkspace({
           onOpenWcadFileLoaded={onOpenWcadFileLoaded}
           onStepFileLoaded={onStepFileLoaded}
           onJsonFileLoaded={onJsonFileLoaded}
+          onRecoverWcadFileLoaded={onRecoverWcadFileLoaded}
           onFileError={onFileError}
           onSave={onSave}
           onSaveAs={onSaveAs}
@@ -666,6 +676,7 @@ function ProjectFiles({
   onOpenWcadFileLoaded,
   onStepFileLoaded,
   onJsonFileLoaded,
+  onRecoverWcadFileLoaded,
   onFileError,
   onSave,
   onSaveAs,
@@ -674,6 +685,7 @@ function ProjectFiles({
   jsonDraft,
   jsonWorkflow,
   opfsCacheStatus,
+  portability,
   onJsonDraftChange,
   onImportJson,
   onRefreshOpfsCache,
@@ -691,6 +703,7 @@ function ProjectFiles({
   | "onOpenWcadFileLoaded"
   | "onStepFileLoaded"
   | "onJsonFileLoaded"
+  | "onRecoverWcadFileLoaded"
   | "onFileError"
   | "onSave"
   | "onSaveAs"
@@ -699,6 +712,7 @@ function ProjectFiles({
   | "jsonDraft"
   | "jsonWorkflow"
   | "opfsCacheStatus"
+  | "portability"
   | "onJsonDraftChange"
   | "onImportJson"
   | "onRefreshOpfsCache"
@@ -707,6 +721,7 @@ function ProjectFiles({
   const wcadInput = useRef<HTMLInputElement | null>(null);
   const stepInput = useRef<HTMLInputElement | null>(null);
   const jsonInput = useRef<HTMLInputElement | null>(null);
+  const recoveryInput = useRef<HTMLInputElement | null>(null);
   const canOpenWcad =
     storageCapabilities.fileSystemAccessAvailable ||
     storageCapabilities.wcadUploadAvailable;
@@ -805,7 +820,38 @@ function ProjectFiles({
                 storageCapabilities.fileSystemAccessAvailable
               )}
             />
+            <DefinitionRow
+              label="JSON portability"
+              value={
+                portability.status === "portable-json"
+                  ? "Portable JSON"
+                  : portability.status === "wcad-required"
+                    ? ".wcad required"
+                    : "Checkpoint payloads missing"
+              }
+            />
           </dl>
+          {portability.status === "portable-json" ? (
+            <p className="pb-project-card-detail">
+              This project can reopen from source-only JSON.
+            </p>
+          ) : (
+            <div className="pb-project-portability" role="status">
+              <p className="pb-project-card-detail">
+                Source-only JSON cannot reopen this checkpoint-backed geometry.
+                Use .wcad as the portable project file.
+              </p>
+              <p>Checkpoints: {portability.checkpointIds.join(", ")}</p>
+              {portability.status === "payload-missing" ? (
+                <Button
+                  disabled={disabled}
+                  onClick={() => recoveryInput.current?.click()}
+                >
+                  Recover payloads from .wcad
+                </Button>
+              ) : null}
+            </div>
+          )}
         </ProjectCard>
         <ProjectCard
           title="STEP import"
@@ -841,7 +887,9 @@ function ProjectFiles({
               onUnavailableActivate={onUnavailableActivate}
               onClick={onDownloadJson}
             >
-              Download JSON
+              {portability.status === "portable-json"
+                ? "Download JSON"
+                : "Download source-only JSON"}
             </Button>
             <Button
               disabled={disabled}
@@ -937,6 +985,22 @@ function ProjectFiles({
           void readBinaryFile(
             event.currentTarget.files?.[0],
             onStepFileLoaded,
+            onFileError
+          );
+          event.currentTarget.value = "";
+        }}
+      />
+      <input
+        ref={recoveryInput}
+        className="pb-visually-hidden"
+        type="file"
+        tabIndex={-1}
+        aria-hidden="true"
+        accept="application/vnd.partbench.wcad,application/zip,.wcad"
+        onChange={(event) => {
+          void readBinaryFile(
+            event.currentTarget.files?.[0],
+            onRecoverWcadFileLoaded,
             onFileError
           );
           event.currentTarget.value = "";

@@ -118,6 +118,20 @@ describe("ProjectWorkspace", () => {
     expect(markup).toContain("<textarea");
   });
 
+  it("lists every missing checkpoint and labels JSON as source-only", () => {
+    const markup = renderPage("files", {
+      portability: {
+        status: "payload-missing",
+        checkpointIds: ["checkpoint-a", "checkpoint-b"]
+      }
+    });
+
+    expect(markup).toContain("Checkpoint payloads missing");
+    expect(markup).toContain("checkpoint-a, checkpoint-b");
+    expect(markup).toContain("Recover payloads from .wcad");
+    expect(markup).toContain("Download source-only JSON");
+  });
+
   it("keeps blocked file actions focusable with actionable reasons", () => {
     const markup = renderPage("files", {
       storageCapabilities: createProjectStorageCapabilityStatus({})
@@ -340,6 +354,7 @@ function renderPage(
     jsonDraftSource: { kind: "empty" },
     jsonWorkflow,
     opfsCacheStatus: createInitialProjectOpfsCacheStatus(false),
+    portability: { status: "portable-json" },
     parameters,
     transactions: [],
     canUndo: false,
@@ -350,6 +365,7 @@ function renderPage(
     onOpenWcadFileLoaded: () => undefined,
     onStepFileLoaded: () => undefined,
     onJsonFileLoaded: () => undefined,
+    onRecoverWcadFileLoaded: () => undefined,
     onFileError: () => undefined,
     onSave: () => undefined,
     onSaveAs: () => undefined,
