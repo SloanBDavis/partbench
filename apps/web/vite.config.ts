@@ -71,6 +71,7 @@ export default defineConfig(({ command, mode }) => {
 
   return {
     build: {
+      reportCompressedSize: false,
       rollupOptions: {
         output: {
           onlyExplicitManualChunks: true,
