@@ -16,7 +16,7 @@ function minifyUiJavaScript(): Plugin {
         compress: { passes: chunk.isEntry ? 2 : 3 },
         mangle: true,
         module: true,
-        format: { comments: false }
+        format: { comments: false, quote_style: 1 }
       } as const;
       const result = await minify(code, options);
       if (!result.code) {
@@ -27,6 +27,23 @@ function minifyUiJavaScript(): Plugin {
     }
   };
 }
+
+const cadCommandWorkerIdentifierMangler = {
+  get(index: number): string {
+    const characters =
+      "teniroasdculpfyhgImvEkSbRT_CxANODPFVLMw$BKUHjqGYzJWXZQ0123456789";
+    let identifier = "";
+    let base = 54;
+    index += 1;
+    do {
+      index -= 1;
+      identifier += characters[index % base];
+      index = Math.floor(index / base);
+      base = 64;
+    } while (index > 0);
+    return identifier;
+  }
+};
 
 function minifyCadCommandWorker(): Plugin {
   return {
@@ -40,10 +57,16 @@ function minifyCadCommandWorker(): Plugin {
       }
 
       const result = await minify(code, {
-        compress: { passes: 1 },
-        mangle: true,
+        compress: {
+          comparisons: false,
+          lhs_constants: false,
+          passes: 1,
+          reduce_vars: false,
+          sequences: false
+        },
+        mangle: { nth_identifier: cadCommandWorkerIdentifierMangler },
         module: true,
-        format: { comments: false }
+        format: { comments: false, quote_style: 1 }
       });
       if (!result.code) {
         throw new Error("Terser did not emit the CAD command worker.");

@@ -14,8 +14,8 @@ interface CachedSketchBase {
 }
 
 const cachedBases = new WeakMap<HTMLCanvasElement, CachedSketchBase>();
-const COARSE_MESH_LIMIT = 256;
-const COARSE_EDGE_LIMIT = 8;
+const COARSE_MESH_LIMIT = 32;
+const COARSE_EDGE_LIMIT = 4;
 
 export function paintProgressiveSketchCanvas(
   context: CanvasRenderingContext2D,
@@ -68,7 +68,7 @@ export function paintProgressiveSketchCanvas(
   const renderNext = () => {
     for (
       let chunks = 0;
-      chunks < 8 && meshOffset < meshes.length;
+      chunks < 2 && meshOffset < meshes.length;
       chunks += 1
     ) {
       const mesh = meshes[meshOffset]!;

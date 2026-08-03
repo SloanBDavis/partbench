@@ -212,22 +212,17 @@ export function WorkbenchShell({
 
         <main
           className="pb-workbench-shell__workspace"
-          aria-label="Workbench workspace"
           {...inertProps(drawerModal)}
         >
           <section
             className="pb-workbench-shell__viewport"
-            aria-label="CAD viewport"
             hidden={mode === "project"}
-            aria-hidden={mode === "project" || undefined}
           >
             {viewport}
           </section>
           <section
             className="pb-workbench-shell__project"
-            aria-label="Project workspace"
             hidden={mode !== "project"}
-            aria-hidden={mode !== "project" || undefined}
           >
             {projectWorkspace}
           </section>

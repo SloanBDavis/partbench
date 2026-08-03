@@ -444,20 +444,29 @@ import {
 import "./styles/base.css";
 import "./styles/viewport.css";
 
+let releaseFirstFrame!: () => void;
+const firstFrame = new Promise<void>((resolve) => {
+  releaseFirstFrame = resolve;
+});
+
+function loadAfterFirstFrame<T>(load: () => Promise<T>): Promise<T> {
+  return firstFrame.then(load);
+}
+
 const InspectPanel = lazy(() =>
   import("./modes/inspect/InspectPanel").then((module) => ({
     default: module.InspectPanel
   }))
 );
 const SolidModePanel = lazy(() =>
-  import("./modes/solid").then((module) => ({
+  loadAfterFirstFrame(() => import("./modes/solid")).then((module) => ({
     default: module.SolidModePanel
   }))
 );
 const ProjectWorkspace = lazy(() =>
-  import("./modes/project/ProjectWorkspace").then((module) => ({
-    default: module.ProjectWorkspace
-  }))
+  loadAfterFirstFrame(() => import("./modes/project/ProjectWorkspace")).then(
+    (module) => ({ default: module.ProjectWorkspace })
+  )
 );
 const LocalAgentSessionController = lazy(() =>
   import("./LocalAgentSessionController").then((module) => ({
@@ -495,14 +504,14 @@ const SketchRegionOverlay = lazy(() =>
   }))
 );
 const ViewportCanvas = lazy(() =>
-  import("./components/ViewportCanvas").then((module) => ({
-    default: module.ViewportCanvas
-  }))
+  loadAfterFirstFrame(() => import("./components/ViewportCanvas")).then(
+    (module) => ({ default: module.ViewportCanvas })
+  )
 );
 const DocumentTreeDock = lazy(() =>
-  import("./workbench/DocumentTreeDock").then((module) => ({
-    default: module.DocumentTreeDock
-  }))
+  loadAfterFirstFrame(() => import("./workbench/DocumentTreeDock")).then(
+    (module) => ({ default: module.DocumentTreeDock })
+  )
 );
 const ViewportContextualActionStrip = lazy(() =>
   import("./workbench/ContextualActionStrip").then((module) => ({
@@ -1920,12 +1929,14 @@ export function App() {
     useState<ViewportMeasurementRuntime>();
   useEffect(() => {
     let active = true;
-    void Promise.all([
-      import("./viewportMeasurementOverlay"),
-      import("./viewportTwoTargetMeasurement"),
-      import("./viewportSelectionDisplay"),
-      import("./viewportVisualState")
-    ]).then(([overlay, twoTarget, selectionDisplay, visualState]) => {
+    void loadAfterFirstFrame(() =>
+      Promise.all([
+        import("./viewportMeasurementOverlay"),
+        import("./viewportTwoTargetMeasurement"),
+        import("./viewportSelectionDisplay"),
+        import("./viewportVisualState")
+      ])
+    ).then(([overlay, twoTarget, selectionDisplay, visualState]) => {
       if (active) {
         setViewportMeasurementRuntime({
           createOverlay: overlay.createViewportMeasurementOverlay,
@@ -2557,10 +2568,11 @@ export function App() {
     };
   }, [commandWorker]);
   useLayoutEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
+    const frame = requestAnimationFrame(() => {
       markPartbenchPerformance(PARTBENCH_PERFORMANCE_MARKS.shellReady);
+      releaseFirstFrame();
     });
-    return () => window.cancelAnimationFrame(frame);
+    return () => cancelAnimationFrame(frame);
   }, []);
   useEffect(() => {
     saveWorkbenchUiPreferences({
@@ -2838,15 +2850,15 @@ export function App() {
     return ready;
   }, [currentExactSources.resolutions]);
   const currentProjectSourceIdentity = useMemo(
-    () => createCadProjectSourceIdentity(currentProject),
-    [currentProject]
+    () =>
+      currentExactArtifactResolutions[0]
+        ? createCadProjectSourceIdentity(currentProject)
+        : undefined,
+    [currentExactArtifactResolutions.length, currentProject]
   );
   useEffect(() => {
     let active = true;
-    if (
-      currentExactArtifactResolutions.length === 0 ||
-      modelWorkSnapshot.stopped
-    ) {
+    if (!currentProjectSourceIdentity || modelWorkSnapshot.stopped) {
       return () => {
         active = false;
       };
@@ -10078,7 +10090,7 @@ export function App() {
                   }
                 >
                   <SketchModeDock
-                    key={`${focusedSketchId ?? "sketch-mode"}:${workbenchUi.activeTool ?? ""}`}
+                    key={`${focusedSketchId ?? "sketch-mode"}:${isSketchCurveEditUiAction(workbenchUi.activeTool) || workbenchUi.activeTool === "sketch.regions" ? "" : (workbenchUi.activeTool ?? "")}`}
                     disabled={commandPending}
                     sketches={sketches}
                     parameters={parameters}

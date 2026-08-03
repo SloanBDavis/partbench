@@ -98,22 +98,24 @@ describe("V18 workbench responsive shell", () => {
     expect(editor.right.visible).toBe(true);
   });
 
-  it("keeps viewport and Project slots mounted while exposing only the active center", () => {
-    const markup = renderToStaticMarkup(
+  it("keeps the viewport and Project content mounted while hiding the inactive slot", () => {
+    const projectMarkup = renderToStaticMarkup(
       createElement(WorkbenchShell, shellProps({ mode: "project" }))
     );
-
-    expect(markup).toContain("Viewport instance sentinel");
-    expect(markup).toContain("Project workspace sentinel");
-    expect(markup).toMatch(
-      /aria-label="CAD viewport" hidden="" aria-hidden="true"/
+    const solidMarkup = renderToStaticMarkup(
+      createElement(WorkbenchShell, shellProps())
     );
-    expect(markup).toMatch(/aria-label="Project workspace"/);
-    expect(markup).toContain('aria-label="Project navigation"');
-    expect(markup).toContain('aria-label="Workbench workspace"');
-    expect(markup).toMatch(
+
+    expect(projectMarkup).toContain("Viewport instance sentinel");
+    expect(projectMarkup).toContain("Project workspace sentinel");
+    expect(projectMarkup).toMatch(/pb-workbench-shell__viewport" hidden=""/);
+    expect(projectMarkup).toContain('aria-label="Project navigation"');
+    expect(projectMarkup).toMatch(
       /class="pb-dock-toggle pb-dock-toggle--right"[^>]*aria-label="Open Inspector"[^>]*hidden=""/
     );
+    expect(solidMarkup).toContain("Viewport instance sentinel");
+    expect(solidMarkup).toContain("Project workspace sentinel");
+    expect(solidMarkup).toMatch(/pb-workbench-shell__project" hidden=""/);
   });
 
   it("gives open overlay docks modal dialog semantics and focus hooks", () => {

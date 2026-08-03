@@ -83,7 +83,7 @@ export function projectCurrentExactBodyArtifacts(input: {
       CurrentExactBodyResolution,
       { readonly status: "ready" }
     >[];
-    readonly documentSourceIdentity: WcadSourceIdentity;
+    readonly documentSourceIdentity?: WcadSourceIdentity;
   };
   readonly display: DerivedGeometrySnapshot;
   readonly metadata: DerivedExactMetadataSnapshot;
@@ -99,6 +99,7 @@ export function projectCurrentExactBodyArtifacts(input: {
         )
       )
     : undefined;
+  const currentIdentity = input.current?.documentSourceIdentity;
   const artifacts = input.artifacts.filter((artifact) => {
     if (!resolutions || !input.current) return true;
     const resolution = resolutions.get(artifact.bodyId);
@@ -108,10 +109,9 @@ export function projectCurrentExactBodyArtifacts(input: {
       resolution.sourceIdentitySignature ===
         artifact.bodySourceIdentitySignature &&
       resolution.cacheKeySha256 === artifact.sourceCacheKeySha256 &&
-      artifact.documentSourceIdentity.algorithm ===
-        input.current.documentSourceIdentity.algorithm &&
-      artifact.documentSourceIdentity.sha256 ===
-        input.current.documentSourceIdentity.sha256
+      currentIdentity &&
+      artifact.documentSourceIdentity.algorithm === currentIdentity.algorithm &&
+      artifact.documentSourceIdentity.sha256 === currentIdentity.sha256
     );
   });
   const failures = input.failures?.filter((failure) => {

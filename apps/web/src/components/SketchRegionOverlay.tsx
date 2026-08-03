@@ -10,7 +10,7 @@ import {
   createSketchRegionEntityIndex
 } from "./sketchRegionOverlayModel";
 
-const REGION_OVERLAY_PREVIEW_LIMIT = 12;
+const REGION_OVERLAY_PREVIEW_LIMIT = 4;
 
 export function SketchRegionOverlay({
   camera,

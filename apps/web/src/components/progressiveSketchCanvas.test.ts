@@ -151,11 +151,17 @@ describe("progressive sketch canvas", () => {
     );
     expect(
       renderCanvasScene.mock.calls[0]?.[1].meshes?.[0]?.edgeSegments
-    ).toHaveLength(8);
+    ).toHaveLength(4);
     frames.shift()?.(0);
-    expect(renderCanvasScene).toHaveBeenCalledTimes(10);
+    expect(renderCanvasScene).toHaveBeenCalledTimes(4);
     expect(context.drawImage).not.toHaveBeenCalled();
     frames.shift()?.(16);
+    expect(context.drawImage).not.toHaveBeenCalled();
+    frames.shift()?.(32);
+    expect(context.drawImage).not.toHaveBeenCalled();
+    frames.shift()?.(48);
+    expect(context.drawImage).not.toHaveBeenCalled();
+    frames.shift()?.(64);
     expect(context.drawImage).toHaveBeenCalledOnce();
 
     frames.length = 0;

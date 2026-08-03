@@ -185,6 +185,39 @@ describe("currentExactPipeline", () => {
     ]);
   });
 
+  it("rejects a retained artifact when no current project identity exists", () => {
+    const artifact = createArtifact("stale_pattern");
+    const projected = projectCurrentExactBodyArtifacts({
+      artifacts: [artifact],
+      current: {
+        resolutions: [
+          {
+            status: "ready",
+            bodyId: artifact.bodyId,
+            sourceType: "linearPatternFeature",
+            sourceIdentitySignature: artifact.bodySourceIdentitySignature,
+            cacheKeySha256: artifact.sourceCacheKeySha256,
+            sourceGraphNodeCount: artifact.sourceGraphNodeCount,
+            source: {
+              id: "pattern_source",
+              kind: "linearPattern",
+              direction: [1, 0, 0],
+              spacing: 1,
+              instanceCount: 2,
+              sourceIdentitySignature: artifact.bodySourceIdentitySignature
+            },
+            diagnostics: []
+          }
+        ]
+      },
+      display: emptyDisplaySnapshot(),
+      metadata: emptyMetadataSnapshot()
+    });
+
+    expect(projected.artifactSources).toEqual([]);
+    expect(projected.display.entries).toEqual([]);
+  });
+
   it("projects terminal artifact failures instead of leaving bodies pending", () => {
     const projected = projectCurrentExactBodyArtifacts({
       artifacts: [],

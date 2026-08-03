@@ -192,9 +192,7 @@ export function SketchCurveEditPanel(props: SketchCurveEditPanelProps) {
       ? 0
       : Math.floor(selectedTargetIndex / CURVE_TARGET_WINDOW_SIZE) *
         CURVE_TARGET_WINDOW_SIZE;
-  const targetWindowAuthorityKey = `${sketch.id}\u0000${kind}\u0000${
-    draft.targetEntityId
-  }\u0000${targetOptions.map((entity) => entity.id).join("\u0001")}`;
+  const targetWindowAuthorityKey = `${sourceAuthorityKey}\u0000${kind}\u0000${selectedTargetIndex}`;
   const [targetWindow, setTargetWindow] = useState(() => ({
     authorityKey: targetWindowAuthorityKey,
     start: selectedTargetWindowStart

@@ -103,6 +103,11 @@
   overscroll-behavior: contain;
 }
 
+.pb-command-search__results > li {
+  content-visibility: auto;
+  contain-intrinsic-block-size: 64px;
+}
+
 .pb-command-search__result {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
