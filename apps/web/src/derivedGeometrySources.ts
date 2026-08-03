@@ -8,29 +8,21 @@ import {
   createResolvedRegionRevolveProfile,
   createResolvedWireExtrudeRecipe,
   createResolvedWireRevolveRecipe,
-  resolveMirrorPlaneFrame,
-  resolvePatternDirectionFrame,
-  resolvePatternRotationAxisFrame,
   validateRegisteredV22RegionSource
 } from "@web-cad/cad-core";
 import type {
   CadGeneratedFaceReference,
-  FeatureShellOpenFaceRef,
   SketchLoopRef,
   SketchRegionsProfileRef
 } from "@web-cad/cad-protocol";
 import {
   createPrimitiveDerivedGeometrySource,
   type DerivedBooleanExtrudeGeometrySource,
-  type DerivedCircularPatternGeometrySource,
   type DerivedEdgeFinishGeometrySource,
   type DerivedExtrudeGeometrySource,
   type DerivedGeometrySource,
   type DerivedHoleGeometrySource,
-  type DerivedLinearPatternGeometrySource,
-  type DerivedMirrorGeometrySource,
   type DerivedRevolveGeometrySource,
-  type DerivedShellGeometrySource,
   type DerivedSweepGeometrySource,
   type DerivedLoftGeometrySource
 } from "./derivedGeometry";
@@ -64,7 +56,8 @@ export {
 } from "./derivedExactMetadata";
 export {
   createCurrentExactEvidence,
-  createCurrentExactSources
+  createCurrentExactSources,
+  projectCurrentExactBodyArtifacts
 } from "./currentExactPipeline";
 
 export function createDerivedGeometrySourcesFromDocument(
@@ -97,7 +90,6 @@ export function createDerivedGeometrySourcesFromDocument(
       sketches,
       generatedFacesByKey,
       document.namedReferences,
-      document.topologyIdentity,
       document,
       sourceIdentitySignaturesByBodyId,
       includeConsumed
@@ -121,7 +113,6 @@ export function createAuthoredFeatureDerivedGeometrySources(
     CadGeneratedFaceReference
   > = new Map(),
   namedReferences: CadDocument["namedReferences"] = new Map(),
-  topologyIdentity: CadDocument["topologyIdentity"] = undefined,
   referenceDocument?: CadDocument,
   sourceIdentitySignaturesByBodyId: ReadonlyMap<string, string> = new Map(),
   includeConsumed = false
@@ -131,10 +122,6 @@ export function createAuthoredFeatureDerivedGeometrySources(
   | DerivedRevolveGeometrySource
   | DerivedHoleGeometrySource
   | DerivedEdgeFinishGeometrySource
-  | DerivedLinearPatternGeometrySource
-  | DerivedCircularPatternGeometrySource
-  | DerivedMirrorGeometrySource
-  | DerivedShellGeometrySource
   | DerivedSweepGeometrySource
   | DerivedLoftGeometrySource
 )[] {
@@ -180,35 +167,6 @@ export function createAuthoredFeatureDerivedGeometrySources(
       sketches,
       generatedFacesByKey,
       namedReferences,
-      consumedBodyIds
-    ),
-    ...createLinearPatternDerivedGeometrySources(
-      features,
-      sketches,
-      generatedFacesByKey,
-      consumedBodyIds,
-      referenceDocument
-    ),
-    ...createCircularPatternDerivedGeometrySources(
-      features,
-      sketches,
-      generatedFacesByKey,
-      consumedBodyIds,
-      referenceDocument
-    ),
-    ...createMirrorDerivedGeometrySources(
-      features,
-      sketches,
-      generatedFacesByKey,
-      consumedBodyIds,
-      referenceDocument
-    ),
-    ...createShellDerivedGeometrySources(
-      features,
-      sketches,
-      generatedFacesByKey,
-      namedReferences,
-      topologyIdentity,
       consumedBodyIds
     )
   ];
@@ -374,281 +332,6 @@ export function createSweepDerivedGeometrySources(
     .filter(
       (source): source is DerivedSweepGeometrySource => source !== undefined
     );
-}
-
-export function createShellDerivedGeometrySources(
-  features: readonly CadFeatureSummary[],
-  sketches: readonly SketchSnapshot[],
-  generatedFacesByKey: ReadonlyMap<
-    string,
-    CadGeneratedFaceReference
-  > = new Map(),
-  namedReferences: CadDocument["namedReferences"] = new Map(),
-  topologyIdentity: CadDocument["topologyIdentity"] = undefined,
-  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features)
-): readonly DerivedShellGeometrySource[] {
-  const extrudeFeaturesByBodyId = createExtrudeFeaturesByBodyId(features);
-
-  return features
-    .filter(
-      (feature): feature is Extract<CadFeatureSummary, { kind: "shell" }> =>
-        feature.kind === "shell"
-    )
-    .filter((feature) => !consumedBodyIds.has(feature.bodyId))
-    .map((feature) => {
-      const target = resolveExtrudeFamilySeedSource(
-        feature.targetBodyId,
-        extrudeFeaturesByBodyId,
-        sketches,
-        generatedFacesByKey
-      );
-      const openFaceResolution = resolveShellOpenFaceStableIds(
-        feature,
-        generatedFacesByKey,
-        namedReferences,
-        topologyIdentity
-      );
-
-      return {
-        id: feature.bodyId,
-        kind: "shell",
-        target: target ?? createUnavailableExtrudeSource(feature.targetBodyId),
-        wallThickness: feature.wallThickness,
-        openFaceStableIds: openFaceResolution.stableIds,
-        placementError:
-          target === undefined
-            ? `Shell feature ${feature.id} cannot be displayed because target body ${feature.targetBodyId} is not an authored extrude-family body.`
-            : openFaceResolution.error
-      };
-    });
-}
-
-export function createLinearPatternDerivedGeometrySources(
-  features: readonly CadFeatureSummary[],
-  sketches: readonly SketchSnapshot[],
-  generatedFacesByKey: ReadonlyMap<
-    string,
-    CadGeneratedFaceReference
-  > = new Map(),
-  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features),
-  referenceDocument?: CadDocument
-): readonly DerivedLinearPatternGeometrySource[] {
-  const extrudeFeaturesByBodyId = createExtrudeFeaturesByBodyId(features);
-
-  return features
-    .filter(
-      (
-        feature
-      ): feature is Extract<CadFeatureSummary, { kind: "linearPattern" }> =>
-        feature.kind === "linearPattern"
-    )
-    .filter((feature) => !consumedBodyIds.has(feature.bodyId))
-    .map((feature) => {
-      const resolved = resolveSeededResultSeed(
-        feature.id,
-        feature.seedBodyId,
-        "Linear pattern",
-        extrudeFeaturesByBodyId,
-        sketches,
-        generatedFacesByKey
-      );
-
-      const direction = resolvePatternDirection(
-        feature.direction,
-        referenceDocument
-      );
-      return {
-        id: feature.bodyId,
-        kind: "linearPattern" as const,
-        seed: resolved.seed,
-        direction: direction.value,
-        spacing: feature.spacing,
-        instanceCount: feature.instanceCount,
-        ...(resolved.placementError || direction.error
-          ? { placementError: resolved.placementError ?? direction.error }
-          : {})
-      };
-    });
-}
-
-export function createCircularPatternDerivedGeometrySources(
-  features: readonly CadFeatureSummary[],
-  sketches: readonly SketchSnapshot[],
-  generatedFacesByKey: ReadonlyMap<
-    string,
-    CadGeneratedFaceReference
-  > = new Map(),
-  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features),
-  referenceDocument?: CadDocument
-): readonly DerivedCircularPatternGeometrySource[] {
-  const extrudeFeaturesByBodyId = createExtrudeFeaturesByBodyId(features);
-
-  return features
-    .filter(
-      (
-        feature
-      ): feature is Extract<CadFeatureSummary, { kind: "circularPattern" }> =>
-        feature.kind === "circularPattern"
-    )
-    .filter((feature) => !consumedBodyIds.has(feature.bodyId))
-    .map((feature) => {
-      const resolved = resolveSeededResultSeed(
-        feature.id,
-        feature.seedBodyId,
-        "Circular pattern",
-        extrudeFeaturesByBodyId,
-        sketches,
-        generatedFacesByKey
-      );
-
-      const axis = resolvePatternAxis(feature.rotationAxis, referenceDocument);
-      return {
-        id: feature.bodyId,
-        kind: "circularPattern" as const,
-        seed: resolved.seed,
-        axis: axis.value,
-        totalAngleDegrees: feature.totalAngleDegrees,
-        instanceCount: feature.instanceCount,
-        ...(resolved.placementError || axis.error
-          ? { placementError: resolved.placementError ?? axis.error }
-          : {})
-      };
-    });
-}
-
-export function createMirrorDerivedGeometrySources(
-  features: readonly CadFeatureSummary[],
-  sketches: readonly SketchSnapshot[],
-  generatedFacesByKey: ReadonlyMap<
-    string,
-    CadGeneratedFaceReference
-  > = new Map(),
-  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features),
-  referenceDocument?: CadDocument
-): readonly DerivedMirrorGeometrySource[] {
-  const extrudeFeaturesByBodyId = createExtrudeFeaturesByBodyId(features);
-
-  return features
-    .filter(
-      (feature): feature is Extract<CadFeatureSummary, { kind: "mirror" }> =>
-        feature.kind === "mirror"
-    )
-    .filter((feature) => !consumedBodyIds.has(feature.bodyId))
-    .map((feature) => {
-      const resolved = resolveSeededResultSeed(
-        feature.id,
-        feature.seedBodyId,
-        "Mirror",
-        extrudeFeaturesByBodyId,
-        sketches,
-        generatedFacesByKey
-      );
-
-      const plane = resolveMirrorPlane(feature.plane, referenceDocument);
-      return {
-        id: feature.bodyId,
-        kind: "mirror" as const,
-        seed: resolved.seed,
-        plane: plane.value,
-        includeOriginal: feature.includeOriginal,
-        ...(resolved.placementError || plane.error
-          ? { placementError: resolved.placementError ?? plane.error }
-          : {})
-      };
-    });
-}
-
-function resolvePatternDirection(
-  ref: Extract<CadFeatureSummary, { kind: "linearPattern" }>["direction"],
-  document?: CadDocument
-): {
-  readonly value: readonly [number, number, number];
-  readonly error?: string;
-} {
-  if (document) {
-    const resolution = resolvePatternDirectionFrame(document, ref);
-    return resolution.ok
-      ? { value: resolution.frame }
-      : { value: [1, 0, 0], error: resolution.message };
-  }
-  if (ref.kind === "globalAxis") {
-    return {
-      value:
-        ref.axis === "x" ? [1, 0, 0] : ref.axis === "y" ? [0, 1, 0] : [0, 0, 1]
-    };
-  }
-  return {
-    value: [1, 0, 0],
-    error:
-      "Pattern direction reference has not been resolved to a document-space vector."
-  };
-}
-
-function resolvePatternAxis(
-  ref: Extract<CadFeatureSummary, { kind: "circularPattern" }>["rotationAxis"],
-  document?: CadDocument
-): {
-  readonly value: {
-    readonly origin: readonly [number, number, number];
-    readonly direction: readonly [number, number, number];
-  };
-  readonly error?: string;
-} {
-  if (document) {
-    const resolution = resolvePatternRotationAxisFrame(document, ref);
-    return resolution.ok
-      ? { value: resolution.frame }
-      : {
-          value: { origin: [0, 0, 0], direction: [1, 0, 0] },
-          error: resolution.message
-        };
-  }
-  const resolved = resolvePatternDirection(ref);
-  return {
-    value: { origin: [0, 0, 0], direction: resolved.value },
-    ...(resolved.error ? { error: resolved.error } : {})
-  };
-}
-
-function resolveMirrorPlane(
-  ref: Extract<CadFeatureSummary, { kind: "mirror" }>["plane"],
-  document?: CadDocument
-): {
-  readonly value: {
-    readonly point: readonly [number, number, number];
-    readonly normal: readonly [number, number, number];
-  };
-  readonly error?: string;
-} {
-  if (document) {
-    const resolution = resolveMirrorPlaneFrame(document, ref);
-    return resolution.ok
-      ? { value: resolution.frame }
-      : {
-          value: { point: [0, 0, 0], normal: [0, 0, 1] },
-          error: resolution.message
-        };
-  }
-  if (ref.kind === "standardPlane") {
-    const normal =
-      ref.plane === "XY"
-        ? ([0, 0, 1] as const)
-        : ref.plane === "XZ"
-          ? ([0, 1, 0] as const)
-          : ([1, 0, 0] as const);
-    const offset = ref.offset ?? 0;
-    return {
-      value: {
-        point: [normal[0] * offset, normal[1] * offset, normal[2] * offset],
-        normal
-      }
-    };
-  }
-  return {
-    value: { point: [0, 0, 0], normal: [0, 0, 1] },
-    error:
-      "Mirror plane reference has not been resolved to a document-space plane."
-  };
 }
 
 export function createExtrudeDerivedGeometrySources(
@@ -1492,233 +1175,6 @@ function createConsumedBodyIds(
       })
       .filter((bodyId): bodyId is string => Boolean(bodyId))
   );
-}
-
-function createExtrudeFeaturesByBodyId(
-  features: readonly CadFeatureSummary[]
-): Map<string, Extract<CadFeatureSummary, { kind: "extrude" }>> {
-  return new Map(
-    features
-      .filter(
-        (feature): feature is Extract<CadFeatureSummary, { kind: "extrude" }> =>
-          feature.kind === "extrude"
-      )
-      .map((feature) => [feature.bodyId, feature])
-  );
-}
-
-function resolveExtrudeFamilySeedSource(
-  seedBodyId: string,
-  extrudeFeaturesByBodyId: ReadonlyMap<
-    string,
-    Extract<CadFeatureSummary, { kind: "extrude" }>
-  >,
-  sketches: readonly SketchSnapshot[],
-  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>
-):
-  | DerivedExtrudeGeometrySource
-  | DerivedBooleanExtrudeGeometrySource
-  | undefined {
-  const seedFeature = extrudeFeaturesByBodyId.get(seedBodyId);
-  if (!seedFeature) {
-    return undefined;
-  }
-
-  return createBooleanSourceForFeature(
-    seedFeature,
-    extrudeFeaturesByBodyId,
-    sketches,
-    generatedFacesByKey
-  );
-}
-
-function resolveSeededResultSeed(
-  featureId: string,
-  seedBodyId: string,
-  label: string,
-  extrudeFeaturesByBodyId: ReadonlyMap<
-    string,
-    Extract<CadFeatureSummary, { kind: "extrude" }>
-  >,
-  sketches: readonly SketchSnapshot[],
-  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>
-): {
-  readonly seed:
-    | DerivedExtrudeGeometrySource
-    | DerivedBooleanExtrudeGeometrySource;
-  readonly placementError?: string;
-} {
-  const seed = resolveExtrudeFamilySeedSource(
-    seedBodyId,
-    extrudeFeaturesByBodyId,
-    sketches,
-    generatedFacesByKey
-  );
-
-  if (seed) {
-    return { seed };
-  }
-
-  return {
-    seed: createUnavailableExtrudeSource(seedBodyId),
-    placementError: `${label} feature ${featureId} cannot be displayed because seed body ${seedBodyId} is not a displayable extrude-family body.`
-  };
-}
-
-function resolveShellOpenFaceStableIds(
-  feature: Extract<CadFeatureSummary, { kind: "shell" }>,
-  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
-  namedReferences: CadDocument["namedReferences"],
-  topologyIdentity: CadDocument["topologyIdentity"]
-): {
-  readonly stableIds: readonly string[];
-  readonly error?: string;
-} {
-  if (feature.openFaceRefs.length === 0) {
-    return { stableIds: [] };
-  }
-
-  const failures: string[] = [];
-  const stableIds: string[] = [];
-
-  for (const ref of feature.openFaceRefs) {
-    const resolved = resolveShellOpenFaceStableId(
-      feature,
-      ref,
-      generatedFacesByKey,
-      namedReferences,
-      topologyIdentity
-    );
-
-    if (resolved.stableId) {
-      stableIds.push(resolved.stableId);
-    } else {
-      failures.push(resolved.error);
-    }
-  }
-
-  if (stableIds.length > 0) {
-    return { stableIds };
-  }
-
-  return {
-    stableIds: [],
-    error: `Shell feature ${feature.id} cannot open faces because no references resolved. ${failures.join(" ")}`
-  };
-}
-
-function resolveShellOpenFaceStableId(
-  feature: Extract<CadFeatureSummary, { kind: "shell" }>,
-  ref: FeatureShellOpenFaceRef,
-  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
-  namedReferences: CadDocument["namedReferences"],
-  topologyIdentity: CadDocument["topologyIdentity"]
-): {
-  readonly stableId?: string;
-  readonly error: string;
-} {
-  if (ref.kind === "generatedFace") {
-    if (ref.bodyId !== feature.targetBodyId) {
-      return {
-        error: `Generated face ${ref.stableId} belongs to body ${ref.bodyId}, not target ${feature.targetBodyId}.`
-      };
-    }
-
-    const face = generatedFacesByKey.get(
-      createGeneratedFaceReferenceKey(ref.bodyId, ref.stableId)
-    );
-
-    if (!face) {
-      return {
-        error: `Generated face ${ref.stableId} is unavailable on ${ref.bodyId}.`
-      };
-    }
-
-    return { stableId: face.stableId, error: "" };
-  }
-
-  if (ref.kind === "namedReference") {
-    const named = namedReferences.get(ref.name);
-
-    if (!named) {
-      return {
-        error: `Named reference ${ref.name} is unavailable.`
-      };
-    }
-
-    if (named.kind !== "face") {
-      return {
-        error: `Named reference ${ref.name} is a ${named.kind}, not a face.`
-      };
-    }
-
-    if (named.bodyId !== feature.targetBodyId) {
-      return {
-        error: `Named reference ${ref.name} resolves to body ${named.bodyId}, not target ${feature.targetBodyId}.`
-      };
-    }
-
-    return { stableId: named.stableId, error: "" };
-  }
-
-  const anchor = topologyIdentity?.anchors.find(
-    (candidate) => candidate.anchorId === ref.anchorId
-  );
-
-  if (!anchor) {
-    return {
-      error: `Topology anchor ${ref.anchorId} is unavailable.`
-    };
-  }
-
-  if (anchor.entityKind !== "face") {
-    return {
-      error: `Topology anchor ${ref.anchorId} targets a ${anchor.entityKind}, not a face.`
-    };
-  }
-
-  if (
-    anchor.bodyId !== feature.targetBodyId ||
-    ref.bodyId !== feature.targetBodyId
-  ) {
-    return {
-      error: `Topology anchor ${ref.anchorId} does not target body ${feature.targetBodyId}.`
-    };
-  }
-
-  if (anchor.state !== "active") {
-    return {
-      error: `Topology anchor ${ref.anchorId} is ${anchor.state}.`
-    };
-  }
-
-  if (anchor.stableId) {
-    return { stableId: anchor.stableId, error: "" };
-  }
-
-  if (anchor.sourceSemanticRole) {
-    const matches = [...generatedFacesByKey.values()].filter(
-      (face) =>
-        face.bodyId === feature.targetBodyId &&
-        face.role === anchor.sourceSemanticRole
-    );
-    const [match] = matches;
-
-    if (matches.length === 1 && match) {
-      return { stableId: match.stableId, error: "" };
-    }
-
-    return {
-      error:
-        matches.length === 0
-          ? `Topology anchor ${ref.anchorId} has no generated face for role ${anchor.sourceSemanticRole}.`
-          : `Topology anchor ${ref.anchorId} role ${anchor.sourceSemanticRole} is ambiguous.`
-    };
-  }
-
-  return {
-    error: `Topology anchor ${ref.anchorId} has no stable generated face.`
-  };
 }
 
 function createBooleanPlacementError(

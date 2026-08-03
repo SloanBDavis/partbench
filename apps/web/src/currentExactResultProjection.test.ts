@@ -17,6 +17,7 @@ import {
 import {
   createCurrentExactResultProjection,
   createCurrentExactResultProjections,
+  toCadCurrentExactResults,
   type CurrentExactResultConsumerEvidence
 } from "./currentExactResultProjection";
 
@@ -149,13 +150,93 @@ describe("currentExactResultProjection", () => {
             bodyId: resolution.bodyId,
             sourceKind: "box",
             cacheKey: createDerivedExactMetadataCacheKey(metadataSource),
-            status: "ready"
+            status: "ready",
+            metadata: exactMetadata(1)
           }
         ]
       } as unknown as DerivedExactMetadataSnapshot
     })[0];
 
     expect(projection).toMatchObject({ status: "ready", ready: true });
+  });
+
+  it("publishes actual multi-solid readiness and byte-free artifact evidence", () => {
+    const resolution = readyResolution("mirrorFeature");
+    const artifactSource = {
+      id: resolution.bodyId,
+      kind: "exactBody" as const,
+      sourceIdentitySignature: resolution.sourceIdentitySignature,
+      sourceCacheKeySha256: resolution.cacheKeySha256,
+      source: {
+        kind: "bodyArtifact" as const,
+        artifactVersion: "partbench.exact-body-artifact.v1" as const,
+        bodyId: resolution.bodyId,
+        sourceType: resolution.sourceType,
+        documentSourceIdentity: {
+          algorithm: "partbench-source-v1" as const,
+          sha256: "b".repeat(64)
+        },
+        bodySourceIdentitySignature: resolution.sourceIdentitySignature,
+        sourceCacheKeySha256: resolution.cacheKeySha256,
+        sourceGraphNodeCount: 2,
+        units: "mm" as const,
+        shapePolicy: "singleShapeOneOrMoreSolids" as const,
+        sourceKind: "mirror" as const,
+        brepFormat: "occt-brep" as const,
+        brepWriter: "BRepTools.Write_3" as const,
+        brepBytes: new Uint8Array([1]),
+        brepByteLength: 1,
+        brepSha256: "c".repeat(64),
+        topologySignature: "topology:mirror"
+      }
+    };
+    const projections = createCurrentExactResultProjections({
+      resolutions: [{ ...resolution, source: artifactSource }],
+      sourceIdentitySignaturesByBodyId: new Map([
+        [resolution.bodyId, resolution.sourceIdentitySignature]
+      ]),
+      displaySources: [artifactSource],
+      display: {
+        entries: [
+          {
+            objectId: resolution.bodyId,
+            sourceId: resolution.bodyId,
+            objectKind: "exactBody",
+            sourceKind: "exactBody",
+            cacheKey: createDerivedGeometryCacheKey(artifactSource),
+            status: "ready"
+          }
+        ]
+      } as unknown as DerivedGeometrySnapshot,
+      metadataSources: [artifactSource],
+      metadata: {
+        entries: [
+          {
+            bodyId: resolution.bodyId,
+            sourceKind: "exactBody",
+            cacheKey: createDerivedExactMetadataCacheKey(artifactSource),
+            status: "ready",
+            metadata: exactMetadata(2)
+          }
+        ]
+      } as unknown as DerivedExactMetadataSnapshot
+    });
+
+    const [result] = toCadCurrentExactResults(projections);
+    expect(result).toMatchObject({
+      status: "ready",
+      artifactEvidence: {
+        brepByteLength: 1,
+        shapePolicy: "singleShapeOneOrMoreSolids"
+      },
+      downstreamReadiness: [
+        { operation: "holeTarget", status: "ready" },
+        { operation: "patternSeed", status: "ready" },
+        { operation: "mirrorSeed", status: "ready" },
+        { operation: "shellTarget", status: "unsupported" }
+      ]
+    });
+    expect(JSON.stringify(result)).not.toContain("brepBytes");
   });
 
   it("covers every frozen V21 matrix case and bounded status", () => {
@@ -197,6 +278,25 @@ describe("currentExactResultProjection", () => {
     expect(caseCount).toBeGreaterThan(30);
   });
 });
+
+function exactMetadata(solidCount: number) {
+  return {
+    sourceKind: "mirror" as const,
+    bounds: { min: [0, 0, 0] as const, max: [1, 1, 1] as const },
+    volume: solidCount,
+    surfaceArea: 6,
+    centroid: [0.5, 0.5, 0.5] as const,
+    topologyCounts: {
+      solidCount,
+      faceCount: 6,
+      edgeCount: 12,
+      vertexCount: 8
+    },
+    measurementSource: "kernel-derived" as const,
+    measurementConfidence: "kernel-derived" as const,
+    diagnostics: []
+  };
+}
 
 function readyEvidence(): readonly CurrentExactResultConsumerEvidence[] {
   return CONSUMERS.map((consumer) => ({

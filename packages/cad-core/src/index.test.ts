@@ -6664,13 +6664,16 @@ describe("cad-core", () => {
     expect(unsupportedSelection).toMatchObject({
       ok: true,
       query: "selection.referenceCandidates",
-      status: "unsupported",
-      candidateCount: 0,
-      issues: [
+      status: "resolved",
+      candidateCount: 1,
+      issues: [],
+      candidates: [
         {
-          code: "UNSUPPORTED_SELECTION_TARGET",
-          status: "unsupported",
-          bodyId: "body:box_1"
+          target: { type: "body", bodyId: "body:box_1" },
+          reference: {
+            stableId: "semantic:body:body:box_1",
+            eligibleOperations: ["feature.holeTarget"]
+          }
         }
       ]
     });
@@ -18976,12 +18979,9 @@ describe("cad-core", () => {
       topology: {
         bodyId: "body:box_1",
         status: "unsupported",
-        exactGeometryAvailable: false,
-        measurementConfidence: "none",
-        issues: [
-          { code: "UNSUPPORTED_BODY_TOPOLOGY", bodyId: "body:box_1" },
-          { code: "UNSUPPORTED_BODY_TOPOLOGY", bodyId: "body:box_1" }
-        ]
+        exactGeometryAvailable: true,
+        measurementConfidence: "kernel-derived",
+        issues: [{ code: "UNSUPPORTED_BODY_TOPOLOGY", bodyId: "body:box_1" }]
       }
     });
 
@@ -32452,11 +32452,6 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         {
           kind: "generatedFace",
           bodyId: "body_rect_1",
-          stableId: "generated:face:body_rect_1:missing"
-        },
-        {
-          kind: "generatedFace",
-          bodyId: "body_rect_1",
           stableId: "generated:face:body_rect_1:endCap"
         }
       ]
@@ -32553,6 +32548,38 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         })
       ]
     });
+
+    const checkpointOnlyDocument = createTopologyAnchorEngine().getDocument();
+    const checkpointOnlyEngine = new CadEngine({
+      ...checkpointOnlyDocument,
+      topologyIdentity: {
+        ...checkpointOnlyDocument.topologyIdentity!,
+        anchors: checkpointOnlyDocument.topologyIdentity!.anchors.map(
+          ({ stableId: _stableId, sourceSemanticRole: _role, ...anchor }) =>
+            anchor
+        )
+      }
+    });
+    expect(
+      checkpointOnlyEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "feature.shell",
+            targetBodyId: "body_rect_1",
+            wallThickness: 0.25,
+            openFaceRefs: [
+              {
+                kind: "topologyAnchor",
+                bodyId: "body_rect_1",
+                anchorId: "anchor_face_1"
+              }
+            ]
+          }
+        ]
+      })
+    ).toMatchObject({ ok: true });
   });
 
   it("updates shell wall thickness and open faces without changing the target", () => {
@@ -32672,13 +32699,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           }
         ]
       })
-    ).toMatchObject({
-      ok: false,
-      error: {
-        code: "SHELL_OPEN_FACE_REF_INVALID",
-        path: "$.ops[0].openFaceRefs"
-      }
-    });
+    ).toMatchObject({ ok: true, mode: "dryRun" });
 
     engine.apply({
       op: "feature.shell",

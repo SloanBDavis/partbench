@@ -8,6 +8,7 @@ import {
 import {
   CAD_EXPORT_DIAGNOSTIC_CODES,
   CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS,
+  isCadExactDownstreamGeometryOp,
   validateCadExactExportPlan,
   validateFeatureUpdateHoleOp,
   validateV19CadOp,
@@ -42,6 +43,7 @@ import type {
   CadDependencyHealthStatus,
   CadCurrentExactResult,
   CadExactExportPlan,
+  CadExactDownstreamGeometryOp,
   CadExportBodyReadiness,
   CadExportDiagnostic,
   CadExportFormatReadiness,
@@ -1312,10 +1314,11 @@ export class CadOpsAgentAdapter {
       );
     }
 
-    const exactPreflightUnavailable = createStandaloneHoleExactPreflightError(
-      this.engine,
-      effectiveRequest.batch
-    );
+    const exactPreflightUnavailable =
+      createStandaloneExactDownstreamPreflightError(
+        this.engine,
+        effectiveRequest.batch
+      );
     if (exactPreflightUnavailable) {
       return toAgentResponse(
         effectiveRequest,
@@ -1817,17 +1820,14 @@ function validateAgentPermissions(
   };
 }
 
-function createStandaloneHoleExactPreflightError(
+function createStandaloneExactDownstreamPreflightError(
   engine: CadEngine,
   batch: CadBatch
 ): CadBatchResponse | undefined {
   if (batch.mode !== "commit") return undefined;
-  const opIndex = batch.ops.findIndex(
-    (op) => op.op === "feature.hole" || op.op === "feature.updateHole"
-  );
+  const opIndex = batch.ops.findIndex(isCadExactDownstreamGeometryOp);
   const op = batch.ops[opIndex];
-  if (!op || (op.op !== "feature.hole" && op.op !== "feature.updateHole"))
-    return undefined;
+  if (!op || !isCadExactDownstreamGeometryOp(op)) return undefined;
 
   const sourcePreview = engine.executeBatch({
     ...batch,
@@ -1837,20 +1837,26 @@ function createStandaloneHoleExactPreflightError(
       : {})
   });
   if (!sourcePreview.ok) return undefined;
-  return standaloneHoleExactPreflightError(batch, {
+  return standaloneExactDownstreamPreflightError(batch, {
     opIndex,
     op: op.op,
-    featureId: op.id,
-    bodyId: op.targetBodyId,
+    ...(op.id ? { featureId: op.id } : {}),
+    ...(op.op === "feature.hole" || op.op === "feature.shell"
+      ? { bodyId: op.targetBodyId }
+      : op.op === "feature.linearPattern" ||
+          op.op === "feature.circularPattern" ||
+          op.op === "feature.mirror"
+        ? { bodyId: op.seedBodyId }
+        : {}),
     path: `$.ops[${opIndex}]`
   });
 }
 
-function standaloneHoleExactPreflightError(
+function standaloneExactDownstreamPreflightError(
   batch: CadBatch,
   input: {
     readonly opIndex: number;
-    readonly op: "feature.hole" | "feature.updateHole";
+    readonly op: CadExactDownstreamGeometryOp["op"];
     readonly featureId?: string;
     readonly bodyId?: string;
     readonly path: string;
@@ -3947,6 +3953,30 @@ function addCurrentExactEvidence(
           currentExactResults: evidence.currentExactResults
         }
       };
+    case "project.extents":
+      return {
+        ...request,
+        query: {
+          ...request.query,
+          derivedExactMetadata: evidence.derivedExactMetadata
+        }
+      };
+    case "body.topology":
+    case "body.topologyIdentity":
+    case "body.patternInstances":
+    case "body.massProperties": {
+      const bodyId = request.query.bodyId;
+      const derivedExactMetadata = evidence.derivedExactMetadata.find(
+        (entry) => entry.bodyId === bodyId
+      );
+      const { derivedExactMetadata: _callerEvidence, ...query } = request.query;
+      return derivedExactMetadata
+        ? {
+            ...request,
+            query: { ...query, derivedExactMetadata }
+          }
+        : { ...request, query };
+    }
     default:
       return request;
   }

@@ -24,7 +24,7 @@ import {
 import { createEffectiveHoleTargetForm } from "./sketchPanelUi";
 import { defaultSketchEntityForm } from "./sketchEntityForms";
 import { createSketchOnFaceCommandPlan } from "./sketchOnFacePromotion";
-import { preflightHoleGeometryCommand } from "./holeGeometryPreflight";
+import { preflightExactDownstreamGeometryCommand } from "./holeGeometryPreflight";
 import type {
   DerivedExactBodyArtifactInput,
   DerivedGeometryRuntime
@@ -209,7 +209,7 @@ describe("V14 result hole workflow", () => {
     const { engine, holeOp } = createAttachedResultHoleFixture();
     const beforeJson = exportCadProjectJson(engine);
     const runtime = createHolePreflightRuntime();
-    const result = await preflightHoleGeometryCommand({
+    const result = await preflightExactDownstreamGeometryCommand({
       engine,
       ops: [holeOp],
       bodyId: "body_result_hole",
@@ -314,7 +314,11 @@ describe("V14 result hole workflow", () => {
     const beforeJson = exportCadProjectJson(engine);
     const runtime = createHolePreflightRuntime();
 
-    const result = await preflightHoleGeometryCommand({ engine, ops, runtime });
+    const result = await preflightExactDownstreamGeometryCommand({
+      engine,
+      ops,
+      runtime
+    });
     if (!result.ok) throw new Error(result.message);
     expect(result).toMatchObject({ ok: true });
     expect(
@@ -323,6 +327,134 @@ describe("V14 result hole workflow", () => {
         .map((input) => input.bodyId)
     ).toEqual(["agent_body_hole_a", "agent_body_hole_b"]);
     expect(exportCadProjectJson(engine)).toBe(beforeJson);
+  });
+
+  it("preflights a pattern from its exact artifact without mutating source", async () => {
+    const engine = new CadEngine();
+    engine.apply({
+      op: "scene.createBox",
+      id: "pattern_seed",
+      dimensions: { width: 2, height: 2, depth: 2 }
+    });
+    const op = {
+      op: "feature.linearPattern" as const,
+      id: "pattern_feature",
+      bodyId: "pattern_body",
+      seedBodyId: "body:pattern_seed",
+      direction: { kind: "globalAxis" as const, axis: "x" as const },
+      spacing: 3,
+      instanceCount: 2
+    };
+    const beforeJson = exportCadProjectJson(engine);
+    const runtime = createHolePreflightRuntime();
+
+    const result = await preflightExactDownstreamGeometryCommand({
+      engine,
+      ops: [op],
+      runtime
+    });
+    expect(result).toMatchObject({ ok: true });
+    if (!result.ok) throw new Error(result.message);
+    expect(result.artifacts.map(({ bodyId }) => bodyId)).toEqual([
+      "pattern_body"
+    ]);
+    expect(runtime.artifactInputs).toHaveLength(2);
+    expect(runtime.artifactInputs.at(-1)?.source).toMatchObject({
+      kind: "artifactLinearPattern",
+      seed: { kind: "bodyArtifact", bodyId: "body:pattern_seed" },
+      instanceCount: 2
+    });
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+  });
+
+  it("preflights only the surviving root of a chained exact batch", async () => {
+    const engine = new CadEngine();
+    engine.apply({
+      op: "scene.createBox",
+      id: "chain_seed",
+      dimensions: { width: 2, height: 2, depth: 2 }
+    });
+    const runtime = createHolePreflightRuntime();
+    const result = await preflightExactDownstreamGeometryCommand({
+      engine,
+      ops: [
+        {
+          op: "feature.linearPattern",
+          id: "chain_pattern",
+          bodyId: "chain_pattern_body",
+          seedBodyId: "body:chain_seed",
+          direction: { kind: "globalAxis", axis: "x" },
+          spacing: 3,
+          instanceCount: 2
+        },
+        {
+          op: "feature.shell",
+          id: "chain_shell",
+          bodyId: "chain_shell_body",
+          targetBodyId: "chain_pattern_body",
+          wallThickness: 0.25,
+          openFaceRefs: []
+        }
+      ],
+      runtime
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      artifacts: [{ bodyId: "chain_shell_body" }]
+    });
+    if (!result.ok) throw new Error(result.message);
+    expect(result.artifacts.map(({ bodyId }) => bodyId)).toEqual([
+      "chain_shell_body"
+    ]);
+  });
+
+  it("reuses an unchanged exact dependency across a projected commit", async () => {
+    const engine = new CadEngine();
+    engine.apply({
+      op: "scene.createBox",
+      id: "cached_seed",
+      dimensions: { width: 2, height: 2, depth: 2 }
+    });
+    const patternOp: CadOp = {
+      op: "feature.linearPattern",
+      id: "cached_pattern",
+      bodyId: "cached_pattern_body",
+      seedBodyId: "body:cached_seed",
+      direction: { kind: "globalAxis", axis: "x" },
+      spacing: 3,
+      instanceCount: 2
+    };
+    const firstRuntime = createHolePreflightRuntime();
+    const first = await preflightExactDownstreamGeometryCommand({
+      engine,
+      ops: [patternOp],
+      runtime: firstRuntime
+    });
+    if (!first.ok) throw new Error(first.message);
+    engine.apply(patternOp);
+
+    const secondRuntime = createHolePreflightRuntime();
+    const second = await preflightExactDownstreamGeometryCommand({
+      engine,
+      ops: [
+        {
+          op: "feature.shell",
+          id: "cached_shell",
+          bodyId: "cached_shell_body",
+          targetBodyId: "cached_pattern_body",
+          wallThickness: 0.25,
+          openFaceRefs: []
+        }
+      ],
+      runtime: secondRuntime,
+      existingArtifacts: first.artifacts
+    });
+
+    expect(second).toMatchObject({ ok: true });
+    expect(secondRuntime.artifactInputs.map(({ bodyId }) => bodyId)).toEqual([
+      "cached_shell_body"
+    ]);
   });
 
   it("blocks result-body hole commits when geometry preflight fails", async () => {
@@ -335,7 +467,7 @@ describe("V14 result hole workflow", () => {
         { code: "EMPTY_RESULT" }
       );
     });
-    const result = await preflightHoleGeometryCommand({
+    const result = await preflightExactDownstreamGeometryCommand({
       engine,
       ops: [holeOp],
       bodyId: "body_result_hole",
@@ -369,7 +501,7 @@ describe("V14 result hole workflow", () => {
         "Geometry worker response does not contain an exact topology checkpoint payload for OCCT-mesh renderer-hit:face-1 checkpoint-local:face-1."
       );
     });
-    const result = await preflightHoleGeometryCommand({
+    const result = await preflightExactDownstreamGeometryCommand({
       engine,
       ops: [holeOp],
       bodyId: "body_result_hole",
@@ -411,7 +543,7 @@ describe("V14 result hole workflow", () => {
       });
 
       await expect(
-        preflightHoleGeometryCommand({
+        preflightExactDownstreamGeometryCommand({
           engine,
           ops: [holeOp],
           runtime,
@@ -437,7 +569,7 @@ describe("V14 result hole workflow", () => {
     });
 
     await expect(
-      preflightHoleGeometryCommand({
+      preflightExactDownstreamGeometryCommand({
         engine,
         ops: [holeOp],
         runtime,
@@ -812,6 +944,20 @@ function createExactBodyArtifact(
   index: number
 ): GeometryKernelExactBodyArtifact {
   const brepBytes = new Uint8Array([index]);
+  const topologyEntities = [
+    {
+      localId: `body:${input.bodyId}`,
+      kind: "body" as const,
+      source: "kernel-derived" as const,
+      signature: `body:${input.bodyId}`
+    },
+    {
+      localId: `solid:${input.bodyId}:1`,
+      kind: "solid" as const,
+      source: "kernel-derived" as const,
+      signature: `solid:${input.bodyId}:1`
+    }
+  ];
   return {
     artifactVersion: "partbench.exact-body-artifact.v1",
     bodyId: input.bodyId,
@@ -828,11 +974,46 @@ function createExactBodyArtifact(
     brepWriter: "BRepTools.Write_3",
     brepBytes,
     brepByteLength: brepBytes.byteLength,
-    brepSha256: String(index).repeat(64),
-    metadata: {} as GeometryKernelExactBodyArtifact["metadata"],
+    brepSha256: sha256Hex(brepBytes),
+    metadata: {
+      sourceKind: input.source.kind,
+      bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+      volume: 1,
+      surfaceArea: 6,
+      centroid: [0.5, 0.5, 0.5],
+      topologyCounts: {
+        solidCount: 1,
+        faceCount: 0,
+        edgeCount: 0,
+        vertexCount: 0
+      },
+      measurementSource: "kernel-derived",
+      measurementConfidence: "kernel-derived",
+      diagnostics: []
+    },
     topologySnapshot: {
-      signature: `topology:${input.bodyId}`
-    } as GeometryKernelExactBodyArtifact["topologySnapshot"],
+      sourceKind: input.source.kind,
+      status: "ready",
+      entityCounts: {
+        bodyCount: 1,
+        solidCount: 1,
+        faceCount: 0,
+        wireCount: 0,
+        loopCount: 0,
+        coedgeCount: 0,
+        edgeCount: 0,
+        vertexCount: 0,
+        axisCount: 0
+      },
+      entityCount: topologyEntities.length,
+      entities: topologyEntities,
+      unsupportedEntityKinds: [],
+      adjacencyAvailable: false,
+      signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+      signature: `topology:${input.bodyId}`,
+      source: "kernel-derived",
+      diagnostics: []
+    },
     displayMesh: {
       primitive: "extrude",
       positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),

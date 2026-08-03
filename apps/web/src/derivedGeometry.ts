@@ -14,7 +14,6 @@ import type { RenderTriangleMesh } from "@web-cad/renderer";
 import {
   createBooleanExtrudeResultRuntimeSource,
   createBooleanExtrudeRuntimeSource,
-  createPrimitiveBooleanExtrudeRuntimeSource,
   getBooleanExtrudeRuntimeSourceError
 } from "./booleanExtrudeRuntimeSource";
 import {
@@ -23,7 +22,6 @@ import {
   type DerivedGeometryExecutionContext,
   type DerivedGeometryRequestContext,
   type DerivedGeometryMetrics,
-  type DerivedGeometryPatternSeedSource,
   type DerivedGeometryPrimitiveExtrudeProfile,
   type DerivedGeometryResult,
   type DerivedGeometryRuntime,
@@ -48,10 +46,6 @@ export type DerivedGeometrySourceKind =
   | "revolve"
   | "hole"
   | "edgeFinish"
-  | "linearPattern"
-  | "circularPattern"
-  | "mirror"
-  | "shell"
   | "sweep"
   | "loft"
   | "exactBody";
@@ -63,10 +57,6 @@ export type DerivedGeometrySource =
   | DerivedRevolveGeometrySource
   | DerivedHoleGeometrySource
   | DerivedEdgeFinishGeometrySource
-  | DerivedLinearPatternGeometrySource
-  | DerivedCircularPatternGeometrySource
-  | DerivedMirrorGeometrySource
-  | DerivedShellGeometrySource
   | DerivedSweepGeometrySource
   | DerivedLoftGeometrySource
   | DerivedExactBodyGeometrySource;
@@ -204,58 +194,6 @@ export interface DerivedFilletGeometrySource extends DerivedAuthoredGeometrySour
   readonly placementError?: string;
 }
 
-export interface DerivedLinearPatternGeometrySource extends DerivedAuthoredGeometrySourceIdentity {
-  readonly id: string;
-  readonly kind: "linearPattern";
-  readonly seed:
-    | DerivedExtrudeGeometrySource
-    | DerivedBooleanExtrudeGeometrySource;
-  readonly direction: readonly [number, number, number];
-  readonly spacing: number;
-  readonly instanceCount: number;
-  readonly placementError?: string;
-}
-
-export interface DerivedCircularPatternGeometrySource extends DerivedAuthoredGeometrySourceIdentity {
-  readonly id: string;
-  readonly kind: "circularPattern";
-  readonly seed:
-    | DerivedExtrudeGeometrySource
-    | DerivedBooleanExtrudeGeometrySource;
-  readonly axis: {
-    readonly origin: readonly [number, number, number];
-    readonly direction: readonly [number, number, number];
-  };
-  readonly totalAngleDegrees: number;
-  readonly instanceCount: number;
-  readonly placementError?: string;
-}
-
-export interface DerivedMirrorGeometrySource extends DerivedAuthoredGeometrySourceIdentity {
-  readonly id: string;
-  readonly kind: "mirror";
-  readonly seed:
-    | DerivedExtrudeGeometrySource
-    | DerivedBooleanExtrudeGeometrySource;
-  readonly plane: {
-    readonly point: readonly [number, number, number];
-    readonly normal: readonly [number, number, number];
-  };
-  readonly includeOriginal: boolean;
-  readonly placementError?: string;
-}
-
-export interface DerivedShellGeometrySource extends DerivedAuthoredGeometrySourceIdentity {
-  readonly id: string;
-  readonly kind: "shell";
-  readonly target:
-    | DerivedExtrudeGeometrySource
-    | DerivedBooleanExtrudeGeometrySource;
-  readonly wallThickness: number;
-  readonly openFaceStableIds: readonly string[];
-  readonly placementError?: string;
-}
-
 export type DerivedGeometryEntry =
   | DerivedGeometryUnsupportedEntry
   | DerivedGeometryPendingEntry
@@ -346,10 +284,6 @@ type SupportedDerivedGeometrySource =
   | DerivedRevolveGeometrySource
   | DerivedHoleGeometrySource
   | DerivedEdgeFinishGeometrySource
-  | DerivedLinearPatternGeometrySource
-  | DerivedCircularPatternGeometrySource
-  | DerivedMirrorGeometrySource
-  | DerivedShellGeometrySource
   | DerivedSweepGeometrySource
   | DerivedLoftGeometrySource
   | DerivedExactBodyGeometrySource;
@@ -695,10 +629,6 @@ function toDerivedGeometrySource(
     input.kind === "revolve" ||
     input.kind === "hole" ||
     input.kind === "edgeFinish" ||
-    input.kind === "linearPattern" ||
-    input.kind === "circularPattern" ||
-    input.kind === "mirror" ||
-    input.kind === "shell" ||
     input.kind === "sweep" ||
     input.kind === "loft" ||
     input.kind === "exactBody"
@@ -733,14 +663,7 @@ function isSupportedDerivedGeometrySource(
     return !source.placementError && isSupportedEdgeFinishSource(source);
   }
 
-  if (
-    source.kind === "linearPattern" ||
-    source.kind === "circularPattern" ||
-    source.kind === "mirror" ||
-    source.kind === "shell" ||
-    source.kind === "sweep" ||
-    source.kind === "loft"
-  ) {
+  if (source.kind === "sweep" || source.kind === "loft") {
     return !source.placementError;
   }
 
@@ -928,72 +851,6 @@ function deriveSourceMesh(
     );
   }
 
-  if (source.kind === "linearPattern") {
-    if (source.placementError) {
-      throw new Error(source.placementError);
-    }
-
-    return runtime.linearPattern(
-      {
-        id: source.id,
-        seed: createPatternSeedRuntimeSource(source.seed),
-        direction: source.direction,
-        spacing: source.spacing,
-        instanceCount: source.instanceCount
-      },
-      context as DerivedGeometryRequestContext | undefined
-    );
-  }
-
-  if (source.kind === "circularPattern") {
-    if (source.placementError) {
-      throw new Error(source.placementError);
-    }
-
-    return runtime.circularPattern(
-      {
-        id: source.id,
-        seed: createPatternSeedRuntimeSource(source.seed),
-        axis: source.axis,
-        totalAngleDegrees: source.totalAngleDegrees,
-        instanceCount: source.instanceCount
-      },
-      context as DerivedGeometryRequestContext | undefined
-    );
-  }
-
-  if (source.kind === "mirror") {
-    if (source.placementError) {
-      throw new Error(source.placementError);
-    }
-
-    return runtime.mirror(
-      {
-        id: source.id,
-        seed: createPatternSeedRuntimeSource(source.seed),
-        plane: source.plane,
-        includeOriginal: source.includeOriginal
-      },
-      context as DerivedGeometryRequestContext | undefined
-    );
-  }
-
-  if (source.kind === "shell") {
-    if (source.placementError) {
-      throw new Error(source.placementError);
-    }
-
-    return runtime.shell(
-      {
-        id: source.id,
-        target: createPatternSeedRuntimeSource(source.target),
-        wallThickness: source.wallThickness,
-        openFaceStableIds: source.openFaceStableIds
-      },
-      context as DerivedGeometryRequestContext | undefined
-    );
-  }
-
   if (source.kind === "sweep") {
     if (source.placementError) {
       throw new Error(source.placementError);
@@ -1135,19 +992,6 @@ export function applySketchPlanePlacement(
   };
 }
 
-function createPatternSeedRuntimeSource(
-  seed: DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource
-): DerivedGeometryPatternSeedSource {
-  if (seed.kind === "extrudeBoolean") {
-    return createBooleanExtrudeResultRuntimeSource(seed);
-  }
-
-  return {
-    kind: "extrude",
-    ...createPrimitiveBooleanExtrudeRuntimeSource(seed)
-  };
-}
-
 export function transformExtrudeMeshToPlacement(
   mesh: RenderTriangleMesh,
   sketchPlane: DerivedExtrudeGeometrySource["sketchPlane"],
@@ -1214,33 +1058,7 @@ function getUnsupportedSourceMessage(source: DerivedGeometrySource): string {
     );
   }
 
-  if (
-    source.kind === "linearPattern" ||
-    source.kind === "circularPattern" ||
-    source.kind === "mirror" ||
-    source.kind === "shell"
-  ) {
-    return (
-      source.placementError ?? getSeededFeatureUnsupportedMessage(source.kind)
-    );
-  }
-
-  return "Display geometry generation supports scene primitives, sketch extrudes, supported rectangle/circle boolean results, authored revolves, authored holes, rectangle edge finishing, linear/circular patterns, mirror, and shell features.";
-}
-
-function getSeededFeatureUnsupportedMessage(
-  kind: "linearPattern" | "circularPattern" | "mirror" | "shell"
-): string {
-  switch (kind) {
-    case "linearPattern":
-      return "Linear pattern display currently supports authored extrude-family seed bodies only.";
-    case "circularPattern":
-      return "Circular pattern display currently supports authored extrude-family seed bodies only.";
-    case "mirror":
-      return "Mirror display currently supports authored extrude-family seed bodies only.";
-    case "shell":
-      return "Shell display currently supports authored extrude-family target bodies only.";
-  }
+  return "Display geometry generation supports scene primitives, sketch extrudes, supported rectangle/circle boolean results, authored revolves, authored holes, rectangle edge finishing, sweeps, lofts, and current exact artifacts.";
 }
 
 function isAuthoredFeatureSourceKind(
@@ -1251,11 +1069,7 @@ function isAuthoredFeatureSourceKind(
     kind === "extrudeBoolean" ||
     kind === "revolve" ||
     kind === "hole" ||
-    kind === "edgeFinish" ||
-    kind === "linearPattern" ||
-    kind === "circularPattern" ||
-    kind === "mirror" ||
-    kind === "shell"
+    kind === "edgeFinish"
   );
 }
 
@@ -1502,70 +1316,26 @@ export function createDerivedGeometryCacheKey(
                       radius: source.radius,
                       placementError: source.placementError
                     }
-                : source.kind === "linearPattern"
+                : source.kind === "sweep"
                   ? {
                       kind: source.kind,
                       sourceIdentitySignature: source.sourceIdentitySignature,
-                      seed: createDerivedGeometryCacheKey(source.seed),
-                      direction: source.direction,
-                      spacing: source.spacing,
-                      instanceCount: source.instanceCount,
+                      profile: source.profile,
+                      pathSegments: source.pathSegments,
                       placementError: source.placementError
                     }
-                  : source.kind === "circularPattern"
+                  : source.kind === "loft"
                     ? {
                         kind: source.kind,
                         sourceIdentitySignature: source.sourceIdentitySignature,
-                        seed: createDerivedGeometryCacheKey(source.seed),
-                        axis: source.axis,
-                        totalAngleDegrees: source.totalAngleDegrees,
-                        instanceCount: source.instanceCount,
+                        sections: source.sections,
                         placementError: source.placementError
                       }
-                    : source.kind === "mirror"
-                      ? {
-                          kind: source.kind,
-                          sourceIdentitySignature:
-                            source.sourceIdentitySignature,
-                          seed: createDerivedGeometryCacheKey(source.seed),
-                          plane: source.plane,
-                          includeOriginal: source.includeOriginal,
-                          placementError: source.placementError
-                        }
-                      : source.kind === "shell"
-                        ? {
-                            kind: source.kind,
-                            sourceIdentitySignature:
-                              source.sourceIdentitySignature,
-                            target: createDerivedGeometryCacheKey(
-                              source.target
-                            ),
-                            wallThickness: source.wallThickness,
-                            openFaceStableIds: source.openFaceStableIds,
-                            placementError: source.placementError
-                          }
-                        : source.kind === "sweep"
-                          ? {
-                              kind: source.kind,
-                              sourceIdentitySignature:
-                                source.sourceIdentitySignature,
-                              profile: source.profile,
-                              pathSegments: source.pathSegments,
-                              placementError: source.placementError
-                            }
-                          : source.kind === "loft"
-                            ? {
-                                kind: source.kind,
-                                sourceIdentitySignature:
-                                  source.sourceIdentitySignature,
-                                sections: source.sections,
-                                placementError: source.placementError
-                              }
-                            : {
-                                kind: source.kind,
-                                dimensions: source.object.dimensions,
-                                transform: source.object.transform
-                              };
+                    : {
+                        kind: source.kind,
+                        dimensions: source.object.dimensions,
+                        transform: source.object.transform
+                      };
 
   return JSON.stringify(base);
 }
@@ -1599,22 +1369,6 @@ export function getDerivedGeometryStatusLabel(
 
       if (entry.sourceKind === "edgeFinish") {
         return "Edge finish display geometry issue";
-      }
-
-      if (entry.sourceKind === "linearPattern") {
-        return "Linear pattern display geometry issue";
-      }
-
-      if (entry.sourceKind === "circularPattern") {
-        return "Circular pattern display geometry issue";
-      }
-
-      if (entry.sourceKind === "mirror") {
-        return "Mirror display geometry issue";
-      }
-
-      if (entry.sourceKind === "shell") {
-        return "Shell display geometry issue";
       }
 
       return "Primitive fallback";

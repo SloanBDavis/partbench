@@ -1,6 +1,7 @@
 import {
   AsyncCadCommandExecutor,
   CadEngine,
+  createCadProjectSourceIdentity,
   createCadDownstreamBodyPolicyProjection,
   evaluateCadBodyDependencies,
   exportCadProject,
@@ -21,6 +22,10 @@ import {
   type BodyMeasurementsSnapshot,
   type ObjectMeasurementsSnapshot
 } from "@web-cad/cad-core";
+import {
+  CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS,
+  isCadExactDownstreamGeometryOp
+} from "@web-cad/cad-protocol";
 import type {
   BodyGeneratedReferencesQueryResponse,
   CadBodyDerivedExactMetadataSnapshot,
@@ -29,6 +34,7 @@ import type {
   CadCurrentExactResult,
   CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
+  CadExactDownstreamOperation,
   FeatureShellOpenFaceRef,
   MirrorPlaneRef,
   PatternDirectionRef,
@@ -310,9 +316,16 @@ import type {
 } from "./visualizationMeshExport";
 import type {
   DerivedExactMetadataService,
+  DerivedExactMetadataEntry,
   DerivedExactMetadataSource,
   DerivedExactMetadataSnapshot
 } from "./derivedExactMetadata";
+import type { CurrentExactBodyResolution } from "./currentExactBodyResolver";
+import type { CurrentExactResultProjection } from "./currentExactResultProjection";
+import type {
+  CurrentExactProjectionArtifact,
+  CurrentExactProjectionFailure
+} from "./currentExactPipeline";
 import type { ProjectExactStepExportJobState } from "./projectExactStepExport";
 import {
   createBodyMeasurementRows,
@@ -361,8 +374,7 @@ import {
 import {
   createAddTargetBodyOptions,
   createCutTargetBodyOptions,
-  createHoleTargetBodyOptions,
-  type HoleTargetExactReadiness
+  createHoleTargetBodyOptions
 } from "./sketchPanelUi";
 import {
   createViewportContextualCommandSurface,
@@ -569,6 +581,7 @@ type DerivedGeometrySourceBuilders = Pick<
   | "removeConsumedDerivedGeometrySources"
   | "createCurrentExactEvidence"
   | "createCurrentExactSources"
+  | "projectCurrentExactBodyArtifacts"
   | "createBodyTopologyDerivedExactMetadataSnapshot"
   | "DerivedExactMetadataService"
   | "formatDerivedExactMetadataEntryStatus"
@@ -1253,7 +1266,9 @@ function createSolidFaceChoices(
     string,
     SelectionReferenceCandidatesQueryResponse
   >,
-  operation: "feature.shell" | "feature.mirrorPlane"
+  operation: "feature.shell" | "feature.mirrorPlane",
+  topologyAnchors: CadTopologyIdentitySourceSnapshot["anchors"] = [],
+  targetBodyId?: string
 ): readonly SolidChoice<FeatureShellOpenFaceRef>[] {
   const choices: SolidChoice<FeatureShellOpenFaceRef>[] = [];
   for (const face of references?.faces ?? []) {
@@ -1292,6 +1307,31 @@ function createSolidFaceChoices(
       label: reference.name,
       kind: "named planar face",
       targetBodyId: candidate.target.bodyId
+    });
+  }
+  for (const anchor of topologyAnchors) {
+    if (
+      anchor.state !== "active" ||
+      anchor.entityKind !== "face" ||
+      anchor.bodyId !== targetBodyId ||
+      choices.some(
+        (choice) =>
+          choice.value.kind === "topologyAnchor" &&
+          choice.value.anchorId === anchor.anchorId
+      )
+    ) {
+      continue;
+    }
+    choices.push({
+      key: `${operation}:topology:${anchor.anchorId}`,
+      value: {
+        kind: "topologyAnchor",
+        bodyId: anchor.bodyId,
+        anchorId: anchor.anchorId
+      },
+      label: anchor.sourceSemanticRole ?? anchor.stableId ?? anchor.anchorId,
+      kind: "saved face",
+      targetBodyId: anchor.bodyId
     });
   }
   return choices;
@@ -2126,7 +2166,7 @@ function formatCancelledUserKinds(
   kinds: DerivedGeometryRuntimeWorkSnapshot["cancelledUserKinds"]
 ): string {
   const labels = kinds.map((kind) =>
-    kind === "preflight" ? "hole preflight" : kind
+    kind === "preflight" ? "exact preflight" : kind
   );
   if (labels.length === 0) return "model operation";
   if (labels.length === 1) return labels[0]!;
@@ -2147,6 +2187,73 @@ type ViewportMeasurementRuntime = {
   readonly createSelectionDisplay: typeof import("./viewportSelectionDisplay").createViewportSelectionDisplay;
   readonly createVisualState: typeof import("./viewportVisualState").createViewportVisualStateModel;
 };
+
+interface ExactDownstreamBodyReadiness {
+  readonly status: CadCurrentExactResult["status"];
+  readonly solidCount?: number;
+  readonly reason?: string;
+}
+
+function createExactDownstreamReadinessByBodyId({
+  document,
+  bodies,
+  projections,
+  metadataEntries,
+  operation
+}: {
+  readonly document: CadDocument;
+  readonly bodies: readonly CadBodySnapshot[];
+  readonly projections: readonly CurrentExactResultProjection[];
+  readonly metadataEntries: readonly DerivedExactMetadataEntry[];
+  readonly operation: CadExactDownstreamOperation;
+}): ReadonlyMap<string, ExactDownstreamBodyReadiness> {
+  const projectionsByBodyId = new Map(
+    projections.map((projection) => [projection.bodyId, projection])
+  );
+  const metadataByBodyId = new Map(
+    metadataEntries.map((entry) => [entry.bodyId, entry])
+  );
+  return new Map(
+    bodies.map((body) => {
+      const projection = projectionsByBodyId.get(body.id);
+      const metadata = metadataByBodyId.get(body.id);
+      const solidCount =
+        projection?.status === "ready" && metadata?.status === "ready"
+          ? metadata.metadata.topologyCounts.solidCount
+          : undefined;
+      const dependencies = evaluateCadBodyDependencies(
+        document,
+        bodies,
+        body.id
+      );
+      const readiness = createCadDownstreamBodyPolicyProjection({
+        bodyId: body.id,
+        featureId: body.featureId,
+        sourceType: body.source.type,
+        operation,
+        lifecycle:
+          body.consumedByFeatureId === undefined ? "active" : "consumed",
+        dependencyStatus: dependencies.status,
+        dependencyCycle: dependencies.cycle,
+        exactStatus: projection?.status,
+        ...(projection?.shapePolicy
+          ? { shapePolicy: projection.shapePolicy }
+          : {}),
+        diagnostics: projection?.diagnostics
+      }).readiness;
+      return [
+        body.id,
+        {
+          status: readiness.status,
+          ...(solidCount === undefined ? {} : { solidCount }),
+          ...(readiness.diagnostics[0]
+            ? { reason: readiness.diagnostics[0].message }
+            : {})
+        }
+      ] as const;
+    })
+  );
+}
 
 export function App() {
   const [workbenchUi, dispatchWorkbench] = useReducer(
@@ -2490,11 +2597,11 @@ export function App() {
     setProjectMessage(status.lastResult ?? "OPFS cache clear finished.");
     setProjectMessageTone(status.state === "error" ? "error" : "info");
   }, []);
-  const [derivedGeometry, setDerivedGeometry] =
+  const [baseDerivedGeometry, setDerivedGeometry] =
     useState<DerivedGeometrySnapshot>(() =>
       createEmptyDerivedGeometrySnapshot()
     );
-  const [derivedExactMetadata, setDerivedExactMetadata] =
+  const [baseDerivedExactMetadata, setDerivedExactMetadata] =
     useState<DerivedExactMetadataSnapshot>(() => ({
       entries: [],
       supportedCount: 0,
@@ -2503,6 +2610,19 @@ export function App() {
       cancelledCount: 0,
       errorCount: 0
     }));
+  const [currentExactProjectionState, setCurrentExactProjectionState] =
+    useState<{
+      readonly artifacts: readonly CurrentExactProjectionArtifact[];
+      readonly failures: readonly CurrentExactProjectionFailure[];
+    }>({ artifacts: [], failures: [] });
+  const currentExactArtifactStoreRef = useRef(
+    new Map<string, CurrentExactProjectionArtifact>()
+  );
+  const pendingAgentExactArtifactsRef = useRef<
+    readonly CurrentExactProjectionArtifact[]
+  >([]);
+  const [currentExactArtifactRetryRevision, retryCurrentExactArtifacts] =
+    useReducer((revision: number) => revision + 1, 0);
   const getDerivedGeometryRuntime = useCallback((): DerivedGeometryRuntime => {
     if (!derivedGeometryRuntimeRef.current) {
       derivedGeometryRuntimeRef.current = createDerivedGeometryRuntime();
@@ -2596,6 +2716,20 @@ export function App() {
       timestamp: performance.now()
     });
     await syncDocument();
+    const sourceIdentity = createCadProjectSourceIdentity(
+      exportCadProject(engine)
+    );
+    for (const artifact of pendingAgentExactArtifactsRef.current) {
+      if (
+        artifact.documentSourceIdentity.algorithm ===
+          sourceIdentity.algorithm &&
+        artifact.documentSourceIdentity.sha256 === sourceIdentity.sha256
+      ) {
+        currentExactArtifactStoreRef.current.set(artifact.bodyId, artifact);
+      }
+    }
+    pendingAgentExactArtifactsRef.current = [];
+    retryCurrentExactArtifacts();
     successfulCommitCountRef.current += 1;
     setProjectFile((current) => markProjectFileDirty(current));
   }
@@ -2934,7 +3068,6 @@ export function App() {
             sketches,
             sourcePlacementFacesByKey,
             document.namedReferences,
-            document.topologyIdentity,
             document,
             bodySourceIdentitySignatures
           )
@@ -2951,10 +3084,10 @@ export function App() {
   const derivedGeneratedReferenceEvidenceByBodyId = useMemo(
     () =>
       createDerivedGeneratedReferenceEvidenceByBodyId(
-        derivedGeometry,
+        baseDerivedGeometry,
         featureGeometrySources
       ),
-    [derivedGeometry, featureGeometrySources]
+    [baseDerivedGeometry, featureGeometrySources]
   );
   const generatedFacesByKey = useMemo(
     () =>
@@ -3036,15 +3169,249 @@ export function App() {
       wcadTopologyCheckpointPayloadCache
     ]
   );
+  const currentExactArtifactResolutions = useMemo(
+    () =>
+      currentExactSources.resolutions.filter(
+        (
+          resolution
+        ): resolution is Extract<
+          CurrentExactBodyResolution,
+          { readonly status: "ready" }
+        > => resolution.status === "ready" && !!resolution.artifactDependency
+      ),
+    [currentExactSources.resolutions]
+  );
+  const currentProjectSourceIdentity = useMemo(
+    () => createCadProjectSourceIdentity(currentProject),
+    [currentProject]
+  );
+  useEffect(() => {
+    let active = true;
+    const storedArtifacts = currentExactArtifactResolutions.flatMap(
+      (resolution) => {
+        const artifact = currentExactArtifactStoreRef.current.get(
+          resolution.bodyId
+        );
+        return artifact &&
+          artifact.documentSourceIdentity.algorithm ===
+            currentProjectSourceIdentity.algorithm &&
+          artifact.documentSourceIdentity.sha256 ===
+            currentProjectSourceIdentity.sha256 &&
+          artifact.bodySourceIdentitySignature ===
+            resolution.sourceIdentitySignature &&
+          artifact.sourceCacheKeySha256 === resolution.cacheKeySha256
+          ? [artifact]
+          : [];
+      }
+    );
+    for (const [bodyId, artifact] of currentExactArtifactStoreRef.current) {
+      if (
+        artifact.documentSourceIdentity.algorithm !==
+          currentProjectSourceIdentity.algorithm ||
+        artifact.documentSourceIdentity.sha256 !==
+          currentProjectSourceIdentity.sha256
+      ) {
+        currentExactArtifactStoreRef.current.delete(bodyId);
+      }
+    }
+    setCurrentExactProjectionState({
+      artifacts: storedArtifacts,
+      failures: []
+    });
+    if (
+      currentExactArtifactResolutions.length === 0 ||
+      modelWorkSnapshot.stopped
+    ) {
+      return () => {
+        active = false;
+      };
+    }
+
+    const sourceAuthorityEpoch = engine.getSourceAuthorityEpoch();
+    const runtime = getDerivedGeometryRuntime();
+    const generation = runtime.getModelWorkSnapshot().generation;
+    const assertCurrent = () => {
+      const identity = createCadProjectSourceIdentity(exportCadProject(engine));
+      if (
+        !active ||
+        engine.getSourceAuthorityEpoch() !== sourceAuthorityEpoch ||
+        identity.algorithm !== currentProjectSourceIdentity.algorithm ||
+        identity.sha256 !== currentProjectSourceIdentity.sha256
+      ) {
+        throw new Error("Current exact artifact source changed during build.");
+      }
+    };
+
+    void import("./projectExactStepExport")
+      .then(
+        async ({ buildCurrentExactBodyArtifacts, isGeometryCancellation }) => {
+          const artifacts: CurrentExactProjectionArtifact[] = [
+            ...storedArtifacts
+          ];
+          const failures: CurrentExactProjectionFailure[] = [];
+          for (const resolution of currentExactArtifactResolutions) {
+            if (!active) return;
+            if (
+              artifacts.some(
+                (artifact) => artifact.bodyId === resolution.bodyId
+              )
+            ) {
+              continue;
+            }
+            try {
+              const [artifact] = await buildCurrentExactBodyArtifacts({
+                engine,
+                resolutions: [resolution],
+                runtime,
+                documentSourceIdentity: currentProjectSourceIdentity,
+                units: document.units,
+                assertCurrent,
+                generation,
+                existingArtifacts: [
+                  ...currentExactArtifactStoreRef.current.values()
+                ],
+                executionIntent: "exact",
+                requestIdPrefix: "current-exact-projection"
+              });
+              if (artifact) {
+                const retained = new Map(currentExactArtifactStoreRef.current);
+                retained.set(artifact.bodyId, artifact);
+                const retainedBytes = [...retained.values()].reduce(
+                  (total, retainedArtifact) =>
+                    total + retainedArtifact.brepByteLength,
+                  0
+                );
+                if (
+                  retainedBytes >
+                  CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxAggregateBrepArtifactBytes
+                ) {
+                  throw new Error(
+                    "Current exact artifacts exceed the 512 MiB session limit."
+                  );
+                }
+                currentExactArtifactStoreRef.current = retained;
+                artifacts.push(artifact);
+              }
+            } catch (error) {
+              if (!active) return;
+              failures.push({
+                bodyId: resolution.bodyId,
+                sourceType: resolution.sourceType,
+                cacheKeySha256: resolution.cacheKeySha256,
+                status: isGeometryCancellation(error) ? "cancelled" : "error",
+                error
+              });
+            }
+            if (active) {
+              setCurrentExactProjectionState({
+                artifacts: [...artifacts],
+                failures: [...failures]
+              });
+            }
+          }
+        }
+      )
+      .catch((error) => {
+        if (!active) return;
+        setCurrentExactProjectionState({
+          artifacts: [],
+          failures: currentExactArtifactResolutions.map((resolution) => ({
+            bodyId: resolution.bodyId,
+            sourceType: resolution.sourceType,
+            cacheKeySha256: resolution.cacheKeySha256,
+            status: "error",
+            error
+          }))
+        });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    currentExactArtifactResolutions,
+    currentExactArtifactRetryRevision,
+    currentProjectSourceIdentity,
+    document.units,
+    getDerivedGeometryRuntime,
+    modelWorkSnapshot.stopped
+  ]);
+  const currentExactProjectionStateForCurrentSource = useMemo(() => {
+    const resolutionsByBodyId = new Map(
+      currentExactArtifactResolutions.map(
+        (resolution) => [resolution.bodyId, resolution] as const
+      )
+    );
+    return {
+      artifacts: currentExactProjectionState.artifacts.filter((artifact) => {
+        const resolution = resolutionsByBodyId.get(artifact.bodyId);
+        return (
+          resolution?.sourceType === artifact.sourceType &&
+          resolution.sourceIdentitySignature ===
+            artifact.bodySourceIdentitySignature &&
+          resolution.cacheKeySha256 === artifact.sourceCacheKeySha256 &&
+          artifact.documentSourceIdentity.algorithm ===
+            currentProjectSourceIdentity.algorithm &&
+          artifact.documentSourceIdentity.sha256 ===
+            currentProjectSourceIdentity.sha256
+        );
+      }),
+      failures: currentExactProjectionState.failures.filter((failure) => {
+        const resolution = resolutionsByBodyId.get(failure.bodyId);
+        return (
+          resolution?.sourceType === failure.sourceType &&
+          resolution.cacheKeySha256 === failure.cacheKeySha256
+        );
+      })
+    };
+  }, [
+    currentExactArtifactResolutions,
+    currentExactProjectionState,
+    currentProjectSourceIdentity
+  ]);
+  const currentExactArtifactProjection = useMemo(
+    () =>
+      derivedGeometrySourceBuilders?.projectCurrentExactBodyArtifacts({
+        ...currentExactProjectionStateForCurrentSource,
+        display: baseDerivedGeometry,
+        metadata: baseDerivedExactMetadata
+      }) ?? {
+        display: baseDerivedGeometry,
+        metadata: baseDerivedExactMetadata,
+        artifactSources: []
+      },
+    [
+      baseDerivedExactMetadata,
+      baseDerivedGeometry,
+      currentExactProjectionStateForCurrentSource,
+      derivedGeometrySourceBuilders
+    ]
+  );
+  const derivedGeometry = currentExactArtifactProjection.display;
+  const derivedExactMetadata = currentExactArtifactProjection.metadata;
+  const currentExactMetadataSources = useMemo(
+    () => [
+      ...currentExactSources.metadataSources,
+      ...currentExactArtifactProjection.artifactSources
+    ],
+    [currentExactArtifactProjection.artifactSources, currentExactSources]
+  );
+  const derivedGeometrySources = useMemo(
+    () => [
+      ...currentExactSources.derivedGeometrySources,
+      ...currentExactArtifactProjection.artifactSources
+    ],
+    [currentExactArtifactProjection.artifactSources, currentExactSources]
+  );
   const currentExactEvidence = useMemo(
     () =>
       derivedGeometrySourceBuilders?.createCurrentExactEvidence({
         engine,
         resolutions: currentExactSources.resolutions,
         sourceIdentitySignaturesByBodyId: bodySourceIdentitySignatures,
-        displaySources: currentExactSources.derivedGeometrySources,
+        displaySources: derivedGeometrySources,
         display: derivedGeometry,
-        metadataSources: currentExactSources.metadataSources,
+        metadataSources: currentExactMetadataSources,
         metadata: derivedExactMetadata
       }) ?? {
         projections: [],
@@ -3052,16 +3419,15 @@ export function App() {
       },
     [
       bodySourceIdentitySignatures,
+      currentExactMetadataSources,
       currentExactSources,
+      derivedGeometrySources,
       derivedGeometrySourceBuilders,
       derivedExactMetadata,
       derivedGeometry
     ]
   );
   const currentExactBodyResolutions = currentExactSources.resolutions;
-  const currentExactMetadataSources = currentExactSources.metadataSources;
-  const currentExactDisplaySources = currentExactSources.displaySources;
-  const derivedGeometrySources = currentExactSources.derivedGeometrySources;
   const currentExactResultProjections = currentExactEvidence.projections;
   const currentAgentExactEvidence = currentExactEvidence.agent;
   const projectExportReadiness = useMemo(
@@ -3112,15 +3478,16 @@ export function App() {
     runtime.resumeModelWork();
     const geometryService = getDerivedGeometryService();
     const exactService = getDerivedExactMetadataService();
-    geometryService.retryCurrent(derivedGeometrySources);
+    geometryService.retryCurrent(currentExactSources.derivedGeometrySources);
     const retryPlan = derivedGeometrySourceBuilders?.planExactMetadataRetry(
-      currentExactMetadataSources,
+      currentExactSources.metadataSources,
       geometryService.getSnapshot()
     );
     if (exactService && retryPlan) {
       exactService.deferRetryable(retryPlan.deferred);
       exactService.retryCurrent(retryPlan.immediate);
     }
+    retryCurrentExactArtifacts();
     setCommandError(undefined);
     setCommandNotice(
       modelWorkSnapshot.cancelledUserKinds.length > 0
@@ -3299,6 +3666,20 @@ export function App() {
           source.id === selectedBodyId && selectedBodyExactResult?.ready
       )
     : undefined;
+  const selectedBodyExactMetadataEntry = useMemo(
+    () =>
+      derivedGeometrySourceBuilders?.getCurrentDerivedExactMetadataEntryForBody(
+        derivedExactMetadata,
+        selectedBodyId,
+        selectedBodyExactMetadataSource
+      ),
+    [
+      derivedExactMetadata,
+      derivedGeometrySourceBuilders,
+      selectedBodyExactMetadataSource,
+      selectedBodyId
+    ]
+  );
   const selectedBodyTopology = useMemo(
     () =>
       selectedBody !== undefined
@@ -3609,25 +3990,80 @@ export function App() {
       })),
     [projectStructure.bodies]
   );
+  const exactPatternSeedReadinessByBodyId = useMemo(
+    () =>
+      createExactDownstreamReadinessByBodyId({
+        document,
+        bodies: projectStructure.bodies,
+        projections: currentExactResultProjections,
+        metadataEntries: derivedExactMetadata.entries,
+        operation: "patternSeed"
+      }),
+    [
+      currentExactResultProjections,
+      derivedExactMetadata.entries,
+      document,
+      projectStructure.bodies
+    ]
+  );
+  const exactShellTargetReadinessByBodyId = useMemo(
+    () =>
+      createExactDownstreamReadinessByBodyId({
+        document,
+        bodies: projectStructure.bodies,
+        projections: currentExactResultProjections,
+        metadataEntries: derivedExactMetadata.entries,
+        operation: "shellTarget"
+      }),
+    [
+      currentExactResultProjections,
+      derivedExactMetadata.entries,
+      document,
+      projectStructure.bodies
+    ]
+  );
   const solidSeedBodyChoices = useMemo<readonly SolidChoice<string>[]>(
     () =>
-      projectStructure.bodies.flatMap((body, index) => {
-        const feature = projectStructure.features.find(
-          (candidate) => candidate.id === body.featureId
-        );
-        return feature?.kind === "extrude" &&
-          body.consumedByFeatureId === undefined
-          ? [
-              {
-                key: body.id,
-                value: body.id,
-                label: body.name ?? `Body ${index + 1}`,
-                kind: "authored body"
-              }
-            ]
-          : [];
+      projectStructure.bodies.map((body, index) => {
+        const readiness = exactPatternSeedReadinessByBodyId.get(body.id);
+        const disabled = readiness?.status !== "ready";
+        const warning =
+          !disabled && (readiness.solidCount ?? 0) > 1
+            ? `This body contains ${readiness.solidCount} solids. The result remains one exact body.`
+            : undefined;
+        return {
+          key: body.id,
+          value: body.id,
+          label: body.name ?? `Body ${index + 1}`,
+          kind: "exact body",
+          detail: disabled
+            ? (readiness?.reason ??
+              `Exact seed is ${readiness?.status ?? "unavailable"}.`)
+            : (warning ?? "Exact-ready body"),
+          ...(disabled ? { disabled: true } : {}),
+          ...(warning ? { warning } : {})
+        };
       }),
-    [projectStructure.bodies, projectStructure.features]
+    [exactPatternSeedReadinessByBodyId, projectStructure.bodies]
+  );
+  const solidShellTargetBodyChoices = useMemo<readonly SolidChoice<string>[]>(
+    () =>
+      projectStructure.bodies.map((body, index) => {
+        const readiness = exactShellTargetReadinessByBodyId.get(body.id);
+        const disabled = readiness?.status !== "ready";
+        return {
+          key: body.id,
+          value: body.id,
+          label: body.name ?? `Body ${index + 1}`,
+          kind: "exact single-solid body",
+          detail: disabled
+            ? (readiness?.reason ??
+              `Exact shell target is ${readiness?.status ?? "unavailable"}.`)
+            : "Exact-ready single solid",
+          ...(disabled ? { disabled: true } : {})
+        };
+      }),
+    [exactShellTargetReadinessByBodyId, projectStructure.bodies]
   );
   const solidAddTargetChoices = useMemo<readonly SolidChoice<string>[]>(
     () =>
@@ -3674,73 +4110,15 @@ export function App() {
     ]
   );
   const exactHoleTargetReadinessByBodyId = useMemo(() => {
-    const resolutionsByBodyId = new Map(
-      currentExactBodyResolutions.map((resolution) => [
-        resolution.bodyId,
-        resolution
-      ])
-    );
-    const metadataByBodyId = new Map(
-      derivedExactMetadata.entries.map((entry) => [entry.bodyId, entry])
-    );
-    return new Map<string, HoleTargetExactReadiness>(
-      projectStructure.bodies.map((body) => {
-        const resolution = resolutionsByBodyId.get(body.id);
-        const metadata = metadataByBodyId.get(body.id);
-        const exactStatus =
-          resolution?.status !== "ready"
-            ? resolution?.status
-            : metadata?.status === "ready"
-              ? "ready"
-              : metadata?.status === "unsupported"
-                ? "unsupported"
-                : metadata?.status === "error"
-                  ? "failed"
-                  : "pending";
-        const solidCount =
-          metadata?.status === "ready"
-            ? metadata.metadata.topologyCounts.solidCount
-            : undefined;
-        const dependencies = evaluateCadBodyDependencies(
-          document,
-          projectStructure.bodies,
-          body.id
-        );
-        const readiness = createCadDownstreamBodyPolicyProjection({
-          bodyId: body.id,
-          featureId: body.featureId,
-          sourceType: body.source.type,
-          operation: "holeTarget",
-          lifecycle:
-            body.consumedByFeatureId === undefined ? "active" : "consumed",
-          dependencyStatus: dependencies.status,
-          dependencyCycle: dependencies.cycle,
-          exactStatus,
-          ...(solidCount === undefined
-            ? {}
-            : {
-                shapePolicy:
-                  solidCount === 1
-                    ? ("singleSolid" as const)
-                    : ("singleShapeOneOrMoreSolids" as const)
-              }),
-          diagnostics:
-            resolution?.status === "ready" ? undefined : resolution?.diagnostics
-        }).readiness;
-        return [
-          body.id,
-          {
-            status: readiness.status,
-            ...(solidCount === undefined ? {} : { solidCount }),
-            ...(readiness.diagnostics[0]
-              ? { reason: readiness.diagnostics[0].message }
-              : {})
-          }
-        ];
-      })
-    );
+    return createExactDownstreamReadinessByBodyId({
+      document,
+      bodies: projectStructure.bodies,
+      projections: currentExactResultProjections,
+      metadataEntries: derivedExactMetadata.entries,
+      operation: "holeTarget"
+    });
   }, [
-    currentExactBodyResolutions,
+    currentExactResultProjections,
     derivedExactMetadata.entries,
     document,
     projectStructure.bodies
@@ -3893,22 +4271,41 @@ export function App() {
       selectedBodyGeneratedReferences.references
     ]
   );
-  const solidShellFaceChoices = useMemo(
-    () =>
-      createSolidFaceChoices(
-        selectedBodyGeneratedReferences.references,
+  const solidShellFaceChoices = useMemo(() => {
+    const choices = [
+      ...createSolidFaceChoices(
+        undefined,
         namedReferences,
-        referenceCandidatesByStableId,
+        new Map(),
         namedReferenceCandidatesByName,
         "feature.shell"
-      ),
-    [
-      namedReferenceCandidatesByName,
-      namedReferences,
-      referenceCandidatesByStableId,
-      selectedBodyGeneratedReferences.references
-    ]
-  );
+      )
+    ];
+    for (const body of projectStructure.bodies) {
+      const references = readBodyGeneratedReferences(
+        body.id,
+        derivedGeneratedReferenceEvidenceByBodyId.get(body.id)
+      ).references;
+      choices.push(
+        ...createSolidFaceChoices(
+          references,
+          [],
+          readSelectionReferenceCandidatesByStableId(references),
+          new Map(),
+          "feature.shell",
+          document.topologyIdentity?.anchors,
+          body.id
+        )
+      );
+    }
+    return choices;
+  }, [
+    derivedGeneratedReferenceEvidenceByBodyId,
+    document.topologyIdentity?.anchors,
+    namedReferenceCandidatesByName,
+    namedReferences,
+    projectStructure.bodies
+  ]);
   const solidLinearDirectionChoices = useMemo(
     () =>
       createSolidDirectionChoices(
@@ -3950,13 +4347,17 @@ export function App() {
         namedReferences,
         referenceCandidatesByStableId,
         namedReferenceCandidatesByName,
-        "feature.mirrorPlane"
+        "feature.mirrorPlane",
+        document.topologyIdentity?.anchors,
+        selectedBodyId
       ),
     [
+      document.topologyIdentity?.anchors,
       namedReferenceCandidatesByName,
       namedReferences,
       referenceCandidatesByStableId,
-      selectedBodyGeneratedReferences.references
+      selectedBodyGeneratedReferences.references,
+      selectedBodyId
     ]
   );
   const solidPlaneChoices = useMemo(
@@ -4031,8 +4432,13 @@ export function App() {
       : undefined;
   const selectedSolidBodyId = selectedBody?.id ?? "";
   const selectedSeedBodyId =
-    solidSeedBodyChoices.find((choice) => choice.value === selectedBody?.id)
-      ?.value ?? "";
+    solidSeedBodyChoices.find(
+      (choice) => choice.value === selectedBody?.id && !choice.disabled
+    )?.value ?? "";
+  const selectedShellTargetBodyId =
+    solidShellTargetBodyChoices.find(
+      (choice) => choice.value === selectedBody?.id && !choice.disabled
+    )?.value ?? "";
   const selectedHoleTargetChoice = solidHoleTargetChoices.find(
     (choice) => choice.value === selectedBody?.id
   );
@@ -4780,7 +5186,7 @@ export function App() {
         initialDraft: {
           id: "",
           bodyId: "",
-          targetBodyId: selectedSeedBodyId,
+          targetBodyId: selectedShellTargetBodyId,
           name: "",
           wallThickness: 1,
           openFaceRefs: selectedShellFaceChoice
@@ -4788,10 +5194,10 @@ export function App() {
             : []
         },
         choices: {
-          targetBodies: solidSeedBodyChoices,
+          targetBodies: solidShellTargetBodyChoices,
           openFaces: solidShellFaceChoices
         },
-        blockedReason: selectedSeedBodyId
+        blockedReason: selectedShellTargetBodyId
           ? undefined
           : "Select a supported body."
       } as SolidEditorRequest;
@@ -4889,6 +5295,7 @@ export function App() {
     selectedProfile,
     selectedRotationAxisChoice,
     selectedSeedBodyId,
+    selectedShellTargetBodyId,
     selectedShellFaceChoice,
     selectedSolidBodyId,
     sketches.length,
@@ -4901,6 +5308,7 @@ export function App() {
     solidLinearDirectionChoices,
     solidRotationAxisChoices,
     solidSeedBodyChoices,
+    solidShellTargetBodyChoices,
     solidShellFaceChoices,
     regionCandidates,
     solidPathChoices,
@@ -5201,13 +5609,48 @@ export function App() {
                     document.units
                   ).filter((row) => row.label !== "Model")
                 }
-              : {
-                  title: "Body measurements",
-                  status: "blocked" as const,
-                  message:
-                    selectedBodyMeasurements.error ??
-                    "Measurements are unavailable for this body."
-                }
+              : selectedBodyExactMetadataEntry?.status === "ready"
+                ? {
+                    title: "Body measurements",
+                    status: "ready" as const,
+                    confidence: "Kernel derived",
+                    rows: [
+                      {
+                        label: "Volume",
+                        value: formatVolume(
+                          selectedBodyExactMetadataEntry.metadata.volume,
+                          document.units
+                        )
+                      },
+                      {
+                        label: "Surface area",
+                        value: formatArea(
+                          selectedBodyExactMetadataEntry.metadata.surfaceArea,
+                          document.units
+                        )
+                      },
+                      {
+                        label: "Bounds",
+                        value: formatBounds(
+                          selectedBodyExactMetadataEntry.metadata.bounds,
+                          document.units
+                        )
+                      },
+                      {
+                        label: "Centroid",
+                        value: formatVector(
+                          selectedBodyExactMetadataEntry.metadata.centroid
+                        )
+                      }
+                    ]
+                  }
+                : {
+                    title: "Body measurements",
+                    status: "blocked" as const,
+                    message:
+                      selectedBodyMeasurements.error ??
+                      "Measurements are unavailable for this body."
+                  }
           }
         : {}),
       ...(selectedGeneratedReferenceState.status === "selected"
@@ -5248,6 +5691,7 @@ export function App() {
       selectedBody,
       selectedBodyMeasurements.error,
       selectedBodyMeasurements.measurements,
+      selectedBodyExactMetadataEntry,
       selectedGeneratedReferenceState,
       selectedMeasurements,
       viewportTwoTargetMeasurement
@@ -5519,15 +5963,14 @@ export function App() {
       modelingUiRuntime?.createRenderSceneInputs(
         sceneObjects,
         derivedGeometryBySourceId,
-        [...featureGeometrySources, ...currentExactDisplaySources],
+        derivedGeometrySources,
         sketches,
         sketchDisplayState.frames
       ) ?? { primitives: [], meshes: [] },
     [
       derivedGeometryBySourceId,
+      derivedGeometrySources,
       modelingUiRuntime,
-      currentExactDisplaySources,
-      featureGeometrySources,
       sceneObjects,
       sketchDisplayState.frames,
       sketches
@@ -5636,28 +6079,29 @@ export function App() {
     derivedMeshCacheContextKeyRef.current = derivedMeshCacheContextKey;
 
     if (cacheContextChanged && derivedMeshCacheContextKey) {
-      geometryService.refresh(derivedGeometrySources);
+      geometryService.refresh(currentExactSources.derivedGeometrySources);
     } else {
-      geometryService.reconcile(derivedGeometrySources);
+      geometryService.reconcile(currentExactSources.derivedGeometrySources);
     }
 
-    const stagedExactSources = currentExactMetadataSources.filter((source) => {
-      if (source.kind === "importedBody" || "object" in source) return true;
-      const displayEntry = geometryService
-        .getSnapshot()
-        .entries.find((entry) => entry.sourceId === source.id);
-      return (
-        displayEntry?.status === "ready" ||
-        displayEntry?.status === "error" ||
-        displayEntry?.status === "unsupported"
-      );
-    });
+    const stagedExactSources = currentExactSources.metadataSources.filter(
+      (source) => {
+        if (source.kind === "importedBody" || "object" in source) return true;
+        const displayEntry = geometryService
+          .getSnapshot()
+          .entries.find((entry) => entry.sourceId === source.id);
+        return (
+          displayEntry?.status === "ready" ||
+          displayEntry?.status === "error" ||
+          displayEntry?.status === "unsupported"
+        );
+      }
+    );
     getDerivedExactMetadataService()?.reconcile(stagedExactSources);
   }, [
-    derivedGeometrySources,
+    currentExactSources,
     derivedMeshCacheContextKey,
-    currentExactMetadataSources,
-    derivedGeometry,
+    baseDerivedGeometry,
     getDerivedExactMetadataService,
     getDerivedGeometryService
   ]);
@@ -6157,29 +6601,33 @@ export function App() {
   }
 
   async function createLinearPattern(form: FeatureLinearPatternForm) {
-    await commitOps(
-      [buildFeatureLinearPatternOp(form)],
+    const op = buildFeatureLinearPatternOp(form);
+    await commitPreflightedExactOps(
+      [op],
       (response) => response.createdBodyIds?.[0] ?? (form.bodyId || selectedId)
     );
   }
 
   async function createCircularPattern(form: FeatureCircularPatternForm) {
-    await commitOps(
-      [buildFeatureCircularPatternOp(form)],
+    const op = buildFeatureCircularPatternOp(form);
+    await commitPreflightedExactOps(
+      [op],
       (response) => response.createdBodyIds?.[0] ?? (form.bodyId || selectedId)
     );
   }
 
   async function createMirror(form: FeatureMirrorForm) {
-    await commitOps(
-      [buildFeatureMirrorOp(form)],
+    const op = buildFeatureMirrorOp(form);
+    await commitPreflightedExactOps(
+      [op],
       (response) => response.createdBodyIds?.[0] ?? (form.bodyId || selectedId)
     );
   }
 
   async function createShell(form: FeatureShellForm) {
-    await commitOps(
-      [buildFeatureShellOp(form)],
+    const op = buildFeatureShellOp(form);
+    await commitPreflightedExactOps(
+      [op],
       (response) => response.createdBodyIds?.[0] ?? (form.bodyId || selectedId)
     );
   }
@@ -6235,9 +6683,10 @@ export function App() {
       return;
     }
 
-    await commitOps(
+    await commitPreflightedExactOps(
       [buildFeatureUpdateLinearPatternOp(feature.id, edit)],
-      () => feature.bodyId
+      () => feature.bodyId,
+      feature.bodyId
     );
   }
 
@@ -6253,9 +6702,10 @@ export function App() {
       return;
     }
 
-    await commitOps(
+    await commitPreflightedExactOps(
       [buildFeatureUpdateCircularPatternOp(feature.id, edit)],
-      () => feature.bodyId
+      () => feature.bodyId,
+      feature.bodyId
     );
   }
 
@@ -6271,9 +6721,10 @@ export function App() {
       return;
     }
 
-    await commitOps(
+    await commitPreflightedExactOps(
       [buildFeatureUpdateMirrorOp(feature.id, edit)],
-      () => feature.bodyId
+      () => feature.bodyId,
+      feature.bodyId
     );
   }
 
@@ -6289,9 +6740,10 @@ export function App() {
       return;
     }
 
-    await commitOps(
+    await commitPreflightedExactOps(
       [buildFeatureUpdateShellOp(feature.id, edit)],
-      () => feature.bodyId
+      () => feature.bodyId,
+      feature.bodyId
     );
   }
 
@@ -6570,29 +7022,35 @@ export function App() {
     );
   }
 
-  async function runHoleGeometryPreflight(
+  async function runExactDownstreamGeometryPreflight(
     ops: readonly CadOp[],
     bodyId?: string,
-    expectedSourceAuthorityEpoch?: number
+    expectedSourceAuthorityEpoch?: number,
+    batch = buildBatch("commit", ops, WEB_UI_ACTOR)
   ) {
-    const { preflightHoleGeometryCommand } =
+    const { preflightExactDownstreamGeometryCommand } =
       await import("./holeGeometryPreflight");
-    return preflightHoleGeometryCommand({
+    return preflightExactDownstreamGeometryCommand({
       engine,
       ops,
+      batch,
       bodyId,
       runtime: getDerivedGeometryRuntime(),
       checkpointPayloads: wcadTopologyCheckpointPayloadCache,
+      existingArtifacts: [...currentExactArtifactStoreRef.current.values()],
       expectedSourceAuthorityEpoch
     });
   }
 
-  async function preflightHoleOps(ops: readonly CadOp[], bodyId?: string) {
+  async function preflightExactDownstreamOps(
+    ops: readonly CadOp[],
+    bodyId?: string
+  ) {
     setCommandPending(true);
     setCommandError(undefined);
     setCommandNotice(undefined);
     try {
-      const preflight = await runHoleGeometryPreflight(ops, bodyId);
+      const preflight = await runExactDownstreamGeometryPreflight(ops, bodyId);
       if (!preflight.ok) {
         setCommandError(preflight.message);
         return undefined;
@@ -6603,19 +7061,52 @@ export function App() {
     }
   }
 
+  async function commitPreflightedExactOps(
+    ops: readonly CadOp[],
+    getNextSelectedId: (
+      response: CadBatchResponse
+    ) => string | null | undefined,
+    bodyId?: string
+  ) {
+    const preflight = await preflightExactDownstreamOps(ops, bodyId);
+    if (!preflight) return undefined;
+    const previousArtifacts = preflight.artifacts.map(
+      (artifact) =>
+        [
+          artifact.bodyId,
+          currentExactArtifactStoreRef.current.get(artifact.bodyId)
+        ] as const
+    );
+    for (const artifact of preflight.artifacts) {
+      currentExactArtifactStoreRef.current.set(artifact.bodyId, artifact);
+    }
+    const response = await commitOps(
+      ops,
+      getNextSelectedId,
+      preflight.sourceAuthorityEpoch
+    );
+    if (!response?.ok) {
+      for (const [artifactBodyId, previous] of previousArtifacts) {
+        if (previous) {
+          currentExactArtifactStoreRef.current.set(artifactBodyId, previous);
+        } else {
+          currentExactArtifactStoreRef.current.delete(artifactBodyId);
+        }
+      }
+    }
+    return response;
+  }
+
   async function holeSketchEntity(
     sketchId: string,
     circleEntityId: string,
     form: FeatureHoleForm
   ) {
     const op = buildFeatureHoleOp(sketchId, circleEntityId, form);
-    const preflight = await preflightHoleOps([op], op.bodyId);
-    if (!preflight) return;
-
-    const response = await commitOps(
+    const response = await commitPreflightedExactOps(
       [op],
       (response) => response.createdBodyIds?.[0] ?? selectedId,
-      preflight.sourceAuthorityEpoch
+      op.bodyId
     );
 
     if (response?.ok) {
@@ -6690,9 +7181,7 @@ export function App() {
       direction,
       target
     );
-    const preflight = await preflightHoleOps([op], feature.bodyId);
-    if (!preflight) return;
-    await commitOps([op], () => feature.bodyId, preflight.sourceAuthorityEpoch);
+    await commitPreflightedExactOps([op], () => feature.bodyId, feature.bodyId);
   }
 
   async function updateAuthoredChamfer(featureId: string, distance: number) {
@@ -7324,6 +7813,7 @@ export function App() {
         currentSources: currentExactMetadataSources,
         projections: currentExactResultProjections,
         resolutions: currentExactBodyResolutions,
+        existingArtifacts: [...currentExactArtifactStoreRef.current.values()],
         runtime: getDerivedGeometryRuntime(),
         ...(bodyIds ? { requestedBodyIds: bodyIds } : {}),
         downloadAvailable: projectStorageCapabilities.jsonDownloadAvailable,
@@ -8213,7 +8703,7 @@ export function App() {
       if (selectedFeature.kind === "shell" && submission.kind === "shell") {
         if (submission.draft.targetBodyId !== selectedFeature.targetBodyId) {
           throw new Error(
-            "The V17 command matrix does not support changing a shell target body."
+            "The shell update command does not change its target body."
           );
         }
         await updateAuthoredShell(selectedFeature.id, {
@@ -8228,7 +8718,7 @@ export function App() {
       ) {
         if (submission.draft.seedBodyId !== selectedFeature.seedBodyId) {
           throw new Error(
-            "The V17 command matrix does not support changing a pattern seed body."
+            "The pattern update command does not change its seed body."
           );
         }
         await updateAuthoredLinearPattern(selectedFeature.id, {
@@ -8244,7 +8734,7 @@ export function App() {
       ) {
         if (submission.draft.seedBodyId !== selectedFeature.seedBodyId) {
           throw new Error(
-            "The V17 command matrix does not support changing a pattern seed body."
+            "The pattern update command does not change its seed body."
           );
         }
         await updateAuthoredCircularPattern(selectedFeature.id, {
@@ -8257,7 +8747,7 @@ export function App() {
       if (selectedFeature.kind === "mirror" && submission.kind === "mirror") {
         if (submission.draft.seedBodyId !== selectedFeature.seedBodyId) {
           throw new Error(
-            "The V17 command matrix does not support changing a mirror seed body."
+            "The mirror update command does not change its seed body."
           );
         }
         await updateAuthoredMirror(selectedFeature.id, {
@@ -8267,7 +8757,7 @@ export function App() {
         return;
       }
       throw new Error(
-        "This feature edit is not supported by the V17 command matrix."
+        "This feature edit is not supported by its update command."
       );
     }
     switch (submission.kind) {
@@ -9150,7 +9640,7 @@ export function App() {
       "solid.chamfer": selectedChamferEdgeChoice
         ? ready
         : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidChamfer),
-      "solid.shell": selectedSeedBodyId
+      "solid.shell": selectedShellTargetBodyId
         ? ready
         : needs(UI_ACTION_AVAILABILITY_MESSAGES.solidShell),
       "solid.linear-pattern": selectedSeedBodyId
@@ -9270,6 +9760,7 @@ export function App() {
     selectedObject,
     selectedProfile,
     selectedSeedBodyId,
+    selectedShellTargetBodyId,
     selectedSketchContext,
     selectedViewportRenderId,
     sketchApplyCanApply,
@@ -9418,18 +9909,24 @@ export function App() {
               currentExactEvidence={currentAgentExactEvidence}
               preflightCommit={async (request, sourceAuthorityEpoch) => {
                 if (
-                  !request.batch.ops.some(
-                    (op) =>
-                      op.op === "feature.hole" || op.op === "feature.updateHole"
+                  !request.batch.ops.some((op) =>
+                    isCadExactDownstreamGeometryOp(op)
                   )
                 ) {
+                  pendingAgentExactArtifactsRef.current = [];
                   return { ok: true };
                 }
-                const preflight = await runHoleGeometryPreflight(
+                const preflight = await runExactDownstreamGeometryPreflight(
                   request.batch.ops,
                   undefined,
-                  sourceAuthorityEpoch
+                  sourceAuthorityEpoch,
+                  request.batch
                 );
+                if (preflight.ok) {
+                  pendingAgentExactArtifactsRef.current = preflight.artifacts;
+                } else {
+                  pendingAgentExactArtifactsRef.current = [];
+                }
                 return preflight.ok
                   ? { ok: true }
                   : { ok: false, message: preflight.message };

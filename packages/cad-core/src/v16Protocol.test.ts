@@ -190,6 +190,106 @@ describe("V16 protocol and V20 persistence", () => {
     }
   );
 
+  it.each(["linear", "circular"] as const)(
+    "keeps historical over-limit %s patterns readable but command-blocked",
+    (kind) => {
+      const engine = createSeedEngine();
+      engine.apply(
+        kind === "linear"
+          ? {
+              op: "feature.linearPattern",
+              id: "feat_pattern",
+              bodyId: "body_pattern",
+              seedBodyId: "body_seed",
+              direction: { kind: "globalAxis", axis: "x" },
+              spacing: 1,
+              instanceCount: 2
+            }
+          : {
+              op: "feature.circularPattern",
+              id: "feat_pattern",
+              bodyId: "body_pattern",
+              seedBodyId: "body_seed",
+              rotationAxis: { kind: "globalAxis", axis: "z" },
+              totalAngleDegrees: 360,
+              instanceCount: 2
+            }
+      );
+      const historical = cloneFixtureRecord(
+        exportCadProject(engine),
+        "historical pattern project"
+      );
+      const historicalFeature = findFixtureFeature(historical, "feat_pattern");
+      historical.schemaVersion = CAD_PROJECT_FORMAT_VERSION_V19;
+      historicalFeature.instanceCount = 4_097;
+      delete historicalFeature.instances;
+      if (kind === "linear") {
+        delete historicalFeature.direction;
+        historicalFeature.axis = "x";
+      } else {
+        historicalFeature.rotationAxis = "z";
+      }
+      historical.history = [];
+      historical.redoStack = [];
+      delete historical.historyBaseline;
+
+      const restored = importCadProject(historical as unknown as CadProject);
+      expect(restored.getDocument().features.get("feat_pattern")).toMatchObject(
+        {
+          kind: kind === "linear" ? "linearPattern" : "circularPattern",
+          instanceCount: 4_097,
+          instances: []
+        }
+      );
+      const update = restored.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          kind === "linear"
+            ? {
+                op: "feature.updateLinearPattern",
+                id: "feat_pattern",
+                spacing: 2
+              }
+            : {
+                op: "feature.updateCircularPattern",
+                id: "feat_pattern",
+                totalAngleDegrees: 180
+              }
+        ]
+      });
+      expect(update).toMatchObject({
+        ok: false,
+        error: {
+          code: "PATTERN_INSTANCE_COUNT_INVALID",
+          path: "$.ops[0].instanceCount"
+        }
+      });
+      expect(
+        restored.executeBatch({
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "feature.mirror",
+              seedBodyId: "body_pattern",
+              mirrorPlane: "XY",
+              includeOriginal: false
+            }
+          ]
+        })
+      ).toMatchObject({
+        ok: false,
+        error: { code: "UNSUPPORTED_FEATURE_OPERATION" }
+      });
+
+      const roundTripped = importCadProject(exportCadProject(restored));
+      expect(
+        roundTripped.getDocument().features.get("feat_pattern")
+      ).toMatchObject({ instanceCount: 4_097, instances: [] });
+    }
+  );
+
   it("normalizes linear pattern sugar and regenerates durable Mat4 instances", () => {
     const engine = createSeedEngine();
     engine.applyBatch([
@@ -505,6 +605,30 @@ describe("V16 protocol and V20 persistence", () => {
         bodyId: "body_seed",
         anchorId: "anchor_edge"
       }
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "selection.referenceCandidates",
+          selection: { type: "body", bodyId: "body_pattern" },
+          requiredOperation: "feature.holeTarget"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      status: "resolved",
+      candidates: [
+        {
+          target: { type: "body", bodyId: "body_pattern" },
+          reference: {
+            kind: "body",
+            stableId: "semantic:body:body_pattern"
+          },
+          commandable: true,
+          commandOperations: expect.arrayContaining(["feature.holeTarget"])
+        }
+      ]
     });
 
     const picker = createSeedEngine().executeQuery({

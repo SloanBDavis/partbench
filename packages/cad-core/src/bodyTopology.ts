@@ -1763,22 +1763,6 @@ function applyDerivedExactMetadata(
     return topology;
   }
 
-  if (
-    topology.sourceKind !== "authoredExtrude" &&
-    topology.sourceKind !== "authoredRevolve" &&
-    topology.sourceKind !== "authoredSweep" &&
-    topology.sourceKind !== "authoredHole" &&
-    topology.sourceKind !== "authoredChamfer" &&
-    topology.sourceKind !== "authoredFillet"
-  ) {
-    return applyDerivedExactMetadataIssue(topology, {
-      code: "UNSUPPORTED_BODY_TOPOLOGY",
-      status: "unsupported",
-      message:
-        "Derived exact metadata snapshots are supported only for authored bodies."
-    });
-  }
-
   if (metadata.bodyId !== topology.bodyId) {
     return applyDerivedExactMetadataIssue(topology, {
       code: "STALE_BODY_TOPOLOGY",
@@ -1876,6 +1860,7 @@ function applyDerivedExactMetadata(
       });
     }
     const exactTopologyReady =
+      metadata.metadata.topologySnapshot !== undefined ||
       isSweep ||
       (topology.sourceIdentity.profileKind === "regions" &&
         regionSolidCountIsValid) ||
@@ -1888,9 +1873,15 @@ function applyDerivedExactMetadata(
             status: "healthy" as const,
             topologyModel: "kernel-derived" as const,
             topologyAvailable: true,
-            faceCount: topologyCounts?.faceCount,
-            edgeCount: topologyCounts?.edgeCount,
-            vertexCount: topologyCounts?.vertexCount,
+            faceCount:
+              metadata.metadata.topologySnapshot?.entityCounts.faceCount ??
+              topologyCounts?.faceCount,
+            edgeCount:
+              metadata.metadata.topologySnapshot?.entityCounts.edgeCount ??
+              topologyCounts?.edgeCount,
+            vertexCount:
+              metadata.metadata.topologySnapshot?.entityCounts.vertexCount ??
+              topologyCounts?.vertexCount,
             issues: []
           }
         : {}),

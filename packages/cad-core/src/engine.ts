@@ -268,6 +268,7 @@ export {
 export {
   CAD_DOWNSTREAM_BODY_OPERATIONS,
   CAD_DOWNSTREAM_BODY_POLICY,
+  CAD_PATTERN_COMMAND_INSTANCE_LIMIT,
   createCadDownstreamBodyPolicyProjection,
   evaluateCadBodyDependencies,
   type CadBodyDependencyEvaluation,
@@ -465,6 +466,7 @@ import { createBodyMeasurements } from "./bodyMeasurements";
 import { createBodyTopology } from "./bodyTopology";
 import { createBodyTopologyIdentity } from "./bodyTopologyIdentity";
 import {
+  CAD_PATTERN_COMMAND_INSTANCE_LIMIT,
   createCadDownstreamBodyPolicyProjection,
   evaluateCadBodyDependencies,
   type CadDownstreamBodyPolicyProjection
@@ -7345,6 +7347,7 @@ function applyOperation(
     case "feature.mirror": {
       const seedBodyId = validateMirrorSeedBodyId(
         state,
+        "feature.mirror",
         op.seedBodyId,
         opIndex
       );
@@ -7406,6 +7409,7 @@ function applyOperation(
     case "feature.shell": {
       const targetBodyId = validateShellTargetBodyId(
         state,
+        "feature.shell",
         op.targetBodyId,
         opIndex
       );
@@ -14282,15 +14286,23 @@ function validateDirectConsumingFeatureForSourceExtrudeRebuild(
   }
 
   if (feature.kind === "mirror") {
+    validateMirrorSeedBodyId(
+      state,
+      "feature.updateMirror",
+      feature.seedBodyId,
+      opIndex,
+      feature.id
+    );
     return;
   }
 
   if (feature.kind === "shell") {
-    validateShellTargetBodyFeature(
+    validateShellTargetBodyId(
       state,
       "feature.updateShell",
       feature.targetBodyId,
-      opIndex
+      opIndex,
+      feature.id
     );
     return;
   }
@@ -15628,11 +15640,12 @@ function assertShellFeatureEditable(
     operation,
     opIndex
   );
-  validateShellTargetBodyFeature(
+  validateShellTargetBodyId(
     state,
     operation,
     feature.targetBodyId,
-    opIndex
+    opIndex,
+    feature.id
   );
 }
 
@@ -15643,6 +15656,13 @@ function assertMirrorFeatureEditable(
   opIndex?: number
 ): void {
   assertFeatureResultBodyActiveForEdit(state, feature, operation, opIndex);
+  validateMirrorSeedBodyId(
+    state,
+    operation,
+    feature.seedBodyId,
+    opIndex,
+    feature.id
+  );
 
   if (!feature.includeOriginal) {
     return;
@@ -15820,7 +15840,13 @@ function assertPatternFeatureSeedEditable(
     | "feature.updateCircularPattern",
   opIndex?: number
 ): void {
-  validatePatternSeedBodyFeature(state, operation, feature.seedBodyId, opIndex);
+  validatePatternSeedBodyId(
+    state,
+    operation,
+    feature.seedBodyId,
+    opIndex,
+    feature.id
+  );
   const consumingFeature = findConsumingFeatureByTargetBodyId(
     state.features,
     feature.seedBodyId
@@ -15909,23 +15935,44 @@ type ShellOperation = "feature.shell" | "feature.updateShell";
 
 function validateShellTargetBodyId(
   state: MutableDocumentState,
+  operation: ShellOperation,
   targetBodyId: BodyId,
-  opIndex?: number
+  opIndex?: number,
+  ignoreConsumingFeatureId?: FeatureId
 ): BodyId {
-  const feature = validateShellTargetBodyFeature(
-    state,
-    "feature.shell",
-    targetBodyId,
-    opIndex
-  );
-  const consumingFeature = findConsumingFeatureByTargetBodyId(
-    state.features,
-    feature.bodyId
-  );
+  if (typeof targetBodyId !== "string" || targetBodyId.trim().length === 0) {
+    throwValidationError({
+      code: "SHELL_TARGET_BODY_UNSUPPORTED",
+      message: `${operation} requires targetBodyId.`,
+      opIndex,
+      bodyId: targetBodyId,
+      path: operationPath(opIndex, "targetBodyId"),
+      expected: "existing active source-eligible target body id",
+      received: describeReceived(targetBodyId)
+    });
+  }
+
+  const feature = findFeatureByBodyId(state.features, targetBodyId);
+  if (!feature && !isPrimitiveBodyId(state, targetBodyId)) {
+    throwValidationError({
+      code: "BODY_NOT_FOUND",
+      message: `Target body does not exist: ${targetBodyId}`,
+      opIndex,
+      bodyId: targetBodyId,
+      path: operationPath(opIndex, "targetBodyId"),
+      expected: "existing active source-eligible target body id",
+      received: targetBodyId
+    });
+  }
+
+  const bodyId = feature?.bodyId ?? targetBodyId;
+  const consumer = findConsumingFeatureByTargetBodyId(state.features, bodyId);
+  const consumingFeature =
+    consumer?.id === ignoreConsumingFeatureId ? undefined : consumer;
 
   const policy = createCommandDownstreamBodyPolicyProjection(
     state,
-    feature,
+    feature ?? bodyId,
     consumingFeature,
     "shellTarget"
   );
@@ -15934,71 +15981,24 @@ function validateShellTargetBodyId(
       throwCommandDownstreamBodyPolicyError(
         policy,
         opIndex,
-        feature.bodyId,
+        bodyId,
         "targetBodyId"
       );
     }
     const consumer = consumingFeature;
     throwValidationError({
       code: "SHELL_TARGET_BODY_CONSUMED",
-      message: `feature.shell target body is already consumed by feature ${consumer.id}: ${feature.bodyId}`,
+      message: `${operation} target body is already consumed by feature ${consumer.id}: ${bodyId}`,
       opIndex,
       featureId: consumer.id,
-      bodyId: feature.bodyId,
+      bodyId,
       path: operationPath(opIndex, "targetBodyId"),
-      expected: "active authored target body",
-      received: feature.bodyId
+      expected: "active source-eligible target body",
+      received: bodyId
     });
   }
 
-  return feature.bodyId;
-}
-
-function validateShellTargetBodyFeature(
-  state: MutableDocumentState,
-  operation: ShellOperation,
-  targetBodyId: BodyId,
-  opIndex?: number
-): Feature {
-  if (typeof targetBodyId !== "string" || targetBodyId.trim().length === 0) {
-    throwValidationError({
-      code: "SHELL_TARGET_BODY_UNSUPPORTED",
-      message: `${operation} requires targetBodyId.`,
-      opIndex,
-      bodyId: targetBodyId,
-      path: operationPath(opIndex, "targetBodyId"),
-      expected: "existing active authored target body id",
-      received: describeReceived(targetBodyId)
-    });
-  }
-
-  const feature = findFeatureByBodyId(state.features, targetBodyId);
-
-  if (feature) {
-    return feature;
-  }
-
-  if (isPrimitiveBodyId(state, targetBodyId)) {
-    throwValidationError({
-      code: "SHELL_TARGET_BODY_UNSUPPORTED",
-      message: `Primitive-derived body cannot be used by ${operation}: ${targetBodyId}`,
-      opIndex,
-      bodyId: targetBodyId,
-      path: operationPath(opIndex, "targetBodyId"),
-      expected: "authored feature body",
-      received: targetBodyId
-    });
-  }
-
-  throwValidationError({
-    code: "BODY_NOT_FOUND",
-    message: `Target body does not exist: ${targetBodyId}`,
-    opIndex,
-    bodyId: targetBodyId,
-    path: operationPath(opIndex, "targetBodyId"),
-    expected: "existing active authored target body id",
-    received: targetBodyId
-  });
+  return bodyId;
 }
 
 function validateShellWallThickness(value: unknown, opIndex?: number): number {
@@ -16057,7 +16057,7 @@ function validateShellOpenFaceRefs(
     }
   });
 
-  if (refs.length > 0) {
+  if (failures.length === 0) {
     return refs;
   }
 
@@ -16117,14 +16117,18 @@ function validateShellOpenFaceRef(
         received: describeReceived(value)
       });
     }
-
-    validateShellFaceGeneratedReference(
-      state,
-      targetBodyId,
-      value.stableId,
-      opIndex,
-      `${path}.stableId`
-    );
+    if (value.bodyId !== targetBodyId || value.stableId.trim().length === 0) {
+      throwValidationError({
+        code: "SHELL_OPEN_FACE_REF_INVALID",
+        message: `Generated face must identify a current face on target body ${targetBodyId}.`,
+        opIndex,
+        bodyId: targetBodyId,
+        stableId: value.stableId,
+        path: operationPath(opIndex, path),
+        expected: "non-empty generated face reference owned by targetBodyId",
+        received: describeReceived(value)
+      });
+    }
 
     return {
       kind: "generatedFace",
@@ -16175,15 +16179,19 @@ function validateShellOpenFaceRef(
         received: reference.bodyId
       });
     }
-
-    validateShellFaceGeneratedReference(
-      state,
-      targetBodyId,
-      reference.stableId,
-      opIndex,
-      `${path}.name`,
-      name
-    );
+    if (reference.kind !== "face") {
+      throwValidationError({
+        code: "SHELL_OPEN_FACE_REF_INVALID",
+        message: `Named reference ${name} is a ${reference.kind}, not a face.`,
+        opIndex,
+        bodyId: targetBodyId,
+        stableId: reference.stableId,
+        referenceName: name,
+        path: operationPath(opIndex, `${path}.name`),
+        expected: "named face reference",
+        received: reference.kind
+      });
+    }
 
     return { kind: "namedReference", name };
   }
@@ -16205,7 +16213,7 @@ function validateShellOpenFaceRef(
       });
     }
 
-    const target = resolveActiveTopologyAnchorStableTarget(
+    const target = resolveActiveTopologyAnchorTarget(
       state,
       value.anchorId,
       "face",
@@ -16219,7 +16227,6 @@ function validateShellOpenFaceRef(
         message: `Topology anchor ${target.topologyAnchorId} resolves to body ${target.bodyId}, not target body ${targetBodyId}.`,
         opIndex,
         bodyId: targetBodyId,
-        stableId: target.stableId,
         topologyAnchorId: target.topologyAnchorId,
         checkpointId: target.checkpointId,
         path: operationPath(opIndex, `${path}.anchorId`),
@@ -16227,17 +16234,6 @@ function validateShellOpenFaceRef(
         received: target.bodyId
       });
     }
-
-    validateShellFaceGeneratedReference(
-      state,
-      targetBodyId,
-      target.stableId,
-      opIndex,
-      `${path}.anchorId`,
-      undefined,
-      target.topologyAnchorId,
-      target.checkpointId
-    );
 
     return {
       kind: "topologyAnchor",
@@ -16258,68 +16254,49 @@ function validateShellOpenFaceRef(
   });
 }
 
-function validateShellFaceGeneratedReference(
-  state: MutableDocumentState,
-  targetBodyId: BodyId,
-  stableId: string,
-  opIndex: number | undefined,
-  stableIdPath: string,
-  referenceName?: NamedReferenceName,
-  topologyAnchorId?: string,
-  checkpointId?: string
-): void {
-  const result = validateGeneratedReference({
-    document: state,
-    ownerPartId: DEFAULT_PART_ID,
-    bodyId: targetBodyId,
-    stableId,
-    bodyExists: (bodyId) => documentBodyExists(state, bodyId),
-    expectedKind: "face",
-    requiredOperation: "feature.shell"
-  });
-
-  if (!result.ok) {
-    throwValidationError({
-      code:
-        result.error.code === "GENERATED_REFERENCE_NOT_FOUND" ||
-        result.error.code === "GENERATED_REFERENCE_KIND_MISMATCH" ||
-        result.error.code === "GENERATED_REFERENCE_OPERATION_NOT_ELIGIBLE"
-          ? "SHELL_OPEN_FACE_REF_INVALID"
-          : result.error.code,
-      message: result.error.message,
-      opIndex,
-      bodyId: result.error.bodyId,
-      stableId: result.error.stableId,
-      ...(referenceName ? { referenceName } : {}),
-      ...(topologyAnchorId ? { topologyAnchorId } : {}),
-      ...(checkpointId ? { checkpointId } : {}),
-      path: operationPath(opIndex, stableIdPath),
-      expected: describeGeneratedReferenceValidationExpected(result.error),
-      received: describeGeneratedReferenceValidationReceived(result.error)
-    });
-  }
-}
-
 function validatePatternSeedBodyId(
   state: MutableDocumentState,
-  operation: PatternCreateOperation,
+  operation:
+    | PatternCreateOperation
+    | "feature.updateLinearPattern"
+    | "feature.updateCircularPattern",
   seedBodyId: BodyId,
-  opIndex?: number
+  opIndex?: number,
+  ignoreConsumingFeatureId?: FeatureId
 ): BodyId {
-  const feature = validatePatternSeedBodyFeature(
-    state,
-    operation,
-    seedBodyId,
-    opIndex
-  );
-  const consumingFeature = findConsumingFeatureByTargetBodyId(
-    state.features,
-    feature.bodyId
-  );
+  if (typeof seedBodyId !== "string" || seedBodyId.trim().length === 0) {
+    throwValidationError({
+      code: "PATTERN_SEED_BODY_UNSUPPORTED",
+      message: `${operation} requires seedBodyId.`,
+      opIndex,
+      bodyId: seedBodyId,
+      path: operationPath(opIndex, "seedBodyId"),
+      expected: "existing active source-eligible seed body id",
+      received: describeReceived(seedBodyId)
+    });
+  }
+
+  const feature = findFeatureByBodyId(state.features, seedBodyId);
+  if (!feature && !isPrimitiveBodyId(state, seedBodyId)) {
+    throwValidationError({
+      code: "BODY_NOT_FOUND",
+      message: `Seed body does not exist: ${seedBodyId}`,
+      opIndex,
+      bodyId: seedBodyId,
+      path: operationPath(opIndex, "seedBodyId"),
+      expected: "existing active source-eligible seed body id",
+      received: seedBodyId
+    });
+  }
+
+  const bodyId = feature?.bodyId ?? seedBodyId;
+  const consumer = findConsumingFeatureByTargetBodyId(state.features, bodyId);
+  const consumingFeature =
+    consumer?.id === ignoreConsumingFeatureId ? undefined : consumer;
 
   const policy = createCommandDownstreamBodyPolicyProjection(
     state,
-    feature,
+    feature ?? bodyId,
     consumingFeature,
     "patternSeed"
   );
@@ -16328,74 +16305,24 @@ function validatePatternSeedBodyId(
       throwCommandDownstreamBodyPolicyError(
         policy,
         opIndex,
-        feature.bodyId,
+        bodyId,
         "seedBodyId"
       );
     }
     const consumer = consumingFeature;
     throwValidationError({
       code: "PATTERN_SEED_BODY_CONSUMED",
-      message: `${operation} seed body is already consumed by feature ${consumer.id}: ${feature.bodyId}`,
+      message: `${operation} seed body is already consumed by feature ${consumer.id}: ${bodyId}`,
       opIndex,
       featureId: consumer.id,
-      bodyId: feature.bodyId,
+      bodyId,
       path: operationPath(opIndex, "seedBodyId"),
-      expected: "active authored seed body",
-      received: feature.bodyId
+      expected: "active source-eligible seed body",
+      received: bodyId
     });
   }
 
-  return feature.bodyId;
-}
-
-function validatePatternSeedBodyFeature(
-  state: MutableDocumentState,
-  operation:
-    | PatternCreateOperation
-    | "feature.updateLinearPattern"
-    | "feature.updateCircularPattern",
-  seedBodyId: BodyId,
-  opIndex?: number
-): Feature {
-  if (typeof seedBodyId !== "string" || seedBodyId.trim().length === 0) {
-    throwValidationError({
-      code: "PATTERN_SEED_BODY_UNSUPPORTED",
-      message: `${operation} requires seedBodyId.`,
-      opIndex,
-      bodyId: seedBodyId,
-      path: operationPath(opIndex, "seedBodyId"),
-      expected: "existing active authored seed body id",
-      received: describeReceived(seedBodyId)
-    });
-  }
-
-  const feature = findFeatureByBodyId(state.features, seedBodyId);
-
-  if (feature) {
-    return feature;
-  }
-
-  if (isPrimitiveBodyId(state, seedBodyId)) {
-    throwValidationError({
-      code: "PATTERN_SEED_BODY_UNSUPPORTED",
-      message: `Primitive-derived body cannot be used by ${operation}: ${seedBodyId}`,
-      opIndex,
-      bodyId: seedBodyId,
-      path: operationPath(opIndex, "seedBodyId"),
-      expected: "authored feature body",
-      received: seedBodyId
-    });
-  }
-
-  throwValidationError({
-    code: "BODY_NOT_FOUND",
-    message: `Seed body does not exist: ${seedBodyId}`,
-    opIndex,
-    bodyId: seedBodyId,
-    path: operationPath(opIndex, "seedBodyId"),
-    expected: "existing active authored seed body id",
-    received: seedBodyId
-  });
+  return bodyId;
 }
 
 function validatePatternAxis(
@@ -16761,23 +16688,51 @@ function validatePatternSpacing(value: number, opIndex?: number): number {
   });
 }
 
-const MAX_PATTERN_COMMAND_INSTANCE_COUNT = 4_096;
+function readStoredLinearPatternInstances(
+  instances: readonly PatternInstanceRecord[] | undefined,
+  direction: PatternDirectionRef,
+  spacing: number,
+  instanceCount: number
+): readonly PatternInstanceRecord[] {
+  if (instanceCount > CAD_PATTERN_COMMAND_INSTANCE_LIMIT) return [];
+  return (
+    instances?.map(clonePatternInstance) ??
+    createLinearPatternInstances(direction, spacing, instanceCount)
+  );
+}
+
+function readStoredCircularPatternInstances(
+  instances: readonly PatternInstanceRecord[] | undefined,
+  rotationAxis: PatternRotationAxisRef,
+  totalAngleDegrees: number,
+  instanceCount: number
+): readonly PatternInstanceRecord[] {
+  if (instanceCount > CAD_PATTERN_COMMAND_INSTANCE_LIMIT) return [];
+  return (
+    instances?.map(clonePatternInstance) ??
+    createCircularPatternInstances(
+      rotationAxis,
+      totalAngleDegrees,
+      instanceCount
+    )
+  );
+}
 
 function validatePatternInstanceCount(value: number, opIndex?: number): number {
   if (
     Number.isInteger(value) &&
     value >= 2 &&
-    value <= MAX_PATTERN_COMMAND_INSTANCE_COUNT
+    value <= CAD_PATTERN_COMMAND_INSTANCE_LIMIT
   ) {
     return value;
   }
 
   throwValidationError({
     code: "PATTERN_INSTANCE_COUNT_INVALID",
-    message: `Pattern instanceCount must be an integer from 2 through ${MAX_PATTERN_COMMAND_INSTANCE_COUNT}.`,
+    message: `Pattern instanceCount must be an integer from 2 through ${CAD_PATTERN_COMMAND_INSTANCE_LIMIT}.`,
     opIndex,
     path: operationPath(opIndex, "instanceCount"),
-    expected: `integer from 2 through ${MAX_PATTERN_COMMAND_INSTANCE_COUNT}`,
+    expected: `integer from 2 through ${CAD_PATTERN_COMMAND_INSTANCE_LIMIT}`,
     received: describeReceived(value)
   });
 }
@@ -16961,81 +16916,69 @@ function validateMirrorIncludeOriginal(
 
 function validateMirrorSeedBodyId(
   state: MutableDocumentState,
+  operation: "feature.mirror" | "feature.updateMirror",
   seedBodyId: BodyId,
-  opIndex?: number
+  opIndex?: number,
+  ignoreConsumingFeatureId?: FeatureId
 ): BodyId {
   if (typeof seedBodyId !== "string" || seedBodyId.trim().length === 0) {
     throwValidationError({
       code: "MIRROR_SEED_BODY_UNSUPPORTED",
-      message: "feature.mirror requires seedBodyId.",
+      message: `${operation} requires seedBodyId.`,
       opIndex,
       bodyId: seedBodyId,
       path: operationPath(opIndex, "seedBodyId"),
-      expected: "existing active authored seed body id",
+      expected: "existing active source-eligible seed body id",
       received: describeReceived(seedBodyId)
     });
   }
 
   const feature = findFeatureByBodyId(state.features, seedBodyId);
 
-  if (feature) {
-    const consumingFeature = findConsumingFeatureByTargetBodyId(
-      state.features,
-      feature.bodyId
-    );
-
-    const policy = createCommandDownstreamBodyPolicyProjection(
-      state,
-      feature,
-      consumingFeature,
-      "mirrorSeed"
-    );
-    if (!policy.sourceEligible) {
-      if (!consumingFeature) {
-        throwCommandDownstreamBodyPolicyError(
-          policy,
-          opIndex,
-          feature.bodyId,
-          "seedBodyId"
-        );
-      }
-      const consumer = consumingFeature;
-      throwValidationError({
-        code: "MIRROR_SEED_BODY_CONSUMED",
-        message: `feature.mirror seed body is already consumed by feature ${consumer.id}: ${feature.bodyId}`,
-        opIndex,
-        featureId: consumer.id,
-        bodyId: feature.bodyId,
-        path: operationPath(opIndex, "seedBodyId"),
-        expected: "active authored seed body",
-        received: feature.bodyId
-      });
-    }
-
-    return feature.bodyId;
-  }
-
-  if (isPrimitiveBodyId(state, seedBodyId)) {
+  if (!feature && !isPrimitiveBodyId(state, seedBodyId)) {
     throwValidationError({
-      code: "MIRROR_SEED_BODY_UNSUPPORTED",
-      message: `Primitive-derived body cannot be used by feature.mirror: ${seedBodyId}`,
+      code: "BODY_NOT_FOUND",
+      message: `Seed body does not exist: ${seedBodyId}`,
       opIndex,
       bodyId: seedBodyId,
       path: operationPath(opIndex, "seedBodyId"),
-      expected: "authored feature body",
+      expected: "existing active source-eligible seed body id",
       received: seedBodyId
     });
   }
 
-  throwValidationError({
-    code: "BODY_NOT_FOUND",
-    message: `Seed body does not exist: ${seedBodyId}`,
-    opIndex,
-    bodyId: seedBodyId,
-    path: operationPath(opIndex, "seedBodyId"),
-    expected: "existing active authored seed body id",
-    received: seedBodyId
-  });
+  const bodyId = feature?.bodyId ?? seedBodyId;
+  const consumer = findConsumingFeatureByTargetBodyId(state.features, bodyId);
+  const consumingFeature =
+    consumer?.id === ignoreConsumingFeatureId ? undefined : consumer;
+  const policy = createCommandDownstreamBodyPolicyProjection(
+    state,
+    feature ?? bodyId,
+    consumingFeature,
+    "mirrorSeed"
+  );
+  if (!policy.sourceEligible) {
+    if (!consumingFeature) {
+      throwCommandDownstreamBodyPolicyError(
+        policy,
+        opIndex,
+        bodyId,
+        "seedBodyId"
+      );
+    }
+    throwValidationError({
+      code: "MIRROR_SEED_BODY_CONSUMED",
+      message: `${operation} seed body is already consumed by feature ${consumingFeature.id}: ${bodyId}`,
+      opIndex,
+      featureId: consumingFeature.id,
+      bodyId,
+      path: operationPath(opIndex, "seedBodyId"),
+      expected: "active source-eligible seed body",
+      received: bodyId
+    });
+  }
+
+  return bodyId;
 }
 
 function createUpdatedHoleFeature(
@@ -20923,13 +20866,22 @@ function createSelectionReferenceCandidates(
       body.id,
       body.partId
     );
-
-    if (!references) {
-      const issues = [
-        ...createConsumedSelectionIssues(body),
-        createBodyReferenceUnavailableIssue(document, body)
-      ];
-
+    const semanticBodyReference: CadSemanticBodyReference = {
+      kind: "body",
+      stableId: `semantic:body:${body.id}`,
+      label: `Body ${body.id}`,
+      description: "Semantic whole-body selection",
+      eligibleOperations: ["feature.holeTarget"],
+      bodyId: body.id,
+      ownerPartId: body.partId,
+      sourceFeatureId: body.featureId
+    };
+    if (
+      !references &&
+      requiredOperation &&
+      !semanticBodyReference.eligibleOperations.includes(requiredOperation)
+    ) {
+      const issues = [createBodyReferenceUnavailableIssue(document, body)];
       return {
         status: chooseSelectionReferenceStatus(issues),
         candidates: [],
@@ -20941,7 +20893,7 @@ function createSelectionReferenceCandidates(
       source: "bodySelection",
       selection,
       body,
-      reference: references.body,
+      reference: references?.body ?? semanticBodyReference,
       requiredOperation
     });
   }
@@ -21439,7 +21391,7 @@ function createSingleSelectionReferenceCandidate(options: {
   readonly source: CadSelectionReferenceCandidateSource;
   readonly selection: CadSelectionReferenceInput;
   readonly body: CadBodySnapshot;
-  readonly reference: CadGeneratedReference;
+  readonly reference: CadSelectionReferenceCandidate["reference"];
   readonly requiredOperation?: CadSelectionReferenceOperation;
   readonly extraIssues?: readonly CadSelectionReferenceIssue[];
   readonly commandOperations?: readonly CadSelectionReferenceOperation[];
@@ -21476,19 +21428,24 @@ function createSingleSelectionReferenceCandidate(options: {
     ...operationIssues
   ];
   const commandable = issues.length === 0;
-  const target: CadSelectionReferenceCommandTarget = {
-    type: "generatedReference",
-    bodyId: options.reference.bodyId,
-    stableId: options.reference.stableId,
-    kind: options.reference.kind,
-    ...(options.topologyAnchorId
-      ? { topologyAnchorId: options.topologyAnchorId }
-      : {}),
-    ...(options.checkpointId ? { checkpointId: options.checkpointId } : {}),
-    ...(options.selection.type === "namedReference"
-      ? { referenceName: options.selection.name }
-      : {})
-  };
+  const target: CadSelectionReferenceCommandTarget =
+    "geometricSignature" in options.reference
+      ? {
+          type: "generatedReference",
+          bodyId: options.reference.bodyId,
+          stableId: options.reference.stableId,
+          kind: options.reference.kind,
+          ...(options.topologyAnchorId
+            ? { topologyAnchorId: options.topologyAnchorId }
+            : {}),
+          ...(options.checkpointId
+            ? { checkpointId: options.checkpointId }
+            : {}),
+          ...(options.selection.type === "namedReference"
+            ? { referenceName: options.selection.name }
+            : {})
+        }
+      : { type: "body", bodyId: options.reference.bodyId };
   const candidate: CadSelectionReferenceCandidate = {
     source: options.source,
     target,
@@ -21510,7 +21467,7 @@ function createSingleSelectionReferenceCandidate(options: {
 }
 
 function createCommandabilityIssues(
-  reference: CadGeneratedReference,
+  reference: CadSelectionReferenceCandidate["reference"],
   operations: readonly CadSelectionReferenceOperation[],
   requiredOperation: CadSelectionReferenceOperation | undefined
 ): readonly CadSelectionReferenceIssue[] {
@@ -23731,13 +23688,12 @@ function createFeatureFromSnapshot(snapshot: FeatureSnapshotCurrent): Feature {
       spacing: snapshot.spacing,
       instanceCount: snapshot.instanceCount,
       bodyId: snapshot.bodyId,
-      instances:
-        snapshot.instances?.map(clonePatternInstance) ??
-        createLinearPatternInstances(
-          direction,
-          snapshot.spacing,
-          snapshot.instanceCount
-        )
+      instances: readStoredLinearPatternInstances(
+        snapshot.instances,
+        direction,
+        snapshot.spacing,
+        snapshot.instanceCount
+      )
     };
   }
 
@@ -23762,13 +23718,12 @@ function createFeatureFromSnapshot(snapshot: FeatureSnapshotCurrent): Feature {
       totalAngleDegrees: snapshot.totalAngleDegrees,
       instanceCount: snapshot.instanceCount,
       bodyId: snapshot.bodyId,
-      instances:
-        snapshot.instances?.map(clonePatternInstance) ??
-        createCircularPatternInstances(
-          rotationAxis,
-          snapshot.totalAngleDegrees,
-          snapshot.instanceCount
-        )
+      instances: readStoredCircularPatternInstances(
+        snapshot.instances,
+        rotationAxis,
+        snapshot.totalAngleDegrees,
+        snapshot.instanceCount
+      )
     };
   }
 
@@ -25409,6 +25364,14 @@ function createBodyExtents(
       continue;
     }
 
+    const exactMetadata = derivedExactMetadataByBodyId.get(body.id);
+    if (topology.topology.status === "stale" && !exactMetadata) {
+      warnings.push(
+        createBodyExtentsUnavailableWarning(body.id, body.featureId)
+      );
+      continue;
+    }
+
     if (!shouldUseDerivedExactMetadataForProjectExtents(topology.topology)) {
       warnings.push(
         createBodyExtentsUnavailableWarning(body.id, body.featureId)
@@ -25418,7 +25381,7 @@ function createBodyExtents(
 
     const bodyExtent = createKernelDerivedBodyExtent(
       topology.topology,
-      derivedExactMetadataByBodyId.get(body.id)
+      exactMetadata
     );
 
     if (bodyExtent.ok) {
@@ -25447,21 +25410,7 @@ function createBodyExtentsUnavailableWarning(
 function shouldUseDerivedExactMetadataForProjectExtents(
   topology: CadBodyTopologySnapshot
 ): boolean {
-  if (
-    topology.sourceKind === "authoredRevolve" ||
-    topology.sourceKind === "authoredHole" ||
-    topology.sourceKind === "authoredChamfer" ||
-    topology.sourceKind === "authoredFillet"
-  ) {
-    return true;
-  }
-
-  return (
-    topology.sourceKind === "authoredExtrude" &&
-    topology.sourceIdentity.operationMode !== undefined &&
-    (topology.sourceIdentity.operationMode !== "newBody" ||
-      topology.sourceIdentity.profileKind === "wire")
-  );
+  return topology.sourceKind !== "primitiveCompatibility";
 }
 
 function createKernelDerivedBodyExtent(
@@ -29604,13 +29553,12 @@ function normalizeFeatureSnapshot(
           spacing: feature.spacing,
           instanceCount: feature.instanceCount,
           bodyId: feature.bodyId,
-          instances:
-            feature.instances?.map(clonePatternInstance) ??
-            createLinearPatternInstances(
-              direction,
-              feature.spacing,
-              feature.instanceCount
-            )
+          instances: readStoredLinearPatternInstances(
+            feature.instances,
+            direction,
+            feature.spacing,
+            feature.instanceCount
+          )
         }
       : { ...feature };
   }
@@ -29623,13 +29571,12 @@ function normalizeFeatureSnapshot(
       ? {
           ...feature,
           rotationAxis,
-          instances:
-            feature.instances?.map(clonePatternInstance) ??
-            createCircularPatternInstances(
-              rotationAxis,
-              feature.totalAngleDegrees,
-              feature.instanceCount
-            )
+          instances: readStoredCircularPatternInstances(
+            feature.instances,
+            rotationAxis,
+            feature.totalAngleDegrees,
+            feature.instanceCount
+          )
         }
       : { ...feature };
   }
@@ -29896,7 +29843,8 @@ function normalizeFeatureRefSnapshot(ref: CadFeatureRef): CadFeatureRef {
         "direction" | "instances"
       >),
       direction,
-      instances: createLinearPatternInstances(
+      instances: readStoredLinearPatternInstances(
+        undefined,
         direction,
         ref.spacing,
         ref.instanceCount
@@ -29909,7 +29857,8 @@ function normalizeFeatureRefSnapshot(ref: CadFeatureRef): CadFeatureRef {
     return {
       ...ref,
       rotationAxis,
-      instances: createCircularPatternInstances(
+      instances: readStoredCircularPatternInstances(
+        undefined,
         rotationAxis,
         ref.totalAngleDegrees,
         ref.instanceCount
@@ -33823,15 +33772,16 @@ function collectValidAuthoredFeatureByBodyId(
       spacing: value.spacing,
       instanceCount: value.instanceCount,
       bodyId: value.bodyId,
-      instances: isPatternInstancesShape(value.instances, value.instanceCount)
-        ? value.instances
-        : createLinearPatternInstances(
-            isPatternDirectionRef(value.direction)
-              ? value.direction
-              : globalAxisRef(value.axis as "x" | "y" | "z"),
-            value.spacing,
-            value.instanceCount
-          ),
+      instances: readStoredLinearPatternInstances(
+        isPatternInstancesShape(value.instances, value.instanceCount)
+          ? value.instances
+          : undefined,
+        isPatternDirectionRef(value.direction)
+          ? value.direction
+          : globalAxisRef(value.axis as "x" | "y" | "z"),
+        value.spacing,
+        value.instanceCount
+      ),
       path
     });
   }
@@ -33863,15 +33813,16 @@ function collectValidAuthoredFeatureByBodyId(
       totalAngleDegrees: value.totalAngleDegrees,
       instanceCount: value.instanceCount,
       bodyId: value.bodyId,
-      instances: isPatternInstancesShape(value.instances, value.instanceCount)
-        ? value.instances
-        : createCircularPatternInstances(
-            isPatternDirectionRef(value.rotationAxis)
-              ? value.rotationAxis
-              : globalAxisRef(value.rotationAxis as "x" | "y" | "z"),
-            value.totalAngleDegrees,
-            value.instanceCount
-          ),
+      instances: readStoredCircularPatternInstances(
+        isPatternInstancesShape(value.instances, value.instanceCount)
+          ? value.instances
+          : undefined,
+        isPatternDirectionRef(value.rotationAxis)
+          ? value.rotationAxis
+          : globalAxisRef(value.rotationAxis as "x" | "y" | "z"),
+        value.totalAngleDegrees,
+        value.instanceCount
+      ),
       path
     });
   }
@@ -39923,7 +39874,11 @@ function validatePatternInstancesSnapshot(
     );
     return;
   }
-  if (typeof instanceCount === "number" && value.length !== instanceCount) {
+  if (
+    typeof instanceCount === "number" &&
+    value.length !== instanceCount &&
+    !(instanceCount > CAD_PATTERN_COMMAND_INSTANCE_LIMIT && value.length === 0)
+  ) {
     addProjectIssue(
       issues,
       "INVALID_FEATURE",

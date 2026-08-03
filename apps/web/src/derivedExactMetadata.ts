@@ -25,16 +25,11 @@ import type {
   DerivedRevolveGeometrySource,
   DerivedSweepGeometrySource,
   DerivedLoftGeometrySource,
-  DerivedLinearPatternGeometrySource,
-  DerivedCircularPatternGeometrySource,
-  DerivedMirrorGeometrySource,
-  DerivedShellGeometrySource,
   DerivedPrimitiveGeometrySource
 } from "./derivedGeometry";
 import { createDerivedGeometryCacheKey } from "./derivedGeometry";
 import {
   createDerivedGeometryErrorDetails,
-  type DerivedGeometryPatternSeedSource,
   type DerivedExactBodyMetadata,
   type DerivedExactMetadataMetrics,
   type DerivedExactMetadataResult,
@@ -57,10 +52,6 @@ export type DerivedExactMetadataSource =
   | DerivedEdgeFinishGeometrySource
   | DerivedSweepGeometrySource
   | DerivedLoftGeometrySource
-  | DerivedLinearPatternGeometrySource
-  | DerivedCircularPatternGeometrySource
-  | DerivedMirrorGeometrySource
-  | DerivedShellGeometrySource
   | DerivedExactBodyGeometrySource
   | DerivedImportedBodyExactMetadataSource;
 
@@ -750,56 +741,6 @@ export function createExactMetadataRuntimeInput(
     };
   }
 
-  if (source.kind === "linearPattern") {
-    return {
-      id: source.id,
-      source: {
-        kind: "linearPattern",
-        seed: createExactPatternSeedRuntimeSource(source.seed),
-        direction: source.direction,
-        spacing: source.spacing,
-        instanceCount: source.instanceCount
-      }
-    };
-  }
-
-  if (source.kind === "circularPattern") {
-    return {
-      id: source.id,
-      source: {
-        kind: "circularPattern",
-        seed: createExactPatternSeedRuntimeSource(source.seed),
-        axis: source.axis,
-        totalAngleDegrees: source.totalAngleDegrees,
-        instanceCount: source.instanceCount
-      }
-    };
-  }
-
-  if (source.kind === "mirror") {
-    return {
-      id: source.id,
-      source: {
-        kind: "mirror",
-        seed: createExactPatternSeedRuntimeSource(source.seed),
-        plane: source.plane,
-        includeOriginal: source.includeOriginal
-      }
-    };
-  }
-
-  if (source.kind === "shell") {
-    return {
-      id: source.id,
-      source: {
-        kind: "shell",
-        target: createExactPatternSeedRuntimeSource(source.target),
-        wallThickness: source.wallThickness,
-        openFaceStableIds: source.openFaceStableIds
-      }
-    };
-  }
-
   if (source.kind === "hole") {
     return {
       id: source.id,
@@ -850,24 +791,6 @@ export function createExactMetadataRuntimeInput(
   };
 }
 
-function createExactPatternSeedRuntimeSource(
-  source: DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource
-): DerivedGeometryPatternSeedSource {
-  const runtimeSource = createBooleanExtrudeRuntimeSource(source);
-  if ("profile" in runtimeSource) {
-    if (runtimeSource.profile.kind === "wire") {
-      throw new Error(
-        "Resolved wire roots are not supported as standalone pattern seeds."
-      );
-    }
-    return {
-      kind: "extrude",
-      ...runtimeSource
-    } as DerivedGeometryPatternSeedSource;
-  }
-  return runtimeSource;
-}
-
 function createCadExactMetadata(
   metadata: DerivedExactBodyMetadata
 ): Omit<CadBodyExactMetadataSnapshot, "status"> {
@@ -885,6 +808,25 @@ function createCadExactMetadata(
       ? { principalMoments: metadata.principalMoments }
       : {}),
     topologyCounts: metadata.topologyCounts,
+    ...(metadata.topologySnapshot
+      ? {
+          topologySnapshot: {
+            source: metadata.topologySnapshot.source,
+            status: metadata.topologySnapshot.status,
+            entityCounts: metadata.topologySnapshot.entityCounts,
+            entityCount: metadata.topologySnapshot.entityCount,
+            entities: metadata.topologySnapshot.entities,
+            unsupportedEntityKinds:
+              metadata.topologySnapshot.unsupportedEntityKinds,
+            adjacencyAvailable: metadata.topologySnapshot.adjacencyAvailable,
+            signatureAlgorithm: metadata.topologySnapshot.signatureAlgorithm,
+            signature: metadata.topologySnapshot.signature,
+            diagnostics: metadata.topologySnapshot.diagnostics.map(
+              createCadExactMetadataDiagnostic
+            )
+          }
+        }
+      : {}),
     diagnostics: metadata.diagnostics.map(createCadExactMetadataDiagnostic)
   };
 }
@@ -947,10 +889,6 @@ export function isExactMetadataSource(source: {
     source.kind === "edgeFinish" ||
     source.kind === "sweep" ||
     source.kind === "loft" ||
-    source.kind === "linearPattern" ||
-    source.kind === "circularPattern" ||
-    source.kind === "mirror" ||
-    source.kind === "shell" ||
     source.kind === "exactBody" ||
     source.kind === "importedBody"
   );
@@ -983,15 +921,6 @@ function getUnsupportedExactMetadataSourceMessage(
   }
 
   if (source.kind === "loft") {
-    return source.placementError;
-  }
-
-  if (
-    source.kind === "linearPattern" ||
-    source.kind === "circularPattern" ||
-    source.kind === "mirror" ||
-    source.kind === "shell"
-  ) {
     return source.placementError;
   }
 

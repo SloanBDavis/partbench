@@ -2342,18 +2342,29 @@ function validateRequest(
       brepByteLength += body.brepByteLength;
     }
   } else if (request.op === "geometry.linearPattern") {
-    if (!isUnitVec3(request.direction)) {
-      return {
-        code: "INVALID_DIMENSIONS",
-        message: "Linear pattern direction must be a finite unit Vec3."
-      };
-    }
-  } else if (request.op === "geometry.circularPattern") {
-    if (!isVec3(request.axis.origin) || !isUnitVec3(request.axis.direction)) {
+    if (
+      !isUnitVec3(request.direction) ||
+      !isPositiveFiniteNumber(request.spacing) ||
+      !isValidArtifactPatternInstanceCount(request.instanceCount)
+    ) {
       return {
         code: "INVALID_DIMENSIONS",
         message:
-          "Circular pattern axis must contain a finite origin and unit direction."
+          "Linear pattern requires a finite unit direction, positive spacing, and 2 through 4096 instances."
+      };
+    }
+  } else if (request.op === "geometry.circularPattern") {
+    if (
+      !isVec3(request.axis.origin) ||
+      !isUnitVec3(request.axis.direction) ||
+      !isPositiveFiniteNumber(request.totalAngleDegrees) ||
+      request.totalAngleDegrees > 360 ||
+      !isValidArtifactPatternInstanceCount(request.instanceCount)
+    ) {
+      return {
+        code: "INVALID_DIMENSIONS",
+        message:
+          "Circular pattern requires a finite axis, angle through 360°, and 2 through 4096 instances."
       };
     }
   } else if (request.op === "geometry.mirror") {

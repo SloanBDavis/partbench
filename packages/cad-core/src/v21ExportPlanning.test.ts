@@ -239,10 +239,10 @@ describe("V21 exact export planning", () => {
       );
       if (status === "ready") {
         expect(observed[0]?.downstreamReadiness).toMatchObject([
-          { operation: "holeTarget", status: "pending" },
-          { operation: "patternSeed", status: "pending" },
-          { operation: "mirrorSeed", status: "pending" },
-          { operation: "shellTarget", status: "pending" }
+          { operation: "holeTarget", status: "ready" },
+          { operation: "patternSeed", status: "ready" },
+          { operation: "mirrorSeed", status: "ready" },
+          { operation: "shellTarget", status: "ready" }
         ]);
       }
     }

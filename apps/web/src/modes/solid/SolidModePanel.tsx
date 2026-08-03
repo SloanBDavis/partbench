@@ -1395,8 +1395,13 @@ function ShellFields({
   ) => void;
   readonly onChange: (draft: FeatureShellForm) => void;
 }) {
+  const targetFaceChoices = faceChoices.filter(
+    (choice) =>
+      choice.targetBodyId === undefined ||
+      choice.targetBodyId === draft.targetBodyId
+  );
   const selectedFaceKeys = draft.openFaceRefs
-    .map((face) => findChoiceKey(faceChoices, face))
+    .map((face) => findChoiceKey(targetFaceChoices, face))
     .filter((key): key is string => Boolean(key));
   return (
     <>
@@ -1413,13 +1418,17 @@ function ShellFields({
         disabled={lockedTarget}
         required
         onCollect={() => onCollect("targetBody", ["body"])}
-        onChange={(targetBodyId) => onChange({ ...draft, targetBodyId })}
-        onClear={() => onChange({ ...draft, targetBodyId: "" })}
+        onChange={(targetBodyId) =>
+          onChange({ ...draft, targetBodyId, openFaceRefs: [] })
+        }
+        onClear={() =>
+          onChange({ ...draft, targetBodyId: "", openFaceRefs: [] })
+        }
       />
       <MultiChoiceCollector
         label="Open faces"
         acceptedKinds={["face", "named face"]}
-        choices={faceChoices}
+        choices={targetFaceChoices}
         selectedKeys={selectedFaceKeys}
         collecting={collecting === "openFaces"}
         onCollect={() => onCollect("openFaces", ["face", "named face"])}

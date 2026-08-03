@@ -13,6 +13,8 @@ import type {
 } from "@web-cad/cad-protocol";
 import type { CadDocument } from "./engine";
 
+export const CAD_PATTERN_COMMAND_INSTANCE_LIMIT = 4_096;
+
 const DOWNSTREAM_OPERATION_SHAPE_POLICY = {
   holeTarget: "singleShapeOneOrMoreSolids",
   patternSeed: "singleShapeOneOrMoreSolids",
@@ -90,6 +92,16 @@ export function evaluateCadBodyDependencies(
     if (!frame.dependencies) {
       const body = bodyById.get(frame.bodyId);
       if (!body) return { status: "missing-source", cycle: false };
+      const feature = body.featureId
+        ? document.features.get(body.featureId)
+        : undefined;
+      if (
+        (feature?.kind === "linearPattern" ||
+          feature?.kind === "circularPattern") &&
+        feature.instanceCount > CAD_PATTERN_COMMAND_INSTANCE_LIMIT
+      ) {
+        return { status: "unsupported", cycle: false };
+      }
       nodeCount += 1;
       if (
         nodeCount > CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxSourceGraphNodes

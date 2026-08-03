@@ -3,6 +3,7 @@ import type {
   GeometryKernelExactBodyArtifact,
   GeometryKernelExactTopologyCheckpointPayload,
   GeometryKernelExactBodyMetadata,
+  GeometryKernelExactTopologySnapshot,
   GeometryKernelImportedBodyPayload,
   GeometryKernelStepImportDiagnostic,
   GeometryKernelGeneratedReferences,
@@ -277,7 +278,9 @@ export type DerivedGeometryEdgeFinishInput =
       readonly radius: number;
     };
 
-export type DerivedExactBodyMetadata = GeometryKernelExactBodyMetadata;
+export type DerivedExactBodyMetadata = GeometryKernelExactBodyMetadata & {
+  readonly topologySnapshot?: GeometryKernelExactTopologySnapshot;
+};
 export type DerivedExactTopologyCheckpointPayload =
   GeometryKernelExactTopologyCheckpointPayload;
 
@@ -327,16 +330,6 @@ export interface DerivedExactMetadataInput {
       }
     | ({ readonly kind: "sweep" } & Omit<DerivedGeometrySweepInput, "id">)
     | ({ readonly kind: "loft" } & Omit<DerivedGeometryLoftInput, "id">)
-    | ({ readonly kind: "linearPattern" } & Omit<
-        DerivedGeometryLinearPatternInput,
-        "id"
-      >)
-    | ({ readonly kind: "circularPattern" } & Omit<
-        DerivedGeometryCircularPatternInput,
-        "id"
-      >)
-    | ({ readonly kind: "mirror" } & Omit<DerivedGeometryMirrorInput, "id">)
-    | ({ readonly kind: "shell" } & Omit<DerivedGeometryShellInput, "id">)
     | { readonly kind: "importedBody"; readonly brepBytes: Uint8Array }
     | {
         readonly kind: "hole";

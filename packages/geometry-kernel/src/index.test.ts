@@ -1641,6 +1641,48 @@ describe("geometry-kernel facade", () => {
     OCCT_WASM_TEST_TIMEOUT_MS
   );
 
+  it.each([
+    {
+      op: "geometry.linearPattern" as const,
+      direction: [1, 0, 0] as const,
+      spacing: 1
+    },
+    {
+      op: "geometry.circularPattern" as const,
+      axis: {
+        origin: [0, 0, 0] as const,
+        direction: [0, 0, 1] as const
+      },
+      totalAngleDegrees: 360
+    }
+  ])(
+    "rejects over-limit $op requests before geometry work",
+    async (pattern) => {
+      const response = await executeGeometryKernelRequest({
+        id: `over-limit-${pattern.op}`,
+        version: "geometry-kernel.v1",
+        seed: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 1,
+            height: 1
+          },
+          depth: 1
+        },
+        instanceCount: 4_097,
+        ...pattern
+      });
+
+      expect(response).toMatchObject({
+        ok: false,
+        error: { code: "INVALID_DIMENSIONS" }
+      });
+    }
+  );
+
   it(
     "mirrors a seed body across a plane without the original through the isolated OCCT WASM adapter",
     async () => {

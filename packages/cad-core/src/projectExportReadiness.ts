@@ -1128,6 +1128,15 @@ function reconcileCurrentExactResult(
   }
 
   const dependency = evaluateCadBodyDependencies(document, bodies, body.id);
+  const suppliedShapePolicies = new Set(
+    result.downstreamReadiness?.flatMap((entry) =>
+      entry.shapePolicy ? [entry.shapePolicy] : []
+    )
+  );
+  const suppliedShapePolicy =
+    suppliedShapePolicies.size === 1
+      ? [...suppliedShapePolicies][0]
+      : undefined;
   return {
     ...result,
     downstreamReadiness: CAD_DOWNSTREAM_BODY_OPERATIONS.map((operation) => {
@@ -1142,7 +1151,7 @@ function reconcileCurrentExactResult(
         exactStatus: result.status,
         shapePolicy:
           result.status === "ready"
-            ? result.artifactEvidence?.shapePolicy
+            ? (result.artifactEvidence?.shapePolicy ?? suppliedShapePolicy)
             : undefined,
         diagnostics: result.diagnostics
       }).readiness;

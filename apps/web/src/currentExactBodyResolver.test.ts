@@ -29,6 +29,7 @@ import {
   createCurrentExactBodyArtifactSource,
   getCurrentExactBodyArtifactShapePolicy,
   getReadyRuntimeExactSources,
+  preflightCurrentExactArtifactOperandSource,
   resolveCurrentExactBodies,
   type CurrentExactBodyResolution,
   type CurrentExactBodyResolverInput
@@ -57,10 +58,15 @@ describe("currentExactBodyResolver", () => {
       );
       for (const resolution of active) {
         if (resolution.status === "ready") {
-          const source = createCurrentExactBodyArtifactSource(
-            resolution.source
-          );
-          expect(getCurrentExactBodyArtifactShapePolicy(source)).toBe(
+          const shapePolicy = resolution.artifactDependency
+            ? preflightCurrentExactArtifactOperandSource(
+                resolution.source,
+                "singleSolid"
+              )
+            : getCurrentExactBodyArtifactShapePolicy(
+                createCurrentExactBodyArtifactSource(resolution.source)
+              );
+          expect(shapePolicy).toBe(
             V21_EXACT_BODY_SOURCE_POLICY[resolution.sourceType].shapePolicy
           );
         }
@@ -89,28 +95,26 @@ describe("currentExactBodyResolver", () => {
       for (const resolution of active) {
         if (resolution.status !== "ready") continue;
         expect(
-          getCurrentExactBodyArtifactShapePolicy(
-            createCurrentExactBodyArtifactSource(resolution.source)
-          )
+          resolution.artifactDependency
+            ? preflightCurrentExactArtifactOperandSource(
+                resolution.source,
+                "singleSolid"
+              )
+            : getCurrentExactBodyArtifactShapePolicy(
+                createCurrentExactBodyArtifactSource(resolution.source)
+              )
         ).toBe(V21_EXACT_BODY_SOURCE_POLICY[resolution.sourceType].shapePolicy);
         if (
-          resolution.source.kind === "shell" &&
-          resolution.source.openFaceStableIds.some(
-            (stableId) => !stableId.startsWith("snapshot-local:face:")
-          )
-        ) {
-          expect(resolution.artifactDependency).toBeUndefined();
-        } else if (
           resolution.source.kind === "shell" ||
           resolution.source.kind === "linearPattern" ||
           resolution.source.kind === "circularPattern" ||
           resolution.source.kind === "mirror"
         ) {
+          expect(resolution.source).not.toHaveProperty(
+            resolution.source.kind === "shell" ? "target" : "seed"
+          );
           expect(resolution.artifactDependency).toMatchObject({
-            bodyId:
-              resolution.source.kind === "shell"
-                ? resolution.source.target.id
-                : resolution.source.seed.id,
+            bodyId: expect.any(String),
             sourceIdentitySignature: expect.stringMatching(
               /^body-topology-source:v1:/
             ),
@@ -121,43 +125,34 @@ describe("currentExactBodyResolver", () => {
     }
   });
 
-  it("accepts an artifact-backed downstream seed while rejecting an invalid operation reference", () => {
+  it("resolves artifact-backed downstream operations without an embedded seed recipe", () => {
     const engine = new CadEngine();
     engine.applyBatch(createV15ReleaseSampleBatch("v15-linear-pattern").ops);
     const context = createResolverContext(engine);
     const feature = context.input.features.find(
       (candidate) => candidate.kind === "linearPattern"
     );
-    const source = feature
-      ? context.input.geometrySources.find(
-          (candidate) =>
-            candidate.id === feature.bodyId &&
-            candidate.kind === "linearPattern"
-        )
-      : undefined;
-    if (
-      !feature ||
-      feature.kind !== "linearPattern" ||
-      !source ||
-      source.kind !== "linearPattern"
-    ) {
+    if (!feature || feature.kind !== "linearPattern") {
       throw new Error("Expected linear pattern fixture.");
     }
-    const artifactBacked = {
-      ...source,
-      seed: {
-        ...source.seed,
-        placementError: "Seed is not an embedded extrude-family recipe."
-      },
-      placementError: "Seed is not an embedded extrude-family recipe."
-    };
-
-    expect(
-      resolveWithSource(context.input, feature.bodyId, artifactBacked)
-    ).toMatchObject({
+    const artifactBacked = resolveCurrentExactBodies({
+      ...context.input,
+      geometrySources: context.input.geometrySources
+    }).find((resolution) => resolution.bodyId === feature.bodyId);
+    expect(artifactBacked).toMatchObject({
       status: "ready",
+      source: {
+        kind: "linearPattern",
+        direction: expect.any(Array),
+        spacing: feature.spacing,
+        instanceCount: feature.instanceCount
+      },
       artifactDependency: { bodyId: feature.seedBodyId }
     });
+    if (artifactBacked?.status === "ready") {
+      expect(artifactBacked.source).not.toHaveProperty("seed");
+      expect(artifactBacked.source).not.toHaveProperty("placementError");
+    }
 
     const invalidFeature = {
       ...feature,
@@ -180,14 +175,121 @@ describe("currentExactBodyResolver", () => {
       features: context.input.features.map((candidate) =>
         candidate.id === feature.id ? invalidFeature : candidate
       ),
-      geometrySources: context.input.geometrySources.map((candidate) =>
-        candidate.id === feature.bodyId ? artifactBacked : candidate
+      geometrySources: context.input.geometrySources.filter(
+        (candidate) => candidate.id !== feature.bodyId
       )
     }).find((resolution) => resolution.bodyId === feature.bodyId);
     expect(invalid).toMatchObject({
       status: "blocked",
       diagnostics: [{ message: expect.stringMatching(/direction.*resolves/i) }]
     });
+  });
+
+  it("resolves an acyclic imported pattern chain without recipe sources", () => {
+    const engine = new CadEngine();
+    engine.applyBatch(createV21ReleaseSampleBatch("v21-imported-body").ops);
+    const imported = createResolverContext(engine, [
+      createImportedCheckpointPayload()
+    ]).input;
+    const importedBody = imported.bodies[0]!;
+    const importedFeature = imported.features[0]!;
+    const firstBodyId = "recursive_pattern_1";
+    const secondBodyId = "recursive_pattern_2";
+    const firstFeatureId = "recursive_pattern_feature_1";
+    const secondFeatureId = "recursive_pattern_feature_2";
+    const direction = { kind: "globalAxis" as const, axis: "X" as const };
+    const firstFeature: CadFeatureSummary = {
+      id: firstFeatureId,
+      kind: "linearPattern",
+      partId: "part:default",
+      bodyId: firstBodyId,
+      seedBodyId: importedBody.id,
+      direction,
+      spacing: 2,
+      instanceCount: 2,
+      instances: [],
+      source: {
+        type: "linearPatternFeature",
+        seedBodyId: importedBody.id,
+        direction
+      }
+    };
+    const secondFeature: CadFeatureSummary = {
+      ...firstFeature,
+      id: secondFeatureId,
+      bodyId: secondBodyId,
+      seedBodyId: firstBodyId,
+      direction: { kind: "globalAxis", axis: "Y" },
+      source: {
+        type: "linearPatternFeature",
+        seedBodyId: firstBodyId,
+        direction: { kind: "globalAxis", axis: "Y" }
+      }
+    };
+    const firstBody: CadBodySnapshot = {
+      id: firstBodyId,
+      kind: "solid",
+      partId: "part:default",
+      featureId: firstFeatureId,
+      consumedByFeatureId: secondFeatureId,
+      source: {
+        type: "linearPatternFeature",
+        featureId: firstFeatureId,
+        seedBodyId: importedBody.id,
+        direction,
+        spacing: 2,
+        instanceCount: 2,
+        instances: []
+      }
+    };
+    const secondBody: CadBodySnapshot = {
+      ...firstBody,
+      id: secondBodyId,
+      featureId: secondFeatureId,
+      consumedByFeatureId: undefined,
+      source: {
+        type: "linearPatternFeature",
+        featureId: secondFeatureId,
+        seedBodyId: firstBodyId,
+        direction: { kind: "globalAxis", axis: "Y" },
+        spacing: 2,
+        instanceCount: 2,
+        instances: []
+      }
+    };
+    const resolution = resolveCurrentExactBodies({
+      ...imported,
+      bodies: [
+        { ...importedBody, consumedByFeatureId: firstFeatureId },
+        firstBody,
+        secondBody
+      ],
+      features: [importedFeature, firstFeature, secondFeature],
+      geometrySources: [],
+      artifactGeometrySources: [],
+      sourceIdentitySignaturesByBodyId: new Map([
+        ...imported.sourceIdentitySignaturesByBodyId,
+        [firstBodyId, `body-topology-source:v1:${"1".repeat(64)}`],
+        [secondBodyId, `body-topology-source:v1:${"2".repeat(64)}`]
+      ])
+    }).find((candidate) => candidate.bodyId === secondBodyId);
+
+    expect(resolution).toMatchObject({
+      status: "ready",
+      source: { kind: "linearPattern" },
+      artifactDependency: {
+        bodyId: firstBodyId,
+        source: { kind: "linearPattern" },
+        artifactDependency: {
+          bodyId: importedBody.id,
+          source: { kind: "importedBody" }
+        }
+      }
+    });
+    if (resolution?.status === "ready") {
+      expect(resolution.source).not.toHaveProperty("seed");
+      expect(resolution.artifactDependency?.source).not.toHaveProperty("seed");
+    }
   });
 
   it("binds primitive fields and checkpoint B-rep evidence into cache identity", () => {

@@ -608,6 +608,32 @@ export type CadOp =
   | TopologyAnchorCreateOp
   | TopologyAnchorRepairOp;
 
+export const CAD_EXACT_DOWNSTREAM_GEOMETRY_OPS = [
+  "feature.hole",
+  "feature.updateHole",
+  "feature.linearPattern",
+  "feature.updateLinearPattern",
+  "feature.circularPattern",
+  "feature.updateCircularPattern",
+  "feature.mirror",
+  "feature.updateMirror",
+  "feature.shell",
+  "feature.updateShell"
+] as const satisfies readonly CadOp["op"][];
+
+export type CadExactDownstreamGeometryOp = Extract<
+  CadOp,
+  { readonly op: (typeof CAD_EXACT_DOWNSTREAM_GEOMETRY_OPS)[number] }
+>;
+
+export function isCadExactDownstreamGeometryOp(
+  op: CadOp
+): op is CadExactDownstreamGeometryOp {
+  return (CAD_EXACT_DOWNSTREAM_GEOMETRY_OPS as readonly string[]).includes(
+    op.op
+  );
+}
+
 export type CadV19Op =
   | SketchCurveEditOp
   | SketchAddSlotOp
@@ -6618,15 +6644,20 @@ export interface CadSelectionReferenceIssue {
   readonly received?: string;
 }
 
-export interface CadSelectionReferenceCommandTarget {
-  readonly type: "generatedReference";
-  readonly bodyId: BodyId;
-  readonly stableId: string;
-  readonly kind: CadGeneratedEntityKind;
-  readonly topologyAnchorId?: string;
-  readonly checkpointId?: string;
-  readonly referenceName?: NamedReferenceName;
-}
+export type CadSelectionReferenceCommandTarget =
+  | {
+      readonly type: "body";
+      readonly bodyId: BodyId;
+    }
+  | {
+      readonly type: "generatedReference";
+      readonly bodyId: BodyId;
+      readonly stableId: string;
+      readonly kind: CadGeneratedEntityKind;
+      readonly topologyAnchorId?: string;
+      readonly checkpointId?: string;
+      readonly referenceName?: NamedReferenceName;
+    };
 
 export type CadSelectionReferenceCandidateSource =
   | "bodySelection"
@@ -6637,12 +6668,24 @@ export type CadSelectionReferenceCandidateSource =
 export interface CadSelectionReferenceCandidate {
   readonly source: CadSelectionReferenceCandidateSource;
   readonly target: CadSelectionReferenceCommandTarget;
-  readonly reference: CadGeneratedReference;
+  readonly reference: CadGeneratedReference | CadSemanticBodyReference;
   readonly commandable: boolean;
   readonly commandOperations: readonly CadSelectionReferenceOperation[];
   readonly label: string;
   readonly description?: string;
   readonly issues: readonly CadSelectionReferenceIssue[];
+}
+
+/** Whole-body selection proof for bodies without feature-generated references. */
+export interface CadSemanticBodyReference {
+  readonly kind: "body";
+  readonly stableId: string;
+  readonly label: string;
+  readonly description?: string;
+  readonly eligibleOperations: readonly CadSelectionReferenceOperation[];
+  readonly bodyId: BodyId;
+  readonly ownerPartId: PartId;
+  readonly sourceFeatureId: FeatureId;
 }
 
 export type CadDependencyHealthStatus =
@@ -7479,7 +7522,10 @@ export interface CadBodyExactTopologySnapshot {
   readonly entityCounts: CadBodyExactTopologyEntityCounts;
   readonly entityCount: number;
   readonly entities: readonly CadBodyExactTopologyEntityDescriptor[];
-  readonly unsupportedEntityKinds: readonly CadTopologyEntityKind[];
+  readonly unsupportedEntityKinds: readonly (
+    | CadTopologyEntityKind
+    | "solid"
+  )[];
   readonly adjacencyAvailable: boolean;
   readonly signatureAlgorithm: "partbench-derived-topology-snapshot-v1";
   readonly signature: string;

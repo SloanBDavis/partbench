@@ -35,8 +35,7 @@ import {
   type DerivedHoleGeometrySource,
   type DerivedRevolveGeometrySource,
   type DerivedSweepGeometrySource,
-  type DerivedLoftGeometrySource,
-  type DerivedLinearPatternGeometrySource
+  type DerivedLoftGeometrySource
 } from "./derivedGeometry";
 import { createDerivedGeometrySourcesFromDocument } from "./derivedGeometrySources";
 import type {
@@ -111,28 +110,6 @@ describe("derivedExactMetadata", () => {
     await flushPromises();
     expect(attempts).toBe(2);
     expect(service.getSnapshot().entries[0]?.status).toBe("ready");
-  });
-
-  it("builds exact metadata inputs for pattern sources", () => {
-    const seed = createExtrudeSource("body_seed");
-    const source: DerivedLinearPatternGeometrySource = {
-      id: "body_pattern",
-      kind: "linearPattern",
-      seed,
-      direction: [1, 0, 0],
-      spacing: 3,
-      instanceCount: 3
-    };
-    expect(createExactMetadataRuntimeInput(source)).toEqual({
-      id: "body_pattern",
-      source: {
-        kind: "linearPattern",
-        seed: expect.objectContaining({ kind: "extrude", depth: seed.depth }),
-        direction: [1, 0, 0],
-        spacing: 3,
-        instanceCount: 3
-      }
-    });
   });
 
   it("builds exact metadata inputs for imported BRep checkpoints", () => {

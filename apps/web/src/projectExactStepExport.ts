@@ -1,13 +1,16 @@
 import {
   createCadProjectSourceIdentity,
+  sha256Hex,
   type CadEngine
 } from "@web-cad/cad-core";
 import {
   CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS,
   validateCadExactExportPlan,
+  type CadBodyDerivedExactMetadataSnapshot,
   type CadExactExportPlan,
   type CadExportDiagnostic,
   type CadExportDiagnosticCode,
+  type FeatureShellOpenFaceRef,
   type ProjectExactExportQueryResponse
 } from "@web-cad/cad-protocol";
 import {
@@ -42,6 +45,7 @@ export interface ProjectExactStepExportExecutionInput {
   >;
   readonly onProgress?: (progress: ProjectExactStepExportProgress) => void;
   readonly generation?: number;
+  readonly existingArtifacts?: readonly CurrentExactBodyArtifactEvidence[];
 }
 
 type CurrentExactArtifactNode =
@@ -91,6 +95,7 @@ export async function runProjectExactStepExport(input: {
   readonly currentSources: readonly DerivedExactMetadataSource[];
   readonly projections: readonly CurrentExactResultProjection[];
   readonly resolutions: readonly CurrentExactBodyResolution[];
+  readonly existingArtifacts?: readonly CurrentExactBodyArtifactEvidence[];
   readonly runtime: Pick<
     DerivedGeometryRuntime,
     | "exactBodyArtifact"
@@ -178,6 +183,7 @@ export async function runProjectExactStepExport(input: {
       engine: input.engine,
       exactExport,
       resolutions: input.resolutions,
+      existingArtifacts: input.existingArtifacts,
       runtime: input.runtime,
       generation,
       onProgress: (progress) => {
@@ -292,6 +298,8 @@ export interface CurrentExactBodyArtifactBuildInput {
   readonly units: CadExactExportPlan["units"];
   readonly assertCurrent: () => void;
   readonly generation?: number;
+  readonly existingArtifacts?: readonly CurrentExactBodyArtifactEvidence[];
+  readonly executionIntent?: "user" | "exact";
   readonly userKind?: "preflight" | "export";
   readonly requestIdPrefix?: string;
   readonly onArtifactBuilt?: (input: {
@@ -309,6 +317,8 @@ export async function buildCurrentExactBodyArtifacts({
   units,
   assertCurrent,
   generation: expectedGeneration,
+  existingArtifacts = [],
+  executionIntent = "user",
   userKind = "export",
   requestIdPrefix = "current-exact-artifact",
   onArtifactBuilt
@@ -421,6 +431,25 @@ export async function buildCurrentExactBodyArtifacts({
 
   const artifacts: CurrentExactBodyArtifactEvidence[] = [];
   const artifactsByKey = new Map<string, CurrentExactBodyArtifactEvidence>();
+  for (const existingArtifact of existingArtifacts) {
+    const key = artifactKeysByBodyId.get(existingArtifact.bodyId);
+    const node = key ? nodesByKey.get(key) : undefined;
+    const shapePolicy = key ? shapePoliciesByKey.get(key) : undefined;
+    if (!key || !node || !shapePolicy || artifactsByKey.has(key)) continue;
+    assertArtifactMatchesIdentity(existingArtifact, {
+      bodyId: node.bodyId,
+      sourceType: node.sourceType,
+      sourceIdentitySignature: node.sourceIdentitySignature,
+      sourceCacheKeySha256: node.cacheKeySha256,
+      sourceGraphNodeCount: node.artifactDependency
+        ? 2
+        : node.sourceGraphNodeCount,
+      shapePolicy,
+      units,
+      ...(selectedKeys.has(key) ? { documentSourceIdentity } : {})
+    });
+    artifactsByKey.set(key, existingArtifact);
+  }
   const buildArtifact = async (
     root: CurrentExactArtifactNode
   ): Promise<CurrentExactBodyArtifactEvidence> => {
@@ -446,9 +475,18 @@ export async function buildCurrentExactBodyArtifacts({
         node.bodyId,
         node.sourceIdentitySignature
       );
+      const shellOpenFaceLocalIds =
+        node.source.kind === "shell" && dependencyArtifact
+          ? resolveCurrentShellArtifactFaceLocalIds(
+              engine,
+              node.source.openFaceRefs,
+              dependencyArtifact
+            )
+          : undefined;
       const source = createCurrentExactArtifactOperandSource(
         node.source,
-        dependencyArtifact
+        dependencyArtifact,
+        shellOpenFaceLocalIds
       );
       const sourceGraphNodeCount = dependencyArtifact
         ? 2
@@ -473,7 +511,13 @@ export async function buildCurrentExactBodyArtifacts({
           shapePolicy,
           source
         },
-        { intent: "user", userKind }
+        executionIntent === "user"
+          ? { intent: "user", userKind }
+          : {
+              sourceId: node.bodyId,
+              cacheKey: key,
+              documentRevision: generation
+            }
       );
       assertArtifactMatchesIdentity(result.artifact, {
         bodyId: node.bodyId,
@@ -566,7 +610,8 @@ export async function executeProjectExactStepExport({
   resolutions,
   runtime,
   onProgress,
-  generation: expectedGeneration
+  generation: expectedGeneration,
+  existingArtifacts
 }: ProjectExactStepExportExecutionInput): Promise<ProjectExactStepExportResult> {
   const plan = requireReadyPlan(exactExport);
   assertExactExportPlanCurrent(engine, plan);
@@ -614,6 +659,7 @@ export async function executeProjectExactStepExport({
       units: plan.units,
       assertCurrent: () => assertExactExportPlanCurrent(engine, plan),
       generation,
+      existingArtifacts,
       requestIdPrefix: "exact-export-artifact",
       onArtifactBuilt: ({ bodyId, completedBodyCount, totalBodyCount }) =>
         onProgress?.({
@@ -745,25 +791,32 @@ function assertArtifactMatchesIdentity(
     readonly sourceGraphNodeCount: number;
     readonly shapePolicy: GeometryKernelExactBodyArtifact["shapePolicy"];
     readonly units: CadExactExportPlan["units"];
-    readonly documentSourceIdentity: CadExactExportPlan["sourceIdentity"];
+    readonly documentSourceIdentity?: CadExactExportPlan["sourceIdentity"];
   }
 ): void {
   if (
     artifact.bodyId !== expected.bodyId ||
     artifact.sourceType !== expected.sourceType ||
-    artifact.documentSourceIdentity.algorithm !==
-      expected.documentSourceIdentity.algorithm ||
-    artifact.documentSourceIdentity.sha256 !==
-      expected.documentSourceIdentity.sha256 ||
+    (expected.documentSourceIdentity !== undefined &&
+      (artifact.documentSourceIdentity.algorithm !==
+        expected.documentSourceIdentity.algorithm ||
+        artifact.documentSourceIdentity.sha256 !==
+          expected.documentSourceIdentity.sha256)) ||
     artifact.bodySourceIdentitySignature !== expected.sourceIdentitySignature ||
     artifact.sourceCacheKeySha256 !== expected.sourceCacheKeySha256 ||
     artifact.sourceGraphNodeCount !== expected.sourceGraphNodeCount ||
     artifact.shapePolicy !== expected.shapePolicy ||
     artifact.units !== expected.units ||
+    artifact.artifactVersion !== "partbench.exact-body-artifact.v1" ||
     artifact.brepFormat !== "occt-brep" ||
+    artifact.brepWriter !== "BRepTools.Write_3" ||
     artifact.brepByteLength !== artifact.brepBytes.byteLength ||
     artifact.brepByteLength <= 0 ||
     !/^[0-9a-f]{64}$/.test(artifact.brepSha256) ||
+    sha256Hex(artifact.brepBytes) !== artifact.brepSha256 ||
+    artifact.metadata.topologyCounts.solidCount <= 0 ||
+    artifact.metadata.topologyCounts.solidCount !==
+      artifact.topologySnapshot.entityCounts.solidCount ||
     !artifact.topologySnapshot.signature
   ) {
     throw new ProjectExactStepExportError(
@@ -775,6 +828,138 @@ function assertArtifactMatchesIdentity(
 
 function createArtifactNodeKey(node: CurrentExactArtifactNode): string {
   return `${node.bodyId}\u0000${node.sourceIdentitySignature}\u0000${node.cacheKeySha256}`;
+}
+
+function resolveCurrentShellArtifactFaceLocalIds(
+  engine: CadEngine,
+  refs: readonly FeatureShellOpenFaceRef[],
+  artifact: CurrentExactBodyArtifactEvidence
+): readonly string[] {
+  if (artifact.topologySnapshot.entityCounts.solidCount !== 1) {
+    throw new ProjectExactStepExportError(
+      "SHELL_TARGET_MULTI_SOLID_UNSUPPORTED",
+      `Shell target ${artifact.bodyId} must contain exactly one solid.`
+    );
+  }
+  if (refs.length === 0) return [];
+
+  const derivedExactMetadata: CadBodyDerivedExactMetadataSnapshot = {
+    bodyId: artifact.bodyId,
+    sourceIdentitySignature: artifact.bodySourceIdentitySignature,
+    status: "ready",
+    metadata: {
+      source: "kernel-derived",
+      confidence: "kernel-derived",
+      topologySnapshot: artifact.topologySnapshot,
+      diagnostics: artifact.topologySnapshot.diagnostics
+    }
+  };
+  const identity = engine.executeQuery({
+    version: "cadops.v1",
+    query: {
+      query: "body.topologyIdentity",
+      bodyId: artifact.bodyId,
+      derivedExactMetadata
+    }
+  });
+  if (!identity.ok || identity.query !== "body.topologyIdentity") {
+    throw new ProjectExactStepExportError(
+      "EXPORT_EXACT_ARTIFACT_INVALID",
+      identity.ok
+        ? `Body ${artifact.bodyId} returned ${identity.query} while resolving shell faces.`
+        : identity.error.message
+    );
+  }
+
+  const document = engine.getDocument();
+  return refs.map((ref) => {
+    let label: string;
+    let matches: typeof identity.candidates;
+    if (ref.kind === "generatedFace") {
+      label = ref.stableId;
+      matches =
+        ref.bodyId === artifact.bodyId
+          ? identity.candidates.filter(
+              (candidate) => candidate.stableId === ref.stableId
+            )
+          : [];
+    } else if (ref.kind === "namedReference") {
+      const named = document.namedReferences.get(ref.name);
+      label = ref.name;
+      matches =
+        named?.kind === "face" && named.bodyId === artifact.bodyId
+          ? identity.candidates.filter(
+              (candidate) => candidate.stableId === named.stableId
+            )
+          : [];
+    } else {
+      const anchor = document.topologyIdentity?.anchors.find(
+        (candidate) => candidate.anchorId === ref.anchorId
+      );
+      label = ref.anchorId;
+      if (
+        !anchor ||
+        anchor.state !== "active" ||
+        anchor.entityKind !== "face" ||
+        anchor.bodyId !== artifact.bodyId ||
+        ref.bodyId !== artifact.bodyId
+      ) {
+        throw new ProjectExactStepExportError(
+          "EXPORT_EXACT_ARTIFACT_INVALID",
+          `Shell topology face ${ref.anchorId} is ${anchor?.state ?? "missing"} on ${artifact.bodyId}.`
+        );
+      }
+      const checkpointEntities = artifact.topologySnapshot.entities.filter(
+        (entity) => entity.localId === anchor.checkpointEntityId
+      );
+      if (
+        checkpointEntities.length === 1 &&
+        checkpointEntities[0]?.kind === "face"
+      ) {
+        return checkpointEntities[0].localId;
+      }
+      if (checkpointEntities.length > 0) {
+        throw new ProjectExactStepExportError(
+          "EXPORT_EXACT_ARTIFACT_INVALID",
+          `Shell topology face ${ref.anchorId} does not identify one face on ${artifact.bodyId}.`
+        );
+      }
+      matches = anchor.stableId
+        ? identity.candidates.filter(
+            (candidate) => candidate.stableId === anchor.stableId
+          )
+        : anchor.sourceSemanticRole
+          ? identity.candidates.filter(
+              (candidate) =>
+                candidate.sourceSemanticRole === anchor.sourceSemanticRole
+            )
+          : [];
+    }
+    const candidate = matches.length === 1 ? matches[0] : undefined;
+    if (
+      !candidate ||
+      candidate.status !== "bound" ||
+      candidate.kind !== "face" ||
+      !candidate.checkpointEntityId
+    ) {
+      throw new ProjectExactStepExportError(
+        "EXPORT_EXACT_ARTIFACT_INVALID",
+        `Shell face ${label} on ${artifact.bodyId} is ${
+          candidate?.status ?? (matches.length > 1 ? "ambiguous" : "missing")
+        } in the current exact topology.`
+      );
+    }
+    const entity = artifact.topologySnapshot.entities.find(
+      (entry) => entry.localId === candidate.checkpointEntityId
+    );
+    if (!entity || entity.kind !== "face") {
+      throw new ProjectExactStepExportError(
+        "EXPORT_EXACT_ARTIFACT_INVALID",
+        `Shell face ${label} does not resolve to a current exact topology face on ${artifact.bodyId}.`
+      );
+    }
+    return entity.localId;
+  });
 }
 
 function retainArtifactEvidence(
@@ -796,7 +981,9 @@ function retainArtifactEvidence(
     brepBytes: artifact.brepBytes,
     brepByteLength: artifact.brepByteLength,
     brepSha256: artifact.brepSha256,
-    topologySignature: artifact.topologySnapshot.signature
+    topologySnapshot: artifact.topologySnapshot,
+    metadata: artifact.metadata,
+    displayMesh: artifact.displayMesh
   };
 }
 
@@ -866,7 +1053,7 @@ function assertStepArtifactMatchesPlan(
   }
 }
 
-function isGeometryCancellation(error: unknown): boolean {
+export function isGeometryCancellation(error: unknown): boolean {
   const code =
     error && typeof error === "object" && "code" in error
       ? String(error.code)

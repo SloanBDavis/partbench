@@ -1,4 +1,10 @@
+import {
+  CAD_DOWNSTREAM_BODY_OPERATIONS,
+  createCadDownstreamBodyPolicyProjection
+} from "@web-cad/cad-core";
 import type {
+  CadExactArtifactEvidence,
+  CadExactBodyShapePolicy,
   CadCurrentExactResultStatus,
   CadCurrentExactResult,
   CadExactResultDiagnostic
@@ -50,6 +56,8 @@ export interface CurrentExactResultProjection {
   readonly ready: boolean;
   readonly diagnostics: readonly CadExactResultDiagnostic[];
   readonly consumers: readonly CurrentExactResultConsumerProjection[];
+  readonly shapePolicy?: CadExactBodyShapePolicy;
+  readonly artifactEvidence?: CadExactArtifactEvidence;
 }
 
 export function createCurrentExactResultProjection(input: {
@@ -128,7 +136,7 @@ export function createCurrentExactResultProjections(input: {
         resolution.source.kind === "checkpointHole" ||
         resolution.source.kind === "checkpointEdgeFinish");
 
-    return createCurrentExactResultProjection({
+    const projection = createCurrentExactResultProjection({
       resolution,
       sourceIdentitySignature: input.sourceIdentitySignaturesByBodyId.get(
         resolution.bodyId
@@ -154,6 +162,14 @@ export function createCurrentExactResultProjections(input: {
         { consumer: "export", required: false, status: "ready" }
       ]
     });
+    const exactShape = projectExactShapeEvidence(
+      resolution,
+      metadataSource,
+      metadataEntriesByBodyId.get(resolution.bodyId)
+    );
+    return projection.status === "ready" && exactShape
+      ? { ...projection, ...exactShape }
+      : projection;
   });
 }
 
@@ -167,6 +183,27 @@ export function toCadCurrentExactResults(
         bodyId: projection.bodyId,
         sourceType: projection.sourceType,
         sourceIdentitySignature: projection.sourceIdentitySignature,
+        ...(projection.artifactEvidence
+          ? { artifactEvidence: projection.artifactEvidence }
+          : {}),
+        ...(projection.shapePolicy
+          ? {
+              downstreamReadiness: CAD_DOWNSTREAM_BODY_OPERATIONS.map(
+                (operation) =>
+                  createCadDownstreamBodyPolicyProjection({
+                    bodyId: projection.bodyId,
+                    sourceType: projection.sourceType,
+                    operation,
+                    lifecycle: "active",
+                    dependencyStatus: "healthy",
+                    dependencyCycle: false,
+                    exactStatus: "ready",
+                    shapePolicy: projection.shapePolicy,
+                    diagnostics: projection.diagnostics
+                  }).readiness
+              )
+            }
+          : {}),
         diagnostics: projection.diagnostics
       };
     }
@@ -188,6 +225,44 @@ export function toCadCurrentExactResults(
           : projection.diagnostics
     };
   });
+}
+
+function projectExactShapeEvidence(
+  resolution: CurrentExactBodyResolution,
+  source: DerivedExactMetadataSource | undefined,
+  entry: DerivedExactMetadataEntry | undefined
+):
+  | {
+      readonly shapePolicy: CadExactBodyShapePolicy;
+      readonly artifactEvidence?: CadExactArtifactEvidence;
+    }
+  | undefined {
+  if (resolution.status !== "ready" || entry?.status !== "ready") {
+    return undefined;
+  }
+  const shapePolicy =
+    entry.metadata.topologyCounts.solidCount === 1
+      ? ("singleSolid" as const)
+      : ("singleShapeOneOrMoreSolids" as const);
+  if (source?.kind !== "exactBody" || source.source.kind !== "bodyArtifact") {
+    return { shapePolicy };
+  }
+  const artifact = source.source;
+  return {
+    shapePolicy,
+    artifactEvidence: {
+      bodyId: resolution.bodyId,
+      sourceType: resolution.sourceType,
+      documentSourceIdentity: artifact.documentSourceIdentity,
+      bodySourceIdentitySignature: artifact.bodySourceIdentitySignature,
+      sourceGraphNodeCount: artifact.sourceGraphNodeCount,
+      brepFormat: artifact.brepFormat,
+      brepByteLength: artifact.brepByteLength,
+      brepSha256: artifact.brepSha256,
+      shapePolicy,
+      topologySignature: artifact.topologySignature
+    }
+  };
 }
 
 function projectDisplayEvidence(

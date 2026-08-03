@@ -7,6 +7,7 @@ import {
 } from "@web-cad/cad-core";
 import type {
   CadBodyDerivedExactMetadataSnapshot,
+  CadOp,
   CadTopologyMatchResult
 } from "@web-cad/cad-protocol";
 import { describe, expect, it, vi } from "vitest";
@@ -3084,6 +3085,111 @@ describe("agent-adapter", () => {
     ).toMatchObject({ targetBodyId: "body_retarget_source" });
   });
 
+  it("keeps pattern, mirror, and shell source-dry-runnable but blocks standalone exact commits", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      {
+        op: "scene.createBox",
+        id: "linear_seed",
+        dimensions: { width: 4, height: 4, depth: 4 }
+      },
+      {
+        op: "scene.createBox",
+        id: "circular_seed",
+        dimensions: { width: 4, height: 4, depth: 4 }
+      },
+      {
+        op: "scene.createBox",
+        id: "mirror_seed",
+        dimensions: { width: 4, height: 4, depth: 4 }
+      },
+      {
+        op: "scene.createBox",
+        id: "shell_target",
+        dimensions: { width: 4, height: 4, depth: 4 }
+      },
+      {
+        op: "feature.linearPattern",
+        id: "linear_existing",
+        bodyId: "body_linear_existing",
+        seedBodyId: "body:linear_seed",
+        direction: { kind: "globalAxis", axis: "x" },
+        spacing: 5,
+        instanceCount: 2
+      },
+      {
+        op: "feature.circularPattern",
+        id: "circular_existing",
+        bodyId: "body_circular_existing",
+        seedBodyId: "body:circular_seed",
+        rotationAxis: { kind: "globalAxis", axis: "z" },
+        totalAngleDegrees: 360,
+        instanceCount: 2
+      },
+      {
+        op: "feature.mirror",
+        id: "mirror_existing",
+        bodyId: "body_mirror_existing",
+        seedBodyId: "body:mirror_seed",
+        mirrorPlane: "XY",
+        includeOriginal: false
+      },
+      {
+        op: "feature.shell",
+        id: "shell_existing",
+        bodyId: "body_shell_existing",
+        targetBodyId: "body:shell_target",
+        wallThickness: 0.2,
+        openFaceRefs: []
+      }
+    ]);
+    const adapter = new CadOpsAgentAdapter(engine);
+    const ops: readonly CadOp[] = [
+      {
+        op: "feature.updateLinearPattern",
+        id: "linear_existing",
+        spacing: 6
+      },
+      {
+        op: "feature.updateCircularPattern",
+        id: "circular_existing",
+        totalAngleDegrees: 180
+      },
+      {
+        op: "feature.updateMirror",
+        id: "mirror_existing",
+        includeOriginal: true
+      },
+      {
+        op: "feature.updateShell",
+        id: "shell_existing",
+        wallThickness: 0.3
+      }
+    ];
+
+    for (const [index, op] of ops.entries()) {
+      expect(
+        adapter.execute({
+          requestId: `agent_exact_dry_run_${index}`,
+          adapterVersion: "web-cad.agent-adapter.v1",
+          batch: { version: "cadops.v1", mode: "dryRun", ops: [op] }
+        })
+      ).toMatchObject({ ok: true, mode: "dryRun" });
+      expect(
+        adapter.execute({
+          requestId: `agent_exact_commit_${index}`,
+          adapterVersion: "web-cad.agent-adapter.v1",
+          permissions: { allowCommit: true },
+          batch: { version: "cadops.v1", mode: "commit", ops: [op] }
+        })
+      ).toMatchObject({
+        ok: false,
+        mode: "commit",
+        error: { code: "UNSUPPORTED_FEATURE_OPERATION", op: op.op }
+      });
+    }
+  });
+
   it("passes sketch.updateEntity profile edits through JSON batch dry-run and commit", () => {
     const adapter = new CadOpsAgentAdapter();
     seedExtrudeFeature(adapter, {
@@ -3397,7 +3503,8 @@ describe("agent-adapter", () => {
         semanticBodySelectionCount: 2,
         generatedReferenceCount: 0,
         semanticBodySelectionStatusCounts: {
-          unsupported: 2
+          resolved: 2,
+          unsupported: 0
         }
       },
       exportReadiness: {
@@ -4127,6 +4234,8 @@ describe("agent-adapter", () => {
               center: [2, 1, 1.5]
             },
             volume: 24,
+            surfaceArea: 52,
+            centroid: [2, 1, 1.5],
             diagnostics: []
           }
         }
@@ -4160,6 +4269,17 @@ describe("agent-adapter", () => {
       exactExport: {
         format: "step",
         bodyIds: ["body_connected_exact"]
+      }
+    });
+    const massProperties = adapter.query({
+      requestId: "agent_connected_exact_mass",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: {
+          query: "body.massProperties",
+          bodyId: "body_connected_exact"
+        }
       }
     });
 
@@ -4200,6 +4320,14 @@ describe("agent-adapter", () => {
         localLocationsAccepted: false,
         browserHandlesAccepted: false,
         opfsLocationsAccepted: false
+      }
+    });
+    expect(massProperties).toMatchObject({
+      ok: true,
+      query: "body.massProperties",
+      massProperties: {
+        bodyId: "body_connected_exact",
+        volume: 24
       }
     });
     expect(JSON.stringify({ response, surface })).not.toMatch(

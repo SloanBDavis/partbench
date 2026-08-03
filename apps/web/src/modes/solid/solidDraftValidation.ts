@@ -1,3 +1,4 @@
+import { CAD_PATTERN_COMMAND_INSTANCE_LIMIT } from "@web-cad/cad-core";
 import type {
   FeatureCircularPatternForm,
   FeatureCompositeExtrudeForm,
@@ -140,29 +141,31 @@ export function validateSolidDraft(
   }
   if (kind === "linearPattern") {
     const form = draft as FeatureLinearPatternForm;
-    if (!form.seedBodyId) return collecting("Select an authored seed body.");
+    if (!form.seedBodyId) return collecting("Select an exact-ready seed body.");
     return positive(form.spacing) &&
       Number.isInteger(form.instanceCount) &&
-      form.instanceCount >= 2
+      form.instanceCount >= 2 &&
+      form.instanceCount <= CAD_PATTERN_COMMAND_INSTANCE_LIMIT
       ? ready()
       : blocked(
-          "Spacing must be positive and instances must be a whole number of at least two."
+          `Spacing must be positive and instances must be a whole number from 2 through ${CAD_PATTERN_COMMAND_INSTANCE_LIMIT}.`
         );
   }
   if (kind === "circularPattern") {
     const form = draft as FeatureCircularPatternForm;
-    if (!form.seedBodyId) return collecting("Select an authored seed body.");
+    if (!form.seedBodyId) return collecting("Select an exact-ready seed body.");
     return positive(form.totalAngleDegrees) &&
       form.totalAngleDegrees <= 360 &&
       Number.isInteger(form.instanceCount) &&
-      form.instanceCount >= 2
+      form.instanceCount >= 2 &&
+      form.instanceCount <= CAD_PATTERN_COMMAND_INSTANCE_LIMIT
       ? ready()
       : blocked(
-          "Angle must be within 360° and instances must be a whole number of at least two."
+          `Angle must be within 360° and instances must be a whole number from 2 through ${CAD_PATTERN_COMMAND_INSTANCE_LIMIT}.`
         );
   }
   const mirror = draft as FeatureMirrorForm;
-  if (!mirror.seedBodyId) return collecting("Select an authored seed body.");
+  if (!mirror.seedBodyId) return collecting("Select an exact-ready seed body.");
   return Number.isFinite(mirror.plane.offset ?? 0)
     ? ready()
     : blocked("Mirror plane offset must be finite.");

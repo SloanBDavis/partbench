@@ -13,7 +13,8 @@ import {
   type CadBodySnapshot,
   type CadBodySource,
   type CadCurrentExactResultStatus,
-  type CadExactResultDiagnostic
+  type CadExactResultDiagnostic,
+  type FeatureShellOpenFaceRef
 } from "@web-cad/cad-protocol";
 
 import type {
@@ -33,6 +34,7 @@ import {
 } from "./derivedExactMetadata";
 import { createBooleanExtrudeRuntimeSource } from "./booleanExtrudeRuntimeSource";
 import type {
+  ExactBodyArtifactLeaf,
   ExactBodyArtifactShapePolicy,
   ExactBodyArtifactSource,
   GeometryKernelExactBodyArtifact
@@ -40,9 +42,48 @@ import type {
 
 export type CurrentExactBodySource =
   | DerivedExactMetadataSource
+  | CurrentExactArtifactOperationSource
   | CurrentExactCheckpointBooleanSource
   | CurrentExactCheckpointHoleSource
   | CurrentExactCheckpointEdgeFinishSource;
+
+export type CurrentExactArtifactOperationSource =
+  | {
+      readonly id: string;
+      readonly kind: "linearPattern";
+      readonly direction: readonly [number, number, number];
+      readonly spacing: number;
+      readonly instanceCount: number;
+      readonly sourceIdentitySignature: string;
+    }
+  | {
+      readonly id: string;
+      readonly kind: "circularPattern";
+      readonly axis: {
+        readonly origin: readonly [number, number, number];
+        readonly direction: readonly [number, number, number];
+      };
+      readonly totalAngleDegrees: number;
+      readonly instanceCount: number;
+      readonly sourceIdentitySignature: string;
+    }
+  | {
+      readonly id: string;
+      readonly kind: "mirror";
+      readonly plane: {
+        readonly point: readonly [number, number, number];
+        readonly normal: readonly [number, number, number];
+      };
+      readonly includeOriginal: boolean;
+      readonly sourceIdentitySignature: string;
+    }
+  | {
+      readonly id: string;
+      readonly kind: "shell";
+      readonly wallThickness: number;
+      readonly openFaceRefs: readonly FeatureShellOpenFaceRef[];
+      readonly sourceIdentitySignature: string;
+    };
 
 export interface CurrentExactCheckpointBooleanSource {
   readonly id: string;
@@ -124,7 +165,10 @@ export type CurrentExactBodyArtifactEvidence = Pick<
   | "brepBytes"
   | "brepByteLength"
   | "brepSha256"
-> & { readonly topologySignature: string };
+  | "topologySnapshot"
+  | "metadata"
+  | "displayMesh"
+>;
 
 export interface CurrentExactBodyResolverInput {
   readonly document: CadDocument;
@@ -185,14 +229,20 @@ const BODY_SOURCE_RESOLVERS = {
   },
   linearPatternFeature: {
     featureKind: "linearPattern",
-    resolve: resolveLegacyRuntimeSource
+    resolve: resolveArtifactOperationSource
   },
   circularPatternFeature: {
     featureKind: "circularPattern",
-    resolve: resolveLegacyRuntimeSource
+    resolve: resolveArtifactOperationSource
   },
-  mirrorFeature: { featureKind: "mirror", resolve: resolveLegacyRuntimeSource },
-  shellFeature: { featureKind: "shell", resolve: resolveLegacyRuntimeSource },
+  mirrorFeature: {
+    featureKind: "mirror",
+    resolve: resolveArtifactOperationSource
+  },
+  shellFeature: {
+    featureKind: "shell",
+    resolve: resolveArtifactOperationSource
+  },
   sweepFeature: { featureKind: "sweep", resolve: resolveLegacyRuntimeSource },
   loftFeature: { featureKind: "loft", resolve: resolveLegacyRuntimeSource },
   importedStepBody: {
@@ -243,6 +293,7 @@ export function getReadyRuntimeExactSources(
 ): readonly DerivedExactMetadataSource[] {
   return resolutions.flatMap((resolution) => {
     if (resolution.status !== "ready") return [];
+    if (isArtifactOperationSource(resolution.source)) return [];
     if (
       isExactMetadataSource(resolution.source) &&
       resolution.source.kind !== "importedBody"
@@ -264,6 +315,11 @@ export function getReadyRuntimeExactSources(
 export function createCurrentExactBodyArtifactSource(
   source: CurrentExactBodySource
 ): ExactBodyArtifactSource {
+  if (isArtifactOperationSource(source)) {
+    throw new Error(
+      `Exact ${source.kind} sources require their artifact dependency.`
+    );
+  }
   if (source.kind === "importedBody") return createCheckpointBodySource(source);
   if (source.kind === "checkpointBoolean") {
     return {
@@ -300,7 +356,8 @@ export function createCurrentExactArtifactOperandSource(
   source: CurrentExactBodySource,
   dependencyArtifact?:
     | GeometryKernelExactBodyArtifact
-    | CurrentExactBodyArtifactEvidence
+    | CurrentExactBodyArtifactEvidence,
+  shellOpenFaceLocalIds?: readonly string[]
 ): ExactBodyArtifactSource {
   if (
     source.kind !== "hole" &&
@@ -312,9 +369,6 @@ export function createCurrentExactArtifactOperandSource(
   ) {
     return createCurrentExactBodyArtifactSource(source);
   }
-  if (source.kind === "shell" && !dependencyArtifact) {
-    return createCurrentExactBodyArtifactSource(source);
-  }
   if (!dependencyArtifact) {
     throw new Error(
       `Exact artifact dependency is unavailable for ${source.kind}.`
@@ -324,28 +378,7 @@ export function createCurrentExactArtifactOperandSource(
     source,
     dependencyArtifact.shapePolicy
   );
-  const leaf = {
-    kind: "bodyArtifact",
-    artifactVersion: dependencyArtifact.artifactVersion,
-    bodyId: dependencyArtifact.bodyId,
-    sourceType: dependencyArtifact.sourceType,
-    documentSourceIdentity: dependencyArtifact.documentSourceIdentity,
-    bodySourceIdentitySignature: dependencyArtifact.bodySourceIdentitySignature,
-    sourceCacheKeySha256: dependencyArtifact.sourceCacheKeySha256,
-    sourceGraphNodeCount: dependencyArtifact.sourceGraphNodeCount,
-    units: dependencyArtifact.units,
-    shapePolicy: dependencyArtifact.shapePolicy,
-    sourceKind: dependencyArtifact.sourceKind,
-    brepFormat: dependencyArtifact.brepFormat,
-    brepWriter: dependencyArtifact.brepWriter,
-    brepBytes: dependencyArtifact.brepBytes,
-    brepByteLength: dependencyArtifact.brepByteLength,
-    brepSha256: dependencyArtifact.brepSha256,
-    topologySignature:
-      "topologySignature" in dependencyArtifact
-        ? dependencyArtifact.topologySignature
-        : dependencyArtifact.topologySnapshot.signature
-  } as const;
+  const leaf = createCurrentExactBodyArtifactLeaf(dependencyArtifact);
 
   switch (source.kind) {
     case "hole":
@@ -374,9 +407,14 @@ export function createCurrentExactArtifactOperandSource(
         plane: source.plane,
         includeOriginal: source.includeOriginal
       };
-    case "shell":
+    case "shell": {
+      const openFaceLocalIds =
+        shellOpenFaceLocalIds ??
+        (source.openFaceRefs.length === 0 ? [] : undefined);
       if (
-        source.openFaceStableIds.some(
+        openFaceLocalIds === undefined ||
+        openFaceLocalIds.length !== source.openFaceRefs.length ||
+        openFaceLocalIds.some(
           (localId) => !/^snapshot-local:face:[1-9][0-9]*$/.test(localId)
         )
       ) {
@@ -388,9 +426,34 @@ export function createCurrentExactArtifactOperandSource(
         kind: "artifactShell",
         target: leaf,
         wallThickness: source.wallThickness,
-        openFaces: source.openFaceStableIds.map((localId) => ({ localId }))
+        openFaces: openFaceLocalIds.map((localId) => ({ localId }))
       };
+    }
   }
+}
+
+export function createCurrentExactBodyArtifactLeaf(
+  artifact: GeometryKernelExactBodyArtifact | CurrentExactBodyArtifactEvidence
+): ExactBodyArtifactLeaf {
+  return {
+    kind: "bodyArtifact",
+    artifactVersion: artifact.artifactVersion,
+    bodyId: artifact.bodyId,
+    sourceType: artifact.sourceType,
+    documentSourceIdentity: artifact.documentSourceIdentity,
+    bodySourceIdentitySignature: artifact.bodySourceIdentitySignature,
+    sourceCacheKeySha256: artifact.sourceCacheKeySha256,
+    sourceGraphNodeCount: artifact.sourceGraphNodeCount,
+    units: artifact.units,
+    shapePolicy: artifact.shapePolicy,
+    sourceKind: artifact.sourceKind,
+    brepFormat: artifact.brepFormat,
+    brepWriter: artifact.brepWriter,
+    brepBytes: artifact.brepBytes,
+    brepByteLength: artifact.brepByteLength,
+    brepSha256: artifact.brepSha256,
+    topologySignature: artifact.topologySnapshot.signature
+  };
 }
 
 export function preflightCurrentExactArtifactOperandSource(
@@ -441,21 +504,13 @@ export function preflightCurrentExactArtifactOperandSource(
       }
       return "singleShapeOneOrMoreSolids";
     case "shell":
-      if (dependencyShapePolicy === undefined) {
-        return getCurrentExactBodyArtifactShapePolicy(
-          createCurrentExactBodyArtifactSource(source)
-        );
-      }
       requireArtifactDependency(source.kind, dependencyShapePolicy);
       if (
         !isPositiveFinite(source.wallThickness) ||
-        source.openFaceStableIds.length >
+        source.openFaceRefs.length >
           CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS.maxSourceGraphNodes ||
-        new Set(source.openFaceStableIds).size !==
-          source.openFaceStableIds.length ||
-        source.openFaceStableIds.some(
-          (localId) => !/^snapshot-local:face:[1-9][0-9]*$/.test(localId)
-        )
+        new Set(source.openFaceRefs.map((ref) => JSON.stringify(ref))).size !==
+          source.openFaceRefs.length
       ) {
         throw new Error("Exact artifact shell parameters are invalid.");
       }
@@ -882,7 +937,7 @@ function createArtifactOperationCacheKey(
         kind: "artifactShell",
         dependency,
         wallThickness: source.wallThickness,
-        openFaceStableIds: source.openFaceStableIds
+        openFaceRefs: source.openFaceRefs
       });
     default:
       return createCurrentExactSourceCacheKey(source);
@@ -894,12 +949,10 @@ function getArtifactOperationError(
   source: CurrentExactBodySource,
   context: ResolverContext
 ): string | undefined {
-  if (feature.kind !== "shell") {
-    try {
-      preflightCurrentExactArtifactOperandSource(source, "singleSolid");
-    } catch (error) {
-      return error instanceof Error ? error.message : String(error);
-    }
+  try {
+    preflightCurrentExactArtifactOperandSource(source, "singleSolid");
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
   }
 
   switch (feature.kind) {
@@ -951,11 +1004,7 @@ function getArtifactOperationError(
       if (source.kind !== "shell") {
         return `Shell feature ${feature.id} has no current artifact operation source.`;
       }
-      return feature.openFaceRefs.length > 0 &&
-        source.openFaceStableIds.length === 0
-        ? (source.placementError ??
-            `Shell feature ${feature.id} has no current open-face references.`)
-        : undefined;
+      return undefined;
     default:
       return undefined;
   }
@@ -1027,12 +1076,7 @@ function getArtifactDependencyBodyId(
     case "hole":
       return feature.targetBodyId;
     case "shell":
-      return source.kind === "shell" &&
-        source.openFaceStableIds.some(
-          (localId) => !/^snapshot-local:face:[1-9][0-9]*$/.test(localId)
-        )
-        ? undefined
-        : feature.targetBodyId;
+      return feature.targetBodyId;
     case "linearPattern":
     case "circularPattern":
     case "mirror":
@@ -1091,6 +1135,100 @@ function resolveLegacyRuntimeSource(
     );
   }
   return { ...source, sourceIdentitySignature };
+}
+
+function resolveArtifactOperationSource(
+  body: CadBodySnapshot,
+  context: ResolverContext,
+  sourceIdentitySignature: string
+): CurrentExactBodySource | CurrentExactBodyResolution {
+  const feature = context.featuresById.get(body.featureId);
+  if (!feature) {
+    return blocked(
+      body,
+      "blocked",
+      "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+      `Body ${body.id} has no current downstream operation source.`
+    );
+  }
+
+  switch (feature.kind) {
+    case "linearPattern": {
+      const direction = resolvePatternDirectionFrame(
+        context.document,
+        feature.direction
+      );
+      return direction.ok
+        ? {
+            id: body.id,
+            kind: "linearPattern",
+            direction: direction.frame,
+            spacing: feature.spacing,
+            instanceCount: feature.instanceCount,
+            sourceIdentitySignature
+          }
+        : blocked(
+            body,
+            "blocked",
+            "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+            direction.message
+          );
+    }
+    case "circularPattern": {
+      const axis = resolvePatternRotationAxisFrame(
+        context.document,
+        feature.rotationAxis
+      );
+      return axis.ok
+        ? {
+            id: body.id,
+            kind: "circularPattern",
+            axis: axis.frame,
+            totalAngleDegrees: feature.totalAngleDegrees,
+            instanceCount: feature.instanceCount,
+            sourceIdentitySignature
+          }
+        : blocked(
+            body,
+            "blocked",
+            "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+            axis.message
+          );
+    }
+    case "mirror": {
+      const plane = resolveMirrorPlaneFrame(context.document, feature.plane);
+      return plane.ok
+        ? {
+            id: body.id,
+            kind: "mirror",
+            plane: plane.frame,
+            includeOriginal: feature.includeOriginal,
+            sourceIdentitySignature
+          }
+        : blocked(
+            body,
+            "blocked",
+            "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+            plane.message
+          );
+    }
+    case "shell": {
+      return {
+        id: body.id,
+        kind: "shell",
+        wallThickness: feature.wallThickness,
+        openFaceRefs: feature.openFaceRefs,
+        sourceIdentitySignature
+      };
+    }
+    default:
+      return blocked(
+        body,
+        "blocked",
+        "EXPORT_EXACT_SOURCE_UNAVAILABLE",
+        `Body ${body.id} is not backed by an artifact downstream operation.`
+      );
+  }
 }
 
 function resolveExtrudeSource(
@@ -1498,6 +1636,7 @@ function validateExactSourceGraph(source: CurrentExactBodySource):
 function getExactSourceChildren(
   source: CurrentExactBodySource
 ): readonly CurrentExactBodySource[] {
+  if (isArtifactOperationSource(source)) return [];
   if (source.kind === "extrudeBoolean") return [source.target, source.tool];
   if (source.kind === "hole" || source.kind === "edgeFinish") {
     return [source.target];
@@ -1519,6 +1658,7 @@ function getExactSourceChildren(
 function createCurrentExactSourceCacheKey(
   source: CurrentExactBodySource
 ): string {
+  if (isArtifactOperationSource(source)) return JSON.stringify(source);
   if (isExactMetadataSource(source)) {
     return createDerivedExactMetadataCacheKey(source);
   }
@@ -1576,6 +1716,17 @@ function isResolution(
   value: CurrentExactBodySource | CurrentExactBodyResolution
 ): value is CurrentExactBodyResolution {
   return "status" in value;
+}
+
+function isArtifactOperationSource(
+  source: CurrentExactBodySource
+): source is CurrentExactArtifactOperationSource {
+  return (
+    source.kind === "linearPattern" ||
+    source.kind === "circularPattern" ||
+    source.kind === "mirror" ||
+    source.kind === "shell"
+  );
 }
 
 function isPrimitiveSource(

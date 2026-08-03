@@ -2,7 +2,10 @@ import {
   CadEngine,
   createCadProjectSourceIdentity,
   createV15ReleaseSampleBatch,
-  type CadFeatureSummary
+  encodeWcadCanonicalCbor,
+  sha256Hex,
+  type CadFeatureSummary,
+  type WcadTopologyCheckpointPayloadInput
 } from "@web-cad/cad-core";
 import type {
   CadBodyDerivedExactMetadataSnapshot,
@@ -138,7 +141,55 @@ describe("projectExactStepExport", () => {
     expect(runtime.artifactInputs[1]?.sourceGraphNodeCount).toBe(2);
   });
 
-  it("preserves the completed semantic open-shell path until Slice D resolves artifact faces", async () => {
+  it("resolves a named shell face against the dependency artifact topology", async () => {
+    const engine = new CadEngine();
+    engine.applyBatch(createV15ReleaseSampleBatch("v15-shell").ops);
+    const shell = getStructure(engine).features.find(
+      (feature) => feature.kind === "shell"
+    );
+    if (!shell) throw new Error("Expected shell fixture.");
+    const stableId = `generated:face:${shell.targetBodyId}:endCap`;
+    const identity = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.topologyIdentity", bodyId: shell.targetBodyId }
+    });
+    if (!identity.ok || identity.query !== "body.topologyIdentity") {
+      throw new Error("Expected shell target topology identity.");
+    }
+    const face = identity.candidates.find(
+      (candidate) => candidate.stableId === stableId
+    );
+    if (!face) throw new Error("Expected generated shell face candidate.");
+    const fixture = createFixtureForEngine(engine, [shell.bodyId]);
+    const runtime = createRuntime({
+      topologyEntitiesByBodyId: new Map([
+        [
+          shell.targetBodyId,
+          [
+            {
+              localId: "snapshot-local:face:4",
+              kind: "face" as const,
+              signature: face.geometrySignature
+            }
+          ]
+        ]
+      ])
+    });
+
+    await executeProjectExactStepExport({ ...fixture, runtime });
+
+    expect(runtime.artifactInputs).toHaveLength(2);
+    expect(runtime.artifactInputs[1]).toMatchObject({
+      bodyId: shell.bodyId,
+      source: {
+        kind: "artifactShell",
+        target: { bodyId: shell.targetBodyId },
+        openFaces: [{ localId: "snapshot-local:face:4" }]
+      }
+    });
+  });
+
+  it("blocks a shell face missing from the current dependency topology", async () => {
     const engine = new CadEngine();
     engine.applyBatch(createV15ReleaseSampleBatch("v15-shell").ops);
     const shell = getStructure(engine).features.find(
@@ -148,16 +199,156 @@ describe("projectExactStepExport", () => {
     const fixture = createFixtureForEngine(engine, [shell.bodyId]);
     const runtime = createRuntime();
 
+    await expect(
+      executeProjectExactStepExport({ ...fixture, runtime })
+    ).rejects.toMatchObject({ code: "EXPORT_EXACT_ARTIFACT_INVALID" });
+    expect(runtime.artifactInputs.map(({ bodyId }) => bodyId)).toEqual([
+      shell.targetBodyId
+    ]);
+  });
+
+  it("resolves a topology anchor by its current checkpoint-local face id", async () => {
+    const { fixture, shell } = createShellCheckpointAnchorFixture();
+    const runtime = createRuntime({
+      topologyEntitiesByBodyId: new Map([
+        [
+          shell.targetBodyId,
+          [
+            {
+              localId: "snapshot-local:face:4",
+              kind: "face" as const,
+              signature: "current-shell-face"
+            }
+          ]
+        ]
+      ])
+    });
+
     await executeProjectExactStepExport({ ...fixture, runtime });
 
-    expect(runtime.artifactInputs).toHaveLength(1);
-    expect(runtime.artifactInputs[0]).toMatchObject({
-      bodyId: shell.bodyId,
-      source: {
-        kind: "shell",
-        openFaceStableIds: [`generated:face:${shell.targetBodyId}:endCap`]
-      }
+    expect(runtime.artifactInputs[1]?.source).toMatchObject({
+      kind: "artifactShell",
+      openFaces: [{ localId: "snapshot-local:face:4" }]
     });
+  });
+
+  it("prefers checkpoint-local face proof when the anchor also has a semantic role", async () => {
+    const { fixture, shell } = createShellCheckpointAnchorFixture(
+      "active",
+      true
+    );
+    const runtime = createRuntime({
+      topologyEntitiesByBodyId: new Map([
+        [
+          shell.targetBodyId,
+          [
+            {
+              localId: "snapshot-local:face:4",
+              kind: "face" as const,
+              signature: "imported-shell-face"
+            }
+          ]
+        ]
+      ])
+    });
+
+    await executeProjectExactStepExport({ ...fixture, runtime });
+
+    expect(runtime.artifactInputs[1]?.source).toMatchObject({
+      kind: "artifactShell",
+      openFaces: [{ localId: "snapshot-local:face:4" }]
+    });
+  });
+
+  it.each([
+    ["missing", []],
+    [
+      "ambiguous",
+      [
+        {
+          localId: "snapshot-local:face:4",
+          kind: "face" as const,
+          signature: "first-shell-face"
+        },
+        {
+          localId: "snapshot-local:face:4",
+          kind: "face" as const,
+          signature: "second-shell-face"
+        }
+      ]
+    ],
+    [
+      "non-face",
+      [
+        {
+          localId: "snapshot-local:face:4",
+          kind: "edge" as const,
+          signature: "current-shell-edge"
+        }
+      ]
+    ]
+  ] as const)(
+    "blocks a %s checkpoint-local shell topology anchor",
+    async (_case, topologyEntities) => {
+      const { fixture, shell } = createShellCheckpointAnchorFixture();
+      const runtime = createRuntime({
+        topologyEntitiesByBodyId: new Map([
+          [shell.targetBodyId, topologyEntities]
+        ])
+      });
+
+      await expect(
+        executeProjectExactStepExport({ ...fixture, runtime })
+      ).rejects.toMatchObject({ code: "EXPORT_EXACT_ARTIFACT_INVALID" });
+      expect(runtime.artifactInputs.map(({ bodyId }) => bodyId)).toEqual([
+        shell.targetBodyId
+      ]);
+    }
+  );
+
+  it("blocks a stale shell topology anchor", async () => {
+    const { fixture, shell } = createShellCheckpointAnchorFixture("stale");
+    const runtime = createRuntime({
+      topologyEntitiesByBodyId: new Map([
+        [
+          shell.targetBodyId,
+          [
+            {
+              localId: "snapshot-local:face:4",
+              kind: "face" as const,
+              signature: "current-shell-face"
+            }
+          ]
+        ]
+      ])
+    });
+
+    await expect(
+      executeProjectExactStepExport({ ...fixture, runtime })
+    ).rejects.toMatchObject({ code: "EXPORT_EXACT_ARTIFACT_INVALID" });
+    expect(runtime.artifactInputs.map(({ bodyId }) => bodyId)).toEqual([
+      shell.targetBodyId
+    ]);
+  });
+
+  it("reports the shell multi-solid policy before building the result", async () => {
+    const engine = new CadEngine();
+    engine.applyBatch(createV15ReleaseSampleBatch("v15-shell").ops);
+    const shell = getStructure(engine).features.find(
+      (feature) => feature.kind === "shell"
+    );
+    if (!shell) throw new Error("Expected shell fixture.");
+    const fixture = createFixtureForEngine(engine, [shell.bodyId]);
+    const runtime = createRuntime({
+      topologySolidCountByBodyId: new Map([[shell.targetBodyId, 2]])
+    });
+
+    await expect(
+      executeProjectExactStepExport({ ...fixture, runtime })
+    ).rejects.toMatchObject({ code: "SHELL_TARGET_MULTI_SOLID_UNSUPPORTED" });
+    expect(runtime.artifactInputs.map(({ bodyId }) => bodyId)).toEqual([
+      shell.targetBodyId
+    ]);
   });
 
   it("preflights cycles and dependency limits before geometry and memoizes sharing", async () => {
@@ -556,7 +747,8 @@ function createFixture(): {
 
 function createFixtureForEngine(
   engine: CadEngine,
-  bodyIds: readonly string[] = ["body:z", "body:n", "body:a"]
+  bodyIds: readonly string[] = ["body:z", "body:n", "body:a"],
+  checkpointPayloads: readonly WcadTopologyCheckpointPayloadInput[] = []
 ): {
   readonly engine: CadEngine;
   readonly exactExport: ProjectExactExportQueryResponse;
@@ -608,8 +800,113 @@ function createFixtureForEngine(
         signatures,
         true
       ),
+      checkpointPayloads,
       sourceIdentitySignaturesByBodyId: signatures
     })
+  };
+}
+
+function createShellCheckpointAnchorFixture(
+  anchorState: "active" | "stale" = "active",
+  withSemanticRole = false
+) {
+  const authoredEngine = new CadEngine();
+  authoredEngine.applyBatch(createV15ReleaseSampleBatch("v15-shell").ops);
+  const structure = getStructure(authoredEngine);
+  const shell = structure.features.find((feature) => feature.kind === "shell");
+  if (!shell) throw new Error("Expected shell fixture.");
+  const targetFeature = structure.features.find(
+    (feature) => feature.bodyId === shell.targetBodyId
+  );
+  if (!targetFeature) throw new Error("Expected shell target feature.");
+  authoredEngine.applyBatch([
+    {
+      op: "topology.checkpoint.create",
+      checkpointId: "checkpoint_shell_target",
+      bodyId: shell.targetBodyId,
+      sourceFeatureId: targetFeature.id,
+      sourceIdentity: {
+        algorithm: "partbench-source-v1",
+        sha256:
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      status: "active"
+    },
+    {
+      op: "topology.anchor.create",
+      anchorId: "anchor_shell_open_face",
+      entityKind: "face",
+      bodyId: shell.targetBodyId,
+      checkpointId: "checkpoint_shell_target",
+      checkpointEntityId: "snapshot-local:face:4",
+      sourceFeatureId: targetFeature.id,
+      ...(withSemanticRole ? { sourceSemanticRole: "imported:face:4" } : {})
+    },
+    {
+      op: "feature.updateShell",
+      id: shell.id,
+      openFaceRefs: [
+        {
+          kind: "topologyAnchor",
+          bodyId: shell.targetBodyId,
+          anchorId: "anchor_shell_open_face"
+        }
+      ]
+    }
+  ]);
+  const document = authoredEngine.getDocument();
+  const topologyIdentity = document.topologyIdentity!;
+  const engine =
+    anchorState === "active"
+      ? authoredEngine
+      : new CadEngine({
+          ...document,
+          topologyIdentity: {
+            ...topologyIdentity,
+            anchors: topologyIdentity.anchors.map((anchor) => ({
+              ...anchor,
+              state:
+                anchor.anchorId === "anchor_shell_open_face"
+                  ? anchorState
+                  : anchor.state
+            }))
+          }
+        });
+  const brepBytes = new Uint8Array([21, 1]);
+  const checkpointPayload: WcadTopologyCheckpointPayloadInput = {
+    checkpointId: "checkpoint_shell_target",
+    bodyId: shell.targetBodyId,
+    sourceFeatureId: targetFeature.id,
+    kernel: {
+      boundary: "geometry-kernel",
+      snapshotAlgorithm: "partbench-derived-topology-snapshot-v1"
+    },
+    tolerance: {
+      linearTolerance: 0.001,
+      angularToleranceDegrees: 0.01
+    },
+    brepBytes,
+    brepByteLength: brepBytes.byteLength,
+    brepSha256: sha256Hex(brepBytes),
+    topologyBytes: encodeWcadCanonicalCbor({
+      sourceKind: "extrude",
+      signature: "topology:shell-target"
+    }),
+    signatureBytes: encodeWcadCanonicalCbor({
+      checkpointId: "checkpoint_shell_target",
+      signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+      signature: "topology:shell-target",
+      entityCount: 0,
+      entities: []
+    })
+  };
+  return {
+    fixture: createFixtureForEngine(
+      engine,
+      [shell.bodyId],
+      [checkpointPayload]
+    ),
+    shell
   };
 }
 
@@ -663,9 +960,44 @@ function createReadyMetadata(
       centroid: [0.5, 0.5, 0.5],
       topologyCounts: {
         solidCount: 1,
-        faceCount: 6,
-        edgeCount: 12,
-        vertexCount: 8
+        faceCount: 0,
+        edgeCount: 0,
+        vertexCount: 0
+      },
+      topologySnapshot: {
+        source: "kernel-derived",
+        status: "ready",
+        entityCounts: {
+          bodyCount: 1,
+          solidCount: 1,
+          faceCount: 0,
+          wireCount: 0,
+          edgeCount: 0,
+          vertexCount: 0,
+          loopCount: 0,
+          coedgeCount: 0,
+          axisCount: 0
+        },
+        entityCount: 2,
+        entities: [
+          {
+            localId: `body:${body.id}`,
+            kind: "body",
+            source: "kernel-derived",
+            signature: `body:${body.id}`
+          },
+          {
+            localId: `solid:${body.id}:1`,
+            kind: "solid",
+            source: "kernel-derived",
+            signature: `solid:${body.id}:1`
+          }
+        ],
+        unsupportedEntityKinds: [],
+        adjacencyAvailable: false,
+        signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+        signature: `topology:${body.id}`,
+        diagnostics: []
       },
       diagnostics: []
     }
@@ -680,6 +1012,15 @@ function createRuntime(
     readonly writerBodyCount?: number;
     readonly onArtifact?: (index: number) => void;
     readonly onWriter?: () => void;
+    readonly topologyEntitiesByBodyId?: ReadonlyMap<
+      string,
+      readonly {
+        readonly localId: string;
+        readonly kind: "face" | "edge";
+        readonly signature: string;
+      }[]
+    >;
+    readonly topologySolidCountByBodyId?: ReadonlyMap<string, number>;
     readonly mutateArtifact?: (
       artifact: GeometryKernelExactBodyArtifact
     ) => GeometryKernelExactBodyArtifact;
@@ -707,6 +1048,28 @@ function createRuntime(
       if (options.artifactError) throw options.artifactError;
       options.onArtifact?.(index);
       const brepBytes = new Uint8Array([index + 1]);
+      const topologyEntities =
+        options.topologyEntitiesByBodyId?.get(input.bodyId) ?? [];
+      const solidCount =
+        options.topologySolidCountByBodyId?.get(input.bodyId) ?? 1;
+      const artifactTopologyEntities = [
+        {
+          localId: `body:${input.bodyId}`,
+          kind: "body" as const,
+          signature: `body:${input.bodyId}`,
+          source: "kernel-derived" as const
+        },
+        ...Array.from({ length: solidCount }, (_, solidIndex) => ({
+          localId: `solid:${input.bodyId}:${solidIndex + 1}`,
+          kind: "solid" as const,
+          signature: `solid:${input.bodyId}:${solidIndex + 1}`,
+          source: "kernel-derived" as const
+        })),
+        ...topologyEntities.map((entity) => ({
+          ...entity,
+          source: "kernel-derived" as const
+        }))
+      ];
       const artifact = {
         artifactVersion: "partbench.exact-body-artifact.v1",
         bodyId: input.bodyId,
@@ -722,10 +1085,49 @@ function createRuntime(
         brepWriter: "BRepTools.Write_3",
         brepBytes,
         brepByteLength: brepBytes.byteLength,
-        brepSha256: String(index + 1).repeat(64),
-        metadata: {} as GeometryKernelExactBodyArtifact["metadata"],
+        brepSha256: sha256Hex(brepBytes),
+        metadata: {
+          sourceKind: input.source.kind,
+          bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+          volume: 1,
+          surfaceArea: 6,
+          centroid: [0.5, 0.5, 0.5],
+          topologyCounts: {
+            solidCount,
+            faceCount: topologyEntities.filter(({ kind }) => kind === "face")
+              .length,
+            edgeCount: topologyEntities.filter(({ kind }) => kind === "edge")
+              .length,
+            vertexCount: 0
+          },
+          measurementSource: "kernel-derived",
+          measurementConfidence: "kernel-derived",
+          diagnostics: []
+        },
         topologySnapshot: {
-          signature: `topology:${input.bodyId}`
+          sourceKind: input.source.kind,
+          status: "ready",
+          entityCounts: {
+            bodyCount: 1,
+            solidCount,
+            faceCount: topologyEntities.filter(({ kind }) => kind === "face")
+              .length,
+            wireCount: 0,
+            loopCount: 0,
+            coedgeCount: 0,
+            edgeCount: topologyEntities.filter(({ kind }) => kind === "edge")
+              .length,
+            vertexCount: 0,
+            axisCount: 0
+          },
+          entityCount: artifactTopologyEntities.length,
+          entities: artifactTopologyEntities,
+          unsupportedEntityKinds: [],
+          adjacencyAvailable: false,
+          signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+          signature: `topology:${input.bodyId}`,
+          source: "kernel-derived",
+          diagnostics: []
         } as GeometryKernelExactBodyArtifact["topologySnapshot"],
         displayMesh: {
           primitive: "extrude",
