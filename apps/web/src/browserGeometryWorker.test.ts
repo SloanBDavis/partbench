@@ -910,6 +910,48 @@ describe("BrowserGeometryWorker", () => {
     expect(settled).toBe(true);
   });
 
+  it("cancels started exact pick work and retries on a fresh worker", async () => {
+    const firstTransport = new FakeGeometryWorkerTransport(
+      () => new Promise<GeometryWorkerMessage>(() => undefined)
+    );
+    const firstWorker = new BrowserGeometryWorker(firstTransport);
+    const firstRequest = createArtifactPatternRequest(
+      "started_pick_request",
+      createArtifactLeafFixture(new Uint8Array([1]))
+    );
+    let started = false;
+    const cancelled = firstWorker.executeTracked(firstRequest, {
+      onStarted: () => {
+        started = true;
+      }
+    });
+    const cancelledExpectation = expect(cancelled).rejects.toThrow(/disposed/i);
+
+    await Promise.resolve();
+    firstTransport.emitMessage([firstRequest.id]);
+    expect(started).toBe(true);
+    firstWorker.dispose();
+    await cancelledExpectation;
+    expect(firstTransport.terminationCount).toBe(1);
+
+    const retryTransport = new FakeGeometryWorkerTransport(async (request) =>
+      createExactBodyArtifactMessage(request)
+    );
+    const retryWorker = new BrowserGeometryWorker(retryTransport);
+    const retried = await retryWorker.execute(
+      createArtifactPatternRequest(
+        "retried_pick_request",
+        createArtifactLeafFixture(new Uint8Array([2]))
+      )
+    );
+    expect(retried.response).toMatchObject({
+      ok: true,
+      op: "geometry.exactBodyArtifact",
+      artifact: { viewportPickMap: { version: "partbench.exact-pick-map.v1" } }
+    });
+    retryWorker.dispose();
+  });
+
   it("passes one box tessellation message through the browser transport wrapper", async () => {
     const transport = createPrimitiveTessellationTransport();
     const worker = new BrowserGeometryWorker(transport);

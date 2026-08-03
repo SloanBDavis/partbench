@@ -100,6 +100,30 @@ function createBodyArtifactTestLeaf(
   };
 }
 
+function expectExactPickEvidence(
+  artifact: ReturnType<typeof createOcctExactBodyArtifactWithInstance>,
+  label: string
+): void {
+  const pickMap = artifact.viewportPickMap;
+  expect(pickMap, label).toBeDefined();
+  if (!pickMap) throw new Error(`${label}: expected exact pick evidence.`);
+  expect(pickMap.topologySignature, label).toBe(
+    artifact.topologySnapshot.signature
+  );
+  expect(pickMap.meshTriangleCount, label).toBe(
+    artifact.displayMesh.triangleCount
+  );
+  expect(pickMap.faces.length, `${label}: faces`).toBe(
+    artifact.topologySnapshot.entityCounts.faceCount
+  );
+  expect(pickMap.edges.length, `${label}: edges`).toBe(
+    artifact.topologySnapshot.entityCounts.edgeCount
+  );
+  expect(pickMap.vertices.length, `${label}: vertices`).toBe(
+    artifact.topologySnapshot.entityCounts.vertexCount
+  );
+}
+
 async function createStepFromSources(input: {
   readonly units: "mm" | "cm" | "m" | "in";
   readonly bodies: readonly {
@@ -392,6 +416,119 @@ describe("occt-wasm", () => {
       expect(faceMapShapesCalls).toBe(3);
       expect(fallbackArtifact.viewportPickMap).toBeUndefined();
       expect(fallbackArtifact.displayMesh.triangleCount).toBeGreaterThan(0);
+
+      let sampledPoints = 0;
+      let deletedSamplers = 0;
+      class OversizedSampler {
+        NbPoints() {
+          return 6_000_000;
+        }
+        Value() {
+          sampledPoints += 1;
+          throw new Error("Oversized sampler must not be read.");
+        }
+        delete() {
+          deletedSamplers += 1;
+        }
+      }
+      const filesBefore = [...oc.FS.readdir("/tmp")].sort();
+      const withOversizedSampler = new Proxy(oc, {
+        get(target, candidate) {
+          return candidate === "GCPnts_TangentialDeflection_3"
+            ? OversizedSampler
+            : Reflect.get(target, candidate);
+        }
+      }) as unknown as OpenCascadeInstance;
+      const resourceLimitedArtifact = createOcctExactBodyArtifactWithInstance(
+        withOversizedSampler,
+        {
+          source: {
+            kind: "box",
+            dimensions: { width: 2, height: 3, depth: 4 },
+            transform: {
+              translation: [0, 0, 0],
+              rotation: [0, 0, 0],
+              scale: [1, 1, 1]
+            }
+          }
+        }
+      );
+      expect(resourceLimitedArtifact.viewportPickMap).toBeUndefined();
+      expect(resourceLimitedArtifact.displayMesh.triangleCount).toBeGreaterThan(
+        0
+      );
+      expect({ sampledPoints, deletedSamplers }).toEqual({
+        sampledPoints: 0,
+        deletedSamplers: 1
+      });
+      expect([...oc.FS.readdir("/tmp")].sort()).toEqual(filesBefore);
+
+      let mapsCreated = 0;
+      let mapsDeleted = 0;
+      let curvesCreated = 0;
+      let curvesDeleted = 0;
+      const IndexedMap = class {
+        constructor() {
+          mapsCreated += 1;
+          const map = new oc.TopTools_IndexedMapOfShape_1();
+          const dispose = map.delete.bind(map);
+          map.delete = () => {
+            mapsDeleted += 1;
+            dispose();
+          };
+          return map;
+        }
+      };
+      const Curve = class {
+        constructor(
+          ...args: ConstructorParameters<typeof oc.BRepAdaptor_Curve_2>
+        ) {
+          curvesCreated += 1;
+          const curve = new oc.BRepAdaptor_Curve_2(...args);
+          const dispose = curve.delete.bind(curve);
+          curve.delete = () => {
+            curvesDeleted += 1;
+            dispose();
+          };
+          return curve;
+        }
+      };
+      const FailingSampler = class {
+        constructor() {
+          throw new Error("Injected exact pick sampler failure.");
+        }
+      };
+      const withSamplerFailure = new Proxy(oc, {
+        get(target, candidate) {
+          if (candidate === "TopTools_IndexedMapOfShape_1") return IndexedMap;
+          if (candidate === "BRepAdaptor_Curve_2") return Curve;
+          if (candidate === "GCPnts_TangentialDeflection_3") {
+            return FailingSampler;
+          }
+          return Reflect.get(target, candidate);
+        }
+      }) as unknown as OpenCascadeInstance;
+      const cleanupArtifact = createOcctExactBodyArtifactWithInstance(
+        withSamplerFailure,
+        {
+          source: {
+            kind: "box",
+            dimensions: { width: 2, height: 3, depth: 4 },
+            transform: {
+              translation: [0, 0, 0],
+              rotation: [0, 0, 0],
+              scale: [1, 1, 1]
+            }
+          }
+        }
+      );
+      expect(cleanupArtifact.viewportPickMap).toBeUndefined();
+      expect(cleanupArtifact.displayMesh.triangleCount).toBeGreaterThan(0);
+      expect(mapsCreated).toBeGreaterThan(0);
+      expect(mapsDeleted).toBe(mapsCreated);
+      expect(curvesCreated).toBeGreaterThan(0);
+      expect(curvesDeleted).toBe(curvesCreated);
+      expect([...oc.FS.readdir("/tmp")].sort()).toEqual(filesBefore);
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );
@@ -3180,10 +3317,14 @@ describe("occt-wasm", () => {
         const metadata = createOcctExactBodyArtifactMetadataWithInstance(oc, {
           source
         });
+        const artifact = createOcctExactBodyArtifactWithInstance(oc, {
+          source
+        });
         expect(mesh.triangleCount).toBeGreaterThan(0);
         expect(mesh.vertexCount).toBeGreaterThan(0);
         expect(metadata.volume).toBeGreaterThan(0);
         expect(metadata.topologyCounts.solidCount).toBeGreaterThan(0);
+        expectExactPickEvidence(artifact, source.kind);
       }
       expect([...oc.FS.readdir("/tmp")].sort()).toEqual(filesBefore);
     },
@@ -3350,6 +3491,7 @@ describe("occt-wasm", () => {
         );
         expect(artifact.displayMesh.vertexCount).toBeGreaterThan(0);
         expect(artifact.displayMesh.triangleCount).toBeGreaterThan(0);
+        expectExactPickEvidence(artifact, entry.expectedKind);
         const displayBounds = {
           min: [
             Number.POSITIVE_INFINITY,
@@ -3622,6 +3764,7 @@ describe("occt-wasm", () => {
           expect(artifact.metadata.topologyCounts.solidCount).toBe(1);
           expect(artifact.topologySnapshot.entityCounts.solidCount).toBe(1);
           expect(artifact.displayMesh.triangleCount).toBeGreaterThan(0);
+          expectExactPickEvidence(artifact, `${direction}-${depthMode}`);
           expect(files(), `${direction}-${depthMode}`).toEqual(filesBefore);
         }
       }
@@ -3650,6 +3793,7 @@ describe("occt-wasm", () => {
         }
       });
       expect(patterned.metadata.topologyCounts.solidCount).toBe(2);
+      expectExactPickEvidence(patterned, "multi-solid pattern");
       const multiLeaf: BodyArtifactTestLeaf = {
         ...createBodyArtifactTestLeaf(patterned),
         shapePolicy: "singleShapeOneOrMoreSolids"
@@ -3672,6 +3816,7 @@ describe("occt-wasm", () => {
         5
       );
       expect(partial.metadata.centroid[0]).toBeGreaterThan(0);
+      expectExactPickEvidence(partial, "partial multi-solid hole");
       expect(files()).toEqual(filesBefore);
 
       const all = createOcctExactBodyArtifactWithInstance(oc, {
@@ -3689,6 +3834,7 @@ describe("occt-wasm", () => {
       expect(all.metadata.topologyCounts.solidCount).toBe(2);
       expect(all.metadata.volume).toBeLessThan(partial.metadata.volume);
       expect(all.metadata.centroid[0]).toBeCloseTo(0, 6);
+      expectExactPickEvidence(all, "all multi-solid hole");
       expect(files()).toEqual(filesBefore);
 
       const reparsed = createOcctExactBodyArtifactWithInstance(oc, {
@@ -3727,6 +3873,7 @@ describe("occt-wasm", () => {
         triangleCount: partial.displayMesh.triangleCount,
         faceCount: partial.displayMesh.faceCount
       });
+      expectExactPickEvidence(reparsed, "reparsed multi-solid hole");
       expect(files()).toEqual(filesBefore);
 
       const step = createOcctStepExportWithInstance(oc, {

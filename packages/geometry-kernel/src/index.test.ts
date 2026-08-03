@@ -33,6 +33,7 @@ import {
   type ResolvedPlanarWireProfile,
   type RevolveGeometryAxis
 } from "./kernel";
+import { V21_EXACT_RELEASE_CORPUS } from "./v21ReleaseCorpus";
 
 const OCCT_WASM_TEST_TIMEOUT_MS = 120_000;
 const EXACT_PICK_MAP_SOURCE = {
@@ -84,6 +85,7 @@ async function createStepArtifactBody(
     createArtifactRequest(source, { bodyId, sourceGraphNodeCount })
   );
   if (!response.ok) throw new Error(response.error.message);
+  expectReadyExactViewportPickMap(response.artifact, bodyId);
   return {
     bodyId,
     bodyName: bodyId,
@@ -629,6 +631,19 @@ async function createExactBodyArtifactLeafFixture(
     ).join(""),
     topologySignature: "fnv1a32:12345678"
   };
+}
+
+function expectReadyExactViewportPickMap(
+  artifact: GeometryKernelExactBodyArtifact,
+  label: string
+): void {
+  const pickMap = artifact.viewportPickMap;
+  expect(pickMap, label).toBeDefined();
+  if (!pickMap) throw new Error(`${label}: expected exact pick evidence.`);
+  expect(isInvalidExactViewportPickMap(pickMap, artifact), label).toBe(false);
+  expect(pickMap.faces.length, `${label}: faces`).toBeGreaterThan(0);
+  expect(pickMap.edges.length, `${label}: edges`).toBeGreaterThan(0);
+  expect(pickMap.vertices.length, `${label}: vertices`).toBeGreaterThan(0);
 }
 
 describe("geometry-kernel facade", () => {
@@ -2832,6 +2847,7 @@ describe("geometry-kernel facade", () => {
       };
       const entries: readonly {
         readonly label: string;
+        readonly sourceType: string;
         readonly source: ExactBodyArtifactSource;
         readonly nodes: number;
         readonly policy?: ExactBodyArtifactRequest["shapePolicy"];
@@ -2858,6 +2874,7 @@ describe("geometry-kernel facade", () => {
           ] as const
         ).map((primitive) => ({
           label: primitive.kind,
+          sourceType: "primitiveFeature",
           nodes: 1,
           source: {
             ...primitive,
@@ -2870,11 +2887,13 @@ describe("geometry-kernel facade", () => {
         })),
         {
           label: "rectangle extrude",
+          sourceType: "sketchExtrudeFeature",
           nodes: 1,
           source: { kind: "extrude", ...rectangle }
         },
         {
           label: "wire extrude",
+          sourceType: "sketchExtrudeFeature",
           nodes: 1,
           source: {
             kind: "extrude",
@@ -2886,6 +2905,7 @@ describe("geometry-kernel facade", () => {
         },
         ...(["add", "cut"] as const).map((operation) => ({
           label: `boolean ${operation}`,
+          sourceType: "sketchExtrudeFeature",
           nodes: 3,
           source: {
             kind: "booleanExtrudes" as const,
@@ -2896,6 +2916,7 @@ describe("geometry-kernel facade", () => {
         })),
         {
           label: "region-with-hole extrude",
+          sourceType: "sketchExtrudeFeature",
           nodes: 3,
           source: {
             kind: "booleanExtrudes",
@@ -2910,6 +2931,7 @@ describe("geometry-kernel facade", () => {
         },
         {
           label: "revolve",
+          sourceType: "sketchRevolveFeature",
           nodes: 1,
           source: {
             kind: "revolve",
@@ -2921,6 +2943,7 @@ describe("geometry-kernel facade", () => {
         },
         {
           label: "region revolve",
+          sourceType: "sketchRevolveFeature",
           nodes: 1,
           source: {
             kind: "revolve",
@@ -2944,6 +2967,7 @@ describe("geometry-kernel facade", () => {
         },
         {
           label: "blind hole",
+          sourceType: "sketchHoleFeature",
           nodes: 2,
           source: {
             kind: "hole",
@@ -2959,6 +2983,7 @@ describe("geometry-kernel facade", () => {
         },
         {
           label: "through negative hole",
+          sourceType: "sketchHoleFeature",
           nodes: 2,
           source: {
             kind: "hole",
@@ -2973,6 +2998,7 @@ describe("geometry-kernel facade", () => {
         },
         {
           label: "chamfer",
+          sourceType: "edgeChamferFeature",
           nodes: 2,
           source: {
             kind: "edgeFinish",
@@ -2984,6 +3010,7 @@ describe("geometry-kernel facade", () => {
         },
         {
           label: "fillet",
+          sourceType: "edgeFilletFeature",
           nodes: 2,
           source: {
             kind: "edgeFinish",
@@ -2995,6 +3022,7 @@ describe("geometry-kernel facade", () => {
         },
         {
           label: "linear pattern",
+          sourceType: "linearPatternFeature",
           nodes: 2,
           policy: "singleShapeOneOrMoreSolids",
           source: {
@@ -3007,6 +3035,7 @@ describe("geometry-kernel facade", () => {
         },
         {
           label: "circular pattern",
+          sourceType: "circularPatternFeature",
           nodes: 2,
           policy: "singleShapeOneOrMoreSolids",
           source: {
@@ -3022,6 +3051,7 @@ describe("geometry-kernel facade", () => {
         },
         {
           label: "mirror",
+          sourceType: "mirrorFeature",
           nodes: 2,
           policy: "singleShapeOneOrMoreSolids",
           source: {
@@ -3035,7 +3065,19 @@ describe("geometry-kernel facade", () => {
           }
         },
         {
-          label: "shell",
+          label: "closed shell",
+          sourceType: "shellFeature",
+          nodes: 2,
+          source: {
+            kind: "shell",
+            target: patternSeed,
+            wallThickness: 0.2,
+            openFaceStableIds: []
+          }
+        },
+        {
+          label: "open shell",
+          sourceType: "shellFeature",
           nodes: 2,
           source: {
             kind: "shell",
@@ -3046,6 +3088,7 @@ describe("geometry-kernel facade", () => {
         },
         {
           label: "line sweep",
+          sourceType: "sweepFeature",
           nodes: 1,
           source: {
             kind: "sweep",
@@ -3055,6 +3098,7 @@ describe("geometry-kernel facade", () => {
         },
         {
           label: "arc sweep",
+          sourceType: "sweepFeature",
           nodes: 1,
           source: {
             kind: "sweep",
@@ -3080,6 +3124,7 @@ describe("geometry-kernel facade", () => {
         },
         {
           label: "G1 sweep",
+          sourceType: "sweepFeature",
           nodes: 1,
           source: {
             kind: "sweep",
@@ -3099,6 +3144,7 @@ describe("geometry-kernel facade", () => {
         },
         {
           label: "loft",
+          sourceType: "loftFeature",
           nodes: 1,
           source: {
             kind: "loft",
@@ -3126,10 +3172,28 @@ describe("geometry-kernel facade", () => {
         }
       ];
 
+      expect(new Set(entries.map(({ sourceType }) => sourceType))).toEqual(
+        new Set([
+          "primitiveFeature",
+          "sketchExtrudeFeature",
+          "sketchRevolveFeature",
+          "sketchHoleFeature",
+          "edgeChamferFeature",
+          "edgeFilletFeature",
+          "linearPatternFeature",
+          "circularPatternFeature",
+          "mirrorFeature",
+          "shellFeature",
+          "sweepFeature",
+          "loftFeature"
+        ])
+      );
+
       for (const [index, entry] of entries.entries()) {
         const response = await executeGeometryKernelRequest(
           createArtifactRequest(entry.source, {
             bodyId: `matrix_${index}`,
+            sourceType: entry.sourceType,
             sourceGraphNodeCount: entry.nodes,
             shapePolicy: entry.policy
           })
@@ -3137,6 +3201,10 @@ describe("geometry-kernel facade", () => {
         if (!response.ok)
           throw new Error(`${entry.label}: ${response.error.message}`);
         expect(response.ok, entry.label).toBe(true);
+        expect(response.artifact.sourceType, entry.label).toBe(
+          entry.sourceType
+        );
+        expectReadyExactViewportPickMap(response.artifact, entry.label);
         expect(response.artifact.brepByteLength, entry.label).toBeGreaterThan(
           1000
         );
@@ -3170,6 +3238,102 @@ describe("geometry-kernel facade", () => {
   );
 
   it(
+    "maps wire-revolve and region add/cut release branches",
+    async () => {
+      const rectangle = {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "rectangle" as const,
+          center: [0, 0] as const,
+          width: 4,
+          height: 4
+        },
+        depth: 4,
+        side: "positive" as const
+      };
+      const region = {
+        kind: "booleanExtrudes" as const,
+        operation: "cut" as const,
+        materialPolicy: "regionPositiveVolumeSingleSolid" as const,
+        target: rectangle,
+        tool: {
+          ...rectangle,
+          profile: {
+            kind: "circle" as const,
+            center: [0, 0] as const,
+            radius: 0.5
+          }
+        }
+      };
+      const wireRevolve = V21_EXACT_RELEASE_CORPUS.find(
+        ({ id }) => id === "revolve-wire"
+      );
+      if (!wireRevolve || wireRevolve.source.kind !== "revolve") {
+        throw new Error("Expected the frozen wire-revolve release fixture.");
+      }
+      const entries: readonly {
+        readonly label: string;
+        readonly sourceType: string;
+        readonly nodes: number;
+        readonly source: ExactBodyArtifactSource;
+      }[] = [
+        {
+          label: "wire revolve",
+          sourceType: "sketchRevolveFeature",
+          nodes: wireRevolve.sourceGraphNodeCount,
+          source: wireRevolve.source
+        },
+        ...(["add", "cut"] as const).map((operation) => ({
+          label: `region ${operation}`,
+          sourceType: "sketchExtrudeFeature",
+          nodes: 5,
+          source: {
+            kind: "booleanExtrudes" as const,
+            operation,
+            target: region,
+            tool:
+              operation === "add"
+                ? {
+                    ...rectangle,
+                    profile: {
+                      ...rectangle.profile,
+                      center: [1.5, 0] as const,
+                      width: 2
+                    }
+                  }
+                : {
+                    ...rectangle,
+                    profile: {
+                      kind: "circle" as const,
+                      center: [-1, 0] as const,
+                      radius: 0.25
+                    }
+                  }
+          }
+        }))
+      ];
+
+      for (const [index, entry] of entries.entries()) {
+        const response = await executeGeometryKernelRequest(
+          createArtifactRequest(entry.source, {
+            bodyId: `matrix_missing_${index}`,
+            sourceType: entry.sourceType,
+            sourceGraphNodeCount: entry.nodes
+          })
+        );
+        if (!response.ok) {
+          throw new Error(`${entry.label}: ${response.error.message}`);
+        }
+        expect(response.artifact.sourceType, entry.label).toBe(
+          entry.sourceType
+        );
+        expectReadyExactViewportPickMap(response.artifact, entry.label);
+      }
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
     "builds verified checkpoint-backed downstream artifacts from the parsed target shape",
     async () => {
       const baseSource = {
@@ -3192,6 +3356,7 @@ describe("geometry-kernel facade", () => {
       );
       expect(base.ok).toBe(true);
       if (!base.ok) throw new Error(base.error.message);
+      expectReadyExactViewportPickMap(base.artifact, "checkpoint base");
       const importedTopology = await executeGeometryKernelRequest({
         id: "geometry_req_checkpoint_imported_topology",
         version: "geometry-kernel.v1",
@@ -3225,6 +3390,8 @@ describe("geometry-kernel facade", () => {
       expect(imported.ok).toBe(true);
       if (!imported.ok) throw new Error(imported.error.message);
       expect(imported.artifact.sourceKind).toBe("importedBody");
+      expect(imported.artifact.sourceType).toBe("importedStepBody");
+      expectReadyExactViewportPickMap(imported.artifact, "imported checkpoint");
       await expectArtifactWritesNamedStep(
         imported.artifact,
         "Imported checkpoint Ω"
@@ -3252,6 +3419,10 @@ describe("geometry-kernel facade", () => {
       expect(restoredAuthored.artifact.topologySnapshot.signature).toBe(
         target.topologySignature
       );
+      expectReadyExactViewportPickMap(
+        restoredAuthored.artifact,
+        "restored authored checkpoint"
+      );
       const tool = {
         sketchPlane: "XY" as const,
         profile: {
@@ -3265,16 +3436,19 @@ describe("geometry-kernel facade", () => {
       };
       const sources: readonly {
         readonly expectedKind: string;
+        readonly sourceType: string;
         readonly graphNodes: number;
         readonly source: ExactBodyArtifactSource;
       }[] = [
         {
           expectedKind: "booleanExtrudes",
+          sourceType: "sketchExtrudeFeature",
           graphNodes: 3,
           source: { kind: "checkpointBoolean", operation: "add", target, tool }
         },
         {
           expectedKind: "booleanExtrudes",
+          sourceType: "sketchExtrudeFeature",
           graphNodes: 3,
           source: {
             kind: "checkpointBoolean",
@@ -3288,6 +3462,7 @@ describe("geometry-kernel facade", () => {
         },
         {
           expectedKind: "hole",
+          sourceType: "sketchHoleFeature",
           graphNodes: 2,
           source: {
             kind: "checkpointHole",
@@ -3303,6 +3478,10 @@ describe("geometry-kernel facade", () => {
         },
         ...(["chamfer", "fillet"] as const).map((operation) => ({
           expectedKind: "edgeFinish",
+          sourceType:
+            operation === "chamfer"
+              ? "edgeChamferFeature"
+              : "edgeFilletFeature",
           graphNodes: 2,
           source: {
             kind: "checkpointEdgeFinish" as const,
@@ -3318,19 +3497,19 @@ describe("geometry-kernel facade", () => {
         const response = await executeGeometryKernelRequest(
           createArtifactRequest(entry.source, {
             bodyId: `checkpoint_result_${index}`,
-            sourceType:
-              entry.expectedKind === "hole"
-                ? "sketchHoleFeature"
-                : entry.expectedKind === "edgeFinish"
-                  ? "edgeChamferFeature"
-                  : "sketchExtrudeFeature",
+            sourceType: entry.sourceType,
             sourceGraphNodeCount: entry.graphNodes
           })
         );
         expect(response.ok).toBe(true);
         if (!response.ok) throw new Error(response.error.message);
         expect(response.artifact.sourceKind).toBe(entry.expectedKind);
+        expect(response.artifact.sourceType).toBe(entry.sourceType);
         expect(response.artifact.metadata.topologyCounts.solidCount).toBe(1);
+        expectReadyExactViewportPickMap(
+          response.artifact,
+          `checkpoint ${entry.expectedKind}`
+        );
         await expectArtifactWritesNamedStep(
           response.artifact,
           `Checkpoint ${entry.expectedKind} Ω`

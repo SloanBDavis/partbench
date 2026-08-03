@@ -1,5 +1,16 @@
-import { sha256Hex } from "@web-cad/cad-core";
-import type { GeometryKernelExactBodyArtifact } from "@web-cad/geometry-worker/browser";
+import {
+  CadEngine,
+  exportCadProjectJson,
+  exportCadProjectWcad,
+  sha256Hex
+} from "@web-cad/cad-core";
+import { createGeometryKernelWorker } from "@web-cad/geometry-worker";
+import {
+  createExactBodyArtifactWorkerRequest,
+  createExactTopologyCheckpointPayloadWorkerRequest,
+  isInvalidExactViewportPickMap,
+  type GeometryKernelExactBodyArtifact
+} from "@web-cad/geometry-worker/browser";
 import { describe, expect, it, vi } from "vitest";
 import {
   createExactArtifactCacheKey,
@@ -11,6 +22,7 @@ import {
   isExactArtifactCacheEntryWithinLimit,
   type ExactArtifactCacheCandidate
 } from "./exactArtifactOpfsCache";
+import { createProjectWcadTopologyCheckpointPayloadInputs } from "./projectWcadTopologyCheckpoints";
 import type {
   ProjectOpfsCacheDirectoryHandleLike,
   ProjectOpfsCacheFileHandleLike,
@@ -51,17 +63,22 @@ describe("exact artifact OPFS cache", () => {
     );
   });
 
-  it("persists only BRep identity data and rebuilds private pick evidence", async () => {
+  it("keeps valid pick evidence derived-only and rebuilds it from BRep identity", async () => {
     const target = createMemoryTarget();
     const cache = createExactArtifactOpfsCache(target);
-    const baseArtifact = await createArtifact(22);
-    const artifact: GeometryKernelExactBodyArtifact = {
-      ...baseArtifact,
-      viewportPickMap: {} as NonNullable<
-        GeometryKernelExactBodyArtifact["viewportPickMap"]
-      >,
-      viewportPickMapDowngrade: { status: "invalid" }
-    };
+    const project = await createCheckpointPersistenceFixture();
+    const artifact = project.artifact;
+    const pickMap = artifact.viewportPickMap;
+    if (!pickMap) throw new Error("Expected valid exact pick evidence.");
+    expect(isInvalidExactViewportPickMap(pickMap, artifact)).toBe(false);
+    const checkpointBefore = artifact.brepBytes.slice();
+    const projectJsonBefore = exportCadProjectJson(project.engine);
+    const checkpointsBefore = await project.createCheckpointPayloads();
+    const wcadBefore = await exportCadProjectWcad(project.engine, {
+      createdAt: "2026-08-03T00:00:00.000Z",
+      modifiedAt: "2026-08-03T00:00:00.000Z",
+      topologyCheckpoints: checkpointsBefore
+    });
 
     await cache.write({ artifact, isCurrent: () => true });
 
@@ -72,9 +89,10 @@ describe("exact artifact OPFS cache", () => {
       ...target.cacheRoot().directory("artifacts").readOnlyBytes()
     ]).toEqual([...artifact.brepBytes]);
 
-    const rebuiltPickMap = {} as NonNullable<
-      GeometryKernelExactBodyArtifact["viewportPickMap"]
-    >;
+    const rebuiltPickMap = {
+      ...pickMap,
+      edgePoints: new Float64Array(pickMap.edgePoints)
+    };
     const validate = vi.fn(async (candidate: ExactArtifactCacheCandidate) => {
       expect(candidate).not.toHaveProperty("viewportPickMap");
       expect(candidate).not.toHaveProperty("viewportPickMapDowngrade");
@@ -97,7 +115,26 @@ describe("exact artifact OPFS cache", () => {
     if (read.status === "hit") {
       expect(read.artifact.viewportPickMap).toBe(rebuiltPickMap);
     }
-  });
+    expect(artifact.brepBytes).toEqual(checkpointBefore);
+    const projectJsonAfter = exportCadProjectJson(project.engine);
+    const checkpointsAfter = await project.createCheckpointPayloads();
+    const wcadAfter = await exportCadProjectWcad(project.engine, {
+      createdAt: "2026-08-03T00:00:00.000Z",
+      modifiedAt: "2026-08-03T00:00:00.000Z",
+      topologyCheckpoints: checkpointsAfter
+    });
+    expect(projectJsonAfter).toBe(projectJsonBefore);
+    expect(wcadAfter.bytes).toEqual(wcadBefore.bytes);
+    expect(
+      JSON.stringify({
+        project: JSON.parse(projectJsonAfter),
+        manifest: wcadAfter.manifest,
+        checkpoints: checkpointsAfter
+      })
+    ).not.toMatch(
+      /viewportPickMap|faceTriangleRanges|edgePointRanges|edgePoints|vertexPoints/i
+    );
+  }, 120_000);
 
   it("validates B-rep through the caller before returning a warm hit", async () => {
     const target = createMemoryTarget();
@@ -337,20 +374,157 @@ describe("exact artifact OPFS cache", () => {
   });
 });
 
+async function createCheckpointPersistenceFixture(): Promise<{
+  readonly engine: CadEngine;
+  readonly artifact: GeometryKernelExactBodyArtifact;
+  readonly createCheckpointPayloads: () => ReturnType<
+    typeof createProjectWcadTopologyCheckpointPayloadInputs
+  >;
+}> {
+  const source = {
+    kind: "extrude" as const,
+    sketchPlane: "XY" as const,
+    profile: {
+      kind: "rectangle" as const,
+      center: [0, 0] as const,
+      width: 2,
+      height: 1
+    },
+    depth: 3,
+    side: "positive" as const
+  };
+  const sourceIdentity = {
+    algorithm: "partbench-source-v1" as const,
+    sha256: "1".repeat(64)
+  };
+  const engine = new CadEngine();
+  engine.applyBatch([
+    {
+      op: "sketch.create",
+      id: "cache_sketch",
+      name: "Cache sketch",
+      plane: "XY"
+    },
+    {
+      op: "sketch.addRectangle",
+      sketchId: "cache_sketch",
+      id: "cache_rectangle",
+      center: [0, 0],
+      width: 2,
+      height: 1
+    },
+    {
+      op: "feature.extrude",
+      id: "cache_feature",
+      bodyId: "cache_body",
+      sketchId: "cache_sketch",
+      entityId: "cache_rectangle",
+      depth: 3,
+      operationMode: "newBody"
+    },
+    {
+      op: "topology.checkpoint.create",
+      checkpointId: "cache_checkpoint",
+      bodyId: "cache_body",
+      sourceFeatureId: "cache_feature",
+      sourceIdentity,
+      status: "active"
+    }
+  ]);
+  const worker = createGeometryKernelWorker();
+  const artifactResponse = await worker.execute(
+    createExactBodyArtifactWorkerRequest({
+      id: "cache_artifact",
+      bodyId: "cache_body",
+      sourceType: "sketchExtrudeFeature",
+      documentSourceIdentity: sourceIdentity,
+      bodySourceIdentitySignature: `body-topology-source:v1:${"2".repeat(64)}`,
+      sourceCacheKeySha256: "3".repeat(64),
+      sourceGraphNodeCount: 1,
+      units: "mm",
+      shapePolicy: "singleSolid",
+      source
+    })
+  );
+  if (!artifactResponse.response.ok) {
+    throw new Error(artifactResponse.response.error.message);
+  }
+  const structure = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.structure" }
+  });
+  if (!structure.ok || structure.query !== "project.structure") {
+    throw new Error("Expected project.structure response.");
+  }
+  const sketches = [...engine.getDocument().sketches.values()].map(
+    (sketch) => ({
+      id: sketch.id,
+      name: sketch.name,
+      plane: sketch.plane,
+      attachment: sketch.attachment,
+      entities: [...sketch.entities.values()]
+    })
+  );
+  return {
+    engine,
+    artifact: artifactResponse.response.artifact,
+    createCheckpointPayloads: () =>
+      createProjectWcadTopologyCheckpointPayloadInputs({
+        document: engine.getDocument(),
+        features: structure.features,
+        sketches,
+        runtime: {
+          async exactTopologyCheckpointPayload(input) {
+            const response = await worker.execute(
+              createExactTopologyCheckpointPayloadWorkerRequest({
+                id: `cache_checkpoint:${input.checkpointId}`,
+                checkpointId: input.checkpointId,
+                bodyId: input.bodyId,
+                source: input.source
+              })
+            );
+            if (!response.response.ok) {
+              throw new Error(response.response.error.message);
+            }
+            return {
+              checkpointPayload: response.response.checkpointPayload,
+              metrics: { objectId: input.bodyId, roundTripMs: 0 },
+              message: `Derived checkpoint payload for ${input.bodyId}.`
+            };
+          }
+        }
+      })
+  };
+}
+
 async function createArtifact(
   index: number
 ): Promise<GeometryKernelExactBodyArtifact> {
   const brepBytes = new Uint8Array([index]);
   const bodyId = `body-${index}`;
+  const topologySignature = `topology:${bodyId}`;
+  const bodySourceIdentitySignature = `source-${index}`;
+  const face = {
+    localId: `face:${bodyId}`,
+    entitySignature: `face:${bodyId}`
+  };
+  const edge = {
+    localId: `edge:${bodyId}`,
+    entitySignature: `edge:${bodyId}`
+  };
+  const vertex = {
+    localId: `vertex:${bodyId}`,
+    entitySignature: `vertex:${bodyId}`
+  };
   return {
     artifactVersion: "partbench.exact-body-artifact.v1",
     bodyId,
-    sourceType: "primitive",
+    sourceType: "primitiveFeature",
     documentSourceIdentity: {
       algorithm: "partbench-source-v1",
       sha256: "d".repeat(64)
     },
-    bodySourceIdentitySignature: `source-${index}`,
+    bodySourceIdentitySignature,
     sourceCacheKeySha256: index.toString(16).padStart(64, "0"),
     sourceGraphNodeCount: 1,
     units: "mm",
@@ -369,9 +543,9 @@ async function createArtifact(
       centroid: [0.5, 0.5, 0.5],
       topologyCounts: {
         solidCount: 1,
-        faceCount: 6,
-        edgeCount: 12,
-        vertexCount: 8
+        faceCount: 1,
+        edgeCount: 1,
+        vertexCount: 1
       },
       measurementSource: "kernel-derived",
       measurementConfidence: "kernel-derived",
@@ -383,15 +557,15 @@ async function createArtifact(
       entityCounts: {
         bodyCount: 1,
         solidCount: 1,
-        faceCount: 6,
-        wireCount: 6,
-        loopCount: 6,
-        coedgeCount: 24,
-        edgeCount: 12,
-        vertexCount: 8,
+        faceCount: 1,
+        wireCount: 0,
+        loopCount: 0,
+        coedgeCount: 0,
+        edgeCount: 1,
+        vertexCount: 1,
         axisCount: 0
       },
-      entityCount: 2,
+      entityCount: 5,
       entities: [
         {
           localId: `body:${bodyId}`,
@@ -404,12 +578,31 @@ async function createArtifact(
           kind: "solid",
           signature: `solid:${bodyId}`,
           source: "kernel-derived"
+        },
+        {
+          localId: face.localId,
+          kind: "face",
+          signature: face.entitySignature,
+          source: "kernel-derived"
+        },
+        {
+          localId: edge.localId,
+          kind: "edge",
+          signature: edge.entitySignature,
+          source: "kernel-derived"
+        },
+        {
+          localId: vertex.localId,
+          kind: "vertex",
+          signature: vertex.entitySignature,
+          source: "kernel-derived",
+          point: [0, 0, 0]
         }
       ],
       unsupportedEntityKinds: [],
       adjacencyAvailable: false,
       signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
-      signature: `topology:${bodyId}`,
+      signature: topologySignature,
       source: "kernel-derived",
       diagnostics: []
     },
@@ -420,6 +613,21 @@ async function createArtifact(
       vertexCount: 3,
       triangleCount: 1,
       faceCount: 1
+    },
+    viewportPickMap: {
+      version: "partbench.exact-pick-map.v1",
+      bodyId,
+      bodySourceIdentitySignature,
+      topologySignature,
+      meshVertexCount: 3,
+      meshTriangleCount: 1,
+      faces: [face],
+      edges: [edge],
+      vertices: [vertex],
+      faceTriangleRanges: new Uint32Array([0, 1]),
+      edgePointRanges: new Uint32Array([0, 2]),
+      edgePoints: new Float64Array([0, 0, 0, 1, 0, 0]),
+      vertexPoints: new Float64Array([0, 0, 0])
     }
   };
 }

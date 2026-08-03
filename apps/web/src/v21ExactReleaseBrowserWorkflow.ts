@@ -5,6 +5,7 @@ import {
   createExactBodyArtifactWorkerRequest,
   createExactStepExportWorkerRequest,
   createStepImportWorkerRequest,
+  isInvalidExactViewportPickMap,
   type GeometryKernelExactBodyArtifact
 } from "@web-cad/geometry-worker/browser";
 
@@ -93,6 +94,7 @@ export async function runV21ExactReleaseBrowserWorkflow(
         `${fixture.id} returned mismatched BRep hash evidence.`
       );
       assertTopologyParity(artifact, fixture.id);
+      assertExactPickEvidence(artifact, fixture.id);
       artifacts.push(artifact);
       retainedArtifactBytes += artifact.brepByteLength;
     }
@@ -269,6 +271,10 @@ async function exportAndRoundTrip(input: {
   if (!roundTrip.response.ok) {
     throw new Error(roundTrip.response.error.message);
   }
+  assertExactPickEvidence(
+    roundTrip.response.artifact,
+    `${input.unit}:reimported-compound`
+  );
   assertMetadataScaleParity(
     aggregateMetadata(input.artifacts.map(({ metadata }) => metadata)),
     roundTrip.response.artifact.metadata,
@@ -408,7 +414,9 @@ async function runCheckpointDownstreamMatrix(
     );
     artifactBuildMs.push(performance.now() - started);
     if (!response.response.ok) throw new Error(response.response.error.message);
-    artifacts.push(response.response.artifact);
+    const artifact = response.response.artifact;
+    assertExactPickEvidence(artifact, item.id);
+    artifacts.push(artifact);
   }
   const roundTrip = await exportAndRoundTrip({
     worker,
@@ -627,6 +635,21 @@ function assertTopologyParity(
       `${label} topology ${key} diverged.`
     );
   }
+}
+
+function assertExactPickEvidence(
+  artifact: GeometryKernelExactBodyArtifact,
+  label: string
+): void {
+  const pickMap = artifact.viewportPickMap;
+  assert(
+    pickMap !== undefined &&
+      !isInvalidExactViewportPickMap(pickMap, artifact) &&
+      pickMap.faces.length > 0 &&
+      pickMap.edges.length > 0 &&
+      pickMap.vertices.length > 0,
+    `${label} returned no valid exact viewport pick evidence.`
+  );
 }
 
 function assertMetadataScaleParity(
