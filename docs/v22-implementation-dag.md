@@ -291,8 +291,9 @@ Create/validate/transfer/bound/cancel/dispose exact face ranges, edge polylines,
 and vertex points from the same topology/tessellation lifetime for every matrix
 row; no UI enablement.
 
-**Gate B:** real-OCCT proof for every fixture case listed in all 13 rows,
-corruption/limit/cancel/cleanup proof, and no source persistence.
+**Gate B: [Passed (2026-08-04)](./v22-b-gate.md).** Real-OCCT proof covers
+every fixture case listed in all 13 rows, corruption/limit/cancel/cleanup, and
+no source persistence.
 
 ### C — Renderer Hits and Semantic Selection
 
@@ -422,7 +423,7 @@ consolidation lands; lazy chunking alone is not all-UI budget evidence.
 | Gate | Status | Closure evidence |
 | --- | --- | --- |
 | A | [Passed](./v22-a-gate.md) | inherited baseline, frozen contracts/matrices/fixtures and measured deletion budget, no production behavior |
-| B | Pending | same-shape pick maps, validation, transfer, bounds, cleanup |
+| B | [Passed](./v22-b-gate.md) | same-shape pick maps, validation, transfer, bounds, cleanup, no source persistence |
 | C | Pending | depth-aware selection, fallback, filter/cycle/keyboard, performance |
 | D | Pending | collector/promotion path and exhaustive no-widening parity |
 | E | Pending | exact preview and all grips with Apply parity and cleanup |
