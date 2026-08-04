@@ -292,6 +292,10 @@ describe("projectExactStepExport", () => {
     );
     if (!face) throw new Error("Expected generated shell face candidate.");
     const fixture = createFixtureForEngine(engine, [shell.bodyId]);
+    let dependencyArtifact: GeometryKernelExactBodyArtifact | undefined;
+    let pickMapBefore:
+      | GeometryKernelExactBodyArtifact["viewportPickMap"]
+      | undefined;
     const runtime = createRuntime({
       topologyEntitiesByBodyId: new Map([
         [
@@ -300,11 +304,43 @@ describe("projectExactStepExport", () => {
             {
               localId: "snapshot-local:face:4",
               kind: "face" as const,
-              signature: face.geometrySignature!
+              signature: "raw-face-signature",
+              bounds: {
+                min: [-50, -40, 50],
+                max: [50, 40, 50]
+              }
             }
           ]
         ]
-      ])
+      ]),
+      mutateArtifact: (artifact) => {
+        if (artifact.bodyId !== shell.targetBodyId) return artifact;
+        dependencyArtifact = {
+          ...artifact,
+          viewportPickMap: {
+            version: "partbench.exact-pick-map.v1",
+            bodyId: artifact.bodyId,
+            bodySourceIdentitySignature: artifact.bodySourceIdentitySignature,
+            topologySignature: artifact.topologySnapshot.signature,
+            meshVertexCount: 3,
+            meshTriangleCount: 1,
+            faces: [
+              {
+                localId: "snapshot-local:face:4",
+                entitySignature: "raw-face-signature"
+              }
+            ],
+            edges: [],
+            vertices: [],
+            faceTriangleRanges: new Uint32Array([0, 1]),
+            edgePointRanges: new Uint32Array(),
+            edgePoints: new Float64Array(),
+            vertexPoints: new Float64Array()
+          }
+        };
+        pickMapBefore = structuredClone(dependencyArtifact.viewportPickMap);
+        return dependencyArtifact;
+      }
     });
 
     await executeProjectExactStepExport({ ...fixture, runtime });
@@ -318,6 +354,12 @@ describe("projectExactStepExport", () => {
         openFaces: [{ localId: "snapshot-local:face:4" }]
       }
     });
+    expect(
+      dependencyArtifact?.topologySnapshot.entities.find(
+        ({ localId }) => localId === "snapshot-local:face:4"
+      )?.signature
+    ).toBe("raw-face-signature");
+    expect(dependencyArtifact?.viewportPickMap).toEqual(pickMapBefore);
   });
 
   it("blocks a shell face missing from the current dependency topology", async () => {
@@ -1149,6 +1191,10 @@ function createRuntime(
         readonly localId: string;
         readonly kind: "face" | "edge";
         readonly signature: string;
+        readonly bounds?: {
+          readonly min: readonly [number, number, number];
+          readonly max: readonly [number, number, number];
+        };
       }[]
     >;
     readonly topologySolidCountByBodyId?: ReadonlyMap<string, number>;

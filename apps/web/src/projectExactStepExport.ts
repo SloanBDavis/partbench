@@ -13,6 +13,7 @@ import {
   CAD_V21_EXACT_EXPORT_RESOURCE_LIMITS,
   validateCadExactExportPlan,
   type CadBodyDerivedExactMetadataSnapshot,
+  type CadBodyExactTopologySnapshot,
   type CadExactExportPlan,
   type CadExportDiagnostic,
   type CadExportDiagnosticCode,
@@ -34,9 +35,10 @@ import {
   type CurrentExactBodyArtifactDependency,
   type CurrentExactBodyResolution
 } from "./currentExactBodyResolver";
-import type {
-  DerivedExactMetadataSnapshot,
-  DerivedExactMetadataSource
+import {
+  isExactMetadataSource,
+  type DerivedExactMetadataSnapshot,
+  type DerivedExactMetadataSource
 } from "./derivedExactMetadata";
 import type { DerivedGeometryRuntime } from "./derivedGeometryRuntime";
 import type { CurrentExactResultProjection } from "./currentExactResultProjection";
@@ -50,6 +52,7 @@ import type {
   ExactArtifactOpfsCache
 } from "./exactArtifactOpfsCache";
 import { readProjectExactStepExport } from "./projectExactExportQueries";
+import { bindGeneratedFaceTopologySnapshot } from "./projectWcadTopologyCheckpoints";
 
 export interface ProjectExactStepExportExecutionInput {
   readonly engine: CadEngine;
@@ -805,7 +808,11 @@ export async function buildCurrentExactBodyArtifacts({
           ? resolveCurrentShellArtifactFaceLocalIds(
               engine,
               node.source.openFaceRefs,
-              dependencyArtifact
+              dependencyArtifact,
+              node.artifactDependency &&
+                isExactMetadataSource(node.artifactDependency.source)
+                ? node.artifactDependency.source
+                : undefined
             )
           : undefined;
       const source = createCurrentExactArtifactOperandSource(
@@ -1215,7 +1222,8 @@ function createArtifactNodeKey(node: CurrentExactArtifactNode): string {
 function resolveCurrentShellArtifactFaceLocalIds(
   engine: CadEngine,
   refs: readonly FeatureShellOpenFaceRef[],
-  artifact: CurrentExactBodyArtifactEvidence
+  artifact: CurrentExactBodyArtifactEvidence,
+  source?: DerivedExactMetadataSource
 ): readonly string[] {
   if (artifact.topologySnapshot.entityCounts.solidCount !== 1) {
     throw new ProjectExactStepExportError(
@@ -1225,6 +1233,44 @@ function resolveCurrentShellArtifactFaceLocalIds(
   }
   if (refs.length === 0) return [];
 
+  const document = engine.getDocument();
+  let topologySnapshot: CadBodyExactTopologySnapshot =
+    artifact.topologySnapshot;
+  if (source) {
+    const currentIdentity = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.topologyIdentity", bodyId: artifact.bodyId }
+    });
+    if (
+      currentIdentity.ok &&
+      currentIdentity.query === "body.topologyIdentity"
+    ) {
+      const stableIds = new Set(
+        refs.flatMap((ref) => {
+          if (ref.kind === "generatedFace") return [ref.stableId];
+          if (ref.kind !== "namedReference") return [];
+          const named = document.namedReferences.get(ref.name);
+          return named?.kind === "face" && named.bodyId === artifact.bodyId
+            ? [named.stableId]
+            : [];
+        })
+      );
+      for (const stableId of stableIds) {
+        const candidate = currentIdentity.candidates.find(
+          (entry) => entry.stableId === stableId
+        );
+        if (!candidate?.geometrySignature) continue;
+        topologySnapshot =
+          bindGeneratedFaceTopologySnapshot({
+            topologySnapshot,
+            source,
+            stableId,
+            geometrySignature: candidate.geometrySignature
+          }) ?? topologySnapshot;
+      }
+    }
+  }
+
   const derivedExactMetadata: CadBodyDerivedExactMetadataSnapshot = {
     bodyId: artifact.bodyId,
     sourceIdentitySignature: artifact.bodySourceIdentitySignature,
@@ -1232,8 +1278,8 @@ function resolveCurrentShellArtifactFaceLocalIds(
     metadata: {
       source: "kernel-derived",
       confidence: "kernel-derived",
-      topologySnapshot: artifact.topologySnapshot,
-      diagnostics: artifact.topologySnapshot.diagnostics
+      topologySnapshot,
+      diagnostics: topologySnapshot.diagnostics
     }
   };
   const identity = engine.executeQuery({
@@ -1252,8 +1298,6 @@ function resolveCurrentShellArtifactFaceLocalIds(
         : identity.error.message
     );
   }
-
-  const document = engine.getDocument();
   return refs.map((ref) => {
     let label: string;
     let matches: typeof identity.candidates;

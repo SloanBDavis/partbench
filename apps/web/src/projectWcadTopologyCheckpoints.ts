@@ -693,7 +693,6 @@ export async function createProjectWcadTopologyCheckpointPayloadInputs({
         result.checkpointPayload.topologySnapshot
       );
       const normalizedPayload = normalizeCheckpointPayloadForSourceAnchors({
-        checkpointId: checkpoint.checkpointId,
         topologySnapshot,
         signaturePayload: result.checkpointPayload.signaturePayload,
         anchors: checkpointSource.contextIndexes.flatMap(
@@ -723,9 +722,10 @@ export async function createProjectWcadTopologyCheckpointPayloadInputs({
         brepByteLength: result.checkpointPayload.brepByteLength,
         brepSha256: sha256Hex(result.checkpointPayload.brepBytes),
         brepBytes: result.checkpointPayload.brepBytes,
-        topologyBytes: encodeWcadCanonicalCbor(
-          normalizedPayload.topologySnapshot
-        ),
+        topologyBytes: encodeWcadCanonicalCbor({
+          ...normalizedPayload.topologySnapshot,
+          sourceKind: result.checkpointPayload.sourceKind
+        }),
         signatureBytes: encodeWcadCanonicalCbor(
           normalizedPayload.signaturePayload
         )
@@ -884,13 +884,11 @@ function describeCheckpointSourceMetadata(
 }
 
 function normalizeCheckpointPayloadForSourceAnchors({
-  checkpointId,
   topologySnapshot,
   signaturePayload,
   anchors,
   source
 }: {
-  readonly checkpointId: string;
   readonly topologySnapshot: CadBodyExactTopologySnapshot;
   readonly signaturePayload: WcadTopologyCheckpointSignaturePayload;
   readonly anchors: readonly CadTopologyAnchorSourceRecord[];
@@ -941,7 +939,7 @@ function normalizeCheckpointPayloadForSourceAnchors({
 
     return replacement ? { ...entity, ...replacement } : entity;
   });
-  const signature = createNormalizedCheckpointSignature(checkpointId, entities);
+  const signature = topologySnapshot.signature;
   const nextTopologySnapshot: CadBodyExactTopologySnapshot = {
     ...topologySnapshot,
     signature,
@@ -1052,10 +1050,7 @@ function normalizeTopologySnapshotForGeneratedReference({
   const nextSnapshot: CadBodyExactTopologySnapshot = {
     ...topologySnapshot,
     entities,
-    signature: createNormalizedCheckpointSignature(
-      createPreviewCheckpointId(target.bodyId, target.stableId),
-      entities
-    )
+    signature: topologySnapshot.signature
   };
 
   return {
@@ -1202,6 +1197,28 @@ function findStableFaceEntity(
   return undefined;
 }
 
+export function bindGeneratedFaceTopologySnapshot(input: {
+  readonly topologySnapshot: CadBodyExactTopologySnapshot;
+  readonly source: DerivedExactMetadataSource;
+  readonly stableId: string;
+  readonly geometrySignature: string;
+}): CadBodyExactTopologySnapshot | undefined {
+  const entity = findStableFaceEntity(
+    input.stableId,
+    input.topologySnapshot.entities.filter(({ kind }) => kind === "face"),
+    input.source
+  );
+  if (!entity) return undefined;
+  return {
+    ...input.topologySnapshot,
+    entities: input.topologySnapshot.entities.map((candidate) =>
+      candidate.localId === entity.localId
+        ? { ...candidate, signature: input.geometrySignature }
+        : candidate
+    )
+  };
+}
+
 function findStableBooleanExtrudeFaceEntity(
   stableId: string,
   candidates: readonly CadBodyExactTopologyEntityDescriptor[],
@@ -1340,16 +1357,6 @@ function getExtrudeCapPlaneCoordinate(
 
 function nearlyEqual(left: number, right: number): boolean {
   return Math.abs(left - right) <= 1e-6;
-}
-
-function createNormalizedCheckpointSignature(
-  checkpointId: string,
-  entities: readonly CadBodyExactTopologyEntityDescriptor[]
-): string {
-  return `partbench-checkpoint-anchor-normalized-v1:${checkpointId}:${entities
-    .map((entity) => `${entity.kind}:${entity.localId}:${entity.signature}`)
-    .sort()
-    .join("|")}`;
 }
 
 const TOPOLOGY_ANCHOR_PROOF_AXES = ["x", "y", "z"] as const;
