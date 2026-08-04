@@ -26,6 +26,9 @@ export type ViewportSelectionKind =
   | "none"
   | "object"
   | "body"
+  | "face"
+  | "edge"
+  | "vertex"
   | "sketchEntity"
   | "generatedReference";
 
@@ -126,6 +129,18 @@ export function createViewportSelectionDisplay({
           message: selectedGeneratedReferenceState.message
         }
       ]
+    });
+  }
+
+  if (viewportPickIntent?.kind === "currentTopology") {
+    const kind = viewportPickIntent.entityKind;
+    const label = selectedBody?.name ?? "Body";
+    return createDisplay({
+      selectionKind: kind,
+      title: `${label} (${kind.charAt(0).toUpperCase() + kind.slice(1)})`,
+      detail: `Current topology ${kind} selected for inspection.`,
+      tone: toneFromGeometryStatus(geometry.status),
+      geometry
     });
   }
 

@@ -618,6 +618,15 @@ async function createArtifact(
       version: "partbench.exact-pick-map.v1",
       bodyId,
       bodySourceIdentitySignature,
+      byteLength:
+        88 +
+        [face, edge, vertex].reduce(
+          (total, entity) =>
+            total +
+            64 +
+            (entity.localId.length + entity.entitySignature.length) * 2,
+          0
+        ),
       topologySignature,
       meshVertexCount: 3,
       meshTriangleCount: 1,

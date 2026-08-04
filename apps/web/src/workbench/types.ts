@@ -1,6 +1,6 @@
 export type WorkbenchMode = "project" | "solid" | "sketch" | "inspect";
 
-export type SelectionFilter = "body" | "face" | "edge";
+export type SelectionFilter = "auto" | "body" | "face" | "edge" | "vertex";
 
 export type ProjectPageId =
   | "overview"

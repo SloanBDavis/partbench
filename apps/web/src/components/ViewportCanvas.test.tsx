@@ -1,7 +1,11 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { ViewportCanvas } from "./ViewportCanvas";
+import {
+  createViewportPickIdentity,
+  ViewportCanvas,
+  type ViewportCanvasPick
+} from "./ViewportCanvas";
 
 describe("ViewportCanvas", () => {
   it("renders only viewport controls and the canvas surface", () => {
@@ -254,5 +258,42 @@ describe("ViewportCanvas", () => {
     expect(markup).not.toContain("selection-buffer");
     expect(markup).not.toContain("occt-shape");
     expect(markup).not.toContain("mesh-triangle");
+  });
+
+  it("changes exact hover identity when the current topology changes", () => {
+    const pick = (topologySignature: string): ViewportCanvasPick => ({
+      additive: false,
+      camera: {
+        target: [0, 0, 0],
+        yaw: 0,
+        pitch: 0,
+        distance: 10
+      },
+      exactPickResult: {
+        status: "ready",
+        candidates: [
+          {
+            bodyId: "body",
+            bodySourceIdentitySignature: "source",
+            topologySignature,
+            entityKind: "face",
+            localId: "face:1",
+            entitySignature: "face-signature",
+            depth: 1,
+            distance: 0,
+            occluded: false
+          }
+        ],
+        examined: 1,
+        truncated: false
+      },
+      pickedRenderId: "body",
+      point: { x: 1, y: 1 },
+      size: { width: 10, height: 10 }
+    });
+
+    expect(createViewportPickIdentity(pick("old"))).not.toBe(
+      createViewportPickIdentity(pick("replacement"))
+    );
   });
 });

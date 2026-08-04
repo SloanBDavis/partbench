@@ -5,11 +5,13 @@ import {
   createViewportRay,
   orbitCamera,
   panCamera,
+  pickExactRenderBodies,
   pickPrimitive,
   pickRenderScene,
   projectPoint,
   renderCanvasScene,
   rendererPackage,
+  type RenderExactPickBody,
   zoomCamera
 } from "./index";
 
@@ -350,6 +352,210 @@ describe("renderer", () => {
     ).toBe("edge-in-front");
   });
 
+  it("binds depth-ordered face, edge, vertex, and body hits to exact entities", () => {
+    const camera = exactPickCamera();
+    const size = { width: 800, height: 600 };
+    const result = pickExactRenderBodies(
+      [createExactPickBody("near", -2), createExactPickBody("far", 2)],
+      camera,
+      size,
+      { x: 400, y: 300 }
+    );
+
+    expect(result).toMatchObject({
+      status: "ready",
+      examined: 4,
+      truncated: false
+    });
+    expect(
+      result.candidates.slice(0, 4).map((candidate) => candidate.bodyId)
+    ).toEqual(["near", "near", "near", "near"]);
+    expect(
+      result.candidates.slice(0, 4).map((candidate) => candidate.entityKind)
+    ).toEqual(["face", "edge", "vertex", "body"]);
+    expect(
+      result.candidates
+        .filter((candidate) => candidate.bodyId === "far")
+        .every((candidate) => candidate.occluded)
+    ).toBe(true);
+    expect(result.candidates[0]).toMatchObject({
+      bodySourceIdentitySignature: "source:near",
+      topologySignature: "topology:near",
+      localId: "face:near",
+      entitySignature: "face-signature:near"
+    });
+  });
+
+  it("keeps CSS-pixel edge tolerance stable across camera zoom", () => {
+    const size = { width: 800, height: 600 };
+    for (const distance of [10, 20]) {
+      const camera = { ...exactPickCamera(), distance };
+      const center = projectPoint([0, 0, 0], camera, size);
+      expect(center).toBeDefined();
+      const result = pickExactRenderBodies(
+        [createExactPickBody("body", 0)],
+        camera,
+        size,
+        { x: (center?.x ?? 0) + 9, y: center?.y ?? 0 },
+        "edge"
+      );
+      expect(result.candidates).toHaveLength(1);
+      expect(result.candidates[0]).toMatchObject({ entityKind: "edge" });
+    }
+  });
+
+  it("rejects by body bounds and hard-stops at 250,000 triangle examinations", () => {
+    const camera = exactPickCamera();
+    const size = { width: 800, height: 600 };
+    const offscreen = createExactPickBody("offscreen", 0, {
+      translation: [100, 0, 0]
+    });
+    expect(
+      pickExactRenderBodies([offscreen], camera, size, { x: 400, y: 300 })
+    ).toMatchObject({ status: "ready", examined: 0 });
+
+    const oversized = createExactPickBody("oversized", 0);
+    const triangleCount = 250_001;
+    const indices = Array.from(
+      { length: triangleCount * 3 },
+      (_, index) => index % 3
+    );
+    const result = pickExactRenderBodies(
+      [
+        {
+          mesh: { ...oversized.mesh, indices },
+          pickMap: {
+            ...oversized.pickMap,
+            meshTriangleCount: triangleCount,
+            faceTriangleRanges: new Uint32Array([0, triangleCount])
+          }
+        }
+      ],
+      camera,
+      size,
+      { x: 400, y: 300 }
+    );
+
+    expect(result).toEqual({
+      status: "resource-limited",
+      candidates: [],
+      examined: 0,
+      truncated: false
+    });
+  });
+
+  it("keeps only the first 64 deterministic exact candidates", () => {
+    const body = createExactPickBody("body", 0);
+    const vertices = Array.from({ length: 65 }, (_, index) => ({
+      localId: `vertex:${String(index).padStart(2, "0")}`,
+      entitySignature: `vertex-signature:${index}`
+    }));
+    const result = pickExactRenderBodies(
+      [
+        {
+          mesh: body.mesh,
+          pickMap: {
+            ...body.pickMap,
+            vertices,
+            vertexPoints: new Float64Array(vertices.length * 3)
+          }
+        }
+      ],
+      exactPickCamera(),
+      { width: 800, height: 600 },
+      { x: 400, y: 300 },
+      "vertex"
+    );
+
+    expect(result).toMatchObject({ status: "ready", truncated: true });
+    expect(result.candidates).toHaveLength(64);
+    expect(result.candidates[0]?.localId).toBe("vertex:00");
+    expect(result.candidates.at(-1)?.localId).toBe("vertex:63");
+  });
+
+  it("falls back before scanning more than 250,000 exact display points", () => {
+    const body = createExactPickBody("body", 0);
+    const pointCount = 250_001;
+    const result = pickExactRenderBodies(
+      [
+        {
+          mesh: body.mesh,
+          pickMap: {
+            ...body.pickMap,
+            edgePointRanges: new Uint32Array([0, pointCount]),
+            edgePoints: new Float64Array(pointCount * 3)
+          }
+        }
+      ],
+      exactPickCamera(),
+      { width: 800, height: 600 },
+      { x: 400, y: 300 },
+      "edge"
+    );
+
+    expect(result).toMatchObject({
+      status: "resource-limited",
+      candidates: [],
+      examined: 0
+    });
+  });
+
+  it("renders identity-bound face, edge, and vertex visual states", () => {
+    const recorder = createRecordingCanvasContext();
+    const body = createExactPickBody("body", 0);
+
+    renderCanvasScene(recorder.context, {
+      camera: exactPickCamera(),
+      size: { width: 800, height: 600 },
+      primitives: [],
+      meshes: [body.mesh],
+      exactPickBodies: [body],
+      exactVisualStates: [
+        {
+          bodyId: "body",
+          bodySourceIdentitySignature: "source:body",
+          topologySignature: "topology:body",
+          entityKind: "face",
+          localId: "face:body",
+          entitySignature: "face-signature:body",
+          state: "selected"
+        },
+        {
+          bodyId: "body",
+          bodySourceIdentitySignature: "source:body",
+          topologySignature: "topology:body",
+          entityKind: "edge",
+          localId: "edge:body",
+          entitySignature: "edge-signature:body",
+          state: "preselection"
+        },
+        {
+          bodyId: "body",
+          bodySourceIdentitySignature: "source:body",
+          topologySignature: "topology:body",
+          entityKind: "vertex",
+          localId: "vertex:body",
+          entitySignature: "vertex-signature:body",
+          state: "commandTarget"
+        },
+        {
+          bodyId: "body",
+          bodySourceIdentitySignature: "source:body",
+          topologySignature: "stale",
+          entityKind: "body",
+          state: "failed"
+        }
+      ]
+    });
+
+    expect(recorder.fillStyles).toContain("rgba(242, 165, 65, 0.16)");
+    expect(recorder.fillStyles).toContain("#2f855a");
+    expect(recorder.fillStyles).not.toContain("rgba(180, 35, 24, 0.14)");
+    expect(recorder.strokes).toContainEqual(
+      expect.objectContaining({ lineWidth: 3, strokeStyle: "#188bbf" })
+    );
+  });
+
   it("renders construction edges with the restrained dashed vocabulary", () => {
     const recorder = createRecordingCanvasContext();
 
@@ -602,6 +808,70 @@ describe("renderer", () => {
   });
 });
 
+function exactPickCamera() {
+  return {
+    target: [0, 0, 0] as const,
+    yaw: 0,
+    pitch: 0,
+    distance: 10
+  };
+}
+
+function createExactPickBody(
+  bodyId: string,
+  y: number,
+  transform?: { readonly translation: readonly [number, number, number] }
+): RenderExactPickBody {
+  return {
+    mesh: {
+      id: bodyId,
+      kind: "mesh",
+      vertices: [
+        [-2, 0, -2],
+        [2, 0, -2],
+        [2, 0, 2],
+        [-2, 0, 2]
+      ],
+      indices: [0, 1, 2, 0, 2, 3],
+      transform: {
+        translation: transform?.translation ?? [0, y, 0],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1]
+      }
+    },
+    pickMap: {
+      version: "partbench.exact-pick-map.v1",
+      bodyId,
+      bodySourceIdentitySignature: `source:${bodyId}`,
+      topologySignature: `topology:${bodyId}`,
+      meshVertexCount: 4,
+      meshTriangleCount: 2,
+      faces: [
+        {
+          localId: `face:${bodyId}`,
+          entitySignature: `face-signature:${bodyId}`
+        }
+      ],
+      edges: [
+        {
+          localId: `edge:${bodyId}`,
+          entitySignature: `edge-signature:${bodyId}`
+        }
+      ],
+      vertices: [
+        {
+          localId: `vertex:${bodyId}`,
+          entitySignature: `vertex-signature:${bodyId}`
+        }
+      ],
+      faceTriangleRanges: new Uint32Array([0, 2]),
+      edgePointRanges: new Uint32Array([0, 2]),
+      edgePoints: new Float64Array([-1, 0, 0, 1, 0, 0]),
+      vertexPoints: new Float64Array([0, 0, 0])
+    }
+  };
+}
+
 interface StrokeRecord {
   readonly closed: boolean;
   readonly lineDash: readonly number[];
@@ -613,14 +883,17 @@ interface StrokeRecord {
 function createRecordingCanvasContext(): {
   readonly context: CanvasRenderingContext2D;
   readonly fills: { readonly x: number; readonly y: number }[][];
+  readonly fillStyles: readonly string[];
   readonly strokes: StrokeRecord[];
 } {
   const fills: { readonly x: number; readonly y: number }[][] = [];
+  const fillStyles: string[] = [];
   const strokes: StrokeRecord[] = [];
   let closed = false;
   let lineDash: number[] = [];
   let lineWidth = 1;
   let points: { x: number; y: number }[] = [];
+  let fillStyle = "";
   let strokeStyle = "";
 
   const context = {
@@ -645,6 +918,10 @@ function createRecordingCanvasContext(): {
     },
     fill: () => {
       fills.push([...points]);
+      fillStyles.push(fillStyle);
+    },
+    fillRect: () => {
+      fillStyles.push(fillStyle);
     },
     stroke: () => {
       strokes.push({
@@ -655,7 +932,9 @@ function createRecordingCanvasContext(): {
         strokeStyle
       });
     },
-    set fillStyle(_value: string) {},
+    set fillStyle(value: string) {
+      fillStyle = value;
+    },
     set lineCap(_value: CanvasLineCap) {},
     set lineJoin(_value: CanvasLineJoin) {},
     set lineWidth(value: number) {
@@ -669,5 +948,5 @@ function createRecordingCanvasContext(): {
     }
   } as unknown as CanvasRenderingContext2D;
 
-  return { context, fills, strokes };
+  return { context, fills, fillStyles, strokes };
 }

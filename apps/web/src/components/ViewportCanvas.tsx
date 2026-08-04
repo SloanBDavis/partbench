@@ -2,9 +2,14 @@ import {
   createDefaultCamera,
   orbitCamera,
   panCamera,
+  pickExactRenderBodies,
   pickRenderScene,
   renderCanvasScene,
   type RenderCamera,
+  type RenderExactPickBody,
+  type RenderExactPickFilter,
+  type RenderExactPickResult,
+  type RenderExactVisualStateInput,
   type RenderTriangleMesh,
   type RenderPrimitive,
   type RenderVisualStateInput,
@@ -44,7 +49,9 @@ export { VIEWPORT_COMMAND_EVENT } from "./viewportCanvasContract";
 export type { ViewportCommand } from "./viewportCanvasContract";
 
 export interface ViewportCanvasPick {
+  readonly additive: boolean;
   readonly camera: RenderCamera;
+  readonly exactPickResult?: RenderExactPickResult;
   readonly pickedRenderId?: string;
   readonly point: ViewportPoint;
   readonly size: ViewportSize;
@@ -58,6 +65,9 @@ export interface ViewportCanvasStatus {
 
 export function ViewportCanvas({
   contextualSurface,
+  exactPickBodies = [],
+  exactPickFilter = "auto",
+  exactVisualStates,
   meshes,
   notifyHoverPointChanges = false,
   onHover,
@@ -71,6 +81,9 @@ export function ViewportCanvas({
   visualStates
 }: {
   readonly contextualSurface?: ReactNode;
+  readonly exactPickBodies?: readonly RenderExactPickBody[];
+  readonly exactPickFilter?: RenderExactPickFilter;
+  readonly exactVisualStates?: readonly RenderExactVisualStateInput[];
   readonly meshes?: readonly RenderTriangleMesh[];
   readonly notifyHoverPointChanges?: boolean;
   readonly onHover?: (pick: ViewportCanvasPick | undefined) => void;
@@ -97,6 +110,7 @@ export function ViewportCanvas({
   const cameraRef = useRef(camera);
   const sizeRef = useRef(size);
   const hoveredIdRef = useRef<string | undefined>(undefined);
+  const hoveredPickIdentityRef = useRef<string | undefined>(undefined);
   const visualStatesIdentity = useMemo(
     () => JSON.stringify(visualStates ?? null),
     [visualStates]
@@ -128,6 +142,8 @@ export function ViewportCanvas({
     | undefined
   >(undefined);
   const latestInputsRef = useRef({
+    exactPickBodies,
+    exactPickFilter,
     meshes,
     notifyHoverPointChanges,
     onHover,
@@ -136,6 +152,8 @@ export function ViewportCanvas({
     suspendHoverPicking
   });
   latestInputsRef.current = {
+    exactPickBodies,
+    exactPickFilter,
     meshes,
     notifyHoverPointChanges,
     onHover,
@@ -188,10 +206,13 @@ export function ViewportCanvas({
       const inputs = latestInputsRef.current;
       const previousId = hoveredIdRef.current;
       const nextId = pick?.pickedRenderId;
-      const semanticTargetChanged = setInternalHoveredId(nextId);
+      const previousIdentity = hoveredPickIdentityRef.current;
+      const nextIdentity = createViewportPickIdentity(pick);
+      hoveredPickIdentityRef.current = nextIdentity;
+      setInternalHoveredId(nextId);
 
       if (
-        semanticTargetChanged ||
+        previousIdentity !== nextIdentity ||
         shouldNotifyViewportHover(
           previousId,
           nextId,
@@ -239,19 +260,13 @@ export function ViewportCanvas({
         const inputs = latestInputsRef.current;
         const currentCamera = cameraRef.current;
         const currentSize = sizeRef.current;
-        const pickedRenderId = pickRenderScene(
-          inputs.primitives,
-          inputs.meshes ?? [],
+        const pick = createViewportCanvasPick(
+          inputs,
           currentCamera,
           currentSize,
           point
         );
-        publishViewportHover({
-          camera: currentCamera,
-          pickedRenderId,
-          point,
-          size: currentSize
-        });
+        publishViewportHover(pick);
       },
       requestFrame
     });
@@ -312,6 +327,8 @@ export function ViewportCanvas({
     const renderOptions = {
       primitives,
       camera,
+      exactPickBodies,
+      exactVisualStates,
       hoveredId: stableVisualStates ? undefined : hoveredId,
       meshes,
       size,
@@ -344,6 +361,8 @@ export function ViewportCanvas({
     };
   }, [
     camera,
+    exactPickBodies,
+    exactVisualStates,
     hoveredId,
     meshes,
     primitives,
@@ -601,20 +620,16 @@ export function ViewportCanvas({
             const currentCamera = cameraRef.current;
             const currentSize = sizeRef.current;
             const inputs = latestInputsRef.current;
-            const id = pickRenderScene(
-              inputs.primitives,
-              inputs.meshes ?? [],
+            const pick = createViewportCanvasPick(
+              inputs,
               currentCamera,
               currentSize,
-              point
-            );
-            setInternalHoveredId(id);
-            inputs.onSelect({
-              camera: currentCamera,
-              pickedRenderId: id,
               point,
-              size: currentSize
-            });
+              event.shiftKey
+            );
+            hoveredPickIdentityRef.current = createViewportPickIdentity(pick);
+            setInternalHoveredId(pick.pickedRenderId);
+            inputs.onSelect(pick);
           }}
           onPointerCancel={(event) => {
             const pointer = pointerRef.current;
@@ -665,6 +680,66 @@ export function ViewportCanvas({
       </div>
     </section>
   );
+}
+
+function createViewportCanvasPick(
+  inputs: {
+    readonly exactPickBodies: readonly RenderExactPickBody[];
+    readonly exactPickFilter: RenderExactPickFilter;
+    readonly meshes?: readonly RenderTriangleMesh[];
+    readonly primitives: readonly RenderPrimitive[];
+  },
+  camera: RenderCamera,
+  size: ViewportSize,
+  point: ViewportPoint,
+  additive = false
+): ViewportCanvasPick {
+  const exactPickResult =
+    inputs.exactPickBodies.length > 0
+      ? pickExactRenderBodies(
+          inputs.exactPickBodies,
+          camera,
+          size,
+          point,
+          inputs.exactPickFilter
+        )
+      : undefined;
+  const exactCandidate = exactPickResult?.candidates[0];
+  const fallbackId = exactCandidate
+    ? undefined
+    : pickRenderScene(
+        inputs.primitives,
+        inputs.meshes ?? [],
+        camera,
+        size,
+        point
+      );
+  const suppressExactBoundsFallback =
+    exactPickResult?.status === "ready" &&
+    fallbackId !== undefined &&
+    inputs.exactPickBodies.some(({ pickMap }) => pickMap.bodyId === fallbackId);
+
+  return {
+    additive,
+    camera,
+    ...(exactPickResult ? { exactPickResult } : {}),
+    ...(exactCandidate?.bodyId
+      ? { pickedRenderId: exactCandidate.bodyId }
+      : !suppressExactBoundsFallback && fallbackId
+        ? { pickedRenderId: fallbackId }
+        : {}),
+    point,
+    size
+  };
+}
+
+export function createViewportPickIdentity(
+  pick: ViewportCanvasPick | undefined
+): string | undefined {
+  const candidate = pick?.exactPickResult?.candidates[0];
+  return candidate
+    ? `${candidate.bodyId}\0${candidate.bodySourceIdentitySignature}\0${candidate.topologySignature}\0${candidate.entityKind}\0${candidate.localId ?? ""}\0${candidate.entitySignature ?? ""}`
+    : pick?.pickedRenderId;
 }
 
 function setCanvasPointerCapture(

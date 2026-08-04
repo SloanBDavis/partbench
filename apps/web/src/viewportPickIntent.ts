@@ -1,26 +1,22 @@
 import type { SceneObject } from "@web-cad/cad-core";
+import type { RenderExactPickCandidate } from "@web-cad/renderer";
 import type {
   CadBodySnapshot,
-  CadGeneratedEntityKind,
   CadSelectionReferenceInput,
   CadSelectionReferenceIssue,
-  CadViewportHitCandidate,
+  CadSelectionReferenceStatus,
   CadViewportInteractionDiagnostic,
   CadViewportInteractionDiagnosticCode,
   CadViewportInteractionStatus,
   SketchSnapshot,
   SelectionReferenceCandidatesQueryResponse
 } from "@web-cad/cad-protocol";
-import {
-  createViewportInteractionDiagnosticsFromCandidates,
-  resolveViewportHitCandidateSelection
-} from "./viewportInteractionContract";
 import { parseSketchRenderId } from "./sketchRenderIds";
 
 export type ViewportPickIntentKind =
   | "empty"
   | "body"
-  | "generatedReference"
+  | "currentTopology"
   | "object"
   | "sketchEntity"
   | "unsupported"
@@ -48,16 +44,19 @@ export type ViewportPickIntent =
       readonly interactionDiagnostics: readonly CadViewportInteractionDiagnostic[];
     }
   | {
-      readonly kind: "generatedReference";
+      readonly kind: "currentTopology";
       readonly selectedId: string;
       readonly bodyId: string;
-      readonly stableId: string;
-      readonly expectedKind: CadGeneratedEntityKind;
+      readonly bodySourceIdentitySignature: string;
+      readonly topologySignature: string;
+      readonly entityKind: "face" | "edge" | "vertex";
+      readonly localId: string;
+      readonly entitySignature: string;
       readonly renderTargetId: string;
-      readonly semanticSelection: CadSelectionReferenceInput;
-      readonly referenceCandidates?: SelectionReferenceCandidatesQueryResponse;
-      readonly issues: readonly CadSelectionReferenceIssue[];
-      readonly interactionDiagnostics: readonly CadViewportInteractionDiagnostic[];
+      readonly semanticSelection?: undefined;
+      readonly referenceCandidates?: undefined;
+      readonly issues: readonly [];
+      readonly interactionDiagnostics: readonly [];
     }
   | {
       readonly kind: "object";
@@ -92,7 +91,6 @@ export type ViewportPickIntent =
 
 export interface ResolveViewportPickIntentInput {
   readonly pickedRenderId: string | undefined;
-  readonly hitCandidate?: CadViewportHitCandidate;
   readonly bodies: readonly CadBodySnapshot[];
   readonly objects: readonly SceneObject[];
   readonly sketches?: readonly SketchSnapshot[];
@@ -104,37 +102,24 @@ export interface ResolveViewportPickIntentInput {
 export type ViewportBodyHitTarget =
   | {
       readonly kind: "empty";
-      readonly hitCandidate?: undefined;
       readonly bodyId?: undefined;
       readonly objectId?: undefined;
       readonly renderTargetId?: undefined;
     }
   | {
       readonly kind: "body";
-      readonly hitCandidate: CadViewportHitCandidate;
       readonly bodyId: string;
       readonly renderTargetId: string;
       readonly objectId?: undefined;
     }
   | {
       readonly kind: "object";
-      readonly hitCandidate: CadViewportHitCandidate;
       readonly bodyId: string;
       readonly objectId: string;
       readonly renderTargetId: string;
     }
   | {
-      readonly kind: "generatedReference";
-      readonly hitCandidate: CadViewportHitCandidate;
-      readonly bodyId: string;
-      readonly stableId: string;
-      readonly expectedKind: CadGeneratedEntityKind;
-      readonly renderTargetId: string;
-      readonly objectId?: undefined;
-    }
-  | {
       readonly kind: "unsupported" | "renderer-only" | "ambiguous";
-      readonly hitCandidate: CadViewportHitCandidate;
       readonly bodyId?: undefined;
       readonly objectId?: undefined;
       readonly renderTargetId?: undefined;
@@ -147,37 +132,77 @@ export interface CreateViewportBodyHitTargetInput {
   readonly objects: readonly SceneObject[];
 }
 
-export interface ChooseViewportGeneratedReferencePickBodyIdInput {
-  readonly activeSelectionPanel: boolean;
-  readonly generatedReferenceSelected?: boolean;
-  readonly pickedBodyId?: string;
-  readonly selectedBodyId?: string;
+interface ViewportExactSelectionBase {
+  readonly bodyId: string;
+  readonly bodySourceIdentitySignature: string;
+  readonly topologySignature: string;
 }
 
-export function chooseViewportGeneratedReferencePickBodyId({
-  activeSelectionPanel,
-  generatedReferenceSelected = false,
-  pickedBodyId,
-  selectedBodyId
-}: ChooseViewportGeneratedReferencePickBodyIdInput): string | undefined {
-  if (!pickedBodyId) {
-    return undefined;
-  }
+export type ViewportExactSelection =
+  | (ViewportExactSelectionBase & {
+      readonly entityKind: "body";
+      readonly localId?: undefined;
+      readonly entitySignature?: undefined;
+    })
+  | (ViewportExactSelectionBase & {
+      readonly entityKind: "face" | "edge" | "vertex";
+      readonly localId: string;
+      readonly entitySignature: string;
+    });
 
-  return pickedBodyId === selectedBodyId ||
-    (activeSelectionPanel && !generatedReferenceSelected)
-    ? pickedBodyId
-    : undefined;
+export function createViewportExactSelection(
+  candidate: Extract<
+    RenderExactPickCandidate,
+    { readonly entityKind: "face" | "edge" | "vertex" }
+  >
+): Extract<
+  ViewportExactSelection,
+  { readonly entityKind: "face" | "edge" | "vertex" }
+>;
+export function createViewportExactSelection(
+  candidate: RenderExactPickCandidate
+): ViewportExactSelection;
+export function createViewportExactSelection(
+  candidate: RenderExactPickCandidate
+): ViewportExactSelection {
+  const {
+    depth: _depth,
+    distance: _distance,
+    occluded: _occluded,
+    ...selection
+  } = candidate;
+  return selection;
 }
 
-export function resolveViewportPickedBodyId(
-  input: CreateViewportBodyHitTargetInput
-): string | undefined {
-  const target = createViewportBodyHitTarget(input);
+export function isSameViewportExactSelection(
+  left: ViewportExactSelection,
+  right: ViewportExactSelection
+): boolean {
+  return (
+    left.bodyId === right.bodyId &&
+    left.bodySourceIdentitySignature === right.bodySourceIdentitySignature &&
+    left.topologySignature === right.topologySignature &&
+    left.entityKind === right.entityKind &&
+    left.localId === right.localId &&
+    left.entitySignature === right.entitySignature
+  );
+}
 
-  return target.kind === "body" || target.kind === "object"
-    ? target.bodyId
-    : undefined;
+export function createViewportCurrentTopologyPickIntent(
+  candidate: Extract<
+    RenderExactPickCandidate,
+    { readonly entityKind: "face" | "edge" | "vertex" }
+  >
+): ViewportPickIntent {
+  const selection = createViewportExactSelection(candidate);
+  return {
+    kind: "currentTopology",
+    ...selection,
+    selectedId: selection.bodyId,
+    renderTargetId: selection.bodyId,
+    issues: [],
+    interactionDiagnostics: []
+  };
 }
 
 export function createViewportBodyHitTarget({
@@ -189,23 +214,13 @@ export function createViewportBodyHitTarget({
     return { kind: "empty" };
   }
 
-  const rendererHitId = createRendererHitId(pickedRenderId);
   const body = bodies.find((candidate) => candidate.id === pickedRenderId);
 
   if (body) {
     return {
       kind: "body",
       bodyId: body.id,
-      renderTargetId: body.id,
-      hitCandidate: {
-        displayEntityKind: "body",
-        rendererHitId,
-        precision: "bounds",
-        semanticHint: {
-          type: "body",
-          bodyId: body.id
-        }
-      }
+      renderTargetId: body.id
     };
   }
 
@@ -222,32 +237,18 @@ export function createViewportBodyHitTarget({
         kind: "object",
         bodyId: objectBody.id,
         objectId: object.id,
-        renderTargetId: object.id,
-        hitCandidate: {
-          displayEntityKind: "body",
-          rendererHitId,
-          precision: "bounds",
-          semanticHint: {
-            type: "body",
-            bodyId: objectBody.id
-          }
-        }
+        renderTargetId: object.id
       };
     }
 
     if (objectBodies.length > 1) {
       return {
         kind: "ambiguous",
-        hitCandidate: {
-          displayEntityKind: "body",
-          rendererHitId,
-          precision: "bounds"
-        },
         interactionDiagnostics: [
           createViewportPickDiagnostic(
             "VIEWPORT_AMBIGUOUS_HIT_CANDIDATE",
             "ambiguous",
-            "Viewport object hit maps to multiple CAD bodies.",
+            "Viewport hit maps to multiple bodies.",
             {
               expected: "one object-backed body",
               received: `${objectBodies.length} object-backed bodies`
@@ -259,44 +260,49 @@ export function createViewportBodyHitTarget({
 
     return {
       kind: "renderer-only",
-      hitCandidate: {
-        displayEntityKind: "body",
-        rendererHitId,
-        precision: "bounds"
-      }
+      interactionDiagnostics: [
+        createViewportPickDiagnostic(
+          "VIEWPORT_RENDERER_ONLY_TARGET",
+          "renderer-only",
+          "Viewport object has no CAD body."
+        )
+      ]
     };
   }
 
   if (parseSketchRenderId(pickedRenderId)) {
     return {
       kind: "unsupported",
-      hitCandidate: {
-        displayEntityKind: "sketchEntity",
-        rendererHitId,
-        precision: "displayApproximation"
-      }
+      interactionDiagnostics: [
+        createViewportPickDiagnostic(
+          "VIEWPORT_UNSUPPORTED_DISPLAY_ENTITY",
+          "unsupported",
+          "Sketch geometry is not a solid target."
+        )
+      ]
     };
   }
 
   return {
     kind: "renderer-only",
-    hitCandidate: {
-      displayEntityKind: "body",
-      rendererHitId,
-      precision: "bounds"
-    }
+    interactionDiagnostics: [
+      createViewportPickDiagnostic(
+        "VIEWPORT_RENDERER_ONLY_TARGET",
+        "renderer-only",
+        "Viewport hit has no CAD target."
+      )
+    ]
   };
 }
 
 export function resolveViewportPickIntent({
-  hitCandidate,
   pickedRenderId,
   bodies,
   objects,
   sketches = [],
   readReferenceCandidates
 }: ResolveViewportPickIntentInput): ViewportPickIntent {
-  if (!hitCandidate && pickedRenderId) {
+  if (pickedRenderId) {
     const sketchRenderTarget = parseSketchRenderId(pickedRenderId);
 
     if (sketchRenderTarget?.kind === "sketchEntity") {
@@ -321,37 +327,28 @@ export function resolveViewportPickIntent({
     }
   }
 
-  const hitTarget =
-    hitCandidate !== undefined
-      ? createViewportBodyHitTargetFromCandidate(hitCandidate)
-      : createViewportBodyHitTarget({ pickedRenderId, bodies, objects });
+  const hitTarget = createViewportBodyHitTarget({
+    pickedRenderId,
+    bodies,
+    objects
+  });
 
   if (hitTarget.kind === "empty") {
     return { kind: "empty", issues: [], interactionDiagnostics: [] };
   }
 
-  if (hitTarget.kind === "ambiguous") {
+  if (hitTarget.kind !== "body" && hitTarget.kind !== "object") {
     return createBlockedViewportPickIntent(
-      "ambiguous",
+      hitTarget.kind,
       hitTarget.interactionDiagnostics ?? []
     );
   }
 
-  const resolution = resolveViewportHitCandidateSelection({
-    hitCandidate: hitTarget.hitCandidate
-  });
-
-  if (!resolution.selection) {
-    return createBlockedViewportPickIntent(
-      blockedKindFromInteractionStatus(resolution.status),
-      resolution.diagnostics
-    );
-  }
-
-  const referenceCandidates = readReferenceCandidates?.(resolution.selection);
+  const selection = { type: "body", bodyId: hitTarget.bodyId } as const;
+  const referenceCandidates = readReferenceCandidates?.(selection);
   const interactionDiagnostics = referenceCandidates
-    ? createViewportInteractionDiagnosticsFromCandidates(referenceCandidates)
-    : resolution.diagnostics;
+    ? createReferenceCandidateDiagnostics(referenceCandidates)
+    : [];
   const issues =
     referenceCandidates?.issues ??
     interactionDiagnostics.map(createSelectionIssueFromViewportDiagnostic);
@@ -363,86 +360,22 @@ export function resolveViewportPickIntent({
       objectId: hitTarget.objectId,
       bodyId: hitTarget.bodyId,
       renderTargetId: hitTarget.renderTargetId,
-      semanticSelection: resolution.selection,
+      semanticSelection: selection,
       referenceCandidates,
       issues,
       interactionDiagnostics
-    };
-  }
-
-  if (hitTarget.kind === "generatedReference") {
-    return {
-      kind: "generatedReference",
-      selectedId: hitTarget.bodyId,
-      bodyId: hitTarget.bodyId,
-      stableId: hitTarget.stableId,
-      expectedKind: hitTarget.expectedKind,
-      renderTargetId: hitTarget.renderTargetId,
-      semanticSelection: resolution.selection,
-      referenceCandidates,
-      issues,
-      interactionDiagnostics
-    };
-  }
-
-  if (hitTarget.kind === "body") {
-    return {
-      kind: "body",
-      selectedId: hitTarget.bodyId,
-      bodyId: hitTarget.bodyId,
-      renderTargetId: hitTarget.renderTargetId,
-      semanticSelection: resolution.selection,
-      referenceCandidates,
-      issues,
-      interactionDiagnostics
-    };
-  }
-
-  return createBlockedViewportPickIntent(
-    hitTarget.kind,
-    interactionDiagnostics
-  );
-}
-
-function createViewportBodyHitTargetFromCandidate(
-  hitCandidate: CadViewportHitCandidate
-): ViewportBodyHitTarget {
-  if (
-    hitCandidate.semanticHint?.type === "generatedReference" &&
-    hitCandidate.displayEntityKind === hitCandidate.semanticHint.expectedKind
-  ) {
-    return {
-      kind: "generatedReference",
-      hitCandidate,
-      bodyId: hitCandidate.semanticHint.bodyId,
-      stableId: hitCandidate.semanticHint.stableId,
-      expectedKind: hitCandidate.semanticHint.expectedKind,
-      renderTargetId: hitCandidate.semanticHint.bodyId
-    };
-  }
-
-  if (
-    hitCandidate.displayEntityKind === "body" &&
-    hitCandidate.semanticHint?.type === "body"
-  ) {
-    return {
-      kind: "body",
-      hitCandidate,
-      bodyId: hitCandidate.semanticHint.bodyId,
-      renderTargetId: hitCandidate.semanticHint.bodyId
-    };
-  }
-
-  if (hitCandidate.displayEntityKind === "sketchEntity") {
-    return {
-      kind: "unsupported",
-      hitCandidate
     };
   }
 
   return {
-    kind: "renderer-only",
-    hitCandidate
+    kind: "body",
+    selectedId: hitTarget.bodyId,
+    bodyId: hitTarget.bodyId,
+    renderTargetId: hitTarget.renderTargetId,
+    semanticSelection: selection,
+    referenceCandidates,
+    issues,
+    interactionDiagnostics
   };
 }
 
@@ -460,7 +393,7 @@ function createBlockedViewportPickIntent(
           createViewportPickDiagnostic(
             "VIEWPORT_MISSING_HIT_TARGET",
             "missing",
-            "Viewport pick did not resolve to a current CAD body."
+            "Viewport pick has no current CAD body."
           )
         ];
 
@@ -469,6 +402,52 @@ function createBlockedViewportPickIntent(
     issues: diagnostics.map(createSelectionIssueFromViewportDiagnostic),
     interactionDiagnostics: diagnostics
   };
+}
+
+function createReferenceCandidateDiagnostics(
+  response: SelectionReferenceCandidatesQueryResponse
+): readonly CadViewportInteractionDiagnostic[] {
+  if (response.issues.length > 0) {
+    return response.issues.map((issue) =>
+      createViewportPickDiagnostic(
+        viewportCodeFromSelectionStatus(issue.status),
+        issue.status,
+        issue.message,
+        {
+          ...(issue.expected ? { expected: issue.expected } : {}),
+          ...(issue.received ? { received: issue.received } : {})
+        }
+      )
+    );
+  }
+  return response.status === "resolved"
+    ? []
+    : [
+        createViewportPickDiagnostic(
+          viewportCodeFromSelectionStatus(response.status),
+          response.status,
+          `Viewport target is ${response.status}.`
+        )
+      ];
+}
+
+function viewportCodeFromSelectionStatus(
+  status: Exclude<CadSelectionReferenceStatus, "resolved">
+): CadViewportInteractionDiagnosticCode {
+  switch (status) {
+    case "missing":
+      return "VIEWPORT_MISSING_HIT_TARGET";
+    case "stale":
+      return "VIEWPORT_STALE_SEMANTIC_HINT";
+    case "ambiguous":
+      return "VIEWPORT_AMBIGUOUS_HIT_CANDIDATE";
+    case "consumed":
+      return "VIEWPORT_CONSUMED_TARGET";
+    case "non-commandable":
+      return "VIEWPORT_NON_COMMANDABLE_TARGET";
+    case "unsupported":
+      return "VIEWPORT_UNSUPPORTED_DISPLAY_ENTITY";
+  }
 }
 
 function createSelectionIssueFromViewportDiagnostic(
@@ -521,25 +500,6 @@ function createViewportPickDiagnostic(
   };
 }
 
-function blockedKindFromInteractionStatus(
-  status: CadViewportInteractionStatus
-): Extract<
-  ViewportPickIntentKind,
-  "unsupported" | "missing" | "renderer-only" | "ambiguous"
-> {
-  switch (status) {
-    case "missing":
-    case "empty":
-      return "missing";
-    case "renderer-only":
-      return "renderer-only";
-    case "ambiguous":
-      return "ambiguous";
-    default:
-      return "unsupported";
-  }
-}
-
 function selectionIssueCodeFromViewportDiagnostic(
   code: CadViewportInteractionDiagnosticCode
 ): CadSelectionReferenceIssue["code"] {
@@ -580,8 +540,4 @@ function selectionStatusFromViewportStatus(
     case "unsupported":
       return "unsupported";
   }
-}
-
-function createRendererHitId(pickedRenderId: string): string {
-  return `renderer-hit:${pickedRenderId}`;
 }

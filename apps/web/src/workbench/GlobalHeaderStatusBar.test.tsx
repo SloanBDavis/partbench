@@ -68,7 +68,9 @@ describe("V18 global header and mode status", () => {
     expect(markup).toContain("X 12.0 · Y 8.0");
     expect(markup).not.toContain('tabindex="0">X 12.0');
     expect(markup).toContain("Selection filter");
+    expect(markup).toContain('<option value="auto">Auto</option>');
     expect(markup).toContain('<option value="face" selected="">Face</option>');
+    expect(markup).toContain('<option value="vertex">Vertex</option>');
   });
 
   it("keeps model-work cancellation accessible alongside pending commands", () => {

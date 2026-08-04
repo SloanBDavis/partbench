@@ -185,9 +185,11 @@ function FilterControl({
           onChange(event.currentTarget.value as SelectionFilter)
         }
       >
+        <option value="auto">Auto</option>
         <option value="body">Body</option>
         <option value="face">Face</option>
         <option value="edge">Edge</option>
+        <option value="vertex">Vertex</option>
       </select>
     </label>
   );

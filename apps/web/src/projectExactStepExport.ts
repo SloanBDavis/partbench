@@ -23,7 +23,6 @@ import {
 import {
   assertExactBodyArtifactAggregateWithinLimit,
   createExactStepExportWorkerRequest,
-  getExactViewportPickMapDowngrade,
   type GeometryKernelExactBodyArtifact,
   type GeometryKernelExactStepExportArtifact
 } from "@web-cad/geometry-worker/browser";
@@ -774,7 +773,7 @@ export async function buildCurrentExactBodyArtifacts({
       units,
       ...(selectedKeys.has(key) ? { documentSourceIdentity } : {})
     });
-    const evidence = retainArtifactEvidence(existingArtifact);
+    const evidence = existingArtifact;
     assertArtifactAggregateWithinLimit([...artifactsByKey.values(), evidence]);
     artifactsByKey.set(key, evidence);
   }
@@ -923,7 +922,7 @@ export async function buildCurrentExactBodyArtifacts({
           isCurrent: isCacheCurrent
         });
       }
-      const evidence = retainArtifactEvidence(built);
+      const evidence = built;
       assertArtifactAggregateWithinLimit([
         ...artifactsByKey.values(),
         evidence
@@ -1245,17 +1244,18 @@ function resolveCurrentShellArtifactFaceLocalIds(
       currentIdentity.ok &&
       currentIdentity.query === "body.topologyIdentity"
     ) {
-      const stableIds = new Set(
-        refs.flatMap((ref) => {
-          if (ref.kind === "generatedFace") return [ref.stableId];
-          if (ref.kind !== "namedReference") return [];
-          const named = document.namedReferences.get(ref.name);
-          return named?.kind === "face" && named.bodyId === artifact.bodyId
-            ? [named.stableId]
-            : [];
-        })
-      );
-      for (const stableId of stableIds) {
+      for (const ref of refs) {
+        const named =
+          ref.kind === "namedReference"
+            ? document.namedReferences.get(ref.name)
+            : undefined;
+        const stableId =
+          ref.kind === "generatedFace"
+            ? ref.stableId
+            : named?.kind === "face" && named.bodyId === artifact.bodyId
+              ? named.stableId
+              : undefined;
+        if (!stableId) continue;
         const candidate = currentIdentity.candidates.find(
           (entry) => entry.stableId === stableId
         );
@@ -1386,23 +1386,6 @@ function resolveCurrentShellArtifactFaceLocalIds(
     }
     return entity.localId;
   });
-}
-
-function retainArtifactEvidence(
-  artifact: GeometryKernelExactBodyArtifact
-): CurrentExactBodyArtifactEvidence {
-  if (!artifact.viewportPickMap) return artifact;
-  const downgrade = getExactViewportPickMapDowngrade(
-    artifact.viewportPickMap,
-    artifact
-  );
-  if (!downgrade) return artifact;
-  const artifactWithoutPickMap = { ...artifact };
-  delete artifactWithoutPickMap.viewportPickMap;
-  return {
-    ...artifactWithoutPickMap,
-    viewportPickMapDowngrade: downgrade
-  };
 }
 
 function assertArtifactAggregateWithinLimit(

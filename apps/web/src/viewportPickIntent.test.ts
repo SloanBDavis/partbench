@@ -1,7 +1,6 @@
 import type { SceneObject } from "@web-cad/cad-core";
 import type {
   CadBodySnapshot,
-  CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
   CadGeneratedReference,
   CadSelectionReferenceInput,
@@ -11,9 +10,10 @@ import type {
 } from "@web-cad/cad-protocol";
 import { describe, expect, it } from "vitest";
 import {
-  chooseViewportGeneratedReferencePickBodyId,
+  createViewportCurrentTopologyPickIntent,
+  createViewportExactSelection,
+  isSameViewportExactSelection,
   createViewportBodyHitTarget,
-  resolveViewportPickedBodyId,
   resolveViewportPickIntent
 } from "./viewportPickIntent";
 import {
@@ -22,7 +22,57 @@ import {
 } from "./sketchRenderIds";
 
 describe("viewport pick intent", () => {
-  it("creates private V9 body hit candidates from body render IDs", () => {
+  it("strips renderer-only hit details into bounded current-topology selection", () => {
+    const candidate = {
+      bodyId: "body_exact",
+      bodySourceIdentitySignature: "source-current",
+      topologySignature: "topology-current",
+      entityKind: "face",
+      localId: "face-local-1",
+      entitySignature: "face-signature-1",
+      depth: 4,
+      distance: 2,
+      occluded: false
+    } as const;
+    const intent = createViewportCurrentTopologyPickIntent(candidate);
+    const selection = createViewportExactSelection(candidate);
+
+    expect(intent).toEqual({
+      kind: "currentTopology",
+      selectedId: "body_exact",
+      bodyId: "body_exact",
+      bodySourceIdentitySignature: "source-current",
+      topologySignature: "topology-current",
+      entityKind: "face",
+      localId: "face-local-1",
+      entitySignature: "face-signature-1",
+      renderTargetId: "body_exact",
+      issues: [],
+      interactionDiagnostics: []
+    });
+    expect(intent).not.toHaveProperty("depth");
+    expect(intent).not.toHaveProperty("distance");
+    expect(intent).not.toHaveProperty("occluded");
+    expect(selection).toEqual({
+      bodyId: "body_exact",
+      bodySourceIdentitySignature: "source-current",
+      topologySignature: "topology-current",
+      entityKind: "face",
+      localId: "face-local-1",
+      entitySignature: "face-signature-1"
+    });
+    expect(isSameViewportExactSelection(selection, { ...selection })).toBe(
+      true
+    );
+    expect(
+      isSameViewportExactSelection(selection, {
+        ...selection,
+        entitySignature: "changed"
+      })
+    ).toBe(false);
+  });
+
+  it("maps body render IDs to semantic body targets", () => {
     const body = createExtrudeBody("body_rect");
     const target = createViewportBodyHitTarget({
       pickedRenderId: body.id,
@@ -33,73 +83,8 @@ describe("viewport pick intent", () => {
     expect(target).toMatchObject({
       kind: "body",
       bodyId: "body_rect",
-      renderTargetId: "body_rect",
-      hitCandidate: {
-        displayEntityKind: "body",
-        rendererHitId: "renderer-hit:body_rect",
-        semanticHint: { type: "body", bodyId: "body_rect" }
-      }
+      renderTargetId: "body_rect"
     });
-  });
-
-  it("resolves picked render targets to semantic body IDs for generated-reference hit tests", () => {
-    const directBody = createExtrudeBody("body_rect");
-    const object = createBoxObject("box_1");
-    const objectBody = createPrimitiveBody("body:box_1", object.id);
-
-    expect(
-      resolveViewportPickedBodyId({
-        pickedRenderId: directBody.id,
-        bodies: [directBody, objectBody],
-        objects: [object]
-      })
-    ).toBe(directBody.id);
-    expect(
-      resolveViewportPickedBodyId({
-        pickedRenderId: object.id,
-        bodies: [directBody, objectBody],
-        objects: [object]
-      })
-    ).toBe(objectBody.id);
-    expect(
-      resolveViewportPickedBodyId({
-        pickedRenderId: "renderer-only",
-        bodies: [directBody, objectBody],
-        objects: [object]
-      })
-    ).toBeUndefined();
-  });
-
-  it("chooses generated-reference pick mode only for drill-down or explicit selection-panel picks", () => {
-    expect(
-      chooseViewportGeneratedReferencePickBodyId({
-        activeSelectionPanel: false,
-        pickedBodyId: "body_rect",
-        selectedBodyId: "body_circle"
-      })
-    ).toBeUndefined();
-    expect(
-      chooseViewportGeneratedReferencePickBodyId({
-        activeSelectionPanel: false,
-        pickedBodyId: "body_rect",
-        selectedBodyId: "body_rect"
-      })
-    ).toBe("body_rect");
-    expect(
-      chooseViewportGeneratedReferencePickBodyId({
-        activeSelectionPanel: true,
-        pickedBodyId: "body_rect",
-        selectedBodyId: "body_circle"
-      })
-    ).toBe("body_rect");
-    expect(
-      chooseViewportGeneratedReferencePickBodyId({
-        activeSelectionPanel: true,
-        generatedReferenceSelected: true,
-        pickedBodyId: "body_rect",
-        selectedBodyId: "body_circle"
-      })
-    ).toBeUndefined();
   });
 
   it("resolves authored body render IDs through V9 semantic body selection", () => {
@@ -171,124 +156,6 @@ describe("viewport pick intent", () => {
           status: "unsupported"
         }
       ]
-    });
-    expect(JSON.stringify(intent)).not.toContain("renderer-hit");
-  });
-
-  it("routes generated planar face hit candidates to semantic generated-reference selection", () => {
-    const body = createExtrudeBody("body_rect");
-    const face = createFaceReference(body.id);
-    const response = createCandidateResponse({
-      selection: {
-        type: "generatedReference",
-        bodyId: body.id,
-        stableId: face.stableId,
-        expectedKind: "face"
-      },
-      bodyId: body.id,
-      reference: face,
-      status: "resolved"
-    });
-    const intent = resolveViewportPickIntent({
-      pickedRenderId: body.id,
-      hitCandidate: {
-        displayEntityKind: "face",
-        rendererHitId: "renderer-hit:generated-face:body_rect:42",
-        semanticHint: {
-          type: "generatedReference",
-          bodyId: body.id,
-          stableId: face.stableId,
-          expectedKind: "face"
-        }
-      },
-      bodies: [body],
-      objects: [],
-      readReferenceCandidates: (selection) => {
-        expect(selection).toEqual({
-          type: "generatedReference",
-          bodyId: body.id,
-          stableId: face.stableId,
-          expectedKind: "face"
-        });
-        return response;
-      }
-    });
-
-    expect(intent).toMatchObject({
-      kind: "generatedReference",
-      selectedId: "body_rect",
-      bodyId: "body_rect",
-      stableId: "generated:face:body_rect:startCap",
-      expectedKind: "face",
-      renderTargetId: "body_rect",
-      semanticSelection: {
-        type: "generatedReference",
-        bodyId: "body_rect",
-        stableId: "generated:face:body_rect:startCap",
-        expectedKind: "face"
-      },
-      referenceCandidates: response,
-      issues: [],
-      interactionDiagnostics: []
-    });
-    expect(JSON.stringify(intent)).not.toContain("renderer-hit");
-  });
-
-  it("routes generated edge hit candidates to semantic generated-reference selection", () => {
-    const body = createExtrudeBody("body_rect");
-    const edge = createEdgeReference(body.id);
-    const response = createCandidateResponse({
-      selection: {
-        type: "generatedReference",
-        bodyId: body.id,
-        stableId: edge.stableId,
-        expectedKind: "edge"
-      },
-      bodyId: body.id,
-      reference: edge,
-      status: "resolved"
-    });
-    const intent = resolveViewportPickIntent({
-      pickedRenderId: body.id,
-      hitCandidate: {
-        displayEntityKind: "edge",
-        rendererHitId: "renderer-hit:generated-edge:body_rect:42",
-        semanticHint: {
-          type: "generatedReference",
-          bodyId: body.id,
-          stableId: edge.stableId,
-          expectedKind: "edge"
-        }
-      },
-      bodies: [body],
-      objects: [],
-      readReferenceCandidates: (selection) => {
-        expect(selection).toEqual({
-          type: "generatedReference",
-          bodyId: body.id,
-          stableId: edge.stableId,
-          expectedKind: "edge"
-        });
-        return response;
-      }
-    });
-
-    expect(intent).toMatchObject({
-      kind: "generatedReference",
-      selectedId: "body_rect",
-      bodyId: "body_rect",
-      stableId: "generated:edge:body_rect:start:uMin",
-      expectedKind: "edge",
-      renderTargetId: "body_rect",
-      semanticSelection: {
-        type: "generatedReference",
-        bodyId: "body_rect",
-        stableId: "generated:edge:body_rect:start:uMin",
-        expectedKind: "edge"
-      },
-      referenceCandidates: response,
-      issues: [],
-      interactionDiagnostics: []
     });
     expect(JSON.stringify(intent)).not.toContain("renderer-hit");
   });
@@ -582,33 +449,6 @@ function createFaceReference(bodyId: string): CadGeneratedFaceReference {
       extrudeSide: "positive",
       depth: 2,
       surfaceType: "plane"
-    }
-  };
-}
-
-function createEdgeReference(bodyId: string): CadGeneratedEdgeReference {
-  return {
-    kind: "edge",
-    stableId: `generated:edge:${bodyId}:start:uMin`,
-    label: "Start uMin edge",
-    bodyId,
-    ownerPartId: "part:default",
-    sourceFeatureId: "feat_rect",
-    sourceSketchId: "sketch_1",
-    sourceSketchEntityId: "rect_1",
-    role: "start:uMin",
-    adjacentFaceRoles: ["startCap", "side:uMin"],
-    eligibleOperations: [
-      "feature.chamfer",
-      "feature.fillet",
-      "feature.selectReference"
-    ],
-    geometricSignature: {
-      profileKind: "rectangle",
-      sketchPlane: "XY",
-      extrudeSide: "positive",
-      depth: 2,
-      curveType: "line"
     }
   };
 }

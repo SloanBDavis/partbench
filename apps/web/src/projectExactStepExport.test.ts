@@ -47,7 +47,7 @@ type ExportRuntime = Pick<
 };
 
 describe("projectExactStepExport", () => {
-  it("retains validated exact artifact evidence and rechecks existing maps", async () => {
+  it("retains validated exact artifact evidence", async () => {
     const current = createFixture();
     const plan = current.exactExport.plan;
     const resolution = current.resolutions.find(
@@ -80,26 +80,6 @@ describe("projectExactStepExport", () => {
     expect(retained?.viewportPickMap).toMatchObject({
       topologySignature: built?.topologySnapshot.signature
     });
-
-    const [rechecked] = await buildCurrentExactBodyArtifacts({
-      engine: current.engine,
-      resolutions: [resolution],
-      runtime,
-      documentSourceIdentity: plan.sourceIdentity,
-      units: plan.units,
-      assertCurrent: () => undefined,
-      existingArtifacts: [
-        {
-          ...built,
-          viewportPickMap: {
-            ...built.viewportPickMap,
-            topologySignature: "stale-topology"
-          }
-        }
-      ]
-    });
-    expect(rechecked?.viewportPickMap).toBeUndefined();
-    expect(rechecked?.viewportPickMapDowngrade).toEqual({ status: "invalid" });
 
     const builtWithoutPickMap = { ...built };
     delete builtWithoutPickMap.viewportPickMap;
@@ -321,6 +301,7 @@ describe("projectExactStepExport", () => {
             version: "partbench.exact-pick-map.v1",
             bodyId: artifact.bodyId,
             bodySourceIdentitySignature: artifact.bodySourceIdentitySignature,
+            byteLength: 150,
             topologySignature: artifact.topologySnapshot.signature,
             meshVertexCount: 3,
             meshTriangleCount: 1,
@@ -1395,6 +1376,7 @@ function withViewportPickMap(
       version: "partbench.exact-pick-map.v1",
       bodyId: artifact.bodyId,
       bodySourceIdentitySignature: artifact.bodySourceIdentitySignature,
+      byteLength: 0,
       topologySignature: artifact.topologySnapshot.signature,
       meshVertexCount: 0,
       meshTriangleCount: 0,

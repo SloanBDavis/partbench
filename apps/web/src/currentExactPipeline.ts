@@ -91,6 +91,7 @@ export function projectCurrentExactBodyArtifacts(input: {
   readonly display: DerivedGeometrySnapshot;
   readonly metadata: DerivedExactMetadataSnapshot;
   readonly artifactSources: readonly DerivedExactBodyGeometrySource[];
+  readonly artifacts: readonly CurrentExactProjectionArtifact[];
 } {
   const resolutions = input.current
     ? new Map(
@@ -126,7 +127,8 @@ export function projectCurrentExactBodyArtifacts(input: {
     return {
       display: input.display,
       metadata: input.metadata,
-      artifactSources: []
+      artifactSources: [],
+      artifacts
     };
   }
 
@@ -161,7 +163,8 @@ export function projectCurrentExactBodyArtifacts(input: {
   return {
     display: createDisplaySnapshot(displayEntries),
     metadata: createMetadataSnapshot(metadataEntries),
-    artifactSources
+    artifactSources,
+    artifacts: [...artifactsByBodyId.values()]
   };
 }
 

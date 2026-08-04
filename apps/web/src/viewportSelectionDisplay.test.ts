@@ -288,6 +288,40 @@ describe("viewportSelectionDisplay", () => {
     });
   });
 
+  it("shows current topology selection without exposing private local identity", () => {
+    const display = createViewportSelectionDisplay({
+      derivedGeometryEnabled: true,
+      selectedBody: createBody({ name: "Bracket" }),
+      selectedGeneratedReferenceState: { status: "none" },
+      selectedGeometryEntry: createGeometryEntry("ready"),
+      viewportPickIntent: {
+        kind: "currentTopology",
+        selectedId: "body_rect",
+        bodyId: "body_rect",
+        bodySourceIdentitySignature: "source-private",
+        topologySignature: "topology-private",
+        entityKind: "face",
+        localId: "snapshot-local:face:17",
+        entitySignature: "entity-private",
+        renderTargetId: "body_rect",
+        issues: [],
+        interactionDiagnostics: []
+      }
+    });
+
+    expect(display).toMatchObject({
+      selectionKind: "face",
+      title: "Bracket (Face)",
+      detail: "Current topology face selected for inspection.",
+      tone: "idle",
+      commandOperations: []
+    });
+    expect(display.renderTargetId).toBeUndefined();
+    expect(JSON.stringify(display)).not.toMatch(
+      /snapshot-local|source-private|topology-private|entity-private/
+    );
+  });
+
   it("surfaces renderer-only and ambiguous viewport pick diagnostics", () => {
     const rendererOnlyDisplay = createViewportSelectionDisplay({
       derivedGeometryEnabled: true,

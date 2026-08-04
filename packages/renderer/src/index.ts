@@ -110,6 +110,84 @@ export interface ViewportPoint {
   readonly y: number;
 }
 
+export type RenderExactPickFilter =
+  | "auto"
+  | "body"
+  | "face"
+  | "edge"
+  | "vertex";
+
+export interface RenderExactPickEntity {
+  readonly localId: string;
+  readonly entitySignature: string;
+}
+
+export interface RenderExactPickMap {
+  readonly version: "partbench.exact-pick-map.v1";
+  readonly bodyId: string;
+  readonly bodySourceIdentitySignature: string;
+  readonly topologySignature: string;
+  readonly meshVertexCount: number;
+  readonly meshTriangleCount: number;
+  readonly faces: readonly RenderExactPickEntity[];
+  readonly edges: readonly RenderExactPickEntity[];
+  readonly vertices: readonly RenderExactPickEntity[];
+  readonly faceTriangleRanges: Uint32Array;
+  readonly edgePointRanges: Uint32Array;
+  readonly edgePoints: Float64Array;
+  readonly vertexPoints: Float64Array;
+}
+
+export interface RenderExactPickBody {
+  readonly mesh: RenderTriangleMesh;
+  readonly pickMap: RenderExactPickMap;
+}
+
+interface RenderExactPickCandidateBase {
+  readonly bodyId: string;
+  readonly bodySourceIdentitySignature: string;
+  readonly topologySignature: string;
+  readonly depth: number;
+  readonly distance: number;
+  readonly occluded: boolean;
+}
+
+export type RenderExactPickCandidate =
+  | (RenderExactPickCandidateBase & {
+      readonly entityKind: "body";
+      readonly localId?: undefined;
+      readonly entitySignature?: undefined;
+    })
+  | (RenderExactPickCandidateBase &
+      RenderExactPickEntity & {
+        readonly entityKind: "face" | "edge" | "vertex";
+      });
+
+export interface RenderExactPickResult {
+  readonly status: "ready" | "resource-limited";
+  readonly candidates: readonly RenderExactPickCandidate[];
+  readonly examined: number;
+  readonly truncated: boolean;
+}
+
+export type RenderExactVisualStateInput =
+  | {
+      readonly bodyId: string;
+      readonly bodySourceIdentitySignature: string;
+      readonly topologySignature: string;
+      readonly entityKind: "body";
+      readonly state: RenderVisualStateKind;
+    }
+  | {
+      readonly bodyId: string;
+      readonly bodySourceIdentitySignature: string;
+      readonly topologySignature: string;
+      readonly entityKind: "face" | "edge" | "vertex";
+      readonly localId: string;
+      readonly entitySignature: string;
+      readonly state: RenderVisualStateKind;
+    };
+
 export interface ProjectedPoint {
   readonly x: number;
   readonly y: number;
@@ -148,6 +226,8 @@ export interface RenderSceneOptions {
   readonly selectedId?: string;
   readonly hoveredId?: string;
   readonly visualStates?: readonly RenderVisualStateInput[];
+  readonly exactPickBodies?: readonly RenderExactPickBody[];
+  readonly exactVisualStates?: readonly RenderExactVisualStateInput[];
 }
 
 export const rendererPackage: PackageInfo = {
@@ -295,6 +375,151 @@ export function pickRenderScene(
   return candidates[0]?.id;
 }
 
+const MAX_EXACT_PICK_CANDIDATES = 64;
+const MAX_EXACT_PICK_TRIANGLE_EXAMINATIONS = 250_000;
+const EXACT_PICK_TOLERANCE_CSS_PX = 10;
+const EXACT_PICK_DEPTH_TOLERANCE = 1e-7;
+const EXACT_PICK_KIND_ORDER = { face: 0, edge: 1, vertex: 2, body: 3 } as const;
+
+export function pickExactRenderBodies(
+  bodies: readonly RenderExactPickBody[],
+  camera: RenderCamera,
+  size: ViewportSize,
+  point: ViewportPoint,
+  filter: RenderExactPickFilter = "auto"
+): RenderExactPickResult {
+  const ray = createViewportRay(camera, size, point);
+  const candidates: RenderExactPickCandidate[] = [];
+  let examined = 0;
+  let pointCoordinates = 0;
+  let nearestSurfaceDepth = Number.POSITIVE_INFINITY;
+
+  for (const { mesh, pickMap } of bodies) {
+    const bounds = getProjectedMeshBounds(mesh, camera, size);
+    if (
+      !bounds ||
+      !containsPointWithPadding(bounds, point, EXACT_PICK_TOLERANCE_CSS_PX)
+    ) {
+      continue;
+    }
+    const nextPointCoordinates =
+      (includesExactKind(filter, "edge") ? pickMap.edgePoints.length : 0) +
+      (includesExactKind(filter, "vertex") ? pickMap.vertexPoints.length : 0);
+    pointCoordinates += nextPointCoordinates;
+    const insideBounds = containsPointWithPadding(bounds, point, 0);
+    const triangleCount = insideBounds
+      ? Math.floor(mesh.indices.length / 3)
+      : 0;
+    if (
+      pointCoordinates > MAX_EXACT_PICK_TRIANGLE_EXAMINATIONS * 3 ||
+      examined > MAX_EXACT_PICK_TRIANGLE_EXAMINATIONS - triangleCount
+    ) {
+      return {
+        status: "resource-limited",
+        candidates: [],
+        examined,
+        truncated: false
+      };
+    }
+    examined += triangleCount;
+
+    const faceDepths: (number | undefined)[] = [];
+    let bodyDepth = Number.POSITIVE_INFINITY;
+    if (insideBounds) {
+      let faceIndex = 0;
+
+      for (
+        let triangleIndex = 0;
+        triangleIndex < triangleCount;
+        triangleIndex += 1
+      ) {
+        const offset = triangleIndex * 3;
+        const first = mesh.vertices[mesh.indices[offset] ?? -1];
+        const second = mesh.vertices[mesh.indices[offset + 1] ?? -1];
+        const third = mesh.vertices[mesh.indices[offset + 2] ?? -1];
+        if (!first || !second || !third) continue;
+        const intersection = intersectRayTriangle(
+          ray,
+          transformPoint(first, mesh.transform),
+          transformPoint(second, mesh.transform),
+          transformPoint(third, mesh.transform)
+        );
+        if (!intersection) continue;
+        const projected = projectPoint(intersection, camera, size);
+        if (!projected) continue;
+
+        bodyDepth = Math.min(bodyDepth, projected.depth);
+        nearestSurfaceDepth = Math.min(nearestSurfaceDepth, projected.depth);
+
+        while (
+          triangleIndex >=
+          (pickMap.faceTriangleRanges[faceIndex * 2] ?? 0) +
+            (pickMap.faceTriangleRanges[faceIndex * 2 + 1] ?? 0)
+        )
+          faceIndex += 1;
+        faceDepths[faceIndex] = Math.min(
+          faceDepths[faceIndex] ?? Number.POSITIVE_INFINITY,
+          projected.depth
+        );
+      }
+    }
+
+    if (
+      bodyDepth < Number.POSITIVE_INFINITY &&
+      includesExactKind(filter, "body")
+    ) {
+      candidates.push(createExactPickCandidate(pickMap, "body", bodyDepth, 0));
+    }
+    if (includesExactKind(filter, "face")) {
+      for (const [index, entity] of pickMap.faces.entries()) {
+        const depth = faceDepths[index];
+        if (depth !== undefined) {
+          candidates.push(
+            createExactPickCandidate(pickMap, "face", depth, 0, entity)
+          );
+        }
+      }
+    }
+    if (includesExactKind(filter, "edge")) {
+      appendExactEdgeCandidates(candidates, mesh, pickMap, camera, size, point);
+    }
+    if (includesExactKind(filter, "vertex")) {
+      appendExactVertexCandidates(
+        candidates,
+        mesh,
+        pickMap,
+        camera,
+        size,
+        point
+      );
+    }
+  }
+
+  for (const candidate of candidates) {
+    Object.assign(candidate, {
+      occluded:
+        candidate.depth > nearestSurfaceDepth + EXACT_PICK_DEPTH_TOLERANCE
+    });
+  }
+  candidates.sort((left, right) =>
+    compareExactPickCandidates(left, right, filter)
+  );
+
+  return {
+    status: "ready",
+    candidates: candidates.slice(0, MAX_EXACT_PICK_CANDIDATES),
+    examined,
+    truncated: candidates.length > MAX_EXACT_PICK_CANDIDATES
+  };
+}
+
+function includesExactKind(
+  filter: RenderExactPickFilter,
+  kind: Exclude<RenderExactPickFilter, "auto">
+): boolean {
+  return filter === "auto" || filter === kind;
+}
+
 export function renderCanvasScene(
   context: CanvasRenderingContext2D,
   options: RenderSceneOptions
@@ -349,6 +574,102 @@ export function renderCanvasScene(
       size,
       getMeshVisualStyle(mesh, visualStates)
     );
+  }
+
+  drawExactVisualStates(
+    context,
+    options.exactPickBodies ?? [],
+    options.exactVisualStates ?? [],
+    camera,
+    size
+  );
+}
+
+function drawExactVisualStates(
+  context: CanvasRenderingContext2D,
+  bodies: readonly RenderExactPickBody[],
+  states: readonly RenderExactVisualStateInput[],
+  camera: RenderCamera,
+  size: ViewportSize
+): void {
+  for (const state of states) {
+    const body = bodies.find(
+      ({ pickMap }) =>
+        pickMap.bodyId === state.bodyId &&
+        pickMap.bodySourceIdentitySignature ===
+          state.bodySourceIdentitySignature &&
+        pickMap.topologySignature === state.topologySignature
+    );
+    if (!body) continue;
+
+    const styles = new Map<string, RenderVisualStyle>();
+    addRenderVisualState(styles, "exact", state.state);
+    const style = styles.get("exact") ?? createEmptyVisualStyle();
+    if (state.entityKind === "body") {
+      drawTriangleMesh(context, body.mesh, camera, size, style);
+      continue;
+    }
+
+    const { mesh, pickMap } = body;
+    const entities =
+      state.entityKind === "face"
+        ? pickMap.faces
+        : state.entityKind === "edge"
+          ? pickMap.edges
+          : pickMap.vertices;
+    const entityIndex = entities.findIndex(
+      (entity) =>
+        entity.localId === state.localId &&
+        entity.entitySignature === state.entitySignature
+    );
+    if (entityIndex < 0) continue;
+
+    context.save();
+    if (state.entityKind === "face") {
+      context.fillStyle = getVisualFillColor(style, "rgba(47, 111, 151, 0.08)");
+      const first = pickMap.faceTriangleRanges[entityIndex * 2] ?? 0;
+      const count = pickMap.faceTriangleRanges[entityIndex * 2 + 1] ?? 0;
+      drawMeshFaces(
+        context,
+        mesh.indices.slice(first * 3, (first + count) * 3),
+        mesh.vertices.map((point) => transformPoint(point, mesh.transform)),
+        camera,
+        size
+      );
+    } else if (state.entityKind === "edge") {
+      context.strokeStyle = getVisualStrokeColor(style, "#235f86");
+      context.lineWidth = getVisualLineWidth(style, 3);
+      context.beginPath();
+      const first = pickMap.edgePointRanges[entityIndex * 2] ?? 0;
+      const count = pickMap.edgePointRanges[entityIndex * 2 + 1] ?? 0;
+      for (let index = 0; index < count; index += 1) {
+        const point = projectExactPickPoint(
+          pickMap.edgePoints,
+          first + index,
+          mesh.transform,
+          camera,
+          size
+        );
+        if (point) {
+          if (index === 0) context.moveTo(point.x, point.y);
+          else context.lineTo(point.x, point.y);
+        }
+      }
+      context.stroke();
+    } else {
+      const point = projectExactPickPoint(
+        pickMap.vertexPoints,
+        entityIndex,
+        mesh.transform,
+        camera,
+        size
+      );
+      if (point) {
+        context.fillStyle = getVisualStrokeColor(style, "#235f86");
+        context.fillRect(point.x - 4, point.y - 4, 8, 8);
+      }
+    }
+    context.restore();
   }
 }
 
@@ -1122,6 +1443,203 @@ function fillProjectedFace(
 
   context.closePath();
   context.fill();
+}
+
+function appendExactEdgeCandidates(
+  candidates: RenderExactPickCandidate[],
+  mesh: RenderTriangleMesh,
+  pickMap: RenderExactPickMap,
+  camera: RenderCamera,
+  size: ViewportSize,
+  point: ViewportPoint
+): void {
+  for (const [index, entity] of pickMap.edges.entries()) {
+    const firstPoint = pickMap.edgePointRanges[index * 2] ?? 0;
+    const pointCount = pickMap.edgePointRanges[index * 2 + 1] ?? 0;
+    let closestDepth = 0;
+    let closestDistance = Number.POSITIVE_INFINITY;
+    let start = projectExactPickPoint(
+      pickMap.edgePoints,
+      firstPoint,
+      mesh.transform,
+      camera,
+      size
+    );
+
+    for (let pointIndex = 1; pointIndex < pointCount; pointIndex += 1) {
+      const end = projectExactPickPoint(
+        pickMap.edgePoints,
+        firstPoint + pointIndex,
+        mesh.transform,
+        camera,
+        size
+      );
+      if (start && end) {
+        const segment = getClosestProjectedSegmentPoint(point, start, end);
+        if (segment.distance <= EXACT_PICK_TOLERANCE_CSS_PX) {
+          const depth =
+            start.depth + (end.depth - start.depth) * segment.fraction;
+          if (
+            segment.distance < closestDistance ||
+            (segment.distance === closestDistance && depth < closestDepth)
+          ) {
+            closestDepth = depth;
+            closestDistance = segment.distance;
+          }
+        }
+      }
+      start = end;
+    }
+
+    if (closestDistance <= EXACT_PICK_TOLERANCE_CSS_PX) {
+      candidates.push(
+        createExactPickCandidate(
+          pickMap,
+          "edge",
+          closestDepth,
+          closestDistance,
+          entity
+        )
+      );
+    }
+  }
+}
+
+function appendExactVertexCandidates(
+  candidates: RenderExactPickCandidate[],
+  mesh: RenderTriangleMesh,
+  pickMap: RenderExactPickMap,
+  camera: RenderCamera,
+  size: ViewportSize,
+  point: ViewportPoint
+): void {
+  for (const [index, entity] of pickMap.vertices.entries()) {
+    const projected = projectExactPickPoint(
+      pickMap.vertexPoints,
+      index,
+      mesh.transform,
+      camera,
+      size
+    );
+    if (!projected) continue;
+    const distance = Math.hypot(projected.x - point.x, projected.y - point.y);
+    if (distance <= EXACT_PICK_TOLERANCE_CSS_PX) {
+      candidates.push(
+        createExactPickCandidate(
+          pickMap,
+          "vertex",
+          projected.depth,
+          distance,
+          entity
+        )
+      );
+    }
+  }
+}
+
+function projectExactPickPoint(
+  points: Float64Array,
+  pointIndex: number,
+  transform: RenderTransform,
+  camera: RenderCamera,
+  size: ViewportSize
+): ProjectedPoint | undefined {
+  const offset = pointIndex * 3;
+  const x = points[offset];
+  const y = points[offset + 1];
+  const z = points[offset + 2];
+  return x === undefined || y === undefined || z === undefined
+    ? undefined
+    : projectPoint(transformPoint([x, y, z], transform), camera, size);
+}
+
+function createExactPickCandidate(
+  pickMap: RenderExactPickMap,
+  entityKind: "body",
+  depth: number,
+  distance: number
+): RenderExactPickCandidate;
+function createExactPickCandidate(
+  pickMap: RenderExactPickMap,
+  entityKind: "face" | "edge" | "vertex",
+  depth: number,
+  distance: number,
+  entity: RenderExactPickEntity
+): RenderExactPickCandidate;
+function createExactPickCandidate(
+  pickMap: RenderExactPickMap,
+  entityKind: "body" | "face" | "edge" | "vertex",
+  depth: number,
+  distance: number,
+  entity?: RenderExactPickEntity
+): RenderExactPickCandidate {
+  const base = {
+    bodyId: pickMap.bodyId,
+    bodySourceIdentitySignature: pickMap.bodySourceIdentitySignature,
+    topologySignature: pickMap.topologySignature,
+    depth,
+    distance,
+    occluded: false
+  };
+  return entityKind === "body"
+    ? { ...base, entityKind }
+    : { ...base, entityKind, ...entity! };
+}
+
+function compareExactPickCandidates(
+  left: RenderExactPickCandidate,
+  right: RenderExactPickCandidate,
+  filter: RenderExactPickFilter
+): number {
+  if (left.occluded !== right.occluded) return left.occluded ? 1 : -1;
+  if (filter === "auto") {
+    const kindOrder =
+      EXACT_PICK_KIND_ORDER[left.entityKind] -
+      EXACT_PICK_KIND_ORDER[right.entityKind];
+    if (kindOrder !== 0) return kindOrder;
+  }
+  if (left.depth !== right.depth) return left.depth - right.depth;
+  if (left.distance !== right.distance) return left.distance - right.distance;
+  const bodyOrder = left.bodyId.localeCompare(right.bodyId);
+  if (bodyOrder !== 0) return bodyOrder;
+  return (left.localId ?? "").localeCompare(right.localId ?? "");
+}
+
+function intersectRayTriangle(
+  ray: ViewportRay,
+  first: Vec3,
+  second: Vec3,
+  third: Vec3
+): Vec3 | undefined {
+  const edge1 = subtractVec3(second, first);
+  const edge2 = subtractVec3(third, first);
+  const cross = crossVec3(ray.direction, edge2);
+  const determinant = dotVec3(edge1, cross);
+  if (Math.abs(determinant) < Number.EPSILON) return undefined;
+  const inverse = 1 / determinant;
+  const offset = subtractVec3(ray.origin, first);
+  const u = inverse * dotVec3(offset, cross);
+  if (u < 0 || u > 1) return undefined;
+  const q = crossVec3(offset, edge1);
+  const v = inverse * dotVec3(ray.direction, q);
+  if (v < 0 || u + v > 1) return undefined;
+  const distance = inverse * dotVec3(edge2, q);
+  return distance > Number.EPSILON
+    ? addVec3(ray.origin, scaleVec3(ray.direction, distance))
+    : undefined;
+}
+
+function containsPointWithPadding(
+  bounds: { minX: number; maxX: number; minY: number; maxY: number },
+  point: ViewportPoint,
+  padding: number
+): boolean {
+  return (
+    point.x >= bounds.minX - padding &&
+    point.x <= bounds.maxX + padding &&
+    point.y >= bounds.minY - padding &&
+    point.y <= bounds.maxY + padding
+  );
 }
 
 function createPickCandidate(

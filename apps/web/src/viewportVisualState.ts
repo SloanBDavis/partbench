@@ -1,5 +1,6 @@
 import type { RenderVisualStateInput } from "@web-cad/renderer";
 import type { ViewportHoverState } from "./viewportHoverIntent";
+import type { ViewportHoverVisualState } from "./viewportHoverVisual";
 import type { GeneratedReferenceSelectionState } from "./generatedReferenceSelection";
 import type {
   ViewportSelectionDisplay,
@@ -22,7 +23,7 @@ export interface ViewportVisualStateModel {
 }
 
 export interface CreateViewportVisualStateModelInput {
-  readonly hoverState?: ViewportHoverState;
+  readonly hoverState?: ViewportHoverState | ViewportHoverVisualState;
   readonly selectionDisplay: ViewportSelectionDisplay;
   readonly selectedGeneratedReferenceState: GeneratedReferenceSelectionState;
 }
@@ -127,13 +128,20 @@ function getSelectedVisualTargetKind(
     case "sketchEntity":
       return "sketchEntity";
     case "body":
+    case "face":
+    case "edge":
+    case "vertex":
+      return selectionDisplay.selectionKind;
     case "none":
       return "body";
   }
 }
 
 function getHoverVisualTargetKind(
-  hoverState: Exclude<ViewportHoverState, { readonly kind: "empty" }>
+  hoverState: Exclude<
+    ViewportHoverState | ViewportHoverVisualState,
+    { readonly kind: "empty" }
+  >
 ): VisualTargetKind {
   switch (hoverState.kind) {
     case "object":

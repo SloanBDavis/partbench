@@ -1006,6 +1006,7 @@ export interface GeometryKernelExactViewportPickMap extends GeometryKernelExactV
   readonly version: "partbench.exact-pick-map.v1";
   readonly bodyId: string;
   readonly bodySourceIdentitySignature: string;
+  readonly byteLength: number;
 }
 
 export interface GeometryKernelExactViewportPickMapDowngrade {
@@ -1083,26 +1084,14 @@ export function assertExactBodyArtifactAggregateWithinLimit(
     }
     brepByteLength += artifact.brepByteLength;
     if (!artifact.viewportPickMap) continue;
-    const nextPickMapByteLength = getExactViewportPickMapByteLength(
-      [
-        artifact.viewportPickMap.faceTriangleRanges,
-        artifact.viewportPickMap.edgePointRanges,
-        artifact.viewportPickMap.edgePoints,
-        artifact.viewportPickMap.vertexPoints
-      ],
-      [
-        artifact.viewportPickMap.faces,
-        artifact.viewportPickMap.edges,
-        artifact.viewportPickMap.vertices
-      ]
-    );
+    const nextPickMapByteLength = artifact.viewportPickMap.byteLength;
     if (
-      nextPickMapByteLength === undefined ||
+      !isNonNegativeSafeInteger(nextPickMapByteLength) ||
       nextPickMapByteLength > MAX_EXACT_VIEWPORT_PICK_MAP_BYTES
     ) {
       throw {
         code: "RESOURCE_LIMIT_EXCEEDED",
-        message: `One exact viewport pick map may not exceed ${MAX_EXACT_VIEWPORT_PICK_MAP_BYTES} bytes.`
+        message: "Exact viewport pick map limit exceeded."
       } satisfies GeometryKernelError;
     }
     if (
@@ -1111,7 +1100,7 @@ export function assertExactBodyArtifactAggregateWithinLimit(
     ) {
       throw {
         code: "RESOURCE_LIMIT_EXCEEDED",
-        message: `Retained exact viewport pick maps may not exceed ${MAX_EXACT_BODY_ARTIFACT_AGGREGATE_BYTES} aggregate bytes.`
+        message: "Exact viewport pick map aggregate limit exceeded."
       } satisfies GeometryKernelError;
     }
     pickMapByteLength += nextPickMapByteLength;
@@ -4803,10 +4792,21 @@ function attachExactViewportPickMap(
   readonly pickMap?: GeometryKernelExactViewportPickMap;
   readonly downgrade?: GeometryKernelExactViewportPickMapDowngrade;
 } {
+  const byteLength = getExactViewportPickMapByteLength(
+    [
+      payload.faceTriangleRanges,
+      payload.edgePointRanges,
+      payload.edgePoints,
+      payload.vertexPoints
+    ],
+    [payload.faces, payload.edges, payload.vertices]
+  );
+  if (byteLength === undefined) return { downgrade: { status: "invalid" } };
   const pickMap: GeometryKernelExactViewportPickMap = {
     version: "partbench.exact-pick-map.v1",
     bodyId: artifact.bodyId,
     bodySourceIdentitySignature: artifact.bodySourceIdentitySignature,
+    byteLength,
     ...payload
   };
 
@@ -4881,6 +4881,7 @@ function getExactViewportPickMapDowngradeReason(
     !isNonNegativeSafeInteger(pickMap.meshTriangleCount) ||
     pickMap.meshVertexCount !== mesh.vertexCount ||
     pickMap.meshTriangleCount !== mesh.triangleCount ||
+    !isNonNegativeSafeInteger(pickMap.byteLength) ||
     !isNonNegativeSafeInteger(mesh.vertexCount) ||
     !isNonNegativeSafeInteger(mesh.triangleCount) ||
     faceEntities.length !== snapshot.entityCounts.faceCount ||
@@ -4915,6 +4916,7 @@ function getExactViewportPickMapDowngradeReason(
   if (byteLength > MAX_EXACT_VIEWPORT_PICK_MAP_BYTES) {
     return "resource-limited";
   }
+  if (byteLength !== pickMap.byteLength) return "invalid";
   return !hasExactPickMapEntities(pickMap.faces, faceEntities) ||
     !hasExactPickMapEntities(pickMap.edges, edgeEntities) ||
     !hasExactPickMapEntities(pickMap.vertices, vertexEntities) ||

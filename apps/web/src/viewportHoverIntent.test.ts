@@ -9,12 +9,30 @@ import type {
 } from "@web-cad/cad-protocol";
 import { describe, expect, it } from "vitest";
 import { resolveViewportHoverIntent } from "./viewportHoverIntent";
+import { resolveViewportHoverVisualState } from "./viewportHoverVisual";
 import {
   createSketchEntitySelectionId,
   createSketchSelectionId
 } from "./sketchRenderIds";
 
 describe("viewport hover intent", () => {
+  it("projects only the hover visual state consumed by production", () => {
+    const body = createExtrudeBody("body_rect", "Base");
+    expect(
+      resolveViewportHoverVisualState({
+        hoveredRenderId: body.id,
+        bodies: [body],
+        objects: [],
+        readReferenceCandidates: () =>
+          createCandidateResponse({ bodyId: body.id, status: "resolved" })
+      })
+    ).toEqual({
+      kind: "body",
+      tone: "ready",
+      renderTargetId: "body_rect"
+    });
+  });
+
   it("resolves authored body render IDs to semantic body hover state", () => {
     const body = createExtrudeBody("body_rect", "Base");
     const face = createFaceReference(body.id);

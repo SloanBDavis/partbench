@@ -354,6 +354,13 @@ function createExactBodyArtifactFixture(): GeometryKernelExactBodyArtifact {
       version: "partbench.exact-pick-map.v1",
       bodyId: artifact.bodyId,
       bodySourceIdentitySignature: artifact.bodySourceIdentitySignature,
+      byteLength:
+        88 +
+        entities.reduce(
+          (total, entity) =>
+            total + 64 + (entity.localId.length + entity.signature.length) * 2,
+          0
+        ),
       topologySignature,
       meshVertexCount: 3,
       meshTriangleCount: 1,
@@ -435,83 +442,6 @@ describe("BrowserGeometryWorker", () => {
       pickMap.vertexPoints.buffer
     ]);
   });
-
-  it.each([
-    [
-      "corrupt",
-      (artifact: GeometryKernelExactBodyArtifact) => ({
-        ...artifact,
-        viewportPickMap: {
-          ...artifact.viewportPickMap!,
-          topologySignature: "stale-topology"
-        }
-      }),
-      false
-    ],
-    [
-      "detached",
-      (artifact: GeometryKernelExactBodyArtifact) => {
-        structuredClone(artifact.viewportPickMap!.faceTriangleRanges, {
-          transfer: [artifact.viewportPickMap!.faceTriangleRanges.buffer]
-        });
-        return artifact;
-      },
-      false
-    ],
-    [
-      "transfer-list mismatched",
-      (artifact: GeometryKernelExactBodyArtifact) => artifact,
-      true
-    ]
-  ] as const)(
-    "drops only a %s exact pick map on receipt without mutating the message",
-    async (_name, mutate, mismatchTransferList) => {
-      let incoming:
-        | (GeometryWorkerMessage & {
-            readonly response: {
-              readonly artifact: GeometryKernelExactBodyArtifact;
-            };
-            readonly transferables: readonly ArrayBuffer[];
-          })
-        | undefined;
-      const transport = new FakeGeometryWorkerTransport(async (request) => {
-        const artifact = mutate(createExactBodyArtifactFixture());
-        const message = createExactBodyArtifactMessage(request, artifact);
-        incoming = mismatchTransferList
-          ? { ...message, transferables: message.transferables.slice(0, 3) }
-          : message;
-        return incoming;
-      });
-      const worker = new BrowserGeometryWorker(transport);
-      const response = await worker.execute(
-        createArtifactPatternRequest(
-          `browser_pick_map_${_name}`,
-          createArtifactLeafFixture(new Uint8Array([1]))
-        )
-      );
-
-      if (
-        !response.response.ok ||
-        response.response.op !== "geometry.exactBodyArtifact" ||
-        !incoming
-      ) {
-        throw new Error("Expected an exact body artifact response.");
-      }
-      expect(response.response.artifact).toMatchObject({
-        bodyId: incoming.response.artifact.bodyId,
-        viewportPickMapDowngrade: { status: "invalid" }
-      });
-      expect(response.response.artifact.viewportPickMap).toBeUndefined();
-      expect([...response.response.artifact.brepBytes]).toEqual([1, 2, 3]);
-      expect(response.transferables).toEqual([
-        response.response.artifact.brepBytes.buffer,
-        response.response.artifact.displayMesh.positions.buffer,
-        response.response.artifact.displayMesh.indices.buffer
-      ]);
-      expect(incoming.response.artifact.viewportPickMap).toBeDefined();
-      expect(incoming.transferables).toHaveLength(mismatchTransferList ? 3 : 7);
-    }
-  );
 
   it("cleans up partial listener setup when construction fails", () => {
     const transport = new PartialSetupFailureTransport();

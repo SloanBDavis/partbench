@@ -31,7 +31,6 @@ import type {
   CadBodyGeneratedReferenceEvidenceSnapshot,
   CadBatchResponse,
   CadCurrentExactResult,
-  CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
   FeatureShellOpenFaceRef,
   PatternRotationAxisRef,
@@ -281,6 +280,11 @@ import {
   type DocumentTreeSelection
 } from "./workbench/documentTreeProjection";
 import type { ViewportCanvasPick } from "./components/ViewportCanvas";
+import { ViewportCandidateList } from "./components/ViewportCandidateList";
+import type {
+  RenderExactPickCandidate,
+  RenderExactVisualStateInput
+} from "@web-cad/renderer";
 import {
   VIEWPORT_COMMAND_EVENT,
   type ViewportCommand
@@ -366,18 +370,26 @@ import {
 } from "./sketchPanelUi";
 import { type ViewportContextualCommandAction } from "./viewportContextualCommands";
 import {
-  chooseViewportGeneratedReferencePickBodyId,
+  createViewportCurrentTopologyPickIntent,
+  createViewportExactSelection,
+  isSameViewportExactSelection,
   resolveViewportPickIntent,
-  resolveViewportPickedBodyId,
+  type ViewportExactSelection,
   type ViewportPickIntent
 } from "./viewportPickIntent";
-import { createViewportGeneratedPlanarFaceHitCandidate } from "./viewportGeneratedFacePicking";
-import { createViewportGeneratedEdgeHitCandidate } from "./viewportGeneratedEdgePicking";
-import { resolveViewportHoverIntent } from "./viewportHoverIntent";
+import {
+  reconcileViewportExactCandidateSession,
+  updateViewportExactSelections,
+  type ViewportExactCandidateSession
+} from "./viewportExactSelectionSession";
+import { resolveViewportHoverVisualState } from "./viewportHoverVisual";
 import type { ViewportSelectionDisplay } from "./viewportSelectionDisplay";
 import type { ViewportVisualStateModel } from "./viewportVisualState";
 import type { ViewportMeasurementOverlay } from "./viewportMeasurementOverlay";
-import { getHistoryKeyboardCommand } from "./viewportKeyboard";
+import {
+  getHistoryKeyboardCommand,
+  isEditableKeyboardTarget
+} from "./viewportKeyboard";
 import type {
   ViewportTwoTargetMeasurementSession,
   ViewportTwoTargetMeasurementTarget,
@@ -1726,29 +1738,6 @@ function readGeneratedFaceReferencesByKey(
   return facesByKey;
 }
 
-function readGeneratedEdgeReferencesByKey(
-  bodies: readonly CadBodySnapshot[],
-  evidenceByBodyId: ReadonlyMap<
-    string,
-    CadBodyGeneratedReferenceEvidenceSnapshot
-  > = new Map()
-): ReadonlyMap<string, CadGeneratedEdgeReference> {
-  const edgesByKey = new Map<string, CadGeneratedEdgeReference>();
-
-  for (const body of bodies) {
-    const response = readBodyGeneratedReferences(
-      body.id,
-      evidenceByBodyId.get(body.id)
-    );
-
-    for (const edge of response.references?.edges ?? []) {
-      edgesByKey.set(`${edge.bodyId}\n${edge.stableId}`, edge);
-    }
-  }
-
-  return edgesByKey;
-}
-
 function createDerivedGeneratedReferenceEvidenceByBodyId(
   snapshot: DerivedGeometrySnapshot,
   sources: readonly DerivedGeometrySource[]
@@ -1900,6 +1889,13 @@ type ViewportMeasurementRuntime = {
   readonly createVisualState: typeof import("./viewportVisualState").createViewportVisualStateModel;
 };
 
+function createRenderExactVisualState(
+  selection: ViewportExactSelection,
+  state: RenderExactVisualStateInput["state"]
+): RenderExactVisualStateInput {
+  return { ...selection, state } as RenderExactVisualStateInput;
+}
+
 export function App() {
   const [workbenchUi, dispatchWorkbench] = useReducer(
     workbenchReducer,
@@ -2042,6 +2038,11 @@ export function App() {
   const [viewportPickIntent, setViewportPickIntent] = useState<
     ViewportPickIntent | undefined
   >();
+  const [viewportExactCandidateSession, setViewportExactCandidateSession] =
+    useState<ViewportExactCandidateSession | undefined>();
+  const [viewportExactSelections, setViewportExactSelections] = useState<
+    readonly ViewportExactSelection[]
+  >([]);
   const [
     viewportTwoTargetMeasurementSession,
     setViewportTwoTargetMeasurementSession
@@ -2765,14 +2766,6 @@ export function App() {
       ),
     [derivedGeneratedReferenceEvidenceByBodyId, sketchExtrudeBodies]
   );
-  const generatedEdgesByKey = useMemo(
-    () =>
-      readGeneratedEdgeReferencesByKey(
-        sketchExtrudeBodies,
-        derivedGeneratedReferenceEvidenceByBodyId
-      ),
-    [derivedGeneratedReferenceEvidenceByBodyId, sketchExtrudeBodies]
-  );
   const sketchDisplayState = useMemo(
     () => createSketchDisplayState(sketches, generatedFacesByKey),
     [generatedFacesByKey, sketches]
@@ -2930,7 +2923,8 @@ export function App() {
       }) ?? {
         display: baseDerivedGeometry,
         metadata: baseDerivedExactMetadata,
-        artifactSources: []
+        artifactSources: [],
+        artifacts: []
       },
     [
       baseDerivedExactMetadata,
@@ -4902,7 +4896,7 @@ export function App() {
       diagnostics: []
     };
   const viewportHoverState = viewportHoverPick
-    ? resolveViewportHoverIntent({
+    ? resolveViewportHoverVisualState({
         hoveredRenderId: viewportHoverPick.pickedRenderId,
         bodies: projectStructure.bodies,
         objects: sceneObjects,
@@ -5417,7 +5411,8 @@ export function App() {
   const viewportGestureActive =
     threePointArcTool !== undefined ||
     viewportHoverPick !== undefined ||
-    viewportPickIntent !== undefined;
+    viewportPickIntent !== undefined ||
+    viewportExactCandidateSession !== undefined;
   const measurementSecondTargetActive = Boolean(
     viewportTwoTargetMeasurementSession.firstTarget ||
     viewportTwoTargetMeasurementSession.secondTarget
@@ -5425,6 +5420,7 @@ export function App() {
   const clearViewportGestures = useCallback(() => {
     setViewportHoverPick(undefined);
     setViewportPickIntent(undefined);
+    setViewportExactCandidateSession(undefined);
     setThreePointArcTool(undefined);
   }, []);
   const clearMeasurementSecondTargetCapture = useCallback(() => {
@@ -5450,11 +5446,13 @@ export function App() {
     viewportSelectionDisplay.title
   ]);
   const selectedViewportRenderId =
-    viewportVisualState.selectedRenderTargetId ??
-    selectedObject?.id ??
-    selectedBody?.objectId ??
-    selectedBody?.id ??
-    selectedId;
+    viewportPickIntent?.kind === "currentTopology"
+      ? undefined
+      : (viewportVisualState.selectedRenderTargetId ??
+        selectedObject?.id ??
+        selectedBody?.objectId ??
+        selectedBody?.id ??
+        selectedId);
   const renderScene = useMemo(
     () =>
       modelingUiRuntime?.createRenderSceneInputs(
@@ -5473,6 +5471,57 @@ export function App() {
       sketches
     ]
   );
+  const currentExactPickBodies = useMemo(() => {
+    const meshes = new Map(renderScene.meshes.map((mesh) => [mesh.id, mesh]));
+    return currentExactArtifactProjection.artifacts.flatMap((artifact) => {
+      const mesh = meshes.get(artifact.bodyId);
+      const pickMap = artifact.viewportPickMap;
+      return mesh && pickMap ? [{ mesh, pickMap }] : [];
+    });
+  }, [currentExactArtifactProjection.artifacts, renderScene.meshes]);
+  useEffect(() => {
+    setViewportExactCandidateSession(undefined);
+    setViewportExactSelections([]);
+    setViewportPickIntent((current) =>
+      current?.kind === "currentTopology" ? undefined : current
+    );
+  }, [currentExactPickBodies]);
+  const viewportCandidateRows =
+    viewportExactCandidateSession?.candidates.map(
+      (candidate) =>
+        `${formatCadKindLabel(candidate.entityKind)} · ${
+          projectStructure.bodies.find((body) => body.id === candidate.bodyId)
+            ?.name ?? "Body"
+        } · ${candidate.occluded ? "Occluded" : "Visible"}`
+    ) ?? [];
+  const viewportExactVisualStates = useMemo(() => {
+    const states = viewportExactSelections.map((selection) =>
+      createRenderExactVisualState(selection, "selected")
+    );
+    const active =
+      viewportExactCandidateSession?.candidates[
+        viewportExactCandidateSession.index
+      ];
+    if (active) {
+      if (
+        !viewportExactSelections.some((current) =>
+          isSameViewportExactSelection(current, active)
+        )
+      ) {
+        states.push(
+          createRenderExactVisualState(
+            createViewportExactSelection(active),
+            "preselection"
+          )
+        );
+      }
+    }
+    return states;
+  }, [viewportExactCandidateSession, viewportExactSelections]);
+  useEffect(() => {
+    setViewportExactCandidateSession(undefined);
+    setViewportHoverPick(undefined);
+  }, [workbenchUi.mode, workbenchUi.selectionFilter]);
   const projectStorageCapabilities = useMemo(
     () => createProjectStorageCapabilityStatus(window),
     []
@@ -5603,6 +5652,12 @@ export function App() {
     getDerivedGeometryService
   ]);
 
+  function clearViewportExactSelection() {
+    setViewportExactCandidateSession(undefined);
+    setViewportExactSelections([]);
+    setViewportPickIntent(undefined);
+  }
+
   async function syncDocument(
     nextSelectedId: string | null | undefined = selectedId
   ): Promise<void> {
@@ -5615,6 +5670,7 @@ export function App() {
       documentPublicationResolversRef.current.set(nextDocument, resolvers);
       startTransition(() => {
         setDocument(nextDocument);
+        clearViewportExactSelection();
         setCurveEditSourceAuthorityRevision((current) => current + 1);
         setSelectedId(
           nextSelectedId !== null &&
@@ -5651,6 +5707,7 @@ export function App() {
     setSelectedSketchContext(undefined);
     setViewportPickIntent(undefined);
     setViewportHoverPick(undefined);
+    clearViewportExactSelection();
     if (!solidCollectorRequest) {
       dispatchWorkbench({ type: "set-active-tool" });
     }
@@ -5675,62 +5732,11 @@ export function App() {
     runAfterCurveEditNavigationGuard(() => applyObjectSelection(objectId));
   }
 
-  function selectViewportPick(pick: ViewportCanvasPick) {
-    setSolidCollectorSelectionOverride(undefined);
-    const pickedBodyId = resolveViewportPickedBodyId({
-      pickedRenderId: pick.pickedRenderId,
-      bodies: projectStructure.bodies,
-      objects: sceneObjects
-    });
-    const targetGeneratedReferenceBodyId =
-      chooseViewportGeneratedReferencePickBodyId({
-        activeSelectionPanel:
-          workbenchUi.mode === "inspect" ||
-          workbenchUi.selectionFilter !== "body",
-        generatedReferenceSelected: selectedGeneratedReference !== undefined,
-        pickedBodyId,
-        selectedBodyId: selectedBody?.id
-      });
-    const generatedEdgeHitCandidate = createViewportGeneratedEdgeHitCandidate({
-      camera: pick.camera,
-      edges: [...generatedEdgesByKey.values()],
-      pickedRenderId: pick.pickedRenderId,
-      point: pick.point,
-      targetBodyId: targetGeneratedReferenceBodyId,
-      size: pick.size,
-      sketchDisplayFrames: sketchDisplayState.frames
-    });
-    const generatedFaceHitCandidate =
-      createViewportGeneratedPlanarFaceHitCandidate({
-        camera: pick.camera,
-        faces: [...generatedFacesByKey.values()],
-        pickedRenderId: pick.pickedRenderId,
-        point: pick.point,
-        targetBodyId: targetGeneratedReferenceBodyId,
-        size: pick.size,
-        sketchDisplayFrames: sketchDisplayState.frames
-      });
-    const intent = resolveViewportPickIntent({
-      hitCandidate: generatedEdgeHitCandidate ?? generatedFaceHitCandidate,
-      pickedRenderId: pick.pickedRenderId,
-      bodies: projectStructure.bodies,
-      objects: sceneObjects,
-      sketches,
-      readReferenceCandidates: readSelectionReferenceCandidates
-    });
-
+  function publishViewportPickIntent(intent: ViewportPickIntent) {
     setViewportPickIntent(intent);
     setSelectedId(intent.selectedId);
     setSelectedNamedReferenceName(undefined);
-    setSelectedGeneratedReference(
-      intent.kind === "generatedReference"
-        ? {
-            bodyId: intent.bodyId,
-            stableId: intent.stableId,
-            kind: intent.expectedKind
-          }
-        : undefined
-    );
+    setSelectedGeneratedReference(undefined);
     if (intent.kind === "sketchEntity") {
       setFocusedSketchId(intent.sketchId);
       setSelectedSketchContext({
@@ -5740,7 +5746,74 @@ export function App() {
     } else {
       setSelectedSketchContext(undefined);
     }
-    return intent;
+  }
+
+  function selectViewportExactCandidate(
+    candidate: RenderExactPickCandidate,
+    additive: boolean
+  ) {
+    setViewportExactSelections((current) =>
+      updateViewportExactSelections(current, candidate, additive)
+    );
+    publishViewportPickIntent(
+      candidate.entityKind === "body"
+        ? resolveViewportPickIntent({
+            pickedRenderId: candidate.bodyId,
+            bodies: projectStructure.bodies,
+            objects: sceneObjects,
+            sketches,
+            readReferenceCandidates: readSelectionReferenceCandidates
+          })
+        : createViewportCurrentTopologyPickIntent(candidate)
+    );
+  }
+
+  function chooseViewportExactCandidate(index: number, additive = false) {
+    const candidate = viewportExactCandidateSession?.candidates[index];
+    if (!candidate || !viewportExactCandidateSession) return;
+    if (viewportExactCandidateSession.bodies !== currentExactPickBodies) {
+      clearViewportExactSelection();
+      return;
+    }
+    setViewportExactCandidateSession({
+      ...viewportExactCandidateSession,
+      index
+    });
+    selectViewportExactCandidate(candidate, additive);
+  }
+
+  function cycleViewportExactCandidate() {
+    if ((viewportExactCandidateSession?.candidates.length ?? 0) < 2) return;
+    chooseViewportExactCandidate(
+      (viewportExactCandidateSession!.index + 1) %
+        viewportExactCandidateSession!.candidates.length
+    );
+  }
+
+  function selectViewportPick(pick: ViewportCanvasPick) {
+    setSolidCollectorSelectionOverride(undefined);
+    const session = reconcileViewportExactCandidateSession(
+      viewportExactCandidateSession,
+      pick.exactPickResult,
+      pick.point,
+      currentExactPickBodies
+    );
+    setViewportExactCandidateSession(session);
+    const exactCandidate = session?.candidates[session.index];
+    if (exactCandidate) {
+      selectViewportExactCandidate(exactCandidate, pick.additive);
+      return;
+    }
+    if (!pick.additive) setViewportExactSelections([]);
+    const intent = resolveViewportPickIntent({
+      pickedRenderId: pick.pickedRenderId,
+      bodies: projectStructure.bodies,
+      objects: sceneObjects,
+      sketches,
+      readReferenceCandidates: readSelectionReferenceCandidates
+    });
+
+    publishViewportPickIntent(intent);
   }
 
   function hoverViewportPick(pick: ViewportCanvasPick | undefined) {
@@ -5750,6 +5823,14 @@ export function App() {
       !focusedSketchId
     ) {
       setViewportHoverPick(pick);
+      setViewportExactCandidateSession((current) =>
+        reconcileViewportExactCandidateSession(
+          current,
+          pick?.exactPickResult,
+          pick?.point,
+          currentExactPickBodies
+        )
+      );
       setCurveEditViewportHoverChoice(undefined);
       curveEditHoverSchedulerRef.current?.clear();
       return;
@@ -8529,7 +8610,8 @@ export function App() {
         selectedId ||
         selectedGeneratedReference ||
         selectedSketchContext ||
-        selectedNamedReferenceName
+        selectedNamedReferenceName ||
+        viewportExactSelections.length > 0
       )
     });
     if (!rung) return false;
@@ -8581,6 +8663,7 @@ export function App() {
         setSelectedGeneratedReference(undefined);
         setSelectedSketchContext(undefined);
         setSelectedNamedReferenceName(undefined);
+        clearViewportExactSelection();
         return true;
       default:
         return false;
@@ -9438,6 +9521,19 @@ export function App() {
   }, [workbenchUi.commandSearchOpen]);
   const onShortcutKeyDown = useEffectEvent((event: KeyboardEvent) => {
     {
+      if (
+        event.key === "n" &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !isEditableKeyboardTarget(event.target) &&
+        (workbenchUi.mode === "solid" || workbenchUi.mode === "inspect") &&
+        (viewportExactCandidateSession?.candidates.length ?? 0) > 1
+      ) {
+        event.preventDefault();
+        cycleViewportExactCandidate();
+        return;
+      }
       const resolved = resolveShortcutRouterAction(event, workbenchUi.mode);
       if (!resolved) return;
 
@@ -9701,6 +9797,13 @@ export function App() {
               fallback={<p className="panel-loading">Loading viewport…</p>}
             >
               <ViewportCanvas
+                exactPickBodies={
+                  workbenchUi.mode === "solid" || workbenchUi.mode === "inspect"
+                    ? currentExactPickBodies
+                    : []
+                }
+                exactPickFilter={workbenchUi.selectionFilter}
+                exactVisualStates={viewportExactVisualStates}
                 primitives={renderScene.primitives}
                 meshes={renderScene.meshes}
                 notifyHoverPointChanges={Boolean(
@@ -9931,6 +10034,19 @@ export function App() {
           }
           rightDock={
             <div className="right-rail" aria-label="Project and modeling tools">
+              {(workbenchUi.mode === "solid" ||
+                workbenchUi.mode === "inspect") &&
+              viewportExactCandidateSession ? (
+                <ViewportCandidateList
+                  index={viewportExactCandidateSession.index}
+                  rows={viewportCandidateRows}
+                  limited={
+                    viewportExactCandidateSession.status === "resource-limited"
+                  }
+                  capped={viewportExactCandidateSession.truncated}
+                  choose={chooseViewportExactCandidate}
+                />
+              ) : null}
               {workbenchUi.mode === "solid" ? (
                 <Suspense
                   fallback={

@@ -672,6 +672,7 @@ describe("geometry-kernel facade", () => {
       version: "partbench.exact-pick-map.v1",
       bodyId: "body_pick",
       bodySourceIdentitySignature: "source_pick",
+      byteLength: new Float64Array(16 * 1024).byteLength,
       topologySignature: "topology_pick",
       meshVertexCount: 0,
       meshTriangleCount: 0,
@@ -1069,7 +1070,8 @@ describe("geometry-kernel facade", () => {
     });
     const resourceLimited = {
       ...cloneExactViewportPickMap(pickMap),
-      edgePoints: oversizedPoints
+      edgePoints: oversizedPoints,
+      byteLength: oversizedPoints.byteLength
     };
     expect(getExactViewportPickMapDowngrade(resourceLimited, artifact)).toEqual(
       { status: "resource-limited" }

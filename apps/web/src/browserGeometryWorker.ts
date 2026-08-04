@@ -9,7 +9,6 @@ import type {
 } from "@web-cad/geometry-worker";
 import {
   createWorkerErrorDiagnostics,
-  getExactViewportPickMapDowngrade,
   getExactBodyArtifactSourceLeaf,
   getGeometryWorkerRequestTransferables
 } from "@web-cad/geometry-worker/browser";
@@ -119,7 +118,7 @@ export class BrowserGeometryWorker implements GeometryWorker {
       return;
     }
 
-    pending.resolve(sanitizeReceivedExactBodyArtifactResponse(event.data));
+    pending.resolve(event.data);
   };
   readonly #handleError = (event: WorkerErrorEvent) => {
     const error = new BrowserGeometryWorkerError(
@@ -283,65 +282,6 @@ function replaceExactBodyArtifactSourceLeaf(
     default:
       return source;
   }
-}
-
-function sanitizeReceivedExactBodyArtifactResponse(
-  response: GeometryWorkerResponse
-): GeometryWorkerResponse {
-  if (
-    !response.response.ok ||
-    response.response.op !== "geometry.exactBodyArtifact" ||
-    !("artifact" in response.response)
-  ) {
-    return response;
-  }
-
-  const { artifact } = response.response;
-  const pickMap = artifact.viewportPickMap;
-  if (!pickMap) return response;
-
-  const baseTransferables = [
-    artifact.brepBytes.buffer,
-    artifact.displayMesh.positions.buffer,
-    artifact.displayMesh.indices.buffer
-  ] as ArrayBuffer[];
-  const downgrade = getExactViewportPickMapDowngrade(pickMap, artifact);
-  if (
-    !downgrade &&
-    hasMatchingTransferables(response.transferables, [
-      ...baseTransferables,
-      pickMap.faceTriangleRanges.buffer,
-      pickMap.edgePointRanges.buffer,
-      pickMap.edgePoints.buffer,
-      pickMap.vertexPoints.buffer
-    ])
-  ) {
-    return response;
-  }
-
-  const artifactWithoutPickMap = { ...artifact };
-  delete artifactWithoutPickMap.viewportPickMap;
-  return {
-    ...response,
-    response: {
-      ...response.response,
-      artifact: {
-        ...artifactWithoutPickMap,
-        viewportPickMapDowngrade: downgrade ?? { status: "invalid" }
-      }
-    },
-    transferables: baseTransferables
-  };
-}
-
-function hasMatchingTransferables(
-  actual: readonly ArrayBuffer[],
-  expected: readonly ArrayBufferLike[]
-): boolean {
-  return (
-    actual.length === expected.length &&
-    actual.every((buffer, index) => buffer === expected[index])
-  );
 }
 
 function isGeometryWorkerStartedMessage(
