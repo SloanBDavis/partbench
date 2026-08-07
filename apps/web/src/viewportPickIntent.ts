@@ -165,13 +165,19 @@ export function createViewportExactSelection(
 export function createViewportExactSelection(
   candidate: RenderExactPickCandidate
 ): ViewportExactSelection {
-  const {
-    depth: _depth,
-    distance: _distance,
-    occluded: _occluded,
-    ...selection
-  } = candidate;
-  return selection;
+  const identity = {
+    bodyId: candidate.bodyId,
+    bodySourceIdentitySignature: candidate.bodySourceIdentitySignature,
+    topologySignature: candidate.topologySignature
+  };
+  return candidate.entityKind === "body"
+    ? { ...identity, entityKind: "body" }
+    : {
+        ...identity,
+        entityKind: candidate.entityKind,
+        localId: candidate.localId,
+        entitySignature: candidate.entitySignature
+      };
 }
 
 export function isSameViewportExactSelection(

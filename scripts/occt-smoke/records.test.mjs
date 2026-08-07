@@ -38,6 +38,7 @@ const namedStepProbe = {
     brepByteLength: 1_000
   }))
 };
+const v22ExactSelection = { ok: true, rowCount: 13, rows: [] };
 
 describe("occt smoke records", () => {
   it("creates the structured success record without timing thresholds", () => {
@@ -73,6 +74,7 @@ describe("occt smoke records", () => {
           roundTripMs: 1_000_002
         },
         namedStepProbe,
+        v22ExactSelection,
         meshes: [
           {
             scenario: "box-2x3x4",
@@ -129,6 +131,7 @@ describe("occt smoke records", () => {
         vertexCount: 24,
         triangleCount: 12,
         namedStepProbe,
+        v22ExactSelection,
         meshes: [
           {
             scenario: "box-2x3x4",

@@ -380,8 +380,15 @@ import {
 import {
   reconcileViewportExactCandidateSession,
   updateViewportExactSelections,
+  canCycleViewportExactCandidate,
+  getNextViewportExactCandidateIndex,
   type ViewportExactCandidateSession
 } from "./viewportExactSelectionSession";
+import {
+  createViewportExactCandidateCommandability,
+  formatViewportExactCandidateAnnouncement,
+  formatViewportExactCandidateRow
+} from "./viewportExactCandidateAnnouncement";
 import { resolveViewportHoverVisualState } from "./viewportHoverVisual";
 import type { ViewportSelectionDisplay } from "./viewportSelectionDisplay";
 import type { ViewportVisualStateModel } from "./viewportVisualState";
@@ -1037,6 +1044,12 @@ function readSelectionReferenceCandidates(
   return response.ok && response.query === "selection.referenceCandidates"
     ? response
     : undefined;
+}
+
+function readSelectionReferenceCandidatesForBody(
+  bodyId: string
+): SelectionReferenceCandidatesQueryResponse | undefined {
+  return readSelectionReferenceCandidates({ type: "body", bodyId });
 }
 
 function readTopologyCommandTargetReadiness(
@@ -5487,13 +5500,42 @@ export function App() {
     );
   }, [currentExactPickBodies]);
   const viewportCandidateRows =
-    viewportExactCandidateSession?.candidates.map(
-      (candidate) =>
-        `${formatCadKindLabel(candidate.entityKind)} · ${
+    viewportExactCandidateSession?.candidates.map((candidate, index) => {
+      const commandability = createViewportExactCandidateCommandability(
+        candidate,
+        readSelectionReferenceCandidatesForBody
+      );
+      return formatViewportExactCandidateRow({
+        index,
+        count: viewportExactCandidateSession.candidates.length,
+        kindLabel: formatCadKindLabel(candidate.entityKind),
+        label:
           projectStructure.bodies.find((body) => body.id === candidate.bodyId)
-            ?.name ?? "Body"
-        } · ${candidate.occluded ? "Occluded" : "Visible"}`
-    ) ?? [];
+            ?.name ?? "Body",
+        occluded: candidate.occluded,
+        commandability
+      });
+    }) ?? [];
+  const viewportExactCandidate =
+    viewportExactCandidateSession?.candidates[
+      viewportExactCandidateSession.index
+    ];
+  const viewportExactCandidateAnnouncement = viewportExactCandidate
+    ? formatViewportExactCandidateAnnouncement({
+        index: viewportExactCandidateSession!.index,
+        count: viewportExactCandidateSession!.candidates.length,
+        kindLabel: formatCadKindLabel(viewportExactCandidate.entityKind),
+        label:
+          projectStructure.bodies.find(
+            (body) => body.id === viewportExactCandidate.bodyId
+          )?.name ?? "Body",
+        occluded: viewportExactCandidate.occluded,
+        commandability: createViewportExactCandidateCommandability(
+          viewportExactCandidate,
+          readSelectionReferenceCandidatesForBody
+        )
+      })
+    : undefined;
   const viewportExactVisualStates = useMemo(() => {
     const states = viewportExactSelections.map((selection) =>
       createRenderExactVisualState(selection, "selected")
@@ -5783,11 +5825,12 @@ export function App() {
   }
 
   function cycleViewportExactCandidate() {
-    if ((viewportExactCandidateSession?.candidates.length ?? 0) < 2) return;
-    chooseViewportExactCandidate(
-      (viewportExactCandidateSession!.index + 1) %
-        viewportExactCandidateSession!.candidates.length
+    if (!canCycleViewportExactCandidate(viewportExactCandidateSession)) return;
+    const next = getNextViewportExactCandidateIndex(
+      viewportExactCandidateSession
     );
+    if (next < 0) return;
+    chooseViewportExactCandidate(next);
   }
 
   function selectViewportPick(pick: ViewportCanvasPick) {
@@ -9528,7 +9571,7 @@ export function App() {
         !event.metaKey &&
         !isEditableKeyboardTarget(event.target) &&
         (workbenchUi.mode === "solid" || workbenchUi.mode === "inspect") &&
-        (viewportExactCandidateSession?.candidates.length ?? 0) > 1
+        canCycleViewportExactCandidate(viewportExactCandidateSession)
       ) {
         event.preventDefault();
         cycleViewportExactCandidate();
@@ -10044,6 +10087,7 @@ export function App() {
                     viewportExactCandidateSession.status === "resource-limited"
                   }
                   capped={viewportExactCandidateSession.truncated}
+                  announcement={viewportExactCandidateAnnouncement}
                   choose={chooseViewportExactCandidate}
                 />
               ) : null}

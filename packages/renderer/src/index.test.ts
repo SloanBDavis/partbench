@@ -386,14 +386,54 @@ describe("renderer", () => {
     });
   });
 
+  it("omits clipped exact candidates before depth ordering", () => {
+    const result = pickExactRenderBodies(
+      [createExactPickBody("near", -2), createExactPickBody("clipped", 2)],
+      exactPickCamera(),
+      { width: 800, height: 600 },
+      { x: 400, y: 300 },
+      "auto",
+      { origin: [0, 0, 0], normal: [0, -1, 0] }
+    );
+
+    expect(result.candidates.map((candidate) => candidate.bodyId)).toEqual([
+      "near",
+      "near",
+      "near",
+      "near"
+    ]);
+    expect(result.candidates.every((candidate) => !candidate.occluded)).toBe(
+      true
+    );
+  });
+
+  it("clips exact edge segments at the visible plane boundary", () => {
+    const camera = exactPickCamera();
+    const size = { width: 800, height: 600 };
+    const body = createExactPickBody("body", 0);
+    const plane = { origin: [0, 0, 0] as const, normal: [1, 0, 0] as const };
+    const visible = projectPoint([0.5, 0, 0], camera, size)!;
+    const clipped = projectPoint([-0.5, 0, 0], camera, size)!;
+
+    expect(
+      pickExactRenderBodies([body], camera, size, visible, "edge", plane)
+        .candidates
+    ).toHaveLength(1);
+    expect(
+      pickExactRenderBodies([body], camera, size, clipped, "edge", plane)
+        .candidates
+    ).toHaveLength(0);
+  });
+
   it("keeps CSS-pixel edge tolerance stable across camera zoom", () => {
     const size = { width: 800, height: 600 };
+    const body = createExactPickBody("body", 0);
     for (const distance of [10, 20]) {
       const camera = { ...exactPickCamera(), distance };
       const center = projectPoint([0, 0, 0], camera, size);
       expect(center).toBeDefined();
       const result = pickExactRenderBodies(
-        [createExactPickBody("body", 0)],
+        [body],
         camera,
         size,
         { x: (center?.x ?? 0) + 9, y: center?.y ?? 0 },

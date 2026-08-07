@@ -301,7 +301,7 @@ Keep Canvas 2D; add depth-aware body/face triangles, edge polylines, vertex
 points; validate private hits to current evidence; add Auto/Body/Face/Edge/
 Vertex, cycle/list/keyboard, visual states, and body fallback.
 
-**Gate C:** selection matrix browser/renderer proof, occlusion/clipping,
+**Gate C: [Passed (2026-08-07)](./v22-c-gate.md).** Selection matrix browser/renderer proof, occlusion/clipping,
 DPR/zoom, candidate and 250,000-triangle work caps, stale fallback,
 keyboard/accessibility, and hover p95 evidence. A missed direct-scan gate permits
 only the measured private index already allowed by the release plan.
@@ -424,7 +424,7 @@ consolidation lands; lazy chunking alone is not all-UI budget evidence.
 | --- | --- | --- |
 | A | [Passed](./v22-a-gate.md) | inherited baseline, frozen contracts/matrices/fixtures and measured deletion budget, no production behavior |
 | B | [Passed](./v22-b-gate.md) | same-shape pick maps, validation, transfer, bounds, cleanup, no source persistence |
-| C | Pending | depth-aware selection, fallback, filter/cycle/keyboard, performance |
+| C | [Passed](./v22-c-gate.md) | depth-aware selection, fallback, filter/cycle/keyboard, performance |
 | D | Pending | collector/promotion path and exhaustive no-widening parity |
 | E | Pending | exact preview and all grips with Apply parity and cleanup |
 | F | Pending | V19 annotations and exact inspection/section/accessibility |

@@ -157,6 +157,9 @@ export function createSuccessRecord(input) {
       namedStepProbe: input.smokeResult.namedStepProbe,
       ...(input.smokeResult.v21ExactInterchange
         ? { v21ExactInterchange: input.smokeResult.v21ExactInterchange }
+        : {}),
+      ...(input.smokeResult.v22ExactSelection
+        ? { v22ExactSelection: input.smokeResult.v22ExactSelection }
         : {})
     }
   };

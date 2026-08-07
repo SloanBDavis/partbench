@@ -95,7 +95,9 @@ function validateMesh(mesh: SerializableMeshData): void {
     mesh.primitive !== "revolve" &&
     mesh.primitive !== "boolean" &&
     mesh.primitive !== "hole" &&
-    mesh.primitive !== "edgeFinish"
+    mesh.primitive !== "edgeFinish" &&
+    mesh.primitive !== "sweep" &&
+    mesh.primitive !== "loft"
   ) {
     throw new Error(`Unsupported mesh primitive: ${mesh.primitive}`);
   }

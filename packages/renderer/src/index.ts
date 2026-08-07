@@ -143,6 +143,11 @@ export interface RenderExactPickBody {
   readonly pickMap: RenderExactPickMap;
 }
 
+export interface RenderExactPickClipPlane {
+  readonly origin: Vec3;
+  readonly normal: Vec3;
+}
+
 interface RenderExactPickCandidateBase {
   readonly bodyId: string;
   readonly bodySourceIdentitySignature: string;
@@ -386,7 +391,8 @@ export function pickExactRenderBodies(
   camera: RenderCamera,
   size: ViewportSize,
   point: ViewportPoint,
-  filter: RenderExactPickFilter = "auto"
+  filter: RenderExactPickFilter = "auto",
+  clipPlane?: RenderExactPickClipPlane
 ): RenderExactPickResult {
   const ray = createViewportRay(camera, size, point);
   const candidates: RenderExactPickCandidate[] = [];
@@ -444,7 +450,7 @@ export function pickExactRenderBodies(
           transformPoint(second, mesh.transform),
           transformPoint(third, mesh.transform)
         );
-        if (!intersection) continue;
+        if (!intersection || isClipped(intersection, clipPlane)) continue;
         const projected = projectPoint(intersection, camera, size);
         if (!projected) continue;
 
@@ -481,7 +487,15 @@ export function pickExactRenderBodies(
       }
     }
     if (includesExactKind(filter, "edge")) {
-      appendExactEdgeCandidates(candidates, mesh, pickMap, camera, size, point);
+      appendExactEdgeCandidates(
+        candidates,
+        mesh,
+        pickMap,
+        camera,
+        size,
+        point,
+        clipPlane
+      );
     }
     if (includesExactKind(filter, "vertex")) {
       appendExactVertexCandidates(
@@ -490,7 +504,8 @@ export function pickExactRenderBodies(
         pickMap,
         camera,
         size,
-        point
+        point,
+        clipPlane
       );
     }
   }
@@ -1451,30 +1466,37 @@ function appendExactEdgeCandidates(
   pickMap: RenderExactPickMap,
   camera: RenderCamera,
   size: ViewportSize,
-  point: ViewportPoint
+  point: ViewportPoint,
+  clipPlane?: RenderExactPickClipPlane
 ): void {
   for (const [index, entity] of pickMap.edges.entries()) {
     const firstPoint = pickMap.edgePointRanges[index * 2] ?? 0;
     const pointCount = pickMap.edgePointRanges[index * 2 + 1] ?? 0;
     let closestDepth = 0;
     let closestDistance = Number.POSITIVE_INFINITY;
-    let start = projectExactPickPoint(
+    let startWorld = readExactPickPoint(
       pickMap.edgePoints,
       firstPoint,
-      mesh.transform,
-      camera,
-      size
+      mesh.transform
     );
 
     for (let pointIndex = 1; pointIndex < pointCount; pointIndex += 1) {
-      const end = projectExactPickPoint(
+      const endWorld = readExactPickPoint(
         pickMap.edgePoints,
         firstPoint + pointIndex,
-        mesh.transform,
-        camera,
-        size
+        mesh.transform
       );
-      if (start && end) {
+      const segmentWorld =
+        startWorld && endWorld
+          ? clipSegment(startWorld, endWorld, clipPlane)
+          : undefined;
+      if (segmentWorld) {
+        const start = projectPoint(segmentWorld[0], camera, size);
+        const end = projectPoint(segmentWorld[1], camera, size);
+        if (!start || !end) {
+          startWorld = endWorld;
+          continue;
+        }
         const segment = getClosestProjectedSegmentPoint(point, start, end);
         if (segment.distance <= EXACT_PICK_TOLERANCE_CSS_PX) {
           const depth =
@@ -1488,7 +1510,7 @@ function appendExactEdgeCandidates(
           }
         }
       }
-      start = end;
+      startWorld = endWorld;
     }
 
     if (closestDistance <= EXACT_PICK_TOLERANCE_CSS_PX) {
@@ -1511,9 +1533,16 @@ function appendExactVertexCandidates(
   pickMap: RenderExactPickMap,
   camera: RenderCamera,
   size: ViewportSize,
-  point: ViewportPoint
+  point: ViewportPoint,
+  clipPlane?: RenderExactPickClipPlane
 ): void {
   for (const [index, entity] of pickMap.vertices.entries()) {
+    const world = readExactPickPoint(
+      pickMap.vertexPoints,
+      index,
+      mesh.transform
+    );
+    if (!world || isClipped(world, clipPlane)) continue;
     const projected = projectExactPickPoint(
       pickMap.vertexPoints,
       index,
@@ -1537,6 +1566,20 @@ function appendExactVertexCandidates(
   }
 }
 
+function readExactPickPoint(
+  points: Float64Array,
+  pointIndex: number,
+  transform: RenderTransform
+): Vec3 | undefined {
+  const offset = pointIndex * 3;
+  const x = points[offset];
+  const y = points[offset + 1];
+  const z = points[offset + 2];
+  return x === undefined || y === undefined || z === undefined
+    ? undefined
+    : transformPoint([x, y, z], transform);
+}
+
 function projectExactPickPoint(
   points: Float64Array,
   pointIndex: number,
@@ -1544,13 +1587,42 @@ function projectExactPickPoint(
   camera: RenderCamera,
   size: ViewportSize
 ): ProjectedPoint | undefined {
-  const offset = pointIndex * 3;
-  const x = points[offset];
-  const y = points[offset + 1];
-  const z = points[offset + 2];
-  return x === undefined || y === undefined || z === undefined
-    ? undefined
-    : projectPoint(transformPoint([x, y, z], transform), camera, size);
+  const point = readExactPickPoint(points, pointIndex, transform);
+  return point ? projectPoint(point, camera, size) : undefined;
+}
+
+function isClipped(
+  point: Vec3,
+  clipPlane: RenderExactPickClipPlane | undefined
+): boolean {
+  return clipPlane
+    ? dotVec3(subtractVec3(point, clipPlane.origin), clipPlane.normal) < 0
+    : false;
+}
+
+function clipSegment(
+  start: Vec3,
+  end: Vec3,
+  clipPlane: RenderExactPickClipPlane | undefined
+): readonly [Vec3, Vec3] | undefined {
+  if (!clipPlane) return [start, end];
+  const startDistance = dotVec3(
+    subtractVec3(start, clipPlane.origin),
+    clipPlane.normal
+  );
+  const endDistance = dotVec3(
+    subtractVec3(end, clipPlane.origin),
+    clipPlane.normal
+  );
+  if (startDistance < 0 && endDistance < 0) return undefined;
+  if (startDistance >= 0 && endDistance >= 0) return [start, end];
+  const fraction = startDistance / (startDistance - endDistance);
+  const intersection: Vec3 = [
+    start[0] + (end[0] - start[0]) * fraction,
+    start[1] + (end[1] - start[1]) * fraction,
+    start[2] + (end[2] - start[2]) * fraction
+  ];
+  return startDistance < 0 ? [intersection, end] : [start, intersection];
 }
 
 function createExactPickCandidate(
@@ -1815,6 +1887,9 @@ function getProjectedMeshBounds(
       depth: number;
     }
   | undefined {
+  const key = `${camera.target.join(":")}:${camera.yaw}:${camera.pitch}:${camera.distance}:${size.width}:${size.height}`;
+  const cached = projectedMeshBoundsCache.get(mesh);
+  if (cached?.key === key) return cached.bounds;
   const projected = mesh.vertices
     .map((point) =>
       projectPoint(transformPoint(point, mesh.transform), camera, size)
@@ -1829,14 +1904,30 @@ function getProjectedMeshBounds(
   const ys = projected.map((point) => point.y);
   const depths = projected.map((point) => point.depth);
 
-  return {
+  const bounds = {
     minX: Math.min(...xs),
     maxX: Math.max(...xs),
     minY: Math.min(...ys),
     maxY: Math.max(...ys),
     depth: Math.min(...depths)
   };
+  projectedMeshBoundsCache.set(mesh, { key, bounds });
+  return bounds;
 }
+
+const projectedMeshBoundsCache = new WeakMap<
+  RenderTriangleMesh,
+  {
+    readonly key: string;
+    readonly bounds: {
+      readonly minX: number;
+      readonly maxX: number;
+      readonly minY: number;
+      readonly maxY: number;
+      readonly depth: number;
+    };
+  }
+>();
 
 function containsPoint(
   bounds: { minX: number; maxX: number; minY: number; maxY: number },

@@ -68,3 +68,16 @@ function sameCandidates(
     )
   );
 }
+
+export function canCycleViewportExactCandidate(
+  session: ViewportExactCandidateSession | undefined
+): boolean {
+  return session ? session.candidates.length > 1 : false;
+}
+
+export function getNextViewportExactCandidateIndex(
+  session: ViewportExactCandidateSession | undefined
+): number {
+  if (!session || session.candidates.length < 2) return -1;
+  return (session.index + 1) % session.candidates.length;
+}

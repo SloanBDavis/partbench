@@ -26,23 +26,28 @@ const smokeHtmlPath = join(smokeDistDir, "geometry-worker-smoke.html");
 const metricsDir = join(repoRoot, ".metrics");
 const requireV21 = process.env.PARTBENCH_REQUIRE_V21 === "1";
 const requireV21_1 = process.env.PARTBENCH_REQUIRE_V21_1 === "1";
+const requireV22 = process.env.PARTBENCH_REQUIRE_V22 === "1";
 const metricsPath = join(
   metricsDir,
-  requireV21_1
-    ? "v21-1-occt-browser.jsonl"
-    : requireV21
-      ? "v21-occt-browser.jsonl"
-      : "occt-browser.jsonl"
+  requireV22
+    ? "v22-occt-browser.jsonl"
+    : requireV21_1
+      ? "v21-1-occt-browser.jsonl"
+      : requireV21
+        ? "v21-occt-browser.jsonl"
+        : "occt-browser.jsonl"
 );
 const smokeTimeoutMs = Number(
   process.env.PARTBENCH_SMOKE_TIMEOUT_MS ??
-    (requireV21_1 || requireV21 ? 600_000 : 60_000)
+    (requireV21_1 || requireV21 || requireV22 ? 600_000 : 60_000)
 );
-const scenarioName = requireV21_1
-  ? "v21-1-exact-256-interchange"
-  : requireV21
-    ? "v21-exact-interchange"
-    : "primitive-and-boolean-meshes";
+const scenarioName = requireV22
+  ? "v22-exact-selection"
+  : requireV21_1
+    ? "v21-1-exact-256-interchange"
+    : requireV21
+      ? "v21-exact-interchange"
+      : "primitive-and-boolean-meshes";
 
 await mkdir(metricsDir, { recursive: true });
 const browserExecutable = findBrowserExecutable();
@@ -87,7 +92,7 @@ try {
   });
   assetMetrics = await getAssetMetrics(smokeDistDir);
   appServer = await startStaticServer(smokeDistDir);
-  appUrl = `http://127.0.0.1:${appServer.port}/geometry-worker-smoke.html${requireV21_1 ? "?v21_1=1" : requireV21 ? "?v21=1" : ""}`;
+  appUrl = `http://127.0.0.1:${appServer.port}/geometry-worker-smoke.html${requireV22 ? "?v22=1" : requireV21_1 ? "?v21_1=1" : requireV21 ? "?v21=1" : ""}`;
   remoteDebuggingPort = await getAvailablePort();
   browserProcess = spawn(browserExecutable, [
     "--headless=new",
@@ -124,6 +129,11 @@ try {
   });
 
   assertSmokeResult(record);
+  if (requireV22 && !record.metrics.v22ExactSelection?.ok) {
+    throw new Error(
+      `V22 exact selection matrix result was missing or failed: ${JSON.stringify(record.metrics.v22ExactSelection ?? null)}`
+    );
+  }
   if (requireV21 && !record.metrics.v21ExactInterchange?.ok) {
     throw new Error("V21 exact interchange result was missing or failed.");
   }

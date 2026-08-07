@@ -83,6 +83,25 @@ describe("renderer mesh bridge", () => {
     expect(result.mesh).not.toHaveProperty("generatedReferences");
   });
 
+  it.each(["sweep", "loft"] as const)(
+    "adapts an exact %s display mesh",
+    (primitive) => {
+      expect(
+        createRenderMeshFromSerializableMesh(
+          {
+            primitive,
+            positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+            indices: new Uint32Array([0, 1, 2]),
+            vertexCount: 3,
+            triangleCount: 1,
+            faceCount: 1
+          },
+          { id: `mesh_${primitive}` }
+        ).mesh.id
+      ).toBe(`mesh_${primitive}`);
+    }
+  );
+
   it("adapts a tessellated box response from the geometry worker", async () => {
     const worker = new GeometryKernelWorker();
     const response = await worker.execute(

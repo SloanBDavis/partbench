@@ -15,6 +15,7 @@ import {
   createDerivedGeometryErrorFromWorkerResponse
 } from "./derivedGeometryRuntime";
 import { runV21ExactReleaseBrowserWorkflow } from "./v21ExactReleaseBrowserWorkflow";
+import { runV22ExactSelectionBrowserWorkflow } from "./v22ExactSelectionBrowserWorkflow";
 
 const output = document.getElementById("geometry-worker-smoke");
 
@@ -195,6 +196,10 @@ async function runGeometryWorkerSmoke(): Promise<void> {
             requireCancelRetry: requireV21_1
           })
         : undefined;
+    const v22ExactSelection =
+      smokeParams.has("v22") || smokeParams.has("v21_1")
+        ? await runV22ExactSelectionBrowserWorkflow(worker)
+        : undefined;
     const result = {
       ok: true,
       vertexCount: primary.vertexCount,
@@ -204,7 +209,8 @@ async function runGeometryWorkerSmoke(): Promise<void> {
       timings: primary.timings,
       meshes: meshResults,
       namedStepProbe,
-      ...(v21ExactInterchange ? { v21ExactInterchange } : {})
+      ...(v21ExactInterchange ? { v21ExactInterchange } : {}),
+      ...(v22ExactSelection ? { v22ExactSelection } : {})
     };
 
     document.body.dataset.geometryWorkerSmoke = "ok";
