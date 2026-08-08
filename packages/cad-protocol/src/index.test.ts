@@ -32,6 +32,9 @@ import type {
   CadViewportTwoTargetMeasurementState,
   CadViewportTwoTargetMeasurementTarget,
   BodyImportedBodyStatusQueryResponse,
+  CadCurrentTopologySelectionEvidence,
+  CadCurrentTopologySelectionOutcome,
+  CadCurrentTopologySelectionProjection,
   CadTopologyAnchorDescriptor,
   CadTopologyCheckpointMetadata,
   CadTopologyIdentityState,
@@ -49,6 +52,8 @@ import type {
   RevolveFeatureSnapshot,
   ProjectHealthQueryResponse,
   ProjectSummaryQueryResponse,
+  SelectionReferenceCandidatesQuery,
+  SelectionReferenceCandidatesQueryResponse,
   SketchEditReadinessQueryResponse,
   SketchEvaluationQueryResponse,
   SketchSolverStatusQueryResponse,
@@ -4371,5 +4376,86 @@ describe("cad-protocol", () => {
       type: "body",
       bodyId: "body_1"
     });
+  });
+
+  it("freezes the V22 current-topology query seam and public projection", () => {
+    const evidence: CadCurrentTopologySelectionEvidence = {
+      bodyId: "body_1",
+      bodySourceIdentitySignature: "source-1",
+      topologySignature: "topology-1",
+      entityKind: "face",
+      localId: "face-1",
+      entitySignature: "entity-1"
+    };
+    const legacy: SelectionReferenceCandidatesQuery = {
+      query: "selection.referenceCandidates",
+      selection: { type: "body", bodyId: "body_1" }
+    };
+    const current: SelectionReferenceCandidatesQuery = {
+      query: "selection.referenceCandidates",
+      currentTopologyEvidence: evidence
+    };
+    const both = {
+      ...legacy,
+      currentTopologyEvidence: evidence
+    };
+    const neither = { query: "selection.referenceCandidates" };
+
+    // @ts-expect-error selection and currentTopologyEvidence are mutually exclusive.
+    const invalidBoth: SelectionReferenceCandidatesQuery = both;
+    // @ts-expect-error one of selection or currentTopologyEvidence is required.
+    const invalidNeither: SelectionReferenceCandidatesQuery = neither;
+
+    expect(invalidBoth).toBeDefined();
+    expect(invalidNeither).toBeDefined();
+    expect(Object.keys(evidence).sort()).toEqual([
+      "bodyId",
+      "bodySourceIdentitySignature",
+      "entityKind",
+      "entitySignature",
+      "localId",
+      "topologySignature"
+    ]);
+    expect("selection" in legacy).toBe(true);
+    expect("currentTopologyEvidence" in current).toBe(true);
+
+    const outcomes: readonly CadCurrentTopologySelectionOutcome[] = [
+      "selectable",
+      "inspectOnly",
+      "existingGeneratedMatch",
+      "existingAnchorMatch",
+      "promotableGeneratedMatch",
+      "blocked",
+      "stale",
+      "missing",
+      "ambiguous",
+      "resourceLimited",
+      "unsupported"
+    ];
+    const projection: CadCurrentTopologySelectionProjection = {
+      bodyId: evidence.bodyId,
+      entityKind: evidence.entityKind,
+      outcome: "inspectOnly",
+      diagnostics: [{ message: "No durable reference is available." }]
+    };
+    const response: SelectionReferenceCandidatesQueryResponse = {
+      ok: true,
+      query: "selection.referenceCandidates",
+      cadOpsVersion: "cadops.v1",
+      currentTopology: projection,
+      status: "non-commandable",
+      candidateCount: 0,
+      candidates: [],
+      issueCount: 0,
+      issues: []
+    };
+    const publicJson = JSON.stringify(response);
+
+    expect(outcomes).toHaveLength(11);
+    expect(response.currentTopology.outcome).toBe("inspectOnly");
+    expect(publicJson).not.toContain("localId");
+    expect(publicJson).not.toContain("entitySignature");
+    expect(publicJson).not.toContain("rendererHitId");
+    expect(publicJson).not.toContain("selectionBufferHitId");
   });
 });

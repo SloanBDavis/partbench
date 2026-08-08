@@ -3222,12 +3222,55 @@ export interface ReferenceHealthQuery {
   readonly topologyMatchResults?: readonly CadTopologyMatchResult[];
 }
 
-export interface SelectionReferenceCandidatesQuery {
-  readonly query: "selection.referenceCandidates";
-  readonly selection: CadSelectionReferenceInput;
-  readonly requiredOperation?: CadSelectionReferenceOperation;
-  readonly topologyMatchResults?: readonly CadTopologyMatchResult[];
+export interface CadCurrentTopologySelectionEvidence {
+  readonly bodyId: BodyId;
+  readonly bodySourceIdentitySignature: string;
+  readonly topologySignature: string;
+  readonly entityKind: "face" | "edge" | "vertex";
+  readonly localId: string;
+  readonly entitySignature: string;
 }
+
+export type CadCurrentTopologySelectionOutcome =
+  | "selectable"
+  | "inspectOnly"
+  | "existingGeneratedMatch"
+  | "existingAnchorMatch"
+  | "promotableGeneratedMatch"
+  | "blocked"
+  | "stale"
+  | "missing"
+  | "ambiguous"
+  | "resourceLimited"
+  | "unsupported";
+
+export interface CadCurrentTopologySelectionDiagnostic {
+  readonly message: string;
+  readonly code?: CadCurrentTopologySelectionOutcome;
+}
+
+export interface CadCurrentTopologySelectionProjection {
+  readonly bodyId: BodyId;
+  readonly entityKind: CadCurrentTopologySelectionEvidence["entityKind"];
+  readonly outcome: CadCurrentTopologySelectionOutcome;
+  readonly diagnostics: readonly CadCurrentTopologySelectionDiagnostic[];
+}
+
+export type SelectionReferenceCandidatesQuery =
+  | {
+      readonly query: "selection.referenceCandidates";
+      readonly selection: CadSelectionReferenceInput;
+      readonly currentTopologyEvidence?: never;
+      readonly requiredOperation?: CadSelectionReferenceOperation;
+      readonly topologyMatchResults?: readonly CadTopologyMatchResult[];
+    }
+  | {
+      readonly query: "selection.referenceCandidates";
+      readonly selection?: never;
+      readonly currentTopologyEvidence: CadCurrentTopologySelectionEvidence;
+      readonly requiredOperation?: CadSelectionReferenceOperation;
+      readonly topologyMatchResults?: readonly CadTopologyMatchResult[];
+    };
 
 export interface TransactionHistoryQuery {
   readonly query: "transaction.history";
@@ -9640,11 +9683,10 @@ export interface ReferenceHealthQueryResponse {
   readonly requiresProjectSchemaMigration: false;
 }
 
-export interface SelectionReferenceCandidatesQueryResponse {
+interface SelectionReferenceCandidatesQueryResponseBase {
   readonly ok: true;
   readonly query: "selection.referenceCandidates";
   readonly cadOpsVersion: CadOpsVersion;
-  readonly selection: CadSelectionReferenceInput;
   readonly requiredOperation?: CadSelectionReferenceOperation;
   readonly status: CadSelectionReferenceStatus;
   readonly candidateCount: number;
@@ -9652,6 +9694,16 @@ export interface SelectionReferenceCandidatesQueryResponse {
   readonly issueCount: number;
   readonly issues: readonly CadSelectionReferenceIssue[];
 }
+
+export type SelectionReferenceCandidatesQueryResponse =
+  | (SelectionReferenceCandidatesQueryResponseBase & {
+      readonly selection: CadSelectionReferenceInput;
+      readonly currentTopology?: never;
+    })
+  | (SelectionReferenceCandidatesQueryResponseBase & {
+      readonly selection?: never;
+      readonly currentTopology: CadCurrentTopologySelectionProjection;
+    });
 
 export interface CadQueryErrorResponse {
   readonly ok: false;
