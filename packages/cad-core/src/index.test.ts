@@ -6590,6 +6590,257 @@ describe("cad-core", () => {
     });
   });
 
+  it("resolves current exact evidence only through verified durable matches", () => {
+    const engine = createRectangleExtrudeEngine();
+    const beforeJson = exportCadProjectJson(engine);
+    const sourceSignature = readBodyTopologySourceSignature(
+      engine,
+      "body_rect_1"
+    );
+    const evidence = {
+      bodyId: "body_rect_1",
+      bodySourceIdentitySignature: sourceSignature,
+      topologySignature: "current-topology-signature",
+      entityKind: "face",
+      localId: "snapshot-local:face:2",
+      entitySignature: "raw-occt-face-signature"
+    } as const;
+    const match = (
+      stableId: string,
+      state: CadTopologyMatchResult["state"] = "active"
+    ): CadTopologyMatchResult => ({
+      candidateStableId: stableId,
+      candidateCheckpointEntityId: evidence.localId,
+      entityKind: "face",
+      state,
+      confidence: state === "active" ? "exact" : "low",
+      evidenceCount: 0,
+      evidence: [],
+      diagnosticCount: 0,
+      diagnostics: []
+    });
+    const generated = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "selection.referenceCandidates",
+        currentTopologyEvidence: evidence,
+        requiredOperation: "feature.attachSketchPlane",
+        topologyMatchResults: [match("generated:face:body_rect_1:endCap")]
+      }
+    });
+    const inspectOnly = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "selection.referenceCandidates",
+        currentTopologyEvidence: evidence
+      }
+    });
+    const stale = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "selection.referenceCandidates",
+        currentTopologyEvidence: {
+          ...evidence,
+          bodySourceIdentitySignature: "stale-source"
+        }
+      }
+    });
+    const ambiguous = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "selection.referenceCandidates",
+        currentTopologyEvidence: evidence,
+        topologyMatchResults: [
+          match("generated:face:body_rect_1:startCap"),
+          match("generated:face:body_rect_1:endCap")
+        ]
+      }
+    });
+    const promotionEngine = createRectangleExtrudeEngine();
+    promotionEngine.apply({
+      op: "feature.extrude",
+      id: "feat_cut",
+      bodyId: "body_cut",
+      targetBodyId: "body_rect_1",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      depth: 2,
+      operationMode: "cut"
+    });
+    const promotionEvidence = {
+      ...evidence,
+      bodyId: "body_cut",
+      bodySourceIdentitySignature: readBodyTopologySourceSignature(
+        promotionEngine,
+        "body_cut"
+      )
+    };
+    const promotable = promotionEngine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "selection.referenceCandidates",
+        currentTopologyEvidence: promotionEvidence,
+        requiredOperation: "feature.attachSketchPlane",
+        topologyMatchResults: [
+          {
+            ...match("generated:face:body_cut:side:uMin"),
+            candidateCheckpointEntityId: promotionEvidence.localId
+          }
+        ]
+      }
+    });
+    const generatedVertex = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "selection.referenceCandidates",
+        currentTopologyEvidence: {
+          ...evidence,
+          entityKind: "vertex",
+          localId: "snapshot-local:vertex:1",
+          entitySignature: "raw-occt-vertex-signature"
+        },
+        requiredOperation: "reference.nameGenerated",
+        topologyMatchResults: [
+          {
+            ...match("generated:vertex:body_rect_1:end:uMin:vMin"),
+            candidateCheckpointEntityId: "snapshot-local:vertex:1",
+            entityKind: "vertex"
+          }
+        ]
+      }
+    });
+
+    expect(generated).toMatchObject({
+      ok: true,
+      query: "selection.referenceCandidates",
+      status: "resolved",
+      currentTopology: {
+        bodyId: "body_rect_1",
+        entityKind: "face",
+        outcome: "existingGeneratedMatch"
+      },
+      candidateCount: 1,
+      candidates: [
+        expect.objectContaining({
+          source: "generatedReferenceSelection",
+          commandable: true,
+          target: expect.objectContaining({
+            stableId: "generated:face:body_rect_1:endCap",
+            kind: "face"
+          })
+        })
+      ]
+    });
+    expect(inspectOnly).toMatchObject({
+      status: "non-commandable",
+      currentTopology: { outcome: "inspectOnly" },
+      candidateCount: 0
+    });
+    expect(stale).toMatchObject({
+      status: "stale",
+      currentTopology: { outcome: "stale" }
+    });
+    expect(ambiguous).toMatchObject({
+      status: "ambiguous",
+      currentTopology: { outcome: "ambiguous" },
+      candidateCount: 0
+    });
+    expect(promotable).toMatchObject({
+      status: "resolved",
+      currentTopology: { outcome: "promotableGeneratedMatch" },
+      candidates: [expect.objectContaining({ commandable: true })]
+    });
+    expect(generatedVertex).toMatchObject({
+      status: "resolved",
+      currentTopology: { outcome: "existingGeneratedMatch" },
+      candidates: [expect.objectContaining({ commandable: true })]
+    });
+    expect(
+      JSON.stringify({
+        generated,
+        inspectOnly,
+        stale,
+        ambiguous,
+        promotable,
+        generatedVertex
+      })
+    ).not.toMatch(
+      /snapshot-local|raw-occt|entitySignature|localId|rendererId|triangleIndex/i
+    );
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+  });
+
+  it("resolves a current exact entity to an existing active topology anchor", () => {
+    const engine = createTopologyAnchorEngine();
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "selection.referenceCandidates",
+        currentTopologyEvidence: {
+          bodyId: "body_rect_1",
+          bodySourceIdentitySignature: readBodyTopologySourceSignature(
+            engine,
+            "body_rect_1"
+          ),
+          topologySignature: "current-topology-signature",
+          entityKind: "face",
+          localId: "checkpoint-local-face-1",
+          entitySignature: "face_signature_1"
+        },
+        requiredOperation: "feature.attachSketchPlane"
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      status: "resolved",
+      currentTopology: { outcome: "existingAnchorMatch" },
+      candidates: [
+        expect.objectContaining({
+          source: "topologyAnchorSelection",
+          commandable: true,
+          target: expect.objectContaining({
+            topologyAnchorId: "anchor_face_1"
+          })
+        })
+      ]
+    });
+    expect(JSON.stringify(response)).not.toMatch(
+      /checkpoint-local|entitySignature|localId/i
+    );
+  });
+
+  it("rejects mixed or widened current topology evidence query shapes", () => {
+    const engine = createRectangleExtrudeEngine();
+    const evidence = {
+      bodyId: "body_rect_1",
+      bodySourceIdentitySignature: "source",
+      topologySignature: "topology",
+      entityKind: "face",
+      localId: "local",
+      entitySignature: "entity"
+    } as const;
+    const invalid = [
+      {
+        selection: { type: "body", bodyId: "body_rect_1" },
+        currentTopologyEvidence: evidence
+      },
+      { currentTopologyEvidence: { ...evidence, triangleIndex: 1 } }
+    ];
+
+    for (const fields of invalid) {
+      expect(
+        engine.executeQuery({
+          version: "cadops.v1",
+          query: {
+            query: "selection.referenceCandidates",
+            ...fields
+          }
+        } as unknown as CadQueryRequest)
+      ).toMatchObject({ ok: false, error: { code: "INVALID_QUERY" } });
+    }
+  });
+
   it("returns structured V7 selection diagnostics for stale unsupported ambiguous and consumed targets", () => {
     const engine = createRectangleExtrudeEngine();
     const staleSelection = engine.executeQuery({
