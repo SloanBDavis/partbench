@@ -312,8 +312,9 @@ Reuse selection/reference/action projections for generated/anchor matching,
 explicit promotion, current readiness, and diagnostics. Inspect-only never
 enables forbidden action; commandable use stays normal transactional CADOps.
 
-**Gate D:** source × kind × existing-operation parity, promotion/Apply/undo/
-redo/save/open and semantic-diff evidence; no matrix widening.
+**Gate D: [Passed (2026-08-09)](./v22-d-gate.md).** Source × kind ×
+existing-operation parity, promotion/Apply/undo/redo/save/open and
+semantic-diff evidence passed without matrix widening.
 
 ### E — Exact Preview and Grips
 
@@ -425,7 +426,7 @@ consolidation lands; lazy chunking alone is not all-UI budget evidence.
 | A | [Passed](./v22-a-gate.md) | inherited baseline, frozen contracts/matrices/fixtures and measured deletion budget, no production behavior |
 | B | [Passed](./v22-b-gate.md) | same-shape pick maps, validation, transfer, bounds, cleanup, no source persistence |
 | C | [Passed](./v22-c-gate.md) | depth-aware selection, fallback, filter/cycle/keyboard, performance |
-| D | Pending | collector/promotion path and exhaustive no-widening parity |
+| D | [Passed](./v22-d-gate.md) | collector/promotion path and exhaustive no-widening parity |
 | E | Pending | exact preview and all grips with Apply parity and cleanup |
 | F | Pending | V19 annotations and exact inspection/section/accessibility |
 | G | Pending | atomic two-generation recovery and replacement/unload guards |
