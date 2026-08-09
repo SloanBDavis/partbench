@@ -3774,45 +3774,33 @@ export class CadEngine {
           this.#document,
           this.#history.map((entry) => entry.transaction)
         );
-        if (request.query.selection) {
-          const selection = createSelectionReferenceCandidates(
+        const current = request.query.currentTopologyEvidence
+          ? createCurrentTopologySelectionCandidates(
+              this.#document,
+              structure,
+              request.query.currentTopologyEvidence,
+              request.query.requiredOperation,
+              request.query.topologyMatchResults
+            )
+          : undefined;
+        const selection =
+          current ??
+          createSelectionReferenceCandidates(
             this.#document,
             structure,
             this.#history.map((entry) => entry.transaction),
-            request.query.selection,
+            request.query.selection!,
             request.query.requiredOperation,
             request.query.topologyMatchResults
           );
-
-          return {
-            ok: true,
-            query: request.query.query,
-            cadOpsVersion: request.version,
-            selection: request.query.selection,
-            ...(request.query.requiredOperation
-              ? { requiredOperation: request.query.requiredOperation }
-              : {}),
-            status: selection.status,
-            candidateCount: selection.candidates.length,
-            candidates: selection.candidates,
-            issueCount: selection.issues.length,
-            issues: selection.issues
-          };
-        }
-
-        const selection = createCurrentTopologySelectionCandidates({
-          document: this.#document,
-          structure,
-          evidence: request.query.currentTopologyEvidence,
-          requiredOperation: request.query.requiredOperation,
-          topologyMatchResults: request.query.topologyMatchResults
-        });
 
         return {
           ok: true,
           query: request.query.query,
           cadOpsVersion: request.version,
-          currentTopology: selection.currentTopology,
+          ...(current
+            ? { currentTopology: current.currentTopology }
+            : { selection: request.query.selection! }),
           ...(request.query.requiredOperation
             ? { requiredOperation: request.query.requiredOperation }
             : {}),
@@ -9016,7 +9004,9 @@ function isCadQuery(value: unknown): boolean {
           isCadReferenceHealthTarget(value.target)) &&
         isOptionalTopologyMatchResults(value.topologyMatchResults)
       );
-    case "selection.referenceCandidates":
+    case "selection.referenceCandidates": {
+      const hasSelection = Object.hasOwn(value, "selection");
+      const hasCurrent = Object.hasOwn(value, "currentTopologyEvidence");
       return (
         Object.keys(value).every((key) =>
           [
@@ -9027,24 +9017,17 @@ function isCadQuery(value: unknown): boolean {
             "topologyMatchResults"
           ].includes(key)
         ) &&
-        ((Object.prototype.hasOwnProperty.call(value, "selection") &&
-          !Object.prototype.hasOwnProperty.call(
-            value,
-            "currentTopologyEvidence"
-          ) &&
-          isCadSelectionReferenceInput(value.selection)) ||
-          (Object.prototype.hasOwnProperty.call(
-            value,
-            "currentTopologyEvidence"
-          ) &&
-            !Object.prototype.hasOwnProperty.call(value, "selection") &&
-            isCadCurrentTopologySelectionEvidence(
+        hasSelection !== hasCurrent &&
+        (hasSelection
+          ? isCadSelectionReferenceInput(value.selection)
+          : isCadCurrentTopologySelectionEvidence(
               value.currentTopologyEvidence
-            ))) &&
+            )) &&
         isOptionalTopologyMatchResults(value.topologyMatchResults) &&
         (value.requiredOperation === undefined ||
           isCadSelectionReferenceOperation(value.requiredOperation))
       );
+    }
     default:
       return false;
   }
@@ -9511,32 +9494,22 @@ function isCadSelectionReferenceInput(
 function isCadCurrentTopologySelectionEvidence(
   value: unknown
 ): value is CadCurrentTopologySelectionEvidence {
+  const fields = [
+    "bodyId",
+    "bodySourceIdentitySignature",
+    "topologySignature",
+    "entityKind",
+    "localId",
+    "entitySignature"
+  ] as const;
   return (
     isRecord(value) &&
-    Object.keys(value).length === 6 &&
-    Object.keys(value).every((key) =>
-      [
-        "bodyId",
-        "bodySourceIdentitySignature",
-        "topologySignature",
-        "entityKind",
-        "localId",
-        "entitySignature"
-      ].includes(key)
-    ) &&
-    typeof value.bodyId === "string" &&
-    value.bodyId.length > 0 &&
-    typeof value.bodySourceIdentitySignature === "string" &&
-    value.bodySourceIdentitySignature.length > 0 &&
-    typeof value.topologySignature === "string" &&
-    value.topologySignature.length > 0 &&
-    (value.entityKind === "face" ||
-      value.entityKind === "edge" ||
-      value.entityKind === "vertex") &&
-    typeof value.localId === "string" &&
-    value.localId.length > 0 &&
-    typeof value.entitySignature === "string" &&
-    value.entitySignature.length > 0
+    Object.keys(value).length === fields.length &&
+    fields.every((field) => {
+      const entry = value[field];
+      return typeof entry === "string" && entry.length > 0;
+    }) &&
+    ["face", "edge", "vertex"].includes(value.entityKind as string)
   );
 }
 
@@ -20757,22 +20730,15 @@ function createNamedReferenceEntry(
   };
 }
 
-type SelectionReferenceCandidatesResult = {
-  readonly status: CadSelectionReferenceStatus;
-  readonly candidates: readonly CadSelectionReferenceCandidate[];
-  readonly issues: readonly CadSelectionReferenceIssue[];
-};
-
-function createCurrentTopologySelectionCandidates(options: {
-  readonly document: CadDocument;
-  readonly structure: CadProjectStructureSnapshot;
-  readonly evidence: CadCurrentTopologySelectionEvidence;
-  readonly requiredOperation?: CadSelectionReferenceOperation;
-  readonly topologyMatchResults?: readonly CadTopologyMatchResult[];
-}): SelectionReferenceCandidatesResult & {
+function createCurrentTopologySelectionCandidates(
+  document: CadDocument,
+  structure: CadProjectStructureSnapshot,
+  evidence: CadCurrentTopologySelectionEvidence,
+  requiredOperation?: CadSelectionReferenceOperation,
+  topologyMatchResults?: readonly CadTopologyMatchResult[]
+): ReturnType<typeof createSelectionReferenceCandidates> & {
   readonly currentTopology: CadCurrentTopologySelectionProjection;
 } {
-  const { evidence, structure } = options;
   const body = structure.bodies.find(
     (candidate) => candidate.id === evidence.bodyId
   );
@@ -20782,9 +20748,9 @@ function createCurrentTopologySelectionCandidates(options: {
   }
 
   const topology = createBodyTopology({
-    document: options.document,
+    document,
     bodyId: body.id,
-    units: options.document.units,
+    units: document.units,
     ownerPartId: body.partId,
     bodyExists: (bodyId) =>
       structure.bodies.some((candidate) => candidate.id === bodyId)
@@ -20798,81 +20764,73 @@ function createCurrentTopologySelectionCandidates(options: {
     return createCurrentTopologySelectionResult(evidence, "stale");
   }
 
-  const references = createBodyGeneratedReferences(
-    options.document,
-    body.id,
-    body.partId
+  const matches = (topologyMatchResults ?? []).filter(
+    (match) =>
+      match.entityKind === evidence.entityKind &&
+      match.candidateCheckpointEntityId === evidence.localId
   );
-  const generatedMatches = findCurrentTopologyGeneratedReferenceMatches({
-    evidence,
-    references,
-    topologyMatchResults: options.topologyMatchResults
-  });
-  const anchorMatches = findCurrentTopologyAnchorMatches({
-    document: options.document,
-    body,
-    evidence,
-    references,
-    topologyMatchResults: options.topologyMatchResults
-  });
+  const stableIds = [
+    ...new Set(
+      matches.flatMap((match) =>
+        match.candidateStableId ? [match.candidateStableId] : []
+      )
+    )
+  ];
+  const anchorMatches = (document.topologyIdentity?.anchors ?? []).filter(
+    (anchor) =>
+      anchor.bodyId === body.id &&
+      anchor.entityKind === evidence.entityKind &&
+      (matches.some((match) => match.anchorId === anchor.anchorId) ||
+        (anchor.stableId !== undefined && stableIds.includes(anchor.stableId)) ||
+        (anchor.checkpointEntityId === evidence.localId &&
+          (anchor.signatureHash === undefined ||
+            anchor.signatureHash === evidence.entitySignature)))
+  );
 
-  if (anchorMatches.length > 1 || generatedMatches.length > 1) {
+  if (anchorMatches.length > 1 || stableIds.length > 1) {
     return createCurrentTopologySelectionResult(evidence, "ambiguous");
   }
 
   const select = (selection: CadSelectionReferenceInput) =>
     createSelectionReferenceCandidates(
-      options.document,
+      document,
       structure,
       [],
       selection,
-      options.requiredOperation,
-      options.topologyMatchResults
+      requiredOperation,
+      topologyMatchResults
     );
   const anchorMatch = anchorMatches[0];
-  if (anchorMatch) {
-    const anchorSelection = select({
-      type: "topologyAnchor",
-      anchorId: anchorMatch.anchorId
-    });
-    return createCurrentTopologySelectionResult(
-      evidence,
-      anchorSelection.status === "resolved"
-        ? "existingAnchorMatch"
-        : currentTopologyOutcomeFromSelectionStatus(anchorSelection.status),
-      anchorSelection
-    );
-  }
-
-  const generatedMatch = generatedMatches[0];
-  if (generatedMatch) {
-    const matchOutcome = currentTopologyOutcomeFromMatchState(
-      generatedMatch.match.state
-    );
-    if (matchOutcome) {
-      return createCurrentTopologySelectionResult(evidence, matchOutcome);
+  const stableId = stableIds[0];
+  if (anchorMatch || stableId) {
+    if (matches.some((match) => match.state !== "active")) {
+      return createCurrentTopologySelectionResult(evidence, "stale");
     }
-    const generatedSelection = select({
-      type: "generatedReference",
-      bodyId: body.id,
-      stableId: generatedMatch.stableId
-    });
-    if (generatedSelection.status !== "resolved") {
+    const durableSelection = select(
+      anchorMatch
+        ? { type: "topologyAnchor", anchorId: anchorMatch.anchorId }
+        : {
+            type: "generatedReference",
+            bodyId: body.id,
+            stableId: stableId!,
+            expectedKind: evidence.entityKind
+          }
+    );
+    if (durableSelection.status !== "resolved") {
       return createCurrentTopologySelectionResult(
         evidence,
-        currentTopologyOutcomeFromSelectionStatus(generatedSelection.status),
-        generatedSelection
+        currentTopologyOutcomeFromSelectionStatus(durableSelection.status),
+        durableSelection
       );
     }
-    const sourceFeature = options.document.features.get(
-      generatedMatch.sourceFeatureId
-    );
+    const reference = durableSelection.candidates[0]?.reference;
+    const sourceFeature = reference
+      ? document.features.get(reference.sourceFeatureId)
+      : undefined;
     const requiresPromotion =
-      options.requiredOperation === "feature.attachSketchPlane" &&
-      generatedMatch.kind === "face" &&
-      generatedSelection.candidates.some(
-        (candidate) => candidate.commandable
-      ) &&
+      !anchorMatch &&
+      requiredOperation === "feature.attachSketchPlane" &&
+      reference?.kind === "face" &&
       sourceFeature !== undefined &&
       (sourceFeature.kind === "extrude" || sourceFeature.kind === "revolve"
         ? sourceFeature.operationMode !== "newBody"
@@ -20881,8 +20839,12 @@ function createCurrentTopologySelectionCandidates(options: {
           sourceFeature.kind === "fillet");
     return createCurrentTopologySelectionResult(
       evidence,
-      requiresPromotion ? "promotableGeneratedMatch" : "existingGeneratedMatch",
-      generatedSelection
+      anchorMatch
+        ? "existingAnchorMatch"
+        : requiresPromotion
+          ? "promotableGeneratedMatch"
+          : "existingGeneratedMatch",
+      durableSelection
     );
   }
 
@@ -20911,51 +20873,24 @@ function createCurrentTopologySelectionResult(
   evidence: CadCurrentTopologySelectionEvidence,
   outcome: CadCurrentTopologySelectionOutcome,
   selection: Pick<
-    SelectionReferenceCandidatesResult,
+    ReturnType<typeof createSelectionReferenceCandidates>,
     "candidates" | "issues"
   > = { candidates: [], issues: [] }
-): SelectionReferenceCandidatesResult & {
+): ReturnType<typeof createSelectionReferenceCandidates> & {
   readonly currentTopology: CadCurrentTopologySelectionProjection;
 } {
-  const resolved =
-    outcome === "existingGeneratedMatch" ||
-    outcome === "existingAnchorMatch" ||
-    outcome === "promotableGeneratedMatch" ||
-    outcome === "selectable";
-  const status: CadSelectionReferenceStatus = resolved
-    ? "resolved"
-    : outcome === "missing" ||
-        outcome === "stale" ||
-        outcome === "ambiguous" ||
-        outcome === "unsupported"
-      ? outcome
-      : "non-commandable";
-  const message = `Current topology selection is ${outcome}.`;
-  const issueStatus: Exclude<CadSelectionReferenceStatus, "resolved"> =
-    status === "resolved" ? "non-commandable" : status;
-  const issues =
-    resolved || selection.issues.length > 0
-      ? selection.issues
-      : [
-          createSelectionIssue(
-            issueStatus === "missing"
-              ? "MISSING_SELECTION_TARGET"
-              : issueStatus === "stale"
-                ? "STALE_SELECTION_REFERENCE"
-                : issueStatus === "ambiguous"
-                  ? "AMBIGUOUS_SELECTION_TOPOLOGY"
-                  : issueStatus === "unsupported"
-                    ? "UNSUPPORTED_SELECTION_TARGET"
-                    : "NON_COMMANDABLE_SELECTION_TARGET",
-            issueStatus,
-            message,
-            { bodyId: evidence.bodyId }
-          )
-        ];
+  const status: CadSelectionReferenceStatus =
+    outcome === "inspectOnly" ||
+    outcome === "blocked" ||
+    outcome === "resourceLimited"
+      ? "non-commandable"
+      : outcome === "selectable" || outcome.endsWith("Match")
+        ? "resolved"
+        : (outcome as CadSelectionReferenceStatus);
   return {
     status,
     candidates: selection.candidates,
-    issues,
+    issues: selection.issues,
     currentTopology: {
       bodyId: evidence.bodyId,
       entityKind: evidence.entityKind,
@@ -20963,7 +20898,8 @@ function createCurrentTopologySelectionResult(
       diagnostics: [
         {
           code: outcome,
-          message: issues[0]?.message ?? message
+          message:
+            selection.issues[0]?.message ?? `Current selection is ${outcome}.`
         }
       ]
     }
@@ -20987,113 +20923,6 @@ function currentTopologyOutcomeFromSelectionStatus(
     status === "unsupported"
     ? status
     : "blocked";
-}
-
-function findCurrentTopologyGeneratedReferenceMatches(options: {
-  readonly evidence: CadCurrentTopologySelectionEvidence;
-  readonly references: ReturnType<typeof createBodyGeneratedReferences>;
-  readonly topologyMatchResults?: readonly CadTopologyMatchResult[];
-}): readonly (CadGeneratedReference & {
-  readonly match: CadTopologyMatchResult;
-})[] {
-  const references = new Map(
-    listGeneratedReferences(options.references)
-      .filter((reference) => reference.kind === options.evidence.entityKind)
-      .map((reference) => [reference.stableId, reference] as const)
-  );
-  const matches = new Map<
-    string,
-    CadGeneratedReference & { readonly match: CadTopologyMatchResult }
-  >();
-  for (const match of options.topologyMatchResults ?? []) {
-    const reference = match.candidateStableId
-      ? references.get(match.candidateStableId)
-      : undefined;
-    if (
-      reference &&
-      match.entityKind === options.evidence.entityKind &&
-      match.candidateCheckpointEntityId === options.evidence.localId
-    ) {
-      matches.set(reference.stableId, { ...reference, match });
-    }
-  }
-  return [...matches.values()];
-}
-
-function currentTopologyOutcomeFromMatchState(
-  state: CadTopologyMatchResult["state"] | undefined
-):
-  | Extract<
-      CadCurrentTopologySelectionOutcome,
-      "stale" | "ambiguous" | "missing" | "unsupported"
-    >
-  | undefined {
-  if (state === "active" || state === undefined) return undefined;
-  if (state === "ambiguous" || state === "split" || state === "merged") {
-    return "ambiguous";
-  }
-  if (state === "deleted" || state === "missing") return "missing";
-  if (
-    state === "replaced" ||
-    state === "stale" ||
-    state === "repair-needed" ||
-    state === "consumed"
-  ) {
-    return "stale";
-  }
-  return "unsupported";
-}
-
-function findCurrentTopologyAnchorMatches(options: {
-  readonly document: CadDocument;
-  readonly body: CadBodySnapshot;
-  readonly evidence: CadCurrentTopologySelectionEvidence;
-  readonly references: ReturnType<typeof createBodyGeneratedReferences>;
-  readonly topologyMatchResults?: readonly CadTopologyMatchResult[];
-}): readonly CadTopologyAnchorSourceRecord[] {
-  const anchors = options.document.topologyIdentity?.anchors ?? [];
-  return anchors
-    .filter(
-      (anchor) =>
-        anchor.bodyId === options.body.id &&
-        anchor.entityKind === options.evidence.entityKind
-    )
-    .filter((anchor) => {
-      const resolved =
-        anchor.stableId && options.references
-          ? resolveGeneratedReference(options.references, anchor.stableId)
-          : resolveTopologyAnchorGeneratedReferenceFromSourceRole({
-              document: options.document,
-              ownerPartId: options.body.partId,
-              bodyId: options.body.id,
-              entityKind: anchor.entityKind,
-              sourceSemanticRole: anchor.sourceSemanticRole
-            });
-      const match = options.topologyMatchResults?.find(
-        (candidate) =>
-          candidate.anchorId === anchor.anchorId &&
-          candidate.entityKind === options.evidence.entityKind &&
-          candidate.candidateCheckpointEntityId === options.evidence.localId
-      );
-      const matchedStableId = options.topologyMatchResults?.some(
-        (candidate) =>
-          candidate.entityKind === options.evidence.entityKind &&
-          candidate.candidateCheckpointEntityId === options.evidence.localId &&
-          candidate.candidateStableId !== undefined &&
-          candidate.candidateStableId ===
-            (anchor.stableId ??
-              (resolved && "stableId" in resolved
-                ? resolved.stableId
-                : undefined))
-      );
-      return (
-        match !== undefined ||
-        matchedStableId ||
-        (anchor.checkpointEntityId === options.evidence.localId &&
-          (anchor.signatureHash === undefined ||
-            anchor.signatureHash === options.evidence.entitySignature))
-      );
-    });
 }
 
 function createSelectionReferenceCandidates(
