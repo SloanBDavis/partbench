@@ -467,7 +467,10 @@ import {
 import { resolveTopologyAnchorGeneratedReferenceFromSourceRole } from "./topologyAnchorGeneratedReferenceResolution";
 import { createBodyMeasurements } from "./bodyMeasurements";
 import { createBodyTopology } from "./bodyTopology";
-import { createBodyTopologyIdentity } from "./bodyTopologyIdentity";
+import {
+  createBodyTopologyIdentity,
+  createGeneratedReferenceTopologySignature
+} from "./bodyTopologyIdentity";
 import {
   CAD_PATTERN_COMMAND_INSTANCE_LIMIT,
   createCadDownstreamBodyPolicyProjection,
@@ -1228,7 +1231,7 @@ export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V22
   | typeof CURRENT_CAD_PROJECT_FORMAT_VERSION;
 
-const SUPPORTED_CAD_PROJECT_FORMAT_VERSIONS = new Set<string>([
+const SUPPORTED_CAD_PROJECT_FORMAT_VERSIONS: readonly string[] = [
   CAD_PROJECT_FORMAT_VERSION_V1,
   CAD_PROJECT_FORMAT_VERSION_V2,
   CAD_PROJECT_FORMAT_VERSION_V3,
@@ -1251,7 +1254,13 @@ const SUPPORTED_CAD_PROJECT_FORMAT_VERSIONS = new Set<string>([
   CAD_PROJECT_FORMAT_VERSION_V20,
   CAD_PROJECT_FORMAT_VERSION_V21,
   CAD_PROJECT_FORMAT_VERSION_V22
-]);
+];
+
+function cadProjectFormatIndex(schemaVersion: unknown): number {
+  return typeof schemaVersion === "string"
+    ? SUPPORTED_CAD_PROJECT_FORMAT_VERSIONS.indexOf(schemaVersion)
+    : -1;
+}
 
 export function getCadProjectFormatVersionForDocument(
   document: CadDocument | CadDocumentSnapshot,
@@ -1605,15 +1614,7 @@ function isSupportedWcadDocumentSchema(
   | typeof CAD_PROJECT_FORMAT_VERSION_V20
   | typeof CAD_PROJECT_FORMAT_VERSION_V21
   | typeof CAD_PROJECT_FORMAT_VERSION_V22 {
-  return (
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V16 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V17 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V20 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V21 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V22
-  );
+  return cadProjectFormatIndex(schemaVersion) >= 15;
 }
 
 function isSupportedWcadV1DocumentSchema(
@@ -1621,10 +1622,8 @@ function isSupportedWcadV1DocumentSchema(
 ): schemaVersion is
   | typeof CAD_PROJECT_FORMAT_VERSION_V16
   | typeof CAD_PROJECT_FORMAT_VERSION_V17 {
-  return (
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V16 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V17
-  );
+  const index = cadProjectFormatIndex(schemaVersion);
+  return index === 15 || index === 16;
 }
 
 export type CadProjectImportErrorCode =
@@ -3185,8 +3184,7 @@ export class CadEngine {
             error: bodyExists
               ? {
                   code: "UNSUPPORTED_BODY_MEASUREMENTS",
-                  message:
-                    "Body measurements are currently available only for authored rectangle/circle sketch-extrude bodies.",
+                  message: "Body measurements are unavailable.",
                   bodyId
                 }
               : {
@@ -3248,7 +3246,8 @@ export class CadEngine {
           ? [
               {
                 code: "PATTERN_MULTI_SOLID_RESULT",
-                message: `Pattern result ${bodyId} contains ${solidCount} solids; STEP export remains supported, while shell and edge-finish operations require a single solid.`
+                message:
+                  "This operation requires a single-solid pattern result."
               }
             ]
           : solidCount === undefined
@@ -3328,7 +3327,7 @@ export class CadEngine {
             cadOpsVersion: request.version,
             error: {
               code: "MASS_PROPERTIES_BODY_CONSUMED",
-              message: `Body ${bodyId} is consumed by feature ${body.consumedByFeatureId}; query the active result body instead.`,
+              message: "Body is consumed; query its active result.",
               bodyId,
               featureId: body.consumedByFeatureId
             }
@@ -3544,8 +3543,7 @@ export class CadEngine {
                   )
                 : {
                     code: "UNSUPPORTED_BODY_REFERENCES",
-                    message:
-                      "Generated references are currently available only for authored sketch-extrude bodies, supported authored revolve newBody result bodies, and supported authored hole result bodies.",
+                    message: "This body has no generated references.",
                     bodyId
                   }
           };
@@ -3617,8 +3615,7 @@ export class CadEngine {
                   )
                 : {
                     code: "UNSUPPORTED_BODY_REFERENCES",
-                    message:
-                      "Generated references are currently available only for authored sketch-extrude bodies, supported authored revolve newBody result bodies, and supported authored hole result bodies.",
+                    message: "This body has no generated references.",
                     bodyId
                   }
           };
@@ -4564,7 +4561,7 @@ export function createCadProjectSourceIdentity(
         "error",
         "WCAD source identity only supports V16 through V22 project schemas.",
         "$.schemaVersion",
-        `${CAD_PROJECT_FORMAT_VERSION_V16}, ${CAD_PROJECT_FORMAT_VERSION_V17}, ${CAD_PROJECT_FORMAT_VERSION_V18}, ${CAD_PROJECT_FORMAT_VERSION_V19}, ${CAD_PROJECT_FORMAT_VERSION_V20}, ${CAD_PROJECT_FORMAT_VERSION_V21}, or ${CAD_PROJECT_FORMAT_VERSION_V22}`,
+        SUPPORTED_CAD_PROJECT_FORMAT_VERSIONS.slice(15).join(", "),
         project.schemaVersion
       )
     ]);
@@ -4572,11 +4569,7 @@ export function createCadProjectSourceIdentity(
 
   return createWcadSourceIdentitySync({
     packageVersion:
-      project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18 ||
-      project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19 ||
-      project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V20 ||
-      project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V21 ||
-      project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V22
+      cadProjectFormatIndex(project.schemaVersion) >= 17
         ? CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION
         : WCAD_PACKAGE_VERSION,
     documentSchemaVersion: project.schemaVersion,
@@ -4633,11 +4626,7 @@ export async function exportCadProjectToWcad(
   }
 
   if (
-    project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18 ||
-    project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19 ||
-    project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V20 ||
-    project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V21 ||
-    project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V22 ||
+    cadProjectFormatIndex(project.schemaVersion) >= 17 ||
     (options.topologyCheckpoints?.length ?? 0) > 0
   ) {
     return exportCadProjectToWcadV2(project, options);
@@ -4735,7 +4724,7 @@ async function exportCadProjectToWcadV2(
         "error",
         "WCAD v2 writer requires web-cad.project.v18, v19, v20, v21, or v22 source.",
         "$.schemaVersion",
-        `${CAD_PROJECT_FORMAT_VERSION_V18}, ${CAD_PROJECT_FORMAT_VERSION_V19}, ${CAD_PROJECT_FORMAT_VERSION_V20}, ${CAD_PROJECT_FORMAT_VERSION_V21}, or ${CAD_PROJECT_FORMAT_VERSION_V22}`,
+        SUPPORTED_CAD_PROJECT_FORMAT_VERSIONS.slice(17).join(", "),
         project.schemaVersion
       )
     ]);
@@ -5822,13 +5811,7 @@ function isSupportedWcadV2DocumentSchema(
   | typeof CAD_PROJECT_FORMAT_VERSION_V20
   | typeof CAD_PROJECT_FORMAT_VERSION_V21
   | typeof CAD_PROJECT_FORMAT_VERSION_V22 {
-  return (
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V20 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V21 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V22
-  );
+  return cadProjectFormatIndex(schemaVersion) >= 17;
 }
 
 function isWcadManifestV2(value: unknown): value is WcadManifestV2 {
@@ -8640,17 +8623,15 @@ function isCadBodyGeneratedReferenceEvidenceSnapshot(
 ): value is CadBodyGeneratedReferenceEvidenceSnapshot {
   if (
     !isRecord(value) ||
-    !Object.keys(value).every((key) =>
-      [
-        "bodyId",
-        "sourceIdentitySignature",
-        "status",
-        "recipeIdentity",
-        "faces",
-        "edges",
-        "diagnostic"
-      ].includes(key)
-    ) ||
+    !hasOnlyKeys(value, [
+      "bodyId",
+      "sourceIdentitySignature",
+      "status",
+      "recipeIdentity",
+      "faces",
+      "edges",
+      "diagnostic"
+    ]) ||
     typeof value.bodyId !== "string" ||
     typeof value.sourceIdentitySignature !== "string" ||
     value.sourceIdentitySignature.length === 0 ||
@@ -8677,12 +8658,22 @@ function isCadBodyGeneratedReferenceEvidenceSnapshot(
         value.edges.length === 0;
 }
 
+function hasOnlyKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[]
+): boolean {
+  return Object.keys(value).every((key) => keys.includes(key));
+}
+
 function isCadBodyGeneratedReferenceFaceEvidence(value: unknown): boolean {
   if (
     !isRecord(value) ||
-    !Object.keys(value).every((key) =>
-      ["role", "sourceEntityId", "surfaceClass", "evidence"].includes(key)
-    ) ||
+    !hasOnlyKeys(value, [
+      "role",
+      "sourceEntityId",
+      "surfaceClass",
+      "evidence"
+    ]) ||
     !["startCap", "endCap", "side"].includes(
       typeof value.role === "string" ? value.role : ""
     ) ||
@@ -8702,14 +8693,12 @@ function isCadBodyGeneratedReferenceFaceEvidence(value: unknown): boolean {
 function isCadBodyGeneratedReferenceEdgeEvidence(value: unknown): boolean {
   if (
     !isRecord(value) ||
-    !Object.keys(value).every((key) =>
-      [
-        "role",
-        "sourceEntityId",
-        "adjacentSourceEntityIds",
-        "evidence"
-      ].includes(key)
-    ) ||
+    !hasOnlyKeys(value, [
+      "role",
+      "sourceEntityId",
+      "adjacentSourceEntityIds",
+      "evidence"
+    ]) ||
     !["startCapBoundary", "endCapBoundary", "longitudinal"].includes(
       typeof value.role === "string" ? value.role : ""
     ) ||
@@ -8807,23 +8796,20 @@ function isCadQuery(value: unknown): boolean {
     case "transaction.history":
       return Object.keys(value).length === 1;
     case "project.summary":
-      return (
-        Object.keys(value).every((key) =>
-          ["query", "derivedExactMetadata", "currentExactResults"].includes(key)
-        ) && isCurrentExactEvidenceQuery(value)
-      );
     case "project.exportReadiness":
+    case "project.health":
       return (
-        Object.keys(value).every((key) =>
-          ["query", "derivedExactMetadata", "currentExactResults"].includes(key)
-        ) && isCurrentExactEvidenceQuery(value)
+        hasOnlyKeys(value, [
+          "query",
+          "derivedExactMetadata",
+          "currentExactResults"
+        ]) && isCurrentExactEvidenceQuery(value)
       );
     case "project.dependencyGraph":
     case "project.rebuildPlan":
       return (
-        Object.keys(value).every((key) =>
-          ["query", "topologyMatchResults"].includes(key)
-        ) && isOptionalTopologyMatchResults(value.topologyMatchResults)
+        hasOnlyKeys(value, ["query", "topologyMatchResults"]) &&
+        isOptionalTopologyMatchResults(value.topologyMatchResults)
       );
     case "topology.matchSnapshots":
       return (
@@ -8882,12 +8868,6 @@ function isCadQuery(value: unknown): boolean {
       );
     case "project.exportExact":
       return isProjectExactExportQuery(value);
-    case "project.health":
-      return (
-        Object.keys(value).every((key) =>
-          ["query", "derivedExactMetadata", "currentExactResults"].includes(key)
-        ) && isCurrentExactEvidenceQuery(value)
-      );
     case "project.extents":
       return (
         Object.keys(value).length === 1 ||
@@ -8935,6 +8915,7 @@ function isCadQuery(value: unknown): boolean {
     case "body.importedBodyStatus":
     case "body.measurements":
     case "body.patternInstances":
+    case "body.topology":
       return (
         typeof value.bodyId === "string" &&
         (value.derivedExactMetadata === undefined ||
@@ -8943,9 +8924,7 @@ function isCadQuery(value: unknown): boolean {
     case "body.generatedReferences":
       return (
         typeof value.bodyId === "string" &&
-        Object.keys(value).every((key) =>
-          ["query", "bodyId", "derivedGeneratedReferences"].includes(key)
-        ) &&
+        hasOnlyKeys(value, ["query", "bodyId", "derivedGeneratedReferences"]) &&
         (value.derivedGeneratedReferences === undefined ||
           isCadBodyGeneratedReferenceEvidenceSnapshot(
             value.derivedGeneratedReferences
@@ -8955,12 +8934,6 @@ function isCadQuery(value: unknown): boolean {
       return (
         typeof value.bodyId === "string" &&
         (value.density === undefined || typeof value.density === "number") &&
-        (value.derivedExactMetadata === undefined ||
-          isCadBodyDerivedExactMetadataSnapshot(value.derivedExactMetadata))
-      );
-    case "body.topology":
-      return (
-        typeof value.bodyId === "string" &&
         (value.derivedExactMetadata === undefined ||
           isCadBodyDerivedExactMetadataSnapshot(value.derivedExactMetadata))
       );
@@ -8980,14 +8953,12 @@ function isCadQuery(value: unknown): boolean {
       return (
         typeof value.bodyId === "string" &&
         typeof value.stableId === "string" &&
-        Object.keys(value).every((key) =>
-          [
-            "query",
-            "bodyId",
-            "stableId",
-            "derivedGeneratedReferences"
-          ].includes(key)
-        ) &&
+        hasOnlyKeys(value, [
+          "query",
+          "bodyId",
+          "stableId",
+          "derivedGeneratedReferences"
+        ]) &&
         (value.derivedGeneratedReferences === undefined ||
           isCadBodyGeneratedReferenceEvidenceSnapshot(
             value.derivedGeneratedReferences
@@ -8997,9 +8968,7 @@ function isCadQuery(value: unknown): boolean {
       return typeof value.name === "string";
     case "reference.health":
       return (
-        Object.keys(value).every((key) =>
-          ["query", "target", "topologyMatchResults"].includes(key)
-        ) &&
+        hasOnlyKeys(value, ["query", "target", "topologyMatchResults"]) &&
         (value.target === undefined ||
           isCadReferenceHealthTarget(value.target)) &&
         isOptionalTopologyMatchResults(value.topologyMatchResults)
@@ -9008,15 +8977,13 @@ function isCadQuery(value: unknown): boolean {
       const hasSelection = Object.hasOwn(value, "selection");
       const hasCurrent = Object.hasOwn(value, "currentTopologyEvidence");
       return (
-        Object.keys(value).every((key) =>
-          [
-            "query",
-            "selection",
-            "currentTopologyEvidence",
-            "requiredOperation",
-            "topologyMatchResults"
-          ].includes(key)
-        ) &&
+        hasOnlyKeys(value, [
+          "query",
+          "selection",
+          "currentTopologyEvidence",
+          "requiredOperation",
+          "topologyMatchResults"
+        ]) &&
         hasSelection !== hasCurrent &&
         (hasSelection
           ? isCadSelectionReferenceInput(value.selection)
@@ -9184,9 +9151,7 @@ function isCadFeatureEditProposal(value: unknown): boolean {
 
   if (value.kind === "extrude") {
     return (
-      Object.keys(value).every((key) =>
-        ["kind", "profile", "depth", "side"].includes(key)
-      ) &&
+      hasOnlyKeys(value, ["kind", "profile", "depth", "side"]) &&
       (value.profile === undefined ||
         validateSketchProfileRefSource(value.profile).ok) &&
       (value.depth === undefined || typeof value.depth === "number") &&
@@ -9199,9 +9164,7 @@ function isCadFeatureEditProposal(value: unknown): boolean {
 
   if (value.kind === "revolve") {
     return (
-      Object.keys(value).every((key) =>
-        ["kind", "profile", "angleDegrees"].includes(key)
-      ) &&
+      hasOnlyKeys(value, ["kind", "profile", "angleDegrees"]) &&
       (value.profile === undefined ||
         validateSketchProfileRefSource(value.profile).ok) &&
       (value.angleDegrees === undefined ||
@@ -9211,9 +9174,7 @@ function isCadFeatureEditProposal(value: unknown): boolean {
 
   if (value.kind === "hole") {
     return (
-      Object.keys(value).every((key) =>
-        ["kind", "depthMode", "depth", "direction"].includes(key)
-      ) &&
+      hasOnlyKeys(value, ["kind", "depthMode", "depth", "direction"]) &&
       (value.depthMode === undefined || isHoleDepthMode(value.depthMode)) &&
       (value.depth === undefined || typeof value.depth === "number") &&
       (value.direction === undefined || isHoleDirection(value.direction))
@@ -9222,23 +9183,21 @@ function isCadFeatureEditProposal(value: unknown): boolean {
 
   if (value.kind === "chamfer") {
     return (
-      Object.keys(value).every((key) => ["kind", "distance"].includes(key)) &&
+      hasOnlyKeys(value, ["kind", "distance"]) &&
       (value.distance === undefined || typeof value.distance === "number")
     );
   }
 
   if (value.kind === "fillet") {
     return (
-      Object.keys(value).every((key) => ["kind", "radius"].includes(key)) &&
+      hasOnlyKeys(value, ["kind", "radius"]) &&
       (value.radius === undefined || typeof value.radius === "number")
     );
   }
 
   if (value.kind === "shell") {
     return (
-      Object.keys(value).every((key) =>
-        ["kind", "wallThickness", "openFaceRefs"].includes(key)
-      ) &&
+      hasOnlyKeys(value, ["kind", "wallThickness", "openFaceRefs"]) &&
       (value.wallThickness === undefined ||
         typeof value.wallThickness === "number") &&
       (value.openFaceRefs === undefined ||
@@ -9249,17 +9208,15 @@ function isCadFeatureEditProposal(value: unknown): boolean {
 
   if (value.kind === "sweep") {
     return (
-      Object.keys(value).every((key) =>
-        [
-          "kind",
-          "profile",
-          "path",
-          "profileSketchId",
-          "profileEntityId",
-          "pathSketchId",
-          "pathEntityIds"
-        ].includes(key)
-      ) &&
+      hasOnlyKeys(value, [
+        "kind",
+        "profile",
+        "path",
+        "profileSketchId",
+        "profileEntityId",
+        "pathSketchId",
+        "pathEntityIds"
+      ]) &&
       (value.profile === undefined ||
         (validateSketchProfileRefSource(value.profile).ok &&
           (value.profile as Record<string, unknown>).kind === "entity")) &&
@@ -9281,7 +9238,7 @@ function isCadFeatureEditProposal(value: unknown): boolean {
 
   if (value.kind === "loft") {
     return (
-      Object.keys(value).every((key) => ["kind", "sections"].includes(key)) &&
+      hasOnlyKeys(value, ["kind", "sections"]) &&
       (value.sections === undefined ||
         (Array.isArray(value.sections) &&
           value.sections.every(isLoftSectionShape)))
@@ -9505,10 +9462,7 @@ function isCadCurrentTopologySelectionEvidence(
   return (
     isRecord(value) &&
     Object.keys(value).length === fields.length &&
-    fields.every((field) => {
-      const entry = value[field];
-      return typeof entry === "string" && entry.length > 0;
-    }) &&
+    fields.every((field) => isNonEmptyString(value[field])) &&
     ["face", "edge", "vertex"].includes(value.entityKind as string)
   );
 }
@@ -13871,7 +13825,7 @@ function deleteFeature(
   if (consumingFeature) {
     throwValidationError({
       code: "FEATURE_NOT_DELETABLE",
-      message: `Feature ${featureId} cannot be deleted because its body is targeted by consuming feature ${consumingFeature.id}.`,
+      message: "Feature body has a downstream consumer.",
       opIndex,
       featureId,
       bodyId: feature.bodyId,
@@ -13995,7 +13949,7 @@ function updateExtrudeFeature(
   if (feature.operationMode !== "newBody" && !isCompositeBoolean) {
     throwValidationError({
       code: "FEATURE_NOT_EDITABLE",
-      message: `Feature ${featureId} cannot be edited through feature.updateExtrude because ${feature.operationMode} result topology is not editable as a body-level feature result yet.`,
+      message: "This extrude result is not editable.",
       opIndex,
       featureId,
       bodyId: feature.bodyId,
@@ -14008,7 +13962,6 @@ function updateExtrudeFeature(
   const scopedRebuildChain = validateScopedSourceExtrudeRebuildChain(
     state,
     feature,
-    "feature.updateExtrude",
     opIndex
   );
 
@@ -14232,7 +14185,6 @@ interface ScopedSourceExtrudeRebuildChain {
 function validateScopedSourceExtrudeRebuildChain(
   state: MutableDocumentState,
   feature: ExtrudeFeature,
-  operation: CadOp["op"],
   opIndex?: number
 ): ScopedSourceExtrudeRebuildChain | undefined {
   const consumingFeatures = findConsumingFeaturesByTargetBodyId(
@@ -14248,7 +14200,7 @@ function validateScopedSourceExtrudeRebuildChain(
   if (consumingFeatures.length > 1) {
     throwValidationError({
       code: "FEATURE_NOT_EDITABLE",
-      message: `Feature ${feature.id} cannot be edited through ${operation} because body ${feature.bodyId} has multiple downstream consumers.`,
+      message: "Feature result has multiple downstream consumers.",
       opIndex,
       featureId: feature.id,
       bodyId: feature.bodyId,
@@ -14266,7 +14218,7 @@ function validateScopedSourceExtrudeRebuildChain(
   if (nextConsumer) {
     throwValidationError({
       code: "FEATURE_NOT_EDITABLE",
-      message: `Feature ${feature.id} cannot be edited through ${operation} because downstream result body ${consumingFeature.bodyId} is consumed by feature ${nextConsumer.id}.`,
+      message: "A downstream result already has a consumer.",
       opIndex,
       featureId: feature.id,
       bodyId: feature.bodyId,
@@ -14394,7 +14346,7 @@ function updateRevolveFeature(
   if (feature.operationMode !== "newBody") {
     throwValidationError({
       code: "FEATURE_NOT_EDITABLE",
-      message: `Feature ${feature.id} cannot be edited through feature.updateRevolve because ${feature.operationMode} result topology is not editable as a body-level feature result yet.`,
+      message: "This revolve result is not editable.",
       opIndex,
       featureId: feature.id,
       bodyId: feature.bodyId,
@@ -14404,12 +14356,7 @@ function updateRevolveFeature(
     });
   }
 
-  assertFeatureResultBodyActiveForEdit(
-    state,
-    feature,
-    "feature.updateRevolve",
-    opIndex
-  );
+  assertFeatureResultBodyActiveForEdit(state, feature, opIndex);
 
   const requestedProfile = resolveUpdateRevolveCommandInputProfile(op, opIndex);
   if (op.angleDegrees === undefined && requestedProfile === undefined) {
@@ -14551,18 +14498,8 @@ function updateHoleFeature(
     feature.circleEntityId
   );
   validateHoleSketchAttachment(state, sketch, opIndex);
-  assertFeatureResultBodyActiveForEdit(
-    state,
-    feature,
-    "feature.updateHole",
-    opIndex
-  );
-  assertConsumingFeatureTargetOwnedByEditedFeature(
-    state,
-    feature,
-    "feature.updateHole",
-    opIndex
-  );
+  assertFeatureResultBodyActiveForEdit(state, feature, opIndex);
+  assertConsumingFeatureTargetOwnedByEditedFeature(state, feature, opIndex);
   validateExistingHoleTarget(state, feature, opIndex);
 
   const retargetRequested =
@@ -15019,12 +14956,7 @@ function updateSweepFeature(
   );
   const inputs = resolveSweepCommandInputs(state, op, feature, opIndex);
   const updated: SweepFeature = { ...feature, ...inputs };
-  assertFeatureResultBodyActiveForEdit(
-    state,
-    updated,
-    "feature.updateSweep",
-    opIndex
-  );
+  assertFeatureResultBodyActiveForEdit(state, updated, opIndex);
   state.features.set(feature.id, updated);
   pushFeatureModified(diff, featureRef(state, updated));
   pushBodyModified(diff, bodyRef(updated));
@@ -15414,12 +15346,7 @@ function updateLoftFeature(
     ...feature,
     sections: validateLoftSections(state, op.sections, opIndex)
   };
-  assertFeatureResultBodyActiveForEdit(
-    state,
-    updated,
-    "feature.updateLoft",
-    opIndex
-  );
+  assertFeatureResultBodyActiveForEdit(state, updated, opIndex);
   state.features.set(feature.id, updated);
   pushFeatureModified(diff, featureRef(state, updated));
   pushBodyModified(diff, bodyRef(updated));
@@ -15688,13 +15615,8 @@ function assertShellFeatureEditable(
   operation: "feature.updateShell",
   opIndex?: number
 ): void {
-  assertFeatureResultBodyActiveForEdit(state, feature, operation, opIndex);
-  assertConsumingFeatureTargetOwnedByEditedFeature(
-    state,
-    feature,
-    operation,
-    opIndex
-  );
+  assertFeatureResultBodyActiveForEdit(state, feature, opIndex);
+  assertConsumingFeatureTargetOwnedByEditedFeature(state, feature, opIndex);
   validateShellTargetBodyId(
     state,
     operation,
@@ -15710,7 +15632,7 @@ function assertMirrorFeatureEditable(
   operation: "feature.updateMirror",
   opIndex?: number
 ): void {
-  assertFeatureResultBodyActiveForEdit(state, feature, operation, opIndex);
+  assertFeatureResultBodyActiveForEdit(state, feature, opIndex);
   validateMirrorSeedBodyId(
     state,
     operation,
@@ -15734,7 +15656,7 @@ function assertMirrorFeatureEditable(
 
   throwValidationError({
     code: "FEATURE_NOT_EDITABLE",
-    message: `Feature ${feature.id} cannot enable includeOriginal through ${operation} because seed body ${feature.seedBodyId} is already consumed by feature ${consumingFeature.id}.`,
+    message: "The consumed seed cannot also be included.",
     opIndex,
     featureId: feature.id,
     bodyId: feature.seedBodyId,
@@ -15796,7 +15718,6 @@ function getEditableFeatureForUpdate<K extends Feature["kind"]>(
 function assertFeatureResultBodyActiveForEdit(
   state: MutableDocumentState,
   feature: Feature,
-  operation: CadOp["op"],
   opIndex?: number
 ): void {
   const consumingFeature = findConsumingFeatureByTargetBodyId(
@@ -15810,7 +15731,7 @@ function assertFeatureResultBodyActiveForEdit(
 
   throwValidationError({
     code: "FEATURE_NOT_EDITABLE",
-    message: `Feature ${feature.id} cannot be edited through ${operation} because its result body ${feature.bodyId} is consumed by feature ${consumingFeature.id}.`,
+    message: "This feature result has a downstream consumer.",
     opIndex,
     featureId: feature.id,
     bodyId: feature.bodyId,
@@ -15823,7 +15744,6 @@ function assertFeatureResultBodyActiveForEdit(
 function assertConsumingFeatureTargetOwnedByEditedFeature(
   state: MutableDocumentState,
   feature: Extract<Feature, { readonly targetBodyId: BodyId }>,
-  operation: CadOp["op"],
   opIndex?: number
 ): void {
   const consumingFeature = findConsumingFeatureByTargetBodyId(
@@ -15837,7 +15757,7 @@ function assertConsumingFeatureTargetOwnedByEditedFeature(
 
   throwValidationError({
     code: "FEATURE_NOT_EDITABLE",
-    message: `Feature ${feature.id} cannot be edited through ${operation} because target body ${feature.targetBodyId} is not consumed by that feature.`,
+    message: "The feature no longer owns its target body.",
     opIndex,
     featureId: feature.id,
     bodyId: feature.bodyId,
@@ -15853,13 +15773,8 @@ function assertEdgeFinishFeatureEditable(
   operation: EdgeFinishOperation,
   opIndex?: number
 ): void {
-  assertFeatureResultBodyActiveForEdit(state, feature, operation, opIndex);
-  assertConsumingFeatureTargetOwnedByEditedFeature(
-    state,
-    feature,
-    operation,
-    opIndex
-  );
+  assertFeatureResultBodyActiveForEdit(state, feature, opIndex);
+  assertConsumingFeatureTargetOwnedByEditedFeature(state, feature, opIndex);
   assertSupportedEdgeFinishTarget(
     state,
     operation,
@@ -15881,7 +15796,7 @@ function assertPatternFeatureEditable(
   operation: "feature.updateLinearPattern" | "feature.updateCircularPattern",
   opIndex?: number
 ): void {
-  assertFeatureResultBodyActiveForEdit(state, feature, operation, opIndex);
+  assertFeatureResultBodyActiveForEdit(state, feature, opIndex);
   assertPatternFeatureSeedEditable(state, feature, operation, opIndex);
 }
 
@@ -15913,7 +15828,7 @@ function assertPatternFeatureSeedEditable(
 
   throwValidationError({
     code: "FEATURE_NOT_EDITABLE",
-    message: `Feature ${feature.id} cannot be edited through ${operation} because seed body ${feature.seedBodyId} is not consumed by that feature.`,
+    message: "The feature no longer owns its seed body.",
     opIndex,
     featureId: feature.id,
     bodyId: feature.seedBodyId,
@@ -15961,7 +15876,7 @@ function assertSupportedEdgeFinishTarget(
 
   throwValidationError({
     code: "UNSUPPORTED_FEATURE_OPERATION",
-    message: `${operation} edits require the original target to remain a supported generated edge body or imported-body topology anchor target.`,
+    message: `${operation} requires its original supported edge target.`,
     opIndex,
     bodyId: targetBodyId,
     path: operationPath(opIndex, "targetBodyId"),
@@ -16173,7 +16088,7 @@ function validateShellOpenFaceRef(
     if (reference.bodyId !== targetBodyId) {
       throwValidationError({
         code: "SHELL_OPEN_FACE_REF_INVALID",
-        message: `Named reference ${name} resolves to body ${reference.bodyId}, not target body ${targetBodyId}.`,
+        message: "Named reference targets another body.",
         opIndex,
         bodyId: targetBodyId,
         stableId: reference.stableId,
@@ -16228,7 +16143,7 @@ function validateShellOpenFaceRef(
     if (target.bodyId !== targetBodyId) {
       throwValidationError({
         code: "SHELL_OPEN_FACE_REF_INVALID",
-        message: `Topology anchor ${target.topologyAnchorId} resolves to body ${target.bodyId}, not target body ${targetBodyId}.`,
+        message: "Topology anchor targets another body.",
         opIndex,
         bodyId: targetBodyId,
         topologyAnchorId: target.topologyAnchorId,
@@ -18463,7 +18378,7 @@ function validateEdgeFinishTargetBodyId(
 
   throwValidationError({
     code: "UNSUPPORTED_FEATURE_OPERATION",
-    message: `${operation} currently supports one stable generated edge on an active rectangle/circle newBody extrude target body, a supported rectangle cut result body, or an imported body edge topology anchor with checkpoint proof.`,
+    message: `${operation} requires a supported generated or anchored edge.`,
     opIndex,
     bodyId: targetBodyId,
     path: operationPath(opIndex, "targetBodyId"),
@@ -18537,7 +18452,7 @@ function validateEdgeFinishReference(
     if (target.bodyId !== targetBodyId) {
       throwValidationError({
         code: "GENERATED_REFERENCE_NOT_FOUND",
-        message: `Topology anchor ${target.topologyAnchorId} resolves to body ${target.bodyId}, not target body ${targetBodyId}.`,
+        message: "Topology anchor targets another body.",
         opIndex,
         bodyId: targetBodyId,
         ...(target.stableId ? { stableId: target.stableId } : {}),
@@ -18673,7 +18588,7 @@ function validateEdgeFinishReference(
     if (reference.bodyId !== targetBodyId) {
       throwValidationError({
         code: "GENERATED_REFERENCE_NOT_FOUND",
-        message: `Named reference ${name} resolves to body ${reference.bodyId}, not target body ${targetBodyId}.`,
+        message: "Named reference targets another body.",
         opIndex,
         bodyId: targetBodyId,
         stableId: reference.stableId,
@@ -18892,7 +18807,7 @@ function resolveTopologyAnchorEdgeProofStableId(
 
   throwValidationError({
     code: "INVALID_TOPOLOGY_ANCHOR",
-    message: `${operation} topologyAnchorProof does not match exactly one supported generated edge on target body ${targetBodyId}.`,
+    message: `${operation} topology proof does not match one supported edge.`,
     opIndex,
     bodyId: targetBodyId,
     topologyAnchorId,
@@ -19693,8 +19608,8 @@ function assertSupportedExtrudeOperation(
       : "cut with rectangle/circle/composite wire source and active rectangle/circle source or topology-backed result target";
   const message =
     operationMode === "add"
-      ? "Add extrudes currently support rectangle, circle, or composite wire tools fusing with one active rectangle source or supported topology-backed result target body."
-      : "Cut extrudes currently support rectangle, circle, or composite wire tools cutting one active rectangle, circle, or topology-backed result target body.";
+      ? "This add extrude target is unsupported."
+      : "This cut extrude target is unsupported.";
 
   throwValidationError({
     code: "UNSUPPORTED_FEATURE_OPERATION",
@@ -20291,7 +20206,7 @@ function resolveActiveTopologyAnchorStableTarget(
   if (stableResolution.status !== "resolved") {
     throwValidationError({
       code: "INVALID_TOPOLOGY_ANCHOR",
-      message: `Topology anchor ${target.topologyAnchorId} does not have a stable generated ${expectedKind} backing or source-semantic ${expectedKind} role.`,
+      message: `Topology anchor has no stable ${expectedKind} backing.`,
       opIndex,
       bodyId: target.bodyId,
       topologyAnchorId: target.topologyAnchorId,
@@ -20619,7 +20534,7 @@ function assertNamedReferenceRepairConsumers(
     if (after.kind !== "edge") {
       throwValidationError({
         code: "GENERATED_REFERENCE_KIND_MISMATCH",
-        message: `Named reference ${before.name} is used by ${feature.kind} feature ${feature.id} and must remain an edge.`,
+        message: "Named reference must remain an edge.",
         opIndex,
         bodyId: after.bodyId,
         stableId: after.stableId,
@@ -20634,7 +20549,7 @@ function assertNamedReferenceRepairConsumers(
     if (after.bodyId !== feature.targetBodyId) {
       throwValidationError({
         code: "GENERATED_REFERENCE_NOT_FOUND",
-        message: `Named reference ${before.name} is used by ${feature.kind} feature ${feature.id} and must still resolve to target body ${feature.targetBodyId}.`,
+        message: "Named reference must keep its target body.",
         opIndex,
         bodyId: after.bodyId,
         stableId: after.stableId,
@@ -20670,7 +20585,7 @@ function throwRepairGeneratedReferenceValidationError(
   ) {
     throwValidationError({
       code: error.code,
-      message: `Boolean result body ${error.bodyId} has ambiguous generated topology and cannot be used as a named-reference repair target yet.`,
+      message: "Boolean result topology is ambiguous.",
       opIndex,
       bodyId: error.bodyId,
       stableId: error.stableId,
@@ -20735,7 +20650,7 @@ function createCurrentTopologySelectionCandidates(
   structure: CadProjectStructureSnapshot,
   evidence: CadCurrentTopologySelectionEvidence,
   requiredOperation?: CadSelectionReferenceOperation,
-  topologyMatchResults?: readonly CadTopologyMatchResult[]
+  topologyMatchResults: readonly CadTopologyMatchResult[] = []
 ): ReturnType<typeof createSelectionReferenceCandidates> & {
   readonly currentTopology: CadCurrentTopologySelectionProjection;
 } {
@@ -20755,7 +20670,6 @@ function createCurrentTopologySelectionCandidates(
     bodyExists: (bodyId) =>
       structure.bodies.some((candidate) => candidate.id === bodyId)
   });
-
   if (
     !topology.ok ||
     topology.topology.sourceIdentity.signature !==
@@ -20764,49 +20678,49 @@ function createCurrentTopologySelectionCandidates(
     return createCurrentTopologySelectionResult(evidence, "stale");
   }
 
-  const matches = (topologyMatchResults ?? []).filter(
+  const generatedMatch = listGeneratedReferences(
+    createBodyGeneratedReferences(document, body.id, body.partId)
+  ).find(
+    (reference) =>
+      reference.kind === evidence.entityKind &&
+      createGeneratedReferenceTopologySignature(reference) ===
+        evidence.entitySignature
+  );
+  const matches = topologyMatchResults.filter(
     (match) =>
       match.entityKind === evidence.entityKind &&
       match.candidateCheckpointEntityId === evidence.localId
   );
-  const stableIds = [
-    ...new Set(
-      matches.flatMap((match) =>
-        match.candidateStableId ? [match.candidateStableId] : []
-      )
+  const stableIds = new Set(
+    matches.flatMap((match) =>
+      match.candidateStableId ? [match.candidateStableId] : []
     )
-  ];
+  );
+  if (generatedMatch) stableIds.add(generatedMatch.stableId);
   const anchorMatches = (document.topologyIdentity?.anchors ?? []).filter(
     (anchor) =>
       anchor.bodyId === body.id &&
       anchor.entityKind === evidence.entityKind &&
       (matches.some((match) => match.anchorId === anchor.anchorId) ||
-        (anchor.stableId !== undefined && stableIds.includes(anchor.stableId)) ||
+        (anchor.stableId !== undefined && stableIds.has(anchor.stableId)) ||
         (anchor.checkpointEntityId === evidence.localId &&
           (anchor.signatureHash === undefined ||
             anchor.signatureHash === evidence.entitySignature)))
   );
-
-  if (anchorMatches.length > 1 || stableIds.length > 1) {
+  if (anchorMatches.length > 1 || stableIds.size > 1) {
     return createCurrentTopologySelectionResult(evidence, "ambiguous");
   }
 
-  const select = (selection: CadSelectionReferenceInput) =>
-    createSelectionReferenceCandidates(
-      document,
-      structure,
-      [],
-      selection,
-      requiredOperation,
-      topologyMatchResults
-    );
   const anchorMatch = anchorMatches[0];
-  const stableId = stableIds[0];
+  const stableId = [...stableIds][0];
   if (anchorMatch || stableId) {
     if (matches.some((match) => match.state !== "active")) {
       return createCurrentTopologySelectionResult(evidence, "stale");
     }
-    const durableSelection = select(
+    const durableSelection = createSelectionReferenceCandidates(
+      document,
+      structure,
+      [],
       anchorMatch
         ? { type: "topologyAnchor", anchorId: anchorMatch.anchorId }
         : {
@@ -20814,12 +20728,17 @@ function createCurrentTopologySelectionCandidates(
             bodyId: body.id,
             stableId: stableId!,
             expectedKind: evidence.entityKind
-          }
+          },
+      requiredOperation,
+      topologyMatchResults
     );
     if (durableSelection.status !== "resolved") {
       return createCurrentTopologySelectionResult(
         evidence,
-        currentTopologyOutcomeFromSelectionStatus(durableSelection.status),
+        durableSelection.status === "consumed" ||
+          durableSelection.status === "non-commandable"
+          ? "blocked"
+          : durableSelection.status,
         durableSelection
       );
     }
@@ -20849,13 +20768,12 @@ function createCurrentTopologySelectionCandidates(
   }
 
   const consumed = createConsumedSelectionIssues(body);
-  if (consumed.length > 0) {
+  if (consumed.length) {
     return createCurrentTopologySelectionResult(evidence, "blocked", {
       candidates: [],
       issues: consumed
     });
   }
-
   if (topology.topology.status !== "healthy") {
     return createCurrentTopologySelectionResult(
       evidence,
@@ -20865,7 +20783,6 @@ function createCurrentTopologySelectionCandidates(
         : "unsupported"
     );
   }
-
   return createCurrentTopologySelectionResult(evidence, "inspectOnly");
 }
 
@@ -20898,31 +20815,18 @@ function createCurrentTopologySelectionResult(
       diagnostics: [
         {
           code: outcome,
-          message:
-            selection.issues[0]?.message ?? `Current selection is ${outcome}.`
+          message: selection.issues[0]?.message ?? `Selection is ${outcome}.`
         }
       ]
     }
   };
 }
 
-function currentTopologyOutcomeFromSelectionStatus(
-  status: CadSelectionReferenceStatus
-): Exclude<
-  CadCurrentTopologySelectionOutcome,
-  | "selectable"
-  | "inspectOnly"
-  | "existingGeneratedMatch"
-  | "existingAnchorMatch"
-  | "promotableGeneratedMatch"
-  | "resourceLimited"
-> {
-  return status === "missing" ||
-    status === "stale" ||
-    status === "ambiguous" ||
-    status === "unsupported"
-    ? status
-    : "blocked";
+function createEmptySelectionReferenceCandidates(
+  status: CadSelectionReferenceStatus,
+  issues: readonly CadSelectionReferenceIssue[]
+) {
+  return { status, candidates: [], issues } as const;
 }
 
 function createSelectionReferenceCandidates(
@@ -20943,20 +20847,12 @@ function createSelectionReferenceCandidates(
     );
 
     if (!body) {
-      const issues = [
-        createSelectionIssue(
-          "MISSING_SELECTION_TARGET",
-          "missing",
-          `Selected body does not exist: ${selection.bodyId}`,
-          { bodyId: selection.bodyId }
-        )
-      ];
-
-      return {
-        status: "missing",
-        candidates: [],
-        issues
-      };
+      return createSelectionFailure(
+        "MISSING_SELECTION_TARGET",
+        "missing",
+        "Body not found.",
+        { bodyId: selection.bodyId }
+      );
     }
 
     const references = createBodyGeneratedReferences(
@@ -20980,11 +20876,10 @@ function createSelectionReferenceCandidates(
       !semanticBodyReference.eligibleOperations.includes(requiredOperation)
     ) {
       const issues = [createBodyReferenceUnavailableIssue(document, body)];
-      return {
-        status: chooseSelectionReferenceStatus(issues),
-        candidates: [],
+      return createEmptySelectionReferenceCandidates(
+        chooseSelectionReferenceStatus(issues),
         issues
-      };
+      );
     }
 
     return createSingleSelectionReferenceCandidate({
@@ -21002,20 +20897,12 @@ function createSelectionReferenceCandidates(
     );
 
     if (!body) {
-      const issues = [
-        createSelectionIssue(
-          "MISSING_SELECTION_TARGET",
-          "missing",
-          `Selected generated reference body does not exist: ${selection.bodyId}`,
-          { bodyId: selection.bodyId, stableId: selection.stableId }
-        )
-      ];
-
-      return {
-        status: "missing",
-        candidates: [],
-        issues
-      };
+      return createSelectionFailure(
+        "MISSING_SELECTION_TARGET",
+        "missing",
+        "Reference body not found.",
+        { bodyId: selection.bodyId, stableId: selection.stableId }
+      );
     }
 
     const references = createBodyGeneratedReferences(
@@ -21030,11 +20917,10 @@ function createSelectionReferenceCandidates(
         createBodyReferenceUnavailableIssue(document, body, selection.stableId)
       ];
 
-      return {
-        status: chooseSelectionReferenceStatus(issues),
-        candidates: [],
+      return createEmptySelectionReferenceCandidates(
+        chooseSelectionReferenceStatus(issues),
         issues
-      };
+      );
     }
 
     const resolution = resolveGeneratedReference(
@@ -21043,20 +20929,12 @@ function createSelectionReferenceCandidates(
     );
 
     if (!resolution) {
-      const issues = [
-        createSelectionIssue(
-          "STALE_SELECTION_REFERENCE",
-          "stale",
-          `Selected generated reference is no longer available on ${selection.bodyId}: ${selection.stableId}`,
-          { bodyId: selection.bodyId, stableId: selection.stableId }
-        )
-      ];
-
-      return {
-        status: "stale",
-        candidates: [],
-        issues
-      };
+      return createSelectionFailure(
+        "STALE_SELECTION_REFERENCE",
+        "stale",
+        "Generated reference is stale.",
+        { bodyId: selection.bodyId, stableId: selection.stableId }
+      );
     }
 
     const extraIssues =
@@ -21066,7 +20944,7 @@ function createSelectionReferenceCandidates(
             createSelectionIssue(
               "SELECTION_KIND_MISMATCH",
               "non-commandable",
-              `Selected generated reference ${selection.stableId} resolved as ${resolution.kind}, not ${selection.expectedKind}.`,
+              `Expected ${selection.expectedKind}; resolved ${resolution.kind}.`,
               {
                 bodyId: selection.bodyId,
                 stableId: selection.stableId,
@@ -21100,20 +20978,12 @@ function createSelectionReferenceCandidates(
   const namedReference = document.namedReferences.get(selection.name);
 
   if (!namedReference) {
-    const issues = [
-      createSelectionIssue(
-        "MISSING_SELECTION_TARGET",
-        "missing",
-        `Named reference does not exist: ${selection.name}`,
-        { referenceName: selection.name }
-      )
-    ];
-
-    return {
-      status: "missing",
-      candidates: [],
-      issues
-    };
+    return createSelectionFailure(
+      "MISSING_SELECTION_TARGET",
+      "missing",
+      "Named reference not found.",
+      { referenceName: selection.name }
+    );
   }
 
   const entry = createNamedReferenceEntry(
@@ -21123,25 +20993,16 @@ function createSelectionReferenceCandidates(
   );
 
   if (entry.status === "stale" || !entry.reference) {
-    const issues = [
-      createSelectionIssue(
-        "STALE_SELECTION_REFERENCE",
-        "stale",
-        entry.error?.message ??
-          `Named reference target is stale: ${selection.name}`,
-        {
-          bodyId: namedReference.bodyId,
-          stableId: namedReference.stableId,
-          referenceName: namedReference.name
-        }
-      )
-    ];
-
-    return {
-      status: "stale",
-      candidates: [],
-      issues
-    };
+    return createSelectionFailure(
+      "STALE_SELECTION_REFERENCE",
+      "stale",
+      entry.error?.message ?? "Named reference is stale.",
+      {
+        bodyId: namedReference.bodyId,
+        stableId: namedReference.stableId,
+        referenceName: namedReference.name
+      }
+    );
   }
 
   const body = structure.bodies.find(
@@ -21149,24 +21010,16 @@ function createSelectionReferenceCandidates(
   );
 
   if (!body) {
-    const issues = [
-      createSelectionIssue(
-        "MISSING_SELECTION_TARGET",
-        "missing",
-        `Named reference body does not exist: ${entry.bodyId}`,
-        {
-          bodyId: entry.bodyId,
-          stableId: entry.stableId,
-          referenceName: entry.name
-        }
-      )
-    ];
-
-    return {
-      status: "missing",
-      candidates: [],
-      issues
-    };
+    return createSelectionFailure(
+      "MISSING_SELECTION_TARGET",
+      "missing",
+      "Named-reference body not found.",
+      {
+        bodyId: entry.bodyId,
+        stableId: entry.stableId,
+        referenceName: entry.name
+      }
+    );
   }
 
   const namedTopologyAnchor = entry.topologyAnchorId
@@ -21206,16 +21059,12 @@ function createTopologyAnchorSelectionReferenceCandidate(options: {
   );
 
   if (!topologyIdentity || !anchor) {
-    const issues = [
-      createSelectionIssue(
-        "MISSING_SELECTION_TARGET",
-        "missing",
-        `Topology anchor does not exist: ${options.selection.anchorId}`,
-        { topologyAnchorId: options.selection.anchorId }
-      )
-    ];
-
-    return { status: "missing", candidates: [], issues };
+    return createSelectionFailure(
+      "MISSING_SELECTION_TARGET",
+      "missing",
+      "Topology anchor not found.",
+      { topologyAnchorId: options.selection.anchorId }
+    );
   }
 
   const checkpoint = topologyIdentity.checkpoints.find(
@@ -21235,24 +21084,22 @@ function createTopologyAnchorSelectionReferenceCandidate(options: {
   );
 
   if (status !== "active") {
-    const selectionStatus = selectionStatusFromReferenceHealthStatus(status);
-    const issues = [
-      createSelectionIssue(
-        selectionIssueCodeFromReferenceHealthStatus(status),
-        selectionStatus,
-        `Topology anchor ${anchor.anchorId} is ${status} and is not command-ready.`,
-        {
-          bodyId: anchor.bodyId,
-          stableId: anchor.stableId,
-          topologyAnchorId: anchor.anchorId,
-          checkpointId: anchor.checkpointId,
-          expected: "active topology anchor",
-          received: status
-        }
-      )
-    ];
-
-    return { status: selectionStatus, candidates: [], issues };
+    const [selectionStatus, issueCode] = SELECTION_STATUS_BY_REFERENCE_HEALTH[
+      status
+    ] ?? ["non-commandable", "NON_COMMANDABLE_SELECTION_TARGET"];
+    return createSelectionFailure(
+      issueCode,
+      selectionStatus,
+      `Topology anchor is ${status}.`,
+      {
+        bodyId: anchor.bodyId,
+        stableId: anchor.stableId,
+        topologyAnchorId: anchor.anchorId,
+        checkpointId: anchor.checkpointId,
+        expected: "active topology anchor",
+        received: status
+      }
+    );
   }
 
   const resolvedBodyId =
@@ -21268,21 +21115,17 @@ function createTopologyAnchorSelectionReferenceCandidate(options: {
   );
 
   if (!body) {
-    const issues = [
-      createSelectionIssue(
-        "MISSING_SELECTION_TARGET",
-        "missing",
-        `Topology anchor body does not exist: ${resolvedBodyId}`,
-        {
-          bodyId: resolvedBodyId,
-          stableId: anchor.stableId,
-          topologyAnchorId: anchor.anchorId,
-          checkpointId: anchor.checkpointId
-        }
-      )
-    ];
-
-    return { status: "missing", candidates: [], issues };
+    return createSelectionFailure(
+      "MISSING_SELECTION_TARGET",
+      "missing",
+      "Topology-anchor body not found.",
+      {
+        bodyId: resolvedBodyId,
+        stableId: anchor.stableId,
+        topologyAnchorId: anchor.anchorId,
+        checkpointId: anchor.checkpointId
+      }
+    );
   }
 
   const stableResolution =
@@ -21302,28 +21145,24 @@ function createTopologyAnchorSelectionReferenceCandidate(options: {
           });
 
   if (stableResolution.status !== "resolved") {
-    const issues = [
-      createSelectionIssue(
-        "UNSUPPORTED_SELECTION_TARGET",
-        "unsupported",
-        stableResolution.status === "ambiguous"
-          ? `Topology anchor ${anchor.anchorId} source-semantic role matches multiple generated references.`
-          : `Topology anchor ${anchor.anchorId} does not have stable generated-reference backing or a supported source-semantic role.`,
-        {
-          bodyId: anchor.bodyId,
-          topologyAnchorId: anchor.anchorId,
-          checkpointId: anchor.checkpointId,
-          expected:
-            "stable generated reference backing or source-semantic generated reference role",
-          received:
-            stableResolution.status === "ambiguous"
-              ? stableResolution.stableIds.join(", ")
-              : (anchor.sourceSemanticRole ?? "missing stableId")
-        }
-      )
-    ];
-
-    return { status: "unsupported", candidates: [], issues };
+    return createSelectionFailure(
+      "UNSUPPORTED_SELECTION_TARGET",
+      "unsupported",
+      stableResolution.status === "ambiguous"
+        ? "Topology anchor matches multiple references."
+        : "Topology anchor has no stable reference.",
+      {
+        bodyId: anchor.bodyId,
+        topologyAnchorId: anchor.anchorId,
+        checkpointId: anchor.checkpointId,
+        expected:
+          "stable generated reference backing or source-semantic generated reference role",
+        received:
+          stableResolution.status === "ambiguous"
+            ? stableResolution.stableIds.join(", ")
+            : (anchor.sourceSemanticRole ?? "missing stableId")
+      }
+    );
   }
 
   const stableId = stableResolution.stableId;
@@ -21340,31 +21179,26 @@ function createTopologyAnchorSelectionReferenceCandidate(options: {
       createBodyReferenceUnavailableIssue(options.document, body, stableId)
     ];
 
-    return {
-      status: chooseSelectionReferenceStatus(issues),
-      candidates: [],
+    return createEmptySelectionReferenceCandidates(
+      chooseSelectionReferenceStatus(issues),
       issues
-    };
+    );
   }
 
   const resolution = resolveGeneratedReference(references, stableId);
 
   if (!resolution) {
-    const issues = [
-      createSelectionIssue(
-        "STALE_SELECTION_REFERENCE",
-        "stale",
-        `Topology anchor ${anchor.anchorId} stable generated reference is no longer available on ${anchor.bodyId}: ${stableId}`,
-        {
-          bodyId: anchor.bodyId,
-          stableId,
-          topologyAnchorId: anchor.anchorId,
-          checkpointId: anchor.checkpointId
-        }
-      )
-    ];
-
-    return { status: "stale", candidates: [], issues };
+    return createSelectionFailure(
+      "STALE_SELECTION_REFERENCE",
+      "stale",
+      "Topology-anchor reference is stale.",
+      {
+        bodyId: anchor.bodyId,
+        stableId,
+        topologyAnchorId: anchor.anchorId,
+        checkpointId: anchor.checkpointId
+      }
+    );
   }
 
   const extraIssues =
@@ -21374,7 +21208,7 @@ function createTopologyAnchorSelectionReferenceCandidate(options: {
           createSelectionIssue(
             "SELECTION_KIND_MISMATCH",
             "non-commandable",
-            `Topology anchor ${anchor.anchorId} resolved as ${resolution.kind}, not ${anchor.entityKind}.`,
+            `Topology anchor expected ${anchor.entityKind}; resolved ${resolution.kind}.`,
             {
               bodyId: anchor.bodyId,
               stableId,
@@ -21526,39 +21360,33 @@ function createSingleSelectionReferenceCandidate(options: {
     ...operationIssues
   ];
   const commandable = issues.length === 0;
-  const candidate: CadSelectionReferenceCandidate = {
+  const target =
+    "geometricSignature" in options.reference
+      ? {
+          type: "generatedReference" as const,
+          bodyId: options.reference.bodyId,
+          stableId: options.reference.stableId,
+          kind: options.reference.kind,
+          ...definedFields({
+            topologyAnchorId: options.topologyAnchorId,
+            checkpointId: options.checkpointId,
+            referenceName:
+              options.selection.type === "namedReference"
+                ? options.selection.name
+                : undefined
+          })
+        }
+      : { type: "body" as const, bodyId: options.reference.bodyId };
+  const candidate = {
     source: options.source,
     commandable,
     commandOperations: baseOperations,
     label: options.reference.label,
-    ...(options.reference.description
-      ? { description: options.reference.description }
-      : {}),
+    ...definedFields({ description: options.reference.description }),
     issues,
-    ...("geometricSignature" in options.reference
-      ? {
-          target: {
-            type: "generatedReference" as const,
-            bodyId: options.reference.bodyId,
-            stableId: options.reference.stableId,
-            kind: options.reference.kind,
-            ...(options.topologyAnchorId
-              ? { topologyAnchorId: options.topologyAnchorId }
-              : {}),
-            ...(options.checkpointId
-              ? { checkpointId: options.checkpointId }
-              : {}),
-            ...(options.selection.type === "namedReference"
-              ? { referenceName: options.selection.name }
-              : {})
-          },
-          reference: options.reference
-        }
-      : {
-          target: { type: "body" as const, bodyId: options.reference.bodyId },
-          reference: options.reference
-        })
-  };
+    target,
+    reference: options.reference
+  } as CadSelectionReferenceCandidate;
 
   return {
     status: commandable ? "resolved" : chooseSelectionReferenceStatus(issues),
@@ -21575,8 +21403,8 @@ function createCommandabilityIssues(
   if (operations.length === 0) {
     const message =
       reference.kind === "body"
-        ? "This result body is visible, but body-level modeling commands are not available. Select a command-ready face or edge on the result for sketching, naming, measuring, or inspecting."
-        : `Selected ${reference.kind} reference has no command-ready operations.`;
+        ? "Result body requires a command-ready face or edge."
+        : `${reference.kind} reference has no command operations.`;
 
     return [
       createSelectionIssue(
@@ -21599,7 +21427,7 @@ function createCommandabilityIssues(
       createSelectionIssue(
         "NON_COMMANDABLE_SELECTION_TARGET",
         "non-commandable",
-        `Selected ${reference.kind} reference is not eligible for ${requiredOperation}.`,
+        `${reference.kind} reference does not support ${requiredOperation}.`,
         {
           bodyId: reference.bodyId,
           stableId: reference.stableId,
@@ -21613,57 +21441,22 @@ function createCommandabilityIssues(
   return [];
 }
 
-function selectionStatusFromReferenceHealthStatus(
-  status: CadReferenceHealthStatus
-): Exclude<CadSelectionReferenceStatus, "resolved"> {
-  if (status === "active") {
-    return "non-commandable";
-  }
-
-  if (status === "missing" || status === "deleted") {
-    return "missing";
-  }
-
-  if (status === "stale") {
-    return "stale";
-  }
-
-  if (status === "ambiguous") {
-    return "ambiguous";
-  }
-
-  if (status === "consumed") {
-    return "consumed";
-  }
-
-  if (status === "unsupported") {
-    return "unsupported";
-  }
-
-  return "non-commandable";
-}
-
-function selectionIssueCodeFromReferenceHealthStatus(
-  status: CadReferenceHealthStatus
-): CadSelectionReferenceIssueCode {
-  if (status === "missing" || status === "deleted") {
-    return "MISSING_SELECTION_TARGET";
-  }
-
-  if (status === "stale") {
-    return "STALE_SELECTION_REFERENCE";
-  }
-
-  if (status === "ambiguous") {
-    return "AMBIGUOUS_SELECTION_TOPOLOGY";
-  }
-
-  if (status === "unsupported") {
-    return "UNSUPPORTED_SELECTION_TARGET";
-  }
-
-  return "NON_COMMANDABLE_SELECTION_TARGET";
-}
+const SELECTION_STATUS_BY_REFERENCE_HEALTH: Partial<
+  Record<
+    CadReferenceHealthStatus,
+    readonly [
+      Exclude<CadSelectionReferenceStatus, "resolved">,
+      CadSelectionReferenceIssueCode
+    ]
+  >
+> = {
+  missing: ["missing", "MISSING_SELECTION_TARGET"],
+  deleted: ["missing", "MISSING_SELECTION_TARGET"],
+  stale: ["stale", "STALE_SELECTION_REFERENCE"],
+  ambiguous: ["ambiguous", "AMBIGUOUS_SELECTION_TOPOLOGY"],
+  consumed: ["consumed", "NON_COMMANDABLE_SELECTION_TARGET"],
+  unsupported: ["unsupported", "UNSUPPORTED_SELECTION_TARGET"]
+};
 
 function createConsumedSelectionIssues(
   body: CadBodySnapshot
@@ -21676,7 +21469,7 @@ function createConsumedSelectionIssues(
     createSelectionIssue(
       "CONSUMED_SELECTION_BODY",
       "consumed",
-      `Selected body ${body.id} is consumed by feature ${body.consumedByFeatureId}.`,
+      "Body is consumed by a downstream feature.",
       {
         bodyId: body.id,
         featureId: body.consumedByFeatureId
@@ -21694,7 +21487,7 @@ function createBodyReferenceUnavailableIssue(
     return createSelectionIssue(
       "UNSUPPORTED_SELECTION_TARGET",
       "unsupported",
-      `Primitive body ${body.id} does not expose command-ready semantic generated references.`,
+      "Primitive body has no generated references.",
       {
         bodyId: body.id,
         stableId,
@@ -21711,7 +21504,7 @@ function createBodyReferenceUnavailableIssue(
       return createSelectionIssue(
         "AMBIGUOUS_SELECTION_TOPOLOGY",
         "ambiguous",
-        `Boolean result body ${body.id} is visible, but body-level modeling commands are not available. Select a command-ready result face or edge for sketching, naming, measuring, or inspecting.`,
+        "Boolean result requires a face or edge reference.",
         {
           bodyId: body.id,
           stableId,
@@ -21725,7 +21518,7 @@ function createBodyReferenceUnavailableIssue(
     return createSelectionIssue(
       "STALE_SELECTION_REFERENCE",
       "stale",
-      `Authored extrude body ${body.id} no longer resolves to generated references from its source sketch.`,
+      "Extrude body has stale generated references.",
       {
         bodyId: body.id,
         stableId,
@@ -21739,7 +21532,7 @@ function createBodyReferenceUnavailableIssue(
     return createSelectionIssue(
       "IMPORTED_BODY_ANCHOR_NEEDED",
       "non-commandable",
-      `Imported body ${body.id} needs a topology anchor before it can be used as a downstream command target.`,
+      "Imported body requires a topology anchor.",
       {
         bodyId: body.id,
         stableId,
@@ -21754,7 +21547,7 @@ function createBodyReferenceUnavailableIssue(
   return createSelectionIssue(
     "AMBIGUOUS_SELECTION_TOPOLOGY",
     "ambiguous",
-    `Body ${body.id} does not expose stable command-ready generated references yet.`,
+    "Body has no stable generated references.",
     {
       bodyId: body.id,
       stableId,
@@ -21765,57 +21558,62 @@ function createBodyReferenceUnavailableIssue(
   );
 }
 
+type SelectionIssueDetails = {
+  readonly bodyId?: BodyId;
+  readonly stableId?: string;
+  readonly topologyAnchorId?: string;
+  readonly checkpointId?: string;
+  readonly referenceName?: NamedReferenceName;
+  readonly featureId?: FeatureId;
+  readonly expected?: string;
+  readonly received?: string;
+};
+
+function createSelectionFailure(
+  code: CadSelectionReferenceIssueCode,
+  status: Exclude<CadSelectionReferenceStatus, "resolved">,
+  message: string,
+  details?: SelectionIssueDetails
+) {
+  const issues = [createSelectionIssue(code, status, message, details)];
+  return createEmptySelectionReferenceCandidates(status, issues);
+}
+
 function createSelectionIssue(
   code: CadSelectionReferenceIssueCode,
   status: Exclude<CadSelectionReferenceStatus, "resolved">,
   message: string,
-  details: {
-    readonly bodyId?: BodyId;
-    readonly stableId?: string;
-    readonly topologyAnchorId?: string;
-    readonly checkpointId?: string;
-    readonly referenceName?: NamedReferenceName;
-    readonly featureId?: FeatureId;
-    readonly expected?: string;
-    readonly received?: string;
-  } = {}
+  details: SelectionIssueDetails = {}
 ): CadSelectionReferenceIssue {
   return {
     code,
     status,
     message,
-    ...(details.bodyId ? { bodyId: details.bodyId } : {}),
-    ...(details.stableId ? { stableId: details.stableId } : {}),
-    ...(details.topologyAnchorId
-      ? { topologyAnchorId: details.topologyAnchorId }
-      : {}),
-    ...(details.checkpointId ? { checkpointId: details.checkpointId } : {}),
-    ...(details.referenceName ? { referenceName: details.referenceName } : {}),
-    ...(details.featureId ? { featureId: details.featureId } : {}),
-    ...(details.expected ? { expected: details.expected } : {}),
-    ...(details.received ? { received: details.received } : {})
-  };
+    ...definedFields(details)
+  } as CadSelectionReferenceIssue;
+}
+
+function definedFields<T extends object>(value: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => entry !== undefined)
+  ) as Partial<T>;
 }
 
 function chooseSelectionReferenceStatus(
   issues: readonly CadSelectionReferenceIssue[]
 ): CadSelectionReferenceStatus {
-  const statuses = new Set(issues.map((issue) => issue.status));
-
-  for (const status of [
-    "missing",
-    "stale",
-    "consumed",
-    "ambiguous",
-    "unsupported",
-    "non-commandable"
-  ] satisfies readonly Exclude<CadSelectionReferenceStatus, "resolved">[]) {
-    if (statuses.has(status)) {
-      return status;
-    }
-  }
-
-  return "resolved";
+  return (
+    ([
+      "missing",
+      "stale",
+      "consumed",
+      "ambiguous",
+      "unsupported",
+      "non-commandable"
+    ].find((status) => issues.some((issue) => issue.status === status)) as
+      | CadSelectionReferenceStatus
+      | undefined) ?? "resolved"
+  );
 }
 
 function createQueryErrorFromGeneratedReferenceError(
@@ -25502,7 +25300,7 @@ function createBodyExtentsUnavailableWarning(
 ): ProjectExtentsWarning {
   return {
     code: "BODY_EXTENTS_UNAVAILABLE",
-    message: `Body extents are unavailable because the authored body source or attached sketch reference could not be resolved: ${bodyId}`,
+    message: "Body extents are unavailable.",
     bodyId,
     featureId
   };
@@ -25533,7 +25331,7 @@ function createKernelDerivedBodyExtent(
       ok: false,
       warning: {
         code: "BODY_EXTENTS_UNAVAILABLE",
-        message: `Body extents are unavailable because the authored body feature source could not be resolved: ${topology.bodyId}`,
+        message: "Body extents are unavailable.",
         bodyId: topology.bodyId
       }
     };
@@ -26496,7 +26294,7 @@ function prepareSketchCurveEdit({
         diagnostics: impactResult.dependencies.map((dependency) => ({
           code: "SKETCH_EDIT_DEPENDENCY_CONFLICT",
           severity: "blocker",
-          message: `Curve edit would delete entity '${impactResult.sourceEntityId}' while feature '${dependency.featureId}' references it as ${dependency.roles.join(", ")}.`,
+          message: "Curve edit would remove geometry used by a feature.",
           sketchId: normalized.sketchId,
           sketchEntityId: impactResult.sourceEntityId,
           featureId: dependency.featureId,
@@ -29238,12 +29036,7 @@ function normalizeCadProject(value: CadProject): CadProject {
     };
   }
 
-  if (
-    value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18 ||
-    value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19 ||
-    value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V20 ||
-    value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V21
-  ) {
+  if (cadProjectFormatIndex(value.schemaVersion) >= 17) {
     const features = value.document.features.map(normalizeFeatureSnapshot);
     const schemaVersion =
       value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19 &&
@@ -29308,14 +29101,7 @@ function normalizeCadProject(value: CadProject): CadProject {
     };
   }
 
-  if (
-    value.schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
-    value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
-    value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
-    value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11
-  ) {
+  if (cadProjectFormatIndex(value.schemaVersion) >= 10) {
     return {
       ...value,
       schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
@@ -30071,7 +29857,9 @@ function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
       "$.schemaVersion",
       "Project schemaVersion must be a string."
     );
-  } else if (!SUPPORTED_CAD_PROJECT_FORMAT_VERSIONS.has(value.schemaVersion)) {
+  } else if (
+    !SUPPORTED_CAD_PROJECT_FORMAT_VERSIONS.includes(value.schemaVersion)
+  ) {
     addProjectIssue(
       issues,
       "UNSUPPORTED_PROJECT_VERSION",
@@ -30262,187 +30050,31 @@ function validateCadDocumentSnapshot(
     );
   }
 
-  const isV17Schema = schemaVersion === CAD_PROJECT_FORMAT_VERSION_V17;
-  const isV18Schema = schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18;
-  const isV22Schema = schemaVersion === CAD_PROJECT_FORMAT_VERSION_V22;
-  const isV21Schema =
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V21 || isV22Schema;
-  const isV20Schema = schemaVersion === CAD_PROJECT_FORMAT_VERSION_V20;
-  const isV20OrLaterSchema = isV20Schema || isV21Schema;
-  const isV19Schema =
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V19 || isV20OrLaterSchema;
-  const requiresSketches =
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V2 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V6 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema ||
-    isV18Schema ||
-    isV19Schema;
-  const requiresFeatures =
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V6 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema ||
-    isV18Schema ||
-    isV19Schema;
-  const allowsSketchAttachments =
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V6 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema ||
-    isV18Schema ||
-    isV19Schema;
-  const requiresNamedReferences =
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V6 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema ||
-    isV18Schema ||
-    isV19Schema;
-  const requiresParameters =
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema ||
-    isV18Schema ||
-    isV19Schema;
-  const requiresSketchConstraints =
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema ||
-    isV18Schema ||
-    isV19Schema;
-  const allowsFixedSketchConstraints =
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema ||
-    isV18Schema ||
-    isV19Schema;
-  const allowsCoincidentSketchConstraints =
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema ||
-    isV18Schema ||
-    isV19Schema;
-  const allowsMidpointSketchConstraints =
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema ||
-    isV18Schema ||
-    isV19Schema;
-  const allowsParallelSketchConstraints =
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema ||
-    isV18Schema ||
-    isV19Schema;
-  const allowsPerpendicularSketchConstraints =
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema ||
-    isV18Schema ||
-    isV19Schema;
-  const allowsRevolveFeatures =
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema ||
-    isV18Schema ||
-    isV19Schema;
-  const allowsHoleFeatures =
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema ||
-    isV18Schema ||
-    isV19Schema;
-  const allowsEdgeFinishFeatures =
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema ||
-    isV18Schema ||
-    isV19Schema;
-  const allowsAdvancedSketchConstraints =
-    isV17Schema || isV18Schema || isV19Schema;
-  const allowsPatternFeatures = isV19Schema;
-  const allowsImportedBodyFeatures = isV19Schema;
-  const isKnownProjectVersion =
-    typeof schemaVersion === "string" &&
-    SUPPORTED_CAD_PROJECT_FORMAT_VERSIONS.has(schemaVersion);
+  const schemaVersionNumber =
+    SUPPORTED_CAD_PROJECT_FORMAT_VERSIONS.indexOf(schemaVersion as string) + 1;
+  const isV18Schema = schemaVersionNumber === 18;
+  const isV22Schema = schemaVersionNumber === 22;
+  const isV21Schema = schemaVersionNumber >= 21;
+  const isV20OrLaterSchema = schemaVersionNumber >= 20;
+  const isV19Schema = schemaVersionNumber >= 19;
+  const requiresSketches = schemaVersionNumber >= 2;
+  const requiresFeatures = schemaVersionNumber >= 3;
+  const allowsSketchAttachments = schemaVersionNumber >= 4;
+  const requiresNamedReferences = schemaVersionNumber >= 5;
+  const requiresParameters = schemaVersionNumber >= 7;
+  const requiresSketchConstraints = schemaVersionNumber >= 8;
+  const allowsFixedSketchConstraints = schemaVersionNumber >= 9;
+  const allowsCoincidentSketchConstraints = schemaVersionNumber >= 10;
+  const allowsMidpointSketchConstraints = schemaVersionNumber >= 11;
+  const allowsParallelSketchConstraints = schemaVersionNumber >= 12;
+  const allowsPerpendicularSketchConstraints = schemaVersionNumber >= 13;
+  const allowsRevolveFeatures = schemaVersionNumber >= 14;
+  const allowsHoleFeatures = schemaVersionNumber >= 15;
+  const allowsEdgeFinishFeatures = schemaVersionNumber >= 16;
+  const allowsAdvancedSketchConstraints = schemaVersionNumber >= 17;
+  const allowsPatternFeatures = schemaVersionNumber >= 19;
+  const allowsImportedBodyFeatures = schemaVersionNumber >= 19;
+  const isKnownProjectVersion = schemaVersionNumber > 0;
   const seenSketchIds = new Set<string>();
   const extrudeFeatureByBodyId = new Map<BodyId, ExtrudeFeatureSnapshot>();
   const authoredFeatureByBodyId = new Map<
@@ -34029,7 +33661,7 @@ function validateFeatureTargetBodyReferences(
         issues,
         "INVALID_FEATURE",
         `${feature.path}.targetBodyId`,
-        `${formatTargetConsumingFeatureForIssue(feature)} targetBodyId must reference an active authored body that is not already consumed by another feature.`
+        `${formatTargetConsumingFeatureForIssue(feature)} requires an active target body.`
       );
       continue;
     }
@@ -34054,7 +33686,7 @@ function validateFeatureTargetBodyReferences(
         issues,
         "INVALID_FEATURE",
         `${feature.path}.targetBodyId`,
-        `${formatTargetConsumingFeatureForIssue(feature)} currently supports one stable generated edge on an active rectangle/circle newBody extrude target body, a supported rectangle cut result body, or an imported body topology edge anchor.`
+        `${formatTargetConsumingFeatureForIssue(feature)} requires a supported generated or anchored edge.`
       );
     }
   }
@@ -34272,10 +33904,10 @@ function getUnsupportedBooleanExtrudeMessage(
   operationMode: FeatureExtrudeOperationMode
 ): string {
   if (operationMode === "add") {
-    return "Add extrudes currently support rectangle, circle, or composite wire tools fusing with one active rectangle source or supported topology-backed result target body.";
+    return "This add extrude target is unsupported.";
   }
 
-  return "Cut extrudes currently support rectangle, circle, or composite wire tools cutting one active rectangle, circle, or topology-backed result target body.";
+  return "This cut extrude target is unsupported.";
 }
 
 function formatTargetConsumingFeatureForIssue(

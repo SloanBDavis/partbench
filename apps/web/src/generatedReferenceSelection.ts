@@ -215,10 +215,7 @@ export function getSelectionReferenceOperationStatus(
     return { available: true };
   }
 
-  const issue =
-    candidate?.issues[0] ??
-    response.issues[0] ??
-    (candidate && !candidate.commandable ? candidate.issues[0] : undefined);
+  const issue = candidate?.issues[0] ?? response.issues[0];
 
   if (issue) {
     return {
@@ -254,12 +251,6 @@ export function formatSelectionReferenceOperationLabel(
       return "Use as hole target";
     case "feature.attachSketchPlane":
       return "Create sketch on face";
-    case "feature.chamfer":
-      return "Chamfer";
-    case "feature.fillet":
-      return "Fillet";
-    case "feature.shell":
-      return "Shell";
     case "feature.linearPatternDirection":
       return "Use as pattern direction";
     case "feature.circularPatternAxis":
@@ -270,6 +261,8 @@ export function formatSelectionReferenceOperationLabel(
       return "Measure reference";
     case "feature.selectReference":
       return "Inspect reference";
+    default:
+      return `${operation[8]?.toUpperCase()}${operation.slice(9)}`;
   }
 }
 
@@ -277,14 +270,14 @@ export function createSelectionReferenceCandidateSummaries(
   response: SelectionReferenceCandidatesQueryResponse
 ): readonly SelectionReferenceCandidateSummary[] {
   if (response.candidates.length === 0) {
+    const issues = response.issues.map(formatSelectionReferenceIssue);
     return [
       {
         tone: "blocked",
         title: formatSelectionReferenceStatus(response.status),
-        detail: response.issues.map(formatSelectionReferenceIssue).join(" "),
-        topologyDetail: undefined,
+        detail: issues.join(" "),
         commandOperations: [],
-        issues: response.issues.map(formatSelectionReferenceIssue)
+        issues
       }
     ];
   }
@@ -332,43 +325,15 @@ export function createSelectionReferenceTopologyDetail(
 export function formatSelectionReferenceStatus(
   status: CadSelectionReferenceStatus
 ): string {
-  switch (status) {
-    case "resolved":
-      return "Ready reference";
-    case "missing":
-      return "Selection target missing";
-    case "stale":
-      return "Selection target stale";
-    case "unsupported":
-      return "Selection target unsupported";
-    case "ambiguous":
-      return "Selection target ambiguous";
-    case "consumed":
-      return "Selection body consumed";
-    case "non-commandable":
-      return "Selection is not available for modeling";
-  }
+  if (status === "resolved") return "Ready reference";
+  if (status === "consumed") return "Selection body consumed";
+  return status === "non-commandable"
+    ? "Selection is not available for modeling"
+    : `Selection target ${status}`;
 }
 
 export function formatSelectionReferenceIssue(
   issue: CadSelectionReferenceIssue
 ): string {
-  switch (issue.code) {
-    case "MISSING_SELECTION_TARGET":
-      return formatVisibleDiagnosticMessage(issue.message);
-    case "STALE_SELECTION_REFERENCE":
-      return formatVisibleDiagnosticMessage(issue.message);
-    case "UNSUPPORTED_SELECTION_TARGET":
-      return formatVisibleDiagnosticMessage(issue.message);
-    case "AMBIGUOUS_SELECTION_TOPOLOGY":
-      return formatVisibleDiagnosticMessage(issue.message);
-    case "CONSUMED_SELECTION_BODY":
-      return formatVisibleDiagnosticMessage(issue.message);
-    case "NON_COMMANDABLE_SELECTION_TARGET":
-      return formatVisibleDiagnosticMessage(issue.message);
-    case "IMPORTED_BODY_ANCHOR_NEEDED":
-      return formatVisibleDiagnosticMessage(issue.message);
-    case "SELECTION_KIND_MISMATCH":
-      return formatVisibleDiagnosticMessage(issue.message);
-  }
+  return formatVisibleDiagnosticMessage(issue.message);
 }

@@ -3,7 +3,6 @@ import type { CadBodySnapshot } from "@web-cad/cad-protocol";
 import type { RenderExactPickBody } from "@web-cad/renderer";
 import { describe, expect, it } from "vitest";
 import {
-  canCycleViewportExactCandidate,
   getNextViewportExactCandidateIndex,
   reconcileViewportExactCandidateSession
 } from "./viewportExactSelectionSession";
@@ -65,11 +64,8 @@ describe("viewport exact selection app selection path", () => {
     });
 
     expect(intent.kind).toBe("body");
-    if (!canCycleViewportExactCandidate(session)) {
-      throw new Error("expected a cycleable candidate session");
-    }
     const next = getNextViewportExactCandidateIndex(session);
-
+    if (next < 0) throw new Error("expected a cycleable candidate session");
     expectNumber(next);
 
     expect(exportCadProjectJson(engine)).toBe(before);

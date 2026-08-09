@@ -48,9 +48,9 @@ export type BodyTopologyIdentityResult =
     };
 
 const SOURCE_BOUNDARY_NOTE =
-  "Body topology identity candidates are derived from authoritative document source, generated-reference contracts, optional topology checkpoint source records, and caller-provided exact topology snapshots.";
+  "Candidates use document source, generated references, checkpoint records, and supplied exact snapshots.";
 const DERIVED_BOUNDARY_NOTE =
-  "Exact topology snapshot local ids are checkpoint-local evidence for matching; renderer, mesh, OCCT, GPU, selection-buffer, OPFS, file-handle, viewport, and export artifact identifiers are excluded from public topology identity.";
+  "Exact local IDs are matching-only; private renderer, kernel, cache, viewport, and export IDs are excluded.";
 
 export function createBodyTopologyIdentity(
   options: CreateBodyTopologyIdentityOptions
@@ -84,7 +84,7 @@ export function createBodyTopologyIdentity(
       createDiagnostic(
         "TOPOLOGY_SNAPSHOT_EXTRACTION_DEFERRED",
         "warning",
-        `Body ${options.bodyId} does not have a derived exact topology snapshot for V13 generated-reference binding.`,
+        "Exact topology is missing.",
         {
           bodyId: options.bodyId,
           expected: "derived exact topology snapshot",
@@ -97,7 +97,7 @@ export function createBodyTopologyIdentity(
       createDiagnostic(
         "TOPOLOGY_MATCH_UNSUPPORTED",
         "warning",
-        `Body ${options.bodyId} topology snapshot is ${exactTopologySnapshot.status}; generated-reference bindings are candidate evidence only.`,
+        `Exact topology is ${exactTopologySnapshot.status}.`,
         {
           bodyId: options.bodyId,
           expected: "ready topology snapshot",
@@ -200,7 +200,7 @@ function createCheckpointDiagnostics(
       createDiagnostic(
         "TOPOLOGY_PACKAGE_V2_CHECKPOINT_INVALID",
         "error",
-        `Topology checkpoint source record does not exist: ${options.checkpointId}.`,
+        `Checkpoint not found: ${options.checkpointId}.`,
         {
           bodyId: options.bodyId,
           checkpointId: options.checkpointId,
@@ -218,7 +218,7 @@ function createCheckpointDiagnostics(
       createDiagnostic(
         "TOPOLOGY_SOURCE_CONTRACT_INVALID",
         "error",
-        `Topology checkpoint ${checkpoint.checkpointId} belongs to ${checkpoint.bodyId}, not ${options.bodyId}.`,
+        `Checkpoint ${checkpoint.checkpointId} belongs to ${checkpoint.bodyId}.`,
         {
           bodyId: options.bodyId,
           checkpointId: checkpoint.checkpointId,
@@ -299,45 +299,32 @@ function createCandidateDiagnostics(
   reference: CadGeneratedReference,
   matchingEntities: readonly CadBodyExactTopologyEntityDescriptor[]
 ): readonly CadTopologyIdentityDiagnostic[] {
-  if (matchingEntities.length === 1) {
-    return [
-      createDiagnostic(
-        "TOPOLOGY_MATCH_EXACT",
-        "info",
-        `Generated reference ${reference.stableId} is bound to one exact topology snapshot entity.`,
-        {
-          bodyId: reference.bodyId,
-          received: reference.stableId
-        }
-      )
-    ];
-  }
-
-  if (matchingEntities.length > 1) {
-    return [
-      createDiagnostic(
-        "TOPOLOGY_MATCH_AMBIGUOUS",
-        "warning",
-        `Generated reference ${reference.stableId} has multiple exact topology snapshot candidates.`,
-        {
-          bodyId: reference.bodyId,
-          expected: "one exact topology entity",
-          received: String(matchingEntities.length)
-        }
-      )
-    ];
-  }
-
+  const exact = matchingEntities.length === 1;
+  const multiple = matchingEntities.length > 1;
   return [
     createDiagnostic(
-      "TOPOLOGY_MATCH_LOW_CONFIDENCE",
-      "warning",
-      `Generated reference ${reference.stableId} has no exact topology entity binding yet.`,
-      {
-        bodyId: reference.bodyId,
-        expected: "matching exact topology entity signature",
-        received: reference.stableId
-      }
+      exact
+        ? "TOPOLOGY_MATCH_EXACT"
+        : multiple
+          ? "TOPOLOGY_MATCH_AMBIGUOUS"
+          : "TOPOLOGY_MATCH_LOW_CONFIDENCE",
+      exact ? "info" : "warning",
+      exact
+        ? "One exact match."
+        : `${multiple ? "Multiple" : "No"} exact matches.`,
+      exact
+        ? { bodyId: reference.bodyId, received: reference.stableId }
+        : multiple
+          ? {
+              bodyId: reference.bodyId,
+              expected: "one exact topology entity",
+              received: String(matchingEntities.length)
+            }
+          : {
+              bodyId: reference.bodyId,
+              expected: "matching exact topology entity signature",
+              received: reference.stableId
+            }
     )
   ];
 }
@@ -404,7 +391,7 @@ function chooseStatus(input: {
   return input.snapshotStatus === "ready" ? "active" : "unsupported";
 }
 
-function createGeneratedReferenceTopologySignature(
+export function createGeneratedReferenceTopologySignature(
   reference: CadGeneratedReference
 ): string {
   return `generated-reference:v13:${sha256Hex(

@@ -112,7 +112,7 @@ export function createViewportCommandTargetSummary(
     response.candidates[0];
 
   return {
-    selection: response.selection,
+    selection: response.selection!,
     status: response.status,
     commandable: primaryCandidate?.commandable ?? false,
     ...(primaryCandidate?.target ? { target: primaryCandidate.target } : {}),

@@ -19,15 +19,25 @@ import {
   createGeneratedReferenceMeasurementRows,
   formatGeneratedReferenceKind
 } from "./generatedReferenceUi";
-import type { GeneratedReferenceSelectionState } from "./generatedReferenceSelection";
+import {
+  formatSelectionReferenceOperationLabel,
+  getPrimarySelectionReferenceCandidate,
+  type GeneratedReferenceSelectionState
+} from "./generatedReferenceSelection";
+import { viewportCodeFromSelectionStatus } from "./viewportPickIntent";
 import {
   createBodyMeasurementRows,
   formatArea,
   formatBounds,
+  formatNumber,
+  formatPoint,
   formatVolume,
   type MeasurementDisplayRow
 } from "./sceneObjectDisplay";
-import { formatVisibleDiagnosticMessage } from "./viewportVisibleText";
+import {
+  dedupeDiagnostics,
+  formatVisibleDiagnosticMessage
+} from "./viewportVisibleText";
 
 export type ViewportMeasurementOverlayKind = "body" | "generatedReference";
 export type ViewportMeasurementOverlayTone = "ready" | "blocked";
@@ -345,14 +355,14 @@ function createGeneratedReferenceTarget({
   readonly reference: CadGeneratedReference;
   readonly selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse;
 }): ViewportMeasureInspectTarget {
+  const selection = selectionReferenceCandidates?.selection;
   const namedReference = findNamedReferenceForSelection(
     namedReferences,
     reference,
     selectionReferenceCandidates
   );
   const targetKind =
-    namedReference ||
-    selectionReferenceCandidates?.selection.type === "namedReference"
+    namedReference || selection?.type === "namedReference"
       ? "namedReference"
       : targetKindFromGeneratedReference(reference);
   const status = interactionStatusFromSelectionReferenceCandidates(
@@ -374,14 +384,14 @@ function createGeneratedReferenceTarget({
     bodyId: reference.bodyId,
     stableId: cleanText(reference.stableId),
     referenceName:
-      selectionReferenceCandidates?.selection.type === "namedReference"
-        ? selectionReferenceCandidates.selection.name
+      selection?.type === "namedReference"
+        ? selection.name
         : namedReference?.name,
     selection:
-      selectionReferenceCandidates?.selection.type === "namedReference"
+      selection?.type === "namedReference"
         ? {
             type: "namedReference",
-            name: selectionReferenceCandidates.selection.name
+            name: selection.name
           }
         : {
             type: "generatedReference",
@@ -603,18 +613,7 @@ function toViewportInteractionDiagnostic(
   diagnostic: ViewportMeasureInspectDiagnostic
 ): CadViewportInteractionDiagnostic {
   return {
-    code:
-      diagnostic.code === "MISSING_SELECTION_TARGET"
-        ? "VIEWPORT_MISSING_HIT_TARGET"
-        : diagnostic.code === "STALE_SELECTION_REFERENCE"
-          ? "VIEWPORT_STALE_SEMANTIC_HINT"
-          : diagnostic.code === "AMBIGUOUS_SELECTION_TOPOLOGY"
-            ? "VIEWPORT_AMBIGUOUS_HIT_CANDIDATE"
-            : diagnostic.code === "CONSUMED_SELECTION_BODY"
-              ? "VIEWPORT_CONSUMED_TARGET"
-              : diagnostic.code === "NON_COMMANDABLE_SELECTION_TARGET"
-                ? "VIEWPORT_NON_COMMANDABLE_TARGET"
-                : "VIEWPORT_UNSUPPORTED_DISPLAY_ENTITY",
+    code: viewportCodeFromSelectionStatus(diagnostic.status),
     status: diagnostic.status,
     message: diagnostic.message
   };
@@ -623,34 +622,14 @@ function toViewportInteractionDiagnostic(
 function createCommandOperationLabels(
   response: SelectionReferenceCandidatesQueryResponse | undefined
 ): readonly string[] {
-  const candidate =
-    response?.candidates.find((entry) => entry.commandable) ??
-    response?.candidates[0];
+  const candidate = response
+    ? getPrimarySelectionReferenceCandidate(response)
+    : undefined;
 
   return (
-    candidate?.commandOperations
-      .map(formatCommandOperationLabel)
-      .map(cleanText) ?? []
+    candidate?.commandOperations.map(formatSelectionReferenceOperationLabel) ??
+    []
   );
-}
-
-function formatCommandOperationLabel(operation: string): string {
-  switch (operation) {
-    case "reference.nameGenerated":
-      return "Name reference";
-    case "feature.attachSketchPlane":
-      return "Create sketch on face";
-    case "feature.chamfer":
-      return "Chamfer";
-    case "feature.fillet":
-      return "Fillet";
-    case "feature.measureReference":
-      return "Measure reference";
-    case "feature.selectReference":
-      return "Inspect reference";
-    default:
-      return operation;
-  }
 }
 
 function interactionStatusFromSelectionReferenceCandidates(
@@ -658,7 +637,7 @@ function interactionStatusFromSelectionReferenceCandidates(
   authority: CadViewportMeasurementAuthority
 ): ViewportMeasureInspectTarget["status"] {
   if (response) {
-    return response.status === "resolved" ? "resolved" : response.status;
+    return response.status;
   }
 
   return authority === "unsupported" ? "unsupported" : "resolved";
@@ -684,37 +663,6 @@ function findNamedReferenceForSelection(
       candidate.stableId === reference.stableId &&
       candidate.kind === reference.kind
   );
-}
-
-function dedupeDiagnostics(
-  diagnostics: readonly ViewportMeasureInspectDiagnostic[]
-): readonly ViewportMeasureInspectDiagnostic[] {
-  const seen = new Set<string>();
-  const deduped: ViewportMeasureInspectDiagnostic[] = [];
-
-  for (const diagnostic of diagnostics) {
-    const key = `${diagnostic.code}:${diagnostic.status}:${diagnostic.message}`;
-
-    if (seen.has(key)) {
-      continue;
-    }
-
-    deduped.push(diagnostic);
-    seen.add(key);
-  }
-
-  return deduped;
-}
-
-function formatPoint(
-  point: readonly [number, number, number],
-  units: DocumentUnits
-): string {
-  return point.map((value) => `${formatNumber(value)} ${units}`).join(", ");
-}
-
-function formatNumber(value: number): string {
-  return Number.isInteger(value) ? value.toString() : value.toFixed(2);
 }
 
 function cleanText(text: string): string {

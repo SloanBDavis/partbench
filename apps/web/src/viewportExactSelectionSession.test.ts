@@ -1,7 +1,6 @@
 import type { RenderExactPickCandidate } from "@web-cad/renderer";
 import { describe, expect, it } from "vitest";
 import {
-  canCycleViewportExactCandidate,
   getNextViewportExactCandidateIndex,
   reconcileViewportExactCandidateSession,
   updateViewportExactSelections
@@ -185,13 +184,12 @@ describe("viewport exact selection session", () => {
       )!,
       index: 2
     };
-    expect(canCycleViewportExactCandidate(session)).toBe(true);
     expect(getNextViewportExactCandidateIndex(session)).toBe(0);
     expect(getNextViewportExactCandidateIndex({ ...session, index: 0 })).toBe(
       1
     );
     expect(
-      canCycleViewportExactCandidate(
+      getNextViewportExactCandidateIndex(
         reconcileViewportExactCandidateSession(
           undefined,
           {
@@ -204,7 +202,7 @@ describe("viewport exact selection session", () => {
           []
         )
       )
-    ).toBe(false);
+    ).toBe(-1);
     expect(getNextViewportExactCandidateIndex(undefined)).toBe(-1);
   });
 });

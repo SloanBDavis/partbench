@@ -437,54 +437,33 @@ function createReferenceCandidateDiagnostics(
       ];
 }
 
-function viewportCodeFromSelectionStatus(
+const VIEWPORT_CODE_FROM_SELECTION_STATUS: Record<
+  Exclude<CadSelectionReferenceStatus, "resolved">,
+  CadViewportInteractionDiagnosticCode
+> = {
+  missing: "VIEWPORT_MISSING_HIT_TARGET",
+  stale: "VIEWPORT_STALE_SEMANTIC_HINT",
+  ambiguous: "VIEWPORT_AMBIGUOUS_HIT_CANDIDATE",
+  consumed: "VIEWPORT_CONSUMED_TARGET",
+  "non-commandable": "VIEWPORT_NON_COMMANDABLE_TARGET",
+  unsupported: "VIEWPORT_UNSUPPORTED_DISPLAY_ENTITY"
+};
+
+export function viewportCodeFromSelectionStatus(
   status: Exclude<CadSelectionReferenceStatus, "resolved">
 ): CadViewportInteractionDiagnosticCode {
-  switch (status) {
-    case "missing":
-      return "VIEWPORT_MISSING_HIT_TARGET";
-    case "stale":
-      return "VIEWPORT_STALE_SEMANTIC_HINT";
-    case "ambiguous":
-      return "VIEWPORT_AMBIGUOUS_HIT_CANDIDATE";
-    case "consumed":
-      return "VIEWPORT_CONSUMED_TARGET";
-    case "non-commandable":
-      return "VIEWPORT_NON_COMMANDABLE_TARGET";
-    case "unsupported":
-      return "VIEWPORT_UNSUPPORTED_DISPLAY_ENTITY";
-  }
+  return VIEWPORT_CODE_FROM_SELECTION_STATUS[status];
 }
 
 function createSelectionIssueFromViewportDiagnostic(
   diagnostic: CadViewportInteractionDiagnostic
 ): CadSelectionReferenceIssue {
-  return createViewportPickIssue(
-    selectionIssueCodeFromViewportDiagnostic(diagnostic.code),
-    selectionStatusFromViewportStatus(diagnostic.status),
-    diagnostic.message,
-    {
-      ...(diagnostic.expected ? { expected: diagnostic.expected } : {}),
-      ...(diagnostic.received ? { received: diagnostic.received } : {})
-    }
-  );
-}
-
-function createViewportPickIssue(
-  code: CadSelectionReferenceIssue["code"],
-  status: CadSelectionReferenceIssue["status"],
-  message: string,
-  details: {
-    readonly expected?: string;
-    readonly received?: string;
-  } = {}
-): CadSelectionReferenceIssue {
   return {
-    code,
-    status,
-    message,
-    ...(details.expected ? { expected: details.expected } : {}),
-    ...(details.received ? { received: details.received } : {})
+    code: selectionIssueCodeFromViewportDiagnostic(diagnostic.code),
+    status: selectionStatusFromViewportStatus(diagnostic.status),
+    message: diagnostic.message,
+    ...(diagnostic.expected ? { expected: diagnostic.expected } : {}),
+    ...(diagnostic.received ? { received: diagnostic.received } : {})
   };
 }
 
@@ -530,20 +509,7 @@ function selectionIssueCodeFromViewportDiagnostic(
 function selectionStatusFromViewportStatus(
   status: CadViewportInteractionDiagnostic["status"]
 ): CadSelectionReferenceIssue["status"] {
-  switch (status) {
-    case "missing":
-      return "missing";
-    case "stale":
-      return "stale";
-    case "ambiguous":
-      return "ambiguous";
-    case "consumed":
-      return "consumed";
-    case "non-commandable":
-      return "non-commandable";
-    case "renderer-only":
-    case "assembly-unsupported":
-    case "unsupported":
-      return "unsupported";
-  }
+  return status === "renderer-only" || status === "assembly-unsupported"
+    ? "unsupported"
+    : status;
 }

@@ -9,12 +9,20 @@ import type {
   GeneratedReferenceMeasurement,
   Vec3
 } from "@web-cad/cad-protocol";
-import { formatBounds, type MeasurementDisplayRow } from "./sceneObjectDisplay";
+import {
+  formatBounds,
+  formatNumber,
+  formatPoint,
+  type MeasurementDisplayRow
+} from "./sceneObjectDisplay";
 import {
   formatViewportMeasurementAuthority,
   type ViewportMeasurementOverlay
 } from "./viewportMeasurementOverlay";
-import { redactInternalViewportIds } from "./viewportVisibleText";
+import {
+  dedupeDiagnostics,
+  redactInternalViewportIds
+} from "./viewportVisibleText";
 
 export type ViewportTwoTargetMeasurementSource =
   | "body.measurements"
@@ -795,49 +803,12 @@ function cleanTwoTargetDiagnostic(
   };
 }
 
-function dedupeDiagnostics(
-  diagnostics: readonly CadViewportTwoTargetMeasurementDiagnostic[]
-): readonly CadViewportTwoTargetMeasurementDiagnostic[] {
-  const seen = new Set<string>();
-  const deduped: CadViewportTwoTargetMeasurementDiagnostic[] = [];
-
-  for (const diagnostic of diagnostics) {
-    const key = `${diagnostic.code}:${diagnostic.status}:${diagnostic.message}`;
-
-    if (seen.has(key)) {
-      continue;
-    }
-
-    deduped.push(diagnostic);
-    seen.add(key);
-  }
-
-  return deduped;
-}
-
 function formatStatus(status: CadViewportInteractionStatus): string {
-  switch (status) {
-    case "resolved":
-      return "resolved";
-    case "empty":
-      return "missing";
-    case "missing":
-      return "missing";
-    case "stale":
-      return "stale";
-    case "unsupported":
-      return "unsupported";
-    case "ambiguous":
-      return "ambiguous";
-    case "consumed":
-      return "consumed";
-    case "non-commandable":
-      return "not available";
-    case "renderer-only":
-      return "renderer-only";
-    case "assembly-unsupported":
-      return "assembly-unsupported";
-  }
+  return status === "empty" || status === "missing"
+    ? "missing"
+    : status === "non-commandable"
+      ? "not available"
+      : status;
 }
 
 function midpoint(first: Vec3, second: Vec3): Vec3 {
@@ -894,16 +865,8 @@ function formatDistance(value: number, units: DocumentUnits): string {
   return `${formatNumber(value)} ${units}`;
 }
 
-function formatPoint(point: Vec3, units: DocumentUnits): string {
-  return point.map((value) => `${formatNumber(value)} ${units}`).join(", ");
-}
-
 function formatVector(vector: Vec3): string {
   return vector.map(formatNumber).join(", ");
-}
-
-function formatNumber(value: number): string {
-  return Number.isInteger(value) ? value.toString() : value.toFixed(2);
 }
 
 function clean(text: string): string {

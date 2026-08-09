@@ -32,7 +32,7 @@ describe("viewport visible text", () => {
     );
 
     expect(message).toBe(
-      "This source feature cannot be edited because a downstream result depends on it. Edit or repair that downstream feature before changing the original source."
+      "This feature cannot be edited because a downstream result depends on it."
     );
     expect(message).not.toMatch(/\b(feat_[a-z0-9_]+|body_[a-z0-9_]+)\b/i);
   });

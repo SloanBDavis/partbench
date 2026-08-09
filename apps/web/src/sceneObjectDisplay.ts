@@ -197,6 +197,13 @@ function formatVectorWithSuffix(
   return vector.map((value) => `${formatNumber(value)}${suffix}`).join(", ");
 }
 
-function formatNumber(value: number): string {
+export function formatPoint(
+  point: readonly [number, number, number],
+  units: string
+): string {
+  return point.map((value) => `${formatNumber(value)} ${units}`).join(", ");
+}
+
+export function formatNumber(value: number): string {
   return Number.isInteger(value) ? value.toString() : value.toFixed(2);
 }

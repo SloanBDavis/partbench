@@ -30,6 +30,7 @@ import type {
   CadBodyDerivedExactMetadataSnapshot,
   CadBodyGeneratedReferenceEvidenceSnapshot,
   CadBatchResponse,
+  CadCurrentTopologySelectionEvidence,
   CadCurrentExactResult,
   CadGeneratedFaceReference,
   FeatureShellOpenFaceRef,
@@ -380,13 +381,11 @@ import {
 import {
   reconcileViewportExactCandidateSession,
   updateViewportExactSelections,
-  canCycleViewportExactCandidate,
   getNextViewportExactCandidateIndex,
   type ViewportExactCandidateSession
 } from "./viewportExactSelectionSession";
 import {
   createViewportExactCandidateCommandability,
-  formatViewportExactCandidateAnnouncement,
   formatViewportExactCandidateRow
 } from "./viewportExactCandidateAnnouncement";
 import { resolveViewportHoverVisualState } from "./viewportHoverVisual";
@@ -1027,17 +1026,15 @@ function readReferenceHealth(): ReferenceHealthQueryResponse | undefined {
 }
 
 function readSelectionReferenceCandidates(
-  selection: CadSelectionReferenceInput | undefined
+  selection: CadSelectionReferenceInput | CadCurrentTopologySelectionEvidence
 ): SelectionReferenceCandidatesQueryResponse | undefined {
-  if (!selection) {
-    return undefined;
-  }
-
   const response = engine.executeQuery({
     version: "cadops.v1",
     query: {
       query: "selection.referenceCandidates",
-      selection
+      ...("type" in selection
+        ? { selection }
+        : { currentTopologyEvidence: selection })
     }
   });
 
@@ -1046,10 +1043,13 @@ function readSelectionReferenceCandidates(
     : undefined;
 }
 
-function readSelectionReferenceCandidatesForBody(
-  bodyId: string
-): SelectionReferenceCandidatesQueryResponse | undefined {
-  return readSelectionReferenceCandidates({ type: "body", bodyId });
+function readViewportReferenceCandidates(candidate: RenderExactPickCandidate) {
+  return candidate.entityKind === "body"
+    ? readSelectionReferenceCandidates({
+        type: "body",
+        bodyId: candidate.bodyId
+      })
+    : readSelectionReferenceCandidates(createViewportExactSelection(candidate));
 }
 
 function readTopologyCommandTargetReadiness(
@@ -5502,8 +5502,7 @@ export function App() {
   const viewportCandidateRows =
     viewportExactCandidateSession?.candidates.map((candidate, index) => {
       const commandability = createViewportExactCandidateCommandability(
-        candidate,
-        readSelectionReferenceCandidatesForBody
+        readViewportReferenceCandidates(candidate)
       );
       return formatViewportExactCandidateRow({
         index,
@@ -5516,25 +5515,8 @@ export function App() {
         commandability
       });
     }) ?? [];
-  const viewportExactCandidate =
-    viewportExactCandidateSession?.candidates[
-      viewportExactCandidateSession.index
-    ];
-  const viewportExactCandidateAnnouncement = viewportExactCandidate
-    ? formatViewportExactCandidateAnnouncement({
-        index: viewportExactCandidateSession!.index,
-        count: viewportExactCandidateSession!.candidates.length,
-        kindLabel: formatCadKindLabel(viewportExactCandidate.entityKind),
-        label:
-          projectStructure.bodies.find(
-            (body) => body.id === viewportExactCandidate.bodyId
-          )?.name ?? "Body",
-        occluded: viewportExactCandidate.occluded,
-        commandability: createViewportExactCandidateCommandability(
-          viewportExactCandidate,
-          readSelectionReferenceCandidatesForBody
-        )
-      })
+  const viewportExactCandidateAnnouncement = viewportExactCandidateSession
+    ? viewportCandidateRows[viewportExactCandidateSession.index]
     : undefined;
   const viewportExactVisualStates = useMemo(() => {
     const states = viewportExactSelections.map((selection) =>
@@ -5797,16 +5779,31 @@ export function App() {
     setViewportExactSelections((current) =>
       updateViewportExactSelections(current, candidate, additive)
     );
+    if (candidate.entityKind === "body") {
+      publishViewportPickIntent(
+        resolveViewportPickIntent({
+          pickedRenderId: candidate.bodyId,
+          bodies: projectStructure.bodies,
+          objects: sceneObjects,
+          sketches,
+          readReferenceCandidates: readSelectionReferenceCandidates
+        })
+      );
+      return;
+    }
+
+    const referenceCandidates = readViewportReferenceCandidates(candidate);
+    const target =
+      referenceCandidates?.status === "resolved"
+        ? referenceCandidates.candidates.find(
+            (candidate) => candidate.commandable
+          )?.target
+        : undefined;
     publishViewportPickIntent(
-      candidate.entityKind === "body"
-        ? resolveViewportPickIntent({
-            pickedRenderId: candidate.bodyId,
-            bodies: projectStructure.bodies,
-            objects: sceneObjects,
-            sketches,
-            readReferenceCandidates: readSelectionReferenceCandidates
-          })
-        : createViewportCurrentTopologyPickIntent(candidate)
+      createViewportCurrentTopologyPickIntent(candidate)
+    );
+    setSelectedGeneratedReference(
+      target?.type === "generatedReference" ? target : undefined
     );
   }
 
@@ -5825,7 +5822,6 @@ export function App() {
   }
 
   function cycleViewportExactCandidate() {
-    if (!canCycleViewportExactCandidate(viewportExactCandidateSession)) return;
     const next = getNextViewportExactCandidateIndex(
       viewportExactCandidateSession
     );
@@ -9571,7 +9567,7 @@ export function App() {
         !event.metaKey &&
         !isEditableKeyboardTarget(event.target) &&
         (workbenchUi.mode === "solid" || workbenchUi.mode === "inspect") &&
-        canCycleViewportExactCandidate(viewportExactCandidateSession)
+        getNextViewportExactCandidateIndex(viewportExactCandidateSession) >= 0
       ) {
         event.preventDefault();
         cycleViewportExactCandidate();

@@ -1,4 +1,5 @@
 import { parseSketchRenderId } from "./sketchRenderIds";
+import { createViewportBodyHitTarget } from "./viewportPickIntent";
 import type {
   ResolveViewportHoverIntentInput,
   ViewportHoverTone
@@ -24,19 +25,18 @@ export function resolveViewportHoverVisualState({
   readReferenceCandidates
 }: ResolveViewportHoverIntentInput): ViewportHoverVisualState {
   if (!hoveredRenderId) return { kind: "empty", tone: "idle" };
-  const body = bodies.find(({ id }) => id === hoveredRenderId);
-  const object = body
-    ? undefined
-    : objects.find(({ id }) => id === hoveredRenderId);
-  if (body || object) {
-    const targetBody =
-      body ?? bodies.find(({ objectId }) => objectId === object?.id);
-    const status = targetBody
-      ? readReferenceCandidates?.({ type: "body", bodyId: targetBody.id })
-          ?.status
-      : undefined;
+  const target = createViewportBodyHitTarget({
+    pickedRenderId: hoveredRenderId,
+    bodies,
+    objects
+  });
+  if (target.kind === "body" || target.kind === "object") {
+    const status = readReferenceCandidates?.({
+      type: "body",
+      bodyId: target.bodyId
+    })?.status;
     return {
-      kind: body ? "body" : "object",
+      kind: target.kind,
       tone:
         status === "resolved"
           ? "ready"
@@ -45,7 +45,7 @@ export function resolveViewportHoverVisualState({
             : status
               ? "blocked"
               : "idle",
-      renderTargetId: hoveredRenderId
+      renderTargetId: target.renderTargetId
     };
   }
   const sketchTarget = parseSketchRenderId(hoveredRenderId);

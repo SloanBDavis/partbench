@@ -15,7 +15,7 @@ import {
   getPrimarySelectionReferenceCandidate
 } from "./generatedReferenceSelection";
 import { formatObjectKind, getObjectDisplayName } from "./sceneObjectDisplay";
-import { formatVisibleDiagnosticMessage } from "./viewportVisibleText";
+import { dedupeVisibleDiagnostics } from "./viewportVisibleText";
 import { parseSketchRenderId } from "./sketchRenderIds";
 
 export type ViewportHoverTone = "idle" | "ready" | "warning" | "blocked";
@@ -221,11 +221,7 @@ export function resolveViewportHoverIntent({
         createViewportHoverIssue(
           "UNSUPPORTED_SELECTION_TARGET",
           "unsupported",
-          "Sketch display geometry is not available as a CAD body from the viewport.",
-          {
-            expected: "body or object-backed body",
-            received: "sketch display geometry"
-          }
+          "Sketch display geometry is not available as a CAD body from the viewport."
         )
       ]
     );
@@ -239,10 +235,7 @@ export function resolveViewportHoverIntent({
       createViewportHoverIssue(
         "MISSING_SELECTION_TARGET",
         "missing",
-        "Viewport hover target did not resolve to a current CAD body or object.",
-        {
-          expected: "current body or object-backed body"
-        }
+        "Viewport hover target did not resolve to a current CAD body or object."
       )
     ]
   );
@@ -306,19 +299,9 @@ function createReferenceHoverSummary(
 function createViewportHoverIssue(
   code: CadSelectionReferenceIssue["code"],
   status: CadSelectionReferenceIssue["status"],
-  message: string,
-  details: {
-    readonly expected?: string;
-    readonly received?: string;
-  } = {}
+  message: string
 ): CadSelectionReferenceIssue {
-  return {
-    code,
-    status,
-    message,
-    ...(details.expected ? { expected: details.expected } : {}),
-    ...(details.received ? { received: details.received } : {})
-  };
+  return { code, status, message };
 }
 
 function toneFromReferenceStatus(
@@ -338,22 +321,5 @@ function toneFromReferenceStatus(
 function dedupeDiagnostics(
   issues: readonly CadSelectionReferenceIssue[]
 ): readonly ViewportHoverDiagnostic[] {
-  const diagnostics: ViewportHoverDiagnostic[] = [];
-  const seen = new Set<string>();
-
-  for (const issue of issues) {
-    const diagnostic = {
-      code: issue.code,
-      status: issue.status,
-      message: formatVisibleDiagnosticMessage(issue.message)
-    };
-    const key = `${diagnostic.code}:${diagnostic.status}:${diagnostic.message}`;
-
-    if (!seen.has(key)) {
-      diagnostics.push(diagnostic);
-      seen.add(key);
-    }
-  }
-
-  return diagnostics;
+  return dedupeVisibleDiagnostics(issues);
 }

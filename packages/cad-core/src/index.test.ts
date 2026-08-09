@@ -6605,6 +6605,35 @@ describe("cad-core", () => {
       localId: "snapshot-local:face:2",
       entitySignature: "raw-occt-face-signature"
     } as const;
+    const identity = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.topologyIdentity", bodyId: evidence.bodyId }
+    });
+    const generatedSignature =
+      identity.ok && identity.query === "body.topologyIdentity"
+        ? identity.candidates.find(
+            ({ stableId }) => stableId === "generated:face:body_rect_1:endCap"
+          )?.geometrySignature
+        : undefined;
+    if (!generatedSignature)
+      throw new Error("Missing generated face signature.");
+    const vertexSignature =
+      identity.ok && identity.query === "body.topologyIdentity"
+        ? identity.candidates.find(
+            ({ stableId }) =>
+              stableId === "generated:vertex:body_rect_1:end:uMin:vMin"
+          )?.geometrySignature
+        : undefined;
+    if (!vertexSignature)
+      throw new Error("Missing generated vertex signature.");
+    const edgeSignature =
+      identity.ok && identity.query === "body.topologyIdentity"
+        ? identity.candidates.find(
+            ({ stableId }) =>
+              stableId === "generated:edge:body_rect_1:longitudinal:uMin:vMin"
+          )?.geometrySignature
+        : undefined;
+    if (!edgeSignature) throw new Error("Missing generated edge signature.");
     const match = (
       stableId: string,
       state: CadTopologyMatchResult["state"] = "active"
@@ -6626,6 +6655,16 @@ describe("cad-core", () => {
         currentTopologyEvidence: evidence,
         requiredOperation: "feature.attachSketchPlane",
         topologyMatchResults: [match("generated:face:body_rect_1:endCap")]
+      }
+    });
+    const generatedBySignature = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "selection.referenceCandidates",
+        currentTopologyEvidence: {
+          ...evidence,
+          entitySignature: generatedSignature
+        }
       }
     });
     const inspectOnly = engine.executeQuery({
@@ -6675,18 +6714,27 @@ describe("cad-core", () => {
         "body_cut"
       )
     };
+    const promotionIdentity = promotionEngine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.topologyIdentity", bodyId: "body_cut" }
+    });
+    const promotionSignature =
+      promotionIdentity.ok &&
+      promotionIdentity.query === "body.topologyIdentity"
+        ? promotionIdentity.candidates.find(
+            ({ stableId }) => stableId === "generated:face:body_cut:side:uMin"
+          )?.geometrySignature
+        : undefined;
+    if (!promotionSignature) throw new Error("Missing promotion signature.");
     const promotable = promotionEngine.executeQuery({
       version: "cadops.v1",
       query: {
         query: "selection.referenceCandidates",
-        currentTopologyEvidence: promotionEvidence,
-        requiredOperation: "feature.attachSketchPlane",
-        topologyMatchResults: [
-          {
-            ...match("generated:face:body_cut:side:uMin"),
-            candidateCheckpointEntityId: promotionEvidence.localId
-          }
-        ]
+        currentTopologyEvidence: {
+          ...promotionEvidence,
+          entitySignature: promotionSignature
+        },
+        requiredOperation: "feature.attachSketchPlane"
       }
     });
     const generatedVertex = engine.executeQuery({
@@ -6697,18 +6745,86 @@ describe("cad-core", () => {
           ...evidence,
           entityKind: "vertex",
           localId: "snapshot-local:vertex:1",
-          entitySignature: "raw-occt-vertex-signature"
+          entitySignature: vertexSignature
         },
-        requiredOperation: "reference.nameGenerated",
-        topologyMatchResults: [
-          {
-            ...match("generated:vertex:body_rect_1:end:uMin:vMin"),
-            candidateCheckpointEntityId: "snapshot-local:vertex:1",
-            entityKind: "vertex"
-          }
-        ]
+        requiredOperation: "reference.nameGenerated"
       }
     });
+    const operations = [
+      "reference.nameGenerated",
+      "feature.extrudeCutTarget",
+      "feature.extrudeAddTarget",
+      "feature.holeTarget",
+      "feature.attachSketchPlane",
+      "feature.chamfer",
+      "feature.fillet",
+      "feature.shell",
+      "feature.linearPatternDirection",
+      "feature.circularPatternAxis",
+      "feature.mirrorPlane",
+      "feature.measureReference",
+      "feature.selectReference"
+    ] as const;
+    for (const reference of [
+      {
+        kind: "face" as const,
+        stableId: "generated:face:body_rect_1:endCap",
+        localId: "snapshot-local:face:2",
+        entitySignature: generatedSignature
+      },
+      {
+        kind: "edge" as const,
+        stableId: "generated:edge:body_rect_1:longitudinal:uMin:vMin",
+        localId: "snapshot-local:edge:1",
+        entitySignature: edgeSignature
+      },
+      {
+        kind: "vertex" as const,
+        stableId: "generated:vertex:body_rect_1:end:uMin:vMin",
+        localId: "snapshot-local:vertex:1",
+        entitySignature: vertexSignature
+      }
+    ]) {
+      for (const requiredOperation of operations) {
+        const current = engine.executeQuery({
+          version: "cadops.v1",
+          query: {
+            query: "selection.referenceCandidates",
+            currentTopologyEvidence: {
+              ...evidence,
+              entityKind: reference.kind,
+              localId: reference.localId,
+              entitySignature: reference.entitySignature
+            },
+            requiredOperation
+          }
+        });
+        const durable = engine.executeQuery({
+          version: "cadops.v1",
+          query: {
+            query: "selection.referenceCandidates",
+            selection: {
+              type: "generatedReference",
+              bodyId: evidence.bodyId,
+              stableId: reference.stableId,
+              expectedKind: reference.kind
+            },
+            requiredOperation
+          }
+        });
+        if (
+          !current.ok ||
+          current.query !== "selection.referenceCandidates" ||
+          !durable.ok ||
+          durable.query !== "selection.referenceCandidates"
+        ) {
+          throw new Error("Expected selection candidate responses.");
+        }
+        expect(current.status).toBe(durable.status);
+        expect(current.candidates).toEqual(durable.candidates);
+        expect(current.issues).toEqual(durable.issues);
+      }
+    }
 
     expect(generated).toMatchObject({
       ok: true,
@@ -6736,6 +6852,10 @@ describe("cad-core", () => {
       currentTopology: { outcome: "inspectOnly" },
       candidateCount: 0
     });
+    expect(generatedBySignature).toMatchObject({
+      status: "resolved",
+      currentTopology: { outcome: "existingGeneratedMatch" }
+    });
     expect(stale).toMatchObject({
       status: "stale",
       currentTopology: { outcome: "stale" }
@@ -6758,6 +6878,7 @@ describe("cad-core", () => {
     expect(
       JSON.stringify({
         generated,
+        generatedBySignature,
         inspectOnly,
         stale,
         ambiguous,
@@ -6825,7 +6946,9 @@ describe("cad-core", () => {
         selection: { type: "body", bodyId: "body_rect_1" },
         currentTopologyEvidence: evidence
       },
-      { currentTopologyEvidence: { ...evidence, triangleIndex: 1 } }
+      { currentTopologyEvidence: { ...evidence, triangleIndex: 1 } },
+      { currentTopologyEvidence: evidence, rendererHitId: "private" },
+      { selection: undefined, currentTopologyEvidence: evidence }
     ];
 
     for (const fields of invalid) {

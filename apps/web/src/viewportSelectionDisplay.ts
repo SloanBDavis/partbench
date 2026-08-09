@@ -20,7 +20,10 @@ import {
 } from "./generatedReferenceSelection";
 import { formatObjectKind, getObjectDisplayName } from "./sceneObjectDisplay";
 import type { ViewportPickIntent } from "./viewportPickIntent";
-import { formatVisibleDiagnosticMessage } from "./viewportVisibleText";
+import {
+  dedupeVisibleDiagnostics,
+  formatVisibleDiagnosticMessage
+} from "./viewportVisibleText";
 
 export type ViewportSelectionKind =
   | "none"
@@ -313,10 +316,7 @@ function createReferenceCandidateDisplay(
   const diagnosticDetail = diagnostics[0]?.message;
 
   return {
-    detail:
-      response.status === "resolved"
-        ? formatSelectionReferenceStatus(response.status)
-        : (diagnosticDetail ?? formatSelectionReferenceStatus(response.status)),
+    detail: diagnosticDetail ?? formatSelectionReferenceStatus(response.status),
     tone: primary?.tone ?? toneFromReferenceStatus(response.status),
     referenceStatus: response.status,
     referenceSummary: primary?.title,
@@ -400,22 +400,5 @@ function toneFromGeometryStatus(
 function dedupeDiagnostics(
   issues: readonly (CadSelectionReferenceIssue | ViewportSelectionDiagnostic)[]
 ): readonly ViewportSelectionDiagnostic[] {
-  const diagnostics: ViewportSelectionDiagnostic[] = [];
-  const seen = new Set<string>();
-
-  for (const issue of issues) {
-    const diagnostic = {
-      code: issue.code,
-      status: issue.status,
-      message: formatVisibleDiagnosticMessage(issue.message)
-    };
-    const key = `${diagnostic.code}:${diagnostic.status}:${diagnostic.message}`;
-
-    if (!seen.has(key)) {
-      diagnostics.push(diagnostic);
-      seen.add(key);
-    }
-  }
-
-  return diagnostics;
+  return dedupeVisibleDiagnostics(issues);
 }

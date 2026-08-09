@@ -15,6 +15,8 @@ import type { SketchCreateOnFaceForm } from "./cadCommands";
 import {
   formatArea,
   formatBounds,
+  formatNumber,
+  formatPoint,
   formatVector,
   formatVolume
 } from "./sceneObjectDisplay";
@@ -549,17 +551,6 @@ function optionalPointRow(
   return value ? [{ label, value: formatPoint(value, units) }] : [];
 }
 
-function formatPoint(
-  point: readonly [number, number, number],
-  units: DocumentUnits
-): string {
-  return point.map((value) => `${formatNumber(value)} ${units}`).join(", ");
-}
-
 function formatLength(value: number, units: DocumentUnits): string {
   return `${formatNumber(value)} ${units}`;
-}
-
-function formatNumber(value: number): string {
-  return Number.isInteger(value) ? value.toString() : value.toFixed(2);
 }

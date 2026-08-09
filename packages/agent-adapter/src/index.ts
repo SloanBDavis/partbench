@@ -3913,7 +3913,7 @@ function toAgentQueryResponse(
       adapterVersion: request.adapterVersion,
       cadOpsVersion: response.cadOpsVersion,
       query: response.query,
-      selection: response.selection,
+      selection: response.selection!,
       ...(response.requiredOperation
         ? { requiredOperation: response.requiredOperation }
         : {}),

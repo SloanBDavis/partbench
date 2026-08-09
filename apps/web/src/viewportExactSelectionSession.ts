@@ -69,12 +69,6 @@ function sameCandidates(
   );
 }
 
-export function canCycleViewportExactCandidate(
-  session: ViewportExactCandidateSession | undefined
-): boolean {
-  return session ? session.candidates.length > 1 : false;
-}
-
 export function getNextViewportExactCandidateIndex(
   session: ViewportExactCandidateSession | undefined
 ): number {

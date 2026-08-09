@@ -5,90 +5,93 @@ export function redactInternalViewportIds(text: string): string {
   return text.replace(INTERNAL_RENDER_ID_PATTERN, "internal render target");
 }
 
-const INTERNAL_DIAGNOSTIC_COPY_REPLACEMENTS: readonly [RegExp, string][] = [
-  [
-    /\bFeature\s+\S+\s+cannot be edited safely because downstream result body\s+\S+\s+is consumed by feature\s+\S+\.\s+Edit or repair that downstream feature before changing the original source\./gi,
-    "This source feature cannot be edited because a downstream result depends on it. Edit or repair that downstream feature before changing the original source."
-  ],
-  [
-    /\bFeature\s+\S+\s+cannot be edited safely because body\s+\S+\s+is consumed by feature\s+\S+\./gi,
-    "This feature cannot be edited because its result already has a downstream result."
-  ],
-  [
-    /\bFeature\s+\S+\s+cannot be edited safely through\s+\S+\s+because result body\s+\S+\s+is consumed by feature\s+\S+\./gi,
-    "This feature cannot be edited because its result already has a downstream result."
-  ],
-  [
-    /\bFeature\s+\S+\s+cannot be edited through\s+\S+\s+because downstream result body\s+\S+\s+is consumed by feature\s+\S+\./gi,
-    "This feature cannot be edited because a downstream result depends on it."
-  ],
-  [
-    /\bFeature\s+\S+\s+cannot be edited through\s+\S+\s+because its result body\s+\S+\s+is consumed by feature\s+\S+\./gi,
-    "This feature cannot be edited because its result already has a downstream result."
-  ],
-  [
-    /\bSelected body\s+\S+\s+is consumed by feature\s+\S+\./gi,
-    "Selected body already has a downstream result."
-  ],
-  [
-    /\bSelected body is consumed by feature\s+\S+\./gi,
-    "Selected body already has a downstream result."
-  ],
-  [
-    /\bBody\s+\S+\s+was consumed by\s+\S+\./gi,
-    "Selected body already has a downstream result."
-  ],
-  [
-    /\bBody\s+\S+\s+does not expose stable command-ready generated references yet\./gi,
-    "This solid is complete, but its faces and edges are not available to downstream modeling tools."
-  ],
-  [
-    /\bdoes not expose command-ready semantic generated references\b/gi,
-    "does not expose saved faces or edges for modeling actions"
-  ],
-  [
-    /\bSelect a command-ready result face or edge\b/g,
-    "Select a ready result face or edge"
-  ],
-  [
-    /\bselect a command-ready result face or edge\b/g,
-    "select a ready result face or edge"
-  ],
-  [/\bcommand-ready CAD body\b/gi, "CAD body available for modeling"],
-  [/\bcommand-ready generated-reference targets\b/gi, "ready saved references"],
-  [/\bcommand-ready generated references\b/gi, "ready saved references"],
-  [/\bcommand-ready references\b/gi, "ready references"],
-  [/\bcommand-ready reference\b/gi, "ready reference"],
-  [/\bcommand-ready\b/gi, "ready"],
-  [/\bcad-core\b/gi, "modeling engine"],
-  [
-    /\bGeometry worker response does not contain an exact topology checkpoint payload\b/gi,
-    "Display geometry evidence is incomplete"
-  ],
-  [/\bGeometry worker\b/gi, "Display geometry engine"],
-  [/\bexact topology checkpoint payloads?\b/gi, "saved exact-shape data"],
-  [/\bcheckpoint[- ]payloads?\b/gi, "saved topology data"],
-  [/\bcheckpoint-local\b/gi, "internal topology"],
-  [/\bcheckpointEntityId\b/gi, "internal topology id"],
-  [/\bpackage[- ]contract\b/gi, "project file format"],
-  [/\bOCCT[- /]WASM\b/gi, "exact geometry runtime"],
-  [/\bOCCT[- ]mesh\b/gi, "display geometry"],
-  [/\bOCCT\b/gi, "exact geometry"],
-  [/\bWASM\b/gi, "geometry runtime"],
-  [/\bdeferred\b/gi, "not ready yet"],
-  [/\btranche\b/gi, "release step"],
-  [/\bmilestone\b/gi, "release step"],
-  [/\bdebug\b/gi, "diagnostic"]
-];
+const INTERNAL_DIAGNOSTIC_TERMS: Record<string, string> = {
+  "command ready": "ready",
+  "command ready cad body": "CAD body available for modeling",
+  "command ready generated reference targets": "ready saved references",
+  "command ready generated references": "ready saved references",
+  "cad core": "modeling engine",
+  "geometry worker response does not contain an exact topology checkpoint payload":
+    "Display geometry evidence is incomplete",
+  "geometry worker": "Display geometry engine",
+  "exact topology checkpoint payload": "saved exact-shape data",
+  "checkpoint payload": "saved topology data",
+  "checkpoint local": "internal topology",
+  checkpointentityid: "internal topology id",
+  "package contract": "project file format",
+  "occt wasm": "exact geometry runtime",
+  "occt mesh": "display geometry",
+  occt: "exact geometry",
+  wasm: "geometry runtime",
+  deferred: "not ready yet",
+  tranche: "release step",
+  milestone: "release step",
+  debug: "diagnostic"
+};
+
+const INTERNAL_DIAGNOSTIC_TERM_PATTERN =
+  /\b(?:Geometry worker response does not contain an exact topology checkpoint payload|command-ready generated(?:-reference targets| references)|command-ready CAD body|Geometry worker|exact topology checkpoint payloads?|checkpoint[- ]payloads?|checkpoint-local|checkpointEntityId|package[- ]contract|OCCT[- /]WASM|OCCT[- ]mesh|command-ready|cad-core|OCCT|WASM|deferred|tranche|milestone|debug)\b/gi;
 
 export function formatVisibleDiagnosticMessage(message: string): string {
   return collapseRepeatedInternalRenderTargetLabels(
-    INTERNAL_DIAGNOSTIC_COPY_REPLACEMENTS.reduce(
-      (formatted, [pattern, replacement]) =>
-        formatted.replace(pattern, replacement),
-      redactInternalViewportIds(message)
-    )
+    redactInternalViewportIds(message)
+      .replace(
+        /\bFeature\s+\S+\s+cannot be edited(?: safely)?(?: through\s+\S+)? because (?:downstream |its )?(?:result )?body\s+\S+\s+is consumed by feature\s+\S+\.(?:\s+Edit or repair that downstream feature before changing the original source\.)?/gi,
+        "This feature cannot be edited because a downstream result depends on it."
+      )
+      .replace(
+        /\b(?:Selected body(?:\s+\S+)? is consumed by feature|Body\s+\S+\s+was consumed by)\s+\S+\./gi,
+        "Selected body already has a downstream result."
+      )
+      .replace(
+        /\bBody\s+\S+\s+does not expose stable command-ready generated references yet\./gi,
+        "This solid is complete, but its faces and edges are not available to downstream modeling tools."
+      )
+      .replace(
+        INTERNAL_DIAGNOSTIC_TERM_PATTERN,
+        (term) =>
+          INTERNAL_DIAGNOSTIC_TERMS[
+            term
+              .toLowerCase()
+              .replace(/[-/]/g, " ")
+              .replace("payloads", "payload")
+          ] ?? term
+      )
   );
+}
+
+export function dedupeVisibleDiagnostics<
+  T extends {
+    readonly code: string;
+    readonly status: string;
+    readonly message: string;
+  }
+>(
+  diagnostics: readonly T[]
+): readonly Pick<T, "code" | "status" | "message">[] {
+  return dedupeDiagnostics(
+    diagnostics.map((diagnostic) => ({
+      code: diagnostic.code,
+      status: diagnostic.status,
+      message: formatVisibleDiagnosticMessage(diagnostic.message)
+    }))
+  );
+}
+
+export function dedupeDiagnostics<
+  T extends {
+    readonly code: string;
+    readonly status: string;
+    readonly message: string;
+  }
+>(diagnostics: readonly T[]): readonly T[] {
+  const seen = new Set<string>();
+  return diagnostics.flatMap((diagnostic) => {
+    const key = `${diagnostic.code}:${diagnostic.status}:${diagnostic.message}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [diagnostic];
+  });
 }
 
 function collapseRepeatedInternalRenderTargetLabels(text: string): string {
