@@ -35,11 +35,6 @@ import type {
   SolidEditorSubmission
 } from "./solidEditorTypes";
 
-/**
- * The small portion of the current sketch selection that a legacy
- * sketch-entity feature builder needs.  It intentionally contains no render
- * IDs or geometry handles.
- */
 export interface SolidSelectedSketchEntityContext {
   readonly sketchId: string;
   readonly entityId: string;
@@ -55,11 +50,8 @@ export interface ExactFeaturePreviewPlanInput {
 
 export interface ExactFeaturePreviewSupportedPlan {
   readonly status: "supported";
-  /** The one immutable operation batch shared by preview and Apply. */
   readonly ops: readonly CadOp[];
-  /** The body whose exact result is affected by this operation, when known. */
   readonly affectedBodyId?: string;
-  /** Alias kept explicit for preview consumers that call this the result body. */
   readonly resultBodyId?: string;
   readonly requiresExactDownstreamCommitPreflight: boolean;
 }
@@ -72,6 +64,8 @@ export interface ExactFeaturePreviewUnsupportedPlan {
 export type ExactFeaturePreviewPlan =
   | ExactFeaturePreviewSupportedPlan
   | ExactFeaturePreviewUnsupportedPlan;
+
+type Feature<K extends CadFeatureSummary["kind"]> = Extract<CadFeatureSummary, { readonly kind: K }>;
 
 const EXACT_DOWNSTREAM_OPS = new Set<CadOp["op"]>([
   "feature.hole",
@@ -86,42 +80,31 @@ const EXACT_DOWNSTREAM_OPS = new Set<CadOp["op"]>([
   "feature.updateShell"
 ]);
 
+const EXPECTED_FEATURE_KIND: Partial<
+  Record<SolidEditorKind, CadFeatureSummary["kind"]>
+> = {
+  extrude: "extrude",
+  compositeExtrude: "extrude",
+  revolve: "revolve",
+  compositeRevolve: "revolve",
+  sweep: "sweep",
+  compositeSweep: "sweep",
+  loft: "loft",
+  hole: "hole",
+  chamfer: "chamfer",
+  fillet: "fillet",
+  shell: "shell",
+  linearPattern: "linearPattern",
+  circularPattern: "circularPattern",
+  mirror: "mirror"
+};
+
 function unsupported(reason: string): ExactFeaturePreviewUnsupportedPlan {
   return { status: "unsupported", reason };
 }
 
-function expectedFeatureKind(
-  kind: SolidEditorKind
-): CadFeatureSummary["kind"] | undefined {
-  switch (kind) {
-    case "extrude":
-    case "compositeExtrude":
-      return "extrude";
-    case "revolve":
-    case "compositeRevolve":
-      return "revolve";
-    case "sweep":
-    case "compositeSweep":
-      return "sweep";
-    case "loft":
-      return "loft";
-    case "hole":
-    case "chamfer":
-    case "fillet":
-    case "shell":
-    case "linearPattern":
-    case "circularPattern":
-    case "mirror":
-      return kind;
-    default:
-      return undefined;
-  }
-}
-
 function bodyIdFromOp(op: CadOp): string | undefined {
-  return "bodyId" in op && typeof op.bodyId === "string"
-    ? op.bodyId
-    : undefined;
+  return "bodyId" in op && typeof op.bodyId === "string" ? op.bodyId : undefined;
 }
 
 function supported(
@@ -142,15 +125,9 @@ function requireSketchEntity(
   expectedKind?: string
 ): SolidSelectedSketchEntityContext | ExactFeaturePreviewUnsupportedPlan {
   if (!context?.sketchId || !context.entityId) {
-    return unsupported(
-      "Select a supported sketch entity before creating this feature."
-    );
+    return unsupported("Select a supported sketch entity before creating this feature.");
   }
-  if (
-    expectedKind &&
-    context.entityKind &&
-    context.entityKind !== expectedKind
-  ) {
+  if (expectedKind && context.entityKind && context.entityKind !== expectedKind) {
     return unsupported(
       `This feature requires a sketch ${expectedKind}; the selected entity is ${context.entityKind}.`
     );
@@ -161,30 +138,18 @@ function requireSketchEntity(
 function requireExistingFeature<K extends CadFeatureSummary["kind"]>(
   input: ExactFeaturePreviewPlanInput,
   expectedKind: K
-):
-  | Extract<CadFeatureSummary, { readonly kind: K }>
-  | ExactFeaturePreviewUnsupportedPlan {
-  const feature = input.existingFeature;
+): Extract<CadFeatureSummary, { readonly kind: K }> | ExactFeaturePreviewUnsupportedPlan {
+  const { existingFeature: feature, submission: { draft } } = input;
   if (!feature) {
-    return unsupported(
-      "This preview is an edit, but its current feature is unavailable."
-    );
+    return unsupported("This preview is an edit, but its current feature is unavailable.");
   }
   if (feature.kind !== expectedKind) {
     return unsupported(
       `The editor is for ${expectedKind}, but the current feature is ${feature.kind}.`
     );
   }
-
-  const draft = input.submission.draft;
-  if (
-    "id" in draft &&
-    typeof draft.id === "string" &&
-    draft.id !== feature.id
-  ) {
-    return unsupported(
-      "The editor draft targets a different feature than the current document."
-    );
+  if ("id" in draft && typeof draft.id === "string" && draft.id !== feature.id) {
+    return unsupported("The editor draft targets a different feature than the current document.");
   }
   if (
     "bodyId" in draft &&
@@ -209,357 +174,246 @@ function isUnsupported(
   );
 }
 
-function sameExtrudeTarget(
-  draft: Extract<
-    SolidEditorSubmission["draft"],
-    { readonly operationMode: string }
-  >,
-  feature: Extract<CadFeatureSummary, { readonly kind: "extrude" }>
-): boolean {
-  return (
-    draft.operationMode === feature.operationMode &&
-    draft.targetBodyId === feature.targetBodyId &&
-    draft.targetTopologyAnchorId === feature.targetTopologyAnchorId
-  );
+function sameFields<D extends object, F extends object, K extends keyof D & keyof F>(draft: D, feature: F, ...keys: readonly K[]): boolean {
+  return keys.every((key) => (draft[key] as unknown) === feature[key]);
 }
 
-function sameRevolveAxis(
-  draft: Extract<
-    SolidEditorSubmission["draft"],
-    { readonly axisEntityId: string }
-  >,
-  feature: Extract<CadFeatureSummary, { readonly kind: "revolve" }>
-): boolean {
-  return draft.axisEntityId === feature.axis.entityId;
-}
-
-function sameSeedBody(
-  draft: Extract<
-    SolidEditorSubmission["draft"],
-    { readonly seedBodyId: string }
-  >,
-  feature:
-    | Extract<CadFeatureSummary, { readonly kind: "linearPattern" }>
-    | Extract<CadFeatureSummary, { readonly kind: "mirror" }>
-): boolean {
-  return draft.seedBodyId === feature.seedBodyId;
-}
-
-function sameShellTarget(
-  draft: Extract<
-    SolidEditorSubmission["draft"],
-    { readonly targetBodyId: string }
-  >,
-  feature: Extract<CadFeatureSummary, { readonly kind: "shell" }>
-): boolean {
-  return draft.targetBodyId === feature.targetBodyId;
-}
-
-/**
- * Builds the single existing CADOps batch used by both transient preview and
- * the eventual Apply.  This function is intentionally pure: it does not
- * validate or execute geometry and never allocates IDs.
- */
 export function planExactFeaturePreview(
   input: ExactFeaturePreviewPlanInput
 ): ExactFeaturePreviewPlan {
-  if (input.request.kind !== input.submission.kind) {
+  const { request, submission, existingFeature, selectedSketchEntityContext: selectedContext } = input;
+  const { kind, draft } = submission;
+  if (request.kind !== kind) {
     return unsupported(
       "The editor request and submitted draft describe different feature kinds."
     );
   }
 
-  const kind = input.submission.kind;
-  if (!expectedFeatureKind(kind)) {
+  const expectedKind = EXPECTED_FEATURE_KIND[kind];
+  if (!expectedKind) {
     return unsupported(
       "Preview is not supported for primitives, sketches, transforms, imports, or lifecycle operations."
     );
   }
 
-  const edit =
-    (input.request.mode ?? (input.existingFeature ? "edit" : "create")) ===
-    "edit";
+  const edit = (request.mode ?? (existingFeature ? "edit" : "create")) === "edit";
   if (edit) {
-    switch (input.submission.kind) {
-      case "extrude": {
-        const feature = requireExistingFeature(input, "extrude");
-        if (isUnsupported(feature)) return feature;
-        if (!sameExtrudeTarget(input.submission.draft, feature)) {
-          return unsupported(
-            "The V17 command matrix does not support changing an extrude boolean target."
-          );
-        }
-        return supported(
-          buildFeatureUpdateExtrudeOp(
-            feature.id,
-            input.submission.draft.depth,
-            input.submission.draft.side
-          ),
-          feature.bodyId
-        );
-      }
+    if (kind === "sweep") {
+      return unsupported("Sweep updates require the existing composite sweep editor.");
+    }
+    const current = requireExistingFeature(input, expectedKind);
+    if (isUnsupported(current)) return current;
+
+    switch (kind) {
+      case "extrude":
       case "compositeExtrude": {
-        const feature = requireExistingFeature(input, "extrude");
-        if (isUnsupported(feature)) return feature;
-        if (!sameExtrudeTarget(input.submission.draft, feature)) {
+        const feature = current as Feature<"extrude">;
+        if (
+          !sameFields(
+            draft,
+            feature,
+            "operationMode",
+            "targetBodyId",
+            "targetTopologyAnchorId"
+          )
+        ) {
           return unsupported(
             "The V17 command matrix does not support changing an extrude boolean target."
           );
         }
         return supported(
-          buildFeatureUpdateCompositeExtrudeOp(
-            feature.id,
-            input.submission.draft.profile,
-            input.submission.draft.depth,
-            input.submission.draft.side
-          ),
+          kind === "compositeExtrude"
+            ? buildFeatureUpdateCompositeExtrudeOp(
+                feature.id,
+                draft.profile,
+                draft.depth,
+                draft.side
+              )
+            : buildFeatureUpdateExtrudeOp(feature.id, draft.depth, draft.side),
           feature.bodyId
         );
       }
-      case "revolve": {
-        const feature = requireExistingFeature(input, "revolve");
-        if (isUnsupported(feature)) return feature;
-        if (!sameRevolveAxis(input.submission.draft, feature)) {
-          return unsupported(
-            "The V17 command matrix does not support changing a revolve axis."
-          );
-        }
-        return supported(
-          buildFeatureUpdateRevolveOp(
-            feature.id,
-            input.submission.draft.angleDegrees
-          ),
-          feature.bodyId
-        );
-      }
+      case "revolve":
       case "compositeRevolve": {
-        const feature = requireExistingFeature(input, "revolve");
-        if (isUnsupported(feature)) return feature;
-        if (!sameRevolveAxis(input.submission.draft, feature)) {
+        const feature = current as Feature<"revolve">;
+        if (draft.axisEntityId !== feature.axis.entityId) {
           return unsupported(
             "The V17 command matrix does not support changing a revolve axis."
           );
         }
         return supported(
-          buildFeatureUpdateCompositeRevolveOp(
-            feature.id,
-            input.submission.draft.profile,
-            input.submission.draft.angleDegrees
-          ),
+          kind === "compositeRevolve"
+            ? buildFeatureUpdateCompositeRevolveOp(
+                feature.id,
+                draft.profile,
+                draft.angleDegrees
+              )
+            : buildFeatureUpdateRevolveOp(feature.id, draft.angleDegrees),
           feature.bodyId
         );
       }
       case "hole": {
-        const feature = requireExistingFeature(input, "hole");
-        if (isUnsupported(feature)) return feature;
-        const targetChanged =
-          input.submission.draft.targetBodyId !== feature.targetBodyId ||
-          input.submission.draft.targetTopologyAnchorId !==
-            feature.targetTopologyAnchorId;
+        const feature = current as Feature<"hole">;
+        const targetChanged = !sameFields(
+          draft,
+          feature,
+          "targetBodyId",
+          "targetTopologyAnchorId"
+        );
         return supported(
           buildFeatureUpdateHoleOp(
             feature.id,
-            input.submission.draft.depthMode,
-            input.submission.draft.depthMode === "blind"
-              ? input.submission.draft.depth
-              : undefined,
-            input.submission.draft.direction,
+            draft.depthMode,
+            draft.depthMode === "blind" ? draft.depth : undefined,
+            draft.direction,
             targetChanged
               ? {
-                  targetBodyId: input.submission.draft.targetBodyId,
-                  targetTopologyAnchorId:
-                    input.submission.draft.targetTopologyAnchorId
+                  targetBodyId: draft.targetBodyId,
+                  targetTopologyAnchorId: draft.targetTopologyAnchorId
                 }
               : undefined
           ),
           feature.bodyId
         );
       }
-      case "chamfer": {
-        const feature = requireExistingFeature(input, "chamfer");
-        if (isUnsupported(feature)) return feature;
-        return supported(
-          buildFeatureUpdateChamferOp(
-            feature.id,
-            input.submission.draft.distance
-          ),
-          feature.bodyId
-        );
-      }
+      case "chamfer":
       case "fillet": {
-        const feature = requireExistingFeature(input, "fillet");
-        if (isUnsupported(feature)) return feature;
+        const feature = current as Feature<"chamfer" | "fillet">;
         return supported(
-          buildFeatureUpdateFilletOp(feature.id, input.submission.draft.radius),
+          kind === "chamfer"
+            ? buildFeatureUpdateChamferOp(feature.id, draft.distance)
+            : buildFeatureUpdateFilletOp(feature.id, draft.radius),
           feature.bodyId
         );
       }
-      case "linearPattern": {
-        const feature = requireExistingFeature(input, "linearPattern");
-        if (isUnsupported(feature)) return feature;
-        if (!sameSeedBody(input.submission.draft, feature)) {
-          return unsupported(
-            "The pattern update command does not change its seed body."
-          );
-        }
-        return supported(
-          buildFeatureUpdateLinearPatternOp(feature.id, {
-            direction: input.submission.draft.direction,
-            spacing: input.submission.draft.spacing,
-            instanceCount: input.submission.draft.instanceCount
-          }),
-          feature.bodyId
-        );
-      }
+      case "linearPattern":
       case "circularPattern": {
-        const feature = requireExistingFeature(input, "circularPattern");
-        if (isUnsupported(feature)) return feature;
-        if (input.submission.draft.seedBodyId !== feature.seedBodyId) {
+        const feature = current as Feature<"linearPattern" | "circularPattern">;
+        if (!sameFields(draft, feature, "seedBodyId")) {
           return unsupported(
             "The pattern update command does not change its seed body."
           );
         }
         return supported(
-          buildFeatureUpdateCircularPatternOp(feature.id, {
-            rotationAxis: input.submission.draft.rotationAxis,
-            totalAngleDegrees: input.submission.draft.totalAngleDegrees,
-            instanceCount: input.submission.draft.instanceCount
-          }),
+          kind === "linearPattern"
+            ? buildFeatureUpdateLinearPatternOp(feature.id, {
+                direction: draft.direction,
+                spacing: draft.spacing,
+                instanceCount: draft.instanceCount
+              })
+            : buildFeatureUpdateCircularPatternOp(feature.id, {
+                rotationAxis: draft.rotationAxis,
+                totalAngleDegrees: draft.totalAngleDegrees,
+                instanceCount: draft.instanceCount
+              }),
           feature.bodyId
         );
       }
       case "mirror": {
-        const feature = requireExistingFeature(input, "mirror");
-        if (isUnsupported(feature)) return feature;
-        if (!sameSeedBody(input.submission.draft, feature)) {
+        const feature = current as Feature<"mirror">;
+        if (!sameFields(draft, feature, "seedBodyId")) {
           return unsupported(
             "The mirror update command does not change its seed body."
           );
         }
         return supported(
           buildFeatureUpdateMirrorOp(feature.id, {
-            plane: input.submission.draft.plane,
-            includeOriginal: input.submission.draft.includeOriginal
+            plane: draft.plane,
+            includeOriginal: draft.includeOriginal
           }),
           feature.bodyId
         );
       }
       case "shell": {
-        const feature = requireExistingFeature(input, "shell");
-        if (isUnsupported(feature)) return feature;
-        if (!sameShellTarget(input.submission.draft, feature)) {
+        const feature = current as Feature<"shell">;
+        if (!sameFields(draft, feature, "targetBodyId")) {
           return unsupported(
             "The shell update command does not change its target body."
           );
         }
         return supported(
           buildFeatureUpdateShellOp(feature.id, {
-            wallThickness: input.submission.draft.wallThickness,
-            openFaceRefs: input.submission.draft.openFaceRefs
+            wallThickness: draft.wallThickness,
+            openFaceRefs: draft.openFaceRefs
           }),
           feature.bodyId
         );
       }
       case "compositeSweep": {
-        const feature = requireExistingFeature(input, "sweep");
-        if (isUnsupported(feature)) return feature;
+        const feature = current as Feature<"sweep">;
         return supported(
           buildFeatureUpdateCompositeSweepOp(
             feature.id,
-            input.submission.draft.profile,
-            input.submission.draft.path
+            draft.profile,
+            draft.path
           ),
           feature.bodyId
         );
       }
-      case "sweep":
-        return unsupported(
-          "Sweep updates require the existing composite sweep editor."
-        );
       case "loft": {
-        const feature = requireExistingFeature(input, "loft");
-        if (isUnsupported(feature)) return feature;
+        const feature = current as Feature<"loft">;
         return supported(
-          buildFeatureUpdateLoftOp(feature.id, input.submission.draft.sections),
+          buildFeatureUpdateLoftOp(feature.id, draft.sections),
           feature.bodyId
         );
       }
     }
   }
 
-  switch (input.submission.kind) {
+  switch (kind) {
     case "extrude": {
-      const context = requireSketchEntity(input.selectedSketchEntityContext);
+      const context = requireSketchEntity(selectedContext);
       if (isUnsupported(context)) return context;
       return supported(
-        buildFeatureExtrudeOp(
-          context.sketchId,
-          context.entityId,
-          input.submission.draft
-        )
+        buildFeatureExtrudeOp(context.sketchId, context.entityId, draft)
       );
     }
     case "compositeExtrude":
-      return supported(buildFeatureCompositeExtrudeOp(input.submission.draft));
+      return supported(buildFeatureCompositeExtrudeOp(draft));
     case "revolve": {
-      const context = requireSketchEntity(input.selectedSketchEntityContext);
+      const context = requireSketchEntity(selectedContext);
       if (isUnsupported(context)) return context;
       return supported(
-        buildFeatureRevolveOp(
-          context.sketchId,
-          context.entityId,
-          input.submission.draft
-        )
+        buildFeatureRevolveOp(context.sketchId, context.entityId, draft)
       );
     }
     case "compositeRevolve":
-      return supported(buildFeatureCompositeRevolveOp(input.submission.draft));
+      return supported(buildFeatureCompositeRevolveOp(draft));
     case "hole": {
-      let sketchId = input.submission.draft.sketchId;
-      let circleEntityId = input.submission.draft.circleEntityId;
+      let sketchId = draft.sketchId;
+      let circleEntityId = draft.circleEntityId;
       if (!sketchId || !circleEntityId) {
-        const context = requireSketchEntity(
-          input.selectedSketchEntityContext,
-          "circle"
-        );
+        const context = requireSketchEntity(selectedContext, "circle");
         if (isUnsupported(context)) return context;
         sketchId = context.sketchId;
         circleEntityId = context.entityId;
       }
-      return supported(
-        buildFeatureHoleOp(sketchId, circleEntityId, input.submission.draft)
-      );
+      return supported(buildFeatureHoleOp(sketchId, circleEntityId, draft));
     }
     case "chamfer":
-      return supported(buildFeatureChamferOp(input.submission.draft));
+      return supported(buildFeatureChamferOp(draft));
     case "fillet":
-      return supported(buildFeatureFilletOp(input.submission.draft));
+      return supported(buildFeatureFilletOp(draft));
     case "linearPattern":
-      return supported(buildFeatureLinearPatternOp(input.submission.draft));
+      return supported(buildFeatureLinearPatternOp(draft));
     case "circularPattern":
-      return supported(buildFeatureCircularPatternOp(input.submission.draft));
+      return supported(buildFeatureCircularPatternOp(draft));
     case "mirror":
-      return supported(buildFeatureMirrorOp(input.submission.draft));
+      return supported(buildFeatureMirrorOp(draft));
     case "shell":
-      return supported(buildFeatureShellOp(input.submission.draft));
+      return supported(buildFeatureShellOp(draft));
     case "sweep": {
-      const context = requireSketchEntity(input.selectedSketchEntityContext);
+      const context = requireSketchEntity(selectedContext);
       if (isUnsupported(context)) return context;
       return supported(
-        buildFeatureSweepOp(
-          context.sketchId,
-          context.entityId,
-          input.submission.draft
-        )
+        buildFeatureSweepOp(context.sketchId, context.entityId, draft)
       );
     }
     case "compositeSweep":
-      return supported(buildFeatureCompositeSweepOp(input.submission.draft));
+      return supported(buildFeatureCompositeSweepOp(draft));
     case "loft":
-      return supported(buildFeatureLoftOp(input.submission.draft));
+      return supported(buildFeatureLoftOp(draft));
   }
 
-  return unsupported(
-    "This feature row is not supported by the V22 preview matrix."
-  );
+  return unsupported("This feature row is not supported by the V22 preview matrix.");
 }
