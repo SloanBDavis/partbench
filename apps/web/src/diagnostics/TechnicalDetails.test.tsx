@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { TechnicalDetails } from "./TechnicalDetails";
+import { TechnicalDetails } from "./TechnicalDetailsView";
 
 describe("TechnicalDetails", () => {
   it("renders debugging data inside a closed, subordinate disclosure", () => {

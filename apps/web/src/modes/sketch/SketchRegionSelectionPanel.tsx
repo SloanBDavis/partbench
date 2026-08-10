@@ -19,7 +19,7 @@ import type {
   SketchRegionCandidatesQueryResult,
   SketchRegionValidateQueryResult
 } from "../../sketchRegionQueryClient";
-import { TechnicalDetails } from "../../diagnostics/TechnicalDetails";
+import { TechnicalDetails } from "../../diagnostics/TechnicalDetailsView";
 import {
   formatUserDiagnostic,
   translateUserDiagnostic,
