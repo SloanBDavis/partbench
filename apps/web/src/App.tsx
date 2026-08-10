@@ -42,11 +42,10 @@ import type {
   CadTopologyIdentitySourceSnapshot,
   CadMassPropertiesSnapshot,
   GeneratedReferenceMeasurement,
+  LoftSection,
   NamedGeneratedReferenceEntry,
   CadOp,
   DocumentUnitUpdateMode,
-  FeatureHoleDepthMode,
-  FeatureHoleDirection,
   ProjectExportReadinessQueryResponse,
   ProjectHealthQueryResponse,
   ProjectImportReadinessQueryResponse,
@@ -63,8 +62,6 @@ import type {
   WcadPackageValidationIssue,
   SketchEntitySnapshot,
   SketchSnapshot,
-  SketchPathRef,
-  SketchProfileRef,
   PreparedSketchCurveEditOp,
   SketchAddRoundedRectangleOp,
   SketchAddSlotOp,
@@ -120,29 +117,9 @@ import {
   buildDeleteSketchOp,
   buildFeatureDeleteOp,
   buildFeatureChamferOp,
-  buildFeatureCircularPatternOp,
-  buildFeatureExtrudeOp,
-  buildFeatureCompositeExtrudeOp,
   buildFeatureFilletOp,
-  buildFeatureHoleOp,
-  buildFeatureLinearPatternOp,
-  buildFeatureMirrorOp,
-  buildFeatureRevolveOp,
-  buildFeatureCompositeRevolveOp,
   buildFeatureShellOp,
-  buildFeatureSweepOp,
-  buildFeatureCompositeSweepOp,
-  buildFeatureLoftOp,
-  buildFeatureUpdateChamferOp,
-  buildFeatureUpdateCircularPatternOp,
-  buildFeatureUpdateCompositeExtrudeOp,
-  buildFeatureUpdateFilletOp,
   buildFeatureUpdateHoleOp,
-  buildFeatureUpdateLinearPatternOp,
-  buildFeatureUpdateMirrorOp,
-  buildFeatureUpdateCompositeRevolveOp,
-  buildFeatureUpdateCompositeSweepOp,
-  buildFeatureUpdateShellOp,
   buildNameGeneratedReferenceOp,
   buildParameterEditOps,
   buildRepairNamedReferenceOp,
@@ -160,22 +137,7 @@ import {
   buildUpdateTransformOp,
   WEB_UI_ACTOR,
   type FeatureEdgeFinishForm,
-  type FeatureCircularPatternEdit,
-  type FeatureCircularPatternForm,
-  type FeatureExtrudeForm,
-  type FeatureCompositeExtrudeForm,
-  type FeatureHoleForm,
-  type FeatureLinearPatternEdit,
-  type FeatureLinearPatternForm,
-  type FeatureMirrorEdit,
-  type FeatureMirrorForm,
-  type FeatureRevolveForm,
-  type FeatureCompositeRevolveForm,
-  type FeatureShellEdit,
   type FeatureShellForm,
-  type FeatureSweepForm,
-  type FeatureCompositeSweepForm,
-  type FeatureLoftForm,
   type ParameterCreateForm,
   type ParameterEditForm,
   type PrimitiveCommandForm,
@@ -238,6 +200,7 @@ import {
   type SolidEditorSubmission
 } from "./modes/solid";
 import { applyCommittedSolidEditorSubmission } from "./modes/solid/solidEditorApply";
+import { materializeSolidEditorRequestIds } from "./modes/solid/exactFeaturePreviewIds";
 import {
   createInitialWorkbenchUiState,
   workbenchReducer
@@ -4019,7 +3982,9 @@ export function App() {
     workbenchUi.activeTool
   ]);
   const selectedFeatureBeforeEditor = selectedFeature;
-  const solidEditorRequest = useMemo<SolidEditorRequest | undefined>(() => {
+  const unmaterializedSolidEditorRequest = useMemo<
+    SolidEditorRequest | undefined
+  >(() => {
     const actionId = workbenchUi.activeTool;
     const selectedFeature =
       actionId === "solid.edit" && activeSolidEditFeatureId
@@ -4222,6 +4187,50 @@ export function App() {
             ),
             paths: solidPathChoices
           },
+          deletable: true
+        } as SolidEditorRequest;
+      }
+      if (selectedFeature.kind === "loft") {
+        const sectionChoices: readonly SolidChoice<LoftSection>[] =
+          solidProfileChoices.flatMap((choice) =>
+            choice.value.kind === "entity"
+              ? [
+                  {
+                    key: `${choice.value.sketchId}:${choice.value.entityId}`,
+                    value: {
+                      sketchId: choice.value.sketchId,
+                      entityId: choice.value.entityId
+                    },
+                    label: choice.label,
+                    kind: "profile section"
+                  }
+                ]
+              : []
+          );
+        const choices = selectedFeature.sections.reduce<
+          readonly SolidChoice<LoftSection>[]
+        >(
+          (current, section, index) =>
+            includeCurrentSolidChoice(current, {
+              key: `current:${selectedFeature.id}:${index}`,
+              value: section,
+              label: `Current section ${index + 1}`,
+              kind: "profile section"
+            }),
+          sectionChoices
+        );
+        return {
+          key,
+          kind: "loft",
+          title: "Edit Loft",
+          mode: "edit",
+          initialDraft: {
+            id: selectedFeature.id,
+            bodyId: selectedFeature.bodyId,
+            name: selectedFeature.name ?? "",
+            sections: selectedFeature.sections
+          },
+          choices: { loftSections: choices },
           deletable: true
         } as SolidEditorRequest;
       }
@@ -4825,6 +4834,14 @@ export function App() {
     projectStructure.features,
     workbenchUi.activeTool
   ]);
+  const solidEditorRequest = useMemo(() => {
+    if (!unmaterializedSolidEditorRequest) return undefined;
+    const snapshot = engine.createSnapshot();
+    return materializeSolidEditorRequestIds(
+      unmaterializedSolidEditorRequest,
+      snapshot
+    );
+  }, [unmaterializedSolidEditorRequest]);
   useEffect(() => {
     if (
       !solidEditorRequest ||
@@ -6217,30 +6234,6 @@ export function App() {
     );
   }
 
-  async function createLinearPattern(form: FeatureLinearPatternForm) {
-    const op = buildFeatureLinearPatternOp(form);
-    await commitPreflightedExactOps(
-      [op],
-      (response) => response.createdBodyIds?.[0] ?? (form.bodyId || selectedId)
-    );
-  }
-
-  async function createCircularPattern(form: FeatureCircularPatternForm) {
-    const op = buildFeatureCircularPatternOp(form);
-    await commitPreflightedExactOps(
-      [op],
-      (response) => response.createdBodyIds?.[0] ?? (form.bodyId || selectedId)
-    );
-  }
-
-  async function createMirror(form: FeatureMirrorForm) {
-    const op = buildFeatureMirrorOp(form);
-    await commitPreflightedExactOps(
-      [op],
-      (response) => response.createdBodyIds?.[0] ?? (form.bodyId || selectedId)
-    );
-  }
-
   async function createShell(form: FeatureShellForm) {
     const op = buildFeatureShellOp(form);
     await commitPreflightedExactOps(
@@ -6248,122 +6241,6 @@ export function App() {
       (response) => response.createdBodyIds?.[0] ?? (form.bodyId || selectedId)
     );
   }
-
-  async function createSweep(
-    profileSketchId: string,
-    profileEntityId: string,
-    form: FeatureSweepForm
-  ) {
-    await commitOps(
-      [buildFeatureSweepOp(profileSketchId, profileEntityId, form)],
-      (response) => response.createdBodyIds?.[0] ?? (form.bodyId || selectedId)
-    );
-  }
-
-  async function createCompositeExtrude(form: FeatureCompositeExtrudeForm) {
-    await commitOps(
-      [buildFeatureCompositeExtrudeOp(form)],
-      (response) => response.createdBodyIds?.[0] ?? selectedId
-    );
-  }
-
-  async function createCompositeRevolve(form: FeatureCompositeRevolveForm) {
-    await commitOps(
-      [buildFeatureCompositeRevolveOp(form)],
-      (response) => response.createdBodyIds?.[0] ?? selectedId
-    );
-  }
-
-  async function createCompositeSweep(form: FeatureCompositeSweepForm) {
-    await commitOps(
-      [buildFeatureCompositeSweepOp(form)],
-      (response) => response.createdBodyIds?.[0] ?? selectedId
-    );
-  }
-
-  async function createLoft(form: FeatureLoftForm) {
-    await commitOps(
-      [buildFeatureLoftOp(form)],
-      (response) => response.createdBodyIds?.[0] ?? (form.bodyId || selectedId)
-    );
-  }
-
-  async function updateAuthoredLinearPattern(
-    featureId: string,
-    edit: FeatureLinearPatternEdit
-  ) {
-    const feature = projectStructure.features.find(
-      (candidate) => candidate.id === featureId
-    );
-
-    if (feature?.kind !== "linearPattern") {
-      return;
-    }
-
-    await commitPreflightedExactOps(
-      [buildFeatureUpdateLinearPatternOp(feature.id, edit)],
-      () => feature.bodyId,
-      feature.bodyId
-    );
-  }
-
-  async function updateAuthoredCircularPattern(
-    featureId: string,
-    edit: FeatureCircularPatternEdit
-  ) {
-    const feature = projectStructure.features.find(
-      (candidate) => candidate.id === featureId
-    );
-
-    if (feature?.kind !== "circularPattern") {
-      return;
-    }
-
-    await commitPreflightedExactOps(
-      [buildFeatureUpdateCircularPatternOp(feature.id, edit)],
-      () => feature.bodyId,
-      feature.bodyId
-    );
-  }
-
-  async function updateAuthoredMirror(
-    featureId: string,
-    edit: FeatureMirrorEdit
-  ) {
-    const feature = projectStructure.features.find(
-      (candidate) => candidate.id === featureId
-    );
-
-    if (feature?.kind !== "mirror") {
-      return;
-    }
-
-    await commitPreflightedExactOps(
-      [buildFeatureUpdateMirrorOp(feature.id, edit)],
-      () => feature.bodyId,
-      feature.bodyId
-    );
-  }
-
-  async function updateAuthoredShell(
-    featureId: string,
-    edit: FeatureShellEdit
-  ) {
-    const feature = projectStructure.features.find(
-      (candidate) => candidate.id === featureId
-    );
-
-    if (feature?.kind !== "shell") {
-      return;
-    }
-
-    await commitPreflightedExactOps(
-      [buildFeatureUpdateShellOp(feature.id, edit)],
-      () => feature.bodyId,
-      feature.bodyId
-    );
-  }
-
   function applySketchFocus(sketchId: string, entityId?: string) {
     setSelectedId(undefined);
     setSelectedGeneratedReference(undefined);
@@ -6617,28 +6494,6 @@ export function App() {
     return response?.ok === true;
   }
 
-  async function extrudeSketchEntity(
-    sketchId: string,
-    entityId: string,
-    form: FeatureExtrudeForm
-  ) {
-    await commitOps(
-      [buildFeatureExtrudeOp(sketchId, entityId, form)],
-      (response) => response.createdBodyIds?.[0] ?? selectedId
-    );
-  }
-
-  async function revolveSketchEntity(
-    sketchId: string,
-    entityId: string,
-    form: FeatureRevolveForm
-  ) {
-    await commitOps(
-      [buildFeatureRevolveOp(sketchId, entityId, form)],
-      (response) => response.createdBodyIds?.[0] ?? selectedId
-    );
-  }
-
   async function runExactDownstreamGeometryPreflight(
     ops: readonly CadOp[],
     bodyId?: string,
@@ -6714,25 +6569,6 @@ export function App() {
     return response;
   }
 
-  async function holeSketchEntity(
-    sketchId: string,
-    circleEntityId: string,
-    form: FeatureHoleForm
-  ) {
-    const op = buildFeatureHoleOp(sketchId, circleEntityId, form);
-    const response = await commitPreflightedExactOps(
-      [op],
-      (response) => response.createdBodyIds?.[0] ?? selectedId,
-      op.bodyId
-    );
-
-    if (response?.ok) {
-      setPreferredHoleTargetBodyId((current) =>
-        current === form.targetBodyId ? undefined : current
-      );
-    }
-  }
-
   async function deleteAuthoredFeature(featureId: string) {
     const feature = projectStructure.features.find(
       (candidate) => candidate.id === featureId
@@ -6759,76 +6595,6 @@ export function App() {
     }
 
     setCommandNotice(formatFeatureDeleteNotice(feature));
-  }
-
-  async function updateCompositeSweepRefs(
-    featureId: string,
-    profile: Extract<SketchProfileRef, { readonly kind: "entity" }>,
-    path: SketchPathRef
-  ) {
-    const feature = projectStructure.features.find(
-      (candidate) => candidate.id === featureId
-    );
-    if (feature?.kind !== "sweep") return;
-    await commitOps(
-      [buildFeatureUpdateCompositeSweepOp(featureId, profile, path)],
-      () => feature.bodyId
-    );
-  }
-
-  async function updateAuthoredHole(
-    featureId: string,
-    depthMode: FeatureHoleDepthMode,
-    depth: number | undefined,
-    direction: FeatureHoleDirection,
-    target?: Pick<FeatureHoleForm, "targetBodyId" | "targetTopologyAnchorId">
-  ) {
-    const feature = projectStructure.features.find(
-      (candidate) => candidate.id === featureId
-    );
-
-    if (feature?.kind !== "hole") {
-      return;
-    }
-
-    const op = buildFeatureUpdateHoleOp(
-      feature.id,
-      depthMode,
-      depth,
-      direction,
-      target
-    );
-    await commitPreflightedExactOps([op], () => feature.bodyId, feature.bodyId);
-  }
-
-  async function updateAuthoredChamfer(featureId: string, distance: number) {
-    const feature = projectStructure.features.find(
-      (candidate) => candidate.id === featureId
-    );
-
-    if (feature?.kind !== "chamfer") {
-      return;
-    }
-
-    await commitOps(
-      [buildFeatureUpdateChamferOp(feature.id, distance)],
-      () => feature.bodyId
-    );
-  }
-
-  async function updateAuthoredFillet(featureId: string, radius: number) {
-    const feature = projectStructure.features.find(
-      (candidate) => candidate.id === featureId
-    );
-
-    if (feature?.kind !== "fillet") {
-      return;
-    }
-
-    await commitOps(
-      [buildFeatureUpdateFilletOp(feature.id, radius)],
-      () => feature.bodyId
-    );
   }
 
   async function nameGeneratedReference(
@@ -8294,6 +8060,59 @@ export function App() {
                 feature.objectId === draftSourceId)
           )
         : undefined;
+
+    const isFeatureSubmission = !(
+      submission.kind === "box" ||
+      submission.kind === "cylinder" ||
+      submission.kind === "sphere" ||
+      submission.kind === "cone" ||
+      submission.kind === "torus" ||
+      submission.kind === "sketch" ||
+      submission.kind === "transform"
+    );
+
+    if (isFeatureSubmission) {
+      if (!solidEditorRequest) {
+        throw new Error("The active solid editor is no longer available.");
+      }
+
+      const { planExactFeaturePreview } =
+        await import("./modes/solid/exactFeaturePreviewPlan");
+      const selectedSketchEntityContext =
+        modelingSelectionContext.selectionKind === "sketchEntity"
+          ? {
+              sketchId: modelingSelectionContext.sketch.id,
+              entityId: modelingSelectionContext.entity.id,
+              entityKind: modelingSelectionContext.entity.kind
+            }
+          : undefined;
+      const plan = planExactFeaturePreview({
+        request: solidEditorRequest,
+        submission,
+        existingFeature: selectedFeature,
+        selectedSketchEntityContext
+      });
+
+      if (plan.status !== "supported") {
+        throw new Error(plan.reason);
+      }
+
+      const response = plan.requiresExactDownstreamCommitPreflight
+        ? await commitPreflightedExactOps(
+            plan.ops,
+            () => plan.resultBodyId,
+            plan.affectedBodyId
+          )
+        : await commitOps(plan.ops, () => plan.resultBodyId);
+
+      if (response?.ok && submission.kind === "hole" && !selectedFeature) {
+        setPreferredHoleTargetBodyId((current) =>
+          current === submission.draft.targetBodyId ? undefined : current
+        );
+      }
+      return;
+    }
+
     if (workbenchUi.activeTool === "solid.edit" && selectedFeature) {
       if (
         selectedFeature.kind === "primitive" &&
@@ -8344,151 +8163,6 @@ export function App() {
         );
         return;
       }
-      if (
-        selectedFeature.kind === "extrude" &&
-        submission.kind === "compositeExtrude"
-      ) {
-        if (
-          submission.draft.operationMode !== selectedFeature.operationMode ||
-          submission.draft.targetBodyId !== selectedFeature.targetBodyId
-        ) {
-          throw new Error(
-            "The V17 command matrix does not support changing an extrude boolean target."
-          );
-        }
-        await commitOps(
-          [
-            buildFeatureUpdateCompositeExtrudeOp(
-              selectedFeature.id,
-              submission.draft.profile,
-              submission.draft.depth,
-              submission.draft.side
-            )
-          ],
-          () => selectedFeature.bodyId
-        );
-        return;
-      }
-      if (
-        selectedFeature.kind === "revolve" &&
-        submission.kind === "compositeRevolve"
-      ) {
-        if (submission.draft.axisEntityId !== selectedFeature.axis.entityId) {
-          throw new Error(
-            "The V17 command matrix does not support changing a revolve axis."
-          );
-        }
-        await commitOps(
-          [
-            buildFeatureUpdateCompositeRevolveOp(
-              selectedFeature.id,
-              submission.draft.profile,
-              submission.draft.angleDegrees
-            )
-          ],
-          () => selectedFeature.bodyId
-        );
-        return;
-      }
-      if (
-        selectedFeature.kind === "sweep" &&
-        submission.kind === "compositeSweep"
-      ) {
-        await updateCompositeSweepRefs(
-          selectedFeature.id,
-          submission.draft.profile,
-          submission.draft.path
-        );
-        return;
-      }
-      if (selectedFeature.kind === "hole" && submission.kind === "hole") {
-        const targetChanged =
-          submission.draft.targetBodyId !== selectedFeature.targetBodyId ||
-          submission.draft.targetTopologyAnchorId !==
-            selectedFeature.targetTopologyAnchorId;
-        await updateAuthoredHole(
-          selectedFeature.id,
-          submission.draft.depthMode,
-          submission.draft.depthMode === "blind"
-            ? submission.draft.depth
-            : undefined,
-          submission.draft.direction,
-          targetChanged
-            ? {
-                targetBodyId: submission.draft.targetBodyId,
-                targetTopologyAnchorId: submission.draft.targetTopologyAnchorId
-              }
-            : undefined
-        );
-        return;
-      }
-      if (selectedFeature.kind === "chamfer" && submission.kind === "chamfer") {
-        await updateAuthoredChamfer(
-          selectedFeature.id,
-          submission.draft.distance
-        );
-        return;
-      }
-      if (selectedFeature.kind === "fillet" && submission.kind === "fillet") {
-        await updateAuthoredFillet(selectedFeature.id, submission.draft.radius);
-        return;
-      }
-      if (selectedFeature.kind === "shell" && submission.kind === "shell") {
-        if (submission.draft.targetBodyId !== selectedFeature.targetBodyId) {
-          throw new Error(
-            "The shell update command does not change its target body."
-          );
-        }
-        await updateAuthoredShell(selectedFeature.id, {
-          wallThickness: submission.draft.wallThickness,
-          openFaceRefs: submission.draft.openFaceRefs
-        });
-        return;
-      }
-      if (
-        selectedFeature.kind === "linearPattern" &&
-        submission.kind === "linearPattern"
-      ) {
-        if (submission.draft.seedBodyId !== selectedFeature.seedBodyId) {
-          throw new Error(
-            "The pattern update command does not change its seed body."
-          );
-        }
-        await updateAuthoredLinearPattern(selectedFeature.id, {
-          direction: submission.draft.direction,
-          spacing: submission.draft.spacing,
-          instanceCount: submission.draft.instanceCount
-        });
-        return;
-      }
-      if (
-        selectedFeature.kind === "circularPattern" &&
-        submission.kind === "circularPattern"
-      ) {
-        if (submission.draft.seedBodyId !== selectedFeature.seedBodyId) {
-          throw new Error(
-            "The pattern update command does not change its seed body."
-          );
-        }
-        await updateAuthoredCircularPattern(selectedFeature.id, {
-          rotationAxis: submission.draft.rotationAxis,
-          totalAngleDegrees: submission.draft.totalAngleDegrees,
-          instanceCount: submission.draft.instanceCount
-        });
-        return;
-      }
-      if (selectedFeature.kind === "mirror" && submission.kind === "mirror") {
-        if (submission.draft.seedBodyId !== selectedFeature.seedBodyId) {
-          throw new Error(
-            "The mirror update command does not change its seed body."
-          );
-        }
-        await updateAuthoredMirror(selectedFeature.id, {
-          plane: submission.draft.plane,
-          includeOriginal: submission.draft.includeOriginal
-        });
-        return;
-      }
       throw new Error(
         "This feature edit is not supported by its update command."
       );
@@ -8515,80 +8189,8 @@ export function App() {
       case "transform":
         await updateSelectedTransform(submission.draft);
         return;
-      case "compositeExtrude":
-        await createCompositeExtrude(submission.draft);
+      default:
         return;
-      case "compositeRevolve":
-        await createCompositeRevolve(submission.draft);
-        return;
-      case "compositeSweep":
-        await createCompositeSweep(submission.draft);
-        return;
-      case "loft":
-        await createLoft(submission.draft);
-        return;
-      case "fillet":
-      case "chamfer":
-        await createEdgeFinish(submission.kind, submission.draft);
-        return;
-      case "shell":
-        await createShell(submission.draft);
-        return;
-      case "linearPattern":
-        await createLinearPattern(submission.draft);
-        return;
-      case "circularPattern":
-        await createCircularPattern(submission.draft);
-        return;
-      case "mirror":
-        await createMirror(submission.draft);
-        return;
-      case "extrude":
-        if (modelingSelectionContext.selectionKind === "sketchEntity") {
-          await extrudeSketchEntity(
-            modelingSelectionContext.sketch.id,
-            modelingSelectionContext.entity.id,
-            submission.draft
-          );
-        }
-        return;
-      case "revolve":
-        if (modelingSelectionContext.selectionKind === "sketchEntity") {
-          await revolveSketchEntity(
-            modelingSelectionContext.sketch.id,
-            modelingSelectionContext.entity.id,
-            submission.draft
-          );
-        }
-        return;
-      case "sweep":
-        if (modelingSelectionContext.selectionKind === "sketchEntity") {
-          await createSweep(
-            modelingSelectionContext.sketch.id,
-            modelingSelectionContext.entity.id,
-            submission.draft
-          );
-        }
-        return;
-      case "hole":
-        if (submission.draft.sketchId && submission.draft.circleEntityId) {
-          await holeSketchEntity(
-            submission.draft.sketchId,
-            submission.draft.circleEntityId,
-            submission.draft
-          );
-          return;
-        }
-        if (
-          modelingSelectionContext.selectionKind === "sketchEntity" &&
-          modelingSelectionContext.entity.kind === "circle"
-        ) {
-          await holeSketchEntity(
-            modelingSelectionContext.sketch.id,
-            modelingSelectionContext.entity.id,
-            submission.draft
-          );
-        }
     }
   }
 
