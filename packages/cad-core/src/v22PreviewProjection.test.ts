@@ -5,6 +5,7 @@ import {
   createCadProjectSourceIdentity,
   exportCadProject
 } from "./index";
+import { projectCadBatch } from "@web-cad/cad-core/preview-projection";
 
 function createEngineWithRedo(): CadEngine {
   const engine = new CadEngine();
@@ -48,7 +49,7 @@ describe("V22 disposable preview projection", () => {
     const expectedResponse = expectedEngine.executeBatch(updateBatch);
     const expectedProject = exportCadProject(expectedEngine);
 
-    const projected = engine.projectBatch(updateBatch);
+    const projected = projectCadBatch(engine, updateBatch);
 
     expect(projected.ok).toBe(true);
     expect(projected.projectedEngine).not.toBe(engine);
@@ -94,7 +95,7 @@ describe("V22 disposable preview projection", () => {
     const beforeProject = exportCadProject(engine);
     const dryRunBatch: CadBatch = { ...updateBatch, mode: "dryRun" };
 
-    const projected = engine.projectBatch(dryRunBatch);
+    const projected = projectCadBatch(engine, dryRunBatch);
 
     expect(projected.ok).toBe(true);
     expect(projected.validationResponse).toMatchObject({
@@ -115,7 +116,7 @@ describe("V22 disposable preview projection", () => {
     const beforeRedoStack = engine.getRedoStack();
     const beforeEpoch = engine.getSourceAuthorityEpoch();
 
-    const projected = engine.projectBatch({
+    const projected = projectCadBatch(engine, {
       ...updateBatch,
       ops: [
         {

@@ -25,6 +25,10 @@
     "./region-source-validation-policy": {
       "types": "./src/regionSourceValidationPolicy.ts",
       "default": "./src/regionSourceValidationPolicy.ts"
+    },
+    "./preview-projection": {
+      "types": "./src/previewProjection.ts",
+      "default": "./src/previewProjection.ts"
     }
   },
   "dependencies": {
