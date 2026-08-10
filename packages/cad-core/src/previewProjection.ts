@@ -1,12 +1,53 @@
-import type { CadBatch } from "@web-cad/cad-protocol";
+import type {
+  CadBatch,
+  CadBatchResponse,
+  WcadSourceIdentity
+} from "@web-cad/cad-protocol";
 import {
   CadEngine,
   createCadProjectSourceIdentity,
   exportCadProject,
-  type CadBatchProjectionResult
+  type CadDocument,
+  type CadProject
 } from "./engine";
 
-export type { CadBatchProjectionResult } from "./engine";
+/**
+ * The source-only result of evaluating an existing CADOps batch on a
+ * disposable engine projection.
+ *
+ * The projected document and project are detached snapshots. The operation
+ * never changes the engine on which it is called, including its transaction
+ * history, redo stack, source-authority epoch, and source identity.
+ */
+export type CadBatchProjectionResult =
+  | {
+      readonly ok: true;
+      readonly validationResponse: CadBatchResponse;
+      readonly response: Extract<CadBatchResponse, { readonly ok: true }>;
+      /**
+       * The disposable engine that owns the projected source state. It is
+       * always distinct from the engine on which the projectCadBatch helper
+       * was called.
+       */
+      readonly projectedEngine: CadEngine;
+      readonly document: CadDocument;
+      readonly project: CadProject;
+      readonly sourceIdentity: WcadSourceIdentity;
+    }
+  | {
+      readonly ok: false;
+      readonly validationResponse: CadBatchResponse;
+      readonly response: Extract<CadBatchResponse, { readonly ok: false }>;
+      /**
+       * The disposable engine that owns the projected source state. It is
+       * always distinct from the engine on which the projectCadBatch helper
+       * was called.
+       */
+      readonly projectedEngine: CadEngine;
+      readonly document: CadDocument;
+      readonly project: CadProject;
+      readonly sourceIdentity: WcadSourceIdentity;
+    };
 
 /**
  * Validate and project an existing CADOps batch against a detached copy of

@@ -5,6 +5,7 @@ import {
   type CadFeatureSummary,
   type WcadTopologyCheckpointPayloadInput
 } from "@web-cad/cad-core";
+import { projectCadBatch } from "@web-cad/cad-core/preview-projection";
 import type {
   CadBatch,
   CadBatchErrorResponse,
@@ -59,7 +60,10 @@ export type ExactFeaturePreviewGeometryArtifact =
 
 export interface ExactFeaturePreviewGeometryInput {
   readonly engine: CadEngine;
-  /** The same batch Apply will submit. `mode` is normalized by projectBatch. */
+  /**
+   * The same batch Apply will submit. `mode` is normalized by the
+   * projectCadBatch helper.
+   */
   readonly batch: CadBatch;
   /** Optional explicit result body. Created-body IDs are used when omitted. */
   readonly bodyId?: string;
@@ -129,9 +133,10 @@ export async function projectExactFeaturePreviewGeometry(
   };
 
   // This is deliberately checked before and after the synchronous projection
-  // call. projectBatch owns the detached clone and its dry-run/commit pair.
+  // call. The projectCadBatch helper owns the detached clone and its
+  // dry-run/commit pair.
   assertCurrent();
-  const projected = input.engine.projectBatch(input.batch);
+  const projected = projectCadBatch(input.engine, input.batch);
   assertCurrent();
   if (!projected.ok) {
     throw new ExactFeaturePreviewGeometryError(
@@ -141,9 +146,9 @@ export async function projectExactFeaturePreviewGeometry(
     );
   }
 
-  // projectBatch owns the detached clone and returns that exact engine. Keep
-  // all downstream query/resolver work on the same projected state; do not
-  // rehydrate it or execute the batch a second time.
+  // The projectCadBatch helper owns the detached clone and returns that exact
+  // engine. Keep all downstream query/resolver work on the same projected
+  // state; do not rehydrate it or execute the batch a second time.
   const projectedEngine = projected.projectedEngine;
   assertCurrent();
   const structure = readProjectStructure(projectedEngine);
