@@ -32,7 +32,6 @@ import type {
   CadBatchResponse,
   CadCurrentTopologySelectionEvidence,
   CadCurrentExactResult,
-  CadBatch,
   CadGeneratedFaceReference,
   FeatureShellOpenFaceRef,
   PatternRotationAxisRef,
@@ -282,7 +281,6 @@ import type {
   DerivedExactMetadataSnapshot
 } from "./derivedExactMetadata";
 import type {
-  CurrentExactBodyArtifactEvidence,
   CurrentExactBodyResolution
 } from "./currentExactBodyResolver";
 import type {
@@ -290,14 +288,9 @@ import type {
   CurrentExactProjectionFailure
 } from "./currentExactPipeline";
 import type {
-  ExactFeaturePreviewContext,
-  ExactFeaturePreviewJobController,
-  ExactFeaturePreviewState
-} from "./exactFeaturePreviewJob";
-import type { ExactFeaturePreviewGeometryResult } from "./exactFeaturePreviewGeometry";
-import type {
   SolidSelectedSketchEntityContext
 } from "./modes/solid/exactFeaturePreviewPlan";
+import type { ExactFeaturePreviewGeometryResult } from "./exactFeaturePreviewGeometry";
 import type { SolidPreviewPresentationState } from "./modes/solid/SolidModePanel";
 import type { ProjectExactStepExportJobState } from "./projectExactStepExport";
 import {
@@ -460,6 +453,11 @@ const SolidModePanel = lazy(() =>
     default: module.SolidModePanel
   }))
 );
+const SolidPreviewCoordinator = lazy(() =>
+  loadAfterFirstFrame(() =>
+    import("./modes/solid/SolidPreviewCoordinator")
+  ).then((module) => ({ default: module.SolidPreviewCoordinator }))
+);
 const ProjectWorkspace = lazy(() =>
   loadAfterFirstFrame(() => import("./modes/project/ProjectWorkspace")).then(
     (module) => ({ default: module.ProjectWorkspace })
@@ -612,74 +610,6 @@ let modelingUiRuntimePromise: Promise<ModelingUiRuntime> | undefined;
 function loadModelingUiRuntime(): Promise<ModelingUiRuntime> {
   modelingUiRuntimePromise ??= import("./modelingUiRuntime");
   return modelingUiRuntimePromise;
-}
-
-type ExactFeaturePreviewJobModule = typeof import("./exactFeaturePreviewJob");
-let exactFeaturePreviewJobModulePromise:
-  | Promise<ExactFeaturePreviewJobModule>
-  | undefined;
-
-function loadExactFeaturePreviewJobModule(): Promise<ExactFeaturePreviewJobModule> {
-  exactFeaturePreviewJobModulePromise ??= import("./exactFeaturePreviewJob");
-  return exactFeaturePreviewJobModulePromise;
-}
-
-type SolidExactFeaturePreviewInput = {
-  readonly batch: CadBatch;
-  readonly bodyId?: string;
-  readonly operationLabel: string;
-  readonly checkpointPayloads: readonly WcadTopologyCheckpointPayloadInput[];
-  readonly existingArtifacts: readonly CurrentExactBodyArtifactEvidence[];
-};
-
-type SolidPreviewContextSnapshot = {
-  readonly context: ExactFeaturePreviewContext;
-  readonly request?: SolidEditorRequest;
-  readonly existingArtifacts: readonly CurrentExactBodyArtifactEvidence[];
-  readonly checkpointPayloads: readonly WcadTopologyCheckpointPayloadInput[];
-  readonly selectedFeature?: CadFeatureSummary;
-  readonly selectedSketchEntityContext?: SolidSelectedSketchEntityContext;
-};
-
-function previewSourceIdentityKey(
-  identity: ReturnType<typeof createCadProjectSourceIdentity>
-): string {
-  return `${identity.algorithm}:${identity.sha256}`;
-}
-
-function formatExactFeaturePreviewError(error: unknown): string {
-  return error instanceof Error && error.message.trim()
-    ? error.message
-    : "The exact preview could not be built.";
-}
-
-function presentSolidPreviewState(
-  state: ExactFeaturePreviewState<
-    SolidExactFeaturePreviewInput,
-    ExactFeaturePreviewGeometryResult
-  >
-): SolidPreviewPresentationState {
-  switch (state.status) {
-    case "pending":
-      return {
-        status: "pending",
-        message: "Building an exact preview…"
-      };
-    case "ready":
-      return {
-        status: "ready",
-        message: "Exact preview ready. Apply to commit this change."
-      };
-    case "failed":
-      return {
-        status: "failed",
-        message: formatExactFeaturePreviewError(state.error)
-      };
-    case "idle":
-    case "cancelled":
-    case "disposed":
-      return { status: "idle", message: "" };
-  }
 }
 
 type ExactArtifactCache =
@@ -1979,15 +1909,8 @@ export function App() {
   const derivedGeometryRuntimeRef = useRef<DerivedGeometryRuntime | undefined>(
     undefined
   );
-  const solidPreviewControllerRef = useRef<
-    ExactFeaturePreviewJobController<
-      SolidExactFeaturePreviewInput,
-      ExactFeaturePreviewGeometryResult
-    >
-  >(undefined);
-  const solidPreviewIntentSequenceRef = useRef(0);
-  const solidPreviewMountedRef = useRef(true);
-  const solidPreviewContextRef = useRef<SolidPreviewContextSnapshot>(undefined);
+  const [solidPreviewSubmission, setSolidPreviewSubmission] =
+    useState<SolidEditorSubmission>();
   const [solidPreviewPresentation, setSolidPreviewPresentation] =
     useState<SolidPreviewPresentationState>({ status: "idle", message: "" });
   const [solidPreviewResult, setSolidPreviewResult] = useState<
@@ -2091,10 +2014,10 @@ export function App() {
     [document]
   );
   const currentPreviewSourceIdentityKey = useMemo(
-    () =>
-      previewSourceIdentityKey(
-        createCadProjectSourceIdentity(exportCadProject(engine))
-      ),
+    () => {
+      const identity = createCadProjectSourceIdentity(exportCadProject(engine));
+      return `${identity.algorithm}:${identity.sha256}`;
+    },
     [document]
   );
   const [
@@ -5087,213 +5010,63 @@ export function App() {
     solidPreviewTargetFeature?.id ?? "",
     solidPreviewDraftId ?? ""
   ].join(":");
-  solidPreviewContextRef.current = {
-    context: {
-      liveRevision: engine.getSourceAuthorityEpoch(),
-      sourceIdentity: currentPreviewSourceIdentityKey,
-      editorOwnership: solidPreviewEditorOwnership
-    },
-    request: solidEditorRequest,
-    selectedFeature: solidPreviewTargetFeature,
-    selectedSketchEntityContext: solidPreviewSelectedSketchEntityContext,
-    existingArtifacts: currentExactArtifactProjection.artifacts,
-    checkpointPayloads: wcadTopologyCheckpointPayloadCache
-  };
-  const isSolidPreviewContextCurrent = useCallback(
-    (context: ExactFeaturePreviewContext): boolean => {
-      const current = solidPreviewContextRef.current;
-      if (
-        !current ||
-        current.context.liveRevision !== context.liveRevision ||
-        current.context.sourceIdentity !== context.sourceIdentity ||
-        current.context.editorOwnership !== context.editorOwnership
-      ) {
-        return false;
-      }
-
-      const currentIdentity = createCadProjectSourceIdentity(
-        exportCadProject(engine)
-      );
-      return (
-        engine.getSourceAuthorityEpoch() === context.liveRevision &&
-        previewSourceIdentityKey(currentIdentity) === context.sourceIdentity
-      );
-    },
-    []
+  const solidPreviewContext = useMemo(
+    () => ({
+      lifecycleKey: [
+        workbenchUi.mode,
+        workbenchUi.activeTool ?? "",
+        curveEditSourceAuthorityRevision,
+        engine.getSourceAuthorityEpoch(),
+        currentPreviewSourceIdentityKey,
+        solidPreviewEditorOwnership,
+        solidPreviewSelectedSketchEntityContext?.sketchId ?? "",
+        solidPreviewSelectedSketchEntityContext?.entityId ?? "",
+        solidPreviewSelectedSketchEntityContext?.entityKind ?? ""
+      ].join(":"),
+      exactContext: {
+        liveRevision: engine.getSourceAuthorityEpoch(),
+        sourceIdentity: currentPreviewSourceIdentityKey,
+        editorOwnership: solidPreviewEditorOwnership
+      },
+      request: solidEditorRequest,
+      selectedFeature: solidPreviewTargetFeature,
+      selectedSketchEntityContext: solidPreviewSelectedSketchEntityContext,
+      existingArtifacts: currentExactArtifactProjection.artifacts,
+      checkpointPayloads: wcadTopologyCheckpointPayloadCache
+    }),
+    [
+      currentExactArtifactProjection.artifacts,
+      currentPreviewSourceIdentityKey,
+      curveEditSourceAuthorityRevision,
+      solidEditorRequest,
+      solidPreviewEditorOwnership,
+      solidPreviewSelectedSketchEntityContext,
+      solidPreviewTargetFeature,
+      wcadTopologyCheckpointPayloadCache,
+      workbenchUi.activeTool,
+      workbenchUi.mode
+    ]
   );
   const clearSolidPreview = useCallback(() => {
-    solidPreviewIntentSequenceRef.current += 1;
-    solidPreviewControllerRef.current?.clear();
-    if (!solidPreviewMountedRef.current) return;
+    setSolidPreviewSubmission(undefined);
     setSolidPreviewResult(undefined);
     setSolidPreviewPresentation({ status: "idle", message: "" });
   }, []);
-  const ensureSolidPreviewController = useCallback(async () => {
-    const existing = solidPreviewControllerRef.current;
-    if (existing) return existing;
-
-    const { createExactFeaturePreviewJobController } =
-      await loadExactFeaturePreviewJobModule();
-    const retained = solidPreviewControllerRef.current;
-    if (retained) return retained;
-
-    const controller = createExactFeaturePreviewJobController<
-      SolidExactFeaturePreviewInput,
-      ExactFeaturePreviewGeometryResult
-    >({
-      worker: async (request, signal, registerAllocatedResult) => {
-        const { projectExactFeaturePreviewGeometry } = await import(
-          "./exactFeaturePreviewGeometry"
-        );
-        const result = await projectExactFeaturePreviewGeometry({
-          engine,
-          batch: request.input.batch,
-          ...(request.input.bodyId
-            ? { bodyId: request.input.bodyId }
-            : {}),
-          operationLabel: request.input.operationLabel,
-          runtime: getDerivedGeometryRuntime(),
-          checkpointPayloads: request.input.checkpointPayloads,
-          existingArtifacts: request.input.existingArtifacts,
-          expectedSourceAuthorityEpoch: request.context.liveRevision,
-          signal,
-          requestIdPrefix: `feature-preview-${request.sequence}`,
-          isCurrent: () =>
-            isSolidPreviewContextCurrent(request.context)
-        });
-        registerAllocatedResult(result);
-        return result;
-      },
-      isCurrent: (context) => isSolidPreviewContextCurrent(context),
-      // Preview results contain copied mesh/artifact data, not live OCCT handles.
-      disposeResult: () => undefined,
-      onStateChange: (state) => {
-        if (!solidPreviewMountedRef.current) return;
-        setSolidPreviewPresentation(presentSolidPreviewState(state));
-        setSolidPreviewResult(
-          state.status === "ready" ? state.result : undefined
-        );
-      }
-    });
-    solidPreviewControllerRef.current = controller;
-    return controller;
-  }, [getDerivedGeometryRuntime, isSolidPreviewContextCurrent]);
   const handleSolidPreviewRequest = useCallback(
     (submission: SolidEditorSubmission | undefined): void => {
       if (!submission) {
         clearSolidPreview();
         return;
       }
-
-      const intentSequence = ++solidPreviewIntentSequenceRef.current;
-      const captured = solidPreviewContextRef.current;
-      const capturedRequest = captured?.request;
+      setSolidPreviewSubmission(submission);
       setSolidPreviewResult(undefined);
       setSolidPreviewPresentation({
         status: "pending",
         message: "Building an exact preview…"
       });
-
-      const fail = (error: unknown) => {
-        if (
-          !solidPreviewMountedRef.current ||
-          solidPreviewIntentSequenceRef.current !== intentSequence
-        ) {
-          return;
-        }
-        setSolidPreviewResult(undefined);
-        setSolidPreviewPresentation({
-          status: "failed",
-          message: formatExactFeaturePreviewError(error)
-        });
-      };
-
-      if (!captured || !capturedRequest) {
-        fail(new Error("The active solid editor is no longer available."));
-        return;
-      }
-
-      void (async () => {
-        try {
-          if (
-            solidPreviewIntentSequenceRef.current !== intentSequence ||
-            !isSolidPreviewContextCurrent(captured.context)
-          ) {
-            return;
-          }
-          const { planExactFeaturePreview } = await import(
-            "./modes/solid/exactFeaturePreviewPlan"
-          );
-          if (
-            solidPreviewIntentSequenceRef.current !== intentSequence ||
-            !isSolidPreviewContextCurrent(captured.context)
-          ) {
-            return;
-          }
-          const plan = planExactFeaturePreview({
-            request: capturedRequest,
-            submission,
-            existingFeature: captured.selectedFeature,
-            selectedSketchEntityContext: captured.selectedSketchEntityContext
-          });
-          if (plan.status !== "supported") {
-            fail(new Error(plan.reason));
-            return;
-          }
-
-          const controller = await ensureSolidPreviewController();
-          if (
-            solidPreviewIntentSequenceRef.current !== intentSequence ||
-            !isSolidPreviewContextCurrent(captured.context)
-          ) {
-            return;
-          }
-          const batch = buildBatch("commit", plan.ops, WEB_UI_ACTOR);
-          controller.start(
-            {
-              batch,
-              ...(plan.affectedBodyId ?? plan.resultBodyId
-                ? {
-                    bodyId: plan.affectedBodyId ?? plan.resultBodyId
-                  }
-                : {}),
-              operationLabel: capturedRequest.title,
-              checkpointPayloads: captured.checkpointPayloads,
-              existingArtifacts: captured.existingArtifacts
-            },
-            captured.context
-          );
-        } catch (error) {
-          fail(error);
-        }
-      })();
     },
-    [
-      clearSolidPreview,
-      ensureSolidPreviewController,
-      isSolidPreviewContextCurrent
-    ]
+    [clearSolidPreview]
   );
-  useEffect(() => {
-    solidPreviewMountedRef.current = true;
-    return () => {
-      solidPreviewMountedRef.current = false;
-      solidPreviewIntentSequenceRef.current += 1;
-      solidPreviewControllerRef.current?.dispose();
-      solidPreviewControllerRef.current = undefined;
-    };
-  }, []);
-  useEffect(() => {
-    clearSolidPreview();
-  }, [
-    clearSolidPreview,
-    currentPreviewSourceIdentityKey,
-    curveEditSourceAuthorityRevision,
-    document,
-    solidEditorRequest?.key,
-    workbenchUi.activeTool,
-    workbenchUi.mode
-  ]);
   const sketchViewportDragTarget =
     modelingSelectionContext.selectionKind === "sketchEntity"
       ? {
@@ -10170,6 +9943,14 @@ export function App() {
                     <p className="panel-loading">Loading modeling tools…</p>
                   }
                 >
+                  <SolidPreviewCoordinator
+                    engine={engine}
+                    context={solidPreviewContext}
+                    submission={solidPreviewSubmission}
+                    getDerivedGeometryRuntime={getDerivedGeometryRuntime}
+                    onPresentationChange={setSolidPreviewPresentation}
+                    onResultChange={setSolidPreviewResult}
+                  />
                   <SolidModePanel
                     activeEditor={solidEditorRequest}
                     disabled={commandPending}
