@@ -1,4 +1,10 @@
-import { type ChangeEvent, useMemo, useRef, useState } from "react";
+import {
+  type ChangeEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import type {
   FeatureShellOpenFaceRef,
   LoftSection,
@@ -68,6 +74,17 @@ export interface SolidModePanelProps {
   readonly onDelete?: (request: SolidEditorRequest) => void | Promise<void>;
   readonly collectorSelection?: SolidCollectorSelection;
   readonly onCollect?: (request: SolidCollectorRequest | undefined) => void;
+  /** Receives the current draft for a disposable exact preview, or undefined to clear it. */
+  readonly onPreviewRequest?: (
+    submission: SolidEditorSubmission | undefined
+  ) => void;
+  /** Human-readable, browser-owned status for the current transient preview. */
+  readonly previewState?: SolidPreviewPresentationState;
+}
+
+export interface SolidPreviewPresentationState {
+  readonly status: "idle" | "pending" | "ready" | "failed";
+  readonly message: string;
 }
 
 export function SolidModePanel({
@@ -77,7 +94,9 @@ export function SolidModePanel({
   onCancel,
   onDelete,
   collectorSelection,
-  onCollect
+  onCollect,
+  onPreviewRequest,
+  previewState
 }: SolidModePanelProps) {
   if (!activeEditor) {
     return (
@@ -102,6 +121,8 @@ export function SolidModePanel({
       onDelete={onDelete}
       collectorSelection={collectorSelection}
       onCollect={onCollect}
+      onPreviewRequest={onPreviewRequest}
+      previewState={previewState}
     />
   );
 }
@@ -113,7 +134,9 @@ function SolidDraftEditor({
   onCancel,
   onDelete,
   collectorSelection,
-  onCollect
+  onCollect,
+  onPreviewRequest,
+  previewState
 }: {
   readonly request: SolidEditorRequest;
   readonly disabled?: boolean;
@@ -122,6 +145,8 @@ function SolidDraftEditor({
   readonly onDelete?: SolidModePanelProps["onDelete"];
   readonly collectorSelection?: SolidCollectorSelection;
   readonly onCollect?: SolidModePanelProps["onCollect"];
+  readonly onPreviewRequest?: SolidModePanelProps["onPreviewRequest"];
+  readonly previewState?: SolidPreviewPresentationState;
 }) {
   const [draft, setDraft] = useState<SolidDraft>(request.initialDraft);
   const [blockedReason] = useState(request.blockedReason);
@@ -139,6 +164,9 @@ function SolidDraftEditor({
   const [appliedCollectorSelectionKey, setAppliedCollectorSelectionKey] =
     useState<string>();
   const applyingRef = useRef({ pending: false });
+  const previewSuppressedRef = useRef(false);
+  const previewCallbackRef = useRef(onPreviewRequest);
+  previewCallbackRef.current = onPreviewRequest;
   const initialSerialized = useMemo(
     () => stableSerialize(request.initialDraft),
     [request.initialDraft]
@@ -174,8 +202,49 @@ function SolidDraftEditor({
       collecting as SolidCollectorRequest["collector"],
       collectorChoiceKey
     );
-    if (stableSerialize(next) !== stableSerialize(draft)) setDraft(next);
+    if (stableSerialize(next) !== stableSerialize(draft)) {
+      setDraft(next);
+      previewSuppressedRef.current = false;
+    }
   }
+
+  // Publish preview intent without putting cleanup in this effect. React runs
+  // effect cleanup before every dependency change; using cleanup here would
+  // create an unnecessary clear between two valid drafts. The separate
+  // lifetime effect below clears only when this editor instance goes away.
+  const previewValidationReady =
+    !blockedReason && draftValidation.status === "ready";
+  useEffect(() => {
+    const callback = previewCallbackRef.current;
+    if (!callback) return;
+    if (
+      previewSuppressedRef.current ||
+      disabled ||
+      deleting ||
+      phase === "applying" ||
+      applyingRef.current.pending ||
+      !dirty ||
+      !previewValidationReady
+    ) {
+      callback(undefined);
+      return;
+    }
+    callback(createSolidEditorSubmission(request.kind, draft));
+  }, [
+    disabled,
+    deleting,
+    dirty,
+    draft,
+    onPreviewRequest,
+    phase,
+    previewValidationReady,
+    request.key,
+    request.kind
+  ]);
+
+  useEffect(() => {
+    return () => previewCallbackRef.current?.(undefined);
+  }, []);
 
   // Disarm the danger-area confirmation when the editor switches targets, so a
   // stale "Confirm delete" can never apply to a different feature.
@@ -192,6 +261,7 @@ function SolidDraftEditor({
 
   const changeDraft = (next: SolidDraft) => {
     if (applyingRef.current.pending || interactionLocked) return;
+    previewSuppressedRef.current = false;
     setDraft(next);
     setApplyError(undefined);
   };
@@ -221,6 +291,7 @@ function SolidDraftEditor({
     ) {
       return;
     }
+    previewSuppressedRef.current = true;
     setPhase("applying");
     setApplyError(undefined);
     try {
@@ -246,6 +317,8 @@ function SolidDraftEditor({
 
   const cancel = () => {
     if (applyingRef.current.pending || interactionLocked) return;
+    previewSuppressedRef.current = true;
+    previewCallbackRef.current?.(undefined);
     setDraft(cancelSolidDraft(request.initialDraft, onCancel));
     setCollecting(undefined);
     setAppliedCollectorSelectionKey(undefined);
@@ -308,6 +381,15 @@ function SolidDraftEditor({
           onChange={changeDraft}
         />
       </fieldset>
+      {previewState ? (
+        <p
+          className="pb-solid-field-note"
+          role={previewState.status === "failed" ? "alert" : "status"}
+          aria-live={previewState.status === "failed" ? "assertive" : "polite"}
+        >
+          {previewState.message}
+        </p>
+      ) : null}
     </FeatureEditorShell>
   );
 }

@@ -64,6 +64,34 @@ describe("SolidModePanel", () => {
     expect(deleteButton).toContain('disabled=""');
   });
 
+  it.each([
+    ["idle", "Preview is idle.", "status", "polite"],
+    ["pending", "Preview is calculating.", "status", "polite"],
+    ["ready", "Preview is ready.", "status", "polite"],
+    ["failed", "Preview failed.", "alert", "assertive"]
+  ] as const)(
+    "renders accessible %s preview feedback without changing the editor",
+    (status, message, role, urgency) => {
+      const markup = renderToStaticMarkup(
+        createElement(SolidModePanel, {
+          activeEditor: {
+            key: "preview-state-box",
+            kind: "box",
+            title: "Preview box",
+            initialDraft: createPrimitiveDraft("box")
+          },
+          onApply: () => undefined,
+          previewState: { status, message }
+        })
+      );
+
+      expect(markup).toContain(message);
+      expect(markup).toContain(`role="${role}"`);
+      expect(markup).toContain(`aria-live="${urgency}"`);
+      expect(markup).toContain("Preview box");
+    }
+  );
+
   it("opens a primitive as an explicit draft and stays inert without an apply callback", () => {
     const request = {
       key: "box-new",
