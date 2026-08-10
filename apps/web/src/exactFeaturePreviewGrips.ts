@@ -3,6 +3,11 @@ import type {
   CadFeatureSummary,
   ParameterId
 } from "@web-cad/cad-protocol";
+import { CAD_PATTERN_COMMAND_INSTANCE_LIMIT } from "@web-cad/cad-core";
+import type {
+  ViewportFeatureGripDescriptor
+} from "./components/ViewportFeatureGrips";
+import type { SolidEditorSubmission } from "./modes/solid/solidEditorTypes";
 
 /** The only scalar fields that V22 permits to be manipulated as grips. */
 export type ExactFeaturePreviewGripField =
@@ -229,4 +234,179 @@ export function isExactFeaturePreviewGripDraftFieldBound(
   field: ExactFeaturePreviewGripDraftField
 ): boolean {
   return field.binding !== undefined;
+}
+
+export type ExactFeaturePreviewGripBindingMap = Readonly<
+  Partial<
+    Record<
+      ExactFeaturePreviewGripField | ExactFeaturePreviewGripValueEditor,
+      ExactFeaturePreviewGripBinding
+    >
+  >
+>;
+
+export interface ExactFeaturePreviewGripMappingOptions {
+  readonly lengthUnitLabel: string;
+  readonly bindings?: ExactFeaturePreviewGripBindingMap;
+}
+
+type GripId = ExactFeaturePreviewGripField | ExactFeaturePreviewGripValueEditor;
+type GripSpec = Omit<Pick<ViewportFeatureGripDescriptor, "label" | "value" | "min" | "max">, "id"> & {
+  readonly id: GripId;
+  readonly unit: "length" | "°" | "instances";
+  readonly dragDisabled?: boolean;
+  readonly integerOnly?: boolean;
+};
+
+const POSITIVE_GRIP_MIN = Number.MIN_VALUE;
+const length = (id: GripId, label: string, value: number): GripSpec => ({
+  id,
+  label,
+  value,
+  unit: "length",
+  min: POSITIVE_GRIP_MIN
+});
+const angle = (id: GripId, label: string, value: number): GripSpec => ({
+  id,
+  label,
+  value,
+  unit: "°",
+  min: 0,
+  max: 360
+});
+const count = (label: string, value: number): GripSpec => ({
+  id: "count",
+  label,
+  value,
+  unit: "instances",
+  min: 2,
+  max: CAD_PATTERN_COMMAND_INSTANCE_LIMIT,
+  dragDisabled: true,
+  integerOnly: true
+});
+
+function gripSpecs(submission: SolidEditorSubmission): readonly GripSpec[] {
+  switch (submission.kind) {
+    case "extrude":
+    case "compositeExtrude":
+      return [length("depth", "Extrude depth", submission.draft.depth)];
+    case "revolve":
+    case "compositeRevolve":
+      return [angle("angle", "Revolve angle", submission.draft.angleDegrees)];
+    case "hole":
+      return submission.draft.depthMode === "blind"
+        ? [length("blindDepth", "Blind hole depth", submission.draft.depth)]
+        : [];
+    case "chamfer":
+      return [length("distance", "Chamfer distance", submission.draft.distance)];
+    case "fillet":
+      return [length("radius", "Fillet radius", submission.draft.radius)];
+    case "linearPattern":
+      return [
+        length("spacing", "Linear pattern spacing", submission.draft.spacing),
+        count("Linear pattern instance count", submission.draft.instanceCount)
+      ];
+    case "circularPattern":
+      return [
+        angle("totalAngle", "Circular pattern total angle", submission.draft.totalAngleDegrees),
+        count("Circular pattern instance count", submission.draft.instanceCount)
+      ];
+    case "mirror":
+      return [{
+        id: "planeOffset",
+        label: "Mirror plane offset",
+        value: submission.draft.plane.offset ?? 0,
+        unit: "length"
+      }];
+    case "shell":
+      return [length("wallThickness", "Shell wall thickness", submission.draft.wallThickness)];
+    default:
+      return [];
+  }
+}
+
+function routeLabel(binding: ExactFeaturePreviewGripBinding): string {
+  return binding.kind === "parameter"
+    ? `Edit parameter ${binding.parameterId} in Parameters`
+    : binding.parameterId
+      ? `Edit parameter ${binding.parameterId} in Parameters`
+      : "Edit expression in Parameters";
+}
+
+/** Creates the frozen viewport grip descriptors without mutating the draft. */
+export function createExactFeaturePreviewGripDescriptors(
+  submission: SolidEditorSubmission,
+  options: ExactFeaturePreviewGripMappingOptions
+): readonly ViewportFeatureGripDescriptor[] {
+  return gripSpecs(submission).map((spec) => {
+    const descriptor: ViewportFeatureGripDescriptor = {
+      id: spec.id,
+      label: spec.label,
+      value: spec.value,
+      unit: spec.unit === "length" ? options.lengthUnitLabel : spec.unit,
+      normalStep: 1,
+      shiftStep: spec.unit === "°" ? 15 : 5,
+      ...(spec.min !== undefined ? { min: spec.min } : {}),
+      ...(spec.max !== undefined ? { max: spec.max } : {}),
+      ...(spec.dragDisabled ? { dragDisabled: true } : {}),
+      ...(spec.integerOnly ? { integerOnly: true } : {})
+    };
+    const binding = options.bindings?.[spec.id];
+    return binding
+      ? {
+          ...descriptor,
+          readOnly: true,
+          routeToOwnerLabel: routeLabel(binding)
+        }
+      : descriptor;
+  });
+}
+
+function validValue(id: GripId, value: number): boolean {
+  if (!Number.isFinite(value)) return false;
+  if (id === "planeOffset") return true;
+  if (id === "count") {
+    return Number.isInteger(value) && value >= 2 && value <= CAD_PATTERN_COMMAND_INSTANCE_LIMIT;
+  }
+  if (id === "angle" || id === "totalAngle") return value > 0 && value <= 360;
+  return value > 0;
+}
+
+/** Applies one grip value immutably; invalid or bound fields return undefined. */
+export function applyExactFeaturePreviewGripValue(
+  submission: SolidEditorSubmission,
+  gripId: string,
+  value: number,
+  bindings?: ExactFeaturePreviewGripBindingMap
+): SolidEditorSubmission | undefined {
+  const id = gripSpecs(submission).some((spec) => spec.id === gripId)
+    ? (gripId as GripId)
+    : undefined;
+  if (!id || !validValue(id, value) || bindings?.[id]) return undefined;
+  switch (submission.kind) {
+    case "extrude":
+    case "compositeExtrude":
+      return { ...submission, draft: { ...submission.draft, depth: value } } as SolidEditorSubmission;
+    case "revolve":
+    case "compositeRevolve":
+      return { ...submission, draft: { ...submission.draft, angleDegrees: value } } as SolidEditorSubmission;
+    case "hole":
+      return submission.draft.depthMode === "blind"
+        ? ({ ...submission, draft: { ...submission.draft, depth: value } } as SolidEditorSubmission)
+        : undefined;
+    case "chamfer":
+      return { ...submission, draft: { ...submission.draft, distance: value } } as SolidEditorSubmission;
+    case "fillet":
+      return { ...submission, draft: { ...submission.draft, radius: value } } as SolidEditorSubmission;
+    case "linearPattern":
+      return { ...submission, draft: { ...submission.draft, ...(id === "spacing" ? { spacing: value } : { instanceCount: value }) } } as SolidEditorSubmission;
+    case "circularPattern":
+      return { ...submission, draft: { ...submission.draft, ...(id === "totalAngle" ? { totalAngleDegrees: value } : { instanceCount: value }) } } as SolidEditorSubmission;
+    case "mirror":
+      return { ...submission, draft: { ...submission.draft, plane: { ...submission.draft.plane, offset: value } } } as SolidEditorSubmission;
+    case "shell":
+      return { ...submission, draft: { ...submission.draft, wallThickness: value } } as SolidEditorSubmission;
+    default:
+      return undefined;
+  }
 }

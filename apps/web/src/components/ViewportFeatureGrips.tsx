@@ -23,6 +23,10 @@ export interface ViewportFeatureGripDescriptor {
   readonly shiftStep: number;
   readonly min?: number;
   readonly max?: number;
+  /** Prevents viewport dragging while keeping the adjacent value input live. */
+  readonly dragDisabled?: boolean;
+  /** Restricts typed values to whole numbers (used by pattern instance count). */
+  readonly integerOnly?: boolean;
   readonly readOnly?: boolean;
   readonly routeToOwnerLabel?: string;
 }
@@ -50,17 +54,9 @@ export function parseViewportFeatureGripValue(
   const trimmed = text.trim();
   if (trimmed === "") return undefined;
   const value = Number(trimmed);
-  if (!Number.isFinite(value) || !isValidBounds(descriptor)) {
+  if (!isValidGripValue(descriptor, value)) {
     return undefined;
   }
-
-  if (
-    (descriptor.min !== undefined && value < descriptor.min) ||
-    (descriptor.max !== undefined && value > descriptor.max)
-  ) {
-    return undefined;
-  }
-
   return value;
 }
 
@@ -74,7 +70,7 @@ export function stepViewportFeatureGripValue(
   shift = false,
   baseValue = descriptor.value
 ): number | undefined {
-  if (!Number.isFinite(baseValue) || !isValidBounds(descriptor)) {
+  if (!isValidGripValue(descriptor, baseValue)) {
     return undefined;
   }
 
@@ -134,10 +130,23 @@ function clampViewportFeatureGripValue(
   if (!Number.isFinite(value) || !isValidBounds(descriptor)) {
     return undefined;
   }
-
-  return Math.min(
+  const bounded = Math.min(
     descriptor.max ?? Number.POSITIVE_INFINITY,
     Math.max(descriptor.min ?? Number.NEGATIVE_INFINITY, value)
+  );
+  return isValidGripValue(descriptor, bounded) ? bounded : undefined;
+}
+
+function isValidGripValue(
+  descriptor: ViewportFeatureGripDescriptor,
+  value: number
+): boolean {
+  return (
+    Number.isFinite(value) &&
+    isValidBounds(descriptor) &&
+    (!descriptor.integerOnly || Number.isInteger(value)) &&
+    (descriptor.min === undefined || value >= descriptor.min) &&
+    (descriptor.max === undefined || value <= descriptor.max)
   );
 }
 
@@ -255,6 +264,15 @@ export function ViewportFeatureGrips({
         return;
       }
 
+      // A typed-only descriptor deliberately leaves its input's keyboard path
+      // available.  Only the viewport handle is prevented from changing it.
+      if (
+        descriptor.dragDisabled &&
+        event.currentTarget.tagName.toLowerCase() === "button"
+      ) {
+        return;
+      }
+
       if (disabled || pending) {
         return;
       }
@@ -336,7 +354,8 @@ export function ViewportFeatureGrips({
       event: ReactPointerEvent<HTMLButtonElement>,
       descriptor: ViewportFeatureGripDescriptor
     ) => {
-      if (disabled || pending || descriptor.readOnly) return;
+      if (disabled || pending || descriptor.readOnly || descriptor.dragDisabled)
+        return;
       event.preventDefault();
       event.currentTarget.focus();
       stopDrag();
@@ -439,12 +458,16 @@ export function ViewportFeatureGrips({
           >
             <button
               aria-label={
-                descriptor.readOnly ? readOnlyLabel : `Drag ${descriptor.label}`
+                descriptor.readOnly
+                  ? readOnlyLabel
+                  : descriptor.dragDisabled
+                    ? `Type ${descriptor.label} in the value editor`
+                    : `Drag ${descriptor.label}`
               }
               aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Shift+ArrowLeft Shift+ArrowRight Enter Escape"
               aria-readonly={descriptor.readOnly || undefined}
               className="viewport-feature-grip-handle"
-              disabled={interactionDisabled}
+              disabled={interactionDisabled || descriptor.dragDisabled}
               onClick={
                 descriptor.readOnly ? () => routeToOwner(descriptor) : undefined
               }
