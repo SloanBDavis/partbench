@@ -51,6 +51,7 @@ describe("V22 disposable preview projection", () => {
     const projected = engine.projectBatch(updateBatch);
 
     expect(projected.ok).toBe(true);
+    expect(projected.projectedEngine).not.toBe(engine);
     expect(projected.validationResponse).toMatchObject({
       ok: true,
       mode: "dryRun"
@@ -69,6 +70,22 @@ describe("V22 disposable preview projection", () => {
     expect(engine.getSourceAuthorityEpoch()).toBe(beforeEpoch);
     expect(createCadProjectSourceIdentity(exportCadProject(engine))).toEqual(
       beforeSourceIdentity
+    );
+
+    const detachedMutation = projected.projectedEngine.executeBatch({
+      ...updateBatch,
+      ops: [
+        {
+          op: "scene.updateBoxDimensions",
+          id: "box_1",
+          dimensions: { width: 7, height: 8, depth: 9 }
+        }
+      ]
+    });
+    expect(detachedMutation.ok).toBe(true);
+    expect(exportCadProject(engine)).toEqual(beforeProject);
+    expect(projected.projectedEngine.getDocument()).not.toEqual(
+      beforeDocument
     );
   });
 
@@ -110,6 +127,7 @@ describe("V22 disposable preview projection", () => {
     });
 
     expect(projected.ok).toBe(false);
+    expect(projected.projectedEngine).not.toBe(engine);
     expect(projected.validationResponse).toMatchObject({
       ok: false,
       mode: "dryRun"
@@ -122,5 +140,19 @@ describe("V22 disposable preview projection", () => {
     expect(engine.getTransactions()).toEqual(beforeTransactions);
     expect(engine.getRedoStack()).toEqual(beforeRedoStack);
     expect(engine.getSourceAuthorityEpoch()).toBe(beforeEpoch);
+
+    const detachedMutation = projected.projectedEngine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "scene.createBox",
+          id: "detached_only_box",
+          dimensions: { width: 1, height: 1, depth: 1 }
+        }
+      ]
+    });
+    expect(detachedMutation.ok).toBe(true);
+    expect(exportCadProject(engine)).toEqual(beforeProject);
   });
 });

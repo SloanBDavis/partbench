@@ -1093,6 +1093,11 @@ export type CadBatchProjectionResult =
       readonly ok: true;
       readonly validationResponse: CadBatchResponse;
       readonly response: Extract<CadBatchResponse, { readonly ok: true }>;
+      /**
+       * The disposable engine that owns the projected source state. It is
+       * always distinct from the engine on which projectBatch was called.
+       */
+      readonly projectedEngine: CadEngine;
       readonly document: CadDocument;
       readonly project: CadProject;
       readonly sourceIdentity: WcadSourceIdentity;
@@ -1101,6 +1106,11 @@ export type CadBatchProjectionResult =
       readonly ok: false;
       readonly validationResponse: CadBatchResponse;
       readonly response: Extract<CadBatchResponse, { readonly ok: false }>;
+      /**
+       * The disposable engine that owns the projected source state. It is
+       * always distinct from the engine on which projectBatch was called.
+       */
+      readonly projectedEngine: CadEngine;
       readonly document: CadDocument;
       readonly project: CadProject;
       readonly sourceIdentity: WcadSourceIdentity;
@@ -2268,6 +2278,7 @@ export class CadEngine {
         ok: false,
         validationResponse,
         response: validationResponse,
+        projectedEngine,
         document: projectedEngine.getDocument(),
         project,
         sourceIdentity: createCadProjectSourceIdentity(project)
@@ -2294,6 +2305,7 @@ export class CadEngine {
         ok: false,
         validationResponse,
         response,
+        projectedEngine,
         document: projectedEngine.getDocument(),
         project,
         sourceIdentity: createCadProjectSourceIdentity(project)
@@ -2304,6 +2316,7 @@ export class CadEngine {
       ok: true,
       validationResponse,
       response,
+      projectedEngine,
       document: projectedEngine.getDocument(),
       project,
       sourceIdentity: createCadProjectSourceIdentity(project)
