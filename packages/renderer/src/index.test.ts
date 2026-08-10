@@ -219,6 +219,46 @@ describe("renderer", () => {
     expect(selectedId).toBe("mesh_1");
   });
 
+  it("keeps preview meshes out of renderer scene picking", () => {
+    const preview = {
+      id: "preview_mesh",
+      kind: "mesh" as const,
+      vertices: [
+        [-2, -2, 0],
+        [2, -2, 0],
+        [2, 2, 0],
+        [-2, 2, 0]
+      ] as const,
+      indices: [0, 1, 2, 0, 2, 3],
+      transform: {
+        translation: [0, 0, 0] as const,
+        rotation: [0, 0, 0] as const,
+        scale: [1, 1, 1] as const
+      },
+      presentation: "preview" as const
+    };
+
+    expect(
+      pickRenderScene(
+        [],
+        [preview],
+        createDefaultCamera(),
+        { width: 800, height: 600 },
+        { x: 400, y: 300 }
+      )
+    ).toBeUndefined();
+
+    expect(
+      pickRenderScene(
+        [],
+        [{ ...preview, presentation: "subdued" }],
+        createDefaultCamera(),
+        { width: 800, height: 600 },
+        { x: 400, y: 300 }
+      )
+    ).toBe("preview_mesh");
+  });
+
   it("can pick only derived edge segments instead of a mesh bounding box", () => {
     const camera = createDefaultCamera();
     const size = { width: 800, height: 600 };
@@ -778,6 +818,70 @@ describe("renderer", () => {
     expect(selectedMeshStroke).toBeDefined();
     expect(selectedMeshStroke?.closed).toBe(true);
     expect(selectedMeshStroke?.points).toHaveLength(4);
+  });
+
+  it("renders preview meshes with a distinct ghost style and no pending state", () => {
+    const recorder = createRecordingCanvasContext();
+    const body = createExactPickBody("preview", 0);
+
+    renderCanvasScene(recorder.context, {
+      camera: exactPickCamera(),
+      size: { width: 800, height: 600 },
+      primitives: [],
+      meshes: [{ ...body.mesh, presentation: "preview" }],
+      visualStates: [
+        {
+          targetId: body.mesh.id,
+          targetKind: "body",
+          state: "pending"
+        }
+      ]
+    });
+
+    expect(recorder.fillStyles).toContain("rgba(40, 121, 170, 0.16)");
+    expect(recorder.fillStyles).not.toContain("rgba(139, 111, 47, 0.12)");
+    expect(recorder.strokes).toContainEqual(
+      expect.objectContaining({
+        lineWidth: 2,
+        strokeStyle: "rgba(40, 121, 170, 0.3)"
+      })
+    );
+  });
+
+  it("subdues a replaced committed mesh without changing default mesh styling", () => {
+    const defaultRecorder = createRecordingCanvasContext();
+    const subduedRecorder = createRecordingCanvasContext();
+    const body = createExactPickBody("body", 0);
+
+    renderCanvasScene(defaultRecorder.context, {
+      camera: exactPickCamera(),
+      size: { width: 800, height: 600 },
+      primitives: [],
+      meshes: [body.mesh]
+    });
+    renderCanvasScene(subduedRecorder.context, {
+      camera: exactPickCamera(),
+      size: { width: 800, height: 600 },
+      primitives: [],
+      meshes: [{ ...body.mesh, presentation: "subdued" }]
+    });
+
+    expect(defaultRecorder.fillStyles).toContain(
+      "rgba(47, 111, 151, 0.08)"
+    );
+    expect(defaultRecorder.strokes).toContainEqual(
+      expect.objectContaining({
+        lineWidth: 1.25,
+        strokeStyle: "rgba(53, 75, 91, 0.22)"
+      })
+    );
+    expect(subduedRecorder.fillStyles).toContain("rgba(53, 75, 91, 0.035)");
+    expect(subduedRecorder.strokes).toContainEqual(
+      expect.objectContaining({
+        lineWidth: 1.25,
+        strokeStyle: "rgba(53, 75, 91, 0.12)"
+      })
+    );
   });
 
   it("skips malformed mesh faces without discarding valid triangles", () => {

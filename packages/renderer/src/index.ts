@@ -86,6 +86,12 @@ export interface RenderTriangleMesh {
   readonly lineStyle?: "solid" | "construction";
   readonly source?: string;
   readonly label?: string;
+  /**
+   * Renderer-only presentation for transient feature previews and their
+   * temporarily replaced committed target. Omitted means the V21 display
+   * contract and picking behavior.
+   */
+  readonly presentation?: "preview" | "subdued";
 }
 
 export interface RenderCamera {
@@ -361,15 +367,17 @@ export function pickRenderScene(
       point
     )
   );
-  const meshCandidates = meshes.map((mesh) =>
-    mesh.pickMode === "edgeSegments"
-      ? createEdgeSegmentPickCandidate(mesh, camera, size, point)
-      : createPickCandidate(
-          mesh.id,
-          getProjectedMeshBounds(mesh, camera, size),
-          point
-        )
-  );
+  const meshCandidates = meshes
+    .filter((mesh) => mesh.presentation !== "preview")
+    .map((mesh) =>
+      mesh.pickMode === "edgeSegments"
+        ? createEdgeSegmentPickCandidate(mesh, camera, size, point)
+        : createPickCandidate(
+            mesh.id,
+            getProjectedMeshBounds(mesh, camera, size),
+            point
+          )
+    );
 
   const candidates = [...primitiveCandidates, ...meshCandidates]
     .filter((candidate): candidate is { id: string; depth: number } =>
@@ -560,9 +568,12 @@ export function renderCanvasScene(
   }
 
   const meshes = options.meshes ?? [];
+  const committedMeshes = meshes.filter(
+    (mesh) => mesh.presentation !== "preview"
+  );
   drawUnstyledMeshes(
     context,
-    meshes.filter((mesh) => !hasMeshVisualState(mesh, visualStates)),
+    committedMeshes.filter((mesh) => !hasMeshVisualState(mesh, visualStates)),
     camera,
     size
   );
@@ -579,7 +590,7 @@ export function renderCanvasScene(
     );
   }
 
-  for (const mesh of meshes.filter((mesh) =>
+  for (const mesh of committedMeshes.filter((mesh) =>
     hasMeshVisualState(mesh, visualStates)
   )) {
     drawTriangleMesh(
@@ -587,7 +598,8 @@ export function renderCanvasScene(
       mesh,
       camera,
       size,
-      getMeshVisualStyle(mesh, visualStates)
+      getMeshVisualStyle(mesh, visualStates),
+      mesh.presentation
     );
   }
 
@@ -598,6 +610,20 @@ export function renderCanvasScene(
     camera,
     size
   );
+
+  // Preview geometry is a display-only layer. Draw it after committed and
+  // exact visual state layers so the projected result remains visibly on top,
+  // while keeping its presentation independent from pending/selection state.
+  for (const mesh of meshes.filter((mesh) => mesh.presentation === "preview")) {
+    drawTriangleMesh(
+      context,
+      mesh,
+      camera,
+      size,
+      createEmptyVisualStyle(),
+      "preview"
+    );
+  }
 }
 
 function drawExactVisualStates(
@@ -779,6 +805,7 @@ function hasMeshVisualState(
   visualStates: ReadonlyMap<string, RenderVisualStyle>
 ): boolean {
   return (
+    mesh.presentation !== undefined ||
     visualStates.has(mesh.id) ||
     (mesh.parentId !== undefined && visualStates.has(mesh.parentId))
   );
@@ -1077,7 +1104,8 @@ function drawTriangleMesh(
   mesh: RenderTriangleMesh,
   camera: RenderCamera,
   size: ViewportSize,
-  style: RenderVisualStyle
+  style: RenderVisualStyle,
+  presentation: RenderTriangleMesh["presentation"] = mesh.presentation
 ): void {
   const vertices = mesh.vertices.map((vertex) =>
     transformPoint(vertex, mesh.transform)
@@ -1096,42 +1124,54 @@ function drawTriangleMesh(
     context.setLineDash([5, 4]);
   }
 
-  context.fillStyle = getVisualFillColor(style, "rgba(47, 111, 151, 0.08)");
+  context.fillStyle = getVisualFillColor(
+    style,
+    "rgba(47, 111, 151, 0.08)",
+    presentation
+  );
   drawMeshFaces(context, mesh.indices, vertices, camera, size);
 
   if (style.selected && displayEdges.length > 0) {
     context.strokeStyle = getVisualSoftStrokeColor(
       style,
-      "rgba(242, 165, 65, 0.42)"
+      "rgba(242, 165, 65, 0.42)",
+      presentation
     );
-    context.lineWidth = 7;
+    context.lineWidth = presentation === "subdued" ? 1.25 : 7;
     strokeMeshEdgeSegments(context, mesh, displayEdges, camera, size);
   }
 
   if (displayEdges.length > 0) {
     context.strokeStyle = getVisualStrokeColor(
       style,
-      mesh.lineStyle === "construction" ? "#6f7c86" : "#235f86"
+      mesh.lineStyle === "construction" ? "#6f7c86" : "#235f86",
+      presentation
     );
-    context.lineWidth = getVisualLineWidth(style, 2);
+    context.lineWidth = getVisualLineWidth(style, 2, presentation);
     strokeMeshEdgeSegments(context, mesh, displayEdges, camera, size);
   } else if (style.selected && outline.length > 1) {
     context.strokeStyle = getVisualSoftStrokeColor(
       style,
-      "rgba(242, 165, 65, 0.42)"
+      "rgba(242, 165, 65, 0.42)",
+      presentation
     );
-    context.lineWidth = 7;
+    context.lineWidth = presentation === "subdued" ? 1.25 : 7;
     strokeProjectedOutline(context, outline);
 
-    context.strokeStyle = getVisualStrokeColor(style, "#235f86");
-    context.lineWidth = getVisualLineWidth(style, 2);
+    context.strokeStyle = getVisualStrokeColor(
+      style,
+      "#235f86",
+      presentation
+    );
+    context.lineWidth = getVisualLineWidth(style, 2, presentation);
     strokeProjectedOutline(context, outline);
   } else if (outline.length > 1) {
     context.strokeStyle = getVisualSoftStrokeColor(
       style,
-      "rgba(53, 75, 91, 0.22)"
+      "rgba(53, 75, 91, 0.22)",
+      presentation
     );
-    context.lineWidth = 1.25;
+    context.lineWidth = getVisualLineWidth(style, 1.25, presentation);
     strokeProjectedOutline(context, outline);
   }
 
@@ -1154,8 +1194,17 @@ function forEachClosedSegment(
 
 function getVisualStrokeColor(
   style: RenderVisualStyle,
-  fallback: string
+  fallback: string,
+  presentation?: RenderTriangleMesh["presentation"]
 ): string {
+  if (presentation === "preview") {
+    return "rgba(40, 121, 170, 0.82)";
+  }
+
+  if (presentation === "subdued") {
+    return "rgba(53, 75, 91, 0.38)";
+  }
+
   if (style.failed) {
     return "#b42318";
   }
@@ -1185,8 +1234,17 @@ function getVisualStrokeColor(
 
 function getVisualSoftStrokeColor(
   style: RenderVisualStyle,
-  fallback: string
+  fallback: string,
+  presentation?: RenderTriangleMesh["presentation"]
 ): string {
+  if (presentation === "preview") {
+    return "rgba(40, 121, 170, 0.3)";
+  }
+
+  if (presentation === "subdued") {
+    return "rgba(53, 75, 91, 0.12)";
+  }
+
   if (style.failed) {
     return "rgba(180, 35, 24, 0.32)";
   }
@@ -1216,8 +1274,17 @@ function getVisualSoftStrokeColor(
 
 function getVisualFillColor(
   style: RenderVisualStyle,
-  fallback: string
+  fallback: string,
+  presentation?: RenderTriangleMesh["presentation"]
 ): string {
+  if (presentation === "preview") {
+    return "rgba(40, 121, 170, 0.16)";
+  }
+
+  if (presentation === "subdued") {
+    return "rgba(53, 75, 91, 0.035)";
+  }
+
   if (style.failed) {
     return "rgba(180, 35, 24, 0.14)";
   }
@@ -1247,8 +1314,17 @@ function getVisualFillColor(
 
 function getVisualLineWidth(
   style: RenderVisualStyle,
-  fallback: number
+  fallback: number,
+  presentation?: RenderTriangleMesh["presentation"]
 ): number {
+  if (presentation === "preview") {
+    return Math.max(fallback, 2);
+  }
+
+  if (presentation === "subdued") {
+    return Math.min(fallback, 1.25);
+  }
+
   return isVisualActive(style) ? 3 : fallback;
 }
 
