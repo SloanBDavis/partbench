@@ -129,6 +129,10 @@ export interface SolidModePanelProps {
   readonly onPreviewRequest?: (
     submission: SolidEditorSubmission | undefined
   ) => void;
+  /** Publishes the current valid draft for the display-only viewport grip projection. */
+  readonly onGripDraftChange?: (
+    submission: SolidEditorSubmission | undefined
+  ) => void;
   /** Human-readable, browser-owned status for the current transient preview. */
   readonly previewState?: SolidPreviewPresentationState;
   /** A browser-owned viewport grip event for the active editor draft. */
@@ -149,6 +153,7 @@ export function SolidModePanel({
   collectorSelection,
   onCollect,
   onPreviewRequest,
+  onGripDraftChange,
   previewState,
   viewportGripEvent
 }: SolidModePanelProps) {
@@ -176,6 +181,7 @@ export function SolidModePanel({
       collectorSelection={collectorSelection}
       onCollect={onCollect}
       onPreviewRequest={onPreviewRequest}
+      onGripDraftChange={onGripDraftChange}
       previewState={previewState}
       viewportGripEvent={viewportGripEvent}
     />
@@ -191,6 +197,7 @@ function SolidDraftEditor({
   collectorSelection,
   onCollect,
   onPreviewRequest,
+  onGripDraftChange,
   previewState,
   viewportGripEvent
 }: {
@@ -202,6 +209,7 @@ function SolidDraftEditor({
   readonly collectorSelection?: SolidCollectorSelection;
   readonly onCollect?: SolidModePanelProps["onCollect"];
   readonly onPreviewRequest?: SolidModePanelProps["onPreviewRequest"];
+  readonly onGripDraftChange?: SolidModePanelProps["onGripDraftChange"];
   readonly previewState?: SolidPreviewPresentationState;
   readonly viewportGripEvent?: SolidViewportGripEvent;
 }) {
@@ -224,6 +232,7 @@ function SolidDraftEditor({
   const applyingRef = useRef({ pending: false });
   const previewSuppressedRef = useRef(false);
   const previewCallbackRef = useRef(onPreviewRequest);
+  const gripDraftCallbackRef = useRef(onGripDraftChange);
   const changeDraftRef = useRef<((next: SolidDraft) => void) | undefined>(
     undefined
   );
@@ -231,6 +240,7 @@ function SolidDraftEditor({
   const cancelRef = useRef<(() => void) | undefined>(undefined);
   const lastViewportGripEventSequenceRef = useRef(Number.NEGATIVE_INFINITY);
   previewCallbackRef.current = onPreviewRequest;
+  gripDraftCallbackRef.current = onGripDraftChange;
   const initialSerialized = useMemo(
     () => stableSerialize(request.initialDraft),
     [request.initialDraft]
@@ -308,6 +318,28 @@ function SolidDraftEditor({
 
   useEffect(() => {
     return () => previewCallbackRef.current?.(undefined);
+  }, []);
+
+  const gripDraftValidationReady =
+    !blockedReason && Boolean(onApply) && draftValidation.status === "ready";
+  useEffect(() => {
+    const callback = gripDraftCallbackRef.current;
+    if (!callback) return;
+    callback(
+      gripDraftValidationReady
+        ? createSolidEditorSubmission(request.kind, draft)
+        : undefined
+    );
+  }, [
+    draft,
+    gripDraftValidationReady,
+    onGripDraftChange,
+    request.kind,
+    request.key
+  ]);
+
+  useEffect(() => {
+    return () => gripDraftCallbackRef.current?.(undefined);
   }, []);
 
   // Disarm the danger-area confirmation when the editor switches targets, so a

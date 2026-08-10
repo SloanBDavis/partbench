@@ -190,6 +190,8 @@ import type {
   InspectReferenceProjection,
   InspectSelectionProjection
 } from "./modes/inspect/InspectPanel";
+import type { ViewportFeatureGripDescriptor } from "./components/ViewportFeatureGrips";
+import type { SolidViewportGripEvent } from "./modes/solid/SolidModePanel";
 import {
   createPrimitiveDraft,
   createSketchDraft,
@@ -501,6 +503,11 @@ const SketchRegionOverlay = lazy(() =>
 const ViewportCanvas = lazy(() =>
   loadAfterFirstFrame(() => import("./components/ViewportCanvas")).then(
     (module) => ({ default: module.ViewportCanvas })
+  )
+);
+const ViewportFeatureGrips = lazy(() =>
+  loadAfterFirstFrame(() => import("./components/ViewportFeatureGrips")).then(
+    (module) => ({ default: module.ViewportFeatureGrips })
   )
 );
 const DocumentTreeDock = lazy(() =>
@@ -2109,6 +2116,14 @@ export function App() {
   >();
   const [solidCollectorSelectionOverride, setSolidCollectorSelectionOverride] =
     useState<SolidCollectorSelection | undefined>();
+  const [solidGripDescriptors, setSolidGripDescriptors] = useState<
+    readonly ViewportFeatureGripDescriptor[]
+  >([]);
+  const [solidViewportGripEvent, setSolidViewportGripEvent] = useState<
+    SolidViewportGripEvent | undefined
+  >();
+  const solidGripDescriptorSequenceRef = useRef(0);
+  const solidViewportGripEventSequenceRef = useRef(0);
   const [activeSolidEditFeatureId, setActiveSolidEditFeatureId] = useState<
     string | undefined
   >();
@@ -4946,6 +4961,100 @@ export function App() {
       snapshot
     );
   }, [unmaterializedSolidEditorRequest]);
+  const solidGripActiveEditorKeyRef = useRef<string | undefined>(undefined);
+  const solidGripDescriptorOwnerKeyRef = useRef<string | undefined>(undefined);
+  solidGripActiveEditorKeyRef.current = solidEditorRequest?.key;
+  const publishSolidGripDraft = useCallback(
+    (submission: SolidEditorSubmission | undefined) => {
+      const editorKey = solidEditorRequest?.key;
+      if (!submission) {
+        if (solidGripDescriptorOwnerKeyRef.current === editorKey) {
+          solidGripDescriptorOwnerKeyRef.current = undefined;
+          ++solidGripDescriptorSequenceRef.current;
+          setSolidGripDescriptors([]);
+        }
+        return;
+      }
+      if (!editorKey || editorKey !== solidGripActiveEditorKeyRef.current) {
+        return;
+      }
+
+      const sequence = ++solidGripDescriptorSequenceRef.current;
+      solidGripDescriptorOwnerKeyRef.current = editorKey;
+      void loadAfterFirstFrame(() => import("./exactFeaturePreviewGrips"))
+        .then(({ createExactFeaturePreviewGripDescriptors }) => {
+          if (
+            solidGripDescriptorSequenceRef.current !== sequence ||
+            solidGripDescriptorOwnerKeyRef.current !== editorKey ||
+            solidGripActiveEditorKeyRef.current !== editorKey
+          ) {
+            return;
+          }
+          setSolidGripDescriptors(
+            createExactFeaturePreviewGripDescriptors(submission, {
+              lengthUnitLabel: document.units
+            })
+          );
+        })
+        .catch(() => {
+          if (
+            solidGripDescriptorSequenceRef.current === sequence &&
+            solidGripDescriptorOwnerKeyRef.current === editorKey
+          ) {
+            setSolidGripDescriptors([]);
+          }
+        });
+    },
+    [document.units, solidEditorRequest?.key]
+  );
+  const solidGripPreviousEditorKeyRef = useRef(solidEditorRequest?.key);
+  useLayoutEffect(() => {
+    const editorKey = solidEditorRequest?.key;
+    if (solidGripPreviousEditorKeyRef.current === editorKey) return;
+    solidGripPreviousEditorKeyRef.current = editorKey;
+    solidGripDescriptorOwnerKeyRef.current = undefined;
+    ++solidGripDescriptorSequenceRef.current;
+    setSolidGripDescriptors([]);
+    if (solidViewportGripEvent?.editorKey !== editorKey) {
+      setSolidViewportGripEvent(undefined);
+    }
+  }, [solidEditorRequest?.key, solidViewportGripEvent]);
+  const publishSolidViewportGripChange = useCallback(
+    (gripId: string, value: number) => {
+      const editorKey = solidEditorRequest?.key;
+      if (!editorKey) return;
+      setSolidViewportGripEvent({
+        type: "change",
+        editorKey,
+        sequence: ++solidViewportGripEventSequenceRef.current,
+        gripId,
+        value
+      });
+    },
+    [solidEditorRequest?.key]
+  );
+  const publishSolidViewportGripApply = useCallback(() => {
+    const editorKey = solidEditorRequest?.key;
+    if (!editorKey) return;
+    setSolidViewportGripEvent({
+      type: "apply",
+      editorKey,
+      sequence: ++solidViewportGripEventSequenceRef.current
+    });
+  }, [solidEditorRequest?.key]);
+  const publishSolidViewportGripCancel = useCallback(() => {
+    const editorKey = solidEditorRequest?.key;
+    if (!editorKey) return;
+    setSolidViewportGripEvent({
+      type: "cancel",
+      editorKey,
+      sequence: ++solidViewportGripEventSequenceRef.current
+    });
+  }, [solidEditorRequest?.key]);
+  const activeSolidViewportGripEvent =
+    solidViewportGripEvent?.editorKey === solidEditorRequest?.key
+      ? solidViewportGripEvent
+      : undefined;
   useEffect(() => {
     if (
       !solidEditorRequest ||
@@ -9812,52 +9921,65 @@ export function App() {
                 status={viewportVisualState.status}
                 contextualSurface={
                   curveEditOwnership.suppressContextSourceMutations ? null : (
-                    <Suspense fallback={null}>
-                      <ViewportContextualActionStrip
-                        disabled={commandPending}
-                        modelingActions={modelingActions}
-                        namedReferences={namedReferences}
-                        namedReferenceHealthByName={namedReferenceHealthByName}
-                        selectedNamedReferenceName={selectedNamedReferenceName}
-                        selectionDisplay={viewportSelectionDisplay}
-                        selectedGeneratedReferenceState={
-                          selectedGeneratedReferenceState
-                        }
-                        selectionReferenceCandidates={
-                          selectedSelectionReferenceCandidates
-                        }
-                        onExplainUnavailable={setCommandNotice}
-                        onInvoke={(action) => {
-                          if (action.route === "name" && action.target) {
-                            const name = window.prompt("Reference name", "");
-                            if (name?.trim()) {
-                              void nameGeneratedReference(
-                                name.trim(),
-                                action.target
-                              );
-                            }
-                            return;
+                    <>
+                      <Suspense fallback={null}>
+                        <ViewportContextualActionStrip
+                          disabled={commandPending}
+                          modelingActions={modelingActions}
+                          namedReferences={namedReferences}
+                          namedReferenceHealthByName={namedReferenceHealthByName}
+                          selectedNamedReferenceName={selectedNamedReferenceName}
+                          selectionDisplay={viewportSelectionDisplay}
+                          selectedGeneratedReferenceState={
+                            selectedGeneratedReferenceState
                           }
-                          if (
-                            action.route === "inspect" ||
-                            action.route === "measure" ||
-                            action.route === "references"
-                          ) {
-                            navigateToMode("inspect");
+                          selectionReferenceCandidates={
+                            selectedSelectionReferenceCandidates
+                          }
+                          onExplainUnavailable={setCommandNotice}
+                          onInvoke={(action) => {
+                            if (action.route === "name" && action.target) {
+                              const name = window.prompt("Reference name", "");
+                              if (name?.trim()) {
+                                void nameGeneratedReference(
+                                  name.trim(),
+                                  action.target
+                                );
+                              }
+                              return;
+                            }
                             if (
-                              action.route === "measure" &&
-                              viewportTwoTargetMeasurementTarget
+                              action.route === "inspect" ||
+                              action.route === "measure" ||
+                              action.route === "references"
                             ) {
-                              startViewportTwoTargetMeasurement(
+                              navigateToMode("inspect");
+                              if (
+                                action.route === "measure" &&
                                 viewportTwoTargetMeasurementTarget
-                              );
+                              ) {
+                                startViewportTwoTargetMeasurement(
+                                  viewportTwoTargetMeasurementTarget
+                                );
+                              }
+                              return;
                             }
-                            return;
-                          }
-                          void runViewportContextualCommand(action);
-                        }}
-                      />
-                    </Suspense>
+                            void runViewportContextualCommand(action);
+                          }}
+                        />
+                      </Suspense>
+                      {solidGripDescriptors.length > 0 && solidEditorRequest ? (
+                        <Suspense fallback={null}>
+                          <ViewportFeatureGrips
+                            grips={solidGripDescriptors}
+                            disabled={commandPending}
+                            onChange={publishSolidViewportGripChange}
+                            onApply={publishSolidViewportGripApply}
+                            onCancel={publishSolidViewportGripCancel}
+                          />
+                        </Suspense>
+                      ) : null}
+                    </>
                   )
                 }
                 onHover={(pick) => {
@@ -10051,8 +10173,10 @@ export function App() {
                   <SolidModePanel
                     activeEditor={solidEditorRequest}
                     disabled={commandPending}
+                    onGripDraftChange={publishSolidGripDraft}
                     onPreviewRequest={handleSolidPreviewRequest}
                     previewState={solidPreviewPresentation}
+                    viewportGripEvent={activeSolidViewportGripEvent}
                     collectorSelection={
                       solidCollectorSelectionOverride ?? solidCollectorSelection
                     }
