@@ -31,9 +31,7 @@ export type ExactFeaturePreviewCancelReason =
   | "disposed";
 
 export type ExactFeaturePreviewState<TInput, TResult> =
-  | {
-      readonly status: "idle";
-    }
+  | { readonly status: "idle" }
   | {
       readonly status: "pending";
       readonly sequence: number;
@@ -57,9 +55,7 @@ export type ExactFeaturePreviewState<TInput, TResult> =
       readonly request: ExactFeaturePreviewRequest<TInput>;
       readonly reason: ExactFeaturePreviewCancelReason;
     }
-  | {
-      readonly status: "disposed";
-    };
+  | { readonly status: "disposed" };
 
 export type ExactFeaturePreviewJobOutcome<TResult> =
   | {
@@ -100,25 +96,19 @@ export interface ExactFeaturePreviewJobControllerOptions<TInput, TResult> {
   ) => void;
 }
 
-interface AllocatedResult<TResult> {
-  readonly value: TResult;
-  released: boolean;
-}
+type Allocation<TResult> = [value: TResult, released: boolean];
 
 interface PreviewJob<TInput, TResult> {
-  readonly sequence: number;
   readonly request: ExactFeaturePreviewRequest<TInput>;
-  readonly abortController: AbortController;
-  readonly allocations: AllocatedResult<TResult>[];
-  readonly resolveOutcome: (
-    outcome: ExactFeaturePreviewJobOutcome<TResult>
-  ) => void;
+  readonly controller: AbortController;
+  readonly allocations: Allocation<TResult>[];
+  readonly resolve: (outcome: ExactFeaturePreviewJobOutcome<TResult>) => void;
   settled: boolean;
 }
 
 interface RetainedPreviewResult<TInput, TResult> {
   readonly job: PreviewJob<TInput, TResult>;
-  readonly result: TResult;
+  readonly allocation: Allocation<TResult>;
 }
 
 export class ExactFeaturePreviewJobControllerDisposedError extends Error {
@@ -146,15 +136,11 @@ export class ExactFeaturePreviewJobController<TInput, TResult> {
   #nextSequence = 1;
   #disposed = false;
 
-  constructor(
-    options: ExactFeaturePreviewJobControllerOptions<TInput, TResult>
-  ) {
+  constructor(options: ExactFeaturePreviewJobControllerOptions<TInput, TResult>) {
     this.#worker = options.worker;
     this.#isCurrent = options.isCurrent;
     this.#disposeResult = options.disposeResult;
-    if (options.onStateChange) {
-      this.#listeners.add(options.onStateChange);
-    }
+    if (options.onStateChange) this.#listeners.add(options.onStateChange);
   }
 
   get state(): ExactFeaturePreviewState<TInput, TResult> {
@@ -172,102 +158,70 @@ export class ExactFeaturePreviewJobController<TInput, TResult> {
       listener(this.#state);
       return () => undefined;
     }
-
     this.#listeners.add(listener);
     listener(this.#state);
-    return () => {
-      this.#listeners.delete(listener);
-    };
+    return () => this.#listeners.delete(listener);
   }
 
   start(
     input: TInput,
     context: ExactFeaturePreviewContext
   ): ExactFeaturePreviewJobHandle<TResult> {
-    if (this.#disposed) {
-      throw new ExactFeaturePreviewJobControllerDisposedError();
-    }
+    if (this.#disposed) throw new ExactFeaturePreviewJobControllerDisposedError();
 
-    this.#cancelActive("replaced");
-    this.#releaseRetainedResult();
+    this.#cancelJob(this.#active, "replaced");
+    this.#dropRetained();
 
-    const sequence = this.#nextSequence;
-    this.#nextSequence += 1;
-    const capturedContext: ExactFeaturePreviewContext = {
-      liveRevision: context.liveRevision,
-      sourceIdentity: context.sourceIdentity,
-      editorOwnership: context.editorOwnership
-    };
+    const sequence = this.#nextSequence++;
     const request: ExactFeaturePreviewRequest<TInput> = {
       input,
-      context: capturedContext,
+      context: {
+        liveRevision: context.liveRevision,
+        sourceIdentity: context.sourceIdentity,
+        editorOwnership: context.editorOwnership
+      },
       sequence
     };
-    const abortController = new AbortController();
-    let resolveOutcome!: (
-      outcome: ExactFeaturePreviewJobOutcome<TResult>
-    ) => void;
+    const controller = new AbortController();
+    let resolve!: (outcome: ExactFeaturePreviewJobOutcome<TResult>) => void;
     const promise = new Promise<ExactFeaturePreviewJobOutcome<TResult>>(
-      (resolve) => {
-        resolveOutcome = resolve;
+      (res) => {
+        resolve = res;
       }
     );
     const job: PreviewJob<TInput, TResult> = {
-      sequence,
       request,
-      abortController,
+      controller,
       allocations: [],
-      resolveOutcome,
+      resolve,
       settled: false
     };
 
     this.#active = job;
     this.#setState({ status: "pending", sequence, request });
     void this.#run(job);
-
     return {
       sequence,
-      signal: abortController.signal,
+      signal: controller.signal,
       promise,
-      cancel: () => {
-        this.#cancelJob(job, "explicit");
-      }
+      cancel: () => this.#cancelJob(job, "explicit")
     };
   }
 
   cancel(): void {
-    this.#cancelActive("explicit");
-    if (this.#retained) {
-      const retained = this.#retained;
-      this.#releaseRetainedResult();
-      this.#setState({
-        status: "cancelled",
-        sequence: retained.job.sequence,
-        request: retained.job.request,
-        reason: "explicit"
-      });
-    }
+    this.#cancelJob(this.#active, "explicit");
+    this.#dropRetained("explicit");
   }
 
   clear(): void {
-    this.#cancelActive("cleared");
-    if (this.#retained) {
-      const retained = this.#retained;
-      this.#releaseRetainedResult();
-      this.#setState({
-        status: "cancelled",
-        sequence: retained.job.sequence,
-        request: retained.job.request,
-        reason: "cleared"
-      });
-    }
+    this.#cancelJob(this.#active, "cleared");
+    this.#dropRetained("cleared");
   }
 
   dispose(): void {
     if (this.#disposed) return;
-
-    this.#cancelActive("disposed", false);
-    this.#releaseRetainedResult();
+    this.#cancelJob(this.#active, "disposed", false);
+    this.#dropRetained();
     this.#disposed = true;
     this.#setState({ status: "disposed" });
     this.#listeners.clear();
@@ -277,12 +231,10 @@ export class ExactFeaturePreviewJobController<TInput, TResult> {
     try {
       const result = await this.#worker(
         job.request,
-        job.abortController.signal,
-        (allocatedResult) => {
-          this.#registerAllocatedResult(job, allocatedResult);
-        }
+        job.controller.signal,
+        (allocated) => this.#track(job, allocated)
       );
-      this.#trackResult(job, result);
+      this.#track(job, result);
 
       if (job.settled || this.#active !== job || this.#disposed) {
         this.#releaseAll(job);
@@ -296,172 +248,145 @@ export class ExactFeaturePreviewJobController<TInput, TResult> {
         this.#failJob(job, error);
         return;
       }
-
       if (!current) {
         this.#cancelJob(job, "stale");
         return;
       }
+      // isCurrent is user supplied and may synchronously replace/cancel us.
+      if (job.settled || this.#active !== job || this.#disposed) {
+        this.#releaseAll(job);
+        return;
+      }
 
       this.#releaseExcept(job, result);
+      const allocation = job.allocations.find((entry) =>
+        Object.is(entry[0], result)
+      )!;
       this.#active = undefined;
-      this.#retained = { job, result };
+      this.#retained = { job, allocation };
       job.settled = true;
-      job.resolveOutcome({
+      job.resolve({
         status: "ready",
-        sequence: job.sequence,
+        sequence: job.request.sequence,
         context: job.request.context,
         result
       });
       this.#setState({
         status: "ready",
-        sequence: job.sequence,
+        sequence: job.request.sequence,
         request: job.request,
         result
       });
     } catch (error) {
-      if (job.settled) return;
-      this.#failJob(job, error);
+      if (!job.settled) this.#failJob(job, error);
     }
   }
 
-  #registerAllocatedResult(
-    job: PreviewJob<TInput, TResult>,
-    result: TResult
-  ): void {
-    if (job.settled || this.#disposed) {
-      // Keep late registration in the same ledger as the eventual worker
-      // return. This makes register(result) + return result exactly-once even
-      // when cancellation won the race before the worker resumed.
-      this.#trackResult(job, result);
-      return;
-    }
-    this.#trackResult(job, result);
-  }
-
-  #trackResult(job: PreviewJob<TInput, TResult>, result: TResult): void {
-    if (
-      job.allocations.some((allocation) => Object.is(allocation.value, result))
-    ) {
-      if (job.settled) this.#disposeUntracked(job, result);
-      return;
-    }
-    const allocation: AllocatedResult<TResult> = {
-      value: result,
-      released: false
-    };
+  #track(job: PreviewJob<TInput, TResult>, result: TResult): void {
+    if (job.allocations.some((entry) => Object.is(entry[0], result))) return;
+    const allocation: Allocation<TResult> = [result, false];
     job.allocations.push(allocation);
-    if (job.settled || this.#disposed) {
-      this.#releaseAllocation(allocation);
-    }
+    if (job.settled || this.#disposed) this.#release(allocation);
   }
 
-  #disposeUntracked(job: PreviewJob<TInput, TResult>, result: TResult): void {
-    const existing = job.allocations.find((allocation) =>
-      Object.is(allocation.value, result)
-    );
-    if (existing) {
-      this.#releaseAllocation(existing);
-      return;
-    }
+  #release(allocation: Allocation<TResult>): void {
+    if (allocation[1]) return;
+    allocation[1] = true;
     try {
-      this.#disposeResult(result);
+      this.#disposeResult(allocation[0]);
     } catch {
-      // Disposal is best effort; a disposer failure must not permit a stale
-      // result to publish or turn a terminal cancellation into a late error.
-    }
-  }
-
-  #releaseAllocation(allocation: AllocatedResult<TResult>): void {
-    if (allocation.released) return;
-    allocation.released = true;
-    try {
-      this.#disposeResult(allocation.value);
-    } catch {
-      // See #disposeUntracked: terminal cleanup must remain idempotent.
+      // A disposer failure must not reopen a terminal job or leak another result.
     }
   }
 
   #releaseAll(job: PreviewJob<TInput, TResult>): void {
-    for (const allocation of job.allocations) {
-      this.#releaseAllocation(allocation);
-    }
+    for (const allocation of job.allocations) this.#release(allocation);
   }
 
   #releaseExcept(job: PreviewJob<TInput, TResult>, retained: TResult): void {
     for (const allocation of job.allocations) {
-      if (!Object.is(allocation.value, retained)) {
-        this.#releaseAllocation(allocation);
-      }
+      if (!Object.is(allocation[0], retained)) this.#release(allocation);
     }
   }
 
-  #releaseRetainedResult(): void {
-    if (!this.#retained) return;
+  #dropRetained(reason?: ExactFeaturePreviewCancelReason): void {
     const retained = this.#retained;
+    if (!retained) return;
     this.#retained = undefined;
-    const allocation = retained.job.allocations.find((candidate) =>
-      Object.is(candidate.value, retained.result)
-    );
-    if (allocation) {
-      this.#releaseAllocation(allocation);
-    } else {
-      this.#disposeUntracked(retained.job, retained.result);
-    }
-  }
-
-  #cancelActive(reason: ExactFeaturePreviewCancelReason, publish = true): void {
-    if (this.#active) {
-      this.#cancelJob(this.#active, reason, publish);
-    }
-  }
-
-  #cancelJob(
-    job: PreviewJob<TInput, TResult>,
-    reason: ExactFeaturePreviewCancelReason,
-    publish = true
-  ): void {
-    if (job.settled) return;
-    job.settled = true;
-    if (this.#active === job) this.#active = undefined;
-    try {
-      job.abortController.abort(reason);
-    } catch {
-      // Abort listeners are external; cleanup and state publication continue.
-    }
-    this.#releaseAll(job);
-    job.resolveOutcome({
-      status: "cancelled",
-      sequence: job.sequence,
-      context: job.request.context,
-      reason
-    });
-    if (publish) {
+    this.#release(retained.allocation);
+    if (reason) {
       this.#setState({
         status: "cancelled",
-        sequence: job.sequence,
-        request: job.request,
+        sequence: retained.job.request.sequence,
+        request: retained.job.request,
         reason
       });
     }
   }
 
+  #cancelJob(
+    job: PreviewJob<TInput, TResult> | undefined,
+    reason: ExactFeaturePreviewCancelReason,
+    publish = true
+  ): void {
+    if (!job || job.settled) return;
+    this.#settle(
+      job,
+      {
+        status: "cancelled",
+        sequence: job.request.sequence,
+        context: job.request.context,
+        reason
+      },
+      publish
+        ? {
+            status: "cancelled",
+            sequence: job.request.sequence,
+            request: job.request,
+            reason
+          }
+        : undefined,
+      reason
+    );
+  }
+
   #failJob(job: PreviewJob<TInput, TResult>, error: unknown): void {
     if (job.settled) return;
+    this.#settle(
+      job,
+      {
+        status: "failed",
+        sequence: job.request.sequence,
+        context: job.request.context,
+        error
+      },
+      {
+        status: "failed",
+        sequence: job.request.sequence,
+        request: job.request,
+        error
+      }
+    );
+  }
+
+  #settle(
+    job: PreviewJob<TInput, TResult>,
+    outcome: ExactFeaturePreviewJobOutcome<TResult>,
+    state: ExactFeaturePreviewState<TInput, TResult> | undefined,
+    abortReason?: ExactFeaturePreviewCancelReason
+  ): void {
     job.settled = true;
     if (this.#active === job) this.#active = undefined;
+    if (abortReason) {
+      try {
+        job.controller.abort(abortReason);
+      } catch {
+        // External abort listeners cannot prevent cleanup or cancellation.
+      }
+    }
     this.#releaseAll(job);
-    job.resolveOutcome({
-      status: "failed",
-      sequence: job.sequence,
-      context: job.request.context,
-      error
-    });
-    this.#setState({
-      status: "failed",
-      sequence: job.sequence,
-      request: job.request,
-      error
-    });
+    job.resolve(outcome);
+    if (state) this.#setState(state);
   }
 
   #setState(state: ExactFeaturePreviewState<TInput, TResult>): void {
