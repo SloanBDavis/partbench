@@ -40,6 +40,7 @@ import type {
   FeatureUpdateFilletOp,
   FeatureUpdateHoleOp,
   FeatureUpdateLinearPatternOp,
+  FeatureUpdateLoftOp,
   FeatureUpdateMirrorOp,
   FeatureUpdateRevolveOp,
   FeatureUpdateRevolveCommandInput,
@@ -1339,6 +1340,17 @@ export function buildFeatureUpdateCompositeSweepOp(
     id,
     profile,
     path
+  };
+}
+
+export function buildFeatureUpdateLoftOp(
+  id: string,
+  sections: readonly LoftSection[]
+): FeatureUpdateLoftOp {
+  return {
+    op: "feature.updateLoft",
+    id,
+    sections
   };
 }
 
