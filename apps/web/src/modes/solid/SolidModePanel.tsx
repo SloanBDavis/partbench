@@ -1,10 +1,4 @@
-import {
-  type ChangeEvent,
-  useEffect,
-  useMemo,
-  useRef,
-  useState
-} from "react";
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import type {
   FeatureShellOpenFaceRef,
   LoftSection,
@@ -42,6 +36,7 @@ import type {
 import type { SelectionCollectorTarget } from "../../editors/selectionCollectorState";
 import { Button } from "../../ui/Button";
 import { NumericInput } from "../../ui/NumericInput";
+import { applyExactFeaturePreviewGripValue } from "../../exactFeaturePreviewGrips";
 import type {
   EdgeChoiceValue,
   SolidChoice,
@@ -63,6 +58,62 @@ import {
 import { validateSolidDraft } from "./solidDraftValidation";
 import "./solidModePanel.css";
 
+export type SolidViewportGripEvent =
+  | {
+      readonly type: "change";
+      readonly editorKey: string;
+      readonly sequence: number;
+      readonly gripId: string;
+      readonly value: number;
+    }
+  | {
+      readonly type: "apply";
+      readonly editorKey: string;
+      readonly sequence: number;
+    }
+  | {
+      readonly type: "cancel";
+      readonly editorKey: string;
+      readonly sequence: number;
+    };
+
+/** Resolves one viewport event without owning or mutating the editor draft. */
+export const resolveSolidViewportGripEvent = (
+  requestKey: string,
+  submission: SolidEditorSubmission,
+  event: SolidViewportGripEvent | undefined,
+  lastSequence: number
+) => {
+  if (
+    !event ||
+    event.editorKey !== requestKey ||
+    !Number.isFinite(event.sequence) ||
+    event.sequence <= lastSequence
+  ) {
+    return { handled: false, sequence: lastSequence, submission };
+  }
+
+  if (event.type === "change") {
+    return {
+      handled: true,
+      sequence: event.sequence,
+      submission:
+        applyExactFeaturePreviewGripValue(
+          submission,
+          event.gripId,
+          event.value
+        ) ?? submission
+    };
+  }
+
+  return {
+    handled: true,
+    sequence: event.sequence,
+    submission,
+    action: event.type
+  };
+};
+
 export interface SolidModePanelProps {
   readonly activeEditor?: SolidEditorRequest;
   /** When true, blocks editor fields and commit actions while a mutation is in flight. */
@@ -80,6 +131,8 @@ export interface SolidModePanelProps {
   ) => void;
   /** Human-readable, browser-owned status for the current transient preview. */
   readonly previewState?: SolidPreviewPresentationState;
+  /** A browser-owned viewport grip event for the active editor draft. */
+  readonly viewportGripEvent?: SolidViewportGripEvent;
 }
 
 export interface SolidPreviewPresentationState {
@@ -96,7 +149,8 @@ export function SolidModePanel({
   collectorSelection,
   onCollect,
   onPreviewRequest,
-  previewState
+  previewState,
+  viewportGripEvent
 }: SolidModePanelProps) {
   if (!activeEditor) {
     return (
@@ -123,6 +177,7 @@ export function SolidModePanel({
       onCollect={onCollect}
       onPreviewRequest={onPreviewRequest}
       previewState={previewState}
+      viewportGripEvent={viewportGripEvent}
     />
   );
 }
@@ -136,7 +191,8 @@ function SolidDraftEditor({
   collectorSelection,
   onCollect,
   onPreviewRequest,
-  previewState
+  previewState,
+  viewportGripEvent
 }: {
   readonly request: SolidEditorRequest;
   readonly disabled?: boolean;
@@ -147,8 +203,10 @@ function SolidDraftEditor({
   readonly onCollect?: SolidModePanelProps["onCollect"];
   readonly onPreviewRequest?: SolidModePanelProps["onPreviewRequest"];
   readonly previewState?: SolidPreviewPresentationState;
+  readonly viewportGripEvent?: SolidViewportGripEvent;
 }) {
   const [draft, setDraft] = useState<SolidDraft>(request.initialDraft);
+  const draftRef = useRef(draft);
   const [blockedReason] = useState(request.blockedReason);
   const [phase, setPhase] = useState<FeatureEditorPhase>(() =>
     request.blockedReason || !onApply
@@ -166,6 +224,12 @@ function SolidDraftEditor({
   const applyingRef = useRef({ pending: false });
   const previewSuppressedRef = useRef(false);
   const previewCallbackRef = useRef(onPreviewRequest);
+  const changeDraftRef = useRef<((next: SolidDraft) => void) | undefined>(
+    undefined
+  );
+  const applyRef = useRef<(() => void | Promise<void>) | undefined>(undefined);
+  const cancelRef = useRef<(() => void) | undefined>(undefined);
+  const lastViewportGripEventSequenceRef = useRef(Number.NEGATIVE_INFINITY);
   previewCallbackRef.current = onPreviewRequest;
   const initialSerialized = useMemo(
     () => stableSerialize(request.initialDraft),
@@ -325,6 +389,40 @@ function SolidDraftEditor({
     onCollect?.(undefined);
     setApplyError(undefined);
   };
+
+  useEffect(() => {
+    draftRef.current = draft;
+    changeDraftRef.current = changeDraft;
+    applyRef.current = apply;
+    cancelRef.current = cancel;
+  }, [apply, cancel, changeDraft, draft]);
+
+  useEffect(() => {
+    const event = viewportGripEvent;
+    const current = createSolidEditorSubmission(request.kind, draftRef.current);
+    const resolved = resolveSolidViewportGripEvent(
+      request.key,
+      current,
+      event,
+      lastViewportGripEventSequenceRef.current
+    );
+    if (!resolved.handled) {
+      return;
+    }
+    lastViewportGripEventSequenceRef.current = resolved.sequence;
+
+    if (resolved.action === "apply") {
+      void applyRef.current?.();
+      return;
+    }
+    if (resolved.action === "cancel") {
+      cancelRef.current?.();
+      return;
+    }
+    if (resolved.submission !== current) {
+      changeDraftRef.current?.(resolved.submission.draft);
+    }
+  }, [request.key, request.kind, viewportGripEvent]);
 
   const requestDelete = () => {
     const { nextArmed, shouldDelete } = advanceDeleteConfirmation(deleteArmed, {

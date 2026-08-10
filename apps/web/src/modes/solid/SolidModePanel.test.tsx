@@ -13,7 +13,11 @@ import {
   buildFeatureMirrorOp,
   buildFeatureShellOp
 } from "../../cadCommands";
-import { SolidModePanel } from "./SolidModePanel";
+import {
+  resolveSolidViewportGripEvent,
+  SolidModePanel,
+  type SolidViewportGripEvent
+} from "./SolidModePanel";
 import { createPrimitiveDraft } from "./solidEditorDefaults";
 import {
   advanceDeleteConfirmation,
@@ -394,6 +398,111 @@ describe("SolidModePanel", () => {
 });
 
 describe("Solid editor session", () => {
+  const extrudeSubmission = createSolidEditorSubmission("extrude", {
+    id: "",
+    bodyId: "body-a",
+    targetBodyId: "",
+    name: "Extrude",
+    depth: 10,
+    side: "positive",
+    operationMode: "newBody"
+  });
+
+  it("ignores viewport events for another editor and repeated sequences", () => {
+    const event: SolidViewportGripEvent = {
+      type: "change",
+      editorKey: "extrude-edit",
+      sequence: 5,
+      gripId: "depth",
+      value: 12
+    };
+
+    const wrongEditor = resolveSolidViewportGripEvent(
+      "other-editor",
+      extrudeSubmission,
+      event,
+      4
+    );
+    expect(wrongEditor.handled).toBe(false);
+    expect(wrongEditor.submission).toBe(extrudeSubmission);
+
+    const first = resolveSolidViewportGripEvent(
+      "extrude-edit",
+      extrudeSubmission,
+      event,
+      4
+    );
+    expect(first.handled).toBe(true);
+    const repeated = resolveSolidViewportGripEvent(
+      "extrude-edit",
+      first.submission,
+      event,
+      first.sequence
+    );
+    expect(repeated.handled).toBe(false);
+    expect(repeated.submission).toBe(first.submission);
+  });
+
+  it("updates a matching scalar immutably through the existing grip mutator", () => {
+    const result = resolveSolidViewportGripEvent(
+      "extrude-edit",
+      extrudeSubmission,
+      {
+        type: "change",
+        editorKey: "extrude-edit",
+        sequence: 1,
+        gripId: "depth",
+        value: 12
+      },
+      0
+    );
+
+    expect(result.submission).toMatchObject({
+      kind: "extrude",
+      draft: { depth: 12 }
+    });
+    expect(result.submission).not.toBe(extrudeSubmission);
+    expect(result.submission.draft).not.toBe(extrudeSubmission.draft);
+    expect((extrudeSubmission.draft as FeatureExtrudeForm).depth).toBe(10);
+  });
+
+  it("consumes but rejects an invalid viewport grip value", () => {
+    const result = resolveSolidViewportGripEvent(
+      "extrude-edit",
+      extrudeSubmission,
+      {
+        type: "change",
+        editorKey: "extrude-edit",
+        sequence: 2,
+        gripId: "depth",
+        value: 0
+      },
+      1
+    );
+
+    expect(result.handled).toBe(true);
+    expect(result.submission).toBe(extrudeSubmission);
+  });
+
+  it("routes viewport Apply and Cancel events to the editor actions", () => {
+    expect(
+      resolveSolidViewportGripEvent(
+        "extrude-edit",
+        extrudeSubmission,
+        { type: "apply", editorKey: "extrude-edit", sequence: 3 },
+        2
+      ).action
+    ).toBe("apply");
+    expect(
+      resolveSolidViewportGripEvent(
+        "extrude-edit",
+        extrudeSubmission,
+        { type: "cancel", editorKey: "extrude-edit", sequence: 4 },
+        3
+      ).action
+    ).toBe("cancel");
+  });
+
   it("arms delete on the first click and fires only once on the second", () => {
     expect(advanceDeleteConfirmation(false)).toEqual({
       nextArmed: true,
