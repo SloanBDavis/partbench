@@ -55,16 +55,23 @@ function blankDraft(): SolidDraft {
   } as SolidDraft;
 }
 
+function assertCompositeExtrudeRequest(
+  request: SolidEditorRequest
+): asserts request is SolidEditorRequest<"compositeExtrude"> {
+  if (request.kind !== "compositeExtrude") {
+    throw new Error(
+      `Expected compositeExtrude request, received ${request.kind}`
+    );
+  }
+}
+
 describe("materializeSolidEditorRequestIds", () => {
   it.each(previewCreateKinds)(
     "materializes independent IDs for create %s",
     (kind) => {
       const request = requestFor(kind, blankDraft());
 
-      const materialized = materializeSolidEditorRequestIds(
-        request,
-        counters
-      );
+      const materialized = materializeSolidEditorRequestIds(request, counters);
 
       expect(materialized.initialDraft).toMatchObject({
         id: "feat_12",
@@ -87,10 +94,7 @@ describe("materializeSolidEditorRequestIds", () => {
     };
     const request = requestFor("extrude", draft);
 
-    const materialized = materializeSolidEditorRequestIds(
-      request,
-      counters
-    );
+    const materialized = materializeSolidEditorRequestIds(request, counters);
 
     expect(materialized).toBe(request);
     expect(materialized.initialDraft).toBe(draft);
@@ -103,10 +107,7 @@ describe("materializeSolidEditorRequestIds", () => {
       bodyId: "body_kept"
     } as SolidDraft);
 
-    const materialized = materializeSolidEditorRequestIds(
-      request,
-      counters
-    );
+    const materialized = materializeSolidEditorRequestIds(request, counters);
 
     expect(materialized.initialDraft).toMatchObject({
       id: "feat_12",
@@ -121,10 +122,7 @@ describe("materializeSolidEditorRequestIds", () => {
       bodyId: ""
     } as SolidDraft);
 
-    const materialized = materializeSolidEditorRequestIds(
-      request,
-      counters
-    );
+    const materialized = materializeSolidEditorRequestIds(request, counters);
 
     expect(materialized.initialDraft).toMatchObject({
       id: "feat_kept",
@@ -171,14 +169,12 @@ describe("materializeSolidEditorRequestIds", () => {
     } as SolidDraft);
     const before = structuredClone(request);
 
-    const materialized = materializeSolidEditorRequestIds(
-      request,
-      counters
-    );
+    const materialized = materializeSolidEditorRequestIds(request, counters);
 
     expect(request).toEqual(before);
     expect(materialized).not.toBe(request);
     expect(materialized.initialDraft).not.toBe(request.initialDraft);
+    assertCompositeExtrudeRequest(before);
     expect(materialized.initialDraft).toMatchObject({
       id: "feat_12",
       bodyId: "body_27",
