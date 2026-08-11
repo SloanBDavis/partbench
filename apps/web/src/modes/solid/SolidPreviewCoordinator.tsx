@@ -267,7 +267,11 @@ export function SolidPreviewCoordinator({
     previousSubmissionRef.current = submission;
 
     if (lifecycleChanged) clear();
-    if (!submissionChanged || !submission) {
+    if (!submission) {
+      if (!lifecycleChanged) clear();
+      return;
+    }
+    if (!submissionChanged) {
       return;
     }
 
