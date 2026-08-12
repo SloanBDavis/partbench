@@ -144,6 +144,18 @@ export interface SolidPreviewPresentationState {
   readonly message: string;
 }
 
+export function presentSolidGripDraft(
+  kind: SolidEditorKind,
+  draft: SolidDraft,
+  blockedReason: string | undefined,
+  hasApply: boolean
+): SolidEditorSubmission | undefined {
+  if (blockedReason || !hasApply) return undefined;
+  return validateSolidDraft(kind, draft).status === "ready"
+    ? createSolidEditorSubmission(kind, draft)
+    : undefined;
+}
+
 export function SolidModePanel({
   activeEditor,
   disabled = false,
@@ -320,19 +332,16 @@ function SolidDraftEditor({
     return () => previewCallbackRef.current?.(undefined);
   }, []);
 
-  const gripDraftValidationReady =
-    !blockedReason && Boolean(onApply) && draftValidation.status === "ready";
   useEffect(() => {
     const callback = gripDraftCallbackRef.current;
     if (!callback) return;
     callback(
-      gripDraftValidationReady
-        ? createSolidEditorSubmission(request.kind, draft)
-        : undefined
+      presentSolidGripDraft(request.kind, draft, blockedReason, Boolean(onApply))
     );
   }, [
+    blockedReason,
     draft,
-    gripDraftValidationReady,
+    onApply,
     onGripDraftChange,
     request.kind,
     request.key

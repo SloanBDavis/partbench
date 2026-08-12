@@ -1,39 +1,15 @@
-import {
-  CadEngine,
-  createCadProjectSourceIdentity,
-  type CadBodySnapshot,
-  type CadFeatureSummary,
-  type WcadTopologyCheckpointPayloadInput
-} from "@web-cad/cad-core";
+import { CadEngine, createCadProjectSourceIdentity, type CadBodySnapshot, type CadFeatureSummary, type WcadTopologyCheckpointPayloadInput } from "@web-cad/cad-core";
 import { projectCadBatch } from "@web-cad/cad-core/preview-projection";
-import type {
-  CadBatch,
-  CadBatchErrorResponse,
-  CadBatchSuccessResponse,
-  CadGeneratedFaceReference,
-  CadOp
-} from "@web-cad/cad-protocol";
+import type { CadBatch, CadBatchErrorResponse, CadBatchSuccessResponse, CadGeneratedFaceReference, CadOp } from "@web-cad/cad-protocol";
 import type { RenderTriangleMesh } from "@web-cad/renderer";
 import { createRenderMeshFromSerializableMesh } from "@web-cad/renderer-mesh-bridge";
 
 import type { DerivedGeometryRuntime } from "./derivedGeometryRuntime";
-import {
-  createDerivedGeometrySourcesFromDocument,
-  removeConsumedDerivedGeometrySources
-} from "./derivedGeometrySources";
-import {
-  resolveCurrentExactBodies,
-  type CurrentExactBodyArtifactEvidence,
-  type CurrentExactBodyResolution
-} from "./currentExactBodyResolver";
+import { createDerivedGeometrySourcesFromDocument, removeConsumedDerivedGeometrySources } from "./derivedGeometrySources";
+import { resolveCurrentExactBodies, type CurrentExactBodyArtifactEvidence, type CurrentExactBodyResolution } from "./currentExactBodyResolver";
 import { buildCurrentExactBodyArtifacts } from "./projectExactStepExport";
 import { createGeneratedFaceReferenceKey } from "./sketchDisplayFrames";
 
-/**
- * A source-only error raised while constructing a transient exact preview.
- * The error is intentionally kept in the web layer: it is not a new CAD
- * command or protocol response.
- */
 export class ExactFeaturePreviewGeometryError extends Error {
   readonly kind: "command" | "source" | "stale";
   readonly response?: CadBatchErrorResponse;
@@ -42,10 +18,7 @@ export class ExactFeaturePreviewGeometryError extends Error {
   constructor(
     kind: "command" | "source" | "stale",
     message: string,
-    options: {
-      readonly response?: CadBatchErrorResponse;
-      readonly bodyId?: string;
-    } = {}
+    options: { readonly response?: CadBatchErrorResponse; readonly bodyId?: string } = {}
   ) {
     super(message);
     this.name = "ExactFeaturePreviewGeometryError";
@@ -55,40 +28,27 @@ export class ExactFeaturePreviewGeometryError extends Error {
   }
 }
 
-export type ExactFeaturePreviewGeometryArtifact =
-  CurrentExactBodyArtifactEvidence;
+export type ExactFeaturePreviewGeometryArtifact = CurrentExactBodyArtifactEvidence;
 
 export interface ExactFeaturePreviewGeometryInput {
   readonly engine: CadEngine;
-  /**
-   * The same batch Apply will submit. `mode` is normalized by the
-   * projectCadBatch helper.
-   */
   readonly batch: CadBatch;
-  /** Optional explicit result body. Created-body IDs are used when omitted. */
   readonly bodyId?: string;
   readonly operationLabel?: string;
-  readonly runtime: Pick<
-    DerivedGeometryRuntime,
-    "exactBodyArtifact" | "getModelWorkSnapshot" | "resumeModelWork"
-  >;
+  readonly runtime: Pick<DerivedGeometryRuntime, "exactBodyArtifact" | "getModelWorkSnapshot" | "resumeModelWork">;
   readonly checkpointPayloads?: readonly WcadTopologyCheckpointPayloadInput[];
   readonly existingArtifacts?: readonly CurrentExactBodyArtifactEvidence[];
   readonly expectedSourceAuthorityEpoch?: number;
   readonly signal?: AbortSignal;
-  /** Preview defaults to exact; existing commit preflight may retain its user context. */
   readonly executionIntent?: "user" | "exact";
   readonly userKind?: "preflight" | "export";
   readonly requestIdPrefix?: string;
-  /** Return false or throw to reject a stale preview. */
   readonly isCurrent?: () => boolean | void;
 }
 
 export interface ExactFeaturePreviewGeometryResult {
   readonly sourceAuthorityEpoch: number;
-  readonly projectedSourceIdentity: ReturnType<
-    typeof createCadProjectSourceIdentity
-  >;
+  readonly projectedSourceIdentity: ReturnType<typeof createCadProjectSourceIdentity>;
   readonly response: CadBatchSuccessResponse;
   readonly affectedBodyIds: readonly string[];
   readonly artifacts: readonly ExactFeaturePreviewGeometryArtifact[];
@@ -103,142 +63,80 @@ const EXACT_DOWNSTREAM_UPDATE_OPS = new Set<CadOp["op"]>([
   "feature.updateShell"
 ]);
 
-/**
- * Projects one existing CADOps batch and builds only its affected exact body
- * artifacts. The live engine, transaction history, checkpoint payloads, and
- * exact artifact cache are never written by this function.
- */
 export async function projectExactFeaturePreviewGeometry(
   input: ExactFeaturePreviewGeometryInput
 ): Promise<ExactFeaturePreviewGeometryResult> {
-  const sourceAuthorityEpoch =
-    input.expectedSourceAuthorityEpoch ??
-    input.engine.getSourceAuthorityEpoch();
+  const sourceAuthorityEpoch = input.expectedSourceAuthorityEpoch ?? input.engine.getSourceAuthorityEpoch();
   const operationLabel = input.operationLabel ?? "exact feature";
+  const stale = (): never => {
+    throw new ExactFeaturePreviewGeometryError("stale", `The project changed while ${operationLabel} preview was running.`);
+  };
   const assertCurrent = () => {
     throwIfAborted(input.signal);
-    if (input.engine.getSourceAuthorityEpoch() !== sourceAuthorityEpoch) {
-      throw new ExactFeaturePreviewGeometryError(
-        "stale",
-        `The project changed while ${operationLabel} preview was running.`
-      );
-    }
-    const current = input.isCurrent?.();
-    if (current === false) {
-      throw new ExactFeaturePreviewGeometryError(
-        "stale",
-        `The project changed while ${operationLabel} preview was running.`
-      );
-    }
+    if (input.engine.getSourceAuthorityEpoch() !== sourceAuthorityEpoch || input.isCurrent?.() === false) stale();
   };
 
-  // This is deliberately checked before and after the synchronous projection
-  // call. The projectCadBatch helper owns the detached clone and its
-  // dry-run/commit pair.
   assertCurrent();
   const projected = projectCadBatch(input.engine, input.batch);
   assertCurrent();
   if (!projected.ok) {
-    throw new ExactFeaturePreviewGeometryError(
-      "command",
-      projected.response.error.message,
-      { response: projected.response }
-    );
+    throw new ExactFeaturePreviewGeometryError("command", projected.response.error.message, { response: projected.response });
   }
 
-  // The projectCadBatch helper owns the detached clone and returns that exact
-  // engine. Keep all downstream query/resolver work on the same projected
-  // state; do not rehydrate it or execute the batch a second time.
   const projectedEngine = projected.projectedEngine;
   assertCurrent();
-  const structure = readProjectStructure(projectedEngine);
+  const state = readProjectedState(projectedEngine);
   const affectedBodyIds = resolveProjectedAffectedBodyIds(
     input.bodyId,
     input.batch.ops,
-    structure.features,
-    structure.bodies,
+    state.features,
+    state.bodies,
     projected.response.createdBodyIds
   );
   if (affectedBodyIds.length === 0) {
     assertCurrent();
-    return {
-      sourceAuthorityEpoch,
-      projectedSourceIdentity: projected.sourceIdentity,
-      response: projected.response,
-      affectedBodyIds,
-      artifacts: [],
-      meshes: []
-    };
+    return { sourceAuthorityEpoch, projectedSourceIdentity: projected.sourceIdentity, response: projected.response, affectedBodyIds, artifacts: [], meshes: [] };
   }
 
-  const sourceIdentitySignaturesByBodyId = readBodySourceIdentitySignatures(
-    projectedEngine,
-    structure.bodies
-  );
-  const generatedFacesByKey = readGeneratedFaceReferencesByKey(
-    projectedEngine,
-    structure.bodies.filter(
-      (body) => body.source.type === "sketchExtrudeFeature"
-    )
-  );
   const artifactGeometrySources = createDerivedGeometrySourcesFromDocument(
     projectedEngine.getDocument(),
-    structure.features,
-    generatedFacesByKey,
-    sourceIdentitySignaturesByBodyId,
+    state.features,
+    state.generatedFacesByKey,
+    state.sourceIdentitySignaturesByBodyId,
     true
   );
   const resolutions = resolveCurrentExactBodies({
     document: projectedEngine.getDocument(),
-    bodies: structure.bodies,
-    features: structure.features,
-    geometrySources: removeConsumedDerivedGeometrySources(
-      artifactGeometrySources,
-      structure.features
-    ),
+    bodies: state.bodies,
+    features: state.features,
+    geometrySources: removeConsumedDerivedGeometrySources(artifactGeometrySources, state.features),
     artifactGeometrySources,
     checkpointPayloads: input.checkpointPayloads,
-    sourceIdentitySignaturesByBodyId
+    sourceIdentitySignaturesByBodyId: state.sourceIdentitySignaturesByBodyId
   });
-  const readyResolutions: Extract<
-    CurrentExactBodyResolution,
-    { readonly status: "ready" }
-  >[] = [];
-  for (const affectedBodyId of affectedBodyIds) {
-    const resolution = resolutions.find(
-      (
-        candidate
-      ): candidate is Extract<
-        CurrentExactBodyResolution,
-        { readonly status: "ready" }
-      > => candidate.bodyId === affectedBodyId && candidate.status === "ready"
-    );
-    if (!resolution) {
-      const blocked = resolutions.find(
-        (candidate) => candidate.bodyId === affectedBodyId
-      );
+  const readyResolutions: Extract<CurrentExactBodyResolution, { readonly status: "ready" }>[] = [];
+  for (const bodyId of affectedBodyIds) {
+    const ready = resolutions.find((candidate): candidate is Extract<CurrentExactBodyResolution, { readonly status: "ready" }> => candidate.bodyId === bodyId && candidate.status === "ready");
+    if (!ready) {
+      const blocked = resolutions.find((candidate) => candidate.bodyId === bodyId);
       throw new ExactFeaturePreviewGeometryError(
         "source",
-        blocked?.diagnostics[0]?.message ??
-          `Could not apply this ${operationLabel} because exact source ${affectedBodyId} is unavailable.`,
-        { bodyId: affectedBodyId }
+        blocked?.diagnostics[0]?.message ?? `Could not apply this ${operationLabel} because exact source ${bodyId} is unavailable.`,
+        { bodyId }
       );
     }
-    readyResolutions.push(resolution);
+    readyResolutions.push(ready);
   }
 
   input.runtime.resumeModelWork();
   assertCurrent();
-  const generation = input.runtime.getModelWorkSnapshot().generation;
-  // No artifactCache is passed: preview artifacts are transient and cannot
-  // enter the V21.1 derived cache. Existing evidence remains an input seam.
   const artifacts = await buildCurrentExactBodyArtifacts({
     engine: projectedEngine,
     resolutions: readyResolutions,
     runtime: input.runtime,
     documentSourceIdentity: projected.sourceIdentity,
     units: projectedEngine.getDocument().units,
-    generation,
+    generation: input.runtime.getModelWorkSnapshot().generation,
     existingArtifacts: input.existingArtifacts,
     executionIntent: input.executionIntent ?? "exact",
     ...(input.userKind ? { userKind: input.userKind } : {}),
@@ -246,40 +144,21 @@ export async function projectExactFeaturePreviewGeometry(
     assertCurrent
   });
   assertCurrent();
-  if (
-    artifacts.length !== affectedBodyIds.length ||
-    artifacts.some(
-      (artifact, index) => artifact.bodyId !== affectedBodyIds[index]
-    )
-  ) {
-    throw new ExactFeaturePreviewGeometryError(
-      "stale",
-      `The projected ${operationLabel} result changed before preview completion.`
-    );
+  if (artifacts.length !== affectedBodyIds.length || artifacts.some((artifact, index) => artifact.bodyId !== affectedBodyIds[index])) {
+    throw new ExactFeaturePreviewGeometryError("stale", `The projected ${operationLabel} result changed before preview completion.`);
   }
 
-  const meshes = artifacts.map((artifact) => {
-    const bridge = createRenderMeshFromSerializableMesh(artifact.displayMesh, {
-      id: `preview:${artifact.bodyId}`,
+  const meshes = artifacts.map(({ bodyId, displayMesh }) => {
+    const bridge = createRenderMeshFromSerializableMesh(displayMesh, {
+      id: `preview:${bodyId}`,
       alignment: "source",
-      source: artifact.bodyId,
-      label: `${artifact.bodyId} preview`
+      source: bodyId,
+      label: `${bodyId} preview`
     });
-    return {
-      ...bridge.mesh,
-      presentation: "preview" as const
-    };
+    return { ...bridge.mesh, presentation: "preview" as const };
   });
   assertCurrent();
-
-  return {
-    sourceAuthorityEpoch,
-    projectedSourceIdentity: projected.sourceIdentity,
-    response: projected.response,
-    affectedBodyIds,
-    artifacts,
-    meshes
-  };
+  return { sourceAuthorityEpoch, projectedSourceIdentity: projected.sourceIdentity, response: projected.response, affectedBodyIds, artifacts, meshes };
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
@@ -298,91 +177,49 @@ function resolveProjectedAffectedBodyIds(
 ): readonly string[] {
   const changedBodyIds = new Set<string>();
   for (const op of ops) {
-    if (
-      (!EXACT_DOWNSTREAM_UPDATE_OPS.has(op.op) &&
-        !op.op.startsWith("feature.update")) ||
-      !("id" in op)
-    ) {
-      continue;
-    }
+    if ((!EXACT_DOWNSTREAM_UPDATE_OPS.has(op.op) && !op.op.startsWith("feature.update")) || !("id" in op)) continue;
     const feature = features.find((candidate) => candidate.id === op.id);
     if (feature) changedBodyIds.add(feature.bodyId);
   }
-  // Body IDs in a successful projection are authoritative for create rows.
-  // They are already bounded by CadEngine's response and are resolved to the
-  // active descendant below.
-  for (const createdBodyId of createdBodyIds) {
-    if (bodies.some((body) => body.id === createdBodyId)) {
-      changedBodyIds.add(createdBodyId);
-    }
-  }
+  for (const id of createdBodyIds) if (bodies.some((body) => body.id === id)) changedBodyIds.add(id);
   if (changedBodyIds.size === 0 && bodyId) changedBodyIds.add(bodyId);
 
   const bodiesById = new Map(bodies.map((body) => [body.id, body]));
-  const featuresById = new Map(
-    features.map((feature) => [feature.id, feature])
-  );
+  const featuresById = new Map(features.map((feature) => [feature.id, feature]));
   const activeBodyIds = new Set<string>();
   for (const changedBodyId of changedBodyIds) {
-    let current = bodiesById.get(changedBodyId);
+    let body = bodiesById.get(changedBodyId);
     const visited = new Set<string>();
-    while (current?.consumedByFeatureId && !visited.has(current.id)) {
-      visited.add(current.id);
-      const consumer = featuresById.get(current.consumedByFeatureId);
-      current = consumer ? bodiesById.get(consumer.bodyId) : undefined;
+    while (body?.consumedByFeatureId && !visited.has(body.id)) {
+      visited.add(body.id);
+      const consumer = featuresById.get(body.consumedByFeatureId);
+      body = consumer ? bodiesById.get(consumer.bodyId) : undefined;
     }
-    if (current && !current.consumedByFeatureId) activeBodyIds.add(current.id);
+    if (body && !body.consumedByFeatureId) activeBodyIds.add(body.id);
   }
   return [...activeBodyIds];
 }
 
-function readProjectStructure(engine: CadEngine): {
+interface ProjectedState {
   readonly features: readonly CadFeatureSummary[];
   readonly bodies: readonly CadBodySnapshot[];
-} {
-  const response = engine.executeQuery({
-    version: "cadops.v1",
-    query: { query: "project.structure" }
-  });
-  return response.ok && response.query === "project.structure"
-    ? { features: response.features, bodies: response.bodies }
-    : { features: [], bodies: [] };
+  readonly sourceIdentitySignaturesByBodyId: ReadonlyMap<string, string>;
+  readonly generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>;
 }
 
-function readBodySourceIdentitySignatures(
-  engine: CadEngine,
-  bodies: readonly CadBodySnapshot[]
-): ReadonlyMap<string, string> {
-  const signatures = new Map<string, string>();
+function readProjectedState(engine: CadEngine): ProjectedState {
+  const response = engine.executeQuery({ version: "cadops.v1", query: { query: "project.structure" } });
+  const features = response.ok && response.query === "project.structure" ? response.features : [];
+  const bodies = response.ok && response.query === "project.structure" ? response.bodies : [];
+  const sourceIdentitySignaturesByBodyId = new Map<string, string>();
+  const generatedFacesByKey = new Map<string, CadGeneratedFaceReference>();
   for (const body of bodies) {
-    const response = engine.executeQuery({
-      version: "cadops.v1",
-      query: { query: "body.topology", bodyId: body.id }
-    });
-    if (response.ok && response.query === "body.topology") {
-      signatures.set(body.id, response.topology.sourceIdentity.signature);
-    }
+    const topology = engine.executeQuery({ version: "cadops.v1", query: { query: "body.topology", bodyId: body.id } });
+    if (topology.ok && topology.query === "body.topology") sourceIdentitySignaturesByBodyId.set(body.id, topology.topology.sourceIdentity.signature);
+    if (body.source.type !== "sketchExtrudeFeature") continue;
+    const references = engine.executeQuery({ version: "cadops.v1", query: { query: "body.generatedReferences", bodyId: body.id } });
+    if (!references.ok || references.query !== "body.generatedReferences") continue;
+    for (const face of references.faces) generatedFacesByKey.set(createGeneratedFaceReferenceKey(face.bodyId, face.stableId), face);
   }
-  return signatures;
-}
-
-function readGeneratedFaceReferencesByKey(
-  engine: CadEngine,
-  bodies: readonly CadBodySnapshot[]
-): ReadonlyMap<string, CadGeneratedFaceReference> {
-  const facesByKey = new Map<string, CadGeneratedFaceReference>();
-  for (const body of bodies) {
-    const response = engine.executeQuery({
-      version: "cadops.v1",
-      query: { query: "body.generatedReferences", bodyId: body.id }
-    });
-    if (!response.ok || response.query !== "body.generatedReferences") continue;
-    for (const face of response.faces) {
-      facesByKey.set(
-        createGeneratedFaceReferenceKey(face.bodyId, face.stableId),
-        face
-      );
-    }
-  }
-  return facesByKey;
+  return { features, bodies, sourceIdentitySignaturesByBodyId, generatedFacesByKey };
 }

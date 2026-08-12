@@ -15,6 +15,7 @@ import {
 } from "../../cadCommands";
 import {
   resolveSolidViewportGripEvent,
+  presentSolidGripDraft,
   SolidModePanel,
   type SolidViewportGripEvent
 } from "./SolidModePanel";
@@ -30,6 +31,58 @@ import {
   createSolidEditorSubmission,
   type SolidEditorRequest
 } from "./solidEditorTypes";
+
+describe("presentSolidGripDraft", () => {
+  it("publishes valid create and edit drafts", () => {
+    const createDraft = createPrimitiveDraft("sphere");
+    const editDraft: FeatureExtrudeForm = {
+      id: "feature-1",
+      bodyId: "body-1",
+      targetBodyId: "",
+      name: "Extrude",
+      depth: 10,
+      side: "positive",
+      operationMode: "newBody"
+    };
+
+    expect(presentSolidGripDraft("sphere", createDraft, undefined, true)).toEqual({
+      kind: "sphere",
+      draft: createDraft
+    });
+    expect(presentSolidGripDraft("extrude", editDraft, undefined, true)).toEqual({
+      kind: "extrude",
+      draft: editDraft
+    });
+  });
+
+  it.each([
+    [
+      "invalid",
+      "box" as const,
+      { ...createPrimitiveDraft("box"), width: 0 },
+      undefined,
+      true
+    ],
+    [
+      "blocked",
+      "sphere" as const,
+      createPrimitiveDraft("sphere"),
+      "Select a supported target.",
+      true
+    ],
+    [
+      "unconnected",
+      "sphere" as const,
+      createPrimitiveDraft("sphere"),
+      undefined,
+      false
+    ]
+  ] as const)("returns undefined for %s drafts", (_label, kind, draft, blockedReason, hasApply) => {
+    expect(
+      presentSolidGripDraft(kind, draft, blockedReason, hasApply)
+    ).toBeUndefined();
+  });
+});
 
 describe("SolidModePanel", () => {
   it("locks editor fields and delete while disabled/pending", () => {
