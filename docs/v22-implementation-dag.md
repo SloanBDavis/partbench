@@ -427,7 +427,7 @@ consolidation lands; lazy chunking alone is not all-UI budget evidence.
 | B | [Passed](./v22-b-gate.md) | same-shape pick maps, validation, transfer, bounds, cleanup, no source persistence |
 | C | [Passed](./v22-c-gate.md) | depth-aware selection, fallback, filter/cycle/keyboard, performance |
 | D | [Passed](./v22-d-gate.md) | collector/promotion path and exhaustive no-widening parity |
-| E | Pending | exact preview and all grips with Apply parity and cleanup |
+| E | [Implemented; acceptance blocked](./v22-e-gate.md) | exact preview and grips landed; fixed bundle and production-browser acceptance proof remain open |
 | F | Pending | V19 annotations and exact inspection/section/accessibility |
 | G | Pending | atomic two-generation recovery and replacement/unload guards |
 | H | Pending | accessibility/stale/memory/deferral/cap/compatibility audit |
